@@ -36,6 +36,8 @@ export interface PermissionInfo {
    * 谁能被许可是一条判定,判定归后端。
    */
   alwaysScope?: { scheme: string }
+  /** 发问方自带的选项表(`Permission.Choice` 的镜像);缺席 = 今天那几只钮。 */
+  choices?: Array<{ id: string; kind: 'once' | 'always' | 'reject' | 'reject-always'; label: string }>
 }
 
 /**
@@ -46,8 +48,10 @@ export interface PermissionInfo {
  * - 'always': Always allow this application here (本项目 × 这个应用 × 这一类效果;
  *   仅当 `PermissionInfo.alwaysScope` 在场时才是合法应答)
  * - 'reject': Deny the operation
+ * - 'reject-always': Deny, and tell the asker not to ask again(仅当 `PermissionInfo.choices`
+ *   带 `reject-always` 那一格时合法;A3-a,ACP agent 的 reject_always)
  */
-export type PermissionResponse = 'once' | 'session' | 'workdir' | 'always' | 'reject'
+export type PermissionResponse = 'once' | 'session' | 'workdir' | 'always' | 'reject' | 'reject-always'
 
 export interface PermissionRespondRequest {
   sessionId: string

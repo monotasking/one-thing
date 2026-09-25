@@ -5,6 +5,7 @@ import {
   enforcePermissionPolicy as enforceCorePermissionPolicy,
   matchGrant,
   type EnforcePermissionPolicyInput,
+  type Permission,
   type PermissionBridge,
   type PermissionGrant,
   type PermissionGrantMatcher,
@@ -75,7 +76,8 @@ export class OnethingPermissionRuntime {
     })
   }
 
-  enforce(input: EnforcePermissionPolicyInput): Promise<void> {
+  /** 返回人答了什么(见 core `enforcePermissionPolicy`);拒绝照旧是抛。 */
+  enforce(input: EnforcePermissionPolicyInput): Promise<Permission.Response[]> {
     return enforceCorePermissionPolicy({
       ...input,
       grantMatcher: input.grantMatcher ?? this.options.grantMatcher ?? matchGrant,
@@ -96,6 +98,6 @@ export function decideOnethingPermission(input: PermissionPolicyInput): Permissi
   return defaultPermissionRuntime.decide(input)
 }
 
-export function enforceOnethingPermissionPolicy(input: EnforcePermissionPolicyInput): Promise<void> {
+export function enforceOnethingPermissionPolicy(input: EnforcePermissionPolicyInput): Promise<Permission.Response[]> {
   return defaultPermissionRuntime.enforce(input)
 }

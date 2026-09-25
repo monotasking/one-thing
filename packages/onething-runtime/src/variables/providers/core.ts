@@ -22,7 +22,7 @@ export interface WorkdirGateway {
 export type WorkdirPermissionPolicyInput = EnforcePermissionPolicyInput
 
 export interface CoreProviderAdapters {
-  enforcePermission?: (input: WorkdirPermissionPolicyInput) => Promise<void>
+  enforcePermission?: (input: WorkdirPermissionPolicyInput) => Promise<unknown>
   /**
    * Directories the user has already blessed (e.g. registered project dirs).
    * Switching the workdir into one of these skips the permission barrier.

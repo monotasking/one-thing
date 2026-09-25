@@ -7,7 +7,13 @@
  */
 import type { JsonObject } from '../json.js'
 
-export type ACPPermissionMode = 'allow' | 'reject'
+/**
+ * 无人应答(没有权限桥、没有人看卡)时,agent 的审批怎么答(A3-a,方案 §3.5 / §8 拍点 2)。
+ * 缺省 `'reject'`;`'allow'` 只能由用户显式打开,而且只答 `allow_once`,永不自动选 `allow_always`。
+ */
+export type ACPUnattendedPolicy = 'reject' | 'allow'
+/** @deprecated A3-a 起改名 `ACPUnattendedPolicy`;留一个别名给还没改名的调用方。 */
+export type ACPPermissionMode = ACPUnattendedPolicy
 
 export interface ACPAgentConfig {
   id: string
@@ -19,7 +25,11 @@ export interface ACPAgentConfig {
   env?: Record<string, string>
   cwd?: string
   model?: string
-  permissionMode?: ACPPermissionMode
+  /**
+   * 无人应答时怎么答 agent 的审批;缺省 = `'reject'`。A3-a 之前叫 `permissionMode`(缺省 allow),
+   * 老值由 `normalizeACPSettings` 一次性照搬过来。
+   */
+  unattended?: ACPUnattendedPolicy
   allowFileSystemAccess?: boolean
   allowTerminalAccess?: boolean
   mcpServers?: JsonObject[]

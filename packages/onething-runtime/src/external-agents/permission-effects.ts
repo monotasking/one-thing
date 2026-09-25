@@ -25,6 +25,8 @@
 
 import { basenamePath, joinPaths, dirnamePath } from '@onething/core/storage'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
+import type { Effect } from '@onething/core/toolkit'
+import type { JsonObject, JsonValue } from '@onething/core/json'
 import {
   analyzeBashPermission,
   filePermissionPattern,
@@ -170,7 +172,7 @@ function describeRead(
  * 「看错了」—— 不补。
  */
 function describeFileMutation(
-  kind: 'file_write' | 'file_edit',
+  kind: 'file_write' | 'file_edit' | 'file_destructive_edit',
   resolvedPath: string,
   sandbox: { workingDirectory?: string },
 ): ExternalToolPermissionShape {
@@ -188,5 +190,136 @@ function describeFileMutation(
         ...(matchedRoot ? {} : { boundary }),
       },
     }],
+  }
+}
+
+// ── ACP:`session/request_permission` 的工具 → 同一套分析(A3-a,方案 §3.5 / §11.3)────────
+
+export interface AcpToolPermissionInput {
+  /** ACP `ToolKind`(`read` / `edit` / `delete` / `move` / `search` / `execute` / `think` / `fetch` / `switch_mode` / `other`)。 */
+  kind?: string
+  /** agent 给的工具标题(`toolCall.title`);只进兜底 effect 的 metadata。 */
+  name?: string
+  rawInput?: unknown
+  /** `toolCall.locations`:agent 自己声明的受影响路径,比 rawInput 里猜字段可靠,先看它。 */
+  locations?: ReadonlyArray<{ path?: string | null }>
+  cwd?: string
+  agentId: string
+  agentName?: string
+}
+
+/**
+ * ACP 没有工具名,只有 `kind` + `rawInput` + `locations`。先按 `kind` 归一成 Claude 路认得的
+ * SDK 工具名,再交给 `describeExternalToolPermission` —— **命令 / 路径分析只有一份**,这里只做
+ * 「字段从哪取」。
+ *
+ * 认不出的 kind(`search` / `fetch` / `think` / `switch_mode` / `other`)与取不到字段的,
+ * 一律退回 A0 那条 `external-agent` effect(资源 `agentId:kind`)。它不是放行:那一行在策略表里
+ * 是 ask。这里也没有 fail-open 的分支 —— 返回值永远至少有一条会弹卡的 effect,除非分析本身
+ * 判定为白名单(`ls` / 界内的普通读),那与本地工具不弹卡是同一件事。
+ */
+export interface AcpToolPermissionShape {
+  /** 内核 `Effect`(不是 `ToolEffect`):兜底那条 `external-agent` 只在内核效果表里有一行。 */
+  effects: Effect[]
+  preview?: ToolPreview
+}
+
+export function describeAcpToolPermission(input: AcpToolPermissionInput): AcpToolPermissionShape {
+  const described = describeAcpKnownKind(input)
+  // `ToolEffect` 与内核 `Effect` 字段同名同义(Claude 路 `wiring/external-agents` 同一个转手)。
+  if (described) return { effects: described.effects as Effect[], ...(described.preview ? { preview: described.preview } : {}) }
+  const kind = input.kind || 'tool'
+  return {
+    effects: [{
+      kind: 'external-agent',
+      resources: [`${input.agentId}:${kind}`],
+      barrier: true,
+      external: true,
+      metadata: {
+        agentId: input.agentId,
+        ...(input.agentName ? { agentName: input.agentName } : {}),
+        toolKind: input.kind ?? null,
+        toolTitle: input.name ?? null,
+        rawInput: toSafeJsonValue(input.rawInput),
+      } as JsonObject,
+    }],
+  }
+}
+
+function describeAcpKnownKind(input: AcpToolPermissionInput): ExternalToolPermissionShape | undefined {
+  const sandbox = { workingDirectory: input.cwd }
+  switch (input.kind) {
+    case 'execute': {
+      const command = acpCommandLine(input.rawInput)
+      return command
+        ? describeExternalToolPermission({ toolName: 'Bash', input: { command }, cwd: input.cwd })
+        : undefined
+    }
+    case 'read': {
+      const path = acpPath(input, 0)
+      return path
+        ? describeExternalToolPermission({ toolName: 'Read', input: { file_path: path }, cwd: input.cwd })
+        : undefined
+    }
+    case 'edit': {
+      const path = acpPath(input, 0)
+      return path
+        ? describeExternalToolPermission({ toolName: 'Edit', input: { file_path: path }, cwd: input.cwd })
+        : undefined
+    }
+    case 'delete': {
+      // 删文件在本地效果表里就是 `file_destructive_edit`(改不回来的那一档),不借 `Edit` 的 file_edit。
+      const path = acpPath(input, 0)
+      return path
+        ? describeFileMutation('file_destructive_edit', resolveCoreToolPath(path, sandbox), sandbox)
+        : undefined
+    }
+    case 'move': {
+      // 两个路径各一条:源头从原处消失 = 破坏性,目的地是一次写。缺任一个就认不出,整条退回兜底。
+      const from = acpPath(input, 0, ['source', 'from', 'old_path', 'oldPath', 'src'])
+      const to = acpPath(input, 1, ['destination', 'to', 'new_path', 'newPath', 'dest', 'target'])
+      if (!from || !to) return undefined
+      const source = describeFileMutation('file_destructive_edit', resolveCoreToolPath(from, sandbox), sandbox)
+      const target = describeFileMutation('file_write', resolveCoreToolPath(to, sandbox), sandbox)
+      return { effects: [...source.effects, ...target.effects] }
+    }
+    default:
+      return undefined
+  }
+}
+
+/** `rawInput.command`:字符串原样;`[cmd, ...args]` 用空格拼(只供分析,不拿去执行)。 */
+function acpCommandLine(rawInput: unknown): string | undefined {
+  const record = asRecord(rawInput)
+  const command = record?.command
+  if (typeof command === 'string') {
+    const args = Array.isArray(record?.args) ? record.args.filter(arg => typeof arg === 'string') : []
+    const line = [command, ...args].join(' ').trim()
+    return line.length > 0 ? line : undefined
+  }
+  if (Array.isArray(command)) {
+    const line = command.filter(part => typeof part === 'string').join(' ').trim()
+    return line.length > 0 ? line : undefined
+  }
+  return undefined
+}
+
+/**
+ * 路径:`locations[index].path` 优先(agent 自己声明的),再 rawInput 的常见字段。
+ * 下标 0 额外认 `path` / `file_path`(方案 §11.3 那两格)。
+ */
+function acpPath(input: AcpToolPermissionInput, index: number, fields: string[] = []): string | undefined {
+  const located = input.locations?.[index]?.path
+  if (typeof located === 'string' && located.trim().length > 0) return located
+  const names = index === 0 ? ['path', 'file_path', 'filePath', ...fields] : fields
+  return names.length > 0 ? readStringField(input.rawInput, ...names) : undefined
+}
+
+function toSafeJsonValue(value: unknown): JsonValue {
+  if (value === undefined || value === null) return null
+  try {
+    return JSON.parse(JSON.stringify(value)) as JsonValue
+  } catch {
+    return String(value)
   }
 }

@@ -19,7 +19,9 @@ interface TestAgentConfig {
   args?: string[]
   env?: Record<string, string>
   enabled?: boolean
-  permissionMode?: 'allow' | 'reject'
+  unattended?: 'allow' | 'reject'
+  /** A3-a 之前的名字(老盘上的数据) */
+  permissionMode?: 'allow' | 'reject' | string
   idleTimeoutMs?: number
   secretEnv?: string[]
 }
@@ -71,8 +73,19 @@ describe('ACP IPC operations', () => {
       args: [],
       env: undefined,
       enabled: true,
-      permissionMode: 'allow',
+      unattended: 'reject',
     })
+  })
+
+  it('A3-a 改名:老 permissionMode 照原词搬进 unattended,老名不再写回;缺省 = reject', () => {
+    const migrated = normalizeOnethingACPAgentConfig({ id: 'a', command: 'x', permissionMode: 'allow' })
+    expect(migrated.unattended).toBe('allow')
+    expect('permissionMode' in migrated).toBe(false)
+    expect(normalizeOnethingACPAgentConfig({ id: 'a', command: 'x', permissionMode: 'reject' }).unattended).toBe('reject')
+    expect(normalizeOnethingACPAgentConfig({ id: 'a', command: 'x' }).unattended).toBe('reject')
+    // 两个都在时以新名为准。
+    expect(normalizeOnethingACPAgentConfig({ id: 'a', command: 'x', permissionMode: 'allow', unattended: 'reject' }).unattended)
+      .toBe('reject')
   })
 
   it('lists agents after syncing manager settings', async () => {
@@ -121,7 +134,7 @@ describe('ACP IPC operations', () => {
         args: [],
         env: undefined,
         enabled: true,
-        permissionMode: 'allow',
+        unattended: 'reject',
       }],
     })
 
@@ -222,7 +235,7 @@ describe('ACP IPC operations', () => {
       command: 'kimi',
       args: ['acp'],
       env: {},
-      permissionMode: 'allow' as const,
+      unattended: 'reject' as const,
     }
     const rosterAdapters = (agents: TestAgentConfig[] = []) => ({
       ...createAdapters({ enabled: true, agents }),
@@ -253,8 +266,13 @@ describe('ACP IPC operations', () => {
     it('不要求命令;名字不被合成成 ACP Agent;其余带着的格(超时 / secretEnv)原样留', () => {
       expect(sparseOnethingACPRosterOverride({ id: 'kimi', name: '', command: '', idleTimeoutMs: 5, secretEnv: ['K'] }, KIMI))
         .toEqual({ id: 'kimi', idleTimeoutMs: 5, secretEnv: ['K'] })
-      expect(sparseOnethingACPRosterOverride({ id: 'kimi', name: 'Kimi·工作', permissionMode: 'reject' }, KIMI))
-        .toEqual({ id: 'kimi', name: 'Kimi·工作', permissionMode: 'reject' })
+      // unattended 的缺省是 reject:等于缺省就丢,显式 allow 才留;老名先搬成新名再判。
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', name: 'Kimi·工作', unattended: 'reject' }, KIMI))
+        .toEqual({ id: 'kimi', name: 'Kimi·工作' })
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', unattended: 'allow' }, KIMI))
+        .toEqual({ id: 'kimi', unattended: 'allow' })
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', permissionMode: 'allow' }, KIMI))
+        .toEqual({ id: 'kimi', unattended: 'allow' })
     })
 
     it('addAgent 对还没有覆盖的那一台存稀疏覆盖;已有覆盖答重复', async () => {

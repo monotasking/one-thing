@@ -79,17 +79,21 @@ function toPermissionEffect(effect: Effect): PermissionEffect {
 
 function toPermissionPreview(intent: Intent): PermissionPreview | undefined {
   if (!intent.preview) return undefined
-  const { title, diff, path, additions, deletions, metadata } = intent.preview
-  return { title, diff, path, additions, deletions, metadata: metadata as PermissionPreview['metadata'] }
+  const { title, diff, path, additions, deletions, metadata, choices } = intent.preview
+  return {
+    title, diff, path, additions, deletions,
+    metadata: metadata as PermissionPreview['metadata'],
+    ...(choices ? { choices: [...choices] } : {}),
+  }
 }
 
-function isPermissionRejected(error: unknown): error is Error & { reason?: string } {
+function isPermissionRejected(error: unknown): error is Error & { reason?: string; always?: boolean } {
   return error instanceof Error && error.name === 'PermissionRejectedError'
 }
 
 export interface PermissionAuthorizerOptions {
   /** 权限判定入口。默认是装配层那份带三座桥的 `enforcePermissionPolicy`。 */
-  readonly enforce?: (input: EnforcePermissionPolicyInput) => Promise<void>
+  readonly enforce?: (input: EnforcePermissionPolicyInput) => Promise<readonly Permission.Response[] | void>
   /** 当前会话的权限模式。只用来预判"这一组效果会不会问人"。 */
   readonly getMode?: (sessionId: string) => Permission.Mode
   /** 命令跑在哪一棵树里。默认取调用坐标上的 cwd / workspaceRoot。 */
@@ -118,8 +122,9 @@ export class PermissionAuthorizer implements Authorizer {
     if (effects.length === 0) return Decision.allow()
 
     const enforce = this.options.enforce ?? enforcePermissionPolicy
+    let answers: readonly Permission.Response[] | void
     try {
-      await enforce({
+      answers = await enforce({
         sessionId: invocation.sessionId,
         messageId: invocation.messageId ?? '',
         toolCallId: invocation.callId,
@@ -136,6 +141,7 @@ export class PermissionAuthorizer implements Authorizer {
           asked: true,
           byUser: true,
           rejectionReason,
+          ...(error.always === true ? { rejectAlways: true } : {}),
         })
       }
       /**
@@ -147,7 +153,10 @@ export class PermissionAuthorizer implements Authorizer {
       throw error
     }
 
-    return Decision.allow({ asked: wouldAsk || intent.alwaysAsk })
+    return Decision.allow({
+      asked: wouldAsk || intent.alwaysAsk,
+      ...(answers && answers.length > 0 ? { answers } : {}),
+    })
   }
 
   private workspaceRoot(invocation: Invocation): string | undefined {

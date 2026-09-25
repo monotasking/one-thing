@@ -11,6 +11,8 @@ export interface OnethingACPAgentConfigLike {
   args?: string[]
   env?: Record<string, string>
   enabled?: boolean
+  unattended?: 'allow' | 'reject' | string
+  /** A3-a 之前的名字;读到就照原词搬进 `unattended`,不再写回。 */
   permissionMode?: 'allow' | 'reject' | string
   basedOn?: string
   secretEnv?: string[]
@@ -252,7 +254,7 @@ export async function runOnethingACPRosterOperationForIpc<TState>(
 }
 
 /** 与 manifest 推出来的值相等就不存的格(它们在覆盖里出现,多半是壳把整份生效配置回显了)。 */
-const ROSTER_DERIVED_FIELDS = ['name', 'description', 'command', 'args', 'env', 'permissionMode'] as const
+const ROSTER_DERIVED_FIELDS = ['name', 'description', 'command', 'args', 'env', 'unattended'] as const
 
 function sameJson(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
@@ -266,9 +268,9 @@ function sameJson(a: unknown, b: unknown): boolean {
  * 静默消失;命令空着时归一还会合成一个 `'ACP Agent'` 的名字盖掉种子的名字。
  *
  * 规则:`id` 永远留;`enabled` 只在调用方显式给了布尔值时留;`name` / `description` /
- * `command` / `args` / `env` / `permissionMode` 与 `effectiveAgentConfig(manifest)` 推出来的值
- * 相等(空串、空数组、空对象、`permissionMode: 'allow'` 分别等同于缺席 / 缺省)就丢;其余
- * 带着的格(`unattended` / `secretEnv` / 各种超时 / `cwd` …)原样留。
+ * `command` / `args` / `env` / `unattended` 与 `effectiveAgentConfig(manifest)` 推出来的值
+ * 相等(空串、空数组、空对象、`unattended: 'reject'` 分别等同于缺席 / 缺省)就丢;其余
+ * 带着的格(`secretEnv` / 各种超时 / `cwd` …)原样留。老名 `permissionMode` 先搬成 `unattended`。
  */
 export function sparseOnethingACPRosterOverride<TConfig extends OnethingACPAgentConfigLike>(
   config: TConfig,
@@ -276,7 +278,7 @@ export function sparseOnethingACPRosterOverride<TConfig extends OnethingACPAgent
 ): TConfig {
   const derived = effectiveAgentConfig(manifest) as unknown as Record<string, unknown>
   const out: Record<string, unknown> = { id: manifest.id }
-  for (const [key, raw] of Object.entries(config)) {
+  for (const [key, raw] of Object.entries(migrateLegacyUnattended(config))) {
     if (key === 'id' || raw === undefined) continue
     if (key === 'enabled') {
       if (typeof raw === 'boolean') out.enabled = raw
@@ -287,7 +289,7 @@ export function sparseOnethingACPRosterOverride<TConfig extends OnethingACPAgent
       let base: unknown = derived[key]
       if (key === 'args') base = base ?? []
       if (key === 'env' && value && typeof value === 'object' && Object.keys(value).length === 0) value = undefined
-      if (key === 'permissionMode') base = base ?? 'allow'
+      if (key === 'unattended') base = base ?? 'reject'
       if (value === '' || value === undefined || sameJson(value, base)) continue
       out[key] = value
       continue
@@ -306,19 +308,31 @@ export function normalizeOnethingACPAgentConfig<TConfig extends OnethingACPAgent
   command: string
   args: string[]
   enabled: boolean
-  permissionMode: 'allow' | 'reject'
+  unattended: 'allow' | 'reject'
 } {
   const command = config.command?.trim() || ''
+  const migrated = migrateLegacyUnattended(config)
   return {
-    ...config,
+    ...migrated,
     id: config.id || createId(),
     name: config.name?.trim() || command || 'ACP Agent',
     command,
     args: Array.isArray(config.args) ? config.args : [],
     env: config.env && typeof config.env === 'object' ? config.env : undefined,
     enabled: config.enabled !== false,
-    permissionMode: config.permissionMode === 'reject' ? 'reject' : 'allow',
+    unattended: migrated.unattended === 'allow' ? 'allow' : 'reject',
   }
+}
+
+/**
+ * A3-a 改名:`permissionMode` → `unattended`,原词照搬(两个都在时新名胜);老名删掉不再写回。
+ * 缺席仍是缺席 —— 缺省拒由读的一方(`ACPClient`)兜。
+ */
+function migrateLegacyUnattended<TConfig extends OnethingACPAgentConfigLike>(config: TConfig): TConfig {
+  if (!('permissionMode' in config)) return config
+  const { permissionMode, ...rest } = config
+  const unattended = rest.unattended ?? permissionMode
+  return (unattended === undefined ? rest : { ...rest, unattended }) as TConfig
 }
 
 function createOnethingACPAgentId(): string {

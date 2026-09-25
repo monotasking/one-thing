@@ -15,8 +15,10 @@ export type {
   ClaudeCodeQueryOptions,
   ClaudeCodeSdkMessage,
 } from './claude-code-connector.js'
-export { describeExternalToolPermission } from './permission-effects.js'
+export { describeAcpToolPermission, describeExternalToolPermission } from './permission-effects.js'
 export type {
+  AcpToolPermissionInput,
+  AcpToolPermissionShape,
   ExternalToolPermissionInput,
   ExternalToolPermissionShape,
 } from './permission-effects.js'

@@ -821,7 +821,7 @@ export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {
     if (!agent?.id || seen.has(agent.id)) continue
     seen.add(agent.id)
     // **只归一带着的格,不合成缺席的格**:种子 / 注册表那一台的覆盖是稀疏的(`{ id, enabled }`
-    // 就是一条完整的覆盖),在这里补上 `name` / `args: []` / `permissionMode` 会把它变回整份,
+    // 就是一条完整的覆盖),在这里补上 `name` / `args: []` / `unattended` 会把它变回整份,
     // 名册随即把它当成种子拷贝丢掉。没有命令的条目也留着 —— 起法可能来自种子;真起不来的
     // 由名册在喂管家前滤掉(`Boolean(config.command)`)。
     const next: Record<string, unknown> = { ...agent }
@@ -836,7 +836,14 @@ export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {
       else delete next.env
     }
     if ('enabled' in agent) next.enabled = agent.enabled !== false
-    if ('permissionMode' in agent) next.permissionMode = agent.permissionMode === 'reject' ? 'reject' : 'allow'
+    // A3-a 一次性改名:老盘上的 `permissionMode` 照原词搬进 `unattended`(老值 'allow' 仍是 allow,
+    // 不替用户收回);两个都在时以新名为准。缺席 = 缺席(= 拒),不在这里合成。
+    const legacyMode = (agent as { permissionMode?: unknown }).permissionMode
+    delete next.permissionMode
+    const unattended = 'unattended' in agent ? agent.unattended : legacyMode
+    if ('unattended' in agent || legacyMode !== undefined) {
+      next.unattended = unattended === 'allow' ? 'allow' : 'reject'
+    }
     if ('secretEnv' in agent) {
       const secretEnv = Array.isArray(agent.secretEnv)
         ? agent.secretEnv.filter(key => typeof key === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))

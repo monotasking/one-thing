@@ -3744,6 +3744,11 @@ const PERMISSION_DECISIONS = {
 	 */
 	always: true,
 	reject: true,
+	/**
+	 * 「始终拒绝」(A3-a):只有 ask 带着 `choices` 且其中有这一格时内核才收(ACP agent 的
+	 * reject_always),否则结构化忽略。回声路不认识它,当普通拒绝处理。
+	 */
+	"reject-always": true,
 } satisfies Record<PermissionDecision, true>;
 
 const permissionDecisions = new Set<PermissionDecision>(

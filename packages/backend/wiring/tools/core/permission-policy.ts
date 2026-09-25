@@ -36,7 +36,7 @@ export function decidePermission(input: PermissionPolicyInput) {
  */
 const unattendedBridge: PermissionBridge = {
   getMode: (sessionId: string) => Permission.getMode(sessionId),
-  ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
+  ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<never> => {
     throw new Error(
       `此会话无人值守,权限请求被自动拒绝:${request.title}。请改用免审批的白名单命令(如裸 ncm-cli),或把结果写进已授权的目录。`,
     )
@@ -89,7 +89,7 @@ function createAutoDenyBridge(
 ): PermissionBridge {
   return {
     getMode: (sessionId: string) => Permission.getMode(sessionId),
-    ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
+    ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<Permission.Response | undefined> => {
       const timer = setTimeout(() => {
         const pending = Permission.getPendingPrompts(request.sessionId).find(
           prompt => prompt.callId === request.callId && prompt.messageId === request.messageId,
@@ -103,7 +103,7 @@ function createAutoDenyBridge(
         })
       }, timeoutMs)
       try {
-        await Permission.ask(request)
+        return await Permission.ask(request)
       } finally {
         clearTimeout(timer)
       }
@@ -179,7 +179,7 @@ const COLLAB_ASK_REMINDER_MS = 30 * 60_000
 
 const collabReminderBridge: PermissionBridge = {
   getMode: (sessionId: string) => Permission.getMode(sessionId),
-  ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
+  ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<Permission.Response | undefined> => {
     const timer = setTimeout(() => {
       void (async () => {
         try {
@@ -201,33 +201,30 @@ const collabReminderBridge: PermissionBridge = {
       })()
     }, COLLAB_ASK_REMINDER_MS)
     try {
-      await Permission.ask(request)
+      return await Permission.ask(request)
     } finally {
       clearTimeout(timer)
     }
   },
 }
 
-export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInput): Promise<void> {
+/** 返回人答了什么(按问的先后,没问过人 = 空);拒绝照旧是抛。 */
+export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInput): Promise<Permission.Response[]> {
   const enriched = enrichPermissionInput(input)
   if (isUnattendedTurn(input.sessionId)) {
-    await permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedBridge })
-    return
+    return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedBridge })
   }
   if (isCollabTurn(input.sessionId)) {
-    await permissionRuntime.enforce({ ...enriched, permissionBridge: collabReminderBridge })
-    return
+    return permissionRuntime.enforce({ ...enriched, permissionBridge: collabReminderBridge })
   }
   if (isSystemDrivenTurn(input.sessionId)) {
-    await permissionRuntime.enforce({ ...enriched, permissionBridge: timeoutAskBridge })
-    return
+    return permissionRuntime.enforce({ ...enriched, permissionBridge: timeoutAskBridge })
   }
   // 最后一位:不是回合的事,是调用方的事(理由写在 `unattendedHostBridge` 头上)。
   if (isUnattendedHostSystemCall(input.principal)) {
-    await permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedHostBridge })
-    return
+    return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedHostBridge })
   }
-  await permissionRuntime.enforce(enriched)
+  return permissionRuntime.enforce(enriched)
 }
 
 function enrichPermissionInput(input: EnforcePermissionPolicyInput): EnforcePermissionPolicyInput {

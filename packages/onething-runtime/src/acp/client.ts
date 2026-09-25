@@ -34,7 +34,7 @@ import type {
   ACPConnectionStatus,
   ACPPermissionBridge,
   ACPPermissionDecision,
-  ACPPermissionMode,
+  ACPUnattendedPolicy,
   ACPPermissionRequestContext,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
@@ -337,7 +337,7 @@ export class ACPClient {
   private sessionOpenings = new Map<string, Promise<ACPSessionRecord>>()
   private updateQueues = new Map<string, BoundedAsyncQueue<ACPPromptStreamEvent>>()
   /** acpSessionId → context of the currently streaming prompt (for permission attribution). */
-  private promptContexts = new Map<string, { localSessionId: string; messageId?: string; cwd: string }>()
+  private promptContexts = new Map<string, { localSessionId: string; messageId?: string; cwd: string; abortSignal?: AbortSignal }>()
   private terminals = new Map<string, TerminalRecord>()
   private activePromptCountValue = 0
   /** 本地会话 id → 它在 agent 那边的会话状态(§3.3)。断开时不清:壳还要看得到「断了」。 */
@@ -767,6 +767,7 @@ export class ACPClient {
       localSessionId: options.localSessionId,
       messageId: options.messageId,
       cwd: options.cwd,
+      abortSignal: options.abortSignal,
     })
     this.activePromptCountValue += 1
     this.lastUsedAtValue = Date.now()
@@ -1065,14 +1066,19 @@ export class ACPClient {
   private async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const bridge = this.runtimeOptions.getPermissionBridge?.()
     if (!bridge) {
-      // No interactive surface registered (headless server, tests): keep the
-      // legacy policy-driven resolution.
-      return this.resolvePermissionFromMode(this.config.permissionMode ?? 'allow', params)
+      // 没有桥 = 没人看得见卡(server / daemon / 测试)。A3-a 起缺省拒(方案 §8 拍点 2):
+      // 只有用户对这一台显式打开 `unattended: 'allow'` 才放,而且只答 allow_once。
+      return this.resolvePermissionFromMode(this.config.unattended === 'allow' ? 'allow' : 'reject', params)
     }
 
     let decision: ACPPermissionDecision
     try {
-      decision = await bridge(this.buildPermissionContext(params))
+      // 回合被中止时,还挂着的审批按协议答 cancelled(A3-a):卡由引擎的 abort 拆掉,
+      // 这里不等那张卡的结局,也不把「没人答」说成「拒绝」。
+      decision = await raceAbort(
+        bridge(this.buildPermissionContext(params)),
+        this.promptContexts.get(params.sessionId)?.abortSignal,
+      )
     } catch (error) {
       log.warn('permission bridge failed, rejecting request', { agentId: this.id }, error)
       return this.resolvePermissionFromMode('reject', params)
@@ -1095,16 +1101,19 @@ export class ACPClient {
   }
 
   private resolvePermissionFromMode(
-    mode: ACPPermissionMode,
+    mode: ACPUnattendedPolicy,
     params: RequestPermissionRequest,
   ): RequestPermissionResponse {
+    // 自动答永远只挑「一次」那格:自动选 allow_always / reject_always 等于替用户在 agent 那边
+    // 落了一条长期规则,而用户根本没看见卡。没有「一次」那格就答 cancelled
+    // —— 绝不退到 options[0](那可能是反方向,也可能是 always)。
     if (mode === 'reject') {
-      const reject = params.options.find(option => option.kind.includes('reject')) ?? params.options[0]
+      const reject = params.options.find(option => option.kind === 'reject_once')
       if (!reject) return { outcome: { outcome: 'cancelled' } }
       return { outcome: { outcome: 'selected', optionId: reject.optionId } }
     }
 
-    const allow = params.options.find(option => option.kind.includes('allow')) ?? params.options[0]
+    const allow = params.options.find(option => option.kind === 'allow_once')
     if (!allow) return { outcome: { outcome: 'cancelled' } }
     return { outcome: { outcome: 'selected', optionId: allow.optionId } }
   }
@@ -1127,6 +1136,9 @@ export class ACPClient {
             title: toolCall.title ?? undefined,
             kind: toolCall.kind ?? undefined,
             rawInput: toolCall.rawInput,
+            ...(toolCall.locations?.length
+              ? { locations: toolCall.locations.map(location => ({ path: location.path, ...(location.line != null ? { line: location.line } : {}) })) }
+              : {}),
           }
         : undefined,
       options: params.options.map(option => ({
@@ -1310,4 +1322,21 @@ export class ACPClient {
     }
     this.terminals.clear()
   }
+}
+
+/** 桥的答案与回合的中止信号赛跑;先中止 = `cancel`。 */
+function raceAbort(
+  pending: Promise<ACPPermissionDecision>,
+  signal: AbortSignal | undefined,
+): Promise<ACPPermissionDecision> {
+  if (!signal) return pending
+  if (signal.aborted) return Promise.resolve({ behavior: 'cancel' })
+  return new Promise<ACPPermissionDecision>((resolve, reject) => {
+    const onAbort = () => resolve({ behavior: 'cancel' })
+    signal.addEventListener('abort', onAbort, { once: true })
+    pending.then(
+      value => { signal.removeEventListener('abort', onAbort); resolve(value) },
+      error => { signal.removeEventListener('abort', onAbort); reject(error) },
+    )
+  })
 }

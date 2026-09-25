@@ -172,3 +172,33 @@ describe('PermissionAuthorizer', () => {
     expect(calls).toHaveLength(1)
   })
 })
+
+describe('PermissionAuthorizer:人答了哪一种(A3-a)', () => {
+  const CHOICES = [{ id: 'o-once', kind: 'once', label: 'Yes' }] as const
+
+  it('preview.choices 原样进 enforce 的 preview;enforce 交回的答案落在 Decision.answers', async () => {
+    const calls: EnforcePermissionPolicyInput[] = []
+    const authorizer = new PermissionAuthorizer({
+      enforce: async input => { calls.push(input); return ['always'] },
+      getMode: () => 'normal',
+    })
+    const intent = Intent.of({
+      effects: [makeEffect('bash', ['rm *'], { barrier: true })],
+      preview: { title: 'rm', choices: [...CHOICES] },
+      payload: null,
+    })
+    const decision = await authorizer.decide(intent, invocationFor({ toolId: 'execute' }), scope())
+    expect(calls[0]?.preview?.choices).toEqual([...CHOICES])
+    expect(decision).toMatchObject({ kind: 'allow', answers: ['always'] })
+  })
+
+  it('人按了「始终拒绝」→ Decision.deny 带 rejectAlways', async () => {
+    const rejected = Object.assign(new Error('rejected'), { name: 'PermissionRejectedError', always: true })
+    const authorizer = new PermissionAuthorizer({
+      enforce: async () => { throw rejected },
+      getMode: () => 'normal',
+    })
+    const decision = await authorizer.decide(WRITE_INTENT, invocationFor(), scope())
+    expect(decision).toMatchObject({ kind: 'deny', byUser: true, rejectAlways: true })
+  })
+})

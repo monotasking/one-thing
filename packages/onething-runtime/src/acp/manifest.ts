@@ -294,7 +294,7 @@ const PASSTHROUGH_OVERRIDE_FIELDS = [
   'description',
   'cwd',
   'model',
-  'permissionMode',
+  'unattended',
   'allowFileSystemAccess',
   'allowTerminalAccess',
   'mcpServers',

@@ -74,4 +74,20 @@ describe('ACP 设置归一', () => {
     expect(normalizeACPSettings({ enabled: true, agents: [], registry: { enabled: false } }).registry)
       .toEqual({ enabled: false })
   })
+
+  it('A3-a 改名:老 permissionMode 照原词搬进 unattended、老名删掉;缺席不合成(= 拒)', () => {
+    const agents = normalizeACPSettings({
+      enabled: true,
+      agents: [
+        { id: 'a', permissionMode: 'allow' },
+        { id: 'b', permissionMode: 'reject' },
+        { id: 'c', permissionMode: 'allow', unattended: 'reject' },
+        { id: 'd', unattended: 'bogus' },
+        { id: 'e' },
+      ] as never,
+    }).agents as unknown as Array<Record<string, unknown>>
+    expect(agents.map(agent => agent.unattended)).toEqual(['allow', 'reject', 'reject', 'reject', undefined])
+    expect(agents.some(agent => 'permissionMode' in agent)).toBe(false)
+    expect('unattended' in agents[4]!).toBe(false)
+  })
 })

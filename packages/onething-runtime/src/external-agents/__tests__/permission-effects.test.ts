@@ -6,7 +6,7 @@
  * resources 粒度、同样的 external / sensitive 位。
  */
 import { describe, expect, it } from 'vitest'
-import { describeExternalToolPermission } from '../permission-effects.js'
+import { describeAcpToolPermission, describeExternalToolPermission } from '../permission-effects.js'
 
 const CWD = '/tmp/project'
 
@@ -121,5 +121,85 @@ describe('describeExternalToolPermission', () => {
     // 形状不对(没有 command / file_path)也回落:这里不猜。
     expect(describeExternalToolPermission({ toolName: 'Bash', input: {}, cwd: CWD })).toBeUndefined()
     expect(describeExternalToolPermission({ toolName: 'Write', input: null, cwd: CWD })).toBeUndefined()
+  })
+})
+
+/**
+ * A3-a:ACP 的 `kind` + `rawInput` + `locations` → 同一套分析(方案 §11.3)。
+ * 断言与上面 Claude 路那几条同形:同一条命令在两条路上长成同一条效果。
+ */
+describe('describeAcpToolPermission', () => {
+  const AGENT = 'kimi'
+
+  it('execute 带 rm -rf → 命令级 bash 效果,不是 agentId:execute', () => {
+    const shape = describeAcpToolPermission({
+      kind: 'execute', rawInput: { command: 'rm -rf ./build' }, cwd: CWD, agentId: AGENT,
+    })
+    expect(shape.effects).toEqual([
+      expect.objectContaining({ kind: 'bash', resources: ['rm *'], barrier: true }),
+    ])
+    expect(shape.preview?.title).toBe('rm -rf ./build')
+  })
+
+  it('execute 的 command 是 [cmd, ...args] 时拼起来分析', () => {
+    const shape = describeAcpToolPermission({
+      kind: 'execute', rawInput: { command: ['rm', '-rf', './build'] }, cwd: CWD, agentId: AGENT,
+    })
+    expect(shape.effects).toEqual([expect.objectContaining({ kind: 'bash', resources: ['rm *'] })])
+  })
+
+  it('read ~/.ssh/id_rsa → sensitive_file_read(路径取 locations)', () => {
+    const shape = describeAcpToolPermission({
+      kind: 'read', locations: [{ path: '~/.ssh/id_rsa' }], rawInput: {}, cwd: CWD, agentId: AGENT,
+    })
+    expect(shape.effects).toContainEqual(expect.objectContaining({ kind: 'sensitive_file_read', sensitive: true }))
+  })
+
+  it('read 没有 locations 时退到 rawInput.path / file_path', () => {
+    const shape = describeAcpToolPermission({
+      kind: 'read', rawInput: { file_path: `${CWD}/src/a.ts` }, cwd: CWD, agentId: AGENT,
+    })
+    expect(shape.effects).toContainEqual(expect.objectContaining({ kind: 'read', resources: [`${CWD}/src/a.ts`] }))
+  })
+
+  it('edit → file_edit,路径取 locations[0],界内不带 external', () => {
+    const shape = describeAcpToolPermission({
+      kind: 'edit', locations: [{ path: `${CWD}/src/a.ts` }], rawInput: { path: '/elsewhere/b.ts' }, cwd: CWD, agentId: AGENT,
+    })
+    expect(shape.effects).toEqual([
+      expect.objectContaining({ kind: 'file_edit', external: false, metadata: expect.objectContaining({ path: `${CWD}/src/a.ts` }) }),
+    ])
+  })
+
+  it('delete → file_destructive_edit;move → 源头破坏 + 目的地写,两条', () => {
+    const del = describeAcpToolPermission({
+      kind: 'delete', locations: [{ path: `${CWD}/a.ts` }], cwd: CWD, agentId: AGENT,
+    })
+    expect(del.effects).toEqual([expect.objectContaining({ kind: 'file_destructive_edit' })])
+
+    const move = describeAcpToolPermission({
+      kind: 'move', locations: [{ path: `${CWD}/a.ts` }, { path: `${CWD}/b.ts` }], cwd: CWD, agentId: AGENT,
+    })
+    expect(move.effects.map(effect => effect.kind)).toEqual(['file_destructive_edit', 'file_write'])
+  })
+
+  it('认不出的 kind / 取不到字段 → 退回 external-agent(资源 agentId:kind),不是放行', () => {
+    const unknown = describeAcpToolPermission({
+      kind: 'fetch', name: 'Fetch url', rawInput: { url: 'https://x' }, cwd: CWD, agentId: AGENT,
+    })
+    expect(unknown.effects).toEqual([
+      expect.objectContaining({
+        kind: 'external-agent',
+        resources: ['kimi:fetch'],
+        barrier: true,
+        metadata: expect.objectContaining({ agentId: AGENT, toolKind: 'fetch', toolTitle: 'Fetch url' }),
+      }),
+    ])
+
+    const missing = describeAcpToolPermission({ kind: 'execute', rawInput: {}, cwd: CWD, agentId: AGENT })
+    expect(missing.effects).toEqual([expect.objectContaining({ kind: 'external-agent', resources: ['kimi:execute'] })])
+
+    const noKind = describeAcpToolPermission({ cwd: CWD, agentId: AGENT })
+    expect(noKind.effects).toEqual([expect.objectContaining({ kind: 'external-agent', resources: ['kimi:tool'] })])
   })
 })

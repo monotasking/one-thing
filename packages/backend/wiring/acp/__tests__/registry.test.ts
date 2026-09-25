@@ -154,7 +154,7 @@ describe('AcpAgentRegistry', () => {
         enabled: true,
         command: 'alpha-acp',
         args: [],
-        permissionMode: 'allow',
+        unattended: 'allow',
         idleTimeoutMs: 600000,
         maxBufferedUpdates: 1000,
       }],

@@ -39,6 +39,8 @@ export type PermissionBusEvent =
       workspaceId?: string
       /** 卡上「始终允许这个应用」这一档的作用面;缺席 = 不画那个键。 */
       alwaysScope?: { scheme: string }
+      /** 发问方自带的选项表(ACP agent 的 `options`);缺席 = 今天那几只钮。 */
+      choices?: Permission.Choice[]
     }
   | {
       type: typeof SESSION_EVENT_TYPES.PERMISSION_QUEUED
@@ -109,6 +111,23 @@ export namespace Permission {
      * 同时有 `effect.kind` 与 `effect.resources`)。
      */
     alwaysScope?: AlwaysScope
+    /**
+     * 发问方**自带的选项表**(A3-a:ACP agent 的 `session/request_permission.options`)。
+     *
+     * 缺席 = 今天那几只钮,本地工具零变化。在场时壳按它画「允许一次 / 始终允许 / 拒绝 /
+     * 始终拒绝」,label 用发问方给的原话;`session` / `workdir` 两钮照画 —— 那是 onething
+     * 自己的记忆,不是发问方的选项。它同时放宽 `respond` 的两条合法性:`always` 在没有
+     * `alwaysScope` 时也合法(落一条按本次 pattern 的项目级 grant),`reject-always` 只在
+     * 这里带着那一格时合法。
+     */
+    choices?: Choice[]
+  }
+
+  /** 发问方给的一个选项:`id` 原样回给发问方,`kind` 决定它对应哪一种 `Response`。 */
+  export interface Choice {
+    id: string
+    kind: 'once' | 'always' | 'reject' | 'reject-always'
+    label: string
   }
 
   /**
@@ -131,12 +150,15 @@ export namespace Permission {
    * - `'always'`  这个项目里,**这个应用**这一类事都行(工作区级 grant,pattern
    *   `<scheme>:*`;只有 `Info.alwaysScope` 在场时才是一个合法应答)
    * - `'reject'`  不
+   * - `'reject-always'` 不,而且告诉发问方以后别再问(只在 `Info.choices` 带这一格时合法;
+   *   内核这边与 `reject` 同一种收场,区别由等待方从 `RejectedError.always` 读到)
    */
-  export type Response = 'once' | 'session' | 'workdir' | 'always' | 'reject'
+  export type Response = 'once' | 'session' | 'workdir' | 'always' | 'reject' | 'reject-always'
   export type Mode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
 
   interface PendingSettler {
-    resolve: () => void
+    /** 带上人答的是哪一种;缺席 = 被别处新落的 grant 顺手结掉,没人对这一条作答。 */
+    resolve: (response?: Response) => void
     reject: (error: Error) => void
   }
 
@@ -290,8 +312,8 @@ export namespace Permission {
     scope?: Response,
   ): void {
     removePending(session, entry.info.id)
-    entry.resolve()
-    for (const follower of entry.followers) follower.resolve()
+    entry.resolve(scope)
+    for (const follower of entry.followers) follower.resolve(scope)
     emitSettled(entry, 'allowed', scope !== undefined ? { scope } : {})
   }
 
@@ -347,6 +369,7 @@ export namespace Permission {
       pattern: info.pattern,
       metadata: info.metadata,
       ...(info.alwaysScope ? { alwaysScope: info.alwaysScope } : {}),
+      ...(info.choices ? { choices: info.choices } : {}),
       userId: info.userId,
       workspaceId: info.workspaceId,
     }).catch(err => log.error('event emit failed', { sessionId, eventType: SESSION_EVENT_TYPES.PERMISSION_REQUEST }, err))
@@ -476,7 +499,8 @@ export namespace Permission {
     workspaceId?: string
     principal?: Principal
     alwaysScope?: AlwaysScope
-  }): Promise<void> {
+    choices?: Choice[]
+  }): Promise<Response | undefined> {
     const session = getSession(input.sessionId)
     const targetChannel = channelResolver ? channelResolver(input.sessionId) : 'ipc'
     const info: Info = {
@@ -495,6 +519,7 @@ export namespace Permission {
       workspaceId: input.workspaceId,
       principal: input.principal,
       ...(input.alwaysScope ? { alwaysScope: input.alwaysScope } : {}),
+      ...(input.choices ? { choices: input.choices } : {}),
     }
 
     const equivalent = findEquivalentPending(session, info)
@@ -505,7 +530,7 @@ export namespace Permission {
         permissionType: info.type,
         pattern: info.pattern,
       })
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<Response | undefined>((resolve, reject) => {
         equivalent.followers.push({ resolve, reject })
         if (info.callId) {
           equivalent.followerCallIds.push(info.callId)
@@ -533,7 +558,7 @@ export namespace Permission {
       log.warn('recorder onAsked failed', { requestId: info.id }, error)
     }
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<Response | undefined>((resolve, reject) => {
       const entry: PendingEntry = { info, resolve, reject, followers: [], followerCallIds: [], emitted: false }
       session.pending.set(info.id, entry)
       session.promptOrder.push(info.id)
@@ -589,13 +614,24 @@ export namespace Permission {
       return false
     }
 
-    if (response === 'reject') {
+    // 「始终拒绝」只有发问方自己给了那一格才画得出来;答一个卡上没有的键 = 结构化拒绝,同上。
+    if (response === 'reject-always' && !hasChoice(pending.info, 'reject-always')) {
+      log.warn('reject-always response on a prompt that offered no such choice, ignored', {
+        sessionId: input.sessionId,
+        requestId: input.permissionId,
+        permissionType: pending.info.type,
+      })
+      return false
+    }
+
+    if (response === 'reject' || response === 'reject-always') {
       settlePendingReject(session, pending, new RejectedError(
         input.sessionId,
         input.permissionId,
         pending.info.callId,
         pending.info.metadata,
         input.rejectReason,
+        response === 'reject-always',
       ))
       emitNextPrompt(input.sessionId, session)
       return true
@@ -636,11 +672,13 @@ export namespace Permission {
      */
     if (response === 'always') {
       const scope = pending.info.alwaysScope
-      if (scope) {
+      // 发问方自带「始终允许」而这次认不出一个应用(ACP 的 bash / 文件效果):我们这边照
+      // `workdir` 那样按本次 pattern 记一条项目级 grant,发问方那边由它自己记 allow_always。
+      if (scope || hasChoice(pending.info, 'always')) {
         PermissionGrants.addGrant({
           scope: 'workspace',
           type: pending.info.type,
-          pattern: `${scope.scheme}:*`,
+          pattern: scope ? `${scope.scheme}:*` : (pending.info.pattern ?? pending.info.type),
           workspaceRoot: pending.info.workingDirectory,
           userId: pending.info.userId,
           workspaceId: pending.info.workspaceId,
@@ -679,9 +717,13 @@ export namespace Permission {
 
   /** 这张卡上画不画得出「始终允许这个应用」。壳与内核问的是同一句。 */
   function canGrantAlways(info: Info): boolean {
-    return Boolean(info.alwaysScope)
+    return (Boolean(info.alwaysScope) || hasChoice(info, 'always'))
       && Boolean(info.workingDirectory)
       && PermissionGrants.isGrantableType(info.type)
+  }
+
+  function hasChoice(info: Info, kind: Choice['kind']): boolean {
+    return info.choices?.some(choice => choice.kind === kind) === true
   }
 
   /**
@@ -745,6 +787,8 @@ export namespace Permission {
       public readonly toolCallId?: string,
       public readonly metadata?: JsonObject,
       public readonly reason?: string,
+      /** 人答的是「始终拒绝」(`reject-always`),而不是这一次的拒绝。 */
+      public readonly always: boolean = false,
     ) {
       super(formatPermissionRejectedMessage(reason))
       this.name = 'PermissionRejectedError'

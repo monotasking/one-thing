@@ -13,12 +13,23 @@
  */
 
 import type { JsonObject } from '../json.js'
+import type { Permission } from '../permission/index.js'
 import type { Effect } from './effects.js'
 import { policyOf } from './effects.js'
 
 /** 授权结论。`ask` 是 Authorizer 内部的过程,`decide()` 落地时只剩这两种。 */
 export type Decision =
-  | { readonly kind: 'allow'; readonly asked?: boolean; readonly grantId?: string; readonly reason?: string }
+  | {
+      readonly kind: 'allow'
+      readonly asked?: boolean
+      readonly grantId?: string
+      readonly reason?: string
+      /**
+       * 人在卡上答的是哪几种(按问的先后;缺席 = 没问过人,或问的那座桥说不出)。
+       * 只有要把答案**转述**给别人的调用方读它 —— ACP 桥据此挑 agent 的 optionId。
+       */
+      readonly answers?: readonly Permission.Response[]
+    }
   | {
       readonly kind: 'deny'
       /** 已经成文的完整措辞(给模型看的那一句)。 */
@@ -35,15 +46,17 @@ export type Decision =
       readonly byUser?: boolean
       /** 人自己写的那句理由(`reason` 是把它包进成文措辞之后的结果)。 */
       readonly rejectionReason?: string
+      /** 人按的是「始终拒绝」(`reject-always`,只在发问方自带那一格时画得出来)。 */
+      readonly rejectAlways?: boolean
     }
 
 export const Decision = {
-  allow(init: { asked?: boolean; grantId?: string; reason?: string } = {}): Decision {
+  allow(init: { asked?: boolean; grantId?: string; reason?: string; answers?: readonly Permission.Response[] } = {}): Decision {
     return { kind: 'allow', ...init }
   },
   deny(
     reason: string,
-    init: { asked?: boolean; byUser?: boolean; rejectionReason?: string } = {},
+    init: { asked?: boolean; byUser?: boolean; rejectionReason?: string; rejectAlways?: boolean } = {},
   ): Decision {
     return { kind: 'deny', reason, ...init }
   },
@@ -57,6 +70,8 @@ export interface Preview {
   readonly additions?: number
   readonly deletions?: number
   readonly metadata?: JsonObject
+  /** 发问方自带的选项表(ACP agent 的 options),原样进卡(`Permission.Info.choices`)。 */
+  readonly choices?: readonly Permission.Choice[]
 }
 
 export interface IntentInit<Payload> {

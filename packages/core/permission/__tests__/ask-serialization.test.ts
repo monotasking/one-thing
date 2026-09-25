@@ -65,7 +65,7 @@ describe('Permission.ask serialization and coalescing', () => {
     expect(Permission.getPending(sessionId)).toHaveLength(1)
 
     Permission.respond({ sessionId, permissionId: requests[0].requestId, response: 'once' })
-    await expect(first).resolves.toBeUndefined()
+    await expect(first).resolves.toBe('once')
     await settled()
 
     const requestsAfter = ofType('permission:request')
@@ -73,7 +73,7 @@ describe('Permission.ask serialization and coalescing', () => {
     expect(requestsAfter[1].pattern).toBe('cmd-2')
 
     Permission.respond({ sessionId, permissionId: requestsAfter[1].requestId, response: 'once' })
-    await expect(second).resolves.toBeUndefined()
+    await expect(second).resolves.toBe('once')
   })
 
   it('coalesces equivalent concurrent asks into one prompt and settles both', async () => {
@@ -84,8 +84,8 @@ describe('Permission.ask serialization and coalescing', () => {
     expect(ofType('permission:request')).toHaveLength(1)
 
     Permission.respond({ sessionId, permissionId: ofType('permission:request')[0].requestId, response: 'once' })
-    await expect(first).resolves.toBeUndefined()
-    await expect(second).resolves.toBeUndefined()
+    await expect(first).resolves.toBe('once')
+    await expect(second).resolves.toBe('once')
     expect(ofType('permission:request')).toHaveLength(1)
   })
 
@@ -114,15 +114,15 @@ describe('Permission.ask serialization and coalescing', () => {
     // The session grant covers cmd-1 only; cmd-2 stays pending and becomes the
     // next prompt.
     Permission.respond({ sessionId, permissionId: ofType('permission:request')[0].requestId, response: 'session' })
-    await expect(first).resolves.toBeUndefined()
-    await expect(second).resolves.toBeUndefined()
+    await expect(first).resolves.toBe('session')
+    await expect(second).resolves.toBe('session')
     await settled()
 
     const requests = ofType('permission:request')
     expect(requests).toHaveLength(2)
     expect(requests[1].pattern).toBe('cmd-2')
     Permission.respond({ sessionId, permissionId: requests[1].requestId, response: 'once' })
-    await expect(third).resolves.toBeUndefined()
+    await expect(third).resolves.toBe('once')
   })
 
   it('getPending only reports emitted prompts', async () => {
@@ -146,13 +146,13 @@ describe('Permission.ask serialization and coalescing', () => {
     expect(Permission.getPending(sessionId)).toHaveLength(1)
 
     Permission.respond({ sessionId, permissionId: ofType('permission:request')[0].requestId, response: 'once' })
-    await expect(first).resolves.toBeUndefined()
+    await expect(first).resolves.toBe('once')
     await settled()
 
     const requests = ofType('permission:request')
     expect(requests).toHaveLength(2)
     Permission.respond({ sessionId, permissionId: requests[1].requestId, response: 'once' })
-    await expect(second).resolves.toBeUndefined()
+    await expect(second).resolves.toBe('once')
   })
 
   it('emits permission:queued for waiting asks and followers, and permission:settled with all tool call ids', async () => {
@@ -167,8 +167,8 @@ describe('Permission.ask serialization and coalescing', () => {
     expect(queued.find(event => event.toolCallId === 'call-follower')?.requestId).toBe(headRequestId)
 
     Permission.respond({ sessionId, permissionId: headRequestId, response: 'once' })
-    await expect(first).resolves.toBeUndefined()
-    await expect(second).resolves.toBeUndefined()
+    await expect(first).resolves.toBe('once')
+    await expect(second).resolves.toBe('once')
     await settled()
 
     const settledEvents = ofType('permission:settled')

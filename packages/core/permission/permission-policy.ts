@@ -12,7 +12,8 @@ export type PermissionMetadata = Record<string, unknown>
 export type PermissionGrantMatcher = typeof PermissionGrants.matchGrant
 export interface PermissionBridge {
   getMode(sessionId: string): Permission.Mode
-  ask(input: Parameters<typeof Permission.ask>[0]): Promise<void>
+  /** 答案(`Permission.Response`)原样往上交;`void` = 这座桥不知道人答了哪一种(老桥 / 测试桩)。 */
+  ask(input: Parameters<typeof Permission.ask>[0]): Promise<Permission.Response | undefined | void>
 }
 
 export interface PermissionEffect {
@@ -31,6 +32,8 @@ export interface PermissionPreview {
   path?: string
   additions?: number
   deletions?: number
+  /** 发问方自带的选项表,原样进 `Permission.ask`(`Info.choices`);缺席 = 今天那几只钮。 */
+  choices?: Permission.Choice[]
 }
 
 export interface PermissionPolicyInput {
@@ -242,8 +245,13 @@ function titleForEffect(input: EnforcePermissionPolicyInput, effect: PermissionE
   return `Use ${input.toolName}`
 }
 
-export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInput): Promise<void> {
-  if (input.effects.length === 0) return
+/**
+ * 逐条效果判定,需要问人的就问。返回这一路上**人答了什么**(按问的先后;没问过人 = 空数组),
+ * 给要把答案转述给别人的调用方用(ACP 桥要据此挑 agent 的 optionId)。拒绝照旧是抛。
+ */
+export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInput): Promise<Permission.Response[]> {
+  const answers: Permission.Response[] = []
+  if (input.effects.length === 0) return answers
 
   const permission = input.permissionBridge ?? Permission
   const mode = permission.getMode(input.sessionId)
@@ -267,7 +275,7 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
     // 「始终允许这个应用」的出现条件由后端算好随 ask 交给壳(卡上第四个键)。
     const alwaysScope = alwaysScopeOf(effect)
 
-    await permission.ask({
+    const answer = await permission.ask({
       type: effect.kind,
       pattern: effectPattern(effect),
       sessionId: input.sessionId,
@@ -279,6 +287,7 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
       workspaceId: input.workspaceId,
       principal: input.principal,
       ...(alwaysScope ? { alwaysScope } : {}),
+      ...(input.preview?.choices ? { choices: input.preview.choices } : {}),
       metadata: toJsonObject({
         toolName: input.toolName,
         // Mirrored into metadata so transports that only carry the JSON blob
@@ -296,5 +305,7 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
         ...(input.preview?.deletions !== undefined && { deletions: input.preview.deletions }),
       }),
     })
+    if (answer) answers.push(answer)
   }
+  return answers
 }

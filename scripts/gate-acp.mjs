@@ -231,7 +231,8 @@ try {
           FAKE_AGENT_PUSH_COMMANDS: '1',
           FAKE_AGENT_ROGUE_METHOD: '1',
         },
-        permissionMode: 'allow',
+        // A3-a:无桥宿主缺省拒;①–④ 不验审批,显式打开无人值守放行,门步才不被拒卡住。
+        unattended: 'allow',
       }],
     },
     tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },

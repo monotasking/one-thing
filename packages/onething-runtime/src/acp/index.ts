@@ -36,6 +36,7 @@ export type {
   ACPPermissionBridge,
   ACPPermissionDecision,
   ACPPermissionMode,
+  ACPUnattendedPolicy,
   ACPPermissionOptionInfo,
   ACPPermissionRequestContext,
   ACPPromptStreamEvent,

@@ -8,6 +8,7 @@ import type {
   ACPAgentState,
   ACPConnectionStatus,
   ACPPermissionMode,
+  ACPUnattendedPolicy,
   ACPSessionOption,
   ACPSessionOptionChoice,
   ACPSettings,
@@ -24,6 +25,7 @@ export type {
   ACPAgentState,
   ACPConnectionStatus,
   ACPPermissionMode,
+  ACPUnattendedPolicy,
   ACPSessionOption,
   ACPSessionOptionChoice,
   ACPSettings,
@@ -68,6 +70,8 @@ export interface ACPPermissionRequestContext {
     title?: string
     kind?: string
     rawInput?: unknown
+    /** agent 声明的受影响位置(`ToolCallLocation`);效果分析按路径判时先看它。 */
+    locations?: Array<{ path: string; line?: number }>
   }
   options: ACPPermissionOptionInfo[]
 }
@@ -81,8 +85,7 @@ export type ACPPermissionDecision =
 /**
  * Host-injected bridge for ACP permission prompts. When registered, every
  * agent-initiated permission request is routed here instead of being
- * auto-resolved from `permissionMode`; hosts without an interactive surface
- * (headless server) simply leave it unregistered to keep the old behavior.
+ * auto-resolved from `unattended`(缺省拒,A3-a);没挂桥的宿主走那条无人值守兜底。
  */
 export type ACPPermissionBridge = (
   context: ACPPermissionRequestContext,

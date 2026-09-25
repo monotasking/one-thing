@@ -34,22 +34,79 @@ function requestPermission(client: ACPClient, request: unknown = params) {
 }
 
 describe('ACPClient permission bridge', () => {
-  it('keeps legacy permissionMode resolution when no bridge is registered', async () => {
-    const allowClient = new ACPClient({ ...config, permissionMode: 'allow' })
-    await expect(requestPermission(allowClient)).resolves.toEqual({
-      outcome: { outcome: 'selected', optionId: 'opt-allow' },
-    })
-
-    const rejectClient = new ACPClient({ ...config, permissionMode: 'reject' })
-    await expect(requestPermission(rejectClient)).resolves.toEqual({
+  it('无桥缺省拒(A3-a,§8 拍点 2):不写 unattended 就答 reject_once', async () => {
+    const client = new ACPClient(config)
+    await expect(requestPermission(client)).resolves.toEqual({
       outcome: { outcome: 'selected', optionId: 'opt-reject' },
     })
+    const explicit = new ACPClient({ ...config, unattended: 'reject' })
+    await expect(requestPermission(explicit)).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'opt-reject' },
+    })
+  })
+
+  it('无桥且 agent 没给拒绝选项 → cancelled,绝不退到 options[0] 那格放行', async () => {
+    const client = new ACPClient(config)
+    await expect(requestPermission(client, {
+      ...(params as object),
+      options: [
+        { optionId: 'opt-always', name: 'Always', kind: 'allow_always' },
+        { optionId: 'opt-allow', name: 'Allow', kind: 'allow_once' },
+      ],
+    })).resolves.toEqual({ outcome: { outcome: 'cancelled' } })
+  })
+
+  it("unattended: 'allow' 只答 allow_once —— allow_always 排在前面也不选它", async () => {
+    const client = new ACPClient({ ...config, unattended: 'allow' })
+    await expect(requestPermission(client, {
+      ...(params as object),
+      options: [
+        { optionId: 'opt-always', name: 'Always', kind: 'allow_always' },
+        { optionId: 'opt-allow', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'opt-reject', name: 'Reject', kind: 'reject_once' },
+      ],
+    })).resolves.toEqual({ outcome: { outcome: 'selected', optionId: 'opt-allow' } })
+
+    // 只给了 allow_always:宁可 cancelled,也不替用户在 agent 那边落一条长期规则。
+    await expect(requestPermission(client, {
+      ...(params as object),
+      options: [{ optionId: 'opt-always', name: 'Always', kind: 'allow_always' }],
+    })).resolves.toEqual({ outcome: { outcome: 'cancelled' } })
+  })
+
+  it('回合中止时还挂着的审批答 cancelled,不等桥的结局', async () => {
+    const controller = new AbortController()
+    const client = new ACPClient(config, {
+      getPermissionBridge: () => () => new Promise<never>(() => {}),
+    })
+    const promptContexts = (client as unknown as {
+      promptContexts: Map<string, { localSessionId: string; cwd: string; abortSignal?: AbortSignal }>
+    }).promptContexts
+    promptContexts.set('acp-session-1', { localSessionId: 'local-1', cwd: '/tmp/project', abortSignal: controller.signal })
+    const pending = requestPermission(client)
+    controller.abort()
+    await expect(pending).resolves.toEqual({ outcome: { outcome: 'cancelled' } })
+  })
+
+  it('把 toolCall.locations 递给桥(效果分析按路径判时先看它)', async () => {
+    const contexts: ACPPermissionRequestContext[] = []
+    const client = new ACPClient(config, {
+      getPermissionBridge: () => async context => {
+        contexts.push(context)
+        return { behavior: 'cancel' }
+      },
+    })
+    await requestPermission(client, {
+      ...(params as object),
+      toolCall: { toolCallId: 'tc-2', kind: 'edit', locations: [{ path: '/tmp/project/a.ts', line: 3 }] },
+    })
+    expect(contexts[0]?.toolCall?.locations).toEqual([{ path: '/tmp/project/a.ts', line: 3 }])
   })
 
   it('routes requests through the bridge and maps allow/reject/select/cancel decisions', async () => {
     const contexts: ACPPermissionRequestContext[] = []
     let decision: Awaited<ReturnType<ACPPermissionBridge>> = { behavior: 'allow' }
-    const client = new ACPClient({ ...config, permissionMode: 'reject' }, {
+    const client = new ACPClient({ ...config, unattended: 'reject' }, {
       getPermissionBridge: () => async context => {
         contexts.push(context)
         return decision
@@ -91,10 +148,10 @@ describe('ACPClient permission bridge', () => {
     })
   })
 
-  it('rejects when the bridge throws, regardless of permissionMode allow', async () => {
+  it('rejects when the bridge throws, regardless of unattended allow', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      const client = new ACPClient({ ...config, permissionMode: 'allow' }, {
+      const client = new ACPClient({ ...config, unattended: 'allow' }, {
         getPermissionBridge: () => async () => {
           throw new Error('bridge exploded')
         },

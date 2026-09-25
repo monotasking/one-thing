@@ -388,9 +388,22 @@ export interface PermissionRequestEvent {
    * **缺席 = 不画那个键** —— 出现条件由后端在 ask 那一刻算好,壳只读这一格。
    */
   alwaysScope?: { scheme: string }
+  /**
+   * 发问方自带的选项表(核那份是 `Permission.Choice`;A3-a 起 ACP agent 的 options 走这一格)。
+   * **缺席 = 今天那几只钮**。在场时壳按它画「允许一次 / 始终允许 / 拒绝 / 始终拒绝」(label 原话),
+   * `session` / `workdir` 照画;应答 `decision` 用 `kind` 那个词(`reject-always` 也在内)。
+   */
+  choices?: PermissionChoice[]
   userId?: string
   workspaceId?: string
   timeoutMs?: number
+}
+
+/** 发问方给的一个选项(`Permission.Choice` 的跨进程镜像)。 */
+export interface PermissionChoice {
+  id: string
+  kind: 'once' | 'always' | 'reject' | 'reject-always'
+  label: string
 }
 
 export interface PermissionTimeoutEvent {

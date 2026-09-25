@@ -74,7 +74,7 @@ describe('Permission respond by toolCallId', () => {
     await settled()
 
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-1' })
-    await expect(pending).resolves.toBeUndefined()
+    await expect(pending).resolves.toBe('once')
     expect(Permission.getPending(sessionId)).toHaveLength(0)
   })
 
@@ -88,8 +88,8 @@ describe('Permission respond by toolCallId', () => {
     expect(requests).toHaveLength(1)
 
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-follower' })
-    await expect(head).resolves.toBeUndefined()
-    await expect(follower).resolves.toBeUndefined()
+    await expect(head).resolves.toBe('once')
+    await expect(follower).resolves.toBe('once')
   })
 
   it('rejects via toolCallId with a reason', async () => {
@@ -116,10 +116,10 @@ describe('Permission respond by toolCallId', () => {
 
     // The head is still respondable and promotes the queued one afterwards.
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-1' })
-    await expect(head).resolves.toBeUndefined()
+    await expect(head).resolves.toBe('once')
     await settled()
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-2' })
-    await expect(queued).resolves.toBeUndefined()
+    await expect(queued).resolves.toBe('once')
   })
 
   it('prefers requestId when both keys are present', async () => {
@@ -133,7 +133,7 @@ describe('Permission respond by toolCallId', () => {
       requestId: request.requestId,
       toolCallId: 'call-1',
     })
-    await expect(pending).resolves.toBeUndefined()
+    await expect(pending).resolves.toBe('once')
   })
 
   it('still validates channel affinity for toolCallId responses', async () => {
@@ -149,7 +149,7 @@ describe('Permission respond by toolCallId', () => {
     expect(Permission.getPending(sessionId)).toHaveLength(1)
 
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-1', channel: 'telegram' })
-    await expect(pending).resolves.toBeUndefined()
+    await expect(pending).resolves.toBe('once')
   })
 })
 
@@ -198,10 +198,10 @@ describe('Permission.getPendingPrompts', () => {
     expect(Permission.getPending(sessionId)).toHaveLength(1)
 
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-head' })
-    await expect(head).resolves.toBeUndefined()
-    await expect(follower).resolves.toBeUndefined()
+    await expect(head).resolves.toBe('once')
+    await expect(follower).resolves.toBe('once')
     await settled()
     harness.respond(sessionId, { decision: 'once', toolCallId: 'call-queued' })
-    await expect(queued).resolves.toBeUndefined()
+    await expect(queued).resolves.toBe('once')
   })
 })
