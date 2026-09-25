@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { setDragPresentation, setDropFeedback, useDragSource } from '../ui/drag'
 import { useT } from '../i18n'
+import { announce } from '../ui/a11y/live-region'
 import { floatMinOfItem } from '../stage/items'
 import { useLiveTitleStore } from '../stage/live-title'
 import { panelIdOf } from '../stage/panel-ref'
@@ -203,8 +204,15 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        * 作废,与「`ref()` 答 null」逐字同一条路(整场不成立,不是中途取消)。
        *
        * 读 store 一格、不订阅:起拖是个事件,不是渲染。
+       *
+       * **作废要说出口**(09-25):从前这一下是静默的 —— 手走过了阈值,什么都没发生,
+       * 读屏那一侧更是一个字都没有。起拖只作废一次(`onStart` 答 null 之后整场拆掉),
+       * 所以这一句每次手势至多念一遍。
        */
-      if (useWorkbenchStore.getState().full !== null) return null
+      if (useWorkbenchStore.getState().full !== null) {
+        announce(t('drag.refuseFull'))
+        return null
+      }
       const ref = specRef.current.ref()
       if (!ref) return null
       const geometry = measureDropGeometry()
@@ -228,7 +236,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
       held.cleanup = () => window.removeEventListener('resize', onResize)
       return { payload: held, ghost: specRef.current.ghost?.(ref) ?? ghostOf(ref) }
     },
-    [],
+    [t],
   )
 
   const onMove = useCallback(

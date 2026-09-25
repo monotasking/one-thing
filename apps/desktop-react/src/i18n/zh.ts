@@ -1424,6 +1424,8 @@ export const zh = {
    * `resident.region`,而这句话是拒绝行里的固定一句(`DropRules.accepts` 只交
    * 一个 key,交不了变量),所以用壳自己的词说「中央区」与「一格」。 */
   'drag.refuseResidentLeave': '中央区要留一格,这一格挪不走',
+  /* 09-25:全屏铺着时起拖当场作废(`useContentDrag.onStart`),这一句是给读屏的交代。 */
+  'drag.refuseFull': '先退出全屏再拖',
   'drag.sideLeft': '左侧',
   'drag.sideRight': '右侧',
   'drag.sideBottom': '下方',

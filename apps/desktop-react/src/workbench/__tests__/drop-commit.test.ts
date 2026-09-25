@@ -187,6 +187,26 @@ describe('落到边 / 撕成浮窗', () => {
     expect(useStageStore.getState().floats[winId]).toBeTruthy()
   })
 
+  it('从一扇**有别的格**的浮窗里撕一格到空处 = 开一扇新窗,原窗不动(09-25)', () => {
+    dropRef(A, { kind: 'float' })
+    const [home] = Object.keys(useWorkbenchStore.getState().regions).filter((r) => r.startsWith('float:'))
+    const homeLeaf = leavesOf(useWorkbenchStore.getState().regions[home])[0]
+    dropRef(B, { kind: 'strip', leafId: homeLeaf.id, at: 1 })
+    expect(refIdsOf(useWorkbenchStore.getState().regions[home])).toEqual([refId(A), refId(B)])
+    const homeRect = useStageStore.getState().floats[home.slice('float:'.length)]
+
+    dropRef(B, { kind: 'float' }, { pointer: { x: 900, y: 600 } })
+
+    const regions = useWorkbenchStore.getState().regions
+    const floats = Object.keys(regions).filter((r) => r.startsWith('float:'))
+    expect(floats).toHaveLength(2)
+    expect(refIdsOf(regions[home])).toEqual([refId(A)])
+    const fresh = floats.find((r) => r !== home)!
+    expect(refIdsOf(regions[fresh])).toEqual([refId(B)])
+    // 原窗一个像素没挪。
+    expect(useStageStore.getState().floats[home.slice('float:'.length)]).toEqual(homeRect)
+  })
+
   it('同一格再撕一次 = 回原来那扇窗,不开第二扇', () => {
     dropRef(A, { kind: 'float' })
     const first = Object.keys(useWorkbenchStore.getState().regions).filter((r) => r.startsWith('float:'))
