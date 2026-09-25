@@ -16,6 +16,7 @@ import type { ModelsRoutes } from '@shared/ipc/providers.js'
 import { AIProvider } from '@shared/ipc/providers.js'
 import type {
   ModelEffectiveFacts,
+  ModelParameterSuggestion,
   OpenRouterModel,
   ProviderConfig,
   ReasoningProfileOverride,
@@ -45,7 +46,15 @@ import {
   resolveOnethingModelCapabilities,
   searchOnethingModelRegistryForIpc,
   type OnethingConfiguredModelSelection,
+  modelsDevModelToOnethingCapabilityEntry,
+  ONETHING_PROVIDER_MAPPING,
 } from '@onething/runtime/providers'
+import {
+  MODEL_SUGGESTION_CAPABILITY_KEYS,
+  modelIdentityIndexOf,
+  modelParameterSuggestionOf,
+  type ModelIdentityIndex,
+} from '@onething/runtime/providers/model-identity'
 import { authService } from '../../wiring/auth/auth-service.js'
 import { fetchCopilotModels } from '../../wiring/providers/builtin/github-copilot.js'
 import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers/builtin/codex.js'
@@ -181,11 +190,11 @@ function effectiveOfRow(
  * 老孤儿(`foldedCatalogFor` 在内存里折的),以及列表不读目录的那几家(Copilot 现取、
  * ACP 读名册)上用户手填的 id。
  */
-function withProjections(
+async function withProjections(
   providerId: string,
   models: readonly OpenRouterModel[],
   spaceId?: string,
-): OpenRouterModel[] {
+): Promise<OpenRouterModel[]> {
   const config = modelProviderConfig(providerId, spaceId)
   const catalog = foldedCatalogFor(providerId)
   const listed = new Set(models.map(model => model.id))
@@ -194,7 +203,7 @@ function withProjections(
     if (!isOnethingManualModelEntry(entry) || listed.has(entry.id)) continue
     all.push(onethingCapabilityEntryToOpenRouterModel(entry) as OpenRouterModel)
   }
-  return all.map((model) => {
+  const rows = all.map((model) => {
     // 思考四格与 `effective.reasoningProfile` 是同一次能力裁定的两种读法 —— 裁一次。
     const { reasoningProfile } = resolvedCapabilitiesOf(providerId, model.id, config)
     return {
@@ -203,6 +212,71 @@ function withProjections(
       effective: effectiveOfRow(providerId, model, config, catalog, reasoningProfile),
     }
   })
+  // 建议只给「谁都没说」的格:整张表一格 unknown 都没有(models.dev 家的常态)就连
+  // 索引都不碰 —— 认亲是给转发站 / 手填准备的,不该让 300 行的 OpenRouter 目录白算一遍。
+  if (!rows.some(row => hasSuggestionGap(row.effective))) return rows
+  const index = await suggestionIndex()
+  if (!index) return rows
+  return rows.map((row) => {
+    const suggestion = suggestionOfRow(row, index, config)
+    return suggestion ? { ...row, suggestion } : row
+  })
+}
+
+/* ── 参数建议(批 3 §6.3)─────────────────────────────────────────────────── */
+
+/** 能力五格里 unknown 的那几格(建议只填它们)。 */
+function capabilityGaps(effective: ModelEffectiveFacts) {
+  return Object.fromEntries(
+    MODEL_SUGGESTION_CAPABILITY_KEYS.map(key => [key, effective.source.capabilities[key] === 'unknown']),
+  ) as Record<(typeof MODEL_SUGGESTION_CAPABILITY_KEYS)[number], boolean>
+}
+
+function hasSuggestionGap(effective: ModelEffectiveFacts): boolean {
+  return (
+    effective.source.contextLength === 'unknown' ||
+    effective.source.maxOutput === 'unknown' ||
+    Object.values(capabilityGaps(effective)).some(Boolean)
+  )
+}
+
+async function suggestionIndex(): Promise<ModelIdentityIndex | undefined> {
+  const snapshot = await modelRegistry.getModelsDevSnapshot()
+  return snapshot ? modelIdentityIndexOf(snapshot) : undefined
+}
+
+/**
+ * 一行的建议。三格数 / 能力只在 unknown 时给(判据在 `modelParameterSuggestionOf`);
+ * 思考档位只在「用户没覆盖、能力账本也没裁出档位、而认出来的那一型会思考」时给 ——
+ * 用那一型在它自己那一家下的能力裁定算,与目录行上那四格同一个判据。
+ */
+function suggestionOfRow(
+  row: OpenRouterModel & { effective: ModelEffectiveFacts },
+  index: ModelIdentityIndex,
+  config: ReturnType<typeof modelProviderConfig>,
+): ModelParameterSuggestion | undefined {
+  const found = modelParameterSuggestionOf({
+    modelId: row.id,
+    index,
+    gaps: {
+      contextLength: row.effective.source.contextLength === 'unknown',
+      maxOutput: row.effective.source.maxOutput === 'unknown',
+      capabilities: capabilityGaps(row.effective),
+    },
+  })
+  if (!found) return undefined
+  const suggestion: ModelParameterSuggestion = { ...found.suggestion }
+  const overridden = config?.modelCapabilitiesByModel?.[row.id]?.reasoningProfile !== undefined
+  if (!overridden && row.effective.reasoningProfile === null && found.model.reasoning === true) {
+    const twinProviderId = ONETHING_PROVIDER_MAPPING[found.twin.twin.provider] ?? found.twin.twin.provider
+    const profile = resolveOnethingModelCapabilities({
+      providerId: twinProviderId,
+      modelId: found.twin.twin.id,
+      registryEntry: modelsDevModelToOnethingCapabilityEntry(found.model, twinProviderId),
+    }).reasoningProfile
+    if (profile) suggestion.reasoningProfile = profile as unknown as ReasoningProfileOverride
+  }
+  return suggestion
 }
 
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
@@ -236,7 +310,9 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       // 刷新钮对通用厂商的真动作(2026-09-11):重拉 models.dev 落盘,随后
       // `getModelsForProvider` 读到的是新表。挂在这里而不是壳里 —— 壳那一头
       // (`forceRefresh: true`)本来就对,断的是后端这一截。
-      refreshProviderModels: providerId => modelRegistry.refreshProviderModels(providerId),
+      // `endpoint` 家(自定义服务商)的直连拉取按**请求的那个空间**取接口地址 / 头 / 密钥。
+      refreshProviderModels: providerId =>
+        modelRegistry.refreshProviderModels(providerId, { spaceId: request?.spaceId }),
       logger: consoleLog,
     };
     const providerId = request?.providerId ?? ''
@@ -247,7 +323,7 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
     // 这一口是抽屉的目录口:思考档位随行走(逐 (provider, model) 再发一次
     // `getModelCapabilities` 对一张几十上百行的表不成立)。失败那一支原样交回。
     if (!result.success) return result
-    return { ...result, models: withProjections(providerId, result.models ?? [], request?.spaceId) }
+    return { ...result, models: await withProjections(providerId, result.models ?? [], request?.spaceId) }
   },
   async getAll() {
     const getAllOnethingModelRegistryModelsOptions: GetAllOnethingModelRegistryModelsOptions<OpenRouterModel> & { logger?: OnethingModelQueryIpcLogger | undefined; } = {

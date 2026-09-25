@@ -2,6 +2,7 @@ import {
   modelsRouter,
   providersRouter,
   type GetProvidersResponse,
+  type ListDialectsResponse,
   type ModelManualEditRequest,
   type ModelManualEditResponse,
   type ModelsListResponse,
@@ -99,6 +100,11 @@ export interface ProviderSettingsPort {
   ready(): Promise<unknown>
   /** 有哪些 provider。这一发**会碰网**(后端顺手拉 models.dev),所以它是懒的。 */
   listProviders(): Promise<GetProvidersResponse>
+  /**
+   * 自定义服务商对话框的「接口类型」下拉(批 3 §6.1):方言自述了人话名的那几份。
+   * 只读、不碰网;壳按 `providers.dialect.<id>` 查自己的字典。
+   */
+  listDialects(): Promise<ListDialectsResponse>
   /**
    * 一家的模型明细。`forceRefresh` 才是「刷新目录」那颗钮 ——
    * 不传就吃后端缓存,开一次面不该把 models.dev 问一遍。
@@ -232,6 +238,7 @@ async function realPort(): Promise<ProviderSettingsPort> {
   return {
     ready: () => whenConnected(),
     listProviders: () => providersApi.list({}),
+    listDialects: () => providersApi.listDialects({}),
     listModels: (providerId, forceRefresh, spaceId) =>
       modelsApi.getWithCapabilities({
         providerId,

@@ -132,6 +132,8 @@ export interface AgentProviderRuntimeConfig {
 			providerMetadata?: unknown;
 			contextLength?: number;
 			maxOutputTokens?: number;
+			/** 接口没报的那几项(批 3):在表里 = 不知道,账本不读那个 `false`。 */
+			unreported?: readonly string[];
 		}
 	>;
 }

@@ -116,6 +116,8 @@ export function geminiAuth(options: GeminiAuthOptions = {}): AuthStrategy {
 
 export interface GeminiDialectSpec {
 	id: string;
+	/** 人话名(见 `Dialect.label`);缺席 = 不进自定义服务商的「接口类型」下拉。 */
+	label?: string;
 	defaultBaseUrl?: string;
 	transport?: AgentModelCapabilities;
 	/**
@@ -129,6 +131,7 @@ export function geminiDialect(spec: GeminiDialectSpec): GeminiDialect {
 	const defaultBaseUrl = spec.defaultBaseUrl ?? GEMINI_DEFAULT_BASE_URL;
 	return {
 		id: spec.id,
+		...(spec.label ? { label: spec.label } : {}),
 		wire: "gemini-generateContent",
 		endpoint: geminiEndpoint(defaultBaseUrl),
 		auth: UNCONFIGURED_AUTH,

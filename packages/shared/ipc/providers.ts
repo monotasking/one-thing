@@ -106,6 +106,11 @@ export interface OpenRouterModel {
   // entries — those sort to the end.
   last_updated?: string
   providerMetadata?: JsonObject
+  /**
+   * 接口没报的那几项(批 3 §6.2 直连拉目录)。在表里 = **不知道**,不是「不支持」——
+   * 只报了 id 的 `/models` 不是在说「这些模型都不支持工具」。缺席 = 全报了。
+   */
+  unreported?: ModelUnreportedFact[]
   // ── 思考档位的投影(2026-09-05,输入框的模型选择器)────────────────────────
   // 真相在 `runtime/providers/model-capability.ts` 的 `OnethingReasoningProfile`,
   // 这四格是它的**只读投影**,由 `models.getWithCapabilities` 一次一家地填。
@@ -136,9 +141,10 @@ export interface OpenRouterModel {
    */
   effective?: ModelEffectiveFacts
   /**
-   * 批 3 预留(§6.3「参数建议」):接口不报参数时从目录里认亲算出的建议。
-   * **今天没有任何产地填它**;形状先立在这里,好让它与 `effective` 并排:
-   * 建议只在 `effective.source.* === 'unknown'` 的那几格上出现,点了才写进覆盖表。
+   * 参数建议(批 3 §6.3):接口不报参数时,从 models.dev 里**确定性地**认出这一型大概是谁
+   * (`runtime/providers/model-identity.ts`,不用 AI),拿那一型的值给「不知道」的那几格
+   * 一个建议。只在 `effective.source.* === 'unknown'` 的格上出现;点了才写进覆盖表,
+   * 写了之后那一格不再 unknown,建议自然消失。`models.getWithCapabilities` 填它。
    */
   suggestion?: ModelParameterSuggestion
 }
@@ -168,10 +174,21 @@ export interface ModelEffectiveFacts {
   }
 }
 
-/** 批 3 预留:从目录里认出的「这一型大概是谁」给的参数建议(§6.3)。今天不填。 */
+/**
+ * 接口没报的那一项(批 3 §6.2)。与 `ModelCapabilityKey` 同名的五项 + 温度。
+ */
+export type ModelUnreportedFact = ModelCapabilityKey | 'temperature'
+
+/**
+ * 从目录里认出的「这一型大概是谁」给的参数建议(批 3 §6.3)。能力只建议「支持」的那几项;
+ * 参考价不进建议(转发站的价不等于官方价)。
+ */
 export interface ModelParameterSuggestion {
-  /** 认的是哪一家的哪一型(models.dev 的 provider 键 + 模型 id)。 */
-  from: { provider: string; id: string }
+  /**
+   * 认的是哪一家的哪一型(models.dev 的 provider 键 + 模型 id)。`providerName` 是
+   * models.dev 自己写的那家的名字(数据,不是句子),壳拼「按 {provider} {model} 填」用。
+   */
+  from: { provider: string; id: string; providerName?: string }
   contextLength?: number
   maxOutput?: number
   capabilities?: Partial<Record<ModelCapabilityKey, boolean>>
@@ -261,6 +278,16 @@ export interface ProviderConfig {
   models?: Record<string, CatalogModelEntry>
   // Timestamp of last model fetch for this provider
   modelsLastFetched?: number
+  /**
+   * 批 M §5.3 三格(批 3 起壳上有写面:自定义服务商对话框的「高级」)。
+   *  - `headers`:每个请求都带;值里 `{{apiKey}}` 发送时换成当前凭证;有 `Authorization`
+   *    头时不再加默认 Bearer。存明文(与 `baseUrl` 一样),密钥仍只在密钥池。
+   *  - `modelsUrl`:模型列表地址;空 = `baseUrl + '/models'`,相对路径接在 `baseUrl` 后。
+   *  - `dialect`:覆盖 manifest 的方言(已登记方言 id)。
+   */
+  headers?: Record<string, string>
+  modelsUrl?: string
+  dialect?: string
 }
 
 export interface ModelCapabilityOverride {
@@ -278,7 +305,25 @@ export interface CustomProviderConfig extends ProviderConfig {
   id: string  // Unique ID for the custom provider
   name: string  // User-defined display name
   description?: string  // Optional description
-  apiType: 'openai' | 'anthropic'  // API compatibility type
+  /**
+   * 旧的兼容形(批 3 之前的唯一一格)。**读时兼容**:`dialect` 缺席时
+   * `anthropic` → `custom-anthropic`,其余 → `custom-openai`。新写的条目写 `dialect`。
+   */
+  apiType?: 'openai' | 'anthropic'
+}
+
+/** 自定义服务商对话框「接口类型」下拉的一项(`providers.listDialects`)。 */
+export interface DialectOption {
+  /** 已登记方言 id。壳按 `providers.dialect.<id>` 查自己的字典。 */
+  id: string
+  /** 方言自述的英文人话名(字典里没有这一格时的后备)。 */
+  label: string
+}
+
+export interface ListDialectsResponse {
+  success: boolean
+  dialects?: DialectOption[]
+  error?: string
 }
 
 /**
@@ -321,6 +366,8 @@ export interface ModelCapabilityEntry {
   lastUpdated?: string
   /** Provider-specific metadata such as Codex reasoning levels and service tiers. */
   providerMetadata?: JsonObject
+  /** 接口没报的那几项(批 3):读者按「不知道」处理。缺席 = 全报了。 */
+  unreported?: ModelUnreportedFact[]
 }
 
 /**
@@ -637,12 +684,15 @@ export interface ModelCapabilitiesResponse {
 
 export type ProvidersRoutes = {
   list: { input: Record<string, never>; output: GetProvidersResponse }
+  /** 有人话名的已登记方言(批 3 §6.1:自定义服务商的「接口类型」下拉)。只读。 */
+  listDialects: { input: Record<string, never>; output: ListDialectsResponse }
   usage: { input: ProviderUsageRequest; output: ProviderUsageResponse }
   envStatus: { input: GetProviderEnvStatusRequest; output: GetProviderEnvStatusResponse }
 }
 
 export const providersRouter = defineRouter<ProvidersRoutes>('providers', [
   'list',
+  'listDialects',
   'usage',
   'envStatus',
 ])

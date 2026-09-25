@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import type {
   CustomProviderConfig,
+  DialectOption,
   ModelCapabilityOverride,
+  ModelParameterSuggestion,
   ProviderConfig,
   ProviderInfo,
   ProviderUsageResponse,
@@ -29,7 +31,14 @@ import { catalogKey, catalogQuery, invalidateCatalogProvider } from './catalog-q
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { buildFamilies, providerIdsOf, resolveMode } from './families'
-import { credentialFactsOf, isModeConfigured, poolViewOf, reorderPool } from './projection'
+import {
+  credentialFactsOf,
+  isModeConfigured,
+  poolViewOf,
+  reorderPool,
+  suggestionPatchOf,
+  type SuggestionField,
+} from './projection'
 import { MODEL_KEYED_TABLES, moveModelKey } from './model-maps'
 import { IDLE_AUTH_FLOW, authPageUrlOf, flowKindOf } from './auth'
 import type { AuthFlowState } from './auth'
@@ -47,14 +56,66 @@ import type {
   ProviderFamilyView,
 } from './types'
 
-/** 新建自定义家的表单。字段名与 `CustomProviderConfig` 对齐,不另起一套。 */
+/** 自定义服务商对话框的「接口类型」缺省:OpenAI 兼容(§6.1)。 */
+export const DEFAULT_CUSTOM_DIALECT = 'custom-openai'
+
+/** 一行自定义请求头。表单里是有序的行(可以有空行在编辑),落盘时折成 `Record`。 */
+export interface CustomHeaderRow {
+  name: string
+  value: string
+}
+
+/**
+ * 新建 / 改一家自定义服务商的表单 = 这一家的 manifest 编辑器(批 3 §6.1)。字段名与
+ * `CustomProviderConfig` 对齐,不另起一套;`dialect` 替掉旧的 `apiType`(读时兼容,见
+ * `customDialectOf`),`headers` / `modelsUrl` 是 `ProviderConfig` 的那两格。
+ */
 export interface CustomProviderForm {
   name: string
   description: string
-  apiType: 'openai' | 'anthropic'
+  dialect: string
   baseUrl: string
   apiKey: string
   model: string
+  modelsUrl: string
+  headers: CustomHeaderRow[]
+}
+
+/** 一家自定义服务商的方言:`dialect` 优先;没有就按旧的 `apiType` 读(老数据不迁移)。 */
+export function customDialectOf(config: Pick<CustomProviderConfig, 'dialect' | 'apiType'> | undefined): string {
+  if (config?.dialect) return config.dialect
+  return config?.apiType === 'anthropic' ? 'custom-anthropic' : DEFAULT_CUSTOM_DIALECT
+}
+
+/** 盘上的一家自定义服务商 → 对话框的底本。密钥不回填(渲染层手上从来没有原文)。 */
+export function customProviderFormOf(config: CustomProviderConfig): CustomProviderForm {
+  return {
+    name: config.name ?? '',
+    description: config.description ?? '',
+    dialect: customDialectOf(config),
+    baseUrl: config.baseUrl ?? '',
+    apiKey: '',
+    model: config.model ?? '',
+    modelsUrl: config.modelsUrl ?? '',
+    headers: Object.entries(config.headers ?? {}).map(([name, value]) => ({ name, value })),
+  }
+}
+
+/** 表单里的请求头行 → 落盘的 `Record`。名字空的行不算(那是正在编辑的空行);同名后者赢。 */
+export function customHeadersOf(rows: readonly CustomHeaderRow[]): Record<string, string> | undefined {
+  const out: Record<string, string> = {}
+  for (const row of rows) {
+    const name = row.name.trim()
+    if (name) out[name] = row.value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** 一条要应用的建议:哪一型、哪份建议、只应用哪几格(缺席 = 全部)。 */
+export interface SuggestionApplication {
+  modelId: string
+  suggestion: ModelParameterSuggestion
+  fields?: readonly SuggestionField[]
 }
 
 /**
@@ -165,6 +226,12 @@ export interface ProviderSettingsState {
   usageStatus: Record<string, SourceStatus>
   usageError: Record<string, string>
 
+  /**
+   * 「接口类型」下拉的选项(批 3 §6.1,`providers.listDialects`)。`undefined` = 还没问过;
+   * 问失败时保持 `undefined`,对话框退回它自己那两项缺省(OpenAI / Anthropic 兼容)。
+   */
+  dialects: DialectOption[] | undefined
+
   start: () => Promise<void>
   refresh: () => Promise<void>
   selectFamily: (familyId: string) => void
@@ -256,6 +323,12 @@ export interface ProviderSettingsState {
     modelId: string,
     patch: ModelOverridePatch,
   ) => Promise<void>
+  /**
+   * 应用参数建议(批 3 §6.3):把建议写进覆盖表 —— **与 `setModelOverride` 同一条写路**,
+   * 值与手填的一模一样(浮层里「恢复目录值」照旧能清)。一发可以带好几型(「全部应用」),
+   * 合成**一次**写回,不是逐型一发。
+   */
+  applySuggestions: (providerId: string, items: readonly SuggestionApplication[]) => Promise<void>
 
   /* ── 凭证池 ─────────────────────────────────────────────────────────── */
   /** 追加一条密钥(**不带 entryId** = 追加)。 */
@@ -292,7 +365,13 @@ export interface ProviderSettingsState {
   loadUsage: (providerId: string, force?: boolean) => Promise<void>
 
   /* ── 自定义家 / 计费档位 ─────────────────────────────────────────────── */
-  saveCustomProvider: (form: CustomProviderForm, editingId?: string) => Promise<void>
+  /**
+   * 新建 / 改一家自定义服务商。答「写成了没有」:对话框据它决定关不关(失败留在屏上,
+   * 表单一格不丢)。写成之后:密钥(填了的话)进这个空间的密钥池,目录区自动拉一次。
+   */
+  saveCustomProvider: (form: CustomProviderForm, editingId?: string) => Promise<boolean>
+  /** 拉一次「接口类型」下拉的选项。已经有了就不再问(它是进程级的事实)。 */
+  loadDialects: () => Promise<void>
   deleteCustomProvider: (providerId: string) => Promise<void>
   /** 拨一次计费档位。**档位与 baseUrl 一起写**(理由见 dials.ts)。 */
   setDials: (providerId: string, apiMode: string, region: string) => Promise<void>
@@ -481,9 +560,83 @@ export const settingsKey = {
   baseUrl: (providerId: string) => `baseUrl:${providerId}`,
   /** 自定义家的新建 / 保存 / 删除。 */
   custom: (providerId: string) => `custom:${providerId}`,
+  /** 目录头「全部应用」参数建议那颗钮(批 3 §6.3)—— 一发写好几型,挂不到任何一行上。 */
+  suggest: (providerId: string) => `suggest:${providerId}`,
   /** 组件侧按前缀滤出「这一坑此刻在写的那些模型 id」。 */
   modelPrefix: (providerId: string) => `model:${providerId}:`,
 } as const
+
+/**
+ * 一个模型的覆盖补丁 → 这一家 `ProviderConfig` 的 delta(09-09 起 `setModelOverride` 的
+ * 那一段,批 3 抽成纯函数:参数建议的「应用」走的是**同一条**)。三态见 `setModelOverride`。
+ */
+export function overrideDeltaOf(
+  config: ProviderConfig | undefined,
+  modelId: string,
+  patch: ModelOverridePatch,
+): Partial<ProviderConfig> {
+  const delta: Partial<ProviderConfig> = {}
+
+  if (patch.contextLength !== undefined) {
+    const table: Record<string, number> = { ...(config?.contextLengthByModel ?? {}) }
+    if (patch.contextLength === null) delete table[modelId]
+    else table[modelId] = patch.contextLength
+    // 空表就是没有这张表 —— 留一个 `{}` 是在盘上说「配置过」。
+    delta.contextLengthByModel = Object.keys(table).length > 0 ? table : undefined
+  }
+
+  /*
+   * 最大输出走**与上一格同一手**:同一种「按模型的数字表」,删键删干净、
+   * 空表删整表。引擎读它的地方是
+   * `packages/core/engine/agent-loop-runtime.ts:819` —— 填了就直接当请求的
+   * max_tokens,所以这张表写错的后果与上一张一样是**发出去的请求变形**,
+   * 不是屏幕上一个读数变形。
+   */
+  if (patch.maxOutput !== undefined) {
+    const table: Record<string, number> = { ...(config?.maxOutputByModel ?? {}) }
+    if (patch.maxOutput === null) delete table[modelId]
+    else table[modelId] = patch.maxOutput
+    delta.maxOutputByModel = Object.keys(table).length > 0 ? table : undefined
+  }
+
+  /*
+   * 能力那张表:**逐键**改,不是整条换。09-10 从一格 `tools` 泛化到五格
+   * (`CAPABILITY_KEYS`),而那条判据一个字没变 —— **这块面没露过面的键
+   * 一格不动**:今天那是 `audio`(壳不开写面),明天后端再加一格也是它。
+   * 把整条记录换掉就等于替用户把没见过的开关也答了一遍。
+   */
+  if (patch.caps !== undefined) {
+    const changes = Object.entries(patch.caps).filter(([, value]) => value !== undefined) as
+      Array<[CapabilityKey, boolean | null]>
+    if (changes.length > 0) {
+      const table: Record<string, ModelCapabilityOverride> = {
+        ...(config?.modelCapabilitiesByModel ?? {}),
+      }
+      const entry: ModelCapabilityOverride = { ...(table[modelId] ?? {}) }
+      for (const [key, value] of changes) {
+        if (value === null) delete entry[key]
+        else entry[key] = value
+      }
+      if (Object.keys(entry).length > 0) table[modelId] = entry
+      else delete table[modelId]
+      delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
+    }
+  }
+
+  if (patch.reasoningProfile !== undefined) {
+    const source = Object.prototype.hasOwnProperty.call(delta, 'modelCapabilitiesByModel')
+      ? delta.modelCapabilitiesByModel : config?.modelCapabilitiesByModel
+    const table = { ...(source ?? {}) }
+    const entry = { ...(table[modelId] ?? {}) }
+    if (patch.reasoningProfile === null) delete entry.reasoningProfile
+    else entry.reasoningProfile = patch.reasoningProfile
+    if (Object.keys(entry).length > 0) table[modelId] = entry
+    else delete table[modelId]
+    delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
+  }
+
+  return delta
+}
 
 export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSettings | undefined>(
   'providers.settings',
@@ -897,6 +1050,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     poolError: {},
     authStatus: {},
     authFlow: {},
+    dialects: undefined,
     usage: {},
     usageStatus: {},
     usageError: {},
@@ -1194,69 +1348,28 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
      */
     setModelOverride: async (providerId, modelId, patch) => {
       await ensureSettingsLoaded()
-      const config = get().settings?.ai?.providers?.[providerId]
-      const delta: Partial<ProviderConfig> = {}
-
-      if (patch.contextLength !== undefined) {
-        const table: Record<string, number> = { ...(config?.contextLengthByModel ?? {}) }
-        if (patch.contextLength === null) delete table[modelId]
-        else table[modelId] = patch.contextLength
-        // 空表就是没有这张表 —— 留一个 `{}` 是在盘上说「配置过」。
-        delta.contextLengthByModel = Object.keys(table).length > 0 ? table : undefined
-      }
-
-      /*
-       * 最大输出走**与上一格同一手**:同一种「按模型的数字表」,删键删干净、
-       * 空表删整表。引擎读它的地方是
-       * `packages/core/engine/agent-loop-runtime.ts:819` —— 填了就直接当请求的
-       * max_tokens,所以这张表写错的后果与上一张一样是**发出去的请求变形**,
-       * 不是屏幕上一个读数变形。
-       */
-      if (patch.maxOutput !== undefined) {
-        const table: Record<string, number> = { ...(config?.maxOutputByModel ?? {}) }
-        if (patch.maxOutput === null) delete table[modelId]
-        else table[modelId] = patch.maxOutput
-        delta.maxOutputByModel = Object.keys(table).length > 0 ? table : undefined
-      }
-
-      /*
-       * 能力那张表:**逐键**改,不是整条换。09-10 从一格 `tools` 泛化到五格
-       * (`CAPABILITY_KEYS`),而那条判据一个字没变 —— **这块面没露过面的键
-       * 一格不动**:今天那是 `audio`(壳不开写面),明天后端再加一格也是它。
-       * 把整条记录换掉就等于替用户把没见过的开关也答了一遍。
-       */
-      if (patch.caps !== undefined) {
-        const changes = Object.entries(patch.caps).filter(([, value]) => value !== undefined) as
-          Array<[CapabilityKey, boolean | null]>
-        if (changes.length > 0) {
-          const table: Record<string, ModelCapabilityOverride> = {
-            ...(config?.modelCapabilitiesByModel ?? {}),
-          }
-          const entry: ModelCapabilityOverride = { ...(table[modelId] ?? {}) }
-          for (const [key, value] of changes) {
-            if (value === null) delete entry[key]
-            else entry[key] = value
-          }
-          if (Object.keys(entry).length > 0) table[modelId] = entry
-          else delete table[modelId]
-          delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
-        }
-      }
-
-      if (patch.reasoningProfile !== undefined) {
-        const source = Object.prototype.hasOwnProperty.call(delta, 'modelCapabilitiesByModel')
-          ? delta.modelCapabilitiesByModel : config?.modelCapabilitiesByModel
-        const table = { ...(source ?? {}) }
-        const entry = { ...(table[modelId] ?? {}) }
-        if (patch.reasoningProfile === null) delete entry.reasoningProfile
-        else entry.reasoningProfile = patch.reasoningProfile
-        if (Object.keys(entry).length > 0) table[modelId] = entry
-        else delete table[modelId]
-        delta.modelCapabilitiesByModel = Object.keys(table).length > 0 ? table : undefined
-      }
-
+      const delta = overrideDeltaOf(get().settings?.ai?.providers?.[providerId], modelId, patch)
       if (Object.keys(delta).length === 0) return
       await writeProviders({ [providerId]: delta }, settingsKey.model(providerId, modelId))
+    },
+
+    applySuggestions: async (providerId, items) => {
+      await ensureSettingsLoaded()
+      let working = get().settings?.ai?.providers?.[providerId]
+      const delta: Partial<ProviderConfig> = {}
+      for (const item of items) {
+        const patch = suggestionPatchOf(item.suggestion, item.fields)
+        const step = overrideDeltaOf(working, item.modelId, patch)
+        // 一型一型往下叠:下一型读的是上一型写完之后的表,整批只写一次。
+        working = { ...(working ?? EMPTY_CONFIG), ...step } as ProviderConfig
+        Object.assign(delta, step)
+      }
+      if (Object.keys(delta).length === 0) return
+      // 只带一型 = 那一行的忙格(与逐型配置同一格);好几型 = 「全部应用」那颗钮的格。
+      const key = items.length === 1
+        ? settingsKey.model(providerId, items[0].modelId)
+        : settingsKey.suggest(providerId)
+      await writeProviders({ [providerId]: delta }, key)
     },
 
     /* ── 凭证池 ───────────────────────────────────────────────────────── */
@@ -1564,32 +1677,48 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
      */
     saveCustomProvider: async (form, editingId) => {
       const base = get().settings
-      if (!base) return
+      if (!base) return false
       const existing = (base.ai?.customProviders ?? []).find((item) => item.id === editingId)
       const id = existing?.id ?? `custom-${Date.now()}`
       const model = form.model.trim()
+      const headers = customHeadersOf(form.headers)
+      const modelsUrl = form.modelsUrl.trim() || undefined
+      // 旧的 `apiType` 不再写:`dialect` 是它的替身(读时兼容在 `customDialectOf`)。
+      const { apiType: _legacyApiType, ...kept } = existing ?? ({} as Partial<CustomProviderConfig>)
       const provider: CustomProviderConfig = {
+        ...kept,
         id,
         name: form.name.trim(),
         description: form.description.trim(),
-        apiType: form.apiType,
+        dialect: form.dialect || DEFAULT_CUSTOM_DIALECT,
         baseUrl: form.baseUrl.trim(),
-        apiKey: form.apiKey,
         model,
         selectedModels: existing?.selectedModels ?? (model ? [model] : []),
         enabled: existing?.enabled ?? true,
+        headers,
+        modelsUrl,
       }
+      // 空的两格就是没有这两格(与覆盖表「空表删整表」同一条:盘上不留一句假话)。
+      if (!headers) delete provider.headers
+      if (!modelsUrl) delete provider.modelsUrl
 
       const list = base.ai?.customProviders ?? []
       const nextList = list.some((item) => item.id === id)
         ? list.map((item) => (item.id === id ? provider : item))
         : [...list, provider]
 
+      /*
+       * `providers[id]` 这一份是**运行期读的那一份**(接口地址 / 头 / 模型列表地址都从这里
+       * 进请求),所以三格照 `baseUrl` 的老规矩两处一起写。`dialect` 只写定义那一份:
+       * 那是这一家的 manifest,`providers[id].dialect` 是「覆盖 manifest」的另一格,
+       * 自定义家用不着给自己覆盖一次。
+       */
       const nextProviders: Record<string, ProviderConfig> = { ...(base.ai?.providers ?? {}) }
-      const mirrored = nextProviders[id]
+      const mirrored = { ...(nextProviders[id] ?? {}) } as ProviderConfig
+      delete mirrored.headers
+      delete mirrored.modelsUrl
       nextProviders[id] = {
         ...mirrored,
-        apiKey: provider.apiKey,
         baseUrl: provider.baseUrl,
         model: provider.model,
         selectedModels:
@@ -1597,6 +1726,8 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
             ? mirrored.selectedModels
             : provider.selectedModels,
         enabled: mirrored?.enabled ?? provider.enabled ?? true,
+        ...(headers ? { headers } : {}),
+        ...(modelsUrl ? { modelsUrl } : {}),
       }
 
       const next = {
@@ -1604,7 +1735,36 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         ai: { ...base.ai, customProviders: nextList, providers: nextProviders },
       } as AppSettings
       await commitSettings(base, next, settingsKey.custom(id))
+      // 失败时 `settingsMutation` 回滚到底本(并弹一条说明):这一句就是「写成了没有」。
+      if (get().settings === base) return false
       set({ selectedFamilyId: id })
+
+      /*
+       * 密钥进**这个空间的密钥池**(从前这一格写进 `providers[id].apiKey`,而落盘那一刀
+       * `SPACE_PROVIDER_STRIPPED_FIELDS` 会把它剥掉 —— 填了等于没填)。池里已有一条就
+       * 换那一条的 key(不换条目,用量账连得上),没有就追加。空 = 不动池。
+       */
+      const apiKey = form.apiKey.trim()
+      if (apiKey) {
+        const first = get().credentials[id]?.entries?.find((entry) => entry.authType === 'apiKey')
+        if (first) await get().replaceCredential(id, first.id, apiKey)
+        else await get().addCredential(id, apiKey, '')
+      }
+
+      // 「保存后目录区自动拉一次,结果就是反馈」(§6.1):没有测试连接钮。
+      void catalogQuery.get(catalogKey(id)).refetch().catch(() => undefined)
+      return true
+    },
+
+    loadDialects: async () => {
+      if (get().dialects) return
+      try {
+        const port = await providerSettingsPort()
+        const response = await port.listDialects()
+        if (response.success && response.dialects) set({ dialects: response.dialects })
+      } catch {
+        // 问不到就用对话框自己的两项缺省 —— 下拉不该因为这一发没回来而空着。
+      }
     },
 
     deleteCustomProvider: async (providerId) => {

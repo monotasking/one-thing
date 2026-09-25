@@ -197,6 +197,7 @@ export function decodeOpenRouterExtras(
 
 export const OPENROUTER_DIALECT = defineOpenAIChatDialect({
 	id: "openrouter",
+	label: "OpenRouter",
 	defaultBaseUrl: "https://openrouter.ai/api/v1",
 	reasoning: openRouterReasoningWire,
 	filePdf: "openai-file",

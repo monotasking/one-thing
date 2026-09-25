@@ -75,6 +75,7 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       onRemoveManual={vi.fn()}
       onRenameManual={vi.fn()}
       onWriteOverride={vi.fn()}
+        onApplySuggestions={vi.fn()}
       {...props}
     />
   )
@@ -204,7 +205,8 @@ describe('状态戏份 · 重拉不清屏(律②)', () => {
 
   it('失败与旧行**并存**:错误行画出来了,行一条没少', () => {
     render(catalog({ rows: [row('a'), row('b')], error: '402 Insufficient Balance' }))
-    expect(screen.getByText(/402 Insufficient Balance/)).toBeTruthy()
+    // 「获取失败」画在行里,接口原话进 Tooltip(§6.2)—— 原话可能是半页 HTML。
+    expect(screen.getByTestId('catalog-error').textContent).toBe('目录拉不到')
     expect(screen.getByTestId('model-row-a')).toBeTruthy()
     expect(screen.getByTestId('model-row-b')).toBeTruthy()
   })

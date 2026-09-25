@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => {
     refreshTokenIfNeeded: vi.fn(),
     saveProviderModels: vi.fn(),
     settings: {} as AppSettings,
+    /** 认亲索引要的 models.dev 快照(批 3 §6.3)。缺省没有 = 不出建议。 */
+    modelsDevSnapshot: undefined as undefined | { data: Record<string, unknown>; fetchedAt: number },
     /** 按空间 id 的生效设置(覆盖表 per-space);缺席回落 `settings`。 */
     spaceSettings: {} as Record<string, AppSettings>,
   }
@@ -58,6 +60,7 @@ vi.mock('../../wiring/providers/model-registry.js', () => ({
   getModelsForProvider: mocks.getModelsForProvider,
   saveProviderModels: mocks.saveProviderModels,
   searchModels: vi.fn(),
+  getModelsDevSnapshot: async () => mocks.modelsDevSnapshot,
 }))
 
 vi.mock('../../wiring/providers/builtin/codex.js', () => ({
@@ -211,7 +214,7 @@ describe('models RPC domain — Codex cache handling', () => {
       forceRefresh: true,
     })
 
-    expect(mocks.refreshProviderModels).toHaveBeenCalledWith('kimi')
+    expect(mocks.refreshProviderModels).toHaveBeenCalledWith('kimi', { spaceId: undefined })
     expect(mocks.refreshProviderModels).toHaveBeenCalledTimes(1)
     expect(response.models?.map(m => m.id)).toEqual(['fresh-kimi'])
 
@@ -470,6 +473,7 @@ describe('models RPC domain — 每行的 effective(§5.5)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.spaceSettings = {}
+    mocks.modelsDevSnapshot = undefined
   })
 
   it('手填 foo-1 + 覆盖上下文 200000 → effective 200000,出处 override;其余不知道', async () => {
@@ -487,7 +491,7 @@ describe('models RPC domain — 每行的 effective(§5.5)', () => {
       capabilities: { tools: null, vision: null, reasoning: null, imageOutput: null, fileInput: null },
       source: { contextLength: 'override', maxOutput: 'unknown' },
     })
-    // 批 3 的建议格今天没有产地。
+    // 没有 models.dev 快照 = 认不了亲 = 没有建议(目录照常出)。
     expect(row?.suggestion).toBeUndefined()
   })
 
@@ -528,5 +532,84 @@ describe('models RPC domain — 每行的 effective(§5.5)', () => {
     const bySpace = await modelsRpcHandlers.getWithCapabilities({ providerId: 'deepseek', spaceId: 'work' })
     expect(byDefault.models?.[0].effective?.contextLength).toBe(1_000)
     expect(bySpace.models?.[0].effective?.contextLength).toBe(2_000)
+  })
+})
+
+/**
+ * 批 3 §6.3:接口不报参数时从 models.dev 认亲,只在 unknown 的格上给建议;
+ * 用户一旦覆盖那一格,那一格的建议就没了。
+ */
+describe('models RPC domain — 参数建议(§6.3)', () => {
+  const SNAPSHOT = {
+    fetchedAt: 42,
+    data: {
+      openai: {
+        id: 'openai',
+        name: 'OpenAI',
+        models: {
+          'gpt-5.5': {
+            id: 'gpt-5.5',
+            name: 'GPT-5.5',
+            limit: { context: 400000, output: 128000 },
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ['text', 'image'], output: ['text'] },
+          },
+        },
+      },
+    },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.spaceSettings = {}
+    mocks.modelsDevSnapshot = SNAPSHOT
+  })
+
+  function manualGpt(extra: Record<string, unknown> = {}) {
+    mocks.settings = { ai: { providers: { 'custom-relay': {
+      selectedModels: ['gpt-5.5'], model: 'gpt-5.5',
+      models: { 'gpt-5.5': { id: 'gpt-5.5', name: 'gpt-5.5', provider: 'custom-relay', source: 'manual' } },
+      ...extra,
+    } } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([{ id: 'gpt-5.5', name: 'gpt-5.5', source: 'manual' } as OpenRouterModel])
+  }
+
+  it('手填 gpt-5.5:四格都不知道 → 按 OpenAI gpt-5.5 给上下文 / 输出 / 支持的能力', async () => {
+    manualGpt()
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'custom-relay' })
+    const row = response.models?.find(m => m.id === 'gpt-5.5')
+    expect(row?.suggestion).toMatchObject({
+      from: { provider: 'openai', id: 'gpt-5.5', providerName: 'OpenAI' },
+      contextLength: 400000,
+      maxOutput: 128000,
+      capabilities: { tools: true, vision: true, reasoning: true },
+    })
+    // 不支持的不建议(建议一个 false 会画成「人说不支持」)。
+    expect(row?.suggestion?.capabilities?.imageOutput).toBeUndefined()
+  })
+
+  it('用户覆盖过的格不再建议;全覆盖了就没有建议', async () => {
+    manualGpt({ contextLengthByModel: { 'gpt-5.5': 1000 } })
+    const partial = await modelsRpcHandlers.getWithCapabilities({ providerId: 'custom-relay' })
+    expect(partial.models?.[0].suggestion?.contextLength).toBeUndefined()
+    expect(partial.models?.[0].suggestion?.maxOutput).toBe(128000)
+
+    manualGpt({
+      contextLengthByModel: { 'gpt-5.5': 1000 },
+      maxOutputByModel: { 'gpt-5.5': 1000 },
+      modelCapabilitiesByModel: {
+        'gpt-5.5': { tools: true, vision: true, reasoning: true, imageOutput: false, fileInput: false },
+      },
+    })
+    const full = await modelsRpcHandlers.getWithCapabilities({ providerId: 'custom-relay' })
+    expect(full.models?.[0].suggestion).toBeUndefined()
+  })
+
+  it('目录行(models.dev 说全了)不认亲,也不读快照', async () => {
+    mocks.settings = { ai: { providers: { deepseek: { selectedModels: ['listed'] } } } } as unknown as AppSettings
+    mocks.getModelsForProvider.mockResolvedValue([model('gpt-5.5')])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId: 'deepseek' })
+    expect(response.models?.[0].suggestion).toBeUndefined()
   })
 })

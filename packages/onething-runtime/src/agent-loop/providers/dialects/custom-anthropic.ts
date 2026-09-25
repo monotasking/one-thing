@@ -14,5 +14,6 @@ import {
 
 export const CUSTOM_ANTHROPIC_DIALECT = defineAnthropicDialect({
 	id: "custom-anthropic",
+	label: "Anthropic compatible",
 	defaultBaseUrl: ANTHROPIC_DEFAULT_BASE_URL,
 });

@@ -166,6 +166,7 @@ export const OPENAI_DIALECT_SPEC = {
 
 const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "openai",
+	label: "OpenAI Responses",
 	...OPENAI_DIALECT_SPEC,
 };
 export const OPENAI_DIALECT = defineResponsesDialect(responsesDialectSpec);

@@ -84,6 +84,7 @@ function renderCatalog(
         onRemoveManual={vi.fn()}
         onRenameManual={vi.fn()}
         onWriteOverride={vi.fn()}
+        onApplySuggestions={vi.fn()}
         {...props}
       />
     </>,
@@ -569,6 +570,7 @@ describe('在写(pending 逐行)', () => {
           onRemoveManual={vi.fn()}
           onRenameManual={vi.fn()}
           onWriteOverride={onWriteOverride}
+          onApplySuggestions={vi.fn()}
         />
       </>,
     )
@@ -727,6 +729,7 @@ describe('改模型 ID', () => {
           onRemoveManual={vi.fn()}
           onRenameManual={onRenameManual}
           onWriteOverride={vi.fn()}
+        onApplySuggestions={vi.fn()}
         />
       </>
     )
@@ -757,6 +760,7 @@ describe('改模型 ID', () => {
           onRemoveManual={vi.fn()}
           onRenameManual={onRenameManual}
           onWriteOverride={vi.fn()}
+        onApplySuggestions={vi.fn()}
         />
       </>,
     )
@@ -807,6 +811,7 @@ describe('改模型 ID', () => {
           onRemoveManual={vi.fn()}
           onRenameManual={onRenameManual}
           onWriteOverride={vi.fn()}
+        onApplySuggestions={vi.fn()}
         />
       </>,
     )

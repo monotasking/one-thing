@@ -1,12 +1,16 @@
 import { useRef } from 'react'
+import type { ReactNode } from 'react'
+import type { ModelParameterSuggestion } from '@shared/ipc/providers'
 import { Button } from '../../ui/Button'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { Checkbox } from '../../ui/Checkbox'
 import { IconButton } from '../../ui/IconButton'
 import { Tooltip } from '../../ui/Tooltip'
 import { SlidersHorizontal, X } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity } from '../../format/quantity'
-import { formatPrice } from '../projection'
+import { formatPrice, suggestedCapsOf, suggestionSourceOf } from '../projection'
+import type { SuggestionField } from '../projection'
 import { CAPABILITY_KEYS, CAP_OF_KEY, CATALOG_CONTEXT_FALLBACK, MODEL_CAPS } from '../types'
 import type { CapabilityKey, CatalogRow, ModelCap, ModelOverridePatch } from '../types'
 import { CAP_ICONS, CAP_LABELS } from './model-capability-icons'
@@ -125,6 +129,48 @@ function capsDrawnOf(row: CatalogRow): ModelCap[] {
   })
 }
 
+/**
+ * 参数建议芯片(批 3 §6.3)。只画在「不知道」的那一格里(那一格本来画的是破折号),
+ * 小字、虚线框、前面一个「≈」:它说的是「大概是这个数」,不是这一型的读数。
+ * 悬停出「按 {provider} {model} 填」;点 = 把**这一格**写进覆盖表(与浮层手填同一条写路),
+ * 写了之后那一格不再 unknown,后端下一次投影就不再给它 —— 芯片自然消失。
+ *
+ * ③ 类结构交互件(皮肤归本地)→ `ui/ButtonBase`;焦点环走全局载体。
+ */
+function SuggestChip({
+  t,
+  suggestion,
+  valueText,
+  disabled,
+  testId,
+  onApply,
+  children,
+}: {
+  t: TFn
+  suggestion: ModelParameterSuggestion
+  /** 读屏那一半:芯片上画的是图标时,这里是它们的全名。 */
+  valueText: string
+  disabled: boolean
+  testId: string
+  onApply: () => void
+  children: ReactNode
+}) {
+  const tip = t('providers.suggestFrom', suggestionSourceOf(suggestion))
+  return (
+    <Tooltip content={tip}>
+      <ButtonBase
+        className={s.suggest}
+        disabled={disabled}
+        aria-label={`${tip} · ${valueText}`}
+        data-testid={testId}
+        onClick={onApply}
+      >
+        {children}
+      </ButtonBase>
+    </Tooltip>
+  )
+}
+
 /** 这一枚上人说过什么。`undefined` = 没说过(照目录画);`audioIn` 恒 undefined。 */
 function overrideOnCap(row: CatalogRow, cap: ModelCap): boolean | undefined {
   const key = KEY_OF_CAP[cap]
@@ -145,6 +191,7 @@ export function ModelCatalogRow({
   onRenameManual,
   onOverrideOpen,
   onWriteOverride,
+  onApplySuggestion,
 }: {
   t: TFn
   row: CatalogRow
@@ -168,6 +215,12 @@ export function ModelCatalogRow({
   onRenameManual: (oldId: string, newId: string) => string | undefined
   onOverrideOpen: (open: boolean) => void
   onWriteOverride: (modelId: string, patch: ModelOverridePatch) => void
+  /** 应用这一行的参数建议(`fields` 缺席 = 全部)。 */
+  onApplySuggestion: (
+    modelId: string,
+    suggestion: ModelParameterSuggestion,
+    fields?: readonly SuggestionField[],
+  ) => void
 }) {
   /* 覆盖浮层的锚 = 行尾那颗滑杆钮的活矩形(矩锚跟滚,见 ui/float 的裁定)。 */
   const configureRef = useRef<HTMLButtonElement>(null)
@@ -210,6 +263,17 @@ export function ModelCatalogRow({
   const contextText = formatCatalogTokens(row.contextLength) ?? t('providers.unknownValue')
   const outText = formatCatalogTokens(row.maxOutput) ?? t('providers.unknownValue')
 
+  /*
+   * 建议芯片只长在「本来画破折号」的格子里 —— 有读数的格子一个字都不动。三格各自判:
+   * 后端只在那一格 unknown 时给值,壳这里再看一眼屏上那一格确实是空的。
+   */
+  const suggestion = row.suggestion
+  const suggestContext =
+    suggestion && row.contextLength === null && suggestion.contextLength ? suggestion.contextLength : null
+  const suggestOut =
+    suggestion && row.maxOutput === null && suggestion.maxOutput ? suggestion.maxOutput : null
+  const suggestCaps = suggestion && capsDrawn.length === 0 ? suggestedCapsOf(suggestion) : []
+
   return (
     <div
       className={`${s.grid} ${s.row} ${skip ? s.rowSkip : ''}`}
@@ -230,7 +294,22 @@ export function ModelCatalogRow({
         </span>
       </span>
       <span className={s.caps}>
-        {capsDrawn.length === 0 ? (
+        {capsDrawn.length === 0 && suggestion && suggestCaps.length > 0 ? (
+          <SuggestChip
+            t={t}
+            suggestion={suggestion}
+            valueText={suggestCaps.map((key) => t(CAP_LABELS[CAP_OF_KEY[key]])).join('·')}
+            disabled={pending}
+            testId={`suggest-caps-${row.id}`}
+            onApply={() => onApplySuggestion(row.id, suggestion, ['capabilities'])}
+          >
+            <span aria-hidden="true">≈</span>
+            {suggestCaps.map((key) => {
+              const Icon = CAP_ICONS[CAP_OF_KEY[key]]
+              return <Icon key={key} size={12} aria-hidden="true" />
+            })}
+          </SuggestChip>
+        ) : capsDrawn.length === 0 ? (
           <span className={s.capNone}>{t('providers.unknownValue')}</span>
         ) : (
           capsDrawn.map((cap) => {
@@ -259,6 +338,19 @@ export function ModelCatalogRow({
             {contextText}
           </span>
         </Tooltip>
+      ) : suggestion && suggestContext !== null ? (
+        <span className={s.num} data-testid={`ctx-${row.id}`}>
+          <SuggestChip
+            t={t}
+            suggestion={suggestion}
+            valueText={formatQuantity(suggestContext)}
+            disabled={pending}
+            testId={`suggest-ctx-${row.id}`}
+            onApply={() => onApplySuggestion(row.id, suggestion, ['contextLength'])}
+          >
+            ≈ {formatQuantity(suggestContext)}
+          </SuggestChip>
+        </span>
       ) : (
         <span className={s.num} data-testid={`ctx-${row.id}`}>
           {contextText}
@@ -270,6 +362,19 @@ export function ModelCatalogRow({
             {outText}
           </span>
         </Tooltip>
+      ) : suggestion && suggestOut !== null ? (
+        <span className={s.out} data-testid={`out-${row.id}`}>
+          <SuggestChip
+            t={t}
+            suggestion={suggestion}
+            valueText={formatQuantity(suggestOut)}
+            disabled={pending}
+            testId={`suggest-out-${row.id}`}
+            onApply={() => onApplySuggestion(row.id, suggestion, ['maxOutput'])}
+          >
+            ≈ {formatQuantity(suggestOut)}
+          </SuggestChip>
+        </span>
       ) : (
         <span className={s.out} data-testid={`out-${row.id}`}>
           {outText}
@@ -321,6 +426,11 @@ export function ModelCatalogRow({
             pending={pending}
             onClose={() => onOverrideOpen(false)}
             onWrite={(patch) => onWriteOverride(row.id, patch)}
+            onApplySuggestion={
+              row.suggestion
+                ? () => onApplySuggestion(row.id, row.suggestion as ModelParameterSuggestion)
+                : undefined
+            }
             /*
               改 id **只给手填行**(09-11):目录里有的行,它的 id 是目录说的,
               改了就对不上目录 —— 所以那一档连这个 prop 都不传,浮层头部

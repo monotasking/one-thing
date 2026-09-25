@@ -1,39 +1,96 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentProps } from 'react'
+import type { DialectOption } from '@shared/ipc/providers'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
 import { Field, useFieldControlProps } from '../../ui/Field'
+import { Fold, FoldBody, FoldTrigger } from '../../ui/Fold'
+import { IconButton } from '../../ui/IconButton'
 import { Input } from '../../ui/Input'
-import { Segmented } from '../../ui/Segmented'
-import { useT } from '../../i18n'
-import type { CustomProviderForm } from '../store'
+import { Select } from '../../ui/Select'
+import { ChevronRight, X } from '../../components/icons'
+import { isMessageKey, useT } from '../../i18n'
+import type { TFn } from '../../i18n'
+import { DEFAULT_CUSTOM_DIALECT, type CustomHeaderRow, type CustomProviderForm } from '../store'
 import s from './CustomProviderDialog.module.css'
 
 /**
- * 新建 / 改一家自定义 provider。字段与生产那张表逐格对齐
- * (`CustomProviderDialog.vue:167-175`)—— 名称✱ / 描述 / 兼容形✱ / Base URL✱ /
- * 密钥(可空)/ 默认模型。
+ * 新建 / 改一家自定义服务商 = **这一家的 manifest 编辑器**(批 3 §6.1,
+ * `docs/design/provider-settings-rework-2026-09.md`)。六格:名称✱ / 接口类型 /
+ * 接口地址✱ / 密钥(可空)/ 高级 ▸(模型列表地址 + 自定义请求头)/ 默认模型。
+ * **没有测试连接钮**:保存后目录区自动拉一次,拉到的结果就是反馈。
+ *
+ * ── 三张状态表 ──────────────────────────────────────────────────────────
+ *   生命周期:随 `open` 开合;每次打开都从底本重置(上一次填了一半的不跟到下一次,
+ *             尤其不把上一家的接口地址带进新一家)。无订阅 / 无计时器。
+ *   UI 生命状态:
+ *     · 空表单(新建):接口类型 = OpenAI 兼容,高级收起,请求头只有一条空行;
+ *     · 编辑已有:底本来自盘上那一家(`customProviderFormOf`),密钥格空(渲染层
+ *       手上没有原文,空 = 不动池),有请求头或模型列表地址的**高级默认展开**;
+ *     · 保存失败:对话框留在屏上、表单一格不丢,表单级一句「设置没保存上」
+ *       (详细原话由写口那一路的通知说)。
+ *   UI 交互状态:rest / focus(全局环)/ **保存中**(主钮自己变字 + 禁用,取消仍可点)/
+ *             必填在**提交时**才拦(一开就爆三条红字是在骂用户还没开始填)。
  *
  * ── 两处判断,都不是样式问题 ──────────────────────────────────────────────
- * ① **必填在提交时才拦**,不在打字时报红:一个刚打开、三格全空的表单立刻爆三条
- *    红字,是在骂用户还没开始填。
- * ② **删除是两段就地确认**,和凭证行同一手 —— 但这一颗的确认字要说清代价
- *    (「连同它的模型勾选一起没」),因为删一家比删一把钥匙毁得多。
+ * ① 接口类型下拉**读方言注册表**(`providers.listDialects`),人话名查壳的字典
+ *    `providers.dialect.<id>`;字典里没有的方言不进下拉。注册表还没问回来 / 问失败,
+ *    退回两项缺省(OpenAI / Anthropic 兼容)—— 下拉不因一发没回来而空着。
+ * ② 请求头是**有序的行**,不是一张表:末尾永远留一条空行(在空行里打字就长出下一条),
+ *    名字空的行落盘时不算。行身份用本地序号,不用下标 —— 删中间一行时下面几行的
+ *    输入框不该换人(换人 = 光标跳走)。
  */
+
+/** 注册表没回来时的两项缺省:旧的两种兼容形,永远可选。 */
+const FALLBACK_DIALECTS: readonly DialectOption[] = [
+  { id: 'custom-openai', label: 'OpenAI compatible' },
+  { id: 'custom-anthropic', label: 'Anthropic compatible' },
+]
+
+const API_KEY_TEMPLATE = '{{apiKey}}'
 
 const EMPTY_FORM: CustomProviderForm = {
   name: '',
   description: '',
-  apiType: 'openai',
+  dialect: DEFAULT_CUSTOM_DIALECT,
   baseUrl: '',
   apiKey: '',
   model: '',
+  modelsUrl: '',
+  headers: [],
+}
+
+interface HeaderLine extends CustomHeaderRow {
+  /** 本地身份(见文件头 ②)。 */
+  key: number
+}
+
+/** 下拉选项:字典里有人话名的才进;缺省那一项排第一;底本里的方言不在表里也留着。 */
+export function dialectSelectOptions(
+  t: TFn,
+  dialects: readonly DialectOption[] | undefined,
+  current: string,
+): Array<{ value: string; label: string }> {
+  const source = dialects && dialects.length > 0 ? dialects : FALLBACK_DIALECTS
+  const options: Array<{ value: string; label: string }> = []
+  for (const dialect of source) {
+    const key = `providers.dialect.${dialect.id}`
+    if (!isMessageKey(key)) continue
+    options.push({ value: dialect.id, label: t(key) })
+  }
+  options.sort((a, b) => Number(b.value === DEFAULT_CUSTOM_DIALECT) - Number(a.value === DEFAULT_CUSTOM_DIALECT))
+  if (current && !options.some((option) => option.value === current)) {
+    const known = source.find((dialect) => dialect.id === current)
+    options.push({ value: current, label: known?.label ?? current })
+  }
+  return options
 }
 
 export function CustomProviderDialog({
   open,
   initial,
   editingId,
+  dialects,
   onClose,
   onSave,
 }: {
@@ -41,27 +98,67 @@ export function CustomProviderDialog({
   /** 改一家时的底本。缺席 = 新建。 */
   initial?: CustomProviderForm
   editingId?: string
+  /** 「接口类型」下拉的选项(方言注册表)。缺席 = 用两项缺省。 */
+  dialects?: readonly DialectOption[]
   onClose: () => void
-  onSave: (form: CustomProviderForm) => void
+  /** 答「写成了没有」。写成 = 调用方关掉对话框;没成 = 留在屏上。 */
+  onSave: (form: CustomProviderForm) => Promise<boolean> | boolean
 }) {
   const t = useT()
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
+  const [lines, setLines] = useState<HeaderLine[]>([])
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [problem, setProblem] = useState<string | undefined>(undefined)
+  const [saving, setSaving] = useState(false)
+  const nextKey = useRef(0)
 
-  // 每次开都从底本重置。上一次填了一半就关掉的东西不该跟到下一次 ——
-  // 尤其不该把上一家的 Base URL 带进新一家。
+  function line(row: CustomHeaderRow): HeaderLine {
+    nextKey.current += 1
+    return { ...row, key: nextKey.current }
+  }
+
+  // 每次开都从底本重置。
   useEffect(() => {
     if (!open) return
-    setForm(initial ?? EMPTY_FORM)
+    const base = initial ?? EMPTY_FORM
+    setForm(base)
+    setLines([...base.headers.map(line), line({ name: '', value: '' })])
+    setAdvancedOpen(base.headers.length > 0 || base.modelsUrl.trim().length > 0)
     setProblem(undefined)
+    setSaving(false)
   }, [open, initial])
+
+  const options = useMemo(
+    () => dialectSelectOptions(t, dialects, form.dialect),
+    [t, dialects, form.dialect],
+  )
 
   function patch(delta: Partial<CustomProviderForm>) {
     setForm((prev) => ({ ...prev, ...delta }))
     setProblem(undefined)
   }
 
-  function submit() {
+  function patchLine(key: number, delta: Partial<CustomHeaderRow>) {
+    setProblem(undefined)
+    setLines((prev) => {
+      const next = prev.map((item) => (item.key === key ? { ...item, ...delta } : item))
+      // 末尾永远留一条空行:在最后一行里打了字,就长出下一条。
+      const last = next[next.length - 1]
+      if (last && (last.name || last.value)) next.push(line({ name: '', value: '' }))
+      return next
+    })
+  }
+
+  function removeLine(key: number) {
+    setLines((prev) => {
+      const next = prev.filter((item) => item.key !== key)
+      const last = next[next.length - 1]
+      return !last || last.name || last.value ? [...next, line({ name: '', value: '' })] : next
+    })
+  }
+
+  async function submit() {
+    if (saving) return
     if (!form.name.trim()) {
       setProblem(t('providers.customNameRequired'))
       return
@@ -70,8 +167,16 @@ export function CustomProviderDialog({
       setProblem(t('providers.customBaseUrlRequired'))
       return
     }
-    onSave(form)
+    setSaving(true)
+    const ok = await onSave({
+      ...form,
+      headers: lines.map(({ name, value }) => ({ name, value })),
+    })
+    setSaving(false)
+    if (!ok) setProblem(t('providers.saveFailed'))
   }
+
+  const submitLabel = editingId ? t('providers.customSave') : t('providers.customSubmit')
 
   return (
     <Dialog
@@ -80,13 +185,8 @@ export function CustomProviderDialog({
       title={editingId ? t('providers.customEdit') : t('providers.customAdd')}
       label={editingId ? t('providers.customEdit') : t('providers.customAdd')}
       /*
-       * ── 页脚**没有删除**(09-01「动作单产地 = 右键上下文菜单」)──────────
-       * 从前那颗 ghost 「删除这一家」就长在这儿,于是删一家要先点「编辑」开出
-       * 这个对话框、再去角落里找 —— 用户报障「custom provider 没有删除选项」
-       * 说的就是它:有,但没人找得到。
-       * 现在删除只在**行的右键菜单**里一处(`ProviderRowMenu`),两段就地确认
-       * 也搬进了库件(`ui/Menu` 的 `confirmLabel`)。**单产地的意思是只有一处**,
-       * 所以这里不留一个「顺手也能删」的第二入口。
+       * 页脚**没有删除**(09-01「动作单产地 = 右键上下文菜单」):删一家只在行的右键
+       * 菜单里一处(`ProviderRowMenu`)。**单产地的意思是只有一处**。
        */
       footer={
         <div className={s.footer}>
@@ -94,15 +194,20 @@ export function CustomProviderDialog({
           <Button size="sm" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button size="sm" variant="primary" onClick={submit}>
-            {editingId ? t('providers.customSave') : t('providers.customSubmit')}
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={saving}
+            aria-busy={saving || undefined}
+            onClick={() => void submit()}
+            data-testid="custom-provider-submit"
+          >
+            {saving ? t('common.saving') : submitLabel}
           </Button>
         </div>
       }
     >
       <div className={s.form}>
-        <p className={s.intro}>{t('providers.customAddIntro')}</p>
-
         <Field label={t('providers.customName')}>
           <FieldInput
             size="sm"
@@ -112,31 +217,17 @@ export function CustomProviderDialog({
           />
         </Field>
 
-        <Field label={t('providers.customDesc')}>
-          <FieldInput
-            size="sm"
-            value={form.description}
-            onValueChange={(description) => patch({ description })}
-            aria-label={t('providers.customDesc')}
-          />
-        </Field>
-
         {/*
-          09-02 批 8b 结账:那条留账(「Field 的 label 在这一格指空」)由批 8a 的
-          两半补上了 —— Field 多交一格 `aria-labelledby`(指着它自己那条 label),
-          Segmented 开了 HTMLAttributes 透传。于是这一格照旧一句 `{...field}`。
-          Segmented 自己的 `label` prop **去掉**:名字从此只有一个产地(那条
-          `<label>` 的文字),而不是同一句话在 aria-label 与 label 各写一遍;
-          可访问名算出来逐字相同(aria-labelledby 优先,内容一样),零像素。
+          接口类型:`ui/Select` 不透传 aria-labelledby,所以名字走它自己的 `label`
+          (与 Field 那条 <label> 同一句话)。
         */}
-        <Field label={t('providers.customCompat')}>
-          <CompatSegmented
-            value={form.apiType}
-            onChange={(apiType) => patch({ apiType })}
-            options={[
-              { value: 'openai' as const, label: t('providers.customCompatOpenai') },
-              { value: 'anthropic' as const, label: t('providers.customCompatAnthropic') },
-            ]}
+        <Field label={t('providers.customDialect')}>
+          <Select
+            size="sm"
+            options={options}
+            value={form.dialect}
+            onChange={(dialect) => patch({ dialect })}
+            label={t('providers.customDialect')}
           />
         </Field>
 
@@ -160,6 +251,72 @@ export function CustomProviderDialog({
           />
         </Field>
 
+        <Fold open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <FoldTrigger className={s.advancedHead} data-testid="custom-provider-advanced">
+            <ChevronRight
+              size={14}
+              aria-hidden="true"
+              className={advancedOpen ? `${s.chevron} ${s.chevronOpen}` : s.chevron}
+            />
+            <span>{t('providers.customAdvanced')}</span>
+          </FoldTrigger>
+          <FoldBody className={s.advancedBody}>
+            <Field label={t('providers.customModelsUrl')} hint={t('providers.customModelsUrlHint')}>
+              <FieldInput
+                size="sm"
+                value={form.modelsUrl}
+                onValueChange={(modelsUrl) => patch({ modelsUrl })}
+                aria-label={t('providers.customModelsUrl')}
+                data-testid="custom-provider-models-url"
+              />
+            </Field>
+
+            <div className={s.headers} role="group" aria-label={t('providers.customHeaders')}>
+              <span className={s.headersLabel}>{t('providers.customHeaders')}</span>
+              {lines.map((item, index) => (
+                <div key={item.key} className={s.headerRow} data-testid={`custom-header-row-${index}`}>
+                  <Input
+                    size="sm"
+                    className={s.headerName}
+                    value={item.name}
+                    onValueChange={(name) => patchLine(item.key, { name })}
+                    placeholder={t('providers.customHeaderName')}
+                    aria-label={t('providers.customHeaderName')}
+                  />
+                  <Input
+                    size="sm"
+                    className={s.headerValue}
+                    value={item.value}
+                    onValueChange={(value) => patchLine(item.key, { value })}
+                    placeholder={t('providers.customHeaderValue')}
+                    aria-label={t('providers.customHeaderValue')}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={s.insertKey}
+                    onClick={() => patchLine(item.key, { value: `${item.value}${API_KEY_TEMPLATE}` })}
+                  >
+                    {t('providers.customHeaderInsertKey')}
+                  </Button>
+                  {/* 末尾那条空行没有 ✕:它不是一条请求头,是「下一条」的落点。 */}
+                  {item.name || item.value ? (
+                    <IconButton
+                      size="sm"
+                      icon={X}
+                      label={t('providers.customHeaderRemove')}
+                      onClick={() => removeLine(item.key)}
+                    />
+                  ) : (
+                    <span className={s.headerSlot} aria-hidden="true" />
+                  )}
+                </div>
+              ))}
+              <p className={s.headersHint}>{t('providers.customHeaderHint')}</p>
+            </div>
+          </FoldBody>
+        </Fold>
+
         <Field label={t('providers.customModel')} hint={t('providers.customModelHint')}>
           <FieldInput
             size="sm"
@@ -169,7 +326,11 @@ export function CustomProviderDialog({
           />
         </Field>
 
-        {problem && <p className={s.problem}>{problem}</p>}
+        {problem && (
+          <p className={s.problem} role="status">
+            {problem}
+          </p>
+        )}
       </div>
     </Dialog>
   )
@@ -177,28 +338,10 @@ export function CustomProviderDialog({
 
 /**
  * 一格里的输入框。**存在的唯一理由是那一句 `useFieldControlProps()`** ——
- * `ui/Field` 走的是 context + hook 而不是 cloneElement(理由写在 Field.tsx 头:
- * 一格里常常不止一件、注入与自带的同名 props 谁赢由合并次序决定),
- * 而 hook 只能在组件里调,所以这一层薄壳是**必须的**,不是顺手包的。
- *
- * 摊在自己的 props **前面**:这里的 `aria-label` 是这一格真正的名(与迁移前
- * 逐字相同),不许被 Field 的 id / aria 关联覆盖掉。
+ * `ui/Field` 走的是 context + hook,hook 只能在组件里调。
+ * 摊在自己的 props **前面**:这里的 `aria-label` 是这一格真正的名。
  */
 function FieldInput(props: ComponentProps<typeof Input>) {
   const field = useFieldControlProps()
   return <Input {...field} {...props} />
-}
-
-/**
- * 一格里的分段器。与 `FieldInput` 同一条理由(hook 只能在组件里调),
- * 但摊的次序**相反**:这里 `{...field}` 排在**后面**。
- *
- * 因为这一格没有自己的名 —— 名就是 Field 那条 `<label>`,而 `ui/Segmented`
- * 把 `aria-label` 排在 rest **之前**(它文件头写了为什么:排后面会在 `label`
- * 缺席时写进一个 `undefined`,把落点自己传的名静默抹掉)。所以 `aria-labelledby`
- * 从 rest 进来即可,两格并存时可访问名以 labelledby 为准。
- */
-function CompatSegmented(props: ComponentProps<typeof Segmented<'openai' | 'anthropic'>>) {
-  const field = useFieldControlProps()
-  return <Segmented {...props} {...field} />
 }

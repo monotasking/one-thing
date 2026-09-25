@@ -208,6 +208,7 @@ function renderCatalog(rows: readonly CatalogRow[], query = '') {
       onRemoveManual={vi.fn()}
       onRenameManual={vi.fn()}
       onWriteOverride={vi.fn()}
+      onApplySuggestions={vi.fn()}
     />,
   )
 }
@@ -393,7 +394,7 @@ describe('Card 收编:详情栏那几张卡', () => {
 describe('Field 收编:自定义家对话框', () => {
   function open() {
     return render(
-      <CustomProviderDialog open initial={undefined} onClose={() => {}} onSave={() => {}} />,
+      <CustomProviderDialog open initial={undefined} onClose={() => {}} onSave={() => true} />,
     )
   }
 
@@ -406,7 +407,7 @@ describe('Field 收编:自定义家对话框', () => {
     const { baseElement } = open()
     const fields = [...baseElement.querySelectorAll(`.${fieldCss.field}`)]
     const withInput = fields.filter((f) => f.querySelector('input'))
-    // 五格是输入框(名称 / 描述 / Base URL / 密钥 / 默认模型),一格是分段器。
+    // 五格是输入框(名称 / Base URL / 密钥 / 模型列表地址 / 默认模型),一格是下拉(接口类型)。
     expect(withInput.length).toBe(5)
     for (const field of withInput) {
       const label = field.querySelector('label')
@@ -420,8 +421,8 @@ describe('Field 收编:自定义家对话框', () => {
     const { baseElement } = open()
     const fields = [...baseElement.querySelectorAll(`.${fieldCss.field}`)]
     const hinted = fields.filter((f) => f.querySelector(`.${fieldCss.hint}`))
-    // Base URL 与默认模型两格有说明,其余四格没有 —— 空槽不渲染。
-    expect(hinted.length).toBe(2)
+    // Base URL / 模型列表地址 / 默认模型三格有说明,其余三格没有 —— 空槽不渲染。
+    expect(hinted.length).toBe(3)
     for (const field of hinted) {
       const hint = field.querySelector(`.${fieldCss.hint}`)
       const input = field.querySelector('input')
@@ -452,18 +453,14 @@ describe('Field 收编:自定义家对话框', () => {
    * 它自己的 `label`:传了的话名字有两个产地,摘掉 field 也照样叫得出名字,
    * 这条断言就成了陪跑。
    */
-  it('分段器那一格的名字来自 Field 的 label(aria-labelledby 真接上了)', () => {
+  it('接口类型那一格是下拉(批 3 §6.1),名字与 Field 的 label 同一句,就长在那一格里', () => {
     const { baseElement } = open()
-    const group = screen.getByRole('radiogroup', { name: '兼容形 · 必填' })
-    const by = group.getAttribute('aria-labelledby')
-    expect(by).toBeTruthy()
-    const label = baseElement.querySelector(`#${by}`)
-    expect(label?.tagName).toBe('LABEL')
-    expect(label?.textContent).toBe('兼容形 · 必填')
-    // 名字只有一个产地:这一格不再自带 aria-label。
-    expect(group.getAttribute('aria-label')).toBeNull()
-    // 它就长在那一格 Field 里,不是页面上另一处同名的东西。
-    expect(group.closest(`.${fieldCss.field}`)).toBe(label?.parentElement)
+    const combo = screen.getByRole('combobox', { name: '接口类型' })
+    const field = combo.closest(`.${fieldCss.field}`)
+    expect(field?.querySelector('label')?.textContent).toBe('接口类型')
+    // 缺省 = OpenAI 兼容。
+    expect(combo.textContent).toContain('OpenAI 兼容')
+    expect(baseElement.querySelectorAll('[role="radiogroup"]').length).toBe(0)
   })
 })
 

@@ -33,6 +33,7 @@ import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import { fetchCodexUsage } from '../../wiring/providers/builtin/codex.js'
 import { getAvailableProviders } from '../../wiring/providers/index.js'
 import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
+import { listLabeledDialectsForIpc } from '@onething/runtime/agent-loop/providers/dialect-options'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingProviderPresentationIpcLogger } from '@onething/runtime/providers/provider-presentation'
@@ -55,6 +56,10 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
   async list() {
     const listOnethingProvidersOptions: ListOnethingProvidersOptions<ProviderInfo> & { logger?: OnethingProviderPresentationIpcLogger | undefined; } = { getAvailableProviders, logger: consoleLog };
     return listOnethingProvidersForIpc(listOnethingProvidersOptions)
+  },
+  /** 「接口类型」下拉(批 3 §6.1):方言自述人话名,有名字的才进。只读,不碰网。 */
+  async listDialects() {
+    return listLabeledDialectsForIpc()
   },
   async usage(request) {
     const getOnethingProviderUsageOptions: GetOnethingProviderUsageOptions<OAuthToken, CodexProviderUsage> = {

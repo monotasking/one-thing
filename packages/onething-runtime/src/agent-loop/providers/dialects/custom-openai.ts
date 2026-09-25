@@ -12,6 +12,7 @@ import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./reci
 
 export const CUSTOM_OPENAI_DIALECT = defineOpenAIChatDialect({
 	id: "custom-openai",
+	label: "OpenAI compatible",
 	defaultBaseUrl: "https://api.openai.com/v1",
 	reasoning: openAIEffortWire,
 	includeAssistantReasoning: true,

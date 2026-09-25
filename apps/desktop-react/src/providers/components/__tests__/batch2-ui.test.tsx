@@ -62,6 +62,7 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       onRemoveManual={vi.fn()}
       onRenameManual={vi.fn()}
       onWriteOverride={vi.fn()}
+      onApplySuggestions={vi.fn()}
       {...props}
     />
   )
@@ -883,7 +884,7 @@ describe('CustomProviderDialog', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
     expect(onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '我的 vLLM', baseUrl: 'http://192.168.1.8:8000/v1', apiType: 'openai' }),
+      expect.objectContaining({ name: '我的 vLLM', baseUrl: 'http://192.168.1.8:8000/v1', dialect: 'custom-openai' }),
     )
   })
 
@@ -901,10 +902,12 @@ describe('CustomProviderDialog', () => {
         initial: {
           name: 'vLLM',
           description: '',
-          apiType: 'openai',
+          dialect: 'custom-openai',
           baseUrl: 'http://x/v1',
           apiKey: '',
           model: '',
+          modelsUrl: '',
+          headers: [],
         },
       }),
     )
@@ -1019,5 +1022,153 @@ describe('ModeCard · 计费档位', () => {
     fireEvent.click(screen.getByLabelText('Zhipu API mode'))
     fireEvent.click(screen.getByRole('option', { name: 'Coding Plan' }))
     expect(onDials).toHaveBeenCalledWith('coding-plan', '')
+  })
+})
+
+/* ── 批 3:自定义服务商对话框 = manifest 编辑器(§6.1)──────────────────────── */
+
+describe('CustomProviderDialog · 批 3', () => {
+  function fill(label: string, value: string) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } })
+  }
+
+  it('接口类型下拉读方言注册表:字典里有人话名的才进,缺省 OpenAI 兼容排第一', () => {
+    render(
+      <CustomProviderDialog
+        open
+        onClose={vi.fn()}
+        onSave={vi.fn(() => true)}
+        dialects={[
+          { id: 'gemini', label: 'Gemini' },
+          { id: 'custom-openai', label: 'OpenAI compatible' },
+          { id: 'mystery', label: 'Mystery' },
+        ]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('combobox', { name: '接口类型' }))
+    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(options).toEqual(['OpenAI 兼容', 'Gemini'])
+  })
+
+  it('请求头:末尾永远一条空行;「插入密钥」往值里补 {{apiKey}};提交交出所有行', async () => {
+    const onSave = vi.fn(() => true)
+    render(<CustomProviderDialog open onClose={vi.fn()} onSave={onSave} />)
+    fill('名称 · 必填', '转发站')
+    fill('Base URL · 必填', 'http://relay/v1')
+    fireEvent.click(screen.getByTestId('custom-provider-advanced'))
+    fill('模型列表地址', '/catalog')
+
+    const names = () => screen.getAllByLabelText('名称', { selector: 'input' })
+    expect(names()).toHaveLength(1)
+    fireEvent.change(names()[0], { target: { value: 'X-Test' } })
+    expect(names()).toHaveLength(2)
+    fireEvent.click(screen.getAllByRole('button', { name: '插入密钥' })[0])
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('custom-provider-submit'))
+    })
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dialect: 'custom-openai',
+        modelsUrl: '/catalog',
+        headers: [
+          { name: 'X-Test', value: '{{apiKey}}' },
+          { name: '', value: '' },
+        ],
+      }),
+    )
+  })
+
+  it('编辑已有、有请求头 → 高级默认展开', () => {
+    render(
+      <CustomProviderDialog
+        open
+        editingId="custom-1"
+        onClose={vi.fn()}
+        onSave={vi.fn(() => true)}
+        initial={{
+          name: 'x',
+          description: '',
+          dialect: 'custom-openai',
+          baseUrl: 'http://x',
+          apiKey: '',
+          model: '',
+          modelsUrl: '',
+          headers: [{ name: 'X-A', value: '1' }],
+        }}
+      />,
+    )
+    expect(screen.getByTestId('custom-provider-advanced').getAttribute('aria-expanded')).toBe('true')
+    expect((screen.getAllByLabelText('名称', { selector: 'input' })[0] as HTMLInputElement).value).toBe('X-A')
+  })
+
+  it('保存失败:对话框留在屏上,表单一格不丢,说一句「设置没保存上」', async () => {
+    const onSave = vi.fn(async () => false)
+    render(<CustomProviderDialog open onClose={vi.fn()} onSave={onSave} />)
+    fill('名称 · 必填', '转发站')
+    fill('Base URL · 必填', 'http://relay/v1')
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('custom-provider-submit'))
+    })
+    expect(screen.getByText('设置没保存上')).toBeTruthy()
+    expect((screen.getByLabelText('名称 · 必填') as HTMLInputElement).value).toBe('转发站')
+  })
+})
+
+/* ── 批 3:参数建议芯片(§6.3)────────────────────────────────────────────── */
+
+describe('ModelCatalog · 参数建议', () => {
+  const SUGGESTION = {
+    from: { provider: 'openai', id: 'gpt-5.5', providerName: 'OpenAI' },
+    contextLength: 400000,
+    maxOutput: 128000,
+    capabilities: { tools: true, vision: true },
+  }
+  const unknownRow = (id: string) =>
+    row(id, { contextLength: null, maxOutput: null, caps: [], price: null, manual: true, suggestion: SUGGESTION })
+
+  it('只长在「不知道」的格子里;点哪格写哪格', () => {
+    const onApplySuggestions = vi.fn()
+    render(catalog({ rows: [unknownRow('gpt-5.5')], onApplySuggestions }))
+    expect(screen.getByTestId('suggest-ctx-gpt-5.5').textContent).toBe('≈ 400k')
+    expect(screen.getByTestId('suggest-out-gpt-5.5').textContent).toBe('≈ 128k')
+    expect(screen.getByTestId('suggest-caps-gpt-5.5')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('suggest-ctx-gpt-5.5'))
+    expect(onApplySuggestions).toHaveBeenCalledWith([
+      { modelId: 'gpt-5.5', suggestion: SUGGESTION, fields: ['contextLength'] },
+    ])
+  })
+
+  it('有读数的格子一个字不动(建议在,但那一格知道)', () => {
+    render(catalog({ rows: [row('a', { suggestion: SUGGESTION })] }))
+    expect(screen.queryByTestId('suggest-ctx-a')).toBeNull()
+    expect(screen.queryByTestId('suggest-out-a')).toBeNull()
+  })
+
+  it('≥2 行带建议 → 目录头「{n} 个模型可按目录填参数 [全部应用]」一次交全部', () => {
+    const onApplySuggestions = vi.fn()
+    render(catalog({ rows: [unknownRow('a'), unknownRow('b'), row('c')], onApplySuggestions }))
+    expect(screen.getByTestId('catalog-suggest-all').textContent).toContain('2 个模型可按目录填参数')
+    fireEvent.click(screen.getByRole('button', { name: '全部应用' }))
+    expect(onApplySuggestions).toHaveBeenCalledWith([
+      { modelId: 'a', suggestion: SUGGESTION },
+      { modelId: 'b', suggestion: SUGGESTION },
+    ])
+  })
+
+  it('只有 1 行带建议 → 不画目录头那一句', () => {
+    render(catalog({ rows: [unknownRow('a'), row('c')] }))
+    expect(screen.queryByTestId('catalog-suggest-all')).toBeNull()
+  })
+
+  it('覆盖浮层多一行「按 OpenAI gpt-5.5 填:…[应用]」,一次写全部', () => {
+    const onApplySuggestions = vi.fn()
+    render(catalog({ rows: [unknownRow('gpt-5.5')], onApplySuggestions }))
+    fireEvent.click(screen.getByTestId('configure-gpt-5.5'))
+    const line = screen.getByTestId('model-override-suggest')
+    expect(line.textContent).toContain('按 OpenAI gpt-5.5 填')
+    expect(line.textContent).toContain('400k / 输出 128k / 图像输入·工具调用')
+    fireEvent.click(screen.getByTestId('model-override-suggest-apply'))
+    expect(onApplySuggestions).toHaveBeenCalledWith([{ modelId: 'gpt-5.5', suggestion: SUGGESTION }])
   })
 })

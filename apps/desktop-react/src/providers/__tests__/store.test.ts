@@ -4,7 +4,14 @@ import type { ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { configureProviderSettingsPort } from '../../data/provider-settings-port'
 import type { OAuthPush, ProviderSettingsPort } from '../../data/provider-settings-port'
 import { useNotifyStore } from '../../services/notify-store'
-import { settingsKey, settingsMutation, useProviderSettings } from '../store'
+import {
+  customDialectOf,
+  customProviderFormOf,
+  settingsKey,
+  settingsMutation,
+  useProviderSettings,
+} from '../store'
+import { suggestionPatchOf } from '../projection'
 import { defaultSelectionOf, prefsQuery, toProviderPrefs } from '../../data/models-source'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { buildFamilies, findFamily } from '../families'
@@ -1255,10 +1262,12 @@ describe('自定义家', () => {
   const FORM = {
     name: '我的 vLLM',
     description: '本机',
-    apiType: 'openai' as const,
+    dialect: 'custom-openai',
     baseUrl: 'http://192.168.1.8:8000/v1',
     apiKey: '',
     model: 'qwen3-32b-awq',
+    modelsUrl: '',
+    headers: [],
   }
 
   it('新建:写 customProviders **同时**镜像进 ai.providers', async () => {
@@ -1268,7 +1277,9 @@ describe('自定义家', () => {
 
     const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     const created = sent.ai.customProviders![0]
-    expect(created).toMatchObject({ name: '我的 vLLM', apiType: 'openai', model: 'qwen3-32b-awq' })
+    expect(created).toMatchObject({ name: '我的 vLLM', dialect: 'custom-openai', model: 'qwen3-32b-awq' })
+    // 旧的兼容形不再写(读时兼容在 `customDialectOf`)。
+    expect(created).not.toHaveProperty('apiType')
     // 只写 customProviders 的话,这一家在聊天的模型选择器里是隐形的。
     expect(sent.ai.providers[created.id]).toMatchObject({
       baseUrl: 'http://192.168.1.8:8000/v1',
@@ -1389,10 +1400,12 @@ describe('setBaseUrl', () => {
     await useProviderSettings.getState().saveCustomProvider({
       name: '我的 vLLM',
       description: '',
-      apiType: 'openai',
+      dialect: 'custom-openai',
       baseUrl: 'http://192.168.1.8:8000/v1',
       apiKey: '',
       model: 'qwen3-32b-awq',
+      modelsUrl: '',
+      headers: [],
     })
     const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
 
@@ -1410,15 +1423,131 @@ describe('setBaseUrl', () => {
     await useProviderSettings.getState().saveCustomProvider({
       name: '我的 vLLM',
       description: '',
-      apiType: 'openai',
+      dialect: 'custom-openai',
       baseUrl: 'http://192.168.1.8:8000/v1',
       apiKey: '',
       model: 'qwen3-32b-awq',
+      modelsUrl: '',
+      headers: [],
     })
     await useProviderSettings.getState().setBaseUrl(
       vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id,
       '  ',
     )
     expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* ── 批 3:自定义服务商 = manifest 编辑器 / 参数建议 ────────────────────────── */
+
+describe('批 3 · 自定义服务商(§6.1)', () => {
+  const FORM3 = {
+    name: '转发站',
+    description: '',
+    dialect: 'openrouter',
+    baseUrl: 'http://relay/v1',
+    apiKey: 'sk-relay',
+    model: '',
+    modelsUrl: ' /catalog ',
+    headers: [
+      { name: 'X-Test', value: '{{apiKey}}' },
+      { name: '  ', value: '空名字的行不算' },
+      { name: '', value: '' },
+    ],
+  }
+
+  it('写 dialect / headers / modelsUrl:定义那一份与运行期那一份一起写(dialect 只写定义)', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    expect(await useProviderSettings.getState().saveCustomProvider(FORM3)).toBe(true)
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
+    const created = sent.ai.customProviders![0]
+    expect(created).toMatchObject({
+      dialect: 'openrouter',
+      headers: { 'X-Test': '{{apiKey}}' },
+      modelsUrl: '/catalog',
+    })
+    expect(sent.ai.providers[created.id]).toMatchObject({
+      headers: { 'X-Test': '{{apiKey}}' },
+      modelsUrl: '/catalog',
+    })
+    expect(sent.ai.providers[created.id]).not.toHaveProperty('dialect')
+  })
+
+  it('密钥进这个空间的密钥池(从前写进 providers[id].apiKey,落盘就被剥掉)', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider(FORM3)
+    const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
+    expect(port.setCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ id: DEFAULT_SPACE_ID, providerId: id, apiKey: 'sk-relay' }),
+    )
+  })
+
+  it('保存后目录区自动拉一次(forceRefresh)', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider(FORM3)
+    const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
+    await vi.waitFor(() =>
+      expect(port.listModels).toHaveBeenCalledWith(id, true, DEFAULT_SPACE_ID),
+    )
+  })
+
+  it('写失败:答 false,密钥一个字都不动', async () => {
+    const port = installPort({
+      writeProviderSettings: vi.fn(async () => ({ success: false, error: '写不进去' })),
+    })
+    await useProviderSettings.getState().start()
+    expect(await useProviderSettings.getState().saveCustomProvider(FORM3)).toBe(false)
+    expect(port.setCredential).not.toHaveBeenCalled()
+  })
+
+  it('读时兼容:旧条目只有 apiType,表单读成对应方言;密钥格空', () => {
+    expect(customDialectOf({ apiType: 'anthropic' })).toBe('custom-anthropic')
+    expect(customDialectOf({})).toBe('custom-openai')
+    expect(customDialectOf({ dialect: 'gemini', apiType: 'anthropic' })).toBe('gemini')
+    const form = customProviderFormOf({
+      id: 'custom-1',
+      name: '老的',
+      apiType: 'anthropic',
+      baseUrl: 'http://x',
+      model: 'm',
+      selectedModels: [],
+      headers: { A: '1' },
+    } as never)
+    expect(form).toMatchObject({ dialect: 'custom-anthropic', apiKey: '', headers: [{ name: 'A', value: '1' }] })
+  })
+})
+
+describe('批 3 · 参数建议(§6.3)', () => {
+  const SUGGESTION = {
+    from: { provider: 'openai', id: 'gpt-5.5', providerName: 'OpenAI' },
+    contextLength: 400000,
+    maxOutput: 128000,
+    capabilities: { tools: true, vision: true },
+  }
+
+  it('suggestionPatchOf:缺席 = 全部;fields 只取那几格;能力只写「支持」', () => {
+    expect(suggestionPatchOf(SUGGESTION)).toEqual({
+      contextLength: 400000,
+      maxOutput: 128000,
+      caps: { tools: true, vision: true },
+    })
+    expect(suggestionPatchOf(SUGGESTION, ['contextLength'])).toEqual({ contextLength: 400000 })
+  })
+
+  it('applySuggestions:好几型合成一次写回,四张表与手填同一个形状', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().applySuggestions('claude', [
+      { modelId: 'a', suggestion: SUGGESTION },
+      { modelId: 'b', suggestion: { ...SUGGESTION, capabilities: undefined }, fields: ['maxOutput'] },
+    ])
+    expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
+    const config = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude
+    expect(config.contextLengthByModel).toEqual({ a: 400000 })
+    expect(config.maxOutputByModel).toEqual({ a: 128000, b: 128000 })
+    expect(config.modelCapabilitiesByModel).toEqual({ a: { tools: true, vision: true } })
   })
 })

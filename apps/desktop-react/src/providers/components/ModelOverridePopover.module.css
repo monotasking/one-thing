@@ -205,3 +205,27 @@
   font-size: var(--fs-ext);
 }
 .reasoningError { color: var(--danger); font-size: var(--fs-ext); }
+
+/*
+ * 参数建议那一行(批 3 §6.3)。一句话 + 一颗「应用」:字可以换行(浮层内容宽只有
+ * `--pv-override-w`,「按 OpenAI gpt-5.5 填:200K / 输出 128K / 工具调用·图像输入·推理」
+ * 一行装不下),钮不缩、贴右。与说明行同一种小字,不上状态色(建议不是一种状态)。
+ */
+.suggest {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.suggestText {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.suggest > :last-child {
+  flex: none;
+}

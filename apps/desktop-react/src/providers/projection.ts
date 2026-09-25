@@ -1,6 +1,6 @@
 import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import { frozenFlagOf } from '../ui/list-placement'
-import type { OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
+import type { ModelParameterSuggestion, OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
 import type {
   SpaceCredentialEntrySummary,
   SpaceProviderCredentialSummary,
@@ -25,6 +25,7 @@ import type {
   ModeTab,
   ModelCap,
   ModelOverride,
+  ModelOverridePatch,
   ProviderFamilyView,
   ProviderMode,
   ProviderModeKind,
@@ -497,10 +498,19 @@ function effectiveCapsOf(base: readonly ModelCap[], model: OpenRouterModel): Mod
   return MODEL_CAPS.filter((cap) => known.get(cap) ?? base.includes(cap))
 }
 
-/** 目录自己那五句(未经覆盖)。目录行一律是布尔;手填行走 `NO_CATALOG_FACTS`。 */
-function catalogCapsOf(base: readonly ModelCap[]): Record<CapabilityKey, boolean | null> {
+/**
+ * 目录自己那五句(未经覆盖)。目录行是布尔;手填行走 `NO_CATALOG_FACTS`;接口拉来、但
+ * **没报**某一项的行(`unreported`,批 3 直连拉目录)那一项是 `null` —— 「目录:没填」,
+ * 不是「目录:不支持」。
+ */
+function catalogCapsOf(
+  base: readonly ModelCap[],
+  unreported: readonly string[] | undefined,
+): Record<CapabilityKey, boolean | null> {
   const caps = {} as Record<CapabilityKey, boolean | null>
-  for (const key of CAPABILITY_KEYS) caps[key] = base.includes(CAP_OF_KEY[key])
+  for (const key of CAPABILITY_KEYS) {
+    caps[key] = unreported?.includes(key) ? null : base.includes(CAP_OF_KEY[key])
+  }
   return caps
 }
 
@@ -550,8 +560,9 @@ export function buildCatalogRows(
         } : {}),
         contextLength: manual ? null : contextOf(model),
         maxOutput: manual ? null : maxOutputOf(model),
-        caps: manual ? NO_CATALOG_FACTS.caps : catalogCapsOf(baseCaps),
+        caps: manual ? NO_CATALOG_FACTS.caps : catalogCapsOf(baseCaps, model.unreported),
       },
+      ...(model.suggestion ? { suggestion: model.suggestion } : {}),
     }
   })
 
@@ -670,4 +681,46 @@ export function formatFetchedAt(ms: number | undefined): string | null {
 /** 订阅坑的模型不按 token 计价(交接稿 §1)—— 价格那一格写「订阅内」。 */
 export function priceIsIncluded(kind: ProviderModeKind): boolean {
   return kind === 'subscription'
+}
+
+/* ── 参数建议(批 3 §6.3)───────────────────────────────────────────────────── */
+
+/**
+ * 一份建议里的一格:上下文 / 最大输出 / 能力(五项一起)/ 思考档位。目录行上的芯片
+ * 一次只应用一格(点哪格写哪格),浮层与「全部应用」一次写全部。
+ */
+export type SuggestionField = 'contextLength' | 'maxOutput' | 'capabilities' | 'reasoningProfile'
+
+/**
+ * 建议 → 覆盖补丁(`ModelOverridePatch`,与浮层手填同一个形状,所以写路也是同一条)。
+ * `fields` 缺席 = 全部。能力只写建议里说「支持」的那几项,其余键不动。
+ */
+export function suggestionPatchOf(
+  suggestion: ModelParameterSuggestion,
+  fields?: readonly SuggestionField[],
+): ModelOverridePatch {
+  const want = (field: SuggestionField) => !fields || fields.includes(field)
+  const caps: Partial<Record<CapabilityKey, boolean>> = {}
+  for (const key of CAPABILITY_KEYS) {
+    if (suggestion.capabilities?.[key] === true) caps[key] = true
+  }
+  return {
+    ...(want('contextLength') && suggestion.contextLength ? { contextLength: suggestion.contextLength } : {}),
+    ...(want('maxOutput') && suggestion.maxOutput ? { maxOutput: suggestion.maxOutput } : {}),
+    ...(want('capabilities') && Object.keys(caps).length > 0 ? { caps } : {}),
+    ...(want('reasoningProfile') && suggestion.reasoningProfile
+      ? { reasoningProfile: suggestion.reasoningProfile }
+      : {}),
+  }
+}
+
+/** 建议里说「支持」的能力,按行上能力串的顺序(`CAPABILITY_KEYS`)排好。 */
+export function suggestedCapsOf(suggestion: ModelParameterSuggestion | undefined): CapabilityKey[] {
+  if (!suggestion?.capabilities) return []
+  return CAPABILITY_KEYS.filter((key) => suggestion.capabilities?.[key] === true)
+}
+
+/** 「按 {provider} {model} 填」里的那家:models.dev 自己写的名字,没有就用它的键。 */
+export function suggestionSourceOf(suggestion: ModelParameterSuggestion): { provider: string; model: string } {
+  return { provider: suggestion.from.providerName || suggestion.from.provider, model: suggestion.from.id }
 }

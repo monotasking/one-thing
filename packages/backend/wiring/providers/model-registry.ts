@@ -10,6 +10,7 @@ import type { OpenRouterModel } from "@shared/ipc.js";
 import {
 	catalogFactsOf,
 	fetchOnethingModelsDevData,
+	getProviderManifest,
 	getAllOnethingModels,
 	getOnethingModelById,
 	getOnethingModelCacheStatus,
@@ -41,7 +42,10 @@ import {
 	MODELS_DEV_CACHE_FILE_NAME,
 } from "@onething/runtime/providers/models-dev-cache";
 import { getOnethingCachePath } from "@onething/runtime/storage/paths";
-import { getSettings, saveSettings } from "../../stores/settings.js";
+import { getSettings, getSpaceSettings, saveSettings } from "../../stores/settings.js";
+import { fetchProviderDirectModels } from "@onething/runtime/providers/models-endpoint";
+import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
+import { resolveSpaceProviderCredentialForSpace } from "./space-credentials.js";
 import { createRequiredAppFetch } from "../../provider-binding/bound-fetch.js";
 import {
 	getCodexFallbackModel,
@@ -432,15 +436,69 @@ async function fetchModelsDevData(
 }
 
 /**
- * Refresh models for a specific provider only.
- * Fetches from models.dev and stores results under settings.ai.providers[providerId].models.
+ * 认亲索引要的那一份 models.dev 快照(批 3 §6.3)。**不看新鲜度**:有缓存文件就读它
+ * (一发网络都不打),只有一份都没有时才去问一次(单飞、落盘)。拿不到 = undefined,
+ * 目录照常出、只是没有建议。
  */
-export async function refreshProviderModels(providerId: string): Promise<void> {
+export async function getModelsDevSnapshot(): Promise<
+	{ data: OnethingModelsDevResponse; fetchedAt: number } | undefined
+> {
+	try {
+		const result = await modelsDevCache.get({ maxAgeMs: Number.POSITIVE_INFINITY });
+		return { data: result.data, fetchedAt: result.fetchedAt };
+	} catch (error) {
+		log.debug("models.dev snapshot unavailable; no parameter suggestions", {
+			message: error instanceof Error ? error.message : String(error),
+		});
+		return undefined;
+	}
+}
+
+/**
+ * 一家在某个空间里的直连参数:接口地址 / 模型列表地址 / 自定义头来自那个空间的设置
+ * (自定义服务商的定义叠上它在 `providers[id]` 的那一份),密钥来自那个空间的密钥池。
+ */
+function directModelsConfigOf(providerId: string, spaceId: string) {
+	const ai = getSpaceSettings(spaceId)?.ai;
+	const custom = ai?.customProviders?.find((provider) => provider.id === providerId);
+	const configured = ai?.providers?.[providerId];
+	const merged = { ...(custom ?? {}), ...(configured ?? {}) } as {
+		baseUrl?: string;
+		modelsUrl?: string;
+		headers?: Record<string, string>;
+	};
+	const resolution = resolveSpaceProviderCredentialForSpace(spaceId, providerId);
+	const apiKey = resolution.kind === "entry" ? resolution.entry.apiKey : undefined;
+	return {
+		baseUrl: merged.baseUrl?.trim() || getProviderManifest(providerId)?.defaultBaseUrl || "",
+		...(merged.modelsUrl?.trim() ? { modelsUrl: merged.modelsUrl.trim() } : {}),
+		...(merged.headers ? { headers: merged.headers } : {}),
+		...(apiKey ? { apiKey } : {}),
+	};
+}
+
+/**
+ * Refresh models for a specific provider only.
+ * models.dev 家:重拉目录(条件请求)落盘;`endpoint` 家(自定义服务商,批 3 §6.2):
+ * 问它自己的 `/models`,接口地址 / 头 / 密钥按 `spaceId` 那个空间取(缺省默认空间)。
+ * 目录全空间共享,落盘照旧走默认空间的生效设置(拆分点只落全局那一半)。
+ */
+export async function refreshProviderModels(
+	providerId: string,
+	options: { spaceId?: string } = {},
+): Promise<void> {
+	const spaceId = options.spaceId?.trim() || DEFAULT_SPACE_ID;
 	const modelRegistryRefreshAdapters: OnethingModelRegistryRefreshAdapters<AppSettings> = {
 		getSettings,
 		saveSettings,
 		// 这一口是设置页的「刷新」钮:force = 条件请求,不是无条件重拉。
 		fetchModelsDevData: () => fetchModelsDevData({ force: true }),
+		fetchEndpointModels: (id) =>
+			fetchProviderDirectModels({
+				...directModelsConfigOf(id, spaceId),
+				fetchImpl: (input, init) => createRequiredAppFetch({ policy: "default" })(input, init),
+				signal: AbortSignal.timeout(15000),
+			}),
 		logger: consoleLog,
 	};
 	await refreshOnethingProviderModels(providerId, modelRegistryRefreshAdapters);

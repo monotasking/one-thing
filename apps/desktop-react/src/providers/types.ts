@@ -1,4 +1,4 @@
-import type { OAuthFlowType, ReasoningProfileOverride } from '@shared/ipc/providers'
+import type { ModelParameterSuggestion, OAuthFlowType, ReasoningProfileOverride } from '@shared/ipc/providers'
 import type { MessageKey, MessageVars } from '../i18n'
 
 /**
@@ -195,6 +195,12 @@ export interface CatalogRow {
    * —— 那就是目录在说「不支持」,与这张表不画那一枚图标是同一句话。
    */
   catalog: CatalogFacts
+  /**
+   * 参数建议(批 3 §6.3):后端从 models.dev 认出「这一型大概是谁」,只给「不知道」的格。
+   * 缺席 = 没有可建议的(认不出,或该知道的都知道了)。点了才写进覆盖表 —— 写了之后那一格
+   * 不再 unknown,后端下一次投影就不再给它,屏幕上的芯片自然消失。
+   */
+  suggestion?: ModelParameterSuggestion
 }
 
 /** 目录对这一型说过的那几句。`null` = 没说过。 */

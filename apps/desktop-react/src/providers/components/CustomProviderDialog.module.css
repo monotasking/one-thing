@@ -7,11 +7,82 @@
   min-width: 0;
 }
 
-.intro {
+/*
+ * ── 高级 ▸(批 3 §6.1)──────────────────────────────────────────────────
+ * 开合的行为归 `ui/Fold`(一个像素都不画),皮肤归这里:一枚右指的箭头 + 一个词。
+ * 箭头转 90° 是**当拍到位**的(没有过渡):这是一个表单里的开关,不是一段动画。
+ */
+.advancedHead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  align-self: flex-start;
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.chevron {
+  flex: none;
+  color: var(--text-3);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.advancedBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* 请求头:一行四件 = 名 / 值 / 插入密钥 / ✕(或同宽空位)。名窄值宽,两格都会收缩。 */
+.headers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.headersLabel {
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.headerName {
+  flex: 2 1 0;
+  min-width: 0;
+}
+
+.headerValue {
+  flex: 3 1 0;
+  min-width: 0;
+}
+
+.insertKey {
+  flex: none;
+}
+
+/* 末尾空行没有 ✕,占一个同宽的空位 —— 四行的「插入密钥」落在同一个 x 上。 */
+.headerSlot {
+  flex: none;
+  width: var(--icon-btn-sm);
+}
+
+.headersHint {
   margin: 0;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-nano);
   color: var(--text-2);
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 /* `.field` / `.label` / `.hint` 已收进 `ui/Field`(09-01 批 2b)——

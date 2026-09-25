@@ -69,6 +69,12 @@ export interface DialectThinkingIntent {
 
 export interface Dialect<W = unknown> {
 	id: string;
+	/**
+	 * 人话名(批 3 §6.1:自定义服务商对话框「接口类型」下拉)。**缺席 = 不进下拉** ——
+	 * 那些方言绑着某一家的登录方式(Codex / Claude Code / Copilot …),用户拿它去接一个
+	 * 转发站没有意义。壳按 `providers.dialect.<id>` 查自己的字典,这里的英文名只是后备。
+	 */
+	label?: string;
 	wire: WireId;
 	endpoint: DialectEndpoint;
 	auth: AuthStrategy;

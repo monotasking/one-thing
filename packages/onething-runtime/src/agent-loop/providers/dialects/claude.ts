@@ -10,6 +10,7 @@ import {
 
 export const CLAUDE_DIALECT = defineAnthropicDialect({
 	id: "claude",
+	label: "Anthropic",
 	defaultBaseUrl: ANTHROPIC_DEFAULT_BASE_URL,
 	promptCaching: true,
 });

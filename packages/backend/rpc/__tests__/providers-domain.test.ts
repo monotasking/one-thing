@@ -144,3 +144,19 @@ describe('providers RPC domain', () => {
     })
   })
 })
+
+/** 批 3 §6.1:「接口类型」下拉读方言注册表 —— 自述了人话名的才进。 */
+describe('providers RPC domain — listDialects', () => {
+  it('有人话名的方言都在;绑登录方式的那几份不在', async () => {
+    const response = await providersRpcHandlers.listDialects({})
+    expect(response.success).toBe(true)
+    const ids = (response.dialects ?? []).map(d => d.id)
+    for (const id of ['custom-openai', 'custom-anthropic', 'openai', 'claude', 'gemini', 'openrouter', 'zhipu', 'qwen', 'deepseek', 'kimi', 'grok']) {
+      expect(ids).toContain(id)
+    }
+    for (const id of ['codex', 'claude-code', 'github-copilot', 'kimi-code', 'grok-oauth']) {
+      expect(ids).not.toContain(id)
+    }
+    expect(response.dialects?.find(d => d.id === 'custom-openai')?.label).toBe('OpenAI compatible')
+  })
+})

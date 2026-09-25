@@ -28,6 +28,7 @@ export const QWEN_USAGE_TABLE: UsagePathTable = openAIChatUsageTable({
 
 export const QWEN_DIALECT = defineOpenAIChatDialect({
 	id: "qwen",
+	label: "Qwen",
 	defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
 	reasoning: qwenThinkingWire,
 	includeAssistantReasoning: true,

@@ -131,6 +131,8 @@ export const promptCacheKeyExtraBody: NonNullable<Dialect["extraBody"]> = (turn)
 
 export interface OpenAIChatDialectSpec {
 	id: string;
+	/** 人话名(见 `Dialect.label`);缺席 = 不进自定义服务商的「接口类型」下拉。 */
+	label?: string;
 	defaultBaseUrl: string;
 	maxTokensField?: "max_tokens" | "max_completion_tokens";
 	/** 这家走哪条思考线型(一家一条,由 `ModelProfile.reasoningWire` 选中或兜底)。 */
@@ -212,6 +214,7 @@ function composeExtraBody(spec: OpenAIChatDialectSpec): Dialect["extraBody"] {
 export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialect {
 	return {
 		id: spec.id,
+		...(spec.label ? { label: spec.label } : {}),
 		wire: "openai-chat",
 		endpoint: { defaultBaseUrl: spec.defaultBaseUrl, path: "/chat/completions" },
 		auth: UNCONFIGURED_AUTH,

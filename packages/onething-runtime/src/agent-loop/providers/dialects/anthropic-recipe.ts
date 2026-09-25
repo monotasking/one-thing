@@ -94,6 +94,8 @@ export function anthropicAuth(options: AnthropicAuthOptions = {}): AuthStrategy 
 
 export interface AnthropicDialectSpec {
 	id: string;
+	/** 人话名(见 `Dialect.label`);缺席 = 不进自定义服务商的「接口类型」下拉。 */
+	label?: string;
 	defaultBaseUrl?: string;
 	/**
 	 * 打显式缓存断点(`cache_control: ephemeral`)。官方端点开;第三方
@@ -112,6 +114,7 @@ export function anthropicDialect(spec: AnthropicDialectSpec): AnthropicDialect {
 	};
 	return {
 		id: spec.id,
+		...(spec.label ? { label: spec.label } : {}),
 		wire: "anthropic-messages",
 		endpoint: endpointPort,
 		auth: UNCONFIGURED_AUTH,

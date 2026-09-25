@@ -9,6 +9,7 @@ import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./reci
 
 export const ZHIPU_DIALECT = defineOpenAIChatDialect({
 	id: "zhipu",
+	label: "Zhipu",
 	defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
 	reasoning: zhipuThinkingWire,
 	includeAssistantReasoning: true,

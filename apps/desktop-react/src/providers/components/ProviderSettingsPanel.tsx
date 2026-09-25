@@ -2,8 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { useT } from '../../i18n'
 import type { CustomProviderConfig, ProviderConfig } from '@shared/ipc/providers'
-import { useProviderSettings, authFlowOf, settingsKey, settingsMutation } from '../store'
-import type { CustomProviderForm } from '../store'
+import {
+  useProviderSettings,
+  authFlowOf,
+  customProviderFormOf,
+  settingsKey,
+  settingsMutation,
+} from '../store'
 import { buildFamilies, findFamily, resolveMode } from '../families'
 import {
   buildCatalogRows,
@@ -102,6 +107,9 @@ export function ProviderSettingsPanel() {
   const loadUsage = useProviderSettings((st) => st.loadUsage)
   const saveCustomProvider = useProviderSettings((st) => st.saveCustomProvider)
   const deleteCustomProvider = useProviderSettings((st) => st.deleteCustomProvider)
+  const applySuggestions = useProviderSettings((st) => st.applySuggestions)
+  const dialects = useProviderSettings((st) => st.dialects)
+  const loadDialects = useProviderSettings((st) => st.loadDialects)
 
   /** 自定义家的编辑弹窗。`editingId: null` = 新建。 */
   /**
@@ -117,6 +125,11 @@ export function ProviderSettingsPanel() {
   useEffect(() => {
     void start()
   }, [start])
+
+  // 「接口类型」下拉的选项:对话框第一次打开时问一次(进程级事实,问到就不再问)。
+  useEffect(() => {
+    if (customDialog.open) void loadDialects()
+  }, [customDialog.open, loadDialects])
 
   const configs = settings?.ai?.providers ?? EMPTY_CONFIGS
   const customProviders = settings?.ai?.customProviders
@@ -267,15 +280,7 @@ export function ProviderSettingsPanel() {
     const found = (customProviders ?? []).find(
       (item: CustomProviderConfig) => item.id === customDialog.editingId,
     )
-    if (!found) return undefined
-    return {
-      name: found.name ?? '',
-      description: found.description ?? '',
-      apiType: found.apiType ?? 'openai',
-      baseUrl: found.baseUrl ?? '',
-      apiKey: '',
-      model: found.model ?? '',
-    } satisfies CustomProviderForm
+    return found ? customProviderFormOf(found) : undefined
   }, [customProviders, customDialog.editingId])
 
   if (status === 'loading' || status === 'idle') {
@@ -401,6 +406,7 @@ export function ProviderSettingsPanel() {
             onRenameManual={(oldId, newId) =>
               renameManualModel(mode.providerId, oldId, newId)
             }
+            onApplySuggestions={(items) => void applySuggestions(mode.providerId, items)}
             onWriteOverride={(modelId, patch) =>
               void setModelOverride(mode.providerId, modelId, patch)
             }
@@ -414,10 +420,13 @@ export function ProviderSettingsPanel() {
         open={customDialog.open}
         initial={editingCustom}
         editingId={customDialog.editingId}
+        dialects={dialects}
         onClose={() => setCustomDialog({ open: false })}
-        onSave={(form) => {
-          void saveCustomProvider(form, customDialog.editingId)
-          setCustomDialog({ open: false })
+        onSave={async (form) => {
+          // 写成才关;没成留在屏上,表单一格不丢(对话框自己说那一句)。
+          const ok = await saveCustomProvider(form, customDialog.editingId)
+          if (ok) setCustomDialog({ open: false })
+          return ok
         }}
       />
     </div>

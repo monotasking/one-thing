@@ -5,12 +5,14 @@ import { GroupHead } from '../../ui/GroupHead'
 import { Input } from '../../ui/Input'
 import { useFrozenFlags } from '../../ui/list-placement'
 import { useScrolledPast } from '../../ui/scrolled-past'
+import { Tooltip } from '../../ui/Tooltip'
 import { useSettlePulse } from '../../ui/settle-pulse'
 import { ChevronsUp, TriangleAlert } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { AsyncSource } from '../../data/kernel'
 import type { QueryPhase } from '../../data/kernel'
 import { formatFetchedAt, groupCatalog, priceIsIncluded } from '../projection'
+import { settingsKey, type SuggestionApplication } from '../store'
 import type { CatalogRow, ModelOverridePatch, ProviderModeKind } from '../types'
 import { AddModelRow } from './AddModelRow'
 import { ModelCatalogRow } from './ModelCatalogRow'
@@ -94,6 +96,7 @@ export function ModelCatalog({
   onRemoveManual,
   onRenameManual,
   onWriteOverride,
+  onApplySuggestions,
 }: {
   /**
    * 订阅模式还没登录 —— 目录不存在。这时只画标题与一句空态「登录后显示模型列表」,
@@ -138,6 +141,11 @@ export function ModelCatalog({
   onRenameManual: (oldId: string, newId: string) => string | undefined
   /** 写一个模型的覆盖(上下文窗口 / 工具调用)。`null` = 删那一格。 */
   onWriteOverride: (modelId: string, patch: ModelOverridePatch) => void
+  /**
+   * 应用参数建议(批 3 §6.3)。一行上的芯片 / 浮层那一行交一条,目录头的「全部应用」
+   * 交这一家所有带建议的行 —— 由 store 合成**一次**写回。
+   */
+  onApplySuggestions: (items: readonly SuggestionApplication[]) => void
 }) {
   const t = useT()
   const fetched = formatFetchedAt(fetchedAt)
@@ -181,6 +189,14 @@ export function ModelCatalog({
    * 当场消失,用户改完名得再点一次钮。
    * 包在这里而不是包在行里:行不知道自己改完之后叫什么(它只把那句话转出去)。
    */
+  /** 这一家带建议的行。≥2 行时目录头多一句「{n} 个模型可按目录填参数 [全部应用]」。 */
+  const suggested = useMemo(() => rows.filter((row) => row.suggestion), [rows])
+  const applyOne: Parameters<typeof ModelCatalogRow>[0]['onApplySuggestion'] = (
+    modelId,
+    suggestion,
+    fields,
+  ) => onApplySuggestions([{ modelId, suggestion, ...(fields ? { fields } : {}) }])
+
   function renameManual(oldId: string, newId: string): string | undefined {
     const problem = onRenameManual(oldId, newId)
     if (!problem) setOpenOverride(newId)
@@ -273,6 +289,35 @@ export function ModelCatalog({
       <div ref={topMark} className={s.topMark} aria-hidden="true" />
 
       {/*
+        「{n} 个模型可按目录填参数」(§6.3)。只在 ≥2 行带建议时出现 —— 一行的话那一行
+        自己的芯片就够了。「全部应用」的忙态挂在它自己那一格(`settingsKey.suggest`)上。
+      */}
+      {!locked && suggested.length >= 2 && (
+        <p className={s.suggestLine} data-testid="catalog-suggest-all">
+          <span className={s.suggestLineText}>
+            {t('providers.suggestAll', { count: suggested.length })}
+          </span>
+          <AsyncButton
+            size="sm"
+            variant="ghost"
+            action={write}
+            pendingKey={settingsKey.suggest(providerId)}
+            pendingLabel={t('common.saving')}
+            onClick={() =>
+              onApplySuggestions(
+                suggested.map((row) => ({
+                  modelId: row.id,
+                  suggestion: row.suggestion as NonNullable<CatalogRow['suggestion']>,
+                })),
+              )
+            }
+          >
+            {t('providers.suggestApplyAll')}
+          </AsyncButton>
+        </p>
+      )}
+
+      {/*
         收起时它自己画 `null`(不是这里不渲染它)—— 那样草稿会在「不小心点了
         一下开合钮」之后丢掉,而拆分之前草稿住在这个文件里、开合只是一个布尔。
         `key` = 「换坑就是重挂」:草稿与错误随之归零,且换坑那一帧不会先把
@@ -310,10 +355,18 @@ export function ModelCatalog({
       {error && (
         <p className={s.error} role="status">
           <TriangleAlert size={14} aria-hidden="true" />
-          <span>
-            {t('providers.catalogFailed')}
-            {error ? ` · ${error}` : ''}
-          </span>
+          {/* 「获取失败」+ Tooltip 原话(§6.2):接口那句原话可能是半页 HTML,不铺在行里。 */}
+          <Tooltip content={error}>
+            <span
+              /* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex --
+               * 刻意的:原话只在 Tooltip 里(经 aria-describedby 也念给读屏),键盘用户要
+               * 同样的那一眼就得能落到这一句上。它不执行动作,不报成按钮。 */
+              tabIndex={0}
+              data-testid="catalog-error"
+            >
+              {t('providers.catalogFailed')}
+            </span>
+          </Tooltip>
         </p>
       )}
       {emptyLine && <p className={s.state}>{emptyLine}</p>}
@@ -363,6 +416,7 @@ export function ModelCatalog({
               onRenameManual={renameManual}
               onOverrideOpen={(open) => setOpenOverride(open ? row.id : null)}
               onWriteOverride={onWriteOverride}
+              onApplySuggestion={applyOne}
             />
           ))}
 
@@ -413,6 +467,7 @@ export function ModelCatalog({
                       onRenameManual={renameManual}
                       onOverrideOpen={(open) => setOpenOverride(open ? row.id : null)}
                       onWriteOverride={onWriteOverride}
+                      onApplySuggestion={applyOne}
                     />
                   ))}
               </div>

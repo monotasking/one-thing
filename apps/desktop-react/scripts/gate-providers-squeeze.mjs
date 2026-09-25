@@ -39,12 +39,28 @@
  *       且 `source.contextLength === 'override'`;再开一条跑 deepseek/foo-1 的会话,
  *       composer 读数环不再说「未知」,悬停卡上的窗口同为 200k —— 壳读的就是后端那一个数。
  *
+ * 批 3(§6,自定义服务商 + 参数建议)再加三步,全部经界面走(排在 [11] 之后,理由见
+ * `customProviderSteps` 头):
+ *   [12] **直连拉目录**:门里起一个本地假 `/v1/models`(OpenAI 形 + `context_length`),经
+ *       「＋ 自定义服务商」对话框建一家指向它 → 保存后目录区自动拉一次 → 行出现、目录口那一行
+ *       `source:'endpoint'`、`effective.contextLength` 出处 `endpoint`;没报能力的行能力是
+ *       「不知道」(null),不是「不支持」。
+ *   [13] **自定义头替换密钥**:同一家在「高级」里写 `X-Test: {{apiKey}}`(经「插入密钥」钮),
+ *       假站收到的请求头里是替换后的密钥,默认 Bearer 也在。
+ *   [14] **参数建议芯片**:在这一家手填 `gpt-5.5` → 行上画出「≈」芯片 → 点上下文那枚 →
+ *       这个空间的 `contextLengthByModel['gpt-5.5']` 有值、芯片消失。认亲读的是 models.dev
+ *       缓存 —— 门起核**之前**往临时 store 里种一份精简快照(`<store>/cache/models-dev.json`,
+ *       新鲜的 `fetchedAt`),离线也认得出 `gpt-5.5`。有网时起核那一段仍可能把它条件请求成真目录
+ *       (09-26 实跑:建议值是真目录的 1.05M 而不是种的 400k),所以门不写死数,判的是
+ *       「点了 = 目录口那一行建议的那个数进了覆盖表」。
+ *
  * 跑法:`node scripts/gate-providers-squeeze.mjs`(先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store + 全新的 `--user-data-dir`,跑完删干净;
  * 窗口离屏起、焦点由 CDP 补(「真机门不许抢用户的机器」),不连 5175、不碰 ~/.onething。
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -665,6 +681,201 @@ async function effectiveOverrideStep(page, record, failures) {
   console.log(`  读数环 aria-label=${JSON.stringify(label)} / 卡上「${line.match(/Context[^\n]*?%/)?.[0] ?? line.slice(0, 60)}」`)
 }
 
+/* ── [12][13][14] 批 3:自定义服务商 + 参数建议 ──────────────────────────── */
+
+/**
+ * 精简的 models.dev 快照(缓存文件的形状,`models-dev-cache.ts`)。`openai/gpt-5.5` 是 [14]
+ * 认亲的对象;deepseek 那两型让前面几步的目录照旧有目录行(从前那几步读的是真 models.dev)。
+ */
+const MODELS_DEV_SNAPSHOT = {
+  openai: {
+    id: 'openai',
+    name: 'OpenAI',
+    models: {
+      'gpt-5.5': {
+        id: 'gpt-5.5',
+        name: 'GPT-5.5',
+        limit: { context: 400000, output: 128000 },
+        tool_call: true,
+        reasoning: true,
+        modalities: { input: ['text', 'image'], output: ['text'] },
+      },
+    },
+  },
+  deepseek: {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    models: {
+      'deepseek-chat': {
+        id: 'deepseek-chat',
+        name: 'DeepSeek Chat',
+        limit: { context: 128000, output: 8192 },
+        tool_call: true,
+        modalities: { input: ['text'], output: ['text'] },
+      },
+      'deepseek-reasoner': {
+        id: 'deepseek-reasoner',
+        name: 'DeepSeek Reasoner',
+        limit: { context: 128000, output: 65536 },
+        tool_call: true,
+        reasoning: true,
+        modalities: { input: ['text'], output: ['text'] },
+      },
+    },
+  },
+}
+
+async function seedModelsDevCache(store) {
+  const dir = path.join(store, 'cache')
+  await mkdir(dir, { recursive: true })
+  await writeFile(
+    path.join(dir, 'models-dev.json'),
+    JSON.stringify({ version: 1, fetchedAt: Date.now(), data: MODELS_DEV_SNAPSHOT }),
+    'utf8',
+  )
+}
+
+/** 本地假转发站:`GET /v1/models` 回 OpenAI 形,记下每一发的请求头。 */
+async function startFakeRelay() {
+  const requests = []
+  const server = createServer((req, res) => {
+    requests.push({ url: req.url, headers: { ...req.headers } })
+    if (req.method === 'GET' && req.url === '/v1/models') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({
+        object: 'list',
+        data: [
+          { id: 'relay-alpha', object: 'model', context_length: 131072, top_provider: { max_completion_tokens: 8192 } },
+          { id: 'relay-beta', object: 'model' },
+        ],
+      }))
+      return
+    }
+    res.writeHead(404, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ error: { message: `no route ${req.method} ${req.url}` } }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address()
+  return {
+    baseUrl: `http://127.0.0.1:${port}/v1`,
+    requests,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  }
+}
+
+const RELAY_KEY = 'sk-relay-gate-7f3a'
+const SUGGEST_MODEL = 'gpt-5.5'
+
+/**
+ * 排在 [11] **之后**跑:[11] 在壳背后经 RPC 写 deepseek 的覆盖,它量的是「那一格目录此刻的订阅者」
+ * 补拉回来的数 —— 这三步会把设置面的选中换成自定义那一家,排在它前面就换掉了它的前提。
+ * [11] 开过会话总览,设置浮窗可能被盖着,所以这里的点击一律走 DOM(`clickTestId` / `domClick`),
+ * 不走要求「指针够得着」的 Playwright `click()`。
+ */
+async function customProviderSteps(page, record, relay, failures) {
+  const domClick = (locator) => locator.evaluate((el) => el.click())
+
+  console.log('[12] 「＋ 自定义服务商」→ 指向本地假 /v1/models → 保存后目录自动拉一次')
+  await clickTestId(page, 'provider-add-custom')
+  await page.getByLabel('Name · required', { exact: true }).fill('Gate relay')
+  await page.getByLabel('Base URL · required', { exact: true }).fill(relay.baseUrl)
+  await page.getByLabel('API key · optional', { exact: true }).fill(RELAY_KEY)
+  await clickTestId(page, 'custom-provider-advanced')
+  // 请求头第一行:名 / 值两只框按序,「插入密钥」钮在同一行里(设置浮窗本身也是 role=dialog,
+  // 所以按行的 testid 找,不按「对话框里叫 Name 的那只框」找)。
+  const headerRow = page.locator('[data-testid="custom-header-row-0"]')
+  await headerRow.locator('input').first().fill('X-Test')
+  await domClick(headerRow.getByRole('button', { name: 'Insert key', exact: true }))
+  await clickTestId(page, 'custom-provider-submit')
+
+  const providerId = await waitFor('这个空间里多出那一家自定义服务商', async () => {
+    const read = await rpc(record, 'spaces', 'getProviderSettings', { id: 'default' })
+    return read?.ai?.customProviders?.find((item) => item.name === 'Gate relay')?.id
+  })
+  const custom = (await rpc(record, 'spaces', 'getProviderSettings', { id: 'default' }))
+    .ai.customProviders.find((item) => item.id === providerId)
+  if (custom?.dialect !== 'custom-openai') failures.push(`[12] 自定义服务商的 dialect 是 ${custom?.dialect},该是 custom-openai`)
+  if (custom?.headers?.['X-Test'] !== '{{apiKey}}') {
+    failures.push(`[12] 自定义头落盘是 ${JSON.stringify(custom?.headers)},该是明文模板 {"X-Test":"{{apiKey}}"}`)
+  }
+
+  await waitFor('目录区画出假站交来的 relay-alpha', () => rowShown(page, 'relay-alpha'))
+  const listed = await rpc(record, 'models', 'getWithCapabilities', { providerId, spaceId: 'default' })
+  const alpha = (listed?.models ?? []).find((row) => row.id === 'relay-alpha')
+  const beta = (listed?.models ?? []).find((row) => row.id === 'relay-beta')
+  if (alpha?.source !== 'endpoint') failures.push(`[12] relay-alpha 的 source 是 ${alpha?.source},该是 endpoint`)
+  if (alpha?.effective?.contextLength !== 131072 || alpha?.effective?.source?.contextLength !== 'endpoint') {
+    failures.push(`[12] relay-alpha 的 effective.contextLength=${alpha?.effective?.contextLength}(${alpha?.effective?.source?.contextLength}),该是 131072(endpoint)`)
+  }
+  if (beta?.effective?.capabilities?.tools !== null) {
+    failures.push(`[12] relay-beta 接口没报工具,effective.capabilities.tools 该是 null(不知道),读到 ${beta?.effective?.capabilities?.tools}`)
+  }
+  console.log(`  ${providerId}:alpha ${alpha?.source} ctx ${alpha?.effective?.contextLength}(${alpha?.effective?.source?.contextLength}) / beta tools ${beta?.effective?.capabilities?.tools}`)
+
+  console.log('[13] 假站收到的 X-Test 是替换后的密钥(不是字面 {{apiKey}})')
+  const hit = relay.requests.find((request) => request.url === '/v1/models')
+  if (!hit) failures.push('[13] 假站一发 /v1/models 都没收到')
+  else {
+    if (hit.headers['x-test'] !== RELAY_KEY) failures.push(`[13] X-Test 收到 ${JSON.stringify(hit.headers['x-test'])},该是密钥本身`)
+    if (hit.headers.authorization !== `Bearer ${RELAY_KEY}`) failures.push(`[13] Authorization 收到 ${JSON.stringify(hit.headers.authorization)},该是默认 Bearer`)
+    console.log(`  X-Test=${hit.headers['x-test'] === RELAY_KEY ? '<密钥>' : hit.headers['x-test']} / Authorization=${hit.headers.authorization ? 'Bearer <密钥>' : '(无)'}`)
+  }
+
+  console.log(`[14] 手填 ${SUGGEST_MODEL} → 行上有 ≈ 芯片 → 点上下文那枚 → 覆盖表有值、芯片消失`)
+  await domClick(page.getByRole('button', { name: '＋ Add model' }))
+  const input = page.getByPlaceholder('Model id, e.g. qwen3-max')
+  await input.fill(SUGGEST_MODEL)
+  await input.press('Enter')
+  const chip = `suggest-ctx-${SUGGEST_MODEL}`
+  const chipShown = () =>
+    page.evaluate((tid) => Boolean(document.querySelector(`[data-testid="${tid}"]`)), chip)
+  try {
+    await waitFor(`${SUGGEST_MODEL} 那一行画出上下文建议芯片`, chipShown)
+  } catch {
+    failures.push(`[14] ${SUGGEST_MODEL} 那一行没有上下文建议芯片`)
+    return
+  }
+  // 建议值读目录口那一行(认亲读的是 models.dev 缓存:种的那份,或起核后被刷新过的真目录 ——
+  // 门判的是「点了 = 那个数进了覆盖表」,不是某一个写死的数)。
+  const before = (await rpc(record, 'models', 'getWithCapabilities', { providerId, spaceId: 'default' }))
+    ?.models?.find((row) => row.id === SUGGEST_MODEL)
+  const want = before?.suggestion?.contextLength
+  if (!want) {
+    failures.push(`[14] 目录口 ${SUGGEST_MODEL} 那一行没有上下文建议:${JSON.stringify(before?.suggestion ?? null)}`)
+    return
+  }
+  const chipState = await page.evaluate((tid) => {
+    const el = document.querySelector(`[data-testid="${tid}"]`)
+    return el ? { disabled: el.disabled, text: el.textContent } : null
+  }, chip)
+  await clickTestId(page, chip)
+  try {
+    await waitFor('这个空间的 contextLengthByModel 写进了建议值', async () => {
+      const read = await rpc(record, 'spaces', 'getProviderSettings', { id: 'default' })
+      return read?.ai?.providers?.[providerId]?.contextLengthByModel?.[SUGGEST_MODEL] === want
+    })
+  } catch {
+    const read = await rpc(record, 'spaces', 'getProviderSettings', { id: 'default' })
+    failures.push(
+      `[14] 点了芯片(点之前 ${JSON.stringify(chipState)}),覆盖表没有写进建议值 ${want}:`
+        + JSON.stringify(read?.ai?.providers?.[providerId] ?? null),
+    )
+    return
+  }
+  try {
+    await waitFor('芯片消失(那一格不再是「不知道」)', async () => !(await chipShown()))
+  } catch {
+    failures.push(`[14] 应用之后 ${chip} 还在屏上`)
+  }
+  const after = (await rpc(record, 'models', 'getWithCapabilities', { providerId, spaceId: 'default' }))
+    ?.models?.find((row) => row.id === SUGGEST_MODEL)
+  if (after?.effective?.source?.contextLength !== 'override') {
+    failures.push(`[14] 应用之后 effective.source.contextLength 是 ${after?.effective?.source?.contextLength},该是 override`)
+  }
+  if (after?.suggestion?.contextLength !== undefined) failures.push('[14] 应用之后目录口仍在建议上下文')
+  console.log(`  应用后 ctx ${after?.effective?.contextLength}(${after?.effective?.source?.contextLength}) / 余下建议 ${JSON.stringify(after?.suggestion ?? null)}`)
+}
+
 async function main() {
   if (!existsSync(mainEntry) || !existsSync(path.join(appRoot, 'dist/index.html'))) {
     console.error('[providers-squeeze] 找不到构建产物 —— 先跑 `npm run app:build`')
@@ -674,8 +885,11 @@ async function main() {
   const store = await mkdtemp(path.join(tmpdir(), 'pv-squeeze-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'pv-squeeze-userdata-'))
   let app
+  let relay
   const failures = []
   try {
+    await seedModelsDevCache(store)
+    relay = await startFakeRelay()
     console.log('\n[1/4] 拉起应用(隔离 store + 独立 user-data-dir + 离屏)')
     app = await electron.launch({
       executablePath: electronBinary,
@@ -863,8 +1077,10 @@ async function main() {
 
     await manualModelSteps(page, record, failures)
     await effectiveOverrideStep(page, record, failures)
+    await customProviderSteps(page, record, relay, failures)
   } finally {
     if (app) await app.close().catch(() => {})
+    if (relay) await relay.close().catch(() => {})
     await delay(500)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })

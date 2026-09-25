@@ -103,6 +103,7 @@ export const kimiSamplingPolicy: SamplingPolicy = new KimiSamplingPolicy();
 
 export const KIMI_DIALECT = defineOpenAIChatDialect({
 	id: "kimi",
+	label: "Moonshot",
 	defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL,
 	reasoning: thinkingTypeWire,
 	includeAssistantReasoning: true,

@@ -17,7 +17,8 @@
  *    用(第四层),不进这份事实 —— 屏幕要能画出「不知道」。
  *
  * 手填条目(`source: 'manual'`)什么都没说过:`catalogFactsOf` 对它答 undefined,
- * 于是除了覆盖,每一格都是 unknown。
+ * 于是除了覆盖,每一格都是 unknown。接口拉来、但**没报**某项能力的条目(`unreported`,
+ * 批 3)那一项同样是 unknown —— 只报了 id 的 `/models` 不是在说「都不支持」。
  *
  * 纯函数,Electron-free,不碰跨进程契约(那一半在 RPC 域里投影)。
  */
@@ -167,10 +168,11 @@ export function effectiveModelFactsOf<TReasoningProfile = unknown>(
 		if (typeof forced === "boolean") {
 			capabilities[key] = forced;
 			capabilitySources[key] = "override";
-		} else if (facts) {
+		} else if (facts && !facts.unreported?.includes(key)) {
 			capabilities[key] = entryCapabilityOf(facts, key);
 			capabilitySources[key] = entrySourceOf(facts);
 		} else {
+			// 没有条目,或接口没报这一项(批 3 直连拉目录):不知道,不是「不支持」。
 			capabilities[key] = null;
 			capabilitySources[key] = "unknown";
 		}

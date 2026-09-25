@@ -398,6 +398,11 @@ export interface OnethingCapabilityEntryLike {
    * `codexMetadataDeclaresImageOutput` reads into it.
    */
   providerMetadata?: unknown
+  /**
+   * 接口没报的那几项(批 3 直连拉目录,`OnethingModelCapabilityEntry.unreported`)。
+   * 在表里 = 条目对这一项**没说话**,落到下面的元数据 / 型号规则表,而不是读那个 `false`。
+   */
+  unreported?: readonly string[]
 }
 
 /** Wire-shaped model metadata (what the renderer's model cache holds). */
@@ -1170,7 +1175,7 @@ function fromRegistry(
   entry: OnethingCapabilityEntryLike | undefined,
   metadata: OnethingModelMetadataLike | undefined,
 ): boolean | undefined {
-  if (entry) {
+  if (entry && !entry.unreported?.includes(capability)) {
     switch (capability) {
       case 'reasoning': if (typeof entry.supportsReasoning === 'boolean') return entry.supportsReasoning; break
       case 'vision': if (typeof entry.supportsVision === 'boolean') return entry.supportsVision; break

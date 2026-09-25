@@ -273,6 +273,7 @@ export const GROK_DIALECT_SPEC = {
 
 const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "grok",
+	label: "xAI",
 	...GROK_DIALECT_SPEC,
 };
 export const GROK_DIALECT = defineResponsesDialect(responsesDialectSpec);

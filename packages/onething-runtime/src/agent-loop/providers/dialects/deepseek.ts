@@ -79,6 +79,7 @@ export const DEEPSEEK_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 
 export const DEEPSEEK_DIALECT = defineOpenAIChatDialect({
 	id: "deepseek",
+	label: "DeepSeek",
 	defaultBaseUrl: "https://api.deepseek.com",
 	reasoning: deepSeekInferredThinkingWire,
 	// 线级 codec(`OpenAIChatPartCodec`),`includeAssistantReasoning` 恒开。

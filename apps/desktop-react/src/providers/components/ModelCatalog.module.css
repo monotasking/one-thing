@@ -633,3 +633,57 @@
     min-width: 0;
   }
 }
+
+/*
+ * ── 参数建议芯片(批 3 §6.3)─────────────────────────────────────────────
+ * 住在「本来画破折号」的格子里。**换的是笔迹不是颜色**(与 `.ovr` 同一条):小一号的字、
+ * 虚线框、前面一个「≈」—— 说的是「大概是这个数」,不是读数,也不是一种状态,所以不上
+ * 状态色。hover 只把墨抬到 --text-1(交互态配方:可点的东西悬停要有回应)。
+ */
+.suggest {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  max-width: 100%;
+  padding: 0 var(--sp-1);
+  border: var(--bw-1) dashed var(--line-1);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.suggest:hover:not(:disabled) {
+  color: var(--text-1);
+  border-color: var(--text-3);
+}
+
+.suggest:disabled {
+  cursor: default;
+  opacity: var(--pv-cap-off-o);
+}
+
+/* 目录头下面那一句「{n} 个模型可按目录填参数 [全部应用]」。一行:字截断,钮不缩。 */
+.suggestLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.suggestLineText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestLine > :last-child {
+  flex: none;
+}

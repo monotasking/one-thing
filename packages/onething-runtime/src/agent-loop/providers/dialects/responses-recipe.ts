@@ -317,6 +317,8 @@ export const CODEX_DIALECT_SPEC: Omit<ResponsesDialectSpec, "id"> = {
 
 export interface ResponsesDialectSpec {
 	id: string;
+	/** 人话名(见 `Dialect.label`);缺席 = 不进自定义服务商的「接口类型」下拉。 */
+	label?: string;
 	/** 不给 `endpoint` 时,拼成 `<defaultBaseUrl>/responses`。 */
 	defaultBaseUrl: string;
 	/** 需要非常规拼法的自己给(codex 的三态归一化)。 */
@@ -373,6 +375,7 @@ export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
 	const providerDataTag = spec.providerDataTag ?? spec.id;
 	return {
 		id: spec.id,
+		...(spec.label ? { label: spec.label } : {}),
 		wire: "openai-responses",
 		endpoint: spec.endpoint ?? plainResponsesEndpoint(spec.defaultBaseUrl),
 		auth: spec.auth ?? UNCONFIGURED_AUTH,

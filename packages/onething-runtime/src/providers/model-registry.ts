@@ -95,10 +95,25 @@ export interface OnethingOpenRouterModel {
 	providerMetadata?: JsonObject;
 	/** 目录条目出处;缺席 = models.dev。`'manual'` 行没有任何参数(见 manual-models.ts)。 */
 	source?: OnethingModelEntrySource;
+	/** 接口没报的那几项(批 3 直连拉目录):读者按「不知道」处理,不按「不支持」。 */
+	unreported?: OnethingUnreportedFact[];
 }
 
 /** 目录条目出处(批 2)。缺席读作 `'models.dev'`。 */
 export type OnethingModelEntrySource = "models.dev" | "endpoint" | "manual";
+
+/**
+ * 一条接口拉来的目录条目**没报**的那一项(批 3 §6.2)。只报了 id 的 `/models` 不是在说
+ * 「这些模型都不支持工具」—— 把「没说」读成 `false` 会把自定义服务商的工具调用整条关掉。
+ * 条目上的布尔照旧在(形状不变),但读者先看这张表:在表里 = 不知道。
+ */
+export type OnethingUnreportedFact =
+	| "tools"
+	| "vision"
+	| "reasoning"
+	| "imageOutput"
+	| "fileInput"
+	| "temperature";
 
 export interface OnethingModelCapabilityOverride {
 	tools?: boolean;
@@ -133,6 +148,8 @@ export interface OnethingModelCapabilityEntry {
 	};
 	lastUpdated?: string;
 	providerMetadata?: JsonObject;
+	/** 接口没报的那几项;缺席 = 全报了(models.dev 条目与既有列表口一律缺席)。 */
+	unreported?: OnethingUnreportedFact[];
 }
 
 /**
@@ -197,6 +214,11 @@ export interface OnethingModelRegistryRefreshAdapters<
 	getSettings(): TSettings;
 	saveSettings(settings: TSettings): void;
 	fetchModelsDevData(): Promise<OnethingModelsDevResponse>;
+	/**
+	 * 直连拉目录(批 3 §6.2):问这一家自己的 `/models`。缺席 = 这个宿主没有直连能力,
+	 * `endpoint` 来源的家退回旧口径(跳过)。失败**抛**,带接口原话。
+	 */
+	fetchEndpointModels?(providerId: string): Promise<OnethingOpenRouterModel[]>;
 	now?(): number;
 	logger?: OnethingModelRegistryRefreshLogger;
 }
@@ -331,6 +353,18 @@ export function providerReadsModelsDevCatalog(providerId: string): boolean {
 	const source = getProviderManifest(providerId)?.models;
 	if (!source) return false;
 	return source.kind === "models.dev" || (source.kind === "endpoint" && Boolean(source.catalogKey));
+}
+
+/**
+ * 这一家的目录走**通用直连**(`models-endpoint.ts`):`endpoint` 来源、没有一本 models.dev
+ * 目录可补(`catalogKey` 缺席)、且用 API 密钥(或不用)认证。OAuth 的 endpoint 家
+ * (Codex)有自己的专属拉取器,通用那一发拿不到它要的令牌。读 manifest,不点名。
+ */
+export function readsProviderDirectModels(providerId: string): boolean {
+	const manifest = getProviderManifest(providerId);
+	if (!manifest || manifest.models.kind !== "endpoint") return false;
+	if (manifest.models.catalogKey) return false;
+	return manifest.auth.kind !== "oauth";
 }
 
 export function mergeOnethingModelsById<TModel extends { id: string }>(
@@ -600,6 +634,14 @@ export async function getOnethingModelsWithCapabilities(
 			try {
 				await adapters.refreshProviderModels(request.providerId);
 			} catch (error) {
+				// `endpoint` 来源的家(直连拉目录)只有这一个来源:拉不到就是答案,原话交回去,
+				// 壳画「获取失败」+ Tooltip 原话、旧行留在屏上。models.dev 家照旧退缓存。
+				if (source?.kind === "endpoint") {
+					return {
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					};
+				}
 				adapters.logger?.warn?.(
 					"[Models] Failed to refresh provider models, using cache:",
 					error instanceof Error ? error.message : String(error),
@@ -655,6 +697,13 @@ export async function refreshOnethingProviderModels<
 	adapters.logger?.log?.(
 		`[ModelRegistry] Refreshing models for provider: ${providerId}`,
 	);
+
+	if (readsProviderDirectModels(providerId) && adapters.fetchEndpointModels) {
+		// 失败原样抛:这一家的目录只有这一个来源,「拉不到」就是答案(壳画「获取失败」+ 原话)。
+		const models = await adapters.fetchEndpointModels(providerId);
+		saveOnethingProviderModels(providerId, models, adapters);
+		return;
+	}
 
 	if (!providerReadsModelsDevCatalog(providerId)) {
 		adapters.logger?.log?.(
@@ -798,6 +847,7 @@ export function openRouterModelToOnethingCapabilityEntry(
 		},
 		lastUpdated: model.last_updated,
 		providerMetadata: model.providerMetadata,
+		...(model.unreported?.length ? { unreported: [...model.unreported] } : {}),
 	};
 }
 
@@ -843,6 +893,7 @@ export function onethingCapabilityEntryToOpenRouterModel(
 		last_updated: entry.lastUpdated,
 		providerMetadata: entry.providerMetadata,
 		...(entry.source ? { source: entry.source } : {}),
+		...(entry.unreported?.length ? { unreported: [...entry.unreported] } : {}),
 	};
 }
 
@@ -1090,7 +1141,8 @@ export function onethingModelSupportsTemperature(
 	if (isRosterProvider(providerId)) return false;
 
 	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry) return entry.supportsTemperature;
+	// 接口没报温度这一项 = 不知道,不是「不支持」(批 3):照没有条目的口径放行。
+	if (entry && !entry.unreported?.includes("temperature")) return entry.supportsTemperature;
 	return true;
 }
 

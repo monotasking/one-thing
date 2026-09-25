@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Field, useFieldControlProps } from '../../ui/Field'
 import { IconButton } from '../../ui/IconButton'
@@ -12,6 +13,7 @@ import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import { formatQuantity, parseQuantity } from '../../format/quantity'
 import { CAPABILITY_KEYS, CAP_OF_KEY, CATALOG_CONTEXT_FALLBACK, requestedMaxOutputOf } from '../types'
+import { suggestedCapsOf, suggestionSourceOf } from '../projection'
 import type { CapabilityKey, CatalogRow, ModelOverridePatch } from '../types'
 import { CAP_ICONS, CAP_LABELS } from './model-capability-icons'
 import { ReasoningProfileEditor } from './ReasoningProfileEditor'
@@ -239,6 +241,7 @@ export function ModelOverridePopover({
   onClose,
   onWrite,
   onRename,
+  onApplySuggestion,
 }: {
   row: CatalogRow
   /** 这一坑是谁。浮层不显示它,但落点得说得出自己属于哪一坑(门与单测按它取)。 */
@@ -256,6 +259,11 @@ export function ModelOverridePopover({
    * 答 undefined = 收工(包括「新旧同名」那一种,它是取消不是错误)。
    */
   onRename?: (newId: string) => string | undefined
+  /**
+   * 应用这一行的参数建议(批 3 §6.3):一次写全四张表。缺席 = 这一行没有建议,
+   * 那一行根本不画(不画一颗禁着的钮)。
+   */
+  onApplySuggestion?: () => void
 }) {
   const t = useT()
 
@@ -363,6 +371,37 @@ export function ModelOverridePopover({
     setIdDraft(null)
   }
 
+  /**
+   * 「按 {provider} {model} 填:200K / 输出 128K / 工具·视觉·思考 [应用]」。
+   * 应用之后两格输入框的草稿**当场换成建议值**:草稿是这块浮层自己的一份,不跟着
+   * `row.override` 走 —— 不换的话,下一次失焦会拿那个空草稿把刚写进去的值删掉。
+   */
+  function applySuggestion() {
+    const suggestion = row.suggestion
+    if (!suggestion || !onApplySuggestion) return
+    if (suggestion.contextLength) {
+      setDraft(draftOf(suggestion.contextLength))
+      setInvalid(false)
+    }
+    if (suggestion.maxOutput) {
+      setOutDraft(draftOf(suggestion.maxOutput))
+      setOutInvalid(false)
+    }
+    onApplySuggestion()
+  }
+
+  const suggestionParts = row.suggestion
+    ? [
+        ...(row.suggestion.contextLength ? [formatQuantity(row.suggestion.contextLength)] : []),
+        ...(row.suggestion.maxOutput
+          ? [t('providers.suggestOutput', { n: formatQuantity(row.suggestion.maxOutput) })]
+          : []),
+        ...(suggestedCapsOf(row.suggestion).length > 0
+          ? [suggestedCapsOf(row.suggestion).map((key) => t(CAP_LABELS[CAP_OF_KEY[key]])).join('·')]
+          : []),
+      ]
+    : []
+
   function pickCap(key: CapabilityKey, value: CapChoice) {
     if (value === capChoiceOf(row.override.caps[key])) return
     onWrite({ caps: { [key]: value === 'inherit' ? null : value === 'on' } })
@@ -454,6 +493,23 @@ export function ModelOverridePopover({
             </span>
           )}
         </div>
+
+        {row.suggestion && onApplySuggestion && suggestionParts.length > 0 && (
+          <div className={s.suggest} data-testid="model-override-suggest">
+            <span className={s.suggestText}>
+              {t('providers.suggestFrom', suggestionSourceOf(row.suggestion))}:{suggestionParts.join(' / ')}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={applySuggestion}
+              data-testid="model-override-suggest-apply"
+            >
+              {t('providers.suggestApply')}
+            </Button>
+          </div>
+        )}
 
         <Field
           size="sm"
