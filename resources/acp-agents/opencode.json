@@ -1,0 +1,31 @@
+{
+  "id": "opencode",
+  "name": "OpenCode",
+  "vendor": "OpenCode",
+  "description": "开源的终端编程 agent,可接多家模型。",
+  "homepage": "https://opencode.ai",
+  "launch": {
+    "command": "opencode",
+    "args": [
+      "acp"
+    ]
+  },
+  "detect": {
+    "bins": [
+      "opencode"
+    ],
+    "versionArgs": [
+      "--version"
+    ]
+  },
+  "install": {
+    "hint": "https://opencode.ai"
+  },
+  "auth": {
+    "hint": "在终端里运行 opencode auth login。"
+  },
+  "configPaths": [
+    "~/.config/opencode"
+  ],
+  "registryId": "opencode"
+}

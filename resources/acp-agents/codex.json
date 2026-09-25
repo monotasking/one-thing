@@ -1,0 +1,28 @@
+{
+  "id": "codex",
+  "name": "Codex",
+  "vendor": "OpenAI",
+  "description": "OpenAI 的编程 agent,经 codex-acp 适配器接入(自带 Codex 本体)。",
+  "homepage": "https://github.com/agentclientprotocol/codex-acp",
+  "launch": {
+    "command": "codex-acp"
+  },
+  "detect": {
+    "bins": [
+      "codex-acp"
+    ]
+  },
+  "install": {
+    "npm": "@agentclientprotocol/codex-acp"
+  },
+  "auth": {
+    "hint": "用 ChatGPT 账号或 API Key 登录。"
+  },
+  "configPaths": [
+    "~/.codex"
+  ],
+  "registryId": "codex-acp",
+  "aliases": [
+    "codex-cli"
+  ]
+}

@@ -145,8 +145,10 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
     enabled: false,
   },
   [AIProvider.ACP]: {
+    // id 跟种子文件(`resources/acp-agents/<id>.json`)走;A1-a 起 `codex-cli` / `kimi-code`
+    // 改名 `codex` / `kimi`,旧名写在那两份种子的 `aliases` 里,由名册认回。
     model: 'claude-code',
-    selectedModels: ['claude-code', 'codex-cli', 'pi'],
+    selectedModels: ['claude-code', 'codex', 'gemini', 'copilot'],
     enabled: false,
   },
   [AIProvider.ClaudeCodeAgent]: {
@@ -278,88 +280,14 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
   },
 }
 
+/**
+ * ACP 设置的出厂值。**`agents` 是空的**(A1-a):内置 agent 来自种子文件
+ * `resources/acp-agents/*.json`,官方注册表来的在 `<store>/acp/registry-cache.json`,
+ * 合并在装配层 `backend/wiring/acp/registry.ts`。这张表只放用户手加 / 覆盖的条目。
+ */
 export const DEFAULT_ACP_SETTINGS: ACPSettings = {
   enabled: true,
-  agents: [
-    {
-      id: 'claude-code',
-      name: 'Claude Code',
-      description: 'Claude Code ACP-compatible local agent.',
-      enabled: true,
-      command: 'claude-agent-acp',
-      args: [],
-      permissionMode: 'allow',
-      allowFileSystemAccess: false,
-      allowTerminalAccess: false,
-      idleTimeoutMs: 10 * 60 * 1000,
-      connectTimeoutMs: 30000,
-      promptTimeoutMs: 30 * 60 * 1000,
-      maxBufferedUpdates: 1000,
-      maxSessionRecords: 100,
-      maxTerminals: 32,
-      maxTerminalOutputBytes: 1024 * 1024,
-    },
-    {
-      id: 'codex-cli',
-      name: 'Codex CLI',
-      description: 'Codex ACP-compatible local agent.',
-      enabled: true,
-      command: 'codex-acp',
-      args: [],
-      permissionMode: 'allow',
-      allowFileSystemAccess: false,
-      allowTerminalAccess: false,
-      idleTimeoutMs: 10 * 60 * 1000,
-      connectTimeoutMs: 30000,
-      promptTimeoutMs: 30 * 60 * 1000,
-      maxBufferedUpdates: 1000,
-      maxSessionRecords: 100,
-      maxTerminals: 32,
-      maxTerminalOutputBytes: 1024 * 1024,
-    },
-    {
-      // Kimi Code 订阅的**登录**只对官方客户端开放(OAuth 走 CLI 的 `/login`),
-      // 第三方直连一律手动 API Key。所以订阅用户要"点一下就登录",路径是驱动
-      // 官方 CLI 而不是直连 —— `kimi acp` 是它的 ACP 模式,建会话时复用 CLI
-      // 已有的登录态,我们这边一把 Key 都不碰。
-      // 直连那一档仍然在(Providers → Kimi → 计费方式 → 编程套餐),两条并存:
-      // 一条要装 CLI 换来免管 Key,一条不装 CLI 但要自己贴 Key。
-      id: 'kimi-code',
-      name: 'Kimi Code',
-      description: 'Kimi Code CLI ACP-compatible local agent (login via `kimi` /login).',
-      enabled: true,
-      command: 'kimi',
-      args: ['acp'],
-      permissionMode: 'allow',
-      allowFileSystemAccess: false,
-      allowTerminalAccess: false,
-      idleTimeoutMs: 10 * 60 * 1000,
-      connectTimeoutMs: 30000,
-      promptTimeoutMs: 30 * 60 * 1000,
-      maxBufferedUpdates: 1000,
-      maxSessionRecords: 100,
-      maxTerminals: 32,
-      maxTerminalOutputBytes: 1024 * 1024,
-    },
-    {
-      id: 'pi',
-      name: 'Pi',
-      description: 'Custom Pi ACP-compatible local agent.',
-      enabled: true,
-      command: 'pi-acp',
-      args: [],
-      permissionMode: 'allow',
-      allowFileSystemAccess: false,
-      allowTerminalAccess: false,
-      idleTimeoutMs: 10 * 60 * 1000,
-      connectTimeoutMs: 30000,
-      promptTimeoutMs: 30 * 60 * 1000,
-      maxBufferedUpdates: 1000,
-      maxSessionRecords: 100,
-      maxTerminals: 32,
-      maxTerminalOutputBytes: 1024 * 1024,
-    },
-  ],
+  agents: [],
 }
 
 export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
@@ -878,44 +806,56 @@ function normalizeChannelSettings(settings?: Partial<ChannelSettings>): ChannelS
   }
 }
 
+/**
+ * `settings.acp` 归一:只动形状,不认识任何一台具体的 agent。
+ *
+ * 「老盘上躺着的旧默认拷贝(A1 之前写死的四条)不算用户条目」这一步**不在这里**:判它要读
+ * 种子文件,而 `@shared` 读不了盘(也不该认识名册)。它在装配层算名册时做
+ * (`backend/wiring/acp/registry.ts` → `isSeedCopy`),旧 id(`codex-cli` / `kimi-code`)的
+ * 认回也在那里,依据是种子里的 `aliases`。
+ */
 export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {
-  const defaults = JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)) as ACPSettings
-  const byId = new Map(defaults.agents.map(agent => [agent.id, agent]))
-
+  const agents: ACPSettings['agents'] = []
+  const seen = new Set<string>()
   for (const agent of settings?.agents ?? []) {
-    if (!agent?.id) continue
-    const defaultAgent = byId.get(agent.id)
-    const normalizedAgent = migrateLegacyDefaultACPAgent({
-      ...(defaultAgent ?? {}),
-      ...agent,
-      args: Array.isArray(agent.args) ? agent.args : defaultAgent?.args ?? [],
-      env: agent.env && typeof agent.env === 'object' ? agent.env : defaultAgent?.env,
-      enabled: agent.enabled !== false,
-      permissionMode: agent.permissionMode === 'reject' ? 'reject' : 'allow',
-    })
-    byId.set(agent.id, normalizedAgent)
+    if (!agent?.id || seen.has(agent.id)) continue
+    seen.add(agent.id)
+    // **只归一带着的格,不合成缺席的格**:种子 / 注册表那一台的覆盖是稀疏的(`{ id, enabled }`
+    // 就是一条完整的覆盖),在这里补上 `name` / `args: []` / `permissionMode` 会把它变回整份,
+    // 名册随即把它当成种子拷贝丢掉。没有命令的条目也留着 —— 起法可能来自种子;真起不来的
+    // 由名册在喂管家前滤掉(`Boolean(config.command)`)。
+    const next: Record<string, unknown> = { ...agent }
+    if (typeof agent.command === 'string') next.command = agent.command.trim()
+    else delete next.command
+    if ('args' in agent) {
+      if (Array.isArray(agent.args)) next.args = agent.args
+      else delete next.args
+    }
+    if ('env' in agent) {
+      if (agent.env && typeof agent.env === 'object') next.env = agent.env
+      else delete next.env
+    }
+    if ('enabled' in agent) next.enabled = agent.enabled !== false
+    if ('permissionMode' in agent) next.permissionMode = agent.permissionMode === 'reject' ? 'reject' : 'allow'
+    if ('secretEnv' in agent) {
+      const secretEnv = Array.isArray(agent.secretEnv)
+        ? agent.secretEnv.filter(key => typeof key === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+        : []
+      if (secretEnv.length > 0) next.secretEnv = secretEnv
+      else delete next.secretEnv
+    }
+    if ('basedOn' in agent) {
+      if (typeof agent.basedOn === 'string' && /^[a-z0-9-]+$/.test(agent.basedOn)) next.basedOn = agent.basedOn
+      else delete next.basedOn
+    }
+    agents.push(next as unknown as ACPSettings['agents'][number])
   }
 
   return {
     enabled: settings?.enabled !== false,
-    agents: Array.from(byId.values()).filter(agent => Boolean(agent.id && agent.command)),
+    agents,
+    ...(settings?.registry?.enabled === false ? { registry: { enabled: false } } : {}),
   }
-}
-
-function migrateLegacyDefaultACPAgent(agent: ACPSettings['agents'][number]): ACPSettings['agents'][number] {
-  if (agent.id === 'claude-code' && agent.command === 'claude-code-acp') {
-    return { ...agent, command: 'claude-agent-acp', args: [] }
-  }
-
-  if (agent.id === 'codex-cli' && agent.command === 'codex' && (agent.args ?? []).join(' ') === '--experimental-acp') {
-    return { ...agent, command: 'codex-acp', args: [] }
-  }
-
-  if (agent.id === 'pi' && agent.command === 'pi' && (agent.args ?? []).join(' ') === '--acp') {
-    return { ...agent, command: 'pi-acp', args: [] }
-  }
-
-  return agent
 }
 
 export function normalizeMusicSettings(settings?: MusicSettings): MusicSettings {

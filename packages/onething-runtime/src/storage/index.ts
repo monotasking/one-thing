@@ -1,4 +1,5 @@
 export * from './app-state.js'
+export * from './builtin-resources.js'
 export * from './paths.js'
 export * from './store-lock.js'
 export * from './store-backup.js'

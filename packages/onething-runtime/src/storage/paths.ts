@@ -384,3 +384,13 @@ export function ensureOnethingStoreDirs(
 		ensureDir(dir);
 	}
 }
+
+/**
+ * ACP 官方注册表的本地缓存(A1-a):`<store>/acp/registry-cache.json` =
+ * `{ fetchedAt, entries }`,TTL 24h;离线时用它,没有它就只用种子。
+ */
+export function getOnethingAcpRegistryCachePath(
+	options: OnethingStorePathOptions = {},
+): string {
+	return path.join(getOnethingStorePath(options), "acp", "registry-cache.json");
+}

@@ -6,8 +6,10 @@ import {
   getOnethingACPAgentsForIpc,
   normalizeOnethingACPAgentConfig,
   removeOnethingACPAgentForIpc,
+  sparseOnethingACPRosterOverride,
   updateOnethingACPAgentForIpc,
 } from '../ipc-operations.js'
+import type { AcpAgentManifest } from '../manifest.js'
 import type { OnethingACPSettingsLike } from '../ipc-operations.js'
 
 interface TestAgentConfig {
@@ -18,6 +20,8 @@ interface TestAgentConfig {
   env?: Record<string, string>
   enabled?: boolean
   permissionMode?: 'allow' | 'reject'
+  idleTimeoutMs?: number
+  secretEnv?: string[]
 }
 
 interface TestAgentState {
@@ -201,5 +205,72 @@ describe('ACP IPC operations', () => {
       cancelSession: adapters.manager.cancelSession,
     })).resolves.toEqual({ success: true })
     expect(adapters.manager.cancelSession).toHaveBeenCalledWith('session-1', 'keep')
+  })
+
+  describe('种子 / 注册表那一台的覆盖是稀疏的(A1-a)', () => {
+    const KIMI: AcpAgentManifest = {
+      id: 'kimi',
+      name: 'Kimi Code',
+      description: '月之暗面的命令行编程 agent。',
+      launch: { command: 'kimi', args: ['acp'] },
+    }
+    /** 壳回显的整份生效配置。 */
+    const ECHO = {
+      id: 'kimi',
+      name: 'Kimi Code',
+      description: '月之暗面的命令行编程 agent。',
+      command: 'kimi',
+      args: ['acp'],
+      env: {},
+      permissionMode: 'allow' as const,
+    }
+    const rosterAdapters = (agents: TestAgentConfig[] = []) => ({
+      ...createAdapters({ enabled: true, agents }),
+      isRosterAgent: (id: string) => id === 'kimi',
+      rosterManifest: (id: string) => (id === 'kimi' ? KIMI : undefined),
+    })
+
+    it('(a) 回显整份生效配置 + enabled:true → 只存 { id, enabled: true }', async () => {
+      const adapters = rosterAdapters()
+      await expect(updateOnethingACPAgentForIpc({ ...adapters, config: { ...ECHO, enabled: true } }))
+        .resolves.toMatchObject({ success: true })
+      expect(adapters.saveSettings).toHaveBeenCalledWith({ enabled: true, agents: [{ id: 'kimi', enabled: true }] })
+    })
+
+    it('(b) 只改了参数 → 覆盖只带 args(调用方给了 enabled 才带 enabled)', async () => {
+      const adapters = rosterAdapters([{ id: 'kimi', enabled: true }])
+      await updateOnethingACPAgentForIpc({ ...adapters, config: { ...ECHO, args: ['acp', '--verbose'] } })
+      expect(adapters.saveSettings).toHaveBeenCalledWith({ enabled: true, agents: [{ id: 'kimi', args: ['acp', '--verbose'] }] })
+
+      const withEnabled = rosterAdapters()
+      await updateOnethingACPAgentForIpc({ ...withEnabled, config: { ...ECHO, enabled: false, args: ['acp', '--verbose'] } })
+      expect(withEnabled.saveSettings).toHaveBeenCalledWith({
+        enabled: true,
+        agents: [{ id: 'kimi', enabled: false, args: ['acp', '--verbose'] }],
+      })
+    })
+
+    it('不要求命令;名字不被合成成 ACP Agent;其余带着的格(超时 / secretEnv)原样留', () => {
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', name: '', command: '', idleTimeoutMs: 5, secretEnv: ['K'] }, KIMI))
+        .toEqual({ id: 'kimi', idleTimeoutMs: 5, secretEnv: ['K'] })
+      expect(sparseOnethingACPRosterOverride({ id: 'kimi', name: 'Kimi·工作', permissionMode: 'reject' }, KIMI))
+        .toEqual({ id: 'kimi', name: 'Kimi·工作', permissionMode: 'reject' })
+    })
+
+    it('addAgent 对还没有覆盖的那一台存稀疏覆盖;已有覆盖答重复', async () => {
+      const adapters = rosterAdapters()
+      await addOnethingACPAgentForIpc({ ...adapters, config: { ...ECHO, enabled: true } })
+      expect(adapters.saveSettings).toHaveBeenCalledWith({ enabled: true, agents: [{ id: 'kimi', enabled: true }] })
+
+      const existing = rosterAdapters([{ id: 'kimi', enabled: true }])
+      await expect(addOnethingACPAgentForIpc({ ...existing, config: ECHO }))
+        .resolves.toEqual({ success: false, error: 'ACP agent "kimi" already exists' })
+    })
+
+    it('用户自己手加的条目(不是种子 / 注册表)仍然整份存、仍然要命令', async () => {
+      const adapters = { ...createAdapters({ enabled: true, agents: [{ id: 'mine', command: 'x' }] }), isRosterAgent: () => false }
+      await expect(updateOnethingACPAgentForIpc({ ...adapters, config: { id: 'mine', command: '' } }))
+        .resolves.toEqual({ success: false, error: 'ACP agent command is required' })
+    })
   })
 })

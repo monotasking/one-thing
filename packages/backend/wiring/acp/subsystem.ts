@@ -13,9 +13,10 @@
  *    没接过。搬进来等于给 daemon 新开一条今天没有的行为,而"接不接"是产品决定,不是
  *    这一期的机械搬运。留账在方案 §2.2。
  */
-import type { ACPSettings } from '@onething/runtime/acp'
+import type { ACPAgentConfig, ACPAgentState, ACPSettings, AcpSessionState } from '@onething/runtime/acp'
 import { getLogger } from '../logging/index.js'
 import { installAcpStateBroadcaster, type AcpStateSource } from './events.js'
+import type { AcpAgentRosterEntry, AcpRegistryRefreshOptions } from './registry.js'
 
 const log = getLogger('app.acp.subsystem')
 
@@ -31,6 +32,20 @@ export interface AcpSubsystemManagerPort extends Partial<AcpStateSource> {
   initialize(settings: ACPSettings): void | Promise<void>
   updateSettings(settings: ACPSettings): void | Promise<void>
   shutdown(): Promise<void>
+  /** 旧 id → 现 id(名册的 `aliases`);老会话里记着旧 id 的照样找得到那一台。 */
+  setAgentAliases?(aliases: Record<string, string>): void
+  /** 管家眼里这一台此刻的连接状态;不认识 = undefined。 */
+  getAgentState?(agentId: string): ACPAgentState | undefined
+}
+
+/** 子系统看得见的名册面(`AcpAgentRegistry` 的子集;测试可以递一只假的)。 */
+export interface AcpSubsystemRegistryPort {
+  loadLocal(): void
+  roster(settings?: ACPSettings): AcpAgentRosterEntry[]
+  aliases(): Record<string, string>
+  refresh(options?: AcpRegistryRefreshOptions): Promise<void>
+  detect(agentId?: string): Promise<void>
+  onChanged(listener: () => void): () => void
 }
 
 function isStateSource(manager: AcpSubsystemManagerPort): manager is AcpSubsystemManagerPort & AcpStateSource {
@@ -43,6 +58,11 @@ export interface AcpSubsystemDeps {
   settings: () => ACPSettings
   /** `dispose()` 的上限,毫秒。缺省 {@link DEFAULT_ACP_DISPOSE_TIMEOUT_MS};单测传小值。 */
   disposeTimeoutMs?: number
+  /**
+   * 名册(A1-a)。有它时管家吃的是**名册的生效配置**(种子 ⊕ 注册表 ⊕ 用户覆盖,只留启用且
+   * 起得来的),不再是 `settings.acp.agents` 原样;缺席 = 旧行为(只用于不关心名册的单测)。
+   */
+  registry?: AcpSubsystemRegistryPort
 }
 
 /**
@@ -73,13 +93,116 @@ export class AcpSubsystem {
    */
   private stopStateBroadcast: (() => void) | undefined
 
+  /** 名册变化的退订;构造时订,`dispose()` 退。 */
+  private stopRegistryWatch: (() => void) | undefined
+  /** 后台那趟联网刷新的中止器;`dispose()` 拉闸。 */
+  private readonly backgroundAbort = new AbortController()
+
   constructor(deps: AcpSubsystemDeps) {
     this.deps = deps
-    if (isStateSource(deps.manager)) this.stopStateBroadcast = installAcpStateBroadcaster(deps.manager)
+    if (isStateSource(deps.manager)) this.stopStateBroadcast = installAcpStateBroadcaster(this.decoratedSource(deps.manager))
+    // 名册变了(探测 / 注册表刷新 / 种子重读)就按当下设置重喂管家。dispose 之后的迟到通知不理。
+    this.stopRegistryWatch = deps.registry?.onChanged(() => {
+      if (this.disposing) return
+      this.applySettings(this.deps.settings()).catch(error => log.warn('acp roster re-apply failed', {}, error))
+    })
   }
 
   get state(): AcpSubsystemState {
     return this.currentState
+  }
+
+  /** 名册(没有名册的旧形态答空表)。 */
+  roster(settings?: ACPSettings): AcpAgentRosterEntry[] {
+    return this.deps.registry?.roster(settings ?? this.deps.settings()) ?? []
+  }
+
+  /**
+   * 管家该拿到的那份设置:总开关照抄,`agents` = 名册里**启用且有命令**的生效配置。
+   * 没有名册 = 原样(旧行为)。
+   */
+  managerSettings(next: ACPSettings): ACPSettings {
+    const registry = this.deps.registry
+    if (!registry) return next
+    return {
+      enabled: next.enabled !== false,
+      agents: registry.roster(next)
+        .map(entry => entry.effective)
+        .filter(config => config.enabled && Boolean(config.command)),
+    }
+  }
+
+  /**
+   * 模型目录要的 agent 表(`models.getWithCapabilities` 的 acp 那一格):种子与用户条目全列
+   * (没装的也列,壳据探测置灰),注册表来的只列启用的 —— 注册表有四十来家,全列进模型
+   * 选择器是噪音。没有名册 = 设置原样。
+   */
+  modelAgents(): ACPAgentConfig[] {
+    const registry = this.deps.registry
+    if (!registry) return this.deps.settings().agents ?? []
+    return registry.roster(this.deps.settings())
+      .filter(entry => entry.source !== 'registry' || entry.effective.enabled)
+      .filter(entry => Boolean(entry.effective.command))
+      .map(entry => entry.effective)
+  }
+
+  /** `acp.getAgents` 的行:名册每一行 × 管家的连接状态,补上 manifest / 来处 / 探测。 */
+  agentStates(): ACPAgentState[] {
+    return this.roster().map(entry => this.rowOf(entry))
+  }
+
+  agentState(agentId: string): ACPAgentState | undefined {
+    const entry = this.roster().find(row => row.manifest.id === agentId)
+    return entry ? this.rowOf(entry) : this.deps.manager.getAgentState?.(agentId)
+  }
+
+  /** 探测一台或全部,答刷新后的整张名册行。 */
+  async detect(agentId?: string): Promise<ACPAgentState[]> {
+    await this.deps.registry?.detect(agentId)
+    return this.agentStates()
+  }
+
+  /** 立刻重拉注册表(不看 TTL)并探测,答刷新后的整张名册行。 */
+  async refreshRegistry(): Promise<ACPAgentState[]> {
+    await this.deps.registry?.refresh({ network: true, force: true, signal: this.backgroundAbort.signal })
+    return this.agentStates()
+  }
+
+  private rowOf(entry: AcpAgentRosterEntry): ACPAgentState {
+    const live = this.deps.manager.getAgentState?.(entry.manifest.id)
+    const base: ACPAgentState = live ?? {
+      config: entry.effective,
+      status: 'disconnected',
+      sessionCount: 0,
+      activePromptCount: 0,
+    }
+    return {
+      ...base,
+      manifest: entry.manifest,
+      source: entry.source,
+      ...(entry.detect ? { detect: entry.detect } : {}),
+    }
+  }
+
+  /** 管家推出来的 agent 状态没有名册那一半;出网之前补上,壳收到的每一行形状一样。 */
+  private decoratedSource(source: AcpStateSource): AcpStateSource {
+    return {
+      onSessionStateChanged: (listener: (state: AcpSessionState) => void) => source.onSessionStateChanged(listener),
+      onAgentStateChanged: (listener: (state: ACPAgentState) => void) =>
+        source.onAgentStateChanged(state => listener(this.decorate(state))),
+    }
+  }
+
+  private decorate(state: ACPAgentState): ACPAgentState {
+    if (!this.deps.registry) return state
+    try {
+      const entry = this.roster().find(row => row.manifest.id === state.config.id)
+      if (!entry) return state
+      return { ...state, manifest: entry.manifest, source: entry.source, ...(entry.detect ? { detect: entry.detect } : {}) }
+    } catch (error) {
+      log.warn('acp agent state decorate failed', { agentId: state.config.id }, error)
+      return state
+    }
   }
 
   /** 幂等;在途/已起好返回同一只 promise;已在 dispose 则 no-op。失败不粘住。 */
@@ -98,17 +221,28 @@ export class AcpSubsystem {
 
   private async runStart(): Promise<void> {
     try {
-      await this.deps.manager.initialize(this.deps.settings())
+      const registry = this.deps.registry
+      // 种子与缓存**同步**先读(连同「装没装」的同步判断),名册在任何联网之前就能用。
+      registry?.loadLocal()
+      if (registry) this.deps.manager.setAgentAliases?.(registry.aliases())
+      await this.deps.manager.initialize(this.managerSettings(this.deps.settings()))
       if (this.currentState === 'starting') this.currentState = 'running'
+      // 联网拉注册表 + 取版本号在后台跑;名册有变由 `onChanged` 重喂管家。不 await:
+      // CLI daemon 的装配会等 `start()`,不能让一次离线超时拖住它。
+      registry?.refresh({ network: true, signal: this.backgroundAbort.signal })
+        .catch(error => log.warn('acp roster refresh failed', {}, error))
     } catch (error) {
       if (this.currentState === 'starting') this.currentState = 'idle'
       throw error
     }
   }
 
-  /** 设置域改完 ACP 设置后调。 */
+  /**
+   * 设置域改完 ACP 设置后调;名册变化也走这里。重算名册 → 把生效配置喂给管家。
+   */
   async applySettings(next: ACPSettings): Promise<void> {
-    await this.deps.manager.updateSettings(next)
+    if (this.deps.registry) this.deps.manager.setAgentAliases?.(this.deps.registry.aliases())
+    await this.deps.manager.updateSettings(this.managerSettings(next))
   }
 
   /**
@@ -120,6 +254,9 @@ export class AcpSubsystem {
   async dispose(): Promise<void> {
     if (this.disposing) return this.disposing
     this.disposing = (async () => {
+      this.backgroundAbort.abort()
+      this.stopRegistryWatch?.()
+      this.stopRegistryWatch = undefined
       const startedAt = Date.now()
       const timedOut = await this.raceDisposeTimeout(this.shutdownInFlightThenManager())
       if (timedOut) {

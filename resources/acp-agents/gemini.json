@@ -1,0 +1,31 @@
+{
+  "id": "gemini",
+  "name": "Gemini CLI",
+  "vendor": "Google",
+  "description": "Google 的命令行 agent,原生支持 ACP。",
+  "homepage": "https://github.com/google-gemini/gemini-cli",
+  "launch": {
+    "command": "gemini",
+    "args": [
+      "--acp"
+    ]
+  },
+  "detect": {
+    "bins": [
+      "gemini"
+    ],
+    "versionArgs": [
+      "--version"
+    ]
+  },
+  "install": {
+    "hint": "npm i -g @google/gemini-cli"
+  },
+  "auth": {
+    "hint": "首次使用时按提示用 Google 账号登录。"
+  },
+  "configPaths": [
+    "~/.gemini"
+  ],
+  "registryId": "gemini"
+}

@@ -1,0 +1,37 @@
+{
+  "id": "kimi",
+  "name": "Kimi Code",
+  "vendor": "Moonshot AI",
+  "description": "月之暗面的命令行编程 agent,订阅登录由它自己的 CLI 管,onething 不碰 Key。",
+  "homepage": "https://github.com/MoonshotAI/kimi-cli",
+  "launch": {
+    "command": "kimi",
+    "args": [
+      "acp"
+    ]
+  },
+  "detect": {
+    "bins": [
+      "kimi"
+    ],
+    "versionArgs": [
+      "--version"
+    ]
+  },
+  "install": {
+    "hint": "https://github.com/MoonshotAI/kimi-cli/releases"
+  },
+  "auth": {
+    "hint": "在终端里运行 kimi,执行 /login 登录订阅。",
+    "loginCommand": [
+      "kimi"
+    ]
+  },
+  "configPaths": [
+    "~/.kimi"
+  ],
+  "registryId": "kimi",
+  "aliases": [
+    "kimi-code"
+  ]
+}

@@ -45,6 +45,19 @@ vi.mock('@onething/runtime/acp', async () => {
 })
 vi.mock('../../stores/settings.js', () => settings)
 
+/** 活实例的 `acp` 子系统(A1-a 名册)。缺省 null = 不装 backend 的单测,域退回整只管家。 */
+const backendRef = vi.hoisted(() => ({ acp: null as null | Record<string, ReturnType<typeof vi.fn>> }))
+vi.mock('../../current.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../current.js')>()
+  return {
+    ...actual,
+    // 调度器会借实例的 `runTask` 记在途账;假实例原样执行。
+    getCurrentBackendInstance: () => (backendRef.acp
+      ? { acp: backendRef.acp, runTask: (_label: string, work: () => unknown) => work() }
+      : null),
+  }
+})
+
 const AGENT = {
   id: 'agent-1',
   name: 'Demo',
@@ -80,10 +93,11 @@ describe('acp RPC domain', () => {
   afterEach(() => {
     dispose?.()
     dispose = undefined
+    backendRef.acp = null
     vi.resetModules()
   })
 
-  it('exposes exactly the eleven acp methods and refuses anything else', async () => {
+  it('exposes exactly the thirteen acp methods and refuses anything else', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
@@ -104,7 +118,10 @@ describe('acp RPC domain', () => {
       'sessionOptions',
       'setSessionOption',
       'sessionState',
+      'detect',
+      'refreshRegistry',
     ]
+    expect(expected).toHaveLength(13)
     expect([...acpRouter.methods].sort()).toEqual([...expected].sort())
     for (const method of expected) {
       const response = await dispatchRpc({
@@ -220,6 +237,129 @@ describe('acp RPC domain', () => {
       payload: { sessionId: 'session-1', agentId: AGENT.id },
     })
     expect(manager.cancelSession).toHaveBeenCalledWith('session-1', AGENT.id)
+  })
+
+  describe('有活实例时走名册(A1-a)', () => {
+    const SEED_ROW = {
+      config: { id: 'gemini', name: 'Gemini CLI', enabled: true, command: 'gemini', args: ['--acp'] },
+      status: 'disconnected',
+      sessionCount: 0,
+      activePromptCount: 0,
+      manifest: { id: 'gemini', name: 'Gemini CLI', launch: { command: 'gemini', args: ['--acp'] } },
+      source: 'builtin',
+      detect: { installed: true, version: '0.61.0', checkedAt: 1 },
+    }
+
+    function installBackend() {
+      backendRef.acp = {
+        applySettings: vi.fn(async () => {}),
+        agentStates: vi.fn(() => [SEED_ROW]),
+        agentState: vi.fn((id: string) => (id === 'gemini' ? SEED_ROW : undefined)),
+        detect: vi.fn(async () => [SEED_ROW]),
+        refreshRegistry: vi.fn(async () => [SEED_ROW]),
+        roster: vi.fn(() => [{
+          manifest: SEED_ROW.manifest,
+          source: 'builtin',
+          effective: SEED_ROW.config,
+        }]),
+      }
+      return backendRef.acp
+    }
+
+    it('getAgents 的行来自子系统:带 manifest / source / detect,管家不再直接吃设置', async () => {
+      const acp = installBackend()
+      const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+      resetRpcRegistryForTests()
+      dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+      const response = await dispatchRpc({ domain: 'acp', method: 'getAgents', payload: {} })
+      expect(response.ok && response.data).toEqual({ success: true, agents: [SEED_ROW] })
+      expect(acp.applySettings).toHaveBeenCalledWith({ enabled: true, agents: [AGENT] })
+      expect(manager.updateSettings).not.toHaveBeenCalled()
+    })
+
+    it('detect({ agentId }) 与 refreshRegistry() 转给子系统,答整张名册', async () => {
+      const acp = installBackend()
+      const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+      resetRpcRegistryForTests()
+      dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+      const detected = await dispatchRpc({ domain: 'acp', method: 'detect', payload: { agentId: 'gemini' } })
+      expect(detected.ok && detected.data).toEqual({ success: true, agents: [SEED_ROW] })
+      expect(acp.detect).toHaveBeenCalledWith('gemini')
+
+      await dispatchRpc({ domain: 'acp', method: 'detect', payload: {} })
+      expect(acp.detect).toHaveBeenLastCalledWith(undefined)
+
+      const refreshed = await dispatchRpc({ domain: 'acp', method: 'refreshRegistry', payload: {} })
+      expect(refreshed.ok && refreshed.data).toEqual({ success: true, agents: [SEED_ROW] })
+      expect(acp.refreshRegistry).toHaveBeenCalledTimes(1)
+
+      acp.refreshRegistry.mockRejectedValueOnce(new Error('offline'))
+      const failed = await dispatchRpc({ domain: 'acp', method: 'refreshRegistry', payload: {} })
+      expect(failed.ok && failed.data).toEqual({ success: false, error: 'offline' })
+    })
+
+    it('updateAgent 改一台种子 agent:设置里没有它,新建一条覆盖', async () => {
+      installBackend()
+      const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+      resetRpcRegistryForTests()
+      dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+      const response = await dispatchRpc({
+        domain: 'acp',
+        method: 'updateAgent',
+        payload: { config: { id: 'gemini', name: 'Gemini CLI', enabled: false, command: 'gemini', args: ['--experimental-acp'] } },
+      })
+      expect(response.ok && response.data).toMatchObject({ success: true })
+      const saved = settings.saveSettings.mock.calls[0][0] as { acp: { agents: Array<Record<string, unknown>> } }
+      expect(saved.acp.agents.map(agent => agent.id)).toEqual([AGENT.id, 'gemini'])
+      // 稀疏:与 manifest 相等的名字 / 命令没存,只留改了的参数与显式给的 enabled。
+      expect(saved.acp.agents[1]).toEqual({ id: 'gemini', enabled: false, args: ['--experimental-acp'] })
+    })
+
+    it('addAgent 收 basedOn:没写命令就从那一台补;同 id 撞名册拒;非法 secretEnv 拒', async () => {
+      installBackend()
+      settings.getSettings.mockReturnValue({ acp: { enabled: true, agents: [] } })
+      const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+      resetRpcRegistryForTests()
+      dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+
+      const copied = await dispatchRpc({
+        domain: 'acp',
+        method: 'addAgent',
+        payload: { config: { id: 'gemini-work', name: 'Gemini·工作', enabled: true, command: '', basedOn: 'gemini', secretEnv: ['GEMINI_API_KEY'] } },
+      })
+      expect(copied.ok && copied.data).toMatchObject({ success: true })
+      const saved = settings.saveSettings.mock.calls[0][0] as { acp: { agents: Array<Record<string, unknown>> } }
+      expect(saved.acp.agents[0]).toMatchObject({
+        id: 'gemini-work',
+        basedOn: 'gemini',
+        command: 'gemini',
+        args: ['--acp'],
+        secretEnv: ['GEMINI_API_KEY'],
+      })
+
+      // 名册里那一台还没有覆盖:addAgent 存一条稀疏覆盖(只留与 manifest 不同的格)。
+      const seedOverride = await dispatchRpc({ domain: 'acp', method: 'addAgent', payload: { config: { ...AGENT, id: 'gemini' } } })
+      expect(seedOverride.ok && seedOverride.data).toMatchObject({ success: true })
+      const savedSeed = settings.saveSettings.mock.calls[1][0] as { acp: { agents: Array<Record<string, unknown>> } }
+      expect(savedSeed.acp.agents.at(-1)).toEqual({ id: 'gemini', name: 'Demo', enabled: true, command: 'demo-agent' })
+
+      const badSecret = await dispatchRpc({
+        domain: 'acp',
+        method: 'addAgent',
+        payload: { config: { ...AGENT, id: 'x', secretEnv: ['not ok'] } },
+      })
+      expect(badSecret.ok && badSecret.data).toMatchObject({ success: false })
+
+      const missingBase = await dispatchRpc({
+        domain: 'acp',
+        method: 'addAgent',
+        payload: { config: { id: 'y', name: 'Y', enabled: true, command: '', basedOn: 'ghost' } },
+      })
+      expect(missingBase.ok && missingBase.data).toEqual({ success: false, error: 'ACP agent "ghost" not found' })
+    })
   })
 
   it('reports a manager failure as a structured error, not a thrown dispatch', async () => {

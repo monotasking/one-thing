@@ -1,0 +1,28 @@
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "vendor": "Anthropic",
+  "description": "Anthropic 的编程 agent,经 claude-agent-acp 适配器接入。",
+  "homepage": "https://github.com/agentclientprotocol/claude-agent-acp",
+  "launch": {
+    "command": "claude-agent-acp"
+  },
+  "detect": {
+    "bins": [
+      "claude-agent-acp"
+    ]
+  },
+  "install": {
+    "npm": "@agentclientprotocol/claude-agent-acp"
+  },
+  "auth": {
+    "hint": "用 Claude 订阅或 API 控制台登录。"
+  },
+  "configPaths": [
+    "~/.claude"
+  ],
+  "quirks": {
+    "systemPromptMeta": "claude-agent-acp"
+  },
+  "registryId": "claude-acp"
+}

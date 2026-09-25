@@ -6,9 +6,11 @@
  * 同步的,所以"在途"那段窗口靠一只 async 的替身造出来 —— 判的仍然是同一件事
  * (dispose 必须等在途的 start 落地,再 shutdown 恰好一次)。
  */
+import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ACPSettings } from '@onething/runtime/acp'
 import { getLogger } from '../../logging/index.js'
+import { AcpAgentRegistry } from '../registry.js'
 import { AcpSubsystem, type AcpSubsystemDeps } from '../subsystem.js'
 
 const SETTINGS: ACPSettings = { enabled: true, agents: [] }
@@ -135,5 +137,62 @@ describe('AcpSubsystem', () => {
     expect(acp.state).toBe('disposed')
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+})
+
+/*
+ * A1-a:子系统持有名册。管家吃的是名册的生效配置,不再是设置原样;模型目录与 `getAgents`
+ * 的行也从名册来。种子目录用仓里真的 `resources/acp-agents`(种子是数据,不是夹具),探测注入。
+ */
+describe('AcpSubsystem × 名册', () => {
+  const seedDir = path.resolve(__dirname, '../../../../../resources/acp-agents')
+
+  function makeRosterDeps(settings: ACPSettings, installed: string[]) {
+    const { deps, manager } = makeDeps()
+    const setAgentAliases = vi.fn()
+    const registry = new AcpAgentRegistry({
+      seedDir: () => seedDir,
+      cachePath: () => path.join(seedDir, '__no_cache__.json'),
+      settings: () => settings,
+      locate: manifest => ({ installed: installed.includes(manifest.id), checkedAt: 1 }),
+      detect: async manifest => ({ installed: installed.includes(manifest.id), checkedAt: 1 }),
+    })
+    const acp = new AcpSubsystem({ ...deps, manager: { ...manager, setAgentAliases }, settings: () => settings, registry })
+    return { acp, manager, setAgentAliases }
+  }
+
+  it('start / applySettings 喂给管家的是「启用且起得来」的生效配置,用户条目照样在', async () => {
+    const settings: ACPSettings = {
+      enabled: true,
+      agents: [{ id: 'fake', name: 'Fake', enabled: true, command: process.execPath, args: ['fake.mjs'] }],
+    }
+    const { acp, manager, setAgentAliases } = makeRosterDeps(settings, ['claude-code'])
+    await acp.start()
+    const fed = manager.initialize.mock.calls[0]?.[0] as ACPSettings
+    expect(fed.enabled).toBe(true)
+    expect(fed.agents.map(agent => agent.id).sort()).toEqual(['claude-code', 'fake'])
+    expect(fed.agents.find(agent => agent.id === 'claude-code')).toMatchObject({ command: 'claude-agent-acp', enabled: true })
+    // 旧 id 表来自种子数据,交给管家。
+    expect(setAgentAliases).toHaveBeenCalledWith(expect.objectContaining({ 'codex-cli': 'codex', 'kimi-code': 'kimi' }))
+
+    await acp.applySettings({ ...settings, enabled: false })
+    const calls = manager.updateSettings.mock.calls as unknown as Array<[ACPSettings]>
+    const next = calls.at(-1)?.[0] as ACPSettings
+    expect(next.enabled).toBe(false)
+    await acp.dispose()
+  })
+
+  it('模型目录列种子(没装的也列)与用户条目;getAgents 的行带 manifest / 来处 / 探测', async () => {
+    const settings: ACPSettings = { enabled: true, agents: [] }
+    const { acp } = makeRosterDeps(settings, ['gemini'])
+    const models = acp.modelAgents().map(agent => agent.id)
+    expect(models).toEqual(expect.arrayContaining(['claude-code', 'codex', 'gemini', 'copilot', 'kimi', 'pi']))
+
+    const gemini = acp.agentStates().find(row => row.config.id === 'gemini')!
+    expect(gemini.source).toBe('builtin')
+    expect(gemini.manifest?.configPaths).toEqual(['~/.gemini'])
+    expect(gemini.detect?.installed).toBe(true)
+    expect(gemini.status).toBe('disconnected')
+    expect(gemini.config).toMatchObject({ command: 'gemini', args: ['--acp'], enabled: true })
   })
 })

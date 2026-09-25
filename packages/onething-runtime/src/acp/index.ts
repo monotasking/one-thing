@@ -12,6 +12,22 @@ export {
 export type { ACPWireContentPart, ACPWireSessionUpdate, ACPWireStreamEvent, ACPWireToolCallContentPart } from './translate.js'
 export type { ACPAgentProfile, ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
 export { ACPManager } from './manager.js'
+export {
+  acpRegistryPlatformKey,
+  compareAcpAgentVersions,
+  describeAcpAgentConfigProblem,
+  effectiveAgentConfig,
+  isSeedCopy,
+  isValidAcpAgentId,
+  isValidAcpEnvKey,
+  manifestFromRegistryEntry,
+  manifestFromUserConfig,
+  parseAcpAgentManifest,
+  parseAcpRegistryIndex,
+  rebaseManifest,
+  stripNpmPackageVersion,
+} from './manifest.js'
+export type { AcpManifestParseResult, AcpRegistryEntry, AcpRegistryParseResult } from './manifest.js'
 export * from './ipc-operations.js'
 export type {
   ACPAgentConfig,
@@ -28,5 +44,8 @@ export type {
   ACPSessionOptionChoice,
   ACPSessionOptionsSnapshot,
   ACPSettings,
+  AcpAgentDetect,
+  AcpAgentManifest,
+  AcpAgentSource,
   AcpSessionState,
 } from './types.js'

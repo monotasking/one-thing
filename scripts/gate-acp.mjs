@@ -217,6 +217,8 @@ try {
     },
     acp: {
       enabled: true,
+      // 名册的官方注册表不联网:门要确定性(A1-a 起 server 起来会在后台拉注册表)。
+      registry: { enabled: false },
       agents: [{
         id: AGENT_ID,
         name: 'Fake',
@@ -346,6 +348,13 @@ try {
     && item.data?.state?.localSessionId === idleId && hasReview(item.data.state))
   check(Boolean(frame), '④ GET /api/events 上见到带这条命令的 acp:session-state 帧')
 
+  // 名册刷新走一趟(RPC `acp.refreshRegistry` = 强制重拉 + 探测):开关关着就只重读种子与探测,
+  // 不联网 —— 收尾那一步从日志上核「一次拉取都没有」。server 宿主不调 `acp.start()`,
+  // 不走这一趟的话那条核对永远是空转。
+  const refreshed = await rpc('acp', 'refreshRegistry', {})
+  check(refreshed?.success === true && refreshed.agents?.some(agent => agent.config?.id === AGENT_ID),
+    `名册刷新成功,假 agent 仍在名册里(success = ${refreshed?.success})`)
+
   // ── 收尾:SIGTERM,零残留 ───────────────────────────────────────
   await sse.close()
   sse = undefined
@@ -355,6 +364,15 @@ try {
   const leftovers = spawnSync('pgrep', ['-f', fakeAgent], { encoding: 'utf-8' })
   check(!(leftovers.status === 0 && leftovers.stdout.trim()),
     `收尾:假 agent 零残留进程${leftovers.stdout.trim() ? `(见到 ${leftovers.stdout.trim()})` : ''}`)
+
+  // 注册表开关关着 → 进程里一次联网尝试都不该有(registry.ts 每次联网前记 `acp registry fetching`)。
+  const logDir = path.join(storePath, 'log')
+  const logText = fs.existsSync(logDir)
+    ? fs.readdirSync(logDir).filter(name => name.endsWith('.jsonl'))
+      .map(name => fs.readFileSync(path.join(logDir, name), 'utf-8')).join('')
+    : ''
+  check(logText.length > 0 && !logText.includes('acp registry fetching'),
+    `收尾:注册表开关关着,server 日志里没有一次注册表拉取(日志 ${logText.length} 字节)`)
 
   if (failures.length > 0) console.error(`[gate:acp] server 输出尾:\n${serverOut.slice(-40).join('')}`)
 } catch (error) {

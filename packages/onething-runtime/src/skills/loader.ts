@@ -17,6 +17,7 @@ import os from 'os'
 import crypto from 'crypto'
 import { parse as parseYaml } from 'yaml'
 import { getLogger } from '../logging/index.js'
+import { getBuiltinResourcePath } from '../storage/builtin-resources.js'
 import type {
   CustomSkillRoot,
   PluginSkillRoot,
@@ -364,17 +365,13 @@ export function getProjectSkillsPath(cwd?: string): string {
  * Handles both development and production environments
  */
 export function getBuiltinSkillsPath(): string {
-  // In production, resources are in process.resourcesPath
-  // In development, resources are in the project root
-  const isDev = !configuredAdapters?.isPackaged?.()
-
-  if (isDev) {
-    // Development: use process.cwd() which is the project root when using electron-vite
-    return path.join(getCurrentWorkingDirectory(), 'resources', 'skills')
-  }
-
-  // Production: resources are copied to app.asar.unpacked or extraResources
-  return path.join(getRuntimeResourcesPath() ?? getCurrentWorkingDirectory(), 'skills')
+  // 开发 = 仓根 `resources/skills`,打包 = `process.resourcesPath/skills`;规则与 ACP 种子
+  // (`resources/acp-agents`)共用 `getBuiltinResourcePath`,两处不再各写一遍。
+  return getBuiltinResourcePath('skills', {
+    isPackaged: () => configuredAdapters?.isPackaged?.() ?? false,
+    getResourcesPath: getRuntimeResourcesPath,
+    getCwd: getCurrentWorkingDirectory,
+  })
 }
 
 /**

@@ -22,7 +22,7 @@
 import '@onething/runtime/agents/executor/registry'
 import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from './session/event-log.js'
-import { createStoreLease, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'
+import { createStoreLease, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'
 import { MediaLibraryService } from '@onething/runtime/media'
 import { configureMediaLibraryService } from '@onething/runtime/media/library-service-bound'
 import { OnethingUsageLedger } from '@onething/runtime/usage'
@@ -120,6 +120,9 @@ import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
 import { McpSubsystem } from './wiring/mcp/subsystem.js'
 import { AcpSubsystem } from './wiring/acp/subsystem.js'
+import { AcpAgentRegistry, type AcpRegistryFetch } from './wiring/acp/registry.js'
+import { getAppBuiltinResourcePath } from './wiring/skills/loader.js'
+import { createAppFetch } from './provider-binding/bound-fetch.js'
 import { resolveExternalAgentSpawnEnv } from './wiring/external-agents/spawn-env.js'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
@@ -1086,9 +1089,20 @@ export class OnethingBackend implements BackendHandle {
       registerTools: () => registerMCPTools(),
     })
     this.mcpSubsystem = mcp
+    const acpSettings = () => getSettings().acp || { enabled: true, agents: [] }
     const acp = new AcpSubsystem({
       manager: ACPManager,
-      settings: () => getSettings().acp || { enabled: true, agents: [] },
+      settings: acpSettings,
+      /*
+       * A1-a 名册:种子(`resources/acp-agents`)⊕ 官方注册表(托管 fetch,走 `network.proxy`)⊕
+       * 用户覆盖。构造不读盘不联网;`start()` 先同步读种子与缓存,联网在后台。
+       */
+      registry: new AcpAgentRegistry({
+        seedDir: () => getAppBuiltinResourcePath('acp-agents'),
+        cachePath: () => getOnethingAcpRegistryCachePath(),
+        settings: acpSettings,
+        fetch: () => createAppFetch() as unknown as AcpRegistryFetch,
+      }),
     })
     this.acpSubsystem = acp
     /*

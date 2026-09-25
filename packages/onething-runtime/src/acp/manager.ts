@@ -29,6 +29,21 @@ class ACPManagerClass {
   private agentStateListeners = new Set<(state: ACPAgentState) => void>()
   /** 每只客户端上挂的那两条转发;客户端被摘时连同它们一起摘。 */
   private clientUnsubscribers = new Map<string, () => void>()
+  /**
+   * 旧 agent id → 现 id(A1-a:`codex-cli` → `codex` 这类改名,数据来自种子的 `aliases`,
+   * 由装配层的名册递进来)。老会话、老的模型选择里记着旧 id,照样认到那一台。
+   */
+  private agentAliases = new Map<string, string>()
+
+  setAgentAliases(aliases: Record<string, string>): void {
+    this.agentAliases = new Map(Object.entries(aliases))
+  }
+
+  /** 旧 id 认回现 id;现在的名册里真有这个 id 时以它为准(用户可能新建了同名条目)。 */
+  private resolveAgentId(agentId: string): string {
+    if (this.settings.agents.some(agent => agent.id === agentId) || this.clients.has(agentId)) return agentId
+    return this.agentAliases.get(agentId) ?? agentId
+  }
 
   /**
    * 任一台 agent 上任一条会话的状态变了(§3.3)。装配层订这里再 `emitGlobal`;产品层不认识总线。
@@ -50,7 +65,7 @@ class ACPManagerClass {
    * 都没开着就退回任一台留着的上一份(断开之后壳仍要看得到「断了」)。
    */
   getSessionState(localSessionId: string, agentId?: string): AcpSessionState | undefined {
-    if (agentId) return this.clients.get(agentId)?.getSessionState(localSessionId)
+    if (agentId) return this.clients.get(this.resolveAgentId(agentId))?.getSessionState(localSessionId)
     let fallback: AcpSessionState | undefined
     for (const client of this.clients.values()) {
       const state = client.getSessionState(localSessionId)
@@ -104,7 +119,7 @@ class ACPManagerClass {
 
   /** 这台 agent 最近一次握手的答复;没连过为 undefined。只读,不起进程。 */
   getAgentHandshake(agentId: string): InitializeResponse | undefined {
-    return this.clients.get(agentId)?.lastHandshake ?? undefined
+    return this.clients.get(this.resolveAgentId(agentId))?.lastHandshake ?? undefined
   }
 
   /** 连上 agent 并开(或恢复)这条会话,答 agent 侧的会话 id。 */
@@ -126,6 +141,7 @@ class ACPManagerClass {
     localSessionId: string | undefined,
     cwd: string | undefined,
   ): Promise<ACPSessionOptionsSnapshot> {
+    agentId = this.resolveAgentId(agentId)
     const client = this.getOrCreateClient(agentId)
     if (!localSessionId) return { options: this.draftOptions(agentId), live: false }
     return { options: await client.getSessionOptions(localSessionId, cwd), live: true }
@@ -138,6 +154,7 @@ class ACPManagerClass {
     optionId: string,
     value: string,
   ): Promise<ACPSessionOptionsSnapshot> {
+    agentId = this.resolveAgentId(agentId)
     const client = this.getOrCreateClient(agentId)
     if (localSessionId) {
       return { options: await client.setSessionOption(localSessionId, cwd, optionId, value), live: true }
@@ -209,6 +226,7 @@ class ACPManagerClass {
   }
 
   getAgentState(agentId: string): ACPAgentState | undefined {
+    agentId = this.resolveAgentId(agentId)
     const client = this.clients.get(agentId)
     if (client) return client.state
 
@@ -229,7 +247,7 @@ class ACPManagerClass {
   }
 
   async disconnectAgent(agentId: string): Promise<void> {
-    const client = this.clients.get(agentId)
+    const client = this.clients.get(this.resolveAgentId(agentId))
     if (client) await client.disconnect()
   }
 
@@ -240,7 +258,7 @@ class ACPManagerClass {
   }
 
   async cancelSession(localSessionId: string, agentId?: string): Promise<void> {
-    const targets = agentId ? [this.clients.get(agentId)] : Array.from(this.clients.values())
+    const targets = agentId ? [this.clients.get(this.resolveAgentId(agentId))] : Array.from(this.clients.values())
     await Promise.allSettled(targets.filter(Boolean).map(client => client!.cancelLocalSession(localSessionId)))
   }
 
@@ -298,6 +316,7 @@ class ACPManagerClass {
   }
 
   private getOrCreateClient(agentId: string): ACPClient {
+    agentId = this.resolveAgentId(agentId)
     const existing = this.clients.get(agentId)
     if (existing) return existing
 

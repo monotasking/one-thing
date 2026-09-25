@@ -36,6 +36,7 @@ import {
   getOnethingACPAgentsForIpc,
   refreshOnethingACPAgentForIpc,
   removeOnethingACPAgentForIpc,
+  runOnethingACPRosterOperationForIpc,
   updateOnethingACPAgentForIpc,
 } from '@onething/runtime/acp'
 import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp.js'
@@ -74,13 +75,73 @@ async function saveACPSettings(acpSettings: ACPSettings): Promise<void> {
   else ACPManager.updateSettings(acpSettings)
 }
 
+/**
+ * 投影层(`*OnethingACP*ForIpc`)眼里的「管家」。
+ *
+ * A1-a 起名册住装配层的 `AcpSubsystem`:喂管家的是名册的生效配置,读出来的行带
+ * manifest / 来处 / 探测。所以有活实例时,「喂设置」与「读行」两件交给子系统,连接类动作
+ * 仍然直达 `ACPManager`;没有实例(不装 backend 的单测)退化为整只 `ACPManager`,与 A1 之前
+ * 逐字相同。
+ */
+function acpManagerFacade(): OnethingACPIpcAdapters<ACPAgentConfig, ACPAgentState>['manager'] {
+  const acp = getCurrentBackendInstance()?.acp
+  if (!acp) return ACPManager
+  return {
+    updateSettings: settings => acp.applySettings(settings as ACPSettings),
+    getAgentStates: () => acp.agentStates(),
+    getAgentState: agentId => acp.agentState(agentId),
+    connectAgent: agentId => ACPManager.connectAgent(agentId),
+    disconnectAgent: agentId => ACPManager.disconnectAgent(agentId),
+    refreshAgent: agentId => ACPManager.refreshAgent(agentId),
+    cancelSession: (sessionId, agentId) => ACPManager.cancelSession(sessionId, agentId),
+  }
+}
+
+/**
+ * 名册里有、设置里没有的 id(种子 / 注册表来的):`updateAgent` 对它们是「新建一条覆盖」,
+ * `addAgent` 的 `basedOn` 从它们继承起法。没有实例 = 名册为空。
+ */
+function rosterManifest(agentId: string) {
+  return getCurrentBackendInstance()?.acp.roster().find(entry => entry.manifest.id === agentId)
+}
+
+/**
+ * 种子 / 注册表来的那一台的 manifest —— 写它的覆盖时只存与之不同的格(稀疏覆盖)。
+ * 用户手加的条目(`source: 'user'`)不算:它们在设置里存整份,manifest 就是它们自己。
+ */
+function seedOrRegistryManifest(agentId: string) {
+  const entry = rosterManifest(agentId)
+  return entry && entry.source !== 'user' ? entry.manifest : undefined
+}
+
 function acpAdapters() {
   return {
     getSettings: getACPSettings,
     saveSettings: saveACPSettings,
-    manager: ACPManager,
+    manager: acpManagerFacade(),
     logger: consoleLog,
+    isRosterAgent: (agentId: string) => Boolean(seedOrRegistryManifest(agentId)),
+    rosterManifest: seedOrRegistryManifest,
+    resolveBasedOn: (agentId: string) => rosterManifest(agentId)?.effective,
   }
+}
+
+/**
+ * `detect` / `refreshRegistry` 的执行体。有活实例 → 名册子系统;没有(不装 backend 的单测)→
+ * 没有名册可探测,答管家眼里的那张表。信封与错误投影在 runtime 的 ipc-operations。
+ */
+function rosterRows(
+  run: (acp: NonNullable<ReturnType<typeof getCurrentBackendInstance>>['acp']) => Promise<ACPAgentState[]>,
+) {
+  return runOnethingACPRosterOperationForIpc<ACPAgentState>({
+    run: () => {
+      const acp = getCurrentBackendInstance()?.acp
+      if (acp) return run(acp)
+      ACPManager.updateSettings(getACPSettings())
+      return ACPManager.getAgentStates()
+    },
+    logger: consoleLog,
+  }) as Promise<AcpRoutes['detect']['output']>
 }
 
 /**
@@ -108,9 +169,17 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
   async getAgents() {
     return getOnethingACPAgentsForIpc({
       getSettings: getACPSettings,
-      manager: ACPManager,
+      manager: acpManagerFacade(),
       logger: consoleLog,
     }) as Promise<AcpRoutes['getAgents']['output']>
+  },
+  /** 探测一台或全部(PATH + 版本号),答整张名册。不起 agent 进程。 */
+  async detect(request) {
+    return rosterRows(acp => acp.detect(request?.agentId || undefined))
+  },
+  /** 立刻重拉官方注册表(不看 24h 缓存)并探测,答整张名册。注册表开关关着 = 不联网。 */
+  async refreshRegistry() {
+    return rosterRows(acp => acp.refreshRegistry())
   },
   async addAgent(request) {
     const aCPIpcAdapters: OnethingACPIpcAdapters<ACPAgentConfig, ACPAgentState> & { config: ACPAgentConfig; } = {
@@ -136,7 +205,7 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
   async connectAgent(request) {
     return connectOnethingACPAgentForIpc({
       getSettings: getACPSettings,
-      manager: ACPManager,
+      manager: acpManagerFacade(),
       agentId: request.agentId,
       logger: consoleLog,
     }) as Promise<AcpRoutes['connectAgent']['output']>
@@ -151,7 +220,7 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
   async refreshAgent(request) {
     return refreshOnethingACPAgentForIpc({
       getSettings: getACPSettings,
-      manager: ACPManager,
+      manager: acpManagerFacade(),
       agentId: request.agentId,
       logger: consoleLog,
     }) as Promise<AcpRoutes['refreshAgent']['output']>

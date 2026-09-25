@@ -123,6 +123,11 @@ extraResources:
     to: skills
     filter:
       - "**/*"
+  # ACP agent 种子(A1-a):一台 agent 一个 JSON,名册从这里读(与 skills 同一条搬运规则)。
+  - from: resources/acp-agents
+    to: acp-agents
+    filter:
+      - "**/*"
   - from: resources/models
     to: models
     filter:

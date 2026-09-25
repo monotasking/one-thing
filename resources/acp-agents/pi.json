@@ -1,0 +1,18 @@
+{
+  "id": "pi",
+  "name": "Pi",
+  "description": "Pi 编程 agent 的社区 ACP 适配器,功能尚不完整。",
+  "homepage": "https://www.npmjs.com/package/pi-acp",
+  "launch": {
+    "command": "pi-acp"
+  },
+  "detect": {
+    "bins": [
+      "pi-acp"
+    ]
+  },
+  "install": {
+    "npm": "pi-acp"
+  },
+  "experimental": true
+}

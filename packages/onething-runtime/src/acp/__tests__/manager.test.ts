@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ACPManager } from '../manager.js'
 
 afterEach(async () => {
+  ACPManager.setAgentAliases({})
   await ACPManager.shutdown()
 })
 
@@ -55,5 +56,23 @@ describe('runtime ACP manager', () => {
       args: ['a'],
       env: { A: '1' },
     })
+  })
+
+  it('旧 id 认回现 id(A1-a:名册递进来的 aliases);名册里真有旧 id 时以它为准', () => {
+    ACPManager.setAgentAliases({ 'codex-cli': 'codex' })
+    ACPManager.initialize({
+      enabled: true,
+      agents: [{ id: 'codex', name: 'Codex', enabled: true, command: 'codex-acp' }],
+    })
+    expect(ACPManager.getAgentState('codex-cli')?.config.id).toBe('codex')
+
+    ACPManager.updateSettings({
+      enabled: true,
+      agents: [
+        { id: 'codex', name: 'Codex', enabled: true, command: 'codex-acp' },
+        { id: 'codex-cli', name: 'Mine', enabled: true, command: '/opt/codex' },
+      ],
+    })
+    expect(ACPManager.getAgentState('codex-cli')?.config.command).toBe('/opt/codex')
   })
 })

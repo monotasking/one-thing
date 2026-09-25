@@ -9,6 +9,7 @@ import {
   listPluginSkillRoots,
 } from '@onething/runtime/skills/plugin-roots.wiring'
 import {
+  findBuiltinResourcePath,
   getOnethingStorePath,
 } from '@onething/runtime/storage'
 import {
@@ -47,6 +48,20 @@ export function configureSkillsEnvironmentHost(ports: SkillsEnvironmentHostPorts
  */
 export function resetSkillsEnvironmentHost(): void {
   envPorts = {}
+}
+
+/**
+ * 应用自带资源目录 `resources/<name>` 在本宿主上的位置(开发 = 仓根,打包 = resourcesPath)。
+ * 「打没打包 / resources 在哪」这件宿主事实今天只从 `skillsEnvironment` 这一个端口进来(名字是
+ * 历史原因),所以 ACP 种子目录(`acp-agents`)也从这里取,与技能同一条规则。
+ */
+export function getAppBuiltinResourcePath(name: string): string {
+  // 找不到时多看一眼 Electron 的 resources 目录(打包壳没接这个端口的兜底,见 `findBuiltinResourcePath`)。
+  return findBuiltinResourcePath(name, {
+    isPackaged: () => envPorts.isPackaged?.() ?? false,
+    getResourcesPath: () => envPorts.getResourcesPath?.(),
+    getCwd: () => process.cwd(),
+  })
 }
 
 let skillsLoaderConfigured = false

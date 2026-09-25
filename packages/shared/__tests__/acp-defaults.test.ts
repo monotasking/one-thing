@@ -1,48 +1,77 @@
 /**
- * 预置 ACP agent 的两条性质。
+ * ACP 设置归一的性质(A1-a 起)。
  *
- * 第二条才是容易错的那个:新增一个预置项要能**到达老用户**。这本设置是「默认打底,
- * 存下来的按 id 覆盖」——不是「存过就整份用存的」。写反了的话,新预置项只有全新安装
- * 看得见,而所有老用户永远等不到它,还查不出来(没人报错)。
+ * 内置 agent 不再写在 defaults 里 —— 它们是种子文件 `resources/acp-agents/*.json`,由装配层的
+ * 名册合并(`backend/wiring/acp/registry.ts`)。这里只剩「形状」:出厂名册为空、用户条目按 id
+ * 去重、只归一带着的格(稀疏覆盖原样往返)、新加的两格按规矩收。
  */
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_ACP_SETTINGS, normalizeACPSettings } from '../defaults/settings.js'
+import type { ACPAgentConfig } from '../contracts/acp.js'
+import { DEFAULT_ACP_SETTINGS, DEFAULT_PROVIDER_CONFIGS, normalizeACPSettings } from '../defaults/settings.js'
 
-describe('预置 ACP agent', () => {
-  it('Kimi Code 走 `kimi acp` —— 登录归 CLI,我们不碰 Key', () => {
-    const kimi = DEFAULT_ACP_SETTINGS.agents.find(agent => agent.id === 'kimi-code')
-    expect(kimi).toBeDefined()
-    // 订阅的 OAuth 只对官方客户端开放,所以这里必须是官方 CLI 本体 + 它的 ACP 子命令。
-    expect(kimi?.command).toBe('kimi')
-    expect(kimi?.args).toEqual(['acp'])
-    expect(kimi?.enabled).toBe(true)
+describe('ACP 设置归一', () => {
+  it('出厂名册是空的 —— 内置条目来自种子文件,不是 TS 字面量', () => {
+    expect(DEFAULT_ACP_SETTINGS.agents).toEqual([])
+    expect(normalizeACPSettings(undefined).agents).toEqual([])
   })
 
-  it('新预置项到得了老用户 —— 存下来的按 id 覆盖,不是整份替换', () => {
-    // 一份「装 app 时还没有 kimi-code」的旧设置:只存了改过的那一个。
+  it('ACP provider 的首装模型表跟着种子 id 走', () => {
+    expect(DEFAULT_PROVIDER_CONFIGS.acp?.model).toBe('claude-code')
+    expect(DEFAULT_PROVIDER_CONFIGS.acp?.selectedModels).toEqual(['claude-code', 'codex', 'gemini', 'copilot'])
+  })
+
+  it('用户条目原样留下(归一只动形状),同 id 只留第一条', () => {
     const stored = normalizeACPSettings({
       enabled: true,
       agents: [
-        { id: 'claude-code', name: 'Claude Code', enabled: true, command: 'my-claude-acp' },
+        { id: 'kimi', name: 'Kimi Code', enabled: true, command: '/opt/kimi/bin/kimi', args: ['acp', '--verbose'] },
+        { id: 'kimi', name: 'dup', enabled: true, command: 'other' },
       ],
     })
-
-    const ids = stored.agents.map(agent => agent.id)
-    expect(ids).toContain('kimi-code')
-    // 用户改过的那一条仍然是用户的。
-    expect(stored.agents.find(agent => agent.id === 'claude-code')?.command)
-      .toBe('my-claude-acp')
+    expect(stored.agents).toHaveLength(1)
+    expect(stored.agents[0]?.command).toBe('/opt/kimi/bin/kimi')
+    expect(stored.agents[0]?.args).toEqual(['acp', '--verbose'])
   })
 
-  it('用户把 kimi 换成自己的包装脚本时不会被默认值改回去', () => {
+  it('没命令的条目也留着(起法可能来自种子);只归一带着的格', () => {
     const stored = normalizeACPSettings({
       enabled: true,
       agents: [
-        { id: 'kimi-code', name: 'Kimi Code', enabled: true, command: '/opt/kimi/bin/kimi', args: ['acp', '--verbose'] },
+        { id: 'broken', name: 'Broken', enabled: true, command: '' },
+        { id: 'claude-work', name: 'Claude·工作', enabled: true, command: '', basedOn: 'claude-code' },
       ],
     })
-    const kimi = stored.agents.find(agent => agent.id === 'kimi-code')
-    expect(kimi?.command).toBe('/opt/kimi/bin/kimi')
-    expect(kimi?.args).toEqual(['acp', '--verbose'])
+    expect(stored.agents.map(agent => agent.id)).toEqual(['broken', 'claude-work'])
+    expect(stored.agents[1]?.basedOn).toBe('claude-code')
+    expect(stored.agents[0]).toEqual({ id: 'broken', name: 'Broken', enabled: true, command: '' })
+  })
+
+  it('稀疏覆盖原样往返:`{ id, enabled }` 不被补成整份', () => {
+    const sparse = { id: 'kimi', enabled: true } as unknown as ACPAgentConfig
+    expect(normalizeACPSettings({ enabled: true, agents: [sparse] }).agents).toEqual([{ id: 'kimi', enabled: true }])
+    const argsOnly = { id: 'gemini', args: ['--experimental-acp'] } as unknown as ACPAgentConfig
+    expect(normalizeACPSettings({ enabled: true, agents: [argsOnly] }).agents).toEqual([argsOnly])
+  })
+
+  it('secretEnv 只收合法的环境变量名;basedOn 只收 agent id', () => {
+    const stored = normalizeACPSettings({
+      enabled: true,
+      agents: [{
+        id: 'custom',
+        name: 'Custom',
+        enabled: true,
+        command: 'custom-acp',
+        secretEnv: ['API_KEY', 'bad key', '1NOPE'],
+        basedOn: 'Not An Id',
+      }],
+    })
+    expect(stored.agents[0]?.secretEnv).toEqual(['API_KEY'])
+    expect(stored.agents[0]?.basedOn).toBeUndefined()
+  })
+
+  it('注册表开关只在关着时落一格', () => {
+    expect(normalizeACPSettings({ enabled: true, agents: [] }).registry).toBeUndefined()
+    expect(normalizeACPSettings({ enabled: true, agents: [], registry: { enabled: false } }).registry)
+      .toEqual({ enabled: false })
   })
 })

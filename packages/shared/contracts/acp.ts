@@ -30,6 +30,106 @@ export interface ACPAgentConfig {
   maxSessionRecords?: number
   maxTerminals?: number
   maxTerminalOutputBytes?: number
+  /**
+   * 自定义条目「复制自」哪一台(种子 / 注册表 id,A1-a,方案 §3.9)。有它时 manifest 从那一台
+   * 继承,本条只写改过的格;id 仍是自己的。只收 `[a-z0-9-]`。
+   */
+  basedOn?: string
+  /**
+   * 要当密钥处理的环境变量**键名**(A1-a 只加字段与校验;值在凭证池 `acp:<id>:<KEY>`,接入归 A3)。
+   * 只收 `[A-Za-z_][A-Za-z0-9_]*`。
+   */
+  secretEnv?: string[]
+}
+
+/**
+ * 整个 ACP 设置段(`settings.acp`)。A1-a 从 runtime / `@shared/ipc` 两份合到这里。
+ *
+ * `agents` 只放**用户手加 / 覆盖**的条目 —— 内置条目来自种子文件
+ * (`resources/acp-agents/*.json`),注册表条目来自 ACP 官方清单,二者都不落这张表。
+ */
+export interface ACPSettings {
+  enabled: boolean
+  agents: ACPAgentConfig[]
+  /** 官方注册表开关。缺省 = 开;`enabled: false` 就不联网,只用种子与已有缓存。 */
+  registry?: { enabled?: boolean }
+}
+
+// ── 名册(A1-a,方案 `docs/design/acp-integration-2026-09.md` §3.2)──────────────
+
+/** 名册里一行的来处:种子文件 / 官方注册表 / 用户手加。 */
+export type AcpAgentSource = 'builtin' | 'registry' | 'user'
+
+/**
+ * 一台 agent 的**自述**。数据文件在 `resources/acp-agents/<id>.json`,或由注册表条目折出来;
+ * 校验在 `runtime/src/acp/manifest.ts` 的 `parseAcpAgentManifest`。
+ * core / runtime / backend 里没有任何一处写死某一台 agent —— 加一台 = 加一个 JSON 文件。
+ */
+export interface AcpAgentManifest {
+  /** 仅 `[a-z0-9-]`。 */
+  id: string
+  /** 给人看的名字(产品名)。 */
+  name: string
+  description?: string
+  /** 'Anthropic' / 'OpenAI' / …,只用于分组显示。 */
+  vendor?: string
+  /** 壳侧图标 key 或 URL;没有就用首字母。 */
+  icon?: string
+  homepage?: string
+  /**
+   * 怎么起进程。种子文件必填;注册表里 `binary` / `uvx` 形(A1 不自动下载)的条目没有这一格,
+   * 这种条目上榜只为让人看见「有它、怎么装」,不喂给进程管家。
+   */
+  launch?: {
+    command: string
+    args?: string[]
+    env?: Record<string, string>
+  }
+  /** 装了没有?探测器只读这一格,不猜。缺 `bins` = 用 `launch.command`。 */
+  detect?: {
+    bins?: string[]
+    /** 拿一行版本号的参数,例如 `['--version']`。缺席 = 不跑它,只看在不在 PATH 上。 */
+    versionArgs?: string[]
+    minVersion?: string
+  }
+  install?: {
+    /** npm 包名(不带版本号)→ 装法 `npm i -g <pkg>`。 */
+    npm?: string
+    /** 一句人话或一个链接(装 CLI 本体去哪)。 */
+    hint?: string
+  }
+  /** 「还没登怎么办」的一句话;真正的登录按协议走(§3.5)。 */
+  auth?: { hint?: string; loginCommand?: string[] }
+  /** 它自己的配置文件 / 目录(§3.9 ⑥)。只用来画「打开配置目录」,onething 不读不写。 */
+  configPaths?: string[]
+  /** 已知的怪癖,不是能力声明(能力由 `initialize` 握手自报)。 */
+  quirks?: {
+    promptTimeoutMs?: number
+    systemPromptMeta?: 'claude-agent-acp'
+  }
+  /** 社区 MVP / 协议支持不全的,壳上标「实验」。 */
+  experimental?: boolean
+  /**
+   * 它在官方注册表里叫什么(种子 id 与注册表 id 不同名时填,例如 `claude-code` ↔ `claude-acp`)。
+   * 合并时注册表里这一条被种子吃掉,名册里不出现两台同一个 agent。
+   */
+  registryId?: string
+  /**
+   * 旧 id(一次性迁移用,例如 `codex` 的旧名 `codex-cli`)。用户覆盖条目与会话里的旧 id 按它
+   * 认回这一台;数据写在种子里,代码里不出现任何一个具体的旧名。
+   */
+  aliases?: string[]
+}
+
+/** 探测结果(`detect.ts`)。只在 `refresh()` / RPC `acp.detect` 时刷新,不轮询。 */
+export interface AcpAgentDetect {
+  installed: boolean
+  /** 找到的可执行的绝对路径。 */
+  path?: string
+  version?: string
+  /** 版本低于 manifest 的 `detect.minVersion`。 */
+  belowMin?: boolean
+  checkedAt: number
 }
 
 /**
@@ -87,6 +187,14 @@ export interface ACPAgentState {
   capabilities?: JsonObject
   sessionCount: number
   activePromptCount: number
+  /**
+   * 名册那一半(A1-a):这台 agent 的自述、来处与探测结果。进程管家(`ACPManager` / `ACPClient`)
+   * 不认识名册,它产出的状态没有这三格;由装配层(`AcpSubsystem`)在 RPC 与全局事件出口处补上,
+   * 所以在类型上是可缺的 —— 经 `acp.getAgents` / `acp:agent-state` 到壳的行一定带着。
+   */
+  manifest?: AcpAgentManifest
+  source?: AcpAgentSource
+  detect?: AcpAgentDetect
 }
 
 // ── 会话级状态(A0-2,方案 `docs/design/acp-integration-2026-09.md` §3.3)──────────

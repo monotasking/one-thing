@@ -35,6 +35,7 @@ import { fetchCopilotModels } from '../../wiring/providers/builtin/github-copilo
 import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers/builtin/codex.js'
 import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import { getSettings } from '../../stores/settings.js'
+import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/runtime/providers/model-registry'
 import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameAliasesOptions, OnethingModelQueryIpcLogger } from '@onething/runtime/providers/model-query-presentation'
@@ -129,7 +130,9 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       getCodexFallbackModels: modelIds => getCodexFallbackModels(modelIds) as OpenRouterModel[],
       getConfiguredCodexModelSelection: () =>
         getSettings()?.ai?.providers?.codex as OnethingConfiguredModelSelection | undefined,
-      getACPAgents: () => getSettings()?.acp?.agents,
+      // A1-a:ACP 的「模型」= 名册的生效配置(种子 ⊕ 注册表 ⊕ 用户覆盖),不是设置原样 ——
+      // 否则种子来的 agent 永远不出现在选择器里。没有装配好的 backend(单测)退回设置。
+      getACPAgents: () => getCurrentBackendInstance()?.acp.modelAgents() ?? getSettings()?.acp?.agents,
       // 刷新钮对通用厂商的真动作(2026-09-11):重拉 models.dev 落盘,随后
       // `getModelsForProvider` 读到的是新表。挂在这里而不是壳里 —— 壳那一头
       // (`forceRefresh: true`)本来就对,断的是后端这一截。

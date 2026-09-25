@@ -1,0 +1,32 @@
+{
+  "id": "qwen-code",
+  "name": "Qwen Code",
+  "vendor": "Alibaba",
+  "description": "通义千问的命令行编程 agent。",
+  "homepage": "https://github.com/QwenLM/qwen-code",
+  "launch": {
+    "command": "qwen",
+    "args": [
+      "--acp",
+      "--experimental-skills"
+    ]
+  },
+  "detect": {
+    "bins": [
+      "qwen"
+    ],
+    "versionArgs": [
+      "--version"
+    ]
+  },
+  "install": {
+    "npm": "@qwen-code/qwen-code"
+  },
+  "auth": {
+    "hint": "首次使用时按提示登录 Qwen 账号或填 API Key。"
+  },
+  "configPaths": [
+    "~/.qwen"
+  ],
+  "registryId": "qwen-code"
+}

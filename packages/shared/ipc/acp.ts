@@ -9,6 +9,10 @@ import type {
   ACPPermissionMode,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  ACPSettings,
+  AcpAgentDetect,
+  AcpAgentManifest,
+  AcpAgentSource,
   AcpSessionState,
 } from '../contracts/acp.js'
 import { defineRouter } from './router.js'
@@ -21,12 +25,11 @@ export type {
   ACPPermissionMode,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  ACPSettings,
+  AcpAgentDetect,
+  AcpAgentManifest,
+  AcpAgentSource,
   AcpSessionState,
-}
-
-export interface ACPSettings {
-  enabled: boolean
-  agents: ACPAgentConfig[]
 }
 
 export interface ACPGetAgentsResponse {
@@ -35,6 +38,10 @@ export interface ACPGetAgentsResponse {
   error?: string
 }
 
+/**
+ * `config.basedOn` = 「复制为自定义」:新条目继承那一台(种子 / 注册表)的 manifest,
+ * 这时 `config.command` 可以留空,缺的起法从那一台补。
+ */
 export interface ACPAddAgentRequest {
   config: ACPAgentConfig
 }
@@ -92,6 +99,17 @@ export interface ACPRefreshAgentResponse {
   agent?: ACPAgentState
   error?: string
 }
+
+/** 探测一台(`agentId`)或全部(缺席)。PATH 上找可执行 + 取版本号;不起 agent 进程。 */
+export interface ACPDetectRequest {
+  agentId?: string
+}
+
+/** 探测 / 刷注册表之后的整张名册(与 `getAgents` 同形)。 */
+export type ACPDetectResponse = ACPGetAgentsResponse
+
+/** 立刻重拉官方注册表(不看 24h 缓存),再探测一遍。注册表开关关着时只重读种子与探测。 */
+export type ACPRefreshRegistryResponse = ACPGetAgentsResponse
 
 export interface ACPCancelSessionRequest {
   sessionId: string
@@ -176,6 +194,8 @@ export type AcpRoutes = {
   sessionOptions: { input: ACPSessionOptionsRequest; output: ACPSessionOptionsResponse }
   setSessionOption: { input: ACPSetSessionOptionRequest; output: ACPSetSessionOptionResponse }
   sessionState: { input: ACPSessionStateRequest; output: ACPSessionStateResponse }
+  detect: { input: ACPDetectRequest; output: ACPDetectResponse }
+  refreshRegistry: { input: Record<string, never>; output: ACPRefreshRegistryResponse }
 }
 
 export const acpRouter = defineRouter<AcpRoutes>('acp', [
@@ -190,4 +210,6 @@ export const acpRouter = defineRouter<AcpRoutes>('acp', [
   'sessionOptions',
   'setSessionOption',
   'sessionState',
+  'detect',
+  'refreshRegistry',
 ])

@@ -10,6 +10,10 @@ import type {
   ACPPermissionMode,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  ACPSettings,
+  AcpAgentDetect,
+  AcpAgentManifest,
+  AcpAgentSource,
   AcpSessionState,
 } from '@shared/contracts/acp.js'
 
@@ -22,12 +26,11 @@ export type {
   ACPPermissionMode,
   ACPSessionOption,
   ACPSessionOptionChoice,
+  ACPSettings,
+  AcpAgentDetect,
+  AcpAgentManifest,
+  AcpAgentSource,
   AcpSessionState,
-}
-
-export interface ACPSettings {
-  enabled: boolean
-  agents: ACPAgentConfig[]
 }
 
 /** `getSessionOptions` 的答案:`live` = 来自一个真开着的 agent 会话;否则是上次记下的目录。 */

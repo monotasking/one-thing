@@ -1,0 +1,31 @@
+{
+  "id": "copilot",
+  "name": "GitHub Copilot CLI",
+  "vendor": "GitHub",
+  "description": "GitHub 的命令行编程 agent,原生支持 ACP。",
+  "homepage": "https://github.com/github/copilot-cli",
+  "launch": {
+    "command": "copilot",
+    "args": [
+      "--acp"
+    ]
+  },
+  "detect": {
+    "bins": [
+      "copilot"
+    ],
+    "versionArgs": [
+      "--version"
+    ]
+  },
+  "install": {
+    "npm": "@github/copilot"
+  },
+  "auth": {
+    "hint": "在终端里运行 copilot,按提示登录 GitHub。"
+  },
+  "configPaths": [
+    "~/.copilot"
+  ],
+  "registryId": "github-copilot-cli"
+}
