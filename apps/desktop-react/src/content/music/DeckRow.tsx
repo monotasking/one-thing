@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Heart, ListMusic, Pause, Play, SkipForward, Volume2 } from '../../components/icons'
 import { useMutation, useQuery } from '../../data/kernel'
-import { musicBriefQuery, musicOps } from '../../data/music-source'
+import { musicBriefQuery, musicOps, musicPlaybackOp, setMusicPlaying, useMusicPlaybackNotice } from '../../data/music-source'
 import { useT } from '../../i18n'
 import { IconButton } from '../../ui/IconButton'
 import { Slider } from '../../ui/Slider'
@@ -16,7 +16,8 @@ import s from './DeckRow.module.css'
  * 所以那颗「说话」钮与就地换出来的输入框都搬到黑豆身上去了(`PetStage` 的 `menu`)。
  *
  * ── 每颗钮一个意思 ─────────────────────────────────────────────────────
- *  · ⏯:有歌就只听播放器的 —— 在放 = 暂停、停着 = 继续;播放器说不出在放什么、但记得上次放到哪
+ *  · ⏯:有歌就只听播放器的 —— 在放 = 暂停、停着 = 继续(09-25 起走 `setMusicPlaying`:这一帧就换、永不按住,
+ *    连点只追最后一下,后端确认后的第一份读数说了算;没照做就说一句 `music.playerDisagrees`);播放器说不出在放什么、但记得上次放到哪
  *    (`restored`)= 「接着放」;没歌才轮到电台:开着 = 从节目单续上,关着 = 开台;从没放过 = 停用。
  *  · ⏭:电台开着 = 跳过并记成不想听(后端分档,名字说实话);关着 / 没歌 / 画的是上次 = 停用。节目单空了
  *    (DJ 在补)也照样发:后端记下这一下、答「还没排好」,黑豆接一句「别催,在翻」—— 不出错话。
@@ -71,8 +72,8 @@ export function DeckRow({
   const brief = useQuery(musicBriefQuery)
   const open = useMutation(musicOps.open)
   const radioResume = useMutation(musicOps.radioResume)
-  const pause = useMutation(musicOps.pause)
-  const resume = useMutation(musicOps.resume)
+  const playback = useMutation(musicPlaybackOp)
+  const playbackNotice = useMusicPlaybackNotice()
   const next = useMutation(musicOps.next)
   const like = useMutation(musicOps.like)
   const seek = useMutation(musicOps.seek)
@@ -82,16 +83,17 @@ export function DeckRow({
   const present = Boolean(title)
   const isLiked = title !== undefined && liked.has(title)
   // 说话发送失败的那句话也在这里:发出去那一下这一行已经回到按钮了,错话不能跟着框一起消失。
-  const error = firstError(open, radioResume, pause, resume, next, like, seek)
+  const error =
+    firstError(open, radioResume, playback, next, like, seek) ??
+    (playbackNotice === 'disagreed' ? t('music.playerDisagrees') : undefined)
   useEffect(() => onError(error), [error, onError])
 
   // 有歌就只听播放器的(放 / 停);没歌才轮到电台:开着 = 从节目单续上,关着 = 开台。
   const play = restored
     ? { label: t('music.deckContinue'), run: () => void musicOps.radioResume.run({}), busy: radioResume.pending }
     : present
-    ? playing
-      ? { label: t('music.pause'), run: () => void musicOps.pause.run({}), busy: pause.pending }
-      : { label: t('music.resume'), run: () => void musicOps.resume.run({}), busy: resume.pending }
+    ? // 在放 / 停着:**永不按住**。屏幕这一帧就换,发送的序与连点归 `setMusicPlaying`(09-25「点击及时响应」)。
+      { label: t(playing ? 'music.pause' : 'music.resume'), run: () => setMusicPlaying(!playing), busy: false }
     : radio
       ? { label: t('music.resume'), run: () => void musicOps.radioResume.run({}), busy: radioResume.pending }
       : { label: t('music.deckOpen'), run: () => void musicOps.open.run({ intent: '' }), busy: open.pending }

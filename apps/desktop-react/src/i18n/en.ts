@@ -1753,6 +1753,7 @@ export const en: Record<MessageKey, string> = {
   'music.talk.request': 'Request a song',
   'music.talk.what': "What's playing?",
   'music.backendError': 'The music backend said: {message}',
+  'music.playerDisagrees': 'The player did not follow; showing what it is actually doing.',
 
   /* Setup wizard (2026-09-18). */
   'music.setup.title': 'Connect NetEase Cloud Music',

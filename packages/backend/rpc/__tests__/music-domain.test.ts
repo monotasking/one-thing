@@ -95,6 +95,8 @@ const service = vi.hoisted(() => ({
     }),
   })),
   refreshMusicNowPlaying: vi.fn(async () => {}),
+  beginMusicCommand: vi.fn(),
+  assumeMusicNowPlaying: vi.fn(),
   resetMusicServiceForProviderSwitch: vi.fn(),
   stopMusicPlayerKeepalive: vi.fn(),
 }))
@@ -137,7 +139,7 @@ describe('music RPC domain', () => {
     const { createMusicOperationsScope } = await import('../../wiring/music/operations.js')
     const { setCurrentBackend, createBackendHandle } = await import('../../current.js')
     operations = createMusicOperationsScope({ service: { ...service, runner }, radio } as unknown as Parameters<typeof createMusicOperationsScope>[0])
-    const music = { operations, radio, service, onNowPlayingChanged: () => () => {} }
+    const music = { operations, radio, service, onNowPlayingChanged: () => () => {}, onPlayerFact: () => () => {}, onSetupEvent: () => () => {} }
     setCurrentBackend(createBackendHandle({ music: music as unknown as import('../../wiring/music/subsystem.js').MusicSubsystem }))
 
     /*
@@ -290,6 +292,40 @@ describe('music RPC domain', () => {
     })
     expect(service.refreshMusicNowPlaying).toHaveBeenCalled()
     expect(data.success).toBe(true)
+  })
+
+  it('pause: stale reads are cut off BEFORE the command, and its effect is announced as soon as it is accepted (09-25)', async () => {
+    const order: string[] = []
+    service.beginMusicCommand.mockImplementation(() => void order.push('begin'))
+    ;(runner.run as unknown as { mockImplementationOnce: (fn: () => unknown) => void }).mockImplementationOnce(async () => {
+      order.push('cli')
+      return { code: 0, stdout: '{"success":true}', stderr: '' }
+    })
+    service.assumeMusicNowPlaying.mockImplementation(() => void order.push('assume'))
+    // The read-back runs in the background: the answer must not wait for it.
+    let releaseReadBack!: () => void
+    service.refreshMusicNowPlaying.mockImplementationOnce(() => new Promise<void>(resolve => { releaseReadBack = resolve }))
+
+    const data = unwrap(await call('command', { command: 'pause' }))
+    expect(data.success).toBe(true)
+    expect(order).toEqual(['begin', 'cli', 'assume'])
+    const effect = service.assumeMusicNowPlaying.mock.calls.at(-1)?.[0] as (p: unknown) => { status: string }
+    expect(effect({ status: 'playing', title: 'a', position: 3, queueLength: 1, currentIndex: 0 }).status).toBe('paused')
+    expect(service.refreshMusicNowPlaying).toHaveBeenCalled()
+    releaseReadBack()
+  })
+
+  it('a refused pause announces nothing — the clients keep what the player actually does', async () => {
+    service.assumeMusicNowPlaying.mockClear()
+    provider.cli.parse.envelope.mockImplementationOnce(() => ({ ok: false, message: '当前无播放进程' }))
+    ;(runner.run as unknown as { mockImplementationOnce: (fn: () => unknown) => void }).mockImplementationOnce(async () => ({
+      code: 0,
+      stdout: '{"success":false,"message":"当前无播放进程"}',
+      stderr: '',
+    }))
+    const data = unwrap(await call('command', { command: 'pause' }))
+    expect(data.success).toBe(false)
+    expect(service.assumeMusicNowPlaying).not.toHaveBeenCalled()
   })
 
   it('keeps only the fourteen router methods on the allowlist', async () => {

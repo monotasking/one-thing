@@ -365,3 +365,73 @@ Spinner 只在状态栏(状态条、状态丸)与按钮里;心情块是 `ButtonB
   状态条指引 text-3 小字 —— 都已修)。
 - `?music-lab` 地址栏初值:`&width=360&section=radio&setup=login-wait&radio=off&player=stopped&song=-1`。
 - `npm run typecheck` / eslint / `ui:consume` / `squeeze-gate` / `motion-gate`。
+
+## 11. ⏯ 意图先行:点击及时响应,前后端一致(2026-09-25)
+
+用户:「你要做的事,保证前后端一致,保证用户的使用体验、点击及时响应。」
+
+### 11.1 病(开工当天复现 / 量出来的)
+
+| # | 病 | 证据 |
+| --- | --- | --- |
+| ① | 暂停在路上时,一份「还在放」的旧读数把屏幕打回去:播放 → 暂停 → 播放 跳一下 | 夹具:按下后推一条 `nowPlayingChanged`,钮从「播放」回到「暂停」 |
+| ② | **后端自己也在发旧读数**:`refresh()` 复用在飞的那一发 `state`,而它可能是暂停**之前**起的 | `now-playing.ts` 的 `if (polling) return polling` |
+| ③ | 连点无序:每一下一只独立 mutation,几发同时在路上,谁先到看子进程起跑 | 读代码 |
+| ④ | 一次暂停 = 两次 ncm-cli 进程(命令 + 回读 `state`),钮要等两趟 | 实测起一次进程 **180–230ms**(6 次,本机) |
+
+### 11.2 方子
+
+**前端**(`data/music-playback.ts` 纯判据 + `data/music-source.ts` `setMusicPlaying`):
+
+- 按下那一帧读数就换(补丁),**钮永不按住**;
+- 从按下起,「在放 / 停着」那一格**只听人的**,直到后端确认之后发出去的第一份读数(读数带票号,
+  `ticket > ackTicket` 才是权威)。权威读数与意图一致 → 交还给读数;不一致 → 照读数画,并说一句
+  `music.playerDisagrees`(不许静默改回去);
+- 同一时刻最多一发 pause / resume 在路上;回来后意图又变了(连点)就补一发 —— 最后停在最后那一下;
+- 一发没算数 → 意图作废、屏幕回到播放器上一次确认过的那一格、后端原话就地一行。
+
+**后端**(`runtime/music/now-playing.ts` + `backend/wiring/music/{service,operations}.ts`):
+
+- `beginCommand()`:命令发出**之前**打一格,之前起的 `state` 读数落地即丢,`refresh()` 不再复用它;
+- pause / resume / seek 被接受后 `assume()` 当场公布效果(一次进程,不再等回读),回读挪到后台:
+  一致则无声,不一致则公布真相 —— 与前端的「权威读数」对上;
+- `assume` 不是 sample:电台指挥只看播放器真说过的话。
+
+### 11.3 三张状态表(⏯ 这一件)
+
+① 生命周期:意图随「这一台播放器」走(模块级,两处宿主看同一个);`resetMusicSource` 清;换宿主不动。
+② 生命状态:无意图(听读数)/ 发送中(听人)/ 已确认待权威读数(听人)/ 权威读数到 → 一致(交还)或不一致(照读数 + 一句)/ 失败(回滚 + 原话)。
+③ 交互状态:rest / hover / focus 随 `IconButton`;**没有 pending 态**(钮永不按住,在路上的那一发不影响再按)。
+
+### 11.4 读数
+
+| 量项 | 改前 | 改后 |
+| --- | --- | --- |
+| 点击 → 钮 / 状态丸换字(dev) | 20–50ms | 20–33ms |
+| 点击 → 钮 / 状态丸换字(prod 构建) | — | **1.8–4.1ms**(12 次,后端 0 / 800ms 两档) |
+| 一次点击期间钮的变化次数 | 可能 3 次(跳回再跳过去) | **恰 1 次** |
+| 钮被按住 | 否(但连点会并发乱序) | 否,连点只追最后一下 |
+| 后端回话 | 2 次进程(≈ 400ms+) | 1 次进程(≈ 200ms),回读在后台 |
+| 点击 → 声音停 | 1 次进程起跑之后(≈ 200ms,推算) | 不变(见 11.5) |
+
+量法:`?music-lab&latency=<ms>`(实验台的假后端每一发 `do` 等这么久),Chromium 里点 ⏯,
+MutationObserver 记钮的每一次换字。
+
+### 11.5 留账:声音本身
+
+声音停下的那一下,仍然等一次 `ncm-cli` 进程起跑(实测 180–230ms)。更快只剩一条路:直接和 ncm-cli
+自己的播放器通道(`~/.config/ncm-cli/player-daemon.sock`)说话,不起进程。那条通道的格式是
+ncm-cli **私有**的,发布包是混淆过的(`@music163/ncm-cli@0.1.7 dist/index.js`),这一单**不逆向它**:
+私有协议随版本变,接上去等于把「按一下暂停」押在一个没人承诺过的接口上。要做就得先有网易云给出的
+公开接口,或在真机上把它当 provider 的一项可选能力(`transport` 直连,缺席即退回起进程)做成、并配真机门。
+
+### 11.6 门
+
+- `data/__tests__/music-playback.test.ts`(6 条:判据逐格);
+- `content/__tests__/music-panel.test.tsx` 「⏯:屏幕按人的意图走」5 条:旧读数不打回(当天的复现)、
+  连点三下 / 两下的发送序、失败回滚、后端说照做了但播放器不是那样。反证:把判据改成「永远听读数」→ 两条当场红;
+- `runtime/music/__tests__/now-playing.test.ts` 「commands」4 条:命令前起的读数被丢、`refresh()` 另起一发、
+  `assume` 当场公布且不是 sample、回读一致无声 / 不一致纠正。反证:拆掉命令纪元 → 两条当场红;
+- `backend/rpc/__tests__/music-domain.test.ts`:pause 的次序是 begin → cli → assume、回读不挡回话;被拒的 pause 不公布任何效果。
+  (这只文件顺手修了夹具:假音乐子系统缺 `onPlayerFact`,整只文件在基线上是全红的;仍有两条读 `getState` / `getRadio`
+  的用例红,与本单无关,基线同样红。)

@@ -120,9 +120,29 @@ export interface NowPlayingWatcher {
   stop(): void
   quiesce(): void
   drain(): Promise<void>
-  /** Poll now instead of waiting for the next tick (e.g. right after a command). */
+  /**
+   * Poll now instead of waiting for the next tick (e.g. right after a command).
+   * A poll already in flight is reused only if it started after the last
+   * `beginCommand()` — one that started before it can only answer with the
+   * world as it was before the command.
+   */
   refresh(): Promise<void>
   current(): OnethingMusicNowPlaying | null
+  /**
+   * A state-changing command is about to be sent. Every `state` read already
+   * in flight is now stale and will be dropped when it lands (2026-09-25: a
+   * 5s tick that spawned `ncm-cli state` just before a pause used to land just
+   * after it and announce "still playing", flipping every client back).
+   */
+  beginCommand(): void
+  /**
+   * The command was accepted: publish what it did without waiting for a
+   * `state` round trip (~200ms of process start-up each). Announced to
+   * clients like any change, but NOT a sample — the radio conductor only
+   * ever sees what the player actually said. The next `refresh()` corrects
+   * it if the player disagrees.
+   */
+  assume(next: (previous: OnethingMusicNowPlaying | null) => OnethingMusicNowPlaying | null): void
 }
 
 export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowPlayingWatcher {
@@ -135,6 +155,10 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
   let polling: Promise<void> | null = null
   let closed = false
   let generation = 0
+  /** Bumped by `beginCommand()`; a read that started under an older value is stale. */
+  let commandEpoch = 0
+  /** The command epoch the in-flight poll started under. */
+  let pollingCommandEpoch = 0
 
   const publish = (next: OnethingMusicNowPlaying | null) => {
     if (sameNowPlaying(latest, next)) {
@@ -155,18 +179,20 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
   }
 
   const pollOnce = async (epoch: number): Promise<void> => {
+    const command = commandEpoch
+    const current = () => !closed && epoch === generation && command === commandEpoch
     if (!(await options.isPlayerRunning())) {
-      if (!closed && epoch === generation) sample(null)
+      if (current()) sample(null)
       return
     }
-    if (closed || epoch !== generation) return
+    if (!current()) return
     try {
       const result = await options.runner.run({
         command: options.cli?.binary ?? 'ncm-cli',
         args: ['state'],
         timeoutMs: 8_000,
       })
-      if (!closed && epoch === generation) sample((options.cli?.parseNowPlaying ?? parseNowPlaying)(result.stdout))
+      if (current()) sample((options.cli?.parseNowPlaying ?? parseNowPlaying)(result.stdout))
     } catch (error) {
       // Not knowing is not the same as "nothing is playing" — leave the last
       // answer standing rather than blinking the bar out on one bad read.
@@ -184,9 +210,10 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
 
   const refresh = (): Promise<void> => {
     if (closed) return Promise.reject(new Error('Music watcher is shutting down'))
-    if (polling) return polling
+    if (polling && pollingCommandEpoch === commandEpoch) return polling
     const work = pollOnce(generation)
     polling = work
+    pollingCommandEpoch = commandEpoch
     void work.then(() => { if (polling === work) polling = null }, () => { if (polling === work) polling = null })
     return work
   }
@@ -217,5 +244,12 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
     async drain() { closed = true; stop(); await polling },
     refresh,
     current: () => latest,
+    beginCommand() {
+      commandEpoch += 1
+    },
+    assume(next) {
+      if (closed) return
+      publish(next(latest))
+    },
   }
 }

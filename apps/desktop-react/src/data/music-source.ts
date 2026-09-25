@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import type {
   MusicLyrics,
   MusicNowPlaying,
@@ -12,6 +12,8 @@ import { createMutation, createQuery } from './kernel'
 import type { Mutation, Query, Rollback } from './kernel'
 import { appendInstallOutput, clearInstallOutput, resetInstallLog } from './music-setup-log'
 import { noteHostReplied, resetHostReply } from './music-talk'
+import { reconcilePlayback, withPlaying } from './music-playback'
+import type { PlaybackIntent } from './music-playback'
 import { musicPort } from './music-port'
 import type { MusicResourceEvent } from './music-port'
 
@@ -139,10 +141,20 @@ export const musicBriefQuery = createQuery<MusicRadioState>('music.brief', () =>
   readResource<MusicRadioState>(MUSIC_RADIO_REF, 'brief'),
 )
 
-/** 现在在放什么。**live** —— 靠 `nowPlayingChanged` 推着走,壳不轮询。 */
-export const musicNowPlayingQuery = createQuery<MusicNowPlayingView>('music.nowPlaying', () =>
-  readResource<MusicNowPlayingView>(MUSIC_PLAYER_REF, 'nowPlaying'),
-)
+/**
+ * 现在在放什么。**live** —— 靠 `nowPlayingChanged` 推着走,壳不轮询。
+ *
+ * 每一发读都领一个票号,读回来先过 `reconcilePlayback`:人刚按了 ⏯ 而后端还没确认时,
+ * 「在放 / 停着」那一格听人的,不听这份(它可能是按下去之前就发出去的旧读数)。判据在 `music-playback.ts`。
+ */
+export const musicNowPlayingQuery = createQuery<MusicNowPlayingView>('music.nowPlaying', async () => {
+  const ticket = ++playbackReadTicket
+  const fetched = await readResource<MusicNowPlayingView>(MUSIC_PLAYER_REF, 'nowPlaying')
+  const settled = reconcilePlayback(fetched, ticket, playbackIntent)
+  playbackIntent = settled.intent
+  if (settled.disagreed) setPlaybackNotice('disagreed')
+  return settled.view
+})
 
 /** 当前这首歌的定时歌词。**没有歌词是 `null`,不是一次失败**(自述原话)。 */
 export const musicLyricsQuery = createQuery<MusicLyrics | null>('music.lyrics', () =>
@@ -345,6 +357,95 @@ const OP_NAMES = Object.keys(OPS) as MusicOpName[]
 export const musicOps = Object.fromEntries(
   OP_NAMES.map((op) => [op, createMusicOp(op)]),
 ) as Readonly<Record<MusicOpName, Mutation<MusicOpParams, void>>>
+
+/* ── 播放 / 暂停:意图先行(2026-09-25,正本 §11)──────────────────────────────── */
+
+/**
+ * 人要的「在放 / 停着」(见 `music-playback.ts`)。模块级,因为它说的是**那一台播放器**:同一块面在
+ * 两处宿主里各画一份时,两份都该听同一个意图。`resetMusicSource` 清它。
+ */
+let playbackIntent: PlaybackIntent | null = null
+/** 读数的票号(单调递增)。 */
+let playbackReadTicket = 0
+/** 有没有一发 pause / resume 在路上。同一时刻最多一发 —— 连点只会让**最后那个意图**被追上。 */
+let playbackSending = false
+/** 播放器最后一次被告知 / 被确认的状态。意图与它不同才需要发一发。 */
+let playbackPlayerPlaying: boolean | undefined
+
+/** 真正发出去的那一发。`true` = 后端说照做了;`undefined` = 没算数(错话在 `.get().error`)。 */
+export const musicPlaybackOp = createMutation<{ playing: boolean }, true>('music.playback', {
+  run: async ({ playing }) => {
+    await sendMusicOp(MUSIC_PLAYER_REF, playing ? 'resume' : 'pause', {})
+    return true
+  },
+})
+
+/** 「后端说照做了、播放器却不是那样」这一句。屏幕上一行话,下一次按 ⏯ 时撤掉。 */
+export type MusicPlaybackNotice = 'disagreed'
+let playbackNotice: MusicPlaybackNotice | undefined
+const playbackNoticeListeners = new Set<() => void>()
+function setPlaybackNotice(next: MusicPlaybackNotice | undefined): void {
+  if (playbackNotice === next) return
+  playbackNotice = next
+  for (const listener of playbackNoticeListeners) listener()
+}
+export function useMusicPlaybackNotice(): MusicPlaybackNotice | undefined {
+  return useSyncExternalStore(
+    (listener) => {
+      playbackNoticeListeners.add(listener)
+      return () => playbackNoticeListeners.delete(listener)
+    },
+    () => playbackNotice,
+  )
+}
+
+/**
+ * **按 ⏯**。屏幕这一帧就换(读数打补丁),不等任何往返;然后按序把播放器追到人要的那一格:
+ *
+ *  · 同一时刻只有一发在路上。它回来之后若意图又变了(连点),再发一发 —— 最后停在人最后按的那一格,
+ *    不会三发并行、也不会乱序;
+ *  · 一发没算数:意图作废,屏幕回到播放器上一次确认过的那一格,错话在 `musicPlaybackOp` 上(零 Toast);
+ *  · 全部照做之后,**再问一次**:那一份读数是权威(票号在确认之后),与意图一致就交还给读数,不一致
+ *    就照读数画并说一句 `disagreed`。
+ *
+ * 没歌(`title` 缺席)时什么都不做 —— 那时 ⏯ 的意思是「开台 / 续播」,不归这里。
+ */
+export function setMusicPlaying(playing: boolean): void {
+  const shown = musicNowPlayingQuery.get().data
+  if (!shown?.title) return
+  setPlaybackNotice(undefined)
+  if (!playbackIntent) {
+    // 这一串按键的起点:播放器此刻(读数说)是什么样。
+    playbackPlayerPlaying = shown.playing
+    if (shown.playing === playing) return
+  }
+  playbackIntent = { playing }
+  musicNowPlayingQuery.patch((prev) => (prev ? withPlaying(prev, playing) : prev))
+  void pumpPlayback()
+}
+
+async function pumpPlayback(): Promise<void> {
+  if (playbackSending) return
+  playbackSending = true
+  try {
+    while (playbackIntent && playbackIntent.playing !== playbackPlayerPlaying) {
+      const target = playbackIntent.playing
+      const done = await musicPlaybackOp.run({ playing: target })
+      if (!done) {
+        playbackIntent = null
+        const last = playbackPlayerPlaying
+        musicNowPlayingQuery.patch((prev) => (prev && last !== undefined ? withPlaying(prev, last) : prev))
+        break
+      }
+      playbackPlayerPlaying = target
+    }
+    // 追上了:从这一刻起发出去的读数才是权威。
+    if (playbackIntent) playbackIntent = { ...playbackIntent, ackTicket: playbackReadTicket }
+  } finally {
+    playbackSending = false
+  }
+  musicNowPlayingQuery.invalidate()
+}
 
 /* ── 跟主持人说话(2026-09-18,正本 §7.2)────────────────────────────────── */
 
@@ -556,6 +657,11 @@ export function resetMusicSource(): void {
   // 界面还拿着引用(`musicSetupOp` 认 cell 不认次数),归零而不是丢掉。
   for (const mutation of setupMutations.values()) mutation.reset()
   musicTellOp.reset()
+  musicPlaybackOp.reset()
+  playbackIntent = null
+  playbackSending = false
+  playbackPlayerPlaying = undefined
+  setPlaybackNotice(undefined)
   musicSearchOp.reset()
   musicPickOp.reset()
   resetInstallLog()

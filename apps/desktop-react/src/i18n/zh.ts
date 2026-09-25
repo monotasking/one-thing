@@ -2045,6 +2045,7 @@ export const zh = {
   'music.talk.request': '点一首歌',
   'music.talk.what': '现在放的是什么',
   'music.backendError': '音乐后端报了一句:{message}',
+  'music.playerDisagrees': '播放器没有照做,已按它现在的样子显示。',
 
   /* ── 接入向导(2026-09-18,正本 §6)───────────────────────────────────────
    * 这几句是**说给人听的**,不是实现的名字:屏上不出现「provider」「setupStage」
