@@ -401,6 +401,26 @@ export class OnethingSessionRepository<
     this.sessionCache.delete(sessionId)
   }
 
+  /**
+   * 从 LRU 中移除空闲超过 `idleMs` 的会话,供内存调度器调用。
+   *
+   * 不会移除:有未写盘修改的会话、调用方标记为受保护的会话(如正在运行任务)。
+   * 移除后下次 `getSession` 会从磁盘重新加载;`processOwnedSessions` 保持不变,
+   * 重新加载时不会被当作崩溃残留再次修复。
+   */
+  releaseIdleCachedSessions(options: {
+    idleMs: number
+    now?: number
+    isProtected?(sessionId: string, session: TSession): boolean
+  }): string[] {
+    const now = options.now ?? Date.now()
+    return this.sessionCache.pruneWhere((sessionId, session, accessedAt) => {
+      if (now - accessedAt < options.idleMs) return false
+      if (this.pendingSessionValues.has(sessionId) || this.pendingWritePlans.has(sessionId)) return false
+      return !options.isProtected?.(sessionId, session)
+    })
+  }
+
   getSessionCacheStats(): OnethingSessionCacheStats {
     const stats = this.sessionCache.getStats()
     return {

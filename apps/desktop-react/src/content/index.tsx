@@ -10,6 +10,7 @@ import { ExposeView } from '../expose/components/ExposeView'
 import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
 import { AppsPanel } from './AppsPanel'
 import { MusicPanel } from './MusicPanel'
+import { MemoryPanel } from './memory/MemoryPanel'
 import { TodoPanel } from './todo/TodoPanel'
 import { TodoStripHeader } from './todo/TodoHeader'
 import type { ComponentType } from 'react'
@@ -65,6 +66,8 @@ const RENDERERS: Record<string, () => ReactNode> = {
   music: MusicPanel,
   // 我的清单(待办 T3)。与音乐同理走 `panel` 这条路:refId 若自成一种内容会与 core 的 `todo:` 地址撞名。
   todo: TodoPanel,
+  // 内存面板:按进程与缓存显示内存占用。
+  memory: MemoryPanel,
   [NOTIFICATIONS_ITEM_ID]: NotificationsPanel,
   [SESSIONS_ITEM_ID]: ExposeView,
   /*

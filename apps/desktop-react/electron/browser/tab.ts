@@ -70,6 +70,8 @@ export interface NativeWebContents {
    */
   getZoomLevel(): number
   setZoomLevel(level: number): void
+  /** 页面当前是否在播放声音。测试替身可以不实现。 */
+  isCurrentlyAudible?(): boolean
   readonly navigationHistory: NativeNavigationHistory
 }
 
@@ -86,8 +88,11 @@ export type BrowserViewFactory = (preferences: BrowserViewPreferences) => Native
 export interface BrowserTabObserver {
   /** 状态折过一次,而且**真的变了**(reducer 答的身份不等)。 */
   onState(tab: BrowserTab, patch: BrowserTabPatch): void
-  /** 视图第一次建起来了 —— 这一格从「账上有」变成「真的开着」。 */
-  onOpened(tab: BrowserTab): void
+  /**
+   * 视图已创建。`reopened: true` 表示标签页被释放后重新创建:需要重新注册视图,
+   * 但不应再次发送「已打开」事件。
+   */
+  onOpened(tab: BrowserTab, info?: { reopened: boolean }): void
   /** 页面要开一扇新窗。service 把它折成一格新 tab(或者拒掉)。 */
   onWindowOpen(tab: BrowserTab, decision: WindowOpenDecision): void
   /**
@@ -151,6 +156,10 @@ export class BrowserTab {
    */
   private findText: string | undefined
   private disposed = false
+  /** 视图是否创建过;释放后再次创建时据此标记 `reopened`。 */
+  private openedOnce = false
+  /** 被释放的次数,用于内存报告。 */
+  private hibernations = 0
 
   constructor(init: BrowserTabInit, deps: BrowserTabDeps) {
     this.current = createTabState(init)
@@ -177,7 +186,9 @@ export class BrowserTab {
     const view = this.deps.createView(this.deps.preferencesFor(this.current.profile))
     this.view = view
     this.wire(view.webContents)
-    this.deps.observer.onOpened(this)
+    const reopened = this.openedOnce
+    this.openedOnce = true
+    this.deps.observer.onOpened(this, { reopened })
     const pending = this.pendingUrl
     this.pendingUrl = undefined
     if (pending) void this.load(pending)
@@ -320,6 +331,35 @@ export class BrowserTab {
   /** 摘掉视图。幂等。状态留着 —— 关不关这一格是 service 的事。 */
   dispose(): void {
     this.disposed = true
+    this.releaseView()
+  }
+
+  /** 页面当前是否在播放声音;没有视图时为 `false`。 */
+  get audible(): boolean {
+    try { return this.alive()?.isCurrentlyAudible?.() === true } catch { return false }
+  }
+
+  get hibernationCount(): number { return this.hibernations }
+
+  /**
+   * 释放渲染进程,保留标签页。
+   *
+   * 地址和标题保留在状态中;下次可见或被激活时重新创建视图并加载当前地址。
+   * 页面状态(滚动位置、未提交的表单内容、前进 / 后退历史)会丢失。
+   * 没有视图或已关闭时返回 `false`。
+   */
+  hibernate(): boolean {
+    if (this.disposed || !this.view) return false
+    const url = this.current.url
+    this.pendingUrl = url && isAllowedNavigation(url) ? url : undefined
+    this.releaseView()
+    this.hibernations++
+    // 进程已关闭,加载状态与前进 / 后退状态清空,重新创建后由页面重新报告。
+    this.patch({ loading: false, canGoBack: false, canGoForward: false })
+    return true
+  }
+
+  private releaseView(): void {
     this.findText = undefined
     const wc = this.view?.webContents
     this.view = undefined
@@ -375,7 +415,13 @@ export class BrowserTab {
       return { action: 'deny' }
     })
 
-    const on = (event: string, listener: (...args: never[]) => void) => { wc.on(event, listener) }
+    // 只处理当前视图的事件:释放后,旧 webContents 在关闭过程中仍可能发出事件。
+    const on = (event: string, listener: (...args: never[]) => void) => {
+      wc.on(event, ((...args: never[]) => {
+        if (this.view?.webContents !== wc) return
+        listener(...args)
+      }) as never)
+    }
 
     on('did-start-loading', () => { this.patch({ loading: true }) })
     on('did-stop-loading', () => { this.patch({ loading: false, ...this.navFlags() }) })

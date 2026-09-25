@@ -61,6 +61,7 @@
 		"log:check": "node scripts/log-check.mjs",
 		"log:gate": "node scripts/log-gate.mjs",
 		"log:tail": "node scripts/log-tail.mjs",
+		"memory:report": "node scripts/memory-report.mjs",
 		"log:smoke": "node scripts/log-smoke.mjs",
 		"session:check": "node scripts/session-check.mjs",
 		"session:gate": "node scripts/session-gate.mjs",

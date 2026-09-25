@@ -63,6 +63,9 @@ import { configureAppSkillManage } from './wiring/skills/manage.js'
 import { configureAppSkillsLoader } from './wiring/skills/loader.js'
 import { configureAppPermissionGrants } from './wiring/permission/permission-grants.js'
 import { createEventSystem } from './events/index.js'
+import { createReplayBufferMemoryHolder } from './events/memory.js'
+import { createSessionMemoryHolders } from './session/memory.js'
+import { createMemorySubsystem, type MemorySubsystem } from './wiring/memory/index.js'
 import { createSessionLayer, type SessionLayer } from './session/index.js'
 import {
   installSessionPermissionEventRecorders,
@@ -284,6 +287,11 @@ export class OnethingBackend implements BackendHandle {
    */
   private resourceKernel: ResourceKernel | undefined
   private shellResourceRegistry: ShellMountRegistry | undefined
+  /**
+   * 内存登记表与调度器(见 `wiring/memory/index.ts`)。各缓存模块在装配时注册,
+   * 内存超过预算时统一释放;Electron 宿主另外注册一个报告其他进程的探针。
+   */
+  private memorySubsystem: MemorySubsystem | undefined
 
   readonly options: Readonly<OnethingBackendOptions>
 
@@ -339,6 +347,11 @@ export class OnethingBackend implements BackendHandle {
    * `mountShell` 挂到内核上,是因为「一扇壳的连接」这个寿命概念内核不该知道 ——
    * 内核只认 provider(§2 不变量 3)。
    */
+  get memory(): MemorySubsystem {
+    if (!this.memorySubsystem) throw new BackendNotAssembledError()
+    return this.memorySubsystem
+  }
+
   get shellResources(): ShellMountRegistry {
     if (!this.shellResourceRegistry) throw new BackendNotAssembledError()
     return this.shellResourceRegistry
@@ -686,6 +699,11 @@ export class OnethingBackend implements BackendHandle {
       streamChannel.shutdown()
       log.info('event system shut down')
     }, 'eventSystem')
+    // 内存登记表需在第一个持有者(事件总线)注册之前创建。
+    const memory = createMemorySubsystem()
+    this.memorySubsystem = memory
+    this.own(() => { memory.dispose(); this.memorySubsystem = undefined }, 'memory')
+    this.own(memory.registry.registerHolder(createReplayBufferMemoryHolder(eventBus)), 'memoryHolder:events')
     /*
      * 宠物 P4(§11.3)—— 音乐接上总线:缺省主持人声音出声前后发 `speech:activity`,并订同一条
      * 事件在播放器正在放时压低音乐。与有没有宠物无关(没有宠物时电台口播也要让音乐让路),
@@ -740,6 +758,9 @@ export class OnethingBackend implements BackendHandle {
     journal.assertSessionWritable = sessionLayer.deletion.assertWritable
     this.parts.sessionManager = sessionLayer.sessionManager
     this.own(() => sessionLayer.dispose(), 'sessionLayer')
+    for (const holder of createSessionMemoryHolders(sessionLayer.events.projections)) {
+      this.own(memory.registry.registerHolder(holder), `memoryHolder:${holder.id}`)
+    }
     this.own(() => sessionLayer.deletion.drain(), 'sessionDeletions', 'drain')
 
     const sessionToc = createSessionTocTrigger({

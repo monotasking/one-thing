@@ -272,6 +272,50 @@ export class EventBus<
     return buffer.replay(fromSequence)
   }
 
+  // ── Memory ─────────────────────────────────────
+
+  /**
+   * 重放缓冲的用量,只读取计数。
+   *
+   * 每个访问过的会话都有一个最多 `bufferCapacity` 条的缓冲,会话数量没有上限,
+   * 长时间运行的进程中缓冲总量会持续增长。
+   */
+  bufferUsage(): { sessions: number; entries: number; capacityPerSession: number; subscribed: number } {
+    let entries = 0
+    let subscribed = 0
+    for (const [sessionId, buffer] of this.buffers) {
+      entries += buffer.size
+      if (this.hasSessionSubscribers(sessionId)) subscribed++
+    }
+    return { sessions: this.buffers.size, entries, capacityPerSession: this.bufferCapacity, subscribed }
+  }
+
+  /**
+   * 释放空闲会话的重放缓冲:没有订阅者,且最新一条事件早于 `idleMs`。
+   *
+   * 缓冲只用于 `?after=` 断线重放,本身就会覆盖旧条目;没有订阅者且长时间无事件的
+   * 会话不会再被请求重放。序号保留,后续事件继续递增。
+   */
+  releaseIdleBuffers(idleMs: number, now = Date.now()): { releasedSessions: number; releasedEntries: number } {
+    let releasedSessions = 0
+    let releasedEntries = 0
+    for (const [sessionId, buffer] of [...this.buffers]) {
+      if (this.hasSessionSubscribers(sessionId)) continue
+      const newest = buffer.newestTimestamp
+      if (newest !== undefined && now - newest < idleMs) continue
+      releasedEntries += buffer.size
+      releasedSessions++
+      buffer.clear()
+      this.buffers.delete(sessionId)
+    }
+    return { releasedSessions, releasedEntries }
+  }
+
+  private hasSessionSubscribers(sessionId: string): boolean {
+    return (this.typedHandlers.get(sessionId)?.size ?? 0) > 0
+      || (this.wildcardHandlers.get(sessionId)?.size ?? 0) > 0
+  }
+
   // ── Destroy session ────────────────────────────
 
   /**

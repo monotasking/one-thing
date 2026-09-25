@@ -70,6 +70,8 @@ interface LayoutEntry {
   /** 有东西盖在它上面 —— 壳说看得见也得藏。 */
   occluded: boolean
   z: number
+  /** 界面最近一次报告不可见的时刻;可见时为 `undefined`。 */
+  hiddenSince: number | undefined
 }
 
 /**
@@ -105,9 +107,22 @@ export class NativeViewLayout {
   /** 被遮那几片各自的 1Hz 重拍表(见文件头)。 */
   private readonly resnapTimers = new Map<string, ReturnType<typeof setInterval>>()
 
-  constructor(host: NativeViewHost, push: NativeViewPushSink) {
+  private readonly now: () => number
+
+  constructor(host: NativeViewHost, push: NativeViewPushSink, now: () => number = Date.now) {
     this.host = host
     this.push = push
+    this.now = now
+  }
+
+  /**
+   * 视图已不可见多久(毫秒)。被遮挡的视图仍在显示快照,算作可见。
+   * 可见或未注册时返回 `undefined`。
+   */
+  hiddenForMs(viewId: string): number | undefined {
+    const entry = this.entries.get(viewId)
+    if (!entry || entry.visible || entry.hiddenSince === undefined) return undefined
+    return this.now() - entry.hiddenSince
   }
 
   /**
@@ -122,6 +137,7 @@ export class NativeViewLayout {
       visible: false,
       occluded: false,
       z: 0,
+      hiddenSince: this.now(),
     })
     this.host.addChildView(view)
     view.setVisible(false)
@@ -152,6 +168,7 @@ export class NativeViewLayout {
     }
     if (entry.visible !== frame.visible) {
       entry.visible = frame.visible
+      entry.hiddenSince = frame.visible ? undefined : this.now()
       this.applyVisibility(entry)
     }
     if (entry.z !== frame.z) {

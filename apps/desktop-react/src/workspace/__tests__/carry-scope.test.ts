@@ -264,8 +264,9 @@ describe('Dock 分隔线的分组:逐字同今天(拍点 1)', () => {
       // 短了一格。**次序与别的成员一个字没动** —— 这一条钉的是「改一块瓦不许
       // 顺手重排 Dock」。
       // 2026-09-17:「我的清单」(`todo`,待办 T3)一格插在音乐之后;别的成员与次序一个字没动。
+      // 内存面板(`memory`)排在待办之后,其余顺序不变。
       'browser', 'search', 'sessions', 'notifications',
-      'workspace', 'music', 'todo', 'settings', 'apps',
+      'workspace', 'music', 'todo', 'memory', 'settings', 'apps',
     ])
   })
 

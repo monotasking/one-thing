@@ -29,6 +29,8 @@ import { hasRpcDomain, resetRpcRegistryForTests } from '../registry.js'
 const EXPECTED_DOMAIN_FEATURES = [
   // L3:渲染侧日志上行排在最前(零依赖,且它接的是别人出问题时的那条上行路)。
   ['rpc:logs', 'logs'],
+  // 内存:无依赖,排在日志之后。
+  ['rpc:memory', 'memory'],
   ['rpc:usage', 'usage'],
   ['rpc:prompts', 'prompts'],
   ['rpc:goal', 'goal'],

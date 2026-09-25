@@ -65,6 +65,7 @@ bun run gate:search-index  # real-machine gate (12 steps + 1 opt-in): boots dist
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
+bun run memory:report      # memory usage of the running core, per process and per cache ([--json] [--trim [soft]])
 bun run log:smoke          # real-machine gate: boots dist/server on a temp store, asserts server.jsonl
 
 # Evals
@@ -555,6 +556,34 @@ Notes:
   over the `notes` RPC domain (`list` / `refresh` / `openInApp` — the only call that may launch
   the app). Gate: `bun run gate:notes` (read-only, only open vaults, skipped when the socket is
   not there).
+- **Process memory is managed in one place** (2026-09-25). Mechanism: `packages/core/memory/`
+  (`MemoryRegistry` + `MemoryGovernor`, zero deps); assembly: `packages/backend/wiring/memory/`,
+  exposed as `backend.memory`.
+  - **Holders.** A module that keeps rebuildable data in memory implements `MemoryHolder` and is
+    registered with one `registerHolder` line where it is assembled. `usage()` is called every
+    sample, so it only reads existing counters. `trim('soft' | 'hard')` may only release data that
+    can be rebuilt: never the only copy, never data used by a running task. The registry never
+    names a holder. Current holders:
+    - `events.replay-buffers` (会话更新缓冲, `backend/events/memory.ts`): per-session event
+      replay buffers with no subscriber.
+    - `sessions.projections` (会话内容缓存) and `sessions.cache` (最近打开的会话),
+      `backend/session/memory.ts`. They are released together, because a cached session holds
+      the messages built from its projection.
+    - `browser.tabs` (内置浏览器网页, React shell only, `electron/browser/memory-holder.ts`):
+      background tab release. A tab hidden for 10 min or more (soft) / 1 min or more (hard)
+      that is not playing sound has its web page process closed (`BrowserService.hibernate`).
+      The tab keeps its address and title; when it becomes visible again the page reloads.
+      Scroll position, unsaved form input and back/forward history are lost. A tab covered by
+      an overlay counts as visible.
+  - **Process probes.** `MemoryProcessProbe` reports process memory. Every host reports its own
+    RSS; the React shell also reports `app.getAppMetrics()` (`electron/memory-probe.ts`: UI,
+    GPU, each browser tab; a cross-site iframe process is listed under its tab's name).
+  - **Governor.** Samples every 30 s. Above the budget it asks all holders to trim
+    (`ONETHING_MEMORY_SOFT_MB` / `ONETHING_MEMORY_HARD_MB`, default 1024 / 1536; at most once
+    per 2 min; logs one `warn` in `app.memory`).
+  - **Reading it.** `memory` RPC domain: `report` for any caller, `trim` only for locally
+    trusted callers. CLI: `bun run memory:report [--json] [--trim [soft]]`. React shell: the
+    内存 panel in the Dock.
 - There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
   panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
   `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;

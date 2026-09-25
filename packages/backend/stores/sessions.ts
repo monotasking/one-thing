@@ -286,6 +286,17 @@ export function clearAllSessionCache(): void {
 }
 
 /**
+ * 从 LRU 中移除空闲且未受保护的会话,返回被移除的 id。
+ * 规则见 `SessionRepository.releaseIdleCachedSessions`。
+ */
+export function releaseIdleCachedSessions(options: {
+	idleMs: number;
+	isProtected?(sessionId: string, session: ChatSession): boolean;
+}): string[] {
+	return sessionRepository.releaseIdleCachedSessions(options);
+}
+
+/**
  * 获取 LRU 缓存统计信息（调试用）
  */
 export function getSessionCacheStats(): {

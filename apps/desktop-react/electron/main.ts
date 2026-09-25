@@ -34,7 +34,7 @@
  * 文件让位,不靠互斥量。
  * ──────────────────────────────────────────────────────────────────────
  */
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, webContents } from 'electron'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { connect } from 'node:net'
@@ -69,6 +69,7 @@ import { installTerminalReloadDetach } from './terminal-reload.js'
  * 的 `backend.resources`)。
  */
 import { installBrowserHost } from './browser/index.js'
+import { createShellMemoryProbe } from './memory-probe.js'
 import { applyChromiumFlags } from './browser/user-agent.js'
 import { applyCdpFlag, readCdpLaunchFlag } from './browser/cdp-flag.js'
 import { cdpDiscoveryExtras } from './browser/cdp-settings.js'
@@ -395,6 +396,34 @@ function startPostWindowServices(): void {
       } catch (error: unknown) {
         log.error('subsystem startup failed', { subsystem: 'browser', blocking: false }, error)
       }
+    }
+    /*
+     * 注册 Electron 进程探针,使内存报告包含渲染进程、GPU 与内置浏览器进程。
+     * 属于某个 `BrowserWindow` 的 webContents 是应用界面,其余是内置浏览器标签页
+     * (`getType()` 对两者都返回 'window',不能用来区分)。跨站 iframe 运行在独立进程中,
+     * 按每个 frame 的 `osProcessId` 归到所属标签页。
+     */
+    try {
+      b.own(b.memory.registry.registerProbe(createShellMemoryProbe({
+        getAppMetrics: () => app.getAppMetrics(),
+        listWebContents: () => {
+          const shellContents = new Set(BrowserWindow.getAllWindows().map(win => win.webContents))
+          return webContents.getAllWebContents().filter(wc => !wc.isDestroyed()).flatMap(wc => {
+            const role = shellContents.has(wc) ? 'shell' as const : 'browser' as const
+            const title = wc.getTitle()
+            const main = { pid: wc.getOSProcessId(), role, title }
+            let frames: { pid: number; role: typeof role; title: string; subframe: true }[] = []
+            try {
+              frames = wc.mainFrame.framesInSubtree
+                .map(frame => ({ pid: frame.osProcessId, role, title, subframe: true as const }))
+            } catch { /* 页面正在换 —— 这一轮只报主进程 */ }
+            return [main, ...frames]
+          })
+        },
+        selfPid: process.pid,
+      })), 'memoryProbe:electron')
+    } catch (error: unknown) {
+      log.error('subsystem startup failed', { subsystem: 'memory-probe', blocking: false }, error)
     }
     const refreshController = new AbortController()
     b.own(() => refreshController.abort(), 'modelRegistryRefresh', 'quiesce')

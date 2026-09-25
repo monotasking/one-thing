@@ -1,0 +1,478 @@
+/* 内存面板样式。
+ *
+ * 面板背景为 --surface-1,内容放在卡片中,通过背景与卡片的对比区分层级,卡片内不使用分隔线。
+ * 行内占比统一使用固定宽度的小条(--viz-mini-w)。颜色只用于图形元素,文字使用文字色。
+ * 面板在各种布局位置(舞台 / 浮窗 / 侧栏)共用这份样式,不包含与位置有关的尺寸。 */
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-4) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 卡片样式:调整内部间距,并指定量表刻度间隙使用的背景色。 */
+.section {
+  gap: var(--sp-3);
+  --meter-ground: var(--surface-2);
+}
+
+.none,
+.trendEmpty {
+  margin: 0;
+  padding: var(--sp-3) 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+.meta {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* ── 概览卡片:总占用、占用条、占用分布 ─────────────────────────────── */
+
+.heroRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.heroBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.heroLabel {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.hero {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1);
+  color: var(--text-1);
+  line-height: 1;
+}
+
+/* 大号数字使用比例数字,等宽数字在大字号下间距过松。 */
+.heroValue {
+  font-size: var(--fs-hero);
+  font-weight: 600;
+}
+
+.heroUnit {
+  font-size: var(--fs-headline);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.heroUnknown {
+  font-size: var(--fs-headline);
+  color: var(--text-3);
+}
+
+/* 状态:圆点加文字,状态色只用于圆点。与数字底部对齐。 */
+.pressure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-1);
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.budgetMeter {
+  margin-top: var(--sp-1);
+}
+
+.composition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* 各段之间留 2px 背景色间隙,整条两端圆角。 */
+.stack {
+  display: flex;
+  gap: var(--viz-gap);
+  height: var(--viz-bar);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+.stackSegment {
+  flex-basis: 0;
+  min-width: var(--viz-gap);
+  height: 100%;
+}
+
+.stackSegment:hover {
+  opacity: var(--viz-hover-opacity);
+}
+
+/* 图例两列,每项为「色点 · 名称 · 数值 · 占比」,数值与占比各自对齐。 */
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--viz-mini-w) * 3.5), 1fr));
+  column-gap: var(--sp-5);
+  row-gap: var(--sp-1);
+}
+
+.legendItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: var(--sp-2);
+  min-width: 0;
+}
+
+.swatch {
+  flex: none;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--r-full);
+}
+
+.legendName {
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legendValue,
+.legendShare {
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.legendValue {
+  color: var(--text-1);
+}
+
+.legendShare {
+  min-width: var(--sp-7);
+  color: var(--text-3);
+}
+
+/* ── 趋势卡片 ───────────────────────────────────────────────────────── */
+
+.trend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* 绘图区与右侧固定宽度的标签区,标签不与曲线重叠。 */
+.trendFrame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--viz-gutter);
+  height: var(--viz-spark-h);
+}
+
+.trendPlot {
+  position: relative;
+  min-width: 0;
+}
+
+.trendSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  cursor: crosshair;
+}
+
+.trendLine {
+  fill: none;
+  stroke: var(--viz-1);
+  stroke-width: var(--viz-line);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* 参考线:1px 实线,硬上限颜色比软上限深。 */
+.trendRuleSoft,
+.trendRuleHard,
+.trendCrosshair {
+  stroke-width: 1px;
+}
+
+.trendRuleSoft {
+  stroke: var(--line-1);
+}
+
+.trendRuleHard {
+  stroke: var(--line-2);
+}
+
+.trendCrosshair {
+  stroke: var(--text-4);
+}
+
+.trendGutter {
+  position: relative;
+}
+
+.trendRuleLabel {
+  position: absolute;
+  left: var(--sp-2);
+  transform: translateY(-50%);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.trendRuleLabel b {
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* 当前值 / 悬停位置的圆点,外围一圈卡片背景色。 */
+.trendDot {
+  position: absolute;
+  width: var(--viz-dot);
+  height: var(--viz-dot);
+  border-radius: var(--r-full);
+  background: var(--viz-1);
+  box-shadow: 0 0 0 var(--viz-gap) var(--surface-2);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* 悬停读数:数值在上,时间在下。靠右时显示在指针左侧,避免超出边界。 */
+.trendReadout {
+  position: absolute;
+  top: 0;
+  transform: translateX(var(--sp-2));
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--surface-3);
+  box-shadow: var(--sh-2);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.trendReadout[data-flip='left'] {
+  transform: translateX(calc(-100% - var(--sp-2)));
+}
+
+.trendReadout strong {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.trendCaption {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/* ── 进程卡片 ───────────────────────────────────────────────────────── */
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 列表向两侧外扩一格,使行文字与卡片标题左对齐,悬停背景延伸到两侧。 */
+.groups,
+.holders {
+  margin-inline: calc(var(--sp-3) * -1);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.groupName {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 行分三列:名称、固定宽度小条、数值。各分组的列对齐。 */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--viz-mini-w) calc(var(--viz-mini-w) + var(--sp-3));
+  align-items: center;
+  column-gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-1);
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.nameText {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini {
+  height: var(--viz-mini-h);
+  border-radius: var(--r-full);
+  background: var(--line-1);
+  overflow: hidden;
+}
+
+.miniFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+}
+
+.bytes {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+/* ── 缓存卡片 ───────────────────────────────────────────────────────── */
+
+.holders {
+  list-style: none;
+  margin-block: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/* 行:左侧为名称与明细,右侧为数值和用量条。 */
+.holder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-1);
+}
+
+.holder:hover {
+  background: var(--st-hover);
+}
+
+.holderText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.holderName {
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holderDetail,
+.holderError {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holderError {
+  color: var(--danger);
+}
+
+.holderSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
+}
+
+.holderReadout {
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.holderMeter {
+  width: calc(var(--viz-mini-w) * 1.5);
+}

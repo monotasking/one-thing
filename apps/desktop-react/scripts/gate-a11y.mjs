@@ -1087,6 +1087,23 @@ async function main() {
     )
 
     /*
+     * 内存面板。`memory.report` 在 server 宿主上同样可用,因此在这里扫描。
+     * 重点检查:进程列表、带名称的量表(`role="meter"`)、「释放缓存」按钮。
+     * 等待第一行进程出现后再扫描,首次加载时只有「正在读取…」一行。
+     */
+    console.log('\n[7c/14] 内存监视器:开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-memory"]')
+    await waitFor('内存监视器就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="memory-panel"] [data-testid="memory-process-row"]'))),
+    )
+    await settle(page, '内存监视器')
+    await scanAxe(page, '内存监视器', '[data-testid="memory-panel"]')
+    await clickSelector(page, '[data-testid="dock-tile-memory"]')
+    await waitFor('内存监视器已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="memory-panel"]')),
+    )
+
+    /*
      * 「所有应用」面(08-31 Dock/形态批)。进这道门的理由与模型服务面逐字相同 ——
      * **外壳那一屏看不见它**,而它是一整列 `role="switch"` 加一整列打开钮:
      * 每一枚开关都得说得出「什么的开关」(Switch 的 `label`),每一颗打开钮都得

@@ -47,6 +47,19 @@ export class LRUCache<K, V> {
     return Array.from(this.cache.keys())
   }
 
+  /**
+   * 移除满足条件的条目,返回被移除的键。`accessedAt` 为该条目最后一次 get / set 的时刻。
+   */
+  pruneWhere(predicate: (key: K, value: V, accessedAt: number) => boolean): K[] {
+    const pruned: K[] = []
+    for (const [key, entry] of [...this.cache]) {
+      if (!predicate(key, entry.value, entry.accessedAt)) continue
+      this.cache.delete(key)
+      pruned.push(key)
+    }
+    return pruned
+  }
+
   getStats(): { size: number; maxSize: number; keys: K[] } {
     return {
       size: this.cache.size,

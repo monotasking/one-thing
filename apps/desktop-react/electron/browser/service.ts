@@ -206,6 +206,17 @@ export class BrowserService {
     this.schedulePersist()
   }
 
+  /**
+   * 释放标签页的渲染进程:先从窗口移除视图,再关闭进程。标签页本身、地址、
+   * 活动状态与持久化记录保持不变。返回是否确实释放。
+   */
+  hibernate(tabId: string): boolean {
+    const tab = this.tabs.get(tabId)
+    if (!tab?.materialized) return false
+    this.options.observer.onDematerialized(tabId)
+    return tab.hibernate()
+  }
+
   /** 壳报来第一个 `visible` 时调:惰性视图在这一刻落地。 */
   materialize(tabId: string): void {
     this.tabs.get(tabId)?.materialize()
@@ -269,9 +280,10 @@ export class BrowserService {
       ready: profile => this.options.sessionPolicy.ready(profile),
       observer: {
         onState: (tab, patch) => { this.onTabState(tab, patch) },
-        onOpened: tab => {
+        onOpened: (tab, info) => {
           this.options.observer.onMaterialized(tab)
-          this.options.observer.onOpened(tab)
+          // 释放后重建的标签页需要重新注册视图,但不再发送「已打开」事件。
+          if (!info?.reopened) this.options.observer.onOpened(tab)
         },
         onWindowOpen: (tab, decision) => { this.onWindowOpen(tab, decision) },
         onFind: (tab, readout) => { this.options.observer.onFind(tab, readout) },

@@ -79,6 +79,7 @@ import {
   type BrowserProfileTable,
 } from './profiles.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
+import { createBrowserMemoryHolder } from './memory-holder.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
 import { NativeFocus } from './native-focus.js'
 import { NativePopup } from './native-popup.js'
@@ -403,6 +404,23 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     onError: error => { log.error('cdp launch flag write failed', undefined, error) },
   })
 
+  /*
+   * 注册内置浏览器的内存持有者:长时间在后台且未播放声音的标签页会被释放渲染进程,
+   * 切回时重新加载。释放条件见 `memory-holder.ts`。
+   */
+  const offMemory = options.backend.memory.registry.registerHolder(createBrowserMemoryHolder({
+    tabs: () => service.list().flatMap(state => {
+      const tab = service.get(state.id)
+      return tab ? [tab] : []
+    }),
+    hiddenForMs: tabId => layout.hiddenForMs(tabId),
+    hibernate: tabId => {
+      const released = service.hibernate(tabId)
+      if (released) log.info('browser tab hibernated', { tabId })
+      return released
+    },
+  }))
+
   log.info('browser host installed', {
     tabs: service.list().length,
     profiles: profiles.ids.length,
@@ -414,6 +432,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     async dispose(): Promise<void> {
       if (disposed) return
       disposed = true
+      offMemory()
       offCdpSettings()
       offProfiles()
       offIpc()

@@ -1,5 +1,6 @@
 import {
   Brain,
+  Gauge,
   ListChecks,
   ImagePlus,
   Mic,
@@ -204,6 +205,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   MicVocal,
   // 我的清单(待办 T3)那块瓦。
   ListChecks,
+  // 内存面板的 Dock 图标。
+  Gauge,
   Sparkles,
   Trash2,
 }

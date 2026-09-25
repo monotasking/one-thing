@@ -443,6 +443,11 @@ function peekSessionProjection(sessionId: string): SessionProjectionState | unde
   return {
     getMemoryStats,
     releaseIdle,
+    /** 该会话的投影当前不能释放的原因;没有投影或可以释放时返回 `undefined`。 */
+    protectionOf(sessionId: string): SessionProjectionProtection | undefined {
+      const live = projections.get(sessionId)
+      return live ? protection(sessionId, live) : undefined
+    },
     getLiveSessionProjection,
     foldLiveSessionLogicalDelta,
     liveSessionProjectionAheadDeltas,
