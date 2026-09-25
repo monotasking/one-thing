@@ -55,24 +55,16 @@ describe('① 输入框浮起来,聊天区铺满', () => {
   })
 
   /**
-   * 09-13(Dock 常驻改整边浮栏)**推翻**了这一条的前一版。
-   *
-   * 旧版钉的是 `.shell[data-dock-reserve='bottom'] .composerDock { bottom: reserve }` ——
-   * 那是**内衬形**让位的必需品:内衬打在 `.center` 的 `padding-block-end` 上,而输入框
-   * 是 `.center` 的绝对定位子元素,`bottom` 量的是包含块的 padding box,父级那条内衬
-   * 一个像素都推不动它,所以要在它自己身上再写一次。
-   *
-   * 四条边改成**平移形**(让位打在 `.main` 的 padding 上)之后,`.center` 整格就已经
-   * 在让位线以上了 —— 输入框贴的是一个已经缩过的包含块,`bottom: 0` 天然落在线上。
-   * 那条覆写于是**必须删掉**:留着就是让位算两遍,输入框会浮在半空。
-   *
-   * 断言因此反过来:**不许再有那条规则**,而让位落在 `.main` 上。
+   * 09-25 Dock 常显档**不再让位**(用户:「永久展示不再排开其他元素,只是自动展示
+   * 模式下的展示即可」)。这一条从前钉的是「让位落在 `.main` 上(平移形)」,
+   * 今天反过来:外壳里不许再有任何 `data-dock-reserve` 规则,`.main` 也不许吃
+   * 因 Dock 而起的 padding —— 输入框贴的就是会话叶自己的包含块。
    */
-  it('Dock 停底边的让位落在 .main 上(平移形),输入框不再有第二条 bottom 覆写', () => {
-    expect(shell).not.toMatch(/\.shell\[data-dock-reserve='bottom'\]\s+\.composerDock\s*\{/)
-    expect(block(shell, ".shell[data-dock-reserve='bottom'] .main")).toMatch(
-      /padding-block-end:\s*var\(--dock-reserve-h\)/,
-    )
+  it('Dock 不让位:外壳没有 data-dock-reserve 规则,输入框不再有第二条 bottom 覆写', () => {
+    // 病历注释会提到旧名字,判的是剥掉注释之后的规则正文。
+    const rules = shell.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(rules).not.toMatch(/data-dock-reserve/)
+    expect(rules).not.toMatch(/--dock-reserve-/)
     /*
      * W5-c(路线 A)再补三句:落位带搬进了会话叶(`ChatLeaf.module.css`),外壳的样式表里
      * 不许再有 `.composerDock` 的任何规则,也不许按 `[data-composer-dock]` 属性给它

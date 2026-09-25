@@ -898,6 +898,22 @@ const MessageRow = memo(function MessageRow({
           */}
           <MessageSourceFoot segments={segments} messageId={message.id} />
           {/*
+            * 这一轮**出错收场**(`run/end outcome:error` → 投影的 `errorDetails`)。
+            * `stop-reasons.ts` 把 error 从收场通知里摘掉,理由是「它走 errorDetails
+            * 那条路上错误卡」—— 可错误卡上面那一格只认 `role === 'error'`,assistant
+            * 消息上的 `errorDetails` 从来没人画:provider 抛错(ACP agent 找不到、
+            * 适配器没装、鉴权失败)的那一轮在屏幕上是一条**空白消息**,用户读到的
+            * 就是「发了没反应」。同一张卡、同一句后端原话,排在已经流出来的正文之后。
+            */}
+          {role === 'assistant' && !streaming && message.errorDetails && (
+            <div className={s.lateRow}>
+              <div className={s.errorCard} role="alert" data-prose="object">
+                <span className={s.errorTitle}>{t('chat.errorCard')}</span>
+                <span className={s.errorBody}>{message.errorDetails}</span>
+              </div>
+            </div>
+          )}
+          {/*
             光标从前画在这里(`streaming && segments.length > 0`),而它**独占一行**:
             收尾那一帧条件渲染把它卸掉,带走一个行盒,贴着底的页面被浏览器钳一下
             —— §0 的病 ③,真机 23.8px。G 线 P1 起它住在列尾那一格尾槽里,换的只有

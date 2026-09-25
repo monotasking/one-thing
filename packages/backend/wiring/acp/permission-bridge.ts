@@ -30,7 +30,7 @@ function permissionTitle(context: ACPPermissionRequestContext): string {
  * 卡片类型不变:`external-agent` 这条效果的 kind 就是它,而卡片标题照旧由
  * `preview.title` 压过策略表的默认文案。
  */
-export function registerACPPermissionBridge(): void {
+export function registerACPPermissionBridge(): () => void {
   const bridge: ACPPermissionBridge = async context => {
     const sessionId = context.localSessionId
     if (!sessionId) {
@@ -79,4 +79,8 @@ export function registerACPPermissionBridge(): void {
   }
 
   ACPManager.setPermissionBridge(bridge)
+  // 只摘自己挂上的那一只:别的宿主后来换过桥,这里不去拆它。
+  return () => {
+    if (ACPManager.getPermissionBridge() === bridge) ACPManager.setPermissionBridge(undefined)
+  }
 }

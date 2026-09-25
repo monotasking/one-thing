@@ -49,7 +49,7 @@ async function assemble(name: string) {
     host: {
       storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-      gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null,
+      gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
     },
   })
   backend = result

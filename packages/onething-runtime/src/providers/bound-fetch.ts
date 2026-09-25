@@ -108,9 +108,19 @@ type ResolvedHttpPolicy = {
   timeoutMs?: number
   retry: ResolvedHttpRetryOptions | false
 }
+/**
+ * 一次尝试用的派生 signal 管两件事,生命期不同:
+ * - 超时计时器只管「等响应头」,头到了就该清(`headersArrived`);
+ * - 调用方 signal → 派生 controller 的转发要活到**响应体读完**。流式请求在 `fetch()`
+ *   返回时才刚开始,头到就摘转发会让之后的 abort 传不到 body —— 09-23 事故:deepseek
+ *   吐了几秒推理后停住,用户按停止,`reader.read()` 挂到远端自己断,run 收不了尾。
+ *   所以转发只在这次尝试被放弃(出错 / 要重试)时摘(`abandon`);成功返回就留着,
+ *   它随调用方 signal 一起回收。
+ */
 type AttemptInit = {
   init?: RequestInit
-  cleanup: () => void
+  headersArrived: () => void
+  abandon: () => void
   didTimeout: () => boolean
 }
 
@@ -322,7 +332,8 @@ function createAttemptInit(init: RequestInit | undefined, timeoutMs: number | un
   if (!sourceSignal && !timeoutMs) {
     return {
       init,
-      cleanup: () => undefined,
+      headersArrived: () => undefined,
+      abandon: () => undefined,
       didTimeout: () => false,
     }
   }
@@ -353,7 +364,10 @@ function createAttemptInit(init: RequestInit | undefined, timeoutMs: number | un
       ...(init || {}),
       signal: controller.signal,
     },
-    cleanup: () => {
+    headersArrived: () => {
+      if (timeoutId) clearTimeout(timeoutId)
+    },
+    abandon: () => {
       if (timeoutId) clearTimeout(timeoutId)
       sourceSignal?.removeEventListener('abort', abortFromSource)
     },
@@ -461,9 +475,10 @@ async function executeOnethingFetch(
         } as OnethingAppFetchNetworkInit)
         : await (adapters.directFetch ?? fetch)(input, attemptInit.init)
 
-      attemptInit.cleanup()
+      attemptInit.headersArrived()
 
       if (retry && attempt < maxAttempts && shouldRetryResponse(response, retry)) {
+        attemptInit.abandon()
         cancelResponseBody(response)
         await sleep(retryDelayMs(attempt, retry, response), init?.signal ?? undefined)
         continue
@@ -471,7 +486,7 @@ async function executeOnethingFetch(
 
       return response
     } catch (error) {
-      attemptInit.cleanup()
+      attemptInit.abandon()
       lastError = error
       if (init?.signal?.aborted && !attemptInit.didTimeout()) throw error
       if (!retry || attempt >= maxAttempts) break

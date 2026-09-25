@@ -21,6 +21,7 @@ import type {
   ReleaseTerminalResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
+  SessionConfigOption,
   SessionNotification,
   StopReason,
   TerminalOutputRequest,
@@ -40,7 +41,10 @@ import type {
   ACPPermissionRequestContext,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
+  ACPSessionOption,
+  ACPSessionOptionChoice,
 } from './types.js'
+import type { ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
 
 import { getLogger } from '../logging/index.js'
 
@@ -56,14 +60,85 @@ const DEFAULT_MAX_TERMINAL_OUTPUT_BYTES = 1024 * 1024
 const MAX_FILE_READ_BYTES = 1024 * 1024
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  if (error instanceof Error) return error.message
+  const rpc = rpcErrorShape(error)
+  return rpc ? rpc.message : String(error)
 }
 
-function mergeEnv(env?: Record<string, string>): Record<string, string> {
-  const filteredProcessEnv = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+/** ACP 规范给 `authRequired` 的 JSON-RPC 错误码。 */
+const ACP_AUTH_REQUIRED_CODE = -32000
+
+/** 对端回来的 JSON-RPC 错误是**普通对象**(`{code, message, data}`),不是 `Error`。 */
+function rpcErrorShape(error: unknown): { code?: number; message: string; data?: unknown } | undefined {
+  if (!error || typeof error !== 'object' || error instanceof Error) return undefined
+  const { code, message, data } = error as { code?: unknown; message?: unknown; data?: unknown }
+  if (typeof message !== 'string') return undefined
+  return { ...(typeof code === 'number' ? { code } : {}), message, ...(data === undefined ? {} : { data }) }
+}
+
+function describeRpcData(data: unknown): string {
+  if (data === undefined || data === null) return ''
+  if (typeof data === 'string') return data
+  const text = (data as { message?: unknown; details?: unknown }).message ?? (data as { details?: unknown }).details
+  if (typeof text === 'string') return text
+  try {
+    return JSON.stringify(data).slice(0, 500)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 一轮 prompt 失败时交给会话的那句话(2026-09-24:真机上这里显示的是 `[object Object]` ——
+ * SDK 把对端的 JSON-RPC 错误原样 reject 成普通对象,`String()` 一下什么都没了)。
+ * `authRequired` 单独说人话:它不是 onething 的错,是那台 agent 自己的登录过期了,
+ * 要去**它自己的** CLI 里登录;`authLabel` 是 agent 经 `_auth/status_update` 推来的原话。
+ */
+export function toAcpPromptError(error: unknown, agentName: string, authLabel?: string): Error {
+  if (error instanceof Error) return error
+  const rpc = rpcErrorShape(error)
+  if (!rpc) return new Error(String(error))
+  const detail = describeRpcData(rpc.data)
+  if (rpc.code === ACP_AUTH_REQUIRED_CODE) {
+    const why = authLabel || detail || rpc.message
+    return new Error(
+      `ACP agent "${agentName}" is not logged in (${why}). Log in with the agent's own CLI and retry.`,
+      { cause: error },
+    )
+  }
+  const message = detail && !rpc.message.includes(detail) ? `${rpc.message}: ${detail}` : rpc.message
+  return new Error(message, { cause: error })
+}
+
+/**
+ * 连不上时交给会话的那句话。ENOENT 单独说人话:它几乎总是「适配器没装」或
+ * 「GUI 起的 app 没拿到登录 shell 的 PATH」,而 Node 原话 `spawn x ENOENT` 两件都没说。
+ * 进程起了但握手前就退了,把 stderr 尾巴带上 —— 适配器自己的报错多半就在那里。
+ */
+export function describeConnectFailure(command: string, error: unknown, stderrTail = ''): Error {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code
+  if (code === 'ENOENT') {
+    return new Error(
+      `ACP agent command "${command}" was not found on PATH. `
+      + 'Install the ACP adapter or set the agent command to an absolute path.',
+      { cause: error },
+    )
+  }
+  const tail = stderrTail.trim()
+  const base = errorMessage(error)
+  if (!tail || base.includes(tail.slice(-200))) return error instanceof Error ? error : new Error(base)
+  return new Error(`${base} stderr: ${tail.slice(-1000)}`, { cause: error })
+}
+
+/** 子进程环境 = 宿主给的底(缺席就是进程环境)⊕ 这台 agent 配置里自己的 `env`。 */
+function mergeEnv(
+  env?: Record<string, string>,
+  base: Record<string, string | undefined> = process.env,
+): Record<string, string> {
+  const filteredBase = Object.fromEntries(
+    Object.entries(base).filter((entry): entry is [string, string] => entry[1] !== undefined)
   )
-  return env ? { ...filteredProcessEnv, ...env } : filteredProcessEnv
+  return env ? { ...filteredBase, ...env } : filteredBase
 }
 
 function trimToBytes(text: string, maxBytes: number): { text: string; truncated: boolean } {
@@ -154,6 +229,62 @@ interface ACPSessionRecord {
   cwd: string
   prompts: number
   lastUsedAt: number
+  /** agent 在这条会话里自述的可调选项(新开 / 恢复 / 改选项时的答复)。 */
+  options: ACPSessionOption[]
+}
+
+/**
+ * 会话目录的**唯一**判据:会话绑了目录就用它,没绑(`undefined` 或空串 —— 真店
+ * `meta.json` 里存的就是 `''`)才退回进程目录。从前 provider 用 `??` 判,空串会原样
+ * 递进 `session/new`,pi 直接回 `cwd must be an absolute path`。
+ */
+export function resolveACPSessionCwd(cwd: string | undefined): string {
+  const trimmed = cwd?.trim()
+  // ACP 要求绝对路径(pi 当场拒相对路径);provider 的最后一档兜底是 `'.'`。
+  return trimmed ? resolve(trimmed) : process.cwd()
+}
+
+/** ACP `configOptions` → onething 的选项投影:只收 `select`,分组拍平。 */
+export function projectACPConfigOptions(
+  configOptions: readonly SessionConfigOption[] | null | undefined,
+): ACPSessionOption[] {
+  const out: ACPSessionOption[] = []
+  for (const option of configOptions ?? []) {
+    if (option.type !== 'select') continue
+    const choices: ACPSessionOptionChoice[] = []
+    for (const entry of option.options) {
+      if ('group' in entry) {
+        for (const choice of entry.options) choices.push(projectChoice(choice, entry.name))
+      } else {
+        choices.push(projectChoice(entry))
+      }
+    }
+    out.push({
+      id: option.id,
+      name: option.name,
+      ...(option.description ? { description: option.description } : {}),
+      ...(option.category ? { category: option.category } : {}),
+      currentValue: option.currentValue,
+      choices,
+    })
+  }
+  return out
+}
+
+function projectChoice(
+  choice: { value: string; name: string; description?: string | null },
+  group?: string,
+): ACPSessionOptionChoice {
+  return {
+    value: choice.value,
+    name: choice.name,
+    ...(choice.description ? { description: choice.description } : {}),
+    ...(group ? { group } : {}),
+  }
+}
+
+function withCurrentValue(options: ACPSessionOption[], optionId: string, value: string): ACPSessionOption[] {
+  return options.map(option => (option.id === optionId ? { ...option, currentValue: value } : option))
 }
 
 interface TerminalRecord {
@@ -174,9 +305,12 @@ export class ACPClient {
   private initResponse: InitializeResponse | null = null
   private statusValue: ACPConnectionStatus = 'disconnected'
   private errorValue: string | undefined
+  /** agent 自己报的「没登录」原话(`_auth/status_update`);登录了就是 undefined。 */
+  private authLabel: string | undefined
   private connectedAtValue: number | undefined
   private lastUsedAtValue: number | undefined
   private sessions = new Map<string, ACPSessionRecord>()
+  private sessionOpenings = new Map<string, Promise<ACPSessionRecord>>()
   private updateQueues = new Map<string, BoundedAsyncQueue<ACPPromptStreamEvent>>()
   /** acpSessionId → context of the currently streaming prompt (for permission attribution). */
   private promptContexts = new Map<string, { localSessionId: string; messageId?: string; cwd: string }>()
@@ -194,6 +328,10 @@ export class ACPClient {
        * bridge still pick it up, and bridge removal takes effect immediately.
        */
       getPermissionBridge?: () => ACPPermissionBridge | undefined
+      /** 会话对应关系的落盘处;缺席 = 只记在内存里(旧行为)。 */
+      getSessionLinks?: () => ACPSessionLinkStore | undefined
+      /** 子进程环境的底(宿主注入代理等);缺席 = `process.env`。 */
+      getSpawnEnv?: () => Record<string, string | undefined> | undefined
     } = {},
   ) {}
 
@@ -259,7 +397,7 @@ export class ACPClient {
     try {
       const child = spawn(this.config.command, this.config.args ?? [], {
         cwd: this.config.cwd || undefined,
-        env: mergeEnv(this.config.env),
+        env: mergeEnv(this.config.env, this.runtimeOptions.getSpawnEnv?.() ?? process.env),
         stdio: ['pipe', 'pipe', 'pipe'],
       })
       this.child = child
@@ -335,11 +473,17 @@ export class ACPClient {
         agent: this.initResponse.agentInfo?.name,
       })
     } catch (error) {
-      const message = errorMessage(error)
+      const failure = describeConnectFailure(this.config.command, error, this.stderrTail)
+      log.error('agent connect failed', {
+        agentId: this.id,
+        command: this.config.command,
+        args: this.config.args ?? [],
+        ...(this.stderrTail ? { stderr: this.stderrTail.slice(-1000) } : {}),
+      }, error)
       await this.disconnect()
       this.statusValue = 'error'
-      this.errorValue = message
-      throw error
+      this.errorValue = failure.message
+      throw failure
     }
   }
 
@@ -444,7 +588,7 @@ export class ACPClient {
         connection.cancel({ sessionId: session.acpSessionId }).catch(cancelError => {
           log.warn('cancel after prompt failure failed', { agentId: this.id }, cancelError)
         })
-        queue.error(error instanceof Error ? error : new Error(String(error)))
+        queue.error(toAcpPromptError(error, this.config.name, this.authLabel))
       })
       .finally(() => {
         if (this.updateQueues.get(session.acpSessionId) === queue) {
@@ -465,34 +609,180 @@ export class ACPClient {
     }
   }
 
-  private async ensureSession(localSessionId: string, cwd: string): Promise<ACPSessionRecord> {
+  /**
+   * onething 会话 → agent 会话。三档,依次试:
+   *  ① 内存里就有、目录没变 → 直接用;
+   *  ② 盘上记着(同一台 agent、同一个目录)→ `resume`(不回放历史)或 `load`
+   *     (回放的 `session/update` 此刻没有队列接,`sessionUpdate` 按设计丢掉 ——
+   *     onething 自己有历史,不需要第二份);恢复失败就退到 ③;
+   *  ③ `session/new`。
+   * 开出来之后按「这台 agent 上次的选择 ⊕ 这条会话里的选择」调一遍选项,再落盘。
+   * 同一条会话并发来两次(选项面板 + 发送)只开一次:在飞的那一发被复用。
+   */
+  private async ensureSession(localSessionId: string, rawCwd: string | undefined): Promise<ACPSessionRecord> {
+    const cwd = resolveACPSessionCwd(rawCwd)
     const existing = this.sessions.get(localSessionId)
     if (existing && existing.cwd === cwd) {
       existing.prompts += 1
       existing.lastUsedAt = Date.now()
       return existing
     }
+    const inflight = this.sessionOpenings.get(localSessionId)
+    if (inflight) return inflight
+    const opening = this.openSession(localSessionId, cwd, existing).finally(() => {
+      if (this.sessionOpenings.get(localSessionId) === opening) this.sessionOpenings.delete(localSessionId)
+    })
+    this.sessionOpenings.set(localSessionId, opening)
+    return opening
+  }
 
+  private async openSession(
+    localSessionId: string,
+    cwd: string,
+    existing: ACPSessionRecord | undefined,
+  ): Promise<ACPSessionRecord> {
     if (!this.connection) throw new Error('ACP connection is not available')
     if (existing) {
       await this.connection.cancel({ sessionId: existing.acpSessionId }).catch(() => undefined)
       this.sessions.delete(localSessionId)
     }
 
-    const response = await this.connection.newSession({
-      cwd,
-      mcpServers: (this.config.mcpServers ?? []) as any,
-    })
-    const session = {
+    const links = this.runtimeOptions.getSessionLinks?.()
+    const link = links?.getLink(this.id, localSessionId)
+    let opened = link && link.cwd === cwd ? await this.restoreSession(link.acpSessionId, cwd) : undefined
+    if (!opened) {
+      const response = await this.connection.newSession({
+        cwd,
+        mcpServers: (this.config.mcpServers ?? []) as any,
+      })
+      opened = { acpSessionId: response.sessionId, options: projectACPConfigOptions(response.configOptions) }
+    }
+
+    const session: ACPSessionRecord = {
       localSessionId,
-      acpSessionId: response.sessionId,
+      acpSessionId: opened.acpSessionId,
       cwd,
       prompts: 1,
       lastUsedAt: Date.now(),
+      options: opened.options,
     }
     this.sessions.set(localSessionId, session)
     this.trimSessionRecords(localSessionId)
+
+    const chosen = link?.options ?? {}
+    await this.applyDesiredOptions(session, { ...(links?.getProfile(this.id)?.preferred ?? {}), ...chosen })
+    this.persistLink(session, chosen)
     return session
+  }
+
+  /** 按 agent 声明的能力回到原会话;任何一步失败都返回 undefined,由调用方新开。 */
+  private async restoreSession(
+    acpSessionId: string,
+    cwd: string,
+  ): Promise<{ acpSessionId: string; options: ACPSessionOption[] } | undefined> {
+    const connection = this.connection
+    if (!connection) return undefined
+    const capabilities = this.initResponse?.agentCapabilities
+    const mcpServers = (this.config.mcpServers ?? []) as any
+    try {
+      if (capabilities?.sessionCapabilities?.resume) {
+        const response = await connection.unstable_resumeSession({ sessionId: acpSessionId, cwd, mcpServers })
+        log.info('session resumed', { agentId: this.id, acpSessionId })
+        return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
+      }
+      if (capabilities?.loadSession) {
+        const response = await connection.loadSession({ sessionId: acpSessionId, cwd, mcpServers })
+        log.info('session loaded', { agentId: this.id, acpSessionId })
+        return { acpSessionId, options: projectACPConfigOptions(response.configOptions) }
+      }
+    } catch (error) {
+      log.warn('session restore failed; opening a new one', { agentId: this.id, acpSessionId }, error)
+    }
+    return undefined
+  }
+
+  /** 把想要的值调到 agent 身上:只调「这条会话里有这一格、值在可选里、且与当前不同」的。 */
+  private async applyDesiredOptions(session: ACPSessionRecord, desired: Record<string, string>): Promise<void> {
+    for (const [optionId, value] of Object.entries(desired)) {
+      const option = session.options.find(candidate => candidate.id === optionId)
+      if (!option || option.currentValue === value) continue
+      if (!option.choices.some(choice => choice.value === value)) continue
+      try {
+        await this.writeOption(session, optionId, value)
+      } catch (error) {
+        log.warn('restoring session option failed', { agentId: this.id, optionId, value }, error)
+      }
+    }
+  }
+
+  private async writeOption(session: ACPSessionRecord, optionId: string, value: string): Promise<void> {
+    if (!this.connection) throw new Error('ACP connection is not available')
+    const response = await this.connection.setSessionConfigOption({
+      sessionId: session.acpSessionId,
+      configId: optionId,
+      value,
+    })
+    const projected = projectACPConfigOptions(response?.configOptions)
+    session.options = projected.length > 0 ? projected : withCurrentValue(session.options, optionId, value)
+  }
+
+  private persistLink(session: ACPSessionRecord, chosen: Record<string, string>): void {
+    const links = this.runtimeOptions.getSessionLinks?.()
+    if (!links) return
+    const now = Date.now()
+    const link: ACPSessionLink = {
+      agentId: this.id,
+      localSessionId: session.localSessionId,
+      acpSessionId: session.acpSessionId,
+      cwd: session.cwd,
+      options: chosen,
+      updatedAt: now,
+    }
+    links.putLink(link)
+    if (session.options.length > 0) {
+      const profile = links.getProfile(this.id)
+      links.putProfile({
+        agentId: this.id,
+        preferred: profile?.preferred ?? {},
+        catalog: session.options,
+        updatedAt: now,
+      })
+    }
+  }
+
+  /** 这条会话此刻的选项 —— 会连上 agent、开(或恢复)那条会话。 */
+  async getSessionOptions(localSessionId: string, cwd: string | undefined): Promise<ACPSessionOption[]> {
+    await this.connect()
+    const session = await this.ensureSession(localSessionId, cwd)
+    return session.options
+  }
+
+  /**
+   * 用户在选择器里改了一格:交给 agent,再记两处 —— 这条会话的选择(恢复时重放)
+   * 与这台 agent 的 `preferred`(下一条新会话照这个开)。
+   */
+  async setSessionOption(
+    localSessionId: string,
+    cwd: string | undefined,
+    optionId: string,
+    value: string,
+  ): Promise<ACPSessionOption[]> {
+    await this.connect()
+    const session = await this.ensureSession(localSessionId, cwd)
+    await this.writeOption(session, optionId, value)
+    const links = this.runtimeOptions.getSessionLinks?.()
+    const chosen = { ...(links?.getLink(this.id, localSessionId)?.options ?? {}), [optionId]: value }
+    this.persistLink(session, chosen)
+    if (links) {
+      const profile = links.getProfile(this.id)
+      links.putProfile({
+        agentId: this.id,
+        preferred: { ...(profile?.preferred ?? {}), [optionId]: value },
+        catalog: session.options,
+        updatedAt: Date.now(),
+      })
+    }
+    return session.options
   }
 
   private createClientHandlers(): Client {
@@ -506,6 +796,7 @@ export class ACPClient {
       waitForTerminalExit: this.config.allowTerminalAccess ? (params) => this.waitForTerminalExit(params) : undefined,
       killTerminal: this.config.allowTerminalAccess ? (params) => this.killTerminal(params) : undefined,
       releaseTerminal: this.config.allowTerminalAccess ? (params) => this.releaseTerminal(params) : undefined,
+      extNotification: (method, params) => this.extNotification(method, params),
     }
   }
 
@@ -582,6 +873,23 @@ export class ACPClient {
         kind: option.kind,
       })),
     }
+  }
+
+  /**
+   * ACP 的扩展通知(方法名以 `_` 起头)。不接的话 SDK 回 `Method not found` 并往 stderr
+   * 打一整段对象 —— claude-agent-acp 连上就推一条 `_auth/status_update`。扩展按规范是
+   * 可选的,认得的记下来、不认得的记一行 debug 就放过。
+   */
+  private async extNotification(method: string, params: Record<string, unknown>): Promise<void> {
+    if (method === '_auth/status_update') {
+      const status = params.authStatus as { kind?: unknown; label?: unknown } | undefined
+      const kind = typeof status?.kind === 'string' ? status.kind : undefined
+      const label = typeof status?.label === 'string' ? status.label : undefined
+      this.authLabel = kind === 'none' ? (label ?? 'not logged in') : undefined
+      log.info('agent auth status', { agentId: this.id, kind, label })
+      return
+    }
+    log.debug('agent extension notification ignored', { agentId: this.id, method })
   }
 
   private async sessionUpdate(params: SessionNotification): Promise<void> {

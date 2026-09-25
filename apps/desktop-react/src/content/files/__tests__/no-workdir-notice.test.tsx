@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { NoWorkdirNotice } from '../NoWorkdirNotice'
 import { t } from '../../../i18n'
 import { useSessionsSource } from '../../../data/sessions-source'
+import { configureDialogPort } from '../../../data/dialog-port'
 
 /**
  * 绑定行收编 `ui/Field` 的横排档(09-02 批 10,结掉 9d 留的那笔账)。
@@ -17,11 +18,15 @@ const SESSION = 'sess-1'
 describe('NoWorkdirNotice · 绑定行的 Field 横排档', () => {
   beforeEach(() => {
     useSessionsSource.setState({ setWorkingDirectory: vi.fn(async () => ({ ok: true as const })) })
+    // 这一组钉的是路径输入行 —— 系统对话框缺席时的那条退路。
+    configureDialogPort({ showOpen: async () => ({ canceled: true, filePaths: [], unavailable: true }) })
   })
 
-  function openBindRow() {
+  async function openBindRow() {
     render(<NoWorkdirNotice sessionId={SESSION} t={t} />)
-    fireEvent.click(screen.getByRole('button', { name: t('files.bind') }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('files.bind') }))
+    })
   }
 
   /**
@@ -29,8 +34,8 @@ describe('NoWorkdirNotice · 绑定行的 Field 横排档', () => {
    * 现在是一条真 `<label htmlFor>`,只念不看。
    * 反证:摘掉 `labelHidden` 红在类名那条;摘掉 `{...field}` 红在 `for` 那条。
    */
-  it('名字走一条只念不看的真 label —— 点标签也能聚焦,读屏软件照旧念得出', () => {
-    openBindRow()
+  it('名字走一条只念不看的真 label —— 点标签也能聚焦,读屏软件照旧念得出', async () => {
+    await openBindRow()
     const input = screen.getByRole('textbox', {
       name: t('files.bindPlaceholder'),
     }) as HTMLInputElement
@@ -40,16 +45,16 @@ describe('NoWorkdirNotice · 绑定行的 Field 横排档', () => {
   })
 
   /** ② 形由库件给。反证:摘掉 `layout="inline"` 当场红。 */
-  it('形由 Field 的横排档给,名牌 data-testid 仍落在同一个根上', () => {
-    openBindRow()
+  it('形由 Field 的横排档给,名牌 data-testid 仍落在同一个根上', async () => {
+    await openBindRow()
     const row = screen.getByTestId('files-bind-row')
     expect(row.className).toMatch(/_inline_/)
     expect(row.querySelector('label')).toBeTruthy()
   })
 
   /** ③ 焦点:一出现就把光标放进去(从前是壳上的回调 ref,现在按 Field 给的 id 找)。 */
-  it('一出现就把光标放进那个输入框', () => {
-    openBindRow()
+  it('一出现就把光标放进那个输入框', async () => {
+    await openBindRow()
     expect(document.activeElement).toBe(screen.getByRole('textbox'))
   })
 
@@ -63,7 +68,7 @@ describe('NoWorkdirNotice · 绑定行的 Field 横排档', () => {
     useSessionsSource.setState({
       setWorkingDirectory: vi.fn(async () => ({ ok: false as const, error: 'sandbox root' })),
     })
-    openBindRow()
+    await openBindRow()
     const input = screen.getByRole('textbox') as HTMLInputElement
     fireEvent.change(input, { target: { value: '/nope' } })
     fireEvent.click(screen.getByRole('button', { name: t('common.confirm') }))
@@ -73,5 +78,53 @@ describe('NoWorkdirNotice · 绑定行的 Field 横排档', () => {
     const errorNode = document.getElementById(describedBy) as HTMLElement
     // 一句话在前、后端原话跟在后面 —— 两段仍在同一格里。
     expect(errorNode.textContent).toBe(`${t('files.bindFailed')}sandbox root`)
+  })
+})
+
+describe('NoWorkdirNotice · 「绑定…」先开系统目录选择器', () => {
+  function mount() {
+    render(<NoWorkdirNotice sessionId={SESSION} t={t} />)
+  }
+  async function clickBind() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('files.bind') }))
+    })
+  }
+
+  it('挑到了直接绑,不展开输入行;对话框要的是「选目录」', async () => {
+    const setWorkingDirectory = vi.fn(async () => ({ ok: true as const }))
+    useSessionsSource.setState({ setWorkingDirectory })
+    const showOpen = vi.fn(async () => ({ canceled: false, filePaths: ['/work/picked'] }))
+    configureDialogPort({ showOpen })
+    mount()
+    await clickBind()
+    expect(showOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ properties: expect.arrayContaining(['openDirectory']) }),
+    )
+    expect(setWorkingDirectory).toHaveBeenCalledWith(SESSION, '/work/picked')
+    expect(screen.queryByTestId('files-bind-row')).toBeNull()
+  })
+
+  it('用户取消:什么都不做,也不追一行输入', async () => {
+    const setWorkingDirectory = vi.fn(async () => ({ ok: true as const }))
+    useSessionsSource.setState({ setWorkingDirectory })
+    configureDialogPort({ showOpen: async () => ({ canceled: true, filePaths: [] }) })
+    mount()
+    await clickBind()
+    expect(setWorkingDirectory).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('files-bind-row')).toBeNull()
+  })
+
+  it('挑的路径绑不上:落到输入行,路径填好、后端原话跟在后面', async () => {
+    useSessionsSource.setState({
+      setWorkingDirectory: vi.fn(async () => ({ ok: false as const, error: 'sandbox root' })),
+    })
+    configureDialogPort({ showOpen: async () => ({ canceled: false, filePaths: ['/nope'] }) })
+    mount()
+    await clickBind()
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('/nope')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByText('sandbox root')).toBeTruthy()
   })
 })

@@ -27,13 +27,10 @@
  * | providerOptions | `imageDetail` / `searchParameters` | `input_image.detail` / Request Body `search_parameters` |
  * | 引文 | `output_text.annotations[].url_citation` | `/developers/tools/citations` |
  *
- * **没接的两样,写明白**:
- *  - 服务端工具(`web_search` / `x_search` / `code_interpreter`)—— 官方
- *    `tools:[{type:'web_search'}]` 的形状是清楚的,但挂上去等于替用户决定
- *    「这一回合可以自己上网并计费」,那是产品决定不是线协议默认,本期不挂。
- *    Live Search 走 `search_parameters`(官方那一页明说
- *    「`web_search_preview` tool, if specified, will be overridden by
- *    `search_parameters`」),所以联网这件事**已经有一条不改变默认的通路**。
+ * | 原生工具 | 带工具的回合挂 `{type:'web_search'}` | `/developers/tools/search-tools`(见 `grokNativeTools`) |
+ *
+ * **没接的,写明白**:
+ *  - 其余服务端工具(`x_search` / `code_interpreter`)不挂。
  *  - `previous_response_id` / 服务端会话续接 —— 我们的历史是本地那份账本,
  *    `store:false` 与它互斥,不接。
  */
@@ -52,6 +49,7 @@ import {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
 	toCodexToolChoice,
 	type CodexResponsesUsage,
+	type CodexTool,
 } from "../wires/index.js";
 import { promptCacheKeyExtraBody } from "./recipe.js";
 import {
@@ -221,6 +219,35 @@ class GrokResponsesToolChoicePolicy implements ToolChoicePolicy {
 export const grokResponsesToolChoicePolicy: ToolChoicePolicy =
 	new GrokResponsesToolChoicePolicy();
 
+/**
+ * xAI 服务端 `web_search` —— **带工具的回合**就挂上(用户 2026-09-18 拍板开)。
+ *
+ * 为什么要开:grok-4.6 不管请求里有没有这项,都会自己发起原生搜索
+ * (`web_search_call`)。没挂的时候服务端不执行它,只发 `in_progress` /
+ * `searching` 两个事件就把整个回复以 `completed` 收尾 —— 没有正文、没有函数
+ * 调用,引擎当成正常结束,会话表现为「说一句接着查,然后就停了」
+ * (09-18 实测:当天 33 个 grok 回合里 3 个这样收尾,3 个全带 `web_search_call`,
+ * 其余 30 个一个都没有)。挂上之后搜索由 xAI 执行、结果在同一个回复里续上。
+ *
+ * 官方开关只有这一种:`tools` 里列 `{type:'web_search'}`;不列就是没开,
+ * 没有「显式关掉」的参数(`/developers/tools/search-tools`)。
+ *
+ * **无工具的旁线请求不挂**(compact 摘要 / 标题生成):它们不该去上网计费,
+ * 而且挂了原生工具,`tool_choice` 就会跟着发出去(判据是 builder 里的实际工具表)。
+ * `toolChoice: 'none'` 同理不挂。
+ *
+ * 挂上之后,我们自己那个同名的 `web_search` 函数工具在这一路**让位**
+ * (`toCodexTools` 按原生工具的 `type` 占名;xAI 对重名直接 400)。唯一例外:
+ * 这一回合**指名**要我们的 `web_search` 函数 —— 那就不挂原生,指名得算数。
+ */
+export function grokNativeTools(turn: TurnContext): CodexTool[] {
+	const { tools, toolChoice } = turn.request;
+	if (!tools || tools.length === 0) return [];
+	if (toolChoice === "none") return [];
+	if (typeof toolChoice === "object" && toolChoice.function.name === "web_search") return [];
+	return [{ type: "web_search" }];
+}
+
 /** 两条通路共用的配方主体 —— 只有 id 不同(见 `grok-oauth.ts` 的抬头)。 */
 export const GROK_DIALECT_SPEC = {
 	defaultBaseUrl: GROK_BASE_URL,
@@ -239,6 +266,7 @@ export const GROK_DIALECT_SPEC = {
 	extraBody: promptCacheKeyExtraBody,
 	// 无工具不发 tool_choice(xAI 端点对「有 tool_choice 无 tools」直接 400)。
 	toolChoice: grokResponsesToolChoicePolicy,
+	nativeTools: grokNativeTools,
 	decodeOutputItem: decodeGrokResponsesCitations,
 	transport: GROK_TRANSPORT_CAPABILITIES,
 } satisfies Omit<ResponsesDialectSpec, "id">;

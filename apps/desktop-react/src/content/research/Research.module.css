@@ -1,9 +1,15 @@
 /*
  * 检索段四件套(§5.3)。
  *
- * 三条横切规范照旧:**不画竖线**(从属关系靠衬面 + 位置说)、色一律 var()、
- * 时长一律 var(--dur)。组头那条上下线是唯一的线,而它是**分隔**不是引线 ——
+ * 三条横切规范照旧:**不画竖线**(从属关系靠卡片 + 位置说)、色一律 var()、
+ * 时长一律 var(--dur)。组头那条上下线是**分隔**不是引线 ——
  * 一条查询词把清单切成几段,与「这几行从属于上面那一行」是两回事。
+ *
+ * 09-25 改(与 ToolDrawer / Seam 同一天、同一条判据):从前靠两档衬面的**深浅顺序**
+ * 说嵌套(清单 surface-1、组头「再深一层」surface-2),可这两档谁深谁浅随主题翻转 ——
+ * 旧亮色主题里 panel 比 sidebar 深,base46 主题按 NvChad 取值后正好反过来,「更深一层」
+ * 成了「更浅一层」。现在:流里的卡片 = 卡片面 + 一圈线(与工具卡同形),卡里的组头
+ * 不铺底、只留上下线。
  */
 
 .episode {
@@ -19,8 +25,9 @@
   flex-direction: column;
   gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-2);
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .liveHead {
@@ -137,8 +144,9 @@
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-2);
+  border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-2);
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .group {
@@ -148,7 +156,7 @@
 }
 
 /*
- * 组头「搜索 <query>」:比清单再深一层的衬面 + 上下两条线。
+ * 组头「搜索 <query>」:不铺底,只有上下两条线(嵌套不再靠衬面深浅说,判词在文件头)。
  *
  * 上下线在这里是**分隔**:它把一长条来源切成「这几条是搜 A 来的、那几条是搜 B
  * 来的」。左竖线那种**引线**仍然是禁的(全仓横切规范),两者不是同一件东西。
@@ -156,7 +164,6 @@
 .queryHead {
   padding: var(--sp-1) var(--sp-2);
   border-block: 1px solid var(--line-1);
-  background: var(--surface-2);
   font-size: var(--fs-micro);
   font-weight: 500;
   color: var(--text-3);

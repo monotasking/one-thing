@@ -74,6 +74,9 @@
         },
         "strict": false,
         "type": "function"
+      },
+      {
+        "type": "web_search"
       }
     ]
   }

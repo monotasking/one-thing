@@ -127,6 +127,52 @@ export interface ACPCancelSessionResponse {
   error?: string
 }
 
+/**
+ * agent 在它自己的会话里自述的一格可调选项(ACP `configOptions` 的投影:模型 / 模式 /
+ * 思考档……,只收 `select`,分组拍平)。形状与 `@onething/runtime/acp` 的同名类型逐字
+ * 相同 —— 产品层不许 import `@shared/ipc`,于是两边各写一份,由结构类型对上。
+ */
+export interface ACPSessionOptionChoice {
+  value: string
+  name: string
+  description?: string
+  group?: string
+}
+
+export interface ACPSessionOption {
+  id: string
+  name: string
+  description?: string
+  category?: string
+  currentValue: string
+  choices: ACPSessionOptionChoice[]
+}
+
+/**
+ * 选择器右栏读这一格。`sessionId` 缺席或那条会话还没落盘 = 草稿态:不起 agent 进程,
+ * 答上次见过的目录(`live: false`)。
+ */
+export interface ACPSessionOptionsRequest {
+  agentId: string
+  sessionId?: string
+}
+
+export interface ACPSessionOptionsResponse {
+  success: boolean
+  options: ACPSessionOption[]
+  live: boolean
+  error?: string
+}
+
+export interface ACPSetSessionOptionRequest {
+  agentId: string
+  sessionId?: string
+  optionId: string
+  value: string
+}
+
+export type ACPSetSessionOptionResponse = ACPSessionOptionsResponse
+
 // ============================================================================
 // acp 域的 router —— 结构债 P4c 第六批
 // ============================================================================
@@ -160,6 +206,8 @@ export type AcpRoutes = {
     input: ACPCancelSessionRequest
     output: ACPCancelSessionResponse
   }
+  sessionOptions: { input: ACPSessionOptionsRequest; output: ACPSessionOptionsResponse }
+  setSessionOption: { input: ACPSetSessionOptionRequest; output: ACPSetSessionOptionResponse }
 }
 
 export const acpRouter = defineRouter<AcpRoutes>('acp', [
@@ -171,4 +219,6 @@ export const acpRouter = defineRouter<AcpRoutes>('acp', [
   'disconnectAgent',
   'refreshAgent',
   'cancelSession',
+  'sessionOptions',
+  'setSessionOption',
 ])

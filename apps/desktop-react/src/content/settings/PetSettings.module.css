@@ -42,7 +42,9 @@
   padding: var(--sp-3);
   border: 1px solid var(--line-1);
   border-radius: var(--r-2);
-  background: var(--surface-1);
+  /* 设置页里的卡一律「卡片面 + 一圈线」,与模型服务页的卡同形(09-25:从前铺 surface-1,
+   * 同一扇设置窗里宠物卡是灰卡、服务商卡是白卡)。 */
+  background: var(--surface-2);
   text-align: left;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }

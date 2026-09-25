@@ -35,7 +35,7 @@ import { SHELF_SIDES, settledDockRect, shouldShowDock, withinDockWakeBand } from
 import type { Rect } from '../stage/transitions'
 import type { Point } from '../stage/types'
 import { DOCK_AXIS } from '../stage/types'
-import type { DockAlign, DockDisplay, DockEdge, DockSize } from '../stage/types'
+import type { DockAlign, DockDisplay, DockEdge } from '../stage/types'
 import s from './AppShell.module.css'
 
 /** 贴边类:边 → 那条边的物理坐标。 */
@@ -50,12 +50,6 @@ const EDGE_CLASS: Record<DockEdge, string> = {
 const ALIGN_CLASS: Record<'x' | 'y', Record<DockAlign, string>> = {
   x: { start: s.alignXStart, center: s.alignXCenter, end: s.alignXEnd },
   y: { start: s.alignYStart, center: s.alignYCenter, end: s.alignYEnd },
-}
-
-/** 预留量随大小档走;md 是 token 的缺省值,所以只有两档要覆写。 */
-const RESERVE_SIZE_CLASS: Partial<Record<DockSize, string>> = {
-  sm: s.reserveSm,
-  lg: s.reserveLg,
 }
 
 export function AppShell() {
@@ -91,8 +85,8 @@ export function AppShell() {
    *
    * **用户那一格档位一个字都不改**(`dockDisplay` 本身没动),所以退出全屏就是
    * 恢复用户档 —— 不需要「记住原来是什么」那种账,也就不会有对不上的那一天。
-   * 让位属性(`data-dock-reserve`)同理**不动**:底下那棵树在全屏期间零重排,
-   * 那条白边由全屏层自己盖住(它是不透明的 fixed inset:0)。
+   * (09-25 起常显档也不让位了 —— 见下面 `autohide` 那一段 —— 所以进出全屏
+   * 底下那棵树本来就零重排。)
    */
   const fullOpen = useWorkbenchStore((st) => st.full !== null)
   const effectiveDockDisplay: DockDisplay = fullOpen ? 'autohide' : dockDisplay
@@ -108,8 +102,6 @@ export function AppShell() {
   const hostFullScreen = useHostFullScreen()
   const trafficLights = useHostTrafficLights()
   const dockAlign = useStageStore((st) => st.dockAlign)
-  // 预留那一截随大小档走,所以外壳也得订阅它(Dock 条自己另有一份)。
-  const dockSize = useStageStore((st) => st.dockSize)
   const clickDockIcon = useStageStore((st) => st.clickDockIcon)
 
   /**
@@ -230,15 +222,14 @@ export function AppShell() {
 
   const [peeking, setPeeking] = useState(false)
   /*
-   * **两个「自动隐藏」,判据不同,故意分成两格**(W2):
-   *  · `autohide` 读**有效档** —— 它管的是「条此刻藏不藏 / 唤不唤得出」,
-   *    全屏期间要跟着变;
-   *  · `reserveOff` 读**用户档** —— 它管的是「让不让位」,而让位在全屏期间
-   *    **一个字不动**(裁定 2:底下那棵树零重排,白边由全屏层盖住)。
-   * 合成一格的话,进出全屏会让整棵树重排一次 —— 那是可感知的抖动。
+   * `autohide` 读**有效档** —— 它管的是「条此刻藏不藏 / 唤不唤得出」,全屏期间要跟着变。
+   *
+   * **常显档不再让位**(09-25 用户:「永久展示不再排开其他元素,只是自动展示模式下的
+   * 展示即可」)。从前这里还有第二格 `reserveOff`,它让外壳挂 `data-dock-reserve`、
+   * `.main` 朝那条边退一截;今天两档的差别只剩「平时藏不藏」—— 常显 = 自动隐藏档
+   * **唤出来的那一刻**,永远停在那儿。条是浮层,压在内容之上,谁都不用给它腾地。
    */
   const autohide = effectiveDockDisplay === 'autohide'
-  const reserveOff = dockDisplay === 'autohide'
   const hidden = autohide && !peeking
   const dockRef = useRef<HTMLElement>(null)
   /*
@@ -320,13 +311,14 @@ export function AppShell() {
       lastPointer = null
     }
     /*
-     * Dock 离那条边多远(--sp-3)。量一次而不是每帧问一次:它是个设计常数,
-     * 不会在指针移动期间变 —— 而 pointermove 是每帧都跑的那条路。
-     * 纯函数不读 CSS,所以由这里量了递进去。
+     * Dock 离那条边多远:**现读条自己的定位值**(`bottom` / `top` / `left` / `right`
+     * 那一格,已经是 px)。不读 token:停上边时条从顶栏之下起,离窗边的距离是
+     * `--topbar-h + --dock-edge-gap`,那条式子只在 CSS 里写一次。量一次而不是每帧问:
+     * 它只随边变,而边是这个 effect 的依赖。纯函数不读 CSS,所以由这里量了递进去。
      */
-    const inset = Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--sp-3'),
-    )
+    const inset = dockRef.current
+      ? Number.parseFloat(getComputedStyle(dockRef.current)[dockEdge])
+      : Number.NaN
 
     /*
      * ── 几何**缓存**:pointermove 里一次布局都不读(09-01 真机 longFrame 修)──
@@ -518,18 +510,6 @@ export function AppShell() {
     .join(' ')
 
   /*
-   * 「覆盖必须有布局预留」在 Dock 上的落地(08-31 P0),09-01 改成**表面内衬形**。
-   *
-   * 宿主只说两件事:**让哪条边**(data-dock-reserve,自动隐藏档不挂 = 一格不让)
-   * 与**按哪一档**(只换 --dock-tile 一个数)。「哪些面要让、让多少」全在
-   * AppShell.module.css 那一段里写一次 —— 让位不再打在外壳身上(那会把面整体顶掉、
-   * 露出外壳自己的底色,正是用户报的那条异色带),而是打在吃到那条边的面自己身上。
-   */
-  const shellClass = [s.shell, reserveOff ? null : RESERVE_SIZE_CLASS[dockSize]]
-    .filter(Boolean)
-    .join(' ')
-
-  /*
    * **响应链的根**(09-02 R0,设计 `docs/design/react-shell-focus-2026-09.md` §9)。
    *
    * `<FocusScope>` 是 render-prop 形的:它自己**一个 DOM 节点都不渲染**,
@@ -546,8 +526,7 @@ export function AppShell() {
       {({ scopeProps }) => (
         <div
           {...scopeProps}
-          className={shellClass}
-          data-dock-reserve={reserveOff ? undefined : dockEdge}
+          className={s.shell}
           /* 红绿灯让位那两格判据(W2):写在**壳根**上,顶栏与全屏檐带两处只消费
            * (`--topbar-lead` 三档的定义在 AppShell.module.css)。 */
           data-host-fullscreen={hostFullScreen ? 'true' : undefined}

@@ -9,17 +9,17 @@ import { useInlineEdit } from '../../ui/inline-edit'
 import type { TFn } from '../../i18n'
 import { useAsyncPending } from '../../data/kernel'
 import { sessionMutation, useSessionsSource, workdirKey } from '../../data/sessions-source'
+import { pickDirectoryNative } from '../../data/dialog-port'
 import s from '../FilesPanel.module.css'
 
 /**
  * 无工作目录告知条。**一条带子,不是一块面**:它说一句事实,并给出唯一那个
  * 能改变这件事实的动作。
  *
- * 「绑定…」为什么是**一行输入**而不是一个系统目录选择器:这层壳里没有 dialog 桥
- * (`shell:invoke` 的 `dialog` 域住在 Electron 宿主里,而这块面在 web 面上也要能用)。
- * 与其画一颗点了什么都不发生的「浏览…」,不如老老实实收一条绝对路径 ——
- * 后端 `updateWorkingDirectory` 本来收的也正是一条路径。记档:有了 dialog 桥之后
- * 这里应当补一颗「浏览…」,而不是把这条输入行删掉(键盘用户仍然要它)。
+ * 「绑定…」先开**系统目录选择器**(`dialog` RPC 域,2026-09-24):挑到了直接绑;
+ * 用户取消就什么都不做。这台宿主没有对话框(浏览器壳连的独立 server)才展开下面
+ * 那一行路径输入 —— 后端 `updateWorkingDirectory` 本来收的就是一条路径。
+ * 对话框挑的路径绑不上时也落到那一行:路径填好、错话跟在后面,改一个字就能重试。
  *
  * ── 两件库件量过之后**没有迁**(09-02 批 9d,逐条记规范修正)────────────────
  *  · 告知条 → `ui/Card`:**不迁**。量下来五处非零差,而且每一处都是语义差不是
@@ -87,6 +87,22 @@ export function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn })
     setError(outcome.error)
   }
 
+  /** 「绑定…」:系统对话框优先;没有对话框退到路径输入行。 */
+  const bind = async () => {
+    if (busy) return
+    const picked = await pickDirectoryNative({ title: t('files.bindTitle') })
+    if (picked.kind === 'canceled') return
+    if (picked.kind === 'unavailable') {
+      setEditing(true)
+      return
+    }
+    const outcome = await setWorkingDirectory(sessionId, picked.path)
+    if (outcome.ok) return
+    setValue(picked.path)
+    setError(outcome.error)
+    setEditing(true)
+  }
+
   if (!editing) {
     return (
       <div className={s.notice} data-testid="files-no-workdir">
@@ -94,7 +110,7 @@ export function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn })
         <span className={s.noticeText}>{t('files.rootFallback')}</span>
         {/* 没有当前会话就没有可绑的对象 —— 那时只说事实,不画一颗按不响的钮。 */}
         {sessionId && (
-          <ButtonBase className={s.noticeAction} onClick={() => setEditing(true)}>
+          <ButtonBase className={s.noticeAction} onClick={() => void bind()}>
             {t('files.bind')}
           </ButtonBase>
         )}

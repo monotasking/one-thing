@@ -1,12 +1,17 @@
 /* 左栏:头(标题 + 读数 + 搜索)/ 身(三组可滚)/ 脚(新建钮)。
- * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。 */
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。
+ *
+ * 不另铺衬面,与所在面板同底(`ProviderSettingsPanel` / `ProviderDetail` 都铺
+ * surface-0),分栏只靠右边那一条线(09-25 用户真机截图:设置页
+ * 从前是「导航白 | 本栏灰 | 详情白」三道条纹,而且同一层选中薄膜压在两种底上
+ * 得出两种选中色 —— 与 ToolDrawer 同一天、同一条判据改掉)。 */
 .rail {
   flex: none;
   width: var(--pv-rail-w);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--surface-1);
+  background: var(--surface-0);
   border-right: var(--bw-1) solid var(--line-1);
 }
 

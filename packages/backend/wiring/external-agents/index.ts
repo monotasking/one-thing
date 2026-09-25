@@ -22,7 +22,6 @@ import {
   recordExternalAgentTurn,
 } from '../collab/external-observability.js'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
-import { getSettings } from '../../store.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import {
   getOnethingStorePath,
@@ -32,6 +31,7 @@ import type { Effect, Invocation } from '@onething/core/toolkit'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { publishExternalAgentBackgroundStatus } from './background-status.js'
 import { resolveClaudeCodeHostToolSurface } from './host-tools.js'
+import { resolveExternalAgentSpawnEnv } from './spawn-env.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import type { ExternalAgentObserver } from '@onething/runtime/external-agents/types'
 import type { ClaudeCodeConnectorOptions } from '@onething/runtime/external-agents/claude-code-connector'
@@ -279,22 +279,7 @@ export async function askExternalAgentInteraction(
  * settings are translated into the standard env vars. Existing env values
  * win so a shell-launched dev run keeps its own proxy.
  */
-export function resolveExternalAgentSpawnEnv(): Record<string, string | undefined> {
-  const env: Record<string, string | undefined> = { ...process.env }
-  const proxy = getSettings().network?.proxy
-  if (proxy?.enabled && proxy.url) {
-    env.HTTPS_PROXY = env.HTTPS_PROXY ?? proxy.url
-    env.HTTP_PROXY = env.HTTP_PROXY ?? proxy.url
-    env.https_proxy = env.https_proxy ?? proxy.url
-    env.http_proxy = env.http_proxy ?? proxy.url
-    if (proxy.bypassRules) {
-      const noProxy = proxy.bypassRules.split(';').map(rule => rule.trim()).filter(Boolean).join(',')
-      env.NO_PROXY = env.NO_PROXY ?? noProxy
-      env.no_proxy = env.no_proxy ?? noProxy
-    }
-  }
-  return env
-}
+export { resolveExternalAgentSpawnEnv }
 
 // ---------------------------------------------------------------------------
 // Connector registry

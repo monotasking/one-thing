@@ -33,7 +33,7 @@ async function assemble() {
   backend = await createOnethingBackend({ storePath: directory, owner: 'daemon', collab: true, toolRegistry: 'headless', host: {
     storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null,
+    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
   } })
   const agents = await import('../wiring/agents/index.js')
   const runtime = await import('../wiring/collab/actors/runtime.js')

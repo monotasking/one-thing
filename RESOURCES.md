@@ -2,14 +2,28 @@
 
 ## Knowledge
 
+- [系统架构图（PNG）](assets/diagrams/system-architecture.png)
+  2026-09-18 绘制。四层单向 + 壳/宿主 + 配件 + 外部；右下小图是「一次请求的两个方向」。源：同目录 `system-architecture.html`（改后跑 `render.mjs` 重出图，`check.mjs` 验越界）。风格遵循 `architecture-philosophy.md`。
+- [系统架构图·设计说明](assets/diagrams/architecture-philosophy.md)
+  2026-09-18。canvas 风格：扁平几何、克制配色、网格、留白、少字。以后画架构图沿用。
+- [OneThing 既有架构图（tldraw + Mermaid）](docs/system-diagrams.md)
+  2026-09-18 对齐。同目录有可编辑的 `.tldraw`；本文是 Mermaid 草稿与源码依据。
+
+- [Electron 最小可跑例（含 preload 版）](lessons/electron-hello-world/)
+  2026-09-18 建立，2026-09-20 扩充为五份文件（`main.js` 24 行 / `preload.js` 12 行 / `index.html` 23 行 / `renderer.js` 10 行 / `package.json` 9 行）。**现在是课程阶段一（EL1–EL7）的正式教具**，跑法：`node_modules/.bin/electron lessons/electron-hello-world`。
+- [OneThing：宿主连接承诺](apps/desktop-react/electron/host-connection.ts)
+  2026-09-18 核对。`HostConnectionGate`：构造即待定、resolve 幂等、永不 reject。解释 `connection.promise` 为什么不是「值」。
+- [OneThing：preload 全文](apps/desktop-react/electron/preload.ts)
+  2026-09-18 核对。全库唯一一处 `exposeInMainWorld`，四条能力（getConnection / platform / onFullScreenChange / nativeView）；数据面不在这里。
+- [OneThing：引擎运行时端口](packages/core/engine/stream-runtime.ts)
+  2026-09-18 核对。core 零依赖（`packages/core/package.json` 的 `dependencies` 为空）→ 引擎只能声明端口，由装配层填实现；`as unknown as` 在两处。
+
 - [OneThing 中文 README：这是什么](README.zh-CN.md)
   2026-09-16 阅读。第 7 课产品一句话：桌面 AI 助手、本地工具、目录级权限、会话本地保存。
 - [OneThing：Architecture Overview](CLAUDE.md)
   2026-09-16 对照当前 apps/ 与 packages/ 目录。第 7 课分层依据：core / runtime / backend / apps 单向依赖。第一遍只取分层，不读完整法令。
 - [Electron 官方：Process Model](https://www.electronjs.org/docs/latest/tutorial/process-model)
-  2026-09-16 再核。第 7 课外部首选：只读主进程与渲染进程两节；preload 留到启动课。
-- [第 7 课分层速查](reference/project-map.html)
-  2026-09-16 整理。四层目录对照、依赖禁令、按路径判断层。
+  2026-09-16 再核。EL1–EL2 外部首选：只读主进程与渲染进程两节；preload 留到 EL4。
 
 - [OneThing：桌面启动入口](apps/desktop-react/electron/main.ts)
   2026-09-11 核对。第 6 课首选原始资料：从 app.whenReady 跟踪 core 发现、后端装配、窗口创建和 HTTP 服务启动；以执行语句优先于遗留注释。
@@ -68,8 +82,6 @@
 - [源码线性导读](docs/learning/ai-call-linear-walkthrough.md)
   本工作区上一轮整理的阅读辅助材料；不是独立权威来源。原代码与 Node.js 官方文档优先，行号变化时按函数名重新定位。
 
-- [第 2 课源码索引：消息生命周期](reference/message-lifecycle.html)
-  2026-09-10 对照当前 React 发送、HTTP/SSE 传输、Agent Loop、ToolRunner、MCP Bridge 和 UI 投影源码整理；用于建立整体认识。它是导读，项目源码本身才是实现依据。
 - [OpenAI 官方：Function calling](https://developers.openai.com/api/docs/guides/function-calling#the-tool-calling-flow)
   已于 2026-09-10 阅读。用于解释提供工具说明、模型输出调用、应用执行、结果回传、模型继续回答的通用循环；不拿其 API 字段替代本项目的内部格式。
 - [MCP 官方：Tools（2025-06-18 固定规范）](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)

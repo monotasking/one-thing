@@ -4,6 +4,7 @@ import { NotesSettings, isKnownVault } from '../NotesSettings'
 import { configureNotesPort, type NotesPort } from '../../../data/notes-port'
 import { resetNotesSourceForTest } from '../../../data/notes-source'
 import { useOpenDirDialog } from '../../files/open-dir-hub'
+import { configureDialogPort } from '../../../data/dialog-port'
 import type { AppSettings } from '@shared/ipc/settings'
 import type { NotesListResponse, NoteVaultDto } from '@shared/ipc/notes'
 import { t } from '../../../i18n'
@@ -89,10 +90,13 @@ afterEach(() => {
   configureNotesPort(undefined)
   resetNotesSourceForTest()
   useOpenDirDialog.getState().setOpen(false)
+  configureDialogPort(undefined)
 })
 
 beforeEach(() => {
   resetNotesSourceForTest()
+  // 「添加目录…」先问系统对话框;这里钉的是没有对话框时退到的那扇路径输入窗。
+  configureDialogPort({ showOpen: async () => ({ canceled: true, filePaths: [], unavailable: true }) })
 })
 
 /** 画出来,并等第一发取数落定。 */

@@ -60,6 +60,8 @@ export const zh = {
   /* Esc 两段式停止的预备话(08-31 拍板对齐 Vue 口径):有草稿时占位符不可见,预备即静默。 */
   'composer.escStopHint': '再按一次 Esc 停止生成',
   'composer.attach': '添加附件',
+  'composer.workdir': '工作目录:{path}',
+  'composer.workdirUnset': '选择工作目录',
   'composer.attachments': '附件',
   'composer.removeAttachment': '移除附件',
   'composer.model': '选择模型:{name}',
@@ -104,6 +106,14 @@ export const zh = {
   'composer.modelPriceValue': '{input} 进 / {output} 出',
   /* 目录一条都读不到时右栏说的实话(不是空白,也不是骨架)。 */
   'composer.modelCardUnknown': '这一型的读数还没拉到',
+  /* ACP agent 卡(2026-09-24):agent 自己列的选项。 */
+  'composer.agentOptionsLoading': '正在连接 agent…',
+  'composer.agentOptionsFailed': '读不到这个 agent 的选项:{error}',
+  'composer.agentOptionsRetry': '重试',
+  'composer.agentOptionsNone': '这个 agent 没有可调的选项',
+  'composer.agentOptionsDraft': '发出第一条消息后生效',
+  'composer.agentOptionsDraftEmpty': '发出第一条消息后,可以在这里选它的模型',
+  'composer.agentOptionFailed': '没能改 agent 的设置',
   'composer.headFiles': '引用文件',
   'composer.headCommands': '命令',
   /* 抽屉里命令分的另外两组(09-12)。三个组头在一列里各出现恰好一次。 */
@@ -1421,6 +1431,7 @@ export const zh = {
   'files.copiedPath': '已复制路径',
   'files.retry': '重试',
   'files.bind': '绑定…',
+  'files.bindTitle': '选择工作目录',
   'files.bindPlaceholder': '输入工作目录的绝对路径',
   'files.bindFailed': '没能绑定工作目录',
   'files.detailLoading': '正在读取信息…',

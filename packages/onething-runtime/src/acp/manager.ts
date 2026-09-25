@@ -4,9 +4,12 @@ import type {
   ACPPermissionBridge,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
+  ACPSessionOption,
+  ACPSessionOptionsSnapshot,
   ACPSettings,
 } from './types.js'
 import { ACPClient } from './client.js'
+import { FileACPSessionLinkStore, type ACPSessionLinkStore } from './session-links.js'
 
 import { getLogger } from '../logging/index.js'
 
@@ -17,6 +20,9 @@ class ACPManagerClass {
   private settings: ACPSettings = { enabled: true, agents: [] }
   private cleanupTimer: NodeJS.Timeout | null = null
   private permissionBridge: ACPPermissionBridge | undefined
+  /** 会话对应关系落盘处(缺省 `<store>/acp/session-links.json`);测试换成内存那只。 */
+  private sessionLinks: ACPSessionLinkStore = new FileACPSessionLinkStore()
+  private spawnEnv: (() => Record<string, string | undefined>) | undefined
 
   /**
    * Host registers its interactive permission surface here (Electron →
@@ -25,6 +31,71 @@ class ACPManagerClass {
    */
   setPermissionBridge(bridge: ACPPermissionBridge | undefined): void {
     this.permissionBridge = bridge
+  }
+
+  /**
+   * 子进程环境的来源(2026-09-24,用户:「而且没有走代理」)。宿主递进来的是**它**的
+   * 那一份(桌面 = 进程环境 + 应用代理 → `HTTPS_PROXY` / `NO_PROXY`,与 Claude Code
+   * SDK 那条外部 agent 通路同一个函数);缺席 = 只继承进程环境(旧行为)。每次 spawn 时
+   * 现读,所以改了代理之后**新起的**适配器就走新代理。
+   */
+  setSpawnEnvProvider(provider: (() => Record<string, string | undefined>) | undefined): void {
+    this.spawnEnv = provider
+  }
+
+  setSessionLinkStore(store: ACPSessionLinkStore): void {
+    this.sessionLinks = store
+  }
+
+  /**
+   * 选择器右栏要画的那几格。有会话 id → 连上 agent、开(或恢复)那条会话,答它的真
+   * 选项;草稿态(还没有会话)→ 不起进程,答这台 agent 上次见到的目录,当前值用
+   * 上次选过的(`live: false`,屏上据此说「发第一条消息后生效」)。
+   */
+  async getSessionOptions(
+    agentId: string,
+    localSessionId: string | undefined,
+    cwd: string | undefined,
+  ): Promise<ACPSessionOptionsSnapshot> {
+    const client = this.getOrCreateClient(agentId)
+    if (!localSessionId) return { options: this.draftOptions(agentId), live: false }
+    return { options: await client.getSessionOptions(localSessionId, cwd), live: true }
+  }
+
+  async setSessionOption(
+    agentId: string,
+    localSessionId: string | undefined,
+    cwd: string | undefined,
+    optionId: string,
+    value: string,
+  ): Promise<ACPSessionOptionsSnapshot> {
+    const client = this.getOrCreateClient(agentId)
+    if (localSessionId) {
+      return { options: await client.setSessionOption(localSessionId, cwd, optionId, value), live: true }
+    }
+    const profile = this.sessionLinks.getProfile(agentId)
+    this.sessionLinks.putProfile({
+      agentId,
+      preferred: { ...(profile?.preferred ?? {}), [optionId]: value },
+      ...(profile?.catalog ? { catalog: profile.catalog } : {}),
+      updatedAt: Date.now(),
+    })
+    return { options: this.draftOptions(agentId), live: false }
+  }
+
+  private draftOptions(agentId: string): ACPSessionOption[] {
+    const profile = this.sessionLinks.getProfile(agentId)
+    const preferred = profile?.preferred ?? {}
+    return (profile?.catalog ?? []).map(option => {
+      const wanted = preferred[option.id]
+      return wanted && option.choices.some(choice => choice.value === wanted)
+        ? { ...option, currentValue: wanted }
+        : option
+    })
+  }
+
+  getPermissionBridge(): ACPPermissionBridge | undefined {
+    return this.permissionBridge
   }
 
   initialize(settings: ACPSettings): void {
@@ -154,6 +225,8 @@ class ACPManagerClass {
 
     const client = new ACPClient(config, {
       getPermissionBridge: () => this.permissionBridge,
+      getSessionLinks: () => this.sessionLinks,
+      getSpawnEnv: () => this.spawnEnv?.(),
     })
     this.clients.set(agentId, client)
     return client

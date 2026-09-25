@@ -29,6 +29,17 @@ import { FocusScope } from '../../focus/FocusScope'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Card } from '../../ui/Card'
 import { Radio, RadioGroup } from '../../ui/Radio'
+import { Select } from '../../ui/Select'
+import { Button } from '../../ui/Button'
+import { LOCAL_MODE_KINDS } from '../../providers/families'
+import {
+  acpOptionPendingKey,
+  acpOptionsKey,
+  acpOptionsQuery,
+  setAcpOptionMutation,
+} from '../../data/acp-options-source'
+import { useQuery } from '../../data/kernel'
+import type { ACPSessionOption } from '@shared/ipc/acp'
 import s from './Composer.module.css'
 
 /**
@@ -280,6 +291,18 @@ const ModelDetailCard = memo(function ModelDetailCard({
 }: {
   selection: ModelSelection | null
 }) {
+  /*
+   * ACP 那一族选中的是**一台 agent**,不是一型模型(2026-09-24):窗口 / 价格 / 思考
+   * 阶梯这些读数属于 onething 的模型目录,agent 身上一格都没有。它的卡画的是 agent
+   * 自己列出来的选项(模型 / 模式 / 思考档),见 `AgentOptionsCard`。
+   */
+  if (selection?.model && LOCAL_MODE_KINDS[selection.provider] === 'acp') {
+    return <AgentOptionsCard agentId={selection.model} />
+  }
+  return <ProviderModelCard selection={selection} />
+})
+
+function ProviderModelCard({ selection }: { selection: ModelSelection | null }) {
   const t = useT()
   const readings = useModelReadings(selection)
   const thinking = useThinkingState(selection)
@@ -338,7 +361,100 @@ const ModelDetailCard = memo(function ModelDetailCard({
       />
     </Card>
   )
-})
+}
+
+/**
+ * **一台 ACP agent 的卡**:它在这条会话里自述的选项,一格一只 `Select`。
+ *
+ * onething 不认识其中任何一格(不按 `category` 分支、不认 id)—— agent 列什么就画什么,
+ * 选中的值原样交回它(`acp.setSessionOption` → ACP `session/set_config_option`)。
+ *
+ * 三张状态表的要点(交卷时整表另报):
+ *  · 生命周期:抽屉开 + 选中 agent 才挂;挂上就 `ensure()` 这一格(有会话 → 后端会
+ *    连上 agent、开或恢复那条会话,冷启动一两秒;草稿 → 只读盘上的目录,不起进程)。
+ *  · 生命状态:首载 → 一句「正在连接」(不画骨架、不画 spinner:卡里只有几格);
+ *    失败 → 后端原话 + 重试;没有可调项 → 一句实话;草稿 → 目录照画,附一句「发出
+ *    第一条消息后生效」,目录也没有 → 只说那一句。
+ *  · 交互状态:改一格 → 乐观换值,那一只 `Select` 自己禁用 + `aria-busy`(律③逐格);
+ *    重拉期间旧值留在屏(律②)。
+ */
+function AgentOptionsCard({ agentId }: { agentId: string }) {
+  const t = useT()
+  const sessionId = useComposerSessionId() || null
+  const query = acpOptionsQuery.get(acpOptionsKey(agentId, sessionId))
+  const snapshot = useQuery(query)
+  useEffect(() => {
+    void query.ensure()
+  }, [query])
+
+  const view = snapshot.data
+  return (
+    <Card className={s.modelCard} pad="md" bordered={false} data-testid="agent-options-card">
+      <div className={s.modelCardName}>{agentId}</div>
+      {!view && snapshot.phase === 'initial' && !snapshot.error && (
+        <div className={s.modelCardNote}>{t('composer.agentOptionsLoading')}</div>
+      )}
+      {snapshot.error && (
+        <>
+          <div className={s.modelCardNote} role="alert">
+            {t('composer.agentOptionsFailed', { error: snapshot.error })}
+          </div>
+          <Button size="sm" onClick={() => void query.refetch()}>
+            {t('composer.agentOptionsRetry')}
+          </Button>
+        </>
+      )}
+      {view && view.options.length === 0 && (
+        <div className={s.modelCardNote}>
+          {view.live ? t('composer.agentOptionsNone') : t('composer.agentOptionsDraftEmpty')}
+        </div>
+      )}
+      {view?.options.map((option) => (
+        <AgentOptionSelect key={option.id} agentId={agentId} sessionId={sessionId} option={option} />
+      ))}
+      {view && !view.live && view.options.length > 0 && (
+        <div className={s.modelCardNote}>{t('composer.agentOptionsDraft')}</div>
+      )}
+    </Card>
+  )
+}
+
+function AgentOptionSelect({
+  agentId,
+  sessionId,
+  option,
+}: {
+  agentId: string
+  sessionId: string | null
+  option: ACPSessionOption
+}) {
+  const saving = useAsyncPending(setAcpOptionMutation, acpOptionPendingKey(agentId, sessionId, option.id))
+  const choices = useMemo(
+    () =>
+      option.choices.map((choice) => ({
+        value: choice.value,
+        label: choice.group ? `${choice.group} · ${choice.name}` : choice.name,
+      })),
+    [option.choices],
+  )
+  return (
+    <div className={s.thinkBlock} aria-busy={saving}>
+      <div className={s.thinkHead}>{option.name}</div>
+      <Select
+        size="sm"
+        className={s.agentOptionSelect}
+        label={option.name}
+        options={choices}
+        value={option.currentValue}
+        disabled={saving}
+        onChange={(value) => {
+          if (value === option.currentValue) return
+          void setAcpOptionMutation.run({ agentId, sessionId, optionId: option.id, value })
+        }}
+      />
+    </div>
+  )
+}
 
 /**
  * 竖排的思考阶梯。**只画这一型支持的档**:

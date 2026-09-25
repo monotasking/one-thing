@@ -28,14 +28,32 @@
    * sidebar #DAD8CE → panel #D8D6CC → floating #C2C0B8),与静态 palette 的
    * 「越浮越白」方向相反 —— 那是主题自己的语义,跟着它走才叫「色值从主题管道来」。
    * 梯子本身是单调的,四档不会挤在一起。 */
-  --surface-0: var(--ui-surface-app-bg); /* 应用底纸 */
-  --surface-1: var(--ui-surface-sidebar-bg); /* 侧栏 / 次级面 */
-  --surface-2: var(--ui-surface-panel-bg); /* 内容面(不投影) */
-  --surface-3: var(--ui-surface-floating-bg); /* 浮层(投影) */
+  /* 主题带了角色表(`--role-*`,`packages/onething-runtime/src/themes/shell-roles.ts`)
+   * 就**原样用它** —— 那是主题源文件直接给的色,没经过任何派生与护栏;没带才退回
+   * 旧取法。今天带角色表的是 base46 主题(照 NvChad 自己怎么用 base_30 取值)。 */
+  --surface-0: var(--role-canvas, var(--ui-surface-app-bg)); /* 应用底纸 */
+  --surface-1: var(--role-inset, var(--ui-surface-sidebar-bg)); /* 侧栏 / 次级面 */
+  --surface-2: var(--role-card, var(--ui-surface-panel-bg)); /* 内容面(不投影) */
+  --surface-3: var(--role-raised, var(--ui-surface-floating-bg)); /* 浮层(投影) */
+  /* 标签条:角色表给了就用它(NvChad 的 `TbFill` = black2);没给才走
+   * tokens.css 里「底纸往黑里兑」那条旧配方。顶栏与架子的檐共用这一格 ——
+   * NvChad 只有一条标签栏色。悬停底同理:取活动标签的脸,不再叠墨。 */
+  --strip-face-0: var(--role-strip, light-dark(
+    color-mix(in srgb, var(--surface-0) 93%, black),
+    color-mix(in srgb, var(--surface-0) 70%, black)
+  ));
+  --strip-face-2: var(--role-strip, light-dark(
+    color-mix(in srgb, var(--surface-2) 93%, black),
+    color-mix(in srgb, var(--surface-2) 70%, black)
+  ));
+  --tab-joined-hover-face: var(--role-tab-hover, color-mix(in srgb, var(--text-1) 10%, transparent));
 
   /* ── 墨四档 ────────────────────────────────────────────────────────────── */
-  --text-1: var(--ui-text-primary-fg);
-  --text-2: var(--ui-text-secondary-fg);
+  /* 角色表带了墨就原样用(base46:正文 base05 / 次级 white / 弱 light_grey,
+   * 照 NvChad `Normal` / 活动标签 / 非活动标签的用法);没带才走下面的旧取法。
+   * 第三档取次级墨:它的消费者是时间、路径、字节数这类要读的字。 */
+  --text-1: var(--role-ink, var(--ui-text-primary-fg));
+  --text-2: var(--role-ink-2, var(--ui-text-secondary-fg));
   /* ── --text-3:从主题的墨现场兑,不吃主题的 muted token ────────────────────
    * 与上面那条线的判例是**同一条**(只是这次量的是字不是线)。真机取证
    * (2026-08-31,跑遍 15 只内置主题 × 明暗两档 = 36 组):直取
@@ -63,8 +81,8 @@
    * Flexoki 深档是 1.43:1 —— 数字很低,但那正是「水印」该有的样子,
    * 要改的是拿它写正文的用法,不是这个值。
    * ──────────────────────────────────────────────────────────────────────── */
-  --text-3: color-mix(in srgb, var(--ui-text-primary-fg) 70%, var(--ui-surface-panel-bg));
-  --text-4: var(--ui-text-faint-fg); /* 最淡的一档;placeholder/disabled 另有其键,新壳不用 */
+  --text-3: var(--role-ink-2, color-mix(in srgb, var(--ui-text-primary-fg) 70%, var(--ui-surface-panel-bg)));
+  --text-4: var(--role-ink-weak, var(--ui-text-faint-fg)); /* 最淡的一档;placeholder/disabled 另有其键,新壳不用 */
 
   /* ── 线两档 ────────────────────────────────────────────────────────────── */
   /* ── 线:从主题的墨现场兑,不吃主题的 border token ──────────────────────
@@ -73,8 +91,8 @@
    * 在低对比主题里等于没有,而新壳的深度全靠 1px 线。所以线改成
    * 「前景墨 × 固定浓度」的派生:任何主题进来,线永远追着它自己的墨走,
    * 浓度是新壳的规范值(淡线 12% / 深线 22%),色相自动继承主题。 */
-  --line-1: color-mix(in srgb, var(--ui-text-primary-fg) 12%, var(--ui-surface-panel-bg));
-  --line-2: color-mix(in srgb, var(--ui-text-primary-fg) 22%, var(--ui-surface-panel-bg));
+  --line-1: var(--role-line, color-mix(in srgb, var(--text-1) 12%, var(--surface-2)));
+  --line-2: color-mix(in srgb, var(--text-1) 22%, var(--surface-2));
 
   /* ── accent 与状态色 ──────────────────────────────────────────────────────
    * --accent-deep 在静态 palette 里是「按下去更重」的那一档;主题给的是
@@ -92,17 +110,17 @@
    * 所以薄膜用 color-mix 现合成;选中态用现成的 --accent-rgb。
    * 强度数字(6% / 10% / 10% / 16%)来自规范画布,住在这一个文件里 ——
    * 等价于旧系统「档位住在主题层」的治理。 */
-  --st-hover: color-mix(in srgb, var(--ui-text-primary-fg) 6%, transparent);
-  --st-active: color-mix(in srgb, var(--ui-text-primary-fg) 10%, transparent);
+  --st-hover: color-mix(in srgb, var(--text-1) 6%, transparent);
+  --st-active: color-mix(in srgb, var(--text-1) 10%, transparent);
   --st-sel: rgba(var(--accent-rgb), 0.1);
   --st-sel-hover: rgba(var(--accent-rgb), 0.16);
 
   /* ── 字面 rgba 的那一族:主题化版本 ───────────────────────────────────────
    * 静态 palette 里它们是写死的 rgba(前景墨 / 白纸的某个透明度)。这里按同一
    * 语义、同一透明度从主题色现推,换主题跟着走。 */
-  --scrim: color-mix(in srgb, var(--ui-text-primary-fg) 40%, transparent);
-  --glass: color-mix(in srgb, var(--ui-surface-floating-bg) 55%, transparent); /* Dock 毛玻璃 */
-  --dock-sep: color-mix(in srgb, var(--ui-text-primary-fg) 14%, transparent);
+  --scrim: color-mix(in srgb, var(--text-1) 40%, transparent);
+  --glass: color-mix(in srgb, var(--role-raised, var(--ui-surface-floating-bg)) 55%, transparent); /* Dock 毛玻璃 */
+  --dock-sep: color-mix(in srgb, var(--text-1) 14%, transparent);
   --accent-soft: rgba(var(--accent-rgb), 0.12);
   --accent-ring: rgba(var(--accent-rgb), 0.18); /* 染色,不是焦点环(环走 --focus-ring-color) */
   --tint-accent: rgba(var(--accent-rgb), 0.12);

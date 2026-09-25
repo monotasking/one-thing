@@ -34,7 +34,7 @@ import { dockLens, dockPitch, GROWTH_BIAS } from './dock-lens'
  * | 状态 | 何时 | 画什么 |
  * | --- | --- | --- |
  * | 关 | 指针不在条上(条还没画出来也算) | 全静止:amount 0,底板齐条身 |
- * | 开 | 指针在条的**两个维度**里,**或**脚下压着一块(放大后探出条外的)瓦 | 照算,amount 1 |
+ * | 开 | 指针在条的感应面里(外侧到窗边、镜头开着时内侧到放大后的瓦顶),**或**脚下压着一块瓦 | 照算,amount 1 |
  * | 开合中 | 上面两者之间的 --dur-dock-lens | 几何不变,amount 在路上 |
  * | 超量 | 瓦再多也只是数组更长(条被视口挤是 Dock 的事) | 照算 |
  *
@@ -42,7 +42,7 @@ import { dockLens, dockPitch, GROWTH_BIAS } from './dock-lens'
  * | 状态 | 触发 | 行为 |
  * | --- | --- | --- |
  * | rest | 指针不在坞上 | amount 0 |
- * | hover / 跟手 | 指针在坞上(条身 ∪ 放大后的瓦身) | 几何逐次 pointermove 现算,零延迟 |
+ * | hover / 跟手 | 指针在坞上(感应面 ∪ 瓦身) | 几何逐次 pointermove 现算,零延迟;交叉轴上挪动不改大小 |
  * | 释放 | mouseleave,或交叉轴出界且脚下不是瓦 | amount 1 → 0,几何原地不动 |
  * | reduced-motion / 动效档「无」 | 系统偏好或设置 | --dur-dock-lens = 0ms,当帧瞬到(是瞬到,不是不放大 —— 放大是这块面的读法,不是装饰) |
  * | **配置态:放大关** | 设置 → Dock → 磁性放大 | 这条链**根本不跑**:指针滑过条时一格几何都不写,条与瓦纹丝不动(对齐 macOS 那枚「放大」开关关掉之后的样子) |
@@ -134,31 +134,31 @@ export function useDockLens({ edge, align, enabled }: DockLensInput) {
 
     const vertical = axis.current === 'y'
     /*
-     * ── 交叉轴判据:**指针在条的盒子里,或者脚下压着一块瓦**(09-13 重写)──────
+     * ── 交叉轴判据:**指针在感应面里,或者脚下压着一块瓦**(09-25 改)──────────
      *
-     * 上一版只问前一半,而**放大的瓦朝内长出条外** `瓦身量 × (峰值 − 1) − 9px`
-     * (md 档 / md 幅度 6.4px,lg / lg 22.2px;sm / sm 是 −1.8,也就是没探出)。
-     * 指针落在探出的那一截上时,事件照样从瓦冒泡到条,可这条判据答「不在」→
-     * `close()` → 整条按 --dur-dock-lens 缩回去 → 指针脚下空了 → 后续横扫再也
-     * 点不亮。真机读数:底边在放大后瓦顶之下 2 / 6px 两条线横扫,镜头 0% 亮、
-     * 第 0 帧就熄;右边在瓦内缘之内 2 / 6 / 10px 三条线纵扫全 0%;瓦中心线 100%。
-     * 竖排时探出的是**内侧**,正是手从内容区过来先碰到的那一边,所以停左 / 右边
-     * 时这条死带天天撞得到。
+     * 09-13 那一版问的是「在条的盒子里 ∪ 脚下是瓦」,补上了放大后探出条外的瓦身,
+     * 却留下两段死带,四条边各撞各的(09-25 用户:「不管是在哪个方向,从应用边到
+     * 图标距离边最远的地方时,icon 的大小应该不变」):
+     *   · 条与窗边之间那截缝 —— 指针贴着窗边镜头是熄的,往里一挪才亮;
+     *   · 探出条外那一截里**瓦与瓦之间的缝** —— 脚下不是瓦,镜头熄,同一条横线上
+     *     一会儿大一会儿小。
+     * 今天「在坞上」是一个盒子:条自己的感应面(`[data-dock="hit"]`,几何全在
+     * Dock.module.css 的 `.hit`),外侧伸到窗边、镜头开着时内侧伸到放大后瓦的最远处。
+     * 于是交叉轴上只有「窗边 → 瓦顶」一个区间,区间里瓦的大小只随主轴变。
+     * 读活矩形不会自激:它的交叉轴尺寸只随 `data-lens` 开合换档,不随几何变。
      *
-     * macOS 的规矩是一句话:**指针在放大着的图标身上就算在坞上**。所以补第二问
-     * `at.onTile`(`onMouseMove` 那里现读 `e.target.closest('[data-dock-tile]')`,
-     * 见那一段)。**这不会长出卡死态**:指针从探出那一截离开到内容区时,它离开的是
-     * 条的整棵子树,strip 的 `mouseleave` 照常发,`pointer = null` 之后走到
-     * 上面那一支 close。
-     *
-     * 前一半仍旧读活矩形:条的交叉轴尺寸是钉死的(Dock.module.css 的 height /
-     * width),读活矩形不会自激;自动隐藏滑进滑出时它还必须是活的。
+     * `at.onTile` 仍留着:名字条、角标这类挂在瓦上的东西可能探出感应面,脚下是瓦
+     * 就算在坞上(macOS 那一句「指针在放大着的图标身上就算在坞上」)。
+     * 反过来,右键菜单是条的 React 子树(事件照样冒泡上来),却不在感应面里、脚下
+     * 也不是瓦 —— 这一问把它挡在外面,在菜单上移动不会点亮镜头。
      */
     const box = el.getBoundingClientRect()
-    const inBox = vertical
-      ? at.cross >= box.left && at.cross <= box.right
-      : at.cross >= box.top && at.cross <= box.bottom
-    if (!inBox && !at.onTile) {
+    const hit = el.querySelector<HTMLElement>(':scope > [data-dock="hit"]')
+    const band = hit ? hit.getBoundingClientRect() : box
+    const inBand = vertical
+      ? at.cross >= band.left && at.cross <= band.right
+      : at.cross >= band.top && at.cross <= band.bottom
+    if (!inBand && !at.onTile) {
       close(el)
       return
     }

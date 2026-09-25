@@ -5,6 +5,7 @@ import { configureProviderSettingsPort } from '../../data/provider-settings-port
 import type { ProviderSettingsPort } from '../../data/provider-settings-port'
 import { useNotifyStore } from '../../services/notify-store'
 import { settingsKey, settingsMutation, useProviderSettings } from '../store'
+import { defaultSelectionOf, prefsQuery, toProviderPrefs } from '../../data/models-source'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { buildFamilies, findFamily } from '../families'
 import { fakeProviderPort } from './fake-port'
@@ -287,6 +288,55 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setCurrentModel('claude', 'claude-opus-5')
     expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+
+  it('选中即默认:**两格一起写** —— 默认那一家与那一家的当前模型', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setDefaultModel('claude-code', 'claude-code')
+
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
+    // ① 默认那一家换了;② 那一家的当前模型就是它;③ 顺带勾上(不勾就不在选择器里)。
+    expect(sent.ai.provider).toBe('claude-code')
+    expect(sent.ai.providers['claude-code'].model).toBe('claude-code')
+    expect(sent.ai.providers['claude-code'].selectedModels).toEqual(['claude-code'])
+    // 旧那一家一格没动 —— 换默认不是清空别人。
+    expect(sent.ai.providers.claude.model).toBe('claude-opus-5')
+    expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5'])
+  })
+
+  it('选中即默认:窄投影就地更新 —— 药丸不必等一次重拉才认识新默认', async () => {
+    installPort()
+    await useProviderSettings.getState().start()
+    // 抽屉那一侧此刻手上的那一份(与真机同源:`models-source.prefsQuery`)。
+    prefsQuery.get(DEFAULT_SPACE_ID).patch({ prefs: toProviderPrefs(spaceSettings()), custom: [] })
+
+    await useProviderSettings.getState().setDefaultModel('claude-code', 'claude-code')
+
+    const prefs = prefsQuery.get(DEFAULT_SPACE_ID).get().data?.prefs
+    expect(prefs && defaultSelectionOf(prefs)).toEqual({
+      provider: 'claude-code',
+      model: 'claude-code',
+    })
+    expect(prefs?.configs['claude-code'].selectedModels).toEqual(['claude-code'])
+  })
+
+  it('已经是默认了就不写 —— 与「设为当前」同一道闸', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setDefaultModel('claude', 'claude-opus-5')
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+
+  it('默认那一家没换、只换型:`ai.provider` 照写,型与勾选跟上', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setDefaultModel('claude', 'claude-sonnet-4')
+
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
+    expect(sent.ai.provider).toBe('claude')
+    expect(sent.ai.providers.claude.model).toBe('claude-sonnet-4')
+    expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5', 'claude-sonnet-4'])
   })
 
   it('手填一个目录没有的 id:进 selectedModels', async () => {

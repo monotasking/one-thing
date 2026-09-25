@@ -75,7 +75,7 @@ async function assemble(storePath: string) {
   return createOnethingBackend({ storePath, owner: 'daemon', toolRegistry: 'headless', host: {
     storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null,
+    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
   } })
 }
 async function room(id = 'room') {

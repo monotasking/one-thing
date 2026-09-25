@@ -18,10 +18,10 @@
  *
  * 这个壳真的交出来的:auth(凭证解密的唯一口)、sandbox(下载目录)、
  * storePath(打包资源目录)、terminal(T0:PTY 输出的出网口)、settings
- * (深浅色 + **代理重套**,2026-09-12)、localTrust(`desktop-embedded`,B3)与
- * speechOutput(宠物 P3:主进程起子进程出声);其余十项是 `null`。
+ * (深浅色 + **代理重套**,2026-09-12)、localTrust(`desktop-embedded`,B3)、
+ * speechOutput(宠物 P3:主进程起子进程出声)与 dialog(原生打开对话框);其余十项是 `null`。
  */
-import { app, nativeTheme, net, safeStorage, session } from 'electron'
+import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
 import type { OnethingHostPorts } from '@onething/backend/host-ports.js'
 import {
@@ -192,5 +192,24 @@ export function createShellHostPorts(): OnethingHostPorts {
      * 30 秒回执、一个字都不出声。出声不需要窗口:mpv / afplay 子进程就能放。
      */
     speechOutput: createShellSpeechOutput(),
+    /**
+     * 原生打开对话框(选目录 / 选文件)—— `dialog` RPC 域的处理者。渲染层走 HTTP,
+     * 拿不到 `event.sender`,所以挂在**当前聚焦的窗**上;没有聚焦窗就不挂(自由浮动)。
+     */
+    dialog: {
+      async showOpen(request) {
+        const options = {
+          properties: request.properties ?? ['openFile'],
+          title: request.title,
+          defaultPath: request.defaultPath,
+          filters: request.filters,
+        }
+        const parent = BrowserWindow.getFocusedWindow()
+        const result = parent
+          ? await dialog.showOpenDialog(parent, options)
+          : await dialog.showOpenDialog(options)
+        return { canceled: result.canceled, filePaths: result.filePaths }
+      },
+    },
   }
 }

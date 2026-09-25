@@ -12,6 +12,7 @@ import type { EntryRow } from '../files/TreeEntryRow'
 import { NoWorkdirNotice } from '../files/NoWorkdirNotice'
 import { sessionMutation, useSessionsSource } from '../../data/sessions-source'
 import { configureSessionsPort } from '../../data/sessions-port'
+import { configureDialogPort } from '../../data/dialog-port'
 import type { SessionsPort } from '../../data/sessions-port'
 import { seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { useStageStore } from '../../stage/store'
@@ -308,6 +309,8 @@ describe('切线 B · NoWorkdirNotice:绑定的成败,以及律③的两半', ()
     useSessionsSource.setState({ setWorkingDirectory: REAL_SET_WORKDIR })
     sessionMutation.reset()
     seedSessionsSource()
+    // 钉的是**没有系统对话框**那条退路(路径输入行)。
+    configureDialogPort({ showOpen: async () => ({ canceled: true, filePaths: [], unavailable: true }) })
   })
 
   function mountNotice() {
@@ -386,12 +389,14 @@ describe('切线 B · NoWorkdirNotice:绑定的成败,以及律③的两半', ()
    * `ui/AsyncButton` 供给,并且**等 150ms 才换** —— 比这更快回来的请求根本不该
    * 报告自己在忙(E 型闪的判例)。反证:把 AsyncButton 换回 Button,这一条红。
    */
-  it('忙满 150ms 之后钮上说「正在保存…」——换字走防闪闸,disabled 不等', () => {
+  it('忙满 150ms 之后钮上说「正在保存…」——换字走防闪闸,disabled 不等', async () => {
     vi.useFakeTimers()
     try {
       installSessionsPort(vi.fn(() => new Promise<{ success: true }>(() => {})))
       mountNotice()
-      fireEvent.click(screen.getByText('绑定…'))
+      await act(async () => {
+        fireEvent.click(screen.getByText('绑定…'))
+      })
       const input = screen.getByTestId('files-bind-row').querySelector('input')!
       fireEvent.change(input, { target: { value: '/w/slow' } })
       act(() => {
@@ -411,7 +416,9 @@ describe('切线 B · NoWorkdirNotice:绑定的成败,以及律③的两半', ()
   it('忙态是**那一条会话**那一格的账:别的会话在飞,这一颗一动不动', async () => {
     installSessionsPort(vi.fn(() => new Promise<{ success: true }>(() => {})))
     mountNotice()
-    fireEvent.click(screen.getByText('绑定…'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('绑定…'))
+    })
     const input = screen.getByTestId('files-bind-row').querySelector('input')!
     fireEvent.change(input, { target: { value: '/w/x' } })
     await act(async () => {

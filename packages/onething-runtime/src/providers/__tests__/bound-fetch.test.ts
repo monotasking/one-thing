@@ -210,3 +210,39 @@ describe('onething http client policies', () => {
     })
   })
 })
+
+describe('onething app fetch abort after headers', () => {
+  // 09-23 事故:头到之后摘了 abort 转发,流中途停住时按停止,body 读流一直挂着。
+  it('aborting the caller signal mid-stream rejects the pending body read', async () => {
+    const http = await import('node:http')
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.write('data: {"a":1}\n\n') // 然后停住,不再发、不断开
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as { port: number }
+
+    try {
+      const controller = new AbortController()
+      const fetchImpl = createOnethingAppFetch({}, { getProxySettings: () => undefined })
+      const response = await fetchImpl(`http://127.0.0.1:${port}/`, {
+        method: 'POST',
+        body: '{}',
+        signal: controller.signal,
+      })
+      const reader = response.body!.getReader()
+      await reader.read()
+
+      const pending = reader.read()
+      controller.abort()
+      const outcome = await Promise.race([
+        pending.then(() => 'resolved', (error: Error) => error.name),
+        new Promise<string>(resolve => setTimeout(() => resolve('hanging'), 2000)),
+      ])
+      expect(outcome).toBe('AbortError')
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    }
+  })
+})

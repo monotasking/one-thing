@@ -13,6 +13,7 @@ import type {
   ThemeHighlights,
 } from './types.js'
 import type { ThemeColorScheme } from './role-mapping.js'
+import type { ThemeShellRoles } from './shell-roles.js'
 import {
   deriveStateOverlays,
   deriveSurfaceRoles,
@@ -595,9 +596,45 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
     },
 
     highlights: buildBase46Highlights(b30, b16),
+
+    shellRoles: base46ShellRoles(b30, b16),
   }
 
   return theme
+}
+
+/**
+ * base46 → 壳的角色表:**照 NvChad 自己怎么用这些字段**取值,一格计算都没有。
+ *
+ * 出处(base46 v3.0 `integrations/`):编辑区 `Normal` 底 = base00(即 `black`);
+ * `NvimTreeNormal` / `NormalFloat` = `darker_black`;`TbFill` = `black2`、
+ * `TbBufOn` = `black`;Telescope 输入栏 = `black2`;`WinSeparator` = `line`。
+ * 缺字段的主题才落到 base16 同义位,再缺就沿角色互相兜底 —— 仍然只挑、不算。
+ */
+function base46ShellRoles(
+  b30: Partial<Base46Base30>,
+  b16: Partial<Base46Base16>
+): ThemeShellRoles | undefined {
+  const canvas = b30.black || b16.base00
+  if (!canvas) return undefined
+  const sidebar = b30.darker_black || b16.base01 || canvas
+  const strip = b30.black2 || b16.base01 || sidebar
+  const ink = b16.base05 || b30.white || b16.base06 || '#808080'
+  const ink2 = b30.white || ink
+  return {
+    canvas,
+    inset: sidebar,
+    card: canvas,
+    raised: strip,
+    strip,
+    // NvChad 的标签没有悬停底:悬停只换字色(外壳那一格规则已经把字提到正文色)。
+    // 取活动标签的脸会让悬停的那格与活动格长得一模一样(09-25 真机截图判掉)。
+    tabHover: 'transparent',
+    line: b30.line || b16.base02 || strip,
+    ink,
+    ink2,
+    inkWeak: b30.light_grey || b30.grey_fg || ink2,
+  }
 }
 
 /**

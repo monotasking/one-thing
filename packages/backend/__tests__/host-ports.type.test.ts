@@ -13,8 +13,9 @@
 import { describe, expect, it } from 'vitest'
 import { getSpeechOutput } from '@onething/runtime/voice/speech-output'
 import { applyHostPorts, type OnethingHostPorts } from '../host-ports.js'
+import { dialogRpcHandlers } from '../rpc/domains/dialog.js'
 
-/** 十七项写全 = 合法(P3 加了第十七格 `speechOutput`)。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
+/** 十八项写全 = 合法(P3 加了第十七格 `speechOutput`,第十八格是 `dialog`)。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
 const complete: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
@@ -33,6 +34,7 @@ const complete: OnethingHostPorts = {
   mcp: null,
   localTrust: null,
   speechOutput: null,
+  dialog: null,
 }
 
 // 缺 `voice` 一项 → 不能赋给 `OnethingHostPorts`。这就是方案要的那道门:
@@ -54,6 +56,7 @@ const missingVoice: OnethingHostPorts = {
   mcp: null,
   localTrust: null,
   speechOutput: null,
+  dialog: null,
 }
 
 // `storePath` / `sandbox` 是**不可 null** 的两项(没有它们连 store 与工具沙箱的
@@ -84,5 +87,30 @@ describe('speechOutput(第十七格,宠物 P3)', () => {
     const restoreNull = applyHostPorts(complete)
     expect(getSpeechOutput()).toBeNull()
     await restoreNull()
+  })
+})
+
+describe('dialog(第十八格,原生打开对话框)', () => {
+  const ctx = {} as Parameters<typeof dialogRpcHandlers.showOpen>[1]
+
+  it('未注入:答 unavailable(客户端据它退到路径输入框),不是取消', async () => {
+    const restore = applyHostPorts(complete)
+    await expect(dialogRpcHandlers.showOpen({ properties: ['openDirectory'] }, ctx)).resolves.toEqual({
+      canceled: true,
+      filePaths: [],
+      unavailable: true,
+    })
+    await restore()
+  })
+
+  it('注入即转给宿主;还原回到未注入', async () => {
+    const showOpen = async () => ({ canceled: false, filePaths: ['/picked'] })
+    const restore = applyHostPorts({ ...complete, dialog: { showOpen } })
+    await expect(dialogRpcHandlers.showOpen({ properties: ['openDirectory'] }, ctx)).resolves.toEqual({
+      canceled: false,
+      filePaths: ['/picked'],
+    })
+    await restore()
+    await expect(dialogRpcHandlers.showOpen({}, ctx)).resolves.toMatchObject({ unavailable: true })
   })
 })

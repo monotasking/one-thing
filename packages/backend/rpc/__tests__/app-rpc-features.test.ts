@@ -61,6 +61,8 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:project-dirs', 'projectDirs'],
   // P4c 第二批唯一的域:skills(十二条,openDirectory 走 configureShellHost 端口)。
   ['rpc:skills', 'skills'],
+  // 原生打开对话框(选目录 / 选文件),走宿主的 `dialog` 端口。
+  ['rpc:dialog', 'dialog'],
   // P4c 第三批唯一的域:media(十一条数据面;另存为 / 两个开窗留在手写通道上)。
   ['rpc:media', 'media'],
   // P4c 第四批唯一的域:session-command(会话命令总线的入口,只有 emit 一条)。

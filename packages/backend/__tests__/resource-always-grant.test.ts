@@ -72,6 +72,7 @@ async function assemble(): Promise<Backend> {
       // 桌面壳声明的就是这一句。
       localTrust: { origin: 'desktop-embedded' },
       speechOutput: null,
+      dialog: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,

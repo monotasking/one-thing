@@ -14,7 +14,7 @@ import { findLeaf, firstRefOfKindIn } from '../workbench/tree'
 import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from '../workbench/store'
 import { createTerminal, requestTerminalFocus } from './terminal/registry'
 import { TERMINAL_KIND, terminalRef } from './terminal/terminal-ref'
-import { useOpenDirDialog } from './files/open-dir-hub'
+import { requestDirectory } from './files/open-dir-hub'
 import type { PlacementMemory } from '../stage/types'
 import type { ContentRef } from '../workbench/kinds'
 import type { RegionId } from '../workbench/regions'
@@ -139,7 +139,6 @@ export async function openTerminal(cwd?: string): Promise<void> {
 /** 活着的那几格 + 新建两条。 */
 function TerminalLauncherMenuRows({ onDone }: { onDone: () => void }) {
   const list = useQuery(terminalListQuery)
-  const setOpenDir = useOpenDirDialog((st) => st.setOpen)
   // 菜单开着的这一段就是这条读数要新鲜的那一段(判词在 `terminal-source.ts`:
   // 它没有常驻订阅 —— 一张只在右键那一下出现的菜单不值得让全壳挂一条订阅)。
   useEffect(() => {
@@ -186,8 +185,8 @@ function TerminalLauncherMenuRows({ onDone }: { onDone: () => void }) {
            * 全壳只有一处「挑一个目录」的原生面。它交回来的那个目录由
            * `files-source.setRoot` 落地,这里读它的结果开一格终端。
            */
-          setOpenDir(true, (dir: string) => void openTerminal(dir))
           onDone()
+          void requestDirectory((dir: string) => void openTerminal(dir))
         }}
       >
         {t('terminal.newInDir')}

@@ -21,7 +21,7 @@ import {
   systemEnabledOf,
   systemStateOf,
 } from '../../data/notes-source'
-import { useOpenDirDialog } from '../files/open-dir-hub'
+import { requestDirectory } from '../files/open-dir-hub'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import type { NoteSystemState, NoteVaultDto } from '@shared/ipc/notes'
@@ -254,7 +254,6 @@ export function isKnownVault(vaults: readonly NoteVaultDto[], root: string): boo
 function FoldersSection({ t }: { t: TFn }) {
   const data = useQuery(notesListQuery).data
   const home = useHomeDir()
-  const setOpen = useOpenDirDialog((st) => st.setOpen)
   const savingFolders = useAsyncPending(setNoteFoldersMutation)
   const [rejection, setRejection] = useState<FolderRejection | null>(null)
   const [checking, setChecking] = useState(false)
@@ -262,15 +261,13 @@ function FoldersSection({ t }: { t: TFn }) {
   const folders = data?.folders ?? []
 
   /*
-   * 挑一个目录走的是**全壳唯一那一面**(`content/files/OpenDirDialog`,它常挂在
-   * 外壳上)—— 动作单产地。它今天是一个路径输入框而不是系统对话框,理由整段写在
-   * `content/files/open-dir-hub.ts` 上(这台 React 壳注入的是 `shell: null`,
-   * 而声明 `configureShellHost` 会顺手翻动 `capabilities.shellTools`,那是一次
-   * 要拍板的行为改动)。所以这一单**没有**长出第二扇窗,也没有自己写一个输入行。
+   * 挑一个目录走的是**全壳唯一那一口**(`requestDirectory`)—— 动作单产地:
+   * 桌面上是系统对话框,没有对话框的宿主退到外壳上那扇路径输入窗
+   * (判词在 `content/files/open-dir-hub.ts`)。
    */
   const add = (): void => {
     setRejection(null)
-    setOpen(true, (picked) => void accept(picked))
+    void requestDirectory((picked) => void accept(picked))
   }
 
   const accept = async (picked: string): Promise<void> => {

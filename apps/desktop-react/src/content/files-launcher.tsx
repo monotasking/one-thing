@@ -5,7 +5,7 @@ import { registerStageLauncher } from '../stage/launchers'
 import { useWorkbenchStore } from '../workbench/store'
 import { FILES_ITEM_ID, notifyDirOpenFailed, openDirectoryPanel, sessionDirOf } from './dir-open'
 import { DIR_KIND, dirRef } from './kinds/dir-ref'
-import { useOpenDirDialog } from './files/open-dir-hub'
+import { requestDirectory } from './files/open-dir-hub'
 
 /**
  * **「打开一份目录」那个动作已经不在这只文件里**(2026-09-12 review 打回)。
@@ -71,7 +71,6 @@ function openRecentDirectory(path: string): void {
 /** 最近目录那几行 + 「打开目录…」。 */
 function FilesLauncherMenuRows({ onDone }: { onDone: () => void }) {
   const recent = useWorkbenchStore((st) => st.recentRoots)
-  const setOpenDir = useOpenDirDialog((st) => st.setOpen)
   return (
     <>
       {recent.length > 0 && (
@@ -95,8 +94,8 @@ function FilesLauncherMenuRows({ onDone }: { onDone: () => void }) {
       )}
       <MenuItem
         onClick={() => {
-          setOpenDir(true)
           onDone()
+          void requestDirectory()
         }}
       >
         {t('files.openDirTitle')}

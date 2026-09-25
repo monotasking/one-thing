@@ -179,7 +179,9 @@
   padding: var(--sp-3) var(--sp-4);
   border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-2);
-  background: var(--surface-1);
+  /* 聊天流里的卡片一律「卡片面 + 一圈线」,与工具卡同形(09-25:从前这里铺 surface-1,
+   * 同一条流里只有它是灰卡,而且灰白谁深谁浅随主题翻转)。 */
+  background: var(--surface-2);
   font-size: var(--fs-meta);
   line-height: 1.6;
   color: var(--text-2);

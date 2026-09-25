@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>onething · 系统架构</title>
+<style>
+@font-face{font-family:'BigShoulders';src:url('file:///Users/yitiansong/.agents/skills/canvas-design/canvas-fonts/BigShoulders-Bold.ttf')format('truetype');font-weight:700}
+@font-face{font-family:'GeistMono';src:url('file:///Users/yitiansong/.agents/skills/canvas-design/canvas-fonts/GeistMono-Regular.ttf')format('truetype')}
+@font-face{font-family:'InstrumentSans';src:url('file:///Users/yitiansong/.agents/skills/canvas-design/canvas-fonts/InstrumentSans-Regular.ttf')format('truetype');font-weight:400}
+@font-face{font-family:'InstrumentSans';src:url('file:///Users/yitiansong/.agents/skills/canvas-design/canvas-fonts/InstrumentSans-Bold.ttf')format('truetype');font-weight:600}
+
+:root{
+  --paper:#f7f5ef; --panel:#fffefa; --line:#d9ded4; --ink:#23332f; --muted:#64716a;
+  --green:#285c49; --blue:#4d6b8a; --gold:#b65f34;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1720px;height:1200px;background:var(--paper);color:var(--ink);
+  font-family:'InstrumentSans','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  -webkit-font-smoothing:antialiased;position:relative;overflow:hidden}
+.mono{font-family:'GeistMono','SFMono-Regular',monospace}
+
+/* ── 标题 ─────────────────────────────────────────── */
+#title{position:absolute;left:100px;top:78px}
+#title h1{font-family:'BigShoulders',sans-serif;font-weight:700;font-size:46px;letter-spacing:.2em;line-height:1}
+#title p{margin-top:14px;font-size:14.5px;color:var(--muted);letter-spacing:.06em}
+#stamp{position:absolute;right:100px;top:88px;text-align:right;font-size:12px;color:var(--muted);letter-spacing:.1em;line-height:2}
+
+/* ── 左侧：依赖重力线 ─────────────────────────────── */
+#gravity{position:absolute;left:62px;top:224px;height:712px;width:1px;background:var(--ink);opacity:.5}
+#gravity::after{content:'';position:absolute;left:-4px;bottom:-1px;width:9px;height:9px;
+  border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);transform:rotate(45deg);opacity:.8}
+#gravity-label{position:absolute;left:32px;top:520px;transform:rotate(-90deg);transform-origin:left center;
+  font-size:11.5px;letter-spacing:.34em;color:var(--muted);white-space:nowrap}
+
+/* ── 层 ───────────────────────────────────────────── */
+.band{position:absolute;left:100px;width:1080px;background:var(--panel);
+  border:1px solid var(--line);border-left-width:4px;
+  display:flex;flex-direction:column;justify-content:center;padding:0 34px}
+.band-head{display:flex;align-items:baseline;gap:20px}
+.band-head h2{font-size:22px;font-weight:600;letter-spacing:.02em}
+.band-head .pkg{margin-left:auto;font-size:11.5px;color:var(--muted);letter-spacing:.04em}
+.band .role{margin-top:11px;font-size:13.5px;color:var(--muted);line-height:1.7;max-width:930px}
+.b-band{border-left-color:var(--green)} .b-band h2{color:var(--green)}
+.r-band{border-left-color:var(--blue)}  .r-band h2{color:var(--blue)}
+.c-band{border-left-color:var(--ink)}
+
+/* ── 宿主 ─────────────────────────────────────────── */
+.sect-label{position:absolute;font-size:11.5px;letter-spacing:.26em;color:var(--muted)}
+.host{position:absolute;width:258px;height:100px;background:var(--panel);
+  border:1px solid var(--line);border-top:3px solid var(--gold);padding:16px 18px}
+.host h3{font-size:15px;font-weight:600}
+.host p{margin-top:7px;font-size:11.5px;color:var(--muted);line-height:1.55}
+.host .pkg{margin-top:9px;font-size:10.5px;color:var(--muted);opacity:.85}
+
+/* ── 连接箭头 ─────────────────────────────────────── */
+.down{position:absolute;left:640px;width:1px;background:var(--line)}
+.down::after{content:'';position:absolute;left:-3.5px;bottom:-1px;width:8px;height:8px;
+  border-right:1px solid var(--muted);border-bottom:1px solid var(--muted);transform:rotate(45deg)}
+.down-label{position:absolute;left:664px;font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+
+/* ── 右栏：配件 ───────────────────────────────────── */
+.part{position:absolute;left:1220px;width:400px;height:96px;background:var(--panel);
+  border:1px solid var(--line);padding:15px 20px}
+.part h3{font-size:14.5px;font-weight:600}
+.part p{margin-top:6px;font-size:11.5px;color:var(--muted);line-height:1.5}
+.part .pkg{position:absolute;right:20px;top:15px;font-size:10.5px;color:var(--muted)}
+
+/* ── 右下：两个方向 ───────────────────────────────── */
+#dirs{position:absolute;left:1220px;top:600px;width:400px;height:232px;
+  border:1px solid var(--line);padding:22px 24px}
+#dirs h3{font-size:11.5px;letter-spacing:.26em;color:var(--muted);font-weight:400}
+.dir{margin-top:24px}
+.dir-head{display:flex;align-items:baseline;font-size:10.5px;color:var(--muted);letter-spacing:.18em}
+.dir-head .proto{margin-left:auto;letter-spacing:.04em}
+.dir-body{display:flex;align-items:center;gap:14px;margin-top:9px}
+.dir-body .end{font-size:14px;font-weight:600;white-space:nowrap}
+.dir-body .ln{flex:1;height:1px;background:var(--ink);position:relative;top:-3px}
+.dir-body .ln::after{content:'';position:absolute;right:-1px;top:-3px;width:7px;height:7px;
+  border-right:1px solid var(--ink);border-top:1px solid var(--ink);transform:rotate(45deg)}
+#dirs .note{margin-top:26px;padding-top:18px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--muted);line-height:1.8}
+
+/* ── 底部：外部 ───────────────────────────────────── */
+#ext{position:absolute;left:100px;top:1000px;width:1520px;height:118px;
+  border:1px solid var(--line);border-top:1px solid var(--ink);
+  padding:0 34px;display:flex;align-items:center;gap:14px}
+.chip{border:1px solid var(--line);padding:9px 18px;font-size:12.5px;color:var(--muted);
+  letter-spacing:.03em;background:var(--panel)}
+#ext .tail{margin-left:auto;font-size:11px;color:var(--muted);letter-spacing:.06em}
+.foot{position:absolute;left:100px;top:1152px;font-size:10.5px;color:var(--muted);letter-spacing:.08em}
+</style></head>
+<body>
+
+<div id="title">
+  <h1>ONETHING</h1>
+  <p>系统架构 · 四层，单向</p>
+</div>
+<div id="stamp" class="mono">
+  <div>2026-09-18</div>
+  <div>packages / apps</div>
+</div>
+
+<div id="gravity"></div>
+<div id="gravity-label">源码依赖只准向下</div>
+
+<!-- 壳 -->
+<div class="sect-label" style="left:100px;top:196px">壳 / HOSTS</div>
+
+<div class="host" style="left:100px;top:224px">
+  <h3>桌面 · Electron</h3>
+  <p>主进程自己装配 backend，窗口用 HTTP/SSE</p>
+  <div class="pkg mono">apps/desktop-react</div>
+</div>
+<div class="host" style="left:374px;top:224px">
+  <h3>浏览器壳</h3>
+  <p>同一套 React，没有主进程</p>
+  <div class="pkg mono">--mode web</div>
+</div>
+<div class="host" style="left:648px;top:224px">
+  <h3>独立服务器</h3>
+  <p>Node 进程，对外 HTTP/SSE</p>
+  <div class="pkg mono">apps/server</div>
+</div>
+<div class="host" style="left:922px;top:224px">
+  <h3>命令行</h3>
+  <p>无窗口，工具集更瘦</p>
+  <div class="pkg mono">apps/cli</div>
+</div>
+
+<div class="down" style="top:324px;height:48px"></div>
+<div class="down-label mono" style="top:337px">createOnethingBackend(…)</div>
+
+<!-- 装配层 -->
+<div class="band b-band" style="top:372px;height:156px">
+  <div class="band-head"><h2>装配层</h2><span class="pkg mono">packages/backend</span></div>
+  <p class="role">把零件拧在一起。<span class="mono">createOnethingBackend</span> 是唯一装配入口：按固定顺序创建事件、会话、引擎、工具，再登记可被界面调用的方法。宿主能力经 <span class="mono">host</span> 表一次交清。</p>
+</div>
+
+<div class="down" style="top:528px;height:48px"></div>
+<div class="down-label" style="top:541px">使用（单向）</div>
+
+<!-- 产品层 -->
+<div class="band r-band" style="top:576px;height:156px">
+  <div class="band-head"><h2>产品层</h2><span class="pkg mono">packages/onething-runtime</span></div>
+  <p class="role">聊天、会话、工具、提示词、主题这些功能本身。<strong>不准出现 Electron</strong>，也不准回头 import 装配层——换壳不该改这一层。</p>
+</div>
+
+<div class="down" style="top:732px;height:48px"></div>
+<div class="down-label" style="top:745px">使用（单向）</div>
+
+<!-- 骨架层 -->
+<div class="band c-band" style="top:780px;height:156px">
+  <div class="band-head"><h2>骨架层</h2><span class="pkg mono">packages/core</span></div>
+  <p class="role">引擎底座：事件总线、会话、权限、工具循环。<span class="mono">dependencies</span> 为空；这里不出现任何具体能力的名字——能力自己登记，骨架只读表。</p>
+</div>
+
+<!-- 右栏：配件 -->
+<div class="sect-label" style="left:1220px;top:196px">配件 / 不构成层</div>
+
+<div class="part" style="top:224px">
+  <h3>客户端 SDK</h3>
+  <p>壳用它打电话：HTTP + SSE，带 Bearer</p>
+  <div class="pkg mono">packages/client</div>
+</div>
+<div class="part" style="top:336px">
+  <h3>跨进程合同</h3>
+  <p>IPC 与事件的形状、默认值</p>
+  <div class="pkg mono">packages/shared</div>
+</div>
+<div class="part" style="top:448px">
+  <h3>渠道桥接</h3>
+  <p>微信 / Telegram 消息接入</p>
+  <div class="pkg mono">packages/gateway</div>
+</div>
+
+<!-- 右下：两个方向 -->
+<div id="dirs">
+  <h3>一次请求的两个方向</h3>
+  <div class="dir">
+    <div class="dir-head"><span>去程 · 命令</span><span class="proto mono">HTTP</span></div>
+    <div class="dir-body"><span class="end">壳</span><span class="ln"></span><span class="end">核心</span></div>
+  </div>
+  <div class="dir">
+    <div class="dir-head"><span>回程 · 事件</span><span class="proto mono">SSE</span></div>
+    <div class="dir-body"><span class="end">核心</span><span class="ln"></span><span class="end">壳</span></div>
+  </div>
+  <div class="note">调用栈在进程边界断开。<br>发出去，然后等别人推回来。</div>
+</div>
+
+<!-- 底部 -->
+<div id="ext">
+  <span class="mono" style="font-size:11.5px;letter-spacing:.26em;color:var(--muted);margin-right:12px">外部</span>
+  <span class="chip">模型 API</span>
+  <span class="chip">MCP 服务</span>
+  <span class="chip">工作区文件 / Shell</span>
+  <span class="chip mono">events.jsonl</span>
+  <span class="tail mono">持久化的事实</span>
+</div>
+
+<div class="foot mono">依据 CLAUDE.md · Architecture Overview 与 docs/system-diagrams.md</div>
+
+</body></html>

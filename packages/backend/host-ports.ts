@@ -103,6 +103,11 @@ import {
   resetSpeechOutputHost,
   type SpeechOutputPort,
 } from '@onething/runtime/voice/speech-output'
+import {
+  configureDialogHost,
+  resetDialogHost,
+  type DialogHostPorts,
+} from '@onething/runtime/dialog/host-ports'
 import { configureMCPClientHost } from '@onething/runtime/mcp/manager'
 import {
   configureMCPClientIdentity,
@@ -201,6 +206,12 @@ export interface OnethingHostPorts {
    * `null` —— 它们跑在没有扬声器可言的地方,也没有人在那台机器前听。
    */
   speechOutput: SpeechOutputPort | null
+  /**
+   * **原生打开对话框**(第十八格):选目录 / 选文件,`dialog` RPC 域的处理者。
+   * `null` = 结构化降级(`unavailable: true`),客户端退到路径输入框。
+   * React 壳注入;独立 server 与 CLI 守护进程写 `null` —— 那台机器前没有窗口。
+   */
+  dialog: DialogHostPorts | null
 }
 
 /**
@@ -323,6 +334,10 @@ export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<vo
   if (host.speechOutput) {
     configureSpeechOutputHost(host.speechOutput)
     restores.push(resetSpeechOutputHost)
+  }
+  if (host.dialog) {
+    configureDialogHost(host.dialog)
+    restores.push(resetDialogHost)
   }
   // `null` 与其它端口同义:不调 —— 独立 server 要自己按绑定地址声明,替它调一次
   // `configureHostLocalTrust(null)` 会把它待会儿的声明之前的状态搅乱(那个函数的

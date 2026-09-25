@@ -46,6 +46,8 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '../../session/access.js'
+import { sessionReads } from '../../session/reads.js'
+import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingACPIpcLogger } from '@onething/runtime/acp/ipc-operations'
 import type { OnethingACPIpcAdapters } from '@onething/runtime/acp/ipc-operations'
@@ -79,6 +81,27 @@ function acpAdapters() {
     manager: ACPManager,
     logger: consoleLog,
   }
+}
+
+/**
+ * 选项读写落在哪条 agent 会话上:会话存在 → 它的 id 与目录(目录原样交给 ACP 层,
+ * 空串 / 未绑由 `resolveACPSessionCwd` 统一判,与发送那条路同一个判据);
+ * 不存在(草稿)→ undefined,走草稿路。
+ */
+function optionTarget(
+  context: RpcDispatchContext,
+  sessionId: string | undefined,
+  operation: 'read' | 'write',
+): { localSessionId: string; cwd: string | undefined } | undefined {
+  if (!sessionId) return undefined
+  if (!sessionAccess.resolveOptional(context, sessionId, operation)) return undefined
+  return { localSessionId: sessionId, cwd: sessionReads.getSession(sessionId)?.workingDirectory }
+}
+
+function optionsFailure(error: unknown): AcpRoutes['sessionOptions']['output'] {
+  const message = error instanceof Error ? error.message : String(error)
+  log.warn('acp session options failed', { error: message })
+  return { success: false, options: [], live: false, error: message }
 }
 
 export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
@@ -132,6 +155,30 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
       agentId: request.agentId,
       logger: consoleLog,
     }) as Promise<AcpRoutes['refreshAgent']['output']>
+  },
+  async sessionOptions(request, context = DESKTOP_RPC_CONTEXT) {
+    try {
+      const target = optionTarget(context, request.sessionId, 'read')
+      const snapshot = await ACPManager.getSessionOptions(request.agentId, target?.localSessionId, target?.cwd)
+      return { success: true, ...snapshot }
+    } catch (error) {
+      return optionsFailure(error)
+    }
+  },
+  async setSessionOption(request, context = DESKTOP_RPC_CONTEXT) {
+    try {
+      const target = optionTarget(context, request.sessionId, 'write')
+      const snapshot = await ACPManager.setSessionOption(
+        request.agentId,
+        target?.localSessionId,
+        target?.cwd,
+        request.optionId,
+        request.value,
+      )
+      return { success: true, ...snapshot }
+    } catch (error) {
+      return optionsFailure(error)
+    }
   },
   async cancelSession(request, context = DESKTOP_RPC_CONTEXT) {
     sessionAccess.resolve(context, request.sessionId, 'abort')

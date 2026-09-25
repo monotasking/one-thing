@@ -168,6 +168,7 @@ async function assemble(
       mcp: null,
       localTrust,
       speechOutput: null,
+      dialog: null,
     },
     // 最小面:三档目录里最轻的一档,不开 collab / mcpAcp / sessionSkills /
     // promptVersion —— 这份测试问的是装配的生命周期,不是任何一个子系统。

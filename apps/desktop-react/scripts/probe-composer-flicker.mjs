@@ -126,7 +126,35 @@ const REPLY_PLAIN = '这是一段普通的正文回答,它要够长,好切成十
   + '让每一段都逼出一次提交、一次排版。再补几句把这一段撑到两三行。'
 const REPLY_LONG = Array.from({ length: 40 }, (_, i) => `第 ${i + 1} 段:${REPLY_PLAIN}`).join('\n\n')
 
-const MARKS = { warm: '@@f-warm@@', long: '@@f-long@@', think60k: '@@f-think60k@@', tools: '@@f-tools@@' }
+/**
+ * **markdown 块混排**(2026-09-23 追加:用户怀疑「经过 markdown 不同渲染块时 composer 闪」)。
+ * 前 17 个场景的料只有散文 / 无围栏代码行 / 少量表格 —— 带围栏的代码块(块壳 +
+ * `overflow-x: auto` 横滚 + 高亮)、宽表格、数学块、引用、diff 一格都没有。这份料把
+ * 注册表里会进块壳 / 自己横滚的种类轮着排,每一轮都有一行超宽的代码逼出横向滚动条。
+ */
+const LONG_LINE = 'const x = ' + Array.from({ length: 24 }, (_, i) => `veryLongIdentifier${i}`).join(' + ') + '\n'
+const WIDE_TABLE = [
+  '| ' + Array.from({ length: 12 }, (_, i) => `列${i + 1}标题比较长`).join(' | ') + ' |',
+  '| ' + Array.from({ length: 12 }, () => '---').join(' | ') + ' |',
+  ...Array.from({ length: 6 }, (_, r) => '| ' + Array.from({ length: 12 }, (_, i) => `r${r}c${i} 单元格内容`).join(' | ') + ' |'),
+].join('\n')
+function mdRound(i) {
+  return [
+    `## 第 ${i + 1} 节:混排`,
+    `这一段是普通段落,带 \`inline code\` 与 **粗体**,还有行内公式 $a^2+b^2=c^2$。${REPLY_PLAIN}`,
+    '```ts\n' + LONG_LINE + 'export function f(a: number): number {\n  return a * 2\n}\n```',
+    '> 引用块:这一段是引用,用来看引用块的左边线与底色。\n> 第二行引用。',
+    WIDE_TABLE,
+    '$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3} \\qquad \\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}\n$$',
+    '- 列表一\n- 列表二 `code`\n  - 嵌套\n1. 有序一\n2. 有序二',
+    '```diff\n- const a = 1\n+ const a = 2\n  unchanged line\n```',
+    '```python\n' + 'def g(x):\n    return [i * x for i in range(100)]  # ' + 'long comment '.repeat(20) + '\n```',
+    '---',
+  ].join('\n\n')
+}
+const REPLY_MD = Array.from({ length: 8 }, (_, i) => mdRound(i)).join('\n\n')
+
+const MARKS = { warm: '@@f-warm@@', long: '@@f-long@@', think60k: '@@f-think60k@@', tools: '@@f-tools@@', md: '@@f-md@@' }
 const LANES = ['short', 'big']
 const MARK_BUDGET = 2
 const markFor = (mark, lane) => `${mark.slice(0, -2)}-${lane}@@`
@@ -212,6 +240,7 @@ function startProvider(state) {
       const table = {
         warm: ['热身一轮,不量。', 6, 90],
         long: [REPLY_LONG, 60, 90],
+        md: [REPLY_MD, 160, 60],
       }
       const [text, pieces, gap] = table[kind]
       await stream(text, pieces, gap)
@@ -1311,6 +1340,58 @@ async function main() {
         await scrollToBottom()
         SCEN.push(['short-wheel-fast', await burst('short-wheel-fast', async ({ cx, cy }) => {
           for (let i = 0; i < 70; i += 1) { await wheel(cx, cy, i % 2 ? 900 : -900); await delay(18) }
+        })])
+      }
+    }
+
+    /* ── markdown 块混排那一档(09-23 追加)──────────────────────────────── */
+    const mdIds = ['md-stream', 'md-wheel-slow', 'md-wheel-fast', 'md-pingpong', 'md-wheel-overglass']
+    if (mdIds.some(want)) {
+      const mdId = (await rpc(core.record, 'sessions', 'create', { name: '闪烁探针 · markdown' }))?.session?.id
+      if (!mdId) throw new Error('markdown 会话没建出来')
+      await openSession(mdId, 0)
+      console.log('  · markdown / 流式跟随(块混排)')
+      const streamMd = async () => {
+        await sendViaComposer(`闪烁探针 块混排 ${markFor(MARKS.md, 'short')}`)
+        await waitFor('开张', stopShown, 180_000)
+        const t0 = Date.now()
+        while (Date.now() - t0 < 14000 && (await stopShown())) await delay(200)
+      }
+      if (want('md-stream')) SCEN.push(['md-stream', await burst('md-stream', streamMd)])
+      else await streamMd()
+      await waitFor('收场', async () => !(await stopShown()), 300_000)
+      await delay(1000)
+      if (want('md-wheel-slow')) {
+        console.log('  · markdown / 慢滚')
+        await scrollToBottom()
+        SCEN.push(['md-wheel-slow', await burst('md-wheel-slow', async ({ cx, cy }) => {
+          for (let i = 0; i < 60; i += 1) { await wheel(cx, cy, -100); await delay(40) }
+          for (let i = 0; i < 60; i += 1) { await wheel(cx, cy, 100); await delay(40) }
+        })])
+      }
+      if (want('md-wheel-fast')) {
+        console.log('  · markdown / 快滚')
+        await scrollToBottom()
+        SCEN.push(['md-wheel-fast', await burst('md-wheel-fast', async ({ cx, cy }) => {
+          for (let i = 0; i < 60; i += 1) { await wheel(cx, cy, -700); await delay(16) }
+          for (let i = 0; i < 60; i += 1) { await wheel(cx, cy, 700); await delay(16) }
+        })])
+      }
+      if (want('md-pingpong')) {
+        console.log('  · markdown / 来回滚')
+        await scrollToBottom()
+        SCEN.push(['md-pingpong', await burst('md-pingpong', async ({ cx, cy }) => {
+          for (let i = 0; i < 100; i += 1) { await wheel(cx, cy, i % 2 ? 500 : -500); await delay(24) }
+        })])
+      }
+      if (want('md-wheel-overglass')) {
+        console.log('  · markdown / 指针压在玻璃上滚')
+        await scrollToBottom()
+        const bx = await measureBoxes()
+        SCEN.push(['md-wheel-overglass', await burst('md-wheel-overglass', async () => {
+          const x = bx.panel.x + bx.panel.w / 2
+          const y = bx.panel.y + Math.min(8, bx.panel.h / 2)
+          for (let i = 0; i < 80; i += 1) { await wheel(x, y, i % 2 ? 500 : -500); await delay(24) }
         })])
       }
     }

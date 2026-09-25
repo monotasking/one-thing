@@ -87,7 +87,7 @@ export interface ResponsesDialect extends Dialect<ResponsesWireValue> {
 	/**
 	 * 这一回合要挂的**原生工具**(服务端自己执行的那种)。codex 的
 	 * `image_generation` 由 `requestedOutputModalities` 含 `'image'` 决定;
-	 * xAI 有 `web_search` / `x_search` / `code_interpreter`,但本期一个都不挂。
+	 * xAI 在带工具的回合挂 `web_search`(`grokNativeTools`)。
 	 */
 	nativeTools?(turn: TurnContext): CodexTool[];
 	/**

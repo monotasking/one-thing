@@ -36,6 +36,7 @@ import type { OpenRouterModel } from '@shared/ipc/providers'
 import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-source'
 import { configureModelsPort } from '../../data/models-port'
 import { catalogQuery } from '../../providers/catalog-query'
+import { acpOptionsQuery, configureAcpOptionsPort } from '../../data/acp-options-source'
 import { openRouterModel, providerModelPrefs } from '../../data/__fixtures__/models'
 
 /**
@@ -1685,6 +1686,80 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
 
 /**
  * ══════════════════════════════════════════════════════════════════════════
+ * 选中即默认(09-22 用户令:「在选择模型的时候,即作为默认模型」)
+ * ══════════════════════════════════════════════════════════════════════════
+ * 点一行从前只绑**这一条会话**,下一条新会话照旧按这个空间的默认起 —— 于是
+ * 「换个模型」在用户那儿是一件事,在盘上是两件(还得去设置页再点一次「设为当前」)。
+ *
+ * 这一条守的是另一半真的落了盘,而且**两格一起**:默认那一家(`ai.provider`)与
+ * 那一家的当前模型(`providers[那家].model`)—— 只写型那一格的话,换家之后默认
+ * 仍然落在旧家身上。写口只有一个(`providers/store` 那条整层写回),所以断言的
+ * 就是它递给 `spaces.setProviderSettings` 的那一份。
+ */
+describe('选中即默认', () => {
+  const pill = () => screen.getAllByRole('button').find((b) => b.hasAttribute('aria-expanded'))!
+  /** 抽屉里那一行 —— 与律③同一手:行是那个**不带** aria-expanded 的钮。 */
+  const rowOf = (text: string) =>
+    screen
+      .getAllByRole('button')
+      .find((b) => !b.hasAttribute('aria-expanded') && (b.textContent ?? '').includes(text))!
+
+  afterEach(() => {
+    configureProviderSettingsPort(undefined)
+    act(() => {
+      useProviderSettings.getState().reset()
+    })
+  })
+
+  it('点一行:这个空间的默认那一对当场写成它', async () => {
+    const writes: {
+      provider?: string
+      providers?: Record<string, { model?: string; selectedModels?: string[] }>
+    }[] = []
+    const space = {
+      provider: 'xai',
+      providers: { xai: { model: 'grok-4', selectedModels: ['grok-4', 'grok-4-fast'] } },
+      customProviders: [],
+    }
+    configureProviderSettingsPort(
+      fakeProviderPort({
+        readSettings: async () => ({ success: true, settings: { ai: {} } as never }),
+        readProviderSettings: async () => ({ success: true, ai: space as never }),
+        writeProviderSettings: async (request) => {
+          writes.push(request.ai as never)
+          return { success: true, ai: request.ai }
+        },
+      }),
+    )
+    providersQuery.patch([{ id: 'xai', name: 'xAI' }])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'xai',
+        configs: {
+          xai: providerModelPrefs({ selectedModels: ['grok-4', 'grok-4-fast'], model: 'grok-4' }),
+        },
+      },
+      custom: [],
+    })
+
+    renderComposer()
+    fireEvent.click(pill())
+    await act(async () => {
+      fireEvent.mouseDown(rowOf('grok-4-fast'))
+      // 设置自举(这块面从没被打开过)+ 整层写回,都是往返 —— 让它们跑完。
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0].provider).toBe('xai')
+    expect(writes[0].providers?.xai.model).toBe('grok-4-fast')
+    // 勾选那一格一个都没丢(换默认不是重排选择器)。
+    expect(writes[0].providers?.xai.selectedModels).toEqual(['grok-4', 'grok-4-fast'])
+  })
+})
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
  * 庚:模型药丸带档位 + 抽屉右栏那张卡与它的思考阶梯(09-05,设计 §5.8)
  * ══════════════════════════════════════════════════════════════════════════
  * 四件事各自钉死:
@@ -1924,6 +1999,72 @@ describe('庚:模型选择器带思考档位', () => {
 
     expect(container.querySelector('[class*="pickScroll"]')).toBe(scroll)
     expect(scroll.scrollTop).toBe(120)
+  })
+
+  /*
+   * **ACP 那一族的卡画 agent 自己列的选项**(2026-09-24,用户:「选择模型是切换 cli,
+   * 没办法切换模型」)。「ACP › claude-code」那一行选的是一台 agent;它用哪个模型,
+   * 是它在自己会话里列出来的(`acp.sessionOptions`),卡上一格一只下拉,改了原样交回。
+   * 草稿态(没有会话 id)端口收到的请求里**没有** sessionId —— 后端据此不起 agent 进程。
+   */
+  it('ACP agent:右栏换成 agent 自述的选项,改一格原样交回', async () => {
+    providersQuery.patch([{ id: 'acp', name: 'ACP' }])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'acp',
+        configs: { acp: providerModelPrefs({ selectedModels: ['claude-code'], model: 'claude-code' }) },
+      },
+      custom: [],
+    })
+    catalogQuery.reset()
+    catalogQuery.get('acp').patch([])
+    acpOptionsQuery.reset()
+    const requests: unknown[] = []
+    const writes: unknown[] = []
+    let model = 'opus'
+    const options = () => [
+      {
+        id: 'model',
+        name: 'Model',
+        category: 'model',
+        currentValue: model,
+        choices: [
+          { value: 'opus', name: 'Opus' },
+          { value: 'sonnet', name: 'Sonnet' },
+        ],
+      },
+    ]
+    configureAcpOptionsPort({
+      sessionOptions: async (request) => {
+        requests.push(request)
+        return { success: true, options: options(), live: false }
+      },
+      setSessionOption: async (request) => {
+        writes.push(request)
+        model = request.value
+        return { success: true, options: options(), live: false }
+      },
+    })
+
+    renderComposer()
+    fireEvent.click(pill())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const card = await screen.findByTestId('agent-options-card')
+    expect(screen.queryByTestId('model-detail-card')).toBeNull()
+    expect(requests).toEqual([{ agentId: 'claude-code' }])
+    expect(within(card).getByText('发出第一条消息后生效')).toBeTruthy()
+
+    fireEvent.click(within(card).getByRole('combobox', { name: 'Model' }))
+    fireEvent.click(within(screen.getByRole('listbox')).getByRole('option', { name: /Sonnet/ }))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(writes).toEqual([{ agentId: 'claude-code', optionId: 'model', value: 'sonnet' }])
+    expect(within(card).getByRole('combobox', { name: 'Model' }).textContent).toContain('Sonnet')
+    configureAcpOptionsPort(undefined)
   })
 
   /* ── ④ 药丸六形 ──────────────────────────────────────────────────────── */

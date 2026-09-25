@@ -15,7 +15,9 @@ import { defineRouter } from "./router.js";
 export type ShowOpenDialogProperty =
 	| "openFile"
 	| "openDirectory"
-	| "multiSelections";
+	| "multiSelections"
+	/** macOS:对话框里带「新建文件夹」。 */
+	| "createDirectory";
 
 export interface ShowOpenDialogRequest {
 	properties?: ShowOpenDialogProperty[];
@@ -27,6 +29,11 @@ export interface ShowOpenDialogRequest {
 export interface ShowOpenDialogResponse {
 	canceled: boolean;
 	filePaths: string[];
+	/**
+	 * 这台宿主**没有**原生对话框(独立 server / CLI 守护进程 / 未注入 `dialog` 端口)。
+	 * 与「用户点了取消」分开:调用方据它退到自己的路径输入框,而不是当作取消。
+	 */
+	unavailable?: boolean;
 }
 
 export type DialogRoutes = {

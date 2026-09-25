@@ -38,7 +38,7 @@ it('aborts the real eval HTTP request and holds the Backend lease until its file
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
       storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-      gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null,
+      gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
     } })
     backend = await assemble()
     setSpaceProviderCredential({

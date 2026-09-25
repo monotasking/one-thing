@@ -45,14 +45,11 @@
  *     布局尺寸改成 transform 之后,瓦各自上了合成层,圆角与描边的抗锯齿必然重算 ——
  *     真机实测 7.3% 的像素差 1/255、144 个像素差到 24,全在瓦的圆角曲线上。
  *     几何那一半由 ④⑥ 逐字钉着,像素那一半只报读数不判红。)
- *  ⑩ **让位量跟着大小档走**(09-13 追补):四条边 × sm / md / lg 停稳后量**条的内侧边
- *     到 `.main` 内容边**的间距,恒等于 12(= --sp-3)。它守的是一条只有真机看得见的
- *     病:`--dock-thick` / `--dock-reserve-*` 从前声明在 tokens.css 的 `:root`,而
- *     `--dock-tile` 是外壳在 `.shell` 上覆写的 —— **自定义属性里的 `var()` 在声明那条
- *     calc 的元素上代入**,于是式子在 `:root` 那一层就把瓦代成了 44px,三档换的那个数
- *     永远到不了它。改前实测:四条边 × 三档,`.main` 那一边的 padding 恒为 86,
- *     间距 sm 20 / md 12 / lg 4。静态那一半在 `dock-reserve-css.test.ts`
- *     (式子声明在 `.shell` 上),这一条量的是后果。
+ *  ⑩ **常显不让位 + 条贴边 + 感应面伸到窗边**(09-25 改写;原 ⑩「让位量跟着大小档走」
+ *     随让位一起退役 —— 用户:「永久展示不再排开其他元素」「dock 应该更靠边一点,
+ *     体验上无缝,视觉上更近」)。四条边 × sm / md / lg 停稳后量三件:`.main` 朝那条边
+ *     的 padding 恒为 0;条外侧到它贴的那条边恒为 4(= --dock-edge-gap;上边量到顶栏
+ *     下缘,因为条从顶带之下起);感应面 `[data-dock="hit"]` 的外侧**正好落在**那条边上。
  *  ⑪ **放大后探出条外的那一截也算在坞上**(09-13 追补):四条边 × md / lg 两档幅度,
  *     指针先落在瓦中心线上开镜头,再抬到「该瓦放大后内侧边之内 3px」那条线,沿**这块瓦
  *     自己**的中段匀速扫过,`data-lens` 必须全程是 `on`;再加一条 —— 从横边切到竖边
@@ -153,13 +150,11 @@ const MAX_REDUCED_FRAMES = 1
 const ENTER_SETTLE_MS = 320
 /** ⑨ 关掉放大之后扫多少帧。与 ①a 同一个量级,足够长到任何插值都藏不住。 */
 const OFF_SWEEP_FRAMES = 60
-/**
- * ⑩ 条外留白的目标值(px)与容差。12 = --sp-3,与「让位 = 条厚 + 两侧各 --sp-3」
- * 那条式子同源;0.5 是亚像素取整的余量,不是放水(改前的读数是 20 / 12 / 4,
- * 差着一个数量级,0.5 与 2 在这里判出来的是同一件事)。
- */
-const RESERVE_GAP_PX = 12
-const RESERVE_GAP_TOL = 0.5
+/** ⑩ 条外侧到它贴的那条边的目标值(px)= --dock-edge-gap;0.5 是亚像素余量。 */
+const EDGE_GAP_PX = 4
+const EDGE_GAP_TOL = 0.5
+/** ⑩ 顶栏高(--topbar-h):停上边时条从顶带之下起,「那条边」是顶栏下缘。 */
+const TOPBAR_H = 44
 /** ⑩ 要走一遍的四条边与三档大小。 */
 const ALL_EDGES = ['bottom', 'top', 'left', 'right']
 const ALL_SIZES = ['sm', 'md', 'lg']
@@ -347,6 +342,8 @@ const LAYOUT_SRC = `(() => {
   const wraps = [...strip.querySelectorAll(':scope > [data-dock-tile]')]
   return {
     strip: [sr.left, sr.top, sr.width, sr.height],
+    hit: (() => { const h = strip.querySelector(':scope > [data-dock="hit"]'); if (!h) return null; const r = h.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom] })(),
+    viewport: [window.innerWidth, window.innerHeight],
     content: [mr.left + n('padding-left'), mr.top + n('padding-top'), mr.right - n('padding-right'), mr.bottom - n('padding-bottom')],
     pad: [n('padding-top'), n('padding-right'), n('padding-bottom'), n('padding-left')],
     lens: strip.getAttribute('data-lens'),
@@ -447,19 +444,29 @@ const stripInnerOf = {
   left: (r) => r[0] + r[2],
   right: (r) => r[0],
 }
-/** `.main` 内容边在那一侧的坐标。content = [l, t, r, b]。 */
-const contentEdgeOf = {
-  bottom: (c) => c[3],
-  top: (c) => c[1],
-  left: (c) => c[0],
-  right: (c) => c[2],
+/** 条贴的那条边的坐标。 */
+const dockEdgeLineOf = {
+  bottom: (l) => l.viewport[1],
+  top: () => TOPBAR_H,
+  left: () => 0,
+  right: (l) => l.viewport[0],
 }
-/** 条内侧边与内容边之间的净间距(恒为正,朝哪边都一样读)。 */
-const reserveGapOf = (edge, layout) => {
-  const inner = stripInnerOf[edge](layout.strip)
-  const content = contentEdgeOf[edge](layout.content)
-  return edge === 'bottom' || edge === 'right' ? inner - content : content - inner
+/** 条外侧边坐标(strip = [x, y, w, h])。 */
+const stripOuterOf = {
+  bottom: (r) => r[1] + r[3],
+  top: (r) => r[1],
+  left: (r) => r[0],
+  right: (r) => r[0] + r[2],
 }
+/** 感应面外侧边坐标(hit = [l, t, r, b])。 */
+const hitOuterOf = {
+  bottom: (h) => h[3],
+  top: (h) => h[1],
+  left: (h) => h[0],
+  right: (h) => h[2],
+}
+/** `.main` 朝那条边的 padding(pad = [上, 右, 下, 左])。 */
+const padIndexOf = { top: 0, right: 1, bottom: 2, left: 3 }
 /** 一块瓦(button 矩形)的内侧边坐标。 */
 const tileInnerOf = {
   bottom: (r) => r[1],
@@ -1047,8 +1054,9 @@ async function main() {
       await move(cdp, (c[0] + c[2]) / 2, (c[1] + c[3]) / 2)
     }
 
-    readings.reserveGaps = {}
-    readings.reservePad = {}
+    readings.edgeGaps = {}
+    readings.hitToEdge = {}
+    readings.mainPad = {}
     const gapOffenders = []
     for (const edge of ALL_EDGES) {
       await setDockPref(page, 'edge', edge)
@@ -1058,21 +1066,30 @@ async function main() {
         let layout = await settleLayout(page)
         await parkInContent(layout)
         layout = await settleLayout(page, 2500, 260)
-        const gap = Number(reserveGapOf(edge, layout).toFixed(2))
         const key = `${edge}/${size}`
-        readings.reserveGaps[key] = gap
-        // padding 那一格按边取:横边看上下、竖边看左右(pad = [上, 右, 下, 左])。
-        readings.reservePad[key] = Number(
-          layout.pad[{ top: 0, right: 1, bottom: 2, left: 3 }[edge]].toFixed(2),
-        )
-        if (Math.abs(gap - RESERVE_GAP_PX) > RESERVE_GAP_TOL) gapOffenders.push(`${key}=${gap}`)
+        const line = dockEdgeLineOf[edge](layout)
+        const gap = Number(Math.abs(line - stripOuterOf[edge](layout.strip)).toFixed(2))
+        const hitGap = layout.hit ? Number(Math.abs(line - hitOuterOf[edge](layout.hit)).toFixed(2)) : null
+        const pad = Number(layout.pad[padIndexOf[edge]].toFixed(2))
+        readings.edgeGaps[key] = gap
+        readings.hitToEdge[key] = hitGap
+        readings.mainPad[key] = pad
+        if (
+          Math.abs(gap - EDGE_GAP_PX) > EDGE_GAP_TOL
+          || hitGap === null
+          || hitGap > EDGE_GAP_TOL
+          || pad !== 0
+        ) {
+          gapOffenders.push(`${key}=gap ${gap}/hit ${hitGap}/pad ${pad}`)
+        }
       }
     }
-    console.log(`  条外留白:${JSON.stringify(readings.reserveGaps)}`)
-    console.log(`  .main 那一边的 padding:${JSON.stringify(readings.reservePad)}`)
+    console.log(`  条外侧到边:${JSON.stringify(readings.edgeGaps)}`)
+    console.log(`  感应面外侧到边:${JSON.stringify(readings.hitToEdge)}`)
+    console.log(`  .main 那一边的 padding:${JSON.stringify(readings.mainPad)}`)
     check(
       gapOffenders.length === 0,
-      `⑩ 四条边 × 三档,条内侧到内容边恒为 ${RESERVE_GAP_PX}±${RESERVE_GAP_TOL}px(越界 ${gapOffenders.length} 格${gapOffenders.length ? ':' + gapOffenders.join(' ') : ''})`,
+      `⑩ 四条边 × 三档:不让位(padding 0)、条外侧到边 ${EDGE_GAP_PX}±${EDGE_GAP_TOL}px、感应面伸到边(越界 ${gapOffenders.length} 格${gapOffenders.length ? ':' + gapOffenders.join(' ') : ''})`,
     )
 
     console.log('\n[12/12] ⑪ 放大后探出条外的那一截也算在坞上 + 换轴摘掉旧轴位移')

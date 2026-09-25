@@ -113,6 +113,7 @@ import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
 import { McpSubsystem } from './wiring/mcp/subsystem.js'
 import { AcpSubsystem } from './wiring/acp/subsystem.js'
+import { resolveExternalAgentSpawnEnv } from './wiring/external-agents/spawn-env.js'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
 import type { SessionHistoryBuilder } from './session/reads.js'
@@ -1065,6 +1066,13 @@ export class OnethingBackend implements BackendHandle {
       settings: () => getSettings().acp || { enabled: true, agents: [] },
     })
     this.acpSubsystem = acp
+    /*
+     * ACP 适配器子进程走应用代理(2026-09-24,用户:「而且没有走代理」):与 Claude Code
+     * SDK 那条外部 agent 通路同一个函数。登记在 `acp` 的收尾之前 —— 逆序跑时先关
+     * 子系统、后摘这一格。
+     */
+    ACPManager.setSpawnEnvProvider(resolveExternalAgentSpawnEnv)
+    this.own(() => ACPManager.setSpawnEnvProvider(undefined), 'acpSpawnEnv')
     /*
      * ── 关机链的**头**七件,一处登记、显式反序 ──
      * (C1 之前是六件 —— `'mcpAcp'` 那一格拆成了 `'mcp'` / `'acp'` 两格。)

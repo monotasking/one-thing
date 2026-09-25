@@ -87,7 +87,8 @@ export type CodexTool =
 			strict: false;
 			parameters: AgentJsonObject;
 	  }
-	| { type: "image_generation"; output_format: "png" };
+	| { type: "image_generation"; output_format: "png" }
+	| { type: "web_search" };
 
 /** codec 交出来的两种东西:一个 input 项,或者一条 message 里的一块内容。 */
 export type ResponsesWireValue = CodexInputItem | CodexInputContentPart;
@@ -104,16 +105,18 @@ export interface CodexPromptPayload {
 
 /**
  * 函数工具表 + 方言自己的**原生工具**(codex 的 `image_generation`;xAI 的
- * Responses 收 `web_search` / `x_search` / `code_interpreter`,但我们不主动
- * 挂它们 —— 服务端工具会自己发起检索并计费,那是产品决定,不是线协议默认)。
+ * `web_search`,见 `dialects/grok.ts` 的 `grokNativeTools`)。
  *
- * 原生工具**排在函数工具之后**,并且不参与函数名去重(它们没有 `name`)。
+ * 原生工具**排在函数工具之后**。它们没有 `name`,但服务端按 `type` 占名:
+ * xAI 对「原生 `web_search` + 同名函数工具」直接 400
+ * `Duplicate tool names: web_search`(2026-09-18 实测)。所以原生工具挂上时,
+ * **同名的函数工具让位**——原生那项接管这个名字,由服务端执行。
  */
 export function toCodexTools(
 	tools: AgentTool[] | undefined,
 	nativeTools: readonly CodexTool[] = [],
 ): CodexTool[] {
-	const seen = new Set<string>();
+	const seen = new Set<string>(nativeTools.map((tool) => tool.type));
 	const codexTools: CodexTool[] = [];
 	for (const tool of tools ?? []) {
 		if (!tool.name || seen.has(tool.name)) continue;

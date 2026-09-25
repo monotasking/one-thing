@@ -15,6 +15,8 @@ import {
 } from '../../data/models-source'
 import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
+import { useBindWorkdir } from '../../content/files/bind-workdir'
+import { baseNameOf } from '../../data/files-source'
 import { composerSink, useComposerBusy } from '../sink'
 import { readComposerDraft, saveComposerDraft } from '../drafts'
 import type { ComposerDraft } from '../drafts'
@@ -30,6 +32,7 @@ import { FocusScope } from '../../focus/FocusScope'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { useFloatDismiss } from '../../ui/float'
 import { IconButton } from '../../ui/IconButton'
+import { Tooltip } from '../../ui/Tooltip'
 import { AskForm } from './AskForm'
 import { bindComposerInteractions } from '../../data/composer-interactions'
 import { interactionPort } from '../../data/interaction-port'
@@ -45,6 +48,7 @@ import { isStripDrawer } from '../types'
 import s from './Composer.module.css'
 
 const PaperclipIcon = resolveIcon('Paperclip')
+const FolderIcon = resolveIcon('Folder')
 /* ui-consume-allow: kbd-select-handwritten — 这是**图标名**不是键名。批 9c 把
  * 候选列表整只搬进 `usePickDrawer`(它 import 了 `ui/a11y/list-selection`),
  * 这个文件从此一句 ↑↓ 走法都没有;规则按 `'ArrowUp'` 字面扫,而发送键那颗
@@ -185,6 +189,7 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
    * 问的是**这一块面板的收件人**那一条(W5-c-2):分屏里另一格在跑,这一颗
    * 发送键不该跟着换成停止。 */
   const busy = useComposerBusy(sessionId)
+  const workdir = useBindWorkdir(sessionId)
 
   /* ── D2 波一:药丸与读数的三条接线。它们在这一层而不是各自的组件里,理由同
    * 四条 hook 的接线:这个文件做**编排**(谁在场、谁要什么事实),组件只画。
@@ -603,6 +608,41 @@ function ComposerBody({ sessionId, owner }: ComposerProps) {
                       label={t('composer.attach')}
                       onClick={() => fileRef.current?.click()}
                     />
+
+                    {/*
+                      * 工作目录:绑了就是「文件夹图标 + 目录名」一枚丸,没绑就是一颗图标钮
+                      * (提示「选择工作目录」)。丸**不弯腰**:这一行唯一可缩的件是模型药丸
+                      * (挤压律一),所以名字由 `--composer-dir-max` 封顶、在丸里截断,
+                      * 完整路径在 Tooltip 与读屏名里。点它走全壳唯一那一口「挑一个目录」
+                      * (系统对话框优先),挑到了就给这条会话换目录。没有会话不画。
+                      */}
+                    {sessionId && workdir.cwd && (
+                      <Tooltip content={t('composer.workdir', { path: workdir.cwd })}>
+                        {/* 结构件(裸钮三类判第③类):带字的图标钮,皮肤在 `.dirChip`。 */}
+                        <ButtonBase
+                          className={s.dirChip}
+                          aria-label={t('composer.workdir', { path: workdir.cwd })}
+                          aria-busy={workdir.pending}
+                          disabled={workdir.pending}
+                          data-testid="composer-workdir"
+                          onClick={workdir.pick}
+                        >
+                          <FolderIcon className={s.dirChipIcon} strokeWidth={1.75} aria-hidden="true" />
+                          <span className={s.dirChipLabel}>{baseNameOf(workdir.cwd) || workdir.cwd}</span>
+                        </ButtonBase>
+                      </Tooltip>
+                    )}
+                    {sessionId && !workdir.cwd && (
+                      <IconButton
+                        icon={FolderIcon}
+                        className={s.toolBtn}
+                        label={t('composer.workdirUnset')}
+                        aria-busy={workdir.pending}
+                        disabled={workdir.pending}
+                        testId="composer-workdir"
+                        onClick={workdir.pick}
+                      />
+                    )}
 
                     {/*
                       * 三层事实都答不上来时药丸写的是「选择模型」——**不拿目录里

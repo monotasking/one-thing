@@ -58,6 +58,7 @@ import { sessionCommandRouter } from '@shared/ipc/session-command.js'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { settingsRouter } from '@shared/ipc/settings.js'
 import { skillsRouter } from '@shared/ipc/skills.js'
+import { dialogRouter } from '@shared/ipc/dialog.js'
 import { spacesRouter } from '@shared/ipc/spaces.js'
 import { terminalRouter } from '@shared/ipc/terminal.js'
 import { themesRouter } from '@shared/ipc/themes.js'
@@ -103,6 +104,7 @@ import { scratchpadRpcHandlers } from './domains/scratchpad.js'
 import { sessionCommandRpcHandlers } from './domains/session-command.js'
 import { sessionsRpcHandlers } from './domains/sessions.js'
 import { skillsRpcHandlers } from './domains/skills.js'
+import { dialogRpcHandlers } from './domains/dialog.js'
 import { settingsRpcHandlers } from './domains/settings.js'
 import { spacesRpcHandlers } from './domains/spaces.js'
 import { terminalRpcHandlers } from './domains/terminal.js'
@@ -181,6 +183,9 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
   // 一个 store 一份技能表,web 与桌面从此读同一份。
   { id: 'rpc:skills', mount: ctx => { ctx.registerRpcDomain(skillsRouter, skillsRpcHandlers) } },
+  // 原生打开对话框(选目录 / 选文件)。拉起对话框的那一下是宿主的 `dialog` 端口,
+  // 未注入即答 `unavailable: true`,客户端退到路径输入框。
+  { id: 'rpc:dialog', mount: ctx => { ctx.registerRpcDomain(dialogRouter, dialogRpcHandlers) } },
   // P4c 第三批唯一的域(media)。旧线上除了六条契约通道,还挂着**五条写死的字面量
   // 通道**(`media:save-image` / `media:load-all` / `media:delete` / `media:clear-all` /
   // `media:read-image-base64`)—— 不在 `IPC_CHANNELS` 里,transport 门连数都数不到。

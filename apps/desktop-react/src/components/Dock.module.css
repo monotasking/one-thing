@@ -59,6 +59,67 @@
   pointer-events: none;
 }
 
+/* ── 感应面:「在坞上」的那块地(09-25)─────────────────────────────────────
+ * 用户:「hover 的时候 dock 行为应该统一:不管是在哪个方向,从应用边到图标距离边
+ * 最远的地方时,icon 的大小应该不变」「距离边从体验上来看应该是无缝的」。
+ *
+ * 修前「在坞上」= 条的盒子 ∪ 脚下压着一块瓦。两处漏:①条与窗边之间那截缝不在
+ * 条上,指针贴着窗边时镜头是熄的,往里挪一点才亮 —— 放大随交叉轴一跳;②放大的瓦
+ * 朝内探出条外,探出那一截里**瓦与瓦之间的缝**脚下不是瓦,镜头又熄 —— 同一条
+ * 横线上一会儿大一会儿小。四条边各漏各的,于是「方向不同,行为不同」。
+ *
+ * 这块透明面把那块地画成一个盒子,于是交叉轴上只有一个区间:
+ *   外侧 伸到窗边     = 条的边框 + --dock-edge-gap(条离窗边那一截)
+ *   内侧 静息齐条身;镜头开着时伸到放大后瓦的最远处
+ *        = 瓦身量 × (峰值 − 1) − 条的内距(瓦从条的内容边起长,见 --tile-origin)
+ *   主轴 静息齐条身;镜头开着时跟底板一起长(--dock-grow-before / -after)
+ * 进门用静息那一格、留驻用开着那一格 —— 从条外往里探,要碰到条才亮;亮了之后
+ * 在「窗边 → 瓦顶」整段里挪,瓦的大小只随主轴变。useDockLens 的交叉轴判据读的
+ * 就是这块面的矩形,不另算第二份几何。
+ *
+ * 它排在瓦前面(DOM 次序),瓦盖在它上面:点击、悬停名字条、拖拽照旧落在瓦上。 */
+.strip {
+  --hit-out: calc(1px + var(--dock-edge-gap));
+  --hit-in: 1px;
+  --hit-before: 1px;
+  --hit-after: 1px;
+}
+
+.strip[data-lens='on'] {
+  --hit-in: calc(1px + max(0px, var(--tile-size) * (var(--dock-lens-max) - 1) - var(--dock-pad-y)));
+  --hit-before: calc(1px + var(--dock-grow-before, 0) * 1px);
+  --hit-after: calc(1px + var(--dock-grow-after, 0) * 1px);
+}
+
+/* 停下边(缺省):外侧在下,内侧在上。 */
+.hit {
+  position: absolute;
+  left: calc(-1 * var(--hit-before));
+  right: calc(-1 * var(--hit-after));
+  top: calc(-1 * var(--hit-in));
+  bottom: calc(-1 * var(--hit-out));
+}
+
+/* 停上边:外侧在上。 */
+.anchorStart > .hit {
+  top: calc(-1 * var(--hit-out));
+  bottom: calc(-1 * var(--hit-in));
+}
+
+/* 停右边:主轴转成上下,外侧在右。 */
+.vertical > .hit {
+  left: calc(-1 * var(--hit-in));
+  right: calc(-1 * var(--hit-out));
+  top: calc(-1 * var(--hit-before));
+  bottom: calc(-1 * var(--hit-after));
+}
+
+/* 停左边:外侧在左。 */
+.vertical.anchorStart > .hit {
+  left: calc(-1 * var(--hit-out));
+  right: calc(-1 * var(--hit-in));
+}
+
 /* 竖排(停左/右边):对称于横排钉死高度的那条规则 —— 条的**宽度**钉死
  * (瓦 + 左右内距 + 左右边框),放大的瓦向内侧长出条外,条只变长不变宽。
  * 内距跟着转个身:钉死的那一维用 --dock-pad-y,长的那一维用 --dock-pad-x。 */

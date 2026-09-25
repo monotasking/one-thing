@@ -936,65 +936,6 @@ async function checkStickyReservation(page) {
 }
 
 /**
- * 律三的**第二处预留检查**:Dock 常显钉边时,主输入按不按得到(08-31 P0)。
- *
- * 前一条查的是「滚动坐标系里留没留」,这一条查的是「屏幕坐标系里留没留」——
- * 同一条律,两种覆盖形态。判据不是求盒子相交而是 **elementFromPoint**:
- * 「这一点按下去事件落在谁身上」才是用户真正遭遇的那件事,而两个盒子相交
- * 完全可能是无害的(Dock 是圆角条,四角那一块谁都碰不到)。
- *
- * 病历:修前底边常显档下 composer 四件控件盒在 843–871,而 Dock 占 826–888——
- * 100 个采样点只有 5 个按得到(附件 / 模型 / 输入区三件是 0/25)。修法是外壳按
- * `--dock-reserve-*` 让出那一条边(components/AppShell.module.css 的 .reserve*)。
- * 反证:把那几条 padding 注释掉 → 这一步当场红回 5/100。
- *
- * 自动隐藏档不查:那时 Dock 平时不在屏上,「盖住」这件事根本不发生。
- */
-async function checkDockReservation(page) {
-  return page.evaluate(() => {
-    const strip = document.querySelector('[data-dock="strip"]')
-    if (!strip) return { error: 'Dock 条不在 DOM 里' }
-    const holder = strip.parentElement
-    if (holder && /hidden/i.test(holder.className)) return { skipped: '自动隐藏档,不查' }
-
-    const buttons = [...document.querySelectorAll('button')]
-    const byLabel = (re) => buttons.find((b) => re.test(b.getAttribute('aria-label') ?? ''))
-    const targets = [
-      ['输入区', document.querySelector('[contenteditable]') ?? document.querySelector('textarea')],
-      ['附件钮', byLabel(/添加附件|Add attachment/)],
-      ['模型钮', byLabel(/选择模型|Pick a model/)],
-      ['发送键', byLabel(/^发送$|^Send$|停止生成|Stop generating/)],
-    ]
-
-    const problems = []
-    const readings = []
-    for (const [label, el] of targets) {
-      if (!el) {
-        problems.push(`${label}:不在场(选择器对不上就等于这条断言在陪跑)`)
-        continue
-      }
-      const r = el.getBoundingClientRect()
-      if (r.width === 0 || r.height === 0) {
-        problems.push(`${label}:盒子是 0×0`)
-        continue
-      }
-      // 控件盒里均匀取 5×5 个点,逐点问「这一下落在谁身上」。
-      let blocked = 0
-      const total = 25
-      for (let i = 1; i <= 5; i += 1) {
-        for (let j = 1; j <= 5; j += 1) {
-          const hit = document.elementFromPoint(r.left + (r.width * i) / 6, r.top + (r.height * j) / 6)
-          if (hit?.closest('[data-dock="strip"]')) blocked += 1
-        }
-      }
-      readings.push(`${label} ${total - blocked}/${total}`)
-      if (blocked > 0) problems.push(`${label}:${blocked}/${total} 个采样点被 Dock 挡住`)
-    }
-    return { problems, readings }
-  })
-}
-
-/**
  * 一档厚度 = **滚一遍**,每屏扫一次,取并集。
  *
  * 只扫首屏是不够的:报障那一组(uuid 组头)在 240px 档要滚两屏才露面,
@@ -1165,87 +1106,6 @@ async function sweepThicknesses(page, scenario, failures) {
   }
 }
 
-
-/**
- * 竖排 Dock 的预留检查(09-01 用户报障带截图:竖排 Dock 盖住右架子里查看器的正文)。
- *
- * 与 [4/11] 是同一条律三、同一把尺,只是换了一条边:那条量的是底边 Dock 压 composer,
- * 这条量的是**左右边 Dock 压侧架子**。判据也是同一句——把该侧架子里「自己画内容」
- * 的盒子逐个取右缘,问一次 elementFromPoint:命中 Dock 就是被盖。
- *
- * 病历:内衬第一版打在 [data-shelf-body] 上,padding 量到了(88)却没用——
- * 面板那一层是 `position:absolute; inset:0`,而**绝对定位的 inset 量的是包含块的
- * padding box**,整个把 padding 跨了过去:真机 17/19 个盒子越界、13 个采样落在 Dock 下。
- * 内衬移到 [data-panel-layer] 之后归零。
- */
-async function checkSideShelfReach(page, edge) {
-  await page.evaluate((e) => {
-    const raw = localStorage.getItem('onething.stage')
-    if (!raw) return
-    const p = JSON.parse(raw)
-    p.state = { ...(p.state ?? {}), dockDisplay: 'always', dockEdge: e }
-    localStorage.setItem('onething.stage', JSON.stringify(p))
-  }, edge)
-  await page.reload()
-  await waitFor('重载后 Dock 就位', () =>
-    page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
-  )
-  /* 前面几步已经把总览钉在右架子上了,重载会照原样恢复 —— 这时候再点一下 Dock 图标
-   * 是「收起来」,不是「打开」(clickDockIcon 的第二下语义)。所以先问再点。 */
-  const already = await page.evaluate(
-    () => document.querySelector('[data-shelf-body="right"]')?.dataset.panel === 'sessions',
-  )
-  if (!already) await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('架子上出现会话总览', () =>
-    page.evaluate(() => document.querySelector('[data-shelf-body="right"]')?.dataset.panel === 'sessions'),
-  )
-  await waitFor('总览画出会话卡', () =>
-    page.evaluate(() => document.querySelectorAll('[data-session-id]').length > 0),
-  )
-  await delay(400)
-  return await page.evaluate(() => {
-    const body = document.querySelector('[data-shelf-body="right"]')
-    const strip = document.querySelector('[data-dock="strip"]')
-    if (!body || !strip) return { error: '侧架子或 Dock 条不在 DOM 里' }
-    const sb = strip.getBoundingClientRect()
-    const inDock = (el) => {
-      while (el) {
-        if (el.dataset && el.dataset.dock === 'strip') return true
-        el = el.parentElement
-      }
-      return false
-    }
-    const draws = (el) => {
-      if (['svg', 'img', 'canvas', 'input', 'textarea'].includes(el.tagName.toLowerCase())) return true
-      for (const n of el.childNodes) if (n.nodeType === 3 && n.textContent.trim()) return true
-      return false
-    }
-    const boxes = [...body.querySelectorAll('*')]
-      .filter(draws)
-      .map((el) => ({ el, b: el.getBoundingClientRect() }))
-      .filter((x) => x.b.width > 0 && x.b.height > 0)
-    let covered = 0
-    let sampled = 0
-    const examples = []
-    for (const { el, b } of boxes) {
-      const x = b.right - 2
-      const y = b.top + b.height / 2
-      if (x < 0 || x > innerWidth || y < 0 || y > innerHeight) continue
-      sampled += 1
-      if (inDock(document.elementFromPoint(x, y))) {
-        covered += 1
-        if (examples.length < 4) examples.push(`${el.tagName.toLowerCase()} @ ${Math.round(x)},${Math.round(y)}`)
-      }
-    }
-    return {
-      covered,
-      sampled,
-      examples,
-      rightMost: boxes.length ? Math.round(Math.max(...boxes.map((x) => x.b.right))) : null,
-      stripLeft: Math.round(sb.left),
-    }
-  })
-}
 
 /**
  * ── 律二在 composer 本体行上的那一步(09-03 用户报障,拍板 B:本体行改两行)──
@@ -2679,37 +2539,12 @@ async function main() {
     }
 
     /*
-     * 同一条律的第二处预留:Dock 常显钉边时,主输入按不按得到。
-     * 与上一步分开报,是因为它们是**两个坐标系**里的同一件事(滚动 / 屏幕),
-     * 红起来该修的地方也不同 —— 一条门该指得出该谁修。
+     * [4/11] [5/11] 两步(Dock 常显钉边时主输入 / 侧架子内容可达)**09-25 退役**:
+     * 用户拍「永久展示不再排开其他元素,只是自动展示模式下的展示即可」—— 常显档的
+     * Dock 与自动隐藏档唤出来那一刻同形,是压在内容之上的浮层,不再有布局预留。
+     * 律三对它不再适用,两个检查函数(checkDockReservation / checkSideShelfReach)随之删除。
      */
-    console.log('\n[4/11] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
-    const dockReserve = await checkDockReservation(page)
-    if (dockReserve.error) throw new Error(dockReserve.error)
-    if (dockReserve.skipped) {
-      console.log(`  · ${dockReserve.skipped}`)
-    } else if (dockReserve.problems.length) {
-      for (const problem of dockReserve.problems) console.log(`  ✗ ${problem}`)
-      failures.push(`Dock 覆盖没有布局预留:${dockReserve.problems.length} 条`)
-    } else {
-      console.log(`  ✓ composer 四件全可达(${dockReserve.readings.join(' · ')})`)
-    }
-
-    console.log('\n[5/11] 律三的预留检查(竖排 Dock:侧架子内容可达性)')
-    for (const edge of ['right', 'left']) {
-      const side = await checkSideShelfReach(page, edge)
-      if (side.error) throw new Error(side.error)
-      if (side.covered) {
-        console.log(`  ✗ Dock 钉${edge}:侧架子里 ${side.covered}/${side.sampled} 个内容采样落在 Dock 底下(最右内容盒 ${side.rightMost},条左缘 ${side.stripLeft})`)
-        for (const e of side.examples) console.log(`      ${e}`)
-        failures.push(`Dock 钉${edge}:侧架子内容被盖 ${side.covered} 处`)
-      } else {
-        console.log(`  ✓ Dock 钉${edge}:侧架子 ${side.sampled} 个内容采样零被盖(最右内容盒 ${side.rightMost} vs 条左缘 ${side.stripLeft})`)
-      }
-    }
-    /* 这一步换过 Dock 的边,**必须换回来**:后面两场景量的是架子厚度下的排版,
-     * 竖排 Dock 会把主区宽度整个改掉,不还原就是拿另一套布局去判它们(试过,红一档)。 */
-    await checkSideShelfReach(page, 'bottom')
+    console.log('\n[4/11] [5/11] Dock 常显预留检查:09-25 退役(常显不让位,见上方注释)')
 
     console.log('\n[6/11] 律二:composer 工具行不折行、不悬中(09-03 报障的产地)')
     const narrow = await narrowComposerTo(app, page, TARGET_PANEL_W)

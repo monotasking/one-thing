@@ -68,6 +68,7 @@
 		"./mcp/*": "./src/mcp/*.ts",
 		"./triggers": "./src/triggers/index.ts",
 		"./triggers/*": "./src/triggers/*.ts",
+		"./dialog/*": "./src/dialog/*.ts",
 		"./shell": "./src/shell/index.ts",
 		"./shell/*": "./src/shell/*.ts",
 		"./settings": "./src/settings/index.ts",

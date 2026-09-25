@@ -163,6 +163,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
         mcp: null,
         localTrust: null,
         speechOutput: null,
+        dialog: null,
       },
       // 音乐只在 `full` 档 mount(`wiring/resource/index.ts` 的 `tier` 那一格)。
       toolRegistry: 'full',

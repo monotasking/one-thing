@@ -14,6 +14,7 @@ import { FILE_OPEN_MODES, FILE_OPEN_MODE_LABELS, useFileOpenMode } from '../../d
 import { t } from '../../i18n'
 import { sessionMutation, useSessionsSource } from '../../data/sessions-source'
 import { configureSessionsPort } from '../../data/sessions-port'
+import { configureDialogPort } from '../../data/dialog-port'
 import { useExposeStore } from '../../expose/store'
 import { useStageStore } from '../../stage/store'
 import { useNotifyStore } from '../../services/notify-store'
@@ -110,11 +111,14 @@ beforeEach(() => {
   useWorkbenchStore.getState().reset()
   useNotifyStore.setState({ items: [] })
   useFileOpenMode.setState({ mode: 'panel' })
+  // 「绑定…」先问系统对话框;这一组钉的是**没有对话框**那条退路(路径输入行)。
+  configureDialogPort({ showOpen: async () => ({ canceled: true, filePaths: [], unavailable: true }) })
 })
 
 // 响应链是模块级单例:一份用例留下的作用域不该被下一份看见。
 afterEach(() => {
   focusTree.reset()
+  configureDialogPort(undefined)
 })
 
 /**
@@ -687,7 +691,7 @@ describe('三种「还没有内容」各说各的', () => {
 })
 
 describe('无工作目录:告知条 + 绑定', () => {
-  it('「绑定…」是一行输入(壳里没有 dialog 桥),打的是 updateWorkingDirectory', async () => {
+  it('宿主没有对话框时「绑定…」退到一行输入,打的是 updateWorkingDirectory', async () => {
     useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
     const setWorkingDirectory = vi.fn(async () => ({ ok: true as const }))
     useSessionsSource.setState({ setWorkingDirectory })
@@ -695,7 +699,9 @@ describe('无工作目录:告知条 + 绑定', () => {
     await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    })
     const input = screen.getByLabelText('输入工作目录的绝对路径')
     fireEvent.change(input, { target: { value: '/work/here' } })
     fireEvent.click(screen.getByRole('button', { name: '确定' }))
@@ -713,7 +719,9 @@ describe('无工作目录:告知条 + 绑定', () => {
     await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    })
     fireEvent.change(screen.getByLabelText('输入工作目录的绝对路径'), {
       target: { value: '/nope' },
     })
@@ -755,7 +763,9 @@ describe('无工作目录:告知条 + 绑定', () => {
     await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    })
     fireEvent.change(screen.getByLabelText('输入工作目录的绝对路径'), {
       target: { value: '/work/here' },
     })
@@ -807,7 +817,9 @@ describe('无工作目录:告知条 + 绑定', () => {
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
     await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    })
     const confirm = screen.getByRole('button', { name: '确定' })
     expect(confirm.getAttribute('aria-busy')).toBeNull()
 

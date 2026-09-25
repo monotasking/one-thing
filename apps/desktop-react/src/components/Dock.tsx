@@ -242,6 +242,10 @@ export function Dock() {
             * 那 13 块瓦的静止宽度之和,任何一帧都不该重排)。长出多少由
             * --dock-grow-before / -after 两格给,乘上 --dock-amount 那格开合标量。 */}
           <span className={s.bg} data-dock="plate" aria-hidden="true" />
+          {/* 感应面(09-25):「在坞上」那块地 —— 外侧伸到窗边,镜头开着时内侧伸到
+            * 放大后瓦的最远处。磁性放大的交叉轴判据读它的矩形;几何全在 CSS
+            * (Dock.module.css 的 `.hit`)。排在瓦前面,瓦盖在它上面。 */}
+          <span className={s.hit} data-dock="hit" aria-hidden="true" />
           {tiles.map((tile, i) => {
             const node =
               tile.kind === 'plus' ? (

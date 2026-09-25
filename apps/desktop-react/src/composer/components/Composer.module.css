@@ -433,6 +433,12 @@
   color: var(--text-3);
 }
 
+/* ACP agent 卡里一格选项的下拉:吃满卡宽,长名在触发器里截断(库件自己截)。 */
+.agentOptionSelect {
+  width: 100%;
+  min-width: 0;
+}
+
 /*
  * 组头与阶梯之间那道气口的**块与块**那一份(另一份在 `.thinkHead` 的下内距上,
  * 两份合起来正好一档 --sp-1)。两个字面 px 都收进了 token —— 理由写在 token 上。
@@ -874,6 +880,56 @@
  */
 .toolBtn {
   flex: none;
+}
+
+/*
+ * 工作目录那枚丸:文件夹图标 + 目录名(绑了才画名字,没绑就是一颗图标钮)。
+ *
+ * 它**不弯腰**(`flex: none`)—— 这一行唯一可缩的件是模型药丸(挤压律一)。
+ * 名字长了由 `--composer-dir-max` 封顶、在丸里截断,完整路径在 Tooltip 上。
+ * 交互态照 `ui/IconButton` 的配方逐格同值(rest text-3 / hover 换底换字 / active 深一档 /
+ * disabled 降透明),因为它就是那颗图标钮多带了一截字;焦点环走全局。
+ */
+.dirChip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-1);
+  max-width: var(--composer-dir-max);
+  height: var(--icon-btn-sm);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  font-size: var(--fs-pill);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+
+.dirChip:hover:not(:disabled) {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.dirChip:active:not(:disabled) {
+  background: var(--st-active);
+  color: var(--text-1);
+}
+
+.dirChip:disabled {
+  opacity: var(--btn-disabled-o);
+}
+
+.dirChipIcon {
+  flex: none;
+  width: var(--composer-attach-icon);
+  height: var(--composer-attach-icon);
+}
+
+.dirChipLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sendIcon {

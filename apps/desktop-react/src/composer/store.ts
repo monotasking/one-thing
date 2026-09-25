@@ -1,6 +1,8 @@
 import { useStore } from 'zustand'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { useModelsSource } from '../data/models-source'
+// 「选中即默认」的另一半:默认住在这个空间的 provider 设置里,写口只有那一个。
+import { useProviderSettings } from '../providers/store'
 import { composerSink } from './sink'
 import { t } from '../i18n'
 import type { ResolvedSegment } from '../references/segment'
@@ -152,8 +154,10 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
     setModelQuery: (q) => set({ modelQuery: q }),
 
     /**
-     * 选中一个模型 —— **一件事**:把选择交给 `models-source`(会话上的一格绑定,
-     * 归那里)。有会话就 `sessions.updateModel` 上行,没有会话就记成「下一条新会话用谁」。
+     * 选中一个模型 —— **两格事实,一句话**:这一条会话用谁(交给 `models-source`:
+     * 有会话就 `sessions.updateModel` 上行,没有会话就记成「下一条新会话用谁」),
+     * 以及**这个空间以后默认用谁**(交给 provider 设置那一口,09-22 起;
+     * 判词在下面那段注释里)。两格各有产地,这里只是同一下点击的两个收件人。
      *
      * 这里**不 await**:药丸该在手指抬起的那一帧就换字,而不是等一次往返。
      * 上行失败由数据源自己撤牌 + notify(warn) —— 那时药丸会变回原来那个模型,
@@ -172,6 +176,20 @@ function createComposerStore(sessionId: string): ComposerStoreApi {
      */
     chooseModel: (target, provider, model) => {
       void useModelsSource.getState().selectModel(target, provider, model)
+      /*
+       * ── 09-22:选中即默认(用户令「在选择模型的时候,即作为默认模型」)────────
+       * 上面那一发只绑**这一条会话**;下一条新会话仍然按这个空间的默认起。于是
+       * 「换个模型」这句话在用户那儿是一件事,在盘上是两件 —— 改完还得去设置页
+       * 再点一次「设为当前」,不点就下次再改一遍。所以这里补上另一半。
+       *
+       * 两发**各写各的**、不互相等:会话那一格走 `sessions.updateModel`,默认那一对
+       * 走这个空间的 provider 设置(`ai.provider` + `providers[那家].model`)。
+       * 任一发失败由它自己撤牌 + notify(warn) —— 一发的成败不该把另一发也拖红,
+       * 绑上了却没写成默认,下一条新会话照旧用旧默认,那是诚实的降级。
+       *
+       * 这里同样**不 await**(理由与上面那一句逐字相同:手指抬起的那一帧就要换字)。
+       */
+      void useProviderSettings.getState().setDefaultModel(provider, model)
       set({ drawerKind: null })
     },
 

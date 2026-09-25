@@ -130,6 +130,7 @@ async function assemble(): Promise<Backend> {
       mcp: { clientFactory: (config: MCPServerConfig) => new FakeMCPClient(config), identity: null },
       localTrust: null,
       speechOutput: null,
+      dialog: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,

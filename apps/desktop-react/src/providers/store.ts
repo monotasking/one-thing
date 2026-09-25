@@ -209,6 +209,19 @@ export interface ProviderSettingsState {
   /** 设为这一坑的当前模型。写 `providers[pid].model`。 */
   setCurrentModel: (providerId: string, modelId: string) => Promise<void>
   /**
+   * 把一个模型定成**这个空间的默认** —— 输入框那条入口(09-22 用户令:
+   * 「在选择模型的时候,即作为默认模型」)。
+   *
+   * 默认是**一对**,不是一格:`ai.provider`(默认那一家)+ `providers[那家].model`
+   * (那一家的当前模型)。会话没表达过选择时,引擎读的就是这一对
+   * (后端 `resolveSessionSpaceDefaultSelection`,壳这边 `defaultSelectionOf`)——
+   * 只写模型那一格,换家之后默认仍然落在旧家身上,屏幕与引擎当场说两句话。
+   *
+   * 与 `setCurrentModel` 的差别只有 `ai.provider` 那一格:那一口是设置页里
+   * 「这一坑的当前模型」(不动默认那一家),这一口是「以后就用它」。
+   */
+  setDefaultModel: (providerId: string, modelId: string) => Promise<void>
+  /**
    * 手填一个目录里没有的模型 id。**同步**返回一句错误(已经在列表里),
    * 没错就返回 undefined —— 输入框要当场知道该不该清空,不能等一个 await。
    */
@@ -408,6 +421,43 @@ function patchThinkingPrefs(
 }
 
 /**
+ * 「把这一对默认写进窄投影」—— `prefsPatch` 的第二个实现,与 `setDefaultModel`
+ * 拆的那份 delta **同一句话的两种形状**(一份给盘,一份给屏)。
+ *
+ * 与思考档那一份的一点不同:这里**允许这一家原本不在投影里**。默认那一家
+ * 换成它的同时,盘上那一格也会由 `writeProviders` 从 `EMPTY_CONFIG` 建出来 ——
+ * 投影里照着补一格说的正是刚写下去的那件事,不是凭空造。`prev` 整个缺席
+ * (这个空间的设置一次都没读到过)仍然原样交回。
+ */
+function patchDefaultPrefs(
+  prev: ProviderPrefsFacts | undefined,
+  providerId: string,
+  modelId: string,
+  selectedModels: readonly string[],
+): ProviderPrefsFacts | undefined {
+  if (!prev) return prev
+  const config = prev.prefs.configs[providerId]
+  return {
+    ...prev,
+    prefs: {
+      defaultProvider: providerId,
+      configs: {
+        ...prev.prefs.configs,
+        [providerId]: {
+          ...config,
+          selectedModels: [...selectedModels],
+          model: modelId,
+          thinking: config?.thinking ?? {},
+          thinkingEffort: config?.thinkingEffort ?? {},
+          contextLength: config?.contextLength ?? {},
+          maxOutput: config?.maxOutput ?? {},
+        },
+      },
+    },
+  }
+}
+
+/**
  * 忙态格子的**唯一词表**。store 记账与组件读账共用它 —— 两头各拼一次字符串
  * 就是两处会漂开(而漂开的表现是「某个控件永远不转」,没人会发现)。
  */
@@ -599,8 +649,19 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
   async function writeProviders(
     patch: Readonly<Record<string, Partial<ProviderConfig>>>,
     key: string,
-    extra: Pick<SettingsCommit, 'prefsPatch'> = {},
+    extra: Pick<SettingsCommit, 'prefsPatch'> & {
+      /**
+       * 顺带把这个空间的**默认那一家**换成它(`ai.provider`)。缺席 = 这一格不动
+       * —— 绝大多数设置写(勾选、改端点、填覆盖)都不该碰默认。
+       *
+       * 它走这一口而不是自己拼一份 `next`,理由与那一族 `providers` 的合并逐字
+       * 相同:整份写回是**整层语义**(缺字段 = 清空),拼 `next` 的地方多一处,
+       * 漏带一格的机会就多一处。
+       */
+      defaultProvider?: string
+    } = {},
   ): Promise<void> {
+    const { defaultProvider, ...commit } = extra
     const base = get().settings
     if (!base) return
     const nextProviders: Record<string, ProviderConfig> = { ...(base.ai?.providers ?? {}) }
@@ -618,8 +679,15 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       for (const key of Object.keys(bag)) if (bag[key] === undefined) delete bag[key]
       nextProviders[providerId] = merged
     }
-    const next = { ...base, ai: { ...base.ai, providers: nextProviders } } as AppSettings
-    await commitSettings(base, next, key, extra)
+    const next = {
+      ...base,
+      ai: {
+        ...base.ai,
+        ...(defaultProvider === undefined ? {} : { provider: defaultProvider }),
+        providers: nextProviders,
+      },
+    } as AppSettings
+    await commitSettings(base, next, key, commit)
   }
 
   /**
@@ -979,6 +1047,39 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
           },
         },
         settingsKey.model(providerId, modelId),
+      )
+    },
+
+    /**
+     * 输入框里选中一个模型时顺带走的那一发(调用点在 `composer/store.chooseModel`)。
+     *
+     * 三件事一发写完:默认那一家、那一家的当前模型、**顺带勾上**
+     * (与 `setCurrentModel` 同一条理由 —— 没勾过的型不出现在选择器里,
+     * 下次就找不着它了)。三格都已经是这样了就一发都不发:一次没有 delta 的
+     * 整层写回,只会让设置页那一行白转一圈。
+     *
+     * 忙态打在**被选中的那一行**上(`settingsKey.model`),与设置页里点「设为当前」
+     * 落在同一格 —— 两条入口做的是同一件事,记账也该记在同一格。
+     */
+    setDefaultModel: async (providerId, modelId) => {
+      if (!providerId || !modelId) return
+      await ensureSettingsLoaded()
+      const ai = get().settings?.ai
+      // 设置一次都没读到(后端答不上话 / web 降级)= 这一发静静地什么都不发生,
+      // 与 `writeProviders` 的第一句同一条:没有底本就没有「整层写回」。
+      if (!ai) return
+      const config = ai.providers?.[providerId]
+      const selected = config?.selectedModels ?? []
+      const listed = selected.includes(modelId)
+      if (ai.provider === providerId && config?.model === modelId && listed) return
+      const selectedModels = listed ? [...selected] : [...selected, modelId]
+      await writeProviders(
+        { [providerId]: { model: modelId, selectedModels } },
+        settingsKey.model(providerId, modelId),
+        {
+          defaultProvider: providerId,
+          prefsPatch: (prev) => patchDefaultPrefs(prev, providerId, modelId, selectedModels),
+        },
       )
     },
 

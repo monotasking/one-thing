@@ -910,6 +910,7 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 			 */
 			localTrust: null,
 			speechOutput: null,
+			dialog: null,
 		},
 		toolRegistry: serverToolRegistry,
 		sessionSkills: true,

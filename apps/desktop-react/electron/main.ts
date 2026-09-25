@@ -51,8 +51,10 @@ import {
 } from '@onething/backend/server/embed.js'
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler/user-tasks.js'
+import { registerACPPermissionBridge } from '@onething/backend/wiring/acp/permission-bridge.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { installAppMenu } from './app-menu-install.js'
+import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
 // 「连接」是开窗之前就存在的承诺(整段判词在那只文件的文件头)。
@@ -256,7 +258,7 @@ async function assembleOwnCore(): Promise<OnethingBackend> {
 /**
  * 开窗之后才跑的几件事,全部**非阻塞**:任何一件失败都不该让壳起不来。
  * 与 `apps/electron/src/app/main-process.ts:294-329` 同一张单子,减去这个壳还没有的
- * 那几件(插件 / 网关 / ACP / 语音托盘)。skills 由 `sessionSkills: true` 顶掉。
+ * 那几件(插件 / 网关 / 语音托盘)。skills 由 `sessionSkills: true` 顶掉。
  */
 function startPostWindowServices(): void {
   const log = getLogger('shell.boot')
@@ -349,6 +351,23 @@ function startPostWindowServices(): void {
      */
     void b.mcp.start().catch((error: unknown) => {
       log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
+    })
+
+    /*
+     * **ACP**(外部 agent:Claude Code / Codex / Kimi / Pi 的 ACP 适配器)。与 MCP 同一句
+     * "何时 start"—— 从前这里没有它(文件头那张「这个壳还没有的」单子里写着 ACP),
+     * 后果是 `ACPManager` 永远停在构造时的空 agent 表上:选了 ACP 模型发消息,
+     * 在 spawn 之前就抛 `ACP agent "…" not found`,日志里连一行 acp 都没有。
+     * `start()` 只是把设置里的 agent 表读进来,不起任何子进程(适配器在第一次
+     * prompt 时才 spawn),所以放在这里零成本。收尾在装配时已经 `own()` 了。
+     *
+     * 权限桥:agent 的工具许可走 `Authorizer.decide` → 壳的权限卡(与本地工具、
+     * Claude Code SDK 通路同一个授权者),Vue 宿主当年也挂着它;不挂就回落到每个
+     * agent 配置里的 `permissionMode`(默认 `allow`,不问就放)。
+     */
+    b.own(registerACPPermissionBridge(), 'acpPermissionBridge')
+    void b.acp.start().catch((error: unknown) => {
+      log.error('subsystem startup failed', { subsystem: 'acp', blocking: false }, error)
     })
 
     /*
@@ -652,6 +671,15 @@ void app.whenReady().then(async () => {
     // 借用活的core只建立窗口连接;自有写者始终由Backend的store lease排他。
     connection.resolve(connectionOf(existing))
   } else {
+    /*
+     * 登录 shell 环境与装配**并行**跑(判词在 `login-shell-env.ts` 文件头):命中缓存是
+     * 同步的 0ms,不命中最多 3.5s。它只需要赶在**第一次 spawn** 之前 —— ACP 适配器、
+     * MCP stdio、bash 工具都是 `startPostWindowServices()` 之后(连接答案交出去之后)
+     * 才可能起子进程,所以在那一行前面等它,而不是挡在装配前面。并行还有一个好处:
+     * 等它落定时 `configureLogging` 已经挂上,那行「PATH 补了什么」能进 `shell.jsonl`。
+     */
+    const envHydrated = hydrateProcessEnvFromLoginShell({ logger: getLogger('shell.env') })
+      .catch(() => [])
     try {
       ownCoreAssembly = assembleOwnCore()
       backend = await ownCoreAssembly
@@ -663,6 +691,7 @@ void app.whenReady().then(async () => {
         error: error instanceof Error ? error.message : String(error),
       })
     }
+    await envHydrated
     /*
      * 装配途中被 Cmd+Q / SIGTERM 截住(`ownCoreAssembly` 那一格已经让收尾等到了
      * 实例)。从前这一句挡的是「别开窗了」,今天窗早就开了,它挡的是**别再起那

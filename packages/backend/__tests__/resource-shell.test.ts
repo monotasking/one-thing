@@ -70,6 +70,7 @@ async function assemble(): Promise<Backend> {
       mcp: null,
       localTrust: null,
       speechOutput: null,
+      dialog: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,

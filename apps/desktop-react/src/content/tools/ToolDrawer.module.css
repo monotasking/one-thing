@@ -1,7 +1,12 @@
 /*
  * C1 行内抽屉。
  *
- * 从属关系靠**衬面**(surface-1)与顶边一条分隔说,不画左竖线(禁令)。
+ * 从属关系只靠顶边一条分隔说,不画左竖线(禁令),也**不另铺衬面**。
+ *
+ * 09-25 改(用户真机截图):抽屉从前铺 surface-1,而它里面放的是结果代码块
+ * (BlockShell:身 surface-2 + 檐 surface-1)—— 于是展开后是「卡白 → 抽屉灰 →
+ * 块白 → 檐灰」一深一浅来回翻,块的檐与抽屉同色融成一片。抽屉与卡同底之后,
+ * 里面的代码块与聊天流里的代码块长得一模一样。
  */
 
 .drawer {
@@ -10,7 +15,7 @@
   gap: var(--sp-3);
   padding: var(--sp-3) var(--sp-4) var(--sp-4);
   border-top: 1px solid var(--line-1);
-  background: var(--surface-1);
+  background: var(--surface-2);
 }
 
 .section {
