@@ -148,3 +148,5 @@ composer 卡片(批 5):显示「这一发会用哪条」的账号窗口;路由(�
 **UI**:`OAuthCard` 已登录屏、账号列表上方,放与 `CredentialPool` 同一个策略选择器(把 `CredentialPool` 里 `rotationOptions` / `rotationHint` 那一段抽成共用的 `RotationPolicyPicker`,两处消费;不新建基础件);≥2 个账号才显示。API 池的选择器多一档「余量多的优先」,只在 manifest 有 `quotaSource` 的家显示。
 
 **门**:`gate:route` 加:①订阅池 `priority-failover`:A 40% / B 10% → 选 A(顺序优先,不看余量);A 满 → B;A 重置 → 回 A;②`quota-remaining`:A 40% / B 10% → 选 B;③`round-robin` 两账号交替;④策略选择器写盘后 `pickRoute` 立刻按新策略(不用重启)。
+
+**批 9 入库(09-26,紧随 055f75805)。** 偏离:订阅池的 `single` = 取第一条没歇着的(A 用完就用 B,与 API 池同义);「满了但冷却没写」的空窗只在单测覆盖(真机上强制取一次配额当场写冷却,构造不出);`OAuthCard.tsx:93` 一条 `exhaustive-deps` eslint 红是批 8 存量。批 8 留账 ① 的门缺口已补:`gate:route` 种子设置写 `network.proxy = 127.0.0.1:9`(`gate:quota` 待同改)。
