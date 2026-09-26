@@ -371,8 +371,11 @@ export async function executeMessageStream(
     })
   }
 
+  // 这一发**此刻**用着的凭证标记:轮转器中途换过手就是换手后的那一条(批 6 留账)。
+  // 执行器里的账本 / 配额回调各自读 `state.activeCredential`;这一格是给下面 finally 的收尾用的。
+  const rotated: { marker?: CoreSpaceCredentialMarker } = {}
   try {
-    return await runMessageStream(engine, params, abortController)
+    return await runMessageStream(engine, params, abortController, rotated)
   } catch (error) {
     if (started) {
       // §15.12(c):等那一次 fsync —— 一次执行收账时"已落盘"必须是真的。
@@ -387,8 +390,9 @@ export async function executeMessageStream(
     if (started) await endSessionRun(params.sessionId, run.runId, { outcome: 'completed' })
     // 批 5:这一轮用过的那条凭证,配额 30 秒去抖后重问一次(永不抛)。
     // 运行期的凭证标记(`applySessionSpaceCredentials` 盖上去的),静态形状里没有这一格。
-    // 被接力给同家另一半的那一轮(批 6),那条凭证属于真正在用的那一家。
-    const marked = routedMarkerOf(params)
+    // 被接力给同家另一半的那一轮(批 6),那条凭证属于真正在用的那一家;运行中途被轮转器
+    // 换过手(同家下一把 / 订阅 → 同家 API),刷新的是换手后的那一条、那一家。
+    const marked = rotated.marker ? { spaceCredential: rotated.marker } : routedMarkerOf(params)
     noteQuotaRunEnd({
       sessionId: params.sessionId,
       providerId: routedProviderIdOf(params.providerId, marked),
@@ -404,7 +408,8 @@ function isAbortLikeError(error: unknown): boolean {
 async function runMessageStream(
   engine: ReturnType<typeof getStreamEngine>,
   params: StreamExecutionParams,
-  abortController?: AbortController,
+  abortController: AbortController | undefined,
+  rotated: { marker?: CoreSpaceCredentialMarker },
 ): Promise<StreamExecutionResult> {
   const streamControllerRegistry: CoreStreamControllerRegistry<AbortController, PendingMessageQueue> = {
     registerController: (sessionId, controller) => engine.registerController(sessionId, controller),
@@ -441,7 +446,11 @@ async function runMessageStream(
     processSpecialStream: input =>
       processImageGenerationStream({ ...input, providerId: routedProviderIdOf(input.providerId, routedMarkerOf(params)) }),
     executeTextStream: (ctx, historyMessages, sessionName): Promise<AgentLoopStreamGenerationResult> =>
-      executeAgentLoopStreamGeneration(ctx as StreamContext, historyMessages, sessionName),
+      executeAgentLoopStreamGeneration(ctx as StreamContext, historyMessages, sessionName, {
+        onCredentialRotated: (marker) => {
+          rotated.marker = marker
+        },
+      }),
     logger: consoleLog,
   };
   const result = await executeCoreMessageStream(executeCoreMessageStreamOptions)

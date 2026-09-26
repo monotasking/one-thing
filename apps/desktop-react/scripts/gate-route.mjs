@@ -14,13 +14,21 @@
  *   ③ 开关关(`providers.codex.subscriptionFallback = false`)→ 失败句「全部冷却中」,假站零请求;
  *   ④ A 的窗口 `resets_at` 过后 → 回到 A;
  *   ⑤ 默认空间两把密钥(池没写策略 = 新缺省「按顺序接力」),第一把 402 → 换第二把;
- *   ⑥ 流到一半失败(已上屏半句)→ 换凭证重试:落盘的回答里那半句**不重复**;
+ *   ⑥ 流到一半失败(已上屏半句)→ 换凭证重试:落盘的回答里那半句**不重复**;dev 校验
+ *      (`sessions.validation`)对这条会话不报「内容不一致」(core `Session` 按账本作废摘段);
  *   ⑦ 上一轮跑过工具、这一轮配额失败 → 仍然换凭证,工具**只执行一次**(「跑过工具后不再换」
  *      只管同一次请求里已经动手的工具,见回报里的结论)。
+ *   ⑧ 请求旋钮跟家走(批 6 留账):订阅家与同家 API 各在自己的设置里存一个 `verbosity`
+ *      (订阅 high / API low)。② 里 B 429 → 接力 k1 那一发,请求体里的 `text.verbosity` 是
+ *      API 家的 low —— 旋钮袋按接下来真收请求的那一家重挂,不是首次解析那一家的键;
+ *   ⑨ 运行收尾按当前凭证(批 6 留账):⑤⑥⑦ 三轮都在运行中途换过手(d1→d2 / d2→d3 / d3→d4),
+ *      run 结束 30 秒去抖后的余额刷新(`GET /user/balance`)打的是换手后的 d2 / d3 / d4,
+ *      **d1 一次都不被问**(修之前按首次解析那条刷:d1 / d2 / d3)。同家 API 那一半(openai)
+ *      没有配额源,② 那一轮收尾刷的是「无源」—— 所以这一步借按量家的余额口证「按当前凭证」。
  *
  * **必须用 node 起**(同 gate:quota):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先在仓根 `bun run server:build`。不连 5175,不碰真 `~/.onething`。
- * 跑一趟约 40 秒(④ 要真等窗口重置)。**不进 verify**。
+ * 跑一趟约 75 秒(④ 要真等窗口重置,⑨ 要真等 30 秒去抖)。**不进 verify**。
  */
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -67,6 +75,8 @@ const T = {
 }
 const WHO = Object.fromEntries(Object.entries(T).map(([name, secret]) => [secret, name]))
 const A_RESET_MS = 22_000
+/** 配额服务的 run 结束去抖(`QUOTA_RUN_END_DEBOUNCE_MS`)。⑨ 要等它过去。 */
+const QUOTA_RUN_END_DEBOUNCE_MS = 30_000
 
 /* ── 假站 ─────────────────────────────────────────────────────────────── */
 
@@ -119,6 +129,13 @@ function startStation() {
       const who = WHO[auth] ?? `?${auth.slice(0, 12)}`
       let body = {}
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '{}') } catch { /* 非 JSON */ }
+      if (req.method === 'GET' && url.pathname === '/user/balance') {
+        hits.push({ path: url.pathname, who, at: Date.now() })
+        return send(res, 200, {
+          is_available: true,
+          balance_infos: [{ currency: 'CNY', total_balance: '42.00', granted_balance: '0.00', topped_up_balance: '42.00' }],
+        })
+      }
       if (req.method === 'GET' && url.pathname === '/backend-api/wham/usage') {
         hits.push({ path: url.pathname, who, at: Date.now() })
         const window = quotaWindows[who]
@@ -133,7 +150,12 @@ function startStation() {
       }
       if (req.method !== 'POST') return send(res, 404, { error: 'not_found', path: url.pathname })
       const act = next(who)
-      hits.push({ path: url.pathname, who, act, at: Date.now(), messages: Array.isArray(body.messages) ? body.messages.length : undefined })
+      hits.push({
+        path: url.pathname, who, act, at: Date.now(),
+        messages: Array.isArray(body.messages) ? body.messages.length : undefined,
+        // ⑧:Responses 线上 `verbosity` 拼在 `text.verbosity`(chat 线上是顶层)。
+        verbosity: body?.text?.verbosity ?? body?.verbosity,
+      })
 
       if (url.pathname.endsWith('/responses')) {
         if (act === '429') {
@@ -186,7 +208,9 @@ function seedStore(storePath, base) {
   const entry = (id, fields) => ({ id, label: id, source: 'user', ...fields })
   const account = id => entry(id, { authType: 'oauth', oauthToken: token(T[id]), baseUrl: `${base}/backend-api/codex` })
   const apiKey = (id, baseUrl) => entry(id, { authType: 'apiKey', apiKey: T[id], baseUrl })
-  const provider = model => ({ model, selectedModels: [model], enabled: true, modelCapabilitiesByModel: { [model]: { tools: true, reasoning: false, vision: false } } })
+  const provider = (model, extra = {}) => ({ model, selectedModels: [model], enabled: true, modelCapabilitiesByModel: { [model]: { tools: true, reasoning: false, vision: false } }, ...extra })
+  // ⑧:两家各一份请求旋钮(手改 settings 的形状:`providerOptions.request`)。
+  const knob = verbosity => ({ providerOptions: { request: { verbosity } } })
 
   const workspaces = path.join(storePath, 'workspaces')
   fs.mkdirSync(path.join(workspaces, 'default'), { recursive: true })
@@ -207,7 +231,7 @@ function seedStore(storePath, base) {
   fs.writeFileSync(path.join(workspaces, 'gate', 'providers.json'), JSON.stringify({
     ai: {
       provider: 'codex',
-      providers: { codex: provider('gpt-5.3-codex'), openai: provider('gpt-5.3-codex') },
+      providers: { codex: provider('gpt-5.3-codex', knob('high')), openai: provider('gpt-5.3-codex', knob('low')) },
       customProviders: [],
     },
   }, null, 2))
@@ -271,6 +295,15 @@ function readEvents(storePath, sessionId) {
   const file = path.join(storePath, 'sessions', sessionId, 'events.jsonl')
   if (!fs.existsSync(file)) return []
   return fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean)
+    .map(line => { try { return JSON.parse(line) } catch { return null } })
+    .filter(Boolean)
+}
+
+function readLogRecords(storePath) {
+  const dir = path.join(storePath, 'log')
+  if (!fs.existsSync(dir)) return []
+  return fs.readdirSync(dir).filter(name => name.endsWith('.jsonl'))
+    .flatMap(name => fs.readFileSync(path.join(dir, name), 'utf-8').split('\n').filter(Boolean))
     .map(line => { try { return JSON.parse(line) } catch { return null } })
     .filter(Boolean)
 }
@@ -368,11 +401,16 @@ try {
   const reasons2 = retryReasons(events2)
   check(reasons2.at(-1) === ROUTE_FALLBACK_API_REASON, `auto-retry 的 reason:「${reasons2.at(-1)}」`)
   check((await assistantText(gateSession)).includes('由 k1 作答'), '回答来自 API 那一把')
+  // ── ⑧ 请求旋钮跟家走 ───────────────────────────────────────────────────
+  console.log(`${TAG} ⑧ 接力到 API 那一发带的是 API 家的旋钮`)
+  check(s2[1]?.verbosity === 'low',
+    `B → k1 接力那一发:请求体 text.verbosity = API 家的 low(${JSON.stringify(s2[1]?.verbosity)};订阅家存的是 high)`)
   mark = Date.now()
   await sendAndSettle(gateSession, '第三问')
   const s2b = station.sends(mark)
   check(s2b.length === 1 && s2b[0].who === 'k1',
     `A/B 都在冷却 → 发送前就直接走同家 API,订阅口零请求(${s2b.map(hit => hit.who).join(',')})`)
+  check(s2b[0]?.verbosity === 'low', `发送前就接力的那一发同样是 API 家的旋钮(${JSON.stringify(s2b[0]?.verbosity)})`)
 
   // ── ③ 开关关 → 失败句 ────────────────────────────────────────────────────
   console.log(`${TAG} ③ 开关关 → 失败句`)
@@ -430,6 +468,12 @@ try {
   check(text6 === '完整回答(d3)', `落盘的回答只有重试那一遍(「${text6}」)`)
   const text6Again = await assistantText(midSession)
   check(!text6Again.includes('半截回答'), '失败那一发的半句不留在回答里')
+  // 旧文字流通道(`session:stream`)上那半句收不回,但 core `Session` 的累计值据账本
+  // `request/error.discardParts` 摘掉了同号段 —— dev 校验(`sessions.validation`)不再报不一致。
+  const inconsistent6 = readLogRecords(storePath)
+    .filter(record => record.ns === 'sessions.validation' && record.level === 'warn' && record.fields?.sessionId === midSession)
+  check(inconsistent6.length === 0,
+    `sessions.validation 对这条会话零「内容不一致」(${inconsistent6.map(record => String(record.fields?.detail ?? '').slice(0, 80)).join(' | ') || '无'})`)
 
   // ── ⑦ 上一轮跑过工具,这一轮配额失败 → 仍然换,工具只跑一次 ──────────────
   console.log(`${TAG} ⑦ 跑过工具之后的换凭证`)
@@ -443,6 +487,17 @@ try {
     `第一轮 d3 要工具 → 第二轮 d3 402 → 换 d4(${s7.map(hit => `${hit.who}:${hit.act}`).join(',')})`)
   check(toolResults.length === 1, `工具只执行一次(tool/result ${toolResults.length} 条)`)
   check((await assistantText(toolSession)).includes('完整回答(d4)'), '回答来自 d4')
+  const lastRunEndAt = Date.now()
+
+  // ── ⑨ 运行收尾的配额刷新按换手后的凭证 ────────────────────────────────────
+  console.log(`${TAG} ⑨ run 结束的余额刷新按当前凭证(等 ${QUOTA_RUN_END_DEBOUNCE_MS / 1000}s 去抖)`)
+  const balanceWho = () => station.hits.filter(hit => hit.path === '/user/balance').map(hit => hit.who)
+  await waitFor(() => balanceWho().includes('d4'), QUOTA_RUN_END_DEBOUNCE_MS + 10_000 - (Date.now() - lastRunEndAt), 250)
+  await sleep(500)
+  const asked = balanceWho()
+  check(['d2', 'd3', 'd4'].every(who => asked.includes(who)),
+    `换手后的 d2 / d3 / d4 各被问了余额(${asked.join(',') || '无'})`)
+  check(!asked.includes('d1'), `首次解析的 d1 一次都没被问(${asked.join(',') || '无'})`)
 
   const unexpected = station.hits.filter(hit => hit.who.startsWith('?'))
   check(unexpected.length === 0, `假站没收到认不出的凭证(${unexpected.map(hit => `${hit.who}@${hit.path}`).join(', ') || '无'})`)
@@ -468,4 +523,4 @@ if (failures.length > 0) {
   console.error(`${TAG} ${failures.length} check(s) failed (${Math.round((Date.now() - startedAt) / 1000)}s)`)
   process.exit(1)
 }
-console.log(`${TAG} ok —— ① 按剩余量 / ② 接同家 API / ③ 开关关 / ④ 窗口重置回 A / ⑤ 默认空间 402 / ⑥ 流中失败不重复 / ⑦ 工具后换凭证 全绿(${Math.round((Date.now() - startedAt) / 1000)}s)`)
+console.log(`${TAG} ok —— ① 按剩余量 / ② 接同家 API / ③ 开关关 / ④ 窗口重置回 A / ⑤ 默认空间 402 / ⑥ 流中失败不重复 / ⑦ 工具后换凭证 / ⑧ 旋钮跟家走 / ⑨ 收尾按当前凭证 全绿(${Math.round((Date.now() - startedAt) / 1000)}s)`)

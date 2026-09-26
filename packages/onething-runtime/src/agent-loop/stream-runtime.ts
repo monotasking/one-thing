@@ -62,7 +62,7 @@ import {
 	type AgentProviderRuntimeConfig,
 	type CreateAgentProviderFromRuntimeOptions,
 } from "./providers/index.js";
-import { readOnethingRequestProviderOptions } from "../providers/provider-options.js";
+import { buildOnethingRequestProviderOptionsBag } from "../providers/provider-options.js";
 import {
 	routedProviderIdOf,
 	type CoreSpaceCredentialMarker,
@@ -1079,16 +1079,17 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		// 就能开,形状见 `providers/provider-options.ts`。
 		// 请求旋钮按**这一发真正发给谁**挂键(批 6):被接力给同家另一半时,provider 实例读的是
 		// 它自己那一格,config 里的旋钮也是那一家的。
-		providerOptions: {
-			[routedProviderIdOf(
+		// 运行中途被轮转接力到另一家时,换上的是那一家的袋(`AgentCredentialRotation.providerOptions`,
+		// 由轮转器用同一个 `buildOnethingRequestProviderOptionsBag` 算)。
+		providerOptions: buildOnethingRequestProviderOptionsBag(
+			routedProviderIdOf(
 				ctx.providerId,
 				ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker },
-			)]: readOnethingRequestProviderOptions(
-				ctx.providerConfig.providerOptions as
-					| Record<string, unknown>
-					| undefined,
 			),
-		},
+			ctx.providerConfig.providerOptions as
+				| Record<string, unknown>
+				| undefined,
+		),
 		// system 前缀里「你是谁」那一段,单独再交一份(ACP A2-a):没有 system 位的外部执行器
 		// 只收它,不收本地工具说明。普通 provider 不读这一格。
 		persona: requestMessages.persona,

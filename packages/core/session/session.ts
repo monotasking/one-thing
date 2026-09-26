@@ -18,9 +18,30 @@ import type { StreamChannel } from '../events/stream-channel.js'
 import type { SessionEventEnvelope, StreamChunkBase, Unsubscribe } from '../events/types.js'
 import { type SessionState, createEmptySessionState } from './session-state.js'
 
+/**
+ * 累计文本里的一截,带着它的账本身份章(若有):哪条执行(`runId`)的哪一段(`partIndex`)。
+ * 相邻、同章的 delta 并进同一截。没章的 delta(旁路 / 老路)也进来,只是作废认不到它。
+ */
+interface AccumulatedSegment {
+  kind: 'text' | 'reasoning'
+  runId?: string
+  partIndex?: number
+  text: string
+}
+
 export class Session {
   private _state: SessionState
   private unsubscribers: Unsubscribe[] = []
+  /**
+   * 与 `accumulatedContent` / `accumulatedReasoning` 同一份字,按账本段切开(批 6 留账)。
+   *
+   * 流到一半失败、换凭证重试时,失败那一次已经从旧文字流通道(`session:stream`)出去的
+   * 半句不能收回 —— 流帧词汇里没有「作废」这一种,也不为它加。但账本在 `request/error`
+   * 上点名作废了那几段(`discardParts`),而这条账本事件原样随总线下发
+   * (`SESSION_LEDGER_EVENT`)。这里据它把同号的几截摘掉,累计值于是与折叠出来的
+   * 那条消息重新对得上 —— 否则 dev 下的 `sessions.validation` 会报一条「内容不一致」。
+   */
+  private segments: AccumulatedSegment[] = []
 
   constructor(sessionId: string) {
     this._state = createEmptySessionState(sessionId)
@@ -82,6 +103,11 @@ export class Session {
         // Reset accumulators for new stream
         this._state.accumulatedContent = ''
         this._state.accumulatedReasoning = ''
+        this.segments = []
+        break
+
+      case SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT:
+        this.applyLedgerDiscard((envelope.event as { record?: unknown }).record)
         break
 
       case SESSION_EVENT_TYPES.STREAM_COMPLETE:
@@ -152,12 +178,14 @@ export class Session {
       case 'text-delta':
         if (typeof streamChunk.text === 'string') {
           this._state.accumulatedContent += streamChunk.text
+          this.pushSegment('text', streamChunk.text, (chunk as { stamp?: unknown }).stamp)
         }
         break
 
       case 'reasoning-delta':
         if (typeof streamChunk.reasoning === 'string') {
           this._state.accumulatedReasoning += streamChunk.reasoning
+          this.pushSegment('reasoning', streamChunk.reasoning, (chunk as { stamp?: unknown }).stamp)
         }
         break
 
@@ -178,5 +206,35 @@ export class Session {
       case 'tool-progress':
         break
     }
+  }
+  private pushSegment(kind: 'text' | 'reasoning', text: string, stamp: unknown): void {
+    const mark = stamp as { runId?: unknown; partIndex?: unknown } | undefined
+    const runId = typeof mark?.runId === 'string' ? mark.runId : undefined
+    const partIndex = typeof mark?.partIndex === 'number' ? mark.partIndex : undefined
+    const last = this.segments[this.segments.length - 1]
+    if (last && last.kind === kind && last.runId === runId && last.partIndex === partIndex) {
+      last.text += text
+      return
+    }
+    this.segments.push({ kind, ...(runId !== undefined ? { runId } : {}), ...(partIndex !== undefined ? { partIndex } : {}), text })
+  }
+
+  /**
+   * 账本的 `request/error`(`willRetry` + `discardParts`)到了:把那条执行上被点名的几段
+   * 从累计值里摘掉。只认得出盖过章的那几截 —— 没章的认不到,宁可不摘也不摘错。
+   */
+  private applyLedgerDiscard(record: unknown): void {
+    const event = record as { type?: unknown; data?: { runId?: unknown; willRetry?: unknown; discardParts?: unknown } } | undefined
+    if (event?.type !== 'request/error' || event.data?.willRetry !== true) return
+    const runId = event.data.runId
+    const parts = event.data.discardParts
+    if (typeof runId !== 'string' || !Array.isArray(parts) || parts.length === 0) return
+    const dropped = new Set(parts.filter((part): part is number => typeof part === 'number'))
+    const kept = this.segments.filter(segment =>
+      !(segment.runId === runId && segment.partIndex !== undefined && dropped.has(segment.partIndex)))
+    if (kept.length === this.segments.length) return
+    this.segments = kept
+    this._state.accumulatedContent = kept.filter(segment => segment.kind === 'text').map(segment => segment.text).join('')
+    this._state.accumulatedReasoning = kept.filter(segment => segment.kind === 'reasoning').map(segment => segment.text).join('')
   }
 }

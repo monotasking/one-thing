@@ -84,6 +84,42 @@ describe('rotateCredential —— 请求/重试边界上的换钥匙', () => {
     expect(retries[0].type === 'auto-retry' && retries[0].delayMs).toBe(0)
   })
 
+  it('换上的 provider 带着自己的请求旋钮袋:后续请求发它那只袋,不换袋的轮换沿用原袋', async () => {
+    const seenBags: Array<{ provider: string; bag: unknown }> = []
+    const burned = baseProvider('sub', async function* (request) {
+      seenBags.push({ provider: 'sub', bag: request.providerOptions })
+      throw quotaError()
+    })
+    let apiCalls = 0
+    const api = baseProvider('api', async function* (request) {
+      seenBags.push({ provider: 'api', bag: request.providerOptions })
+      apiCalls++
+      if (apiCalls === 1) throw quotaError()
+      yield { type: 'text-delta', turn: request.turn, delta: 'ok' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    let rotations = 0
+    const result = await runAgentLoop({
+      ...RUN,
+      provider: burned,
+      providerOptions: { sub: { knob: 'sub-value' } },
+      rotateCredential: async (): Promise<AgentCredentialRotation> => {
+        rotations++
+        // 第一次换家并交出新袋;第二次同家换 key,不带袋 = 沿用当前袋。
+        return rotations === 1
+          ? { provider: api, providerOptions: { api: { knob: 'api-value' } } }
+          : { provider: api }
+      },
+    })
+
+    expect(result.text).toBe('ok')
+    expect(seenBags).toEqual([
+      { provider: 'sub', bag: { sub: { knob: 'sub-value' } } },
+      { provider: 'api', bag: { api: { knob: 'api-value' } } },
+      { provider: 'api', bag: { api: { knob: 'api-value' } } },
+    ])
+  })
+
   it('宿主说不换(unknown / transient / 没有第二把):回到原来的重试规则', async () => {
     let calls = 0
     const provider = baseProvider('only', async function* () {

@@ -43,7 +43,12 @@ const mocks = vi.hoisted(() => ({
   modelSupportsTools: vi.fn(async () => true),
   getModelById: vi.fn(async () => undefined),
   processImageGenerationStream: vi.fn(async () => true),
-  executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
+  executeAgentLoopStreamGeneration: vi.fn(async (..._args: unknown[]) => ({ pausedForConfirmation: false })),
+  noteQuotaRunEnd: vi.fn(),
+}))
+
+vi.mock('../../../quota/engine-hooks.js', () => ({
+  noteQuotaRunEnd: mocks.noteQuotaRunEnd,
 }))
 
 vi.mock('../../../providers/model-registry.js', () => ({
@@ -130,8 +135,47 @@ describe('stream executor agent-loop routing', () => {
       }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
     expect(mocks.engine.removeController).toHaveBeenCalledWith('s1', expect.any(AbortController))
+  })
+
+  it('run 结束的配额刷新按首次解析那条凭证(没换过手)', async () => {
+    await executeMessageStream(params({
+      configWithApiKey: { ...configWithApiKey, spaceCredential: { spaceId: 'work', entryId: 'A', authType: 'oauth' } } as never,
+      providerId: 'codex',
+    }))
+    expect(mocks.noteQuotaRunEnd).toHaveBeenCalledWith({ sessionId: 's1', providerId: 'codex', credentialId: 'A' })
+  })
+
+  it('运行中途被轮转接力到同家 API:run 结束的配额刷新打的是 API 家那一条,不是订阅家首次那条', async () => {
+    mocks.executeAgentLoopStreamGeneration.mockImplementationOnce(async (...args: unknown[]) => {
+      const options = args[3] as { onCredentialRotated?: (marker: unknown) => void } | undefined
+      options?.onCredentialRotated?.({
+        spaceId: 'work', entryId: 'k1', authType: 'apiKey',
+        route: { providerId: 'openai', reason: 'sibling-api' },
+      })
+      return { pausedForConfirmation: false }
+    })
+    await executeMessageStream(params({
+      configWithApiKey: { ...configWithApiKey, spaceCredential: { spaceId: 'work', entryId: 'A', authType: 'oauth' } } as never,
+      providerId: 'codex',
+    }))
+    expect(mocks.noteQuotaRunEnd).toHaveBeenCalledTimes(1)
+    expect(mocks.noteQuotaRunEnd).toHaveBeenCalledWith({ sessionId: 's1', providerId: 'openai', credentialId: 'k1' })
+  })
+
+  it('运行中途换手后抛错收尾,配额刷新同样按换手后的那一条', async () => {
+    mocks.executeAgentLoopStreamGeneration.mockImplementationOnce(async (...args: unknown[]) => {
+      const options = args[3] as { onCredentialRotated?: (marker: unknown) => void } | undefined
+      options?.onCredentialRotated?.({ spaceId: 'work', entryId: 'B', authType: 'oauth' })
+      throw new Error('boom')
+    })
+    await expect(executeMessageStream(params({
+      configWithApiKey: { ...configWithApiKey, spaceCredential: { spaceId: 'work', entryId: 'A', authType: 'oauth' } } as never,
+      providerId: 'codex',
+    }))).rejects.toThrow()
+    expect(mocks.noteQuotaRunEnd).toHaveBeenCalledWith({ sessionId: 's1', providerId: 'codex', credentialId: 'B' })
   })
 
   it('keeps the controller registered when agent-loop pauses for confirmation', async () => {
@@ -163,6 +207,7 @@ describe('stream executor agent-loop routing', () => {
       }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
     expect(mocks.engine.removeController).toHaveBeenCalledWith('s1', expect.any(AbortController))
   })
@@ -203,6 +248,7 @@ describe('stream executor agent-loop routing', () => {
       }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
   })
 
@@ -218,6 +264,7 @@ describe('stream executor agent-loop routing', () => {
       }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
   })
 
@@ -231,6 +278,7 @@ describe('stream executor agent-loop routing', () => {
       }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
   })
 
@@ -255,6 +303,7 @@ describe('stream executor agent-loop routing', () => {
       }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
   })
 
@@ -271,6 +320,7 @@ describe('stream executor agent-loop routing', () => {
       expect.objectContaining({ requestedOutputModalities: undefined }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
 
     mocks.modelSupportsTools.mockResolvedValueOnce(false)
@@ -282,6 +332,7 @@ describe('stream executor agent-loop routing', () => {
       expect.objectContaining({ requestedOutputModalities: undefined }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
   })
 
@@ -301,6 +352,7 @@ describe('stream executor agent-loop routing', () => {
       expect.objectContaining({ requestedOutputModalities: undefined }),
       [{ role: 'user', content: 'hello' }],
       'Session',
+      { onCredentialRotated: expect.any(Function) },
     )
   })
 })

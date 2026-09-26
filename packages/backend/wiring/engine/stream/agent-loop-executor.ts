@@ -213,6 +213,12 @@ export interface ExecuteAgentLoopStreamGenerationOptions {
 		content?: string;
 		reasoning?: string;
 	};
+	/**
+	 * 轮转器换过手之后报一声新的凭证标记(批 6 留账)。执行器自己的账本 / 配额回调读
+	 * `state.activeCredential`;这一口是给**执行器外面**的收尾用的 —— run 结束时的配额刷新
+	 * (`stream-executor.ts` 的 `noteQuotaRunEnd`)要按这一发真用着的那条凭证,不是首次解析那条。
+	 */
+	onCredentialRotated?: (marker: CoreSpaceCredentialMarker) => void;
 }
 
 function createTurnState(): AgentLoopExecutorTurnState {
@@ -1074,6 +1080,7 @@ export async function executeAgentLoopStreamGeneration(
 							providerConfig: ctx.providerConfig,
 							onRotated: (marker) => {
 								state.activeCredential = marker;
+								options.onCredentialRotated?.(marker);
 							},
 							reprovision: prepared.reprovision,
 							logger: consoleLog,

@@ -526,6 +526,27 @@ describe('轮转 v2:沿候选序列走,订阅用完接同家 API(批 6 §9.1)', 
     expect(getSpaceProviderCredentials('work', 'openai')?.entries[0].cooldownUntil).toBeUndefined()
   })
 
+  it('请求旋钮跟家走:同家换手仍是首次那家的袋,接力到 API 换成 API 家自己设置里的袋', async () => {
+    seedFamily([account('A'), account('B')], [entry('k1')])
+    mocks.spaceSettings = {
+      ai: { providers: { openai: { providerOptions: { request: { verbosity: 'low' } } } } },
+    }
+    const rotator = createSessionCredentialRotator({
+      sessionId: 's1',
+      providerId: 'codex',
+      currentEntryId: 'A',
+      providerConfig: { model: 'gpt-5.5', providerOptions: { request: { verbosity: 'high' } } } as never,
+      reprovision: trackingReprovision().fn as never,
+    })!
+
+    const sameFamily = await rotator(quotaError(), 1)
+    expect(sameFamily?.providerOptions).toEqual({ codex: { verbosity: 'high' } })
+
+    const crossed = await rotator(quotaError(), 2)
+    // 键是接下来真收请求的那一家;订阅家那一格不跟过去(新 provider 本来也只读自己那一格)。
+    expect(crossed?.providerOptions).toEqual({ openai: { verbosity: 'low' } })
+  })
+
   it('开关关(providers.codex.subscriptionFallback = false)→ 订阅用完就停手,不接 API', () => {
     seedFamily([account('A')], [entry('k1')])
     mocks.spaceSettings = { ai: { providers: { codex: { model: 'm', selectedModels: [], subscriptionFallback: false } } } }

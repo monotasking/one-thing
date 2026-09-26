@@ -76,6 +76,23 @@ export function readOnethingRequestProviderOptions(
     : {}
 }
 
+/**
+ * The per-turn request bag (`AgentTurnRequest.providerOptions`) for one provider:
+ * the request half of that provider's own config, under that provider's id.
+ *
+ * One formula, two callers: the turn-request builder (the provider the run starts
+ * with) and credential rotation (the provider a failed turn is handed to — a
+ * subscription that ran dry relays to the same vendor's API half, and that half
+ * has its own knobs under its own key). Keyed by the provider that will actually
+ * receive the request, because each provider reads only its own slot.
+ */
+export function buildOnethingRequestProviderOptionsBag(
+  providerId: string,
+  providerOptions: OnethingProviderOptions | undefined,
+): Record<string, Record<string, unknown>> {
+  return { [providerId]: readOnethingRequestProviderOptions(providerOptions) }
+}
+
 export const ONETHING_ZHIPU_PROVIDER_ID = 'zhipu'
 
 function normalizeZhipuApiMode(value: unknown): OnethingZhipuApiMode | undefined {

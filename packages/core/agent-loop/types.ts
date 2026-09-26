@@ -458,6 +458,17 @@ export interface AgentCredentialRotation {
   delayMs?: number
   /** Short human-readable reason, surfaced on the `auto-retry` event. */
   reason?: string
+  /**
+   * The request knob bag (`AgentTurnRequest.providerOptions`) that belongs to
+   * the rebuilt provider. Present = every later request of this run carries this
+   * bag instead of the one the run started with; absent = keep the current bag.
+   *
+   * The bag is keyed by provider id and each provider reads only its own slot,
+   * so a rotation that rebuilds a DIFFERENT provider would otherwise send the
+   * first provider's slot to a provider that never reads it. The host computes
+   * the new bag (it knows which provider it built); core only swaps it in.
+   */
+  providerOptions?: Record<string, Record<string, unknown>>
 }
 
 export interface AgentLoopOptions extends AgentExecutionCheckpoints {

@@ -49,6 +49,7 @@ import {
   markSpaceCredentialCooldown,
 } from '@onething/runtime/spaces/credentials'
 import { getProviderManifest } from '@onething/runtime/providers/manifest'
+import { buildOnethingRequestProviderOptionsBag } from '@onething/runtime/providers/provider-options'
 import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from '@onething/runtime/providers/route'
 import type { CoreProviderConfigLike, CoreSpaceCredentialMarker } from '@onething/runtime/providers'
 import { authService } from '../auth/auth-service.js'
@@ -240,8 +241,15 @@ export function createSessionCredentialRotator(
     const from = active
     active = { providerId: next.providerId, entryId: entry.id }
     input.onRotated?.(marker)
+    // 请求旋钮跟家走:新 provider 只读它自己那一格,所以袋子按**接下来真收请求的那一家**
+    // 重挂 —— 换家就是那一家设置里的旋钮(`routedConfig`),回到实例造时那一家就是首次解析那份。
+    // 型号级的旋钮不在这只袋里(按模型键,两半卖同一批模型),这里只管 provider 级那一半。
+    const requestOptionsSource = (crossing ? routedConfig : input.providerConfig) as
+      | { providerOptions?: Record<string, unknown> }
+      | undefined
     return {
       provider,
+      providerOptions: buildOnethingRequestProviderOptionsBag(next.providerId, requestOptionsSource?.providerOptions),
       // 换的是**另一把** key,没有理由退避 —— 退避是给"同一把钥匙等它凉下来"的。
       delayMs: 0,
       // 从订阅接力到同家 API 的那一轮说「按 API 计费」(拍点 7);其余沿用今天的话。

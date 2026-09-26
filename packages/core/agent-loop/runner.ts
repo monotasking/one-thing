@@ -573,6 +573,11 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   // (cooled, quota spent) the next turn of the same run must not walk back to it
   // and burn another rotation re-learning the same failure.
   let activeProvider = options.provider
+  // The request knob bag travels with the provider: a rotation that rebuilds a
+  // different provider hands over that provider's bag (see
+  // `AgentCredentialRotation.providerOptions`), and it stays for the rest of the
+  // run for the same reason `activeProvider` does.
+  let activeProviderOptions = options.providerOptions
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     throwIfAgentAborted(options.abortSignal)
@@ -636,7 +641,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           thinking: turnRequestShape.thinking,
           reasoningEffort: turnRequestShape.reasoningEffort,
           cacheKey: options.cacheKey,
-          providerOptions: options.providerOptions,
+          providerOptions: activeProviderOptions,
           persona: options.persona,
           abortSignal: options.abortSignal,
           onEvent: options.onEvent,
@@ -711,6 +716,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         if (rotation) {
           rotationsUsed += 1
           activeProvider = rotation.provider
+          if (rotation.providerOptions !== undefined) activeProviderOptions = rotation.providerOptions
           const delayMs = rotation.delayMs ?? 0
           options.onEvent?.({
             type: 'auto-retry',
