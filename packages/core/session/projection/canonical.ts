@@ -43,7 +43,9 @@
  * **不丢**的:`contentParts` 的顺序(那是正文本身)、消息级 `timestamp`、
  * `usage` 的 token 计数、`errorDetails`、工具的**结构化结局**、`stop`
  * (2026-09-09 那一轮为什么提前结束 —— 它是**账本上的事实**,两条重折路径都从
- * 同一份 `request/end` + `request/recipe` 折出来,不等就是真的有一侧折错了)。
+ * 同一份 `request/end` + `request/recipe` 折出来,不等就是真的有一侧折错了)、
+ * `route`(批 6:这一轮切了家、按 API 计费 —— 同样是账本上 `request/header.route`
+ * 的事实,两条重折路径折的是同一条)。
  * 它们不等就是真的不等。
  *
  * 下面这几条 S1b 的裁定都有一个共同判据:**S2 切读之后,拿投影那一份当真相,

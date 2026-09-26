@@ -25,6 +25,11 @@
  *      run 结束 30 秒去抖后的余额刷新(`GET /user/balance`)打的是换手后的 d2 / d3 / d4,
  *      **d1 一次都不被问**(修之前按首次解析那条刷:d1 / d2 / d3)。同家 API 那一半(openai)
  *      没有配额源,② 那一轮收尾刷的是「无源」—— 所以这一步借按量家的余额口证「按当前凭证」。
+ *   ⑩ 提示行·重试时切家(②「第二问」那一轮):账本上 `auto-retry` 之后补的那条
+ *      `request/header` 带 `route.reason === 'sibling-api'`(provider = 同家 API、requested = 订阅家),
+ *      `sessions.getMessages` 物化出来的那条回答带 `route`;
+ *   ⑪ 提示行·发送前切家(②「第三问」那一轮):那一轮 `turn-start` 的 header 就带 route,
+ *      物化同上;④ 回到 A 的那一轮 header 不带 route、物化也没有 —— 提示不漏进下一轮。
  *
  * **必须用 node 起**(同 gate:quota):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先在仓根 `bun run server:build`。不连 5175,不碰真 `~/.onething`。
@@ -291,6 +296,8 @@ function createRpc(discovery) {
   }
 }
 
+const runIdsOf = events => events.filter(event => event.type === 'run/start').map(event => event.data?.runId)
+
 function readEvents(storePath, sessionId) {
   const file = path.join(storePath, 'sessions', sessionId, 'events.jsonl')
   if (!fs.existsSync(file)) return []
@@ -394,7 +401,9 @@ try {
   console.log(`${TAG} ② A/B 都满、开关开 → 同家 API 第一把`)
   station.play('B', ['429'])
   mark = Date.now()
+  const runsBefore2 = runIdsOf(readEvents(storePath, gateSession))
   const events2 = await sendAndSettle(gateSession, '第二问')
+  const run2 = runIdsOf(events2).find(id => !runsBefore2.includes(id))
   const s2 = station.sends(mark)
   check(s2.map(hit => hit.who).join(',') === 'B,k1' && s2[1].path.endsWith('/api/v1/responses'),
     `B 429 usage_limit_reached → 沿序列接 API 第一把 k1(${s2.map(hit => `${hit.who}@${hit.path}`).join(', ')})`)
@@ -406,7 +415,8 @@ try {
   check(s2[1]?.verbosity === 'low',
     `B → k1 接力那一发:请求体 text.verbosity = API 家的 low(${JSON.stringify(s2[1]?.verbosity)};订阅家存的是 high)`)
   mark = Date.now()
-  await sendAndSettle(gateSession, '第三问')
+  const runsBefore3 = runIdsOf(readEvents(storePath, gateSession))
+  const run3 = runIdsOf(await sendAndSettle(gateSession, '第三问')).find(id => !runsBefore3.includes(id))
   const s2b = station.sends(mark)
   check(s2b.length === 1 && s2b[0].who === 'k1',
     `A/B 都在冷却 → 发送前就直接走同家 API,订阅口零请求(${s2b.map(hit => hit.who).join(',')})`)
@@ -441,7 +451,8 @@ try {
   const back = await quota('codex')
   check(back.credentialId === 'A', `重置之后 decide 回到 A(${back.credentialId})`)
   mark = Date.now()
-  await sendAndSettle(gateSession, '第五问')
+  const runsBefore5 = runIdsOf(readEvents(storePath, gateSession))
+  const run5 = runIdsOf(await sendAndSettle(gateSession, '第五问')).find(id => !runsBefore5.includes(id))
   const s4 = station.sends(mark)
   check(s4.length === 1 && s4[0].who === 'A', `这一发用 A(${s4.map(hit => hit.who).join(',')})`)
 
@@ -499,6 +510,38 @@ try {
     `换手后的 d2 / d3 / d4 各被问了余额(${asked.join(',') || '无'})`)
   check(!asked.includes('d1'), `首次解析的 d1 一次都没被问(${asked.join(',') || '无'})`)
 
+  // ── ⑩⑪ 提示行:切家那一轮账本上有 route,物化上也有 ─────────────────────
+  console.log(`${TAG} ⑩⑪ 切家那一轮的提示行(账本 request/header.route + 物化 message.route)`)
+  const ledger = readEvents(storePath, gateSession)
+  const materialized = (await rpc('sessions', 'getMessages', { sessionId: gateSession }))?.messages ?? []
+  const answerOf = runId => {
+    const start = ledger.find(event => event.type === 'run/start' && event.data?.runId === runId)
+    return materialized.find(message => message.id === start?.data?.assistantMessageId)
+  }
+  const EXPECTED_ROUTE = { requested: 'codex', provider: 'openai', reason: 'sibling-api' }
+  const sameRoute = route => JSON.stringify(route) === JSON.stringify(EXPECTED_ROUTE)
+  // ⑩ 重试时切家:那一轮先有一条不带 route 的 header(发给订阅家),`request/error` 之后补一条带 route 的。
+  const retryRun = ledger.filter(event => event.data?.runId === run2 && (event.type === 'request/header' || event.type === 'request/error'))
+  const retryHeaders = retryRun.filter(event => event.type === 'request/header')
+  const lastRetryHeader = retryHeaders.at(-1)?.data
+  check(Boolean(run2) && retryRun.findIndex(event => event.type === 'request/error') < retryRun.lastIndexOf(retryHeaders.at(-1))
+    && lastRetryHeader?.route?.reason === 'sibling-api' && lastRetryHeader?.route?.requested === 'codex' && lastRetryHeader?.provider === 'openai',
+    `⑩ 重试时切家:request/error 之后补的 header route=${JSON.stringify(lastRetryHeader?.route)} provider=${lastRetryHeader?.provider}`)
+  check(sameRoute(answerOf(run2)?.route), `⑩ sessions.getMessages 物化那条回答带 route(${JSON.stringify(answerOf(run2)?.route)})`)
+  // ⑪ 发送前切家:那一轮唯一一条 header 就带 route,没有 request/error。
+  const preRun = ledger.filter(event => event.data?.runId === run3)
+  const preHeaders = preRun.filter(event => event.type === 'request/header').map(event => event.data)
+  check(Boolean(run3) && preHeaders.length === 1 && preHeaders[0]?.route?.reason === 'sibling-api' && preHeaders[0]?.provider === 'openai'
+    && !preRun.some(event => event.type === 'request/error'),
+    `⑪ 发送前切家:turn-start 那条 header 就带 route(${JSON.stringify(preHeaders.map(header => header?.route ?? null))})`)
+  check(sameRoute(answerOf(run3)?.route), `⑪ sessions.getMessages 物化那条回答带 route(${JSON.stringify(answerOf(run3)?.route)})`)
+  const backHeaders = ledger.filter(event => event.data?.runId === run5 && event.type === 'request/header').map(event => event.data)
+  check(Boolean(run5) && backHeaders.length === 1 && !backHeaders[0]?.route && backHeaders[0]?.provider === 'codex',
+    `⑪ 回到 A 那一轮:header 不带 route(${JSON.stringify(backHeaders.map(header => header?.route ?? null))})`)
+  check(Boolean(answerOf(run5)) && answerOf(run5)?.route === undefined, '⑪ 回到 A 那一轮的回答没有 route(提示不漏进下一轮)')
+  const firstAnswer = materialized.find(message => message.role === 'assistant')
+  check(firstAnswer?.route === undefined, '① 那一轮(用 B 打订阅口)的回答没有 route')
+
   const unexpected = station.hits.filter(hit => hit.who.startsWith('?'))
   check(unexpected.length === 0, `假站没收到认不出的凭证(${unexpected.map(hit => `${hit.who}@${hit.path}`).join(', ') || '无'})`)
   if (failures.length > 0) console.error(`${TAG} server 输出尾:\n${serverOut.slice(-40).join('')}`)
@@ -523,4 +566,4 @@ if (failures.length > 0) {
   console.error(`${TAG} ${failures.length} check(s) failed (${Math.round((Date.now() - startedAt) / 1000)}s)`)
   process.exit(1)
 }
-console.log(`${TAG} ok —— ① 按剩余量 / ② 接同家 API / ③ 开关关 / ④ 窗口重置回 A / ⑤ 默认空间 402 / ⑥ 流中失败不重复 / ⑦ 工具后换凭证 / ⑧ 旋钮跟家走 / ⑨ 收尾按当前凭证 全绿(${Math.round((Date.now() - startedAt) / 1000)}s)`)
+console.log(`${TAG} ok —— ① 按剩余量 / ② 接同家 API / ③ 开关关 / ④ 窗口重置回 A / ⑤ 默认空间 402 / ⑥ 流中失败不重复 / ⑦ 工具后换凭证 / ⑧ 旋钮跟家走 / ⑨ 收尾按当前凭证 / ⑩ 重试切家提示行 / ⑪ 发送前切家提示行 全绿(${Math.round((Date.now() - startedAt) / 1000)}s)`)

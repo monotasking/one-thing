@@ -2011,6 +2011,8 @@ export const zh = {
   'providers.overrideCapOffTipCatalogOff': '自定:关闭{cap}(目录:不支持)',
   'providers.overrideCapOffTipUnknown': '自定:关闭{cap}(目录没填)',
   'providers.saveFailed': '设置没保存上',
+  /** 批 6 提示行:切了家的那一轮,回答顶上那道折痕说的一句(§10 拍点 7)。 */
+  'providers.routeFallbackApi': '订阅额度已用完,这一轮按 API 计费',
 
   /* ── 工作区切换器(08-31 v1) ─────────────────────────────────────────────
    * 面板标题不另起一个键:它就是 'item.workspace' 那三个字(与文件面复用

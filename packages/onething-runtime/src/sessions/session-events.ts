@@ -44,6 +44,7 @@ import type {
   SessionRequestEndUsage,
   SessionRequestHeaderEvent,
   SessionRequestHeaderEventData,
+  SessionRequestRoute,
   SessionRequestStartEvent,
   SessionRequestStartEventData,
   SessionRequestToolsEvent,
@@ -81,6 +82,7 @@ export type {
   SessionEventToolSchema,
   SessionRequestToolsEventData,
   SessionRequestHeaderEventData,
+  SessionRequestRoute,
   SessionRequestStartEventData,
   SessionAssistantFirstTokenEventData,
   SessionToolCallEventData,
@@ -240,6 +242,13 @@ export function scanSessionEventLogCounters(text: string): SessionEventLogCounte
  * 比的是 provider / model / systemPromptHash / toolsHash(四个短字符串,
  * 不再逐字比 40KB 的目录正文),不比 requestIndex 与 reason(那两个字段本来
  * 就每次不同)。
+ *
+ * **`route` 两条**(批 6 提示行):
+ *  - 它参与比较:用户直接选了同家 API(不带 route)与从订阅接力过来(带 route)
+ *    `provider` 一字不差,不比它就会让「这一轮按 API 计费」从上一轮漏进这一轮;
+ *  - 带 route 的信封是**一次执行**的事实(提示行挂在这次执行的回答上),所以换了
+ *    `runId` 就不算相同 —— 否则第二轮仍走 API 时 header 被去重掉,那一轮就没有
+ *    提示。不带 route 的信封照旧跨执行去重(它说的只是「发给了谁」)。
  */
 export function isSameRequestHeaderEnvelope(
   a: SessionRequestHeaderEventData | undefined,
@@ -249,7 +258,9 @@ export function isSameRequestHeaderEnvelope(
   if (a.provider !== b.provider) return false
   if (a.model !== b.model) return false
   if (a.systemPromptHash !== b.systemPromptHash) return false
-  return a.toolsHash === b.toolsHash
+  if (a.toolsHash !== b.toolsHash) return false
+  if (a.route?.requested !== b.route?.requested || a.route?.reason !== b.route?.reason) return false
+  return !b.route || a.runId === b.runId
 }
 
 export type { SessionToolCallInspection } from '@onething/core/session'

@@ -169,6 +169,22 @@ export interface ProjectedMessageStop {
   reasoningTokens?: number
 }
 
+/**
+ * **这一轮没有发给用户选的那一家**(批 6 提示行,正本
+ * `docs/design/provider-settings-rework-2026-09.md` §9.2 / §10 拍点 7)。
+ *
+ * 产地是账本上这次执行最后一条 `request/header.route`(provider 取同一条的
+ * `provider`)。今天只有 `'sibling-api'`:订阅额度用完,这一轮按 API 计费。
+ * 流中与收场之后都在(它从这一轮第一条请求发出去那一刻起就是事实,不等结局)。
+ */
+export interface ProjectedMessageRoute {
+  /** 用户选的那一家。 */
+  requested: string
+  /** 这一轮真正发给了谁。 */
+  provider: string
+  reason: 'sibling-api'
+}
+
 export interface ProjectedTurnContext {
   set?: Record<string, string>
   removed?: string[]
@@ -195,6 +211,8 @@ export interface ProjectedChatMessage {
   turnContext?: ProjectedTurnContext
   /** 这一轮最后一条请求为什么提前结束;正常 stop / tool_calls 时缺席。 */
   stop?: ProjectedMessageStop
+  /** 这一轮切了家(订阅额度用完 → 同家 API);没切时缺席。 */
+  route?: ProjectedMessageRoute
   usage?: ProjectedStepUsage
   /** 事件坐标:这条消息由哪条事件开头(§3.2 `ChatMessage.seq` 退役后的身份)。 */
   eventSeq?: number

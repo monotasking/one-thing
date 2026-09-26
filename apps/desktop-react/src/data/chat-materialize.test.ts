@@ -494,3 +494,30 @@ describe('用户消息的 content 是模型版,补账那一段不碰它', () => 
     expect(drawn).toBe('好')
   })
 })
+
+describe('切家提示行(批 6):壳的折叠读同一格 request/header.route', () => {
+  const header = (seq: number, runId: string, provider: string, route?: { requested: string; reason: 'sibling-api' }): Ev => ({
+    seq,
+    time: T0,
+    type: 'request/header',
+    data: { runId, requestIndex: 1, provider, model: 'm', systemPromptHash: 'h', toolsHash: 't', reason: 'initial', ...(route ? { route } : {}) },
+  })
+
+  it('没有 route:物化出来的消息一格 route 都没有', () => {
+    const state = fold([...baseLedger(), header(9, 'r2', 'codex')])
+    const messages = materializeChatMessagesCached(state, OPTS, 0).messages
+    expect(messages.map(message => message.route)).toEqual([undefined, undefined, undefined, undefined])
+  })
+
+  it('有 route:活消息当场带上(流中),只有它换新引用', () => {
+    const state = fold(baseLedger())
+    const before = materializeChatMessagesCached(state, OPTS, 0).messages
+    const routed = reduceSessionProjection(state, header(9, 'r2', 'openai', { requested: 'codex', reason: 'sibling-api' }) as never)
+    const after = materializeChatMessagesCached(routed, OPTS, 0).messages
+    const live = after.find(message => message.id === 'a2')
+    expect(live?.isStreaming).toBe(true)
+    expect(live?.route).toEqual({ requested: 'codex', provider: 'openai', reason: 'sibling-api' })
+    expect(after.find(message => message.id === 'a1')).toBe(before.find(message => message.id === 'a1'))
+    expect(live).not.toBe(before.find(message => message.id === 'a2'))
+  })
+})

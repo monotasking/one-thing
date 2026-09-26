@@ -190,6 +190,9 @@ function materializeAssistantNode(
     ...(thinkingTime !== undefined ? { thinkingTime } : {}),
     ...(node.ended ? {} : { isStreaming: true as const }),
     ...(stop ? { stop } : {}),
+    // 批 6 提示行:这一轮切了家。与 `stop` 不同,它**流中就在** —— 请求发出去那一刻
+    // 起它就是事实,屏幕要在回答开头就说「这一轮按 API 计费」,不等结局。
+    ...(node.route ? { route: { ...node.route } } : {}),
     ...(node.errorDetails ? { errorDetails: node.errorDetails } : {}),
     ...node.patch,
     // 消息这条路上换不回来的引用**照实留着**(A2 / provider-data 的既有口径),

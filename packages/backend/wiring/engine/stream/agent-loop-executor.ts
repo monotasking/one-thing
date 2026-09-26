@@ -118,6 +118,26 @@ export interface AgentLoopExecutorTurnState {
 	hasSentToolParts: boolean;
 }
 
+/**
+ * 批 6 提示行:这一发**此刻**发给了谁,以及要不要在账本上说一句「切了家」。
+ *
+ * 标记带 `route` = 被接力给了另一家(`routedProviderIdOf` 同一条判据);只有
+ * `'sibling-api'`(订阅额度用完 → 同家 API)要让用户知道,其余理由说的都是
+ * 「就是用户选的那一家」。没有标记(没有池 / 默认空间单条)时退回造 provider 时
+ * 的那一家。
+ */
+function requestRouteOf(
+	requested: string,
+	marker: CoreSpaceCredentialMarker | undefined,
+	fallbackProvider: string,
+): { provider: string; route?: { requested: string; reason: "sibling-api" } } {
+	if (!marker) return { provider: fallbackProvider };
+	const provider = routedProviderIdOf(requested, { spaceCredential: marker });
+	return provider !== requested && marker.route?.reason === "sibling-api"
+		? { provider, route: { requested, reason: "sibling-api" } }
+		: { provider };
+}
+
 /** 账本 / 配额回调读的那份标记:换过手就是换手后的那一条,没换过就是首次解析那一条。 */
 function activeCredentialConfigOf(state: AgentLoopExecutorState): { spaceCredential?: CoreSpaceCredentialMarker } {
 	return state.activeCredential
@@ -1000,6 +1020,16 @@ export async function executeAgentLoopStreamGeneration(
 				sessionId: ctx.sessionId,
 				// 请求信封(`request/header.provider`)记的是**这一次请求发给了谁**(批 6)。
 				providerId: prepared.routedProviderId ?? ctx.providerId,
+				// 批 6 提示行:此刻发给了谁 + 是不是切了家。轮换器换过手就读换手后那一条
+				// (`state.activeCredential`,`onRotated` 当场写),否则读首次解析那一条。
+				currentRoute: () =>
+					requestRouteOf(
+						ctx.providerId,
+						state.activeCredential
+							? state.activeCredential
+							: (ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker }).spaceCredential,
+						prepared.routedProviderId ?? ctx.providerId,
+					),
 				model: ctx.providerConfig.model,
 				systemPrompt: prepared.systemPrompt,
 				// U0:采集点读的是**同步点**那一格 —— 换锚点之后它立刻是新号,而

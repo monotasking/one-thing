@@ -80,6 +80,7 @@ import {
   truncateSessionEventPreview,
   type SessionEventToolSchema,
   type SessionRequestHeaderEventData,
+  type SessionRequestRoute,
 } from '@onething/runtime/sessions/session-events'
 import { findLastSessionEventSync, flushSessionEventLog, nextSessionRequestIndex } from '../../../session/event-log.js'
 import { writeSessionEvent } from '../../../session/event-writer.js'
@@ -133,6 +134,17 @@ export interface SessionEventRecorderContext {
   getHistoryInput?: () => readonly { id: string; role: string; content?: string }[]
   /** 请求参数快照(温度 / maxTokens / thinking …),原样进 recipe。 */
   getRequestParams?: () => Record<string, unknown> | undefined
+  /**
+   * 批 6 提示行:**此刻**这一发发给了谁、是不是从用户选的那一家切过来的。
+   *
+   * 为什么是现取的口子而不是 `providerId` 那一格:切家有两个时刻 —— 发送前
+   * (起流那一刻就定了)与**重试时**(轮换器沿候选序列接力,provider 实例在流的中途
+   * 换掉)。后一种只有执行器知道(`onRotated` 记在它的 state 上),记录器在
+   * `turn-start` 与 `auto-retry` 两处各问一次。
+   *
+   * 不注入 = `{ provider: ctx.providerId }`、不带 route(= 修复前的行为)。
+   */
+  currentRoute?: () => { provider: string; route?: SessionRequestRoute }
   /**
    * 配方写下去的那一刻(= 这次请求真正发出之前)的旁听口。
    *
@@ -507,13 +519,17 @@ export function createSessionEventRecorder(
   }
 
   function envelope(requestIndex: number, toolsHash: string): SessionRequestHeaderEventData {
+    const now = ctx.currentRoute?.()
     return {
       requestIndex,
-      provider: ctx.providerId,
+      provider: now?.provider ?? ctx.providerId,
       model: ctx.model,
       systemPromptHash: hashSessionEventSystemPrompt(ctx.systemPrompt ?? ''),
       toolsHash,
       reason: 'initial',
+      ...withRunId(),
+      // 只在切了家时写(类型上的注释说了两种时刻);缺席 = 发给的就是用户选的那一家。
+      ...(now?.route ? { route: now.route } : {}),
     }
   }
 
@@ -526,7 +542,7 @@ export function createSessionEventRecorder(
     const next = envelope(requestIndex, toolsHash)
     if (isSameRequestHeaderEnvelope(state.lastHeader, next)) return
     next.reason = state.lastHeader ? 'change' : 'initial'
-    writeSessionEvent(ctx.sessionId, 'request/header', { ...next, ...withRunId() })
+    writeSessionEvent(ctx.sessionId, 'request/header', next)
     state.lastHeader = next
   }
 
@@ -1043,6 +1059,11 @@ export function createSessionEventRecorder(
           attempt: event.attempt,
           ...(discard.length > 0 ? { discardParts: discard } : {}),
         })
+        // 批 6 提示行:轮换器在发 `auto-retry` **之前**已经换好了手(core runner 先
+        // `rotateCredential` 再发这条),所以此刻问到的就是重试那一遍的去向。接力到了
+        // 另一家,信封就变了 —— 同一条 `requestIndex` 补一条 header;没换家(同家换一把
+        // 钥匙 / 同一把退避重试)信封不变,去重掉,一行不多写。
+        if (state.lastToolsHash !== undefined) maybeWriteHeader(state.requestIndex, state.lastToolsHash)
         return
       }
       case 'tool-result': {

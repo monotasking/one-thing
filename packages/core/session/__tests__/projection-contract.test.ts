@@ -81,7 +81,9 @@ import {
   canonicalChatMessages,
   canonicalHistoryMessages,
   createSessionProjectionState,
+  decodeSessionProjectionCheckpoint,
   defaultHistoryMessageContent,
+  encodeSessionProjectionCheckpoint,
   foldSessionProjection,
   foldSurface,
   projectChatMessages,
@@ -90,6 +92,7 @@ import {
   SurfaceIndex,
 } from '../projection/index.js'
 import type { ProjectedStep, ProjectedStepUsage, ProjectedToolCall } from '../projection/index.js'
+import { createSessionAccountState } from '../account.js'
 
 // ============================================================================
 // 场景描述(两条线共同的输入,唯一共享的东西)
@@ -4010,5 +4013,68 @@ describe('2026-09-09:length 截断上屏(message.stop)', () => {
     const message = projectChatMessages(line.events).messages[0]
     expect(message.isStreaming).toBe(true)
     expect(message.stop).toBeUndefined()
+  })
+})
+
+describe('批 6 提示行:切家那一轮(message.route)', () => {
+  const header = (runId: string, requestIndex: number, provider: string, route?: { requested: string; reason: 'sibling-api' }) => ({
+    time: requestIndex, type: 'request/header' as const,
+    data: {
+      runId, requestIndex, provider, model: 'gpt-5.3-codex', systemPromptHash: 'h', toolsHash: 't',
+      reason: 'change' as const, ...(route ? { route } : {}),
+    },
+  })
+
+  it('① 没切家(header 不带 route / 老账本没有 header):一格 route 都不产出', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push(header('r1', 1, 'codex'))
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+    line.push({ time: 6, type: 'run/start', data: { runId: 'r2', kind: 'send', assistantMessageId: 'a2' }, surfaceOp: 'append' })
+    line.push({ time: 7, type: 'run/end', data: { runId: 'r2', outcome: 'completed' } })
+    const messages = projectChatMessages(line.events).messages
+    expect(messages.map(message => message.route)).toEqual([undefined, undefined])
+  })
+
+  it('② 发送前切家:turn-start 那条 header 带 route —— 流中就在,收场后照旧在', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push(header('r1', 1, 'openai', { requested: 'codex', reason: 'sibling-api' }))
+    const live = projectChatMessages(line.events).messages[0]
+    expect(live.isStreaming).toBe(true)
+    expect(live.route).toEqual({ requested: 'codex', provider: 'openai', reason: 'sibling-api' })
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+    expect(projectChatMessages(line.events).messages[0].route).toEqual({ requested: 'codex', provider: 'openai', reason: 'sibling-api' })
+  })
+
+  it('③ 重试时切家:同一 requestIndex 补的那条 header 覆盖前一条;切回用户选的那一家就撤掉', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    line.push(header('r1', 1, 'codex'))
+    line.push({ time: 2, type: 'request/error', data: { runId: 'r1', requestIndex: 1, error: { message: '订阅额度已用完,这一轮按 API 计费' }, willRetry: true, attempt: 1 } })
+    line.push(header('r1', 1, 'openai', { requested: 'codex', reason: 'sibling-api' }))
+    line.push({ time: 5, type: 'run/end', data: { runId: 'r1', outcome: 'completed' } })
+    line.push({ time: 6, type: 'run/start', data: { runId: 'r2', kind: 'send', assistantMessageId: 'a2' }, surfaceOp: 'append' })
+    line.push(header('r2', 2, 'codex'))
+    line.push({ time: 7, type: 'run/end', data: { runId: 'r2', outcome: 'completed' } })
+    const messages = projectChatMessages(line.events).messages
+    expect(messages[0].route).toEqual({ requested: 'codex', provider: 'openai', reason: 'sibling-api' })
+    expect(messages[1].route).toBeUndefined()
+  })
+
+  it('④ 没有 runId 的老 header 不落到活 run 上;折法经检查点往返不丢', () => {
+    const line = eventLine()
+    line.push({ time: 1, type: 'run/start', data: { runId: 'r1', kind: 'send', assistantMessageId: 'a1' }, surfaceOp: 'append' })
+    const legacy = header('r1', 1, 'openai', { requested: 'codex', reason: 'sibling-api' })
+    delete (legacy.data as { runId?: string }).runId
+    line.push(legacy)
+    expect(projectChatMessages(line.events).messages[0].route).toBeUndefined()
+    line.push(header('r1', 1, 'openai', { requested: 'codex', reason: 'sibling-api' }))
+    let state = createSessionProjectionState()
+    for (const event of line.events) state = reduceSessionProjection(state, event)
+    const restored = decodeSessionProjectionCheckpoint(
+      JSON.parse(JSON.stringify(encodeSessionProjectionCheckpoint(state, createSessionAccountState()))),
+    ).state
+    expect([...restored.runs.values()][0]?.route).toEqual({ requested: 'codex', provider: 'openai', reason: 'sibling-api' })
   })
 })

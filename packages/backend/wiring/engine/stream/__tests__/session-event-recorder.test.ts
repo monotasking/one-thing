@@ -101,7 +101,11 @@ function testProvider(): AgentProvider {
 
 async function runLoop(
   tool: AgentTool,
-  options: { systemPrompt?: string; isToolCallHidden?: (toolCallId: string) => boolean } = {},
+  options: {
+    systemPrompt?: string
+    isToolCallHidden?: (toolCallId: string) => boolean
+    currentRoute?: () => { provider: string; route?: { requested: string; reason: 'sibling-api' } }
+  } = {},
 ): Promise<void> {
   const systemPrompt = options.systemPrompt ?? 'you are a test'
   const runtime: AgentLoopOptions = {
@@ -130,6 +134,7 @@ async function runLoop(
     getMessageId: () => 'assistant-1',
     getHistoryInput: () => [{ id: 'user-1', role: 'user', content: 'hello' }],
     ...(options.isToolCallHidden ? { isToolCallHidden: options.isToolCallHidden } : {}),
+    ...(options.currentRoute ? { currentRoute: options.currentRoute } : {}),
   })
   try {
     for await (const _chunk of streamAgentLoopProviderChunks(recorded.runtime)) {
@@ -466,6 +471,101 @@ describe('session event recorder (agent loop integration)', () => {
       headers.map(event => (event.type === 'request/header' ? event.data.toolsHash : '')),
     )
     expect(hashes.size).toBe(1)
+  })
+
+  describe('批 6 提示行:切家落在 request/header.route', () => {
+    const ROUTED = { provider: 'openai', route: { requested: 'codex', reason: 'sibling-api' as const } }
+
+    it('发送前切家:信封 provider 是接力的那一家、带 route;第二轮仍切家也照写(一次执行一条)', async () => {
+      await runLoop(ECHO_TOOL, { currentRoute: () => ROUTED })
+      await runLoop(ECHO_TOOL, { currentRoute: () => ROUTED })
+
+      const events = await readSessionLogEvents(SESSION_ID)
+      const headers = events.flatMap(event => (event.type === 'request/header' ? [event.data] : []))
+      const runIds = events.flatMap(event => (event.type === 'run/start' ? [event.data.runId] : []))
+      // 同一次执行里第二条请求信封不变 —— 照旧去重;换了一次执行就再写一条。
+      expect(headers).toHaveLength(2)
+      expect(headers.map(header => header.runId)).toEqual(runIds)
+      for (const header of headers) {
+        expect(header).toMatchObject({ provider: 'openai', route: { requested: 'codex', reason: 'sibling-api' } })
+      }
+    })
+
+    it('没切家:不带 route,跨执行照旧去重;切回用户选的那一家时再写一条不带 route 的', async () => {
+      await runLoop(ECHO_TOOL, { currentRoute: () => ROUTED })
+      await runLoop(ECHO_TOOL, { currentRoute: () => ({ provider: 'openai' }) })
+      await runLoop(ECHO_TOOL, { currentRoute: () => ({ provider: 'openai' }) })
+
+      const headers = (await readSessionLogEvents(SESSION_ID))
+        .flatMap(event => (event.type === 'request/header' ? [event.data] : []))
+      expect(headers.map(header => header.route?.reason ?? null)).toEqual(['sibling-api', null])
+    })
+
+    it('重试时切家:auto-retry 之后同一 requestIndex 补一条带 route 的 header', async () => {
+      let rotated = false
+      const burned: AgentProvider = {
+        ...testProvider(),
+        async *streamTurn(): AsyncIterable<AgentTurnStreamEvent> {
+          yield* ([] as AgentTurnStreamEvent[])
+          throw Object.assign(new Error('usage_limit_reached'), { status: 429 })
+        },
+      }
+      const fresh: AgentProvider = {
+        ...testProvider(),
+        async *streamTurn(request): AsyncIterable<AgentTurnStreamEvent> {
+          yield { type: 'text-delta', turn: request.turn, delta: 'ok' }
+          yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+        },
+      }
+      const runtime: AgentLoopOptions = {
+        provider: burned,
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hello' }],
+        tools: [ECHO_TOOL],
+        toolPolicy: { enabled: true },
+        maxTurns: 4,
+        sessionId: SESSION_ID,
+        messageId: 'assistant-1',
+      }
+      const run = beginSessionRun(SESSION_ID, { kind: 'send', assistantMessageId: 'assistant-1', provider: 'codex', model: 'test-model' })
+      const recorded = attachSessionEventRecorder(runtime, {
+        sessionId: SESSION_ID,
+        providerId: 'codex',
+        model: 'test-model',
+        systemPrompt: 'you are a test',
+        getMessageId: () => 'assistant-1',
+        currentRoute: () => (rotated ? ROUTED : { provider: 'codex' }),
+      })
+      try {
+        for await (const _chunk of streamAgentLoopProviderChunks({
+          ...recorded.runtime,
+          // 与轮换器同一个顺序:先换手(`onRotated`),runner 再发 `auto-retry`。
+          rotateCredential: async () => {
+            rotated = true
+            return { provider: fresh, reason: '订阅额度已用完,这一轮按 API 计费' }
+          },
+        })) {
+          void _chunk
+        }
+      } finally {
+        recorded.recorder.flush()
+        endSessionRun(SESSION_ID, run.runId, { outcome: 'completed' })
+      }
+      await flushSessionEventLog(SESSION_ID)
+
+      const events = await readSessionLogEvents(SESSION_ID)
+      const tail = events.filter(event => event.type === 'request/header' || event.type === 'request/error')
+      expect(tail.map(event => event.type)).toEqual(['request/header', 'request/error', 'request/header'])
+      const [first, , second] = tail.map(event => event.data as { requestIndex: number; provider: string; route?: unknown; reason: string })
+      expect(first).toMatchObject({ provider: 'codex' })
+      expect(first.route).toBeUndefined()
+      expect(second).toMatchObject({
+        requestIndex: first.requestIndex,
+        provider: 'openai',
+        reason: 'change',
+        route: { requested: 'codex', reason: 'sibling-api' },
+      })
+    })
   })
 
   it('writes a new catalog when the tool catalog itself changed', async () => {

@@ -27,6 +27,7 @@ import { assembleMessage, segmentKey } from './assemble'
 import { RowElementBook } from './row-elements'
 import { RowHeightObserver, rowHeightsOf } from './row-heights'
 import { ContextDeltaSeam, hasContextDelta } from './ContextDeltaSeam'
+import { Seam, SeamLabel, SeamLine } from './seam/Seam'
 import { DomScrollPort, type ScrollPort } from './viewport/scroll-port'
 import { useViewportAnchor } from './viewport/use-viewport-anchor'
 import { GeometryReportContext, useGeometryReport } from './geometry-report'
@@ -52,6 +53,7 @@ import s from './ChatStream.module.css'
 
 const ClipIcon = resolveIcon('Paperclip')
 const RetryIcon = resolveIcon('RotateCcw')
+const RouteIcon = resolveIcon('ArrowLeftRight')
 
 interface Props {
   /**
@@ -456,22 +458,38 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
     /* 行高账那两格(G 线 P4-b ①;判词同用户那一行)。 */
     const rowRef = rowHeights?.refFor(message.id)
     const intrinsic = rowHeights?.heightAtMount(message.id)
+    /*
+     * 切家那一道折痕(批 6 提示行)的行高账,按 `<消息 id>#route` 记 —— 与它的
+     * React key 同一个字符串(判词同上下文更新那一行)。
+     */
+    const routed = message.route !== undefined
+    const routeId = `${message.id}#route`
+    const routeRef = routed ? rowHeights?.refFor(routeId) : undefined
+    const routeIntrinsic = routed ? rowHeights?.heightAtMount(routeId) : undefined
     const rows = rowBooks.ledger.take(
       message.id,
-      [message, streaming, flash, retiring, t, sessionId, rowRef, intrinsic],
-      () => [
-        <MessageRow
-          key={message.id}
-          t={t}
-          sessionId={sessionId}
-          message={message}
-          streaming={streaming}
-          flash={flash}
-          retiring={retiring}
-          rowRef={rowRef}
-          intrinsicHeight={intrinsic}
-        />,
-      ],
+      [message, streaming, flash, retiring, t, sessionId, rowRef, intrinsic, routeRef, routeIntrinsic],
+      () => {
+        const row = (
+          <MessageRow
+            key={message.id}
+            t={t}
+            sessionId={sessionId}
+            message={message}
+            streaming={streaming}
+            flash={flash}
+            retiring={retiring}
+            rowRef={rowRef}
+            intrinsicHeight={intrinsic}
+          />
+        )
+        /*
+         * ── 切家那一道折痕(批 6 提示行,§10 拍点 7)────────────────────────────
+         * 这一轮没发给用户选的那一家(订阅额度用完 → 同家 API),回答**之前**独立
+         * 一行说一句。平铺进表、不包 Fragment 的理由同上下文更新那一行。
+         */
+        return routed ? [routeSeamRow(message, t, routeRef, routeIntrinsic), row] : [row]
+      },
     )
     for (const row of rows) ledgerRowElements.push(row)
   }
@@ -1341,6 +1359,47 @@ function NoticeRow({ t }: { t: TFn }) {
  * 旧回答的上折(`.rowRetiring`)一个字没动 —— 那是「按下即开槽」在**几何上**的
  * 那一半,与折痕画在哪无关。
  */
+
+/**
+ * ── 切家那一道折痕(批 6 提示行,正本 `docs/design/provider-settings-rework-2026-09.md`
+ * §9.2 / §10 拍点 7)────────────────────────────────────────────────────────
+ * 订阅额度用完,这一轮被接力给了同家的 API 半边(`message.route`,投影从账本上这一轮
+ * 最后一条 `request/header.route` 折出来,流中就在)。它是「系统在这一轮开头做的一件
+ * 事」,与上下文更新同一族,所以画成同一种形:折痕基座,恒 `settled`,**不折叠**
+ * (一句话说完,没有可展开的正文)、不可点、不进消息正文。
+ *
+ * 位置是**这条回答之前**的独立一行:切家发生在回答开始之前(发送前那一种)或者回答
+ * 重来之前(重试那一种,失败那一遍的段已被账本作废),读起来是「接下来这一段按 API
+ * 计费」。不带 `data-message-id`(同上下文更新那一行的判词),报的是 `data-route-of`。
+ *
+ * `.rowLate`:重试那一种必然事后出现(流到一半才换家),发送前那一种也要等
+ * `request/header` 落账才有 —— 都是「回合开张之后才补上的行」,三量软着陆。
+ */
+function routeSeamRow(
+  message: ProjectedMessage,
+  t: TFn,
+  rowRef: RefCallback<HTMLElement> | undefined,
+  intrinsicHeight: number | undefined,
+) {
+  return (
+    <article
+      key={`${message.id}#route`}
+      ref={rowRef}
+      className={`${s.row} ${s.rowLate}`}
+      style={intrinsicStyleOf(intrinsicHeight)}
+      data-route-of={message.id}
+    >
+      <Seam data-state="settled" data-testid="route-seam">
+        <SeamLine />
+        <SeamLabel data-testid="route-label">
+          <RouteIcon className={s.routeIcon} strokeWidth={1.9} aria-hidden="true" />
+          {t('providers.routeFallbackApi')}
+        </SeamLabel>
+        <SeamLine />
+      </Seam>
+    </article>
+  )
+}
 
 function contextSeamRow(
   message: ProjectedMessage,

@@ -1081,6 +1081,52 @@ describe('收场通知:这一轮为什么提前结束', () => {
 })
 
 /**
+ * 切家那一道折痕(批 6 提示行,§10 拍点 7):订阅额度用完,这一轮被接力给同家 API。
+ * 素材经真的折叠器进来(`request/header.route` → `message.route`),所以这两条也证明
+ * 那一格是从账本折出来的。
+ */
+const header = (seq: number, runId: string, provider: string, route?: { requested: string; reason: 'sibling-api' }): Ledger => ({
+  seq,
+  time: T0,
+  type: 'request/header',
+  data: { runId, requestIndex: 1, provider, model: 'gpt-5.3-codex', systemPromptHash: 'h', toolsHash: 't', reason: 'initial', ...(route ? { route } : {}) },
+})
+
+describe('切家提示行:这一轮按 API 计费', () => {
+  it('没切家:一道折痕都不画', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '问一句'),
+      runStart(3, 'r1', 'a1'),
+      header(4, 'r1', 'codex'),
+      chunks(5, 'r1', 'a1', ['答了']),
+      runEnd(6, 'r1'),
+    ])
+    expect(screen.queryByTestId('route-seam')).toBeNull()
+  })
+
+  it('切了家:流中就在,画在这条回答之前,一句话、不可折叠', async () => {
+    const view = await mount([
+      created(1),
+      userMessage(2, 'm1', '问一句'),
+      runStart(3, 'r1', 'a1'),
+      header(4, 'r1', 'openai', { requested: 'codex', reason: 'sibling-api' }),
+      chunks(5, 'r1', 'a1', ['答了']),
+    ])
+    const label = screen.getByTestId('route-label')
+    expect(label.textContent).toBe('订阅额度已用完,这一轮按 API 计费')
+    expect(label.getAttribute('role')).toBeNull()
+    expect(label.getAttribute('aria-expanded')).toBeNull()
+    const row = view.container.querySelector('article[data-route-of="a1"]')
+    expect(row).not.toBeNull()
+    expect(row?.hasAttribute('data-message-id')).toBe(false)
+    // 位置:紧挨在这条回答那一行之前。
+    const next = row?.nextElementSibling
+    expect(next?.getAttribute('data-message-id') ?? next?.querySelector('[data-message-id]')?.getAttribute('data-message-id')).toBe('a1')
+  })
+})
+
+/**
  * **流式读数行的静默判据是「最近一次有东西到达」**(2026-09-09 用户裁定:工具进度
  * 计入活性)。事故:真店 fe5261d9 那一轮模型不到 1 秒就发了工具调用,bash 跑了 7 秒、
  * 卡片一直在刷输出,读数行却说「已 7.0s 没有新内容」。

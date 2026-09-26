@@ -142,14 +142,38 @@ export interface SessionRequestToolsEventData {
   runId?: string
 }
 
+/**
+ * 这一次请求**没有发给用户选的那一家**(批 6 轮转 v2 的提示行,正本
+ * `docs/design/provider-settings-rework-2026-09.md` §9.2 / §10 拍点 7)。
+ *
+ * 今天只有一种:订阅那一家的账号额度全用完,`pickRoute` 把这一发接力给了同家的
+ * API 半边(`'sibling-api'`)—— 这一轮按 API 计费,用户该知道。别的 route 理由
+ * (`subscription` / `api`)说的是「就是用户选的那一家」,不落这一格。
+ */
+export type SessionRequestRouteReason = 'sibling-api'
+
+export interface SessionRequestRoute {
+  /** 用户选的那一家(会话、模型一族、账本归属都仍记在它名下)。 */
+  requested: string
+  reason: SessionRequestRouteReason
+}
+
 export interface SessionRequestHeaderEventData {
   requestIndex: number
+  /** 这一次请求**真正发给了谁**(批 6:被接力过就是接力的那一家)。 */
   provider: string
   model: string
   systemPromptHash: string
   toolsHash: string
   reason: 'initial' | 'change'
   runId?: string
+  /**
+   * 只在切了家时写(`provider !== route.requested`)。缺席 = 发给的就是用户选的那一家
+   * (老账本一律缺席,行为不变)。两种切家时刻经同一处记录器落这一格:**发送前**
+   * (`pickRoute()[0]` 已是同家 API,`turn-start` 那一条 header 带上)与**重试时**
+   * (轮换器沿序列接力,`auto-retry` 之后补一条同 `requestIndex` 的 header)。
+   */
+  route?: SessionRequestRoute
 }
 
 export interface SessionRequestStartEventData {

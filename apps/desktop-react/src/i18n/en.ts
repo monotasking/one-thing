@@ -1729,6 +1729,7 @@ export const en: Record<MessageKey, string> = {
   'providers.overrideCapOffTipCatalogOff': 'Custom: {cap} off (catalog: not supported)',
   'providers.overrideCapOffTipUnknown': 'Custom: {cap} off (catalog empty)',
   'providers.saveFailed': 'Settings were not saved',
+  'providers.routeFallbackApi': 'Subscription quota is used up; this turn is billed as API usage.',
 
   /* ── Workspace switcher (v1, 08-31) ────────────────────────────────────
    * The panel title reuses 'item.workspace'. Workspace names are user data,

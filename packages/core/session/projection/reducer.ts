@@ -332,6 +332,14 @@ export interface AssistantNode extends BaseNode {
     startedAt?: number
     durationMs: number
   }>
+  /**
+   * 这次执行**最后一条请求**没有发给用户选的那一家(批 6 提示行,`request/header.route`)。
+   *
+   * 后到的 header 覆盖前一条:发送前切了家的那一轮在 `turn-start` 那条上就有;
+   * 重试时才切的那一轮由 `auto-retry` 之后补的那条带上。一条不带 route 的 header
+   * (切回了用户选的那一家)把它撤掉。缺席 = 没切过家(老账本一律缺席)。
+   */
+  route?: { requested: string; provider: string; reason: 'sibling-api' }
   /** `run/start.continuesRunId`:这次 run 接着哪一次 run 的执行往下跑。 */
   continuesRunId?: string
   /**
@@ -913,9 +921,31 @@ export function reduceSessionProjection(
       break
     }
 
+    case 'request/header': {
+      // 信封的其余几格回答的是"什么时候发生了什么",不改投影;只有 `route` 那一格
+      // 是屏幕上的事实(「这一轮按 API 计费」)。只认带 runId 的 —— 信封按去重规则
+      // 跨执行才写一次,没有 runId 的老行落到活 run 上会把别人的切家安到这一轮头上。
+      const runId = event.data.runId
+      const run = runId ? state.runs.get(runId) : undefined
+      if (!run) break
+      const route = event.data.route
+      const next = route
+        ? { requested: route.requested, provider: event.data.provider, reason: route.reason }
+        : undefined
+      const prev = run.route
+      if (
+        prev?.requested === next?.requested
+        && prev?.provider === next?.provider
+        && prev?.reason === next?.reason
+      ) break
+      const target = forWrite(run)!
+      if (next) target.route = next
+      else delete target.route
+      break
+    }
+
     // 记录在案但不改投影:它们回答的是"什么时候发生了什么",不是"屏幕上有什么"。
     case 'request/tools':
-    case 'request/header':
     case 'interaction/asked':
     case 'interaction/answered':
       break

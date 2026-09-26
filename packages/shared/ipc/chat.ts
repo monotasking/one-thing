@@ -593,6 +593,17 @@ export interface ChatMessage {
     outputTokens?: number
     reasoningTokens?: number
   }
+  /**
+   * 这一轮**没有发给用户选的那一家**(批 6 提示行):订阅额度用完,`pickRoute`
+   * 把它接力给了同家的 API 半边,这一轮按 API 计费。投影独家产出(账本上这一轮
+   * 最后一条 `request/header.route`),流中就在;没切家时缺席。壳在这条回答顶上
+   * 画一道折痕说一句,不读 `provider` 做判断。
+   */
+  route?: {
+    requested: string
+    provider: string
+    reason: 'sibling-api'
+  }
   // Token usage for this message (for assistant messages)
   usage?: {
     inputTokens: number
