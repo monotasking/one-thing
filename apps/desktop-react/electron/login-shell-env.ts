@@ -12,6 +12,23 @@ import path from 'path'
  * 两边行为分叉,排障时最难看出来的那种。
  *
  * 必须在装配**之前**跑:`ACPClient` / MCP / bash 都在 spawn 那一刻读 `process.env`。
+ *
+ * ── 09-26 事故:缓存把一台门的临时 store 灌进了用户的桌面 ─────────────────────
+ * 从前这里起登录 shell 时把**本进程的整份环境**递给它当底,于是 shell 报回来的
+ * 「登录环境」里混着启动它的那个人递的变量。一台真机门(`gate-providers-squeeze`)
+ * 以 `ONETHING_STORE_PATH=/var/folders/…/pv-squeeze-store-…` 起壳跑了一遍,壳把这句
+ * 连同 `ONETHING_GATE_HEADLESS` / `ONETHING_REACT_DEV_SERVER_URL=…5194` 一起写进了
+ * **用户真 store 旁边**的缓存(缓存路径写死 `~/.onething`,门的隔离 store 隔离不到它);
+ * 用户下一次起桌面,缓存命中、`mergeMissingEnv` 把缺席的 `ONETHING_STORE_PATH` 补上,
+ * 整台后端就装在那个已被删掉又被 `mkdir -p` 重建的空临时目录里 —— 屏上是「原来的
+ * 会话没了 / 模型没了」。而且它自我延续:后台校正再起 shell 时底是已被污染的
+ * `process.env`,又把那句抄回缓存。三条修法,缺一条都堵不死:
+ *  ① 登录 shell 的底只给身份与区域那几格({@link loginShellSeedEnv}),它报回来的
+ *    才真是 rc 文件立起来的环境,不是启动者递的;
+ *  ② 「这个进程住哪、怎么起的」是启动者的话,shell 说了不算:`ONETHING_*` / `npm_*` /
+ *    `ELECTRON_*` 永不从登录环境注入({@link isLauncherOwnedEnvKey});
+ *  ③ 缓存跟 store 走(`ONETHING_STORE_PATH` 优先,与 `main.ts` 的 `resolveStoreRoot`
+ *    同语义),门的隔离 store 于是也隔离了这份缓存;格式版本抬到 2,旧法抓的缓存作废。
  */
 
 /** `getLogger(ns)` 的那一小截形状;本文件不直接 import 日志门面,测试可注入。 */
@@ -23,7 +40,34 @@ export interface LoginShellEnvLogger {
 const ENV_START_MARKER = '__ONETHING_LOGIN_SHELL_ENV_START__'
 const DEFAULT_TIMEOUT_MS = 3500
 const MAX_ENV_OUTPUT_BYTES = 1024 * 1024
-const CACHE_FORMAT_VERSION = 1
+/** 2(09-26):抓取改成只给身份底 —— 用整份进程环境当底抓出来的缓存一律作废。 */
+const CACHE_FORMAT_VERSION = 2
+
+/**
+ * 登录 shell 的**底**:只有这几格从本进程递过去。shell 报回来的其余每一格因此都
+ * 出自它自己的 rc / profile,而不是出自启动这个进程的那个人。
+ * `PATH` 留着是因为它只会被**并集**(`mergePathEnv`),多一截绝不会少一截;
+ * `LC_*` 整族与 `LANG` 一起给,rc 里按区域分支的判断才与用户终端里一致。
+ */
+const LOGIN_SHELL_SEED_KEYS = ['HOME', 'USER', 'LOGNAME', 'SHELL', 'TERM', 'LANG', 'TZ', 'TMPDIR', 'PATH'] as const
+
+export function loginShellSeedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const seed: Record<string, string> = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (!value) continue
+    if ((LOGIN_SHELL_SEED_KEYS as readonly string[]).includes(name) || name.startsWith('LC_')) seed[name] = value
+  }
+  return seed
+}
+
+/**
+ * 启动者独占的键:这个进程用哪个 store、开哪个口、连哪台 dev server、是不是在一台
+ * 门里跑、npm / Electron 怎么起的它 —— 这些只能由启动它的那一方说,登录 shell
+ * (以及从它抓来的缓存)永远不许补。
+ */
+export function isLauncherOwnedEnvKey(name: string): boolean {
+  return name.startsWith('ONETHING_') || name.startsWith('npm_') || name.startsWith('ELECTRON_')
+}
 
 export interface HydrateLoginShellEnvOptions {
   env?: NodeJS.ProcessEnv
@@ -81,8 +125,13 @@ function fingerprintEquals(a: LoginShellEnvCacheFingerprint, b: LoginShellEnvCac
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-function defaultLoginShellEnvCachePath(): string {
-  return path.join(os.homedir(), '.onething', 'login-shell-env.json')
+/**
+ * 缓存住在 **store** 里(`ONETHING_STORE_PATH` 优先,否则 `~/.onething`,与
+ * `main.ts` 的 `resolveStoreRoot` 同语义)。从前写死 `~/.onething`:一台拿隔离
+ * store 起壳的门照样写用户的这一份 —— 09-26 事故的第三条腿。
+ */
+export function defaultLoginShellEnvCachePath(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(env.ONETHING_STORE_PATH || path.join(os.homedir(), '.onething'), 'login-shell-env.json')
 }
 
 function readLoginShellEnvCache(cachePath: string): LoginShellEnvCacheFile | undefined {
@@ -153,6 +202,7 @@ export function mergeMissingEnv(
   for (const [name, value] of Object.entries(source)) {
     if (!value) continue
     if (name === 'PATH') continue // Never "missing" — see mergePathEnv.
+    if (isLauncherOwnedEnvKey(name)) continue // The launcher's word, never the shell's.
     if (target[name]) continue
     target[name] = value
     merged.push(name)
@@ -207,7 +257,8 @@ async function readLoginShellEnv(
 
   return new Promise((resolve, reject) => {
     const child = spawn(shell, getShellArgs(shell, command), {
-      env,
+      // 只给身份底(文件头 ①):递整份 `env` 过去,shell 报回来的就是它自己。
+      env: loginShellSeedEnv(env),
       stdio: ['ignore', 'pipe', 'ignore'],
     })
     const stdoutChunks: Buffer[] = []
@@ -268,7 +319,7 @@ export async function hydrateProcessEnvFromLoginShell(
   if (!shell) return []
 
   const cachePath = options.cacheFilePath === undefined
-    ? defaultLoginShellEnvCachePath()
+    ? defaultLoginShellEnvCachePath(targetEnv)
     : options.cacheFilePath
   const fingerprint = cachePath ? computeShellConfigFingerprint(shell) : undefined
 
