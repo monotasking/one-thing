@@ -1,0 +1,17 @@
+[
+  {
+    "type": "text-delta",
+    "turn": 1,
+    "delta": "Let me read it."
+  },
+  {
+    "type": "finish",
+    "turn": 1,
+    "finishReason": "tool_calls",
+    "usage": {
+      "inputTokens": 21,
+      "outputTokens": 9,
+      "totalTokens": 30
+    }
+  }
+]

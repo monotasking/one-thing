@@ -36,6 +36,12 @@ export type CustomAdapterWire =
 
 export type CustomAdapterFinishReason = 'stop' | 'length' | 'tool-calls' | 'content-filter'
 
+/**
+ * 工具调用的两种已知形状:`tool_calls` = 今天的 `delta.tool_calls[]`(带 index,可并行多个);
+ * `function_call` = 老格式 `delta.function_call { name, arguments }`(一轮一个、无 index)。
+ */
+export type CustomAdapterToolCallsStyle = 'tool_calls' | 'function_call'
+
 export interface CustomAdapterSpec {
   version: 1
   wire: CustomAdapterWire
@@ -52,8 +58,13 @@ export interface CustomAdapterSpec {
     textDeltaPath?: string
     /** 默认 `choices[0].delta.reasoning_content`。 */
     reasoningDeltaPath?: string
-    /** 默认 `choices[0].delta.tool_calls`。 */
+    /** 默认 `choices[0].delta.tool_calls`。数组 = 多调用(项里有 `index` 就用),对象 = 单调用。 */
     toolCallsPath?: string
+    /**
+     * 工具调用是哪种形状 —— 与 `toolCallsPath` 二选一,两格都写时**这一格优先**。
+     * `function_call` = 老格式 `choices[0].delta.function_call`。
+     */
+    toolCallsStyle?: CustomAdapterToolCallsStyle
     /** 默认 `choices[0].finish_reason`。 */
     finishReasonPath?: string
     finishReasonMap?: Record<string, CustomAdapterFinishReason>
@@ -113,6 +124,7 @@ export const CUSTOM_ADAPTER_SPEC_JSON_SCHEMA = {
         textDeltaPath: { type: 'string' },
         reasoningDeltaPath: { type: 'string' },
         toolCallsPath: { type: 'string' },
+        toolCallsStyle: { enum: ['tool_calls', 'function_call'] },
         finishReasonPath: { type: 'string' },
         finishReasonMap: {
           type: 'object',

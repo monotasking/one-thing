@@ -5,8 +5,8 @@ You receive two samples captured from the endpoint: its model list response and 
 Standard openai-chat paths (omit a field when the sample already uses it):
 - text delta: `choices[0].delta.content`
 - reasoning delta: `choices[0].delta.reasoning_content`
-- tool calls: `choices[0].delta.tool_calls`
-- finish reason: `choices[0].finish_reason`
+- tool calls: `choices[0].delta.tool_calls`. If the sample carries the legacy `choices[0].delta.function_call` (`{"name":...,"arguments":...}`, no index) instead, set `toolCallsStyle` to `function_call`; use `toolCallsPath` only for any other location
+- finish reason: `choices[0].finish_reason`, with the values `stop`, `length`, `tool_calls`, `content_filter`. When the sample uses another value, map it in `finishReasonMap` to one of `stop`, `length`, `tool-calls`, `content-filter`
 - usage (relative to the `usage` object): input `prompt_tokens`, output `completion_tokens`, cache read `prompt_tokens_details.cached_tokens`, reasoning `completion_tokens_details.reasoning_tokens`
 - done marker: `[DONE]` (use `null` when the stream ends without any marker)
 - model list: `{"data":[{"id":...}]}`, `{"models":[{"name":...}]}` or a plain array of strings. Fill `modelsList` only when the list is somewhere else; `itemsPath` points at the array, the other fields are paths relative to one item.

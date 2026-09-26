@@ -11,6 +11,10 @@
  * done 时机、text/reasoning 增量顺序、`usageFromChunk` 的读法、
  * `mapFinishReason` 的映射,逐字保留(`__tests__/wire-snapshots` 的 79 份快照
  * 就是这句话的门)。
+ *
+ * 09-26(§7.5):工具调用的「在哪读」、收尾原因的「在哪读 / 怎么译」、SSE 结束标记三处
+ * 不再读死 —— 分别是方言的 `toolCalls`(`ToolCallCodec`)与 `finish` 两格,缺省 = 今天的
+ * 读法;index 累积与 done 时机原样搬进 `base/tool-call-codec.ts` 的 `ToolCallAccumulator`。
  */
 import type {
 	AgentMessage,
@@ -20,15 +24,20 @@ import { getLogger } from "../../../logging/index.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";
 import {
+	finishReasonMapperFor,
+	getPath,
 	HttpAgentProvider,
+	OPENAI_TOOL_CALLS_CODEC,
 	PathUsageNormalizer,
 	openAIFinishReasonMapper,
+	ToolCallAccumulator,
 	type Dialect,
 	type FinishReasonMapper,
 	type PartCodec,
 	type ProviderContext,
 	type RawTurnFinish,
 	type ThinkingWire,
+	type ToolCallCodec,
 	type TransportFileDelivery,
 	type TurnContext,
 	type UsageNormalizer,
@@ -91,16 +100,6 @@ export interface OpenAIChatStreamChunk {
 	error?: { message?: string; type?: string; code?: string };
 }
 
-interface ToolCallAccumulator {
-	id: string;
-	name: string;
-	arguments: string;
-	started: boolean;
-	done: boolean;
-	/** 已经为这个 index 记过一条 `tool-call-interleaved` —— 一次交错记一条,不刷屏。 */
-	interleavedReported: boolean;
-}
-
 /**
  * openai-chat 的 usage 直译表(设计稿 §2.6 三桶 / §7 表的第一行)。
  *
@@ -153,17 +152,6 @@ function elapsedSince(previous: number | undefined, now: number): number | undef
 	return previous === undefined ? undefined : now - previous;
 }
 
-function toolCallDoneEvent(
-	turn: number,
-	entry: ToolCallAccumulator,
-): Extract<AgentTurnStreamEvent, { type: "tool-call-done" }> {
-	return {
-		type: "tool-call-done",
-		turn,
-		toolCall: { id: entry.id, name: entry.name, arguments: entry.arguments },
-	};
-}
-
 // ---------------------------------------------------------------------------
 // wire
 // ---------------------------------------------------------------------------
@@ -193,8 +181,25 @@ export class OpenAIChatWire extends HttpAgentProvider<
 		return openAIChatDefaultUsage;
 	}
 
+	/** 方言给了 `finish.reasonMap` 就先查它,查不到(或没给)= 线的默认映射。 */
 	protected get finish(): FinishReasonMapper {
-		return openAIFinishReasonMapper;
+		return finishReasonMapperFor(this.dialect.finish, openAIFinishReasonMapper);
+	}
+
+	/** 工具调用在哪 —— 方言的一格,缺 = `choices[0].delta.tool_calls[]`。 */
+	protected get toolCallCodec(): ToolCallCodec {
+		return this.dialect.toolCalls ?? OPENAI_TOOL_CALLS_CODEC;
+	}
+
+	/** 收尾原因在哪 —— 方言的一格,缺 = `choices[0].finish_reason`(今天的读法逐字)。 */
+	protected get finishReasonReader(): (chunk: OpenAIChatStreamChunk) => string | null | undefined {
+		const path = this.dialect.finish?.reasonPath;
+		if (path === undefined) return (chunk) => chunk.choices?.[0]?.finish_reason;
+		return (chunk) => {
+			const value = getPath(chunk, path);
+			if (value === undefined || value === null) return undefined;
+			return typeof value === "string" ? value : String(value);
+		};
 	}
 
 	/**
@@ -271,15 +276,19 @@ export class OpenAIChatWire extends HttpAgentProvider<
 		const turnIndex = turn.turn;
 		const thinking: ThinkingWire = this.thinkingFor(turn);
 		const errors = this.errors;
-		const toolCalls = new Map<number, ToolCallAccumulator>();
+		const toolCallCodec = this.toolCallCodec;
+		const toolCalls = new ToolCallAccumulator(turn);
+		const readFinishReason = this.finishReasonReader;
 		let usage: unknown;
 		let finishReason: string | null | undefined;
 		const debugStream = turn.logger.isLevelEnabled("trace");
 		let lastDeltaAt: number | undefined;
+		const doneMarker = this.dialect.finish?.doneMarker;
 
 		for await (const chunk of readJsonSseData<OpenAIChatStreamChunk>(response, {
 			sourceName: errors.sourceName,
 			invalidMessage: "invalid stream chunk",
+			...(doneMarker !== undefined ? { doneMarker } : {}),
 		})) {
 			const streamError = errors.fromStreamEvent?.(chunk);
 			if (streamError) throw streamError;
@@ -322,111 +331,22 @@ export class OpenAIChatWire extends HttpAgentProvider<
 			// 前面那段正文同序,且不插进 tool-call 的 start/delta/done 之间。
 			for (const event of this.decodeExtras(chunk, turn)) yield event;
 
-			if (delta?.tool_calls) {
-				for (const toolCallDelta of delta.tool_calls) {
-					const index = toolCallDelta.index;
-					let entry = toolCalls.get(index);
-					if (!entry) {
-						// Index switch = the previous tool call's arguments are complete.
-						// OpenAI-style streams emit tool calls strictly by index, so a
-						// delta for a NEW index proves every earlier index is done —
-						// emit their tool-call-done now so execution can start while
-						// later tool calls are still rendering. (The `{}`-prefix gateway
-						// hazard only applies to "first parseable prefix" heuristics;
-						// an index switch is not a heuristic.)
-						for (const [priorIndex, prior] of [...toolCalls.entries()].sort(
-							([a], [b]) => a - b,
-						)) {
-							if (priorIndex < index && !prior.done) {
-								prior.done = true;
-								yield toolCallDoneEvent(turnIndex, prior);
-							}
-						}
-						entry = {
-							id: toolCallDelta.id ?? `tool-${turnIndex}-${index}`,
-							name: "",
-							arguments: "",
-							started: false,
-							done: false,
-							interleavedReported: false,
-						};
-						toolCalls.set(index, entry);
-					}
+			// 方言缝(§7.5):工具调用**在哪**由 codec 读,按 index 累积与 done 时机是
+			// 累积器的(从这里原样搬出去的,见 `base/tool-call-codec.ts`)。
+			const fragments = toolCallCodec.decode(chunk, turn);
+			if (fragments) yield* toolCalls.accept(fragments);
 
-					if (toolCallDelta.id) entry.id = toolCallDelta.id;
-					if (toolCallDelta.function?.name) entry.name += toolCallDelta.function.name;
-					const argumentsDelta = toolCallDelta.function?.arguments ?? "";
-
-					// 交错:index 切换已经把这个 index 判 done 了(done 事件带着当时
-					// 的完整 arguments 发了出去,下游可能已经在执行),后面又来了
-					// 这个 index 的 arguments —— 那些字符对模型**已经无效**。
-					//
-					// 行为一个字不改(**不补第二条 done**,增量照旧累加与外发):
-					// 补 done 会让同一个 toolCallId 出现两次终态,比丢几个字符坏得多。
-					// 能做的是留痕 —— 一个 index 记一条,不刷屏。
-					if (entry.done && argumentsDelta && !entry.interleavedReported) {
-						entry.interleavedReported = true;
-						const fields = {
-							toolCallId: entry.id,
-							index,
-							droppedChars: argumentsDelta.length,
-						};
-						turn.warn(
-							"tool-call-interleaved",
-							"tool call arguments arrived after this index was already done",
-							fields,
-						);
-						turn.logger.warn("tool call arguments arrived after done", {
-							turn: turnIndex,
-							...fields,
-						});
-					}
-
-					if (argumentsDelta) entry.arguments += argumentsDelta;
-
-					if (!entry.started && entry.name) {
-						entry.started = true;
-						yield {
-							type: "tool-call-start",
-							turn: turnIndex,
-							toolCallId: entry.id,
-							toolName: entry.name,
-						};
-					}
-
-					if (argumentsDelta && entry.name) {
-						yield {
-							type: "tool-call-delta",
-							turn: turnIndex,
-							toolCallId: entry.id,
-							toolName: entry.name,
-							argumentsDelta,
-						};
-					}
-
-					// No early-done on first parseable prefix: gateways may send `{}`
-					// before the real arguments. Done is emitted on index switch /
-					// finish_reason (above) or, as a last resort, at stream end.
-				}
-			}
-
-			if (choice?.finish_reason) {
-				finishReason = choice.finish_reason;
+			const rawFinishReason = readFinishReason(chunk);
+			if (rawFinishReason) {
+				finishReason = rawFinishReason;
 				// The provider has declared the turn over: every accumulated tool
 				// call is complete. Emit done here (not after the SSE loop) so the
 				// last tool call starts executing without waiting for stream teardown.
-				for (const [, entry] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
-					if (!entry.done) {
-						entry.done = true;
-						yield toolCallDoneEvent(turnIndex, entry);
-					}
-				}
+				yield* toolCalls.finishDeclared();
 			}
 		}
 
-		for (const [, entry] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
-			if (!entry.done) yield toolCallDoneEvent(turnIndex, entry);
-		}
+		yield* toolCalls.streamEnded();
 
 		return { finishReason, usage };
 	}

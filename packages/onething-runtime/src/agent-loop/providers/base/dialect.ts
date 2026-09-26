@@ -10,9 +10,11 @@ import type { AttachmentChannel } from "./attachment-channel.js";
 import type { AuthStrategy } from "./auth-strategy.js";
 import type { CachePolicy } from "./cache-policy.js";
 import type { ErrorMapper } from "./errors.js";
+import type { DialectFinishShape } from "./finish-reason.js";
 import type { PartCodec } from "./part-codec.js";
 import type { SamplingPolicy } from "./sampling-policy.js";
 import type { ThinkingWire } from "./thinking-wire.js";
+import type { ToolCallCodec } from "./tool-call-codec.js";
 import type { ToolChoicePolicy } from "./tool-choice-policy.js";
 import type { TurnContext } from "./turn-context.js";
 import type { UsageNormalizer } from "./usage.js";
@@ -95,6 +97,14 @@ export interface Dialect<W = unknown> {
 	/** 这家可能出现的思考线型;走哪条由 `ModelProfile.reasoningWire` 选。 */
 	reasoning: ThinkingWire[];
 	errors?: ErrorMapper;
+	/**
+	 * 流上的工具调用在哪、长什么样(§7.5)。不给 = 线的默认 codec(openai-chat:
+	 * `choices[0].delta.tool_calls[]`)。只换「读」,累积与 done 时机是线的,不让换。
+	 * 今天只有 openai-chat 线问它;产地是适配表编译器(老格式 `delta.function_call` 等)。
+	 */
+	toolCalls?: ToolCallCodec;
+	/** 收尾原因的位置 / 译法与 SSE 结束标记(见 `DialectFinishShape`)。不给 = 线的默认。 */
+	finish?: DialectFinishShape;
 	toolChoice?: ToolChoicePolicy;
 	sampling?: SamplingPolicy;
 	cache?: CachePolicy;

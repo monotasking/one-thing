@@ -98,10 +98,22 @@ export {
 } from "./errors.js";
 
 export {
+	finishReasonMapperFor,
 	openAIFinishReasonMapper,
 	OpenAIFinishReasonMapper,
+	TableFinishReasonMapper,
+	type DialectFinishShape,
 	type FinishReasonMapper,
 } from "./finish-reason.js";
+
+export {
+	LEGACY_FUNCTION_CALL_CODEC,
+	OPENAI_TOOL_CALLS_CODEC,
+	pathToolCallsCodec,
+	ToolCallAccumulator,
+	type ToolCallCodec,
+	type ToolCallFragment,
+} from "./tool-call-codec.js";
 
 export {
 	getDialect,

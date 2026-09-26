@@ -100,19 +100,81 @@ describe("golden:有 spec", () => {
 		expect(body.thinking).toEqual({ level: "deep" });
 	});
 
-	it("落不进策略格的格如实列出", () => {
+	it("openai-chat 的适配表整张都落进策略格(§7.5 补齐四格);另外三条线的 response 仍列出", () => {
 		expect(
 			unsupportedAdapterSpecFields({
 				version: 1,
 				wire: "openai-chat",
 				response: {
 					toolCallsPath: "choices[0].delta.function_call",
+					finishReasonPath: "choices[0].stop_reason",
 					finishReasonMap: { end_turn: "stop" },
 					doneMarker: "[END]",
 					reasoningDeltaPath: "choices[0].delta.reasoning",
 				},
 			}),
-		).toEqual(["response.toolCallsPath", "response.finishReasonMap", "response.doneMarker"]);
+		).toEqual([]);
 		expect(unsupportedAdapterSpecFields({ version: 1, wire: "openai-chat", response: { doneMarker: null } })).toEqual([]);
+		expect(
+			unsupportedAdapterSpecFields({ version: 1, wire: "anthropic-messages", response: { doneMarker: null } }),
+		).toEqual(["response"]);
+	});
+
+	function toolEventsOf(events: Awaited<ReturnType<typeof runGolden>>["events"]) {
+		return events.filter((e) => e.type.startsWith("tool-call"));
+	}
+
+	it("function-call-legacy:`toolCallsStyle: function_call` + finishReasonMap 解出一次工具调用与正确收尾", async () => {
+		const id = withAdapter("custom-golden-legacy-style", {
+			version: 1,
+			wire: "openai-chat",
+			response: { toolCallsStyle: "function_call", finishReasonMap: { function_call: "tool-calls" } },
+		});
+		const { events } = await runGolden(id, "function-call-legacy");
+		expect(textOf(events)).toBe("Let me read it.");
+		expect(toolEventsOf(events)).toEqual([
+			{ type: "tool-call-start", turn: 1, toolCallId: "tool-1-0", toolName: "read_file" },
+			{ type: "tool-call-delta", turn: 1, toolCallId: "tool-1-0", toolName: "read_file", argumentsDelta: '{"path":' },
+			{ type: "tool-call-delta", turn: 1, toolCallId: "tool-1-0", toolName: "read_file", argumentsDelta: '"a.txt"}' },
+			{
+				type: "tool-call-done",
+				turn: 1,
+				toolCall: { id: "tool-1-0", name: "read_file", arguments: '{"path":"a.txt"}' },
+			},
+		]);
+		const finish = finishOf(events);
+		expect(finish.finishReason).toBe("tool_calls");
+		expect(finish.usage).toMatchObject({ inputTokens: 21, outputTokens: 9 });
+	});
+
+	it("function-call-legacy:只写 `toolCallsPath` 指老格式那条路径,编译到同一个 codec", async () => {
+		const id = withAdapter("custom-golden-legacy-path", {
+			version: 1,
+			wire: "openai-chat",
+			response: { toolCallsPath: "choices[0].delta.function_call" },
+		});
+		const { events } = await runGolden(id, "function-call-legacy");
+		const done = events.find((e) => e.type === "tool-call-done");
+		expect(done).toMatchObject({ toolCall: { name: "read_file", arguments: '{"path":"a.txt"}' } });
+	});
+
+	it("style 与 path 都写时 style 优先:`tool_calls` 盖过路径 = 线的默认读法(老格式解不出)", async () => {
+		const id = withAdapter("custom-golden-legacy-style-wins", {
+			version: 1,
+			wire: "openai-chat",
+			response: { toolCallsStyle: "tool_calls", toolCallsPath: "choices[0].delta.function_call" },
+		});
+		const { events } = await runGolden(id, "function-call-legacy");
+		expect(toolEventsOf(events)).toEqual([]);
+	});
+
+	it("finishReasonMap 只加词:表里没有的原值仍走线的默认映射", async () => {
+		const id = withAdapter("custom-golden-finish-map", {
+			version: 1,
+			wire: "openai-chat",
+			response: { finishReasonMap: { end_turn: "stop" } },
+		});
+		const { events } = await runGolden(id, "ollama");
+		expect(finishOf(events).finishReason).toBe("stop");
 	});
 });

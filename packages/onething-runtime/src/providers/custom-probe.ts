@@ -220,11 +220,16 @@ export function adapterDeviations(wire: CustomAdapterWire, samples: ProbeSamples
 	const extraKeys = new Set<string>();
 	let usageSeen = false;
 	let usageStandard = false;
+	let toolCallsSeen = false;
+	let legacyFunctionCallSeen = false;
 	for (const payload of payloads) {
 		const choice = Array.isArray(payload.choices) ? payload.choices[0] : undefined;
 		const delta = isRecord(choice) && isRecord(choice.delta) ? choice.delta : undefined;
 		if (delta) {
 			if (typeof delta.content === "string" && delta.content) text = true;
+			if (delta.tool_calls !== undefined && delta.tool_calls !== null) toolCallsSeen = true;
+			// 老格式:工具调用挂在 `delta.function_call { name, arguments }`(线默认读不到)。
+			if (isRecord(delta.function_call)) legacyFunctionCallSeen = true;
 			for (const [key, value] of Object.entries(delta)) {
 				if (!STANDARD_DELTA_KEYS.has(key) && typeof value === "string" && value) extraKeys.add(key);
 			}
@@ -239,6 +244,7 @@ export function adapterDeviations(wire: CustomAdapterWire, samples: ProbeSamples
 	if (!text) out.push("response.textDeltaPath");
 	for (const key of extraKeys) out.push(`response.delta.${key}`);
 	if (usageSeen && !usageStandard) out.push("response.usage");
+	if (legacyFunctionCallSeen && !toolCallsSeen) out.push("response.toolCallsStyle");
 	return out;
 }
 

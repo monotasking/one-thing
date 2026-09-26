@@ -184,6 +184,10 @@ export interface OpenAIChatDialectSpec {
 	decodeExtras?: OpenAIChatPartCodecOptions["decodeExtras"];
 	/** 换掉 usage 直译表(DeepSeek 的 `prompt_cache_hit_tokens`)。 */
 	usage?: UsageNormalizer;
+	/** 换掉工具调用的读法(见 `Dialect.toolCalls`;今天只有适配表编译器给)。 */
+	toolCalls?: Dialect["toolCalls"];
+	/** 收尾原因的位置 / 译法与结束标记(见 `Dialect.finish`;同上)。 */
+	finish?: Dialect["finish"];
 	/** 换掉采样策略(DeepSeek 的 thinking 是**推断**出来的)。 */
 	sampling?: SamplingPolicy;
 	/** 这家自己的「用户意图 → thinking/effort」家规(Kimi)。 */
@@ -236,6 +240,8 @@ export function openAIChatDialect(spec: OpenAIChatDialectSpec): OpenAIChatDialec
 				...(spec.decodeExtras ? { decodeExtras: spec.decodeExtras } : {}),
 			}),
 		...(spec.usage ? { usage: spec.usage } : {}),
+		...(spec.toolCalls ? { toolCalls: spec.toolCalls } : {}),
+		...(spec.finish ? { finish: spec.finish } : {}),
 		...(spec.sampling ? { sampling: spec.sampling } : {}),
 		...(spec.thinkingIntent ? { thinkingIntent: spec.thinkingIntent } : {}),
 		...(spec.attachments ? { attachments: spec.attachments } : {}),

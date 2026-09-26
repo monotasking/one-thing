@@ -95,6 +95,22 @@ describe("规则先判", () => {
 			"response.usage",
 		]);
 	});
+	it("工具调用在老格式 `delta.function_call` 而无 `delta.tool_calls`:判不满", () => {
+		const legacy = sse(
+			chunk({ content: "x" }),
+			chunk({ function_call: { name: "read_file", arguments: "{}" } }),
+			chunk({}, "function_call", { usage: { prompt_tokens: 1, completion_tokens: 1 } }),
+		);
+		expect(adapterDeviations("openai-chat", { stream: legacy, models: MODELS }, 2)).toEqual([
+			"response.toolCallsStyle",
+		]);
+		const modern = sse(
+			chunk({ content: "x" }),
+			chunk({ tool_calls: [{ index: 0, id: "c", function: { name: "read_file", arguments: "{}" } }] }),
+			chunk({}, "tool_calls"),
+		);
+		expect(adapterDeviations("openai-chat", { stream: modern, models: MODELS }, 2)).toEqual([]);
+	});
 });
 
 describe("probeCustomEndpoint", () => {

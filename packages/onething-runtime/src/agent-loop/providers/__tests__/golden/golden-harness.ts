@@ -2,7 +2,8 @@
  * 批 4 golden 夹具的公共半边(`docs/design/provider-settings-rework-2026-09.md` §7.2)。
  *
  * 五份真实转发站形状的 SSE(DeepSeek 直连 / 聚合站 `reasoning` / Ollama / vLLM / LM Studio)
- * 加一份「默认读不出」的 `thinking-field`。每份都经**真的** `createAgentProviderFromRuntime`
+ * 加一份「默认读不出」的 `thinking-field`,再加一份老格式工具调用 `function-call-legacy`。
+ * 每份都经**真的** `createAgentProviderFromRuntime`
  * 跑一遍:没有 spec 时走 `custom-openai` 方言(今天的路),事件序列逐字钉进
  * `<name>.events.json` —— 那几份 JSON 是在批 4 改动**之前**录的。
  */
@@ -27,6 +28,9 @@ export const GOLDEN_FIXTURES = [
 	"vllm",
 	"lmstudio",
 	"thinking-field",
+	// 老格式 `delta.function_call` + 非标 `finish_reason: "function_call"`(§7.5 演练)。
+	// 无 spec 时这份期望是用**搬之前**的线录的:工具调用解不出,如实钉住。
+	"function-call-legacy",
 ] as const;
 
 export type GoldenFixture = (typeof GOLDEN_FIXTURES)[number];

@@ -6,6 +6,12 @@ export interface SseEvent {
 export interface ReadSseOptions {
   sourceName: string
   ignoreDone?: boolean
+  /**
+   * 跳过哪一条 data 作为结束标记(方言可注入,§7.5)。缺 = 按 `ignoreDone`
+   * (缺省 true → `'[DONE]'`,false → 不跳);`null` = 这家不发结束标记,每条 data 照常交出。
+   * 标记只被**跳过**,不截断读取 —— 收尾靠流关闭,与今天 `[DONE]` 的处理一致。
+   */
+  doneMarker?: string | null
 }
 
 export interface ReadJsonSseOptions extends ReadSseOptions {
@@ -20,11 +26,11 @@ function fieldValue(line: string, prefixLength: number): string {
 function maybeEvent(
   event: string | undefined,
   dataLines: string[],
-  ignoreDone: boolean,
+  doneMarker: string | null,
 ): SseEvent | undefined {
   if (dataLines.length === 0) return undefined
   const data = dataLines.join('\n')
-  if (ignoreDone && data === '[DONE]') return undefined
+  if (doneMarker !== null && data === doneMarker) return undefined
   return {
     ...(event ? { event } : {}),
     data,
@@ -42,12 +48,17 @@ export async function* readSseEvents(
   let buffer = ''
   let event: string | undefined
   let dataLines: string[] = []
-  const ignoreDone = options.ignoreDone ?? true
+  const doneMarker =
+    options.doneMarker !== undefined
+      ? options.doneMarker
+      : (options.ignoreDone ?? true)
+        ? '[DONE]'
+        : null
 
   const handleLine = (rawLine: string): SseEvent | undefined => {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
     if (line === '') {
-      const nextEvent = maybeEvent(event, dataLines, ignoreDone)
+      const nextEvent = maybeEvent(event, dataLines, doneMarker)
       event = undefined
       dataLines = []
       return nextEvent
@@ -92,7 +103,7 @@ export async function* readSseEvents(
       }
     }
 
-    const nextEvent = maybeEvent(event, dataLines, ignoreDone)
+    const nextEvent = maybeEvent(event, dataLines, doneMarker)
     if (nextEvent) yield nextEvent
   } finally {
     reader.releaseLock()
