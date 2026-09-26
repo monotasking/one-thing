@@ -399,12 +399,12 @@ API 模式:密钥池每条密钥行备注位右侧出「¥123.45」(有源的家
 
 ## 11. 留账
 
-**入库记录(09-26):** 批 0 4f2c3c478 · 批 1 e38e5660c · 批 2 3509eb188 · 批 M-b 5361cef8c · 批 M-a bcf4eb916 · 批 3 a5dde18c1 · 批 5 8d8d070cc · 批 4 fcd20cbc9 · 批 6 c41e41055。**全期九批完工。**
+**入库记录(09-26):** 批 0 4f2c3c478 · 批 1 e38e5660c · 批 2 3509eb188 · 批 M-b 5361cef8c · 批 M-a bcf4eb916 · 批 3 a5dde18c1 · 批 5 8d8d070cc · 批 4 fcd20cbc9 · 批 6 c41e41055 · 批 7a 1748c8006(四道真机门进 verify e03298451)。
 
 **施工中挖出的新账:**
 
 - 目录刷新拿旧 settings 快照整份写回,把中间别人写的字段盖掉(批 2 真机门上 1.5 秒内复现,与本方案无关,已开独立任务查根因,修法按 settings-single-authority「写入 API 换形」)。
-- 批 4:适配表里 `toolCallsPath` / `finishReasonPath` / `finishReasonMap` / `doneMarker` 四格编译照常但**运行期不生效**(线把这几处读死了),由 `unsupportedAdapterSpecFields` 如实列出;§7.5 演练「转发站把工具调用塞在 `delta.function_call`」按「线一行不改」的红线答不出 —— 要给 openai-chat 线开一格可替换的工具调用策略,**待拍**。
+- 批 4 → **批 7a 已收(1748c8006)**:openai-chat 线开了 `toolCalls`(`ToolCallCodec`,默认实现原样搬今天的读法,index 累积与 done 时机搬进 `ToolCallAccumulator` 由线共用)与 `finish { reasonPath, reasonMap, doneMarker }` 两格,缺省 = 今天的行为,golden 六夹具零字节变化;spec 补 `toolCallsStyle`,§7.5 演练重答 = spec 一格 + 编译器一个分支,线不动。另外三条线(responses / anthropic / gemini)的 `response` 格仍不生效,`unsupportedAdapterSpecFields` 如实列出。
 - 批 5:Claude 订阅的响应头被动源字段名待真机核;默认空间同一家多个 OAuth 账号问到的是同一份令牌(默认空间的令牌仍住 settings 层 `oauth-tokens.json`,池里的 oauth 条目只是「登没登」标记,既有结构);composer 卡片底部「余额获取失败」的原话 Tooltip 因卡片是圆环悬停出现、指针一离开就关而碰不到;`resolveSessionCredentialId` 等发送路之外的解析仍会拨 round-robin 游标。
 - 批 3:`ensureCatalog` 不重取「过期但没标脏」的目录;`gate-providers-squeeze` 不离线(models.dev 缓存启动时仍会走网刷新);新对话框未进 `gate:a11y`。
 - 批 M-a:`sibling` 仍产自 `@shared/provider-families`(边界门不许 `@shared` 反向依赖 runtime,manifest 读它);三家有计费档位的 provider(`zhipu.ts` `resolveOnethingProviderBaseUrl`、`provider-options.ts`、`spaces/provider-credentials.ts` 的字段表)仍按 id 分支,要让 `DialSpec` 长出地址解析器才能收;`agent-runtime-route.ts` 的 `isOnethingACPProviderRuntime` 仍比较常量 `'acp'`。
