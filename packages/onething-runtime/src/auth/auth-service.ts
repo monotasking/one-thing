@@ -4,9 +4,9 @@ import { withProviderRetryAfter } from '../agent-loop/provider-error-classificat
 import {
   credentialRefreshKey,
   credentialTargetKey,
-  isSpaceCredentialTarget,
-  SETTINGS_CREDENTIAL_TARGET,
+  normalizeCredentialTarget,
   type OnethingCredentialTarget,
+  type OnethingSpaceCredentialTarget,
 } from './credential-target.js'
 import {
   generatePKCE,
@@ -16,6 +16,7 @@ import {
 import type { OnethingSpaceAuthTokenStore } from './space-token-store.js'
 import type {
   OnethingAuthAccount,
+  OnethingOAuthAccountStatus,
   OnethingAuthBodyFormat,
   OnethingAuthFlowEvent,
   OnethingAuthFlowPhase,
@@ -32,12 +33,12 @@ import type {
 const FLOW_TIMEOUT_MS = 5 * 60 * 1000
 const REFRESH_BUFFER_MS = 5 * 60 * 1000
 
-export interface OnethingAuthTokenStore<TToken extends OnethingOAuthToken = OnethingOAuthToken> {
-  getToken(providerId: string): Promise<TToken | null>
-  saveToken(providerId: string, token: TToken): Promise<void>
-  deleteToken(providerId: string): Promise<void>
-  isTokenExpired(token: TToken): boolean
-}
+/**
+ * 令牌的存放面。**只有一种**:空间的凭证池(批 8 起默认空间也是,`<store>/oauth-tokens.json`
+ * 那一把单槽退役)。形状见 `space-token-store.ts`。
+ */
+export type OnethingAuthTokenStore<TToken extends OnethingOAuthToken = OnethingOAuthToken> =
+  OnethingSpaceAuthTokenStore<TToken>
 
 export interface OnethingAuthCallbackRegistration {
   flowId: string
@@ -63,13 +64,8 @@ export interface OnethingAuthCallbackServerAdapter {
 }
 
 export interface OnethingAuthServiceOptions<TToken extends OnethingOAuthToken = OnethingOAuthToken> {
+  /** 令牌存放面(空间凭证池)。`createOnethingAuthServiceOptions` 缺省装上真的那一台。 */
   tokenStore: OnethingAuthTokenStore<TToken>
-  /**
-   * per-space 的 token 存放面(批 B6)。**缺席 = 只有默认空间**:任何带 space
-   * 目标的调用都会退回 settings 那一份 —— 宿主没装这块就当它不存在,而不是
-   * 半路抛错。
-   */
-  spaceTokenStore?: OnethingSpaceAuthTokenStore<TToken>
   fetch?: typeof fetch
   getDefinition?: (providerId: string) => OnethingAuthProviderDefinition | undefined
   callbackServer?: OnethingAuthCallbackServerAdapter
@@ -78,7 +74,7 @@ export interface OnethingAuthServiceOptions<TToken extends OnethingOAuthToken = 
   logger?: Pick<Console, 'warn'>
 }
 
-/** 事件载荷。`target` 缺席 = 默认空间(settings 源),与调用侧缺省一致。 */
+/** 事件载荷。`target` 缺席 = 默认空间,与调用侧缺省一致。 */
 export interface OnethingAuthTokenEvent {
   providerId: string
   target?: OnethingCredentialTarget
@@ -108,7 +104,6 @@ interface FlowTimers {
  */
 export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAuthToken> extends EventEmitter {
   private readonly tokenStore: OnethingAuthTokenStore<TToken>
-  private readonly spaceTokenStore?: OnethingSpaceAuthTokenStore<TToken>
   private readonly fetchImpl: typeof fetch
   private readonly getDefinitionImpl: (providerId: string) => OnethingAuthProviderDefinition | undefined
   private readonly callbackServer?: OnethingAuthCallbackServerAdapter
@@ -132,7 +127,6 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
   constructor(options: OnethingAuthServiceOptions<TToken>) {
     super()
     this.tokenStore = options.tokenStore
-    this.spaceTokenStore = options.spaceTokenStore
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis)
     this.getDefinitionImpl = options.getDefinition ?? getAuthProviderDefinition
     this.callbackServer = options.callbackServer
@@ -145,48 +139,54 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     return this.getDefinitionImpl(providerId)
   }
 
+  /** 目标归一:缺席 / 非法 spaceId = 默认空间那一池(批 8)。 */
+  private resolveTarget(target?: OnethingCredentialTarget | null): OnethingSpaceCredentialTarget {
+    return normalizeCredentialTarget(target)
+  }
+
   /**
-   * 目标归一。**宿主没装 spaceTokenStore 时 space 目标一律退回 settings** ——
-   * 那种宿主(CLI daemon / server)本来就只有默认空间,让它半路抛错等于把一个
-   * 不适用的功能变成一个 bug。
+   * 读 / 刷新 / 退出之前把「不指名哪一条」落成**具体的一条**(兼容口,见
+   * `OnethingSpaceAuthTokenStore.resolveEntryId`)。落不成(池里一条 oauth 都没有)就原样返回,
+   * 读侧答 `null`。**刷新之前必须落** —— 不落的话锁名是 `*`、写回又是「追加」,
+   * 一次刷新会凭空多出一个账号。
    */
-  private resolveTarget(target?: OnethingCredentialTarget | null): OnethingCredentialTarget {
-    if (isSpaceCredentialTarget(target) && this.spaceTokenStore) return target
-    return SETTINGS_CREDENTIAL_TARGET
+  private async concreteTarget(
+    providerId: string,
+    target?: OnethingCredentialTarget | null,
+  ): Promise<OnethingSpaceCredentialTarget> {
+    const resolved = this.resolveTarget(target)
+    if (resolved.entryId) return resolved
+    const entryId = await this.tokenStore.resolveEntryId(providerId, resolved)
+    return entryId ? { ...resolved, entryId } : resolved
   }
 
   private async readToken(
     providerId: string,
-    target: OnethingCredentialTarget,
+    target: OnethingSpaceCredentialTarget,
   ): Promise<TToken | null> {
-    return isSpaceCredentialTarget(target) && this.spaceTokenStore
-      ? this.spaceTokenStore.getToken(providerId, target)
-      : this.tokenStore.getToken(providerId)
+    if (!target.entryId) return null
+    return this.tokenStore.getToken(providerId, target)
   }
 
-  /** 写回。space 目标会回报真正落地的 entryId(新登录时才知道)。 */
+  /** 写回。回报真正落地的 entryId(新登录时才知道)。 */
   private async writeToken(
     providerId: string,
     token: TToken,
-    target: OnethingCredentialTarget,
-  ): Promise<OnethingCredentialTarget> {
-    if (isSpaceCredentialTarget(target) && this.spaceTokenStore) {
-      const { entryId } = await this.spaceTokenStore.saveToken(providerId, token, target)
-      return { ...target, entryId }
-    }
-    await this.tokenStore.saveToken(providerId, token)
-    return SETTINGS_CREDENTIAL_TARGET
+    target: OnethingSpaceCredentialTarget,
+  ): Promise<OnethingSpaceCredentialTarget> {
+    const { entryId } = await this.tokenStore.saveToken(providerId, token, target)
+    return { ...target, entryId }
   }
 
   private async removeToken(
     providerId: string,
-    target: OnethingCredentialTarget,
+    target: OnethingSpaceCredentialTarget,
   ): Promise<void> {
-    if (isSpaceCredentialTarget(target) && this.spaceTokenStore) {
-      await this.spaceTokenStore.deleteToken(providerId, target)
-      return
-    }
-    await this.tokenStore.deleteToken(providerId)
+    await this.tokenStore.deleteToken(providerId, target)
+  }
+
+  private tokenExpired(token: TToken): boolean {
+    return this.now() >= token.expiresAt
   }
 
   private flowKey(providerId: string, target?: OnethingCredentialTarget | null): string {
@@ -393,7 +393,8 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     providerId: string,
     target?: OnethingCredentialTarget,
   ): Promise<TToken> {
-    const resolvedTarget = this.resolveTarget(target)
+    const resolvedTarget = await this.concreteTarget(providerId, target)
+    if (!resolvedTarget.entryId) throw new Error('No refresh token available')
     const key = credentialRefreshKey(providerId, resolvedTarget)
     const inFlight = this.refreshInFlight.get(key)
     if (inFlight) return inFlight
@@ -410,7 +411,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
 
   private async performRefresh(
     providerId: string,
-    target: OnethingCredentialTarget,
+    target: OnethingSpaceCredentialTarget,
   ): Promise<TToken> {
     const definition = this.requireDefinition(providerId)
     const currentToken = await this.readToken(providerId, target)
@@ -467,7 +468,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     providerId: string,
     target?: OnethingCredentialTarget,
   ): Promise<TToken> {
-    const resolvedTarget = this.resolveTarget(target)
+    const resolvedTarget = await this.concreteTarget(providerId, target)
     const token = await this.readToken(providerId, resolvedTarget)
     if (!token) throw new Error('Not logged in')
 
@@ -483,7 +484,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
   }
 
   async getToken(providerId: string, target?: OnethingCredentialTarget): Promise<TToken | null> {
-    return this.readToken(providerId, this.resolveTarget(target))
+    return this.readToken(providerId, await this.concreteTarget(providerId, target))
   }
 
   async saveToken(
@@ -494,38 +495,66 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
     await this.writeToken(providerId, token, this.resolveTarget(target))
   }
 
+  /**
+   * 退出**那一条**(批 8:空间里「退出」= 删本空间那一条 oauth entry,令牌随之删;
+   * 不向服务商吊销)。不指名时落到 `resolveEntryId` 那一条 —— 与不指名的 `status`
+   * 答的是同一个账号;池里一条都没有就什么都不删。
+   */
   async deleteToken(providerId: string, target?: OnethingCredentialTarget): Promise<void> {
-    const resolvedTarget = this.resolveTarget(target)
-    this.clearProviderFlow(providerId, resolvedTarget)
+    const requested = this.resolveTarget(target)
+    const resolvedTarget = await this.concreteTarget(providerId, requested)
+    // 登录流按「不指名」那一格记(新登录没有 entryId):退出时一并收掉那一坑的流与错误。
+    this.clearProviderFlow(providerId, requested)
     await this.removeToken(providerId, resolvedTarget)
+    this.providerErrors.delete(this.flowKey(providerId, requested))
     this.providerErrors.delete(this.flowKey(providerId, resolvedTarget))
   }
 
   isTokenExpired(token: TToken): boolean {
-    return this.tokenStore.isTokenExpired(token)
+    return this.tokenExpired(token)
   }
 
   async isLoggedIn(providerId: string, target?: OnethingCredentialTarget): Promise<boolean> {
-    const token = await this.readToken(providerId, this.resolveTarget(target))
-    return !!token && !this.tokenStore.isTokenExpired(token)
+    const token = await this.readToken(providerId, await this.concreteTarget(providerId, target))
+    return !!token && !this.tokenExpired(token)
   }
 
+  /**
+   * 登录态(批 8 §8.3):带 `entryId` 答那一条;不带答 `resolveEntryId` 那一条(兼容),
+   * 并附这一池的全部账号 `accounts[]` —— 壳的已登录屏每账号一行,读的就是它。
+   * `lastError` 是登录流的错(按「不指名」那一格记),与账号行无关。
+   */
   async getStatus(
     providerId: string,
     target?: OnethingCredentialTarget,
   ): Promise<OnethingOAuthStatusResponse> {
-    const resolvedTarget = this.resolveTarget(target)
+    const requested = this.resolveTarget(target)
+    const resolvedTarget = await this.concreteTarget(providerId, requested)
     const token = await this.readToken(providerId, resolvedTarget)
-    const isExpired = token ? this.tokenStore.isTokenExpired(token) : false
+    const isExpired = token ? this.tokenExpired(token) : false
+    const entries = await this.tokenStore.listEntries(providerId, requested.spaceId)
+    const accounts: OnethingOAuthAccountStatus[] = entries.map(entry => ({
+      entryId: entry.entryId,
+      label: entry.label,
+      ...(entry.token?.email ? { email: entry.token.email } : {}),
+      ...(entry.token?.accountId ? { accountId: entry.token.accountId } : {}),
+      ...(entry.token?.planType ? { planType: entry.token.planType } : {}),
+      // 令牌读不出来(坏条目)与过期同一种处置:重新授权。
+      isExpired: entry.token ? this.tokenExpired(entry.token) : true,
+      ...(entry.token ? { expiresAt: entry.token.expiresAt } : {}),
+      canRefresh: Boolean(entry.token?.refreshToken),
+    }))
     return {
       success: true,
       providerId,
+      ...(resolvedTarget.entryId && token ? { entryId: resolvedTarget.entryId } : {}),
       isLoggedIn: !!token && !isExpired,
       isExpired,
       canRefresh: !!token?.refreshToken,
       expiresAt: token?.expiresAt,
       account: toAccount(token),
-      lastError: this.providerErrors.get(this.flowKey(providerId, resolvedTarget)),
+      accounts,
+      lastError: this.providerErrors.get(this.flowKey(providerId, requested)),
     }
   }
 
@@ -579,7 +608,7 @@ export class OnethingAuthService<TToken extends OnethingOAuthToken = OnethingOAu
 
   private async startDeviceFlow(
     definition: OnethingAuthProviderDefinition,
-    target: OnethingCredentialTarget,
+    target: OnethingSpaceCredentialTarget,
   ): Promise<OnethingOAuthStartResponse> {
     if (!definition.deviceCodeUrl) {
       throw new Error(`Device flow not configured for ${definition.providerId}`)

@@ -938,26 +938,6 @@ const MAIN_TOOL_EDIT_ENGINE_FORBIDDEN_PATTERNS: RegExp[] = [
   /function\s+previewExactEdits/,
 ]
 
-const MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]electron['"]/,
-  /require\(['"]electron['"]\)/,
-  /createRequire\b/,
-  /from\s+['"]node:fs['"]/,
-  /from\s+['"]node:fs\/promises['"]/,
-  /from\s+['"]node:os['"]/,
-  /from\s+['"]node:path['"]/,
-  /from\s+['"]fs['"]/,
-  /from\s+['"]fs\/promises['"]/,
-  /from\s+['"]os['"]/,
-  /from\s+['"]path['"]/,
-  /existsSync/,
-  /readFile/,
-  /writeFile/,
-  /oauth-tokens\.json/,
-  /function\s+getSafeStorage/,
-  /safeStorage/,
-]
-
 const MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
   /require\(['"]electron['"]\)/,
@@ -3603,24 +3583,38 @@ function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
   assertNoMatches('packages/onething-runtime owns permission session IPC presentation', lines)
 }
 
+/**
+ * 批 8(`docs/design/subscription-accounts-2026-09.md` §8):`<store>/oauth-tokens.json` 单槽退役。
+ *
+ * 这条从前断言的是「runtime 拥有 token 存储 + `token-store.wiring.ts` 那层 safeStorage 门面在」;
+ * 单槽写路删了以后,那层门面(一个只给装配层单槽用的进程单例)跟着删了。现在它钉的是反面:
+ *  - runtime 的 `token-store.ts` 还在,但**只读**(一次性归位读旧文件用),没有 `saveToken` /
+ *    `deleteToken` / `writeFile`;
+ *  - `token-store.wiring.ts` **回来就是红**(单槽复活);
+ *  - 装配层那台 authService 不再注入任何 `tokenStore`、不提 `oauth-tokens.json`。
+ */
 function checkRuntimeOwnsAuthTokenStorage(): void {
-  const runtimeFile = 'packages/onething-runtime/src/auth/token-store.ts'
-  const mainFile = path.join(root, 'packages/onething-runtime/src/auth/token-store.wiring.ts')
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const mainFacadeLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/token-store.ts')
+  const retiredWiringFile = path.join(root, 'packages/onething-runtime/src/auth/token-store.wiring.ts')
+  const mainAuthServiceFile = path.join(root, 'packages/backend/wiring/auth/auth-service.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainAuthServiceFile) ? fs.readFileSync(mainAuthServiceFile, 'utf-8') : ''
   const lines = [
-    ...(!fs.existsSync(path.join(root, runtimeFile))
-      ? [`${runtimeFile}: missing runtime-owned OAuth token store`]
+    ...(!runtimeContent
+      ? [`${rel(runtimeFile)}: missing runtime-owned legacy OAuth token reader`]
       : []),
-    ...(!mainContent.includes('tokenCryptoAdapter')
-      ? [`${rel(mainFile)}: token store must take encryption via the injected auth host port`]
+    ...(/\bsaveToken\s*\(|\bdeleteToken\s*\(|\bwriteFile\b/.test(runtimeContent)
+      ? [`${rel(runtimeFile)}: the retired oauth-tokens.json slot must stay read-only (no saveToken / deleteToken / writeFile)`]
+      : []),
+    ...(fs.existsSync(retiredWiringFile)
+      ? [`${rel(retiredWiringFile)}: the single-slot token store facade was retired in batch 8; tokens live in the space credential pool`]
+      : []),
+    ...(/\btokenStore\b|oauth-tokens\.json|token-store\.wiring/.test(mainContent)
+      ? [`${rel(mainAuthServiceFile)}: the assembly auth service must not wire a single-slot token store`]
       : []),
     ...(mainContent.includes('@onething/electron-host/')
-      ? [`${rel(mainFile)}: main/auth token store must stay host-agnostic (inject via configureAuthHost)`]
+      ? [`${rel(mainAuthServiceFile)}: auth service must stay host-agnostic (inject via configureAuthHost)`]
       : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
-      : ['packages/onething-runtime/src/auth/token-store.wiring.ts: missing Electron safeStorage adapter facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth token storage layout', lines)

@@ -16,6 +16,7 @@ import { suggestionPatchOf } from '../projection'
 import type { ProviderQuotaPushPayload } from '@shared/contracts/quota'
 import { defaultSelectionOf, prefsQuery, toProviderPrefs } from '../../data/models-source'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
+import { useWorkspaceStore } from '../../workspace/store'
 import { buildFamilies, findFamily } from '../families'
 import { fakeProviderPort } from './fake-port'
 
@@ -1131,6 +1132,8 @@ describe('登录流', () => {
       providerId: 'claude-code',
       code: 'code-9',
       state: 'st-1',
+      // 起流那一刻的空间(批 8):后端按 (provider, 空间, 条目) 认流。
+      spaceId: 'default',
     })
     expect(flow()?.kind).toBeNull()
   })
@@ -1175,7 +1178,57 @@ describe('登录流', () => {
     push({ type: 'token-expired', providerId: 'codex', error: 'Token refresh failed: 401' })
     expect(useProviderSettings.getState().authStatus.codex?.isExpired).toBe(true)
     expect(useProviderSettings.getState().authStatus.codex?.lastError).toBe('Token refresh failed: 401')
-    await vi.waitFor(() => expect(port.oauthStatus).toHaveBeenCalledWith({ providerId: 'codex' }))
+    await vi.waitFor(() => expect(port.oauthStatus).toHaveBeenCalledWith({ providerId: 'codex', spaceId: 'default' }))
+  })
+
+  it('批 8:登录 / 重新授权 / 退出都打在**当前空间**;重新授权带那一条的 entryId', async () => {
+    const { port } = pushPort({
+      oauthStart: vi.fn(async () => ({ success: true, flowId: 'fa', userCode: 'A-1', verificationUri: 'https://a' })),
+      oauthLogout: vi.fn(async () => ({ success: true })),
+    })
+    await useProviderSettings.getState().startAuth('codex')
+    expect(port.oauthStart).toHaveBeenLastCalledWith({ providerId: 'codex', spaceId: DEFAULT_SPACE_ID })
+    expect(flow('codex')?.target).toEqual({ spaceId: DEFAULT_SPACE_ID })
+
+    await useProviderSettings.getState().startAuth('codex', 'e2')
+    expect(port.oauthStart).toHaveBeenLastCalledWith({ providerId: 'codex', spaceId: DEFAULT_SPACE_ID, entryId: 'e2' })
+    expect(flow('codex')?.target).toEqual({ spaceId: DEFAULT_SPACE_ID, entryId: 'e2' })
+
+    await useProviderSettings.getState().signOut('codex', 'e2')
+    expect(port.oauthLogout).toHaveBeenLastCalledWith({ providerId: 'codex', spaceId: DEFAULT_SPACE_ID, entryId: 'e2' })
+  })
+
+  it('批 8:换空间 = 登录态清掉并按新空间重问;旧空间迟到的答案不落进新空间', async () => {
+    const before = useWorkspaceStore.getState()
+    let release: (() => void) | undefined
+    const { port } = pushPort({
+      oauthStatus: vi.fn(async ({ spaceId }: { spaceId?: string }) => {
+        if (spaceId === 'slow') await new Promise<void>((resolve) => { release = resolve })
+        return { success: true, isLoggedIn: true, accounts: [{ entryId: `${spaceId}-1`, label: 'x', isExpired: false }] }
+      }) as unknown as ProviderSettingsPort['oauthStatus'],
+    })
+    try {
+      await useProviderSettings.getState().start()
+      await useProviderSettings.getState().checkAuth('codex')
+      expect(useProviderSettings.getState().authStatus.codex?.accounts?.[0]?.entryId).toBe(`${DEFAULT_SPACE_ID}-1`)
+
+      useWorkspaceStore.setState({ spaces: [], currentId: 'ws-work' })
+      // 当场清掉:A 空间的账号行不在 B 空间的首屏上多留一帧。
+      expect(useProviderSettings.getState().authStatus.codex).toBeUndefined()
+      await vi.waitFor(() => expect(port.oauthStatus).toHaveBeenLastCalledWith({ providerId: 'codex', spaceId: 'ws-work' }))
+      await vi.waitFor(() =>
+        expect(useProviderSettings.getState().authStatus.codex?.accounts?.[0]?.entryId).toBe('ws-work-1'))
+
+      // 问在「slow」空间、答回来之前又换走了:那一份不许落地。
+      useWorkspaceStore.setState({ spaces: [], currentId: 'slow' })
+      await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+      useWorkspaceStore.setState({ spaces: [], currentId: 'ws-work' })
+      release?.()
+      await vi.waitFor(() =>
+        expect(useProviderSettings.getState().authStatus.codex?.accounts?.[0]?.entryId).toBe('ws-work-1'))
+    } finally {
+      useWorkspaceStore.setState({ spaces: before.spaces, currentId: before.currentId })
+    }
   })
 
   it('推送面只订一次(start 与 startAuth 都会要它)', async () => {

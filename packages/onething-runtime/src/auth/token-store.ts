@@ -1,5 +1,15 @@
+/**
+ * `<store>/oauth-tokens.json` —— 旧的「一家一把」单槽,**只剩读**(批 8,
+ * `docs/design/subscription-accounts-2026-09.md` §8)。
+ *
+ * 从前默认空间的订阅令牌住在这里:一家只有一个位置,第二次登录盖掉第一次(用户 09-26 报障
+ * 「添加账号会覆盖上一个账号」的病根之一)。令牌如今一律住在空间凭证池里
+ * (`space-token-store.ts`);这个类只留给一次性归位读旧文件
+ * (`backend/wiring/providers/space-config-migration.ts`)。**写路已删** —— 它回来就是
+ * 单槽复活,`scripts/headless-boundary-check.ts` 的 `checkRuntimeOwnsAuthTokenStorage` 钉着。
+ */
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { getOnethingStorePath } from '../storage/paths.js'
 import type { OnethingOAuthToken } from './types.js'
@@ -31,7 +41,6 @@ export class OnethingTokenStore<TToken extends OnethingOAuthToken = OnethingOAut
   private readonly cryptoAdapter?: OnethingTokenCryptoAdapter | (() => OnethingTokenCryptoAdapter | undefined)
   private readonly now: () => number
   private readonly logger: Pick<Console, 'warn'>
-  private writeQueue: Promise<void> = Promise.resolve()
 
   constructor(options: OnethingTokenStoreOptions = {}) {
     this.tokenFilePath = options.tokenFilePath ?? getDefaultOnethingTokenFilePath()
@@ -47,30 +56,26 @@ export class OnethingTokenStore<TToken extends OnethingOAuthToken = OnethingOAut
     return this.deserializeToken(providerId, serialized)
   }
 
-  async saveToken(providerId: string, token: TToken): Promise<void> {
-    return this.enqueueWrite(async () => {
-      const tokens = await this.readAll()
-      tokens[providerId] = this.serializeToken(token)
-      await this.writeAll(tokens)
-    })
+  /** 文件里有令牌的那几家(不解密)。 */
+  async listProviderIds(): Promise<string[]> {
+    return Object.entries(await this.readAll())
+      .filter(([, value]) => typeof value === 'string' && value.length > 0)
+      .map(([providerId]) => providerId)
   }
 
-  async deleteToken(providerId: string): Promise<void> {
-    return this.enqueueWrite(async () => {
-      const tokens = await this.readAll()
-      delete tokens[providerId]
-      await this.writeAll(tokens)
-    })
+  /**
+   * 这一家的令牌读得出来吗 —— 明文 JSON 永远读得出;密文要此刻有加密器。
+   * 归位据它判「这台宿主能不能完成这次搬运」,不去真解一遍。
+   */
+  async isReadable(providerId: string): Promise<boolean> {
+    const serialized = (await this.readAll())[providerId]
+    if (typeof serialized !== 'string' || !serialized) return false
+    if (serialized.trim().startsWith('{')) return true
+    return Boolean(this.getCryptoAdapter()?.isEncryptionAvailable())
   }
 
   isTokenExpired(token: TToken): boolean {
     return this.now() >= token.expiresAt
-  }
-
-  private async enqueueWrite(task: () => Promise<void>): Promise<void> {
-    const run = this.writeQueue.then(task, task)
-    this.writeQueue = run.catch(() => undefined)
-    return run
   }
 
   private async readAll(): Promise<Record<string, string>> {
@@ -83,27 +88,6 @@ export class OnethingTokenStore<TToken extends OnethingOAuthToken = OnethingOAut
       this.logger.warn('[Auth] Failed to read OAuth token file; treating it as empty:', error)
       return {}
     }
-  }
-
-  private async writeAll(tokens: Record<string, string>): Promise<void> {
-    const dir = path.dirname(this.tokenFilePath)
-    if (!existsSync(dir)) {
-      await mkdir(dir, { recursive: true })
-    }
-    await writeFile(this.tokenFilePath, JSON.stringify(tokens, null, 2))
-  }
-
-  private serializeToken(token: TToken): string {
-    const tokenJson = JSON.stringify(token)
-    const cryptoAdapter = this.getCryptoAdapter()
-    if (!cryptoAdapter?.isEncryptionAvailable()) {
-      return tokenJson
-    }
-
-    const encrypted = cryptoAdapter.encryptString(tokenJson)
-    return typeof encrypted === 'string'
-      ? encrypted
-      : Buffer.from(encrypted).toString('base64')
   }
 
   private deserializeToken(providerId: string, serialized: string): TToken | null {

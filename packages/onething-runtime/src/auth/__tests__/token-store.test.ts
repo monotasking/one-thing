@@ -31,26 +31,27 @@ function createToken(overrides: Partial<OnethingOAuthToken> = {}): OnethingOAuth
   }
 }
 
-describe('onething runtime token store', () => {
-  it('saves, reads, expires, and deletes plaintext tokens without host dependencies', async () => {
+describe('onething runtime token store(单槽旧文件,批 8 起只读)', () => {
+  it('reads plaintext tokens, lists providers and judges expiry without host dependencies', async () => {
     const tokenFilePath = await createTokenFilePath()
+    const token = createToken()
+    await fs.writeFile(tokenFilePath, JSON.stringify({ codex: JSON.stringify(token) }))
     const store = new OnethingTokenStore({
       tokenFilePath,
       now: () => 1_000,
     })
 
-    const token = createToken()
-    await store.saveToken('codex', token)
-
     await expect(store.getToken('codex')).resolves.toEqual(token)
+    await expect(store.listProviderIds()).resolves.toEqual(['codex'])
+    await expect(store.isReadable('codex')).resolves.toBe(true)
     expect(store.isTokenExpired(token)).toBe(false)
     expect(store.isTokenExpired(createToken({ expiresAt: 999 }))).toBe(true)
+  })
 
-    const raw = JSON.parse(await fs.readFile(tokenFilePath, 'utf-8'))
-    expect(raw.codex).toContain('"accessToken"')
-
-    await store.deleteToken('codex')
-    await expect(store.getToken('codex')).resolves.toBeNull()
+  it('写路已删:单槽不再有 saveToken / deleteToken', () => {
+    const store = new OnethingTokenStore({ tokenFilePath: '/nonexistent/oauth-tokens.json' }) as unknown as Record<string, unknown>
+    expect(store.saveToken).toBeUndefined()
+    expect(store.deleteToken).toBeUndefined()
   })
 
   it('uses an injected crypto adapter instead of importing Electron', async () => {
@@ -66,17 +67,20 @@ describe('onething runtime token store', () => {
         return text.slice('encrypted:'.length)
       },
     }
+    const token = createToken({ accessToken: 'encrypted-access-token' })
+    await fs.writeFile(tokenFilePath, JSON.stringify({
+      codex: Buffer.from(`encrypted:${JSON.stringify(token)}`).toString('base64'),
+    }))
     const store = new OnethingTokenStore({
       tokenFilePath,
       cryptoAdapter,
     })
 
-    const token = createToken({ accessToken: 'encrypted-access-token' })
-    await store.saveToken('codex', token)
-
-    const raw = JSON.parse(await fs.readFile(tokenFilePath, 'utf-8'))
-    expect(raw.codex).not.toContain('accessToken')
     await expect(store.getToken('codex')).resolves.toEqual(token)
+    await expect(store.isReadable('codex')).resolves.toBe(true)
+    // 同一份密文,没有加密器的宿主读不出来 —— 归位据此推迟,而不是把它当空。
+    const blind = new OnethingTokenStore({ tokenFilePath })
+    await expect(blind.isReadable('codex')).resolves.toBe(false)
   })
 
   it('reads legacy plaintext tokens and restores the default token type', async () => {

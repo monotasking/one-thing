@@ -57,6 +57,7 @@ import { configureAppBackgroundJobs } from '@onething/runtime/tools/background-j
 import { configureAppProviderRegistry } from './wiring/providers/index.js'
 import { configureAppSpaceCredentialsCrypto } from './wiring/providers/space-credentials.js'
 import {
+  migrateOAuthSlotToDefaultSpace,
   migrateProviderConfigToDefaultSpace,
   upgradeSpaceCredentialsEncryptionAtRest,
 } from './wiring/providers/space-config-migration.js'
@@ -691,6 +692,14 @@ export class OnethingBackend implements BackendHandle {
       await migrateProviderConfigToDefaultSpace()
     } catch (error) {
       log.error('provider config migration failed, will retry next boot', {}, error)
+    }
+    // 单槽 `oauth-tokens.json` 归位进默认空间的凭证池(批 8 §8.4)。紧跟 C1/C2:它们会先把
+    // 单槽清空搬走;这一步收的是那之后默认空间登录写进单槽的令牌。读路从此只读池,所以它必须
+    // 排在任何人问「这个订阅登没登」之前。同一条纪律:失败不写标记,下次启动重跑,只记不抛。
+    try {
+      await migrateOAuthSlotToDefaultSpace()
+    } catch (error) {
+      log.error('oauth slot migration failed, will retry next boot', {}, error)
     }
     // 自定义服务商进 manifest 注册表(批 M §5.2)。排在迁移之后:它读的是迁完的空间层。
     // 之后每次保存设置 / 写空间 provider 设置都重同步;关机卸干净。

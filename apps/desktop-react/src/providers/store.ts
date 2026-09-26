@@ -358,8 +358,12 @@ export interface ProviderSettingsState {
   /* ── 订阅登录 ───────────────────────────────────────────────────────── */
   /** 问一次登录态。已登录的坑开面就问,未登录的也问 —— 「登没登」是它自己说了算。 */
   checkAuth: (providerId: string) => Promise<void>
-  /** 起一次登录。流形由后端的答案定(见 auth.ts 文件头)。 */
-  startAuth: (providerId: string) => Promise<void>
+  /**
+   * 起一次登录,登进**当前空间**的池(批 8)。流形由后端的答案定(见 auth.ts 文件头)。
+   * 不带 `entryId` = 添加账号(追加;同一身份再登一次 = 后端更新那一条);
+   * 带 `entryId` = 重新授权那一条(原地换令牌)。
+   */
+  startAuth: (providerId: string, entryId?: string) => Promise<void>
   /** 用户点「打开」:把这条流的授权页交给系统浏览器(网页壳 = 新标签)。 */
   openAuthPage: (providerId: string) => Promise<void>
   /** 贴码框里改字。 */
@@ -371,7 +375,10 @@ export interface ProviderSettingsState {
    * 流已经终局(失败 / 超时那一屏)→ 只把这一屏收回空闲。
    */
   cancelAuth: (providerId: string) => void
-  /** 退出登录。带 entryId 时只退那一个账号。 */
+  /**
+   * 退出**这个空间的那一个账号**(批 8:删本空间那一条 oauth entry,令牌随之删,不向服务商
+   * 吊销)。不带 entryId 时后端落到「第一个可用账号」(兼容口)—— 壳自己每一发都带。
+   */
   signOut: (providerId: string, entryId?: string) => Promise<void>
 
   /* ── 配额与余额 ─────────────────────────────────────────────────────── */
@@ -965,6 +972,13 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     return (get().credentials[providerId]?.entries ?? []).map((entry) => entry.id)
   }
 
+  /**
+   * 问过登录态的那几家(批 8)。换空间时照它逐家重问 —— 不能拿 `authStatus` 的键代替:
+   * 换空间那一下先把它清空,而上一次换空间的重问可能还在路上(答回来又被丢掉),
+   * 连换两次就一家都不剩了。寿命同 store(`reset` 清)。
+   */
+  const authAsked = new Set<string>()
+
   function patchFlow(providerId: string, delta: Partial<AuthFlowState>): void {
     set((st) => ({
       authFlow: {
@@ -1115,8 +1129,11 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         // (与列表面「旧内容留到新世界首屏」相反,那里旧内容是同一本账的另一投影,
         //  这里旧内容是**别人的密钥尾号**。)
         // 配额也是这个空间的私产(池里的凭证换了一批):整张表清掉,新空间自己问。
-        set({ spaceAi: undefined, settings: undefined, credentials: {}, credentialsKnown: false, quota: {}, quotaStatus: {}, quotaError: {} })
+        // 登录态也是(批 8):账号住在空间的池里,A 空间的账号行不能在 B 空间的首屏上多留一帧。
+        // 问过的那几家在新空间各重问一次(设置页开着的那一坑不会因为换空间重跑它的 effect)。
+        set({ spaceAi: undefined, settings: undefined, credentials: {}, credentialsKnown: false, quota: {}, quotaStatus: {}, quotaError: {}, authStatus: {} })
         void load({ skipRoster: true })
+        for (const providerId of authAsked) void get().checkAuth(providerId)
       })
       const port = await providerSettingsPort()
       await port.ready()
@@ -1504,11 +1521,13 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       const next = reorderPool(ids, entryId, delta)
       // 越界 = 没变。没变就不发 —— 一次空写会让屏幕闪一下忙态却什么都没做。
       if (next.every((id, index) => id === ids[index])) return
-      await writePool(
+      const ok = await writePool(
         providerId,
         (port) => port.setCredentialPool({ id: currentSpaceId(), providerId, entryIds: next }),
         t('providers.poolFailed'),
       )
+      // 订阅账号行读的是登录态里的 `accounts[]`(池序):换了序就重问一次,行才跟着动。
+      if (ok && get().authStatus[providerId]) await get().checkAuth(providerId)
     },
 
     setRotation: async (providerId, policy) => {
@@ -1526,25 +1545,31 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     /* ── 订阅登录 ─────────────────────────────────────────────────────── */
 
     checkAuth: async (providerId) => {
+      // 问的是**当前空间**那一池(批 8)。答回来时空间已经换了 = 这是别人家的账,丢掉 ——
+      // 换空间那一下自己会重问。
+      const spaceId = currentSpaceId()
+      authAsked.add(providerId)
       try {
         const port = await providerSettingsPort()
-        const status = await port.oauthStatus({ providerId })
+        const status = await port.oauthStatus({ providerId, spaceId })
+        if (currentSpaceId() !== spaceId) return
         set((st) => ({ authStatus: { ...st.authStatus, [providerId]: status } }))
       } catch {
         // 问不到就是不知道 —— 不写一份「未登录」进去冒充答案。
       }
     },
 
-    startAuth: async (providerId) => {
+    startAuth: async (providerId, entryId) => {
       // 同一坑上一条还在跑的流:后端 `start` 会把它顶掉(推 `cancelled`,它的 flowId
       // 已经不是这一屏在等的那条,推送被认领表挡掉)。这边只管把屏换成新的一条。
-      patchFlow(providerId, { ...IDLE_AUTH_FLOW, busy: true })
+      const target = { spaceId: currentSpaceId(), ...(entryId ? { entryId } : {}) }
+      patchFlow(providerId, { ...IDLE_AUTH_FLOW, busy: true, target })
 
       let started: Awaited<ReturnType<ProviderSettingsPort['oauthStart']>>
       const port = await providerSettingsPort()
       ensureOAuthPush(port)
       try {
-        started = await port.oauthStart({ providerId })
+        started = await port.oauthStart({ providerId, ...target })
       } catch (error) {
         patchFlow(providerId, {
           busy: false,
@@ -1620,6 +1645,8 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
           providerId,
           code,
           state: flow.paste.state,
+          // 起流那一刻的空间与条目 —— 后端按它认流(见 `AuthFlowState.target`)。
+          ...(flow.target ?? { spaceId: currentSpaceId() }),
         })
         if (!response.success) {
           patchFlow(providerId, { busy: false, error: response.error ?? '' })
@@ -1652,7 +1679,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         providerId,
         (port) =>
           port
-            .oauthLogout({ providerId, ...(entryId ? { entryId } : {}) })
+            .oauthLogout({ providerId, spaceId: currentSpaceId(), ...(entryId ? { entryId } : {}) })
             .then((response) => ({ success: response.success, error: response.error })),
         t('providers.signOutFailed'),
       )
@@ -1939,6 +1966,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     },
 
     reset: () => {
+      authAsked.clear()
       started = false
       settingsBoot = undefined
       unsubscribeSpace?.()

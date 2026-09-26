@@ -18,6 +18,8 @@
  *      Codex 那一轮因为被动源刚刷过,到点也不问;
  *   ⑦ 读数卡要读的形状逐格在:窗口(5h/7d + 重置时刻)、余额(币种)、不支持(unsupported)、
  *      失败(error + 原话)。卡片行的**措辞**逐格由 `src/composer/quota-rows.test.ts` 钉(那是纯函数)。
+ *   ⑧ 默认空间两个订阅账号各答各的窗口(批 8 §8.7,关掉批 5 留账「默认空间多账号拿到的是同一份
+ *      配额」):池里 cx-1 / cx-2 两条,按凭证问,打到 wham/usage 的 Bearer 各是各的、窗口各是各的。
  *
  * **必须用 node 起**(同 gate:acp):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先在仓根 `bun run server:build`。不连 5175,不碰真 `~/.onething`。
@@ -62,6 +64,7 @@ async function waitFor(predicate, budgetMs, stepMs = 50) {
 
 const SECRETS = {
   codex: 'at-codex-SECRET-0001',
+  codex2: 'at-codex-SECRET-0006',
   claude: 'at-claude-SECRET-0002',
   deepseek: 'sk-deepseek-SECRET-0003',
   kimi: 'sk-kimi-SECRET-0004',
@@ -86,6 +89,14 @@ const CODEX_SWAPPED_ORDER = {
   rate_limit: {
     primary_window: { used_percent: 31, limit_window_seconds: 604_800, reset_at: RESET_7D },
     secondary_window: { used_percent: 62, limit_window_seconds: 18_000, reset_at: RESET_5H },
+  },
+}
+/** 默认空间第二个 Codex 账号(⑧)的窗口 —— 与第一个故意不同。 */
+const CODEX_SECOND_ACCOUNT = {
+  plan_type: 'pro',
+  rate_limit: {
+    primary_window: { used_percent: 15, limit_window_seconds: 18_000, reset_at: RESET_5H },
+    secondary_window: { used_percent: 5, limit_window_seconds: 604_800, reset_at: RESET_7D },
   },
 }
 const CLAUDE_USAGE = {
@@ -123,7 +134,10 @@ function startStation() {
     req.on('end', async () => {
       const url = new URL(req.url, 'http://127.0.0.1')
       hits.push({ method: req.method, path: url.pathname, auth: req.headers.authorization ?? '', ua: req.headers['user-agent'] ?? '', beta: req.headers['anthropic-beta'] ?? '', at: Date.now() })
-      if (req.method === 'GET' && url.pathname === '/backend-api/wham/usage') return send(res, 200, state.codex)
+      if (req.method === 'GET' && url.pathname === '/backend-api/wham/usage') {
+        // 按 Bearer 答:第二个账号有它自己的窗口(⑧)。
+        return send(res, 200, req.headers.authorization === `Bearer ${SECRETS.codex2}` ? CODEX_SECOND_ACCOUNT : state.codex)
+      }
       if (req.method === 'GET' && url.pathname === '/api/oauth/usage') {
         return state.claudeStatus === 429
           ? send(res, 429, { error: { type: 'rate_limit_error', message: 'Rate limited' } })
@@ -186,7 +200,11 @@ function seedStore(storePath, base) {
     version: 2,
     encryption: 'none',
     providers: {
-      codex: pool([entry('cx-1', { authType: 'oauth', oauthToken: token(SECRETS.codex, { accountId: 'acct_gate' }), baseUrl: `${base}/backend-api/codex` })]),
+      // 批 8:默认空间与别的空间一样,账号的令牌就住在池里这一条上;两个账号两条(⑧)。
+      codex: pool([
+        entry('cx-1', { authType: 'oauth', oauthToken: token(SECRETS.codex, { accountId: 'acct_gate' }), baseUrl: `${base}/backend-api/codex` }),
+        entry('cx-2', { authType: 'oauth', oauthToken: token(SECRETS.codex2, { accountId: 'acct_gate_2' }), baseUrl: `${base}/backend-api/codex` }),
+      ]),
       'claude-code': pool([entry('cc-1', { authType: 'oauth', oauthToken: token(SECRETS.claude), baseUrl: `${base}/v1` })]),
       deepseek: pool([entry('ds-1', { authType: 'apiKey', apiKey: SECRETS.deepseek, baseUrl: base })]),
       kimi: pool([entry('km-1', { authType: 'apiKey', apiKey: SECRETS.kimi, baseUrl: `${base}/v1`, region: 'intl' })]),
@@ -213,13 +231,8 @@ function seedStore(storePath, base) {
   fs.mkdirSync(space, { recursive: true })
   fs.writeFileSync(path.join(space, 'credentials.json'), JSON.stringify(credentials, null, 2))
   fs.writeFileSync(path.join(space, 'providers.json'), JSON.stringify(providers, null, 2))
-  // 默认空间的 OAuth 令牌今天仍住在 settings 那一层(`oauth-tokens.json`,
-  // `normalizeCredentialTarget` 把 default 空间归到 settings 目标);池里那条 oauth 条目
-  // 是「登没登」的标记。两处都种上,与一台真登录过的默认空间同形。无加密器的 server 写明文。
-  fs.writeFileSync(path.join(storePath, 'oauth-tokens.json'), JSON.stringify({
-    codex: JSON.stringify(token(SECRETS.codex, { accountId: 'acct_gate' })),
-    'claude-code': JSON.stringify(token(SECRETS.claude)),
-  }, null, 2))
+  // 批 8 之前这里还要另种一份 `oauth-tokens.json` 单槽(默认空间的令牌住在那儿,池里那条只是
+  // 「登没登」的标记)。单槽退役:默认空间的账号就是池里这一条条,不再种它。
   fs.writeFileSync(path.join(storePath, 'settings.json'), JSON.stringify({
     storage: { providerConfigMigratedAt: 1, spaceProviderSettingsMigratedAt: 1 },
     tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
@@ -485,6 +498,19 @@ try {
   check(hold?.fields?.holdMs === 600_000 && hold?.fields?.providerId === 'claude-code',
     `server 日志:quota rate-limited; holding ${JSON.stringify(hold?.fields ?? null)}(10 分钟静默期)`)
 
+  // ── ⑧ 默认空间两个订阅账号各答各的窗口(批 8)─────────────────────────
+  console.log(`${TAG} ⑧ 默认空间两账号各答各的`)
+  const second = await quota('codex', { credentialId: 'cx-2', force: true })
+  const secondHit = station.last('/backend-api/wham/usage')
+  check(second.credentialId === 'cx-2' && windowsOf(second.quota).join(',') === '5h:15,7d:5' && second.quota.plan === 'pro',
+    `cx-2 答它自己的窗口(${second.credentialId}:${windowsOf(second.quota)} / ${second.quota.plan})`)
+  check(secondHit?.auth === `Bearer ${SECRETS.codex2}`, 'cx-2 那一问带的是 cx-2 自己的令牌')
+  const firstAgain = await quota('codex', { credentialId: 'cx-1', force: true })
+  const firstHit = station.last('/backend-api/wham/usage')
+  check(firstAgain.credentialId === 'cx-1' && windowsOf(firstAgain.quota).join(',') !== windowsOf(second.quota).join(',')
+    && firstHit?.auth === `Bearer ${SECRETS.codex}`,
+  `cx-1 答 cx-1 的窗口、带 cx-1 的令牌(${windowsOf(firstAgain.quota)}),两份不是同一份`)
+
   if (failures.length > 0) console.error(`${TAG} server 输出尾:\n${serverOut.slice(-40).join('')}`)
 } catch (error) {
   failures.push(String(error?.stack || error))
@@ -509,4 +535,4 @@ if (failures.length > 0) {
   console.error(`${TAG} ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log(`${TAG} ok —— ① 五源归一 / ② 套餐顺序 / ③ 出网无令牌 / ④ 429 静默 / ⑤ 被动源 / ⑥ run/end 去抖 / ⑦ 卡片形状 全绿`)
+console.log(`${TAG} ok —— ① 五源归一 / ② 套餐顺序 / ③ 出网无令牌 / ④ 429 静默 / ⑤ 被动源 / ⑥ run/end 去抖 / ⑦ 卡片形状 / ⑧ 两账号各答各的 全绿`)

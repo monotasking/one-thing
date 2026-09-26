@@ -56,9 +56,7 @@ import {
 } from '@onething/runtime/agent-loop/provider-error-classification'
 import {
   credentialTargetFromSpaceMarker,
-  isSpaceCredentialTarget,
   parseSpaceOAuthToken,
-  SETTINGS_CREDENTIAL_TARGET,
   type OnethingCredentialTarget,
 } from '@onething/runtime/auth'
 import type {
@@ -442,7 +440,9 @@ export function credentialTargetFromMarker(
  *
  * 两件事只在这里做:
  *  1. 按标记去**本空间那条 entry** 取 token(必要时 `refreshTokenIfNeeded` 先刷新,
- *     单飞锁在 authService 里);
+ *     单飞锁在 authService 里)。**默认空间同一条路**(批 8):从前它在这里拐去读
+ *     `<store>/oauth-tokens.json` 那一把单槽,池里那条只是「登没登」的标记 —— 于是默认
+ *     空间的多个账号拿到的是同一把令牌、同一份配额。单槽退役,这一拐也删了。
  *  2. 刷新被拒(`invalid_grant` / 400/401/403)时给那条 entry 写 auth-invalid 冷却。
  *     下一次解析就会跳过它 —— 池里还有别的账号就自动接力,一个都不剩就报
  *     `exhausted`。**只有分类器判成 auth-invalid 才写**:网络抖动不该让一个
@@ -454,9 +454,6 @@ export async function resolveSessionSpaceOAuthAuth(
   marker: CoreSpaceCredentialMarker | undefined,
 ): Promise<ProviderAuthContext | null> {
   const target = credentialTargetFromMarker(marker)
-  if (!isSpaceCredentialTarget(target)) {
-    return authService.resolveProviderAuth(providerId, apiKey, SETTINGS_CREDENTIAL_TARGET)
-  }
   try {
     return await authService.resolveProviderAuth(providerId, apiKey, target)
   } catch (error) {

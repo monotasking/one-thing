@@ -1,34 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  OnethingAuthService,
-  type OnethingAuthTokenStore,
-} from '../auth-service.js'
+import { OnethingAuthService } from '../auth-service.js'
 import type {
   OnethingAuthProviderDefinition,
-  OnethingOAuthToken,
 } from '../types.js'
-
-class MemoryTokenStore implements OnethingAuthTokenStore {
-  private readonly tokens = new Map<string, OnethingOAuthToken>()
-
-  constructor(private readonly now = () => Date.now()) {}
-
-  async getToken(providerId: string): Promise<OnethingOAuthToken | null> {
-    return this.tokens.get(providerId) ?? null
-  }
-
-  async saveToken(providerId: string, token: OnethingOAuthToken): Promise<void> {
-    this.tokens.set(providerId, token)
-  }
-
-  async deleteToken(providerId: string): Promise<void> {
-    this.tokens.delete(providerId)
-  }
-
-  isTokenExpired(token: OnethingOAuthToken): boolean {
-    return this.now() >= token.expiresAt
-  }
-}
+import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -84,7 +59,7 @@ describe('onething runtime auth service', () => {
     expect(fetchImpl).toHaveBeenCalledOnce()
     // 完成即出表:这条流的超时计时器跟着收掉。
     expect(service.pendingTimerCount()).toBe(0)
-    await expect(tokenStore.getToken('claude-code')).resolves.toMatchObject({
+    expect(tokenStore.tokenOf('claude-code')).toMatchObject({
       accessToken: 'access',
       refreshToken: 'refresh',
       tokenType: 'Bearer',
@@ -145,7 +120,7 @@ describe('onething runtime auth service', () => {
       success: true,
       completed: true,
     })
-    await expect(tokenStore.getToken('device-test')).resolves.toMatchObject({
+    expect(tokenStore.tokenOf('device-test')).toMatchObject({
       accessToken: 'device-access',
       tokenType: 'Bearer',
     })

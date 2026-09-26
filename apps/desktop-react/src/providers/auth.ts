@@ -49,6 +49,12 @@ export interface AuthFlowState {
   kind: OAuthFlowKind | null
   /** 后端这条流的 id —— `oauth:flow` 事件与 `oauth.cancel` 都按它认。 */
   flowId?: string
+  /**
+   * 这条流登进**哪个空间的哪一条**(批 8)。起流那一刻定下,之后贴码提交照它带 ——
+   * 后端按 (provider, 空间, 条目) 认流,中途换了空间也不会把码交给别的空间的流。
+   * `entryId` 缺席 = 添加账号(追加);带上 = 重新授权那一条。
+   */
+  target?: { spaceId: string; entryId?: string }
   device?: DeviceFlowFacts
   paste?: PasteFlowFacts
   browser?: BrowserFlowFacts

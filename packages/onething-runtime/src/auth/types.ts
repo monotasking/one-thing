@@ -70,11 +70,11 @@ export interface OnethingAuthFlowState {
   flowId: string
   providerId: string
   /**
-   * 这一次登录的 token 该落到哪儿(批 B6)。缺席 = settings(默认空间)。
+   * 这一次登录的 token 该落到哪儿(批 B6;批 8 起只有空间池一种)。缺席 = 默认空间。
    * 类型故意写成结构体而不是 import —— types.ts 是叶子模块,不反向依赖
    * credential-target.ts(那边要 import spaces/types)。
    */
-  target?: { kind: 'settings' } | { kind: 'space'; spaceId: string; entryId?: string; label?: string }
+  target?: { kind: 'space'; spaceId: string; entryId?: string; label?: string }
   kind: OnethingAuthFlowKind
   state: string
   codeVerifier?: string
@@ -111,14 +111,36 @@ export interface OnethingOAuthCallbackResponse {
   error?: string
 }
 
+/**
+ * 池里一条订阅账号的登录态(批 8 §8.3)。`oauth.status.accounts[]` 的一行 —— 壳的已登录屏
+ * 每账号一行读的就是它。**没有令牌原文**。
+ */
+export interface OnethingOAuthAccountStatus {
+  /** 池条目 id(重新授权 / 退出 / 排序都按它认)。 */
+  entryId: string
+  /** 条目的展示名(没有邮箱时壳显示「账号 {n}」,不显示它)。 */
+  label: string
+  email?: string
+  accountId?: string
+  planType?: string
+  /** 令牌过期,或读不出来(坏条目)。两者同一种处置:重新授权。 */
+  isExpired: boolean
+  expiresAt?: number
+  canRefresh?: boolean
+}
+
 export interface OnethingOAuthStatusResponse {
   success: boolean
   providerId?: string
+  /** 这份登录态说的是池里哪一条(不指名时是兼容口选中的那一条;一条都没有就缺席)。 */
+  entryId?: string
   isLoggedIn: boolean
   isExpired?: boolean
   canRefresh?: boolean
   expiresAt?: number
   account?: OnethingAuthAccount
+  /** 这个空间这一家的全部订阅账号(池序)。 */
+  accounts?: OnethingOAuthAccountStatus[]
   lastError?: string
   error?: string
 }

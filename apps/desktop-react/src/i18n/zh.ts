@@ -1798,6 +1798,17 @@ export const zh = {
   'providers.subPlan': '套餐 {plan}',
   'providers.subAccounts': '{count} 个账号',
   'providers.subAddAccount': '＋ 添加账号',
+  /* 批 8:已登录屏每账号一行(`docs/design/subscription-accounts-2026-09.md` §8.3)。
+   * 行名:有邮箱有套餐 =「邮箱 · 套餐」,只有邮箱 = 邮箱原文,没有邮箱 =「账号 N」。 */
+  'providers.subAccountRow': '{email} · {plan}',
+  'providers.subAccountNumbered': '账号 {n}',
+  'providers.subAccountExpired': '登录已过期',
+  'providers.subAccountReauth': '重新授权',
+  'providers.subAccountSignOut': '退出',
+  'providers.subAccountSignOutAsk': '退出这个账号?本空间将不再使用它。',
+  'providers.subAccountMoveUp': '上移',
+  'providers.subAccountMoveDown': '下移',
+  'providers.subAccountMenuFor': '{account} 的更多动作',
 
   /* 订阅用量。**拿不到的读数如实缺席,不显示 0%** —— 0% 是「一点没用」,
    * 而缺席是「不知道」,这两件事在屏幕上长得像、在事实上差得远。 */

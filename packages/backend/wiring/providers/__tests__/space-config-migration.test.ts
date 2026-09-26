@@ -45,6 +45,7 @@ vi.mock('@onething/runtime/spaces/store', () => ({
 
 import {
   configureSpaceCredentialsCrypto,
+  writeSpaceCredentials,
   readSpaceCredentials,
   readSpaceCredentialsAtRest,
   resetSpaceCredentialsCacheForTests,
@@ -62,6 +63,8 @@ import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
 import {
   buildMigratedCredentialEntries,
   buildSpaceProviderSettings,
+  mergeSlotTokenIntoPool,
+  migrateOAuthSlotToDefaultSpace,
   migrateProviderConfigToDefaultSpace,
   stripMigratedOverlayFields,
   stripMigratedProviderFields,
@@ -624,5 +627,132 @@ describe('stripMigratedProviderFields', () => {
       modelCatalog: { deepseek: { models: { m: { id: 'm' } } } },
     })
     expect(settings.theme).toBe('dark')
+  })
+})
+
+/* ── 批 8:单槽归位(`docs/design/subscription-accounts-2026-09.md` §8.4)──────────── */
+
+describe('单槽 oauth-tokens.json 归位进默认空间池(批 8)', () => {
+  const FAR = 4_000_000_000_000
+  const slotPath = () => path.join(tmpDir, 'oauth-tokens.json')
+  const writeSlot = (tokens: Record<string, unknown>) =>
+    fs.writeFileSync(slotPath(), JSON.stringify(Object.fromEntries(
+      Object.entries(tokens).map(([id, token]) => [id, JSON.stringify(token)]),
+    )), 'utf-8')
+  const oauthOf = (spaceId: string, providerId: string) =>
+    (readSpaceCredentials(spaceId).providers[providerId]?.entries ?? []).filter(entry => entry.authType === 'oauth')
+  const migratedFiles = () => fs.readdirSync(tmpDir).filter(name => name.startsWith('oauth-tokens.migrated-'))
+
+  beforeEach(() => {
+    mocks.settings = { storage: { providerConfigMigratedAt: 1, spaceProviderSettingsMigratedAt: 1 } }
+  })
+
+  it('⑤ 同身份:池里那条换成单槽的新令牌(冷却抹掉),单槽改名留底,池文件先备份,标记落下', async () => {
+    writeSpaceCredentials('default', {
+      providers: {
+        codex: {
+          policy: 'priority-failover',
+          entries: [{
+            id: 'old', label: 'Codex', authType: 'oauth', source: 'user', cooldownUntil: FAR,
+            oauthToken: { accessToken: 'stale', refreshToken: 'rt-0', expiresAt: 1_000, tokenType: 'Bearer', accountId: 'acct' },
+          }],
+        },
+      },
+    })
+    writeSlot({ codex: { accessToken: 'live', refreshToken: 'rt-9', expiresAt: FAR, tokenType: 'Bearer', accountId: 'acct' } })
+
+    const report = await migrateOAuthSlotToDefaultSpace({ now: 1_790_000_000_000 })
+
+    expect(report).toMatchObject({ migrated: true, updated: ['codex'], added: [], kept: [] })
+    resetSpaceCredentialsCacheForTests()
+    const entries = oauthOf('default', 'codex')
+    expect(entries.map(entry => [entry.id, (entry.oauthToken as { accessToken: string }).accessToken])).toEqual([['old', 'live']])
+    expect(entries[0].cooldownUntil).toBeUndefined()
+    expect(fs.existsSync(slotPath())).toBe(false)
+    expect(migratedFiles()).toHaveLength(1)
+    expect(report.renamedTo && fs.existsSync(report.renamedTo)).toBe(true)
+    expect(report.backup && fs.existsSync(report.backup)).toBe(true)
+    const saved = mocks.saved.at(-1) as { storage: Record<string, unknown> }
+    expect(saved.storage.oauthSlotMigratedAt).toBe(1_790_000_000_000)
+    // 幂等:标记在就一步不动。
+    mocks.settings = saved as unknown as Record<string, unknown>
+    expect((await migrateOAuthSlotToDefaultSpace()).migrated).toBe(false)
+  })
+
+  it('没有同一个账号:加在这一家池子最前面(今天真在用的那一把排第一),旧条目一条不删', async () => {
+    writeSpaceCredentials('default', {
+      providers: {
+        'kimi-code': {
+          policy: 'priority-failover',
+          entries: [{
+            id: 'c1-copy', label: 'Kimi', authType: 'oauth', source: 'user',
+            oauthToken: { accessToken: 'c1-at', refreshToken: 'c1-rt', expiresAt: 1_000, tokenType: 'Bearer' },
+          }],
+        },
+      },
+    })
+    writeSlot({ 'kimi-code': { accessToken: 'slot-at', refreshToken: 'slot-rt', expiresAt: FAR, tokenType: 'Bearer' } })
+
+    const report = await migrateOAuthSlotToDefaultSpace()
+    expect(report.added).toEqual(['kimi-code'])
+    resetSpaceCredentialsCacheForTests()
+    expect(oauthOf('default', 'kimi-code').map(entry => (entry.oauthToken as { accessToken: string }).accessToken))
+      .toEqual(['slot-at', 'c1-at'])
+  })
+
+  it('同一条令牌血统(无身份的家,refresh token 相同)算同一个账号;池里那把更新就留池里的', () => {
+    const file = {
+      providers: {
+        grok: {
+          policy: 'single',
+          entries: [{
+            id: 'e', label: 'g', authType: 'oauth' as const, source: 'user',
+            oauthToken: { accessToken: 'pool', refreshToken: 'same-rt', expiresAt: 9_000, tokenType: 'Bearer' },
+          }],
+        },
+      },
+    }
+    const older = mergeSlotTokenIntoPool(file, 'grok',
+      { accessToken: 'slot', refreshToken: 'same-rt', expiresAt: 5_000, tokenType: 'Bearer' },
+      { entryId: 'n', label: 'g' })
+    expect(older.outcome).toBe('kept')
+    const newer = mergeSlotTokenIntoPool(file, 'grok',
+      { accessToken: 'slot', refreshToken: 'same-rt', expiresAt: 10_000, tokenType: 'Bearer' },
+      { entryId: 'n', label: 'g' })
+    expect(newer.outcome).toBe('updated')
+    expect(newer.file.providers.grok.entries).toHaveLength(1)
+  })
+
+  it('非默认空间一条都不动(用户在那里重登)', async () => {
+    writeSpaceCredentials('work', { providers: {} })
+    writeSlot({ codex: { accessToken: 'live', expiresAt: FAR, tokenType: 'Bearer' } })
+    await migrateOAuthSlotToDefaultSpace()
+    resetSpaceCredentialsCacheForTests()
+    expect(oauthOf('work', 'codex')).toEqual([])
+    expect(oauthOf('default', 'codex')).toHaveLength(1)
+  })
+
+  it('单槽不在:只补一个标记', async () => {
+    const report = await migrateOAuthSlotToDefaultSpace({ now: 42 })
+    expect(report).toMatchObject({ migrated: true, updated: [], added: [] })
+    expect((mocks.saved.at(-1) as { storage: Record<string, unknown> }).storage.oauthSlotMigratedAt).toBe(42)
+  })
+
+  it('C1/C2 还没跑完:推迟(它们会先处理单槽)', async () => {
+    mocks.settings = {}
+    writeSlot({ codex: { accessToken: 'live', expiresAt: FAR, tokenType: 'Bearer' } })
+    const report = await migrateOAuthSlotToDefaultSpace()
+    expect(report.deferredReason).toBe('provider-config-not-migrated')
+    expect(fs.existsSync(slotPath())).toBe(true)
+    expect(mocks.saved).toEqual([])
+  })
+
+  it('单槽里有密文、这个进程解不开:推迟 —— 不写池、不改名、不落标记', async () => {
+    fs.writeFileSync(slotPath(), JSON.stringify({ codex: Buffer.from('ciphertext').toString('base64') }), 'utf-8')
+    const report = await migrateOAuthSlotToDefaultSpace()
+    expect(report.deferredReason).toBe('token-not-readable')
+    expect(fs.existsSync(slotPath())).toBe(true)
+    expect(migratedFiles()).toEqual([])
+    expect(mocks.saved).toEqual([])
   })
 })

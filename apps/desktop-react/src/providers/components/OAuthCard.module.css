@@ -81,6 +81,49 @@
   white-space: nowrap;
 }
 
+/* ── 账号行(批 8:这个空间池里每个订阅账号一行)────────────────────────────
+ * 几何照密钥池的行(`CredentialPool.module.css` 的 `.row` / `.identity` / `.trail`):
+ * 同一张详情列里两种列表,行高与内距一样,眼睛才不用换一次尺子。 */
+.accountList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--pv-pool-row-inset);
+  margin: 0 calc(var(--pv-pool-row-inset) * -1);
+  border-radius: var(--r-1);
+}
+
+.accountRow:hover,
+.accountRow:focus-within {
+  background: var(--st-hover);
+}
+
+.accountIdentity {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.trail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.stripBelow {
+  margin-top: var(--sp-2);
+}
+
 /* 状态点收进 `ui/StatusDot`(09-01 批 2b):登着 = tone 'ok',
  * 登着但过期了 = tone 'warn'(「要你动手」而不是「坏了」)。 */
 

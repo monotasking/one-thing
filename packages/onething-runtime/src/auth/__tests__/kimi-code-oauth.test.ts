@@ -13,25 +13,10 @@
  *     不用手抄八位码。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { OnethingAuthService, type OnethingAuthTokenStore } from '../auth-service.js'
+import { OnethingAuthService } from '../auth-service.js'
 import { getAuthProviderDefinition, resolveKimiOAuthHost } from '../registry.js'
 import type { OnethingOAuthToken } from '../types.js'
-
-class MemoryTokenStore implements OnethingAuthTokenStore {
-  private readonly tokens = new Map<string, OnethingOAuthToken>()
-  async getToken(providerId: string): Promise<OnethingOAuthToken | null> {
-    return this.tokens.get(providerId) ?? null
-  }
-  async saveToken(providerId: string, token: OnethingOAuthToken): Promise<void> {
-    this.tokens.set(providerId, token)
-  }
-  async deleteToken(providerId: string): Promise<void> {
-    this.tokens.delete(providerId)
-  }
-  isTokenExpired(token: OnethingOAuthToken): boolean {
-    return Date.now() >= token.expiresAt
-  }
-}
+import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
 
 function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify(data), {
@@ -167,7 +152,7 @@ describe('Kimi Code 登录流程', () => {
 
   it('续期走 refresh_token,body 仍然是 form(json 会被拒)', async () => {
     const tokenStore = new MemoryTokenStore()
-    await tokenStore.saveToken(KIMI_CODE, {
+    tokenStore.seed(KIMI_CODE, {
       accessToken: 'old',
       refreshToken: 'kimi-refresh',
       expiresAt: 0,
@@ -196,6 +181,8 @@ describe('Kimi Code 登录流程', () => {
     expect(body.get('grant_type')).toBe('refresh_token')
     expect(body.get('refresh_token')).toBe('kimi-refresh')
     expect(body.get('client_id')).toBe('17e5f671-d194-4dfb-9706-5516cb48c098')
-    await expect(tokenStore.getToken(KIMI_CODE)).resolves.toMatchObject({ accessToken: 'fresh' })
+    expect(tokenStore.tokenOf(KIMI_CODE)).toMatchObject({ accessToken: 'fresh' })
+    // 刷新原地换那一条,不追加。
+    expect(tokenStore.entries(KIMI_CODE)).toHaveLength(1)
   })
 })

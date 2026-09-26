@@ -63,8 +63,8 @@ function hasOAuthCredentials(config: AgentProviderRuntimeConfig): boolean {
  *
  * per-space(批 B6):写回目标从 config 上的运行期标记来。**这一步不能省** ——
  * 回合中途的刷新发生在 provider 闭包里,那里既没有 sessionId 也没有 space;
- * 不带目标就会把某个空间刷新出来的 token 写进 `oauth-tokens.json`,
- * 既污染了默认空间,又让本空间那条 entry 永远停在旧 token 上。
+ * 不带目标就会去刷默认空间的第一个账号(批 8 之前是 `oauth-tokens.json` 那一把单槽),
+ * 既动了别人的令牌,又让本空间那条 entry 永远停在旧 token 上。
  */
 function createRefreshOAuthToken(
   config: AgentProviderRuntimeConfig,

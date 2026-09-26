@@ -238,7 +238,11 @@ export function ProviderSettingsPanel() {
     void checkAuth(activeProviderId)
   }, [activeProviderId, subscription, checkAuth])
 
-  const signedIn = authStatus[activeProviderId]?.isLoggedIn === true
+  // 「登着」= 这个空间这一家**有一个**令牌没过期的账号(批 8:账号是一条条的,
+  // 不指名的那一份只说得出第一个可用账号)。
+  const activeAuth = authStatus[activeProviderId]
+  const signedIn = activeAuth?.isLoggedIn === true
+    || (activeAuth?.accounts ?? []).some((account) => !account.isExpired)
 
   /*
    * 目录不再来自 store 的四张表(K1 样板迁移):它是一族 kernel query,
@@ -399,11 +403,12 @@ export function ProviderSettingsPanel() {
             authStatus={authStatus[mode.providerId]}
             authFlow={flow}
             onSignIn={() => void startAuth(mode.providerId)}
+            onReauth={(entryId) => void startAuth(mode.providerId, entryId)}
             onAuthCode={(code) => setAuthCode(mode.providerId, code)}
             onSubmitAuthCode={() => void submitAuthCode(mode.providerId)}
             onCancelAuth={() => cancelAuth(mode.providerId)}
             onOpenAuthPage={() => void openAuthPage(mode.providerId)}
-            onSignOut={() => void signOut(mode.providerId)}
+            onSignOut={(entryId) => void signOut(mode.providerId, entryId)}
             quotaOf={(credentialId) => {
               const key = quotaKeyOf(mode.providerId, credentialId)
               return {

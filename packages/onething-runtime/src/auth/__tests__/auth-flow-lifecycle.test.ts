@@ -3,13 +3,12 @@ import {
   OnethingAuthService,
   type OnethingAuthCallbackRegistration,
   type OnethingAuthCallbackServerAdapter,
-  type OnethingAuthTokenStore,
 } from '../auth-service.js'
 import type {
   OnethingAuthFlowEvent,
   OnethingAuthProviderDefinition,
-  OnethingOAuthToken,
 } from '../types.js'
+import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
 
 /**
  * 登录流的生命周期住在后端(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)。
@@ -23,14 +22,6 @@ import type {
  * 另有两条终局:token 端点说 `access_denied` = `failed`;回调流回调失败 = `failed`(不再是
  * 从前那句冒充「令牌过期」的 `token-expired`)。
  */
-
-class MemoryTokenStore implements OnethingAuthTokenStore {
-  readonly tokens = new Map<string, OnethingOAuthToken>()
-  async getToken(providerId: string) { return this.tokens.get(providerId) ?? null }
-  async saveToken(providerId: string, token: OnethingOAuthToken) { this.tokens.set(providerId, token) }
-  async deleteToken(providerId: string) { this.tokens.delete(providerId) }
-  isTokenExpired(token: OnethingOAuthToken) { return Date.now() >= token.expiresAt }
-}
 
 const DEVICE: OnethingAuthProviderDefinition = {
   providerId: 'dev',

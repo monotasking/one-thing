@@ -197,6 +197,28 @@ describe('oauth RPC domain', () => {
     expect(authService.deleteToken).toHaveBeenCalledWith('codex', expect.objectContaining({ entryId: 'entry-1' }))
   })
 
+  it('no spaceId / the default space → the default space pool, never a settings slot (批 8)', async () => {
+    const { dispatchRpc } = await loadDomain()
+
+    await dispatchRpc({ domain: 'oauth', method: 'start', payload: { providerId: 'codex' } })
+    expect(authService.start).toHaveBeenLastCalledWith('codex', { kind: 'space', spaceId: 'default' })
+
+    await dispatchRpc({ domain: 'oauth', method: 'logout', payload: { providerId: 'codex', spaceId: 'default', entryId: 'e2' } })
+    expect(authService.deleteToken).toHaveBeenLastCalledWith('codex', { kind: 'space', spaceId: 'default', entryId: 'e2' })
+  })
+
+  it('status answers every account of that pool (accounts[]) straight from the auth service', async () => {
+    const { dispatchRpc } = await loadDomain()
+    const accounts = [
+      { entryId: 'a', label: 'codex #1', email: 'a@x.com', planType: 'plus', isExpired: false },
+      { entryId: 'b', label: 'codex #2', isExpired: true },
+    ]
+    authService.getStatus.mockResolvedValueOnce({ success: true, providerId: 'codex', entryId: 'a', isLoggedIn: true, accounts })
+    await expect(dispatchRpc({ domain: 'oauth', method: 'status', payload: { providerId: 'codex', spaceId: 'work' } }))
+      .resolves.toMatchObject({ ok: true, data: { entryId: 'a', accounts } })
+    expect(authService.getStatus).toHaveBeenLastCalledWith('codex', { kind: 'space', spaceId: 'work' })
+  })
+
   it('refresh reports a thrown refresh as an expired token through the event source', async () => {
     // 投影的判据是**抛出**,不是回一个 falsy —— 逐字保留。
     authService.refreshToken.mockRejectedValue(new Error('refresh_token revoked'))

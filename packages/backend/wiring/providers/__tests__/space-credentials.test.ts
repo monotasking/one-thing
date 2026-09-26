@@ -293,25 +293,44 @@ describe('per-space OAuth(批 B6)', () => {
     expect(JSON.stringify(summary)).not.toContain('rt-secret')
   })
 
-  it('写回目标从标记来:默认空间 = settings,非默认 = 那个空间的那条 entry', () => {
-    expect(credentialTargetFromMarker(undefined)).toEqual({ kind: 'settings' })
-    expect(credentialTargetFromMarker({ spaceId: 'default', entryId: 'x' })).toEqual({ kind: 'settings' })
+  it('写回目标从标记来:默认空间与非默认同一条路 —— 那个空间的那条 entry(批 8)', () => {
+    expect(credentialTargetFromMarker(undefined)).toEqual({ kind: 'space', spaceId: 'default' })
+    expect(credentialTargetFromMarker({ spaceId: 'default', entryId: 'x' }))
+      .toEqual({ kind: 'space', spaceId: 'default', entryId: 'x' })
     expect(credentialTargetFromMarker({ spaceId: 'work', entryId: 'x' }))
       .toEqual({ kind: 'space', spaceId: 'work', entryId: 'x' })
   })
 
-  it('鉴权点按标记去取 token;默认空间那条路的目标仍是 settings(回归)', async () => {
+  it('鉴权点按标记去取 token;默认空间不再拐去单槽 —— 两个账号各取各的', async () => {
     const seen: unknown[] = []
     mocks.resolveAuthImpl = async (_id, _key, target) => {
       seen.push(target)
       return { kind: 'oauth' }
     }
     await resolveSessionSpaceOAuthAuth('codex', undefined, undefined)
+    await resolveSessionSpaceOAuthAuth('codex', undefined, { spaceId: 'default', entryId: 'd1' })
+    await resolveSessionSpaceOAuthAuth('codex', undefined, { spaceId: 'default', entryId: 'd2' })
     await resolveSessionSpaceOAuthAuth('codex', undefined, { spaceId: 'work', entryId: 'e1' })
     expect(seen).toEqual([
-      { kind: 'settings' },
+      { kind: 'space', spaceId: 'default' },
+      { kind: 'space', spaceId: 'default', entryId: 'd1' },
+      { kind: 'space', spaceId: 'default', entryId: 'd2' },
       { kind: 'space', spaceId: 'work', entryId: 'e1' },
     ])
+  })
+
+  it('默认空间的刷新被拒同样给那条 entry 写冷却(从前单槽那条路不写)', async () => {
+    upsertSpaceProviderOAuthToken('default', 'codex', { entryId: 'd1', token: OAUTH_TOKEN })
+    const entryId = getSpaceProviderCredentials('default', 'codex')!.entries.find(entry => entry.authType === 'oauth')!.id
+    mocks.resolveAuthImpl = async () => {
+      throw Object.assign(new Error('Token refresh failed: 400'), { statusCode: 400, responseBody: '{"error":"invalid_grant"}' })
+    }
+    await expect(
+      resolveSessionSpaceOAuthAuth('codex', undefined, { spaceId: 'default', entryId }),
+    ).rejects.toThrow('Token refresh failed: 400')
+    resetSpaceCredentialsCacheForTests()
+    const cooled = getSpaceProviderCredentials('default', 'codex')!.entries.find(entry => entry.id === entryId)!
+    expect(cooled.cooldownUntil).toBeGreaterThan(Date.now())
   })
 
   it('刷新被拒 → 给那条 entry 写 auth-invalid 冷却(下一轮解析会跳过它)', async () => {

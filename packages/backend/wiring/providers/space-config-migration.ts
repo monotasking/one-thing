@@ -28,10 +28,16 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { AppSettings, OAuthToken, ProviderConfig } from '@shared/ipc.js'
-import { OnethingTokenStore } from '@onething/runtime/auth'
+import {
+  oauthTokenIdentity,
+  OnethingTokenStore,
+  parseSpaceOAuthToken,
+  type OnethingOAuthToken,
+} from '@onething/runtime/auth'
 import {
   readSpaceCredentials,
   readSpaceCredentialsAtRest,
+  spaceCredentialsFilePath,
   hasSpaceCredentialEntries,
   spaceCredentialsEncryptionAtRest,
   writeSpaceCredentials,
@@ -132,11 +138,16 @@ function backupStamp(now: number): string {
   return new Date(now).toISOString().replace(/[:.]/g, '-')
 }
 
-function copyFileToBackup(sourcePath: string, name: string, now: number): string | undefined {
+function copyFileToBackup(
+  sourcePath: string,
+  name: string,
+  now: number,
+  tag = 'pre-space-migration',
+): string | undefined {
   if (!fs.existsSync(sourcePath)) return undefined
   const dir = backupsDir()
   fs.mkdirSync(dir, { recursive: true })
-  const target = path.join(dir, `${name}-pre-space-migration-${backupStamp(now)}.json`)
+  const target = path.join(dir, `${name}-${tag}-${backupStamp(now)}.json`)
   fs.copyFileSync(sourcePath, target)
   return target
 }
@@ -613,5 +624,183 @@ export async function migrateProviderConfigToDefaultSpace(
     providerSettings,
     modelCatalog,
     secondStageOnly,
+  }
+}
+
+/* ── 批 8:单槽归位(`docs/design/subscription-accounts-2026-09.md` §8.4)──────────── */
+
+export interface OAuthSlotMigrationReport {
+  /** 这次真的归位了没有。`false` = 标记已在 / 前置没满足 / 推迟。 */
+  migrated: boolean
+  migratedAt?: number
+  /** 默认空间池里**原地换了令牌**的 provider(同身份,单槽那一把更新)。 */
+  updated: string[]
+  /** 默认空间池里**新加了一条**的 provider(池里没有同一身份)。 */
+  added: string[]
+  /** 同身份但池里那一把更新(`expiresAt` 更大),单槽那一把被丢下的 provider。 */
+  kept: string[]
+  /** 默认空间池文件的备份(`backups/credentials-default-pre-oauth-slot-migration-<ISO>.json`)。 */
+  backup?: string
+  /** 单槽文件改名后的路径(`oauth-tokens.migrated-<ISO>.json`,就在 store 根下)。 */
+  renamedTo?: string
+  /**
+   * 没做的理由。`'provider-config-not-migrated'` = C1/C2 还没跑完(它们自己会先处理单槽);
+   * `'token-not-readable'` = 单槽里有一把密文,而这个进程没有加密器解不开 —— 留到有能力的宿主。
+   */
+  deferredReason?: 'provider-config-not-migrated' | 'token-not-readable'
+}
+
+/** 两把令牌是不是同一个账号:身份相同,或同一条令牌血统(access / refresh 原文相同)。 */
+function sameOAuthAccount(a: OnethingOAuthToken, b: OnethingOAuthToken): boolean {
+  const identity = oauthTokenIdentity(a)
+  if (identity && identity === oauthTokenIdentity(b)) return true
+  if (a.accessToken && a.accessToken === b.accessToken) return true
+  return Boolean(a.refreshToken && a.refreshToken === b.refreshToken)
+}
+
+/**
+ * 单槽里一家那一把令牌 → 默认空间池(纯函数,测试直接喂)。
+ *
+ *  - 池里有**同一个账号**(身份相同,或同一条令牌血统)的 oauth entry:`expiresAt` 大者赢 ——
+ *    单槽那把更新就原地换(冷却一并抹掉,与登录写回同一句话),否则留池里那把;
+ *  - 没有:**加在这一家池子的最前面**。单槽那一把是今天默认空间真在用的账号(读路一直读它),
+ *    排第一是「行为不变」;池里原有的那条多半是 C1(08-18)搬进来的旧快照,它的 refresh token
+ *    早被单槽那边的轮换作废了 —— 排在前面只会让第一发先撞一次 401。**不删它**(只追加不删),
+ *    刷新被拒时它自己会坐上 auth-invalid 冷却,用户也可以在订阅卡上退出它。
+ */
+export function mergeSlotTokenIntoPool(
+  file: SpaceCredentialsFile,
+  providerId: string,
+  token: OnethingOAuthToken,
+  options: { entryId: string; label: string },
+): { file: SpaceCredentialsFile; outcome: 'updated' | 'added' | 'kept' } {
+  const providers = { ...file.providers }
+  const section = providers[providerId] ?? { entries: [], policy: DEFAULT_SPACE_CREDENTIAL_POLICY }
+  const index = section.entries.findIndex(entry => {
+    if (entry.authType !== 'oauth') return false
+    const existing = parseSpaceOAuthToken(entry.oauthToken)
+    return existing ? sameOAuthAccount(existing, token) : false
+  })
+  if (index >= 0) {
+    const previous = section.entries[index]
+    const existing = parseSpaceOAuthToken(previous.oauthToken)
+    if (existing && existing.expiresAt >= token.expiresAt) return { file, outcome: 'kept' }
+    const { cooldownUntil: _cooldownUntil, cooldownReason: _cooldownReason, ...rest } = previous
+    const entries = [...section.entries]
+    entries[index] = { ...rest, oauthToken: token }
+    providers[providerId] = { ...section, entries }
+    return { file: { providers }, outcome: 'updated' }
+  }
+  const entry: SpaceCredentialEntry = {
+    id: options.entryId,
+    label: options.label,
+    authType: 'oauth',
+    oauthToken: token,
+    source: SPACE_CREDENTIAL_SOURCE_USER,
+  }
+  providers[providerId] = { ...section, entries: [entry, ...section.entries] }
+  return { file: { providers }, outcome: 'added' }
+}
+
+/**
+ * **单槽 `<store>/oauth-tokens.json` 归位进默认空间的凭证池**(批 8 §8.4,装配序列里紧跟
+ * C1/C2 那一格)。
+ *
+ * 为什么要有这一步:批 8 之前默认空间的订阅令牌住在单槽里(一家一把),读路也读它;池里那条
+ * oauth entry 只是 C1 搬进来的「登没登」的标记。批 8 起默认空间与别的空间一样只读池 ——
+ * 不把单槽那一把搬进来,默认空间今天登着的账号就会在升级那一刻「掉线」。
+ *
+ * 纪律与 C1 同一套:
+ *  1. **幂等**:`settings.storage.oauthSlotMigratedAt` 在就直接返回。
+ *  2. **先备份,只追加不删**:池文件先 `copyFileToBackup`;单槽文件**改名**
+ *     `oauth-tokens.migrated-<ISO>.json` 留底,不删。池里原有的条目一条不删。
+ *  3. **失败不留半场**:任何一步抛错都不写标记;池写在改名之前,改名在标记之前 ——
+ *     改名之后、写标记之前挂掉,下次启动见不到单槽文件,直接补一个标记。
+ *  4. **读不出来就推迟**:单槽里有一把密文而这个进程没有加密器(独立 server / CLI 抢先启动),
+ *     不写、不改名、不标记,留给有能力的宿主。明文那几把照搬 —— 它们本来就明文躺在盘上,
+ *     搬进池不是降级;有能力的宿主下次启动会把池升级成密文(`upgradeSpaceCredentialsEncryptionAtRest`)。
+ *
+ * **非默认空间不动**(用户拍板 §7.4):单槽里的令牌没有空间归属,默认空间是唯一确定的家;
+ * 别的空间在批 8 之前根本用不上单槽(发送前置拦截报「还没有登录过」),用户在那里重登一次。
+ */
+export async function migrateOAuthSlotToDefaultSpace(
+  options: { now?: number } = {},
+): Promise<OAuthSlotMigrationReport> {
+  const now = options.now ?? Date.now()
+  const empty: OAuthSlotMigrationReport = { migrated: false, updated: [], added: [], kept: [] }
+  const settings = getPersistedSettings()
+  const storage = (settings as { storage?: { oauthSlotMigratedAt?: number; spaceProviderSettingsMigratedAt?: number } }).storage
+  if (typeof storage?.oauthSlotMigratedAt === 'number') return empty
+  // C1/C2 没跑完:单槽归它先处理(它会把令牌搬进默认池并清空单槽)。它推迟,这一步也推迟。
+  if (typeof storage?.spaceProviderSettingsMigratedAt !== 'number') {
+    return { ...empty, deferredReason: 'provider-config-not-migrated' }
+  }
+
+  // **走宿主的 store 根,不走 `getDefaultOnethingTokenFilePath()`**(C1 那条 08-18 判例)。
+  const tokenFilePath = path.join(getOnethingStorePath(), 'oauth-tokens.json')
+  const markDone = (): void => {
+    const next = settings as AppSettings & { storage?: Record<string, unknown> }
+    next.storage = { ...(next.storage ?? {}), oauthSlotMigratedAt: now }
+    savePersistedSettings(next)
+  }
+  if (!fs.existsSync(tokenFilePath)) {
+    markDone()
+    return { ...empty, migrated: true, migratedAt: now }
+  }
+
+  const store = new OnethingTokenStore<OAuthToken>({
+    tokenFilePath,
+    cryptoAdapter: () => getAuthHostPorts().tokenCryptoAdapter?.(),
+    logger: { warn: (message: string, ...rest: unknown[]) => log.warn('legacy oauth slot read failed', { message }, rest[0]) },
+  })
+  const providerIds = await store.listProviderIds()
+  for (const providerId of providerIds) {
+    if (!(await store.isReadable(providerId))) {
+      log.warn('oauth slot migration deferred: a token in the legacy slot is encrypted and this host cannot decrypt it', {
+        providerId,
+        howToMigrate: 'start the desktop app once on this store: it has safeStorage and completes the move',
+      })
+      return { ...empty, deferredReason: 'token-not-readable' }
+    }
+  }
+
+  let file = readSpaceCredentials(DEFAULT_SPACE_ID)
+  const updated: string[] = []
+  const added: string[] = []
+  const kept: string[] = []
+  let index = 0
+  for (const providerId of providerIds) {
+    const token = await store.getToken(providerId)
+    if (!token) {
+      // 读得出信封却解析不出令牌(半个 token):它本来就用不了,照 C1 口径跳过并记一行。
+      log.warn('legacy oauth slot token unusable; skipped', { providerId })
+      continue
+    }
+    const merged = mergeSlotTokenIntoPool(file, providerId, token as OnethingOAuthToken, {
+      entryId: createSpaceCredentialEntryId(now + index),
+      label: providerLabel(providerId),
+    })
+    index += 1
+    file = merged.file
+    ;(merged.outcome === 'updated' ? updated : merged.outcome === 'added' ? added : kept).push(providerId)
+  }
+
+  let backup: string | undefined
+  if (updated.length > 0 || added.length > 0) {
+    backup = copyFileToBackup(spaceCredentialsFilePath(DEFAULT_SPACE_ID), 'credentials-default', now, 'pre-oauth-slot-migration')
+    writeSpaceCredentials(DEFAULT_SPACE_ID, file)
+  }
+  const renamedTo = path.join(path.dirname(tokenFilePath), `oauth-tokens.migrated-${backupStamp(now)}.json`)
+  fs.renameSync(tokenFilePath, renamedTo)
+  markDone()
+  log.info('legacy oauth slot moved into the default space pool', { updated, added, kept, renamedTo })
+  return {
+    migrated: true,
+    migratedAt: now,
+    updated,
+    added,
+    kept,
+    ...(backup ? { backup } : {}),
+    renamedTo,
   }
 }

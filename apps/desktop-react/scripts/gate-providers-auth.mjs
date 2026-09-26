@@ -17,6 +17,20 @@
  *   ⑤ 留一条在飞的流(10 分钟有效)→ SIGTERM → 进程 10 秒内以 0 退出,server.jsonl 里
  *      `oauth flows disposed` 那一行说收了 1 条流、剩 0 只计时器,退出之后假站再没收到一问。
  *
+ * 批 8(`docs/design/subscription-accounts-2026-09.md` §8.7)—— 账号按空间各存各、单槽退役:
+ *   ⑥ 非默认空间 `work` 登两个账号 → `work` 池里两条、第一条令牌一字未变;在 `work` 的会话里
+ *      发一轮,用的是池里**第一条**(判据见下);
+ *   ⑦ 默认空间(不带 spaceId,壳从前的调用形状)再登一个 → 默认池两条、第一条未变,发一轮用第一条;
+ *   ⑧ `oauth.status { spaceId:'work' }` 的 `accounts[]` 两条,各自的 entryId 与池文件逐条对得上;
+ *   ⑨ 退出 `work` 的第一条 → 第二条还在、`accounts[]` 剩一条,发一轮用的是剩下那条;
+ *   ⑩ 老 store(单槽 `oauth-tokens.json` + 默认池里一条同身份旧令牌)装配后:池里是单槽那把新令牌、
+ *      单槽已改名 `oauth-tokens.migrated-*.json`、池文件先备份过、`status.accounts` 读得到它。
+ *
+ * 「这一发用的是哪条」怎么量:kimi-code 的对话端点钉死在套餐 host 上改不到假站,所以不读对话请求 ——
+ * 假站发的令牌只有 60 秒寿命(短于 5 分钟的提前刷新窗),每一发在鉴权点都会先刷新**它选中的那一条**,
+ * 刷新请求里的 `refresh_token` 就是那一条的身份(`rt-<设备码>`)。对话请求本身撞在设置里那个不存在的
+ * 代理口上(`network.proxy = 127.0.0.1:9`,回环直连)—— **绝不打真的 api.kimi.com**。
+ *
  * 壳侧(链接可点、复制钮、`openExternal` 被调一次且参数是返回网址)不在这道门里:
  * `src/providers/components/__tests__/auth-flow-screen.test.tsx` 覆盖。
  *
@@ -71,8 +85,12 @@ async function waitFor(predicate, budgetMs, stepMs = 50) {
 function startFakeStation() {
   const codes = new Map()
   const hitLog = []
+  /** 刷新请求的账:`refresh_token` 原文 + 时刻 —— ⑥–⑨「这一发用了哪条」的判据。 */
+  const refreshLog = []
   let seq = 0
   let nextExpiresIn = 600
+  /** 发出去的令牌寿命(秒)。60 < 5 分钟的提前刷新窗:每一发鉴权都会先刷新选中的那一条。 */
+  const TOKEN_TTL_S = 60
 
   const readBody = req => new Promise(resolve => {
     let body = ''
@@ -105,6 +123,18 @@ function startFakeStation() {
     }
     if (req.method === 'POST' && url.pathname === '/api/oauth/token') {
       const form = new URLSearchParams(await readBody(req))
+      if (form.get('grant_type') === 'refresh_token') {
+        const refreshToken = form.get('refresh_token') ?? ''
+        refreshLog.push({ refreshToken, at: Date.now() })
+        // 同一条血统:refresh token 不变,access token 换一把。
+        send(res, 200, {
+          access_token: `${refreshToken.replace(/^rt-/, 'at-')}-r${refreshLog.length}`,
+          refresh_token: refreshToken,
+          expires_in: TOKEN_TTL_S,
+          token_type: 'Bearer',
+        })
+        return
+      }
       const deviceCode = form.get('device_code') ?? ''
       hitLog.push({ deviceCode, at: Date.now() })
       const entry = codes.get(deviceCode)
@@ -113,7 +143,7 @@ function startFakeStation() {
       send(res, 200, {
         access_token: `at-${deviceCode}`,
         refresh_token: `rt-${deviceCode}`,
-        expires_in: 3600,
+        expires_in: TOKEN_TTL_S,
         token_type: 'Bearer',
       })
       return
@@ -136,6 +166,8 @@ function startFakeStation() {
         },
         deviceCodeOf: userCode => [...codes.entries()].find(([, entry]) => entry.userCode === userCode)?.[0],
         hits: deviceCode => hitLog.filter(hit => hit.deviceCode === deviceCode).length,
+        /** 某一刻之后第一次刷新用的是哪条血统(`rt-<设备码>`)。 */
+        firstRefreshSince: at => refreshLog.find(entry => entry.at > at)?.refreshToken,
         hitsSince: at => hitLog.filter(hit => hit.at > at).length,
         setExpiresIn: seconds => { nextExpiresIn = seconds },
         close: () => new Promise(done => server.close(() => done())),
@@ -216,6 +248,49 @@ async function openEventStream(discovery) {
   return { frames, close: async () => { controller.abort(); await pump } }
 }
 
+/* ── 批 8:临时 store 的种子与「发一轮」 ─────────────────────────────────── */
+
+/** 在 `ONETHING_STORE_PATH` 下铺好:两个空间(默认 + work)、两边都开着 kimi-code、设置里一个死代理口。 */
+function seedStore(storePath, extra = {}) {
+  const workspaces = path.join(storePath, 'workspaces')
+  for (const id of ['default', 'work']) fs.mkdirSync(path.join(workspaces, id), { recursive: true })
+  fs.writeFileSync(path.join(workspaces, 'index.json'), JSON.stringify({
+    spaces: [{ id: 'default', name: '默认空间', createdAt: 0 }, { id: 'work', name: '工作', createdAt: 1 }],
+  }, null, 2))
+  const kimi = { model: 'k3', selectedModels: ['k3'], enabled: true, modelCapabilitiesByModel: { k3: { tools: false, reasoning: false, vision: false } } }
+  for (const id of ['default', 'work']) {
+    fs.writeFileSync(path.join(workspaces, id, 'providers.json'), JSON.stringify({
+      ai: { provider: PROVIDER, providers: { [PROVIDER]: kimi }, customProviders: [] },
+    }, null, 2))
+  }
+  fs.writeFileSync(path.join(storePath, 'settings.json'), JSON.stringify({
+    storage: { providerConfigMigratedAt: 1, spaceProviderSettingsMigratedAt: 1, ...(extra.storage ?? {}) },
+    tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+    diagnostics: { enabled: false },
+    // 对话请求出网一律撞在这个不存在的代理口上;回环(假站)直连。env 里的代理变量托管 fetch 不认,
+    // 所以写在设置里 —— 这一格就是「绝不打真的 api.kimi.com」的全部实现。
+    network: { proxy: { enabled: true, url: 'http://127.0.0.1:9', bypassRules: 'localhost;127.0.0.1;::1' } },
+  }, null, 2))
+}
+
+/** 空间池文件里这一家的 oauth 条目(server 没有加密器,池是明文)。 */
+function poolEntriesOf(storePath, spaceId) {
+  try {
+    const file = JSON.parse(fs.readFileSync(path.join(storePath, 'workspaces', spaceId, 'credentials.json'), 'utf-8'))
+    return (file.providers?.[PROVIDER]?.entries ?? []).filter(entry => entry.authType === 'oauth')
+  } catch {
+    return []
+  }
+}
+
+function readEvents(storePath, sessionId) {
+  const file = path.join(storePath, 'sessions', sessionId, 'events.jsonl')
+  if (!fs.existsSync(file)) return []
+  return fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean)
+    .map(line => { try { return JSON.parse(line) } catch { return null } })
+    .filter(Boolean)
+}
+
 const flowFrames = (frames, flowId) => frames.filter(frame => frame.event === 'oauth:flow' && frame.data?.flowId === flowId)
 const phaseSeen = (frames, flowId, phase) => flowFrames(frames, flowId).find(frame => frame.data.phase === phase)
 
@@ -228,6 +303,7 @@ let sse
 const serverOut = []
 
 try {
+  seedStore(storePath)
   // 代理变量一律不带:假站在回环上,走代理只会让门量到代理。
   const env = { ...process.env }
   for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) delete env[key]
@@ -303,6 +379,83 @@ try {
   await sleep(INTERVAL_S * 1000 * 3 + 300)
   check(station.hits(thirdCode) === hitsAtExpiry, `超时之后 token 端点零新增(${hitsAtExpiry} → ${station.hits(thirdCode)})`)
 
+  // ── 批 8 ⑥–⑨:账号按空间各存各(§8.7 ①–④)───────────────────────────
+  /** 登一个账号(整条设备码流走到 completed)。回这一次的设备码。 */
+  const signIn = async (payload) => {
+    const started = await rpc('oauth', 'start', { providerId: PROVIDER, ...payload })
+    const code = station.deviceCodeOf(started.userCode)
+    station.approve(started.userCode)
+    const done = await waitFor(() => phaseSeen(sse.frames, started.flowId, 'completed'), 8_000)
+    if (!done) throw new Error(`sign-in did not complete (${JSON.stringify(payload)})`)
+    return code
+  }
+  /**
+   * 在这个空间里开一条会话、发一轮,读这一发在鉴权点先刷新的是哪条血统;读完就 abort ——
+   * 对话请求撞死代理会重试,不收掉的话它的刷新会漏进下一步的读数里。
+   */
+  const sendAndSeeCredential = async (workspaceId) => {
+    const made = await rpc('sessions', 'create', { name: `登录门 ${workspaceId}`, workspaceId })
+    const sessionId = made?.session?.id
+    await rpc('sessions', 'updateModel', { sessionId, provider: PROVIDER, model: 'k3' })
+    const at = Date.now()
+    await rpc('session-command', 'emit', {
+      sessionId,
+      command: { type: 'command:send-message', content: '批 8 门', suppressTitleGeneration: true, providerId: PROVIDER, model: 'k3' },
+    })
+    const used = await waitFor(() => station.firstRefreshSince(at), 8_000)
+    await rpc('session-command', 'emit', { sessionId, command: { type: 'command:abort', reason: 'gate' } }).catch(() => {})
+    await sleep(300)
+    const leaked = readEvents(storePath, sessionId).some(event => JSON.stringify(event).includes('invalid_authentication_error'))
+    return { used, leaked }
+  }
+
+  console.log('[gate:providers-auth] ⑥ 非默认空间登两个账号')
+  const w1 = await signIn({ spaceId: 'work' })
+  const w1Token = poolEntriesOf(storePath, 'work')[0]?.oauthToken?.accessToken
+  const w2 = await signIn({ spaceId: 'work' })
+  const work = poolEntriesOf(storePath, 'work')
+  check(work.length === 2, `work 池里两条 oauth 条目(${work.length} 条)—— 第二次登录是追加,不是盖掉`)
+  check(w1Token === `at-${w1}` && work[0]?.oauthToken?.accessToken === w1Token,
+    `第一条令牌一字未变(${work[0]?.oauthToken?.accessToken})`)
+  check(work[1]?.oauthToken?.refreshToken === `rt-${w2}`, `第二条是第二个账号(${work[1]?.oauthToken?.refreshToken})`)
+  check(poolEntriesOf(storePath, 'default').every(entry => ![`rt-${w1}`, `rt-${w2}`].includes(entry.oauthToken?.refreshToken)),
+    'work 的两个账号一个都没落进默认空间')
+  const workSend = await sendAndSeeCredential('work')
+  check(workSend.used === `rt-${w1}`, `work 会话发一轮,鉴权点刷新的是池里第一条(${workSend.used ?? '没刷新'})`)
+  check(!workSend.leaked, '对话请求没有打到真的服务商(没有一句 invalid_authentication_error)')
+
+  console.log('[gate:providers-auth] ⑦ 默认空间同上(不带 spaceId,壳从前的调用形状)')
+  const d0 = poolEntriesOf(storePath, 'default')
+  const d0Token = d0[0]?.oauthToken?.accessToken
+  check(d0.length === 1 && d0[0]?.oauthToken?.refreshToken === `rt-${firstCode}`,
+    `② 那一次登录落在默认空间的池里(${d0.length} 条),不在任何单槽文件里`)
+  check(!fs.existsSync(path.join(storePath, 'oauth-tokens.json')), '单槽 oauth-tokens.json 不存在(没有人再写它)')
+  const d2 = await signIn({})
+  const dflt = poolEntriesOf(storePath, 'default')
+  check(dflt.length === 2 && dflt[0]?.oauthToken?.accessToken === d0Token && dflt[1]?.oauthToken?.refreshToken === `rt-${d2}`,
+    `默认池两条、第一条未变(${dflt.map(entry => entry.oauthToken?.accessToken).join(' / ')})`)
+  const defaultSend = await sendAndSeeCredential('default')
+  check(defaultSend.used === `rt-${firstCode}`, `默认空间会话发一轮,用的是池里第一条(${defaultSend.used ?? '没刷新'})`)
+
+  console.log('[gate:providers-auth] ⑧ status.accounts 按条目')
+  const workStatus = await rpc('oauth', 'status', { providerId: PROVIDER, spaceId: 'work' })
+  const workIds = poolEntriesOf(storePath, 'work').map(entry => entry.id)
+  check(Array.isArray(workStatus?.accounts) && workStatus.accounts.length === 2
+    && workStatus.accounts.map(account => account.entryId).join() === workIds.join(),
+  `oauth.status.accounts 两条,entryId 与池文件逐条相同(${(workStatus?.accounts ?? []).map(account => account.entryId).join(', ')})`)
+  const oneStatus = await rpc('oauth', 'status', { providerId: PROVIDER, spaceId: 'work', entryId: workIds[1] })
+  check(oneStatus?.entryId === workIds[1] && oneStatus?.isLoggedIn === true, `带 entryId 答那一条(${oneStatus?.entryId})`)
+
+  console.log('[gate:providers-auth] ⑨ 退出其中一个')
+  await rpc('oauth', 'logout', { providerId: PROVIDER, spaceId: 'work', entryId: workIds[0] })
+  const afterLogout = poolEntriesOf(storePath, 'work')
+  check(afterLogout.length === 1 && afterLogout[0]?.id === workIds[1], `work 池只剩第二条(${afterLogout.map(entry => entry.id).join(', ')})`)
+  const afterStatus = await rpc('oauth', 'status', { providerId: PROVIDER, spaceId: 'work' })
+  check(afterStatus?.accounts?.length === 1 && afterStatus.accounts[0].entryId === workIds[1], 'status.accounts 剩一条,是没退出的那个')
+  check(poolEntriesOf(storePath, 'default').length === 2, '退出 work 的账号,默认空间一条都没动')
+  const lastSend = await sendAndSeeCredential('work')
+  check(lastSend.used === `rt-${w2}`, `剩下那个账号照样能发一轮(${lastSend.used ?? '没刷新'})`)
+
   // ── ⑤ dispose:一条在飞的流,SIGTERM 干净退出,零残留计时器 ──────────
   console.log('[gate:providers-auth] ⑤ dispose')
   station.setExpiresIn(600)
@@ -346,8 +499,84 @@ try {
   fs.rmSync(storePath, { recursive: true, force: true })
 }
 
+/* ── ⑩ 老 store 归位(§8.7 ⑤):单槽 + 默认池里一条同身份旧令牌 ──────────── */
+
+if (failures.length === 0) {
+  console.log('[gate:providers-auth] ⑩ 老 store 归位')
+  const legacyStore = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-gate-auth-legacy-'))
+  let legacy
+  const legacyOut = []
+  try {
+    // 标记里有 C1/C2、没有 oauthSlotMigratedAt:正是批 8 之前一台真机器的样子。
+    seedStore(legacyStore)
+    const far = Date.now() + 30 * 86_400_000
+    fs.writeFileSync(path.join(legacyStore, 'oauth-tokens.json'), JSON.stringify({
+      [PROVIDER]: JSON.stringify({ accessToken: 'slot-new', refreshToken: 'rt-slot', expiresAt: far, tokenType: 'Bearer', email: 'me@example.com' }),
+    }))
+    fs.writeFileSync(path.join(legacyStore, 'workspaces', 'default', 'credentials.json'), JSON.stringify({
+      version: 2,
+      encryption: 'none',
+      providers: {
+        [PROVIDER]: {
+          policy: 'priority-failover',
+          entries: [{
+            id: 'c1-copy', label: 'Kimi Code', authType: 'oauth', source: 'user',
+            oauthToken: { accessToken: 'pool-old', refreshToken: 'rt-old', expiresAt: 1_000, tokenType: 'Bearer', email: 'me@example.com' },
+          }],
+        },
+      },
+    }, null, 2))
+    const env = { ...process.env }
+    for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy']) delete env[key]
+    legacy = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...env,
+        NO_PROXY: '127.0.0.1,localhost',
+        ONETHING_STORE_PATH: legacyStore,
+        ONETHING_SERVER_DATA_ROOT: legacyStore,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        KIMI_CODE_OAUTH_HOST: station.base,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    legacy.stdout.on('data', chunk => legacyOut.push(chunk.toString()))
+    legacy.stderr.on('data', chunk => legacyOut.push(chunk.toString()))
+    const legacyDiscovery = await waitForDiscovery(legacyStore)
+    const legacyRpc = createRpc(legacyDiscovery)
+
+    const pool = poolEntriesOf(legacyStore, 'default')
+    check(pool.length === 1 && pool[0].id === 'c1-copy' && pool[0].oauthToken?.accessToken === 'slot-new',
+      `默认池里那条同身份的旧令牌换成了单槽那把新的(${pool.map(entry => `${entry.id}:${entry.oauthToken?.accessToken}`).join(', ')})`)
+    check(!fs.existsSync(path.join(legacyStore, 'oauth-tokens.json')), '单槽文件不在原处了')
+    const renamed = fs.readdirSync(legacyStore).filter(name => /^oauth-tokens\.migrated-.+\.json$/.test(name))
+    check(renamed.length === 1, `单槽改名留底:${renamed.join(', ') || '(没有)'}`)
+    const backups = fs.existsSync(path.join(legacyStore, 'backups'))
+      ? fs.readdirSync(path.join(legacyStore, 'backups')).filter(name => name.startsWith('credentials-default-pre-oauth-slot-migration-'))
+      : []
+    check(backups.length === 1, `池文件先备份过:${backups.join(', ') || '(没有)'}`)
+    const settings = JSON.parse(fs.readFileSync(path.join(legacyStore, 'settings.json'), 'utf-8'))
+    check(typeof settings.storage?.oauthSlotMigratedAt === 'number', `标记 storage.oauthSlotMigratedAt 落下(${settings.storage?.oauthSlotMigratedAt})`)
+    const legacyStatus = await legacyRpc('oauth', 'status', { providerId: PROVIDER })
+    check(legacyStatus?.isLoggedIn === true && legacyStatus?.accounts?.[0]?.email === 'me@example.com',
+      `装配之后默认空间照旧登着:status.accounts[0] = ${JSON.stringify(legacyStatus?.accounts?.[0] ?? null)}`)
+  } catch (error) {
+    failures.push(String(error?.stack || error))
+    console.error(`[gate:providers-auth] ⑩ ${error?.stack || error}`)
+    console.error(legacyOut.slice(-30).join(''))
+  } finally {
+    if (legacy && legacy.exitCode === null && legacy.signalCode === null) {
+      legacy.kill('SIGTERM')
+      await waitFor(() => legacy.exitCode !== null || legacy.signalCode !== null, 10_000, 100)
+      if (legacy.exitCode === null && legacy.signalCode === null) legacy.kill('SIGKILL')
+    }
+    fs.rmSync(legacyStore, { recursive: true, force: true })
+  }
+}
+
 if (failures.length > 0) {
   console.error(`[gate:providers-auth] ${failures.length} check(s) failed`)
   process.exit(1)
 }
-console.log('[gate:providers-auth] ok —— ① pending / ② completed / ③ cancelled / ④ expired / ⑤ dispose 全绿')
+console.log('[gate:providers-auth] ok —— ① pending / ② completed / ③ cancelled / ④ expired / ⑤ dispose / ⑥–⑨ 账号按空间各存各 / ⑩ 单槽归位 全绿')

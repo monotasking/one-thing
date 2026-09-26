@@ -56,14 +56,19 @@ export function ModeCard(props: {
   /** 手改端点。空串 = 回落缺省(自定义家由这一格自己挡住空值)。 */
   onBaseUrl: (baseUrl: string) => void
 
+  /** 登录态(后端答的,带这个空间这一家的 `accounts[]`,批 8)。 */
   authStatus: OAuthStatusResponse | undefined
   authFlow: AuthFlowState
+  /** 添加账号(新登录,追加一条)。 */
   onSignIn: () => void
+  /** 重新授权那一条。 */
+  onReauth: (entryId: string) => void
   onAuthCode: (code: string) => void
   onSubmitAuthCode: () => void
   onCancelAuth: () => void
   onOpenAuthPage: () => void
-  onSignOut: () => void
+  /** 退出那一个账号(删本空间那一条)。 */
+  onSignOut: (entryId: string) => void
 
   /**
    * 一条凭证的配额(批 5)。`response === null` = 后端说这家没有配额源;`undefined` =
@@ -132,13 +137,16 @@ export function ModeCard(props: {
         <OAuthCard
           status={props.authStatus}
           flow={props.authFlow}
-          accounts={oauthRows.length}
+          busy={props.poolBusy}
           onSignIn={props.onSignIn}
+          onReauth={props.onReauth}
           onCode={props.onAuthCode}
           onSubmitCode={props.onSubmitAuthCode}
           onCancel={props.onCancelAuth}
           onOpenAuthPage={props.onOpenAuthPage}
           onSignOut={props.onSignOut}
+          /* 订阅账号的顺序就是池序(余量相同时的优先级)—— 与密钥行同一口 `moveCredential`。 */
+          onMove={props.onMoveKey}
         />
         {/*
           用量卡:每个登录过的账号一张(多账号时标题里写是哪个号)。`response === null`

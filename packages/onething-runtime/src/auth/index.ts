@@ -31,20 +31,21 @@ export {
   credentialRefreshKey,
   credentialTargetFromSpaceMarker,
   credentialTargetKey,
+  DEFAULT_CREDENTIAL_TARGET,
   isSpaceCredentialTarget,
   normalizeCredentialTarget,
-  SETTINGS_CREDENTIAL_TARGET,
 } from './credential-target.js'
 export type {
   OnethingCredentialTarget,
-  OnethingSettingsCredentialTarget,
   OnethingSpaceCredentialTarget,
 } from './credential-target.js'
 export {
   createOnethingSpaceTokenStore,
+  oauthTokenIdentity,
   parseSpaceOAuthToken,
+  pickDefaultOAuthEntryId,
 } from './space-token-store.js'
-export type { OnethingSpaceAuthTokenStore } from './space-token-store.js'
+export type { OnethingOAuthPoolEntry, OnethingSpaceAuthTokenStore } from './space-token-store.js'
 export type {
   OnethingAuthRuntimeOptions,
 } from './service-factory.js'
@@ -68,6 +69,7 @@ export type {
   OnethingAuthStateStrategy,
   OnethingOAuthCallbackResponse,
   OnethingOAuthDevicePollResponse,
+  OnethingOAuthAccountStatus,
   OnethingOAuthFlowType,
   OnethingOAuthStartResponse,
   OnethingOAuthStatusResponse,

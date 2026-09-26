@@ -4,13 +4,16 @@
  */
 
 /**
- * 凭证的写回目标(批 B6)。**缺席 = 默认空间**(`<store>/oauth-tokens.json`),
- * 即这个字段出现之前的行为,一字未改。
+ * 凭证的写回目标(批 B6;批 8 `docs/design/subscription-accounts-2026-09.md` §8 归一)。
  *
- * 带上 `spaceId` = 落进该空间的凭证池(`workspaces/<id>/credentials.json`);
- * `entryId` 缺席表示「登录一个新账号,追加一条 entry」——同一个 provider 允许
- * 多条 oauth entry。OAuth token **不能跨空间复制**(共用一串 refresh token 在
- * rotation 下会互相作废),所以每个空间必须自己登一次。
+ * 令牌一律住在空间的凭证池里(`workspaces/<id>/credentials.json`)。`spaceId` **缺席 = 默认
+ * 空间那一池** —— 默认空间不再有自己的单槽(`<store>/oauth-tokens.json` 已退役),它和别的
+ * 空间一样一家可以有多条 oauth entry。
+ *
+ * `entryId`:登录时缺席 = 追加一个新账号(同一身份再登一次 = 更新那一条);带上 = 重新授权
+ * 那一条。读 / 退出时缺席 = 这一池第一个可用账号(兼容口),带上 = 那一条。
+ * OAuth token **不能跨空间复制**(共用一串 refresh token 在 rotation 下会互相作废),
+ * 所以每个空间必须自己登一次;也**不跨空间回落**。
  */
 export interface OAuthCredentialTargetRequest {
   spaceId?: string
@@ -64,10 +67,28 @@ export interface OAuthStatusRequest extends OAuthCredentialTargetRequest {
   providerId: string
 }
 
+/**
+ * 池里一个订阅账号的登录态(批 8 §8.3)。已登录屏每账号一行读的就是它;**没有令牌原文**。
+ */
+export interface OAuthAccountStatus {
+  /** 池条目 id —— 重新授权 / 退出 / 排序都按它认。 */
+  entryId: string
+  label: string
+  email?: string
+  accountId?: string
+  planType?: string
+  /** 令牌过期,或读不出来。两者同一种处置:重新授权。 */
+  isExpired: boolean
+  expiresAt?: number
+  canRefresh?: boolean
+}
+
 // OAuth status response
 export interface OAuthStatusResponse {
   success: boolean
   providerId?: string
+  /** 这份登录态说的是池里哪一条(不指名时是兼容口选中的那一条;一条都没有就缺席)。 */
+  entryId?: string
   isLoggedIn: boolean
   isExpired?: boolean
   canRefresh?: boolean
@@ -78,6 +99,8 @@ export interface OAuthStatusResponse {
     planType?: string
     isFedramp?: boolean
   }
+  /** 这个空间这一家的全部订阅账号(池序 = 余量相同时的优先级)。 */
+  accounts?: OAuthAccountStatus[]
   lastError?: string
   error?: string
 }

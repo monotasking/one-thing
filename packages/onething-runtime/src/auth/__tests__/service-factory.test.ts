@@ -9,9 +9,10 @@ import type { OnethingAuthTokenStore } from '../auth-service.js'
 function createTokenStore(): OnethingAuthTokenStore {
   return {
     getToken: vi.fn(async () => null),
-    saveToken: vi.fn(async () => {}),
+    saveToken: vi.fn(async () => ({ entryId: 'e' })),
     deleteToken: vi.fn(async () => {}),
-    isTokenExpired: vi.fn(() => false),
+    resolveEntryId: vi.fn(async () => undefined),
+    listEntries: vi.fn(async () => []),
   }
 }
 
@@ -56,6 +57,12 @@ describe('onething auth service factory', () => {
     expect(options.fetch).toBe(fetchImpl)
     expect(options.getDefinition?.('host-provider')).toBe(definition)
     expect(options.callbackServer).toBe(callbackServer)
+  })
+
+  it('不给 tokenStore 就装上真的凭证池那一台(批 8:令牌只有池这一个家)', () => {
+    const options = createOnethingAuthServiceOptions()
+    expect(typeof options.tokenStore.resolveEntryId).toBe('function')
+    expect(typeof options.tokenStore.listEntries).toBe('function')
   })
 
   it('creates a reusable runtime auth service instance', () => {

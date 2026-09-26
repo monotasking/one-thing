@@ -223,6 +223,12 @@ export interface StorageSettings {
 	 * 在、第二格不在 —— 那正是二段迁移的触发条件。
 	 */
 	spaceProviderSettingsMigratedAt?: number;
+	/**
+	 * `<store>/oauth-tokens.json` 单槽归位进默认空间凭证池的时间戳(批 8,
+	 * `docs/design/subscription-accounts-2026-09.md` §8.4)。**缺席 = 还没归位**,装配序列
+	 * 下一次启动跑 `migrateOAuthSlotToDefaultSpace`。幂等闸,同上两格。
+	 */
+	oauthSlotMigratedAt?: number;
 }
 
 /*

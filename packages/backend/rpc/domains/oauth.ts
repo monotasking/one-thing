@@ -14,13 +14,14 @@
  *
  * 旧 server 按 owner 各开一台 `OnethingAuthService` + 各自的 `OnethingTokenStore`
  * (`owners/<uid>/<wid>/oauth`),桌面用的是装配层那台
- * `@onething/backend/wiring/auth` 单例(默认 `<store>/oauth-tokens.json` 或空间凭证池)。
+ * `@onething/backend/wiring/auth` 单例(令牌住空间凭证池;批 8 之前默认空间是 `<store>/oauth-tokens.json`)。
  * 一个 store 两本令牌账等于把「我登没登录」这件事分叉:桌面登了,浏览器看不见。
  * 搬家取的是桌面那台 —— **web 与桌面从此读同一份凭证**。
  *
  * 顺带,凭证写回目标(`spaceId` / `entryId` / `label`,批 B6)在旧 server 路由上
  * 是被丢掉的(它只转发 `providerId`);走 router 之后它真的传到 `authService` 了 ——
- * 浏览器里往空间凭证池登录从此是真的。
+ * 浏览器里往空间凭证池登录从此是真的。批 8(`docs/design/subscription-accounts-2026-09.md`
+ * §8)起壳每一发都带 `spaceId`,`status` 答 `accounts[]`(这一池每个订阅账号一行)。
  *
  * ## 后端不开浏览器,壳开(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)
  *
@@ -63,7 +64,11 @@ const log = getLogger('rpc.oauth')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
 const consoleLog: ConsoleLikePort & OnethingOAuthIpcLogger = consolePort(log)
 
-/** 凭证写回目标的归一 —— 非法 / 默认 spaceId 一律落回 settings(批 B6)。 */
+/**
+ * 凭证写回目标的归一(批 B6;批 8 起缺席 / 非法 spaceId = **默认空间那一池**,不再是
+ * `<store>/oauth-tokens.json` 单槽)。`entryId` 缺席:登录 = 追加(同身份更新那一条),
+ * 读 / 退出 = 这一池第一个可用账号。
+ */
 function targetOf(request: {
   spaceId?: string
   entryId?: string

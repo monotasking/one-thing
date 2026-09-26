@@ -118,19 +118,21 @@ describe('StatusDot 收编:五档全部由库件画', () => {
     const { container } = render(
       <OAuthCard
         status={{
-          isLoggedIn: true,
+          isLoggedIn: !isExpired,
           isExpired,
           expiresAt: 1_900_000_000_000,
           account: { email: 'a@b.c' },
+          accounts: [{ entryId: 'e1', label: 'x', email: 'a@b.c', isExpired }],
         } as never}
         flow={IDLE_AUTH_FLOW}
-        accounts={1}
         onSignIn={() => {}}
+        onReauth={() => {}}
         onCode={() => {}}
         onSubmitCode={() => {}}
         onCancel={() => {}}
         onOpenAuthPage={() => {}}
         onSignOut={() => {}}
+        onMove={() => {}}
       />,
     )
     const dot = container.querySelector(`.${statusDotCss.dot}`)
@@ -359,6 +361,7 @@ describe('Card 收编:详情栏那几张卡', () => {
         onCancelAuth={() => {}}
         onOpenAuthPage={() => {}}
         onSignOut={() => {}}
+        onReauth={() => {}}
         quotaOf={() => ({ response: undefined, status: 'idle' as const })}
         onRefreshQuota={() => {}}
         balanceOf={() => null}
@@ -370,13 +373,14 @@ describe('Card 收编:详情栏那几张卡', () => {
         key="oauth"
         status={undefined}
         flow={IDLE_AUTH_FLOW}
-        accounts={0}
         onSignIn={() => {}}
+        onReauth={() => {}}
         onCode={() => {}}
         onSubmitCode={() => {}}
         onCancel={() => {}}
         onOpenAuthPage={() => {}}
         onSignOut={() => {}}
+        onMove={() => {}}
       />,
     ],
   ])('%s 的外框是 ui/Card 的默认档(pad=md + 有边线)', (_name, node) => {

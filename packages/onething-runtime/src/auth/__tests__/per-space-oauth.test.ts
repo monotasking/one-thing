@@ -1,100 +1,31 @@
 /**
- * per-space OAuth(批 B6)—— 写回目标参数化 + 刷新单飞锁。
+ * per-space OAuth(批 B6)+ 单槽退役(批 8,`docs/design/subscription-accounts-2026-09.md` §8)。
  *
- * 三件事在这里钉死:
- *  1. **默认空间的路径一个字节都不变**(缺省参数 = settings 源)。这是回归测试:
- *     整个切片的做法是「给现有流程加一个落点参数」,不是「复制一条 per-space 流程」。
- *  2. 带 space 目标时,token 落进那个空间的池;`entryId` 缺席 = 追加新 entry(多账号)。
- *  3. 并发刷新只飞一次,且**按 (provider, 目标) 分锁** —— 合成一把锁会让 A 空间的
+ * 钉死的事:
+ *  1. **目标只有空间池一种**:缺席 / 非法 / 默认 spaceId 一律是默认空间那一池 —— 默认空间
+ *     不再有自己的单槽,第二次登录**追加**而不是盖掉第一次(09-26 报障)。
+ *  2. 同一身份再登一次 = 更新那一条(Codex 看 accountId,其它家看 email;取不到不去重)。
+ *  3. 不指名的读 / 刷新 / 退出落到「第一个可用账号」,刷新**原地换**那一条,不凭空多一个账号。
+ *  4. `status` 带 `accounts[]`,每条各报各的过期;带 `entryId` 答那一条。
+ *  5. 并发刷新只飞一次,且**按 (provider, 目标) 分锁** —— 合成一把锁会让 A 空间的
  *     调用拿到 B 空间的 token(盲点 5)。
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import {
-  OnethingAuthService,
-  type OnethingAuthTokenStore,
-} from '../auth-service.js'
+import { OnethingAuthService } from '../auth-service.js'
 import {
   credentialRefreshKey,
   credentialTargetFromSpaceMarker,
   credentialTargetKey,
+  DEFAULT_CREDENTIAL_TARGET,
   normalizeCredentialTarget,
-  SETTINGS_CREDENTIAL_TARGET,
 } from '../credential-target.js'
-import { parseSpaceOAuthToken, type OnethingSpaceAuthTokenStore } from '../space-token-store.js'
+import { oauthTokenIdentity, parseSpaceOAuthToken, pickDefaultOAuthEntryId } from '../space-token-store.js'
 import type {
   OnethingAuthProviderDefinition,
   OnethingOAuthToken,
 } from '../types.js'
-
-class MemoryTokenStore implements OnethingAuthTokenStore {
-  readonly tokens = new Map<string, OnethingOAuthToken>()
-
-  constructor(private readonly now = () => Date.now()) {}
-
-  async getToken(providerId: string): Promise<OnethingOAuthToken | null> {
-    return this.tokens.get(providerId) ?? null
-  }
-
-  async saveToken(providerId: string, token: OnethingOAuthToken): Promise<void> {
-    this.tokens.set(providerId, token)
-  }
-
-  async deleteToken(providerId: string): Promise<void> {
-    this.tokens.delete(providerId)
-  }
-
-  isTokenExpired(token: OnethingOAuthToken): boolean {
-    return this.now() >= token.expiresAt
-  }
-}
-
-/** 池的最小替身:`<spaceId>|<providerId>` → entries。追加/覆盖语义与真实池一致。 */
-class MemorySpaceTokenStore implements OnethingSpaceAuthTokenStore {
-  readonly pools = new Map<string, Array<{ id: string; token: OnethingOAuthToken; label?: string }>>()
-  private seq = 0
-
-  private key(spaceId: string, providerId: string): string {
-    return `${spaceId}|${providerId}`
-  }
-
-  async getToken(
-    providerId: string,
-    target: { spaceId: string; entryId?: string },
-  ): Promise<OnethingOAuthToken | null> {
-    const entries = this.pools.get(this.key(target.spaceId, providerId)) ?? []
-    const entry = target.entryId ? entries.find(item => item.id === target.entryId) : undefined
-    return entry?.token ?? null
-  }
-
-  async saveToken(
-    providerId: string,
-    token: OnethingOAuthToken,
-    target: { spaceId: string; entryId?: string; label?: string },
-  ): Promise<{ entryId: string }> {
-    const key = this.key(target.spaceId, providerId)
-    const entries = this.pools.get(key) ?? []
-    const existing = target.entryId ? entries.find(item => item.id === target.entryId) : undefined
-    if (existing) {
-      existing.token = token
-      this.pools.set(key, entries)
-      return { entryId: existing.id }
-    }
-    const entryId = `entry-${++this.seq}`
-    entries.push({ id: entryId, token, label: target.label })
-    this.pools.set(key, entries)
-    return { entryId }
-  }
-
-  async deleteToken(
-    providerId: string,
-    target: { spaceId: string; entryId?: string },
-  ): Promise<void> {
-    const key = this.key(target.spaceId, providerId)
-    const entries = this.pools.get(key) ?? []
-    this.pools.set(key, entries.filter(item => item.id !== target.entryId))
-  }
-}
+import { MemoryPoolTokenStore } from './memory-pool-store.js'
 
 const DEFINITION: OnethingAuthProviderDefinition = {
   providerId: 'codex',
@@ -130,11 +61,9 @@ function makeService(options: {
   fetchImpl?: typeof fetch
   now?: () => number
 } = {}) {
-  const tokenStore = new MemoryTokenStore(options.now)
-  const spaceTokenStore = new MemorySpaceTokenStore()
+  const spaceTokenStore = new MemoryPoolTokenStore(options.now ?? (() => 0))
   const service = new OnethingAuthService({
-    tokenStore,
-    spaceTokenStore,
+    tokenStore: spaceTokenStore,
     getDefinition: () => DEFINITION,
     fetch: options.fetchImpl ?? (async () => jsonResponse({})),
     createId: (() => {
@@ -143,79 +72,165 @@ function makeService(options: {
     })(),
     now: options.now ?? (() => 0),
   })
-  return { service, tokenStore, spaceTokenStore }
+  return { service, spaceTokenStore }
 }
 
 describe('写回目标(credential target)', () => {
-  it('归一:缺席 / 非法 id / 默认空间一律落回 settings', () => {
-    expect(normalizeCredentialTarget(undefined)).toEqual(SETTINGS_CREDENTIAL_TARGET)
-    expect(normalizeCredentialTarget({ spaceId: '../etc' })).toEqual(SETTINGS_CREDENTIAL_TARGET)
-    expect(normalizeCredentialTarget({ spaceId: 'default' })).toEqual(SETTINGS_CREDENTIAL_TARGET)
+  it('归一:缺席 / 非法 id / 默认空间一律是默认空间那一池(批 8:没有 settings 单槽了)', () => {
+    expect(normalizeCredentialTarget(undefined)).toEqual(DEFAULT_CREDENTIAL_TARGET)
+    expect(normalizeCredentialTarget({ spaceId: '../etc' })).toEqual({ kind: 'space', spaceId: 'default' })
+    expect(normalizeCredentialTarget({ spaceId: 'default' })).toEqual({ kind: 'space', spaceId: 'default' })
+    // spaceId 缺席而指名了条目(老调用方的退出)= 默认空间的那一条。
+    expect(normalizeCredentialTarget({ entryId: 'e1' })).toEqual({ kind: 'space', spaceId: 'default', entryId: 'e1' })
     expect(normalizeCredentialTarget({ spaceId: 'work', entryId: 'e1' }))
       .toEqual({ kind: 'space', spaceId: 'work', entryId: 'e1' })
   })
 
   it('锁名:同一空间的两条 entry 不共用一把锁,两个空间也不共用', () => {
-    expect(credentialTargetKey(undefined)).toBe('settings')
+    expect(credentialTargetKey(undefined)).toBe('space:default:*')
     const a = credentialRefreshKey('codex', normalizeCredentialTarget({ spaceId: 'work', entryId: 'a' }))
     const b = credentialRefreshKey('codex', normalizeCredentialTarget({ spaceId: 'work', entryId: 'b' }))
     const other = credentialRefreshKey('codex', normalizeCredentialTarget({ spaceId: 'home', entryId: 'a' }))
-    expect(new Set([a, b, other]).size).toBe(3)
-    expect(credentialRefreshKey('codex', SETTINGS_CREDENTIAL_TARGET)).toBe('codex::settings')
+    const defaultA = credentialRefreshKey('codex', normalizeCredentialTarget({ entryId: 'a' }))
+    expect(new Set([a, b, other, defaultA]).size).toBe(4)
   })
 
-  it('B3 的运行期标记换成目标:没有 spaceId 就是 settings', () => {
-    expect(credentialTargetFromSpaceMarker(undefined)).toEqual(SETTINGS_CREDENTIAL_TARGET)
+  it('B3 的运行期标记换成目标:默认空间的标记也指向池里那一条', () => {
+    expect(credentialTargetFromSpaceMarker(undefined)).toEqual(DEFAULT_CREDENTIAL_TARGET)
     expect(credentialTargetFromSpaceMarker({ spaceId: 'default', entryId: 'x' }))
-      .toEqual(SETTINGS_CREDENTIAL_TARGET)
+      .toEqual({ kind: 'space', spaceId: 'default', entryId: 'x' })
     expect(credentialTargetFromSpaceMarker({ spaceId: 'work', entryId: 'x' }))
       .toEqual({ kind: 'space', spaceId: 'work', entryId: 'x' })
   })
 })
 
-describe('默认空间回归:缺省参数 = 今天的行为', () => {
-  it('登录写进 settings 源的 token store,池一条都不动', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({
-      access_token: 'access',
-      refresh_token: 'refresh',
-      expires_in: 3600,
-    }))
-    const { service, tokenStore, spaceTokenStore } = makeService({ fetchImpl })
+describe('默认空间不再是特例(批 8)', () => {
+  it('不带 spaceId 登两次 = 默认空间池里两条,第二次不盖第一次(09-26 报障)', async () => {
+    let n = 0
+    const fetchImpl = vi.fn(async () => {
+      n += 1
+      return jsonResponse({ access_token: `access-${n}`, refresh_token: `refresh-${n}`, expires_in: 3600 })
+    })
+    const { service, spaceTokenStore } = makeService({ fetchImpl })
 
-    const started = await service.start('codex')
-    await expect(service.completeManualCode('codex', 'code', started.state ?? ''))
-      .resolves.toEqual({ success: true })
+    const first = await service.start('codex')
+    await expect(service.completeManualCode('codex', 'code', first.state ?? '')).resolves.toEqual({ success: true })
+    const second = await service.start('codex')
+    await expect(service.completeManualCode('codex', 'code', second.state ?? '')).resolves.toEqual({ success: true })
 
-    expect(tokenStore.tokens.get('codex')?.accessToken).toBe('access')
-    expect(spaceTokenStore.pools.size).toBe(0)
+    expect(spaceTokenStore.entries('codex').map(entry => entry.token.accessToken)).toEqual(['access-1', 'access-2'])
   })
 
-  it('刷新读写的还是 settings 源', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({
-      access_token: 'refreshed',
-      expires_in: 3600,
-    }))
-    const { service, tokenStore, spaceTokenStore } = makeService({ fetchImpl })
-    await tokenStore.saveToken('codex', token())
+  it('不指名的刷新落到第一个账号,原地换令牌 —— 不会凭空多出一个账号', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ access_token: 'refreshed', expires_in: 3600 }))
+    const { service, spaceTokenStore } = makeService({ fetchImpl })
+    spaceTokenStore.seed('codex', token({ accessToken: 'one', refreshToken: 'rt-1' }))
+    spaceTokenStore.seed('codex', token({ accessToken: 'two', refreshToken: 'rt-2' }))
 
     await expect(service.refreshToken('codex')).resolves.toMatchObject({ accessToken: 'refreshed' })
-    expect(tokenStore.tokens.get('codex')?.accessToken).toBe('refreshed')
-    expect(spaceTokenStore.pools.size).toBe(0)
+    expect(spaceTokenStore.entries('codex').map(entry => entry.token.accessToken)).toEqual(['refreshed', 'two'])
+    expect(String((fetchImpl.mock.calls[0] as unknown[])[1] && ((fetchImpl.mock.calls[0] as unknown[])[1] as RequestInit).body)).toContain('rt-1')
   })
 
-  it('宿主没装 spaceTokenStore 时,space 目标降级为 settings(而不是半路抛错)', async () => {
-    const tokenStore = new MemoryTokenStore(() => 0)
+  it('池里一个账号都没有:读答 null,刷新报「没有可刷新的令牌」(不回落任何别处)', async () => {
+    const { service } = makeService()
+    await expect(service.getToken('codex')).resolves.toBeNull()
+    await expect(service.refreshToken('codex')).rejects.toThrow('No refresh token available')
+    await expect(service.refreshTokenIfNeeded('codex')).rejects.toThrow('Not logged in')
+  })
+
+  it('不指名的读跳过冷却中的账号', async () => {
+    const { service, spaceTokenStore } = makeService({ now: () => 1_000 })
+    spaceTokenStore.seed('codex', token({ accessToken: 'cooling' }), 'default', { cooldownUntil: 5_000 })
+    spaceTokenStore.seed('codex', token({ accessToken: 'warm' }))
+    await expect(service.getToken('codex')).resolves.toMatchObject({ accessToken: 'warm' })
+  })
+})
+
+describe('同一身份再登一次 = 更新那一条(§8.2)', () => {
+  it('身份判据:Codex 看 accountId(并上 chatgptUserId),其它家看 email,取不到不去重', () => {
+    expect(oauthTokenIdentity(token({ accountId: 'acct', email: 'a@x.com' }))).toBe('account:acct')
+    expect(oauthTokenIdentity(token({ accountId: 'acct', providerMetadata: { chatgptUserId: 'u1' } })))
+      .toBe('account:acct:u1')
+    expect(oauthTokenIdentity(token({ email: ' A@X.com ' }))).toBe('email:a@x.com')
+    expect(oauthTokenIdentity(token())).toBeUndefined()
+  })
+
+  it('同一个邮箱再登一次:原地换令牌,不出第二行;另一个邮箱:追加', async () => {
+    const answers = [
+      { access_token: 'a1', expires_in: 3600 },
+      { access_token: 'a2', expires_in: 3600 },
+      { access_token: 'b1', expires_in: 3600 },
+    ]
+    let n = 0
+    const fetchImpl = vi.fn(async () => jsonResponse(answers[n++]))
+    const definition: OnethingAuthProviderDefinition = {
+      ...DEFINITION,
+      // 这家的令牌带邮箱(真实的 Codex 从 JWT 里读,这里直接给)。
+      normalizeToken: (data: { access_token: string; expires_in: number }) => ({
+        accessToken: data.access_token,
+        expiresAt: 10_000,
+        tokenType: 'Bearer',
+        email: data.access_token.startsWith('a') ? 'alice@example.com' : 'bob@example.com',
+      }),
+    }
+    const store = new MemoryPoolTokenStore(() => 0)
     const service = new OnethingAuthService({
-      tokenStore,
-      getDefinition: () => DEFINITION,
-      fetch: async () => jsonResponse({ access_token: 'refreshed', expires_in: 3600 }),
+      tokenStore: store,
+      getDefinition: () => definition,
+      fetch: fetchImpl as unknown as typeof fetch,
       now: () => 0,
     })
-    await tokenStore.saveToken('codex', token())
+    const target = { kind: 'space', spaceId: 'work' } as const
+    for (let i = 0; i < 3; i += 1) {
+      const started = await service.start('codex', target)
+      await expect(service.completeManualCode('codex', 'code', started.state ?? '', target))
+        .resolves.toEqual({ success: true })
+    }
+    expect(store.entries('codex', 'work').map(entry => [entry.token.email, entry.token.accessToken]))
+      .toEqual([['alice@example.com', 'a2'], ['bob@example.com', 'b1']])
+  })
+})
 
-    await expect(service.refreshToken('codex', { kind: 'space', spaceId: 'work', entryId: 'e' }))
-      .resolves.toMatchObject({ accessToken: 'refreshed' })
-    expect(tokenStore.tokens.get('codex')?.accessToken).toBe('refreshed')
+describe('状态按条目(§8.3)', () => {
+  it('不带 entryId 答第一个可用账号并附 accounts[];带 entryId 答那一条', async () => {
+    const { service, spaceTokenStore } = makeService({ now: () => 5_000 })
+    const first = spaceTokenStore.seed('codex', token({ accessToken: 'one', email: 'a@x.com', planType: 'plus', expiresAt: 1_000 }), 'work')
+    const second = spaceTokenStore.seed('codex', token({ accessToken: 'two', email: 'b@x.com', expiresAt: 9_000 }), 'work')
+
+    const all = await service.getStatus('codex', { kind: 'space', spaceId: 'work' })
+    expect(all.accounts).toEqual([
+      { entryId: first, label: 'codex #1', email: 'a@x.com', planType: 'plus', isExpired: true, expiresAt: 1_000, canRefresh: true },
+      { entryId: second, label: 'codex #2', email: 'b@x.com', isExpired: false, expiresAt: 9_000, canRefresh: true },
+    ])
+    expect(all.entryId).toBe(first)
+
+    const one = await service.getStatus('codex', { kind: 'space', spaceId: 'work', entryId: second })
+    expect(one).toMatchObject({ entryId: second, isLoggedIn: true, isExpired: false, account: { email: 'b@x.com' } })
+
+    // 另一个空间一条都没有:空列表,不回落。
+    const other = await service.getStatus('codex', { kind: 'space', spaceId: 'home' })
+    expect(other).toMatchObject({ isLoggedIn: false, accounts: [] })
+    expect(other.entryId).toBeUndefined()
+  })
+
+  it('不指名的退出删的是 status 答的那一条,另一条还在', async () => {
+    const { service, spaceTokenStore } = makeService()
+    spaceTokenStore.seed('codex', token({ accessToken: 'one' }))
+    spaceTokenStore.seed('codex', token({ accessToken: 'two' }))
+    await service.deleteToken('codex')
+    expect(spaceTokenStore.entries('codex').map(entry => entry.token.accessToken)).toEqual(['two'])
+  })
+
+  it('纯判据:先跳冷却、令牌读不出的排最后', () => {
+    expect(pickDefaultOAuthEntryId([
+      { entryId: 'broken', token: null },
+      { entryId: 'cool', token: token(), cooldownUntil: 10 },
+      { entryId: 'warm', token: token() },
+    ], 5)).toBe('warm')
+    expect(pickDefaultOAuthEntryId([{ entryId: 'cool', token: token(), cooldownUntil: 10 }], 5)).toBe('cool')
+    expect(pickDefaultOAuthEntryId([{ entryId: 'broken', token: null }], 5)).toBe('broken')
+    expect(pickDefaultOAuthEntryId([], 5)).toBeUndefined()
   })
 })
 
@@ -226,7 +241,7 @@ describe('非 default 空间:token 落进本空间的池', () => {
       refresh_token: 'refresh',
       expires_in: 3600,
     }))
-    const { service, tokenStore, spaceTokenStore } = makeService({ fetchImpl })
+    const { service, spaceTokenStore } = makeService({ fetchImpl })
     const target = { kind: 'space', spaceId: 'work' } as const
 
     const first = await service.start('codex', target)
@@ -238,8 +253,8 @@ describe('非 default 空间:token 落进本空间的池', () => {
 
     expect(spaceTokenStore.pools.get('work|codex')?.map(entry => entry.id))
       .toEqual(['entry-1', 'entry-2'])
-    // 默认空间那一份一个字节都没被碰过。
-    expect(tokenStore.tokens.size).toBe(0)
+    // 默认空间那一池一个字节都没被碰过。
+    expect(spaceTokenStore.entries('codex')).toEqual([])
   })
 
   it('登出只删那一条 entry,同 provider 的另一个账号还在', async () => {
@@ -260,6 +275,7 @@ describe('非 default 空间:token 落进本空间的池', () => {
       .resolves.toMatchObject({ accessToken: 'work-at' })
     await expect(service.getToken('codex', { kind: 'space', spaceId: 'home', entryId: 'entry-2' }))
       .resolves.toMatchObject({ accessToken: 'home-at' })
+    // 默认空间没登过:不回落到任何一个空间的账号(跨空间不回落)。
     await expect(service.getToken('codex')).resolves.toBeNull()
   })
 
@@ -369,7 +385,7 @@ describe('刷新单飞锁(盲点 5)', () => {
 })
 
 describe('池里 token 的形状检查', () => {
-  it('半个 token 当没登录(与 settings 源的 parseToken 同一口径)', () => {
+  it('半个 token 当没登录(与旧单槽的 parseToken 同一口径)', () => {
     expect(parseSpaceOAuthToken(undefined)).toBeNull()
     expect(parseSpaceOAuthToken({ accessToken: 'a' })).toBeNull()
     expect(parseSpaceOAuthToken({ expiresAt: 1 })).toBeNull()

@@ -695,13 +695,14 @@ function oauth(over: Partial<Parameters<typeof OAuthCard>[0]> = {}) {
     <OAuthCard
       status={undefined}
       flow={IDLE_AUTH_FLOW}
-      accounts={0}
       onSignIn={vi.fn()}
+      onReauth={vi.fn()}
       onCode={vi.fn()}
       onSubmitCode={vi.fn()}
       onCancel={vi.fn()}
       onOpenAuthPage={vi.fn()}
       onSignOut={vi.fn()}
+      onMove={vi.fn()}
       {...over}
     />
   )
@@ -753,32 +754,84 @@ describe('OAuthCard', () => {
     expect(screen.getByText('invalid_grant: 码过期了')).toBeTruthy()
   })
 
-  it('已登录:账号 / 套餐 / 令牌状态 / 有效期 / 退出', () => {
+  it('已登录:每账号一行 ——「邮箱 · 套餐」/ 邮箱 /「账号 N」,计数读同一份 accounts[](批 8)', () => {
     render(
       oauth({
         status: {
           success: true,
           isLoggedIn: true,
-          expiresAt: new Date(2026, 7, 31, 9, 12).getTime(),
-          account: { email: 'me@example.com', planType: 'Max' },
+          accounts: [
+            { entryId: 'a', label: 'codex #1', email: 'me@example.com', planType: 'Max', isExpired: false },
+            { entryId: 'b', label: 'codex #2', email: 'you@example.com', isExpired: false },
+            { entryId: 'c', label: 'codex #3', isExpired: false },
+          ],
         },
-        accounts: 1,
       }),
     )
-    expect(screen.getByText('me@example.com')).toBeTruthy()
-    expect(screen.getByText('套餐 Max')).toBeTruthy()
-    expect(screen.getByText(/令牌有效 · 有效期至 08-31 09:12/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '退出 me@example.com' })).toBeTruthy()
-    expect(screen.getByText('1 个账号')).toBeTruthy()
-    // 那句「这是什么」只在未登录时出现;登上之后这一格是账号行。
+    expect(screen.getByText('me@example.com · Max')).toBeTruthy()
+    expect(screen.getByText('you@example.com')).toBeTruthy()
+    expect(screen.getByText('账号 3')).toBeTruthy()
+    expect(screen.getByText('3 个账号')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'me@example.com · Max 的更多动作' })).toBeTruthy()
+    // 那句「这是什么」只在一个账号都没有时出现。
     expect(screen.queryByText(/不另收 API 费/)).toBeNull()
   })
 
   /** 「登过但过期」说成「未登录」= 让人再走一遍完整登录流。 */
-  it('过期:说的是「需要重新授权」,不是「未登录」', () => {
-    render(oauth({ status: { success: true, isLoggedIn: true, isExpired: true } }))
-    expect(screen.getByText(/登录已过期/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: '重新授权' })).toBeTruthy()
+  it('某一个过期:那一行说「登录已过期」并常驻「重新授权」,点它重新授权**那一条**', () => {
+    const onReauth = vi.fn()
+    render(oauth({
+      onReauth,
+      status: {
+        success: true,
+        isLoggedIn: true,
+        accounts: [
+          { entryId: 'a', label: 'x', email: 'ok@example.com', isExpired: false },
+          { entryId: 'b', label: 'y', email: 'old@example.com', isExpired: true },
+        ],
+      },
+    }))
+    expect(screen.getAllByText('登录已过期')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: '重新授权' }))
+    expect(onReauth).toHaveBeenCalledWith('b')
+  })
+
+  it('⋯ 菜单:重新授权 / 上移(到顶禁灰)/ 下移 / 退出 → 行内确认,确认才退那一条', () => {
+    const onSignOut = vi.fn()
+    const onMove = vi.fn()
+    render(oauth({
+      onSignOut,
+      onMove,
+      status: {
+        success: true,
+        isLoggedIn: true,
+        accounts: [
+          { entryId: 'a', label: 'x', email: 'a@example.com', isExpired: false },
+          { entryId: 'b', label: 'y', email: 'b@example.com', isExpired: false },
+        ],
+      },
+    }))
+    fireEvent.click(screen.getByRole('button', { name: 'a@example.com 的更多动作' }))
+    expect((screen.getByRole('menuitem', { name: '上移' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('menuitem', { name: '下移' }))
+    expect(onMove).toHaveBeenCalledWith('a', 1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'b@example.com 的更多动作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '退出' }))
+    expect(screen.getByText('退出这个账号?本空间将不再使用它。')).toBeTruthy()
+    expect(onSignOut).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '退出' }))
+    expect(onSignOut).toHaveBeenCalledWith('b')
+  })
+
+  it('添加账号走同一条登录流(追加,不带 entryId)', () => {
+    const onSignIn = vi.fn()
+    render(oauth({
+      onSignIn,
+      status: { success: true, isLoggedIn: true, accounts: [{ entryId: 'a', label: 'x', isExpired: false }] },
+    }))
+    fireEvent.click(screen.getByRole('button', { name: /添加账号/ }))
+    expect(onSignIn).toHaveBeenCalledWith()
   })
 })
 
@@ -959,6 +1012,7 @@ describe('ModeCard · 计费档位', () => {
         onCancelAuth={vi.fn()}
         onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
+        onReauth={vi.fn()}
         quotaOf={() => ({ response: undefined, status: 'idle' as const })}
         onRefreshQuota={() => {}}
         balanceOf={() => null}
@@ -1013,6 +1067,7 @@ describe('ModeCard · 计费档位', () => {
         onCancelAuth={vi.fn()}
         onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
+        onReauth={vi.fn()}
         quotaOf={() => ({ response: undefined, status: 'idle' as const })}
         onRefreshQuota={() => {}}
         balanceOf={() => null}
@@ -1057,6 +1112,7 @@ describe('ModeCard · 订阅用完切 API(批 6 §9.2)', () => {
         onCancelAuth={vi.fn()}
         onOpenAuthPage={vi.fn()}
         onSignOut={vi.fn()}
+        onReauth={vi.fn()}
         quotaOf={() => ({ response: undefined, status: 'idle' as const })}
         onRefreshQuota={() => {}}
         balanceOf={() => null}
