@@ -283,6 +283,43 @@ describe('SSE 判据', () => {
   })
 
   /*
+   * 判据 b′(2026-09-26 真机):两个窗格各有一个 composer,在一个窗格里换了模型,另一个
+   * 窗格的药丸一直对着旧模型。后端改模型现在推一条 `session:model-changed`,带落库之后
+   * 的 provider/model;壳就地补那两格,不重拉整表。同值再推一次:账本一格不动(连 patch
+   * 都不发,dataRev 不涨、data 不换引用)。
+   */
+  it('b′:换模型是增量 —— 只改那一行的 provider/model,一次请求都不发;同值再推账本不动', async () => {
+    await start()
+    emit?.(
+      envelope('os-compact', SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED, {
+        provider: 'deepseek',
+        model: 'deepseek-flash',
+      }),
+    )
+    const changed = useSessionsSource.getState().sessions.find((s) => s.id === 'os-compact')
+    expect(changed?.provider).toBe('deepseek')
+    expect(changed?.model).toBe('deepseek-flash')
+
+    const rev = sessionsQuery.get().dataRev
+    const data = sessionsQuery.get().data
+    emit?.(
+      envelope('os-compact', SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED, {
+        provider: 'deepseek',
+        model: 'deepseek-flash',
+      }),
+    )
+    expect(sessionsQuery.get().dataRev).toBe(rev)
+    expect(sessionsQuery.get().data).toBe(data)
+
+    // 只说一半的推送不认:缺 model 那一格,账本一格不动。
+    emit?.(envelope('os-compact', SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED, { provider: 'openai' }))
+    expect(sessionsQuery.get().data).toBe(data)
+
+    await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS + 50)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  /*
    * ── 7c 的规范修正:作废 = 标脏,不是删格 ──────────────────────────────
    * 从前 SSE 说这条会话动了,就把那一格缓存**整个删掉**(`delete messages[id]`),
    * 于是正开着 Quick Look 的人会看见「内容消失 → 骨架 → 重新长出来」。现在是

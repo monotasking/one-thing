@@ -122,6 +122,15 @@ export function splitPickerSections(input: {
   return { modelGroups, agentRows }
 }
 
+/**
+ * 一个 agent id 在人眼里叫什么:名册里认这个 id 的那一台(旧 id 走 `aliases`)的名字,
+ * 与 Agent 那一组行上写的是同一句;名册还没到或没有这一台就照实写 id —— 不编名字。
+ */
+export function agentDisplayNameOf(agents: readonly ACPAgentState[] | undefined, id: string): string {
+  const agent = agents?.find((entry) => answersTo(entry, id))
+  return agent ? nameOf(agent) : id
+}
+
 /** 名册全集里 ACP 那一家的 id(名字只在 `LOCAL_MODE_KINDS` 点一次)。 */
 export function acpProviderIdOf(providers: readonly { id: string }[]): string | undefined {
   return providers.find((p) => LOCAL_MODE_KINDS[p.id] === 'acp')?.id

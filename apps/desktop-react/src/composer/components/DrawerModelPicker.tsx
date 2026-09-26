@@ -41,7 +41,7 @@ import {
 } from '../../data/acp-options-source'
 import { useQuery } from '../../data/kernel'
 import { acpAgentsQuery, sourceOf, startAcpAgentsSource } from '../../data/acp-agents-source'
-import { acpProviderIdOf, splitPickerSections } from '../agent-rows'
+import { acpProviderIdOf, agentDisplayNameOf, splitPickerSections } from '../agent-rows'
 import { claimAgentOptions } from '../agent-claims'
 import { useAcpSessionState } from '../../data/acp-session-state-source'
 import type { AgentRowStatus } from '../agent-rows'
@@ -142,6 +142,18 @@ export function DrawerModelPicker() {
   const { modelGroups, agentRows } = useMemo(
     () => splitPickerSections({ groups, acpProviderId, agents: agentRoster, current, query }),
     [groups, acpProviderId, agentRoster, current, query],
+  )
+
+  /*
+   * **这条会话此刻由一台 agent 处理吗**(与右栏画 `AgentOptionsCard` 同一个判据,
+   * `isAgentSelection`)。是的话左栏顶上多一句:下面那些模型行点下去 = 离开这台 agent。
+   * 2026-09-26 真机:pi 会话里点了左栏的 deepseek-flash,会话悄悄变成了普通 deepseek 会话,
+   * 而用户想改的是 pi 自己用的模型(那一格在右卡上)—— 两个控件都留,只是把两种意思说出来。
+   * 名字取名册里那一句(与 Agent 组的行同源),名册没到就照实写 id。
+   */
+  const boundAgentName = useMemo(
+    () => (isAgentSelection(current) ? agentDisplayNameOf(agentRoster, current.model) : null),
+    [current, agentRoster],
   )
 
   /**
@@ -275,6 +287,13 @@ export function DrawerModelPicker() {
                   {rows.length === 0 && (
                     <div className={s.pickEmpty}>{t('composer.noMatch')}</div>
                   )}
+                  {/* 一行字,不是按钮:不进 `rows`(键盘位的序不变)、不可聚焦;模型的组被检索
+                      筛空时它也不画 —— 下面没有「下面的模型」可说。 */}
+                  {boundAgentName !== null && modelGroups.length > 0 && (
+                    <div className={s.pickLeaveAgentNote} data-testid="picker-leave-agent-note">
+                      {t('composer.pickerLeaveAgent', { name: boundAgentName })}
+                    </div>
+                  )}
                   {modelGroups.map((g) => (
                     <div key={g.id}>
                       <div className={s.provHead}>{g.provider}</div>
@@ -341,7 +360,7 @@ export function DrawerModelPicker() {
                 </div>
               </div>
             </div>
-            <ModelDetailCard selection={current} />
+            <ModelDetailCard selection={current} agentName={boundAgentName} />
           </div>
         </div>
       )}
@@ -381,19 +400,27 @@ function installHowOf(t: TFn, agent: ACPAgentState): string {
  */
 const ModelDetailCard = memo(function ModelDetailCard({
   selection,
+  agentName,
 }: {
   selection: ModelSelection | null
+  /** 选中的是 agent 时它在人眼里的名字(名册那一句);不是 agent = null。 */
+  agentName: string | null
 }) {
   /*
    * ACP 那一族选中的是**一台 agent**,不是一型模型(2026-09-24):窗口 / 价格 / 思考
    * 阶梯这些读数属于 onething 的模型目录,agent 身上一格都没有。它的卡画的是 agent
    * 自己列出来的选项(模型 / 模式 / 思考档),见 `AgentOptionsCard`。
    */
-  if (selection?.model && LOCAL_MODE_KINDS[selection.provider] === 'acp') {
-    return <AgentOptionsCard agentId={selection.model} />
+  if (isAgentSelection(selection)) {
+    return <AgentOptionsCard agentId={selection.model} agentName={agentName ?? selection.model} />
   }
   return <ProviderModelCard selection={selection} />
 })
+
+/** 选中的是不是一台 ACP agent —— 右卡画哪张、左栏说不说那一句,两处读这一个判据。 */
+function isAgentSelection(selection: ModelSelection | null): selection is ModelSelection {
+  return selection !== null && Boolean(selection.model) && LOCAL_MODE_KINDS[selection.provider] === 'acp'
+}
 
 function ProviderModelCard({ selection }: { selection: ModelSelection | null }) {
   const t = useT()
@@ -483,7 +510,7 @@ function ProviderModelCard({ selection }: { selection: ModelSelection | null }) 
  *   `aria-busy`(律③逐格,忙态键 = agent × 会话 × 选项);重拉期间旧值留在屏(律②);
  *   只读的模式行没有交互态,只有一句为什么。
  */
-function AgentOptionsCard({ agentId }: { agentId: string }) {
+function AgentOptionsCard({ agentId, agentName }: { agentId: string; agentName: string }) {
   const t = useT()
   const sessionId = useComposerSessionId() || null
   const query = acpOptionsQuery.get(acpOptionsKey(agentId, sessionId))
@@ -505,7 +532,8 @@ function AgentOptionsCard({ agentId }: { agentId: string }) {
 
   return (
     <Card className={s.modelCard} pad="md" bordered={false} data-testid="agent-options-card">
-      <div className={s.modelCardName}>{agentId}</div>
+      {/* 卡头写 agent 的名字(名册那一句),不写 id —— 用户认的是「Pi」,不是 `pi`。 */}
+      <div className={s.modelCardName}>{agentName}</div>
       {!claims && snapshot.phase === 'initial' && !snapshot.error && (
         <div className={s.modelCardNote}>{t('composer.agentOptionsLoading')}</div>
       )}
@@ -536,7 +564,15 @@ function AgentOptionsCard({ agentId }: { agentId: string }) {
           <div className={s.modelCardNote}>{t('composer.agentModeReadonly')}</div>
         </div>
       )}
-      {claims?.model && <AgentOptionSelect agentId={agentId} sessionId={sessionId} option={claims.model} />}
+      {claims?.model && (
+        <>
+          <AgentOptionSelect agentId={agentId} sessionId={sessionId} option={claims.model} />
+          {/* 与左栏顶上那一句成对:这里改的是 agent 自己的模型,会话仍由它处理。 */}
+          <div className={s.modelCardNote} data-testid="agent-model-note">
+            {t('composer.agentModelNote', { name: agentName })}
+          </div>
+        </>
+      )}
       {claims?.thought && <AgentThoughtLadder agentId={agentId} sessionId={sessionId} option={claims.thought} />}
       {claims?.rest.map((option) =>
         option.type === 'boolean' ? (

@@ -54,6 +54,12 @@ export const SESSION_EVENT_TYPES = {
   TOOL_EXECUTING: 'tool:executing',
   TOOL_METADATA: 'tool:metadata',
   SESSION_RENAMED: 'session:renamed',
+  /**
+   * 这条会话**改用了另一个模型**(`session/model-changed` 落账之后的那一发推送)。
+   * 改模型的写入方不止一个 —— 选择器、AI 经资源面、另一个客户端 —— 它们做的是同一件事,
+   * 但从前只有壳自己点的那一下知道结果;详见 `@shared/events` 的 `SessionModelChangedEvent`。
+   */
+  SESSION_MODEL_CHANGED: 'session:model-changed',
   SESSION_COLLAB_UPDATED: 'session:collab-updated',
   STEERING_QUEUED: 'steering:queued',
   STEERING_CONSUMED: 'steering:consumed',

@@ -119,6 +119,8 @@ export const zh = {
   'composer.agentModeReadonlyTip': '模式:{name}。这台 agent 的模式只能在它自己那边改',
   'composer.agentModeLabel': '模式',
   'composer.agentModeReadonly': '这台 agent 的模式暂时只能在它自己那边改。',
+  'composer.agentModelNote': '这里改的是 {name} 自己用哪个模型',
+  'composer.pickerLeaveAgent': '选下面的模型 = 这条会话改用模型服务,不再由 {name} 处理',
   'composer.headFiles': '引用文件',
   'composer.headCommands': '命令',
   /* 抽屉里命令分的另外两组(09-12)。三个组头在一列里各出现恰好一次。 */

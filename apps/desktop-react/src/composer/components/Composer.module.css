@@ -685,6 +685,14 @@
   color: var(--text-3);
 }
 
+/* agent 会话的左栏第一行:一句「选下面的模型 = 离开这台 agent」(2026-09-26)。
+   只是一行字 —— 不是按钮、不进键盘序;左右内距与组头同一格,读起来是列表的檐。 */
+.pickLeaveAgentNote {
+  padding: var(--sp-2) var(--sp-3) 0;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
 /* 模型抽屉的搜索行 */
 .modelSearch {
   display: flex;

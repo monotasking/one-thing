@@ -37,6 +37,8 @@ import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-s
 import { configureModelsPort } from '../../data/models-port'
 import { catalogKey, catalogQuery } from '../../providers/catalog-query'
 import { acpOptionsQuery, configureAcpOptionsPort } from '../../data/acp-options-source'
+import { acpAgentsQuery, configureAcpAgentsPort, resetAcpAgentsSource } from '../../data/acp-agents-source'
+import type { ACPAgentState } from '@shared/ipc/acp'
 import {
   configureAcpSessionStatePort,
   resetAcpSessionStateSource,
@@ -2071,6 +2073,151 @@ describe('庚:模型选择器带思考档位', () => {
     expect(writes).toEqual([{ agentId: 'claude-code', optionId: 'model', value: 'sonnet' }])
     expect(within(card).getByRole('combobox', { name: 'Model' }).textContent).toContain('Sonnet')
     configureAcpOptionsPort(undefined)
+  })
+
+  /*
+   * **两种「换模型」说出来**(2026-09-26 真机:pi 会话里点了左栏的 deepseek-flash,会话悄悄
+   * 变成了普通 deepseek 会话,而用户要改的是 pi 自己用的模型 —— 那一格在右卡上)。两个控件
+   * 都留:左栏顶上一句「选下面的模型 = 离开这台 agent」,右卡 model 那一格底下一句「这里改的
+   * 是它自己的模型」;卡头写名册里的名字,不写 id。那一句不是行:键盘位的序一格不多。
+   */
+  function stageAgentSession(): void {
+    providersQuery.patch([
+      { id: 'deepseek', name: 'DeepSeek' },
+      { id: 'acp', name: 'ACP' },
+    ])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'acp',
+        configs: {
+          deepseek: providerModelPrefs({ model: 'deepseek-flash', selectedModels: ['deepseek-flash'] }),
+          acp: providerModelPrefs({ selectedModels: ['pi'], model: 'pi' }),
+        },
+      },
+      custom: [],
+    })
+    catalogQuery.reset()
+    catalogQuery.get(catalogKey('deepseek')).patch([openRouterModel('deepseek-flash', 1_000_000)])
+    catalogQuery.get(catalogKey('acp')).patch([])
+    const pi = {
+      config: { id: 'pi', name: 'Pi', enabled: true, command: 'pi' },
+      status: 'disconnected',
+      sessionCount: 0,
+      activePromptCount: 0,
+      source: 'builtin',
+      detect: { installed: true, checkedAt: 1 },
+    } as unknown as ACPAgentState
+    resetAcpAgentsSource()
+    acpAgentsQuery.reset()
+    configureAcpAgentsPort({
+      ready: async () => undefined,
+      getAgents: async () => ({ success: true, agents: [pi] }),
+      onAgentState: () => () => {},
+    } as unknown as Parameters<typeof configureAcpAgentsPort>[0])
+  }
+
+  it('agent 会话:左栏顶上一句「离开 pi」、右卡写名字 + 一句「改的是它自己的模型」,键盘序不多一格', async () => {
+    stageAgentSession()
+    acpOptionsQuery.reset()
+    configureAcpOptionsPort({
+      sessionOptions: async () => ({
+        success: true,
+        live: false,
+        options: [
+          {
+            id: 'model',
+            name: 'Model',
+            category: 'model',
+            currentValue: 'opus',
+            choices: [
+              { value: 'opus', name: 'Opus' },
+              { value: 'sonnet', name: 'Sonnet' },
+            ],
+          },
+        ],
+      }),
+      setSessionOption: async () => ({ success: true, options: [], live: false }),
+    })
+    try {
+      renderComposer()
+      fireEvent.click(pill())
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      const card = await screen.findByTestId('agent-options-card')
+      // 卡头写名册里的名字,不写 id。
+      expect(within(card).getByText('Pi')).toBeTruthy()
+      expect(within(card).queryByText('pi')).toBeNull()
+      // model 那一格还在(gate-acp-shell 认的就是这两个属性),底下多一句。
+      expect(card.querySelector('[data-agent-option="model"] [role="combobox"]')).toBeTruthy()
+      expect(within(card).getByTestId('agent-model-note').textContent).toBe('这里改的是 Pi 自己用哪个模型')
+
+      const note = screen.getByTestId('picker-leave-agent-note')
+      expect(note.textContent).toBe('选下面的模型 = 这条会话改用模型服务,不再由 Pi 处理')
+      // 一行字:不是按钮、不可聚焦。
+      expect(note.tagName).toBe('DIV')
+      expect(note.hasAttribute('tabindex')).toBe(false)
+      expect(note.getAttribute('role')).toBeNull()
+      // 它排在第一组模型之前。
+      const firstRow = screen.getAllByRole('button').find((b) => /pickRow/.test(b.className))!
+      expect(note.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+      // 键盘序只有两行:deepseek-flash 与 Pi。从当前那一行(Pi)往上一步落在 deepseek-flash,
+      // 再往上一步不动(不循环)—— 那一句没有占一格。
+      const rowButtons = screen.getAllByRole('button').filter((b) => /pickRow/.test(b.className))
+      expect(rowButtons).toHaveLength(2)
+      const selected = () => rowButtons.find((b) => /pickSel/.test(b.className))?.textContent ?? ''
+      expect(selected()).toContain('Pi')
+      const input = screen.getByLabelText('搜模型或 Provider…')
+      fireEvent.keyDown(input, { key: 'ArrowUp' })
+      expect(selected()).toContain('deepseek-flash')
+      fireEvent.keyDown(input, { key: 'ArrowUp' })
+      expect(selected()).toContain('deepseek-flash')
+    } finally {
+      configureAcpOptionsPort(undefined)
+      configureAcpAgentsPort(undefined)
+      resetAcpAgentsSource()
+      acpAgentsQuery.reset()
+    }
+  })
+
+  it('agent 选项读不到:左栏那一句照旧在,右卡没有 model 那一格也就没有那一句', async () => {
+    stageAgentSession()
+    acpOptionsQuery.reset()
+    configureAcpOptionsPort({
+      sessionOptions: async () => ({ success: false, error: 'boom' }),
+      setSessionOption: async () => ({ success: false, error: 'boom' }),
+    } as unknown as Parameters<typeof configureAcpOptionsPort>[0])
+    try {
+      renderComposer()
+      fireEvent.click(pill())
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      const card = await screen.findByTestId('agent-options-card')
+      expect(within(card).getByText('Pi')).toBeTruthy()
+      expect(within(card).queryByTestId('agent-model-note')).toBeNull()
+      expect(screen.getByTestId('picker-leave-agent-note').textContent).toContain('Pi')
+    } finally {
+      configureAcpOptionsPort(undefined)
+      configureAcpAgentsPort(undefined)
+      resetAcpAgentsSource()
+      acpAgentsQuery.reset()
+    }
+  })
+
+  it('普通模型会话:两句都不出现', async () => {
+    stage('grok-4', THINKS_4)
+    renderComposer()
+    fireEvent.click(pill())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId('model-detail-card')).toBeTruthy()
+    expect(screen.queryByTestId('picker-leave-agent-note')).toBeNull()
+    expect(screen.queryByTestId('agent-model-note')).toBeNull()
   })
 
   /* ── ④ 药丸六形 ──────────────────────────────────────────────────────── */

@@ -492,6 +492,24 @@ export interface SessionRenamedEvent {
 }
 
 /**
+ * 这条会话**改用了另一个模型**(资源面 `setModel` 写成功之后发)。
+ *
+ * 为什么要有这一发推送:改模型的写入方不止一个 —— composer 的模型选择器、AI 经资源面、
+ * 另一个客户端(另一个窗格、浏览器壳、CLI)—— 它们做的是**同一件事**,而从前只有壳自己点的
+ * 那一下有办法知道结果(它乐观地改了自己那一格)。账本上那一条 `session/model-changed`
+ * 不随 `session:event` 以 UI 词汇下发,于是别处改完,壳的会话账还拿着旧的 provider/model,
+ * 药丸一直显示旧模型,直到下一次整表 `listMeta` 重拉。
+ *
+ * 载的是**落库之后**那两格(与账本 `to` 取落库值同一条理由),两格都必填:它们是一对,
+ * 只说一半的推送壳没法用。与 `session:renamed` 一样骑既有的 `session:event` 推送面,零新通道。
+ */
+export interface SessionModelChangedEvent {
+  type: typeof SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED
+  provider: string
+  model: string
+}
+
+/**
  * 这间房的**配置**变了 —— 名册 / 房名 / PM / 预算 / 冻结 / 响应模式(架构收敛 C4 §3)。
  *
  * 在它之前,房间配置根本没有会话列表级的推送:每一个写入方(成员条、设置面板、
@@ -720,6 +738,7 @@ export type SessionEvent =
   | ToolExecutingEvent
   | ToolMetadataEvent
   | SessionRenamedEvent
+  | SessionModelChangedEvent
   | SessionCollabUpdatedEvent
   | SessionLedgerEvent
   | SessionRemovedEvent

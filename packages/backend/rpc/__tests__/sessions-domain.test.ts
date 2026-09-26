@@ -63,6 +63,11 @@ const collab = vi.hoisted(() => ({
 const todoPlan = vi.hoisted(() => ({
   deleteSessionAiTodo: vi.fn(async () => {}),
   notifyTodoPlanActiveSessionChanged: vi.fn(),
+  // `wiring/resource/todo-provider.ts`(待办 T0 / B 形之后随资源注册表一起被拉进来)
+  // 在模块顶层就读这两格(`ASSEMBLED_PORTS`),桩里缺它们整份文件在 import 时就挂掉,
+  // 于是这组用例曾经一条都跑不起来。这组用例不碰待办资源,给空桩即可。
+  getTodoPlanStore: vi.fn(),
+  onTodoPlanChanged: vi.fn(() => () => {}),
 }))
 const toc = vi.hoisted(() => ({ readSessionSegments: vi.fn(async () => []) }))
 const variables = vi.hoisted(() => ({ workdirGateway: { write: vi.fn(async () => {}) } }))
@@ -441,7 +446,8 @@ describe('sessions RPC domain', () => {
       dispatchRpc({ domain: 'sessions', method: 'rename', payload: { sessionId: SESSION_ID, newName: '新名字' } }),
     ).resolves.toEqual({ ok: true, data: { success: true } })
 
-    expect(store.renameSession).toHaveBeenCalledWith(SESSION_ID, '新名字')
+    // 第三格 'user':显式改名 = 人定的标题,自动起题从此不覆盖(A2-b,session-provider.ts)。
+    expect(store.renameSession).toHaveBeenCalledWith(SESSION_ID, '新名字', 'user')
     expect(events.emit).toHaveBeenCalledTimes(1)
     expect(events.emit).toHaveBeenCalledWith(SESSION_ID, {
       type: SESSION_EVENT_TYPES.SESSION_RENAMED,
@@ -475,6 +481,67 @@ describe('sessions RPC domain', () => {
 
     await expect(
       dispatchRpc({ domain: 'sessions', method: 'rename', payload: { sessionId: SESSION_ID, newName: '新名字' } }),
+    ).resolves.toEqual({ ok: true, data: { success: false, error: 'Session not found' } })
+
+    expect(events.emit).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 改模型也要发一条 `session:model-changed`(2026-09-26 真机:两个窗格各有一个
+   * composer,在一个窗格里换了模型,另一个窗格的药丸一直对着旧模型 —— 从前 `setModel`
+   * 只写账本那一条 `session/model-changed`,推送一发都没有)。载的是**落库之后**那两格:
+   * 这里让仓读回来的值与参数不同,证明发出去的是读回来的那一份。
+   */
+  it('updateModel 成功时往总线上发一条 session:model-changed(载落库之后的 provider/model)', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.updateSessionModel.mockReturnValue(true)
+    store.getSession.mockReturnValue({ id: SESSION_ID, lastProvider: 'deepseek', lastModel: 'deepseek-flash', messages: [] })
+
+    await expect(
+      dispatchRpc({
+        domain: 'sessions',
+        method: 'updateModel',
+        payload: { sessionId: SESSION_ID, provider: 'deepseek', model: 'deepseek-flash' },
+      }),
+    ).resolves.toEqual({ ok: true, data: { success: true } })
+
+    expect(store.updateSessionModel).toHaveBeenCalledWith(SESSION_ID, 'deepseek', 'deepseek-flash')
+    expect(events.emit).toHaveBeenCalledTimes(1)
+    expect(events.emit).toHaveBeenCalledWith(SESSION_ID, {
+      type: SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED,
+      provider: 'deepseek',
+      model: 'deepseek-flash',
+    })
+  })
+
+  it('updateModel 推送带的是仓读回来的值,不是参数', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.updateSessionModel.mockReturnValue(true)
+    store.getSession.mockReturnValue({ id: SESSION_ID, lastProvider: 'openai', lastModel: 'gpt-landed', messages: [] })
+
+    await dispatchRpc({
+      domain: 'sessions',
+      method: 'updateModel',
+      payload: { sessionId: SESSION_ID, provider: 'openai', model: 'gpt-asked' },
+    })
+
+    expect(events.emit).toHaveBeenCalledWith(SESSION_ID, {
+      type: SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED,
+      provider: 'openai',
+      model: 'gpt-landed',
+    })
+  })
+
+  it('updateModel 改不存在的会话:success:false 且 emit 零调用', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.updateSessionModel.mockReturnValue(false)
+
+    await expect(
+      dispatchRpc({
+        domain: 'sessions',
+        method: 'updateModel',
+        payload: { sessionId: SESSION_ID, provider: 'deepseek', model: 'deepseek-flash' },
+      }),
     ).resolves.toEqual({ ok: true, data: { success: false, error: 'Session not found' } })
 
     expect(events.emit).not.toHaveBeenCalled()

@@ -634,6 +634,29 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
           }),
           'Failed to update the session model',
         )
+        /**
+         * **改模型也要有推送**,理由与上面 `rename` 那一发逐字相同:选择器、AI 经资源面、
+         * 另一个客户端改模型是同一件事,而从前只有壳自己点的那一下知道结果 —— 别的窗格
+         * 的药丸一直对着旧模型。
+         *
+         * 载的是**落库之后**那两格(从仓里读回来,与 `stores/sessions.ts` 记账时 `to`
+         * 取落库值同一条理由);读不到才退回参数。**失败不发** —— `settle` 已经在上面
+         * 抛掉了那一支。
+         */
+        const landedSession = store.getSession(payload.sessionId)
+        const landedProvider = landedSession?.lastProvider ?? payload.provider
+        const landedModel = landedSession?.lastModel ?? payload.model
+        await emitCoreSessionEventSafely({
+          sessionId: payload.sessionId,
+          event: {
+            type: SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED,
+            provider: landedProvider,
+            model: landedModel,
+          },
+          eventBus: getEventBus(),
+          logger: consoleLog,
+          errorLabel: '[SessionResource] EventBus emit failed:',
+        })
         this.emit(payload.sessionId, 'modelChanged', { provider: payload.provider, model: payload.model })
         return textResult(`Session now uses ${payload.provider}/${payload.model}`)
       }

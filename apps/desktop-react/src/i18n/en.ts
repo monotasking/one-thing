@@ -89,6 +89,8 @@ export const en: Record<MessageKey, string> = {
   'composer.agentModeReadonlyTip': "Mode: {name}. This agent's mode can only be changed on its side",
   'composer.agentModeLabel': 'Mode',
   'composer.agentModeReadonly': "For now, this agent's mode can only be changed on its side.",
+  'composer.agentModelNote': 'This changes which model {name} itself uses',
+  'composer.pickerLeaveAgent': 'Picking a model below switches this session to that provider; {name} will no longer handle it',
   'composer.headFiles': 'Reference a file',
   'composer.headCommands': 'Commands',
   'composer.headSkills': 'Skills',

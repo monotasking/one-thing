@@ -955,6 +955,23 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       return
     }
 
+    // 判据 b′:换模型自带新的 provider/model,同样一格增量就够。
+    // 2026-09-26 真机:两个窗格各有一个 composer,在一个窗格里换了模型,另一个窗格的药丸
+    // 一直对着旧模型 —— 从前后端改模型只写账、不推送,壳只有自己点的那一下知道结果,
+    // 别处(另一个窗格、AI 经资源面、另一个客户端)改的要等下一次整表 `listMeta` 才跟上。
+    // 两格是一对,少一格就不认(只说一半的推送没法用);值没变连 patch 都不发(同判据 b)。
+    // `sameSession` 本来就比 provider 与 model,所以改了一定重投影。
+    if (type === SESSION_EVENT_TYPES.SESSION_MODEL_CHANGED) {
+      const { provider, model } = envelope.event as { provider?: unknown; model?: unknown }
+      if (typeof provider !== 'string' || typeof model !== 'string') return
+      patchLedger((all) =>
+        all.some((s) => s.id === sessionId && (s.provider !== provider || s.model !== model))
+          ? all.map((s) => (s.id === sessionId ? { ...s, provider, model } : s))
+          : all,
+      )
+      return
+    }
+
     // 判据 c / d:消息动了 → 抬时间 + 作废这条会话的按需缓存。
     if (MESSAGE_EVENTS.includes(type)) {
       // 抬不动就不抬(信封比账上还旧):同样是原样返回,一次白重投影都没有。
