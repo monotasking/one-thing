@@ -8,13 +8,13 @@ import { Input } from '../../ui/Input'
 import { Menu, MenuItem, MenuSeparator } from '../../ui/Menu'
 import { Reveal, REVEAL_SCOPE } from '../../ui/Reveal'
 import { SecretInput } from '../../ui/SecretInput'
-import { Select } from '../../ui/Select'
 import { useInlineEdit } from '../../ui/inline-edit'
 import { Ellipsis, Pencil } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { ROTATION_POLICIES, cooldownFact, rotationHintFact, rotationLabelFact } from '../projection'
+import { cooldownFact } from '../projection'
 import type { PoolRow, PoolView } from '../projection'
+import { RotationPolicyPicker } from './RotationPolicyPicker'
 import s from './CredentialPool.module.css'
 
 /**
@@ -116,6 +116,7 @@ export function CredentialPool({
   onRemove,
   onMove,
   onRotation,
+  hasQuotaSource = false,
   balanceOf,
 }: {
   providerId: string
@@ -129,6 +130,8 @@ export function CredentialPool({
   onRemove: (entryId: string) => void
   onMove: (entryId: string, delta: -1 | 1) => void
   onRotation: (policy: string) => void
+  /** 这家有余额源(manifest `quotaSource`):轮换多一档「余额多的优先」(批 9 §10)。 */
+  hasQuotaSource?: boolean
   /**
    * 这条密钥的余额(批 5 §8.5):「¥123.45」,画在备注位右侧。有配额源的家、问到了数才有;
    * 缺席 = 不画(不是 0)。不加钮 —— 取数时机归设置页那一口(开面问一次)与后端推送。
@@ -295,22 +298,14 @@ export function CredentialPool({
         <p className={s.empty}>{t('providers.keyNone')}</p>
       )}
 
-      <div className={s.rotation}>
-        <span className={s.rotationLabel}>{t('providers.rotation')}</span>
-        <Select
-          className={s.rotationSelect}
-          size="sm"
-          value={pool.policy}
-          disabled={busy || pool.rows.length === 0}
-          onChange={onRotation}
-          label={t('providers.rotation')}
-          options={rotationOptions(t, pool.policy)}
-        />
-      </div>
-      {/* 每一档都要有一句语义说明 —— 三个策略名单看字面是分不出来的。
-          「顺序即优先级」那句读法从卡头搬到了这里:它本来就是这几句在解释的事。 */}
-      {rotationHint(t, pool.policy) && <p className={s.hint}>{rotationHint(t, pool.policy)}</p>}
-      {pool.policyUnavailable && <p className={s.warn}>{t('providers.rotationUnavailable')}</p>}
+      <RotationPolicyPicker
+        kind="api"
+        policy={pool.policy}
+        hasQuotaSource={hasQuotaSource}
+        disabled={busy || pool.rows.length === 0}
+        unavailable={pool.policyUnavailable}
+        onChange={onRotation}
+      />
 
       {error && <p className={s.warn}>{error}</p>}
     </Card>
@@ -393,25 +388,6 @@ function usePoolWriteGate({
   const reset = useCallback(() => setPhase('idle'), [])
 
   return { writing: phase !== 'idle', submitted, reset }
-}
-
-/**
- * 三档内置 + 「此刻存着的那个」。存着一个不认识的策略(插件注册的)时
- * **也要有一格能显示它** —— 不然选择器会画成空白,看起来像没设过。
- */
-function rotationOptions(t: TFn, policy: string) {
-  const options = ROTATION_POLICIES.map((value) => {
-    const fact = rotationLabelFact(value)
-    return { value, label: t(fact.key, fact.vars) }
-  })
-  if (options.some((option) => option.value === policy)) return options
-  const fact = rotationLabelFact(policy)
-  return [...options, { value: policy, label: t(fact.key, fact.vars) }]
-}
-
-function rotationHint(t: TFn, policy: string): string | null {
-  const fact = rotationHintFact(policy)
-  return fact ? t(fact.key, fact.vars) : null
 }
 
 function PoolEntry({

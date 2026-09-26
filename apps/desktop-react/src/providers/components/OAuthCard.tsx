@@ -12,6 +12,7 @@ import type { TFn } from '../../i18n'
 import type { AuthFlowState } from '../auth'
 import type { OAuthAccountStatus, OAuthStatusResponse } from '@shared/ipc/oauth'
 import { AuthFlowScreen } from './AuthFlowScreen'
+import { RotationPolicyPicker } from './RotationPolicyPicker'
 import s from './OAuthCard.module.css'
 
 /**
@@ -22,11 +23,16 @@ import s from './OAuthCard.module.css'
  *   有账号                            → **每账号一行**(批 8)+「N 个账号 · 添加账号」
  *
  * ── 批 8:账号是这个空间池里的一条条(`docs/design/subscription-accounts-2026-09.md` §8)──
- * 行读的是后端 `oauth.status` 答的 `accounts[]`(池序 = 余量相同时的优先级),不是凭证摘要:
+ * 行读的是后端 `oauth.status` 答的 `accounts[]`(池序 = 「用完换下一个」下的优先级),不是凭证摘要:
  * 「过没过期」只有后端说得出。一行 = 邮箱 · 套餐 · 过期标;动作四个(重新授权 / 上移 / 下移 /
  * 退出),照 `CredentialPool` 那条「动作多则收进 ⋯」收进菜单;**过期的那一行把「重新授权」
  * 常驻画出来** —— 那是它此刻唯一该做的事。退出走与删密钥同一形的行内确认条(不弹窗)。
  * 窗口条(批 5)仍是每账号一张的 `UsageCard`,排在这张卡下面(ModeCard 画)。
+ *
+ * ── 批 9:订阅也能轮转(同正本 §10)────────────────────────────────────────
+ * 账号列表上方放与密钥池**同一颗**轮换选择器(`RotationPolicyPicker`,订阅池那套说法:
+ * 只用第一个 / 用完换下一个 / 轮流使用 / 余量多的优先)。**≥2 个账号才画** —— 一个账号
+ * 没什么可轮,画出来只是一颗改了也不会有任何区别的钮。0 / 1 个账号时策略照样存着、照样生效。
  *
  * 「登过但过期了」是**有账号那一屏的一行**,不是第一屏:说「未登录」会让人以为要
  * 从头再走一遍,而实际上重新授权那一条就够了。
@@ -34,7 +40,8 @@ import s from './OAuthCard.module.css'
  * ── 三张状态表(施工纪律「状态先行」)──────────────────────────────────────
  * ① 生命周期:随 ModeCard 在订阅坑上画出;自己不取数(`status` / `flow` 由面板 store 给);
  *    换坑 = 换一家的账号,那一格确认条当场收掉;无订阅、无计时器 → 不需要 HMR dispose。
- * ② UI 生命状态:empty(一个账号都没有 → 第一屏)/ loading(没有这一档:登录态在飞时上一份
+ * ② UI 生命状态:empty(一个账号都没有 → 第一屏,无选择器)/ 一个账号(行,无选择器)/
+ *    ≥2 个账号(选择器 + 行)/ loading(没有这一档:登录态在飞时上一份
  *    仍在屏,律②)/ ready(账号行)/ error(`flow.error` 服务商原话;`lastError` 登录流的错)/
  *    超量(一个空间十几个账号已是极端,列表不设最大高度,行名省略号截断)。
  * ③ UI 交互状态:⋯ 常驻,`aria-haspopup` / `aria-expanded`;到顶的「上移」/ 到底的「下移」
@@ -54,6 +61,9 @@ export function OAuthCard({
   onOpenAuthPage,
   onSignOut,
   onMove,
+  policy,
+  policyUnavailable = false,
+  onRotation,
 }: {
   status: OAuthStatusResponse | undefined
   flow: AuthFlowState
@@ -70,8 +80,14 @@ export function OAuthCard({
   onOpenAuthPage: () => void
   /** 退出**那一个账号**(删本空间那一条)。 */
   onSignOut: (entryId: string) => void
-  /** 调序:池序 = 余量相同时的优先级。 */
+  /** 调序:池序 = 「用完换下一个」下的优先级。 */
   onMove: (entryId: string, delta: -1 | 1) => void
+  /** 这一池的轮换策略(`poolViewOf` 已补缺省)。 */
+  policy: string
+  /** 策略是插件给的、而此刻那个插件不在。 */
+  policyUnavailable?: boolean
+  /** 写池策略(store 的 `setRotation`,与密钥池同一口)。 */
+  onRotation: (policy: string) => void
 }) {
   const t = useT()
   const accounts = status?.accounts ?? []
@@ -118,6 +134,15 @@ export function OAuthCard({
 
   return (
     <Card>
+      {accounts.length >= 2 && (
+        <RotationPolicyPicker
+          kind="subscription"
+          policy={policy}
+          disabled={busy}
+          unavailable={policyUnavailable}
+          onChange={onRotation}
+        />
+      )}
       <ul className={s.accountList}>
         {accounts.map((account, index) => (
           <AccountRow

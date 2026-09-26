@@ -6,7 +6,8 @@
  * 订阅家(Codex Responses 流 + `wham/usage` 配额口)、同家 API(OpenAI Responses 流)与一家
  * 按量 API(DeepSeek chat/completions)。假站**按凭证**决定怎么答(Bearer 是哪条就按哪条的剧本),
  * 所以「这一发用了哪条凭证」直接读假站的来访记录。绝不打真服务商:假站之外的一切出网请求都
- * 撞在一个不存在的代理口上(`HTTP(S)_PROXY=127.0.0.1:9`,回环直连)。
+ * 撞在一个不存在的代理口上 —— **走设置 `network.proxy = 127.0.0.1:9`**(托管 fetch 只认设置,
+ * 不认 `HTTP(S)_PROXY` 环境变量:批 8 §9 留账 ①;环境变量那一对仍留着,管非托管的那几口)。
  *
  *   ① 订阅账号 A 窗口 100%、B 40%(配额服务取数,A 写上配额冷却)→ 下一发选 B;
  *   ② B 这一发 429 `usage_limit_reached`、开关开 → 沿序列接同家 API 第一把,`auto-retry` 的
@@ -30,6 +31,17 @@
  *      `sessions.getMessages` 物化出来的那条回答带 `route`;
  *   ⑪ 提示行·发送前切家(②「第三问」那一轮):那一轮 `turn-start` 的 header 就带 route,
  *      物化同上;④ 回到 A 的那一轮 header 不带 route、物化也没有 —— 提示不漏进下一轮。
+ *
+ * 批 9(`docs/design/subscription-accounts-2026-09.md` §10:订阅池也按池策略轮转)—— 另一间空间
+ * 「轮转门」里订阅家两个账号 C / D,开关关(只看订阅池自己怎么排):
+ *   ⑫ `priority-failover`:C 用 40% / D 用 10% → 选 C(顺序优先,不看余量);C 满(配额服务
+ *      写上配额冷却)→ D;C 的 `resets_at` 过后 → 回 C;
+ *   ⑬ `quota-remaining`:C 40% / D 10% → 选 D;
+ *   ⑭ `round-robin`:两个账号交替;
+ *   ⑮ `spaces.setCredentialPool` 改策略后,下一发立刻按新策略(不重启 server)—— ⑫ 末尾那一发
+ *      是 C,改成 quota-remaining 后紧接着那一发就是 D。
+ * ①–④ 那间「路由门」的订阅池写的是 `single`:批 9 起它的读法是「第一条没歇着的」—— A 满时是 B,
+ * A 重置后回 A,与 ①–④ 的断言同一个答案。
  *
  * **必须用 node 起**(同 gate:quota):server 的检索 Worker 要 `node:sqlite`,bun 没有。
  * 不构建:缺 `dist/server/main.js` 就叫你先在仓根 `bun run server:build`。不连 5175,不碰真 `~/.onething`。
@@ -75,11 +87,14 @@ async function waitFor(predicate, budgetMs, stepMs = 50) {
 const ROUTE_FALLBACK_API_REASON = '订阅额度已用完,这一轮按 API 计费'
 const T = {
   A: 'at-sub-A', B: 'at-sub-B',
+  C: 'at-sub-C', D: 'at-sub-D',
   k1: 'sk-api-k1', k2: 'sk-api-k2',
   d1: 'sk-ds-d1', d2: 'sk-ds-d2', d3: 'sk-ds-d3', d4: 'sk-ds-d4', d5: 'sk-ds-d5',
 }
 const WHO = Object.fromEntries(Object.entries(T).map(([name, secret]) => [secret, name]))
 const A_RESET_MS = 22_000
+/** ⑫:C 被打满之后多久重置。 */
+const C_RESET_MS = 12_000
 /** 配额服务的 run 结束去抖(`QUOTA_RUN_END_DEBOUNCE_MS`)。⑨ 要等它过去。 */
 const QUOTA_RUN_END_DEBOUNCE_MS = 30_000
 
@@ -89,13 +104,15 @@ function startStation() {
   const hits = []
   // 每条凭证一张剧本:数组逐发消费,最后一格之后一直用最后一格。
   const script = {
-    A: ['ok'], B: ['ok'], k1: ['ok'], k2: ['ok'],
+    A: ['ok'], B: ['ok'], C: ['ok'], D: ['ok'], k1: ['ok'], k2: ['ok'],
     d1: ['402'], d2: ['ok'], d3: ['ok'], d4: ['ok'], d5: ['ok'],
   }
   const served = {}
   const quotaWindows = {
     A: { used: 100, resetAt: Math.floor((Date.now() + A_RESET_MS) / 1000) },
     B: { used: 40, resetAt: Math.floor((Date.now() + 3_600_000) / 1000) },
+    C: { used: 40, resetAt: Math.floor((Date.now() + 3_600_000) / 1000) },
+    D: { used: 10, resetAt: Math.floor((Date.now() + 3_600_000) / 1000) },
   }
   const next = who => {
     const list = script[who] ?? ['ok']
@@ -221,7 +238,11 @@ function seedStore(storePath, base) {
   fs.mkdirSync(path.join(workspaces, 'default'), { recursive: true })
   fs.mkdirSync(path.join(workspaces, 'gate'), { recursive: true })
   fs.writeFileSync(path.join(workspaces, 'index.json'), JSON.stringify({
-    spaces: [{ id: 'default', name: '默认空间', createdAt: 0 }, { id: 'gate', name: '路由门', createdAt: 1 }],
+    spaces: [
+      { id: 'default', name: '默认空间', createdAt: 0 },
+      { id: 'gate', name: '路由门', createdAt: 1 },
+      { id: 'rot', name: '轮转门', createdAt: 2 },
+    ],
   }, null, 2))
 
   // 「路由门」空间:订阅家两个账号 + 同家 API 两把密钥(非默认空间:每个账号自己的令牌住在条目上)。
@@ -237,6 +258,22 @@ function seedStore(storePath, base) {
     ai: {
       provider: 'codex',
       providers: { codex: provider('gpt-5.3-codex', knob('high')), openai: provider('gpt-5.3-codex', knob('low')) },
+      customProviders: [],
+    },
+  }, null, 2))
+
+  // 「轮转门」空间(批 9 ⑫–⑮):订阅家两个账号,池策略从 priority-failover 起步;开关关 ——
+  // 这几步只看订阅池自己怎么排,不让接力掺进来。
+  fs.mkdirSync(path.join(workspaces, 'rot'), { recursive: true })
+  fs.writeFileSync(path.join(workspaces, 'rot', 'credentials.json'), JSON.stringify({
+    version: 2,
+    encryption: 'none',
+    providers: { codex: { policy: 'priority-failover', entries: [account('C'), account('D')] } },
+  }, null, 2))
+  fs.writeFileSync(path.join(workspaces, 'rot', 'providers.json'), JSON.stringify({
+    ai: {
+      provider: 'codex',
+      providers: { codex: provider('gpt-5.3-codex', { subscriptionFallback: false }) },
       customProviders: [],
     },
   }, null, 2))
@@ -264,6 +301,8 @@ function seedStore(storePath, base) {
     storage: { providerConfigMigratedAt: 1, spaceProviderSettingsMigratedAt: 1 },
     tools: { enableToolCalls: true, permissionMode: 'dangerously-allow-all', tools: {} },
     diagnostics: { enabled: false },
+    // 出网闸:托管 fetch 只认这一格(批 8 §9 留账 ①)。假站在回环上,bypass 放行。
+    network: { proxy: { enabled: true, url: 'http://127.0.0.1:9', bypassRules: 'localhost;127.0.0.1;::1' } },
   }, null, 2))
 }
 
@@ -379,7 +418,7 @@ try {
   const retryReasons = events => events.filter(event => event.type === 'request/error' && event.data?.willRetry).map(event => event.data?.error?.message)
   const quota = (providerId, extra = {}) => rpc('providers', 'quota', { providerId, spaceId: 'gate', ...extra })
 
-  // ── ① 订阅账号按窗口剩余量选 ─────────────────────────────────────────────
+  // ── ① A 满 → B ─────────────────────────────────────────────────────────
   console.log(`${TAG} ① A 100% / B 40% → B`)
   const qa = await quota('codex', { credentialId: 'A', force: true })
   const qb = await quota('codex', { credentialId: 'B', force: true })
@@ -542,6 +581,54 @@ try {
   const firstAnswer = materialized.find(message => message.role === 'assistant')
   check(firstAnswer?.route === undefined, '① 那一轮(用 B 打订阅口)的回答没有 route')
 
+  // ── ⑫–⑮ 订阅池按池策略轮转(批 9 §10)────────────────────────────────────
+  const rotQuota = async (credentialId) => quota('codex', { spaceId: 'rot', credentialId, force: true })
+  const setPolicy = policy => rpc('spaces', 'setCredentialPool', { id: 'rot', providerId: 'codex', entryIds: ['C', 'D'], policy })
+  const rotPolicy = async () => (await rpc('spaces', 'getCredentials', { id: 'rot' }))?.credentials?.providers?.codex?.policy
+  const rotSession = await newSession('rot', 'codex', 'gpt-5.3-codex')
+  const sendRot = async content => {
+    const since = Date.now()
+    await sendAndSettle(rotSession, content)
+    return station.sends(since).map(hit => hit.who)
+  }
+
+  console.log(`${TAG} ⑫ priority-failover:C 40% / D 10% → C;C 满 → D;C 重置 → 回 C`)
+  const qc = await rotQuota('C')
+  const qd = await rotQuota('D')
+  check(qc.quota?.windows?.[0]?.usedPercent === 40 && qd.quota?.windows?.[0]?.usedPercent === 10,
+    `配额缓存:C ${qc.quota?.windows?.[0]?.usedPercent}% / D ${qd.quota?.windows?.[0]?.usedPercent}%`)
+  check(await rotPolicy() === 'priority-failover', `轮转门的池策略 = priority-failover(${await rotPolicy()})`)
+  const r12a = await sendRot('轮转一')
+  check(r12a.join(',') === 'C', `顺序优先、不看余量:用 C(${r12a.join(',') || '无'})`)
+  const cResetAt = Math.floor((Date.now() + C_RESET_MS) / 1000)
+  station.quotaWindows.C = { used: 100, resetAt: cResetAt }
+  const qcFull = await rotQuota('C')
+  const cRow = (await rpc('spaces', 'getCredentials', { id: 'rot' }))?.credentials?.providers?.codex?.entries?.find(item => item.id === 'C')
+  check(qcFull.quota?.windows?.[0]?.usedPercent === 100 && cRow?.cooldownReason === 'quota',
+    `C 打满:配额冷却写上(cooldownReason=${cRow?.cooldownReason})`)
+  const r12b = await sendRot('轮转二')
+  check(r12b.join(',') === 'D', `C 用完 → 换下一个 D(${r12b.join(',') || '无'})`)
+  await sleep(Math.max(0, cResetAt * 1000 - Date.now() + 1_000))
+  station.quotaWindows.C = { used: 40, resetAt: Math.floor((Date.now() + 3_600_000) / 1000) }
+  const r12c = await sendRot('轮转三')
+  check(r12c.join(',') === 'C', `C 的窗口重置 → 换回 C(${r12c.join(',') || '无'})`)
+
+  console.log(`${TAG} ⑬⑮ 改成 quota-remaining → 紧接着那一发就是 D(余量 90 > 60)`)
+  await rotQuota('C')
+  await rotQuota('D')
+  await setPolicy('quota-remaining')
+  check(await rotPolicy() === 'quota-remaining', `setCredentialPool 落盘(${await rotPolicy()})`)
+  const decidedRot = await quota('codex', { spaceId: 'rot' })
+  check(decidedRot.credentialId === 'D', `⑮ 只读 decide 立刻按新策略 = D(${decidedRot.credentialId})`)
+  const r13 = await sendRot('轮转四')
+  check(r13.join(',') === 'D', `⑬ 余量多的优先:用 D(${r13.join(',') || '无'};上一发在 priority-failover 下是 C)`)
+
+  console.log(`${TAG} ⑭ round-robin:两个账号交替`)
+  await setPolicy('round-robin')
+  const r14 = [...await sendRot('轮转五'), ...await sendRot('轮转六'), ...await sendRot('轮转七')]
+  check(r14.length === 3 && r14[0] !== r14[1] && r14[0] === r14[2] && r14.every(who => who === 'C' || who === 'D'),
+    `三发交替(${r14.join(',')})`)
+
   const unexpected = station.hits.filter(hit => hit.who.startsWith('?'))
   check(unexpected.length === 0, `假站没收到认不出的凭证(${unexpected.map(hit => `${hit.who}@${hit.path}`).join(', ') || '无'})`)
   if (failures.length > 0) console.error(`${TAG} server 输出尾:\n${serverOut.slice(-40).join('')}`)
@@ -566,4 +653,4 @@ if (failures.length > 0) {
   console.error(`${TAG} ${failures.length} check(s) failed (${Math.round((Date.now() - startedAt) / 1000)}s)`)
   process.exit(1)
 }
-console.log(`${TAG} ok —— ① 按剩余量 / ② 接同家 API / ③ 开关关 / ④ 窗口重置回 A / ⑤ 默认空间 402 / ⑥ 流中失败不重复 / ⑦ 工具后换凭证 / ⑧ 旋钮跟家走 / ⑨ 收尾按当前凭证 / ⑩ 重试切家提示行 / ⑪ 发送前切家提示行 全绿(${Math.round((Date.now() - startedAt) / 1000)}s)`)
+console.log(`${TAG} ok —— ① A 满选 B / ② 接同家 API / ③ 开关关 / ④ 窗口重置回 A / ⑤ 默认空间 402 / ⑥ 流中失败不重复 / ⑦ 工具后换凭证 / ⑧ 旋钮跟家走 / ⑨ 收尾按当前凭证 / ⑩ 重试切家提示行 / ⑪ 发送前切家提示行 / ⑫ 订阅用完换下一个 / ⑬ 余量多的优先 / ⑭ 订阅轮流 / ⑮ 改策略即时生效 全绿(${Math.round((Date.now() - startedAt) / 1000)}s)`)

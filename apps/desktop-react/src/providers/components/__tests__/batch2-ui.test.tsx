@@ -647,6 +647,26 @@ describe('CredentialPool', () => {
     expect(screen.getByText(/按顺序使用,失效时自动换下一个/)).toBeTruthy()
   })
 
+  it('API 池:三档;这家有余额源才多第四档「余额多的优先」(批 9 §10)', () => {
+    const { unmount } = render(credentialPool())
+    fireEvent.click(screen.getByLabelText('轮换策略'))
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['只用第一条', '按序接力', '轮流使用'])
+    unmount()
+    const onRotation = vi.fn()
+    render(credentialPool({ hasQuotaSource: true, onRotation }))
+    fireEvent.click(screen.getByLabelText('轮换策略'))
+    expect(screen.getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['只用第一条', '按序接力', '轮流使用', '余额多的优先'])
+    fireEvent.click(screen.getByRole('option', { name: '余额多的优先' }))
+    expect(onRotation).toHaveBeenCalledWith('quota-remaining')
+  })
+
+  it('API 池存着 quota-remaining 而这家没有余额源:仍显示它 + 它那句说明', () => {
+    render(credentialPool({ pool: pool({ policy: 'quota-remaining' }) }))
+    expect(screen.getByLabelText('轮换策略').textContent).toContain('余额多的优先')
+    expect(screen.getByText('每次用余额最多的密钥。')).toBeTruthy()
+  })
+
   it('插件策略不可用:仍然显示它、并说清正在用什么顶着', () => {
     render(credentialPool({ pool: pool({ policy: 'plugin:x:round', policyUnavailable: true }) }))
     // 选择器里必须有一格能显示它,否则会画成空白、看起来像没设过。
@@ -703,6 +723,8 @@ function oauth(over: Partial<Parameters<typeof OAuthCard>[0]> = {}) {
       onOpenAuthPage={vi.fn()}
       onSignOut={vi.fn()}
       onMove={vi.fn()}
+      policy="priority-failover"
+      onRotation={vi.fn()}
       {...over}
     />
   )
@@ -822,6 +844,48 @@ describe('OAuthCard', () => {
     expect(onSignOut).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '退出' }))
     expect(onSignOut).toHaveBeenCalledWith('b')
+  })
+
+  it('轮换选择器:0 / 1 个账号不画;≥2 个账号画在列表上方,四档订阅说法(批 9 §10)', () => {
+    const account = (id: string) => ({ entryId: id, label: id, email: `${id}@example.com`, isExpired: false })
+    const status = (...ids: string[]) => ({ success: true, isLoggedIn: ids.length > 0, accounts: ids.map(account) })
+    const { unmount } = render(oauth({ status: status() }))
+    expect(screen.queryByLabelText('轮换策略')).toBeNull()
+    unmount()
+    const one = render(oauth({ status: status('a') }))
+    expect(screen.queryByLabelText('轮换策略')).toBeNull()
+    one.unmount()
+
+    const onRotation = vi.fn()
+    const { container } = render(oauth({ status: status('a', 'b'), onRotation }))
+    const picker = screen.getByLabelText('轮换策略')
+    // 在账号列表**上方**。
+    const list = container.querySelector('ul')!
+    expect(picker.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(picker.textContent).toContain('用完换下一个')
+    expect(screen.getByText('按顺序使用,额度用完自动换下一个,恢复后换回。')).toBeTruthy()
+    fireEvent.click(picker)
+    expect(screen.getAllByRole('option').map((o) => o.textContent))
+      .toEqual(['只用第一个', '用完换下一个', '轮流使用', '余量多的优先'])
+    fireEvent.click(screen.getByRole('option', { name: '余量多的优先' }))
+    expect(onRotation).toHaveBeenCalledWith('quota-remaining')
+  })
+
+  it('订阅池各档的说明句逐字', () => {
+    const accounts = [
+      { entryId: 'a', label: 'a', isExpired: false },
+      { entryId: 'b', label: 'b', isExpired: false },
+    ]
+    const cases: Array<[string, string]> = [
+      ['single', '只用第一个账号。'],
+      ['round-robin', '每次请求轮流使用。'],
+      ['quota-remaining', '每次用剩余额度最多的账号。'],
+    ]
+    for (const [policy, hint] of cases) {
+      const { unmount } = render(oauth({ policy, status: { success: true, isLoggedIn: true, accounts } }))
+      expect(screen.getByText(hint)).toBeTruthy()
+      unmount()
+    }
   })
 
   it('添加账号走同一条登录流(追加,不带 entryId)', () => {

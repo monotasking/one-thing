@@ -109,9 +109,9 @@ describe('pickRoute —— 订阅家', () => {
     expect(ids(route)[0]).toBe('acme-sub/B:subscription')
   })
 
-  it('账号按「最紧窗口的剩余量」从多到少排;没数据的垫后、按池内顺序', () => {
+  it('quota-remaining:账号按「最紧窗口的剩余量」从多到少排;没数据的垫后、按池内顺序', () => {
     const route = pickRoute(input({
-      pools: { 'acme-sub': { policy: 'single', entries: [oauth('nodata1'), oauth('A'), oauth('nodata2'), oauth('B')] } },
+      pools: { 'acme-sub': { policy: 'quota-remaining', entries: [oauth('nodata1'), oauth('A'), oauth('nodata2'), oauth('B')] } },
       // A:5h 用了 20、周窗用了 90 → 最紧剩 10;B:剩 60。
       quotas: { 'acme-sub/A': windows(20, 90), 'acme-sub/B': windows(40, 10) },
       subscriptionFallback: false,
@@ -201,7 +201,105 @@ describe('pickRoute —— 订阅家', () => {
   })
 })
 
+describe('pickRoute —— 订阅家按池策略(批 9 §10)', () => {
+  const pool = (policy: string, ...entries: SpaceCredentialEntry[]) => ({ 'acme-sub': { policy, entries } })
+  const solo = { subscriptionFallback: false }
+
+  it('门 ①:priority-failover A 用 40% / B 用 10% → 选 A(顺序优先,不看余量)', () => {
+    expect(ids(pickRoute(input({
+      ...solo,
+      pools: pool('priority-failover', oauth('A'), oauth('B')),
+      quotas: { 'acme-sub/A': windows(40), 'acme-sub/B': windows(10) },
+    })))).toEqual(['acme-sub/A:subscription', 'acme-sub/B:subscription'])
+  })
+
+  it('门 ①:A 满了(配额冷却已写)→ B', () => {
+    expect(ids(pickRoute(input({
+      ...solo,
+      pools: pool('priority-failover', oauth('A', { cooldownUntil: NOW + 3_600_000, cooldownReason: 'quota' }), oauth('B')),
+      quotas: { 'acme-sub/A': windows(100), 'acme-sub/B': windows(10) },
+    })))).toEqual(['acme-sub/B:subscription'])
+  })
+
+  it('门 ①:A 满了而冷却还没写上(30 秒去抖的空窗)→ 也当用完,选 B', () => {
+    expect(ids(pickRoute(input({
+      ...solo,
+      pools: pool('priority-failover', oauth('A'), oauth('B')),
+      quotas: { 'acme-sub/A': windows(10, 100), 'acme-sub/B': windows(10) },
+    })))).toEqual(['acme-sub/B:subscription'])
+  })
+
+  it('门 ①:A 的窗口重置(resets_at 已过、冷却到期)→ 回到 A', () => {
+    const resetAt = NOW + 3_600_000
+    expect(ids(pickRoute(input({
+      ...solo,
+      now: resetAt + 1,
+      pools: pool('priority-failover', oauth('A', { cooldownUntil: resetAt, cooldownReason: 'quota' }), oauth('B')),
+      quotas: { 'acme-sub/A': windows([100, resetAt]), 'acme-sub/B': windows([10, NOW + 99 * 3_600_000]) },
+    })))[0]).toBe('acme-sub/A:subscription')
+  })
+
+  it('门 ②:quota-remaining A 用 40% / B 用 10% → 选 B', () => {
+    expect(ids(pickRoute(input({
+      ...solo,
+      pools: pool('quota-remaining', oauth('A'), oauth('B')),
+      quotas: { 'acme-sub/A': windows(40), 'acme-sub/B': windows(10) },
+    })))[0]).toBe('acme-sub/B:subscription')
+  })
+
+  it('门 ③:round-robin 两个账号随游标交替', () => {
+    const at = (cursor: number) => ids(pickRoute(input({
+      ...solo,
+      cursor: { 'acme-sub': cursor },
+      pools: pool('round-robin', oauth('A'), oauth('B')),
+      quotas: { 'acme-sub/A': windows(40), 'acme-sub/B': windows(10) },
+    })))[0]
+    expect([at(0), at(1), at(2)]).toEqual(['acme-sub/A:subscription', 'acme-sub/B:subscription', 'acme-sub/A:subscription'])
+  })
+
+  it('single:只取第一条没歇着的账号', () => {
+    expect(ids(pickRoute(input({
+      ...solo,
+      pools: pool('single', oauth('A'), oauth('B')),
+      quotas: { 'acme-sub/A': windows(90), 'acme-sub/B': windows(0) },
+    })))).toEqual(['acme-sub/A:subscription'])
+  })
+
+  it('门 ④(纯函数版):同一份事实,换策略立刻换答案', () => {
+    const facts = { ...solo, quotas: { 'acme-sub/A': windows(40), 'acme-sub/B': windows(10) } }
+    expect(ids(pickRoute(input({ ...facts, pools: pool('priority-failover', oauth('A'), oauth('B')) })))[0])
+      .toBe('acme-sub/A:subscription')
+    expect(ids(pickRoute(input({ ...facts, pools: pool('quota-remaining', oauth('A'), oauth('B')) })))[0])
+      .toBe('acme-sub/B:subscription')
+  })
+
+  it('没写策略的老池按缺省 priority-failover 读(normalize 之前的形状由解析层补)', () => {
+    // 盘上解析(`parseSpaceCredentials`)把缺席补成 DEFAULT = priority-failover;这里直接喂那个值。
+    expect(ids(pickRoute(input({
+      ...solo,
+      pools: pool('priority-failover', oauth('A'), oauth('B')),
+      quotas: { 'acme-sub/B': windows(0) },
+    })))[0]).toBe('acme-sub/A:subscription')
+  })
+})
+
 describe('pickRoute —— API 家按池策略', () => {
+  it('quota-remaining:有余额按余额多的优先,没数据的垫后按池序', () => {
+    const balance = (available: number): ProviderQuota => ({ kind: 'balance', currency: 'CNY', available, fetchedAt: NOW })
+    expect(ids(pickRoute(input({
+      providerId: 'acme-api',
+      pools: { 'acme-api': { policy: 'quota-remaining', entries: [key('k1'), key('k2'), key('k3')] } },
+      quotas: { 'acme-api/k1': balance(5), 'acme-api/k3': balance(80) },
+    })))).toEqual(['acme-api/k3:api', 'acme-api/k1:api', 'acme-api/k2:api'])
+  })
+
+  it('quota-remaining:一池都没余额数据 → 退化为 priority-failover(池序、跳过冷却)', () => {
+    expect(ids(pickRoute(input({
+      providerId: 'acme-api',
+      pools: { 'acme-api': { policy: 'quota-remaining', entries: [key('k1', { cooldownUntil: NOW + 1_000 }), key('k2'), key('k3')] } },
+    })))).toEqual(['acme-api/k2:api', 'acme-api/k3:api'])
+  })
+
   it('门 ⑤:priority-failover 两把,第一把在冷却(402 之后)→ 第二把', () => {
     const route = pickRoute(input({
       providerId: 'acme-api',

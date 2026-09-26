@@ -19,8 +19,10 @@ import {
   railFactsOf,
   railToneOf,
   reorderPool,
+  providerHasQuotaSource,
   rotationHintFact,
   rotationLabelFact,
+  rotationPoliciesFor,
   vendorPrefixOf,
 } from '../projection'
 import type { CredentialFacts } from '../types'
@@ -822,6 +824,28 @@ describe('reorderPool', () => {
     expect(reorderPool(['a', 'b'], 'a', -1)).toEqual(['a', 'b'])
     expect(reorderPool(['a', 'b'], 'b', 1)).toEqual(['a', 'b'])
     expect(reorderPool(['a', 'b'], '不在池里', 1)).toEqual(['a', 'b'])
+  })
+})
+
+describe('轮换策略的档位表(批 9 §10)', () => {
+  it('订阅池四档全有;API 池第四档只给有余额源的家', () => {
+    expect(rotationPoliciesFor('subscription', false))
+      .toEqual(['single', 'priority-failover', 'round-robin', 'quota-remaining'])
+    expect(rotationPoliciesFor('api', false)).toEqual(['single', 'priority-failover', 'round-robin'])
+    expect(rotationPoliciesFor('api', true))
+      .toEqual(['single', 'priority-failover', 'round-robin', 'quota-remaining'])
+  })
+
+  it('同一档在两种池里说法不同;round-robin 两边同一句', () => {
+    expect(rotationLabelFact('priority-failover', 'subscription')).toEqual({ key: 'providers.rotationFailoverSub' })
+    expect(rotationHintFact('quota-remaining', 'subscription')).toEqual({ key: 'providers.rotationQuotaHint' })
+    expect(rotationLabelFact('quota-remaining', 'api')).toEqual({ key: 'providers.rotationQuotaApi' })
+    expect(rotationLabelFact('round-robin', 'subscription')).toEqual(rotationLabelFact('round-robin', 'api'))
+  })
+
+  it('有没有余额源读 manifest 的 quotaSource,不点名', () => {
+    expect(providerHasQuotaSource('deepseek')).toBe(true)
+    expect(providerHasQuotaSource('no-such-provider')).toBe(false)
   })
 })
 

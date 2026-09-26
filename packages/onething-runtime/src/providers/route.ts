@@ -6,17 +6,20 @@
  * 订阅与同家 API 之间零接力,配额满了只能等报错冷却。现在反过来:**一次算出整条候选序列**,
  * 发送前取 `[0]`,失败后沿序列取下一条 —— 两处读同一份答案,不再各算各的。
  *
- * 顺序(逐字照 §9.1):
- *  1. 目标家 `billing === 'subscription'`:它的登录账号,按**最紧那个窗口的剩余量**从多到少;
- *     没有配额数据的排在有数据的后面,按池内顺序;
+ * 顺序(§9.1;批 9 起订阅家也按池策略,`docs/design/subscription-accounts-2026-09.md` §10):
+ *  1. 目标家的凭证(订阅家 = 登录账号,API 家 = 密钥),**按那一池的策略**排 ——
+ *     `single` = 只取第一条可用;`priority-failover` = 按池内顺序;`round-robin` = 从游标起;
+ *     `plugin:*` = 插件裁决;`quota-remaining` = 余量多的优先(订阅家看最紧窗口的剩余量,
+ *     API 家看余额;没有数据的垫后按池序 —— 一池都没数据就等于按序)。批 6 时订阅家**强制**
+ *     按剩余量排,那一排法原样搬成了 `quota-remaining` 这一档;
  *  2. 开关「订阅额度用完时切到 API 密钥」开着、且目标家确实有登录过的账号时:`manifest.sibling`
- *     那一家(同家的 API 半边)的密钥,按那一池的策略排;
- *  3. 目标家 `billing === 'api'`:它的密钥按池策略排(`single` = 只取第一条可用;
- *     `priority-failover` = 按序;`round-robin` = 从游标起)。
+ *     那一家(同家的 API 半边)的密钥,按那一池的策略排。
  *
- * 冷却 = 报错冷却 ∪ 配额冷却,两者住在同一格 `cooldownUntil`(配额服务写的那种带
- * `cooldownReason: 'quota'`),这里只认那一格。停用的家硬过滤;**跨家(非 sibling)一律不进候选**
- * —— Claude 全用完不会改走 DeepSeek,换模型是用户在选择器里手选的事。
+ * 「用完」= 这一条此刻歇着:冷却格 `cooldownUntil`(报错冷却 ∪ 配额冷却 —— 配额服务写的那种带
+ * `cooldownReason: 'quota'`)**或**配额缓存里最紧那个主窗口已经 `usedPercent >= 100`(配额服务
+ * 30 秒去抖、冷却还没写上的那个空窗)。两个判据说的是同一件事,不另开第三个。窗口重置时刻一过,
+ * 两者都自然失效,`priority-failover` 就回到前一条。停用的家硬过滤;**跨家(非 sibling)一律不进
+ * 候选** —— Claude 全用完不会改走 DeepSeek,换模型是用户在选择器里手选的事。
  *
  * **纯函数**:manifest 表、池、配额缓存、开关、游标全由调用方喂进来。本文件不写盘、不拨游标、
  * 不读进程状态 —— 「真正发出去的那一发才拨游标」是调用方的事。provider 名一个都不出现:
@@ -95,58 +98,81 @@ function authTypeOf(manifest: ProviderManifest | undefined): SpaceCredentialAuth
   return manifest?.auth.kind === 'oauth' ? 'oauth' : 'apiKey'
 }
 
-/** 这一池里「此刻能拿去发请求」的那些(鉴权形态对、有凭证材料、不在冷却里),池内顺序。 */
+/**
+ * 这条凭证此刻歇着吗(= 用完了):冷却格,或配额缓存里最紧窗口已满而冷却还没写上。
+ * `remainingQuotaPercent` 已经把「重置时刻已过的窗口」按用了 0 算,所以窗口一重置它就回来。
+ */
+function isResting(input: PickRouteInput, providerId: string, entry: SpaceCredentialEntry): boolean {
+  if (isSpaceCredentialEntryCooling(entry, input.now)) return true
+  return remainingQuotaPercent(input.quotas(providerId, entry.id), input.now) === 0
+}
+
+/** 这一池里「此刻能拿去发请求」的那些(鉴权形态对、有凭证材料、没歇着),池内顺序。 */
 function liveEntries(
+  input: PickRouteInput,
+  providerId: string,
   pool: SpaceProviderCredentials | undefined,
   authType: SpaceCredentialAuthType,
-  now: number,
 ): SpaceCredentialEntry[] {
   return (pool?.entries ?? [])
     .filter(entry => entry.authType === authType)
     .filter(isSpaceCredentialEntryUsable)
-    .filter(entry => !isSpaceCredentialEntryCooling(entry, now))
+    .filter(entry => !isResting(input, providerId, entry))
 }
 
-/** 订阅账号:按最紧窗口剩余量从多到少;没数据的垫后,按池内顺序(稳定排序)。 */
-function orderBySubscriptionRemaining(
+/** 这条密钥的余额(批 5 `balance`)。没有 = `undefined`(不是 0)。 */
+function balanceAvailable(quota: ProviderQuota | undefined): number | undefined {
+  if (!quota) return undefined
+  if (quota.kind === 'balance') return quota.available
+  if (quota.kind === 'windows') return quota.balance?.available
+  return undefined
+}
+
+/**
+ * `quota-remaining`:余量多的优先。订阅家的「余量」= 最紧窗口的剩余百分比,API 家 = 余额。
+ * 没数据的垫后,按池内顺序(稳定排序)—— 一池都没数据时整条就是池序,即退化为 `priority-failover`。
+ */
+function orderByQuotaRemaining(
   input: PickRouteInput,
   providerId: string,
+  billing: ProviderManifest['billing'] | undefined,
   entries: SpaceCredentialEntry[],
 ): SpaceCredentialEntry[] {
-  const scored = entries.map((entry, index) => ({
-    entry,
-    index,
-    remaining: remainingQuotaPercent(input.quotas(providerId, entry.id), input.now),
-  }))
+  const scoreOf = (entry: SpaceCredentialEntry): number | undefined => {
+    const quota = input.quotas(providerId, entry.id)
+    return billing === 'subscription' ? remainingQuotaPercent(quota, input.now) : balanceAvailable(quota)
+  }
+  const scored = entries.map((entry, index) => ({ entry, index, score: scoreOf(entry) }))
   scored.sort((a, b) => {
-    if (a.remaining === undefined && b.remaining === undefined) return a.index - b.index
-    if (a.remaining === undefined) return 1
-    if (b.remaining === undefined) return -1
-    return b.remaining - a.remaining || a.index - b.index
+    if (a.score === undefined && b.score === undefined) return a.index - b.index
+    if (a.score === undefined) return 1
+    if (b.score === undefined) return -1
+    return b.score - a.score || a.index - b.index
   })
   return scored.map(item => item.entry)
 }
 
-/** 按池策略排(API 密钥那一类)。 */
+/** 按池策略排 —— 订阅账号与 API 密钥**同一份**(批 9 起订阅家不再有自己的排法)。 */
 function orderByPoolPolicy(
   input: PickRouteInput,
   providerId: string,
   pool: SpaceProviderCredentials | undefined,
   authType: SpaceCredentialAuthType,
+  billing: ProviderManifest['billing'] | undefined,
 ): SpaceCredentialEntry[] {
   if (!pool || pool.entries.length === 0) return []
   const policy = normalizeSpaceCredentialPolicy(pool.policy)
 
   if (policy === 'single') {
-    // B3 原语义:这一形态里头一条不在冷却里的 —— 它没填密钥就是没有(不越过它去用后面那把,
+    // B3 原语义:这一形态里头一条没歇着的 —— 它没填密钥就是没有(不越过它去用后面那把,
     // 那是 failover 的意思,不是 single 的)。
     const first = pool.entries
       .filter(entry => entry.authType === authType)
-      .find(entry => !isSpaceCredentialEntryCooling(entry, input.now))
+      .find(entry => !isResting(input, providerId, entry))
     return first && isSpaceCredentialEntryUsable(first) ? [first] : []
   }
 
-  const live = liveEntries(pool, authType, input.now)
+  const live = liveEntries(input, providerId, pool, authType)
   if (live.length === 0) return []
 
   if (isPluginSpaceCredentialPolicy(policy)) {
@@ -160,6 +186,8 @@ function orderByPoolPolicy(
     return [...live.slice(start), ...live.slice(0, start)]
   }
 
+  if (policy === 'quota-remaining') return orderByQuotaRemaining(input, providerId, billing, live)
+
   return live
 }
 
@@ -172,11 +200,7 @@ function candidatesOf(
   if (!input.enabled(providerId)) return []
   const manifest = input.manifests(providerId)
   if (manifest?.auth.kind === 'none') return []
-  const authType = authTypeOf(manifest)
-  const pool = input.pools(providerId)
-  const entries = manifest?.billing === 'subscription'
-    ? orderBySubscriptionRemaining(input, providerId, liveEntries(pool, authType, input.now))
-    : orderByPoolPolicy(input, providerId, pool, authType)
+  const entries = orderByPoolPolicy(input, providerId, input.pools(providerId), authTypeOf(manifest), manifest?.billing)
   return entries.map(entry => ({ providerId, entryId: entry.id, reason }))
 }
 

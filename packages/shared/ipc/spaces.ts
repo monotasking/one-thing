@@ -195,7 +195,8 @@ export interface SpaceCredentialEntrySummary {
 export interface SpaceProviderCredentialSummary {
 	entries: SpaceCredentialEntrySummary[];
 	/**
-	 * `single` / `priority-failover` / `round-robin`(批 D 起三种全部生效)
+	 * `single` / `priority-failover` / `round-robin`(批 D 起三种全部生效)/
+	 * `quota-remaining`(批 9:余量多的优先,订阅池与有余额源的 API 池)
 	 * 或 `plugin:<id>:<name>`(批 E:插件注册的策略)。形状不认识的取值按
 	 * `single` 解析。
 	 */

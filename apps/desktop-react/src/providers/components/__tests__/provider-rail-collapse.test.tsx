@@ -33,8 +33,9 @@ const panelCss = stripComments(
 const detailCss = stripComments(
   readFileSync(resolve(root, 'src/providers/components/ProviderDetail.module.css'), 'utf8'),
 )
-const poolCss = stripComments(
-  readFileSync(resolve(root, 'src/providers/components/CredentialPool.module.css'), 'utf8'),
+// 轮换行(批 9 起从 CredentialPool 搬进共用件 RotationPolicyPicker,密钥池与订阅卡两处消费)。
+const rotationCss = stripComments(
+  readFileSync(resolve(root, 'src/providers/components/RotationPolicyPicker.module.css'), 'utf8'),
 )
 const tokens = stripComments(readFileSync(resolve(root, 'src/styles/tokens.css'), 'utf8'))
 
@@ -114,11 +115,11 @@ describe('收起档的判据与几何(样式表源文本 + token 算术)', () =>
     ].map((m) => Number(m[1]))
     expect(railQueries).toEqual([px('--pv-panel-rail-collapse')])
 
-    // 详情列是另一个容器,两处消费它:详情头与凭证卡的轮换行。
+    // 详情列是另一个容器,两处消费它:详情头与轮换行(密钥池 / 订阅卡共用)。
     expect(detailCss).toMatch(/container-name:\s*providers-detail/)
     const detailQueries = [
       ...[...detailCss.matchAll(/@container providers-detail \(max-width:\s*(\d+)px\)/g)],
-      ...[...poolCss.matchAll(/@container providers-detail \(max-width:\s*(\d+)px\)/g)],
+      ...[...rotationCss.matchAll(/@container providers-detail \(max-width:\s*(\d+)px\)/g)],
     ].map((m) => Number(m[1]))
     expect(detailQueries).toEqual([px('--pv-detail-stack'), px('--pv-detail-stack')])
   })

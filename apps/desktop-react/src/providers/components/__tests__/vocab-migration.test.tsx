@@ -133,6 +133,8 @@ describe('StatusDot 收编:五档全部由库件画', () => {
         onOpenAuthPage={() => {}}
         onSignOut={() => {}}
         onMove={() => {}}
+        policy="priority-failover"
+        onRotation={() => {}}
       />,
     )
     const dot = container.querySelector(`.${statusDotCss.dot}`)
@@ -381,6 +383,8 @@ describe('Card 收编:详情栏那几张卡', () => {
         onOpenAuthPage={() => {}}
         onSignOut={() => {}}
         onMove={() => {}}
+        policy="priority-failover"
+        onRotation={() => {}}
       />,
     ],
   ])('%s 的外框是 ui/Card 的默认档(pad=md + 有边线)', (_name, node) => {
@@ -546,9 +550,9 @@ describe('Card 檐三件收编(批 8b)', () => {
       expect(css).not.toContain('.head')
       expect(css).not.toContain('.title')
     }
-    // UsageCard 的 `.cache` 一起走了;CredentialPool 的 `.hint` **留着** ——
-    // 它还有两个消费者(「最后一条不可删」的理由、轮换策略那句语义说明)。
+    // UsageCard 的 `.cache` 一起走了;轮换策略那句语义说明的 `.hint` **留着** ——
+    // 批 9 起它随选择器搬进了共用件 `RotationPolicyPicker`(密钥池与订阅卡两处消费)。
     expect(stripComments('../UsageCard.module.css')).not.toContain('.cache')
-    expect(stripComments('../CredentialPool.module.css')).toContain('.hint')
+    expect(stripComments('../RotationPolicyPicker.module.css')).toContain('.hint')
   })
 })

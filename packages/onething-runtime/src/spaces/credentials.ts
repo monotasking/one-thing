@@ -44,19 +44,23 @@ export type SpaceCredentialSource = string
  *  - `priority-failover`:按 entries 顺序取第一条**可用且不在冷却里**的。
  *    与 single 的区别是它还会跳过「用不了的」entry(OAuth 型 / 空 key)。
  *  - `round-robin`:在同一批候选里轮转,游标是进程内存的(见 `roundRobinCursors`)。
+ *  - `quota-remaining`(批 9,`docs/design/subscription-accounts-2026-09.md` §10):余量多的优先。
+ *    它要配额缓存,所以**只有 `pickRoute` 认得它**(订阅家 = 最紧窗口剩余量,API 家 = 余额);
+ *    本文件的单池分叉点没有配额数据,把它当 `priority-failover` 读 —— 退化成按序,不是猜。
  *
  *  - `plugin:<id>:<name>`(批 E):委派给插件注册的策略。宿主注入
  *    `configureSpaceCredentialPluginStrategyHost` 之后,这个分支才认得它;
  *    策略缺席 / 超时 / 抛错 / 返回非法 id **一律回落 `priority-failover`** ——
  *    「换钥匙」从来就有一个可用的默认答案,没有理由让它变成起不了流。
  *
- * 形状对不上的取值(既不是三个内置名,也不是合法的 `plugin:<id>:<name>`)
+ * 形状对不上的取值(既不是四个内置名,也不是合法的 `plugin:<id>:<name>`)
  * 一律按 `single` 解析 —— 不认识的策略退回最保守的那一条,而不是猜。
  */
 export type SpaceCredentialPolicy =
   | 'single'
   | 'priority-failover'
   | 'round-robin'
+  | 'quota-remaining'
   | string
 
 /** 内置策略的白名单。形状不认识的取值按 `single` 解析。 */
@@ -64,6 +68,7 @@ export const BUILTIN_SPACE_CREDENTIAL_POLICIES = [
   'single',
   'priority-failover',
   'round-robin',
+  'quota-remaining',
 ] as const
 
 export type BuiltinSpaceCredentialPolicy = (typeof BUILTIN_SPACE_CREDENTIAL_POLICIES)[number]
@@ -75,7 +80,7 @@ export type BuiltinSpaceCredentialPolicy = (typeof BUILTIN_SPACE_CREDENTIAL_POLI
  * `policy` 是要落盘的用户选择:插件被停用时把它规范化掉,等于替用户撤销他的
  * 选择,插件回来也不会恢复。所以形状合法就存下来,能不能用在读侧现问。
  *
- * 三个内置名都不含冒号,所以两个命名空间物理分开,插件抢不到内置名。
+ * 四个内置名都不含冒号,所以两个命名空间物理分开,插件抢不到内置名。
  */
 export const PLUGIN_SPACE_CREDENTIAL_POLICY_PATTERN =
   /^plugin:[a-zA-Z0-9][a-zA-Z0-9._-]*:[a-z0-9-]+$/

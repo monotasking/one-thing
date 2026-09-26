@@ -13,6 +13,7 @@ import { settingsKey, settingsMutation } from '../store'
 import { CredentialPool } from './CredentialPool'
 import { OAuthCard } from './OAuthCard'
 import { UsageCard } from './UsageCard'
+import { providerHasQuotaSource } from '../projection'
 import type { PoolView } from '../projection'
 import type { AuthFlowState } from '../auth'
 import type { ProviderMode } from '../types'
@@ -109,6 +110,7 @@ export function ModeCard(props: {
           onRemove={props.onRemoveKey}
           onMove={props.onMoveKey}
           onRotation={props.onRotation}
+          hasQuotaSource={providerHasQuotaSource(mode.providerId)}
           balanceOf={props.balanceOf}
         />
         <DialsCard
@@ -145,8 +147,11 @@ export function ModeCard(props: {
           onCancel={props.onCancelAuth}
           onOpenAuthPage={props.onOpenAuthPage}
           onSignOut={props.onSignOut}
-          /* 订阅账号的顺序就是池序(余量相同时的优先级)—— 与密钥行同一口 `moveCredential`。 */
+          /* 订阅账号的顺序就是池序(「用完换下一个」下的优先级)—— 与密钥行同一口 `moveCredential`。 */
           onMove={props.onMoveKey}
+          policy={props.pool.policy}
+          policyUnavailable={props.pool.policyUnavailable}
+          onRotation={props.onRotation}
         />
         {/*
           用量卡:每个登录过的账号一张(多账号时标题里写是哪个号)。`response === null`

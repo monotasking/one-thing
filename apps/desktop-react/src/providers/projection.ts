@@ -1,3 +1,4 @@
+import { getBuiltinProviderManifest } from '@onething/runtime/providers/builtin-manifests'
 import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import { frozenFlagOf } from '../ui/list-placement'
 import type { ModelParameterSuggestion, OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
@@ -89,41 +90,81 @@ export function isModeConfigured(mode: ProviderMode, creds: CredentialFacts): bo
 /* ── 凭证池(多钥 / 顺序 / 策略)──────────────────────────────────────────── */
 
 /**
- * 三档内置轮换策略。取值与语义句**逐字**照生产
+ * 四档内置轮换策略。前三档的取值与语义句**逐字**照生产
  * (`packages/renderer/components/settings/provider/SpaceCredentialPool.vue:367-377`)——
- * 「按序接力」这些名字是用户已经认识的字,这块壳没有资格另起一套。
+ * 「按序接力」这些名字是用户已经认识的字,这块壳没有资格另起一套。第四档
+ * `quota-remaining`(批 9,`docs/design/subscription-accounts-2026-09.md` §10)是
+ * 「余量多的优先」:订阅池看窗口剩余量,API 池看余额。
  *
  * `policy` 在契约上是 `string` 而不是联合类型,因为插件可以注册策略
  * (`plugin:<id>:<name>`)。不认识的取值按 `single` 解析,但**字段本身不改写** ——
  * 插件回来它自动生效,替用户把选择抹掉才是真的错。
  */
-export const ROTATION_POLICIES = ['single', 'priority-failover', 'round-robin'] as const
+export const ROTATION_POLICIES = ['single', 'priority-failover', 'round-robin', 'quota-remaining'] as const
 export type RotationPolicy = (typeof ROTATION_POLICIES)[number]
 
 /** 池还没有策略时选择器显示的那一项 —— 与后端新池的缺省同一个(批 6 §9.2)。 */
 export const DEFAULT_ROTATION_POLICY: RotationPolicy = 'priority-failover'
 
-const POLICY_LABEL: Record<RotationPolicy, Fact['key']> = {
-  single: 'providers.rotationSingle',
-  'priority-failover': 'providers.rotationFailover',
-  'round-robin': 'providers.rotationRoundRobin',
+/**
+ * 这一池装的是什么。同一档策略在两种池里**说法不同**(§10 表):订阅池说「账号」「额度用完」,
+ * API 池说「密钥」「失效」—— 语义本来就不一样(订阅池的 failover 等的是窗口重置)。
+ */
+export type RotationPoolKind = 'subscription' | 'api'
+
+const POLICY_LABEL: Record<RotationPoolKind, Record<RotationPolicy, Fact['key']>> = {
+  api: {
+    single: 'providers.rotationSingle',
+    'priority-failover': 'providers.rotationFailover',
+    'round-robin': 'providers.rotationRoundRobin',
+    'quota-remaining': 'providers.rotationQuotaApi',
+  },
+  subscription: {
+    single: 'providers.rotationSingleSub',
+    'priority-failover': 'providers.rotationFailoverSub',
+    'round-robin': 'providers.rotationRoundRobin',
+    'quota-remaining': 'providers.rotationQuota',
+  },
 }
 
-const POLICY_HINT: Record<RotationPolicy, Fact['key']> = {
-  single: 'providers.rotationSingleHint',
-  'priority-failover': 'providers.rotationFailoverHint',
-  'round-robin': 'providers.rotationRoundRobinHint',
+const POLICY_HINT: Record<RotationPoolKind, Record<RotationPolicy, Fact['key']>> = {
+  api: {
+    single: 'providers.rotationSingleHint',
+    'priority-failover': 'providers.rotationFailoverHint',
+    'round-robin': 'providers.rotationRoundRobinHint',
+    'quota-remaining': 'providers.rotationQuotaApiHint',
+  },
+  subscription: {
+    single: 'providers.rotationSingleSubHint',
+    'priority-failover': 'providers.rotationFailoverSubHint',
+    'round-robin': 'providers.rotationRoundRobinHint',
+    'quota-remaining': 'providers.rotationQuotaHint',
+  },
 }
 
-export function rotationLabelFact(policy: string): Fact {
+export function rotationLabelFact(policy: string, pool: RotationPoolKind = 'api'): Fact {
   return isRotationPolicy(policy)
-    ? { key: POLICY_LABEL[policy] }
+    ? { key: POLICY_LABEL[pool][policy] }
     : { key: 'providers.rotationUnknown', vars: { policy } }
 }
 
 /** 选择器下面那句语义说明。不认识的策略没有话可说 —— 不编一句。 */
-export function rotationHintFact(policy: string): Fact | null {
-  return isRotationPolicy(policy) ? { key: POLICY_HINT[policy] } : null
+export function rotationHintFact(policy: string, pool: RotationPoolKind = 'api'): Fact | null {
+  return isRotationPolicy(policy) ? { key: POLICY_HINT[pool][policy] } : null
+}
+
+/**
+ * 这一池的选择器上有哪几档。订阅池四档全有;API 池的「余额多的优先」只在这家**有余额源**
+ * (manifest 的 `quotaSource`)时出现 —— 没有余额可比,那一档就是按序的另一个名字。
+ */
+export function rotationPoliciesFor(pool: RotationPoolKind, hasQuotaSource: boolean): readonly RotationPolicy[] {
+  if (pool === 'subscription' || hasQuotaSource) return ROTATION_POLICIES
+  return ROTATION_POLICIES.filter((policy) => policy !== 'quota-remaining')
+}
+
+/** 这家有没有配额 / 余额源(批 5)。读 manifest 那一格,与 `dials.ts` 同一个读法。 */
+export function providerHasQuotaSource(providerId: string): boolean {
+  return Boolean(getBuiltinProviderManifest(providerId)?.quotaSource)
 }
 
 export function isRotationPolicy(policy: string): policy is RotationPolicy {
