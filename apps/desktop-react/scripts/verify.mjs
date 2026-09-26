@@ -233,6 +233,16 @@ run('gate:squeeze', 'npm', ['run', '--silent', 'gate:squeeze'])
  */
 run('gate:providers-squeeze', 'npm', ['run', '--silent', 'gate:providers-squeeze'])
 /*
+ * Provider 整改(09-26,docs/design/provider-settings-rework-2026-09.md)四道真机门同一条理由进得来:
+ * 每一步断言的都是**账本与屏幕上的事实**(登录流相位出网、配额归一到 5h/7d、适配表回验、
+ * 候选序列选了哪一条),不看机器状况。四道都在 dist/server + 临时 store + 本地假站上跑,
+ * 不连真服务商、不碰 ~/.onething。
+ */
+run('gate:providers-auth', 'npm', ['run', '--silent', 'gate:providers-auth'])
+run('gate:quota', 'npm', ['run', '--silent', 'gate:quota'])
+run('gate:custom-adapter', 'npm', ['run', '--silent', 'gate:custom-adapter'])
+run('gate:route', 'npm', ['run', '--silent', 'gate:route'])
+/*
  * gate:motion 与 gate:squeeze 同一个理由进得来:它断言的是**计算样式**
  * (切到「无」档之后 transition/animation 的时长是不是 0),不是毫秒读数 ——
  * 同一份 CSS 同一个档跑一百遍是同一个答案,没有余量一说。
