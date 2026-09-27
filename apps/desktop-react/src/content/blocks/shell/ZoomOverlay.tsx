@@ -46,6 +46,7 @@ export function ZoomOverlay({ content, onClose }: { content: ZoomContent; onClos
     <div
       className={s.scrim}
       data-testid="block-zoom-scrim"
+      data-overlay-scrim=""
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

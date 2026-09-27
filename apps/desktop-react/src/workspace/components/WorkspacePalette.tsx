@@ -133,6 +133,7 @@ export function WorkspacePalette() {
     <div
       className={s.scrim}
       data-testid="workspace-palette-scrim"
+      data-overlay-scrim=""
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setOpen(false)
       }}

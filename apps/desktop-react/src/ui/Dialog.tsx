@@ -85,6 +85,7 @@ export function Dialog({ open, onClose, title, children, footer, label }: Dialog
     <div
       className={s.scrim}
       data-testid="dialog-scrim"
+      data-overlay-scrim=""
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

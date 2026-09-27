@@ -25,6 +25,7 @@ import { browserSettingsQuery } from '../../data/browser-settings-source'
 import { profileDisplayName } from '../settings/BrowserSettings'
 import { Tooltip } from '../../ui/Tooltip'
 import { closeBrowserFind, openBrowserFind, useBrowserFind } from '../../data/browser-find'
+import { hasBrowserTabSettled, markBrowserTabSettled } from '../../data/browser-settled'
 import { useBrowserNotices } from '../../data/browser-notices'
 import { NativeViewSlot } from '../native-view/NativeViewSlot'
 import { WebPermissionCard } from '../permission/WebPermissionCard'
@@ -48,7 +49,10 @@ import s from './BrowserLeaf.module.css'
  * ══════════════════════════════════════════════════════════════════════════
  * ① 生命周期(这一格内容的寿命)—— 表在 `data/browser-source.ts` 头上;
  *    这里只补「一片叶」这一层:挂载 = `useBrowserLive()` 引用计数加一;
- *    换宿主(拖去别的叶 / 撕成浮窗)= 拼贴树结构共享,**不重挂、视图不重载**;
+ *    换宿主(拖去别的叶 / 撕成浮窗)= **一次卸载再挂载**(09-15 真机量到的,
+ *    `view-claim.ts` 文件头;从前这里写「结构共享不重挂」,是错的)—— 所以这只
+ *    组件上**不许有跨越一次挂载的状态**:闩与查找、通知一样按 tabId 住在
+ *    `data/` 里;视图本身由占位格与账本一帧内交接,**不重载**;
  *    卸载 = 计数减一,**不关 tab**(关 tab 是 `kind.dispose` 那条显式的路)。
  * ══════════════════════════════════════════════════════════════════════════
  * ② UI 生命状态
@@ -162,13 +166,16 @@ export function BrowserLeaf({ id }: { id: string }) {
    * 是一段历史)。
    *
    * 它**在渲染里推导**,不是一格 state:闩翻过来的那一帧正是要画 `live` 的那一帧,
-   * 而写 state 要等下一次渲染,中间那一帧起始页会多留一手。同一条理由它也不是
-   * store —— 寿命是这片叶挂着的这一段,与上面 `openedByUser` 那格同族,
-   * 所以它也跟那一格一样站在**任何一条提前 return 之前**(hooks 的次序)。
+   * 而写 state 要等下一次渲染,中间那一帧起始页会多留一手。
+   *
+   * 它住在 `data/browser-settled.ts` 那张按 tabId 的表里,**不住在这只组件上**
+   * (2026-09-26):换宿主是一次重挂(`view-claim.ts` 09-15 真机量到的),从前这一格
+   * 是 `useRef`,一重挂就归零 —— 页面若正在加载,起始页就以「底」的身份又装回来,
+   * 人看见的是「搬了一下,回到空页面了」。寿命是那片视图,不是这次挂载,与
+   * `browser-find.ts` 的查找状态逐字同一条判词。写在渲染里没有问题:它是单向的闩,
+   * StrictMode 双跑也只是把同一句话说两遍。
    */
-  const settled = useRef<{ tabId: string; once: boolean }>({ tabId: id, once: false })
-  if (settled.current.tabId !== id) settled.current = { tabId: id, once: false }
-  if (row?.url && !row.loading) settled.current.once = true
+  if (row?.url && !row.loading) markBrowserTabSettled(id)
   const draft = useOmniboxDraft(row)
   const setLiveTitle = useLiveTitleStore((st) => st.setLiveTitle)
   const bridge = nativeViewBridge()
@@ -280,8 +287,16 @@ export function BrowserLeaf({ id }: { id: string }) {
   const zoomOut = useCallback(() => { void browserOps.zoom.run({ tabId: id, level: 'out' }) }, [id])
   const zoomReset = useCallback(() => { void browserOps.zoom.run({ tabId: id, level: 'reset' }) }, [id])
 
+  /*
+   * 回车用**设置里那一格**搜索引擎(2026-09-26 用户报障「选了别的引擎最终还是谷歌」)。
+   * 从前这里写的是 `resolveBrowserSearchEngine(undefined)` —— B1-a 搬家时「还没人读
+   * 持久化的引擎」那一句留下的占位,B3-b 把引擎存进 `settings.browser.searchEngine`
+   * 之后没跟上。设置没到时 `undefined` 照旧回落到出厂那一格,与起始页画亮的那一枚
+   * 同一条判据(`omnibox.ts` 是产地)。
+   */
+  const searchEngineId = profiles.data?.searchEngine
   const go = useCallback(() => {
-    const engine = resolveBrowserSearchEngine(undefined)
+    const engine = resolveBrowserSearchEngine(searchEngineId)
     const url = resolveBrowserOmniboxInput(draft.value, engine)
     draft.end()
     if (!url) return
@@ -289,7 +304,7 @@ export function BrowserLeaf({ id }: { id: string }) {
     // 回车之后键盘回到页面里:人要的是看那一页,不是继续待在地址栏。
     // ui-consume-allow: focus-outside-focus — 作用域内部的移动(判词在 focusAddress 上)
     focusElement(slotRef.current)
-  }, [draft, id])
+  }, [draft, id, searchEngineId])
 
   /* ── 此宿主没有内嵌浏览器(`--mode web`)────────────────────────────── */
   if (!bridge) {
@@ -327,7 +342,7 @@ export function BrowserLeaf({ id }: { id: string }) {
    * `'start'` 是它自己那一口径的完备,叶这一侧的判据从 B3-b 起就是「表到了才敢说
    * 这是一格空标签页」,这一单一个字没改。
    */
-  const phase: BrowserBodyPhase = known ? browserBodyPhase(row, settled.current.once) : 'live'
+  const phase: BrowserBodyPhase = known ? browserBodyPhase(row, hasBrowserTabSettled(id)) : 'live'
   /*
    * 身份丸上写什么(`null` = 不画)。三支:名册还没到 / 只有一格 / 这一格 tab
    * 的身份在名册里认不出来(名册被手改过)—— 都不画。**不编一个名字出来**:

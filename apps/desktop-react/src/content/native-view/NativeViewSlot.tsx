@@ -9,7 +9,13 @@ import { useStageStore } from '../../stage/store'
 import { useWorkbenchStore } from '../../workbench/store'
 import { usePanelVisibility } from '../visibility'
 import { startNativeViewKeymapDownlink } from './keymap-downlink'
-import { adoptViewClaim, recordViewSnapshot, releaseViewClaim, viewClaimOf } from './view-claim'
+import {
+  adoptViewClaim,
+  isCurrentViewHolder,
+  recordViewSnapshot,
+  releaseViewClaim,
+  viewClaimOf,
+} from './view-claim'
 import s from './NativeViewSlot.module.css'
 import type { MutableRefObject } from 'react'
 import type { FocusScopeId } from '../../focus/types'
@@ -33,9 +39,9 @@ import type { NativeViewBounds, NativeViewPush } from '../../data/browser-port'
  * | 无宿主 | `nativeViewBridge()` 缺席(`--mode web`) | 这只组件根本不渲染(调用方先问,见 `BrowserLeaf`) |
  * | 空 | 还没报过帧 / 主进程还没建视图 | 一块底色。**不画骨架、不转圈** —— 那一瞬要出现的是一页网页,而网页本来就是从白开始的 |
  * | 活 | 报过 `visible: true` 的帧 | 原生视图压在这块地上(DOM 这一侧永远是空的) |
- * | 被遮 | 三判据之一命中 | 主进程推来的那张快照铺满;没收到图就仍然是底色 |
+ * | 被遮 | 三判据之一命中(②③ 各自还要与这片地相交) | 主进程推来的那张快照铺满;没收到图就仍然是底色 |
  * | 隐藏 | 容器尺寸为 0(切走 tab / `content-visibility` 隐藏层) | 视图 `setVisible(false)`,DOM 这一格照旧在树上 |
- * | 换宿主 | 同一 `viewId` 的占位格卸载后**一帧内**又挂上(拖去别的叶 / 架子 / 浮窗) | 账本交接(`view-claim.ts`):上一任的快照先铺着,遮挡从上一任说到的那一句接着量,量到没被遮才发 `unocclude`;一帧内没人接手才替它收回 |
+ * | 换宿主 | 同一 `viewId` 的占位格卸载后**一帧内**又挂上(拖去别的叶 / 架子 / 浮窗 / 主面板),或新的一任先挂上、旧的一任在出场动画里多活 120ms | 账本交接(`view-claim.ts`):上一任的快照先铺着,遮挡从上一任说到的那一句接着量,量到没被遮才发 `unocclude`;**那帧「看不见」也不发**,视图在原地换矩形;**只有最后接手的那一任开口**,旧的一任在它走之前静默;一帧内没人接手才替它藏起、收回 |
  *
  * ══════════════════════════════════════════════════════════════════════════
  * ③ 交互状态
@@ -68,8 +74,10 @@ import type { NativeViewBounds, NativeViewPush } from '../../data/browser-port'
  *  ① 压在这片地**上面**的浮窗与它相交。「上面」是硬的:一片长在浮窗里的视图,
  *     它自己那扇窗的矩形当然与它相交 —— 不比名次的话它会把自己永远遮住;
  *  ② `focus/registry` 里挂着 `kind: 'float' | 'modal'` 的作用域(菜单 / 弹层 /
- *     命令面板 / 对话框 / 提示条)。原生视图永远压在 DOM 之上,这一族一旦开着
- *     就会被它盖回去;
+ *     命令面板 / 对话框 / 抽屉)**且它的面与这片地相交**(2026-09-26 起;从前只要
+ *     树上挂着就算,于是侧栏里开一张菜单,隔半个屏幕的浏览器也闪一下)。原生视图
+ *     永远压在 DOM 之上,这一族一旦压上来就会被它盖回去;带满屏遮罩的那几张量的
+ *     是遮罩(`data-overlay-scrim`),判词在 `overlayCovers` 上;
  *  ③ 拼贴树的 `dragging`。
  * 三者之一 → `occlude`;全不命中 → `unocclude`。
  */
@@ -113,13 +121,37 @@ function intersects(a: DOMRect, b: DOMRect): boolean {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 }
 
-/** 此刻树上挂着的浮层 / 模态作用域有几格(判据②)。 */
+/** 此刻树上挂着的浮层 / 模态作用域有几格(焦点那一支用:浮层开着就不接页面递来的焦点)。 */
 function overlayScopeCount(): number {
   let count = 0
   for (const node of focusTree.nodes().values()) {
     if ((node.kind === 'float' || node.kind === 'modal') && node.root && !node.inert) count += 1
   }
   return count
+}
+
+/**
+ * 判据②:有没有一格浮层 / 模态作用域**真的压在这片地上**(2026-09-26)。
+ *
+ * 从前这一支数的是「树上挂着几格」—— 侧栏里开一张会话列表的项目过滤菜单,与浏览器
+ * 隔着半个屏幕,浏览器也照样走一遍「拍快照 → 藏视图 → 铺图 → 撤图 → 显视图」,人看见
+ * 的就是「点过滤,浏览器闪一下」(用户 09-26 报障)。遮挡是**几何**的事:原生视图压在
+ * DOM 之上这一条只对**与它相交**的浮层成立,不相交的浮层什么都盖不住。
+ *
+ * 量的是哪块矩形:作用域的根通常就是那块面板(菜单体 / 弹层 / 抽屉),量它;而对话框 /
+ * 命令面板 / 放大层 / 快速查看这一族**有一张铺满视口的遮罩**,根却是遮罩里面的那块面板 ——
+ * 只量面板会让浏览器从被压暗的遮罩底下亮着透出来,而且还接得住点击(模态被戳出一个洞)。
+ * 所以遮罩自述 `data-overlay-scrim`,根落在遮罩里就量遮罩。四张遮罩(`ui/Dialog` /
+ * `WorkspacePalette` / `ZoomOverlay` / `QuickLook`)都打了这一格;新加一张遮罩就得打。
+ */
+function overlayCovers(rect: DOMRect): boolean {
+  for (const node of focusTree.nodes().values()) {
+    if (node.kind !== 'float' && node.kind !== 'modal') continue
+    if (!node.root || node.inert) continue
+    const cover = node.root.closest<HTMLElement>('[data-overlay-scrim]') ?? node.root
+    if (intersects(rect, cover.getBoundingClientRect())) return true
+  }
+  return false
 }
 
 export interface NativeViewSlotProps {
@@ -204,8 +236,18 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
      * 所以起点从账本接:上一任说到哪,这一任从哪接着说。第一任接到的仍是 `false`,
      * 「发了几条」这个读数一格都没变。
      */
-    const claim = adoptViewClaim(viewId)
+    const me = Symbol('native-view-slot')
+    const claim = adoptViewClaim(viewId, me)
     let lastOccluded = claim.occluded
+    /**
+     * **这一任此刻是不是在说话的那一任**(2026-09-26,录屏坐实的病)。换宿主时旧的一任
+     * 不是当场就走:关掉的浮窗用上一棵树再画 120ms 出场动画(`FloatWindow.shownTree`),
+     * 旧占位格在那 120ms 里照旧量、照旧发 —— 而它量到的 z 已经变了(`floatOrder` 里
+     * 没了那扇窗),于是把旧浮窗矩形又发一遍,盖掉新宿主的帧。所以只有账本上最上面
+     * 那一任开口;让位的一任什么都不发、账也不写。它若又回到最上面(对方先走了),
+     * 把「上一次发过什么」清零,重发 —— 主进程手上那句是别人说的。判词在 `view-claim.ts`。
+     */
+    let speaking = true
     /** 「撤图」那一帧的排期(见下面 `unocclude` 那一段)。 */
     let clearing = 0
     let scheduled = 0
@@ -214,6 +256,15 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
     const measure = (): void => {
       scheduled = 0
       if (disposed || !host.isConnected) return
+      if (!isCurrentViewHolder(viewId, me)) {
+        speaking = false
+        return
+      }
+      if (!speaking) {
+        speaking = true
+        lastFrame = null
+        lastOccluded = claim.occluded
+      }
       const rect = host.getBoundingClientRect()
       const region = regionOf(host)
       const order = useStageStore.getState().floatOrder
@@ -254,7 +305,7 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
       }
       const occluded =
         visible &&
-        (coveredByFloat || overlayScopeCount() > 0 || useWorkbenchStore.getState().dragging)
+        (coveredByFloat || overlayCovers(rect) || useWorkbenchStore.getState().dragging)
       if (occluded !== lastOccluded) {
         lastOccluded = occluded
         // 写回账本:下一任(换宿主)从这一句接着量。
@@ -353,25 +404,29 @@ export function NativeViewSlot({ viewId, scope, elementRef, className }: NativeV
       offWorkbench()
       offFocus()
       /*
-       * 摘掉这块地 = 告诉主进程「它不该再看得见了」。**不发 `close`** ——
-       * 这一格在不在是数据面的事(`browser: do close`),占位格只管几何与显隐:
-       * 拖到别的叶去只是换个宿主,视图一格都不该掉。
-       */
-      bridge.send({
-        verb: 'frame',
-        viewId,
-        bounds: { x: 0, y: 0, width: 0, height: 0 },
-        visible: false,
-        z: 0,
-      })
-      /*
-       * 遮挡那句话**不在这里收回**,交给账本:换宿主那一拍新的一任在同一次提交里
-       * 接手,从「遮着」接着量,量到没被遮才发 `unocclude`(快照也随账交接,新占位格
-       * 第一帧不空)。一帧之内没人接手 = 这片地真的没了,账本替这一任把话收回 ——
-       * 不然主进程那边是一片藏着的视图配一只永远在跑的 1Hz 重拍。
+       * 摘掉这块地**不当场**告诉主进程「它不该再看得见了」(2026-09-26)。
+       *
+       * 换宿主是一次重挂:同一次提交里这一任卸载、下一任挂上。从前这里当场发一帧
+       * `{0×0, visible:false}`,下一任再发一帧「新矩形、可见」—— 主进程在同一拍里
+       * 让一片(拖拽期间因遮挡)已经藏着的视图先缩成 0×0、再改回新尺寸、最后才显
+       * 出来,真机上就是「拖进主面板后一片白,切走再切回才恢复」。所以「看不见」这
+       * 一帧与 `unocclude` 的收回走**同一条线**:交给账本,一帧之内有人接手就一个字
+       * 都不发(视图在原地换个矩形,不掉一帧),没人接手才替这一任把地收掉、把话收回。
        * 判词全文在 `view-claim.ts` 文件头。
+       *
+       * **不发 `close`** —— 这一格在不在是数据面的事(`browser: do close`),占位格
+       * 只管几何与显隐:拖到别的叶去只是换个宿主,视图一格都不该掉。
        */
-      releaseViewClaim(viewId, () => bridge.send({ verb: 'unocclude', viewId }))
+      releaseViewClaim(viewId, me, (claim) => {
+        bridge.send({
+          verb: 'frame',
+          viewId,
+          bounds: { x: 0, y: 0, width: 0, height: 0 },
+          visible: false,
+          z: 0,
+        })
+        if (claim.occluded) bridge.send({ verb: 'unocclude', viewId })
+      })
     }
     // `setSnapshot` 是 React 给的稳定口,不必进依赖表(进了这只 effect 就会跟着
     // 每一次快照重挂,而重挂 = 重新观察 + 重发一帧)。

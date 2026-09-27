@@ -38,10 +38,11 @@ export const DEFAULT_BROWSER_SEARCH_ENGINE_ID: BrowserSearchEngineId = 'google'
  * The selectable engines — single source of truth for the omnibox (query URL),
  * the start page's engine ring and the settings picker.
  *
- * **Where the selection is persisted is an open question** (B2). The old shell kept
- * it in the main process (`browser/search-engine.json`); that file went with the Vue
- * host and B1-a did not bring it back — nothing reads a persisted engine yet, so the
- * default below is the whole story today.
+ * The selection is persisted in `settings.browser.searchEngine` (B3-b): the start
+ * page's engine ring and the settings picker write it, and the omnibox's Enter reads
+ * it through `browserSettingsQuery` (`BrowserLeaf`, 2026-09-26 — until then Enter
+ * passed `undefined` here and every search went to the default engine). `undefined`
+ * still means "settings not loaded yet" and falls back to the default below.
  */
 export const BROWSER_SEARCH_ENGINES: readonly BrowserSearchEngine[] = [
   {

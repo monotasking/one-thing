@@ -145,13 +145,41 @@ describe('帧', () => {
     })
   })
 
-  it('卸载时报一帧「看不见」,但**不**发 close —— 摘地不等于关 tab', async () => {
+  it('卸载后**一帧内没人接手**才报一帧「看不见」,但**不**发 close —— 摘地不等于关 tab', async () => {
     const bridge = installBridge()
     const view = renderSlot()
     await flushFrames()
+    const before = bridge.sent.length
     act(() => view.unmount())
+    // 卸载那一拍一个字都不发:这一帧留给换宿主的下一任(2026-09-26)。
+    expect(bridge.sent.length).toBe(before)
+    await flushFrames()
     expect(bridge.sent.at(-1)).toMatchObject({ verb: 'frame', visible: false })
     expect(bridge.sent.some((m) => (m as { verb: string }).verb === 'close')).toBe(false)
+  })
+
+  /*
+   * 换宿主(2026-09-26 用户报障「拖进主面板变白,切走再切回才恢复」的根):同一次
+   * 提交里旧的卸载、新的挂上,主进程**不许**收到那帧「0×0、看不见」—— 从前它夹在
+   * 两帧「可见」之间,让一片藏着的视图先缩成 0×0 再放回去。
+   * **反证**:把 `NativeViewSlot` 清理里那一发 frame 从 `releaseViewClaim` 的回调挪回
+   * 当场发 → 这一条红。
+   */
+  it('换宿主:卸载与再挂载同一拍 → 全程没有一帧「看不见」,新宿主只多一帧「可见」', async () => {
+    const bridge = installBridge()
+    const first = renderSlot()
+    await flushFrames()
+    const hidden = () => bridge.sent.filter((m) => m.verb === 'frame' && !m.visible).length
+    const shown = () => bridge.sent.filter((m) => m.verb === 'frame' && m.visible).length
+    expect(hidden()).toBe(0)
+    expect(shown()).toBe(1)
+    act(() => {
+      first.unmount()
+    })
+    renderSlot()
+    await flushFrames()
+    expect(hidden()).toBe(0)
+    expect(shown()).toBe(2)
   })
 })
 
@@ -172,19 +200,67 @@ describe('遮挡三判据', () => {
     expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(1)
   })
 
-  it('挂着一格 `modal` 作用域 → occlude(菜单 / 弹层 / 命令面板都走这一条)', async () => {
+  it('挂着一格 `modal` 作用域**且压在这片地上** → occlude(菜单 / 弹层 / 抽屉都走这一条)', async () => {
     const bridge = installBridge()
     renderSlot()
     await flushFrames()
     const handle = focusTree.register('menu', null, {})
     act(() => {
-      handle.setRoot(document.createElement('div'))
+      // 菜单体与这片地(10,20,300×200)相交。
+      const root = document.createElement('div')
+      root.dataset.fakeRect = '100,100,200,300'
+      handle.setRoot(root)
     })
     await flushFrames()
     expect(bridge.sent.filter((m) => m.verb === 'occlude').length).toBe(1)
     act(() => handle.unregister())
     await flushFrames()
     expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(1)
+  })
+
+  /*
+   * 2026-09-26 用户报障「点会话列表的项目过滤,浏览器会闪」:那张菜单开在侧栏,与浏览器
+   * 隔半个屏幕,从前判据②只数「树上挂着几格」,于是照样走一遍拍快照 → 藏 → 显。
+   * **反证**:把 `overlayCovers(rect)` 换回 `overlayScopeCount() > 0` → 这一条红。
+   */
+  it('挂着的 `modal` 作用域**不与这片地相交** → 一个字都不发(隔半个屏幕的菜单盖不住我)', async () => {
+    const bridge = installBridge()
+    renderSlot()
+    await flushFrames()
+    const handle = focusTree.register('menu', null, {})
+    act(() => {
+      const root = document.createElement('div')
+      root.dataset.fakeRect = '800,600,200,300'
+      handle.setRoot(root)
+    })
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'occlude').length).toBe(0)
+    act(() => handle.unregister())
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(0)
+  })
+
+  it('带满屏遮罩的对话框:面板不相交也算遮(量的是 `data-overlay-scrim` 那张遮罩)', async () => {
+    const bridge = installBridge()
+    renderSlot()
+    await flushFrames()
+    const scrim = document.createElement('div')
+    scrim.setAttribute('data-overlay-scrim', '')
+    scrim.dataset.fakeRect = '0,0,2000,2000'
+    const panel = document.createElement('div')
+    panel.dataset.fakeRect = '800,600,200,300'
+    scrim.appendChild(panel)
+    document.body.appendChild(scrim)
+    const handle = focusTree.register('dialog', null, {})
+    act(() => {
+      handle.setRoot(panel)
+    })
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'occlude').length).toBe(1)
+    act(() => handle.unregister())
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(1)
+    scrim.remove()
   })
 
   it('压在上面的浮窗相交 → occlude;**自己那扇窗不算**(否则它会把自己永远遮住)', async () => {
@@ -290,6 +366,87 @@ describe('换宿主(重挂)', () => {
     expect(bridge.sent.filter((m) => m.verb === 'frame' && m.visible).length).toBe(2)
   })
 
+  /*
+   * 2026-09-26 录屏坐实的病:拖进主面板标签条之后,原生视图留在浮窗的旧矩形上。
+   * 关掉的浮窗用上一棵树再画 120ms 出场动画(`FloatWindow.shownTree`),旧占位格在
+   * 新的一任挂上**之后**还活着;它量到的 z 变了(`floatOrder` 里没了那扇窗),就把
+   * 旧浮窗矩形又发一遍,盖掉新宿主的帧。
+   * **反证**:把 `measure` 开头 `isCurrentViewHolder` 那一段删掉 → 这一条红。
+   */
+  it('旧的一任还活着(出场动画)又量了一次 → 一个字不发;主进程手上最后一帧是新宿主的', async () => {
+    const bridge = installBridge()
+    // 旧的一任长在浮窗 a 里(z 1)。
+    const mountOld = () =>
+      render(
+        <FocusScope scope="browser">
+          {({ scopeProps }) => (
+            <div {...scopeProps} data-pane-region="float:a">
+              <NativeViewSlot viewId="v1" scope="browser" />
+            </div>
+          )}
+        </FocusScope>,
+      )
+    act(() => {
+      useStageStore.setState({ floatOrder: ['a'] })
+    })
+    const old = mountOld()
+    const oldHost = old.container.querySelector<HTMLElement>('[data-native-view="v1"]')!
+    oldHost.dataset.fakeRect = '400,300,300,200'
+    await flushFrames()
+    expect(bridge.sent.at(-1)).toMatchObject({ verb: 'frame', bounds: { x: 400, y: 300 }, z: 1 })
+
+    // 落定:新的一任在中央区挂上(旧的还没卸载 —— 它在出场动画里),浮窗从 floatOrder 里消失。
+    const fresh = renderSlot()
+    act(() => {
+      useStageStore.setState({ floatOrder: [] })
+    })
+    await flushFrames()
+    const frames = bridge.sent.filter((m) => m.verb === 'frame')
+    // 新宿主那一帧(10,20,300×200,z 0)是最后一帧;旧的一任量到 z 变了也没开口。
+    expect(frames.at(-1)).toMatchObject({ bounds: { x: 10, y: 20, width: 300, height: 200 }, z: 0 })
+    expect(frames.filter((m) => m.bounds.x === 400).length).toBe(1)
+
+    // 旧的一任走了:有人接着持有 → 不藏、不收回。
+    act(() => old.unmount())
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'frame' && !m.visible).length).toBe(0)
+    fresh.unmount()
+  })
+
+  it('新的一任先走了 → 旧的一任回到最上面,把自己的帧重发一遍(主进程手上那句是别人说的)', async () => {
+    const bridge = installBridge()
+    const old = renderSlot()
+    await flushFrames()
+    const fresh = render(
+      <FocusScope scope="browser">
+        {({ scopeProps }) => (
+          <div {...scopeProps} data-pane-region="float:b">
+            <NativeViewSlot viewId="v1" scope="browser" />
+          </div>
+        )}
+      </FocusScope>,
+    )
+    const freshHost = fresh.container.querySelector<HTMLElement>('[data-native-view="v1"]')!
+    freshHost.dataset.fakeRect = '500,500,100,100'
+    act(() => {
+      useStageStore.setState({ floatOrder: ['b'] })
+    })
+    await flushFrames()
+    expect(bridge.sent.filter((m) => m.verb === 'frame').at(-1)).toMatchObject({ bounds: { x: 500 }, z: 1 })
+    const before = bridge.sent.filter((m) => m.verb === 'frame').length
+
+    act(() => fresh.unmount())
+    // 任何一次重量(store 变化)都会让回到最上面的那一任重发。
+    act(() => {
+      useStageStore.setState({ floatOrder: [] })
+    })
+    await flushFrames()
+    const frames = bridge.sent.filter((m) => m.verb === 'frame')
+    expect(frames.length).toBe(before + 1)
+    expect(frames.at(-1)).toMatchObject({ bounds: { x: 10, y: 20, width: 300, height: 200 }, visible: true, z: 0 })
+    old.unmount()
+  })
+
   it('快照跟着账交接:新占位格第一帧就画着上一任那张图', async () => {
     const bridge = installBridge()
     const first = renderSlot()
@@ -332,10 +489,15 @@ describe('换宿主(重挂)', () => {
       useWorkbenchStore.setState({ dragging: true })
     })
     await flushFrames()
+    const before = bridge.sent.length
     act(() => view.unmount())
-    // 卸载那一拍:只有一帧「看不见」,还没收回(留一帧给重挂)。
-    expect(bridge.sent.at(-1)).toMatchObject({ verb: 'frame', visible: false })
+    // 卸载那一拍:一个字都不发(藏与收回都留一帧给重挂,2026-09-26 起同一条线)。
+    expect(bridge.sent.length).toBe(before)
     await flushFrames()
+    // 没人接手:先藏这片地,再替它把「遮着」收回 —— 次序是判据(反过来主进程会先显一帧)。
+    const tail = bridge.sent.slice(before)
+    expect(tail.map((m) => m.verb)).toEqual(['frame', 'unocclude'])
+    expect(tail[0]).toMatchObject({ verb: 'frame', visible: false })
     expect(bridge.sent.filter((m) => m.verb === 'unocclude').length).toBe(1)
 
     // 没遮着的那一任走了:一条 unocclude 都不多。

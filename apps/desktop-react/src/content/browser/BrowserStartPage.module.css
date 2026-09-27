@@ -37,6 +37,17 @@
   pointer-events: none;
 }
 
+/*
+ * 底态减淡(2026-09-26):字形与提示语留着说「这块地是浏览器」,但退成一层水印 ——
+ * 首帧之前它们若照常浓,人读到的是「又回到起始页了」。走 `--btn-disabled-o`
+ * 那一档而不是新造一个数:它就是全壳「在场但不可用」的那一格透明度
+ * (`ui/Button` / `ui/Checkbox` 用的同一格)。
+ */
+.start[data-backdrop] .glyph,
+.start[data-backdrop] .hint {
+  opacity: var(--btn-disabled-o);
+}
+
 /* 图标梯里最大的那一档(`--icon-lg`)—— 起始页不值得为一枚装饰性字形在梯外
  * 加一个新档(08-31「梯外只剩两类例外」那条纪律)。 */
 .glyph {

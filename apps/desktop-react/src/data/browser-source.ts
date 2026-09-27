@@ -14,6 +14,7 @@ import {
   type WebPermissionAsk,
 } from './browser-notices'
 import { forgetBrowserFind, resetBrowserFind } from './browser-find'
+import { forgetBrowserTabSettled, resetBrowserSettled } from './browser-settled'
 import { getLogger } from '../services/log'
 
 /**
@@ -34,9 +35,12 @@ import { getLogger } from '../services/log'
  *                **先订后拉**:拉的那一刻起的 `navigated` 不能漏;
  *  · 事件到达 —— 按 `EVENT_INVALIDATES` 那张表标脏。有人在看就后台补拉、
  *                **不清屏**(律②);没人看就留个脏标记;
- *  · 换宿主  —— 叶从架子拖成浮窗 / 抬上舞台,拼贴树的结构共享保证它不重挂,
- *                所以这条线一格都不动。**视图更不会重载** —— 那正是
- *                `WebContentsView` 相对 `<webview>` 赚回来的那一格(§2.2-1);
+ *  · 换宿主  —— 叶从架子拖成浮窗 / 抬上舞台 / 拖进主面板,是**一次卸载再挂载**
+ *                (09-15 真机量到的,`native-view/view-claim.ts` 文件头;从前这里写
+ *                「结构共享不重挂」是错的)。这条线上它只是引用计数 -1 再 +1,读数
+ *                留在格子里;按 tab 的三格(查找 / 檐下两件 / 「停过没有」的闩)都
+ *                住在 `data/` 里所以不受影响。**视图不重载** —— 占位格与账本一帧内
+ *                交接,那正是 `WebContentsView` 相对 `<webview>` 赚回来的那一格(§2.2-1);
  *  · 卸载    —— `closeBrowserSource()`:refcount 归零才退订。**读数留在格子里**;
  *  · HMR     —— `resetBrowserSource()`(复用同一口拆卸,不写第二套)。
  *
@@ -520,6 +524,7 @@ const EVENT_NOTICES: Readonly<Record<string, (payload: unknown) => void>> = {
     if (typeof id !== 'string') return
     forgetBrowserNotices(id)
     forgetBrowserFind(id)
+    forgetBrowserTabSettled(id)
   },
 }
 
@@ -564,6 +569,7 @@ export function resetBrowserSource(): void {
   // 两套拆卸迟早漏一格。
   resetBrowserNotices()
   resetBrowserFind()
+  resetBrowserSettled()
 }
 
 /** 只给测试:此刻那格单槽填没填。 */

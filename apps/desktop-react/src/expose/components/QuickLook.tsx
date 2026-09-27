@@ -104,6 +104,7 @@ export function QuickLook({ sessionId }: Props) {
      * 不存在的控件。 */
     <div
       className={s.scrim}
+      data-overlay-scrim=""
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) closeQuickLook()
       }}

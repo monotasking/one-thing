@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { configureBrowserPort } from '../../../data/browser-port'
 import type { BrowserPort } from '../../../data/browser-port'
-import { browserTabsQuery, resetBrowserSource } from '../../../data/browser-source'
+import { browserTabsQuery, onBrowserFact, resetBrowserSource } from '../../../data/browser-source'
 import {
   browserSettingsQuery,
   saveBrowserProfilesMutation,
@@ -24,6 +24,7 @@ import { referenceKindOf } from '../../../references/registry'
 import { focusTree } from '../../../focus/registry'
 import { resetNativeViewKeymapDownlink } from '../../native-view/keymap-downlink'
 import { resetBrowserFind } from '../../../data/browser-find'
+import { resetBrowserSettled } from '../../../data/browser-settled'
 import { resetBrowserNotices } from '../../../data/browser-notices'
 import { BrowserLeaf } from '../BrowserLeaf'
 import { BrowserActionsMenu } from '../BrowserActionsMenu'
@@ -74,13 +75,20 @@ function settingsWith(
   } as AppSettings
 }
 
-function settingsPort(settings: AppSettings): BrowserSettingsPort & { saves: AppSettings[] } {
+/**
+ * 设置端口替身。**读回的是最后一次存的**(真后端就是这样):写路 `settle` 之后会
+ * `invalidate` 重拉一次,一只永远答出厂值的替身会把刚存的又冲回去 —— 那是替身在
+ * 说谎,不是产品在说谎。
+ */
+function settingsPort(initial: AppSettings): BrowserSettingsPort & { saves: AppSettings[] } {
+  let settings = initial
   const port = {
     saves: [] as AppSettings[],
     ready: () => Promise.resolve(undefined),
     readSettings: () => Promise.resolve({ success: true, settings }),
     saveSettings: (next: AppSettings) => {
       port.saves.push(next)
+      settings = next
       return Promise.resolve({ success: true, settings: next })
     },
   }
@@ -146,6 +154,7 @@ beforeEach(() => {
 afterEach(() => {
   resetBrowserSource()
   resetBrowserFind()
+  resetBrowserSettled()
   resetBrowserNotices()
   resetNativeViewKeymapDownlink()
   resetComposerReferenceSink()
@@ -208,6 +217,53 @@ describe('起始页', () => {
   })
 
   /*
+   * 回车用的是**设置里那一格**引擎(2026-09-26 用户报障「选了别的引擎最终还是谷歌」)。
+   * 从前 `go()` 写的是 `resolveBrowserSearchEngine(undefined)`,于是起始页点亮哪一枚
+   * 都没用。**反证**:把 `BrowserLeaf` 里 `searchEngineId` 换回 `undefined` → 这一条红。
+   */
+  it('起始页挑了百度再回车搜一句话 → navigate 去的是百度,不是谷歌', async () => {
+    const h = harness({ url: '', title: '' })
+    settingsPort(settingsWith([{ id: 'default', name: '' }], 'baidu'))
+    await act(async () => { render(<BrowserLeaf id="t1" />) })
+    await settle()
+    expect(
+      screen.getAllByTestId('browser-start-engine').find((el) => el.dataset.on !== undefined)?.dataset
+        .engineId,
+    ).toBe('baidu')
+
+    const input = screen.getByTestId('browser-address') as HTMLInputElement
+    await act(async () => {
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: 'hello world' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+    await settle()
+    const nav = h.did.filter((call) => call.op === 'navigate')
+    expect(nav.length).toBe(1)
+    expect(nav[0].params?.url).toBe('https://www.baidu.com/s?wd=hello%20world')
+  })
+
+  it('点一枚引擎丸之后**紧接着**回车,用的就是刚点的那一枚(乐观读数,不等设置落盘)', async () => {
+    const h = harness({ url: '', title: '' })
+    settingsPort(settingsWith([{ id: 'default', name: '' }]))
+    await act(async () => { render(<BrowserLeaf id="t1" />) })
+    await settle()
+    const ddg = screen
+      .getAllByTestId('browser-start-engine')
+      .find((el) => el.dataset.engineId === 'duckduckgo')!
+    await act(async () => { ddg.click() })
+    const input = screen.getByTestId('browser-address') as HTMLInputElement
+    await act(async () => {
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: 'onething' } })
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+    await settle()
+    const nav = h.did.filter((call) => call.op === 'navigate')
+    expect(nav.map((call) => call.params?.url)).toEqual(['https://duckduckgo.com/?q=onething'])
+  })
+
+  /*
    * ── 起始页留作底(2026-09-17)──────────────────────────────────────────
    *
    * 提交到网页首帧之间原生视图是透明的(实测约 500ms),从前起始页那时已经摘掉
@@ -226,9 +282,50 @@ describe('起始页', () => {
     expect(document.querySelector('[data-native-view="t1"]')).toBeTruthy()
     const start = screen.getByTestId('browser-start')
     expect(start.dataset.backdrop).toBe('true')
-    // 装饰:不进 Tab 序、不进无障碍树 —— 那排引擎丸此刻不是一组能按的钮。
+    // 装饰:不进 Tab 序、不进无障碍树。
     expect(start.hasAttribute('inert')).toBe(true)
     expect(start.getAttribute('aria-hidden')).toBe('true')
+    // **底不画引擎丸**(2026-09-26):首帧之前留在屏上的那排丸,读起来就是「回到起点」。
+    expect(screen.queryAllByTestId('browser-start-engine')).toEqual([])
+  })
+
+  /*
+   * 闩按 tabId 住在 `data/browser-settled.ts`,不住在组件上(2026-09-26):换宿主是
+   * 一次重挂,从前的 `useRef` 一重挂就归零,页面若正在加载,起始页就以底的身份又
+   * 装回来 —— 用户报障「搜索、加载时感觉回到了空状态页」的另一半。
+   * **反证**:把 `BrowserLeaf` 里 `hasBrowserTabSettled(id)` 换回一格 `useRef` → 红。
+   */
+  it('停过一次之后重挂(换宿主),页面正在加载也**不**再把起始页当底', async () => {
+    const h = harness({ url: 'http://x.test', title: '', loading: false })
+    settingsPort(settingsWith([{ id: 'default', name: '' }]))
+    const first = render(<BrowserLeaf id="t1" />)
+    await settle()
+    expect(screen.queryByTestId('browser-start')).toBeNull()
+
+    // 换宿主:卸载、再挂载;此刻这一格正在加载下一页。
+    h.row.loading = true
+    h.row.url = 'http://y.test'
+    await act(async () => { await browserTabsQuery.refetch() })
+    act(() => first.unmount())
+    await act(async () => { render(<BrowserLeaf id="t1" />) })
+    await settle()
+    expect(screen.queryByTestId('browser-start')).toBeNull()
+    expect(document.querySelector('[data-native-view="t1"]')).toBeTruthy()
+  })
+
+  it('tab 关掉之后同一个 id 再出现,闩是新的(`closed` 事实把它忘掉)', async () => {
+    const h = harness({ url: 'http://x.test', title: '', loading: false })
+    settingsPort(settingsWith([{ id: 'default', name: '' }]))
+    const first = render(<BrowserLeaf id="t1" />)
+    await settle()
+    act(() => first.unmount())
+    onBrowserFact({ event: 'closed', ref: 'browser:t1', payload: { id: 't1' } } as never)
+
+    h.row.loading = true
+    await act(async () => { await browserTabsQuery.refetch() })
+    await act(async () => { render(<BrowserLeaf id="t1" />) })
+    await settle()
+    expect(screen.getByTestId('browser-start').dataset.backdrop).toBe('true')
   })
 
   it('第一次加载完成 → 起始页撤掉;第二次导航不再回来', async () => {
