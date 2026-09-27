@@ -8,6 +8,7 @@ import {
   petOps,
   useCurrentPetId,
   usePetHushedId,
+  usePetVoiced,
   usePetLive,
   usePetRosterRig,
   usePetUtterance,
@@ -387,6 +388,8 @@ export function RecordDeck({
   const utterance = backendSaid?.utterance ?? null
   const hushedId = usePetHushedId()
   const hushed = backendSaid !== null && backendSaid.id === hushedId
+  const voicedFact = usePetVoiced()
+  const voiced = backendSaid !== null && voicedFact !== null && voicedFact.id === backendSaid.id ? voicedFact : null
 
   // ── 画面 ────────────────────────────────────────────────────────────────
   const { name, artist } = splitTitle(title)
@@ -568,6 +571,7 @@ export function RecordDeck({
             listening={listening}
             utterance={utterance}
             hushed={hushed}
+            voiced={voiced}
             size="stage"
             onGesture={reportGesture}
             menu={petMenu}

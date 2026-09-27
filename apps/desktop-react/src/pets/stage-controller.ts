@@ -1,7 +1,7 @@
 import { FrameCoalescer } from '../ui/frame-coalescer'
 import type { ReactionGroup } from './manifest'
 import { classifyTravel, hasDozedOff, muttersGroupFor, registerPoke, STILL_DOZE_MS } from './pose'
-import { mutterHoldMs, SPEAK_HOLD_MS, splitGlyphs, TYPE_LEAD_MS, typeDelayAfter } from './bubble'
+import { mutterHoldMs, SPEAK_HOLD_MS, splitGlyphs, TYPE_LEAD_MS, typeDelayAfter, VOICE_WAIT_MS, voicePace } from './bubble'
 import type { PetAction, PetActivity, PetChoice, PetGesture, PetOneShot, PetUtterance } from './types'
 
 /**
@@ -85,6 +85,13 @@ export class PetStageController {
   private bubbleSeq = 0
 
   private typeTimer: Timer | null = null
+  /**
+   * 在等声音的那一句(气泡的 id):它会出声(`utterance.voice`),字等 `voiced` 那一刻才出、按
+   * 声音的长度出。`null` = 没在等。
+   */
+  private awaitingVoice: { id: number; holdMs: number | undefined } | null = null
+  /** 当前这一句的字速倍数:1 = 固定字速;按声音走时 = 声音长度 ÷ 固定字速打完要的时长。 */
+  private typeScale = 1
   private holdTimer: Timer | null = null
   private dozeTimer: Timer | null = null
   /** 一次性动画重播:先撤一帧再给(同一种连着来两次时,换值才会重播)。 */
@@ -113,6 +120,11 @@ export class PetStageController {
    * 模拟卸载→再挂载)会把打盹线按剩下的时间重新排上。
    */
   start(): void {
+    // 模拟卸载清掉了等声音的兜底计时器:再排上,等声音的那一句不许因此卡在空气泡上。
+    const waiting = this.awaitingVoice
+    if (waiting && this.typeTimer === null) {
+      this.typeTimer = setTimeout(() => this.startTyping(waiting.id, undefined), VOICE_WAIT_MS)
+    }
     const { activity, stillSince } = this.snap
     if (kindOf(activity) !== 'still' || stillSince === null || this.dozeTimer !== null) return
     const left = STILL_DOZE_MS - (this.clock() - stillSince)
@@ -160,6 +172,8 @@ export class PetStageController {
   say(utterance: PetUtterance | null): void {
     this.clearTimer('type')
     this.clearTimer('hold')
+    this.awaitingVoice = null
+    this.typeScale = 1
     if (!utterance) {
       this.hide()
       return
@@ -175,6 +189,13 @@ export class PetStageController {
         bubble: { id, mode: 'speak', glyphs, typed: 0, done: false, choices: utterance.choices, actions: utterance.actions, sticky },
         ...(endStroke ? { petted: false } : {}),
       })
+      if (utterance.voice) {
+        // 会出声的一句:气泡先弹出来,字与声波都等声音(`voiced`)。等不到(事件丢了)就在
+        // `VOICE_WAIT_MS` 之后照固定字速打 —— 字永远不会卡在空气泡上。
+        this.awaitingVoice = { id, holdMs: utterance.holdMs }
+        this.typeTimer = setTimeout(() => this.startTyping(id, undefined), VOICE_WAIT_MS)
+        return
+      }
       this.setSpeaking(true)
       this.typeTimer = setTimeout(() => this.typeNext(id, utterance.holdMs), TYPE_LEAD_MS)
       return
@@ -197,6 +218,7 @@ export class PetStageController {
   hush(): void {
     const bubble = this.snap.bubble
     if (!bubble || bubble.mode !== 'speak' || bubble.done) return
+    this.awaitingVoice = null
     this.clearTimer('type')
     this.patch({ bubble: { ...bubble, typed: bubble.glyphs.length, done: true } })
     this.setSpeaking(false)
@@ -204,6 +226,18 @@ export class PetStageController {
     this.clearTimer('hold')
     const id = bubble.id
     this.holdTimer = setTimeout(() => this.hideIf(id), SPEAK_HOLD_MS)
+  }
+
+  /**
+   * 这一句开口的**声音开始了**(2026-09-27 真机:字按固定字速打,比黑豆的嘴快一倍还先跑)。
+   * 从这一刻起出字,字速按声音的长度摊开,最后一个字与声音一起落;不知道多长就照固定字速。
+   * 不是在等声音的那一句(老后端没带 `voice`、或已经被新话语顶掉)→ 什么都不做。
+   */
+  voiced(durationMs: number | undefined): void {
+    const bubble = this.snap.bubble
+    const waiting = this.awaitingVoice
+    if (!bubble || !waiting || bubble.id !== waiting.id || bubble.mode !== 'speak' || bubble.done) return
+    this.startTyping(bubble.id, durationMs)
   }
 
   /** 选了一个选项(`null` = Esc,等于不选)。只在选项已经亮出来时成立。 */
@@ -308,6 +342,18 @@ export class PetStageController {
 
   // ── 内部 ────────────────────────────────────────────────────────────────
 
+  /** 等声音的那一句开始出字(声音到了,或等超时)。 */
+  private startTyping(id: number, durationMs: number | undefined): void {
+    const waiting = this.awaitingVoice
+    const bubble = this.snap.bubble
+    if (!waiting || waiting.id !== id || !bubble || bubble.id !== id) return
+    this.awaitingVoice = null
+    this.clearTimer('type')
+    this.typeScale = durationMs !== undefined ? voicePace(bubble.glyphs, durationMs) : 1
+    this.setSpeaking(true)
+    this.typeNext(id, waiting.holdMs)
+  }
+
   private typeNext(id: number, holdMs: number | undefined): void {
     this.typeTimer = null
     const bubble = this.snap.bubble
@@ -315,7 +361,7 @@ export class PetStageController {
     const typed = bubble.typed + 1
     if (typed < bubble.glyphs.length) {
       this.patch({ bubble: { ...bubble, typed } })
-      this.typeTimer = setTimeout(() => this.typeNext(id, holdMs), typeDelayAfter(bubble.glyphs[typed - 1]))
+      this.typeTimer = setTimeout(() => this.typeNext(id, holdMs), typeDelayAfter(bubble.glyphs[typed - 1]) * this.typeScale)
       return
     }
     this.patch({ bubble: { ...bubble, typed: bubble.glyphs.length, done: true } })

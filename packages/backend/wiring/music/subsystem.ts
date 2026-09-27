@@ -243,6 +243,19 @@ export class MusicSubsystem {
     await Promise.all([generation.operations.drain(), generation.radio.drain(), generation.djVoice.drain(), generation.service.drain()])
   }
 
+  /**
+   * 起 now-playing 观察者与电台指挥(2026-09-27 真机:DJ 把 9 首歌写进收件箱,节目单纹丝不动)。
+   * 指挥是节目单唯一的消费者,它的拍子来自观察者的每一次采样;两样都不起,开台就只剩 DJ 在
+   * 空转。Vue 宿主当年在注册音乐 IPC 时起它们,那只文件随宿主删掉后只剩 `switchProvider`
+   * 会顺手起一次。宿主在窗口之后调一次;幂等,两只 start 各自可重入。观察者不会出声(没有
+   * 播放器守护进程时只是定时 stat 一个 socket),指挥在电台没开时每拍只读一次简报。
+   */
+  start(): void {
+    this.owner.assertActive()
+    this.generation.service.startMusicNowPlayingWatch()
+    this.generation.radio.startRadioConductor()
+  }
+
   switchProvider(providerId: string): Promise<{ success: boolean; error?: string }> {
     this.owner.assertActive()
     const work = this.changes.catch(() => {}).then(async () => {

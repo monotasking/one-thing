@@ -69,19 +69,21 @@ function harness(options: {
   )
   const wakeDj = vi.fn(options.wakeDj ?? (() => Promise.resolve()))
   const onLateStart = vi.fn()
+  const onProgrammeChanged = vi.fn()
   const conductor = createOnethingRadioConductor({
     store,
     runner,
     playSong,
     wakeDj,
     onLateStart,
+    onProgrammeChanged,
     diagnoseStartFailure: options.diagnoseStartFailure,
     startInFlight: options.startInFlight,
     now: options.now,
     logger: { warn: vi.fn() },
   })
 
-  return { store, conductor, played, playSong, wakeDj, onLateStart, transportRuns, runner }
+  return { store, conductor, played, playSong, wakeDj, onLateStart, onProgrammeChanged, transportRuns, runner }
 }
 
 describe('radio conductor', () => {
@@ -456,6 +458,29 @@ describe('radio conductor', () => {
       'song 0', 'song 1', 'song 7', 'song 8',
     ])
     expect(h.store.mergeInbox()).toBe(0)
+    expect(h.onProgrammeChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells the host when a merge grows the programme, and only then', async () => {
+    const h = harness({ dir, entries: 2 })
+
+    // Empty inbox: nothing changed, nobody is told.
+    h.conductor.onSample(playing())
+    await h.conductor.idle()
+    expect(h.onProgrammeChanged).not.toHaveBeenCalled()
+
+    // All duplicates of what is already on the shelf: still nothing new.
+    writeFileSync(h.store.inboxPath, JSON.stringify({ entries: [entry(0), entry(1)] }))
+    h.conductor.onSample(playing())
+    await h.conductor.idle()
+    expect(h.onProgrammeChanged).not.toHaveBeenCalled()
+
+    // Fresh songs while another is playing: no start happens, the list must still hear it.
+    writeFileSync(h.store.inboxPath, JSON.stringify({ entries: [entry(9)] }))
+    h.conductor.onSample(playing())
+    await h.conductor.idle()
+    expect(h.onProgrammeChanged).toHaveBeenCalledTimes(1)
+    expect(h.played).toEqual([])
   })
 
   it('never touches a pause the user chose', async () => {

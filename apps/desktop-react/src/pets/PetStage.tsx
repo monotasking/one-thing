@@ -77,6 +77,11 @@ export interface PetStageProps {
    * 1.5s 后气泡收起。随着新话语一起换(宿主按话语 id 判),不是一个持久开关。
    */
   hushed?: boolean
+  /**
+   * 当前这句开口的**声音开始了**(2026-09-27):`{ durationMs? }` 那一刻起按声音的长度出字。
+   * 只对带 `voice` 的开口有意义;与 `hushed` 同理随着新话语一起换,新对象身份 = 新的一次。
+   */
+  voiced?: { durationMs?: number } | null
   /** 你在打字。 */
   listening?: boolean
   size: PerchSize
@@ -98,6 +103,7 @@ export function PetStage({
   activity,
   utterance = null,
   hushed = false,
+  voiced = null,
   listening = false,
   size,
   onSpeakingChange,
@@ -168,6 +174,11 @@ export function PetStage({
     seenUtterance.current = utterance
     controller.say(utterance)
   }, [controller, utterance])
+
+  // ── 声音开始:排在话语那一格之后、说完那一格之前(同一次提交里三样都到:先说,再出声,再收)──
+  useEffect(() => {
+    if (voiced) controller.voiced(voiced.durationMs)
+  }, [controller, voiced])
 
   // ── 声音说完:排在话语那一格之后,同一次提交里「新话语 + 已经说完」先说再收(§10.6 最后一行)──
   useEffect(() => {

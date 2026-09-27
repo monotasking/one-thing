@@ -556,14 +556,18 @@ async function tellRadioHost(text: string): Promise<{ reply: Promise<string | un
  * first field run had the song poke out for two seconds, get paused for the
  * intro, then resume — backwards.)
  */
-function onSongStarted(entry: OnethingRadioProgrammeEntry, playerTitle: string): void {
+function onSongStarted(
+  entry: OnethingRadioProgrammeEntry,
+  playerTitle: string,
+  options: { lyricsPushed?: boolean } = {},
+): void {
   const store = getRadioStore()
   store.recordPlayed(playerTitle, entry.encryptedId, entry.durationS ?? getMusicNowPlaying()?.duration)
   lastPlayback.songStarted(playerTitle, entry.encryptedId, entry.durationS ?? getMusicNowPlaying()?.duration)
   // 节目单条目没有单独的歌手一格(播放器的标题本来就是「歌名 - 歌手」),`artist` 就不填 —— 不从
   // 标题里拆一个出来冒充。
   reportMoment(moments => moments.trackStarted({ title: playerTitle, encryptedId: entry.encryptedId }))
-  void pushLyricsFor(entry, playerTitle)
+  if (!options.lyricsPushed) void pushLyricsFor(entry, playerTitle)
   // The song is on: minutes of idle ahead — warm the next entry's caches now
   // so its start pays neither the lyric fetch nor the TTS synthesis.
   prefetchUpcomingEntry()
@@ -722,6 +726,13 @@ function createRadioStartTimer(title: string) {
 let playStarting: Promise<void> | null = null
 /** The entry the in-flight start is for; meaningful only while playStarting is set. */
 let playStartingEntry: OnethingRadioProgrammeEntry | null = null
+/**
+ * The in-flight start's song is already audible (verify confirmed it) and the
+ * start is only waiting for the host to finish talking over it. From here the
+ * bar must say 在放, not 换歌中 (2026-09-27 真机: the song sounded for the whole
+ * patter while the panel still said 正在切换, with no lyrics).
+ */
+let playStartSounding = false
 
 /**
  * The bar's "换歌中" signal: the title being started, undefined when no start
@@ -731,7 +742,7 @@ let playStartingEntry: OnethingRadioProgrammeEntry | null = null
  */
 function getRadioStartingTitle(): string | undefined {
   owner.assertActive()
-  return playStarting ? (playStartingEntry?.title ?? undefined) : undefined
+  return playStarting && !playStartSounding ? (playStartingEntry?.title ?? undefined) : undefined
 }
 
 /**
@@ -888,6 +899,20 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
       throw new Error(`play 返回成功但播放器没有在放「${entry.title}」`)
     }
     timer.mark('确认播放器已在放')
+    // The song is audible NOW — tell every client at once, before any wait on
+    // the patter below: 在放 + the player's title + this song's lyrics.
+    // (It used to happen only after the host finished talking, so a patter
+    // over the music left the panel on 正在切换 without lyrics for its whole
+    // length.) The rest of the ceremony — the played record, the moment, the
+    // prefetch — still waits for the start to be final (the station can be
+    // stopped mid-patter, and that song must not count as played).
+    const playerTitle = confirmedState.title ?? entry.title
+    playStartSounding = true
+    beginMusicCommand()
+    assumeMusicNowPlaying(() => confirmedState)
+    void pushLyricsFor(entry, playerTitle)
+    nudgeMusicClients()
+    void owner.track(refreshMusicNowPlaying()).catch(() => undefined)
     // 停止电台 may have landed during the load: the just-started song would
     // outlive the close — kill it instead of letting it play into a dead
     // station.
@@ -923,22 +948,15 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
         await patterInFlight
       }
     }
-    // Everything that used to hang off title-matching fires right here
-    // instead: we KNOW which song this is — we just started it. The player's
-    // own title (stable machine format) rides the pushes so the renderer's
-    // display always agrees with the bar.
-    // Announce the song FIRST, from the read that just confirmed it (2026-09-25:
-    // the lyrics used to go out ~200ms before now-playing — a fresh `state`
-    // read away — so every client briefly held song B's lyrics against song A
-    // and dropped them; and that refresh could reuse a poll started before
-    // the song, leaving the old title up until the next 5–20s tick).
-    beginMusicCommand()
-    assumeMusicNowPlaying(() => confirmedState)
-    onSongStarted(entry, confirmedState?.title ?? entry.title)
-    void owner.track(refreshMusicNowPlaying()).catch(() => undefined)
+    // The start is final: the rest of what used to hang off title-matching.
+    // 在放 and the lyrics already went out the moment the song was confirmed
+    // (above — announce first, lyrics second: 2026-09-25 the lyrics used to
+    // land ~200ms before now-playing and every client dropped them).
+    onSongStarted(entry, playerTitle, { lyricsPushed: true })
   })()
 
   playStartingEntry = entry
+  playStartSounding = false
   playStarting = start.then(
     () => undefined,
     () => undefined,
@@ -951,6 +969,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     await start
   } finally {
     playStarting = null
+    playStartSounding = false
     nudgeMusicClients()
   }
 
@@ -1594,6 +1613,7 @@ function startRadioConductor(): void {
       if (!onDeck) return
       onSongStarted(onDeck, getMusicNowPlaying()?.title ?? onDeck.title)
     },
+    onProgrammeChanged: nudgeMusicClients,
     logger: consoleLog,
   };
   conductor = createOnethingRadioConductor(radioConductorOptions)

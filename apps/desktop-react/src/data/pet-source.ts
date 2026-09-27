@@ -59,6 +59,8 @@ export interface PetUtteranceView {
   about?: { scheme: string; event: string }
   at: number
   duck: boolean
+  /** 只在 `utterance` 事件上:这一句接下来会出声,`voiced` 会跟来。 */
+  voice?: boolean
 }
 
 /** `pet:current` 读法的形(§9.3)。 */
@@ -219,13 +221,20 @@ export async function sayPet(text: string): Promise<PetSayReceiptView> {
 
 /* ── 最新一句、灯、说完 ─────────────────────────────────────────────────── */
 
+/** 一句开口的声音开始了:哪一句、声音多长(读不出就缺席)。 */
+export interface PetVoiced {
+  id: string
+  durationMs?: number
+}
+
 interface PetSpeechState {
   latest: PetUtteranceArrival | null
   onAirId: string | null
   hushedId: string | null
+  voiced: PetVoiced | null
 }
 
-const EMPTY_SPEECH: PetSpeechState = { latest: null, onAirId: null, hushedId: null }
+const EMPTY_SPEECH: PetSpeechState = { latest: null, onAirId: null, hushedId: null, voiced: null }
 let speech: PetSpeechState = EMPTY_SPEECH
 const speechListeners = new Set<() => void>()
 
@@ -244,6 +253,7 @@ function setSpeech(next: Partial<PetSpeechState>): void {
 const getLatest = (): PetUtteranceArrival | null => speech.latest
 const getOnAir = (): boolean => speech.onAirId !== null
 const getHushedId = (): string | null => speech.hushedId
+const getVoiced = (): PetVoiced | null => speech.voiced
 
 function asUtterance(payload: unknown): PetUtteranceView | null {
   if (!payload || typeof payload !== 'object') return null
@@ -258,10 +268,22 @@ function onPetFact(fact: ResourceEventFact): void {
     const view = asUtterance(fact.payload)
     if (!view) return
     setSpeech({
-      latest: { id: view.id, utterance: { mode: view.mode, text: view.text }, receivedAt: Date.now() },
+      latest: {
+        id: view.id,
+        utterance: { mode: view.mode, text: view.text, ...(view.mode === 'speak' && view.voice === true ? { voice: true } : {}) },
+        receivedAt: Date.now(),
+      },
       ...(view.mode === 'speak' ? { onAirId: view.id } : {}),
     })
     petCurrentQuery.invalidate()
+    return
+  }
+  if (fact.event === 'voiced') {
+    const payload = fact.payload as { utteranceId?: unknown; durationMs?: unknown } | null
+    const id = typeof payload?.utteranceId === 'string' ? payload.utteranceId : null
+    if (!id) return
+    const durationMs = typeof payload?.durationMs === 'number' && payload.durationMs > 0 ? payload.durationMs : undefined
+    setSpeech({ voiced: { id, ...(durationMs !== undefined ? { durationMs } : {}) } })
     return
   }
   if (fact.event === 'hushed') {
@@ -291,6 +313,11 @@ export function usePetUtterance(): PetUtteranceArrival | null {
 /** ON AIR:最近一句开口还没 `hushed`。 */
 export function usePetOnAir(): boolean {
   return useSyncExternalStore(subscribeSpeech, getOnAir, getOnAir)
+}
+
+/** 最近一次开始出声的那一句(带声音多长);没有过是 `null`。 */
+export function usePetVoiced(): PetVoiced | null {
+  return useSyncExternalStore(subscribeSpeech, getVoiced, getVoiced)
 }
 
 /** 最近一次说完的那一句的 id;没有过是 `null`。 */

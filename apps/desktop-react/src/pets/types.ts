@@ -96,6 +96,11 @@ export interface PetUtterance {
   actions?: readonly PetAction[]
   /** 停留时长(嘀咕;开口出完字之后的停留)。缺席走 §7.4 的缺省。 */
   holdMs?: number
+  /**
+   * 开口:这一句接下来会出声。气泡先弹出,字等「声音开始」(`PetStageController.voiced`)再出、
+   * 按声音的长度出;缺席 = 只有字,照固定字速打。
+   */
+  voice?: boolean
 }
 
 /**

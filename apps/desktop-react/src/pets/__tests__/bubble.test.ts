@@ -10,6 +10,7 @@ import {
   TYPE_CHAR_MS,
   TYPE_PUNCT_MS,
   typeDelayAfter,
+  voicePace,
 } from '../bubble'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -57,5 +58,22 @@ describe('气泡定位(§7.4 定位列)', () => {
     const css = readFileSync(path.resolve(__dirname, '../../styles/tokens.css'), 'utf-8')
     expect(css).toContain(`--pet-bubble-inset: ${BUBBLE_INSET_PX}px;`)
     expect(css).toContain(`--pet-bubble-gap: ${BUBBLE_GAP_PX}px;`)
+  })
+})
+
+describe('voicePace(字跟着声音走的字速倍数)', () => {
+  const glyphs = splitGlyphs('早上好，先来一首。') // 固定字速打完 1020ms
+
+  it('声音长度 ÷ 固定字速打完的时长', () => {
+    expect(voicePace(glyphs, 2_040)).toBeCloseTo(2)
+    expect(voicePace(glyphs, 1_020)).toBeCloseTo(1)
+  })
+
+  it('夹在 0.25–6 之间;没字 / 长度不对就是 1', () => {
+    expect(voicePace(glyphs, 60_000)).toBe(6)
+    expect(voicePace(glyphs, 10)).toBe(0.25)
+    expect(voicePace([], 2_000)).toBe(1)
+    expect(voicePace(glyphs, 0)).toBe(1)
+    expect(voicePace(glyphs, Number.NaN)).toBe(1)
   })
 })

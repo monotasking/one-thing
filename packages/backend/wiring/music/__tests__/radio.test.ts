@@ -193,6 +193,37 @@ describe('main radio playback (legacy starter)', () => {
     expect(store.readProgramme().entries.map(item => item.title)).toEqual(['song 2'])
   })
 
+  it('a song that sounds while the host is still talking shows as playing at once, with lyrics', async () => {
+    // 2026-09-27 真机:歌出声了,口播还在盖着说,面板却一直是「正在切换」、没有歌词 ——
+    // 宣告在等口播说完之后才发。现在:歌一确认出声就宣告;只有「记一首已播」等收尾等口播。
+    vi.useFakeTimers()
+    const radio = await loadRadio()
+    const service = await import('../service.js')
+    const store = radio.getRadioStore()
+    store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
+    store.writeProgramme({ entries: [{ ...entry(1), say: '早上好,先来一首软的。' }] })
+    mocks.stateReplies = ['playing']
+    let finishTalking!: () => void
+    hostVoice.speak.mockImplementation(() => new Promise<void>(resolve => { finishTalking = resolve }))
+
+    const resume = radio.resumeRadioPlayback()
+    await vi.advanceTimersByTimeAsync(4_000)
+
+    // Audible, host still talking: the bar says 在放, not 换歌中; lyrics are out.
+    expect(hostVoice.speak).toHaveBeenCalledTimes(1)
+    expect(radio.getRadioStartingTitle()).toBeUndefined()
+    expect(vi.mocked(service.assumeMusicNowPlaying)).toHaveBeenCalled()
+    expect(announceLyrics).toHaveBeenCalled()
+    // The start is not final yet: nothing counted as played, no moment.
+    expect(moments.trackStarted).not.toHaveBeenCalled()
+    expect(store.readBrief().played).toEqual([])
+
+    finishTalking()
+    await expect(resume).resolves.toBe(true)
+    expect(moments.trackStarted).toHaveBeenCalledTimes(1)
+    expect(store.readBrief().played.map(spin => spin.title)).toEqual(['song X'])
+  })
+
   it('reports failure when the player never starts within the deadline', async () => {
     vi.useFakeTimers()
     const radio = await loadRadio()

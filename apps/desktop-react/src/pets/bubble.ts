@@ -32,6 +32,24 @@ export function typeDelayAfter(prev: string | undefined): number {
   return prev !== undefined && PAUSE_AFTER.test(prev) ? TYPE_PUNCT_MS : TYPE_CHAR_MS
 }
 
+/**
+ * 会出声的一句,等声音开始最多等多久(合成没命中缓存时要一两秒;再久就当 `voiced` 丢了,照
+ * 固定字速打,别让字卡在空气泡上)。
+ */
+export const VOICE_WAIT_MS = 6_000
+
+/**
+ * 按声音长度出字的**字速倍数**:固定字速打完这句要的时长(每个字后的停顿,标点照样停得长些,
+ * 外加最后一个字自己的一拍)摊到 `durationMs` 上。夹在 0.25–6 之间:读错的长度不会让字一闪
+ * 而过或爬好几分钟 —— 声音说完的 `hushed` 反正会把剩下的字一次补齐。
+ */
+export function voicePace(glyphs: readonly string[], durationMs: number): number {
+  if (glyphs.length === 0 || !(durationMs > 0)) return 1
+  let total = TYPE_CHAR_MS
+  for (let i = 0; i < glyphs.length - 1; i += 1) total += typeDelayAfter(glyphs[i])
+  return Math.min(6, Math.max(0.25, durationMs / total))
+}
+
 /** 按字切(不按 UTF-16 码元 —— emoji 不许被劈成两半)。 */
 export function splitGlyphs(text: string): string[] {
   return Array.from(text)

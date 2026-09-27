@@ -53,6 +53,13 @@ export interface OnethingRadioConductorOptions {
    */
   onLateStart?(): void
   /**
+   * The inbox merge just put new songs on the programme. The host tells its
+   * clients (the song list reads the programme): without this the list only
+   * caught up when a song started, so a merge that did not start one — the
+   * previous song still playing, or the start failing — stayed invisible.
+   */
+  onProgrammeChanged?(): void
+  /**
    * Tells a broken SONG apart from a broken WORLD. "Drop the failed entry and
    * try the next" is the right move for a delisted/VIP-only song, but when the
    * failure is systemic — an expired NetEase login makes EVERY start fail the
@@ -351,6 +358,7 @@ export function createOnethingRadioConductor(
     if (merged > 0) {
       options.store.recordError(undefined)
       wakesWithoutGrowth = 0 // the DJ produced — wake budget resets
+      options.onProgrammeChanged?.()
     }
 
     const entriesLeft = options.store.readProgramme().entries.length

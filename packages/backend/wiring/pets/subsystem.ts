@@ -70,7 +70,8 @@ import {
   type Utterance,
 } from '@onething/runtime/pets'
 import type { EventBus } from '../../events/event-bus.js'
-import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions } from '../music/host-voice.js'
+import { audioDurationMs } from '@onething/runtime/voice/audio-duration'
+import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '../music/host-voice.js'
 import { getLogger } from '../logging/index.js'
 import { PetLedgerStore } from './ledger-store.js'
 import { petVoiceStyle } from './voice.js'
@@ -213,8 +214,9 @@ export class PetsSubsystem {
     return this.enqueue(async () => {
       const host = this.requireHost()
       const outcome = host.say(mode, text)
-      await this.settle(host.pet.id, outcome)
-      this.voiceOwnLine(host, outcome.utterance)
+      const kit = this.prepareOwnVoice(host, outcome.utterance)
+      await this.settle(host.pet.id, outcome, kit !== null)
+      this.voiceOwnLine(host, outcome.utterance, kit)
       if (outcome.utterance) return { said: true, utterance: outcome.utterance }
       return { said: false, reason: outcome.dropped ?? 'nothing-to-say' }
     })
@@ -289,15 +291,20 @@ export class PetsSubsystem {
       const host = this.requireHost()
       const petId = host.pet.id
       const outcome = await host.onMoment(moment)
-      await this.settle(petId, outcome)
-      if (host.pet.id === petId) this.voiceOwnLine(host, outcome.utterance)
+      const kit = this.prepareOwnVoice(host, outcome.utterance)
+      await this.settle(petId, outcome, kit !== null)
+      if (host.pet.id === petId) this.voiceOwnLine(host, outcome.utterance, kit)
       else this.scheduleEstimatedHush(petId, outcome.utterance)
     }).catch(error => log.warn('pet host failed on a moment', { scheme: moment.scheme, event }, error))
   }
 
-  /** 宿主交回的一步:账本行写盘,话语发出去。 */
-  private async settle(petId: string, outcome: PetHostOutcome): Promise<void> {
-    if (outcome.utterance) this.emit('utterance', outcome.utterance)
+  /**
+   * 宿主交回的一步:账本行写盘,话语发出去。`voice` = 这一句接下来会去合成出声(壳据此先弹出
+   * 空气泡,等 `voiced` 再按声音的长度出字;不出声的照固定字速打)。只进事件,不进账本。
+   */
+  private async settle(petId: string, outcome: PetHostOutcome, voice = false): Promise<void> {
+    const utterance = outcome.utterance
+    if (utterance) this.emit('utterance', voice && utterance.mode === 'speak' ? { ...utterance, voice: true } : utterance)
     await this.store.append(petId, outcome.lines)
   }
 
@@ -333,6 +340,10 @@ export class PetsSubsystem {
       if (signal?.aborted) return
       const speech = await kit.synthesize(text, title, petVoiceStyle(pet.id, pet.voice))
       if (!speech || signal?.aborted) return
+      // 真要出声了:告诉壳这一刻、以及这段声音多长,气泡的字跟着声音走(2026-09-27 真机:
+      // 字按固定字速打,比嘴快一倍还先跑)。读不出长度就不带,壳从这一刻起照固定字速打。
+      const durationMs = speechDurationMs(speech)
+      this.emit('voiced', { utteranceId: utterance.id, at: this.now(), ...(durationMs !== null ? { durationMs } : {}) })
       this.announceSpeech(true)
       try {
         await kit.play(speech, { text, title, ...(signal ? { signal } : {}) })
@@ -351,15 +362,25 @@ export class PetsSubsystem {
    * `hushed` 算「正在说」;拿不到就按估计时长收尾(P3 行为)。嘀咕不出声。**不等**:出声在喂食链
    * 之外跑,否则一句几秒的话会把这几秒里到的每条时刻都卡住。
    */
-  private voiceOwnLine(host: PetHost, utterance: Utterance | undefined): void {
+  private voiceOwnLine(host: PetHost, utterance: Utterance | undefined, kit: HostVoiceKit | null): void {
     if (!utterance || utterance.mode !== 'speak' || this.disposed) return
-    const kit = this.currentVoiceKit()
-    if (!kit || !host.markVoicing(utterance.id)) {
+    if (!kit) {
       this.scheduleEstimatedHush(host.pet.id, utterance)
       return
     }
     const title = utterance.about ? `${utterance.about.scheme}:${utterance.about.event}` : 'pet:say'
     void this.voiceUtterance(kit, host.pet, host.pet.id, utterance, { title, signal: this.voiceAbort.signal })
+  }
+
+  /**
+   * 自己开口的一句会不会出声:拿得到工具包、且它确是最后一句开口(`markVoicing`)。在话语发出去
+   * **之前**定下来,事件上才能说实话(`voice`)。嘀咕 / 空话 / 已 dispose → `null`。
+   */
+  private prepareOwnVoice(host: PetHost, utterance: Utterance | undefined): HostVoiceKit | null {
+    if (!utterance || utterance.mode !== 'speak' || this.disposed) return null
+    const kit = this.currentVoiceKit()
+    if (!kit || !host.markVoicing(utterance.id)) return null
+    return kit
   }
 
   private currentVoiceKit(): HostVoiceKit | null {
@@ -405,7 +426,8 @@ export class PetsSubsystem {
           if (this.disposed || !host) return null
           const outcome = host.claim(source, text, { preempt })
           if (outcome.kind !== 'claimed') return outcome
-          await this.settle(host.pet.id, outcome)
+          // 认领下来的口播一定去出声(`speakClaimed` → `voiceUtterance`)。
+          await this.settle(host.pet.id, outcome, true)
           if (outcome.preempted) log.info('radio patter preempted the pet', { petId: host.pet.id })
           return { kind: 'claimed' as const, petId: host.pet.id, utterance: outcome.utterance, pet: host.pet }
         })
@@ -482,5 +504,14 @@ export class PetsSubsystem {
 
   private now(): number {
     return this.options.clock ? this.options.clock.now() : Date.now()
+  }
+}
+
+/** 这段合成语音多长(毫秒);读不出(格式不认 / 坏数据)= `null`。不抛。 */
+function speechDurationMs(speech: PatterSpeech): number | null {
+  try {
+    return audioDurationMs(Buffer.from(speech.audioBase64, 'base64'), speech.mimeType)
+  } catch {
+    return null
   }
 }

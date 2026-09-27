@@ -279,3 +279,71 @@ describe('活动与计时(§7.1)', () => {
     expect(onSpeakingChange).toHaveBeenLastCalledWith(false)
   })
 })
+
+/**
+ * 2026-09-27 真机:黑豆气泡里的字按固定字速打,比他嘴里的话快一倍、还在声音出来之前就开跑。
+ * 会出声的一句(`voice`)等「声音开始」(`voiced`)再出字,字速按声音的长度摊开。
+ */
+describe('字跟着声音走(`voice` / `voiced`)', () => {
+  // 9 个字;固定字速打完要 95×7 + 260(逗号后)+ 95(末字一拍)= 1020ms。
+  const LINE = '早上好，先来一首。'
+
+  it('会出声的一句:气泡先弹出、不出字不亮声波;声音一到才出字,按声音长度摊开,末字与声音一起落', () => {
+    const onSpeakingChange = vi.fn()
+    const { rerender } = mount({ onSpeakingChange })
+    const utterance = { mode: 'speak' as const, text: LINE, voice: true }
+    rerender({ onSpeakingChange, utterance })
+    act(() => void vi.advanceTimersByTime(3_000))
+    expect(bubble().dataset.show).toBe('true')
+    expect(bubbleText()).toBe('')
+    expect(onSpeakingChange).not.toHaveBeenCalledWith(true)
+
+    // 声音 2040ms = 固定字速的两倍:每个字间隔也是两倍。
+    rerender({ onSpeakingChange, utterance, voiced: { durationMs: 2_040 } })
+    expect(bubbleText()).toBe('早')
+    expect(onSpeakingChange).toHaveBeenLastCalledWith(true)
+    act(() => void vi.advanceTimersByTime(190))
+    expect(bubbleText()).toBe('早上')
+    act(() => void vi.advanceTimersByTime(1_600))
+    expect(bubbleText()).not.toBe(LINE)
+    act(() => void vi.advanceTimersByTime(70))
+    expect(bubbleText()).toBe(LINE)
+  })
+
+  it('声音迟迟不来(事件丢了):等满 6s 照固定字速打,不卡在空气泡上', () => {
+    const { rerender } = mount()
+    rerender({ utterance: { mode: 'speak', text: LINE, voice: true } })
+    act(() => void vi.advanceTimersByTime(5_900))
+    expect(bubbleText()).toBe('')
+    act(() => void vi.advanceTimersByTime(100))
+    expect(bubbleText()).toBe('早')
+    act(() => void vi.advanceTimersByTime(1_000))
+    expect(bubbleText()).toBe(LINE)
+  })
+
+  it('声音没来就说完了(合成失败):字一次出齐', () => {
+    const { rerender } = mount()
+    const utterance = { mode: 'speak' as const, text: LINE, voice: true }
+    rerender({ utterance })
+    act(() => void vi.advanceTimersByTime(500))
+    rerender({ utterance, hushed: true })
+    expect(bubbleText()).toBe(LINE)
+  })
+
+  it('不知道声音多长:从声音开始那一刻照固定字速打', () => {
+    const { rerender } = mount()
+    const utterance = { mode: 'speak' as const, text: LINE, voice: true }
+    rerender({ utterance })
+    rerender({ utterance, voiced: {} })
+    expect(bubbleText()).toBe('早')
+    act(() => void vi.advanceTimersByTime(95))
+    expect(bubbleText()).toBe('早上')
+  })
+
+  it('只有字的开口(没带 voice):照旧 260ms 后照固定字速打,不等声音', () => {
+    const { rerender } = mount()
+    rerender({ utterance: { mode: 'speak', text: LINE } })
+    act(() => void vi.advanceTimersByTime(260))
+    expect(bubbleText()).toBe('早')
+  })
+})

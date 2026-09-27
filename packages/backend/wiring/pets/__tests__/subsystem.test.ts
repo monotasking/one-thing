@@ -252,6 +252,42 @@ describe('PetsSubsystem · host voice (P3)', () => {
     expect(lines.map(line => line.kind)).toEqual(['utterance', 'hushed'])
   })
 
+  it('09-27 字跟声音走:utterance 带 voice,真出声时发 voiced(带从音频读出的时长),先于播放', async () => {
+    // 两帧 MPEG1 Layer III 128kbps 44.1kHz:2 × 1152 / 44100 ≈ 52ms。
+    const frame = new Array<number>(417).fill(0)
+    frame.splice(0, 4, 0xff, 0xfb, 0x90, 0x00)
+    const speech: PatterSpeech = { audioBase64: Buffer.from([...frame, ...frame]).toString('base64'), mimeType: 'audio/mpeg' }
+    const { kit, order } = fakeKit({ speech })
+    const payloads: Array<{ event: string; payload: Record<string, unknown> }> = []
+    teardown.push(bus.onGlobal('resource:event', ({ event }) => {
+      if (!event.ref.startsWith('pet:')) return
+      payloads.push({ event: event.event, payload: event.payload as Record<string, unknown> })
+      if (event.event === 'voiced') order.push('voiced')
+    }))
+    await pets.createHostVoice(kit).speak('早上好。', { title: 'song', overMusic: true })
+    expect(order).toEqual(['synthesize', 'voiced', 'play'])
+    const said = payloads.find(row => row.event === 'utterance')!.payload
+    expect(said).toMatchObject({ mode: 'speak', text: '早上好。', voice: true })
+    expect(payloads.find(row => row.event === 'voiced')!.payload).toMatchObject({ utteranceId: said.id, durationMs: 52 })
+    // `voice` 只进事件,不进账本。
+    expect((await ledger()).find(line => line.kind === 'utterance')?.utterance).not.toHaveProperty('voice')
+  })
+
+  it('09-27 读不出长度的音频:voiced 照发,不带 durationMs;合成失败:不发 voiced', async () => {
+    const events: Array<{ event: string; payload: Record<string, unknown> }> = []
+    teardown.push(bus.onGlobal('resource:event', ({ event }) => {
+      if (event.ref.startsWith('pet:')) events.push({ event: event.event, payload: event.payload as Record<string, unknown> })
+    }))
+    await pets.createHostVoice(fakeKit({ speech: { audioBase64: 'QUJD', mimeType: 'audio/ogg' } }).kit)
+      .speak('一句。', { title: 'a', overMusic: false })
+    const voiced = events.find(row => row.event === 'voiced')
+    expect(voiced).toBeDefined()
+    expect(voiced!.payload).not.toHaveProperty('durationMs')
+    events.length = 0
+    await pets.createHostVoice(fakeKit({ speech: null }).kit).speak('又一句。', { title: 'b', overMusic: false })
+    expect(events.map(row => row.event)).toEqual(['utterance', 'hushed'])
+  })
+
   it('没配语音(合成答 null):不放、不报出声,气泡照出、hushed 立刻到', async () => {
     const { kit, order } = fakeKit({ speech: null })
     trackOrder(order)

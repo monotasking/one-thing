@@ -17,7 +17,8 @@
  * ── 事件与时刻 ────────────────────────────────────────────────────────────
  * `poked` / `stroked` 带 `moment: { weight: 'low' }`,所以它们本身也是时刻 —— 走与别的
  * 应用的事实完全相同的那条路进宿主(§9.4),落进账本,不开口。`utterance` 与 `hushed`(P3,§10.4:
- * 一句开口真的说完了)**不带** `moment`:宠物不对自己说的话起反应。
+ * 一句开口真的说完了)**不带** `moment`:宠物不对自己说的话起反应。`voiced`(一句开口真的开始出声,
+ * 带声音多长)同理不带 —— 它只给壳对字用(2026-09-27:气泡的字跟着声音走)。
  */
 
 import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
@@ -52,22 +53,24 @@ const ROSTER_ENTRY_SCHEMA: JsonSchema = {
   required: ['id', 'name', 'rig', 'sample'],
 }
 
+const UTTERANCE_PROPERTIES = {
+  id: { type: 'string' },
+  petId: { type: 'string' },
+  mode: { type: 'string', enum: ['speak', 'mutter'], description: 'speak = out loud and takes the attention budget; mutter = text only.' },
+  text: { type: 'string' },
+  about: {
+    type: 'object',
+    properties: { scheme: { type: 'string' }, event: { type: 'string' } },
+    required: ['scheme', 'event'],
+    description: 'The fact this line reacts to. Absent for lines asked for with say.',
+  },
+  at: { type: 'number', description: 'Epoch milliseconds.' },
+  duck: { type: 'boolean', description: 'Whether apps making sound should lower their volume.' },
+}
+
 const UTTERANCE_SCHEMA: JsonSchema = {
   type: 'object',
-  properties: {
-    id: { type: 'string' },
-    petId: { type: 'string' },
-    mode: { type: 'string', enum: ['speak', 'mutter'], description: 'speak = out loud and takes the attention budget; mutter = text only.' },
-    text: { type: 'string' },
-    about: {
-      type: 'object',
-      properties: { scheme: { type: 'string' }, event: { type: 'string' } },
-      required: ['scheme', 'event'],
-      description: 'The fact this line reacts to. Absent for lines asked for with say.',
-    },
-    at: { type: 'number', description: 'Epoch milliseconds.' },
-    duck: { type: 'boolean', description: 'Whether apps making sound should lower their volume.' },
-  },
+  properties: UTTERANCE_PROPERTIES,
   required: ['id', 'petId', 'mode', 'text', 'at', 'duck'],
 }
 
@@ -146,7 +149,28 @@ export const petResourceSpec: ResourceSpec = {
   events: {
     utterance: {
       title: 'The pet said a line',
-      payload: UTTERANCE_SCHEMA,
+      payload: {
+        ...UTTERANCE_SCHEMA,
+        properties: {
+          ...UTTERANCE_PROPERTIES,
+          voice: {
+            type: 'boolean',
+            description: 'A spoken line that is about to be synthesized and played: a voiced event follows when the sound starts (or only hushed, if synthesis fails).',
+          },
+        },
+      },
+    },
+    voiced: {
+      title: 'A spoken line has started to sound',
+      payload: {
+        type: 'object',
+        properties: {
+          utteranceId: { type: 'string', description: 'The id of the utterance now sounding.' },
+          at: { type: 'number', description: 'Epoch milliseconds.' },
+          durationMs: { type: 'number', description: 'Length of the audio, read from the audio itself. Absent when it could not be read.' },
+        },
+        required: ['utteranceId', 'at'],
+      },
     },
     hushed: {
       title: 'A spoken line has really ended (played out, failed or was stopped)',

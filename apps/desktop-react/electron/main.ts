@@ -372,6 +372,20 @@ function startPostWindowServices(): void {
     })
 
     /*
+     * **电台**(2026-09-27 真机:DJ 把 9 首歌写进了收件箱,节目单半小时纹丝不动,「都排完了但
+     * nothing happened」)。指挥(`radio-conductor`)是节目单唯一的消费者 —— 它把收件箱并进
+     * 节目单、起播、叫醒 DJ,而它的拍子来自 now-playing 观察者的每一次采样。Vue 宿主当年在
+     * 注册音乐 IPC 时把两样都起了;那只文件 09-04 随宿主一起删掉之后,这个壳里从没有人再起过,
+     * 于是只有换音乐 CLI(`switchProvider`)那一条路会顺手起一次。与 MCP / ACP 同一句「何时
+     * start」:窗口之后、装配之后;收尾归子系统自己的 `drain()`(装配时已 `own`)。
+     */
+    try {
+      b.music.start()
+    } catch (error) {
+      log.error('subsystem startup failed', { subsystem: 'music', blocking: false }, error)
+    }
+
+    /*
      * **内嵌浏览器**(B2 ②;整块的判词在 `electron/browser/index.ts` 的文件头)。
      *
      * 次序是硬的:要 `window`(视图得挂进 `win.contentView`)、要**装配完**的
