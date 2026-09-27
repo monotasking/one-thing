@@ -72,6 +72,8 @@ vi.mock('../../../stores/sessions.js', () => ({
   getSessionsList: vi.fn(() => []),
   createSession: vi.fn(),
   updateSessionAgent: vi.fn(),
+  patchSessionFields: vi.fn(),
+  onSessionsDeleted: () => () => {},
 }))
 
 vi.mock('@onething/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
@@ -217,7 +219,8 @@ describe('tellRadioHost', () => {
     const { reply } = await radio.tellRadioHost('慢一点')
     const sessionId = djSessionId(radio)
     mocks.lastAssistant = { id: 'm2', content: '  好,往下收一收。  ' }
-    expect(fire(sessionId, 'stream:complete')).toBe(1)
+    // 两只订阅:这一发的回话 + 「主持人在干活」那盏灯(09-26,两只都在流结束时退。
+    expect(fire(sessionId, 'stream:complete')).toBe(2)
 
     await expect(reply).resolves.toBe('好,往下收一收。')
     // 说完就退订:同一条会话的下一轮不该再惊动这一发。
@@ -254,10 +257,14 @@ describe('tellRadioHost', () => {
 
     const { reply } = await radio.tellRadioHost('在吗')
     const sessionId = djSessionId(radio)
-    expect(mocks.handlers.get(`${sessionId}|stream:complete`)?.size).toBe(1)
+    // 回话那一只 + 「主持人在干活」那一只(后者自己有十分钟的闹钟,不归这 60 秒管)。
+    expect(mocks.handlers.get(`${sessionId}|stream:complete`)?.size).toBe(2)
 
     await vi.advanceTimersByTimeAsync(60_000)
     await expect(reply).resolves.toBeUndefined()
+    expect(mocks.handlers.get(`${sessionId}|stream:complete`)?.size).toBe(1)
+    // 十分钟没等到他一句话,那盏灯也熄。
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(mocks.handlers.get(`${sessionId}|stream:complete`)?.size).toBe(0)
   })
 

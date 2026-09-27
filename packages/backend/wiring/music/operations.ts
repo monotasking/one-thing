@@ -33,7 +33,7 @@ import { getSettings } from '../../stores/settings.js'
 export function createMusicOperationsScope(options: { service: MusicServiceScope; radio: RadioScope; assertOwned?: () => void }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, refreshMusicNowPlaying, beginMusicCommand, assumeMusicNowPlaying } = options.service
-  const { getRadioStartingTitle, getRadioStore, isRadioActive, likeCurrentSong, markRadioGesture,
+  const { getRadioStartingTitle, getRadioStore, hostState, isDjWorking, isRadioActive, likeCurrentSong, markRadioGesture,
     radioToolClose, recordRadioSkip, replayCurrentRadioSong, resumeRadioPlayback, skipToNextRadioSong } = options.radio
 /**
  * Where the bar's volume number comes from is the provider's business: ncm
@@ -57,6 +57,10 @@ function readRadioBrief(): MusicRadioState {
     starting: getRadioStartingTitle(),
     programmeLength: programme.entries.length,
     canResume: programme.entries.length > 0 || brief.onDeck !== undefined,
+    // 主持人此刻真在编排才是 true(09-26:界面上的「正在准备歌曲」从此只在这一格为真时显示)。
+    djWorking: isDjWorking(),
+    // 主持人的状态牌(§16.3):在不在干活、在干什么。壳只画 `doing.label`。
+    host: hostState(),
     upNext: programme.entries[0]?.title,
     volume: readPlayerVolume(),
     startedAt: brief.active ? brief.startedAt : undefined,

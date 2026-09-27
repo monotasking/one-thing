@@ -139,77 +139,7 @@
 }
 
 /* ── 播放列表抽屉 ─────────────────────────────────────────────────────── */
-
-/*
- * 遮罩铺满**这块面**(不是整扇窗)—— 抽屉是这块面自己的一层,盖住别人的面板会是
- * 一件它无权做的事。层级用 --z-float:它在内容之上,在全屏遮罩(--z-overlay)之下。
- */
-.drawerScrim {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-float);
-  background: var(--scrim);
-  animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
-}
-
-.drawer {
-  position: absolute;
-  z-index: var(--z-float);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--surface-2);
-  box-shadow: var(--sh-3);
-}
-
-/* < 560:从底下升起。 */
-.drawer[data-form='sheet'] {
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-height: var(--music-drawer-h);
-  border-radius: var(--music-drawer-r) var(--music-drawer-r) 0 0;
-  animation: var(--kf-music-drawer-up) var(--music-drawer-dur) var(--ease-music-drawer);
-}
-
-/* ≥ 560:从右边滑出,通高。`88%` 是窄到极限时的让步:遮罩总要露出一条边给手点。 */
-.drawer[data-form='side'] {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(var(--music-drawer-w), 88%);
-  border-radius: var(--music-drawer-r) 0 0 var(--music-drawer-r);
-  animation: var(--kf-music-drawer-in) var(--music-drawer-dur) var(--ease-music-drawer);
-}
-
-.drawerHead {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-2) 0 var(--sp-3);
-}
-
-.drawerTitle {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-title);
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-/* 身子自己滚:一张一百条的单子在抽屉里滚,不把抽屉撑破。 */
-.drawerBody {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: var(--sp-3);
-}
+/* 骨架(遮罩 / 两档形 / 檐 / 滚动身子)已抬进 `ui/Drawer`(主持人抽屉 H0,2026-09-27)。 */
 
 /* ── 串联单(住在抽屉里)──────────────────────────────────────────────── */
 
@@ -642,13 +572,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
-}
-
-/* ── 播放列表抽屉的檐:关台 + 关闭(音乐面 v8;v9 起账号挪到面板的檐上)──────────────────────── */
-.drawerTools {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
 }
 
 /* 「翻面以后」:这一面到哪首为止。是一条记号,不是一行歌。 */

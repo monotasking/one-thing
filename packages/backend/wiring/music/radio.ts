@@ -12,6 +12,7 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import {
+  MUSIC_APP_ID,
   RADIO_DJ_AGENT_ID,
   RADIO_DJ_AGENT_NAME,
   RADIO_DJ_FACTORY_VERSION,
@@ -36,11 +37,13 @@ import {
 } from '@onething/runtime/music/index'
 import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import type { MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
+import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
+import { describeHostDoing, projectHostLog } from '@onething/runtime/music/host-log'
 import { addGrant } from '@onething/core'
 import { writeJsonFile } from '@onething/core/storage'
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/runtime/agents/store-bound.wiring'
 import { markSessionUnattended } from '@onething/runtime/permissions/unattended'
+import { resolveCollabVenue } from '@onething/runtime/collab'
 import { getSettings } from '../../stores/settings.js'
 import * as sessions from '../../stores/sessions.js'
 import { sessionReads } from '../../session/reads.js'
@@ -78,14 +81,27 @@ export function isDjSessionOversized(
   return contextSize > DJ_SESSION_MAX_CONTEXT_TOKENS || messageCount > DJ_SESSION_MAX_MESSAGES
 }
 
+/**
+ * 「电台能往这条会话里发话吗」。只有普通聊天场子(`resolveCollabVenue(kind) === 'chat'`)能:
+ * 协作房 / 派工 / agent 私聊由协作协调器驱动,引擎对非协调器来源的内部消息**直接拒收**
+ * (`stream-engine.ts`「internal source refused on coordinator-driven session」)。
+ * 09-26 真机:复用挑到了 7 月那条与 DJ 的私聊房 `agent-dm-radio-dj`,每一次唤醒都被这么
+ * 静默拒掉,电台「排了半个小时啥也没」。判据只认协作域那一句,不自己认 id 前缀。
+ */
+export function isDrivableDjSession(session: { kind?: string | null } | null | undefined): boolean {
+  return session !== null && session !== undefined && resolveCollabVenue(session.kind) === 'chat'
+}
+
 /** Newest radio-dj session light enough to keep using (index metadata only). */
 export function pickReusableRadioDjSession(
-  list: Array<{ id: string; agentId?: string; updatedAt: number; messageCount?: number }>,
+  list: Array<{ id: string; agentId?: string; kind?: string | null; updatedAt: number; messageCount?: number }>,
 ): string | null {
   const candidates = list
     .filter(
       meta =>
-        meta.agentId === RADIO_DJ_AGENT_ID && (meta.messageCount ?? 0) <= DJ_SESSION_MAX_MESSAGES,
+        meta.agentId === RADIO_DJ_AGENT_ID
+        && isDrivableDjSession(meta)
+        && (meta.messageCount ?? 0) <= DJ_SESSION_MAX_MESSAGES,
     )
     .sort((a, b) => b.updatedAt - a.updatedAt)
   return candidates[0]?.id ?? null
@@ -105,6 +121,12 @@ export function createRadioScope(options: {
   moments?: MusicMoments
   /** 手上那份歌词换了(子系统把它发成 `lyricsChanged`)。缺席 = 不报(测试)。 */
   announceLyrics?: (lyrics: MusicLyrics) => void
+  /**
+   * 主持人抽屉的两条事实(§16.3):`hostActivity`(状态牌那一句变了,负载 = `hostState()`)与
+   * `hostLogChanged`(记录流多了东西,负载空)。子系统把它们发成 `music:radio` 上的资源事件。
+   * 缺席 = 不报(测试)。
+   */
+  announceHostFact?: (event: 'hostActivity' | 'hostLogChanged', payload: Record<string, unknown>) => void
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
@@ -120,6 +142,19 @@ export function createRadioScope(options: {
       report(moments)
     } catch (error) {
       log.warn('music moment report failed', {}, error)
+    }
+  }
+  /**
+   * 报一条主持人事实。**不抛**,理由同 `reportMoment`:一个坏掉的订阅者不该让发消息 /
+   * 收工那条正事失败。
+   */
+  const reportHostFact = (event: 'hostActivity' | 'hostLogChanged', payload: Record<string, unknown>): void => {
+    const announce = options.announceHostFact
+    if (!announce) return
+    try {
+      announce(event, payload)
+    } catch (error) {
+      log.warn('music host fact report failed', { event }, error)
     }
   }
   /** 正在说的口播各自的中止源:关台 / 停止电台时一起拉掉(§10.6「关台中途」那一行)。 */
@@ -149,6 +184,8 @@ let radioStore: OnethingRadioStore | null = null
 /** 上次放到哪了(09-19):守护进程还活着时抄进简报,续播从那一秒接着放。 */
 const lastPlayback = new LastPlaybackRecorder(() => getRadioStore())
 let conductor: OnethingRadioConductor | null = null
+/** 订着「这批会话没了」的那只退订;开台时接上,收尾时拆(见 `startRadioConductor`)。 */
+const deletedSessionsWatch: { stop: (() => void) | null } = { stop: null }
 /** Sessions this process already pre-granted music-dir writes to. */
 const grantedSessions = new Set<string>()
 
@@ -247,8 +284,16 @@ function ensureRadioSession(store: OnethingRadioStore): string {
 
   if (brief.sessionId) {
     const existing = sessions.getSession(brief.sessionId)
-    if (existing && !isDjSessionOversized(existing)) return brief.sessionId
-    if (existing) {
+    if (existing && !isDrivableDjSession(existing)) {
+      // 简报指着一间协作房(09-26 真机):往里发话会被引擎拒收,换一条能驱动的。
+      log.warn('dj session is a collab venue, not drivable by the radio; picking another', {
+        sessionId: brief.sessionId,
+        kind: existing.kind,
+      })
+    } else if (existing && !isDjSessionOversized(existing)) {
+      claimDjSessionForMusic(brief.sessionId, existing)
+      return brief.sessionId
+    } else if (existing) {
       // Rotation: wakes replay the full transcript, so an old station pays
       // for every past batch on every new one. The DJ is stateless by design
       // (the wake prompt carries intent/history/queue), so a fresh session IS
@@ -264,20 +309,61 @@ function ensureRadioSession(store: OnethingRadioStore): string {
   // A dead id (session deleted by hand) used to mean "silently create a new
   // session every wake" — five sessions in one morning, field-measured. Reuse
   // the newest still-reasonable radio-dj session from the index first.
-  if (brief.sessionId && !sessions.getSession(brief.sessionId)) {
+  if (brief.sessionId && !isDrivableDjSession(sessions.getSession(brief.sessionId))) {
     const candidate = pickReusableRadioDjSession(sessionAccess.filter(DEFAULT_SESSION_OWNER, sessions.getSessionsList()))
     if (candidate) {
       sessionAccess.resolve(DEFAULT_SESSION_OWNER, candidate, 'write')
+      claimDjSessionForMusic(candidate, sessions.getSession(candidate))
       store.writeBrief({ ...brief, sessionId: candidate })
+      log.info('radio dj session reused', { sessionId: candidate, previous: brief.sessionId })
       return candidate
     }
   }
 
   const sessionId = randomUUID()
-  sessions.createSession(sessionId, '电台', { initialOwner: DEFAULT_SESSION_OWNER })
+  // 音乐 app 自己的会话(`app: 'music'`,2026-09-26 用户:「电台的 session 不想在列表里
+  // 能看见,最好只和音乐 app 绑定」):会话列表不列它、检索不给它、建它不抢当前会话;
+  // 只有音乐面上点主持人能打开它。
+  sessions.createSession(sessionId, '电台', { initialOwner: DEFAULT_SESSION_OWNER, app: MUSIC_APP_ID })
   sessions.updateSessionAgent(sessionId, RADIO_DJ_AGENT_ID)
   store.writeBrief({ ...brief, sessionId })
+  log.info('radio dj session created', { sessionId, previous: brief.sessionId })
   return sessionId
+}
+
+/**
+ * 把一条 DJ 会话盖上音乐 app 的归属戳。老会话(09-26 之前建的、以及 7 月留下的那些
+ * 「电台」会话)没有这一格,列表里就还看得见 —— 复用或续用到哪一条就盖哪一条,
+ * 开台时再把索引里所有 radio-dj 的存量一次盖完(`startRadioConductor`)。
+ */
+function claimDjSessionForMusic(sessionId: string, session: { app?: string; kind?: string | null } | undefined): void {
+  if (!session || session.app === MUSIC_APP_ID || !isDrivableDjSession(session)) return
+  sessions.patchSessionFields(sessionId, { app: MUSIC_APP_ID }, meta => { meta.app = MUSIC_APP_ID })
+  log.info('radio dj session claimed by the music app', { sessionId })
+}
+
+/**
+ * 存量:索引里每一条**普通场子**的 radio-dj 会话都归音乐 app,不管是哪一代留下的。
+ * 协作房(与 DJ 的私聊房之流)不是电台的记录,不盖;09-26 那一版误盖过的这里摘回来。
+ */
+function claimLegacyDjSessions(): void {
+  const metas = sessionAccess.filter(DEFAULT_SESSION_OWNER, sessions.getSessionsList())
+  let claimed = 0
+  let released = 0
+  for (const meta of metas) {
+    if (meta.agentId !== RADIO_DJ_AGENT_ID) continue
+    const drivable = isDrivableDjSession(meta)
+    if (drivable && meta.app !== MUSIC_APP_ID) {
+      sessions.patchSessionFields(meta.id, { app: MUSIC_APP_ID }, index => { index.app = MUSIC_APP_ID })
+      claimed += 1
+    } else if (!drivable && meta.app === MUSIC_APP_ID) {
+      sessions.patchSessionFields(meta.id, { app: undefined }, index => { delete index.app })
+      released += 1
+    }
+  }
+  if (claimed > 0 || released > 0) {
+    log.info('legacy radio dj sessions reconciled with the music app', { claimed, released })
+  }
 }
 
 /**
@@ -412,6 +498,7 @@ async function emitDjMessage(sessionId: string, content: string, bus: EventBus):
 
   owner.assertActive()
   sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
+  markDjWorking(sessionId, bus)
   await bus.emit(sessionId, {
     type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
     content,
@@ -421,6 +508,115 @@ async function emitDjMessage(sessionId: string, content: string, bus: EventBus):
     suppressTitleGeneration: true,
     ...modelOverride,
   }, { executionContext: DEFAULT_SESSION_OWNER })
+  log.info('radio dj message sent', { sessionId, provider: djModel?.providerId, model: djModel?.model })
+}
+
+/**
+ * 「主持人此刻在不在干活」(2026-09-26,起因:界面上「正在准备歌曲」是按「电台开着 +
+ * 节目单空」算出来的,后端其实什么都没在做)。每发一条消息进 DJ 会话就点亮,那条
+ * 会话的流结束 / 报错就熄灭;十分钟没等到任何一句也熄灭 —— 一只挂死的订阅不该让
+ * 界面永远说「在准备」。读的人是 `radioToolStatus` / `readRadioBrief`(`djWorking`)。
+ */
+const DJ_WORKING_TIMEOUT_MS = 10 * 60_000
+/**
+ * 同一只持有者再装两格(主持人抽屉,§16.3):
+ *  · `doing` —— 状态牌那一句。发消息 = 在想;每一次工具调用 = 那条调用经动词表
+ *    (`runtime/music/host-log.ts`)翻成的现在时;这一轮收场 = 清空。
+ *  · `published` —— 上一次报出去的 `hostActivity` 长什么样,一样就不重报。
+ *  · `replacing` —— 新一轮顶掉旧一轮时,旧一轮的收场不报「收工了」:紧接着就是「在想」,
+ *    中间那一帧 `working: false` 是假话。
+ */
+const djWorking: {
+  cleanup: (() => void) | null
+  doing: MusicHostDoing | undefined
+  published: string
+  replacing: boolean
+} = { cleanup: null, doing: undefined, published: '', replacing: false }
+
+/** 主持人此刻的状态牌(简报的 `host` 一格,也是 `hostActivity` 的负载)。 */
+function hostState(): MusicHostState {
+  const working = djWorking.cleanup !== null
+  return working && djWorking.doing ? { working, doing: { ...djWorking.doing } } : { working }
+}
+
+/** 状态牌变了就报一条 `hostActivity`;没变不报。 */
+function publishHostState(): void {
+  const state = hostState()
+  const key = JSON.stringify(state)
+  if (key === djWorking.published) return
+  djWorking.published = key
+  reportHostFact('hostActivity', { ...state })
+}
+
+function markDjWorking(sessionId: string, bus: EventBus): void {
+  djWorking.replacing = true
+  try {
+    djWorking.cleanup?.()
+  } finally {
+    djWorking.replacing = false
+  }
+  const cleanups: Array<() => void> = []
+  const finish = (reason: string): void => {
+    if (djWorking.cleanup !== stop) return
+    djWorking.cleanup = null
+    djWorking.doing = undefined
+    for (const cleanup of cleanups.splice(0)) {
+      try { cleanup() } catch { /* 退订失败不该拦住别的退订 */ }
+    }
+    log.info('radio dj finished', { sessionId, reason })
+    nudgeMusicClients()
+    // 收件箱只有指挥会并,而指挥的拍子是采样:不补这一拍,刚排好的歌要等下一次轮询
+    // (没在放时 20 秒)才进节目单、才起播。一次 `state` 读 = 一次采样 = 指挥马上走一拍。
+    void owner.track(refreshMusicNowPlaying()).catch(() => undefined)
+    if (!djWorking.replacing) {
+      publishHostState()
+      reportHostFact('hostLogChanged', {})
+    }
+  }
+  const stop = (): void => finish('replaced')
+  /** 一次工具调用(参数流开头 / 参数齐了)→ 状态牌那一句。参数还没流出来 = 在想。 */
+  const doingFrom = (toolCall: unknown, toolName?: string): void => {
+    if (djWorking.cleanup !== stop) return
+    const call = toolCall && typeof toolCall === 'object' ? toolCall as Parameters<typeof describeHostDoing>[0] : { toolName }
+    djWorking.doing = describeHostDoing(call)
+    publishHostState()
+  }
+  cleanups.push(
+    bus.on(sessionId, SESSION_EVENT_TYPES.STREAM_COMPLETE, () => finish('complete'), 'radio dj working'),
+    bus.on(sessionId, SESSION_EVENT_TYPES.STREAM_ERROR, () => finish('error'), 'radio dj working'),
+    bus.on(sessionId, SESSION_EVENT_TYPES.STREAM_ABORTED, () => finish('aborted'), 'radio dj working'),
+    bus.on(sessionId, SESSION_EVENT_TYPES.TOOL_INPUT_START, ({ event }) => doingFrom(event.toolCall, event.toolName), 'radio dj working'),
+    bus.on(sessionId, SESSION_EVENT_TYPES.TOOL_CALL, ({ event }) => {
+      doingFrom(event.toolCall)
+      if (djWorking.cleanup === stop) reportHostFact('hostLogChanged', {})
+    }, 'radio dj working'),
+    // 结果落定:卡片上多了摘要。状态牌不动 —— 他下一步干什么由下一条调用说。
+    bus.on(sessionId, SESSION_EVENT_TYPES.TOOL_RESULT, () => {
+      if (djWorking.cleanup === stop) reportHostFact('hostLogChanged', {})
+    }, 'radio dj working'),
+  )
+  const timer = setTimeout(() => finish('timeout'), DJ_WORKING_TIMEOUT_MS)
+  timer.unref?.()
+  cleanups.push(() => clearTimeout(timer))
+  djWorking.cleanup = stop
+  djWorking.doing = { kind: 'thinking', label: '在想' }
+  publishHostState()
+}
+function isDjWorking(): boolean {
+  return djWorking.cleanup !== null
+}
+
+/**
+ * 主持人抽屉的记录流(§16.3):DJ 那条会话翻成的人话行,只交尾部。会话不在(简报没 id /
+ * 被删)= 空行 + `absent`,不是一次失败。
+ */
+function readHostLog(limit?: number): MusicHostLog {
+  owner.assertActive()
+  const sessionId = getRadioStore().readBrief().sessionId
+  if (!sessionId || !sessions.getSession(sessionId)) return { rows: [], absent: true, truncated: false }
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
+  const { messages } = sessionReads.listMessages(sessionId)
+  return projectHostLog(messages, limit === undefined ? {} : { limit })
 }
 
 async function wakeRadioDj(): Promise<void> {
@@ -446,7 +642,16 @@ async function wakeRadioDj(): Promise<void> {
 
   // A run already active in the radio session IS the DJ working — kicking
   // again would interleave two curations in one transcript.
-  if (getStreamEngineSafe()?.getController(sessionId)) return
+  if (getStreamEngineSafe()?.getController(sessionId)) {
+    log.info('radio dj already working, wake skipped', { sessionId })
+    return
+  }
+  log.info('waking radio dj', {
+    sessionId,
+    opening,
+    intent: brief.intent,
+    programmeRemaining: store.readProgramme().entries.length,
+  })
 
   const renderOptions = {
     brief: store.readBrief(),
@@ -1028,6 +1233,7 @@ function returnEntryToProgramme(store: OnethingRadioStore, entry: OnethingRadioP
 function recordStartFailure(entry: { title: string }, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   const line = message === NCM_LOGIN_EXPIRED_MESSAGE ? message : `起播失败(${entry.title}):${message}`
+  log.warn('radio start failed', { title: entry.title }, error)
   getRadioStore().recordError(line)
   return line
 }
@@ -1140,6 +1346,7 @@ function radioToolStatus(): {
   programmeLength: number
   nowPlayingTitle?: string
   lastError?: string
+  djWorking: boolean
 } {
   owner.assertActive()
   const store = getRadioStore()
@@ -1150,6 +1357,7 @@ function radioToolStatus(): {
     programmeLength: store.readProgramme().entries.length,
     nowPlayingTitle: getMusicNowPlaying()?.title,
     lastError: brief.lastError,
+    djWorking: isDjWorking(),
   }
 }
 
@@ -1178,6 +1386,7 @@ function openRadioStation(intent: string, options: { clearProgramme: boolean }):
     startedAt: new Date().toISOString(),
   })
   store.mergeIntent()
+  log.info('radio station opened', { intent, retune: options.clearProgramme, sessionId: store.readBrief().sessionId })
   void refreshMusicNowPlaying()
 }
 
@@ -1626,11 +1835,31 @@ function startRadioConductor(): void {
     reportMoment(moments => moments.observeSample(sample, currentLyrics))
     void observeUnknownSong(sample)
   })
+  // 简报里那条 DJ 会话被删了(09-26 真机:简报指着一条已不存在的会话,音乐面上「看他在
+  // 做什么」打不开)—— 删除是店里的事实,简报跟着改,而不是等下一次唤醒才发现。
+  deletedSessionsWatch.stop?.()
+  deletedSessionsWatch.stop = sessions.onSessionsDeleted(deletedIds => {
+    if (owner.signal.aborted) return
+    const brief = getRadioStore().readBrief()
+    if (!brief.sessionId || !deletedIds.includes(brief.sessionId)) return
+    const { sessionId: _dropped, ...rest } = brief
+    getRadioStore().writeBrief(rest)
+    log.info('radio dj session was deleted, brief unlinked', { sessionId: brief.sessionId })
+    nudgeMusicClients()
+  })
+  try {
+    claimLegacyDjSessions()
+  } catch (error) {
+    log.warn('claiming legacy radio dj sessions failed', {}, error)
+  }
 }
 
 function quiesce(): void {
   if (owner.signal.aborted) return
   try { setMusicSampleListener(null) } finally {
+    deletedSessionsWatch.stop?.()
+    deletedSessionsWatch.stop = null
+    djWorking.cleanup?.()
     conductor?.quiesce()
     owner.quiesce()
   }
@@ -1664,6 +1893,9 @@ async function drain(): Promise<void> {
     getMusicLyrics,
     startRadioConductor,
     radioToolStatus,
+    isDjWorking,
+    hostState,
+    readHostLog,
   }
 }
 
@@ -1688,4 +1920,7 @@ export const likeCurrentSong: RadioScope['likeCurrentSong'] = (...args) => getCu
 export const getMusicLyrics: RadioScope['getMusicLyrics'] = (...args) => getCurrentBackend('music').music.radio.getMusicLyrics(...args)
 export const startRadioConductor: RadioScope['startRadioConductor'] = (...args) => getCurrentBackend('music').music.radio.startRadioConductor(...args)
 export const radioToolStatus: RadioScope['radioToolStatus'] = (...args) => getCurrentBackend('music').music.radio.radioToolStatus(...args)
+export const isDjWorking: RadioScope['isDjWorking'] = (...args) => getCurrentBackend('music').music.radio.isDjWorking(...args)
+export const hostState: RadioScope['hostState'] = (...args) => getCurrentBackend('music').music.radio.hostState(...args)
+export const readHostLog: RadioScope['readHostLog'] = (...args) => getCurrentBackend('music').music.radio.readHostLog(...args)
 export function disposeRadioConductor(): Promise<void> { return getCurrentBackend('music').music.resetRadio() }

@@ -102,6 +102,7 @@ import type {
   MusicProgrammeEntryDTO,
   MusicRadioState,
 } from '@shared/ipc.js'
+import type { MusicHostLog } from '@shared/ipc/music.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { assertMusicOperator } from '../music/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
@@ -157,6 +158,16 @@ export interface MusicStationAdapters {
    * (`wiring/music/radio.ts`),这里只把答案折成一条事实。
    */
   tell(text: string, executionContext?: unknown): Promise<{ reply: Promise<string | undefined> }>
+  /**
+   * 主持人抽屉的记录流(§16.3):DJ 会话翻成的人话行,尾部 `limit` 行(缺省 60)。
+   * 会话不在 = 空行 + `absent`,不是一次失败。
+   */
+  hostLog(limit?: number, executionContext?: unknown): MusicHostLog
+  /**
+   * 电台上的事实(`hostActivity` / `hostLogChanged`)的订阅。返回退订。事件名就是自述里的名字,
+   * 负载原样转发 —— 与 `MusicPlayerAdapters.watchFacts` 同形,只是落在 `music:radio` 上。
+   */
+  watchFacts(listener: (event: string, payload: Record<string, unknown>) => void): () => void
 }
 
 /** 音乐后端(那只 CLI)自己:装到哪一步、跑一步向导、有哪几只、搜歌、换一只。 */
@@ -257,6 +268,14 @@ export class MusicProviderIdRequiredError extends Error {
   }
 }
 
+/** 记录流要的行数不是一个正整数。缺席是合法的(= 缺省 60 行)。 */
+export class MusicHostLogLimitError extends Error {
+  constructor() {
+    super('limit must be a positive integer')
+    this.name = 'MusicHostLogLimitError'
+  }
+}
+
 /** 搜歌没给词。措辞逐字沿用 `music` 域那条前置判据。 */
 export class MusicSearchQueryRequiredError extends Error {
   constructor() {
@@ -305,6 +324,7 @@ const MEMBER_TARGET: Readonly<Record<string, string>> = {
   radio: MUSIC_RADIO_PATH,
   brief: MUSIC_RADIO_PATH,
   programme: MUSIC_RADIO_PATH,
+  hostLog: MUSIC_RADIO_PATH,
   pause: MUSIC_PLAYER_PATH,
   resume: MUSIC_PLAYER_PATH,
   next: MUSIC_PLAYER_PATH,
@@ -429,6 +449,14 @@ function numberParam(params: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+/** `hostLog` 的行数:缺席 = 缺省;给了就必须是正整数。 */
+function hostLogLimit(query: unknown): number | undefined {
+  const value = query && typeof query === 'object' ? (query as Record<string, unknown>).limit : undefined
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) throw new MusicHostLogLimitError()
+  return value
+}
+
 /** 节目单编辑的那一格。形状不对 = 「没给动作」,与域那条前置判据同一句话。 */
 function programmeActionParam(params: unknown): MusicProgrammeAction {
   const raw = params && typeof params === 'object' ? (params as { action?: unknown }).action : undefined
@@ -485,6 +513,7 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
   private hub: ResourceEventHub | undefined
   private unwatch: (() => void) | undefined
   private unwatchFacts: (() => void) | undefined
+  private unwatchStationFacts: (() => void) | undefined
   private unwatchSetup: (() => void) | undefined
 
   constructor(adapters: MusicResourceAdapters) {
@@ -507,6 +536,10 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
     this.unwatchFacts?.()
     this.unwatchFacts = this.player.watchFacts((event, payload) => {
       hub.emit({ scheme: this.spec.scheme, path: MUSIC_PLAYER_PATH }, event, payload)
+    })
+    this.unwatchStationFacts?.()
+    this.unwatchStationFacts = this.station.watchFacts((event, payload) => {
+      hub.emit({ scheme: this.spec.scheme, path: MUSIC_RADIO_PATH }, event, payload)
     })
     this.unwatchSetup?.()
     this.unwatchSetup = this.backend.watchSetup(event => {
@@ -531,6 +564,8 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
     this.unwatch = undefined
     this.unwatchFacts?.()
     this.unwatchFacts = undefined
+    this.unwatchStationFacts?.()
+    this.unwatchStationFacts = undefined
     this.unwatchSetup?.()
     this.unwatchSetup = undefined
     this.hub = undefined
@@ -566,6 +601,8 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
         return this.station.brief()
       case 'programme':
         return this.station.programme()
+      case 'hostLog':
+        return this.station.hostLog(hostLogLimit(query))
       case 'lyrics':
         return this.player.lyrics()
       case 'state':
@@ -935,6 +972,11 @@ export function musicStationAdapters(): MusicStationAdapters {
       assertMusicOperator(fixedExecutionContext(executionContext))
       return music().radio.tellRadioHost(text)
     },
+    hostLog: (limit, executionContext) => {
+      assertMusicOperator(fixedExecutionContext(executionContext))
+      return music().radio.readHostLog(limit)
+    },
+    watchFacts: listener => music().onRadioFact(listener),
   }
 }
 

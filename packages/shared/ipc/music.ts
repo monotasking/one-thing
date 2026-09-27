@@ -119,6 +119,58 @@ export interface MusicLyrics {
 	failed?: boolean
 }
 
+/* ── 主持人抽屉(2026-09-26,正本 apps/desktop-react/docs/music-panel-2026-09.md §16)──
+ *
+ * 壳不认识 ncm-cli:DJ 会话里的工具调用由**后端**按动词表翻成人话
+ * (`runtime/music/host-log.ts`),这里只是那几行的形。
+ */
+
+/** 主持人此刻在干哪一类活。`thinking` = 在想(没有工具在飞)。 */
+export type MusicHostDoingKind = 'thinking' | 'search' | 'lyric' | 'queue' | 'skip' | 'command' | 'speaking'
+
+/** 「在搜「周杰伦」」那一句:种类 + 一句现在时的人话。 */
+export interface MusicHostDoing {
+	kind: MusicHostDoingKind
+	label: string
+}
+
+/** 主持人此刻的状态牌:在不在干活,在干什么。 */
+export interface MusicHostState {
+	working: boolean
+	doing?: MusicHostDoing
+}
+
+/**
+ * 记录流里的一行(§16.2)。四种:你说的 / 叫他干活的机器提示词(只有一句短标签,正文不上屏)/
+ * 他说的 / 找歌卡(一次工具调用:动词 + 一句结果摘要 + 涉及的歌)。
+ */
+export type MusicHostLogRow =
+	| { kind: 'you'; id: string; at: number; text: string }
+	| { kind: 'nudge'; id: string; at: number; text: string }
+	| { kind: 'host'; id: string; at: number; text: string }
+	| {
+			kind: 'card'
+			id: string
+			at: number
+			verb: MusicHostDoingKind
+			/** 动词那一句,例:搜「一荤一素 毛不易」。 */
+			label: string
+			/** 结果摘要,例:3 首,选了 Live 版。缺席 = 还没有结果(在飞)。 */
+			detail?: string
+			/** 这张卡涉及的歌名(排进节目单的那几首 / 搜到选中的那首)。 */
+			songs?: string[]
+			failed?: boolean
+	  }
+
+/** `music:radio` 的 `hostLog` 读法交出的那一份:尾部 N 行 + 三格事实。 */
+export interface MusicHostLog {
+	rows: MusicHostLogRow[]
+	/** 简报里没有 DJ 会话,或它已不在(还没聊过 / 被删)。 */
+	absent: boolean
+	/** 更早的行没有摆出来(只交尾部)。 */
+	truncated: boolean
+}
+
 /** Radio brief snapshot for the bar: is the station on, and is it healthy. */
 export interface MusicRadioState {
 	/**
@@ -138,6 +190,21 @@ export interface MusicRadioState {
 	 * persisted last-played song (fed songs die with the daemon's memory).
 	 */
 	canResume: boolean
+	/**
+	 * The host is curating right now: a DJ turn was sent into his session and has
+	 * not finished (stream complete / error, or a 10-minute guard). The panel's
+	 * 「正在准备歌曲」 is only honest while this is true (2026-09-26); absent on
+	 * older backends = unknown, treated as false.
+	 */
+	djWorking?: boolean
+	/**
+	 * The host as a person (2026-09-26, music-panel §16): whether he is working and,
+	 * while he is, what he is doing right now in plain words. `working` mirrors
+	 * `djWorking`; `doing` is derived by the backend from the tool call in flight
+	 * in his session (the verb table lives in `runtime/music/host-log.ts`). Absent
+	 * on older backends.
+	 */
+	host?: MusicHostState
 	/**
 	 * What plays after the current song, when that is actually knowable: the
 	 * player's own queue is opaque, so this is the programme's first entry and

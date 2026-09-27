@@ -42,6 +42,7 @@ export type MusicStatusKind =
   | 'paused'
   | 'resumable'
   | 'stationIdle'
+  | 'stationEmpty'
   | 'off'
 
 /** 状态条上那颗钮做什么。**是数据**:面板按 `kind` 分发,不认状态名。 */
@@ -130,6 +131,15 @@ export const MUSIC_STATUS_TABLE: Readonly<Record<MusicStatusKind, MusicStatusRow
     banner: false,
     action: { kind: 'resume', labelKey: 'music.radioResume' },
   },
+  // 电台开着、节目单空了、主持人也没在补(09-26 真机:DJ 一周没跑,界面却一直说「正在准备」):
+  // 不是在等,是没歌可放 —— 老实说出来,给一颗去电台换个方向的钮。
+  stationEmpty: {
+    tone: 'warn',
+    labelKey: 'music.status.stationEmpty',
+    hintKey: 'music.status.stationEmptyHint',
+    banner: true,
+    action: { kind: 'section', section: MUSIC_RADIO_SECTION, labelKey: 'music.status.goRadio' },
+  },
   off: {
     tone: 'off',
     labelKey: 'music.status.off',
@@ -192,6 +202,7 @@ export function deriveMusicStatus(input: MusicStatusInput): MusicStatus {
   if (input.refilling) return status('refilling')
   if (title && input.restored) return status('resumable', { title })
   if (title) return status('paused', { title })
-  if (brief?.active) return status(brief.canResume ? 'stationIdle' : 'refilling')
+  // 开着而没在放:能续就是「已停止」;续不了、主持人也没在补(`refilling` 上面已经问过)= 没歌可放。
+  if (brief?.active) return status(brief.canResume ? 'stationIdle' : 'stationEmpty')
   return status('off')
 }

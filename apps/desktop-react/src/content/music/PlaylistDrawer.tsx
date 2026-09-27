@@ -1,13 +1,9 @@
-import { useRef } from 'react'
-import { X } from '../../components/icons'
-import { FocusScope } from '../../focus/FocusScope'
-import { IconButton } from '../../ui/IconButton'
 import { useT } from '../../i18n'
 import type { MusicNowPlayingView } from '../../data/music-source'
 import { musicOps } from '../../data/music-source'
 import { AsyncButton } from '../../ui/AsyncButton'
+import { Drawer } from '../../ui/Drawer'
 import { ProgrammeSheet } from './ProgrammeSheet'
-import s from '../MusicPanel.module.css'
 
 /**
  * **播放列表抽屉**(音乐面 v7,正本 `docs/music-panel-2026-09.md` §1)。
@@ -16,8 +12,9 @@ import s from '../MusicPanel.module.css'
  * 所以任何宽度下节目单都**不铺在页面上**,它住在歌条上那颗钮后面。
  *
  * ── 两档,差别只有「从哪儿来」────────────────────────────────────────────
- * ≥ 560 从右边滑出(宽 `--music-drawer-w`、通高),< 560 从底下升起(高
- * `--music-drawer-h`)。哪一档由**面板自己的宽**说(`panel-width.ts`),这件只读那格
+ * ≥ 560 从右边滑出(宽 `--drawer-w`、通高),< 560 从底下升起(高
+ * `--drawer-h`)。骨架(遮罩 / 两档形 / Esc / ✕ / 焦点归还)住 `ui/Drawer`(主持人抽屉 H0 抬上去的,
+ * 像素一格没改)。哪一档由**面板自己的宽**说(`panel-width.ts`),这件只读那格
  * `form`;里面装的东西两档逐字相同 —— 就是今天的 `ProgrammeSheet`(拖拽换序还没有,
  * 上移 / 下移与其余动作在右键菜单里,一个字没改)。
  *
@@ -59,62 +56,22 @@ export function PlaylistDrawer({
   sideRoom?: number
 }) {
   const t = useT()
-  const closeRef = useRef<HTMLButtonElement | null>(null)
 
   return (
-    <>
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
-        * 点遮罩关闭是**鼠标的顺手路**,不是唯一出口:Esc 认领在下面那一格,✕ 也在。
-        * 规则看不见那条键盘路径,所以它在这里是误报。刻意不给 role="button":
-        * 遮罩不是按钮,报成按钮会让读屏软件念出一个不存在的控件。
-        * 判 mousedown 且 target === currentTarget,与 ui/Dialog 逐字同一条。今天抽屉是
-        * 遮罩的**兄弟**而不是孩子,所以这一条是防守性的;把它写成「谁按下的都算」,
-        * 将来把抽屉挪进遮罩里就会变成「从抽屉里拖出去松手也关」。 */}
-      <div
-        className={s.drawerScrim}
-        data-testid="music-playlist-scrim"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) onClose()
-        }}
-      />
-      <FocusScope
-        scope="drawer"
-        activateOnMount
-        restingTarget={() => closeRef.current}
-        onEscape={() => (onClose(), true)}
-      >
-        {({ scopeProps }) => (
-          <div
-            {...scopeProps}
-            className={s.drawer}
-            data-form={form}
-            data-testid="music-playlist"
-            role="dialog"
-            aria-label={t('music.playlist')}
-          >
-            <div className={s.drawerHead}>
-              <h2 className={s.drawerTitle}>{t('music.playlist')}</h2>
-              <span className={s.drawerTools}>
-                {radioOn && (
-                  <AsyncButton action={musicOps.radioStop} pendingLabel={t('common.working')} data-testid="music-radio-close" onClick={() => void musicOps.radioStop.run({})}>
-                    {t('music.deckClose')}
-                  </AsyncButton>
-                )}
-                <IconButton
-                  ref={closeRef}
-                  icon={X}
-                  label={t('common.close')}
-                  testId="music-playlist-close"
-                  onClick={onClose}
-                />
-              </span>
-            </div>
-            <div className={s.drawerBody}>
-              <ProgrammeSheet nowPlaying={nowPlaying} position={position} sideRoom={sideRoom} />
-            </div>
-          </div>
-        )}
-      </FocusScope>
-    </>
+    <Drawer
+      form={form}
+      title={t('music.playlist')}
+      onClose={onClose}
+      testId="music-playlist"
+      tools={
+        radioOn && (
+          <AsyncButton action={musicOps.radioStop} pendingLabel={t('common.working')} data-testid="music-radio-close" onClick={() => void musicOps.radioStop.run({})}>
+            {t('music.deckClose')}
+          </AsyncButton>
+        )
+      }
+    >
+      <ProgrammeSheet nowPlaying={nowPlaying} position={position} sideRoom={sideRoom} />
+    </Drawer>
   )
 }

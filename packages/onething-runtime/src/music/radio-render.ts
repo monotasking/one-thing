@@ -12,6 +12,8 @@ import type { OnethingRadioBrief, OnethingRadioSpin } from './radio-store.js'
 
 export const RADIO_DJ_AGENT_ID = 'radio-dj'
 export const RADIO_DJ_AGENT_NAME = '电台 DJ'
+/** DJ 会话归属的应用(`SessionMeta.app`):列表不列、检索不给,只从音乐面打开。 */
+export const MUSIC_APP_ID = 'music'
 
 /**
  * The DJ's discipline is "bash runs bare ncm-cli commands, nothing else" —

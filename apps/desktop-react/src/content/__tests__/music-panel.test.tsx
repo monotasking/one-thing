@@ -170,8 +170,22 @@ async function openPlaylist() {
   })
 }
 
-async function mount(table: ReadTable = fullTable()) {
+/**
+ * 点黑豆(主持人抽屉 §16.1)。与 `openPlaylist` 同一手:先把焦点放到黑豆那颗钮上再点 —— jsdom 的
+ * click 不搬焦点,不补这一下,抽屉关掉时焦点归还的断言会对着错的人。
+ */
+async function pokePet() {
+  const pet = await screen.findByTestId('pet-button')
+  await act(async () => {
+    pet.focus()
+    fireEvent.click(pet)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+}
+
+async function mount(table: ReadTable = fullTable(), prepare?: (fake: FakeMusic) => void) {
   fake = makeFake(table)
+  prepare?.(fake)
   configureMusicPort(fake.port)
   const view = render(
     <>
@@ -373,8 +387,10 @@ describe('歌词三态(09-18 报障:「歌曲开始播放了,然后显示没歌�
 })
 
 describe('没有下一首、DJ 在补歌单:交给黑豆(09-18 用户:「这个状态交给 pet 啊」)', () => {
+  // 09-26:「在补」只认后端的事实 `djWorking`,节目单空本身不再算。
   const refillingTable = (): ReadTable => ({
     ...fullTable(),
+    'music:radio#brief': { ...BRIEF_ON, djWorking: true },
     'music:radio#programme': { entries: [], onDeck: NOW_PLAYING.title },
   })
 
@@ -389,6 +405,7 @@ describe('没有下一首、DJ 在补歌单:交给黑豆(09-18 用户:「这个�
   it('从有歌排着变成空了 → 他嘀咕一句(刚进这一态)', async () => {
     await mount()
     expect(screen.queryByTestId('pet-bubble-text')).toBeNull()
+    fake.table['music:radio#brief'] = { ...BRIEF_ON, djWorking: true }
     fake.table['music:radio#programme'] = { entries: [], onDeck: NOW_PLAYING.title }
     await act(async () => {
       for (const listener of [...fake.listeners]) {
@@ -906,18 +923,17 @@ describe('v8 整面:一块唱片 + 一行按钮', () => {
     expect(screen.getByTestId('music-playlist-toggle').getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('Esc:点黑豆开出的那一格,焦点落在输入框、Esc 收起;抽屉开着先关抽屉;都没有不拦', async () => {
+  it('Esc:点黑豆拉开主持人抽屉,焦点落在输入框、Esc 收起;播放列表抽屉开着先关抽屉;都没有不拦', async () => {
     await mount()
-    await act(async () => {
-      fireEvent.click(await screen.findByTestId('pet-button'))
-      await new Promise((resolve) => setTimeout(resolve, 20))
-    })
-    // 开出来那一刻,焦点由浮层的落点交给输入框(响应链,不是一句手写 focus)。
-    expect(document.activeElement).toBe(screen.getByTestId('pet-menu-input'))
+    await pokePet()
+    // 开出来那一刻,焦点由抽屉的落点交给输入框(响应链,不是一句手写 focus)。
+    expect(document.activeElement).toBe(screen.getByTestId('music-host-input'))
     await act(async () => {
       esc()
       await new Promise((resolve) => setTimeout(resolve, 20))
     })
+    expect(screen.queryByTestId('music-host')).toBeNull()
+    // 小菜单与「查看会话」随 §16 退役。
     expect(screen.queryByTestId('pet-menu')).toBeNull()
 
     await openPlaylist()
@@ -1085,5 +1101,230 @@ describe('⏯:屏幕按人的意图走,后端追上来', () => {
     fake.table['music:player#nowPlaying'] = PAUSED_NOW
     await clickPlay()
     expect(screen.queryByTestId('music-backend-error')).toBeNull()
+  })
+})
+
+describe('主持人抽屉(§16:点黑豆 = 拉开;他的记录流 / 状态牌 / 说话)', () => {
+  const HOST_LOG = {
+    rows: [
+      { kind: 'nudge', id: 'n1', at: 1, text: '叫他补歌单 · 22:10' },
+      { kind: 'you', id: 'y1', at: 2, text: '来点周杰伦' },
+      { kind: 'card', id: 'c1', at: 3, verb: 'search', label: '搜「周杰伦」', detail: '3 首,选了 Live 版', songs: ['晴天 (Live)', '七里香'] },
+      { kind: 'card', id: 'c2', at: 4, verb: 'skip', label: '跳过「借我」', detail: '版权灰了', failed: true },
+      { kind: 'host', id: 'h1', at: 5, text: '给你挑了晴天。' },
+    ],
+    absent: false,
+    truncated: false,
+  }
+  const withLog = (log: unknown = HOST_LOG, brief: unknown = BRIEF_ON): ReadTable => ({
+    ...fullTable(),
+    'music:radio#brief': brief,
+    'music:radio#hostLog': log,
+  })
+  const esc = () => fireEvent.keyDown(window, { key: 'Escape' })
+  const fire = async (event: string, payload: unknown = {}) => {
+    await act(async () => {
+      for (const listener of [...fake.listeners]) listener({ ref: 'music:radio', event, payload })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+  const hostReads = () => fake.reads.filter((r) => r.ref === 'music:radio' && r.name === 'hostLog').length
+
+  it('点黑豆:抽屉开,黑豆那颗钮 aria-expanded;面板开着时不去读记录流,开抽屉才读', async () => {
+    await mount(withLog())
+    expect(hostReads()).toBe(0)
+    expect(screen.getByTestId('pet-button').getAttribute('aria-expanded')).toBe('false')
+    await pokePet()
+    expect(screen.getByTestId('music-host')).toBeTruthy()
+    expect(screen.getByTestId('music-host').getAttribute('role')).toBe('dialog')
+    expect(screen.getByTestId('pet-button').getAttribute('aria-expanded')).toBe('true')
+    expect(hostReads()).toBe(1)
+    // 工作台一格都不开:没有「查看会话」,没有小菜单。
+    expect(screen.queryByTestId('pet-menu')).toBeNull()
+    expect(screen.queryByTestId('pet-menu-session')).toBeNull()
+  })
+
+  it('Esc 关抽屉,焦点结构性地回到黑豆;两只抽屉同一时刻只开一只', async () => {
+    await mount(withLog())
+    await pokePet()
+    await act(async () => {
+      esc()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(screen.queryByTestId('music-host')).toBeNull()
+    expect(screen.queryByTestId('music-playlist')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByTestId('pet-button'))
+
+    // 开着播放列表点黑豆 → 播放列表关、主持人开;再开播放列表 → 主持人关。
+    await openPlaylist()
+    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+    await pokePet()
+    expect(screen.queryByTestId('music-playlist')).toBeNull()
+    expect(screen.getByTestId('music-host')).toBeTruthy()
+    await openPlaylist()
+    expect(screen.queryByTestId('music-host')).toBeNull()
+    expect(screen.getByTestId('music-playlist')).toBeTruthy()
+  })
+
+  it('四种行各按各的形画:你说的 / 叫他干活的 / 找歌卡(红点 + 歌名)/ 他说的,最新在底', async () => {
+    await mount(withLog())
+    await pokePet()
+    const rows = screen.getAllByTestId('music-host-row')
+    expect(rows.map((row) => row.dataset.kind)).toEqual(['nudge', 'you', 'card', 'card', 'host'])
+    expect(rows[0].textContent).toBe('叫他补歌单 · 22:10')
+    expect(rows[1].textContent).toContain('来点周杰伦')
+    expect(rows[2].textContent).toContain('搜「周杰伦」')
+    expect(rows[2].textContent).toContain('3 首,选了 Live 版')
+    expect(rows[2].textContent).toContain('晴天 (Live)')
+    expect(rows[2].textContent).toContain('七里香')
+    // 歌名只是字(点选留账 §16.5 H3)。
+    expect(rows[2].querySelector('button')).toBeNull()
+    expect(rows[3].dataset.failed).toBe('true')
+    expect(rows[3].querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('没办成')
+    expect(rows[4].textContent).toContain('给你挑了晴天。')
+    expect(screen.queryByTestId('music-host-empty')).toBeNull()
+    expect(screen.queryByTestId('music-host-truncated')).toBeNull()
+  })
+
+  it('他在干活:底部一行活的「在搜…」+ 三个点;檐上与唱机里的状态牌都是后端那一句', async () => {
+    const brief = { ...BRIEF_ON, host: { working: true, doing: { kind: 'search', label: '在搜「周杰伦」' } } }
+    await mount(withLog(HOST_LOG, brief))
+    expect(screen.getByTestId('music-host-status').textContent).toBe('在搜「周杰伦」')
+    await pokePet()
+    expect(screen.getByTestId('music-host-live').textContent).toContain('在搜「周杰伦」')
+    expect(screen.getByTestId('music-host-status-drawer').textContent).toBe('在搜「周杰伦」')
+
+    // hostActivity 一到,牌当场换(负载就地补进简报),简报随后对账 —— 对账读回的是后端此刻的那一格。
+    const doing = { kind: 'lyric', label: '在翻歌词' }
+    fake.table['music:radio#brief'] = { ...BRIEF_ON, host: { working: true, doing } }
+    await fire('hostActivity', { working: true, doing })
+    expect(screen.getByTestId('music-host-status-drawer').textContent).toBe('在翻歌词')
+    expect(screen.getByTestId('music-host-live').textContent).toContain('在翻歌词')
+  })
+
+  it('在干活但说不出在干什么 → 在挑歌;不干活了活的那一行就没了', async () => {
+    await mount(withLog(HOST_LOG, { ...BRIEF_ON, djWorking: true }))
+    await pokePet()
+    expect(screen.getByTestId('music-host-live').textContent).toContain('在挑歌')
+    fake.table['music:radio#brief'] = BRIEF_ON
+    await fire('hostActivity', { working: false })
+    await waitFor(() => expect(screen.queryByTestId('music-host-live')).toBeNull())
+    expect(screen.getByTestId('music-host-status-drawer').textContent).toBe('在放')
+  })
+
+  it('没聊过(absent、零行)→ 空态那一句;关台时檐上是「睡着」,占位是开台的问法', async () => {
+    await mount(withLog({ rows: [], absent: true, truncated: false }, BRIEF_OFF))
+    await pokePet()
+    expect(screen.getByTestId('music-host-empty').textContent).toBe('还没聊过。说一句，或者开台让他挑歌。')
+    expect(screen.getByTestId('music-host-status-drawer').textContent).toBe('睡着')
+    expect(screen.getByTestId('music-host-input').getAttribute('placeholder')).toBe('想听什么？')
+  })
+
+  it('超量:只交尾部时顶上一行灰字「更早的没有摆出来」', async () => {
+    await mount(withLog({ ...HOST_LOG, truncated: true }))
+    await pokePet()
+    const truncated = screen.getByTestId('music-host-truncated')
+    expect(truncated.textContent).toBe('更早的没有摆出来')
+    const log = screen.getByTestId('music-host-log')
+    // 在最顶上:排在第一行之前。
+    expect(truncated.compareDocumentPosition(screen.getAllByTestId('music-host-row')[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(log.contains(truncated)).toBe(true)
+  })
+
+  it('读失败:一行原话 + 重试;重试成功后行上屏,错话撤掉', async () => {
+    const table = fullTable() // 没有 hostLog → 端口答 denied
+    await mount(table)
+    await pokePet()
+    expect(screen.getByTestId('music-host-log-error').textContent).toContain('no music:radio#hostLog')
+    expect(screen.getByTestId('music-host-status-drawer').textContent).toBe('在放')
+
+    fake.table['music:radio#hostLog'] = HOST_LOG
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('music-host-log-retry'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await waitFor(() => expect(screen.getAllByTestId('music-host-row')).toHaveLength(5))
+    expect(screen.queryByTestId('music-host-log-error')).toBeNull()
+  })
+
+  it('骨架只在首载画一次:重拉(hostLogChanged)期间旧行留在屏上、同一批节点', async () => {
+    let release: (() => void) | undefined
+    await mount(withLog(), (f) => {
+      const read = f.port.read
+      f.port.read = async (ref, name, query) => {
+        if (name === 'hostLog' && release === undefined) {
+          await new Promise<void>((resolve) => {
+            release = resolve
+          })
+        }
+        return read(ref, name, query)
+      }
+    })
+    await pokePet()
+    expect(screen.getByTestId('music-host-skeleton')).toBeTruthy()
+    expect(screen.getByTestId('music-host-log').getAttribute('aria-busy')).toBe('true')
+    // 首载时发送键停用,输入框照样能打(焦点落得进来)。
+    expect(screen.getByTestId('music-host-send').hasAttribute('disabled')).toBe(true)
+    expect(document.activeElement).toBe(screen.getByTestId('music-host-input'))
+    await act(async () => {
+      release?.()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByTestId('music-host-skeleton')).toBeNull()
+    const first = screen.getAllByTestId('music-host-row')[0]
+
+    // 重拉:后端落了一行,旧行一格不动、骨架不再出来。
+    fake.table['music:radio#hostLog'] = {
+      ...HOST_LOG,
+      rows: [...HOST_LOG.rows, { kind: 'host', id: 'h2', at: 6, text: '下一首是七里香。' }],
+    }
+    let sawSkeleton = false
+    const observer = new MutationObserver(() => {
+      if (document.querySelector('[data-testid="music-host-skeleton"]')) sawSkeleton = true
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    await fire('hostLogChanged')
+    await waitFor(() => expect(screen.getAllByTestId('music-host-row')).toHaveLength(6))
+    observer.disconnect()
+    expect(sawSkeleton).toBe(false)
+    expect(screen.getAllByTestId('music-host-row')[0]).toBe(first)
+  })
+
+  it('说一句:开台时发 tell,输入框清空、你的回执垫在底下;后端那一行到了回执撤掉(不重复)', async () => {
+    await mount(withLog())
+    await pokePet()
+    const input = screen.getByTestId('music-host-input') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '换点安静的' } })
+    })
+    await act(async () => {
+      fireEvent.submit(input.closest('form') as HTMLFormElement)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos.at(-1)).toEqual({ ref: 'music:radio', op: 'tell', params: { text: '换点安静的' } })
+    expect(input.value).toBe('')
+    expect(screen.getByTestId('music-host-echo').textContent).toContain('换点安静的')
+
+    fake.table['music:radio#hostLog'] = {
+      ...HOST_LOG,
+      rows: [...HOST_LOG.rows, { kind: 'you', id: 'y2', at: 7, text: '换点安静的' }],
+    }
+    await fire('hostLogChanged')
+    await waitFor(() => expect(screen.getAllByTestId('music-host-row')).toHaveLength(6))
+    expect(screen.queryByTestId('music-host-echo')).toBeNull()
+  })
+
+  it('关台时说的那一句是开台的意图(open),不是 tell', async () => {
+    await mount(withLog({ rows: [], absent: true, truncated: false }, BRIEF_OFF))
+    await pokePet()
+    const input = screen.getByTestId('music-host-input') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '下雨天的民谣' } })
+    })
+    await act(async () => {
+      fireEvent.submit(input.closest('form') as HTMLFormElement)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(fake.dos.at(-1)).toEqual({ ref: 'music:radio', op: 'open', params: { intent: '下雨天的民谣' } })
   })
 })

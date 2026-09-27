@@ -1,5 +1,8 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import type {
+  MusicHostDoingKind,
+  MusicHostLog,
+  MusicHostState,
   MusicLyrics,
   MusicNowPlaying,
   MusicProgrammeEntryDTO,
@@ -182,6 +185,19 @@ export const musicProgrammeQuery = createQuery<MusicProgrammeView>('music.progra
 /** 音乐后端装到哪一步了。面板据它画「还没配好」那一档。 */
 export const musicRuntimeQuery = createQuery<MusicRuntimeState>('music.state', () =>
   readResource<MusicRuntimeState>(MUSIC_PROVIDER_REF, 'state'),
+)
+
+/**
+ * **主持人的记录流**(主持人抽屉 H2,2026-09-27;正本 `docs/music-panel-2026-09.md` §16.3)。
+ *
+ * 后端把 DJ 那条会话翻成人话的尾部几行(`music:radio#hostLog`,翻译住 `runtime/music/host-log.ts`),
+ * 壳只画行。它**不在** `ALL_QUERIES` 里:面板开着不等于有人在看这条流 —— 只有抽屉开着的那段时间
+ * 订它(`useMusicHostLog`),关着时事实到了只标脏、不补拉,下一次打开再对账。
+ * 读哪一条会话由后端按简报里的 `hostSessionId` 定,所以这里是一格单例;换了一本(DJ 会话满了
+ * 换新的 / 被删)由 `useMusicHostLog` 看着 `hostSessionId` 标脏。
+ */
+export const musicHostLogQuery = createQuery<MusicHostLog>('music.hostLog', () =>
+  readResource<MusicHostLog>(MUSIC_RADIO_REF, 'hostLog'),
 )
 
 /** 面板首载要的全部。次序无所谓 —— 五发并行,各落各的格。 */
@@ -585,8 +601,8 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
    * 拿到的还是上一首的 —— 没有这一行,歌词要等下一次随便什么事实路过才上屏(09-18 报障)。
    */
   lyricsChanged: [musicLyricsQuery],
-  radioOpened: [musicBriefQuery, musicProgrammeQuery, musicNowPlayingQuery],
-  radioClosed: [musicBriefQuery, musicProgrammeQuery, musicNowPlayingQuery],
+  radioOpened: [musicBriefQuery, musicProgrammeQuery, musicNowPlayingQuery, musicHostLogQuery],
+  radioClosed: [musicBriefQuery, musicProgrammeQuery, musicNowPlayingQuery, musicHostLogQuery],
   providerChanged: [
     musicRuntimeQuery,
     musicBriefQuery,
@@ -601,6 +617,13 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
    */
   setupChanged: [musicRuntimeQuery],
   /*
+   * 主持人抽屉(§16.3)两条新事实:他此刻在干的那一句换了 → 简报(`host` 在那里面);
+   * 记录流里落了一行(工具调用落地 / 流结束)→ 记录流。开台 / 关台也会让流里多一行
+   * 「叫他干活的」,所以那两条也标它(见上面两行 —— 在下面 `onMusicFact` 里补)。
+   */
+  hostActivity: [musicBriefQuery],
+  hostLogChanged: [musicHostLogQuery],
+  /*
    * 主持人回了一句(§7.1)。**一条读数都不标脏**:他说的话不在任何一份读数里,
    * 而他顺手改掉的东西(节目单、换的歌)各自会发自己的事实。它在这张表上留着一行
    * 空的,是为了说清「看见了,而且确实不必重问」—— 不写的话下一个人会以为漏了。
@@ -608,12 +631,31 @@ const EVENT_INVALIDATES: Readonly<Record<string, readonly { invalidate(): void }
   hostReplied: [],
 }
 
+/** `hostActivity` 的负载认得出才用 —— 形不对就只标脏,不拿半个对象去盖简报。 */
+function hostStateOf(payload: unknown): MusicHostState | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined
+  const { working, doing } = payload as { working?: unknown; doing?: unknown }
+  if (typeof working !== 'boolean') return undefined
+  if (doing === undefined) return { working }
+  const d = doing as { kind?: unknown; label?: unknown } | null
+  if (typeof d?.kind !== 'string' || typeof d.label !== 'string') return { working }
+  // 种类是后端动词表的数据:壳只画 `label`,认不出的种类照样收下(状态牌不按种类分支)。
+  return { working, doing: { kind: d.kind as MusicHostDoingKind, label: d.label } }
+}
+
 function onMusicFact(fact: MusicResourceEvent): void {
   // 他回话了。屏幕这边要的是那一下(撤气泡、黑豆回姿势),不是那句话本身 ——
   // 那句话走宠物那条路,判词在 `music-talk.ts`。
   if (fact.event === 'hostReplied') {
     noteHostReplied()
+    // 他回的那句同时也是记录流里「他说的」那一行(§16.2 第 3 段)。
+    musicHostLogQuery.invalidate()
     return
+  }
+  // 他此刻在干的那一句:负载就是那一格,先就地换上(状态牌不等一个往返),再对账。
+  if (fact.event === 'hostActivity') {
+    const host = hostStateOf(fact.payload)
+    if (host) patchBrief((prev) => ({ ...prev, host, djWorking: host.working }))
   }
   // 安装输出不进读数 —— 它是推来的进度,不是可重读的答案(判词在 `music-setup-log`)。
   if (fact.event === 'setupOutput') {
@@ -666,6 +708,7 @@ export function resetMusicSource(): void {
   // 界面还拿着引用(`musicSetupOp` 认 cell 不认次数),归零而不是丢掉。
   for (const mutation of setupMutations.values()) mutation.reset()
   musicTellOp.reset()
+  musicHostLogQuery.reset()
   musicPlaybackOp.reset()
   playbackIntent = null
   playbackSending = false
@@ -686,6 +729,23 @@ export function useMusicLive(): void {
     void openMusicSource()
     return () => closeMusicSource()
   }, [])
+}
+
+/**
+ * 主持人抽屉订记录流(§16.4 ① 生命周期):挂上那一刻问一次 —— **手上有旧的也重问**(关着的那段时间
+ * 事实只标了脏,没人补拉),重问是后台对账,旧行留在屏上(律②);`hostSessionId` 换了(换了一本 /
+ * 被删)再标一次脏。订阅本身随 `useQuery` 走,事实的订阅归面板那一份 `openMusicSource` 的计数。
+ */
+export function useMusicHostLog(hostSessionId: string | undefined): void {
+  useEffect(() => {
+    void (musicHostLogQuery.get().data === undefined ? musicHostLogQuery.ensure() : musicHostLogQuery.refetch())
+  }, [])
+  const seen = useRef(hostSessionId)
+  useEffect(() => {
+    if (seen.current === hostSessionId) return
+    seen.current = hostSessionId
+    musicHostLogQuery.invalidate()
+  }, [hostSessionId])
 }
 
 /*

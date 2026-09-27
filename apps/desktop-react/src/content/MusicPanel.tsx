@@ -7,15 +7,17 @@ import {
   musicOps,
   musicProgrammeQuery,
   musicRuntimeQuery,
+  musicTellOp,
   useMusicLive,
 } from '../data/music-source'
 import type { MusicRadioState } from '@shared/ipc/music'
 import type { MusicNowPlayingView } from '../data/music-source'
 import { useT } from '../i18n'
 import type { PetStageHandle } from '../pets/PetStage'
-import type { PetMenu } from '../pets/types'
-import { enterSessionInWorkbench } from './session-open'
 import { DeckRow } from './music/DeckRow'
+import { HostDrawer } from './music/HostDrawer'
+import type { HostDrawerTalk } from './music/HostDrawer'
+import { deriveHostStatus, hostStatusText } from './music/host-status'
 import { LoginGate, MusicHeader, NowLine, StatusBanner, useStatusAnnouncer } from './music/MusicFrame'
 import { PlaylistDrawer } from './music/PlaylistDrawer'
 import type { RecordDeckProps } from './music/RecordDeck'
@@ -83,7 +85,8 @@ import s from './MusicPanel.module.css'
  *  · 事件到达 —— 标脏 → 后台补拉,旧读数留在屏上;
  *  · 播放钟  —— `usePlaybackPosition`(在放时每 250ms 一拍),唱臂、进度条、歌词高亮吃同一个数;
  *  · 说话    —— 按钮那一行就地换成输入框,焦点由这一格的落点交给框;回车 / Esc / 取消回到按钮;
- *  · 抽屉    —— 开 / 关不动主界面;关掉焦点结构性地回到那颗钮;
+ *  · 抽屉    —— 开 / 关不动主界面;关掉焦点结构性地回到那颗钮;两只抽屉(播放列表 / 主持人,§16)同一时刻
+ *              只开一只:开一只就关另一只;点黑豆开主持人抽屉,焦点进输入框、关时回黑豆;
  *  · 换宿主  —— 浮窗 / 舞台 / 全屏不重挂;唱头拖到一半换宿主,`PointerTrack` 作废这一下;
  *  · 卸载    —— 退订;抽屉与说话状态不落盘。
  *
@@ -125,6 +128,8 @@ export function MusicPanel({
   const form = useMusicPanelForm(panelRef)
   const talk = useHostTalk()
   const [playlistOpen, setPlaylistOpen] = useState(initialPlaylistOpen)
+  // 主持人抽屉(§16):点黑豆拉开。与播放列表抽屉**同一时刻只开一只** —— 开一只就关另一只。
+  const [hostOpen, setHostOpen] = useState(false)
   const [rowError, setRowError] = useState<string | undefined>(undefined)
 
   const state = runtime.data
@@ -148,40 +153,32 @@ export function MusicPanel({
   const title = shown?.title
   const radioOn = brief.data?.active === true
 
-  // 点黑豆开出来的那一格(09-19):上面跟他说一句,下面「看他的会话」。关着时说的那句就是开台的意图,
-  // 开着时递给他(`tell`)—— 与从前那一行里的说话框同一条路,只是换了个地方住。
-  const hostSessionId = brief.data?.hostSessionId
-  const petMenu = useMemo<PetMenu>(
+  // 点黑豆 = 拉开主持人抽屉(§16.1;09-19 那一格小菜单与「查看会话」随之退役 —— 一个手势只做一件事)。
+  // 说话那一格仍是面板这一份 `talk`:开着时递给他(`tell`),关着时说的那句就是开台的意图。
+  const openHost = useCallback(() => {
+    setPlaylistOpen(false)
+    setHostOpen(true)
+  }, [])
+  const closeHost = useCallback(() => setHostOpen(false), [])
+  const openOp = useMutation(musicOps.open)
+  const hostTalk = useMemo<HostDrawerTalk>(
     () => ({
-      label: t('music.petMenu'),
-      talk: {
-        value: talk.text,
-        onChange: talk.setText,
-        placeholder: t(radioOn ? 'music.deckTalkOn' : 'music.deckTalkOff'),
-        sendLabel: t('music.petSend'),
-        sendDisabled: talk.sending,
-        onSend: () => {
-          const words = talk.text.trim()
-          if (!words) return
-          if (radioOn) talk.send()
-          else {
-            talk.setText('')
-            void musicOps.open.run({ intent: words })
-          }
-        },
+      value: talk.text,
+      onChange: talk.setText,
+      onSend: () => {
+        const words = talk.text.trim()
+        if (!words) return
+        if (radioOn) talk.send()
+        else {
+          talk.setText('')
+          void musicOps.open.run({ intent: words })
+        }
       },
-      actions: [
-        {
-          id: 'session',
-          label: t('music.petSession'),
-          disabled: !hostSessionId,
-          onSelect: () => {
-            if (hostSessionId) enterSessionInWorkbench(hostSessionId)
-          },
-        },
-      ],
+      action: radioOn ? musicTellOp : musicOps.open,
+      error: radioOn ? talk.error : openOp.error,
+      echo: radioOn ? talk.echo : null,
     }),
-    [t, talk, radioOn, hostSessionId],
+    [talk, radioOn, openOp.error],
   )
 
   const seek = useCallback((seconds: number) => void musicOps.seek.run({ position: seconds }), [])
@@ -192,7 +189,7 @@ export function MusicPanel({
   }, [])
   const onLiked = useCallback(() => petRef.current?.love(), [])
   const openStation = useCallback((intent: string) => void musicOps.open.run({ intent }), [])
-  const opening = useMutation(musicOps.open).pending
+  const opening = openOp.pending
 
   // 「没有下一首了,DJ 正在补歌单」是黑豆的事(09-18 用户:「这个状态交给 pet 啊」):他在翻唱片
   // (`musicPetActivity` 那一格 busy),刚进这一态时嘀咕一句;按 ⏭ 撞上它,他再嘀咕一句。
@@ -230,6 +227,8 @@ export function MusicPanel({
     error,
   })
   useStatusAnnouncer(status)
+  // 黑豆头顶那块状态牌(§16.2 第 1 段):唱机里与抽屉的檐上读同一句。
+  const hostStatus = hostStatusText(deriveHostStatus({ runtime: state, brief: brief.data, nowPlaying: shown }), t)
 
   const deck: RecordDeckProps = {
     runtime: state,
@@ -247,7 +246,9 @@ export function MusicPanel({
     petRef,
     listening: radioOn && talk.typing,
     awaitingHost: radioOn && talk.waiting,
-    petMenu,
+    onPetOpen: openHost,
+    petExpanded: hostOpen,
+    hostStatus,
   }
   const ctx: MusicSectionContext = {
     runtime: state,
@@ -316,7 +317,10 @@ export function MusicPanel({
                 playRef={playRef}
                 playlistRef={playlistRef}
                 playlistOpen={playlistOpen}
-                onTogglePlaylist={() => setPlaylistOpen((open) => !open)}
+                onTogglePlaylist={() => {
+                  setHostOpen(false)
+                  setPlaylistOpen((open) => !open)
+                }}
                 onLiked={onLiked}
                 refilling={refilling}
                 onWaitForDj={onWaitForDj}
@@ -333,6 +337,21 @@ export function MusicPanel({
               position={position}
               radioOn={radioOn}
               sideRoom={sideRoom}
+            />
+          )}
+
+          {hostOpen && (
+            <HostDrawer
+              form={form.drawer}
+              onClose={closeHost}
+              runtime={state}
+              brief={brief.data}
+              nowPlaying={shown}
+              talk={hostTalk}
+              onGoSetup={() => {
+                setHostOpen(false)
+                navigate(MUSIC_SETUP_SECTION)
+              }}
             />
           )}
         </div>

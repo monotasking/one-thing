@@ -17,7 +17,7 @@ import { useT } from '../../i18n'
 import { findBuiltinPet } from '../../pets/builtin'
 import { PetStage } from '../../pets/PetStage'
 import type { PetStageHandle } from '../../pets/PetStage'
-import type { PetGesture, PetMenu } from '../../pets/types'
+import type { PetGesture } from '../../pets/types'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { PointerTrack } from '../../ui/drag'
 import { FrameCoalescer } from '../../ui/frame-coalescer'
@@ -147,8 +147,15 @@ export interface RecordDeckProps {
    * 唱臂不接拖(没有播放器可 seek)、歌词没到也不说「正在取」(没人在取)。
    */
   restored?: boolean
-  /** 点黑豆开出来的那一格(输入框 + 动作)。父级给,这里原样递给舞台。 */
-  petMenu?: PetMenu
+  /** 点黑豆 = 拉开主持人抽屉(§16.1)。父级给,这里原样递给舞台。 */
+  onPetOpen?: () => void
+  /** 主持人抽屉此刻开着没有(黑豆那颗钮的 `aria-expanded`)。 */
+  petExpanded?: boolean
+  /**
+   * 黑豆头顶那块状态牌上的那一句(`host-status.ts`,父级算好 —— 抽屉的檐上读的是同一句,
+   * 同一份真相不算两遍)。缺席 = 不画。
+   */
+  hostStatus?: string
   /** 你在打字 / 发出去了还没等到他回话(父级给,同一份真相不订两遍)。 */
   listening?: boolean
   awaitingHost?: boolean
@@ -174,7 +181,9 @@ export function RecordDeck({
   onOpen,
   opening = false,
   restored = false,
-  petMenu,
+  onPetOpen,
+  petExpanded = false,
+  hostStatus,
   petRef,
   listening = false,
   awaitingHost = false,
@@ -561,6 +570,13 @@ export function RecordDeck({
         <i />
       </div>
       <div className={s.perch}>
+        {/* 状态牌排在舞台**前面**:他开口时气泡从头顶冒出来,按文档序盖在牌上(说话那一刻牌让位)。
+          * 不是 live region —— 面板的状态丸已经在播报,这一句再播就是两个人抢着说。 */}
+        {ready && pet && hostStatus ? (
+          <span className={s.hostSign} data-testid="music-host-status">
+            {hostStatus}
+          </span>
+        ) : null}
         {ready && pet && (
           <PetStage
             key={pet.id}
@@ -574,7 +590,8 @@ export function RecordDeck({
             voiced={voiced}
             size="stage"
             onGesture={reportGesture}
-            menu={petMenu}
+            onOpen={onPetOpen}
+            expanded={petExpanded}
           />
         )}
       </div>

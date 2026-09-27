@@ -153,6 +153,31 @@ describe('点一下(§7.3)', () => {
   })
 })
 
+describe('交给宿主开(`onOpen`,主持人抽屉 §16.1)', () => {
+  it('点一下 = 叫 onOpen + 报 poke,不嘀咕,舞台自己什么都不开;aria-expanded 听宿主的', () => {
+    const onOpen = vi.fn()
+    const onGesture = vi.fn()
+    const { rerender } = mount({ onOpen, onGesture })
+    expect(petButton().getAttribute('aria-haspopup')).toBe('dialog')
+    expect(petButton().getAttribute('aria-expanded')).toBe('false')
+    poke()
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(onGesture).toHaveBeenCalledWith({ kind: 'poke' })
+    expect(bubble().dataset.show).toBeUndefined()
+    expect(screen.queryByTestId('pet-menu')).toBeNull()
+    rerender({ onOpen, onGesture, expanded: true })
+    expect(petButton().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('与 menu 一起给时 onOpen 赢(一个手势只做一件事);键盘 ↵(detail = 0)同一条路', () => {
+    const onOpen = vi.fn()
+    mount({ onOpen, menu: { label: '菜单', actions: [{ id: 'x', label: 'x', onSelect: () => undefined }] } })
+    fireEvent.click(petButton(), { detail: 0 })
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('pet-menu')).toBeNull()
+  })
+})
+
 describe('撸(§7.3)', () => {
   it('按住累计 > 90px 进撸姿势、嘀咕收起;松手 → stroked + onGesture(stroke)', () => {
     const onGesture = vi.fn()

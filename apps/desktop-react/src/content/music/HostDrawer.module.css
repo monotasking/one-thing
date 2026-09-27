@@ -1,0 +1,213 @@
+/*
+ * 主持人抽屉(content/music/HostDrawer,正本 docs/music-panel-2026-09.md §16.2)。骨架(遮罩 / 两档形 /
+ * 檐 / 滚动身子 / 底栏)归 `ui/Drawer`;这里只画三段里装的东西。每一段任何状态下高度固定:
+ * 檐由头像的盒定、记录流吃满中间(`ui/Drawer` 的 `fill`)、底栏的错话行没错话时也占着。
+ */
+
+/* ── 檐:小头像 ── */
+.avatar {
+  display: block;
+  flex: none;
+  width: var(--music-host-avatar-w);
+  height: var(--music-host-avatar-h);
+}
+
+/* ── 记录流 ── */
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 100%;
+  /* 行少时贴底(最新在底);行多了由抽屉的身子那一层滚。 */
+  justify-content: flex-end;
+}
+
+.quiet {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  text-align: center;
+}
+
+.setup {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+}
+
+.skel {
+  height: var(--music-host-skel-h);
+  border-radius: var(--r-2);
+  background: var(--st-hover);
+}
+
+.skel + .skel {
+  margin-top: var(--sp-2);
+}
+
+.failed {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+}
+
+.failedText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 一段正文:折起来时钳成 --music-host-clamp 行。 */
+.text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.text[data-clamped='true'] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--music-host-clamp);
+  line-clamp: var(--music-host-clamp);
+  overflow: hidden;
+}
+
+/* 行内微型文字动作(ButtonBase + 本地皮):与正文同行、无边无底。 */
+.more {
+  margin-top: var(--sp-1);
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+.more:hover {
+  color: var(--text-1);
+}
+
+/* 你说的:右侧气泡。 */
+.you {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: var(--music-host-bubble-max);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-3);
+  background: var(--st-hover);
+  color: var(--text-1);
+  font-size: var(--fs-label);
+}
+
+.you[data-pending='true'] .bubble {
+  color: var(--text-2);
+}
+
+/* 叫他干活的:一行灰字。 */
+.nudge {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 他说的:左侧,用主持人那副字(与歌词区分「谁在说」)。 */
+.host {
+  display: flex;
+}
+
+.say {
+  max-width: var(--music-host-bubble-max);
+  color: var(--text-1);
+  font-family: var(--music-font-say);
+  font-size: var(--fs-body);
+}
+
+/* 找歌卡(`ui/Card` 画卡身:边、圆角、内距、行距):一行动词 + 一句结果 + 涉及的歌。 */
+.tool {
+  font-size: var(--fs-meta);
+}
+
+.toolLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  min-width: 0;
+  color: var(--text-1);
+}
+
+.toolVerb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolDetail {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.songs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin: 0;
+}
+
+.song {
+  max-width: 100%;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 他此刻在干的那一句(随 `doing` 变)+ 三个点。 */
+.live {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+}
+
+.liveText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 底栏:说话 ── */
+.talk {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.talk > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.talkError {
+  min-height: var(--music-host-talk-err-h);
+  margin: var(--sp-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

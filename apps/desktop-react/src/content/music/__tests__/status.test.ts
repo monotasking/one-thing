@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { MusicRuntimeState } from '@shared/ipc/music'
 import { zh } from '../../../i18n/zh'
 import { en } from '../../../i18n/en'
-import { deriveMusicStatus, MUSIC_STATUS_TABLE } from '../status'
+import { deriveMusicStatus, MUSIC_STATUS_TABLE, MUSIC_RADIO_SECTION } from '../status'
 import type { MusicStatusInput } from '../status'
 import { MUSIC_SECTIONS } from '../sections'
 
@@ -67,11 +67,15 @@ describe('deriveMusicStatus:优先序', () => {
     expect(deriveMusicStatus(input({ nowPlaying: STOPPED, restored: true })).kind).toBe('resumable')
   })
 
-  it('电台开着但什么都没在放:续得上 → stationIdle(带「接着放」);续不上 → DJ 在补', () => {
+  it('电台开着但什么都没在放:续得上 → stationIdle(带「接着放」);续不上、主持人也没在补 → stationEmpty(去电台换方向)', () => {
     const idle = deriveMusicStatus(input({ brief: ON }))
     expect(idle.kind).toBe('stationIdle')
     expect(idle.row.action?.kind).toBe('resume')
-    expect(deriveMusicStatus(input({ brief: { ...ON, canResume: false } })).kind).toBe('refilling')
+    // 09-26:从前这一格算成 refilling,真机上后端什么都没在做也一直说「正在准备」。
+    const empty = deriveMusicStatus(input({ brief: { ...ON, canResume: false } }))
+    expect(empty.kind).toBe('stationEmpty')
+    expect(empty.row.banner).toBe(true)
+    expect(empty.row.action).toEqual({ kind: 'section', section: MUSIC_RADIO_SECTION, labelKey: 'music.status.goRadio' })
   })
 
   it('什么都没有 → off,指引去电台那一格', () => {

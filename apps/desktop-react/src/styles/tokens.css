@@ -1036,6 +1036,17 @@
   /* 对话框(Elevation 板:宽 400 / 480 / 600 三档,本批只落最小档) */
   --dialog-w: 400px;
 
+  /* 抽屉(`ui/Drawer`,主持人抽屉 H0 从音乐面的播放列表抽屉抬上来,值一格没改,2026-09-27)。
+   * ≥ 560 的那一档从右边滑出这么宽(通高),< 560 那一档从底下升起这么高;哪一档由消费方
+   * 按自己的宽说(`form`),件只读那一格。
+   * 出场:280ms 是「一层东西滑进来」读得出过程又不拖沓的分量(与 Toast 的位移入场同族,
+   * 比 --dur-enter 那种淡入长一倍多 —— 位移要看得见走了多远)。 */
+  --drawer-w: 380px;
+  --drawer-h: 82%;
+  --drawer-r: 18px;
+  --drawer-dur: 280ms;
+  --ease-drawer: cubic-bezier(0.3, 0.7, 0.2, 1);
+
   /* Toast。板上是底部居中 2.6s;本批按拍板改右上角堆叠,
    * 入场位移沿用板上的 8px(全系统唯一允许位移的入场)。
    *
@@ -1761,14 +1772,8 @@
    * `content/music/panel-width.ts` 里的两个数 —— 面自己量自己的宽,CSS 读的是
    * `data-wide` / `data-side` 两格属性。把它们再抄一份成 token 只会多一个说谎的产地
    * (从前 `@container music (min-width: 960px)` 与这段注释就对不上过)。 */
-  /* 抽屉:≥560 从右边滑出这么宽,< 560 从底下升起这么高。 */
-  --music-drawer-w: 380px;
-  --music-drawer-h: 82%;
-  --music-drawer-r: 18px;
-  /* 出场:280ms 是「一层东西滑进来」读得出过程又不拖沓的分量(与 Toast 的位移入场同族,
-   * 比 --dur-enter 那种淡入长一倍多 —— 位移要看得见走了多远)。 */
-  --music-drawer-dur: 280ms;
-  --ease-music-drawer: cubic-bezier(0.3, 0.7, 0.2, 1);
+  /* 抽屉那副骨架(两档形、宽高、出场)已抬进 `ui/Drawer`(主持人抽屉 H0,2026-09-27),量在
+   * 「对话框」旁边那一节 `--drawer-*`;播放列表与主持人两只抽屉都读那几格。 */
   /* ── 样例剩下的六条(2026-09-18,正本 §8)────────────────────────────────
    * 行上那枚**碟形色块**:一张唱片的最简形 —— 中心一个孔、一圈标签(颜色由歌名
    * 散列出来,`record-geometry.ts` 的 `labelColorsFor`,同一首歌在哪儿都是同一色)、
@@ -1833,6 +1838,17 @@
   --music-mood-hover: brightness(1.08);
   --music-mood-press: scale(0.98);
   --music-echo-max: 80%;
+  /* 主持人抽屉(content/music/HostDrawer,§16.2,2026-09-27):檐上那枚小头像的盒(比例同
+   * --pet-stage-w/h);唱机里黑豆头顶那块状态牌最宽多少(那一句可能是后端给的「在搜「…」」);
+   * 记录流里一行正文超过几行就折起来(§16.4 超量);骨架一行多高;输入框下面那一行错话预留多高
+   * —— 没错话时也占着,底栏的高度任何状态下不变(§10 行高律);你说的那枚气泡最宽占一行的多少。 */
+  --music-host-avatar-w: 30px;
+  --music-host-avatar-h: 34px;
+  --music-host-sign-max-w: 160px;
+  --music-host-clamp: 6;
+  --music-host-skel-h: 36px;
+  --music-host-talk-err-h: 16px;
+  --music-host-bubble-max: 80%;
   /* 安装输出那一块最多露几行(§6.3「最多 12 行、自动跟到底」)。 */
   --music-log-lines: 12;
   /* 二维码画多大。它是这一步的主角,但不该把另外两颗钮挤下去。 */

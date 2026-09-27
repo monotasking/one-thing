@@ -153,9 +153,9 @@
   --kf-music-deck-label-a: musicDeckLabelA;
   --kf-music-deck-label-b: musicDeckLabelB;
   --kf-music-fan-flick: musicFanFlick;
-  /* 音乐面 v7:播放列表抽屉的两种出场 —— < 560 从底下升起,≥ 560 从右边滑进来。 */
-  --kf-music-drawer-up: musicDrawerUp;
-  --kf-music-drawer-in: musicDrawerIn;
+  /* 抽屉(`ui/Drawer`)的两种出场 —— < 560 从底下升起,≥ 560 从右边滑进来。 */
+  --kf-drawer-up: drawerUp;
+  --kf-drawer-in: drawerIn;
   --kf-music-eq: musicEq;
 }
 
@@ -677,16 +677,16 @@
   }
 }
 
-/* ── 音乐面 v7 的播放列表抽屉(content/MusicPanel)────────────────────────────
+/* ── 抽屉(ui/Drawer;音乐面 v7 的播放列表抽屉抬上来的,主持人抽屉 H0)───────────────
  * 两段各只说一件事:从底下升起 / 从右边滑进来。**只写 from** —— 落点是元素自己的
  * 静止位置,写一遍 to 就等于把布局抄进动画里。 */
-@keyframes musicDrawerUp {
+@keyframes drawerUp {
   from {
     transform: translateY(100%);
   }
 }
 
-@keyframes musicDrawerIn {
+@keyframes drawerIn {
   from {
     transform: translateX(100%);
   }

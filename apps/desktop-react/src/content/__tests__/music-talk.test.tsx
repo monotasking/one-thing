@@ -10,7 +10,7 @@ import { musicPetActivity } from '../music/pet-activity'
 import { useStageStore } from '../../stage/store'
 import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
 
-// 「看他在做什么」打开的是拼贴台里的一条会话 —— 这里只证它点名了哪一条,不真去摆树。
+// 「看他在做什么」随主持人抽屉(§16)退役:点黑豆不再往工作台里开会话 —— 这里只证它**没被叫**。
 vi.mock('../session-open', () => ({ enterSessionInWorkbench: vi.fn(() => null) }))
 
 /**
@@ -97,6 +97,8 @@ function tableWith(brief: unknown): ReadTable {
     },
     'music:player#nowPlaying': NOW_PLAYING,
     'music:player#lyrics': null,
+    // 主持人抽屉的记录流(§16.3):这一组判的是说话,记录流给一份「还没聊过」就够。
+    'music:radio#hostLog': { rows: [], absent: true, truncated: false },
     'music:provider#state': {
       setupStage: 'ready',
       configured: true,
@@ -137,7 +139,7 @@ async function mount(table: ReadTable = tableWith(BRIEF_ON)) {
 
 /** 打一句话进输入框(顺便把焦点落上去 —— 建议词那一排靠它现身)。 */
 async function type(words: string) {
-  const input = await screen.findByTestId('pet-menu-input')
+  const input = await screen.findByTestId('music-host-input')
   await act(async () => {
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: words } })
@@ -148,7 +150,7 @@ async function type(words: string) {
 
 /** 回车发。`<form>` 上的 submit —— 与真机按下 ↵ 是同一条路。 */
 async function pressEnter() {
-  const input = await screen.findByTestId('pet-menu-input')
+  const input = await screen.findByTestId('music-host-input')
   await act(async () => {
     fireEvent.submit(input.closest('form') as HTMLFormElement)
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -176,15 +178,20 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-/** 点黑豆:开出那一格(输入框 + 动作)。`click` 的 detail 是 0 —— 与键盘 ↵ 同一条路。 */
+/**
+ * 点黑豆:拉开主持人抽屉(§16.1,09-19 那一格小菜单的继任)。`click` 的 detail 是 0 —— 与键盘 ↵ 同一条路。
+ * 先把焦点放到黑豆身上:jsdom 的 click 不搬焦点(与 music-panel.test 的 `pokePet` 同一手)。
+ */
 async function openTalk() {
+  const pet = await screen.findByTestId('pet-button')
   await act(async () => {
-    fireEvent.click(await screen.findByTestId('pet-button'))
+    pet.focus()
+    fireEvent.click(pet)
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
 }
 
-describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏里)', () => {
+describe('跟黑豆说话(09-19 点黑豆开出一格输入框;09-27 起那一格是主持人抽屉的底栏,§16)', () => {
   it('控制栏里没有「说话」了', async () => {
     await mount()
     expect(screen.queryByTestId('music-talk')).toBeNull()
@@ -193,22 +200,23 @@ describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏�
   it('关着也有「说话」:占位问今晚想听什么', async () => {
     await mount(tableWith(BRIEF_OFF))
     await openTalk()
-    expect(screen.getByTestId('pet-menu-input').getAttribute('placeholder')).toBe('想听什么？')
+    expect(screen.getByTestId('music-host-input').getAttribute('placeholder')).toBe('想听什么？')
   })
 
   it('开着:占位是跟黑豆说点什么', async () => {
     await mount()
     await openTalk()
-    expect(screen.getByTestId('pet-menu-input').getAttribute('placeholder')).toBe('和黑豆说点什么')
+    expect(screen.getByTestId('music-host-input').getAttribute('placeholder')).toBe('和黑豆说点什么')
   })
 
-  it('开着:回车发一次且只发一次(music:radio 上的 tell),那一格收起', async () => {
+  it('开着:回车发一次且只发一次(music:radio 上的 tell);抽屉不收 —— 记录流要看他回什么', async () => {
     await mount()
     await openTalk()
     await type('换个心情,别太吵')
     await pressEnter()
     expect(fake.dos).toEqual([{ ref: 'music:radio', op: 'tell', params: { text: '换个心情,别太吵' } }])
-    expect(screen.queryByTestId('pet-menu')).toBeNull()
+    expect(screen.getByTestId('music-host')).toBeTruthy()
+    expect((screen.getByTestId('music-host-input') as HTMLInputElement).value).toBe('')
   })
 
   it('关着:说的那句话就是开台的意图 → do(music:radio, open)', async () => {
@@ -225,10 +233,10 @@ describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏�
     await type('   ')
     await pressEnter()
     expect(fake.dos).toHaveLength(0)
-    expect(screen.getByTestId('pet-menu-input')).toBeTruthy()
+    expect(screen.getByTestId('music-host-input')).toBeTruthy()
   })
 
-  it('Esc:那一格收起,一发都不发', async () => {
+  it('Esc:抽屉收起,一发都不发', async () => {
     await mount()
     await openTalk()
     const input = await type('算了')
@@ -236,7 +244,7 @@ describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏�
       fireEvent.keyDown(input, { key: 'Escape' })
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
-    expect(screen.queryByTestId('pet-menu')).toBeNull()
+    expect(screen.queryByTestId('music-host')).toBeNull()
     expect(fake.dos).toHaveLength(0)
   })
 
@@ -246,31 +254,24 @@ describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏�
     expect(screen.queryByTestId('pet-bubble-text')).toBeNull()
   })
 
-  it('「看他在做什么」:还没有他的会话 → 停用;有了 → 在拼贴台里打开那条会话', async () => {
-    await mount()
-    await openTalk()
-    expect((screen.getByTestId('pet-menu-session') as HTMLButtonElement).disabled).toBe(true)
-    cleanup()
-    resetMusicSource()
+  it('「看他在做什么」退役:有他的会话也不往工作台里开,点黑豆只拉开抽屉', async () => {
     await mount(tableWith({ ...BRIEF_ON, hostSessionId: 'dj-session-1' }))
     await openTalk()
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('pet-menu-session'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-    expect(enterSessionInWorkbench).toHaveBeenCalledWith('dj-session-1')
+    expect(screen.getByTestId('music-host')).toBeTruthy()
     expect(screen.queryByTestId('pet-menu')).toBeNull()
+    expect(screen.queryByTestId('pet-menu-session')).toBeNull()
+    expect(enterSessionInWorkbench).not.toHaveBeenCalled()
   })
 
-  it('发送失败:错话在唱片上方就地一行(后端原话),字留着 —— 再点黑豆还在框里', async () => {
+  it('发送失败:错话在唱片上方就地一行、抽屉底栏那一行也是它(后端原话),字还回框里', async () => {
     await mount()
     fake.outcome = { kind: 'denied', reason: '电台没开' }
     await openTalk()
     await type('慢一点')
     await pressEnter()
     expect((await screen.findByTestId('music-backend-error')).textContent).toBe('电台没开')
-    await openTalk()
-    expect((screen.getByTestId('pet-menu-input') as HTMLInputElement).value).toBe('慢一点')
+    expect(screen.getByTestId('music-host-talk-error').textContent).toBe('电台没开')
+    expect((screen.getByTestId('music-host-input') as HTMLInputElement).value).toBe('慢一点')
   })
 
   it('打字时黑豆 listening;发出去之后 busy,他回了就回到该在的姿势', async () => {
@@ -309,7 +310,7 @@ describe('跟黑豆说话(09-19:点黑豆开出一格输入框,不在控制栏�
       fireEvent.click(screen.getByTestId('pet-button'))
       await vi.advanceTimersByTimeAsync(0)
     })
-    const input = screen.getByTestId('pet-menu-input')
+    const input = screen.getByTestId('music-host-input')
     await act(async () => {
       fireEvent.change(input, { target: { value: '在吗' } })
       fireEvent.submit(input.closest('form') as HTMLFormElement)

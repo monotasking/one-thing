@@ -528,6 +528,23 @@
   pointer-events: none;
 }
 
+/*
+ * 黑豆头顶的状态牌(主持人抽屉 §16.2 第 1 段:「他头顶那块牌」)。站在他头顶正中:横坐标是他的锚点,
+ * 纵坐标是脚底 + 他缩放之后的身高。一行,只截断不换行,宽度封顶(那一句可能是后端给的「在搜「…」」)。
+ */
+.hostSign {
+  position: absolute;
+  left: var(--pet-anchor-x, 50%);
+  bottom: calc(var(--pet-anchor-bottom, 0px) + var(--pet-stage-h) * var(--pet-scale, 1));
+  max-width: var(--music-host-sign-max-w);
+  transform: translateX(-50%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--music-deck-line-hover);
+  font-size: var(--fs-micro);
+}
+
 .fan {
   position: absolute;
   left: var(--fan-x);

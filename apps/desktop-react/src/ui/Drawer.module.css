@@ -1,0 +1,114 @@
+/*
+ * 抽屉(`ui/Drawer`,主持人抽屉 H0,2026-09-27)。规则逐条从音乐面的播放列表抽屉抬上来,
+ * 值一格没改(`--music-drawer-*` 改名成 `--drawer-*`,`--kf-music-drawer-*` 改名成 `--kf-drawer-*`)。
+ *
+ * 遮罩铺满**宿主那块面**(不是整扇窗)—— 抽屉是那块面自己的一层,盖住别人的面板会是
+ * 一件它无权做的事。所以宿主要是一个定位容器(`position: relative` 或更深),件不替它设。
+ * 层级用 --z-float:它在内容之上,在全屏遮罩(--z-overlay)之下。
+ */
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-float);
+  background: var(--scrim);
+  animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
+}
+
+.drawer {
+  position: absolute;
+  z-index: var(--z-float);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+}
+
+/* < 560:从底下升起。 */
+.drawer[data-form='sheet'] {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: var(--drawer-h);
+  border-radius: var(--drawer-r) var(--drawer-r) 0 0;
+  animation: var(--kf-drawer-up) var(--drawer-dur) var(--ease-drawer);
+}
+
+/* 定高那一档(`fill`):身子里是一条会长的流,底下还有一格固定的输入 —— 升起的高度不许跟着
+ * 行数涨落(每一段任何状态下高度固定)。侧滑那一档本来就通高,不用这一格。 */
+.drawer[data-form='sheet'][data-fill='true'] {
+  height: var(--drawer-h);
+}
+
+/* ≥ 560:从右边滑出,通高。`88%` 是窄到极限时的让步:遮罩总要露出一条边给手点。 */
+.drawer[data-form='side'] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--drawer-w), 88%);
+  border-radius: var(--drawer-r) 0 0 var(--drawer-r);
+  animation: var(--kf-drawer-in) var(--drawer-dur) var(--ease-drawer);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-2) 0 var(--sp-3);
+}
+
+/* 檐左边那一簇(给了 `lead` / `subtitle` 才有):头像 · 名字 · 一句状态,一行,只截断不换行。 */
+.ident {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ident .title {
+  flex: none;
+}
+
+.subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* 身子自己滚:一张一百条的单子在抽屉里滚,不把抽屉撑破。 */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+}
+
+/* 底栏(给了 `footer` 才有):不跟身子滚,高度由里面那一格定。 */
+.foot {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  border-top: var(--bw-1) solid var(--line-1);
+}

@@ -154,6 +154,20 @@ const RADIO_BRIEF_SCHEMA: JsonSchema = {
     },
     programmeLength: { type: 'number' },
     canResume: { type: 'boolean', description: 'Whether radioResume has anything to play.' },
+    djWorking: { type: 'boolean', description: 'The host is curating right now (a DJ turn is in flight).' },
+    host: {
+      type: 'object',
+      description: 'The host as a person: working or not, and what he is doing in plain words.',
+      properties: {
+        working: { type: 'boolean' },
+        doing: {
+          type: 'object',
+          properties: { kind: { type: 'string' }, label: { type: 'string' } },
+          required: ['kind', 'label'],
+        },
+      },
+      required: ['working'],
+    },
     upNext: { type: 'string', description: 'What plays next, when that is knowable at all.' },
     volume: { type: 'number', description: "The player's persisted volume, 0-100, when the CLI keeps one." },
     startedAt: { type: 'string', description: 'When this station run started (ISO).' },
@@ -424,6 +438,58 @@ const SET_PROVIDER_PARAMS: JsonSchema = {
   required: ['providerId'],
 }
 
+/**
+ * 主持人此刻的状态牌(§16.3):在不在干活、在干什么。`doing.label` 是后端按动词表
+ * (`host-log.ts`)翻好的一句现在时,壳只画它 —— 壳不认识 ncm-cli。
+ */
+const HOST_STATE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    working: { type: 'boolean', description: 'A DJ turn is in flight in his session.' },
+    doing: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['thinking', 'search', 'lyric', 'queue', 'skip', 'command', 'speaking'] },
+        label: { type: 'string', description: 'What he is doing, one present-tense phrase, e.g. 在搜「周杰伦」.' },
+      },
+      required: ['kind', 'label'],
+    },
+  },
+  required: ['working'],
+}
+
+/**
+ * 记录流(§16.3):DJ 那条会话翻成的人话行,只交尾部。四种行 —— 你说的 / 叫他干活的
+ * (提示词正文不上屏)/ 他说的 / 找歌卡。会话不在(简报没 id / 被删)= 空行 + `absent`。
+ */
+const HOST_LOG_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    rows: {
+      type: 'array',
+      description: 'Newest last.',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['you', 'nudge', 'host', 'card'] },
+          id: { type: 'string', description: 'Stable across re-reads.' },
+          at: { type: 'number', description: 'Message time, epoch ms.' },
+          text: { type: 'string', description: 'you / nudge / host rows.' },
+          verb: { type: 'string', enum: ['thinking', 'search', 'lyric', 'queue', 'skip', 'command', 'speaking'] },
+          label: { type: 'string', description: 'card rows: the verb phrase, e.g. 搜「一荤一素 毛不易」.' },
+          detail: { type: 'string', description: 'card rows: a short result summary; absent while in flight.' },
+          songs: { type: 'array', items: { type: 'string' } },
+          failed: { type: 'boolean' },
+        },
+        required: ['kind', 'id', 'at'],
+      },
+    },
+    absent: { type: 'boolean', description: 'There is no host session (never talked, or it was deleted).' },
+    truncated: { type: 'boolean', description: 'Earlier rows exist and were not returned.' },
+  },
+  required: ['rows', 'absent', 'truncated'],
+}
+
 export const musicResourceSpec: ResourceSpec = {
   scheme: MUSIC_RESOURCE_SCHEME,
   title: 'Music — the personal radio station and the player',
@@ -462,6 +528,22 @@ export const musicResourceSpec: ResourceSpec = {
       title: 'Read the programme: the songs still queued, and the one on deck',
       query: NO_PARAMS,
       result: PROGRAMME_SCHEMA,
+    },
+    /**
+     * 主持人抽屉的记录流(§16.3)。**翻译住后端**:DJ 会话里的 ncm-cli 调用由动词表翻成
+     * 「搜「…」→ 3 首,选了 Live 版」这样的行,壳只画行。只交尾部(缺省 60 行),更早的
+     * 不给 —— 那是超量态,`truncated` 说一声。
+     */
+    hostLog: {
+      title: "Read the radio host's log: his session turned into plain rows (what you said, what he said, what he did)",
+      query: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, description: 'How many rows from the tail (default 60).' },
+        },
+        required: [],
+      },
+      result: HOST_LOG_SCHEMA,
     },
     /** 当前这首歌的定时歌词。没有 = `null`。 */
     lyrics: {
@@ -837,6 +919,27 @@ export const musicResourceSpec: ResourceSpec = {
         required: ['text', 'say'],
       },
       moment: { weight: 'high', gist: '用户跟主持人说了话,他回了一句' },
+    },
+    /**
+     * ── 主持人抽屉的两条事实(2026-09-26,正本 §16.3)──────────────────────────
+     *
+     * `hostActivity`:状态牌那一句变了(发了一条消息进他会话 = 在想;每一次工具调用 =
+     * 那条调用翻成的现在时;这一轮收场 = 清空)。负载就是整份 `MusicHostState`,读到的人
+     * 不必再回头读简报。
+     *
+     * `hostLogChanged`:记录流多了东西(一次工具调用 / 落了结果 / 这一轮收场)。它是**事实
+     * 不是命令**:负载是空的,读到的人重拉 `hostLog`。不做逐 token:他在打字时记录流只多
+     * 一行「在说话…」,说完整句再上屏。
+     *
+     * **两条都没有 `moment`**:主持人在搜歌不是「听歌这件事」,没人该对着它开口。
+     */
+    hostActivity: {
+      title: 'What the radio host is doing right now changed',
+      payload: HOST_STATE_SCHEMA,
+    },
+    hostLogChanged: {
+      title: "The radio host's log has new rows; re-read hostLog",
+      payload: NO_PARAMS,
     },
     /**
      * ── 听歌这件事本身的事实(宠物 P4,`docs/design/pet-system-2026-09.md` §11.1)──────

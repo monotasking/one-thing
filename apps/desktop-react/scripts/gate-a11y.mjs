@@ -1058,6 +1058,15 @@ async function main() {
       await settle(page, `音乐面 · ${id}`)
       await scanAxe(page, `音乐面 · ${id}`, '[data-testid="music-panel"]')
     }
+    /*
+     * **主持人抽屉**(音乐面 §16,2026-09-27)在这道门里**等不到**,所以这里不加一扫 —— 与终端 / 浏览器
+     * 那两屏同一条判例(壳 CLAUDE.md 第 2 轴:「那一屏在 gate-a11y 里根本等不到」)。理由一句话:
+     * 抽屉由点黑豆拉开,而黑豆只画在唱机那一格里(`RecordDeck` 的 `ready && pet`),那一格又要登录 ——
+     * 这道门跑在一个全新的临时 store 上,没装音乐 CLI、没登录,「正在放」那一格上画的是登录引导卡,
+     * 唱机与黑豆都不在屏上(上面逐段那一扫扫到的正是那张卡)。加一步「点 pet-button、等 music-host」
+     * 只会等一片永不出现的叶。它的 axe 该住在能装出登录态音乐面的那道门上(`gate:music`,那一道
+     * 今天只写不跑,见它自己的文件头)。
+     */
     // 扫完把它收回去,别把它留给下一屏(Dock 上那颗瓦是开关)。
     await clickSelector(page, '[data-testid="dock-tile-music"]')
     await waitFor('音乐面已收回', () =>

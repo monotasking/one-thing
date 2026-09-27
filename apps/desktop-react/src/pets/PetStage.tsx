@@ -94,6 +94,14 @@ export interface PetStageProps {
    * 但不嘀咕 —— 浮层开着还在头顶冒一句是两个人抢着说);不给 = 老样子,点一下只是戳。
    */
   menu?: PetMenu
+  /**
+   * 点它**交给宿主去开**的那一格(主持人抽屉,2026-09-27,正本 `docs/music-panel-2026-09.md` §16.1)。
+   * 给了它,点一下 = 叫一声 `onOpen`(照样缩一下、照样报 `poke`、照样不嘀咕),舞台自己什么都不开 ——
+   * 开出来的东西长什么样、住在哪由宿主定。与 `menu` 二选一,两个都给时它赢(一个手势只做一件事)。
+   */
+  onOpen?: () => void
+  /** `onOpen` 开出来的那一格此刻开着没有(读屏的 `aria-expanded`;宿主给)。 */
+  expanded?: boolean
   ref?: Ref<PetStageHandle>
 }
 
@@ -109,9 +117,13 @@ export function PetStage({
   onSpeakingChange,
   onChoice,
   onGesture,
-  menu,
+  menu: menuProp,
+  onOpen,
+  expanded = false,
   ref,
 }: PetStageProps) {
+  // 交给宿主开的那一档赢过自己开的小菜单(一个手势只做一件事)。
+  const menu = onOpen ? undefined : menuProp
   const t = useT()
   const [controller] = useState(() => new PetStageController({ activity }))
   const snap = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
@@ -120,6 +132,8 @@ export function PetStage({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(menu)
   menuRef.current = menu
+  const onOpenRef = useRef(onOpen)
+  onOpenRef.current = onOpen
   /** 这一下点是去开浮层的:紧跟着的那句戳一下的嘀咕不说。 */
   const quietPoke = useRef(false)
   const talkInputRef = useRef<HTMLInputElement | null>(null)
@@ -129,7 +143,10 @@ export function PetStage({
     onSpeakingChange,
     onChoice,
     onGesture: (gesture) => {
-      if (gesture.kind === 'poke' && menuRef.current) {
+      if (gesture.kind === 'poke' && onOpenRef.current) {
+        quietPoke.current = true
+        onOpenRef.current()
+      } else if (gesture.kind === 'poke' && menuRef.current) {
         quietPoke.current = true
         setMenuOpen(true)
       }
@@ -394,8 +411,8 @@ export function PetStage({
                 onPointerDown={onPointerDown}
                 onClick={onClick}
                 data-pose={pose}
-                aria-haspopup={menu ? 'dialog' : undefined}
-                aria-expanded={menu ? menuOpen : undefined}
+                aria-haspopup={menu || onOpen ? 'dialog' : undefined}
+                aria-expanded={onOpen ? expanded : menu ? menuOpen : undefined}
                 data-testid="pet-button"
               />
             </div>

@@ -88,6 +88,12 @@ function playerAdapters(overrides: Partial<MusicPlayerAdapters> = {}): MusicPlay
   }
 }
 
+const HOST_LOG = {
+  rows: [{ kind: 'card' as const, id: 'a1:tool:t1', at: 1, verb: 'search' as const, label: '搜「晴天」', detail: '3 首' }],
+  absent: false,
+  truncated: false,
+}
+
 function stationAdapters(overrides: Partial<MusicStationAdapters> = {}): MusicStationAdapters {
   return {
     brief: () => BRIEF,
@@ -95,6 +101,8 @@ function stationAdapters(overrides: Partial<MusicStationAdapters> = {}): MusicSt
     programmeAction: () => ({ success: true }),
     // 缺省:话递进去了,他没回(空回话 = 不发事件,见下面那一族用例)。
     tell: async () => ({ reply: Promise.resolve(undefined) }),
+    hostLog: () => HOST_LOG,
+    watchFacts: () => () => {},
     ...overrides,
   }
 }
@@ -486,6 +494,54 @@ describe('music resource provider —— 补齐的读法', () => {
       backend: backendAdapters({ search: async () => ({ success: false, error: '搜索失败:超时' }) }),
     })
     expect(failureOf((await run(broken, { read: 'search', query: '晴天' })).outcome)).toBe('搜索失败:超时')
+  })
+})
+
+describe('music resource provider —— 主持人抽屉(§16.3)', () => {
+  it('hostLog:交出端口那份记录流;limit 缺席 = 缺省,给了就原样递下去,不是正整数就当场说不', async () => {
+    const hostLog = vi.fn((_limit?: number) => HOST_LOG)
+    const provider = makeProvider(undefined, undefined, { station: stationAdapters({ hostLog }) })
+
+    const plain = await run(provider, { read: 'hostLog' })
+    expect(plain.outcome.kind).toBe('ok')
+    expect(JSON.parse(plain.text)).toEqual(HOST_LOG)
+    expect(hostLog).toHaveBeenLastCalledWith(undefined)
+
+    await run(provider, { read: 'hostLog', limit: 5 })
+    expect(hostLog).toHaveBeenLastCalledWith(5)
+
+    const bad = await run(provider, { read: 'hostLog', limit: 0 })
+    expect(bad.outcome.kind).toBe('failed')
+    expect(hostLog).toHaveBeenCalledTimes(2)
+  })
+
+  it('电台事实原样转成 music:radio 上的事件,两条都在自述里、都没有 moment;dispose 之后退订', () => {
+    let push: ((event: string, payload: Record<string, unknown>) => void) | undefined
+    const unwatch = vi.fn()
+    const provider = makeProvider(undefined, undefined, {
+      station: stationAdapters({
+        watchFacts: listener => {
+          push = listener
+          return unwatch
+        },
+      }),
+    })
+    const hub = new ResourceEventHub()
+    const seen: ResourceEvent[] = []
+    hub.watch('music:', event => seen.push(event))
+    provider.attach(hub)
+
+    push?.('hostActivity', { working: true, doing: { kind: 'search', label: '在搜「晴天」' } })
+    push?.('hostLogChanged', {})
+    expect(seen).toEqual([
+      { ref: 'music:radio', event: 'hostActivity', payload: { working: true, doing: { kind: 'search', label: '在搜「晴天」' } } },
+      { ref: 'music:radio', event: 'hostLogChanged', payload: {} },
+    ])
+    expect(provider.spec.events.hostActivity?.moment).toBeUndefined()
+    expect(provider.spec.events.hostLogChanged?.moment).toBeUndefined()
+
+    provider.dispose()
+    expect(unwatch).toHaveBeenCalledTimes(1)
   })
 })
 

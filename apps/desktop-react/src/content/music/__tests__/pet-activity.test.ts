@@ -66,16 +66,16 @@ describe('§8.1 活动表', () => {
     )
   })
 
-  it('4 · 电台开着、节目单读到了且为空、没在放 → busy', () => {
-    expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: STOPPED, programme: EMPTY_PROGRAMME })).toBe('busy')
+  it('4 · 主持人在编排(brief.djWorking)、没在放 → busy', () => {
+    expect(musicPetActivity({ runtime: READY, brief: { ...RADIO_ON, djWorking: true }, nowPlaying: STOPPED, programme: EMPTY_PROGRAMME })).toBe('busy')
   })
 
-  it('4 · 节目单还没读到不算空', () => {
-    expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: STOPPED })).toBe('idle')
+  it('4 · 节目单空但后端没说他在编排 → 不是 busy(09-26 改判:「正在准备」只认后端的事实,不再拿「节目单空」猜)', () => {
+    expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: STOPPED, programme: EMPTY_PROGRAMME })).toBe('idle')
   })
 
-  it('4 · 节目单空但在放 → 也是 busy(09-18 改判:「没有下一首了,dj 正在补歌单,这个状态交给 pet」)', () => {
-    expect(musicPetActivity({ runtime: READY, brief: RADIO_ON, nowPlaying: PLAYING, programme: EMPTY_PROGRAMME })).toBe('busy')
+  it('4 · 在放时主持人也在编排 → 也是 busy(09-18 改判:「没有下一首了,dj 正在补歌单,这个状态交给 pet」)', () => {
+    expect(musicPetActivity({ runtime: READY, brief: { ...RADIO_ON, djWorking: true }, nowPlaying: PLAYING, programme: EMPTY_PROGRAMME })).toBe('busy')
   })
 
   it('4 · 电台关着、节目单空 → 不是在补(没人在补)', () => {

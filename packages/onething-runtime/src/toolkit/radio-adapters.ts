@@ -21,6 +21,8 @@ export interface RadioToolStatus {
   programmeLength: number
   nowPlayingTitle?: string
   lastError?: string
+  /** 主持人此刻在编排(一轮 DJ 消息发出去了、还没结束)。 */
+  djWorking?: boolean
 }
 
 export interface RadioToolAdapters {

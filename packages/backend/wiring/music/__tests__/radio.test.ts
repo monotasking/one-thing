@@ -292,6 +292,9 @@ describe('main radio playback (legacy starter)', () => {
         { id: 'b', agentId: 'radio-dj', updatedAt: 300, messageCount: 99 },
         { id: 'c', agentId: 'radio-dj', updatedAt: 200, messageCount: 4 },
         { id: 'd', agentId: 'default', updatedAt: 400, messageCount: 1 },
+        // 与 DJ 的私聊房:协作协调器的场子,电台发进去会被引擎拒收(09-26 真机)。
+        { id: 'e', agentId: 'radio-dj', kind: 'room', updatedAt: 500, messageCount: 2 },
+        { id: 'f', agentId: 'radio-dj', kind: 'agent', updatedAt: 600, messageCount: 2 },
       ]),
     ).toBe('c')
     expect(radio.pickReusableRadioDjSession([])).toBeNull()

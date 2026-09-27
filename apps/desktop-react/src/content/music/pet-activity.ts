@@ -35,12 +35,16 @@ export interface MusicPetInputs {
 }
 
 /**
- * **电台开着、节目单空了 = 主持人在补歌单**(09-18 用户:「没有下一首了,dj 正在补歌单,这个状态
- * 交给 pet 啊」)。不管此刻有没有歌在放:放着的是最后一首,他同样在翻 —— 后端的指挥在空架子上
- * 就会叫醒他(`radio-conductor` 的 starving 那一支)。节目单还没读到(`undefined`)不算空。
+ * **主持人在补歌单**(09-18 用户:「没有下一首了,dj 正在补歌单,这个状态交给 pet 啊」)。
+ *
+ * 09-26 改判据:从前是「电台开着 + 节目单空」算出来的,真机上后端什么都没在做(DJ 一周没跑过)
+ * 界面也说「正在准备歌曲」—— 一句算出来的话在替后端撒谎。现在只认后端的事实 `brief.djWorking`
+ * (一条消息发进了 DJ 会话、他那一轮还没结束);老后端没有这一格 = 不知道 = 不算在补。
+ * 「电台开着而节目单空、他也没在补」是另一种状态(`status.ts` 的 `stationEmpty`),要人换个方向。
  */
 export function stationRefilling(brief: MusicRadioState | undefined, programme: MusicProgrammeView | undefined): boolean {
-  return brief?.active === true && programme !== undefined && programme.entries.length === 0
+  void programme
+  return brief?.active === true && brief.djWorking === true
 }
 
 export function musicPetActivity({

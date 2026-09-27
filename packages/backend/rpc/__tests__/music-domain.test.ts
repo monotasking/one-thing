@@ -139,7 +139,7 @@ describe('music RPC domain', () => {
     const { createMusicOperationsScope } = await import('../../wiring/music/operations.js')
     const { setCurrentBackend, createBackendHandle } = await import('../../current.js')
     operations = createMusicOperationsScope({ service: { ...service, runner }, radio } as unknown as Parameters<typeof createMusicOperationsScope>[0])
-    const music = { operations, radio, service, onNowPlayingChanged: () => () => {}, onPlayerFact: () => () => {}, onSetupEvent: () => () => {} }
+    const music = { operations, radio, service, onNowPlayingChanged: () => () => {}, onPlayerFact: () => () => {}, onSetupEvent: () => () => {}, onRadioFact: () => () => {} }
     setCurrentBackend(createBackendHandle({ music: music as unknown as import('../../wiring/music/subsystem.js').MusicSubsystem }))
 
     /*
