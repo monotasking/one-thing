@@ -49,6 +49,22 @@ import { createChildShutdown, observeChildClose, shutdownFailed } from '../../..
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+/**
+ * 调试主进程(后端):`ONETHING_INSPECT` 决定 Electron 带不带 Node 调试端口。
+ *   未设置 / `0`    → 不开(缺省)
+ *   `1`             → `--inspect=9229`
+ *   端口号,如 9230 → `--inspect=9230`
+ *   `brk`           → `--inspect-brk=9229`,停在第一行,用来调试启动与装配
+ * 主进程产物带 source map,IDE 用「Attach to Node.js」连上后断点可以直接打在 .ts 上。
+ * 步骤见 docs/debugging.md。
+ */
+function inspectArgs(value) {
+  if (!value || value === '0' || value === 'false') return []
+  if (value === 'brk') return ['--inspect-brk=9229']
+  const port = /^\d+$/.test(value) && value !== '1' ? value : '9229'
+  return [`--inspect=${port}`]
+}
+
 // main/preload 每次都重打:它们不参与 vite 的依赖图。
 // **不 await**:让这只 esbuild 子进程与下面 vite 的 createServer/listen(以及 listen
 // 之后立刻开跑的 warmup)并排走。真正要等它的地方是 spawn Electron 之前那一行。
@@ -76,7 +92,7 @@ server.printUrls()
 try { await electronBuild }
 catch (error) { await server.close().catch(() => {}); throw error }
 
-const electron = spawn(electronPath, [path.join(appRoot, 'dist-electron/main.cjs')], {
+const electron = spawn(electronPath, [...inspectArgs(process.env.ONETHING_INSPECT), path.join(appRoot, 'dist-electron/main.cjs')], {
   cwd: appRoot,
   stdio: 'inherit',
   env: { ...process.env, ONETHING_REACT_DEV_SERVER_URL: url },

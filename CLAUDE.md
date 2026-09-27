@@ -12,6 +12,7 @@ bun run dev                # unified dev: React desktop + web + server (scripts/
 bun run dev:electron       # managed lane: React desktop only (can run alongside dev:web)
 bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
 bun run electron:dev       # React desktop only (apps/desktop-react/scripts/dev-app.mjs: vite :5175 + Electron on dist-electron/main.cjs; the main process writes app.jsonl itself)
+ONETHING_INSPECT=1 bun run electron:dev   # same, with the main process on Node inspector :9229 (`brk` = break on first line); see docs/debugging.md
 bun run web:dev            # THE browser shell: React shell in web mode (`--mode web` → :5174 + the
                            # dynamic /api proxy, apps/desktop-react/vite/dev-api-proxy.ts)
 bun run server:start       # node dist/server/main.js (run server:build first; dynamic port
