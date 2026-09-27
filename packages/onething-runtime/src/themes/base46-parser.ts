@@ -634,6 +634,8 @@ function base46ShellRoles(
     ink,
     ink2,
     inkWeak: b30.light_grey || b30.grey_fg || ink2,
+    tooltipBg: ink,
+    tooltipFg: canvas,
   }
 }
 

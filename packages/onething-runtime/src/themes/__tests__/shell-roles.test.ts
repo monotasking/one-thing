@@ -37,6 +37,8 @@ describe('壳的角色表(base46 → shellRoles)', () => {
       ink: '#383a42',
       ink2: '#54555b',
       inkWeak: '#a2a2a3',
+      tooltipBg: '#383a42',
+      tooltipFg: '#fafafa',
     })
   })
 

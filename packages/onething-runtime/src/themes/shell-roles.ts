@@ -38,6 +38,13 @@ export interface ThemeShellRoles {
   ink2: string
   /** 弱墨:思考行、时长、占位字 —— base46 `light_grey`(NvChad 非活动标签的字)。 */
   inkWeak: string
+  /**
+   * tooltip 反色块:底 = 正文墨(`base05`)、字 = 画布(`black`)。与壳静态 palette 同一形
+   * (墨底浅字)。旧转换函数拿 `light_grey`(NvChad 的**字色**)当底,one_light 上是一块
+   * #a2a2a3 中灰压深字(09-26 真机截图)。
+   */
+  tooltipBg: string
+  tooltipFg: string
 }
 
 const SHELL_ROLE_VAR_MAP: Record<keyof ThemeShellRoles, string> = {
@@ -51,6 +58,8 @@ const SHELL_ROLE_VAR_MAP: Record<keyof ThemeShellRoles, string> = {
   ink: '--role-ink',
   ink2: '--role-ink-2',
   inkWeak: '--role-ink-weak',
+  tooltipBg: '--role-tooltip-bg',
+  tooltipFg: '--role-tooltip-fg',
 }
 
 const SAFE_COLOR = /^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|transparent)$/

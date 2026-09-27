@@ -130,6 +130,6 @@
   --tint-danger: var(--ui-status-danger-bg);
 
   /* ── tooltip 反色块 ───────────────────────────────────────────────────── */
-  --tooltip-bg: var(--ui-surface-tooltip-bg);
-  --tooltip-text: var(--ui-surface-tooltip-fg);
+  --tooltip-bg: var(--role-tooltip-bg, var(--ui-surface-tooltip-bg));
+  --tooltip-text: var(--role-tooltip-fg, var(--ui-surface-tooltip-fg));
 }
