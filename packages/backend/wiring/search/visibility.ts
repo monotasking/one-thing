@@ -46,6 +46,7 @@ import type {
 } from '@onething/runtime/search/capabilities'
 import type { SearchPrincipal } from '@onething/core/search'
 import type { SessionMeta } from '@shared/ipc.js'
+import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
 import { getLogger } from '../logging/index.js'
 
@@ -101,12 +102,16 @@ export function visibleSessionIdsFor(
   const space = here === undefined ? '' : spaceOf(here)
 
   const allowed = sessions.filter(meta => (
-    isCollabSession(meta)
-      // 协作房:成员判据说了算,**不问空间** —— 拍点辛 a 的第二半没有空间限定词,
-      // 而房的归属本来就可能与说话人此刻所在的空间不同。
-      ? isCurrentMember(meta, agentId)
-      // 非协作会话:同一个空间才看得见(拍点辛 a 的第一半)。
-      : spaceOf(meta) === space
+    // 应用自己的会话(电台 DJ 之流)不进任何人的检索范围:它们是那个应用的内部
+    // 记录,与会话列表同一条判据(`isAppOwnedSession`,共享契约上那一句)。
+    isAppOwnedSession(meta)
+      ? false
+      : isCollabSession(meta)
+        // 协作房:成员判据说了算,**不问空间** —— 拍点辛 a 的第二半没有空间限定词,
+        // 而房的归属本来就可能与说话人此刻所在的空间不同。
+        ? isCurrentMember(meta, agentId)
+        // 非协作会话:同一个空间才看得见(拍点辛 a 的第一半)。
+        : spaceOf(meta) === space
   ))
 
   if (allowed.length <= VISIBLE_SESSIONS_CAP) return allowed.map(meta => meta.id)

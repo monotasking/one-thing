@@ -125,6 +125,7 @@ import { updateOnethingSessionWorkingDirectory } from '@onething/runtime/session
 import { expandOnethingToolSandboxPath } from '@onething/runtime/tools/sandbox-runtime'
 import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
+import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionDeletion } from '../../session/deletion.js'
@@ -813,6 +814,10 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
    *
    * **不做归属过滤**:理由写在自述那一格上(资源面还没有 per-caller 的归属),
    * RPC 那条路仍然在域适配器里按调用方过滤。
+   *
+   * **应用自己的会话不在这份名单里**(2026-09-26):带 `app` 的会话是某个应用的内部
+   * 记录(电台 DJ 之流),「有哪些会话」答的是人开的那些。判据只有共享契约上那一句
+   * `isAppOwnedSession`,检索授权读的是同一句。应用要自己的那条凭 id 走 `get`。
    */
   private list(query: unknown): unknown {
     const raw = (query ?? {}) as Record<string, unknown>
@@ -820,8 +825,9 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
     if (workspaceId !== undefined && (typeof workspaceId !== 'string' || !workspaceId)) {
       throw new TypeError('workspaceId must be a nonempty string')
     }
-    let sessions: readonly Record<string, unknown>[] =
+    let sessions: readonly Record<string, unknown>[] = (
       store.getSessionsList() as unknown as Record<string, unknown>[]
+    ).filter(meta => !isAppOwnedSession(meta as { app?: string }))
     if (workspaceId !== undefined) {
       sessions = sessions.filter(meta => (meta.workspaceId ?? DEFAULT_SPACE_ID) === workspaceId)
     }

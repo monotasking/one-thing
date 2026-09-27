@@ -309,6 +309,19 @@ describe('sessions RPC domain', () => {
     expect(store.getSessionsList).toHaveBeenCalledTimes(2)
   })
 
+  it('leaves app-owned sessions (`app`, the radio DJ) out of the list on both aliases — the app opens its own by id (09-26)', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.getSessionsList.mockReturnValue([
+      { id: SESSION_ID, name: 'One' },
+      { id: 'dj', name: '电台', agentId: 'radio-dj', app: 'music' },
+    ])
+    for (const method of ['list', 'listMeta']) {
+      await expect(
+        dispatchRpc({ domain: 'sessions', method, payload: {} }),
+      ).resolves.toEqual({ ok: true, data: { success: true, sessions: [{ id: SESSION_ID, name: 'One' }] } })
+    }
+  })
+
   it('applies the same workspace query after authorization for both aliases and transports', async () => {
     const { dispatchRpc } = await loadDomain()
     const visible = { id: SESSION_ID, workspaceId: 'project-a', ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }

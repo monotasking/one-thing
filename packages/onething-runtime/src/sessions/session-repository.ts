@@ -72,7 +72,12 @@ export interface OnethingSessionRepositoryLogger {
 
 /** Trusted creator identity; workspaceId is the tenant, not a product workspace. */
 export interface SessionInitialOwner { userId: string; workspaceId: string }
-export interface SessionCreateOptions { workspaceId?: string; initialOwner?: SessionInitialOwner }
+export interface SessionCreateOptions {
+  workspaceId?: string
+  initialOwner?: SessionInitialOwner
+  /** 归属应用(`CoreSessionMeta.app`);缺席 = 人开的会话。 */
+  app?: string
+}
 
 export interface OnethingSessionRepositoryOptions<
   TSession extends CoreSession<TMessage> & {
@@ -878,6 +883,7 @@ export class OnethingSessionRepository<
         defaultAgentId: this.options.defaultAgentId,
         workingDirectory,
         workspaceId: options.workspaceId,
+        ...(options.app ? { app: options.app } : {}),
         saveSession: (id, session) => this.saveInitialSession(id, session, options.initialOwner),
         syncSession: session => this.syncSessionToSqliteIfReady(session),
         syncFullSession: session => this.options.sqlite?.syncFullSession?.(session),

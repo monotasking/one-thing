@@ -77,6 +77,15 @@ export interface CoreSessionMeta {
    * 会话记录与索引一起存下来,不解释它的语义。
    */
   workspaceId?: string
+  /**
+   * 这条会话属于哪个应用(2026-09-26,电台 DJ 之流)。**缺席 = 人开的会话**。
+   *
+   * 有这一格的会话是那个应用的内部记录:会话列表不列它、检索不给它、建它的时候
+   * 不把它顶成「当前会话」——只有那个应用自己的面(音乐面上点主持人)能打开它。
+   * core 只负责把它随会话记录与索引一起存下来,不认识任何应用的名字;谁是
+   * 「那个应用」由写入方说,读表的人只看这一格在不在。
+   */
+  app?: string
 }
 
 export type CoreSessionMetadataMutationResult<TSession> =
@@ -295,6 +304,8 @@ export interface CreateCoreSessionRecordOptions {
   workingDirectory?: string
   /** 归属 space;缺席 = default(读取端缺省)。 */
   workspaceId?: string
+  /** 归属应用(见 `CoreSessionMeta.app`);缺席 = 人开的会话。 */
+  app?: string
   now?: number
 }
 
@@ -940,6 +951,7 @@ export function extractSessionMeta<TMessage extends CoreSessionMessage>(
     isArchived: session.isArchived,
     archivedAt: session.archivedAt,
     workspaceId: session.workspaceId,
+    ...(session.app ? { app: session.app } : {}),
     messageCount: messages.length,
     previewText,
     ...(lastMessagePreview !== undefined ? { lastMessagePreview } : {}),
@@ -1072,6 +1084,7 @@ export function createCoreSessionRecord<TMessage extends CoreSessionMessageWithU
     agentId: options.defaultAgentId,
     workingDirectory: options.workingDirectory,
     ...(options.workspaceId ? { workspaceId: options.workspaceId } : {}),
+    ...(options.app ? { app: options.app } : {}),
   }
 }
 
@@ -1119,9 +1132,12 @@ export function createSessionWithAdapters<
     agentId: session.agentId || options.defaultAgentId,
     // 索引也带上归属,左栏按 space 过滤才不必逐个会话读盘。
     ...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
+    // 应用归属同理进索引:列表 / 检索按它过滤时不必逐个会话读盘。
+    ...(session.app ? { app: session.app } : {}),
   } as TMeta)
   options.saveIndex(index)
-  options.setCurrentSessionId?.(options.sessionId)
+  // 应用自己开的会话不顶成「当前会话」:没人在看它,把界面切过去是抢屏。
+  if (!session.app) options.setCurrentSessionId?.(options.sessionId)
 
   return session
 }

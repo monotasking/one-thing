@@ -267,6 +267,20 @@ export interface MessageAttachment {
 export type SessionKind = 'chat' | 'room' | 'work' | 'agent'
 
 /**
+ * 「这条会话是某个应用的内部记录吗」(2026-09-26,起因:电台 DJ 的会话出现在
+ * 会话列表里,用户要它只和音乐 app 绑定)。
+ *
+ * **刻意不是一个新的 `SessionKind`**(与 `TaskSessionRef` 同一条理由的反面):kind
+ * 答的是「这是什么场子」,列表 / 检索 / 建会话时顶不顶成当前会话 三处要问的却是
+ * 「谁拥有它」。这一格只回答那一个问题,而且不认识任何应用的名字 —— 会话列表读它
+ * 决定不列,检索授权读它决定不给,音乐面凭 id 打开它。三个读表的人共用这一句,
+ * 少一处就是一个静默的泄露。
+ */
+export function isAppOwnedSession(meta: { app?: string | null } | null | undefined): boolean {
+  return typeof meta?.app === 'string' && meta.app.length > 0
+}
+
+/**
  * 派工(`task` 工具)开出来的后台工作会话戳
  * (`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-3)。
  *
@@ -634,6 +648,11 @@ export interface SessionMeta {
   collab?: CollabWorkRef
   /** 派工开出来的后台工作会话;缺席 = 不是派工来的。 */
   task?: TaskSessionRef
+  /**
+   * 属于哪个应用的内部记录(电台 DJ 之流);缺席 = 人开的会话。有这一格的会话
+   * 列表不列、检索不给,只从那个应用自己的面打开(判据在 `isAppOwnedSession`)。
+   */
+  app?: string
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -721,6 +740,11 @@ export interface ChatSession {
   collab?: CollabWorkRef
   /** 派工开出来的后台工作会话;缺席 = 不是派工来的。 */
   task?: TaskSessionRef
+  /**
+   * 属于哪个应用的内部记录(电台 DJ 之流);缺席 = 人开的会话。有这一格的会话
+   * 列表不列、检索不给,只从那个应用自己的面打开(判据在 `isAppOwnedSession`)。
+   */
+  app?: string
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string

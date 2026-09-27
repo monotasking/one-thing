@@ -54,6 +54,11 @@ describe('当前空间里的非协作会话', () => {
     const sessions = [chat('nospace', ''), chat('mine', 'space-a')]
     expect(visibleSessionIdsFor({ ...A1, sessionId: 'ghost' }, sessions)).toEqual(['nospace'])
   })
+
+  it('应用自己的会话(带 `app`,电台 DJ 之流)哪怕就在同一个空间也不给 —— 与会话列表同一句判据(09-26)', () => {
+    const dj = { ...chat('dj', 'space-a'), app: 'music' } as SessionMeta
+    expect(visibleSessionIdsFor(A1, [HERE, dj, chat('mine', 'space-a')])).toEqual(['here', 'mine'])
+  })
 })
 
 describe('自己是成员的协作房', () => {
