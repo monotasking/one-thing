@@ -29,6 +29,7 @@
  */
 import {
   ACPManager,
+  acpRpcErrorCode,
   addOnethingACPAgentForIpc,
   cancelOnethingACPSessionForIpc,
   connectOnethingACPAgentForIpc,
@@ -165,9 +166,14 @@ function optionTarget(
   return { localSessionId: sessionId, cwd: sessionReads.getSession(sessionId)?.workingDirectory }
 }
 
+/**
+ * 选项读写失败:话由 ACP 层给(agent 的原话已拼进 `message`,见 `ACPClient.agentFailure`),
+ * 这里原样记、原样答;对端答的 JSON-RPC 错误码另记一格,排障时分得清是哪一类拒绝。
+ */
 function optionsFailure(error: unknown): AcpRoutes['sessionOptions']['output'] {
   const message = error instanceof Error ? error.message : String(error)
-  log.warn('acp session options failed', { error: message })
+  const code = acpRpcErrorCode(error)
+  log.warn('acp session options failed', { error: message, ...(code === undefined ? {} : { code }) })
   return { success: false, options: [], live: false, error: message }
 }
 

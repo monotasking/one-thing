@@ -2,6 +2,7 @@ export {
   ACPClient,
   AcpCapabilityMissingError,
   AcpReconnectPausedError,
+  acpRpcErrorCode,
   authMethodsOf,
   projectACPConfigOptions,
   resolveACPSessionCwd,

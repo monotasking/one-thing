@@ -62,6 +62,15 @@
 //   每一轮 +0.25),这一轮答复带 `usage`(input 100 / output 20 / total 150 / thought 30 / cachedRead 40)。
 // FAKE_AGENT_TITLE=1 + 正文 `@title <标题>`:推 `session_info_update { title }`。
 // `session/set_mode`(无条件):记一行 `set-mode`,再推 `current_mode_update`。
+//
+// 选项写失败的自愈(2026-09-29 事故,option-write-recovery.test.ts / connection-closed.test.ts):
+// FAKE_AGENT_SET_FAIL=internal-once|internal|invalid|auth:`session/set_config_option` 以
+//   `-32603`(data = claude-agent-acp 那句 `The Claude Agent session has ended…`;`-once` = 本进程只拒第一次)/
+//   `-32602`(data = `Unknown model value: gamma`)/ `auth_required` 拒,记一行 `set-refused`。
+//   `husk`:同一台 agent 上某条会话在收到它的 `session/close` 之前一直 `-32603`(claude-agent-acp 的空壳);
+//   `FAKE_AGENT_CAPS` 含 `close` 才声明 `sessionCapabilities.close`;`session/close` 记一行 `close`。
+// FAKE_AGENT_SLOW=1 + 正文 `@slow`:记一行 `slow-start`,等 FAKE_AGENT_DIR/release-slow 出现才说完这一轮。
+// FAKE_AGENT_EXIT_AFTER_SET=1:答完第一次 set 就自己退出(整个夹具目录只退一次,重连起来的进程不再退)。
 import { AgentSideConnection, PROTOCOL_VERSION, RequestError, ndJsonStream } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
 import { closeSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -338,6 +347,24 @@ async function usageScript(conn, s) {
   return { inputTokens: 100, outputTokens: 20, totalTokens: 150, thoughtTokens: 30, cachedReadTokens: 40 }
 }
 
+/** FAKE_AGENT_SET_FAIL:`session/set_config_option` 这一次该怎么拒(不拒 = undefined)。 */
+let setRefusals = 0
+/** 收到过 `session/close` 的会话 id(本进程内)。空壳剧本据它判「空壳已被摘掉」。 */
+const closedSessions = new Set()
+function setRefusal(sessionId) {
+  const mode = process.env.FAKE_AGENT_SET_FAIL
+  if (!mode) return undefined
+  // 空壳:没收到过这条的 close 就一直拒(close 之后 resume / load 同一个 id 回来的是新的)。
+  if (mode === 'husk') return closedSessions.has(sessionId) ? undefined : RequestError.internalError(SESSION_ENDED)
+  if (mode === 'internal-once' && setRefusals >= 1) return undefined
+  setRefusals += 1
+  if (mode === 'internal' || mode === 'internal-once') return RequestError.internalError(SESSION_ENDED)
+  if (mode === 'invalid') return RequestError.invalidParams('Unknown model value: gamma')
+  if (mode === 'auth') return RequestError.authRequired()
+  return undefined
+}
+const SESSION_ENDED = 'The Claude Agent session has ended. Please start a new session.'
+
 const stream = ndJsonStream(Writable.toWeb(process.stdout), Readable.toWeb(process.stdin))
 new AgentSideConnection(conn => ({
   async initialize(params) {
@@ -353,6 +380,7 @@ new AgentSideConnection(conn => ({
           ...(caps.has('resume') ? { resume: {} } : {}),
           ...(caps.has('list') ? { list: {} } : {}),
           ...(caps.has('fork') ? { fork: {} } : {}),
+          ...(caps.has('close') ? { close: {} } : {}),
         },
       },
       // 自报身份:gate:acp ① 拿它与 `acp.getAgents` 那一行逐字比对。
@@ -431,6 +459,11 @@ new AgentSideConnection(conn => ({
     logCall({ method: 'resume', id: s.id, ...noteMcpServers(s.id, params.mcpServers) })
     return { configOptions: configOptions({ ...s, model: 'alpha' }) }
   },
+  async closeSession(params) {
+    logCall({ method: 'close', id: params.sessionId })
+    closedSessions.add(params.sessionId)
+    return {}
+  },
   async setSessionMode(params) {
     logCall({ method: 'set-mode', id: params.sessionId, modeId: params.modeId })
     setImmediate(() => {
@@ -442,10 +475,19 @@ new AgentSideConnection(conn => ({
     return {}
   },
   async setSessionConfigOption(params) {
+    const refusal = setRefusal(params.sessionId)
+    if (refusal) {
+      logCall({ method: 'set-refused', id: params.sessionId, value: params.value, code: refusal.code })
+      throw refusal
+    }
     const s = readSession(params.sessionId)
     s.model = params.value
     writeSession(s)
     logCall({ method: 'set', id: s.id, value: params.value })
+    if (process.env.FAKE_AGENT_EXIT_AFTER_SET === '1' && !existsSync(join(dir, 'exited-after-set'))) {
+      writeFileSync(join(dir, 'exited-after-set'), String(process.pid))
+      setTimeout(() => process.exit(0), 20)
+    }
     return { configOptions: configOptions(s) }
   },
   async prompt(params) {
@@ -477,6 +519,10 @@ new AgentSideConnection(conn => ({
     }
     // 剧本口令看的是**用户那一段**:persona 头块(`<persona>`)排在它前面时跳过去。
     const text = params.prompt?.filter(block => block.type === 'text').map(block => block.text).find(t => !t.startsWith('<persona>')) ?? ''
+    if (process.env.FAKE_AGENT_SLOW === '1' && text.startsWith('@slow')) {
+      logCall({ method: 'slow-start', id: s.id })
+      while (!existsSync(join(dir, 'release-slow'))) await new Promise(resolveWait => setTimeout(resolveWait, 10))
+    }
     if (process.env.FAKE_AGENT_PERMISSION === '1' && text.startsWith('@perm')) await permissionScript(conn, s, text.startsWith('@perm1') ? 1 : 2)
     if (process.env.FAKE_AGENT_FS === '1' && text.startsWith('@fs')) await fsScript(conn, s)
     if (process.env.FAKE_AGENT_TERMINAL === '1' && text.startsWith('@term')) await terminalScript(conn, s)

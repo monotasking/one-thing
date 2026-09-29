@@ -142,6 +142,20 @@ export function isAcpAuthRequired(error: unknown): boolean {
   return rpcErrorShape(error)?.code === ACP_AUTH_REQUIRED_CODE
 }
 
+/** JSON-RPC 规范的 `invalid params`:值本身不对,重开会话也还是不对。 */
+const JSON_RPC_INVALID_PARAMS_CODE = -32602
+
+/**
+ * 对端答的 JSON-RPC 错误码;已经换成人话的错误(原话挂在 `cause` 上)顺着 `cause` 找。
+ * 不是对端答的(连接断了、本地抛的)= undefined。
+ */
+export function acpRpcErrorCode(error: unknown): number | undefined {
+  if (error instanceof Error && error.cause !== undefined && rpcErrorShape(error) === undefined) {
+    return acpRpcErrorCode(error.cause)
+  }
+  return rpcErrorShape(error)?.code
+}
+
 /**
  * 握手里 agent 自报的登录方法 → 契约形状。`type` 缺席按协议即 `agent`;认不出的 `type`
  * (将来的新型)不上屏 —— 我们不知道怎么跑它,画一枚按不动的钮比不画更糟。
@@ -800,6 +814,12 @@ export class ACPClient {
         this.connection = null
         this.connectedAtValue = undefined
         this.failAllQueues(new Error(this.errorValue || 'ACP agent disconnected'))
+        // 进程自己走了:它手里的会话随它一起没了。记录一起忘掉,否则从这一刻到下一次连上之间,
+        // `hasLiveSession()` / 进程表的 `sessionCount` 还在描述已经不存在的会话
+        // (下一次连上本来就会经 `openConnection` → `disconnect()` 清一遍,这里补的是这段空档)。
+        this.forgetConnectionSessions()
+        // 在飞的开会话押在这条死连接上;下一次调用走新进程重开,不再去接它。
+        this.sessionOpenings.clear()
         this.syncProcess()
       }
       const stderrSuffix = () => (this.stderrTail ? ` stderr: ${this.stderrTail.slice(-1000)}` : '')
@@ -897,11 +917,7 @@ export class ACPClient {
   async disconnect(): Promise<void> {
     this.unexpectedExit = false
     this.failAllQueues(new Error('ACP agent disconnected'))
-    this.sessions.clear()
-    // 状态表留着(壳要看到「断了」),但 agent 会话 id 随连接作废:索引与暂存一起清。
-    this.stateIndex.clear()
-    this.parkedUpdates.clear()
-    this.initResponse = null
+    this.forgetConnectionSessions()
     const connection = this.connection
     this.connection = null
     connection?.close()
@@ -925,6 +941,17 @@ export class ACPClient {
     this.statusValue = 'disconnected'
     this.connectedAtValue = undefined
     this.syncProcess()
+  }
+
+  /**
+   * agent 会话 id 随连接作废:会话记录、索引、暂存与握手一起忘掉。状态表留着(壳要看到「断了」)。
+   * 主动断开(`disconnect`)与进程自己走(`endConnection`)共用这一处,免得两边再清得不一样。
+   */
+  private forgetConnectionSessions(): void {
+    this.sessions.clear()
+    this.stateIndex.clear()
+    this.parkedUpdates.clear()
+    this.initResponse = null
   }
 
   async refresh(): Promise<void> {
@@ -1459,9 +1486,7 @@ export class ACPClient {
 
   /** 这条会话此刻的选项 —— 会连上 agent、开(或恢复)那条会话。 */
   async getSessionOptions(localSessionId: string, cwd: string | undefined): Promise<ACPSessionOption[]> {
-    await this.connect()
-    const session = await this.ensureSession(localSessionId, cwd)
-    return session.options
+    return this.withSessionRecovery(localSessionId, cwd, 'session/new', undefined, async session => session.options)
   }
 
   /**
@@ -1474,9 +1499,10 @@ export class ACPClient {
     optionId: string,
     value: string,
   ): Promise<ACPSessionOption[]> {
-    await this.connect()
-    const session = await this.ensureSession(localSessionId, cwd)
-    await this.writeOption(session, optionId, value)
+    const session = await this.withSessionRecovery(localSessionId, cwd, 'session/set_config_option', optionId, async opened => {
+      await this.writeOption(opened, optionId, value)
+      return opened
+    })
     const links = this.runtimeOptions.getSessionLinks?.()
     const chosen = { ...(links?.getLink(this.id, localSessionId)?.options ?? {}), [optionId]: value }
     this.persistLink(session, chosen)
@@ -1498,15 +1524,96 @@ export class ACPClient {
    * 是同一格,reducer 没变就不重发),于是壳不等 agent 推也看得见。答折完之后的整张表。
    */
   async setSessionMode(localSessionId: string, cwd: string | undefined, modeId: string): Promise<AcpSessionState | undefined> {
-    await this.connect()
-    if (!this.connection) throw new Error('ACP connection is not available')
-    const session = await this.ensureSession(localSessionId, cwd)
-    await this.connection.agent.request(acp.methods.agent.session.setMode, {
-      sessionId: session.acpSessionId,
-      modeId,
+    const session = await this.withSessionRecovery(localSessionId, cwd, 'session/set_mode', 'mode', async opened => {
+      if (!this.connection) throw new Error('ACP connection is not available')
+      await this.connection.agent.request(acp.methods.agent.session.setMode, {
+        sessionId: opened.acpSessionId,
+        modeId,
+      })
+      return opened
     })
     this.foldSessionUpdate(session.acpSessionId, { sessionUpdate: 'current_mode_update', currentModeId: modeId })
     return this.sessionStates.get(localSessionId)
+  }
+
+  /**
+   * 选项读写 / 切模式的公共一段:连上、开(或恢复)那条会话、做这件事。
+   *
+   * 2026-09-29 真机上连着 13 次选项写失败,只剩一句光秃秃的 `Internal error` —— agent 的原话
+   * 被这条路丢了,所以**原因不知道**。这一段做两件事:一是把 agent 的原话带出去
+   * (抛出去的话一律经 {@link agentFailure});二是救我们从适配器源码里认得出的那一种:
+   * claude-agent-acp 的 SDK 查询流收了尾,会话留成空壳(`queryClosed`),对它的
+   * `session/set_config_option` 一律 `-32603`。
+   *
+   * 自救只一次:agent 以 JSON-RPC 错误拒了 → 若它声明了 `sessionCapabilities.close`,先
+   * `session/close` 那条(适配器据此把空壳摘掉;不 close 的话,同 id 的 resume 会把空壳原样交回来)
+   * → 忘掉本地记录 → 照常经 `ensureSession` 重开(恢复 → 新开,与平常同一条路,恢复出来的会话
+   * 带着 agent 那边的历史)→ 再做一次。不自救的三种:`auth_required`(没登录,走登录那句人话)、
+   * `invalid params`(值本身不对,原样交给用户看)、这条会话正有一轮在跑(close 会掐掉那一轮,
+   * 重开会让状态表改指新会话)。第二次还失败就抛。
+   */
+  private async withSessionRecovery<T>(
+    localSessionId: string,
+    cwd: string | undefined,
+    where: string,
+    optionId: string | undefined,
+    work: (session: ACPSessionRecord) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.connect()
+        const session = await this.ensureSession(localSessionId, cwd)
+        return await work(session)
+      } catch (error) {
+        const code = acpRpcErrorCode(error)
+        const retryable = attempt === 1
+          && code !== undefined
+          && code !== ACP_AUTH_REQUIRED_CODE
+          && code !== JSON_RPC_INVALID_PARAMS_CODE
+        const failure = this.agentFailure(error, where)
+        if (!retryable || this.hasActivePrompt(localSessionId)) throw failure
+        log.warn('session option write failed; reopening the session', {
+          agentId: this.id,
+          optionId,
+          code,
+          detail: failure.message,
+        })
+        const record = this.sessions.get(localSessionId)
+        if (record) await this.closeAgentSession(record.acpSessionId)
+        this.sessions.delete(localSessionId)
+      }
+    }
+  }
+
+  /** 这条本地会话此刻有没有一轮 prompt 在跑(在飞的轮次按 agent 会话 id 记,带着本地 id)。 */
+  private hasActivePrompt(localSessionId: string): boolean {
+    for (const context of this.promptContexts.values()) {
+      if (context.localSessionId === localSessionId) return true
+    }
+    return false
+  }
+
+  /**
+   * 自救前把 agent 那边的这条会话关掉(协议 `session/close`,能力位 `sessionCapabilities.close`)。
+   * 没声明就什么都不做;关失败不拦自救(记一行 debug)。
+   */
+  private async closeAgentSession(acpSessionId: string): Promise<void> {
+    const connection = this.connection
+    if (!connection || !this.initResponse?.agentCapabilities?.sessionCapabilities?.close) return
+    try {
+      await connection.agent.request(acp.methods.agent.session.close, { sessionId: acpSessionId })
+    } catch (error) {
+      log.debug('session close before reopening failed', { agentId: this.id, acpSessionId }, error)
+    }
+  }
+
+  /**
+   * 选项 / 模式这条路失败时交出去的那句话:与 prompt 那条路同一个描述器(agent 的原话在
+   * `data` 里,`Internal error` 三个字不够用户判断);`auth_required` 同样记下「要登录」。
+   */
+  private agentFailure(error: unknown, where: string): Error {
+    if (isAcpAuthRequired(error)) this.setAuthRequired(true, where)
+    return toAcpPromptError(error, this.config.name, this.authLabel)
   }
 
   /**

@@ -53,6 +53,22 @@ vi.mock('@onething/runtime/acp', async () => {
 })
 vi.mock('../../stores/settings.js', () => settings)
 
+/** `rpc.acp` 那一只 logger 的 warn:选项失败那一行要带 agent 的原话与错误码。 */
+const acpLogWarn = vi.hoisted(() => vi.fn())
+vi.mock('../../wiring/logging/index.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../wiring/logging/index.js')>()
+  return {
+    ...actual,
+    getLogger: (ns: string) => {
+      const logger = actual.getLogger(ns)
+      if (ns !== 'rpc.acp') return logger
+      return new Proxy(logger, {
+        get: (target, key, receiver) => (key === 'warn' ? acpLogWarn : Reflect.get(target, key, receiver)),
+      })
+    },
+  }
+})
+
 /** 活实例的 `acp` 子系统(A1-a 名册)。缺省 null = 不装 backend 的单测,域退回整只管家。 */
 const backendRef = vi.hoisted(() => ({ acp: null as null | Record<string, ReturnType<typeof vi.fn>> }))
 vi.mock('../../current.js', async importOriginal => {
@@ -201,6 +217,33 @@ describe('acp RPC domain', () => {
 
     const missing = await dispatchRpc({ domain: 'acp', method: 'setSessionMode', payload: { sessionId: 's1', modeId: '' } })
     expect(missing.ok && missing.data).toEqual({ success: false, error: 'modeId is required' })
+  })
+
+  it('option failures log and answer the ACP layer\'s detailed sentence, with the JSON-RPC code', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, acpRpcHandlers } = await loadDomain()
+    resetRpcRegistryForTests()
+    dispose = registerRouterHandlers(acpRouter, acpRpcHandlers)
+    acpLogWarn.mockClear()
+
+    // ACP 层交出来的样子:话已拼好 agent 的原话,对端原来那只错误挂在 cause 上。
+    const agentSide = Object.assign(new Error('Internal error'), { code: -32603, data: 'The Claude Agent session has ended. Please start a new session.' })
+    const detailed = new Error('Internal error: The Claude Agent session has ended. Please start a new session.', {
+      cause: { code: -32603, message: 'Internal error', data: agentSide.data },
+    })
+    manager.setSessionOption.mockRejectedValue(detailed)
+    const failed = await dispatchRpc({
+      domain: 'acp',
+      method: 'setSessionOption',
+      payload: { agentId: AGENT.id, sessionId: 's1', optionId: 'model', value: 'sonnet' },
+    })
+    expect(failed.ok && failed.data).toEqual({ success: false, options: [], live: false, error: detailed.message })
+    expect(acpLogWarn).toHaveBeenLastCalledWith('acp session options failed', { error: detailed.message, code: -32603 })
+
+    manager.getSessionOptions.mockRejectedValue(new Error('ACP connection is not available'))
+    const read = await dispatchRpc({ domain: 'acp', method: 'sessionOptions', payload: { agentId: AGENT.id, sessionId: 's1' } })
+    expect(read.ok && read.data).toEqual({ success: false, options: [], live: false, error: 'ACP connection is not available' })
+    // 不是对端答的:没有错误码那一格。
+    expect(acpLogWarn).toHaveBeenLastCalledWith('acp session options failed', { error: 'ACP connection is not available' })
   })
 
   it('projects the agent list off the live manager', async () => {
