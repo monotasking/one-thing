@@ -1,8 +1,8 @@
 import { useRef } from 'react'
 import { createPortal } from 'react-dom'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { FocusScope } from '../focus/FocusScope'
-import { useFloatDismiss, useFloatPosition } from './float'
+import { useFloatDismiss, useFloatOwner, useFloatPosition } from './float'
 import type { FloatAnchor } from './float'
 import s from './Popover.module.css'
 
@@ -64,6 +64,11 @@ interface PopoverProps {
    * (宠物那一格「跟黑豆说」,09-19)—— 开了还得再点一下才能打字,是一步白做的手势。
    */
   restingTarget?: () => HTMLElement | null
+  /**
+   * 开它的那个元素 —— 与 `ui/Menu` 的 `owner` 逐字同一格(判词在 `ui/float`「逻辑包含」):
+   * 给了它,宿主的点外关把「按在这块浮层上」算作按在主人身上。不给 = 老行为。
+   */
+  owner?: RefObject<Element | null> | Element | null
 }
 
 export function Popover({
@@ -76,6 +81,7 @@ export function Popover({
   anchor,
   anchorPlace = 'below-start',
   restingTarget,
+  owner,
 }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -87,6 +93,7 @@ export function Popover({
     : { kind: 'point', x, y }
   const pos = useFloatPosition(ref, floatAnchor, { fallback: { left: x, top: y } })
   useFloatDismiss(ref, onClose)
+  useFloatOwner(ref, owner)
 
   return createPortal(
     <FocusScope

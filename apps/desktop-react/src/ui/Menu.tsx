@@ -1,10 +1,10 @@
 import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from 'react'
 import { Check, ChevronRight } from '../components/icons'
 import { FocusScope } from '../focus/FocusScope'
 import { focusRovingEdge, useRoving } from './a11y/roving'
-import { useFloatDismiss, useFloatPosition } from './float'
+import { useFloatDismiss, useFloatOwner, useFloatPosition } from './float'
 import type { FloatAnchor } from './float'
 import s from './Menu.module.css'
 
@@ -121,6 +121,14 @@ interface MenuProps {
    * 状态(比如一格筛选词),Esc 先退那一格」是头部槽的孪生条款。
    */
   onEscape?: () => boolean
+  /**
+   * **开它的那个元素**(09-29,判词在 `ui/float` 的「逻辑包含」节)。菜单 portal 到
+   * body,在 DOM 上与开它的宿主是兄弟;给了主人,宿主的点外关就把「按在这张菜单上」
+   * 算作按在主人身上 —— 于是一只长在抽屉 / 弹层里的 `Select`,点它的选项不会先把
+   * 宿主关掉。**不给 = 老行为**(光标处开的右键菜单不属于任何元素,点它对无关的宿主
+   * 仍是「点了外面」)。消费方今天只有 `ui/Select`(交触发器)。
+   */
+  owner?: RefObject<Element | null> | Element | null
 }
 
 export function Menu({
@@ -136,6 +144,7 @@ export function Menu({
   anchorPlace = 'below-start',
   header,
   onEscape,
+  owner,
 }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null)
   /** 菜单体(那格 `role`)。roving / 封顶 / 落点三件都认它,不是外面那张面。 */
@@ -191,6 +200,7 @@ export function Menu({
     : { kind: 'point', x, y }
   const pos = useFloatPosition(ref, floatAnchor, { fallback: { left: x, top: y } })
   useFloatDismiss(ref, onClose)
+  useFloatOwner(ref, owner)
 
   return createPortal(
     <RoleCtx.Provider value={role}>

@@ -106,6 +106,9 @@ export function Select({
           x={fallback?.left ?? 0}
           y={fallback?.bottom ?? 0}
           anchor={anchorRect}
+          // 主人 = 触发器:面板 portal 到 body,宿主(抽屉 / 弹层)的点外关靠这一格
+          // 认出「按在选项上 = 按在我里面」(09-29 事故,判词在 ui/float「逻辑包含」)。
+          owner={ref}
           onClose={() => setOpen(false)}
           label={label}
           role="listbox"

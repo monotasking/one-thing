@@ -79,11 +79,97 @@ export function useFloatDismiss(
     if (!active || outside === false) return
     const capture = outside === 'capture'
     const onDown = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) closeRef.current()
+      const host = ref.current
+      if (!host || !isLogicallyInside(host, e.target as Node | null)) closeRef.current()
     }
     window.addEventListener('pointerdown', onDown, capture)
     return () => window.removeEventListener('pointerdown', onDown, capture)
   }, [ref, active, outside])
+}
+
+/* ── 逻辑包含:portal 出去的浮层记得是谁开的它(09-29)────────────────────────
+ *
+ * 点外关的判据从前是一句 `ref.current.contains(target)` —— **DOM 包含**。可浮层族
+ * 为了躲 backdrop-filter 造的包含块一律 portal 到 body(判词在 `ui/Menu` 文件头),
+ * 于是一张从宿主里开出来的面板在 DOM 上是宿主的**兄弟**,不是孩子。
+ *
+ * 事故(09-29 录屏):composer 的模型抽屉(捕获相位点外关)右卡里一只 `ui/Select`,
+ * 点开、按「Opus 5.5」—— 那一下 pointerdown 落在 portal 到 body 的选项上,抽屉按
+ * DOM 判「点了外面」,在捕获相位当场关掉,Select 连同它的面板一起卸载,选项自己的
+ * click 永远没跑:什么都没选上,抽屉没了。`Submenu` 早就撞过同一类病,躲法是
+ * 「不 portal」;Select 躲不了(它长在任意宿主里,宿主可能带 backdrop-filter)。
+ *
+ * 所以包含改成**逻辑的**:portal 出去的浮层根声明它的**主人**(开它的那个元素),
+ * 判「在不在我里面」时从按下那一点往上走,每走到一个登记过的浮层根,就**从它的
+ * 主人接着走**。一条规矩、只在库里:消费方一行都不写,由 `ui/Menu` / `ui/Popover`
+ * 在自己的根上登记(`useFloatOwner`),`ui/Select` 把触发器交给 Menu 当主人。
+ *
+ * 没登记主人的浮层(右键菜单一类,从光标开出来、不属于任何元素)照旧只按 DOM 判,
+ * 行为逐字不变:点它,对一个无关的宿主来说仍是「点了外面」。
+ *
+ * 表是一张 `WeakMap`:键是浮层根元素,元素一被回收登记就跟着没,不留模块级的
+ * 可变寿命 —— 所以这里不需要 HMR dispose(判据见文件末尾那段)。拆卸只删**自己
+ * 登记的那一条**(同一个根换了主人时,旧的那口拆卸不许把新的删掉)。
+ * ──────────────────────────────────────────────────────────────────────────
+ */
+const floatOwners = new WeakMap<Element, Element>()
+
+/**
+ * 声明「`root` 这块浮层是 `owner` 开的」。返回拆卸,幂等。
+ * 只给库件用(Menu / Popover 经 `useFloatOwner`),业务面不直接调。
+ */
+export function registerFloatOwner(root: Element, owner: Element): () => void {
+  floatOwners.set(root, owner)
+  return () => {
+    if (floatOwners.get(root) === owner) floatOwners.delete(root)
+  }
+}
+
+/**
+ * `target` 在逻辑上是不是 `host` 的一部分。纯判断,好断言。
+ *
+ * 走法:从 `target` 起沿 DOM 往上;碰到 `host` → 在里面。碰到一个登记过主人的浮层根,
+ * 且主人还**挂在文档上** → 改从主人接着往上走(主人已经摘掉了 → 那条逻辑边不算数,
+ * 照 DOM 继续走,等于没登记)。走过的浮层根记一笔,第二次撞上就不再跳 —— 两块浮层
+ * 互为主人(不该发生,但一张表挡不住手误)时不会死循环。
+ */
+export function isLogicallyInside(host: Node, target: Node | null): boolean {
+  let node: Node | null = target
+  const seen = new Set<Element>()
+  while (node) {
+    if (node === host) return true
+    if (node instanceof Element) {
+      const owner = floatOwners.get(node)
+      if (owner && owner.isConnected && !seen.has(node)) {
+        seen.add(node)
+        node = owner
+        continue
+      }
+    }
+    node = node.parentNode
+  }
+  return false
+}
+
+/**
+ * 浮层根登记主人,随浮层的寿命。`owner` 缺省 = 不登记(行为与从前逐字相同)。
+ * layout 相位登记:浮层画出来的那一次提交里表就已经写好,不存在一个「看得见但
+ * 还没登记」的窗口 —— 用户按下去的那一下不可能早于它。
+ *
+ * 不带依赖表:每次提交拆一次、登一次(一次 WeakMap 写,不值得记状态)。这样
+ * 主人是 ref、而 ref 在两次渲染之间换了元素时也不会登记着旧的那一个 —— 渲染期间
+ * 不读 `ref.current`,也就没有那条「渲染里读 ref」的陷阱。
+ */
+export function useFloatOwner(
+  rootRef: RefObject<Element | null>,
+  owner: RefObject<Element | null> | Element | null | undefined,
+): void {
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    const el = owner instanceof Element ? owner : (owner?.current ?? null)
+    if (!root || !el) return
+    return registerFloatOwner(root, el)
+  })
 }
 
 /**

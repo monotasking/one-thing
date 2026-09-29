@@ -2076,6 +2076,106 @@ describe('庚:模型选择器带思考档位', () => {
   })
 
   /*
+   * **真的按下去**(2026-09-29 事故,录屏逐帧复现):右卡的 `Model` / `Mode` 是 `ui/Select`,
+   * 面板 portal 到 body。抽屉的点外关走**捕获相位**,从前按 DOM 判包含 —— 按下选项那一下
+   * pointerdown 在抽屉眼里是「点了外面」,抽屉当场关掉,Select 随之卸载,选项的 click
+   * 永远没跑:什么都没选上,`acp.setSessionOption` 一发都没有。上面那条用例只发了
+   * `fireEvent.click`(不带 pointerdown),门 `gate-acp-shell` ③ 用的是 `option.click()`,
+   * 两处都问不到点外关,所以病活了下来。这里每一下都是 pointerDown → pointerUp → click。
+   * 修法在 `ui/float` 的逻辑包含(Select 把触发器登记成面板的主人),不在 composer 里。
+   * 选完抽屉**留着**(卡上换成新值);只有左栏那一行选中才收抽屉(`chooseModel`)。
+   */
+  it('ACP agent:真指针按下 Model / Mode 的选项,抽屉不关、值原样交回', async () => {
+    providersQuery.patch([{ id: 'acp', name: 'ACP' }])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'acp',
+        configs: { acp: providerModelPrefs({ selectedModels: ['claude-code'], model: 'claude-code' }) },
+      },
+      custom: [],
+    })
+    catalogQuery.reset()
+    catalogQuery.get(catalogKey('acp')).patch([])
+    acpOptionsQuery.reset()
+    const writes: unknown[] = []
+    const current: Record<string, string> = { mode: 'default', model: 'fable' }
+    const options = () => [
+      {
+        id: 'mode',
+        name: 'Mode',
+        category: 'mode',
+        currentValue: current.mode,
+        choices: [
+          { value: 'default', name: 'Default' },
+          { value: 'plan', name: 'Plan' },
+        ],
+      },
+      {
+        id: 'model',
+        name: 'Model',
+        category: 'model',
+        currentValue: current.model,
+        choices: [
+          { value: 'fable', name: 'Fable 5.1' },
+          { value: 'opus', name: 'Opus 5.5' },
+        ],
+      },
+    ]
+    configureAcpOptionsPort({
+      sessionOptions: async () => ({ success: true, options: options(), live: false }),
+      setSessionOption: async (request) => {
+        writes.push(request)
+        current[request.optionId] = request.value
+        return { success: true, options: options(), live: false }
+      },
+    })
+    const press = (el: Element) => {
+      fireEvent.pointerDown(el)
+      fireEvent.pointerUp(el)
+      fireEvent.click(el)
+    }
+    const settle = async () => {
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+
+    try {
+      renderComposer()
+      press(pill())
+      await settle()
+      let card = await screen.findByTestId('agent-options-card')
+
+      press(within(card).getByRole('combobox', { name: 'Model' }))
+      const modelList = screen.getByRole('listbox')
+      // 前提:面板真的在抽屉的 DOM 外面(否则这条测不到事故那一形)。
+      expect(card.contains(modelList)).toBe(false)
+      press(within(modelList).getByRole('option', { name: /Opus 5\.5/ }))
+      await settle()
+
+      expect(screen.getByTestId('agent-options-card')).toBeTruthy()
+      expect(state().drawerKind).toBe('model')
+      expect(writes).toEqual([{ agentId: 'claude-code', optionId: 'model', value: 'opus' }])
+      card = screen.getByTestId('agent-options-card')
+      expect(within(card).getByRole('combobox', { name: 'Model' }).textContent).toContain('Opus 5.5')
+
+      press(within(card).getByRole('combobox', { name: 'Mode' }))
+      press(within(screen.getByRole('listbox')).getByRole('option', { name: /Plan/ }))
+      await settle()
+
+      expect(screen.getByTestId('agent-options-card')).toBeTruthy()
+      expect(state().drawerKind).toBe('model')
+      expect(writes).toEqual([
+        { agentId: 'claude-code', optionId: 'model', value: 'opus' },
+        { agentId: 'claude-code', optionId: 'mode', value: 'plan' },
+      ])
+    } finally {
+      configureAcpOptionsPort(undefined)
+    }
+  })
+
+  /*
    * **两种「换模型」说出来**(2026-09-26 真机:pi 会话里点了左栏的 deepseek-flash,会话悄悄
    * 变成了普通 deepseek 会话,而用户要改的是 pi 自己用的模型 —— 那一格在右卡上)。两个控件
    * 都留:左栏顶上一句「选下面的模型 = 离开这台 agent」,右卡 model 那一格底下一句「这里改的

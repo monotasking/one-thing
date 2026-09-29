@@ -178,6 +178,42 @@ const clickLive = (page, sub) =>
     { panelSel: PANEL, sub },
   )
 
+/**
+ * **真指针按一下**(09-29 立,起因:`page.evaluate(() => option.click())` 是一发合成 click,不带
+ * pointerdown —— 宿主的点外关(`ui/float.useFloatDismiss`,听的是 window 上的 pointerdown)
+ * 一次都没被问到,于是「按下 Select 的选项 → 抽屉在捕获相位先关 → 选项的 click 永远没跑」
+ * 这一形在 ③ 上绿了两个月,真机上是「抽屉整个没了、什么都没选上」)。凡是**选**一项
+ * (下拉的选项 / 抽屉与挑选窗里的行)一律走这里:`page.mouse` 经 CDP 只进这扇窗,发的是
+ * 完整的 pointerdown → mousedown → pointerup → mouseup → click,与人手逐字同序。
+ *
+ * `find` 在页面里跑,交回要按的那一个元素(找不到交 null)。按之前 Playwright 自己滚进视野、
+ * 验中心点真落在它身上 —— 落在别的东西上时按下去只会静默地点错(② 悬停那一格踩过:
+ * 行在滚动口外,指针打在输入框上)。
+ */
+async function pressReal(page, label, find, arg) {
+  const handle = await page.evaluateHandle(find, arg)
+  const el = handle.asElement()
+  if (!el) {
+    await handle.dispose()
+    throw new Error(`真指针:找不到 ${label}`)
+  }
+  try {
+    // ElementHandle.click = 滚进视野 → 等它稳定、可点 → 验中心点没被别的东西盖着 → page.mouse 按下松开。
+    await el.click({ timeout: 5_000 })
+  } catch (error) {
+    throw new Error(`真指针:按 ${label} 没成:${error.message.split('\n')[0]}`)
+  } finally {
+    await el.dispose()
+  }
+}
+
+/** 看得见的那块输入面板里的 `sub`(`pressReal` 的定位函数;在页面里跑,只能用参数)。 */
+const inLivePanel = ({ panelSel, sub }) =>
+  [...document.querySelectorAll(panelSel)].find((el) => el.checkVisibility())?.querySelector(sub) ?? null
+
+/** 整页里第一个 `sel`(`pressReal` 的定位函数)。 */
+const inDocument = (sel) => document.querySelector(sel)
+
 /** 模型抽屉的行用 mousedown 选中(抽屉判例);门只要点开药丸,不选行。 */
 async function openModelDrawer(page) {
   await waitFor('模型药丸就位', () =>
@@ -538,13 +574,11 @@ async function main() {
      */
     await clickLive(page, '[data-testid="composer-model-pill"]')
     await waitFor('Agent 组里有假 agent 那一行', () => liveText(page, `[data-testid="picker-agent-${FAKE_AGENT}"]`))
-    await page.evaluate(
-      ({ panelSel, sub }) => {
-        const panel = [...document.querySelectorAll(panelSel)].find((el) => el.checkVisibility())
-        panel.querySelector(sub).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
-      },
-      { panelSel: PANEL, sub: `[data-testid="picker-agent-${FAKE_AGENT}"]` },
-    )
+    // 真指针(`pressReal` 头上那条):从前是一发合成 mousedown,问不到抽屉的点外关。
+    await pressReal(page, `抽屉里 ${FAKE_AGENT} 那一行`, inLivePanel, {
+      panelSel: PANEL,
+      sub: `[data-testid="picker-agent-${FAKE_AGENT}"]`,
+    })
     await waitFor('药丸写着 agent id(还没叫醒它)', async () =>
       (await liveText(page, '[data-testid="composer-model-pill"]'))?.includes(FAKE_AGENT) || undefined,
     )
@@ -574,14 +608,30 @@ async function main() {
     await clickLive(page, '[data-testid="composer-model-pill"]')
     const COMBO = '[data-testid="agent-options-card"] [data-agent-option="model"] [role="combobox"]'
     await waitFor('右卡的模型下拉就位', () => liveText(page, COMBO))
-    await clickLive(page, COMBO)
+    // 开下拉与按选项都走真指针:09-29 事故那一形(按下选项 → 抽屉在捕获相位先关 → 什么都没选上)
+    // 只有带 pointerdown 的一按才问得出来,`option.click()` 在这里绿了两个月。
+    await pressReal(page, '右卡的模型下拉', inLivePanel, { panelSel: PANEL, sub: COMBO })
     await waitFor('模型下拉展开', () =>
       page.evaluate(() => [...document.querySelectorAll('[role="option"]')].some((el) => el.textContent?.includes('Beta'))),
     )
-    await page.evaluate(() => {
-      const option = [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent?.includes('Beta'))
-      option.click()
-    })
+    await pressReal(
+      page,
+      '下拉里的 Beta',
+      (text) => [...document.querySelectorAll('[role="option"]')].find((el) => el.textContent?.includes(text)) ?? null,
+      'Beta',
+    )
+    // 选完抽屉**留着**(卡上换成新值);只有左栏那一行选中才收抽屉。抽屉没了 = 事故复发。
+    const drawerKept = await page.evaluate(
+      ({ panelSel }) =>
+        Boolean(
+          [...document.querySelectorAll(panelSel)]
+            .find((el) => el.checkVisibility())
+            ?.querySelector('[data-testid="agent-options-card"]')
+            ?.checkVisibility(),
+        ),
+      { panelSel: PANEL },
+    )
+    step(drawerKept, `③ 真指针按下选项之后模型抽屉还在(右卡 ${drawerKept ? '在场' : '没了 —— 点外关把选项那一下当成了外面'})`)
     const setCall = await waitFor('假 agent 收到 set_config_option = beta', () => {
       const file = path.join(fakeAgentDir, 'calls.log')
       if (!existsSync(file)) return undefined
@@ -897,7 +947,7 @@ async function main() {
         await waitFor('挑 agent 那一步', () =>
           page.evaluate((id) => Boolean(document.querySelector(`[data-testid="acp-import-agent-${id}"]`)), LIFE_AGENT),
         )
-        await click(page, `[data-testid="acp-import-agent-${LIFE_AGENT}"]`)
+        await pressReal(page, `挑选窗里 ${LIFE_AGENT} 那一行`, inDocument, `[data-testid="acp-import-agent-${LIFE_AGENT}"]`)
       }
       await openPicker()
       const listed = await waitFor(
@@ -932,7 +982,7 @@ async function main() {
       }
       step(axe.violations.length === 0, `⑧ 导入窗 axe 零违例(过了 ${axe.passes.length} 条规则)`)
 
-      await click(page, '[data-testid="acp-import-session-stored-a"]')
+      await pressReal(page, '挑选窗里 stored-a 那一行', inDocument, '[data-testid="acp-import-session-stored-a"]')
       await waitFor('窗关掉', () => page.evaluate(() => !document.querySelector('[data-testid="acp-import-sessions"]')), 20_000)
       const afterAdopt = (await rpc(record, 'sessions', 'listMeta', {}))?.sessions ?? []
       const adopted = await waitFor(
@@ -968,7 +1018,7 @@ async function main() {
           return el?.getAttribute('data-adopted') === 'true' ? el.textContent : undefined
         }),
       ).catch(() => '(没标)')
-      await click(page, '[data-testid="acp-import-session-stored-a"]')
+      await pressReal(page, '挑选窗里 stored-a 那一行', inDocument, '[data-testid="acp-import-session-stored-a"]')
       await waitFor('窗关掉', () => page.evaluate(() => !document.querySelector('[data-testid="acp-import-sessions"]')), 20_000)
       await delay(500)
       const afterSecond = ((await rpc(record, 'sessions', 'listMeta', {}))?.sessions ?? []).length
