@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>检索段重做 · 样例</title>
+<style>
+  :root{
+    --paper:#faf8f4;--surface-1:#fffdf9;--surface-2:#f6f2eb;--text-1:#2b2926;--text-2:#5f5a53;--text-3:#8f897f;--text-4:#b3ada3;
+    --line-1:#e6e1d8;--line-2:#d8d2c7;--accent:#c9782a;--accent-deep:#9a5a1c;--accent-soft:#f6e9d8;--danger:#b4533f;
+    --st-hover:rgba(43,41,38,.05);--st-sel:#efe9df;--ok:#4f7a57;
+    --face-0:#c9782a;--face-1:#4f7a57;--face-2:#5a6f9a;--face-3:#9a5a7a;--face-4:#7a6a3a;--face-5:#3f7f86;
+    --fs-body:15px;--fs-meta:13px;--fs-micro:12px;--fs-nano:11px;
+    --r-1:6px;--r-2:10px;--dur:.14s;--ease:cubic-bezier(.3,.7,.4,1);
+    --font-ui:-apple-system,"PingFang SC","Helvetica Neue",system-ui,sans-serif;--font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  }
+  :root[data-theme="dark"]{
+    --paper:#1d1c1a;--surface-1:#242320;--surface-2:#2b2a26;--text-1:#ece8e1;--text-2:#c2bcb2;--text-3:#8e887e;--text-4:#6a655d;
+    --line-1:#37352f;--line-2:#45423b;--accent:#e0954d;--accent-deep:#eaa964;--accent-soft:#3a2e22;--danger:#e0806c;
+    --st-hover:rgba(255,255,255,.05);--st-sel:#302e29;--ok:#8cbf94;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--text-1);font:14px/1.5 var(--font-ui)}
+  main{max-width:1180px;margin:0 auto;padding:26px 16px 80px}
+  h1{font-size:21px;margin:0 0 6px}
+  h2.sec{font-size:15px;margin:36px 0 10px}
+  p.note{color:var(--text-2);font-size:13px;line-height:1.7;margin:0 0 14px;max-width:880px}
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  svg.i{width:1em;height:1em;flex:none;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+  .btn{font-size:12px;padding:4px 12px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface-1);color:var(--text-2)}
+  .btn:hover{color:var(--text-1)}
+  .btn.on{background:var(--text-1);color:var(--paper);border-color:var(--text-1)}
+
+  /* ── 演示用的聊天框 ── */
+  .stage{border:1px solid var(--line-1);border-radius:16px;background:var(--surface-1);padding:22px 26px;max-width:760px}
+  .user{margin-left:auto;width:fit-content;max-width:85%;padding:10px 14px;border-radius:14px;background:var(--st-sel);font-size:var(--fs-body);line-height:1.65;margin-bottom:18px}
+  .prose{font-size:var(--fs-body);line-height:1.7}
+  .prose p{margin:0 0 12px}
+  .prose code{font-family:var(--font-mono);font-size:.88em;background:var(--st-hover);padding:.05em .35em;border-radius:4px}
+  .block{margin:14px 0}
+
+  /* ── 检索段 ── */
+  .ep{display:flex;flex-direction:column;gap:6px}
+
+  /* 流中态:一张小卡,里面是步骤行 */
+  .live{border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--surface-2);padding:8px 12px 10px;display:flex;flex-direction:column;gap:2px}
+  .live-top{display:flex;align-items:center;gap:8px;font-size:var(--fs-micro);color:var(--text-3);padding-bottom:4px}
+  .live-top .sp{flex:1}
+  .step{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:8px;min-height:24px;font-size:var(--fs-meta)}
+  .step.now{animation:rise .22s var(--ease) both}
+  .step .verb{font-size:var(--fs-micro);color:var(--text-4)}
+  .step .what{min-width:0;display:flex;align-items:center;gap:6px;color:var(--text-2);overflow:hidden}
+  .step .what span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .step .res{font-size:var(--fs-micro);color:var(--text-4);white-space:nowrap}
+  .step .res.bad{color:var(--danger)}
+  .step.now .what{color:var(--text-1)}
+  .step.now .res::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(4) infinite}
+  .older{font-size:var(--fs-micro);color:var(--text-4);padding-left:42px;min-height:20px}
+  .q{font-weight:500}
+  .q::before{content:"「"}.q::after{content:"」"}
+  @keyframes rise{from{transform:translateY(3px)}to{transform:none}}
+  @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+
+  /* 收起行 */
+  .head{display:flex;align-items:center;gap:8px;width:calc(100% + 8px);padding:4px 8px;margin-left:-8px;border-radius:var(--r-1);text-align:start;transition:background var(--dur) var(--ease)}
+  .head:hover{background:var(--st-hover)}
+  .caret{color:var(--text-4);transition:transform var(--dur) var(--ease);font-size:13px}
+  .ep.open .caret{transform:rotate(90deg)}
+  .head-text{flex:1;min-width:0;font-size:var(--fs-meta);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .head-text b{font-weight:500;color:var(--text-2)}
+  .dot{margin:0 6px;color:var(--text-4)}
+  .head-right{display:inline-flex;gap:10px;font-size:var(--fs-micro);color:var(--text-4);flex:none}
+  .head-right .bad{color:var(--danger)}
+  .mono{font-family:var(--font-mono)}
+
+  /* 展开清单 */
+  .list{border:1px solid var(--line-1);border-radius:var(--r-2);background:var(--surface-2);padding:6px;display:flex;flex-direction:column;gap:4px}
+  .list-top{display:flex;align-items:center;gap:6px;padding:4px 6px 6px}
+  .seg{display:inline-flex;border:1px solid var(--line-1);border-radius:999px;padding:2px;background:var(--surface-1)}
+  .seg button{font-size:var(--fs-micro);padding:2px 10px;border-radius:999px;color:var(--text-3)}
+  .seg button.on{background:var(--st-sel);color:var(--text-1)}
+  .list-top .sp{flex:1}
+  .group{display:flex;flex-direction:column}
+  .ghead{display:flex;align-items:center;gap:6px;padding:6px 8px;border-top:1px solid var(--line-1);font-size:var(--fs-micro);color:var(--text-3)}
+  .group:first-of-type .ghead{border-top:0}
+  .ghead .gq{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
+  .ghead .gn{color:var(--text-4)}
+  .gempty{padding:4px 8px 8px 28px;font-size:var(--fs-micro);color:var(--text-4)}
+
+  .src{border-radius:var(--r-1)}
+  .src.open{background:var(--surface-1);box-shadow:0 0 0 1px var(--line-1)}
+  .face{display:grid;grid-template-columns:18px 1fr auto;column-gap:10px;row-gap:1px;width:100%;padding:7px 8px;border-radius:var(--r-1);text-align:start;transition:background var(--dur) var(--ease);position:relative}
+  .src:not(.open) .face:hover{background:var(--st-hover)}
+  .fav{grid-row:1 / span 2;margin-top:2px}
+  .l1{display:flex;align-items:baseline;gap:8px;min-width:0}
+  .title{min-width:0;font-size:var(--fs-meta);color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .src.seen .title{color:var(--text-2)}
+  .tag{flex:none;font-size:var(--fs-nano);padding:0 6px;border-radius:999px;line-height:17px}
+  .tag.read{background:var(--accent-soft);color:var(--accent-deep)}
+  .tag.fail{color:var(--danger);padding:0}
+  .l2{grid-column:2;display:flex;gap:6px;min-width:0;font-size:var(--fs-micro);color:var(--text-4)}
+  .l2 .dom{flex:none;font-family:var(--font-mono);font-size:var(--fs-nano);line-height:18px}
+  .l2 .snip{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-3)}
+  .acts{grid-row:1 / span 2;grid-column:3;display:flex;gap:2px;align-self:center;opacity:0;transition:opacity var(--dur) var(--ease)}
+  .face:hover .acts,.face:focus-within .acts{opacity:1}
+  .src.open .acts{display:none}
+  .src.open .title{white-space:normal}
+  .ico{width:26px;height:26px;display:grid;place-items:center;border-radius:var(--r-1);color:var(--text-3);font-size:14px}
+  .ico:hover{background:var(--st-hover);color:var(--text-1)}
+
+  .detail{padding:0 12px 12px 36px;display:flex;flex-direction:column;gap:10px}
+  .excerpt{font-size:var(--fs-meta);line-height:1.7;color:var(--text-2);margin:0}
+  .excerpt mark{background:none;color:var(--text-1);font-weight:500}
+  .dmeta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:var(--fs-micro);color:var(--text-4)}
+  .dmeta a{color:var(--text-3);text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+  .dmeta a:hover{color:var(--text-1)}
+  .url{font-family:var(--font-mono);font-size:var(--fs-nano);color:var(--text-4);overflow-wrap:anywhere}
+
+  /* favicon:字母圆片 */
+  .fv{width:18px;height:18px;border-radius:999px;display:inline-grid;place-items:center;color:#fff;font-size:10px;font-weight:600;flex:none}
+  .fv.sm{width:14px;height:14px;font-size:8px}
+  .stack{display:inline-flex;flex:none}
+  .stack .fv{box-shadow:0 0 0 2px var(--surface-1)}
+  .stack .fv+.fv{margin-left:-5px}
+
+  /* 消息尾来源丸 */
+  .foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:3px 12px 3px 6px;border-radius:999px;border:1px solid var(--line-1);background:var(--surface-1);font-size:var(--fs-micro);color:var(--text-3);transition:background var(--dur) var(--ease)}
+  .pill:hover{background:var(--st-hover);color:var(--text-1)}
+
+  /* 状态墙 */
+  .wall{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  .cell{border:1px solid var(--line-1);border-radius:14px;background:var(--surface-1);padding:14px 16px 16px;min-width:0}
+  .cell h3{margin:0 0 10px;font-size:12px;font-weight:500;color:var(--text-3)}
+  .cell.narrow{max-width:360px}
+  .changes{font-size:13px;line-height:1.75;color:var(--text-2);max-width:880px;padding-left:18px}
+  .changes b{color:var(--text-1);font-weight:600}
+
+  @media (max-width:860px){.wall{grid-template-columns:1fr}.stage{padding:16px}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>检索段重做 · 完整样例</h1>
+  <p class="note">这一页是 <code>content/research/</code> 那一段的新样子。骨架不变(流中行 → 收起行 → 展开清单 → 消息尾来源丸,数据仍然全部来自 <code>presentResearchEpisode</code>),变的是每一件里画什么。上面是一次完整的过程,点「重放」看它从搜索到收起的全过程;下面把每种状态单独摆出来。右上角可以切暗色。</p>
+
+  <div class="bar">
+    <button class="btn" id="replay">重放</button>
+    <button class="btn" id="skip">直接看结果</button>
+    <span style="flex:1"></span>
+    <button class="btn" id="theme">暗色</button>
+  </div>
+
+  <div class="stage">
+    <div class="user">Electron 41 里后台的 WebContentsView 标签怎么省内存?有没有官方推荐做法</div>
+    <div class="prose"><p>我先查一下官方文档和相关 issue。</p></div>
+    <div class="block" id="demo"></div>
+    <div class="prose" id="answer" hidden>
+      <p>结论:官方没有「冻结一个 view」的开关,推荐的做法是<b>让不可见的 view 把渲染进程交出去</b>,回来时重新加载。具体有三档:</p>
+      <p>1. 对隐藏的 view 调 <code>webContents.setBackgroundThrottling(true)</code>(默认已开),只省 CPU,不省内存。<br>
+         2. 长时间不可见的标签直接 <code>view.webContents.close()</code>,留下 URL 与标题,再显示时重建 —— Chrome 的 Tab Discarding 就是这么做的。<br>
+         3. 用 <code>app.getAppMetrics()</code> 按进程看占用,只挑超过阈值的去丢。</p>
+      <p>issue #41802 里有人实测第 2 档每个标签回收 80–140MB。</p>
+      <div class="foot" id="foot"></div>
+    </div>
+  </div>
+
+  <h2 class="sec">每种状态</h2>
+  <div class="wall" id="wall"></div>
+
+  <h2 class="sec">改了什么</h2>
+  <ol class="changes">
+    <li><b>流中态从一行字变成一张步骤单。</b>每次搜索、每次打开各占一行:左边是动词(搜索 / 阅读),中间是查询词或页面标题,右边是结果(「6 条」「已读」「未读到正文」)。正在进行的那一行右边是跳动的省略号,不转圈。最多显示最近 4 行,更早的收成一句「前面还有 N 步」。顶上一行报「已找到 N 个来源」和已经找到的站点脸,人能看出这次检索有多大。</li>
+    <li><b>收起行多说一件事:细读了几篇。</b>「检索 · 9 个来源 · 细读 4 篇」。9 个里只有 4 个是模型真打开读过的,其余只是在搜索结果里出现过;这个差别对「这段话靠不靠得住」很关键,原来要展开、而且只有失败时才看得出来。</li>
+    <li><b>来源行变成两行:标题 + 域名和摘要。</b>摘要模型里早就有(<code>source.excerpt</code>),只是从没画出来。读过的来源标题用正文色并带一枚「已读」小签,只在搜索结果里出现过的标题退一档灰。清单顶上加一个「全部 / 只看已读」切换。</li>
+    <li><b>点开一条来源,看到的是摘录,不是工具输出。</b>原来点开是 <code>ToolDrawer</code>,里面是工具拼好的整块纯文本当代码块显示。现在先给这一页的摘录(命中词加粗)、完整地址,和三个动作:在内置浏览器打开、复制链接、看原始调用(原来那个抽屉降到这里,还在)。</li>
+    <li><b>悬停出两个快捷动作:</b>在内置浏览器打开、复制链接,不用先展开。</li>
+    <li><b>消息尾来源丸不变,</b>只是加了一圈细线,跟正文里的行内代码块分开。</li>
+  </ol>
+  <p class="note">没做的:正文里的引用角标(「[1]」那种)。今天模型的回复里没有引用标记,这一格只能编,所以和原来的判断一样先不画。</p>
+</main>
+
+<script>
+/* ── 数据:和 presentResearchEpisode 的产物同形 ── */
+const FACE = {'electronjs.org':0,'github.com':1,'developer.chrome.com':2,'stackoverflow.com':3,'chromium.org':4,'web.dev':5,'zhuanlan.zhihu.com':2,'medium.com':3}
+const S = (id,title,url,excerpt,extra={}) => ({id,title,url,domain:new URL(url).hostname.replace(/^www\./,''),excerpt,opened:false,...extra})
+const GROUPS = [
+  {q:'electron WebContentsView background tab memory', sources:[
+    S('a','WebContentsView | Electron','https://www.electronjs.org/docs/latest/api/web-contents-view','A View that displays a WebContents. It can be used to embed additional web content into a BaseWindow. Background <b>throttling</b> applies to hidden views but the renderer process stays alive.',{opened:true,openStatus:'ok'}),
+    S('b','Memory keeps growing with many hidden WebContentsView · Issue #41802','https://github.com/electron/electron/issues/41802','Each hidden view keeps its renderer process. Closing webContents on hide and recreating on show reclaimed 80–140MB per tab in our tests.',{opened:true,openStatus:'ok'}),
+    S('c','Performance | Electron','https://www.electronjs.org/docs/latest/tutorial/performance','Measure first. Use app.getAppMetrics() to see memory and CPU per process, then decide what to unload.',{opened:true,openStatus:'ok'}),
+    S('d','How to reduce memory of hidden BrowserView in Electron?','https://stackoverflow.com/questions/71234567/reduce-memory-hidden-browserview','BrowserView is deprecated in favour of WebContentsView. The only reliable way to free memory is to destroy the webContents.'),
+    S('e','webContents.setBackgroundThrottling(allowed)','https://www.electronjs.org/docs/latest/api/web-contents#contentssetbackgroundthrottlingallowed','Controls whether or not this WebContents will throttle animations and timers when the page becomes backgrounded.'),
+  ]},
+  {q:'chrome tab discarding how it works', sources:[
+    S('f','Tab Discarding in Chrome: a memory-saving experiment','https://developer.chrome.com/blog/tab-discarding','A discarded tab is still visible in the tab strip; its page is reloaded when the user switches back. Scroll position and form state are restored where possible.',{opened:true,openStatus:'ok'}),
+    S('g','Memory Saver · Chromium design docs','https://www.chromium.org/developers/design-documents/memory-saver','Tabs inactive for a period are discarded unless they are playing audio, capturing, or have unsaved form input.',{opened:true,openStatus:'failed'}),
+    S('h','Page Lifecycle API','https://web.dev/articles/page-lifecycle-api','The frozen and discarded states let the browser reclaim resources from background pages; pages can listen for freeze and resume events.'),
+  ]},
+  {q:'WebContentsView 内存 回收', sources:[
+    S('i','Electron 多标签浏览器的内存治理实践','https://zhuanlan.zhihu.com/p/681234567','隐藏超过十分钟的标签销毁 webContents,只保留地址和标题,切回时重建,常驻内存从 2.1G 降到 900M。'),
+  ]},
+  {q:'electron webContents.close vs destroy', sources:[]},
+]
+const ALL = GROUPS.flatMap(g=>g.sources)
+const READ = ALL.filter(s=>s.openStatus==='ok')
+
+const ICON = {
+  caret:'<svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  search:'<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>',
+  open:'<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>',
+  copy:'<svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+  raw:'<svg class="i" viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/></svg>',
+}
+const esc = s => s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const plain = s => s.replace(/<[^>]*>/g,'')
+const fav = (d,cls='') => `<span class="fv ${cls}" style="background:var(--face-${FACE[d]??0})">${d[0].toUpperCase()}</span>`
+function stack(sources,n=4){const seen=[];for(const s of sources){if(!seen.includes(s.domain))seen.push(s.domain)}return `<span class="stack">${seen.slice(0,n).map(d=>fav(d,'sm')).join('')}</span>`}
+
+/* ── 流中态 ── */
+function liveHTML(steps, found){
+  const shown = steps.slice(-4), older = steps.length - shown.length
+  return `<div class="ep"><div class="live">
+    <div class="live-top">${found.length?stack(found,5):''}<span>${found.length?`已找到 ${found.length} 个来源`:'正在检索'}</span><span class="sp"></span><span class="mono">${steps.length} 步</span></div>
+    ${older?`<div class="older">前面还有 ${older} 步</div>`:''}
+    ${shown.map((s,i)=>{
+      const now = i===shown.length-1 && s.now
+      const what = s.kind==='search' ? `<span class="t"><span class="q">${esc(s.q)}</span></span>` : `${fav(s.src.domain,'sm')}<span class="t">${esc(s.src.title)}</span>`
+      const res = now ? '' : s.kind==='search' ? (s.n?`${s.n} 条`:'没有结果') : (s.src.openStatus==='failed'?'未读到正文':'已读')
+      return `<div class="step ${now?'now':''}"><span class="verb">${s.kind==='search'?'搜索':'阅读'}</span><span class="what">${what}</span><span class="res ${res==='未读到正文'?'bad':''}">${res}</span></div>`
+    }).join('')}
+  </div></div>`
+}
+
+/* ── 收起 + 展开 ── */
+function episodeHTML(st){
+  const failed = ALL.filter(s=>s.openStatus==='failed').length
+  const head = `<button class="head" data-act="toggle" aria-expanded="${st.open}">
+      <span class="caret">${ICON.caret}</span>${stack(ALL)}
+      <span class="head-text"><b>检索</b><span class="dot">·</span>${ALL.length} 个来源<span class="dot">·</span>细读 ${READ.length} 篇</span>
+      <span class="head-right">${failed?`<span class="bad">${failed} 篇未读到</span>`:''}<span>${GROUPS.length} 组查询</span><span class="mono">8.4s</span></span>
+    </button>`
+  if(!st.open) return `<div class="ep">${head}</div>`
+  const groups = GROUPS.map(g=>{
+    const list = st.onlyRead ? g.sources.filter(s=>s.opened) : g.sources
+    if(st.onlyRead && !list.length) return ''
+    return `<section class="group"><div class="ghead"><span style="color:var(--text-4)">${ICON.search}</span><span class="gq">${esc(g.q)}</span><span class="gn">${g.sources.length?`${g.sources.length} 条`:''}</span></div>
+      ${list.length?list.map(s=>srcHTML(s,st)).join(''):'<div class="gempty">这一组没有搜到来源</div>'}</section>`
+  }).join('')
+  return `<div class="ep open">${head}<div class="list">
+    <div class="list-top"><div class="seg"><button data-act="all" class="${st.onlyRead?'':'on'}">全部 ${ALL.length}</button><button data-act="read" class="${st.onlyRead?'on':''}">只看已读 ${READ.length}</button></div><span class="sp"></span></div>
+    ${groups}</div></div>`
+}
+function srcHTML(s,st){
+  const open = st.openSrc===s.id
+  const tag = s.openStatus==='ok'?'<span class="tag read">已读</span>':s.openStatus==='failed'?'<span class="tag fail">未读到正文</span>':''
+  return `<div class="src ${open?'open':''} ${s.opened?'':'seen'}">
+    <div class="face" data-act="src" data-id="${s.id}" role="button" tabindex="0" aria-expanded="${open}" title="${esc(s.url)}">
+      <span class="fav">${fav(s.domain)}</span>
+      <span class="l1"><span class="title">${esc(s.title)}</span>${tag}</span>
+      <span class="l2"><span class="dom">${s.domain}</span>${open?'':`<span class="snip">${esc(plain(s.excerpt))}</span>`}</span>
+      <span class="acts"><button class="ico" title="在内置浏览器打开" data-stop>${ICON.open}</button><button class="ico" title="复制链接" data-stop>${ICON.copy}</button></span>
+    </div>
+    ${open?`<div class="detail">
+      <p class="excerpt">${s.excerpt.replace(/<b>(.*?)<\/b>/g,'<mark>$1</mark>')}</p>
+      <div class="url">${esc(s.url)}</div>
+      <div class="dmeta"><a href="#" data-stop>${ICON.open}在内置浏览器打开</a><a href="#" data-stop>${ICON.copy}复制链接</a><a href="#" data-stop>${ICON.raw}看原始调用</a></div>
+    </div>`:''}
+  </div>`
+}
+function footHTML(){return `<button class="pill">${stack(ALL)}${ALL.length} 个来源</button>`}
+
+/* ── 可交互的一块 ── */
+function mount(el, st){
+  const draw=()=>{el.innerHTML = st.live ? liveHTML(st.steps, st.found) : episodeHTML(st)}
+  el.onclick=e=>{
+    if(e.target.closest('[data-stop]')){e.preventDefault();return}
+    const t=e.target.closest('[data-act]'); if(!t||st.live) return
+    const a=t.dataset.act
+    if(a==='toggle'){st.open=!st.open;st.openSrc=null}
+    if(a==='all') st.onlyRead=false
+    if(a==='read') st.onlyRead=true
+    if(a==='src') st.openSrc = st.openSrc===t.dataset.id?null:t.dataset.id
+    draw()
+  }
+  draw(); return {st,draw}
+}
+
+/* ── 演示:重放 ── */
+const demo = mount(document.getElementById('demo'), {live:false,open:false,onlyRead:false,openSrc:null,steps:[],found:[]})
+const answer=document.getElementById('answer'); document.getElementById('foot').innerHTML=footHTML()
+let timers=[]
+function script(){
+  const seq=[]; const found=[]
+  const push=(step,addFound)=>seq.push(()=>{ if(addFound) found.push(...addFound.filter(s=>!found.includes(s))); return step })
+  GROUPS.forEach((g,gi)=>{
+    push({kind:'search',q:g.q,n:g.sources.length}, g.sources)
+    g.sources.filter(s=>s.opened).forEach(s=>push({kind:'open',src:s}))
+  })
+  return {seq,found}
+}
+function replay(){
+  timers.forEach(clearTimeout); timers=[]
+  answer.hidden=true
+  const {seq,found}=script(); const st=demo.st
+  st.live=true; st.steps=[]; st.found=found; demo.draw()
+  seq.forEach((fn,i)=>{
+    timers.push(setTimeout(()=>{
+      st.steps.forEach(s=>s.now=false)
+      const step=fn(); st.steps.push({...step,now:true}); demo.draw()
+      // 这一步「结束」:去掉 now,让结果词出来
+      timers.push(setTimeout(()=>{st.steps[st.steps.length-1].now=false;demo.draw()},700))
+    }, i*1000))
+  })
+  timers.push(setTimeout(()=>{st.live=false;st.open=false;demo.draw();answer.hidden=false}, seq.length*1000+300))
+}
+function skip(){timers.forEach(clearTimeout);timers=[];Object.assign(demo.st,{live:false,open:false});demo.draw();answer.hidden=false}
+document.getElementById('replay').onclick=replay
+document.getElementById('skip').onclick=skip
+document.getElementById('foot').onclick=()=>{Object.assign(demo.st,{open:true});demo.draw();document.getElementById('demo').scrollIntoView({behavior:'smooth',block:'center'})}
+document.getElementById('theme').onclick=e=>{const d=document.documentElement;const on=d.dataset.theme!=='dark';d.dataset.theme=on?'dark':'light';e.target.classList.toggle('on',on)}
+skip()
+
+/* ── 状态墙 ── */
+const wall=document.getElementById('wall')
+const cells=[
+  ['流中 · 正在搜索', el=>{el.innerHTML=liveHTML([{kind:'search',q:GROUPS[0].q,now:true}],[])}],
+  ['流中 · 第三轮,正在读一页(较早的步骤收起)', el=>{el.innerHTML=liveHTML([
+    {kind:'search',q:GROUPS[0].q,n:5},{kind:'open',src:ALL[0]},{kind:'open',src:ALL[1]},{kind:'open',src:ALL[2]},
+    {kind:'search',q:GROUPS[1].q,n:3},{kind:'open',src:ALL[6]},{kind:'open',src:ALL[5],now:true}], ALL.slice(0,8))}],
+  ['收起', el=>mount(el,{open:false})],
+  ['展开 · 全部', el=>mount(el,{open:true,onlyRead:false,openSrc:null})],
+  ['展开 · 只看已读', el=>mount(el,{open:true,onlyRead:true,openSrc:null})],
+  ['展开 · 点开一条来源', el=>mount(el,{open:true,onlyRead:false,openSrc:'b'})],
+  ['消息尾来源丸', el=>{el.innerHTML=`<div class="foot">${footHTML()}</div>`}],
+  ['窄栏 360 · 展开', el=>{el.parentElement.classList.add('narrow');mount(el,{open:true,onlyRead:false,openSrc:null})}],
+]
+cells.forEach(([name,fn])=>{const c=document.createElement('div');c.className='cell';c.innerHTML=`<h3>${name}</h3><div></div>`;wall.appendChild(c);fn(c.lastChild)})
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectedToolCall } from '../../model/segments'
-import { plainText, presentResearchEpisode, sourceStep, stackDomains } from '../episode'
+import { markedText, plainText, presentResearchEpisode, sourceStep, stackDomains } from '../episode'
 
 /**
  * 检索段的**折叠**单测(§5.3)。
@@ -278,5 +278,77 @@ describe('小工具', () => {
   it('剥完只剩空白就是缺席,不留一个空字符串', () => {
     expect(plainText('<em></em>   ')).toBeUndefined()
     expect(plainText(undefined)).toBeUndefined()
+  })
+})
+
+describe('步骤单与读数(09-27 重做)', () => {
+  it('按发生先后:一条查询词一步,一次打开一步;结局各说各的', () => {
+    const episode = presentResearchEpisode([
+      search('w1', { query: 'a' }, {
+        searches: [
+          { id: 's1', query: 'a', resultCount: 7, results: [result(1, 'https://a.com/x', 'A')] },
+          { id: 's2', query: 'b', results: [] },
+        ],
+      }),
+      open('w2', { url: 'https://a.com/x' }, { pages: [{ id: 'p', url: 'https://a.com/x', title: 'A 页' }] }),
+      open('w3', { url: 'https://b.com/y' }, undefined, { status: 'executing' }),
+    ])
+    expect(episode.trail).toEqual([
+      { id: 'w1#s0', kind: 'search', status: 'ok', query: 'a', resultCount: 7 },
+      { id: 'w1#s1', kind: 'search', status: 'ok', query: 'b', resultCount: 0 },
+      { id: 'w2#open', kind: 'open', status: 'ok', domain: 'a.com', title: 'A 页' },
+      { id: 'w3#open', kind: 'open', status: 'running', domain: 'b.com' },
+    ])
+  })
+
+  it('失败的搜索不报条数 —— 「0 条」会被读成「搜到了,是空的」', () => {
+    const episode = presentResearchEpisode([search('w1', { query: 'q' }, undefined, { status: 'failed' })])
+    expect(episode.trail).toEqual([{ id: 'w1#s0', kind: 'search', status: 'failed', query: 'q' }])
+    expect(episode.failedSearches).toBe(1)
+  })
+
+  it('调用成功而页面没读到:这一步是失败的,并计进 unreadCount', () => {
+    const episode = presentResearchEpisode([
+      open('w1', { url: 'https://a.com/x' }, { pages: [{ id: 'p', url: 'https://a.com/x', status: 'failed' }] }),
+    ])
+    expect(episode.trail[0].status).toBe('failed')
+    expect(episode.unreadCount).toBe(1)
+    expect(episode.failedSearches).toBe(0)
+  })
+})
+
+describe('摘录命中词', () => {
+  it('记下高亮标签包住的位置,别的标签照旧剥掉', () => {
+    const { excerpt, excerptMarks } = markedText('由 <strong>SGLang</strong> 孵化 <a href="x">出</a> <b>vLLM</b>')
+    expect(excerpt).toBe('由 SGLang 孵化 出 vLLM')
+    expect(excerptMarks!.map(([a, b]) => excerpt!.slice(a, b))).toEqual(['SGLang', 'vLLM'])
+  })
+
+  it('折叠空白之后下标仍然落在最终那串字上', () => {
+    const { excerpt, excerptMarks } = markedText('  a   <b>  hit  </b>\n\n  tail ')
+    expect(excerpt).toBe('a hit tail')
+    expect(excerptMarks!.map(([a, b]) => excerpt!.slice(a, b))).toEqual(['hit'])
+  })
+
+  it('紧挨着的两段命中并成一段', () => {
+    const { excerpt, excerptMarks } = markedText('<b>foo</b><em>bar</em> baz')
+    expect(excerpt).toBe('foobar baz')
+    expect(excerptMarks).toEqual([[0, 6]])
+  })
+
+  it('没有命中就没有 excerptMarks;整段空白就整个缺席', () => {
+    expect(markedText('plain text')).toEqual({ excerpt: 'plain text' })
+    expect(markedText('<b> </b>')).toEqual({})
+  })
+
+  it('打开之后的正文替换掉搜索摘要时,旧的命中位置一起换掉', () => {
+    const episode = presentResearchEpisode([
+      search('w1', { query: 'q' }, {
+        searches: [{ id: 's1', query: 'q', results: [result(1, 'https://a.com/x', 'A', '<b>hit</b> snippet')] }],
+      }),
+      open('w2', { url: 'https://a.com/x' }, { pages: [{ id: 'p', url: 'https://a.com/x', excerpt: '真正文' }] }),
+    ])
+    expect(episode.sources[0].excerpt).toBe('真正文')
+    expect(episode.sources[0].excerptMarks).toBeUndefined()
   })
 })

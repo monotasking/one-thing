@@ -202,6 +202,13 @@ export interface ResearchSource {
   domain: string
   /** 摘录:搜索结果的 snippet 或打开页面的 excerpt,已剥 HTML。取不到就缺席。 */
   excerpt?: string
+  /**
+   * 摘录里的命中词:`[起, 止)` 下标对,落在 `excerpt` 上。
+   *
+   * 搜索引擎把命中词包在 `<b>` / `<strong>` 里回来 —— 剥标签时**记下位置**而不是
+   * 把标签留着:那是外部文本,当 HTML 渲染是注入口;屏幕按位置自己画粗体。没有就缺席。
+   */
+  excerptMarks?: ReadonlyArray<readonly [number, number]>
   /** 引入它的那次调用 —— 来源行点开的抽屉认这一格。 */
   callId: string
   /** 被 `web_open` 真打开过。 */
@@ -231,6 +238,27 @@ export interface ResearchQueryGroup {
   sources: ResearchSource[]
 }
 
+/**
+ * 检索的一步 —— 流中态步骤单里的一行(按发生先后)。
+ *
+ * 一次 `web_search` 带几条查询词就是几步(每条查询词各自有结果数);一次 `web_open`
+ * 是一步。`status` 说的是**这一步**的结局:搜索 = 调用的结局,阅读 = 页面的结局
+ *(调用成功而页面没读到正文也是 `failed`,与 `ResearchSource.openStatus` 同一条判据)。
+ */
+export interface ResearchStep {
+  /** 段内稳定身份(渲染 key)。 */
+  id: string
+  kind: 'search' | 'open'
+  status: 'running' | 'ok' | 'failed'
+  /** 搜索那一步的查询词。 */
+  query?: string
+  /** 搜索那一步带回几条结果。没收场或读不到就缺席。 */
+  resultCount?: number
+  /** 阅读那一步的域名 / 标题。 */
+  domain?: string
+  title?: string
+}
+
 /** 流中态那一行现在在忙什么 —— 由**最后一次还没收场的调用**说了算。 */
 export interface ResearchActivity {
   kind: 'search' | 'open'
@@ -252,10 +280,16 @@ export interface ResearchEpisodeModel {
   queries: string[]
   /** 段里每一次调用的行 + 事实:来源行的抽屉按 callId 到这里取。 */
   steps: ToolStepModel[]
-  /** 真打开过几个页面(流中态副行的 M)。 */
+  /** 按发生先后的每一步(流中态的步骤单画它)。 */
+  trail: ResearchStep[]
+  /** 真读到正文的页面数(收起行「细读 M 篇」)。 */
   openedCount: number
   /** 失败了几次调用。 */
   failed: number
+  /** 失败了几次搜索(收起行右端的红字之一)。 */
+  failedSearches: number
+  /** 打开过却没读到正文的来源数(收起行右端的红字之二)。 */
+  unreadCount: number
   /** 总耗时(ms);一次都算不出就缺席。 */
   durationMs?: number
   /** 还有调用没收场 —— 画流中态行而不是收起行。 */

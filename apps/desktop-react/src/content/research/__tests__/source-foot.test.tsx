@@ -10,9 +10,8 @@ import { MessageSourceFoot, researchFoots } from '../SourceFoot'
 /**
  * 四件套第四件:**消息尾来源条**。
  *
- * 钉两件事:哪几段值得挂丸(纯函数),以及点它能不能把那一段唤出来 ——
- * 后者是这一批唯一的跨组件接缝(research/reveal.ts),所以整条链一起测:
- * 丸点下去 → 那一段展开 + 滚进视野。
+ * 钉两件事:哪几段值得挂丸(纯函数),以及点它**就地**展开来源清单 ——
+ * 不滚、不去动正文里那一段检索(09-27 用户令:原地看,不跳)。
  */
 
 vi.mock('../../code/highlight', () => ({
@@ -67,14 +66,14 @@ const textSegment: SegmentModel = { kind: 'rich-text', blocks: [], offsets: [] }
 
 describe('哪几段挂丸', () => {
   it('每一段检索一枚,id 与段 key 同源', () => {
-    const foots = researchFoots(
-      [textSegment, researchSegment([search('w1', 'q', ['https://a.com/x'])])],
-      'a1',
-    )
-    expect(foots).toEqual([{ id: 'a1:1:research', count: 1, domains: ['a.com'] }])
+    const segments = [textSegment, researchSegment([search('w1', 'q', ['https://a.com/x'])])]
+    const foots = researchFoots(segments, 'a1')
+    expect(foots).toMatchObject([{ id: 'a1:1:research', count: 1, domains: ['a.com'] }])
+    // 丸点开就地画的清单读的就是这一段自己的 episode(同一个对象,不是一份拷贝)。
+    expect(foots[0].episode).toBe((segments[1] as Extract<SegmentModel, { kind: 'research' }>).episode)
   })
 
-  it('两段检索两枚丸 —— 合成一枚就答不出「点了滚到哪一段」', () => {
+  it('两段检索两枚丸 —— 合成一枚就答不出「N 是两段之和吗」', () => {
     const foots = researchFoots(
       [
         researchSegment([search('w1', 'q1', ['https://a.com/x'])]),
@@ -101,13 +100,13 @@ describe('哪几段挂丸', () => {
   })
 
   it('没有检索段时组件自己返回 null —— ChatStream 因此对检索一无所知', () => {
-    const { container } = render(<MessageSourceFoot segments={[textSegment]} messageId="a1" />)
+    const { container } = render(<MessageSourceFoot segments={[textSegment]} messageId="a1" ctx={ctx} />)
     expect(container.firstChild).toBeNull()
   })
 })
 
-describe('点它把那一段唤出来', () => {
-  it('丸 → 那一段展开 + 滚进视野', async () => {
+describe('点它就地看', () => {
+  it('丸 → 丸下面摊开同一张清单;正文里那一段检索不动,也不滚', async () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
 
@@ -123,22 +122,38 @@ describe('点它把那一段唤出来', () => {
           id="a1:1:research"
           ctx={ctx}
         />
-        <MessageSourceFoot segments={segments} messageId="a1" />
+        <MessageSourceFoot segments={segments} messageId="a1" ctx={ctx} />
       </>,
     )
     await act(async () => undefined)
 
+    const foot = container.querySelector('[data-testid="research-foot"]')!
+    const pill = foot.querySelector('button')!
     // 丸上说的数与清单上看得见的行数是同一个。
-    const pill = container.querySelector('[data-testid="research-foot"] button')!
     expect(pill.textContent).toContain('1 个来源')
-    expect(container.querySelector('ul')).toBeNull()
+    expect(pill.getAttribute('aria-expanded')).toBe('false')
+    expect(foot.querySelector('ul')).toBeNull()
 
     await act(async () => {
       fireEvent.click(pill)
     })
+    expect(pill.getAttribute('aria-expanded')).toBe('true')
+    expect(foot.querySelector('li')!.textContent).toContain('a.com')
+    expect(foot.textContent).toContain('查询词')
+    // 正文里那一段仍然收着,而且没人滚。
+    expect(container.querySelector('[data-research-id="a1:1:research"]')!.hasAttribute('data-open')).toBe(false)
+    expect(scrollIntoView).not.toHaveBeenCalled()
 
-    expect(container.textContent).toContain('搜索 查询词')
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ block: 'center' })
+    // 再点收起:藏,不卸 —— 再开是同一批节点。
+    const list = foot.querySelector('ul')!
+    await act(async () => {
+      fireEvent.click(pill)
+    })
+    expect(list.closest('[hidden]')).not.toBeNull()
+    await act(async () => {
+      fireEvent.click(pill)
+    })
+    expect(foot.querySelector('ul')).toBe(list)
+    expect(list.closest('[hidden]')).toBeNull()
   })
 })

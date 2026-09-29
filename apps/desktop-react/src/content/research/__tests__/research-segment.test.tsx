@@ -5,7 +5,9 @@ import type { BlockCtx } from '../../blocks/registry'
 import type { ProjectedToolCall } from '../../model/segments'
 import { presentResearchEpisode } from '../episode'
 import { ResearchSegment } from '../ResearchSegment'
-import { revealResearch } from '../reveal'
+import { openSourceUrl } from '../open-source'
+
+vi.mock('../open-source', () => ({ openSourceUrl: vi.fn(() => Promise.resolve(true)) }))
 
 /**
  * 检索段的**上屏**测(§5.3 前三件)。
@@ -68,6 +70,13 @@ async function draw(calls: ProjectedToolCall[], id = 'a1:0:research') {
   return view
 }
 
+/** 收起行:`ui/Fold` 的触发器(role=button),段里第一个带 aria-expanded 的。 */
+const head = (container: HTMLElement) => container.querySelector('[role="button"][aria-expanded]')!
+
+/** 看得见的那几条(筛选与收起都是 hidden,不卸载)。 */
+const visibleRows = (container: HTMLElement) =>
+  [...container.querySelectorAll('li')].filter((li) => !li.closest('[hidden]'))
+
 const click = async (element: Element) => {
   await act(async () => {
     fireEvent.click(element)
@@ -82,11 +91,11 @@ describe('收起行', () => {
         { url: 'https://web.dev/b', title: 'B' },
       ], { durationMs: 2010 }),
     ])
-    const head = container.querySelector('button')!
-    expect(head.textContent).toContain('检索')
-    expect(head.textContent).toContain('2 个来源')
-    expect(head.textContent).toContain('1 组查询')
-    expect(head.textContent).toContain('2.0s')
+    const row = head(container)
+    expect(row.textContent).toContain('检索')
+    expect(row.textContent).toContain('2 个来源')
+    expect(row.textContent).toContain('1 组查询')
+    expect(row.textContent).toContain('2.0s')
     // 收起时清单不在场 —— 它是一句话,不是一堆折起来的行。
     expect(container.querySelector('ul')).toBeNull()
   })
@@ -95,23 +104,28 @@ describe('收起行', () => {
     const { container } = await draw([
       search('w1', 'react 19', [{ url: 'https://react.dev/a', title: '标题 A' }]),
     ])
-    const head = container.querySelector('button')!
-    expect(head.getAttribute('aria-expanded')).toBe('false')
+    const trigger = head(container)
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
-    await click(head)
-    expect(container.textContent).toContain('搜索 react 19')
+    await click(trigger)
+    expect(container.querySelector('h5')!.textContent).toContain('react 19')
     expect(container.textContent).toContain('标题 A')
     expect(container.textContent).toContain('react.dev')
 
-    await click(head)
-    expect(container.querySelector('ul')).toBeNull()
+    // 收起是 hidden,不是卸载:再开时是同一批节点(树/面常驻铁律 —— 重挂就是闪)。
+    const list = container.querySelector('ul')!
+    await click(trigger)
+    expect(visibleRows(container)).toHaveLength(0)
+    await click(trigger)
+    expect(container.querySelector('ul')).toBe(list)
+    expect(visibleRows(container)).toHaveLength(1)
   })
 
-  it('有失败就在右端亮一句红(与工具组同一句话)', async () => {
+  it('搜索失败在右端亮一句红,说的是「几次搜索失败」', async () => {
     const { container } = await draw([
       search('w1', 'q', [{ url: 'https://a.com/x', title: 'A' }], { status: 'failed' }),
     ])
-    expect(container.querySelector('button')!.textContent).toContain('1 失败')
+    expect(head(container).textContent).toContain('1 次搜索失败')
   })
 })
 
@@ -122,9 +136,10 @@ describe('展开清单', () => {
       search('w2', 'english', [{ url: 'https://b.com/y', title: 'B' }]),
     ]
     const { container } = await draw(calls)
-    await click(container.querySelector('button')!)
+    await click(head(container))
+    // 组头 = 查询词 + 这一组的条数(文字读数,不是徽)。
     const heads = [...container.querySelectorAll('h5')].map((node) => node.textContent)
-    expect(heads).toEqual(['搜索 中文词', '搜索 english'])
+    expect(heads).toEqual(['中文词1 条', 'english1 条'])
   })
 
   it('未署名组的组头是「直接打开」—— 不给它编一个查询词', async () => {
@@ -137,14 +152,14 @@ describe('展开清单', () => {
       timestamp: T0,
     } as unknown as ProjectedToolCall
     const { container } = await draw([openCall])
-    await click(container.querySelector('button')!)
-    expect(container.querySelector('h5')!.textContent).toBe('直接打开')
+    await click(head(container))
+    expect(container.querySelector('h5')!.textContent).toBe('直接打开1 条')
   })
 
   it('搜空了的组说出来,不把整组抹掉', async () => {
     const { container } = await draw([search('w1', '搜不到的', [])])
-    await click(container.querySelector('button')!)
-    expect(container.textContent).toContain('搜索 搜不到的')
+    await click(head(container))
+    expect(container.querySelector('h5')!.textContent).toBe('搜不到的')
     expect(container.textContent).toContain('这一组没有搜到来源')
   })
 
@@ -164,18 +179,25 @@ describe('展开清单', () => {
       },
     } as unknown as ProjectedToolCall
     const { container } = await draw([openCall])
-    await click(container.querySelector('button')!)
+    await click(head(container))
     expect(container.textContent).toContain('未读到正文')
   })
 
-  it('来源行点开的是 C1 抽屉 —— 嵌套即复用,不是第二种详情', async () => {
+  it('原始调用降在详情的第三个动作后面,点开是 C1 抽屉 —— 嵌套即复用', async () => {
     const { container } = await draw([
       search('w1', 'q', [{ url: 'https://a.com/x', title: '标题 A' }]),
     ])
-    await click(container.querySelector('button')!)
-    const rows = [...container.querySelectorAll('li button')]
-    expect(rows).toHaveLength(1)
-    await click(rows[0])
+    await click(head(container))
+    // 一行 = 行钮 + 两颗快捷钮(兄弟,不是父子)。
+    const row = container.querySelector('li [role="button"][aria-expanded]')!
+    await click(row)
+    // 点开先给摘录与地址,抽屉此刻还不在。
+    expect(container.textContent).toContain('https://a.com/x')
+    expect(container.textContent).not.toContain('参数')
+    const raw = [...container.querySelectorAll('li [role="button"]')].find((b) =>
+      b.textContent?.includes('看原始调用'),
+    )!
+    await click(raw)
     // 抽屉的两小节:参数 · 结果(与工具卡逐字同一个组件)。
     expect(container.textContent).toContain('参数')
     expect(container.textContent).toContain('结果')
@@ -184,7 +206,7 @@ describe('展开清单', () => {
 })
 
 describe('流中态行', () => {
-  it('说的是最后一条活动的调用 + 一条进度副行', async () => {
+  it('步骤单:每次搜索 / 阅读一行,顶上报已找到几个来源', async () => {
     const { container } = await draw([
       search('w1', '第一轮', [{ url: 'https://a.com/x', title: 'A' }]),
       {
@@ -196,8 +218,13 @@ describe('流中态行', () => {
         timestamp: T0,
       } as unknown as ProjectedToolCall,
     ])
-    expect(container.textContent).toContain('正在阅读 web.dev — 页面标题')
-    expect(container.textContent).toContain('已搜索 1 组关键词 · 打开 0 个页面')
+    // 正在读的那一页本身也是一个来源(它从打开那一刻起就在清单上)。
+    expect(container.textContent).toContain('已找到 2 个来源')
+    const steps = [...container.querySelectorAll('[data-step-status]')]
+    expect(steps.map((node) => node.getAttribute('data-step-status'))).toEqual(['ok', 'running'])
+    expect(steps[0].textContent).toBe('搜索第一轮1 条')
+    expect(steps[1].textContent).toContain('阅读')
+    expect(steps[1].textContent).toContain('页面标题')
     // 还在跑就没有收起行可点:那一刻「N 个来源」还在变。
     expect(container.querySelector('button')).toBeNull()
   })
@@ -214,10 +241,138 @@ describe('流中态行', () => {
       }) as unknown as ProjectedToolCall
 
     const withQuery = await draw([busy({ query: 'react 19' })])
-    expect(withQuery.container.textContent).toContain('正在搜索 react 19')
+    expect(withQuery.container.querySelector('[data-step-status]')!.textContent).toContain('react 19')
 
     const without = await draw([busy({})])
     expect(without.container.textContent).toContain('正在检索')
+  })
+})
+
+function opened(id: string, url: string, title: string, patch: Record<string, unknown> = {}) {
+  return {
+    id,
+    toolId: 'web_open',
+    toolName: 'web_open',
+    arguments: { url, title },
+    status: 'completed',
+    timestamp: T0,
+    result: {
+      title: 'x',
+      output: 'x',
+      metadata: { mode: 'open', pages: [{ id: `p-${id}`, url, title, excerpt: `${title} 的正文` }] },
+    },
+    ...patch,
+  } as unknown as ProjectedToolCall
+}
+
+describe('读过与没读过(09-27 重做)', () => {
+  const twoOfThree = () => [
+    search('w1', 'q', [
+      { url: 'https://a.com/x', title: 'A' },
+      { url: 'https://b.com/y', title: 'B' },
+      { url: 'https://c.com/z', title: 'C' },
+    ]),
+    opened('w2', 'https://a.com/x', 'A'),
+    opened('w3', 'https://b.com/y', 'B', {
+      result: { metadata: { mode: 'open', pages: [{ id: 'p', url: 'https://b.com/y', status: 'failed' }] } },
+    }),
+  ]
+
+  it('收起行多说一件事:细读几篇;打开了却没读到的在右端说红字', async () => {
+    const { container } = await draw(twoOfThree())
+    const text = head(container).textContent
+    expect(text).toContain('3 个来源')
+    expect(text).toContain('细读 1 篇')
+    expect(text).toContain('1 篇未读到')
+  })
+
+  it('一篇都没读时不说「细读 0 篇」—— 那句话只在有东西可说时出现', async () => {
+    const { container } = await draw([search('w1', 'q', [{ url: 'https://a.com/x', title: 'A' }])])
+    expect(head(container).textContent).not.toContain('细读')
+  })
+
+  it('读过的带「已读」签;「只看已读」只留它们', async () => {
+    const { container } = await draw(twoOfThree())
+    await click(head(container))
+    const read = container.querySelectorAll('[data-source-read]')
+    expect(read).toHaveLength(1)
+    expect(read[0].textContent).toContain('已读')
+    expect(visibleRows(container)).toHaveLength(3)
+
+    const onlyRead = [...container.querySelectorAll('[role="radio"]')].find((b) =>
+      b.textContent?.includes('只看已读'),
+    )!
+    await click(onlyRead)
+    expect(visibleRows(container)).toHaveLength(1)
+  })
+
+  it('点开一条来源:行本身一个字不动,只在下面多出详情', async () => {
+    const { container } = await draw([
+      search('w1', 'q', [{ url: 'https://a.com/x', title: 'A', snippet: '摘要一句' } as never]),
+    ])
+    await click(head(container))
+    const row = container.querySelector('li [role="button"][aria-expanded]')!
+    const before = row.outerHTML.replace(/ aria-(expanded|controls)="[^"]*"/g, '')
+    const acts = container.querySelectorAll('li button[aria-label]').length
+    await click(row)
+    const after = row.outerHTML.replace(/ aria-(expanded|controls)="[^"]*"/g, '')
+    expect(after).toBe(before)
+    // 快捷钮不因展开卸载(它们住在 ui/Reveal 里,只动透明度)。
+    expect(container.querySelectorAll('li button[aria-label]').length).toBe(acts)
+    expect(container.querySelector('li p')!.textContent).toBe('摘要一句')
+  })
+
+  it('读过的是全部或一篇没有时,不给筛选 —— 两档筛出来一样', async () => {
+    const { container } = await draw([search('w1', 'q', [{ url: 'https://a.com/x', title: 'A' }])])
+    await click(head(container))
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull()
+  })
+
+  it('来源行第二行是域名 + 摘要;点开是摘录(命中词加粗,不当 HTML 渲染)', async () => {
+    const { container } = await draw([
+      search('w1', 'q', [
+        { url: 'https://a.com/x', title: 'A', snippet: '讲 <strong>WebContentsView</strong> 的内存 <img src=x>' } as never,
+      ]),
+    ])
+    await click(head(container))
+    expect(container.querySelector('li')!.textContent).toContain('讲 WebContentsView 的内存')
+    await click(container.querySelector('li [role="button"][aria-expanded]')!)
+    const marks = [...container.querySelectorAll('li mark')].map((node) => node.textContent)
+    expect(marks).toEqual(['WebContentsView'])
+    // 摘录里的 `<img>` 是外部文本里的一段标签,不是一张图(li 里那张 img 是站点图标)。
+    const excerpt = container.querySelector('li p')!
+    expect(excerpt.querySelector('img')).toBeNull()
+    expect(excerpt.textContent).toBe('讲 WebContentsView 的内存')
+  })
+
+  it('「在内置浏览器打开」走出处引用那条路', async () => {
+    const { container } = await draw([search('w1', 'q', [{ url: 'https://a.com/x', title: 'A' }])])
+    await click(head(container))
+    await click(container.querySelector('li button[aria-label="在内置浏览器打开"]')!)
+    expect(openSourceUrl).toHaveBeenCalledWith('https://a.com/x')
+  })
+
+  it('复制链接就地反馈:钮换成「已复制」', async () => {
+    const writeText = vi.fn(() => Promise.resolve())
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { container } = await draw([search('w1', 'q', [{ url: 'https://a.com/x', title: 'A' }])])
+    await click(head(container))
+    await click(container.querySelector('li button[aria-label="复制链接"]')!)
+    expect(writeText).toHaveBeenCalledWith('https://a.com/x')
+    expect(container.querySelector('li button[aria-label="已复制"]')).not.toBeNull()
+  })
+
+  it('步骤单只摆最近 4 行,更早的收成一句', async () => {
+    const calls = [
+      ...['q1', 'q2', 'q3', 'q4', 'q5'].map((q, index) =>
+        search(`w${index}`, q, [{ url: `https://s${index}.com/x`, title: q }]),
+      ),
+      { ...search('w9', 'q6', []), status: 'executing' } as ProjectedToolCall,
+    ]
+    const { container } = await draw(calls)
+    expect(container.querySelectorAll('[data-step-status]')).toHaveLength(4)
+    expect(container.textContent).toContain('前面还有 2 步')
+    expect(container.textContent).toContain('6 步')
   })
 })
 
@@ -280,39 +435,5 @@ describe('favicon', () => {
     const { container } = await draw([openCall])
     expect(container.querySelector('img')).toBeNull()
     expect(container.textContent).toContain('N')
-  })
-})
-
-describe('被来源条唤出来', () => {
-  it('收到自己那一份信号:展开 + 滚进视野', async () => {
-    const scrollIntoView = vi.fn()
-    Element.prototype.scrollIntoView = scrollIntoView
-
-    const { container } = await draw(
-      [search('w1', 'q', [{ url: 'https://a.com/x', title: '标题 A' }])],
-      'a1:3:research',
-    )
-    expect(container.querySelector('ul')).toBeNull()
-
-    await act(async () => {
-      revealResearch('a1:3:research')
-    })
-    expect(container.textContent).toContain('标题 A')
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-  })
-
-  it('点名的是别人就不动 —— 一条消息上可以有两段检索', async () => {
-    const scrollIntoView = vi.fn()
-    Element.prototype.scrollIntoView = scrollIntoView
-
-    const { container } = await draw(
-      [search('w1', 'q', [{ url: 'https://a.com/x', title: '标题 A' }])],
-      'a1:3:research',
-    )
-    await act(async () => {
-      revealResearch('a1:9:research')
-    })
-    expect(container.querySelector('ul')).toBeNull()
-    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 })

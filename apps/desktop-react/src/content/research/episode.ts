@@ -4,6 +4,7 @@ import type {
   ResearchEpisodeModel,
   ResearchQueryGroup,
   ResearchSource,
+  ResearchStep,
   ToolStepModel,
 } from '../model/segments'
 import { presentToolStep } from '../assemble/present'
@@ -42,6 +43,7 @@ export function presentResearchEpisode(
   const groups: ResearchQueryGroup[] = []
   const steps: ToolStepModel[] = []
   const sources: ResearchSource[] = []
+  const trail: ResearchStep[] = []
   // 段内按 URL 去重:同一个页面被两次搜索都搜到、又被打开一次,屏幕上仍然是**一条**。
   // 去重发生在整段而不是组内,这样收起行的「N 个来源」与清单上看得见的行数逐条相等
   // —— 两个数不一致是最容易被当成 bug 的那种不一致。代价:一条被两个查询词都搜到的
@@ -49,6 +51,7 @@ export function presentResearchEpisode(
   const byUrl = new Map<string, ResearchSource>()
 
   let failed = 0
+  let failedSearches = 0
   let durationTotal: number | undefined
   let running = false
   let active: ResearchActivity | undefined
@@ -56,7 +59,10 @@ export function presentResearchEpisode(
   for (const call of calls) {
     steps.push(presentToolStep(call))
     const tone = toolTone(call.status)
-    if (tone === 'bad') failed += 1
+    if (tone === 'bad') {
+      failed += 1
+      if (isSearchCall(call)) failedSearches += 1
+    }
     if (tone === 'busy') {
       running = true
       // 「最后一条活动的调用」—— 后来的覆盖先前的,所以直接赋值。
@@ -64,8 +70,8 @@ export function presentResearchEpisode(
     }
     if (call.durationMs !== undefined) durationTotal = (durationTotal ?? 0) + call.durationMs
 
-    if (isSearchCall(call)) collectSearch(call, groups, byUrl, sources)
-    else collectOpen(call, groups, byUrl, sources)
+    if (isSearchCall(call)) collectSearch(call, groups, byUrl, sources, trail)
+    else collectOpen(call, groups, byUrl, sources, trail)
   }
 
   const queries = groups
@@ -77,10 +83,13 @@ export function presentResearchEpisode(
     sources,
     queries,
     steps,
-    // 「打开 M 个页面」数的是**真读到正文**的那些:一次打开失败(反爬 / 无正文)不算
+    trail,
+    // 「细读 M 篇」数的是**真读到正文**的那些:一次打开失败(反爬 / 无正文)不算
     // 打开了一个页面,尽管那次调用确实发生过。
     openedCount: sources.filter((source) => source.openStatus === 'ok').length,
     failed,
+    failedSearches,
+    unreadCount: sources.filter((source) => source.openStatus === 'failed').length,
     ...(durationTotal !== undefined ? { durationMs: durationTotal } : {}),
     running,
     ...(active ? { active } : {}),
@@ -133,9 +142,11 @@ function collectSearch(
   groups: ResearchQueryGroup[],
   byUrl: Map<string, ResearchSource>,
   sources: ResearchSource[],
+  trail: ResearchStep[],
 ): void {
   const meta = toolDetails(call)
   const searches = recordArray(meta?.searches)
+  const status = stepStatus(call)
 
   if (searches.length > 0) {
     // 完整形:一次 `web_search` 可以带多条查询词(模型同时搜中英两版是常态),
@@ -146,9 +157,11 @@ function collectSearch(
         query: str(search.query) ?? fallbackQuery(call, meta),
         callId: call.id,
       })
-      for (const result of recordArray(search.results)) {
+      const results = recordArray(search.results)
+      for (const result of results) {
         addResult(group, byUrl, sources, call, result)
       }
+      trail.push(searchStep(group, status, num(search.resultCount) ?? results.length))
     })
     return
   }
@@ -161,9 +174,34 @@ function collectSearch(
     query: fallbackQuery(call, meta),
     callId: call.id,
   })
-  for (const result of recordArray(meta?.results)) {
+  const results = recordArray(meta?.results)
+  for (const result of results) {
     addResult(group, byUrl, sources, call, result)
   }
+  // 还在跑的搜索没有结果数可说;失败的也不说(「0 条」会被读成「搜到了,是空的」)。
+  trail.push(
+    searchStep(group, status, status === 'ok' ? (num(meta?.resultCount) ?? results.length) : undefined),
+  )
+}
+
+function searchStep(
+  group: ResearchQueryGroup,
+  status: ResearchStep['status'],
+  resultCount: number | undefined,
+): ResearchStep {
+  return {
+    id: group.id,
+    kind: 'search',
+    status,
+    ...(group.query ? { query: group.query } : {}),
+    ...(status === 'ok' && resultCount !== undefined ? { resultCount } : {}),
+  }
+}
+
+/** 一次调用的结局,折成步骤单的三态。认不出的状态按「还在跑」说 —— 不替它下结论。 */
+function stepStatus(call: ProjectedToolCall): ResearchStep['status'] {
+  const tone = toolTone(call.status)
+  return tone === 'bad' ? 'failed' : tone === 'ok' ? 'ok' : 'running'
 }
 
 function collectOpen(
@@ -171,6 +209,7 @@ function collectOpen(
   groups: ResearchQueryGroup[],
   byUrl: Map<string, ResearchSource>,
   sources: ResearchSource[],
+  trail: ResearchStep[],
 ): void {
   const meta = toolDetails(call)
   const page = recordArray(meta?.pages)[0]
@@ -186,7 +225,7 @@ function collectOpen(
     url,
     callId: call.id,
     title: argString(call, 'title') ?? str(page?.title) ?? str(result?.title),
-    excerpt: plainText(str(page?.excerpt) ?? str(page?.description) ?? str(result?.snippet)),
+    ...markedText(str(page?.excerpt) ?? str(page?.description) ?? str(result?.snippet)),
   })
 
   source.opened = true
@@ -196,8 +235,21 @@ function collectOpen(
   // 搜索先给的标题往往是列表页的短名,打开之后拿到的是真标题 —— 后到的更好就换上。
   const openedTitle = argString(call, 'title') ?? str(page?.title)
   if (openedTitle) source.title = openedTitle
-  const openedExcerpt = plainText(str(page?.excerpt) ?? str(page?.description))
-  if (openedExcerpt) source.excerpt = openedExcerpt
+  const opened = markedText(str(page?.excerpt) ?? str(page?.description))
+  if (opened.excerpt) {
+    source.excerpt = opened.excerpt
+    if (opened.excerptMarks) source.excerptMarks = opened.excerptMarks
+    else delete source.excerptMarks
+  }
+
+  trail.push({
+    id: `${call.id}#open`,
+    kind: 'open',
+    // 阅读这一步的结局就是页面的结局 —— 调用成功而页面没读到,这一步是失败的。
+    status: openStatus ?? 'running',
+    domain: source.domain,
+    ...(source.title ? { title: source.title } : {}),
+  })
 }
 
 /**
@@ -236,7 +288,7 @@ function addResult(
     url,
     callId: call.id,
     title: str(result.title),
-    excerpt: plainText(str(result.snippet)),
+    ...markedText(str(result.snippet)),
   })
 }
 
@@ -245,6 +297,7 @@ interface SourceInit {
   callId: string
   title?: string
   excerpt?: string
+  excerptMarks?: ReadonlyArray<readonly [number, number]>
 }
 
 function addSource(
@@ -256,7 +309,10 @@ function addSource(
   const existing = byUrl.get(init.url)
   if (existing) {
     if (!existing.title && init.title) existing.title = init.title
-    if (!existing.excerpt && init.excerpt) existing.excerpt = init.excerpt
+    if (!existing.excerpt && init.excerpt) {
+      existing.excerpt = init.excerpt
+      if (init.excerptMarks) existing.excerptMarks = init.excerptMarks
+    }
     return existing
   }
   const source: ResearchSource = {
@@ -267,6 +323,7 @@ function addSource(
     opened: false,
     ...(init.title ? { title: init.title } : {}),
     ...(init.excerpt ? { excerpt: init.excerpt } : {}),
+    ...(init.excerpt && init.excerptMarks ? { excerptMarks: init.excerptMarks } : {}),
   }
   byUrl.set(init.url, source)
   sources.push(source)
@@ -322,17 +379,71 @@ function fallbackQuery(
  * 所以剥成纯文字,再把五个基本实体还原。
  */
 export function plainText(value: string | undefined): string | undefined {
-  if (!value) return undefined
-  const text = value
-    .replace(/<[^>]*>/g, '')
+  return markedText(value).excerpt
+}
+
+/**
+ * 剥标签,同时**记下命中词在哪**(`plainText` 是它只要文字的那一半)。
+ *
+ * 高亮标签(`<b>` / `<strong>` / `<em>` / `<mark>`)之间的文字记成一段 `[起, 止)`;
+ * 别的标签照旧剥掉。空白折叠与首尾修剪在**逐段**上做,所以下标落在最终那串文字上,
+ * 不会因为折掉一串空格而错位。
+ */
+export function markedText(value: string | undefined): {
+  excerpt?: string
+  excerptMarks?: ReadonlyArray<readonly [number, number]>
+} {
+  if (!value) return {}
+  const parts: { text: string; hit: boolean }[] = []
+  let depth = 0
+  for (const token of value.split(/(<[^>]*>)/)) {
+    if (token.startsWith('<') && token.endsWith('>')) {
+      const tag = /^<\s*(\/?)\s*(b|strong|em|mark)\b/i.exec(token)
+      if (tag) depth = Math.max(0, depth + (tag[1] ? -1 : 1))
+      continue
+    }
+    if (token) parts.push({ text: decodeEntities(token), hit: depth > 0 })
+  }
+
+  let text = ''
+  const marks: [number, number][] = []
+  for (const part of parts) {
+    let chunk = part.text.replace(/\s+/g, ' ')
+    // 段与段交界处的两个空格折成一个;开头的空白整个丢掉。
+    if (chunk.startsWith(' ') && (text === '' || text.endsWith(' '))) chunk = chunk.slice(1)
+    if (!chunk) continue
+    if (part.hit) {
+      const lead = chunk.length - chunk.trimStart().length
+      const core = chunk.trim()
+      if (core) {
+        const start = text.length + lead
+        const last = marks[marks.length - 1]
+        // 紧挨着的两段命中并成一段 —— 屏幕上本来就是一整块粗体。
+        if (last && last[1] === start) last[1] = start + core.length
+        else marks.push([start, start + core.length])
+      }
+    }
+    text += chunk
+  }
+  const trimmed = text.trimEnd()
+  if (!trimmed) return {}
+  const kept = marks
+    .map(([start, end]) => [start, Math.min(end, trimmed.length)] as [number, number])
+    .filter(([start, end]) => end > start)
+  return { excerpt: trimmed, ...(kept.length > 0 ? { excerptMarks: kept } : {}) }
+}
+
+function decodeEntities(value: string): string {
+  return value
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return text || undefined
+}
+
+function num(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
 function str(value: unknown): string | undefined {

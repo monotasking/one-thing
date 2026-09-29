@@ -155,10 +155,14 @@ describe('geometry-report:人说了要去哪', () => {
     // 钢琴键 / 检索命中:落点还是自己算的,滚那一下交出去。
     expect(toc).toMatch(/geometryPortOf\(sessionId\)\.jump\(\{ top, behavior: 'smooth' \}\)/)
     expect(toc).not.toMatch(/el\.scrollTo\(/)
-    // 来源条点开某一段检索。
+    // 来源条:09-27 起点开是**就地**展开清单,不再滚到正文里那一段检索 ——
+    // 那一处滚动位整个没了,钉住它不会以任何一种写法长回来。
     const research = shellSrc('../research/ResearchSegment.tsx')
-    expect(research).toMatch(/report\.jump\(\{ el: ref\.current, block: 'center'/)
-    expect(research).not.toMatch(/ref\.current\?\.scrollIntoView/)
+    const foot = shellSrc('../research/SourceFoot.tsx')
+    for (const src of [research, foot]) {
+      expect(src).not.toMatch(/scrollIntoView\(/)
+      expect(src).not.toMatch(/\.jump\(/)
+    }
     /*
      * `ui/Fold` 的底把手那一发是第三处 —— 它在**聊天流里已经零调用**(两族折痕都传了
      * `anchored`,P2-b 第三笔),所以这一单不给它接线:`ui/` 不许反向依赖 `content/`,

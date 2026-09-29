@@ -958,17 +958,32 @@ export const zh = {
   'chat.research.label': '检索',
   'chat.research.sources': '{n} 个来源',
   'chat.research.queries': '{n} 组查询',
-  'chat.research.queryHead': '搜索 {query}',
   'chat.research.direct': '直接打开',
   'chat.research.noSources': '这一组没有搜到来源',
   'chat.research.openFailed': '未读到正文',
-  'chat.research.searching': '正在搜索 {query}',
-  'chat.research.reading': '正在阅读 {domain} — {title}',
-  'chat.research.readingPlain': '正在阅读 {domain}',
   /* 说不清此刻在忙哪一件时的那句话 —— 不编一个查询词把句子撑起来。 */
   'chat.research.working': '正在检索',
-  'chat.research.progress': '已搜索 {q} 组关键词 · 打开 {p} 个页面',
-  'chat.research.footLabel': '跳到这段检索的来源',
+  /* 收起行:N 个来源里真打开读过的那几篇(其余只在搜索结果里露过面)。 */
+  'chat.research.readCount': '细读 {n} 篇',
+  'chat.research.unread': '{n} 篇未读到',
+  'chat.research.searchFailed': '{n} 次搜索失败',
+  /* 流中态步骤单。 */
+  'chat.research.found': '已找到 {n} 个来源',
+  'chat.research.steps': '{n} 步',
+  'chat.research.olderSteps': '前面还有 {n} 步',
+  'chat.research.verbSearch': '搜索',
+  'chat.research.verbRead': '阅读',
+  'chat.research.resultCount': '{n} 条',
+  'chat.research.noResults': '没有结果',
+  'chat.research.stepFailed': '失败',
+  'chat.research.read': '已读',
+  /* 展开清单与来源详情。 */
+  'chat.research.filterLabel': '筛选来源',
+  'chat.research.filterAll': '全部 {n}',
+  'chat.research.filterRead': '只看已读 {n}',
+  'chat.research.openInBrowser': '在内置浏览器打开',
+  'chat.research.copyLink': '复制链接',
+  'chat.research.rawCall': '看原始调用',
 
   /* ── 内容块的壳(檐上的动作、限高折叠、降级说明) ─────────────────────
    * 块的 `reason`(unknown-kind:… / tool-default)是**标识**不是文案,

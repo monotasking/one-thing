@@ -1097,9 +1097,10 @@ const MessageRow = memo(function MessageRow({
           {/*
             消息尾来源条(§5.3 四件套之四):这条回复的依据在哪。它是**消息**的
             尾注,不是某个段的一部分 —— 所以由这一层摆,而不是 SegmentView。
+            点开是就地展开来源清单(不跳到检索段),所以它要这条消息的 ctx。
             这个文件对检索一无所知:没有检索段时组件自己返回 null。
           */}
-          <MessageSourceFoot segments={segments} messageId={message.id} />
+          <MessageSourceFoot segments={segments} messageId={message.id} ctx={ctx} />
           {/*
             * 这一轮**出错收场**(`run/end outcome:error` → 投影的 `errorDetails`)。
             * `stop-reasons.ts` 把 error 从收场通知里摘掉,理由是「它走 errorDetails

@@ -1,15 +1,15 @@
 /*
- * 检索段四件套(§5.3)。
+ * 检索段四件套(§5.3;09-27 重做,样例页 docs/web-search-proposal-2026-09-27.html)。
  *
  * 三条横切规范照旧:**不画竖线**(从属关系靠卡片 + 位置说)、色一律 var()、
- * 时长一律 var(--dur)。组头那条上下线是**分隔**不是引线 ——
+ * 时长一律 var(--dur)。组头那条上线是**分隔**不是引线 ——
  * 一条查询词把清单切成几段,与「这几行从属于上面那一行」是两回事。
  *
- * 09-25 改(与 ToolDrawer / Seam 同一天、同一条判据):从前靠两档衬面的**深浅顺序**
- * 说嵌套(清单 surface-1、组头「再深一层」surface-2),可这两档谁深谁浅随主题翻转 ——
- * 旧亮色主题里 panel 比 sidebar 深,base46 主题按 NvChad 取值后正好反过来,「更深一层」
- * 成了「更浅一层」。现在:流里的卡片 = 卡片面 + 一圈线(与工具卡同形),卡里的组头
- * 不铺底、只留上下线。
+ * 09-25 改(与 ToolDrawer / Seam 同一天、同一条判据):嵌套不再靠两档衬面的深浅
+ * 顺序说(那两档谁深谁浅随主题翻转)。流里的卡片 = 衬面 + 一圈线;卡里的组头不铺底。
+ *
+ * 用色只有两处:「已读」小签(强调色的软底)与失败(--danger 字色)。其余全是灰阶 ——
+ * 看颜色就知道哪里要留意。
  */
 
 .episode {
@@ -18,7 +18,7 @@
   gap: var(--sp-2);
 }
 
-/* ── 流中态行 ──────────────────────────────────────────────────────────── */
+/* ── 流中态:步骤单 ────────────────────────────────────────────────────── */
 
 .live {
   display: flex;
@@ -30,31 +30,80 @@
   background: var(--surface-2);
 }
 
-.liveHead {
+.liveTop {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding-block-end: var(--sp-1);
+}
+
+.liveFound {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.liveCount {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+/* 「前面还有 N 步」:与步骤行的内容格左缘对齐 —— 它说的是被收起来的那几行。 */
+.older {
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+/*
+ * 一步 = 三格:动词 · 内容 · 结局。动词两个字(搜索 / 阅读)等宽,所以每行各自一张
+ * max-content 模板也逐行对得齐;内容格吃剩下的、只截断不换行(挤压纪律)。
+ */
+.step {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+}
+
+.stepVerb {
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+.stepWhat {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
 }
 
-/*
- * `.liveSpinner` 随批 6 退役:流中态行不转圈了(Spinner 只许在按钮内或状态栏,
- * 而这块衬块长在正文流里)。这一行说的话本来就在那儿 —— 「正在阅读 …」+ 进度副行。
- */
-
-.liveText {
+.stepText {
   min-width: 0;
-  font-size: var(--fs-meta);
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 副行:比正行再淡一档、再小一号 —— 它是进度,不是正在发生的那件事。 */
-.liveSub {
+/* 正在进行的那一行:内容格提一档,是这张单子此刻的主语。 */
+.step[data-step-status='running'] .stepText {
+  color: var(--text-1);
+}
+
+.stepResult {
+  display: inline-flex;
+  align-items: center;
   font-size: var(--fs-micro);
   color: var(--text-4);
+  white-space: nowrap;
 }
 
 /* ── 收起行 ────────────────────────────────────────────────────────────── */
@@ -62,6 +111,10 @@
 /*
  * 与 B2 收起态同一身衣服:正文流里的一句灰字,没有卡壳。一段检索的注脚不该长得
  * 比正文还重。
+ *
+ * 占满整列、不往外探(09-27 用户报:hover 那一条不是完整的长条)。从前这里
+ * `margin-inline-start: -sp-2` 往左探了 8px、宽度却仍是 100%,于是 hover 底左边
+ * 探出正文、右边比上下的工具卡与清单卡短一截。现在它与清单卡左右两边对齐。
  */
 .head {
   display: flex;
@@ -69,7 +122,6 @@
   gap: var(--sp-2);
   width: 100%;
   padding: var(--sp-1) var(--sp-2);
-  margin-inline-start: calc(var(--sp-2) * -1);
   border-radius: var(--r-1);
   text-align: start;
   cursor: pointer;
@@ -108,6 +160,11 @@
   white-space: nowrap;
 }
 
+.headLabel {
+  font-weight: 500;
+  color: var(--text-2);
+}
+
 .sep {
   margin: 0 var(--sp-2);
   color: var(--text-4);
@@ -142,38 +199,80 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-1);
   padding: var(--sp-2);
   border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-2);
   background: var(--surface-2);
 }
 
+.listTop {
+  display: flex;
+  padding: 0 var(--sp-1) var(--sp-1);
+}
+
 .group {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+}
+
+/* 「只看已读」下整组没有可看的:藏(不卸)。类上的 display 会盖掉 UA 的 [hidden]。 */
+.group[hidden] {
+  display: none;
 }
 
 /*
- * 组头「搜索 <query>」:不铺底,只有上下两条线(嵌套不再靠衬面深浅说,判词在文件头)。
- *
- * 上下线在这里是**分隔**:它把一长条来源切成「这几条是搜 A 来的、那几条是搜 B
- * 来的」。左竖线那种**引线**仍然是禁的(全仓横切规范),两者不是同一件东西。
+ * 组头「🔍 <query>  N 条」:不铺底,只在组与组之间留一条上线(第一组没有 —— 它上面
+ * 就是卡边)。线是**分隔**,左竖线那种**引线**仍然是禁的。
  */
 .queryHead {
-  padding: var(--sp-1) var(--sp-2);
-  border-block: 1px solid var(--line-1);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  /* `<h5>` 自带 UA 上下外边距(1.67em ≈ 18px)—— 09-27 真机截图里组头上下那两大块
+   * 空白就是它。清零,间距只由这里的 padding 说。 */
+  margin: 0;
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
+  border-top: var(--bw-1) solid var(--line-1);
   font-size: var(--fs-micro);
-  font-weight: 500;
+  font-weight: 400;
   color: var(--text-3);
+}
+
+.group:first-of-type .queryHead {
+  border-top: 0;
+  padding-block-start: var(--sp-1);
+}
+
+.group + .group {
+  margin-block-start: var(--sp-1);
+}
+
+.queryIcon {
+  width: var(--fs-micro);
+  height: var(--fs-micro);
+  flex: none;
+  color: var(--text-4);
+}
+
+.queryText {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.queryCount {
+  flex: none;
+  color: var(--text-4);
+}
+
 .groupEmpty {
-  padding: var(--sp-2);
+  margin: 0;
+  padding: 0 var(--sp-2) var(--sp-2);
   font-size: var(--fs-micro);
   color: var(--text-4);
 }
@@ -181,36 +280,76 @@
 .sources {
   display: flex;
   flex-direction: column;
+  /* 行与行之间留一道缝(sp-1):两条都点开时各自是一块卡片面,挨在一起底色会连成
+   * 一片,分不清哪段详情属于哪一条(09-27 用户报两次:第一版 2px 缝被卡片**往外**
+   * 画的那圈线各吃掉 1px,缝等于零)。 */
   gap: var(--sp-1);
+  /* 这张清单长在消息正文里:正文的 markdown 列表样式(圆点 + 缩进)不许漏进来。 */
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .source {
   display: flex;
   flex-direction: column;
+  border-radius: var(--r-1);
+}
+
+/* 点开的那一条托起来一层:卡片面 + 一圈线(与工具卡同形),不靠衬面深浅说嵌套。 */
+.source[data-source-open] {
+  background: var(--surface-1);
+  /* 线画在**里面**(inset):往外画会吃掉行与行之间那道缝。 */
+  box-shadow: inset 0 0 0 var(--bw-1) var(--line-1);
+}
+
+/* 行 = 那颗行钮 + 行尾两颗快捷钮(兄弟,不是父子)。 */
+.sourceRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: var(--r-1);
+  transition: background var(--dur) var(--ease);
+}
+
+.source:not([data-source-open]) .sourceRow:hover {
+  background: var(--st-hover);
 }
 
 .sourceFace {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  width: 100%;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  flex: 1;
   min-width: 0;
-  padding: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-1);
   text-align: start;
-  transition: background var(--dur) var(--ease);
-}
-
-button.sourceFace {
   cursor: pointer;
 }
 
-button.sourceFace:hover {
-  background: var(--st-hover);
+.sourceMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  /* 两行一组:行高收紧到 1.4,标题与「域名 + 摘要」读成一条来源,而不是两段话。 */
+  line-height: 1.4;
+}
+
+/* 图标对齐标题那一行的中线(标题行高 = fs-meta × 1.4)。 */
+.sourceFace > .favicon {
+  margin-block-start: calc((var(--fs-meta) * 1.4 - var(--fs-title)) / 2);
+}
+
+.sourceLine1 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
 }
 
 .sourceTitle {
-  flex: 1;
   min-width: 0;
   font-size: var(--fs-meta);
   color: var(--text-1);
@@ -219,10 +358,33 @@ button.sourceFace:hover {
   white-space: nowrap;
 }
 
+.readTag {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  font-size: var(--fs-nano);
+  color: var(--accent-deep);
+}
+
+.sourceFailed {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--danger);
+}
+
+.sourceLine2 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-micro);
+}
+
 /* 域名 mono:它是一个**标识**(读的人拿它认「这是谁说的」),不是一句话。 */
 .sourceDomain {
   flex: none;
-  max-width: 40%;
+  max-width: 50%;
   font-family: var(--font-mono);
   font-size: var(--fs-nano);
   color: var(--text-4);
@@ -231,10 +393,83 @@ button.sourceFace:hover {
   white-space: nowrap;
 }
 
-.sourceFailed {
+.sourceSnippet {
+  min-width: 0;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 点开之后下面就是整段摘录,行里这一句是它的开头 —— 同一段字说两遍(09-27 用户报)。
+ * 藏字**不藏位置**(`visibility`,不是 `display`):这一行的高与域名的位置两态逐像素
+ * 相同,展开时行本身不动(文件头那条纪律)。摘要只在有摘录时才画,而有摘录时详情
+ * 一定会画出全文,所以藏掉它不会丢任何一个字。
+ */
+.source[data-source-open] .sourceSnippet {
+  visibility: hidden;
+}
+
+/* 行尾快捷钮的**位置**:现不现身归 `ui/Reveal`(占位常驻、只动透明度、作用域是整条来源)。 */
+.sourceActs {
   flex: none;
+  gap: var(--sp-1);
+  padding-inline-end: var(--sp-1);
+}
+
+/* ── 来源详情 ──────────────────────────────────────────────────────────── */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3) var(--sp-3) calc(var(--fs-title) + var(--sp-3) + var(--sp-2));
+  min-width: 0;
+}
+
+.excerpt {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.7;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* 命中词:只加重、不铺底色 —— 一段摘录里常有五六处命中,铺底会把整段染花。 */
+.hit {
+  background: none;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.detailUrl {
+  font-family: var(--font-mono);
   font-size: var(--fs-nano);
-  color: var(--danger);
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}
+
+/* 行内微型文字动作:无边无底,悬停只提字色。 */
+.detailAct {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.detailAct:hover {
+  color: var(--text-1);
+}
+
+.detailActIcon {
+  width: var(--fs-micro);
+  height: var(--fs-micro);
+  flex: none;
 }
 
 /* ── favicon 与堆叠 ────────────────────────────────────────────────────── */
@@ -294,6 +529,15 @@ button.sourceFace:hover {
 .face5 { background-image: linear-gradient(135deg, var(--face-g5-a), var(--face-g5-b)); }
 
 /* 堆叠:后一枚压着前一枚半身,靠背景色描一圈边把两张脸分开(不画描边色)。 */
+/*
+ * 堆叠:后一枚压前一枚一小截(sp-1,约三分之一)。每一枚裁成圆 —— 真图标常是方的,
+ * 不裁的话方角会从圆外露出来。
+ *
+ * **不画描边圈**(09-27 撤回):描边圈只有在颜色**等于身后的底**时才隐形,而这一小撮
+ * 脸身后的底会变 —— 收起行一悬停,底就从画布色变成 hover 色,那几圈底色描边当场在
+ * hover 长条上挖出几个圆洞,看起来像长条左上角有一个很大的圆角。脸本身是不透明的
+ * (字母圆片是渐变底,真图标衬着 surface-2 托底),压上去自己就分得开。
+ */
 .stack {
   display: inline-flex;
   flex: none;
@@ -303,14 +547,25 @@ button.sourceFace:hover {
 .stackItem {
   display: inline-flex;
   border-radius: var(--r-full);
-  box-shadow: 0 0 0 2px var(--surface-2);
+  overflow: hidden;
+}
+
+.stackItem .favicon,
+.stackItem .faviconImg {
+  border-radius: var(--r-full);
 }
 
 .stackItem + .stackItem {
-  margin-inline-start: calc(var(--sp-2) * -1);
+  margin-inline-start: calc(var(--sp-1) * -1);
 }
 
 /* ── 消息尾来源条 ──────────────────────────────────────────────────────── */
+
+.footBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
 
 .foot {
   display: flex;
@@ -318,11 +573,16 @@ button.sourceFace:hover {
   gap: var(--sp-2);
 }
 
+.footList[hidden] {
+  display: none;
+}
+
 .footPill {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-1) var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-full);
   background: var(--surface-1);
   font-size: var(--fs-micro);
@@ -333,4 +593,10 @@ button.sourceFace:hover {
 
 .footPill:hover {
   background: var(--st-hover);
+}
+
+/* 开着:与「选中」同一格衬面 —— 它下面那张清单是它的。 */
+.footPill[aria-expanded='true'] {
+  background: var(--st-sel);
+  color: var(--text-2);
 }
