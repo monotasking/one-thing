@@ -1,5 +1,4 @@
-import { getBuiltinProviderManifest } from '@onething/runtime/providers/builtin-manifests'
-import { isProviderEnabledIn } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
 import { frozenFlagOf } from '../ui/list-placement'
 import type { ModelParameterSuggestion, OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
 import type {
@@ -162,9 +161,12 @@ export function rotationPoliciesFor(pool: RotationPoolKind, hasQuotaSource: bool
   return ROTATION_POLICIES.filter((policy) => policy !== 'quota-remaining')
 }
 
-/** 这家有没有配额 / 余额源(批 5)。读 manifest 那一格,与 `dials.ts` 同一个读法。 */
-export function providerHasQuotaSource(providerId: string): boolean {
-  return Boolean(getBuiltinProviderManifest(providerId)?.quotaSource)
+/**
+ * 这家有没有配额 / 余额源(批 5)。读名册下发的 `hasQuota`(后端按 manifest 的 `quotaSource`
+ * 投影,服务商自述试点 P4),与 `dials.ts` 同一个读法。名册里没有这家 = 没有。
+ */
+export function providerHasQuotaSource(info: { hasQuota?: boolean } | null | undefined): boolean {
+  return info?.hasQuota === true
 }
 
 export function isRotationPolicy(policy: string): policy is RotationPolicy {
@@ -357,8 +359,12 @@ export function buildRailRows(
   configs: Readonly<Record<string, ProviderConfig | undefined>>,
   credsOf: (providerId: string) => CredentialFacts,
 ): RailRow[] {
+  // 家族查询取自各家模式上下发的 `family`(两半里任一半在就答得出完整的家族)。
+  const familyOf = providerFamilyLookupOf(
+    families.flatMap((family) => family.modes.map((mode) => ({ id: mode.providerId, family: mode.family }))),
+  )
   return families.map((family) => {
-    const enabled = isProviderEnabledIn(configs, family.id)
+    const enabled = isProviderEnabledIn(configs, family.id, familyOf)
     return {
       familyId: family.id,
       label: family.label,

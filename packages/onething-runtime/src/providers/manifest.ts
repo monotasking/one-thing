@@ -16,6 +16,7 @@ import type { OnethingModelRule } from './model-capability.js'
 import type { OnethingModelsDevModel } from './model-registry.js'
 import type { DialSpec } from './dials.js'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
+import type { ProviderFamilyRole } from '@shared/provider-families.js'
 import { configureProviderErrorCodeDescriber } from '@onething/core/engine/error-details'
 import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
 import { ONETHING_PROTOCOL_DEFAULT_MODEL_RULES } from './model-families/index.js'
@@ -119,6 +120,13 @@ export interface ProviderSeed {
   readonly [dialKey: string]: unknown
 }
 
+/** 一家在家族里的声明(见 `ProviderManifest.family`)。 */
+export interface ProviderFamilyDeclaration {
+  role: ProviderFamilyRole
+  /** 订阅那一半在合并卡片上的小标签(「Codex」)。由订阅那一半声明。 */
+  tag?: string
+}
+
 export interface ProviderManifest {
   id: string
   /** 内置的写在代码里;自定义的从设置映射来。替掉从前的 `startsWith('custom-')`。 */
@@ -139,9 +147,16 @@ export interface ProviderManifest {
   /** 批 5 配额源注册表里的 id。 */
   quotaSource?: string
   /**
-   * 同家的另一半:codex↔openai、claude-code↔claude、kimi-code↔kimi、grok-oauth↔grok。
-   * 内置家这一格由 `builtin-manifests.ts` 读 `@shared/provider-families` 补上(那张表是
-   * 家族事实的产地 —— `@onething/client` 只吃 `@shared`,而 `@shared` 不许依赖 runtime)。
+   * 这家是家族里的哪一半(服务商自述试点 P4:家族事实的产地,替代了 `@shared` 里那张写死的
+   * 家族表)。各家只说自己:API 那一半 `{ role: 'api' }`,订阅那一半再带合并卡片上的 `tag`。
+   * **哪两半是一家**登记在名册 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`(每个家族一行)——
+   * 不写在半边的字面量里,因为那样订阅那一半就得点 API 那一家的名(`provider:gate` 不许
+   * 一家的家里认识别家)。家族键 = API 那一半的 id,家名 = API 那一半的 `name`;
+   * `sibling` / `familyTag` 由 `builtin-manifests.ts` 算出,壳经 `ProviderInfo.family` 拿到。
+   */
+  family?: ProviderFamilyDeclaration
+  /**
+   * 同家的另一半(由 `builtin-manifests.ts` 按两半的 `family` 声明算出,不写在字面量里)。
    */
   sibling?: string
   /** 订阅那一半在合并卡片上的小标签(「Codex」「Claude Code」)。只在 `billing: 'subscription'` 且有 `sibling` 时读。 */

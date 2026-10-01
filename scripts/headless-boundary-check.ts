@@ -7000,6 +7000,39 @@ function checkShellsDoNotImportOtherShells(): void {
 }
 
 /**
+ * **React 壳不 import runtime 的服务商代码**(服务商自述试点 P4,
+ * `docs/design/architecture-direction-2026-10.md` §1 / §4)。
+ *
+ * 壳是界面客户端,服务商的事实(计费档位、有没有余额源、家族)由后端从各家 manifest 投影成
+ * 纯数据,经 `providers.getProviders` 的 `ProviderInfo` 下发;要用的纯函数住在 `@shared`
+ * (`provider-dials` / `provider-families` / `quota-windows` / `reasoning-effort`)。所以
+ * `apps/desktop-react/src/**` 的产品代码对 `@onething/runtime/providers` 与
+ * `@onething/runtime/agent-loop` 的**任何子路径**都是零 import —— 硬闸,无基线。
+ *
+ * 只放过测试:`__tests__/` 目录、`*.test.ts(x)` / `*.spec.ts(x)`,以及 `__fixtures__/`。
+ * 理由:夹具要演「后端下发的那一份」,最诚实的做法是跑产品层那一个投影
+ * (`providerInfoOfManifest` / `effectiveModelFactsOf`),在测试里手抄一份档位地址表或
+ * 家族表才是会漂的第二产地(`src/data/__fixtures__/providers.ts` 文件头)。
+ */
+const REACT_SHELL_FORBIDDEN_RUNTIME_PROVIDER_IMPORTS: RegExp[] = [
+  /^@onething\/runtime\/providers(?:\/|$)/,
+  /^@onething\/runtime\/agent-loop(?:\/|$)/,
+]
+
+function checkReactShellReadsProvidersOverRpc(): void {
+  const lines = walkFiles(path.join(root, 'apps/desktop-react/src'), [], {
+    excludeDirs: ['__fixtures__'],
+    extensions: /\.(ts|tsx|js|mjs|cjs)$/,
+  })
+    .filter(file => !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file))
+    .flatMap(file => matchingImportSpecifierLines(file, REACT_SHELL_FORBIDDEN_RUNTIME_PROVIDER_IMPORTS))
+  assertNoMatches(
+    'apps/desktop-react/src reads provider facts over RPC (no @onething/runtime/providers|agent-loop import outside tests and __fixtures__)',
+    lines,
+  )
+}
+
+/**
  * Vue 宿主退役后不许长回来(运行时统一第四步,2026-09-04)。
  *
  * 三样东西任一出现即红:①`apps/electron` / `packages/renderer` / `apps/web` 三个目录;
@@ -7036,6 +7069,7 @@ checkRuntimeHostBoundary()
 checkClientPackageBoundary()
 checkCoreSearchNamesNoCapability()
 checkShellsDoNotImportOtherShells()
+checkReactShellReadsProvidersOverRpc()
 checkRuntimeWiringModulesStayAtTheEdge()
 checkSessionVocabularyUsesTheRegistry()
 checkGatewayHostBoundary()

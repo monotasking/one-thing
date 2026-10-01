@@ -10,7 +10,8 @@ import { getProviderManifest } from '../manifest.js'
 import { getQuotaSource } from './registry.js'
 import { QuotaFetchError, type QuotaFetchContext } from './source.js'
 
-export * from './classify-windows.js'
+// 归类函数 P4 搬进了 `@shared/quota-windows`(壳也读它);这里照旧再导出,runtime 的调用点不动。
+export * from '@shared/quota-windows.js'
 export * from './registry.js'
 export * from './source.js'
 

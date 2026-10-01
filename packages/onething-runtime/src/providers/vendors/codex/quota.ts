@@ -7,12 +7,12 @@
  *  - **被动**:Responses 流的响应头(`x-codex-primary-used-percent` 一族),由 codex 方言的
  *    `quotaFromHeaders` 读 —— 每发一条消息顺手刷新一次,零额外请求。
  *
- * **窗口按时长归类,不按 primary / secondary 位置**(`classify-windows.ts` 头上那段)。
+ * **窗口按时长归类,不按 primary / secondary 位置**(`@shared/quota-windows.ts` 头上那段)。
  * 没报时长的窗口归不了类,丢掉 —— 按位置猜一个正是这一批要消灭的那种错。
  */
 import type { ProviderQuota, ProviderQuotaBalance, ProviderQuotaWindow } from '@shared/contracts/quota.js'
 import { buildOnethingCodexHeaders, ONETHING_CODEX_BASE_URL } from './models.js'
-import { classifyQuotaWindowSeconds, quotaEpochMsOf, sortQuotaWindows } from '../../quota/classify-windows.js'
+import { classifyQuotaWindowSeconds, quotaEpochMsOf, sortQuotaWindows } from '@shared/quota-windows.js'
 import {
   getQuotaJson,
   quotaNow,

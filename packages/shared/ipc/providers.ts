@@ -4,6 +4,8 @@
  */
 
 import type { JsonObject } from '../json.js'
+import type { ProviderDialDescriptor } from '../provider-dials.js'
+import type { ProviderFamilyInfo } from '../provider-families.js'
 import { defineRouter } from './router.js'
 import type { ProviderQuota } from '../contracts/quota.js'
 import type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/adapter-spec.js'
@@ -196,6 +198,16 @@ export interface ProviderInfo {
   oauthFlow?: OAuthFlowType          // Type of OAuth flow (PKCE or Device)
   // Model definitions (from OpenRouter API)
   models?: OpenRouterModel[]
+  /**
+   * 服务商自述的三格纯数据(服务商自述试点 P4):后端由各家 manifest 投影后下发,壳只读这里,
+   * 不再 import runtime 的服务商代码。都只在「有」时出现。
+   *  - `dials`:计费档位(选项 / 缺省 / 端点表),读法在 `@shared/provider-dials`;
+   *  - `hasQuota`:这家有配额 / 余额源;
+   *  - `family`:家族信息(哪个家族、哪一半、另一半是谁),读法在 `@shared/provider-families`。
+   */
+  dials?: ProviderDialDescriptor
+  hasQuota?: boolean
+  family?: ProviderFamilyInfo
 }
 
 // Per-provider configuration

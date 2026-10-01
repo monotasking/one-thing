@@ -39,14 +39,14 @@
  */
 import { getProviderManifest, getProviderManifestRegistry } from './manifest.js'
 import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from '../agent-loop/providers/thinking/protocol-wire-ids.js'
+import {
+  REASONING_EFFORT_LEVELS,
+  resolveReasoningEffort as resolveOnethingReasoningEffort,
+  type ReasoningEffortLevel,
+} from '@shared/reasoning-effort.js'
 
-export type OnethingReasoningEffortLevel =
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max'
+// 六档梯子与「就近取一档」的读法 P4 搬进了 `@shared/reasoning-effort`(壳也读它);这里保留原名。
+export type OnethingReasoningEffortLevel = ReasoningEffortLevel
 
 /**
  * An effort tier plus `'none'` — the "think nothing" rung gpt-5.1 and later
@@ -114,7 +114,7 @@ export interface OnethingReasoningProfileOverride {
   custom?: OnethingCustomReasoningConfig | null
 }
 
-const REASONING_LEVELS: readonly OnethingReasoningEffortLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const REASONING_LEVELS: readonly OnethingReasoningEffortLevel[] = REASONING_EFFORT_LEVELS
 /** 不是线型、但用户覆盖里合法的取值:`custom` = 按 `custom` 那一格的声明式映射编码。 */
 const NON_WIRE_REASONING_VALUES: readonly string[] = ['custom']
 
@@ -229,13 +229,7 @@ export function validateOnethingProviderReasoningSettings(value: unknown): void 
   }
 }
 
-export function resolveOnethingReasoningEffort(effort: string | undefined, allowed: readonly string[], fallback: OnethingReasoningEffortLevel): OnethingReasoningEffortLevel {
-  const levels = allowed.filter((level): level is OnethingReasoningEffortLevel => REASONING_LEVELS.includes(level as OnethingReasoningEffortLevel))
-  const requested = REASONING_LEVELS.includes(effort as OnethingReasoningEffortLevel) ? effort as OnethingReasoningEffortLevel : fallback
-  if (levels.includes(requested)) return requested
-  const index = REASONING_LEVELS.indexOf(requested)
-  return [...REASONING_LEVELS.slice(0, index).reverse(), ...REASONING_LEVELS.slice(index + 1)].find(level => levels.includes(level)) ?? fallback
-}
+export { resolveOnethingReasoningEffort }
 
 export function clampOnethingReasoningEffort(effort: string | undefined, profile: OnethingReasoningProfile): OnethingReasoningEffortLevel {
   return resolveOnethingReasoningEffort(effort, profile.efforts, profile.defaultEffort)

@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
-import { isProviderEnabledIn } from '@onething/client/model/provider-model'
-import { resolveOnethingReasoningEffort } from '@onething/runtime/providers/model-capability'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
+import { resolveReasoningEffort } from '@shared/reasoning-effort'
 import type {
   OpenRouterModel,
   ProviderInfo,
   SpaceProviderSettings,
   ThinkingEffort,
 } from '@shared/ipc/providers'
+import type { ProviderFamilyInfo } from '@shared/provider-families'
 import { priceOf } from '../providers/projection'
 import { createMutation, createQuery, createQueryFamily, useQuery } from './kernel'
 import type { Mutation } from './kernel'
@@ -149,6 +150,11 @@ export interface ProviderOption {
   id: string
   /** 显示名。空串读作缺席 → 退回用 id 当名字(总比画一个空组头强)。 */
   name: string
+  /**
+   * 名册下发的家族信息(服务商自述试点 P4)。开关的家族派生要它:家族查询从这一格来,
+   * 不再查 `@shared` 里的表。缺席 = 独立成家(自定义家、旧后端)。
+   */
+  family?: ProviderFamilyInfo
 }
 
 /**
@@ -245,7 +251,7 @@ export interface ProviderPrefsFacts {
 /** 线上形状 → 屏幕形状。名字空了退回 id:组头总得有个字。 */
 export function toProviderOption(info: ProviderInfo): ProviderOption {
   const name = (info.name ?? '').trim()
-  return { id: info.id, name: name || info.id }
+  return { id: info.id, name: name || info.id, ...(info.family ? { family: info.family } : {}) }
 }
 
 /**
@@ -398,8 +404,10 @@ export function buildProviderGroups(
   current: ModelSelection | null,
 ): ProviderGroup[] {
   const groups: ProviderGroup[] = []
+  // 家族查询取自名册每条的 `family`(两半里任一半在就答得出完整的家族)。
+  const familyOf = providerFamilyLookupOf(providers)
   for (const provider of providers) {
-    if (!isProviderEnabledIn(prefs.configs, provider.id)) continue
+    if (!isProviderEnabledIn(prefs.configs, provider.id, familyOf)) continue
     const ids = modelIdsOf(prefs, provider.id, current)
     if (ids.length === 0) continue
     const models = catalog[provider.id] ?? []
@@ -542,7 +550,7 @@ export function thinkingStateOf(
   const requestedLevel = chosen === false && !readings.thinkingToggleable
     ? readings.thinkingDisabledLevel ?? readings.thinkingDefaultLevel
     : effort
-  const level = levels.length === 0 ? null : resolveOnethingReasoningEffort(
+  const level = levels.length === 0 ? null : resolveReasoningEffort(
     requestedLevel ?? undefined, levels, readings.thinkingDefaultLevel ?? levels[levels.length - 1],
   )
   return {

@@ -1,5 +1,9 @@
 /**
- * 限额窗口**按时长归类**(§8.1)—— 纯函数,零依赖,壳也 import 它。
+ * 限额窗口**按时长归类**(§8.1)—— 纯函数,零依赖。
+ *
+ * P4 从 runtime `providers/quota/classify-windows.ts` 搬来(`git mv`,逐字未改):runtime 的配额源
+ * 与壳的读数卡都要它,而壳不许 import runtime 的服务商代码。不放 `@shared/contracts/`,因为那里
+ * 只收形状、不收函数(边界门 `packages/shared/contracts holds serializable shapes only`)。
  *
  * Codex 的 `primary_window` / `secondary_window` 在不同套餐里装的是不同的窗(Plus 的
  * primary 是 5 小时窗,某些团队套餐的 primary 却是周窗),CodexBar 一类工具都在这里

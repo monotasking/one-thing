@@ -12,7 +12,10 @@ import {
   type QuotaFetchContext,
 } from '../index.js'
 import { codexQuotaFromHeaders } from '../../vendors/codex/quota.js'
-import { getBuiltinProviderManifest } from '../../builtin-manifests.js'
+import { BUILTIN_PROVIDER_MANIFESTS } from '../../builtin-manifests.js'
+
+// P4 删了产品代码里的 `getBuiltinProviderManifest`(唯一读者是壳,已改读下发名册);用例里就地查表。
+const getBuiltinProviderManifest = (id: string) => BUILTIN_PROVIDER_MANIFESTS.find((manifest) => manifest.id === id)
 
 const NOW = 1_770_000_000_000
 

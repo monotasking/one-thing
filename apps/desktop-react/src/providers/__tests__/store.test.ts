@@ -19,6 +19,7 @@ import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { useWorkspaceStore } from '../../workspace/store'
 import { buildFamilies, findFamily } from '../families'
 import { fakeProviderPort } from './fake-port'
+import { servedProviderFacts, servedProviderInfo } from '../../data/__fixtures__/providers'
 
 /** 外链帮手换成可数的一只:`desktop` 决定「有没有桌面宿主」(自动打开只在桌面上发生)。 */
 const external = vi.hoisted(() => ({ open: vi.fn<(url: string) => Promise<undefined>>(async () => undefined), desktop: false }))
@@ -36,6 +37,9 @@ vi.mock('../../platform/open-external', () => ({
  */
 
 function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
+  // 家族那一格照「后端下发的那份」盖上(P4 起家族随 `ProviderInfo.family` 下发,
+  // 不再查 `@shared` 的表);认不出的 id 没有家族,与从前一样。
+  const { family } = servedProviderFacts(id)
   return {
     id,
     name: id,
@@ -45,6 +49,7 @@ function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
     icon: id,
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    ...(family ? { family } : {}),
     ...extra,
   }
 }
@@ -1439,7 +1444,10 @@ describe('自定义家', () => {
 
 describe('setDials', () => {
   it('档位与 baseUrl 一起写;没有旋钮的家一个字都不写', async () => {
-    const port = installPort()
+    // P4 起档位随名册下发(`ProviderInfo.dials`):名册里得真有 kimi 那一条(取后端那一个投影)。
+    const port = installPort({
+      listProviders: vi.fn(async () => ({ success: true, providers: [...ROSTER, servedProviderInfo('kimi')] })),
+    })
     await useProviderSettings.getState().start()
 
     await useProviderSettings.getState().setDials('claude', 'coding-plan', 'cn')

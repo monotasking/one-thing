@@ -260,6 +260,21 @@ providers/
 - providers 域补上"列出 manifest"等读接口;壳不再 import `runtime/src/providers/*`。
 - 浏览器安全的纯表(如 `classify-windows`)移进契约层。
 
+**P4 落地记录**:
+- `ProviderInfo` 加三格纯数据(有才带,别家的载荷逐字不变):`dials`(档位旋钮的数据投影 —— 选项、缺省、
+  每档每区的地址;`shared/provider-dials.ts` 给三个读法)、`hasQuota`、`family`(`{ id, role, sibling?, label?, tag? }`)。
+  投影 `dialDescriptorOf` 与旧的带函数 `DialSpec` 逐输入等价(16 例,含非法值与全网格)。
+- 家族表离开 `@shared`:每家 manifest 只声明 `family: { role, tag? }`,哪两半成一家登记在名册 `vendors/manifests.ts`
+  的 `VENDOR_FAMILIES`(每家族一行;不在家族里的服务商不碰它)。`shared/provider-families.ts` 重写成不点名的纯函数,
+  `isProviderEnabledIn` 改为接收家族查询(壳由下发的 `ProviderInfo.family` 建,后端由 runtime 名册建);与旧实现对
+  一万多种开关组合逐个相等。
+- 壳的产品代码不再 import `@onething/runtime/providers/*` / `agent-loop/*`:旋钮、配额、家族读下发数据;
+  `classify-windows` 与 `resolveOnethingReasoningEffort` 两个纯函数搬到 `shared/quota-windows.ts` /
+  `shared/reasoning-effort.ts`;只剩两个测试夹具(用真投影模拟后端下发)。新边界检查
+  `checkReactShellReadsProvidersOverRpc` 零基线硬闸(注入违例验证过会红)。
+- 代价写明:壳需要同一版本的 core(连到更旧的 core 时三格缺席,旋钮卡消失、家族拆成八行)—— 两个进程同版本发布,
+  属预期。尺子 119 → 111 对。
+
 ### P5 · 演练
 
 写一个"假服务商"测试夹具,按验收标准实际加一家,确认只动三处。

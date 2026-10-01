@@ -8,7 +8,7 @@ import { Switch } from '../../ui/Switch'
 import { useInlineEdit } from '../../ui/inline-edit'
 import { useT } from '../../i18n'
 import { providerDialsOf, regionRowApplies, storedDialsOf } from '../dials'
-import type { ProviderDialField } from '../dials'
+import type { ProviderDialField, ProviderDialSpec } from '../dials'
 import { settingsKey, settingsMutation } from '../store'
 import { CredentialPool } from './CredentialPool'
 import { OAuthCard } from './OAuthCard'
@@ -30,8 +30,8 @@ import s from './ModeCard.module.css'
  *   acp          本机进程,零凭证
  *   custom       用户自建端点(改它走头上那颗「编辑」)
  *
- * 计费档位只有三家有(千问 / Kimi / 智谱),判据是 `providerDialsOf` 返回不返回
- * null —— **不是**在这里写一串 `providerId === 'qwen' || …`。
+ * 计费档位只有三家有(千问 / Kimi / 智谱),判据是名册下发的 `dials` 在不在
+ * (`providerDialsOf(mode)` 返回不返回 null)—— **不是**在这里写一串 `providerId === 'qwen' || …`。
  */
 
 export function ModeCard(props: {
@@ -110,11 +110,11 @@ export function ModeCard(props: {
           onRemove={props.onRemoveKey}
           onMove={props.onMoveKey}
           onRotation={props.onRotation}
-          hasQuotaSource={providerHasQuotaSource(mode.providerId)}
+          hasQuotaSource={providerHasQuotaSource(mode)}
           balanceOf={props.balanceOf}
         />
         <DialsCard
-          providerId={mode.providerId}
+          spec={providerDialsOf(mode)}
           config={props.config}
           pending={props.dialsPending}
           onDials={props.onDials}
@@ -122,6 +122,7 @@ export function ModeCard(props: {
         <Card>
           <BaseUrlRow
             providerId={mode.providerId}
+            dialOwned={providerDialsOf(mode) !== null}
             custom={mode.kind === 'custom'}
             stored={props.config?.baseUrl ?? ''}
             fallback={mode.defaultBaseUrl}
@@ -203,18 +204,18 @@ export function ModeCard(props: {
  * 留一个拨了不动的选择器,比不画更让人怀疑自己是不是拨错了。
  */
 function DialsCard({
-  providerId,
+  spec,
   config,
   pending,
   onDials,
 }: {
-  providerId: string
+  /** 名册下发的档位(`ProviderInfo.dials`,经 `ProviderMode`)。`null` = 这家没有旋钮。 */
+  spec: ProviderDialSpec | null
   config: ProviderConfig | undefined
   /** 这一坑的档位此刻在写吗。 */
   pending: boolean
   onDials: (apiMode: string, region: string) => void
 }) {
-  const spec = providerDialsOf(providerId)
   if (!spec) return null
   const stored = storedDialsOf(spec, config as unknown as Record<string, unknown> | undefined)
   const regionApplies = regionRowApplies(spec, stored.apiMode)
@@ -271,12 +272,15 @@ function DialsCard({
  */
 function BaseUrlRow({
   providerId,
+  dialOwned,
   custom,
   stored,
   fallback,
   onSave,
 }: {
   providerId: string
+  /** 这家的地址由计费档位算出(名册下发了 `dials`)。 */
+  dialOwned: boolean
   custom: boolean
   /** 这个空间此刻存着的那个(空串 = 没存过 = 用缺省)。 */
   stored: string
@@ -299,7 +303,7 @@ function BaseUrlRow({
   // 占位符,这里只说「留空怎样」;档位算地址的三家说档位那一句 —— 它更要紧(钱)。
   const hint = custom
     ? t('providers.customBaseUrlHint')
-    : providerDialsOf(providerId)
+    : dialOwned
       ? t('providers.baseUrlDialOwned')
       : fallback
         ? t('providers.baseUrlDefaultIs')

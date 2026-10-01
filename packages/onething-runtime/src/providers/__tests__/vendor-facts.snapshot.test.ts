@@ -132,8 +132,24 @@ function builtinIds(): string[] {
  * `seed` = 出厂设置(`packages/backend/stores/__tests__/settings-defaults.freeze.test.ts` 逐字比),
  * `reasoningWires` = 思考覆盖的合法取值(`reasoning-wire-ids.test.ts`),`catalogBackfill` = 千问
  * 按量目录补缺(`qwen-model-refresh.test.ts`)。
+ * P4 加的 `family`(各家声明自己是家族里的哪一半)的答案是下面原样冻着的 `sibling` / `familyTag`
+ * (由名册的 `VENDOR_FAMILIES` 算出),逐字未变就是推导不变的证据。
  */
-const VENDOR_DATA_FIELDS = ['envVars', 'modelIdentity', 'catalogAliases', 'errorDescriptions', 'endpoint', 'modelRuleTable', 'seed', 'reasoningWires', 'catalogBackfill']
+const VENDOR_DATA_FIELDS = ['envVars', 'modelIdentity', 'catalogAliases', 'errorDescriptions', 'endpoint', 'modelRuleTable', 'seed', 'reasoningWires', 'catalogBackfill', 'family']
+
+/**
+ * `providerInfo` 在 P4 多投了三格纯数据(`dials` / `hasQuota` / `family`)。它们的答案在别处冻住:
+ * `dials` ≡ spec 函数(`dial-descriptor.equivalence.test.ts`),`family` ≡ 旧家族表
+ * (`provider-families.equivalence.test.ts`),`hasQuota` = 上面 manifest 转储里的 `quotaSource`
+ * 在不在。这里只略去这三格,其余逐字照旧 —— 「只多出这三格、别的一格不变」就是这份快照守的事。
+ */
+const PROVIDER_INFO_P4_FIELDS = ['dials', 'hasQuota', 'family']
+
+function providerInfoBeforeP4(manifest: Parameters<typeof providerInfoOfManifest>[0]): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(providerInfoOfManifest(manifest)).filter(([key]) => !PROVIDER_INFO_P4_FIELDS.includes(key)),
+  )
+}
 
 function vendorFacts(id: string): unknown {
   const manifest = getProviderManifestRegistry().get(id)!
@@ -147,7 +163,7 @@ function vendorFacts(id: string): unknown {
       models.kind === 'models.dev' && models.keyOf
         ? Object.fromEntries(ENDPOINT_CONFIGS.map(({ label, config }) => [label, models.keyOf!(config)]))
         : undefined,
-    providerInfo: providerInfoOfManifest(manifest),
+    providerInfo: providerInfoBeforeP4(manifest),
     envCandidates: getOnethingProviderApiKeyEnvCandidates(id),
     dialFields: providerDialFieldsOf(id),
     providerKind: resolveOnethingProviderKind(id),

@@ -1,6 +1,8 @@
 import type { OnethingOAuthFlowType, OnethingOAuthToken, OnethingProviderAuthContext } from '../auth/types.js'
 import type { CoreProviderConfigLike } from './provider-config.js'
 import type { OnethingProviderRegistryDefinition, OnethingProviderRegistryInfo } from './registry.js'
+import type { ProviderDialDescriptor } from '@shared/provider-dials.js'
+import type { ProviderFamilyInfo } from '@shared/provider-families.js'
 
 export type OnethingProviderOAuthFlowType = OnethingOAuthFlowType
 
@@ -15,6 +17,12 @@ export interface OnethingProviderInfo<TModel = unknown> extends OnethingProvider
   requiresApiKey: boolean
   oauthFlow?: OnethingProviderOAuthFlowType
   models?: TModel[]
+  /** 计费档位的纯数据投影(manifest `dials` 经 `dialDescriptorOf`)。没有档位的家缺席。 */
+  dials?: ProviderDialDescriptor
+  /** 这家有配额 / 余额源(manifest 指了 `quotaSource`)。没有就缺席。 */
+  hasQuota?: boolean
+  /** 家族信息(哪个家族、哪一半、另一半是谁)。不在家族里缺席。 */
+  family?: ProviderFamilyInfo
 }
 
 export interface OnethingProviderConfig<

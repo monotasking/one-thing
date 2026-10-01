@@ -18,12 +18,10 @@ claude packages/onething-runtime/src/providers/builtin-manifests.ts
 claude packages/onething-runtime/src/sessions/retired-providers.ts
 claude packages/shared/contracts/acp.ts
 claude packages/shared/defaults/settings.ts
-claude packages/shared/provider-families.ts
 claude-code packages/onething-runtime/src/acp/session-links.ts
 claude-code packages/onething-runtime/src/providers/builtin-manifests.ts
 claude-code packages/onething-runtime/src/sessions/retired-providers.ts
 claude-code packages/shared/defaults/settings.ts
-claude-code packages/shared/provider-families.ts
 codex packages/backend/wiring/agent-loop/index.ts
 codex packages/backend/wiring/agent-loop/providers/codex.ts
 codex packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts
@@ -45,7 +43,6 @@ codex packages/onething-runtime/src/providers/agent-turn.ts
 codex packages/onething-runtime/src/providers/model-capability.ts
 codex packages/shared/defaults/settings.ts
 codex packages/shared/ipc/chat.ts
-codex packages/shared/provider-families.ts
 deepseek apps/desktop-react/src/dev/Gallery.tsx
 deepseek packages/backend/rpc/domains/evals-workbench.ts
 deepseek packages/backend/wiring/providers/space-config-migration.ts
@@ -66,11 +63,7 @@ gemini packages/onething-runtime/src/providers/custom-probe.ts
 gemini packages/onething-runtime/src/providers/model-capability.ts
 gemini packages/shared/defaults/settings.ts
 grok packages/backend/wiring/providers/model-registry.ts
-grok packages/shared/provider-families.ts
 grok-oauth packages/backend/wiring/providers/model-registry.ts
-grok-oauth packages/shared/provider-families.ts
-kimi packages/shared/provider-families.ts
-kimi-code packages/shared/provider-families.ts
 openai apps/desktop-react/src/providers/components/CustomProviderDialog.tsx
 openai packages/backend/rpc/domains/models.ts
 openai packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts
@@ -105,7 +98,6 @@ openai packages/onething-runtime/src/voice/service-runtime.ts
 openai packages/shared/defaults/settings.ts
 openai packages/shared/ipc/providers.ts
 openai packages/shared/ipc/voice.ts
-openai packages/shared/provider-families.ts
 openrouter packages/backend/rpc/domains/voice.ts
 openrouter packages/backend/wiring/voice/providers.ts
 openrouter packages/onething-runtime/src/agent-loop/providers/thinking/index.ts

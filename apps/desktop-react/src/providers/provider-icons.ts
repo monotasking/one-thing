@@ -15,7 +15,7 @@ import zhipu from '../assets/providers/zhipu.svg'
  * (自定义家 `custom:xxx`、还没画图标的家)答 `undefined`,消费方回落首字母
  * (`projection.initialOf`)。「有没有图标」因此是一格**数据**,不是一段 if。
  *
- * 键 = 家族 id,也就是 `@shared/provider-families` 的 `PROVIDER_FAMILIES.id`
+ * 键 = 家族 id,也就是名册下发的 `ProviderInfo.family.id`
  * (grok / openai / claude / kimi 四家)或独立供应商自己的 provider id
  * (deepseek / zhipu / openrouter / gemini / github-copilot)。
  *

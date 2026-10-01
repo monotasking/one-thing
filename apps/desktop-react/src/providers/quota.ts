@@ -8,7 +8,7 @@ import {
   QUOTA_WINDOW_7D,
   classifyQuotaWindowSeconds,
   quotaWindowDaysOf,
-} from '@onething/runtime/providers/quota/classify-windows'
+} from '@shared/quota-windows'
 import type { MessageKey, TFn } from '../i18n'
 
 /**

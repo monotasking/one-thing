@@ -60,11 +60,16 @@ export type {
 export {
   isProviderConfigEnabled,
   isProviderEnabledIn,
+  providerFamilyLinkOf,
+  providerFamilyLookupOf,
   resolveProviderModelSelection,
 } from './model/provider-model.js'
 export type {
   AgentModelBindingLike,
   ProviderEnabledOverride,
+  ProviderFamilyInfo,
+  ProviderFamilyLink,
+  ProviderFamilyLookup,
   SessionModelLike,
   SpaceDefaultSelectionLike,
 } from './model/provider-model.js'

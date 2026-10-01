@@ -27,6 +27,8 @@ export const CLAUDE_MANIFEST: ProviderManifest = {
   auth: { kind: 'apiKey' },
   models: { kind: 'models.dev', key: 'anthropic' },
   billing: 'api',
+  // 家族里的哪一半(两半的对应登记在 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`)。
+  family: { role: 'api' },
   modelRules: 'claude',
   defaultBaseUrl: 'https://api.anthropic.com/v1',
   supportsCustomBaseUrl: true,

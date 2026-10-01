@@ -6,6 +6,7 @@ import {
   resolveDialValue,
   storedDialsOf,
 } from '../dials'
+import { servedProviderInfo } from '../../data/__fixtures__/providers'
 
 /**
  * 计费档位。**这一组守的是钱** —— 拨错一格会用按量的 Key 和地址去调订阅,
@@ -16,21 +17,24 @@ import {
  * (`onething-runtime/src/providers/qwen.ts:24-38` / `kimi.ts:28-37, 51-64`)。
  * 这里再写一遍不是重复:它是**跨包的合同**,runtime 改了值而这块面没跟上时,
  * 该有一处红。
+ *
+ * P4 起档位随名册下发(`ProviderInfo.dials`),壳不再 import runtime 的 spec;用例的名册取自
+ * `servedProviderInfo`(跑的是后端那一个投影),断言逐字未改。
  */
 
 describe('providerDialsOf', () => {
   it('只有三家有旋钮,别家返回 null', () => {
-    expect(providerDialsOf('qwen')).not.toBeNull()
-    expect(providerDialsOf('kimi')).not.toBeNull()
-    expect(providerDialsOf('zhipu')).not.toBeNull()
-    expect(providerDialsOf('claude')).toBeNull()
-    expect(providerDialsOf('openai')).toBeNull()
+    expect(providerDialsOf(servedProviderInfo('qwen'))).not.toBeNull()
+    expect(providerDialsOf(servedProviderInfo('kimi'))).not.toBeNull()
+    expect(providerDialsOf(servedProviderInfo('zhipu'))).not.toBeNull()
+    expect(providerDialsOf(servedProviderInfo('claude'))).toBeNull()
+    expect(providerDialsOf(servedProviderInfo('openai'))).toBeNull()
   })
 })
 
 describe('归一:不认识的取值落到缺省,不抛也不留空', () => {
   it('千问三档 + 两地区', () => {
-    const spec = providerDialsOf('qwen')!
+    const spec = providerDialsOf(servedProviderInfo('qwen'))!
     expect(resolveDialValue(spec.apiMode, 'token-plan')).toBe('token-plan')
     expect(resolveDialValue(spec.apiMode, 'coding-plan')).toBe('coding-plan')
     expect(resolveDialValue(spec.apiMode, undefined)).toBe('standard')
@@ -40,14 +44,14 @@ describe('归一:不认识的取值落到缺省,不抛也不留空', () => {
   })
 
   it('Kimi 两档 + 两地区', () => {
-    const spec = providerDialsOf('kimi')!
+    const spec = providerDialsOf(servedProviderInfo('kimi'))!
     expect(resolveDialValue(spec.apiMode, 'coding-plan')).toBe('coding-plan')
     expect(resolveDialValue(spec.apiMode, 'token-plan')).toBe('standard')
     expect(resolveDialValue(spec.region!, 'intl')).toBe('intl')
   })
 
   it('智谱两档,没有地区', () => {
-    const spec = providerDialsOf('zhipu')!
+    const spec = providerDialsOf(servedProviderInfo('zhipu'))!
     expect(resolveDialValue(spec.apiMode, 'coding-plan')).toBe('coding-plan')
     expect(resolveDialValue(spec.apiMode, 'standard')).toBe('standard')
     expect(spec.region).toBeUndefined()
@@ -56,25 +60,25 @@ describe('归一:不认识的取值落到缺省,不抛也不留空', () => {
 
 describe('地区那一行画不画', () => {
   it('Kimi 选了编程套餐时**整行收起** —— 它只有一个全球地址', () => {
-    const spec = providerDialsOf('kimi')!
+    const spec = providerDialsOf(servedProviderInfo('kimi'))!
     expect(regionRowApplies(spec, 'standard')).toBe(true)
     expect(regionRowApplies(spec, 'coding-plan')).toBe(false)
   })
 
   it('千问的地区行永远在', () => {
-    const spec = providerDialsOf('qwen')!
+    const spec = providerDialsOf(servedProviderInfo('qwen'))!
     expect(regionRowApplies(spec, 'standard')).toBe(true)
     expect(regionRowApplies(spec, 'coding-plan')).toBe(true)
   })
 
   it('智谱没有地区行', () => {
-    expect(regionRowApplies(providerDialsOf('zhipu')!, 'standard')).toBe(false)
+    expect(regionRowApplies(providerDialsOf(servedProviderInfo('zhipu'))!, 'standard')).toBe(false)
   })
 })
 
 describe('拨一格写出去的到底是什么', () => {
   it('千问六种组合的地址逐字对上 runtime 那张表', () => {
-    const spec = providerDialsOf('qwen')!
+    const spec = providerDialsOf(servedProviderInfo('qwen'))!
     const url = (mode: string, region: string) => dialPatchOf(spec, mode, region).baseUrl
     expect(url('standard', 'cn')).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1')
     expect(url('standard', 'intl')).toBe('https://dashscope-intl.aliyuncs.com/compatible-mode/v1')
@@ -90,7 +94,7 @@ describe('拨一格写出去的到底是什么', () => {
   })
 
   it('Kimi:编程套餐两个地区落同一个地址', () => {
-    const spec = providerDialsOf('kimi')!
+    const spec = providerDialsOf(servedProviderInfo('kimi'))!
     const url = (mode: string, region: string) => dialPatchOf(spec, mode, region).baseUrl
     expect(url('standard', 'cn')).toBe('https://api.moonshot.cn/v1')
     expect(url('standard', 'intl')).toBe('https://api.moonshot.ai/v1')
@@ -99,7 +103,7 @@ describe('拨一格写出去的到底是什么', () => {
   })
 
   it('智谱两档', () => {
-    const spec = providerDialsOf('zhipu')!
+    const spec = providerDialsOf(servedProviderInfo('zhipu'))!
     expect(dialPatchOf(spec, 'standard', '').baseUrl).toBe('https://open.bigmodel.cn/api/paas/v4')
     expect(dialPatchOf(spec, 'coding-plan', '').baseUrl).toBe(
       'https://open.bigmodel.cn/api/coding/paas/v4',
@@ -111,18 +115,18 @@ describe('拨一格写出去的到底是什么', () => {
    * 那正是「以为选对了、其实还在按量扣钱」的那一种错。
    */
   it('每一次拨动都带着 baseUrl 一起写,且写的是这家自己的字段名', () => {
-    const qwen = dialPatchOf(providerDialsOf('qwen')!, 'token-plan', 'intl')
+    const qwen = dialPatchOf(providerDialsOf(servedProviderInfo('qwen'))!, 'token-plan', 'intl')
     expect(qwen).toEqual({
       baseUrl: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
       qwenApiMode: 'token-plan',
       qwenRegion: 'intl',
     })
 
-    const kimi = dialPatchOf(providerDialsOf('kimi')!, 'coding-plan', 'cn')
+    const kimi = dialPatchOf(providerDialsOf(servedProviderInfo('kimi'))!, 'coding-plan', 'cn')
     expect(kimi.kimiApiMode).toBe('coding-plan')
     expect(kimi.baseUrl).toBe('https://api.kimi.com/coding/v1')
 
-    const zhipu = dialPatchOf(providerDialsOf('zhipu')!, 'coding-plan', '')
+    const zhipu = dialPatchOf(providerDialsOf(servedProviderInfo('zhipu'))!, 'coding-plan', '')
     expect(zhipu.zhipuApiMode).toBe('coding-plan')
     expect(zhipu.qwenApiMode).toBeUndefined()
   })
@@ -130,7 +134,7 @@ describe('拨一格写出去的到底是什么', () => {
 
 describe('storedDialsOf', () => {
   it('读的是这家自己的那两格,没存过就是缺省', () => {
-    const qwen = providerDialsOf('qwen')!
+    const qwen = providerDialsOf(servedProviderInfo('qwen'))!
     expect(storedDialsOf(qwen, { qwenApiMode: 'coding-plan', qwenRegion: 'intl' })).toEqual({
       apiMode: 'coding-plan',
       region: 'intl',
@@ -147,18 +151,18 @@ describe('风险说明', () => {
    * 一句被改软的付费警告等于一笔真金白银,所以它按「不许漂」处理。
    */
   it('千问那句一个字都没改', () => {
-    expect(providerDialsOf('qwen')!.note).toBe(
+    expect(providerDialsOf(servedProviderInfo('qwen'))!.note).toBe(
       '订阅用户请选对档位,否则会按量计费。',
     )
   })
 
   it('Kimi 那句一个字都没改', () => {
-    expect(providerDialsOf('kimi')!.note).toBe(
+    expect(providerDialsOf(servedProviderInfo('kimi'))!.note).toBe(
       '编程套餐的密钥和地址与开放平台不通用,用错会额外扣费。',
     )
   })
 
   it('智谱本来就没有这一句 —— 不替它补一句', () => {
-    expect(providerDialsOf('zhipu')!.note).toBeUndefined()
+    expect(providerDialsOf(servedProviderInfo('zhipu'))!.note).toBeUndefined()
   })
 })

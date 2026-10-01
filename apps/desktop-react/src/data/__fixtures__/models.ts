@@ -3,7 +3,6 @@ import {
   effectiveModelFactsOf,
   onethingModelOverrideFactsOf,
 } from '@onething/runtime/providers/effective-model'
-import type { OnethingCatalogModelEntry } from '@onething/runtime/providers/model-registry'
 import type { CatalogModel, ModelOption, ProviderModelPrefs } from '../models-source'
 
 /**
@@ -81,8 +80,14 @@ export function providerModelPrefs(partial: Partial<ProviderModelPrefs> = {}): P
   }
 }
 
+/**
+ * 目录条目的形状,取自产品层那一个判据的参数类型 —— 不再单独 import runtime 的类型
+ * (服务商自述试点 P4:壳侧只有测试夹具还碰 runtime 的服务商代码,碰的是下面那一个函数)。
+ */
+type CatalogEntry = NonNullable<Parameters<typeof effectiveModelFactsOf>[0]['entry']>
+
 /** 旧信封 → 目录条目(与后端 `openRouterModelToOnethingCapabilityEntry` 同读法,只取判据要的几格)。 */
-function entryOfEnvelope(model: OpenRouterModel): OnethingCatalogModelEntry {
+function entryOfEnvelope(model: OpenRouterModel): CatalogEntry {
   if (model.source === 'manual') return { id: model.id, name: model.name, provider: 'fixture', source: 'manual' }
   const input = model.architecture?.input_modalities ?? []
   const output = model.architecture?.output_modalities ?? []
@@ -109,6 +114,8 @@ function entryOfEnvelope(model: OpenRouterModel): OnethingCatalogModelEntry {
  * 「后端交下来的那一份」:给每行盖上 `effective`,判据用的是**产品层那一个**
  * (`effectiveModelFactsOf`,`models.getWithCapabilities` 与引擎读的同一个),覆盖从
  * 这一家的设置里取。用例据此验「壳只读后端折好的结果」,而不是在壳里再折一遍。
+ * 这也是这份夹具 import runtime 的理由:它演的是后端,抄一份折法就会漂 —— 边界门
+ * (`checkReactShellReadsProvidersOverRpc`)只放过测试与 `__fixtures__`。
  */
 export function servedByBackend(
   models: readonly OpenRouterModel[],

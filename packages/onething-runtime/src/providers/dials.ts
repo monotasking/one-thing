@@ -18,8 +18,10 @@
  * 各家的那张表(`<ID>_DIALS`)住在各家的 `vendors/<id>/manifest.ts`(服务商自述试点
  * P1 / P2);这里只剩形状。
  *
- * 本文件是**纯**模块(壳也 import 它):不许碰 node / electron / `process`。
+ * 本文件是**纯**模块:不许碰 node / electron / `process`。P4 起壳不再 import 它 —— 壳读的是
+ * 下面 `dialDescriptorOf` 投影出来的纯数据(`@shared/provider-dials`),经 providers RPC 下发。
  */
+import type { ProviderDialDescriptor, ProviderDialFieldDescriptor } from '@shared/provider-dials.js'
 
 export interface DialOption {
   value: string
@@ -55,4 +57,51 @@ export interface DialSpec {
    * 只写档位不写地址,请求还是发去旧地址,那正是「以为选对了、其实还在扣钱」。
    */
   baseUrlOf(apiMode: string, region: string): string
+}
+
+function fieldDescriptorOf(field: DialField): ProviderDialFieldDescriptor {
+  return {
+    label: field.label,
+    ariaLabel: field.ariaLabel,
+    options: field.options.map((option) => ({ value: option.value, label: option.label })),
+    defaultValue: field.normalize(undefined),
+  }
+}
+
+/**
+ * spec → 能过进程边界的纯数据(`ProviderInfo.dials`)。函数在这里各问一遍、答案冻成表:
+ * 缺省值 = `normalize(undefined)`,地区适用的档位 = `appliesTo` 答真的那几个选项,
+ * 端点表 = 每个档位 × 每个地区(没有地区的家用空串)问一次 `baseUrlOf`。
+ *
+ * 投影之后的读法(`@shared/provider-dials`)与这里的函数逐个相等,证据是
+ * `__tests__/dial-descriptor.equivalence.test.ts`。
+ */
+export function dialDescriptorOf(spec: DialSpec): ProviderDialDescriptor {
+  const apiMode = fieldDescriptorOf(spec.apiMode)
+  const regionValues = spec.region ? spec.region.options.map((option) => option.value) : ['']
+  const baseUrls: Record<string, Record<string, string>> = {}
+  for (const mode of apiMode.options) {
+    baseUrls[mode.value] = Object.fromEntries(
+      regionValues.map((region) => [region, spec.baseUrlOf(mode.value, region)]),
+    )
+  }
+  const region = spec.region
+  const appliesTo = region?.appliesTo
+  return {
+    apiModeKey: spec.apiModeKey,
+    ...(spec.regionKey ? { regionKey: spec.regionKey } : {}),
+    apiMode,
+    ...(region
+      ? {
+          region: {
+            ...fieldDescriptorOf(region),
+            ...(appliesTo
+              ? { appliesToApiModes: apiMode.options.map((option) => option.value).filter((mode) => appliesTo(mode)) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(spec.note ? { note: spec.note } : {}),
+    baseUrls,
+  }
 }

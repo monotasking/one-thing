@@ -21,6 +21,8 @@ export const CODEX_MANIFEST: ProviderManifest = {
   auth: { kind: 'oauth', flow: 'pkce-callback' },
   models: { kind: 'endpoint' },
   billing: 'subscription',
+  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/manifests.ts`)。
+  family: { role: 'subscription', tag: 'Codex' },
   quotaSource: 'codex',
   modelRules: 'codex',
   // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。

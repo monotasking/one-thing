@@ -1,4 +1,4 @@
-import { PROVIDER_FAMILIES, providerFamilyOf } from '@shared/provider-families'
+import { providerFamilyLinkOf } from '@shared/provider-families'
 import type { CustomProviderConfig, ProviderInfo } from '@shared/ipc/providers'
 import { isMessageKey } from '../i18n'
 import type { TFn } from '../i18n'
@@ -8,9 +8,9 @@ import type { ProviderFamilyView, ProviderMode, ProviderModeKind, RailGroup } fr
  * 名册(`providers.list` 的 `ProviderInfo[]` + 设置里的自定义 provider)
  * → 左栏那张「家」的表。**纯函数**,没有 store、没有 React。
  *
- * 家族合并只认 `@shared/provider-families`。这里不重写一张表,也不按名字猜 ——
- * 那张表是聊天的模型选择器与启用开关的家族派生正在吃的同一张,漂开一次
- * 就会出现「设置里一家、聊天里两家」。
+ * 家族合并只认名册里每条的 `family`(后端由各家 manifest 的家族声明算好下发,服务商自述
+ * 试点 P4)。这里不重写一张表,也不按名字猜 —— 聊天的模型选择器与启用开关的家族派生吃的
+ * 是同一份下发数据,漂开一次就会出现「设置里一家、聊天里两家」。
  */
 
 /**
@@ -76,6 +76,10 @@ function toMode(info: ProviderInfo): ProviderMode {
     requiresOAuth: info.requiresOAuth === true,
     oauthFlow: info.oauthFlow,
     defaultBaseUrl: info.defaultBaseUrl ?? '',
+    // 服务商自述的三格(P4 下发):只在「有」时带上,没有的家形状与从前逐字相同。
+    ...(info.dials ? { dials: info.dials } : {}),
+    ...(info.hasQuota ? { hasQuota: true } : {}),
+    ...(info.family ? { family: info.family } : {}),
   }
 }
 
@@ -94,12 +98,13 @@ const MODE_ORDER: Record<ProviderModeKind, number> = {
 }
 
 /**
- * 家的显示名。家族有自己的 label(「Claude」而不是「Claude Code」),
- * 独立成家时用名册给的名字。
+ * 家的显示名。家族有自己的 label(「Claude」而不是「Claude Code」,名册下发在
+ * `family.label` 上),独立成家时用名册给的名字。
  */
 function labelOfFamily(familyId: string, modes: ProviderMode[]): string {
-  const family = PROVIDER_FAMILIES.find((f) => f.id === familyId)
-  if (family) return family.label
+  const label = modes.find((mode) => mode.family && providerFamilyLinkOf({ id: mode.providerId, family: mode.family }))
+    ?.family?.label
+  if (label) return label
   return modes[0]?.name ?? familyId
 }
 
@@ -145,7 +150,7 @@ export function buildFamilies(
     if (customProviders.some((c) => c.id === info.id)) continue
     // agent 那两种不是模型服务,不进这张名册(判据与出处见 `isAgentKind`)。
     if (isAgentKind(modeKindOf(info))) continue
-    const familyId = providerFamilyOf(info.id)?.id ?? info.id
+    const familyId = providerFamilyLinkOf(info)?.id ?? info.id
     let bucket = byFamily.get(familyId)
     if (!bucket) {
       bucket = { infos: [], modes: [] }

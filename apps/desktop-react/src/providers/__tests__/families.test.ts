@@ -10,6 +10,7 @@ import {
 } from '../families'
 import { translate } from '../../i18n'
 import type { MessageKey } from '../../i18n'
+import { servedProviderFacts } from '../../data/__fixtures__/providers'
 
 /**
  * 家族折叠。这一组守的是**「一家两模式」不许退化成两家**,以及三组的归属 ——
@@ -18,6 +19,9 @@ import type { MessageKey } from '../../i18n'
  */
 
 function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
+  // 家族那一格照「后端下发的那份」盖上(P4 起家族随 `ProviderInfo.family` 下发,
+  // 不再查 `@shared` 的表);认不出的 id 没有家族,与从前一样。
+  const { family } = servedProviderFacts(id)
   return {
     id,
     name: id,
@@ -27,6 +31,7 @@ function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
     icon: id,
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    ...(family ? { family } : {}),
     ...extra,
   }
 }

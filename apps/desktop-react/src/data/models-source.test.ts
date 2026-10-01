@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isProviderEnabledIn } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
 import type {
   OpenRouterModel,
   ProviderInfo,
@@ -7,6 +7,7 @@ import type {
   ThinkingEffort,
 } from '@shared/ipc/providers'
 import { configureModelsPort } from './models-port'
+import { servedProviderFacts } from './__fixtures__/providers'
 import { configureProviderSettingsPort } from './provider-settings-port'
 import { configureSpacesPort } from './spaces-port'
 import {
@@ -63,7 +64,12 @@ import { DEFAULT_SPACE_ID } from '../workspace/types'
  * 「拉了几次」正是这批要验的东西之一。
  */
 
+/**
+ * 名册里的一条。家族那一格照「后端下发的那份」盖上(P4 起家族随 `ProviderInfo.family`
+ * 下发,不再查 `@shared` 的表;认不出的 id 没有家族,与从前一样)。
+ */
 function provider(id: string, name = id): ProviderInfo {
+  const { family } = servedProviderFacts(id)
   return {
     id,
     name,
@@ -73,6 +79,7 @@ function provider(id: string, name = id): ProviderInfo {
     icon: '',
     supportsCustomBaseUrl: false,
     requiresApiKey: true,
+    ...(family ? { family } : {}),
   }
 }
 
@@ -313,7 +320,7 @@ describe('可见的家:两道闸', () => {
     )
     const members = [provider('claude', 'Claude'), provider('claude-code', 'Claude Code')]
     expect(buildProviderGroups(members, prefs, {}, null)).toEqual([])
-    expect(isProviderEnabledIn(prefs.configs, 'claude')).toBe(false)
+    expect(isProviderEnabledIn(prefs.configs, 'claude', providerFamilyLookupOf(members))).toBe(false)
     const on = toProviderPrefs(
       settingsWith({ 'claude-code': { selectedModels: ['claude-opus-4-20250514'] } }),
     )

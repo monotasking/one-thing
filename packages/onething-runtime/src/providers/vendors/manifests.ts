@@ -63,3 +63,20 @@ export const VENDOR_SEED_ORDER: readonly ProviderManifest[] = [
   GROK_MANIFEST,
   GROK_OAUTH_MANIFEST,
 ]
+
+/**
+ * 家族:同一家服务商的两条凭证通道 —— API 那一半与订阅那一半(服务商自述试点 P4,接替了
+ * `@shared/provider-families` 里那张写死的表)。**每个家族一行**,写的是两半的 manifest,
+ * 不是 id 字面量。两半各自在 manifest 里声明自己是哪一半(`family.role`,订阅那一半再带
+ * `tag`);`builtin-manifests.ts` 据此算出 `sibling` / `familyTag` 与下发的 `ProviderInfo.family`,
+ * 并核对两边的 `role` 对得上。
+ *
+ * 为什么登记在这里而不是让半边自己写「我是谁的另一半」:那样 codex 的家里就得认识 openai,
+ * 而一家的家里不许点别家的名(`provider:gate`)。名册本来就是每家都点名的登记处。
+ */
+export const VENDOR_FAMILIES: ReadonlyArray<{ api: ProviderManifest; subscription: ProviderManifest }> = [
+  { api: GROK_MANIFEST, subscription: GROK_OAUTH_MANIFEST },
+  { api: OPENAI_MANIFEST, subscription: CODEX_MANIFEST },
+  { api: CLAUDE_MANIFEST, subscription: CLAUDE_CODE_MANIFEST },
+  { api: KIMI_MANIFEST, subscription: KIMI_CODE_MANIFEST },
+]

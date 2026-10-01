@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { BUILTIN_PROVIDER_MANIFESTS, getBuiltinProviderManifest } from '../builtin-manifests.js'
+import { BUILTIN_PROVIDER_MANIFESTS } from '../builtin-manifests.js'
 import {
   getProviderManifest,
   getProviderManifestRegistry,
@@ -14,6 +14,9 @@ import { getAuthProviderDefinition } from '../../auth/registry.js'
 import { getDialect } from '../../agent-loop/providers/base/index.js'
 import '../../agent-loop/providers/dialects/index.js'
 import { getOnethingModelsDevProviderId } from '../models-dev-catalog.js'
+
+// P4 删了产品代码里的 `getBuiltinProviderManifest`(唯一读者是壳,已改读下发名册);用例里就地查表。
+const getBuiltinProviderManifest = (id: string) => BUILTIN_PROVIDER_MANIFESTS.find((manifest) => manifest.id === id)
 
 afterEach(() => resetProviderManifestRegistryForTests())
 

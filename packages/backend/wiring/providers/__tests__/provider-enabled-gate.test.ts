@@ -4,7 +4,8 @@
  * 停用的 provider 按「未配置」**同一条失败路**走:抹钥匙 + `unavailable` 标记 →
  * 鉴权点必败 → 引擎经 `describeMissingCredentials` 报「{name} 已停用」。
  * 开没开的判据是 `@shared/provider-families` 的 `isProviderEnabledIn`
- * (与设置页 / 模型选择器同一份,含家族派生),读的是会话所在空间的 providers。
+ * (与设置页 / 模型选择器同一份,含家族派生;P4 起家族查询取 runtime 名册的
+ * `builtinProviderFamilyLookup`,不再是 `@shared` 里的表),读的是会话所在空间的 providers。
  */
 import * as fs from 'node:fs'
 import * as os from 'node:os'

@@ -13,6 +13,7 @@ import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE } from '../../types'
 import type { CatalogRow, ProviderMode } from '../../types'
 import type { PoolView } from '../../projection'
 import poolCss from '../CredentialPool.module.css'
+import { servedProviderFacts } from '../../../data/__fixtures__/providers'
 
 /**
  * 批二那几块新组件。它们全是**哑组件**(事实进、画面出),所以这一组直接喂它们
@@ -1042,6 +1043,8 @@ describe('CustomProviderDialog', () => {
 
 describe('ModeCard · 计费档位', () => {
   function mode(providerId: string): ProviderMode {
+    // P4 起档位随名册下发,经 `ProviderMode.dials` 到这张卡:照后端那一个投影盖上。
+    const { dials } = servedProviderFacts(providerId)
     return {
       providerId,
       kind: 'api',
@@ -1049,6 +1052,7 @@ describe('ModeCard · 计费档位', () => {
       requiresApiKey: true,
       requiresOAuth: false,
       defaultBaseUrl: 'https://api.test/v1',
+      ...(dials ? { dials } : {}),
     }
   }
 

@@ -1910,7 +1910,8 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     },
 
     setDials: async (providerId, apiMode, region) => {
-      const spec = providerDialsOf(providerId)
+      // 档位读名册下发的那一条(`ProviderInfo.dials`);名册里没有这家 / 这家没有旋钮 = 一个字都不写。
+      const spec = providerDialsOf(get().providers.find((info) => info.id === providerId))
       if (!spec) return
       await writeProviders({ [providerId]: dialPatchOf(spec, apiMode, region) }, settingsKey.dials(providerId))
     },

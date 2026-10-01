@@ -1,86 +1,72 @@
 /**
- * Provider families: one vendor exposed through two credential channels —
- * a pay-per-token API provider and a subscription OAuth provider. The two
- * remain distinct providers everywhere it matters (routing, wire protocol,
- * billing's subscription-vs-api split, persisted sessions); a family only
- * merges how they are PRESENTED: one connection card, one display name.
+ * 服务商家族(one vendor, two credential channels):一家服务商经两条凭证通道接入 ——
+ * 按量付费的 API 那一半与订阅 OAuth 那一半。两半在路由、线协议、计费(订阅 / 按量)、
+ * 会话存档里**始终是两家**;家族只合并它们的**呈现**:一张连接卡、一个显示名、一个开关。
+ *
+ * ── 名单不在这里(服务商自述试点 P4)──────────────────────────────────────────
+ * 从前这里有一张写死的四行家族名单 `PROVIDER_FAMILIES`。P4 起家族是各家 manifest 自己
+ * 声明的一格(`family`),
+ * runtime 由名册算出两半的对应,经 `providers.getProviders` 的 `ProviderInfo.family` 下发;
+ * 后端从 runtime 名册直接取。这里只剩**形状**与**拿家族信息作参数**的纯函数 ——
+ * `@shared` 与 `@onething/client` 不点任何服务商的名字。
  */
-export interface ProviderFamily {
-	/** Family key — equals the API member's provider id. */
-	id: string;
-	/** Vendor display name shown on the merged card. */
-	label: string;
-	apiProviderId: string;
-	subscriptionProviderId: string;
-	/** Short tag for the subscription channel, e.g. "Codex". */
-	subscriptionTag: string;
+
+/** 家族里的哪一半。 */
+export type ProviderFamilyRole = 'api' | 'subscription'
+
+/** `ProviderInfo.family`:后端由名册算好下发的那一格。 */
+export interface ProviderFamilyInfo {
+	/** 家族键 —— 等于 API 那一半的 provider id。 */
+	id: string
+	role: ProviderFamilyRole
+	/** 同家的另一半。名册里只声明了一半时缺席(那时不成家)。 */
+	sibling?: string
+	/** 合并卡片上的家名(「OpenAI」「Claude」),由 API 那一半声明,两半都带。 */
+	label?: string
+	/** 订阅那一半在合并卡片上的小标签(「Codex」「Claude Code」)。只在订阅那一半上。 */
+	tag?: string
 }
 
-export const PROVIDER_FAMILIES: ProviderFamily[] = [
-	{
-		id: "grok",
-		label: "Grok",
-		apiProviderId: "grok",
-		subscriptionProviderId: "grok-oauth",
-		subscriptionTag: "Subscription",
-	},
-	{
-		id: "openai",
-		label: "OpenAI",
-		apiProviderId: "openai",
-		subscriptionProviderId: "codex",
-		subscriptionTag: "Codex",
-	},
-	{
-		id: "claude",
-		label: "Claude",
-		apiProviderId: "claude",
-		subscriptionProviderId: "claude-code",
-		subscriptionTag: "Claude Code",
-	},
-	{
-		id: "kimi",
-		label: "Kimi",
-		apiProviderId: "kimi",
-		subscriptionProviderId: "kimi-code",
-		subscriptionTag: "Kimi Code",
-	},
-];
-
-export function providerFamilyOf(providerId: string): ProviderFamily | null {
-	return (
-		PROVIDER_FAMILIES.find(
-			(family) =>
-				family.apiProviderId === providerId ||
-				family.subscriptionProviderId === providerId,
-		) ?? null
-	);
+/** 一个家族的两半。 */
+export interface ProviderFamilyLink {
+	/** 家族键(= API 那一半的 id)。 */
+	id: string
+	apiProviderId: string
+	subscriptionProviderId: string
 }
 
-export function isSubscriptionFamilyMember(providerId: string): boolean {
-	return providerFamilyOf(providerId)?.subscriptionProviderId === providerId;
+/** 「这个 provider 属于哪个家族」的查询。不在任何家族里答 `null`。 */
+export type ProviderFamilyLookup = (providerId: string) => ProviderFamilyLink | null
+
+/** 一条带 `family` 的名册记录 → 它所在家族的两半。没有 `family` 或不成对 = `null`。 */
+export function providerFamilyLinkOf(info: {
+	id: string
+	family?: ProviderFamilyInfo | null
+}): ProviderFamilyLink | null {
+	const family = info.family
+	if (!family?.sibling) return null
+	return family.role === 'api'
+		? { id: family.id, apiProviderId: info.id, subscriptionProviderId: family.sibling }
+		: { id: family.id, apiProviderId: family.sibling, subscriptionProviderId: info.id }
 }
 
 /**
- * Display name for lists that mix members of a family, e.g. the model ledger:
- * API member reads as the vendor ("OpenAI"), the subscription member as
- * vendor · tag ("OpenAI · Codex"). Non-family providers keep their own name.
+ * 名册(`ProviderInfo[]`,或任何带 `id` + `family` 的记录)→ 家族查询。
+ *
+ * 两半里**任一半**在名册上就够了:`family.sibling` 写着另一半是谁,所以名册只交了
+ * 一半时,那一半照样答得出完整的家族(与旧表的答案一样,它不看名册里有没有另一半)。
  */
-export function providerFamilyDisplayName(
-	providerId: string,
-	fallback: string,
-): string {
-	const family = providerFamilyOf(providerId);
-	if (!family) return fallback;
-	if (family.subscriptionProviderId === providerId) {
-		// "Claude" + "Claude Code" would read "Claude · Claude Code" — when the
-		// tag already carries the vendor name, the tag alone is the full name.
-		if (family.subscriptionTag.startsWith(family.label)) {
-			return family.subscriptionTag;
-		}
-		return `${family.label} · ${family.subscriptionTag}`;
+export function providerFamilyLookupOf(
+	infos: Iterable<{ id: string; family?: ProviderFamilyInfo | null }>,
+): ProviderFamilyLookup {
+	const byId = new Map<string, ProviderFamilyLink>()
+	for (const info of infos) {
+		const link = providerFamilyLinkOf(info)
+		if (!link) continue
+		byId.set(link.apiProviderId, link)
+		byId.set(link.subscriptionProviderId, link)
 	}
-	return family.label;
+	return (providerId) => byId.get(providerId) ?? null
 }
 
 /**
@@ -106,7 +92,8 @@ export type ProviderEnabledOverride = Record<string, boolean> | null | undefined
 
 /**
  * Family-aware enabled read. A provider family (API + subscription channel of
- * one vendor, `@shared/provider-families`) is presented as ONE card with ONE
+ * one vendor, declared by each vendor's manifest and handed in here as
+ * `familyOf`) is presented as ONE card with ONE
  * switch that writes both members. Legacy data predates that card, though,
  * and the two flags can disagree in either direction:
  *
@@ -127,6 +114,12 @@ export type ProviderEnabledOverride = Record<string, boolean> | null | undefined
 export function isProviderEnabledIn(
 	providers: Record<string, { enabled?: boolean } | undefined> | undefined | null,
 	providerId: string,
+	/**
+	 * 家族查询(P4 起由调用方给:壳用下发的名册 `providerFamilyLookupOf(providers)`,
+	 * 后端用 runtime 名册)。**必填** —— 漏传会悄悄丢掉家族派生,那正是
+	 * 「设置里一家、聊天里两家」的病。
+	 */
+	familyOf: ProviderFamilyLookup,
 	spaceOverride?: ProviderEnabledOverride,
 ): boolean {
 	// per-space 覆盖(批 B9)接在**这里**,不接在调用点:家族派生(下面那两行)
@@ -135,7 +128,7 @@ export function isProviderEnabledIn(
 	const enabledOf = (id: string): boolean =>
 		spaceOverride?.[id] ?? isProviderConfigEnabled(providers?.[id])
 	const own = enabledOf(providerId)
-	const family = providerFamilyOf(providerId)
+	const family = familyOf(providerId)
 	if (!family) return own
 	/*
 	 * 家族开关挂在 API 成员上,但「没设过 = 开着」只对**配过的**成员成立。

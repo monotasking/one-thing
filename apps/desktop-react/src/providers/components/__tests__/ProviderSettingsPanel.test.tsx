@@ -10,6 +10,7 @@ import { useNotifyStore } from '../../../services/notify-store'
 import { useStageStore } from '../../../stage/store'
 import { DEFAULT_SPACE_ID } from '../../../workspace/types'
 import { ProviderSettingsPanel } from '../ProviderSettingsPanel'
+import { servedProviderFacts } from '../../../data/__fixtures__/providers'
 
 /**
  * 模型服务面(批一)。这一批验的是**面长在真数据上**:
@@ -20,6 +21,9 @@ import { ProviderSettingsPanel } from '../ProviderSettingsPanel'
  */
 
 function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
+  // 家族那一格照「后端下发的那份」盖上(P4 起家族随 `ProviderInfo.family` 下发,
+  // 不再查 `@shared` 的表);认不出的 id 没有家族,与从前一样。
+  const { family } = servedProviderFacts(id)
   return {
     id,
     name: id,
@@ -29,6 +33,7 @@ function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
     icon: id,
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    ...(family ? { family } : {}),
     ...extra,
   }
 }

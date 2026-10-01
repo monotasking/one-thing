@@ -1,26 +1,26 @@
 import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PROVIDER_FAMILIES } from '@shared/provider-families'
-import { BUILTIN_PROVIDER_MANIFESTS } from '@onething/runtime/providers/builtin-manifests'
+import { servedProviderRoster } from '../../data/__fixtures__/providers'
 import { PROVIDER_ICONS, providerIconOf } from '../provider-icons'
 
 /**
  * 供应商图标表(09-14)。这张表是**数据**,所以门要守的也只有数据的两件事:
  * 键说的是不是真的存在的一家,素材有没有落单。
  *
- * 两份名单都**不在这里硬编码**:家族 id 读 `@shared/provider-families`,独立
- * 供应商 id 读 runtime 那张内置表 —— 抄第二份名单就是又开一个会漂的产地
- * (这块面从 09-01 起反复立的同一条)。
- *
- * 内置表 import 的是 `builtin-manifests.ts`(批 M):它是**纯**模块(不经 `codex.ts`,
- * 不吃 `@onething/core` 桶),壳本来就读它拿档位与家族,所以这里不再读源文本 ——
- * 常量引用的那几家(qwen / codex / acp)也一起进了名单,这条门不再偏严。
+ * 两份名单都**不在这里硬编码**:家族 id 与内置 provider id 都读「后端下发的那份名册」
+ * (`data/__fixtures__/providers.ts`,跑的是产品层那一个投影)—— 抄第二份名单就是又开
+ * 一个会漂的产地(这块面从 09-01 起反复立的同一条)。P4 之前家族 id 读的是 `@shared` 里
+ * 那张家族表;那张表搬进了各家 manifest,下发在每条的 `family` 上。
  */
 
 const appRoot = process.cwd()
 const assetsDir = resolve(appRoot, 'src/assets/providers')
-const builtinIds = BUILTIN_PROVIDER_MANIFESTS.map((manifest) => manifest.id)
+const roster = servedProviderRoster()
+const builtinIds = roster.map((info) => info.id)
+const PROVIDER_FAMILIES = [...new Set(roster.flatMap((info) => (info.family ? [info.family.id] : [])))].map(
+  (id) => ({ id }),
+)
 
 const knownIds = new Set([...PROVIDER_FAMILIES.map((family) => family.id), ...builtinIds])
 

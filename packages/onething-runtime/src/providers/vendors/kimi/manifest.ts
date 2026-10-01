@@ -70,6 +70,8 @@ export const KIMI_MANIFEST: ProviderManifest = {
     keyOf: (config) => resolveOnethingKimiModelsDevProviderId(config as OnethingKimiEndpointConfig | undefined),
   },
   billing: 'api',
+  // 家族里的哪一半(两半的对应登记在 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`)。
+  family: { role: 'api' },
   quotaSource: 'kimi',
   dials: KIMI_DIALS,
   modelRules: 'kimi',

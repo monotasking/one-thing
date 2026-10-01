@@ -1,4 +1,6 @@
 import type { ModelParameterSuggestion, OAuthFlowType, ReasoningProfileOverride } from '@shared/ipc/providers'
+import type { ProviderDialDescriptor } from '@shared/provider-dials'
+import type { ProviderFamilyInfo } from '@shared/provider-families'
 import type { MessageKey, MessageVars } from '../i18n'
 
 /**
@@ -9,15 +11,14 @@ import type { MessageKey, MessageVars } from '../i18n'
  *       └ 凭证       批一只做「有没有」与「换一把 key」;多钥列表 / 轮换 / 登录流归批二。
  *       └ 模型目录   跟着**模式**走 —— 订阅坑与 API 坑是两份独立目录,不合并。
  *
- * 「家」不是后端的概念,后端只有 provider。家是**呈现**上的合并,判据是
- * `@shared/provider-families` 那张表(claude+claude-code / grok+grok-oauth /
- * openai+codex / kimi+kimi-code)—— 这里不另写一张,免得两处漂开。
+ * 「家」不是后端的概念,后端只有 provider。家是**呈现**上的合并,判据是名册里每条
+ * `ProviderInfo.family`(服务商自述试点 P4 起由后端按各家 manifest 的家族声明算好下发;
+ * 从前是 `@shared` 里一张写死的表)—— 这里不另写一张,免得两处漂开。
  *
  * ── 与交接稿 §2 的一处出入,以代码为准 ────────────────────────────────────
- * 交接稿说「Codex/Copilot 独立成家」,而仓里 `PROVIDER_FAMILIES` 把
- * openai+codex 编在一家(设计稿第 8 帧的 `openaiModes` 也正是这么画的)。
- * 家族表是**生产代码**里已经在用的判据(聊天的模型选择器、启用开关的家族派生都吃它),
- * 所以这里听它的;github-copilot 确实独立成家 —— 它不在那张表里。
+ * 交接稿说「Codex/Copilot 独立成家」,而名册把 openai+codex 编在一家(设计稿第 8 帧的
+ * `openaiModes` 也正是这么画的)。家族是**生产代码**里已经在用的判据(聊天的模型选择器、
+ * 启用开关的家族派生都吃它),所以这里听它的;github-copilot 确实独立成家 —— 它没有声明家族。
  */
 
 /**
@@ -49,6 +50,12 @@ export interface ProviderMode {
   oauthFlow?: OAuthFlowType
   /** 名册给的默认端点。API 坑的「高级 · Base URL」那一行读它。 */
   defaultBaseUrl: string
+  /** 名册下发的计费档位(只有带档位的那几家有;缺席 = 没有旋钮)。 */
+  dials?: ProviderDialDescriptor
+  /** 名册下发的「这家有配额 / 余额源」。缺席 = 没有。 */
+  hasQuota?: boolean
+  /** 名册下发的家族信息。缺席 = 独立成家。 */
+  family?: ProviderFamilyInfo
 }
 
 /**

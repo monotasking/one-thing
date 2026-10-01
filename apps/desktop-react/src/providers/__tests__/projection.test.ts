@@ -28,6 +28,7 @@ import {
 import type { CredentialFacts } from '../types'
 import { NO_CATALOG_FACTS, NO_MODEL_OVERRIDE, OTHER_GROUP } from '../types'
 import { servedByBackend } from '../../data/__fixtures__/models'
+import { servedProviderFacts, servedProviderInfo, servedProviderRoster } from '../../data/__fixtures__/providers'
 
 /**
  * 名册投影。这一组守的是这块面**最容易说谎的那一格**:
@@ -35,6 +36,9 @@ import { servedByBackend } from '../../data/__fixtures__/models'
  */
 
 function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
+  // 家族那一格照「后端下发的那份」盖上(P4 起家族随 `ProviderInfo.family` 下发,
+  // 不再查 `@shared` 的表);认不出的 id 没有家族,与从前一样。
+  const { family } = servedProviderFacts(id)
   return {
     id,
     name: id,
@@ -44,6 +48,7 @@ function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
     icon: id,
     supportsCustomBaseUrl: true,
     requiresApiKey: true,
+    ...(family ? { family } : {}),
     ...extra,
   }
 }
@@ -844,8 +849,8 @@ describe('轮换策略的档位表(批 9 §10)', () => {
   })
 
   it('有没有余额源读 manifest 的 quotaSource,不点名', () => {
-    expect(providerHasQuotaSource('deepseek')).toBe(true)
-    expect(providerHasQuotaSource('no-such-provider')).toBe(false)
+    expect(providerHasQuotaSource(servedProviderInfo('deepseek'))).toBe(true)
+    expect(providerHasQuotaSource(servedProviderRoster().find((info) => info.id === 'no-such-provider'))).toBe(false)
   })
 })
 

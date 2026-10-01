@@ -27,6 +27,8 @@ export const CLAUDE_CODE_MANIFEST: ProviderManifest = {
   // 目录键沿用今天的读法(自己的 id);列表只留 Claude 家的型号。
   models: { kind: 'models.dev', key: 'claude-code', include: CLAUDE_CODE_MODEL_PATTERNS },
   billing: 'subscription',
+  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/manifests.ts`)。
+  family: { role: 'subscription', tag: 'Claude Code' },
   quotaSource: 'claude-code',
   modelRules: 'claude',
   defaultBaseUrl: 'https://api.anthropic.com/v1',

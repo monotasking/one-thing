@@ -12,13 +12,21 @@ import type { AppSettings } from '@shared/ipc/settings.js'
 /*
  * 「这个 provider 开没开」的判据(含家族派生与 per-space 覆盖)住在
  * `@shared/provider-families` —— 后端的发送路也要问同一句(设计正本
- * provider-settings-rework §2.3),两边共用一份,不复制。这里只再导出,
- * 让既有的 `@onething/client` 调用点一行不改。
+ * provider-settings-rework §2.3),两边共用一份,不复制。这里只再导出。
+ *
+ * P4 起家族不再是 `@shared` 里的一张表:`isProviderEnabledIn` 要调用方给家族查询。
+ * 客户端的查询从下发的名册来 —— `providerFamilyLookupOf(providers)`(`providers.getProviders`
+ * 的 `ProviderInfo[]`,每条带 `family`)。
  */
 export {
   isProviderConfigEnabled,
   isProviderEnabledIn,
+  providerFamilyLinkOf,
+  providerFamilyLookupOf,
   type ProviderEnabledOverride,
+  type ProviderFamilyInfo,
+  type ProviderFamilyLink,
+  type ProviderFamilyLookup,
 } from '@shared/provider-families'
 
 export interface SessionModelLike {

@@ -32,7 +32,7 @@ import { catalogKey, catalogQuery, invalidateCatalogProvider } from '../catalog-
 import { useCurrentSpaceId } from '../../workspace/current'
 import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
-import { isProviderEnabledIn } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
 import s from './ProviderSettingsPanel.module.css'
 
 /** 订阅未登录时目录区的行:没有目录就没有行(手填的也不画 —— 锁着的表不列内容)。 */
@@ -142,6 +142,8 @@ export function ProviderSettingsPanel() {
     () => buildFamilies(providers, customProviders ?? []),
     [providers, customProviders],
   )
+  // 开关的家族派生要的家族查询:取自名册每条下发的 `family`(服务商自述试点 P4)。
+  const familyOf = useMemo(() => providerFamilyLookupOf(providers), [providers])
 
   const credsOf = useCallback(
     (providerId: string) => credentialFactsOf(credentials[providerId], credentialsKnown),
@@ -360,14 +362,14 @@ export function ProviderSettingsPanel() {
           familyId={rowMenuTarget.id}
           label={rowMenuTarget.label}
           custom={rowMenuTarget.custom}
-          enabled={isProviderEnabledIn(configs, rowMenuTarget.id)}
+          enabled={isProviderEnabledIn(configs, rowMenuTarget.id, familyOf)}
           x={rowMenu?.x ?? 0}
           y={rowMenu?.y ?? 0}
           onClose={() => setRowMenu(null)}
           onEdit={() => setCustomDialog({ open: true, editingId: rowMenuTarget.id })}
           onDelete={() => void deleteCustomProvider(rowMenuTarget.id)}
           onToggleEnabled={() =>
-            void setFamilyEnabled(rowMenuTarget.view, !isProviderEnabledIn(configs, rowMenuTarget.id))
+            void setFamilyEnabled(rowMenuTarget.view, !isProviderEnabledIn(configs, rowMenuTarget.id, familyOf))
           }
         />
       )}
@@ -376,7 +378,7 @@ export function ProviderSettingsPanel() {
           family={family}
           mode={mode}
           tabs={tabs}
-          enabled={isProviderEnabledIn(configs, family.id)}
+          enabled={isProviderEnabledIn(configs, family.id, familyOf)}
           enabledPending={enabledPending}
           customPending={customPending}
           onToggleEnabled={(next) => void setFamilyEnabled(family, next)}

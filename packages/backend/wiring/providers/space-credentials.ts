@@ -13,6 +13,7 @@
 
 import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
 import { isProviderEnabledIn } from '@shared/provider-families'
+import { builtinProviderFamilyLookup } from '@onething/runtime/providers/builtin-manifests'
 import {
   applySpaceProviderCredential,
   describeProviderDisabled,
@@ -179,7 +180,7 @@ export function routeSpaceProvider(
     manifests: getProviderManifest,
     pools: id => getSpaceProviderCredentials(spaceId, id),
     quotas: (id, entryId) => getCurrentBackendInstance()?.quota?.peek(id, entryId),
-    enabled: id => isProviderEnabledIn(providers, id),
+    enabled: id => isProviderEnabledIn(providers, id, builtinProviderFamilyLookup),
     subscriptionFallback: isSubscriptionFallbackOn(providers, providerId),
     roundRobinCursor: id => peekSpaceCredentialCursor(spaceCredentialCursorKey(spaceId, id)),
     pluginDecide: ({ policy, providerId: id, candidates }) =>
@@ -374,7 +375,8 @@ export function applySessionSpaceCredentials<TProvider extends CoreProviderConfi
  * 错误 —— 起流前置拦截只有一道闸。
  *
  * 开没开问的是 `isProviderEnabledIn`(`@shared/provider-families`,与设置页、
- * 模型选择器同一个判据,含家族派生),读的是**这条会话所在空间**的 providers。
+ * 模型选择器同一个判据,含家族派生;家族查询取 runtime 名册的 `builtinProviderFamilyLookup`),
+ * 读的是**这条会话所在空间**的 providers。
  * 从不问凭证的那几只(ACP / 本地 CLI agent / 外部 agent)不在模型服务名册上、
  * 没有开关可拨,所以不过这道闸。
  *
@@ -388,7 +390,7 @@ export function applySessionProviderGates<TProvider extends CoreProviderConfigLi
 ): TProvider | undefined {
   if (providerConfig && !isCredentialFreeProvider(providerId)) {
     const providers = getSessionSettings(sessionId).ai?.providers
-    if (!isProviderEnabledIn(providers, providerId)) {
+    if (!isProviderEnabledIn(providers, providerId, builtinProviderFamilyLookup)) {
       const next = { ...providerConfig } as Record<string, unknown>
       delete next.apiKey
       delete next.oauthToken
