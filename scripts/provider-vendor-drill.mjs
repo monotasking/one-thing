@@ -45,6 +45,12 @@ function run(cmd, args, cwd, { allowFail = false } = {}) {
   }
 }
 
+/** 去掉终端颜色码(ESC [ … m)。用 fromCharCode 拼,免得正则字面量里出现控制字符。 */
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+function stripAnsi(text) {
+  return text.replace(ANSI, '')
+}
+
 function edit(file, transform) {
   const before = readFileSync(file, 'utf8')
   const after = transform(before)
@@ -97,7 +103,7 @@ try {
   // ③ 壳的文案
   for (const [lang, text] of [['zh', 'Acme 官方接口'], ['en', 'Official Acme API']]) {
     edit(path.join(worktree, `apps/desktop-react/src/i18n/${lang}.ts`), (s) =>
-      s.replace(/(\n  'providers\.desc\.[\w-]+': [^\n]+\n)/, `$1  'providers.desc.acme': '${text}',\n`))
+      s.replace(/(\n {2}'providers\.desc\.[\w-]+': [^\n]+\n)/, `$1  'providers.desc.acme': '${text}',\n`))
   }
 
   // 断言 1:动到的文件恰好是允许的那几处
@@ -121,9 +127,9 @@ try {
   // 断言 4:端到端演练测试
   const testFile = path.join(worktree, 'packages/backend/__tests__/acme-drill.test.ts')
   cpSync(path.join(drillDir, 'acme-drill.test.ts.txt'), testFile)
-  const vitest = run('npx', ['vitest', 'run', 'packages/backend/__tests__/acme-drill.test.ts'], worktree, { allowFail: true })
-  if (!/Tests\s+\d+ passed/.test(vitest.replace(/\x1b\[[0-9;]*m/g, '')) || /failed/.test(vitest.replace(/\x1b\[[0-9;]*m/g, ''))) {
-    failures.push(`演练测试没全绿:\n${vitest.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(-30).join('\n')}`)
+  const vitest = stripAnsi(run('npx', ['vitest', 'run', 'packages/backend/__tests__/acme-drill.test.ts'], worktree, { allowFail: true }))
+  if (!/Tests\s+\d+ passed/.test(vitest) || /failed/.test(vitest)) {
+    failures.push(`演练测试没全绿:\n${vitest.split('\n').slice(-30).join('\n')}`)
   } else {
     console.log('[vendor-drill] 端到端演练测试全绿')
   }
