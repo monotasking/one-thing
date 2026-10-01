@@ -40,24 +40,12 @@ export interface OpenAICompatibleAgentProviderOptions {
 	maxTokensField?: "max_tokens" | "max_completion_tokens";
 	includeAssistantReasoning?: boolean;
 	/**
-	 * Wire format for the request's thinking/reasoningEffort intent. 取值就是
-	 * `thinking/` 里那几条线型的 id —— 每一条的行为写在它自己那个文件的抬头:
-	 * - 'thinking-type'         `thinking: {type}` + `reasoning_effort` 透传
-	 * - 'openai-effort'         `reasoning_effort`,xhigh/max 夹到 high
-	 * - 'zhipu-thinking'        只有 `thinking: {type}`
-	 * - 'qwen-thinking'         `enable_thinking` 布尔,effort 只给收它的族
-	 * - 'grok-effort'           `reasoning_effort`,xhigh 只给 4.20 族
-	 * - 'openrouter-reasoning'  统一的 `reasoning: {}` 对象
-	 * - 'none'(默认)          请求体里一个思考参数都不发
+	 * Wire format for the request's thinking/reasoningEffort intent:已登记思考线型的 id
+	 * (`thinkingWires.require` 按 id 取;协议的线型在 `thinking/`,某一家专属的在那家的
+	 * `vendors/<id>/thinking.ts`,由名册登记)。每一条的行为写在它自己那个文件的抬头。
+	 * 缺席 = `'none'`:请求体里一个思考参数都不发。未登记的 id 在构造时就抛。
 	 */
-	reasoningStyle?:
-		| "thinking-type"
-		| "openai-effort"
-		| "zhipu-thinking"
-		| "qwen-thinking"
-		| "grok-effort"
-		| "openrouter-reasoning"
-		| "none";
+	reasoningStyle?: string;
 	requestDumper?: AgentProviderRequestDumper;
 }
 

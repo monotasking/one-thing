@@ -167,7 +167,7 @@ function isNonEmptyString(value: unknown): value is string {
 /**
  * `settings.ai.providers` → default 池的 apiKey entries。
  *
- * **空 key 且无 baseUrl 的不建 entry** —— `DEFAULT_PROVIDER_CONFIGS` 给每个内置
+ * **空 key 且无 baseUrl 的不建 entry** —— 出厂 provider 种子表(各家 manifest 的 `seed`)给每个内置
  * provider 都发了一格 `apiKey: ''`,照单全收会在池里堆出十几条空壳,然后
  * 「配没配好」的判据只能靠数 entry 的内容而不是数 entry —— 那正是要拆掉的东西。
  *

@@ -25,6 +25,8 @@ export const GROK_MANIFEST: ProviderManifest = {
   models: { kind: 'models.dev', key: 'xai' },
   billing: 'api',
   modelRules: 'grok',
+  // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。
+  reasoningWires: ['grok-effort'],
   defaultBaseUrl: 'https://api.x.ai/v1',
   supportsCustomBaseUrl: true,
   defaultModel: 'grok-3-latest',

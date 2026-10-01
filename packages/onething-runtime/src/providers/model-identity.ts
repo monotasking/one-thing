@@ -9,7 +9,8 @@
  *
  * 三级逐级降,任一级**唯一**命中即停:
  *  ① 带厂牌前缀:`厂牌/型号` 按第一个 `/` 切开,厂牌经别名表映射到 models.dev 的 provider
- *     键,型号在那家下**精确**匹配;不中则在 models.dev 的 `openrouter` 目录里精确匹配整串。
+ *     键,型号在那家下**精确**匹配;不中则在聚合站的目录(manifest 的 `modelIdentity.aggregator`,
+ *     今天是 OpenRouter 那本)里精确匹配整串。
  *  ② 裸 ID 精确:全目录找同名;多家同名时取**第一方**(provider 键属于某个厂牌的那家),
  *     第一方不唯一 / 没有第一方 → 不认。
  *  ③ 规范化精确:两边做同一套规范化(小写、去厂牌路径、去 `:free` / `:latest` / `-latest` /
@@ -48,8 +49,20 @@ export const MODEL_VENDOR_ALIASES: ReadonlyArray<{
 	readonly keys: readonly string[];
 }> = [
 	...NON_VENDOR_MODEL_BRAND_ALIASES,
-	...BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) => (manifest.modelIdentity ? [manifest.modelIdentity] : [])),
+	...BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) =>
+		manifest.modelIdentity && manifest.modelIdentity.brands.length > 0
+			? [{ brands: manifest.modelIdentity.brands, keys: manifest.modelIdentity.keys }]
+			: [],
+	),
 ];
+
+/**
+ * 聚合站的「厂牌/型号」总表在 models.dev 里的目录键:manifest 的 `modelIdentity.aggregator` 说了
+ * 「我是聚合站」的那几家的 `models.key`(今天一家)。第 ① 级在厂牌那家查不到时按序来这里查整串。
+ */
+const AGGREGATOR_CATALOG_KEYS: readonly string[] = BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) =>
+	manifest.modelIdentity?.aggregator && manifest.models.kind === "models.dev" ? [manifest.models.key] : [],
+);
 
 export type ModelTwinLevel = "prefix" | "exact" | "normalized";
 
@@ -184,7 +197,7 @@ export function resolveModelTwin(modelId: string, index: ModelIdentityIndex): Mo
 	const rest = slash > 0 ? raw.slice(slash + 1) : raw;
 	const brandVendor = brand ? vendorOfBrand(brand) : undefined;
 
-	// ① 带厂牌前缀:厂牌那家精确匹配型号,不中再查 openrouter 那张「厂牌/型号」总表。
+	// ① 带厂牌前缀:厂牌那家精确匹配型号,不中再查聚合站那张「厂牌/型号」总表。
 	if (brand && rest) {
 		const keys = brandVendor?.keys ?? (index.data[brand] ? [brand] : []);
 		for (const key of keys) {
@@ -192,8 +205,10 @@ export function resolveModelTwin(modelId: string, index: ModelIdentityIndex): Mo
 				return { twin: { provider: key, id: rest }, level: "prefix" };
 			}
 		}
-		if (index.data.openrouter?.models?.[raw]) {
-			return { twin: { provider: "openrouter", id: raw }, level: "prefix" };
+		for (const key of AGGREGATOR_CATALOG_KEYS) {
+			if (index.data[key]?.models?.[raw]) {
+				return { twin: { provider: key, id: raw }, level: "prefix" };
+			}
 		}
 	}
 

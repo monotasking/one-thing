@@ -51,3 +51,14 @@ export function onethingModelContextLengthHint(modelIdLower: string): number | u
     hint.includes.some((fragment) => modelIdLower.includes(fragment)),
   )?.contextLength
 }
+
+/**
+ * 协议缺省型号规则表:自定义服务商没点名方言时,按它的接口类型(`apiType`)借哪一张型号规则表
+ * (`manifestOfCustomProvider`)。说的是「讲 Anthropic Messages 的接口卖的是 claude 一族、讲
+ * OpenAI 兼容接口的按 openai 一族判」—— 型号家族的知识,所以住这里。值是型号规则表 id,表本身
+ * 由带它的那一家 manifest 的 `modelRuleTable` 给出。
+ */
+export const ONETHING_PROTOCOL_DEFAULT_MODEL_RULES: Readonly<Record<'openai' | 'anthropic', string>> = {
+  anthropic: 'claude',
+  openai: 'openai',
+}

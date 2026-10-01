@@ -32,4 +32,11 @@ export const CLAUDE_CODE_MANIFEST: ProviderManifest = {
   defaultBaseUrl: 'https://api.anthropic.com/v1',
   supportsCustomBaseUrl: false,
   defaultModel: 'claude-sonnet-4-20250514',
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    model: 'claude-sonnet-4-20250514',
+    selectedModels: [],
+    authType: 'oauth',
+    enabled: false,
+  },
 }

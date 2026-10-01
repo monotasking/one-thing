@@ -128,9 +128,12 @@ function builtinIds(): string[] {
 /**
  * 试点把各家散在公共表里的数据**搬进** manifest(P1 起)。这几格是搬进来的输入,不是答案:
  * 它们的效果由下面逐项问出来的事实(环境变量、地址、认亲、错误说明、型号能力……)冻住。
- * 在原始 manifest 的转储里略去它们,快照才只在「答案变了」时红。
+ * 在原始 manifest 的转储里略去它们,快照才只在「答案变了」时红。P3 加的三格答案在别处冻住:
+ * `seed` = 出厂设置(`packages/backend/stores/__tests__/settings-defaults.freeze.test.ts` 逐字比),
+ * `reasoningWires` = 思考覆盖的合法取值(`reasoning-wire-ids.test.ts`),`catalogBackfill` = 千问
+ * 按量目录补缺(`qwen-model-refresh.test.ts`)。
  */
-const VENDOR_DATA_FIELDS = ['envVars', 'modelIdentity', 'catalogAliases', 'errorDescriptions', 'endpoint', 'modelRuleTable']
+const VENDOR_DATA_FIELDS = ['envVars', 'modelIdentity', 'catalogAliases', 'errorDescriptions', 'endpoint', 'modelRuleTable', 'seed', 'reasoningWires', 'catalogBackfill']
 
 function vendorFacts(id: string): unknown {
   const manifest = getProviderManifestRegistry().get(id)!

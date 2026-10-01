@@ -6,8 +6,7 @@
  * model-registry.ts 那一整套抓取/落盘。规则本身与 model-registry 同一份,
  * 那边只是 re-export。
  */
-import type { OnethingKimiEndpointConfig } from "./vendors/kimi/endpoint.js";
-import type { OnethingQwenEndpointConfig } from "./vendors/qwen/endpoint.js";
+import type { CoreProviderConfigLike, ProviderConfigWithDials } from "./provider-config.js";
 import { BUILTIN_PROVIDER_MANIFESTS } from "./builtin-manifests.js";
 import { getProviderManifest } from "./manifest.js";
 
@@ -37,10 +36,13 @@ export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
  * 目录键由各家 manifest 的 `models` 自己说(批 M):`models.dev` 读 `keyOf(config)` 或
  * `key`(千问 / Kimi 按地区与档位选目录,那一半在各自的 `keyOf` 里);`endpoint` 读
  * `catalogKey`(能力事实仍从哪本目录补)。没有 manifest 的 id 走反查表,再不中就是它自己。
+ *
+ * `config` 是通用的 provider 配置:档位 / 地区格由各家 manifest 声明、各家 `keyOf` 按键读,
+ * 这里不点名(带档位格的字面量用 `ProviderConfigWithDials` 那一半收)。
  */
 export function getOnethingModelsDevProviderId(
 	providerId: string,
-	config?: OnethingQwenEndpointConfig & OnethingKimiEndpointConfig,
+	config?: CoreProviderConfigLike | ProviderConfigWithDials,
 ): string {
 	const source = getProviderManifest(providerId)?.models;
 	if (source?.kind === "models.dev") {

@@ -1,9 +1,6 @@
 import type { OnethingOAuthFlowType, OnethingOAuthToken, OnethingProviderAuthContext } from '../auth/types.js'
 import type { CoreProviderConfigLike } from './provider-config.js'
 import type { OnethingProviderRegistryDefinition, OnethingProviderRegistryInfo } from './registry.js'
-import type { OnethingKimiApiMode, OnethingKimiRegion } from './vendors/kimi/endpoint.js'
-import type { OnethingQwenApiMode, OnethingQwenRegion } from './vendors/qwen/endpoint.js'
-import type { OnethingZhipuApiMode } from './vendors/zhipu/endpoint.js'
 
 export type OnethingProviderOAuthFlowType = OnethingOAuthFlowType
 
@@ -26,11 +23,7 @@ export interface OnethingProviderConfig<
 > extends CoreProviderConfigLike {
   apiKey?: string
   enabled?: boolean
-  zhipuApiMode?: OnethingZhipuApiMode
-  qwenApiMode?: OnethingQwenApiMode
-  qwenRegion?: OnethingQwenRegion
-  kimiApiMode?: OnethingKimiApiMode
-  kimiRegion?: OnethingKimiRegion
+  // 各家档位格不在这里点名:键名由 manifest 的 `dials` 声明(见 `CoreProviderConfigLike`)。
   authType?: 'apiKey' | 'oauth'
   oauthToken?: TOAuthToken
   authContext?: TAuthContext

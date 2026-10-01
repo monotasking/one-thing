@@ -1,5 +1,5 @@
 import type { AppSettings, PersistedAppSettings } from '@shared/ipc.js'
-import { createDefaultSettings, mergeWithDefaults } from '@shared/defaults/settings.js'
+import { createDefaultSettings, mergeWithDefaults } from './settings-defaults.js'
 import { createOnethingSettingsRepository } from '@onething/runtime/settings'
 import {
   readSpaceProviderSettings,

@@ -12,11 +12,13 @@
  *
  * 本文件是**纯**模块:不碰 node / electron / `process`,壳也能 import。
  */
-import type { OnethingModelRule, OnethingProviderKind } from './model-capability.js'
+import type { OnethingModelRule } from './model-capability.js'
+import type { OnethingModelsDevModel } from './model-registry.js'
 import type { DialSpec } from './dials.js'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { configureProviderErrorCodeDescriber } from '@onething/core/engine/error-details'
 import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
+import { ONETHING_PROTOCOL_DEFAULT_MODEL_RULES } from './model-families/index.js'
 
 export { EXTERNAL_AGENT_DIALECT_ID }
 
@@ -82,8 +84,39 @@ export interface ProviderEndpointSpec {
 
 /** models.dev 上这一家的模型以什么品牌名、在哪几本目录里出现(模型认亲用)。 */
 export interface ProviderModelIdentity {
+  /** 型号 id 前缀里这家厂牌的写法(小写)。聚合站没有自己的厂牌,写空表。 */
   brands: readonly string[]
+  /** 这家在 models.dev 里的目录键,按偏好排;在这里的键就是「第一方」。聚合站写空表。 */
   keys: readonly string[]
+  /**
+   * 这家的 models.dev 目录(`models.key`)是聚合站的「厂牌/型号」总表:带厂牌前缀的 id 在厂牌那家
+   * 查不到时,拿整串来这本目录里精确匹配(`model-identity.ts` 的第 ① 级)。
+   */
+  aggregator?: boolean
+}
+
+/**
+ * 出厂种子:这一家在出厂设置里的那一条 provider 配置(服务商自述试点 P3)。从前是
+ * `@shared/defaults/settings.ts` 里一张按家点名的大表,现在每家自己带,装配层
+ * (`packages/backend/stores/settings-defaults.ts`)按名册拼回来交给 `@shared` 的
+ * `createDefaultSettings` / `mergeWithDefaults`;空白空间加第一把 key 时的模型预填也读它。
+ *
+ * **值是逐字照搬旧表的**,与上面的 `defaultModel` 不是一回事(两边今天本来就不一样,
+ * 拿一边去「统一」另一边就是改行为)。键序也照搬:设置文件里的键序就是它。
+ *
+ * 契约层的 `ProviderConfig` 这里用不上(产品层不许依赖 IPC 契约),所以只列
+ * 通用的几格;档位格(`zhipuApiMode` …)的键名由这家 `dials.apiModeKey` / `regionKey` 声明,
+ * 走索引签名。
+ */
+export interface ProviderSeed {
+  readonly model: string
+  readonly selectedModels: readonly string[]
+  readonly enabled: boolean
+  readonly apiKey?: string
+  readonly baseUrl?: string
+  readonly authType?: 'apiKey' | 'oauth'
+  /** 各家档位格:键名由 manifest 的 `dials` 声明。 */
+  readonly [dialKey: string]: unknown
 }
 
 export interface ProviderManifest {
@@ -115,8 +148,8 @@ export interface ProviderManifest {
   familyTag?: string
   /** 计费档位(千问 / Kimi / 智谱)。 */
   dials?: DialSpec
-  /** 这家的模型按 `model-capability.ts` 哪一张型号规则表判。 */
-  modelRules: OnethingProviderKind
+  /** 这家的模型按 `model-capability.ts` 哪一张型号规则表判(表 id,由带表的那家 `modelRuleTable` 给出)。 */
+  modelRules: string
   behaviors?: ProviderBehaviors
   defaultBaseUrl: string
   supportsCustomBaseUrl: boolean
@@ -135,6 +168,20 @@ export interface ProviderManifest {
    * 同一张表可以被别家借用(claude-code 借 claude 的),但只由一家带。
    */
   modelRuleTable?: readonly OnethingModelRule[]
+  /**
+   * 目录补缺(只对 `models.kind === 'models.dev'` 的家有意义):这家在 models.dev 的目录滞后时,
+   * 按配置补上目录里还没有的几行 —— 只补缺,目录里真有的一律让位。千问的按量目录缺旗舰就靠它;
+   * 缺席 = 不补。
+   */
+  catalogBackfill?(config: Record<string, unknown> | undefined): readonly OnethingModelsDevModel[]
+  /** 出厂设置里的那一条(见 `ProviderSeed`)。缺席 = 出厂设置里没有这一家。 */
+  seed?: ProviderSeed
+  /**
+   * 名字点了这一家的思考线型 id 里,用户能在思考覆盖(`reasoningProfile.wire`)里点名的那几条。
+   * 合法取值是各家这一格与协议层名单(`agent-loop/providers/thinking/protocol-wire-ids.ts`)的
+   * 并集,不分是哪一家的覆盖(从前那张手写名单就是全局的)。
+   */
+  reasoningWires?: readonly string[]
 }
 
 /**
@@ -173,7 +220,8 @@ export const CUSTOM_ANTHROPIC_DIALECT_ID = 'custom-anthropic'
  * 自定义服务商 → manifest。读时映射,盘上的形状一格没动(旧数据不迁移)。
  *
  * `modelRules`:点名了方言且那份方言是某个内置家的,就借那一家的型号规则表(转发站
- * 选了 `openrouter` 方言,型号规则也该是 openrouter 那张);否则按 `apiType`。
+ * 选了 `openrouter` 方言,型号规则也该是 openrouter 那张);否则按接口类型查协议缺省表
+ * (`model-families` 的 `ONETHING_PROTOCOL_DEFAULT_MODEL_RULES`)。
  */
 export function manifestOfCustomProvider(custom: CustomProviderManifestSource): ProviderManifest {
   const baseDialect =
@@ -193,7 +241,9 @@ export function manifestOfCustomProvider(custom: CustomProviderManifestSource): 
     auth: { kind: 'apiKey' },
     models: { kind: 'endpoint' },
     billing: 'api',
-    modelRules: borrowed ?? (baseDialect === CUSTOM_ANTHROPIC_DIALECT_ID ? 'claude' : 'openai'),
+    modelRules:
+      borrowed ??
+      ONETHING_PROTOCOL_DEFAULT_MODEL_RULES[baseDialect === CUSTOM_ANTHROPIC_DIALECT_ID ? 'anthropic' : 'openai'],
     defaultBaseUrl: custom.baseUrl ?? '',
     supportsCustomBaseUrl: true,
     defaultModel: custom.model ?? '',

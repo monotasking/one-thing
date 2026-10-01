@@ -234,6 +234,27 @@ providers/
 - 各家专属字段(`zhipuApiMode` / `qwenApiMode` / `kimiApiMode` …)与它们在 `shared/defaults/settings.ts` 的缺省值,改为通用的"接口模式"字段,缺省值由各家 manifest 提供;读侧兼容旧键,写侧按新键,下次保存自动升级。
 - 尺子归零,改为零基线硬闸。
 
+**P3 落地记录**:
+- 契约:`AIProviderId` 改为 `string`,`AIProvider` 枚举删除;`ReasoningProfileOverride.wire` 改为 `string`;
+  `ZhipuApiMode` 等五个类型与 `ProviderConfig` 上的五个具名档位字段删除。**存档字段名不变** —— 它们由各家
+  `dials.apiModeKey` / `regionKey` 声明,壳与 runtime 一律按键读写;没有新增索引签名。
+- 出厂默认:`shared` 的 `DEFAULT_PROVIDER_CONFIGS` 拆了 —— 12 家各自的条目逐字搬进 manifest 的 `seed`
+  (值不与 `defaultModel` 统一,两边今天本来就不同);shared 只留非服务商的 `acp` / `custom`
+  (`NON_VENDOR_PROVIDER_SEEDS`)。`createDefaultSettings` / `mergeWithDefaults` 接受种子表;backend 的
+  `stores/settings-defaults.ts` 导出**预先绑好种子**的两个函数,backend 全部调用点改用它。键序有代码依赖
+  (`core/engine/title.ts` 取第一家兜底、CLI 列表顺序、server 多租户树直接下发),所以名册旁的 `VENDOR_SEED_ORDER`
+  保持旧键序,测试钉住;改动前先录的冻结快照(`stores/__tests__/settings-defaults.freeze.test.ts`)逐字相等。
+- runtime:`OnethingProviderKind` / `OnethingReasoningWire` / `openai-compatible` 的 `reasoningStyle` 改为 `string`;
+  校验用户覆盖的合法线型 = 协议层叶子模块 `thinking/protocol-wire-ids.ts` + 各家 manifest 的 `reasoningWires`
+  + `custom`,不再手写名单(`reasoning-wire-ids.test.ts` 钉住:旧的 14 个仍合法、`deepseek-inferred` 等仍非法)。
+  千问的目录补缺成为 manifest 的 `catalogBackfill`;自定义服务商借用的协议缺省规则表来自
+  `model-families/index.ts`;认亲读「聚合站目录」改为 openrouter manifest 声明 `aggregator: true`;三个只剩测试在用的
+  `*BuiltinProvider` 导出删除。
+- 尺子 163 → 119 对。provider 领域内剩 26 对,全是下列几类之一:自定义服务商的 `apiType: 'openai'|'anthropic'`
+  与 `custom-openai`(存档形状与协议名)、出图路由按 `kind` 判的一行(P2 已记)、grok 两半补设置条目的循环、
+  用户可见报错文案里的环境变量示例、落盘的 `'codex-http'` 转储模式名、`custom-probe` 以 gemini 方言为底、
+  ACP 的 agent id(`'claude-code'`、`'codex'`、`'gemini'` 作为 agent 名,尺子按字面量会误认)、领域外的语音默认值。
+
 ### P4 · 界面改读 RPC
 
 - providers 域补上"列出 manifest"等读接口;壳不再 import `runtime/src/providers/*`。

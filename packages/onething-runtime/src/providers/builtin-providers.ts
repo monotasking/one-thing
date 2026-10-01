@@ -56,9 +56,6 @@ function definitionById(id: string): OnethingBuiltinProviderDefinition {
 
 export const ONETHING_ACP_PROVIDER_ID = "acp";
 
-export const claudeCodeBuiltinProvider = definitionById("claude-code");
-export const kimiCodeBuiltinProvider = definitionById("kimi-code");
-export const codexBuiltinProvider = definitionById("codex");
 export const acpBuiltinProvider = definitionById(ONETHING_ACP_PROVIDER_ID);
 
 /**

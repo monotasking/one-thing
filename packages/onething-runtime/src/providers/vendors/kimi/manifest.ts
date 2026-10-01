@@ -139,4 +139,13 @@ export const KIMI_MANIFEST: ProviderManifest = {
     // K2.x 及更早只认 `tool_choice: auto`(#5b);未知型号按保守面倒。
     { test: /(?:)/, caps: { reasoning: false, forcedToolUse: false } },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    kimiApiMode: 'standard',
+    kimiRegion: 'cn',
+    model: 'moonshot-v1-8k',
+    selectedModels: [],
+    enabled: false,
+  },
 }

@@ -1066,7 +1066,8 @@ const MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS: RegExp[] = [
 const MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS: RegExp[] = [
   /function\s+toUsageAccount/,
   /providerId\s*!==\s*['"]codex['"]/,
-  /refreshTokenIfNeeded\(AIProvider\.Codex\)/,
+  // `AIProvider` 枚举已随服务商自述试点 P3 删除;同一种写法换成字面量照样拦。
+  /refreshTokenIfNeeded\((?:AIProvider\.Codex|['"]codex['"])\)/,
   /fetchCodexUsage\(token\)/,
   /capturedAt:\s*Date\.now\(\)/,
   /isFedramp:\s*token\.isFedrampAccount/,

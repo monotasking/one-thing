@@ -286,7 +286,7 @@ import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
 } from "@onething/core/session";
-import { mergeWithDefaults } from "@shared/defaults/settings.js";
+import { mergeWithDefaults } from "../stores/settings-defaults.js";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/backend/rpc/sandbox.js";

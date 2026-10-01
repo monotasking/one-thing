@@ -10,8 +10,12 @@ import type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/ada
 
 export type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/adapter-spec.js'
 
-// Provider IDs - can be extended by adding new providers
-export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'kimi-code' | 'zhipu' | 'qwen' | 'gemini' | 'codex' | 'acp' | 'custom' | string
+/**
+ * 服务商 id。**是数据,不是写死的名单**(服务商自述试点 P3):内置各家的名册在 runtime 的
+ * `packages/onething-runtime/src/providers/vendors/manifests.ts`(每家一行),自定义服务商的
+ * id 来自设置。契约层不列举任何一家。
+ */
+export type AIProviderId = string
 
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -22,29 +26,14 @@ export interface ReasoningProfileOverride {
   efforts?: (ThinkingEffort | 'none')[]
   defaultEffort?: ThinkingEffort
   disabledEffort?: ThinkingEffort
-  wire?: 'anthropic-adaptive' | 'anthropic-budget' | 'anthropic-always' | 'openai-effort' | 'gemini-level' | 'gemini-budget' | 'thinking-type' | 'zhipu-thinking' | 'qwen-thinking' | 'grok-effort' | 'openrouter-reasoning' | 'codex' | 'custom' | 'none'
+  /**
+   * 思考参数的线型 id。线型由协议层与各家登记(哪些取值合法由 runtime 的
+   * `normalizeOnethingReasoningProfileOverride` 判),契约层不列举。
+   */
+  wire?: string
   effortLabels?: Partial<Record<ThinkingEffort, string>>
   /** 声明式思考映射(形状住在 `@shared/contracts/adapter-spec`,批 4 的适配表复用同一份)。 */
   custom?: CustomReasoningMapping | null
-}
-
-// Legacy enum for backwards compatibility
-export enum AIProvider {
-  OpenAI = 'openai',
-  Claude = 'claude',
-  DeepSeek = 'deepseek',
-  Kimi = 'kimi',
-  /** Kimi 编程套餐(订阅),凭证走 OAuth device flow —— 与按量的 Kimi 分开。 */
-  KimiCode = 'kimi-code',
-  Zhipu = 'zhipu',
-  Qwen = 'qwen',
-  OpenRouter = 'openrouter',
-  Gemini = 'gemini',
-  ClaudeCode = 'claude-code',
-  GitHubCopilot = 'github-copilot',
-  Codex = 'codex',
-  ACP = 'acp',
-  Custom = 'custom',
 }
 
 // OAuth flow types
@@ -209,41 +198,13 @@ export interface ProviderInfo {
   models?: OpenRouterModel[]
 }
 
-export type ZhipuApiMode = 'standard' | 'coding-plan'
-
-/**
- * 千问: pay-as-you-go API key vs the Token Plan / Coding Plan subscriptions.
- * Each subscription has its own key AND its own host — leaving the general one
- * in place bills pay-as-you-go on top of the subscription.
- */
-export type QwenApiMode = 'standard' | 'token-plan' | 'coding-plan'
-/** 千问: 国内版 (Beijing) vs 海外版 (Singapore) — separate accounts and hosts. */
-export type QwenRegion = 'cn' | 'intl'
-
-/**
- * Kimi: 开放平台按量付费 vs Kimi Code (编程套餐) — the subscription issues its
- * own key and lives on its own host (api.kimi.com), so leaving the general one
- * in place bills pay-as-you-go on top of the subscription.
- */
-export type KimiApiMode = 'standard' | 'coding-plan'
-/** Kimi: 国内 (api.moonshot.cn) vs 海外 (api.moonshot.ai). Only the
- *  pay-as-you-go platform is split — Kimi Code has a single global host. */
-export type KimiRegion = 'cn' | 'intl'
-
 // Per-provider configuration
 export interface ProviderConfig {
   providerOptions?: { reasoningProfile?: ReasoningProfileOverride; [key: string]: unknown }
   apiKey?: string           // Optional for OAuth providers
   baseUrl?: string
-  zhipuApiMode?: ZhipuApiMode
-  // 千问 endpoint matrix: region picks the host family, mode picks pay-as-you-go
-  // vs Token Plan (which has its OWN host and its own sk-sp- key).
-  qwenApiMode?: QwenApiMode
-  qwenRegion?: QwenRegion
-  // Kimi endpoint matrix: region picks the 开放平台 host (国内/海外), mode picks
-  // pay-as-you-go vs Kimi Code (编程套餐), which has its OWN host and key.
-  kimiApiMode?: KimiApiMode
-  kimiRegion?: KimiRegion
+  // 各家的档位格(接口模式 / 地区)也存在这一层,键名由 runtime 里那一家 manifest 的
+  // `dials.apiModeKey` / `regionKey` 声明;契约层不点名,读写一律按键(壳:`providers/dials.ts`)。
   model: string             // Currently active model
   selectedModels: string[]  // List of models user has selected/enabled for quick switching
   enabled?: boolean         // Whether this provider is shown in the chat model selector

@@ -75,7 +75,7 @@ import {
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
 } from '@onething/runtime/spaces/provider-settings'
-import { DEFAULT_PROVIDER_CONFIGS } from '@shared/defaults/settings.js'
+import { providerSeedOf } from '../../stores/settings-defaults.js'
 import type {
   CoreProviderConfigLike,
   CoreSpaceCredentialMarker,
@@ -591,7 +591,7 @@ export function setSpaceProviderCredential(
 export function seedSpaceSelectedModels(spaceId: string, providerId: string): void {
   const current = readSpaceProviderSettings(spaceId) ?? createEmptySpaceProviderSettings()
   const config = current.providers[providerId]
-  const seedConfig = DEFAULT_PROVIDER_CONFIGS[providerId]
+  const seedConfig = providerSeedOf(providerId)
   const seeds = seedConfig?.selectedModels ?? []
   const seedModel = seedConfig?.model ?? ''
   const alreadyExpressed = config !== undefined && config.selectedModels !== undefined

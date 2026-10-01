@@ -27,11 +27,14 @@ import {
   readOnethingKimiOptions,
 } from '../vendors/kimi/endpoint.js'
 import { getOnethingModelsDevProviderId } from '../model-registry.js'
-import { kimiCodeBuiltinProvider } from '../builtin-providers.js'
+import { onethingBaseBuiltinProviders } from '../builtin-providers.js'
 import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
 import { pickOnethingProviderOptions } from '../provider-options.js'
 import { withResolvedProviderBaseUrl } from '../provider-config.js'
-import type { CoreProviderConfigLike } from '../provider-config.js'
+import type { ProviderConfigWithDials } from '../provider-config.js'
+
+// 按名导出的单家定义已删(服务商自述试点 P3):按 id 从内置表取。
+const kimiCodeBuiltinProvider = onethingBaseBuiltinProviders.find((provider) => provider.id === 'kimi-code')!
 
 describe('kimi endpoint matrix', () => {
   it('开放平台按区分家，编程套餐不分家', () => {
@@ -154,7 +157,7 @@ describe('kimi 的私有旋钮进袋子', () => {
   })
 
   it('存 → 跑 的那道边界上，地址与袋子一起备好', () => {
-    const stored: CoreProviderConfigLike = {
+    const stored: ProviderConfigWithDials = {
       model: 'kimi-k3',
       kimiApiMode: 'coding-plan',
       kimiRegion: 'cn',

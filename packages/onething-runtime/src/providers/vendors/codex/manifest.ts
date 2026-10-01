@@ -23,6 +23,8 @@ export const CODEX_MANIFEST: ProviderManifest = {
   billing: 'subscription',
   quotaSource: 'codex',
   modelRules: 'codex',
+  // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。
+  reasoningWires: ['codex'],
   behaviors: {
     separateDeveloperMessages: true,
     skipCompactOnUsageMismatch: true,
@@ -44,4 +46,11 @@ export const CODEX_MANIFEST: ProviderManifest = {
       },
     },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    model: 'gpt-5.3-codex',
+    selectedModels: [],
+    authType: 'oauth',
+    enabled: false,
+  },
 }

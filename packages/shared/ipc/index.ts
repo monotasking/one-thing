@@ -404,7 +404,7 @@ export type {
 	ModelsRoutes,
 } from "./providers.js";
 
-export { AIProvider, modelsRouter, providersRouter } from "./providers.js";
+export { modelsRouter, providersRouter } from "./providers.js";
 
 // MCP types
 export type {

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { ACPAgentConfig } from '../contracts/acp.js'
-import { DEFAULT_ACP_SETTINGS, DEFAULT_PROVIDER_CONFIGS, normalizeACPSettings } from '../defaults/settings.js'
+import { DEFAULT_ACP_SETTINGS, NON_VENDOR_PROVIDER_SEEDS as DEFAULT_PROVIDER_CONFIGS, normalizeACPSettings } from '../defaults/settings.js'
 
 describe('ACP 设置归一', () => {
   it('出厂名册是空的 —— 内置条目来自种子文件,不是 TS 字面量', () => {

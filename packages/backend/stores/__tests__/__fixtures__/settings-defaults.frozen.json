@@ -1,0 +1,350 @@
+{
+  "createDefault": {
+    "provider": "openai",
+    "temperature": 0.7,
+    "providers": {
+      "openai": {
+        "apiKey": "",
+        "model": "gpt-4o",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "claude": {
+        "apiKey": "",
+        "model": "claude-sonnet-4-5-20250929",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "deepseek": {
+        "apiKey": "",
+        "model": "deepseek-chat",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "kimi": {
+        "apiKey": "",
+        "kimiApiMode": "standard",
+        "kimiRegion": "cn",
+        "model": "moonshot-v1-8k",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "kimi-code": {
+        "authType": "oauth",
+        "model": "k3",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "zhipu": {
+        "apiKey": "",
+        "zhipuApiMode": "standard",
+        "model": "glm-5.2",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "qwen": {
+        "apiKey": "",
+        "qwenApiMode": "standard",
+        "qwenRegion": "cn",
+        "model": "qwen3.7-plus",
+        "selectedModels": [
+          "qwen3.7-plus",
+          "qwen3.8-max",
+          "qwen3.7-flash"
+        ],
+        "enabled": false
+      },
+      "openrouter": {
+        "apiKey": "",
+        "model": "openai/gpt-4o",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "gemini": {
+        "apiKey": "",
+        "model": "gemini-2.0-flash-exp",
+        "selectedModels": [],
+        "enabled": false
+      },
+      "claude-code": {
+        "model": "claude-sonnet-4-20250514",
+        "selectedModels": [],
+        "authType": "oauth",
+        "enabled": false
+      },
+      "github-copilot": {
+        "model": "gpt-4o",
+        "selectedModels": [],
+        "authType": "oauth",
+        "enabled": false
+      },
+      "codex": {
+        "model": "gpt-5.3-codex",
+        "selectedModels": [],
+        "authType": "oauth",
+        "enabled": false
+      },
+      "acp": {
+        "model": "claude-code",
+        "selectedModels": [
+          "claude-code",
+          "codex",
+          "gemini",
+          "copilot"
+        ],
+        "enabled": false
+      },
+      "custom": {
+        "apiKey": "",
+        "baseUrl": "",
+        "model": "",
+        "selectedModels": [],
+        "enabled": false
+      }
+    },
+    "customProviders": [],
+    "modelCatalog": {}
+  },
+  "merge": {
+    "unmigrated": {
+      "provider": "deepseek",
+      "temperature": 0.4,
+      "providers": {
+        "openai": {
+          "apiKey": "sk-test",
+          "model": "gpt-4.1",
+          "selectedModels": [
+            "gpt-4.1"
+          ],
+          "enabled": true
+        },
+        "claude": {
+          "apiKey": "",
+          "model": "claude-sonnet-4-5-20250929",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "deepseek": {
+          "apiKey": "",
+          "model": "deepseek-chat",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "kimi": {
+          "apiKey": "",
+          "kimiApiMode": "standard",
+          "kimiRegion": "cn",
+          "model": "moonshot-v1-8k",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "kimi-code": {
+          "authType": "oauth",
+          "model": "k3",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "zhipu": {
+          "apiKey": "",
+          "zhipuApiMode": "coding-plan",
+          "model": "glm-5.2",
+          "selectedModels": [],
+          "enabled": true
+        },
+        "qwen": {
+          "apiKey": "sk-q",
+          "qwenRegion": "intl",
+          "model": "qwen3.7-plus",
+          "selectedModels": [
+            "qwen3.7-plus"
+          ]
+        },
+        "openrouter": {
+          "apiKey": "",
+          "model": "openai/gpt-4o",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "gemini": {
+          "apiKey": "",
+          "model": "gemini-2.0-flash-exp",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "claude-code": {
+          "model": "claude-sonnet-4-20250514",
+          "selectedModels": [],
+          "authType": "oauth",
+          "enabled": false
+        },
+        "github-copilot": {
+          "model": "gpt-4o",
+          "selectedModels": [],
+          "authType": "oauth",
+          "enabled": false
+        },
+        "codex": {
+          "model": "gpt-5.3-codex",
+          "selectedModels": [],
+          "authType": "oauth",
+          "enabled": false
+        },
+        "acp": {
+          "model": "claude-code",
+          "selectedModels": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "copilot"
+          ],
+          "enabled": false
+        },
+        "custom": {
+          "apiKey": "",
+          "baseUrl": "",
+          "model": "",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "vendor-not-in-defaults": {
+          "apiKey": "x",
+          "model": "m",
+          "selectedModels": [
+            "m"
+          ],
+          "enabled": true
+        }
+      },
+      "customProviders": [
+        {
+          "id": "custom-1",
+          "name": "C",
+          "apiType": "openai",
+          "baseUrl": "http://x",
+          "apiKey": "k",
+          "model": "m",
+          "selectedModels": []
+        }
+      ],
+      "modelCatalog": {
+        "openai": {
+          "fetchedAt": 1
+        }
+      }
+    },
+    "migrated": {
+      "temperature": 0.3,
+      "modelCatalog": {
+        "deepseek": {
+          "fetchedAt": 2
+        }
+      }
+    },
+    "empty": {
+      "provider": "openai",
+      "temperature": 0.7,
+      "providers": {
+        "openai": {
+          "apiKey": "",
+          "model": "gpt-4o",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "claude": {
+          "apiKey": "",
+          "model": "claude-sonnet-4-5-20250929",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "deepseek": {
+          "apiKey": "",
+          "model": "deepseek-chat",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "kimi": {
+          "apiKey": "",
+          "kimiApiMode": "standard",
+          "kimiRegion": "cn",
+          "model": "moonshot-v1-8k",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "kimi-code": {
+          "authType": "oauth",
+          "model": "k3",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "zhipu": {
+          "apiKey": "",
+          "zhipuApiMode": "standard",
+          "model": "glm-5.2",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "qwen": {
+          "apiKey": "",
+          "qwenApiMode": "standard",
+          "qwenRegion": "cn",
+          "model": "qwen3.7-plus",
+          "selectedModels": [
+            "qwen3.7-plus",
+            "qwen3.8-max",
+            "qwen3.7-flash"
+          ],
+          "enabled": false
+        },
+        "openrouter": {
+          "apiKey": "",
+          "model": "openai/gpt-4o",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "gemini": {
+          "apiKey": "",
+          "model": "gemini-2.0-flash-exp",
+          "selectedModels": [],
+          "enabled": false
+        },
+        "claude-code": {
+          "model": "claude-sonnet-4-20250514",
+          "selectedModels": [],
+          "authType": "oauth",
+          "enabled": false
+        },
+        "github-copilot": {
+          "model": "gpt-4o",
+          "selectedModels": [],
+          "authType": "oauth",
+          "enabled": false
+        },
+        "codex": {
+          "model": "gpt-5.3-codex",
+          "selectedModels": [],
+          "authType": "oauth",
+          "enabled": false
+        },
+        "acp": {
+          "model": "claude-code",
+          "selectedModels": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "copilot"
+          ],
+          "enabled": false
+        },
+        "custom": {
+          "apiKey": "",
+          "baseUrl": "",
+          "model": "",
+          "selectedModels": [],
+          "enabled": false
+        }
+      },
+      "customProviders": [],
+      "modelCatalog": {}
+    }
+  }
+}

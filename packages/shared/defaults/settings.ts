@@ -3,7 +3,6 @@
  * Single source of truth for all default settings across main and renderer processes
  */
 
-import { AIProvider } from '../ipc/providers.js'
 import { DEFAULT_AGENT_ID } from '../ipc/agents.js'
 import type {
   AppSettings,
@@ -59,106 +58,52 @@ export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
 // Provider Configurations
 // ============================================================================
 
-export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
-  [AIProvider.OpenAI]: {
-    apiKey: '',
-    model: 'gpt-4o',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.Claude]: {
-    apiKey: '',
-    model: 'claude-sonnet-4-5-20250929',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.DeepSeek]: {
-    apiKey: '',
-    model: 'deepseek-chat',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.Kimi]: {
-    apiKey: '',
-    kimiApiMode: 'standard',
-    kimiRegion: 'cn',
-    model: 'moonshot-v1-8k',
-    selectedModels: [],
-    enabled: false,
-  },
-  // 订阅档:没有 apiKey 这一格 —— 凭证是 OAuth token,存在 token store 里。
-  [AIProvider.KimiCode]: {
-    authType: 'oauth',
-    // 套餐目录(models.dev `kimi-for-coding`)里的 id,与按量那本不重名。
-    model: 'k3',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.Zhipu]: {
-    apiKey: '',
-    zhipuApiMode: 'standard',
-    model: 'glm-5.2',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.Qwen]: {
-    apiKey: '',
-    qwenApiMode: 'standard',
-    qwenRegion: 'cn',
-    model: 'qwen3.7-plus',
-    // The three models both docs sites put front and center. Seeded because
-    // models.dev lags the vendor: qwen3.8-max shipped 2026-08-03 and is still
-    // absent from the pay-as-you-go catalogs (alibaba / alibaba-cn), so a
-    // registry refresh alone would hide the flagship. Entries the catalog does
-    // carry get their real metadata from the refresh; the rest are synthesized
-    // until models.dev catches up.
-    selectedModels: ['qwen3.7-plus', 'qwen3.8-max', 'qwen3.7-flash'],
-    enabled: false,
-  },
-  [AIProvider.OpenRouter]: {
-    apiKey: '',
-    model: 'openai/gpt-4o',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.Gemini]: {
-    apiKey: '',
-    model: 'gemini-2.0-flash-exp',
-    selectedModels: [],
-    enabled: false,
-  },
-  [AIProvider.ClaudeCode]: {
-    model: 'claude-sonnet-4-20250514',
-    selectedModels: [],
-    authType: 'oauth',
-    enabled: false,
-  },
-  [AIProvider.GitHubCopilot]: {
-    model: 'gpt-4o',
-    selectedModels: [],
-    authType: 'oauth',
-    enabled: false,
-  },
-  [AIProvider.Codex]: {
-    model: 'gpt-5.3-codex',
-    selectedModels: [],
-    authType: 'oauth',
-    enabled: false,
-  },
-  [AIProvider.ACP]: {
+/**
+ * 出厂 provider 种子表:出厂设置里有哪几家的配置、出厂默认用哪一家(服务商自述试点 P3,
+ * `docs/design/architecture-direction-2026-10.md` §4)。
+ *
+ * 从前这里是一张按家点名的大表。服务商 id 是数据,名册在 runtime(各家 manifest 的 `seed`,
+ * `packages/onething-runtime/src/providers/vendors/manifests.ts`),而契约层不许反向依赖
+ * runtime —— 所以各家那几条由装配层(`packages/backend/stores/settings-defaults.ts`)按名册
+ * 拼好,经 `createDefaultSettings` / `mergeWithDefaults` 的参数传进来。这里只留不是服务商的
+ * 两条(`NON_VENDOR_PROVIDER_SEEDS`)。
+ */
+export interface ProviderSeedTable {
+  /** 出厂默认用哪一家。 */
+  provider: string
+  /** 键序就是设置文件里的键序(读设置的代码里有按键序取第一家的)。 */
+  providers: Record<string, ProviderConfig>
+}
+
+/**
+ * 不是服务商的两条,排在出厂种子表末尾:外部 agent 那条路的占位(`acp`)与自定义服务商的
+ * 空模板(`custom`)。
+ */
+export const NON_VENDOR_PROVIDER_SEEDS: Readonly<Record<string, ProviderConfig>> = {
+  acp: {
     // id 跟种子文件(`resources/acp-agents/<id>.json`)走;A1-a 起 `codex-cli` / `kimi-code`
     // 改名 `codex` / `kimi`,旧名写在那两份种子的 `aliases` 里,由名册认回。
     model: 'claude-code',
     selectedModels: ['claude-code', 'codex', 'gemini', 'copilot'],
     enabled: false,
   },
-  [AIProvider.Custom]: {
+  custom: {
     apiKey: '',
     baseUrl: '',
     model: '',
     selectedModels: [],
     enabled: false,
   },
+}
+
+/**
+ * 没人传种子表时的缺省:只有不是服务商的两条,默认指着自定义服务商的空模板。生产路径
+ * 一律经装配层预先绑好种子表的那一份(见 `ProviderSeedTable`),走到这里的只有测试与
+ * 只读设置里非 provider 段的调用者。
+ */
+const FALLBACK_PROVIDER_SEED_TABLE: ProviderSeedTable = {
+  provider: 'custom',
+  providers: NON_VENDOR_PROVIDER_SEEDS as Record<string, ProviderConfig>,
 }
 
 // ============================================================================
@@ -170,18 +115,21 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
  *
  * C2 之后 `provider` / `providers` / `customProviders` 这三格**不再落盘在
  * settings.json** —— 它们住在每个空间的 `providers.json`。这份种子仍然是生效
- * 形状(`EffectiveAISettings`),因为它同时充当:
+ * 形状(`EffectiveAISettings`),因为它充当全新安装第一次合成时的兜底
+ * (`createDefaultSettings()` 的 `ai`)。空白空间加第一把 key 时的模型种子表
+ * (`seedSpaceSelectedModels`)读的是同一张 provider 种子表。
  *
- * - 全新安装第一次合成时的兜底(`createDefaultSettings()` 的 `ai`);
- * - `DEFAULT_PROVIDER_CONFIGS` 的宿主 —— 空白空间加第一把 key 时的模型种子表
- *   (`seedSpaceSelectedModels`)从这里取。
+ * 每次深拷一份:种子表里的对象是模块常量,共享出去就是 apps/server 多租户树上的
+ * 跨用户串改(见 `normalizeAISection`)。
  */
-export const DEFAULT_AI_SETTINGS: EffectiveAISettings = {
-  provider: AIProvider.OpenAI,
-  temperature: DEFAULT_TEMPERATURE,
-  providers: DEFAULT_PROVIDER_CONFIGS as EffectiveAISettings['providers'],
-  customProviders: [],
-  modelCatalog: {},
+function createDefaultAISettings(seeds: ProviderSeedTable): EffectiveAISettings {
+  return JSON.parse(JSON.stringify({
+    provider: seeds.provider,
+    temperature: DEFAULT_TEMPERATURE,
+    providers: seeds.providers,
+    customProviders: [],
+    modelCatalog: {},
+  })) as EffectiveAISettings
 }
 
 // ============================================================================
@@ -425,7 +373,7 @@ export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
  *
  * - **C2 迁移已跑过**(`storage.spaceProviderSettingsMigratedAt` 在)且盘上没有
  *   `providers` 这一格:那就是干净的全局段 —— 只留温度缺省 + models.dev 目录
- *   缓存。不能再把 `DEFAULT_PROVIDER_CONFIGS` 并回去,否则每次保存都会往
+ *   缓存。不能再把出厂 provider 种子表并回去,否则每次保存都会往
  *   `settings.json` 里写回一整张永远不被读的默认 provider 表。
  * - **其余情况**:仍然并进默认表。两个理由,缺一不可 ——
  *   ① 迁移**之前**盘上还躺着 `provider` / `providers` / `customProviders`,
@@ -549,9 +497,9 @@ export function normalizeNotesSettings(
   return normalized
 }
 
-export function createDefaultSettings(): AppSettings {
+export function createDefaultSettings(providerSeeds: ProviderSeedTable = FALLBACK_PROVIDER_SEED_TABLE): AppSettings {
   return {
-    ai: JSON.parse(JSON.stringify(DEFAULT_AI_SETTINGS)),
+    ai: createDefaultAISettings(providerSeeds),
     theme: 'dark',
     general: JSON.parse(JSON.stringify(DEFAULT_GENERAL_SETTINGS)),
     chat: JSON.parse(JSON.stringify(DEFAULT_CHAT_SETTINGS)),
@@ -589,8 +537,11 @@ function normalizePetChattinessSetting(value: unknown): PetChattinessSetting {
   return value === 'quiet' || value === 'balanced' || value === 'chatty' ? value : DEFAULT_PET_CHATTINESS
 }
 
-export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
-  const defaults = createDefaultSettings()
+export function mergeWithDefaults(
+  settings: Partial<AppSettings>,
+  providerSeeds: ProviderSeedTable = FALLBACK_PROVIDER_SEED_TABLE,
+): AppSettings {
+  const defaults = createDefaultSettings(providerSeeds)
 
   // Use type assertion because we know defaults provides all required fields
   // and spread operations preserve those values
@@ -601,7 +552,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     // 缓存),per-space 那一半住在 `workspaces/<id>/providers.json`;剥离发生在
     // **仓库的写路**(`app/stores/settings.ts` 的 `prepareSave`),不在这里。
     //
-    // 这里仍然把 `DEFAULT_PROVIDER_CONFIGS` 并进来,有两个理由:
+    // 这里仍然把出厂 provider 种子表并进来,有两个理由:
     //  1. 迁移**之前**的 settings.json 里还躺着 `provider` / `providers` /
     //     `customProviders`,一次性迁移正要读它们(展开放在最前面是故意的);
     //  2. apps/server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内** ——

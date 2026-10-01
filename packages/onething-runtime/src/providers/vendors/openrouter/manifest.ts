@@ -25,10 +25,15 @@ export const OPENROUTER_MANIFEST: ProviderManifest = {
   billing: 'api',
   quotaSource: 'openrouter',
   modelRules: 'openrouter',
+  // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。
+  reasoningWires: ['openrouter-reasoning'],
   defaultBaseUrl: 'https://openrouter.ai/api/v1',
   supportsCustomBaseUrl: false,
   defaultModel: 'openai/gpt-4o',
   envVars: ['OPENROUTER_API_KEY'],
+  // 认亲:这家的目录是「厂牌/型号」总表(从 `model-identity.ts` 第 ① 级的点名搬来)。它自己不是哪个
+  // 型号厂牌的第一方,所以厂牌与目录键两格都是空表 —— 不进厂牌别名表。
+  modelIdentity: { brands: [], keys: [], aggregator: true },
   // 型号规则表(从 `model-capability.ts` 的 `PROVIDER_MODEL_RULES.openrouter` 搬来,逐字)。
   modelRuleTable: [
     // Capability comes from the registry; the profile applies once reasoning is known.
@@ -44,4 +49,11 @@ export const OPENROUTER_MANIFEST: ProviderManifest = {
       },
     },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    model: 'openai/gpt-4o',
+    selectedModels: [],
+    enabled: false,
+  },
 }

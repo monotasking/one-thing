@@ -70,16 +70,22 @@ export interface CoreProviderConfigLike {
   dialect?: string
   /** Runtime-only: stamped by per-space credential resolution, never persisted. */
   spaceCredential?: CoreSpaceCredentialMarker
-  /** Stored, user-editable dials. The settings UI owns these names. */
-  zhipuApiMode?: 'standard' | 'coding-plan'
-  qwenApiMode?: 'standard' | 'token-plan' | 'coding-plan'
-  qwenRegion?: 'cn' | 'intl'
-  kimiApiMode?: 'standard' | 'coding-plan'
-  kimiRegion?: 'cn' | 'intl'
+  // 存档里还有各家的档位格(接口模式 / 地区),键名由那一家 manifest 的 `dials.apiModeKey` /
+  // `regionKey` 声明,读的人按键取(`endpoint.pickOptions` / `resolveBaseUrl` 收 `Record<string,
+  // unknown>`)。这里不点名(服务商自述试点 P3)。
   /** Runtime-only: packed by withResolvedProviderBaseUrl, never persisted. */
   providerOptions?: OnethingProviderOptions
   temperature?: number
   oauthToken?: unknown
+}
+
+/**
+ * 带着各家档位格的配置形状:档位格的键名由那一家 manifest 的 `dials.apiModeKey` / `regionKey`
+ * 声明(`zhipuApiMode` / `qwenRegion` ……),类型上不点名,按键读出来是 `unknown`、由那一家的
+ * 归一函数收窄。要把这几格放在类型上带着走的地方(按键读写的宿主、测试夹具)用它。
+ */
+export type ProviderConfigWithDials<T extends CoreProviderConfigLike = CoreProviderConfigLike> = T & {
+  readonly [dialKey: string]: unknown
 }
 
 export interface CoreCustomProviderConfigLike extends CoreProviderConfigLike {

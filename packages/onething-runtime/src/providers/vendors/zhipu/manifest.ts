@@ -65,6 +65,8 @@ export const ZHIPU_MANIFEST: ProviderManifest = {
   billing: 'api',
   dials: ZHIPU_DIALS,
   modelRules: 'zhipu',
+  // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。
+  reasoningWires: ['zhipu-thinking'],
   defaultBaseUrl: ONETHING_ZHIPU_STANDARD_BASE_URL,
   supportsCustomBaseUrl: true,
   defaultModel: 'glm-5.2',
@@ -97,4 +99,12 @@ export const ZHIPU_MANIFEST: ProviderManifest = {
     // 值的行」,所以 reasoning 的顺序语义一点没动。
     { test: /(?:)/, caps: { reasoning: false, forcedToolUse: false } },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    zhipuApiMode: 'standard',
+    model: 'glm-5.2',
+    selectedModels: [],
+    enabled: false,
+  },
 }

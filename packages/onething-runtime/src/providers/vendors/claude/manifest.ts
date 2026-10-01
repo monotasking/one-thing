@@ -52,4 +52,11 @@ export const CLAUDE_MANIFEST: ProviderManifest = {
       profile: onethingClaudeReasoningProfile,
     },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    model: 'claude-sonnet-4-5-20250929',
+    selectedModels: [],
+    enabled: false,
+  },
 }

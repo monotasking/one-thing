@@ -47,4 +47,11 @@ export const GEMINI_MANIFEST: ProviderManifest = {
     // gemini wire must know which of the two thinking encoders to reach for.
     { test: /(?:)/, caps: { reasoning: false, vision: true }, wire: onethingGeminiReasoningWire },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    model: 'gemini-2.0-flash-exp',
+    selectedModels: [],
+    enabled: false,
+  },
 }

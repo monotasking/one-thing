@@ -23,7 +23,7 @@ import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
 import { Permission, resetPermissionGrantsForTests } from '@onething/core/permission'
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../stores/settings-defaults.js'
 import { chatRouter } from '@shared/ipc/chat.js'
 import { createOnethingHttpServer as createRawHttpServer, type OnethingHttpServerOptions } from '../http.js'
 import {

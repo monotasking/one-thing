@@ -21,7 +21,7 @@
  * 现在与 mcp / oauth / agents / models / skills 同一条口径(拍板 #20)——
  * 一个 store 一份设置,web 与桌面读同一本 `<store>/settings.json`。
  */
-import { mergeWithDefaults } from "@shared/defaults/settings.js";
+import { mergeWithDefaults } from "../stores/settings-defaults.js";
 import type { AppSettings } from "@shared/ipc/settings.js";
 import {
 	MCP_SERVER_PRIVATE_KEYS as mcpServerPrivateKeys,

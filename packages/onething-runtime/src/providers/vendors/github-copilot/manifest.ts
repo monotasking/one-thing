@@ -45,4 +45,11 @@ export const GITHUB_COPILOT_MANIFEST: ProviderManifest = {
       }),
     },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    model: 'gpt-4o',
+    selectedModels: [],
+    authType: 'oauth',
+    enabled: false,
+  },
 }

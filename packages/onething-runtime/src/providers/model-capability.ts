@@ -38,6 +38,7 @@
  * web build import it directly.
  */
 import { getProviderManifest, getProviderManifestRegistry } from './manifest.js'
+import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from '../agent-loop/providers/thinking/protocol-wire-ids.js'
 
 export type OnethingReasoningEffortLevel =
   | 'minimal'
@@ -61,23 +62,13 @@ export type OnethingReasoningEffortLevel =
  */
 export type OnethingReasoningEffortOption = OnethingReasoningEffortLevel | 'none'
 
-/** How the thinking intent is expressed on the wire by the owning provider. */
-export type OnethingReasoningWire =
-  | 'anthropic-adaptive'
-  | 'anthropic-budget'
-  /** Fable / Mythos: thinking is always on, the `thinking` param is rejected. */
-  | 'anthropic-always'
-  | 'openai-effort'
-  | 'gemini-level'
-  | 'gemini-budget'
-  | 'thinking-type'
-  | 'zhipu-thinking'
-  | 'qwen-thinking'
-  | 'grok-effort'
-  | 'openrouter-reasoning'
-  | 'codex'
-  | 'custom'
-  | 'none'
+/**
+ * How the thinking intent is expressed on the wire by the owning provider —
+ * a thinking-wire id. 线型由协议层与各家登记(`agent-loop/providers/thinking/` 与各家
+ * `vendors/<id>/thinking.ts`),这里不列举;用户覆盖里哪些取值合法见
+ * `isDeclarableReasoningWire`。
+ */
+export type OnethingReasoningWire = string
 
 export interface OnethingReasoningProfile {
   /** Whether the user can turn thinking off (o-series/grok always reason). */
@@ -124,7 +115,22 @@ export interface OnethingReasoningProfileOverride {
 }
 
 const REASONING_LEVELS: readonly OnethingReasoningEffortLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-const REASONING_WIRES: readonly OnethingReasoningWire[] = ['anthropic-adaptive', 'anthropic-budget', 'anthropic-always', 'openai-effort', 'gemini-level', 'gemini-budget', 'thinking-type', 'zhipu-thinking', 'qwen-thinking', 'grok-effort', 'openrouter-reasoning', 'codex', 'custom', 'none']
+/** 不是线型、但用户覆盖里合法的取值:`custom` = 按 `custom` 那一格的声明式映射编码。 */
+const NON_WIRE_REASONING_VALUES: readonly string[] = ['custom']
+
+/**
+ * 用户覆盖(`reasoningProfile.wire`)里这个取值合不合法。名单不在这里手写(服务商自述试点 P3):
+ * 协议层的那几条读 `PROTOCOL_DECLARABLE_REASONING_WIRE_IDS`,点了某一家名字的那几条读内置各家
+ * manifest 的 `reasoningWires`,再加上非线型的 `custom`。不分是哪一家的覆盖 —— 从前那张手写
+ * 名单就是全局的。
+ */
+function isDeclarableReasoningWire(value: unknown): value is OnethingReasoningWire {
+  if (typeof value !== 'string') return false
+  if (PROTOCOL_DECLARABLE_REASONING_WIRE_IDS.includes(value) || NON_WIRE_REASONING_VALUES.includes(value)) return true
+  return getProviderManifestRegistry()
+    .list()
+    .some((manifest) => manifest.origin === 'builtin' && manifest.reasoningWires?.includes(value) === true)
+}
 const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
 
 function profileRecord(value: unknown): value is Record<string, unknown> {
@@ -160,8 +166,8 @@ export function normalizeOnethingReasoningProfileOverride(value: unknown): Oneth
     result.efforts = [...new Set(value.efforts)]
   }
   if (value.wire !== undefined) {
-    if (!REASONING_WIRES.includes(value.wire as OnethingReasoningWire)) return undefined
-    result.wire = value.wire as OnethingReasoningWire
+    if (!isDeclarableReasoningWire(value.wire)) return undefined
+    result.wire = value.wire
   }
   if (value.effortLabels !== undefined) {
     if (!profileRecord(value.effortLabels)) return undefined
@@ -431,20 +437,11 @@ export interface ResolveOnethingModelCapabilitiesInput {
 // Provider kinds
 // ---------------------------------------------------------------------------
 
-export type OnethingProviderKind =
-  | 'claude'
-  | 'openai'
-  | 'gemini'
-  | 'zhipu'
-  | 'qwen'
-  | 'grok'
-  | 'openrouter'
-  | 'deepseek'
-  | 'kimi'
-  | 'codex'
-  | 'copilot'
-  | 'acp'
-  | 'unknown'
+/**
+ * 型号规则表 id(manifest 的 `modelRules`)。表由带它的那一家的 `modelRuleTable` 给出,不是服务商
+ * 也不属于任何一家的两张(`acp` / `unknown`)在下面的 `NON_VENDOR_MODEL_RULES`。这里不列举。
+ */
+export type OnethingProviderKind = string
 
 /**
  * 这家的模型按哪张型号规则表判 —— 读 manifest 的 `modelRules`(批 M),不点名。

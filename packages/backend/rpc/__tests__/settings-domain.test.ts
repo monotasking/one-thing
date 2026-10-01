@@ -17,7 +17,7 @@
  *  - `getSystemTheme` 读的是宿主端口(未注入 = 浅色)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mergeWithDefaults } from '@shared/defaults/settings.js'
+import { mergeWithDefaults } from '../../stores/settings-defaults.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { SERVER_REDACTED_SECRET } from '../../server/mcp-secrets.js'
 import { settingsRouter } from '@shared/ipc/settings.js'

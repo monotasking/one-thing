@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
 	ONETHING_ACP_PROVIDER_ID,
 	acpBuiltinProvider,
-	claudeCodeBuiltinProvider,
-	codexBuiltinProvider,
-	kimiCodeBuiltinProvider,
 	onethingBaseBuiltinProviders,
 	onethingPortableBuiltinProviders,
 } from "../builtin-providers.js";
+
+// 三个按名导出的单家定义已删(服务商自述试点 P3):按 id 从内置表取。
+const builtinById = (id: string) => onethingBaseBuiltinProviders.find((provider) => provider.id === id)!;
+const claudeCodeBuiltinProvider = builtinById("claude-code");
+const kimiCodeBuiltinProvider = builtinById("kimi-code");
+const codexBuiltinProvider = builtinById("codex");
 
 describe("onething builtin provider metadata", () => {
 	it("declares portable builtin providers in runtime", () => {

@@ -39,4 +39,13 @@ export const KIMI_CODE_MANIFEST: ProviderManifest = {
     entryFields: { apiMode: 'kimiApiMode', region: 'kimiRegion' },
     ownsBaseUrl: true,
   },
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  // 订阅档:没有 apiKey 这一格 —— 凭证是 OAuth token,存在 token store 里。
+  seed: {
+    authType: 'oauth',
+    // 套餐目录(models.dev `kimi-for-coding`)里的 id,与按量那本不重名。
+    model: 'k3',
+    selectedModels: [],
+    enabled: false,
+  },
 }

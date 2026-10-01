@@ -15,6 +15,7 @@ import {
   getOnethingQwenBaseUrl,
   normalizeOnethingQwenApiMode,
   normalizeOnethingQwenRegion,
+  onethingQwenBackfillModels,
   resolveOnethingQwenBaseUrl,
   resolveOnethingQwenModelsDevProviderId,
   type OnethingQwenEndpointConfig,
@@ -81,9 +82,14 @@ export const QWEN_MANIFEST: ProviderManifest = {
     key: 'alibaba-cn',
     keyOf: (config) => resolveOnethingQwenModelsDevProviderId(config as OnethingQwenEndpointConfig | undefined),
   },
+  // 按量目录(alibaba / alibaba-cn)还没收旗舰,补上目录里缺的那几行(见 `onethingQwenBackfillModels`;
+  // 从 `model-registry.ts` 按 id 的分支搬来)。
+  catalogBackfill: (config) => onethingQwenBackfillModels(config as OnethingQwenEndpointConfig | undefined),
   billing: 'api',
   dials: QWEN_DIALS,
   modelRules: 'qwen',
+  // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。
+  reasoningWires: ['qwen-thinking'],
   defaultBaseUrl: ONETHING_QWEN_DEFAULT_BASE_URL,
   supportsCustomBaseUrl: true,
   defaultModel: ONETHING_QWEN_DEFAULT_MODEL,
@@ -187,4 +193,19 @@ export const QWEN_MANIFEST: ProviderManifest = {
     { test: /-vl|vl-|omni/, caps: { reasoning: false, vision: true } },
     { test: /(?:)/, caps: { reasoning: false } },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    qwenApiMode: 'standard',
+    qwenRegion: 'cn',
+    model: 'qwen3.7-plus',
+    // The three models both docs sites put front and center. Seeded because
+    // models.dev lags the vendor: qwen3.8-max shipped 2026-08-03 and is still
+    // absent from the pay-as-you-go catalogs (alibaba / alibaba-cn), so a
+    // registry refresh alone would hide the flagship. Entries the catalog does
+    // carry get their real metadata from the refresh; the rest are synthesized
+    // until models.dev catches up.
+    selectedModels: ['qwen3.7-plus', 'qwen3.8-max', 'qwen3.7-flash'],
+    enabled: false,
+  },
 }

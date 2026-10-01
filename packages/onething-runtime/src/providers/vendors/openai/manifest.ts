@@ -37,4 +37,11 @@ export const OPENAI_MANIFEST: ProviderManifest = {
     // Kind-level vision default mirrors the engine's historical provider-level flag.
     { test: /(?:)/, caps: { reasoning: false, vision: true } },
   ],
+  // 出厂设置里的那一条,逐字照搬自 P3 之前 `@shared/defaults/settings.ts` 的默认表(见 `ProviderSeed`)。
+  seed: {
+    apiKey: '',
+    model: 'gpt-4o',
+    selectedModels: [],
+    enabled: false,
+  },
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { pickOnethingProviderOptions } from '../provider-options.js'
 import { readOnethingQwenOptions } from '../vendors/qwen/endpoint.js'
 import { getEffectiveProviderConfig, withResolvedProviderBaseUrl } from '../provider-config.js'
-import type { CoreProviderConfigLike } from '../provider-config.js'
+import type { CoreProviderConfigLike, ProviderConfigWithDials } from '../provider-config.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,
@@ -39,7 +39,7 @@ describe('provider-private options', () => {
   })
 
   it('packs the bag at the stored → runtime boundary', () => {
-    const stored: CoreProviderConfigLike = { model: 'glm-5.2', zhipuApiMode: 'coding-plan' }
+    const stored: ProviderConfigWithDials = { model: 'glm-5.2', zhipuApiMode: 'coding-plan' }
     const packed = withResolvedProviderBaseUrl('zhipu', stored)
 
     expect(packed?.providerOptions).toEqual({ zhipuApiMode: 'coding-plan' })
@@ -51,7 +51,7 @@ describe('provider-private options', () => {
   })
 
   it('carries the bag through effective-config resolution for every branch', () => {
-    const settings: { ai: { provider: string; providers: Record<string, CoreProviderConfigLike> } } = {
+    const settings: { ai: { provider: string; providers: Record<string, ProviderConfigWithDials> } } = {
       ai: {
         provider: 'zhipu',
         providers: {

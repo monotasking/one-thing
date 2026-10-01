@@ -11,17 +11,12 @@ import {
 	isOnethingManualModelEntry,
 	mergeRefreshedCatalog,
 } from "./manual-models.js";
-import type { OnethingKimiEndpointConfig } from "./vendors/kimi/endpoint.js";
+import type { CoreProviderConfigLike, ProviderConfigWithDials } from "./provider-config.js";
 import {
 	MODELS_DEV_API_URL,
 	type GetModelsDevDataOptions,
 	type ModelsDevCache,
 } from "./models-dev-cache.js";
-import {
-	ONETHING_QWEN_PROVIDER_ID,
-	onethingQwenBackfillModels,
-	type OnethingQwenEndpointConfig,
-} from "./vendors/qwen/endpoint.js";
 import { ONETHING_MODEL_DISPLAY_NAMES } from "./model-families/index.js";
 // Catalog-key rules live in models-dev-catalog.ts (the renderer imports that
 // file alone); re-exported here so existing callers keep their import path.
@@ -169,7 +164,9 @@ export type OnethingCatalogModelEntry =
 	| OnethingModelCapabilityEntry
 	| OnethingManualModelEntry;
 
-export interface OnethingProviderModelConfig extends OnethingQwenEndpointConfig {
+export interface OnethingProviderModelConfig {
+	/** 目录键与目录补缺按配置算(档位 / 地区格由各家 manifest 声明,按键读),这一格之外不点名。 */
+	baseUrl?: string;
 	models?: Record<string, OnethingCatalogModelEntry>;
 	modelsLastFetched?: number;
 	modelCapabilitiesByModel?: Record<string, OnethingModelCapabilityOverride>;
@@ -731,7 +728,7 @@ export function onethingCapabilityEntryToOpenRouterModel(
 export function createOnethingModelEntriesFromModelsDev(
 	providerId: string,
 	data: OnethingModelsDevResponse,
-	config?: OnethingQwenEndpointConfig & OnethingKimiEndpointConfig,
+	config?: CoreProviderConfigLike | ProviderConfigWithDials,
 ): Record<string, OnethingModelCapabilityEntry> | undefined {
 	const devProvider = data[getOnethingModelsDevProviderId(providerId, config)];
 	if (!devProvider) return undefined;
@@ -744,9 +741,11 @@ export function createOnethingModelEntriesFromModelsDev(
 		);
 	}
 
-	if (providerId === ONETHING_QWEN_PROVIDER_ID) {
+	// 目录补缺由这家 manifest 自己说(`catalogBackfill`,今天只有千问的按量目录缺旗舰)。
+	const backfill = getProviderManifest(providerId)?.catalogBackfill;
+	if (backfill) {
 		// Gap-fill only: a real catalog entry always outranks the backfill.
-		for (const model of onethingQwenBackfillModels(config)) {
+		for (const model of backfill(config as Record<string, unknown> | undefined)) {
 			if (models[model.id]) continue;
 			models[model.id] = modelsDevModelToOnethingCapabilityEntry(
 				model,
