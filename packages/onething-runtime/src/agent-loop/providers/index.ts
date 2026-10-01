@@ -1,5 +1,3 @@
-export { createClaudeAgentProvider } from './claude.js'
-export type { ClaudeAgentProviderOptions } from './claude.js'
 export {
   CODEX_BASE_URL,
   CODEX_CLIENT_VERSION,
@@ -52,8 +50,6 @@ export type {
   CreateAgentProviderFromRuntimeOptions,
   RegisterAgentProviderRuntimeOptions,
 } from './factory.js'
-export { createGeminiAgentProvider } from './gemini.js'
-export type { GeminiAgentProviderOptions } from './gemini.js'
 export { createOpenAICompatibleAgentProvider } from './openai-compatible.js'
 export type { OpenAICompatibleAgentProviderOptions } from './openai-compatible.js'
 export type {

@@ -35,16 +35,8 @@ export type OpenAIChatVerbosity = (typeof OPENAI_CHAT_VERBOSITY_VALUES)[number];
 /** `image_url.detail` 的标准值域(openai / openrouter)。 */
 export const OPENAI_CHAT_IMAGE_DETAIL_VALUES = ["auto", "low", "high"] as const;
 
-/**
- * DeepSeek 的 vision-exp 端点多一个 `original`(原图不缩放),其余三值同标准。
- * 值域是**这一家的事实**,不是白名单的宽窄 —— 所以按家给表,不取并集。
- */
-export const DEEPSEEK_IMAGE_DETAIL_VALUES = [
-	"auto",
-	"low",
-	"high",
-	"original",
-] as const;
+// 某一家多出来的值域(如多一个 `original`)是那一家的事实,住在那一家的方言里
+// (`providers/vendors/<id>/dialect.ts`),这里只放标准三值。
 
 /**
  * 这一家认哪些请求级键。

@@ -21,8 +21,6 @@ export type OnethingProviderEnv = Record<string, string | undefined>
 
 const DEFAULT_PROVIDER_API_KEY_ENV_VARS: Record<string, string[]> = {
   openai: ['OPENAI_API_KEY'],
-  claude: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
-  gemini: ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY'],
 }
 
 function normalizeEnvVarName(value: string | undefined): string | undefined {

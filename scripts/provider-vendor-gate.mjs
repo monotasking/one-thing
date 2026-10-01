@@ -52,6 +52,13 @@ const RENDER_FILES = [
   /^apps\/desktop-react\/src\/i18n\//,
   /^apps\/desktop-react\/src\/providers\/provider-icons\.ts$/,
 ]
+/**
+ * 模型家族的家:「claude-* 型号会不会思考」「gemini 2.5 用哪种思考编码」这类知识说的是**型号**,
+ * 不是哪一家服务商 —— 同一家族的型号由好几家卖(Copilot、OpenRouter、千问转售)。它们住
+ * `providers/model-families/<family>.ts`,点家族的名是本分。
+ */
+const MODEL_FAMILY_DIR = /^packages\/onething-runtime\/src\/providers\/model-families\//
+
 /** 登记处:每家一行,本来就该点名。 */
 const REGISTRY_FILES = [
   /^packages\/onething-runtime\/src\/providers\/vendors\/[^/]+\.ts$/,
@@ -160,6 +167,7 @@ function isExempt(relative, id) {
   // 同家的订阅半边住在 `<id>-<tag>/`(kimi-code、grok-oauth、claude-code),它认识本家是家事。
   if (relative.startsWith(`${VENDORS_DIR}/${id}-`)) return true
   if (RENDER_FILES.some((pattern) => pattern.test(relative))) return true
+  if (MODEL_FAMILY_DIR.test(relative)) return true
   if (REGISTRY_FILES.some((pattern) => pattern.test(relative))) return true
   return false
 }

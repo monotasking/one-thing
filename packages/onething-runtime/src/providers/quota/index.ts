@@ -14,7 +14,6 @@ export * from './classify-windows.js'
 export * from './registry.js'
 export * from './source.js'
 export { codexQuotaFromHeaders, normalizeCodexUsagePayload, codexUsageUrlOf, CODEX_QUOTA_HEADERS } from './codex.js'
-export { normalizeClaudeUsagePayload, claudeUsageUrlOf } from './claude-code.js'
 
 /** 这家有没有配额源(manifest 指了、且注册表里真有)。壳据后端的 `unsupported` 判,不问这个。 */
 export function providerQuotaSourceOf(providerId: string): string | undefined {

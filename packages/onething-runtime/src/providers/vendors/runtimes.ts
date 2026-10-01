@@ -18,7 +18,10 @@ import type {
 	CreateAgentProviderFromRuntimeOptions,
 } from "../../agent-loop/providers/factory.js";
 import type { QuotaSource } from "../quota/source.js";
+import { CLAUDE_RUNTIME } from "./claude/runtime.js";
+import { CLAUDE_CODE_RUNTIME } from "./claude-code/runtime.js";
 import { DEEPSEEK_RUNTIME } from "./deepseek/runtime.js";
+import { GEMINI_RUNTIME } from "./gemini/runtime.js";
 import { KIMI_RUNTIME } from "./kimi/runtime.js";
 import { KIMI_CODE_RUNTIME } from "./kimi-code/runtime.js";
 import { OPENROUTER_RUNTIME } from "./openrouter/runtime.js";
@@ -51,7 +54,10 @@ export interface VendorRuntime {
 }
 
 export const VENDOR_RUNTIMES: readonly VendorRuntime[] = [
+	CLAUDE_RUNTIME,
+	CLAUDE_CODE_RUNTIME,
 	DEEPSEEK_RUNTIME,
+	GEMINI_RUNTIME,
 	KIMI_RUNTIME,
 	KIMI_CODE_RUNTIME,
 	OPENROUTER_RUNTIME,

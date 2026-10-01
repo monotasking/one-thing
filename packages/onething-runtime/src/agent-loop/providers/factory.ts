@@ -13,13 +13,9 @@ import {
 	type ModelProfileResolver,
 } from "./base/index.js";
 import {
-	CLAUDE_CODE_DIALECT,
-	CLAUDE_CODE_OAUTH_BETA_HEADERS,
-	CLAUDE_DIALECT,
 	CODEX_DIALECT,
 	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
-	GEMINI_DIALECT,
 	GITHUB_COPILOT_DIALECT,
 	GROK_DIALECT,
 	GROK_OAUTH_DIALECT,
@@ -642,57 +638,6 @@ registerAgentProviderRuntime(
 			),
 		});
 	},
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"claude",
-	(config, options) =>
-		createAnthropicProvider(CLAUDE_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: anthropicAuth({ apiKey: config.apiKey }),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"claude-code",
-	(config, options) => {
-		const accessToken = accessTokenFromRuntimeConfig(config);
-		if (!accessToken) {
-			throw new Error("Not logged in to Claude Code. Please login first.");
-		}
-		return createAnthropicProvider(CLAUDE_CODE_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: anthropicAuth({
-				omitApiKeyHeader: true,
-				headers: {
-					authorization: `Bearer ${accessToken}`,
-					"anthropic-beta": CLAUDE_CODE_OAUTH_BETA_HEADERS,
-				},
-			}),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		});
-	},
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"gemini",
-	(config, options) =>
-		createGeminiProvider(GEMINI_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: geminiAuth({ apiKey: config.apiKey }),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-			media: options.media,
-		}),
 	{ replace: true },
 );
 

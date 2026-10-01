@@ -5,13 +5,11 @@
  * 持有任何线协议逻辑:请求体构造、流解析、消息序列化、usage、错误、缓存断点
  * 全部搬到 `wires/anthropic-messages-wire.ts` + `wires/anthropic-messages.ts`
  * + `wires/anthropic-errors.ts` + `thinking/anthropic-*.ts` 上,方言配方在
- * `dialects/{claude,claude-code,custom-anthropic}.ts`。
+ * `vendors/{claude,claude-code}/dialect.ts` 与 `dialects/custom-anthropic.ts`。
  *
- * 保留这个门面(而不是让调用方直接 `new AnthropicMessagesWire`)有两个理由:
- *  - 导出名与 `ClaudeAgentProviderOptions` 是 `@onething/runtime` 的公开面,
- *    backend 的 `wiring/agent-loop/providers/claude.ts` 与十来个测试都读它;
- *  - 它把「一堆 options」翻成「一份配方 + 一套凭据」,这一步是这条线上唯一
- *    还需要代码的地方。
+ * 服务商自述试点 P2 第 2 批从 `agent-loop/providers/claude.ts` 搬回家。**生产路不走这里**
+ * (运行时工厂是同目录 `runtime.ts`;backend 那层只加了缺省 fetch 的包装零调用者,已删);
+ * 今天它的调用方是十来个测试 —— 拿它当「一份即用即弃的 anthropic 配方 + 一套凭据」的构造捷径。
  */
 import type {
 	AgentModelCapabilities,
@@ -23,8 +21,8 @@ import {
 	anthropicAuth,
 	anthropicDialect,
 	createAnthropicProvider,
-} from "./dialects/anthropic-recipe.js";
-import type { AgentProviderRequestDumper } from "./request-dump.js";
+} from "../../../agent-loop/providers/dialects/anthropic-recipe.js";
+import type { AgentProviderRequestDumper } from "../../../agent-loop/providers/request-dump.js";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -53,7 +51,8 @@ export function createClaudeAgentProvider(
 	const providerId = options.providerId ?? "claude";
 	// 门面走 `anthropicDialect()` 而不是 `defineAnthropicDialect()`:每次构造
 	// 一份即用即弃的配方,不往进程级注册表里塞一个以 providerId 命名的条目
-	// (注册表里该有的是三份**具名**配方,见 `dialects/`)。
+	// (注册表里该有的是三份**具名**配方:`vendors/{claude,claude-code}/dialect.ts` 与
+	// `dialects/custom-anthropic.ts`)。
 	const dialect = anthropicDialect({
 		id: providerId,
 		defaultBaseUrl: ANTHROPIC_DEFAULT_BASE_URL,

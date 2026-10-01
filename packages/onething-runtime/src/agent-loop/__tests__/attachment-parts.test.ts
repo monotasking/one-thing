@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTurnRequest } from '@onething/core/agent-loop'
-import { createClaudeAgentProvider } from '../providers/claude.js'
+import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
 import { createCodexAgentProvider } from '../providers/codex.js'
 import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'
 

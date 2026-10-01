@@ -13,8 +13,6 @@ import { getProviderManifest } from "./manifest.js";
 
 const LEGACY_PROVIDER_MAPPING: Record<string, string> = {
 	openai: "openai",
-	anthropic: "claude",
-	google: "gemini",
 	mistral: "mistral",
 	meta: "llama",
 	cohere: "cohere",

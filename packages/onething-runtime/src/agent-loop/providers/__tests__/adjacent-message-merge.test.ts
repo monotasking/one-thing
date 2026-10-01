@@ -19,7 +19,7 @@ import type {
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
-import { createClaudeAgentProvider } from "../claude.js";
+import { createClaudeAgentProvider } from "../../../providers/vendors/claude/agent-provider.js";
 import { createCodexAgentProvider } from "../codex.js";
 
 const COMPACT_SUMMARY_USER =

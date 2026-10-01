@@ -50,7 +50,9 @@ import { encodeCustomReasoning } from "../thinking/custom-reasoning.js";
 import { openAIEffortWire } from "../thinking/index.js";
 import { openAIChatUsage } from "../wires/index.js";
 import { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
-import { GEMINI_DIALECT } from "./gemini.js";
+// gemini-generateContent 这条线今天没有协议层的通用配方:自定义服务商的 gemini 适配表以官方
+// `gemini` 那一家的配方为底(搬回家后住 `vendors/gemini/dialect.ts`,P2 第 2 批)。
+import { GEMINI_DIALECT } from "../../../providers/vendors/gemini/dialect.js";
 import { OPENAI_DIALECT } from "./openai.js";
 import { openAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
 import { customAdapterDialectId } from "../../../providers/manifest.js";

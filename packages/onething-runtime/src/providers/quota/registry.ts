@@ -11,7 +11,6 @@
  */
 import type { QuotaSource } from './source.js'
 import { codexQuotaSource } from './codex.js'
-import { claudeCodeQuotaSource } from './claude-code.js'
 import { VENDOR_RUNTIMES } from '../vendors/runtimes.js'
 
 /**
@@ -20,7 +19,6 @@ import { VENDOR_RUNTIMES } from '../vendors/runtimes.js'
  */
 const LEGACY_QUOTA_SOURCES: readonly QuotaSource[] = [
   codexQuotaSource,
-  claudeCodeQuotaSource,
 ]
 
 /**

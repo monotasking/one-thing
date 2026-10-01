@@ -25,7 +25,7 @@ import type {
 	AgentProviderData,
 } from "@onething/core/agent-loop";
 import { getLogger } from "../../../logging/index.js";
-import { onethingClaudeModelFamily } from "../../../providers/model-capability.js";
+import { onethingClaudeModelFamily } from "../../../providers/model-families/claude.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";
 import {

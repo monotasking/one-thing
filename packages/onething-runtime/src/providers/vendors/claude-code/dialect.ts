@@ -3,12 +3,13 @@
  * (所以 `x-api-key` 不发),外加固定的 system 首块与四个 beta 头。
  *
  * 那两个常量原本在 `factory.ts` 里,P1-a 随注册块一起搬到配方旁边 —— 它们是
- * 这份配方的一部分,不是工厂的。
+ * 这份配方的一部分,不是工厂的。服务商自述试点 P2 第 2 批连同配方一起从
+ * `agent-loop/providers/dialects/claude-code.ts` 搬回家(运行时工厂在同目录 `runtime.ts`)。
  */
 import {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	defineAnthropicDialect,
-} from "./anthropic-recipe.js";
+} from "../../../agent-loop/providers/dialects/anthropic-recipe.js";
 
 export const CLAUDE_CODE_HEADER =
 	"You are Claude Code, Anthropic's official CLI for Claude.";

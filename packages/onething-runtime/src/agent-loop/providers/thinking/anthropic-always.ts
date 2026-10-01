@@ -3,7 +3,7 @@
  * 会被端点拒,**只发 `output_config.effort`**。
  *
  * P2-a 起这条线型在账本的 `OnethingReasoningWire` 枚举里:选它的是
- * `ModelProfile.reasoningWire`(账本的 `claudeReasoningWire` 读
+ * `ModelProfile.reasoningWire`(账本的 `onethingClaudeReasoningWire` 读
  * `onethingClaudeModelFamily(model).alwaysThinking`),基类按 id 找。
  * wire 层那份重复的家族分支随之删除。
  */

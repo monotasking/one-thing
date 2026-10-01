@@ -178,6 +178,21 @@ providers/
   里千问的目录补全钩子、`models-dev-catalog` 与 `model-registry` 签名里的千问 / Kimi 档位配置类型(随 P3)。
   `wires/openai-chat-messages.ts` 认 OpenRouter 的 `reasoning_details` 回放,留在线协议层(改成方言字段会改测试构造)。
 
+**P2 第 2 批落地记录(claude / claude-code / gemini)**:
+- 新概念:**模型家族 ≠ 服务商**。`claude` / `gemini` 既是一家服务商,也是一族型号(Copilot、OpenRouter 也卖),
+  还是线协议的名字。只属于这一家的进 `vendors/<id>/`;说型号的(`onethingClaudeModelFamily`、按型号名判思考编码、
+  型号展示名别称)进新目录 `providers/model-families/<family>.ts`,尺子豁免它;线协议层留原处。
+  `model-families/index.ts` 汇总跨家族的表(今天是展示名别称),通用代码读汇总不点家族名。
+- 三家的方言、运行时工厂、claude-code 配额源(`LEGACY_QUOTA_SOURCES` 只剩 codex)、环境变量、认亲、目录别名、
+  型号规则表回家;`claude` / `gemini` 的 agent-provider 构造捷径照 deepseek 先例留在各家目录,backend 的
+  零调用者包装删除。
+- 剩下的对:线协议层(anthropic / gemini 线型与配方;`wires/anthropic-messages.ts` 的 `providerData.provider:
+  "claude"` 会写进历史消息,改了就改存档)、`custom-from-spec` 以官方 gemini 方言为底(改了会变表单可见的接口类型)、
+  OAuth 配置(第 4 批)、`model-capability` 里 `resolveImageOutputServedBy` 的 `kind === 'gemini'` / openrouter 一行、
+  P3 类型、P4 壳、领域外(ACP 的 agent id、`CLAUDE.md` 文件名等)。257 → 230 对。
+- 补记:第 1 批提交漏了 `wires/openai-chat-provider-options.ts`(`DEEPSEEK_IMAGE_DETAIL_VALUES` 移进 deepseek 方言后
+  这里的删除)—— 当时排除别的会话文件的过滤条件 `chat-` 太宽,本批一并提交。
+
 ### P3 · 打开契约
 
 - `AIProviderId` 从写死的联合改为字符串 + 注册表;`AIProvider` 枚举退役;`OnethingProviderKind` 同理。

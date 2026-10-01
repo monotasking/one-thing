@@ -10,7 +10,7 @@
  * 思考关掉时这条线**什么都不发**(与今天一致:显式 `disabled` 只有 adaptive
  * 家族要)。
  */
-import { ONETHING_CLAUDE_THINKING_BUDGETS } from "../../../providers/model-capability.js";
+import { ONETHING_CLAUDE_THINKING_BUDGETS } from "../../../providers/model-families/claude.js";
 import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
 import { AnthropicThinkingWire } from "./anthropic-effort.js";
 

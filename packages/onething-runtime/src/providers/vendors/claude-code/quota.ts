@@ -13,7 +13,7 @@
  * 附加周窗,id 就用键名、`label` 是族名。值为 `null` 的键(这个套餐没有那一窗)丢掉。
  */
 import type { ProviderQuota, ProviderQuotaWindow } from '@shared/contracts/quota.js'
-import { classifyQuotaWindowSeconds, quotaEpochMsOf, sortQuotaWindows } from './classify-windows.js'
+import { classifyQuotaWindowSeconds, quotaEpochMsOf, sortQuotaWindows } from '../../quota/classify-windows.js'
 import {
   getQuotaJson,
   quotaNow,
@@ -22,7 +22,7 @@ import {
   quotaRecordOf,
   QuotaFetchError,
   type QuotaSource,
-} from './source.js'
+} from '../../quota/source.js'
 
 export const CLAUDE_CODE_QUOTA_SOURCE_ID = 'claude-code'
 export const CLAUDE_OAUTH_USAGE_PATH = '/api/oauth/usage'

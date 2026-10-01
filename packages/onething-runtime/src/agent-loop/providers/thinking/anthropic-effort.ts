@@ -13,7 +13,7 @@ import type { AgentReasoningEffort } from "@onething/core/agent-loop";
 import {
 	onethingClaudeModelFamily,
 	type OnethingClaudeModelFamily,
-} from "../../../providers/model-capability.js";
+} from "../../../providers/model-families/claude.js";
 import type {
 	RequestBodyBuilder,
 	ThinkingWire,

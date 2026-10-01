@@ -31,8 +31,6 @@ const LEGACY_MODEL_VENDOR_ALIASES: ReadonlyArray<{
 	readonly keys: readonly string[];
 }> = [
 	{ brands: ["openai"], keys: ["openai"] },
-	{ brands: ["anthropic"], keys: ["anthropic"] },
-	{ brands: ["google", "gemini"], keys: ["google"] },
 	{ brands: ["x-ai", "xai", "grok"], keys: ["xai"] },
 	{ brands: ["mistralai", "mistral"], keys: ["mistral"] },
 ];

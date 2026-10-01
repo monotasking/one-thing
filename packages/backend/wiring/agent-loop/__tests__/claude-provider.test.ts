@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createClaudeAgentProvider } from '../providers/claude.js'
+import { createClaudeAgentProvider } from '@onething/runtime/providers/vendors/claude/agent-provider'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

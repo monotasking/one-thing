@@ -23,6 +23,7 @@ import {
 	onethingQwenBackfillModels,
 	type OnethingQwenEndpointConfig,
 } from "./vendors/qwen/endpoint.js";
+import { ONETHING_MODEL_DISPLAY_NAMES } from "./model-families/index.js";
 // Catalog-key rules live in models-dev-catalog.ts (the renderer imports that
 // file alone); re-exported here so existing callers keep their import path.
 export {
@@ -33,9 +34,10 @@ export {
 export const ONETHING_MODELS_DEV_API = MODELS_DEV_API_URL;
 
 
+// 型号的展示名别称说的是型号家族,不是哪一家服务商(哪一家卖这个型号都这么显示),
+// 各家族自己带(`providers/model-families/<family>.ts`,汇总在同目录 `index.ts`)。
 const MODEL_NAME_ALIASES: Record<string, string> = {
-	"gemini-2.5-flash-image": "Nano-Banana",
-	"gemini-2.5-flash-image-preview": "Nano-Banana Preview",
+	...ONETHING_MODEL_DISPLAY_NAMES,
 };
 
 export interface OnethingModelsDevModel {

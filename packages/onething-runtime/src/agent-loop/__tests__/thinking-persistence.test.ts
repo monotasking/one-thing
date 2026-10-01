@@ -12,7 +12,7 @@ import {
 } from '@onething/core/engine'
 import type { AgentMessage, AgentTurnRequest } from '@onething/core/agent-loop'
 import { applyOnethingAgentLoopProviderData } from '../providers/provider-data.js'
-import { createClaudeAgentProvider } from '../providers/claude.js'
+import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
 
 const CLAUDE_THINKING_DATA = {
   provider: 'claude',

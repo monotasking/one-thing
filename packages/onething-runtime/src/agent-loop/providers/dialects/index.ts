@@ -20,12 +20,6 @@ export {
 	type AnthropicProviderInit,
 } from "./anthropic-recipe.js";
 
-export { CLAUDE_DIALECT } from "./claude.js";
-export {
-	CLAUDE_CODE_DIALECT,
-	CLAUDE_CODE_HEADER,
-	CLAUDE_CODE_OAUTH_BETA_HEADERS,
-} from "./claude-code.js";
 export { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
 
 export {
@@ -40,7 +34,6 @@ export {
 	type GeminiDialectSpec,
 	type GeminiProviderInit,
 } from "./gemini-recipe.js";
-export { GEMINI_DIALECT } from "./gemini.js";
 
 export {
 	capabilitiesFromFlags,

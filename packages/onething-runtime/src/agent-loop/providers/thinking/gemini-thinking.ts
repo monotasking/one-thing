@@ -5,7 +5,7 @@
  *
  * 一句话分工:Gemini 3+ 收 `thinkingConfig.thinkingLevel`(档位名),2.5 收
  * `thinkingConfig.thinkingBudget`(数值预算)。**判据是模型名里有没有 `2.5`**
- * —— 与账本 `geminiProfile()` 的 `wire` 字段同一条谓词,但今天的
+ * —— 与账本 `onethingGeminiReasoningProfile()` 的 `wire` 字段同一条谓词,但今天的
  * `gemini.ts` 问的是模型名而不是账本,所以这里也问模型名
  * (`GeminiWire.thinkingFor()` 覆盖了基类那条按 `profile.reasoningWire` 选的
  * 默认路径,理由写在那里)。
@@ -20,7 +20,7 @@ import type { AgentTurnRequest } from "@onething/core/agent-loop";
 import {
 	ONETHING_GEMINI_THINKING_BUDGETS,
 	onethingGeminiThinkingLevels,
-} from "../../../providers/model-capability.js";
+} from "../../../providers/model-families/gemini.js";
 import type {
 	RequestBodyBuilder,
 	ThinkingWire,
