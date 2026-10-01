@@ -125,6 +125,9 @@ jobs:
       - name: transport:gate
         run: bun run transport:gate
 
+      - name: provider:gate
+        run: bun run provider:gate
+
       - name: Renderer UI boundary gate
         run: npm --prefix apps/desktop-react run ui:consume
 
