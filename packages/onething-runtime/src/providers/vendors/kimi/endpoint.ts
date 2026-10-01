@@ -18,7 +18,11 @@
  * worse than an error — the general key on the general host silently bills
  * per-token **on top of** the subscription the user already paid for. Same
  * hazard 千问 documents; same remedy.
+ *
+ * 纯模块(壳经 manifest 也会走到这里):服务商自述试点 P2 从 `providers/kimi.ts` 搬回家。
+ * 编程套餐那一半的目录键与缺省模型住在 `vendors/kimi-code/manifest.ts`(那是它的事实)。
  */
+import { normalizeProviderBaseUrl } from '../../base-url.js'
 
 export type OnethingKimiApiMode = 'standard' | 'coding-plan'
 export type OnethingKimiRegion = 'cn' | 'intl'
@@ -35,12 +39,6 @@ export const ONETHING_KIMI_STANDARD_INTL_BASE_URL = 'https://api.moonshot.ai/v1'
 export const ONETHING_KIMI_CODING_PLAN_BASE_URL = 'https://api.kimi.com/coding/v1'
 
 export const ONETHING_KIMI_DEFAULT_BASE_URL = ONETHING_KIMI_STANDARD_CN_BASE_URL
-
-/** 编程套餐在 models.dev 上的目录键(它的 `api` 字段正是套餐那个地址)。 */
-export const ONETHING_KIMI_CODE_MODELS_DEV_ID = 'kimi-for-coding'
-
-/** 套餐目录里那几个 id —— 与按量那本一个都不重名。 */
-export const ONETHING_KIMI_CODE_DEFAULT_MODEL = 'k3'
 
 export interface OnethingKimiEndpointConfig {
   baseUrl?: string
@@ -80,14 +78,12 @@ const KIMI_MODELS_DEV_IDS: Record<
   Record<OnethingKimiRegion, string>
 > = {
   standard: { cn: 'moonshotai-cn', intl: 'moonshotai' },
+  // 编程套餐那本目录(models.dev 的 `kimi-for-coding`,它的 `api` 字段正是套餐那个地址)。
+  // 与 `vendors/kimi-code/manifest.ts` 的 `ONETHING_KIMI_CODE_MODELS_DEV_ID` 是同一个键。
   'coding-plan': {
-    cn: ONETHING_KIMI_CODE_MODELS_DEV_ID,
-    intl: ONETHING_KIMI_CODE_MODELS_DEV_ID,
+    cn: 'kimi-for-coding',
+    intl: 'kimi-for-coding',
   },
-}
-
-function normalizeBaseUrl(value: string | undefined): string {
-  return (value ?? '').trim().replace(/\/+$/, '')
 }
 
 export function normalizeOnethingKimiApiMode(value: unknown): OnethingKimiApiMode {
@@ -138,11 +134,24 @@ function isKnownKimiBaseUrl(value: string): boolean {
 export function resolveOnethingKimiBaseUrl(
   config: OnethingKimiEndpointConfig | undefined,
 ): string {
-  const baseUrl = normalizeBaseUrl(config?.baseUrl)
+  const baseUrl = normalizeProviderBaseUrl(config?.baseUrl)
   if (baseUrl && !isKnownKimiBaseUrl(baseUrl)) return baseUrl
 
   return getOnethingKimiBaseUrl(
     normalizeOnethingKimiApiMode(config?.kimiApiMode),
     normalizeOnethingKimiRegion(config?.kimiRegion),
   )
+}
+
+/** 运行期 `providerOptions` 袋 → 档位与地区(拆袋即校验),只剩本家的运行时工厂用它。 */
+export function readOnethingKimiOptions(
+  providerOptions: Record<string, unknown> | undefined,
+): {
+  kimiApiMode: OnethingKimiApiMode
+  kimiRegion: OnethingKimiRegion
+} {
+  return {
+    kimiApiMode: normalizeOnethingKimiApiMode(providerOptions?.kimiApiMode),
+    kimiRegion: normalizeOnethingKimiRegion(providerOptions?.kimiRegion),
+  }
 }

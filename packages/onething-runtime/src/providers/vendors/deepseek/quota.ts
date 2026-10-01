@@ -14,7 +14,7 @@ import {
   quotaStringOf,
   QuotaFetchError,
   type QuotaSource,
-} from './source.js'
+} from '../../quota/source.js'
 
 export const DEEPSEEK_QUOTA_SOURCE_ID = 'deepseek'
 const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com'

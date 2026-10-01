@@ -27,7 +27,7 @@ import {
 	SYSTEM_MESSAGE,
 	USER_MESSAGE,
 } from "../../__tests__/wire-snapshots/snapshot-harness.js";
-import { kimiSamplingPolicy } from "../kimi.js";
+import { kimiSamplingPolicy } from "../../../../providers/vendors/kimi/dialect.js";
 
 const SSE = [
 	'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',

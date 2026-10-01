@@ -1,8 +1,8 @@
 import type { OnethingOAuthFlowType, OnethingOAuthToken, OnethingProviderAuthContext } from '../auth/types.js'
 import type { CoreProviderConfigLike } from './provider-config.js'
 import type { OnethingProviderRegistryDefinition, OnethingProviderRegistryInfo } from './registry.js'
-import type { OnethingKimiApiMode, OnethingKimiRegion } from './kimi.js'
-import type { OnethingQwenApiMode, OnethingQwenRegion } from './qwen.js'
+import type { OnethingKimiApiMode, OnethingKimiRegion } from './vendors/kimi/endpoint.js'
+import type { OnethingQwenApiMode, OnethingQwenRegion } from './vendors/qwen/endpoint.js'
 import type { OnethingZhipuApiMode } from './vendors/zhipu/endpoint.js'
 
 export type OnethingProviderOAuthFlowType = OnethingOAuthFlowType

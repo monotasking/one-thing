@@ -172,16 +172,6 @@ export interface OnethingProviderFacade<
   ): Promise<string>
 }
 
-function withDeepSeekFetch<TConfig extends OnethingProviderFacadeConfig>(
-  config: TConfig,
-  adapters: Pick<OnethingProviderFacadeAdapters<TConfig>, 'createRequiredFetch'>,
-): TConfig {
-  return {
-    ...config,
-    fetchImpl: config.fetchImpl ?? adapters.createRequiredFetch(),
-  }
-}
-
 export function createOnethingProviderFacade<
   TConfig extends OnethingProviderFacadeConfig = OnethingProviderFacadeConfig,
   TProvider extends AgentProvider = AgentProvider,
@@ -237,8 +227,8 @@ export function createOnethingProviderFacade<
 
   /**
    * Not part of the facade surface: the only caller is `generateChatResponse`
-   * below. It stays a distinct function because it is where the acp/deepseek
-   * generate routes live — see docs/design/provider-abstraction.md §9.
+   * below. It stays a distinct function because it is where the acp generate
+   * route lives — see docs/design/provider-abstraction.md §9.
    */
   const generateChatResponseWithReasoning = (
     providerId: string,

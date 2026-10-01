@@ -19,16 +19,11 @@ import {
 	CODEX_DIALECT,
 	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
-	DEEPSEEK_DIALECT,
 	GEMINI_DIALECT,
 	GITHUB_COPILOT_DIALECT,
 	GROK_DIALECT,
 	GROK_OAUTH_DIALECT,
-	KIMI_CODE_DIALECT,
-	KIMI_DIALECT,
 	OPENAI_DIALECT,
-	OPENROUTER_DIALECT,
-	QWEN_DIALECT,
 	anthropicAuth,
 	codexAuth,
 	createAnthropicProvider,
@@ -36,7 +31,6 @@ import {
 	createResponsesProvider,
 	geminiAuth,
 	capabilitiesFromFlags,
-	capabilityLimitsFromRuntimeConfig,
 	createOpenAIChatProvider,
 	openAIChatTransportCapabilities,
 	runtimeCapabilityFlags,
@@ -52,20 +46,11 @@ import type {
 	ExternalAgentSessionLink,
 } from "../../external-agents/types.js";
 import {
-	ONETHING_KIMI_CODING_PLAN_BASE_URL,
-	resolveOnethingKimiBaseUrl,
-} from "../../providers/kimi.js";
-import { resolveOnethingQwenBaseUrl } from "../../providers/qwen.js";
-import {
 	EXTERNAL_AGENT_DIALECT_ID,
 	getProviderManifest,
 	isCustomAdapterDialectOf,
 } from "../../providers/manifest.js";
-import {
-	readOnethingKimiOptions,
-	readOnethingQwenOptions,
-	type OnethingProviderOptions,
-} from "../../providers/provider-options.js";
+import type { OnethingProviderOptions } from "../../providers/provider-options.js";
 
 export interface AgentProviderRuntimeOAuthToken {
 	accessToken: string;
@@ -527,29 +512,6 @@ function createManifestAgentProviderFromRuntime(
 	});
 }
 
-registerAgentProviderRuntime(
-	"deepseek",
-	(config, options) =>
-		createOpenAIChatProvider(DEEPSEEK_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: new BearerApiKeyAuth(config.apiKey ?? ""),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-			transport: {
-				...capabilitiesFromFlags(
-					runtimeCapabilityFlags(config, {
-						tools: true,
-						vision: false,
-						reasoning: true,
-					}),
-				),
-				...capabilityLimitsFromRuntimeConfig(config),
-			},
-		}),
-	{ replace: true },
-);
-
 /**
  * 外部 agent 的 provider 都走同一个包装器(A0-3 单路合流):未绑目录拒绝、图片送不出去
  * 说话、会话链接落盘,这些检查只写一份。连接器由宿主按 provider id 注入,没注入就没有
@@ -609,78 +571,6 @@ registerAgentProviderRuntime(
 	(config, options) =>
 		createResponsesProvider(OPENAI_DIALECT, {
 			baseUrl: config.baseUrl,
-			auth: new BearerApiKeyAuth(config.apiKey),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"openrouter",
-	(config, options) =>
-		createOpenAIChatProvider(OPENROUTER_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: new BearerApiKeyAuth(config.apiKey),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"kimi",
-	(config, options) =>
-		createOpenAIChatProvider(KIMI_DIALECT, {
-			// 开放平台(按量,国内/海外)与 Kimi Code(编程套餐)是三个地址、两种
-			// 计费。选错不是报错而是**多扣钱**:订阅用户留着通用地址会照按量再计一次。
-			baseUrl: resolveOnethingKimiBaseUrl({
-				baseUrl: config.baseUrl,
-				...readOnethingKimiOptions(config.providerOptions),
-			}),
-			auth: new BearerApiKeyAuth(config.apiKey),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-/**
- * Kimi Code(订阅)。与 `kimi` 同一套 OpenAI 兼容线材,差别只有两处:
- * 地址钉死在套餐 host(不吃地区/档位),凭证是 OAuth access_token
- * (klip-14:「OAuth 模型和 API 兼容性与当前 Bearer key 完全一致」)。
- * OAuth 凭证在 authContext 里,config.apiKey 对 OAuth provider 恒为空串 ——
- * 必须走 accessTokenFromRuntimeConfig,与 claude-code / grok-oauth 同一条路。
- */
-registerAgentProviderRuntime(
-	"kimi-code",
-	(config, options) => {
-		const accessToken = accessTokenFromRuntimeConfig(config);
-		if (!accessToken) {
-			throw new Error("Not logged in to Kimi Code. Please login first.");
-		}
-		return createOpenAIChatProvider(KIMI_CODE_DIALECT, {
-			baseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
-			auth: new BearerApiKeyAuth(accessToken),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		});
-	},
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"qwen",
-	(config, options) =>
-		createOpenAIChatProvider(QWEN_DIALECT, {
-			baseUrl: resolveOnethingQwenBaseUrl({
-				baseUrl: config.baseUrl,
-				...readOnethingQwenOptions(config.providerOptions),
-			}),
 			auth: new BearerApiKeyAuth(config.apiKey),
 			fetchImpl: options.fetchImpl,
 			requestDumper: resolveRequestDumper(options),
@@ -810,7 +700,10 @@ registerAgentProviderRuntime(
  * 搬回 `providers/vendors/<id>/` 的那几家,工厂由各家自己带(`VendorRuntime.createProvider`),
  * 这里按名册接进工厂表 —— 本文件不再点那几家的名。
  */
-const vendorRuntimeKit: VendorRuntimeKit = { profiles: ledgerProfiles };
+const vendorRuntimeKit: VendorRuntimeKit = {
+	profiles: ledgerProfiles,
+	accessToken: accessTokenFromRuntimeConfig,
+};
 for (const vendor of VENDOR_RUNTIMES) {
 	const create = vendor.createProvider;
 	if (!create) continue;

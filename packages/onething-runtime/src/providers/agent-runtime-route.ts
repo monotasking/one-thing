@@ -8,7 +8,6 @@ import type {
 } from '../agent-loop/providers/factory.js'
 
 export const ONETHING_ACP_RUNTIME_PROVIDER_ID = 'acp'
-export const ONETHING_DEEPSEEK_RUNTIME_PROVIDER_ID = 'deepseek'
 
 export type OnethingAgentRuntimeProviderConfig = AgentProviderRuntimeConfig & {
   model: string
@@ -43,11 +42,9 @@ export function createOnethingUtilityAgentProvider(
   config: OnethingAgentRuntimeProviderConfig,
   adapters: OnethingProviderRuntimeRouteAdapters,
 ): AgentProvider | undefined {
-  // deepseek used to be excluded here and served by a route of its own. The
-  // only thing that route did differently was infer thinking from the model
-  // name; deepseek.ts owns that now, so the generic path builds the same
-  // request — and the two paths can no longer drift apart the way they did
-  // when one of them quietly stopped reporting usage.
+  // 从前有一家服务商在这里被排除、走它自己的一条路;那条路唯一的不同是按型号名推断
+  // 是否思考,如今那份推断归那家自己的思考线型,通用路径造出的请求逐字相同 —— 两条路
+  // 不会再像当年那样悄悄分岔(其中一条曾经不报 usage)。
   if (isOnethingACPProviderRuntime(providerId)) {
     return undefined
   }

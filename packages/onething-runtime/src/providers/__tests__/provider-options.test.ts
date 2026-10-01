@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  pickOnethingProviderOptions,
-  readOnethingQwenOptions,
-} from '../provider-options.js'
+import { pickOnethingProviderOptions } from '../provider-options.js'
+import { readOnethingQwenOptions } from '../vendors/qwen/endpoint.js'
 import { getEffectiveProviderConfig, withResolvedProviderBaseUrl } from '../provider-config.js'
 import type { CoreProviderConfigLike } from '../provider-config.js'
 import {

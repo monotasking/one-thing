@@ -47,27 +47,6 @@ export type OnethingToolChatMessage =
       }>
     }
 
-export interface OnethingDeepSeekToolResultItem {
-  toolCallId?: string
-  result?: OnethingProviderOpaqueValue
-}
-
-export type OnethingDeepSeekAgentSourceMessage =
-  | {
-      role: 'tool'
-      content: OnethingDeepSeekToolResultItem[]
-    }
-  | {
-      role: 'user' | 'system' | 'developer' | 'assistant'
-      content?: OnethingAIMessageContent
-      reasoningContent?: string
-      toolCalls?: Array<{
-        toolCallId: string
-        toolName: string
-        args: AgentJsonObject
-      }>
-    }
-
 export interface OnethingProviderToolParameter {
   name: string
   type: string
@@ -187,53 +166,6 @@ export function onethingUtilityAgentMessagesFromMessages(
     content: onethingAgentContentFromAIMessageContent(message.content),
     ...(message.reasoningContent ? { reasoningContent: message.reasoningContent } : {}),
   }))
-}
-
-export function onethingDeepSeekAgentMessagesFromMessages(
-  messages: OnethingDeepSeekAgentSourceMessage[],
-): AgentMessage[] {
-  const result: AgentMessage[] = []
-
-  for (const message of messages) {
-    if (message.role === 'tool') {
-      for (const item of message.content) {
-        result.push({
-          role: 'tool',
-          toolCallId: item.toolCallId ?? '',
-          content: stringifyOnethingToolOutput(item.result ?? null),
-        })
-      }
-      continue
-    }
-
-    if (message.role === 'assistant') {
-      result.push({
-        role: 'assistant',
-        content:
-          message.content === null || message.content === undefined
-            ? null
-            : stringifyOnethingMessageContent(message.content),
-        ...(message.reasoningContent ? { reasoningContent: message.reasoningContent } : {}),
-        ...(message.toolCalls?.length
-          ? {
-              toolCalls: message.toolCalls.map((toolCall) => ({
-                id: toolCall.toolCallId,
-                name: toolCall.toolName,
-                arguments: JSON.stringify(toolCall.args ?? {}),
-              })),
-            }
-          : {}),
-      })
-      continue
-    }
-
-    result.push({
-      role: message.role === 'user' ? 'user' : 'system',
-      content: stringifyOnethingMessageContent(message.content as OnethingAIMessageContent),
-    })
-  }
-
-  return result
 }
 
 export function convertOnethingToolDefinitionsForProvider(

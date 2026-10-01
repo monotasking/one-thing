@@ -4,11 +4,13 @@
  * 纯模块:壳也 import(经 `vendors/manifests.ts`)。
  */
 import type { ProviderManifest } from '../../manifest.js'
-import {
-  ONETHING_KIMI_CODE_DEFAULT_MODEL,
-  ONETHING_KIMI_CODE_MODELS_DEV_ID,
-  ONETHING_KIMI_CODING_PLAN_BASE_URL,
-} from '../../kimi.js'
+import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from '../kimi/endpoint.js'
+
+/** 编程套餐在 models.dev 上的目录键(它的 `api` 字段正是套餐那个地址)。 */
+export const ONETHING_KIMI_CODE_MODELS_DEV_ID = 'kimi-for-coding'
+
+/** 套餐目录里那几个 id —— 与按量那本一个都不重名。 */
+export const ONETHING_KIMI_CODE_DEFAULT_MODEL = 'k3'
 
 /**
  * Kimi Code(编程套餐)—— 订阅走 OAuth,与按量那条 `kimi` 是两个 provider:

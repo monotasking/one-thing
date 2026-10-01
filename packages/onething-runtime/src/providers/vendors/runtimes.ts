@@ -7,7 +7,9 @@
  *  - import 本文件 = 各家方言登记进 `registerDialect`(方言模块定义即登记),各家思考参数
  *    登记进 `thinkingWires`(下面那个循环);
  *  - 运行时工厂由 `agent-loop/providers/factory.ts` 按名册接进工厂表 —— 那边持有表,
- *    这里只交名册,免得两边互相 import。
+ *    这里只交名册,免得两边互相 import;
+ *  - 配额源(余额 / 用量)由 `providers/quota/registry.ts` 第一次被问到时**惰性**读名册
+ *    (它若在加载时就读,会经本文件把整个 agent-loop 拉进来、与 manifest 注册表成环)。
  */
 import type { AgentProvider } from "@onething/core/agent-loop";
 import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../../agent-loop/providers/base/index.js";
@@ -15,18 +17,31 @@ import type {
 	AgentProviderRuntimeConfig,
 	CreateAgentProviderFromRuntimeOptions,
 } from "../../agent-loop/providers/factory.js";
+import type { QuotaSource } from "../quota/source.js";
+import { DEEPSEEK_RUNTIME } from "./deepseek/runtime.js";
+import { KIMI_RUNTIME } from "./kimi/runtime.js";
+import { KIMI_CODE_RUNTIME } from "./kimi-code/runtime.js";
+import { OPENROUTER_RUNTIME } from "./openrouter/runtime.js";
+import { QWEN_RUNTIME } from "./qwen/runtime.js";
 import { ZHIPU_RUNTIME } from "./zhipu/runtime.js";
 
 /** 工厂交给各家的几件公共工具(各家不必 import 工厂)。 */
 export interface VendorRuntimeKit {
 	/** 这份配置下的账本型号解析器(每家 provider 都要)。 */
 	profiles(config: AgentProviderRuntimeConfig): ModelProfileResolver;
+	/**
+	 * 这份配置的访问令牌:OAuth 那一路取 `authContext` 里的 token,否则回落到 `oauthToken` /
+	 * `apiKey`(订阅型的家 `config.apiKey` 恒为空串,必须走这里)。没有 = 空串。
+	 */
+	accessToken(config: AgentProviderRuntimeConfig): string;
 }
 
 export interface VendorRuntime {
 	id: string;
 	/** 这家自己的思考参数线型(`thinkingWires` 里按 id 取)。 */
 	thinkingWires?: readonly ThinkingWire[];
+	/** 这家的配额源(`providers/quota/registry.ts` 惰性读;manifest 的 `quotaSource` 指向其 id)。 */
+	quotaSources?: readonly QuotaSource[];
 	/** 缺席 = 这家没有专属工厂,按 manifest 的方言走通用那条路。 */
 	createProvider?(
 		config: AgentProviderRuntimeConfig,
@@ -35,7 +50,14 @@ export interface VendorRuntime {
 	): AgentProvider | undefined;
 }
 
-export const VENDOR_RUNTIMES: readonly VendorRuntime[] = [ZHIPU_RUNTIME];
+export const VENDOR_RUNTIMES: readonly VendorRuntime[] = [
+	DEEPSEEK_RUNTIME,
+	KIMI_RUNTIME,
+	KIMI_CODE_RUNTIME,
+	OPENROUTER_RUNTIME,
+	QWEN_RUNTIME,
+	ZHIPU_RUNTIME,
+];
 
 for (const vendor of VENDOR_RUNTIMES) {
 	for (const wire of vendor.thinkingWires ?? []) thinkingWires.register(wire);

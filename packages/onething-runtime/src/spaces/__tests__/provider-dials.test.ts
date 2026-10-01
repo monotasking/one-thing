@@ -37,7 +37,7 @@ import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,
 } from '../../providers/vendors/zhipu/endpoint.js'
-import { ONETHING_KIMI_STANDARD_INTL_BASE_URL } from '../../providers/kimi.js'
+import { ONETHING_KIMI_STANDARD_INTL_BASE_URL } from '../../providers/vendors/kimi/endpoint.js'
 
 let tmpDir: string
 

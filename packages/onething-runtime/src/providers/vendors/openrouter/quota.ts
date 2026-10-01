@@ -10,7 +10,7 @@
  * `unsupported`,并在日志里记一行原因(卡片上改显本月本地估算)。
  */
 import type { ProviderQuota } from '@shared/contracts/quota.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../../logging/index.js'
 import {
   getQuotaJson,
   quotaNow,
@@ -19,7 +19,7 @@ import {
   quotaRecordOf,
   QuotaFetchError,
   type QuotaSource,
-} from './source.js'
+} from '../../quota/source.js'
 
 const log = getLogger('providers.quota')
 

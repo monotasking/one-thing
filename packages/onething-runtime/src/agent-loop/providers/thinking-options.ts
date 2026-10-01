@@ -52,10 +52,6 @@ export function normalizeAgentLoopReasoningEffort(
     : undefined
 }
 
-export function normalizeDeepSeekReasoningEffort(value: unknown): 'high' | 'max' | undefined {
-  return value === 'max' ? 'max' : value === 'high' ? 'high' : undefined
-}
-
 /**
  * Generic user-intent resolution: `thinkingByModel` decides on/off,
  * `thinkingEffortByModel` carries the abstract effort. The provider request

@@ -7,7 +7,7 @@ import {
   createOnethingProviderFacade,
   type OnethingProviderRequestDumpContext,
 } from '../index.js'
-import { createDeepSeekAgentProvider } from '../../agent-loop/providers/deepseek.js'
+import { createDeepSeekAgentProvider } from '../vendors/deepseek/agent-provider.js'
 
 function fakeProvider(onRequest?: (request: AgentTurnRequest) => void): AgentProvider {
   return {

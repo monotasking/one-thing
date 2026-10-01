@@ -30,7 +30,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import ts from 'typescript'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/provider-vendor-baseline-2026-10.txt')
@@ -61,7 +61,7 @@ const NON_VENDOR_IDS = new Set(['acp'])
 
 /** 线协议的名字(不是服务商)。命中这些的 token 不计。 */
 const PROTOCOL_TOKENS = [
-  /openai[-_]?(chat|responses|compatible|effort|o[-_]?series)/i,
+  /openai[-_]?(chat|responses|compatible|effort|o[-_]?series|file)/i,
   /gemini[-_]?(generateContent|wire|messages|level|budget|errors|recipe)/i,
 ]
 
@@ -96,7 +96,8 @@ export function codeTokens(source, fileName = 'x.ts') {
     if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) identifiers.push(node.text)
     else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) strings.push(node.text)
     else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) strings.push(node.text)
-    else if (ts.isRegularExpressionLiteral(node)) strings.push(node.text)
+    // 正则字面量不收:代码里的正则几乎都在认**模型 id**(`/^deepseek-v[34]/`、`/^kimi/`)——
+    // 那是模型家族的知识(千问转售 DeepSeek / Kimi 的型号),不是在点服务商的名。
     else if (ts.isJsxText(node)) strings.push(node.text)
     ts.forEachChild(node, visit)
   }
@@ -225,6 +226,7 @@ function selfTest() {
   expect('gemini 线名不算', !mentions('const w = "gemini-generateContent"', 'gemini'))
   expect('gemini 本家标识符算', mentions('const GEMINI_DIALECT = 1', 'gemini'))
   expect('模型路径的厂牌前缀不算', !mentions("const m = 'openai/gpt-4o'", 'openai'))
+  expect('认模型 id 的正则不算', !mentions('const r = /^deepseek-v[34]/', 'deepseek'))
   const up = compare(['a x.ts'], ['a x.ts', 'a y.ts'])
   expect('新的一对算红', up.regressions.length === 1 && up.improvements.length === 0)
   const down = compare(['a x.ts', 'a y.ts'], ['a x.ts'])
@@ -235,7 +237,7 @@ function selfTest() {
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log(`[provider-vendor-gate] self-test ok — 17 checks passed`)
+  console.log(`[provider-vendor-gate] self-test ok — 18 checks passed`)
 }
 
 function main() {
@@ -286,4 +288,5 @@ function main() {
   console.log(`[provider-vendor-gate] ok — ${pairs.length} pair(s), at baseline`)
 }
 
-main()
+// 作为脚本跑才执行;被 import(测试、排查)时只交出函数。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

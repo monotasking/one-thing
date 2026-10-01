@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest'
 import {
   ONETHING_KIMI_CODE_DEFAULT_MODEL,
   ONETHING_KIMI_CODE_MODELS_DEV_ID,
+} from '../vendors/kimi-code/manifest.js'
+import {
   ONETHING_KIMI_CODING_PLAN_BASE_URL,
   ONETHING_KIMI_DEFAULT_BASE_URL,
   ONETHING_KIMI_STANDARD_CN_BASE_URL,
@@ -22,14 +24,12 @@ import {
   onethingKimiRegionApplies,
   resolveOnethingKimiBaseUrl,
   resolveOnethingKimiModelsDevProviderId,
-} from '../kimi.js'
+  readOnethingKimiOptions,
+} from '../vendors/kimi/endpoint.js'
 import { getOnethingModelsDevProviderId } from '../model-registry.js'
 import { kimiCodeBuiltinProvider } from '../builtin-providers.js'
 import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
-import {
-  pickOnethingProviderOptions,
-  readOnethingKimiOptions,
-} from '../provider-options.js'
+import { pickOnethingProviderOptions } from '../provider-options.js'
 import { withResolvedProviderBaseUrl } from '../provider-config.js'
 import type { CoreProviderConfigLike } from '../provider-config.js'
 

@@ -3,16 +3,16 @@
  * 地址钉死在套餐 host(不吃地区/档位),凭证是 OAuth access_token
  * (klip-14:「OAuth 模型和 API 兼容性与当前 Bearer key 完全一致」)。
  */
-import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../../../providers/kimi.js";
-import { thinkingTypeWire } from "../thinking/index.js";
-import { openAIChatUsage } from "../wires/index.js";
-import { kimiFileExtractChannel } from "./kimi-attachments.js";
-import { KIMI_USAGE_TABLE, kimiSamplingPolicy, kimiThinkingIntent } from "./kimi.js";
+import { thinkingTypeWire } from "../../../agent-loop/providers/thinking/thinking-type.js";
+import { openAIChatUsage } from "../../../agent-loop/providers/wires/index.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
 	promptCacheKeyExtraBody,
-} from "./recipe.js";
+} from "../../../agent-loop/providers/dialects/recipe.js";
+import { kimiFileExtractChannel } from "../kimi/attachments.js";
+import { KIMI_USAGE_TABLE, kimiSamplingPolicy, kimiThinkingIntent } from "../kimi/dialect.js";
+import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../kimi/endpoint.js";
 
 export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	id: "kimi-code",
@@ -23,7 +23,7 @@ export const KIMI_CODE_DIALECT = defineOpenAIChatDialect({
 	usage: openAIChatUsage(KIMI_USAGE_TABLE),
 	// 同一批模型 = 同一套家规。套餐通路跑的就是开放平台那几族模型,所以采样
 	// (Kimi 一律不发 temperature)与思考意图(k2.7-code 关思考时**什么都不发**,
-	// 而不是发它拒收的 `thinking:{type:'disabled'}`)都直接复用 `./kimi.js`。
+	// 而不是发它拒收的 `thinking:{type:'disabled'}`)都直接复用 `../kimi/dialect.js`。
 	sampling: kimiSamplingPolicy,
 	thinkingIntent: kimiThinkingIntent,
 	// Code Plan 把 `prompt_cache_key` 列为必填。

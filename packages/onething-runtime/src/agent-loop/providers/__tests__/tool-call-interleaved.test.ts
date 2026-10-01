@@ -28,7 +28,7 @@ import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
-import { OPENROUTER_DIALECT } from "../dialects/index.js";
+import { OPENROUTER_DIALECT } from "../../../providers/vendors/openrouter/dialect.js";
 import { LedgerModelProfileResolver, type TurnContext } from "../base/index.js";
 import { OpenAIChatWire, openAIChatLogger } from "../wires/index.js";
 import { drain, sseResponse } from "./wire-snapshots/snapshot-harness.js";

@@ -14,7 +14,10 @@
  *     top of the subscription. Picking the mode here is what prevents that.
  *
  * So the base URL is a 3x2 lookup, not a single default with a toggle.
+ *
+ * 纯模块(壳经 manifest 也会走到这里):服务商自述试点 P2 从 `providers/qwen.ts` 搬回家。
  */
+import { normalizeProviderBaseUrl } from '../../base-url.js'
 
 export type OnethingQwenApiMode = 'standard' | 'token-plan' | 'coding-plan'
 export type OnethingQwenRegion = 'cn' | 'intl'
@@ -82,10 +85,6 @@ const QWEN_MODELS_DEV_IDS: Record<
   },
 }
 
-function normalizeBaseUrl(value: string | undefined): string {
-  return (value ?? '').trim().replace(/\/+$/, '')
-}
-
 export function normalizeOnethingQwenApiMode(value: unknown): OnethingQwenApiMode {
   if (value === 'token-plan' || value === 'coding-plan') return value
   return 'standard'
@@ -121,7 +120,7 @@ function isKnownQwenBaseUrl(value: string): boolean {
 export function resolveOnethingQwenBaseUrl(
   config: OnethingQwenEndpointConfig | undefined,
 ): string {
-  const baseUrl = normalizeBaseUrl(config?.baseUrl)
+  const baseUrl = normalizeProviderBaseUrl(config?.baseUrl)
   if (baseUrl && !isKnownQwenBaseUrl(baseUrl)) return baseUrl
 
   return getOnethingQwenBaseUrl(
@@ -218,4 +217,14 @@ export function onethingQwenBackfillModels(
   return normalizeOnethingQwenApiMode(config?.qwenApiMode) === 'standard'
     ? ONETHING_QWEN_PAY_AS_YOU_GO_BACKFILL
     : []
+}
+
+/** 运行期 `providerOptions` 袋 → 档位与地区(拆袋即校验),只剩本家的运行时工厂用它。 */
+export function readOnethingQwenOptions(
+  providerOptions: Record<string, unknown> | undefined,
+): { qwenApiMode: OnethingQwenApiMode; qwenRegion: OnethingQwenRegion } {
+  return {
+    qwenApiMode: normalizeOnethingQwenApiMode(providerOptions?.qwenApiMode),
+    qwenRegion: normalizeOnethingQwenRegion(providerOptions?.qwenRegion),
+  }
 }

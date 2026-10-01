@@ -12,22 +12,14 @@
  *     一句被翻译得稍软的警告 = 一笔真金白银。所以这几句话按「不许漂」处理。
  *
  * ── 归一必须借用各家自己的那几个函数 ─────────────────────────────────────
- * `normalize` 与 `baseUrlOf` 一律转手 `./kimi.ts` / `./qwen.ts` / `./zhipu.ts`:
+ * `normalize` 与 `baseUrlOf` 一律转手各家 `vendors/<id>/endpoint.ts`:
  * 同一件事开第二个产地,而这件事错一次的代价是钱。
+ *
+ * 各家的那张表(`<ID>_DIALS`)住在各家的 `vendors/<id>/manifest.ts`(服务商自述试点
+ * P1 / P2);这里只剩形状。
  *
  * 本文件是**纯**模块(壳也 import 它):不许碰 node / electron / `process`。
  */
-import {
-  getOnethingKimiBaseUrl,
-  normalizeOnethingKimiApiMode,
-  normalizeOnethingKimiRegion,
-  onethingKimiRegionApplies,
-} from './kimi.js'
-import {
-  getOnethingQwenBaseUrl,
-  normalizeOnethingQwenApiMode,
-  normalizeOnethingQwenRegion,
-} from './qwen.js'
 
 export interface DialOption {
   value: string
@@ -63,65 +55,4 @@ export interface DialSpec {
    * 只写档位不写地址,请求还是发去旧地址,那正是「以为选对了、其实还在扣钱」。
    */
   baseUrlOf(apiMode: string, region: string): string
-}
-
-export const QWEN_DIALS: DialSpec = {
-  apiModeKey: 'qwenApiMode',
-  regionKey: 'qwenRegion',
-  apiMode: {
-    label: '计费方式',
-    ariaLabel: 'Qwen API mode',
-    options: [
-      { value: 'standard', label: 'API 按量付费 (sk-ws-)' },
-      { value: 'token-plan', label: 'Token Plan 订阅 (sk-sp-)' },
-      { value: 'coding-plan', label: 'Coding Plan 订阅 (sk-sp-)' },
-    ],
-    normalize: (value) => normalizeOnethingQwenApiMode(value),
-  },
-  region: {
-    label: '版本',
-    ariaLabel: 'Qwen region',
-    options: [
-      { value: 'cn', label: '国内版' },
-      { value: 'intl', label: '海外版 (QwenCloud)' },
-    ],
-    normalize: (value) => normalizeOnethingQwenRegion(value),
-  },
-  note: '订阅用户请选对档位,否则会按量计费。',
-  baseUrlOf: (apiMode, region) =>
-    getOnethingQwenBaseUrl(
-      normalizeOnethingQwenApiMode(apiMode),
-      normalizeOnethingQwenRegion(region),
-    ),
-}
-
-export const KIMI_DIALS: DialSpec = {
-  apiModeKey: 'kimiApiMode',
-  regionKey: 'kimiRegion',
-  apiMode: {
-    label: '计费方式',
-    ariaLabel: 'Kimi API mode',
-    options: [
-      { value: 'standard', label: '开放平台 按量付费' },
-      { value: 'coding-plan', label: '编程套餐 Kimi Code 订阅' },
-    ],
-    normalize: (value) => normalizeOnethingKimiApiMode(value),
-  },
-  region: {
-    label: '版本',
-    ariaLabel: 'Kimi region',
-    options: [
-      { value: 'cn', label: '国内版 (moonshot.cn)' },
-      { value: 'intl', label: '海外版 (moonshot.ai)' },
-    ],
-    normalize: (value) => normalizeOnethingKimiRegion(value),
-    // 编程套餐(Kimi Code)只有一个全球地址,那一格在这时没有意义。
-    appliesTo: (apiMode) => onethingKimiRegionApplies(normalizeOnethingKimiApiMode(apiMode)),
-  },
-  note: '编程套餐的密钥和地址与开放平台不通用,用错会额外扣费。',
-  baseUrlOf: (apiMode, region) =>
-    getOnethingKimiBaseUrl(
-      normalizeOnethingKimiApiMode(apiMode),
-      normalizeOnethingKimiRegion(region),
-    ),
 }

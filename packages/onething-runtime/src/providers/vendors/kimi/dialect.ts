@@ -1,13 +1,13 @@
 /**
- * `kimi` —— 开放平台(按量,国内/海外)。对照 `factory.ts`:
+ * `kimi` —— 开放平台(按量,国内/海外)。对照同目录 `runtime.ts`:
  * `defaultBaseUrl: ONETHING_KIMI_DEFAULT_BASE_URL` /`supportsReasoning:true` /
  * `includeAssistantReasoning:true` / `reasoningStyle:'thinking-type'`;
  * 没有 `supportsVision`(Kimi 的图片输入今天不声明)。
  *
- * 真正的地址由 `resolveOnethingKimiBaseUrl()` 在注册处算好后传进来 ——
- * 选错不是报错而是**多扣钱**,所以那一步留在 factory,配方只给缺省。
+ * 真正的地址由 `resolveOnethingKimiBaseUrl()` 在运行时工厂(`runtime.ts`)里算好后传进来 ——
+ * 选错不是报错而是**多扣钱**,所以那一步留在工厂,配方只给缺省。
  */
-import { ONETHING_KIMI_DEFAULT_BASE_URL } from "../../../providers/kimi.js";
+import { ONETHING_KIMI_DEFAULT_BASE_URL } from "./endpoint.js";
 import type {
 	DialectThinkingConfig,
 	DialectThinkingIntent,
@@ -16,15 +16,15 @@ import type {
 	TurnContext,
 	UsageFieldReader,
 	UsagePathTable,
-} from "../base/index.js";
-import { thinkingTypeWire } from "../thinking/index.js";
-import { kimiFileExtractChannel } from "./kimi-attachments.js";
-import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
+} from "../../../agent-loop/providers/base/index.js";
+import { thinkingTypeWire } from "../../../agent-loop/providers/thinking/thinking-type.js";
+import { kimiFileExtractChannel } from "./attachments.js";
+import { openAIChatUsage, openAIChatUsageTable } from "../../../agent-loop/providers/wires/index.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
 	promptCacheKeyExtraBody,
-} from "./recipe.js";
+} from "../../../agent-loop/providers/dialects/recipe.js";
 
 /**
  * Kimi 把缓存命中报在 usage 的**顶层** `cached_tokens`,不在

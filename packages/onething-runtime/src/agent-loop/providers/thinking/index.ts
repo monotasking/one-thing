@@ -2,8 +2,11 @@
  * 思考线型表 —— **按账本的 `OnethingReasoningWire` 值建表**
  * (设计稿 §2.7:Dialect 不持有线型,方言只声明「我这家可能出现哪几条」)。
  *
- * 这个模块一加载就把已迁移的线型登记进进程级的 `thinkingWires`:
- * openai-chat 的八条(`openai-compatible.ts` 的构造门面靠它把 `reasoningStyle`
+ * 这个模块一加载就把已迁移的线型登记进进程级的 `thinkingWires`
+ * (只服务一家的线型随那一家搬回了 `providers/vendors/<id>/thinking.ts`,由
+ * `vendors/runtimes.ts` 的名册登记):
+ * openai-chat 的五条(原先八条,智谱 / 千问 / DeepSeek 三条已回家;`openai-compatible.ts`
+ * 的构造门面靠它把 `reasoningStyle`
  * 换成对象 —— 那个 `switch` 从此不存在了),外加 anthropic-messages 的三条
  * (P1-a)与 gemini 的两条(P1-b)。
  */
@@ -11,7 +14,6 @@ import { thinkingWires } from "../base/index.js";
 import { anthropicAdaptiveThinkingWire } from "./anthropic-adaptive.js";
 import { anthropicAlwaysThinkingWire } from "./anthropic-always.js";
 import { anthropicBudgetThinkingWire } from "./anthropic-budget.js";
-import { deepSeekInferredThinkingWire } from "./deepseek-inferred.js";
 import {
 	geminiBudgetThinkingWire,
 	geminiLevelThinkingWire,
@@ -20,18 +22,15 @@ import { grokEffortWire } from "./grok-effort.js";
 import { openAIChatNoThinkingWire } from "./none.js";
 import { openAIEffortWire } from "./openai-effort.js";
 import { openRouterReasoningWire } from "./openrouter-reasoning.js";
-import { qwenThinkingWire } from "./qwen-thinking.js";
 import { responsesReasoningWire } from "./responses-reasoning.js";
 import { thinkingTypeWire } from "./thinking-type.js";
 
 thinkingWires
 	.register(thinkingTypeWire)
 	.register(openAIEffortWire)
-	.register(qwenThinkingWire)
 	.register(grokEffortWire)
 	.register(openRouterReasoningWire)
 	.register(openAIChatNoThinkingWire)
-	.register(deepSeekInferredThinkingWire)
 	.register(anthropicAdaptiveThinkingWire)
 	.register(anthropicBudgetThinkingWire)
 	.register(anthropicAlwaysThinkingWire)
@@ -69,12 +68,6 @@ export {
 	type GeminiThinkingConfig,
 	type GeminiThinkingLevel,
 } from "./gemini-thinking.js";
-export {
-	DeepSeekInferredThinkingWire,
-	deepSeekInferredThinkingWire,
-	isDeepSeekThinkingModel,
-	resolveDeepSeekThinking,
-} from "./deepseek-inferred.js";
 export { GrokEffortWire, grokEffortWire, clampGrokReasoningEffort } from "./grok-effort.js";
 export {
 	GROK_RESPONSES_THINKING_WIRES,
@@ -104,11 +97,6 @@ export {
 	decodeOpenRouterReasoningDetails,
 	openRouterReasoningWire,
 } from "./openrouter-reasoning.js";
-export {
-	QwenThinkingWire,
-	qwenThinkingWire,
-	clampQwenReasoningEffort,
-} from "./qwen-thinking.js";
 export {
 	RESPONSES_ENCRYPTED_REASONING_INCLUDE,
 	RESPONSES_INCLUDE_PATH,

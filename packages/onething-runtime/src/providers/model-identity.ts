@@ -33,10 +33,7 @@ const LEGACY_MODEL_VENDOR_ALIASES: ReadonlyArray<{
 	{ brands: ["openai"], keys: ["openai"] },
 	{ brands: ["anthropic"], keys: ["anthropic"] },
 	{ brands: ["google", "gemini"], keys: ["google"] },
-	{ brands: ["deepseek", "deepseek-ai"], keys: ["deepseek"] },
-	{ brands: ["moonshotai", "moonshot", "kimi"], keys: ["moonshotai", "moonshotai-cn"] },
 	{ brands: ["x-ai", "xai", "grok"], keys: ["xai"] },
-	{ brands: ["qwen", "alibaba", "alibaba-cloud", "dashscope"], keys: ["alibaba", "alibaba-cn"] },
 	{ brands: ["mistralai", "mistral"], keys: ["mistral"] },
 ];
 

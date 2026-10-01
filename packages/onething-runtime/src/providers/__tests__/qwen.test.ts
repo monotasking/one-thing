@@ -16,7 +16,7 @@ import {
   normalizeOnethingQwenApiMode,
   resolveOnethingQwenBaseUrl,
   resolveOnethingQwenModelsDevProviderId,
-} from '../qwen.js'
+} from '../vendors/qwen/endpoint.js'
 import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
 import { getOnethingModelsDevProviderId } from '../model-registry.js'
 import { resolveOnethingModelCapabilities } from '../model-capability.js'

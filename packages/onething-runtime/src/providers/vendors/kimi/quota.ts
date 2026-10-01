@@ -9,7 +9,7 @@
  * 编程套餐(`api.kimi.com/coding`)没有余额这回事,同样 `unsupported`。
  */
 import type { ProviderQuota } from '@shared/contracts/quota.js'
-import { resolveOnethingKimiBaseUrl, type OnethingKimiEndpointConfig } from '../kimi.js'
+import { resolveOnethingKimiBaseUrl, type OnethingKimiEndpointConfig } from './endpoint.js'
 import {
   getQuotaJson,
   quotaNow,
@@ -17,7 +17,7 @@ import {
   quotaRecordOf,
   QuotaFetchError,
   type QuotaSource,
-} from './source.js'
+} from '../../quota/source.js'
 
 export const KIMI_QUOTA_SOURCE_ID = 'kimi'
 const KIMI_INTL_HOST = 'api.moonshot.ai'

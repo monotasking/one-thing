@@ -560,14 +560,8 @@ export const ONETHING_OPENAI_EFFORTS_WITH_MAX = [
 ] as const
 export const ONETHING_GEMINI_EFFORTS = ['low', 'medium', 'high'] as const
 export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
-export const ONETHING_OPENROUTER_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
-export const ONETHING_DEEPSEEK_EFFORTS = ['high', 'max'] as const
-/**
- * Qwen3.8-Max is the only Qwen family that takes reasoning_effort, and it
- * accepts exactly low|medium|xhigh (it 400s if thinking_budget is sent too).
- * Every other hybrid Qwen model is budget-driven, so it exposes no effort tier.
- */
-export const ONETHING_QWEN_MAX_EFFORTS = ['low', 'medium', 'xhigh'] as const
+// OpenRouter / DeepSeek / 千问 3.8-Max 的档位值域随各家的型号规则表搬回了各自的
+// `vendors/<id>/manifest.ts`(服务商自述试点 P2)。
 export const ONETHING_CODEX_FALLBACK_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
 
 /** Pre-4.6 Claude extended thinking: fixed budget_tokens, min 1024, < max_tokens. */
@@ -799,89 +793,6 @@ const PROVIDER_MODEL_RULES: Partial<Record<OnethingProviderKind, OnethingModelRu
     // gemini wire must know which of the two thinking encoders to reach for.
     { test: /(?:)/, caps: { reasoning: false, vision: true }, wire: geminiReasoningWire },
   ],
-  // 千问 AI 平台 resells GLM / Kimi / DeepSeek / MiniMax next to its own Qwen
-  // models, and each family keeps its own effort vocabulary on this endpoint.
-  qwen: [
-    {
-      // The preview shares 3.8-max's effort ladder but carries no thinking
-      // toggle (models.dev lists effort + budget only, and the API docs leave
-      // Qwen3.8 out of the enable_thinking model list) — so no fake Off.
-      test: /qwen3\.8-max-preview/,
-      caps: { reasoning: true, vision: true },
-      profile: {
-        toggleable: false,
-        defaultOn: true,
-        efforts: ONETHING_QWEN_MAX_EFFORTS,
-        defaultEffort: 'xhigh',
-        wire: 'qwen-thinking',
-      },
-    },
-    {
-      // Only the 3.8-max family takes reasoning_effort; it thinks by default
-      // and, unlike the preview, still accepts the toggle.
-      test: /qwen3\.8-max/,
-      caps: { reasoning: true, vision: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: ONETHING_QWEN_MAX_EFFORTS,
-        defaultEffort: 'xhigh',
-        wire: 'qwen-thinking',
-      },
-    },
-    {
-      // GLM and DeepSeek-V4/V3.2 keep the high|max pair the vendors use.
-      test: /^glm-|^deepseek-v[34]/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: ONETHING_DEEPSEEK_EFFORTS,
-        defaultEffort: 'high',
-        wire: 'qwen-thinking',
-      },
-    },
-    {
-      // k2.7-code / k2-thinking always think and expose no knob.
-      test: /^kimi.*(code|thinking)/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: false,
-        defaultOn: true,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'none',
-      },
-    },
-    {
-      // Qwen3.5+ hybrids and the resold Kimi K2.x: thinking on by default,
-      // toggled with enable_thinking, depth set by thinking_budget (no tiers).
-      test: /^qwen3\.\d|^kimi/,
-      caps: { reasoning: true, vision: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'qwen-thinking',
-      },
-    },
-    {
-      // Older hybrids (qwen3-*, qwen-plus/turbo/flash, qwq/qvq): the API does
-      // not think unless enable_thinking is sent.
-      test: /^qwen3-|^qwen-(?:plus|turbo|flash)|^q[wv]q/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: true,
-        defaultOn: false,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'qwen-thinking',
-      },
-    },
-    { test: /-vl|vl-|omni/, caps: { reasoning: false, vision: true } },
-    { test: /(?:)/, caps: { reasoning: false } },
-  ],
   grok: [
     { test: /non-reasoning|grok-imagine/, caps: { reasoning: false, vision: true } },
     {
@@ -933,109 +844,6 @@ const PROVIDER_MODEL_RULES: Partial<Record<OnethingProviderKind, OnethingModelRu
       },
     },
     { test: /(?:)/, caps: { reasoning: false, vision: true } },
-  ],
-  openrouter: [
-    // Capability comes from the registry; the profile applies once reasoning is known.
-    {
-      test: /(?:)/,
-      caps: { vision: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: ONETHING_OPENROUTER_EFFORTS,
-        defaultEffort: 'high',
-        wire: 'openrouter-reasoning',
-      },
-    },
-  ],
-  deepseek: [
-    {
-      // DeepSeek 的图片输入只在 vision 实验族上(`image_url` / `file` 块,
-      // 且只在 user 消息里)。这一行**只给 vision**,不给 reasoning ——
-      // `fromRules` 对每个能力独立取「第一条给出布尔值的行」,所以
-      // `deepseek-v4-*-vision-exp` 的 reasoning 仍由下面那条 v4 行决定。
-      test: /vision/,
-      caps: { vision: true },
-    },
-    {
-      // V4.1 起官方目录改名为 `deepseek-flash` / `deepseek-pro`(models.dev 名字仍写
-      // 「DeepSeek V4.1 Flash」),id 里不再带 v4 —— 只认 v4 的话它会落进下面那条
-      // 兜底行,抽屉里档位整条消失。
-      test: /(^|[^a-z])v4|^deepseek-(flash|pro)(\b|$)/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: true,
-        // 官方原文:「思考模式默认打开,且 effort 默认为 high」—— 不传
-        // `thinking` 时服务端自己在想,所以这里是 true(#6;旧注释「不传
-        // 就不想」把这条写反了)。
-        defaultOn: true,
-        efforts: ONETHING_DEEPSEEK_EFFORTS,
-        defaultEffort: 'high',
-        wire: 'thinking-type',
-      },
-    },
-    {
-      // deepseek-reasoner always thinks and exposes no knob — the chat UI
-      // keeps its legacy model-pair toggle (chat ⇄ reasoner) instead.
-      test: /reasoner/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: false,
-        defaultOn: true,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'none',
-      },
-    },
-    { test: /(?:)/, caps: { reasoning: false } },
-  ],
-  kimi: [
-    {
-      // K3 是这家唯一收 `tool_choice: required` / 指名函数的一代(#5b)。
-      test: /^kimi-k3/,
-      caps: { reasoning: true, forcedToolUse: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        // K3 only accepts reasoning_effort "max".
-        efforts: ['max'],
-        defaultEffort: 'max',
-        wire: 'thinking-type',
-      },
-    },
-    {
-      // Kimi Code 套餐给同一代 K3 起的名字是**裸** `k3` / `k3-256k`
-      // (`ONETHING_KIMI_CODE_DEFAULT_MODEL`),`^kimi-k3` 够不着它。这一行
-      // **只说 forcedToolUse**:reasoning 仍由下面的行裁定,顺序语义不动。
-      test: /^k3(?:-|$)/,
-      caps: { forcedToolUse: true },
-    },
-    {
-      // k2.7-code (+ -highspeed) and k2-thinking always think; nothing to configure.
-      test: /^kimi-k2.*(code|thinking)/,
-      caps: { reasoning: true, forcedToolUse: false },
-      profile: {
-        toggleable: false,
-        defaultOn: true,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'none',
-      },
-    },
-    {
-      // k2.5 / k2.6: thinking on by default, toggleable via thinking.type.
-      test: /^kimi-k2\.\d/,
-      caps: { reasoning: true, forcedToolUse: false },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'thinking-type',
-      },
-    },
-    // K2.x 及更早只认 `tool_choice: auto`(#5b);未知型号按保守面倒。
-    { test: /(?:)/, caps: { reasoning: false, forcedToolUse: false } },
   ],
   codex: [
     {

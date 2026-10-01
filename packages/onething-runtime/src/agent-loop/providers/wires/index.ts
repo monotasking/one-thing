@@ -57,7 +57,6 @@ export {
 	type OpenAIChatApiError,
 } from "./openai-chat-errors.js";
 export {
-	DEEPSEEK_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_VERBOSITY_VALUES,
 	openAIChatImageDetail,

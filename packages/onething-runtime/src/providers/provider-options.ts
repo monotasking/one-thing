@@ -24,14 +24,6 @@
  * carries". See docs/design/provider-abstraction.md §7.1.
  */
 
-import {
-  normalizeOnethingKimiApiMode,
-  normalizeOnethingKimiRegion,
-} from './kimi.js'
-import {
-  normalizeOnethingQwenApiMode,
-  normalizeOnethingQwenRegion,
-} from './qwen.js'
 import { getProviderManifest } from './manifest.js'
 import { normalizeOnethingReasoningProfileOverride } from './model-capability.js'
 
@@ -126,25 +118,5 @@ export function pickOnethingProviderOptions(
   return carried
 }
 
-/** Unpack + narrow, for the kimi factory. */
-export function readOnethingKimiOptions(
-  providerOptions: OnethingProviderOptions | undefined,
-): {
-  kimiApiMode: ReturnType<typeof normalizeOnethingKimiApiMode>
-  kimiRegion: ReturnType<typeof normalizeOnethingKimiRegion>
-} {
-  return {
-    kimiApiMode: normalizeOnethingKimiApiMode(providerOptions?.kimiApiMode),
-    kimiRegion: normalizeOnethingKimiRegion(providerOptions?.kimiRegion),
-  }
-}
-
-/** Unpack + narrow, for the qwen factory. */
-export function readOnethingQwenOptions(
-  providerOptions: OnethingProviderOptions | undefined,
-): { qwenApiMode: ReturnType<typeof normalizeOnethingQwenApiMode>; qwenRegion: ReturnType<typeof normalizeOnethingQwenRegion> } {
-  return {
-    qwenApiMode: normalizeOnethingQwenApiMode(providerOptions?.qwenApiMode),
-    qwenRegion: normalizeOnethingQwenRegion(providerOptions?.qwenRegion),
-  }
-}
+// 拆袋(把运行期的袋子还原成某一家的档位 / 地区)是那一家运行时工厂的事:各家的
+// `read…Options` 住在自己的 `vendors/<id>/endpoint.ts`(服务商自述试点 P2)。

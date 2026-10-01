@@ -23,10 +23,21 @@ import {
 	type SamplingPolicy,
 	type TurnContext,
 	type UsagePathTable,
-} from "../base/index.js";
-import { deepSeekInferredThinkingWire, resolveDeepSeekThinking } from "../thinking/index.js";
-import { DEEPSEEK_IMAGE_DETAIL_VALUES } from "../wires/index.js";
-import { defineOpenAIChatDialect } from "./recipe.js";
+} from "../../../agent-loop/providers/base/index.js";
+import { defineOpenAIChatDialect } from "../../../agent-loop/providers/dialects/recipe.js";
+import { deepSeekInferredThinkingWire, resolveDeepSeekThinking } from "./thinking.js";
+
+/**
+ * DeepSeek 的 vision-exp 端点多一个 `original`(原图不缩放),其余三值同标准。
+ * 值域是**这一家的事实**,不是白名单的宽窄 —— 所以按家给表,不取并集。
+ * (从 `wires/openai-chat-provider-options.ts` 搬回家。)
+ */
+export const DEEPSEEK_IMAGE_DETAIL_VALUES = [
+	"auto",
+	"low",
+	"high",
+	"original",
+] as const;
 
 /**
  * DeepSeek 的 usage(设计稿 §7 第二行):`prompt_tokens` 含缓存命中,

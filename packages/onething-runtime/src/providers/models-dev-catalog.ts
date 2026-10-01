@@ -6,8 +6,8 @@
  * model-registry.ts 那一整套抓取/落盘。规则本身与 model-registry 同一份,
  * 那边只是 re-export。
  */
-import type { OnethingKimiEndpointConfig } from "./kimi.js";
-import type { OnethingQwenEndpointConfig } from "./qwen.js";
+import type { OnethingKimiEndpointConfig } from "./vendors/kimi/endpoint.js";
+import type { OnethingQwenEndpointConfig } from "./vendors/qwen/endpoint.js";
 import { BUILTIN_PROVIDER_MANIFESTS } from "./builtin-manifests.js";
 import { getProviderManifest } from "./manifest.js";
 
@@ -15,14 +15,9 @@ const LEGACY_PROVIDER_MAPPING: Record<string, string> = {
 	openai: "openai",
 	anthropic: "claude",
 	google: "gemini",
-	deepseek: "deepseek",
 	mistral: "mistral",
 	meta: "llama",
 	cohere: "cohere",
-	// 千问: the registry key depends on region + plan (see qwen.ts). This entry
-	// is only the fallback for a config-less lookup — 国内版 pay-as-you-go.
-	"alibaba-cn": "qwen",
-	moonshotai: "kimi",
 	xai: "grok",
 };
 

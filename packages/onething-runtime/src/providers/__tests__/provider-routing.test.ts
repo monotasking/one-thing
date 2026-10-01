@@ -9,25 +9,16 @@ import {
   generateOnethingProviderChatTitle,
   generateOnethingTextChatResponse,
   getLatestOnethingUserMessageText,
-  isOnethingProviderDeepSeekThinkingModel,
   mapOnethingACPStopReason,
   mergeOnethingSystemMessagesForGenerateIfNeeded,
-  normalizeOnethingDeepSeekAgentReasoningEffort,
   normalizeOnethingAgentReasoningEffort,
   projectOnethingACPPromptStreamEvent,
-  resolveOnethingDeepSeekAgentThinking,
   resolveOnethingAgentThinking,
   streamOnethingACPChatResponseWithTools,
 } from '../provider-routing.js'
 
 describe('onething provider routing helpers', () => {
-  it('normalizes generic and DeepSeek reasoning controls', () => {
-    expect(isOnethingProviderDeepSeekThinkingModel('deepseek-v4-pro')).toBe(true)
-    expect(isOnethingProviderDeepSeekThinkingModel('deepseek-chat')).toBe(false)
-    expect(resolveOnethingDeepSeekAgentThinking('deepseek-reasoner', {})).toBe('enabled')
-    expect(resolveOnethingDeepSeekAgentThinking('deepseek-reasoner', { thinking: false })).toBe('disabled')
-    expect(normalizeOnethingDeepSeekAgentReasoningEffort('xhigh')).toBe('max')
-    expect(normalizeOnethingDeepSeekAgentReasoningEffort('medium')).toBe('high')
+  it('normalizes generic reasoning controls', () => {
     expect(normalizeOnethingAgentReasoningEffort('xhigh')).toBe('max')
     expect(normalizeOnethingAgentReasoningEffort('low')).toBe('high')
     expect(resolveOnethingAgentThinking({ thinking: true })).toBe('enabled')

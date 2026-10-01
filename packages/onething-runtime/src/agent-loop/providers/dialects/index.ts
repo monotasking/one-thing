@@ -88,12 +88,6 @@ export {
 export { CODEX_DIALECT } from "./codex.js";
 
 export { CUSTOM_OPENAI_DIALECT } from "./custom-openai.js";
-export {
-	DEEPSEEK_DIALECT,
-	DEEPSEEK_TRANSPORT_CAPABILITIES,
-	DEEPSEEK_USAGE_TABLE,
-	DeepSeekSamplingPolicy,
-} from "./deepseek.js";
 export { GITHUB_COPILOT_DIALECT } from "./github-copilot.js";
 export {
 	GROK_BASE_URL,
@@ -107,12 +101,6 @@ export {
 } from "./grok.js";
 export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
 export {
-	KimiFileExtractChannel,
-	kimiFileExtractChannel,
-} from "./kimi-attachments.js";
-export { KIMI_DIALECT, KIMI_USAGE_TABLE, kimiThinkingIntent } from "./kimi.js";
-export { KIMI_CODE_DIALECT } from "./kimi-code.js";
-export {
 	OPENAI_BASE_URL,
 	OPENAI_DIALECT,
 	OPENAI_DIALECT_SPEC,
@@ -120,5 +108,3 @@ export {
 	OPENAI_PROVIDER_OPTIONS,
 	OPENAI_TRANSPORT_CAPABILITIES,
 } from "./openai.js";
-export { OPENROUTER_DIALECT, OPENROUTER_USAGE_TABLE } from "./openrouter.js";
-export { QWEN_DIALECT, QWEN_USAGE_TABLE } from "./qwen.js";

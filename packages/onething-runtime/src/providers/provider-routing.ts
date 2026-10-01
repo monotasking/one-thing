@@ -84,7 +84,6 @@ export interface OnethingProviderReasoningSourceStreamChunk {
 
 export type OnethingProviderRuntimeChatRoute<TProvider = unknown> =
   | { kind: 'acp' }
-  | { kind: 'deepseek' }
   | { kind: 'agent'; provider: TProvider }
   | { kind: 'unsupported' }
 
@@ -145,34 +144,6 @@ export interface StreamOnethingACPChatResponseWithToolsOptions<
 
 
 
-
-export function isOnethingProviderDeepSeekThinkingModel(modelId: string): boolean {
-  const lower = modelId.toLowerCase()
-  return (
-    lower.includes('reasoner') ||
-    lower.includes('thinking') ||
-    /(^|[^a-z])v4/.test(lower)
-  )
-}
-
-export function normalizeOnethingDeepSeekAgentReasoningEffort(
-  value: OnethingThinkingEffort | undefined,
-): OnethingAgentReasoningEffort | undefined {
-  if (value === 'high' || value === 'max') return value
-  if (value === 'low' || value === 'medium') return 'high'
-  if (value === 'xhigh') return 'max'
-  return undefined
-}
-
-export function resolveOnethingDeepSeekAgentThinking(
-  modelId: string,
-  options: { thinking?: boolean },
-): OnethingAgentThinking | undefined {
-  if (options.thinking === true) return 'enabled'
-  if (options.thinking === false) return 'disabled'
-  if (isOnethingProviderDeepSeekThinkingModel(modelId)) return 'enabled'
-  return undefined
-}
 
 export function normalizeOnethingAgentReasoningEffort(
   value: OnethingThinkingEffort | undefined,

@@ -4,7 +4,7 @@ import type {
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
 import { createCodexAgentProvider } from "../codex.js";
-import { createDeepSeekAgentProvider } from "../deepseek.js";
+import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
 
 function sseResponse(dataLines: string[]): Response {

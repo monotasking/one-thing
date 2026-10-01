@@ -1,14 +1,14 @@
 /**
- * `qwen` —— 千问 / DashScope 兼容模式。对照 `factory.ts`:`defaultBaseUrl` /
+ * `qwen` —— 千问 / DashScope 兼容模式。对照同目录 `runtime.ts`:`defaultBaseUrl` /
  * `supportsVision:true` / `supportsReasoning:true` /
  * `includeAssistantReasoning:true`(qwen3.8-max 默认 preserve_thinking,
  * 历史里 `reasoning_content` 被丢掉会被拒)/ `reasoningStyle:'qwen-thinking'`。
  */
-import { ONETHING_QWEN_DEFAULT_BASE_URL } from "../../../providers/qwen.js";
-import type { UsagePathTable } from "../base/index.js";
-import { qwenThinkingWire } from "../thinking/index.js";
-import { openAIChatUsage, openAIChatUsageTable } from "../wires/index.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
+import type { UsagePathTable } from "../../../agent-loop/providers/base/index.js";
+import { openAIChatUsage, openAIChatUsageTable } from "../../../agent-loop/providers/wires/index.js";
+import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../../agent-loop/providers/dialects/recipe.js";
+import { ONETHING_QWEN_DEFAULT_BASE_URL } from "./endpoint.js";
+import { qwenThinkingWire } from "./thinking.js";
 
 /**
  * Qwen 的显式缓存(`cache_control`)把**写入量**报在顶层

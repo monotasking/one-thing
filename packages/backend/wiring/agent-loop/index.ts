@@ -4,12 +4,6 @@ export type { ClaudeAgentProviderOptions } from './providers/claude.js'
 export { createCodexAgentProvider } from './providers/codex.js'
 export type { CodexAgentProviderOptions } from './providers/codex.js'
 
-export { createDeepSeekAgentProvider } from './providers/deepseek.js'
-export type {
-  AgentProviderRequestDump,
-  DeepSeekAgentProviderOptions,
-} from './providers/deepseek.js'
-
 export { createGeminiAgentProvider } from './providers/gemini.js'
 export type { GeminiAgentProviderOptions } from './providers/gemini.js'
 

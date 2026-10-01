@@ -39,7 +39,7 @@ import type {
 	AgentMessage,
 	AgentMessageContent,
 } from "@onething/core/agent-loop";
-import type { AttachmentChannel, TurnContext, TurnTransport } from "../base/index.js";
+import type { AttachmentChannel, TurnContext, TurnTransport } from "../../../agent-loop/providers/base/index.js";
 
 /** 上传时的 `purpose` —— 内容抽取这一支(另外三个值是 image / video / batch)。 */
 const FILE_EXTRACT_PURPOSE = "file-extract";

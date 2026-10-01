@@ -10,7 +10,8 @@
  * builder 的字节与「没有 warning 时」一致 —— 快照零变化的根据就在这里。
  */
 import { describe, expect, it } from "vitest";
-import { GITHUB_COPILOT_DIALECT, DEEPSEEK_DIALECT } from "../../dialects/index.js";
+import { GITHUB_COPILOT_DIALECT } from "../../dialects/index.js";
+import { DEEPSEEK_DIALECT } from "../../../../providers/vendors/deepseek/dialect.js";
 import { OpenAIChatPartCodec } from "../../wires/index.js";
 import {
 	LedgerModelProfileResolver,

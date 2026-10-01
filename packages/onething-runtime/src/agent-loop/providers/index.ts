@@ -13,8 +13,6 @@ export type {
   OAuthToken as CodexOAuthToken,
   ProviderAuthContext as CodexProviderAuthContext,
 } from './codex.js'
-export { createDeepSeekAgentProvider } from './deepseek.js'
-export type { DeepSeekAgentProviderOptions } from './deepseek.js'
 export type {
   AgentProviderRequestDump,
   AgentProviderRequestDumper,
@@ -22,7 +20,6 @@ export type {
 } from './request-dump.js'
 export {
   getOnethingAgentLoopThinkingOptions,
-  normalizeDeepSeekReasoningEffort,
 } from './thinking-options.js'
 export type {
   OnethingAgentLoopThinkingContext,

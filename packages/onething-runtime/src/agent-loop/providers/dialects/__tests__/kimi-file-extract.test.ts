@@ -22,7 +22,7 @@ import {
 	TurnContext,
 	type TurnTransport,
 } from "../../base/index.js";
-import { kimiFileExtractChannel } from "../kimi-attachments.js";
+import { kimiFileExtractChannel } from "../../../../providers/vendors/kimi/attachments.js";
 
 const BASE_URL = "https://api.moonshot.cn/v1";
 const FILE_ID = "file-unit-1";

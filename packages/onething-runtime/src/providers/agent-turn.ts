@@ -13,19 +13,15 @@ import {
   type AgentTurnRequest,
   type AgentUsage,
 } from '@onething/core/agent-loop'
-import { createDeepSeekAgentProvider } from '../agent-loop/providers/deepseek.js'
 import {
   onethingAgentMessagesFromToolChatMessages,
   onethingUtilityAgentMessagesFromMessages,
   type OnethingAIMessageContent,
-  type OnethingDeepSeekAgentSourceMessage,
   type OnethingProviderToolDefinitionMap,
   type OnethingToolChatMessage,
 } from './message-conversion.js'
 import {
-  normalizeOnethingDeepSeekAgentReasoningEffort,
   normalizeOnethingAgentReasoningEffort,
-  resolveOnethingDeepSeekAgentThinking,
   resolveOnethingAgentThinking,
   type OnethingAgentReasoningEffort,
   type OnethingAgentThinking,

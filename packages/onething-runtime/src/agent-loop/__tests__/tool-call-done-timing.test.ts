@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTurnStreamEvent } from '@onething/core/agent-loop'
 import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'
-import { createDeepSeekAgentProvider } from '../providers/deepseek.js'
+import { createDeepSeekAgentProvider } from '../../providers/vendors/deepseek/agent-provider.js'
 
 function openAiToolChunk(index: number, id: string | null, name: string | null, args: string): string {
   const call: Record<string, unknown> = { index }

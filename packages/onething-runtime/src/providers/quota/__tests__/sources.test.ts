@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  BUILTIN_QUOTA_SOURCES,
+  builtinQuotaSources,
   classifyQuotaWindowSeconds,
   codexQuotaFromHeaders,
   fetchProviderQuota,
@@ -69,7 +69,7 @@ describe('manifest → 注册表', () => {
       expect(providerQuotaSourceOf(id)).toBe(id)
     }
     expect(providerQuotaSourceOf('gemini')).toBeUndefined()
-    expect(BUILTIN_QUOTA_SOURCES.map(source => source.id).sort()).toEqual(
+    expect(builtinQuotaSources().map(source => source.id).sort()).toEqual(
       ['claude-code', 'codex', 'deepseek', 'kimi', 'openrouter'],
     )
   })

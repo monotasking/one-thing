@@ -218,12 +218,10 @@ vi.mock('../../../providers/agent-runtime.js', () => {
   return {
     createAgentProviderFromRuntime,
     isACPProviderRuntime: vi.fn((providerId: string) => providerId === 'acp'),
-    isDeepSeekProviderRuntime: vi.fn((providerId: string) => providerId === 'deepseek'),
-    // Mirrors the real implementation: acp/deepseek short-circuit, otherwise
+    // Mirrors the real implementation: acp short-circuits, otherwise
     // route to the (mocked) agent provider factory.
     resolveProviderRuntimeRoute: vi.fn((providerId: string, config: unknown) => {
       if (providerId === 'acp') return { kind: 'acp' }
-      if (providerId === 'deepseek') return { kind: 'deepseek' }
       const provider = createAgentProviderFromRuntime(providerId, config)
       return provider ? { kind: 'agent', provider } : { kind: 'unsupported' }
     }),

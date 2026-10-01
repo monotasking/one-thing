@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   convertOnethingToolDefinitionsForProvider,
-  onethingDeepSeekAgentMessagesFromMessages,
   onethingAgentContentFromAIMessageContent,
   onethingAgentMessagesFromToolChatMessages,
   onethingUtilityAgentMessagesFromMessages,
@@ -76,43 +75,9 @@ describe('onething provider message conversion', () => {
     ])
   })
 
-  it('converts DeepSeek agent source messages into core agent messages', () => {
+  it('stringifies tool output for the wire', () => {
     expect(stringifyOnethingToolOutput({ output: 'file' })).toBe('{"output":"file"}')
     expect(stringifyOnethingToolOutput(null)).toBe('')
-
-    expect(onethingDeepSeekAgentMessagesFromMessages([
-      { role: 'developer', content: 'dev rules' },
-      { role: 'system', content: [{ type: 'text', text: 'system rules' }] },
-      { role: 'user', content: 'hello' },
-      {
-        role: 'assistant',
-        content: undefined,
-        reasoningContent: 'thinking',
-        toolCalls: [{
-          toolCallId: 'call_1',
-          toolName: 'read',
-          args: { path: 'a.txt' },
-        }],
-      },
-      {
-        role: 'tool',
-        content: [{
-          toolCallId: 'call_1',
-          result: { output: 'file' },
-        }],
-      },
-    ])).toEqual([
-      { role: 'system', content: 'dev rules' },
-      { role: 'system', content: 'system rules' },
-      { role: 'user', content: 'hello' },
-      {
-        role: 'assistant',
-        content: null,
-        reasoningContent: 'thinking',
-        toolCalls: [{ id: 'call_1', name: 'read', arguments: '{"path":"a.txt"}' }],
-      },
-      { role: 'tool', toolCallId: 'call_1', content: '{"output":"file"}' },
-    ])
   })
 
   it('converts UI message tool parts into assistant and tool result messages', () => {

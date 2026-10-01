@@ -158,6 +158,26 @@ providers/
 
 顺带删除 `runtime/src/providers/deepseek.ts` 与 `tool-result-content.ts` 两个无人使用的文件。
 
+**P2 第 1 批落地记录(openai-chat 一族:deepseek / kimi / kimi-code / qwen / openrouter)**:
+- 五家的地址与档位(`kimi.ts` / `qwen.ts` → `vendors/<id>/endpoint.ts`)、档位旋钮、环境变量、认亲行、目录别名、
+  型号规则表(连同只服务它们的档位常量)、方言(含 `kimi-attachments`)、只服务一家的思考线型、运行时工厂、
+  配额源全部回家;`provider-options.ts` 的 `readOnething<Id>Options` 搬进各家。
+- 新机制:配额源进 `VendorRuntime.quotaSources`,`quota/registry.ts` 改为**惰性**播种(registry 要 import
+  行为名册,而名册拉起 agent-loop —— 加载期播种会成环);`VendorRuntimeKit` 加 `accessToken(config)`(订阅家要)。
+- 死代码清掉:旧 deepseek 路(`providers/deepseek.ts`、`tool-result-content.ts`、`provider-routing` 的
+  `{kind:'deepseek'}` 与三个推断函数、`message-conversion` 的 DeepSeek 源消息转换、`provider-facade` 的
+  `withDeepSeekFetch`、`agent-runtime-route` 的常量、`thinking-options` 的 `normalizeDeepSeekReasoningEffort`、
+  backend `wiring/agent-loop/providers/deepseek.ts` 包装与它的测试)—— 逐个核过零生产调用者,测试里只测它们
+  自己的那几条一并删。`createDeepSeekAgentProvider` 留在 `vendors/deepseek/agent-provider.ts`(8 个测试拿它
+  当构造捷径),桶里的再导出删掉。
+- 千问的型号规则不再 import DeepSeek 家的常量:它转售 DeepSeek 型号接受的两档由千问自己声明。
+- 尺子:正则字面量不收(代码里的正则几乎都在认模型 id,如千问规则表里的 `/^deepseek-v[34]/`,那是模型家族
+  知识)、`openai-file`(PDF 投递格式)算协议名。320 → 257 对。
+- 本批各家剩下的对属于:P3(写死名单的类型、`shared`)、P4(壳)、领域外(语音 / 日志 / 触发器 / 会话 / 评估);
+  另有三处需要新机制而不是搬家 —— `auth/registry.ts` 的 OAuth 配置(随第 4 批订阅家一起)、`model-registry.ts`
+  里千问的目录补全钩子、`models-dev-catalog` 与 `model-registry` 签名里的千问 / Kimi 档位配置类型(随 P3)。
+  `wires/openai-chat-messages.ts` 认 OpenRouter 的 `reasoning_details` 回放,留在线协议层(改成方言字段会改测试构造)。
+
 ### P3 · 打开契约
 
 - `AIProviderId` 从写死的联合改为字符串 + 注册表;`AIProvider` 枚举退役;`OnethingProviderKind` 同理。

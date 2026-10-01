@@ -12,7 +12,7 @@ import {
 	isOnethingManualModelEntry,
 	mergeRefreshedCatalog,
 } from "./manual-models.js";
-import type { OnethingKimiEndpointConfig } from "./kimi.js";
+import type { OnethingKimiEndpointConfig } from "./vendors/kimi/endpoint.js";
 import {
 	MODELS_DEV_API_URL,
 	type GetModelsDevDataOptions,
@@ -22,7 +22,7 @@ import {
 	ONETHING_QWEN_PROVIDER_ID,
 	onethingQwenBackfillModels,
 	type OnethingQwenEndpointConfig,
-} from "./qwen.js";
+} from "./vendors/qwen/endpoint.js";
 // Catalog-key rules live in models-dev-catalog.ts (the renderer imports that
 // file alone); re-exported here so existing callers keep their import path.
 export {

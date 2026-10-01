@@ -21,7 +21,7 @@ import { runAgentLoop } from "@onething/core/agent-loop";
 import type { AgentProvider, AgentTool } from "@onething/core/agent-loop";
 import { createClaudeAgentProvider } from "../claude.js";
 import { toCodexToolChoice } from "../codex.js";
-import { createDeepSeekAgentProvider } from "../deepseek.js";
+import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";
 import { createGeminiAgentProvider } from "../gemini.js";
 
 function sseResponse(dataLines: string[]): Response {

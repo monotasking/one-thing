@@ -2,17 +2,21 @@
  * DeepSeek 的**构造门面**。
  *
  * 线协议是 openai-chat(`wires/openai-chat-wire.ts`),DeepSeek 的全部特殊之处
- * 都在 `dialects/deepseek.ts` 那份配方里:纯文本 user 内容、无条件回传
+ * 都在同目录 `dialect.ts` 那份配方里:纯文本 user 内容、无条件回传
  * `reasoning_content`、`prompt_cache_hit_tokens` 的 usage、按**推断后**的思考
  * 状态判 temperature、`DeepSeek` 大写的错误文案。
  *
  * 这个文件从 507 行缩到这里,是因为那 507 行里有 490 行与
  * `openai-compatible.ts` 逐字同源(设计稿 §1:去重后可删 ≈1550 行)。
+ *
+ * 服务商自述试点 P2 从 `agent-loop/providers/deepseek.ts` 搬回家。生产路不走这里
+ * (运行时工厂是同目录 `runtime.ts`);今天它的调用方是测试与两个桶的再导出。
  */
 import type { AgentProvider } from "@onething/core/agent-loop";
-import { BearerApiKeyAuth } from "./base/index.js";
-import { DEEPSEEK_DIALECT, createOpenAIChatProvider } from "./dialects/index.js";
-import type { AgentProviderRequestDumper } from "./request-dump.js";
+import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
+import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
+import type { AgentProviderRequestDumper } from "../../../agent-loop/providers/request-dump.js";
+import { DEEPSEEK_DIALECT } from "./dialect.js";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -20,14 +24,14 @@ export type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
 	AgentProviderRequestDumpValue,
-} from "./request-dump.js";
+} from "../../../agent-loop/providers/request-dump.js";
 
 /**
  * DeepSeek 的 reasoner 类模型默认思考,其余不。调用方什么都不说 = 「这个模型
  * 平时怎样就怎样」,而只有这条线知道每个模型平时怎样 —— 判据本体住在
  * `thinking/deepseek-inferred.ts`,这里只是老出口。
  */
-export { isDeepSeekThinkingModel } from "./thinking/index.js";
+export { isDeepSeekThinkingModel } from "./thinking.js";
 
 export interface DeepSeekAgentProviderOptions {
 	apiKey: string;
