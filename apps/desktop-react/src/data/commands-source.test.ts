@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { SHARED_SLASH_COMMANDS } from '@onething/core/slash-commands'
+import { SHARED_SLASH_COMMANDS } from '@shared/slash-commands'
 import { configureCommandsPort } from './commands-port'
 import { configureSessionsPort } from './sessions-port'
 import {

@@ -1,9 +1,8 @@
 import * as crypto from 'node:crypto'
 import * as path from 'node:path'
-import type { JsonObject } from '../json.js'
-import { effectPolicyFor } from '../toolkit/effects.js'
-
-export type PermissionGrantScope = 'session' | 'workspace'
+import type { JsonObject } from '@shared/json.js'
+import { effectPolicyFor } from '@shared/toolkit/effects.js'
+import type { PermissionGrant, PermissionGrantScope } from '@shared/permission/grant.js'
 
 /**
  * Can approving this effect kind turn into a standing grant?
@@ -25,26 +24,6 @@ export type PermissionGrantScope = 'session' | 'workspace'
  */
 export function isGrantableType(type: string): boolean {
   return effectPolicyFor(type).policy !== 'never-grantable'
-}
-
-export interface PermissionGrant {
-  id: string
-  scope: PermissionGrantScope
-  type: string
-  pattern: string | string[]
-  sessionId?: string
-  workspaceRoot?: string
-  userId?: string
-  workspaceId?: string
-  createdAt: number
-  updatedAt: number
-  createdFrom: {
-    messageId: string
-    toolCallId?: string
-    title: string
-  }
-  metadata?: JsonObject
-  revokedAt?: number
 }
 
 export interface PermissionGrantInput {

@@ -1,10 +1,5 @@
-import {
-  getAIToolName,
-  toJsonValue,
-  type AgentProviderData,
-  type JsonObject,
-  type JsonValue,
-} from '@onething/core'
+import { getAIToolName, type AgentProviderData } from '@onething/core'
+import { toJsonValue, type JsonObject, type JsonValue } from '@shared/json'
 import {
   buildHistoryMessages as buildCoreHistoryMessages,
   buildMessageContent as buildCoreMessageContent,
@@ -19,9 +14,7 @@ import {
   type CoreMessageContentSource,
   type CoreResumeAssistantMessage,
 } from '@onething/core/engine'
-import {
-  toolFailureResultForAI,
-} from '@onething/core/tools'
+import { toolFailureResultForAI } from '@shared/tools/tool-result'
 import { providerDataFromOnethingContentPart } from '../agent-loop/providers/provider-data.js'
 
 export type OnethingHistoryAIMessageContent = CoreAIMessageContent

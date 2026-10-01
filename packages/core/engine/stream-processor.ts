@@ -1,7 +1,12 @@
 import { coreToolCallSnapshot, patchCoreToolCall } from './tool-call-cow.js'
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { CoreReasoningPlacement } from './ipc-emitter.js'
-import { coreStepIdForToolCall } from './tool-step.js'
+import {
+  coreStepIdForToolCall,
+  coreStepTypeForToolName,
+  coreToolInputStartStepTitle,
+  type CoreStreamStepType,
+} from '@shared/engine/tool-step.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreResolvedTool {
@@ -41,7 +46,6 @@ export interface CoreStreamToolCallLike {
   argsFinalizedBy?: CoreToolArgsFinalizedBy
 }
 
-export type CoreStreamStepType = 'command' | 'tool-call'
 
 export interface CoreStreamStepLike<TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike> {
   id: string
@@ -95,21 +99,6 @@ export function resolveToolIdentity(
   }
 
   return { toolId, displayName, isMcp }
-}
-
-export function coreStepTypeForToolName(toolName: string): CoreStreamStepType {
-  return toolName.toLowerCase() === 'bash' ? 'command' : 'tool-call'
-}
-
-/**
- * 占位 step 的标题(`tool_input_start` 那一刻)。参数还没到,派生标题无从谈起
- * —— 引擎写的就是这一句,之后由工具自报的 `annotate{title}` 盖掉。
- *
- * 单独成一个函数是因为**投影也要说出同一句话**:一次"参数流到一半被打断"的
- * 调用永远停在这个标题上(§10.14 第 7 类),投影不许手抄这条字面量。
- */
-export function coreToolInputStartStepTitle(displayName: string): string {
-  return `调用工具: ${displayName}`
 }
 
 export function createCoreStreamToolCall(input: {

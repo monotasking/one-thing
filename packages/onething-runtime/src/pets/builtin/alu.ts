@@ -1,5 +1,5 @@
 import type { PetManifest } from '../manifest.js'
-import { ALU_RIG } from './alu.rig.js'
+import { ALU_RIG } from '@shared/pets/builtin/alu.rig.js'
 
 /**
  * **阿绿** —— 第二只宠物,一只绿鹦鹉(宠物 P5,正本 §12.3)。

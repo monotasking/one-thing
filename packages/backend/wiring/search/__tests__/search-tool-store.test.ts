@@ -33,9 +33,9 @@ process.env.ONETHING_STORE_PATH = storeRoot
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { Decision } from '@onething/core/toolkit'
 import type { Authorizer, Invocation, Outcome, Tool } from '@onething/core/toolkit'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import { encodeSessionLogEventLine } from '@onething/core/session'
-import type { SessionLogEventRecord } from '@onething/core/session'
+import type { SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionMeta } from '@shared/ipc.js'
 import {
   VaultFeed,

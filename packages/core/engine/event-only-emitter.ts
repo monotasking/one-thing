@@ -1,7 +1,8 @@
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
-import type { EventBase, StreamChunkBase, StreamDeltaStamp } from '../events/index.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
+import type { EventBase } from '../events/index.js'
+import type { StreamChunkBase, StreamDeltaStamp } from '@shared/events/stream-chunks.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { CoreIPCEmitter, CoreReasoningPlacement } from './ipc-emitter.js'
 import type { CoreToolArgsFinalizedBy } from './stream-processor.js'
 

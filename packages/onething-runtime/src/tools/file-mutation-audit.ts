@@ -1,7 +1,7 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import { withFileMutationQueue } from './file-mutation-queue.js'
 
 function hasErrorCode(error: Error | object | string | number | boolean | null | undefined, code: string): boolean {

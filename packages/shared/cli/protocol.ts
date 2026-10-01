@@ -1,4 +1,4 @@
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '../permission/principal.js'
 import type { PermissionMode } from '../ipc/tools.js'
 
 export type CliPlatformSupport = 'unix-socket'

@@ -60,12 +60,20 @@ const KERNEL_FILES = [
   'meta-tool.ts',
   'provider.ts',
   'read-outcome.ts',
-  'ref.ts',
   'registry.ts',
   'schema.ts',
   'spec.ts',
   'tool.ts',
   'validator.ts',
+]
+
+/**
+ * 内核的地址解析(`ref.ts`)2026-10 搬进了 `packages/shared/resource/`(server / client 拆分 ①c:
+ * 客户端也要解析、比较资源地址)。它仍属于这个内核,同一道门照样扫它 —— 少扫一个文件,门就
+ * 少守一格。
+ */
+const SHARED_KERNEL_FILES = [
+  fileURLToPath(new URL('../../../shared/resource/ref.ts', import.meta.url)),
 ]
 
 const strangerSpec: ResourceSpec = {
@@ -171,6 +179,9 @@ describe('stranger capability drill: a namespace core has never heard of', () =>
       const named = new RegExp(`\\b${scheme}\\b`, 'i')
       for (const name of files) {
         if (named.test(readFileSync(join(dir, name), 'utf-8'))) hits.push(`${name}:${scheme}`)
+      }
+      for (const file of SHARED_KERNEL_FILES) {
+        if (named.test(readFileSync(file, 'utf-8'))) hits.push(`${file}:${scheme}`)
       }
     }
     expect(hits).toEqual([])

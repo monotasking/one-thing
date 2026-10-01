@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, acpPersonaBlock } from '../client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
 import { effectiveAgentConfig, parseAcpAgentManifest } from '../manifest.js'
-import type { ACPAgentConfig } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * persona 怎么进 ACP agent(A2-a,方案 §3.4)。夹具是真子进程的假 agent,

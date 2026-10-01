@@ -21,9 +21,17 @@
  */
 
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
-import { makeEffect } from '@onething/core/toolkit'
-import type { Effect, PlanContext, Preview, Result, RunContext, Scene, ToolSpec } from '@onething/core/toolkit'
+import type { JsonObject } from '@shared/json'
+import { makeEffect } from '@shared/toolkit/effects'
+import type {
+  PlanContext,
+  Preview,
+  Result,
+  RunContext,
+  Scene,
+  ToolSpec,
+} from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import {
   TASK_MAX_CONCURRENT_PER_SESSION,
   TASK_TOOL_ID,

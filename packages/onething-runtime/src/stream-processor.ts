@@ -1,4 +1,4 @@
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import {
   createCoreStreamProcessor,
   type CoreReasoningPlacement,

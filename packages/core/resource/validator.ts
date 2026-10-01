@@ -43,9 +43,9 @@
  * WeakMap 让忘记注销的那一份自己回收。
  */
 
-import type { JsonSchema } from '../toolkit/spec.js'
+import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 import type { PartialValidator, ValidationResult } from '../toolkit/ports.js'
-import { parseRef } from './ref.js'
+import { parseRef } from '@shared/resource/ref.js'
 import { RESOURCE_OP_KEY, RESOURCE_READ_KEY, RESOURCE_REF_KEY } from './schema.js'
 import type { ResourceSpec } from './spec.js'
 

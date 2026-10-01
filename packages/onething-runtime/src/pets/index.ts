@@ -5,7 +5,6 @@
  */
 
 export { ALU } from './builtin/alu.js'
-export { ALU_RIG } from './builtin/alu.rig.js'
 export { HEIDOU } from './builtin/heidou.js'
 export {
   normalizePetChattiness,
@@ -35,29 +34,6 @@ export type { MomentPrompt, MomentPromptInput } from './prompt.js'
 export { petManifestProblems, rosterEntryOf, summarizePet } from './manifest.js'
 export type { PetManifest, PetRig, PetRosterEntry, PetSummary, PetVoice } from './manifest.js'
 export { BUILTIN_PETS, PetIdTakenError, PetRegistry, PetRigInvalidError } from './registry.js'
-export {
-  isRigColor,
-  RIG_MAX_DEPTH,
-  RIG_MAX_PARTS,
-  RIG_MOTIONS,
-  RIG_ONE_SHOTS,
-  RIG_POSES,
-  RIG_SHAPES,
-  validateRigSpec,
-} from './rig-spec.js'
-export type {
-  DeclarativeRigSpec,
-  RigMotion,
-  RigOneShot,
-  RigOrigin,
-  RigPart,
-  RigPartPose,
-  RigPose,
-  RigPoseSpec,
-  RigShape,
-  RigSpecProblem,
-  RigTransform,
-} from './rig-spec.js'
 export {
   PET_CURRENT_PATH,
   PET_CURRENT_REF,

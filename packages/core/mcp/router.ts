@@ -1,5 +1,9 @@
-import type { JsonObject, JsonSchemaObject } from '../json.js'
-import { MCP_DEFAULT_FLAT_TOOL_THRESHOLD, type MCPToolCallResult, type MCPToolInfo } from './types.js'
+import type { JsonObject, JsonSchemaObject } from '@shared/json.js'
+import {
+  MCP_DEFAULT_FLAT_TOOL_THRESHOLD,
+  type MCPToolCallResult,
+  type MCPToolInfo,
+} from '@shared/mcp/types.js'
 import { isMCPRouterToolId, MCP_ROUTER_TOOL_ID, type MCPToolIdentity } from './tool-id-registry.js'
 
 export type MCPModelFacingToolDefinition = {

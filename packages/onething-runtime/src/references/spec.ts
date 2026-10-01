@@ -1,4 +1,4 @@
-import type { RefTag } from '@onething/core/references'
+import type { RefTag } from '@shared/references/ref-tag'
 
 /**
  * 一种引用类型的**自述**(`docs/design/reference-tag-2026-09.md` §2.2)。

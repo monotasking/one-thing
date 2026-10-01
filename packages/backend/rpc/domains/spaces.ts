@@ -22,7 +22,7 @@
  * 不在这条路上的:`IPC_CHANNELS.SPACES_CHANGED` 广播。router 今天只有请求/响应面,
  * 没有推送面,所以那条通道原样留在手写 IPC 上(`@main/ipc/spaces.ts`)。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RouteHandlers } from '@shared/ipc/router'
 import type { SpacesRoutes } from '@shared/ipc/spaces.js'
 import {
   clearOnethingSpaceCredentialForIpc,

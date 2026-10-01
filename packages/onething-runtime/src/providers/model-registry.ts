@@ -1,4 +1,4 @@
-import type { JsonObject } from "@onething/core";
+import type { JsonObject } from "@shared/json";
 import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
 import { getProviderManifest, type ProviderModelsSource } from "./manifest.js";

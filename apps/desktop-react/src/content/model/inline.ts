@@ -3,8 +3,8 @@
  * 唯一要动的地方)—— 两个文件因此互相 `import type`,而 `import type` 在编译后整句
  * 消失,运行时没有环。
  */
-import { defaultRefTagText } from '@onething/core/references'
-import type { RefTag } from '@onething/core/references'
+import { defaultRefTagText } from '@shared/references/ref-tag'
+import type { RefTag } from '@shared/references/ref-tag'
 import type { ImageRef } from './blocks'
 
 /**

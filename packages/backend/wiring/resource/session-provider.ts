@@ -95,11 +95,12 @@ import type {
   ResourceEventHub,
 } from '@onething/core/resource'
 import { planFromSpec } from '@onething/core/resource'
-import type { ResourceRef } from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { Intent, textResult } from '@onething/core/toolkit'
-import type { Principal } from '@onething/core/permission'
-import { SESSION_EVENT_TYPES, emitCoreSessionEventSafely } from '@onething/core/events'
+import type { Principal } from '@shared/permission/principal'
+import { emitCoreSessionEventSafely } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { collectSessionCascadeDeleteIds } from '@onething/core/session'
 import {
   SESSION_COLLECTION_PATH,

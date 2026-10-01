@@ -14,7 +14,7 @@
 
 import { Surface, normalizeLegacyAllowlist } from '@onething/core/toolkit'
 import type { Catalog, ToolUserSetting } from '@onething/core/toolkit'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import { resolveScene, type SceneSessionLike } from './scene.js'
 
 let configuredCatalog: Catalog | undefined

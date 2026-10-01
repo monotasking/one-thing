@@ -33,7 +33,7 @@
  * 把一次失败洗成一次别的东西)—— 所以回调收到的是 `Error` 对象本身。
  */
 
-import type { JsonObject } from '@onething/core/json'
+import type { JsonObject } from '@shared/json'
 import type { ReadOutcome } from '@onething/core/resource'
 import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/core/toolkit'
 

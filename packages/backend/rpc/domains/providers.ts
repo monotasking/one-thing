@@ -14,7 +14,7 @@
  *    默认空间)与凭证 id(缺席 = 密钥策略的只读 `decide`)取,headless 宿主的 token store
  *    有 plaintext 回退(见 `runtime/auth/host-ports.ts` 的契约),所以 server 照走真链路。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RouteHandlers } from '@shared/ipc/router'
 import type { ProviderInfo, ProvidersRoutes } from '@shared/ipc/providers.js'
 import {
   inspectOnethingProviderEnvStatusForIpc,

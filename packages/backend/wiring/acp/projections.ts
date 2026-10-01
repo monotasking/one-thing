@@ -7,7 +7,7 @@
  *
  * 这里是唯一认识两只投影名字的地方;子系统只收一张表。
  */
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import type { EventBus } from '../../events/index.js'
 import { getSession, renameSession } from '../../stores/sessions.js'
 import { getTodoPlanStore } from '../todo-plan/store.js'

@@ -1,4 +1,4 @@
-import { locate } from '@onething/core/text'
+import { locate } from '@shared/text/line-edit'
 import { focusElement } from '../../focus/target'
 import { DocHistory, type EditKind, type HistoryEntry } from './doc-history'
 import type { EditorDocument } from './editor-document'

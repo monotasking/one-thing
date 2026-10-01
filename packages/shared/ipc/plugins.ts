@@ -8,9 +8,9 @@
  *
  * 全段必须 JSON-可序列化(宪法第 2 条):它过 IPC,也过 HTTP。
  */
-// 枚举本体在 core(`@onething/core/plugins`)—— 与 `shared/tool-errors.ts` 从
-// `@onething/core/permission` 再导出同一条做法:契约只有一份,过线形状引用它。
-import type { PluginNotifySound } from "@onething/core/plugins/notify-sound";
+// 枚举本体在 `../plugins/notify-sound.ts`(2026-10 ①a 从 core 搬进 shared):契约只有一份,
+// 过线形状引用它,后端插件运行时也从那里取。
+import type { PluginNotifySound } from "../plugins/notify-sound.js";
 import { defineRouter } from "./router.js";
 
 export type { PluginNotifySound };

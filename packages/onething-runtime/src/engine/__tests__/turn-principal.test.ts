@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { principalId } from '@onething/core/permission'
+import { principalId } from '@shared/permission/principal'
 import { configureCollabDriveGuard } from '../../collab/drive-guard.js'
 import { mintTurnPrincipal } from '../turn-principal.js'
 import type { EngineMessageOrigin } from '../ports.js'

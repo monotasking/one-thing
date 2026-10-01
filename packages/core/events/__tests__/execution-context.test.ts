@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { EventBus } from '../event-bus.js'
 import { emitCoreSessionCommandForIpc } from '../ipc-operations.js'
-import { SESSION_COMMAND_TYPES } from '../session-command-types.js'
+import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 import { CoreStreamEngine, type CoreExecutionOptions, type CoreStreamEngineRuntime } from '../../engine/core-stream-engine.js'
 
 describe('trusted command delivery context', () => {

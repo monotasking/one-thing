@@ -38,7 +38,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
-import type { MCPServerConfig } from '@onething/core/mcp'
+import type { MCPServerConfig } from '@shared/mcp/types'
 import {
   hostMcpToolDefinitionWith,
   type HostMcpCallResult,

@@ -9,7 +9,7 @@ import {
   makeEffect,
   policyOf,
   requiresAuthorization,
-} from '../effects.js'
+} from '@shared/toolkit/effects.js'
 import { isBarrierEffect as coreIsBarrierEffect, type ToolEffectKind } from '../../tools/tool-effect.js'
 
 /** core 现有的 9 个 kind —— 名字不许改,只许新增(§9 风险 2)。 */

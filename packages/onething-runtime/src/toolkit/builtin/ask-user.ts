@@ -17,12 +17,12 @@
  */
 
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type {
   InteractionAnswer,
   InteractionOutcome,
   InteractionQuestion,
-} from '@onething/core/interaction'
+} from '@shared/interaction/types'
 import type { Preview, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import { defineInput } from '../contract.js'
 import { InteractiveTool, type InteractiveRequest } from '../families/interactive.js'

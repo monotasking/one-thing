@@ -13,12 +13,19 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import {
-  ONETHING_PRACTICE_DEFAULT_CONFIG, OnethingPracticeEngine, OnethingPracticeLedger,
-  getOnethingPracticeSummary, normalizeOnethingPracticeConfig,
-  type OnethingPracticeConfig, type OnethingPracticeEngineSnapshot,
-  type OnethingPracticeLedgerRecord, type OnethingPracticePhaseEdge,
-  type OnethingPracticeSummaryResult,
+  ONETHING_PRACTICE_DEFAULT_CONFIG,
+  OnethingPracticeEngine,
+  OnethingPracticeLedger,
+  getOnethingPracticeSummary,
+  normalizeOnethingPracticeConfig,
 } from './index.js'
+import {
+  type OnethingPracticeConfig,
+  type OnethingPracticeEngineSnapshot,
+  type OnethingPracticeLedgerRecord,
+  type OnethingPracticePhaseEdge,
+  type OnethingPracticeSummaryResult,
+} from '@shared/contracts/practice.js'
 import type {
   OnethingPracticeEventPayload, OnethingPracticeLogRequest, OnethingPracticeSetConfigRequest,
   OnethingPracticeStartRequest, OnethingPracticeSummaryRequest,

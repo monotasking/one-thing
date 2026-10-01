@@ -8,8 +8,8 @@
 
 import { getProviderManifest } from '@onething/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
-import type { Principal } from '@onething/core/permission'
-import type { SessionRunKind } from '@onething/core/session'
+import type { Principal } from '@shared/permission/principal'
+import type { SessionRunKind } from '@shared/session/events/types'
 import {
   beginSessionRun,
   currentSessionRunId,

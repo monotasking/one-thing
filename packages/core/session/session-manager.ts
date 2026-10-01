@@ -8,7 +8,7 @@
  * Phase 2+: SessionManager will coordinate persistence and recovery.
  */
 
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamChannel } from '../events/stream-channel.js'
 import type { Unsubscribe } from '../events/types.js'

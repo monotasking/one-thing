@@ -45,7 +45,7 @@
  */
 
 import type { ResourceKernel } from '@onething/core/resource'
-import type { MCPServerState } from '@onething/core/mcp'
+import type { MCPServerState } from '@shared/mcp/types'
 import { onMCPToolTableChanged } from '@onething/runtime/mcp/capabilities-changed'
 import { mcpResourceScheme, projectMcpResource } from '@onething/runtime/mcp/resource-spec'
 import { getLogger } from '../logging/index.js'

@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import type { DeclarativeRigSpec } from '@onething/runtime/pets/rig-spec'
+import type { DeclarativeRigSpec } from '@shared/pets/rig-spec'
 
 /**
  * 宠物系统壳侧的类型(P0,正本 `docs/design/pet-system-2026-09.md` §2.4 / §2.5 / §7)。

@@ -43,8 +43,8 @@ import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-  ResourceRef,
 } from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import { planFromSpec } from '@onething/core/resource'
 import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { Intent } from '@onething/core/toolkit'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isRefScheme } from '@onething/core/resource'
+import { isRefScheme } from '@shared/resource/ref'
 import { contentKindList, parseRefId, refId, sameRef } from '../kinds'
 import { pairPartsOf, pairRefOf } from '../../content/kinds/pair-ref'
 /* 这一组要问「**这台上真正登记着的**那几种」,所以整张表得先接上来。 */

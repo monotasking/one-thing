@@ -3,7 +3,7 @@ import {
 	normalizeMimeType,
 	shouldAttemptTextDecode,
 } from "./attachment-mime.js";
-import type { JsonObject, JsonValue } from "../json.js";
+import type { JsonObject, JsonValue } from "@shared/json.js";
 
 export type CoreAIMessageContent =
 	| string

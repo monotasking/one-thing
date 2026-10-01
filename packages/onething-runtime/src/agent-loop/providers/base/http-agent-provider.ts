@@ -22,7 +22,7 @@ import { BaseAgentProvider } from "./base-agent-provider.js";
 import type { ProviderContext } from "./provider-context.js";
 import type { Dialect } from "./dialect.js";
 import type { ProviderQuota } from "@shared/contracts/quota.js";
-import { toJsonObject } from "@onething/core";
+import { toJsonObject } from "@shared/json";
 import { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from "../provider-data-policy.js";
 import { DefaultErrorMapper, ProviderHttpError, type ErrorMapper } from "./errors.js";
 import type { FinishReasonMapper } from "./finish-reason.js";

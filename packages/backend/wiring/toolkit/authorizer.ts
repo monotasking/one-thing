@@ -17,20 +17,17 @@
  * 迟早在两种会话里长成两张不同的卡。
  */
 
-import {
-  formatPermissionRejectedMessage,
-  Permission,
-  decidePermission as decideCorePermission,
-} from '@onething/core/permission'
+import { Permission, decidePermission as decideCorePermission } from '@onething/core/permission'
+import { formatPermissionRejectedMessage } from '@shared/permission/rejection-message'
 import { Decision, withUserToolSettings } from '@onething/core/toolkit'
 import type {
   AbortScope,
   Authorizer,
-  Effect,
   Intent,
   Invocation,
   ToolUserSetting,
 } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import {
   enforcePermissionPolicy,
   type EnforcePermissionPolicyInput,

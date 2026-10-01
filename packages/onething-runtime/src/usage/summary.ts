@@ -1,5 +1,6 @@
 import type { OnethingUsageLedger } from './ledger.js'
-import type { OnethingUsageBillingMode, OnethingUsageLedgerRecord, OnethingUsageTokens } from './types.js'
+import type { OnethingUsageBillingMode, OnethingUsageLedgerRecord } from './types.js'
+import type { OnethingUsageTokens } from '@shared/contracts/usage.js'
 
 import type {
   OnethingUsageSummaryGranularity,

@@ -6,7 +6,7 @@
  * 由装配层的 `@onething/backend/wiring/logging` 组装。
  */
 
-export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+import type { LogLevel } from '@shared/logging/types.js'
 
 /** 记录来自哪个进程面。`console` = 尚未迁移的裸 console 流量(迁移期临时)。 */
 export type LogSource =

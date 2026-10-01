@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../stores/defaults/settings.js'
 
 vi.mock('../../../session/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../../session/access.js')>()

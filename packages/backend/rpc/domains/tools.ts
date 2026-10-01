@@ -96,7 +96,7 @@ import type { OnethingToolListIpcLogger } from '@onething/runtime/tools/tool-lis
 import type { OnethingToolExecutionIpcLogger } from '@onething/runtime/tools/tool-execution-context'
 import type { OnethingToolCallStateIpcLogger } from '@onething/runtime/tools/tool-call-state'
 import type { ApplyOnethingToolCallUpdateOptions, OnethingToolStepStateLike, OnethingToolMessageStateLike } from '@onething/runtime/tools/tool-call-state'
-import type { JsonArray } from '@onething/core'
+import type { JsonArray } from '@shared/json'
 import type { ExecuteOnethingToolWithSessionContextOptions } from '@onething/runtime/tools/tool-execution-context'
 import type { ToolDefinition, ChatSession } from '@shared/ipc.js'
 import type { ListOnethingSettingsToolsOptions } from '@onething/runtime/tools/tool-list-presentation'

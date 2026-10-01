@@ -21,7 +21,7 @@
  * (`configurePracticeEventBroadcaster`),而 router 今天只有请求/响应面、
  * 没有推送面,所以那条通道原样留在手写 IPC 上(`@main/ipc/practice.ts`)。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RouteHandlers } from '@shared/ipc/router'
 import type { PracticeRoutes } from '@shared/ipc/practice.js'
 import {
   getPracticeState,

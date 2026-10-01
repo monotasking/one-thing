@@ -1,9 +1,9 @@
+import type { OnethingPracticeRecordInput } from './types.js'
 import type {
   OnethingPracticeKegelDetail,
   OnethingPracticeLedgerRecord,
   OnethingPracticePomodoroDetail,
-  OnethingPracticeRecordInput,
-} from './types.js'
+} from '@shared/contracts/practice.js'
 
 import type {
   OnethingPracticeSessionKind,

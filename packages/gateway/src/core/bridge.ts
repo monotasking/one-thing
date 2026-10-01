@@ -1,13 +1,15 @@
 import {
+  isCoreTextStreamChunk,
+  type CoreConversationRuntime,
+} from '@onething/core/gateway-runtime'
+import {
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,
   NEW_SESSION_SLASH_COMMAND,
-  RefTagPlainTextStream,
-  isCoreTextStreamChunk,
   parseSharedSlashCommand,
-  projectRefTagsToPlainText,
-  type CoreConversationRuntime,
-} from '@onething/core/gateway-runtime'
+} from '@shared/slash-commands'
+import { projectRefTagsToPlainText } from '@shared/references/ref-tag'
+import { RefTagPlainTextStream } from '@shared/references/plain-text-stream'
 import type { GatewayPermissionConfig } from '../config.js'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from './channel.js'
 import {

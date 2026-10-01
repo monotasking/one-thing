@@ -1,11 +1,11 @@
 import type { ChatMessage, ContentPart } from '@shared/ipc/chat.js'
-import type { SessionEventType } from '@onething/core/events/session-event-types.js'
+import type { SessionEventType } from '@shared/events/session-event-types.js'
 
 /**
  * Narrow mirror of packages/shared/events/session-events.ts — the M2 subset
  * the mobile reducer acts on. Defined locally on purpose: importing the full
- * SessionEvent union drags in the ipc barrel + @onething/core/interaction
- * (node:crypto) and breaks the hermetic mobile typecheck. These are the
+ * SessionEvent union drags in the whole ipc barrel and breaks the hermetic
+ * mobile typecheck. These are the
  * oldest, most stable shapes on the wire; SSE JSON is untyped at parse time
  * anyway, and events outside this union hit `default: return state`.
  *
@@ -49,11 +49,10 @@ export const initialChatState: ChatState = { messages: [], streamingMessageId: n
  * 词汇的唯一权威)的成员。多一个拼错的、或者哪天线上把某条事件改名,这一行当场
  * 编译不过。
  *
- * 为什么是类型约束而不是把常量 import 进来当值:那张表在 core 的一个零 import
- * 叶子文件里,`import type` 被 Babel 整行擦除、Metro 根本看不到(metro.config.js
- * 的注释就是这条约定);import 值则会真的把一个 workspace 包拖进 RN 包 —— mobile
- * 的 node_modules 里连 `@onething/core` 都没有,那是 tsconfig paths 上的一条纯
- * 类型通路。载荷形状仍然只能手抄(它们要引用 shared 的 ipc 目录),但**名字**
+ * 为什么是类型约束而不是把常量 import 进来当值:那张表在 shared 的一个零 import
+ * 叶子文件里(`@shared/events/session-event-types`,2026-10 从 core 搬回 shared),
+ * `import type` 被 Babel 整行擦除、Metro 根本看不到(metro.config.js 的注释就是这条
+ * 约定);import 值则会真的把代码拖进 RN 包。载荷形状仍然只能手抄(它们要引用 shared 的 ipc 目录),但**名字**
  * 从此不是手抄的。
  */
 export type MobileSessionEventVocabulary = AssertSessionEventTypes<SessionEventPayload['type']>

@@ -42,19 +42,19 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import {
 	EventBus,
-	type JsonObject,
 	Permission,
 	StreamChannel,
 	createOnethingRuntimeFacade,
 	type AgentEngineSessionEvent,
 	type AgentEngineStreamChunk,
 	type OnethingRuntimeFacade,
-	type RuntimeHostCapabilities,
 	type RuntimeOAuthTokenEvent,
 	type RuntimeRequestContext,
 	type RuntimeStreamPayload,
 	type RuntimeUnsubscribe,
 } from "@onething/core";
+import { type JsonObject } from "@shared/json";
+import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
 import type { McpSubsystem } from "../wiring/mcp/subsystem.js";
 import type { ConfigureLoggingOptions } from "../wiring/logging/index.js";
@@ -237,8 +237,8 @@ import {
 	listWorkspaceGrants,
 	revokeGrant,
 	revokeOnethingPermissionGrantForIpc,
-	type PermissionGrant,
 } from "@onething/runtime/permissions";
+import { type PermissionGrant } from "@shared/permission/grant";
 // todo/plan 的数据面已整体迁走(含 per-owner 分库);server 这侧只剩变更广播的载荷类型。
 import type { TodoPlanChangedPayload } from "@onething/runtime/todo-plan";
 import {
@@ -3749,7 +3749,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * 第四份手抄的联合已经退役 —— 这里直接用契约那一份(它自己与核逐字相同,由
- * `shared/ipc/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
+ * `backend/wiring/permission/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
  */
 type PermissionDecision = PermissionResponse;
 

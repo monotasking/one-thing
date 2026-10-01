@@ -74,9 +74,10 @@
  *     写在 `plan` 里。
  */
 
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { ResourceEventHub, ResourceProvider, ResourceReadContext } from '@onething/core/resource'
-import { planFromSpec, type ResourceRef } from '@onething/core/resource'
+import { planFromSpec } from '@onething/core/resource'
+import { type ResourceRef } from '@shared/resource/ref'
 import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { Intent } from '@onething/core/toolkit'
 import type { RadioToolAdapters, RadioToolStatus } from '@onething/runtime/toolkit'

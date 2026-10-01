@@ -1,4 +1,4 @@
-import { formatRefTag, scanRefTags } from '@onething/core/references'
+import { formatRefTag, scanRefTags } from '@shared/references/ref-tag'
 import {
   expandReferenceToken,
   referencePartKinds,

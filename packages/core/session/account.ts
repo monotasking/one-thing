@@ -42,7 +42,7 @@
  *    append-only 的可选格,老账本里没有 → 那条事件不盖章,与老账本当年的行为一致。
  */
 
-import type { SessionLogEventRecord } from './events/types.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 import type { CoreTimelineMessage } from './timeline.js'
 import { computeSessionTimelineMetadataRepair } from './timeline.js'
 

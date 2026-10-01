@@ -18,8 +18,8 @@ import {
   canonicalHistoryMessages,
   projectChatMessages,
   projectModelHistory,
-  type SessionLogEventRecord,
 } from '@onething/core/session'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { ChatMessage } from '@shared/ipc.js'
 import {
   dehydrateProjectedMessages,

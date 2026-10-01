@@ -20,9 +20,10 @@
  */
 
 import { Tool } from '@onething/core/toolkit'
-import type { AbortView, Effect, Job, Preview, RunContext } from '@onething/core/toolkit'
+import type { AbortView, Job, Preview, RunContext } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 import type { BashOperations } from '../../tools/bash-executor.js'
 import { analyzeBashPermission } from '../../tools/permission-effects.js'
 import { classifyBashCommand, parseCommand } from '../../tools/bash-classifier.js'

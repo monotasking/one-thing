@@ -30,7 +30,8 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { collectSessionBlobRefHashes, parseSessionLogEventLog } from '@onething/core/session'
+import { parseSessionLogEventLog } from '@onething/core/session'
+import { collectSessionBlobRefHashes } from '@shared/session/events/types'
 import { getOnethingSessionsDir } from '@onething/runtime/storage'
 import { SESSION_BLOBS_DIRNAME } from './blob-store.js'
 import { SESSION_EVENTS_LOG_FILENAME } from './event-log.js'

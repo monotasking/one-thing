@@ -17,7 +17,7 @@ import {
 	type AgentSourceToolDefinition,
 	type AgentToolChoice,
 } from "@onething/core/agent-loop";
-import type { Principal } from "@onething/core/permission";
+import type { Principal } from "@shared/permission/principal";
 import {
 	agentLoopInitSkills,
 	agentLoopSkillContexts,
@@ -54,7 +54,7 @@ import {
 	type CorePendingAgentLoopInputMessage,
 	type CorePromptRequestMessage, type ResolveAgentLoopContextBudgetOptions, type CoreAgentLoopTurnQueueAdapters, type CoreAgentLoopEphemeralTailAdapters,
 } from "@onething/core/engine";
-import type { JsonObject } from "@onething/core";
+import type { JsonObject } from "@shared/json";
 import {
 	createAgentProviderFromRuntime,
 	getOnethingAgentLoopThinkingOptions,

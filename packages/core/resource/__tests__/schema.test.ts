@@ -14,7 +14,7 @@ import {
   toolEffectsOf,
   toolInputSchemaOf,
 } from '../schema.js'
-import type { JsonObject } from '../../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { ResourceSpec } from '../spec.js'
 import { demoSpec } from './fakes.js'
 

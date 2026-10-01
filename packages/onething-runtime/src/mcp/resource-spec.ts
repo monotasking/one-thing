@@ -36,9 +36,10 @@
  * 这份投影只回答一句话:**这台 server 能做什么**。补读法与状态的口在文件末尾。
  */
 
-import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
-import { normalizeSchemeSegment, isRefScheme, uniqueName } from '@onething/core/resource'
-import type { MCPToolInfo } from '@onething/core/mcp'
+import type { ResourceSpec } from '@onething/core/resource'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
+import { normalizeSchemeSegment, isRefScheme, uniqueName } from '@shared/resource/ref'
+import type { MCPToolInfo } from '@shared/mcp/types'
 
 /**
  * 投影出来的 scheme 的前缀。

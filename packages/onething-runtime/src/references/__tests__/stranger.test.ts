@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRefTag } from '@onething/core/references'
+import { formatRefTag } from '@shared/references/ref-tag'
 import type { CorePromptFragment } from '@onething/core/engine'
 import { refTypes, renderReferenceGuide } from '../index.js'
 import type { RefTypeSpec } from '../spec.js'

@@ -1,8 +1,6 @@
-import type {
-  SessionLegacyEventRecord as SessionEventRecord,
-  SessionToolCallInspection,
-} from "@onething/core/session";
-import type { SessionLogEventRecord } from "@onething/core/session/events";
+import type { SessionLegacyEventRecord as SessionEventRecord } from "../session/events/types.js";
+import type { SessionToolCallInspection } from "../session/tool-call-inspection.js";
+import type { SessionLogEventRecord } from "../session/events/types.js";
 import type {
   SessionTrace,
   SessionTraceCompaction,
@@ -14,7 +12,7 @@ import type {
   SessionTraceToolAudit,
   SessionTraceToolCall,
   SessionTracePermission,
-} from "@onething/core/session";
+} from "../session/trace/types.js";
 import { defineRouter } from "./router.js";
 
 /**
@@ -31,9 +29,9 @@ export type {
   SessionRequestToolsEvent,
   SessionRequestToolsEventData,
   SessionToolCallEvent,
-  SessionToolCallInspection,
   SessionToolResultEvent,
-} from "@onething/core/session";
+} from "../session/events/types.js";
+export type { SessionToolCallInspection } from "../session/tool-call-inspection.js";
 
 export type SessionEventType = SessionEventRecord['type'];
 

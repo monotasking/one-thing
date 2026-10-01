@@ -15,7 +15,8 @@
  */
 import { homedir } from 'node:os'
 import { ACPManager, authMethodsOf } from '@onething/runtime/acp'
-import type { ACPAgentConfig, AcpAuthBridge, AcpAuthenticateOutcome } from '@onething/runtime/acp'
+import type { AcpAuthBridge, AcpAuthenticateOutcome } from '@onething/runtime/acp'
+import type { ACPAgentConfig } from '@shared/contracts/acp'
 import {
   getTerminalService,
   hasTerminalHost,

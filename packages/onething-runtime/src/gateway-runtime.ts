@@ -1,4 +1,4 @@
-import type { StreamChunkBase } from '@onething/core/events'
+import type { StreamChunkBase } from '@shared/events/stream-chunks'
 import type {
   CoreConversationEventBusLike,
   CoreConversationEventEnvelopeLike,

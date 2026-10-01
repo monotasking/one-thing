@@ -1,5 +1,5 @@
-import type { JsonObject } from '../json.js'
-import type { MCPServerState, MCPToolInfo } from './types.js'
+import type { JsonObject } from '@shared/json.js'
+import type { MCPServerState, MCPToolInfo } from '@shared/mcp/types.js'
 
 export const MCP_ROUTER_TOOL_ID = 'mcp_search'
 export const LEGACY_MCP_ROUTER_TOOL_ID = 'tool_function'

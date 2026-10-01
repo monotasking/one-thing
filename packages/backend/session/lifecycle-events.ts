@@ -19,7 +19,7 @@
  */
 
 import type { ChatSession } from '@shared/ipc.js'
-import { sessionOriginFingerprint, type SessionOriginStamp } from '@onething/core/session'
+import { sessionOriginFingerprint, type SessionOriginStamp } from '@shared/session/events/origin'
 import { getOnethingStorePath } from '@onething/runtime/storage'
 import { safely } from './command-events.js'
 import { isSessionTranslationEnabled, sessionSurface } from './event-surface.js'

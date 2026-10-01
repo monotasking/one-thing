@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient } from '../client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * 会话映射落盘 + 选项(2026-09-24,用户:「ACP 应该是直接用 agent,我们只是一个会话的映射」)。

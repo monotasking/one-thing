@@ -1,4 +1,4 @@
-import { isJsonObject } from '../json.js'
+import { isJsonObject } from '@shared/json.js'
 import type { PermissionPolicy } from './policy.js'
 import type { ToolCall, ToolExecutionContext, ToolResult } from './types.js'
 import type { ToolRegistry } from './registry.js'

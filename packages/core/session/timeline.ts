@@ -3,7 +3,7 @@ import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
   CORE_INTERRUPTED_TOOL_ERROR,
   CORE_INTERRUPTED_TOOL_STATUS,
-} from './interrupted.js'
+} from '@shared/session/interrupted.js'
 
 const log = getCoreLogger('core.session')
 

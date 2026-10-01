@@ -24,7 +24,7 @@ import {
   parsePrincipal,
   systemPrincipal,
   type Principal,
-} from '@onething/core/permission'
+} from '@shared/permission/principal'
 import { isSystemInternalSource } from './message-sources.js'
 import { isTrustedCollabDrive } from '../collab/drive-guard.js'
 import type { EngineMessageOrigin } from './ports.js'

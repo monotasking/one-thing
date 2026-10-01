@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import type { JsonObject } from '../../json.js'
+import type { JsonObject } from '@shared/json.js'
 import { executeCoreDirectTool, type CoreDirectToolInterceptVerdict } from '../direct-tool-execution.js'
 
 interface Trace {

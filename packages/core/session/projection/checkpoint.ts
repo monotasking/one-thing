@@ -55,7 +55,7 @@ import {
   rebuildSessionProjectionIndexes,
   type SessionProjectionState,
 } from './reducer.js'
-import { SurfaceIndex, type SurfaceCheckpoint } from './surface.js'
+import { SurfaceIndex, type SurfaceCheckpoint } from '@shared/session/projection/surface.js'
 
 /**
  * 编码格式版本。**折法变了也要 +1**(见文件头最后一节)。

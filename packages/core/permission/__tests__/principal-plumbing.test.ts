@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildAgentLoopDirectToolsWithAdapters } from '../../engine/agent-loop-runtime.js'
 import { executeCoreDirectTool } from '../../engine/direct-tool-execution.js'
-import { principalId, type Principal } from '../principal.js'
+import { principalId, type Principal } from '@shared/permission/principal.js'
 
 /**
  * The actor has to survive the whole way down, not just exist at the top.

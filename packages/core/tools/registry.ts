@@ -1,4 +1,4 @@
-import { toJsonSchemaObject, type JsonSchemaObject } from '../json.js'
+import { toJsonSchemaObject, type JsonSchemaObject } from '@shared/json.js'
 import type { ToolDefinition } from './types.js'
 
 

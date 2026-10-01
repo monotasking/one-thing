@@ -1,4 +1,4 @@
-import type { RefTag } from '@onething/core/references'
+import type { RefTag } from '@shared/references/ref-tag'
 import type { ReferenceKind, ReferenceTrigger, ReferenceWhere } from './kind'
 
 /**

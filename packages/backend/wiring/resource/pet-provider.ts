@@ -23,7 +23,12 @@
  */
 
 import { planFromSpec } from '@onething/core/resource'
-import type { ResourceEventHub, ResourceProvider, ResourceReadContext, ResourceRef } from '@onething/core/resource'
+import type {
+  ResourceEventHub,
+  ResourceProvider,
+  ResourceReadContext,
+} from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/core/toolkit'
 import { PET_CURRENT_PATH, petResourceSpec } from '@onething/runtime/pets/resource-spec'
 import { UnknownPetError, type PetsSubsystem } from '../pets/subsystem.js'

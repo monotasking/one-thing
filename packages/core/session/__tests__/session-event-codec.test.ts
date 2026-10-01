@@ -14,16 +14,18 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeSessionLogEventLine,
   encodeSessionLogEventLine,
-  isBlobRef,
   isSessionLogEventType,
-  isSessionSurfaceNodeType,
   parseSessionLogEventLog,
+} from '../events/index.js'
+import {
+  isBlobRef,
+  isSessionSurfaceNodeType,
   SESSION_LEGACY_EVENT_TYPES,
   SESSION_LOG_EVENT_TABLE_IS_EXHAUSTIVE,
   SESSION_LOG_EVENT_TYPES,
   SESSION_SURFACE_EVENTS_CARRY_NO_MESSAGE_BODY,
-} from '../events/index.js'
-import type { SessionLogEventRecord } from '../events/index.js'
+} from '@shared/session/events/types.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 
 const FIXTURE = readFileSync(join(__dirname, 'fixtures/legacy-events.jsonl'), 'utf-8')
 

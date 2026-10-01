@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { AbortScope } from '../abort-scope.js'
-import { makeEffect } from '../effects.js'
+import { makeEffect } from '@shared/toolkit/effects.js'
 import { Decision, Intent } from '../intent.js'
 import { Outcome, TOOL_CANCELLED_MESSAGE } from '../outcome.js'
 import { emptyResult, resultToText, textResult } from '../result.js'

@@ -25,7 +25,7 @@
  * 在 `AcpSubsystem` 里构造时订、`dispose()` 时退(实例字段,无模块级状态)。
  */
 import fs from 'node:fs/promises'
-import type { AcpSessionState } from '@onething/runtime/acp'
+import type { AcpSessionState } from '@shared/contracts/acp'
 import type { OnethingTodoPlanStore } from '@onething/runtime/todo-plan'
 import { getLogger } from '../logging/index.js'
 import type { AcpSessionStateProjection } from './subsystem.js'

@@ -8,7 +8,7 @@
  */
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { ACPSettings, AcpSessionState } from '@onething/runtime/acp'
+import type { ACPSettings, AcpSessionState } from '@shared/contracts/acp'
 import { getLogger } from '../../logging/index.js'
 import { AcpAgentRegistry } from '../registry.js'
 import { AcpSubsystem, type AcpSubsystemDeps } from '../subsystem.js'

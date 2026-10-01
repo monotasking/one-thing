@@ -1,5 +1,5 @@
 import type { OnethingClient } from '@onething/client'
-import type { RouteAPI } from '@onething/core/ipc'
+import type { RouteAPI } from '@shared/ipc/router'
 import type { ResourcesRoutes, ShellCommandResult } from '@shared/ipc/resources'
 import { resourcesRouter } from '@shared/ipc/resources'
 import { getLogger } from '../services/log'

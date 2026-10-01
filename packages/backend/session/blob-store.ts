@@ -33,8 +33,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import type { BlobRef } from '@onething/core/session'
-import { SESSION_EVENT_BLOB_THRESHOLD_BYTES } from '@onething/core/session'
+import type { BlobRef } from '@shared/session/events/types'
+import { SESSION_EVENT_BLOB_THRESHOLD_BYTES } from '@shared/session/events/types'
 import {
   assertSessionEventLogWritable,
   failSessionEventDependency,

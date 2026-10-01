@@ -1,4 +1,4 @@
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { resultTextFromToolMetadata } from './tool-orchestration.js'
 import {
 	type CoreIdentifiedToolCall,
@@ -6,12 +6,7 @@ import {
 	patchCoreToolCall,
 	replaceCoreToolCall,
 } from "./tool-call-cow.js";
-import {
-	toJsonObject,
-	toJsonValue,
-	type JsonObject,
-	type JsonValue,
-} from "../json.js";
+import { toJsonObject, toJsonValue, type JsonObject, type JsonValue } from "@shared/json.js";
 import type { CorePromptCapture } from "./triggers.js";
 import type { AgentProviderStreamChunk } from "../agent-loop/provider-stream.js";
 import type { AgentProviderData } from "../agent-loop/types.js";
@@ -24,11 +19,13 @@ import {
 	getTextFromContent,
 	type CoreAIMessageContent,
 } from "./message-content.js";
+import { detectSkillUsage, getStepType, type CoreStepType } from "@shared/engine/tool-step.js";
+// 收尾修复写在没结局的调用上的那两句话住在 `@shared/engine/tool-call-errors`:投影(客户端也跑)
+// 必须说出与引擎逐字相同的那一句。
 import {
-	detectSkillUsage,
-	getStepType,
-	type CoreStepType,
-} from "./tool-step.js";
+	CORE_ABORTED_TOOL_ERROR,
+	CORE_LINGERING_TOOL_ERROR,
+} from "@shared/engine/tool-call-errors.js";
 import {
 	isAgentLoopToolCallsFinishReason,
 	nextAgentLoopTurnIndexAfterFinish,
@@ -1208,16 +1205,6 @@ const LINGERING_TOOL_CALL_STATUSES = new Set([
 	"pending",
 ]);
 const LINGERING_STEP_STATUSES = new Set(["running", "pending"]);
-/**
- * 收尾修复写在没结局的调用上的那句话(§10.14 第 7 类)。
- *
- * 两个常量都**导出**:投影必须说出与引擎逐字相同的那一句 —— 它是"引擎派生
- * 字段",按 §10.10 的规矩不许在别处手抄字面量。
- */
-export const CORE_LINGERING_TOOL_ERROR =
-	"Tool did not report completion before the stream ended.";
-/** 用户按下停止时,收尾修复写在没结局的调用上的那句话。 */
-export const CORE_ABORTED_TOOL_ERROR = "User cancelled";
 const LINGERING_TOOL_ERROR = CORE_LINGERING_TOOL_ERROR;
 
 interface LingeringToolCallLike {

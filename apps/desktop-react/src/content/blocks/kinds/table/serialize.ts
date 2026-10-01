@@ -1,4 +1,4 @@
-import { formatRefTag } from '@onething/core/references'
+import { formatRefTag } from '@shared/references/ref-tag'
 import type { BlockModel } from '../../../model/blocks'
 import { inlineText, type InlineNode } from '../../../model/inline'
 

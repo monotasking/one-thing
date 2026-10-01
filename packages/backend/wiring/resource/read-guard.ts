@@ -41,8 +41,9 @@
  * 明天音乐或别的什么也要这条待遇,改的是名单不是这只文件。
  */
 
-import type { ReadGuard, ReadVerdict, ResourceRef } from '@onething/core/resource'
-import type { Principal } from '@onething/core/permission'
+import type { ReadGuard, ReadVerdict } from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
+import type { Principal } from '@shared/permission/principal'
 
 export interface LocalOnlyReadGuardOptions {
   /** 哪些 scheme 的读只许在本机可信的进程上发生。空表 = 这只守卫什么都不拦。 */

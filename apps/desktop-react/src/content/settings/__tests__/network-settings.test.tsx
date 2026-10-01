@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@shared/defaults/settings'
+import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
 import type { AppSettings, SaveSettingsResponse, TestProxyResponse } from '@shared/ipc/settings'
 import { NetworkSettings } from '../NetworkSettings'
 import { configureNetworkSettingsPort, type NetworkSettingsPort } from '../../../data/network-settings-port'

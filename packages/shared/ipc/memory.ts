@@ -2,7 +2,7 @@
  * `memory` RPC 域的契约:内存报告与手动释放缓存。
  * 实现见 `@onething/core/memory` 与 `@onething/backend/wiring/memory`。
  */
-import type { MemoryPressure, MemoryReport, MemoryTrimReport } from "@onething/core/memory";
+import type { MemoryPressure, MemoryReport, MemoryTrimReport } from "../memory/types.js";
 import { defineRouter } from "./router.js";
 
 export type {
@@ -11,7 +11,7 @@ export type {
 	MemoryProcessSample,
 	MemoryReport,
 	MemoryTrimReport,
-} from "@onething/core/memory";
+} from "../memory/types.js";
 
 export interface MemoryReportResponse extends MemoryReport {
 	/** 内存预算(字节)。 */

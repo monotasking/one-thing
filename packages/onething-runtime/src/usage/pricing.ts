@@ -2,9 +2,9 @@ import type {
   OnethingUsageBillingMode,
   OnethingUsageLedgerRecord,
   OnethingUsageRecordInput,
-  OnethingUsageTokens,
   OnethingUsageUnitPrice,
 } from './types.js'
+import type { OnethingUsageTokens } from '@shared/contracts/usage.js'
 
 /**
  * Subscription-billed providers (Codex OAuth, Claude Code OAuth, Copilot):

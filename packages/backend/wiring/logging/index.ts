@@ -3,12 +3,13 @@ import {
   createLogger,
   LoggerRoot,
   MemoryRingSink,
-  type LogLevel,
   type LogRecord,
   type LogSink,
   type LogSource,
-  type Logger, type LoggerRootOptions,
+  type Logger,
+  type LoggerRootOptions,
 } from '@onething/core/logging'
+import { type LogLevel } from '@shared/logging/types'
 import {
   ensureDir,
   getOnethingLogDir,

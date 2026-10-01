@@ -41,7 +41,7 @@ import {
   ResourceRefError,
 } from './errors.js'
 import type { ResourceProvider } from './provider.js'
-import { parseRef, type ResourceRef } from './ref.js'
+import { parseRef, type ResourceRef } from '@shared/resource/ref.js'
 import { describeUnknownResourceReadProblem } from './validator.js'
 import {
   RESOURCE_OP_KEY,

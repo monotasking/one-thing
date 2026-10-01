@@ -54,7 +54,8 @@
  * 发明一个 —— 同一件东西在两处两个名字,是文档写得再清楚也拦不住的误读。
  */
 
-import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
+import type { ResourceSpec } from '@onething/core/resource'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const MUSIC_RESOURCE_SCHEME = 'music'
 

@@ -10,7 +10,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import { executeCorePluginTool } from '@onething/core/plugins'
 import { buildMCPPermissionPlan, isReadOnlyMCPRouterCall } from '@onething/core/engine'
 import { zodToJsonSchema } from '../../contract.js'

@@ -1,5 +1,5 @@
 import { ownsSessionRecord, sessionOwnerOf, type SessionAccessContext, type SessionOwnershipRecord } from './access.js'
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 
 // Internal provenance only. JSON/RPC cannot mint this key and serialization omits it.
 const removalOwner = Symbol('session removal owner')

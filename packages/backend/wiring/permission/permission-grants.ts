@@ -39,11 +39,10 @@ export {
 } from '@onething/runtime/permissions'
 export type {
   OnethingPermissionGrantStorageAdapters,
-  PermissionGrant,
   PermissionGrantFileStorageAdapters,
   PermissionGrantInput,
   PermissionGrantMatchInput,
-  PermissionGrantScope,
   PermissionGrantStorage,
   PermissionGrantWorkspaceFile,
 } from '@onething/runtime/permissions'
+export type { PermissionGrant, PermissionGrantScope } from '@shared/permission/grant'

@@ -1,4 +1,4 @@
-import type { JsonValue } from '../json.js'
+import type { JsonValue } from '@shared/json.js'
 
 /**
  * Structured diff payload carried alongside (and eventually instead of) the

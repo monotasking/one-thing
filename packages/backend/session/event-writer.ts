@@ -44,7 +44,7 @@ import type {
   SessionLogEventDataFor,
   SessionLogEventType,
   SessionSurfaceOp,
-} from '@onething/core/session'
+} from '@shared/session/events/types'
 import type { SessionLogEventAppendObserver } from './event-log.js'
 import { getCurrentBackend } from '../current.js'
 

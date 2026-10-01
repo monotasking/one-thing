@@ -7,7 +7,7 @@
  * —— 它们不是工具调用,不该硬塞进 Runner,但该走同一个判定。
  */
 
-import type { JsonSchema } from './spec.js'
+import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 import type { Decision, Intent } from './intent.js'
 import type { ObservedEvent } from './events.js'
 import type { Outcome } from './outcome.js'

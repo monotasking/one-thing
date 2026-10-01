@@ -1,5 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
-import type { SessionToolCallInspection as CoreToolInspection } from '@onething/core/session'
+import type {
+  SessionToolCallInspection as CoreToolInspection,
+} from '@shared/session/tool-call-inspection'
 import type {
   SessionToolCallInspection as WireToolInspection,
   SessionEventRecord as WireSessionEvent,
@@ -12,15 +14,16 @@ import type {
   PracticeSummaryResult,
 } from '@shared/ipc/practice.js'
 import type { GetUsageSummaryResponse } from '@shared/ipc/usage.js'
-import type { TurnEvalRecord } from '../evals/turn-evaluator.js'
+import type { TurnEvalRecord } from '@shared/contracts/eval-record.js'
 import type {
   OnethingPracticeConfig,
   OnethingPracticeEngineSnapshot,
   OnethingPracticeLedgerRecord,
   OnethingPracticeSummaryResult,
-} from '../practice/index.js'
-import type { OnethingUsageSummaryResult } from '../usage/summary.js'
-import type { SessionEventRecord, SessionToolCallInspection } from '../sessions/session-events.js'
+} from '@shared/contracts/practice.js'
+import type { OnethingUsageSummaryResult } from '@shared/contracts/usage.js'
+import type { SessionEventRecord } from '../sessions/session-events.js'
+import type { SessionToolCallInspection } from '@shared/session/tool-call-inspection.js'
 
 describe('runtime and wire contract compatibility', () => {
   it('keeps practice state and reports identical across the transport boundary', () => {

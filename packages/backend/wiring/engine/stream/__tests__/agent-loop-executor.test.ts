@@ -17,7 +17,7 @@ afterEach(async () => {
   fs.rmSync(testStore, { recursive: true, force: true })
 })
 import { IPC_CHANNELS, type ToolCall } from '@shared/ipc.js'
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../../stores/defaults/settings.js'
 import {
   applyAgentLoopStreamChunk,
   completeAgentLoopStream,

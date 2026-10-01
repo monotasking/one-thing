@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import type { InteractionAnswer } from '@onething/core/interaction'
+import type { InteractionAnswer } from '@shared/interaction/types'
 import { Outcome } from '@onething/core/toolkit'
 import { zodToJsonSchema } from '../../contract.js'
 import {

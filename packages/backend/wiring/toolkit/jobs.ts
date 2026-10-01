@@ -18,7 +18,7 @@
  * `jobId → owner` 的旁表。它随进程活,与那张真表同寿 —— 两者都不跨重启。
  */
 
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '@onething/core/toolkit'
 import {
   listBackgroundJobs,

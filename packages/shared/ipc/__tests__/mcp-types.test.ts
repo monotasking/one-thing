@@ -26,7 +26,7 @@ import type {
   MCPToolCallResult as CoreToolCallResult,
   MCPToolInfo as CoreToolInfo,
   MCPTransportType as CoreTransportType,
-} from '@onething/core/mcp'
+} from '../../mcp/types.js'
 import type {
   MCPConnectionStatus,
   MCPPromptInfo,
@@ -39,7 +39,7 @@ import type {
   MCPToolInfo,
   MCPTransportType,
 } from '../mcp.js'
-import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
+import { DEFAULT_MCP_SETTINGS } from '../../mcp/types.js'
 
 describe('MCP type convergence (shared/ipc ↔ core)', () => {
   it('shared/ipc re-exports the exact core types', () => {

@@ -44,7 +44,8 @@
  * 重投影。所以自述**变了**才走「先注销再登记」,没变就只是盖一个时刻。
  */
 
-import { parseRef, ResourceSchemeTakenError, type ResourceKernel } from '@onething/core/resource'
+import { ResourceSchemeTakenError, type ResourceKernel } from '@onething/core/resource'
+import { parseRef } from '@shared/resource/ref'
 import type { MountShellResourceResponse, SerializedResourceSpec, ShellCommandResult } from '@shared/ipc/resources.js'
 import type { ShellCommandDispatch } from './shell-dispatch.js'
 import { ShellResourceProvider, resourceSpecFromShell } from './shell-provider.js'

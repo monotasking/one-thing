@@ -6,7 +6,7 @@
  * **撤销面**：逆序、幂等、mount 抛错时的回滚、以及重复 id 的硬拒。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineRouter } from '@onething/core/ipc'
+import { defineRouter } from '@shared/ipc/router'
 import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../rpc/registry.js'
 import {
   dumpFeatures,

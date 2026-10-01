@@ -5,13 +5,13 @@ import { bindSessionSseDelivery, writeSse, type SseDelivery } from './sse-delive
 import { subscribeNonSessionEvents } from './global-event-delivery.js'
 import { createHttpRequestIdentity, readHeader, type HttpIdentityOptions } from './http-identity.js'
 import type {
-  JsonObject,
   OnethingRuntimeFacade,
   RuntimeEventEnvelope,
   RuntimeRequestContext,
   RuntimeStreamPayload,
   RuntimeUnsubscribe,
 } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'
 import { dispatchRpc } from '@onething/backend/rpc/registry.js'

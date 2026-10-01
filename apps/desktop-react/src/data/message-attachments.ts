@@ -1,5 +1,5 @@
 import { t } from '../i18n'
-import { isBlobRef, type BlobRef } from '@onething/core/session/events'
+import { isBlobRef, type BlobRef } from '@shared/session/events/types'
 
 /** 图片只携带现有数据引用;展示层按需读取 blob,不在投影里解码字节。 */
 export interface MessageAttachmentImage {

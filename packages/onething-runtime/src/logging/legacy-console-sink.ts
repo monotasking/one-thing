@@ -1,5 +1,6 @@
 import { formatWithOptions } from 'node:util'
-import type { LoggerRoot, LogLevel, LogSource } from '@onething/core/logging'
+import type { LoggerRoot, LogSource } from '@onething/core/logging'
+import type { LogLevel } from '@shared/logging/types'
 
 /**
  * 迁移期的**兜底采集**(§2.6):console 劫持还在,但它现在只是众多 producer 里

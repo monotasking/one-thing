@@ -1,4 +1,4 @@
-import { isRefCloseTag, parseRefOpenTag, parseRefTag } from '@onething/core/references'
+import { isRefCloseTag, parseRefOpenTag, parseRefTag } from '@shared/references/ref-tag'
 import type { PhrasingContent } from 'mdast'
 /* 显式引一次扩展包的节点型 —— 理由与 to-blocks.ts 顶上那一段逐字相同。 */
 import type { InlineMath } from 'mdast-util-math'

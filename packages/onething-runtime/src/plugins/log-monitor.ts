@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { z } from 'zod'
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient } from '../client.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig, ACPAgentState, AcpSessionState } from '../types.js'
+import type { ACPAgentConfig, ACPAgentState, AcpSessionState } from '@shared/contracts/acp.js'
 
 /**
  * 会话状态不靠 prompt 队列(A0-2,§3.3)。夹具是真子进程的 ACP agent;`FAKE_AGENT_PUSH_COMMANDS=1`

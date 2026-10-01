@@ -9,7 +9,7 @@
  * 那时事件系统也许还没造出来;构造时抓总线会当场抛。装配没完成就有状态变化 → warn 一行丢掉,
  * 不抛 —— 状态是整张快照,下一次变化或一次 `acp.sessionState` 就补齐了。
  */
-import type { ACPAgentState, AcpSessionState } from '@onething/runtime/acp'
+import type { ACPAgentState, AcpSessionState } from '@shared/contracts/acp'
 import { getEventBus, isEventSystemInitialized } from '../../events/index.js'
 import { getLogger } from '../logging/index.js'
 

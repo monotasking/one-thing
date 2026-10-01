@@ -24,8 +24,9 @@
  */
 
 import type { z } from 'zod'
-import type { JsonObject, JsonValue } from '@onething/core'
-import type { JsonSchema, ValidationResult, Validator } from '@onething/core/toolkit'
+import type { JsonObject, JsonValue } from '@shared/json'
+import type { ValidationResult, Validator } from '@onething/core/toolkit'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 import { getLogger } from '../logging/index.js'
 

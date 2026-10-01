@@ -11,7 +11,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentStreamEvent } from '@onething/core/agent-loop'
-import type { SessionAssistantChunksEvent, SessionLogEventRecord } from '@onething/core/session'
+import type {
+  SessionAssistantChunksEvent,
+  SessionLogEventRecord,
+} from '@shared/session/events/types'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 

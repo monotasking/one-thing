@@ -45,7 +45,7 @@
  */
 
 import type { ChatMessage, ChatSession, MessageAttachment } from '@shared/ipc.js'
-import type { BlobRef } from '@onething/core/session'
+import type { BlobRef } from '@shared/session/events/types'
 import { putSessionBlob } from './blob-store.js'
 import type { SessionSurface } from './event-surface.js'
 import type { SessionEventWriter } from './event-writer.js'

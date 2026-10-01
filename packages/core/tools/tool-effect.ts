@@ -1,4 +1,4 @@
-import type { JsonObjectProperty } from '../json.js'
+import type { JsonObjectProperty } from '@shared/json.js'
 
 export type ToolEffectMetadataValue = JsonObjectProperty | object | object[]
 export type ToolEffectMetadata = Record<string, ToolEffectMetadataValue>

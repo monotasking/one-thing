@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../stores/defaults/settings.js'
 
 // Retain real settings composition and credential storage; unrelated session
 // stores and usage lifecycle are covered by the Backend lifecycle regression.

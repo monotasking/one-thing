@@ -12,7 +12,12 @@
  *    (A3-b 起三个宿主都挂:React 壳等人答,server 与 daemon 没人答就拒)—— 「没人答怎么办」
  *    是宿主的事实,子系统不替它猜。
  */
-import type { ACPAgentConfig, ACPAgentState, ACPSettings, AcpSessionState } from '@onething/runtime/acp'
+import type {
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPSettings,
+  AcpSessionState,
+} from '@shared/contracts/acp'
 import { getLogger } from '../logging/index.js'
 import { installAcpStateBroadcaster, type AcpStateSource } from './events.js'
 import type { AcpAgentRosterEntry, AcpRegistryRefreshOptions } from './registry.js'

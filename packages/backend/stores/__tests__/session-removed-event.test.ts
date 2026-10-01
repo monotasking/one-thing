@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 

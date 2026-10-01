@@ -25,7 +25,7 @@ import {
   toolResultObject,
   type CoreToolResultLike,
 } from '@onething/core/engine'
-import type { JsonValue } from '@onething/core'
+import type { JsonValue } from '@shared/json'
 
 describe('core tool orchestration helpers', () => {
   function coreToolCall(id: string): {

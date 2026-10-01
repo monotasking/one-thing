@@ -25,7 +25,7 @@
 import type { Catalog, Decision, Intent, Invocation, Outcome, Result } from '@onething/core/toolkit'
 import { Outcome as OutcomeOps } from '@onething/core/toolkit'
 import type { Authorizer } from '@onething/core/toolkit'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import type { JsonObject } from '@shared/json.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 import { configureToolkitCatalog, getToolkitCatalog } from '@onething/runtime/toolkit'

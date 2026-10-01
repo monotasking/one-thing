@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { EFFECT_POLICY, Outcome } from '@onething/core/toolkit'
+import { Outcome } from '@onething/core/toolkit'
+import { EFFECT_POLICY } from '@shared/toolkit/effects'
 import { zodToJsonSchema } from '../../contract.js'
 import type { SessionGoal } from '../../../goals/types.js'
 import { createGoalTool, GoalInputSchema, type GoalToolAdapters } from '../../builtin/goal.js'

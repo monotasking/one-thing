@@ -7,12 +7,12 @@ import {
   type EnforcePermissionPolicyInput,
   type Permission,
   type PermissionBridge,
-  type PermissionGrant,
   type PermissionGrantMatcher,
   type PermissionGrantStorage,
   type PermissionPolicyInput,
   type PermissionPolicyResult,
 } from '@onething/core/permission'
+import { type PermissionGrant } from '@shared/permission/grant'
 
 export interface PermissionGrantFileStorageAdapters {
   getPermissionsDir(): string

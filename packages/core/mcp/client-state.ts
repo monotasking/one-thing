@@ -4,7 +4,7 @@ import {
   type JsonArray,
   type JsonObject,
   type JsonValue,
-} from '../json.js'
+} from '@shared/json.js'
 import { normalizeMCPContent } from './content.js'
 import {
   mcpTaskHandleFromResult,
@@ -23,8 +23,9 @@ import type {
   MCPToolCallResult,
   MCPToolInfo,
   MCPTransportType,
-} from './types.js'
+} from '@shared/mcp/types.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
+import type { CoreMCPProbeResult } from '@shared/mcp/types.js'
 
 /** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
 export type CoreMCPLogger = CompatLogger
@@ -464,19 +465,6 @@ export interface CoreMCPProbeAdapters<TClient, TTransport> {
   getServerCapabilities?(client: TClient): unknown
 }
 
-export interface CoreMCPProbeResult {
-  ok: boolean
-  protocolVersion?: string
-  serverName?: string
-  serverVersion?: string
-  /** Advertised capability surface, e.g. ['tools(listChanged)','resources']. */
-  capabilities?: string[]
-  error?: string
-  /** Set when the server demands a protocol revision we cannot speak. */
-  requiredProtocol?: string
-  /** Set when the server demands OAuth (the 401 path primed the flow). */
-  authRequired?: boolean
-}
 
 const MCP_PROBE_TIMEOUT_MS = 15_000
 

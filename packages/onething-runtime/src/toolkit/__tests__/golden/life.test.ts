@@ -10,8 +10,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { zodToJsonSchema } from '../../contract.js'
-import type { OnethingPracticeBucket, OnethingPracticeSummaryResult } from '../../../practice/summary.js'
-import type { OnethingPracticeLedgerRecord } from '../../../practice/types.js'
+import type {
+  OnethingPracticeBucket,
+  OnethingPracticeSummaryResult,
+} from '@shared/contracts/practice.js'
+import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 import { createPracticeTool, PracticeInputSchema, type PracticeToolAdapters } from '../../builtin/practice.js'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 

@@ -34,8 +34,9 @@ import { textResult, type Result } from '../toolkit/result.js'
 import { Tool } from '../toolkit/tool.js'
 import type { ToolSpec } from '../toolkit/spec.js'
 import type { ResourceRegistry } from './registry.js'
-import type { JsonSchema, OpSpec, ReadSpec, ResourceSpec } from './spec.js'
-import { isJsonObject } from '../json.js'
+import type { OpSpec, ReadSpec, ResourceSpec } from './spec.js'
+import type { JsonSchema } from '@shared/toolkit/json-schema.js'
+import { isJsonObject } from '@shared/json.js'
 
 /** 这只工具的 id。出口层(目录对账、投影排除)读它,不许各自写字面量。 */
 export const RESOURCE_META_TOOL_ID = 'resources'

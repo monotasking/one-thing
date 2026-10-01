@@ -10,7 +10,7 @@
 
 import type { JsonArray, JsonObject, JsonValue } from '../json.js'
 import { defineRouter } from './router.js'
-import type { CoreMCPProbeResult, MCPToolCallResult } from '@onething/core/mcp'
+import type { CoreMCPProbeResult, MCPToolCallResult } from '../mcp/types.js'
 
 export type {
   MCPConnectionStatus,
@@ -23,7 +23,7 @@ export type {
   MCPToolCallResult,
   MCPToolInfo,
   MCPTransportType,
-} from '@onething/core/mcp'
+} from '../mcp/types.js'
 
 import type {
   MCPServerConfig,
@@ -31,7 +31,7 @@ import type {
   MCPToolInfo,
   MCPResourceInfo,
   MCPPromptInfo,
-} from '@onething/core/mcp'
+} from '../mcp/types.js'
 
 // MCP IPC Request/Response types
 export interface MCPGetServersResponse {

@@ -26,7 +26,7 @@ import {
   historyContentPartsCoverContent,
 } from '../../engine/history.js'
 import { TurnContextLedger } from '../../engine/turn-context.js'
-import type { BlobRef, SessionLogEventRecord } from '../events/types.js'
+import type { BlobRef, SessionLogEventRecord } from '@shared/session/events/types.js'
 import { foldSessionProjection, materializeNode } from './chat-messages.js'
 import { resolveHistoryBlobRefs, type ProjectionIssue, type ProjectionMaterializeOptions } from './blobs.js'
 import type { AssistantNode, ProjectionNode, SessionProjectionState } from './reducer.js'

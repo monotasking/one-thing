@@ -1,5 +1,5 @@
 import type { ChatSession } from '@shared/ipc.js'
-import type { SessionLogEventRecord } from '@onething/core/session'
+import type { SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionEventWriter } from './event-writer.js'
 import { messageForEvent } from './command-events.js'
 

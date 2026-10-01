@@ -23,8 +23,10 @@
  * `fetchSearchPage(s)` 与 `providers/brave.ts` 是纯逻辑,这里 import 它们。
  */
 
-import { Intent, makeEffect, Tool } from '@onething/core/toolkit'
-import type { AbortView, Effect, PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import { Intent, Tool } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
+import type { AbortView, PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class NetworkTool<In, Payload = In> extends Tool<In, Payload> {
   async plan(input: In, ctx: PlanContext): Promise<Intent<Payload>> {

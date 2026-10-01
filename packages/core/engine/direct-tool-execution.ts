@@ -1,6 +1,6 @@
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
-import type { Principal } from '../permission/principal.js'
+import type { Principal } from '@shared/permission/principal.js'
 import { isToolAbortError } from '../tools/abort.js'
 import {
   buildMCPPartialResultUpdate,

@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ACPClient } from '../client.js'
-import type {
-  ACPAgentConfig,
-  ACPPermissionBridge,
-  ACPPermissionRequestContext,
-} from '../types.js'
+import type { ACPPermissionBridge, ACPPermissionRequestContext } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 const config: ACPAgentConfig = {
   id: 'agent-1',

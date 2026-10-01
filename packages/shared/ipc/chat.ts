@@ -23,8 +23,8 @@ import type { JsonObject } from '../json.js'
  * 变宽是自动的,而抄一份的那种写法要么忘了改、要么改成了另一套名字。
  * reason 的字面量一个都不进这一层 —— 那是 core 的私事。
  */
-import type { ProjectedStopKind } from '@onething/core/session/projection/stop-reasons'
-export type { ProjectedStopKind } from '@onething/core/session/projection/stop-reasons'
+import type { ProjectedStopKind } from '../session/projection/stop-reasons.js'
+export type { ProjectedStopKind } from '../session/projection/stop-reasons.js'
 import { defineRouter } from './router.js'
 import type { SessionAccessOperation } from '../contracts/session-access.js'
 

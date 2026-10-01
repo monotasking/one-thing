@@ -18,7 +18,7 @@
  * 测试可以就地改档,不必重开进程。
  */
 
-import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@onething/core/events'
+import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@shared/events/stream-chunks'
 import { getStreamChannel } from './index.js'
 import { getLogger } from '../wiring/logging/index.js'
 

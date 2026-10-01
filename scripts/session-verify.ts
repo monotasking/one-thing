@@ -40,18 +40,20 @@ import {
   decodeSessionProjectionCheckpoint,
   materializeChatMessages,
   reduceSessionProjection,
-  SurfaceIndex,
-  // 引用扫描的**单一判据**(§15.12):GC 的孤儿判定与这里的引用完整性检查问的是
-  // 同一张表的两侧,判据分家迟早会分出一边删掉另一边认的东西。
-  collectSessionBlobRefHashes,
-  classifySessionOrigin,
   parseSessionLogEventLog,
-  sessionOriginFingerprint,
   projectChatMessages,
   canonicalChatMessage,
+} from '@onething/core/session'
+import { SurfaceIndex } from '@shared/session/projection/surface.js'
+// 引用扫描的**单一判据**(§15.12):GC 的孤儿判定与这里的引用完整性检查问的是
+// 同一张表的两侧,判据分家迟早会分出一边删掉另一边认的东西。
+import { collectSessionBlobRefHashes } from '@shared/session/events/types.js'
+import {
+  classifySessionOrigin,
+  sessionOriginFingerprint,
   type SessionOriginStamp,
   type SessionOriginVerdict,
-} from '@onething/core/session'
+} from '@shared/session/events/origin.js'
 import { dehydrateProjectedMessages } from '@onething/runtime/sessions/session-dehydrate'
 
 export interface SessionVerifyIssue {

@@ -19,7 +19,7 @@
  * 改成从这里再导出是 C2 的事,那之前两份并存,原件的注释里那句"渲染层"是它自己
  * 的语境,不是这份的。
  */
-import type { DomainRoutes, RouteAPI, RouteCallOptions, Router } from '@onething/core/ipc'
+import type { DomainRoutes, RouteAPI, RouteCallOptions, Router } from '@shared/ipc/router'
 import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
 
 export type RpcInvoke = (request: RpcRequest, options?: RouteCallOptions) => Promise<RpcResponse>

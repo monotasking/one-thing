@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod'
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 import type { Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import { textResult } from '@onething/core/toolkit'
 import {

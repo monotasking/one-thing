@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { LineEdit } from '@onething/core/text'
+import type { LineEdit } from '@shared/text/line-edit'
 import type { ResourceOutcomeView, ResourceReadView } from '@shared/ipc/resources'
 import { createMutation, createQuery, createQueryFamily } from './kernel'
 import type { Mutation, Query } from './kernel'

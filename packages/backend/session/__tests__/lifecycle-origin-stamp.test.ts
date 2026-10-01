@@ -2,7 +2,7 @@
  * **`session/created` 的产地印章落在写侧**(§17.7 #2+#1)。
  *
  * 核心那半边(指纹是路径的纯函数、三栏判定)在
- * `core/session/__tests__/session-origin.test.ts`。这里只问写侧的三件:
+ * `shared/session/__tests__/session-origin.test.ts`。这里只问写侧的三件:
  *
  *  1. 印章**真的落进了事件**(单门之后它必经写入口,所以没有"另一扇门没盖章"的缝);
  *  2. **四条泳道各自正确** —— 换一个 store 就换一个印章(desktop / server / 夹具
@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatSession } from '@shared/ipc.js'
-import { sessionOriginFingerprint } from '@onething/core/session'
+import { sessionOriginFingerprint } from '@shared/session/events/origin'
 
 const state = vi.hoisted(() => ({ storePath: '', written: [] as { type: string; data: unknown }[] }))
 

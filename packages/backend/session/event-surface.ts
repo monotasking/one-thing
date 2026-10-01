@@ -17,15 +17,14 @@
  * 的正是这一条 —— 这个投影跑在主线程上。
  */
 
+import { SurfaceIndex, surfaceMessageIdOf } from '@shared/session/projection/surface'
 import {
-  SurfaceIndex,
   isSessionSurfaceNodeType,
-  surfaceMessageIdOf,
   type SessionLogEventDataFor,
   type SessionLogEventRecord,
   type SessionLogEventType,
   type SessionSurfaceOp,
-} from '@onething/core/session'
+} from '@shared/session/events/types'
 import type { SessionLogEventAppendObserver } from './event-log.js'
 import { getCurrentBackend } from '../current.js'
 

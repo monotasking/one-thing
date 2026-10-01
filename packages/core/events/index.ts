@@ -16,23 +16,7 @@ export {
   emitCoreSessionCommandForIpc,
 } from './ipc-operations.js'
 export { RingBuffer } from './ring-buffer.js'
-export { SESSION_COMMAND_TYPES } from './session-command-types.js'
-export { SESSION_EVENT_TYPES } from './session-event-types.js'
 export { StreamChannel } from './stream-channel.js'
-export type {
-  ReasoningDeltaChunk,
-  ReasoningPlacement,
-  StreamChunk,
-  StreamDeltaStamp,
-  TextDeltaChunk,
-  ToolInputDeltaChunk,
-  ToolProgressChunk,
-  UiAssistantChunksChunk,
-  UiAssistantDeltaChunk,
-  UiAssistantPartEndChunk,
-  UiAssistantPartKind,
-  UiStreamChunk,
-} from './stream-chunks.js'
 export type {
   CoreSessionCommandEmitterLike,
   CoreSessionCommandIpcResult,
@@ -41,8 +25,6 @@ export type {
   EmitCoreSessionEventSafelyOptions,
   SessionCommandLike,
 } from './ipc-operations.js'
-export type { SessionCommandType } from './session-command-types.js'
-export type { SessionEventType } from './session-event-types.js'
 export type {
   EmitResult,
   EventDeliveryOptions,
@@ -53,7 +35,6 @@ export type {
   InterceptResult,
   ObserveHandler,
   SessionEventEnvelope,
-  StreamChunkBase,
   StreamChunkHandler,
   TypedObserveHandler,
   Unsubscribe,

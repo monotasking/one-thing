@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ACPSettings, AcpAgentDetect, AcpAgentManifest } from '@onething/runtime/acp'
+import type { ACPSettings, AcpAgentDetect, AcpAgentManifest } from '@shared/contracts/acp'
 
 const warns = vi.hoisted(() => [] as Array<{ msg: string; fields?: unknown }>)
 vi.mock('../../logging/index.js', () => {

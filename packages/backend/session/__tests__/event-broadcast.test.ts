@@ -12,7 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { EventBus } from '@onething/core'
 import { installSessionLayerForTest } from '../testing/session-layer.js'
 

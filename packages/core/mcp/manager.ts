@@ -1,8 +1,4 @@
-import type {
-  JsonArray,
-  JsonObject,
-  JsonValue,
-} from '../json.js'
+import type { JsonArray, JsonObject, JsonValue } from '@shared/json.js'
 import type {
   MCPConnectionStatus,
   MCPPromptInfo,
@@ -12,7 +8,7 @@ import type {
   MCPSettings,
   MCPToolCallResult,
   MCPToolInfo,
-} from './types.js'
+} from '@shared/mcp/types.js'
 import { getCoreLogger } from '../logging/index.js'
 
 const log = getCoreLogger('core.mcp')

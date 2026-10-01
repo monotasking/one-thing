@@ -9,8 +9,8 @@
  * 观察流里写东西(那会让"计划"看起来像"已经发生")。
  */
 
-import type { JsonObject } from '../json.js'
-import type { Principal } from '../permission/principal.js'
+import type { JsonObject } from '@shared/json.js'
+import type { Principal } from '@shared/permission/principal.js'
 import type { AbortScope, AbortView } from './abort-scope.js'
 import type { ToolEvent } from './events.js'
 import { LIFECYCLE_EVENT_TYPE } from './events.js'

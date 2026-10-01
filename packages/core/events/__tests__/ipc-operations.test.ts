@@ -3,7 +3,7 @@ import {
   emitCoreSessionCommandForIpc,
   emitCoreSessionEventSafely,
 } from '../ipc-operations.js'
-import { SESSION_COMMAND_TYPES } from '../session-command-types.js'
+import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 
 describe('core event IPC operations', () => {
   it('emits a session command through the provided event bus adapter', async () => {

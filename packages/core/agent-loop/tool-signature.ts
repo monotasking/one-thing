@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from '../json.js'
+import type { JsonObject, JsonValue } from '@shared/json.js'
 
 export function stableStringify(value: JsonValue | undefined): string {
   if (value === null || typeof value !== 'object') {

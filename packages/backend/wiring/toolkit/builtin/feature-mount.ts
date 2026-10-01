@@ -19,9 +19,10 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
-import { makeEffect } from '@onething/core/toolkit'
-import type { Effect, Preview, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
-import type { JsonObject } from '@onething/core'
+import { makeEffect } from '@shared/toolkit/effects'
+import type { Preview, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
+import type { JsonObject } from '@shared/json'
 import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/runtime/toolkit'
 import { dumpFeatures, hasFeature, mountFeature } from '../../../features/index.js'
 import {

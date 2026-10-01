@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient } from '../client.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig, ACPPromptStreamEvent } from '../types.js'
+import type { ACPPromptStreamEvent } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * A2-b 的两件客户端事,对真子进程的假 agent:

@@ -40,10 +40,10 @@ import {
   reduceSessionProjection,
   type CoreTimelineMessage,
   type SessionAccountState,
-  type SessionLogEventRecord,
-  type SessionLogicalDelta,
   type SessionProjectionState,
 } from '@onething/core/session'
+import { type SessionLogicalDelta } from '@shared/session/events/chunk-codec'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionLogEventAppendObserver } from './event-log.js'
 import type { sessionProjectionOptions } from './projection-blobs.js'
 import { getCurrentBackend } from '../current.js'

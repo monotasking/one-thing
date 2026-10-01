@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   builtinQuotaSources,
-  classifyQuotaWindowSeconds,
   fetchProviderQuota,
   getQuotaSource,
   providerQuotaSourceOf,
-  quotaEpochMsOf,
-  quotaWindowDaysOf,
   registerQuotaSource,
   resetQuotaSourcesForTests,
   type QuotaFetchContext,
 } from '../index.js'
+import {
+  classifyQuotaWindowSeconds,
+  quotaEpochMsOf,
+  quotaWindowDaysOf,
+} from '@shared/quota-windows.js'
 import { codexQuotaFromHeaders } from '../../vendors/codex/quota.js'
 import { BUILTIN_PROVIDER_MANIFESTS } from '../../builtin-manifests.js'
 

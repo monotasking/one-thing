@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ALU_RIG } from '@onething/runtime/pets/builtin/alu.rig'
+import { ALU_RIG } from '@shared/pets/builtin/alu.rig'
 import type { AppSettings } from '@shared/ipc/settings'
 import { configurePetPort, resetPetSource } from '../../../data/pet-source'
 import type { ResourcePort } from '../../../data/resource-port'

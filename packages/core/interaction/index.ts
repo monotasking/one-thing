@@ -11,13 +11,3 @@ export type {
   InteractionEventBusLike,
   InteractionRespondCommandLike,
 } from './registry.js'
-export type {
-  InteractionAnswer,
-  InteractionAskInput,
-  InteractionOption,
-  InteractionOrigin,
-  InteractionOutcome,
-  InteractionQuestion,
-  InteractionQuestionAnswer,
-  InteractionRequest,
-} from './types.js'

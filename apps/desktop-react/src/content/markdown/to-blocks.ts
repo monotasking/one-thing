@@ -1,4 +1,4 @@
-import { scanRefTags } from '@onething/core/references'
+import { scanRefTags } from '@shared/references/ref-tag'
 import type { BlockContent, Code, List, ListItem, Paragraph, PhrasingContent, RootContent, Table } from 'mdast'
 /*
  * 从扩展包取节点型(而不是从 'mdast' 里 Extract):这两个型是 `mdast-util-math` 用

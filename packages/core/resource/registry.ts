@@ -33,8 +33,8 @@
  */
 
 import { assertResourceSpec } from './contract.js'
-import { parseRef } from './ref.js'
-import type { ResourceRef } from './ref.js'
+import { parseRef } from '@shared/resource/ref.js'
+import type { ResourceRef } from '@shared/resource/ref.js'
 import type { OpSpec, ReadSpec, ResourceSpec } from './spec.js'
 
 /** 一个 scheme 只能有一个提供者。第二个来登记是装配错误,不是可降级的情况。 */

@@ -18,9 +18,11 @@
  */
 
 import { coreDiffHunksToJson, type CoreDiffHunk } from '@onething/core/tools'
-import { Intent, makeEffect } from '@onething/core/toolkit'
-import type { JsonObject, JsonValue } from '@onething/core'
-import type { Effect, EffectClass, PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import { Intent } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
+import type { JsonObject, JsonValue } from '@shared/json'
+import type { PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import type { Effect, EffectClass } from '@shared/toolkit/effects'
 import { basenamePath } from '@onething/core/storage'
 import { filePermissionPattern } from '../../tools/permission-effects.js'
 import { withFileMutationQueue } from '../../tools/file-mutation-queue.js'

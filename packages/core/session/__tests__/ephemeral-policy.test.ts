@@ -33,9 +33,9 @@ import {
   SESSION_EPHEMERAL_FACT_POLICY,
   findSessionEphemeralFactPolicy,
 } from '../events/ephemeral-policy.js'
-import type { SessionLogEventRecord } from '../events/index.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 import { canonicalChatMessage, projectChatMessages } from '../projection/index.js'
-import { toolResultToStructured } from '../../tools/tool-result.js'
+import { toolResultToStructured } from '@shared/tools/tool-result.js'
 
 /** `packages/core/session/__tests__/` → 仓库根。 */
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))

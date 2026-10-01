@@ -95,7 +95,7 @@ import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/runtime/sessions/branching'
 import type { ReadOutcome } from '@onething/core/resource'
-import type { JsonObject } from '@onething/core/json'
+import type { JsonObject } from '@shared/json'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
 

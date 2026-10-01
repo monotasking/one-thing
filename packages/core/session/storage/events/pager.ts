@@ -41,7 +41,7 @@
  */
 
 import { decodeSessionLogEventLine } from '../../events/codec.js'
-import type { SessionLogEventRecord, SessionLogEventType } from '../../events/types.js'
+import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types.js'
 import { foldSessionProjection, materializeChatMessages } from '../../projection/chat-messages.js'
 import type { ProjectionMaterializeOptions } from '../../projection/blobs.js'
 import type { ProjectedChatMessage } from '../../projection/types.js'

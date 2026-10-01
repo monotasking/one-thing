@@ -26,8 +26,8 @@
 
 import { basenamePath, joinPaths, dirnamePath } from '@onething/core/storage'
 import type { ToolEffect, ToolPreview } from '@onething/core/tools'
-import type { Effect } from '@onething/core/toolkit'
-import type { JsonObject, JsonValue } from '@onething/core/json'
+import type { Effect } from '@shared/toolkit/effects'
+import type { JsonObject, JsonValue } from '@shared/json'
 import {
   analyzeBashPermission,
   filePermissionPattern,

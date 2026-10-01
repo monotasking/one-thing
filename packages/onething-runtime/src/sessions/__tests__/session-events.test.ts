@@ -17,9 +17,11 @@ import {
   scanSessionEventLogCounters,
   truncateSessionEventPreview,
   type SessionEventRecord,
+} from '../session-events.js'
+import {
   type SessionEventToolSchema,
   type SessionRequestHeaderEventData,
-} from '../session-events.js'
+} from '@shared/session/events/types.js'
 
 function header(
   seq: number,

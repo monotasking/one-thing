@@ -38,7 +38,7 @@ import type {
   SessionTraceRequest,
   SessionTraceRun,
   SessionTraceToolCall,
-} from '@onething/core/session'
+} from '@shared/session/trace/types'
 import { stdout, stdoutRaw } from './stdout.js'
 
 export interface TraceCommandOptions extends ReadSessionTraceOptions {

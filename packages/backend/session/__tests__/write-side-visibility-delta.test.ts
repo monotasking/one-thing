@@ -26,7 +26,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@shared/ipc.js'
-import type { SessionLogicalDelta } from '@onething/core/session'
+import type { SessionLogicalDelta } from '@shared/session/events/chunk-codec'
 
 const state = vi.hoisted(() => ({
   storeDir: '',

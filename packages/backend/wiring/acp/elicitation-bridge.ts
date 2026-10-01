@@ -33,7 +33,7 @@ import type {
   InteractionAnswer,
   InteractionAskInput,
   InteractionQuestion,
-} from '@onething/core/interaction'
+} from '@shared/interaction/types'
 import type {
   AcpElicitationBridge,
   AcpElicitationContext,

@@ -1,5 +1,5 @@
-import { toJsonSchemaObject, type JsonSchemaObject, type JsonValue } from '../json.js'
-import type { MCPToolInfo } from './types.js'
+import { toJsonSchemaObject, type JsonSchemaObject, type JsonValue } from '@shared/json.js'
+import type { MCPToolInfo } from '@shared/mcp/types.js'
 import { MCP_ROUTER_TOOL_ID } from './tool-id-registry.js'
 import { getMCPRouterDefinition, type MCPModelFacingToolDefinition } from './router.js'
 

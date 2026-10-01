@@ -35,7 +35,7 @@
  * `packages/backend/__tests__/import-side-effect-free.test.ts`）。
  */
 import type { Context as CordisContext } from '@deepseek-ai/cordis'
-import type { DomainRoutes, Router } from '@onething/core/ipc'
+import type { DomainRoutes, Router } from '@shared/ipc/router'
 import { registerRouterHandlers, type RpcRouteHandlers } from '../rpc/registry.js'
 
 /** 解绕一项注册。允许异步：未来的注册面（面板、连接）可能要等 I/O。 */

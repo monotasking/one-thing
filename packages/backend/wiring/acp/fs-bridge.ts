@@ -18,8 +18,9 @@
 import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Principal } from '@onething/core/permission'
-import type { Authorizer, Decision, Effect } from '@onething/core/toolkit'
+import type { Principal } from '@shared/permission/principal'
+import type { Authorizer, Decision } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import type { AcpClientRequestContext, AcpFsBridge } from '@onething/runtime/acp'
 import { buildTextDiffChange } from '@onething/runtime/external-agents'
 import {

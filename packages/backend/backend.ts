@@ -121,7 +121,7 @@ import { configureEvalsTaskOwner, EvalsTaskOwner } from './wiring/evals/task-own
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './wiring/skills/session-skills.js'
 import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
-import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
+import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import { ACPManager } from '@onething/runtime/acp'
 import { McpSubsystem } from './wiring/mcp/subsystem.js'
 import { AcpSubsystem } from './wiring/acp/subsystem.js'

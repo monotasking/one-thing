@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { scanRefTags } from "../references/index.js";
+import { scanRefTags } from "@shared/references/ref-tag.js";
 import { decodeTextBytes, escapeXmlAttribute } from "./message-content.js";
 
 /**

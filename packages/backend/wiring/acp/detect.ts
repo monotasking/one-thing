@@ -12,7 +12,7 @@
 import { execFile } from 'node:child_process'
 import { accessSync, constants, statSync } from 'node:fs'
 import path from 'node:path'
-import type { AcpAgentDetect, AcpAgentManifest } from '@onething/runtime/acp'
+import type { AcpAgentDetect, AcpAgentManifest } from '@shared/contracts/acp'
 import { compareAcpAgentVersions } from '@onething/runtime/acp/manifest'
 
 export const ACP_DETECT_VERSION_TIMEOUT_MS = 3000

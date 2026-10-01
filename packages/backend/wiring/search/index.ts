@@ -40,7 +40,7 @@
  * 人往队列里放东西,停 Worker 是一件安静的事。库跟着 Worker 一起关(句柄在那边)。
  */
 
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import type { CapabilityManifest } from '@onething/core/search'
 import {
   createOnethingSearchService,

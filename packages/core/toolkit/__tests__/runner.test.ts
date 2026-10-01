@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { makeEffect } from '../effects.js'
+import { makeEffect } from '@shared/toolkit/effects.js'
 import { Decision, Intent } from '../intent.js'
 import { Outcome } from '../outcome.js'
 import { withUserToolSettings } from '../ports.js'

@@ -12,10 +12,11 @@
  * drive persistence (checkpoints) and renderer sync.
  */
 
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { StreamChannel } from '../events/stream-channel.js'
-import type { SessionEventEnvelope, StreamChunkBase, Unsubscribe } from '../events/types.js'
+import type { SessionEventEnvelope, Unsubscribe } from '../events/types.js'
+import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 import { type SessionState, createEmptySessionState } from './session-state.js'
 
 /**

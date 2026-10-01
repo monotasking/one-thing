@@ -12,7 +12,7 @@
  * `agent-loop/providers/wires/openai-responses-wire.ts` 上的 `CODEX_DIALECT`,
  * 设计稿 §9 P1「第二套 codex」)。新增请求侧行为一律改那条线,不要在这里复活。
  */
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 import type { OnethingOpenRouterModel } from '../../model-registry.js'
 import type { OnethingOAuthToken } from '../../../auth/types.js'
 

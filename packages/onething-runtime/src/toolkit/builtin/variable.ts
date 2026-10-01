@@ -12,7 +12,8 @@
  */
 
 import { z } from 'zod'
-import { Intent, makeEffect, Tool } from '@onething/core/toolkit'
+import { Intent, Tool } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
 import type { CoreToolPromptContribution } from '@onething/core/engine'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import { isCapabilityVariable } from '../../variables/types.js'

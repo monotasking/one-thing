@@ -7,7 +7,7 @@
  * `wiring/providers/{builtin/github-copilot.ts 的取数与缓存, model-registry.ts 的兜底行}`。
  * 取数要的 app fetch 由宿主经 `VendorModelsFetcherDeps.fetch` 交进来(policy 名与搬家前一致)。
  */
-import { toJsonObject, type JsonValue } from '@onething/core'
+import { toJsonObject, type JsonValue } from '@shared/json'
 import type { OnethingHttpPolicyName } from '../../bound-fetch.js'
 import { getLogger } from '../../../logging/index.js'
 import { resolveOnethingModelCapabilities } from '../../model-capability.js'

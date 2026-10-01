@@ -1,10 +1,10 @@
 import { Permission } from './index.js'
 import * as PermissionGrants from './permission-grants.js'
 import { coversAll } from './capability-registry.js'
-import { principalId, type Principal } from './principal.js'
-import { parseRef } from '../resource/ref.js'
-import { effectPolicyFor } from '../toolkit/effects.js'
-import { toJsonObject } from '../json.js'
+import { principalId, type Principal } from '@shared/permission/principal.js'
+import { parseRef } from '@shared/resource/ref.js'
+import { effectPolicyFor } from '@shared/toolkit/effects.js'
+import { toJsonObject } from '@shared/json.js'
 
 export type PermissionPolicyMode = Permission.Mode
 export type PermissionPolicyDecision = 'allow' | 'ask' | 'deny'

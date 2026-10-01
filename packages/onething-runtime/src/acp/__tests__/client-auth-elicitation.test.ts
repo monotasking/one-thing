@@ -6,13 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, authMethodsOf, isAcpAuthRequired, toAcpPromptError } from '../client.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
 import type {
-  ACPAgentConfig,
-  ACPAgentState,
   AcpAuthBridge,
   AcpElicitationBridge,
   AcpElicitationContext,
   AcpElicitationRequest,
 } from '../types.js'
+import type { ACPAgentConfig, ACPAgentState } from '@shared/contracts/acp.js'
 
 /**
  * A3-c:登录与提问(方案 §3.5 / §11.3)。夹具是真子进程的 ACP agent:`FAKE_AGENT_ELICIT` 那条剧本

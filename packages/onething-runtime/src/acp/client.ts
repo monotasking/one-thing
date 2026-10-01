@@ -32,27 +32,29 @@ import type {
   WriteTextFileResponse,
 } from '@agentclientprotocol/sdk'
 import type {
-  ACPAgentConfig,
-  ACPAgentState,
-  ACPConnectionStatus,
   ACPOpenSessionOptions,
   ACPPermissionBridge,
   ACPPermissionDecision,
-  ACPUnattendedPolicy,
   ACPPermissionRequestContext,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
-  ACPSessionOption,
-  ACPSessionOptionChoice,
   AcpAuthBridge,
-  AcpAuthMethod,
   AcpClientRequestContext,
   AcpElicitationBridge,
   AcpFsBridge,
-  AcpRemoteSessionInfo,
-  AcpSessionState,
   AcpTerminalBridge,
 } from './types.js'
+import type {
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPConnectionStatus,
+  ACPUnattendedPolicy,
+  ACPSessionOption,
+  ACPSessionOptionChoice,
+  AcpAuthMethod,
+  AcpRemoteSessionInfo,
+  AcpSessionState,
+} from '@shared/contracts/acp.js'
 import type { ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
 import {
   applySessionUpdate,

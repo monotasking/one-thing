@@ -20,7 +20,7 @@ import {
   PLUGIN_NOTIFY_SOUND_THROTTLE_MS,
   isPluginNotifySound,
   type PluginNotifySound,
-} from '@onething/core/plugins'
+} from '@shared/plugins/notify-sound'
 import { getSettings } from '../../stores/settings.js'
 
 /** 每插件最后一次**真的出声**的时刻。被静音/被限频的那些不记账。 */

@@ -185,7 +185,7 @@ describe('F1:活 surface 也由写入口推进 —— 两扇门都算数(§16.6)
     // 写侧看到的这一串,与读侧从**文件字节**折出来的那一串逐字相同 ——
     // 两侧同源正是 F1 要立的那条纪律。
     await flushSessionEventLog(SESSION)
-    const { foldSurface } = await import('@onething/core/session')
+    const { foldSurface } = await import('@shared/session/projection/surface.js')
     const { readSessionLogEventsSync } = await import('../event-log.js')
     expect(foldSurface(readSessionLogEventsSync(SESSION)).order).toEqual(surface.order())
   })

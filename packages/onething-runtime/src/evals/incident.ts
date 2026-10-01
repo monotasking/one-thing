@@ -33,7 +33,7 @@ import {
 import { getTurnTraceDir } from "./trace-store.js";
 import { hashSections } from "./section-hash.js";
 import type { EvalFixtureContext } from "./fixture.js";
-import type { TurnSignals } from "./turn-evaluator.js";
+import type { TurnSignals } from "@shared/contracts/eval-record.js";
 
 // ── Types ──────────────────────────────────────────────
 

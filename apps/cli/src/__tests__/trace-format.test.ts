@@ -8,7 +8,7 @@
  * 结果的调用如实写 `(no result recorded)`、老日志的合成组标出 `(synthetic)`。
  */
 import { describe, expect, it } from 'vitest'
-import type { SessionTrace } from '@onething/core/session'
+import type { SessionTrace } from '@shared/session/trace/types'
 import { formatDuration, formatSessionTrace } from '../trace-command.js'
 
 const T0 = 1_700_000_000_000

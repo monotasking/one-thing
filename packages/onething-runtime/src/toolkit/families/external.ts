@@ -16,10 +16,9 @@
  * 会让一批本来跑得完的调用开始失败;端口留着,由装配层按 R2b 的判据决定。
  */
 
-import { Intent, makeEffect, Tool } from '@onething/core/toolkit'
+import { Intent, Tool } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
 import type {
-  Effect,
-  JsonSchema,
   PlanContext,
   PrepareEnv,
   Preview,
@@ -27,7 +26,9 @@ import type {
   RunContext,
   ToolSpec,
 } from '@onething/core/toolkit'
-import { toJsonObject, type JsonObject } from '@onething/core'
+import type { Effect } from '@shared/toolkit/effects'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
+import { toJsonObject, type JsonObject } from '@shared/json'
 import type { CoreToolPromptContribution } from '@onething/core/engine'
 import type { z } from 'zod'
 import { defineInput } from '../contract.js'

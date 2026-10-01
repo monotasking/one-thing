@@ -14,7 +14,7 @@
  * `SERVER_REDACTED_SECRET` 出门,回来时若原样带着这个哨兵(或干脆没带这个键),
  * 就把服务器上那份真值合并回去,于是「改个名字」不会把凭证洗掉。
  */
-import type { MCPServerConfig, MCPServerState } from '@onething/core/mcp'
+import type { MCPServerConfig, MCPServerState } from '@shared/mcp/types'
 
 export const SERVER_REDACTED_SECRET = '__onething_server_secret_set__'
 

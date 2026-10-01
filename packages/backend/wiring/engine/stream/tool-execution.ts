@@ -8,23 +8,23 @@ import * as store from '../../../store.js'
 import type { DiffHunk, Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../../events/event-only-emitter.js'
+import { executeCoreToolAndUpdate } from '@onething/core/engine'
 import {
   createToolExecutionStepWithFactory,
   detectSkillUsage,
-  executeCoreToolAndUpdate,
   generateStepTitle,
-  getStepType, type CreateToolStepWithFactoryOptions,
-} from '@onething/core/engine'
+  getStepType,
+  type CreateToolStepWithFactoryOptions,
+} from '@shared/engine/tool-step'
 import {
-  toJsonValue,
   toolFailureText,
   toolResultToStructured,
-  type JsonValue,
   type ToolResultLike,
-} from '@onething/core'
+} from '@shared/tools/tool-result'
+import { toJsonValue, type JsonValue } from '@shared/json'
 import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
 import { pushSessionToolProgress } from '../../../events/tool-progress-stream.js'
 import { consolePort, getLogger } from '../../logging/index.js'

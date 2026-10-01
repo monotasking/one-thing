@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  CoreMCPBridgeRuntime,
-  MCP_ROUTER_TOOL_ID,
-  type MCPServerState,
-  type MCPToolInfo,
-} from '@onething/core/mcp'
+import { CoreMCPBridgeRuntime, MCP_ROUTER_TOOL_ID } from '@onething/core/mcp'
+import { type MCPServerState, type MCPToolInfo } from '@shared/mcp/types'
 
 const tools: MCPToolInfo[] = [
   {

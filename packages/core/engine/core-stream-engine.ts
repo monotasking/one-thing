@@ -1,6 +1,6 @@
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
-import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
-import type { SessionCommandType } from '../events/session-command-types.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
+import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
+import type { SessionCommandType } from '@shared/events/session-command-types.js'
 import type { Unsubscribe } from '../events/types.js'
 import { PendingMessageQueue } from './message-queue.js'
 import { isAgentExecutionCheckpointError } from '../agent-loop/errors.js'
@@ -10,7 +10,7 @@ import type { CoreInitialToolChoice } from './stream-executor.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
 import { isClientMintedId } from './ids.js'
-import { parsePrincipal } from '../permission/principal.js'
+import { parsePrincipal } from '@shared/permission/principal.js'
 import type {
   StreamEngineCompactionAdapter,
   StreamEngineClockAdapter,

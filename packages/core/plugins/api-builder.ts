@@ -12,7 +12,7 @@ import {
   normalizePluginNotifySound,
   type PluginNotifyOptions,
   type PluginNotifySound,
-} from './notify-sound.js'
+} from '@shared/plugins/notify-sound.js'
 import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
 import { getPluginFilesFaultLane } from './storage-files.js'
 import type {

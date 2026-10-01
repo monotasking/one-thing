@@ -25,9 +25,14 @@
 
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
-import { applyBatch, joinLines, splitLines, type LineEdit } from '@onething/core/text'
+import { applyBatch, joinLines, splitLines, type LineEdit } from '@shared/text/line-edit'
 import { planFromSpec } from '@onething/core/resource'
-import type { ResourceEventHub, ResourceProvider, ResourceReadContext, ResourceRef } from '@onething/core/resource'
+import type {
+  ResourceEventHub,
+  ResourceProvider,
+  ResourceReadContext,
+} from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/core/toolkit'
 import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from '@onething/runtime/todo-plan'
 import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/runtime/todo-plan/resource-spec'

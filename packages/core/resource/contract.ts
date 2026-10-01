@@ -23,9 +23,9 @@
  * spec 本体(含 `exposure`)→ reads → ops → events → state,每张表内按键的字典序。
  */
 
-import { isJsonObject } from '../json.js'
-import { isKnownEffectClass } from '../toolkit/effects.js'
-import { isRefScheme } from './ref.js'
+import { isJsonObject } from '@shared/json.js'
+import { isKnownEffectClass } from '@shared/toolkit/effects.js'
+import { isRefScheme } from '@shared/resource/ref.js'
 import type { ResourceSpec } from './spec.js'
 
 /**

@@ -5,7 +5,7 @@
 
 import * as store from '../../../store.js'
 import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ipc.js'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/runtime/mcp/index.wiring'

@@ -14,7 +14,6 @@ import { sessionLifecycleEvents } from '../../session/lifecycle-events.js'
 import { billCompactUsage } from '../usage/bill-side-line.js'
 import {
   buildContextCompactCompletedContent,
-  buildContextCompactContent,
   buildContextCompactFailedContent,
   buildContextCompactSummaryMessages,
   buildContextUsageSnapshot,
@@ -32,8 +31,10 @@ import {
   selectCompactPlan,
   stripCompactFileOperations,
   shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
-  summarizeContextInChunks, type SummarizeContextInChunksOptions,
+  summarizeContextInChunks,
+  type SummarizeContextInChunksOptions,
 } from '@onething/core/engine'
+import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from '@onething/runtime/engine/compact-file-lists'
 import * as modelRegistry from '../providers/model-registry.js'

@@ -5,7 +5,7 @@
  * down a drive. Nothing on this path READS it — it is a passthrough from the
  * send-message command to `runAgentLoop`.
  */
-import type { Principal } from '../permission/principal.js'
+import type { Principal } from '@shared/permission/principal.js'
 
 export type CoreInitialToolChoice =
   | 'required'

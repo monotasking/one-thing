@@ -2,7 +2,7 @@
  * `validateRigSpec`(宠物 P5,正本 §12.6 第一条):每条问题各一例;两只内置宠物零问题。
  */
 import { describe, expect, it } from 'vitest'
-import { ALU_RIG } from '../builtin/alu.rig.js'
+import { ALU_RIG } from '@shared/pets/builtin/alu.rig.js'
 import { petManifestProblems, type PetManifest } from '../manifest.js'
 import { BUILTIN_PETS, PetRegistry, PetRigInvalidError } from '../registry.js'
 import {
@@ -12,7 +12,7 @@ import {
   validateRigSpec,
   type DeclarativeRigSpec,
   type RigPart,
-} from '../rig-spec.js'
+} from '@shared/pets/rig-spec.js'
 
 /** 一份最小合格的形象:一个组、一个圆,嘴各一格。 */
 function minimal(): DeclarativeRigSpec {

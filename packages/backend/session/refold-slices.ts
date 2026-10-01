@@ -43,9 +43,9 @@ import {
   type CoreTimelineMessage,
   type ProjectionMaterializeOptions,
   type SessionAccountState,
-  type SessionLogEventRecord,
   type SessionProjectionState,
 } from '@onething/core/session'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 
 /**
  * 一片连续同步工作的预算。

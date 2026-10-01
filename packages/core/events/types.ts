@@ -5,6 +5,9 @@
  * Electron main process or on any host renderer-facing event schema.
  */
 
+// 流式块的基形状随块协议住在 shared(`@shared/events/stream-chunks`);总线只取用它。
+import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
+
 export interface EventBase {
   type: string
 }
@@ -28,9 +31,6 @@ export type GlobalEventEnvelope<TEvent extends EventBase = EventBase> = {
   event: TEvent
 }
 
-export interface StreamChunkBase {
-  type: string
-}
 
 /** Unsubscribe function returned by on/onAny/onGlobal */
 export type Unsubscribe = () => void

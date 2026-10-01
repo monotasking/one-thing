@@ -15,7 +15,7 @@
 import type { ToolPartialResult } from '@shared/ipc.js'
 import type { JsonObject, JsonValue } from '@shared/json.js'
 import type { Step } from '@shared/ipc.js'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 
 /** 工具流式改题 / 改元数据的那条回调载荷。 */
 export interface ToolMetadataUpdate {

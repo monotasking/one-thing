@@ -105,7 +105,8 @@
  *     LRU 的内务。理由逐条写在域的处理器上。
  */
 
-import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
+import type { ResourceSpec } from '@onething/core/resource'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 /**
  * 一条会话的元数据形状(`get` 的结果 / `current` 状态共用同一份 schema)。

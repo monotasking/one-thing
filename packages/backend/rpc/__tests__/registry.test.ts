@@ -6,7 +6,7 @@
  * handler produces, and that nothing ever rejects.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineRouter } from '@onething/core/ipc'
+import { defineRouter } from '@shared/ipc/router'
 import { RPC_ERROR_CODES } from '@shared/ipc/rpc.js'
 import {
   dispatchRpc,

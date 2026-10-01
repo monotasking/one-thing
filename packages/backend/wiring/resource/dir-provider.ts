@@ -79,14 +79,16 @@ import {
 } from '@onething/runtime/files'
 import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/runtime/shell/host-ports'
 import { dirResourceSpec } from '@onething/runtime/files/resource-spec'
-import { formatRef, planFromSpec } from '@onething/core/resource'
+import { planFromSpec } from '@onething/core/resource'
+import { formatRef } from '@shared/resource/ref'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-  ResourceRef,
 } from '@onething/core/resource'
-import type { Effect, PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import type { ResourceRef } from '@shared/resource/ref'
+import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import { Intent, textResult } from '@onething/core/toolkit'
 import { resolveReadable, resolveWritable } from './path-guard.js'
 

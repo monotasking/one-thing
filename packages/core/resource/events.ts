@@ -18,7 +18,13 @@
  */
 
 import { ResourceWatchPrefixError } from './errors.js'
-import { formatRef, isRefPrefix, matchesRefPrefix, type Ref, type ResourceRef } from './ref.js'
+import {
+  formatRef,
+  isRefPrefix,
+  matchesRefPrefix,
+  type Ref,
+  type ResourceRef,
+} from '@shared/resource/ref.js'
 
 /** 一条已经发生的事。`payload` 的形状由 `ResourceSpec.events[name].payload` 说了算。 */
 export interface ResourceEvent {

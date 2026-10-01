@@ -6,7 +6,7 @@
  * 由对拍测试逐条钉住。
  */
 
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { VariableScope, VariableType } from '../../variables/types.js'
 
 export type VariableAction = 'list' | 'get' | 'keys' | 'set' | 'append' | 'remove' | 'delete'

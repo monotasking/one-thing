@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { McpServer } from '@agentclientprotocol/sdk'
 import { ACPClient } from '../client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * A4-b:`mcpServers` 由开会话的人递进来(连接器 → `ACPManager.openSession` → `ACPClient`),

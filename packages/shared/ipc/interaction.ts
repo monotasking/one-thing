@@ -3,11 +3,10 @@
  *
  * agent 提问 → 用户应答的 wire 契约(claude-code-integration-v2 §4,E1)。
  *
- * 协议本体**不在这里重抄一遍**,直接从 `@onething/core/interaction` 再导出 ——
- * 与 `shared/tool-errors.ts` 从 `@onething/core/permission` 再导出同一条做法。
- * (`ipc/permissions.ts` 当年是手抄的一份平行副本,两边各加一格就漂移;
- * core 的 `interaction/types.ts` 是零 import 的纯类型模块,`export type` 全擦除,
- * 渲染层引到它不会顺带拖进 `node:crypto`。)
+ * 协议本体**不在这里重抄一遍**,直接从 `../interaction/types.ts` 再导出。
+ * (`ipc/permissions.ts` 当年是手抄的一份平行副本,两边各加一格就漂移。)
+ * 那份零 import 的纯类型模块原先住在 core,2026-10 ①a 搬进 shared:它是契约,
+ * 后端的交互登记表(`packages/core/interaction/registry.ts`)从 shared 取。
  */
 
 export type {
@@ -18,12 +17,9 @@ export type {
   InteractionQuestion,
   InteractionQuestionAnswer,
   InteractionRequest,
-} from '@onething/core/interaction'
+} from '../interaction/types.js'
 
-import type {
-  InteractionQuestionAnswer,
-  InteractionRequest,
-} from '@onething/core/interaction'
+import type { InteractionQuestionAnswer, InteractionRequest } from '../interaction/types.js'
 
 export interface InteractionRespondRequest {
   sessionId: string

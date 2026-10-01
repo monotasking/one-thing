@@ -123,12 +123,10 @@ export type {
 
 export {
 	applyCoreToolCallChunk,
-	coreStepTypeForToolName,
 	createCoreStreamProcessor,
 	createCoreStreamToolCall,
 	createCoreToolInputStartArtifacts,
 	CoreStreamingToolInputBuffer,
-	coreToolInputStartStepTitle,
 	resolveToolIdentity,
 } from "./stream-processor.js";
 export type {
@@ -139,7 +137,6 @@ export type {
 	CoreStreamProcessorLogger,
 	CoreStreamProcessorStore,
 	CoreStreamStepLike,
-	CoreStreamStepType,
 	CoreStreamToolCallLike,
 	CoreStreamToolCallStatus,
 	CoreToolArgsFinalizedBy,
@@ -235,8 +232,6 @@ export {
 	buildAgentLoopToolResultPresentation,
 	buildAgentLoopToolStartStepUpdate,
 	completeAgentLoopStreamWithAdapters,
-	CORE_ABORTED_TOOL_ERROR,
-	CORE_LINGERING_TOOL_ERROR,
 	createAgentLoopAssistantMessage,
 	createAgentLoopNextAssistantWriterPlan,
 	changesFromMetadata,
@@ -424,22 +419,6 @@ export type {
 } from "./agent-loop-runtime.js";
 
 export {
-	coreStepIdForToolCall,
-	createToolExecutionStep,
-	createToolExecutionStepWithFactory,
-	detectSkillUsage,
-	generateStepTitle,
-	getStepType,
-} from "./tool-step.js";
-export type {
-	CoreStepForToolCall,
-	CoreStepType,
-	CoreToolCallForStep,
-	CreateToolStepOptions,
-	CreateToolStepWithFactoryOptions,
-} from "./tool-step.js";
-
-export {
 	buildMessageContent,
 	formatMessagesForLog,
 	getTextFromContent,
@@ -549,7 +528,6 @@ export type {
 
 export {
 	buildContextCompactCompletedContent,
-	buildContextCompactContent,
 	buildContextCompactFailedContent,
 	buildContextCompactSummaryMessages,
 	chunkText,
@@ -621,11 +599,7 @@ export type {
 	CompactCharsPerToken,
 	CompactOutputAllowance,
 	CompactPlan,
-	CoreContextCompactContent,
-	CoreContextCompactMessage,
-	CoreContextCompactProgress,
 	CoreContextCompactReason,
-	CoreContextCompactStatus,
 	CoreContextCompactSummaryMessage,
 	CoreCompactAttachment,
 	CoreCompactFileOperations,

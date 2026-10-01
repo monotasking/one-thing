@@ -13,7 +13,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import type { SessionUpdate, ToolCallContent, ToolCallStatus } from '@agentclientprotocol/sdk'
-import type { AcpRemoteSessionInfo } from '@onething/runtime/acp'
+import type { AcpRemoteSessionInfo } from '@shared/contracts/acp'
 import type { ChatMessage, ContentPart } from '@shared/ipc/chat.js'
 import type { ToolCall } from '@shared/ipc/tools.js'
 import type { JsonObject, JsonValue } from '@shared/json.js'

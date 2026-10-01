@@ -22,8 +22,10 @@
  * `@onething/core/interaction`,这里只是一个工具壳。
  */
 
-import { Intent, makeEffect, Tool } from '@onething/core/toolkit'
-import type { Effect, PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import { Intent, Tool } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
+import type { PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 
 /** plan 算出来的那份"要问什么",apply 直接用。 */
 export interface InteractiveRequest<Questions> {

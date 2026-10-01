@@ -1,11 +1,11 @@
-import type { JsonObject } from "../json.js";
+import type { JsonObject } from "@shared/json.js";
 import { isAgentExecutionCheckpointError } from '../agent-loop/errors.js';
 import {
 	buildContextCompactContent,
 	type CoreContextCompactMessage,
 	type CoreContextCompactProgress,
 	type CoreContextCompactStatus,
-} from "./context-compact-content.js";
+} from "@shared/engine/context-compact-content.js";
 import {
 	buildContextCompactMergePrompt,
 	buildContextCompactPrompt,
@@ -366,21 +366,6 @@ export interface CompactPlan<
 	messagesToSummarize: TMessage[];
 	previousSummary?: string;
 }
-
-/*
- * 压缩标记的**正文形状与序列化**搬去了零依赖叶子 `./context-compact-content.js`
- * (§17.8 U1-a)。这里原样再导出 —— 既有 import 一字未改;而投影侧
- * (`session/projection/chat-messages.ts`,它只要那一个序列化函数)改走叶子路径,
- * 不再被压缩算法链(`./history.js` → `../agent-loop/tool-names.js` 的 `node:crypto`)
- * 拖进 node 闭包。
- */
-export type {
-	CoreContextCompactContent,
-	CoreContextCompactMessage,
-	CoreContextCompactProgress,
-	CoreContextCompactStatus,
-} from "./context-compact-content.js";
-export { buildContextCompactContent } from "./context-compact-content.js";
 
 export function createContextCompactMessage(input: {
 	id: string;

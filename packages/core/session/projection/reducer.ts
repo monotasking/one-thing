@@ -32,28 +32,31 @@ import type {
   SessionEventMessage,
   SessionLogEventRecord,
   SessionResponseUsage,
-} from '../events/types.js'
+} from '@shared/session/events/types.js'
 // F4-c 定律二(§16.19):打包是存储编码 —— 读侧先解码回逻辑 delta 再折。
 import {
   forEachSessionChunkLogicalDelta,
   type SessionLogicalDelta,
-} from '../events/chunk-codec.js'
-import { CORE_ABORTED_TOOL_ERROR, CORE_LINGERING_TOOL_ERROR } from '../../engine/agent-loop-executor.js'
-import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '../../engine/stream-processor.js'
-import { coreStepIdForToolCall, getStepType } from '../../engine/tool-step.js'
-import { toolResultToStructured } from '../../tools/tool-result.js'
+} from '@shared/session/events/chunk-codec.js'
+import {
+  CORE_ABORTED_TOOL_ERROR,
+  CORE_LINGERING_TOOL_ERROR,
+} from '@shared/engine/tool-call-errors.js'
+import { coreStepTypeForToolName, coreToolInputStartStepTitle } from '@shared/engine/tool-step.js'
+import { coreStepIdForToolCall, getStepType } from '@shared/engine/tool-step.js'
+import { toolResultToStructured } from '@shared/tools/tool-result.js'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
   CORE_INTERRUPTED_TOOL_ERROR,
   isCoreInterruptedToolResultText,
-} from '../interrupted.js'
+} from '@shared/session/interrupted.js'
 import {
   resolveProjectionBlobRef,
   resolveProjectionBlobText,
   type ProjectionMaterializeOptions,
 } from './blobs.js'
-import { SurfaceIndex } from './surface.js'
-import { surfacedStopKind } from './stop-reasons.js'
+import { SurfaceIndex } from '@shared/session/projection/surface.js'
+import { surfacedStopKind } from '@shared/session/projection/stop-reasons.js'
 
 /**
  * 有结局的三态 —— 与 `sessions/session-dehydrate.ts` 的冷加载补算同一张表

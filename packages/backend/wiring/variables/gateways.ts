@@ -13,7 +13,7 @@
 
 import type { ContextVariable } from '@shared/ipc.js'
 import type { ResourceKernel, StateScope } from '@onething/core/resource'
-import { systemPrincipal } from '@onething/core/permission'
+import { systemPrincipal } from '@shared/permission/principal'
 import * as store from '../../store.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { getEventBus } from '../../events/index.js'

@@ -49,7 +49,7 @@ import {
   structuredToolResult,
   textFromPartialResult,
 } from '@onething/core/engine'
-import type { JsonObject, JsonValue } from '@onething/core'
+import type { JsonObject, JsonValue } from '@shared/json'
 
 describe('core agent-loop executor helpers', () => {
   it('creates assistant message shells and final message updates in core', () => {

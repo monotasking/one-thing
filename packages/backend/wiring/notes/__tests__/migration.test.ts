@@ -12,7 +12,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings } from '@shared/ipc.js'
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../stores/defaults/settings.js'
 
 const mocks = vi.hoisted(() => ({
   settings: {} as AppSettings,

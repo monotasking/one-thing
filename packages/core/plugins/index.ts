@@ -115,18 +115,6 @@ export {
   sortByPluginCanonicalOrder,
 } from './canonical-order.js'
 export {
-  DEFAULT_PLUGIN_NOTIFY_SOUND,
-  PLUGIN_NOTIFY_SOUNDS,
-  PLUGIN_NOTIFY_SOUND_THROTTLE_MS,
-  isPluginNotifySound,
-  normalizePluginNotifySound,
-} from './notify-sound.js'
-export type {
-  NormalizedPluginNotifySound,
-  PluginNotifyOptions,
-  PluginNotifySound,
-} from './notify-sound.js'
-export {
   PLUGIN_DELIVER_AS_NOTES,
   PLUGIN_PEEK_PREVIEW_MAX,
   PLUGIN_PERMISSION_SESSIONS_PEEK,

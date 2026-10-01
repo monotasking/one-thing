@@ -1,6 +1,6 @@
 import { getAIToolName } from "../agent-loop/tool-names.js";
 import type { AgentProviderData } from "../agent-loop/types.js";
-import type { JsonObject, JsonValue } from "../json.js";
+import type { JsonObject, JsonValue } from "@shared/json.js";
 import type {
 	CoreChatLogMessageShape,
 	CoreChatLogValue,

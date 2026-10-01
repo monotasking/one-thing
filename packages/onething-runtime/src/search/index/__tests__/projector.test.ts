@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { parseSessionLogEventLog } from '@onething/core/session'
 
-import { SESSION_LOG_EVENT_TYPES } from '@onething/core/session'
+import { SESSION_LOG_EVENT_TYPES } from '@shared/session/events/types'
 import {
   INDEX_DOCUMENT_EFFECTS,
   IndexProjector,

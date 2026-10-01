@@ -2,13 +2,13 @@ import { LevelFilter } from './level.js'
 import { normalizeError } from './error.js'
 import {
   LOG_LEVEL_VALUE,
-  type LogLevel,
   type LogRecord,
   type LogSink,
   type LogFields,
   type LogSource,
   type Logger,
 } from './types.js'
+import { type LogLevel } from '@shared/logging/types.js'
 
 export interface LoggerRootOptions {
   /** `ONETHING_LOG` 形状的 spec;不给 = `info`。 */

@@ -14,32 +14,27 @@ import type {
   CollabBoard,
   CollabCoordinatorState,
 } from '../ipc/collab.js'
-import type { InteractionAnswer, InteractionRequest } from '@onething/core/interaction'
+import type { InteractionAnswer, InteractionRequest } from '../interaction/types.js'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
-import type { SessionLogEventRecord } from '@onething/core/session/events'
-import type { SessionEventType } from '@onething/core/events'
+import { SESSION_EVENT_TYPES } from './session-event-types.js'
+import type { SessionLogEventRecord } from '../session/events/types.js'
+import type { SessionEventType } from './session-event-types.js'
 
 // ── Type registry ───────────────────────────────
 
 /**
- * 事件 type 字面量的**单一权威**现在在 core(`packages/core/events/session-event-types.ts`)
- * —— core 禁 import `@shared`,表留在这里就意味着引擎发射点 / 会话状态机 / 权限 / 交互
- * 只能把同一批字符串再手抄一遍,词汇分成两份、find-references 断在中间。表搬过去之后
- * 这里只做再导出:所有 `import { SESSION_EVENT_TYPES } from '@shared/events/session-events'`
- * 一字不改,但它们和 `CoreStreamEngine` 的发射点用的是同一个标识符。
+ * 事件 type 字面量的**单一权威**是同目录的 `session-event-types.ts`(2026-10 ①a 从
+ * core 搬回 shared,拆掉了 core ↔ shared 的环);引擎发射点 / 会话状态机 / 权限 / 交互
+ * 也从那里取。这里只做再导出:所有 `import { SESSION_EVENT_TYPES } from './session-events.js'`
+ * 一字不改,它们和 `CoreStreamEngine` 的发射点用的是同一个标识符。
  *
- * (做法与 `session-commands.ts` 从 `@onething/core/events`、`shared/tool-errors.ts` 从
- * `@onething/core/permission` 再导出同一条。)
- *
- * 事件的**载荷形状**仍然留在本文件 —— 它们要引用 `@shared/ipc/*` 的消息 / 权限 / 协作
- * 类型,core 够不着。下面那条双向穷尽断言因此仍是真闸:core 那张表多一条 / 少一条,
- * 这里都编译不过(每个接口的 `type:` 都写成 `typeof SESSION_EVENT_TYPES.X`,拼错就是
+ * 事件的**载荷形状**留在本文件 —— 它们要引用 `@shared/ipc/*` 的消息 / 权限 / 协作类型。
+ * 下面那条双向穷尽断言是真闸:那张表多一条 / 少一条,这里都编译不过(每个接口的 `type:` 都写成 `typeof SESSION_EVENT_TYPES.X`,拼错就是
  * 一个不存在的属性名)。
  */
-export { SESSION_EVENT_TYPES } from '@onething/core/events'
-export type { SessionEventType } from '@onething/core/events'
+export { SESSION_EVENT_TYPES } from './session-event-types.js'
+export type { SessionEventType } from './session-event-types.js'
 
 // 双向穷尽:表少一个键(某个事件没进表)或联合少一个成员(表里有陈年死字符串)
 // 都在这里编译不过。写法与下面的 `_terminalListIsExhaustive` 同款。

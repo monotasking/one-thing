@@ -29,7 +29,7 @@ import type {
   TransportEvent,
   TransportEventsOptions,
 } from './types.js'
-import type { RouteCallOptions } from '@onething/core/ipc'
+import type { RouteCallOptions } from '@shared/ipc/router'
 import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
 
 export type FetchLike = (

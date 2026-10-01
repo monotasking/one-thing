@@ -28,11 +28,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import {
-  decodeSessionLogEventLine,
-  encodeSessionLogEventLine,
-  SESSION_LEGACY_EVENT_TYPES,
-} from '@onething/core/session'
+import { decodeSessionLogEventLine, encodeSessionLogEventLine } from '@onething/core/session'
+import { SESSION_LEGACY_EVENT_TYPES } from '@shared/session/events/types'
 import type {
   SessionAssistantFirstTokenEvent,
   SessionAssistantFirstTokenEventData,
@@ -53,10 +50,10 @@ import type {
   SessionToolAuditEventData,
   SessionToolCallEvent,
   SessionToolCallEventData,
-  SessionToolCallInspection,
   SessionToolResultEvent,
   SessionToolResultEventData,
-} from '@onething/core/session'
+} from '@shared/session/events/types'
+import type { SessionToolCallInspection } from '@shared/session/tool-call-inspection'
 
 /**
  * ── S0 之后的分工(docs/design/session-event-sourcing-2026-08.md §9)────────
@@ -262,8 +259,6 @@ export function isSameRequestHeaderEnvelope(
   if (a.route?.requested !== b.route?.requested || a.route?.reason !== b.route?.reason) return false
   return !b.route || a.runId === b.runId
 }
-
-export type { SessionToolCallInspection } from '@onething/core/session'
 
 /**
  * 配对某次工具调用的 (参数, 结果, 当时 schema, 起止时刻)。

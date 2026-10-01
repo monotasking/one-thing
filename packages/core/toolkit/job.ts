@@ -9,7 +9,7 @@
  * 不碰进程、不碰 fs。
  */
 
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 
 export type JobStatus = 'running' | 'exited' | 'killed'
 

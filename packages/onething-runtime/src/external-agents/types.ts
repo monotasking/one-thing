@@ -1,5 +1,5 @@
 import type { AgentReasoningEffort, AgentTurnStreamEvent } from '@onething/core/agent-loop'
-import type { InteractionAnswer, InteractionQuestion } from '@onething/core/interaction'
+import type { InteractionAnswer, InteractionQuestion } from '@shared/interaction/types'
 
 /**
  * External agent connectors: the transport layer that speaks one concrete

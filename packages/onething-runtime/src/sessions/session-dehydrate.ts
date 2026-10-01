@@ -10,7 +10,8 @@
  * their `path` survives, the inline base64 does not).
  */
 
-import { toJsonValue, toolResultToStructured } from '@onething/core'
+import { toolResultToStructured } from '@shared/tools/tool-result'
+import { toJsonValue } from '@shared/json'
 
 const INLINE_BINARY_MAX_CHARS = 2_000
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { applyBatch, splitLines } from '@onething/core/text'
+import { applyBatch, splitLines } from '@shared/text/line-edit'
 import { analyzeUnit } from '../inline-tokens'
 import { paint } from '../paint'
 import { canonicalPosition, REVEAL_POLICIES, sourceToView, viewToSource } from '../reveal'

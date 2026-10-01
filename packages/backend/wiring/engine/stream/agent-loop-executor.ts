@@ -23,10 +23,7 @@ import {
 	isUiEventStreamEnabled,
 	pushSessionUiStreamEvent,
 } from "../../../events/ui-stream.js";
-import type {
-	UiAssistantDeltaChunk,
-	UiAssistantPartEndChunk,
-} from "@onething/core/events";
+import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from "@shared/events/stream-chunks";
 import {
 	streamAgentLoopProviderChunks,
 	isAgentExecutionCheckpointError,
@@ -82,7 +79,7 @@ import {
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { consolePort, getLogger } from '../../logging/index.js'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { AppSettings } from '@shared/ipc.js'
 import type { StreamProviderConfig } from './stream-processor.js'
 import type { RunAgentLoopPostResponseHooksWithAdaptersOptions, ApplyAgentLoopStreamChunkWithAdaptersOptions } from '@onething/core/engine'

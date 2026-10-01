@@ -1,4 +1,4 @@
-import { applyBatch, type LineEdit } from '@onething/core/text'
+import { applyBatch, type LineEdit } from '@shared/text/line-edit'
 import type { ResourceEventFact, ResourcePort } from '../data/resource-port'
 
 /**

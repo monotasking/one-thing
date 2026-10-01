@@ -1,4 +1,5 @@
-import type { EventSpec, JsonSchema, ResourceSpec } from '@onething/core/resource'
+import type { EventSpec, ResourceSpec } from '@onething/core/resource'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
 import type { AmbientSource } from './source.js'
 
 export const AMBIENT_RESOURCE_SCHEME = 'ambient'

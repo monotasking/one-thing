@@ -1,4 +1,4 @@
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import fs from 'fs'
 import path from 'path'
 

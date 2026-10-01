@@ -30,7 +30,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import type { DocPayload, DocumentFeed, FeedPolicy } from '@onething/core/search'
-import type { SessionLogEventRecord } from '@onething/core/session'
+import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { parseSessionLogEventLog } from '@onething/core/session'
 
 import { getLogger } from '../../logging/index.js'

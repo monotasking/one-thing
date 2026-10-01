@@ -4,8 +4,7 @@
     "strict": true,
     "paths": {
       "@/*": ["./*"],
-      "@shared/*": ["../../packages/shared/*"],
-      "@onething/core/*": ["../../packages/core/*"]
+      "@shared/*": ["../../packages/shared/*"]
     }
   },
   "include": [

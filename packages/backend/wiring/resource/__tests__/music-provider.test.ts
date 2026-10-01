@@ -11,7 +11,7 @@
  * 界面经 `ResourceKernel.do` 调它是同一条路。假的只有那八条端口。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import { ToolRunner } from '@onething/core/toolkit'
 import type { Outcome, ToolEvent } from '@onething/core/toolkit'
 import { ResourceEventHub, ResourceTool } from '@onething/core/resource'

@@ -3,7 +3,7 @@
  * 事件系统没起来就丢不抛;`AcpSubsystem` 构造时订上、`dispose()` 时退订。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ACPAgentState, ACPSettings, AcpSessionState } from '@onething/runtime/acp'
+import type { ACPAgentState, ACPSettings, AcpSessionState } from '@shared/contracts/acp'
 
 const bus = vi.hoisted(() => ({
   initialized: false,

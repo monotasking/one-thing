@@ -1,4 +1,4 @@
-import { joinLines, splitLines, type LineEdit } from '@onething/core/text'
+import { joinLines, splitLines, type LineEdit } from '@shared/text/line-edit'
 
 /**
  * 编辑器这一侧的文档模型(正本 `docs/todo-editor-2026-09.md` §5 / §6.4)。

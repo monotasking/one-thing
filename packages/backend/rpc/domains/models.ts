@@ -11,7 +11,7 @@
  * 一份自己抄的 models.dev 刷新逻辑 —— 与第一批 prompts / todo-plan 同类,
  * 迁完收敛成 `<store>` 下的单库,旧的 `owners/<uid>/<wid>/` 设置不会自动搬家。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RouteHandlers } from '@shared/ipc/router'
 import type { ModelsRoutes } from '@shared/ipc/providers.js'
 import type {
   ModelEffectiveFacts,

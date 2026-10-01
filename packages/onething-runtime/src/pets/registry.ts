@@ -17,7 +17,7 @@
 import { ALU } from './builtin/alu.js'
 import { HEIDOU } from './builtin/heidou.js'
 import { petManifestProblems, type PetManifest } from './manifest.js'
-import type { RigSpecProblem } from './rig-spec.js'
+import type { RigSpecProblem } from '@shared/pets/rig-spec.js'
 
 /** 内置宠物。**第一只就是缺省那一只**(没有 `current.json` 时领养它)。 */
 export const BUILTIN_PETS: readonly PetManifest[] = [HEIDOU, ALU]

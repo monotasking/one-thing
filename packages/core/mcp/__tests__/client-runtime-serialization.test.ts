@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MCPServerConfig, MCPToolCallResult } from '../types.js'
+import type { MCPServerConfig, MCPToolCallResult } from '@shared/mcp/types.js'
 
 const pendingResolvers: Array<(result: MCPToolCallResult) => void> = []
 const callLog: string[] = []

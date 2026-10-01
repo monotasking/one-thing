@@ -12,27 +12,22 @@
 import type { ChatMessageMention, ChatMessageReplyTo, MessageAttachment } from '../ipc/chat.js'
 import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
 import type { MessageOrigin } from '../ipc/channel-identity.js'
-import { SESSION_COMMAND_TYPES } from '@onething/core/events'
-import type { SessionCommandType } from '@onething/core/events'
+import { SESSION_COMMAND_TYPES } from './session-command-types.js'
+import type { SessionCommandType } from './session-command-types.js'
 
 // ── Type registry ───────────────────────────────
 
 /**
- * 命令 type 字面量的**单一权威**现在在 core(`packages/core/events/session-command-types.ts`)
- * —— core 禁 import `@shared`,表留在这里就意味着引擎订阅点只能再手抄一份字面量,
- * 词汇分成两份、find-references 断在中间。表搬过去之后这里只做再导出:所有
- * `import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'` 一字不改,
- * 但它们和 `CoreStreamEngine` 的订阅表用的是同一个标识符。
+ * 命令 type 字面量的**单一权威**是同目录的 `session-command-types.ts`(2026-10 ①a 从
+ * core 搬回 shared,拆掉了 core ↔ shared 的环);core 的引擎订阅表也从那里取。这里只做
+ * 再导出:所有 `import { SESSION_COMMAND_TYPES } from './session-commands.js'`
+ * 一字不改,它们和 `CoreStreamEngine` 的订阅表用的是同一个标识符。
  *
- * (做法与 `shared/tool-errors.ts` 从 `@onething/core/permission`、
- * `shared/ipc/interaction.ts` 从 `@onething/core/interaction` 再导出同一条。)
- *
- * 命令的**载荷形状**仍然留在本文件 —— 它们要引用 `@shared/ipc/*` 的附件 / 语音 /
- * 身份类型,core 够不着。下面那条双向穷尽断言因此仍是真闸:core 那张表多一条 /
- * 少一条,这里都编译不过。
+ * 命令的**载荷形状**留在本文件 —— 它们要引用 `@shared/ipc/*` 的附件 / 语音 / 身份类型。
+ * 下面那条双向穷尽断言是真闸:那张表多一条 / 少一条,这里都编译不过。
  */
-export { SESSION_COMMAND_TYPES } from '@onething/core/events'
-export type { SessionCommandType } from '@onething/core/events'
+export { SESSION_COMMAND_TYPES } from './session-command-types.js'
+export type { SessionCommandType } from './session-command-types.js'
 
 // 双向穷尽:多一个 / 少一个都在这里编译不过。
 const _commandTableIsExhaustive: SessionCommandType extends SessionCommand['type']

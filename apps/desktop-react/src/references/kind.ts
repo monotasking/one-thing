@@ -1,4 +1,4 @@
-import type { RefTag } from '@onething/core/references'
+import type { RefTag } from '@shared/references/ref-tag'
 import type { LucideIcon } from '../components/icons'
 import type { MessageKey, MessageVars } from '../i18n'
 import type { AskSpec } from '../composer/types'

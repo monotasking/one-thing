@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { Result, RunContext, Scene, ToolSpec } from '@onething/core/toolkit'
 import type { SessionGoal } from '../../goals/types.js'
 import { defineInput } from '../contract.js'

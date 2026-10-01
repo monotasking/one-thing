@@ -5,7 +5,7 @@ import {
   detectSkillUsage,
   generateStepTitle,
   getStepType,
-} from '@onething/core/engine'
+} from '@shared/engine/tool-step'
 
 describe('core tool step helpers', () => {
   it('detects skill reads from bash commands', () => {

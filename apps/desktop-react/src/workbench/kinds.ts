@@ -1,6 +1,6 @@
-import { formatRef, parseRef, sameRef as sameResourceRef } from '@onething/core/resource'
+import { formatRef, parseRef, sameRef as sameResourceRef } from '@shared/resource/ref'
 import type { ComponentType, ReactNode } from 'react'
-import type { ResourceRef } from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import type { PanelVisibility } from '../content/visibility'
 import type { FocusScopeId } from '../focus/types'
 import type { LiveTitle } from '../stage/live-title'

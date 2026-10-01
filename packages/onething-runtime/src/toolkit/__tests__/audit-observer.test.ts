@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Decision, Intent, Outcome, makeEffect, textResult } from '@onething/core/toolkit'
+import { Decision, Intent, Outcome, textResult } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
 import type { Invocation } from '@onething/core/toolkit'
 import { AuditProjector, combineObservers, type ToolAuditRecord } from '../audit-observer.js'
 

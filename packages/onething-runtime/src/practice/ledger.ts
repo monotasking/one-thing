@@ -1,6 +1,7 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import type { OnethingPracticeLedgerRecord, OnethingPracticeRecordInput } from './types.js'
+import type { OnethingPracticeRecordInput } from './types.js'
+import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 
 const MONTH_FILE_RE = /^practice-(\d{4})-(\d{2})\.jsonl$/
 const PRACTICE_KINDS = new Set(['kegel', 'pomodoro', 'exercise'])

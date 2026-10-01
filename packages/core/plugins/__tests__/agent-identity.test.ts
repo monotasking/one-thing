@@ -18,7 +18,7 @@ import {
   buildAgentLoopPostResponseContexts,
 } from '@onething/core/engine'
 import { executeCorePluginTool } from '@onething/core/plugins'
-import { systemPrincipal } from '@onething/core/permission'
+import { systemPrincipal } from '@shared/permission/principal'
 
 describe('F4 — the plugin tool ctx carries the turn agentId', () => {
   it('threads agentId from the agent-loop runtime context into the tool execution context', async () => {

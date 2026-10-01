@@ -57,10 +57,10 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '../../stores/settings-defaults.js'
-import { localUserPrincipal } from '@onething/core/permission'
+import { localUserPrincipal } from '@shared/permission/principal'
 import { markHostUnattended } from '@onething/runtime/permissions/unattended'
 import { registerACPPermissionBridge } from '../acp/permission-bridge.js'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import {
   serializeOutcome,
   serializeReadOutcome,

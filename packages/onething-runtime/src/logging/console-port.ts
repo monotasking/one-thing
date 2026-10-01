@@ -1,4 +1,5 @@
-import type { LogLevel, Logger } from '@onething/core/logging'
+import type { Logger } from '@onething/core/logging'
+import type { LogLevel } from '@shared/logging/types'
 // S2(I4-缝收口):`consolePort()` 是全仓这 35 道鸭子 logger 口的**唯一生产供体**,
 // 从前靠结构相容认亲 —— tsserver 的 Go to Implementation 在那 35 处声明上一律空手。
 // 这里把那条边写出来:每一条 `extends` 都是一句"这道口由本文件供货"的事实陈述,

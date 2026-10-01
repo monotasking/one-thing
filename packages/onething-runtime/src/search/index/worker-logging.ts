@@ -35,10 +35,10 @@ import {
   LOG_LEVEL_VALUE,
   LoggerRoot,
   safeStringify,
-  type LogLevel,
   type LogRecord,
   type LogSink,
 } from '@onething/core/logging'
+import { type LogLevel } from '@shared/logging/types'
 
 import { setRuntimeLoggerRoot } from '../../logging/index.js'
 

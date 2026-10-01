@@ -18,7 +18,7 @@ import type {
   Scene,
   SessionSnapshot,
 } from '@onething/core/toolkit'
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import { Decision } from '@onething/core/toolkit'
 import { AbortScope, OutputBudget } from '@onething/core/toolkit'
 import {

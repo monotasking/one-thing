@@ -12,7 +12,7 @@ import {
   PLUGIN_NOTIFY_SOUND_THROTTLE_MS,
   isPluginNotifySound,
   normalizePluginNotifySound,
-} from '../notify-sound.js'
+} from '@shared/plugins/notify-sound.js'
 
 describe('PLUGIN_NOTIFY_SOUNDS —— 宿主枚举音效集', () => {
   it('是一个封闭枚举,none 在内且是缺省', () => {

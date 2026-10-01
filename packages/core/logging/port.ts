@@ -13,7 +13,8 @@
  */
 
 import { noopLogger, toLogger, type CompatLogger } from './compat.js'
-import type { LogFields, LogLevel, Logger } from './types.js'
+import type { LogFields, Logger } from './types.js'
+import type { LogLevel } from '@shared/logging/types.js'
 
 export interface CoreLoggingPort {
   getLogger(ns: string): Logger

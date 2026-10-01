@@ -6,7 +6,7 @@ import { RequestError } from '@agentclientprotocol/sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, toAcpPromptError } from '../client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * 选项写失败的自愈(2026-09-29 事故:换模型 13 次 `Internal error`,药丸弹回旧模型,重启桌面才好)。

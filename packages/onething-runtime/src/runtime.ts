@@ -3,7 +3,7 @@ import {
   type CoreEventBusEmitterLike,
   type CoreStreamEngineRuntime,
 } from '@onething/core/engine'
-import type { StreamChunkBase } from '@onething/core/events'
+import type { StreamChunkBase } from '@shared/events/stream-chunks'
 import type {
   CoreConversationRuntime,
   CoreSessionRuntime,

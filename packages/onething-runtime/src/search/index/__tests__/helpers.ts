@@ -19,7 +19,7 @@ import path from 'node:path'
 import { MessageChannel } from 'node:worker_threads'
 
 import type { DocumentFeed, DocumentFilter } from '@onething/core/search'
-import type { SessionLogEventRecord, SessionLogEventType } from '@onething/core/session'
+import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types'
 import { encodeSessionLogEventLine } from '@onething/core/session'
 
 import { SqliteIndex } from '../sqlite-index.js'

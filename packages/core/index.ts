@@ -143,7 +143,6 @@ export {
   buildMCPToolsCatalog,
   CoreMCPToolIdRegistry,
   CoreMCPBridgeRuntime,
-  DEFAULT_MCP_SETTINGS,
   describeMCPFunction,
   findMCPFunctionRef,
   getMCPFunctionRefs,
@@ -171,7 +170,6 @@ export type {
   MCPClientFactory,
   MCPClientLike,
   CoreMCPBridgeRuntimeHost,
-  MCPConnectionStatus,
   CoreMCPToolDefinition,
   CoreMCPJsonSchemaValidationKind,
   CoreMCPJsonSchemaValidationPlan,
@@ -179,21 +177,12 @@ export type {
   CoreMCPToolParameterType,
   MCPFunctionRef,
   MCPModelFacingToolDefinition,
-  MCPPromptInfo,
-  MCPResourceInfo,
   MCPRouterActionOptions,
   MCPRouterActionResult,
   MCPRouterInput,
-  MCPServerConfig,
-  MCPServerState,
-  MCPSettings,
   MCPToolsCatalogOptions,
-  MCPToolCallRequest,
-  MCPToolCallResult,
   MCPToolIdentity,
   MCPToolIdRegistryOptions,
-  MCPToolInfo,
-  MCPTransportType,
 } from './mcp/index.js'
 
 export type {
@@ -261,22 +250,13 @@ export {
   Interaction,
 } from './interaction/index.js'
 export type {
-  InteractionAnswer,
-  InteractionAskInput,
   InteractionBusEvent,
   InteractionCommandEnvelope,
   InteractionEventBusLike,
-  InteractionOption,
-  InteractionOrigin,
-  InteractionOutcome,
-  InteractionQuestion,
-  InteractionQuestionAnswer,
-  InteractionRequest,
   InteractionRespondCommandLike,
 } from './interaction/index.js'
 
 export {
-  DEFAULT_PERMISSION_REJECTED_MESSAGE,
   Permission,
   addGrant,
   clearSessionGrants,
@@ -284,7 +264,6 @@ export {
   configurePermissionGrantStorage,
   decidePermission,
   enforcePermissionPolicy,
-  formatPermissionRejectedMessage,
   listSessionGrants,
   listWorkspaceGrants,
   matchGrant,
@@ -296,11 +275,9 @@ export type {
   PermissionCommandEnvelope,
   PermissionEffect,
   PermissionEventBusLike,
-  PermissionGrant,
   PermissionGrantInput,
   PermissionGrantMatchInput,
   PermissionGrantOwner,
-  PermissionGrantScope,
   PermissionGrantStorage,
   PermissionPolicyDecision,
   PermissionPolicyInput,
@@ -346,15 +323,9 @@ export {
   executeToolCalls,
   extractCoreErrorMessage,
   isBarrierEffect,
-  isCanonicalToolResult,
   normalizeCoreToolParameterType,
   isAutoExecutePermissionGuard,
   isInjectablePermissionGuard,
-  summarizeToolFailureParameters,
-  textFromToolResult,
-  toolFailureResultForAI,
-  toolFailureText,
-  toolResultToStructured,
 } from './tools/index.js'
 export type {
   CoreToolPermissionGuard,
@@ -367,15 +338,10 @@ export type {
   CoreToolParameterDefinition,
   CoreToolParameterType,
   CoreToolValidationResult,
-  CanonicalToolResult,
-  CanonicalToolResultContentPart,
   ToolEffect,
   ToolEffectKind,
   ToolEffectMetadata,
   ToolEffectMetadataValue,
-  ToolFailureLike,
-  ToolFailureParameterSummary,
-  ToolFailureResultForAI,
   ToolPreview,
   PermissionPolicy,
   ToolCall,
@@ -383,7 +349,6 @@ export type {
   ToolExecutionContext,
   ToolExecutorOptions,
   ToolResult,
-  ToolResultLike,
 } from './tools/index.js'
 
 export {
@@ -417,8 +382,6 @@ export type {
 
 export {
   canApplyGeneratedSessionTitle,
-  CORE_ABORTED_TOOL_ERROR,
-  CORE_LINGERING_TOOL_ERROR,
   CoreStreamEngine,
   CoreTriggerManager,
   createCoreId,
@@ -477,24 +440,10 @@ export type {
   InterceptResult,
   ObserveHandler,
   SessionEventEnvelope,
-  StreamChunkBase,
   StreamChunkHandler,
   TypedObserveHandler,
   Unsubscribe,
 } from './events/index.js'
-
-export {
-  defineRouter,
-  getChannelName,
-} from './ipc/index.js'
-export type {
-  DomainRoutes,
-  RouteAPI,
-  RouteConfig,
-  RouteHandlers,
-  RoutePayload,
-  Router,
-} from './ipc/index.js'
 
 export {
   Session,
@@ -538,37 +487,6 @@ export type {
   UserMessageMarker,
 } from './session/index.js'
 
-export type {
-  JsonArray,
-  JsonObject,
-  JsonObjectProperty,
-  JsonPrimitive,
-  JsonSchemaObject,
-  JsonValue,
-} from './json.js'
-export {
-  isJsonObject,
-  parseJsonObject,
-  toJsonObject,
-  toJsonSchemaObject,
-  toJsonValue,
-} from './json.js'
-
-export {
-  CHANGE_DIRECTORY_SLASH_COMMAND,
-  COMPACT_CONTEXT_SLASH_COMMAND,
-  NEW_SESSION_SLASH_COMMAND,
-  SHARED_SLASH_COMMANDS,
-  findSharedSlashCommand,
-  parseSharedSlashCommand,
-} from './slash-commands.js'
-export type {
-  InvalidSharedSlashCommand,
-  ParsedSharedSlashCommand,
-  SharedSlashCommandDefinition,
-  SharedSlashCommandParseResult,
-} from './slash-commands.js'
-
 export {
   createOnethingRuntimeFacade,
 } from './runtime-facade.js'
@@ -581,7 +499,6 @@ export type {
   RuntimeEventsAdapter,
   RuntimeEventSubscribeOptions,
   RuntimeGlobalEventsAdapter,
-  RuntimeHostCapabilities,
   RuntimeMessagesAdapter,
   RuntimeMutationResult,
   RuntimeOAuthAdapter,

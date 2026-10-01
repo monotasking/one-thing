@@ -16,7 +16,7 @@
  */
 import * as fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { EFFECT_CLASSES, EFFECT_POLICY } from '../../toolkit/effects.js'
+import { EFFECT_CLASSES, EFFECT_POLICY } from '@shared/toolkit/effects.js'
 import { decidePermission } from '../permission-policy.js'
 
 function decide(kind: string) {

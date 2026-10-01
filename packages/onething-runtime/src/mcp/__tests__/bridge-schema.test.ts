@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MCPServerState, MCPToolInfo } from '../types.js'
+import type { MCPServerState, MCPToolInfo } from '@shared/mcp/types.js'
 
 const mockMCPManager = vi.hoisted(() => ({
   enabled: true,

@@ -9,7 +9,7 @@ import {
   sparseOnethingACPRosterOverride,
   updateOnethingACPAgentForIpc,
 } from '../ipc-operations.js'
-import type { AcpAgentManifest } from '../manifest.js'
+import type { AcpAgentManifest } from '@shared/contracts/acp.js'
 import type { OnethingACPSettingsLike } from '../ipc-operations.js'
 
 interface TestAgentConfig {

@@ -1,4 +1,4 @@
-import { formatRefTag } from '@onething/core/references'
+import { formatRefTag } from '@shared/references/ref-tag'
 import { refTypes, type RefTypeRegistry } from './registry.js'
 import type { RefTypeSpec } from './spec.js'
 

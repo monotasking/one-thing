@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod'
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 import { Intent, jobSnapshot } from '@onething/core/toolkit'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import {

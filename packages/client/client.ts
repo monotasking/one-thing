@@ -27,7 +27,7 @@
 import { createRouterClient } from './rpc/router-client.js'
 import { createEventHub, type EventHub } from './events/subscriptions.js'
 import type { ClientLogger, HostCapabilities, Transport } from './transport/types.js'
-import type { DomainRoutes, RouteAPI, Router } from '@onething/core/ipc'
+import type { DomainRoutes, RouteAPI, Router } from '@shared/ipc/router'
 
 export interface OnethingClient {
   /** 泛型取域客户端;同一个 router 恒等地拿到同一个对象。 */

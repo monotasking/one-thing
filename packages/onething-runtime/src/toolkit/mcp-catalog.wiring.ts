@@ -18,7 +18,7 @@
  */
 
 import type { Catalog } from '@onething/core/toolkit'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import { McpTool, type McpToolBridge, type McpToolDescription } from './index.js'
 import {
   executeMCPTool,

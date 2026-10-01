@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, AcpCapabilityMissingError, AcpReconnectPausedError } from '../client.js'
 import { AcpReconnectBackoffGate } from '../reconnect-backoff.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * A5 会话生命(方案 `docs/design/acp-integration-2026-09.md` §3.7 / §11.6),产品层那一半:

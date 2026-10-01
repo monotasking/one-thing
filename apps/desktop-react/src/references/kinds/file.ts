@@ -19,7 +19,7 @@ import {
   pathRefOf,
 } from './path-ref'
 import s from '../ReferenceChip.module.css'
-import type { RefTag } from '@onething/core/references'
+import type { RefTag } from '@shared/references/ref-tag'
 import type { PickContext, PickResult, ReferenceKind } from '../kind'
 
 /**

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { buildContextCompactContent } from '@onething/core/engine'
+import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { SegmentView } from '../../SegmentView'
 import { ThinkingSegment } from '../../ThinkingSegment'
 import { CompactSeam } from '../../CompactSeam'

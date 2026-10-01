@@ -10,7 +10,7 @@
 
 import { z } from 'zod'
 import type { Result, RunContext, ToolSpec } from '@onething/core/toolkit'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/runtime/toolkit'
 import { dumpFeatures, hasFeature } from '../../../features/index.js'
 import type { FeatureToolRuntime } from './feature-runtime.js'

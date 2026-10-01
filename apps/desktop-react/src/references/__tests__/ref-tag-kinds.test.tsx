@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatRefTag, parseRefTag } from '@onething/core/references'
-import type { RefTag } from '@onething/core/references'
+import { formatRefTag, parseRefTag } from '@shared/references/ref-tag'
+import type { RefTag } from '@shared/references/ref-tag'
 
 // `vi.hoisted`:`vi.mock` 的工厂被提到文件顶端,普通 const 那时还没初始化。
 const openFile = vi.hoisted(() => vi.fn())

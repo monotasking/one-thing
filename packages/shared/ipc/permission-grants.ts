@@ -10,7 +10,7 @@
  * 请求体里带的同名字段被忽略 —— 迁移前 server 也是这么做的（它压根不读请求体里
  * 的 owner 字段），只是那时这条规则写在 `apps/server/src/runtime.ts` 里。
  */
-import type { PermissionGrant } from '@onething/core/permission'
+import type { PermissionGrant } from '../permission/grant.js'
 import { defineRouter } from './router.js'
 
 export type { PermissionGrant }

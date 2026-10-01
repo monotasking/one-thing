@@ -43,13 +43,15 @@ import { BackendNotAssembledError, getCurrentBackendSafe } from '../current.js'
 import {
   decodeSessionLogEventLine,
   encodeSessionLogEventLine,
-  collectSessionBlobRefHashes,
   parseSessionLogEventLog,
+} from '@onething/core/session'
+import {
+  collectSessionBlobRefHashes,
   type SessionLogEventDataFor,
   type SessionLogEventRecord,
   type SessionLogEventType,
   type SessionSurfaceOp,
-} from '@onething/core/session'
+} from '@shared/session/events/types'
 import {
   findLastSessionEventInLog,
   parseSessionEventLog,

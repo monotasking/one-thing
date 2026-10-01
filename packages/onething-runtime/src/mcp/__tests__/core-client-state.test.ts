@@ -30,7 +30,7 @@ import {
   setMCPServerStatus,
   updateMCPClientConfigWithAdapters,
 } from '@onething/core/mcp'
-import type { MCPServerConfig } from '@onething/core/mcp'
+import type { MCPServerConfig } from '@shared/mcp/types'
 
 const config: MCPServerConfig = {
   id: 'server-1',

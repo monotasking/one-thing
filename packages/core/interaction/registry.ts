@@ -1,5 +1,5 @@
-import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
-import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
+import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 import { randomUUID } from 'node:crypto'
 import type {
   InteractionAnswer,
@@ -7,7 +7,7 @@ import type {
   InteractionOutcome,
   InteractionQuestionAnswer,
   InteractionRequest,
-} from './types.js'
+} from '@shared/interaction/types.js'
 import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/index.js'
 
 /**

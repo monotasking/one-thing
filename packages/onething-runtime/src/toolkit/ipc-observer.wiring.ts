@@ -23,7 +23,7 @@
  * `toolResultToStructured` 的**逆**运算 —— 那个函数怎么折进去,这里就怎么拆出来。
  */
 
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import { Outcome as OutcomeOps } from '@onething/core/toolkit'
 import type {
   Decision,

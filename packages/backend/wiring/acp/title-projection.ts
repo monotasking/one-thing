@@ -10,7 +10,7 @@
  * 一条 `session:renamed` 会话事件(与引擎自动起题那一发同形,别的客户端跟着换名字)。
  * 同一个标题只处理一次(按会话记上一次见到的标题),agent 反复推同一句不会反复读会话。
  */
-import type { AcpSessionState } from '@onething/runtime/acp'
+import type { AcpSessionState } from '@shared/contracts/acp'
 import type { SessionTitleSource } from '@shared/ipc/chat.js'
 import { getLogger } from '../logging/index.js'
 import type { AcpSessionStateProjection } from './subsystem.js'

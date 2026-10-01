@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod'
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 import type { Preview, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import {
   fetchSearchPage,

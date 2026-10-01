@@ -53,9 +53,8 @@ import type {
   ProjectedToolCall,
   ProjectionBlobResolver,
   ProjectionNode,
-  SessionLogEventRecord,
-  SessionLogEventType,
 } from '@onething/core/session'
+import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types'
 import { foldSessionProjection, materializeNode } from '@onething/core/session'
 
 /**

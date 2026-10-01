@@ -8,7 +8,7 @@ import {
   type RigPart,
   type RigPartPose,
   type RigTransform,
-} from '@onething/runtime/pets/rig-spec'
+} from '@shared/pets/rig-spec'
 import type { PetRigProps } from '../types'
 import s from './DeclarativeRig.module.css'
 

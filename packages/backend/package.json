@@ -33,6 +33,8 @@
     "./session/usage.js": "./session/usage.ts",
     "./store.js": "./store.ts",
     "./stores/connected-directories.js": "./stores/connected-directories.ts",
+    "./stores/defaults/ai-settings.js": "./stores/defaults/ai-settings.ts",
+    "./stores/defaults/settings.js": "./stores/defaults/settings.ts",
     "./stores/docs-paths.js": "./stores/docs-paths.ts",
     "./stores/index.js": "./stores/index.ts",
     "./stores/sessions.js": "./stores/sessions.ts",

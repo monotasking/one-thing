@@ -1,4 +1,4 @@
-export { DEFAULT_MCP_SETTINGS, MCP_DEFAULT_FLAT_TOOL_THRESHOLD } from './types.js'
+
 export { HeadlessMCPManager } from './manager.js'
 export {
   CoreMCPBridgeRuntime,
@@ -127,7 +127,6 @@ export type {
   CoreMCPClientOperations,
   CoreMCPConnectAdapters,
   CoreMCPProbeAdapters,
-  CoreMCPProbeResult,
   ConnectMCPClientResult,
   ConnectMCPClientWithAdaptersOptions,
   DisconnectMCPClientAdapters,
@@ -161,15 +160,3 @@ export type {
   CoreMCPTaskPollOutcome,
   CoreMCPTaskStatus,
 } from './tasks.js'
-export type {
-  MCPConnectionStatus,
-  MCPPromptInfo,
-  MCPResourceInfo,
-  MCPServerConfig,
-  MCPServerState,
-  MCPSettings,
-  MCPToolCallRequest,
-  MCPToolCallResult,
-  MCPToolInfo,
-  MCPTransportType,
-} from './types.js'

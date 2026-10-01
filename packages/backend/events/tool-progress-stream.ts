@@ -30,7 +30,7 @@
  * `ONETHING_SESSION_SHADOW` 同一条路数,测试可以就地改档,不必重开进程。
  */
 
-import type { ToolProgressChunk } from '@onething/core/events'
+import type { ToolProgressChunk } from '@shared/events/stream-chunks'
 import { getStreamChannel } from './index.js'
 import { getLogger } from '../wiring/logging/index.js'
 

@@ -20,7 +20,7 @@ import {
   normalizeMCPContent,
   planMCPInputSchemaValidation,
 } from '@onething/core/mcp'
-import type { MCPToolInfo } from '@onething/core/mcp'
+import type { MCPToolInfo } from '@shared/mcp/types'
 
 const tools: MCPToolInfo[] = [
   {

@@ -14,7 +14,7 @@ import { configureAppSkillManage } from '../../../skills/manage.js'
 configureAppSkillsLoader()
 configureAppSkillManage()
 
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../../stores/defaults/settings.js'
 import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
 import {
   resetSpaceCredentialsCacheForTests,

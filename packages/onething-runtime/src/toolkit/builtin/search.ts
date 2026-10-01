@@ -33,7 +33,7 @@
  */
 
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { Result, RunContext, Scene, ToolSpec } from '@onething/core/toolkit'
 import { defineInput } from '../contract.js'
 import { ReadOnlyTool } from '../families/read-only.js'

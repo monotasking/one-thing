@@ -1,26 +1,6 @@
-/**
- * `@onething/core/toolkit` —— 工具系统内核(`docs/design/tool-system-oop-2026-08.md` §3)。
- *
- * 零依赖、纯 TS:不认识 electron、不认识宿主 IPC 契约包、不认识任何 provider 与
- * 渲染器。所有与外界的关系都走端口(ports.ts)与投影器(在 runtime/app 层)。
- *
- * R0 只建内核,一处未接线 —— 旧工具树照常运行。
- */
 
-export {
-  EFFECT_CLASSES,
-  EFFECT_POLICY,
-  effectPolicyFor,
-  isBarrierEffect,
-  isKnownEffectClass,
-  makeEffect,
-  policyOf,
-  requiresAuthorization,
-} from './effects.js'
-export type { Effect, EffectClass, EffectPolicy, EffectPolicyRow } from './effects.js'
 
 export type {
-  JsonSchema,
   PrepareEnv,
   Scene,
   ToolBudgetHint,

@@ -1,4 +1,4 @@
-import { splitIncompleteRefTail } from '@onething/core/references'
+import { splitIncompleteRefTail } from '@shared/references/ref-tag'
 import { BLOCK_STREAM } from '../blocks/stream/flag'
 import { MarkdownBlockStream, parseBlockFrame } from '../markdown/block-stream'
 import { markdownStream, parseFrame, type MarkdownFrame } from '../markdown/incremental'

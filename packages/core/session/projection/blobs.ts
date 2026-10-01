@@ -18,8 +18,8 @@
  *    换回来的是这里,两边认的是同一个 `isBlobRef` / 同一个占位符形式。
  */
 
-import type { BlobRef } from '../events/types.js'
-import { isBlobRef } from '../events/types.js'
+import type { BlobRef } from '@shared/session/events/types.js'
+import { isBlobRef } from '@shared/session/events/types.js'
 
 /**
  * 一次**退化**的记录:投影给出的这一格不是完整事实。

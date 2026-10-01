@@ -1,4 +1,4 @@
-import { RefTagPlainTextStream } from '@onething/core/references'
+import { RefTagPlainTextStream } from '@shared/references/plain-text-stream.js'
 
 /**
  * CLI 的**用户输出**口(不是日志)。

@@ -39,7 +39,7 @@ import { describe, expect, it } from 'vitest'
 import { createCoreId } from '../../engine/ids.js'
 import { createCoreStreamProcessor } from '../../engine/stream-processor.js'
 import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
-import type { SessionLogEventRecord } from '../events/index.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 import { projectChatMessages } from '../projection/index.js'
 
 // ---------------------------------------------------------------------------

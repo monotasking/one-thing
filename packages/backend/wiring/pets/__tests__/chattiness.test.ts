@@ -3,7 +3,7 @@
  * 串在宿主那条推送后面,不掐掉它;退订还原槽。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../stores/defaults/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import {
   broadcastSettingsChanged,

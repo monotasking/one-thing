@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { describeResourceSpecProblem } from '@onething/core/resource'
-import type { MCPToolInfo } from '@onething/core/mcp'
+import type { MCPToolInfo } from '@shared/mcp/types'
 import {
   MCP_RESOURCE_SCHEME_PREFIX,
   MCP_RESOURCE_SINGLETON_PATH,

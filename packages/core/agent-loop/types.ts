@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from '../json.js'
+import type { JsonObject, JsonValue } from '@shared/json.js'
 import type { AgentExecutionLifetime } from './execution-lifetime.js'
 
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool'

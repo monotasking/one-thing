@@ -1,5 +1,5 @@
-import type { JsonObject, JsonValue } from '../json.js'
-import { toJsonObject } from '../json.js'
+import type { JsonObject, JsonValue } from '@shared/json.js'
+import { toJsonObject } from '@shared/json.js'
 
 export interface CoreErrorDetails {
   message?: string

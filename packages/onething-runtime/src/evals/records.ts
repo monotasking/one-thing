@@ -12,7 +12,7 @@ import {
 	getOnethingEvalsOnlineRecordsPath,
 	type OnethingStorePathOptions,
 } from "../storage/paths.js";
-import type { TurnEvalRecord } from "./turn-evaluator.js";
+import type { TurnEvalRecord } from "@shared/contracts/eval-record.js";
 
 /** Amend record written after the fact (retry/edit/downvote). */
 interface AmendEntry {

@@ -17,7 +17,7 @@ import type { PlanContext, RunContext } from '../../toolkit/run-context.js'
 import type { Scene } from '../../toolkit/spec.js'
 import type { ResourceProvider, ResourceReadContext } from '../provider.js'
 import type { ResourceEventHub } from '../events.js'
-import type { ResourceRef } from '../ref.js'
+import type { ResourceRef } from '@shared/resource/ref.js'
 import type { ResourceSpec } from '../spec.js'
 
 /** 一个 core 从没听说过的命名空间。它只活在测试里。 */

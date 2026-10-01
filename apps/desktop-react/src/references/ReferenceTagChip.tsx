@@ -1,12 +1,12 @@
 import { memo } from 'react'
-import { defaultRefTagText, formatRefTag } from '@onething/core/references'
+import { defaultRefTagText, formatRefTag } from '@shared/references/ref-tag'
 /* 引用种类的注册 barrel。**谁要查表,谁负责保证表是装好的**(与
  * `content/user-message.tsx` 那一行逐字同判例)。 */
 import '.'
 import { ReferenceChip } from './ReferenceChip'
 import { resolveReferenceTag } from './registry'
 import s from './ReferenceChip.module.css'
-import type { RefTag } from '@onething/core/references'
+import type { RefTag } from '@shared/references/ref-tag'
 
 /**
  * **助手那句话里的一条 `<ref/>` 画出来的样子**(B2,正本

@@ -10,12 +10,11 @@
  * 依赖就永远是单向的。
  */
 
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { CoreToolPromptContribution } from '../engine/prompt-fragments.js'
-import type { EffectClass } from './effects.js'
+import type { EffectClass } from '@shared/toolkit/effects.js'
 
-/** 内核对"契约"的全部认识:一坨 JSON Schema。解释权归 `Validator` 端口。 */
-export type JsonSchema = JsonObject
+import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 
 /**
  * R2a 决定②:工具的提示词贡献**复用 core 现有的 `CoreToolPromptContribution`**,

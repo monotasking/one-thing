@@ -1,5 +1,5 @@
 import type { OnethingPracticeLedger } from './ledger.js'
-import type { OnethingPracticeLedgerRecord } from './types.js'
+import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 
 import type {
   OnethingPracticeSummaryGranularity,

@@ -20,7 +20,7 @@ import {
   type SessionAccountFoldContext,
   type SessionAccountState,
 } from '../account.js'
-import type { SessionLogEventRecord } from '../events/types.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 
 type AnyRecord = Record<string, unknown>
 

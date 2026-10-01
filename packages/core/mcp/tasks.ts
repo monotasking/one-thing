@@ -20,7 +20,7 @@
  * tasks are no longer bound by the 60s tool-call ceiling.
  */
 
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 
 /** 2025-11-25 wire vocabulary (mirrored — core never imports the SDK). */
 export type CoreMCPTaskStatus = 'working' | 'input_required' | 'completed' | 'failed' | 'cancelled'

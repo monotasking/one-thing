@@ -8,7 +8,7 @@
 
 import { z } from 'zod'
 import { createTwoFilesPatch } from 'diff'
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 import type { CoreToolPromptContribution } from '@onething/core/engine'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import { dirnamePath, ensureDirAsync, writeTextFileAsync } from '@onething/core/storage'

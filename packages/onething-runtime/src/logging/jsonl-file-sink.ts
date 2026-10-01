@@ -1,4 +1,9 @@
-import { formatJsonLine, type JsonlFileSink as CoreJsonlFileSink, type LogLevel, type LogRecord } from '@onething/core/logging'
+import {
+  formatJsonLine,
+  type JsonlFileSink as CoreJsonlFileSink,
+  type LogRecord,
+} from '@onething/core/logging'
+import { type LogLevel } from '@shared/logging/types'
 import { RollingFileLogger } from './rolling-file-logger.js'
 
 /**

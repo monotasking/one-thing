@@ -20,7 +20,7 @@ import {
   type CoreSessionCommandMessage,
   type CoreSessionCommandSession,
 } from '../commands.js'
-import { CORE_INTERRUPTED_TOOL_ERROR } from '../interrupted.js'
+import { CORE_INTERRUPTED_TOOL_ERROR } from '@shared/session/interrupted.js'
 
 type Message = CoreSessionCommandMessage & {
   reasoning?: string

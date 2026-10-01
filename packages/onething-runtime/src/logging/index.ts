@@ -20,10 +20,11 @@ import {
   LoggerRoot,
   MemoryRingSink,
   type LogFields,
-  type LogLevel,
   type LogRecord,
-  type Logger, type LoggerRootOptions,
+  type Logger,
+  type LoggerRootOptions,
 } from '@onething/core/logging'
+import { type LogLevel } from '@shared/logging/types'
 
 const FALLBACK_RING_SIZE = 200
 
@@ -148,7 +149,7 @@ export function captureRuntimeLogs(level = 'trace'): {
   }
 }
 
-export type { Logger, LogLevel, LogRecord } from '@onething/core/logging'
+export type { Logger, LogRecord } from '@onething/core/logging'
 
 /**
  * `console` 形状的注入端口适配器(L4 迁移期的过渡件)。

@@ -15,7 +15,11 @@
  * 只有内置宠物才有的格子。
  */
 
-import { validateRigSpec, type DeclarativeRigSpec, type RigSpecProblem } from './rig-spec.js'
+import {
+  validateRigSpec,
+  type DeclarativeRigSpec,
+  type RigSpecProblem,
+} from '@shared/pets/rig-spec.js'
 
 /** 嗓子的描述。三格都是档位词,不是数值:具体换算归 P3 的语音那一层。 */
 export interface PetVoice {

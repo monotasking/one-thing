@@ -13,7 +13,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Catalog, ToolRunner } from '@onething/core/toolkit'
 import { ResourceKernel, ResourceRegistry } from '@onething/core/resource'
-import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from '@onething/core/mcp'
+import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types'
 import { syncResourceToolsIntoCatalog } from '../catalog-sync.js'
 import { mountMcpResources, type McpResourceManagerPort } from '../mcp-mount.js'
 

@@ -12,7 +12,7 @@
  * 会带出全部转录的 `getSessions`。
  */
 import { randomUUID } from 'node:crypto'
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RouteHandlers } from '@shared/ipc/router'
 import type { AgentsRoutes } from '@shared/ipc/agents.js'
 import {
   createOnethingAgentFromRequestForIpc,

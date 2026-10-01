@@ -9,17 +9,15 @@
  */
 
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { Result, RunContext, ToolSpec } from '@onething/core/toolkit'
-import type {
-  OnethingPracticeLedgerRecord,
-  OnethingPracticeRecordInput,
-} from '../../practice/types.js'
+import type { OnethingPracticeRecordInput } from '../../practice/types.js'
+import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 import type {
   OnethingPracticeBucket,
   OnethingPracticeSummaryGranularity,
   OnethingPracticeSummaryResult,
-} from '../../practice/summary.js'
+} from '@shared/contracts/practice.js'
 import { defineInput } from '../contract.js'
 import { ReadOnlyTool } from '../families/read-only.js'
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { AppSettings, ProxySettings, TestProxyResponse } from '@shared/ipc/settings'
-import { DEFAULT_NETWORK_SETTINGS } from '@shared/defaults/settings'
+import { DEFAULT_NETWORK_SETTINGS } from '@shared/defaults/network'
 import { createMutation, createQuery } from './kernel'
 import { networkSettingsPort } from './network-settings-port'
 import { t, type MessageKey } from '../i18n'

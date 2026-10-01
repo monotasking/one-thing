@@ -8,7 +8,7 @@
  * 不属于结果。把它们塞进 Result 正是今天渲染私货渗进协议的那条路。
  */
 
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 
 export interface ResultPart {
   type: 'text' | 'image' | 'file'

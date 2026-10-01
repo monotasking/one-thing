@@ -24,7 +24,7 @@ import type {
   AcpAgentDetect,
   AcpAgentManifest,
   AcpAgentSource,
-} from '@onething/runtime/acp'
+} from '@shared/contracts/acp'
 import {
   acpRegistryPlatformKey,
   effectiveAgentConfig,

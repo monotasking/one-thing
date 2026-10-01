@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { projectChatMessages } from '../projection/index.js'
-import type { SessionLogEventRecord } from '../events/index.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 
 const HALF = '这是一句只写到一半就被'
 

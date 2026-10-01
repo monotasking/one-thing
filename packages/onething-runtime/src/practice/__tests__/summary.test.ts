@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeOnethingPracticeSummary } from '../summary.js'
-import type { OnethingPracticeLedgerRecord } from '../types.js'
+import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 
 function kegelRecord(ts: number, repsDone: number, setsDone: number, setsTarget = 3): OnethingPracticeLedgerRecord {
   return {

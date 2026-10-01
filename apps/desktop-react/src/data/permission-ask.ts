@@ -1,4 +1,4 @@
-import { effectPolicyFor } from '@onething/core/toolkit'
+import { effectPolicyFor } from '@shared/toolkit/effects'
 import type { PermissionInfo, PermissionResponse } from '@shared/ipc/permissions'
 import type { PermissionChoice, PermissionRequestEvent } from '@shared/events/session-events'
 import type { JsonObject } from '@shared/json'

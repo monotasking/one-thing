@@ -13,7 +13,7 @@ import {
   composeEffectiveAISettings,
   createEmptySpaceProviderSettings,
   splitEffectiveAISettings,
-} from '@shared/defaults/ai-settings.js'
+} from '@onething/backend/stores/defaults/ai-settings.js'
 
 describe('headless CLI projections', () => {
   it('projects session summaries for daemon clients', () => {

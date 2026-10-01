@@ -25,11 +25,12 @@
  * system 前缀。所以**先做法后读法,每一族内按名字字典序**。
  */
 
-import type { EffectClass } from '../toolkit/effects.js'
-import { EFFECT_CLASSES } from '../toolkit/effects.js'
-import type { JsonObject } from '../json.js'
-import { isJsonObject } from '../json.js'
-import type { JsonSchema, ResourceSpec } from './spec.js'
+import type { EffectClass } from '@shared/toolkit/effects.js'
+import { EFFECT_CLASSES } from '@shared/toolkit/effects.js'
+import type { JsonObject } from '@shared/json.js'
+import { isJsonObject } from '@shared/json.js'
+import type { ResourceSpec } from './spec.js'
+import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 
 /** 做法分支的判别字段。 */
 export const RESOURCE_OP_KEY = 'op'

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { SHARED_SLASH_COMMANDS } from '@onething/core/slash-commands'
+import { SHARED_SLASH_COMMANDS } from '@shared/slash-commands'
 import type { PluginCommandInfo } from '@shared/ipc/plugins'
 import { commandsPort } from './commands-port'
 import { sessionsPort } from './sessions-port'

@@ -26,7 +26,7 @@ afterEach(async () => {
 import {
 	createDefaultSettings,
 	DEFAULT_CHAT_SETTINGS,
-} from "@shared/defaults/settings.js";
+} from "../../../../stores/defaults/settings.js";
 import type {
 	AppSettings,
 	SkillDefinition,

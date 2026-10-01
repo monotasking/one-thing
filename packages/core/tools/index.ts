@@ -24,22 +24,6 @@ export type {
   ToolEffectMetadataValue,
   ToolPreview,
 } from './tool-effect.js'
-export {
-  isCanonicalToolResult,
-  summarizeToolFailureParameters,
-  textFromToolResult,
-  toolFailureResultForAI,
-  toolFailureText,
-  toolResultToStructured,
-} from './tool-result.js'
-export type {
-  CanonicalToolResult,
-  CanonicalToolResultContentPart,
-  ToolFailureLike,
-  ToolFailureParameterSummary,
-  ToolFailureResultForAI,
-  ToolResultLike,
-} from './tool-result.js'
 export { AllowAllPolicy, DenyAllPolicy } from './policy.js'
 export type { PermissionPolicy } from './policy.js'
 /**

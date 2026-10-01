@@ -9,10 +9,10 @@
  * **一个 router 文件 + 一个 handler 文件 + 装配层一行,四壳零改动**,
  * 顺带白拿 web 端平价(server 的 `/api/rpc` 与其它路由共用同一道 Bearer 闸)。
  */
-import type { LogLevel } from "@onething/core/logging";
+import type { LogLevel } from "../logging/types.js";
 import { defineRouter } from "./router.js";
 
-export type { LogLevel } from "@onething/core/logging";
+export type { LogLevel } from "../logging/types.js";
 
 /**
  * 上行的一条记录。形状是 `LogRecord` 的**可序列化子集**:

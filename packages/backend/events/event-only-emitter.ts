@@ -20,7 +20,7 @@ import { claimDeltaStamp } from './delta-stamp.js'
 import { writeSessionEvent } from '../session/event-writer.js'
 import { currentSessionRunId } from '../session/runs.js'
 import { getLogger } from '../wiring/logging/index.js'
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 import type { CreateCoreEventOnlyEmitterOptions } from '@onething/core/engine'
 
 /**

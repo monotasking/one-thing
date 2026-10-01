@@ -17,7 +17,8 @@
  * 恰好是同一个口径(旧值也是一个静态字符串,与具体路径无关),不是新引入的失真。
  */
 
-import { isKnownEffectClass, type EffectClass, type ToolSpec } from '@onething/core/toolkit'
+import { type ToolSpec } from '@onething/core/toolkit'
+import { isKnownEffectClass, type EffectClass } from '@shared/toolkit/effects'
 import type { CoreToolPermissionGuard } from '@onething/core/tools'
 
 /** 写文件的三个 kind。任意一个出现 = 旧的 `permission-gated`。 */

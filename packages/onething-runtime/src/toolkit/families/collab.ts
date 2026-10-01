@@ -29,15 +29,9 @@
  */
 
 import { Intent, Tool } from '@onething/core/toolkit'
-import type {
-  Effect,
-  PlanContext,
-  Preview,
-  Result,
-  RunContext,
-  Scene,
-} from '@onething/core/toolkit'
-import type { Principal } from '@onething/core/permission'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
+import type { Principal } from '@shared/permission/principal'
 import {
   isCollabToolAllowedInVenue,
   resolveCollabVenue,

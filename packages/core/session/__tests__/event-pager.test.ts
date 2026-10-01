@@ -18,8 +18,8 @@ import {
   pageEventMessages,
   projectChatMessages,
   type SessionEventByteReader,
-  type SessionLogEventRecord,
 } from '@onething/core/session'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 
 // ============ 事件流的小工具 ============
 

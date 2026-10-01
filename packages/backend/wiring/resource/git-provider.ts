@@ -81,8 +81,8 @@ import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-  ResourceRef,
 } from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import { getLogger } from '../logging/index.js'
 import { DirOutsideSandboxError, resolveReadable } from './path-guard.js'

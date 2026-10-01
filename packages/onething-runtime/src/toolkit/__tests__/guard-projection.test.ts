@@ -21,7 +21,7 @@ import {
   VariableTool,
   WriteTool,
 } from '../index.js'
-import { EFFECT_POLICY } from '@onething/core/toolkit'
+import { EFFECT_POLICY } from '@shared/toolkit/effects'
 import { deriveLegacyPermissionGuard } from '../guard-projection.js'
 
 /** `expected` = 旧工具身上那个 `permissionGuard` 字符串,逐字冻在这里。 */

@@ -12,7 +12,7 @@
  * and is only filled by explicit `registerRouterHandlers` calls from the
  * assembly sequence.
  */
-import type { DomainRoutes, RouteHandlers, RouteSessionAccess, Router } from '@onething/core/ipc'
+import type { DomainRoutes, RouteHandlers, RouteSessionAccess, Router } from '@shared/ipc/router'
 import type { SessionAccessOperation } from '@shared/contracts/session-access.js'
 import { sessionAccess } from '../session/access.js'
 import { getCurrentBackendInstance } from '../current.js'

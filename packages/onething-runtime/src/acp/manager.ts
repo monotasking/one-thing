@@ -1,6 +1,4 @@
 import type {
-  ACPAgentConfig,
-  ACPAgentState,
   ACPPermissionBridge,
   AcpAuthBridge,
   AcpElicitationBridge,
@@ -9,12 +7,16 @@ import type {
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
   ACPOpenSessionOptions,
-  ACPSessionOption,
   ACPSessionOptionsSnapshot,
+} from './types.js'
+import type {
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPSessionOption,
   ACPSettings,
   AcpRemoteSessionInfo,
   AcpSessionState,
-} from './types.js'
+} from '@shared/contracts/acp.js'
 import type { InitializeResponse, SessionUpdate } from '@agentclientprotocol/sdk'
 import { ACPClient } from './client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from './session-links.js'

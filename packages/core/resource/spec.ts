@@ -27,9 +27,9 @@
  * 一个静默的授权洞。
  */
 
-import type { JsonObject } from '../json.js'
-import type { EffectClass } from '../toolkit/effects.js'
-import type { JsonSchema } from '../toolkit/spec.js'
+import type { JsonObject } from '@shared/json.js'
+import type { EffectClass } from '@shared/toolkit/effects.js'
+import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 
 export type { JsonSchema }
 

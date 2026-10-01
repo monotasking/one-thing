@@ -17,7 +17,7 @@ import {
 } from '@onething/runtime/music/process-runner'
 import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
+import { DEFAULT_MUSIC_SETTINGS } from '../../stores/defaults/settings.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import type { MusicSetupServiceOptions } from '@onething/runtime/music/setup-service'

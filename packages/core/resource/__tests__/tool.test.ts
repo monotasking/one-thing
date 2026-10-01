@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Intent } from '../../toolkit/intent.js'
-import { makeEffect } from '../../toolkit/effects.js'
+import { makeEffect } from '@shared/toolkit/effects.js'
 import { textResult } from '../../toolkit/result.js'
 import { ToolRunner } from '../../toolkit/runner.js'
 import type { Outcome } from '../../toolkit/outcome.js'

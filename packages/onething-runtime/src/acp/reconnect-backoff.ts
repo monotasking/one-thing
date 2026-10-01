@@ -9,7 +9,7 @@
  * 纯的:时钟由构造者递(单测递假钟),不起定时器 —— 窗的过期在下一次问的时候按时刻算。
  * 它只管「这一次放不放」,不认识进程、不认识连接;哪一次算「崩后重连」由 `ACPClient` 判。
  */
-import type { AcpReconnectBackoff } from './types.js'
+import type { AcpReconnectBackoff } from '@shared/contracts/acp.js'
 
 export const ACP_RECONNECT_WINDOW_MS = 30_000
 export const ACP_RECONNECT_MAX_ATTEMPTS = 3

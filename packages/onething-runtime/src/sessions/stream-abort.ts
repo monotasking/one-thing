@@ -1,4 +1,4 @@
-import { CORE_ABORTED_TOOL_ERROR } from '@onething/core'
+import { CORE_ABORTED_TOOL_ERROR } from '@shared/engine/tool-call-errors'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 type MaybePromise<T> = T | Promise<T>

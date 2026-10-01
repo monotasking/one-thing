@@ -20,9 +20,9 @@ import {
   materializeNode,
   parseSessionLogEventLog,
   reduceSessionProjection,
-  type SessionLogEventRecord,
   type SessionProjectionState,
 } from '@onething/core/session'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 
 import {
   canonicalProjectionMessagesSliced,

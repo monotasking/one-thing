@@ -37,7 +37,7 @@ vi.mock('../../../stores/sessions.js', async () => {
 import {
   composeEffectiveAISettings,
   splitEffectiveAISettings,
-} from '@shared/defaults/ai-settings.js'
+} from '../../../stores/defaults/ai-settings.js'
 import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
 import {
   readSpaceProviderSettings,

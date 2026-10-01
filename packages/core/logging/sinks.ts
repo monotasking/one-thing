@@ -1,5 +1,6 @@
 import { safeStringify } from './error.js'
-import type { LogLevel, LogRecord, LogSink } from './types.js'
+import type { LogRecord, LogSink } from './types.js'
+import type { LogLevel } from '@shared/logging/types.js'
 
 /** JSONL 一行(文件 sink 与 renderer 桥共用同一套序列化)。 */
 export function formatJsonLine(record: LogRecord): string {

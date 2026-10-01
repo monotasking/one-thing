@@ -6,11 +6,7 @@
  */
 
 import type { SearchProvider, SearchOptions, SearchResponse, SearchResult } from './types.js'
-import {
-  toJsonObject,
-  type JsonObject,
-  type JsonObjectProperty,
-} from '@onething/core'
+import { toJsonObject, type JsonObject, type JsonObjectProperty } from '@shared/json'
 import type { FetchFn } from '../page-fetch.js'
 
 const BRAVE_API_URL = 'https://api.search.brave.com/res/v1/web/search'

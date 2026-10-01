@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, clientCapabilitiesFor } from '../client.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
-import type { ACPAgentConfig, AcpClientRequestContext, AcpFsBridge, AcpTerminalBridge } from '../types.js'
+import type { AcpClientRequestContext, AcpFsBridge, AcpTerminalBridge } from '../types.js'
+import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**
  * A3-b:`fs/*` / `terminal/*` 只经注入的桥(方案 §3.5 / §11.3)。夹具是真子进程的 ACP agent,

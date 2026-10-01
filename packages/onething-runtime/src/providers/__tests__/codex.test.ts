@@ -1,4 +1,4 @@
-import { toJsonObject, type JsonObject, type JsonValue } from '@onething/core'
+import { toJsonObject, type JsonObject, type JsonValue } from '@shared/json'
 import { describe, expect, it } from 'vitest'
 import {
   buildOnethingCodexHeaders,

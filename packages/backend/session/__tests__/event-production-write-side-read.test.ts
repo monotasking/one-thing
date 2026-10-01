@@ -34,7 +34,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@shared/ipc.js'
-import type { SessionLogEventRecord } from '@onething/core/session'
+import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
 
 const state = vi.hoisted(() => ({

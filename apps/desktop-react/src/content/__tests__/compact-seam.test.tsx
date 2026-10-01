@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { buildContextCompactContent } from '@onething/core/engine'
+import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { CompactSeam, completedLabel } from '../CompactSeam'
 import { parseCompactMarker, type CompactMarker } from '../compact/marker'
 import { SegmentView } from '../SegmentView'

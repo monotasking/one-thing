@@ -15,7 +15,8 @@
  */
 
 import { Intent, Tool } from '@onething/core/toolkit'
-import type { Effect, PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import type { PlanContext, Preview, Result, RunContext } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class SessionTool<In, Payload = In> extends Tool<In, Payload> {
   async plan(input: In, ctx: PlanContext): Promise<Intent<Payload>> {

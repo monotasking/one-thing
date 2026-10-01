@@ -23,11 +23,10 @@ import {
   reduceSessionAccount,
   reduceSessionProjection,
   SESSION_PROJECTION_CHECKPOINT_VERSION,
-  SURFACE_CHECKPOINT_FIELDS,
-  SurfaceIndex,
-  type SessionLogEventRecord,
   type SessionProjectionState,
 } from '../index.js'
+import { SURFACE_CHECKPOINT_FIELDS, SurfaceIndex } from '@shared/session/projection/surface.js'
+import { type SessionLogEventRecord } from '@shared/session/events/types.js'
 
 const SESSION = 'sess-checkpoint'
 

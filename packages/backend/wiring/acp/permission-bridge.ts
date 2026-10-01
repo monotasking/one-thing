@@ -1,4 +1,5 @@
-import type { Decision, Effect } from '@onething/core/toolkit'
+import type { Decision } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import type { Permission } from '@onething/core/permission'
 import { ACPManager } from '@onething/runtime/acp'
 import { describeAcpToolPermission } from '@onething/runtime/external-agents'

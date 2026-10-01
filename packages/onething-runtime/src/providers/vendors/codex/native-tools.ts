@@ -1,4 +1,4 @@
-import { toJsonObject } from '@onething/core'
+import { toJsonObject } from '@shared/json'
 
 export const CODEX_NATIVE_IMAGE_GENERATION_TOOL = 'image_generation'
 

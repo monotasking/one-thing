@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSessionProjectionState, reduceSessionProjection, type SessionLogEventRecord } from '@onething/core/session'
+import { createSessionProjectionState, reduceSessionProjection } from '@onething/core/session'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 import { createSessionEventReads } from '../events-reads.js'
 
 function projection() {

@@ -11,7 +11,7 @@
  * 人」。真店会把整棵装配拉进来。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { systemPrincipal, localUserPrincipal } from '@onething/core/permission'
+import { systemPrincipal, localUserPrincipal } from '@shared/permission/principal'
 import { Permission } from '../../../permission/index.js'
 import { markHostUnattended } from '@onething/runtime/permissions/unattended'
 import { enforcePermissionPolicy } from '../permission-policy.js'

@@ -5,7 +5,7 @@
  * 流量一个字节都不多;`events` 才把同名同形的小批放上那条既有的流管。
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { UiAssistantDeltaChunk } from '@onething/core/events'
+import type { UiAssistantDeltaChunk } from '@shared/events/stream-chunks'
 import { createEventSystem, getStreamChannel } from '../index.js'
 import { createBackendHandle, setCurrentBackend } from '../../current.js'
 import { isUiEventStreamEnabled, onethingUiStreamMode, pushSessionUiStreamEvent } from '../ui-stream.js'

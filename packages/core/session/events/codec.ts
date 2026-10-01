@@ -13,8 +13,12 @@
  * **绝不回写"清理"文件** —— 读侧只跳过。
  */
 
-import type { SessionLogEventRecord, SessionLogEventType, SessionSurfaceOp } from './types.js'
-import { SESSION_LOG_EVENT_TYPES } from './types.js'
+import type {
+  SessionLogEventRecord,
+  SessionLogEventType,
+  SessionSurfaceOp,
+} from '@shared/session/events/types.js'
+import { SESSION_LOG_EVENT_TYPES } from '@shared/session/events/types.js'
 
 /** 一行一条,永远以 \n 结尾 —— 半行只可能出现在崩溃截断处。 */
 export function encodeSessionLogEventLine(record: SessionLogEventRecord): string {

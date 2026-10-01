@@ -44,8 +44,8 @@
  *  - 「连接一律失败」不是这里的门,而是 `configureMCPClientHost` 那个端口的事:
  *    独立 server 默认注入 `DisabledServerMCPClient`,桌面注入真客户端,搬家不动它。
  */
-import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
-import type { MCPServerConfig, MCPServerState } from '@onething/core/mcp'
+import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
+import type { MCPServerConfig, MCPServerState } from '@shared/mcp/types'
 import fs from 'fs'
 import {
   addOnethingMCPServerForIpc,

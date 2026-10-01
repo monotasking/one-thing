@@ -1,4 +1,4 @@
-import type { SessionCommandType } from './session-command-types.js'
+import type { SessionCommandType } from '@shared/events/session-command-types.js'
 import type { EventBase, EventDeliveryOptions } from './types.js'
 
 type MaybePromise<T> = T | Promise<T>

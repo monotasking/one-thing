@@ -11,8 +11,8 @@ import { IPC_CHANNELS } from '@shared/ipc/channels.js'
 import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
 import type { SessionEventEnvelope, SessionStreamPayload } from '@shared/events/index.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
-import type { RouteCallOptions } from '@onething/core/ipc'
-import type { RuntimeHostCapabilities } from '@onething/core/runtime-facade'
+import type { RouteCallOptions } from '@shared/ipc/router'
+import type { RuntimeHostCapabilities } from '@shared/contracts/runtime-capabilities'
 
 /**
  * `GET /api/capabilities` 的形。

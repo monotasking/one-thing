@@ -1,4 +1,4 @@
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { CoreToolArgsFinalizedBy } from './stream-processor.js'
 
 export type CoreReasoningPlacement = 'top' | 'inline'

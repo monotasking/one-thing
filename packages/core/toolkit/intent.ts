@@ -12,10 +12,10 @@
  * 放这儿两个文件的依赖就是单向的。
  */
 
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { Permission } from '../permission/index.js'
-import type { Effect } from './effects.js'
-import { policyOf } from './effects.js'
+import type { Effect } from '@shared/toolkit/effects.js'
+import { policyOf } from '@shared/toolkit/effects.js'
 
 /** 授权结论。`ask` 是 Authorizer 内部的过程,`decide()` 落地时只剩这两种。 */
 export type Decision =

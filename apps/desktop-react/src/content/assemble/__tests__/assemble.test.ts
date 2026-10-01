@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectedMessage } from '../../../data/chat-fold'
 import type { BlockModel } from '../../model/blocks'
-import { buildContextCompactContent } from '@onething/core/engine'
+import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { assembleMessage, blockKey, segmentKey } from '..'
 import { defaultToolPresenter } from '../../tools/presenter'
 

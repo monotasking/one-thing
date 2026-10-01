@@ -1,5 +1,5 @@
-import { toJsonValue } from '../json.js'
-import type { MCPToolCallResult } from './types.js'
+import { toJsonValue } from '@shared/json.js'
+import type { MCPToolCallResult } from '@shared/mcp/types.js'
 
 type MCPContentPart = NonNullable<MCPToolCallResult['content']>[number]
 

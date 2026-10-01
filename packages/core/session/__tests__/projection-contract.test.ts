@@ -51,22 +51,18 @@
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  CORE_ABORTED_TOOL_ERROR,
-  finalizeLingeringAgentLoopToolWork,
-} from '../../engine/agent-loop-executor.js'
-import {
-  coreToolInputStartStepTitle,
-  createCoreToolInputStartArtifacts,
-} from '../../engine/stream-processor.js'
+import { finalizeLingeringAgentLoopToolWork } from '../../engine/agent-loop-executor.js'
+import { CORE_ABORTED_TOOL_ERROR } from '@shared/engine/tool-call-errors.js'
+import { createCoreToolInputStartArtifacts } from '../../engine/stream-processor.js'
+import { coreToolInputStartStepTitle } from '@shared/engine/tool-step.js'
 import { buildHistoryMessages } from '../../engine/history.js'
-import { detectSkillUsage, getStepType } from '../../engine/tool-step.js'
+import { detectSkillUsage, getStepType } from '@shared/engine/tool-step.js'
 import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
-import { buildContextCompactContent } from '../../engine/context-compact.js'
+import { buildContextCompactContent } from '@shared/engine/context-compact-content.js'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
   CORE_INTERRUPTED_TOOL_ERROR,
-} from '../interrupted.js'
+} from '@shared/session/interrupted.js'
 import {
   computeInterruptedStepRepair,
   computeSessionRepairOnLoad,
@@ -74,7 +70,7 @@ import {
 } from '../timeline.js'
 import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
 import { encodeSessionLogEventLine } from '../events/index.js'
-import type { SessionLogEventRecord, SessionRunKind } from '../events/index.js'
+import type { SessionLogEventRecord, SessionRunKind } from '@shared/session/events/types.js'
 import { foldEventPageBackward } from '../storage/events/index.js'
 import type { SessionEventByteReader } from '../storage/events/index.js'
 import {
@@ -85,12 +81,11 @@ import {
   defaultHistoryMessageContent,
   encodeSessionProjectionCheckpoint,
   foldSessionProjection,
-  foldSurface,
   projectChatMessages,
   projectModelHistory,
   reduceSessionProjection,
-  SurfaceIndex,
 } from '../projection/index.js'
+import { foldSurface, SurfaceIndex } from '@shared/session/projection/surface.js'
 import type { ProjectedStep, ProjectedStepUsage, ProjectedToolCall } from '../projection/index.js'
 import { createSessionAccountState } from '../account.js'
 

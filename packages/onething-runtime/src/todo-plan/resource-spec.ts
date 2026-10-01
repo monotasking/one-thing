@@ -9,7 +9,7 @@
  *
  * ── 为什么后端不解析 markdown ───────────────────────────────────────────
  * 渲染与编辑都在壳里用**消息那一份**解析器做(「和消息一模一样」是用户的第一条要求);
- * 这里只管字节与行。改动一律是 `LineEdit`(`@onething/core/text`):按原文对账,
+ * 这里只管字节与行。改动一律是 `LineEdit`(`@shared/text/line-edit`):按原文对账,
  * AI 在旁边用写文件工具插删了行也能落对位置,对不上就整批不写、如实说冲突。
  *
  * ── 为什么不给 AI 生成工具(`exposure.aiTool: false`)────────────────────
@@ -18,7 +18,8 @@
  * RPC、CLI、插件的 `api.resources` 照常能用。
  */
 
-import type { JsonSchema, ResourceSpec } from '@onething/core/resource'
+import type { ResourceSpec } from '@onething/core/resource'
+import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const TODO_RESOURCE_SCHEME = 'todo'
 

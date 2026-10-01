@@ -1,4 +1,5 @@
-import { isLogLevel, LOG_LEVEL_VALUE, type LogLevel } from './types.js'
+import { isLogLevel, LOG_LEVEL_VALUE } from './types.js'
+import { type LogLevel } from '@shared/logging/types.js'
 
 /**
  * `ONETHING_LOG='<default>[,<ns-glob>=<level>]*'` 的解析与匹配(§2.3)。

@@ -17,8 +17,8 @@ import {
 	type OnethingUsageBillingMode,
 	type OnethingUsageLedgerRecord,
 	type OnethingUsageSummaryRequest,
-	type OnethingUsageSummaryResult,
 } from "@onething/runtime/usage";
+import { type OnethingUsageSummaryResult } from "@shared/contracts/usage";
 import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getModelCapabilityEntry } from "../providers/model-registry.js";

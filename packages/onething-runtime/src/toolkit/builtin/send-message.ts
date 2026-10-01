@@ -21,9 +21,10 @@
  */
 
 import { z } from 'zod'
-import type { JsonObject } from '@onething/core'
-import { makeEffect } from '@onething/core/toolkit'
-import type { Effect, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
+import type { JsonObject } from '@shared/json'
+import { makeEffect } from '@shared/toolkit/effects'
+import type { Result, RunContext, ToolSpec } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import type { CollabVenueTool } from '../../collab/tool-surface.js'
 import {
   COLLAB_SAY_REFUSED_EMPTY,

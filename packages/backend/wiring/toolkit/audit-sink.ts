@@ -42,7 +42,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { NO_ORIGIN_SESSION } from '@onething/core/resource'
-import type { SessionToolAuditEventData } from '@onething/runtime/sessions/session-events'
+import type { SessionToolAuditEventData } from '@shared/session/events/types'
 import type { ToolAuditRecord, ToolAuditSink } from '@onething/runtime/toolkit/audit-observer'
 import { getOnethingAuditDir, getOnethingResourceAuditPath } from '@onething/runtime/storage'
 import { appendSessionEvent } from '../../session/event-log.js'

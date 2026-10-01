@@ -30,7 +30,7 @@
  * 一次是权限面。
  */
 
-import { normalizeConnectedDirectories } from '@shared/defaults/settings.js'
+import { normalizeConnectedDirectories } from './defaults/settings.js'
 import type { SkillDirectoryConfig } from '@shared/ipc/skills.js'
 import {
   getSpaceOverlayConnectedDirectories,

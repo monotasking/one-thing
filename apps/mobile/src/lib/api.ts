@@ -4,7 +4,7 @@ import type {
   GetSessionMessagesPageResponse,
   GetSessionsListResponse,
 } from '@shared/ipc/chat.js'
-import type { SessionCommandType } from '@onething/core/events/session-command-types.js'
+import type { SessionCommandType } from '@shared/events/session-command-types.js'
 import { httpRequest, rpc, type ServerTarget } from './rpc'
 
 /**

@@ -37,7 +37,7 @@ vi.mock('../../../../session/commands.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../../../session/commands.js')>(),
   sessionCommands: { patchMessage: vi.fn(() => true) },
 }))
-import { createDefaultSettings } from '@shared/defaults/settings.js'
+import { createDefaultSettings } from '../../../../stores/defaults/settings.js'
 import type { ToolSettings } from '@shared/ipc.js'
 import type { AgentOutputModality, AgentTurnStreamEvent } from '@onething/core/agent-loop'
 import { createAgentProviderFromRuntime } from '@onething/runtime/agent-loop/providers'

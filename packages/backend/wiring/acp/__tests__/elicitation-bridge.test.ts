@@ -3,7 +3,7 @@
  * 都是桩 —— 这里证的是 schema → 题目的映射、答案译回 agent 的值、以及四种收场各答什么。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { InteractionAnswer, InteractionAskInput } from '@onething/core/interaction'
+import type { InteractionAnswer, InteractionAskInput } from '@shared/interaction/types'
 import type { AcpElicitationContext, AcpElicitationRequest } from '@onething/runtime/acp'
 
 vi.mock('../../interaction/no-human.js', () => ({

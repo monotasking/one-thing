@@ -65,10 +65,11 @@ import {
   pluginResourceSurface,
   pluginScope,
 } from '@onething/core/plugins'
-import { parseRef, ReadOutcome } from '@onething/core/resource'
+import { ReadOutcome } from '@onething/core/resource'
+import { parseRef } from '@shared/resource/ref'
 import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/core/resource'
-import { systemPrincipal } from '@onething/core/permission'
-import type { Principal } from '@onething/core/permission'
+import { systemPrincipal } from '@shared/permission/principal'
+import type { Principal } from '@shared/permission/principal'
 import { Outcome } from '@onething/core/toolkit'
 import type { Outcome as OutcomeValue } from '@onething/core/toolkit'
 import {

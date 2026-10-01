@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { makeEffect } from '../effects.js'
+import { makeEffect } from '@shared/toolkit/effects.js'
 import { Intent } from '../intent.js'
 import { jobSnapshot } from '../job.js'
 import { Outcome } from '../outcome.js'

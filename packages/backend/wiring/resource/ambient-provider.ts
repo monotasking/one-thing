@@ -1,4 +1,9 @@
-import type { ResourceEventHub, ResourceProvider, ResourceReadContext, ResourceRef } from '@onething/core/resource'
+import type {
+  ResourceEventHub,
+  ResourceProvider,
+  ResourceReadContext,
+} from '@onething/core/resource'
+import type { ResourceRef } from '@shared/resource/ref'
 import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
 import {
   AMBIENT_HERE_PATH,

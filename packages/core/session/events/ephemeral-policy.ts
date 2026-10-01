@@ -81,7 +81,7 @@ export interface SessionEphemeralFactPolicy {
 
 const CONTRACT = 'packages/core/session/__tests__/projection-contract.test.ts'
 const POLICY = 'packages/core/session/__tests__/ephemeral-policy.test.ts'
-const CODEC = 'packages/core/session/__tests__/session-chunk-codec.test.ts'
+const CODEC = 'packages/shared/session/__tests__/session-chunk-codec.test.ts'
 /**
  * 2026-09-04:Vue renderer(与它的 plugin-status-parts.test)随运行时统一第四步删除;这三条证明改指
  * 装配层的状态注册表测试(同一组事实:状态活在流里、回合收尾被扫、已结算的落账本)。React 壳今天

@@ -35,8 +35,8 @@
  * 给 `session:stream` 那条高频面用的,账本行不走那条。
  */
 
-import { SESSION_EVENT_TYPES } from '@onething/core/events'
-import type { SessionLogEventRecord } from '@onething/core/session/events'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
+import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { getLogger } from '../wiring/logging/index.js'
 import { getEventBus } from '../events/index.js'
 import { registerSessionEventObserver } from './event-writer.js'

@@ -7,13 +7,13 @@
 
 import { MCPManager } from './manager.js'
 import { notifyMCPToolTableChanged } from './capabilities-changed.js'
-import type { MCPToolInfo, MCPToolCallResult } from './types.js'
+import type { MCPToolInfo, MCPToolCallResult } from '@shared/mcp/types.js'
 import type { ToolDefinition } from '@shared/ipc.js'
 import {
   getOnethingMCPToolsCatalogPath,
 } from '../storage/index.js'
 import { z } from 'zod'
-import { type JsonObject, type JsonValue } from '@onething/core'
+import { type JsonObject, type JsonValue } from '@shared/json'
 import {
   CoreMCPBridgeRuntime,
   MCP_ROUTER_TOOL_ID,

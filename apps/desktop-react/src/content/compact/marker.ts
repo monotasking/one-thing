@@ -2,7 +2,7 @@ import type {
   CoreContextCompactContent,
   CoreContextCompactProgress,
   CoreContextCompactStatus,
-} from '@onething/core/engine'
+} from '@shared/engine/context-compact-content'
 
 /**
  * **压缩标记的唯一解析产地**(壳侧)。

@@ -14,16 +14,18 @@ import type {
   MCPServerState,
   MCPToolCallResult,
   MCPConnectionStatus,
-} from './types.js'
+} from '@shared/mcp/types.js'
 import {
   CoreMCPClientRuntime,
   mcpServerSupportsToolTasks,
   probeMCPServerWithAdapters,
   refreshMCPClientCapabilities,
-  type CoreMCPProbeResult,
-  type CoreMCPTask, type CoreMCPClientRuntimeOptions, type CoreMCPProbeAdapters,
+  type CoreMCPTask,
+  type CoreMCPClientRuntimeOptions,
+  type CoreMCPProbeAdapters,
 } from '@onething/core/mcp'
-import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
+import { type CoreMCPProbeResult } from '@shared/mcp/types'
+import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
 import { getMCPOAuthFlowManager } from './oauth/index.js'
 import { getMCPClientIdentity } from './identity.js'
 import { notifyMCPCapabilitiesChanged } from './capabilities-changed.js'

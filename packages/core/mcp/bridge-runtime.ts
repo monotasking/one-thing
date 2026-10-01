@@ -1,4 +1,4 @@
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import {
   buildMCPToolsForAI,
   executeMCPBridgeTool,
@@ -18,7 +18,7 @@ import {
 } from './router.js'
 import { isMCPToolId, CoreMCPToolIdRegistry } from './tool-id-registry.js'
 import { mcpRouterToCoreToolDefinition, mcpToolToCoreToolDefinition, type CoreMCPToolDefinition } from './tool-definition.js'
-import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from './types.js'
+import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types.js'
 
 export interface CoreMCPBridgeRuntimeHost {
   isEnabled(): boolean

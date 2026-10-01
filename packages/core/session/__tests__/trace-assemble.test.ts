@@ -11,7 +11,7 @@ import {
   assembleSessionTrace,
   materializeTraceResponseText,
 } from '../trace/index.js'
-import type { SessionLogEventRecord } from '../events/index.js'
+import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 
 // ============ 事件小工厂 ============
 

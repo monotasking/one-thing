@@ -7,8 +7,8 @@
  * 不出现在类型上,免得下一个人以为投影能给出它。
  */
 
-import type { CoreStepType } from '../../engine/tool-step.js'
-import type { ProjectedStopKind } from './stop-reasons.js'
+import type { CoreStepType } from '@shared/engine/tool-step.js'
+import type { ProjectedStopKind } from '@shared/session/projection/stop-reasons.js'
 
 export type ProjectedToolCallStatus =
   | 'pending'

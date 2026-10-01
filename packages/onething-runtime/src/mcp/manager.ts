@@ -1,6 +1,7 @@
 import { MCPClient } from './client.js'
 import { HeadlessMCPManager } from '@onething/core/mcp'
-import type { MCPClientFactory, MCPClientLike, MCPServerConfig, MCPServerState } from '@onething/core/mcp'
+import type { MCPClientFactory, MCPClientLike } from '@onething/core/mcp'
+import type { MCPServerConfig, MCPServerState } from '@shared/mcp/types'
 import { configureMCPOAuthAuthorizedHandler, getMCPOAuthFlowManager } from './oauth/index.js'
 
 /**

@@ -32,7 +32,7 @@
  * 注意「被拒绝」不是错误:`denied` 是一个正常结局(人说了不),它和 `invalid`
  * (参数写错了)、`failed`(真炸了)是三件不同的事,合成一个 `throw` 就再也分不开。
  */
-import type { JsonSchema } from "@onething/core/resource";
+import type { JsonSchema } from "../toolkit/json-schema.js";
 import { defineRouter } from "./router.js";
 
 /** 一个在场的命名空间。`list` 只给这两格 —— 详情问 `describe`。 */

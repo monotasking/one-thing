@@ -1,4 +1,4 @@
-import type { JsonArray, JsonObject, JsonValue } from '../json.js'
+import type { JsonArray, JsonObject, JsonValue } from '@shared/json.js'
 import { toLogger } from '../logging/index.js'
 import {
   callMCPToolWithTimeout,
@@ -21,7 +21,7 @@ import type {
   MCPServerConfig,
   MCPServerState,
   MCPToolCallResult,
-} from './types.js'
+} from '@shared/mcp/types.js'
 
 export interface CoreMCPClientRuntimeAdapters<TClient extends CoreMCPClientOperations, TTransport>
   extends UpdateMCPClientConfigAdapters<TClient, TTransport> {

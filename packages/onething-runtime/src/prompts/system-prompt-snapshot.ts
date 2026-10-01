@@ -1,7 +1,4 @@
-import type {
-  JsonSchemaObject,
-  JsonValue,
-} from '@onething/core'
+import type { JsonSchemaObject, JsonValue } from '@shared/json'
 import type {
   CorePromptActiveProject,
   CorePromptKnownProjects,

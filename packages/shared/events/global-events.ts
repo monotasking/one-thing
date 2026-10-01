@@ -4,7 +4,7 @@
  * Events not scoped to any session.
  */
 
-import type { PluginNotifySound } from '@onething/core/plugins/notify-sound'
+import type { PluginNotifySound } from '../plugins/notify-sound.js'
 import type { TerminalDataEvent, TerminalExitEvent } from '../ipc/terminal.js'
 import type { ACPAgentState, AcpSessionState } from '../contracts/acp.js'
 import type { OAuthFlowEventPayload } from '../ipc/oauth.js'

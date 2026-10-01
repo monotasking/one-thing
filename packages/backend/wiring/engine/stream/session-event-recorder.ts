@@ -41,13 +41,13 @@ import type {
   AgentStreamEvent,
   AgentTool,
 } from '@onething/core/agent-loop'
+import type { CoreAssistantPartRef } from '@shared/session/events/chunk-codec'
 import type {
   BlobRef,
-  CoreAssistantPartRef,
   SessionAssistantDeltaPartKind,
   SessionAssistantPartKind,
   SessionResponseUsage,
-} from '@onething/core/session'
+} from '@shared/session/events/types'
 // U0(`docs/design/ui-event-stream-2026-08.md` §1 规则 1):part 边界**只判一次**。
 // F4-c 定律二(§16.19):**打包是存储编码,不是语义** —— 攒批、两道闸、段边界
 // 判定(U0 那台状态机)整块住进 core 的编解码器,这里只喂**逻辑 delta**,并把
@@ -57,8 +57,12 @@ import {
   createSessionChunkEncoder,
   SESSION_CHUNK_BATCH_INTERVAL_MS,
   SESSION_CHUNK_BATCH_SIZE,
-} from '@onething/core/session/events/chunk-codec'
-import type { StreamDeltaStamp, UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@onething/core/events'
+} from '@shared/session/events/chunk-codec'
+import type {
+  StreamDeltaStamp,
+  UiAssistantDeltaChunk,
+  UiAssistantPartEndChunk,
+} from '@shared/events/stream-chunks'
 import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/core/agent-loop'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
 // `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
@@ -78,10 +82,12 @@ import {
   hashSessionEventTools,
   isSameRequestHeaderEnvelope,
   truncateSessionEventPreview,
+} from '@onething/runtime/sessions/session-events'
+import {
   type SessionEventToolSchema,
   type SessionRequestHeaderEventData,
   type SessionRequestRoute,
-} from '@onething/runtime/sessions/session-events'
+} from '@shared/session/events/types'
 import { findLastSessionEventSync, flushSessionEventLog, nextSessionRequestIndex } from '../../../session/event-log.js'
 import { writeSessionEvent } from '../../../session/event-writer.js'
 import { foldLiveSessionLogicalDelta } from '../../../session/projection-cache.js'

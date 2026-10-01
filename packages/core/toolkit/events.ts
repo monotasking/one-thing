@@ -12,7 +12,7 @@
  * (最终结局)这三条来自系统而非来自工具的证词;工具能编造的证词不叫审计。
  */
 
-import type { JsonObject } from '../json.js'
+import type { JsonObject } from '@shared/json.js'
 import type { Decision, Intent } from './intent.js'
 import type { JobSnapshot } from './job.js'
 import type { Outcome } from './outcome.js'

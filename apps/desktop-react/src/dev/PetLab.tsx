@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useFocusDispatch } from '../focus/dispatch'
-import { ALU_RIG } from '@onething/runtime/pets/builtin/alu.rig'
+import { ALU_RIG } from '@shared/pets/builtin/alu.rig'
 import { findBuiltinPet } from '../pets/builtin'
 import { PetRigView } from '../pets/rigs/PetRigView'
 import { PetStage } from '../pets/PetStage'

@@ -16,8 +16,9 @@
  * 但不替成员决定要不要抛。
  */
 
-import { makeEffect } from '@onething/core/toolkit'
-import type { Effect, Invocation, Preview, SessionSnapshot } from '@onething/core/toolkit'
+import { makeEffect } from '@shared/toolkit/effects'
+import type { Invocation, Preview, SessionSnapshot } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import { Tool } from '@onething/core/toolkit'
 import { basenamePath, dirnamePath, joinPaths } from '@onething/core/storage'
 import {

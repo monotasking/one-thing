@@ -52,8 +52,6 @@ export {
 	amendTurnEditResend,
 	recordExplicitDown,
 	hasNegativeSignals,
-	type TurnSignals,
-	type TurnEvalRecord,
 } from "./turn-evaluator.js";
 
 export {

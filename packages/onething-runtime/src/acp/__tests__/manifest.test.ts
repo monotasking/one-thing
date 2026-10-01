@@ -19,8 +19,8 @@ import {
   parseAcpAgentManifest,
   parseAcpRegistryIndex,
   stripNpmPackageVersion,
-  type AcpAgentManifest,
 } from '../manifest.js'
+import { type AcpAgentManifest } from '@shared/contracts/acp.js'
 
 const SEED: AcpAgentManifest = {
   id: 'claude-code',

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'path'
 import { getOnethingStorePath } from '../storage/paths.js'
 import { getLogger } from '../logging/index.js'
-import type { ACPSessionOption } from './types.js'
+import type { ACPSessionOption } from '@shared/contracts/acp.js'
 import type { ExternalAgentSessionLink } from '../external-agents/types.js'
 
 const log = getLogger('acp')

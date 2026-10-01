@@ -29,13 +29,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import type {
-  MCPClientLike,
-  MCPServerConfig,
-  MCPServerState,
-  MCPToolCallResult,
-} from '@onething/core/mcp'
-import type { JsonObject } from '@onething/core'
+import type { MCPClientLike } from '@onething/core/mcp'
+import type { MCPServerConfig, MCPServerState, MCPToolCallResult } from '@shared/mcp/types'
+import type { JsonObject } from '@shared/json'
 
 const previousStorePath = process.env.ONETHING_STORE_PATH
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-resource-mcp-'))

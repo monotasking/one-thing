@@ -10,16 +10,16 @@
  * 七事件流)与评估轨迹。这里只定形状与时机,不认识 fs。
  */
 
-import type { Principal } from '@onething/core/permission'
+import type { Principal } from '@shared/permission/principal'
 import type {
   Decision,
-  EffectClass,
   Intent,
   Invocation,
   ObservedEvent,
   Observer,
   Outcome,
 } from '@onething/core/toolkit'
+import type { EffectClass } from '@shared/toolkit/effects'
 
 /** 一次调用在审计里的样子。刻意扁平:它要能直接变成一行 JSONL。 */
 export interface ToolAuditRecord {

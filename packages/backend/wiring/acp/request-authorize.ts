@@ -7,7 +7,8 @@
  * 早晚在某一格上分岔 —— 同一台 agent 的读文件与跑命令在同一台宿主上就会长成两种等法。
  */
 import { AbortScope, Intent } from '@onething/core/toolkit'
-import type { Authorizer, Decision, Effect, Invocation, Preview } from '@onething/core/toolkit'
+import type { Authorizer, Decision, Invocation, Preview } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { enforcePermissionPolicyRejectingUnanswered } from '../tools/core/permission-policy.js'

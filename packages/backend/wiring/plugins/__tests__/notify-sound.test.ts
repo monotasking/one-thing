@@ -5,7 +5,7 @@
  * 这里只测要读宿主状态的部分:全局总开关、每插件静音、每插件限频。
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { PLUGIN_NOTIFY_SOUND_THROTTLE_MS } from '@onething/core/plugins'
+import { PLUGIN_NOTIFY_SOUND_THROTTLE_MS } from '@shared/plugins/notify-sound'
 
 const settings: { plugins?: { notifySoundsEnabled: boolean; notifySoundMutedPluginIds: string[] } } = {}
 

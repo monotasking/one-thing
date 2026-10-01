@@ -11,7 +11,7 @@
  * capabilities 口是一个槽。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { MCPSettings } from '@onething/core/mcp'
+import type { MCPSettings } from '@shared/mcp/types'
 import { getLogger } from '../../logging/index.js'
 import { McpSubsystem, type McpSubsystemDeps } from '../subsystem.js'
 

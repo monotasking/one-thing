@@ -1,5 +1,5 @@
 import type { AgentProviderData } from "../agent-loop/types.js";
-import type { JsonObject, JsonObjectProperty } from "../json.js";
+import type { JsonObject, JsonObjectProperty } from "@shared/json.js";
 import type { TurnBlock } from "./turn-context.js";
 import type {
 	CorePromptActiveProject,

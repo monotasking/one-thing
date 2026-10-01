@@ -17,21 +17,6 @@ export type {
   MCPClientLike,
 } from '@onething/core/mcp'
 
-export type {
-  MCPTransportType,
-  MCPServerConfig,
-  MCPConnectionStatus,
-  MCPServerState,
-  MCPToolInfo,
-  MCPResourceInfo,
-  MCPPromptInfo,
-  MCPToolCallRequest,
-  MCPToolCallResult,
-  MCPSettings,
-} from './types.js'
-
-export { DEFAULT_MCP_SETTINGS } from './types.js'
-
 export { MCPClient, probeMCPServerConfig } from './client.js'
 
 export { MCPManager, configureMCPClientHost } from './manager.js'

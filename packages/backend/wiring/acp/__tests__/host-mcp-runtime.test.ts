@@ -9,8 +9,8 @@
  *  3. 总线适配:`resource:event` 的 `session:<id>` / `deleted` → 被删的整串会话 id。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { ACPAgentState, ACPSettings, AcpSessionState } from '@onething/runtime/acp'
-import type { MCPServerConfig } from '@onething/core/mcp'
+import type { ACPAgentState, ACPSettings, AcpSessionState } from '@shared/contracts/acp'
+import type { MCPServerConfig } from '@shared/mcp/types'
 import { HostMcpBridge, type HostMcpBridgeDeps } from '../host-mcp-bridge.js'
 import { createAcpHostMcpPort, type AcpHostMcpAgentSwitches } from '../host-mcp-port.js'
 import { AcpSubsystem } from '../subsystem.js'

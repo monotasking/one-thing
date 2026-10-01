@@ -4,14 +4,18 @@ import {
   CoreMCPClientRuntime,
   probeMCPServerWithAdapters,
   refreshMCPClientCapabilities,
-  type CoreMCPProbeResult,
   type MCPClientLike,
+  type CoreMCPClientRuntimeOptions,
+  type CoreMCPProbeAdapters,
+} from '@onething/core/mcp'
+import {
+  type CoreMCPProbeResult,
   type MCPConnectionStatus,
   type MCPServerConfig,
   type MCPServerState,
-  type MCPToolCallResult, type CoreMCPClientRuntimeOptions, type CoreMCPProbeAdapters,
-} from '@onething/core/mcp'
-import type { JsonArray, JsonObject, JsonValue } from '@onething/core'
+  type MCPToolCallResult,
+} from '@shared/mcp/types'
+import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
 import { getMCPClientIdentity } from '@onething/runtime/mcp/identity'
 import {
   ONETHING_MCP_CLIENT_CAPABILITIES,

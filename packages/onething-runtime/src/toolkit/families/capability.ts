@@ -17,7 +17,8 @@
  */
 
 import { Intent, Tool } from '@onething/core/toolkit'
-import type { Effect, PlanContext, Preview, Result, RunContext, Scene } from '@onething/core/toolkit'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/core/toolkit'
+import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class CapabilityTool<In, Payload = In> extends Tool<In, Payload> {
   /** 带这只工具进场的 skill 名字。`undefined` = 不挂任何 skill,到处成立。 */

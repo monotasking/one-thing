@@ -1,4 +1,4 @@
-import type { JsonObject } from '@onething/core'
+import type { JsonObject } from '@shared/json'
 
 export type OnethingOAuthFlowType = 'authorization-code' | 'device'
 export type OnethingAuthFlowKind = 'pkce-callback' | 'manual-pkce' | 'device-code'

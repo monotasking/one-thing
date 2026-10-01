@@ -43,10 +43,10 @@ import {
   type GetSessionMessagesPageRequest,
   type GetSessionMessagesPageResponse,
   type IndexedSessionMessage,
-  type SessionLogEventRecord,
   type StoredChatMessage,
   type UserMessageMarker,
 } from '@onething/core/session'
+import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { JsonlLogPageSource } from '@onething/core/session/storage'
 
 export type SessionStorageFormat = 'legacy-json' | 'jsonl'

@@ -1,10 +1,10 @@
 import './permission-grants.js'
 
+export { Permission } from '@onething/core/permission'
 export {
   DEFAULT_PERMISSION_REJECTED_MESSAGE,
-  Permission,
   formatPermissionRejectedMessage,
-} from '@onething/core/permission'
+} from '@shared/permission/rejection-message'
 export type {
   PermissionCommandEnvelope,
   PermissionEventBusLike,

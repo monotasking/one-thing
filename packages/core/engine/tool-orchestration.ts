@@ -1,8 +1,13 @@
 import { coreToolCallSnapshot, findCoreToolCall, patchCoreToolCall, replaceCoreToolCall } from './tool-call-cow.js'
-import type { JsonObject, JsonValue } from '../json.js'
+import type { JsonObject, JsonValue } from '@shared/json.js'
 import { ToolExecutionScheduler } from '../agent-loop/tool-execution-scheduler.js'
 import { coreDiffHunksFromJson, type CoreDiffHunk } from '../tools/diff-hunks.js'
-import { detectSkillUsage, generateStepTitle, getStepType, type CoreStepType } from './tool-step.js'
+import {
+  detectSkillUsage,
+  generateStepTitle,
+  getStepType,
+  type CoreStepType,
+} from '@shared/engine/tool-step.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
 
 export interface CoreToolCallLike {

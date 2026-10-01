@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { Session } from '../session.js'
-import type { StreamChunkBase } from '../../events/types.js'
+import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 
 function sessionWithChunks(chunks: StreamChunkBase[]): Session {
   const session = new Session('progress-session')

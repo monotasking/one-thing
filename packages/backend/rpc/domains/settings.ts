@@ -57,7 +57,7 @@
  * `SYSTEM_THEME_CHANGED` 连端口都不用:它的事件源是系统主题的 updated 事件,
  * 从头到尾只住在宿主里。
  */
-import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
+import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import { ACPManager } from '@onething/runtime/acp'
 import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
 import { getCurrentBackendInstance } from '../../current.js'

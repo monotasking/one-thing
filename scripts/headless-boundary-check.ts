@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { builtinModules } from 'node:module'
 import path from 'node:path'
 import { findSourceControlCharacters } from './lib/source-text-policy.mjs'
 import { checkBackendPublicBoundaries, objectMethodBody } from './lib/backend-public-boundary.mjs'
@@ -2521,7 +2522,7 @@ function checkRuntimeWiringModulesStayAtTheEdge(): void {
 
 /**
  * 会话**词汇**只有一份:`SESSION_EVENT_TYPES`(50 条)+ `SESSION_COMMAND_TYPES`(12 条)
- * 都住在 `packages/core/events/`,shared 只做再导出。这条 check 守的是"别再手抄"。
+ * 都住在 `packages/shared/events/`(2026-10 ①a 从 core 搬回),core 从那里取。这条 check 守的是"别再手抄"。
  *
  * 判据形态:**精确值集**,不是命名空间前缀。两张表在这里被当场解析出来(所以加一条
  * 事件 = 自动进禁令,不用改这个文件),然后在 core / backend / runtime / renderer /
@@ -2543,9 +2544,11 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+// 2026-10(server / client 拆分 ①a):两张表的主人从 core 改为 shared —— 词汇是契约,core
+// 从 shared 取,拆掉 core ↔ shared 的环。判据不变,只是权威文件换了住址。
 const SESSION_VOCABULARY_REGISTRY_FILES = [
-  'packages/core/events/session-event-types.ts',
-  'packages/core/events/session-command-types.ts',
+  'packages/shared/events/session-event-types.ts',
+  'packages/shared/events/session-command-types.ts',
 ]
 
 /**
@@ -3129,7 +3132,10 @@ function checkCoreToolHelperTestsLiveInCorePackage(): void {
   const requiredCoreTests = [
     'packages/core/tools/__tests__/registry.test.ts',
     'packages/core/tools/__tests__/permission-guards.test.ts',
-    'packages/core/tools/__tests__/tool-result.test.ts',
+  ]
+  // 2026-10 ①c:`tool-result.ts` 随会话投影的闭包搬进了 shared,它的测试跟着模块走。
+  const requiredSharedTests = [
+    'packages/shared/tools/__tests__/tool-result.test.ts',
   ]
   const forbiddenMainTests = [
     'packages/backend/wiring/tools/__tests__/core-registry.test.ts',
@@ -3140,6 +3146,9 @@ function checkCoreToolHelperTestsLiveInCorePackage(): void {
     ...requiredCoreTests
       .filter(file => !fs.existsSync(path.join(root, file)))
       .map(file => `${file}: missing core package tool helper test`),
+    ...requiredSharedTests
+      .filter(file => !fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: missing shared package tool helper test`),
     ...forbiddenMainTests
       .filter(file => fs.existsSync(path.join(root, file)))
       .map(file => `${file}: core tool helper tests belong in packages/core/tools/__tests__`),
@@ -3187,93 +3196,78 @@ function checkCoreOwnsToolSchemaProjection(): void {
   assertNoMatches('packages/core owns legacy tool schema projection', lines)
 }
 
-function checkCoreOwnsToolFailureParameterSummary(): void {
-  const coreFile = path.join(root, 'packages/core/tools/tool-result.ts')
-  const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
-  const coreRootIndexFile = path.join(root, 'packages/core/index.ts')
-  const coreTestFile = path.join(root, 'packages/core/tools/__tests__/tool-result.test.ts')
-  const sharedFile = path.join(root, 'packages/shared/tool-failure-params.ts')
-  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
-  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
-  const coreRootIndexContent = fs.existsSync(coreRootIndexFile) ? fs.readFileSync(coreRootIndexFile, 'utf-8') : ''
-  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+/**
+ * 2026-10(server / client 拆分第①步,`docs/design/server-client-split-2026-10.md` §2):
+ * 下面四条从前叫「packages/core owns …」—— 协议定义在 core,shared 留一个再导出门面,
+ * 并禁止 shared 自己再写一份。①a / ①c 把这几份协议整块搬进了 shared(它们是 server 与
+ * client 之间的契约,或两边必须算出同一个答案的纯逻辑),门面随之删除,core 改为从 shared 取。
+ * 规则的**意图没变** —— 一份协议只有一个主人、别处不许再抄一份 —— 变的是主人的住址,
+ * 于是「不许重抄」的禁令从 shared 挪到了 core 那一侧。
+ */
+
+function checkSharedOwnsToolFailureParameterSummary(): void {
+  const sharedFile = path.join(root, 'packages/shared/tools/tool-result.ts')
+  const sharedTestFile = path.join(root, 'packages/shared/tools/__tests__/tool-result.test.ts')
+  const retiredFacade = path.join(root, 'packages/shared/tool-failure-params.ts')
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const sharedTestContent = fs.existsSync(sharedTestFile) ? fs.readFileSync(sharedTestFile, 'utf-8') : ''
   const requiredSymbols = [
     'ToolFailureParameterSummary',
     'summarizeToolFailureParameters',
   ]
   const lines = [
     ...requiredSymbols
-      .filter(symbol => !coreContent.includes(symbol))
-      .map(symbol => `${rel(coreFile)}: missing core-owned tool failure parameter symbol ${symbol}`),
+      .filter(symbol => !sharedContent.includes(symbol))
+      .map(symbol => `${rel(sharedFile)}: missing shared-owned tool failure parameter symbol ${symbol}`),
     ...requiredSymbols
-      .filter(symbol => !coreIndexContent.includes(symbol))
-      .map(symbol => `${rel(coreIndexFile)}: missing public core tools failure parameter export ${symbol}`),
-    ...requiredSymbols
-      .filter(symbol => !coreRootIndexContent.includes(symbol))
-      .map(symbol => `${rel(coreRootIndexFile)}: missing public root core failure parameter export ${symbol}`),
-    ...requiredSymbols
-      .filter(symbol => !coreTestContent.includes(symbol))
-      .map(symbol => `${rel(coreTestFile)}: missing core failure parameter test coverage for ${symbol}`),
-    ...(!sharedContent.includes('@onething/core/tools')
-      ? [`${rel(sharedFile)}: legacy shared tool failure parameters must re-export core tools protocol`]
+      .filter(symbol => !sharedTestContent.includes(symbol))
+      .map(symbol => `${rel(sharedTestFile)}: missing tool failure parameter test coverage for ${symbol}`),
+    ...(fs.existsSync(retiredFacade)
+      ? [`${rel(retiredFacade)}: the retired re-export facade must not come back (import @shared/tools/tool-result)`]
       : []),
-    ...(/from\s+['"]@onething\/core['"]/.test(sharedContent)
-      ? [`${rel(sharedFile)}: legacy shared tool failure parameters must not import broad core root entrypoint`]
-      : []),
-    ...(fs.existsSync(sharedFile)
-      ? matchingLines(sharedFile, SHARED_TOOL_FAILURE_PARAMETERS_FORBIDDEN_PATTERNS)
-      : [`${rel(sharedFile)}: missing legacy tool failure parameter facade`]),
+    // 不许在 core 里再抄一份。
+    ...walkFiles(path.join(root, 'packages/core/tools'))
+      .flatMap(file => matchingLines(file, SHARED_TOOL_FAILURE_PARAMETERS_FORBIDDEN_PATTERNS)),
   ]
 
-  assertNoMatches('packages/core owns tool failure parameter summary', lines)
+  assertNoMatches('packages/shared owns tool failure parameter summary', lines)
 }
 
-function checkCoreOwnsToolPermissionErrorText(): void {
-  const coreFile = path.join(root, 'packages/core/permission/index.ts')
-  const coreRootIndexFile = path.join(root, 'packages/core/index.ts')
-  const coreTestFile = path.join(root, 'packages/core/permission/__tests__/permission-errors.test.ts')
-  const coreToolResultFile = path.join(root, 'packages/core/tools/tool-result.ts')
-  const sharedFile = path.join(root, 'packages/shared/tool-errors.ts')
-  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
-  const coreRootIndexContent = fs.existsSync(coreRootIndexFile) ? fs.readFileSync(coreRootIndexFile, 'utf-8') : ''
-  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
-  const coreToolResultContent = fs.existsSync(coreToolResultFile) ? fs.readFileSync(coreToolResultFile, 'utf-8') : ''
+function checkSharedOwnsToolPermissionErrorText(): void {
+  const sharedFile = path.join(root, 'packages/shared/permission/rejection-message.ts')
+  const sharedTestFile = path.join(root, 'packages/shared/permission/__tests__/permission-errors.test.ts')
+  const sharedToolResultFile = path.join(root, 'packages/shared/tools/tool-result.ts')
+  const retiredFacade = path.join(root, 'packages/shared/tool-errors.ts')
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const sharedTestContent = fs.existsSync(sharedTestFile) ? fs.readFileSync(sharedTestFile, 'utf-8') : ''
+  const sharedToolResultContent = fs.existsSync(sharedToolResultFile) ? fs.readFileSync(sharedToolResultFile, 'utf-8') : ''
   const requiredSymbols = [
     'DEFAULT_PERMISSION_REJECTED_MESSAGE',
     'formatPermissionRejectedMessage',
   ]
   const lines = [
     ...requiredSymbols
-      .filter(symbol => !coreContent.includes(symbol))
-      .map(symbol => `${rel(coreFile)}: missing core-owned tool permission error text ${symbol}`),
+      .filter(symbol => !sharedContent.includes(symbol))
+      .map(symbol => `${rel(sharedFile)}: missing shared-owned tool permission error text ${symbol}`),
     ...requiredSymbols
-      .filter(symbol => !coreRootIndexContent.includes(symbol))
-      .map(symbol => `${rel(coreRootIndexFile)}: missing root core permission error text export ${symbol}`),
-    ...requiredSymbols
-      .filter(symbol => !coreTestContent.includes(symbol))
-      .map(symbol => `${rel(coreTestFile)}: missing permission error text test coverage for ${symbol}`),
-    // §17.8 U1-a:那句话搬去了零依赖叶子 `permission/rejection-message.ts`
-    // (桶带 `node:crypto|os|path`,而 `tool-result` 在投影折叠器的浏览器闭包里)。
-    // 门守的**事实没变** —— "复用 core 那一份,不许自己再抄一句";变的只是它从
-    // 哪条路径取。两条都认:桶再导出的就是叶子里那两样。
-    ...(!coreToolResultContent.includes("from '../permission/index.js'")
-      && !coreToolResultContent.includes("from '../permission/rejection-message.js'")
-      ? [`${rel(coreToolResultFile)}: tool failure text must reuse core permission error text`]
+      .filter(symbol => !sharedTestContent.includes(symbol))
+      .map(symbol => `${rel(sharedTestFile)}: missing permission error text test coverage for ${symbol}`),
+    // 工具失败的那句话复用这一份,不许自己再抄一句(§17.8 U1-a 的判例,住址换成 shared)。
+    ...(!sharedToolResultContent.includes("from '../permission/rejection-message.js'")
+      ? [`${rel(sharedToolResultFile)}: tool failure text must reuse the shared permission error text`]
       : []),
-    ...(fs.existsSync(coreToolResultFile)
-      ? matchingLines(coreToolResultFile, CORE_TOOL_RESULT_PERMISSION_ERROR_DUPLICATE_FORBIDDEN_PATTERNS)
-      : [`${rel(coreToolResultFile)}: missing core tool result helper`]),
-    ...(!sharedContent.includes('@onething/core/permission')
-      ? [`${rel(sharedFile)}: legacy shared tool errors must re-export core permission protocol`]
+    ...(fs.existsSync(sharedToolResultFile)
+      ? matchingLines(sharedToolResultFile, CORE_TOOL_RESULT_PERMISSION_ERROR_DUPLICATE_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedToolResultFile)}: missing shared tool result helper`]),
+    ...(fs.existsSync(retiredFacade)
+      ? [`${rel(retiredFacade)}: the retired re-export facade must not come back (import @shared/permission/rejection-message)`]
       : []),
-    ...(fs.existsSync(sharedFile)
-      ? matchingLines(sharedFile, SHARED_TOOL_ERRORS_FORBIDDEN_PATTERNS)
-      : [`${rel(sharedFile)}: missing legacy tool errors facade`]),
+    // 不许在 core 的权限目录里再抄一份。
+    ...walkFiles(path.join(root, 'packages/core/permission'))
+      .flatMap(file => matchingLines(file, SHARED_TOOL_ERRORS_FORBIDDEN_PATTERNS)),
   ]
 
-  assertNoMatches('packages/core owns tool permission error text', lines)
+  assertNoMatches('packages/shared owns tool permission error text', lines)
 }
 
 /**
@@ -3352,15 +3346,11 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
   assertNoMatches('packages/core owns session command/event IPC projections', lines)
 }
 
-function checkCoreOwnsStreamChunkProtocol(): void {
-  const coreFile = path.join(root, 'packages/core/events/stream-chunks.ts')
-  const coreIndexFile = path.join(root, 'packages/core/events/index.ts')
-  const coreTestFile = path.join(root, 'packages/core/events/__tests__/stream-chunks.test.ts')
+function checkSharedOwnsStreamChunkProtocol(): void {
   const sharedFile = path.join(root, 'packages/shared/events/stream-chunks.ts')
-  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
-  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
-  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const sharedTestFile = path.join(root, 'packages/shared/events/__tests__/stream-chunks.test.ts')
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const sharedTestContent = fs.existsSync(sharedTestFile) ? fs.readFileSync(sharedTestFile, 'utf-8') : ''
   const requiredSymbols = [
     'TextDeltaChunk',
     'ReasoningPlacement',
@@ -3369,43 +3359,34 @@ function checkCoreOwnsStreamChunkProtocol(): void {
     'StreamChunk',
   ]
   const lines = [
-    ...(!fs.existsSync(coreFile)
-      ? [`${rel(coreFile)}: missing core-owned stream chunk protocol`]
+    ...(!fs.existsSync(sharedFile)
+      ? [`${rel(sharedFile)}: missing shared-owned stream chunk protocol`]
       : []),
-    ...(!fs.existsSync(coreTestFile)
-      ? [`${rel(coreTestFile)}: missing core-owned stream chunk protocol tests`]
+    ...(!fs.existsSync(sharedTestFile)
+      ? [`${rel(sharedTestFile)}: missing shared-owned stream chunk protocol tests`]
       : []),
     ...requiredSymbols
-      .filter(symbol => !coreContent.includes(symbol))
-      .map(symbol => `${rel(coreFile)}: missing core-owned stream chunk symbol ${symbol}`),
+      .filter(symbol => !sharedContent.includes(symbol))
+      .map(symbol => `${rel(sharedFile)}: missing shared-owned stream chunk symbol ${symbol}`),
     ...requiredSymbols
-      .filter(symbol => !coreIndexContent.includes(symbol))
-      .map(symbol => `${rel(coreIndexFile)}: missing public core stream chunk export ${symbol}`),
-    ...requiredSymbols
-      .filter(symbol => !coreTestContent.includes(symbol))
-      .map(symbol => `${rel(coreTestFile)}: missing stream chunk protocol test coverage for ${symbol}`),
-    ...(!sharedContent.includes('@onething/core/events')
-      ? [`${rel(sharedFile)}: legacy shared stream chunks must re-export core event protocol`]
-      : []),
-    ...(fs.existsSync(sharedFile)
-      ? matchingLines(sharedFile, SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS)
-      : [`${rel(sharedFile)}: missing legacy stream chunk facade`]),
+      .filter(symbol => !sharedTestContent.includes(symbol))
+      .map(symbol => `${rel(sharedTestFile)}: missing stream chunk protocol test coverage for ${symbol}`),
+    // 不许在 core 的事件目录里再抄一份。
+    ...walkFiles(path.join(root, 'packages/core/events'))
+      .flatMap(file => matchingLines(file, SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS)),
   ]
 
-  assertNoMatches('packages/core owns stream chunk protocol', lines)
+  assertNoMatches('packages/shared owns stream chunk protocol', lines)
 }
 
-function checkCoreOwnsJsonProtocol(): void {
-  const coreFile = path.join(root, 'packages/core/json.ts')
-  const coreIndexFile = path.join(root, 'packages/core/index.ts')
-  const corePackageFile = path.join(root, 'packages/core/package.json')
-  const coreTestFile = path.join(root, 'packages/core/__tests__/json.test.ts')
+function checkSharedOwnsJsonProtocol(): void {
   const sharedFile = path.join(root, 'packages/shared/json.ts')
-  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
-  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
-  const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
-  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const sharedTestFile = path.join(root, 'packages/shared/__tests__/json.test.ts')
+  const retiredCoreFile = path.join(root, 'packages/core/json.ts')
+  const corePackageFile = path.join(root, 'packages/core/package.json')
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const sharedTestContent = fs.existsSync(sharedTestFile) ? fs.readFileSync(sharedTestFile, 'utf-8') : ''
+  const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
   const requiredSymbols = [
     'JsonPrimitive',
     'JsonValue',
@@ -3420,36 +3401,30 @@ function checkCoreOwnsJsonProtocol(): void {
     'toJsonSchemaObject',
   ]
   const lines = [
-    ...(!fs.existsSync(coreFile)
-      ? [`${rel(coreFile)}: missing core-owned JSON protocol`]
+    ...(!fs.existsSync(sharedFile)
+      ? [`${rel(sharedFile)}: missing shared-owned JSON protocol`]
       : []),
-    ...(!fs.existsSync(coreTestFile)
-      ? [`${rel(coreTestFile)}: missing core-owned JSON protocol tests`]
+    ...(!fs.existsSync(sharedTestFile)
+      ? [`${rel(sharedTestFile)}: missing shared-owned JSON protocol tests`]
       : []),
     ...requiredSymbols
-      .filter(symbol => !coreContent.includes(symbol))
-      .map(symbol => `${rel(coreFile)}: missing core-owned JSON protocol symbol ${symbol}`),
+      .filter(symbol => !sharedContent.includes(symbol))
+      .map(symbol => `${rel(sharedFile)}: missing shared-owned JSON protocol symbol ${symbol}`),
     ...requiredSymbols
-      .filter(symbol => !coreIndexContent.includes(symbol))
-      .map(symbol => `${rel(coreIndexFile)}: missing public core JSON protocol export ${symbol}`),
-    ...requiredSymbols
-      .filter(symbol => !coreTestContent.includes(symbol))
-      .map(symbol => `${rel(coreTestFile)}: missing JSON protocol test coverage for ${symbol}`),
-    ...(!corePackageContent.includes('"./json": "./json.ts"')
-      ? [`${rel(corePackageFile)}: missing public @onething/core/json export`]
+      .filter(symbol => !sharedTestContent.includes(symbol))
+      .map(symbol => `${rel(sharedTestFile)}: missing JSON protocol test coverage for ${symbol}`),
+    ...(fs.existsSync(retiredCoreFile)
+      ? [`${rel(retiredCoreFile)}: the JSON protocol lives in packages/shared/json.ts; core must not grow a second copy`]
       : []),
-    ...(!sharedContent.includes('@onething/core/json')
-      ? [`${rel(sharedFile)}: legacy shared JSON protocol must re-export core JSON protocol`]
+    ...(corePackageContent.includes('"./json"')
+      ? [`${rel(corePackageFile)}: @onething/core/json is retired; import @shared/json`]
       : []),
-    ...(/from\s+['"]@onething\/core['"]/.test(sharedContent)
-      ? [`${rel(sharedFile)}: legacy shared JSON protocol must not import broad core root entrypoint`]
-      : []),
-    ...(fs.existsSync(sharedFile)
-      ? matchingLines(sharedFile, SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS)
-      : [`${rel(sharedFile)}: missing legacy JSON protocol facade`]),
+    // 不许在 core 里再抄一份。
+    ...walkFiles(path.join(root, 'packages/core'))
+      .flatMap(file => matchingLines(file, SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS)),
   ]
 
-  assertNoMatches('packages/core owns JSON protocol', lines)
+  assertNoMatches('packages/shared owns JSON protocol', lines)
 }
 
 function checkChatResumeAfterToolConfirmStaysRetired(): void {
@@ -5327,6 +5302,16 @@ function checkNoRawControlCharacters(): void {
 const PLUGIN_HOST_MODULE_SPECIFIER = /['"](@onething\/(?!core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron['"]|electron\/)/
 const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [PLUGIN_HOST_MODULE_SPECIFIER]
 
+/**
+ * 内置插件的那一半。2026-10(server / client 拆分 ①a)把会话词汇等零依赖的契约叶子从 core
+ * 搬进了 shared —— 内置插件从前经 `@onething/core/events` 取 `SESSION_EVENT_TYPES`,现在只能经
+ * `@shared/events/…` 取。shared 的这些叶子与它们在 core 时是同一种东西(词汇、形状、纯函数),
+ * 所以对内置插件放行 `@shared/*`;**`@shared/ipc` 仍禁** —— 那是传输层的契约,插件不该认识宿主
+ * 怎么跟外界说话。用户插件不变:它们住在仓外,`@shared` 对它们本来就不存在。
+ */
+const BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER = /['"](@onething\/(?!core(?:\/|['"]))|@shared\/ipc(?:\/|\.js['"]|['"])|@main\/|@preload\/|@renderer|@\/|electron['"]|electron\/)/
+const BUILTIN_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER]
+
 const USER_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
   ...PLUGIN_HOST_IMPORT_PATTERNS,
   // 用户插件住在 <store>/plugins/<id>/,爬出插件目录去 import 宿主源码同样禁止
@@ -5337,11 +5322,11 @@ const USER_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
 function checkPluginsOnlyUseInjectedApi(): void {
   const lines: string[] = []
 
-  // (a) 内置插件实现:只准 Node 内置 / zod / @onething/core。
+  // (a) 内置插件实现:只准 Node 内置 / zod / @onething/core / shared 的非传输契约(见上)。
   for (const pluginId of listBuiltinPluginIds()) {
     const implFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, `${pluginId}.ts`)
     if (!fs.existsSync(implFile)) continue
-    lines.push(...matchingCodeLines(implFile, PLUGIN_HOST_IMPORT_PATTERNS))
+    lines.push(...matchingCodeLines(implFile, BUILTIN_PLUGIN_HOST_IMPORT_PATTERNS))
     lines.push(...codeOnlyLines(fs.readFileSync(implFile, 'utf-8'))
       .filter(({ code }) => /(?:\bfrom\s+|\brequire\(\s*|\bimport\(\s*|\bimport\s+)['"]\.{1,2}\//.test(code))
       .map(({ raw, lineNo }) => `${rel(implFile)}:${lineNo}: plugin implementation must not reach into sibling host modules — ${raw.trim()}`))
@@ -6797,8 +6782,9 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
  * 判据一句话:**它是 core 的客户端底座,不是任何一个壳的一部分**。所以既不认识
  * 前端框架(react / vue),也不认识宿主(electron / `@main` / `@preload`),也不
  * 反向依赖上层(`@onething/backend` / `@onething/runtime` —— 依赖是单向的:
- * 产品 ← 装配 ← 宿主,而客户端在这条链之外,只吃 `@shared` 契约与 `@onething/core`
- * 的纯类型)。`@renderer` / `@/` 是 Vue 渲染层的两个别名 —— 搬家的**目的**就是
+ * 产品 ← 装配 ← 宿主,而客户端在这条链之外,只吃 `@shared` 契约)。2026-10 ①d 起
+ * 连 `@onething/core` 的纯类型也不许了,那一条由 `checkClientImportsOnlySharedAndClient`
+ * 统一守(它覆盖 client 侧三棵树)。`@renderer` / `@/` 是 Vue 渲染层的两个别名 —— 搬家的**目的**就是
  * 把这一层从那棵树里摘出来,搬完再引回去等于白搬。
  */
 const CLIENT_PACKAGE_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
@@ -7000,34 +6986,168 @@ function checkShellsDoNotImportOtherShells(): void {
 }
 
 /**
- * **React 壳不 import runtime 的服务商代码**(服务商自述试点 P4,
- * `docs/design/architecture-direction-2026-10.md` §1 / §4)。
+ * **shared 只 import shared;client 侧只 import shared、`@onething/client` 与自己**
+ * (server / client 拆分第①步 ①d,`docs/design/server-client-split-2026-10.md` §0 / §2)。
+ * 零基线硬闸。
  *
- * 壳是界面客户端,服务商的事实(计费档位、有没有余额源、家族)由后端从各家 manifest 投影成
- * 纯数据,经 `providers.getProviders` 的 `ProviderInfo` 下发;要用的纯函数住在 `@shared`
- * (`provider-dials` / `provider-families` / `quota-windows` / `reasoning-effort`)。所以
- * `apps/desktop-react/src/**` 的产品代码对 `@onething/runtime/providers` 与
- * `@onething/runtime/agent-loop` 的**任何子路径**都是零 import —— 硬闸,无基线。
+ * 依赖方向只有一种:`client 侧 → shared ← server 侧`,client 与 server 互不 import。
  *
- * 只放过测试:`__tests__/` 目录、`*.test.ts(x)` / `*.spec.ts(x)`,以及 `__fixtures__/`。
- * 理由:夹具要演「后端下发的那一份」,最诚实的做法是跑产品层那一个投影
- * (`providerInfoOfManifest` / `effectiveModelFactsOf`),在测试里手抄一份档位地址表或
- * 家族表才是会漂的第二产地(`src/data/__fixtures__/providers.ts` 文件头)。
+ * - **shared**:非测试代码只许 import shared 自己(相对路径不出 `packages/shared`,或 `@shared/*`)。
+ *   不许 `@onething/*`、不许 `node:` / node 内建、不许 electron、不许第三方包 —— shared 要同时进
+ *   浏览器包、Metro(手机)与 node,带一个 node 依赖就有一边会坏。测试另放行 `vitest` 与 node
+ *   内建(用例跑在 node 里),其余同样禁。
+ * - **client 侧**(`apps/desktop-react/src`、`apps/mobile/{app,src}`、`packages/client`):非测试代码
+ *   只许 import `@shared/*`、`@onething/client` 与自己(第三方 npm 包不在本条射程内)。类型导入
+ *   一样算 —— 类型也是对 server 包的依赖,合包以后它会让 client 依赖 server。
+ *
+ * 放行写在这里,不写在注释里:
+ * - `apps/desktop-react/src` → `apps/desktop-react/electron/native-view-protocol.ts`:那是页面与
+ *   主进程之间的协议(原生视图的帧形状),属于 client 内部,与 server 无关。
+ * - 测试(`__tests__/`、`*.test.*`、`*.spec.*`)与 `__fixtures__/`:夹具要演「后端下发的那一份」,
+ *   最诚实的做法是跑后端那一个投影,在测试里手抄一份才是会漂的第二产地。
+ * - `packages/shared/backend/http-discovery.ts` 的四个 `node:` 内建:见下面那张表的理由。
+ *
+ * 服务商自述试点 P4 的 `checkReactShellReadsProvidersOverRpc`(壳不许 import
+ * `@onething/runtime/providers|agent-loop`)是本条的子集,已并入这里。
  */
-const REACT_SHELL_FORBIDDEN_RUNTIME_PROVIDER_IMPORTS: RegExp[] = [
-  /^@onething\/runtime\/providers(?:\/|$)/,
-  /^@onething\/runtime\/agent-loop(?:\/|$)/,
+const SHARED_NODE_BUILTIN_EXEMPTIONS = new Map<string, { specifiers: string[]; reason: string }>([
+  [
+    'packages/shared/backend/http-discovery.ts',
+    {
+      specifiers: ['node:fs', 'node:net', 'node:os', 'node:path'],
+      // 发现文件 `<store>/run/http.json` 的读法与判活(pid 在 + 端口能连)。它有两个消费者:
+      // 后端的 `server/discovery.ts`(拒启判据)与客户端 SDK 的 node 入口
+      // `@onething/client/node`(CLI / 脚本找活着的后端)。client 与 server 互不 import,
+      // 所以它只能住在两边都看得见的地方;照抄两份 = 两把尺子(文件头写着判例)。
+      // 浏览器包与手机都不引它(`@onething/client` 的浏览器入口不经 `./node`)。
+      // 第①步不动它;它在拆分里的去向列在 `server-client-split-2026-10.md` §6 的待拍事项里。
+      reason: 'discovery-file reader shared by the server (refuse-to-start) and @onething/client/node',
+    },
+  ],
+])
+
+const NODE_BUILTIN_MODULE_NAMES = new Set(builtinModules.map(name => name.replace(/^node:/, '')))
+
+function isNodeBuiltinSpecifier(specifier: string): boolean {
+  return specifier.startsWith('node:') || NODE_BUILTIN_MODULE_NAMES.has(specifier.split('/')[0] ?? '')
+}
+
+function isTestOrFixtureFile(file: string): boolean {
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(file)
+    || file.split(path.sep).includes('__tests__')
+    || file.split(path.sep).includes('__fixtures__')
+}
+
+function relativeTargetOf(file: string, specifier: string): string | null {
+  if (!specifier.startsWith('.')) return null
+  return path.resolve(path.dirname(file), specifier)
+}
+
+function isInside(dir: string, target: string): boolean {
+  const relPath = path.relative(dir, target)
+  return relPath === '' || (!relPath.startsWith('..') && !path.isAbsolute(relPath))
+}
+
+function forbiddenImportLines(
+  file: string,
+  isForbidden: (specifier: string) => boolean,
+): string[] {
+  return codeOnlyLines(fs.readFileSync(file, 'utf-8'))
+    .filter(({ code }) => importSpecifiersInCode(code).some(isForbidden))
+    .map(({ raw, lineNo }) => `${rel(file)}:${lineNo}: ${raw.trim()}`)
+}
+
+function checkSharedImportsOnlyShared(): void {
+  const sharedRoot = path.join(root, 'packages/shared')
+  const files = walkFiles(sharedRoot, [], { includeTests: true, extensions: /\.(ts|tsx|js|mjs|cjs)$/ })
+    .filter(file => !file.endsWith('.d.ts'))
+  const lines = files.flatMap(file => {
+    const isTest = isTestOrFixtureFile(file)
+    const exempt = SHARED_NODE_BUILTIN_EXEMPTIONS.get(rel(file))?.specifiers ?? []
+    return forbiddenImportLines(file, specifier => {
+      const target = relativeTargetOf(file, specifier)
+      if (target) return !isInside(sharedRoot, target)
+      if (specifier === '@shared' || specifier.startsWith('@shared/')) return false
+      if (exempt.includes(specifier)) return false
+      if (isTest && (specifier === 'vitest' || isNodeBuiltinSpecifier(specifier))) return false
+      return true
+    })
+  })
+  assertNoMatches(
+    'packages/shared imports only packages/shared (no @onething/*, no node built-ins, no electron, no third-party)',
+    lines,
+  )
+}
+
+const CLIENT_SIDE_ROOTS: Array<{ root: string; scan: string[] }> = [
+  { root: 'apps/desktop-react/src', scan: ['apps/desktop-react/src'] },
+  { root: 'apps/mobile', scan: ['apps/mobile/app', 'apps/mobile/src'] },
+  { root: 'packages/client', scan: ['packages/client'] },
 ]
 
-function checkReactShellReadsProvidersOverRpc(): void {
-  const lines = walkFiles(path.join(root, 'apps/desktop-react/src'), [], {
-    excludeDirs: ['__fixtures__'],
-    extensions: /\.(ts|tsx|js|mjs|cjs)$/,
-  })
-    .filter(file => !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file))
-    .flatMap(file => matchingImportSpecifierLines(file, REACT_SHELL_FORBIDDEN_RUNTIME_PROVIDER_IMPORTS))
+const CLIENT_SIDE_ALLOWED_ESCAPES: Array<{ from: string; to: string }> = [
+  // 页面 ↔ 主进程的原生视图协议,属 client 内部。
+  { from: 'apps/desktop-react/src', to: 'apps/desktop-react/electron/native-view-protocol' },
+]
+
+/**
+ * **临时**放行(server / client 拆分第①步,2026-10-01):这几处要搬进 shared 的模块(会话投影的 reducer /
+ * chat-messages / blobs、render-anchors、prompt-references)被另一个会话**未提交**的 `src/data/chat-*` 钉着,
+ * 为了不改别人的在途文件,先放行这几条具体的 import。**只许删不许加**:每一条都必须仍然命中一次真实的 import,
+ * 搬完之后命中消失,这里就会红,提示把那一条删掉。见 `docs/design/server-client-split-2026-10.md` §6。
+ */
+const CLIENT_SIDE_PENDING_MOVES: ReadonlyArray<{ file: string; specifier: string }> = [
+  { file: 'apps/desktop-react/src/data/chat-source.ts', specifier: '@onething/core/session/projection/reducer' },
+  { file: 'apps/desktop-react/src/data/chat-source.ts', specifier: '@onething/core/session/render-anchors' },
+  { file: 'apps/desktop-react/src/data/chat-fold.ts', specifier: '@onething/core/session/projection/chat-messages' },
+  { file: 'apps/desktop-react/src/data/chat-materialize.ts', specifier: '@onething/core/session' },
+  { file: 'apps/desktop-react/src/content/assemble/anchor.ts', specifier: '@onething/core/session/render-anchors' },
+  { file: 'apps/desktop-react/src/data/page-references.ts', specifier: '@onething/runtime/prompts/prompt-references' },
+  { file: 'apps/desktop-react/src/references/kinds/dir.ts', specifier: '@onething/runtime/prompts/prompt-references' },
+  { file: 'apps/desktop-react/src/references/kinds/file.ts', specifier: '@onething/runtime/prompts/prompt-references' },
+]
+
+function checkClientImportsOnlySharedAndClient(): void {
+  const lines: string[] = []
+  const pendingHits = new Set<string>()
+  for (const side of CLIENT_SIDE_ROOTS) {
+    const sideRoot = path.join(root, side.root)
+    const escapes = CLIENT_SIDE_ALLOWED_ESCAPES
+      .filter(escape => escape.from === side.root)
+      .map(escape => path.join(root, escape.to))
+    const files = side.scan.flatMap(dir => walkFiles(path.join(root, dir), [], {
+      excludeDirs: ['__fixtures__'],
+      extensions: /\.(ts|tsx|js|mjs|cjs)$/,
+    }))
+      .filter(file => !file.endsWith('.d.ts') && !isTestOrFixtureFile(file))
+    for (const file of files) {
+      lines.push(...forbiddenImportLines(file, specifier => {
+        const target = relativeTargetOf(file, specifier)
+        if (target) {
+          if (isInside(sideRoot, target)) return false
+          return !escapes.some(allowed => target.replace(/\.(ts|js)$/, '') === allowed)
+        }
+        if (/^@onething\//.test(specifier)) {
+          if (/^@onething\/client(?:\/|$)/.test(specifier)) return false
+          const relative = path.relative(root, file).split(path.sep).join('/')
+          const pending = CLIENT_SIDE_PENDING_MOVES.find(entry => entry.file === relative && entry.specifier === specifier)
+          if (pending) {
+            pendingHits.add(`${pending.file} ${pending.specifier}`)
+            return false
+          }
+          return true
+        }
+        return false
+      }))
+    }
+  }
+  for (const entry of CLIENT_SIDE_PENDING_MOVES) {
+    if (!pendingHits.has(`${entry.file} ${entry.specifier}`)) {
+      lines.push(`${entry.file}: 临时放行「${entry.specifier}」已不再命中 —— 从 CLIENT_SIDE_PENDING_MOVES 删掉这一条`)
+    }
+  }
   assertNoMatches(
-    'apps/desktop-react/src reads provider facts over RPC (no @onething/runtime/providers|agent-loop import outside tests and __fixtures__)',
+    'client side (apps/desktop-react/src, apps/mobile, packages/client) imports only @shared/*, @onething/client and itself',
     lines,
   )
 }
@@ -7069,7 +7189,8 @@ checkRuntimeHostBoundary()
 checkClientPackageBoundary()
 checkCoreSearchNamesNoCapability()
 checkShellsDoNotImportOtherShells()
-checkReactShellReadsProvidersOverRpc()
+checkSharedImportsOnlyShared()
+checkClientImportsOnlySharedAndClient()
 checkRuntimeWiringModulesStayAtTheEdge()
 checkSessionVocabularyUsesTheRegistry()
 checkGatewayHostBoundary()
@@ -7091,12 +7212,12 @@ checkMainCoreSystemAdapters()
 checkCorePublicExports()
 checkCoreToolHelperTestsLiveInCorePackage()
 checkCoreOwnsToolSchemaProjection()
-checkCoreOwnsToolFailureParameterSummary()
-checkCoreOwnsToolPermissionErrorText()
+checkSharedOwnsToolFailureParameterSummary()
+checkSharedOwnsToolPermissionErrorText()
 checkRuntimeToolHelperTestsLiveInRuntimePackage()
 checkCoreOwnsSessionCommandIpcOperation()
-checkCoreOwnsJsonProtocol()
-checkCoreOwnsStreamChunkProtocol()
+checkSharedOwnsJsonProtocol()
+checkSharedOwnsStreamChunkProtocol()
 checkChatResumeAfterToolConfirmStaysRetired()
 checkCorePromptAssemblyOwnedByRuntime()
 checkCorePromptContextRegistryOwnedByRuntime()

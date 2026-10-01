@@ -16,7 +16,7 @@
  * 若将来 server 真要多 owner，正确的修法是给 RPC 信封加 context，而不是让这个
  * 文件重新长出第二套 per-owner 分支。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RouteHandlers } from '@shared/ipc/router'
 import type { PromptsRoutes } from '@shared/ipc/prompts.js'
 import {
   createOnethingPromptForIpc,
