@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   acpAgentsToOnethingOpenRouterModels,
-  copilotModelInfoToOnethingOpenRouterModel,
   createOnethingModelEntriesFromModelsDev,
-  fetchOnethingGitHubCopilotModelsWithAuth,
   fetchOnethingModelsDevData,
   getConfiguredOnethingFallbackModels,
   getConfiguredOnethingModelIds,
-  createOnethingCodexModelsFetcher,
-  createOnethingCopilotModelsFetcher,
   getOnethingModelsWithCapabilities as getOnethingModelsWithCapabilitiesRaw,
   getRefreshableOnethingProviderIds,
   getOnethingModelById,
@@ -27,6 +23,12 @@ import {
   type OnethingOpenRouterModel,
   type OnethingProviderModelConfigs,
 } from '../model-registry.js'
+import { copilotModelInfoToOnethingOpenRouterModel } from '../vendors/github-copilot/models.js'
+import {
+  createOnethingCopilotModelsFetcher,
+  fetchOnethingGitHubCopilotModelsWithAuth,
+} from '../vendors/github-copilot/models-fetcher.js'
+import { createOnethingCodexModelsFetcher } from '../vendors/codex/models-fetcher.js'
 
 /**
  * 批 M:目录口的调度改成按 manifest `models.kind` 分派,Codex / Copilot 的列表口变成

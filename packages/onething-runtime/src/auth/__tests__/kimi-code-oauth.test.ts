@@ -14,7 +14,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { OnethingAuthService } from '../auth-service.js'
-import { getAuthProviderDefinition, resolveKimiOAuthHost } from '../registry.js'
+import { getAuthProviderDefinition } from '../registry.js'
+import { resolveKimiOAuthHost } from '../../providers/vendors/kimi-code/oauth.js'
 import type { OnethingOAuthToken } from '../types.js'
 import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
 

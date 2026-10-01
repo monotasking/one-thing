@@ -5,9 +5,7 @@ export type { DialField, DialOption, DialSpec } from './dials.js'
 export * from './agent-turn.js'
 export * from './agent-runtime-route.js'
 export * from './bound-fetch.js'
-export * from './codex.js'
 export * from './env.js'
-export * from './github-copilot.js'
 export * from './message-conversion.js'
 export * from './model-capability.js'
 export * from './model-registry.js'
@@ -42,14 +40,5 @@ export * from './endpoint.js'
 // 藏起来的输出上限默认值(用户裁定:宁可没有默认,也不要在用的时候被截断)。
 // `./deepseek.js`(老式 `Provider` 接口的 DeepSeek 实现)与 `./tool-result-content.js` 于
 // 2026-10-01 删除(服务商自述试点 P2):全仓零调用方,只剩这个桶的再导出。
-export {
-  CODEX_NATIVE_IMAGE_GENERATION_TOOL,
-  providerConfigUsesCodexOAuth,
-  resolveCodexNativeToolsFromModelInfo,
-  shouldResolveCodexNativeTools,
-} from './codex-native-tools.js'
-export type {
-  CoreCodexNativeModelInfo,
-  CoreCodexNativeProviderConfig,
-  CoreCodexNativeToolSettings,
-} from './codex-native-tools.js'
+// `./codex.js` / `./codex-native-tools.js` / `./github-copilot.js` 于 P2 第 4 批搬回
+// `vendors/{codex,github-copilot}/`;它们的符号不再经这个桶导出,用的人从那一家的模块直接 import。

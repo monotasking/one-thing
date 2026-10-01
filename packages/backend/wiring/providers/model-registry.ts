@@ -46,10 +46,9 @@ import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "./space-credentials.js";
 import { createRequiredAppFetch } from "../../provider-binding/bound-fetch.js";
 import {
-	getCodexFallbackModel,
-	getCodexFallbackModels,
-} from "./builtin/codex.js";
-import { detectModelCapabilities } from "./builtin/github-copilot.js";
+	VENDOR_RUNTIMES,
+	type VendorFallbackModels,
+} from "@onething/runtime/providers/vendors/runtimes";
 import { consolePort, getLogger } from '../logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingModelRegistryRefreshLogger } from '@onething/runtime/providers/model-registry'
@@ -61,256 +60,32 @@ const log = getLogger('providers.registry')
 const consoleLog: ConsoleLikePort & OnethingModelRegistryRefreshLogger = consolePort(log)
 
 
-// Fallback models for Grok (grok / grok-oauth) when models.dev data is unavailable.
-// These provide at least the default model so users don't see "No models found" on first load.
-const GROK_FALLBACK_MODELS: Record<string, OpenRouterModel> = {
-	"grok-4.5": {
-		id: "grok-4.5",
-		name: "grok-4.5",
-		description: "Grok 4.5",
-		context_length: 500000,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 500000,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "reasoning", "temperature"],
-	},
-	"grok-4.3": {
-		id: "grok-4.3",
-		name: "grok-4.3",
-		description: "Grok 4.3",
-		context_length: 1000000,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 1000000,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "reasoning", "temperature"],
-	},
-	"grok-4.20-0309-reasoning": {
-		id: "grok-4.20-0309-reasoning",
-		name: "grok-4.20-0309-reasoning",
-		description: "Grok 4 reasoning",
-		context_length: 1000000,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 1000000,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "reasoning", "temperature"],
-	},
-	"grok-4.20-0309-non-reasoning": {
-		id: "grok-4.20-0309-non-reasoning",
-		name: "grok-4.20-0309-non-reasoning",
-		description: "Grok 4 non-reasoning",
-		context_length: 1000000,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 1000000,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "temperature"],
-	},
-	"grok-4.20-multi-agent-0309": {
-		id: "grok-4.20-multi-agent-0309",
-		name: "grok-4.20-multi-agent-0309",
-		description: "Grok 4 multi-agent",
-		context_length: 1000000,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 1000000,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "reasoning", "temperature"],
-	},
-	"grok-build-0.1": {
-		id: "grok-build-0.1",
-		name: "grok-build-0.1",
-		description: "Grok Build",
-		context_length: 256000,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 256000,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "reasoning", "temperature"],
-	},
-	"grok-3-latest": {
-		id: "grok-3-latest",
-		name: "grok-3-latest",
-		description: "Latest Grok 3 model",
-		context_length: 131072,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 131072,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "temperature"],
-	},
-	"grok-3-fast-latest": {
-		id: "grok-3-fast-latest",
-		name: "grok-3-fast-latest",
-		description: "Fast Grok 3 model",
-		context_length: 131072,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 131072,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "temperature"],
-	},
-	"grok-3-mini-latest": {
-		id: "grok-3-mini-latest",
-		name: "grok-3-mini-latest",
-		description: "Grok 3 Mini reasoning model",
-		context_length: 131072,
-		architecture: {
-			modality: "multimodal",
-			input_modalities: ["text", "image"],
-			output_modalities: ["text"],
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: 131072,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: ["tools", "reasoning", "temperature"],
-	},
-};
-
 function getProviderConfigs(): OnethingProviderModelConfigs | undefined {
 	return getSettings()?.ai?.providers as
 		| OnethingProviderModelConfigs
 		| undefined;
 }
 
-function copilotFallbackModel(modelId: string): OpenRouterModel {
-	const caps = detectModelCapabilities(modelId);
-	const inputModalities = ["text"];
-	const outputModalities = ["text"];
-	const supportedParams: string[] = [];
-	if (caps.hasVision) inputModalities.push("image");
-	if (caps.hasImageGeneration) outputModalities.push("image");
-	if (caps.hasTools) supportedParams.push("tools");
-	if (caps.hasReasoning) supportedParams.push("reasoning");
-
-	return {
-		id: modelId,
-		name: modelId,
-		description: "",
-		context_length: caps.contextLength,
-		architecture: {
-			modality: caps.hasImageGeneration ? "image" : "text",
-			input_modalities: inputModalities,
-			output_modalities: outputModalities,
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: caps.contextLength,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: supportedParams,
-	};
-}
-
 /**
  * 目录里没有时的兜底表,**按 provider id 登记**(批 M:从前是一串按名字的 if)。
  * `model` 答单个型号,`all` 答「这家的目录整个是空的」时列什么。没登记 = 没有兜底。
+ *
+ * 服务商自述试点 P2 第 4 批起每家的兜底行由自己带(`VendorRuntime.fallbackModels`,住
+ * `vendors/<id>/`),这里读名册、不点名。名册在调用时才读(它会拉起 agent-loop,模块加载期读会成环)。
  */
-interface ProviderFallbackCatalog {
-	model(modelId: string): OpenRouterModel | undefined;
-	all(): OpenRouterModel[];
+function fallbackCatalogOf(providerId: string): VendorFallbackModels | undefined {
+	return VENDOR_RUNTIMES.find((vendor) => vendor.id === providerId)?.fallbackModels;
 }
-
-const GROK_FALLBACK_CATALOG: ProviderFallbackCatalog = {
-	model: (modelId) => GROK_FALLBACK_MODELS[modelId],
-	all: () => Object.values(GROK_FALLBACK_MODELS),
-};
-
-const PROVIDER_FALLBACK_CATALOGS: Readonly<Record<string, ProviderFallbackCatalog>> = {
-	codex: {
-		model: (modelId) => getCodexFallbackModel(modelId),
-		all: () => getCodexFallbackModels(),
-	},
-	"github-copilot": {
-		model: copilotFallbackModel,
-		all: () => [],
-	},
-	// grok / grok-oauth 读同一本 xAI 目录,兜底也是同一张。
-	grok: GROK_FALLBACK_CATALOG,
-	"grok-oauth": GROK_FALLBACK_CATALOG,
-};
 
 function getProviderDirectFallbackModel(
 	modelId: string,
 	providerId?: string,
 ): OpenRouterModel | undefined {
-	return providerId ? PROVIDER_FALLBACK_CATALOGS[providerId]?.model(modelId) : undefined;
+	return providerId ? (fallbackCatalogOf(providerId)?.model(modelId) as OpenRouterModel | undefined) : undefined;
 }
 
 function getProviderFallbackModels(providerId: string): OpenRouterModel[] {
-	return PROVIDER_FALLBACK_CATALOGS[providerId]?.all() ?? [];
+	return (fallbackCatalogOf(providerId)?.all() as OpenRouterModel[] | undefined) ?? [];
 }
 
 function queryOptions(): OnethingModelRegistryQueryOptions {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTurnRequest } from '@onething/core/agent-loop'
 import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
-import { createCodexAgentProvider } from '../providers/codex.js'
+import { createCodexAgentProvider } from '../../providers/vendors/codex/agent-provider.js'
 import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'
 
 const PDF_BASE64 = Buffer.from('%PDF-1.4 fake').toString('base64')

@@ -4391,14 +4391,24 @@ function checkRuntimeOwnsModelsIpcPresentation(): void {
   const requiredRuntimeSymbols = [
     'mergeOnethingModelsById',
     'getConfiguredOnethingFallbackModels',
-    'copilotModelInfoToOnethingOpenRouterModel',
-    'fetchOnethingGitHubCopilotModelsWithAuth',
     'acpAgentsToOnethingOpenRouterModels',
+  ]
+  // 服务商自述试点 P2 第 4 批:Copilot 的目录行与列表口取数随这家搬回 `vendors/github-copilot/`,
+  // 断言跟着指向新家(仍是 runtime 拥有,不许回流到 RPC 域)。
+  const copilotOwnedSymbols: Array<[string, string]> = [
+    ['packages/onething-runtime/src/providers/vendors/github-copilot/models.ts', 'copilotModelInfoToOnethingOpenRouterModel'],
+    ['packages/onething-runtime/src/providers/vendors/github-copilot/models-fetcher.ts', 'fetchOnethingGitHubCopilotModelsWithAuth'],
   ]
   const lines = [
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...copilotOwnedSymbols
+      .filter(([file, symbol]) => {
+        const absolute = path.join(root, file)
+        return !fs.existsSync(absolute) || !fs.readFileSync(absolute, 'utf-8').includes(symbol)
+      })
+      .map(([file, symbol]) => `${file}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(adapterFile)
       ? matchingLines(adapterFile, MAIN_MODELS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
       : [`${rel(adapterFile)}: missing models RPC domain`]),

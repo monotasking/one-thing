@@ -55,19 +55,19 @@
  * `gpt-image-*` 仍走专用生图流(`/v1/images/*`),那条通路不在回合里。
  */
 import type { AgentModelCapabilities } from "@onething/core/agent-loop";
-import type { TurnContext } from "../base/index.js";
-import { OPENAI_RESPONSES_THINKING_WIRES } from "../thinking/index.js";
-import { onethingOpenAIAcceptsOriginalImageDetail } from "../../../providers/model-capability.js";
+import type { TurnContext } from "../../../agent-loop/providers/base/index.js";
+import { OPENAI_RESPONSES_THINKING_WIRES } from "../../../agent-loop/providers/thinking/openai-responses-reasoning.js";
+import { onethingOpenAIAcceptsOriginalImageDetail } from "../../model-families/openai.js";
 import {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL,
-	type CodexTool,
-} from "../wires/index.js";
-import { promptCacheKeyExtraBody } from "./recipe.js";
+	type ResponsesNativeTool,
+} from "../../../agent-loop/providers/wires/index.js";
+import { promptCacheKeyExtraBody } from "../../../agent-loop/providers/dialects/recipe.js";
 import {
 	defineResponsesDialect,
 	type ResponsesDialectSpec,
-} from "./responses-recipe.js";
+} from "../../../agent-loop/providers/dialects/responses-recipe.js";
 
 /** 官方 REST 根地址 —— `POST https://api.openai.com/v1/responses`。 */
 export const OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -141,7 +141,7 @@ export const OPENAI_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
  * `/docs/guides/tools-image-generation`:「Use `png` (the default) or `webp`」,
  * 显式写出默认值,免得哪天默认变了两条线一起漂)。
  */
-function openAINativeTools(turn: TurnContext): CodexTool[] {
+function openAINativeTools(turn: TurnContext): ResponsesNativeTool[] {
 	return turn.request.requestedOutputModalities?.includes("image")
 		? [{ type: "image_generation", output_format: "png" }]
 		: [];

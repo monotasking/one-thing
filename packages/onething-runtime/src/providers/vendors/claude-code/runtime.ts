@@ -12,11 +12,13 @@ import {
 } from "../../../agent-loop/providers/dialects/anthropic-recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { CLAUDE_CODE_DIALECT, CLAUDE_CODE_OAUTH_BETA_HEADERS } from "./dialect.js";
+import { CLAUDE_CODE_CONFIG } from "./oauth.js";
 import { claudeCodeQuotaSource } from "./quota.js";
 
 export const CLAUDE_CODE_RUNTIME: VendorRuntime = {
 	id: "claude-code",
 	quotaSources: [claudeCodeQuotaSource],
+	oauth: CLAUDE_CODE_CONFIG,
 	createProvider: (config, options, kit) => {
 		const accessToken = kit.accessToken(config);
 		if (!accessToken) {

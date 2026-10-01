@@ -20,7 +20,7 @@ import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
 import { createClaudeAgentProvider } from "../../../providers/vendors/claude/agent-provider.js";
-import { createCodexAgentProvider } from "../codex.js";
+import { createCodexAgentProvider } from "../../../providers/vendors/codex/agent-provider.js";
 
 const COMPACT_SUMMARY_USER =
 	"The conversation history before this point was compacted into the following summary:\n\n<summary>\nEarlier work\n</summary>";

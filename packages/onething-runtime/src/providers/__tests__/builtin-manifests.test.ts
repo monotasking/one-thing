@@ -9,7 +9,7 @@ import {
   registerProviderManifest,
   resetProviderManifestRegistryForTests,
 } from '../manifest.js'
-import { ONETHING_CODEX_BASE_URL, ONETHING_CODEX_DEFAULT_MODEL, ONETHING_CODEX_PROVIDER_ID } from '../codex.js'
+import { ONETHING_CODEX_BASE_URL, ONETHING_CODEX_DEFAULT_MODEL, ONETHING_CODEX_PROVIDER_ID } from '../vendors/codex/models.js'
 import { getAuthProviderDefinition } from '../../auth/registry.js'
 import { getDialect } from '../../agent-loop/providers/base/index.js'
 import '../../agent-loop/providers/dialects/index.js'

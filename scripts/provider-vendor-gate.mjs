@@ -66,11 +66,25 @@ const REGISTRY_FILES = [
 
 const NON_VENDOR_IDS = new Set(['acp'])
 
-/** 线协议的名字(不是服务商)。命中这些的 token 不计。 */
+/**
+ * 线协议 / 数据格式的名字(不是服务商)。命中这些的 token 不计。
+ *
+ * `OpenRouterModel`(P2 第 4 批加):全仓的模型目录行都是 OpenRouter `/models` 的那个形状
+ * (`OnethingOpenRouterModel`、`openRouterModelToOnethingCapabilityEntry`……),说的是一种格式,
+ * 与 OpenRouter 这一家服务商无关 —— 壳与 codex / copilot / grok 的目录代码都用它。
+ */
 const PROTOCOL_TOKENS = [
   /openai[-_]?(chat|responses|compatible|effort|o[-_]?series|file)/i,
   /gemini[-_]?(generateContent|wire|messages|level|budget|errors|recipe)/i,
+  /openrouter[-_]?model/i,
 ]
+
+/**
+ * HTTP 头名(连字符分隔、每段首字母大写:`OpenAI-Intent`、`Copilot-Integration-Id`)是线上的字段名,
+ * 由那一家的后台定义、只能照抄 —— 不是在点哪一家服务商的名(P2 第 4 批加)。整串是头名形状的
+ * 字符串字面量不计;它里面的服务商名照样会在别的 token 上被认出来。
+ */
+const HTTP_HEADER_NAME = /^(?:[A-Z][A-Za-z0-9]*-)+[A-Z][A-Za-z0-9]*$/
 
 /** 扫描规模下限:遍历坏了同样长得像「全治愈了」。 */
 const MIN_SCANNED_FILES = 1500
@@ -143,7 +157,7 @@ export function mentions(source, id, fileName = 'x.ts') {
   const { identifiers, strings } = codeTokens(source, fileName)
   if (strings.some((text) => text === id)) return true
   if (identifiers.some((name) => textMentions(name, id))) return true
-  return strings.some((text) => textMentions(text, id))
+  return strings.some((text) => !HTTP_HEADER_NAME.test(text) && textMentions(text, id))
 }
 
 export function vendorIds() {
@@ -235,6 +249,9 @@ function selfTest() {
   expect('gemini 本家标识符算', mentions('const GEMINI_DIALECT = 1', 'gemini'))
   expect('模型路径的厂牌前缀不算', !mentions("const m = 'openai/gpt-4o'", 'openai'))
   expect('认模型 id 的正则不算', !mentions('const r = /^deepseek-v[34]/', 'deepseek'))
+  expect('目录行格式名不算', !mentions('const m: OnethingOpenRouterModel[] = []', 'openrouter'))
+  expect('HTTP 头名不算', !mentions('const h = { "OpenAI-Intent": "conversation-panel" }', 'openai'))
+  expect('普通字符串里的家名照算', mentions('const d = "Most capable OpenAI model"', 'openai'))
   const up = compare(['a x.ts'], ['a x.ts', 'a y.ts'])
   expect('新的一对算红', up.regressions.length === 1 && up.improvements.length === 0)
   const down = compare(['a x.ts', 'a y.ts'], ['a x.ts'])
@@ -245,7 +262,7 @@ function selfTest() {
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log(`[provider-vendor-gate] self-test ok — 18 checks passed`)
+  console.log(`[provider-vendor-gate] self-test ok — 21 checks passed`)
 }
 
 function main() {

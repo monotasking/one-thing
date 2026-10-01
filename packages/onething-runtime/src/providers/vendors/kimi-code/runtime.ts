@@ -11,9 +11,11 @@ import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../kimi/endpoint.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { KIMI_CODE_DIALECT } from "./dialect.js";
+import { KIMI_CODE_CONFIG } from "./oauth.js";
 
 export const KIMI_CODE_RUNTIME: VendorRuntime = {
 	id: "kimi-code",
+	oauth: KIMI_CODE_CONFIG,
 	createProvider: (config, options, kit) => {
 		const accessToken = kit.accessToken(config);
 		if (!accessToken) {

@@ -23,6 +23,10 @@
  * P4-4 之前这张表住在 `openai-chat-provider-options.ts` 里(P3-5a)。grok 是
  * 唯一认它的家,而 grok 已经整家搬到 openai-responses —— 表跟着搬出来独立成
  * 模块,于是「什么算白名单」仍然只有一处,而两条线协议谁都不必知道对方。
+ *
+ * 服务商自述试点 P2 第 4 批从 `agent-loop/providers/wires/xai-search-parameters.ts` 搬回家:
+ * 线协议层的袋(`openai-responses-provider-options.ts`)不再按名 import 这张表,而是读配方
+ * 交进来的函数(`GROK_PROVIDER_OPTIONS.searchParameters = pickGrokSearchParameters`)。
  */
 
 /** `search_parameters.mode` 的三个合法值。 */

@@ -12,7 +12,8 @@
  * 之后,`responsesDialect(spec)` 里**一个 codex 字样都没有**:
  *
  *  - `endpoint`:默认就是 `<baseUrl>/responses` 这条最普通的拼法;codex 传
- *    自己的 `responsesEndpoint()`(三态归一化)进来。
+ *    自己的 `responsesEndpoint()`(三态归一化,P2 第 4 批起住
+ *    `providers/vendors/codex/dialect.ts`,连同 `CODEX_DIALECT_SPEC`)进来。
  *  - `auth`:配方**必须**收一条(登记期给占位)。codex 传 `CodexOAuthAuth`,
  *    xAI 传 `BearerApiKeyAuth`。
  *  - `reasoning`:codex 传 `RESPONSES_THINKING_WIRES`(`include` 与 `reasoning`
@@ -66,7 +67,6 @@ import {
 export type FetchFn = typeof globalThis.fetch;
 
 export const CODEX_PROVIDER_ID = "codex";
-export const CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
 export const CODEX_CLIENT_VERSION = process.env.npm_package_version || "1.1.0";
 export const CODEX_FALLBACK_INSTRUCTIONS =
 	"You are Codex, a helpful AI coding assistant.";
@@ -224,37 +224,11 @@ export function codexAuth(options: CodexAuthOptions = {}): AuthStrategy {
 // 端点
 // ---------------------------------------------------------------------------
 
-/** `resolveCodexResponsesUrl` 逐字:三态归一化到同一个 `…/codex/responses`。 */
-export function resolveCodexResponsesUrl(baseUrl?: string): string {
-	const raw = baseUrl && baseUrl.trim().length > 0 ? baseUrl : CODEX_BASE_URL;
-	const normalized = raw.replace(/\/+$/, "");
-	if (normalized.endsWith("/codex/responses")) return normalized;
-	if (normalized.endsWith("/codex")) return `${normalized}/responses`;
-	return `${normalized}/codex/responses`;
-}
-
-/**
- * **codex 专属**的端点:`path` 是空串,真正的路径是 baseUrl **本身**的三态
- * 归一化结果,只能在 `decorateUrl` 里长出来(basePath 拼接会把
- * `…/codex/responses` 拼成 `…/codex/responses/responses`)。URL 上不带凭据,
- * 所以不需要 `redactForDump`。
- */
-export function responsesEndpoint(
-	defaultBaseUrl: string = CODEX_BASE_URL,
-): DialectEndpoint {
-	return {
-		defaultBaseUrl,
-		path: "",
-		decorateUrl(url: string): string {
-			return resolveCodexResponsesUrl(url);
-		},
-	};
-}
-
 /**
  * 这条线协议**最普通**的端点拼法:`<baseUrl>/responses`(官方
  * `POST /v1/responses`,baseUrl 就是 `https://api.x.ai/v1`)。配方不给
- * `endpoint` 时用它 —— codex 那份三态归一化是它自己的事,不是这条线的默认。
+ * `endpoint` 时用它 —— codex 那份三态归一化是它自己的事(住 `providers/vendors/codex/dialect.ts`),
+ * 不是这条线的默认。
  */
 export function plainResponsesEndpoint(defaultBaseUrl: string): DialectEndpoint {
 	return { defaultBaseUrl, path: "/responses" };
@@ -295,25 +269,6 @@ export const CODEX_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 // ---------------------------------------------------------------------------
 // 配方
 // ---------------------------------------------------------------------------
-
-/**
- * **codex 那一份配方主体**(除了 id)—— 两个构造点共用一份,于是
- * `dialects/codex.ts` 的具名方言与 `providers/codex.ts` 那个即用即弃的门面
- * 永远同解。
- *
- * P4-4 之前这几样是 `responsesDialect()` 的默认值,门面因此「不写就对」;
- * 现在配方通用了,谁要 codex 的行为谁就得**明说**,所以它成了一个常量而不是
- * 一句默认。`codex-provider.test.ts` 的 image_generation 断言就是这条的门。
- */
-export const CODEX_DIALECT_SPEC: Omit<ResponsesDialectSpec, "id"> = {
-	defaultBaseUrl: CODEX_BASE_URL,
-	endpoint: responsesEndpoint(CODEX_BASE_URL),
-	store: false,
-	nativeTools: (turn) =>
-		turn.request.requestedOutputModalities?.includes("image")
-			? [{ type: "image_generation", output_format: "png" }]
-			: [],
-};
 
 export interface ResponsesDialectSpec {
 	id: string;

@@ -9,7 +9,11 @@
  *  - 运行时工厂由 `agent-loop/providers/factory.ts` 按名册接进工厂表 —— 那边持有表,
  *    这里只交名册,免得两边互相 import;
  *  - 配额源(余额 / 用量)由 `providers/quota/registry.ts` 第一次被问到时**惰性**读名册
- *    (它若在加载时就读,会经本文件把整个 agent-loop 拉进来、与 manifest 注册表成环)。
+ *    (它若在加载时就读,会经本文件把整个 agent-loop 拉进来、与 manifest 注册表成环);
+ *  - OAuth 登录定义由 `auth/registry.ts` 同样**惰性**读名册(P2 第 4 批);
+ *  - 列表口(manifest `models.kind === 'endpoint'` 的那几家)与目录兜底行由宿主按名册建表
+ *    (`backend/rpc/domains/models.ts`、`backend/wiring/providers/model-registry.ts`),宿主把
+ *    自己才有的东西(auth 服务、app fetch、设置、落盘)经一份**不点名**的 `VendorModelsFetcherDeps` 交进来。
  */
 import type { AgentProvider } from "@onething/core/agent-loop";
 import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../../agent-loop/providers/base/index.js";
@@ -17,13 +21,27 @@ import type {
 	AgentProviderRuntimeConfig,
 	CreateAgentProviderFromRuntimeOptions,
 } from "../../agent-loop/providers/factory.js";
+import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/types.js";
+import type { OnethingHttpPolicyName } from "../bound-fetch.js";
+import type {
+	OnethingAccessTokenLike,
+	OnethingConfiguredModelSelection,
+	OnethingEndpointModelsFetcher,
+	OnethingModelRegistryRefreshLogger,
+	OnethingOpenRouterModel,
+} from "../model-registry.js";
 import type { QuotaSource } from "../quota/source.js";
 import { CLAUDE_RUNTIME } from "./claude/runtime.js";
 import { CLAUDE_CODE_RUNTIME } from "./claude-code/runtime.js";
+import { CODEX_RUNTIME } from "./codex/runtime.js";
 import { DEEPSEEK_RUNTIME } from "./deepseek/runtime.js";
 import { GEMINI_RUNTIME } from "./gemini/runtime.js";
+import { GITHUB_COPILOT_RUNTIME } from "./github-copilot/runtime.js";
+import { GROK_RUNTIME } from "./grok/runtime.js";
+import { GROK_OAUTH_RUNTIME } from "./grok-oauth/runtime.js";
 import { KIMI_RUNTIME } from "./kimi/runtime.js";
 import { KIMI_CODE_RUNTIME } from "./kimi-code/runtime.js";
+import { OPENAI_RUNTIME } from "./openai/runtime.js";
 import { OPENROUTER_RUNTIME } from "./openrouter/runtime.js";
 import { QWEN_RUNTIME } from "./qwen/runtime.js";
 import { ZHIPU_RUNTIME } from "./zhipu/runtime.js";
@@ -39,12 +57,49 @@ export interface VendorRuntimeKit {
 	accessToken(config: AgentProviderRuntimeConfig): string;
 }
 
+/**
+ * 宿主交给各家列表口的通用依赖 —— 一格都不点哪一家:这家的缓存目录、落盘、用户在设置里的选型、
+ * auth 服务的两个取 token 口、宿主的 app fetch(按 policy 名取)、日志。
+ */
+export interface VendorModelsFetcherDeps {
+	/** 设置里缓存的这家目录。 */
+	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
+	/** 现取到的目录落盘。 */
+	saveProviderModels(providerId: string, models: OnethingOpenRouterModel[]): Promise<void> | void;
+	/** 用户在设置里为这家选了哪些型号(`model` / `selectedModels`)。 */
+	configuredSelection(providerId: string): OnethingConfiguredModelSelection | undefined;
+	/** 当前存着的 OAuth token(不刷新)。 */
+	getToken(
+		providerId: string,
+	): Promise<OnethingAccessTokenLike | null | undefined> | OnethingAccessTokenLike | null | undefined;
+	/** 必要时先刷新的 OAuth token。 */
+	refreshTokenIfNeeded(providerId: string): Promise<OnethingOAuthToken>;
+	/** 宿主的 app fetch(代理 / 超时 / 重试按 policy)。 */
+	fetch(policy: OnethingHttpPolicyName): typeof globalThis.fetch;
+	logger?: OnethingModelRegistryRefreshLogger;
+}
+
+/** 目录里没有时的兜底:`model` 答单个型号,`all` 答「这家的目录整个是空的」时列什么。 */
+export interface VendorFallbackModels {
+	model(modelId: string): OnethingOpenRouterModel | undefined;
+	all(): OnethingOpenRouterModel[];
+}
+
 export interface VendorRuntime {
 	id: string;
 	/** 这家自己的思考参数线型(`thinkingWires` 里按 id 取)。 */
 	thinkingWires?: readonly ThinkingWire[];
 	/** 这家的配额源(`providers/quota/registry.ts` 惰性读;manifest 的 `quotaSource` 指向其 id)。 */
 	quotaSources?: readonly QuotaSource[];
+	/** 这家的 OAuth 登录定义(`auth/registry.ts` 惰性读;manifest `auth.kind === 'oauth'` 的家才有)。 */
+	oauth?: OnethingAuthProviderDefinition;
+	/**
+	 * 这家自己的列表口(manifest `models.kind === 'endpoint'`,且通用直连拿不到它要的东西 ——
+	 * 比如要 OAuth token)。缺席 = 走通用路。
+	 */
+	createModelsFetcher?(deps: VendorModelsFetcherDeps): OnethingEndpointModelsFetcher;
+	/** 目录里没有这一型 / 整本目录是空的时的兜底行。缺席 = 没有兜底。 */
+	fallbackModels?: VendorFallbackModels;
 	/** 缺席 = 这家没有专属工厂,按 manifest 的方言走通用那条路。 */
 	createProvider?(
 		config: AgentProviderRuntimeConfig,
@@ -56,10 +111,15 @@ export interface VendorRuntime {
 export const VENDOR_RUNTIMES: readonly VendorRuntime[] = [
 	CLAUDE_RUNTIME,
 	CLAUDE_CODE_RUNTIME,
+	CODEX_RUNTIME,
 	DEEPSEEK_RUNTIME,
 	GEMINI_RUNTIME,
+	GITHUB_COPILOT_RUNTIME,
+	GROK_RUNTIME,
+	GROK_OAUTH_RUNTIME,
 	KIMI_RUNTIME,
 	KIMI_CODE_RUNTIME,
+	OPENAI_RUNTIME,
 	OPENROUTER_RUNTIME,
 	QWEN_RUNTIME,
 	ZHIPU_RUNTIME,

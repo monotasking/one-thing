@@ -8,8 +8,8 @@
  * 这一条与 P3-5a 的 `decodeGrokCitations` 逐字同规,只是从 chat 换到了
  * Responses(P4-4)。
  */
-import { GROK_DIALECT_SPEC } from "./grok.js";
-import { defineResponsesDialect, type ResponsesDialectSpec } from "./responses-recipe.js";
+import { GROK_DIALECT_SPEC } from "../grok/dialect.js";
+import { defineResponsesDialect, type ResponsesDialectSpec } from "../../../agent-loop/providers/dialects/responses-recipe.js";
 
 const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "grok-oauth",

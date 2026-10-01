@@ -3,7 +3,7 @@ import {
   detectCopilotModelCapabilities,
   getCopilotModelDescription,
   modelInfoFromCopilotEntry,
-} from '../github-copilot.js'
+} from '../vendors/github-copilot/models.js'
 
 describe('onething GitHub Copilot provider helpers', () => {
   it('parses Copilot model entries', () => {

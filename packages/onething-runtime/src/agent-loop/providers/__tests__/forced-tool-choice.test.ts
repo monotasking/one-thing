@@ -20,7 +20,7 @@ import { describe, expect, it } from "vitest";
 import { runAgentLoop } from "@onething/core/agent-loop";
 import type { AgentProvider, AgentTool } from "@onething/core/agent-loop";
 import { createClaudeAgentProvider } from "../../../providers/vendors/claude/agent-provider.js";
-import { toCodexToolChoice } from "../codex.js";
+import { toCodexToolChoice } from "../../../providers/vendors/codex/agent-provider.js";
 import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";
 import { createGeminiAgentProvider } from "../../../providers/vendors/gemini/agent-provider.js";
 

@@ -39,7 +39,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentTurnStreamEvent } from "@onething/core/agent-loop";
 import { getLogger } from "../../../../logging/index.js";
 import "../../dialects/index.js";
-import { decodeGrokResponsesCitations } from "../../dialects/grok.js";
+import { decodeGrokResponsesCitations } from "../../../../providers/vendors/grok/dialect.js";
 import type { ResponsesDialect } from "../index.js";
 import {
 	LedgerModelProfileResolver,

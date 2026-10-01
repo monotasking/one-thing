@@ -16,7 +16,7 @@ import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-
 import { createDeepSeekAgentProvider } from '../../providers/vendors/deepseek/agent-provider.js'
 import { createGeminiAgentProvider } from '../../providers/vendors/gemini/agent-provider.js'
 import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'
-import { createCodexAgentProvider } from '../providers/codex.js'
+import { createCodexAgentProvider } from '../../providers/vendors/codex/agent-provider.js'
 import {
   classifyProviderError,
   parseProviderRetryAfter,

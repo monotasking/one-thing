@@ -1,5 +1,4 @@
 import type { JsonObject } from "@onething/core";
-import { detectCopilotModelCapabilities as detectCopilotLikeModelCapabilities } from "./github-copilot.js";
 import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
 import { getProviderManifest, type ProviderModelsSource } from "./manifest.js";
@@ -291,40 +290,11 @@ export interface GetOnethingModelsWithCapabilitiesAdapters {
 	logger?: OnethingModelRegistryRefreshLogger;
 }
 
+
+/** 宿主 auth 服务交回来的 token 的最小形状(列表口拿它取数)。 */
 export interface OnethingAccessTokenLike {
 	accessToken?: string | null;
 }
-
-export interface FetchOnethingGitHubCopilotModelsWithAuthOptions<
-	TModel = unknown,
-> {
-	providerId?: string;
-	getToken(
-		providerId: string,
-	):
-		| Promise<OnethingAccessTokenLike | null | undefined>
-		| OnethingAccessTokenLike
-		| null
-		| undefined;
-	fetchCopilotModels(accessToken: string): Promise<TModel[]> | TModel[];
-	missingTokenError?: string;
-}
-
-export async function fetchOnethingGitHubCopilotModelsWithAuth<
-	TModel = unknown,
->(
-	options: FetchOnethingGitHubCopilotModelsWithAuthOptions<TModel>,
-): Promise<TModel[]> {
-	const providerId = options.providerId ?? "github-copilot";
-	const token = await options.getToken(providerId);
-	if (!token?.accessToken) {
-		throw new Error(
-			options.missingTokenError ?? "Not logged in to GitHub Copilot",
-		);
-	}
-	return await options.fetchCopilotModels(token.accessToken);
-}
-
 
 /**
  * models.dev 目录。**经单份磁盘缓存**(`models-dev-cache.ts`,§5.4):24 小时内读文件,
@@ -404,39 +374,6 @@ export function getConfiguredOnethingFallbackModels(
 	return modelIds.length > 0 ? getFallbackModels(modelIds) : [];
 }
 
-export function copilotModelInfoToOnethingOpenRouterModel(
-	model: { id: string; name?: string; description?: string },
-	capabilities = detectCopilotLikeModelCapabilities(model.id),
-): OnethingOpenRouterModel {
-	const inputModalities = ["text"];
-	const outputModalities = ["text"];
-	const supportedParameters: string[] = [];
-	if (capabilities.hasVision) inputModalities.push("image");
-	if (capabilities.hasImageGeneration) outputModalities.push("image");
-	if (capabilities.hasTools) supportedParameters.push("tools");
-	if (capabilities.hasReasoning) supportedParameters.push("reasoning");
-
-	return {
-		id: model.id,
-		name: model.name || model.id,
-		description: model.description || "",
-		context_length: capabilities.contextLength,
-		architecture: {
-			modality: capabilities.hasImageGeneration ? "image" : "text",
-			input_modalities: inputModalities,
-			output_modalities: outputModalities,
-			tokenizer: "unknown",
-		},
-		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-		top_provider: {
-			context_length: capabilities.contextLength,
-			max_completion_tokens: 16384,
-			is_moderated: false,
-		},
-		supported_parameters: supportedParameters,
-	};
-}
-
 /**
  * 一台 ACP agent 在模型目录里的那一行。
  *
@@ -488,114 +425,6 @@ export function acpAgentsToOnethingOpenRouterModels(
 	agents: OnethingACPAgentModelLike[] | undefined,
 ): OnethingOpenRouterModel[] {
 	return (agents ?? []).map(acpAgentToOnethingOpenRouterModel);
-}
-
-export interface OnethingCopilotModelsFetcherOptions {
-	fetchCopilotModels(): Promise<
-		Array<{ id: string; name?: string; description?: string }>
-	>;
-	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
-	logger?: OnethingModelRegistryRefreshLogger;
-}
-
-/** Copilot 的列表口:每次现取;取不到退回设置里的缓存目录。 */
-export function createOnethingCopilotModelsFetcher(
-	options: OnethingCopilotModelsFetcherOptions,
-): OnethingEndpointModelsFetcher {
-	return {
-		async list(request) {
-			try {
-				const copilotModels = await options.fetchCopilotModels();
-				return {
-					success: true,
-					models: copilotModels.map((model) =>
-						copilotModelInfoToOnethingOpenRouterModel(model),
-					),
-				};
-			} catch (error) {
-				options.logger?.warn?.(
-					"[Models] Failed to fetch Copilot models:",
-					error instanceof Error ? error.message : String(error),
-				);
-				const registryModels = await options.getModelsForProvider(
-					request.providerId,
-				);
-				if (registryModels.length > 0) {
-					return { success: true, models: registryModels };
-				}
-				return {
-					success: false,
-					error: "No models available. Please refresh the model registry.",
-				};
-			}
-		},
-	};
-}
-
-export interface OnethingCodexModelsFetcherOptions {
-	fetchCodexModels(): Promise<OnethingOpenRouterModel[]>;
-	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
-	saveProviderModels(
-		providerId: string,
-		models: OnethingOpenRouterModel[],
-	): Promise<void> | void;
-	getCodexFallbackModels(modelIds?: string[]): OnethingOpenRouterModel[];
-	getConfiguredCodexModelSelection():
-		| OnethingConfiguredModelSelection
-		| undefined;
-	logger?: OnethingModelRegistryRefreshLogger;
-}
-
-/**
- * Codex 的列表口:不点刷新 = 读缓存 ∪ 用户勾过的兜底;点了刷新 = 拿登录态现取、落盘,
- * 取不到退回缓存 ∪ 整张兜底表。
- */
-export function createOnethingCodexModelsFetcher(
-	options: OnethingCodexModelsFetcherOptions,
-): OnethingEndpointModelsFetcher {
-	const configuredFallbacks = (): OnethingOpenRouterModel[] =>
-		getConfiguredOnethingFallbackModels(
-			options.getConfiguredCodexModelSelection(),
-			options.getCodexFallbackModels,
-		);
-	const cachedWithFallbacks = async (
-		providerId: string,
-		includeDefaultFallback = false,
-	): Promise<OnethingOpenRouterModel[]> => {
-		const groups = [
-			await options.getModelsForProvider(providerId),
-			configuredFallbacks(),
-		];
-		if (includeDefaultFallback) groups.push(options.getCodexFallbackModels());
-		return mergeOnethingModelsById(...groups);
-	};
-	return {
-		async list(request) {
-			if (!request.forceRefresh) {
-				return {
-					success: true,
-					models: await cachedWithFallbacks(request.providerId),
-				};
-			}
-			try {
-				const models = await options.fetchCodexModels();
-				await options.saveProviderModels(request.providerId, models);
-				return {
-					success: true,
-					models: mergeOnethingModelsById(models, configuredFallbacks()),
-				};
-			} catch (error) {
-				options.logger?.warn?.(
-					"[Models] Failed to fetch Codex models, using fallback:",
-					error instanceof Error ? error.message : String(error),
-				);
-				return {
-					success: true,
-					models: await cachedWithFallbacks(request.providerId, true),
-				};
-			}
-		},
-	};
 }
 
 /**

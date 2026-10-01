@@ -5,7 +5,6 @@ import {
 	BearerApiKeyAuth,
 	expandHeaderTemplates,
 	LedgerModelProfileResolver,
-	ResolveAuth,
 	getDialect,
 	listDialects,
 	withLedgerModelCapabilities,
@@ -13,13 +12,8 @@ import {
 	type ModelProfileResolver,
 } from "./base/index.js";
 import {
-	CODEX_DIALECT,
 	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
-	GITHUB_COPILOT_DIALECT,
-	GROK_DIALECT,
-	GROK_OAUTH_DIALECT,
-	OPENAI_DIALECT,
 	anthropicAuth,
 	codexAuth,
 	createAnthropicProvider,
@@ -178,17 +172,6 @@ const agentProviderRuntimeFactories = new Map<
 	AgentProviderRuntimeFactory
 >();
 
-interface CopilotCompletionToken {
-	token: string;
-	expiresAt: number;
-}
-
-interface CopilotTokenResponse {
-	token?: string;
-	expires_in?: number;
-}
-
-const copilotTokenCache = new Map<string, CopilotCompletionToken>();
 function accessTokenFromRuntimeConfig(
 	config: AgentProviderRuntimeConfig,
 ): string {
@@ -196,48 +179,6 @@ function accessTokenFromRuntimeConfig(
 		return config.authContext.token?.accessToken ?? "";
 	}
 	return config.oauthToken?.accessToken || config.apiKey || "";
-}
-
-async function getCopilotCompletionToken(
-	githubAccessToken: string,
-	fetchImpl: typeof globalThis.fetch,
-): Promise<string> {
-	const cached = copilotTokenCache.get(githubAccessToken);
-	if (cached && cached.expiresAt > Date.now() + 60000) {
-		return cached.token;
-	}
-
-	const response = await fetchImpl(
-		"https://api.github.com/copilot_internal/v2/token",
-		{
-			method: "GET",
-			headers: {
-				Authorization: `Bearer ${githubAccessToken}`,
-				Accept: "application/json",
-				"User-Agent": "onething/1.0",
-				"Editor-Version": "vscode/1.85.1",
-				"Editor-Plugin-Version": "copilot-chat/0.29.1",
-			},
-		},
-	);
-
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(`Failed to get Copilot token: ${response.status} ${text}`);
-	}
-
-	const data = (await response.json()) as CopilotTokenResponse;
-	if (!data.token) {
-		throw new Error(
-			"Failed to get Copilot token: response did not include a token",
-		);
-	}
-
-	copilotTokenCache.set(githubAccessToken, {
-		token: data.token,
-		expiresAt: Date.now() + (data.expires_in ?? 1800) * 1000,
-	});
-	return data.token;
 }
 
 export function registerAgentProviderRuntime(
@@ -536,110 +477,6 @@ function registerExternalAgentProviderRuntime(providerId: string): void {
 }
 
 registerExternalAgentProviderRuntime("acp");
-
-registerAgentProviderRuntime(
-	"codex",
-	(config, options) =>
-		createResponsesProvider(CODEX_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: codexAuth({
-				apiKey: config.apiKey,
-				oauthToken: config.oauthToken,
-				authContext: config.authContext,
-				refreshOAuthToken: options.refreshOAuthToken
-					? forceRefresh => options.refreshOAuthToken!("codex", forceRefresh)
-					: undefined,
-			}),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-// OpenAI 官方通路 P4-5 起走 **openai-responses**(`POST /v1/responses`);
-// 官方把 Responses 定成新的基元,而加密思维链回放 / `input_file`(PDF)/ 原生
-// `image_generation` 只在这条线上有出口。凭据形状一个字没变(Bearer API key)。
-// `custom-*`(apiType `openai`)与 `github-copilot` **仍走 chat-completions**:
-// 自建端点与 Copilot 后台大多只实现了那条接口。
-registerAgentProviderRuntime(
-	"openai",
-	(config, options) =>
-		createResponsesProvider(OPENAI_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: new BearerApiKeyAuth(config.apiKey),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-// xAI 的两条通路 P4-4 起走 **openai-responses**(`POST /v1/responses`);
-// chat-completions 被官方标成 legacy,而加密思维链回放 / `input_file` /
-// 结构化引文只在 Responses 上有出口。凭据形状一个字没变。
-registerAgentProviderRuntime(
-	"grok",
-	(config, options) =>
-		createResponsesProvider(GROK_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: new BearerApiKeyAuth(config.apiKey),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"grok-oauth",
-	(config, options) => {
-		const accessToken = accessTokenFromRuntimeConfig(config);
-		if (!accessToken) {
-			throw new Error("Not logged in to Grok. Please login first.");
-		}
-		return createResponsesProvider(GROK_OAUTH_DIALECT, {
-			baseUrl: config.baseUrl,
-			auth: new BearerApiKeyAuth(accessToken),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		});
-	},
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
-	"github-copilot",
-	(config, options) => {
-		const githubAccessToken = accessTokenFromRuntimeConfig(config);
-		if (!githubAccessToken) {
-			throw new Error("Not logged in to GitHub Copilot. Please login first.");
-		}
-		const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-		return createOpenAIChatProvider(GITHUB_COPILOT_DIALECT, {
-			baseUrl: config.baseUrl,
-			fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-			auth: new ResolveAuth(
-				async () => ({
-					apiKey: await getCopilotCompletionToken(githubAccessToken, fetchImpl),
-				}),
-				{
-					headers: {
-						"Editor-Version": "vscode/1.85.1",
-						"Editor-Plugin-Version": "copilot-chat/0.29.1",
-						"Copilot-Integration-Id": "vscode-chat",
-						"User-Agent": "onething/1.0",
-						"OpenAI-Intent": "conversation-panel",
-					},
-				},
-			),
-		});
-	},
-	{ replace: true },
-);
 
 /**
  * 搬回 `providers/vendors/<id>/` 的那几家,工厂由各家自己带(`VendorRuntime.createProvider`),

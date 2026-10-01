@@ -1,14 +1,14 @@
 import {
+  CODEX_PROVIDER_ID,
   createCodexAgentProvider as createCoreCodexAgentProvider,
   type CodexAgentProviderOptions as CoreCodexAgentProviderOptions,
-  type CodexOAuthToken,
-  type CodexProviderAuthContext,
-} from '@onething/runtime/agent-loop/providers'
+  type OAuthToken as CodexOAuthToken,
+  type ProviderAuthContext as CodexProviderAuthContext,
+} from '@onething/runtime/providers/vendors/codex/agent-provider'
 import type { OAuthToken } from '@shared/ipc.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
-import { CODEX_PROVIDER_ID } from '../../providers/builtin/codex.js'
 import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'
 import type { AgentProvider } from '@onething/core/agent-loop'
 

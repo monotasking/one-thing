@@ -8,7 +8,8 @@
  *   1. user override        (providerConfig.modelCapabilitiesByModel)
  *   2. registry entry       (models.dev fetch stored in providerConfig.models,
  *                            or the wire-shaped model metadata the renderer holds)
- *   3. built-in rules table (PROVIDER_MODEL_RULES below)
+ *   3. built-in rules table (each builtin vendor's manifest `modelRuleTable`;
+ *                            `NON_VENDOR_MODEL_RULES` below for acp / unknown)
  *   4. provider default
  *
  * Every answer carries its source so tests and debugging can tell where a
@@ -465,58 +466,9 @@ export function resolveOnethingProviderKind(
 // and thinking budgets all read from here)
 // ---------------------------------------------------------------------------
 
-/**
- * OpenAI 的档位表**逐代不同**(拍板 #14,官方各模型页「Reasoning.effort
- * supports」一句 + `/docs/guides/reasoning`「Supported values are
- * model-dependent」,2026-08-23 核):
- *
- * | 模型 | 档位 | 服务端默认 |
- * |---|---|---|
- * | o 系列(o1 / o3 / o4…) | low / medium / high | 未核,沿用今天的 medium |
- * | gpt-5(5.0,含 -mini / -nano) | minimal / low / medium / high | 未核,沿用今天的 medium |
- * | gpt-5.1 / 5.2 / 5.3 | none / low / medium / high | 未核,沿用今天的 medium |
- * | gpt-5.4 | none / low / medium / high / xhigh | **none**(官方逐字) |
- * | gpt-5.5 | none / low / medium / high / xhigh | medium(官方逐字) |
- * | gpt-5.6 及以后 | none / low / medium / high / xhigh / max | medium(官方逐字) |
- *
- * `'none'` 在 `efforts` 里是**线协议能力标记**而不是 picker 的一档(见
- * `OnethingReasoningEffortOption`),所以 gpt-5.4 的「默认不想」记在
- * `defaultOn: false` 上,不记在 `defaultEffort` 上 —— 后者的类型本身就排除
- * `'none'`。
- */
-export const ONETHING_OPENAI_O_SERIES_EFFORTS = ['low', 'medium', 'high'] as const
-/** gpt-5.0 家(含 -mini / -nano):`minimal` 只有这一代有,`none` 还没有。 */
-export const ONETHING_OPENAI_EFFORTS = ['minimal', 'low', 'medium', 'high'] as const
-/**
- * gpt-5.1 and later add `reasoning_effort: 'none'` — the only way to tell an
- * OpenAI reasoning model not to think (the family still has no `thinking`
- * toggle). Older members (gpt-5 / gpt-5.0, the whole o-series) reject it, so
- * they keep the four-rung table above and send nothing when thinking is off.
- *
- * 同一代起 `minimal` 从官方档位表里消失(5.1+ 的模型页都不再列它),所以这份
- * 表不是「四档 + none」而是「三档 + none」。
- */
-export const ONETHING_OPENAI_EFFORTS_WITH_NONE = [
-  'none',
-  'low',
-  'medium',
-  'high',
-] as const
-/** gpt-5.4 / 5.5:官方多一档 `xhigh`。 */
-export const ONETHING_OPENAI_EFFORTS_WITH_XHIGH = [
-  ...ONETHING_OPENAI_EFFORTS_WITH_NONE,
-  'xhigh',
-] as const
-/** gpt-5.6 及以后:再多一档 `max`。 */
-export const ONETHING_OPENAI_EFFORTS_WITH_MAX = [
-  ...ONETHING_OPENAI_EFFORTS_WITH_XHIGH,
-  'max',
-] as const
-export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
-// OpenRouter / DeepSeek / 千问 3.8-Max 的档位值域随各家的型号规则表搬回了各自的
-// `vendors/<id>/manifest.ts`(服务商自述试点 P2)。Claude / Gemini 型号的档位与思考预算
-// 说的是型号家族,不是哪一家服务商,住 `providers/model-families/<family>.ts`(P2 第 2 批)。
-export const ONETHING_CODEX_FALLBACK_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
+// OpenRouter / DeepSeek / 千问 3.8-Max / xAI / Codex 的档位值域随各家的型号规则表搬回了各自的
+// `vendors/<id>/manifest.ts`(服务商自述试点 P2)。Claude / Gemini / OpenAI 型号的档位与思考预算
+// 说的是型号家族,不是哪一家服务商,住 `providers/model-families/<family>.ts`(P2 第 2 / 4 批)。
 
 // ---------------------------------------------------------------------------
 // Built-in rules table — the ONE place model-name patterns live.
@@ -550,165 +502,16 @@ export interface OnethingModelRule {
   wire?: OnethingReasoningWire | ((model: string) => OnethingReasoningWire)
 }
 
-const OPENAI_PROFILE: OnethingReasoningProfile = {
-  // o-series / gpt-5 reasoning cannot be turned off — only the effort is
-  // configurable, so the UI must not offer a (fake) Off.
-  toggleable: false,
-  defaultOn: true,
-  efforts: ONETHING_OPENAI_EFFORTS,
-  defaultEffort: 'medium',
-  wire: 'openai-effort',
-}
-
-/**
- * The gpt-5 family's minor version, tolerating a "vendor/" path prefix like
- * every other row here. `gpt-5` / `gpt-5-mini` / `gpt-5-nano` / `gpt-5.0` all
- * read 0; `gpt-5.5` reads 5; `gpt-5.10` reads 10 (whole number, so it sorts
- * after `gpt-5.6` rather than between 5.1 and 5.2). Anything that is not a
- * gpt-5 id (the o-series, gpt-4.1, …) reads `undefined`.
- */
-const OPENAI_GPT5_PATTERN = /(?:^|\/)gpt-5(?:\.(\d+))?/
-
-function openAIGpt5Minor(modelLower: string): number | undefined {
-  const match = modelLower.match(OPENAI_GPT5_PATTERN)
-  if (!match) return undefined
-  return match[1] ? Number(match[1]) : 0
-}
-
-/**
- * gpt-5.1 and later take `reasoning_effort: 'none'`; `gpt-5` / `gpt-5.0` and
- * the whole o-series do not. The single judge behind `OpenAIEffortWire`'s
- * "can this model be told not to think at all" question.
- */
-export function onethingOpenAIAcceptsNoneEffort(model: string): boolean {
-  const minor = openAIGpt5Minor(model.toLowerCase())
-  return minor !== undefined && minor >= 1
-}
-
-/**
- * `input_image.detail: 'original'` —— 官方 `/docs/guides/images-vision`:
- * 「Available on `gpt-5.4` and future models」(且「On `gpt-5.5` and GPT-5.6
- * models, `auto` and the omitted/default behavior are equivalent to
- * `original`」)。值域是**按模型**开的,所以判据放在账本这一份名字表里,由
- * openai 方言在取袋时问一次(见 `wires/openai-responses-provider-options.ts`)。
- */
-export function onethingOpenAIAcceptsOriginalImageDetail(model: string): boolean {
-  const minor = openAIGpt5Minor(model.toLowerCase())
-  return minor !== undefined && minor >= 4
-}
-
-/** 见 `ONETHING_OPENAI_EFFORTS` 抬头那张按代分档的表。 */
-function openAIEffortsForMinor(minor: number): readonly OnethingReasoningEffortOption[] {
-  if (minor === 0) return ONETHING_OPENAI_EFFORTS
-  if (minor <= 3) return ONETHING_OPENAI_EFFORTS_WITH_NONE
-  if (minor <= 5) return ONETHING_OPENAI_EFFORTS_WITH_XHIGH
-  return ONETHING_OPENAI_EFFORTS_WITH_MAX
-}
-
-/** o1 / o3 / o4:官方模型页只列 low / medium / high(没有 minimal,没有 none)。 */
-const OPENAI_O_SERIES_PROFILE: OnethingReasoningProfile = {
-  ...OPENAI_PROFILE,
-  efforts: ONETHING_OPENAI_O_SERIES_EFFORTS,
-}
-
-function openAIProfile(model: string): OnethingReasoningProfile {
-  const minor = openAIGpt5Minor(model.toLowerCase())
-  if (minor === undefined) return OPENAI_O_SERIES_PROFILE
-  return {
-    ...OPENAI_PROFILE,
-    efforts: openAIEffortsForMinor(minor),
-    // gpt-5.4 的服务端默认是 `none` —— 不发参数 = 不思考。这一格记的是
-    // 「什么都不发时服务端怎么办」,与 `toggleable: false`(这一家永远没有
-    // UI 上的 Off 开关)不冲突:前者是事实,后者是控件。
-    ...(minor === 4 ? { defaultOn: false } : {}),
-  }
-}
-
-const COPILOT_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner/
-const COPILOT_VISION_PATTERN = /gpt-4o|gpt-4-turbo|gpt-4-vision|gpt-4\.1|claude-3|claude-sonnet-4|claude-opus|gemini-1\.5|gemini-2|gemini-pro-vision/
-const COPILOT_IMAGE_GEN_PATTERN = /dall-e|dalle|gpt-image|imagen/
-const COPILOT_NO_TOOLS_PATTERN = /o1-preview|o1-mini/
-
 /** Generic fallbacks used when the provider kind is unknown (matches the old renderer heuristics). */
 const GENERIC_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner|grok-3-mini|grok-mini|thinking/
 const GENERIC_IMAGE_GEN_PATTERN = /dall-e|dalle|gpt-image|imagen|stable-diffusion|midjourney/
 
-const PROVIDER_MODEL_RULES: Partial<Record<OnethingProviderKind, OnethingModelRule[]>> = {
-  openai: [
-    // Anchored to the id start, tolerating "vendor/" path prefixes.
-    { test: /(?:^|\/)(o[134]|gpt-5)/, caps: { reasoning: true }, profile: openAIProfile },
-    // Kind-level vision default mirrors the engine's historical provider-level flag.
-    { test: /(?:)/, caps: { reasoning: false, vision: true } },
-  ],
-  grok: [
-    { test: /non-reasoning|grok-imagine/, caps: { reasoning: false, vision: true } },
-    {
-      test: /grok-4\.(?:6(?:$|-)|20.*multi-agent)/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: false,
-        defaultOn: true,
-        efforts: ['low', 'medium', 'high', 'xhigh'],
-        defaultEffort: 'high',
-        disabledEffort: 'low',
-        wire: 'grok-effort',
-      },
-    },
-    {
-      // xAI capability guide (2026-09-16): 4.5 cannot disable reasoning;
-      // xhigh is not a distinct supported level on this model.
-      test: /grok-4\.5(?:$|-)/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: false, defaultOn: true, efforts: ONETHING_GROK_EFFORTS,
-        defaultEffort: 'high', disabledEffort: 'low', wire: 'grok-effort',
-      },
-    },
-    {
-      // Model-specific 4.3 docs list none / low / medium / high, default low.
-      test: /grok-4\.3(?:$|-)/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: true, defaultOn: true, efforts: ['none', 'low', 'medium', 'high'],
-        defaultEffort: 'low', wire: 'grok-effort',
-      },
-    },
-    {
-      test: /grok-3-mini(?:$|-)/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: false, defaultOn: true, efforts: ['low', 'high'],
-        defaultEffort: 'low', disabledEffort: 'low', wire: 'grok-effort',
-      },
-    },
-    {
-      // Older reasoning families do not expose a configurable effort knob.
-      test: /grok-4(?:$|-)|grok-4\.(?:1|20)(?:$|-)|grok-code-fast/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: false, defaultOn: true, efforts: [], defaultEffort: 'high',
-        wire: 'grok-effort',
-      },
-    },
-    { test: /(?:)/, caps: { reasoning: false, vision: true } },
-  ],
-  codex: [
-    {
-      test: /(?:)/,
-      caps: { reasoning: true, vision: true, tools: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: ONETHING_CODEX_FALLBACK_EFFORTS,
-        defaultEffort: 'medium',
-        wire: 'codex',
-      },
-    },
-  ],
-  // Copilot verdicts are answered entirely by copilotPatternVerdict in the
-  // resolver (it needs cross-capability logic: image-gen models lose tools);
-  // rule rows here would be unreachable.
-  copilot: [],
+/**
+ * 不属于任何一家内置服务商的两张规则表:外部 agent(`acp`,它不是服务商,是外部执行体那条路的
+ * 占位)与认不出的家(`unknown`)。内置服务商的表全部由各家 manifest 自己带(`modelRuleTable`,
+ * 服务商自述试点 P2 第 4 批起一家不剩)。
+ */
+const NON_VENDOR_MODEL_RULES: Partial<Record<OnethingProviderKind, OnethingModelRule[]>> = {
   acp: [
     { test: /(?:)/, caps: { reasoning: false, tools: false } },
   ],
@@ -738,7 +541,7 @@ function verdict(value: boolean, source: OnethingCapabilitySource): CapabilityVe
  * 自己带的 `providerMetadata.codex.nativeTools` —— 用户 settings 里已经缓存
  * 的旧条目(supportsImageOutput:false)在下一次目录刷新前也不能让引擎炸。
  *
- * 字面量与 `codex-native-tools.ts` 的
+ * 字面量与 `vendors/codex/native-tools.ts` 的
  * `CODEX_NATIVE_IMAGE_GENERATION_TOOL` 同值;此文件必须保持零 import(渲染
  * 层与 web 构建直接引它),所以不从那里 import。
  *
@@ -863,8 +666,8 @@ function fromRegistry(
 }
 
 /**
- * 这张型号规则表从哪来:搬回家的那几家由自己的 manifest 带(`modelRuleTable`),
- * 还没搬的仍在上面的 `PROVIDER_MODEL_RULES`(服务商自述试点 P1/P2 的过渡期)。
+ * 这张型号规则表从哪来:内置服务商由自己的 manifest 带(`modelRuleTable`);
+ * 外部 agent 与认不出的家读上面的 `NON_VENDOR_MODEL_RULES`。
  */
 function rulesOf(kind: OnethingProviderKind): readonly OnethingModelRule[] {
   for (const manifest of getProviderManifestRegistry().list()) {
@@ -872,7 +675,7 @@ function rulesOf(kind: OnethingProviderKind): readonly OnethingModelRule[] {
       return manifest.modelRuleTable
     }
   }
-  return PROVIDER_MODEL_RULES[kind] ?? []
+  return NON_VENDOR_MODEL_RULES[kind] ?? []
 }
 
 function fromRules(
@@ -887,19 +690,6 @@ function fromRules(
     if (typeof value === 'boolean') return value
   }
   return undefined
-}
-
-function copilotPatternVerdict(
-  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput',
-  modelLower: string,
-): boolean {
-  switch (capability) {
-    case 'reasoning': return COPILOT_REASONING_PATTERN.test(modelLower)
-    case 'vision': return COPILOT_VISION_PATTERN.test(modelLower)
-    case 'imageOutput': return COPILOT_IMAGE_GEN_PATTERN.test(modelLower)
-    case 'tools':
-      return !COPILOT_NO_TOOLS_PATTERN.test(modelLower) && !COPILOT_IMAGE_GEN_PATTERN.test(modelLower)
-  }
 }
 
 const CAPABILITY_DEFAULTS: Record<OnethingRuleCapability, boolean> = {
@@ -951,12 +741,6 @@ function resolveCapability(
 
   const registry = fromRegistry(capability, input.registryEntry, input.modelMetadata)
   if (typeof registry === 'boolean') return verdict(registry, 'registry')
-
-  // Copilot's pattern table answers the four capabilities it knows; it has
-  // nothing to say about file input, which falls through to the rules table.
-  if (kind === 'copilot' && capability !== 'fileInput') {
-    return verdict(copilotPatternVerdict(capability, modelLower), 'pattern')
-  }
 
   const ruled = fromRules(capability, rulesOf(kind), modelLower)
   if (typeof ruled === 'boolean') return verdict(ruled, 'pattern')

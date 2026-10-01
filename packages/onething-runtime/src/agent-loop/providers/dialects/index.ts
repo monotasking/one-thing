@@ -55,7 +55,6 @@ export {
 } from "./recipe.js";
 
 export {
-	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
 	CODEX_FALLBACK_INSTRUCTIONS,
 	CODEX_NOT_LOGGED_IN,
@@ -67,37 +66,14 @@ export {
 	createResponsesProvider,
 	defineResponsesDialect,
 	plainResponsesEndpoint,
-	resolveCodexResponsesUrl,
 	resolveCodexToken,
 	resolveCodexTokenForRequest,
 	responsesDialect,
-	responsesEndpoint,
 	type CodexAuthOptions,
 	type OAuthToken as CodexOAuthTokenShape,
 	type ProviderAuthContext as CodexProviderAuthContextShape,
 	type ResponsesDialectSpec,
 	type ResponsesProviderInit,
 } from "./responses-recipe.js";
-export { CODEX_DIALECT } from "./codex.js";
 
 export { CUSTOM_OPENAI_DIALECT } from "./custom-openai.js";
-export { GITHUB_COPILOT_DIALECT } from "./github-copilot.js";
-export {
-	GROK_BASE_URL,
-	GROK_DIALECT,
-	GROK_DIALECT_SPEC,
-	GROK_PROVIDER_DATA_TAG,
-	GROK_PROVIDER_OPTIONS,
-	GROK_RESPONSES_USAGE,
-	GROK_TRANSPORT_CAPABILITIES,
-	decodeGrokResponsesCitations,
-} from "./grok.js";
-export { GROK_OAUTH_DIALECT } from "./grok-oauth.js";
-export {
-	OPENAI_BASE_URL,
-	OPENAI_DIALECT,
-	OPENAI_DIALECT_SPEC,
-	OPENAI_PROVIDER_DATA_TAG,
-	OPENAI_PROVIDER_OPTIONS,
-	OPENAI_TRANSPORT_CAPABILITIES,
-} from "./openai.js";

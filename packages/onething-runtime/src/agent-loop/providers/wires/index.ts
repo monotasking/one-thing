@@ -70,14 +70,6 @@ export {
 	type OpenAIChatVerbosity,
 } from "./openai-chat-provider-options.js";
 export {
-	GROK_SEARCH_MODE_VALUES,
-	GROK_SEARCH_PARAMETER_VALIDATORS,
-	pickGrokSearchParameters,
-	type GrokSearchMode,
-	type XaiSearchParameterDropReason,
-	type XaiSearchParameterDropped,
-} from "./xai-search-parameters.js";
-export {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL,
 	OPENAI_RESPONSES_VERBOSITY_PATH,
@@ -156,6 +148,8 @@ export {
 	type CodexResponsesUsage,
 	type CodexSseEvent,
 	type ResponsesDialect,
+	ResponsesUsageNormalizer,
+	type ResponsesUsage,
 } from "./openai-responses-wire.js";
 export {
 	CodexHttpError,
@@ -172,6 +166,8 @@ export {
 	textFromContent as responsesTextFromContent,
 	toCodexToolChoice,
 	toCodexTools,
+	toResponsesToolChoice,
+	type ResponsesNativeTool,
 	type CodexInputContentPart,
 	type CodexInputItem,
 	type CodexPromptPayload,

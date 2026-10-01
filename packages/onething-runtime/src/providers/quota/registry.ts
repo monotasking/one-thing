@@ -10,24 +10,16 @@
  * 不会把新的抹掉)。同 id 重复登记是明确错误,与 `ProviderManifestRegistry` 同一口径。
  */
 import type { QuotaSource } from './source.js'
-import { codexQuotaSource } from './codex.js'
 import { VENDOR_RUNTIMES } from '../vendors/runtimes.js'
 
 /**
- * 还没搬回 `vendors/<id>/` 的那几家的源(服务商自述试点 P2 的过渡期)。搬回家的那几家
- * 由自己的 `VendorRuntime.quotaSources` 带,这里不点名。
- */
-const LEGACY_QUOTA_SOURCES: readonly QuotaSource[] = [
-  codexQuotaSource,
-]
-
-/**
- * 内置源全表 = 名册里各家自带的 + 过渡期的旧名单。**是函数不是常量**:读名册必须惰性 ——
+ * 内置源全表 = 名册里各家自带的(服务商自述试点 P2 第 4 批起过渡期的旧名单清空、删除)。
+ * **是函数不是常量**:读名册必须惰性 ——
  * `vendors/runtimes.ts` 会拉起整个 agent-loop,而 agent-loop 经 manifest 注册表又会走回
  * 这里;模块加载时就读,会在那条环上读到还没初始化完的名册。
  */
 export function builtinQuotaSources(): readonly QuotaSource[] {
-  return [...VENDOR_RUNTIMES.flatMap((vendor) => vendor.quotaSources ?? []), ...LEGACY_QUOTA_SOURCES]
+  return VENDOR_RUNTIMES.flatMap((vendor) => vendor.quotaSources ?? [])
 }
 
 const sources = new Map<string, QuotaSource>()

@@ -13,7 +13,6 @@
  */
 import type { RouteHandlers } from '@onething/core/ipc'
 import type { ModelsRoutes } from '@shared/ipc/providers.js'
-import { AIProvider } from '@shared/ipc/providers.js'
 import type {
   ModelEffectiveFacts,
   ModelParameterSuggestion,
@@ -33,10 +32,7 @@ import {
   type OnethingCatalogModelEntry,
   type OnethingOpenRouterModel,
   onethingCapabilityEntryToOpenRouterModel,
-  fetchOnethingGitHubCopilotModelsWithAuth,
   getAllOnethingModelRegistryModelsForIpc,
-  createOnethingCodexModelsFetcher,
-  createOnethingCopilotModelsFetcher,
   getOnethingModelsWithCapabilities,
   getOnethingModelCapabilitiesForIpc,
   getOnethingModelRegistryDisplayNameForIpc,
@@ -56,8 +52,11 @@ import {
   type ModelIdentityIndex,
 } from '@onething/runtime/providers/model-identity'
 import { authService } from '../../wiring/auth/auth-service.js'
-import { fetchCopilotModels } from '../../wiring/providers/builtin/github-copilot.js'
-import { fetchCodexModels, getCodexFallbackModels } from '../../wiring/providers/builtin/codex.js'
+import { createPolicyFetch } from '../../provider-binding/bound-fetch.js'
+import {
+  VENDOR_RUNTIMES,
+  type VendorModelsFetcherDeps,
+} from '@onething/runtime/providers/vendors/runtimes'
 import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import {
   addManualModel,
@@ -72,26 +71,38 @@ import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameA
 import type { OnethingModelRegistryRefreshLogger } from '@onething/runtime/providers/model-registry'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { GetAllOnethingModelRegistryModelsOptions } from '@onething/runtime/providers/model-query-presentation'
-import type { ModelInfo } from '@shared/ipc.js'
-import type { FetchOnethingGitHubCopilotModelsWithAuthOptions } from '@onething/runtime/providers/model-registry'
+import type { OnethingEndpointModelsFetcher } from '@onething/runtime/providers/model-registry'
 
 const log = getLogger('ipc.models')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
 const consoleLog: ConsoleLikePort & OnethingModelQueryIpcLogger & OnethingModelRegistryRefreshLogger = consolePort(log)
 
 
-/** Copilot 的模型表不在注册表里,要拿着 OAuth token 现取。 */
-async function fetchGitHubCopilotModelsRaw(): Promise<{ id: string; name: string; description?: string }[]> {
-  const fetchOnethingGitHubCopilotModelsWithAuthOptions: FetchOnethingGitHubCopilotModelsWithAuthOptions<ModelInfo> = {
-    getToken: providerId => authService.getToken(providerId),
-    fetchCopilotModels,
-  };
-  return fetchOnethingGitHubCopilotModelsWithAuth(fetchOnethingGitHubCopilotModelsWithAuthOptions)
-}
-
-async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
-  const token = await authService.refreshTokenIfNeeded('codex')
-  return fetchCodexModels(token)
+/**
+ * `endpoint` 来源那几家的列表口(Copilot 拿 OAuth token 现取、Codex 读缓存 ∪ 兜底 / 刷新时现取):
+ * 各家自己带(`VendorRuntime.createModelsFetcher`),这里按名册建表,只交一份不点名的宿主依赖
+ * (服务商自述试点 P2 第 4 批;从前这里按枚举值手列 Copilot 与 Codex 两家)。
+ */
+function endpointModelsFetchers(
+  getModelsForProvider: (providerId: string) => Promise<OpenRouterModel[]>,
+): Record<string, OnethingEndpointModelsFetcher> {
+  const deps: VendorModelsFetcherDeps = {
+    getModelsForProvider: getModelsForProvider as VendorModelsFetcherDeps['getModelsForProvider'],
+    saveProviderModels: (providerId, models) =>
+      modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
+    configuredSelection: (providerId) =>
+      getSettings()?.ai?.providers?.[providerId] as OnethingConfiguredModelSelection | undefined,
+    getToken: (providerId) => authService.getToken(providerId),
+    refreshTokenIfNeeded: (providerId) =>
+      authService.refreshTokenIfNeeded(providerId) as ReturnType<VendorModelsFetcherDeps['refreshTokenIfNeeded']>,
+    fetch: (policy) => createPolicyFetch(policy),
+    logger: consoleLog,
+  }
+  const fetchers: Record<string, OnethingEndpointModelsFetcher> = {}
+  for (const vendor of VENDOR_RUNTIMES) {
+    if (vendor.createModelsFetcher) fetchers[vendor.id] = vendor.createModelsFetcher(deps)
+  }
+  return fetchers
 }
 
 /**
@@ -286,24 +297,9 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
     const getOnethingModelsWithCapabilitiesAdapters: GetOnethingModelsWithCapabilitiesAdapters = {
       getModelsForProvider,
       // 调度按 manifest 的 `models.kind`(批 M):`endpoint` 查这张按 id 登记的拉取器表,
-      // `roster` 读名册,其余走通用路。加一家带列表口的服务商 = 表里一行。
-      endpointFetchers: {
-        [AIProvider.GitHubCopilot]: createOnethingCopilotModelsFetcher({
-          fetchCopilotModels: fetchGitHubCopilotModelsRaw,
-          getModelsForProvider,
-          logger: consoleLog,
-        }),
-        [AIProvider.Codex]: createOnethingCodexModelsFetcher({
-          fetchCodexModels: fetchCodexModelsRaw,
-          getModelsForProvider,
-          saveProviderModels: (providerId, models) =>
-            modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
-          getCodexFallbackModels: modelIds => getCodexFallbackModels(modelIds) as OpenRouterModel[],
-          getConfiguredCodexModelSelection: () =>
-            getSettings()?.ai?.providers?.[AIProvider.Codex] as OnethingConfiguredModelSelection | undefined,
-          logger: consoleLog,
-        }),
-      },
+      // `roster` 读名册,其余走通用路。加一家带列表口的服务商 = 那一家 `runtime.ts` 的
+      // `createModelsFetcher` 一格(这张表按服务商名册建)。
+      endpointFetchers: endpointModelsFetchers(getModelsForProvider),
       // A1-a:ACP 的「模型」= 名册的生效配置(种子 ⊕ 注册表 ⊕ 用户覆盖),不是设置原样 ——
       // 否则种子来的 agent 永远不出现在选择器里。没有装配好的 backend(单测)退回设置。
       getRoster: () => getCurrentBackendInstance()?.acp.modelAgents() ?? getSettings()?.acp?.agents,

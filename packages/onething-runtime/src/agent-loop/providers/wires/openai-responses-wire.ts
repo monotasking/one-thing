@@ -325,6 +325,14 @@ export class CodexResponsesUsageNormalizer implements UsageNormalizer {
 	}
 }
 
+/**
+ * 线协议层的中性名(服务商自述试点 P2 第 4 批):`Codex*` 是这条线只有 codex 一家时留下的旧名,
+ * 说的却是 Responses 协议本身(xAI / OpenAI 的配方也用它们)。中性名与旧名是**同一个**东西;
+ * 搬回 `providers/vendors/<id>/` 的别家配方读中性名,旧名留给线协议层自己,整体改名另起一单。
+ */
+export { CodexResponsesUsageNormalizer as ResponsesUsageNormalizer };
+export type ResponsesUsage = CodexResponsesUsage;
+
 export const codexResponsesUsage: UsageNormalizer =
 	new CodexResponsesUsageNormalizer();
 

@@ -9,6 +9,7 @@
  * (服务商自述试点 P2 第 2 批)。
  */
 import type { OnethingReasoningProfile, OnethingReasoningWire } from '../model-capability.js'
+import type { OnethingModelContextLengthHint } from './types.js'
 
 /** 型号的展示名别称(目录里的名字太长或不是大家叫的那个)。从 `model-registry.ts` 逐字搬来。 */
 export const ONETHING_GEMINI_MODEL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
@@ -62,3 +63,18 @@ export function onethingGeminiReasoningProfile(model: string): OnethingReasoning
     wire: onethingGeminiReasoningWire(model),
   }
 }
+
+// ---------------------------------------------------------------------------
+// 列表口没给说明 / 上下文长度时的型号常识(从 `vendors/github-copilot/models.ts` 搬来,逐字;P2 第 4 批)
+// ---------------------------------------------------------------------------
+
+export const ONETHING_GEMINI_MODEL_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  'gemini-1.5-pro': 'Google Gemini 1.5 Pro',
+  'gemini-2.0-flash': 'Google Gemini 2.0 Flash',
+  'gemini-2.0-flash-001': 'Google Gemini 2.0 Flash',
+}
+
+export const ONETHING_GEMINI_CONTEXT_LENGTH_HINTS: readonly OnethingModelContextLengthHint[] = [
+  { includes: ['gemini-1.5-pro'], contextLength: 2000000 },
+  { includes: ['gemini-2'], contextLength: 1000000 },
+]

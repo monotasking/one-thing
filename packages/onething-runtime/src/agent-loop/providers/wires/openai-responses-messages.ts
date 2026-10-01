@@ -150,6 +150,13 @@ export function toCodexToolChoice(
 	return { type: "function", name: choice.function.name };
 }
 
+/**
+ * 线协议层的中性名(服务商自述试点 P2 第 4 批):`Codex*` 是这条线只有 codex 一家时留下的旧名,
+ * 说的却是 Responses 协议本身。中性名与旧名是**同一个**东西;别家配方读中性名。
+ */
+export type ResponsesNativeTool = CodexTool;
+export const toResponsesToolChoice = toCodexToolChoice;
+
 // ---------------------------------------------------------------------------
 // 纯函数(逐字搬自 codex.ts)
 // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import type {
   OnethingReasoningProfile,
   OnethingReasoningWire,
 } from '../model-capability.js'
+import type { OnethingModelContextLengthHint } from './types.js'
 
 // ---------------------------------------------------------------------------
 // Claude model families (generation → parameter dialect)
@@ -95,3 +96,18 @@ export function onethingClaudeReasoningProfile(model: string): OnethingReasoning
     wire: onethingClaudeReasoningWire(model),
   }
 }
+
+// ---------------------------------------------------------------------------
+// 列表口没给说明 / 上下文长度时的型号常识(从 `vendors/github-copilot/models.ts` 搬来,逐字;P2 第 4 批)
+// ---------------------------------------------------------------------------
+
+export const ONETHING_CLAUDE_MODEL_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  'claude-3.5-sonnet': 'Anthropic Claude 3.5 Sonnet',
+  'claude-3.7-sonnet': 'Anthropic Claude 3.7 Sonnet',
+  'claude-sonnet-4': 'Anthropic Claude Sonnet 4',
+}
+
+export const ONETHING_CLAUDE_CONTEXT_LENGTH_HINTS: readonly OnethingModelContextLengthHint[] = [
+  { includes: ['claude-3.5', 'claude-3.7'], contextLength: 200000 },
+  { includes: ['claude-sonnet-4', 'claude-opus'], contextLength: 200000 },
+]

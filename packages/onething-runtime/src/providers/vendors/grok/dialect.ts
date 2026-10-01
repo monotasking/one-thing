@@ -42,20 +42,21 @@ import type {
 	RequestBodyBuilder,
 	ToolChoicePolicy,
 	TurnContext,
-} from "../base/index.js";
-import { GROK_RESPONSES_THINKING_WIRES } from "../thinking/grok-responses-reasoning.js";
+} from "../../../agent-loop/providers/base/index.js";
+import { GROK_RESPONSES_THINKING_WIRES } from "./thinking.js";
 import {
-	CodexResponsesUsageNormalizer,
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
-	toCodexToolChoice,
-	type CodexResponsesUsage,
-	type CodexTool,
-} from "../wires/index.js";
-import { promptCacheKeyExtraBody } from "./recipe.js";
+	ResponsesUsageNormalizer,
+	toResponsesToolChoice,
+	type ResponsesNativeTool,
+	type ResponsesUsage,
+} from "../../../agent-loop/providers/wires/index.js";
+import { pickGrokSearchParameters } from "./search-parameters.js";
+import { promptCacheKeyExtraBody } from "../../../agent-loop/providers/dialects/recipe.js";
 import {
 	defineResponsesDialect,
 	type ResponsesDialectSpec,
-} from "./responses-recipe.js";
+} from "../../../agent-loop/providers/dialects/responses-recipe.js";
 
 /** 两条 xAI 通路共用的地址 —— `POST https://api.x.ai/v1/responses`。 */
 export const GROK_BASE_URL = "https://api.x.ai/v1";
@@ -88,8 +89,8 @@ const USD_TICKS_PER_DOLLAR = 1e10;
  * **没有 `cache_write_tokens`** —— xAI 不报写缓存(定价页只有 input /
  * cached input / output 三档),那一桶恒 0,投影里连键都不出现。
  */
-export const GROK_RESPONSES_USAGE = new CodexResponsesUsageNormalizer(
-	(usage: CodexResponsesUsage) =>
+export const GROK_RESPONSES_USAGE = new ResponsesUsageNormalizer(
+	(usage: ResponsesUsage) =>
 		usage.cost_in_usd_ticks === undefined
 			? undefined
 			: usage.cost_in_usd_ticks / USD_TICKS_PER_DOLLAR,
@@ -101,12 +102,13 @@ export const GROK_RESPONSES_USAGE = new CodexResponsesUsageNormalizer(
  * `imageDetail`:`input_image` 收 `detail`(`auto|low|high`)。
  * `searchParameters`:Live Search,官方在 `POST /v1/responses` 的 Request Body
  * 上原样列着 `search_parameters` —— 与 chat-completions **同一个对象**,所以
- * P3-5a 那张嵌套白名单一个字都不用改(它已经搬进
- * `wires/xai-search-parameters.ts`)。
+ * P3-5a 那张嵌套白名单一个字都不用改(它住同目录的 `search-parameters.ts`,
+ * 以函数交给线协议层的袋 —— 服务商自述试点 P2 第 4 批前是 `wires/xai-search-parameters.ts`
+ * 加一个布尔开关)。
  */
 export const GROK_PROVIDER_OPTIONS = {
 	imageDetail: OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
-	searchParameters: true,
+	searchParameters: pickGrokSearchParameters,
 } as const;
 
 interface UrlCitationAnnotation {
@@ -212,7 +214,7 @@ class GrokResponsesToolChoicePolicy implements ToolChoicePolicy {
 	apply(turn: TurnContext, builder: RequestBodyBuilder): void {
 		const tools = builder.get<unknown[]>("tools");
 		if (!Array.isArray(tools) || tools.length === 0) return;
-		builder.set("tool_choice", toCodexToolChoice(turn.request.toolChoice));
+		builder.set("tool_choice", toResponsesToolChoice(turn.request.toolChoice));
 	}
 }
 
@@ -240,7 +242,7 @@ export const grokResponsesToolChoicePolicy: ToolChoicePolicy =
  * (`toCodexTools` 按原生工具的 `type` 占名;xAI 对重名直接 400)。唯一例外:
  * 这一回合**指名**要我们的 `web_search` 函数 —— 那就不挂原生,指名得算数。
  */
-export function grokNativeTools(turn: TurnContext): CodexTool[] {
+export function grokNativeTools(turn: TurnContext): ResponsesNativeTool[] {
 	const { tools, toolChoice } = turn.request;
 	if (!tools || tools.length === 0) return [];
 	if (toolChoice === "none") return [];
@@ -248,7 +250,7 @@ export function grokNativeTools(turn: TurnContext): CodexTool[] {
 	return [{ type: "web_search" }];
 }
 
-/** 两条通路共用的配方主体 —— 只有 id 不同(见 `grok-oauth.ts` 的抬头)。 */
+/** 两条通路共用的配方主体 —— 只有 id 不同(见 `vendors/grok-oauth/dialect.ts` 的抬头)。 */
 export const GROK_DIALECT_SPEC = {
 	defaultBaseUrl: GROK_BASE_URL,
 	reasoning: GROK_RESPONSES_THINKING_WIRES,

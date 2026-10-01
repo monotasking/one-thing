@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { toJsonObject, type JsonObject, type JsonValue } from '@shared/json.js'
+// 服务商自述试点 P2 第 4 批:这几个函数原是 `../codex.js` 对 runtime 的薄转手(生产零调用者),转手层删除,
+// 断言改指 runtime 那一家的模块本身(`vendors/codex/models.ts`)。`prepareCodexCallOptions` 随
+// 它唯一的去处(没有读者的 `prepareCallOptions` 一格)一起删除,只测它的那一条测试一并删。
 import {
-  buildCodexHeaders,
-  buildCodexModelsUrl,
-  CODEX_DEFAULT_MODEL,
-  codexModelInfoToOpenRouterModel,
-  CODEX_CLIENT_VERSION,
-  getCodexFallbackModel,
-  getCodexFallbackModels,
-  prepareCodexCallOptions,
-} from '../codex.js'
+  buildOnethingCodexHeaders as buildCodexHeaders,
+  buildOnethingCodexModelsUrl as buildCodexModelsUrl,
+  ONETHING_CODEX_DEFAULT_MODEL as CODEX_DEFAULT_MODEL,
+  codexModelInfoToOnethingOpenRouterModel as codexModelInfoToOpenRouterModel,
+  ONETHING_CODEX_CLIENT_VERSION as CODEX_CLIENT_VERSION,
+  getOnethingCodexFallbackModel as getCodexFallbackModel,
+  getOnethingCodexFallbackModels as getCodexFallbackModels,
+} from '@onething/runtime/providers/vendors/codex/models'
 
 function codexMetadata(model: { providerMetadata?: object | null } | null | undefined): JsonObject {
   return toJsonObject(toJsonObject(model?.providerMetadata).codex)
@@ -134,32 +136,5 @@ describe('codex provider helpers', () => {
       { id: 'fast', name: 'Fast', description: undefined },
     ])
     expect(model?.architecture.input_modalities).toEqual(['text', 'image'])
-  })
-
-  it('moves system instructions into Codex provider options', () => {
-    const options = prepareCodexCallOptions({
-      messages: [
-        { role: 'system', content: 'System rules' },
-        { role: 'developer', content: [{ type: 'text', text: 'Developer rules' }] },
-        { role: 'user', content: 'Hello' },
-      ],
-      tools: {
-        read: { description: 'Read a file', inputSchema: {} },
-      },
-      toolChoice: { type: 'tool', toolName: 'read' },
-      maxOutputTokens: 64000,
-    }, {
-      providerId: 'codex',
-      modelId: 'gpt-5.5',
-      mode: 'stream',
-      isReasoningModel: false,
-    })
-
-    expect(options.messages).toEqual([{ role: 'user', content: 'Hello' }])
-    const codexOptions = options.providerOptions?.codex as { instructions?: string } | undefined
-    expect(codexOptions?.instructions).toBe('System rules\n\nDeveloper rules')
-    expect(options.providerOptions?.openai).toBeUndefined()
-    expect(options.toolChoice).toEqual({ type: 'auto' })
-    expect(options.maxOutputTokens).toBeUndefined()
   })
 })

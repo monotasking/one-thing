@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/core/agent-loop";
-import { createCodexAgentProvider } from "../codex.js";
+import { createCodexAgentProvider } from "../../../providers/vendors/codex/agent-provider.js";
 import { planOnethingProviderDataPart } from "../provider-data.js";
 
 /**

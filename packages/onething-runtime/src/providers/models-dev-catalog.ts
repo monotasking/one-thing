@@ -11,20 +11,21 @@ import type { OnethingQwenEndpointConfig } from "./vendors/qwen/endpoint.js";
 import { BUILTIN_PROVIDER_MANIFESTS } from "./builtin-manifests.js";
 import { getProviderManifest } from "./manifest.js";
 
-const LEGACY_PROVIDER_MAPPING: Record<string, string> = {
-	openai: "openai",
+/**
+ * **不是内置服务商**的几本 models.dev 目录(Mistral / Meta 的 Llama / Cohere):它们的型号经别家
+ * 转售出现,目录键要映射到一个稳定的 id 上供目录与认亲用,但我们没有这几家的服务商。这是型号厂牌
+ * 的数据,不是在点哪一家服务商的名 —— 内置服务商自己声明哪些目录键归它(`manifest.catalogAliases`,
+ * 服务商自述试点 P2 第 4 批起一家不剩)。
+ */
+const NON_VENDOR_CATALOG_MAPPING: Record<string, string> = {
 	mistral: "mistral",
 	meta: "llama",
 	cohere: "cohere",
-	xai: "grok",
 };
 
-/**
- * models.dev 目录键 → 我们的 provider id。搬回家的服务商自己声明哪些目录键归它
- * (`manifest.catalogAliases`);还没搬的仍在上面那张表里(试点过渡期)。
- */
+/** models.dev 目录键 → 我们的 provider id:各家内置服务商的 `catalogAliases` + 上面那几本非服务商目录。 */
 export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
-	...LEGACY_PROVIDER_MAPPING,
+	...NON_VENDOR_CATALOG_MAPPING,
 	...Object.fromEntries(
 		BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) =>
 			(manifest.catalogAliases ?? []).map((alias) => [alias, manifest.id] as const),

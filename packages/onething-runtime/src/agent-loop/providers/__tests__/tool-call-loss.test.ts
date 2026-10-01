@@ -3,7 +3,7 @@ import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
-import { createCodexAgentProvider } from "../codex.js";
+import { createCodexAgentProvider } from "../../../providers/vendors/codex/agent-provider.js";
 import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
 

@@ -1,7 +1,11 @@
 /**
- * Codex(ChatGPT 订阅)**非请求路径**的那一半:模型列表、原生工具元数据,以及
- * `prepareCallOptions`。用量拉取(`wham/usage`)批 5 起住在 `quota/codex.ts`,
- * 产出通用的 `ProviderQuota`。
+ * Codex(ChatGPT 订阅)**非请求路径**的那一半:模型列表、原生工具元数据。用量拉取
+ * (`wham/usage`)批 5 起住在同目录的 `quota.ts`,产出通用的 `ProviderQuota`。
+ *
+ * 服务商自述试点 P2 第 4 批从 `providers/codex.ts` 搬回家。同批删掉了 `prepareOnethingCodexCallOptions`
+ * (及只服务它的 `contentToOnethingCodexInstructionText` / `isOnethingCodexInstructionRole` /
+ * `ONETHING_CODEX_FALLBACK_INSTRUCTIONS`):它唯一的去处是 backend `builtinProviders` 里 codex 那条
+ * 定义的 `prepareCallOptions` 一格,而全仓没有一处读那一格 —— 生产零调用。
  *
  * `doStream` / `doGenerate` 那条自带 SSE / usage / 错误 / effort 的请求路径在
  * P1-d2 整条删除(生产零调用方 —— codex 的真实通路是
@@ -9,14 +13,13 @@
  * 设计稿 §9 P1「第二套 codex」)。新增请求侧行为一律改那条线,不要在这里复活。
  */
 import { toJsonObject } from '@onething/core'
-import type { OnethingOpenRouterModel } from './model-registry.js'
-import type { OnethingOAuthToken } from '../auth/types.js'
+import type { OnethingOpenRouterModel } from '../../model-registry.js'
+import type { OnethingOAuthToken } from '../../../auth/types.js'
 
 export const ONETHING_CODEX_PROVIDER_ID = 'codex'
 export const ONETHING_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
 export const ONETHING_CODEX_DEFAULT_MODEL = 'gpt-5.3-codex'
 export const ONETHING_CODEX_CLIENT_VERSION = process.env.npm_package_version || '1.1.0'
-export const ONETHING_CODEX_FALLBACK_INSTRUCTIONS = 'You are Codex, a helpful AI coding assistant.'
 export const ONETHING_CODEX_NATIVE_IMAGE_GENERATION_TOOL = 'image_generation'
 
 const ONETHING_CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
@@ -58,10 +61,13 @@ export interface OnethingCodexModelProviderMetadata {
   nativeTools: OnethingCodexNativeToolName[]
 }
 
-export type OnethingCodexOAuthToken = Pick<
-  OnethingOAuthToken,
-  'accessToken' | 'accountId' | 'isFedrampAccount'
->
+/**
+ * Codex 的头只读 `accessToken` / `accountId` / `isFedrampAccount` 三格,但收任何一份 OAuth token
+ * (宿主手里的是完整的那一份)。服务商自述试点 P2 第 4 批前 backend 的转手层 `buildCodexHeaders` 收的
+ * 就是完整形状;转手层删除后,这里把形状放宽到同样能收,运行时一个字节不变。
+ */
+export type OnethingCodexOAuthToken = Pick<OnethingOAuthToken, 'accessToken'> &
+  Partial<OnethingOAuthToken>
 
 export type OnethingCodexFetchFn = typeof globalThis.fetch
 
@@ -118,22 +124,6 @@ export function normalizeOnethingCodexReasoningEffort(
   return ONETHING_CODEX_REASONING_EFFORTS.includes(value as OnethingCodexReasoningEffort)
     ? value as OnethingCodexReasoningEffort
     : 'medium'
-}
-
-function contentToOnethingCodexInstructionText(content: OnethingCodexRawValue): string {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === 'string') return part
-        const record = onethingCodexRecordFromValue(part)
-        if (record.type === 'text' && typeof record.text === 'string') return record.text
-        return ''
-      })
-      .filter(Boolean)
-      .join('\n')
-  }
-  return content == null ? '' : String(content)
 }
 
 function asNumber(value: OnethingCodexRawValue): number | undefined {
@@ -518,63 +508,3 @@ export async function fetchOnethingCodexModels(
 
   return models.length > 0 ? models : getOnethingCodexFallbackModels()
 }
-
-function isOnethingCodexInstructionRole(role: OnethingCodexRawValue): boolean {
-  return role === 'system' || role === 'developer'
-}
-
-export function prepareOnethingCodexCallOptions<TOptions extends {
-  messages?: unknown
-  providerOptions?: unknown
-  tools?: unknown
-  toolChoice?: unknown
-  maxOutputTokens?: unknown
-}>(
-  options: TOptions,
-): TOptions {
-  const systemMessages: string[] = []
-
-  if (Array.isArray(options.messages)) {
-    const nonSystemMessages: object[] = []
-
-    for (const message of options.messages) {
-      const messageRecord = onethingCodexRecordFromValue(message as OnethingCodexRawValue)
-      if (isOnethingCodexInstructionRole(messageRecord.role)) {
-        const text = contentToOnethingCodexInstructionText(messageRecord.content).trim()
-        if (text) systemMessages.push(text)
-      } else {
-        nonSystemMessages.push(message as object)
-      }
-    }
-
-    options.messages = nonSystemMessages
-  }
-
-  const existingProviderOptions = onethingCodexRecordFromValue(options.providerOptions as OnethingCodexRawValue)
-  const existingOpenAIOptions = onethingCodexRecordFromValue(existingProviderOptions.openai)
-  const existingCodexOptions = onethingCodexRecordFromValue(existingProviderOptions.codex)
-  const existingInstructions = contentToOnethingCodexInstructionText(
-    existingCodexOptions.instructions ?? existingOpenAIOptions.instructions,
-  ).trim()
-  const instructions = [...systemMessages, existingInstructions].filter(Boolean).join('\n\n') ||
-    ONETHING_CODEX_FALLBACK_INSTRUCTIONS
-
-  options.providerOptions = {
-    ...existingProviderOptions,
-    codex: {
-      ...existingCodexOptions,
-      instructions,
-    },
-  }
-
-  if (options.tools && Object.keys(options.tools).length > 0) {
-    options.toolChoice = { type: 'auto' }
-  } else {
-    delete options.toolChoice
-  }
-
-  delete options.maxOutputTokens
-
-  return options
-}
-

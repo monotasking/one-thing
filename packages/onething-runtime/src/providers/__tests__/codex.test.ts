@@ -10,7 +10,7 @@ import {
   normalizeOnethingCodexReasoningEffort,
   ONETHING_CODEX_CLIENT_VERSION,
   ONETHING_CODEX_DEFAULT_MODEL,
-} from '../codex.js'
+} from '../vendors/codex/models.js'
 
 function codexMetadata(model: { providerMetadata?: object | null } | null | undefined): JsonObject {
   return toJsonObject(toJsonObject(model?.providerMetadata).codex)

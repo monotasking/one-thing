@@ -5,7 +5,7 @@ import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
   resolveCodexNativeToolsFromModelInfo,
   shouldResolveCodexNativeTools,
-} from '@onething/runtime/providers'
+} from '@onething/runtime/providers/vendors/codex/native-tools'
 
 export { CODEX_NATIVE_IMAGE_GENERATION_TOOL }
 

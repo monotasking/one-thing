@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   builtinQuotaSources,
   classifyQuotaWindowSeconds,
-  codexQuotaFromHeaders,
   fetchProviderQuota,
   getQuotaSource,
   providerQuotaSourceOf,
@@ -12,6 +11,7 @@ import {
   resetQuotaSourcesForTests,
   type QuotaFetchContext,
 } from '../index.js'
+import { codexQuotaFromHeaders } from '../../vendors/codex/quota.js'
 import { getBuiltinProviderManifest } from '../../builtin-manifests.js'
 
 const NOW = 1_770_000_000_000

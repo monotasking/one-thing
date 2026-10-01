@@ -193,6 +193,41 @@ providers/
 - 补记:第 1 批提交漏了 `wires/openai-chat-provider-options.ts`(`DEEPSEEK_IMAGE_DETAIL_VALUES` 移进 deepseek 方言后
   这里的删除)—— 当时排除别的会话文件的过滤条件 `chat-` 太宽,本批一并提交。
 
+**P2 第 4 批落地记录(openai / codex / grok / grok-oauth / github-copilot;内置服务商至此全部住进自己的目录)**:
+- 五家的方言、运行时工厂(`factory.ts` 里一家都不再点名;Copilot 的补全 token 缓存随工厂进
+  `vendors/github-copilot/runtime.ts`)、环境变量、认亲、目录别名、型号规则表回家。codex 的非请求半边
+  (`providers/codex.ts` → `vendors/codex/models.ts`)、原生工具判据(`native-tools.ts`)、配额源、构造门面
+  (`agent-provider.ts`)、只服务它的配方主体与三态端点(`CODEX_DIALECT_SPEC` / `responsesEndpoint`)回家;
+  xAI 的两条思考线型合进 `vendors/grok/thinking.ts`,Live Search 白名单(`wires/xai-search-parameters.ts` →
+  `vendors/grok/search-parameters.ts`)改由配方以函数交给线协议层的袋(`searchParameters` 从布尔改为函数)。
+- 新机制(都在 `VendorRuntime` 上,都由读的人**惰性**读名册):
+  - `oauth`:`auth/registry.ts` 不再手列五份配置,按名册建表;五份(含第 1 / 2 批留下的 claude-code、kimi-code)
+    各回各家 `vendors/<id>/oauth.ts`。PKCE 与 token 归一搬进叶子模块 `auth/oauth-token.ts`(registry 原样再导出)。
+  - `createModelsFetcher(deps)`:`rpc/domains/models.ts` 不再按两个枚举值手列,按名册建列表口表;宿主只交一份
+    不点名的 `VendorModelsFetcherDeps`(缓存目录、落盘、设置选型、`getToken` / `refreshTokenIfNeeded`、
+    app fetch、日志)。Copilot 的取数与模型缓存从 backend `builtin/github-copilot.ts` 搬进 vendor(该文件删除)。
+  - `fallbackModels`(照配额源同形加的第三格,可拒):backend `model-registry.ts` 的兜底表改为读名册;
+    grok 两半共用 `vendors/grok/fallback-models.ts`。
+- 过渡表收尾:`LEGACY_QUOTA_SOURCES` 与 `DEFAULT_PROVIDER_API_KEY_ENV_VARS` 清空后连同回落分支删除;
+  `PROVIDER_MODEL_RULES` 只剩 `acp` / `unknown`,改名 `NON_VENDOR_MODEL_RULES`;`LEGACY_MODEL_VENDOR_ALIASES` /
+  `LEGACY_PROVIDER_MAPPING` 只剩 Mistral / Meta / Cohere 这几个**非服务商**厂牌,改名并注明。Copilot 的
+  `kind === 'copilot'` 专门分支换成它 manifest 里的一行函数型规则(同位置同答案,vendor-facts 快照为证)。
+- 型号家族:`model-families/openai.ts`(gpt-5.x 按代分档、`none` / `original` 判据);Copilot 列表口用的
+  型号说明与上下文长度按族拆进 `model-families/{openai,claude,gemini}.ts`,`index.ts` 按原 `if / else if` 次序汇总。
+- 死代码(逐个 grep 核过零生产调用者):`prepareOnethingCodexCallOptions` 及只服务它的三件(唯一去处是
+  backend codex 定义的 `prepareCallOptions` 一格,全仓无人读那一格)、backend `builtin/codex.ts` 与
+  `builtin/index.ts` 里的「滤掉 codex 再追加」(codex 本就在可移植表末位,同序同值)、
+  `githubCopilotBuiltinProvider`、backend `builtin/github-copilot.ts` 的 `clearCopilotModelsCache`。
+- 尺子:`OpenRouterModel`(全仓目录行的格式名)算协议名;整串是 HTTP 头名形状的字符串(`OpenAI-Intent`)不计。
+  `Codex*` 这一族 Responses 线协议旧名加了中性别名(`ResponsesNativeTool` / `ResponsesUsageNormalizer` /
+  `toResponsesToolChoice`),搬回家的别家配方读中性名;整体改名另起一单。230 → 163 对。
+- 剩下的对:Responses 线协议层的 `Codex*` 旧名与配方缺省(占位认证、传输声明、兜底 instructions、`'codex'`
+  思考线型 —— 自定义服务商的 Responses 适配表也吃这些缺省;`factory.ts` 给自定义 Responses 家用 `codexAuth`)、
+  dump 的 `'codex-http'` 模式(落盘可见)、`model-capability` 的 `kind === 'openai'` 原生出图判据与
+  `providerMetadata.codex` 证据键、backend `refreshAllProviders` 里给 grok 两半补设置条目的循环、
+  backend `wiring/agent-loop/providers/codex.ts`(零生产调用者,测试钉着 authService 回落与宿主 token 形状,留)、
+  自定义服务商的 `apiType: 'openai'`、P3 类型、P4 壳、领域外(引擎的 codex 原生工具接线、语音、媒体、日志)。
+
 ### P3 · 打开契约
 
 - `AIProviderId` 从写死的联合改为字符串 + 注册表;`AIProvider` 枚举退役;`OnethingProviderKind` 同理。

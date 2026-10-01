@@ -26,24 +26,28 @@ import type { OnethingModelsDevModel, OnethingModelsDevResponse } from "./model-
  * 是这家在 models.dev 里的键,**按偏好排**(同一厂牌的国内 / 海外两本目录取前一本)。
  * 这张表同时定义了「第一方」:键在某一行 `keys` 里的那家就是第一方。
  */
-const LEGACY_MODEL_VENDOR_ALIASES: ReadonlyArray<{
+/**
+ * **不是内置服务商**的模型厂牌(今天只有 Mistral):它们的型号经转发站 / 聚合站出现(`mistralai/…`),
+ * models.dev 里有它们自己的一本目录,但我们没有这一家的服务商。这是型号厂牌的数据,不是在点哪一家
+ * 服务商的名 —— 内置服务商的认亲那一行由各家 manifest 自己带(`manifest.modelIdentity`,
+ * `vendors/<id>/manifest.ts`;服务商自述试点 P2 第 4 批起一家不剩)。
+ */
+const NON_VENDOR_MODEL_BRAND_ALIASES: ReadonlyArray<{
 	readonly brands: readonly string[];
 	readonly keys: readonly string[];
 }> = [
-	{ brands: ["openai"], keys: ["openai"] },
-	{ brands: ["x-ai", "xai", "grok"], keys: ["xai"] },
 	{ brands: ["mistralai", "mistral"], keys: ["mistral"] },
 ];
 
 /**
- * 搬回家的服务商自己带认亲那一行(`manifest.modelIdentity`,`vendors/<id>/manifest.ts`);
- * 还没搬的仍在上面那张表里(服务商自述试点 P1/P2 的过渡期)。行与行互不重叠,行序不是行为。
+ * 厂牌 → models.dev 的 provider 键全表 = 各家内置服务商自带的那一行 + 上面那几个非服务商厂牌。
+ * 行与行互不重叠,行序不是行为。
  */
 export const MODEL_VENDOR_ALIASES: ReadonlyArray<{
 	readonly brands: readonly string[];
 	readonly keys: readonly string[];
 }> = [
-	...LEGACY_MODEL_VENDOR_ALIASES,
+	...NON_VENDOR_MODEL_BRAND_ALIASES,
 	...BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) => (manifest.modelIdentity ? [manifest.modelIdentity] : [])),
 ];
 

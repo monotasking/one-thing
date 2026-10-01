@@ -2,7 +2,7 @@
  * Codex(ChatGPT 订阅)的配额源 —— 主动一条、被动一条(§8.2)。
  *
  *  - **主动**:`GET <origin>/backend-api/wham/usage`,OAuth Bearer + Codex CLI 那一组头。
- *    这就是从前 `providers/codex.ts` 里的 `fetchOnethingCodexUsage`,整段搬进来,
+ *    这就是从前 `providers/codex.ts`(今 `vendors/codex/models.ts`)里的 `fetchOnethingCodexUsage`,整段搬进来,
  *    产出从 Codex 自己的形状换成通用的 `ProviderQuota`。
  *  - **被动**:Responses 流的响应头(`x-codex-primary-used-percent` 一族),由 codex 方言的
  *    `quotaFromHeaders` 读 —— 每发一条消息顺手刷新一次,零额外请求。
@@ -11,8 +11,8 @@
  * 没报时长的窗口归不了类,丢掉 —— 按位置猜一个正是这一批要消灭的那种错。
  */
 import type { ProviderQuota, ProviderQuotaBalance, ProviderQuotaWindow } from '@shared/contracts/quota.js'
-import { buildOnethingCodexHeaders, ONETHING_CODEX_BASE_URL } from '../codex.js'
-import { classifyQuotaWindowSeconds, quotaEpochMsOf, sortQuotaWindows } from './classify-windows.js'
+import { buildOnethingCodexHeaders, ONETHING_CODEX_BASE_URL } from './models.js'
+import { classifyQuotaWindowSeconds, quotaEpochMsOf, sortQuotaWindows } from '../../quota/classify-windows.js'
 import {
   getQuotaJson,
   quotaNow,
@@ -22,7 +22,7 @@ import {
   quotaStringOf,
   QuotaFetchError,
   type QuotaSource,
-} from './source.js'
+} from '../../quota/source.js'
 
 export const CODEX_QUOTA_SOURCE_ID = 'codex'
 export const CODEX_USAGE_PATH = '/backend-api/wham/usage'

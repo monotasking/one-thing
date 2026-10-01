@@ -19,10 +19,6 @@ export interface OnethingProviderEnvStatus {
 
 export type OnethingProviderEnv = Record<string, string | undefined>
 
-const DEFAULT_PROVIDER_API_KEY_ENV_VARS: Record<string, string[]> = {
-  openai: ['OPENAI_API_KEY'],
-}
-
 function normalizeEnvVarName(value: string | undefined): string | undefined {
   const name = value?.trim()
   if (!name) return undefined
@@ -68,7 +64,7 @@ export function getOnethingProviderApiKeyEnvCandidates(
 ): string[] {
   const prefix = providerIdToEnvPrefix(providerId)
   return dedupeEnvVars([
-    ...(getProviderManifest(providerId)?.envVars ?? DEFAULT_PROVIDER_API_KEY_ENV_VARS[providerId] ?? []),
+    ...(getProviderManifest(providerId)?.envVars ?? []),
     prefix ? `${prefix}_API_KEY` : undefined,
   ])
 }

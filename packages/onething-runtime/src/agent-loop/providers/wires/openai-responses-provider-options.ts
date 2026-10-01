@@ -14,8 +14,8 @@
  *    **每一个** `input_image.detail`。
  *  - `searchParameters` —— xAI Live Search,官方在 `POST /v1/responses` 的
  *    Request Body 上原样列着 `search_parameters`(见
- *    `xai-search-parameters.ts` 的抬头),通过嵌套白名单的键原样写成顶层
- *    `search_parameters`。
+ *    `providers/vendors/grok/search-parameters.ts` 的抬头),通过嵌套白名单的键原样写成
+ *    顶层 `search_parameters`;白名单由那一家的配方以函数交进来。
  *
  *  - `verbosity`(`low|medium|high`,**P4-5 新增**)—— OpenAI 官方的输出长度
  *    旋钮。这条线上它**不是顶层字段**,而是 `text.verbosity`:官方
@@ -37,7 +37,6 @@
  * 所以只有它的裁定是完整的。同一个被丢的键不会出现两条 warning。
  */
 import type { TurnContext } from "../base/index.js";
-import { pickGrokSearchParameters } from "./xai-search-parameters.js";
 
 /**
  * `input_image.detail` 的标准值域(auto / low / high)。xAI 的两条通路用这一份
@@ -92,8 +91,18 @@ export interface OpenAIResponsesProviderOptionSupport {
 		| boolean
 		| readonly string[]
 		| ((turn: TurnContext) => readonly string[]);
-	/** 收不收 `searchParameters`(xAI Live Search)。只有 grok / grok-oauth 打开。 */
-	searchParameters?: boolean;
+	/**
+	 * 收不收 `searchParameters`(xAI Live Search),以及怎么逐子键过白名单。给函数 = 收,
+	 * 子键白名单就是这支函数(只有 grok / grok-oauth 给,表住 `providers/vendors/grok/
+	 * search-parameters.ts`);不给 = 不收(认不出的键,丢弃 + 留痕)。
+	 *
+	 * 服务商自述试点 P2 第 4 批前这一格是布尔,白名单由本文件按名 import 那一家的表;
+	 * 换成函数之后线协议层不再认识哪一家,判据(`support.searchParameters` 真值)一字未改。
+	 */
+	searchParameters?: (
+		value: unknown,
+		onDropped?: OpenAIResponsesProviderOptionDropped,
+	) => Record<string, unknown> | undefined;
 	/** 收不收 `text.verbosity`(OpenAI 的输出长度旋钮)。只有 openai 打开。 */
 	verbosity?: boolean;
 }
@@ -153,7 +162,7 @@ export function pickOpenAIResponsesProviderOptions(
 			continue;
 		}
 		if (key === "searchParameters" && support.searchParameters) {
-			const search = pickGrokSearchParameters(value, onDropped);
+			const search = support.searchParameters(value, onDropped);
 			if (search) picked.searchParameters = search;
 			continue;
 		}

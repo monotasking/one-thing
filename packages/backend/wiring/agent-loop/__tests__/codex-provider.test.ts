@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CODEX_BASE_URL } from '../../providers/builtin/codex.js'
+import { CODEX_BASE_URL } from '@onething/runtime/providers/vendors/codex/agent-provider'
 import { createCodexAgentProvider } from '../providers/codex.js'
 import type { AgentJsonObject, AgentStreamEvent, AgentTurnStreamEvent } from '@onething/core/agent-loop'
 
