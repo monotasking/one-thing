@@ -1,0 +1,16 @@
+import { normalizeProviderBaseUrl } from '../../base-url.js'
+
+export const ACME_STANDARD_BASE_URL = 'https://api.acme.test/v1'
+export const ACME_PRO_BASE_URL = 'https://pro.acme.test/v1'
+
+export function normalizeAcmeTier(value: unknown): 'standard' | 'pro' | undefined {
+  return value === 'standard' || value === 'pro' ? value : undefined
+}
+
+export function resolveAcmeBaseUrl(config: Record<string, unknown> | undefined): string {
+  const baseUrl = normalizeProviderBaseUrl(config?.baseUrl)
+  const tier = normalizeAcmeTier(config?.acmeTier)
+  const known = baseUrl === ACME_STANDARD_BASE_URL || baseUrl === ACME_PRO_BASE_URL
+  if (tier && (!baseUrl || known)) return tier === 'pro' ? ACME_PRO_BASE_URL : ACME_STANDARD_BASE_URL
+  return baseUrl || ACME_STANDARD_BASE_URL
+}

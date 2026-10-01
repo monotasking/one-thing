@@ -1,0 +1,58 @@
+import type { DialSpec } from '../../dials.js'
+import type { ProviderManifest } from '../../manifest.js'
+import { ACME_PRO_BASE_URL, ACME_STANDARD_BASE_URL, normalizeAcmeTier, resolveAcmeBaseUrl } from './endpoint.js'
+
+const ACME_DIALS: DialSpec = {
+  apiModeKey: 'acmeTier',
+  apiMode: {
+    label: 'Tier',
+    ariaLabel: 'Acme tier',
+    options: [
+      { value: 'standard', label: 'Standard' },
+      { value: 'pro', label: 'Pro' },
+    ],
+    normalize: (value) => (value === 'pro' ? 'pro' : 'standard'),
+  },
+  baseUrlOf: (tier) => (tier === 'pro' ? ACME_PRO_BASE_URL : ACME_STANDARD_BASE_URL),
+}
+
+export const ACME_MANIFEST: ProviderManifest = {
+  id: 'acme',
+  origin: 'builtin',
+  name: 'Acme AI',
+  description: 'providers.desc.acme',
+  icon: 'acme',
+  dialect: 'acme',
+  auth: { kind: 'apiKey' },
+  models: { kind: 'models.dev', key: 'acme-ai' },
+  billing: 'api',
+  quotaSource: 'acme',
+  dials: ACME_DIALS,
+  modelRules: 'acme',
+  reasoningWires: ['acme-thinking'],
+  defaultBaseUrl: ACME_STANDARD_BASE_URL,
+  supportsCustomBaseUrl: true,
+  defaultModel: 'acme-1',
+  envVars: ['ACME_API_KEY'],
+  modelIdentity: { brands: ['acme', 'acme-ai'], keys: ['acme-ai'] },
+  catalogAliases: ['acme-ai'],
+  errorDescriptions: { A42: 'Acme 余额不足。' },
+  endpoint: {
+    pickOptions: (stored) => {
+      const acmeTier = normalizeAcmeTier(stored.acmeTier)
+      return acmeTier ? { acmeTier } : undefined
+    },
+    resolveBaseUrl: resolveAcmeBaseUrl,
+    entryFields: { apiMode: 'acmeTier' },
+    ownsBaseUrl: true,
+  },
+  modelRuleTable: [
+    {
+      test: /^acme-think/,
+      caps: { reasoning: true },
+      profile: { toggleable: true, defaultOn: false, efforts: [], defaultEffort: 'high', wire: 'acme-thinking' },
+    },
+    { test: /(?:)/, caps: { reasoning: false, tools: true } },
+  ],
+  seed: { apiKey: '', acmeTier: 'standard', model: 'acme-1', selectedModels: ['acme-1'], enabled: false },
+}

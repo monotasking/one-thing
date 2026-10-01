@@ -1,0 +1,55 @@
+import { describe, expect, it } from 'vitest'
+import { extractErrorDetails } from '@onething/core/engine/error-details'
+import { createAgentProviderFromRuntime, isAgentProviderRuntimeSupported } from '@onething/runtime/agent-loop/providers/factory'
+import { onethingBaseBuiltinProviders } from '@onething/runtime/providers/builtin-providers'
+import { getOnethingProviderApiKeyEnvCandidates } from '@onething/runtime/providers/env'
+import { resolveOnethingProviderBaseUrl } from '@onething/runtime/providers/endpoint'
+import { getProviderManifest } from '@onething/runtime/providers/manifest'
+import { normalizeOnethingReasoningProfileOverride, resolveOnethingModelCapabilities } from '@onething/runtime/providers/model-capability'
+import { MODEL_VENDOR_ALIASES } from '@onething/runtime/providers/model-identity'
+import { getOnethingModelsDevProviderId, ONETHING_PROVIDER_MAPPING } from '@onething/runtime/providers/models-dev-catalog'
+import { pickOnethingProviderOptions } from '@onething/runtime/providers/provider-options'
+import { fetchProviderQuota, providerQuotaSourceOf } from '@onething/runtime/providers/quota'
+import { providerDialFieldsOf } from '@onething/runtime/spaces/provider-credentials'
+import { createDefaultSettings } from '../stores/settings-defaults.js'
+
+describe('陌生能力演练:加一家 acme', () => {
+  it('通用代码全部认得它', async () => {
+    expect(getProviderManifest('acme')?.name).toBe('Acme AI')
+    expect(getOnethingProviderApiKeyEnvCandidates('acme')).toEqual(['ACME_API_KEY'])
+    expect(resolveOnethingProviderBaseUrl('acme', { acmeTier: 'pro' })).toBe('https://pro.acme.test/v1')
+    expect(resolveOnethingProviderBaseUrl('acme', { baseUrl: 'https://proxy.example/v1', acmeTier: 'pro' })).toBe('https://proxy.example/v1')
+    expect(pickOnethingProviderOptions('acme', { acmeTier: 'pro' })).toEqual({ acmeTier: 'pro' })
+    expect(providerDialFieldsOf('acme')).toEqual({ apiMode: 'acmeTier' })
+    expect(getOnethingModelsDevProviderId('acme')).toBe('acme-ai')
+    expect(ONETHING_PROVIDER_MAPPING['acme-ai']).toBe('acme')
+    expect(MODEL_VENDOR_ALIASES.some((row) => row.brands.includes('acme'))).toBe(true)
+    expect(extractErrorDetails({ responseBody: JSON.stringify({ error: { code: 'A42', message: 'no money' } }) }))
+      .toBe('no money (code: A42). Acme 余额不足。')
+    const think = resolveOnethingModelCapabilities({ providerId: 'acme', modelId: 'acme-think-2' })
+    expect(think.reasoning).toBe(true)
+    expect(think.reasoningProfile?.wire).toBe('acme-thinking')
+    expect(normalizeOnethingReasoningProfileOverride({ wire: 'acme-thinking' })?.wire).toBe('acme-thinking')
+    expect(providerQuotaSourceOf('acme')).toBe('acme')
+    expect(await fetchProviderQuota('acme', { apiKey: 'k', fetch: globalThis.fetch, now: () => 1 } as never))
+      .toMatchObject({ kind: 'balance', available: 42 })
+    const info = onethingBaseBuiltinProviders.find((entry) => entry.id === 'acme')?.info as { dials?: { baseUrls: unknown } }
+    expect(info?.dials?.baseUrls).toBeTruthy()
+    expect(createDefaultSettings().ai.providers.acme?.model).toBe('acme-1')
+  })
+
+  it('真请求走它自己的方言、地址与思考线型', async () => {
+    expect(isAgentProviderRuntimeSupported('acme')).toBe(true)
+    let url = ''
+    let body: Record<string, unknown> = {}
+    const fetchImpl = (async (input: string, init: RequestInit) => {
+      url = String(input)
+      body = JSON.parse(String(init.body))
+      return new Response('data: [DONE]\n\n', { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    }) as typeof fetch
+    const provider = createAgentProviderFromRuntime('acme', { apiKey: 'k', model: 'acme-think-2', providerOptions: { acmeTier: 'pro' } }, { fetchImpl })!
+    for await (const _ of provider.streamTurn!({ cacheKey: 'drill', model: 'acme-think-2', messages: [{ role: 'user', content: 'hi' }], tools: [], thinking: 'enabled' } as never)) { void _ }
+    expect(url).toBe('https://pro.acme.test/v1/chat/completions')
+    expect(body.acme_think).toBe(true)
+  })
+})

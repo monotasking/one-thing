@@ -69,6 +69,7 @@
 		"assembly:gate": "node scripts/assembly-gate.mjs",
 		"provider:check": "node scripts/provider-vendor-gate.mjs --list --verbose",
 		"provider:gate": "node scripts/provider-vendor-gate.mjs",
+		"provider:drill": "node scripts/provider-vendor-drill.mjs",
 		"sessions:verify": "bun scripts/session-verify.ts",
 		"sessions:events-selfcheck": "bun scripts/session-events-read-selfcheck.ts",
 		"sessions:hydration-contract": "bun scripts/session-hydration-contract.ts",

@@ -40,14 +40,14 @@ export const VENDOR_MANIFESTS: readonly ProviderManifest[] = [
 ]
 
 /**
- * 出厂种子表(各家 manifest 的 `seed`)的**键序**。与上面的设置页顺序不同,是因为这张表
- * 照搬的是 P3 之前 `@shared/defaults/settings.ts` 默认表的历史键序 —— 设置文件里的键序就是它,
- * 而读设置的代码里有按键序取第一家的(`core/engine/title.ts` 的兜底、CLI 的 provider 列表),
- * 键序也是行为。没有 `seed` 的家(grok 两半)排在末尾、拼表时跳过。
+ * 出厂种子表(各家 manifest 的 `seed`)的**键序**。与上面的设置页顺序不同,是因为今天这几家照搬的是
+ * P3 之前 `@shared/defaults/settings.ts` 默认表的历史键序 —— 设置文件里的键序就是它,而读设置的代码里
+ * 有按键序取第一家的(`core/engine/title.ts` 的兜底、CLI 的 provider 列表),键序也是行为。
  *
- * 加一家:这里末尾再加一行(`provider-seeds.test.ts` 钉着「每家恰好一次」)。
+ * **加一家不用碰这里**(P5 演练发现的那一处多余登记):历史那几家按历史键序排在前面,名册里其余带 `seed`
+ * 的家按名册顺序接在后面,没有 `seed` 的家排在最末、拼表时跳过。
  */
-export const VENDOR_SEED_ORDER: readonly ProviderManifest[] = [
+const HISTORICAL_SEED_ORDER: readonly ProviderManifest[] = [
   OPENAI_MANIFEST,
   CLAUDE_MANIFEST,
   DEEPSEEK_MANIFEST,
@@ -60,8 +60,12 @@ export const VENDOR_SEED_ORDER: readonly ProviderManifest[] = [
   CLAUDE_CODE_MANIFEST,
   GITHUB_COPILOT_MANIFEST,
   CODEX_MANIFEST,
-  GROK_MANIFEST,
-  GROK_OAUTH_MANIFEST,
+]
+
+export const VENDOR_SEED_ORDER: readonly ProviderManifest[] = [
+  ...HISTORICAL_SEED_ORDER,
+  ...VENDOR_MANIFESTS.filter((manifest) => manifest.seed && !HISTORICAL_SEED_ORDER.includes(manifest)),
+  ...VENDOR_MANIFESTS.filter((manifest) => !manifest.seed && !HISTORICAL_SEED_ORDER.includes(manifest)),
 ]
 
 /**
