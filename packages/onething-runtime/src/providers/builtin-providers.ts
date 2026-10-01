@@ -56,17 +56,7 @@ function definitionById(id: string): OnethingBuiltinProviderDefinition {
 
 export const ONETHING_ACP_PROVIDER_ID = "acp";
 
-export const openaiBuiltinProvider = definitionById("openai");
-export const claudeBuiltinProvider = definitionById("claude");
-export const deepseekBuiltinProvider = definitionById("deepseek");
-export const kimiBuiltinProvider = definitionById("kimi");
-export const zhipuBuiltinProvider = definitionById("zhipu");
-export const qwenBuiltinProvider = definitionById("qwen");
-export const openrouterBuiltinProvider = definitionById("openrouter");
-export const geminiBuiltinProvider = definitionById("gemini");
 export const claudeCodeBuiltinProvider = definitionById("claude-code");
-export const grokBuiltinProvider = definitionById("grok");
-export const grokOAuthBuiltinProvider = definitionById("grok-oauth");
 export const kimiCodeBuiltinProvider = definitionById("kimi-code");
 export const githubCopilotBuiltinProvider = definitionById("github-copilot");
 export const codexBuiltinProvider = definitionById("codex");

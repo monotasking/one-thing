@@ -5,15 +5,17 @@
  * 每多一种能力就得回去改一串 `if (providerId === …)`。现在反过来:**每家自己说**
  * 它用哪份方言、怎么登录、模型从哪来、按什么计费、同家的另一半是谁;别人只读字段。
  *
- *  - 内置 16 家 = `builtin-manifests.ts` 里 16 个字面量(模块加载时登记进注册表);
+ *  - 内置各家 = `vendors/<id>/manifest.ts` 里各自的字面量,名册 `vendors/manifests.ts`,
+ *    经 `builtin-manifests.ts` 补上家族格后在模块加载时登记进注册表;
  *  - 自定义服务商 = 设置里的 `CustomProviderConfig`,经 `manifestOfCustomProvider`
  *    映射成同一个形状,由装配层逐个 `register` 并 `own()` 卸载函数。
  *
  * 本文件是**纯**模块:不碰 node / electron / `process`,壳也能 import。
  */
-import type { OnethingProviderKind } from './model-capability.js'
+import type { OnethingModelRule, OnethingProviderKind } from './model-capability.js'
 import type { DialSpec } from './dials.js'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
+import { configureProviderErrorCodeDescriber } from '@onething/core/engine/error-details'
 import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
 
 export { EXTERNAL_AGENT_DIALECT_ID }
@@ -61,6 +63,29 @@ export interface ProviderBehaviors {
   imageOutputViaNativeToolOnly?: boolean
 }
 
+/**
+ * 「档位 / 地区 → 地址」这一组(有档位的家才有;`docs/design/architecture-direction-2026-10.md`
+ * §4 P1)。从前是 `provider-options.ts` / `zhipu.ts` / `spaces/provider-credentials.ts` 里各一串
+ * 按 id 的分支,现在每家把自己的那一半写在自己的 `vendors/<id>/`,通用代码只问这几格。
+ * 每一格缺席 = 通用行为(没有专属格子、地址就是配置里的 `baseUrl`)。
+ */
+export interface ProviderEndpointSpec {
+  /** 存档配置 → 这家要带进 `providerOptions` 的专属格子;`undefined` = 不带。 */
+  pickOptions?(stored: Record<string, unknown>): Record<string, unknown> | undefined
+  /** 生效配置(`baseUrl` + 专属格子)→ 实际请求的地址。 */
+  resolveBaseUrl?(config: Record<string, unknown> | undefined): string
+  /** 空间凭证条目里的档位 / 地区落在配置的哪两格。 */
+  entryFields?: { apiMode?: string; region?: string }
+  /** 地址由档位派生,所以空间条目说了算:抹档位时连 `baseUrl` 一起抹。 */
+  ownsBaseUrl?: boolean
+}
+
+/** models.dev 上这一家的模型以什么品牌名、在哪几本目录里出现(模型认亲用)。 */
+export interface ProviderModelIdentity {
+  brands: readonly string[]
+  keys: readonly string[]
+}
+
 export interface ProviderManifest {
   id: string
   /** 内置的写在代码里;自定义的从设置映射来。替掉从前的 `startsWith('custom-')`。 */
@@ -96,6 +121,20 @@ export interface ProviderManifest {
   defaultBaseUrl: string
   supportsCustomBaseUrl: boolean
   defaultModel: string
+  /** 读密钥的环境变量(按优先级)。缺席 = 只认 `<ID>_API_KEY`。 */
+  envVars?: readonly string[]
+  /** 模型认亲(`model-identity.ts`)。 */
+  modelIdentity?: ProviderModelIdentity
+  /** 这些 models.dev 目录键反查到这一家(`models-dev-catalog.ts` 的映射表)。 */
+  catalogAliases?: readonly string[]
+  /** 这家接口的错误码 → 人话说明。经 core 的查询口接进错误详情。 */
+  errorDescriptions?: Readonly<Record<string, string>>
+  endpoint?: ProviderEndpointSpec
+  /**
+   * `modelRules` 那张型号规则表由这一家自己带(表名 = 这家的 `modelRules`)。
+   * 同一张表可以被别家借用(claude-code 借 claude 的),但只由一家带。
+   */
+  modelRuleTable?: readonly OnethingModelRule[]
 }
 
 /**
@@ -200,6 +239,21 @@ export class ProviderManifestRegistry {
 
 const registry = new ProviderManifestRegistry()
 registry.resetForTests()
+
+/**
+ * 错误码说明:问遍已登记的家,第一家认得这个码的给说明。core 不认识任何一家,
+ * 只认这个查询口(`configureProviderErrorCodeDescriber`)。
+ *
+ * 口径与搬家前逐字相同:说明**不分是哪家返回的**错误 —— 从前 core 里那张智谱表对
+ * 任何一家的同号错误码都会配上说明,这里照旧(`vendor-facts.snapshot` 钉着)。
+ */
+configureProviderErrorCodeDescriber((code) => {
+  for (const manifest of registry.list()) {
+    const description = manifest.errorDescriptions?.[code]
+    if (description) return description
+  }
+  return undefined
+})
 
 export function getProviderManifestRegistry(): ProviderManifestRegistry {
   return registry

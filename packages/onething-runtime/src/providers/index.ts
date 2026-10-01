@@ -37,7 +37,7 @@ export * from './request-dump.js'
 export * from './stream-provider-adapter.js'
 export * from './registry.js'
 export * from './tool-result-content.js'
-export * from './zhipu.js'
+export * from './endpoint.js'
 // `./anthropic.js`(一只老式 Anthropic 实现,缺省模型写死 claude-3-5-haiku、
 // `max_tokens` 缺省 1024)于 2026-09-09 删除:全仓零调用方,真正在用的 Anthropic
 // 实现是 `agent-loop/providers/dialects/anthropic-recipe.ts`;留着它等于留着一个

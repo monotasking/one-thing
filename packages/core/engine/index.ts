@@ -53,10 +53,11 @@ export type {
 } from "./prompt-fragments.js";
 
 export {
+	configureProviderErrorCodeDescriber,
 	extractResponseBodyDetails,
 	extractErrorDetails,
 } from "./error-details.js";
-export type { CoreErrorDetails } from "./error-details.js";
+export type { CoreErrorDetails, ProviderErrorCodeDescriber } from "./error-details.js";
 
 export {
 	buildTextStreamContext,

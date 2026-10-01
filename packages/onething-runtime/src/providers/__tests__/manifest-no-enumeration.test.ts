@@ -37,8 +37,15 @@ const ALLOWED_FILES = new Set([
   'packages/onething-runtime/src/providers/codex-native-tools.ts',
   'packages/onething-runtime/src/providers/github-copilot.ts',
 ])
-/** 方言目录下每个文件都是某一家自己的配方。 */
-const ALLOWED_DIRECTORIES = ['packages/onething-runtime/src/agent-loop/providers/dialects/']
+/**
+ * 方言目录下每个文件都是某一家自己的配方;`providers/vendors/<id>/` 是各家的家
+ * (服务商自述试点,`docs/design/architecture-direction-2026-10.md`)。更全的尺子是
+ * `bun run provider:gate`(字面量 / 键 / 标识符都算,不只等值比较)。
+ */
+const ALLOWED_DIRECTORIES = [
+  'packages/onething-runtime/src/agent-loop/providers/dialects/',
+  'packages/onething-runtime/src/providers/vendors/',
+]
 
 const NAMES = '(?:codex|claude-code|kimi-code|github-copilot|grok-oauth)'
 const PATTERNS: Array<{ label: string; pattern: RegExp }> = [

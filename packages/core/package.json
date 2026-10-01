@@ -12,6 +12,7 @@
     "./engine": "./engine/index.ts",
     "./engine/agent-loop-turn": "./engine/agent-loop-turn.ts",
     "./engine/attachment-mime": "./engine/attachment-mime.ts",
+    "./engine/error-details": "./engine/error-details.ts",
     "./engine/streaming-args": "./engine/streaming-args.ts",
     "./engine/tool-orchestration": "./engine/tool-orchestration.ts",
     "./events": "./events/index.ts",

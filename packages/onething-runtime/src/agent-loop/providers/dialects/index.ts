@@ -2,7 +2,11 @@
  * 方言配方桶:openai-chat 线协议上的 11 份 + anthropic-messages 上的 3 份 + gemini 上的 1 份。
  * import 这个桶 = 把它们全部登记进 `registerDialect` 的注册表
  * (设计稿 §9 P0a 门 ④:每份配方都得有 fixture 目录)。
+ *
+ * 搬回 `providers/vendors/<id>/` 的那几家,方言跟着家走;它们由 `vendors/runtimes.ts`
+ * 的名册登记 —— 这里副作用 import 那份名册,「import 这个桶 = 全部登记」照旧成立。
  */
+import "../../../providers/vendors/runtimes.js";
 export {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	ANTHROPIC_TRANSPORT_CAPABILITIES,
@@ -118,4 +122,3 @@ export {
 } from "./openai.js";
 export { OPENROUTER_DIALECT, OPENROUTER_USAGE_TABLE } from "./openrouter.js";
 export { QWEN_DIALECT, QWEN_USAGE_TABLE } from "./qwen.js";
-export { ZHIPU_DIALECT } from "./zhipu.js";

@@ -28,10 +28,6 @@ import {
   normalizeOnethingQwenApiMode,
   normalizeOnethingQwenRegion,
 } from './qwen.js'
-import {
-  ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
-  ONETHING_ZHIPU_STANDARD_BASE_URL,
-} from './zhipu.js'
 
 export interface DialOption {
   value: string
@@ -67,23 +63,6 @@ export interface DialSpec {
    * 只写档位不写地址,请求还是发去旧地址,那正是「以为选对了、其实还在扣钱」。
    */
   baseUrlOf(apiMode: string, region: string): string
-}
-
-export const ZHIPU_DIALS: DialSpec = {
-  apiModeKey: 'zhipuApiMode',
-  apiMode: {
-    label: 'API mode',
-    ariaLabel: 'Zhipu API mode',
-    options: [
-      { value: 'standard', label: 'Standard' },
-      { value: 'coding-plan', label: 'Coding Plan' },
-    ],
-    // 智谱没有归一函数(它只有两档、没有地区),判据与生产那张表逐字相同。
-    normalize: (value) => (value === 'coding-plan' ? 'coding-plan' : 'standard'),
-  },
-  // 智谱没有地区,也没有风险说明 —— 生产那张表就是这样,这里不替它补一句。
-  baseUrlOf: (apiMode) =>
-    apiMode === 'coding-plan' ? ONETHING_ZHIPU_CODING_PLAN_BASE_URL : ONETHING_ZHIPU_STANDARD_BASE_URL,
 }
 
 export const QWEN_DIALS: DialSpec = {

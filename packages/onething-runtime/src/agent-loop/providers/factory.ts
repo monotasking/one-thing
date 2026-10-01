@@ -29,7 +29,6 @@ import {
 	OPENAI_DIALECT,
 	OPENROUTER_DIALECT,
 	QWEN_DIALECT,
-	ZHIPU_DIALECT,
 	anthropicAuth,
 	codexAuth,
 	createAnthropicProvider,
@@ -47,6 +46,7 @@ import { OpenAIChatPartCodec } from "./wires/index.js";
 import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/index.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 import { createExternalAgentProvider } from "../../external-agents/provider.js";
+import { VENDOR_RUNTIMES, type VendorRuntimeKit } from "../../providers/vendors/runtimes.js";
 import type {
 	ExternalAgentConnector,
 	ExternalAgentSessionLink,
@@ -55,7 +55,6 @@ import {
 	ONETHING_KIMI_CODING_PLAN_BASE_URL,
 	resolveOnethingKimiBaseUrl,
 } from "../../providers/kimi.js";
-import { resolveOnethingZhipuBaseUrl } from "../../providers/zhipu.js";
 import { resolveOnethingQwenBaseUrl } from "../../providers/qwen.js";
 import {
 	EXTERNAL_AGENT_DIALECT_ID,
@@ -65,7 +64,6 @@ import {
 import {
 	readOnethingKimiOptions,
 	readOnethingQwenOptions,
-	readOnethingZhipuOptions,
 	type OnethingProviderOptions,
 } from "../../providers/provider-options.js";
 
@@ -676,22 +674,6 @@ registerAgentProviderRuntime(
 );
 
 registerAgentProviderRuntime(
-	"zhipu",
-	(config, options) =>
-		createOpenAIChatProvider(ZHIPU_DIALECT, {
-			baseUrl: resolveOnethingZhipuBaseUrl({
-				baseUrl: config.baseUrl,
-				...readOnethingZhipuOptions(config.providerOptions),
-			}),
-			auth: new BearerApiKeyAuth(config.apiKey),
-			fetchImpl: options.fetchImpl,
-			requestDumper: resolveRequestDumper(options),
-			profiles: ledgerProfiles(config),
-		}),
-	{ replace: true },
-);
-
-registerAgentProviderRuntime(
 	"qwen",
 	(config, options) =>
 		createOpenAIChatProvider(QWEN_DIALECT, {
@@ -823,3 +805,16 @@ registerAgentProviderRuntime(
 		}),
 	{ replace: true },
 );
+
+/**
+ * 搬回 `providers/vendors/<id>/` 的那几家,工厂由各家自己带(`VendorRuntime.createProvider`),
+ * 这里按名册接进工厂表 —— 本文件不再点那几家的名。
+ */
+const vendorRuntimeKit: VendorRuntimeKit = { profiles: ledgerProfiles };
+for (const vendor of VENDOR_RUNTIMES) {
+	const create = vendor.createProvider;
+	if (!create) continue;
+	registerAgentProviderRuntime(vendor.id, (config, options) => create(config, options, vendorRuntimeKit), {
+		replace: true,
+	});
+}

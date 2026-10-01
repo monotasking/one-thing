@@ -1,3 +1,5 @@
+import { getProviderManifest } from './manifest.js'
+
 export interface OnethingProviderApiKeyConfig {
   apiKey?: string
 }
@@ -22,7 +24,6 @@ const DEFAULT_PROVIDER_API_KEY_ENV_VARS: Record<string, string[]> = {
   claude: ['ANTHROPIC_API_KEY', 'CLAUDE_API_KEY'],
   deepseek: ['DEEPSEEK_API_KEY'],
   kimi: ['MOONSHOT_API_KEY', 'KIMI_API_KEY'],
-  zhipu: ['ZAI_API_KEY', 'ZHIPU_API_KEY', 'ZHIPUAI_API_KEY'],
   // Both 千问 AI 平台 and QwenCloud tell you to export DASHSCOPE_API_KEY.
   qwen: ['DASHSCOPE_API_KEY', 'QWEN_API_KEY'],
   openrouter: ['OPENROUTER_API_KEY'],
@@ -74,7 +75,7 @@ export function getOnethingProviderApiKeyEnvCandidates(
 ): string[] {
   const prefix = providerIdToEnvPrefix(providerId)
   return dedupeEnvVars([
-    ...(DEFAULT_PROVIDER_API_KEY_ENV_VARS[providerId] ?? []),
+    ...(getProviderManifest(providerId)?.envVars ?? DEFAULT_PROVIDER_API_KEY_ENV_VARS[providerId] ?? []),
     prefix ? `${prefix}_API_KEY` : undefined,
   ])
 }

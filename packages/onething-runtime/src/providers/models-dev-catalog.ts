@@ -8,9 +8,10 @@
  */
 import type { OnethingKimiEndpointConfig } from "./kimi.js";
 import type { OnethingQwenEndpointConfig } from "./qwen.js";
+import { BUILTIN_PROVIDER_MANIFESTS } from "./builtin-manifests.js";
 import { getProviderManifest } from "./manifest.js";
 
-export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
+const LEGACY_PROVIDER_MAPPING: Record<string, string> = {
 	openai: "openai",
 	anthropic: "claude",
 	google: "gemini",
@@ -21,9 +22,21 @@ export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
 	// 千问: the registry key depends on region + plan (see qwen.ts). This entry
 	// is only the fallback for a config-less lookup — 国内版 pay-as-you-go.
 	"alibaba-cn": "qwen",
-	zhipuai: "zhipu",
 	moonshotai: "kimi",
 	xai: "grok",
+};
+
+/**
+ * models.dev 目录键 → 我们的 provider id。搬回家的服务商自己声明哪些目录键归它
+ * (`manifest.catalogAliases`);还没搬的仍在上面那张表里(试点过渡期)。
+ */
+export const ONETHING_PROVIDER_MAPPING: Record<string, string> = {
+	...LEGACY_PROVIDER_MAPPING,
+	...Object.fromEntries(
+		BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) =>
+			(manifest.catalogAliases ?? []).map((alias) => [alias, manifest.id] as const),
+		),
+	),
 };
 
 /**

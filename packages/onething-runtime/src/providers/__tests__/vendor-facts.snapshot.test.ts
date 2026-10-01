@@ -37,7 +37,7 @@ import {
   pickOnethingProviderOptions,
 } from '../provider-options.js'
 import { listQuotaSourceIds } from '../quota/registry.js'
-import { resolveOnethingProviderBaseUrl } from '../zhipu.js'
+import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
 
 function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep)
@@ -125,11 +125,21 @@ function builtinIds(): string[] {
     .sort()
 }
 
+/**
+ * 试点把各家散在公共表里的数据**搬进** manifest(P1 起)。这几格是搬进来的输入,不是答案:
+ * 它们的效果由下面逐项问出来的事实(环境变量、地址、认亲、错误说明、型号能力……)冻住。
+ * 在原始 manifest 的转储里略去它们,快照才只在「答案变了」时红。
+ */
+const VENDOR_DATA_FIELDS = ['envVars', 'modelIdentity', 'catalogAliases', 'errorDescriptions', 'endpoint', 'modelRuleTable']
+
 function vendorFacts(id: string): unknown {
   const manifest = getProviderManifestRegistry().get(id)!
   const models = manifest.models
+  const manifestShape = Object.fromEntries(
+    Object.entries(manifest).filter(([key]) => !VENDOR_DATA_FIELDS.includes(key)),
+  )
   return {
-    manifest,
+    manifest: manifestShape,
     catalogKeyByConfig:
       models.kind === 'models.dev' && models.keyOf
         ? Object.fromEntries(ENDPOINT_CONFIGS.map(({ label, config }) => [label, models.keyOf!(config)]))
@@ -166,7 +176,8 @@ describe('vendor facts snapshot', () => {
       vendors: Object.fromEntries(ids.map((id) => [id, vendorFacts(id)])),
       tables: {
         modelsDevMapping: ONETHING_PROVIDER_MAPPING,
-        modelVendorAliases: MODEL_VENDOR_ALIASES,
+        // 查表是「按品牌 / 目录键 find」,各行互不重叠 —— 行序不是行为,按首个品牌排。
+        modelVendorAliases: [...MODEL_VENDOR_ALIASES].sort((a, b) => a.brands[0]!.localeCompare(b.brands[0]!)),
         dialects: listDialects()
           .map((dialect) => ({ id: dialect.id, wire: dialect.wire }))
           .sort((a, b) => a.id.localeCompare(b.id)),

@@ -28,6 +28,7 @@
 //   node scripts/provider-vendor-gate.mjs --write-baseline 重录基线(只在真降之后)
 //   node scripts/provider-vendor-gate.mjs --self-test      判据自检
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import ts from 'typescript'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -81,36 +82,26 @@ function walk(dir, out) {
   return out
 }
 
-export function stripComments(source) {
-  // 字符串里的 `//`(URL)不能当注释剥:逐字符走一遍,只在字符串外认注释。
-  let out = ''
-  let i = 0
-  let quote = null
-  while (i < source.length) {
-    const ch = source[i]
-    const next = source[i + 1]
-    if (quote) {
-      out += ch
-      if (ch === '\\') { out += next ?? ''; i += 2; continue }
-      if (ch === quote) quote = null
-      i += 1
-      continue
-    }
-    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; out += ch; i += 1; continue }
-    if (ch === '/' && next === '/') {
-      while (i < source.length && source[i] !== '\n') i += 1
-      continue
-    }
-    if (ch === '/' && next === '*') {
-      i += 2
-      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) i += 1
-      i += 2
-      continue
-    }
-    out += ch
-    i += 1
+/**
+ * 一个文件里「像代码的文本」:用 TypeScript 自己的解析器取出标识符、字符串字面量、
+ * 模板片段与正则字面量。注释不是语法节点,天然不在里面 —— 手写的注释剥离器会被正则
+ * 字面量里的引号带偏(实测过),所以不手写。
+ */
+export function codeTokens(source, fileName = 'x.ts') {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false,
+    fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+  const identifiers = []
+  const strings = []
+  const visit = (node) => {
+    if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) identifiers.push(node.text)
+    else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) strings.push(node.text)
+    else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) strings.push(node.text)
+    else if (ts.isRegularExpressionLiteral(node)) strings.push(node.text)
+    else if (ts.isJsxText(node)) strings.push(node.text)
+    ts.forEachChild(node, visit)
   }
-  return out
+  visit(file)
+  return { identifiers, strings }
 }
 
 function escape(value) {
@@ -123,26 +114,28 @@ function identifierPattern(id) {
   return new RegExp(`[A-Za-z0-9_$]*${parts.join('_?')}[A-Za-z0-9_$]*`, 'gi')
 }
 
-export function mentions(source, id) {
-  const code = stripComments(source)
-  const literal = new RegExp(`(['"\`])${escape(id)}\\1`)
-  if (literal.test(code)) return true
-  const key = /^[a-z][a-z0-9]*$/.test(id)
-    ? new RegExp(`(^|[{,\\s])${escape(id)}\\s*:(?!:)`, 'm')
-    : null
-  if (key && key.test(code)) return true
-  for (const match of code.matchAll(identifierPattern(id))) {
+/** 一段文本里有没有「点这一家的名」的词(协议名、模型路径的厂牌前缀、域名 / 路径片段除外)。 */
+function textMentions(text, id) {
+  for (const match of text.matchAll(identifierPattern(id))) {
     // 连字符词(`openai-chat`)整个拿来判协议名:标识符正则会停在 `-` 上。
-    const tail = /^[-A-Za-z0-9_$]*/.exec(code.slice(match.index + match[0].length))[0]
+    const tail = /^[-A-Za-z0-9_$]*/.exec(text.slice(match.index + match[0].length))[0]
     const token = match[0] + tail
     if (PROTOCOL_TOKENS.some((pattern) => pattern.test(token))) continue
-    // 字符串里的 URL 片段(open.bigmodel.cn/…)也会被这条正则扫到;只认真正的标识符:
-    // 前一个字符不能是 `.`/`/`/`-`(域名、路径、连字符词的一段)。
-    const before = code[match.index - 1]
+    // 域名、路径、连字符词的一段(open.bigmodel.cn/…、`@deepseek-ai/…` 的后半)。
+    const before = text[match.index - 1]
     if (before === '.' || before === '/' || before === '-') continue
+    // `'openai/gpt-4o'` 这类是模型路径里的厂牌前缀(models.dev 的写法),不是在点服务商的名。
+    if (text[match.index + token.length] === '/') continue
     return true
   }
   return false
+}
+
+export function mentions(source, id, fileName = 'x.ts') {
+  const { identifiers, strings } = codeTokens(source, fileName)
+  if (strings.some((text) => text === id)) return true
+  if (identifiers.some((name) => textMentions(name, id))) return true
+  return strings.some((text) => textMentions(text, id))
 }
 
 export function vendorIds() {
@@ -163,6 +156,8 @@ export function vendorIds() {
 
 function isExempt(relative, id) {
   if (relative.startsWith(`${VENDORS_DIR}/${id}/`)) return true
+  // 同家的订阅半边住在 `<id>-<tag>/`(kimi-code、grok-oauth、claude-code),它认识本家是家事。
+  if (relative.startsWith(`${VENDORS_DIR}/${id}-`)) return true
   if (RENDER_FILES.some((pattern) => pattern.test(relative))) return true
   if (REGISTRY_FILES.some((pattern) => pattern.test(relative))) return true
   return false
@@ -184,7 +179,7 @@ export function measure() {
     const source = readFileSync(absolute, 'utf8')
     for (const id of ids) {
       if (isExempt(relative, id)) continue
-      if (mentions(source, id)) pairs.push(`${id} ${relative}`)
+      if (mentions(source, id, relative)) pairs.push(`${id} ${relative}`)
     }
   }
   return { pairs, scanned: files.length, ids }
@@ -223,11 +218,13 @@ function selfTest() {
   expect('驼峰标识符', mentions('readOnethingZhipuOptions(x)', 'zhipu'))
   expect('连字符 id 的标识符', mentions('const KIMI_CODE_X = 1', 'kimi-code'))
   expect('注释不算', !mentions('// zhipu\n/* ZHIPU */ const a = 1', 'zhipu'))
+  expect('正则里的引号不让后面的注释漏进来', !mentions("const r = /['\"]/\n/** zhipu */\nconst b = 2", 'zhipu'))
   expect('URL 里的域名不算', !mentions("const u = 'https://open.bigmodel.cn/x'", 'bigmodel'))
   expect('字符串里的 // 不吞后文', mentions("const u = 'https://x.y'; const zhipuX = 1", 'zhipu'))
   expect('协议名不算', !mentions('createOpenAIChatProvider(); const w = "openai-chat"', 'openai'))
   expect('gemini 线名不算', !mentions('const w = "gemini-generateContent"', 'gemini'))
   expect('gemini 本家标识符算', mentions('const GEMINI_DIALECT = 1', 'gemini'))
+  expect('模型路径的厂牌前缀不算', !mentions("const m = 'openai/gpt-4o'", 'openai'))
   const up = compare(['a x.ts'], ['a x.ts', 'a y.ts'])
   expect('新的一对算红', up.regressions.length === 1 && up.improvements.length === 0)
   const down = compare(['a x.ts', 'a y.ts'], ['a x.ts'])
@@ -238,7 +235,7 @@ function selfTest() {
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log(`[provider-vendor-gate] self-test ok — 15 checks passed`)
+  console.log(`[provider-vendor-gate] self-test ok — 17 checks passed`)
 }
 
 function main() {

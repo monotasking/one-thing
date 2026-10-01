@@ -30,45 +30,33 @@ import {
   spaceCredentialCursorKey,
   type SpaceCredentialEntry,
 } from './credentials.js'
+import { getProviderManifest } from '../providers/manifest.js'
 import { DEFAULT_SPACE_ID, isValidSpaceId } from './types.js'
 
-/** provider 自己的档位字段名 —— entry.apiMode 往哪一格里落。 */
-const PROVIDER_API_MODE_FIELD: Record<string, string> = {
-  zhipu: 'zhipuApiMode',
-  qwen: 'qwenApiMode',
-  kimi: 'kimiApiMode',
-  'kimi-code': 'kimiApiMode',
-}
-
-/** 同上,地区那一格(批 B10)。zhipu 没有地区,所以表里没有它。 */
-const PROVIDER_REGION_FIELD: Record<string, string> = {
-  qwen: 'qwenRegion',
-  kimi: 'kimiRegion',
-  'kimi-code': 'kimiRegion',
-}
-
 /**
- * 这家 provider 的档位落在配置的哪两格(批 M:settings → entry 那个方向也读这同一张
- * 表,不再各写一串按名字的 if)。没有档位 = 两格都缺席。
+ * 这家 provider 的档位落在配置的哪两格(批 M:settings → entry 那个方向也读这同一处,
+ * 不再各写一串按名字的 if)。没有档位 = 两格都缺席。
+ *
+ * 由各家自己的 manifest 说(`endpoint.entryFields`,`vendors/<id>/manifest.ts`)。
  */
 export function providerDialFieldsOf(providerId: string): { apiMode?: string; region?: string } {
-  const apiMode = PROVIDER_API_MODE_FIELD[providerId]
-  const region = PROVIDER_REGION_FIELD[providerId]
-  return { ...(apiMode ? { apiMode } : {}), ...(region ? { region } : {}) }
+  const fields = getProviderManifest(providerId)?.endpoint?.entryFields
+  return { ...(fields?.apiMode ? { apiMode: fields.apiMode } : {}), ...(fields?.region ? { region: fields.region } : {}) }
 }
 
 /**
- * 「这个 provider 的端点由本空间那条 entry 说了算」的名单(批 B10)。
+ * 「这个 provider 的端点由本空间那条 entry 说了算」(批 B10;`endpoint.ownsBaseUrl`)。
  *
- * 有档位的三家(zhipu / qwen / kimi)——它们的 baseUrl **是从档位派生出来的**,
- * 所以只抹档位不抹 baseUrl 等于没抹:`resolveOnethingZhipuBaseUrl` 在
- * `zhipuApiMode` 缺席时会直接返回 settings 里那条 coding-plan 地址,全局档位
- * 顺着地址原路漏回来。两格必须一起清。
+ * 有档位的家 —— 它们的 baseUrl **是从档位派生出来的**,所以只抹档位不抹 baseUrl
+ * 等于没抹:档位缺席时地址解析会直接返回 settings 里那条套餐地址,全局档位顺着地址
+ * 原路漏回来。两格必须一起清。
  *
- * 没有档位的 provider 不在名单里:它们的全局 baseUrl 是「我这台机器走哪个代理」,
+ * 没有档位的 provider 不算:它们的全局 baseUrl 是「我这台机器走哪个代理」,
  * 与空间隔离无关,抹掉只会让所有空间的自建代理集体失效。
  */
-const PROVIDER_ENDPOINT_OWNED_BY_ENTRY = new Set(['zhipu', 'qwen', 'kimi', 'kimi-code'])
+function endpointOwnedByEntry(providerId: string): boolean {
+  return getProviderManifest(providerId)?.endpoint?.ownsBaseUrl === true
+}
 
 /**
  * `exhausted`(批 D)是**第三态**,不是 `no-entry` 的一个变体:池里有钥匙,只是
@@ -355,15 +343,14 @@ export function applySpaceProviderCredential<TProvider extends CoreProviderConfi
   }
 
   const entry = resolution.entry
-  const apiModeField = PROVIDER_API_MODE_FIELD[providerId]
-  const regionField = PROVIDER_REGION_FIELD[providerId]
+  const { apiMode: apiModeField, region: regionField } = providerDialFieldsOf(providerId)
   const next = { ...providerConfig } as Record<string, unknown>
 
   // **严格隔离也管档位**(批 B10)。B3 把 apiMode / baseUrl 归进「凭证」那一类
   // (§3 归属拆分表),但当年只做了「entry 有就盖」,entry 没有时全局那一格原样
   // 留在 config 里 —— 于是空间 2 的 Kimi 悄悄跟着全局走了海外版。缺席不该是
   // 「跟全局」,缺席该是「这家 provider 自己的缺省」(normalizer 会给)。
-  if (PROVIDER_ENDPOINT_OWNED_BY_ENTRY.has(providerId)) {
+  if (endpointOwnedByEntry(providerId)) {
     delete next.baseUrl
     if (apiModeField) delete next[apiModeField]
     if (regionField) delete next[regionField]

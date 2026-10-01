@@ -13,7 +13,7 @@ import {
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,
-} from '../zhipu.js'
+} from '../vendors/zhipu/endpoint.js'
 
 interface TestProviderConfig {
   model?: string

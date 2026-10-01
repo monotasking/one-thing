@@ -19,6 +19,8 @@ import {
 } from "./dialects/index.js";
 import { OpenAIChatPartCodec } from "./wires/index.js";
 import "./thinking/index.js";
+// 搬回家的服务商的思考参数线型由名册登记(`providers/vendors/runtimes.ts`)。
+import "../../providers/vendors/runtimes.js";
 import type { AgentProviderRequestDumper } from "./request-dump.js";
 
 export interface OpenAICompatibleAgentProviderOptions {

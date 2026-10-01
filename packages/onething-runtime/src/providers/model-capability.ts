@@ -36,7 +36,7 @@
  * This module must stay pure (no Node/Electron imports) — the renderer and the
  * web build import it directly.
  */
-import { getProviderManifest } from './manifest.js'
+import { getProviderManifest, getProviderManifestRegistry } from './manifest.js'
 
 export type OnethingReasoningEffortLevel =
   | 'minimal'
@@ -608,7 +608,7 @@ type OnethingModelRuleCaps = Partial<
 
 type OnethingModelRuleCapsKey = OnethingRuleCapability | 'forcedToolUse'
 
-interface OnethingModelRule {
+export interface OnethingModelRule {
   test: RegExp
   caps?: OnethingModelRuleCaps | ((model: string) => OnethingModelRuleCaps)
   profile?: OnethingReasoningProfile | ((model: string) => OnethingReasoningProfile)
@@ -762,7 +762,7 @@ const COPILOT_NO_TOOLS_PATTERN = /o1-preview|o1-mini/
 const GENERIC_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner|grok-3-mini|grok-mini|thinking/
 const GENERIC_IMAGE_GEN_PATTERN = /dall-e|dalle|gpt-image|imagen|stable-diffusion|midjourney/
 
-const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = {
+const PROVIDER_MODEL_RULES: Partial<Record<OnethingProviderKind, OnethingModelRule[]>> = {
   claude: [
     // Every currently served Claude chat model supports thinking. 4.7+ /
     // Sonnet 5 / Fable reject sampling params (temperature) outright.
@@ -798,24 +798,6 @@ const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = 
     // Even a model the ledger grants no reasoning to has a wire format: the
     // gemini wire must know which of the two thinking encoders to reach for.
     { test: /(?:)/, caps: { reasoning: false, vision: true }, wire: geminiReasoningWire },
-  ],
-  zhipu: [
-    {
-      test: /glm-(?:4\.[5-9]|[5-9])/,
-      caps: { reasoning: true },
-      profile: {
-        toggleable: true,
-        defaultOn: true,
-        efforts: [],
-        defaultEffort: 'high',
-        wire: 'zhipu-thinking',
-      },
-    },
-    // 智谱全系不支持强制调用:官方文档写明 `tool_choice` 目前仅支持 `auto`
-    // (#5b)。挂在 catch-all 上就够 —— 上面那条 reasoning 行对
-    // `forcedToolUse` 不表态,而 `fromRules` 是**按能力**各取「第一条给出布尔
-    // 值的行」,所以 reasoning 的顺序语义一点没动。
-    { test: /(?:)/, caps: { reasoning: false, forcedToolUse: false } },
   ],
   // 千问 AI 平台 resells GLM / Kimi / DeepSeek / MiniMax next to its own Qwen
   // models, and each family keeps its own effort vocabulary on this endpoint.
@@ -1225,9 +1207,22 @@ function fromRegistry(
   }
 }
 
+/**
+ * 这张型号规则表从哪来:搬回家的那几家由自己的 manifest 带(`modelRuleTable`),
+ * 还没搬的仍在上面的 `PROVIDER_MODEL_RULES`(服务商自述试点 P1/P2 的过渡期)。
+ */
+function rulesOf(kind: OnethingProviderKind): readonly OnethingModelRule[] {
+  for (const manifest of getProviderManifestRegistry().list()) {
+    if (manifest.origin === 'builtin' && manifest.modelRules === kind && manifest.modelRuleTable) {
+      return manifest.modelRuleTable
+    }
+  }
+  return PROVIDER_MODEL_RULES[kind] ?? []
+}
+
 function fromRules(
   capability: OnethingModelRuleCapsKey,
-  rules: OnethingModelRule[],
+  rules: readonly OnethingModelRule[],
   modelLower: string,
 ): boolean | undefined {
   for (const rule of rules) {
@@ -1292,7 +1287,7 @@ function resolveCapability(
   // (Claude 4.7+/Fable 400 on sampling params), which outrank whatever the
   // fetched registry believes.
   if (capability === 'temperature') {
-    const ruled = fromRules(capability, PROVIDER_MODEL_RULES[kind], modelLower)
+    const ruled = fromRules(capability, rulesOf(kind), modelLower)
     if (typeof ruled === 'boolean') return verdict(ruled, 'pattern')
     const registry = fromRegistry(capability, input.registryEntry, input.modelMetadata)
     if (typeof registry === 'boolean') return verdict(registry, 'registry')
@@ -1308,7 +1303,7 @@ function resolveCapability(
     return verdict(copilotPatternVerdict(capability, modelLower), 'pattern')
   }
 
-  const ruled = fromRules(capability, PROVIDER_MODEL_RULES[kind], modelLower)
+  const ruled = fromRules(capability, rulesOf(kind), modelLower)
   if (typeof ruled === 'boolean') return verdict(ruled, 'pattern')
 
   if (capability === 'reasoning' && kind === 'unknown' && GENERIC_REASONING_PATTERN.test(modelLower)) {
@@ -1323,7 +1318,7 @@ function resolveProfile(
   model: string,
   modelLower: string,
 ): OnethingReasoningProfile | undefined {
-  for (const rule of PROVIDER_MODEL_RULES[kind]) {
+  for (const rule of rulesOf(kind)) {
     if (!rule.test.test(modelLower)) continue
     if (!rule.profile) continue
     return typeof rule.profile === 'function' ? rule.profile(model) : rule.profile
@@ -1340,7 +1335,7 @@ function resolveReasoningWire(
   model: string,
   modelLower: string,
 ): OnethingReasoningWire | undefined {
-  for (const rule of PROVIDER_MODEL_RULES[kind]) {
+  for (const rule of rulesOf(kind)) {
     if (!rule.test.test(modelLower)) continue
     if (rule.wire) return typeof rule.wire === 'function' ? rule.wire(model) : rule.wire
     if (rule.profile) {
@@ -1423,7 +1418,7 @@ export function resolveOnethingModelCapabilities(
   const reasoningProfile = reasoning.value
     ? withReasoningProfileOverrides(resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE, providerProfile, modelProfile)
     : undefined
-  const forcedToolUse = fromRules('forcedToolUse', PROVIDER_MODEL_RULES[kind], modelLower)
+  const forcedToolUse = fromRules('forcedToolUse', rulesOf(kind), modelLower)
   const servedBy = resolveImageOutputServedBy(input, kind, modelLower, imageOutput)
 
   return {

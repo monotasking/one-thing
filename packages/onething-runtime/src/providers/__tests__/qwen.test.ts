@@ -17,7 +17,7 @@ import {
   resolveOnethingQwenBaseUrl,
   resolveOnethingQwenModelsDevProviderId,
 } from '../qwen.js'
-import { resolveOnethingProviderBaseUrl } from '../zhipu.js'
+import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
 import { getOnethingModelsDevProviderId } from '../model-registry.js'
 import { resolveOnethingModelCapabilities } from '../model-capability.js'
 

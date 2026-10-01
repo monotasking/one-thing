@@ -87,27 +87,10 @@
     "modelVendorAliases": [
       {
         "brands": [
-          "openai"
-        ],
-        "keys": [
-          "openai"
-        ]
-      },
-      {
-        "brands": [
           "anthropic"
         ],
         "keys": [
           "anthropic"
-        ]
-      },
-      {
-        "brands": [
-          "google",
-          "gemini"
-        ],
-        "keys": [
-          "google"
         ]
       },
       {
@@ -121,6 +104,24 @@
       },
       {
         "brands": [
+          "google",
+          "gemini"
+        ],
+        "keys": [
+          "google"
+        ]
+      },
+      {
+        "brands": [
+          "mistralai",
+          "mistral"
+        ],
+        "keys": [
+          "mistral"
+        ]
+      },
+      {
+        "brands": [
           "moonshotai",
           "moonshot",
           "kimi"
@@ -128,6 +129,26 @@
         "keys": [
           "moonshotai",
           "moonshotai-cn"
+        ]
+      },
+      {
+        "brands": [
+          "openai"
+        ],
+        "keys": [
+          "openai"
+        ]
+      },
+      {
+        "brands": [
+          "qwen",
+          "alibaba",
+          "alibaba-cloud",
+          "dashscope"
+        ],
+        "keys": [
+          "alibaba",
+          "alibaba-cn"
         ]
       },
       {
@@ -151,27 +172,6 @@
         "keys": [
           "zhipuai",
           "zai"
-        ]
-      },
-      {
-        "brands": [
-          "qwen",
-          "alibaba",
-          "alibaba-cloud",
-          "dashscope"
-        ],
-        "keys": [
-          "alibaba",
-          "alibaba-cn"
-        ]
-      },
-      {
-        "brands": [
-          "mistralai",
-          "mistral"
-        ],
-        "keys": [
-          "mistral"
         ]
       }
     ],

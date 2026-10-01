@@ -23,12 +23,10 @@ import { openRouterReasoningWire } from "./openrouter-reasoning.js";
 import { qwenThinkingWire } from "./qwen-thinking.js";
 import { responsesReasoningWire } from "./responses-reasoning.js";
 import { thinkingTypeWire } from "./thinking-type.js";
-import { zhipuThinkingWire } from "./zhipu-thinking.js";
 
 thinkingWires
 	.register(thinkingTypeWire)
 	.register(openAIEffortWire)
-	.register(zhipuThinkingWire)
 	.register(qwenThinkingWire)
 	.register(grokEffortWire)
 	.register(openRouterReasoningWire)
@@ -124,7 +122,6 @@ export {
 	type CodexReasoningOptions,
 } from "./responses-reasoning.js";
 export { ThinkingTypeWire, thinkingTypeWire } from "./thinking-type.js";
-export { ZhipuThinkingWire, zhipuThinkingWire } from "./zhipu-thinking.js";
 export {
 	OpenAIChatThinkingWire,
 	openAIChatDelta,

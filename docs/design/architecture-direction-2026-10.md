@@ -118,6 +118,35 @@ providers/
 - **兼容**:用户设置里已存的 `zhipuApiMode` 字段要照常读出;契约字段的改名放 P3 一起做,读侧兼容旧键。
 - 验收:智谱在 `vendors/zhipu/` 以外的命中数归零(`shared` 除外,留给 P3);所有现有门与测试全绿;`headless-boundary-check.ts` 里涉及的 provider 位置断言同批改写。
 
+**P0 落地记录(`872eec88f`)**:尺子、事实快照(`providers/__tests__/vendor-facts.snapshot.test.ts`)、CI 接入。
+线协议快照早已覆盖全部 14 家(Provider OO 重建时立的四套),P0 只补了「公共表推导出的答案」那一半。
+
+**P1 落地记录(10-01)**:
+- 机制:`ProviderManifest` 加六格各家数据 —— `envVars` / `modelIdentity` / `catalogAliases` /
+  `errorDescriptions` / `endpoint`(`pickOptions` / `resolveBaseUrl` / `entryFields` / `ownsBaseUrl`)/
+  `modelRuleTable`;行为那一半是 `vendors/runtimes.ts` 的 `VendorRuntime`(`thinkingWires` +
+  `createProvider(config, options, kit)`),工厂按名册登记。数据名册 `vendors/manifests.ts`(纯,壳也
+  import),行为名册 `vendors/runtimes.ts`(后端)—— 所以「注册一行」实际是**每半边一行**。
+- 14 家的 manifest 字面量全部搬回 `vendors/<id>/manifest.ts`;`builtin-manifests.ts` 只剩家族补格与 `acp`。
+- 「档位 → 地址」一组(智谱 / 千问 / Kimi / Kimi Code)整组走 `endpoint`:`provider-options.ts` 的三段
+  按 id 分支、`zhipu.ts` 的分发函数、`spaces/provider-credentials.ts` 的三张表都换成读字段。通用的
+  `resolveOnethingProviderBaseUrl` 住进 `providers/endpoint.ts`,归一函数是叶子模块 `base-url.ts`。
+- 智谱整家搬完:地址 / 档位(`vendors/zhipu/endpoint.ts`)、自述与数据(`manifest.ts`)、方言、思考参数、
+  运行时工厂(`runtime.ts`)。`providers/zhipu.ts` 删除。
+- core 的智谱错误码表换成查询口 `configureProviderErrorCodeDescriber`;manifest 注册表加载时接上
+  「问遍各家的 `errorDescriptions`」。runtime 里逐字抄的那份 `extractErrorDetails` 删除,改用 core 的。
+  **既有行为照旧**:说明不分是哪家返回的错误码(任何家返回 1113 都会配智谱的说明),快照钉着。
+- `builtin-providers.ts` 里十个零引用的 `xxxBuiltinProvider` 导出删除。
+- 尺子改用 TypeScript 解析器取标识符与字面量(手写的注释剥离器会被正则字面量里的引号带偏);
+  同家的订阅半边目录(`kimi-code/` 认识 `kimi`)与模型路径的厂牌前缀(`'openai/gpt-4o'`)不算点名。
+  用同一把尺重量:P0 时 358 对,P1 后 320 对;智谱 21 → 6。
+- 智谱剩下的 6 处全是**写死名单的类型**:`OnethingReasoningWire` / `OnethingProviderKind` 与
+  `REASONING_WIRES`(`model-capability.ts`)、`openai-compatible.ts` 的 `reasoningStyle` 联合、
+  `zhipuApiMode` 字段(`provider-config.ts` / `provider-definition.ts`)、`shared` 契约与缺省值 —— 归 P3。
+- 门:typecheck(node / desktop)、`boundary:gate`、`transport:gate`、`provider:gate` 绿;两份快照逐字不变。
+  全量 vitest 有 19 条红在 P0 提交上**原样存在**(音乐 / 提示词金样 / 插件事件 / http 文件面等别的会话的
+  在途改动),`assembly:gate` 在 HEAD 也红(`wiring/music/radio.ts` 9 → 10),都与本试点无关。
+
 ### P2 · 其余各家
 
 按线协议分批,每批一笔提交:

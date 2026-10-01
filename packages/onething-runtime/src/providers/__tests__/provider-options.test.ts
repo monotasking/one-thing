@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   pickOnethingProviderOptions,
   readOnethingQwenOptions,
-  readOnethingZhipuOptions,
 } from '../provider-options.js'
 import { getEffectiveProviderConfig, withResolvedProviderBaseUrl } from '../provider-config.js'
 import type { CoreProviderConfigLike } from '../provider-config.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,
-} from '../zhipu.js'
+  normalizeOnethingZhipuApiMode,
+} from '../vendors/zhipu/endpoint.js'
 
 /**
  * These knobs used to travel as named fields through nine files, including
@@ -31,10 +31,9 @@ describe('provider-private options', () => {
 
   it('rejects junk at the unpacking point rather than forwarding it', () => {
     // The bag is untyped by design, so narrowing is the factory's job.
-    expect(readOnethingZhipuOptions({ zhipuApiMode: 'nonsense' })).toEqual({})
-    expect(readOnethingZhipuOptions(undefined)).toEqual({})
-    expect(readOnethingZhipuOptions({ zhipuApiMode: 'coding-plan' }))
-      .toEqual({ zhipuApiMode: 'coding-plan' })
+    expect(normalizeOnethingZhipuApiMode('nonsense')).toBeUndefined()
+    expect(normalizeOnethingZhipuApiMode(undefined)).toBeUndefined()
+    expect(normalizeOnethingZhipuApiMode('coding-plan')).toBe('coding-plan')
 
     // qwen normalizes to its defaults instead, because its endpoint needs a pair.
     expect(readOnethingQwenOptions({ qwenApiMode: 'nonsense', qwenRegion: 'mars' }))

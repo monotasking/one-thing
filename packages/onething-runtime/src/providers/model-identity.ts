@@ -18,6 +18,7 @@
  *
  * 纯函数,Electron-free;索引按 models.dev 缓存建一次,内存 memo 按缓存的 `fetchedAt` 失效。
  */
+import { BUILTIN_PROVIDER_MANIFESTS } from "./builtin-manifests.js";
 import type { OnethingModelsDevModel, OnethingModelsDevResponse } from "./model-registry.js";
 
 /**
@@ -25,7 +26,7 @@ import type { OnethingModelsDevModel, OnethingModelsDevResponse } from "./model-
  * 是这家在 models.dev 里的键,**按偏好排**(同一厂牌的国内 / 海外两本目录取前一本)。
  * 这张表同时定义了「第一方」:键在某一行 `keys` 里的那家就是第一方。
  */
-export const MODEL_VENDOR_ALIASES: ReadonlyArray<{
+const LEGACY_MODEL_VENDOR_ALIASES: ReadonlyArray<{
 	readonly brands: readonly string[];
 	readonly keys: readonly string[];
 }> = [
@@ -35,9 +36,20 @@ export const MODEL_VENDOR_ALIASES: ReadonlyArray<{
 	{ brands: ["deepseek", "deepseek-ai"], keys: ["deepseek"] },
 	{ brands: ["moonshotai", "moonshot", "kimi"], keys: ["moonshotai", "moonshotai-cn"] },
 	{ brands: ["x-ai", "xai", "grok"], keys: ["xai"] },
-	{ brands: ["z-ai", "zai", "zhipu", "zhipuai", "thudm"], keys: ["zhipuai", "zai"] },
 	{ brands: ["qwen", "alibaba", "alibaba-cloud", "dashscope"], keys: ["alibaba", "alibaba-cn"] },
 	{ brands: ["mistralai", "mistral"], keys: ["mistral"] },
+];
+
+/**
+ * 搬回家的服务商自己带认亲那一行(`manifest.modelIdentity`,`vendors/<id>/manifest.ts`);
+ * 还没搬的仍在上面那张表里(服务商自述试点 P1/P2 的过渡期)。行与行互不重叠,行序不是行为。
+ */
+export const MODEL_VENDOR_ALIASES: ReadonlyArray<{
+	readonly brands: readonly string[];
+	readonly keys: readonly string[];
+}> = [
+	...LEGACY_MODEL_VENDOR_ALIASES,
+	...BUILTIN_PROVIDER_MANIFESTS.flatMap((manifest) => (manifest.modelIdentity ? [manifest.modelIdentity] : [])),
 ];
 
 export type ModelTwinLevel = "prefix" | "exact" | "normalized";

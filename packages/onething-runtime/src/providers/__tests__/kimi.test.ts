@@ -25,7 +25,7 @@ import {
 } from '../kimi.js'
 import { getOnethingModelsDevProviderId } from '../model-registry.js'
 import { kimiCodeBuiltinProvider } from '../builtin-providers.js'
-import { resolveOnethingProviderBaseUrl } from '../zhipu.js'
+import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
 import {
   pickOnethingProviderOptions,
   readOnethingKimiOptions,

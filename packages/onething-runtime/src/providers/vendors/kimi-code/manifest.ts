@@ -1,0 +1,40 @@
+/**
+ * `kimi-code` 的自述(`docs/design/architecture-direction-2026-10.md` §4 P1:每家的 manifest 住在自己家)。
+ *
+ * 纯模块:壳也 import(经 `vendors/manifests.ts`)。
+ */
+import type { ProviderManifest } from '../../manifest.js'
+import {
+  ONETHING_KIMI_CODE_DEFAULT_MODEL,
+  ONETHING_KIMI_CODE_MODELS_DEV_ID,
+  ONETHING_KIMI_CODING_PLAN_BASE_URL,
+} from '../../kimi.js'
+
+/**
+ * Kimi Code(编程套餐)—— 订阅走 OAuth,与按量那条 `kimi` 是两个 provider:
+ * 凭证、地址(套餐 host 固定,不跟 `kimi` 的地区档走)、账目三样都不同。
+ * `supportsCustomBaseUrl: false`:套餐只认自己那一个 host。
+ */
+export const KIMI_CODE_MANIFEST: ProviderManifest = {
+  id: 'kimi-code',
+  origin: 'builtin',
+  name: 'Kimi Code (订阅)',
+  description: 'providers.desc.kimi-code',
+  icon: 'kimi',
+  dialect: 'kimi-code',
+  auth: { kind: 'oauth', flow: 'device-code' },
+  // 套餐自己那本目录:型号名与按量那本一个都不重名。
+  models: { kind: 'models.dev', key: ONETHING_KIMI_CODE_MODELS_DEV_ID },
+  billing: 'subscription',
+  modelRules: 'kimi',
+  defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,
+  supportsCustomBaseUrl: false,
+  // 套餐目录里真有的 id;写按量那本的名字会 404。
+  defaultModel: ONETHING_KIMI_CODE_DEFAULT_MODEL,
+  // 空间凭证条目的档位 / 地区格与按量那条 `kimi` 同名(同一张设置表);地址由条目说了算。
+  // 套餐 host 固定,所以没有 `pickOptions` / `resolveBaseUrl`(与搬家前逐字同口径)。
+  endpoint: {
+    entryFields: { apiMode: 'kimiApiMode', region: 'kimiRegion' },
+    ownsBaseUrl: true,
+  },
+}

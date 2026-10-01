@@ -25,16 +25,14 @@
  */
 
 import {
-  ONETHING_KIMI_PROVIDER_ID,
   normalizeOnethingKimiApiMode,
   normalizeOnethingKimiRegion,
 } from './kimi.js'
 import {
-  ONETHING_QWEN_PROVIDER_ID,
   normalizeOnethingQwenApiMode,
   normalizeOnethingQwenRegion,
 } from './qwen.js'
-import type { OnethingZhipuApiMode } from './zhipu.js'
+import { getProviderManifest } from './manifest.js'
 import { normalizeOnethingReasoningProfileOverride } from './model-capability.js'
 
 /** Opaque to everything between the settings store and the owning factory. */
@@ -93,16 +91,10 @@ export function buildOnethingRequestProviderOptionsBag(
   return { [providerId]: readOnethingRequestProviderOptions(providerOptions) }
 }
 
-export const ONETHING_ZHIPU_PROVIDER_ID = 'zhipu'
-
-function normalizeZhipuApiMode(value: unknown): OnethingZhipuApiMode | undefined {
-  return value === 'coding-plan' || value === 'standard' ? value : undefined
-}
-
 /**
- * The single place that knows which providers have private knobs and what the
- * stored fields are called. Returns undefined when a provider has none, so the
- * common case adds no key to the runtime config.
+ * 存档配置 → 运行期的 `providerOptions`。各家的专属格子(档位 / 地区)由各家 manifest 的
+ * `endpoint.pickOptions` 说;没有专属格子的家只带公共的两样(`request` 与
+ * `reasoningProfile`),一样都没有就回 `undefined`,常见情况不往运行期配置里加键。
  */
 export function pickOnethingProviderOptions(
   providerId: string,
@@ -127,41 +119,11 @@ export function pickOnethingProviderOptions(
     ...(reasoningProfile ? { reasoningProfile } : {}),
   } : undefined
 
-  if (providerId === ONETHING_ZHIPU_PROVIDER_ID) {
-    const zhipuApiMode = normalizeZhipuApiMode(storedConfig.zhipuApiMode)
-    if (!zhipuApiMode) return carried
-    return { ...carried, zhipuApiMode }
-  }
-
-  if (providerId === ONETHING_QWEN_PROVIDER_ID) {
-    // Both normalizers fall back to a default rather than returning undefined,
-    // so qwen always gets a bag — its endpoint depends on the pair.
-    return {
-      ...carried,
-      qwenApiMode: normalizeOnethingQwenApiMode(storedConfig.qwenApiMode),
-      qwenRegion: normalizeOnethingQwenRegion(storedConfig.qwenRegion),
-    }
-  }
-
-  if (providerId === ONETHING_KIMI_PROVIDER_ID) {
-    // Same shape as qwen: the endpoint is a lookup on the pair, so the bag is
-    // always present and always complete.
-    return {
-      ...carried,
-      kimiApiMode: normalizeOnethingKimiApiMode(storedConfig.kimiApiMode),
-      kimiRegion: normalizeOnethingKimiRegion(storedConfig.kimiRegion),
-    }
-  }
-
+  // 有档位的家把「存档里哪几格要跟进请求」写在自己的 manifest 里(`vendors/<id>/`);
+  // 这里不认识任何一家。
+  const own = getProviderManifest(providerId)?.endpoint?.pickOptions?.(storedConfig)
+  if (own) return { ...carried, ...own }
   return carried
-}
-
-/** Unpack + narrow, for the zhipu factory. */
-export function readOnethingZhipuOptions(
-  providerOptions: OnethingProviderOptions | undefined,
-): { zhipuApiMode?: OnethingZhipuApiMode } {
-  const zhipuApiMode = normalizeZhipuApiMode(providerOptions?.zhipuApiMode)
-  return zhipuApiMode ? { zhipuApiMode } : {}
 }
 
 /** Unpack + narrow, for the kimi factory. */
