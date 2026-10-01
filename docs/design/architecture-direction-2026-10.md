@@ -279,6 +279,35 @@ providers/
 
 写一个"假服务商"测试夹具,按验收标准实际加一家,确认只动三处。
 
+**P5 落地记录(`d47733ee0`)**:
+- 演练做成可反复跑的脚本 `bun run provider:drill`(`scripts/provider-vendor-drill.mjs`):在 HEAD 的临时 worktree
+  里放进虚构服务商 `acme`(每一种机制都用上:档位与地址、环境变量、认亲、目录别名、错误码说明、型号规则表、
+  自己的思考线型、方言、运行时工厂、配额源、出厂种子),只加名册两行与壳的两行文案,然后断言改动恰好是这几处、
+  typecheck 零错、尺子上 acme 在家外 0 处、端到端演练测试全绿(通用代码每一问都答得出,真请求走它自己的方言、
+  档位地址与思考线型)。
+- **结论:加一家 = `vendors/<id>/` + `vendors/manifests.ts` 一行(数据)+ `vendors/runtimes.ts` 一行(行为)
+  + 壳的文案(图标可选)。** 当初以智谱计要动 19 个别处的文件。
+- 演练发现并当场去掉一处多余登记:出厂种子键序表 `VENDOR_SEED_ORDER` 原本要手写,改为「历史那几家按历史键序在前,
+  新家按名册顺序接在后面」,加一家不再碰它。
+- 加一家之后**会**红的是保驾的门,这是有意的:冻住「今天的事实」的快照(vendor-facts、出厂设置冻结、「恰好这几家」
+  类列表测试)要经评审重录;`delivery-invariant` 元测试要求新方言在投递契约表里补一行。
+
+## 4b. 试点收尾:尺子的现状与口径
+
+§4 P0 曾写「P3 结束时归零变硬闸」。实际收尾在 **111 对**,没有归零,原因如实写在这里:剩下的对不是「某家的数据
+散在公共表里」,而是下面几类 —— 继续以棘轮守着(只许减),不改成零基线硬闸:
+- **线协议层**:`wires/*`、`base/*`、协议共用的思考线型与配方以协议命名(anthropic-messages、gemini-generateContent、
+  openai-chat、openai-responses);`wires/anthropic-messages.ts` 的 `providerData.provider: "claude"` 会写进历史消息,
+  Responses 线的 `Codex*` 旧名与 `'codex'` 线型 id、`'codex-http'` 转储模式名会落盘。
+- **自定义服务商的存档形状**:`apiType: 'openai' | 'anthropic'`、`custom-openai` 方言 id。
+- **领域外**:语音、媒体 / 出图、ACP(agent id 恰好叫 `claude-code` / `codex` / `gemini`)、会话、日志、引擎的 Codex
+  原生工具、`shared/ipc/chat.ts` 的 `codexNative`。
+- **provider 领域内的零星几处**(P3 记录里逐条列过):出图路由按 `kind` 判的一行、grok 两半补设置条目的循环、
+  用户可见报错文案里的环境变量示例、`custom-probe` 以 gemini 方言为底。
+
+新增的守门:`bun run provider:gate`(棘轮,CI 已接)、`bun run provider:drill`(演练)、boundary 检查
+`checkReactShellReadsProvidersOverRpc`(壳不许 import runtime 的服务商代码,零基线硬闸)、`vendor-facts` 快照。
+
 ## 5. 试点之后再定的事
 
 - 包结构:合并 core / runtime / backend,还是保留;#25 的"逻辑与接线按文件拆"是否撤销,让一个功能的逻辑与接线住同一个目录。
