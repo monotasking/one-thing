@@ -3,7 +3,7 @@
 # 只许减:出现这里没有的一对,`bun run provider:gate` 红。P3 结束时应为空。
 # 减了之后跑 `node scripts/provider-vendor-gate.mjs --write-baseline` 收紧。
 claude apps/desktop-react/src/dev/Gallery.tsx
-claude packages/backend/wiring/acp/elicitation-bridge.ts
+claude packages/backend/runtime/acp/wiring/elicitation-bridge.ts
 claude packages/backend/core/session/events/ephemeral-policy.ts
 claude packages/backend/runtime/acp/client.ts
 claude packages/backend/runtime/acp/manifest.ts

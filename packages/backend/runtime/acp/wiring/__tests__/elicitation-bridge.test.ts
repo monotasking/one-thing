@@ -6,11 +6,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { InteractionAnswer, InteractionAskInput } from '@shared/interaction/types'
 import type { AcpElicitationContext, AcpElicitationRequest } from '@onething/backend/runtime/acp'
 
-vi.mock('../../interaction/no-human.js', () => ({
+vi.mock('@onething/backend/wiring/interaction/no-human.js', () => ({
   NO_HUMAN_DECLINE_REASON: 'nobody',
   noHumanInTheRoom: () => false,
 }))
-vi.mock('../../permission/message-anchor.js', () => ({
+vi.mock('@onething/backend/wiring/permission/message-anchor.js', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred,
 }))
 

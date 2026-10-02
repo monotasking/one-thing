@@ -51,7 +51,7 @@ import {
 } from '@onething/backend/server/embed.js'
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler/user-tasks.js'
-import { registerACPPermissionBridge } from '@onething/backend/wiring/acp/permission-bridge.js'
+import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/wiring/permission-bridge'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { installAppMenu } from './app-menu-install.js'
 import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'

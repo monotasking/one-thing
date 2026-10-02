@@ -53,10 +53,10 @@ import {
 } from '@onething/backend/runtime/acp/mcp-bridge/server'
 import { HOST_MCP_UNAUTHORIZED, type HostMcpToolListing } from '@shared/ipc/host-mcp.js'
 import type { AgentNotificationEvent } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
-import type { HostToolSurface } from '../external-agents/host-tools.js'
-import { httpDiscoveryUrl, readHttpDiscovery } from '../../server/discovery.js'
-import { getSettings } from '../../stores/settings.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import type { HostToolSurface } from '@onething/backend/wiring/external-agents/host-tools.js'
+import { httpDiscoveryUrl, readHttpDiscovery } from '@onething/backend/server/discovery.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 import { resolveAcpMcpBridgePath } from './mcp-bridge-path.js'
 
 const log = getLogger('app.acp.host-mcp')
@@ -521,12 +521,12 @@ function defaultMintToken(): string {
  * 不该因为子系统被构造就进每一份单测的模块图。
  */
 async function defaultResolveSurface(request: { localSessionId: string; executionContext?: unknown }): Promise<HostToolSurface | undefined> {
-  const { resolveHostToolSurface } = await import('../external-agents/host-tools.js')
+  const { resolveHostToolSurface } = await import('@onething/backend/wiring/external-agents/host-tools.js')
   return resolveHostToolSurface(request)
 }
 
 function defaultNotify(notification: HostNotification): void {
-  void import('../../events/index.js').then(({ getEventBus }) => {
+  void import('@onething/backend/events/index.js').then(({ getEventBus }) => {
     getEventBus().emitGlobal({ type: 'agent:notification', ...notification })
   }).catch(error => log.warn('agent notification not delivered', { sessionId: notification.sessionId }, error))
 }

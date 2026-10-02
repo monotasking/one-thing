@@ -59,7 +59,7 @@ import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '../../stores/settings-defaults.js'
 import { localUserPrincipal } from '@shared/permission/principal'
 import { markHostUnattended } from '@onething/backend/runtime/permissions/unattended'
-import { registerACPPermissionBridge } from '../acp/permission-bridge.js'
+import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/wiring/permission-bridge'
 import type { Principal } from '@shared/permission/principal'
 import {
   serializeOutcome,

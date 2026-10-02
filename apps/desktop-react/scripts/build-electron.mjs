@@ -137,7 +137,7 @@ export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
  * ACP 宿主工具面的 stdio 桥(ACP A4-a,`docs/design/acp-integration-2026-09.md` §3.6)。
  *
  * 与 `search-worker.cjs` **同一条规矩**:三份配方各出一份 `acp-mcp-bridge.cjs`,永远落在
- * 宿主入口旁边(装配层按 `import.meta.url` 往旁边找,`packages/backend/wiring/acp/
+ * 宿主入口旁边(装配层按 `import.meta.url` 往旁边找,`packages/backend/runtime/acp/wiring/
  * mcp-bridge-path.ts`),打包时 asarUnpack(它是被 agent 当子进程起的一个**真文件**,
  * `ELECTRON_RUN_AS_NODE=1` 起出来的 node 环境没有 asar 补丁)。
  *

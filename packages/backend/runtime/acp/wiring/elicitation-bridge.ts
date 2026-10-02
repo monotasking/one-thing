@@ -41,9 +41,9 @@ import type {
   AcpElicitationResponse,
 } from '@onething/backend/runtime/acp'
 import { getShellHost, hasShellHost } from '@onething/backend/runtime/shell/host-ports'
-import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
-import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import { getLogger } from '../logging/index.js'
+import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/wiring/interaction/no-human.js'
+import { resolvePermissionMessageAnchor } from '@onething/backend/wiring/permission/message-anchor.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('acp.elicitation')
 

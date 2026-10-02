@@ -3,7 +3,7 @@
  * 方案 `docs/design/acp-integration-2026-09.md` §3.2 / §3.9 / §9)。
  *
  * 全是纯函数:不读盘、不联网、不写日志。读盘(种子目录、注册表缓存)、联网(托管 fetch)
- * 与探测(PATH / 版本号)住装配层 `backend/wiring/acp/{registry,detect}.ts`;这里只回答
+ * 与探测(PATH / 版本号)住装配层 `backend/runtime/acp/wiring/{registry,detect}.ts`;这里只回答
  * 「这坨 JSON 是不是一台 agent」「注册表那一行折成我们的形状长什么样」
  * 「manifest ⊕ 用户覆盖 = 进程管家拿到的哪一份配置」。
  *

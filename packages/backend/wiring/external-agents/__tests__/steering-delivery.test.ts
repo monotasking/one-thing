@@ -81,7 +81,7 @@ vi.mock('../../logging/index.js', () => ({
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))
 vi.mock('../host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
-vi.mock('../../acp/host-mcp-port.js', () => ({ createAcpHostMcpPort: () => ({}) }))
+vi.mock('@onething/backend/runtime/acp/wiring/host-mcp-port', () => ({ createAcpHostMcpPort: () => ({}) }))
 
 const { getExternalAgentConnectors, takeExternalAgentSteering } = await import('../index.js')
 

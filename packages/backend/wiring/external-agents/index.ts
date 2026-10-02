@@ -21,7 +21,7 @@ import type { Invocation } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { resolveExternalAgentSpawnEnv } from './spawn-env.js'
-import { createAcpHostMcpPort } from '../acp/host-mcp-port.js'
+import { createAcpHostMcpPort } from '@onething/backend/runtime/acp/wiring/host-mcp-port'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('external-agents')
@@ -58,7 +58,7 @@ export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink):
  * 外部 agent 的审批桥(E4,G1+G2)。
  *
  * A6-b 注:这座桥(与下面的提问桥)是连接器无关的 `permissionHandler` / `interactionHandler`
- * 实现;它们唯一的生产调用方 Claude SDK 连接器已退役,ACP 走 `wiring/acp/permission-bridge.ts`
+ * 实现;它们唯一的生产调用方 Claude SDK 连接器已退役,ACP 走 `runtime/acp/wiring/permission-bridge.ts`
  * (同一个 `describeExternalToolPermission` 分析,经 `describeAcpToolPermission`)。
  *
  * ## 为什么改走策略门

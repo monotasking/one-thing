@@ -204,7 +204,7 @@ export function toHostMcpToolDefinition(
  * 同一只包装,语境由调用方给(A4-a)。
  *
  * 进程内 SDK 那条路的语境按**执行会话**绑(上面那只);跨进程的桥按**桥凭据**找语境
- * (`backend/wiring/acp/host-mcp-bridge.ts`)。两条路找语境的办法不同,但「语境不在就答
+ * (`backend/runtime/acp/wiring/host-mcp-bridge.ts`)。两条路找语境的办法不同,但「语境不在就答
  * `HOST_MCP_TURN_GONE`」「执行器抛了才是 `isError`」「门拒不翻成错误」这三条必须是
  * **同一段代码** —— 抄一份,两条通路上同一件事就会长成两个样子(原则 1)。所以把
  * handler 的身体抽到这里,两边各递一个 `resolveContext`。

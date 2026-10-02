@@ -11,7 +11,7 @@ import type { Authorizer, Intent, Invocation } from '@onething/backend/core/tool
 import type { AcpClientRequestContext } from '@onething/backend/runtime/acp'
 import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 
-vi.mock('../../permission/message-anchor.js', () => ({
+vi.mock('@onething/backend/wiring/permission/message-anchor.js', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred ?? '',
 }))
 

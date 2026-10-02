@@ -10,7 +10,7 @@ const bus = vi.hoisted(() => ({
   emitGlobal: vi.fn(),
 }))
 
-vi.mock('../../../events/index.js', () => ({
+vi.mock('@onething/backend/events/index.js', () => ({
   isEventSystemInitialized: () => bus.initialized,
   getEventBus: () => {
     if (!bus.initialized) throw new Error('event system not assembled')

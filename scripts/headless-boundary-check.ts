@@ -4192,10 +4192,10 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
   const runtimeTypesFile = path.join(root, 'packages/backend/runtime/acp/types.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/acp/index.ts')
   const mainFiles = [
-    path.join(root, 'packages/backend/wiring/acp/client.ts'),
-    path.join(root, 'packages/backend/wiring/acp/manager.ts'),
-    path.join(root, 'packages/backend/wiring/acp/types.ts'),
-    path.join(root, 'packages/backend/wiring/acp/index.ts'),
+    path.join(root, 'packages/backend/runtime/acp/wiring/client.ts'),
+    path.join(root, 'packages/backend/runtime/acp/wiring/manager.ts'),
+    path.join(root, 'packages/backend/runtime/acp/wiring/types.ts'),
+    path.join(root, 'packages/backend/runtime/acp/wiring/index.ts'),
   ]
   const runtimeClientContent = fs.existsSync(runtimeClientFile) ? fs.readFileSync(runtimeClientFile, 'utf-8') : ''
   const runtimeManagerContent = fs.existsSync(runtimeManagerFile) ? fs.readFileSync(runtimeManagerFile, 'utf-8') : ''

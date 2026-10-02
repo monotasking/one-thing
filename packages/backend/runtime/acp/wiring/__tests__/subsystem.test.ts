@@ -9,7 +9,7 @@
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ACPSettings, AcpSessionState } from '@shared/contracts/acp'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { AcpAgentRegistry } from '../registry.js'
 import { AcpSubsystem, type AcpSubsystemDeps } from '../subsystem.js'
 
@@ -145,7 +145,7 @@ describe('AcpSubsystem', () => {
  * 的行也从名册来。种子目录用仓里真的 `resources/acp-agents`(种子是数据,不是夹具),探测注入。
  */
 describe('AcpSubsystem × 名册', () => {
-  const seedDir = path.resolve(__dirname, '../../../../../resources/acp-agents')
+  const seedDir = path.resolve(__dirname, '../../../../../../resources/acp-agents')
 
   function makeRosterDeps(settings: ACPSettings, installed: string[]) {
     const { deps, manager } = makeDeps()

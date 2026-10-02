@@ -10,7 +10,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 import { HOST_MCP_UNAUTHORIZED, hostMcpRouter } from '@shared/ipc/host-mcp.js'
 import { HOST_MCP_RPC } from '@onething/backend/runtime/acp/mcp-bridge/server'
 import { createHostMcpRpcHandlers } from '../domains/host-mcp.js'
-import { HostMcpBridge } from '../../wiring/acp/host-mcp-bridge.js'
+import { HostMcpBridge } from '@onething/backend/runtime/acp/wiring/host-mcp-bridge'
 
 const notes: unknown[] = []
 const bridge = new HostMcpBridge({

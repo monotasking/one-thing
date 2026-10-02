@@ -152,7 +152,7 @@ import { getPluginManager } from "../wiring/plugins/index.js";
 import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/backend/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/backend/runtime/terminal/service.wiring";
-import { registerACPPermissionBridge } from "../wiring/acp/permission-bridge.js";
+import { registerACPPermissionBridge } from "@onething/backend/runtime/acp/wiring/permission-bridge";
 import { createEventBusTerminalBroadcaster } from "../wiring/terminal/index.js";
 import {
 	createOnethingSearchService,
