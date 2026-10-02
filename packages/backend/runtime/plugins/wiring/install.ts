@@ -16,7 +16,7 @@ import {
   type InstallCorePluginPackageResult,
 } from '@onething/backend/core/plugins'
 import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './loader.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/backend/core/logging'
 

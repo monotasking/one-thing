@@ -31,7 +31,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-resourc
 process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../../../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('@onething/backend/current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
@@ -43,10 +43,10 @@ class NoopSender extends EventEmitter {
   send(): void {}
 }
 
-type Backend = Awaited<ReturnType<typeof import('../../../backend.js')['createOnethingBackend']>>
+type Backend = Awaited<ReturnType<typeof import('@onething/backend/backend.js')['createOnethingBackend']>>
 
 async function assemble(): Promise<Backend> {
-  const { createOnethingBackend } = await import('../../../backend.js')
+  const { createOnethingBackend } = await import('@onething/backend/backend.js')
   return createOnethingBackend({
     host: {
       storePath: {},
@@ -93,7 +93,7 @@ describe('插件的三个动词(K4-b)', () => {
     resources?: () => unknown,
   ) {
     const { createPluginAPI } = await import('../api.js')
-    const { getStreamEngine } = await import('../../engine/index.js')
+    const { getStreamEngine } = await import('@onething/backend/wiring/engine/index.js')
     return createPluginAPI(pluginId, backend.eventBus as never, getStreamEngine() as never, {
       declaredPermissions,
       declaredPanelIds: [],
@@ -107,7 +107,7 @@ describe('插件的三个动词(K4-b)', () => {
   it('装配之后 session 这一种资源在场(本单的前提)', { timeout: 180_000 }, async () => {
     backend = await assemble()
     expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('session')
-    const store = await import('../../../store.js')
+    const store = await import('@onething/backend/store.js')
     sessionId = store.createSession(`plugin-resources-${Date.now()}`, 'First name').id
   })
 
@@ -169,7 +169,7 @@ describe('插件的三个动词(K4-b)', () => {
       await disposePlugin(state)
     }
 
-    const { sessionReads } = await import('../../../session/reads.js')
+    const { sessionReads } = await import('../../../../session/reads.js')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Second name')
 
     const rows = readResourceAuditRows()

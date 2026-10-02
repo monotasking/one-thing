@@ -97,8 +97,8 @@ const PROBES = [
  * 断言 gi 落到生产实现文件。清单是 S2 施工完成后按真实落点生成的,不是手抄的期望。
  */
 const DECL_PROBES = [
-	['packages/backend/core/events/ipc-operations.ts', 'CoreSessionCommandEmitterLike', ['packages/backend/events/event-bus.ts', 'packages/backend/wiring/plugins/sessions.ts']],
-	['packages/backend/core/events/ipc-operations.ts', 'CoreSessionEventEmitterLike', ['packages/backend/events/event-bus.ts', 'packages/backend/wiring/plugins/sessions.ts']],
+	['packages/backend/core/events/ipc-operations.ts', 'CoreSessionCommandEmitterLike', ['packages/backend/events/event-bus.ts', 'packages/backend/runtime/plugins/wiring/sessions.ts']],
+	['packages/backend/core/events/ipc-operations.ts', 'CoreSessionEventEmitterLike', ['packages/backend/events/event-bus.ts', 'packages/backend/runtime/plugins/wiring/sessions.ts']],
 	['packages/backend/core/engine/stream-runtime.ts', 'StreamEngineStoreAdapter', ['packages/backend/wiring/engine/stream-engine-runtime.ts']],
 	['packages/backend/core/engine/stream-runtime.ts', 'StreamEnginePermissionAdapter', ['packages/backend/runtime/product-stream-runtime.ts']],
 	['packages/backend/core/engine/stream-runtime.ts', 'StreamEngineProviderAdapter', ['packages/backend/runtime/providers/stream-provider-adapter.ts']],
@@ -122,8 +122,8 @@ const DECL_PROBES = [
 	['packages/backend/core/engine/event-only-emitter.ts', 'CoreEventOnlyStoreHooks', ['packages/backend/events/event-only-emitter.ts']],
 	['packages/backend/core/gateway-runtime.ts', 'CoreStreamChannelLike', ['packages/backend/runtime/gateway-runtime.ts']],
 	['packages/backend/core/permission/permission-policy.ts', 'PermissionBridge', ['packages/backend/wiring/tools/core/permission-policy.ts']],
-	['packages/backend/core/plugins/api-builder.ts', 'CorePluginAPIHost', ['packages/backend/wiring/plugins/api.ts']],
-	['packages/backend/core/plugins/manager.ts', 'CorePluginManagerHost', ['packages/backend/wiring/plugins/manager.ts']],
+	['packages/backend/core/plugins/api-builder.ts', 'CorePluginAPIHost', ['packages/backend/runtime/plugins/wiring/api.ts']],
+	['packages/backend/core/plugins/manager.ts', 'CorePluginManagerHost', ['packages/backend/runtime/plugins/wiring/manager.ts']],
 	['packages/backend/core/plugins/scheduler.ts', 'CorePluginSchedulerHost', ['packages/backend/runtime/scheduler/scheduler.ts']],
 	['packages/backend/runtime/mcp/kernel/bridge-runtime.ts', 'CoreMCPBridgeRuntimeHost', ['packages/backend/runtime/mcp/bridge.wiring.ts']],
 	['packages/backend/core/runtime-facade.ts', 'RuntimeSessionsAdapter', ['packages/backend/server/runtime.ts']],
@@ -140,7 +140,7 @@ const DECL_PROBES = [
 	['packages/backend/runtime/triggers/skill-review.ts', 'OnethingSkillReviewAdapters', ['packages/backend/wiring/engine/triggers/skill-review.ts']],
 	['packages/backend/runtime/tools/tool-execution-context.ts', 'ExecuteOnethingToolWithSessionContextOptions', ['packages/backend/rpc/domains/tools.ts']],
 	['packages/backend/runtime/tools/tool-call-state.ts', 'ApplyOnethingToolCallUpdateOptions', ['packages/backend/rpc/domains/tools.ts']],
-	['packages/backend/runtime/plugins/note-skills.ts', 'OnethingNoteSkillsPluginApi', ['packages/backend/wiring/plugins/types.ts', 'packages/backend/wiring/plugins/api.ts', 'packages/backend/wiring/plugins/manager.ts']],
+	['packages/backend/runtime/plugins/note-skills.ts', 'OnethingNoteSkillsPluginApi', ['packages/backend/runtime/plugins/wiring/types.ts', 'packages/backend/runtime/plugins/wiring/api.ts', 'packages/backend/runtime/plugins/wiring/manager.ts']],
 	['packages/backend/runtime/plugins/ipc-operations.ts', 'OnethingPluginConfigAccess', ['packages/backend/runtime/plugins/config-access.ts']],
 	['packages/backend/runtime/collab/actors/agent-actor.ts', 'CollabAgentOutbox', ['packages/backend/runtime/collab/actors/agent-replay.wiring.ts']],
 	['packages/backend/runtime/sessions/storage-driver.ts', 'SessionStorageDriver', ['packages/backend/runtime/sessions/storage-driver.ts']],

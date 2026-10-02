@@ -23,12 +23,12 @@ import { join } from 'node:path'
 
 /**
  * 插件管理器那一位是**这个进程装没装管理器**,而这只测试进程永远不装 —— 所以
- * 只能把那个判据函数换掉。换的是 `wiring/plugins/index.js` 的 `getPluginManager`
+ * 只能把那个判据函数换掉。换的是 `runtime/plugins/wiring/index.js` 的 `getPluginManager`
  * 本身(其余导出原样透传),也就是 plugins 域读的同一个口。
  */
 let pluginManagerPresent = false
-vi.mock('../../wiring/plugins/index.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../wiring/plugins/index.js')>()
+vi.mock('@onething/backend/runtime/plugins/wiring', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/plugins/wiring')>()
   return {
     ...actual,
     getPluginManager: () => (pluginManagerPresent ? ({} as never) : null),
@@ -37,7 +37,7 @@ vi.mock('../../wiring/plugins/index.js', async importOriginal => {
 
 import type { TerminalBroadcaster } from '@onething/backend/runtime/terminal/service.wiring'
 import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/runtime/terminal/service.wiring'
-import { getPluginManager } from '../../wiring/plugins/index.js'
+import { getPluginManager } from '@onething/backend/runtime/plugins/wiring'
 import {
   configureHostLocalTrust,
   isHostLocallyTrusted,

@@ -107,7 +107,7 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 - **packages/backend/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/backend/runtime** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/backend** (everything outside the three subtrees) — the assembly layer (it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (39 dirs: agent-loop / agents / ambient / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / media / memory / music / notes / permission / pets / plugins / project-dirs / providers / quota / resource / scheduler / settings / skills / tasks / terminal / toc / todo-plan / toolkit / tools / usage / variables / voice — search, mcp and acp left on 2026-10-02, their wiring now lives in `runtime/<d>/wiring/`; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1). The three subtrees `core/` / `runtime/` / `gateway/` are layers, not domains, so I1 does not count them.
+- **packages/backend** (everything outside the three subtrees) — the assembly layer (it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (38 dirs: agent-loop / agents / ambient / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / media / memory / music / notes / permission / pets / project-dirs / providers / quota / resource / scheduler / settings / skills / tasks / terminal / toc / todo-plan / toolkit / tools / usage / variables / voice — search, mcp, acp and plugins left on 2026-10-02, their wiring now lives in `runtime/<d>/wiring/`; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1). The three subtrees `core/` / `runtime/` / `gateway/` are layers, not domains, so I1 does not count them.
 - **packages/backend/gateway** — WeChat/Telegram channel gateway; depends on `core/` only.
 - **apps/\*** — thin sockets: the React desktop (`apps/desktop-react`, also the browser shell via `--mode web`), server (HTTP/SSE), CLI daemon (`apps/cli`). The Vue host / renderer / web build were deleted 2026-09-04 (runtime unification step ④; `checkVueHostStaysRetired` keeps them out).
 
@@ -225,7 +225,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 | `skillsEnvironment` | `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
 | `todoPlan` | `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
 | `scratchpad` | `configureScratchpadHost` | `runtime/src/scratchpad/service-bound.ts` |
-| `plugins` | `configurePluginsHost` | `backend/wiring/plugins/host-ports.ts` (native file dialog + plugin-command subprocess runner; unset = structured degrade) |
+| `plugins` | `configurePluginsHost` | `backend/runtime/plugins/wiring/host-ports.ts` (native file dialog + plugin-command subprocess runner; unset = structured degrade) |
 | `gateway` | `configureGatewayHost` | `backend/wiring/gateway/host-ports.ts` |
 | `settings` | `configureSettingsHost` | `backend/wiring/settings/host-ports.ts` |
 | `evals` | `configureEvalsHost` | `backend/wiring/evals/host-ports.ts` |
@@ -604,7 +604,8 @@ Notes:
   `source: 'memory'` so historical ledger rows resolve.
 - Plugin system (R0–R7 complete, 2026-08-07). The plugin's entire power is the injected
   `api` object.
-  **Where the code lives (P3'c, 2026-08-21 — three homes, no fourth):**
+  **Where the code lives (P3'c, 2026-08-21 — three homes, no fourth; since step ③ on 2026-10-02 the product
+  half and the assembly half share one domain directory, the latter in its `wiring/` subdirectory):**
   `packages/backend/core/plugins/` = the **contract + kernel** (37 files: manifest/api shape,
   the `Core*` registries for lifecycle / input-intercept / tool-call-intercept /
   tool-result-intercept / status / sessions / storage, the policy + breaker tables,
@@ -617,7 +618,7 @@ Notes:
   `input-intercept-bound.ts`, `tool-call-intercept-bound.ts`,
   `tool-result-intercept-bound.ts`, plus `lifecycle.wiring.ts` / `tarball.wiring.ts`
   which speak `@shared/ipc`);
-  `packages/backend/wiring/plugins/` = the **assembly half** (20 files: `loader` /
+  `packages/backend/runtime/plugins/wiring/` = the **assembly half** (20 files: `loader` /
   `manager` / `api` / `install` / `store` / `sessions` / `llm` / `skin` /
   `theme-overrides` / `webview` / `background` / `file-import` / `notify-sound` /
   `types` + `commands` (the one command-execution wiring the `plugins` RPC domain and the
@@ -767,7 +768,7 @@ Notes:
     hand-written channels: `PLUGINS_NOTIFICATION` (a global bus event fanned out by
     IPCBridge) and `PLUGINS_REQUEST_PROGRESS` (targeted back at `RpcDispatchContext.callerId`
     via `configurePluginRequestProgressBroadcaster`). Two host capabilities are injected
-    through `configurePluginsHost` (`backend/wiring/plugins/host-ports.ts`): the native
+    through `configurePluginsHost` (`backend/runtime/plugins/wiring/host-ports.ts`): the native
     file dialog (`pickFile`) and the plugin-command subprocess runner (`execCommand`).
   Design doc: `docs/design/plugin-system-redesign-2026-08.md` (§5.x carries the per-phase
   rulings and errata; §6 the multi-host decision).
@@ -1035,7 +1036,7 @@ packages/backend/              # THE server package ('@onething/backend'); the s
 │   └── wiring/<domain>/       # 薄接线:agent-loop agents auth collab deeplink external-agents
 │                              # goals headless(HeadlessBackend) interaction
 │                              # logging(configureLogging) markdown music permission
-│                              # plugins(loader/manager/api/内置插件插座) project-dirs
+│                              # project-dirs
 │                              # providers scheduler skills tasks toc
 │                              # todo-plan toolkit tools usage variables voice
 │
@@ -1060,7 +1061,7 @@ packages/shared/               # '@shared'
 
 ### Key Systems
 
-**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/backend/runtime/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **five optional ports** (`runtime/src/engine/ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before), never a substitute implementation. The assembly layer's whole share is `packages/backend/wiring/engine/stream-engine-bound.ts`: it fills all five ports from the backend spine (`channel/`, `wiring/collab`, `wiring/plugins`, `wiring/agents`, `wiring/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; `wiring/engine/index.ts` owns the singleton. The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled next to it in `wiring/engine/stream-engine-runtime.ts`.
+**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/backend/runtime/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **five optional ports** (`runtime/src/engine/ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before), never a substitute implementation. The assembly layer's whole share is `packages/backend/wiring/engine/stream-engine-bound.ts`: it fills all five ports from the backend spine (`channel/`, `wiring/collab`, `runtime/plugins/wiring`, `wiring/agents`, `wiring/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; `wiring/engine/index.ts` owns the singleton. The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled next to it in `wiring/engine/stream-engine-runtime.ts`.
 
 **EventBus** (`packages/backend/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers; primitives in `packages/backend/core/events/`.
 

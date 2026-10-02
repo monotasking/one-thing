@@ -30,7 +30,7 @@ async function load() {
   vi.resetModules()
   const [api, registry] = await Promise.all([
     import('../api.js'),
-    import('../../../channel/connector-registry.js'),
+    import('@onething/backend/channel/connector-registry.js'),
   ])
   return { api, registry }
 }

@@ -202,7 +202,7 @@ describe('R6 status registry — 格子语义与清扫', () => {
     const handCopied = /'stream:complete'\s*,\s*'stream:error'\s*,\s*'stream:aborted'|'stream:complete'\s*\|\|[^\n]*'stream:aborted'/
     // renderer/stores/voice.ts 曾在名单里,随 Vue 宿主于 2026-09-04 退役删除。
     for (const relative of [
-      '../../../runtime/collab/typing.ts',
+      '../../../collab/typing.ts',
     ]) {
       const source = fs.readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8')
       expect(source, `${relative} must not re-list the terminal events`).not.toMatch(handCopied)
@@ -483,7 +483,7 @@ describe('R6 status — 插件 API 面', () => {
 
 describe('R6 验收口径 — 新增插件状态零改动 shared 契约', () => {
   it('carries exactly one generic plugin-status member and knows no plugin by name', () => {
-    const contractPath = fileURLToPath(new URL('../../../../shared/ipc/chat.ts', import.meta.url))
+    const contractPath = fileURLToPath(new URL('../../../../../shared/ipc/chat.ts', import.meta.url))
     const source = fs.readFileSync(contractPath, 'utf-8')
 
     // 一个泛化成员。按插件加类型的话,每来一个插件就要改一次这个文件 ——

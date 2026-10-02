@@ -7,8 +7,8 @@ import {
   registerPluginToolInCatalog,
   unregisterPluginToolFromCatalog,
 } from '@onething/backend/runtime/toolkit/plugin-tools'
-import type { EventBus } from '../../events/event-bus.js'
-import type { StreamEngine } from '../engine/stream-engine-bound.js'
+import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { StreamEngine } from '@onething/backend/wiring/engine/stream-engine-bound.js'
 import { z } from 'zod'
 import { PluginStore, createPluginFiles, createPluginMessageState, createPluginStorage } from './store.js'
 import {
@@ -21,16 +21,16 @@ import {
 } from './loader.js'
 import { createPluginSessionHostPorts } from './sessions.js'
 import { createPluginResourceHostPorts, type PluginResourceAccess } from './resources.js'
-import { getCurrentBackendInstance } from '../../current.js'
+import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { capturePluginLlmScope, type PluginLlmScope } from './llm.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { pluginStorageImageExists } from './file-import.js'
-import { registerIMConnector } from '../../channel/connector-registry.js'
-import { registerPluginDeepLinkAction } from '../deeplink/registry.js'
+import { registerIMConnector } from '@onething/backend/channel/connector-registry.js'
+import { registerPluginDeepLinkAction } from '@onething/backend/wiring/deeplink/registry.js'
 import { registerPluginSearchProvider } from '@onething/backend/runtime/search/wiring/plugin-search-registry'
-import { registerPluginCredentialStrategy } from '../providers/credential-strategy.js'
-import { captureCredentialStrategyScope, type CredentialStrategyScope } from '../providers/credential-strategy-lifetime.js'
+import { registerPluginCredentialStrategy } from '@onething/backend/wiring/providers/credential-strategy.js'
+import { captureCredentialStrategyScope, type CredentialStrategyScope } from '@onething/backend/wiring/providers/credential-strategy-lifetime.js'
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
@@ -90,7 +90,7 @@ import {
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import type { CompatLogger } from '@onething/backend/core/logging'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('plugins')
 
@@ -612,7 +612,7 @@ export function createPluginAPI(
     registerToolResultInterceptHook: registerPluginToolResultInterceptHook,
     registerSkillRoot: registerPluginSkillRootProvider,
     invalidateSkillsCache() {
-      return import('../skills/session-skills.js')
+      return import('@onething/backend/wiring/skills/session-skills.js')
         .then(({ invalidateSessionSkillsCache }) => invalidateSessionSkillsCache())
         .catch(() => undefined)
     },

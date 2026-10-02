@@ -362,10 +362,10 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // web 的六条 REST + 十三条硬桩)连同 server 的 `/api/plugins*` 六条路由与那条
   // 501 一起消失。
   // **两条推送留在原地**:`PLUGINS_NOTIFICATION`(总线全局事件,IPCBridge 扇全窗)
-  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `wiring/plugins/events.ts` 的
+  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `runtime/plugins/wiring/events.ts` 的
   // `configurePluginRequestProgressBroadcaster`,按 `context.callerId` **定向回发起窗**
   // —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份别人的进度)。
-  // 两件要宿主本体的事走 `wiring/plugins/host-ports.ts` 的 `configurePluginsHost`:
+  // 两件要宿主本体的事走 `runtime/plugins/wiring/host-ports.ts` 的 `configurePluginsHost`:
   // 原生文件对话框(`pickFile`)与插件命令的子进程执行器(`execCommand`,execa 是
   // 桌面的依赖,不该被拖进 server 的单文件包)。未注入即结构化降级。
   // http 分叉逐字保留 server 今天的语义:六条读/开关面走

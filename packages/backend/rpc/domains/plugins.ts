@@ -14,7 +14,7 @@
  *
  * `PLUGINS_NOTIFICATION` 是总线上的全局事件,由 IPCBridge 扇给所有窗,从头到尾
  * 不经过请求面;`PLUGINS_REQUEST_PROGRESS` 改成注入端口
- * (`wiring/plugins/events.ts`),域把 `context.callerId` 原样递过去,桌面据它
+ * (`runtime/plugins/wiring/events.ts`),域把 `context.callerId` 原样递过去,桌面据它
  * **定向回发起窗** —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份
  * 别人的进度。
  *
@@ -79,16 +79,16 @@ import { getPluginAppVersion } from '@onething/backend/runtime/plugins/app-versi
 import { clearPluginRuntimeHealth } from '@onething/backend/runtime/plugins/health'
 import { readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball.wiring'
 import { getServerPluginCatalogPort } from '../../server/plugin-catalog.js'
-import { getPluginBackgroundParams } from '../../wiring/plugins/background.js'
-import { executePluginCommandOnHost } from '../../wiring/plugins/commands.js'
-import { broadcastPluginRequestProgress } from '../../wiring/plugins/events.js'
-import { pickPluginFileOnHost } from '../../wiring/plugins/host-ports.js'
-import { getPluginManager } from '../../wiring/plugins/index.js'
+import { getPluginBackgroundParams } from '@onething/backend/runtime/plugins/wiring/background'
+import { executePluginCommandOnHost } from '@onething/backend/runtime/plugins/wiring/commands'
+import { broadcastPluginRequestProgress } from '@onething/backend/runtime/plugins/wiring/events'
+import { pickPluginFileOnHost } from '@onething/backend/runtime/plugins/wiring/host-ports'
+import { getPluginManager } from '@onething/backend/runtime/plugins/wiring'
 import {
   getPluginMarketIndexSnapshot,
   probePluginNpmAvailability,
-} from '../../wiring/plugins/install.js'
-import { getPluginFootprint } from '../../wiring/plugins/loader.js'
+} from '@onething/backend/runtime/plugins/wiring/install'
+import { getPluginFootprint } from '@onething/backend/runtime/plugins/wiring/loader'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { requestSessionOwner, sessionAccess } from '../../session/access.js'

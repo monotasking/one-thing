@@ -29,7 +29,7 @@ import {
   resolvePluginScopeSeverity,
 } from '@onething/backend/core/plugins'
 
-const REPO_ROOT = fileURLToPath(new URL('../../../../..', import.meta.url))
+const REPO_ROOT = fileURLToPath(new URL('../../../../../..', import.meta.url))
 
 /** 目录遍历,不再硬编码文件清单(上一版只看五个文件,npm-install 就那样漏了)。 */
 function readSourceFiles(roots: string[]): string[] {
@@ -301,7 +301,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'credentialStrategy', scope: pluginScope.credentialStrategy('plugin:b:least-used'), family: 'credential-strategy' },
       // 原子 K4-b:插件对一个命名空间的读 / 做自成一族 —— 记的只有「压根没拿到
       // 结局」那种失败(内核回的 failed / denied / invalid 是**答案**,不是故障),
-      // 罚则只停这一个命名空间。生产者在调用口(backend/wiring/plugins/resources.ts)。
+      // 罚则只停这一个命名空间。生产者在调用口(backend/runtime/plugins/wiring/resources.ts)。
       { factory: 'resourceCall', scope: pluginScope.resourceCall('session'), family: 'resource-call' },
     ]
 
@@ -375,7 +375,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 实现是 throw,当时的测试只断言"理由字符串长度 > 20" —— 标签与实现完全没有
      * 绑定,第一条数据就是错的。
      */
-    const registry = await import('../../../channel/connector-registry.js')
+    const registry = await import('@onething/backend/channel/connector-registry.js')
     const teardown = PLUGIN_REGISTRY_POLICY['im-connector'].teardown
 
     const unregister = registry.registerIMConnector({

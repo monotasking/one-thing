@@ -18,15 +18,15 @@ import {
   type ExecuteOnethingPluginCommandResult,
   type ListOnethingPluginCommandsForIpcResult,
 } from '@onething/backend/runtime/plugins'
-import { getEventBus } from '../../events/index.js'
-import * as store from '../../store.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { getEventBus } from '@onething/backend/events/index.js'
+import * as store from '@onething/backend/store.js'
+import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
 import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './manager.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
 import type { RuntimeRequestContext } from '@onething/backend/core'
-import { DEFAULT_SESSION_OWNER, sessionAccess } from '../../session/access.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/session/access.js'
 
 const log = getLogger('plugins.commands')
 const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger = consolePort(log)

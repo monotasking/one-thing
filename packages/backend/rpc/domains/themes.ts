@@ -33,11 +33,11 @@
 import { getShellHost } from '@onething/backend/runtime/shell/host-ports'
 import { defaultOnethingThemeRuntime } from '@onething/backend/runtime/themes/theme-runtime'
 import type { ThemesRoutes } from '@shared/ipc/themes.js'
-import { getPluginSkinTiers } from '../../wiring/plugins/skin.js'
+import { getPluginSkinTiers } from '@onething/backend/runtime/plugins/wiring/skin'
 import {
   getPluginThemeKnobVariables,
   getPluginThemeOverrideTokenValues,
-} from '../../wiring/plugins/theme-overrides.js'
+} from '@onething/backend/runtime/plugins/wiring/theme-overrides'
 import type { RpcRouteHandlers } from '../registry.js'
 
 export const themesRpcHandlers: RpcRouteHandlers<ThemesRoutes> = {

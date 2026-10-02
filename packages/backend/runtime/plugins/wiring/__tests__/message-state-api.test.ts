@@ -30,7 +30,7 @@ afterAll(async () => {
 
 async function load() {
   const [{ EventBus }, api] = await Promise.all([
-    import('../../../events/event-bus.js'),
+    import('@onething/backend/events/event-bus.js'),
     import('../api.js'),
   ])
   return { EventBus, createPluginAPI: api.createPluginAPI, disposePlugin: api.disposePlugin }

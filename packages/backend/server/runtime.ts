@@ -148,7 +148,7 @@ import {
 import { isCollabV3RuntimeRunning } from "../wiring/collab/index.js";
 // B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
 // 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
-import { getPluginManager } from "../wiring/plugins/index.js";
+import { getPluginManager } from "@onething/backend/runtime/plugins/wiring";
 import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/backend/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/backend/runtime/terminal/service.wiring";

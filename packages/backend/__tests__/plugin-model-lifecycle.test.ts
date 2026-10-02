@@ -3,16 +3,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { OnethingBackend } from '../backend.js'
-import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition } from '../wiring/plugins/types.js'
-import type { PluginState } from '../wiring/plugins/api.js'
+import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition } from '@onething/backend/runtime/plugins/wiring/types'
+import type { PluginState } from '@onething/backend/runtime/plugins/wiring/api'
 
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), manager: null as { shutdown(): Promise<void> } | null }))
 vi.mock('../wiring/providers/index.js', async original => ({
   ...await original<typeof import('../wiring/providers/index.js')>(),
   generateChatResponse: mocks.generate,
 }))
-vi.mock('../wiring/plugins/manager.js', async original => ({
-  ...await original<typeof import('../wiring/plugins/manager.js')>(),
+vi.mock('@onething/backend/runtime/plugins/wiring/manager', async original => ({
+  ...await original<typeof import('@onething/backend/runtime/plugins/wiring/manager')>(),
   getPluginManager: () => mocks.manager,
 }))
 
@@ -65,7 +65,7 @@ async function assemble(name: string) {
 
 async function createManager(instance: OnethingBackend, options: { entry?: (api: PluginAPI) => void | Promise<void>; waitForInitialize?: boolean } = {}) {
   const { CorePluginManager } = await import('@onething/backend/core/plugins')
-  const apiModule = await import('../wiring/plugins/api.js')
+  const apiModule = await import('@onething/backend/runtime/plugins/wiring/api')
   const instances: PluginAPI[] = []
   const definition: PluginDefinition = {
     id: 'model-probe', manifest: { name: 'model-probe', version: '1.0.0' },

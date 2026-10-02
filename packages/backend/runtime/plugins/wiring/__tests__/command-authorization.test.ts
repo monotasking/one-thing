@@ -2,13 +2,13 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { CorePluginCommandContext } from '@onething/backend/core/plugins'
 
 const state = vi.hoisted(() => ({ owner: 'alice', retarget: false, handler: vi.fn(), emit: vi.fn(async (_id: string, _event: unknown, _options?: unknown) => {}), read: vi.fn() }))
-vi.mock('../../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+vi.mock('@onething/backend/session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => id === 'session'
     ? { ownerUserId: state.owner, ownerWorkspaceId: 'tenant' } : undefined }) }
 })
-vi.mock('../../../store.js', () => ({ getSession: state.read }))
-vi.mock('../../../events/index.js', () => ({ getEventBus: () => ({ emit: state.emit, emitGlobal: vi.fn() }) }))
+vi.mock('@onething/backend/store.js', () => ({ getSession: state.read }))
+vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => ({ emit: state.emit, emitGlobal: vi.fn() }) }))
 vi.mock('../host-ports.js', () => ({ execPluginCommandOnHost: vi.fn() }))
 vi.mock('../manager.js', () => ({ getPluginManager: () => ({ getCommandHandler: () => ({
   handler: async (_args: string, context: CorePluginCommandContext) => {

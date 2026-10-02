@@ -140,7 +140,7 @@ describe('architecture boundaries', () => {
     // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
     // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。
     // P3'c(2026-08-21)摘掉最后一个 `plugins`:10 件进 `runtime/plugins/`
-    // (与 core 同名的按 I2 带角色改名),17 件进 `backend/wiring/plugins/`。
+    // (与 core 同名的按 I2 带角色改名),17 件进 `backend/runtime/plugins/wiring/`。
     //
     // **表空了,但断言留着** —— 它现在守的是"不许再长回来":任何新的包根目录
     // 只要与 runtime 顶层同名就直接红,想豁免必须先在这里写一行理由。
@@ -182,12 +182,12 @@ describe('architecture boundaries', () => {
     ])
     // 第四条豁免,是**规则**而不是名字:内置插件的产品层实现文件名 = 插件 id
     // (`scripts/headless-boundary-check.ts` 的 `checkPluginLogicStaysOutOfHostAssembly`
-    // 按 `backend/wiring/plugins/builtin/<id>.ts` 逐个反查
+    // 按 `backend/runtime/plugins/wiring/builtin/<id>.ts` 逐个反查
     // `runtime/plugins/<id>.ts`)。那个名字不是自由变量,所以它不参与 I2 ——
     // 一个插件的 core 侧内核与它的产品侧实现同名,是那条硬判据的直接后果。
     // 这里从插座目录现算,不写死任何插件名。
     const builtinPluginFiles = new Set(
-      readdirSync(join(projectRoot, 'packages/backend/wiring/plugins/builtin'), { withFileTypes: true })
+      readdirSync(join(projectRoot, 'packages/backend/runtime/plugins/wiring/builtin'), { withFileTypes: true })
         .filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
         .map(entry => `plugins/${entry.name}`),
     )

@@ -33,14 +33,14 @@ import {
 } from '@onething/backend/core/plugins'
 
 import { QuiescibleScopes } from '@onething/backend/core/lifecycle'
-import { getSettings } from '../../stores/settings.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 import { resolveProviderApiKey } from '@onething/backend/runtime/providers/env.wiring'
 import { resolveUtilityModel } from '@onething/backend/runtime/providers/utility-model.wiring'
-import { generateChatResponse } from '../providers/index.js'
-import { captureUsageRecorder } from '../usage/index.js'
-import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
-import { getLogger } from '../logging/index.js'
-import { getCurrentBackendInstance } from '../../current.js'
+import { generateChatResponse } from '@onething/backend/wiring/providers/index.js'
+import { captureUsageRecorder } from '@onething/backend/wiring/usage/index.js'
+import type { ProviderConfigWithKey } from '@onething/backend/wiring/engine/stream/stream-executor.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getCurrentBackendInstance } from '@onething/backend/current.js'
 
 const log = getLogger('plugins')
 

@@ -585,7 +585,7 @@ const MAIN_FILE_IO_SYSTEM_DIRS = [
   'packages/backend/stores',
   // P3'b-A:`backend/mcp/` 整域归位 `runtime/mcp/`(闭包零脊柱边),
   // 装配层不再有 mcp 目录 —— 这一条随之退役。
-  'packages/backend/wiring/plugins',
+  'packages/backend/runtime/plugins/wiring',
 ]
 
 const MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
@@ -1633,7 +1633,7 @@ const MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
 // MAIN_LOG_MONITOR_PLUGIN_* / MAIN_NOTE_SKILLS_PLUGIN_* 两张表(它们只认识
 // findObsidianVaultRoot 这类具体名字,新插件一加就是新盲区)。
 //
-// packages/backend/wiring/plugins/builtin/ 是**插座**:把宿主的能力(store/settings/日志目录)
+// packages/backend/runtime/plugins/wiring/builtin/ 是**插座**:把宿主的能力(store/settings/日志目录)
 // 注入给 @onething/backend/runtime/plugins 里的插件实现,自己不写行为。因此这里禁的是
 // "行为的形状"而不是"某个名字":schema、Node I/O、直接 api.* 注册、控制流、
 // 计时器、长字面量(描述/提示词)。
@@ -5152,11 +5152,11 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
   assertNoMatches('packages/backend/runtime owns settings save orchestration', lines)
 }
 
-const BUILTIN_PLUGIN_FACADE_DIR = 'packages/backend/wiring/plugins/builtin'
+const BUILTIN_PLUGIN_FACADE_DIR = 'packages/backend/runtime/plugins/wiring/builtin'
 const BUILTIN_PLUGIN_RUNTIME_DIR = 'packages/backend/runtime/plugins'
 const BUILTIN_PLUGIN_FACADE_MAX_LINES = 60
 
-const BUILTIN_PLUGIN_LOADER_FILE = 'packages/backend/wiring/plugins/loader.ts'
+const BUILTIN_PLUGIN_LOADER_FILE = 'packages/backend/runtime/plugins/wiring/loader.ts'
 
 /** 内置插件的 id 列表 = 插座目录的文件名。加一个插件就自动进入所有规则。 */
 function listBuiltinPluginIds(): string[] {
@@ -5291,11 +5291,16 @@ function checkPluginLogicStaysOutOfHostAssembly(): void {
       const code = codeOnlyLines(fs.readFileSync(parked, 'utf-8'))
       // 接了装配层 = 它测的是接线,不是插件行为,住在这里是对的。
       const productSubtrees = BACKEND_PRODUCT_SUBTREES.map(dir => path.join(root, 'packages/backend', dir))
+      // 第③步(2026-10-02)起插件的装配半边住进 `runtime/plugins/wiring/`:按路径角色它就是装配层,
+      // 指向它的相对路径与包说明符都算「接了装配层」。
       const importsAssembly = (line: string): boolean => {
         const match = assemblyModuleImport.exec(line)
-        if (!match) return false
-        const target = relativeTargetOf(parked, match[1])
-        return !target || !productSubtrees.some(dir => isInside(dir, target))
+        if (match) {
+          const target = relativeTargetOf(parked, match[1])
+          if (!target || !productSubtrees.some(dir => isInside(dir, target))) return true
+          if (isRuntimeDomainWiringFile(target)) return true
+        }
+        return importSpecifiersInCode(line).some(specifier => RUNTIME_DOMAIN_WIRING_SPECIFIER.test(specifier))
       }
       if (code.some(({ code: line }) => importsAssembly(line))) continue
       lines.push(...code

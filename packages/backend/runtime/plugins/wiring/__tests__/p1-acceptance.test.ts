@@ -114,7 +114,7 @@ describe('A:真 PluginManager 的孤儿收尸(两个根)', () => {
 // ── B 层:真 npm 的全生命周期(需要本机 npm,ONETHING_E2E_NPM=1 才跑)──
 
 const E2E = process.env.ONETHING_E2E_NPM === '1'
-const PLAN_STATUS_DIR = path.resolve(__dirname, '../../../../../sample-plugins/plan-status')
+const PLAN_STATUS_DIR = path.resolve(__dirname, '../../../../../../sample-plugins/plan-status')
 
 describe.skipIf(!E2E)('B:真 npm 生命周期(生产适配器 runPluginNpm)', () => {
   it('脚手架自动创建;file: 装 plan-status;配置家文件跨重装存活;卸载拆账拆包、家目录归档', async () => {

@@ -32,7 +32,7 @@ import {
 import {
 	pluginPostInterceptReply,
 	type PluginInterceptSteerPort,
-} from "../plugins/sessions.js";
+} from "@onething/backend/runtime/plugins/wiring/sessions";
 import { resolveAgentProfileForSession } from "../agents/profile.js";
 import { takeExternalAgentSteering } from "../external-agents/index.js";
 import { defaultAgent, findAgent } from "@onething/backend/runtime/agents/store-bound.wiring";

@@ -47,16 +47,16 @@ import {
   type PluginSessionState,
 } from '@onething/backend/core/plugins'
 
-import * as store from '../../store.js'
-import { sessionReads } from '../../session/reads.js'
-import type { EventBus } from '../../events/event-bus.js'
-import type { StreamEngine } from '../engine/stream-engine-bound.js'
-import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
+import * as store from '@onething/backend/store.js'
+import { sessionReads } from '../../../session/reads.js'
+import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { StreamEngine } from '@onething/backend/wiring/engine/stream-engine-bound.js'
+import { isCollabCoordinatorDrivenSession } from '@onething/backend/wiring/collab/ingress.js'
 import { pluginMessageSource } from '@onething/backend/runtime/engine/message-sources'
-import * as modelRegistry from '../providers/model-registry.js'
+import * as modelRegistry from '@onething/backend/wiring/providers/model-registry.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('plugins.sessions')
 

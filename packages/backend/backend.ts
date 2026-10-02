@@ -30,7 +30,7 @@ import { configureUsageLedger, captureUsageRecorder } from './wiring/usage/index
 import { createCollabDigestStore, configureCollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
 import { createCollabDigestRunner, type CollabDigestRunner } from './wiring/collab/digest-runner.js'
 import { createCollabInspector, configureCollabInspector } from './wiring/collab/inspector.js'
-import { PluginLlmService } from './wiring/plugins/llm.js'
+import { PluginLlmService } from '@onething/backend/runtime/plugins/wiring/llm'
 import { CredentialStrategyService } from './wiring/providers/credential-strategy-lifetime.js'
 import { disposeCredentialStrategyState } from './wiring/providers/credential-strategy.js'
 import { TodoPlanRuntime } from './wiring/todo-plan/store.js'
@@ -1204,7 +1204,7 @@ export class OnethingBackend implements BackendHandle {
        * 动态 import:装配层的静态图里不该多一条只在收摊时才用得上的边
        * (`import-side-effect-free` 那条纪律)。
        */
-      const plugins = await import('./wiring/plugins/manager.js')
+      const plugins = await import('@onething/backend/runtime/plugins/wiring/manager')
       await plugins.getPluginManager()?.shutdown()
     }, 'pluginManager')
     /*

@@ -30,7 +30,7 @@ const bus = { emitGlobal: () => {}, onGlobal: () => () => {}, onAnySession: () =
 async function load() {
   vi.resetModules()
   const [api, registry, health, logging] = await Promise.all([
-    import('../../plugins/api.js'),
+    import('@onething/backend/runtime/plugins/wiring/api'),
     import('../registry.js'),
     import('@onething/backend/runtime/plugins/health'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从

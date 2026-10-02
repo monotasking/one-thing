@@ -9,7 +9,7 @@ import { PLUGIN_NOTIFY_SOUND_THROTTLE_MS } from '@shared/plugins/notify-sound'
 
 const settings: { plugins?: { notifySoundsEnabled: boolean; notifySoundMutedPluginIds: string[] } } = {}
 
-vi.mock('../../../stores/settings.js', () => ({
+vi.mock('@onething/backend/stores/settings.js', () => ({
   getSettings: () => settings,
 }))
 

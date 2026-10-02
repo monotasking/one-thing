@@ -44,7 +44,7 @@ import {
   detachPluginStatusHost,
   subscribePluginStatusSweep,
 } from '@onething/backend/runtime/plugins/status-bound'
-import { configureIMConnectorHooks } from '../../channel/connector-registry.js'
+import { configureIMConnectorHooks } from '@onething/backend/channel/connector-registry.js'
 import {
   fetchPluginMarketIndex,
   installPluginPackage,
@@ -66,7 +66,7 @@ import {
   restorePluginRuntimeHealth,
 } from '@onething/backend/runtime/plugins/health'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/backend/core/logging'
 

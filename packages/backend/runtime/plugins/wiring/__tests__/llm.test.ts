@@ -12,16 +12,16 @@ const settingsRef: { current: any } = { current: null }
 const generateChatResponse = vi.fn()
 const recordUsage = vi.fn()
 
-vi.mock('../../../stores/settings.js', () => ({
+vi.mock('@onething/backend/stores/settings.js', () => ({
   getSettings: () => settingsRef.current,
 }))
 vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
-vi.mock('../../providers/index.js', () => ({
+vi.mock('@onething/backend/wiring/providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
-vi.mock('../../usage/index.js', () => ({
+vi.mock('@onething/backend/wiring/usage/index.js', () => ({
   captureUsageRecorder: () => (...args: unknown[]) => recordUsage(...args),
 }))
 
