@@ -11,7 +11,7 @@ import {
   type PermissionGrantStorage,
   type PermissionPolicyInput,
   type PermissionPolicyResult,
-} from '@onething/backend/core/permission'
+} from '@onething/backend/runtime/permission/permission-asks'
 import { type PermissionGrant } from '@shared/permission/grant'
 
 export interface PermissionGrantFileStorageAdapters {

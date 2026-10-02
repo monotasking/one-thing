@@ -19,8 +19,8 @@ import {
   type ResourceEventHub,
   type ResourceProvider,
   type ResourceSpec,
-} from '@onething/backend/core/resource'
-import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/resource/resource-api'
+import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Utterance } from '@onething/backend/runtime/pets'
 import { EventBus } from '@onething/backend/events/event-bus.js'
 import { forwardResourceEventsToBus } from '@onething/backend/runtime/resource/event-bridge'

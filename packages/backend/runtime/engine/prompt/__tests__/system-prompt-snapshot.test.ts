@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/core/agent-loop'
 import type { ToolDefinition } from '@shared/ipc.js'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/core/toolkit'
-import type { Result, ToolSpec } from '@onething/backend/core/toolkit'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog } from '@onething/backend/runtime/toolkit'
 
 const deepseekTextCapabilities: AgentModelCapabilities = {

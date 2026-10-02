@@ -1,4 +1,4 @@
-import { AdmissionGate, QuiescibleScopes } from '@onething/backend/core/lifecycle'
+import { AdmissionGate, QuiescibleScopes } from '@onething/backend/runtime/lifecycle'
 import { getUsageLedger } from '@onething/backend/runtime/usage/usage-recorder'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 

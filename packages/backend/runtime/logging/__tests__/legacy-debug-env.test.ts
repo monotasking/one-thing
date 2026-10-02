@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LevelFilter } from '@onething/backend/core/logging'
+import { LevelFilter } from '@onething/backend/runtime/logging/logger-primitives'
 import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '../legacy-debug-env.js'
 
 /**

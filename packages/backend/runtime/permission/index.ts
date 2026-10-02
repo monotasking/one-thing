@@ -1,6 +1,6 @@
 import './grant-storage.js'
 
-export { Permission } from '@onething/backend/core/permission'
+export { Permission } from '@onething/backend/runtime/permission/permission-asks'
 export {
   DEFAULT_PERMISSION_REJECTED_MESSAGE,
   formatPermissionRejectedMessage,
@@ -9,4 +9,4 @@ export type {
   PermissionCommandEnvelope,
   PermissionEventBusLike,
   PermissionRespondCommandLike,
-} from '@onething/backend/core/permission'
+} from '@onething/backend/runtime/permission/permission-asks'

@@ -12,12 +12,12 @@ import type {
   ExternalAgentSessionLink,
 } from '@onething/backend/runtime/external-agents'
 import { findAgentExecutorDescriptor } from '@onething/backend/runtime/agents'
-import { Interaction } from '@onething/backend/core/interaction'
+import { Interaction } from '@onething/backend/runtime/interaction'
 import type { InteractionAnswer } from '@shared/interaction/types'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import { AbortScope, Intent } from '@onething/backend/core/toolkit'
-import type { Invocation } from '@onething/backend/core/toolkit'
+import { AbortScope, Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Invocation } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import { createPermissionAuthorizer } from '@onething/backend/runtime/toolkit/authorizer'
 import { resolveExternalAgentSpawnEnv } from './spawn-env.js'
@@ -99,7 +99,7 @@ export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink):
  *  - `preview.title` 压过 `titleForEffect`,标题是工具名(A6-b 前是 `Claude Code: <tool>`)。
  *
  * 认出来那一支可能给出**空 effects**(白名单命令、界内的普通读),策略门于是直接
- * 放行(`core/permission/permission-policy.ts:171`)—— 这与本地 `ls` 不弹卡是同一
+ * 放行(`runtime/permission/permission-policy.ts:171`)—— 这与本地 `ls` 不弹卡是同一
  * 件事,也正是不让用户被无谓的卡逼去点「总是允许 Bash」的前提。
  *
  * ## R4b:改调 `Authorizer.decide`(§15.5-7 的那一条)

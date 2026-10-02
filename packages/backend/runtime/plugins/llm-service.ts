@@ -32,7 +32,7 @@ import {
   type PluginLlmCompleteResult,
 } from '@onething/backend/core/plugins'
 
-import { QuiescibleScopes } from '@onething/backend/core/lifecycle'
+import { QuiescibleScopes } from '@onething/backend/runtime/lifecycle'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { resolveProviderApiKey } from '@onething/backend/runtime/providers/env.wiring'
 import { resolveUtilityModel } from '@onething/backend/runtime/providers/utility-model.wiring'

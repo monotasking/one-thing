@@ -48,7 +48,7 @@
  * `hushed` 之前算「正在说」(`PetHost.markVoicing`),于是这段时间里电台来认领会等它说完。
  */
 
-import type { ResourceEventHub, ResourceRegistry } from '@onething/backend/core/resource'
+import type { ResourceEventHub, ResourceRegistry } from '@onething/backend/runtime/resource/resource-api'
 import {
   PET_CURRENT_PATH,
   PET_RESOURCE_SCHEME,

@@ -11,7 +11,7 @@ import {
   saveCoreCachedJsonFile,
   saveCoreCachedJsonFileAsync,
   updateCoreCachedJsonInMemory,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'
 
 interface TestSettings {
   enabled: boolean

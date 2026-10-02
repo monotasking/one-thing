@@ -1,7 +1,7 @@
 export {
   AgentEngine,
   createEchoAgentProvider,
-} from './agent/index.js'
+} from '@onething/backend/runtime/agents/agent-engine-exports'
 export type {
   AgentEngineOptions,
   AgentEngineProvider,
@@ -11,7 +11,7 @@ export type {
   AgentEngineUsage,
   SendMessageOptions,
   SendMessageResult,
-} from './agent/index.js'
+} from '@onething/backend/runtime/agents/agent-engine-exports'
 
 export {
   AgentEventQueue,
@@ -149,7 +149,7 @@ export type {
   ProviderRequest,
   ProviderStreamEvent,
   ProviderUsage,
-} from './providers/index.js'
+} from '@onething/backend/runtime/providers/stream-provider-contract'
 
 export type {
   CoreAfterAssistantResponseContext,
@@ -206,13 +206,13 @@ export {
   DEFAULT_INTERACTION_TIMEOUT_MS,
   DEFAULT_INTERACTION_TIMEOUT_REASON,
   Interaction,
-} from './interaction/index.js'
+} from '@onething/backend/runtime/interaction'
 export type {
   InteractionBusEvent,
   InteractionCommandEnvelope,
   InteractionEventBusLike,
   InteractionRespondCommandLike,
-} from './interaction/index.js'
+} from '@onething/backend/runtime/interaction'
 
 export {
   Permission,
@@ -227,7 +227,7 @@ export {
   matchGrant,
   resetPermissionGrantsForTests,
   revokeGrant,
-} from './permission/index.js'
+} from '@onething/backend/runtime/permission/permission-asks'
 export type {
   EnforcePermissionPolicyInput,
   PermissionCommandEnvelope,
@@ -243,7 +243,7 @@ export type {
   PermissionPolicyResult,
   PermissionPreview,
   PermissionRespondCommandLike,
-} from './permission/index.js'
+} from '@onething/backend/runtime/permission/permission-asks'
 
 export {
   createCoreCachedJsonState,
@@ -262,12 +262,12 @@ export {
   updateCoreCachedJsonInMemory,
   writeJsonFile,
   writeJsonFileAsync,
-} from './storage/index.js'
+} from '@onething/backend/runtime/storage/storage-primitives'
 export type {
   AsyncSaveQueueOptions,
   CoreCachedJsonFileOptions,
   CoreCachedJsonState,
-} from './storage/index.js'
+} from '@onething/backend/runtime/storage/storage-primitives'
 
 export {
   AllowAllPolicy,
@@ -284,7 +284,7 @@ export {
   normalizeCoreToolParameterType,
   isAutoExecutePermissionGuard,
   isInjectablePermissionGuard,
-} from './tools/index.js'
+} from '@onething/backend/runtime/tools/tool-helpers'
 export type {
   CoreToolPermissionGuard,
   CoreToolPermissionGuardLike,
@@ -307,15 +307,15 @@ export type {
   ToolExecutionContext,
   ToolExecutorOptions,
   ToolResult,
-} from './tools/index.js'
+} from '@onething/backend/runtime/tools/tool-helpers'
 
 export {
   ContextManager,
-} from './context/index.js'
+} from '@onething/backend/runtime/context'
 export type {
   AgentMessage,
   AgentMessageRole,
-} from './context/index.js'
+} from '@onething/backend/runtime/context'
 
 export {
   isCoreConversationRuntime,
@@ -388,7 +388,7 @@ export {
   EventBus,
   RingBuffer,
   StreamChannel,
-} from './events/index.js'
+} from '@onething/backend/runtime/event-bus'
 export type {
   EmitResult,
   EventBase,
@@ -401,7 +401,7 @@ export type {
   StreamChunkHandler,
   TypedObserveHandler,
   Unsubscribe,
-} from './events/index.js'
+} from '@onething/backend/runtime/event-bus'
 
 export {
   Session,

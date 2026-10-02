@@ -27,7 +27,7 @@ vi.mock('../../../session/reads.js', () => import('../../../session/testing/faca
 vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => sessions.get(id))
 
-vi.mock('@onething/backend/core/permission', () => ({
+vi.mock('@onething/backend/runtime/permission/permission-asks', () => ({
   Permission: {
     getPendingPrompts: (sessionId: string) => pendingPrompts.get(sessionId) ?? [],
   },

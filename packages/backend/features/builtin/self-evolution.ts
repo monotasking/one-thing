@@ -47,7 +47,7 @@
  * 是三条,都不是新机制:
  *
  * - **每挂一次问一次,且永不可记住**。`feature_mount` 声明的 effect kind 是
- *   `capability_change` —— 策略表(`core/toolkit/effects.ts`)里唯一一行
+ *   `capability_change` —— 策略表(`packages/shared/toolkit/effects.ts`)里唯一一行
  *   `never-grantable`,所以
  *   「以后都允许」这个选项在权限卡上根本不出现(`permission-ledger.ts` 已按同
  *   一判据不给授权行)。挑这个 kind 不是凑数:它的定义原文是「Repointing

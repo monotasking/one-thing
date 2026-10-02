@@ -18,9 +18,9 @@ import {
   isDirectory,
   pathExists,
   writeJsonFile,
-} from '../storage/index.js'
+} from '@onething/backend/runtime/storage/storage-primitives'
 import { describeNonSerializable } from './request-channel.js'
-import { getCoreLogger } from '../logging/index.js'
+import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

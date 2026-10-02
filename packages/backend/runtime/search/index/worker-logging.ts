@@ -37,7 +37,7 @@ import {
   safeStringify,
   type LogRecord,
   type LogSink,
-} from '@onething/backend/core/logging'
+} from '@onething/backend/runtime/logging/logger-primitives'
 import { type LogLevel } from '@shared/logging/types'
 
 import { setRuntimeLoggerRoot } from '../../logging/index.js'

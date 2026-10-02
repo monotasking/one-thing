@@ -9,7 +9,7 @@
  *      —— 同一个 `toolId`、同一份效果、同一个主体、同一种结局。审计是管线发的
  *      (`AuditProjector` 只读 lifecycle,工具伪造不了),所以「审计行长得一样」就是
  *      「跑的是同一条管线」在文件上留下的证据;
- *   ③ 一次「读」两条路**一行审计都不落**(读不进管线,`core/resource/kernel.ts` 的
+ *   ③ 一次「读」两条路**一行审计都不落**(读不进管线,`runtime/resource/kernel.ts` 的
  *      `read` 那段注释就是这条不变量的正本)。
  *
  * 反证(施工时跑过):把 `command` 处理器改回直接调 `runtime/music/operations.js`,

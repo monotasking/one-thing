@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Logger } from '@onething/backend/core/logging'
+import type { Logger } from '@onething/backend/runtime/logging/logger-primitives'
 import {
   TelegramChannel,
   telegramUpdateToInboundMessage,

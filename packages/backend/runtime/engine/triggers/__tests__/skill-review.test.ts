@@ -20,7 +20,7 @@ import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
 } from '@onething/backend/runtime/spaces/credentials'
-import { Catalog } from '@onething/backend/core/toolkit'
+import { Catalog } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   configureToolkitCatalog,
   createEditTool,

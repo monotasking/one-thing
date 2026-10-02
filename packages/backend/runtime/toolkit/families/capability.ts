@@ -6,7 +6,7 @@
  *  1. **场景面挂在一个 skill 上**。成员由某个 skill「带进来」:该 skill 在本回合
  *     启用时可见,否则不见。判据与旧 `scene-surface.ts` 的 `SKILL_SCENE_TOOLS`
  *     逐字一致(键是 SKILL.md frontmatter 里的 `name`,不是带 source 前缀的 id)。
- *  2. **`capability_change` 的口径**。它是策略表(`core/toolkit/effects.ts`)里唯一
+ *  2. **`capability_change` 的口径**。它是策略表(`packages/shared/toolkit/effects.ts`)里唯一
  *     一行 `never-grantable` —— 每挂一次问一次,答案永不可记住。**不新增 effect kind**:加一个
  *     `feature_mount` kind 就是"功能形状的洞"(D3 第一条禁止的事),而
  *     `capability_change` 的定义原文说的正是这件事。
@@ -16,8 +16,8 @@
  * 不是"让它停下来")。要报效果的成员覆盖 `effectsFor`。
  */
 
-import { Intent, Tool } from '@onething/backend/core/toolkit'
-import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class CapabilityTool<In, Payload = In> extends Tool<In, Payload> {

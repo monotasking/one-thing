@@ -7,8 +7,8 @@
  * `hasTools` 门与"模型面名字 → 目录 id"的还原。
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/core/toolkit'
-import type { Result, ToolSpec } from '@onething/backend/core/toolkit'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { CoreBuildPromptContextOptions, CoreToolPromptContribution } from '@onething/backend/core/engine'
 import {
   configureToolkitCatalog,

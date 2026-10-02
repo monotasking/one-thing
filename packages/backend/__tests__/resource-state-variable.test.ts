@@ -14,7 +14,7 @@
  *
  * 外加两条自我约束:`live` 档不投(`music` 那份自述在 headless 档上根本没 mount,
  * 所以这里用注册表现有的事实来判,不写死名单),以及 `singleton` + `turn` 今天
- * 投不出去这件事是**留账不是缺口**(`core/resource/spec.ts` 的 `StateScope`)。
+ * 投不出去这件事是**留账不是缺口**(`runtime/resource/spec.ts` 的 `StateScope`)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`。
  */

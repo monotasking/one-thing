@@ -12,12 +12,12 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createToolAbortError } from '@onething/backend/core/tools'
+import { createToolAbortError } from '@onething/backend/runtime/tools/tool-helpers'
 import type { BashOperations } from '../../../tools/bash-executor.js'
 import { zodToJsonSchema } from '../../contract.js'
 import { createBashTool, BashInputSchema } from '../../builtin/bash.js'
-import { Outcome } from '@onething/backend/core/toolkit'
-import type { Job, JobRegistry, JobSpec } from '@onething/backend/core/toolkit'
+import { Outcome } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Job, JobRegistry, JobSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   annotationsOf,
   modelTextOf,

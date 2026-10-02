@@ -16,4 +16,4 @@ export {
   readJsonFile,
   writeJsonFile,
   writeJsonFileAsync,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'

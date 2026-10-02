@@ -10,7 +10,7 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { OnethingPracticeRecordInput } from '../../practice/types.js'
 import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 import type {

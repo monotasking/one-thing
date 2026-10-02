@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Decision, Intent, Outcome, textResult } from '@onething/backend/core/toolkit'
+import { Decision, Intent, Outcome, textResult } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { Invocation } from '@onething/backend/core/toolkit'
+import type { Invocation } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { AuditProjector, combineObservers, type ToolAuditRecord } from '../audit-observer.js'
 
 function invocationFor(overrides: Partial<Invocation> = {}): Invocation {

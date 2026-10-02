@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JsonObject } from '@shared/json.js'
 import { Permission } from '@onething/backend/runtime/permission'
 import { enforcePermissionPolicy } from '@onething/backend/runtime/tools/core/permission-policy'
-import type { ToolEffect } from '@onething/backend/core/tools'
+import type { ToolEffect } from '@onething/backend/runtime/tools/tool-helpers'
 // This policy component fixture is a non-collaborative session; it owns no store.
 vi.mock('@onething/backend/stores/sessions.js', () => ({ getSession: () => undefined }))
 vi.mock('../../../session/reads.js', () => ({ sessionReads: {

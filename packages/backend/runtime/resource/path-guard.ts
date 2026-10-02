@@ -25,12 +25,12 @@
  *
  * ── 为什么错的名字里还留着 `Dir` ───────────────────────────────────────────
  * `DirOutsideSandboxError` 是 K3-c 起就被调用方与测试按**类名**匹配的那只错
- * (`core/tools/abort.ts` 那条判例:判定读类名)。判词已经与目录无关,但改名会让
+ * (`runtime/tools/abort.ts` 那条判例:判定读类名)。判词已经与目录无关,但改名会让
  * 每一处 `rejects.toThrowError(...)` 跟着动,换来的只是一个更好听的名字 —— 那不是
  * 一次修复,是一次改名。留着,并在这里说清它判的是**路径**不是目录。
  */
 
-import type { SandboxPolicy } from '@onething/backend/core/toolkit'
+import type { SandboxPolicy } from '@onething/backend/runtime/toolkit/tool-protocol'
 
 /**
  * 这个路径不许读 / 写。

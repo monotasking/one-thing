@@ -21,11 +21,11 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Catalog } from '@onething/backend/core/toolkit'
-import { ResourceKernel, ResourceRegistry, type ResourceProvider, type ResourceSpec } from '@onething/backend/core/resource'
-import { ToolRunner } from '@onething/backend/core/toolkit'
-import { Intent } from '@onething/backend/core/toolkit'
-import type { Result } from '@onething/backend/core/toolkit'
+import { Catalog } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { ResourceKernel, ResourceRegistry, type ResourceProvider, type ResourceSpec } from '@onething/backend/runtime/resource/resource-api'
+import { ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Result } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { syncResourceToolsIntoCatalog } from '../catalog-sync.js'
 
 /** 一个 core 与装配层都没听说过的命名空间。它只活在这只文件里。 */

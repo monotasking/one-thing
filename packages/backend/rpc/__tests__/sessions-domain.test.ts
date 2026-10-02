@@ -219,7 +219,7 @@ describe('sessions RPC domain', () => {
 
     const [{ createResourceKernel, SessionResourceProvider }, { ToolRunner }] = await Promise.all([
       import('@onething/backend/runtime/resource'),
-      import('@onething/backend/core/toolkit'),
+      import('@onething/backend/runtime/toolkit/tool-protocol'),
     ])
     const resourceKernel = createResourceKernel(validator => new ToolRunner({
       authorizer: { decide: async () => ({ kind: 'allow' as const }) },

@@ -6,14 +6,14 @@
  * 询问、`capability_change` 永不可授。
  *
  * **合表(2026-09-10 用户拍板):这张表是唯一真相。** 在此之前
- * `core/permission/permission-policy.ts` 还留着一份自己的 `SILENT_EFFECT_KINDS`
+ * `runtime/permission/permission-policy.ts` 还留着一份自己的 `SILENT_EFFECT_KINDS`
  * 名单、`permission-grants.ts` 还留着一份自己的 `NEVER_GRANTABLE_TYPES` 名单,三处
  * 管同一个问题而**行为的产地是那两处**:这张表里写 `silent` 的类照样弹卡。合表把
  * 那两张名单删掉,两处都改读这里的 `policy`。于是「加一个效果类」= 在这张表里加
  * 一行,不需要再去别处补名单;而「某一类要不要问」有且只有一个答案。
  *
  * 同目录的测试钉住「每个 kind 都有策略行」以及「与 core 的 barrier 判定不矛盾」;
- * `core/permission/__tests__/silent-effects.test.ts` 钉住「只有一张表」本身 ——
+ * `runtime/permission/__tests__/silent-effects.test.ts` 钉住「只有一张表」本身 ——
  * 它遍历 `EFFECT_CLASSES` 比对 `decidePermission` 的实际静默集合与这一列,任何一次
  * 「在判定核里偷偷加回一个名单」都会当场红。
  *
@@ -25,7 +25,7 @@
 import type { JsonObject } from '../json.js'
 
 /**
- * 效果类。前 9 个与 `core/tools/tool-effect.ts` 的 `ToolEffectKind` 逐字对应
+ * 效果类。前 9 个与 `runtime/tools/tool-effect.ts` 的 `ToolEffectKind` 逐字对应
  * (这是唯一一处已经"按效果"思考的旧代码,不重命名它);其余是后来各期在这张表里
  * 加的行(§10.2-② 四条、R3a 的 `plugin_exec`、R4b 的 `external-agent`、原子 K2a' 的
  * `ui_change`),命名沿用下划线风格 —— `external-agent` 那一条的连字符有它自己的
@@ -64,7 +64,7 @@ export interface EffectPolicyRow {
   readonly policy: EffectPolicy
   /** 权限卡的默认标题。工具在 `Intent.preview.title` 给了更具体的就用工具的。 */
   readonly prompt: string
-  /** 并发屏障。与 `core/tools/tool-effect.ts` 的 `isBarrierEffect` 同口径。 */
+  /** 并发屏障。与 `runtime/tools/tool-effect.ts` 的 `isBarrierEffect` 同口径。 */
   readonly barrier: boolean
 }
 
@@ -84,7 +84,7 @@ const ROWS: readonly EffectPolicyRow[] = [
   /**
    * ## 合表(2026-09-10 拍板)——「要不要问」从此**只有这一列**
    *
-   * 在此之前权限核那一侧还有第二张表(`core/permission/permission-policy.ts` 的
+   * 在此之前权限核那一侧还有第二张表(`runtime/permission/permission-policy.ts` 的
    * `SILENT_EFFECT_KINDS = {read, ui_change}`),两张表管同一个问题,而**行为的产地
    * 是那一张**:这四行写着 `silent`,真跑起来照样弹卡 —— 表说的话不作数。合表把那
    * 张名单删掉、改读这里的 `policy`,于是合表本身先要回答「这四类到底该不该问」:

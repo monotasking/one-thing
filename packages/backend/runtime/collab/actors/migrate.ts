@@ -34,7 +34,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { DurableMailbox, readActorMailboxLog, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
-import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '@onething/backend/core/storage'
+import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
 import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/runtime/agents/identity'
 import type { CollabMessageLike } from '@onething/backend/runtime/collab'
 import {

@@ -7,7 +7,7 @@
  * ## `session_spawn`:报效果,弹一次卡
  *
  * 按 §4 家族表报一条 `session_spawn`,而那条 kind 在策略表里是 **`ask`**
- * (合表,2026-09-10 用户拍板「开子会话是真有后果的」,见 `core/toolkit/effects.ts`):
+ * (合表,2026-09-10 用户拍板「开子会话是真有后果的」,见 `packages/shared/toolkit/effects.ts`):
  * 派工会让另一个主体开始花钱和动手,这一下值一次同意;那条子会话里后续的每一次
  * 写盘 / 跑命令,由它自己的权限卡照常兜住(它继承调用方的权限模式),两道闸不是
  * 重复而是各管一段。
@@ -30,7 +30,7 @@ import type {
   RunContext,
   Scene,
   ToolSpec,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import {
   TASK_MAX_CONCURRENT_PER_SESSION,

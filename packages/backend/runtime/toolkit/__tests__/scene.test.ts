@@ -14,8 +14,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Catalog, Surface, Tool } from '@onething/backend/core/toolkit'
-import type { Intent, Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
+import { Catalog, Surface, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Intent, Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { resolveScene, type SceneSessionLike } from '../scene.js'
 import { CapabilityTool, SELF_EVOLUTION_SKILL_NAME } from '../families/capability.js'
 import { createAskUserTool } from '../builtin/ask-user.js'

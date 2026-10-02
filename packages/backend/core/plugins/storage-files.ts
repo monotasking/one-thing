@@ -38,7 +38,7 @@
 import fs from 'fs'
 import path from 'path'
 import { describePluginRelativeAssetPathProblem } from './webview.js'
-import { getCoreLogger } from '../logging/index.js'
+import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

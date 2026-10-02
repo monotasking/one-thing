@@ -3,7 +3,7 @@
  *
  * P3'a-2 之前这些函数与整整 38 条 `getX() { return getOnethingX() }` 的转发住在
  * `app/stores/paths.ts` 里,于是「store 根在哪」这件事在仓库里有三个名字:
- * `core/storage/paths.ts` 的通用 `getStorePath`(吃显式 options)、
+ * `runtime/storage/store-layout.ts` 的通用 `getStorePath`(吃显式 options)、
  * `runtime/storage/paths.ts` 的 `getOnethingStorePath`(产品实现)、以及那层同名转发。
  * 转发层已删,调用点直指 `@onething/backend/runtime/storage`。
  *

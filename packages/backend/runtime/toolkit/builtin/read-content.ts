@@ -7,7 +7,7 @@
  * 钉住:同一份字节喂给新旧两条路,输出必须逐字相同。
  */
 
-import { extnamePath } from '@onething/backend/core/storage'
+import { extnamePath } from '@onething/backend/runtime/storage/storage-primitives'
 import { formatSize, utf8Bytes } from '../../tools/text-truncation.js'
 
 export const DEFAULT_LIMIT = 2000

@@ -52,7 +52,7 @@ import {
   listOnethingActiveStreamsForIpc,
   updateOnethingMessageThinkingTimeForIpc,
 } from '@onething/backend/runtime/sessions'
-import { emitCoreSessionEventSafely } from '@onething/backend/core/events'
+import { emitCoreSessionEventSafely } from '@onething/backend/runtime/event-bus'
 import type { ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'

@@ -15,7 +15,7 @@
  *     (读无效果是结构性的,§2 不变量 1)。
  *   · `activate` / `close` —— `ui_change`:动的是这个人自己那扇窗里的一格摆设。
  *   · `open` / `navigate` / `reload` / `back` / `forward` —— **`browser_navigate`**
- *     (B1-a 新立,`core/toolkit/effects.ts` 那一行上写着为什么它不是 `net_fetch`)。
+ *     (B1-a 新立,`packages/shared/toolkit/effects.ts` 那一行上写着为什么它不是 `net_fetch`)。
  *
  * `back` / `forward` 与 `navigate` 同档,是本单的一个判断:方案 §2.2-3 那句话只点了
  * `open / navigate / reload` 三条的名,没说前进后退算哪一档。它们做的是同一件事 ——
@@ -45,7 +45,7 @@
  * 它有没有结局、要不要授权、别的进程该不该知道。** 三个都否 = 视图状态。
  */
 
-import type { ResourceSpec } from '@onething/backend/core/resource'
+import type { ResourceSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const BROWSER_RESOURCE_SCHEME = 'browser'

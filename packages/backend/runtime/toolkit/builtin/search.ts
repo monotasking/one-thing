@@ -34,7 +34,7 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, Scene, ToolSpec } from '@onething/backend/core/toolkit'
+import type { Result, RunContext, Scene, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { defineInput } from '../contract.js'
 import { ReadOnlyTool } from '../families/read-only.js'
 
@@ -449,7 +449,7 @@ export class SearchTool extends ReadOnlyTool<SearchInput> {
  *
  * core 的 `Principal` 有 `system` 这一支而 `SearchPrincipal` 没有:映射成 `agent`
  * 而不是 `user` —— `systemPrincipal` 是最小权限的那一个(见
- * `core/permission/principal.ts` 的原话),把它读成用户就是把兜底变成绕过。
+ * `packages/shared/permission/principal.ts` 的原话),把它读成用户就是把兜底变成绕过。
  */
 function principalOf(ctx: RunContext): SearchToolPrincipal {
   const principal = ctx.invocation.principal

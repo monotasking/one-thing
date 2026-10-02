@@ -14,7 +14,7 @@ import { isAgentLoopPauseForConfirmationError, isAgentExecutionCheckpointError }
 import {
 	coreDiffHunksFromJson,
 	type CoreDiffHunk,
-} from "../tools/diff-hunks.js";
+} from "@onething/backend/runtime/tools/diff-hunk-json";
 import {
 	getTextFromContent,
 	type CoreAIMessageContent,
@@ -976,7 +976,7 @@ export interface CoreAgentLoopSessionWithMessages<
  *    的 `DERIVED_KEYS` 里,收尾修复的补丁进不了账本):改成**不回读** ——
  *    修复的产物经 `onSettled` 直接递给采集点。
  *
- * 宿主侧今天的取材口:`packages/backend/wiring/engine/stream/agent-loop-executor.ts`
+ * 宿主侧今天的取材口:`packages/backend/runtime/engine/stream/agent-loop-executor.ts`
  * 的 `readSettleMessage`(投影 + 现算锚点)。
  */
 export interface CoreAgentLoopFinalMessageUpdate<

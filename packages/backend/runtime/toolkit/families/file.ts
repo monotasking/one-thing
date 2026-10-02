@@ -17,10 +17,10 @@
  */
 
 import { makeEffect } from '@shared/toolkit/effects'
-import type { Invocation, Preview, SessionSnapshot } from '@onething/backend/core/toolkit'
+import type { Invocation, Preview, SessionSnapshot } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
-import { Tool } from '@onething/backend/core/toolkit'
-import { basenamePath, dirnamePath, joinPaths } from '@onething/backend/core/storage'
+import { Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { basenamePath, dirnamePath, joinPaths } from '@onething/backend/runtime/storage/storage-primitives'
 import {
   findCoreReadSandboxRootForPath,
   findCoreSandboxRootForPath,

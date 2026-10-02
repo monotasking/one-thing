@@ -8,9 +8,9 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { AbortScope, Intent } from '@onething/backend/core/toolkit'
+import { AbortScope, Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { Invocation } from '@onething/backend/core/toolkit'
+import type { Invocation } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { EnforcePermissionPolicyInput } from '@onething/backend/runtime/tools/core/permission-policy'
 import { PermissionAuthorizer } from '../authorizer.js'
 

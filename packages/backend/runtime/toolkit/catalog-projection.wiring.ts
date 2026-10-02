@@ -19,8 +19,8 @@
  * 由渲染层自己叠(`tools/tool-list-presentation.ts` 之后的那一段)。
  */
 
-import { coreToolDefinitionFromJsonSchema } from '@onething/backend/core/tools'
-import type { Catalog, Tool } from '@onething/backend/core/toolkit'
+import { coreToolDefinitionFromJsonSchema } from '@onething/backend/runtime/tools/tool-helpers'
+import type { Catalog, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { JsonSchemaObject } from '@shared/json.js'
 import type { ToolDefinition } from '@shared/ipc.js'
 import { getToolkitCatalog } from './index.js'

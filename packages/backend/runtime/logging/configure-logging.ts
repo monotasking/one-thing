@@ -8,7 +8,7 @@ import {
   type LogSource,
   type Logger,
   type LoggerRootOptions,
-} from '@onething/backend/core/logging'
+} from '@onething/backend/runtime/logging/logger-primitives'
 import { type LogLevel } from '@shared/logging/types'
 import {
   ensureDir,

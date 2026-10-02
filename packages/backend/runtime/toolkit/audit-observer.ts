@@ -18,7 +18,7 @@ import type {
   ObservedEvent,
   Observer,
   Outcome,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { EffectClass } from '@shared/toolkit/effects'
 
 /** 一次调用在审计里的样子。刻意扁平:它要能直接变成一行 JSONL。 */

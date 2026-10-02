@@ -17,16 +17,16 @@
  * 迟早在两种会话里长成两张不同的卡。
  */
 
-import { Permission, decidePermission as decideCorePermission } from '@onething/backend/core/permission'
+import { Permission, decidePermission as decideCorePermission } from '@onething/backend/runtime/permission/permission-asks'
 import { formatPermissionRejectedMessage } from '@shared/permission/rejection-message'
-import { Decision, withUserToolSettings } from '@onething/backend/core/toolkit'
+import { Decision, withUserToolSettings } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type {
   AbortScope,
   Authorizer,
   Intent,
   Invocation,
   ToolUserSetting,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import {
   enforcePermissionPolicy,
@@ -190,7 +190,7 @@ export class PermissionAuthorizer implements Authorizer {
 /**
  * 桌面/服务端的成品授权者:真权限核 + 用户的 per-tool 设置。
  *
- * `autoExecute === false` 的读法见 `core/toolkit/ports.ts` 的
+ * `autoExecute === false` 的读法见 `runtime/toolkit/ports.ts` 的
  * `withUserToolSettings` —— 它只在 Intent 上打一位 `alwaysAsk`,怎么问是上面那件事。
  */
 export function createPermissionAuthorizer(options: PermissionAuthorizerOptions = {}): Authorizer {

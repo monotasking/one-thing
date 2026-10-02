@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/core/toolkit'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { CoreToolPromptContribution } from '@onething/backend/core/engine'
-import type { Result, ToolSpec } from '@onething/backend/core/toolkit'
+import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   configureToolkitCatalog,
   EDIT_TOOL_PROMPT,

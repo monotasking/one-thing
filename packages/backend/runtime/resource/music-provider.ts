@@ -75,11 +75,11 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import type { ResourceEventHub, ResourceProvider, ResourceReadContext } from '@onething/backend/core/resource'
-import { planFromSpec } from '@onething/backend/core/resource'
+import type { ResourceEventHub, ResourceProvider, ResourceReadContext } from '@onething/backend/runtime/resource/resource-api'
+import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
 import { type ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
-import { Intent } from '@onething/backend/core/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { RadioToolAdapters, RadioToolStatus } from '@onething/backend/runtime/toolkit'
 import {
   listMusicProviderDescriptors,
@@ -581,7 +581,7 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
    * `RuntimeRequestContext`(`{userId, workspaceId}`),而**读的上下文里没有这一格**:
    * `ResourceReadContext` 带的是 `Principal`(`user:local` / `agent:<id>` /
    * `system:<component>`),两套词汇不通 —— 硬把 principal 折成一个执行上下文,就是
-   * 凭一个字符串冒充凭据(`core/permission/principal.ts` 的 `parsePrincipal` 上写着
+   * 凭一个字符串冒充凭据(`packages/shared/permission/principal.ts` 的 `parsePrincipal` 上写着
    * 那条:「a string is not a credential」)。
    *
    * 所以这里递 `undefined`,也就是那个固定的本机操作员 —— 与今天音乐条读 now-playing

@@ -68,7 +68,7 @@ vi.mock('../../../session/commands.js', async () => {
 })
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/core/storage', () => ({
+vi.mock('@onething/backend/runtime/storage/storage-primitives', () => ({
   readJsonFile: <T>(_path: string, fallback: T) => fallback,
   writeJsonFile: () => {},
 }))

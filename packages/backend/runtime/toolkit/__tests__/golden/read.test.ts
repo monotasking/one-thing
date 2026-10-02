@@ -13,7 +13,7 @@ import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultValidationMessage, zodToJsonSchema } from '../../contract.js'
 import { ReadInputSchema, ReadTool } from '../../builtin/read.js'
-import { Outcome } from '@onething/backend/core/toolkit'
+import { Outcome } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   annotationsOf,
   attachmentsOf,

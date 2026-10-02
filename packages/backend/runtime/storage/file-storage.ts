@@ -1,4 +1,4 @@
-import { CoreFileStorageProvider } from '@onething/backend/core/storage'
+import { CoreFileStorageProvider } from '@onething/backend/runtime/storage/storage-primitives'
 import {
   ensureOnethingStoreDirs,
 } from './paths.js'

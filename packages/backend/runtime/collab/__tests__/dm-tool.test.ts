@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { COLLAB_SAY_REFUSED_EMPTY } from '@onething/backend/runtime/collab'
 import { createSendMessageTool, ZodValidator } from '@onething/backend/runtime/toolkit'
-import { Decision, ToolRunner } from '@onething/backend/core/toolkit'
+import { Decision, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 
 interface FakeSession {
   id: string

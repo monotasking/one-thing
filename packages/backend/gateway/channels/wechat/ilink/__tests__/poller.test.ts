@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LoggerRoot, type LogRecord } from '@onething/backend/core/logging'
+import { LoggerRoot, type LogRecord } from '@onething/backend/runtime/logging/logger-primitives'
 import { configureGatewayLogging } from '../../../../core/logging.js'
 import { ILinkPoller } from '../poller.js'
 import type { GetUpdatesResponse } from '../types.js'

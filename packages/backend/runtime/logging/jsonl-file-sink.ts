@@ -2,7 +2,7 @@ import {
   formatJsonLine,
   type JsonlFileSink as CoreJsonlFileSink,
   type LogRecord,
-} from '@onething/backend/core/logging'
+} from '@onething/backend/runtime/logging/logger-primitives'
 import { type LogLevel } from '@shared/logging/types'
 import { RollingFileLogger } from './rolling-file-logger.js'
 

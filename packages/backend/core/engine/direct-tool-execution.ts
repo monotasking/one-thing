@@ -1,7 +1,7 @@
 import type { JsonObject } from '@shared/json.js'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import type { Principal } from '@shared/permission/principal.js'
-import { isToolAbortError } from '../tools/abort.js'
+import { isToolAbortError } from '@onething/backend/runtime/tools/abort'
 import {
   buildMCPPartialResultUpdate,
   buildMCPPermissionPlan,

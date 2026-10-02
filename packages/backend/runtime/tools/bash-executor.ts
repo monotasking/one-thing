@@ -1,7 +1,7 @@
 import { constants, createWriteStream, existsSync } from 'node:fs'
 import { access as fsAccess, writeFile as fsWriteFile } from 'node:fs/promises'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { createToolAbortError } from '@onething/backend/core/tools'
+import { createToolAbortError } from '@onething/backend/runtime/tools/tool-helpers'
 import {
   cleanupBackgroundJobLogs,
   createBackgroundLogPath,

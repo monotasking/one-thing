@@ -1,5 +1,5 @@
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json.js'
-import { toLogger } from '@onething/backend/core/logging'
+import { toLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import {
   callMCPToolWithTimeout,
   connectMCPClientWithAdapters,

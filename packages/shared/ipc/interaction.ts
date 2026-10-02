@@ -6,7 +6,7 @@
  * 协议本体**不在这里重抄一遍**,直接从 `../interaction/types.ts` 再导出。
  * (`ipc/permissions.ts` 当年是手抄的一份平行副本,两边各加一格就漂移。)
  * 那份零 import 的纯类型模块原先住在 core,2026-10 ①a 搬进 shared:它是契约,
- * 后端的交互登记表(`packages/backend/core/interaction/registry.ts`)从 shared 取。
+ * 后端的交互登记表(`packages/backend/runtime/interaction/registry.ts`)从 shared 取。
  */
 
 export type {

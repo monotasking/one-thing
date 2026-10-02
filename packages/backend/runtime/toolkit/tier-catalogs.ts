@@ -19,7 +19,7 @@
  * 的宿主(readonly 档)一个字都不注册。**默认拒绝**。
  */
 
-import { Catalog } from '@onething/backend/core/toolkit'
+import { Catalog } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   createAskUserTool,
   createBashTool,

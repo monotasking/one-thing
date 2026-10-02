@@ -15,7 +15,7 @@
  * `Surface.resolve(...).names()` 与 `resolveSceneHiddenToolIds` 取补集**逐一相等**。
  */
 
-import type { Scene } from '@onething/backend/core/toolkit'
+import type { Scene } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { resolveCollabVenue } from '../collab/tool-surface.js'
 import { isTaskSession, type TaskSessionLike } from '../tasks/index.js'
 

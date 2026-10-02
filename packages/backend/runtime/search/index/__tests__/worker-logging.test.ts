@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { LogRecord } from '@onething/backend/core/logging'
+import type { LogRecord } from '@onething/backend/runtime/logging/logger-primitives'
 
 import { captureRuntimeLogs, getLogger } from '../../../logging/index.js'
 import type { IndexEndpoint } from '../worker-core.js'

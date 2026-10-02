@@ -149,7 +149,7 @@ describe('music RPC domain', () => {
      */
     const [{ createResourceKernel, createMusicResourceProvider }, { ToolRunner }] = await Promise.all([
       import('@onething/backend/runtime/resource'),
-      import('@onething/backend/core/toolkit'),
+      import('@onething/backend/runtime/toolkit/tool-protocol'),
     ])
     kernelSlot.current = { music }
     const resourceKernel = createResourceKernel(validator => new ToolRunner({

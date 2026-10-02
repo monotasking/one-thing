@@ -1,5 +1,5 @@
 /**
- * K3-c —— `ReadGuard` 的第一个产地(K2c-2 立的那只口:`core/resource/kernel.ts` 的
+ * K3-c —— `ReadGuard` 的第一个产地(K2c-2 立的那只口:`runtime/resource/kernel.ts` 的
  * `ResourceKernelOptions.readGuard`,当时明说「今天没有宿主装它」)。
  *
  * ## 它补的是一格**授权诚实账**,而且是过渡的
@@ -41,7 +41,7 @@
  * 明天音乐或别的什么也要这条待遇,改的是名单不是这只文件。
  */
 
-import type { ReadGuard, ReadVerdict } from '@onething/backend/core/resource'
+import type { ReadGuard, ReadVerdict } from '@onething/backend/runtime/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
 import type { Principal } from '@shared/permission/principal'
 

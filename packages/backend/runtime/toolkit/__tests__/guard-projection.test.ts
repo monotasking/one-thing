@@ -69,7 +69,7 @@ describe('deriveLegacyPermissionGuard', () => {
   /**
    * R3a 复盘裁定:按**真相**派生。
    *
-   * `capability_change` 是 策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable`(每次都问、
+   * `capability_change` 是 策略表(`packages/shared/toolkit/effects.ts`)里唯一一行 `never-grantable`(每次都问、
    * 答案永不可记住),它不可能同时是 `safe` —— 那两句话直接互斥。
    *
    * **这是修复,不是回归。** variable 旧的 `permissionGuard: 'safe'` 与它 `analyze`

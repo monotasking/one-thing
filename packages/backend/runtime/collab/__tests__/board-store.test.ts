@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   removed: [] as string[],
 }))
 
-vi.mock('@onething/backend/core/storage', () => ({
+vi.mock('@onething/backend/runtime/storage/storage-primitives', () => ({
   readJsonFile: <T>(filePath: string, fallback: T) =>
     (mocks.files.has(filePath) ? mocks.files.get(filePath) as T : fallback),
   writeJsonFile: (filePath: string, value: unknown) => { mocks.files.set(filePath, value) },

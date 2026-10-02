@@ -19,10 +19,10 @@
  * 为真),取消是父作用域 `ctx.abort.aborted` 为真。执行体抛的是什么错不参与判定。
  */
 
-import { Tool } from '@onething/backend/core/toolkit'
-import type { AbortView, Job, Preview, RunContext } from '@onething/backend/core/toolkit'
+import { Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { AbortView, Job, Preview, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
-import type { ToolEffect, ToolPreview } from '@onething/backend/core/tools'
+import type { ToolEffect, ToolPreview } from '@onething/backend/runtime/tools/tool-helpers'
 import { toJsonObject } from '@shared/json'
 import type { BashOperations } from '../../tools/bash-executor.js'
 import { analyzeBashPermission } from '../../tools/permission-effects.js'

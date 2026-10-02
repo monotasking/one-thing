@@ -1,5 +1,5 @@
-import type { EventBus } from '../events/event-bus.js'
-import type { StreamChannel } from '../events/stream-channel.js'
+import type { EventBus } from '@onething/backend/runtime/event-bus/event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/event-bus/stream-channel'
 import { SessionManager } from './session-manager.js'
 
 let sessionManager: SessionManager | null = null

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createMemoryTransport, createOnethingClient } from '@onething/client'
-import { Interaction } from '@onething/backend/core/interaction'
+import { Interaction } from '@onething/backend/runtime/interaction'
 import { getPendingInteractionsForIpc, respondInteractionForIpc } from '@onething/backend/runtime/interaction/ipc-operations.wiring'
 import type { InteractionRespondRequest } from '@shared/ipc/interaction'
 import { composerStoreFor, resetComposerStore } from '../composer/store'

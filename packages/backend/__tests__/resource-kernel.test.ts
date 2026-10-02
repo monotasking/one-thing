@@ -397,8 +397,8 @@ describe('资源内核在真装配里(K1)', () => {
   it('转发的订阅名单来自注册表,不是写死的 scheme 名(K2a)', async () => {
     // 装一个 core 从没听说过的命名空间,不碰装配一行代码 —— 它的事件照样上总线。
     // 这是 §8 陌生能力演练在**事件**这一侧的那半句。
-    const { planFromSpec } = await import('@onething/backend/core/resource')
-    const { textResult } = await import('@onething/backend/core/toolkit')
+    const { planFromSpec } = await import('@onething/backend/runtime/resource/resource-api')
+    const { textResult } = await import('@onething/backend/runtime/toolkit/tool-protocol')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',
@@ -644,10 +644,10 @@ describe('资源内核在真装配里(K1)', () => {
    *
    * 它跑在真装配上而不是单测里,因为要证的正是「`backend.dispose()` 到得了
    * `resourceKernel.dispose()`」这条接线:内核那一侧的行为由
-   * `core/resource/__tests__/kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
+   * `runtime/resource/__tests__/kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
    */
   it('backend.dispose():内核里在飞的做被掐成 aborted,关机不悬着(K2a\')', async () => {
-    const { planFromSpec } = await import('@onething/backend/core/resource')
+    const { planFromSpec } = await import('@onething/backend/runtime/resource/resource-api')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',

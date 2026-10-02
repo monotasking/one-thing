@@ -89,7 +89,7 @@ import {
 } from '@onething/backend/core/plugins'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import type { CompatLogger } from '@onething/backend/core/logging'
+import type { CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('plugins')

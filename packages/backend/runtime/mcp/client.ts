@@ -31,7 +31,7 @@ import { getMCPClientIdentity } from './identity.js'
 import { notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { LegacyDuckLogger } from '@onething/backend/core/logging'
+import type { LegacyDuckLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getLogger('mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

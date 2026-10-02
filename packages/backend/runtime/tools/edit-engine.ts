@@ -1,5 +1,5 @@
 import { createTwoFilesPatch } from "diff";
-import { basenamePath } from "@onething/backend/core/storage";
+import { basenamePath } from "@onething/backend/runtime/storage/storage-primitives";
 
 /**
  * Edit failures are read by a model *and* by a one-line UI row. Both need the

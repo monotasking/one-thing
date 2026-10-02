@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ResourceEventHub } from '@onething/backend/core/resource'
+import type { ResourceEventHub } from '@onething/backend/runtime/resource/resource-api'
 import type { AmbientSource } from '@onething/backend/runtime/ambient'
 import { AmbientResourceProvider } from '../ambient-provider.js'
 

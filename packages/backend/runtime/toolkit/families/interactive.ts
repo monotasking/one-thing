@@ -19,12 +19,12 @@
  *     交互协议当初要修的病。
  *
  * 等待链本身一个字都不重写:真正挂起、广播、做通道亲和的那台机器在
- * `@onething/backend/core/interaction`,这里只是一个工具壳。
+ * `@onething/backend/runtime/interaction`,这里只是一个工具壳。
  */
 
-import { Intent, Tool } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/core/toolkit'
+import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 
 /** plan 算出来的那份"要问什么",apply 直接用。 */

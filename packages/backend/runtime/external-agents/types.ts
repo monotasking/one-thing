@@ -135,7 +135,7 @@ export interface ExternalAgentPermissionAsk {
    * 协议侧的工具调用 id(SDK 的 `toolUseID`,`sdk.d.ts:241-245`)。
    *
    * **卡片靠它归位**:core 只在 `callId` 存在时才发 `permission:queued`
-   * (`core/permission/index.ts:393-400`),renderer 匹配不到 toolCall 就把事件
+   * (`runtime/permission/permission-asks.ts:393-400`),renderer 匹配不到 toolCall 就把事件
    * 永久缓存、一个字都不画(`stores/chat.ts:996-1006`)。E4 之前这里是
    * `undefined`,于是审批卡从未上屏 —— F3 那 2 分 11 秒的直接成因。
    *
@@ -160,7 +160,7 @@ export type ExternalAgentPermissionHandler = (
 
 /**
  * 连接器无关的**提问**(E4/G6+G7)。与审批并列的一等概念,不是它的一个 case ——
- * 理由见 `packages/backend/core/interaction/types.ts` 开头那段。
+ * 理由见 `packages/shared/interaction/types.ts` 开头那段。
  *
  * 两条入口都汇到这里:SDK 的 `AskUserQuestion` 工具(经 `canUseTool`)与
  * `onUserDialog` 控制请求。装配层拿到它去起 `Interaction.ask`,并在没有人类在场

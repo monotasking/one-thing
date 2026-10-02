@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { Session } from '../session.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { SessionEventEnvelope } from '../../events/types.js'
+import type { SessionEventEnvelope } from '@onething/backend/runtime/event-bus/types'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 
 const stamp = (runId: string, partIndex: number, charOffset = 0) => ({

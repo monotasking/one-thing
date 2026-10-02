@@ -3,11 +3,11 @@
  * `analyze` / `execute`)与新实现(`new XxxTool` + `ToolRunner.run`),再把两边的
  * 产物摆成可比较的形状。
  *
- * 端口一律用 R0 的内存 fakes(`core/toolkit/__tests__/fakes.ts`)—— 那个文件存在的
+ * 端口一律用 R0 的内存 fakes(`runtime/toolkit/__tests__/fakes.ts`)—— 那个文件存在的
  * 意义就是"用一个假 RunContext 单测任何工具"(尺子⑤),这里是它的第一个真实用户。
  */
 
-import { ToolRunner } from '@onething/backend/core/toolkit'
+import { ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type {
   Authorizer,
   Intent,
@@ -19,8 +19,8 @@ import type {
   SessionSnapshot,
   Tool,
   ToolEvent,
-} from '@onething/backend/core/toolkit'
-import { allowAuthorizer, RecordingObserver } from '../../../core/toolkit/__tests__/fakes.js'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
+import { allowAuthorizer, RecordingObserver } from './fakes.js'
 import { ZodValidator } from '../contract.js'
 
 export interface RunOptions {

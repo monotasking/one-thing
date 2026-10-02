@@ -22,14 +22,14 @@
  * 钩子,所以登记方在注销后调 `dispose()` 撤掉那只 hub(与 `todo` / `music` 同一条)。
  */
 
-import { planFromSpec } from '@onething/backend/core/resource'
+import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/backend/core/resource'
+} from '@onething/backend/runtime/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/core/toolkit'
+import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { PET_CURRENT_PATH, petResourceSpec } from '@onething/backend/runtime/pets/resource-spec'
 import { UnknownPetError, type PetsSubsystem } from '@onething/backend/runtime/pets/subsystem'
 

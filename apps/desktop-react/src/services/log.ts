@@ -10,7 +10,7 @@
  *    见 `services/crash.ts`);
  *  · ns 前缀让「谁说的」变成结构化字段,而不是每处自己拼一个字符串。
  *
- * 它**不是** packages/backend/core/logging 那一套(级别过滤 / 多 sink / 落盘 / 分文件)。
+ * 它**不是** packages/backend/runtime/logging 那一套(级别过滤 / 多 sink / 落盘 / 分文件)。
  * 这块壳现在只需要"看得见 + 倒得出",所以刻意停在这个尺寸;真要接主进程账本,
  * 换的是 `sink`,不是每个调用点。
  */

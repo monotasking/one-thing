@@ -14,15 +14,15 @@
  * ── 住处 ────────────────────────────────────────────────────────────────────
  * 这个目录原来在装配层(只为把一个领域插进脊柱而存在的那一档),③-收尾 B(2026-10-02)按「server 包内部
  * 不区分接线与产品逻辑」平铺进 `runtime/resource/`。自述仍各住各的领域(会话那份在 `sessions/`),内核仍在
- * `core/resource` —— 那里有别的领域在用,不并过来;这里与 core 没有同名文件,I2 不涉及。
+ * `runtime/resource` —— 那里有别的领域在用,不并过来;这里与 core 没有同名文件,I2 不涉及。
  */
 
 import type { AmbientSource } from '@onething/backend/runtime/ambient'
 import { defaultAmbientSources } from '@onething/backend/runtime/ambient/sources'
 import { AmbientResourceProvider } from './ambient-provider.js'
-import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/backend/core/resource'
-import type { ResourceKernelOptions } from '@onething/backend/core/resource'
-import { combineValidators, type ToolRunner, type Validator } from '@onething/backend/core/toolkit'
+import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/backend/runtime/resource/resource-api'
+import type { ResourceKernelOptions } from '@onething/backend/runtime/resource/resource-api'
+import { combineValidators, type ToolRunner, type Validator } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { ZodValidator } from '@onething/backend/runtime/toolkit'
 import { DIR_RESOURCE_SCHEME } from '@onething/backend/runtime/files/resource-spec'
 import { GIT_RESOURCE_SCHEME } from '@onething/backend/runtime/files/git-resource-spec'

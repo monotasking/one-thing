@@ -19,7 +19,7 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '@onething/backend/core/toolkit'
+import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   listBackgroundJobs,
   readBackgroundJobOutput,

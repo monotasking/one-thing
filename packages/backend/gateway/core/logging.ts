@@ -20,7 +20,7 @@
  * 这样"没人注入"和"有人注入"两条路产出的记录形状逐字相同,只是 sink 不同。
  * 网关目录因此可以做到 `console.*` = 0。
  *
- * 边界:`packages/backend/gateway` 只依赖 `packages/backend/core`,而 `core/logging` 是零依赖、
+ * 边界:`packages/backend/gateway` 只依赖 `packages/backend/core`,而 `runtime/logging` 是零依赖、
  * 零 node import 的 —— 这条 import 不动任何红线。
  */
 import { ConsoleSink, LoggerRoot, type Logger } from '@onething/backend/core/gateway-runtime'

@@ -14,8 +14,8 @@
  * 回投唤醒)在装配层,产品层只有工具壳。
  */
 
-import { Intent, Tool } from '@onething/backend/core/toolkit'
-import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class SessionTool<In, Payload = In> extends Tool<In, Payload> {

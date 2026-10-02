@@ -8,31 +8,17 @@ const root = process.cwd()
 
 // cordis 是**装配层专属**依赖（C0 底座替换，
 // docs/design/cordis-adoption-2026-08.md §1）：只允许出现在
-// packages/backend/**。core 保持零依赖、runtime 产品层保持纯
-// 库、hosts 与 renderer 一概不感知 —— 写法照搬 electron 禁令。
+// packages/backend/**。core 与 runtime 不许用、hosts 与 renderer 一概不感知 —— 写法照搬 electron 禁令。
 const CORDIS_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]@deepseek-ai\/cordis['"]/,
   /import\(['"]@deepseek-ai\/cordis['"]\)/,
   /require\(['"]@deepseek-ai\/cordis['"]\)/,
 ]
 
-const CORE_FORBIDDEN_PATTERNS: RegExp[] = [
-  ...CORDIS_FORBIDDEN_PATTERNS,
-  /from\s+['"]electron['"]/,
-  /require\(['"]electron['"]\)/,
-  /src\/main/,
-  /src\/shared/,
-  /shared\/ipc/,
-  /\.\.\/\.\.\/shared/,
-  /\.\.\/\.\.\/\.\.\/shared/,
-  /better-sqlite3/,
-  /@modelcontextprotocol\/sdk/,
-  /@modelcontextprotocol\/client/,
-  /@agentclientprotocol\/sdk/,
-  /from\s+['"]zod['"]/,
-  /from\s+['"]diff['"]/,
-  /from\s+['"]uuid['"]/,
-]
+// 「core 专属禁令」那张表(`@shared/ipc`、better-sqlite3、MCP / ACP SDK、zod / diff / uuid)随去 core 批 1
+// (2026-10-03)撤掉:core 的「零依赖骨架」是为了让界面那侧复用,第①步以后界面只许 import `@shared` 与
+// `@onething/client`,碰不到 core 了,这张表守的东西没有对象。core 剩下的文件与 runtime 吃同一套宿主禁令
+// (electron / `@main` / `@preload` / 渲染层别名 + cordis),见 `checkRuntimeHostBoundary`。
 
 const HOST_BOUNDARY_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
@@ -579,9 +565,14 @@ const MAIN_CORE_SYSTEM_DIRS = [
   // P3'a-3:`app/storage/` 已整只归位 `runtime/storage/storage-manager-bound.ts`
   // (除 consolePort 外零脊柱边),目录不复存在。
   // ③-收尾 A(2026-10-02):装配层的 permission、tools 两个目录平铺进了 runtime。尺子只跟着**搬过去的那几只文件**走:
-  // `runtime/permission/` 整个目录就是原来装配层那一个;装配层的 tools 目录里只有 `core/`,所以这里写
+  // 当时 `runtime/permission/` 整个目录就是原来装配层那一个;装配层的 tools 目录里只有 `core/`,所以这里写
   // `runtime/tools/core`,不写 `runtime/tools` —— 后者还住着本职就做文件 IO 的纯模块(bash 执行器、文件快照),从没在这把尺子上。
-  'packages/backend/runtime/permission',
+  // 去 core 批 1(2026-10-03):core 的 permission 目录也并进了 `runtime/permission/`,而那一半本职就要 `node:path`
+  // (授权按路径匹配)、从没在这把尺子上。所以这里从「整个目录」改成点名原来装配层那四只文件,尺子量的东西不变。
+  'packages/backend/runtime/permission/capabilities.ts',
+  'packages/backend/runtime/permission/grant-storage.ts',
+  'packages/backend/runtime/permission/index.ts',
+  'packages/backend/runtime/permission/message-anchor.ts',
   'packages/backend/runtime/tools/core',
 ]
 
@@ -2426,54 +2417,16 @@ function assertNoMatches(label: string, lines: string[]): void {
 }
 
 /**
- * 领域内核(server / client 拆分第③步,2026-10-02 起):`core/<d>` 只有在**别的领域也真 import 它**时才留在
- * core;只服务一个领域的内核并进那个领域的家,落在 `runtime/<d>/kernel/`。它换了住处,但身份没换 —— 仍然是
- * 零依赖的骨架,所以 core 身上的禁令按**路径角色**跟着它走:凡 `runtime/*\/kernel/**` 都当 core 判。
- * 这里现算有哪些 kernel 目录,不写死任何领域名。
- */
-function runtimeDomainKernelRoots(): string[] {
-  const runtimeRoot = path.join(root, 'packages/backend/runtime')
-  if (!fs.existsSync(runtimeRoot)) return []
-  return fs.readdirSync(runtimeRoot, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => path.join(runtimeRoot, entry.name, 'kernel'))
-    .filter(dir => fs.existsSync(dir) && fs.statSync(dir).isDirectory())
-}
-
-function checkCoreForbiddenImports(): void {
-  const lines = [path.join(root, 'packages/backend/core'), ...runtimeDomainKernelRoots()]
-    .flatMap(dir => walkFiles(dir))
-    .flatMap(file => matchingLines(file, CORE_FORBIDDEN_PATTERNS))
-  assertNoMatches('packages/backend/core + runtime/*/kernel have no Electron/main/shared/native npm forbidden imports', lines)
-}
-
-/**
- * 领域内核的 import 闭包:非测试文件只许 import **自己那个 kernel 目录**里的东西(相对路径且解析在目录内)、
- * `@onething/backend/core/**`、`@shared/*` 与 node 内建。同领域的其余文件、脊柱、第三方包一概不许 ——
- * 内核要能原样拿走,它就不能认识自己被谁用。
+ * 去 core 批 1(2026-10-03)撤掉的三条分层规则,理由写在这里(正本 `docs/design/server-client-split-2026-10.md` §4):
  *
- * `@shared/*` 是 mcp 并进来时(2026-10-02)放开的:kernel 当 core 判,core 本来就许 `@shared/*`(契约与两边共用的
- * 纯逻辑,shared 自己不 import 任何 server 包),mcp 内核从 `@shared/mcp/types` 取契约形状。`@shared/ipc` 照旧被
- * core 那组禁令拦着(`checkCoreForbiddenImports` 同样扫 kernel)。比 core 的那条(`checkCorePackageDependencies`)
- * 仍紧一格:core 还许一张第三方批准表,内核一个第三方包都不许。
+ * - `checkCoreForbiddenImports`(core 与 `runtime/*\/kernel` 不许 import electron / `@shared/ipc` / 原生依赖 /
+ *   MCP、ACP SDK / zod / diff / uuid):「零依赖骨架」是为了让界面那侧复用;第①步以后界面只许 import `@shared` 与
+ *   `@onething/client`,碰不到 core 了。宿主那一半(electron / `@main` / `@preload` / 渲染层别名 + cordis)并进了
+ *   `checkRuntimeHostBoundary`,core 剩下的文件照旧被它管着。
+ * - `checkRuntimeDomainKernelImportClosure`(`runtime/<d>/kernel/` 只许 import 自己、core、`@shared` 与 node 内建):
+ *   它的源头是「kernel 当 core 判」,core 不再是一层,kernel 也就只是领域里一个普通子目录。
+ * - 「core 在最底层」(core 不许 import runtime / gateway / 脊柱)住在 `architecture-boundaries.test.ts`,同批撤掉。
  */
-function checkRuntimeDomainKernelImportClosure(): void {
-  const lines = runtimeDomainKernelRoots().flatMap(kernelRoot => walkFiles(kernelRoot)
-    .filter(file => !isTestOrFixtureFile(file))
-    .flatMap(file => forbiddenImportLines(file, specifier => {
-      if (specifier.includes('${')) return false
-      const target = relativeTargetOf(file, specifier)
-      if (target) return !isInside(kernelRoot, target)
-      if (specifier === '@onething/backend/core' || specifier.startsWith('@onething/backend/core/')) return false
-      if (specifier === '@shared' || specifier.startsWith('@shared/')) return false
-      if (isNodeBuiltinSpecifier(specifier)) return false
-      return true
-    })))
-  assertNoMatches(
-    'packages/backend/runtime/*/kernel imports only its own kernel, @onething/backend/core, @shared and node builtins',
-    lines,
-  )
-}
 
 // packages/backend (`@onething/backend`, P3'd 前叫 src/app,再往前是
 // apps/electron/src/main 的胶水) is the product assembly package. Unlike the
@@ -2527,15 +2480,21 @@ function checkRuntimeHostBoundary(): void {
   // 所以「runtime 不许 import `@shared/ipc`(`*.wiring.ts` 除外)」这条撤掉 —— runtime 与脊柱吃同一套
   // 宿主禁令(electron / `@main` / `@preload` / 渲染层别名)。runtime 照旧不许 import cordis(装配底座专属,
   // 今天 runtime 里零处)。
+  //
+  // 去 core 批 1(2026-10-03):core 的专属禁令撤掉,core 剩下的文件按 runtime 判(同一套宿主禁令 + cordis)。
   const backendRoot = path.join(root, 'packages/backend')
-  const lines = [...walkFiles(path.join(root, 'packages/backend/runtime')), ...walkFiles(backendRoot).filter(isBackendSpineFile)]
+  const lines = [
+    ...walkFiles(path.join(root, 'packages/backend/core')),
+    ...walkFiles(path.join(root, 'packages/backend/runtime')),
+    ...walkFiles(backendRoot).filter(isBackendSpineFile),
+  ]
     .flatMap(file => matchingLines(
       file,
       isBackendSpineFile(file)
         ? APP_ASSEMBLY_FORBIDDEN_PATTERNS
         : [...APP_ASSEMBLY_FORBIDDEN_PATTERNS, ...CORDIS_FORBIDDEN_PATTERNS],
     ))
-  assertNoMatches('packages/backend/runtime + packages/backend have no Electron/main/preload/renderer forbidden imports', lines)
+  assertNoMatches('packages/backend/core + runtime + packages/backend have no Electron/main/preload/renderer forbidden imports', lines)
 }
 
 /**
@@ -3106,37 +3065,17 @@ function checkMainUsesGatewayPackageImports(): void {
 }
 
 /**
- * 合包(server / client 拆分第②步,2026-10-02)以前,这条读 core 自己那份 `package.json` 的 `dependencies`,
- * 只许出现批准过的那几个包。core 并进 `@onething/backend` 以后它没有自己的清单了 —— 依赖登记在合并后的
- * backend 清单里,那份清单当然有第三方包。意图不变:**引擎骨架本身不引第三方包**;所以改成按目录判实际的
- * import:`packages/backend/core` 的非测试代码只许相对路径、`@shared/*`、`@onething/backend/core/*`、node 内建,
- * 以及原来那张批准表里的包。
+ * 「core 只许 import 批准表里的第三方包」(`checkCorePackageDependencies`)与「core 的大桶必须交出 AgentEngine /
+ * EventBus / … 这几个名字」(`checkCorePublicExports`)随去 core 批 1(2026-10-03)撤掉:前一条是零依赖骨架的规矩,
+ * 后一条把 core 当成对外的公共入口 —— core 不再是一层(正本 §4),两条都没有对象了。哪只桶交出哪个名字,
+ * 由用它的人的 import 守着:名字没了,类型检查当场红。
  */
-function checkCorePackageDependencies(): void {
-  const coreRoot = path.join(root, 'packages/backend/core')
-  const allowed = new Set(['@anthropic-ai/sdk'])
-  const lines = walkFiles(coreRoot)
-    .filter(file => !isTestOrFixtureFile(file))
-    .flatMap(file => forbiddenImportLines(file, specifier => {
-      if (specifier.includes('${')) return false
-      const target = relativeTargetOf(file, specifier)
-      if (target) return false
-      if (specifier === '@shared' || specifier.startsWith('@shared/')) return false
-      if (specifier === '@onething/backend/core' || specifier.startsWith('@onething/backend/core/')) return false
-      if (isNodeBuiltinSpecifier(specifier)) return false
-      const packageName = specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0]
-      return !allowed.has(packageName)
-    }))
-  assertNoMatches(
-    'packages/backend/core imports no third-party packages beyond the approved runtime dependencies',
-    lines,
-  )
-}
 
 function checkMainCoreSystemAdapters(): void {
   const lines = [
     ...MAIN_CORE_SYSTEM_DIRS
-      .flatMap(dir => walkFiles(path.join(root, dir)))
+      .map(entry => path.join(root, entry))
+      .flatMap(entry => (fs.existsSync(entry) && fs.statSync(entry).isFile() ? [entry] : walkFiles(entry)))
       .flatMap(file => matchingLines(file, MAIN_FORBIDDEN_IMPORT_PATTERNS)),
     ...MAIN_FILE_IO_SYSTEM_DIRS
       .flatMap(dir => walkFiles(path.join(root, dir)))
@@ -3145,31 +3084,13 @@ function checkMainCoreSystemAdapters(): void {
   assertNoMatches('main core-system directories only keep explicit adapter imports', lines)
 }
 
-function checkCorePublicExports(): void {
-  // 每个公开接口由它所在的那只桶交出。`HeadlessMCPManager` 随 mcp 内核并进了 `runtime/mcp/kernel/`
-  // (第③步,2026-10-02),于是改由那只桶交出;core 的大桶不再再导出它(那会让 core 倒挂到 runtime)。
-  const required: Array<[string, string]> = [
-    ['packages/backend/core/index.ts', 'AgentEngine'],
-    ['packages/backend/core/index.ts', 'EventBus'],
-    ['packages/backend/core/index.ts', 'ContextManager'],
-    ['packages/backend/core/index.ts', 'CoreStreamEngine'],
-    ['packages/backend/runtime/mcp/kernel/index.ts', 'HeadlessMCPManager'],
-    ['packages/backend/core/index.ts', 'CorePluginManager'],
-  ]
-  const missing = required.filter(([barrel, symbol]) => {
-    const barrelPath = path.join(root, barrel)
-    return !fs.existsSync(barrelPath) || !fs.readFileSync(barrelPath, 'utf-8').includes(symbol)
-  })
-  assertNoMatches(
-    'packages/backend/core/index.ts + runtime/mcp/kernel/index.ts export required public core interfaces',
-    missing.map(([barrel, symbol]) => `${barrel}: missing ${symbol}`),
-  )
-}
-
 function checkCoreToolHelperTestsLiveInCorePackage(): void {
+  // 去 core 批 1(2026-10-03):core 的 tools 目录并进了 `runtime/tools/`,这两只测试跟着搬过去(注册表那只随被测文件
+  // 改名 `engine-tool-registry`)。位置断言改指新址;下面 `forbiddenMainTests` 那三个 `core-*` 名字是同一批测试换个
+  // 前缀的副本,两半同住一个 `__tests__` 以后照旧不许出现。
   const requiredCoreTests = [
-    'packages/backend/core/tools/__tests__/registry.test.ts',
-    'packages/backend/core/tools/__tests__/permission-guards.test.ts',
+    'packages/backend/runtime/tools/__tests__/engine-tool-registry.test.ts',
+    'packages/backend/runtime/tools/__tests__/permission-guards.test.ts',
   ]
   // 2026-10 ①c:`tool-result.ts` 随会话投影的闭包搬进了 shared,它的测试跟着模块走。
   const requiredSharedTests = [
@@ -3183,16 +3104,16 @@ function checkCoreToolHelperTestsLiveInCorePackage(): void {
   const lines = [
     ...requiredCoreTests
       .filter(file => !fs.existsSync(path.join(root, file)))
-      .map(file => `${file}: missing core package tool helper test`),
+      .map(file => `${file}: missing tool helper test`),
     ...requiredSharedTests
       .filter(file => !fs.existsSync(path.join(root, file)))
       .map(file => `${file}: missing shared package tool helper test`),
     ...forbiddenMainTests
       .filter(file => fs.existsSync(path.join(root, file)))
-      .map(file => `${file}: core tool helper tests belong in packages/backend/core/tools/__tests__`),
+      .map(file => `${file}: tool helper tests live under their own names in packages/backend/runtime/tools/__tests__`),
   ]
 
-  assertNoMatches('packages/backend/core owns core tool helper tests', lines)
+  assertNoMatches('packages/backend/runtime/tools owns the tool helper tests that came from core', lines)
 }
 
 /**
@@ -3202,9 +3123,9 @@ function checkCoreToolHelperTestsLiveInCorePackage(): void {
  * 它的消费者是 `app/toolkit/catalog-projection.ts`。
  */
 function checkCoreOwnsToolSchemaProjection(): void {
-  const coreRegistryFile = path.join(root, 'packages/backend/core/tools/registry.ts')
-  const coreIndexFile = path.join(root, 'packages/backend/core/tools/index.ts')
-  const coreTestFile = path.join(root, 'packages/backend/core/tools/__tests__/registry.test.ts')
+  const coreRegistryFile = path.join(root, 'packages/backend/runtime/tools/engine-tool-registry.ts')
+  const coreIndexFile = path.join(root, 'packages/backend/runtime/tools/tool-helpers.ts')
+  const coreTestFile = path.join(root, 'packages/backend/runtime/tools/__tests__/engine-tool-registry.test.ts')
   const projectionFile = path.join(root, 'packages/backend/runtime/toolkit/catalog-projection.wiring.ts')
   const coreRegistryContent = fs.existsSync(coreRegistryFile) ? fs.readFileSync(coreRegistryFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
@@ -3219,19 +3140,19 @@ function checkCoreOwnsToolSchemaProjection(): void {
   const lines = [
     ...requiredCoreSymbols
       .filter(symbol => !coreRegistryContent.includes(symbol))
-      .map(symbol => `${rel(coreRegistryFile)}: missing core-owned tool schema projection symbol ${symbol}`),
+      .map(symbol => `${rel(coreRegistryFile)}: missing tool schema projection symbol ${symbol}`),
     ...requiredCoreSymbols
       .filter(symbol => !coreIndexContent.includes(symbol))
-      .map(symbol => `${rel(coreIndexFile)}: missing core tools public export ${symbol}`),
+      .map(symbol => `${rel(coreIndexFile)}: missing tool helpers public export ${symbol}`),
     ...(!coreTestContent.includes('coreToolDefinitionFromJsonSchema')
-      ? [`${rel(coreTestFile)}: missing core-owned parameter schema projection coverage`]
+      ? [`${rel(coreTestFile)}: missing parameter schema projection coverage`]
       : []),
     ...(!projectionContent.includes('coreToolDefinitionFromJsonSchema')
       ? [`${rel(projectionFile)}: catalog projection must reuse the core schema projection`]
       : []),
   ]
 
-  assertNoMatches('packages/backend/core owns legacy tool schema projection', lines)
+  assertNoMatches('packages/backend/runtime/tools owns legacy tool schema projection', lines)
 }
 
 /**
@@ -3264,7 +3185,7 @@ function checkSharedOwnsToolFailureParameterSummary(): void {
       ? [`${rel(retiredFacade)}: the retired re-export facade must not come back (import @shared/tools/tool-result)`]
       : []),
     // 不许在 core 里再抄一份。
-    ...walkFiles(path.join(root, 'packages/backend/core/tools'))
+    ...walkFiles(path.join(root, 'packages/backend/runtime/tools'))
       .flatMap(file => matchingLines(file, SHARED_TOOL_FAILURE_PARAMETERS_FORBIDDEN_PATTERNS)),
   ]
 
@@ -3300,8 +3221,8 @@ function checkSharedOwnsToolPermissionErrorText(): void {
     ...(fs.existsSync(retiredFacade)
       ? [`${rel(retiredFacade)}: the retired re-export facade must not come back (import @shared/permission/rejection-message)`]
       : []),
-    // 不许在 core 的权限目录里再抄一份。
-    ...walkFiles(path.join(root, 'packages/backend/core/permission'))
+    // 不许在权限目录(`runtime/permission`,去 core 批 1 起 core 那一半也住在这里)里再抄一份。
+    ...walkFiles(path.join(root, 'packages/backend/runtime/permission'))
       .flatMap(file => matchingLines(file, SHARED_TOOL_ERRORS_FORBIDDEN_PATTERNS)),
   ]
 
@@ -3340,8 +3261,8 @@ function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
 
 function checkCoreOwnsSessionCommandIpcOperation(): void {
   const runtimeFiles = [
-    path.join(root, 'packages/backend/core/events/ipc-operations.ts'),
-    path.join(root, 'packages/backend/core/events/index.ts'),
+    path.join(root, 'packages/backend/runtime/event-bus/ipc-operations.ts'),
+    path.join(root, 'packages/backend/runtime/event-bus/index.ts'),
   ]
   // 结构债 P4c 第四批:命令总线的入口从 `@main/ipc/handlers.ts` 的 `ipcMain.handle`
   // 搬到 `session-command` RPC 域,所以「不许在别处重抄一遍 emit」这条守的是域文件。
@@ -3361,10 +3282,10 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
   const lines = [
     ...runtimeFiles
       .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing core-owned session command IPC operation`),
+      .map(file => `${rel(file)}: missing session command IPC operation`),
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/backend/core/events/ipc-operations.ts: missing core-owned ${symbol}`),
+      .map(symbol => `packages/backend/runtime/event-bus/ipc-operations.ts: missing ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
       : ['packages/backend/rpc/domains/session-command.ts: missing session-command RPC domain']),
@@ -3374,7 +3295,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
       : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
-  assertNoMatches('packages/backend/core owns session command/event IPC projections', lines)
+  assertNoMatches('packages/backend/runtime/event-bus owns session command/event IPC projections', lines)
 }
 
 function checkSharedOwnsStreamChunkProtocol(): void {
@@ -3403,7 +3324,7 @@ function checkSharedOwnsStreamChunkProtocol(): void {
       .filter(symbol => !sharedTestContent.includes(symbol))
       .map(symbol => `${rel(sharedTestFile)}: missing stream chunk protocol test coverage for ${symbol}`),
     // 不许在 core 的事件目录里再抄一份。
-    ...walkFiles(path.join(root, 'packages/backend/core/events'))
+    ...walkFiles(path.join(root, 'packages/backend/runtime/event-bus'))
       .flatMap(file => matchingLines(file, SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS)),
   ]
 
@@ -3512,11 +3433,12 @@ function checkCorePromptAssemblyOwnedByRuntime(): void {
 function checkCorePromptContextRegistryOwnedByRuntime(): void {
   const removedFiles = [
     'packages/backend/core/engine/plugin-context.ts',
-    'packages/backend/core/storage/app-state.ts',
+    // core 的 storage 目录下那只 `app-state.ts` 这一格随去 core 批 1(2026-10-03)撤掉:那个目录整个并进了
+    // `runtime/storage/`,应用状态本来就住在那里,「不许回到 core」没有对象了。
   ].filter(file => fs.existsSync(path.join(root, file)))
 
   assertNoMatches(
-    'packages/backend/core keeps runtime registries and app state out of the headless boundary',
+    'packages/backend/core keeps runtime registries out of the headless boundary',
     removedFiles.map(file => `${file}: runtime-owned state belongs in packages/backend/runtime`),
   )
 }
@@ -3531,7 +3453,7 @@ function checkRuntimeOwnsOnethingStoragePaths(): void {
 }
 
 function checkRuntimeOwnsPermissionGrantFileStorage(): void {
-  const file = path.join(root, 'packages/backend/core/permission/permission-grants.ts')
+  const file = path.join(root, 'packages/backend/runtime/permission/permission-grants.ts')
   const lines = fs.existsSync(file)
     ? matchingLines(file, CORE_PERMISSION_FILE_STORAGE_FORBIDDEN_PATTERNS)
     : []
@@ -4905,7 +4827,7 @@ function checkRuntimeOwnsToolCallStateProjection(): void {
  * 建一档目录、接端口;宿主只拿投影。
  */
 function checkRuntimeOwnsToolRegistryRuntime(): void {
-  const kernelCatalogFile = path.join(root, 'packages/backend/core/toolkit/catalog.ts')
+  const kernelCatalogFile = path.join(root, 'packages/backend/runtime/toolkit/catalog.ts')
   const productHostFile = path.join(root, 'packages/backend/runtime/toolkit/host.ts')
   const productIndexFile = path.join(root, 'packages/backend/runtime/toolkit/index.ts')
   const assemblyCatalogFile = path.join(root, 'packages/backend/runtime/toolkit/tier-catalogs.ts')
@@ -5193,6 +5115,27 @@ function normalizeFeatureToken(value: string): string {
  * 标识符本身不算(`CORE_LOG_MONITOR_MAX` 这类符号名属文件布局问题);
  * import/export 的模块说明符同样排除,由分层检查另管。
  */
+/**
+ * 去 core 批 1(2026-10-03)接收了 core 小目录的 runtime 领域目录。只给「内容」断言用(内核不点名具体功能),
+ * 不是一层 —— 这些目录里 core 搬来的文件与原有的文件平铺同住。
+ */
+const CORE_MERGED_RUNTIME_DIRS = [
+  'packages/backend/runtime/agents',
+  'packages/backend/runtime/context',
+  'packages/backend/runtime/event-bus',
+  'packages/backend/runtime/http',
+  'packages/backend/runtime/lifecycle',
+  'packages/backend/runtime/interaction',
+  'packages/backend/runtime/logging',
+  'packages/backend/runtime/memory',
+  'packages/backend/runtime/permission',
+  'packages/backend/runtime/providers',
+  'packages/backend/runtime/resource',
+  'packages/backend/runtime/storage',
+  'packages/backend/runtime/toolkit',
+  'packages/backend/runtime/tools',
+]
+
 function checkCoreKnowsNoConcreteFeatures(): void {
   const known = [...new Set(
     [...listBuiltinPluginIds(), ...RETIRED_FEATURE_TOKENS].map(normalizeFeatureToken),
@@ -5215,7 +5158,11 @@ function checkCoreKnowsNoConcreteFeatures(): void {
   const withoutInterpolation = (value: string): string => value.replace(/\$\{[^}]*\}/g, ' ')
 
   const lines: string[] = []
-  for (const file of walkFiles(path.join(root, 'packages/backend/core'), [], { includeTests: true })) {
+  // 去 core 批 1(2026-10-03):core 的小目录并进了 runtime 的同名领域目录,这条「内核不点名具体功能」是**内容**
+  // 断言,跟着那些文件走 —— 量 core 剩下的部分,外加接收了 core 文件的那 14 个领域目录(整目录量;并进来之前
+  // 这些目录里原有的文件同样零命中)。
+  const scanRoots = ['packages/backend/core', ...CORE_MERGED_RUNTIME_DIRS]
+  for (const file of scanRoots.flatMap(dir => walkFiles(path.join(root, dir), [], { includeTests: true }))) {
     if (!/\.(ts|tsx|js|mjs|cjs)$/.test(file)) continue
     const content = fs.readFileSync(file, 'utf-8')
     const reported = new Set<number>()
@@ -5254,7 +5201,7 @@ function checkCoreKnowsNoConcreteFeatures(): void {
     }
   }
 
-  assertNoMatches('packages/backend/core knows no concrete plugin or feature names', lines)
+  assertNoMatches('packages/backend/core + runtime dirs merged from core know no concrete plugin or feature names', lines)
 }
 
 /**
@@ -5279,7 +5226,7 @@ const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [PLUGIN_HOST_MODULE_SPECIFIER]
 
 /**
  * 内置插件的那一半。2026-10(server / client 拆分 ①a)把会话词汇等零依赖的契约叶子从 core
- * 搬进了 shared —— 内置插件从前经 `@onething/backend/core/events` 取 `SESSION_EVENT_TYPES`,现在只能经
+ * 搬进了 shared —— 内置插件从前经 core 的事件桶(今天的 `@onething/backend/runtime/event-bus`)取 `SESSION_EVENT_TYPES`,现在只能经
  * `@shared/events/…` 取。shared 的这些叶子与它们在 core 时是同一种东西(词汇、形状、纯函数),
  * 所以对内置插件放行 `@shared/*`;**`@shared/ipc` 仍禁** —— 那是传输层的契约,插件不该认识宿主
  * 怎么跟外界说话。用户插件不变:它们住在仓外,`@shared` 对它们本来就不存在。
@@ -6643,7 +6590,8 @@ function checkRuntimeOwnsToolEditEngine(): void {
  */
 function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const removedFiles = [
-    'packages/backend/core/tools/time.ts',
+    // 「这些不许爬回 core 的 tools 目录」那 13 格随去 core 批 1(2026-10-03)撤掉:那个目录整个并进了
+    // `runtime/tools/`,那几只纯模块本来就住在那里,core 侧的那个位置不存在了。
     'packages/backend/runtime/tools/builtin/get-current-time.ts',
     'packages/backend/runtime/tools/builtin/fart.ts',
     'packages/backend/runtime/tools/builtin/index.ts',
@@ -6659,18 +6607,6 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
     'packages/backend/runtime/tools/core/tool-effect.ts',
     'packages/backend/runtime/tools/core/tool-result.ts',
     'packages/backend/runtime/tools/core/tool.ts',
-    'packages/backend/core/tools/sensitive-files.ts',
-    'packages/backend/core/tools/background-jobs.ts',
-    'packages/backend/core/tools/bash-executor.ts',
-    'packages/backend/core/tools/output-accumulator.ts',
-    'packages/backend/core/tools/text-truncation.ts',
-    'packages/backend/core/tools/file-mutation-queue.ts',
-    'packages/backend/core/tools/file-snapshot.ts',
-    'packages/backend/core/tools/file-mutation-audit.ts',
-    'packages/backend/core/tools/sandbox.ts',
-    'packages/backend/core/tools/edit-engine.ts',
-    'packages/backend/core/tools/replacers.ts',
-    'packages/backend/core/tools/bash-classifier.ts',
     // R4b:旧的 `Tool.define` 工具对象。它们的实现搬进了 `toolkit/builtin/`。
     'packages/backend/runtime/tools/builtin/read.ts',
     'packages/backend/runtime/tools/builtin/write.ts',
@@ -6682,7 +6618,7 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
     'packages/backend/runtime/tools/scene-surface.ts',
   ].filter(file => fs.existsSync(path.join(root, file)))
   const publicExportPaths = [
-    path.join(root, 'packages/backend/core/tools/index.ts'),
+    path.join(root, 'packages/backend/runtime/tools/tool-helpers.ts'),
     path.join(root, 'packages/backend/core/index.ts'),
   ]
   const toolkitIndexFile = path.join(root, 'packages/backend/runtime/toolkit/index.ts')
@@ -7085,8 +7021,6 @@ function checkVueHostStaysRetired(): void {
   assertNoMatches('Vue host stays retired (no apps/electron, packages/renderer, apps/web, .vue files, or vue deps)', failures)
 }
 
-checkCoreForbiddenImports()
-checkRuntimeDomainKernelImportClosure()
 checkVueHostStaysRetired()
 checkRuntimeHostBoundary()
 checkClientPackageBoundary()
@@ -7109,9 +7043,7 @@ checkModelsDomainRidesTheRpcChannel()
 checkMainUsesRuntimePackageImports()
 checkMainUsesCorePackageImports()
 checkMainUsesGatewayPackageImports()
-checkCorePackageDependencies()
 checkMainCoreSystemAdapters()
-checkCorePublicExports()
 checkCoreToolHelperTestsLiveInCorePackage()
 checkCoreOwnsToolSchemaProjection()
 checkSharedOwnsToolFailureParameterSummary()

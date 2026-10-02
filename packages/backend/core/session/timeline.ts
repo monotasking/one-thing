@@ -1,4 +1,4 @@
-import { getCoreLogger } from '../logging/index.js'
+import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
   CORE_INTERRUPTED_TOOL_ERROR,

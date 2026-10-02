@@ -19,9 +19,9 @@
  *
  * ① **scheme**:`mcp-<server id 归一>`。server id 是用户在设置里填的、或者
  *    `createCoreId()` 生成的,两者都可能带大写 / 下划线 / 中文,而 scheme 语法是
- *    `[a-z][a-z0-9-]*`(`core/resource/ref.ts`)。归一那一只住在内核里
+ *    `[a-z][a-z0-9-]*`(`packages/shared/resource/ref.ts`)。归一那一只住在内核里
  *    (`normalizeSchemeSegment`),这里只负责加前缀。
- * ② **op 名**:成员名语法是 lowerCamelCase(`core/resource/contract.ts` 的
+ * ② **op 名**:成员名语法是 lowerCamelCase(`runtime/resource/contract.ts` 的
  *    `MEMBER_NAME_PATTERN`),而 MCP 的工具名一律是 `brave_web_search` /
  *    `get-library-docs` 这种。所以 `brave_web_search` → `braveWebSearch`,而**真正
  *    的工具名要留着**(调用时用的是它)—— 那就是 `toolNames` 那张表存在的理由。
@@ -36,7 +36,7 @@
  * 这份投影只回答一句话:**这台 server 能做什么**。补读法与状态的口在文件末尾。
  */
 
-import type { ResourceSpec } from '@onething/backend/core/resource'
+import type { ResourceSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 import { normalizeSchemeSegment, isRefScheme, uniqueName } from '@shared/resource/ref'
 import type { MCPToolInfo } from '@shared/mcp/types'
@@ -175,7 +175,7 @@ export function projectMcpResource(input: McpResourceProjectionInput): McpResour
 
   // 按工具名排序:自述会进 `resources describe` 与将来的 MCP 出口,而那些是提示词
   // 的一部分。让顺序取决于 server 报表的顺序 = 同一台 server 两次连接换一份前缀
-  // (`core/resource/schema.ts` 的同一条理由)。
+  // (`runtime/resource/schema.ts` 的同一条理由)。
   for (const tool of [...input.tools].sort((a, b) => a.name.localeCompare(b.name))) {
     const base = mcpResourceOpName(tool.name)
     if (!base) continue

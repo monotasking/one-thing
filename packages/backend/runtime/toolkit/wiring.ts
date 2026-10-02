@@ -22,9 +22,9 @@
  * 装进来),`feature_*` 由 self-evolution feature 自己装。
  */
 
-import type { Catalog, Decision, Intent, Invocation, Outcome, Result } from '@onething/backend/core/toolkit'
-import { Outcome as OutcomeOps } from '@onething/backend/core/toolkit'
-import type { Authorizer } from '@onething/backend/core/toolkit'
+import type { Catalog, Decision, Intent, Invocation, Outcome, Result } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { Outcome as OutcomeOps } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Authorizer } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Principal } from '@shared/permission/principal'
 import type { JsonObject } from '@shared/json.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
@@ -273,7 +273,7 @@ export async function runToolkitToolDirectly(
 }
 
 async function runPreparedTool(
-  tool: import('@onething/backend/core/toolkit').Tool,
+  tool: import('@onething/backend/runtime/toolkit/tool-protocol').Tool,
   catalog: Catalog,
   toolName: string,
   args: JsonObject,
@@ -354,7 +354,7 @@ async function runPreparedTool(
     },
   })
 
-  const trackedTool: import('@onething/backend/core/toolkit').Tool = {
+  const trackedTool: import('@onething/backend/runtime/toolkit/tool-protocol').Tool = {
     id: tool.id,
     spec: tool.spec,
     prepare: env => tool.prepare(env),

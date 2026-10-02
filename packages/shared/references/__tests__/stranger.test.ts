@@ -2,7 +2,7 @@
  * 陌生能力演练(法条「加功能不许改骨架」;`docs/design/reference-tag-2026-09.md` §3)。
  *
  * 编解码器那一句自我要求是「一个类型名都没有」。这只文件把它变成门,口径逐字
- * 照抄 `packages/backend/core/resource/__tests__/stranger.test.ts`(同一条法条的同一种
+ * 照抄 `packages/backend/runtime/resource/__tests__/stranger.test.ts`(同一条法条的同一种
  * 手段,那边扫 scheme,这边扫 type):
  *
  *   ① 现造一种设计时没想过的引用,走一遍全部六个口 —— 证明「不改骨架」是真的;

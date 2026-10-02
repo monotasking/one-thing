@@ -49,7 +49,7 @@
  */
 
 import { sortByPluginCanonicalOrder } from './canonical-order.js'
-import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
+import { toLogger, type CompatLogger, type Logger } from '@onething/backend/runtime/logging/logger-primitives'
 import { PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from './policy.js'
 import { runWithPluginTimeout } from './runtime-guard.js'
 import {

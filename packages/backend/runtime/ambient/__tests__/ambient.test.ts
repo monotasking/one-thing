@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { describeResourceSpecProblem } from '@onething/backend/core/resource'
+import { describeResourceSpecProblem } from '@onething/backend/runtime/resource/resource-api'
 import { ClockSource, dayPartAt } from '../clock-source.js'
 import { ambientResourceSpecFor, DuplicateAmbientEventError } from '../resource-spec.js'
 import type { AmbientSource, AmbientTimers } from '../source.js'

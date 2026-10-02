@@ -15,9 +15,9 @@
  *    package-lock 该条目的 integrity,不符即回滚拒载。
  */
 import fs from 'fs'
-import { toLogger } from '../logging/index.js'
+import { toLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import path from 'path'
-import { writeJsonFile } from '../storage/json-file.js'
+import { writeJsonFile } from '@onething/backend/runtime/storage/json-file'
 import {
   compareCoreSemver,
   unscopedPluginIdFromPackageName,

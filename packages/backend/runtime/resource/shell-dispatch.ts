@@ -2,7 +2,7 @@
  * K2b-2 —— `ShellDispatch` 的实现:一条 `home: 'shell'` 的做法怎么到得了壳
  * (`docs/design/atom-2026-09.md` §5「资源的家在哪就去哪跑」)。
  *
- * K1 只留了接口和「缺席即结构化降级」这条路径,理由写在 `core/resource/tool.ts` 的
+ * K1 只留了接口和「缺席即结构化降级」这条路径,理由写在 `runtime/resource/tool.ts` 的
  * 头注释里:「没有壳时会发生什么」是一条要被测试钉住的行为。这只文件是另一半 ——
  * **有壳时发生什么**。
  *
@@ -42,9 +42,9 @@
  * 猜路由。
  */
 
-import { ResourceHomeUnavailableError, type ShellDispatch } from '@onething/backend/core/resource'
+import { ResourceHomeUnavailableError, type ShellDispatch } from '@onething/backend/runtime/resource/resource-api'
 import { formatRef, type ResourceRef } from '@shared/resource/ref'
-import { textResult, type Result, type RunContext } from '@onething/backend/core/toolkit'
+import { textResult, type Result, type RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { ResourceShellCommandEvent } from '@shared/events/index.js'
 import type { ShellCommandResult } from '@shared/ipc/resources.js'
 

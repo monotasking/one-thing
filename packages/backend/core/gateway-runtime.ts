@@ -1,15 +1,15 @@
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 import type { JsonObject } from '@shared/json.js'
-import type { StreamChunkHandler, Unsubscribe } from './events/types.js'
+import type { StreamChunkHandler, Unsubscribe } from '@onething/backend/runtime/event-bus/types'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 
 // `@onething/backend/core/gateway-runtime` 是网关看得见的**唯一**一扇 core 门(boundary
 // 里 `GATEWAY_CORE_DEPENDENCY_FORBIDDEN_PATTERNS` 把别的子路径全焊死了)。
 // 网关真正要用的 core 零件不止协议类型 —— 取消订阅句柄、共享斜杠命令表、日志
 // 内核 —— 所以在这里把它们再导出一遍:门还是一扇,门后的东西由 core 决定。
-export type { Unsubscribe } from './events/types.js'
-export { ConsoleSink, LoggerRoot } from './logging/index.js'
-export type { LogRecord, Logger } from './logging/index.js'
+export type { Unsubscribe } from '@onething/backend/runtime/event-bus/types'
+export { ConsoleSink, LoggerRoot } from '@onething/backend/runtime/logging/logger-primitives'
+export type { LogRecord, Logger } from '@onething/backend/runtime/logging/logger-primitives'
 // 引用标签的编解码器(IM 渠道上没有可点的东西,`<ref/>` 必须在出站前投影成文字,
 // `docs/design/reference-tag-2026-09.md` §2.8)与斜杠命令表从前也经这里再导出;
 // 2026-10 它们搬进了 shared(两边共用的纯逻辑),网关直接从 `@shared/references`、

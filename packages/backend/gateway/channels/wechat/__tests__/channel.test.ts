@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Logger } from '@onething/backend/core/logging'
+import type { Logger } from '@onething/backend/runtime/logging/logger-primitives'
 import { DEFAULT_ILINK_BASE_URL, type WechatAuthState } from '../ilink/auth.js'
 import { WechatChannel } from '../index.js'
 import type { WeixinMessage } from '../ilink/types.js'

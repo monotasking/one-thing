@@ -2,7 +2,7 @@
  * 宠物名册(宠物 P2,§9.1「内置宠物一张表」)。
  *
  * 是一个类而不是一只模块级数组:P5 插件宠物要往里登记、卸载时要摘,而「谁要一本名册
- * 谁自己 new 一本」与资源注册表(`@onething/backend/core/resource` 的 `ResourceRegistry`)同一条
+ * 谁自己 new 一本」与资源注册表(`@onething/backend/runtime/resource/resource-api` 的 `ResourceRegistry`)同一条
  * 组合根纪律 —— 装配层把它当字段持有,测试起一本干净的。
  *
  * 陌生能力演练:加一只鹦鹉 = `builtin/alu.ts` 一份自述(形象是 `alu.rig.ts` 的数据)+

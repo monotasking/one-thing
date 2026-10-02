@@ -51,7 +51,7 @@
  * 一次机制拍板,不是一次接线,留账给 K2c-2。
  *
  * ── K2c-2:那次拍板做完了,读面这一批跟着退 ────────────────────────────────
- * `ResourceKernel.read` 不再走 `ToolRunner`(`core/resource/read-outcome.ts` 的文件头
+ * `ResourceKernel.read` 不再走 `ToolRunner`(`runtime/resource/read-outcome.ts` 的文件头
  * 是那次修正的全文):读有自己的短路径、返回 `ReadOutcome`(`ok` 装的是**值**)、
  * 不落审计不吃预算。上面那三条硬伤因此一条不剩,`sessions` 域六条读面
  * (`get` / `getMessages` / `getMessagesPage` / `getUserMarkers` / `getSegments` /
@@ -105,7 +105,7 @@
  *     LRU 的内务。理由逐条写在域的处理器上。
  */
 
-import type { ResourceSpec } from '@onething/backend/core/resource'
+import type { ResourceSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 /**
@@ -733,7 +733,7 @@ export const sessionResourceSpec: ResourceSpec = {
      * 效果类是 **`capability_change`**(`never-grantable`),而不是那几条 `[]`:改的不是
      * 这条会话的一格元数据,而是**它自己将来还问不问**。被授权方去改自己的授权档位是
      * 一次提权,所以它连「记住这次」都不给 —— 每一次都得问,授权者答完这一次不代表
-     * 答了下一次(`core/toolkit/effects.ts` 里那一行的注释就是这条)。
+     * 答了下一次(`packages/shared/toolkit/effects.ts` 里那一行的注释就是这条)。
      *
      * 用户主体照旧零卡片:设置里那个下拉是人自己在改自己的档位。
      */

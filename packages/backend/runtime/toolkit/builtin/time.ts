@@ -8,8 +8,8 @@
 
 import { z } from 'zod'
 import { toJsonObject } from '@shared/json'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
-import { textResult } from '@onething/backend/core/toolkit'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { textResult } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   executeCoreTimeTool,
   type CoreTimeArgs,

@@ -17,13 +17,13 @@
  * hash 把它捞回来。重校验(文件在审批期间被改了)照旧,判据逐字不变。
  */
 
-import { coreDiffHunksToJson, type CoreDiffHunk } from '@onething/backend/core/tools'
-import { Intent } from '@onething/backend/core/toolkit'
+import { coreDiffHunksToJson, type CoreDiffHunk } from '@onething/backend/runtime/tools/tool-helpers'
+import { Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
 import type { JsonObject, JsonValue } from '@shared/json'
-import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/core/toolkit'
+import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect, EffectClass } from '@shared/toolkit/effects'
-import { basenamePath } from '@onething/backend/core/storage'
+import { basenamePath } from '@onething/backend/runtime/storage/storage-primitives'
 import { filePermissionPattern } from '../../tools/permission-effects.js'
 import { withFileMutationQueue } from '../../tools/file-mutation-queue.js'
 import { truncateDiffHunksForDisplay } from '../../tools/diff-hunks.js'

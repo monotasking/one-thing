@@ -13,7 +13,7 @@
  *
  * ── ① 主体:`systemPrincipal('plugin:<id>')`,不是 agent ──────────────────
  *
- * 三支主体(`core/permission/principal.ts`)里,插件哪一支都不像,但**只有一支
+ * 三支主体(`packages/shared/permission/principal.ts`)里,插件哪一支都不像,但**只有一支
  * 是安全的**:
  *
  *  · `user` —— 错得最离谱。它是「桌面前面的那个人」,拿到的是这台机器主人的**全部**
@@ -65,13 +65,13 @@ import {
   pluginResourceSurface,
   pluginScope,
 } from '@onething/backend/core/plugins'
-import { ReadOutcome } from '@onething/backend/core/resource'
+import { ReadOutcome } from '@onething/backend/runtime/resource/resource-api'
 import { parseRef } from '@shared/resource/ref'
-import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/core/resource'
+import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/runtime/resource/resource-api'
 import { systemPrincipal } from '@shared/permission/principal'
 import type { Principal } from '@shared/permission/principal'
-import { Outcome } from '@onething/backend/core/toolkit'
-import type { Outcome as OutcomeValue } from '@onething/backend/core/toolkit'
+import { Outcome } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Outcome as OutcomeValue } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,

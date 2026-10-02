@@ -72,40 +72,58 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 逐领域(先选最散的:search、mcp、acp、plugins、collab、music),照 provider 试点的做法:先量、立快照、搬、证明不变、
 一个领域一笔提交。目标:一个领域在 server 包里只有一个目录。
 
-### 目录规矩(search 立下,2026-10-02 拍平后改写)
+### 目录规矩(search 立下,2026-10-02 拍平后改写,2026-10-03 去 core 后再改写)
 
 **用户拍板(2026-10-02):server 包内部不再区分「接线」与「产品逻辑」。** 一个功能的文件平铺在 `runtime/<d>/` 下,
 没有 `wiring/` 子目录。理由:后端只剩一个包、将来只跑在一个后端进程里;「接线」那一层原本是为了让同一份逻辑装进
 多个宿主(Vue 主进程、server、CLI daemon、React 壳)而存在的,宿主收敛成一个以后它没有对象了。测试要注入假件,
 靠函数参数就行,不需要一层目录来表达。(search 那批立的是「产品住领域根、装配住 `wiring/`」,同一天被这条拍板取代。)
 
+**用户拍板(2026-10-02 / 03):core 也不要了。** core 的「零依赖骨架」原本是为了让界面那侧复用;第①步以后界面只许
+import `@shared` 与 `@onething/client`,碰不到 core 了,所以这一层同样没有对象。core 分三批并进 `runtime/<d>/`:
+批 1(2026-10-03)撤掉 core 这一层的规则、14 个小目录并进 runtime;批 2 是 `core/{plugins,session,engine,agent-loop}`;
+批 3 是 core 根上的文件、`core/__tests__/`、gateway 子树 → `runtime/gateway`,最后删掉 `core/` 目录。
+
 **一个领域的家是 `runtime/<d>/`**:
 
-- 领域根:这个功能的全部文件,不分「产品」「装配」。同名冲突按文件**做的事**起名(不用 wiring / host / bound / app /
-  assembly 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,另一个按内容改名。
-- **`runtime/<d>/kernel/`**:从前的 `core/<d>`。一个 `core/<d>` 只有在**别的领域也真 import 它**时才配留在 core
-  (那才是通用骨架);只服务本领域的内核并进领域,改叫 kernel。「专属」怎么量:除了直接 import,还要看 core 的大桶
-  `core/index.ts` 有没有再导出它、有没有人经大桶拿它的名字 —— 大桶再导出而没人用,就删掉那段再导出;有人用,它就不是
-  专属内核,留在 core。内核目录名可以与领域名不同(collab 的 `core/actors`)。
+- 领域根:这个功能的全部文件,不分「产品」「装配」「骨架」。同名冲突按文件**做的事**起名(不用 wiring / host / bound /
+  app / assembly 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,另一个按内容改名。内容上是
+  同一件事的两半(例如协议 + 实现)也不合,只在落地记录里列出来。
+- `runtime/<d>/kernel/`:第③步从 `core/<d>` 并进来的只服务本领域的内核(search、mcp、collab 的 actors)。去 core 以后
+  它只是领域里一个普通子目录,不再「当 core 判」。
+- 目录名与包根的脊柱目录同名会触发 I1(例如包根已有 `events/`),这时按内容另起目录名(core 的 `events/` → `runtime/event-bus/`)。
 - RPC 处理器(`rpc/domains/<d>.ts`)不动 —— RPC 注册表那张表的形状是第④步的事。
 
-**守门规矩**:
+**撤掉的规则**(去 core 批 1,2026-10-03;理由同上一条拍板 —— core 不再是一层):
 
-1. kernel 当 core 判:core 身上的禁令(electron / `@shared/ipc` / 原生依赖 / MCP、ACP SDK / zod 等,以及「core 在最底层」)
-   原样作用于 `runtime/*/kernel/**`;另加闭包 —— kernel 的非测试文件只许 import 自己那个 kernel 目录里的东西、
-   `@onething/backend/core/**`、`@shared/*` 与 node 内建。内核要能原样拿走,它就不能认识自己被谁用。
-2. runtime 的其余文件与脊柱同一套宿主禁令(electron / `@main` / `@preload` / 渲染层别名;cordis 照旧只许脊柱用)。
-   「runtime 不许 import 脊柱」「runtime 不许 import `@shared/ipc`(`*.wiring.ts` 除外)」「非 `*.wiring` 文件不许 import
-   `*.wiring` 模块」三条随拍平撤掉。`*.wiring.ts` 后缀从此不表达任何权限,文件名留给下一步改。
-3. 「三棵子树的相对 import 不出自己的子树」保留,只有一个口子:runtime 相对 import 内部会话模块
-   (`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)—— 那条门规定它们不许有 exports 键,没有包说明符
-   可写。同一条门的「只有脊柱能碰内部会话模块」相应改成「core / gateway 以外都能碰」。指向脊柱的其余 import 写包说明符。
-4. `assembly:gate` 量脊柱 + `backend/wiring/` + 整个 `runtime/`(kernel 除外,kernel 按 core 判、core 不在这把尺子上)。
-5. 按旧路径写的领域断言只改路径;前提随拍平消失的断言撤掉并在原处写明(插件「行为测试不许住在装配树」、acp「装配那一半
-   不许自带 client / manager 门面」)。
+1. core 的专属禁令(`@shared/ipc`、better-sqlite3、MCP / ACP SDK、zod / diff / uuid,以及只许 `@anthropic-ai/sdk` 的第三方包批准表):
+   检查器 `checkCoreForbiddenImports` 与 `checkCorePackageDependencies` 撤掉。宿主那一半(electron / `@main` / `@preload` /
+   渲染层别名 + cordis)并进 `checkRuntimeHostBoundary`,core 剩下的文件照旧被它管着。
+2. 「core 在最底层」(core 不许 import runtime / gateway):`architecture-boundaries.test.ts` 那一条撤掉。批 2 / 批 3 之前
+   core 剩下的文件 import 已经搬进 runtime 的模块是正常的(包说明符,不许相对路径)。
+3. kernel 的 import 闭包(kernel 只许 import 自己、core、`@shared` 与 node 内建):检查器
+   `checkRuntimeDomainKernelImportClosure` 与架构测试里同名的那一条一起撤掉 —— 它的源头是「kernel 当 core 判」。
+4. 「core 的大桶必须交出 AgentEngine / EventBus / … 这几个名字」(`checkCorePublicExports`):撤掉。core 不再是对外的
+   公共入口;哪只桶交出哪个名字,由用它的人的 import 与类型检查守着。
+5. 只为「不许回到 core」而立的位置断言:`core/tools/` 下 13 只纯模块、core 的 storage 目录下 `app-state.ts` 不许存在 ——
+   那些目录本身并进了 runtime,撤掉。
 
-搬家脚本都在会话 scratchpad 里:`fold-domain.mjs <d> [--kernel[=<dir>]] [--dry]`(把 `core/<dir>` / `backend/wiring/<d>`
-并进领域)与 `flatten.mjs [--dry]`(把 `runtime/<d>/wiring/**` 拍平,同名改名表写在脚本头上)。
+**保留的规则**:
+
+1. client → shared ← server 边界(`checkSharedImportsOnlyShared`、`checkClientImportsOnlySharedAndClient`)。
+2. 后端(core 剩下的部分、runtime、脊柱、gateway)不许 import electron / `@main` / `@preload` / 渲染层别名;cordis 只许脊柱用。
+3. 「三棵子树的非测试相对 import 不出自己的子树」:core 消失前 core 仍是一棵子树。跨子树一律写包说明符(搬家脚本两个方向都改);
+   唯一的口子照旧是 runtime 相对 import 内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`
+   不许有 exports 键)。测试基建(`__tests__/`、`testing/`)不进 exports,跨子树也照旧写相对路径。
+4. I1(包根目录不与 runtime 领域同名)、I2(`core/<d>/x.ts` 与 `runtime/<d>/x.ts` 不同名;白名单只减不增,批 1 以后为空)。
+5. **内容**断言按新路径继续守:「内核不点名具体功能」(`checkCoreKnowsNoConcreteFeatures`,量 core 剩下的部分 + 接收了
+   core 文件的那 14 个 runtime 目录)、「检索内核不点名能力」、「provider-agnostic 层不点名服务商」、各「X 拥有 Y」的
+   位置断言(只改路径,断言名同步改成新址)。
+6. `assembly:gate` 量脊柱 + 整个 `runtime/`(`runtime/<d>/kernel/` 除外;core、gateway 不在尺子上)。从 core 搬进 runtime
+   的文件从此在尺子上,按搬家时的值记入基线,同样只许降。
+
+搬家脚本都在会话 scratchpad 里:`fold-domain.mjs` / `flatten.mjs` / `flatten-wiring-*.mjs`(第③步),`s4-move-core.mjs`
+(去 core 批 1:普通文件改名、import / exports 精确键 / 注释路径改写、过时路径按文件名找现址,带 `--dry`)。
 
 ## 5. 第④步要点
 
@@ -837,3 +855,74 @@ log / session / provider / assembly 门输出前后逐字相同(assembly 仍只�
 `sessions:shadow-battery` 前后各跑一次,遮掉临时路径 / 会话 id / 端口之后 130 行对 130 行,只差进度行的秒数与 `refoldChecks` 215 → 217
 (采样次数,本身就随调度浮动 —— 前几批的两份存档也是 215 与 217);`compact-half-run-log` FAIL 与 `appendFailures 8` 两边一样。
 `git grep` 里 `wiring/(engine|logging|headless|gateway)` 在代码 / 配置 / 脚本(含根 `CLAUDE.md`)中只剩上面那三处 core 注释。
+
+### 去 core 批 1 落地记录(2026-10-03,未提交)
+
+**一句话**:先撤 core 这一层的规则(撤完、一个文件都还没搬时 `boundary:gate` 绿,断言 139 → 135;架构测试 12 → 10 条全绿),
+再把 core 的 14 个小目录并进 `runtime/<d>/`:agent → `runtime/agents`、**events → `runtime/event-bus`**、其余 12 个同名
+(context / http / lifecycle 新建,interaction / logging / memory / permission / providers / resource / storage / toolkit / tools
+并进已有目录)。118 个文件搬家(37 份测试)。一笔做完(scratchpad 的 `s4-move-core.mjs`:普通文件改名、不动主索引;在 HEAD 的临时
+worktree 上用独立 `GIT_INDEX_FILE` 重放,578 个产物路径与主检出逐字相同 —— 先只放脚本时恰好差 7 只手改文件,补上手改之后零差异)。
+`ls packages/backend/core` 剩 `__tests__ agent-loop engine plugins session freeze.ts gateway-runtime.ts index.ts runtime-facade.ts`。
+
+**与本批任务表不同的一处**:core 的 `events/` 没有落到 `runtime/events`,而是 `runtime/event-bus/` —— 包根已经有一个 `events/`
+(脊柱那一半:按会话词汇特化的 EventBus / RingBuffer / StreamChannel),同名会让 I1 红;I1 的豁免表是只减不增的棘轮,所以按内容
+另起目录名。两者是同一件事的两半(通用总线 + 按会话载荷特化),没合。
+
+**撤掉 / 改写的规则**(检查器 139 → 135 条;架构测试 12 → 10 条):
+
+| 规则 | 处理 | 理由 |
+| --- | --- | --- |
+| `checkCoreForbiddenImports`(core + `runtime/*/kernel` 禁 `@shared/ipc` / better-sqlite3 / MCP、ACP SDK / zod / diff / uuid / electron) | 撤;宿主那一半并进 `checkRuntimeHostBoundary`(断言名改成 `packages/backend/core + runtime + packages/backend have no …`) | 零依赖骨架没有对象了;宿主禁令是保留的规则 |
+| `checkRuntimeDomainKernelImportClosure` | 撤 | 源头是「kernel 当 core 判」 |
+| `checkCorePackageDependencies`(core 只许 `@anthropic-ai/sdk`) | 撤 | 同上 |
+| `checkCorePublicExports`(core 大桶必须交出 AgentEngine / EventBus / …) | 撤 | core 不再是对外的公共入口 |
+| `checkRuntimeOwnsConcreteBuiltinTools` 里 13 格「`core/tools/*.ts` 不许存在」 | 撤这 13 格,其余照旧 | core 的 tools 目录整个并进 runtime,那些纯模块本来就住在 `runtime/tools/` |
+| `checkCorePromptContextRegistryOwnedByRuntime` 里「core 的 storage 下 `app-state.ts` 不许存在」 | 撤这一格(断言名去掉 `and app state`) | 同上 |
+| 架构测试「core 在最底层」「`runtime/*/kernel` 在最底层」 | 撤 | 同上两条 |
+| 架构测试「core 无宿主 import」 | 留,不再套 kernel | 宿主禁令;kernel 由 runtime 那条管 |
+| `MAIN_CORE_SYSTEM_DIRS` 的 `runtime/permission` | 从整个目录改成点名原来那四只文件 | core 的 permission 那一半本职要 `node:path`、从没在这把尺子上;尺子量的东西不变 |
+| `checkCoreKnowsNoConcreteFeatures` | 量 core 剩下的部分 + 接收了 core 文件的 14 个 runtime 目录(整目录,今天零命中) | 内容断言跟着文件走;范围比「搬来的那些文件」宽 |
+| 「X 拥有 Y」的位置断言(工具帮手测试、工具 schema 投影、会话命令 IPC 投影、授权文件存储、旧工具注册表不许复活等) | 只改路径,三条断言名改成新址 | — |
+| I2 白名单 `storage/{file-storage,paths}.ts`、`tools/diff-hunks.ts` | 删,表空了 | core 那一半改名后不再同名 |
+
+**冲突改名表**(新名按文件做的事起;领域根的 `index.ts` 保留为对外入口):
+
+| 旧路径(`packages/backend/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `core/agent/index.ts` | `runtime/agents/agent-engine-exports.ts` | `agent-engine.ts` 的出口桶(只有 core 大桶在用) |
+| `core/logging/index.ts` | `runtime/logging/logger-primitives.ts` | 日志内核七只文件的出口桶;`index.ts` 是产品层 `getLogger` 门面 |
+| `core/memory/index.ts` | `runtime/memory/memory-registry.ts` | `MemoryHolder` / `MemoryRegistry` / `MemoryGovernor`;`index.ts` 是内存管理的装配 |
+| `core/permission/index.ts` | `runtime/permission/permission-asks.ts` | `Permission` 命名空间:发问、应答、通道亲和、待答表 |
+| `core/providers/index.ts` | `runtime/providers/stream-provider-contract.ts` | 流式 provider 的类型出口(只有 core 大桶在用) |
+| `core/resource/index.ts` | `runtime/resource/resource-api.ts` | 资源内核的公共出口;`index.ts` 是资源的装配面 |
+| `core/storage/index.ts` | `runtime/storage/storage-primitives.ts` | 文件 IO 原语的出口桶 |
+| `core/storage/file-storage.ts` | `runtime/storage/file-storage-base.ts` | `CoreFileStorageProvider`,`file-storage.ts` 的基类(I2) |
+| `core/storage/paths.ts` | `runtime/storage/store-layout.ts` | 按显式参数算 store 下各路径(I2) |
+| `core/toolkit/index.ts` | `runtime/toolkit/tool-protocol.ts` | 工具内核(ToolSpec / Tool / Intent / Outcome / … / ToolRunner)的出口 |
+| `core/toolkit/__tests__/runner.test.ts` | `runtime/toolkit/__tests__/tool-runner.test.ts` | 考 `ToolRunner`;`runner.test.ts` 是 runtime 那份装配冒烟 |
+| `core/tools/index.ts` | `runtime/tools/tool-helpers.ts` | AgentEngine 那套最小工具系统与 abort / 效果 / 投影帮手的出口 |
+| `core/tools/diff-hunks.ts` | `runtime/tools/diff-hunk-json.ts` | diff hunk 的数据形状与 JSON 编解码(I2) |
+| `core/tools/registry.ts`(及其测试) | `runtime/tools/engine-tool-registry.ts` | AgentEngine 的最小注册表 + JSON Schema 投影;`runtime/tools/registry.ts` 这个名字被「R4b 删掉的旧注册表不许复活」守着 |
+
+**同一件事的两半(没合)**:`events/` 与 `runtime/event-bus/`;`runtime/logging/{index,logger-primitives}`;
+`runtime/memory/{index,memory-registry}`;`runtime/permission/{index,permission-asks}`;`runtime/resource/{index,resource-api}`;
+`runtime/storage/{file-storage,file-storage-base}`、`{paths,store-layout}`、`{index,storage-primitives}`(`index.ts` 再导出一组原语);
+`runtime/tools/{diff-hunks,diff-hunk-json}`;`runtime/toolkit/{index,tool-protocol}`;`runtime/providers/{index,stream-provider-contract}`。
+
+**core 大桶**(`core/index.ts`,本批不删)再导出的 8 组改成从新址再导出;经大桶拿名字的真实使用者:`agent`(`AgentEngine` 与两个
+事件类型:`server/runtime.ts`、`server/live-session-delivery.ts`、`server/__tests__/test-helpers.ts` 等)、`events`(`EventBus` /
+`StreamChannel`:`server/runtime.ts`、`server/live-session-delivery.ts`、三份 server 测试、`session/__tests__/event-broadcast.test.ts`)、
+`permission`(`Permission`:`server/runtime.ts`;`addGrant`:`runtime/music/radio.ts`);`context` / `interaction` / `providers` /
+`storage` / `tools` 五组**没有**使用者(另有三份 radio 测试 `importOriginal` 整只大桶)。
+
+**exports**:改名 12 格、新增 15 格(549 → 564;新增里 4 个是 `./core/engine/*` —— 搬进 runtime 的文件原来相对 import 它们,跨子树
+改写成包说明符)。`./core/…` 键 26 → 18。
+
+**手改的文件**:检查器、架构测试、`assembly` 基线(搬进 runtime 的三只文件按当时的值记入:`runtime/logging/port.ts` 2、
+`runtime/permission/permission-grants.ts` 2、`runtime/storage/json-file.ts` 1,与第③步拍平同一个做法)、
+`runtime/resource/__tests__/stranger.test.ts`(「内核不点名 scheme」那道门从前扫整个目录、并断言目录里正好是那 13 只文件;
+现在目录里还住着资源装配与各家 provider,改成逐只确认名单上的内核文件都在、只扫它们 —— 改前全量里它红,改后单跑 3 绿)、
+`apps/desktop-react/src/workbench/kinds.ts` 一处折行的注释路径、上一批留下的三处 core 注释、根 `CLAUDE.md`、本文。
+脚本把 37 处早已过时的注释路径(`core/toolkit/effects.ts`、`core/resource/ref.ts`、`core/permission/principal.ts`、
+`core/tools/tool-result.ts`、`core/events/session-*-types.ts`、`core/interaction/types.ts`)按文件名改成了 `packages/shared/` 下的现址。

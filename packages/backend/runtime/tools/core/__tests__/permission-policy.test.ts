@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ToolEffect } from '@onething/backend/core/tools'
+import type { ToolEffect } from '@onething/backend/runtime/tools/tool-helpers'
 import { decidePermission } from '../permission-policy'
 
 vi.mock('../../../permission/grant-storage.js', () => ({

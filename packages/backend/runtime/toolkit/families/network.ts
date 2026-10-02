@@ -15,7 +15,7 @@
  *     真会弹卡。合表把那份名单删了,判据从此只有策略表一处。)
  *  2. **超时归子作用域,取消归父作用域**。`ctx.abort.child({ timeoutMs })` 生出
  *     的信号交给 fetch;它到点抛的是 `ToolTimeoutError`,而结局判定看的是父作用域
- *     ——一页超时是工具的失败,不是用户按了停止(见 `core/toolkit/outcome.ts`)。
+ *     ——一页超时是工具的失败,不是用户按了停止(见 `runtime/toolkit/outcome.ts`)。
  *     旧 web_search / web_open 把 `ctx.abortSignal` 直接递给 fetch,超时全靠
  *     `page-fetch.ts` 内部自己那只表,取消与超时在结局上分不开。
  *
@@ -23,9 +23,9 @@
  * `fetchSearchPage(s)` 与 `providers/brave.ts` 是纯逻辑,这里 import 它们。
  */
 
-import { Intent, Tool } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { AbortView, PlanContext, Preview, Result, RunContext } from '@onething/backend/core/toolkit'
+import type { AbortView, PlanContext, Preview, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class NetworkTool<In, Payload = In> extends Tool<In, Payload> {

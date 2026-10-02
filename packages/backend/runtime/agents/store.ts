@@ -7,7 +7,7 @@ import {
   saveCoreCachedJsonFile,
   withFileLockSync,
   type CoreCachedJsonFileOptions,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'
 import { agentIdentity, agentTombstoneLabel, type OnethingAgentIdentity } from './model.js'
 
 import { getLogger } from '../logging/index.js'

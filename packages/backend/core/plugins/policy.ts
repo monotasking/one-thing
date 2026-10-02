@@ -699,7 +699,7 @@ export const PLUGIN_DEFERRED_REGISTRIES: Record<PluginDeferredRegistryId, Plugin
       + '开放它,等于让插件自己定义自己的权限边界。',
     blockedBy: 'H 线硬隔离(子进程 ext host)',
     revisitWhen: '与 H 线一起设计。',
-    ref: 'core/permission/capability-registry.ts',
+    ref: 'runtime/permission/capability-registry.ts',
   },
   'post-trigger': {
     reason: '触发器每轮都跑,属 disable-plugin 那一族;一个坏触发器会拖垮整条回合。',

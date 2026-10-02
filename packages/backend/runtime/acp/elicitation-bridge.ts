@@ -28,7 +28,7 @@
  * 答 `accept`。
  */
 import { randomUUID } from 'node:crypto'
-import { Interaction } from '@onething/backend/core/interaction'
+import { Interaction } from '@onething/backend/runtime/interaction'
 import type {
   InteractionAnswer,
   InteractionAskInput,

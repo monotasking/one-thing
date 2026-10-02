@@ -1,5 +1,5 @@
 import { structuredPatch } from 'diff'
-import type { CoreDiffHunk, CoreDiffHunkLine } from '@onething/backend/core/tools'
+import type { CoreDiffHunk, CoreDiffHunkLine } from '@onething/backend/runtime/tools/tool-helpers'
 import { DIFF_DISPLAY_MAX_BYTES, DIFF_DISPLAY_MAX_LINES } from './replacers.js'
 
 /**

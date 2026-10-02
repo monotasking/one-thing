@@ -24,7 +24,7 @@ import type { Principal } from '@shared/permission/principal.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import type { AgentTool } from '../agent-loop/types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '@shared/json.js'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 export interface CoreAgentLoopContextBudget {
   modelContextLength: number

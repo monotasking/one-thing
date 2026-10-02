@@ -54,7 +54,7 @@
  * 发明一个 —— 同一件东西在两处两个名字,是文档写得再清楚也拦不住的误读。
  */
 
-import type { ResourceSpec } from '@onething/backend/core/resource'
+import type { ResourceSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const MUSIC_RESOURCE_SCHEME = 'music'
@@ -383,7 +383,7 @@ const PROGRAMME_ACTION_PARAMS: JsonSchema = {
  *
  * **不写 `required`**,这一格是刻意的:缺一个数值与给错一个数值(NaN / Infinity)
  * 在旧路上是**同一句话**(`「seek 需要一个数值参数」`),而契约校验者只看判别键、
- * 不解释 params(`core/resource/validator.ts` 的文件头)。所以两种都由 `plan` 判、
+ * 不解释 params(`runtime/resource/validator.ts` 的文件头)。所以两种都由 `plan` 判、
  * 由 `plan` 说那一句 —— 写成 `required` 只会让「缺」与「错」分头走两条路、说两句话。
  */
 const SEEK_PARAMS: JsonSchema = {

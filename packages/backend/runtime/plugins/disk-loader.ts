@@ -16,7 +16,7 @@ import {
   type PluginContributionUiSlot, type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters,
 } from '@onething/backend/core/plugins'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/backend/runtime/storage'
-import { writeJsonFile } from '@onething/backend/core/storage'
+import { writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
 import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
@@ -47,7 +47,7 @@ import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { LegacyDuckLogger } from '@onething/backend/core/logging'
+import type { LegacyDuckLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getLogger('plugins.loader')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

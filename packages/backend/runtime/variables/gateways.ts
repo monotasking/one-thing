@@ -12,7 +12,7 @@
  */
 
 import type { ContextVariable } from '@shared/ipc.js'
-import type { ResourceKernel, StateScope } from '@onething/backend/core/resource'
+import type { ResourceKernel, StateScope } from '@onething/backend/runtime/resource/resource-api'
 import { systemPrincipal } from '@shared/permission/principal'
 import * as store from '@onething/backend/store.js'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
@@ -330,7 +330,7 @@ export const agentSelfGateway: AgentSelfStateGateway = {
 // 读法名、取址规则三样全从注册表上的自述现读。
 
 /**
- * 这一格状态该读哪个地址。规则由自述的 `scope` 说(`core/resource/spec.ts` 的
+ * 这一格状态该读哪个地址。规则由自述的 `scope` 说(`runtime/resource/spec.ts` 的
  * `StateScope`),这里只是把那句话拼成地址:
  *
  *   · `turn-origin` → `<scheme>:<这一回合的 sessionId>`;

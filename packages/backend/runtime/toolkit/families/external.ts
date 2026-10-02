@@ -16,7 +16,7 @@
  * 会让一批本来跑得完的调用开始失败;端口留着,由装配层按 R2b 的判据决定。
  */
 
-import { Intent, Tool } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
 import type {
   PlanContext,
@@ -25,7 +25,7 @@ import type {
   Result,
   RunContext,
   ToolSpec,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 import { toJsonObject, type JsonObject } from '@shared/json'
@@ -57,7 +57,7 @@ export abstract class ExternalTool<In, Payload = In> extends Tool<In, Payload> {
    * 跑一段外部代码:可选的超时子作用域 + 成败上报。
    *
    * 超时用 `ctx.abort.child({ timeoutMs })` 而不是自己 `setTimeout`:它到点抛的是
-   * `ToolTimeoutError`,归因与"用户按了停止"分得开(见 `core/toolkit/outcome.ts`)。
+   * `ToolTimeoutError`,归因与"用户按了停止"分得开(见 `runtime/toolkit/outcome.ts`)。
    */
   protected async isolate<T>(
     ctx: RunContext,

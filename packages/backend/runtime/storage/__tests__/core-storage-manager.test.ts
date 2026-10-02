@@ -37,7 +37,7 @@ import {
   writeTextFileIfMissing,
   type CoreStorageConfig,
   type CoreStorageProvider,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'
 
 class MockStorageProvider implements CoreStorageProvider {
   initialize = vi.fn(async () => {})

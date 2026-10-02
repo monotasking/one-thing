@@ -9,7 +9,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { JobEvent } from '@onething/backend/core/toolkit'
+import type { JobEvent } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   clearBackgroundJobsForTests,
   configureCoreBackgroundJobs,

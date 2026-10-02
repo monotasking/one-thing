@@ -53,7 +53,7 @@ import {
 // §17.8 U1-a:走**叶子路径** —— 按路径读盘的那一口带 `node:fs`,把它留在
 // `@onething/backend/core/session` 那个桶上,整条桶就在浏览器里 import 不动。
 import { getMessagesPageFromJsonFilePath } from '@onething/backend/core/session/storage/json-message-page-file'
-import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/core/storage'
+import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/runtime/storage/storage-primitives'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './retired-providers.js'
 import { getLogger } from '../logging/index.js'

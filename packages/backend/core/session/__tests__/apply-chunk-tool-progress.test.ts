@@ -8,7 +8,7 @@
  * 拆掉那条 `case`(让它落进 switch 外面)不会让这条测试红 —— 落进外面的行为
  * 与空 `case` 一样什么都不做。红的是**换成累加**那一形,而那正是要防的。
  * 另一半守卫(不进 events.jsonl)在
- * `packages/backend/wiring/engine/stream/__tests__/tool-progress-not-in-ledger.test.ts`。
+ * `packages/backend/runtime/engine/stream/__tests__/tool-progress-not-in-ledger.test.ts`。
  */
 import { describe, expect, it } from 'vitest'
 import { Session } from '../session.js'

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AsyncSaveQueue } from '@onething/backend/core/storage'
+import { AsyncSaveQueue } from '@onething/backend/runtime/storage/storage-primitives'
 
 describe('AsyncSaveQueue', () => {
   it('coalesces scheduled writes and flushes the latest value', async () => {

@@ -15,7 +15,7 @@ import type {
   StreamChunkHandler as CoreStreamChunkHandler,
   TypedObserveHandler as CoreTypedObserveHandler,
   Unsubscribe,
-} from '@onething/backend/core/events'
+} from '@onething/backend/runtime/event-bus'
 
 export type { Unsubscribe, InterceptResult }
 

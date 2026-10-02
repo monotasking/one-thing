@@ -21,7 +21,7 @@ import {
   type CoreMCPJsonSchemaValidationPlan,
   type MCPModelFacingToolDefinition as ModelFacingToolDefinition, type CoreMCPBridgeRuntimeHost, type WriteMCPToolsCatalogWithAdaptersOptions,
 } from '@onething/backend/runtime/mcp/kernel'
-import { pathExists, writeTextFile } from '@onething/backend/core/storage'
+import { pathExists, writeTextFile } from '@onething/backend/runtime/storage/storage-primitives'
 import { consolePort, getLogger } from '../logging/index.js'
 
 const log = getLogger('mcp')

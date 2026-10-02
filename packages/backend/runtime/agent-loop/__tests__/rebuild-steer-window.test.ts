@@ -18,8 +18,8 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentProvider } from '@onething/backend/core/agent-loop'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/core/toolkit'
-import type { Result, ToolSpec } from '@onething/backend/core/toolkit'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog } from '../../toolkit/host.js'
 import { buildOnethingHistoryMessages } from '../../sessions/history-messages.js'
 import { buildOnethingAgentLoopStreamRuntime } from '../stream-runtime.js'

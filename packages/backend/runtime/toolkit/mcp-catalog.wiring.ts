@@ -17,7 +17,7 @@
  * 跑它"。这样开关翻开时模型看到的 MCP 工具面逐字不变。
  */
 
-import type { Catalog } from '@onething/backend/core/toolkit'
+import type { Catalog } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { JsonObject } from '@shared/json'
 import { McpTool, type McpToolBridge, type McpToolDescription } from './index.js'
 import {

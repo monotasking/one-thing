@@ -157,7 +157,7 @@ export const IPC_CHANNELS = {
 	//
 	// main → renderer 推送:api.ui.notify 与熔断自动禁用都走它。
 	// 在此之前 'plugin:notification' 只被 emitGlobal 到全局总线上,而全局总线
-	// 在 core/events 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。
+	// 在 runtime/event-bus 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。
 	// 它由 IPCBridge 扇给所有窗,从头到尾不经过请求面(所以连注入端口都不用)。
 	PLUGINS_NOTIFICATION: "plugins:notification",
 	// 统一请求通道(R2)的**中间态**。请求与取消本身已经是

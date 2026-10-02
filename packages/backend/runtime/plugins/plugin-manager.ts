@@ -68,7 +68,7 @@ import {
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { LegacyDuckLogger } from '@onething/backend/core/logging'
+import type { LegacyDuckLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getLogger('plugins.manager')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

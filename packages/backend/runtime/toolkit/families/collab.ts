@@ -28,8 +28,8 @@
  * 知道下一步能做什么。基类只提供 `allowed` 这一位。
  */
 
-import { Intent, Tool } from '@onething/backend/core/toolkit'
-import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import type { Principal } from '@shared/permission/principal'
 import {

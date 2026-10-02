@@ -1,4 +1,4 @@
-import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
+import { toLogger, type CompatLogger, type Logger } from '@onething/backend/runtime/logging/logger-primitives'
 
 /** A named prompt section with its content (for hash-based versioning and snapshots). */
 export interface CorePromptSection {

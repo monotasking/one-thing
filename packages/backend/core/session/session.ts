@@ -13,9 +13,9 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { EventBus } from '../events/event-bus.js'
-import type { StreamChannel } from '../events/stream-channel.js'
-import type { SessionEventEnvelope, Unsubscribe } from '../events/types.js'
+import type { EventBus } from '@onething/backend/runtime/event-bus/event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/event-bus/stream-channel'
+import type { SessionEventEnvelope, Unsubscribe } from '@onething/backend/runtime/event-bus/types'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 import { type SessionState, createEmptySessionState } from './session-state.js'
 

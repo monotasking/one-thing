@@ -10,7 +10,7 @@ import {
 	type OnethingProductStreamRuntime,
 } from "@onething/backend/runtime/product-stream-runtime";
 import { Permission } from "@onething/backend/runtime/permission";
-import { Interaction } from '@onething/backend/core/interaction';
+import { Interaction } from '@onething/backend/runtime/interaction';
 import * as store from "@onething/backend/store.js";
 import { sessionReads } from "../../session/reads.js";
 import { sessionCommands } from "../../session/commands.js";

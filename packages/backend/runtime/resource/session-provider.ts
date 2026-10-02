@@ -35,7 +35,7 @@
  * 域那一侧再折回同一个信封(`rpc/resource-envelope.ts`)。
  *
  * ── K2c-2:读面也退了,而且读走的是**读自己那条路** ─────────────────────────
- * `ResourceKernel.read` 不再经 `ToolRunner`(理由在 `core/resource/read-outcome.ts`
+ * `ResourceKernel.read` 不再经 `ToolRunner`(理由在 `runtime/resource/read-outcome.ts`
  * 的文件头),于是域那六条读面(`get` / `getMessages` / `getMessagesPage` /
  * `getUserMarkers` / `getSegments` / `getTokenUsage`)也能退成这只 provider 的投影。
  *
@@ -62,7 +62,7 @@
  *     条一格不动。
  *
  * 这两处是这只文件里**仅有**的两句「如果是谁调的就……」。内核里一句都不许有
- * (`core/resource/kernel.ts` 的文件头写着那条),而在这里它们不是绕过管线的暗门:
+ * (`runtime/resource/kernel.ts` 的文件头写着那条),而在这里它们不是绕过管线的暗门:
  * 分出来的档是一份**更诚实的 `Intent`**,照样交给同一位授权者去判。
  *
  * ── K2c-3:域剩下的那批也退了,于是「按主体分档」从一条长到四条 ─────────────────
@@ -93,13 +93,13 @@ import type {
   ResourceProvider,
   ResourceReadContext,
   ResourceEventHub,
-} from '@onething/backend/core/resource'
-import { planFromSpec } from '@onething/backend/core/resource'
+} from '@onething/backend/runtime/resource/resource-api'
+import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
-import { Intent, textResult } from '@onething/backend/core/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { Intent, textResult } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Principal } from '@shared/permission/principal'
-import { emitCoreSessionEventSafely } from '@onething/backend/core/events'
+import { emitCoreSessionEventSafely } from '@onething/backend/runtime/event-bus'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
 import {
@@ -161,7 +161,7 @@ export class SessionNotFoundError extends Error {
 /**
  * 规则书说不。
  *
- * 具名而不是一句裸 `Error`:判定读类名(`core/tools/abort.ts` 那条判例)。它带的
+ * 具名而不是一句裸 `Error`:判定读类名(`runtime/tools/abort.ts` 那条判例)。它带的
  * `reason` 是**投影函数原样交出来的那句话**,不是这里发明的文案 —— 域折回信封时
  * 用的就是它,所以「退成投影」不改一个字。
  */

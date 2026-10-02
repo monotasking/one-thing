@@ -152,7 +152,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     })
 
     expect(outcome.kind).toBe('ok')
-    const { resultToText } = await import('@onething/backend/core/toolkit')
+    const { resultToText } = await import('@onething/backend/runtime/toolkit/tool-protocol')
     const text = outcome.kind === 'ok' ? resultToText(outcome.result) : ''
     expect(text).toContain('dir-provider.ts')
   })

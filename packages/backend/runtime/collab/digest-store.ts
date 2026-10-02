@@ -8,7 +8,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { readJsonFile, writeJsonFile } from '@onething/backend/core/storage'
+import { readJsonFile, writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
 import type { CollabDayDigest } from './index.js'
 import { getLogger } from '../logging/index.js'
 

@@ -2,9 +2,9 @@ import {
   ensureDir,
   readJsonFile,
   writeJsonFile,
-} from '../storage/index.js'
+} from '@onething/backend/runtime/storage/storage-primitives'
 import path from 'path'
-import { getCoreLogger } from '../logging/index.js'
+import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

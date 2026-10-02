@@ -34,10 +34,10 @@
  * 地址系统自己给出,不必再拼一遍字符串。
  */
 
-import type { ResourceProvider, ResourceReadContext, ResourceSpec } from '@onething/backend/core/resource'
+import type { ResourceProvider, ResourceReadContext, ResourceSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import { planFromSpec } from '@onething/backend/core/resource'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
+import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { JsonObject } from '@shared/json'
 import type { MCPToolCallResult } from '@shared/mcp/types'
 import { withMCPResultOutputText } from '@onething/backend/runtime/mcp/kernel'

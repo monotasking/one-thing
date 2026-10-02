@@ -44,7 +44,7 @@
  * 抛 `ResourceSchemeTakenError`)。一条 promise 链把这件事在结构上关掉。
  */
 
-import type { ResourceKernel } from '@onething/backend/core/resource'
+import type { ResourceKernel } from '@onething/backend/runtime/resource/resource-api'
 import type { MCPServerState } from '@shared/mcp/types'
 import { onMCPToolTableChanged } from '@onething/backend/runtime/mcp/capabilities-changed'
 import { mcpResourceScheme, projectMcpResource } from '@onething/backend/runtime/mcp/resource-spec'

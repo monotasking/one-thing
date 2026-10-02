@@ -1,5 +1,5 @@
 import type { CorePluginAPIState } from './api-state.js'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import { describeToolPromptContributionProblem } from '../engine/prompt-fragments.js'
 import {
   clampPluginBackgroundParamsPatch,
@@ -112,11 +112,11 @@ import {
   PLUGIN_PERMISSION_RESOURCES_WATCH,
   type PluginResourcesApi,
 } from './resources.js'
-import type { ResourceEvent } from '../resource/events.js'
-import { ReadOutcome } from '../resource/read-outcome.js'
-import type { ReadOutcome as ReadOutcomeValue } from '../resource/read-outcome.js'
-import { Outcome } from '../toolkit/outcome.js'
-import type { Outcome as OutcomeValue } from '../toolkit/outcome.js'
+import type { ResourceEvent } from '@onething/backend/runtime/resource/events'
+import { ReadOutcome } from '@onething/backend/runtime/resource/read-outcome'
+import type { ReadOutcome as ReadOutcomeValue } from '@onething/backend/runtime/resource/read-outcome'
+import { Outcome } from '@onething/backend/runtime/toolkit/outcome'
+import type { Outcome as OutcomeValue } from '@onething/backend/runtime/toolkit/outcome'
 
 /** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
 export type CorePluginAPILogger = CompatLogger
@@ -286,7 +286,7 @@ export interface CorePluginAPIHost<
    * 铸法、内核的 `ResourceCallOptions`、健康账本)全住在装配层,与
    * `registerDeepLinkAction` / `llmComplete` 逐字同一条分工。
    *
-   * 特别地:core **不解析 `ref`**。地址语法归 `core/resource/ref.ts`,而这只
+   * 特别地:core **不解析 `ref`**。地址语法归 `packages/shared/resource/ref.ts`,而这只
    * 插件面连一个 scheme 名都不该认识(§2 不变量 3 在插件出口上的同一句话)。
    */
   readResource?(

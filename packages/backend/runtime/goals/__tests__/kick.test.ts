@@ -1,7 +1,7 @@
 /**
  * Regression: goal-driven re-drives must carry the session's real transport
  * channel. Permission requests remember the channel active when asked
- * (packages/backend/core/permission/index.ts) and reject responses from any other
+ * (packages/backend/runtime/permission/permission-asks.ts) and reject responses from any other
  * channel. Two traps guarded here:
  * - stamping a synthetic 'goal' channel broke desktop approvals outright;
  * - the engine's in-memory channel entry is deleted whenever a run ends and

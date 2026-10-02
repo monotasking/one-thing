@@ -54,7 +54,7 @@ import {
   ResourceRegistry,
   toolDescriptionOf,
   toolInputSchemaOf,
-} from '@onething/backend/core/resource'
+} from '@onething/backend/runtime/resource/resource-api'
 import { resourceSpecFromShell } from '@onething/backend/runtime/resource'
 import { getLogger, getRootLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type {
@@ -223,7 +223,7 @@ function stringField(input: Record<string, unknown>, key: string): string | unde
 /**
  * 判别键与 `ref` 之外的一切 = 这次调用的参数。
  *
- * 与 `core/resource/tool.ts` 的 `restParams` 同一条规则(那一份是本机 AI 走的那条
+ * 与 `runtime/resource/tool.ts` 的 `restParams` 同一条规则(那一份是本机 AI 走的那条
  * 路)。两处同规不是巧合:模型看到的是**同一份 schema**,一份 schema 只能有一种读法。
  */
 function restParams(input: Record<string, unknown>, discriminator: string): Record<string, unknown> {

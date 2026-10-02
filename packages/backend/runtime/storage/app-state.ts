@@ -1,7 +1,7 @@
 import {
   readJsonFile,
   writeJsonFile,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'
 
 export interface OnethingSerializedTab {
   type: 'chat' | 'file' | 'workbench'

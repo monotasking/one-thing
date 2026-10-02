@@ -4,7 +4,7 @@
  * 两者需要一起释放:LRU 中的会话对象持有从投影生成的消息数组,只释放投影不会减少内存。
  * 是否可以释放统一由投影缓存的 `protectionOf` 判断(有正在运行的任务或未落盘的增量时不释放)。
  */
-import type { MemoryHolder } from '@onething/backend/core/memory'
+import type { MemoryHolder } from '@onething/backend/runtime/memory/memory-registry'
 import { getSessionCacheStats, releaseIdleCachedSessions } from '../stores/sessions.js'
 import type { SessionProjectionCache } from './projection-cache.js'
 

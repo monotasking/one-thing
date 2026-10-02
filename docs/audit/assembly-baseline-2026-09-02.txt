@@ -4,6 +4,7 @@
 # `packages/backend/current.ts` 豁免(方案 §5 风险 3:有意保留的唯一一个全局)。
 # 降了之后跑 `node scripts/assembly-gate.mjs --write-baseline` 收紧。
 # 2026-10-02 第③步拍平:尺子从「runtime/<d>/wiring」扩到整个 runtime/(kernel 除外),新进尺子的 49 个文件按当时的值记入(合计 69 个模块级 let)。
+# 2026-10-03 去 core 批 1:core 的 14 个小目录并进 runtime/<d>/,从此在尺子上;新进尺子的 3 个文件按当时的值记入(合计 5 个模块级 let,文件末尾)。
 packages/backend/channel/connector-registry.ts 1
 packages/backend/channel/identity-service.ts 1
 packages/backend/channel/identity-store.ts 1
@@ -110,3 +111,6 @@ packages/backend/runtime/tools/core/sandbox.ts 2
 packages/backend/runtime/usage/usage-recorder.ts 1
 packages/backend/runtime/variables/variable-system.ts 2
 packages/backend/runtime/voice/service.ts 1
+packages/backend/runtime/logging/port.ts 2
+packages/backend/runtime/permission/permission-grants.ts 2
+packages/backend/runtime/storage/json-file.ts 1

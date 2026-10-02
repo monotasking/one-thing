@@ -25,7 +25,7 @@
  *
  * 端口没装 = 这台宿主答不出「谁是成员」。那时 agent / plugin 得到的是**空清单**
  * (一条都看不见),不是「不限」—— 一个答不出授权的宿主放行,那不是降级,是绕过
- * (与 `core/permission/principal.ts` 的 `systemPrincipal` 同一条纪律)。
+ * (与 `packages/shared/permission/principal.ts` 的 `systemPrincipal` 同一条纪律)。
  * 用户主体不经这条路:它恒为全可见(§6.4b 的缺省规则)。
  *
  * ## 空清单在底下是「恒不命中」,不是语法错

@@ -66,7 +66,7 @@ export {
   matchGrant,
   resetPermissionGrantsForTests,
   revokeGrant,
-} from '@onething/backend/core/permission'
+} from '@onething/backend/runtime/permission/permission-asks'
 export type {
   Capability,
   CapabilityAction,
@@ -87,4 +87,4 @@ export type {
   PermissionPolicyMode,
   PermissionPolicyResult,
   PermissionPreview,
-} from '@onething/backend/core/permission'
+} from '@onething/backend/runtime/permission/permission-asks'

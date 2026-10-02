@@ -1,4 +1,4 @@
-import { RingBuffer as CoreRingBuffer } from '@onething/backend/core/events'
+import { RingBuffer as CoreRingBuffer } from '@onething/backend/runtime/event-bus'
 import type { SessionBusMessage } from '@shared/events/index.js'
 
 /**

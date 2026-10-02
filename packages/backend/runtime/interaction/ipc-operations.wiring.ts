@@ -1,7 +1,7 @@
 /**
  * 交互协议的 IPC / HTTP 操作面(claude-code-integration-v2 §4,E1)。
  *
- * 内核在 `@onething/backend/core/interaction`,调用点直接引 core —— P3'a-2 之前这里
+ * 内核在 `@onething/backend/runtime/interaction`,调用点直接引 core —— P3'a-2 之前这里
  * 还挂着一层「把 core 原样再导出一遍」的门面,那层门面除了让 `Interaction`
  * 在仓库里有两个来路之外什么都没做,已随本拨删除。
  *
@@ -13,7 +13,7 @@
  * `Interaction.initialize` 那一刻(`import-side-effect-free.test.ts` 守着这条)。
  */
 
-import { Interaction } from '@onething/backend/core/interaction'
+import { Interaction } from '@onething/backend/runtime/interaction'
 
 import type {
   InteractionGetPendingResponse,

@@ -155,7 +155,7 @@ async function bindHostSurface(request: {
 }
 const { clearCollabSayIdempotence, speakIntoCollabRoom }
   = await import('@onething/backend/runtime/collab/say-tool')
-const { Catalog, Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
+const { Catalog, Decision, ToolRunner } = await import('@onething/backend/runtime/toolkit/tool-protocol')
 const {
   configureToolkitCatalog,
   contractForSchema,

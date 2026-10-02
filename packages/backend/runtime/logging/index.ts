@@ -23,7 +23,7 @@ import {
   type LogRecord,
   type Logger,
   type LoggerRootOptions,
-} from '@onething/backend/core/logging'
+} from '@onething/backend/runtime/logging/logger-primitives'
 import { type LogLevel } from '@shared/logging/types'
 
 const FALLBACK_RING_SIZE = 200
@@ -52,7 +52,7 @@ export function setRuntimeLoggerRoot(root: LoggerRoot | null | undefined): void 
   currentRoot = root ?? fallbackRoot
   generation += 1
   // core 的注入端口顺带填上 —— 它同样是「装配层给的那一套 sink」,不该让宿主
-  // 记着调第二句(`@onething/backend/core/logging` 零依赖,这条 import 不带进任何东西)。
+  // 记着调第二句(`@onething/backend/runtime/logging/logger-primitives` 零依赖,这条 import 不带进任何东西)。
   configureCoreLogging({ getLogger })
 }
 
@@ -149,13 +149,13 @@ export function captureRuntimeLogs(level = 'trace'): {
   }
 }
 
-export type { Logger, LogRecord } from '@onething/backend/core/logging'
+export type { Logger, LogRecord } from '@onething/backend/runtime/logging/logger-primitives'
 
 /**
  * `console` 形状的注入端口适配器(L4 迁移期的过渡件)。
  *
  * P3'a-3 从 `src/app/logging/` 搬到这里:它是 `Logger → console` 的**纯适配器**,
- * 只认识 `@onething/backend/core/logging` 的类型,一条装配层的边都没有。留在 app 里就成了
+ * 只认识 `@onething/backend/runtime/logging/logger-primitives` 的类型,一条装配层的边都没有。留在 app 里就成了
  * 一根假脊柱 —— 任何用得上它的产品层模块都会因为这一条 import 被钉死在 `src/app`。
  * 装配层的 `@onething/backend/runtime/logging/configure-logging` 原样再导出,老调用点一行不改。
  */

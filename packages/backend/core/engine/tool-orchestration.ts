@@ -1,14 +1,14 @@
 import { coreToolCallSnapshot, findCoreToolCall, patchCoreToolCall, replaceCoreToolCall } from './tool-call-cow.js'
 import type { JsonObject, JsonValue } from '@shared/json.js'
 import { ToolExecutionScheduler } from '../agent-loop/tool-execution-scheduler.js'
-import { coreDiffHunksFromJson, type CoreDiffHunk } from '../tools/diff-hunks.js'
+import { coreDiffHunksFromJson, type CoreDiffHunk } from '@onething/backend/runtime/tools/diff-hunk-json'
 import {
   detectSkillUsage,
   generateStepTitle,
   getStepType,
   type CoreStepType,
 } from '@shared/engine/tool-step.js'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 export interface CoreToolCallLike {
   id: string

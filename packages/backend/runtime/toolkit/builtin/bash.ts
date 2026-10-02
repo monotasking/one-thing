@@ -9,8 +9,8 @@
 
 import { z } from 'zod'
 import { toJsonObject } from '@shared/json'
-import { Intent, jobSnapshot } from '@onething/backend/core/toolkit'
-import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
+import { Intent, jobSnapshot } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   DEFAULT_OUTPUT_MAX_BYTES,
   DEFAULT_OUTPUT_MAX_LINES,

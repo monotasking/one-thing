@@ -7,7 +7,7 @@
  * `SystemPromptPanel.vue`),而 R2 的验收之一是「渲染器与 IPC 契约一行不改」。
  *
  * 于是它降级成一个**派生值**:由 `spec.effects` 这组静态上界推出五个字符串之一,
- * 规则**只在这一处**。工具作者仍然一个字都不写;`core/tools/permission-guards.ts`
+ * 规则**只在这一处**。工具作者仍然一个字都不写;`runtime/tools/permission-guards.ts`
  * 里读它的那两个判据(能不能注入给 provider、能不能 autoExecute)照旧成立。
  *
  * ## 为什么是 kind 而不是资源
@@ -17,9 +17,9 @@
  * 恰好是同一个口径(旧值也是一个静态字符串,与具体路径无关),不是新引入的失真。
  */
 
-import { type ToolSpec } from '@onething/backend/core/toolkit'
+import { type ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { isKnownEffectClass, type EffectClass } from '@shared/toolkit/effects'
-import type { CoreToolPermissionGuard } from '@onething/backend/core/tools'
+import type { CoreToolPermissionGuard } from '@onething/backend/runtime/tools/tool-helpers'
 
 /** 写文件的三个 kind。任意一个出现 = 旧的 `permission-gated`。 */
 const FILE_MUTATION: ReadonlySet<EffectClass> = new Set<EffectClass>([
@@ -85,7 +85,7 @@ export function deriveLegacyPermissionGuard(
   /**
    * **重指助手够得着的东西 = permission-gated。**(R3a 复盘裁定)
    *
-   * `capability_change` 是 策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable`:每次都问,
+   * `capability_change` 是 策略表(`packages/shared/toolkit/effects.ts`)里唯一一行 `never-grantable`:每次都问,
    * 答案永不可记住。一个 never-grantable 的效果**不可能**派生出 `safe` —— 那两句话
    * 直接互斥。
    *

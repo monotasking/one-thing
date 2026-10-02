@@ -31,8 +31,8 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/backend/core/toolkit'
-import type { Authorizer, Invocation, Outcome, Tool } from '@onething/backend/core/toolkit'
+import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Authorizer, Invocation, Outcome, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Principal } from '@shared/permission/principal'
 import { encodeSessionLogEventLine } from '@onething/backend/core/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'

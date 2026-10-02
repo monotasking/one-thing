@@ -1,10 +1,10 @@
 import fs from 'fs'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import os from 'os'
 import path from 'path'
 import { pathToFileURL } from 'url'
-import { writeJsonFile } from '../storage/json-file.js'
-import { getCoreLogger } from '../logging/index.js'
+import { writeJsonFile } from '@onething/backend/runtime/storage/json-file'
+import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

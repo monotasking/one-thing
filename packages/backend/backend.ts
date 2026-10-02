@@ -89,7 +89,7 @@ import { registerBuiltinTriggers } from '@onething/backend/runtime/engine/trigge
 import { createSessionTocTrigger } from '@onething/backend/runtime/engine/triggers/session-toc'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from '@onething/backend/runtime/collab/rooms'
 import { Permission } from '@onething/backend/runtime/permission'
-import { Interaction } from '@onething/backend/core/interaction'
+import { Interaction } from '@onething/backend/runtime/interaction'
 import { bootstrapVariableSystem } from '@onething/backend/runtime/variables/variable-system'
 import { bootstrapGoalStreamBreakers } from '@onething/backend/runtime/goals/runtime-hooks'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from '@onething/backend/runtime/goals/goal-manager'
@@ -115,7 +115,7 @@ import {
   ShellCommandDispatch,
   ShellMountRegistry,
 } from '@onething/backend/runtime/resource'
-import type { ResourceKernel } from '@onething/backend/core/resource'
+import type { ResourceKernel } from '@onething/backend/runtime/resource/resource-api'
 import { ToolExecutionRegistry } from '@onething/backend/runtime/toolkit/executions'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 import { registerAppRpcDomains } from './rpc/index.js'

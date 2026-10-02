@@ -49,7 +49,7 @@ export interface ToolDefinition {
   autoExecute: boolean       // Whether to auto-execute when called
   /**
    * @deprecated R4b —— 概念已退役。权限只认 `Intent.effects`(见
-   * `packages/backend/core/toolkit/effects.ts` 的策略表);这个字段活着只是因为契约与
+   * `packages/shared/toolkit/effects.ts` 的策略表);这个字段活着只是因为契约与
    * 渲染层还在读它,它的值由 `app/toolkit/guard-projection.ts` 从 `spec.effects`
    * **派生**。没有任何工具作者再写它,也没有任何判定读它做决定。
    */
@@ -203,7 +203,7 @@ export interface ToolSettings {
    *
    * 第三条是权限面语义,不是便利开关:这些目录进入**可写沙箱根**
    * (`getCoreSandboxRoots`),于是 write/edit 的 effect 不再标 `external`,
-   * `auto-accept-edits` 模式下就不弹卡(`core/permission/permission-policy.ts:146`)。
+   * `auto-accept-edits` 模式下就不弹卡(`runtime/permission/permission-policy.ts:146`)。
    * 所以只有用户显式添加的目录能进来 —— 默认空列表,行为与没有这个功能时逐字节一致。
    */
   connectedDirectories?: string[]

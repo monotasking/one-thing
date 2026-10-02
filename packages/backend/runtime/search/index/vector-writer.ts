@@ -21,7 +21,7 @@
  */
 
 import type { Embedder, IndexedDoc, VectorIndex } from '@onething/backend/runtime/search/kernel'
-import { normalizeError, type NormalizedLogError } from '@onething/backend/core/logging'
+import { normalizeError, type NormalizedLogError } from '@onething/backend/runtime/logging/logger-primitives'
 
 import { getLogger } from '../../logging/index.js'
 import { chunkForEmbedding } from '../embedding/embedder.js'

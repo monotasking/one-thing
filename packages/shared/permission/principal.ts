@@ -3,7 +3,7 @@
  *
  * Before this existed the permission system's subject was the SESSION: every
  * judgment input was keyed on `sessionId`, and `grep agentId` over
- * core/permission, core/tools and app/tools returned nothing. That is fine
+ * runtime/permission, runtime/tools and app/tools returned nothing. That is fine
  * while one session means one actor. It stops being fine the moment several
  * agents share a process: a grant one of them was given is honoured for the
  * next, and a permission card cannot say whose request it is showing.

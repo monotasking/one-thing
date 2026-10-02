@@ -43,11 +43,11 @@ import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/backend/core/resource'
+} from '@onething/backend/runtime/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import { planFromSpec } from '@onething/backend/core/resource'
-import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
-import { Intent } from '@onething/backend/core/toolkit'
+import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
+import type { PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { wrapUntrustedText } from '@onething/backend/runtime/toolkit/untrusted-text'
 import type { BrowserTabState, BrowserZoomDirection } from './tab-state.js'
 import { BROWSER_RESOURCE_SCHEME, browserResourceSpec } from './resource-spec.js'

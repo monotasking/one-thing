@@ -10,7 +10,7 @@ import {
 	buildContextCompactMergePrompt,
 	buildContextCompactPrompt,
 } from "./compact-prompt.js";
-import { getCoreLogger } from "../logging/index.js";
+import { getCoreLogger } from "@onething/backend/runtime/logging/logger-primitives";
 
 const log = getCoreLogger("core.engine");
 

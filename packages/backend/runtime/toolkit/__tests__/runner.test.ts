@@ -12,8 +12,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installStoreSessionLayerForTest } from '../../../session/testing/store-layer.js'
-import { Decision } from '@onething/backend/core/toolkit'
-import type { Authorizer, Invocation } from '@onething/backend/core/toolkit'
+import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Authorizer, Invocation } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { BashOperations } from '@onething/backend/runtime/tools/bash-executor'
 import {
   bashAdapters,

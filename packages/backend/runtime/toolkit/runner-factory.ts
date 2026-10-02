@@ -9,7 +9,7 @@
  * 把这个 runner 接到那三处缝上是 R2b。
  */
 
-import { ToolRunner } from '@onething/backend/core/toolkit'
+import { ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type {
   Authorizer,
   Interceptor,
@@ -20,7 +20,7 @@ import type {
   SessionSnapshot,
   SpillPort,
   Validator,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import { ZodValidator } from '@onething/backend/runtime/toolkit'
 import { classifySensitiveFile } from '@onething/backend/runtime/tools/sensitive-files'
 import { writeFileSync, mkdirSync } from 'node:fs'
@@ -139,7 +139,7 @@ export function sessionSnapshotFor(invocation: Invocation): SessionSnapshot | un
  *
  * 为什么需要它:`PermissionAuthorizer` 的缺省判据是 `invocation.cwd ??
  * invocation.workspaceRoot`,而模型那条路(`runtime/toolkit/wiring.ts` 拼 `Invocation`
- * 的地方)两格都从执行上下文填了真值,资源内核那条路(`core/resource/kernel.ts`
+ * 的地方)两格都从执行上下文填了真值,资源内核那条路(`runtime/resource/kernel.ts`
  * 的 `do` / `read`)**一格都没有** —— 它的坐标是 `principal` + `sessionId`,没有
  * cwd 这个概念。后果不是"少一格信息"而是两件真事:
  *   · 项目级的授权(`workdir` / `always`)落不下去(`addGrant` 对 workspace 档缺
@@ -176,7 +176,7 @@ export interface AppToolRunnerOptions {
    * 资源那台 runner 传的是一位**组合**校验者(`runtime/resource/index.ts`):生成的
    * 资源契约不在 zod 那张表里,反查失败就 passthrough,于是未知 op 只能等到 plan
    * 期抛、判成 `failed`。给它配一位认得生成 schema 的校验者,是 K1 在
-   * `core/resource/errors.ts` 头注释里写明的正路(而不是在内核里给 plan 开一个能
+   * `runtime/resource/errors.ts` 头注释里写明的正路(而不是在内核里给 plan 开一个能
    * 返回 `Outcome` 的后门)。
    */
   readonly validator?: Validator

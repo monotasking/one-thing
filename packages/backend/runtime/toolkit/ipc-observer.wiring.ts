@@ -24,7 +24,7 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import { Outcome as OutcomeOps } from '@onething/backend/core/toolkit'
+import { Outcome as OutcomeOps } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type {
   Decision,
   Invocation,
@@ -34,11 +34,11 @@ import type {
   Result,
   ResultPart,
   ToolEvent,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { ToolExecutionResult as OnethingToolExecutionResult } from './execution-types.wiring.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 
-/** 旧 `data.attachments` 的元素形状(`core/tools/tool-result.ts` 的 `ToolResultLike`)。 */
+/** 旧 `data.attachments` 的元素形状(`packages/shared/tools/tool-result.ts` 的 `ToolResultLike`)。 */
 export interface LegacyToolAttachment {
   type: 'file' | 'image'
   path: string

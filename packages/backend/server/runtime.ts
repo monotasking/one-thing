@@ -281,7 +281,7 @@ import {
 	readJsonFile as readCoreJsonFile,
 	writeJsonFile as writeCoreJsonFile,
 	writeJsonFileAsync as writeCoreJsonFileAsync,
-} from "@onething/backend/core/storage";
+} from "@onething/backend/runtime/storage/storage-primitives";
 import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,

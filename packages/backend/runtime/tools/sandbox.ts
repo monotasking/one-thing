@@ -18,7 +18,7 @@ export interface CoreSandboxRootsOptions extends CoreSandboxBoundaryOptions {
    * 进这个列表是**权限面变化**:write/edit 的 effect 靠
    * `findCoreSandboxRootForPath` 命中与否来标 `external`,而
    * `auto-accept-edits` 只放行 `external !== true` 的写
-   * (`core/permission/permission-policy.ts:146`)。所以这里只能装用户显式
+   * (`runtime/permission/permission-policy.ts:146`)。所以这里只能装用户显式
    * 添加的目录;缺席/空数组时 `getCoreSandboxRoots` 的结果逐字节不变。
    */
   connectedDirectories?: string[]

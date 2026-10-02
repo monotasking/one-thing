@@ -10,17 +10,17 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { RunContext, ToolRunner } from '@onething/backend/core/toolkit'
+import { RunContext, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type {
   Authorizer,
   Invocation,
   Outcome,
   Scene,
   SessionSnapshot,
-} from '@onething/backend/core/toolkit'
+} from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Principal } from '@shared/permission/principal'
-import { Decision } from '@onething/backend/core/toolkit'
-import { AbortScope, OutputBudget } from '@onething/backend/core/toolkit'
+import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
+import { AbortScope, OutputBudget } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   configureSearchToolAdapters,
   createSearchTool,

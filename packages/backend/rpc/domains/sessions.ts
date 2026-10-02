@@ -94,7 +94,7 @@ import { SessionNotFoundError } from '@onething/backend/runtime/resource/session
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/runtime/sessions/branching'
-import type { ReadOutcome } from '@onething/backend/core/resource'
+import type { ReadOutcome } from '@onething/backend/runtime/resource/resource-api'
 import type { JsonObject } from '@shared/json'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/backend/runtime/sessions/ipc-operations'
@@ -190,7 +190,7 @@ function describeSessionError(error: Error): string | undefined {
  * 拼参数 → **读那条路** → 折回信封。六条读面共用的那三句话(K2c-2)。
  *
  * `backend.resources.read` 不经 `ToolRunner`:读不落审计、不吃输出预算、`ok` 带的是
- * **值**而不是一段文本(理由在 `core/resource/read-outcome.ts` 的文件头)。所以这一
+ * **值**而不是一段文本(理由在 `runtime/resource/read-outcome.ts` 的文件头)。所以这一
  * 条与下面 `doSessionOp` 那一条形状相同、路径不同 —— 那正是本单的整句话。
  *
  * 日志:原文那批投影函数(`*ForIpc`)对**意料之外**的失败会记一行再把消息交出去;
@@ -369,7 +369,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
    * 建一条会话要盖一个**归属印**(`initialOwner: requestSessionOwner(context)`),而
    * 那是**调用方身份** —— 它从 `context.ownerUid` / `context.workspaceId` 来。资源面的
    * `Invocation` 上只有 `Principal`,而两套身份词汇今天对不上:本机可信主体是
-   * `{ kind: 'user', userId: 'local' }`(`core/permission/principal.ts` 的
+   * `{ kind: 'user', userId: 'local' }`(`packages/shared/permission/principal.ts` 的
    * `LOCAL_USER_ID`),会话归属那一侧的本机主人是 `'local-user'`
    * (`session/access.ts` 的 `DEFAULT_SESSION_OWNER`)。照着 `Principal` 铸一个归属印,
    * 新建的会话就归给了一个谁都不是的人 —— `ownsSessionRecord` 对不上,那条会话对它的

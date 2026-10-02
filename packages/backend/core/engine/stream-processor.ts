@@ -7,7 +7,7 @@ import {
   coreToolInputStartStepTitle,
   type CoreStreamStepType,
 } from '@shared/engine/tool-step.js'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 export interface CoreResolvedTool {
   toolId: string

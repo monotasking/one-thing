@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { SandboxPolicy } from '@onething/backend/core/toolkit'
+import type { SandboxPolicy } from '@onething/backend/runtime/toolkit/tool-protocol'
 
 const previousStorePath = process.env.ONETHING_STORE_PATH
 const storeRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-sandbox-readable-')))

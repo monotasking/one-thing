@@ -79,17 +79,17 @@ import {
 } from '@onething/backend/runtime/files'
 import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/runtime/shell/host-ports'
 import { dirResourceSpec } from '@onething/backend/runtime/files/resource-spec'
-import { planFromSpec } from '@onething/backend/core/resource'
+import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
 import { formatRef } from '@shared/resource/ref'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/backend/core/resource'
+} from '@onething/backend/runtime/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
-import { Intent, textResult } from '@onething/backend/core/toolkit'
+import { Intent, textResult } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { resolveReadable, resolveWritable } from './path-guard.js'
 
 /** 一个目录项 / 一次 stat 交出去的「是什么」。与自述那两格逐字同名。 */

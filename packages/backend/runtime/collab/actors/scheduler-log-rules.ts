@@ -241,7 +241,7 @@ export interface CollabSchedulerExternalToolRow extends CollabSchedulerLogBase {
   toolCallId?: string
 }
 
-/** 一次提问的五相。后四相与 `InteractionOutcome` 逐字同名(属主在 core/interaction)。 */
+/** 一次提问的五相。后四相与 `InteractionOutcome` 逐字同名(属主在 runtime/interaction)。 */
 export type CollabSchedulerInteractionPhase =
   | 'open'
   | 'answered'
@@ -252,7 +252,7 @@ export type CollabSchedulerInteractionPhase =
 /**
  * 提问的开与结。
  *
- * `origin` 的字面量属主是 `@onething/backend/core/interaction` 的 `InteractionOrigin`,
+ * `origin` 的字面量属主是 `@onething/backend/runtime/interaction` 的 `InteractionOrigin`,
  * 这里照抄一份而不是 import —— 本文件是纯规则的叶子,一条通往 core 的边会让
  * 金重放与纯测试跟着搬。抄错不会静默:产生点那一侧是直接把 `request.origin`
  * 赋进来的,core 哪天多一种来源,那一行当场红。

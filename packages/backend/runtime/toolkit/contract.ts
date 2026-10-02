@@ -25,7 +25,7 @@
 
 import type { z } from 'zod'
 import type { JsonObject, JsonValue } from '@shared/json'
-import type { ValidationResult, Validator } from '@onething/backend/core/toolkit'
+import type { ValidationResult, Validator } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 import { getLogger } from '../logging/index.js'
@@ -125,7 +125,7 @@ export function contractForSchema(schema: JsonSchema): ToolContract | undefined 
 }
 
 /**
- * 与旧管线同一句兜底文案(`core/tools/registry.ts` 的
+ * 与旧管线同一句兜底文案(`runtime/tools/engine-tool-registry.ts` 的
  * `coreToolValidationFailureMessage`:没有 `formatValidationError` 时是
  * `Invalid arguments: <error.message>`)。
  */

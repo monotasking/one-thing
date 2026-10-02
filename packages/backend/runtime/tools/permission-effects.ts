@@ -15,8 +15,8 @@
  * 认识工具注册表、不认识 SDK、不读盘 —— 谁拿到 effects 谁去过 `enforcePermissionPolicy`。
  */
 
-import { joinPaths, dirnamePath, isAbsolutePath, resolvePath } from '@onething/backend/core/storage'
-import type { ToolEffect, ToolPreview } from '@onething/backend/core/tools'
+import { joinPaths, dirnamePath, isAbsolutePath, resolvePath } from '@onething/backend/runtime/storage/storage-primitives'
+import type { ToolEffect, ToolPreview } from '@onething/backend/runtime/tools/tool-helpers'
 import { classifyBashCommand, splitShellWords } from './bash-classifier.js'
 import { expandCorePath, isCorePathContained } from './sandbox.js'
 
@@ -71,7 +71,7 @@ function findSandboxRoot(sandboxRoots: string[], targetPath: string): string | u
  * 模式(`rm *`、`git commit *`),不是「Bash」这个工具名。
  *
  * 分类是 allow 且不越界时返回**空 effects** —— 空 effects 在策略门那边等于直接
- * 放行(`core/permission/permission-policy.ts:171`)。这正是本地 `ls` 不弹卡的
+ * 放行(`runtime/permission/permission-policy.ts:171`)。这正是本地 `ls` 不弹卡的
  * 原因,外部 agent 接上同一套之后也一样:白名单命令不再骗用户去点「总是允许
  * Bash」,这是收紧信任面的前提而不是它的破口。
  */

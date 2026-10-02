@@ -9,7 +9,7 @@
  */
 
 import { createTwoFilesPatch } from 'diff'
-import { basenamePath } from '@onething/backend/core/storage'
+import { basenamePath } from '@onething/backend/runtime/storage/storage-primitives'
 import { computeDiffHunks, trimDiffHunks } from '../../tools/diff-hunks.js'
 import { countLineChanges, type TextFileSnapshot } from '../../tools/file-snapshot.js'
 import { editFailureError, prepareExactEditPreview, type ExactEdit } from '../../tools/edit-engine.js'

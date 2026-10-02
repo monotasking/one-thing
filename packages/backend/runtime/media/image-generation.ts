@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import type { FetchLike } from '@onething/backend/core/http'
+import type { FetchLike } from '@onething/backend/runtime/http'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

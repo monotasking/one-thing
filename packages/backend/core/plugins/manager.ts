@@ -1,5 +1,5 @@
 import path from 'path'
-import { toLogger, type CompatLogger, type Logger } from '../logging/index.js'
+import { toLogger, type CompatLogger, type Logger } from '@onething/backend/runtime/logging/logger-primitives'
 import type { CorePluginDefinition } from './types.js'
 import { describePluginPanelResultProblem } from './panel.js'
 import {

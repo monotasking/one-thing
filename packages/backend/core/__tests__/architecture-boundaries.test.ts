@@ -1,5 +1,4 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { isBuiltin } from 'node:module'
 import { dirname, extname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -16,8 +15,10 @@ const skippedDirectories = new Set([
 
 describe('architecture boundaries', () => {
   it('keeps packages/backend/core free of Electron, renderer, and host imports', () => {
-    // 第③步起只服务一个领域的内核并进 `runtime/<d>/kernel/`,身份仍是骨架,这两条 core 规则跟着它走。
-    expect(['packages/backend/core', ...runtimeDomainKernelDirectories()].flatMap(directory => findForbiddenReferences(directory, [
+    // 这一条是**宿主禁令**(后端不许 import electron / `@main` / `@preload` / 渲染层),去 core 以后照旧成立。
+    // 从前它还套在 `runtime/<d>/kernel/` 上(「kernel 当 core 判」);去 core 批 1(2026-10-03)起 kernel 只是领域里
+    // 一个普通子目录,由下面 runtime 那一条管。
+    expect(findForbiddenReferences('packages/backend/core', [
       /from\s+['"]electron['"]/,
       /import\s*\(\s*['"]electron['"]\s*\)/,
       /require\s*\(\s*['"]electron['"]\s*\)/,
@@ -28,42 +29,14 @@ describe('architecture boundaries', () => {
       /\bipcMain\b/,
       /\bipcRenderer\b/,
       /src\/(?:main|renderer|preload)\//,
-    ]))).toEqual([])
-  })
-
-  it('keeps packages/backend/core at the bottom of the package hierarchy', () => {
-    expect(findForbiddenReferences('packages/backend/core', [
-      importOf('@onething/backend/runtime'),
-      importOf('@onething/backend/gateway'),
     ])).toEqual([])
   })
 
-  /**
-   * 领域内核(`runtime/<d>/kernel/`)也在最底层:非测试文件只许 import 自己那个 kernel 目录(相对路径且落在
-   * 目录内)、`@onething/backend/core/**`、`@shared/*`(core 本来就许)与 node 内建 —— 同领域的其余文件、
-   * 脊柱、gateway、第三方包一概不许。
-   * 检查器里同名的那条(`checkRuntimeDomainKernelImportClosure`)判的是同一句话。
-   */
-  it('keeps runtime/*/kernel at the bottom — only its own kernel, core, @shared, and node builtins', () => {
-    const escapes: string[] = []
-    for (const kernel of runtimeDomainKernelDirectories()) {
-      for (const filePath of collectSourceFiles(kernel)) {
-        if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)) continue
-        const code = stripComments(readFileSync(join(projectRoot, filePath), 'utf8'))
-        for (const match of code.matchAll(anyImportPattern)) {
-          const specifier = match[1]
-          if (specifier.startsWith('.')) {
-            const target = join(dirname(filePath), specifier)
-            if (target !== kernel && !target.startsWith(`${kernel}/`)) escapes.push(`${filePath} -> ${specifier}`)
-          } else if (!/^@onething\/backend\/core(?:\/|$)/.test(specifier) && !/^@shared(?:\/|$)/.test(specifier)
-            && !isBuiltin(specifier)) {
-            escapes.push(`${filePath} -> ${specifier}`)
-          }
-        }
-      }
-    }
-    expect(escapes).toEqual([])
-  })
+  // 「core 在最底层」(core 不许 import runtime / gateway)与「`runtime/*/kernel` 在最底层」(kernel 只许 import 自己、core、
+  // `@shared` 与 node 内建)两条随去 core 批 1(2026-10-03)撤掉(正本 `docs/design/server-client-split-2026-10.md` §4):
+  // core 的「零依赖骨架」是为了让界面那侧复用,第①步以后界面只许 import `@shared` 与 `@onething/client`,碰不到 core 了;
+  // kernel 那条的源头就是「kernel 当 core 判」。core 剩下的文件在批 2 / 批 3 里并进 runtime,这期间它们 import
+  // 已经搬进 runtime 的模块是正常的。
 
   it('keeps packages/backend/runtime free of Electron, hosts, and gateway', () => {
     expect(findForbiddenReferences('packages/backend/runtime', [
@@ -154,16 +127,12 @@ describe('architecture boundaries', () => {
    * **这是棘轮:allowlist 只许缩。** 每条都注明归哪一期清理。
    */
   it('I2: keeps one file name per concept — core and runtime do not shadow each other inside a domain', () => {
-    const allowed = new Set([
+    const allowed = new Set<string>([
       // (`mcp/manager.ts` 那一格 2026-10-02 摘掉:core 那半并进了 `runtime/mcp/kernel/manager.ts`,
       // core 侧的 mcp 目录不存在了,两个 manager 现在同住一个领域、分住 kernel/ 与领域根,不再是 I2 要守的跨层同名。)
-      // storage 归位(P4b/c):core 那半是零依赖的存储原语,runtime 那半是产品的
-      // store 路径与文件存储。两边同名两次。
-      'storage/file-storage.ts',
-      'storage/paths.ts',
-      // tools/toolkit 归位的尾巴(R4b 删旧树时留下的):core 那半是 diff hunk 的
-      // 数据结构,runtime 那半是产品侧的生成器。
-      'tools/diff-hunks.ts',
+      // `storage/{file-storage,paths}.ts` 与 `tools/diff-hunks.ts` 三格随去 core 批 1(2026-10-03)摘掉:core 的 storage、
+      // tools 两个目录并进了 runtime,core 那一半按内容改名(`file-storage-base.ts` / `store-layout.ts` /
+      // `diff-hunk-json.ts`),与产品那一半同住一个目录、不再同名。表空了,断言留着守「不许再长回来」。
     ])
     // 第四条豁免,是**规则**而不是名字:内置插件的产品层实现文件名 = 插件 id
     // (`scripts/headless-boundary-check.ts` 的 `checkPluginLogicStaysOutOfHostAssembly`
@@ -274,9 +243,6 @@ describe('architecture boundaries', () => {
 
 })
 
-/** 任意说明符(import / export-from / 动态 import / require)。 */
-const anyImportPattern = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g
-
 /** 内部会话模块(`packages/backend/session/<x>.ts`,名单与 `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 同源,现读)。 */
 const privateSessionFiles = (() => {
   const text = readFileSync(join(projectRoot, 'scripts/lib/backend-public-boundary.mjs'), 'utf8')
@@ -286,15 +252,6 @@ const privateSessionFiles = (() => {
 
 function isPrivateSessionModule(target: string): boolean {
   return dirname(target) === 'packages/backend/session' && privateSessionFiles.has(target.split('/').pop()!.replace(/\.js$/, '.ts'))
-}
-
-/** 现有的领域内核目录(`packages/backend/runtime/<d>/kernel`),现算,不写死领域名。 */
-function runtimeDomainKernelDirectories(): string[] {
-  return topLevelDirectories('packages/backend/runtime')
-    .map(domain => `packages/backend/runtime/${domain}/kernel`)
-    .filter(directory => {
-      try { return statSync(join(projectRoot, directory)).isDirectory() } catch { return false }
-    })
 }
 
 /** 相对说明符(import / export-from / 动态 import / require)。 */

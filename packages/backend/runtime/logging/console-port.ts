@@ -1,4 +1,4 @@
-import type { Logger } from '@onething/backend/core/logging'
+import type { Logger } from '@onething/backend/runtime/logging/logger-primitives'
 import type { LogLevel } from '@shared/logging/types'
 // S2(I4-缝收口):`consolePort()` 是全仓这 35 道鸭子 logger 口的**唯一生产供体**,
 // 从前靠结构相容认亲 —— tsserver 的 Go to Implementation 在那 35 处声明上一律空手。
@@ -39,7 +39,7 @@ import type { OnethingToolsIpcLogger } from '../tools/ipc-operations.js'
 import type { OnethingToolCallStateIpcLogger } from '../tools/tool-call-state.js'
 import type { OnethingToolExecutionIpcLogger } from '../tools/tool-execution-context.js'
 import type { OnethingToolListIpcLogger } from '../tools/tool-list-presentation.js'
-import type { LegacyDuckLogger } from '@onething/backend/core/logging'
+import type { LegacyDuckLogger } from '@onething/backend/runtime/logging/logger-primitives'
 
 /**
  * `console` 形状的适配口(L4 迁移期)。

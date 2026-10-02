@@ -2,7 +2,7 @@
  * `@onething/backend/runtime/tools` —— R4b 之后这里只剩**纯逻辑模块**。
  *
  * 工具系统本身(注册表、`Tool.define`、二十只内置工具对象、直调管线)已随 R4b
- * 删除,现行的工具系统是 `packages/backend/core/toolkit` + `runtime/toolkit` +
+ * 删除,现行的工具系统是 `packages/backend/runtime/toolkit` + `runtime/toolkit` +
  * `app/toolkit`。留在这个目录里的是两类东西,它们都不认识"工具"这个概念:
  *
  *  1. **被新树 import 的纯模块** —— 沙箱、bash 执行器与分类器、edit 引擎与

@@ -9,7 +9,7 @@ import {
   withFileLockSync,
   type CoreCachedJsonFileOptions,
   type CoreCachedJsonState,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'
 
 export interface OnethingSettingsRepositoryLogger {
   log?(...args: unknown[]): void

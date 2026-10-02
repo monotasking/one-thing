@@ -1,5 +1,5 @@
 import * as PermissionGrants from '../../permission/grant-storage.js'
-import type { PermissionBridge } from '@onething/backend/core/permission'
+import type { PermissionBridge } from '@onething/backend/runtime/permission/permission-asks'
 import { Permission } from '../../permission/index.js'
 import { isHostUnattended, isSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
 import {

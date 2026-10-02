@@ -13,7 +13,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { readJsonFile, writeJsonFile } from '@onething/backend/core/storage'
+import { readJsonFile, writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
 import {
   applyCollabBoardAction,
   emptyCollabBoard,

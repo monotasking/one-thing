@@ -20,10 +20,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { decidePermission, isGrantableType } from '@onething/backend/core/permission'
+import { decidePermission, isGrantableType } from '@onething/backend/runtime/permission/permission-asks'
 import type { JsonObject } from '@shared/json.js'
-import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/backend/core/toolkit'
-import type { Result, ToolSpec } from '@onething/backend/core/toolkit'
+import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog, ZodValidator } from '@onething/backend/runtime/toolkit'
 import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../rpc/registry.js'
 import { dumpFeatures, hasFeature, mountFeature, resetFeaturesForTests } from '../index.js'
@@ -181,7 +181,7 @@ describe('self-evolution feature', () => {
   /**
    * 权限接法的**判定级**断言。
    *
-   * `capability_change` 是 策略表(`core/toolkit/effects.ts`)里唯一一行 `never-grantable`：每次
+   * `capability_change` 是 策略表(`packages/shared/toolkit/effects.ts`)里唯一一行 `never-grantable`：每次
    * 都问、答案永不可记住。挑它不是凑数 —— 挂载一个 feature 就是「改变助手够得
    * 着什么」，与该 kind 的定义原文逐字对上。
    */

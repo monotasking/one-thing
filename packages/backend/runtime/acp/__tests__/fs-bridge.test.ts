@@ -6,8 +6,8 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/backend/core/toolkit'
-import type { Authorizer, Intent, Invocation } from '@onething/backend/core/toolkit'
+import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Authorizer, Intent, Invocation } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { AcpClientRequestContext } from '@onething/backend/runtime/acp'
 import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 

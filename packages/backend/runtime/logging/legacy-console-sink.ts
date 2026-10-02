@@ -1,5 +1,5 @@
 import { formatWithOptions } from 'node:util'
-import type { LoggerRoot, LogSource } from '@onething/backend/core/logging'
+import type { LoggerRoot, LogSource } from '@onething/backend/runtime/logging/logger-primitives'
 import type { LogLevel } from '@shared/logging/types'
 
 /**

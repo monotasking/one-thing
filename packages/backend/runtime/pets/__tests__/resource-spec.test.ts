@@ -2,7 +2,7 @@
  * `pet:` 自述过契约门,且 §9.3 那几格(单例地址、效果上界、哪几条事件是时刻)照表写着。
  */
 import { describe, expect, it } from 'vitest'
-import { describeResourceSpecProblem } from '@onething/backend/core/resource'
+import { describeResourceSpecProblem } from '@onething/backend/runtime/resource/resource-api'
 import { PetRegistry, BUILTIN_PETS } from '../registry.js'
 import { PET_CURRENT_REF, petResourceSpec } from '../resource-spec.js'
 

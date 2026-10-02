@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { ensureDir } from "@onething/backend/core/storage";
+import { ensureDir } from "@onething/backend/runtime/storage/storage-primitives";
 
 export const ONETHING_STORE_DIR_NAME = ".onething";
 export const ONETHING_SESSION_DATABASE_FILENAME = "onething.sqlite";

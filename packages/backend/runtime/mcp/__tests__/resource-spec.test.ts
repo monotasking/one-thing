@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { describeResourceSpecProblem } from '@onething/backend/core/resource'
+import { describeResourceSpecProblem } from '@onething/backend/runtime/resource/resource-api'
 import type { MCPToolInfo } from '@shared/mcp/types'
 import {
   MCP_RESOURCE_SCHEME_PREFIX,

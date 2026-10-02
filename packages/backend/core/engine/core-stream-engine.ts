@@ -1,11 +1,11 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 import type { SessionCommandType } from '@shared/events/session-command-types.js'
-import type { Unsubscribe } from '../events/types.js'
+import type { Unsubscribe } from '@onething/backend/runtime/event-bus/types'
 import { PendingMessageQueue } from './message-queue.js'
 import { isAgentExecutionCheckpointError } from '../agent-loop/errors.js'
 import type { PendingMessage } from './message-queue.js'
-import { getCoreLogger } from '../logging/index.js'
+import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import type { CoreInitialToolChoice } from './stream-executor.js'
 import { coreProviderOwnsItsContextWindow } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
@@ -612,8 +612,8 @@ export class CoreStreamEngine<
    *
    * 类型是 `Partial<Record<SessionCommandType, …>>` 而不是 `Record`:11 条命令里
    * 引擎只订阅 9 条,另外两条各有自己的订阅者,不在这里硬造处理者 ——
-   *   - `PERMISSION_RESPOND` → `packages/backend/core/permission/index.ts`(Permission 自己订)
-   *   - `INTERACTION_RESPOND` → `packages/backend/core/interaction/registry.ts`(交互注册表自己订)
+   *   - `PERMISSION_RESPOND` → `packages/backend/runtime/permission/permission-asks.ts`(Permission 自己订)
+   *   - `INTERACTION_RESPOND` → `packages/backend/runtime/interaction/registry.ts`(交互注册表自己订)
    *
    * (2026-08-22 P4-F #26:`CONFIRM_TOOL` 全仓零订阅者,契约已随该批删除。)
    */

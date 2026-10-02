@@ -29,13 +29,13 @@
  * 一个通用件认识每一个域 —— 那正是它想消灭的形状。回调回 `undefined` = 「没有
  * 域专属的说法」,于是用管线那句话。
  *
- * 判据是**类**不是消息串(`core/tools/abort.ts` 那条判例:靠消息文本分类,迟早
+ * 判据是**类**不是消息串(`runtime/tools/abort.ts` 那条判例:靠消息文本分类,迟早
  * 把一次失败洗成一次别的东西)—— 所以回调收到的是 `Error` 对象本身。
  */
 
 import type { JsonObject } from '@shared/json'
-import type { ReadOutcome } from '@onething/backend/core/resource'
-import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/backend/core/toolkit'
+import type { ReadOutcome } from '@onething/backend/runtime/resource/resource-api'
+import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/backend/runtime/toolkit/tool-protocol'
 
 /** 本仓那批写面共用的回执形状(`@shared/ipc/sessions.ts` 的 `SessionMutationResponse` 等)。 */
 export type ResourceEnvelope =
@@ -82,7 +82,7 @@ export function foldOutcomeToEnvelope(
  *
  * 失败那三支与写面**逐字同一套口径**(`invalid` 用校验者的话、`denied` 用守卫的话、
  * `failed` 先问域再退回管线那句),所以两条路上同一次失败在客户端看到的是同一句话。
- * 读没有 `aborted` 那一支(`core/resource/read-outcome.ts` 的文件头)。
+ * 读没有 `aborted` 那一支(`runtime/resource/read-outcome.ts` 的文件头)。
  */
 export interface FoldReadOutcomeOptions<T extends object> extends FoldOutcomeOptions {
   /** 读到的值 → 这个域的信封载荷。只在 `ok` 那一支被调用。 */
@@ -124,7 +124,7 @@ export function foldReadOutcomeToEnvelope<T extends object>(
  * ## 载荷从哪来:`Result.details`,不是 `content`
  *
  * `Outcome.ok` 带的是一份 `Result`,而 `Result` 有两半:`content` 是给模型看的那段
- * 话,`details` 是结构化的那一份(`core/toolkit/result.ts` 上写着它的用途是「渲染器 /
+ * 话,`details` 是结构化的那一份(`runtime/toolkit/result.ts` 上写着它的用途是「渲染器 /
  * 审计用的结构化载荷,对内核不透明」,而 `OutputBudget` 只裁 `content`,`details`
  * 原样过)。域要的永远是后者 —— 从 `content` 里把 JSON 解析回来,是把一次调用做成
  * 「一次往返、一次形状损失」(`undefined` 会在那趟往返里消失,K2c-1 在真店上量到过)。
@@ -157,7 +157,7 @@ export function foldOutcomeToDetailedEnvelope<T extends object>(
  * 不许改是这一批的硬约束。
  *
  * 非 `ok` 一律**抛**,而且 `failed` 那一支抛的是管线交回来的**那只错本身**,不是一个
- * 新造的:判据读类不读消息串(`core/tools/abort.ts` 那条判例),而域的派发器接住之后
+ * 新造的:判据读类不读消息串(`runtime/tools/abort.ts` 那条判例),而域的派发器接住之后
  * 答的仍是它一直在答的那个 `{ ok:false, error }`。域想给这次失败起个自己的名字时,
  * `describeError` 与另外两只函数逐字同一格。
  */

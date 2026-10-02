@@ -62,7 +62,7 @@ import type { sessionReads } from '../../session/reads.js'
 import type { EventBus } from '@onething/backend/events/event-bus.js'
 import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { getCurrentBackend } from '@onething/backend/current.js'
-import type { Quiescible } from '@onething/backend/core/lifecycle'
+import type { Quiescible } from '@onething/backend/runtime/lifecycle'
 import { taskMessageSource } from '@onething/backend/runtime/engine/message-sources'
 import { deliverInternalMessage } from '@onething/backend/runtime/plugins/session-messenger'
 

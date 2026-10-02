@@ -40,8 +40,8 @@ import type {
 	AgentTurnRequest,
 } from "@onething/backend/core/agent-loop";
 import type { JsonObject } from "@shared/json.js";
-import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/core/toolkit";
-import type { Result, ToolSpec } from "@onething/backend/core/toolkit";
+import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/runtime/toolkit/tool-protocol";
+import type { Result, ToolSpec } from "@onething/backend/runtime/toolkit/tool-protocol";
 import { configureToolkitCatalog } from "@onething/backend/runtime/toolkit";
 import type { HistoryMessage } from "../message-helpers.js";
 import type { BuildPromptOptions } from "../../prompt/system-prompt.js";

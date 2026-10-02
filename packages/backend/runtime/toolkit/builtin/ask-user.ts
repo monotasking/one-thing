@@ -3,7 +3,7 @@
  *
  * 描述、参数、题 id 规则、四种收场的文案与结果形状逐字沿用旧
  * `tools/builtin/ask-user.ts`;等待链(挂起、广播、通道亲和)照旧全部在
- * `@onething/backend/core/interaction`,这里只是工具壳。
+ * `@onething/backend/runtime/interaction`,这里只是工具壳。
  *
  * 与旧实现的两处差别:
  *  - 撤回登记从 `signal.addEventListener('abort', …, { once: true })` + `finally`
@@ -23,7 +23,7 @@ import type {
   InteractionOutcome,
   InteractionQuestion,
 } from '@shared/interaction/types'
-import type { Preview, Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
+import type { Preview, Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { defineInput } from '../contract.js'
 import { InteractiveTool, type InteractiveRequest } from '../families/interactive.js'
 

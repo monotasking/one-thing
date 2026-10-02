@@ -12,10 +12,10 @@
  */
 
 import { z } from 'zod'
-import { Intent, Tool } from '@onething/backend/core/toolkit'
+import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
 import type { CoreToolPromptContribution } from '@onething/backend/core/engine'
-import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
+import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { isCapabilityVariable } from '../../variables/types.js'
 import type { VariableScope, VariableType } from '../../variables/types.js'
 import contextVariablesRaw from '../../tools/builtin/prompts/variable-context.md?raw'

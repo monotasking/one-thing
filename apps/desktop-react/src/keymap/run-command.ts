@@ -70,7 +70,7 @@ export const HOOK_ONLY_COMMANDS: readonly CommandId[] = []
  * `false`」—— 那一档在 `CommandId` 下压根表达不出来。而它将来的调用方(SSE 送来的
  * `app:command` / `do(<shell 资源>, …)`)手里只有一个**没校验过的字符串**:收
  * `CommandId` 会逼每个入口写一次 `as`,而「满仓库的 `as` 等于把守卫关掉,还看不出
- * 哪一处是真校验过」正是 `packages/backend/core/resource/ref.ts` 文件头点名的那种病。
+ * 哪一处是真校验过」正是 `packages/shared/resource/ref.ts` 文件头点名的那种病。
  *
  * 编译期那道闸没有丢,它只是站在**该站的地方**:壳内唯一的调用方
  * `useKeymapCommandRunner` 收的仍是 `CommandId`,所以壳里写错一条命令名照旧当场红。

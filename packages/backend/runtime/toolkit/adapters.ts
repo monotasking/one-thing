@@ -45,7 +45,7 @@ import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/ba
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { assertMusicOperator } from '@onething/backend/runtime/music/access'
 import { dispatchTask } from '@onething/backend/runtime/tasks/dispatch'
-import { Interaction } from '@onething/backend/core/interaction'
+import { Interaction } from '@onething/backend/runtime/interaction'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/runtime/interaction/no-human'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { collabRoomMembers } from '@onething/backend/runtime/collab/members'

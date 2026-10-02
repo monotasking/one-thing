@@ -26,7 +26,7 @@
  * `Error`(`failed` 那一支),而 Error 过不了 IPC / HTTP(Electron 会把它揉成
  * `Error invoking remote method …`,HTTP 上干脆没有异常这回事)——`RpcResponse`
  * 那份契约头注释说的就是这件事。所以这里把五态摊成五支纯数据,`failed` 只留
- * 名字与一句话:**类名是给判定读的**(不 match 措辞,`core/tools/abort.ts` 那条判例),
+ * 名字与一句话:**类名是给判定读的**(不 match 措辞,`runtime/tools/abort.ts` 那条判例),
  * 消息是给人读的,堆栈一个字都不过网络。
  *
  * 注意「被拒绝」不是错误:`denied` 是一个正常结局(人说了不),它和 `invalid`
@@ -122,7 +122,7 @@ export interface DoResourceRequest {
 }
 
 /**
- * `Outcome` 的可序列化投影。五支与 `core/toolkit/outcome.ts` 一一对应,
+ * `Outcome` 的可序列化投影。五支与 `runtime/toolkit/outcome.ts` 一一对应,
  * **判别键同名同义**,是一次转手不是翻译。
  */
 export type ResourceOutcomeView =
@@ -134,7 +134,7 @@ export type ResourceOutcomeView =
 
 /**
  * `ReadOutcome` 的可序列化投影(原子 K2c-2)。四支,判别键与
- * `core/resource/read-outcome.ts` 一一对应。
+ * `runtime/resource/read-outcome.ts` 一一对应。
  *
  * ## 它与 `ResourceOutcomeView` 的差别只有一处,而那一处就是本单
  *

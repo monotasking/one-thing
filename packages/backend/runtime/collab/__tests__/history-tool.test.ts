@@ -133,7 +133,7 @@ describe('授权（多给一条就是事故）', () => {
     ownedBy('cumo', 'alice', 'tenant-a')
     const { historyAdapters } = await import('@onething/backend/runtime/toolkit/adapters')
     const { createHistoryTool, ZodValidator } = await import('@onething/backend/runtime/toolkit')
-    const { ToolRunner, Decision } = await import('@onething/backend/core/toolkit')
+    const { ToolRunner, Decision } = await import('@onething/backend/runtime/toolkit/tool-protocol')
     const runner = new ToolRunner({
       authorizer: { async decide() { return Decision.allow() } },
       observer: { on() {} }, validator: new ZodValidator(),

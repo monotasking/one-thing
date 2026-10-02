@@ -15,8 +15,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Decision, Outcome, ToolRunner, textResult } from '@onething/backend/core/toolkit'
-import type { Authorizer, Invocation, Job, JobRegistry, JobSpec, Tool } from '@onething/backend/core/toolkit'
+import { Decision, Outcome, ToolRunner, textResult } from '@onething/backend/runtime/toolkit/tool-protocol'
+import type { Authorizer, Invocation, Job, JobRegistry, JobSpec, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   BashTool,
   EditTool,

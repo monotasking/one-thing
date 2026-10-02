@@ -40,7 +40,7 @@ import {
   readTextFile,
   writeTextFile,
   writeTextFileInDir,
-} from '@onething/backend/core/storage'
+} from '@onething/backend/runtime/storage/storage-primitives'
 import {
   isSkillReviewRunning,
   markSkillReviewRunning,

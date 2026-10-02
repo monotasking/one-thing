@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Outcome } from '@onething/backend/core/toolkit'
+import { Outcome } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { zodToJsonSchema } from '../../contract.js'
 import type { SearchProvider, SearchResponse } from '../../../tools/builtin/web-search/providers/types.js'
 import { createWebSearchTool, WebSearchInputSchema } from '../../builtin/web-search.js'

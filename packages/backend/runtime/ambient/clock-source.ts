@@ -1,4 +1,4 @@
-import type { EventSpec } from '@onething/backend/core/resource'
+import type { EventSpec } from '@onething/backend/runtime/resource/resource-api'
 import type { AmbientSource, AmbientTimers } from './source.js'
 import { SYSTEM_TIMERS } from './source.js'
 
