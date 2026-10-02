@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { callMCPToolWithTimeout } from '@onething/backend/core/mcp'
-import type { CoreMCPTask } from '@onething/backend/core/mcp'
+import { callMCPToolWithTimeout } from '@onething/backend/runtime/mcp/kernel'
+import type { CoreMCPTask } from '@onething/backend/runtime/mcp/kernel'
 
 /**
  * P3-1: callMCPToolWithTimeout follows a task handle (polls tasks/get, then

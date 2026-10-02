@@ -139,51 +139,9 @@ export type {
   ToolExecutionScheduleOptions,
 } from './agent-loop/index.js'
 
-export {
-  buildMCPToolsCatalog,
-  CoreMCPToolIdRegistry,
-  CoreMCPBridgeRuntime,
-  describeMCPFunction,
-  findMCPFunctionRef,
-  getMCPFunctionRefs,
-  getMCPRouterDefinition,
-  HeadlessMCPManager,
-  jsonSchemaDefault,
-  jsonSchemaDescription,
-  jsonSchemaStringEnum,
-  LEGACY_MCP_ROUTER_TOOL_ID,
-  listMCPFunctions,
-  mapJsonSchemaToolParameterType,
-  MCP_ROUTER_TOOL_ID,
-  mcpContentToString,
-  mcpRouterToCoreToolDefinition,
-  mcpToolToCoreToolDefinition,
-  planJsonSchemaValidation,
-  planMCPInputSchemaValidation,
-  resolveMCPRouterAction,
-  resolveMCPRouterReference,
-  isMCPRouterToolId,
-  isMCPToolId,
-  sanitizeMCPToolName,
-} from './mcp/index.js'
-export type {
-  MCPClientFactory,
-  MCPClientLike,
-  CoreMCPBridgeRuntimeHost,
-  CoreMCPToolDefinition,
-  CoreMCPJsonSchemaValidationKind,
-  CoreMCPJsonSchemaValidationPlan,
-  CoreMCPToolParameter,
-  CoreMCPToolParameterType,
-  MCPFunctionRef,
-  MCPModelFacingToolDefinition,
-  MCPRouterActionOptions,
-  MCPRouterActionResult,
-  MCPRouterInput,
-  MCPToolsCatalogOptions,
-  MCPToolIdentity,
-  MCPToolIdRegistryOptions,
-} from './mcp/index.js'
+// MCP 内核(原 `./mcp/`)第③步(2026-10-02)并进了 `runtime/mcp/kernel/` —— 它只有 mcp 领域与脊柱在用,
+// 不是通用骨架。core 的桶不再再导出它(那会让 core 倒挂到 runtime);要用就 import `@onething/backend/runtime/mcp/kernel`。
+// 搬家前查过:没有一处经这只桶拿 MCP 的名字。
 
 export type {
   Provider,

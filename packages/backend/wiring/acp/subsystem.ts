@@ -1,7 +1,7 @@
 /**
  * ACP 子系统对象(C1,`docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。
  *
- * 与 `wiring/mcp/subsystem.ts` 同型,理由也同一条:登记(`own`)与启动(`start`)解耦,
+ * 与 `runtime/mcp/wiring/subsystem.ts` 同型,理由也同一条:登记(`own`)与启动(`start`)解耦,
  * `dispose()` 负责"在途的那趟先落地再关",于是早退不留孤儿子进程。
  *
  * 两处与 MCP 不同,都是照着代码事实来的:
@@ -93,7 +93,7 @@ export interface AcpSubsystemDeps {
 
 /**
  * 与 `McpSubsystem` 同型同数的收尾上限 —— 理由逐字相同,见
- * `wiring/mcp/subsystem.ts` 的 `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`:
+ * `runtime/mcp/wiring/subsystem.ts` 的 `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`:
  * 卡在 `apps/server/src/main.ts` 那条 5s 死线底下,给排在 dispose 链后面的
  * 会话账本 flush 留出余量。**超时可能留下孤儿子进程,这是有意的取舍:
  * 会话数据比 ACP 子进程重要。**

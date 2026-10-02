@@ -86,8 +86,11 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 
 1. kernel 当 core 判:core 身上的禁令(electron / `@shared/ipc` / 原生依赖 / MCP、ACP SDK / zod 等,以及「core 在最底层」)
    原样作用于 `runtime/*/kernel/**`。另加一条更紧的闭包:kernel 的非测试文件只许 import 自己那个 kernel 目录里的东西、
-   `@onething/backend/core/**` 与 node 内建 —— 同领域的产品文件、`wiring/`、脊柱、`@shared`、第三方包一概不许。
-   内核要能原样拿走,它就不能认识自己被谁用。
+   `@onething/backend/core/**`、`@shared/*`(core 本来就许;`@shared/ipc` 照旧被 core 那组禁令拦着)与 node 内建 ——
+   同领域的产品文件、`wiring/`、脊柱、第三方包一概不许。内核要能原样拿走,它就不能认识自己被谁用。
+   (search 落地时这条连 `@shared` 也不许;mcp 内核从 `@shared/mcp/types` 取契约形状,并进来时按「kernel 当 core 判」放开。)
+   「专属」怎么量:除了直接 import,还要看 core 的大桶 `core/index.ts` 有没有再导出它、有没有人经大桶拿它的名字 ——
+   大桶再导出而没人用,就删掉那段再导出;有人用,它就不是专属内核,留在 core。
 2. `runtime/<d>/wiring/**` 当装配层判:享有与 `backend/wiring/**` 逐条相同的规则集(可以 import 脊柱与 `@shared/ipc`,
    electron / `@main` / `@preload` 照禁),「产品层不许 import 脊柱」「三棵子树的相对 import 不出子树」两条对它豁免。
    反方向镜像 `*.wiring.ts` 那条:runtime 里**不在任何 `wiring/` 目录**的非测试文件不许 import `runtime/*/wiring/**`。
@@ -333,3 +336,44 @@ boundary / transport / log / provider gate 绿,assembly gate 仍只红 `wiring/m
 `import … from '../service.js'`、在 `runtime/search/service.ts` 加一行 `./wiring/index.js` 与一行
 `@onething/backend/runtime/search/wiring/worker`,边界门三条红、架构测试那条红,撤掉后回绿。
 `git grep -nE "core/search|wiring/search"` 在代码 / 配置 / 脚本里为零,剩下的都在 `docs/` 与 `apps/desktop-react/docs/`。
+
+### ③-mcp 落地记录(2026-10-02,未提交)
+
+**一句话**:mcp 在 server 包里只剩一个家 `runtime/mcp/`。`core/mcp`(14 个文件,含测试)并进 `runtime/mcp/kernel/`,
+`backend/wiring/mcp`(`subsystem.ts` 与它的测试,2 个)并进 `runtime/mcp/wiring/`,一律 `git mv`,脚本同上
+(`fold-domain.mjs mcp --kernel`)。`rpc/domains/mcp.ts` 没动。领域根原有的 `manager.ts` / `index.ts` / `types.ts` 与
+kernel 里的同名文件分住两层目录,不冲突;`bridge.wiring.ts` / `index.wiring.ts` 两个后缀文件原样不动。
+
+**为什么算专属内核**:`core/mcp` 的真 importer 只有 mcp 领域自己(`runtime/mcp/{client,index,manager,bridge.wiring}.ts`
+与 4 份测试)和脊柱(`host-ports.ts`、`server/{mcp-client,runtime}.ts`、`wiring/resource/mcp-provider.ts` 与 2 份测试)。
+搬家时多查出一处:core 的大桶 `core/index.ts` 再导出了 mcp 的 41 个名字 —— 全仓**没有一处**经大桶拿这些名字
+(按 import 语句里的名字逐个对过),所以删掉了这两段再导出,留一段注释写明去向。不删就是 core → runtime 的倒挂。
+
+**改写**:
+- 包说明符 `@onething/backend/core/mcp` → `@onething/backend/runtime/mcp/kernel`;`backend.ts` / `server/runtime.ts` 里的
+  `./wiring/mcp/subsystem.js`、`../wiring/mcp/subsystem.js` → `@onething/backend/runtime/mcp/wiring/subsystem`。
+- kernel 里三处 `../logging/index.js`(core 的日志)改成 `@onething/backend/core/logging`(相对路径会爬出 runtime 子树);
+  接线与它的测试里的 `../logging/index.js` 改成 `@onething/backend/wiring/logging/index.js`。
+- 注释与路径:`smoke-core-boot.mjs`、`assembly-lifecycle.test.ts`、`wiring/acp/subsystem{,.test}.ts`、`server/runtime.ts`、
+  `packages/shared/{ipc/mcp.ts,ipc/__tests__/mcp-types.test.ts,mcp/types.ts}`、`toolkit/{families/external,guard-projection}.ts`、
+  `scripts/probe-go-to-implementation.mjs`;根 `CLAUDE.md` 里 `McpSubsystem` 的路径、MCP 一节、core 子树目录清单、
+  `wiring/<domain>/` 清单(41 → 40)与 I2 白名单那句。
+- exports:改名 1 格(`./core/mcp` → `./runtime/mcp/kernel`),新增 1 格(`./runtime/mcp/wiring/subsystem`)。
+
+**守门改写**:
+1. kernel 闭包放开 `@shared/*`(检查器 `checkRuntimeDomainKernelImportClosure` 与架构测试「kernel 在最底层」同步),理由见 §4 第 1 条。
+2. 检查器 `checkCorePublicExports`(「core 大桶要交出这几个公开接口」):`HeadlessMCPManager` 改由
+   `runtime/mcp/kernel/index.ts` 交出,其余五个照旧问 core 大桶;桶文件不在也算缺。
+3. I2 白名单删掉 `mcp/manager.ts` 一格(只减不增;core 那半已并进 `runtime/mcp/kernel/manager.ts`),剩 3 格。
+4. 其余边界门、assembly / transport / log / session / provider 基线里没有 mcp 的旧路径。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 均零错;`server:build`、`build:cli` 成功;桌面四个 bundle 打到临时目录成功;
+根全量 vitest 前后都是 11419 条 / 19 红,失败集合逐条相同;壳 7344 条,同一条 A9 红;mcp / acp / resource-mcp /
+assembly-lifecycle / mcp-wiring / 架构测试的重点子集前后都是 53 个文件 417 条全绿;`gate:acp`(node 跑 `dist/server` + 临时 store +
+假 agent,含 ⑰ MCP 桥)前后都是 108 条 ok、0 红,㉒ 照旧按 opt-in 跳过;boundary / transport / log / session / provider gate 绿,
+assembly gate 仍只红 `wiring/music/radio.ts` 9 → 10;`provider-vendor-drill` 绿。`smoke:core` 有一条 MCP 早退泳道,但它
+同一次运行里还要起 Electron 与隐藏窗口、不能单挑泳道,本批没跑。新规矩自证:`kernel/router.ts` 加一行 `../manager.js`
+(领域根的产品文件)、`client.ts` 加一行 `./wiring/subsystem.js`、`bridge.wiring.ts` 加一行
+`@onething/backend/runtime/mcp/wiring/subsystem`,边界门两条红(后缀文件也被新规矩拦住,窄口不含装配层)、
+架构测试那条红,撤掉后回绿。`git grep -nE "core/mcp|wiring/mcp"` 在代码 / 配置 / 脚本里为零,剩下的在 `docs/`
+与 `.pi-glla/` 的历史 JSON 里。

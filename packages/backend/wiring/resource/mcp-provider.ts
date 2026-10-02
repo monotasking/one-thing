@@ -40,7 +40,7 @@ import { planFromSpec } from '@onething/backend/core/resource'
 import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
 import type { JsonObject } from '@shared/json'
 import type { MCPToolCallResult } from '@shared/mcp/types'
-import { withMCPResultOutputText } from '@onething/backend/core/mcp'
+import { withMCPResultOutputText } from '@onething/backend/runtime/mcp/kernel'
 import { mcpResultText } from '@onething/backend/runtime/toolkit'
 import {
   MCP_RESOURCE_SINGLETON_PATH,

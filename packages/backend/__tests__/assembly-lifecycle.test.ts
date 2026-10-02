@@ -80,7 +80,7 @@
  *      反证(实跑过):把 `backend.ts` 那两句 `own(..., 'mcp'/'acp')` 挪回
  *      `if (options.mcpAcp)` 里 → ⑬ 与这一条一起红。
  *      **「shutdown 必须排在在途 start 落地之后」那半条判在别处**
- *      (`wiring/mcp/__tests__/subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
+ *      (`runtime/mcp/wiring/__tests__/subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
  *      `await inFlight` → 红):在整只 backend 上判不了它 —— 要让"关到 mcp 那一格
  *      时 start 仍在途"确定地成立,就得由 dispose 链自己去放闸,而正确实现正好
  *      死等那个闸,判据会把自己判死锁。

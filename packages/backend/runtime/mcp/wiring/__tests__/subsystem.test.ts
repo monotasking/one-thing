@@ -12,7 +12,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { MCPSettings } from '@shared/mcp/types'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { McpSubsystem, type McpSubsystemDeps } from '../subsystem.js'
 
 const SETTINGS: MCPSettings = { enabled: true, servers: [] }

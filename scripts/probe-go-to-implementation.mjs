@@ -125,7 +125,7 @@ const DECL_PROBES = [
 	['packages/backend/core/plugins/api-builder.ts', 'CorePluginAPIHost', ['packages/backend/wiring/plugins/api.ts']],
 	['packages/backend/core/plugins/manager.ts', 'CorePluginManagerHost', ['packages/backend/wiring/plugins/manager.ts']],
 	['packages/backend/core/plugins/scheduler.ts', 'CorePluginSchedulerHost', ['packages/backend/runtime/scheduler/scheduler.ts']],
-	['packages/backend/core/mcp/bridge-runtime.ts', 'CoreMCPBridgeRuntimeHost', ['packages/backend/runtime/mcp/bridge.wiring.ts']],
+	['packages/backend/runtime/mcp/kernel/bridge-runtime.ts', 'CoreMCPBridgeRuntimeHost', ['packages/backend/runtime/mcp/bridge.wiring.ts']],
 	['packages/backend/core/runtime-facade.ts', 'RuntimeSessionsAdapter', ['packages/backend/server/runtime.ts']],
 	['packages/backend/core/runtime-facade.ts', 'RuntimeEventsAdapter', ['packages/backend/server/runtime.ts']],
 	['packages/backend/core/runtime-facade.ts', 'RuntimeStreamsAdapter', ['packages/backend/server/runtime.ts']],

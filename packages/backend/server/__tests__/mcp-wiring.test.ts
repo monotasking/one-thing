@@ -23,7 +23,7 @@ import {
   createMCPServerState,
   markMCPServerConnected,
   type MCPClientLike,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import { type MCPServerConfig, type MCPServerState } from '@shared/mcp/types'
 import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from '../runtime.js'
 import { mcpRpcHandlers } from '../../rpc/domains/mcp.js'

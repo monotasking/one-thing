@@ -40,10 +40,11 @@ describe('architecture boundaries', () => {
 
   /**
    * 领域内核(`runtime/<d>/kernel/`)也在最底层:非测试文件只许 import 自己那个 kernel 目录(相对路径且落在
-   * 目录内)、`@onething/backend/core/**` 与 node 内建 —— 同领域的产品文件、`wiring/`、脊柱、gateway 一概不许。
+   * 目录内)、`@onething/backend/core/**`、`@shared/*`(core 本来就许)与 node 内建 —— 同领域的产品文件、`wiring/`、
+   * 脊柱、gateway、第三方包一概不许。
    * 检查器里同名的那条(`checkRuntimeDomainKernelImportClosure`)判的是同一句话。
    */
-  it('keeps runtime/*/kernel at the bottom — only its own kernel, core, and node builtins', () => {
+  it('keeps runtime/*/kernel at the bottom — only its own kernel, core, @shared, and node builtins', () => {
     const escapes: string[] = []
     for (const kernel of runtimeDomainKernelDirectories()) {
       for (const filePath of collectSourceFiles(kernel)) {
@@ -54,7 +55,8 @@ describe('architecture boundaries', () => {
           if (specifier.startsWith('.')) {
             const target = join(dirname(filePath), specifier)
             if (target !== kernel && !target.startsWith(`${kernel}/`)) escapes.push(`${filePath} -> ${specifier}`)
-          } else if (!/^@onething\/backend\/core(?:\/|$)/.test(specifier) && !isBuiltin(specifier)) {
+          } else if (!/^@onething\/backend\/core(?:\/|$)/.test(specifier) && !/^@shared(?:\/|$)/.test(specifier)
+            && !isBuiltin(specifier)) {
             escapes.push(`${filePath} -> ${specifier}`)
           }
         }
@@ -168,9 +170,8 @@ describe('architecture boundaries', () => {
    */
   it('I2: keeps one file name per concept — core and runtime do not shadow each other inside a domain', () => {
     const allowed = new Set([
-      // mcp 归位的尾巴(P3'b-A):core 那半是 `CoreMcp*` 的连接账本,runtime 那半是
-      // 产品侧的服务器管理器。两边都叫 manager,等 mcp 契约下沉时一并改名。
-      'mcp/manager.ts',
+      // (`mcp/manager.ts` 那一格 2026-10-02 摘掉:core 那半并进了 `runtime/mcp/kernel/manager.ts`,
+      // core 侧的 mcp 目录不存在了,两个 manager 现在同住一个领域、分住 kernel/ 与领域根,不再是 I2 要守的跨层同名。)
       // storage 归位(P4b/c):core 那半是零依赖的存储原语,runtime 那半是产品的
       // store 路径与文件存储。两边同名两次。
       'storage/file-storage.ts',

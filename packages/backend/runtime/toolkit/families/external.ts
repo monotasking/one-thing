@@ -196,7 +196,7 @@ export class PluginTool extends ExternalTool<JsonObject, JsonObject> {
 
 // ── MCP 工具 ────────────────────────────────────────────────────────────────
 
-/** 一个 MCP 工具的对外描述。装配层从 `core/mcp` 的 bridge 拿。 */
+/** 一个 MCP 工具的对外描述。装配层从 `runtime/mcp/kernel` 的 bridge 拿。 */
 export interface McpToolDescription {
   readonly id: string
   readonly name: string

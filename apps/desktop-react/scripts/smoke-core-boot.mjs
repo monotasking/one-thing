@@ -150,7 +150,7 @@ function countProcesses(pattern) {
  * **它抓的是"登记"那一半,不是"等在途 start"那一半**:后者在真机上被
  * `HeadlessMCPManager` 自己的串行队列兜住了(`shutdown()` 是 enqueue 的,排在
  * 在途的 `initialize` 后面),所以拆掉子系统 `dispose()` 里的 `await inFlight`
- * 这道门仍然绿 —— 那一半的判据在 `wiring/mcp/__tests__/subsystem.test.ts`
+ * 这道门仍然绿 —— 那一半的判据在 `runtime/mcp/wiring/__tests__/subsystem.test.ts`
  * (注入的替身没有那条队列,拆掉即红)。两半各有各的判据,不互相冒充。
  */
 async function runMcpEarlyExitLane() {

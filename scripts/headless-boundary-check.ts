@@ -2468,9 +2468,13 @@ function checkCoreForbiddenImports(): void {
 
 /**
  * 领域内核的 import 闭包:非测试文件只许 import **自己那个 kernel 目录**里的东西(相对路径且解析在目录内)、
- * `@onething/backend/core/**` 与 node 内建。同领域的产品文件、`wiring/`、脊柱、`@shared`、第三方包一概不许 ——
- * 内核要能原样拿走,它就不能认识自己被谁用。比 core 的那条(`checkCorePackageDependencies`)更紧:core 还许
- * `@shared/*` 与一张批准表,内核今天一样都用不着,就一样都不开。
+ * `@onething/backend/core/**`、`@shared/*` 与 node 内建。同领域的产品文件、`wiring/`、脊柱、第三方包一概不许 ——
+ * 内核要能原样拿走,它就不能认识自己被谁用。
+ *
+ * `@shared/*` 是 mcp 并进来时(2026-10-02)放开的:kernel 当 core 判,core 本来就许 `@shared/*`(契约与两边共用的
+ * 纯逻辑,shared 自己不 import 任何 server 包),mcp 内核从 `@shared/mcp/types` 取契约形状。`@shared/ipc` 照旧被
+ * core 那组禁令拦着(`checkCoreForbiddenImports` 同样扫 kernel)。比 core 的那条(`checkCorePackageDependencies`)
+ * 仍紧一格:core 还许一张第三方批准表,内核一个第三方包都不许。
  */
 function checkRuntimeDomainKernelImportClosure(): void {
   const lines = runtimeDomainKernelRoots().flatMap(kernelRoot => walkFiles(kernelRoot)
@@ -2480,11 +2484,12 @@ function checkRuntimeDomainKernelImportClosure(): void {
       const target = relativeTargetOf(file, specifier)
       if (target) return !isInside(kernelRoot, target)
       if (specifier === '@onething/backend/core' || specifier.startsWith('@onething/backend/core/')) return false
+      if (specifier === '@shared' || specifier.startsWith('@shared/')) return false
       if (isNodeBuiltinSpecifier(specifier)) return false
       return true
     })))
   assertNoMatches(
-    'packages/backend/runtime/*/kernel imports only its own kernel, @onething/backend/core and node builtins',
+    'packages/backend/runtime/*/kernel imports only its own kernel, @onething/backend/core, @shared and node builtins',
     lines,
   )
 }
@@ -3214,20 +3219,23 @@ function checkMainCoreSystemAdapters(): void {
 }
 
 function checkCorePublicExports(): void {
-  const indexPath = path.join(root, 'packages/backend/core/index.ts')
-  const content = fs.readFileSync(indexPath, 'utf-8')
-  const required = [
-    'AgentEngine',
-    'EventBus',
-    'ContextManager',
-    'CoreStreamEngine',
-    'HeadlessMCPManager',
-    'CorePluginManager',
+  // 每个公开接口由它所在的那只桶交出。`HeadlessMCPManager` 随 mcp 内核并进了 `runtime/mcp/kernel/`
+  // (第③步,2026-10-02),于是改由那只桶交出;core 的大桶不再再导出它(那会让 core 倒挂到 runtime)。
+  const required: Array<[string, string]> = [
+    ['packages/backend/core/index.ts', 'AgentEngine'],
+    ['packages/backend/core/index.ts', 'EventBus'],
+    ['packages/backend/core/index.ts', 'ContextManager'],
+    ['packages/backend/core/index.ts', 'CoreStreamEngine'],
+    ['packages/backend/runtime/mcp/kernel/index.ts', 'HeadlessMCPManager'],
+    ['packages/backend/core/index.ts', 'CorePluginManager'],
   ]
-  const missing = required.filter(symbol => !content.includes(symbol))
+  const missing = required.filter(([barrel, symbol]) => {
+    const barrelPath = path.join(root, barrel)
+    return !fs.existsSync(barrelPath) || !fs.readFileSync(barrelPath, 'utf-8').includes(symbol)
+  })
   assertNoMatches(
-    'packages/backend/core/index.ts exports required public core interfaces',
-    missing.map(symbol => `${rel(indexPath)}: missing ${symbol}`),
+    'packages/backend/core/index.ts + runtime/mcp/kernel/index.ts export required public core interfaces',
+    missing.map(([barrel, symbol]) => `${barrel}: missing ${symbol}`),
   )
 }
 

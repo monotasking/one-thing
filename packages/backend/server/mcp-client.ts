@@ -7,7 +7,7 @@ import {
   type MCPClientLike,
   type CoreMCPClientRuntimeOptions,
   type CoreMCPProbeAdapters,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import {
   type CoreMCPProbeResult,
   type MCPConnectionStatus,

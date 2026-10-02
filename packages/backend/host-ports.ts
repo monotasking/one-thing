@@ -113,7 +113,7 @@ import {
   configureMCPClientIdentity,
   resetMCPClientIdentity,
 } from '@onething/backend/runtime/mcp/identity'
-import type { MCPClientFactory, MCPClientLike } from '@onething/backend/core/mcp'
+import type { MCPClientFactory, MCPClientLike } from '@onething/backend/runtime/mcp/kernel'
 
 /**
  * 两件不可 `null` 的端口形状顺手再导出一次:宿主要声明"我记下来的那份是什么"

@@ -3,7 +3,7 @@
  *
  * `permissionGuard` 这个概念在新树里已经不存在了:权限只认 `Intent.effects`。但它
  * 泄漏进了契约层(契约包的 `ipc/tools.ts`、`ipc/chat.ts`、
- * `core/mcp/tool-definition.ts`、`core/plugins/types.ts`、提示词快照、设置页与
+ * `runtime/mcp/kernel/tool-definition.ts`、`core/plugins/types.ts`、提示词快照、设置页与
  * `SystemPromptPanel.vue`),而 R2 的验收之一是「渲染器与 IPC 契约一行不改」。
  *
  * 于是它降级成一个**派生值**:由 `spec.effects` 这组静态上界推出五个字符串之一,
@@ -68,7 +68,7 @@ export function deriveLegacyPermissionGuard(
 
   // 会改文件 = 旧的 `permission-gated`(write / edit)。
   if (effects.some(kind => FILE_MUTATION.has(kind))) return 'permission-gated'
-  // MCP 的远端调用在旧目录里也是 `permission-gated`(core/mcp/tool-definition.ts)。
+  // MCP 的远端调用在旧目录里也是 `permission-gated`(runtime/mcp/kernel/tool-definition.ts)。
   if (effects.includes('mcp')) return 'permission-gated'
   // 插件工具在旧目录里恒 `permission-gated`(`app/plugins/api.ts` 写死的那一行)。
   if (effects.includes('plugin_exec')) return 'permission-gated'

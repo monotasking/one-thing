@@ -56,7 +56,7 @@ import {
 import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import type { McpSubsystem } from "../wiring/mcp/subsystem.js";
+import type { McpSubsystem } from "@onething/backend/runtime/mcp/wiring/subsystem";
 import type { ConfigureLoggingOptions } from "../wiring/logging/index.js";
 import {
 	createTenantAudienceFactory,
@@ -128,7 +128,7 @@ import {
 	createMCPServerState,
 	HeadlessMCPManager,
 	type MCPClientLike,
-} from "@onething/backend/core/mcp";
+} from "@onething/backend/runtime/mcp/kernel";
 // P4c 第七批:oauth 的六条数据面(与它们背后那台 per-owner 的第二台 authService)
 // 已随 `oauthRouter` 迁走;server 这侧只剩令牌事件的广播端口。
 import {
@@ -1419,7 +1419,7 @@ async function createServerRuntimeOverServerBackend(
 			 * 初版实测把 `apps/server` 那 5s 预算吃干净(5.06s + `shutdown did not
 			 * finish in time; pending session writes may be lost`),从前是 0.05s。
 			 * **用户裁定不接受无界等待**,于是 `McpSubsystem.dispose()` 现在自带
-			 * 3000ms 上限(见 `wiring/mcp/subsystem.ts` 的
+			 * 3000ms 上限(见 `runtime/mcp/wiring/subsystem.ts` 的
 			 * `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`),超时记 warn 并放行,把余量留给排在
 			 * 后面的账本 flush:同一场景现在 3.05s,那行 `pending session writes` 消失。
 			 * MCP 正常(0 台 / 连不上但快速失败)时收尾仍是 0.04–0.18s。

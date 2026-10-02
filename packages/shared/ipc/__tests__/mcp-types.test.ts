@@ -2,8 +2,8 @@
  * MCP type-convergence guard.
  *
  * The MCP base types used to be copy-pasted in four places
- * (`packages/backend/core/mcp/types.ts`, this package, `useMCPServers.ts`,
- * `mcpPresets.ts`). They now all re-export from `@onething/backend/core/mcp` — the
+ * (`packages/backend/runtime/mcp/kernel/types.ts`, this package, `useMCPServers.ts`,
+ * `mcpPresets.ts`). They now all re-export from `@onething/backend/runtime/mcp/kernel` — the
  * engine is the single source of truth. This test pins that contract:
  *
  * 1. compile-time: shared/ipc re-exports are *identical* to the core types

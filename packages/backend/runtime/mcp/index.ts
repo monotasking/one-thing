@@ -15,7 +15,7 @@ export * from './server-orchestration.js'
 export type {
   MCPClientFactory,
   MCPClientLike,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 
 export { MCPClient, probeMCPServerConfig } from './client.js'
 

@@ -24,7 +24,7 @@ import type {
   MCPToolInfo,
   MCPTransportType,
 } from '@shared/mcp/types.js'
-import { toLogger, type CompatLogger } from '../logging/index.js'
+import { toLogger, type CompatLogger } from '@onething/backend/core/logging'
 import type { CoreMCPProbeResult } from '@shared/mcp/types.js'
 
 /** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */

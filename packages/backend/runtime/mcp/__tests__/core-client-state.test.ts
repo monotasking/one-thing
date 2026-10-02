@@ -29,7 +29,7 @@ import {
   runMCPConnectedClientOperation,
   setMCPServerStatus,
   updateMCPClientConfigWithAdapters,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import type { MCPServerConfig } from '@shared/mcp/types'
 
 const config: MCPServerConfig = {

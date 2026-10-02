@@ -13,13 +13,13 @@ import {
   planMCPToolsCatalogWrite,
   resolveMCPToolExposure,
   resolveMCPRouterAction,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import {
   mcpRouterToCoreToolDefinition,
   mcpToolToCoreToolDefinition,
   normalizeMCPContent,
   planMCPInputSchemaValidation,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import type { MCPToolInfo } from '@shared/mcp/types'
 
 const tools: MCPToolInfo[] = [

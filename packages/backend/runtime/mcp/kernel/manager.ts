@@ -9,7 +9,7 @@ import type {
   MCPToolCallResult,
   MCPToolInfo,
 } from '@shared/mcp/types.js'
-import { getCoreLogger } from '../logging/index.js'
+import { getCoreLogger } from '@onething/backend/core/logging'
 
 const log = getCoreLogger('core.mcp')
 

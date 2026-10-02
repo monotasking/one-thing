@@ -23,7 +23,7 @@ import {
   type CoreMCPTask,
   type CoreMCPClientRuntimeOptions,
   type CoreMCPProbeAdapters,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import { type CoreMCPProbeResult } from '@shared/mcp/types'
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
 import { getMCPOAuthFlowManager } from './oauth/index.js'

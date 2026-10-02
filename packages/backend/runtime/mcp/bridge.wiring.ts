@@ -20,7 +20,7 @@ import {
   planMCPInputSchemaValidation,
   type CoreMCPJsonSchemaValidationPlan,
   type MCPModelFacingToolDefinition as ModelFacingToolDefinition, type CoreMCPBridgeRuntimeHost, type WriteMCPToolsCatalogWithAdaptersOptions,
-} from '@onething/backend/core/mcp'
+} from '@onething/backend/runtime/mcp/kernel'
 import { pathExists, writeTextFile } from '@onething/backend/core/storage'
 import { consolePort, getLogger } from '../logging/index.js'
 

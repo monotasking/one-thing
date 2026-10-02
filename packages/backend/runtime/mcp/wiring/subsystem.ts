@@ -17,7 +17,7 @@
  */
 import { configureMCPCapabilitiesChangedHandler } from '@onething/backend/runtime/mcp/capabilities-changed'
 import type { MCPSettings } from '@shared/mcp/types'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('app.mcp.subsystem')
 

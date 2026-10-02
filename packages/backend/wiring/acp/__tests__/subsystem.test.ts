@@ -2,7 +2,7 @@
  * `AcpSubsystem` 的生命周期(C1,方案
  * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。
  *
- * 与 `wiring/mcp/__tests__/subsystem.test.ts` 同型的精简版:ACP 的 `initialize` 是
+ * 与 `runtime/mcp/wiring/__tests__/subsystem.test.ts` 同型的精简版:ACP 的 `initialize` 是
  * 同步的,所以"在途"那段窗口靠一只 async 的替身造出来 —— 判的仍然是同一件事
  * (dispose 必须等在途的 start 落地,再 shutdown 恰好一次)。
  */
@@ -105,7 +105,7 @@ describe('AcpSubsystem', () => {
 
   /*
    * 收尾批(2026-09-03,用户裁定 b):等待有界,与 MCP 同型。理由见
-   * `wiring/mcp/__tests__/subsystem.test.ts` 末尾那两条。
+   * `runtime/mcp/wiring/__tests__/subsystem.test.ts` 末尾那两条。
    */
   it('shutdown 挂住:dispose 在上限内返回,并记一行 warn', async () => {
     const { deps, manager } = makeDeps({ shutdownGate: new Promise<void>(() => {}), disposeTimeoutMs: 30 })
