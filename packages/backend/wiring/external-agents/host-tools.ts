@@ -11,7 +11,7 @@
  *
  * ```
  * AcpConnector.streamTurn(localSessionId=执行会话)
- *   → runtime/acp/wiring/host-mcp-bridge.ts → resolveHostToolSurface({ localSessionId })
+ *   → runtime/acp/host-mcp-bridge.ts → resolveHostToolSurface({ localSessionId })
  *       ① 会话 / agent / profile  → 这一轮能用哪些工具(venue 门,单点)
  *       ② 目录里取工具             → 本地回合调的**同一批**,不是副本
  *   → 桥按桥凭据绑语境,stdio / http 交给 agent(agent 侧看到 mcp__onething__send_message …)
@@ -38,7 +38,7 @@ import { getSession } from '../../stores/sessions.js'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import { resolveAgentProfileForSession } from '../agents/profile.js'
-import { collabVenueOf } from '@onething/backend/runtime/collab/wiring/venue'
+import { collabVenueOf } from '@onething/backend/runtime/collab/venue'
 import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/runtime/toolkit'
@@ -89,7 +89,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
 
 /**
  * 一条会话此刻的**宿主工具面**:工具对象 + 它们该在哪条语境里跑。与传输无关 ——
- * 跨进程的桥(ACP 路,`runtime/acp/wiring/host-mcp-bridge.ts`)吃的就是这一份。
+ * 跨进程的桥(ACP 路,`runtime/acp/host-mcp-bridge.ts`)吃的就是这一份。
  */
 export interface HostToolSurface {
   /** 会话上的 agent 身份(profile 用的那一个)。 */

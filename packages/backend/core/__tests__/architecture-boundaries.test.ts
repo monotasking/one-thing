@@ -74,22 +74,9 @@ describe('architecture boundaries', () => {
     ])).toEqual([])
   })
 
-  it('keeps the runtime product layer off the assembly package', () => {
-    // P3'd: the assembly layer is its own workspace package
-    // (`@onething/backend`, the former `runtime/app`). The runtime package
-    // is host-independent product logic and must never depend on how it gets
-    // assembled — the dependency points one way: product ← assembly ← hosts.
-    //
-    // 合包(server / client 拆分第②步,2026-10-02)以后 runtime 自己也住在 `@onething/backend` 里
-    // (`runtime/` 子树),core 是 `core/` 子树。所以「不许碰装配层」改成按目录说:不许 import
-    // `@onething/backend` 的脊柱(包根本身,以及 `core/`、`runtime/`、`gateway/` 三棵子树以外的任何子路径)。
-    // 相对路径爬出 runtime 子树的情形由下面「三棵子树的相对 import 不出自己的子树」那条守。
-    // `runtime/<d>/wiring/**` 是住在领域家里的装配层(第③步,2026-10-02),它 import 脊柱正是它的工作,豁免;
-    // 反方向(产品层不许 import 它)由检查器的 `checkRuntimeProductDoesNotImportDomainWiring` 守。
-    expect(findForbiddenReferences('packages/backend/runtime', [
-      backendSpineImportPattern,
-    ], { allowFile: isRuntimeDomainWiringPath })).toEqual([])
-  })
+  // 「runtime 产品层不许 import 脊柱」这一条随第③步拍平撤掉(2026-10-02,用户拍板「server 包内部不再区分接线与
+  // 产品逻辑」,正本 `docs/design/server-client-split-2026-10.md` §4):一个功能的文件平铺在 `runtime/<d>/`,
+  // 它们本来就要 import 脊柱。runtime 的宿主禁令(electron / `@main` / `@preload`)在上一条里照旧。
 
   /**
    * 合包以前三个包之间隔着包边界,相对路径爬不进别的包(爬得进去也会在打包与 exports 上露馅);合包以后
@@ -103,14 +90,12 @@ describe('architecture boundaries', () => {
       const relativeDirectory = `packages/backend/${subtree}`
       for (const filePath of collectSourceFiles(relativeDirectory)) {
         if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)) continue
-        // `runtime/<d>/wiring/**` 按路径角色是脊柱(装配层),这条守的是**产品代码**别爬进脊柱,所以它不在射程里。
-        // 这个豁免是被逼出来的,不是图省事:内部会话模块(`session/reads.ts`、`session/event-log.ts` …)按
-        // `scripts/lib/backend-public-boundary.mjs` 的规矩**不许有 exports 键**,接线拿它们只能走相对路径,
-        // 和包根下的脊柱文件一模一样。指向脊柱的其余 import 照样改成了包说明符。
-        if (isRuntimeDomainWiringPath(filePath)) continue
         const code = stripComments(readFileSync(join(projectRoot, filePath), 'utf8'))
         for (const match of code.matchAll(relativeImportPattern)) {
           const target = join(dirname(filePath), match[1])
+          // 唯一的口子:runtime 指向内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)。
+          // 那条门规定它们**不许有 exports 键**,所以没有包说明符可写,只能相对 import —— 与包根下的脊柱文件一样。
+          if (subtree === 'runtime' && isPrivateSessionModule(target)) continue
           if (target !== relativeDirectory && !target.startsWith(`${relativeDirectory}/`)) {
             escapes.push(`${filePath} -> ${match[1]}`)
           }
@@ -140,7 +125,7 @@ describe('architecture boundaries', () => {
     // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
     // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。
     // P3'c(2026-08-21)摘掉最后一个 `plugins`:10 件进 `runtime/plugins/`
-    // (与 core 同名的按 I2 带角色改名),17 件进 `backend/runtime/plugins/wiring/`。
+    // (与 core 同名的按 I2 带角色改名),17 件进 `backend/runtime/plugins/`。
     //
     // **表空了,但断言留着** —— 它现在守的是"不许再长回来":任何新的包根目录
     // 只要与 runtime 顶层同名就直接红,想豁免必须先在这里写一行理由。
@@ -182,12 +167,12 @@ describe('architecture boundaries', () => {
     ])
     // 第四条豁免,是**规则**而不是名字:内置插件的产品层实现文件名 = 插件 id
     // (`scripts/headless-boundary-check.ts` 的 `checkPluginLogicStaysOutOfHostAssembly`
-    // 按 `backend/runtime/plugins/wiring/builtin/<id>.ts` 逐个反查
+    // 按 `backend/runtime/plugins/builtin/<id>.ts` 逐个反查
     // `runtime/plugins/<id>.ts`)。那个名字不是自由变量,所以它不参与 I2 ——
     // 一个插件的 core 侧内核与它的产品侧实现同名,是那条硬判据的直接后果。
     // 这里从插座目录现算,不写死任何插件名。
     const builtinPluginFiles = new Set(
-      readdirSync(join(projectRoot, 'packages/backend/runtime/plugins/wiring/builtin'), { withFileTypes: true })
+      readdirSync(join(projectRoot, 'packages/backend/runtime/plugins/builtin'), { withFileTypes: true })
         .filter(entry => entry.isFile() && entry.name.endsWith('.ts'))
         .map(entry => `plugins/${entry.name}`),
     )
@@ -286,18 +271,18 @@ describe('architecture boundaries', () => {
 
 })
 
-/**
- * `@onething/backend` 的脊柱说明符:包根本身,或 `core` / `runtime` / `gateway` 三棵子树以外的任何子路径
- * (合包以前这就是 `importOf('@onething/backend')` 整个包)。
- */
-const backendSpineImportPattern = /(?:from\s+['"]|import\s*\(\s*['"]|require\s*\(\s*['"])@onething\/backend(?:['"]|\/(?!(?:core|runtime|gateway)(?:\/|['"])))/
-
 /** 任意说明符(import / export-from / 动态 import / require)。 */
 const anyImportPattern = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g
 
-/** `packages/backend/runtime/<d>/wiring/**`:住在领域家里的装配层。 */
-function isRuntimeDomainWiringPath(filePath: string): boolean {
-  return /^packages\/backend\/runtime\/[^/]+\/wiring\//.test(filePath)
+/** 内部会话模块(`packages/backend/session/<x>.ts`,名单与 `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 同源,现读)。 */
+const privateSessionFiles = (() => {
+  const text = readFileSync(join(projectRoot, 'scripts/lib/backend-public-boundary.mjs'), 'utf8')
+  const list = /privateSessionFiles = new Set\(\[([\s\S]*?)\]\)/.exec(text)?.[1] ?? ''
+  return new Set([...list.matchAll(/'([^']+)'/g)].map(match => match[1]))
+})()
+
+function isPrivateSessionModule(target: string): boolean {
+  return dirname(target) === 'packages/backend/session' && privateSessionFiles.has(target.split('/').pop()!.replace(/\.js$/, '.ts'))
 }
 
 /** 现有的领域内核目录(`packages/backend/runtime/<d>/kernel`),现算,不写死领域名。 */

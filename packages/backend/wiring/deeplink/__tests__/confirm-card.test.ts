@@ -13,7 +13,7 @@ const describePluginDeepLinkAction = vi.hoisted(() => vi.fn())
 const getPluginManager = vi.hoisted(() => vi.fn())
 
 vi.mock('../../agents/index.js', () => ({ findAgent, defaultAgent }))
-vi.mock('@onething/backend/runtime/plugins/wiring/manager', () => ({ getPluginManager }))
+vi.mock('@onething/backend/runtime/plugins/plugin-manager', () => ({ getPluginManager }))
 vi.mock('../registry.js', () => ({ describePluginDeepLinkAction }))
 
 import { buildDeepLinkCard } from '../confirm-card.js'

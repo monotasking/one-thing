@@ -26,7 +26,7 @@ import {
   type HostMcpRoutes,
 } from '@shared/ipc/host-mcp.js'
 import { getCurrentBackendInstance } from '../../current.js'
-import { HostMcpUnauthorizedError, type HostMcpBridge } from '@onething/backend/runtime/acp/wiring/host-mcp-bridge'
+import { HostMcpUnauthorizedError, type HostMcpBridge } from '@onething/backend/runtime/acp/host-mcp-bridge'
 import type { RpcRouteHandlers } from '../registry.js'
 
 /** 这台 backend 的桥;ACP 子系统还没装好 = 没有桥。 */

@@ -28,11 +28,11 @@ import {
 	isCollabCoordinatorDrivenSession,
 	isCollabRoomSession,
 	type CollabRoomInboundCommand,
-} from "@onething/backend/runtime/collab/wiring/ingress";
+} from "@onething/backend/runtime/collab/ingress";
 import {
 	pluginPostInterceptReply,
 	type PluginInterceptSteerPort,
-} from "@onething/backend/runtime/plugins/wiring/sessions";
+} from "@onething/backend/runtime/plugins/session-messenger";
 import { resolveAgentProfileForSession } from "../agents/profile.js";
 import { takeExternalAgentSteering } from "../external-agents/index.js";
 import { defaultAgent, findAgent } from "@onething/backend/runtime/agents/store-bound.wiring";

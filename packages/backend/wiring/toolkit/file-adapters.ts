@@ -1,7 +1,7 @@
 /**
  * 本地 read / write / edit 工具的沙箱面(读根、写根、缺省工作目录)。
  *
- * 从 `catalog.ts` 抽出来的理由(A3-b):ACP 的文件桥(`runtime/acp/wiring/fs-bridge.ts`)要与这几只工具
+ * 从 `catalog.ts` 抽出来的理由(A3-b):ACP 的文件桥(`runtime/acp/fs-bridge.ts`)要与这几只工具
  * 用**同一份**根列表,而它不该为此 import 整张工具目录(那会把每只内置工具都拖进 server /
  * daemon 的装配依赖图)。目录照旧从这里拿,口径只有一处。
  */

@@ -503,7 +503,7 @@ export interface MusicSettings {
  *
  * **四条推送留在原地**(`MUSIC_EVENT` / `MUSIC_NOW_PLAYING` / `MUSIC_LYRICS` /
  * `MUSIC_DJ_SPEAK`)—— router 今天没有推送面,而它们早就走
- * `broadcastVoiceHostMessage` 这个注入端口,由 `backend/runtime/music/wiring/*` 直接发。
+ * `broadcastVoiceHostMessage` 这个注入端口,由 `backend/runtime/music/*` 直接发。
  * 常量与渲染侧订阅因此原样保留。
  *
  * 无参的六条(`getState` / `getNowPlaying` / `getRadio` / `getLyrics` /

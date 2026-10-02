@@ -60,11 +60,11 @@ const mocks = vi.hoisted(() => ({
   ),
 }))
 
-vi.mock('@onething/backend/runtime/collab/wiring/board-store', () => ({
+vi.mock('@onething/backend/runtime/collab/board-store', () => ({
   loadCollabBoard: (...args: unknown[]) => mocks.loadCollabBoard(...(args as [])),
 }))
 
-vi.mock('@onething/backend/runtime/collab/wiring', () => ({
+vi.mock('@onething/backend/runtime/collab/rooms', () => ({
   applyUserCollabBoardAction: (...args: unknown[]) => mocks.applyUserCollabBoardAction(...(args as [])),
   clearCollabRoomHistory: (...args: unknown[]) => mocks.clearCollabRoomHistory(...(args as [])),
   ensureUserDmRoom: (...args: unknown[]) => mocks.ensureUserDmRoom(...(args as [string])),

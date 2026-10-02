@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AcpSubsystem } from '@onething/backend/runtime/acp/wiring/subsystem'
+import { AcpSubsystem } from '@onething/backend/runtime/acp/subsystem'
 import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from '../runtime.js'
 
 describe('server runtime starts the ACP subsystem', () => {

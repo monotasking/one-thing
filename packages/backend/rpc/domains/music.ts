@@ -49,7 +49,7 @@
  * ## 四条推送留在原地
  *
  * `MUSIC_EVENT` / `MUSIC_NOW_PLAYING` / `MUSIC_LYRICS` / `MUSIC_DJ_SPEAK` 走
- * `broadcastVoiceHostMessage` 这个注入端口,由 `runtime/music/wiring/{service,radio,dj-voice}`
+ * `broadcastVoiceHostMessage` 这个注入端口,由 `runtime/music/{service,radio,dj-voice}`
  * 直接发 —— 与本域的请求面不在同一条路上。router 今天没有推送面,所以四条常量与
  * 订阅侧原样保留(同 practice / scratchpad / oauth 判例)。**留账**给壳那一半:资源
  * 面上音乐已经会发 `radioOpened` / `radioClosed` / `nowPlayingChanged` /
@@ -84,9 +84,9 @@ import {
   MUSIC_RADIO_PATH,
   MUSIC_RESOURCE_SCHEME,
 } from '@onething/backend/runtime/music/resource-spec'
-import { assertMusicOperator } from '@onething/backend/runtime/music/wiring/access'
-import { resolveDjSpeakDone } from '@onething/backend/runtime/music/wiring/dj-voice'
-import { getMusicNowPlaying } from '@onething/backend/runtime/music/wiring/service'
+import { assertMusicOperator } from '@onething/backend/runtime/music/access'
+import { resolveDjSpeakDone } from '@onething/backend/runtime/music/dj-voice'
+import { getMusicNowPlaying } from '@onething/backend/runtime/music/service'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
 import { principalOf } from '../principal.js'
 import {
@@ -156,7 +156,7 @@ function fallbackTo(fallback: string) {
  *
  * 表按 `MusicCommand` **全表**打:词表里加一条而这里忘了配,是一个编译错而不是一次
  * 运行时的「未知的播放命令」。那句兜底只为**契约外**的调用方留着(它的另一个产地
- * 在 `runtime/music/wiring/operations.ts` 的 argv 表守卫上,那一条今天从 RPC 这一路已经够
+ * 在 `runtime/music/operations.ts` 的 argv 表守卫上,那一条今天从 RPC 这一路已经够
  * 不着了 —— 留账:两处一句话,等下一次真要改文案时收成一处)。
  */
 const COMMAND_OPS: Readonly<Record<MusicCommand, { op: string; path: string; valueKey?: string }>> = {

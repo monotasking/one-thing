@@ -58,7 +58,7 @@ import type { ChatMessage } from '@shared/ipc/chat.js'
 import type { ACPAdoptSessionResponse } from '@shared/ipc/acp.js'
 import { sessionCommands } from '../../session/commands.js'
 import { flushSessionEventLog } from '../../session/event-log.js'
-import { AcpSessionLifecycle, type AcpSessionLifecyclePorts } from '@onething/backend/runtime/acp/wiring/session-lifecycle'
+import { AcpSessionLifecycle, type AcpSessionLifecyclePorts } from '@onething/backend/runtime/acp/session-lifecycle'
 
 const log = getLogger('rpc.acp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */

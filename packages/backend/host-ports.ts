@@ -53,7 +53,7 @@ import {
   configurePluginsHost,
   resetPluginsHost,
   type PluginsHostPorts,
-} from '@onething/backend/runtime/plugins/wiring/host-ports'
+} from '@onething/backend/runtime/plugins/host-ports'
 import {
   configureGatewayHost,
   resetGatewayHost,

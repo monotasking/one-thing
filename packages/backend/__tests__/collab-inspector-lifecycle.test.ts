@@ -50,7 +50,7 @@ async function room() {
 it.each([false, true])('owns pending room snapshots with collab=%s and rejects an already-queued A callback after B is installed', { timeout: 60000 }, async collab => {
   const first = await assemble('a', collab)
   await room()
-  const inspector = await import('@onething/backend/runtime/collab/wiring/inspector')
+  const inspector = await import('@onething/backend/runtime/collab/inspector')
   const old = inspector.getCollabInspector()!
   expect(old).not.toBeNull()
   old.forget('room')
@@ -94,7 +94,7 @@ it.each([false, true])('owns pending room snapshots with collab=%s and rejects a
 it('keeps the Backend lease until an already-started real EventBus emission completes', { timeout: 60000 }, async () => {
   const instance = await assemble('a')
   await room()
-  const { getCollabInspector } = await import('@onething/backend/runtime/collab/wiring/inspector')
+  const { getCollabInspector } = await import('@onething/backend/runtime/collab/inspector')
   const inspector = getCollabInspector()!
   inspector.forget('room')
   const entered = barrier()

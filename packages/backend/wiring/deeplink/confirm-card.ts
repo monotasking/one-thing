@@ -25,7 +25,7 @@ import {
   type DeepLinkParseResult,
 } from '@onething/backend/core/plugins'
 import { defaultAgent, findAgent } from '../agents/index.js'
-import { getPluginManager } from '@onething/backend/runtime/plugins/wiring/manager'
+import { getPluginManager } from '@onething/backend/runtime/plugins/plugin-manager'
 import { describePluginDeepLinkAction } from './registry.js'
 
 /** 卡上的来源标注。用户要一眼看出"这不是我在应用里点的"。 */

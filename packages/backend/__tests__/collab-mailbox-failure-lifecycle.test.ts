@@ -36,7 +36,7 @@ async function assemble() {
     gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
   } })
   const agents = await import('../wiring/agents/index.js')
-  const runtime = await import('@onething/backend/runtime/collab/wiring/actors/runtime')
+  const runtime = await import('@onething/backend/runtime/collab/actors/runtime')
   const core = await import('@onething/backend/runtime/collab/kernel')
   const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   const event = (id: string) => core.createActorEvent({

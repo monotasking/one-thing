@@ -15,7 +15,7 @@
  *
  * A6-b(2026-09-26):Claude SDK 那条进程内出口(`resolveClaudeCodeHostToolSurface`)随连接器
  * 退役;这里改用 `resolveHostToolSurface` + `bindHostToolContext` —— ACP 桥
- * (`runtime/acp/wiring/host-mcp-bridge.ts`)做的就是这两步,只是按桥凭据而不是按回合绑。
+ * (`runtime/acp/host-mcp-bridge.ts`)做的就是这两步,只是按桥凭据而不是按回合绑。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '../../logging/index.js'
@@ -123,7 +123,7 @@ vi.mock('../../agents/profile.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/runtime/collab/wiring/budget', () => ({
+vi.mock('@onething/backend/runtime/collab/budget', () => ({
   isRoomOverBudget: async () => false,
 }))
 
@@ -154,7 +154,7 @@ async function bindHostSurface(request: {
   return { toolNames: surface.tools.map(tool => hostMcpToolName(tool.id)), release }
 }
 const { clearCollabSayIdempotence, speakIntoCollabRoom }
-  = await import('@onething/backend/runtime/collab/wiring/say-tool')
+  = await import('@onething/backend/runtime/collab/say-tool')
 const { Catalog, Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
 const {
   configureToolkitCatalog,

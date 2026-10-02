@@ -87,7 +87,7 @@ const CODEC = 'packages/shared/session/__tests__/session-chunk-codec.test.ts'
  * 装配层的状态注册表测试(同一组事实:状态活在流里、回合收尾被扫、已结算的落账本)。React 壳今天
  * 还没有插件状态 UI,壳侧那一半证明暂缺,记在下面各条的 note 里。
  */
-const PLUGIN_STATUS = 'packages/backend/runtime/plugins/wiring/__tests__/status.test.ts'
+const PLUGIN_STATUS = 'packages/backend/runtime/plugins/__tests__/status.test.ts'
 
 export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[] = [
   {

@@ -3,7 +3,7 @@
  *
  * 两处要它:Claude SDK 路从工具入参合成改动(`claude-code-connector.ts` 的
  * `fileChangeMetadata`),ACP 的 `fs/write_text_file` 在落盘前算「旧文 → 新文」
- * (`backend/runtime/acp/wiring/fs-bridge.ts`,A3-b)。判据与本地 edit / write 工具同一套:
+ * (`backend/runtime/acp/fs-bridge.ts`,A3-b)。判据与本地 edit / write 工具同一套:
  * `trimDiff` 收紧上下文、`truncateDiffForDisplay` 按行数与字节双截断 —— 同一份改动
  * 在三条路上长一个样,所以只写一处。
  */

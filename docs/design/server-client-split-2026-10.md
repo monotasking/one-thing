@@ -72,38 +72,40 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 逐领域(先选最散的:search、mcp、acp、plugins、collab、music),照 provider 试点的做法:先量、立快照、搬、证明不变、
 一个领域一笔提交。目标:一个领域在 server 包里只有一个目录。
 
-### 目录规矩(第一个领域 search 立下,后面的领域照抄)
+### 目录规矩(search 立下,2026-10-02 拍平后改写)
 
-**一个领域的家是 `runtime/<d>/`。** 产品文件原地不动;从前散在别处的两片搬进来,各占一个按角色命名的子目录:
+**用户拍板(2026-10-02):server 包内部不再区分「接线」与「产品逻辑」。** 一个功能的文件平铺在 `runtime/<d>/` 下,
+没有 `wiring/` 子目录。理由:后端只剩一个包、将来只跑在一个后端进程里;「接线」那一层原本是为了让同一份逻辑装进
+多个宿主(Vue 主进程、server、CLI daemon、React 壳)而存在的,宿主收敛成一个以后它没有对象了。测试要注入假件,
+靠函数参数就行,不需要一层目录来表达。(search 那批立的是「产品住领域根、装配住 `wiring/`」,同一天被这条拍板取代。)
 
+**一个领域的家是 `runtime/<d>/`**:
+
+- 领域根:这个功能的全部文件,不分「产品」「装配」。同名冲突按文件**做的事**起名(不用 wiring / host / bound / app /
+  assembly 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,另一个按内容改名。
 - **`runtime/<d>/kernel/`**:从前的 `core/<d>`。一个 `core/<d>` 只有在**别的领域也真 import 它**时才配留在 core
-  (那才是通用骨架);只服务本领域的内核(search 的 `core/search` 就是:除 search 自己以外零真实 importer,其余命中
-  全是注释)并进领域,改叫 kernel。搬家不改它的身份:它仍是零依赖的骨架。
-- **`runtime/<d>/wiring/`**:从前的 `backend/wiring/<d>`。它是装配层,只是住进了领域的家。
-- RPC 处理器(`rpc/domains/<d>.ts`)这一步不动 —— RPC 注册表那张表的形状是第④步的事。
+  (那才是通用骨架);只服务本领域的内核并进领域,改叫 kernel。「专属」怎么量:除了直接 import,还要看 core 的大桶
+  `core/index.ts` 有没有再导出它、有没有人经大桶拿它的名字 —— 大桶再导出而没人用,就删掉那段再导出;有人用,它就不是
+  专属内核,留在 core。内核目录名可以与领域名不同(collab 的 `core/actors`)。
+- RPC 处理器(`rpc/domains/<d>.ts`)不动 —— RPC 注册表那张表的形状是第④步的事。
 
-**守门规矩按路径角色判,不按住址判**(语义一条不放松):
+**守门规矩**:
 
 1. kernel 当 core 判:core 身上的禁令(electron / `@shared/ipc` / 原生依赖 / MCP、ACP SDK / zod 等,以及「core 在最底层」)
-   原样作用于 `runtime/*/kernel/**`。另加一条更紧的闭包:kernel 的非测试文件只许 import 自己那个 kernel 目录里的东西、
-   `@onething/backend/core/**`、`@shared/*`(core 本来就许;`@shared/ipc` 照旧被 core 那组禁令拦着)与 node 内建 ——
-   同领域的产品文件、`wiring/`、脊柱、第三方包一概不许。内核要能原样拿走,它就不能认识自己被谁用。
-   (search 落地时这条连 `@shared` 也不许;mcp 内核从 `@shared/mcp/types` 取契约形状,并进来时按「kernel 当 core 判」放开。)
-   「专属」怎么量:除了直接 import,还要看 core 的大桶 `core/index.ts` 有没有再导出它、有没有人经大桶拿它的名字 ——
-   大桶再导出而没人用,就删掉那段再导出;有人用,它就不是专属内核,留在 core。
-2. `runtime/<d>/wiring/**` 当装配层判:享有与 `backend/wiring/**` 逐条相同的规则集(可以 import 脊柱与 `@shared/ipc`,
-   electron / `@main` / `@preload` 照禁),「产品层不许 import 脊柱」「三棵子树的相对 import 不出子树」两条对它豁免。
-   反方向镜像 `*.wiring.ts` 那条:runtime 里**不在任何 `wiring/` 目录**的非测试文件不许 import `runtime/*/wiring/**`。
-   这与 `*.wiring.ts` 后缀是两回事:后缀标的是**产品文件**里那道「只许说跨进程词汇」的窄口,目录标的是**装配层本身**。
-3. 接线里指向脊柱的 import 一律写包说明符(`@onething/backend/wiring/logging/index.js` 这类,exports 缺键就补,风格照
-   脊柱现有的 `.js` 键);**唯一的例外是内部会话模块**(`session/reads.ts`、`session/event-log.ts` 等,
-   `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)—— 那条门规定它们不许有 exports 键,所以接线
-   照包根脊柱文件的样子相对 import 它们。runtime 子树的新键照 runtime 的风格不带 `.js`,目录桶有自己的键。
-4. `assembly:gate` 的尺子跟着角色走:`runtime/` 子树照旧不量,但它下面每个 `<d>/wiring/` 都量,基线里搬家文件的行只改路径。
-5. 按旧路径写的领域断言(search 的「只有一条查询路」、尸检表、「内核不点任何能力名」)只改路径。
+   原样作用于 `runtime/*/kernel/**`;另加闭包 —— kernel 的非测试文件只许 import 自己那个 kernel 目录里的东西、
+   `@onething/backend/core/**`、`@shared/*` 与 node 内建。内核要能原样拿走,它就不能认识自己被谁用。
+2. runtime 的其余文件与脊柱同一套宿主禁令(electron / `@main` / `@preload` / 渲染层别名;cordis 照旧只许脊柱用)。
+   「runtime 不许 import 脊柱」「runtime 不许 import `@shared/ipc`(`*.wiring.ts` 除外)」「非 `*.wiring` 文件不许 import
+   `*.wiring` 模块」三条随拍平撤掉。`*.wiring.ts` 后缀从此不表达任何权限,文件名留给下一步改。
+3. 「三棵子树的相对 import 不出自己的子树」保留,只有一个口子:runtime 相对 import 内部会话模块
+   (`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)—— 那条门规定它们不许有 exports 键,没有包说明符
+   可写。同一条门的「只有脊柱能碰内部会话模块」相应改成「core / gateway 以外都能碰」。指向脊柱的其余 import 写包说明符。
+4. `assembly:gate` 量脊柱 + `backend/wiring/` + 整个 `runtime/`(kernel 除外,kernel 按 core 判、core 不在这把尺子上)。
+5. 按旧路径写的领域断言只改路径;前提随拍平消失的断言撤掉并在原处写明(插件「行为测试不许住在装配树」、acp「装配那一半
+   不许自带 client / manager 门面」)。
 
-搬家脚本是可复用的(会话 scratchpad 里的 `fold-domain.mjs <d> [--kernel] [--dry]`:`git mv` + 相对路径按搬家前的落点
-重算 + 包说明符与注释里的路径改写 + exports 键改名补齐),`--kernel` 由「`core/<d>` 是否只有本领域在用」决定。
+搬家脚本都在会话 scratchpad 里:`fold-domain.mjs <d> [--kernel[=<dir>]] [--dry]`(把 `core/<dir>` / `backend/wiring/<d>`
+并进领域)与 `flatten.mjs [--dry]`(把 `runtime/<d>/wiring/**` 拍平,同名改名表写在脚本头上)。
 
 ## 5. 第④步要点
 
@@ -554,23 +556,100 @@ import 改成包说明符(`session/reads.js` 照规矩保持相对路径);`runti
 | collab | `core/actors`(10,内核目录名与领域名不同) | `wiring/collab`(73) | `rpc/domains/{collab,chat,sessions}.ts` |
 | music | —(core 下没有 music 专属目录) | `wiring/music`(20) | `rpc/domains/music.ts` |
 
-**立下的目录规矩**(详见 §4「目录规矩」):
-1. 一个领域的家是 `runtime/<d>/`,产品文件住领域根,内核住 `kernel/`,装配接线住 `wiring/`。
+**立下的目录规矩**(详见 §4「目录规矩」;六个领域搬完当天又拍平了一次,下面是拍平后的口径):
+1. 一个领域的家是 `runtime/<d>/`,一个功能的文件平铺在那里,不分「接线」与「产品逻辑」;只服务本领域的内核住 `kernel/`。
 2. `core/<d>` 只有在**别的领域也真 import 它**时才留在 core;量的时候连 core 大桶 `core/index.ts` 的再导出一起查。
 3. kernel 当 core 判:core 的禁令全数作用于它,另加闭包(只许自己目录、`@onething/backend/core/**`、`@shared/*`、node 内建)。
-4. `runtime/<d>/wiring/**` 当装配层判(与 `backend/wiring/**` 同一套规则,可碰脊柱);产品层不许回头 import 它 ——
-   `*.wiring.ts` 后缀文件也不许(后缀只是「可说跨进程词汇」的窄口,不是装配层)。
-5. 接线 import 脊柱写包说明符;内部会话模块(`privateSessionFiles`)与测试基建(`…/testing/`)保持相对路径、不进 exports。
-6. 守门尺子按路径角色量:assembly 尺子下钻 `runtime/*/wiring`,插件「装配测试」判据认 `runtime/<d>/wiring`,
-   按旧路径写的领域断言只改路径。边界门断言 139 → 141(kernel 闭包、产品层不许 import 领域接线)。
+4. runtime 其余文件与脊柱同一套宿主禁令;「runtime 不许 import 脊柱 / `@shared/ipc`」与 `*.wiring.ts` 窄口一起撤掉。
+5. import 脊柱写包说明符;内部会话模块(`privateSessionFiles`)与测试基建(`…/testing/`)保持相对路径、不进 exports ——
+   「子树相对 import 不出子树」为前者留了唯一的口子。
+6. 同名冲突按文件做的事起名,不用「层」的字眼;按旧路径写的领域断言只改路径,前提消失的断言撤掉并写明。
+   边界门断言 139 → 141(search 批加 kernel 闭包与「产品层不许 import 领域接线」)→ 139(拍平撤掉后者与 I3 的另一半)。
 
-**`backend/wiring/` 还剩 36 个目录**,本步没并,并不并留给下一步决定。按「`runtime/` 里有没有同名领域」分两类:
+**`backend/wiring/` 还剩 36 个目录**,本步没动。去向(2026-10-02 拍定):
 
-- **有同名产品领域、可以照本步的做法并进 `runtime/<d>/wiring/` 的**(30 个):agent-loop、agents、ambient、auth、engine(93 个文件,
-  最大)、evals、external-agents、files、goals、headless、interaction、logging、markdown、media、notes、pets、project-dirs、
-  providers(33)、scheduler、settings、skills、tasks、terminal、toc、todo-plan、toolkit(25)、tools、usage、variables、voice。
-  其中 `logging` 是横切设施(fan-in 高)、`engine` / `headless` 是装配的骨干,它们算不算「一个领域」值得先讨论再搬。
-- **接线-only 领域**(`runtime/` 里没有同名目录,6 个):`deeplink`、`quota`(什么都没有,只有接线);`memory`、`permission`、
-  `resource`(另一半在 `core/<d>`,且有别的领域在用,不是专属内核);`gateway`(另一半是 `packages/backend/gateway/` 那棵子树)。
-  这六个没有「领域的家」可去 —— 要么给它们在 `runtime/` 立一个只放 `wiring/` 的家,要么就让 `backend/wiring/` 留作接线-only 领域
-  的住处,这一条要拍板。
+- **照同样办法平铺进 `runtime/<d>/`**:`runtime/` 里有同名领域的那些 —— agent-loop、agents、ambient、auth、evals、
+  external-agents、files、goals、interaction、markdown、media、notes、pets、project-dirs、providers(33 个文件)、scheduler、
+  settings、skills、tasks、terminal、toc、todo-plan、toolkit(25)、tools、usage、variables、voice。
+- **接线-only 的六个在 `runtime/` 下各立一个目录**:`deeplink`、`quota`(只有接线)、`memory`、`permission`、`resource`
+  (另一半在 `core/<d>`,有别的领域在用,留 core)、`gateway`(另一半是 `packages/backend/gateway/` 子树)。
+- **待议**:`engine`(93 个文件,装配骨干)、`logging`(横切设施,fan-in 高)、`headless`(CLI daemon 的装配点)—— 算不算
+  「一个领域」先讨论再搬。
+
+### ③-拍平 落地记录(2026-10-02,未提交)
+
+**一句话**:按用户拍板「server 包内部不再区分接线与产品逻辑」(§4),六个已搬领域的 `runtime/<d>/wiring/**` 平铺进
+`runtime/<d>/`,`wiring/` 子目录全部消失;一笔做完(scratchpad 的 `flatten.mjs`,在 HEAD 的临时 worktree 上重放一遍,
+除下面列的手改文件外与主检出逐字相同)。187 个文件 `git mv`(含 88 份测试,进同领域已有的 `__tests__/` 或
+`actors/__tests__/`),另有 9 个 `runtime/plugins` 文件因与 `core/plugins` 同名(I2)按内容改名。
+
+**同名改名表**(新名按文件做的事起,不用「层」的字眼;领域根的 `index.ts` 一律保留为对外入口):
+
+| 旧路径(`packages/backend/runtime/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `search/wiring/index.ts` | `search/service-setup.ts` | 起索引 Worker、接三条订阅、造 `SearchService` 装进单槽、按设置换 Worker |
+| `search/wiring/providers.ts` | `search/install-providers.ts` | 把宿主的取材面装进进程单槽(`configureAppSearchProviders`) |
+| `search/__tests__/visibility.test.ts`(原产品测试) | `search/__tests__/capability-visibility.test.ts` | 考的是 `capabilities/visibility.ts`;原接线那份 `visibility.test.ts` 考 `search/visibility.ts`,接过这个名 |
+| `plugins/wiring/index.ts` | `plugins/plugin-system.ts` | 插件系统的启动入口(`bootstrapPluginSystem` / `PluginManager` 等) |
+| `plugins/wiring/skin.ts` | `plugins/skin-table.ts` | 把活着的插件喂给裁决,产出档位表 |
+| `plugins/wiring/theme-overrides.ts` | `plugins/theme-override-table.ts` | 同上,产出 token 覆盖变量表 |
+| `plugins/wiring/background.ts` | `plugins/background-table.ts` | 同上,产出背景层表(与 `core/plugins/background.ts` 同名) |
+| `plugins/wiring/install.ts` | `plugins/npm-process.ts` | npm 机制本身:spawn 与平台差异(与 core 的编排同名) |
+| `plugins/wiring/llm.ts` | `plugins/llm-service.ts` | `PluginLlmService`,受管 LLM 调用口的实现 |
+| `plugins/wiring/loader.ts` | `plugins/disk-loader.ts` | 从磁盘扫描并加载插件 |
+| `plugins/wiring/manager.ts` | `plugins/plugin-manager.ts` | `PluginManager`,包着 core 的 headless manager |
+| `plugins/wiring/resources.ts` | `plugins/resource-verbs.ts` | 插件的三个动词接到内核上 |
+| `plugins/wiring/sessions.ts` | `plugins/session-messenger.ts` | 跨会话投递与感知快照 |
+| `plugins/wiring/store.ts` | `plugins/data-home.ts` | 插件数据的家目录根 |
+| `plugins/wiring/webview.ts` | `plugins/webview-root.ts` | 自定义协议的静态根解析 |
+| `collab/wiring/index.ts` | `collab/rooms.ts` | 房间一侧的对外面(进房、配置、建房、私聊房、活动、actor 运行时) |
+| `collab/wiring/actors/index.ts` | `collab/actors/actor-io.ts` | actor 带 IO 的那一半(账落盘、mailbox 广播、宿主端口)的入口 |
+| `collab/wiring/agent-session.ts` | `collab/agent-exec-session.ts` | 确保 agent 的执行会话、管已读游标与回声 |
+| `collab/wiring/mentions.ts` | `collab/mention-stamping.ts` | 给 agent 发言里的 `@名字` 盖上 id |
+| `collab/wiring/reactions.ts` | `collab/react-to-message.ts` | 表情回应的写入(校验、落盘、广播一次) |
+| `collab/wiring/reply-quote.ts` | `collab/reply-quote-attach.ts` | 回复发出后补挂引用 |
+| `collab/wiring/__tests__/{agent-session,mentions,reactions,reply-quote}.test.ts` | `collab/__tests__/{agent-exec-session,mention-stamping,react-to-message,reply-quote-attach}.test.ts` | 跟着被测文件改名 |
+| `acp/__tests__/permission-bridge.test.ts`(原产品测试) | `acp/__tests__/client-permission.test.ts` | 考的是 `ACPClient` 的权限请求;原接线那份接过 `permission-bridge.test.ts`(被测文件就叫 `permission-bridge.ts`) |
+| `acp/__tests__/session-lifecycle.test.ts`(原产品测试) | `acp/__tests__/client-session-lifecycle.test.ts` | 同理,考 `ACPClient` 的会话生命周期 |
+
+**同名但内容是同一件事的两半(没合,留给下一步)**:`plugins/{skin,skin-table}.ts`、`plugins/{theme-overrides,theme-override-table}.ts`
+(裁决 + 喂表);`collab/{mentions,mention-stamping}.ts`、`collab/{reactions,react-to-message}.ts`、`collab/{reply-quote,reply-quote-attach}.ts`、
+`collab/{agent-session,agent-exec-session}.ts`(纯规则 + 带 IO 的写入);`core/plugins/<x>.ts` 与九个改名文件(协议 + 实现)。
+
+**撤掉 / 改写的守门规则**:
+1. 检查器:删 `isRuntimeDomainWiringFile`、`checkRuntimeProductDoesNotImportDomainWiring`(连同 `RUNTIME_DOMAIN_WIRING_SPECIFIER`)。
+2. 检查器 `checkRuntimeHostBoundary`:runtime 不再禁 `@shared/ipc`,与脊柱同一套宿主禁令(另保留 cordis 禁令);
+   I3 的 `*.wiring.ts` 窄口(`SHARED_CONTRACT_PATTERN_SOURCES` / `RUNTIME_WIRING_FORBIDDEN_PATTERNS` / `isRuntimeWiringFile`)删掉。
+3. 检查器 `checkRuntimeWiringModulesStayAtTheEdge`(I3 的另一半「非 wiring 文件不许 import `*.wiring` 模块」)撤掉 ——
+   前提是第 2 条那道窄口;而且原接线文件按设计就 import `*.wiring` 模块(`actor-io.ts` → `agent-replay.wiring` 等),留着第一跑就红。
+4. 检查器 `checkPluginLogicStaysOutOfHostAssembly` 第 3 段(「插件行为测试不许住在装配树的 `__tests__`」)**整段**撤掉,不止上一批加的
+   新分支:它比的两个 `__tests__` 目录现在是同一个。1)/2) 两段照旧,路径改成 `runtime/plugins/{builtin,disk-loader.ts}`。
+5. 检查器 `checkRuntimeOwnsAcpClientRuntime`:「装配那一半不许自带 client / manager / types / index 门面」那张表清空(留注释):
+   拍平后同名路径正是产品本体。`MAIN_FILE_IO_SYSTEM_DIRS` 那一格改成 `runtime/plugins`。
+6. `architecture-boundaries.test.ts`:删「runtime 产品层不许 import 脊柱」(13 → 12 条);「子树相对 import 不出子树」去掉
+   `wiring/` 豁免,换成唯一的口子 —— runtime 相对 import 内部会话模块(名单从 `backend-public-boundary.mjs` 现读;24 处走这个口子)。
+7. `scripts/lib/backend-public-boundary.mjs`:能碰内部会话模块的从「脊柱 + `runtime/<d>/wiring`」改成「core / gateway 以外」。
+8. kernel 规则(core 禁令 + 闭包)不动。边界门断言 141 → 139。
+9. `assembly:gate`:从「脊柱 + `wiring/` + `runtime/*/wiring`」改量「脊柱 + `wiring/` + 整个 `runtime/`(kernel 除外)」;新进尺子的
+   49 个文件按当时的值写进基线(合计 69 个模块级 let),基线从 58 个文件 / 92 个 let 变成 107 个 / 161 个;判定仍只红
+   `runtime/music/radio.ts 9 → 10`。
+
+**改写**:exports 改名 54 格(全部 `./runtime/<d>/wiring…` 与九个 plugins 键,无新增);import / `vi.mock` / 注释路径同步;
+根 `CLAUDE.md` 的 runtime 一节、`wiring/<domain>/` 那句、边界检查器与架构测试两节、插件一节「住在哪」、MCP / ACP 一节、
+StreamEngine 一节改成「一个功能一个目录、平铺」。`*.wiring.ts` 文件名没改:runtime 下还有 31 个(agents、auth、collab/actors ×4、
+engine ×2、interaction、mcp ×2、plugins ×2、practice、prompts ×2、providers ×3、scheduler、skills、terminal ×2、toolkit ×4、
+triggers、voice ×3),留给下一步。
+
+**手改的文件**(不在脚本产物里):检查器、`architecture-boundaries.test.ts`、`backend-public-boundary.mjs`、`assembly-gate.mjs`
+与基线、`CLAUDE.md`、本文;`search/index/projector.ts` 一处注释(`runtime/search/wiring` 指的是那个模块,保留成
+`service-setup`,脚本按目录提法会写成 `runtime/search`)。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 均零错;`server:build`、`build:cli` 成功,`dist/{server,cli}/` 的
+`search-worker.cjs` 与 `acp-mcp-bridge.cjs` 都在;桌面四个 bundle 成功;根全量 vitest 改前 11419 条 / 19 红、改后 11418 条
+(删掉一条架构断言)/ 18 红 —— 少的那条是 brief 点名会偶发的 `http.test` 文件面,其余 18 条按路径映射后逐条相同;壳 7344 条,
+同一条 A9 红;`gate:acp` 前后 108 ok;`gate:search-index` 改前 72 ok + ⑤d ×2 + ⑪a、改后 71 ok + ⑤d ×2 + ⑤c + ⑪a、
+改后重跑 72 ok + ⑤d ×2 + ⑤c —— ⑤d 两条是合包后的既有红,⑤c(计时)与 ⑪a 在这几批的基线里都出现过、此起彼伏;
+boundary / transport / log / session / provider gate 绿,assembly gate 仍只红 radio.ts 那一条;`provider-vendor-drill` 绿。
+88 份搬家 / 改名的测试逐行对照 HEAD,除 import 与路径行外零差异。kernel 规则仍会红:`runtime/mcp/kernel/router.ts` 加一行
+`../manager.js`,检查器的闭包与架构测试「kernel 在最底层」都红,撤掉回绿。`git grep` 里 `(search|mcp|acp|plugins|collab|music)/wiring`
+在代码 / 配置 / 脚本中为零。

@@ -2,7 +2,7 @@
  * ACP 设置归一的性质(A1-a 起)。
  *
  * 内置 agent 不再写在 defaults 里 —— 它们是种子文件 `resources/acp-agents/*.json`,由装配层的
- * 名册合并(`backend/runtime/acp/wiring/registry.ts`)。这里只剩「形状」:出厂名册为空、用户条目按 id
+ * 名册合并(`backend/runtime/acp/registry.ts`)。这里只剩「形状」:出厂名册为空、用户条目按 id
  * 去重、只归一带着的格(稀疏覆盖原样往返)、新加的两格按规矩收。
  */
 import { describe, expect, it } from 'vitest'

@@ -229,7 +229,7 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
 /**
  * ACP 设置的出厂值。**`agents` 是空的**(A1-a):内置 agent 来自种子文件
  * `resources/acp-agents/*.json`,官方注册表来的在 `<store>/acp/registry-cache.json`,
- * 合并在装配层 `backend/runtime/acp/wiring/registry.ts`。这张表只放用户手加 / 覆盖的条目。
+ * 合并在装配层 `backend/runtime/acp/registry.ts`。这张表只放用户手加 / 覆盖的条目。
  */
 export const DEFAULT_ACP_SETTINGS: ACPSettings = {
   enabled: true,
@@ -752,7 +752,7 @@ function normalizeChannelSettings(settings?: Partial<ChannelSettings>): ChannelS
  *
  * 「老盘上躺着的旧默认拷贝(A1 之前写死的四条)不算用户条目」这一步**不在这里**:判它要读
  * 种子文件,而 `@shared` 读不了盘(也不该认识名册)。它在装配层算名册时做
- * (`backend/runtime/acp/wiring/registry.ts` → `isSeedCopy`),旧 id(`codex-cli` / `kimi-code`)的
+ * (`backend/runtime/acp/registry.ts` → `isSeedCopy`),旧 id(`codex-cli` / `kimi-code`)的
  * 认回也在那里,依据是种子里的 `aliases`。
  */
 export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {

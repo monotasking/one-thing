@@ -50,7 +50,7 @@ const EXTERNAL_DESCRIPTORS: AgentExecutorDescriptor[] = [
        * A4-b 翻真。E3 的宿主工具面是一台**活的进程内实例**,ACP 的 `mcpServers` 只认可序列化的
        * 配置 —— A4-a 给它加了两条出口(stdio 桥 `acp-mcp-bridge.cjs` / `/api/mcp` Streamable HTTP,
        * 按 (agent, 会话) 签的桥凭据归因),A4-b 由连接器在 `session/new` 前把 `onething` 那一条
-       * 递进去(`runtime/acp/wiring/host-mcp-port.ts`)。连接器仍会再问一次这一格:装上端口不等于开着。
+       * 递进去(`runtime/acp/host-mcp-port.ts`)。连接器仍会再问一次这一格:装上端口不等于开着。
        * 进程没有 HTTP 面(CLI daemon)时那一条组不出来,agent 照旧没有宿主工具 —— 那是宿主的
        * 事实,不是能力表的谎话。
        */

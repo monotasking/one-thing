@@ -27,7 +27,7 @@ export const Stacked = () => (
       <PathText layout="stacked" path="/Users/yitiansong/data/code/start-electron/apps/desktop-react/src/composer/components/Composer.tsx" home={HOME} />
     </div>
     <div style={tip}>
-      <PathText layout="stacked" dir path="/Users/yitiansong/data/code/start-electron/packages/backend/runtime/search/wiring/" home={HOME} />
+      <PathText layout="stacked" dir path="/Users/yitiansong/data/code/start-electron/packages/backend/runtime/search/" home={HOME} />
     </div>
   </div>
 )

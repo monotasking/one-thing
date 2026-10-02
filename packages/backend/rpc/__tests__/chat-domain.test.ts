@@ -55,7 +55,7 @@ const providers = vi.hoisted(() => ({
 vi.mock('../../store.js', () => store)
 vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }))
 vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
-vi.mock('@onething/backend/runtime/collab/wiring', () => collab)
+vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
 vi.mock('../../events/index.js', () => ({ getEventBus: () => eventBus }))
 vi.mock('../../session/runs.js', () => runs)
 vi.mock('../../session/reads.js', () => reads)

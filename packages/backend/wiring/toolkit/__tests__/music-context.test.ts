@@ -31,7 +31,7 @@ const radio = vi.hoisted(() => ({
   radioToolStatus: vi.fn(() => ({ active: true, intent: 'quiet', programmeLength: 1 })),
   requestSong: vi.fn(async () => ({ success: true, title: 'song' })),
 }))
-vi.mock('@onething/backend/runtime/music/wiring/radio', () => radio)
+vi.mock('@onething/backend/runtime/music/radio', () => radio)
 
 const OPS: Array<readonly [string, Record<string, unknown>]> = [
   ['open', { op: 'open', intent: 'quiet music' }],

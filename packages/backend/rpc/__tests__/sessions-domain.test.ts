@@ -140,7 +140,7 @@ vi.mock('../../session/events-reads.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../session/events-reads.js')>(),
   ...eventsReads,
 }))
-vi.mock('@onething/backend/runtime/collab/wiring', () => collab)
+vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
 vi.mock('../../wiring/todo-plan/store.js', () => todoPlan)
 vi.mock('../../wiring/toc/index.js', () => toc)
 vi.mock('../../wiring/variables/gateways.js', () => variables)

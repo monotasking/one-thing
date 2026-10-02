@@ -8,7 +8,7 @@
  *  ② 用宿主的真件喂给 Obsidian 驱动:进程 runner、socket 探针、快照库指向
  *     `<store>/notes/obsidian`;
  *  ③ 按 `getSettings().notes` 跑一次 `refresh`,并订「设置刚保存过」——
- *     **settings 域一个字都不知道有 notes 这回事**(与 `runtime/search/wiring/index.ts`
+ *     **settings 域一个字都不知道有 notes 这回事**(与 `runtime/search/service-setup.ts`
  *     的 `watchSettingsChanged` 同一条判例:串联,不占槽);
  *  ④ 返回**一个** disposer,装配层 `own()` 它。
  *
@@ -389,7 +389,7 @@ export function getNotesSubsystemSafe(): NotesSubsystem | null {
 }
 
 /**
- * 在册的笔记库,**没有子系统就是空表**。检索的取材面(`runtime/search/wiring/adapters.ts`)
+ * 在册的笔记库,**没有子系统就是空表**。检索的取材面(`runtime/search/adapters.ts`)
  * 与授权面都从这里晚绑定地现取 —— 库表会变,任何一份快照都会过期。
  */
 export function noteVaultsNow(): NoteVault[] {
@@ -424,7 +424,7 @@ export function skillVaultRootsNow(): NoteSkillRoot[] {
 }
 
 /**
- * 订「设置刚保存过」。做法与 `runtime/search/wiring/index.ts` 的同名函数逐字同源
+ * 订「设置刚保存过」。做法与 `runtime/search/service-setup.ts` 的同名函数逐字同源
  * (串联不占槽 + 身份守卫的还原),理由写在那边。
  */
 function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => void {

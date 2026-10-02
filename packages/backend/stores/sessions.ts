@@ -1168,7 +1168,7 @@ export function updateMessageError(
  * —— **已删除**(F4-c c4,§16.24)。
  *
  * 三条 IM 元数据写路(W8 表情 / W13.2 引用快照 / W14a @身份)早在 P0.2 就整体迁到
- * 命令面的 `patchMessage` 上了(`runtime/collab/wiring/` 那三处协调器);c3-a 的 18 端口
+ * 命令面的 `patchMessage` 上了(`runtime/collab/` 那三处协调器);c3-a 的 18 端口
  * 全量分类(§16.23 第二节)量明它们**生产上一次都不调**,只剩三只测试的 mock 还
  * 认得这三个名字——而那三只测试的注释白纸黑字写着"迁移前这条写走
  * `store.updateMessageXxx`;命令面上它是一次普通 patch"。

@@ -5,7 +5,7 @@
  * 调 `setChattiness`。档位的含义(冷却几秒、哪些 `low` 也开口)住产品层那张表
  * (`@onething/backend/runtime/pets` 的 `PET_CHATTINESS`),这里只搬一个档名。
  *
- * **串联,不是占槽** —— 与 `runtime/search/wiring/index.ts` 的 `watchSettingsChanged` 同一条判例:
+ * **串联,不是占槽** —— 与 `runtime/search/service-setup.ts` 的 `watchSettingsChanged` 同一条判例:
  * 设置推送是单槽端口,直接写进去会把宿主那条推送(SSE)掐掉。先让上一位走,再干自己的;
  * 还原带身份守卫,后来又有人串了一层时不抹掉它。**settings 域一个字都不知道有宠物。**
  */

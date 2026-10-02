@@ -56,7 +56,7 @@ import {
 import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import type { McpSubsystem } from "@onething/backend/runtime/mcp/wiring/subsystem";
+import type { McpSubsystem } from "@onething/backend/runtime/mcp/subsystem";
 import type { ConfigureLoggingOptions } from "../wiring/logging/index.js";
 import {
 	createTenantAudienceFactory,
@@ -145,21 +145,21 @@ import {
 } from "../wiring/settings/events.js";
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
-import { isCollabV3RuntimeRunning } from "@onething/backend/runtime/collab/wiring";
+import { isCollabV3RuntimeRunning } from "@onething/backend/runtime/collab/rooms";
 // B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
 // 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
-import { getPluginManager } from "@onething/backend/runtime/plugins/wiring";
+import { getPluginManager } from "@onething/backend/runtime/plugins/plugin-system";
 import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/backend/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/backend/runtime/terminal/service.wiring";
-import { registerACPPermissionBridge } from "@onething/backend/runtime/acp/wiring/permission-bridge";
+import { registerACPPermissionBridge } from "@onething/backend/runtime/acp/permission-bridge";
 import { createEventBusTerminalBroadcaster } from "../wiring/terminal/index.js";
 import {
 	createOnethingSearchService,
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
 } from "@onething/backend/runtime/search";
-import { unavailableIndexFace } from "@onething/backend/runtime/search/wiring";
+import { unavailableIndexFace } from "@onething/backend/runtime/search/service-setup";
 import { noteVaultsNow, primaryNoteVaultNow } from "../wiring/notes/index.js";
 import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/runtime/media";
 import {
@@ -1419,7 +1419,7 @@ async function createServerRuntimeOverServerBackend(
 			 * 初版实测把 `apps/server` 那 5s 预算吃干净(5.06s + `shutdown did not
 			 * finish in time; pending session writes may be lost`),从前是 0.05s。
 			 * **用户裁定不接受无界等待**,于是 `McpSubsystem.dispose()` 现在自带
-			 * 3000ms 上限(见 `runtime/mcp/wiring/subsystem.ts` 的
+			 * 3000ms 上限(见 `runtime/mcp/subsystem.ts` 的
 			 * `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`),超时记 warn 并放行,把余量留给排在
 			 * 后面的账本 flush:同一场景现在 3.05s,那行 `pending session writes` 消失。
 			 * MCP 正常(0 台 / 连不上但快速失败)时收尾仍是 0.04–0.18s。

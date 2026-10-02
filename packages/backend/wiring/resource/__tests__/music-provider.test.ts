@@ -725,7 +725,7 @@ describe('music resource provider —— 补齐的做法', () => {
  *
  * 这一族问的全是**边界**:话有没有原样递进去、这条做法自己动没动别的东西、他的回话
  * 折成了哪一条事实、空回话与没回话是不是真的什么都不发。他回话那一段的判据(取哪条
- * 消息、超时多久)在端口那一侧,由 `runtime/music/wiring/__tests__/radio-talk.test.ts` 钉。
+ * 消息、超时多久)在端口那一侧,由 `runtime/music/__tests__/radio-talk.test.ts` 钉。
  */
 describe('music resource provider —— tell(跟主持人说话)', () => {
   it('把话原样递给端口,不碰播放也不碰节目单', async () => {

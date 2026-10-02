@@ -522,7 +522,7 @@ describe('acp RPC domain', () => {
     })
   })
 })
-// A5 的认领 / 分叉按需取 `sessions` 域建本地会话;这组用例不验那条路(`runtime/acp/wiring/__tests__/
+// A5 的认领 / 分叉按需取 `sessions` 域建本地会话;这组用例不验那条路(`runtime/acp/__tests__/
 // session-lifecycle.test.ts` 与 gate:acp ⑳㉑ 验),给一只轻的替身,免得把整个 sessions 模块图装进来。
 vi.mock('../domains/sessions.js', () => ({
   sessionsRpcHandlers: {

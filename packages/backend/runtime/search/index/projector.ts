@@ -70,7 +70,7 @@ import { foldSessionProjection, materializeNode } from '@shared/session/projecti
  * 相同**(流式中不产助手文档,§5.2)。不卡主线程,但长会话上 Worker 会饱和。
  *
  * 治法是「能力自述、别人读表」:**判据住投影器**(它本来就是「事件 → 文档」那
- * 张表的产地),观察者(`backend/runtime/search/wiring`)与目录监视(`ledger-feed.ts`)
+ * 张表的产地),观察者(`backend/runtime/search/service-setup`)与目录监视(`ledger-feed.ts`)
  * 只读它,自己一个事件名都不认识。加一种会改文档的事件 = 在这张表里把那一行改成
  * `true`,两个读表的地方一字不动。
  *

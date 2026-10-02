@@ -156,7 +156,7 @@ export abstract class FileTool<In, Payload> extends Tool<In, Payload> {
  *
  * 为什么抽出来(A3-b):ACP agent 经 `fs/read_text_file` / `fs/write_text_file` 要读写文件,
  * 那两条请求不是一次工具调用,却必须与本地 read / write 用**同一套**沙箱判据 —— 同一个
- * 路径谁来问长一个样(`backend/runtime/acp/wiring/fs-bridge.ts`)。再抄一份就是两套判据。
+ * 路径谁来问长一个样(`backend/runtime/acp/fs-bridge.ts`)。再抄一份就是两套判据。
  */
 export function resolveFileToolPath(
   rawPath: string,

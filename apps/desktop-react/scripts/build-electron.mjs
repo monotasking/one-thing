@@ -117,7 +117,7 @@ const invokedDirectly = process.argv[1]
  *
  * 三个宿主(React 主进程 / CLI / server)各出一份 `search-worker.cjs`,**都与自己
  * 的宿主入口同目录** —— 装配层就是靠这条纪律按 `import.meta.url` 往旁边找的
- * (`packages/backend/runtime/search/wiring/worker.ts`)。所以这个常量在这里、被三份配方
+ * (`packages/backend/runtime/search/worker.ts`)。所以这个常量在这里、被三份配方
  * 共用,而不是三处各写一个字符串。
  *
  * 它与 main 同一份 `shellEsbuildOptions`:node 平台、CJS、原生模块 external。
@@ -137,7 +137,7 @@ export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
  * ACP 宿主工具面的 stdio 桥(ACP A4-a,`docs/design/acp-integration-2026-09.md` §3.6)。
  *
  * 与 `search-worker.cjs` **同一条规矩**:三份配方各出一份 `acp-mcp-bridge.cjs`,永远落在
- * 宿主入口旁边(装配层按 `import.meta.url` 往旁边找,`packages/backend/runtime/acp/wiring/
+ * 宿主入口旁边(装配层按 `import.meta.url` 往旁边找,`packages/backend/runtime/acp/
  * mcp-bridge-path.ts`),打包时 asarUnpack(它是被 agent 当子进程起的一个**真文件**,
  * `ELECTRON_RUN_AS_NODE=1` 起出来的 node 环境没有 asar 补丁)。
  *

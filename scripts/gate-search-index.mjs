@@ -1096,7 +1096,7 @@ async function runRealEmbedderPhase() {
      * 下载 —— 那一格现在只说「要不要用」,下载是这一发 RPC。
      *
      * 下完之后**不用再翻一次开关**:Worker 把「落定了」喊回宿主,装配在开关本来就开着
-     * 时换一条 Worker(`runtime/search/wiring/index.ts`)。所以下面那条等待既是「真模型装得起来」
+     * 时换一条 Worker(`runtime/search/service-setup.ts`)。所以下面那条等待既是「真模型装得起来」
      * 的判据,也是「下完就生效」这条链的真机证据。
      */
     const already = (await rpc('search', 'status'))?.model?.state
@@ -1626,11 +1626,11 @@ async function runSemanticPhase() {
  * 回去又回到 `'off'`。
  *
  * 为什么必须真机证:换的是一条 `worker_threads` 线程,而单测里的 Worker 是同线程的
- * `MessageChannel`(`runtime/search/wiring/__tests__/index-service.test.ts` 判的是装配算术)。
+ * `MessageChannel`(`runtime/search/__tests__/index-service.test.ts` 判的是装配算术)。
  * 「真起得来第二条线程、而且它开得了同一个库文件」只有产物上跑得出来。
  *
  * **走的是设置那条真路**(`settings.saveSettings` RPC → `settings:changed` →
- * `runtime/search/wiring/index.ts` 的那条订阅),不是一个门专用的后门。
+ * `runtime/search/service-setup.ts` 的那条订阅),不是一个门专用的后门。
  */
 async function runSemanticHotApplyPhase() {
   const storeD = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-hotapply-gate-'))

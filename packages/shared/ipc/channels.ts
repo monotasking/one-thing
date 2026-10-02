@@ -74,7 +74,7 @@ export const IPC_CHANNELS = {
 
 	// Music radio —— 十四条数据面已迁到通用 RPC 通道(musicRouter,P4c 第九批)。
 	// 这里只剩**四条推送**:router 今天没有推送面,而它们早就走
-	// `broadcastVoiceHostMessage` 端口从 `backend/runtime/music/wiring/*` 直接发出。
+	// `broadcastVoiceHostMessage` 端口从 `backend/runtime/music/*` 直接发出。
 	MUSIC_EVENT: "music:event",
 	/** main -> renderer: what is playing, or null when nothing is. */
 	MUSIC_NOW_PLAYING: "music:now-playing",
@@ -162,7 +162,7 @@ export const IPC_CHANNELS = {
 	PLUGINS_NOTIFICATION: "plugins:notification",
 	// 统一请求通道(R2)的**中间态**。请求与取消本身已经是
 	// `plugins.request` / `plugins.requestAbort` 两条 router 方法;进度改走
-	// `@onething/backend/runtime/plugins/wiring/events.ts` 的注入端口,桌面按
+	// `@onething/backend/runtime/plugins/events` 的注入端口,桌面按
 	// `RpcDispatchContext.callerId` **定向回发起窗** —— 设置窗是独立 BrowserWindow,
 	// 广播出去等于每扇窗都收一份别人的进度。
 	PLUGINS_REQUEST_PROGRESS: "plugins:request-progress",

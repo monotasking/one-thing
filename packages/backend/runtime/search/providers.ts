@@ -107,7 +107,7 @@ export interface OnethingSearchProvidersAdapters {
    * **这里没有 `getSearchDirectories`**(09-07 事故第一条修,故意留这段碑文)。
    *
    * 它曾经是「宿主替这次请求算好的根列表」,而宿主接进来的是**授权**那张全集
-   * (`backend/runtime/search/wiring/authorization.ts` 的 `fileRoots`:每一条可见会话的
+   * (`backend/runtime/search/authorization.ts` 的 `fileRoots`:每一条可见会话的
    * workingDirectory + 笔记目录 + 接入目录)。492 条会话 → 31 个扫描根 → 一次
    * 「不挑」的搜索起 31 条 `rg`,其中扎进 18GB 目录的三条永不返回。
    *

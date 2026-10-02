@@ -155,7 +155,7 @@ export class ModelDownloader {
    * 落定时喊一声(`'ready'` / `'failed'` / 取消后的 `'absent'`)。
    *
    * 唯一的听众是 `IndexWorkerCore` —— 它把这一声 `postMessage` 给宿主,宿主据此在
-   * 「开关本来就开着」时换一条 Worker(见 `backend/runtime/search/wiring/index.ts`)。
+   * 「开关本来就开着」时换一条 Worker(见 `backend/runtime/search/service-setup.ts`)。
    * **不要求用户再翻一次开关**。
    */
   onSettled(listener: (state: ModelState) => void): () => void {
@@ -409,7 +409,7 @@ export class ModelDownloader {
     })
     /*
      * **喊不喊这一声,看这条 Worker 自己用不用得上**。这一声的用处只有一个:让宿主
-     * 换一条 Worker,好让模型生效(`backend/runtime/search/wiring/index.ts`)。而 `inUse()`
+     * 换一条 Worker,好让模型生效(`backend/runtime/search/service-setup.ts`)。而 `inUse()`
      * 为真时,试装走的**就是**这条 Worker 的嵌入器那一次装载(接线在 `worker.ts`)
      * —— 它已经装好、向量路已经能走,换一条只会把它扔掉再装一遍 118 MB。
      */

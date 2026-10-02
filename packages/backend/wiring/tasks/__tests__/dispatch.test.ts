@@ -120,7 +120,7 @@ const delivered: Array<{
   origin: unknown
 }> = []
 
-vi.mock('@onething/backend/runtime/plugins/wiring/sessions', () => ({
+vi.mock('@onething/backend/runtime/plugins/session-messenger', () => ({
   deliverInternalMessage: async (
     _deps: unknown,
     request: {

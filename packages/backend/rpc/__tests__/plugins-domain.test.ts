@@ -71,20 +71,20 @@ const mocks = vi.hoisted(() => ({
   executePluginCommandOnHost: vi.fn(async () => ({ success: true, message: 'ran' })),
 }))
 
-vi.mock('@onething/backend/runtime/plugins/wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/plugin-system', () => ({
   getPluginManager: () => mocks.currentManager.value,
 }))
-vi.mock('@onething/backend/runtime/plugins/wiring/background', () => ({
+vi.mock('@onething/backend/runtime/plugins/background-table', () => ({
   getPluginBackgroundParams: () => undefined,
 }))
-vi.mock('@onething/backend/runtime/plugins/wiring/install', () => ({
+vi.mock('@onething/backend/runtime/plugins/npm-process', () => ({
   getPluginMarketIndexSnapshot: mocks.getPluginMarketIndexSnapshot,
   probePluginNpmAvailability: mocks.probePluginNpmAvailability,
 }))
-vi.mock('@onething/backend/runtime/plugins/wiring/loader', () => ({
+vi.mock('@onething/backend/runtime/plugins/disk-loader', () => ({
   getPluginFootprint: mocks.getPluginFootprint,
 }))
-vi.mock('@onething/backend/runtime/plugins/wiring/commands', () => ({
+vi.mock('@onething/backend/runtime/plugins/commands', () => ({
   executePluginCommandOnHost: mocks.executePluginCommandOnHost,
 }))
 vi.mock('@onething/backend/runtime/plugins/config-access', () => ({
@@ -131,8 +131,8 @@ describe('plugins RPC domain', () => {
   let dispatchRpc: typeof import('../registry.js')['dispatchRpc']
   let dispose: (() => void) | undefined
   let restoreCatalog: (() => void) | undefined
-  let configurePluginsHost: typeof import('@onething/backend/runtime/plugins/wiring/host-ports')['configurePluginsHost']
-  let configureProgress: typeof import('@onething/backend/runtime/plugins/wiring/events')['configurePluginRequestProgressBroadcaster']
+  let configurePluginsHost: typeof import('@onething/backend/runtime/plugins/host-ports')['configurePluginsHost']
+  let configureProgress: typeof import('@onething/backend/runtime/plugins/events')['configurePluginRequestProgressBroadcaster']
 
   const call = (method: string, payload: unknown, context: RpcDispatchContext) =>
     dispatchRpc({ domain: 'plugins', method, payload }, context)
@@ -141,8 +141,8 @@ describe('plugins RPC domain', () => {
     const [registry, domain, hostPorts, events, catalogPort] = await Promise.all([
       import('../registry.js'),
       import('../domains/plugins.js'),
-      import('@onething/backend/runtime/plugins/wiring/host-ports'),
-      import('@onething/backend/runtime/plugins/wiring/events'),
+      import('@onething/backend/runtime/plugins/host-ports'),
+      import('@onething/backend/runtime/plugins/events'),
       import('../../server/plugin-catalog.js'),
     ])
     dispatchRpc = registry.dispatchRpc

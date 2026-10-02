@@ -115,13 +115,11 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
         || (target && (within(target, runtime) || within(target, backend))))) {
         violations.push(`${label}: shared contracts depend on a product/backend implementation`)
       }
-      // 合包(第②步)以后 core / runtime / gateway 也住进了 packages/backend;「同包装配」只指脊柱
-      // (三棵子树以外),产品层照旧不许绕过公开边界去碰内部会话模块。
-      // 第③步(2026-10-02)起领域的装配接线住进 `runtime/<d>/wiring/`:它按路径角色就是脊柱(装配层),
-      // 内部会话模块(`reads.ts` / `event-log.ts` …)本来就没有 exports 键,它只能、也应该照脊柱的样子相对 import。
-      const inDomainWiring = /[/\\]packages[/\\]backend[/\\]runtime[/\\][^/\\]+[/\\]wiring[/\\]/.test(file)
-      const inSpine = inDomainWiring
-        || (within(file, backend) && !['core', 'runtime', 'gateway'].some(dir => within(file, path.join(backend, dir))))
+      // 合包(第②步)以后 core / runtime / gateway 也住进了 packages/backend。第③步拍平(2026-10-02,用户拍板
+      // 「server 包内部不再区分接线与产品逻辑」,正本 `docs/design/server-client-split-2026-10.md` §4)以后,
+      // runtime 与脊柱是同一层:都可以碰内部会话模块(它们没有 exports 键,只能相对 import)。
+      // core 与 gateway 两棵子树照旧不许 —— 骨架不认识会话的内部实现,gateway 只依赖 core。
+      const inSpine = within(file, backend) && !['core', 'gateway'].some(dir => within(file, path.join(backend, dir)))
       if (!inSpine && target && privateFile(target)) {
         violations.push(`${label}: relative or aliased import bypasses the public Backend boundary`)
       }

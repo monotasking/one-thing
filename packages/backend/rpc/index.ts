@@ -293,7 +293,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // P4c 第九批第三个域(music)—— 十四条:状态/向导/传输控制/现在播放/电台简报/
   // 歌词/口播 ack/开台/搜索/点歌/节目单/节目单编辑/provider 列表与切换。
   // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
-  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `runtime/music/wiring/operations.ts`。
+  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `runtime/music/operations.ts`。
   { id: 'rpc:music', mount: ctx => { ctx.registerRpcDomain(musicRouter, musicRpcHandlers) } },
   // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
   // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`
@@ -362,10 +362,10 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // web 的六条 REST + 十三条硬桩)连同 server 的 `/api/plugins*` 六条路由与那条
   // 501 一起消失。
   // **两条推送留在原地**:`PLUGINS_NOTIFICATION`(总线全局事件,IPCBridge 扇全窗)
-  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `runtime/plugins/wiring/events.ts` 的
+  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `runtime/plugins/events.ts` 的
   // `configurePluginRequestProgressBroadcaster`,按 `context.callerId` **定向回发起窗**
   // —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份别人的进度)。
-  // 两件要宿主本体的事走 `runtime/plugins/wiring/host-ports.ts` 的 `configurePluginsHost`:
+  // 两件要宿主本体的事走 `runtime/plugins/host-ports.ts` 的 `configurePluginsHost`:
   // 原生文件对话框(`pickFile`)与插件命令的子进程执行器(`execCommand`,execa 是
   // 桌面的依赖,不该被拖进 server 的单文件包)。未注入即结构化降级。
   // http 分叉逐字保留 server 今天的语义:六条读/开关面走

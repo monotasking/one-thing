@@ -12,7 +12,7 @@
  *
  * ── 音乐收尾:**断言一个字没改,换的只有 mock** ────────────────────────────
  * 十二条处理器退成了资源投影(`rpc/domains/music.ts` 的文件头),所以这组用例的
- * 底座从「域直接调 `runtime/music/wiring/*`」变成「域调一台**真内核**,内核跑**真管线**,
+ * 底座从「域直接调 `runtime/music/*`」变成「域调一台**真内核**,内核跑**真管线**,
  * 管线落到**真 provider**,provider 才碰到这些 mock」。这正是这组用例存在的方式:
  * 它量的是对外契约,而契约在换了底座之后一个字都不许变 —— 所以下面的 `expect`
  * 一行未动,动的是三样接线:
@@ -52,7 +52,7 @@ const radio = vi.hoisted(() => {
   const status = { active: true, intent: '深夜', programmeLength: 1 }
   return {
   openRadioStation,
-  // 端口真正的入口。真实现(`runtime/music/wiring/radio.ts`)第一件事就是调
+  // 端口真正的入口。真实现(`runtime/music/radio.ts`)第一件事就是调
   // `openRadioStation`,mock 照做 —— 否则下面那条用例断言的东西会凭空消失。
   radioToolOpen: vi.fn(async (intent: string, options: { clearProgramme: boolean }) => {
     openRadioStation(intent, options)
@@ -120,9 +120,9 @@ vi.mock('../principal.js', () => ({
   principalOf: () => ({ kind: 'user', userId: 'local-user' }),
 }))
 vi.mock('../../stores/settings.js', () => settings)
-vi.mock('@onething/backend/runtime/music/wiring/radio', () => radio)
-vi.mock('@onething/backend/runtime/music/wiring/service', () => service)
-vi.mock('@onething/backend/runtime/music/wiring/dj-voice', () => ({ resolveDjSpeakDone: vi.fn() }))
+vi.mock('@onething/backend/runtime/music/radio', () => radio)
+vi.mock('@onething/backend/runtime/music/service', () => service)
+vi.mock('@onething/backend/runtime/music/dj-voice', () => ({ resolveDjSpeakDone: vi.fn() }))
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
   if (!response.ok) throw new Error(`dispatch failed: ${response.error.message}`)
@@ -132,15 +132,15 @@ function unwrap(response: RpcResponse): Record<string, unknown> {
 describe('music RPC domain', () => {
   let dispatchRpc: typeof import('../registry.js')['dispatchRpc']
   let dispose: (() => void) | undefined
-  let operations: ReturnType<typeof import('@onething/backend/runtime/music/wiring/operations')['createMusicOperationsScope']>
+  let operations: ReturnType<typeof import('@onething/backend/runtime/music/operations')['createMusicOperationsScope']>
   let unmountResources: (() => Promise<void>) | undefined
 
   beforeEach(async () => {
-    const { createMusicOperationsScope } = await import('@onething/backend/runtime/music/wiring/operations')
+    const { createMusicOperationsScope } = await import('@onething/backend/runtime/music/operations')
     const { setCurrentBackend, createBackendHandle } = await import('../../current.js')
     operations = createMusicOperationsScope({ service: { ...service, runner }, radio } as unknown as Parameters<typeof createMusicOperationsScope>[0])
     const music = { operations, radio, service, onNowPlayingChanged: () => () => {}, onPlayerFact: () => () => {}, onSetupEvent: () => () => {}, onRadioFact: () => () => {} }
-    setCurrentBackend(createBackendHandle({ music: music as unknown as import('@onething/backend/runtime/music/wiring/subsystem').MusicSubsystem }))
+    setCurrentBackend(createBackendHandle({ music: music as unknown as import('@onething/backend/runtime/music/subsystem').MusicSubsystem }))
 
     /*
      * 一台真内核 + 真管线 + 真 provider。**先摆句柄再造 provider**:那几只成品适配器

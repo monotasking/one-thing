@@ -35,7 +35,7 @@ vi.mock('../../logging/index.js', () => {
   return { writeAppLog: vi.fn(), getLogger: () => logger, consolePort: () => logger }
 })
 vi.mock('../host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
-vi.mock('@onething/backend/runtime/acp/wiring/host-mcp-port', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))
+vi.mock('@onething/backend/runtime/acp/host-mcp-port', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))
 
 function deferred() {
   let resolve!: () => void

@@ -43,19 +43,19 @@ import { createRequiredAppFetch } from '../../provider-binding/bound-fetch.js'
 import { getGoal, goalLimits, updateGoalFromModel } from '../goals/index.js'
 import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/runtime/practice/service.wiring'
 import { getCurrentBackendInstance } from '../../current.js'
-import { assertMusicOperator } from '@onething/backend/runtime/music/wiring/access'
+import { assertMusicOperator } from '@onething/backend/runtime/music/access'
 import { dispatchTask } from '../tasks/dispatch.js'
 import { Interaction } from '@onething/backend/core/interaction'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { findAgent } from '../agents/index.js'
-import { collabRoomMembers } from '@onething/backend/runtime/collab/wiring/members'
-import { applyBoardAction } from '@onething/backend/runtime/collab/wiring/board-store'
-import { searchCollabHistory } from '@onething/backend/runtime/collab/wiring/history-tool'
-import { speakIntoCollabRoom } from '@onething/backend/runtime/collab/wiring/say-tool'
-import { collabLinkedRoomSessionId } from '@onething/backend/runtime/collab/wiring/venue'
+import { collabRoomMembers } from '@onething/backend/runtime/collab/members'
+import { applyBoardAction } from '@onething/backend/runtime/collab/board-store'
+import { searchCollabHistory } from '@onething/backend/runtime/collab/history-tool'
+import { speakIntoCollabRoom } from '@onething/backend/runtime/collab/say-tool'
+import { collabLinkedRoomSessionId } from '@onething/backend/runtime/collab/venue'
 // R4b:落盘口不再在这里重建一份 —— 与旧 `app/collab/actors/notebook-tool.ts` 的
 // `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
-import { appendNote } from '@onething/backend/runtime/collab/wiring/actors/notebook-tool'
+import { appendNote } from '@onething/backend/runtime/collab/actors/notebook-tool'
 import { sessionAccess, SessionAccessError } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import type { BraveSearchProviderAdapters } from '@onething/backend/runtime/tools/builtin/web-search/providers/brave'
@@ -197,7 +197,7 @@ export function sendMessageAdapters(): SendMessageToolAdapters {
      * (私聊落库就是 say 的执行器),反向再加一条静态边就是一个环。
      */
     async sendDm(input, executionContext) {
-      const { sendCollabDm } = await import('@onething/backend/runtime/collab/wiring/dm-tool')
+      const { sendCollabDm } = await import('@onething/backend/runtime/collab/dm-tool')
       return sendCollabDm({
         sessionId: input.sessionId,
         to: input.to,

@@ -6,7 +6,7 @@
  * 三个动作的往返、状态跟着 `search.status` 一起回来、以及那个**不带 `id` 的通知帧**
  * 不会被当成一条没人等的答复扔掉(日志帧当年正是这么掉了两周,见 `worker-logging.ts`)。
  *
- * 「下完就生效」整条链的最后一环在装配层(`backend/runtime/search/wiring/index.ts` 收到这一声
+ * 「下完就生效」整条链的最后一环在装配层(`backend/runtime/search/service-setup.ts` 收到这一声
  * 就 `restart()`);这里钉的是**这一声真的发得出来**。
  */
 import { afterEach, describe, expect, it } from 'vitest'

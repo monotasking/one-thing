@@ -58,7 +58,7 @@ import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'
 import { currentSessionRun } from '../../session/runs.js'
 import { sessionReads } from '../../session/reads.js'
-import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/runtime/collab/wiring'
+import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/runtime/collab/rooms'
 import { getStreamEngine } from '../../wiring/engine/index.js'
 import { buildSystemPromptSnapshot } from '../../wiring/engine/prompt/system-prompt-snapshot.js'
 import {
