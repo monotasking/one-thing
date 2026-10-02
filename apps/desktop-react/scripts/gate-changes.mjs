@@ -503,7 +503,7 @@ async function main() {
    * 摆**,也不再递 `ONETHING_SERVER_WORKSPACE_ROOT`。
    *
    * 理由是读根的判据变了(2026-09-13 后端落地):资源那条路的读根现在把**发起会话
-   * 的工作目录**算进来(`backend/wiring/resource/index.ts` 的 `workingDirectoryRootsFor`),
+   * 的工作目录**算进来(`backend/runtime/resource/index.ts` 的 `workingDirectoryRootsFor`),
    * 而这道门的每一条会话绑的就是它自己那个临时仓 —— 于是夹具摆在哪儿都在界内,
    * 那层「把沙箱根和会话工作目录对齐」的安排没有了存在的理由。
    * (它本来也只对 server 宿主成立,而这道门起的是壳自己那台 core。)
@@ -588,7 +588,7 @@ async function main() {
      * **每条会话绑它自己那个仓 —— 那一句同时是「这道门读得到」的全部理由**。
      *
      * 资源那条路的读根 = 写根 ∪ **发起会话的工作目录** ∪ 接入目录 ∪ 笔记根 ∪
-     * 下载目录(`backend/wiring/resource/path-guard.ts` + `wiring/resource/index.ts`
+     * 下载目录(`backend/runtime/resource/path-guard.ts` + `runtime/resource/index.ts`
      * 的 `workingDirectoryRootsFor`,2026-09-13 落地)。壳那一侧把发起坐标带上去
      * (`data/git-port.read` 的 `sessionId` = 环境会话),于是「这条会话看它自己
      * 那个仓」天生在界内 —— 这道门因此不需要给沙箱做任何额外安排。

@@ -57,7 +57,7 @@ const SESSION_REF_PREFIX = 'session:'
  * 「这几条会话删了」(A4-b:删会话 → 作废那条会话名下的 ACP 桥凭据)。
  *
  * 删除今天只有一个出口:`session:` 资源的 `delete` 操作,它在收完尾之后发 `deleted` 资源事件
- * (`wiring/resource/session-provider.ts`),经 `forwardResourceEventsToBus` 成为全局
+ * (`runtime/resource/session-provider.ts`),经 `forwardResourceEventsToBus` 成为全局
  * `resource:event`。载荷里的 `cascadedSessionIds` 是连带删掉的整串(子会话在内),都算。
  * 订总线而不是往删除路径里再塞一个端口:删除那一段不该认识 ACP。
  */

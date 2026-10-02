@@ -39,7 +39,7 @@ export function notifyMCPCapabilitiesChanged(serverId: string): void {
  * K5-a —— 「这台进程上的 MCP 工具表可能变了」的订阅口。
  *
  * 上面那两格是**单槽**,而且只覆盖「服务器推来 list_changed」这一种变化。资源面的
- * 投影驱动(`backend/wiring/resource/mcp-mount.ts`)要的是更宽的那一句:**连上了、
+ * 投影驱动(`backend/runtime/resource/mcp-mount.ts`)要的是更宽的那一句:**连上了、
  * 断开了、换了设置、整个关掉了、工具表变了**,五种都要知道,而且它不能去抢那两格
  * 里的任何一格(抢一格就是让工具目录或者宿主的 registerTools 失聪)。
  *

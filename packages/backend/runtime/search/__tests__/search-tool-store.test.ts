@@ -150,8 +150,8 @@ vi.mock('../adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubA
 
 const { createAppSearchService } = await import('../service-setup.js')
 const { visibleSessionIdsFor } = await import('../visibility.js')
-const { createDesktopCatalog } = await import('@onething/backend/wiring/toolkit/catalog.js')
-const { createAppToolRunner } = await import('@onething/backend/wiring/toolkit/runner.js')
+const { createDesktopCatalog } = await import('@onething/backend/runtime/toolkit/tier-catalogs')
+const { createAppToolRunner } = await import('@onething/backend/runtime/toolkit/runner-factory')
 
 /* ── 同线程 Worker ─────────────────────────────────────────────────────── */
 

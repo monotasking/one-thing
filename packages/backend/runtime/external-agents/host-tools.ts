@@ -72,7 +72,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
     inputSchema: tool.spec.input,
     async execute(args, ctx) {
       // 动态 import:装配层那棵树不进这个文件的静态图(注入这一轮才需要它)。
-      const { runToolkitToolDirectly } = await import('@onething/backend/wiring/toolkit/wiring.js')
+      const { runToolkitToolDirectly } = await import('@onething/backend/runtime/toolkit/wiring')
       const result = await runToolkitToolDirectly(tool.spec.id, args as unknown as JsonObject, {
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,

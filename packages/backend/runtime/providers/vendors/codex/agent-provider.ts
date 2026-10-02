@@ -9,7 +9,7 @@
  * (公共构件 `agent-loop/providers/dialects/responses-recipe.ts`)。
  *
  * 保留这个门面(而不是让调用方直接 `new OpenAIResponsesWire`)有两个理由:
- *  - backend 的 `wiring/agent-loop/providers/codex.ts`(OAuth 类型桥接)与一批测试读它
+ *  - backend 的 `runtime/agent-loop/providers/codex.ts`(OAuth 类型桥接)与一批测试读它
  *    (服务商自述试点 P2 第 4 批从 `agent-loop/providers/codex.ts` 搬回家,`agent-loop/providers`
  *    桶的再导出随之删除 —— 与 deepseek 的构造捷径同一先例);
  *  - **构造即校验**:一个 access token 都拿不到时当场抛「没登录」,而不是拖到

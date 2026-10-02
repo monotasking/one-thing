@@ -10,7 +10,7 @@ import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.w
 import * as store from '../../../store.js'
 import {
   createAgentProviderFromRuntime,
-} from '../../providers/agent-runtime.js'
+} from '@onething/backend/runtime/providers/agent-runtime'
 import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { resolveAgentProfileForSession } from '@onething/backend/runtime/agents/profile-for-session'
 import { getSkillsForSession } from '@onething/backend/runtime/skills/session-skill-cache'
@@ -18,8 +18,8 @@ import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/ind
 import { buildProjectDirsPromptVars } from '@onething/backend/runtime/project-dirs/bootstrap'
 import {
   isProviderSupported,
-} from '../../providers/index.js'
-import * as modelRegistry from '../../providers/model-registry.js'
+} from '@onething/backend/runtime/providers/chat-facade'
+import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,

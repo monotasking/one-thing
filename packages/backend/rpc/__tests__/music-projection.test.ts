@@ -119,7 +119,7 @@ type Backend = Awaited<ReturnType<typeof import('../../backend.js')['createOneth
 
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const
 
-/** 无会话那本账。同步写(`wiring/toolkit/audit-sink.ts`),所以不用 flush。 */
+/** 无会话那本账。同步写(`runtime/toolkit/audit-sink.ts`),所以不用 flush。 */
 function resourceAuditRows(): Array<Record<string, unknown>> {
   const ledger = path.join(storeRoot, 'audit', 'resource.jsonl')
   if (!fs.existsSync(ledger)) return []
@@ -165,7 +165,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
         speechOutput: null,
         dialog: null,
       },
-      // 音乐只在 `full` 档 mount(`wiring/resource/index.ts` 的 `tier` 那一格)。
+      // 音乐只在 `full` 档 mount(`runtime/resource/index.ts` 的 `tier` 那一格)。
       toolRegistry: 'full',
       sender: new NoopSender() as never,
     })

@@ -7,7 +7,7 @@
  *
  * 进去的是「这台 server 叫什么、它报了哪些工具」,出来的是一份 `ResourceSpec` 加
  * 一张「op 名 → 这台 server 上真正的工具名」的对照表。连接、重连、断开、寿命全不
- * 在这里 —— 那些是装配层 `backend/wiring/resource/mcp-mount.ts` 的事(§10.2:
+ * 在这里 —— 那些是装配层 `backend/runtime/resource/mcp-mount.ts` 的事(§10.2:
  * 外部提供者的寿命 = 连接期)。分开的理由是它俩的可测性完全不同:投影可以拿一张
  * 工具表当场断言,寿命要一台会连会断的假 server。
  *

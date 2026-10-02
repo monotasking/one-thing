@@ -246,7 +246,7 @@ export interface SendMessageStreamResponse {
  * `EXECUTE_TOOL` / `CANCEL_TOOL` / `BACKGROUND_JOBS_LIST` / `BACKGROUND_JOBS_STOP` /
  * `REFRESH_ASYNC_TOOLS` / `UPDATE_TOOL_CALL`),请求/响应形状一字未改;变的只是通道。
  * 今天只剩六条:`refreshAsyncTools` 全仓零调用点(bridge 从未暴露它),P4-F #34 退役 ——
- * 刷 MCP 工具面的那件事本身还在,只是没有传输面(`backend/wiring/toolkit` 的
+ * 刷 MCP 工具面的那件事本身还在,只是没有传输面(`backend/runtime/toolkit` 的
  * `refreshToolkitMcpTools`,由 `createOnethingBackend` 挂在 MCP 能力变更回调上)。
  *
  * 位置参数在这里被收成**单 id 包对象**(本仓 router 惯例):`executeTool` 从前是

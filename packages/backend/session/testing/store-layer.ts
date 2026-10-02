@@ -11,7 +11,7 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import * as store from '../../stores/sessions.js'
 import type { SessionAccessContext } from '../access.js'
 import path from 'node:path'
-import { ToolExecutionRegistry } from '../../wiring/toolkit/executions.js'
+import { ToolExecutionRegistry } from '@onething/backend/runtime/toolkit/executions'
 
 /** Real store + production session assembly, with an explicit isolated execution port. */
 export async function installStoreSessionLayerForTest(options: { abortAndDrain?(id: string): Promise<void> } = {}) {

@@ -31,8 +31,8 @@ import { createCollabDigestStore, configureCollabDigestStore } from '@onething/b
 import { createCollabDigestRunner, type CollabDigestRunner } from '@onething/backend/runtime/collab/digest-runner'
 import { createCollabInspector, configureCollabInspector } from '@onething/backend/runtime/collab/inspector'
 import { PluginLlmService } from '@onething/backend/runtime/plugins/llm-service'
-import { CredentialStrategyService } from './wiring/providers/credential-strategy-lifetime.js'
-import { disposeCredentialStrategyState } from './wiring/providers/credential-strategy.js'
+import { CredentialStrategyService } from '@onething/backend/runtime/providers/credential-strategy-lifetime'
+import { disposeCredentialStrategyState } from '@onething/backend/runtime/providers/credential-strategy'
 import { TodoPlanRuntime } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './lifecycle.js'
 import { PracticeService, configurePracticeService } from '@onething/backend/runtime/practice/service.wiring'
@@ -48,20 +48,20 @@ import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
 import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
 import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
-import { CustomProviderManifestSync } from './wiring/providers/custom-manifests.js'
+import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
 import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { configureAppToolSandbox } from '@onething/backend/runtime/tools/core/sandbox'
 import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/backend/runtime/tools/background-jobs-bound'
-import { configureAppProviderRegistry } from './wiring/providers/index.js'
-import { configureAppSpaceCredentialsCrypto } from './wiring/providers/space-credentials.js'
+import { configureAppProviderRegistry } from '@onething/backend/runtime/providers/chat-facade'
+import { configureAppSpaceCredentialsCrypto } from '@onething/backend/runtime/providers/space-credentials'
 import {
   migrateOAuthSlotToDefaultSpace,
   migrateProviderConfigToDefaultSpace,
   upgradeSpaceCredentialsEncryptionAtRest,
-} from './wiring/providers/space-config-migration.js'
-import { configureAppPluginCredentialStrategyHost } from './wiring/providers/credential-strategy.js'
+} from '@onething/backend/runtime/providers/space-config-migration'
+import { configureAppPluginCredentialStrategyHost } from '@onething/backend/runtime/providers/credential-strategy'
 import { configureAppScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import { configureAppRipgrep } from './utils/ripgrep.js'
 import { configureAppSearchProviders } from '@onething/backend/runtime/search/install-providers'
@@ -102,10 +102,10 @@ import { migrateNotesSettings } from '@onething/backend/runtime/notes/migration'
 import type { NotesSubsystem } from '@onething/backend/runtime/notes/notes-subsystem'
 import { createAppSearchService } from '@onething/backend/runtime/search/service-setup'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/backend/runtime/mcp/capabilities-changed'
-import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
-import { createAppToolRunner, sessionWorkspaceRootFor } from './wiring/toolkit/runner.js'
-import { createPermissionAuthorizer } from './wiring/toolkit/authorizer.js'
-import { toolkitAuditSink } from './wiring/toolkit/audit-sink.js'
+import { buildToolkitCatalog, refreshToolkitMcpTools } from '@onething/backend/runtime/toolkit/wiring'
+import { createAppToolRunner, sessionWorkspaceRootFor } from '@onething/backend/runtime/toolkit/runner-factory'
+import { createPermissionAuthorizer } from '@onething/backend/runtime/toolkit/authorizer'
+import { toolkitAuditSink } from '@onething/backend/runtime/toolkit/audit-sink'
 import {
   createResourceKernel,
   forwardResourceEventsToBus,
@@ -114,9 +114,9 @@ import {
   syncResourceToolsIntoCatalog,
   ShellCommandDispatch,
   ShellMountRegistry,
-} from './wiring/resource/index.js'
+} from '@onething/backend/runtime/resource'
 import type { ResourceKernel } from '@onething/backend/core/resource'
-import { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
+import { ToolExecutionRegistry } from '@onething/backend/runtime/toolkit/executions'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from '@onething/backend/runtime/skills/session-skill-cache'
@@ -1071,7 +1071,7 @@ export class OnethingBackend implements BackendHandle {
     /*
      * K3-a —— 资源工具(加元工具 `resources`)进工具目录,跟着注册表来去
      * (`docs/design/atom-2026-09.md` §4「AI 工具」、§10.4 第三行:provider 在 =
-     * 露面)。规则住在 `wiring/resource/catalog-sync.ts`,这里只有一行接线 ——
+     * 露面)。规则住在 `runtime/resource/catalog-sync.ts`,这里只有一行接线 ——
      * 这只文件里照旧一个 scheme 名都没有。
      *
      * 登记在壳登记簿**之后**,所以关机链上跑在它**之前**:先把目录里那批投影摘掉,
@@ -1221,7 +1221,7 @@ export class OnethingBackend implements BackendHandle {
      *
      * 它接在这里而不是缝 4.1 里,因为它同时要**内核**(缝 4.1 建的)与**这台进程的
      * MCP 客户端**(上面那只子系统管着的那一台)。规则住在
-     * `wiring/resource/mcp-mount.ts` —— 这只文件里照旧一个 scheme 名都没有,连
+     * `runtime/resource/mcp-mount.ts` —— 这只文件里照旧一个 scheme 名都没有,连
      * 「哪些档挂它」的判据都没有:MCP 子系统在哪些档存在,它就在哪些档投影,不另加
      * 一条档判据。
      *

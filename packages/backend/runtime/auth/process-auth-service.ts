@@ -2,7 +2,7 @@
  * 装配层那一台 `OnethingAuthService`(进程单例)。令牌只有一个家:空间凭证池
  * (`createOnethingAuthServiceOptions` 缺省装上的 `createOnethingSpaceTokenStore`)。
  * 批 8 之前这里还注入一把「一家一个位置」的单槽给默认空间用 —— 退役了,旧文件只由
- * 装配序列里的一次性归位读(`../../wiring/providers/space-config-migration.ts`);
+ * 装配序列里的一次性归位读(`../providers/space-config-migration.ts`);
  * `scripts/headless-boundary-check.ts` 的 `checkRuntimeOwnsAuthTokenStorage` 钉着它别回来。
  */
 import {

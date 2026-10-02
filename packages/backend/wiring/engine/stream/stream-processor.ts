@@ -14,7 +14,7 @@ import { createEventOnlyEmitter } from '../../../events/event-only-emitter.js'
 import type { PendingMessageQueue, CoreToolIdentityResolver, CoreStreamProcessorStore } from '@onething/backend/core/engine'
 import type { CoreAgentLoopToolInputProcessor } from '@onething/backend/core/engine'
 import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/core/agent-loop'
-import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.js'
+import type { AgentRuntimeProviderConfig } from '@onething/backend/runtime/providers/agent-runtime'
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
 } from '@onething/backend/core/engine'

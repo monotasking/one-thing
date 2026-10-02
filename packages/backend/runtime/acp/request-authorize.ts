@@ -10,7 +10,7 @@ import { AbortScope, Intent } from '@onething/backend/core/toolkit'
 import type { Authorizer, Decision, Invocation, Preview } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import { resolvePermissionMessageAnchor } from '@onething/backend/runtime/permission/message-anchor'
-import { createPermissionAuthorizer } from '@onething/backend/wiring/toolkit/authorizer.js'
+import { createPermissionAuthorizer } from '@onething/backend/runtime/toolkit/authorizer'
 import { enforcePermissionPolicyRejectingUnanswered } from '@onething/backend/runtime/tools/core/permission-policy'
 
 /**

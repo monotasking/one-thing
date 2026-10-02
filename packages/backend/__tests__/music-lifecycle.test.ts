@@ -75,7 +75,7 @@ it('owns real player processes and delayed provider requests through shutdown, t
   const oldRadio = oldMusic.radio
   const oldDj = oldMusic.djVoice
   const oldOperations = oldMusic.operations
-  const { radioAdapters } = await import('../wiring/toolkit/adapters.js')
+  const { radioAdapters } = await import('@onething/backend/runtime/toolkit/adapters')
   const oldTool = radioAdapters()
   const oldStore = oldRadio.getRadioStore()
   oldStore.writeBrief({ active: false, intent: 'A station', played: [], skipped: [], loved: [] })

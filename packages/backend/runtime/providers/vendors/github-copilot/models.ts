@@ -4,7 +4,7 @@
  *
  * 服务商自述试点 P2 第 4 批从三处搬回家:`providers/github-copilot.ts`(本文件原身)、
  * `providers/model-registry.ts` 的 `copilotModelInfoToOnethingOpenRouterModel`、backend
- * `wiring/providers/{builtin/github-copilot.ts 的取数与缓存, model-registry.ts 的兜底行}`。
+ * `runtime/providers/{builtin/github-copilot.ts 的取数与缓存, model-registry-service.ts 的兜底行}`。
  * 取数要的 app fetch 由宿主经 `VendorModelsFetcherDeps.fetch` 交进来(policy 名与搬家前一致)。
  */
 import { toJsonObject, type JsonValue } from '@shared/json'
@@ -111,7 +111,7 @@ export function copilotModelInfoToOnethingOpenRouterModel(
 }
 
 /**
- * 目录里没有这一型时的兜底行(搬家前是 backend `wiring/providers/model-registry.ts` 的
+ * 目录里没有这一型时的兜底行(搬家前是 backend `runtime/providers/model-registry-service.ts` 的
  * `copilotFallbackModel`,逐字)。
  */
 export function copilotFallbackModel(modelId: string): OnethingOpenRouterModel {
@@ -146,7 +146,7 @@ export function copilotFallbackModel(modelId: string): OnethingOpenRouterModel {
 }
 
 // ---------------------------------------------------------------------------
-// 列表口取数(搬家前是 backend `wiring/providers/builtin/github-copilot.ts`,逐字;
+// 列表口取数(搬家前是 backend `runtime/providers/builtin/github-copilot.ts`,逐字;
 // `createRequiredAppFetch({ policy })` 换成宿主交进来的 `appFetch(policy)`)
 // ---------------------------------------------------------------------------
 

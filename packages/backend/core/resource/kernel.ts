@@ -78,7 +78,7 @@ export interface ResourceKernelOptions {
    *
    * 它在**这里**而不是在 runner 的构造参数里,是因为只有 `mount` 同时知道两件事:
    * 这坨 schema 是刚造出来的哪一份、它属于哪份自述。装配层把同一个实例既交给这里
-   * 又串进 runner 的 `Validator`(`backend/wiring/resource/index.ts`)。
+   * 又串进 runner 的 `Validator`(`backend/runtime/resource/index.ts`)。
    *
    * 缺席 = 这台宿主没配那位校验者,plan 期那几只具名错原样兜底(K1 的行为)。
    */
@@ -138,7 +138,7 @@ export interface ReadGuard {
  *
  * `@` 开头是刻意的:id 是 uuid,字母表里没有 `@`,所以它与任何真 id 都撞不上,而且
  * 一眼看得出不是 id。谁读到这个坐标,谁负责把审计落到别处 —— 今天唯一的读者是
- * `backend/wiring/toolkit/audit-sink.ts`(落 `<store>/audit/resource.jsonl`)。
+ * `backend/runtime/toolkit/audit-sink.ts`(落 `<store>/audit/resource.jsonl`)。
  *
  * 字面量里**不写出那个命名空间的名字**:内核不认识任何 scheme(§2 不变量 3),
  * 而 `__tests__/stranger.test.ts` 按词边界扫本目录来执法 —— 这一条是它当场抓出来的,

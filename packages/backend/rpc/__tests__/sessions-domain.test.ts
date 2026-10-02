@@ -63,7 +63,7 @@ const collab = vi.hoisted(() => ({
 const todoPlan = vi.hoisted(() => ({
   deleteSessionAiTodo: vi.fn(async () => {}),
   notifyTodoPlanActiveSessionChanged: vi.fn(),
-  // `wiring/resource/todo-provider.ts`(待办 T0 / B 形之后随资源注册表一起被拉进来)
+  // `runtime/resource/todo-provider.ts`(待办 T0 / B 形之后随资源注册表一起被拉进来)
   // 在模块顶层就读这两格(`ASSEMBLED_PORTS`),桩里缺它们整份文件在 import 时就挂掉,
   // 于是这组用例曾经一条都跑不起来。这组用例不碰待办资源,给空桩即可。
   getTodoPlanStore: vi.fn(),
@@ -218,7 +218,7 @@ describe('sessions RPC domain', () => {
     variables.workdirGateway.write.mockReset().mockResolvedValue(undefined)
 
     const [{ createResourceKernel, SessionResourceProvider }, { ToolRunner }] = await Promise.all([
-      import('../../wiring/resource/index.js'),
+      import('@onething/backend/runtime/resource'),
       import('@onething/backend/core/toolkit'),
     ])
     const resourceKernel = createResourceKernel(validator => new ToolRunner({

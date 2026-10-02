@@ -21,7 +21,7 @@ vi.mock('../../auth/process-auth-service.js', () => ({
   },
 }))
 
-vi.mock('@onething/backend/wiring/providers/space-credentials.js', async () => {
+vi.mock('@onething/backend/runtime/providers/space-credentials', async () => {
   const { credentialTargetFromSpaceMarker } = await import('@onething/backend/runtime/auth')
   return {
     credentialTargetFromMarker: credentialTargetFromSpaceMarker,

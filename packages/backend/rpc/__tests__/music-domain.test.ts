@@ -148,7 +148,7 @@ describe('music RPC domain', () => {
      * 拿到的会是一个空句柄。
      */
     const [{ createResourceKernel, createMusicResourceProvider }, { ToolRunner }] = await Promise.all([
-      import('../../wiring/resource/index.js'),
+      import('@onething/backend/runtime/resource'),
       import('@onething/backend/core/toolkit'),
     ])
     kernelSlot.current = { music }

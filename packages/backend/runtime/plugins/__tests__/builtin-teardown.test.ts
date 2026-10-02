@@ -36,7 +36,7 @@ async function loadModules() {
     import('@onething/backend/runtime/variables/variable-system'),
     import('@onething/backend/channel/connector-registry.js'),
     import('@onething/backend/runtime/deeplink/registry'),
-    import('@onething/backend/wiring/providers/credential-strategy.js'),
+    import('@onething/backend/runtime/providers/credential-strategy'),
   ])
   return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies }
 }

@@ -737,3 +737,55 @@ logging / providers / resource / toolkit。
 boundary(139 条断言,前后输出逐字相同)/ transport / log / session / provider gate 绿,assembly gate 仍只红 radio.ts 那一条;
 `provider-vendor-drill` 绿。测试里非 import 的差异只有 8 处注释路径、1 处 `path.join` 路径与上面三份死桩。`git grep` 里本批 28 个目录名的
 `wiring/<d>` 在代码 / 配置 / 脚本(含根 `CLAUDE.md`)中为零。
+
+### ③-收尾 B 落地记录(2026-10-02,未提交)
+
+**一句话**:`wiring/{providers,toolkit,resource,agent-loop}` 平铺进 `runtime/<d>/`,一笔做完(scratchpad 的 `flatten-wiring-b.mjs`,
+同 A 批的脚本换了领域表与改名表;**不动 git 索引** —— 普通文件改名,主索引留给提交;在 HEAD 的临时 worktree 上用独立
+`GIT_INDEX_FILE` 重放一遍,336 个产物路径(103 个删除 + 233 个新增 / 改写)与主检出逐字相同)。103 个文件搬家(含 50 份测试与
+一份 `__snapshots__`,快照逐字未变)。runtime 里原来没有 `resource/`,新建;`core/resource` 有别的领域在用,留在 core。
+`packages/backend/wiring/` 只剩 engine / gateway / headless / logging(去向待定)。
+
+**同名改名表**(新名按文件做的事起;领域根的 `index.ts` 保留为对外入口):
+
+| 旧路径(`packages/backend/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `wiring/providers/index.ts` | `runtime/providers/chat-facade.ts` | provider 门面:注册表信息、`generateChatResponse` / `generateChatTitle` |
+| `wiring/providers/custom-probe.ts`(及其测试) | `runtime/providers/custom-probe-analyst.ts` | 「自动识别」挑分析模型、请它分析、跑一轮 |
+| `wiring/providers/manual-models.ts`(及其测试) | `runtime/providers/manual-model-store.ts` | 手填模型的读写(全局目录 + 每空间 `providers.json`) |
+| `wiring/providers/model-registry.ts`(及其测试) | `runtime/providers/model-registry-service.ts` | 模型目录的刷新、落盘与查询 |
+| `wiring/providers/registry.ts` | `runtime/providers/provider-table.ts` | 进程里那张内置 provider 表(注册、查找、缓存失效) |
+| `wiring/providers/__tests__/agent-runtime-route.test.ts` | `runtime/providers/__tests__/agent-runtime.test.ts` | 考的是 `agent-runtime.ts`;`agent-runtime-route.test.ts` 这个名字留给产品那份 |
+| `wiring/toolkit/index.ts` | `runtime/toolkit/tool-ports.ts` | 工具内核端口实现与投影器的出口 |
+| `wiring/toolkit/catalog.ts` | `runtime/toolkit/tier-catalogs.ts` | 三档目录(desktop / headless / readonly);与 `core/toolkit/catalog.ts` 同名(I2) |
+| `wiring/toolkit/runner.ts` | `runtime/toolkit/runner-factory.ts` | `createAppToolRunner`:把端口装进 `ToolRunner`;与 `core/toolkit/runner.ts` 同名(I2) |
+| `wiring/agent-loop/index.ts` | `runtime/agent-loop/process-providers.ts` | 带本进程 fetch 的 provider 构造函数入口 |
+| `wiring/agent-loop/providers/factory.ts` | `runtime/agent-loop/providers/process-factory.ts` | 工厂接上本进程的 fetch、请求转储、媒体读取、凭证与外部 agent |
+| `wiring/agent-loop/providers/openai-compatible.ts` | `runtime/agent-loop/providers/openai-compatible-fetch.ts` | 给 OpenAI 兼容构造门面注入本进程的 fetch |
+
+**同一件事的两半(没合)**:`providers/{custom-probe,custom-probe-analyst}`、`{manual-models,manual-model-store}`、
+`{model-registry,model-registry-service}`、`{registry,provider-table}`、`{provider-facade,chat-facade}`;`agent-loop/providers/{factory,process-factory}`、
+`{openai-compatible,openai-compatible-fetch}`;`core/toolkit/{catalog,runner}` 与 `runtime/toolkit/{tier-catalogs,runner-factory}`(协议 + 实现);
+各领域根 `index.ts` 与改名后的入口(providers / toolkit / agent-loop)。
+
+**守门**:规则不改,只改路径。检查器 `MAIN_CORE_SYSTEM_DIRS` 那格改成 `runtime/agent-loop`(目录尺子,现在量到产品那一半,照样全绿);
+`checkCoreOwnsAgentLoopPureFacades` 的 13 条「装配层转发壳回来即红」撤掉(照搬过来 `providers/sse.ts` 正是产品本体,前提是两层),
+「入口不许再导出 core API」那一条改指 `process-providers.ts` 保留;其余点名文件(provider 表、门面、模型目录、三档目录、`wiring.ts`)
+改成新址。assembly 基线 5 行、provider-vendor 基线 7 行只改路径;`provider:gate` 仍 111 对、`provider-vendor-drill` 绿(它的
+`ALLOWED_TOUCHES` 指两份名册与壳的 i18n,不受影响)。exports 改名 19 格、新增 19 格(515 → 534;新增里 5 个是脊柱键)。根 `CLAUDE.md` 的
+`wiring/<domain>/` 一句、目录树、Tools — toolkit 与 Providers 两节改成新址。
+
+**手改的文件**:检查器、`runtime/resource/index.ts` 文件头「目录名为什么是 wiring/resource」一段(改写成住处说明)、
+`vendors/github-copilot/models.ts` 一处注释(花括号提法没认出改名)、`resource-dir.test.ts` 的 `TARGET_DIR`(那条测试拿
+`packages/backend/wiring/resource` 这个真目录当被读的目标,写成 `path.join` 的分段字面量,脚本认不出;改成 `runtime/resource`,
+第一轮改后全量里它红了两条,改完单跑 7 绿)、`CLAUDE.md` 散文、本文。
+
+**拿不准**:`runtime/toolkit/wiring.ts` 这个文件名本身带层的字眼,不在冲突里,没改;`runtime/providers/{provider-facade,chat-facade}.ts`
+并排,读者要看文件头才分得清。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle 成功;根全量 vitest 改前
+11418 条 / 19 红,改后重跑 11418 条 / 19 红、失败集合逐条相同(第一轮改后多出的两条是 `resource-dir.test.ts`,见上「手改」);
+vendor-facts 快照、线协议快照、出厂设置冻结测试前后都绿,快照文件未动;壳 7344 条同一条 A9 红;`gate:acp` 前后 108 ok;
+boundary(139 条)/ transport / log / session / provider(111 对)门输出前后逐字相同,assembly 只多了一行路径(收紧提示里的
+github-copilot 换了住址),仍只红 radio.ts;`provider-vendor-drill` 绿。测试里的非 import 差异 21 对,全是注释里的路径,外加上面那一处
+`TARGET_DIR`。`git grep` 里 `wiring/(providers|toolkit|resource|agent-loop)` 在代码 / 配置 / 脚本(含根 `CLAUDE.md`)中为零。

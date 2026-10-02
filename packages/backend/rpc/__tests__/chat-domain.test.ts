@@ -60,7 +60,7 @@ vi.mock('../../events/index.js', () => ({ getEventBus: () => eventBus }))
 vi.mock('../../session/runs.js', () => runs)
 vi.mock('../../session/reads.js', () => reads)
 vi.mock('../../wiring/engine/prompt/system-prompt-snapshot.js', () => prompt)
-vi.mock('../../wiring/providers/index.js', () => providers)
+vi.mock('@onething/backend/runtime/providers/chat-facade', () => providers)
 vi.mock('../../wiring/engine/stream/provider-helpers.js', () => ({
   resolveProviderAuth: vi.fn(),
   getProviderApiType: vi.fn(),

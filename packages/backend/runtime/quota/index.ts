@@ -27,7 +27,7 @@ import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
 import { authService } from '../auth/process-auth-service.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
-import { credentialTargetFromMarker, decideSpaceProviderCredential } from '@onething/backend/wiring/providers/space-credentials.js'
+import { credentialTargetFromMarker, decideSpaceProviderCredential } from '@onething/backend/runtime/providers/space-credentials'
 import { QuotaService, type QuotaCredentialResolution, type QuotaServiceDeps } from './service.js'
 
 export * from './service.js'

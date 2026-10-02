@@ -22,7 +22,7 @@
  *    有人把违规代码放进一个新文件时同样是绿的。
  * ② 第二个陌生 scheme:**`session`**。K1 里第一个真 scheme 就是它,而它的自述与
  *    实现分别住在产品层(`runtime/sessions/resource-spec.ts`)与装配层
- *    (`backend/wiring/resource/session-provider.ts`)—— core 里一个字都不该有。
+ *    (`backend/runtime/resource/session-provider.ts`)—— core 里一个字都不该有。
  *    这一条是「§8 演练的答案是能力自己的模块 + 一行注册」在**真**能力上的复核。
  *
  * ── 为什么词边界扫描放得过 `sessionId` ─────────────────────────────────────

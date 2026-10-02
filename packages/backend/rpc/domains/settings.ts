@@ -73,7 +73,7 @@ import {
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
 } from '../../server/settings-projection.js'
-import { invalidateProviderCache } from '../../wiring/providers/registry.js'
+import { invalidateProviderCache } from '@onething/backend/runtime/providers/provider-table'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { getGatewayHost } from '../../wiring/gateway/host-ports.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'

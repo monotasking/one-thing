@@ -251,7 +251,7 @@ vi.mock('../../../../session/commands.js', async importOriginal => ({
   },
 }));
 
-vi.mock("../../../providers/model-registry.js", () => ({
+vi.mock("@onething/backend/runtime/providers/model-registry-service", () => ({
 	modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
 	getModelContextLength: mocks.getModelContextLength,
 	getKnownModelMaxOutputTokens: mocks.getKnownModelMaxOutputTokens,
@@ -346,7 +346,7 @@ vi.mock("@onething/backend/runtime/acp/manager", async () => {
 });
 
 const { registerAgentProviderRuntime } = await import(
-	"../../../agent-loop/index.js"
+	"@onething/backend/runtime/agent-loop/process-providers"
 );
 const { executeMessageStream } = await import("../stream-executor.js");
 

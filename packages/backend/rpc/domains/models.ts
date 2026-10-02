@@ -20,7 +20,7 @@ import type {
   ProviderConfig,
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
-import { createAgentProviderFromRuntime } from '../../wiring/agent-loop/providers/factory.js'
+import { createAgentProviderFromRuntime } from '@onething/backend/runtime/agent-loop/providers/process-factory'
 import type { OnethingProviderOptions } from '@onething/backend/runtime/providers/provider-options'
 import {
   catalogFactsOf,
@@ -57,12 +57,12 @@ import {
   VENDOR_RUNTIMES,
   type VendorModelsFetcherDeps,
 } from '@onething/backend/runtime/providers/vendors/runtimes'
-import * as modelRegistry from '../../wiring/providers/model-registry.js'
+import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
 import {
   addManualModel,
   foldedCatalogFor,
   removeManualModel,
-} from '../../wiring/providers/manual-models.js'
+} from '@onething/backend/runtime/providers/manual-model-store'
 import { getSettings, getSpaceSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'

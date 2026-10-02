@@ -21,10 +21,10 @@ import {
   listOnethingProvidersForIpc,
 } from '@onething/backend/runtime/providers'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
-import { getAvailableProviders } from '../../wiring/providers/index.js'
+import { getAvailableProviders } from '@onething/backend/runtime/providers/chat-facade'
 import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
 import { listLabeledDialectsForIpc } from '@onething/backend/runtime/agent-loop/providers/dialect-options'
-import { probeCustomProvider } from '../../wiring/providers/custom-probe.js'
+import { probeCustomProvider } from '@onething/backend/runtime/providers/custom-probe-analyst'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingProviderPresentationIpcLogger } from '@onething/backend/runtime/providers/provider-presentation'

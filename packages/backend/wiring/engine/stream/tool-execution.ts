@@ -25,7 +25,7 @@ import {
   type ToolResultLike,
 } from '@shared/tools/tool-result'
 import { toJsonValue, type JsonValue } from '@shared/json'
-import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
+import { runToolkitToolDirectly } from '@onething/backend/runtime/toolkit/wiring'
 import { pushSessionToolProgress } from '../../../events/tool-progress-stream.js'
 import { consolePort, getLogger } from '../../logging/index.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

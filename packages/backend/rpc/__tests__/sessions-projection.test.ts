@@ -40,7 +40,7 @@ type Backend = Awaited<ReturnType<typeof import('../../backend.js')['createOneth
 
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const
 
-/** 无会话那本账。同步写(`wiring/toolkit/audit-sink.ts`),所以不用 flush。 */
+/** 无会话那本账。同步写(`runtime/toolkit/audit-sink.ts`),所以不用 flush。 */
 function resourceAuditRows(): Array<Record<string, unknown>> {
   const ledger = path.join(storeRoot, 'audit', 'resource.jsonl')
   if (!fs.existsSync(ledger)) return []
@@ -60,7 +60,7 @@ function comparableAudit(
   options: { dropPreview?: boolean } = {},
 ): Record<string, unknown> {
   // 这本账的一行是**扁的**(`{ type, at, callId, toolId, principal, … }`),不像
-  // 会话抄本那一侧包着一层 `data` —— 见 `wiring/toolkit/audit-sink.ts`。
+  // 会话抄本那一侧包着一层 `data` —— 见 `runtime/toolkit/audit-sink.ts`。
   const data = { ...row }
   delete data.callId
   delete data.at
@@ -295,7 +295,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
    *   ② 两条路**一行审计都不落** —— 这是本单的核心断言。写面那一组要的是「两行
    *      长得一样」(证明同一条管线),读面要的是「一行都没有」(证明读**不**走
    *      那条管线)。读是查询,它不产生事实,而 `audit/resource.jsonl` 的流量假设
-   *      写在 `wiring/toolkit/audit-sink.ts` 上:人点一次按钮的量级,不是界面
+   *      写在 `runtime/toolkit/audit-sink.ts` 上:人点一次按钮的量级,不是界面
    *      每翻一页。
    *
    * 反证(施工时跑过):把 `ResourceKernel.read` 改回拼 `Invocation` 走

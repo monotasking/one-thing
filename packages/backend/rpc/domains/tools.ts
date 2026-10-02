@@ -58,7 +58,7 @@
  *
  * 迁来时还有第七条 `refreshAsyncTools`(刷 MCP 工具面)。它在旧 server 上是 404、
  * 在 bridge 上从未暴露、全仓零调用点 —— R4b 之后只剩契约的一格,P4-F #34 整条删掉。
- * 刷工具面这件事没有跟着消失:`backend/wiring/toolkit` 的 `refreshToolkitMcpTools`
+ * 刷工具面这件事没有跟着消失:`backend/runtime/toolkit` 的 `refreshToolkitMcpTools`
  * 仍由 `createOnethingBackend` 挂在 MCP 能力变更回调上,只是不再有传输面。
  */
 import {
@@ -84,7 +84,7 @@ import * as store from '../../store.js'
 import {
   runToolkitToolDirectly,
   toolkitCatalogToolDefinitions,
-} from '../../wiring/toolkit/index.js'
+} from '@onething/backend/runtime/toolkit/tool-ports'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'

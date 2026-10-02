@@ -90,7 +90,7 @@ import {
 } from '../resource-envelope.js'
 import { principalOf } from '../principal.js'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
-import { SessionNotFoundError } from '../../wiring/resource/session-provider.js'
+import { SessionNotFoundError } from '@onething/backend/runtime/resource/session-provider'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/runtime/sessions/branching'
@@ -128,7 +128,7 @@ const WORKDIR_SANDBOX_ERROR = {
  * `updateModel` / `updateAgent` / `removeMessage` 这七条处理器里**不再有实现**:
  * 它们拼参数、交给 `backend.resources.do`、把 `Outcome` 折回原来那个信封
  * (`rpc/resource-envelope.ts`)。规则书、端口、事件全都搬进了
- * `wiring/resource/session-provider.ts` —— 与 AI 走的是同一台 `ToolRunner`,
+ * `runtime/resource/session-provider.ts` —— 与 AI 走的是同一台 `ToolRunner`,
  * 于是授权、审计、取消、预算四样第一次真的同源(`docs/design/atom-2026-09.md`
  * §2 不变量 2:「没有第二条路,界面点按钮也走它」)。
  *
@@ -461,7 +461,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
   },
   /**
    * K2c-3:删也退成投影。三相位删除、AI todo 跟着走、把这条会话在这个进程里的活收
-   * 干净 —— 整串副作用搬进了 `wiring/resource/session-provider.ts`,一步没换顺序。
+   * 干净 —— 整串副作用搬进了 `runtime/resource/session-provider.ts`,一步没换顺序。
    * 搬的理由与 `rename` 那一发广播逐字相同:AI / CLI / 调度删一条会话与界面删是同一
    * 件事,而从前只有界面那一路做收尾。
    *

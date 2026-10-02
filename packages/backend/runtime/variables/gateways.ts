@@ -410,7 +410,7 @@ export const resourceStateVariableGateway: ResourceStateVariableGateway = {
    *
    * 订的是**总线上的 `resource:event`**,不是内核那只 hub:注册这只 gateway 的时刻
    * 内核还不存在(见 `resourceKernelOrNull`),而事件总线已经在了。事实是同一份 ——
-   * `wiring/resource/event-bridge.ts` 把 hub 上每一条原样转发上总线。
+   * `runtime/resource/event-bridge.ts` 把 hub 上每一条原样转发上总线。
    *
    * 谁要重算,由**自述**说:地址的 scheme 上如果有 `turn-origin` 的 turn 状态,
    * 那条地址的 path 就是会话 id(那正是 `turn-origin` 的定义),只重算那一条会话;

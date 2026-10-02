@@ -7,7 +7,7 @@
  * 那两样在别的电台用例里一次都用不到,合进去等于让每个夹具都背着它们。
  *
  * 一件事这里**不**测:`hostReplied` 那条事实怎么发 —— 那是 provider 的事
- * (`wiring/resource/__tests__/music-provider.test.ts` 的 tell 一族)。音乐域只答
+ * (`runtime/resource/__tests__/music-provider.test.ts` 的 tell 一族)。音乐域只答
  * 「他说了这句话」,不认识谁在听。
  */
 import { mkdtempSync, rmSync } from 'node:fs'

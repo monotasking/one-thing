@@ -38,7 +38,7 @@ import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
-import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
+import { createSessionCredentialRotator } from "@onething/backend/runtime/providers/credential-rotation";
 import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "@onething/backend/runtime/providers/provider-config";
 import { observeQuotaProviderData } from "@onething/backend/runtime/quota/engine-hooks";
 import { resolveAgentProfileForSession } from "@onething/backend/runtime/agents/profile-for-session";

@@ -12,7 +12,7 @@ function barrier() {
 }
 
 const provider = vi.hoisted(() => ({ runTurn: vi.fn<NonNullable<AgentProvider['runTurn']>>() }))
-vi.mock('@onething/backend/wiring/providers/utility-provider.js', () => ({
+vi.mock('@onething/backend/runtime/providers/utility-provider', () => ({
   createUtilityProvider: async () => ({
     providerId: 'test', model: 'toc-test', provider: {
       id: 'test', runTurn: provider.runTurn,

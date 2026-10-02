@@ -51,7 +51,7 @@ import type { Outcome, Result } from '@onething/backend/core/toolkit'
 import { resultToText } from '@onething/backend/core/toolkit'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
 import { principalOf } from '../principal.js'
-import type { ShellMountRegistry } from '../../wiring/resource/index.js'
+import type { ShellMountRegistry } from '@onething/backend/runtime/resource'
 import type { RpcRouteHandlers } from '../registry.js'
 
 /**
@@ -184,7 +184,7 @@ export function serializeReadOutcome(outcome: ReadOutcome): ResourceReadView {
 /**
  * 一次调用的坐标。**`sessionId` 缺席就是缺席** —— 不拿 `ref` 里那条会话顶上:
  * 那样审计会读成「A 自己改了自己」(K1 留账,K2a 的答案是保留坐标 +
- * `<store>/audit/resource.jsonl`,见 `wiring/toolkit/audit-sink.ts`)。
+ * `<store>/audit/resource.jsonl`,见 `runtime/toolkit/audit-sink.ts`)。
  */
 function callOptions(context: RpcDispatchContext, sessionId?: string) {
   return {

@@ -70,7 +70,7 @@ import { Permission } from '@onething/backend/runtime/permission'
 import {
   generateChatTitle,
   isProviderSupported,
-} from '../../wiring/providers/index.js'
+} from '@onething/backend/runtime/providers/chat-facade'
 import { billTitleUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'

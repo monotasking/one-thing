@@ -21,8 +21,8 @@ import { ResourceKernel, ResourceRegistry, type ResourceEventHub, type ResourceP
 import type { ToolRunner } from '@onething/backend/core/toolkit'
 import { musicResourceSpec } from '@onething/backend/runtime/music/resource-spec'
 import { EventBus } from '@onething/backend/events/event-bus.js'
-import { forwardResourceEventsToBus } from '@onething/backend/wiring/resource/event-bridge.js'
-import { PetResourceProvider } from '@onething/backend/wiring/resource/pet-provider.js'
+import { forwardResourceEventsToBus } from '@onething/backend/runtime/resource/event-bridge'
+import { PetResourceProvider } from '@onething/backend/runtime/resource/pet-provider'
 import { PetsSubsystem } from '../subsystem.js'
 
 class FakeMusic implements ResourceProvider {

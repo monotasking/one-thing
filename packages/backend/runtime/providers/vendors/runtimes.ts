@@ -12,7 +12,7 @@
  *    (它若在加载时就读,会经本文件把整个 agent-loop 拉进来、与 manifest 注册表成环);
  *  - OAuth 登录定义由 `auth/registry.ts` 同样**惰性**读名册(P2 第 4 批);
  *  - 列表口(manifest `models.kind === 'endpoint'` 的那几家)与目录兜底行由宿主按名册建表
- *    (`backend/rpc/domains/models.ts`、`backend/wiring/providers/model-registry.ts`),宿主把
+ *    (`backend/rpc/domains/models.ts`、`backend/runtime/providers/model-registry-service.ts`),宿主把
  *    自己才有的东西(auth 服务、app fetch、设置、落盘)经一份**不点名**的 `VendorModelsFetcherDeps` 交进来。
  */
 import type { AgentProvider } from "@onething/backend/core/agent-loop";

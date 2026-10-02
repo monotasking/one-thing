@@ -5,7 +5,7 @@
  * 从前默认空间的订阅令牌住在这里:一家只有一个位置,第二次登录盖掉第一次(用户 09-26 报障
  * 「添加账号会覆盖上一个账号」的病根之一)。令牌如今一律住在空间凭证池里
  * (`space-token-store.ts`);这个类只留给一次性归位读旧文件
- * (`backend/wiring/providers/space-config-migration.ts`)。**写路已删** —— 它回来就是
+ * (`backend/runtime/providers/space-config-migration.ts`)。**写路已删** —— 它回来就是
  * 单槽复活,`scripts/headless-boundary-check.ts` 的 `checkRuntimeOwnsAuthTokenStorage` 钉着。
  */
 import { existsSync } from 'node:fs'

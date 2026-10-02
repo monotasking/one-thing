@@ -302,7 +302,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
    * K3-a —— §10.4 的露面规则在**壳资源**上的样子:provider 随连接来,工具就随连接
    * 进工具目录;壳断线(`unmountShell`)之后它当场不在面上。
    *
-   * 这一条就是反证①的落点:拆掉 `wiring/resource/catalog-sync.ts` 对账里的
+   * 这一条就是反证①的落点:拆掉 `runtime/resource/catalog-sync.ts` 对账里的
    * `catalog.unregister`,第二句断言红 —— 目录里会留着一只调不动的 `workbench`。
    */
   it('K3-a 露面:mountShell 之后 workbench 在工具目录里,unmountShell 之后不在', async () => {

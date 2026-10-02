@@ -7,8 +7,8 @@ import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition 
 import type { PluginState } from '@onething/backend/runtime/plugins/api'
 
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), manager: null as { shutdown(): Promise<void> } | null }))
-vi.mock('../wiring/providers/index.js', async original => ({
-  ...await original<typeof import('../wiring/providers/index.js')>(),
+vi.mock('@onething/backend/runtime/providers/chat-facade', async original => ({
+  ...await original<typeof import('@onething/backend/runtime/providers/chat-facade')>(),
   generateChatResponse: mocks.generate,
 }))
 vi.mock('@onething/backend/runtime/plugins/plugin-manager', async original => ({

@@ -695,7 +695,7 @@ export function resolveMCPRouterAction(
  * loop.
  *
  * Exported (K5-a) so the resource-side projection of an MCP server
- * (`backend/wiring/resource/mcp-provider.ts`) renders a call result through the
+ * (`backend/runtime/resource/mcp-provider.ts`) renders a call result through the
  * *same* function `executeMCPBridgeTool` uses below. A second rendering would
  * drift, and the shape of that drift is exactly the bug this function exists to
  * prevent.

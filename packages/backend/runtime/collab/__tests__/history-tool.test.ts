@@ -131,7 +131,7 @@ describe('授权（多给一条就是事故）', () => {
     stampFixtureRoomsForeign()
     ownedBy('exec-iris', 'alice', 'tenant-a')
     ownedBy('cumo', 'alice', 'tenant-a')
-    const { historyAdapters } = await import('@onething/backend/wiring/toolkit/adapters.js')
+    const { historyAdapters } = await import('@onething/backend/runtime/toolkit/adapters')
     const { createHistoryTool, ZodValidator } = await import('@onething/backend/runtime/toolkit')
     const { ToolRunner, Decision } = await import('@onething/backend/core/toolkit')
     const runner = new ToolRunner({

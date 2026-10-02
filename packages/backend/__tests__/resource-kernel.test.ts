@@ -345,7 +345,7 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('AI 路径(直接 run 那只工具)与 do 拿到同形的 Outcome', async () => {
-    const { createAppToolRunner } = await import('../wiring/toolkit/runner.js')
+    const { createAppToolRunner } = await import('@onething/backend/runtime/toolkit/runner-factory')
     const runner = createAppToolRunner({ observer: { on: () => {} } })
     // `tools()` 按 scheme 字典序,不能拿 [0] 当 session。
     const tool = backend.resources.toolFor('session')!

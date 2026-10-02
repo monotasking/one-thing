@@ -78,7 +78,7 @@ vi.mock('@onething/backend/session/access.js', async (importOriginal) => {
   }) }
 })
 
-vi.mock('@onething/backend/wiring/toolkit/wiring.js', () => ({
+vi.mock('@onething/backend/runtime/toolkit/wiring', () => ({
   runToolkitToolDirectly: async (_id: string, args: Record<string, unknown>, context: {
     sessionId: string; messageId: string; executionContext?: unknown
   }) => ({ success: true, data: await sendMessageHostTool.execute(args, context) }),

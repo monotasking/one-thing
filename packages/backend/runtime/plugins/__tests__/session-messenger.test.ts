@@ -63,7 +63,7 @@ vi.mock('@onething/backend/runtime/collab/ingress', () => ({
   isCollabCoordinatorDrivenSession: (sessionId: string) => coordinatorDriven.has(sessionId),
 }))
 
-vi.mock('@onething/backend/wiring/providers/model-registry.js', () => ({
+vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
   getModelContextLength: async (model: string) => (model === 'known-model' ? 200_000 : 0),
 }))
 

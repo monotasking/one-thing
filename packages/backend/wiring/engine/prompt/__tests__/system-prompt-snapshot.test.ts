@@ -112,11 +112,11 @@ vi.mock('../../stream/provider-helpers.js', () => ({
   resolveProviderAuth: mocks.resolveProviderAuth,
 }))
 
-vi.mock('../../../providers/index.js', () => ({
+vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
   isProviderSupported: mocks.isProviderSupported,
 }))
 
-vi.mock('../../../providers/model-registry.js', () => ({
+vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
   modelSupportsTools: mocks.modelSupportsTools,
 }))
 
@@ -129,7 +129,7 @@ vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
 
-vi.mock('../../../providers/agent-runtime.js', () => ({
+vi.mock('@onething/backend/runtime/providers/agent-runtime', () => ({
   createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
 }))
 

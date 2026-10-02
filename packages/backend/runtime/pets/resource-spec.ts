@@ -1,7 +1,7 @@
 /**
  * `pet:` 的自述(宠物 P2,正本 `docs/design/pet-system-2026-09.md` §3 / §9.3)。纯数据。
  *
- * 实现在装配层(`@onething/backend/wiring/resource/pet-provider.ts`),读 / 做都转给
+ * 实现在装配层(`@onething/backend/runtime/resource/pet-provider`),读 / 做都转给
  * `PetsSubsystem`。只有装配了宠物子系统的宿主才登记这份自述(`OnethingBackendOptions.pets`),
  * 没登记的宿主上 `pet:` 就是「没有这种资源」—— 壳读 `current` 失败,栖位照 P1 行为跑。
  *

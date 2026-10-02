@@ -11,7 +11,7 @@
  * I2(`packages/backend/core/<d>/x.ts` 与 `packages/backend/runtime/<d>/x.ts` 不许同名
  * 并存)与 P3 那条「包按环境、包内按领域」:目录的读法与做法用的就是 `files/` 这一
  * 族既有的纯函数(`listOnethingDirectory` / `statOnethingPath`),自述与它们同一个
- * 领域、同一棵树。会话那份自述住在 `sessions/` 也是同一条(`wiring/resource/index.ts`
+ * 领域、同一棵树。会话那份自述住在 `sessions/` 也是同一条(`runtime/resource/index.ts`
  * 的头注释写着这句)。
  *
  * ── 为什么没有「读文件内容」这条读法 ────────────────────────────────────────

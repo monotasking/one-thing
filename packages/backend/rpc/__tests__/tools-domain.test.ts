@@ -40,7 +40,7 @@ const jobs = vi.hoisted(() => ({
 }))
 
 vi.mock('../../store.js', () => store)
-vi.mock('../../wiring/toolkit/index.js', () => toolkit)
+vi.mock('@onething/backend/runtime/toolkit/tool-ports', () => toolkit)
 vi.mock('@onething/backend/runtime/tools/background-jobs-bound', () => jobs)
 vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
   getMCPToolDefinitionsForModel: () => [],

@@ -85,7 +85,7 @@
  * (`app/__tests__/import-side-effect-free.test.ts`)。
  */
 import { getToolkitCatalog } from '@onething/backend/runtime/toolkit'
-import { FeatureToolRuntime, registerFeatureTools } from '../../wiring/toolkit/catalog.js'
+import { FeatureToolRuntime, registerFeatureTools } from '@onething/backend/runtime/toolkit/tier-catalogs'
 import type { FeatureContext, FeatureDefinition } from '../index.js'
 
 /**

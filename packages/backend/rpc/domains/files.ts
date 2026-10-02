@@ -383,7 +383,7 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
 
   /*
    * K3-c' —— 资源面有同一件事的另一条出口:`dir` 的 `createDirectory` 做法
-   * (`wiring/resource/dir-provider.ts`)。**这一条不退成它的投影**,理由与
+   * (`runtime/resource/dir-provider.ts`)。**这一条不退成它的投影**,理由与
    * `updateWorkingDirectory` 同一笔:它对非本机可信的调用方有 per-caller 的
    * `context.sandboxRoot` 夹持,而资源那条路的 `Invocation` 里今天没有这一格。
    * 两条路调的是同一只纯函数,分叉只在夹持这一层。

@@ -6,7 +6,7 @@
 import type { ChatMessage } from "@shared/ipc.js";
 import type { AgentProviderData } from "@onething/backend/core/agent-loop";
 import type { JsonObject, JsonValue } from "@shared/json.js";
-import type { AIMessageContent } from "../../providers/index.js";
+import type { AIMessageContent } from "@onething/backend/runtime/providers/chat-facade";
 import { logMessageBodyShape } from "@onething/backend/runtime/engine/chat-logger-bound";
 import {
 	formatMessagesForLog,

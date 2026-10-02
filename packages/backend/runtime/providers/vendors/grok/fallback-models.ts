@@ -2,7 +2,7 @@
  * xAI 目录(models.dev 的 `xai`)拿不到时的兜底行 —— `grok` 与 `grok-oauth` 读同一本目录,兜底也是
  * 同一张(订阅那半边 `vendors/grok-oauth/` 借这里)。
  *
- * 服务商自述试点 P2 第 4 批从 backend `wiring/providers/model-registry.ts` 的 `GROK_FALLBACK_MODELS` /
+ * 服务商自述试点 P2 第 4 批从 backend `runtime/providers/model-registry-service.ts` 的 `GROK_FALLBACK_MODELS` /
  * `PROVIDER_FALLBACK_CATALOGS` 搬回家,逐字;经 `VendorRuntime.fallbackModels` 登记。
  */
 import type { OnethingOpenRouterModel } from "../../model-registry.js";

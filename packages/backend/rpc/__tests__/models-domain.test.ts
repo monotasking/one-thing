@@ -51,7 +51,7 @@ vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({
   },
 }))
 
-vi.mock('../../wiring/providers/model-registry.js', () => ({
+vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
   forceRefresh: mocks.forceRefresh,
   refreshProviderModels: mocks.refreshProviderModels,
   getAllModels: vi.fn(),

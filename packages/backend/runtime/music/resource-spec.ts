@@ -8,7 +8,7 @@
  *
  * ── 为什么住在产品层,而且只有数据 ─────────────────────────────────────────
  * 与 `../sessions/resource-spec.ts` 逐字同一个理由:自述是**值**,实现(开台走哪只
- * 端口、播放走哪条命令)住在装配层(`@onething/backend/wiring/resource/
+ * 端口、播放走哪条命令)住在装配层(`@onething/backend/runtime/resource/
  * music-provider.ts`),因为只有那里够得着 `backend.music`。这只文件因此**不许**
  * import `@onething/backend`,也不 import 任何 store。
  *

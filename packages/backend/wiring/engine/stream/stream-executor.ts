@@ -19,7 +19,7 @@ import {
 } from '../../../session/runs.js'
 import { sessionCommands } from '../../../session/commands.js'
 import { ensureSessionWritable } from '../../../session/index.js'
-import * as modelRegistry from '../../providers/model-registry.js'
+import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
   getCodexNativeToolsForConfig,

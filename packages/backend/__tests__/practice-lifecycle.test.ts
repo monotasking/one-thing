@@ -43,7 +43,7 @@ it('holds the actual lease through config and ledger IO, then isolates old servi
   const storeB = path.join(directory, 'b')
   backend = await assemble(storeA)
   const practice = await import('@onething/backend/runtime/practice/service.wiring')
-  const { practiceAdapters } = await import('../wiring/toolkit/adapters.js')
+  const { practiceAdapters } = await import('@onething/backend/runtime/toolkit/adapters')
   const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   const oldService = backend.practice
   const oldLedger = practice.getPracticeLedger()

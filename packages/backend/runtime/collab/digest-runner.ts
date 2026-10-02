@@ -29,7 +29,7 @@ import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../session/reads.js'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { collabSessionRoomMembers } from './members.js'
-import { generateChatResponse } from '@onething/backend/wiring/providers/index.js'
+import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,

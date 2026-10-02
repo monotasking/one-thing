@@ -52,7 +52,7 @@ import type { SerializedResourceSpec } from '@shared/ipc/resources'
  * 也在这一类里 —— 它不另立一个 `ui_destructive`,因为「有没有未保存的东西」
  * 这个事实只有壳知道,而壳侧的 `beforeClose`(`mayCloseContent`)已经在兜它。
  *
- * `home` 这一格交上去也会被后端盖成 `'shell'`(`wiring/resource/shell-provider.ts`
+ * `home` 这一格交上去也会被后端盖成 `'shell'`(`runtime/resource/shell-provider.ts`
  * 的 `resourceSpecFromShell` 不读它)。这里照样写全,因为这份自述**也是给人读的**:
  * 一份说不出自己在哪儿跑的自述,读的人得去翻反序列化那一段才知道。
  */

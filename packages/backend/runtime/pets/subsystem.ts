@@ -5,7 +5,7 @@
  * 只做接线,一件不多:
  *   ① 建宿主:读 `current.json` 定是哪一只、读那一只账本尾部 50 行接上记忆;
  *   ② 订资源事件:挂在事件总线上**已经在转发**的 `resource:event` 那一路
- *      (`wiring/resource/event-bridge.ts` 放上去的),不另开订阅口;
+ *      (`runtime/resource/event-bridge.ts` 放上去的),不另开订阅口;
  *   ③ 查表:对每条事件问注册表那种资源的自述 `events[event].moment` —— 没声明就忽略,
  *      声明了就折成 `Moment` 喂给宿主;
  *   ④ 收尾:宿主交回的账本行写盘(`ledger-store.ts`),话语作为 `pet:` 的 `utterance`

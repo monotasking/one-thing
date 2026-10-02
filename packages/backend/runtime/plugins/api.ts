@@ -29,8 +29,8 @@ import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '@onething/backend/channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '@onething/backend/runtime/deeplink/registry'
 import { registerPluginSearchProvider } from '@onething/backend/runtime/search/plugin-search-registry'
-import { registerPluginCredentialStrategy } from '@onething/backend/wiring/providers/credential-strategy.js'
-import { captureCredentialStrategyScope, type CredentialStrategyScope } from '@onething/backend/wiring/providers/credential-strategy-lifetime.js'
+import { registerPluginCredentialStrategy } from '@onething/backend/runtime/providers/credential-strategy'
+import { captureCredentialStrategyScope, type CredentialStrategyScope } from '@onething/backend/runtime/providers/credential-strategy-lifetime'
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
@@ -117,7 +117,7 @@ export const GLOBAL_PLUGIN_EVENT_TYPES = new Set([
   'plugin:loaded',
   'plugin:error',
   'plugin:notification',
-  // 原子 K2a:资源事件经装配层单向转发上总线(`wiring/resource/event-bridge.ts`)。
+  // 原子 K2a:资源事件经装配层单向转发上总线(`runtime/resource/event-bridge.ts`)。
   // 插件订阅它拿到的是「哪个资源上发生了什么」,与 `api.watch` 那条正式出口是同一件
   // 事实的两个投影 —— 正式出口是 K4 的事,这一行只是让名单与联合保持一一对应。
   'resource:event',

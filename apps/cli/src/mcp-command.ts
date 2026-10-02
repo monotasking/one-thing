@@ -55,7 +55,7 @@ import {
   toolDescriptionOf,
   toolInputSchemaOf,
 } from '@onething/backend/core/resource'
-import { resourceSpecFromShell } from '@onething/backend/wiring/resource/index.js'
+import { resourceSpecFromShell } from '@onething/backend/runtime/resource'
 import { getLogger, getRootLogger } from '@onething/backend/wiring/logging/index.js'
 import type {
   ListResourcesResponse,
@@ -172,7 +172,7 @@ function declaresEffects(serialized: SerializedResourceSpec): boolean {
 /**
  * 一份自述 → 一只 MCP 工具。
  *
- * `resourceSpecFromShell`(`@onething/backend/wiring/resource`)在这里当**还原函数**用(投影 → 内核认的自述形),不是
+ * `resourceSpecFromShell`(`@onething/backend/runtime/resource`)在这里当**还原函数**用(投影 → 内核认的自述形),不是
  * 因为这份自述来自某扇壳:它是仓里唯一一份现成的还原,而再抄一份就是「同一份事实
  * 两份代码」—— 那正是这条设计线整篇在反对的东西。它会把每条做法的 `home` 盖成
  * `'shell'`,在这里**无害且不可见**:还原出来的 spec 只被 `toolInputSchemaOf` /

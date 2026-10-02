@@ -60,7 +60,7 @@ vi.mock('../board-store.js', () => ({
   },
 }))
 
-const { boardAdapters } = await import('@onething/backend/wiring/toolkit/adapters.js')
+const { boardAdapters } = await import('@onething/backend/runtime/toolkit/adapters')
 const { createBoardTool } = await import('@onething/backend/runtime/toolkit')
 const { Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
 const { ZodValidator } = await import('@onething/backend/runtime/toolkit')

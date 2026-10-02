@@ -40,7 +40,7 @@ vi.mock('@onething/backend/core/agent-loop', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/core/agent-loop')>(),
   runAgentLoop: mocks.runAgentLoop,
 }))
-vi.mock('@onething/backend/wiring/providers/utility-provider.js', () => ({
+vi.mock('@onething/backend/runtime/providers/utility-provider', () => ({
   createUtilityProvider: mocks.createUtilityProvider,
 }))
 vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({}) }))

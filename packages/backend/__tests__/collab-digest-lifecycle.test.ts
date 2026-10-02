@@ -25,8 +25,8 @@ vi.mock('../wiring/engine/stream/provider-helpers.js', async importOriginal => {
     },
   }
 })
-vi.mock('../wiring/providers/index.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../wiring/providers/index.js')>()
+vi.mock('@onething/backend/runtime/providers/chat-facade', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/providers/chat-facade')>()
   return { ...actual,
     generateChatResponse: (...args: Parameters<typeof actual.generateChatResponse>) => {
       control.onUsage = args[3]?.onUsage

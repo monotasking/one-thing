@@ -43,7 +43,7 @@ vi.mock('../../stores/settings.js', () => ({
   saveSettings: (next: AppSettings) => store.saveSettings(next),
 }))
 
-vi.mock('../../wiring/providers/registry.js', () => ({
+vi.mock('@onething/backend/runtime/providers/provider-table', () => ({
   invalidateProviderCache: ports.invalidateProviderCache,
 }))
 

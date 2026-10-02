@@ -108,7 +108,7 @@ export interface ReadResourceRequest {
 	/**
 	 * 从哪条会话里发起的。**可选,而且是发起坐标不是操作对象** —— 操作对象在
 	 * `ref` 里。不给 = 这次调用不属于任何会话(审计另落一本,见
-	 * `backend/wiring/toolkit/audit-sink.ts`)。
+	 * `backend/runtime/toolkit/audit-sink.ts`)。
 	 */
 	sessionId?: string;
 }
@@ -215,7 +215,7 @@ export interface ShellResultRequest {
  * ## 它不新开通道
  *
  * 事实进 core 之后走的仍是 K2a 那条既有的路:provider 的 `emit()` → `ResourceEventHub`
- * → `wiring/resource/event-bridge.ts` → 全局事件 `resource:event` → SSE。这条 RPC
+ * → `runtime/resource/event-bridge.ts` → 全局事件 `resource:event` → SSE。这条 RPC
  * 只是把「壳这一侧的 hub 入口」接出来。
  *
  * ## 两道判定都在 core

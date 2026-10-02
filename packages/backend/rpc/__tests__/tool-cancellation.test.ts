@@ -39,7 +39,7 @@ let previous: string | undefined
 let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js')['installStoreSessionLayerForTest']>>
 let registry: typeof import('../registry.js')
 let current: typeof import('../../current.js')
-let wiring: typeof import('../../wiring/toolkit/wiring.js')
+let wiring: typeof import('@onething/backend/runtime/toolkit/wiring')
 let catalog: Catalog
 const cleanups: Array<() => void> = []
 
@@ -53,7 +53,7 @@ beforeEach(async () => {
   store.createSession('alice-session', 'Alice', { initialOwner: alice })
   store.createSession('alice-second', 'Alice second', { initialOwner: alice })
   store.createSession('bob-session', 'Bob', { initialOwner: bob })
-  wiring = await import('../../wiring/toolkit/wiring.js')
+  wiring = await import('@onething/backend/runtime/toolkit/wiring')
   wiring.resetToolkitCatalogForTests()
   catalog = new Catalog()
   const { configureToolkitCatalog } = await import('@onething/backend/runtime/toolkit')
@@ -260,7 +260,7 @@ it('keeps cancellation authoritative while the plugin result finalizer is still 
 })
 
 it('stops a real bash child before reporting cancellation complete', { timeout: 15000 }, async () => {
-  const { createDesktopCatalog } = await import('../../wiring/toolkit/catalog.js')
+  const { createDesktopCatalog } = await import('@onething/backend/runtime/toolkit/tier-catalogs')
   const { createLocalBashOperations } = await import('@onething/backend/runtime/tools/bash-executor')
   const builtin = createDesktopCatalog({ bash: {
     getDefaultWorkingDirectory: () => directory,

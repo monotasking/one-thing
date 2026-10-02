@@ -74,7 +74,7 @@ async function seedUsage(tokens: number) {
 }
 
 async function bindings() {
-  const registry = await import('../wiring/providers/credential-strategy.js')
+  const registry = await import('@onething/backend/runtime/providers/credential-strategy')
   const credentials = await import('@onething/backend/runtime/spaces/credentials')
   const health = await import('@onething/backend/runtime/plugins/health')
   const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')

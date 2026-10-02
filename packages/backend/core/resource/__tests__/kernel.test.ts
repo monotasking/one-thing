@@ -37,7 +37,7 @@ class Trace implements Observer {
 /**
  * K2a —— 与装配层同形:同一个 `ResourceInputValidator` 实例既串进 runner 的
  * `Validator`,又交给内核去认领每个 mount 的入参契约。生产里这两半由
- * `backend/wiring/resource/index.ts` 的 `createResourceKernel` 一处扣上。
+ * `backend/runtime/resource/index.ts` 的 `createResourceKernel` 一处扣上。
  */
 function makeKernel(observer: Observer, provider = new DemoProvider()) {
   const resourceValidator = new ResourceInputValidator()

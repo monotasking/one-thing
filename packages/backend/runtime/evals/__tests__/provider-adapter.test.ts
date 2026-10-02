@@ -38,8 +38,8 @@ import {
   savePersistedSettings,
   updateSettingsInMemory,
 } from '@onething/backend/stores/settings.js'
-import { setSpaceProviderCredential } from '@onething/backend/wiring/providers/space-credentials.js'
-import { initializeRegistry } from '@onething/backend/wiring/providers/registry.js'
+import { setSpaceProviderCredential } from '@onething/backend/runtime/providers/space-credentials'
+import { initializeRegistry } from '@onething/backend/runtime/providers/provider-table'
 import { createEvalsModelCaller, resolveEvalsCredentials } from '../provider-adapter.js'
 
 let directory: string
