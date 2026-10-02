@@ -7,7 +7,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 
-import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/core/actors'
+import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import {
   collabActorRef,
   collabAgentNote,
@@ -19,7 +19,7 @@ import {
   collabRoomPosted,
   type CollabActorVerb,
 } from '../index.js'
-import type { FloorLease } from '@onething/backend/core/actors'
+import type { FloorLease } from '@onething/backend/runtime/collab/kernel'
 
 // 落盘那一侧在这套测试里一次都不该被碰到(全部走内存实现),但 import 链上
 // 有 `stores/paths.js` —— 桩掉它,免得一个真实的 store 根被拉进来。

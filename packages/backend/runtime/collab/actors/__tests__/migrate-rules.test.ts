@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { FLOOR_LEASE_INITIAL_EPOCH } from '@onething/backend/core/actors'
+import { FLOOR_LEASE_INITIAL_EPOCH } from '@onething/backend/runtime/collab/kernel'
 
 import type { CollabMessageLike } from '../../types.js'
 import {

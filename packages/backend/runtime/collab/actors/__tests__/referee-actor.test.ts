@@ -10,7 +10,7 @@
  *  - **@ 直通**不进裁决窗;
  *  - **相位挂起**:非活跃相位的房不发牌,举手一只不丢,换相后当场兑现。
  */
-import { InMemoryMailbox, type ActorEvent } from '@onething/backend/core/actors'
+import { InMemoryMailbox, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import type { CollabAgentLike } from '../../index.js'
 import {
   collabAgentRaiseHand,

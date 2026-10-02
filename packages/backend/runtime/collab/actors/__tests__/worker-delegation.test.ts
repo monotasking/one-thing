@@ -24,7 +24,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
-import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/core/actors'
+import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import {
   collabActorRef,
   collabAgentSpawnWorker,

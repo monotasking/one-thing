@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createActorEvent, type ActorEvent } from '@onething/backend/core/actors'
+import { createActorEvent, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import {
   advanceCollabAgentDelivered,
   collabAgentRoomAccount,

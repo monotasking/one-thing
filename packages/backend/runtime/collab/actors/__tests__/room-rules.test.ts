@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { validateFloorLeaseId } from '@onething/backend/core/actors'
+import { validateFloorLeaseId } from '@onething/backend/runtime/collab/kernel'
 
 import { COLLAB_SAY_SOURCE, isCollabRoomFact } from '../../classify.js'
 import { computeCollabChainCount } from '../../chain.js'

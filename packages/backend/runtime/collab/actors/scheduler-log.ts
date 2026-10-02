@@ -28,7 +28,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { ActorDeadLetter, ActorEvent } from '@onething/backend/core/actors'
+import type { ActorDeadLetter, ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import {
   collabSchedulerDeadLetter,
   collabSchedulerErrorLine,

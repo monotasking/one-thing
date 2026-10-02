@@ -19,7 +19,7 @@
  * 数据纪律:fixture 全部合成。真实用户转录只能用同目录外的本地脚本
  * (`scripts/collab-v3-replay.mjs`,只读)手工对照,**不入库**。
  */
-import { createActorEvent, createSeenActorEventWindow, formatActorRef, type ActorEvent } from '@onething/backend/core/actors'
+import { createActorEvent, createSeenActorEventWindow, formatActorRef, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 
 import type { CollabMessageLike } from '../types.js'
 import {

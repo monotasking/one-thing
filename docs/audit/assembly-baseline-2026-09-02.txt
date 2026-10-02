@@ -24,10 +24,10 @@ packages/backend/stores/docs-paths.ts 1
 packages/backend/stores/sessions.ts 1
 packages/backend/utils/ripgrep.ts 1
 packages/backend/wiring/auth/oauth-events.ts 2
-packages/backend/wiring/collab/actors/runtime.ts 3
-packages/backend/wiring/collab/agent-activity.ts 1
-packages/backend/wiring/collab/external-observability.ts 1
-packages/backend/wiring/collab/inspector.ts 1
+packages/backend/runtime/collab/wiring/actors/runtime.ts 3
+packages/backend/runtime/collab/wiring/agent-activity.ts 1
+packages/backend/runtime/collab/wiring/external-observability.ts 1
+packages/backend/runtime/collab/wiring/inspector.ts 1
 packages/backend/wiring/engine/triggers/index.ts 1
 packages/backend/wiring/evals/events.ts 1
 packages/backend/wiring/evals/host-ports.ts 1

@@ -13,7 +13,7 @@
  * 这一层是纯类型 + 纯构造函数:不碰 fs、不碰事件总线、不认识 StreamEngine。
  * 谁把这些动词投进 mailbox 是 D1/D2 的事。
  */
-import type { FloorLease } from '@onething/backend/core/actors'
+import type { FloorLease } from '@onething/backend/runtime/collab/kernel'
 
 import type { CollabMentionLike, CollabMessageLike } from '../types.js'
 

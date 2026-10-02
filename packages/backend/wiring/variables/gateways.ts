@@ -50,8 +50,8 @@ import type {
   AgentSelfStateGateway,
 } from '@onething/backend/runtime/variables/providers/agent-self'
 import { findAgent } from '../agents/index.js'
-import { getCollabSelfTaskFacts } from '../collab/board-store.js'
-import { resolveUserIdentity } from '../collab/user-identity.js'
+import { getCollabSelfTaskFacts } from '@onething/backend/runtime/collab/wiring/board-store'
+import { resolveUserIdentity } from '@onething/backend/runtime/collab/wiring/user-identity'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('variables')

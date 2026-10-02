@@ -45,7 +45,7 @@ import {
   type ActorEvent,
   type ActorMailboxSource,
   type FloorLease,
-} from '@onething/backend/core/actors'
+} from '@onething/backend/runtime/collab/kernel'
 import {
   formatCollabNotificationBlock,
   isCollabRoomFact,

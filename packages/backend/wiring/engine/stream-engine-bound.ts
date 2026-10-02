@@ -28,7 +28,7 @@ import {
 	isCollabCoordinatorDrivenSession,
 	isCollabRoomSession,
 	type CollabRoomInboundCommand,
-} from "../collab/ingress.js";
+} from "@onething/backend/runtime/collab/wiring/ingress";
 import {
 	pluginPostInterceptReply,
 	type PluginInterceptSteerPort,

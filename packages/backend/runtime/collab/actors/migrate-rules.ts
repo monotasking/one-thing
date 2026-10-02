@@ -3,7 +3,7 @@
  *
  * 这里只做两件事:**映射**(v2 的一格 → v3 的哪一格)与**对账计算**(这一格是怎么
  * 来的、近似了多少、截断了多少)。读盘、备份、写盘、marker 全在装配层的
- * `@onething/backend` `wiring/collab/actors/migrate.ts` —— 迁移是一趟单向门,而单向门上的
+ * `@onething/backend` `runtime/collab/wiring/actors/migrate.ts` —— 迁移是一趟单向门,而单向门上的
  * 每一条判断都必须能在没有磁盘的情况下被逐条问一遍。
  *
  * ## 迁移面有多大(§1.2 的 D2 实施勘误之后)
@@ -28,7 +28,7 @@
  * 的可见性边界** —— 而可见性边界漂了的样子是「agent 在信箱里读到自己刚说过的话」。
  * 所以它是一个必填参数:调用方必须把真机那一个递进来。
  */
-import { createActorEvent, FLOOR_LEASE_INITIAL_EPOCH, type ActorEvent } from '@onething/backend/core/actors'
+import { createActorEvent, FLOOR_LEASE_INITIAL_EPOCH, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 
 import { COLLAB_DEFAULT_UNREAD_MAX } from '../history-window.js'
 import type { CollabMessageLike } from '../types.js'

@@ -51,7 +51,7 @@ import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../../session/reads.js'
 import type { EventBus } from '@onething/backend/events/event-bus.js'
 import type { StreamEngine } from '@onething/backend/wiring/engine/stream-engine-bound.js'
-import { isCollabCoordinatorDrivenSession } from '@onething/backend/wiring/collab/ingress.js'
+import { isCollabCoordinatorDrivenSession } from '@onething/backend/runtime/collab/wiring/ingress'
 import { pluginMessageSource } from '@onething/backend/runtime/engine/message-sources'
 import * as modelRegistry from '@onething/backend/wiring/providers/model-registry.js'
 

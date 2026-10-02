@@ -20,7 +20,7 @@
  * 而每加一个字段都在诱使调用方去读它 —— 那正是端口存在要挡住的耦合。生产适配器
  * 负责把 `ChatMessage` 收敛成这三格。
  */
-import type { FloorLease } from '@onething/backend/core/actors'
+import type { FloorLease } from '@onething/backend/runtime/collab/kernel'
 import type { CollabMentionLike } from '../index.js'
 
 /**

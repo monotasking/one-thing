@@ -38,7 +38,7 @@ import {
   createActorEvent,
   type ActorBaseOptions,
   type ActorEvent,
-} from '@onething/backend/core/actors'
+} from '@onething/backend/runtime/collab/kernel'
 import {
   admitCollabWorker,
   collabAgentWorkerResult,

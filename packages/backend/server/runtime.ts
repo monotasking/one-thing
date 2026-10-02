@@ -145,7 +145,7 @@ import {
 } from "../wiring/settings/events.js";
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
-import { isCollabV3RuntimeRunning } from "../wiring/collab/index.js";
+import { isCollabV3RuntimeRunning } from "@onething/backend/runtime/collab/wiring";
 // B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
 // 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
 import { getPluginManager } from "@onething/backend/runtime/plugins/wiring";

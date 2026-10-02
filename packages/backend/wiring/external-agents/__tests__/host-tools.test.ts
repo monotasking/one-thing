@@ -123,7 +123,7 @@ vi.mock('../../agents/profile.js', () => ({
   }),
 }))
 
-vi.mock('../../collab/budget.js', () => ({
+vi.mock('@onething/backend/runtime/collab/wiring/budget', () => ({
   isRoomOverBudget: async () => false,
 }))
 
@@ -154,7 +154,7 @@ async function bindHostSurface(request: {
   return { toolNames: surface.tools.map(tool => hostMcpToolName(tool.id)), release }
 }
 const { clearCollabSayIdempotence, speakIntoCollabRoom }
-  = await import('../../collab/say-tool.js')
+  = await import('@onething/backend/runtime/collab/wiring/say-tool')
 const { Catalog, Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
 const {
   configureToolkitCatalog,

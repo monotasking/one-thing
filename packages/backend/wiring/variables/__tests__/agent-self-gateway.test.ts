@@ -29,7 +29,7 @@ vi.mock('../../agents/index.js', () => ({
   DEFAULT_ONETHING_AGENT_ID: 'default',
 }))
 
-vi.mock('../../collab/board-store.js', () => ({
+vi.mock('@onething/backend/runtime/collab/wiring/board-store', () => ({
   getCollabSelfTaskFacts: (roomSessionId: string, agentId: string) => {
     mocks.boardReads.push({ roomSessionId, agentId })
     return mocks.cards.get(roomSessionId) ?? []

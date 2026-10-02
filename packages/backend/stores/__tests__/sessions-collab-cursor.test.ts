@@ -8,7 +8,7 @@
  * **文件从 `sessions-clear-messages.test.ts` 改名而来**(F4-a,§16.12):清空
  * 本身的三条断言随 `stores/clearSessionMessages` 一起退役 —— 那个存储原语
  * P0.2 之后就零生产调用点了(群聊走命令面 `replaceAll{reason:'clear'}`,
- * `wiring/collab/room-config.ts`),批 6b 查明、本批按 §16.11 拍板 5 删除。
+ * `runtime/collab/wiring/room-config.ts`),批 6b 查明、本批按 §16.11 拍板 5 删除。
  * 清空的行为判据在命令面那一侧:`session/__tests__/commands.test.ts` 与
  * `event-translator` 退役后的 `command-events` 一族。
  */

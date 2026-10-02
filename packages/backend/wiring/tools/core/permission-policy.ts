@@ -199,7 +199,7 @@ const collabReminderBridge: PermissionBridge = {
           if (!roomSessionId) return
           // Dynamic import: tools/core must not statically depend on the room
           // config door (which reaches the engine through the v3 runtime).
-          const { postCollabSystemLine } = await import('../../collab/room-config.js')
+          const { postCollabSystemLine } = await import('@onething/backend/runtime/collab/wiring/room-config')
           postCollabSystemLine(
             roomSessionId,
             `有一个权限请求已等待 30 分钟未处理:${request.title}(从看板任务卡打开工作会话审批)`,

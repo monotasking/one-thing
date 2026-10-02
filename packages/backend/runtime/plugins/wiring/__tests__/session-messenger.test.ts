@@ -59,7 +59,7 @@ vi.mock('@onething/backend/store.js', () => ({
   },
 }))
 
-vi.mock('@onething/backend/wiring/collab/ingress.js', () => ({
+vi.mock('@onething/backend/runtime/collab/wiring/ingress', () => ({
   isCollabCoordinatorDrivenSession: (sessionId: string) => coordinatorDriven.has(sessionId),
 }))
 

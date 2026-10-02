@@ -34,8 +34,8 @@ import {
   isAgentPairDmRoom,
   isUserDmRoom,
 } from '@onething/backend/runtime/collab'
-import { collabRoomMembers } from '../../collab/members.js'
-import { collabUserPromptFields } from '../../collab/user-identity.js'
+import { collabRoomMembers } from '@onething/backend/runtime/collab/wiring/members'
+import { collabUserPromptFields } from '@onething/backend/runtime/collab/wiring/user-identity'
 import type { PromptProviderConfig } from '@onething/backend/runtime/prompts/plugin-context.wiring'
 import type {
   CorePromptActiveProject as PromptActiveProject,

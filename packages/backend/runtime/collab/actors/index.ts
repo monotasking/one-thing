@@ -9,7 +9,7 @@
  * / `worker-child` / `mind-port` / `notebook-store` / `room-account` / `agent-mailbox`)
  * 也住在这个目录 —— 它们的闭包零脊柱边。只有真撞后端脊柱的宿主端口与装配
  * (`engine-mind-port` / `worker-mind-port` / `runtime.ts` / `stop-door` / `migrate`)
- * 留在 `@onething/backend/wiring/collab/actors/`。设计:docs/design/collab-actor-v3.md。
+ * 留在 `@onething/backend/runtime/collab/wiring/actors/`。设计:docs/design/collab-actor-v3.md。
  */
 export {
   COLLAB_ACTOR_VERB_TABLE_IS_EXHAUSTIVE,

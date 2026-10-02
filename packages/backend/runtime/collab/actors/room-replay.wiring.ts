@@ -23,7 +23,7 @@
  *
  * 数据纪律沿用 D0:fixture 全部合成,真实用户转录只用同目录外的只读脚本手工对照。
  */
-import { InMemoryMailbox, type ActorEvent } from '@onething/backend/core/actors'
+import { InMemoryMailbox, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import type { CollabAgentLike, CollabRelayRoomLike } from '../index.js'
 import {
   collabAgentRaiseHand,

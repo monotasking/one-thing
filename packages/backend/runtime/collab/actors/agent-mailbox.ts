@@ -31,7 +31,7 @@
  */
 import path from 'node:path'
 
-import { DurableMailbox, type ActorEvent } from '@onething/backend/core/actors'
+import { DurableMailbox, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import { readJsonFile, writeJsonFile } from '@onething/backend/core/storage'
 import {
   createCollabAgentAccount,

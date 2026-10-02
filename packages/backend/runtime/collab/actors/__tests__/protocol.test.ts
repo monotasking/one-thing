@@ -1,4 +1,4 @@
-import { createFloorLeaseLedger, issueFloorLease } from '@onething/backend/core/actors'
+import { createFloorLeaseLedger, issueFloorLease } from '@onething/backend/runtime/collab/kernel'
 import { describe, expect, it } from 'vitest'
 
 import {

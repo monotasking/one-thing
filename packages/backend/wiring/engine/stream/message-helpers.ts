@@ -41,7 +41,7 @@ import {
 	type CollabAgentLike,
 } from "@onething/backend/runtime/collab";
 import { findAgent } from "../../agents/index.js";
-import { resolveUserIdentity } from "../../collab/user-identity.js";
+import { resolveUserIdentity } from "@onething/backend/runtime/collab/wiring/user-identity";
 import * as store from "../../../store.js";
 import { getLogger } from '../../logging/index.js'
 import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/runtime/sessions/history-messages'

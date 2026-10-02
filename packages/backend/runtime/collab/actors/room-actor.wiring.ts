@@ -31,7 +31,7 @@ import {
   type ActorBaseOptions,
   type ActorEvent,
   type ActorMailboxSource,
-} from '@onething/backend/core/actors'
+} from '@onething/backend/runtime/collab/kernel'
 import { COLLAB_DEFAULT_DAILY_COST_USD, type CollabAddressable, type CollabAgentLike } from '../index.js'
 import {
   applyCollabRoomPassthrough,

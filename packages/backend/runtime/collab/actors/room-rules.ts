@@ -22,7 +22,7 @@
  * 里的 messages),谁把它们落盘是 `app/collab/actors/` 的事;流(在飞租约的
  * 内存态)不存在于这里 —— 租约本身就是账的一部分,重启后照样验得出真伪。
  */
-import type { FloorLease, FloorLeaseLedger } from '@onething/backend/core/actors'
+import type { FloorLease, FloorLeaseLedger } from '@onething/backend/runtime/collab/kernel'
 import {
   activeFloorLeases,
   bumpFloorEpoch,
@@ -33,7 +33,7 @@ import {
   pruneFloorLeases,
   revokeFloorLease,
   validateFloorLeaseId,
-} from '@onething/backend/core/actors'
+} from '@onething/backend/runtime/collab/kernel'
 
 import { collabChainGateAllows, type CollabActivationReason } from '../activation.js'
 import { collabMessageResetsChain } from '../chain.js'

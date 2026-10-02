@@ -54,7 +54,7 @@ if (storeArg) process.env.ONETHING_STORE_PATH = storeArg.replace(/^~(?=\/)/, hom
 const dryRun = !flags.has('--execute')
 
 const { migrateCollabToV3 } = await import(
-  '@onething/backend/wiring/collab/actors/migrate.js'
+  '@onething/backend/runtime/collab/wiring/actors/migrate'
 )
 const { formatCollabMigrationReport } = await import(
   '../packages/backend/runtime/collab/actors/migrate-rules.ts'

@@ -32,7 +32,7 @@
  *    会飘的快照比没有快照更糟。并发争抢那一面由 D1 的 `floor-contest` 剧本守着,
  *    那条路是同步的,不受调度影响。
  */
-import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/core/actors'
+import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import type { CollabRoomMemberMailbox } from './room-actor.wiring.js'
 import type { CollabAgentOutbox } from './agent-actor.js'
 import {

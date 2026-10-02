@@ -13,7 +13,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { InMemoryMailbox, type ActorEvent } from '@onething/backend/core/actors'
+import { InMemoryMailbox, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
 import {
   collabAgentRaiseHand,
   collabAgentSpeak,

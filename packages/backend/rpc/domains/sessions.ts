@@ -22,7 +22,7 @@
  *    (缺席 = default),不给它拖垮建会话这条路;
  *  - 「自带 id 的格式 / 不认领已存在的会话 / kind 只认 'room'」三条连同失败文案在
  *    `describeInvalidOnethingCreateSessionRequestForIpc`(运行时)里;
- *  - 建房的规则书只有一本,在 `wiring/collab/room-create.ts` —— 成员过滤、查无此人、
+ *  - 建房的规则书只有一本,在 `runtime/collab/wiring/room-create.ts` —— 成员过滤、查无此人、
  *    退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与「改房」那条路对齐。
  * 这三段是逐字搬过来的:抄错一个分支就是改行为。
  *
@@ -79,7 +79,7 @@ import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
-} from '../../wiring/collab/index.js'
+} from '@onething/backend/runtime/collab/wiring'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
@@ -422,7 +422,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     })
     if (invalidRequest) return invalidRequest
     if (kind === 'room') {
-      // 建房的规则书只有一本,在装配层(wiring/collab/room-create.ts)—— 成员过滤、
+      // 建房的规则书只有一本,在装配层(runtime/collab/wiring/room-create.ts)—— 成员过滤、
       // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与
       // 「改房」那条路(setCollabRoomConfig)对齐。这里只递形状,不留规则。
       const result = await ensureCollabGroupRoom(name || 'New Chat', room as CollabGroupRoomInput | undefined, {
