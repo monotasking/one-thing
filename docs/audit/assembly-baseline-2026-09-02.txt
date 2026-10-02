@@ -36,8 +36,8 @@ packages/backend/wiring/gateway/host-ports.ts 1
 packages/backend/wiring/goals/runtime-hooks.ts 1
 packages/backend/wiring/logging/diagnostics.ts 1
 packages/backend/wiring/logging/index.ts 10
-packages/backend/wiring/music/radio.ts 9
-packages/backend/wiring/music/service.ts 3
+packages/backend/runtime/music/wiring/radio.ts 9
+packages/backend/runtime/music/wiring/service.ts 3
 packages/backend/wiring/permission/permission-grants.ts 1
 packages/backend/runtime/plugins/wiring/events.ts 1
 packages/backend/runtime/plugins/wiring/host-ports.ts 1

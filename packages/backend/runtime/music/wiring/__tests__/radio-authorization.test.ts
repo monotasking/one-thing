@@ -19,11 +19,11 @@ vi.mock('@onething/backend/runtime/music/index', async importOriginal => ({
     return { onSample: vi.fn(), quiesce: vi.fn(), idle: async () => {} }
   },
 }))
-vi.mock('../../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+vi.mock('@onething/backend/session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => fixture.metas.get(id) }) }
 })
-vi.mock('../../../stores/sessions.js', () => ({
+vi.mock('@onething/backend/stores/sessions.js', () => ({
   getSession: (id: string) => fixture.getSession(id),
   getSessionsList: () => [...fixture.metas.values()],
   createSession: (...args: unknown[]) => fixture.createSession(...args),
@@ -34,8 +34,8 @@ vi.mock('../../../stores/sessions.js', () => ({
     return () => { fixture.deletedListener = undefined }
   },
 }))
-vi.mock('../../../session/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
-vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
+vi.mock('../../../../session/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
+vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
 vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
@@ -48,8 +48,8 @@ vi.mock('@onething/backend/core', async importOriginal => ({
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
 vi.mock('@onething/backend/runtime/variables/registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
-vi.mock('../../engine/index.js', () => ({ getStreamEngineSafe: () => ({ getController: () => undefined }) }))
-vi.mock('../../../events/index.js', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
+vi.mock('@onething/backend/wiring/engine/index.js', () => ({ getStreamEngineSafe: () => ({ getController: () => undefined }) }))
+vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
 vi.mock('../service.js', async () => {
   const { ncmMusicProvider } = await import('@onething/backend/runtime/music/index')
   return {

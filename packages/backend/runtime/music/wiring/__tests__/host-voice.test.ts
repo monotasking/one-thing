@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   broadcast: vi.fn(),
 }))
 
-vi.mock('../../voice/providers.js', () => ({ synthesizeSpeech: mocks.synthesize }))
-vi.mock('../../../stores/settings.js', () => ({
+vi.mock('@onething/backend/wiring/voice/providers.js', () => ({ synthesizeSpeech: mocks.synthesize }))
+vi.mock('@onething/backend/stores/settings.js', () => ({
   getSettings: () => ({ voice: { tts: { provider: 'openai-tts', system: { rate: 1, pitch: 1 } } } }),
 }))
 vi.mock('@onething/backend/runtime/voice/host-ports.wiring', async importOriginal => ({

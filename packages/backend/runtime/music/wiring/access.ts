@@ -3,7 +3,7 @@ import {
   isHistoricalLocalOperator,
   SessionAccessError,
   type SessionAccessContext,
-} from '../../session/access.js'
+} from '@onething/backend/session/access.js'
 
 /** The single host player and its persistent DJ state belong to the local operator. */
 export function assertMusicOperator(context: SessionAccessContext = DEFAULT_SESSION_OWNER): void {

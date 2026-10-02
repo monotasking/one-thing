@@ -26,9 +26,9 @@ import type { RadioScope } from './radio.js'
 
 import { MusicWorkOwner } from './lifetime.js'
 import { readProviderVolume, volumeArgs } from './player-volume.js'
-import { getCurrentBackend } from '../../current.js'
+import { getCurrentBackend } from '@onething/backend/current.js'
 import { listMusicProviderDescriptors } from '@onething/backend/runtime/music'
-import { getSettings } from '../../stores/settings.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 
 export function createMusicOperationsScope(options: { service: MusicServiceScope; radio: RadioScope; assertOwned?: () => void }) {
   const owner = new MusicWorkOwner(options.assertOwned)

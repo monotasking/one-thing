@@ -948,7 +948,7 @@ export const musicResourceSpec: ResourceSpec = {
      * 下面六条都是 `music:player` 上**音乐自己的事实**,各自带一格 `moment`:谁想对「用户
      * 跳过了一首歌」起反应,读这一格就够了。音乐不知道有谁在听 —— 这里一个「宠物」都没有。
      *
-     * 产地全在装配层(`wiring/music/moments.ts` 的 `MusicMoments` 与电台那几处调用),规矩写在
+     * 产地全在装配层(`runtime/music/wiring/moments.ts` 的 `MusicMoments` 与电台那几处调用),规矩写在
      * 那一只文件头上。权重的判据:`low` = 只值得记住(每首歌都会有),`normal` = 值得在冷却
      * 允许时说一句,`high` = 用户在用行动表达不满,值得插队说。
      */

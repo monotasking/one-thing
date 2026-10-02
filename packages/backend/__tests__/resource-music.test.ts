@@ -12,7 +12,7 @@
  *      (读走的是 `ReadOutcome` 那条短路径,不是一段被 JSON 化的文本)。
  *
  * 端口这一侧是假的:真的那一份要拉起 ncm-cli 的守护进程与一台 DJ agent。假的办法是
- * 把 `wiring/music/{radio,operations,service}.js` 的**进程槽访问器**换掉 —— 那三只
+ * 把 `runtime/music/wiring/{radio,operations,service}.js` 的**进程槽访问器**换掉 —— 那三只
  * 模块正是 `radioAdapters()` / `musicPlayerAdapters()` 取端口的地方的另一头
  * (它们从 `getCurrentBackendInstance()?.music` 上取,所以这里连 `backend.music` 的
  * 那一格一起换)。

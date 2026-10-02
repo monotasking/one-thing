@@ -71,7 +71,7 @@ import {
 } from '@onething/backend/runtime/pets'
 import type { EventBus } from '../../events/event-bus.js'
 import { audioDurationMs } from '@onething/backend/runtime/voice/audio-duration'
-import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '../music/host-voice.js'
+import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/runtime/music/wiring/host-voice'
 import { getLogger } from '../logging/index.js'
 import { PetLedgerStore } from './ledger-store.js'
 import { petVoiceStyle } from './voice.js'

@@ -12,10 +12,10 @@ import { randomUUID } from 'node:crypto'
 import { broadcastVoiceHostMessage, hasVoiceHost } from '@onething/backend/runtime/voice/host-ports.wiring'
 import { getSpeechOutput } from '@onething/backend/runtime/voice/speech-output'
 import type { PatterSpeech, PatterVoiceStyle } from './host-voice.js'
-import { synthesizeSpeech } from '../voice/providers.js'
-import { getSettings } from '../../stores/settings.js'
+import { synthesizeSpeech } from '@onething/backend/wiring/voice/providers.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('music.radio')
 
@@ -52,7 +52,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 import { MusicWorkOwner } from './lifetime.js'
-import { getCurrentBackend } from '../../current.js'
+import { getCurrentBackend } from '@onething/backend/current.js'
 
 export function createDjVoiceScope(assertOwned?: () => void) {
   const owner = new MusicWorkOwner(assertOwned)

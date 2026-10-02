@@ -74,7 +74,7 @@ export const IPC_CHANNELS = {
 
 	// Music radio —— 十四条数据面已迁到通用 RPC 通道(musicRouter,P4c 第九批)。
 	// 这里只剩**四条推送**:router 今天没有推送面,而它们早就走
-	// `broadcastVoiceHostMessage` 端口从 `backend/wiring/music/*` 直接发出。
+	// `broadcastVoiceHostMessage` 端口从 `backend/runtime/music/wiring/*` 直接发出。
 	MUSIC_EVENT: "music:event",
 	/** main -> renderer: what is playing, or null when nothing is. */
 	MUSIC_NOW_PLAYING: "music:now-playing",

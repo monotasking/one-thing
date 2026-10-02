@@ -17,9 +17,9 @@ import {
 } from '@onething/backend/runtime/music/process-runner'
 import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { DEFAULT_MUSIC_SETTINGS } from '../../stores/defaults/settings.js'
-import { getSettings, saveSettings } from '../../stores/settings.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/stores/defaults/settings.js'
+import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
+import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { MusicSetupServiceOptions } from '@onething/backend/runtime/music/setup-service'
 import type { NowPlayingWatcherOptions } from '@onething/backend/runtime/music/now-playing'
 
@@ -29,7 +29,7 @@ const consoleLog = consolePort(log)
 
 
 import { MusicWorkOwner } from './lifetime.js'
-import { getCurrentBackend } from '../../current.js'
+import { getCurrentBackend } from '@onething/backend/current.js'
 
 export function createMusicServiceScope(options: {
   storePath: string

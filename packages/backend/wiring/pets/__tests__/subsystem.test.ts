@@ -27,7 +27,7 @@ import { forwardResourceEventsToBus } from '../../resource/event-bridge.js'
 import { PetResourceProvider } from '../../resource/pet-provider.js'
 import { AmbientResourceProvider } from '../../resource/ambient-provider.js'
 import type { AmbientSource } from '@onething/backend/runtime/ambient'
-import type { HostVoiceKit, PatterSpeech } from '../../music/host-voice.js'
+import type { HostVoiceKit, PatterSpeech } from '@onething/backend/runtime/music/wiring/host-voice'
 import { PetsSubsystem, UnknownPetError } from '../subsystem.js'
 
 const EMPTY = { type: 'object', properties: {}, required: [] }

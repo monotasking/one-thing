@@ -35,7 +35,7 @@ import type { SessionDeletionRecovery } from '@onething/backend/runtime/sessions
 import type { MediaLibraryService } from '@onething/backend/runtime/media'
 import type { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
 import type { PracticeService } from '@onething/backend/runtime/practice/service.wiring'
-import type { MusicSubsystem } from './wiring/music/subsystem.js'
+import type { MusicSubsystem } from '@onething/backend/runtime/music/wiring/subsystem'
 import type { CollabDigestRunner } from '@onething/backend/runtime/collab/wiring/digest-runner'
 import type { NotesSubsystem } from './wiring/notes/index.js'
 import type { StreamEngine } from './wiring/engine/stream-engine-bound.js'

@@ -44,19 +44,19 @@ import { writeJsonFile } from '@onething/backend/core/storage'
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/runtime/agents/store-bound.wiring'
 import { markSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { resolveCollabVenue } from '@onething/backend/runtime/collab'
-import { getSettings } from '../../stores/settings.js'
-import * as sessions from '../../stores/sessions.js'
-import { sessionReads } from '../../session/reads.js'
-import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '../../session/access.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
+import * as sessions from '@onething/backend/stores/sessions.js'
+import { sessionReads } from '../../../session/reads.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '@onething/backend/session/access.js'
 import type { MusicServiceScope } from './service.js'
 import type { HostVoice } from './host-voice.js'
 import type { MusicMoments } from './moments.js'
 // 类型口 —— 编译期擦除,不给这只模块添一条到事件系统的**运行时**边(见 `wakeRadioDj`
 // 里那段动态 import 的理由)。
-import type { EventBus } from '../../events/event-bus.js'
+import type { EventBus } from '@onething/backend/events/event-bus.js'
 
 import { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { OnethingRadioConductorOptions } from '@onething/backend/runtime/music/radio-conductor'
 
 const log = getLogger('music.radio')
@@ -66,7 +66,7 @@ const consoleLog = consolePort(log)
 
 import { MusicWorkOwner } from './lifetime.js'
 import { LastPlaybackRecorder } from './last-playback.js'
-import { getCurrentBackend } from '../../current.js'
+import { getCurrentBackend } from '@onething/backend/current.js'
 
 /** Transcript-weight thresholds for rotating the DJ session. */
 const DJ_SESSION_MAX_CONTEXT_TOKENS = 60_000
@@ -635,8 +635,8 @@ async function wakeRadioDj(): Promise<void> {
   // a static engine import would drag the whole provider stack into every
   // module graph that touches variables (which broke unrelated tests).
   const [{ getStreamEngineSafe }, { getEventBus }] = await Promise.all([
-    import('../engine/index.js'),
-    import('../../events/index.js'),
+    import('@onething/backend/wiring/engine/index.js'),
+    import('@onething/backend/events/index.js'),
   ])
   sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
 
@@ -702,7 +702,7 @@ async function tellRadioHost(text: string): Promise<{ reply: Promise<string | un
   return owner.track((async () => {
     const store = getRadioStore()
     const sessionId = ensureDjSessionReady(store)
-    const { getEventBus } = await import('../../events/index.js')
+    const { getEventBus } = await import('@onething/backend/events/index.js')
 
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const lastBefore = sessionReads.lastMessageOfRole(sessionId, 'assistant')?.id

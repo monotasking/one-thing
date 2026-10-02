@@ -36,7 +36,7 @@ import { disposeCredentialStrategyState } from './wiring/providers/credential-st
 import { TodoPlanRuntime } from './wiring/todo-plan/store.js'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './lifecycle.js'
 import { PracticeService, configurePracticeService } from '@onething/backend/runtime/practice/service.wiring'
-import { MusicSubsystem } from './wiring/music/subsystem.js'
+import { MusicSubsystem } from '@onething/backend/runtime/music/wiring/subsystem'
 import { PetsSubsystem } from './wiring/pets/subsystem.js'
 import { petChattinessOf, watchPetChattiness } from './wiring/pets/chattiness.js'
 import { ModelMomentComposer } from './wiring/pets/model-composer.js'

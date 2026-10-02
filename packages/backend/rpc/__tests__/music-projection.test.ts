@@ -12,7 +12,7 @@
  *   ③ 一次「读」两条路**一行审计都不落**(读不进管线,`core/resource/kernel.ts` 的
  *      `read` 那段注释就是这条不变量的正本)。
  *
- * 反证(施工时跑过):把 `command` 处理器改回直接调 `wiring/music/operations.js`,
+ * 反证(施工时跑过):把 `command` 处理器改回直接调 `runtime/music/wiring/operations.js`,
  * ① 仍然绿 —— 信封是一样的 —— 而 ② 当场红:那一路一行审计都不落。契约门看不见绕过,
  * 这一组看得见。
  *
@@ -289,7 +289,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
 
   /**
    * `seek` / `volume` 的数值参数:「缺」与「给错」是同一句话,而那句话的产地是
-   * `wiring/music/operations.ts` 的 `argsWithValue` —— 退成投影之后它没有改口。
+   * `runtime/music/wiring/operations.ts` 的 `argsWithValue` —— 退成投影之后它没有改口。
    */
   it('seek / volume:缺一个数与给一个非数说的是同一句话;给对了就原样递给端口', async () => {
     for (const command of ['seek', 'volume'] as const) {
@@ -353,7 +353,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
   it('getNowPlaying:没退成投影,所以它照旧不经内核,而且答得出 `null`', async () => {
     const before = resourceAuditRows().length
 
-    // 它读的是 watcher 的缓存(`wiring/music/service.js` 的进程槽访问器,走的是
+    // 它读的是 watcher 的缓存(`runtime/music/wiring/service.js` 的进程槽访问器,走的是
     // `getCurrentBackend` 而不是被这组用例换掉的那一口)—— 这台机器上没有播放器
     // 在跑,所以答案是 `null`。**那正是它没退成投影的理由**:资源面那条
     // `nowPlaying` 读法刻意把 `null` 折成一份「停着」的读数,退过去就再也答不出

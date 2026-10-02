@@ -517,3 +517,60 @@ boundary / transport / log / session / provider gate 绿,assembly gate 仍只红
 新规矩自证:`kernel/lease.ts` 加一行 `../say.js`(领域的产品文件)、`runtime/collab/board.ts` 加一行 `./wiring/board-store.js`,
 边界门两条红、架构测试「kernel 在最底层」红,撤掉回绿。`git grep -nE "wiring/collab|core/actors"` 在代码 / 配置 / 脚本里为零,
 剩 `docs/` 里 10 个文件。
+
+### ③-music 落地记录(2026-10-02,未提交)
+
+**一句话**:music 在 server 包里只剩一个家 `runtime/music/`。core 下没有 music 专属目录;只搬接线:
+`backend/wiring/music`(12 件 + 8 份测试,共 20 个文件)`git mv` 进 `runtime/music/wiring/`(`fold-domain.mjs music`)。
+`rpc/domains/music.ts` 没搬(只改了 import)。两边没有同名文件。
+
+**改写**:脊柱里指向接线的 import(`backend.ts`、`current.ts`、`rpc/{index,domains/music}.ts`、`wiring/{pets,resource,toolkit,
+variables}/…` 与各自的测试、`__tests__/resource-music.test.ts`)改成 `@onething/backend/runtime/music/wiring…`;接线里指向脊柱的
+import 改成包说明符(`session/reads.js` 照规矩保持相对路径);`runtime/music/resource-spec.ts`、`shared/ipc/{music,channels}.ts`
+的注释路径同步。exports:改名 3 格(`./wiring/music/{dj-voice,radio,service}.js` → `./runtime/music/wiring/…`),新增 4 格
+(`./runtime/music/wiring/{access,host-voice,operations,subsystem}`)。根 `CLAUDE.md` 的 `wiring/<domain>/` 清单(37 → 36)与目录树注释。
+
+**既有红原样保持**:assembly 基线两行只改路径(`runtime/music/wiring/radio.ts 9`、`runtime/music/wiring/service.ts 3`),
+判定仍是同一条红 `+ packages/backend/runtime/music/wiring/radio.ts: 9 → 10`,没有修它也没有改数字;vitest 的
+`music-domain`、`music-projection`(整文件失败)、`resource-music` 三条既有红原样在。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 均零错;`server:build`、`build:cli` 成功;桌面四个 bundle 成功;根全量 vitest
+前后都是 11419 条 / 19 红,失败集合逐条相同;壳 7344 条,同一条 A9 红;music 重点子集(`runtime/music` 两半、三条既有红所在的
+测试、`music-provider`、`music-context`、`wiring/pets`、架构测试)前后都是 31 个文件 393 条,3 个文件 / 2 条红(既有)、15 skipped;
+`gate:acp` 前后 108 ok;boundary / transport / log / session / provider gate 绿;`provider-vendor-drill` 绿。新规矩自证:
+`runtime/music/lyrics.ts` 加一行 `./wiring/service.js`,「产品层不许 import runtime/*/wiring」当场红,撤掉回绿。
+`git grep -n "wiring/music"` 在代码 / 配置 / 脚本里为零,剩 `docs/` 7 个文件与 `apps/desktop-react/docs/` 1 个。
+
+### 第③步小结(2026-10-02)
+
+**六个领域各搬了什么**(全部 `git mv`,一个领域一笔提交):
+
+| 领域 | 内核并入 `runtime/<d>/kernel/` | 接线并入 `runtime/<d>/wiring/` | 留在原地 |
+| --- | --- | --- | --- |
+| search | `core/search`(52 个文件) | `wiring/search`(15) | `rpc/domains/search.ts` |
+| mcp | `core/mcp`(14);core 大桶删掉 41 个没人用的再导出 | `wiring/mcp`(2) | `rpc/domains/mcp.ts` |
+| acp | —(没有 `core/acp`) | `wiring/acp`(31) | `rpc/domains/{acp,host-mcp}.ts`;stdio 桥入口本来就在 `runtime/acp/mcp-bridge/` |
+| plugins | —(`core/plugins` 有别的领域真用,留 core) | `wiring/plugins`(43,含 `builtin/` 插座) | `core/plugins`、`rpc/domains/{plugins,themes}.ts` |
+| collab | `core/actors`(10,内核目录名与领域名不同) | `wiring/collab`(73) | `rpc/domains/{collab,chat,sessions}.ts` |
+| music | —(core 下没有 music 专属目录) | `wiring/music`(20) | `rpc/domains/music.ts` |
+
+**立下的目录规矩**(详见 §4「目录规矩」):
+1. 一个领域的家是 `runtime/<d>/`,产品文件住领域根,内核住 `kernel/`,装配接线住 `wiring/`。
+2. `core/<d>` 只有在**别的领域也真 import 它**时才留在 core;量的时候连 core 大桶 `core/index.ts` 的再导出一起查。
+3. kernel 当 core 判:core 的禁令全数作用于它,另加闭包(只许自己目录、`@onething/backend/core/**`、`@shared/*`、node 内建)。
+4. `runtime/<d>/wiring/**` 当装配层判(与 `backend/wiring/**` 同一套规则,可碰脊柱);产品层不许回头 import 它 ——
+   `*.wiring.ts` 后缀文件也不许(后缀只是「可说跨进程词汇」的窄口,不是装配层)。
+5. 接线 import 脊柱写包说明符;内部会话模块(`privateSessionFiles`)与测试基建(`…/testing/`)保持相对路径、不进 exports。
+6. 守门尺子按路径角色量:assembly 尺子下钻 `runtime/*/wiring`,插件「装配测试」判据认 `runtime/<d>/wiring`,
+   按旧路径写的领域断言只改路径。边界门断言 139 → 141(kernel 闭包、产品层不许 import 领域接线)。
+
+**`backend/wiring/` 还剩 36 个目录**,本步没并,并不并留给下一步决定。按「`runtime/` 里有没有同名领域」分两类:
+
+- **有同名产品领域、可以照本步的做法并进 `runtime/<d>/wiring/` 的**(30 个):agent-loop、agents、ambient、auth、engine(93 个文件,
+  最大)、evals、external-agents、files、goals、headless、interaction、logging、markdown、media、notes、pets、project-dirs、
+  providers(33)、scheduler、settings、skills、tasks、terminal、toc、todo-plan、toolkit(25)、tools、usage、variables、voice。
+  其中 `logging` 是横切设施(fan-in 高)、`engine` / `headless` 是装配的骨干,它们算不算「一个领域」值得先讨论再搬。
+- **接线-only 领域**(`runtime/` 里没有同名目录,6 个):`deeplink`、`quota`(什么都没有,只有接线);`memory`、`permission`、
+  `resource`(另一半在 `core/<d>`,且有别的领域在用,不是专属内核);`gateway`(另一半是 `packages/backend/gateway/` 那棵子树)。
+  这六个没有「领域的家」可去 —— 要么给它们在 `runtime/` 立一个只放 `wiring/` 的家,要么就让 `backend/wiring/` 留作接线-only 领域
+  的住处,这一条要拍板。

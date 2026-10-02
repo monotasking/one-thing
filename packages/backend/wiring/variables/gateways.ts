@@ -39,8 +39,8 @@ import type {
   NoteVaultSummary,
 } from '@onething/backend/runtime/variables/providers/note-vaults'
 import { getGoal, goalLimits } from '../goals/index.js'
-import { getMusicNowPlaying } from '../music/service.js'
-import { getRadioStore } from '../music/radio.js'
+import { getMusicNowPlaying } from '@onething/backend/runtime/music/wiring/service'
+import { getRadioStore } from '@onething/backend/runtime/music/wiring/radio'
 import { getNoteSystemRegistry } from '../notes/index.js'
 import { computeAgentPresence } from '@onething/backend/runtime/agents'
 import { isAgentPairDmRoom } from '@onething/backend/runtime/collab'

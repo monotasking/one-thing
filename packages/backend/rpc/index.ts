@@ -293,7 +293,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // P4c 第九批第三个域(music)—— 十四条:状态/向导/传输控制/现在播放/电台简报/
   // 歌词/口播 ack/开台/搜索/点歌/节目单/节目单编辑/provider 列表与切换。
   // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
-  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `wiring/music/operations.ts`。
+  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `runtime/music/wiring/operations.ts`。
   { id: 'rpc:music', mount: ctx => { ctx.registerRpcDomain(musicRouter, musicRpcHandlers) } },
   // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
   // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`

@@ -1,6 +1,6 @@
 import { listMusicProviderDescriptors, type OnethingMusicEvent, type OnethingMusicNowPlaying } from '@onething/backend/runtime/music'
-import { DEFAULT_MUSIC_SETTINGS } from '../../stores/defaults/settings.js'
-import { getSettings, saveSettings } from '../../stores/settings.js'
+import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/stores/defaults/settings.js'
+import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
 import { createMusicServiceScope } from './service.js'
 import { createRadioScope } from './radio.js'
 import { createDjVoiceScope } from './dj-voice.js'
@@ -10,8 +10,8 @@ import { createHostVoiceKit, type HostVoice, type HostVoiceFactory, type HostVoi
 import { MusicMoments, type MusicMomentEvent } from './moments.js'
 import type { MusicLyrics } from '@shared/ipc/music.js'
 import { readProviderVolume, setProviderVolume, SpeechActivityDuck } from './player-volume.js'
-import type { EventBus } from '../../events/event-bus.js'
-import { getLogger } from '../logging/index.js'
+import type { EventBus } from '@onething/backend/events/event-bus.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('music')
 

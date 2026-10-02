@@ -68,7 +68,7 @@ vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   updateAgent: vi.fn(),
 }))
 
-vi.mock('../../../stores/sessions.js', () => ({
+vi.mock('@onething/backend/stores/sessions.js', () => ({
   getSession: (id: string) => (mocks.missing.has(id) ? undefined : { id, messages: [], contextSize: 0 }),
   getSessionsList: vi.fn(() => []),
   createSession: vi.fn(),
@@ -78,14 +78,14 @@ vi.mock('../../../stores/sessions.js', () => ({
 }))
 
 vi.mock('@onething/backend/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
-vi.mock('../../../stores/settings.js', () => ({ getSettings: () => mocks.settings }))
+vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => mocks.settings }))
 
 /*
  * 归属这一层给一份真的(与 `radio-authorization.test.ts` 同一种摆法):每条会话都归
  * 那个固定的本机主体,于是 `sessionAccess.resolve` 走的是真判据,而不是被整只换掉。
  */
-vi.mock('../../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+vi.mock('@onething/backend/session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
   return {
     ...actual,
     sessionAccess: actual.createSessionAccess({
@@ -99,7 +99,7 @@ vi.mock('@onething/backend/core', async importOriginal => ({
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: vi.fn() }))
 
-vi.mock('../../../session/reads.js', () => ({
+vi.mock('../../../../session/reads.js', () => ({
   sessionReads: {
     lastMessageOfRole: (_sessionId: string, role: string) =>
       role === 'assistant' ? (mocks.lastAssistant ?? undefined) : undefined,
@@ -109,7 +109,7 @@ vi.mock('../../../session/reads.js', () => ({
 }))
 
 /** 一台只会记账与转发的假总线 —— 引擎那一半由用例自己扮演。 */
-vi.mock('../../../events/index.js', () => ({
+vi.mock('@onething/backend/events/index.js', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, command: Record<string, unknown>) => {
       mocks.sent.push({ sessionId, command })

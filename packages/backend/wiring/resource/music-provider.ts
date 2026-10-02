@@ -10,11 +10,11 @@
  *   · 电台四条 —— `radioAdapters()`(`wiring/toolkit/adapters.ts`)。它就是旧
  *     `radio` 工具吃的那一份,连 `assertMusicOperator(fixedExecutionContext(…))`
  *     那道信任门都是同一行;这里**复用**它,不把那四条转发抄第二遍。
- *   · 播放器四条 —— `runMusicCommand`(`wiring/music/operations.ts`),也就是音乐条
+ *   · 播放器四条 —— `runMusicCommand`(`runtime/music/wiring/operations.ts`),也就是音乐条
  *     与 `music` RPC 域今天调的同一只。它自己带着那些只有它知道的分档(电台开着时
  *     `next` 走 `skipToNextRadioSong` 而不是播放器队列、`like` 按 onDeck 走服务端
  *     而不是 argv 表)—— 绕过它去拼 argv 就是当场丢掉那几条,而且不会有任何东西红。
- *   · `nowPlaying` —— `getMusicNowPlaying()`(`wiring/music/service.ts`)。
+ *   · `nowPlaying` —— `getMusicNowPlaying()`(`runtime/music/wiring/service.ts`)。
  *
  * ── 参数校验为什么在 `plan` 里,而且是抛 ────────────────────────────────────
  * 旧 `radio` 把「request 缺 song」「open/retune 的 intent 不足两个字」写成**成功的
@@ -54,9 +54,9 @@
  *   · `radio`   —— `RadioToolAdapters`(开 / 关 / 状态 / 点歌),K3-b 那张,未动;
  *   · `player`  —— 传输命令 + now-playing + 「变了」的订阅,新增一条 `lyrics`;
  *   · `station` —— 音乐条那份简报、节目单、节目单编辑,外加 2026-09-18 的
- *                  「跟主持人说话」(`wiring/music/{operations,radio}`);
+ *                  「跟主持人说话」(`runtime/music/wiring/{operations,radio}`);
  *   · `backend` —— 音乐后端自己:装到哪一步、跑一步向导、有哪几只 CLI、搜歌、换 CLI
- *                  (`wiring/music/{service,operations}` + `@onething/backend/runtime/music`)。
+ *                  (`runtime/music/wiring/{service,operations}` + `@onething/backend/runtime/music`)。
  *
  * 构造参数从两个位置参数改成**一个对象**,理由是四个位置参数的调用点读起来是
  * 「第三个是 station 还是 backend」——那种记不住的顺序迟早会有人装反,而装反了
@@ -105,9 +105,9 @@ import type {
 } from '@shared/ipc.js'
 import type { MusicHostLog } from '@shared/ipc/music.js'
 import { getCurrentBackendInstance } from '../../current.js'
-import { assertMusicOperator } from '../music/access.js'
+import { assertMusicOperator } from '@onething/backend/runtime/music/wiring/access'
 import { fixedExecutionContext } from '../engine/execution-context.js'
-import { setMusicProvider } from '../music/operations.js'
+import { setMusicProvider } from '@onething/backend/runtime/music/wiring/operations'
 import { radioAdapters } from '../toolkit/adapters.js'
 
 /** 播放器那一半的端口。电台那一半是既有的 `RadioToolAdapters`,不另立。 */
@@ -156,7 +156,7 @@ export interface MusicStationAdapters {
    * **两段承诺,所以是两层 promise**:外面那一层在「话已经递进他会话里」时就 resolve
    * (做法到此为止,`apply` 不该挂在那儿等他想);里面那只 `reply` 在他这一轮说完时
    * resolve —— 有话是那句话,空话 / 没回 / 超时是 `undefined`。判据与超时都在端口那一侧
-   * (`wiring/music/radio.ts`),这里只把答案折成一条事实。
+   * (`runtime/music/wiring/radio.ts`),这里只把答案折成一条事实。
    */
   tell(text: string, executionContext?: unknown): Promise<{ reply: Promise<string | undefined> }>
   /**
@@ -241,7 +241,7 @@ export class MusicTellTextRequiredError extends Error {
 /**
  * `seek` / `volume` 没给一个数,或者给了一个不是数的东西。
  *
- * 措辞逐字沿用 `wiring/music/operations.ts` 的 `argsWithValue`(`${command} 需要一个
+ * 措辞逐字沿用 `runtime/music/wiring/operations.ts` 的 `argsWithValue`(`${command} 需要一个
  * 数值参数`)——那句话原来是音乐条那条路上说的,退成投影之后两条路说的还是它。
  * 用的是**词表里的名字**(`seek` / `volume`),不是做法名,因为两者今天逐字相同,
  * 而将来若有一天不同,那句话要跟着调用方的词走。
@@ -988,7 +988,7 @@ export function musicStationAdapters(): MusicStationAdapters {
  * (它只认一个 `MusicSetupService`,不认识 Electron 也不认识这台后端),与旧
  * `music` 域处理器吃的是同一只;那句「配置操作失败」的兜底也因此还是它写的。
  *
- * `setProvider` 走 `../music/operations.js` 的同名函数,它自己带着两条早退
+ * `setProvider` 走 `../../runtime/music/wiring/operations.js` 的同名函数,它自己带着两条早退
  * (未知的 CLI / 本来就是它)与那次真正的重新调台。
  */
 export function musicBackendAdapters(): MusicBackendAdapters {
