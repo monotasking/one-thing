@@ -8,7 +8,7 @@ import {
   unregisterPluginToolFromCatalog,
 } from '@onething/backend/runtime/toolkit/plugin-tools'
 import type { EventBus } from '@onething/backend/events/event-bus.js'
-import type { StreamEngine } from '@onething/backend/wiring/engine/stream-engine-bound.js'
+import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { z } from 'zod'
 import { PluginStore, createPluginFiles, createPluginMessageState, createPluginStorage } from './data-home.js'
 import {
@@ -90,7 +90,7 @@ import {
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import type { CompatLogger } from '@onething/backend/core/logging'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('plugins')
 

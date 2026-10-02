@@ -3,7 +3,7 @@ import { applyVisibility, type SearchContext } from '@onething/backend/runtime/s
 import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
 import type { OnethingSearchProvidersAdapters, SearchServiceOptions } from '@onething/backend/runtime/search'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import { getConnectedDirectories, getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
 
 /** Global notes, prompts and plugin catalogs are owned by the local operator. */

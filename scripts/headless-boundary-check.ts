@@ -573,7 +573,8 @@ const MAIN_CORE_SYSTEM_DIRS = [
   // ③-收尾 B:装配层 agent-loop 目录平铺进 `runtime/agent-loop`,与产品那一半同住。这把尺子(只按目录走)从此量整个
   // `runtime/agent-loop`;产品那一半本来就不碰宿主、不做文件 IO,改后照样全绿。
   'packages/backend/runtime/agent-loop',
-  'packages/backend/wiring/engine',
+  // ③-收尾 C:装配层 engine 目录同理平铺进 `runtime/engine`,尺子从此量整个 `runtime/engine`(产品引擎那一半一并在内,照样全绿)。
+  'packages/backend/runtime/engine',
   'packages/backend/events',
   // P3'a-3:`app/storage/` 已整只归位 `runtime/storage/storage-manager-bound.ts`
   // (除 consolePort 外零脊柱边),目录不复存在。
@@ -2448,7 +2449,7 @@ function checkCoreForbiddenImports(): void {
 
 /**
  * 领域内核的 import 闭包:非测试文件只许 import **自己那个 kernel 目录**里的东西(相对路径且解析在目录内)、
- * `@onething/backend/core/**`、`@shared/*` 与 node 内建。同领域的产品文件、`wiring/`、脊柱、第三方包一概不许 ——
+ * `@onething/backend/core/**`、`@shared/*` 与 node 内建。同领域的其余文件、脊柱、第三方包一概不许 ——
  * 内核要能原样拿走,它就不能认识自己被谁用。
  *
  * `@shared/*` 是 mcp 并进来时(2026-10-02)放开的:kernel 当 core 判,core 本来就许 `@shared/*`(契约与两边共用的
@@ -2504,7 +2505,7 @@ const APP_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
 
 /**
  * 合包(server / client 拆分第②步,2026-10-02)以后,`packages/backend` 下住着两类东西:装配层的脊柱
- * (包根的 backend.ts / server / rpc / session / … 与 `wiring/`),以及原样搬进来的三棵子树 ——
+ * (包根的 backend.ts / server / rpc / session / …;从前还有一个接线子目录,③-收尾 C 撤掉了),以及原样搬进来的三棵子树 ——
  * `core/`(引擎骨架)、`runtime/`(产品层)、`gateway/`。从前「住在 backend 包里」就等于「是装配层」,
  * 现在要按目录判:落在三棵子树以外的才是脊柱。
  */
@@ -2639,13 +2640,16 @@ function checkSessionVocabularyUsesTheRegistry(): void {
 }
 
 function checkGatewayHostBoundary(): void {
+  // ③-收尾 C(2026-10-02):gateway 子树的依赖从「只 core」放宽成「core + `@shared`(含 `@shared/ipc`)」——
+  // shared 是 server ↔ client 的契约,后端引用它是合理的;网关生命周期端口(`gateway/lifecycle-port.ts`)的形状
+  // 就是 `@shared/ipc/gateway.js` 上那八对类型。宿主禁令(electron / src/main / 相对爬进 shared 源码)照旧。
   const lines = walkFiles(path.join(root, 'packages/backend/gateway'))
     .flatMap(file => matchingLines(file, [
-      ...HOST_BOUNDARY_FORBIDDEN_PATTERNS,
+      ...HOST_BOUNDARY_FORBIDDEN_PATTERNS.filter(pattern => pattern.source !== 'shared\\/ipc'),
       ...GATEWAY_CORE_DEPENDENCY_FORBIDDEN_PATTERNS,
       ...GATEWAY_RUNTIME_DEPENDENCY_FORBIDDEN_PATTERNS,
     ]))
-  assertNoMatches('packages/backend/gateway has no Electron/main/shared IPC forbidden imports', lines)
+  assertNoMatches('packages/backend/gateway has no Electron/main forbidden imports (core + @shared only)', lines)
 }
 
 function checkGatewayLoadsRuntimeFromHostBoundary(): void {
@@ -3722,7 +3726,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
 function checkRuntimeOwnsStreamRuntimeWiring(): void {
   const runtimeFile = 'packages/backend/runtime/product-stream-runtime.ts'
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/index.ts')
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream-engine-runtime.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/stream-engine-runtime.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -3747,7 +3751,7 @@ function checkRuntimeOwnsStreamRuntimeWiring(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_STREAM_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
-      : ['packages/backend/wiring/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
+      : ['packages/backend/runtime/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns stream runtime wiring', lines)
@@ -3755,8 +3759,8 @@ function checkRuntimeOwnsStreamRuntimeWiring(): void {
 
 function checkRuntimeOwnsHistoryHelperWiring(): void {
   const mainFiles = [
-    path.join(root, 'packages/backend/wiring/engine/stream/message-helpers.ts'),
-    path.join(root, 'packages/backend/wiring/engine/stream/resume-history.ts'),
+    path.join(root, 'packages/backend/runtime/engine/stream/message-helpers.ts'),
+    path.join(root, 'packages/backend/runtime/engine/stream/resume-history.ts'),
   ]
   const lines = mainFiles.flatMap(file => fs.existsSync(file)
     ? matchingLines(file, MAIN_HISTORY_HELPER_CORE_WIRING_FORBIDDEN_PATTERNS)
@@ -3767,7 +3771,7 @@ function checkRuntimeOwnsHistoryHelperWiring(): void {
 }
 
 function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
-  const file = path.join(root, 'packages/backend/wiring/engine/stream/agent-loop-runtime.ts')
+  const file = path.join(root, 'packages/backend/runtime/engine/stream/agent-loop-runtime.ts')
   const lines = fs.existsSync(file)
     ? matchingLines(file, MAIN_AGENT_LOOP_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
     : []
@@ -3777,11 +3781,11 @@ function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
 
 function checkRuntimeOwnsAgentLoopSelection(): void {
   const runtimeFile = 'packages/backend/runtime/agent-loop/selection.ts'
-  // P3'e-A2b 删掉了装配层那个换名薄适配(`wiring/engine/stream/agent-loop-selection.ts`,
+  // P3'e-A2b 删掉了装配层那个换名薄适配(`runtime/engine/stream/agent-loop-selection.ts`,
   // 28 行、只把三个 `Onething*` 符号改回短名):调用点直接读产品层。所以这条断言
   // 从「门面必须在」翻成「门面**回来**才算红」—— 它一旦重新出现,就说明有人又在
   // 装配层复制了一份选路判据。
-  const retiredFacade = 'packages/backend/wiring/engine/stream/agent-loop-selection.ts'
+  const retiredFacade = 'packages/backend/runtime/engine/stream/agent-loop-selection.ts'
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned onething agent-loop stream selection`]
@@ -3789,7 +3793,7 @@ function checkRuntimeOwnsAgentLoopSelection(): void {
     ...(fs.existsSync(path.join(root, retiredFacade))
       ? [`${retiredFacade}: retired selection facade came back (P3'e-A2b)`]
       : []),
-    ...matchingLines(path.join(root, 'packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts'),
+    ...matchingLines(path.join(root, 'packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts'),
       MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS),
   ]
 
@@ -4086,7 +4090,7 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/acp/index.ts')
   // 「装配那一半不许再自带 client / manager / types / index 的门面」:第③步拍平(2026-10-02)以后 acp 只有一个目录,
   // 装配那一半不存在了,这张表随之清空(留着变量,免得下面的判据形状跟着动)。原来它点名的是
-  // `wiring/acp/{client,manager,types,index}.ts` —— 拍平后同名路径正是产品本体,不能再判「存在即红」。
+  // 当时装配层 acp 目录下的 `{client,manager,types,index}.ts` —— 拍平后同名路径正是产品本体,不能再判「存在即红」。
   const mainFiles: string[] = []
   const runtimeClientContent = fs.existsSync(runtimeClientFile) ? fs.readFileSync(runtimeClientFile, 'utf-8') : ''
   const runtimeManagerContent = fs.existsSync(runtimeManagerFile) ? fs.readFileSync(runtimeManagerFile, 'utf-8') : ''
@@ -4160,13 +4164,13 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
  * 一个必经点**,而它必须把活儿交出去,不许在装配层就地实现一条管线。
  */
 function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/tool-execution.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/tool-execution.ts')
   const wiringFile = path.join(root, 'packages/backend/runtime/toolkit/wiring.ts')
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const wiringContent = fs.existsSync(wiringFile) ? fs.readFileSync(wiringFile, 'utf-8') : ''
   const lines = [
     ...(!fs.existsSync(mainFile)
-      ? ['packages/backend/wiring/engine/stream/tool-execution.ts: missing tool execution facade']
+      ? ['packages/backend/runtime/engine/stream/tool-execution.ts: missing tool execution facade']
       : []),
     ...(!mainContent.includes('runToolkitToolDirectly')
       ? [`${rel(mainFile)}: executeToolDirectly must delegate to the toolkit runner`]
@@ -4189,7 +4193,7 @@ function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
  */
 function checkRuntimeOwnsToolUpdateOrchestration(): void {
   const coreFile = path.join(root, 'packages/backend/core/engine/index.ts')
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/tool-execution.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/tool-execution.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const lines = [
@@ -4197,7 +4201,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
       ? [`${rel(coreFile)}: missing core-owned tool update orchestration executeCoreToolAndUpdate`]
       : []),
     ...(!fs.existsSync(mainFile)
-      ? ['packages/backend/wiring/engine/stream/tool-execution.ts: missing tool execution facade']
+      ? ['packages/backend/runtime/engine/stream/tool-execution.ts: missing tool execution facade']
       : []),
     ...(!mainContent.includes('executeCoreToolAndUpdate')
       ? [`${rel(mainFile)}: tool update orchestration must delegate to core`]
@@ -4209,7 +4213,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
 
 function checkRuntimeOwnsStreamProcessorAdapter(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/stream-processor.ts')
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/stream-processor.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/stream-processor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   // F4-b1(§16.16):`createCoreId` 从这张必备表里下线 —— 适配器不再持有 step id
   // 的工厂(id 由 callId 派生,产地在 `core/engine/tool-step.ts`)。规则要守的
@@ -4224,7 +4228,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned stream processor adapter ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_STREAM_PROCESSOR_ADAPTER_FORBIDDEN_PATTERNS)
-      : ['packages/backend/wiring/engine/stream/stream-processor.ts: missing stream processor facade']),
+      : ['packages/backend/runtime/engine/stream/stream-processor.ts: missing stream processor facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns stream processor adapter', lines)
@@ -4232,7 +4236,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
 
 function checkRuntimeOwnsImageStreamEntryPoint(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/media/image-generation.ts')
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/stream/image-stream.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/image-stream.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingImageGenerationStream',
@@ -4244,7 +4248,7 @@ function checkRuntimeOwnsImageStreamEntryPoint(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned image stream entry point ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_IMAGE_STREAM_ENTRY_FORBIDDEN_PATTERNS)
-      : ['packages/backend/wiring/engine/stream/image-stream.ts: missing image stream facade']),
+      : ['packages/backend/runtime/engine/stream/image-stream.ts: missing image stream facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns image stream entry point', lines)
@@ -5821,7 +5825,7 @@ function checkSessionStateReachesClientsOnlyThroughTheLedger(): void {
 
 function checkRuntimeOwnsHeadlessCliProjections(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/headless/cli-projections.ts')
-  const mainFile = path.join(root, 'packages/backend/wiring/headless/backend.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/headless/backend.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingHeadlessSessionSummaries',
@@ -5842,7 +5846,7 @@ function checkRuntimeOwnsHeadlessCliProjections(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned headless CLI projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/wiring/headless/backend.ts: missing headless backend adapter']),
+      : ['packages/backend/runtime/headless/backend.ts: missing headless backend adapter']),
   ]
 
   assertNoMatches('packages/backend/runtime owns headless CLI projections', lines)
@@ -5901,7 +5905,7 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
     path.join(root, 'packages/backend/runtime/prompts/system-prompt-snapshot.ts'),
     path.join(root, 'packages/backend/runtime/prompts/index.ts'),
   ]
-  const mainFile = path.join(root, 'packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts')
   // P4c 第五批:快照读取的调用点已是 RPC 域。
   const chatIpcFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
   const runtimeContent = runtimeFiles

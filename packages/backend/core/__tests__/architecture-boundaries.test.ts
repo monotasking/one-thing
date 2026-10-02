@@ -40,7 +40,7 @@ describe('architecture boundaries', () => {
 
   /**
    * 领域内核(`runtime/<d>/kernel/`)也在最底层:非测试文件只许 import 自己那个 kernel 目录(相对路径且落在
-   * 目录内)、`@onething/backend/core/**`、`@shared/*`(core 本来就许)与 node 内建 —— 同领域的产品文件、`wiring/`、
+   * 目录内)、`@onething/backend/core/**`、`@shared/*`(core 本来就许)与 node 内建 —— 同领域的其余文件、
    * 脊柱、gateway、第三方包一概不许。
    * 检查器里同名的那条(`checkRuntimeDomainKernelImportClosure`)判的是同一句话。
    */
@@ -80,7 +80,7 @@ describe('architecture boundaries', () => {
 
   /**
    * 合包以前三个包之间隔着包边界,相对路径爬不进别的包(爬得进去也会在打包与 exports 上露馅);合包以后
-   * `runtime/x.ts` 写一句 `../../wiring/y.js` 就能摸到脊柱,上面几条按包说明符判的规则看不见它。
+   * `runtime/x.ts` 写一句 `../../server/y.js` 就能摸到脊柱,上面几条按包说明符判的规则看不见它。
    * 这一条把「包边界」换成等价的目录规则:三棵子树的非测试代码,相对 import 只许落在自己的子树里。
    * (今天一处越界都没有;测试与 `__tests__` 照旧不受包方向约束。)
    */
@@ -111,8 +111,8 @@ describe('architecture boundaries', () => {
    * 病根是"一个领域被横切成三片,其中一片叫 app" —— 读代码的人看见 `plugins/`
    * 出现在三棵树里,不知道该找哪一个。P3'd 把装配层变成 `packages/backend` 之后,
    * 这条不变量可以被机械地守住:**backend 包根的目录名不得与 runtime 顶层目录名
-   * 重名**。`wiring/` 下不算 —— 那里放的是"接进后端"的薄接线,路径自带角色
-   * (`backend/wiring/<d>` 与 `runtime/<d>` 天然不同名)。
+   * 重名**。(从前装配层的接线子目录不参与比对;③-收尾 C(2026-10-02)起那个目录整个撤掉,
+   * 接线与产品逻辑同住 `runtime/<d>/`,排除名单里那一格随之删去。)
    *
    * 当前豁免的是 P3'b 待合并的厚孪生。**这是棘轮:只许缩,不许长。**
    * 每摘掉一个就从这张表里删一行,表空了就把整张表删掉。
@@ -120,7 +120,7 @@ describe('architecture boundaries', () => {
   it('I1: keeps one home per domain — backend package root does not shadow a runtime domain', () => {
     // P3'b 逐个摘除(厚孪生:两边都有真代码,合并要逐文件判定契约/实现/接线)。
     // P3'b-A(2026-08-21)摘掉 logging / headless / mcp / voice / music 五个:
-    // 逻辑归 `runtime/<d>`,撞脊柱的接线归 `backend/wiring/<d>`,两种去向都离开包根。
+    // 逻辑归 `runtime/<d>`,撞脊柱的接线归当时装配层的接线子目录,两种去向都离开包根。
     // P3'b-B(2026-08-21)摘掉 collab / providers / toolkit 三个;providers 的
     // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
     // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。
@@ -132,9 +132,9 @@ describe('architecture boundaries', () => {
     const pendingThickTwins = new Set<string>([])
     const runtimeDomains = new Set(topLevelDirectories('packages/backend/runtime'))
     // 合包(第②步)以后包根多了三棵原样搬进来的子树 `core/`、`runtime/`、`gateway/`:它们是层,不是领域,
-    // 与 `wiring/` 一样不参与比对(`runtime` 子树的顶层目录正是这里拿来比的领域表)。
+    // 不参与比对(`runtime` 子树的顶层目录正是这里拿来比的领域表)。
     const collisions = topLevelDirectories('packages/backend')
-      .filter(name => !['wiring', 'core', 'runtime', 'gateway'].includes(name))
+      .filter(name => !['core', 'runtime', 'gateway'].includes(name))
       .filter(name => runtimeDomains.has(name) && !pendingThickTwins.has(name))
     expect(collisions).toEqual([])
   })
@@ -193,7 +193,10 @@ describe('architecture boundaries', () => {
     expect(collisions.sort()).toEqual([])
   })
 
-  it('keeps packages/backend/gateway depending on core only', () => {
+  // ③-收尾 C(2026-10-02):从「只依赖 core」放宽成「core + `@shared`(含 `@shared/ipc`)」—— shared 是
+  // server ↔ client 的契约,后端引用它是合理的(网关生命周期端口 `gateway/lifecycle-port.ts` 的形状就是
+  // `@shared/ipc/gateway.js` 上那八对类型)。这条本来就不禁 `@shared`,改的是名字与理由;禁令照旧。
+  it('keeps packages/backend/gateway depending on core and @shared only', () => {
     expect(findForbiddenReferences('packages/backend/gateway', [
       ...hostOnlyPatterns,
       /window\.electronAPI/,

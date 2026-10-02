@@ -1,0 +1,186 @@
+/**
+ * Tool Execution Module
+ * Handles tool detection, execution, and step management
+ */
+
+import { sessionReads } from '../../../session/reads.js'
+import * as store from '@onething/backend/store.js'
+import type { DiffHunk, Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
+import type { JsonObject } from '@shared/json.js'
+import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/runtime/toolkit/execution-types.wiring'
+import type { Principal } from '@shared/permission/principal'
+import type { StreamContext } from './stream-processor.js'
+import { createEventOnlyEmitter } from '@onething/backend/events/event-only-emitter.js'
+import { executeCoreToolAndUpdate } from '@onething/backend/core/engine'
+import {
+  createToolExecutionStepWithFactory,
+  detectSkillUsage,
+  generateStepTitle,
+  getStepType,
+  type CreateToolStepWithFactoryOptions,
+} from '@shared/engine/tool-step'
+import {
+  toolFailureText,
+  toolResultToStructured,
+  type ToolResultLike,
+} from '@shared/tools/tool-result'
+import { toJsonValue, type JsonValue } from '@shared/json'
+import { runToolkitToolDirectly } from '@onething/backend/runtime/toolkit/wiring'
+import { pushSessionToolProgress } from '@onething/backend/events/tool-progress-stream.js'
+import { consolePort, getLogger } from '../../logging/configure-logging.js'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/backend/core/logging'
+import type { ToolMetadataUpdate } from '@onething/backend/runtime/toolkit/execution-types.wiring'
+import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '@onething/backend/core/engine/tool-orchestration'
+
+const log = getLogger('toolkit.runner')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog: ConsoleLikePort & LegacyDuckLogger = consolePort(log)
+
+
+export {
+  detectSkillUsage,
+  generateStepTitle,
+  getStepType,
+}
+
+/**
+ * Execute a tool directly without going through Tool Agent LLM
+ * This is the new direct execution path for simple tool calls
+ */
+export async function executeToolDirectly(
+  toolName: string,
+  args: JsonObject,
+  context: {
+    sessionId: string
+    messageId: string
+    toolCallId?: string
+    executionContext?: unknown
+    workingDirectory?: string  // Session's active working directory
+    workingDirectoryRoots?: string[] // Additional sandbox roots
+    abortSignal?: AbortSignal
+    /** Actor behind this call; minted at the engine boundary, never derived here. */
+    principal?: Principal
+    onMetadata?: ToolExecutionContext['onMetadata']
+    onPartialResult?: (update: ToolPartialResultUpdate) => void
+    // Step event callbacks for sub-agent tools (e.g., CustomAgent)
+    onStepStart?: (step: Step) => void
+    onStepComplete?: (step: Step) => void
+    beforeSideEffect?: () => Promise<void>
+  }
+): Promise<ToolExecutionResult> {
+  /*
+   * 缝 2 + 缝 3(docs/design/tool-system-oop-2026-08.md §12.5)。
+   *
+   * 这一个函数是**每一次工具直调的唯一必经点**:agent-loop 的每一次
+   * tool-call-done、orchestrator 的每一次 start、sub-agent 的递归入口(下面
+   * executeToolAndUpdate 那一处)最后都收敛到这里。四个回调在
+   * `runToolkitToolDirectly` 里被包成 `IpcProjector`(一个 Observer),两条插件
+   * 拦截链被包成一个 `Interceptor`,MCP 由目录同步接住,权限走 `Authorizer`。
+   *
+   * R4b:旧的那一半(`executeOnethingDirectTool` 把 ctx 回调逐个翻成 IPC、
+   * 自己接 MCP 分支与两条拦截链的约 350 行)已随旧树删除。目录里没有这个名字
+   * 时不再有第二条路,如实报一次 tool-not-found。
+   */
+  /*
+   * C2-b **工具进度活流**接在这一处,而不是在 core 的编排器里。
+   *
+   * 理由是这个函数的第一段注释说的那件事:它是**每一次工具直调的唯一必经点**。
+   * 三条链路(agent-loop 的 tool-call-done、orchestrator 的 start、sub-agent 的
+   * 递归入口)各有各的上游 —— 接在 `core/engine/tool-orchestration.ts` 上只盖得住
+   * 中间那一条,agent-loop 那条会整条漏掉。接在这里三条一次盖全,而且 core 一个
+   * 字都不用改(进度是 `ToolEvent` 已有的词汇,新 chunk 只是它的一次投影)。
+   *
+   * `sessionId` / `toolCallId` 都是这个上下文自带的事实,不用另外算。没有
+   * `toolCallId` 的调用(不经过工具卡的旁路)推不出去,`pushSessionToolProgress`
+   * 自己会挡掉。
+   */
+  const toolCallId = context.toolCallId
+  const sessionId = context.sessionId
+  const outcome = await runToolkitToolDirectly(toolName, args, {
+    ...context,
+    ...(toolCallId
+      ? { onProgress: (update) => pushSessionToolProgress(sessionId, toolCallId, update) }
+      : {}),
+  })
+  if (outcome) return outcome as ToolExecutionResult
+  return { success: false, error: `Tool not found: ${toolName}` }
+}
+
+/**
+ * Create a new step object with full tool call information
+ */
+export function createStep(
+  toolCall: ToolCall,
+  skillName?: string | null,
+  turnIndex?: number
+): Step {
+  // F4-b1(§16.16):id 不再由这里现生 —— `createToolExecutionStep` 从
+  // `toolCall.id` 派生(`coreStepIdForToolCall`),全链路只此一条规则。
+  const createToolStepWithFactoryOptions: CreateToolStepWithFactoryOptions = {
+    now: Date.now,
+    skillName,
+    turnIndex,
+  };
+  return createToolExecutionStepWithFactory(toolCall, createToolStepWithFactoryOptions) as Step
+}
+
+/**
+ * Execute a tool (MCP or built-in) and update tool call status
+ */
+export async function executeToolAndUpdate(
+  ctx: StreamContext,
+  toolCall: ToolCall,
+  toolCallData: { toolName: string; args: JsonObject },
+  allToolCalls: ToolCall[],
+  _skills: SkillDefinition[] = [],
+  turnIndex?: number,
+  existingStepId?: string,
+  options: {
+    beforeSideEffect?: () => Promise<void>
+  } = {},
+): Promise<void> {
+  const emitter = createEventOnlyEmitter(ctx)
+  const toolExecutionStore: CoreToolExecutionStore<ToolCall, Step, CoreExecutableSessionLike<Step>> = {
+    getSession: store.getSession,
+    // C1(P0.2):消息读走读门面。
+    getMessage: (sessionId, messageId) => sessionReads.getMessage(sessionId, messageId),
+    updateMessageToolCalls: store.updateMessageToolCalls,
+  };
+  const executeCoreToolAndUpdateOptions: ExecuteCoreToolAndUpdateOptions<ToolCall, Step, ToolExecutionResult, ToolMetadataUpdate, ToolPartialResultUpdate, unknown, JsonValue | undefined, { diff: string; hunks?: DiffHunk[] | undefined; filePath: string; additions: number; deletions: number; originalContent?: string | undefined; originalContentHash?: string | undefined; afterContentHash?: string | undefined; auditId?: string | undefined; auditPath?: string | undefined; } | undefined, CoreExecutableSessionLike<Step>> = {
+    ctx: {
+      sessionId: ctx.sessionId,
+      assistantMessageId: ctx.assistantMessageId,
+      abortSignal: ctx.abortSignal,
+    },
+    toolCall,
+    toolCallData,
+    allToolCalls,
+    turnIndex,
+    existingStepId,
+    beforeSideEffect: options.beforeSideEffect,
+    store: toolExecutionStore,
+    emitter,
+    executeToolDirectly: (name, directArgs, directContext) =>
+      executeToolDirectly(name, directArgs, { ...directContext, executionContext: ctx.executionContext } as Parameters<typeof executeToolDirectly>[2]),
+    createStep,
+    now: Date.now,
+    logger: consoleLog,
+    // R4b:三个转换器原本住在 `runtime/tools/tool-execution.ts` 的
+    // `executeOnethingToolAndUpdate` 里(那个文件只是这三行的一层壳)。壳随旧树
+    // 删掉,三行原样搬到唯一的调用点。
+    toJsonValue: value => toJsonValue(value) as JsonValue | undefined,
+    toStructured: value => toolResultToStructured(value as ToolResultLike | string | undefined),
+    formatFailure: toolFailureText,
+  };
+  await executeCoreToolAndUpdate<
+    ToolCall,
+    Step,
+    ToolExecutionResult,
+    NonNullable<ToolExecutionContext['onMetadata']> extends (update: infer TUpdate) => void ? TUpdate : never,
+    ToolPartialResultUpdate,
+    unknown,
+    JsonValue | undefined,
+    ToolCall['changes']
+  >(executeCoreToolAndUpdateOptions)
+}

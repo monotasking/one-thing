@@ -8,7 +8,7 @@
  * | 事件 | 产地 | 谁先说话 |
  * |---|---|---|
  * | `session/created` | `stores/sessions.ts` 的 `createSession`(三个创建入口共用的 `recordSessionCreated`) | **它就是第一句话**:会话目录由这条事件建起来(B4,§10.3 ①) |
- * | `session/compacted` | `wiring/engine/context-compact.ts` 的成功 / 失败两条收尾路 | 结局落到消息上之后 —— 它记的是"压缩有了结局",而结局正是那两步写出来的 |
+ * | `session/compacted` | `runtime/engine/compact-session.ts` 的成功 / 失败两条收尾路 | 结局落到消息上之后 —— 它记的是"压缩有了结局",而结局正是那两步写出来的 |
  *
  * 所以这里不存在"翻转":这两条从来就不是从 store 的 mutation 反推出来的,
  * 调用方本来就是把事实直说给它。搬家只改名字与住址,行为一字未动。
@@ -24,7 +24,7 @@ import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { safely } from './command-events.js'
 import { isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
 import { writeSessionEvent } from './event-writer.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('sessions.events')
 

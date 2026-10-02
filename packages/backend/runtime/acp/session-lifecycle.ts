@@ -23,7 +23,7 @@ import type {
   ACPListRemoteSessionsResponse,
   AcpSessionLifecycleFailure,
 } from '@shared/ipc/acp.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('app.acp.lifecycle')
 

@@ -12,7 +12,7 @@
 
 import { normalizePetChattiness, type PetChattiness } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc/settings.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,

@@ -29,7 +29,7 @@ import {
 } from '@onething/backend/runtime/collab'
 import { listAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { resolveUserIdentity } from './user-identity.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('collab.identity')
 

@@ -20,7 +20,7 @@ import {
   type LogsRoutes,
 } from '@shared/ipc/logs.js'
 import { isLogLevel, type LogRecord } from '@onething/backend/core/logging'
-import { getLogLevelSpec, getRootLogger } from '../../wiring/logging/index.js'
+import { getLogLevelSpec, getRootLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 
 const RENDERER_NS_PREFIX = 'renderer.'

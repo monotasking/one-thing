@@ -24,7 +24,7 @@ import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRefold } from './refold.js'
 import { scheduleSessionProjectionCheckpoint } from './checkpoint.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('session.runs')
 

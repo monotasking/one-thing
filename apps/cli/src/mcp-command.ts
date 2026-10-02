@@ -56,7 +56,7 @@ import {
   toolInputSchemaOf,
 } from '@onething/backend/core/resource'
 import { resourceSpecFromShell } from '@onething/backend/runtime/resource'
-import { getLogger, getRootLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger, getRootLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type {
   ListResourcesResponse,
   ResourceOutcomeView,

@@ -7,7 +7,7 @@
  * 都走 `ProductStreamEnginePorts` 的可选端口(`ports.ts` 里逐条写了缺席行为),
  * 所以这个文件零装配层依赖、零 shared IPC 契约依赖。
  *
- * 装配层那一薄片在 `packages/backend/wiring/engine/stream-engine-bound.ts`。
+ * 装配层那一薄片在 `packages/backend/runtime/engine/stream-engine-bound.ts`。
  */
 import {
 	CoreStreamEngine,

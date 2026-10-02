@@ -35,13 +35,13 @@ import {
 import { isActiveAgent } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
-import { getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/wiring/engine/stream/provider-helpers.js'
+import { getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/runtime/engine/stream/provider-helpers'
 import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
 import * as store from '@onething/backend/store.js'
 import { billCollabPlanUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import { collabUserPromptFields } from '../user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/backend/runtime/collab/actors/referee-actor'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { BuildCollabRefereeJudgePromptOptions } from '@onething/backend/runtime/collab/actors/referee-rules'
 
 const log = getLogger('collab.referee')

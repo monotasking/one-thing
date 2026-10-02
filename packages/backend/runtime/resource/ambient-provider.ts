@@ -11,7 +11,7 @@ import {
   ambientResourceSpecFor,
   type AmbientSource,
 } from '@onething/backend/runtime/ambient'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('ambient')
 

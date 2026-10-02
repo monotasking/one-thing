@@ -19,7 +19,7 @@ import {
   type ProjectDirsPromptVars,
 } from '@onething/backend/runtime/project-dirs/prompt'
 import { resolveSessionSpaceId } from '@onething/backend/stores/sessions.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('project-dirs')
 

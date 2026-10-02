@@ -12,8 +12,8 @@ import {
   splitEffectiveAISettings,
 } from '../provider-binding/ai-settings-compose.js'
 import { getOnethingSettingsPath } from '@onething/backend/runtime/storage'
-import { applyDiagnosticsMode } from '../wiring/logging/diagnostics.js'
-import { consolePort, getLogger } from '../wiring/logging/index.js'
+import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingSettingsRepositoryLogger } from '@onething/backend/runtime/settings/settings-repository'
 

@@ -6,7 +6,7 @@ import {
 import {
   getOnethingLogDir,
 } from '@onething/backend/runtime/storage'
-import { consolePort, getLogger } from '../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingProviderRequestDumpLogger } from '@onething/backend/runtime/providers/request-dump'
 

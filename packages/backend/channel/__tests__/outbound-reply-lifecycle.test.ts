@@ -10,7 +10,7 @@ import { configureIMConnectorHooks, registerIMConnector } from '../connector-reg
 import { createChannelReplyDeliveryStore } from '../identity-store.js'
 import { OutboundReplyDispatcher } from '../outbound-reply-dispatcher.js'
 
-vi.mock('../../wiring/logging/index.js', () => ({ writeAppLog: vi.fn(), getLogger: () => ({ error: vi.fn() }) }))
+vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({ writeAppLog: vi.fn(), getLogger: () => ({ error: vi.fn() }) }))
 
 function deferred() {
   let resolve!: () => void

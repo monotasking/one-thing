@@ -11,7 +11,7 @@ import {
   type MemoryBudget,
   type MemoryProcessProbe,
 } from '@onething/backend/core/memory'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('app.memory')
 

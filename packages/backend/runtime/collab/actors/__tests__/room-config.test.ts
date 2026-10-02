@@ -104,12 +104,12 @@ vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
   generateChatResponse: async () => '',
 }))
 
-vi.mock('@onething/backend/wiring/engine/stream/provider-helpers.js', () => ({
+vi.mock('@onething/backend/runtime/engine/stream/provider-helpers', () => ({
   getEffectiveProviderConfig: () => ({ providerId: '', providerConfig: null, model: '' }),
   resolveProviderAuth: async () => null,
 }))
 
-vi.mock('@onething/backend/wiring/engine/index.js', () => ({
+vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
   getStreamEngine: () => engineStub(),
   getStreamEngineSafe: () => engineStub(),
 }))

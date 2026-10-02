@@ -20,7 +20,7 @@ import {
 } from '@onething/backend/runtime/plugins'
 import { getEventBus } from '@onething/backend/events/index.js'
 import * as store from '@onething/backend/store.js'
-import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './plugin-manager.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

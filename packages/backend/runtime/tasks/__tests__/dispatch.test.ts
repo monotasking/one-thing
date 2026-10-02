@@ -108,7 +108,7 @@ vi.mock('@onething/backend/events/index.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/wiring/engine/index.js', () => ({
+vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
   getStreamEngineSafe: () => ({ getActiveSessionIds: () => [] }),
 }))
 
@@ -169,7 +169,7 @@ let taskLayer: import('../dispatch.js').TaskDispatchLayer
 
 async function newTaskLayer(overrides: Partial<Parameters<typeof import('../dispatch.js').createTaskDispatchLayer>[0]> = {}) {
   const [{ createTaskDispatchLayer }, { getEventBus }, { getStreamEngineSafe }, { sessionAccess }, { sessionReads }] = await Promise.all([
-    import('../dispatch.js'), import('@onething/backend/events/index.js'), import('@onething/backend/wiring/engine/index.js'),
+    import('../dispatch.js'), import('@onething/backend/events/index.js'), import('@onething/backend/runtime/engine/engine-layer'),
     import('@onething/backend/session/access.js'), import('../../../session/reads.js'),
   ])
   return createTaskDispatchLayer({ eventBus: getEventBus(), engine: getStreamEngineSafe()!, access: sessionAccess, reads: sessionReads, ...overrides })

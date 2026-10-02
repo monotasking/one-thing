@@ -3,7 +3,7 @@
  *
  * **账本只写一次,写的人是引擎**:ACP 这一轮的 `finish` 分片带着 `usage` 走进 agent-loop,
  * 装配层的执行器在回合边界对**每一家** provider 都调一次 `recordUsage`
- * (`backend/wiring/engine/stream/agent-loop-executor.ts` 的 `syncLastTurnUsage`)。所以这里
+ * (`backend/runtime/engine/stream/agent-loop-executor.ts` 的 `syncLastTurnUsage`)。所以这里
  * 不再另起一条写账的路 —— 那会是同一轮两行账。这里只负责把协议给的东西**一格不丢**地折进
  * `AgentUsage`:
  *

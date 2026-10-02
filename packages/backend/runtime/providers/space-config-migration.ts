@@ -68,7 +68,7 @@ import {
 import { getPersistedSettings, savePersistedSettings } from '@onething/backend/stores/settings.js'
 import { getProviderInfo } from './provider-table.js'
 import { providerDialFieldsOf } from '@onething/backend/runtime/spaces/provider-credentials'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('providers')
 

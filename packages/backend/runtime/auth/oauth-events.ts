@@ -21,7 +21,7 @@
 import { authService } from './process-auth-service.js'
 import type { OnethingAuthFlowEvent } from '@onething/backend/runtime/auth'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('app.oauth.events')
 

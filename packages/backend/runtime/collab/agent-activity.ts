@@ -68,7 +68,7 @@ import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 /**
  * 一位同事的**原始事实**,由运行时喂进来。
  *
- * 这是一个端口而不是一条 `import '@onething/backend/wiring/actors/runtime.js'`,理由与
+ * 这是一个端口而不是一条直连 actor 运行时(`runtime/collab/actors/`)的 import,理由与
  * `configureCollabRoomSnapshotSource` 完全同款:运行时 import 半个主进程(引擎、
  * store、看板、计费),而这个文件会被 IPC 层直接调用。反向依赖会把「读一份快照」
  * 变成「把整条协作链拉起来」。

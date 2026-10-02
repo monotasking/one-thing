@@ -38,7 +38,7 @@ import {
   configureAppLoggingHost,
   resetAppLoggingHost,
   type AppLoggingHostPorts,
-} from './wiring/logging/index.js'
+} from '@onething/backend/runtime/logging/configure-logging'
 import {
   configureSkillsEnvironmentHost,
   resetSkillsEnvironmentHost,
@@ -58,7 +58,7 @@ import {
   configureGatewayHost,
   resetGatewayHost,
   type GatewayHostPorts,
-} from './wiring/gateway/host-ports.js'
+} from '@onething/backend/gateway/lifecycle-port'
 import {
   configureSettingsHost,
   resetSettingsHost,

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentLoopOptions } from '@onething/backend/core/agent-loop'
 import { HEIDOU, type Moment } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc.js'
-import { collectLogRecordsForTests } from '@onething/backend/wiring/logging/index.js'
+import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'
 import { ModelMomentComposer, type ModelMomentComposerPorts } from '../model-composer.js'
 
 const MOMENT: Moment = { scheme: 'music', event: 'skipStreak', weight: 'high', gist: '用户连着跳过了好几首', payload: { count: 3 }, at: 1 }

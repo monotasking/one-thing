@@ -65,7 +65,7 @@ import {
 } from '@onething/backend/runtime/providers/manual-model-store'
 import { getSettings, getSpaceSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/backend/runtime/providers/model-registry'
 import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameAliasesOptions, OnethingModelQueryIpcLogger } from '@onething/backend/runtime/providers/model-query-presentation'
 import type { OnethingModelRegistryRefreshLogger } from '@onething/backend/runtime/providers/model-registry'

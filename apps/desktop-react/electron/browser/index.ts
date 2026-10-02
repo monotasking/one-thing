@@ -62,7 +62,7 @@ import fs from 'node:fs'
 import nodePath from 'node:path'
 import { Menu, WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
 import type { OnethingBackend } from '@onething/backend'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,

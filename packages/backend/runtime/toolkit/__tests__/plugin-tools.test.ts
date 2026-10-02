@@ -34,7 +34,7 @@ const { configureToolkitCatalog } = await import('@onething/backend/runtime/tool
 const { createDesktopCatalog } = await import('../tier-catalogs.js')
 const { getOrBuildToolkitCatalog, resetToolkitCatalogForTests } = await import('../wiring.js')
 const { registerPluginToolInCatalog, unregisterPluginToolFromCatalog } = await import('@onething/backend/runtime/toolkit/plugin-tools')
-const { executeToolDirectly } = await import('@onething/backend/wiring/engine/stream/tool-execution.js')
+const { executeToolDirectly } = await import('@onething/backend/runtime/engine/stream/tool-execution')
 const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('@onething/backend/runtime/plugins/health')
 const { z } = await import('zod')
 

@@ -12,8 +12,8 @@ import type {
 } from '@shared/cli/protocol.js'
 import { getCliRuntimePaths, ensureRuntimeDirs, assertSupportedPlatform } from './paths.js'
 import { NdjsonReader, encodeFrame } from './ndjson.js'
-import { HeadlessBackend } from '@onething/backend/wiring/headless/backend.js'
-import { configureLogging, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { HeadlessBackend } from '@onething/backend/runtime/headless/backend'
+import { configureLogging, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 interface DaemonServerOptions {
   storePath?: string

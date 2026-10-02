@@ -52,7 +52,7 @@ const oauthLog = vi.hoisted(() => ({
   log: vi.fn(),
 }))
 
-vi.mock('../../wiring/logging/index.js', () => ({
+vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
   getLogger: () => oauthLog,
   consolePort: () => oauthLog,
 }))

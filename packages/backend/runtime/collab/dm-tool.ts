@@ -47,7 +47,7 @@ import { speakIntoCollabRoom } from './say-tool.js'
 import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.js'
 import { registerCollabWakeFollowup } from './wake-followup.js'
 import { sessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { RuntimeRequestContext } from '@onething/backend/core'
 
 /** 拒绝文案。每一条都说清"是哪一种拒绝",因为模型能据此改做别的事。 */

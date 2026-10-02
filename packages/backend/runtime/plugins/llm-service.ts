@@ -38,8 +38,8 @@ import { resolveProviderApiKey } from '@onething/backend/runtime/providers/env.w
 import { resolveUtilityModel } from '@onething/backend/runtime/providers/utility-model.wiring'
 import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
 import { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
-import type { ProviderConfigWithKey } from '@onething/backend/wiring/engine/stream/stream-executor.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import type { ProviderConfigWithKey } from '@onething/backend/runtime/engine/stream/stream-executor'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 
 const log = getLogger('plugins')

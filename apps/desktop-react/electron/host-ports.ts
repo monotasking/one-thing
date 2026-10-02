@@ -31,7 +31,7 @@ import {
 } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { createEventBusTerminalBroadcaster } from '@onething/backend/runtime/terminal/bus-broadcaster'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ProxySettings } from '@shared/ipc.js'
 import { ShellProxyPolicy } from './network-proxy.js'
 import { createShellSpeechOutput } from './speech-output.js'

@@ -60,17 +60,17 @@ import type {
 import * as store from '@onething/backend/store.js'
 import type { sessionReads } from '../../session/reads.js'
 import type { EventBus } from '@onething/backend/events/event-bus.js'
-import type { StreamEngine } from '@onething/backend/wiring/engine/stream-engine-bound.js'
+import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { getCurrentBackend } from '@onething/backend/current.js'
 import type { Quiescible } from '@onething/backend/core/lifecycle'
 import { taskMessageSource } from '@onething/backend/runtime/engine/message-sources'
 import { deliverInternalMessage } from '@onething/backend/runtime/plugins/session-messenger'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RuntimeRequestContext } from '@onething/backend/core'
 import { SessionAccessError, type SessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 
 const log = getLogger('tasks')
 

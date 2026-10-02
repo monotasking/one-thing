@@ -18,7 +18,7 @@ import { pickOnethingProviderOptions } from "@onething/backend/runtime/providers
 import {
 	getProviderApiType,
 	resolveProviderAuth,
-} from "@onething/backend/wiring/engine/stream/provider-helpers.js";
+} from "@onething/backend/runtime/engine/stream/provider-helpers";
 import { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model.wiring";
 import { applySessionSpaceCredentials } from "./space-credentials.js";
 import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/agent-loop/providers/factory'

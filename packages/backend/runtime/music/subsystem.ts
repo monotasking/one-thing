@@ -11,7 +11,7 @@ import { MusicMoments, type MusicMomentEvent } from './moments.js'
 import type { MusicLyrics } from '@shared/ipc/music.js'
 import { readProviderVolume, setProviderVolume, SpeechActivityDuck } from './player-volume.js'
 import type { EventBus } from '@onething/backend/events/event-bus.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('music')
 

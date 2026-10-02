@@ -23,7 +23,7 @@ import {
 	isCollabSayMessage,
 	isCollabThinkingMessage,
 } from "@onething/backend/runtime/collab";
-import { getStreamEngineSafe } from "@onething/backend/wiring/engine/index.js";
+import { getStreamEngineSafe } from "@onething/backend/runtime/engine/engine-layer";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 

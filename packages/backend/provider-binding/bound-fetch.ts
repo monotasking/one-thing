@@ -14,7 +14,7 @@ import {
   type OnethingFetchFn,
 } from '@onething/backend/runtime/providers'
 import { getSettings } from '../stores/settings.js'
-import { consolePort, getLogger } from '../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

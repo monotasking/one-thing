@@ -27,7 +27,7 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-connector-registry-test',
 }))
-vi.mock('@onething/backend/wiring/logging/index.js', () => {
+vi.mock('@onething/backend/runtime/logging/configure-logging', () => {
   const logger = {
     ns: 'test', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
     isLevelEnabled: () => false, child: () => logger,

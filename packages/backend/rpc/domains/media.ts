@@ -46,7 +46,7 @@ import { getSession, getSessionsList } from '../../stores/sessions.js'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '../../session/access.js'
 import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '@onething/backend/runtime/media/access'
 import { resolveMediaFileByName } from '@onething/backend/runtime/media/resolve-file'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.media')

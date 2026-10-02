@@ -28,7 +28,7 @@ import { resolveProviderApiKey } from "@onething/backend/runtime/providers/env.w
 import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "@onething/backend/runtime/providers/space-credentials";
 import { captureUsageRecorder } from "../usage/usage-recorder.js";
-import { getLogger } from "@onething/backend/wiring/logging/index.js";
+import { getLogger } from "@onething/backend/runtime/logging/configure-logging";
 
 const log = getLogger("evals.provider");
 

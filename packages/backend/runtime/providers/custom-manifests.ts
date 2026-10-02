@@ -40,7 +40,7 @@ import {
   getSettingsEventBroadcaster,
   type SettingsEventBroadcaster,
 } from '@onething/backend/runtime/settings/events'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('providers.manifests')
 

@@ -9,7 +9,7 @@
  *     `chat-source.ts` 的 `if (!messageId) return` 会吃掉没盖章的 chunk,
  *     这一条是那个坑的守卫。
  *
- * 「不进账本」那一条在 `wiring/engine/stream/__tests__/tool-progress-not-in-ledger.test.ts`。
+ * 「不进账本」那一条在 `runtime/engine/stream/__tests__/tool-progress-not-in-ledger.test.ts`。
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'

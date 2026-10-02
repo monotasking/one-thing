@@ -22,7 +22,7 @@ import type { Effect } from '@shared/toolkit/effects'
 import { createPermissionAuthorizer } from '@onething/backend/runtime/toolkit/authorizer'
 import { resolveExternalAgentSpawnEnv } from './spawn-env.js'
 import { createAcpHostMcpPort } from '@onething/backend/runtime/acp/host-mcp-port'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('external-agents')
 

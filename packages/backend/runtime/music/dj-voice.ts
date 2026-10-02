@@ -15,7 +15,7 @@ import type { PatterSpeech, PatterVoiceStyle } from './host-voice.js'
 import { synthesizeSpeech } from '@onething/backend/runtime/voice/provider-calls'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('music.radio')
 

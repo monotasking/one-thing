@@ -11,7 +11,7 @@
  */
 import type { ACPAgentState, AcpSessionState } from '@shared/contracts/acp'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('app.acp.events')
 

@@ -124,7 +124,7 @@ vi.mock('@onething/backend/events/index.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/wiring/engine/index.js', () => ({
+vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
   getStreamEngineSafe: () => ({
     hasCommandTarget: () => true,
     getController: () => undefined,

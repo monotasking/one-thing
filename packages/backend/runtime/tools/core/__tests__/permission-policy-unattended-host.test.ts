@@ -6,7 +6,7 @@
  * 拿替身 `ask` 一挡,证到的只是「计时器响过」,而 K4-c 留账 1 那个病恰恰是
  * 「桥不等了,卡还挂着」。
  *
- * 会话读面被替身掉(与 `wiring/engine/__tests__/permission-policy-execution.test.ts`
+ * 会话读面被替身掉(与 `runtime/engine/__tests__/permission-policy-execution.test.ts`
  * 同一副夹具):这一份问的不是「会话里有什么」,而是「谁在敲门 + 这台宿主有没有
  * 人」。真店会把整棵装配拉进来。
  */

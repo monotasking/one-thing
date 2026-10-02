@@ -19,7 +19,7 @@
 
 import type { ChatMessage } from '@shared/ipc.js'
 import { eventsListMessages } from './events-reads.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('sessions')
 

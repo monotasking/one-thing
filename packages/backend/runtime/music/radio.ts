@@ -56,7 +56,7 @@ import type { MusicMoments } from './moments.js'
 import type { EventBus } from '@onething/backend/events/event-bus.js'
 
 import { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { OnethingRadioConductorOptions } from '@onething/backend/runtime/music/radio-conductor'
 
 const log = getLogger('music.radio')
@@ -635,7 +635,7 @@ async function wakeRadioDj(): Promise<void> {
   // a static engine import would drag the whole provider stack into every
   // module graph that touches variables (which broke unrelated tests).
   const [{ getStreamEngineSafe }, { getEventBus }] = await Promise.all([
-    import('@onething/backend/wiring/engine/index.js'),
+    import('@onething/backend/runtime/engine/engine-layer'),
     import('@onething/backend/events/index.js'),
   ])
   sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')

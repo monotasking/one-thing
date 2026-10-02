@@ -33,7 +33,7 @@ import { nextSessionRequestIndex } from './event-log.js'
 import { writeSessionEvent } from './event-writer.js'
 import { putSessionBlob } from './blob-store.js'
 import { currentSessionRun, nextSessionRunPartIndex } from './runs.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('sessions.events')
 

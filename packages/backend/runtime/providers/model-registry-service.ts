@@ -49,7 +49,7 @@ import {
 	VENDOR_RUNTIMES,
 	type VendorFallbackModels,
 } from "@onething/backend/runtime/providers/vendors/runtimes";
-import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingModelRegistryRefreshLogger } from '@onething/backend/runtime/providers/model-registry'
 import type { AppSettings } from '@shared/ipc.js'

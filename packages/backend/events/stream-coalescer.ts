@@ -25,7 +25,7 @@ import type {
 } from '@shared/events/index.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('engine.stream.coalescer')
 

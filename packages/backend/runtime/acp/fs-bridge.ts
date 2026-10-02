@@ -34,7 +34,7 @@ import {
 import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 import { readTextFileSnapshot } from '@onething/backend/runtime/tools/file-snapshot'
 import { withFileMutationQueue, withFileReadAccess } from '@onething/backend/runtime/tools/file-mutation-queue'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { mutatingFileAdapters, readAdapters } from '@onething/backend/runtime/toolkit/file-adapters'
 import { toolkitAuditSink } from '@onething/backend/runtime/toolkit/audit-sink'
 import { authorizeAcpRequest } from './request-authorize.js'

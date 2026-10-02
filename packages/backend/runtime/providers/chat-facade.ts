@@ -49,7 +49,7 @@ import type {
   ProviderConfig,
   ProviderInfo,
 } from '@onething/backend/runtime/providers/types.wiring'
-import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { OnethingChatGenerationOptions, OnethingProviderFacadeAdapters } from '@onething/backend/runtime/providers/provider-facade'
 
 const log = getLogger('providers')

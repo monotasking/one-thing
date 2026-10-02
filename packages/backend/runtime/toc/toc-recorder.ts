@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/core/agent-loop";
-import { beginAuxiliaryModelRequest } from '@onething/backend/wiring/engine/auxiliary-model-checkpoint.js';
+import { beginAuxiliaryModelRequest } from '@onething/backend/runtime/engine/auxiliary-model-checkpoint';
 import {
 	applyTurnDecision,
 	buildTocPrompt,
@@ -28,7 +28,7 @@ import {
 import { createUtilityProvider } from "@onething/backend/runtime/providers/utility-provider";
 import { billTocUsage } from "../usage/bill-side-line.js";
 import { getSettings } from "@onething/backend/stores/settings.js";
-import { consolePort, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const tocLog = getLogger('sessions.toc')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

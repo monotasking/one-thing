@@ -9,7 +9,7 @@ import { deepEqual } from './shadow.js'
 import { appendSessionShadowLine, summarizeShadowDiff } from './shadow.js'
 import { bumpSessionShadowStats } from './event-stats.js'
 import { peekSessionAccount } from './projection-cache.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('sessions.usage')
 

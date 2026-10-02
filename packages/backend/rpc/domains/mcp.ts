@@ -81,7 +81,7 @@ import {
   sanitizeMCPServerStatesForClient,
 } from '../../server/mcp-secrets.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingMCPIpcLogger } from '@onething/backend/runtime/mcp/ipc-operations'

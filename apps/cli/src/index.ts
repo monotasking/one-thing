@@ -118,7 +118,7 @@ async function main(): Promise<void> {
  *
  * **动态 import,量出来的**(与 `trace-command` / `plugin-command` 同一条,理由却
  * 不同):`mcp-command.ts` 的静态闭包里有 `@onething/backend/runtime/resource`
- * (还原函数)与 `wiring/logging`(日志门面),两者一求值就把装配层的脊柱拉起来
+ * (还原函数)与 `runtime/logging`(日志门面),两者一求值就把装配层的脊柱拉起来
  * —— 静态引进来之后 `onething --help` 从 **0.13s 变成 1.3s**(五次取中位数,
  * 12MB 的单文件 cjs)。改成动态之后回到 0.13s,而 `onething mcp` 自己照付不误
  * (它本来就要连 daemon)。MCP server SDK(连着一份内嵌 ajv)在 `mcpCommand` 里

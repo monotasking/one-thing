@@ -85,7 +85,7 @@ import {
   runToolkitToolDirectly,
   toolkitCatalogToolDefinitions,
 } from '@onething/backend/runtime/toolkit/tool-ports'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'

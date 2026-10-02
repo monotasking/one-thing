@@ -52,7 +52,7 @@ import type {
 import { findAgent } from '../agents/agent-store-access.js'
 import { getCollabSelfTaskFacts } from '@onething/backend/runtime/collab/board-store'
 import { resolveUserIdentity } from '@onething/backend/runtime/collab/user-identity'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('variables')
 

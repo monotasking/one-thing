@@ -57,7 +57,7 @@ import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
 import type { McpSubsystem } from "@onething/backend/runtime/mcp/subsystem";
-import type { ConfigureLoggingOptions } from "../wiring/logging/index.js";
+import type { ConfigureLoggingOptions } from "@onething/backend/runtime/logging/configure-logging";
 import {
 	createTenantAudienceFactory,
 	ownerMatchesContext,
@@ -348,7 +348,7 @@ export { SERVER_REDACTED_SECRET } from "./mcp-secrets.js";
 import { sanitizeSettingsForClient } from "./settings-projection.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { consolePort, getLogger } from '../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { VariablesStorePersistence } from '@onething/backend/runtime/variables/store'
 import type { OnethingPromptStoreAdapters } from '@onething/backend/runtime/prompts/store'
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/backend/core/runtime-facade'

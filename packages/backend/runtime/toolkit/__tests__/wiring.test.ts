@@ -77,7 +77,7 @@ const { configureToolkitCatalog } = await import('@onething/backend/runtime/tool
 const { createDesktopCatalog } = await import('../tier-catalogs.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
 const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/backend/runtime/toolkit/mcp-catalog.wiring')
-const { executeToolDirectly } = await import('@onething/backend/wiring/engine/stream/tool-execution.js')
+const { executeToolDirectly } = await import('@onething/backend/runtime/engine/stream/tool-execution')
 const { getStreamChannel } = await import('@onething/backend/events/index.js')
 
 const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')

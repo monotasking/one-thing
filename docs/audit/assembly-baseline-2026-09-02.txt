@@ -85,14 +85,13 @@ packages/backend/stores/docs-paths.ts 1
 packages/backend/stores/sessions.ts 1
 packages/backend/utils/ripgrep.ts 1
 packages/backend/runtime/auth/oauth-events.ts 2
-packages/backend/wiring/engine/triggers/index.ts 1
+packages/backend/runtime/engine/triggers/index.ts 1
 packages/backend/runtime/evals/events.ts 1
 packages/backend/runtime/evals/host-ports.ts 1
 packages/backend/runtime/external-agents/connector-registry.ts 1
-packages/backend/wiring/gateway/host-ports.ts 1
 packages/backend/runtime/goals/runtime-hooks.ts 1
-packages/backend/wiring/logging/diagnostics.ts 1
-packages/backend/wiring/logging/index.ts 10
+packages/backend/runtime/logging/diagnostics.ts 1
+packages/backend/runtime/logging/configure-logging.ts 10
 packages/backend/runtime/permission/grant-storage.ts 1
 packages/backend/runtime/project-dirs/bootstrap.ts 1
 packages/backend/runtime/providers/builtin/github-copilot.ts 1

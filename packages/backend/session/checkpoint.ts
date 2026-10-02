@@ -40,7 +40,7 @@ import {
   type SessionCheckpointWriteOutcome,
 } from './checkpoint-file.js'
 import { getSessionEventsLogPath } from './event-log.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import fs from 'node:fs'
 
 const log = getLogger('sessions.checkpoint')

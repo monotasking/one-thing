@@ -47,7 +47,7 @@
  *  - 账本把「这个模型有原生出图工具」当独立事实(`OPENAI_IMAGE_TOOL_MODELS`,
  *    排在目录之前 —— 官方模型页的「Output modalities: text」说的是*模型*的
  *    输出模态,图是**工具**产出的),于是 `imageOutputServedBy: 'in-loop'`;
- *  - `backend/wiring/engine/stream/stream-executor.ts` 的
+ *  - `backend/runtime/engine/stream/stream-executor.ts` 的
  *    `resolveRequestedOutputModalities` 对 codex 之外的家改问账本的
  *    `servedBy === 'in-loop'`,于是这一家的 `requestedOutputModalities` 真的会
  *    是 `['image']`。

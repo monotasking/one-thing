@@ -57,7 +57,7 @@ import { collabLinkedRoomSessionId } from '@onething/backend/runtime/collab/venu
 // `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
 import { appendNote } from '@onething/backend/runtime/collab/actors/notebook-tool'
 import { sessionAccess, SessionAccessError } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { BraveSearchProviderAdapters } from '@onething/backend/runtime/tools/builtin/web-search/providers/brave'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────

@@ -80,7 +80,7 @@ import {
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
 } from '@onething/backend/runtime/collab/rooms'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
 import {

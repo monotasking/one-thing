@@ -45,7 +45,7 @@ import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp
 import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '../../session/access.js'

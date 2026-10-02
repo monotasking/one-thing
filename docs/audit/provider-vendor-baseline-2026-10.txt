@@ -24,9 +24,9 @@ claude-code packages/backend/runtime/sessions/retired-providers.ts
 claude-code packages/backend/stores/defaults/settings.ts
 codex packages/backend/runtime/agent-loop/process-providers.ts
 codex packages/backend/runtime/agent-loop/providers/codex.ts
-codex packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts
-codex packages/backend/wiring/engine/stream/codex-native-tools.ts
-codex packages/backend/wiring/engine/stream/stream-executor.ts
+codex packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts
+codex packages/backend/runtime/engine/stream/codex-native-tools.ts
+codex packages/backend/runtime/engine/stream/stream-executor.ts
 codex packages/backend/runtime/agent-loop/providers/base/http-agent-provider.ts
 codex packages/backend/runtime/agent-loop/providers/dialects/index.ts
 codex packages/backend/runtime/agent-loop/providers/dialects/responses-recipe.ts
@@ -66,10 +66,10 @@ grok packages/backend/runtime/providers/model-registry-service.ts
 grok-oauth packages/backend/runtime/providers/model-registry-service.ts
 openai apps/desktop-react/src/providers/components/CustomProviderDialog.tsx
 openai packages/backend/rpc/domains/models.ts
-openai packages/backend/wiring/engine/prompt/system-prompt-snapshot.ts
-openai packages/backend/wiring/engine/stream/image-generation.ts
-openai packages/backend/wiring/engine/stream/image-stream.ts
-openai packages/backend/wiring/engine/stream/provider-helpers.ts
+openai packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts
+openai packages/backend/runtime/engine/stream/image-generation.ts
+openai packages/backend/runtime/engine/stream/image-stream.ts
+openai packages/backend/runtime/engine/stream/provider-helpers.ts
 openai packages/backend/runtime/providers/custom-manifests.ts
 openai packages/backend/runtime/providers/space-config-migration.ts
 openai packages/backend/runtime/voice/provider-calls.ts

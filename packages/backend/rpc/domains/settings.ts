@@ -75,8 +75,8 @@ import {
 } from '../../server/settings-projection.js'
 import { invalidateProviderCache } from '@onething/backend/runtime/providers/provider-table'
 import { getSettings, saveSettings } from '../../stores/settings.js'
-import { getGatewayHost } from '../../wiring/gateway/host-ports.js'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { getGatewayHost } from '@onething/backend/gateway/lifecycle-port'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { broadcastSettingsChanged } from '@onething/backend/runtime/settings/events'
 import {
   applyHostNetworkProxySettings,

@@ -2,7 +2,7 @@
 import { stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { isPathInside } from '@onething/backend/rpc/sandbox.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { createWorkspaceWatchDriver, type WorkspaceWatchDriver } from './workspace-watch-driver.js'
 
 const log = getLogger('files.watch')

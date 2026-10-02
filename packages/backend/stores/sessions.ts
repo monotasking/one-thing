@@ -65,7 +65,7 @@ import {
 } from "@onething/backend/core/session";
 import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
 import { assertPortFactIsFolded } from '../session/port-fact-assert.js'
-import { consolePort, getLogger } from '../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { HybridSessionStorageDriverOptions } from '@onething/backend/runtime/sessions/storage-driver'
 import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger, SessionCreateOptions, SessionInitialOwner } from '@onething/backend/runtime/sessions/session-repository'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

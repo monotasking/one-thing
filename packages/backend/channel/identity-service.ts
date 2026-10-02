@@ -2,7 +2,7 @@ import type {
   MessageOrigin,
   ResolvedIdentity,
 } from '@shared/ipc.js'
-import { writeAppLog } from '../wiring/logging/index.js'
+import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
 import { getChannelIdentityStore } from './identity-store.js'
 import {
   createApiOrigin,

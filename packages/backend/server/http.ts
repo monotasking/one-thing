@@ -18,7 +18,7 @@ import { dispatchRpc } from '@onething/backend/rpc/registry.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './runtime.js'
 import type { RpcDispatchPorts } from '../rpc/registry.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { serveBridgeRequest } from './mcp-face.js'
 
 /**

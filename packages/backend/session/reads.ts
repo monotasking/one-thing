@@ -34,7 +34,7 @@ import type { SessionProjectionCache } from './projection-cache.js'
 import { getCurrentBackend } from '../current.js'
 import { isSessionFreezeEnabled } from './freeze.js'
 import type { sessionProjectionOptions } from './projection-blobs.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { readLegacySessionMessages } from './legacy-reads.js'
 
 const log = getLogger('sessions')
@@ -89,7 +89,7 @@ function fromEvents<T>(read: () => T | undefined): T | undefined {
  *
  * 为什么是注入而不是直接 import:`sliceForHistory` 的两条路都要走真机那份历史
  * 构造 —— 消息侧是 `buildHistoryMessages`,事件侧是 `projectModelHistory` 的宿主
- * 配方(`historyProjectionRecipe`)。这两样都住在 `wiring/engine/stream/
+ * 配方(`historyProjectionRecipe`)。这两样都住在 `runtime/engine/stream/
  * message-helpers.ts`,身后是整棵 provider/collab/agents 树。而 `reads.ts` 被
  * ~30 个轻量会话层模块(`commands.ts` / `validation.ts` / permission / usage /
  * tasks …)与它们的单测静态引用 —— 一旦这里 `import` 了 message-helpers,那些

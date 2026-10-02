@@ -48,7 +48,7 @@ import type { ResourceKernel } from '@onething/backend/core/resource'
 import type { MCPServerState } from '@shared/mcp/types'
 import { onMCPToolTableChanged } from '@onething/backend/runtime/mcp/capabilities-changed'
 import { mcpResourceScheme, projectMcpResource } from '@onething/backend/runtime/mcp/resource-spec'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { McpResourceProvider, type McpResourceCallPort } from './mcp-provider.js'
 
 const log = getLogger('app.resource.mcp')

@@ -33,12 +33,12 @@ import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { getEventBus } from '@onething/backend/events/index.js'
-import { getStreamEngineSafe } from '@onething/backend/wiring/engine/index.js'
+import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import {
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('collab.room')
 

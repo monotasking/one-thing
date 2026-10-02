@@ -48,7 +48,7 @@ import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
 } from '@onething/backend/runtime/evals/provider-adapter'
-import { getLogger } from '../../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 import { getEvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 

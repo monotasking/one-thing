@@ -59,13 +59,13 @@ import { getEventBus } from '../../events/index.js'
 import { currentSessionRun } from '../../session/runs.js'
 import { sessionReads } from '../../session/reads.js'
 import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/runtime/collab/rooms'
-import { getStreamEngine } from '../../wiring/engine/index.js'
-import { buildSystemPromptSnapshot } from '../../wiring/engine/prompt/system-prompt-snapshot.js'
+import { getStreamEngine } from '@onething/backend/runtime/engine/engine-layer'
+import { buildSystemPromptSnapshot } from '@onething/backend/runtime/engine/prompt/system-prompt-snapshot'
 import {
   getProviderApiType,
   resolveProviderAuth,
-} from '../../wiring/engine/stream/provider-helpers.js'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+} from '@onething/backend/runtime/engine/stream/provider-helpers'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { Permission } from '@onething/backend/runtime/permission'
 import {
   generateChatTitle,

@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import type { LogRecord, LogSink } from '@onething/backend/core/logging'
 import { MAX_LOG_MSG_LENGTH, MAX_LOG_RECORDS_PER_APPEND } from '@shared/ipc/logs.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { getRootLogger } from '../../wiring/logging/index.js'
+import { getRootLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { logsRpcHandlers } from '../domains/logs.js'
 
 class CaptureSink implements LogSink {

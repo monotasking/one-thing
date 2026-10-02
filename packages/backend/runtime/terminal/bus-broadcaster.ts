@@ -37,7 +37,7 @@
 import type { TerminalBroadcaster } from '@onething/backend/runtime/terminal/service.wiring'
 import type { TerminalDataEvent, TerminalExitEvent } from '@shared/ipc.js'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('terminal.broadcast')
 

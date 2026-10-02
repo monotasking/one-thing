@@ -55,7 +55,7 @@ import {
 import type { OAuthRoutes } from '@shared/ipc/oauth.js'
 import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import { notifyOAuthTokenExpired } from '@onething/backend/runtime/auth/oauth-events'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/backend/runtime/auth/ipc-operations'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

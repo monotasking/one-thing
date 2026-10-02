@@ -35,7 +35,7 @@ import { collectSessionBlobRefHashes } from '@shared/session/events/types'
 import { getOnethingSessionsDir } from '@onething/backend/runtime/storage'
 import { SESSION_BLOBS_DIRNAME } from './blob-store.js'
 import { SESSION_EVENTS_LOG_FILENAME } from './event-log.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('sessions.events')
 

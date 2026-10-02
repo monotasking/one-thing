@@ -33,11 +33,11 @@ import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 import { sessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { RuntimeRequestContext } from '@onething/backend/core'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('collab.wake')
 

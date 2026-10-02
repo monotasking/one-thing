@@ -49,7 +49,7 @@ import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
 import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
 import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
 import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
-import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
+import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { initializeAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { configureAppToolSandbox } from '@onething/backend/runtime/tools/core/sandbox'
 import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
@@ -82,11 +82,11 @@ import {
   installSessionLedgerEventBroadcaster,
   uninstallSessionLedgerEventBroadcaster,
 } from './session/event-broadcast.js'
-import { createStreamEngineLayer, type MainOnethingRuntime } from './wiring/engine/index.js'
+import { createStreamEngineLayer, type MainOnethingRuntime } from '@onething/backend/runtime/engine/engine-layer'
 import type { PermissionMode } from '@shared/ipc.js'
-import type { BindableStreamSender, StreamEngine } from './wiring/engine/stream-engine-bound.js'
-import { registerBuiltinTriggers } from './wiring/engine/triggers/index.js'
-import { createSessionTocTrigger } from './wiring/engine/triggers/session-toc.js'
+import type { BindableStreamSender, StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
+import { registerBuiltinTriggers } from '@onething/backend/runtime/engine/triggers'
+import { createSessionTocTrigger } from '@onething/backend/runtime/engine/triggers/session-toc'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from '@onething/backend/runtime/collab/rooms'
 import { Permission } from '@onething/backend/runtime/permission'
 import { Interaction } from '@onething/backend/core/interaction'
@@ -134,8 +134,8 @@ import { resolveExternalAgentSpawnEnv } from '@onething/backend/runtime/external
 import { killTrackedDetachedChildren } from '@onething/backend/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/backend/runtime/terminal/service.wiring'
 import type { SessionHistoryBuilder } from './session/reads.js'
-import { buildHistoryMessages, historyProjectionRecipe } from './wiring/engine/stream/message-helpers.js'
-import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from './wiring/logging/index.js'
+import { buildHistoryMessages, historyProjectionRecipe } from '@onething/backend/runtime/engine/stream/message-helpers'
+import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/runtime/logging/configure-logging'
 import {
   BackendAlreadyAssembledError,
   BackendNotAssembledError,

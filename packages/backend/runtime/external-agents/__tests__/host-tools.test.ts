@@ -18,7 +18,7 @@
  * (`runtime/acp/host-mcp-bridge.ts`)做的就是这两步,只是按桥凭据而不是按回合绑。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '@onething/backend/wiring/logging/index.js'
+import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 import { COLLAB_SAY_SOURCE } from '@onething/backend/runtime/collab'
 import {

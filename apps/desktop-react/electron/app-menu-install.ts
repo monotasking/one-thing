@@ -15,7 +15,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { BrowserWindow, Menu, app } from 'electron'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import {
   AppMenuRenderer,
   GATE_MENU_CLICK_ENV,

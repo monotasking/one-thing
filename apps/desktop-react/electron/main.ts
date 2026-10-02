@@ -52,7 +52,7 @@ import {
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { initializeUserSchedulerTasks } from '@onething/backend/runtime/scheduler/user-task-service'
 import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/permission-bridge'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { installAppMenu } from './app-menu-install.js'
 import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
@@ -590,7 +590,7 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
  *  · `loadDevServer` 的 `session.clearCache()` —— 窗口自己的 session,与后端无关;
  *    它失败时那句 `getLogger('shell.boot').warn` 也安全:根 logger 在模块求值时
  *    就存在(只挂内存环),`configureLogging` 之前的记录留在环里
- *    (`backend/wiring/logging/index.ts` 的判词)。**代价**:落在装配之前的那几条
+ *    (`backend/runtime/logging/configure-logging.ts` 的判词)。**代价**:落在装配之前的那几条
  *    只进环、不进 `shell.jsonl`(文件 sink 是 `configureLogging` 才挂上的)——
  *    崩溃现场 `dumpRecentLogRecords()` 仍然捞得到,见文件末留账③。
  *  · `installAppMenu` / `FRAMELESS_ON_MAC` —— 本来就在装配之前(前者是

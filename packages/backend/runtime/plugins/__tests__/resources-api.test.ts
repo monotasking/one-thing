@@ -93,7 +93,7 @@ describe('插件的三个动词(K4-b)', () => {
     resources?: () => unknown,
   ) {
     const { createPluginAPI } = await import('../api.js')
-    const { getStreamEngine } = await import('@onething/backend/wiring/engine/index.js')
+    const { getStreamEngine } = await import('@onething/backend/runtime/engine/engine-layer')
     return createPluginAPI(pluginId, backend.eventBus as never, getStreamEngine() as never, {
       declaredPermissions,
       declaredPanelIds: [],

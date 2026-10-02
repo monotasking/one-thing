@@ -58,7 +58,7 @@ import {
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { isHostLocallyTrusted } from '@onething/backend/server/host-trust.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/current.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'
 
 const log = getLogger('notes')

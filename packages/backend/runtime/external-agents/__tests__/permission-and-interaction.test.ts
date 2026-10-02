@@ -75,7 +75,7 @@ const noopLogger = () => {
   logger.child = () => logger
   return logger
 }
-vi.mock('@onething/backend/wiring/logging/index.js', () => ({
+vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
   writeAppLog: vi.fn(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),

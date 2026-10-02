@@ -278,7 +278,7 @@ export async function executeCommand(
   /*
    * 技能引用**壳一个字都不执行**:`/skill:<name> …` 原样当一条消息交出去,
    * 展开在引擎那头(`prompts/resolver.collectReferenceMatches` 认这个前缀,
-   * `wiring/engine/stream/agent-loop-runtime` 在每条用户消息上跑它)。
+   * `runtime/engine/stream/agent-loop-runtime` 在每条用户消息上跑它)。
    *
    * 这一支写在 switch 之前而不是靠 `default` 兜住:兜底那条按 `entry.id` 分派,
    * 而技能的 id 是路径推出来的 —— 哪天有一份技能的 id 恰好叫 `cd`,

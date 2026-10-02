@@ -36,7 +36,7 @@ import {
   rebaseManifest,
   type AcpRegistryEntry,
 } from '@onething/backend/runtime/acp/manifest'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { detectAgent, locateAgentBin } from './detect.js'
 
 const log = getLogger('app.acp.registry')

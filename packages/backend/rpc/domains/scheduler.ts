@@ -45,7 +45,7 @@ import type {
   SchedulerTaskSnapshotDTO,
 } from '@shared/ipc/scheduler.js'
 import { toJsonValue } from '@shared/json.js'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { getScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import {
   getSchedulerRunDetail,

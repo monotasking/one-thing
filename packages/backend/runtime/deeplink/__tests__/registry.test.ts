@@ -35,7 +35,7 @@ async function load() {
     import('@onething/backend/runtime/plugins/health'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
     // **同一份**里拿,否则收的是别的 root(L4)。
-    import('@onething/backend/wiring/logging/index.js'),
+    import('@onething/backend/runtime/logging/configure-logging'),
   ])
   registry.resetPluginDeepLinkActionsForTests()
   return { api, registry, health, logging }

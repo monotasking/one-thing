@@ -10,7 +10,7 @@
  *
  * ## 它**不进账本**
  *
- * `events.jsonl` 只由 `wiring/engine/stream/session-event-recorder.ts` 的显式
+ * `events.jsonl` 只由 `runtime/engine/stream/session-event-recorder.ts` 的显式
  * `writeSessionEvent` 产生,StreamChannel 的 chunk 从不落盘 —— 所以这条路天然
  * 不写账本。这不是巧合而是判断:**账本是唯一真相,而进度不是会话的事实,是过程
  * 读数**。重开会话时该看见的是结局(这次调用发生了、参数是什么、结局如何),
@@ -32,7 +32,7 @@
 
 import type { ToolProgressChunk } from '@shared/events/stream-chunks'
 import { getStreamChannel } from './index.js'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('toolkit.progress')
 

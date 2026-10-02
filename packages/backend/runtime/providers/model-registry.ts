@@ -1058,7 +1058,7 @@ export function onethingModelSupportsImageGeneration(
  * 这一支回答「留在回合里的那一类要不要开原生出图工具」。两者读的是账本同一个
  * 字段 `imageOutputServedBy`,互斥:`'in-loop'` ⇒ 这里 true、那里 false。
  *
- * 唯一消费者是 `backend/wiring/engine/stream/stream-executor.ts` 的
+ * 唯一消费者是 `backend/runtime/engine/stream/stream-executor.ts` 的
  * `resolveRequestedOutputModalities`:命中就把 `requestedOutputModalities` 填成
  * `['image']`,方言据此往工具表里加 `{type:'image_generation'}`(openai /
  * codex),或者按自己的规矩发 `modalities` / `responseModalities`

@@ -25,7 +25,7 @@ import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { emitCollabRoomUpdated } from './room-runtime.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { sessionDeletion } from '../../session/deletion.js'
 import type { SessionInitialOwner } from '@onething/backend/runtime/sessions/session-repository'
 

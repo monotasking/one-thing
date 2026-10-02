@@ -33,14 +33,14 @@ import { generateChatResponse } from '@onething/backend/runtime/providers/chat-f
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
-} from '@onething/backend/wiring/engine/stream/provider-helpers.js'
+} from '@onething/backend/runtime/engine/stream/provider-helpers'
 import { collabUserPromptFields } from './user-identity.js'
 import type { CollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 import type { RuntimeRequestContext } from '@onething/backend/core'
 import type { SessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
 import { ONETHING_USAGE_SOURCES } from '@onething/backend/runtime/usage'
 import { getCurrentBackend } from '@onething/backend/current.js'

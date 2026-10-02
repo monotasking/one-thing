@@ -27,7 +27,7 @@
 import fs from 'node:fs/promises'
 import type { AcpSessionState } from '@shared/contracts/acp'
 import type { OnethingTodoPlanStore } from '@onething/backend/runtime/todo-plan'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { AcpSessionStateProjection } from './subsystem.js'
 
 const log = getLogger('app.acp.plan')

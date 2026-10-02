@@ -25,7 +25,7 @@ import { getAvailableProviders } from '@onething/backend/runtime/providers/chat-
 import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
 import { listLabeledDialectsForIpc } from '@onething/backend/runtime/agent-loop/providers/dialect-options'
 import { probeCustomProvider } from '@onething/backend/runtime/providers/custom-probe-analyst'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingProviderPresentationIpcLogger } from '@onething/backend/runtime/providers/provider-presentation'
 import { getCurrentBackendInstance } from '../../current.js'

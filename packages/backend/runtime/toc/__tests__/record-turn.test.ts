@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { AgentLoopOptions, AgentProvider } from '@onething/backend/core/agent-loop'
-import { collectLogRecordsForTests } from '@onething/backend/wiring/logging/index.js'
+import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'
 
 const mocks = vi.hoisted(() => ({
   runAgentLoop: vi.fn(async (_options: Record<string, unknown>) => ({

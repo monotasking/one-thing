@@ -12,7 +12,7 @@ import { getSettings } from '@onething/backend/stores/settings.js'
 import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { getCurrentSessionId } from '@onething/backend/stores/app-state.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('todo-plan')
 

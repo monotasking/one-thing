@@ -44,7 +44,7 @@ vi.mock('../../session/index.js', () => ({
   }),
 }))
 
-vi.mock('../../wiring/logging/index.js', () => ({
+vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
   writeAppLog: vi.fn(),
 }))
 

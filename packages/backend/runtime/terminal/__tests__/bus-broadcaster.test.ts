@@ -13,7 +13,7 @@
  *    `attach` 的 ring 要多补一点。
  *
  * 用的是**真 `EventBus` + 进程当前实例槽**(`createBackendHandle({ eventBus })`,
- * 同 `wiring/engine/__tests__/gateway-session-runtime.test.ts` 的轻装法),不起整只
+ * 同 `runtime/engine/__tests__/gateway-session-runtime.test.ts` 的轻装法),不起整只
  * backend:这只文件问的是"广播器把事件放上了哪条总线",不是装配顺序。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

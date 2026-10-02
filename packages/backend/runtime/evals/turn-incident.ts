@@ -15,7 +15,7 @@
 import { getSkillsForSession } from '../skills/session-skill-cache.js'
 import { sessionReads } from '../../session/reads.js'
 import * as store from '@onething/backend/store.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('evals.incident')
 
@@ -109,7 +109,7 @@ export async function createIncidentForTurn(options: {
 	if (!capture?.requestMessages?.length && anchorIdx >= 0) {
 		try {
 			const { buildHistoryMessages } = await import(
-				"@onething/backend/wiring/engine/stream/message-helpers.js"
+				"@onething/backend/runtime/engine/stream/message-helpers"
 			);
 			// History up to and including the turn's user message — mirrors
 			// what the live request carried.

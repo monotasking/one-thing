@@ -14,13 +14,13 @@
  *  3. **只认图**——非 image 的资产直接当没有(线上那一格是 `inlineData` 图片块)。
  *
  * 落盘读走 runtime 的 `readOnethingImageFileDataUrl`(媒体库自己的那把尺),
- * 这一层因此不碰 `node:fs` —— `wiring/` 目录的边界规则不许它有别的 node 依赖,
+ * 这一层因此不碰 `node:fs` —— 检查器 `MAIN_CORE_SYSTEM_DIRS` 那把尺子(量 `runtime/agent-loop`)不许它有别的 node 依赖,
  * 而「怎么把一个图片文件读成 base64」本来也是媒体库的事,不是接线的事。
  */
 import type { ProviderMediaImage, ProviderMediaReader } from '@onething/backend/runtime/agent-loop/providers'
 import { readOnethingImageFileDataUrl } from '@onething/backend/runtime/media'
 import { mediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('providers.media')
 

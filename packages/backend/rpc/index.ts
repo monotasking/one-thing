@@ -261,7 +261,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   { id: 'rpc:oauth', mount: ctx => { ctx.registerRpcDomain(oauthRouter, oauthRpcHandlers) } },
   // P4c 第八批第一个域(gateway)—— 八条:状态 / 起停 / 微信账号增删改与登出。
   // 八条全都要**宿主本体**(主进程拉起来的子进程 + 一张二维码),所以域处理者
-  // 走 `wiring/gateway/host-ports.ts` 的 `configureGatewayHost`:桌面在
+  // 走 `gateway/lifecycle-port.ts` 的 `configureGatewayHost`:桌面在
   // `main-process.ts` 注入八行转调,server / CLI 不注入 —— 拿到的是结构化降级,
   // 而不是旧 server adapter 那句写死的「server runtime 上网关已禁用」。
   // **本域零推送**(全仓没有 `GATEWAY_*_CHANGED`),所以 `@main/ipc/gateway.ts`

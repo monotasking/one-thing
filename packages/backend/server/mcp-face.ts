@@ -30,7 +30,7 @@ import type { RpcDispatchContext, RpcRequest } from '@shared/ipc/rpc.js'
 import { dispatchRpc } from '../rpc/registry.js'
 import { currentHostMcpBridge } from '../rpc/domains/host-mcp.js'
 import type { HostMcpBridge } from '@onething/backend/runtime/acp/host-mcp-bridge'
-import { getLogger } from '../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('server.mcp-face')
 

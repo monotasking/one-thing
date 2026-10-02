@@ -789,3 +789,51 @@ vendor-facts 快照、线协议快照、出厂设置冻结测试前后都绿,快
 boundary(139 条)/ transport / log / session / provider(111 对)门输出前后逐字相同,assembly 只多了一行路径(收紧提示里的
 github-copilot 换了住址),仍只红 radio.ts;`provider-vendor-drill` 绿。测试里的非 import 差异 21 对,全是注释里的路径,外加上面那一处
 `TARGET_DIR`。`git grep` 里 `wiring/(providers|toolkit|resource|agent-loop)` 在代码 / 配置 / 脚本(含根 `CLAUDE.md`)中为零。
+
+### ③-收尾 C 落地记录(2026-10-02,未提交)
+
+**一句话**:`wiring/{engine,logging,headless}` 平铺进 `runtime/<d>/`(engine 的 `stream/` `prompt/` `triggers/` 等子目录原样做
+`runtime/engine` 的子目录),`wiring/gateway/host-ports.ts` 进 gateway 子树,**`packages/backend/wiring/` 整个删掉**。一笔做完
+(`flatten-wiring-c.mjs`,同 B 批:普通文件改名、不动主索引;`core/` 子树不在脚本的改写范围里;在 HEAD 的临时 worktree 上用独立
+`GIT_INDEX_FILE` 重放,441 个产物路径与主检出逐字相同)。99 个文件搬家,其中 69 份测试。
+
+**改名表**:
+
+| 旧路径(`packages/backend/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `wiring/engine/index.ts` | `runtime/engine/engine-layer.ts` | `createStreamEngineLayer()` + 读当前实例的四个访问器 |
+| `wiring/engine/context-compact.ts` | `runtime/engine/compact-session.ts` | `compactSessionContext`:按会话从 store 取料、调模型、落盘;与 `core/engine/context-compact.ts` 同名(I2) |
+| `wiring/logging/index.ts` | `runtime/logging/configure-logging.ts` | `configureLogging()` 那个唯一接线点 + 宿主侧 `getLogger` |
+| `wiring/logging/__tests__/index.test.ts` | `runtime/logging/__tests__/configure-logging.test.ts` | 跟着被测文件改名(留着 `index.test.ts` 会被读成考产品层门面) |
+| `wiring/gateway/host-ports.ts` | `gateway/lifecycle-port.ts` | IM 网关生命周期的注入端口(`configureGatewayHost`);文件头「为什么放在这里」一段改写 |
+
+**同一件事的两半(没合)**:`runtime/engine/{index,engine-layer}.ts`(产品引擎出口 + 引擎层的装配与访问器)、`core/engine/context-compact.ts`
+与 `runtime/engine/compact-session.ts`(算法 + 带 IO 的执行)、`runtime/logging/{index,configure-logging}.ts`(产品层门面 + 装配点)。
+
+**守门**(逐条):
+1. gateway 子树的依赖从「只 core」放宽成「core + `@shared`(含 `@shared/ipc`)」:shared 是 server ↔ client 的契约,后端引用它是合理的。
+   检查器 `checkGatewayHostBoundary` 不再套 `/shared\/ipc/` 那一条(断言名同步改成 `… (core + @shared only)`);
+   `architecture-boundaries.test.ts` 那条本来就不禁 `@shared`,改名字与理由。
+2. I1:包根目录的排除名单删掉 `'wiring'`(那个目录不存在了),两段说明改写。
+3. 检查器 `MAIN_CORE_SYSTEM_DIRS` 那格改成 `runtime/engine`(目录尺子,量到产品引擎那一半,照样全绿);内核闭包与「脊柱是什么」
+   两段注释里的 `wiring/` 去掉;acp 那段历史注释改写。其余点名文件(stream-engine-runtime、tool-execution、stream-processor、
+   image-stream、headless backend …)只改路径。
+4. `assembly-gate.mjs` 只有注释提到 `wiring/`(量法本来就是「脊柱 + runtime(kernel 除外)」,删掉目录不需要改代码);基线 3 行只改路径。
+   `gateway/lifecycle-port.ts` 进了 gateway 子树,而这把尺子不量 gateway,它那 1 个模块级 let 从此不在尺子上 —— 删掉那一行基线(不删
+   就是一条「可以收紧」的提示)。
+5. `exports` 改名 12 格、新增 15 格(534 → 549),`./wiring/…` 键为零。
+
+**手改的文件**:检查器、`architecture-boundaries.test.ts`(协调者点名同步的那一只;`core/` 下其余文件没碰)、`assembly-gate.mjs` 注释与基线、
+`gateway/lifecycle-port.ts` 文件头、`apps/desktop-react/tsconfig.json` 一处注释(json 不在脚本范围)、`runtime/agent-loop/providers/media-reader.ts`
+与 `runtime/collab/agent-activity.ts` 各一处注释、根 `CLAUDE.md`(所有 `wiring/` 的描述改成现状)、本文。
+
+**留下的**:`core/` 里还有三处注释写着旧路径(`core/engine/agent-loop-executor.ts:979`、`core/logging/types.ts:6`、
+`core/session/__tests__/apply-chunk-tool-progress.test.ts:11`),按「别碰 core」没改。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle 成功;根全量 vitest 改前
+11418 / 21 红,改后 11418 / 19 红 —— 按路径映射后改后的 19 条全在改前里,改前多的两条是前几批反复出现的偶发(`runtime-over-backend`
+MCP start 的 `ENOTEMPTY`、`build-workspace-watch` 满载);壳 7344 条同一条 A9;`gate:acp` 前后 108 ok;boundary(139 条)/ transport /
+log / session / provider / assembly 门输出前后逐字相同(assembly 仍只红 radio.ts);`provider-vendor-drill` 绿。
+`sessions:shadow-battery` 前后各跑一次,遮掉临时路径 / 会话 id / 端口之后 130 行对 130 行,只差进度行的秒数与 `refoldChecks` 215 → 217
+(采样次数,本身就随调度浮动 —— 前几批的两份存档也是 215 与 217);`compact-half-run-log` FAIL 与 `appendFailures 8` 两边一样。
+`git grep` 里 `wiring/(engine|logging|headless|gateway)` 在代码 / 配置 / 脚本(含根 `CLAUDE.md`)中只剩上面那三处 core 注释。

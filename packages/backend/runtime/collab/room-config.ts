@@ -36,7 +36,7 @@ import {
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { RuntimeRequestContext } from '@onething/backend/core'
 import { ownedCollabSessionId } from './owned-session-id.js'
 import { getEventBus } from '@onething/backend/events/index.js'
@@ -64,7 +64,7 @@ import {
 import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('collab.room')
 

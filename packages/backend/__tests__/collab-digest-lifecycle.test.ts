@@ -13,8 +13,8 @@ const control = vi.hoisted(() => ({
   auth: async () => {},
   onUsage: undefined as ((usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void) | undefined,
 }))
-vi.mock('../wiring/engine/stream/provider-helpers.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../wiring/engine/stream/provider-helpers.js')>()
+vi.mock('@onething/backend/runtime/engine/stream/provider-helpers', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/engine/stream/provider-helpers')>()
   return { ...actual,
     getEffectiveProviderConfig: () => ({ providerId: 'custom-digest', model: 'digest-local', providerConfig: {
       model: 'digest-local', selectedModels: ['digest-local'], apiKey: 'local-test-only', apiType: 'openai', baseUrl: control.url,

@@ -22,7 +22,7 @@ import { WakeWordEngine } from '@onething/backend/runtime/voice/kws/engine.wirin
 import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
 import type { StreamChunk } from '@shared/events/index.js'
 import type { Unsubscribe } from '@onething/backend/events/types.js'
-import { getStreamEngineSafe } from '@onething/backend/wiring/engine/index.js'
+import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import { getCurrentSessionId } from '@onething/backend/stores/app-state.js'
 import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
 import { agentExists } from '../agents/agent-store-access.js'

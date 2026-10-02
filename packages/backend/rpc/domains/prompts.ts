@@ -32,7 +32,7 @@ import {
   listPrompts,
   updatePrompt,
 } from '@onething/backend/runtime/prompts/store-bound'
-import { consolePort, getLogger } from '../../wiring/logging/index.js'
+import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPromptIpcLogger } from '@onething/backend/runtime/prompts/ipc-operations'
 

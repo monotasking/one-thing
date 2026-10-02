@@ -53,7 +53,7 @@ import {
 } from '@onething/backend/runtime/acp/mcp-bridge/server'
 import { HOST_MCP_UNAUTHORIZED, type HostMcpToolListing } from '@shared/ipc/host-mcp.js'
 import type { AgentNotificationEvent } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { HostToolSurface } from '@onething/backend/runtime/external-agents/host-tools'
 import { httpDiscoveryUrl, readHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { getSettings } from '@onething/backend/stores/settings.js'

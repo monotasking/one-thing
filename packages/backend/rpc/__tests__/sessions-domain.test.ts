@@ -145,7 +145,7 @@ vi.mock('@onething/backend/runtime/todo-plan/todo-plan-service', () => todoPlan)
 vi.mock('@onething/backend/runtime/toc/toc-recorder', () => toc)
 vi.mock('@onething/backend/runtime/variables/gateways', () => variables)
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => agents)
-vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }))
+vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngine: () => engine }))
 vi.mock('@onething/backend/runtime/permission', () => ({ Permission: permission }))
 vi.mock('../../events/index.js', () => ({
   getEventBus: () => ({ destroySession: events.destroySession, emit: events.emit }),

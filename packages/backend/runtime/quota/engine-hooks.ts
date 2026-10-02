@@ -12,7 +12,7 @@ import type { ProviderQuota } from '@shared/contracts/quota.js'
 import { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from '@onething/backend/runtime/agent-loop/providers/provider-data-policy'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { resolveSessionSpaceId } from '@onething/backend/stores/sessions.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('app.quota')
 

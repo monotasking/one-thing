@@ -64,7 +64,7 @@ vi.mock('@onething/backend/runtime/acp', () => ({
   ACPManager: { updateSettings: ports.updateACPSettings },
 }))
 
-vi.mock('../../wiring/gateway/host-ports.js', () => ({
+vi.mock('@onething/backend/gateway/lifecycle-port', () => ({
   getGatewayHost: () => ({ applySettings: ports.applyGatewaySettings }),
 }))
 

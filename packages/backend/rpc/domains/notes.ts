@@ -44,7 +44,7 @@ import { NoteVaultUnavailable, type NoteVault } from '@onething/backend/runtime/
 import { getNotesSubsystem, type NotesInventory } from '@onething/backend/runtime/notes/notes-subsystem'
 import { getSettings } from '../../stores/settings.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
-import { getLogger } from '../../wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('rpc.notes')
 

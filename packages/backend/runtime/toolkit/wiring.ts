@@ -38,9 +38,9 @@ import { toolkitAuditSink } from './audit-sink.js'
 import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from '@onething/backend/runtime/toolkit/mcp-catalog.wiring'
 import { runPluginToolCallIntercept } from '@onething/backend/runtime/plugins/tool-call-intercept-bound'
 import { runPluginToolResultIntercept } from '@onething/backend/runtime/plugins/tool-result-intercept-bound'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { getCurrentBackend } from '@onething/backend/current.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { ToolExecutionControl } from './executions.js'
 
 const log = getLogger('toolkit')

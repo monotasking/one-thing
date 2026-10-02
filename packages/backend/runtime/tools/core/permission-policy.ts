@@ -8,13 +8,13 @@ import {
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../../session/reads.js'
 import { isSystemInternalOrigin, latestRealOrigin } from '@onething/backend/channel/origin.js'
-import { writeAppLog } from '@onething/backend/wiring/logging/index.js'
+import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
 } from '@onething/backend/runtime/permissions'
 import type { MessageOrigin } from '@shared/ipc.js'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('permission')
 

@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '../../wiring/logging/index.js'
+import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'
 import { installSessionLayerForTest } from '../testing/session-layer.js'
 
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>

@@ -14,7 +14,7 @@
  *    分区的代理。未注入 = 无代理面可套用,静默跳过。
  *  - `registerGlobalWindowShortcuts()` —— 全局快捷键重注册。同上。
  *
- * 判例照 `wiring/gateway/host-ports.ts`:**late-bound**(每次调用现读)、
+ * 判例照 `gateway/lifecycle-port.ts`:**late-bound**(每次调用现读)、
  * **未注入即安静降级**而不是抛错 —— 没有宿主的进程里「给窗口套代理」不是 bug,
  * 是一件做不到的事。
  *

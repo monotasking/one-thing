@@ -36,13 +36,13 @@ import type { JsonObject } from '@shared/json.js'
 import type { HostMcpHostTool } from '@onething/backend/runtime/external-agents'
 import { getSession } from '@onething/backend/stores/sessions.js'
 import { sessionAccess } from '@onething/backend/session/access.js'
-import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import { resolveAgentProfileForSession } from '../agents/profile-for-session.js'
 import { collabVenueOf } from '@onething/backend/runtime/collab/venue'
 import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/runtime/toolkit'
-import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('external-agents')
 
