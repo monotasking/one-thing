@@ -11,11 +11,11 @@ import * as store from '../../../store.js'
 import {
   createAgentProviderFromRuntime,
 } from '../../providers/agent-runtime.js'
-import { defaultAgent, findAgent } from '../../agents/index.js'
-import { resolveAgentProfileForSession } from '../../agents/profile.js'
-import { getSkillsForSession } from '../../skills/session-skills.js'
+import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/agent-store-access'
+import { resolveAgentProfileForSession } from '@onething/backend/runtime/agents/profile-for-session'
+import { getSkillsForSession } from '@onething/backend/runtime/skills/session-skill-cache'
 import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index.wiring'
-import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
+import { buildProjectDirsPromptVars } from '@onething/backend/runtime/project-dirs/bootstrap'
 import {
   isProviderSupported,
 } from '../../providers/index.js'

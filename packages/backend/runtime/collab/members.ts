@@ -31,7 +31,7 @@
  */
 import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
 import type { CollabAgentLike } from '@onething/backend/runtime/collab'
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 
 export interface CollabRoomMemberOptions {
   /**

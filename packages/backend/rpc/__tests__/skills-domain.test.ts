@@ -5,7 +5,7 @@
  * (连同它的 `__tests__/skills.test.ts`)、`@main/ipc/skills.ts` 的壳适配、
  * bridge 上那十二条包装、server 的六条 REST 路由 + 一个正则块。
  *
- * 只桩装配层的端口(设置缓存 / `wiring/skills` / 会话技能表),**投影不桩** ——
+ * 只桩装配层的端口(设置缓存 / `runtime/skills` / 会话技能表),**投影不桩** ——
  * `@onething/backend/runtime/skills` 的那批 `*ForIpc` 是真跑的,所以这组用例证的是
  * 「域把端口接对了」,而不是「域自己又实现了一遍」。
  *
@@ -31,7 +31,7 @@ const skillsWiring = vi.hoisted(() => ({
   deleteSkill: vi.fn(),
   getUserSkillsPath: vi.fn(() => '/store/skills'),
   readSkillFile: vi.fn(),
-  // `wiring/skills/index.js` 的其余出口这里用不到,但 import 的是整只模块。
+  // `runtime/skills/skill-operations.js` 的其余出口这里用不到,但 import 的是整只模块。
   loadAllSkills: vi.fn(),
   loadProjectSkillsForDirectory: vi.fn(),
   ensureSkillsDirectories: vi.fn(),
@@ -44,8 +44,8 @@ const sessionSkills = vi.hoisted(() => ({
 }))
 
 vi.mock('../../stores/settings.js', () => settings)
-vi.mock('../../wiring/skills/index.js', () => skillsWiring)
-vi.mock('../../wiring/skills/session-skills.js', () => sessionSkills)
+vi.mock('@onething/backend/runtime/skills/skill-operations', () => skillsWiring)
+vi.mock('@onething/backend/runtime/skills/session-skill-cache', () => sessionSkills)
 
 const SKILL = {
   id: 'user:demo',

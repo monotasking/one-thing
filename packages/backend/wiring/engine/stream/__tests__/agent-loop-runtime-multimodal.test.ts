@@ -185,12 +185,6 @@ vi.mock('../../../providers/model-registry.js', () => ({
   getModelCapabilityEntry: vi.fn(() => undefined),
 }))
 
-vi.mock('../../../wiring/tools/index.js', () => ({
-  getEnabledToolsAsync: mocks.getEnabledToolsAsync,
-  initializeAsyncTools: mocks.initializeAsyncTools,
-  setInitContext: mocks.setInitContext,
-}))
-
 vi.mock('../../prompt/system-prompt.js', () => ({
   buildPrompt: vi.fn(async (input) => {
     mocks.promptInputs.push(input)
@@ -204,10 +198,10 @@ vi.mock('../../prompt/system-prompt.js', () => ({
   }),
 }))
 
-vi.mock('../../../variables/index.js', () => ({
+vi.mock('@onething/backend/runtime/variables/variable-system', () => ({
 }))
 
-vi.mock('../../../project-dirs/index.js', () => ({
+vi.mock('@onething/backend/runtime/project-dirs/bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 

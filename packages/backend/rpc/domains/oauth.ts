@@ -14,7 +14,7 @@
  *
  * 旧 server 按 owner 各开一台 `OnethingAuthService` + 各自的 `OnethingTokenStore`
  * (`owners/<uid>/<wid>/oauth`),桌面用的是装配层那台
- * `@onething/backend/wiring/auth` 单例(令牌住空间凭证池;批 8 之前默认空间是 `<store>/oauth-tokens.json`)。
+ * `@onething/backend/runtime/auth` 单例(令牌住空间凭证池;批 8 之前默认空间是 `<store>/oauth-tokens.json`)。
  * 一个 store 两本令牌账等于把「我登没登录」这件事分叉:桌面登了,浏览器看不见。
  * 搬家取的是桌面那台 —— **web 与桌面从此读同一份凭证**。
  *
@@ -33,13 +33,13 @@
  * ## 流的生命周期在 authService 里
  *
  * 设备码轮询、回调等待、到点超时与 `cancel` 都在 `OnethingAuthService`;每次相位变化
- * 经全局事件 `oauth:flow` 出网(`wiring/auth/oauth-events.ts` 的 `installOAuthBusBroadcaster`)。
+ * 经全局事件 `oauth:flow` 出网(`runtime/auth/oauth-events.ts` 的 `installOAuthBusBroadcaster`)。
  * `devicePoll` 这条动词保留给还在自己轮询的调用方,它与服务自己的轮询走同一口、同一条收尾。
  *
  * ## 两条推送不在这里
  *
  * `OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 走
- * `configureOAuthEventBroadcaster`(`../../wiring/auth/oauth-events.js`)——
+ * `configureOAuthEventBroadcaster`(`../../runtime/auth/oauth-events.js`)——
  * router 今天没有推送面。`refresh` 里那句「刷新失败 = 令牌过期」因此改走
  * `notifyOAuthTokenExpired`(经事件源),而不是像从前桌面那样直接调 Electron 广播。
  */
@@ -53,8 +53,8 @@ import {
   startOnethingOAuthForIpc,
 } from '@onething/backend/runtime/auth'
 import type { OAuthRoutes } from '@shared/ipc/oauth.js'
-import { authService } from '../../wiring/auth/auth-service.js'
-import { notifyOAuthTokenExpired } from '../../wiring/auth/oauth-events.js'
+import { authService } from '@onething/backend/runtime/auth/process-auth-service'
+import { notifyOAuthTokenExpired } from '@onething/backend/runtime/auth/oauth-events'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/backend/runtime/auth/ipc-operations'

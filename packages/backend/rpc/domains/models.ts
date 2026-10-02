@@ -51,7 +51,7 @@ import {
   modelParameterSuggestionOf,
   type ModelIdentityIndex,
 } from '@onething/backend/runtime/providers/model-identity'
-import { authService } from '../../wiring/auth/auth-service.js'
+import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import { createPolicyFetch } from '../../provider-binding/bound-fetch.js'
 import {
   VENDOR_RUNTIMES,

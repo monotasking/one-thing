@@ -10,7 +10,7 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import type { EventBus } from '@onething/backend/events/index.js'
 import { getSession, renameSession } from '@onething/backend/stores/sessions.js'
-import { getTodoPlanStore } from '@onething/backend/wiring/todo-plan/store.js'
+import { getTodoPlanStore } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { AcpPlanProjection } from './plan-projection.js'
 import type { AcpSessionStateProjection } from './subsystem.js'
 import { AcpTitleProjection } from './title-projection.js'

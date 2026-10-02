@@ -29,7 +29,7 @@ import {
   renameUserTodoNote,
   revealTodoPlanDirectory,
   updateTodoPlanDocument,
-} from '../../wiring/todo-plan/store.js'
+} from '@onething/backend/runtime/todo-plan/todo-plan-service'
 
 export const todoPlanRpcHandlers: RpcRouteHandlers<TodoPlanRoutes> = {
   async get(request, context = DESKTOP_RPC_CONTEXT) {

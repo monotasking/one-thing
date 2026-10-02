@@ -42,7 +42,7 @@
  * 纪律与做法那一批逐字相同:**采用域今天那一只端口**,不另写一份。所以
  * `markers` 问的是 `store.getSessionUserMessageMarkers`(不是读门面的
  * `listUserMarkers` —— 域今天问的是仓那一口,换一口就是改行为)、`segments` 问的是
- * `wiring/toc` 的 `readSessionSegments`、`tokenUsage` 问的是
+ * `runtime/toc` 的 `readSessionSegments`、`tokenUsage` 问的是
  * `store.getSessionTokenUsage` + 运行时那只归一化函数;`messages` 的两支各自对应
  * `sessionReads.listMessages` / `sessionReads.pageMessages`。
  *
@@ -136,12 +136,12 @@ import {
   type SessionPageResultSlot,
 } from '../../session/page-results.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
-import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
+import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/runtime/agents/agent-store-access'
 import { consolePort, getLogger } from '../logging/index.js'
-import { Permission } from '../permission/index.js'
-import { deleteSessionAiTodo } from '../todo-plan/store.js'
-import { workdirGateway } from '../variables/gateways.js'
-import { readSessionSegments } from '../toc/index.js'
+import { Permission } from '@onething/backend/runtime/permission'
+import { deleteSessionAiTodo } from '@onething/backend/runtime/todo-plan/todo-plan-service'
+import { workdirGateway } from '@onething/backend/runtime/variables/gateways'
+import { readSessionSegments } from '@onething/backend/runtime/toc/toc-recorder'
 
 const log = getLogger('resource.session')
 /** 投影层收的是鸭子 logger —— 与域里那一只同一个位置、同一个形状。 */

@@ -533,7 +533,7 @@ export interface TestProxyResponse {
  * 是 `@shared/ipc/dialog.ts` 的 `dialogRouter`。
  *
  * **三条推送留在原地**(router 今天没有推送面):`SETTINGS_CHANGED` /
- * `SYSTEM_THEME_CHANGED` 改走 `backend/wiring/settings/events.ts` 的
+ * `SYSTEM_THEME_CHANGED` 改走 `backend/runtime/settings/events.ts` 的
  * `configureSettingsEventBroadcaster` 注入端口;`SETTINGS_NAVIGATE` 本来就是
  * 主进程→设置窗的单向通知,与本域无关。
  *

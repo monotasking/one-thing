@@ -14,7 +14,7 @@
 import { isActiveAgent } from '@shared/ipc.js'
 import { isColleague, userDmRoomId } from '@onething/backend/runtime/agents'
 import * as store from '@onething/backend/store.js'
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { emitCollabRoomUpdated } from './room-runtime.js'
 import type { RuntimeRequestContext } from '@onething/backend/core'
 import { sessionAccess } from '@onething/backend/session/access.js'

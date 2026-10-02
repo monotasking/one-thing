@@ -31,7 +31,7 @@ import type {
 import type { ResourceRef } from '@shared/resource/ref'
 import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/core/toolkit'
 import { PET_CURRENT_PATH, petResourceSpec } from '@onething/backend/runtime/pets/resource-spec'
-import { UnknownPetError, type PetsSubsystem } from '../pets/subsystem.js'
+import { UnknownPetError, type PetsSubsystem } from '@onething/backend/runtime/pets/subsystem'
 
 export type PetOpPayload =
   | { readonly op: 'adopt'; readonly id: string }

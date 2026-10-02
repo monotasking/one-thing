@@ -227,7 +227,7 @@ export interface AcpToolPermissionShape {
 
 export function describeAcpToolPermission(input: AcpToolPermissionInput): AcpToolPermissionShape {
   const described = describeAcpKnownKind(input)
-  // `ToolEffect` 与内核 `Effect` 字段同名同义(Claude 路 `wiring/external-agents` 同一个转手)。
+  // `ToolEffect` 与内核 `Effect` 字段同名同义(Claude 路 `runtime/external-agents` 同一个转手)。
   if (described) return { effects: described.effects as Effect[], ...(described.preview ? { preview: described.preview } : {}) }
   const kind = input.kind || 'tool'
   return {

@@ -33,7 +33,7 @@ import {
   type TerminalExitStatus,
   type TerminalService,
 } from '@onething/backend/runtime/terminal/service.wiring'
-import { resolveExternalAgentSpawnEnv } from '@onething/backend/wiring/external-agents/spawn-env.js'
+import { resolveExternalAgentSpawnEnv } from '@onething/backend/runtime/external-agents/spawn-env'
 import { authorizeAcpRequest } from './request-authorize.js'
 
 /** 每台 agent 同时持有的终端上限(从前是每台 agent 配置里的 `maxTerminals`,A3-b 变常量)。 */

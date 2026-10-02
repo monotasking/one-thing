@@ -121,7 +121,7 @@ const DECL_PROBES = [
 	['packages/backend/core/engine/event-only-emitter.ts', 'CoreEventOnlyEventBusLike', ['packages/backend/events/event-only-emitter.ts']],
 	['packages/backend/core/engine/event-only-emitter.ts', 'CoreEventOnlyStoreHooks', ['packages/backend/events/event-only-emitter.ts']],
 	['packages/backend/core/gateway-runtime.ts', 'CoreStreamChannelLike', ['packages/backend/runtime/gateway-runtime.ts']],
-	['packages/backend/core/permission/permission-policy.ts', 'PermissionBridge', ['packages/backend/wiring/tools/core/permission-policy.ts']],
+	['packages/backend/core/permission/permission-policy.ts', 'PermissionBridge', ['packages/backend/runtime/tools/core/permission-policy.ts']],
 	['packages/backend/core/plugins/api-builder.ts', 'CorePluginAPIHost', ['packages/backend/runtime/plugins/api.ts']],
 	['packages/backend/core/plugins/manager.ts', 'CorePluginManagerHost', ['packages/backend/runtime/plugins/plugin-manager.ts']],
 	['packages/backend/core/plugins/scheduler.ts', 'CorePluginSchedulerHost', ['packages/backend/runtime/scheduler/scheduler.ts']],

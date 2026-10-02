@@ -40,7 +40,7 @@ const runHistory = vi.hoisted(() => ({
 }))
 
 vi.mock('@onething/backend/runtime/scheduler/scheduler-bound', () => ({ getScheduler: () => scheduler }))
-vi.mock('../../wiring/scheduler/user-tasks.js', () => userTasks)
+vi.mock('@onething/backend/runtime/scheduler/user-task-service', () => userTasks)
 vi.mock('@onething/backend/runtime/scheduler/run-history-bound.wiring', () => runHistory)
 
 const TASK = {

@@ -40,7 +40,7 @@
  * `saveSettings` 的副作用链里有两件只有 Electron 桌面做得到(给 session 与内嵌
  * 浏览器分区套代理、重注册全局快捷键),`getSystemTheme` 要的
  * 「系统当前是不是深色」是第三件。三件都走
- * `wiring/settings/host-ports.ts` 的 `configureSettingsHost`,未注入即安静跳过 ——
+ * `runtime/settings/host-ports.ts` 的 `configureSettingsHost`,未注入即安静跳过 ——
  * 于是 server / CLI 上这条链自然退化成「存盘 + 刷 provider 缓存 + 更新 MCP/ACP」,
  * 与迁移前它们根本没有这条通道等价。
  *
@@ -51,7 +51,7 @@
  * ## 一条推送走注入端口
  *
  * `SETTINGS_CHANGED` 留在原地(router 没有推送面),改走
- * `wiring/settings/events.ts` 的 `configureSettingsEventBroadcaster`;**排除发起窗
+ * `runtime/settings/events.ts` 的 `configureSettingsEventBroadcaster`;**排除发起窗
  * 这件事一字未丢** —— 它现在靠 `RpcDispatchContext.callerId`(宿主从
  * `event.sender.id` 铸进来的那一格)。
  * `SYSTEM_THEME_CHANGED` 连端口都不用:它的事件源是系统主题的 updated 事件,
@@ -77,15 +77,15 @@ import { invalidateProviderCache } from '../../wiring/providers/registry.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { getGatewayHost } from '../../wiring/gateway/host-ports.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { broadcastSettingsChanged } from '../../wiring/settings/events.js'
+import { broadcastSettingsChanged } from '@onething/backend/runtime/settings/events'
 import {
   applyHostNetworkProxySettings,
   hostShouldUseDarkColors,
   registerHostGlobalWindowShortcuts,
-} from '../../wiring/settings/host-ports.js'
-import { testOnethingProxy } from '../../wiring/settings/proxy.js'
-import { getVoiceServiceSafe } from '../../wiring/voice/service.js'
-import { startTodoPlanWatcher } from '../../wiring/todo-plan/store.js'
+} from '@onething/backend/runtime/settings/host-ports'
+import { testOnethingProxy } from '@onething/backend/runtime/settings/proxy'
+import { getVoiceServiceSafe } from '@onething/backend/runtime/voice/service'
+import { startTodoPlanWatcher } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingSettingsIpcLogger } from '@onething/backend/runtime/settings/ipc-operations'

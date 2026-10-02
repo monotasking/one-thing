@@ -560,7 +560,7 @@ export interface EvalsReadRunDetailResponse {
  * 「手写 IPC 工厂 + 壳适配」那两层)。请求/响应形状一字未改;变的只是通道。
  *
  * **一条推送留在原地**(`EVALS_RUN_PROGRESS`)—— router 今天没有推送面,它改走
- * `backend/wiring/evals/events.ts` 的 `configureEvalsEventBroadcaster` 注入端口。
+ * `backend/runtime/evals/events.ts` 的 `configureEvalsEventBroadcaster` 注入端口。
  *
  * 无参的三条(`listFixtures` / `listResults` / `listCases` / `runCancel`)按本仓
  * 惯例递 `{}`;`generateTriage` 从前签名是 `request?: { weeks?: number }`,客户端

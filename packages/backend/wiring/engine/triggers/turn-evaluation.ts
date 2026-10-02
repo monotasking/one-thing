@@ -1,5 +1,5 @@
 import type { TriggerContext, Trigger } from "./index.js";
-import { getSkillsForSession } from "../../skills/session-skills.js";
+import { getSkillsForSession } from "@onething/backend/runtime/skills/session-skill-cache";
 import * as store from "../../../store.js";
 import { getLogger } from '../../logging/index.js'
 

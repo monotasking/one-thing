@@ -63,7 +63,7 @@ async function assemble(name: string) {
 }
 
 async function seedUsage(tokens: number) {
-  const { getUsageLedger } = await import('../wiring/usage/index.js')
+  const { getUsageLedger } = await import('@onething/backend/runtime/usage/usage-recorder')
   const ledger = getUsageLedger()
   ledger.record({
     workspaceId: 'work', credentialId: 'a', providerId: 'openai', modelId: 'test-model',

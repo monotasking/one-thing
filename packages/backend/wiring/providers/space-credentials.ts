@@ -83,7 +83,7 @@ import type {
 } from '@onething/backend/runtime/providers'
 import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
 import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
-import { authService } from '../auth/auth-service.js'
+import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { getProviderInfo, requiresOAuth } from './registry.js'

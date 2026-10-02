@@ -18,7 +18,7 @@ import type { OnethingBackend } from '../../backend.js'
 import {
   configureTodoPlanHost,
   getTodoPlanHostPorts,
-} from '../../wiring/todo-plan/store.js'
+} from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import {
   createDevelopmentOnethingServerRuntime,
   createOnethingServerRuntimeOverBackend,

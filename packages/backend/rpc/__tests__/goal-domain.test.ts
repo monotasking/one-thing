@@ -20,15 +20,15 @@ const goals = vi.hoisted(() => ({
   collectGoalFileDiffs: vi.fn(),
 }))
 
-vi.mock('../../wiring/goals/index.js', () => ({
+vi.mock('@onething/backend/runtime/goals/goal-manager', () => ({
   getGoal: goals.getGoal,
   getGoals: goals.getGoals,
   createGoal: goals.createGoal,
   updateGoalFromUser: goals.updateGoalFromUser,
   clearGoal: goals.clearGoal,
 }))
-vi.mock('../../wiring/goals/kick.js', () => ({ kickGoalRunIfIdle: goals.kickGoalRunIfIdle }))
-vi.mock('../../wiring/goals/file-changes.js', () => ({ collectGoalFileDiffs: goals.collectGoalFileDiffs }))
+vi.mock('@onething/backend/runtime/goals/kick', () => ({ kickGoalRunIfIdle: goals.kickGoalRunIfIdle }))
+vi.mock('@onething/backend/runtime/goals/file-change-collector', () => ({ collectGoalFileDiffs: goals.collectGoalFileDiffs }))
 
 const GOAL = { id: 'goal-1', objective: 'Ship it', status: 'active', createdAt: 100 }
 

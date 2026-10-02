@@ -5,7 +5,7 @@
  * 装配层。这里把两条监听接成两种全局事件 `acp:session-state` / `acp:agent-state`,它们在
  * `GLOBAL_EVENT_LEAVES_PROCESS` 登记为可出网,于是经 `GET /api/events` 自动到壳,壳零通道代码。
  *
- * 写法照 `wiring/terminal/bus-broadcaster.ts`:**发送时才取总线**。子系统构造在装配中途,
+ * 写法照 `runtime/terminal/bus-broadcaster.ts`:**发送时才取总线**。子系统构造在装配中途,
  * 那时事件系统也许还没造出来;构造时抓总线会当场抛。装配没完成就有状态变化 → warn 一行丢掉,
  * 不抛 —— 状态是整张快照,下一次变化或一次 `acp.sessionState` 就补齐了。
  */

@@ -182,7 +182,7 @@ describe('Markdown asset service', () => {
   })
 
   /**
-   * 沙箱守卫的**判法**(装配层的调用点在 `wiring/markdown/asset-service.ts`)。
+   * 沙箱守卫的**判法**(装配层的调用点在 `runtime/markdown/asset-sandbox.ts`)。
    *
    * 它问的是「库会把附件放哪」,与真正写入用的是同一个答案 —— 从前那是两份实现
    * (守卫自己读一遍 `app.json`),两份实现就会各说各话。

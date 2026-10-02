@@ -12,7 +12,7 @@
  *    `server/runtime.ts` 里那套**只被这九条路由用到**的 per-owner
  *    `ServerSchedulerRuntime`(自己一台 Scheduler + 自己的 userTasks/runHistory,
  *    落在 `owners/<uid>/<wid>/scheduler/`)。删掉之后 server 与桌面吃的是同一台
- *    `@onething/backend/wiring/scheduler` —— 也就是 `createOnethingBackend` 在
+ *    `@onething/backend/runtime/scheduler` —— 也就是 `createOnethingBackend` 在
  *    `configureAppScheduler()` 里装好的那一台,而不是第二台引擎。
  *
  * 这一层只做一件事:**把端口接到 `@onething/backend/runtime/scheduler` 的依赖注入投影上**。
@@ -60,7 +60,7 @@ import {
   isUserSchedulerTask,
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
-} from '../../wiring/scheduler/user-tasks.js'
+} from '@onething/backend/runtime/scheduler/user-task-service'
 import type { DeleteOnethingUserSchedulerTaskOptions, OnethingSchedulerIpcLogger } from '@onething/backend/runtime/scheduler/ipc-operations'
 import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/runtime/scheduler/user-tasks'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

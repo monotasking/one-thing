@@ -38,7 +38,7 @@ vi.mock('@onething/backend/events/index.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => (id === 'pm' ? { id: 'pm', name: '阿明' } : null),
 }))
 

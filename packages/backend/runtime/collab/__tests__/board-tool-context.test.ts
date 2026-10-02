@@ -42,7 +42,7 @@ vi.mock('@onething/backend/store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => ({ id, name: id === 'fe' ? '小李' : id }),
 }))
 

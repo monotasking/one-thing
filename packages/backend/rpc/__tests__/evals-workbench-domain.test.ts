@@ -15,7 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcResponse } from '@shared/ipc/rpc.js'
 import { evalsWorkbenchRouter } from '@shared/ipc/evals-workbench.js'
-import { EvalsTaskOwner, configureEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
+import { EvalsTaskOwner, configureEvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 
 const incidentDirs = vi.hoisted(() => ({ root: '' }))
 const runtime = vi.hoisted(() => ({
@@ -56,7 +56,7 @@ vi.mock('@onething/backend/runtime', () => runtime)
 vi.mock('@onething/backend/runtime/evals/incident', () => ({ readIncident: runtime.readIncident }))
 vi.mock('../../store.js', () => ({ getSettings: settings.getSettings }))
 vi.mock('../../stores/settings.js', () => settings)
-vi.mock('../../wiring/evals/provider-adapter.js', () => credentials)
+vi.mock('@onething/backend/runtime/evals/provider-adapter', () => credentials)
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
   if (!response.ok) throw new Error(`dispatch failed: ${response.error.message}`)
@@ -65,7 +65,7 @@ function unwrap(response: RpcResponse): Record<string, unknown> {
 
 describe('evalsWorkbench RPC domain', () => {
   let dispatchRpc: (typeof import('../registry.js'))['dispatchRpc']
-  let configureEvalsHost: (typeof import('../../wiring/evals/host-ports.js'))['configureEvalsHost']
+  let configureEvalsHost: (typeof import('@onething/backend/runtime/evals/host-ports'))['configureEvalsHost']
   let dispose: (() => void) | undefined
   let tmpDir: string
   let tasks: EvalsTaskOwner
@@ -75,7 +75,7 @@ describe('evalsWorkbench RPC domain', () => {
     const [registry, domain, ports] = await Promise.all([
       import('../registry.js'),
       import('../domains/evals-workbench.js'),
-      import('../../wiring/evals/host-ports.js'),
+      import('@onething/backend/runtime/evals/host-ports'),
     ])
     dispatchRpc = registry.dispatchRpc
     configureEvalsHost = ports.configureEvalsHost

@@ -29,7 +29,7 @@ import {
   formatCollabWakePoke,
 } from '@onething/backend/runtime/collab'
 import { getEventBus } from '@onething/backend/events/index.js'
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 import { sessionAccess } from '@onething/backend/session/access.js'

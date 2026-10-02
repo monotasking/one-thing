@@ -9,12 +9,12 @@ import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
 } from "@onething/backend/runtime/product-stream-runtime";
-import { Permission } from "../permission/index.js";
+import { Permission } from "@onething/backend/runtime/permission";
 import { Interaction } from '@onething/backend/core/interaction';
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
 import { sessionCommands } from "../../session/commands.js";
-import { getSkillsForSession } from "../skills/session-skills.js";
+import { getSkillsForSession } from "@onething/backend/runtime/skills/session-skill-cache";
 import { mediaLibraryService } from "@onething/backend/runtime/media/library-service-bound";
 import {
 	generateChatTitle,
@@ -34,7 +34,7 @@ import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream, failAssistantRun, openAssistantRun } from "./stream/stream-executor.js";
 import { executeAgentLoopStreamGeneration } from "./stream/agent-loop-executor.js";
-import { billTitleUsage } from "../usage/bill-side-line.js";
+import { billTitleUsage } from "@onething/backend/runtime/usage/bill-side-line";
 import {
 	compactSessionContext,
 	getContextCompactReason,

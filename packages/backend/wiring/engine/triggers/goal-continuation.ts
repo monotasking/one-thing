@@ -24,8 +24,8 @@ import {
 	getGoal,
 	goalLimits,
 	tryBeginContinuation,
-} from "../../goals/index.js";
-import { emitGoalDrive } from "../../goals/kick.js";
+} from "@onething/backend/runtime/goals/goal-manager";
+import { emitGoalDrive } from "@onething/backend/runtime/goals/kick";
 import type { Trigger, TriggerContext } from "./index.js";
 
 export function createGoalContinuationTrigger(): Trigger {

@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   spaceSettings: {} as Record<string, unknown>,
 }))
 
-vi.mock('../../auth/auth-service.js', () => ({
+vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({
   authService: {
     refreshTokenIfNeeded: (providerId: string, target: unknown) => {
       mocks.refreshCalls.push({ providerId, target })

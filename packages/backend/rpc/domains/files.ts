@@ -54,7 +54,7 @@
  * 1. **`list` 的搜索根**。桌面给的是 `os.homedir()` + 下载目录 + 笔记根 +
  *    **按会话解析的接入目录**(批 B2),文件枚举走 ripgrep;http 给的是沙箱根
  *    (`homeDir` 也是沙箱根)、无下载目录、无笔记根、**无接入目录**,文件枚举走
- *    `wiring/files/workspace-walk.ts` 那个走查器 —— 逐字对齐旧 adapter 的 `listServerToolFiles`
+ *    `runtime/files/workspace-walk.ts` 那个走查器 —— 逐字对齐旧 adapter 的 `listServerToolFiles`
  *    无 glob 分支(跳过 `.git`,产出 posix 相对路径)。不改成 ripgrep,是因为
  *    「联网宿主上有没有 rg 二进制」不是这一批该赌的事。
  *
@@ -71,7 +71,7 @@
  *    http 那侧等待原生监听就绪,喂 `/api/files/watch/events` 的 SSE。
  *    这里**逐字保留这个差别**:给桌面装上真监视器会是一次未经拍板的行为变化
  *    (而且是一个没有消费者的 watcher 泄漏)。每个 server surface 拥有独立的
- *    `../../wiring/files/workspace-watch.ts` 实例；鉴权后的请求 context 只绑定
+ *    `../../runtime/files/workspace-watch.ts` 实例；鉴权后的请求 context 只绑定
  *    当前实例的两个监听端口，SSE 从同一实例订阅，退出等待真实关闭。
  */
 import * as fs from 'node:fs/promises'
@@ -94,14 +94,14 @@ import {
 } from '@onething/backend/runtime/files'
 import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/runtime/shell/host-ports'
 import { applyFileMutationUndo } from '@onething/backend/runtime/tools'
-import { noteRootsNow } from '../../wiring/notes/index.js'
+import { noteRootsNow } from '@onething/backend/runtime/notes/notes-subsystem'
 import type { FilesRoutes } from '@shared/ipc/files.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { listFiles as ripgrepListFiles } from '../../utils/ripgrep.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { getDownloadsDirectory } from '../../wiring/tools/core/sandbox.js'
-import { walkWorkspaceFiles } from '../../wiring/files/workspace-walk.js'
+import { getDownloadsDirectory } from '@onething/backend/runtime/tools/core/sandbox'
+import { walkWorkspaceFiles } from '@onething/backend/runtime/files/workspace-walk'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import {
   expandHomePath,

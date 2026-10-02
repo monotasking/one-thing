@@ -4,11 +4,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/core/agent-loop'
 import { createAgentProviderFromRuntime } from '../../../agent-loop/index.js'
-import { getUserSkillsPath } from '../../../skills/index.js'
-import { executeSkillManage } from '../../../skills/manage.js'
-import { invalidateSessionSkillsCache as invalidateSkillsCache } from '../../../skills/session-skills.js'
-import { configureAppSkillsLoader } from '../../../skills/loader.js'
-import { configureAppSkillManage } from '../../../skills/manage.js'
+import { getUserSkillsPath } from '@onething/backend/runtime/skills/skill-operations'
+import { executeSkillManage } from '@onething/backend/runtime/skills/manage-setup'
+import { invalidateSessionSkillsCache as invalidateSkillsCache } from '@onething/backend/runtime/skills/session-skill-cache'
+import { configureAppSkillsLoader } from '@onething/backend/runtime/skills/skill-sources'
+import { configureAppSkillManage } from '@onething/backend/runtime/skills/manage-setup'
 
 // Adapter wiring is an explicit assembly step now (no import-time config).
 configureAppSkillsLoader()

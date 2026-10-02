@@ -17,7 +17,7 @@
  * 未注入 = 这台进程没有 server 运行时(桌面 IPC、CLI、单元测试)。那一支上域
  * 走的是桌面那条真路(`getPluginManager()`),永远不会问到这里。
  *
- * 判例同 `wiring/settings/events.ts` 的广播端口:**late-bound**(每次现读)、
+ * 判例同 `runtime/settings/events.ts` 的广播端口:**late-bound**(每次现读)、
  * 注册返回一个还原函数,于是 HTTP 面关掉时不会把上一位占用者的槽一起清掉
  * (桌面内嵌 HTTP 面 + `server:start` 在同一个进程里先后起落时的唯一正确语义)。
  */

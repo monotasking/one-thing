@@ -27,7 +27,7 @@ import {
   collabUserIdentity,
   type CollabIdentity,
 } from '@onething/backend/runtime/collab'
-import { listAgents } from '@onething/backend/wiring/agents/index.js'
+import { listAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { resolveUserIdentity } from './user-identity.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 

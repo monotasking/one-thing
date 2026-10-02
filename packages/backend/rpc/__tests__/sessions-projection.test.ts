@@ -575,7 +575,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
      * ②的「停在卡上」当场红。
      */
     it('delete:用户删不弹卡,AI 删停在真权限卡上;删完索引没了、AI todo 也没了', async () => {
-      const { Permission } = await import('../../wiring/permission/index.js')
+      const { Permission } = await import('@onething/backend/runtime/permission')
       const store = await import('../../store.js')
       const { dispatchRpc } = await import('../registry.js')
 

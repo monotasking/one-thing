@@ -102,7 +102,7 @@ vi.mock('../../../../stores/sessions.js', () => ({ getSession: mocks.getSession 
 
 // 解析纪律(M4):快照 host 走 `findAgent(id) ?? defaultAgent()`;夹具对任何
 // id 都返回同一个 agent,两条腿的结果一致。
-vi.mock('../../../agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: mocks.findAgent,
   defaultAgent: () => mocks.findAgent(),
 }))
@@ -139,10 +139,10 @@ vi.mock('@onething/backend/core/agent-loop', async importOriginal => ({
   agentSupportsTools: mocks.agentSupportsTools,
 }))
 
-vi.mock('../../../variables/index.js', () => ({
+vi.mock('@onething/backend/runtime/variables/variable-system', () => ({
 }))
 
-vi.mock('../../../project-dirs/index.js', () => ({
+vi.mock('@onething/backend/runtime/project-dirs/bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 

@@ -415,7 +415,7 @@ export const DEFAULT_NOTES_DAILY_FORMAT = 'YYYY-MM-DD'
  * 任何一个笔记系统的名字。
  *
  * `vaults` / `folders` 出厂是空的 —— 播种是一次性迁移干的活(P1 的
- * `wiring/notes/migration.ts`),不是 defaults 干的:defaults 跑在每一次读设置
+ * `runtime/notes/migration.ts`),不是 defaults 干的:defaults 跑在每一次读设置
  * 上,而读 `obsidian.json` 是一次 IO。
  */
 export const DEFAULT_NOTES_SETTINGS: NotesSettings = {

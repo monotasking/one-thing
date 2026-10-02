@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock('../../wiring/auth/auth-service.js', () => ({
+vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({
   authService: {
     getToken: vi.fn(),
     refreshTokenIfNeeded: mocks.refreshTokenIfNeeded,

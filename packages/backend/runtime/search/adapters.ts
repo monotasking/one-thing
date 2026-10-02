@@ -16,7 +16,7 @@ import { getConnectedDirectoriesForSession } from '@onething/backend/stores/conn
 import { getSession, getSessionsList } from '@onething/backend/stores/sessions.js'
 import { sessionReads } from '../../session/reads.js'
 import { listFiles } from '@onething/backend/utils/ripgrep.js'
-import { noteVaultsNow, primaryNoteVaultNow } from '@onething/backend/wiring/notes/index.js'
+import { noteVaultsNow, primaryNoteVaultNow } from '@onething/backend/runtime/notes/notes-subsystem'
 
 export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapters {
   return {

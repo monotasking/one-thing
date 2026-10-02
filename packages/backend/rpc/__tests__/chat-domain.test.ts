@@ -54,7 +54,7 @@ const providers = vi.hoisted(() => ({
 
 vi.mock('../../store.js', () => store)
 vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }))
-vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
+vi.mock('@onething/backend/runtime/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
 vi.mock('../../events/index.js', () => ({ getEventBus: () => eventBus }))
 vi.mock('../../session/runs.js', () => runs)
@@ -65,7 +65,7 @@ vi.mock('../../wiring/engine/stream/provider-helpers.js', () => ({
   resolveProviderAuth: vi.fn(),
   getProviderApiType: vi.fn(),
 }))
-vi.mock('../../wiring/usage/bill-side-line.js', () => ({ billTitleUsage: () => () => {} }))
+vi.mock('@onething/backend/runtime/usage/bill-side-line', () => ({ billTitleUsage: () => () => {} }))
 
 const SESSION_ID = 'session-1'
 

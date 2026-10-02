@@ -15,12 +15,12 @@
  * ## 两个 electron 触点各自的去处
  *
  *  - **`app.isPackaged`**(旧 `getRepoDir()`,传染九条):判定本身搬进
- *    `wiring/evals/host-ports.ts` 的 `resolveEvalsRepoDir()`,宿主只注入
+ *    `runtime/evals/host-ports.ts` 的 `resolveEvalsRepoDir()`,宿主只注入
  *    `isPackaged` 这一位事实。未注入 = 视为非打包 = `process.cwd()`,与迁移前
  *    `!app.isPackaged` 那条分支逐字同义。
  *  - **`BrowserWindow.fromWebContents(event.sender)`**(旧 `runStart` 里只为给
  *    后台跑批一个推进度的靶子):没有了。进度改走
- *    `wiring/evals/events.ts` 的注入端口全窗广播 —— **这是本批唯一一处行为
+ *    `runtime/evals/events.ts` 的注入端口全窗广播 —— **这是本批唯一一处行为
  *    变化**(单窗 → 全窗),事件体一字未变;桌面只有一扇设置窗承载评估页,
  *    而渲染侧的订阅只在 `startRun` 时才建立,所以可感知结果不变。
  *
@@ -64,17 +64,17 @@ import type {
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
 import * as store from '../../store.js'
-import { createIncidentForTurn } from '../../wiring/evals/incident.js'
-import { broadcastEvalsRunProgress } from '../../wiring/evals/events.js'
-import { resolveEvalsRepoDir } from '../../wiring/evals/host-ports.js'
+import { createIncidentForTurn } from '@onething/backend/runtime/evals/turn-incident'
+import { broadcastEvalsRunProgress } from '@onething/backend/runtime/evals/events'
+import { resolveEvalsRepoDir } from '@onething/backend/runtime/evals/host-ports'
 import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
-} from '../../wiring/evals/provider-adapter.js'
+} from '@onething/backend/runtime/evals/provider-adapter'
 import { getLogger } from '../../wiring/logging/index.js'
-import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
+import { getSkillsForSession } from '@onething/backend/runtime/skills/session-skill-cache'
 import { analyzeIncidentInBackground } from './evals-workbench.js'
-import { getEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
+import { getEvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 import { isPathInside, resolveRpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'

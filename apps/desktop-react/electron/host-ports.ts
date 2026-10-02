@@ -30,7 +30,7 @@ import {
   createRequiredAppFetch,
 } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
-import { createEventBusTerminalBroadcaster } from '@onething/backend/wiring/terminal/bus-broadcaster.js'
+import { createEventBusTerminalBroadcaster } from '@onething/backend/runtime/terminal/bus-broadcaster'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { ProxySettings } from '@shared/ipc.js'
 import { ShellProxyPolicy } from './network-proxy.js'

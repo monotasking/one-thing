@@ -66,12 +66,12 @@ import {
   resolveProviderAuth,
 } from '../../wiring/engine/stream/provider-helpers.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { Permission } from '../../wiring/permission/index.js'
+import { Permission } from '@onething/backend/runtime/permission'
 import {
   generateChatTitle,
   isProviderSupported,
 } from '../../wiring/providers/index.js'
-import { billTitleUsage } from '../../wiring/usage/bill-side-line.js'
+import { billTitleUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { requestSessionOwner, sessionAccess } from '../../session/access.js'

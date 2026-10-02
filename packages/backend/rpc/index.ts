@@ -164,7 +164,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // P4c 第一个域(scheduler)。旧线是三处镜像:手写 IPC 工厂 + 主进程壳、
   // 渲染侧九条 REST 桩(**零调用点**)、server 九条 REST 路由背后**自己那台**
   // per-owner Scheduler。搬完之后 server 与桌面吃的是同一台
-  // `@onething/backend/wiring/scheduler` —— 一个 store 一台调度器。
+  // `@onething/backend/runtime/scheduler` —— 一个 store 一台调度器。
   { id: 'rpc:scheduler', mount: ctx => { ctx.registerRpcDomain(schedulerRouter, schedulerRpcHandlers) } },
   // P4c 第二个域(variables)。旧线同样是三处镜像;与 scheduler 的差别是
   // server adapter 有一道桌面没有的「会话不存在 → NOT_FOUND」前置检查,搬家取的是
@@ -273,7 +273,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // 旧 server 路由的原话。三处 http 分叉(`list` 的搜索根 / `reveal` 要外壳端口 /
   // `watchStart|Stop` 桌面是投影桩而 http 是真监视器)逐条写在域文件头的表里。
   // 一条推送留在原地:`FILE_WATCH_EVENT` 与它在 server 那侧的 SSE 源,
-  // 登记簿搬到 `wiring/files/workspace-watch.ts`,请求面与推送面共用同一张表。
+  // 登记簿搬到 `runtime/files/workspace-watch.ts`,请求面与推送面共用同一张表。
   { id: 'rpc:files', mount: ctx => { ctx.registerRpcDomain(filesRouter, filesRpcHandlers) } },
   // P4c 第九批第一个域(tools)—— 七条:目录 / 执行 / 取消 / 后台任务表与停 /
   // 刷 MCP 工具面 / 回写工具调用。它是继 files 之后第二个**逐方法带 http 分叉**
@@ -297,9 +297,9 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   { id: 'rpc:music', mount: ctx => { ctx.registerRpcDomain(musicRouter, musicRpcHandlers) } },
   // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
   // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`
-  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `wiring/evals/host-ports.ts`,
+  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `runtime/evals/host-ports.ts`,
   // 宿主只注入 `isPackaged` 这一位事实(未注入 = 非打包 = `process.cwd()`)。
-  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `wiring/evals/events.ts`
+  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `runtime/evals/events.ts`
   // 的 `configureEvalsEventBroadcaster` 端口 —— 顺带从单窗定向改成全窗广播,
   // 与工作台那两条一致。四条按 wire 路径读盘的方法在 http 上直接拒绝(见域文件头)。
   { id: 'rpc:evals', mount: ctx => { ctx.registerRpcDomain(evalsRouter, evalsRpcHandlers) } },
@@ -325,7 +325,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // **两条留宿主**(C):`OPEN_SETTINGS_WINDOW`(BrowserWindow)与
   // `SHOW_OPEN_DIALOG`(原生对话框,渲染侧 21 个调用点)。
   // **一条推送留在原地**(`SETTINGS_CHANGED`),改走
-  // `wiring/settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
+  // `runtime/settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
   // 从「跳过发起窗」改成全窗广播(信封里没有「谁在问」这一格,同 evals 判例)。
   // 三件要宿主的事(套代理 / 重注册全局快捷键 / 系统深浅色)走新立的
   // `configureSettingsHost`;网关设置的套用复用第八批的 `configureGatewayHost`,

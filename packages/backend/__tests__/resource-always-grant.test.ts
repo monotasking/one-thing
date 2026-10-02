@@ -87,7 +87,7 @@ describe('应用级许可在真装配里(2026-09-10)', () => {
     const backend = await assemble()
     try {
       const store = await import('../store.js')
-      const { Permission } = await import('../wiring/permission/index.js')
+      const { Permission } = await import('@onething/backend/runtime/permission')
       const { sessionCommands } = await import('../session/commands.js')
       const { permissionGrantsRpcHandlers } = await import('../rpc/domains/permission-grants.js')
       const { DESKTOP_RPC_CONTEXT } = await import('@shared/ipc/rpc.js')

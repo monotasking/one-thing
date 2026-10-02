@@ -11,10 +11,10 @@
  *
  *  - **`sendToAll`**(`BrowserWindow.getAllWindows()`):两条进度推送
  *    (`EVALS_REPLAY_PROGRESS` / `EVALS_DIAGNOSE_PROGRESS`)改走
- *    `wiring/evals/events.ts` 的注入端口。桌面注入的仍是「所有活着的窗口」,
+ *    `runtime/evals/events.ts` 的注入端口。桌面注入的仍是「所有活着的窗口」,
  *    渲染层收到的 payload 一字未变。
  *  - **跨文件 `import("./evals.js")` 拿 `getRepoDirForEvals()`**:`incidentPromote`
- *    现在直接问 `wiring/evals/host-ports.ts` 的 `resolveEvalsRepoDir()` ——
+ *    现在直接问 `runtime/evals/host-ports.ts` 的 `resolveEvalsRepoDir()` ——
  *    判定只有一份,不再由两个 IPC 文件互相 import。
  *
  * `activeOps`(每事故单飞:回放与诊断共用一张表)随搬,语义逐字不变。
@@ -42,15 +42,15 @@ import * as store from '../../store.js'
 import {
   broadcastEvalsDiagnoseProgress,
   broadcastEvalsReplayProgress,
-} from '../../wiring/evals/events.js'
-import { resolveEvalsRepoDir } from '../../wiring/evals/host-ports.js'
+} from '@onething/backend/runtime/evals/events'
+import { resolveEvalsRepoDir } from '@onething/backend/runtime/evals/host-ports'
 import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
-} from '../../wiring/evals/provider-adapter.js'
+} from '@onething/backend/runtime/evals/provider-adapter'
 import { getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import { getEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
+import { getEvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 
 const log = getLogger('rpc.evals-workbench')
 

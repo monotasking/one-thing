@@ -27,7 +27,7 @@ export interface AuxiliaryModelInput {
  *    的意图落盘**。崩在中间时账本上有「发起过、结果未知」,而不是什么都没有 ——
  *    这正是 §15.12(c) 里 `run/end` 那一处被留成可 await 的同一条理由。
  *
- * `wiring/toc/__tests__/record-turn.test.ts` 三条用例把它钉着(意图落盘失败 →
+ * `runtime/toc/__tests__/record-turn.test.ts` 三条用例把它钉着(意图落盘失败 →
  * provider 一次都不许被调到;每次重试各记一份意图,且都在到达 provider 之前)。
  *
  * 记账**失败上抛**(`writeSessionEvent` 返回 undefined = 这条会话记不了账):

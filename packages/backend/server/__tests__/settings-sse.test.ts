@@ -28,7 +28,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEvent,
-} from '../../wiring/settings/events.js'
+} from '@onething/backend/runtime/settings/events'
 import { createTestServerRuntime } from './test-helpers.js'
 
 const servers: Server[] = []

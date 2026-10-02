@@ -181,7 +181,7 @@ export interface OAuthFlowEventPayload {
  * `(providerId, target)` 两个位置参数现拼成同一个对象,现在渲染侧直接递对象。
  *
  * **两条推送不在这张表上**:`OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 走
- * `configureOAuthEventBroadcaster` 注入端口(`@onething/backend/wiring/auth/oauth-events`),
+ * `configureOAuthEventBroadcaster` 注入端口(`@onething/backend/runtime/auth/oauth-events`),
  * 桌面推 `webContents.send`、server 推 `GET /api/oauth/events` 那条 SSE ——
  * router 今天没有推送面,白名单上多一条就等于承诺了一条不存在的通道。
  *

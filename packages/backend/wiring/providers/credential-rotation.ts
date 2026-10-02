@@ -52,7 +52,7 @@ import { getProviderManifest } from '@onething/backend/runtime/providers/manifes
 import { buildOnethingRequestProviderOptionsBag } from '@onething/backend/runtime/providers/provider-options'
 import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from '@onething/backend/runtime/providers/route'
 import type { CoreProviderConfigLike, CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
-import { authService } from '../auth/auth-service.js'
+import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import {
   buildRoutedProviderConfig,

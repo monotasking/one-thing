@@ -40,7 +40,7 @@ import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution
 import type { RuntimeRequestContext } from '@onething/backend/core'
 import { ownedCollabSessionId } from './owned-session-id.js'
 import { getEventBus } from '@onething/backend/events/index.js'
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { applyBoardAction, clearCollabBoard } from './board-store.js'
 import { emitCollabTyping } from './typing-observer.js'
 import {

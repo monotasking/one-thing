@@ -23,7 +23,7 @@ import * as store from '@onething/backend/store.js'
 import { getEventBus } from '@onething/backend/events/index.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionReads } from '../../session/reads.js'
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { resolveUserIdentity } from './user-identity.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

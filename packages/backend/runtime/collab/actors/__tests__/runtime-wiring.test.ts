@@ -75,7 +75,7 @@ vi.mock('../../../../session/reads.js', () => import('../../../../session/testin
 vi.mock('../../../../session/commands.js', () => import('../../../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/wiring/external-agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/external-agents/connector-registry', () => ({
   interruptExternalAgentSessions: async (sessionId: string) => {
     mocks.externallyInterrupted.push(sessionId)
   },
@@ -85,11 +85,11 @@ vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 
-vi.mock('@onething/backend/wiring/usage/index.js', () => ({
+vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),
 }))
 
-vi.mock('@onething/backend/wiring/usage/bill-side-line.js', () => ({
+vi.mock('@onething/backend/runtime/usage/bill-side-line', () => ({
   billCollabPlanUsage: () => () => {},
 }))
 
@@ -107,7 +107,7 @@ vi.mock('@onething/backend/wiring/engine/index.js', () => ({
   getStreamEngineSafe: () => engineStub(),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => AGENTS[id],
   listAgents: () => Object.values(AGENTS),
   displayAgent: (id: string) => AGENTS[id],

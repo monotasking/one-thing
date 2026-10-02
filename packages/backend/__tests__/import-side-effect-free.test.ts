@@ -53,23 +53,23 @@ vi.mock('@onething/backend/runtime/spaces/credentials', async (importOriginal) =
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
   configureSpaceCredentialPluginStrategyHost: () => { spy.calls.push('credential-strategy-host') },
 }))
-vi.mock('../wiring/permission/capabilities.js', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/permission/capabilities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
 }))
 
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
-    await import('../wiring/tools/core/sandbox.js')
+    await import('@onething/backend/runtime/tools/core/sandbox')
     await import('@onething/backend/runtime/tools/background-jobs-bound')
     await import('@onething/backend/runtime/tools/bash-executor')
     await import('../wiring/providers/index.js')
     await import('@onething/backend/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
     await import('@onething/backend/runtime/search/install-providers')
-    await import('../wiring/skills/manage.js')
-    await import('../wiring/skills/loader.js')
-    await import('../wiring/permission/permission-grants.js')
+    await import('@onething/backend/runtime/skills/manage-setup')
+    await import('@onething/backend/runtime/skills/skill-sources')
+    await import('@onething/backend/runtime/permission/grant-storage')
     await import('../wiring/providers/space-credentials.js')
     await import('../wiring/providers/credential-strategy.js')
 

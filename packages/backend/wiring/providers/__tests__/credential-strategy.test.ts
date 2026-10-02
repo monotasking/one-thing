@@ -30,7 +30,7 @@ afterAll(async () => {
 /** 账本是**佐料不是前提**:这里只喂一份固定记录,免得测试去碰真磁盘。 */
 const ledgerRecords: unknown[] = []
 
-vi.mock('../../usage/index.js', () => ({
+vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({
   getUsageLedger: () => ({
     readRecordsInRange: async () => ledgerRecords,
   }),

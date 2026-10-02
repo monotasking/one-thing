@@ -65,7 +65,7 @@ vi.mock('../../../session/deletion.js', () => ({
   },
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => mocks.agents.get(id) ?? null,
 }))
 

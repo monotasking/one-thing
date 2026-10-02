@@ -4,8 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const calls = vi.hoisted(() => ({ tts: vi.fn(), asr: vi.fn() }))
-vi.mock('../wiring/voice/providers.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../wiring/voice/providers.js')>(),
+vi.mock('@onething/backend/runtime/voice/provider-calls', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/voice/provider-calls')>(),
   streamSynthesizeSpeech: calls.tts,
   transcribeUtterance: calls.asr,
 }))
@@ -54,7 +54,7 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   createSession('voice-session', 'Voice')
   const settings = getSettings()
   saveSettings({ ...settings, voice: { ...settings.voice!, enabled: true, tts: { ...settings.voice!.tts, autoSpeak: true, provider: 'openrouter-tts' } } })
-  const { getVoiceService } = await import('../wiring/voice/service.js')
+  const { getVoiceService } = await import('@onething/backend/runtime/voice/service')
   const first = getVoiceService()
   const tts = barrier()
   const asr = barrier()

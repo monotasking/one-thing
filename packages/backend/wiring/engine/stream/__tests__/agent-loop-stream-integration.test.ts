@@ -291,7 +291,7 @@ vi.mock("@onething/backend/runtime/plugins/lifecycle.wiring", () => ({
 	runAfterAssistantResponseHooks: mocks.runAfterAssistantResponseHooks,
 }));
 
-vi.mock("../../../skills/session-skills.js", () => ({
+vi.mock("@onething/backend/runtime/skills/session-skill-cache", () => ({
 	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
@@ -306,23 +306,10 @@ vi.mock("@onething/backend/runtime/mcp/index.wiring", () => ({
 	},
 }));
 
-vi.mock("../../../wiring/tools/index.js", () => ({
-	createToolCall: vi.fn(
-		(toolId: string, toolName: string, args: JsonObject) => ({
-			id: `call_${toolId}`,
-			toolId,
-			toolName,
-			arguments: args,
-			status: "pending",
-			timestamp: 1,
-		}),
-	),
+vi.mock("@onething/backend/runtime/variables/variable-system", () => ({
 }));
 
-vi.mock("../../../variables/index.js", () => ({
-}));
-
-vi.mock("../../../project-dirs/index.js", () => ({
+vi.mock("@onething/backend/runtime/project-dirs/bootstrap", () => ({
 	buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }));
 

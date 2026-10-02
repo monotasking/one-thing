@@ -22,7 +22,7 @@ const store = vi.hoisted(() => ({
   updateTodoPlanDocument: vi.fn(),
 }))
 
-vi.mock('../../wiring/todo-plan/store.js', () => store)
+vi.mock('@onething/backend/runtime/todo-plan/todo-plan-service', () => store)
 vi.mock('../../stores/app-state.js', () => ({ getCurrentSessionId: store.currentSessionId }))
 
 const ownerRows = new Map([

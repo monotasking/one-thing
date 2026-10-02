@@ -33,7 +33,7 @@ import type { NoteVault } from '@onething/backend/runtime/notes'
  * (改成照样问注册表),「附件目录指向沙箱外」那条在夹紧侧就会放行。
  */
 const notes = vi.hoisted(() => ({ vaults: [] as NoteVault[] }))
-vi.mock('../../wiring/notes/index.js', () => ({
+vi.mock('@onething/backend/runtime/notes/notes-subsystem', () => ({
   getNotesSubsystemSafe: () => ({
     registry: {
       vaultFor: (absolutePath: string) =>

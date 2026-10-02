@@ -28,7 +28,7 @@ import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '../../settings/events.js'
+} from '@onething/backend/runtime/settings/events'
 
 afterEach(() => {
   state.global = []

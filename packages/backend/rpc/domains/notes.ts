@@ -41,7 +41,7 @@ import type {
 } from '@shared/ipc/notes.js'
 import type { AppSettings } from '@shared/ipc.js'
 import { NoteVaultUnavailable, type NoteVault } from '@onething/backend/runtime/notes'
-import { getNotesSubsystem, type NotesInventory } from '../../wiring/notes/index.js'
+import { getNotesSubsystem, type NotesInventory } from '@onething/backend/runtime/notes/notes-subsystem'
 import { getSettings } from '../../stores/settings.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { getLogger } from '../../wiring/logging/index.js'

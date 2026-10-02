@@ -20,9 +20,9 @@ const usageModule = vi.hoisted(() => ({
 }))
 
 // NOTE: this specifier must resolve to the SAME module the handler imports
-// (packages/backend/wiring/usage/index.ts). A path one level off mocks nothing and the test
+// (packages/backend/runtime/usage/usage-recorder.ts). A path one level off mocks nothing and the test
 // then silently exercises the real ledger against the user's store.
-vi.mock('../../wiring/usage/index.js', () => ({
+vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({
   getUsageLedger: usageModule.getUsageLedger,
   getUsageSummaryWithProjects: usageModule.getUsageSummaryWithProjects,
   getSessionUsageTotal: usageModule.getSessionUsageTotal,

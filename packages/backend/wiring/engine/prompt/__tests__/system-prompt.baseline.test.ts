@@ -19,7 +19,7 @@ import { buildPrompt } from '../system-prompt.js'
 // 实现顶两个口 —— 它对任何 id 都造得出一个 agent,`?? defaultAgent()` 这条腿
 // 因此不会被走到,基线文本与旧 getAgent 夹具逐字相同。
 const agentStoreMock = vi.hoisted(() => ({ findAgent: vi.fn() }))
-vi.mock('../../../agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: agentStoreMock.findAgent,
   defaultAgent: () => agentStoreMock.findAgent(undefined),
   DEFAULT_AGENT_ID: 'default',

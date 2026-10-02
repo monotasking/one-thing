@@ -72,7 +72,7 @@ openai packages/backend/wiring/engine/stream/image-stream.ts
 openai packages/backend/wiring/engine/stream/provider-helpers.ts
 openai packages/backend/wiring/providers/custom-manifests.ts
 openai packages/backend/wiring/providers/space-config-migration.ts
-openai packages/backend/wiring/voice/providers.ts
+openai packages/backend/runtime/voice/provider-calls.ts
 openai packages/backend/runtime/agent-loop/providers/base/finish-reason.ts
 openai packages/backend/runtime/agent-loop/providers/base/http-agent-provider.ts
 openai packages/backend/runtime/agent-loop/providers/base/index.ts
@@ -99,7 +99,7 @@ openai packages/backend/stores/defaults/settings.ts
 openai packages/shared/ipc/providers.ts
 openai packages/shared/ipc/voice.ts
 openrouter packages/backend/rpc/domains/voice.ts
-openrouter packages/backend/wiring/voice/providers.ts
+openrouter packages/backend/runtime/voice/provider-calls.ts
 openrouter packages/backend/runtime/agent-loop/providers/thinking/index.ts
 openrouter packages/backend/runtime/agent-loop/providers/thinking/openrouter-reasoning.ts
 openrouter packages/backend/runtime/agent-loop/providers/wires/index.ts

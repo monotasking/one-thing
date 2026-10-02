@@ -193,7 +193,7 @@ describe('createOnethingHttpServer', () => {
 
   // P4c 第十一批:`POST /api/network/test-proxy` 与 `network` facade adapter 一起
   // 没了 —— 代理自检随 `settingsRouter.testProxy` 走通用 RPC,实现收敛成
-  // `backend/wiring/settings/proxy.ts` 一份(旧 server 里那份是逐字抄件)。
+  // `backend/runtime/settings/proxy.ts` 一份(旧 server 里那份是逐字抄件)。
 
   /**
    * P4 终态批 A1-b:`query` 改走 `POST /api/rpc` 的 `search` 域(域在 http 那一支上

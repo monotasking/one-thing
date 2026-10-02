@@ -3,7 +3,7 @@
  *
  * 取代 `apps/electron/src/main/ipc/goal.ts`（已删）与 web.ts 里那三个写死
  * "not available in the web build" 的桩：目标系统本来就整个住在装配层
- * （`@onething/backend/wiring/goals`，每个宿主的 `createOnethingBackend` 都装配了它），
+ * （`@onething/backend/runtime/goals/goal-manager`，每个宿主的 `createOnethingBackend` 都装配了它），
  * 之前只是没有一条能到达它的传输面。通用通道一接，web/server 拿到的就是同一份
  * 实现——**这条不是等价搬迁，是顺带补齐**。
  *
@@ -15,15 +15,15 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '../../session/access.js'
 import type { GoalRoutes } from '@shared/ipc/goal.js'
 import type { SessionGoal } from '@shared/ipc/goal.js'
-import { collectGoalFileDiffs } from '../../wiring/goals/file-changes.js'
+import { collectGoalFileDiffs } from '@onething/backend/runtime/goals/file-change-collector'
 import {
   clearGoal,
   createGoal,
   getGoal,
   getGoals,
   updateGoalFromUser,
-} from '../../wiring/goals/index.js'
-import { kickGoalRunIfIdle } from '../../wiring/goals/kick.js'
+} from '@onething/backend/runtime/goals/goal-manager'
+import { kickGoalRunIfIdle } from '@onething/backend/runtime/goals/kick'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

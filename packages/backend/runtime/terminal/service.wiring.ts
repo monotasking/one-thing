@@ -393,7 +393,7 @@ export class TerminalService {
      *
      * 整机关闭那一路(`killAll()` → 每格 `disposeRecord`)照样会走到这里,而那是
      * 对的:广播器自己守着「事件系统还在不在」(`isEventSystemInitialized()`,
-     * 判词在 `backend/wiring/terminal/bus-broadcaster.ts` 上),装配拆了就丢一行
+     * 判词在 `backend/runtime/terminal/bus-broadcaster.ts` 上),装配拆了就丢一行
      * warn,不抛。
      */
     if (!record.exitSent) {

@@ -38,7 +38,7 @@ vi.mock('../../utils/ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
  * 当场红。
  */
 const notes = vi.hoisted(() => ({ roots: [] as string[] }))
-vi.mock('../../wiring/notes/index.js', () => ({ noteRootsNow: () => notes.roots }))
+vi.mock('@onething/backend/runtime/notes/notes-subsystem', () => ({ noteRootsNow: () => notes.roots }))
 vi.mock('@onething/backend/runtime/shell/host-ports', async () => {
   const actual = await vi.importActual<typeof import('@onething/backend/runtime/shell/host-ports')>(
     '@onething/backend/runtime/shell/host-ports',
@@ -310,7 +310,7 @@ describe('files RPC domain', () => {
 
   it('offers notes and Downloads as directory roots for a bare @ on the desktop', async () => {
     declareDesktopHost()
-    const { getDownloadsDirectory } = await import('../../wiring/tools/core/sandbox.js')
+    const { getDownloadsDirectory } = await import('@onething/backend/runtime/tools/core/sandbox')
     const noteRoot = '/notes/personal'
     notes.roots = [noteRoot]
     ripgrep.listFiles.mockReturnValue(emit([]))

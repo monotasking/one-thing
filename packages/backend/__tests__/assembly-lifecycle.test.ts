@@ -41,7 +41,7 @@
  *      worker 的邻居,恒绿,还得写成"不高于"才不抖。删掉它不是放弃判据:定时器
  *      泄漏改由三个起定时器的模块**各自的单测**用 `vi.getTimerCount()` 钉
  *      (`session/__tests__/shutdown-flush-and-blob-gc` / `list-projection-backfill` /
- *      `wiring/scheduler/__tests__/user-tasks`,都带反证)—— fake timers 看得见
+ *      `runtime/scheduler/__tests__/user-task-service`,都带反证)—— fake timers 看得见
  *      unref 定时器,是唯一说得出话的口径。
  *   ⑩ **宿主表里的本机信任在装配那一刻就生效**(B3,方案
  *      `backend-transport-forks-2026-09.md`)。B2 之前这句话只在内嵌 HTTP 面挂载
@@ -480,7 +480,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
 
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
     const runtime = await import('@onething/backend/runtime/external-agents')
-    const registry = await import('../wiring/external-agents/index.js')
+    const registry = await import('@onething/backend/runtime/external-agents/connector-registry')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     try {
@@ -513,7 +513,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('drains a connector created by a failing early hook before allowing the next Backend', { timeout: 180_000 }, async () => {
-    const registry = await import('../wiring/external-agents/index.js')
+    const registry = await import('@onething/backend/runtime/external-agents/connector-registry')
     const { getCurrentBackendSafe } = await import('../current.js')
     const boom = new Error('afterSettings failed after creating a connector')
     let release!: () => void
@@ -562,7 +562,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     const runtime = await import('@onething/backend/runtime/external-agents')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
-    const registry = await import('../wiring/external-agents/index.js')
+    const registry = await import('@onething/backend/runtime/external-agents/connector-registry')
     const boom = new Error('afterSettings failed without creating a connector')
     try {
       await expect(assemble({ afterSettings: () => { throw boom } }))

@@ -9,9 +9,9 @@
 import { AbortScope, Intent } from '@onething/backend/core/toolkit'
 import type { Authorizer, Decision, Invocation, Preview } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import { resolvePermissionMessageAnchor } from '@onething/backend/wiring/permission/message-anchor.js'
+import { resolvePermissionMessageAnchor } from '@onething/backend/runtime/permission/message-anchor'
 import { createPermissionAuthorizer } from '@onething/backend/wiring/toolkit/authorizer.js'
-import { enforcePermissionPolicyRejectingUnanswered } from '@onething/backend/wiring/tools/core/permission-policy.js'
+import { enforcePermissionPolicyRejectingUnanswered } from '@onething/backend/runtime/tools/core/permission-policy'
 
 /**
  * 卡没人答时怎么办。`'wait'` = 一直等(有人守着卡的宿主:桌面壳,今天的行为);

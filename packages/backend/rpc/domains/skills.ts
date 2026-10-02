@@ -14,7 +14,7 @@
  *    创建 / 删除,十三个 `*ServerSkill*` 助手)。
  *
  * 逻辑一行没搬:十二条方法**逐条**转调 `@onething/backend/runtime/skills` 的投影
- * (`*OnethingSkill*ForIpc`),端口照旧从 `@onething/backend/wiring/skills` 与
+ * (`*OnethingSkill*ForIpc`),端口照旧从 `@onething/backend/runtime/skills/skill-operations` 与
  * 设置缓存取 —— 与迁移前 `@main` 那份适配逐字同义。
  *
  * **唯一需要宿主的那条是 `openDirectory`**:它要「在文件管理器里打开一个目录」,
@@ -49,12 +49,12 @@ import {
   deleteSkill,
   getUserSkillsPath,
   readSkillFile,
-} from '../../wiring/skills/index.js'
+} from '@onething/backend/runtime/skills/skill-operations'
 import {
   getAllSkillsForDisplay,
   initializeSkills,
   invalidateSkillsCache,
-} from '../../wiring/skills/session-skills.js'
+} from '@onething/backend/runtime/skills/session-skill-cache'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { DeleteOnethingSkillForIpcOptions, OnethingSkillsIpcLogger } from '@onething/backend/runtime/skills/ipc-operations'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
@@ -62,7 +62,7 @@ import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
 import type { ListOnethingSkillsForIpcOptions, RefreshOnethingSkillsForIpcOptions, OpenOnethingSkillDirectoryForIpcOptions, CreateOnethingSkillForIpcOptions, ToggleOnethingSkillEnabledForIpcOptions, AddOnethingSkillDirectoryForIpcOptions, UpdateOnethingSkillDirectoryForIpcOptions, RemoveOnethingSkillDirectoryForIpcOptions, SetOnethingSkillAgentForIpcOptions } from '@onething/backend/runtime/skills/ipc-operations'
 
 const log = getLogger('rpc.skills')
-/** 投影层收的是鸭子 logger;过渡替身与 `wiring/skills` 用的是同一个(area ① 统一后删)。 */
+/** 投影层收的是鸭子 logger;过渡替身与 `runtime/skills` 用的是同一个(area ① 统一后删)。 */
 const consoleLog: ConsoleLikePort & OnethingSkillsIpcLogger = consolePort(log)
 
 /**

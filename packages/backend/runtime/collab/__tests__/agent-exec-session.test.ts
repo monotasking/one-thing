@@ -91,7 +91,7 @@ vi.mock('@onething/backend/store.js', () => ({
   },
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
 
 const { ensureCollabAgentSession, getCollabAgentSessionRoom } = await import('../agent-exec-session.js')
 

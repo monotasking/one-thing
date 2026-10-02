@@ -61,7 +61,7 @@ import { sanitizeRendererOrigin } from '../../channel/index.js'
 import { getEventBus } from '../../events/index.js'
 import { getStreamEngine } from '../../wiring/engine/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { Permission } from '../../wiring/permission/index.js'
+import { Permission } from '@onething/backend/runtime/permission'
 import type { RpcRouteHandlers } from '../registry.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
 import { deliverPresentation, takePresented } from '../../session/presentation.js'
@@ -137,7 +137,7 @@ function amendTurnSignal(input: {
 }): void {
   Promise.all([
     import('@onething/backend/runtime'),
-    import('../../wiring/evals/incident.js'),
+    import('@onething/backend/runtime/evals/turn-incident'),
   ])
     .then(async ([runtime, { createIncidentForTurn }]) => {
       const incident = await createIncidentForTurn({

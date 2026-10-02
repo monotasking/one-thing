@@ -16,7 +16,7 @@ import {
   getSessionUsageTotal,
   getUsageLedger,
   getUsageSummaryWithProjects,
-} from '../../wiring/usage/index.js'
+} from '@onething/backend/runtime/usage/usage-recorder'
 
 /**
  * The envelope carries whatever the caller sent — on the server that is the

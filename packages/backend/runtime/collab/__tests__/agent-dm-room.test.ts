@@ -94,7 +94,7 @@ vi.mock('@onething/backend/store.js', () => ({
   updateSessionArchived: vi.fn(),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
 
 const { ensureAgentDmRoom } = await import('../agent-dm-room.js')
 

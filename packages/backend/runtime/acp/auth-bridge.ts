@@ -22,7 +22,7 @@ import {
   hasTerminalHost,
   type TerminalService,
 } from '@onething/backend/runtime/terminal/service.wiring'
-import { resolveExternalAgentSpawnEnv } from '@onething/backend/wiring/external-agents/spawn-env.js'
+import { resolveExternalAgentSpawnEnv } from '@onething/backend/runtime/external-agents/spawn-env'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('acp.auth')

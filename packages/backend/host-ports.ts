@@ -33,7 +33,7 @@ import {
   configureSandboxHost,
   resetSandboxHost,
   type SandboxHost,
-} from './wiring/tools/core/sandbox.js'
+} from '@onething/backend/runtime/tools/core/sandbox'
 import {
   configureAppLoggingHost,
   resetAppLoggingHost,
@@ -43,12 +43,12 @@ import {
   configureSkillsEnvironmentHost,
   resetSkillsEnvironmentHost,
   type SkillsEnvironmentHostPorts,
-} from './wiring/skills/loader.js'
+} from '@onething/backend/runtime/skills/skill-sources'
 import {
   configureTodoPlanHost,
   resetTodoPlanHost,
   type TodoPlanHostPorts,
-} from './wiring/todo-plan/store.js'
+} from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import {
   configurePluginsHost,
   resetPluginsHost,
@@ -63,12 +63,12 @@ import {
   configureSettingsHost,
   resetSettingsHost,
   type SettingsHostPorts,
-} from './wiring/settings/host-ports.js'
+} from '@onething/backend/runtime/settings/host-ports'
 import {
   configureEvalsHost,
   resetEvalsHost,
   type EvalsHostPorts,
-} from './wiring/evals/host-ports.js'
+} from '@onething/backend/runtime/evals/host-ports'
 import {
   configureHostLocalTrust,
   type HostLocalTrustDeclaration,

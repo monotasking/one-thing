@@ -39,7 +39,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEventBroadcaster,
-} from '../settings/events.js'
+} from '@onething/backend/runtime/settings/events'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('providers.manifests')

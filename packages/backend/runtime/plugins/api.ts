@@ -27,7 +27,7 @@ import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './not
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background-table.js'
 import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '@onething/backend/channel/connector-registry.js'
-import { registerPluginDeepLinkAction } from '@onething/backend/wiring/deeplink/registry.js'
+import { registerPluginDeepLinkAction } from '@onething/backend/runtime/deeplink/registry'
 import { registerPluginSearchProvider } from '@onething/backend/runtime/search/plugin-search-registry'
 import { registerPluginCredentialStrategy } from '@onething/backend/wiring/providers/credential-strategy.js'
 import { captureCredentialStrategyScope, type CredentialStrategyScope } from '@onething/backend/wiring/providers/credential-strategy-lifetime.js'
@@ -612,7 +612,7 @@ export function createPluginAPI(
     registerToolResultInterceptHook: registerPluginToolResultInterceptHook,
     registerSkillRoot: registerPluginSkillRootProvider,
     invalidateSkillsCache() {
-      return import('@onething/backend/wiring/skills/session-skills.js')
+      return import('@onething/backend/runtime/skills/session-skill-cache')
         .then(({ invalidateSessionSkillsCache }) => invalidateSessionSkillsCache())
         .catch(() => undefined)
     },

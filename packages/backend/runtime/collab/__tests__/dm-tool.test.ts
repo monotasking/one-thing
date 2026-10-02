@@ -92,7 +92,7 @@ vi.mock('@onething/backend/store.js', () => ({
   updateSessionArchived: vi.fn(),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => AGENTS[id] ?? null,
   // 句柄解析(collab-agent-handle.md §2.4)按**全体同事**找人 —— dm 的对象是
   // 同事,不是某间房的室友。

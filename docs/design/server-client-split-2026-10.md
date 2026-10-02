@@ -653,3 +653,87 @@ boundary / transport / log / session / provider gate 绿,assembly gate 仍只红
 88 份搬家 / 改名的测试逐行对照 HEAD,除 import 与路径行外零差异。kernel 规则仍会红:`runtime/mcp/kernel/router.ts` 加一行
 `../manager.js`,检查器的闭包与架构测试「kernel 在最底层」都红,撤掉回绿。`git grep` 里 `(search|mcp|acp|plugins|collab|music)/wiring`
 在代码 / 配置 / 脚本中为零。
+
+### ③-收尾 A 落地记录(2026-10-02,未提交)
+
+**一句话**:`packages/backend/wiring/` 下 36 个目录里的 28 个(agents ambient auth deeplink evals external-agents files goals
+interaction markdown media memory notes permission pets project-dirs quota scheduler settings skills tasks terminal toc todo-plan
+tools usage variables voice)平铺进 `runtime/<d>/`,一笔做完(scratchpad 的 `flatten-wiring.mjs` —— `flatten.mjs` 的一趟扫描与
+目录 / 文件双映射,加上 `fold-domain.mjs` 的「搬进 runtime 的文件里指向脊柱的 import 改包说明符、脊柱指向搬家目标的相对 import
+改包说明符、缺的 exports 精确键补上」;在 HEAD 的临时 worktree 上重放一遍,341 个产物文件与主检出逐字相同)。120 个文件
+`git mv`(含 49 份测试与 `tools/core/CLAUDE.md`)。runtime 里原来没有同名目录的 deeplink / memory / permission / quota 新建了
+`runtime/<d>/`;`core/memory`、`core/permission` 有别的领域在用,留在 core。剩下 8 个:agent-loop / engine / gateway / headless /
+logging / providers / resource / toolkit。
+
+**同名改名表**(新名按文件做的事起;领域根的 `index.ts` 一律保留为对外入口):
+
+| 旧路径(`packages/backend/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `wiring/agents/index.ts` | `runtime/agents/agent-store-access.ts` | 绑在活 store 上的 agent 增删查改 + 现算在场面,一只转发入口 |
+| `wiring/agents/presence.ts` | `runtime/agents/presence-from-sessions.ts` | 去会话索引取元数据喂 `computeAgentPresence` |
+| `wiring/agents/profile.ts` | `runtime/agents/profile-for-session.ts` | 每回合一次,按会话从活 store 解出能力档案 |
+| `wiring/agents/__tests__/{presence,profile}.test.ts` | `runtime/agents/__tests__/{presence-from-sessions,profile-for-session}.test.ts` | 跟着被测文件改名 |
+| `wiring/auth/auth-service.ts` | `runtime/auth/process-auth-service.ts` | 进程里那一台 `authService` 单例 |
+| `wiring/evals/incident.ts` | `runtime/evals/turn-incident.ts` | `createIncidentForTurn`:按一回合现场造事故包(迟到负信号的唯一入口) |
+| `wiring/external-agents/index.ts` | `runtime/external-agents/connector-registry.ts` | 外部 agent connector 的绑定 / 取用 / 打断 / 释放,会话链接与权限、提问转手 |
+| `wiring/goals/file-changes.ts` | `runtime/goals/file-change-collector.ts` | 去 `<store>/file-mutations/` 扫审计记录,投影成摘要与 diff |
+| `wiring/goals/index.ts` | `runtime/goals/goal-manager.ts` | GoalManager:会话目标的唯一写者 |
+| `wiring/markdown/asset-service.ts` | `runtime/markdown/asset-sandbox.ts` | 附件请求的工作区沙箱守卫(`prepareMarkdownRequest` / `clamp*`) |
+| `wiring/markdown/__tests__/asset-service.test.ts` | `runtime/markdown/__tests__/asset-sandbox.test.ts` | 跟着被测文件改名 |
+| `wiring/notes/index.ts` | `runtime/notes/notes-subsystem.ts` | `NotesSubsystem`:驱动注册、refresh、订设置、`noteRootsNow()` |
+| `wiring/pets/chattiness.ts` | `runtime/pets/chattiness-watch.ts` | 订「设置刚保存过」,开口频率热生效 |
+| `wiring/project-dirs/index.ts` | `runtime/project-dirs/bootstrap.ts` | `bootstrapProjectDirs` 暖缓存 + 提示词变量 |
+| `wiring/scheduler/user-tasks.ts`(及其测试) | `runtime/scheduler/user-task-service.ts`(`__tests__/user-task-service.test.ts`) | 用户定时任务的起停、增删改与执行 |
+| `wiring/skills/index.ts` | `runtime/skills/skill-operations.ts` | 技能读写 / 管理操作的转发入口 |
+| `wiring/skills/loader.ts`(及其测试) | `runtime/skills/skill-sources.ts`(`__tests__/skill-sources.test.ts`) | 技能从哪些根加载(store、插件、自定义 / 接入目录、笔记库、打包资源) |
+| `wiring/skills/manage.ts` | `runtime/skills/manage-setup.ts` | 把 `skill_manage` 接到用户技能目录与加载器 |
+| `wiring/skills/session-skills.ts` | `runtime/skills/session-skill-cache.ts` | 会话可见技能表与缓存 |
+| `wiring/toc/index.ts` | `runtime/toc/toc-recorder.ts` | 每个实质回合跑一次小模型、改写当前意图段 |
+| `wiring/todo-plan/store.ts`(及其测试) | `runtime/todo-plan/todo-plan-service.ts`(`__tests__/todo-plan-service.test.ts`) | `TodoPlanRuntime` + 宿主端口 + 变更订阅 |
+| `wiring/usage/index.ts` | `runtime/usage/usage-recorder.ts` | `recordUsage`:所有 LLM 调用进同一本账的唯一入口 |
+| `wiring/variables/index.ts` | `runtime/variables/variable-system.ts` | 变量系统的启动、提供者注册与总线桥 |
+| `wiring/voice/providers.ts`(及 `providers{,.live}.test.ts`) | `runtime/voice/provider-calls.ts`(`provider-calls{,.live}.test.ts`) | 把设置里的 key 绑到语音服务商调用上 |
+| `wiring/permission/permission-grants.ts` | `runtime/permission/grant-storage.ts` | 授权存储路径 + 内置能力集;与 `core/permission/permission-grants.ts` 同名(I2),按内容改名,白名单不扩 |
+
+**同名但内容是同一件事的两半(没合,留给下一步)**:`agents/{presence,presence-from-sessions}.ts`、`agents/{profile,profile-for-session}.ts`
+(纯规则 + 喂活 store);`auth/{auth-service,process-auth-service}.ts`(类 + 进程单例);`evals/{incident,turn-incident}.ts`(事故包格式 +
+按回合现场造包);`goals/{file-changes,file-change-collector}.ts`(净变更算法 + 扫盘);`markdown/{asset-service,asset-sandbox}.ts`(解析 / 保存 +
+沙箱守卫);`pets/{chattiness,chattiness-watch}.ts`(档位表 + 热生效);`scheduler/{user-tasks,user-task-service}.ts`(任务文件仓 + 起停执行);
+`skills/{loader,skill-sources}.ts`、`skills/{manage,manage-setup}.ts`、`skills/{session-skills,session-skill-cache}.ts`(机制 + 接到本机的根 / 设置);
+`todo-plan/{store,todo-plan-service}.ts`(文件仓 + 运行时);`voice/{providers,provider-calls}.ts`(服务商实现 + 绑设置);各领域根 `index.ts` 与
+改名后的那只入口(agents / external-agents / goals / notes / project-dirs / skills / toc / usage / variables)。
+
+**守门**(规则本身不改,只改路径;前提随拍平消失的位置断言撤掉并在原处写明):
+1. 检查器 `MAIN_CORE_SYSTEM_DIRS` 两格改成 `runtime/permission` 与 `runtime/tools/core` —— 尺子只跟着搬过去的文件走;不写
+   `runtime/tools`,那里的纯模块本职做文件 IO,从没在这把尺子上。`quotaWiringDir` 改指 `runtime/quota`(那个目录就是原来的那一个)。
+2. 撤掉五处「装配层那份转发壳回来即红」:`checkRuntimeOwnsProjectDirsStore` 的 `mainFiles`(5 条)、
+   `checkRuntimeOwnsVariablesStoreAndHelpers` 的 `removedMainFacadeFiles`(9 条)、`checkRuntimeOwnsSchedulerCore` 的 `cron.ts` / `types.ts`、
+   `checkRuntimeOwnsAuthCallbackServer` 的 `callback-server.ts`(连同只给它用的 `MAIN_AUTH_CALLBACK_SERVER_FORBIDDEN_PATTERNS`)——
+   平铺之后同名路径正是产品本体;`checkRuntimeToolHelperTestsLiveInRuntimePackage` 的 `forbiddenMainTests`(4 条)——
+   照搬过来成了「不许住在 runtime」,与本条「该住 runtime」自相矛盾;R4b 的「装配层不许有 `registry.ts`」照搬过来与下一条重复。
+3. 改写而保留的:`checkCoreToolHelperTestsLiveInCorePackage` 的三条(core 的测试不许出现在 `runtime/tools/__tests__/`)、
+   `checkRuntimeOwnsConcreteBuiltinTools` 的旧 builtin / tool-core 名单(改指 `runtime/tools/{builtin,core}/`,与已有的 `builtin/time.ts` 去重)、
+   `checkRuntimeOwnsToolEditEngine` 的「不许再有一份 edit-engine 门面」(改指 `runtime/tools/core/edit-engine.ts`),以及各条按文件点名的
+   内容断言(auth 单例、skills、markdown、voice、scheduler、sandbox)。
+4. `architecture-boundaries.test.ts` 没有本批的路径,不动;I2 白名单不扩。assembly 基线 18 行只改路径、数字不变,仍只红 `radio.ts 9 → 10`。
+5. 三份 `wiring/engine` 测试里 `vi.mock('…/wiring/tools/index.js')` 删掉:那个文件在 HEAD 上就不存在(R4b 删工具注册表时留下的死桩,
+   什么都没桩),照搬过来会变成桩真的 `runtime/tools/index.ts`。
+
+**改写**:exports 改名 31 格、新增 38 格(477 → 515;新增的是脊柱原来相对 import 的 runtime 键,以及搬进 runtime 的文件改写包说明符后
+用到的 9 个脊柱键);内部会话模块与测试基建照旧走相对路径;import / `vi.mock` / 注释路径同步;根 `CLAUDE.md` 的 `wiring/<domain>/`
+一句、目录树、host-ports 表、Permission 与终端两处改成新址。
+
+**手改的文件**(不在脚本产物里):检查器、`assembly-lifecycle.test.ts` 一处注释(目录提法没认出改名)、上面三份 `wiring/engine` 测试、
+`CLAUDE.md` 的散文、本文。
+
+**拿不准、留给下一步**:`runtime/tools/core/{sandbox,permission-policy}.ts` 原样带着 `core/` 子目录过来,紧挨着 `runtime/tools/sandbox.ts`
+(目录名 core 容易与 core 子树混,但两只文件不撞名,没动);新建的 `runtime/permission/` 与已有的 `runtime/permissions/` 并排(前者是授权存储
+接到盘上 + 进程 `Permission`,后者是产品的授权 / 策略运行时)—— 合不合是内容的事;`apps/desktop-react/CLAUDE.md` 与各 `docs/` 里的旧路径是
+历史记录,没改。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 均零错;`server:build`、`build:cli` 成功;桌面四个 bundle 成功;根全量 vitest
+改前改后都是 11418 条 / 20 红,按路径映射后 19 条逐条相同,各差一条偶发:改前 `runtime-over-backend` 的 MCP start(临时目录 `ENOTEMPTY`)、
+改后 `scripts/build-workspace-watch.test.mjs`(满载下的 watch 断言)—— 两条单跑都绿;壳 7344 条,同一条 A9 红;`gate:acp` 前后 108 ok;
+boundary(139 条断言,前后输出逐字相同)/ transport / log / session / provider gate 绿,assembly gate 仍只红 radio.ts 那一条;
+`provider-vendor-drill` 绿。测试里非 import 的差异只有 8 处注释路径、1 处 `path.join` 路径与上面三份死桩。`git grep` 里本批 28 个目录名的
+`wiring/<d>` 在代码 / 配置 / 脚本(含根 `CLAUDE.md`)中为零。

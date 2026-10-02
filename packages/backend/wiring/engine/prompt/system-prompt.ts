@@ -20,13 +20,13 @@ import {
   type ComposedPrompt,
 } from '@onething/backend/runtime/prompts'
 import { toolkitPromptSource } from '@onething/backend/runtime/toolkit/prompt-source'
-import { buildStateVariablesPromptText } from '../../variables/index.js'
+import { buildStateVariablesPromptText } from '@onething/backend/runtime/variables/variable-system'
 import { pluginPromptSource } from '@onething/backend/runtime/prompts/plugin-context.wiring'
 import {
   getMacOSAutomationDocsPath,
 } from '../../../stores/docs-paths.js'
-import { getTodoPlanDirectory } from '../../todo-plan/store.js'
-import { defaultAgent, findAgent } from '../../agents/index.js'
+import { getTodoPlanDirectory } from '@onething/backend/runtime/todo-plan/todo-plan-service'
+import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import * as store from '../../../store.js'
 import {
   buildCollabRoomSystemPrompt,

@@ -95,7 +95,7 @@ import {
   configureCollabExternalLogSink,
   installCollabExternalObservers,
 } from '../external-observability.js'
-import { findAgent, listAgents } from '@onething/backend/wiring/agents/index.js'
+import { findAgent, listAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEventBus } from '@onething/backend/events/index.js'
 import { getStreamEngineSafe } from '@onething/backend/wiring/engine/index.js'
 import * as store from '@onething/backend/store.js'
@@ -1121,7 +1121,7 @@ export function stopCollabV3RoomFloor(
    * 里 `digest-runner` 那条同一个理由。
    */
   if (turns.length > 0) {
-    void import('@onething/backend/wiring/external-agents/index.js')
+    void import('@onething/backend/runtime/external-agents/connector-registry')
       .then(async module => {
         runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {
@@ -1219,7 +1219,7 @@ export async function revokeCollabV3RoomLease(
   // 动态 import 与房级喊停同一个理由 —— 静态引会把连接器注册表拖进每一个 import
   // 这个文件的协作测试的收集阶段。
   if (turns.length > 0) {
-    void import('@onething/backend/wiring/external-agents/index.js')
+    void import('@onething/backend/runtime/external-agents/connector-registry')
       .then(async module => {
         runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {

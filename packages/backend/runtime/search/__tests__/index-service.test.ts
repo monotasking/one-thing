@@ -48,7 +48,7 @@ import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '@onething/backend/wiring/settings/events.js'
+} from '@onething/backend/runtime/settings/events'
 import { DEFAULT_SEMANTIC_MODEL_ID, type AppSettings } from '@shared/ipc/settings'
 
 /** 总线:装配从 `getEventBus()` 拿,用例给一只真的 `EventBus`。 */

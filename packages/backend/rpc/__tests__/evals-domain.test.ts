@@ -19,7 +19,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { evalsRouter } from '@shared/ipc/evals.js'
-import { EvalsTaskOwner, configureEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
+import { EvalsTaskOwner, configureEvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
 
 const runtime = vi.hoisted(() => ({
   loadMergedRecords: vi.fn(() => [] as Array<Record<string, unknown>>),
@@ -45,9 +45,9 @@ vi.mock('../../store.js', () => ({
   getSettings: settings.getSettings,
   getSession: vi.fn(() => undefined),
 }))
-vi.mock('../../wiring/skills/session-skills.js', () => ({ getSkillsForSession: vi.fn(() => []) }))
-vi.mock('../../wiring/evals/incident.js', () => ({ createIncidentForTurn: vi.fn(async () => null) }))
-vi.mock('../../wiring/evals/provider-adapter.js', () => ({
+vi.mock('@onething/backend/runtime/skills/session-skill-cache', () => ({ getSkillsForSession: vi.fn(() => []) }))
+vi.mock('@onething/backend/runtime/evals/turn-incident', () => ({ createIncidentForTurn: vi.fn(async () => null) }))
+vi.mock('@onething/backend/runtime/evals/provider-adapter', () => ({
   resolveEvalsCredentials: vi.fn(() => ({ ok: true, apiKey: 'k', baseUrl: 'https://x' })),
   createEvalsModelCaller: vi.fn(() => async () => ({ content: '', toolCalls: [], finishReason: 'stop' })),
 }))
@@ -61,7 +61,7 @@ function unwrap(response: RpcResponse): Record<string, unknown> {
 
 describe('evals RPC domain', () => {
   let dispatchRpc: (typeof import('../registry.js'))['dispatchRpc']
-  let configureEvalsHost: (typeof import('../../wiring/evals/host-ports.js'))['configureEvalsHost']
+  let configureEvalsHost: (typeof import('@onething/backend/runtime/evals/host-ports'))['configureEvalsHost']
   let configureHostLocalTrust: (typeof import('../../server/host-trust.js'))['configureHostLocalTrust']
   let resetHostLocalTrustForTests: (typeof import('../../server/host-trust.js'))['resetHostLocalTrustForTests']
   let dispose: (() => void) | undefined
@@ -73,7 +73,7 @@ describe('evals RPC domain', () => {
     const [registry, domain, ports, trust] = await Promise.all([
       import('../registry.js'),
       import('../domains/evals.js'),
-      import('../../wiring/evals/host-ports.js'),
+      import('@onething/backend/runtime/evals/host-ports'),
       import('../../server/host-trust.js'),
     ])
     dispatchRpc = registry.dispatchRpc
@@ -269,7 +269,7 @@ describe('evals RPC domain', () => {
   })
 
   it('resolves the repo dir through the host port: unwired = cwd, packaged = unconfigured', async () => {
-    const { resolveEvalsRepoDir } = await import('../../wiring/evals/host-ports.js')
+    const { resolveEvalsRepoDir } = await import('@onething/backend/runtime/evals/host-ports')
     // 未注入 = 视为非打包 = process.cwd(),与迁移前 `!app.isPackaged` 逐字同义
     expect(resolveEvalsRepoDir()).toBe(process.cwd())
 

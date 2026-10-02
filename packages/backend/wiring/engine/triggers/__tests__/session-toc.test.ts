@@ -15,11 +15,11 @@ const mocks = vi.hoisted(() => ({
 // 读走门面(P0.2 区 ②):替身与生产同源,`bindSessionFacadeMock` 装的就是这张假会话表。
 vi.mock('../../../../session/reads.js', () => import('../../../../session/testing/facade-mock.js'))
 
-vi.mock('../../../toc/index.js', () => ({
+vi.mock('@onething/backend/runtime/toc/toc-recorder', () => ({
   recordTocTurn: mocks.recordTocTurn,
 }))
 
-vi.mock('../../../goals/file-changes.js', () => ({
+vi.mock('@onething/backend/runtime/goals/file-change-collector', () => ({
   collectGoalFileChanges: mocks.collectGoalFileChanges,
 }))
 

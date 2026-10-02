@@ -36,7 +36,7 @@ import type { ResourceRef } from '@shared/resource/ref'
 import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/backend/core/toolkit'
 import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from '@onething/backend/runtime/todo-plan'
 import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/backend/runtime/todo-plan/resource-spec'
-import { getTodoPlanStore, onTodoPlanChanged, type TodoPlanChangeListener, type TodoPlanChangeOrigin } from '../todo-plan/store.js'
+import { getTodoPlanStore, onTodoPlanChanged, type TodoPlanChangeListener, type TodoPlanChangeOrigin } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 
 /**
  * provider 够到待办的两个口。缺省接当前装配的 `TodoPlanRuntime`;测试递一个临时目录上的真 store。

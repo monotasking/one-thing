@@ -17,11 +17,11 @@ vi.mock('@onething/backend/runtime/goals', () => ({
   canAutoContinueGoal: () => true,
 }))
 
-vi.mock('../../../goals/kick.js', () => ({
+vi.mock('@onething/backend/runtime/goals/kick', () => ({
   emitGoalDrive: mocks.emitGoalDrive,
 }))
 
-vi.mock('../../../goals/index.js', () => ({
+vi.mock('@onething/backend/runtime/goals/goal-manager', () => ({
   getGoal: mocks.getGoal,
   goalLimits: () => ({}),
   tryBeginContinuation: mocks.tryBeginContinuation,

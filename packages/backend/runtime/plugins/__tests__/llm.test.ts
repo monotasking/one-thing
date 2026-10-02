@@ -21,7 +21,7 @@ vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
 vi.mock('@onething/backend/wiring/providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
-vi.mock('@onething/backend/wiring/usage/index.js', () => ({
+vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({
   captureUsageRecorder: () => (...args: unknown[]) => recordUsage(...args),
 }))
 

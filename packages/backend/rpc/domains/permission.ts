@@ -34,7 +34,7 @@ import {
 } from '@onething/backend/runtime/permissions'
 import type { PermissionRoutes } from '@shared/ipc/permissions.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { Permission } from '../../wiring/permission/index.js'
+import { Permission } from '@onething/backend/runtime/permission'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPermissionSessionIpcLogger } from '@onething/backend/runtime/permissions/permission-session-presentation'
 

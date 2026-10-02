@@ -146,7 +146,7 @@ it('Backend shutdown retains its lease and bills the original store until the re
   const instance = await assemble('a')
   const { instances } = await createManager(instance)
   const old = instances[0]
-  const { getUsageLedger, captureUsageRecorder } = await import('../wiring/usage/index.js')
+  const { getUsageLedger, captureUsageRecorder } = await import('@onething/backend/runtime/usage/usage-recorder')
   const ledger = getUsageLedger()
   const oldRecorder = captureUsageRecorder()
   const blocked = blockProvider()

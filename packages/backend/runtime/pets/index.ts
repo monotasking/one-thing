@@ -1,7 +1,7 @@
 /**
  * 宠物系统的产品层(正本 `docs/design/pet-system-2026-09.md`)。纯数据与纯类:
  * 自述、名册、主持人、账本行、作曲端口、`pet:` 自述。读写文件与接总线在装配层
- * `@onething/backend/wiring/pets/`。
+ * `@onething/backend/runtime/pets/`。
  */
 
 export { ALU } from './builtin/alu.js'

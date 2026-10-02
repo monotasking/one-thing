@@ -81,7 +81,7 @@ import {
   type CollabGroupRoomInput,
 } from '@onething/backend/runtime/collab/rooms'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
+import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
 import {
   foldOutcomeToDetailedEnvelope,

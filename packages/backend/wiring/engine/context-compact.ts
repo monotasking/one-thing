@@ -11,7 +11,7 @@ import { sessionReads } from '../../session/reads.js'
 import { sessionCommands } from '../../session/commands.js'
 import { landSessionAccountUsage } from '../../session/usage.js'
 import { sessionLifecycleEvents } from '../../session/lifecycle-events.js'
-import { billCompactUsage } from '../usage/bill-side-line.js'
+import { billCompactUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import {
   buildContextCompactCompletedContent,
   buildContextCompactFailedContent,

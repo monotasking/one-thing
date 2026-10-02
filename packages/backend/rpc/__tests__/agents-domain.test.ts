@@ -23,7 +23,7 @@ const store = vi.hoisted(() => ({
 
 const sessions = vi.hoisted(() => ({ getSessionsList: vi.fn() }))
 
-vi.mock('../../wiring/agents/index.js', () => store)
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => store)
 vi.mock('../../stores/index.js', () => sessions)
 
 const AGENT = {

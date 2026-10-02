@@ -141,12 +141,12 @@ vi.mock('../../session/events-reads.js', async importOriginal => ({
   ...eventsReads,
 }))
 vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
-vi.mock('../../wiring/todo-plan/store.js', () => todoPlan)
-vi.mock('../../wiring/toc/index.js', () => toc)
-vi.mock('../../wiring/variables/gateways.js', () => variables)
-vi.mock('../../wiring/agents/index.js', () => agents)
+vi.mock('@onething/backend/runtime/todo-plan/todo-plan-service', () => todoPlan)
+vi.mock('@onething/backend/runtime/toc/toc-recorder', () => toc)
+vi.mock('@onething/backend/runtime/variables/gateways', () => variables)
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => agents)
 vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }))
-vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
+vi.mock('@onething/backend/runtime/permission', () => ({ Permission: permission }))
 vi.mock('../../events/index.js', () => ({
   getEventBus: () => ({ destroySession: events.destroySession, emit: events.emit }),
   getStreamChannel: () => ({ destroySession: events.streamDestroySession }),

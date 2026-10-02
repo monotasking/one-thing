@@ -6,7 +6,7 @@ import type { ResourceEventHub } from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
 import type { PlanContext, RunContext } from '@onething/backend/core/toolkit'
 import { OnethingTodoPlanStore, type TodoPlanChangedPayload } from '@onething/backend/runtime/todo-plan'
-import type { TodoPlanChangeListener } from '../../todo-plan/store.js'
+import type { TodoPlanChangeListener } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { TodoResourceProvider } from '../todo-provider.js'
 
 let root: string

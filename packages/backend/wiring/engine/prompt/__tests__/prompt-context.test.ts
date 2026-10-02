@@ -15,7 +15,7 @@ const agentStoreMock = vi.hoisted(() => ({
   findAgent: vi.fn(),
 }))
 
-vi.mock('../../../agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: agentStoreMock.findAgent,
   defaultAgent: () => agentStoreMock.findAgent(undefined),
   DEFAULT_AGENT_ID: 'default',

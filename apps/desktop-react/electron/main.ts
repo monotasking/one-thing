@@ -50,7 +50,7 @@ import {
   getEmbeddedOnethingHttpServer,
 } from '@onething/backend/server/embed.js'
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
-import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler/user-tasks.js'
+import { initializeUserSchedulerTasks } from '@onething/backend/runtime/scheduler/user-task-service'
 import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/permission-bridge'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { installAppMenu } from './app-menu-install.js'

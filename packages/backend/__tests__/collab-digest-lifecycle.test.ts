@@ -251,7 +251,7 @@ it('preserves folded-day selection, request deduplication, parsing, usage and th
   expect(local.requests).toHaveLength(1)
   local.respond('  The migration will ship tomorrow.  ')
   await work
-  const { getUsageLedger } = await import('../wiring/usage/index.js')
+  const { getUsageLedger } = await import('@onething/backend/runtime/usage/usage-recorder')
   await getUsageLedger().flush()
   expect(await usage(path.join(directory, 'a'))).toEqual([expect.objectContaining({ source: 'collab-digest', sessionId: 'room' })])
   const digests = await import('@onething/backend/runtime/collab/digest-store')
@@ -271,7 +271,7 @@ it('does not release or repeat a timed-out model while the underlying provider r
   const day = await room()
   const { createCollabDigestRunner } = await import('@onething/backend/runtime/collab/digest-runner')
   const { createCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
-  const { captureUsageRecorder } = await import('../wiring/usage/index.js')
+  const { captureUsageRecorder } = await import('@onething/backend/runtime/usage/usage-recorder')
   const runner = createCollabDigestRunner({
     store: createCollabDigestStore({ storePath: path.join(directory, 'a') }),
     access: backend.sessionLayer.access, assertOwned: () => {}, recordUsage: captureUsageRecorder(), timeoutMs: 30,
@@ -340,7 +340,7 @@ it('registers a production MindPort follow-up before the room turn returns, so i
   const local = await provider()
   backend = await assemble(path.join(directory, 'a'))
   await room()
-  const agents = await import('../wiring/agents/index.js')
+  const agents = await import('@onething/backend/runtime/agents/agent-store-access')
   agents.createAgent({ id: 'digest-agent', name: 'Digest agent' })
   const sessions = await import('../stores/sessions.js')
   sessions.createSession('exec', 'Agent execution')

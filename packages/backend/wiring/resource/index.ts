@@ -20,7 +20,7 @@
  */
 
 import type { AmbientSource } from '@onething/backend/runtime/ambient'
-import { defaultAmbientSources } from '../ambient/sources.js'
+import { defaultAmbientSources } from '@onething/backend/runtime/ambient/sources'
 import { AmbientResourceProvider } from './ambient-provider.js'
 import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/backend/core/resource'
 import type { ResourceKernelOptions } from '@onething/backend/core/resource'
@@ -35,7 +35,7 @@ import { DirResourceProvider } from './dir-provider.js'
 import { GitResourceProvider } from './git-provider.js'
 import { createMusicResourceProvider } from './music-provider.js'
 import { PetResourceProvider } from './pet-provider.js'
-import type { PetsSubsystem } from '../pets/subsystem.js'
+import type { PetsSubsystem } from '@onething/backend/runtime/pets/subsystem'
 import { createLocalOnlyReadGuard } from './read-guard.js'
 import { SessionResourceProvider } from './session-provider.js'
 import { TodoResourceProvider } from './todo-provider.js'

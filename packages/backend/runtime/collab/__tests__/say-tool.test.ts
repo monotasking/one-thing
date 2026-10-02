@@ -96,7 +96,7 @@ vi.mock('@onething/backend/events/index.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => AGENTS[id] ?? null,
   // 身份目录的识别面走全体 agent(collab-handle-codec.md §2.1),不是房内成员。
   listAgents: () => Object.values(AGENTS),

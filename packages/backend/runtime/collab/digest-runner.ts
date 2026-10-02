@@ -27,7 +27,7 @@ import {
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../session/reads.js'
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { collabSessionRoomMembers } from './members.js'
 import { generateChatResponse } from '@onething/backend/wiring/providers/index.js'
 import {
@@ -41,7 +41,7 @@ import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import type { RuntimeRequestContext } from '@onething/backend/core'
 import type { SessionAccess } from '@onething/backend/session/access.js'
 import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
-import type { captureUsageRecorder } from '@onething/backend/wiring/usage/index.js'
+import type { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
 import { ONETHING_USAGE_SOURCES } from '@onething/backend/runtime/usage'
 import { getCurrentBackend } from '@onething/backend/current.js'
 

@@ -47,11 +47,11 @@ vi.mock('../../wiring/providers/registry.js', () => ({
   invalidateProviderCache: ports.invalidateProviderCache,
 }))
 
-vi.mock('../../wiring/todo-plan/store.js', () => ({
+vi.mock('@onething/backend/runtime/todo-plan/todo-plan-service', () => ({
   startTodoPlanWatcher: ports.startTodoPlanWatcher,
 }))
 
-vi.mock('../../wiring/voice/service.js', () => ({
+vi.mock('@onething/backend/runtime/voice/service', () => ({
   getVoiceServiceSafe: ports.getVoiceServiceSafe,
 }))
 
@@ -72,8 +72,8 @@ async function loadDomain() {
   const [registry, domain, hostPorts, events] = await Promise.all([
     import('../registry.js'),
     import('../domains/settings.js'),
-    import('../../wiring/settings/host-ports.js'),
-    import('../../wiring/settings/events.js'),
+    import('@onething/backend/runtime/settings/host-ports'),
+    import('@onething/backend/runtime/settings/events'),
   ])
   return { ...registry, ...domain, ...hostPorts, ...events }
 }
@@ -101,9 +101,9 @@ describe('settings RPC domain', () => {
     dispose = undefined
     const { resetRpcRegistryForTests } = await import('../registry.js')
     resetRpcRegistryForTests()
-    const { configureSettingsHost } = await import('../../wiring/settings/host-ports.js')
+    const { configureSettingsHost } = await import('@onething/backend/runtime/settings/host-ports')
     configureSettingsHost({})
-    const { configureSettingsEventBroadcaster } = await import('../../wiring/settings/events.js')
+    const { configureSettingsEventBroadcaster } = await import('@onething/backend/runtime/settings/events')
     configureSettingsEventBroadcaster(null)
     vi.resetModules()
   })

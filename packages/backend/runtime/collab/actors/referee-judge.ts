@@ -34,11 +34,11 @@ import {
 } from '@onething/backend/runtime/collab/actors'
 import { isActiveAgent } from '@shared/ipc.js'
 
-import { findAgent } from '@onething/backend/wiring/agents/index.js'
+import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/wiring/engine/stream/provider-helpers.js'
 import { generateChatResponse } from '@onething/backend/wiring/providers/index.js'
 import * as store from '@onething/backend/store.js'
-import { billCollabPlanUsage } from '@onething/backend/wiring/usage/bill-side-line.js'
+import { billCollabPlanUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import { collabUserPromptFields } from '../user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/backend/runtime/collab/actors/referee-actor'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'

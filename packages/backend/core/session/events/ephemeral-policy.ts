@@ -176,7 +176,7 @@ export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[
       { file: PLUGIN_STATUS, test: 'sweeps a whole session and reports every part that has to be taken down' },
     ],
     note: '**留账 #10 已结清(§17.8 前置批,2026-08-28)**:结算态从此有产地 —— '
-      + '全仓唯一的结算态生产者(后台子代理指示器,`backend/wiring/external-agents/'
+      + '全仓唯一的结算态生产者(后台子代理指示器,`backend/runtime/external-agents/'
       + 'background-status.ts` 的 `recordSettledStatus`)在结算那一刻经单门写下 '
       + '`plugin/status`(带 `durationMs`),折叠侧把它物化成这一轮正文之后的一格 '
       + '(`materializeContentParts` 末尾)。**成对交付**:老账本没有这条事件 = 折叠侧'

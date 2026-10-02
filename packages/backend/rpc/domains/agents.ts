@@ -29,7 +29,7 @@ import {
   restoreAgent,
   retireAgent,
   updateAgent,
-} from '../../wiring/agents/index.js'
+} from '@onething/backend/runtime/agents/agent-store-access'
 import { getSessionsList } from '../../stores/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

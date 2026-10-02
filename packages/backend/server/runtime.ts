@@ -69,8 +69,8 @@ import {
 	type SessionOwner as ServerSessionOwner,
 } from "./audience.js";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/stores/settings.js";
-import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/wiring/agents/index.js";
-import { getProjectsStore as getAppProjectsStore } from "@onething/backend/wiring/project-dirs/index.js";
+import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/runtime/agents/agent-store-access";
+import { getProjectsStore as getAppProjectsStore } from "@onething/backend/runtime/project-dirs/bootstrap";
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
@@ -135,14 +135,14 @@ import {
 	configureOAuthEventBroadcaster,
 	getOAuthEventBroadcaster,
 	type OAuthTokenEvent,
-} from "../wiring/auth/oauth-events.js";
+} from "@onething/backend/runtime/auth/oauth-events";
 // E 批:设置变更的推送端口。数据面(读 / 存 / 系统深浅色 / 代理自检)仍然只走
 // `settingsRouter`,这里只串一条广播 —— 见下面 `settingsChangedHandlers`。
 import {
 	configureSettingsEventBroadcaster,
 	getSettingsEventBroadcaster,
 	type SettingsEvent,
-} from "../wiring/settings/events.js";
+} from "@onething/backend/runtime/settings/events";
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
 import { isCollabV3RuntimeRunning } from "@onething/backend/runtime/collab/rooms";
@@ -153,14 +153,14 @@ import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/backend/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/backend/runtime/terminal/service.wiring";
 import { registerACPPermissionBridge } from "@onething/backend/runtime/acp/permission-bridge";
-import { createEventBusTerminalBroadcaster } from "../wiring/terminal/index.js";
+import { createEventBusTerminalBroadcaster } from "@onething/backend/runtime/terminal";
 import {
 	createOnethingSearchService,
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
 } from "@onething/backend/runtime/search";
 import { unavailableIndexFace } from "@onething/backend/runtime/search/service-setup";
-import { noteVaultsNow, primaryNoteVaultNow } from "../wiring/notes/index.js";
+import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/runtime/notes/notes-subsystem";
 import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/runtime/media";
 import {
 	ONETHING_LOG_MONITOR_MANIFEST,
@@ -244,7 +244,7 @@ import type { TodoPlanChangedPayload } from "@onething/backend/runtime/todo-plan
 import {
 	configureTodoPlanHost,
 	getTodoPlanHostPorts,
-} from "@onething/backend/wiring/todo-plan/store.js";
+} from "@onething/backend/runtime/todo-plan/todo-plan-service";
 import {
 	VariableRegistry,
 	VariablesStore,
@@ -299,7 +299,7 @@ import type { RpcDispatchPorts } from "../rpc/registry.js";
 import {
 	createWorkspaceWatchService,
 	type WorkspaceFileChangedHandler,
-} from "../wiring/files/workspace-watch.js";
+} from "@onething/backend/runtime/files/workspace-watch";
 import type {
 	VoiceEvent,
 	VoiceRuntimeCommand,
@@ -1462,7 +1462,7 @@ async function createServerRuntimeOverServerBackend(
 	>();
 	/**
 	 * todo/plan 的广播和草稿纸同形:数据面迁到通用 RPC 通道之后,写发生在
-	 * `@onething/backend/wiring/todo-plan` 那一个进程级 store 里,per-owner 的第二个 store
+	 * `@onething/backend/runtime/todo-plan` 那一个进程级 store 里,per-owner 的第二个 store
 	 * 连同它的 per-owner 订阅表一起没了。**这个端口是 `/api/todo-plan/events`
 	 * 这条 SSE 唯一的货源** —— 少了它,浏览器端的变更推送会安静地断掉。
 	 */
@@ -2377,7 +2377,7 @@ async function createServerRuntimeOverServerBackend(
 		 * `rpc/sandbox.ts` 了,现在连调用点也归它)。
 		 *
 		 * 留下的一条是 `GET /api/files/watch/events` 那条 SSE 的货源。真正的监视器
-		 * 登记簿搬到了 `wiring/files/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
+		 * 登记簿搬到了 `runtime/files/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
 		 * / `watchStop`(请求面,在 router 上)与这里(推送面)指的是同一张表。
 		 */
 		files: filesPort,
@@ -3749,7 +3749,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * 第四份手抄的联合已经退役 —— 这里直接用契约那一份(它自己与核逐字相同,由
- * `backend/wiring/permission/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
+ * `backend/runtime/permission/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
  */
 type PermissionDecision = PermissionResponse;
 

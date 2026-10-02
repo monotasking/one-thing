@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   board: { text: '' },
 }))
 
-vi.mock('../../../agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: () => ({ id: 'default', name: 'Default Agent', systemPrompt: '' }),
   defaultAgent: () => ({ id: 'default', name: 'Default Agent', systemPrompt: '' }),
   DEFAULT_AGENT_ID: 'default',
@@ -36,7 +36,7 @@ vi.mock('../../../../store.js', () => ({
   getSettings: () => mocks.settings,
 }))
 
-vi.mock('../../../variables/index.js', () => ({
+vi.mock('@onething/backend/runtime/variables/variable-system', () => ({
   buildStateVariablesPromptText: async () => mocks.board.text,
 }))
 

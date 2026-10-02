@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   sessions: new Map<string, unknown>(),
 }))
 
-vi.mock('../../../agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id?: string) => (id ? AGENTS[id] ?? null : null),
   defaultAgent: () => ({ id: 'default', name: 'Default Agent', systemPrompt: '' }),
   DEFAULT_AGENT_ID: 'default',

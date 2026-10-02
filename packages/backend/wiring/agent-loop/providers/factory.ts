@@ -13,8 +13,8 @@ import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
   resolveExternalAgentSessionLink,
-} from '../../external-agents/index.js'
-import { authService } from '../../auth/auth-service.js'
+} from '@onething/backend/runtime/external-agents/connector-registry'
+import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
 import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'

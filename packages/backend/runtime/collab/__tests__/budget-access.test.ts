@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 
 vi.mock('@onething/backend/store.js', () => ({ getSession: () => ({ kind: 'room', room: { memberAgentIds: [] } }) }))
-vi.mock('@onething/backend/wiring/usage/index.js', () => ({ getUsageLedger: () => ({ readRecordsInRange: async () => [
+vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({ getUsageLedger: () => ({ readRecordsInRange: async () => [
   { sessionId: 'alice-room', costUSD: 1 }, { sessionId: 'alice-work', costUSD: 2 },
   { sessionId: 'bob-work', costUSD: 100 }, { sessionId: 'deleted-unknown-owner', costUSD: 1000 },
 ] }) }))

@@ -4,14 +4,14 @@ import type {
   CoreSkillReviewManageArgs,
 } from '@onething/backend/runtime/triggers'
 import { createOnethingSkillReviewTrigger } from '@onething/backend/runtime/triggers'
-import { getUserSkillsPath } from '../../skills/index.js'
-import { executeSkillManage, type SkillManageArgs } from '../../skills/manage.js'
+import { getUserSkillsPath } from '@onething/backend/runtime/skills/skill-operations'
+import { executeSkillManage, type SkillManageArgs } from '@onething/backend/runtime/skills/manage-setup'
 import {
   getSkillsForSession,
   invalidateSessionSkillsCache as invalidateSkillsCache,
-} from '../../skills/session-skills.js'
+} from '@onething/backend/runtime/skills/session-skill-cache'
 import type { Trigger, TriggerContext } from './index.js'
-import { billSkillUsage } from '../../usage/bill-side-line.js'
+import { billSkillUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import { createUtilityProvider } from '../../providers/utility-provider.js'
 // 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
 import { Decision } from '@onething/backend/core/toolkit'

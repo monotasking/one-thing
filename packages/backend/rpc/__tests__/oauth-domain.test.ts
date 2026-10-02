@@ -57,8 +57,8 @@ vi.mock('../../wiring/logging/index.js', () => ({
   consolePort: () => oauthLog,
 }))
 
-vi.mock('../../wiring/auth/auth-service.js', () => ({ authService }))
-vi.mock('../../wiring/auth/oauth-events.js', () => events)
+vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({ authService }))
+vi.mock('@onething/backend/runtime/auth/oauth-events', () => events)
 let shellHostPresent = true
 
 vi.mock('@onething/backend/runtime/shell/host-ports', () => ({

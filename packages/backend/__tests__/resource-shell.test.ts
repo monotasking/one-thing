@@ -204,7 +204,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
   })
 
   it('ui_change 不弹卡:同一条 do 经真 PermissionAuthorizer 走完,没有一张待答的权限卡', async () => {
-    const { Permission } = await import('../wiring/permission/index.js')
+    const { Permission } = await import('@onething/backend/runtime/permission')
     const { seen, stop } = watchCommands(backend)
 
     // 兜底的掐:`ui_change` 万一进了 ask 那一支,`Permission.ask` 会一直等人回答,

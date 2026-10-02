@@ -39,7 +39,7 @@ import {
 } from '@onething/backend/core/engine'
 import type { CoreInitialToolChoice } from '@onething/backend/core/engine'
 import { consolePort, getLogger } from '../../logging/index.js'
-import { noteQuotaRunEnd } from '../../quota/engine-hooks.js'
+import { noteQuotaRunEnd } from '@onething/backend/runtime/quota/engine-hooks'
 import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config'
 import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/backend/core/engine'
 

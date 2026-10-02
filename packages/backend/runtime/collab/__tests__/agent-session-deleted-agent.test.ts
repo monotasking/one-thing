@@ -85,7 +85,7 @@ vi.mock('@onething/backend/store.js', () => ({
 
 const { ensureCollabAgentSession } = await import('../agent-exec-session.js')
 const { displayAgent, findAgent, getAgent, invalidateAgentsCache } =
-  await import('@onething/backend/wiring/agents/index.js')
+  await import('@onething/backend/runtime/agents/agent-store-access')
 const { getOnethingAgentsPath } = await import('@onething/backend/runtime/storage')
 
 let previousStorePath: string | undefined

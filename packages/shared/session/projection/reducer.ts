@@ -2007,7 +2007,7 @@ export function materializeContentParts(
    * 已结算的状态行挂在**这一轮正文之后**(留账 #10)。
    *
    * 位置为什么是末尾而不是"它当时插在哪":今天全仓**唯一**的结算态生产者是
-   * 后台子代理指示器(`backend/wiring/external-agents/background-status.ts`),
+   * 后台子代理指示器(`backend/runtime/external-agents/background-status.ts`),
    * 它一条会话只有一格(`id: 'background-tasks'`),而且在**这一轮正文流完之后**
    * 才结算 —— 末尾就是它当时的位置,不是近似。
    *

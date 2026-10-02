@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../agents/index.js", () => ({
+vi.mock("@onething/backend/runtime/agents/agent-store-access", () => ({
 	findAgent: (agentId: string) => {
 		const names: Record<string, string> = { fe: "小李", pm: "阿明" };
 		const titles: Record<string, string> = { fe: "前端工程师", pm: "产品经理" };

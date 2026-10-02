@@ -47,7 +47,7 @@ const mocks = vi.hoisted(() => ({
   noteQuotaRunEnd: vi.fn(),
 }))
 
-vi.mock('../../../quota/engine-hooks.js', () => ({
+vi.mock('@onething/backend/runtime/quota/engine-hooks', () => ({
   noteQuotaRunEnd: mocks.noteQuotaRunEnd,
 }))
 

@@ -51,11 +51,11 @@ const providers = vi.hoisted(() => ({
 
 const settings = vi.hoisted(() => ({ getSettings: vi.fn() }))
 
-vi.mock('../../wiring/voice/service.js', () => ({
+vi.mock('@onething/backend/runtime/voice/service', () => ({
   getVoiceService: () => service,
 }))
 
-vi.mock('../../wiring/voice/providers.js', () => ({
+vi.mock('@onething/backend/runtime/voice/provider-calls', () => ({
   getOpenRouterTTSModels: providers.getOpenRouterTTSModels,
   transcribeUtterance: providers.transcribeUtterance,
 }))

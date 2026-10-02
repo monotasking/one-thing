@@ -29,7 +29,7 @@ vi.mock('../../../../session/reads.js', () => import('../../../../session/testin
 vi.mock('../../../../session/commands.js', () => import('../../../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (agentId: string) => ({ id: agentId, name: agentId, isActive: true }),
 }))
 

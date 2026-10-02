@@ -66,7 +66,7 @@ import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '@onething/backend/wiring/settings/events.js'
+} from '@onething/backend/runtime/settings/events'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
 import { shellProxyPolicy } from '../host-ports.js'

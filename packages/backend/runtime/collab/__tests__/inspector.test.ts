@@ -66,7 +66,7 @@ vi.mock('@onething/backend/events/index.js', () => ({
 }))
 
 vi.mock('@onething/backend/wiring/engine/index.js', () => ({ getStreamEngineSafe: () => undefined }))
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
 
 const {
   broadcastCollabCoordinator,

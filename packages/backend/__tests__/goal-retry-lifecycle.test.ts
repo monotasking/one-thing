@@ -13,8 +13,8 @@ it('cancels a real Backend goal retry on shutdown and flushes pending usage befo
     process.env.ONETHING_STORE_PATH = directory
     const { createOnethingBackend } = await import('../backend.js')
     const store = await import('../stores/sessions.js')
-    const goals = await import('../wiring/goals/index.js')
-    const kick = await import('../wiring/goals/kick.js')
+    const goals = await import('@onething/backend/runtime/goals/goal-manager')
+    const kick = await import('@onething/backend/runtime/goals/kick')
     const kicks = vi.spyOn(kick, 'kickGoalRunIfIdle')
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
       storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,

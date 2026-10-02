@@ -24,13 +24,13 @@
  *
  * ## 工具集
  *
- * 工具面是 `wiring/external-agents/host-tools.ts` 那一张表(`resolveHostToolSurface`:场子门 + 白名单过滤后的协作四件),外加
+ * 工具面是 `runtime/external-agents/host-tools.ts` 那一张表(`resolveHostToolSurface`:场子门 + 白名单过滤后的协作四件),外加
  * `send_notification`(给人发一条通知,不进聊天正文)。表每次现问 —— 场子、白名单、手里
  * 那张牌都可能在两次调用之间变。
  *
  * ## 运行时接线(A4-b)
  *
- * connector 在握手之后、`session/new` 之前经 `wiring/external-agents` 的 `hostMcp` 端口调
+ * connector 在握手之后、`session/new` 之前经 `runtime/external-agents` 的 `hostMcp` 端口调
  * `mintCredential`(同一对沿用同一枚),把 `mcpServers` 递给 `ACPManager.openSession`;每一轮
  * 开头 `beginTurn` 把这一轮的 `messageId` / 中止信号挂到钥匙背后,收场时摘掉。作废三处:
  * 会话删了(`revokeSession`)、agent 进程没了(`revokeAgent`,它起的桥子进程随它一起死)、
@@ -54,7 +54,7 @@ import {
 import { HOST_MCP_UNAUTHORIZED, type HostMcpToolListing } from '@shared/ipc/host-mcp.js'
 import type { AgentNotificationEvent } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
-import type { HostToolSurface } from '@onething/backend/wiring/external-agents/host-tools.js'
+import type { HostToolSurface } from '@onething/backend/runtime/external-agents/host-tools'
 import { httpDiscoveryUrl, readHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { resolveAcpMcpBridgePath } from './mcp-bridge-path.js'
@@ -204,7 +204,7 @@ export interface HostMcpBridgeDeps {
   execPath?: string
   /** 用户自己的 MCP 名册(`settings.mcp.servers`)。 */
   userMcpServers?: () => readonly MCPServerConfig[]
-  /** 协作四件那一半的工具面。缺省 = `wiring/external-agents/host-tools.ts` 的 `resolveHostToolSurface`。 */
+  /** 协作四件那一半的工具面。缺省 = `runtime/external-agents/host-tools.ts` 的 `resolveHostToolSurface`。 */
   resolveSurface?: (request: { localSessionId: string; executionContext?: unknown }) => Promise<HostToolSurface | undefined>
   /** `send_notification` 的出口。缺省 = 全局事件 `agent:notification`。 */
   notify?: (notification: HostNotification) => void
@@ -521,7 +521,7 @@ function defaultMintToken(): string {
  * 不该因为子系统被构造就进每一份单测的模块图。
  */
 async function defaultResolveSurface(request: { localSessionId: string; executionContext?: unknown }): Promise<HostToolSurface | undefined> {
-  const { resolveHostToolSurface } = await import('@onething/backend/wiring/external-agents/host-tools.js')
+  const { resolveHostToolSurface } = await import('@onething/backend/runtime/external-agents/host-tools')
   return resolveHostToolSurface(request)
 }
 

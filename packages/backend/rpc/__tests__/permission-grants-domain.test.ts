@@ -27,7 +27,7 @@ vi.mock('../../stores/sessions.js', () => ({
   getSessionsList: mocks.getSessionsList,
 }))
 
-vi.mock('../../wiring/permission/permission-grants.js', () => ({
+vi.mock('@onething/backend/runtime/permission/grant-storage', () => ({
   findWorkspaceGrant: mocks.findWorkspaceGrant,
   listSessionGrants: mocks.listSessionGrants,
   listWorkspaceGrants: mocks.listWorkspaceGrants,

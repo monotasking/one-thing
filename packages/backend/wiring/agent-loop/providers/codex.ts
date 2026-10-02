@@ -6,7 +6,7 @@ import {
   type ProviderAuthContext as CodexProviderAuthContext,
 } from '@onething/backend/runtime/providers/vendors/codex/agent-provider'
 import type { OAuthToken } from '@shared/ipc.js'
-import { authService } from '../../auth/auth-service.js'
+import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
 import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'

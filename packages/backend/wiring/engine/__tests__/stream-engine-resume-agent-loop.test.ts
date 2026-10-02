@@ -129,14 +129,8 @@ vi.mock('../prompt/system-prompt.js', () => ({
   buildPrompt: mocks.buildPrompt,
 }))
 
-vi.mock('../../skills/session-skills.js', () => ({
+vi.mock('@onething/backend/runtime/skills/session-skill-cache', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
-}))
-
-vi.mock('../../wiring/tools/index.js', () => ({
-  getEnabledToolsAsync: mocks.getEnabledToolsAsync,
-  initializeAsyncTools: mocks.initializeAsyncTools,
-  setInitContext: mocks.setInitContext,
 }))
 
 vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
@@ -148,10 +142,10 @@ vi.mock('../../providers/model-registry.js', () => ({
   modelSupportsTools: mocks.modelSupportsTools,
 }))
 
-vi.mock('../../variables/index.js', () => ({
+vi.mock('@onething/backend/runtime/variables/variable-system', () => ({
 }))
 
-vi.mock('../../project-dirs/index.js', () => ({
+vi.mock('@onething/backend/runtime/project-dirs/bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 

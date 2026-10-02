@@ -12,7 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings } from '@shared/ipc.js'
 import { judgeObsidianState, NoteVaultUnavailable, type NoteVault } from '@onething/backend/runtime/notes'
-import type { NotesInventory } from '../../wiring/notes/index.js'
+import type { NotesInventory } from '@onething/backend/runtime/notes/notes-subsystem'
 
 const state = {
   trusted: true,
@@ -35,7 +35,7 @@ vi.mock('../../stores/settings.js', () => ({
   getSettings: () => state.settings,
 }))
 
-vi.mock('../../wiring/notes/index.js', () => ({
+vi.mock('@onething/backend/runtime/notes/notes-subsystem', () => ({
   getNotesSubsystem: () => ({
     registry: { vault: (id: string) => state.vaultById.get(id) ?? null },
     inventory: async () => {

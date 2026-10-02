@@ -35,7 +35,7 @@ async function assemble() {
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
     gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
   } })
-  const agents = await import('../wiring/agents/index.js')
+  const agents = await import('@onething/backend/runtime/agents/agent-store-access')
   const runtime = await import('@onething/backend/runtime/collab/actors/runtime')
   const core = await import('@onething/backend/runtime/collab/kernel')
   const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')

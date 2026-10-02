@@ -72,9 +72,9 @@ import {
   getSettingsEventBroadcaster,
   type SettingsEvent,
   type SettingsEventBroadcaster,
-} from '@onething/backend/wiring/settings/events.js'
+} from '@onething/backend/runtime/settings/events'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
-import { getNotesSubsystemSafe } from '@onething/backend/wiring/notes/index.js'
+import { getNotesSubsystemSafe } from '@onething/backend/runtime/notes/notes-subsystem'
 import type { NoteVault } from '@onething/backend/runtime/notes'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
@@ -347,7 +347,7 @@ export async function createAppSearchService(
   /*
    * **订的是笔记域的产物,不是设置**(P2)。
    *
-   * 库表是 `wiring/notes` 算出来的东西,而它自己也订着 `settings:changed`。两边
+   * 库表是 `runtime/notes` 算出来的东西,而它自己也订着 `settings:changed`。两边
    * 都去订设置的话,谁先跑完取决于 `configureSettingsEventBroadcaster` 的串联
    * 顺序(notes 在装配第 860 行注册、search 在 1009 行,串联是「先跑上一位」),
    * 而 notes 那一手是 `void refresh(...)` —— 异步。于是 search 会在库表**重算

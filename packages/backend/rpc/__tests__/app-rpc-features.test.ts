@@ -93,7 +93,7 @@ const EXPECTED_DOMAIN_FEATURES = [
   // `configureGatewayHost` 注入端口 —— server / CLI 未注入即结构化降级)。
   ['rpc:gateway', 'gateway'],
   // P4c 第八批第二个域:files(十四条;全仓第一个**逐方法带 http 夹紧**的域,
-  // `FILE_WATCH_EVENT` 那条推送留在原地,登记簿在 wiring/files/workspace-watch)。
+  // `FILE_WATCH_EVENT` 那条推送留在原地,登记簿在 runtime/files/workspace-watch)。
   ['rpc:files', 'files'],
   // P4c 第九批:tools(七条;继 files 之后第二个逐方法带 http 分叉的域,零推送)、
   // interaction(两条;零推送,channel 由宿主盖章)、music(十四条;四条推送留在

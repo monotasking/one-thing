@@ -2,7 +2,7 @@
  * providers 域(主线 T1 第二批),搬自 `apps/electron/src/main/ipc/__tests__/providers.test.ts`。
  *
  * 批 5:`usage` 改名 `quota`,handler 只把请求递给 `backend.quota`(判据全在
- * `wiring/quota`,那边有自己的测试);这里钉的是递什么、缺省是什么、没有活实例时答什么。
+ * `runtime/quota`,那边有自己的测试);这里钉的是递什么、缺省是什么、没有活实例时答什么。
  * env status 永远不回显真钥匙那一条照旧。
  *
  * mock 的路径必须解析到 handler **自己 import 的那个模块** —— 差一层就什么也没 mock 到。

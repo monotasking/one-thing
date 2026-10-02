@@ -9,7 +9,7 @@
  *    而 desktop 走 `getAvailableProviders()` 读注册表。注册表由
  *    `configureAppProviderRegistry()` 在 `createOnethingBackend` 里装配,**每个
  *    宿主都跑**,所以 server 迁完拿到的是真注册表,不是降级。
- * 2. `quota`(批 5 从 `usage` 改名)—— 读 `backend.quota`(`wiring/quota`):manifest 的
+ * 2. `quota`(批 5 从 `usage` 改名)—— 读 `backend.quota`(`runtime/quota`):manifest 的
  *    `quotaSource` → 配额源注册表,这里一个 provider 名都不认。凭证按请求带的空间(缺席 =
  *    默认空间)与凭证 id(缺席 = 密钥策略的只读 `decide`)取,headless 宿主的 token store
  *    有 plaintext 回退(见 `runtime/auth/host-ports.ts` 的契约),所以 server 照走真链路。

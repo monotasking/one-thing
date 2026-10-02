@@ -26,7 +26,7 @@ import {
 } from '@onething/backend/runtime/permissions'
 import type { PermissionGrantsRoutes } from '@shared/ipc/permission-grants.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import * as PermissionGrants from '../../wiring/permission/permission-grants.js'
+import * as PermissionGrants from '@onething/backend/runtime/permission/grant-storage'
 import { getSessionsList } from '../../stores/sessions.js'
 import { isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner } from '../../session/access.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'

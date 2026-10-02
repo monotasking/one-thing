@@ -59,7 +59,7 @@ import { getConnectedDirectoriesForSession } from '../../stores/connected-direct
 import { getOnethingToolOutputsDir } from '@onething/backend/runtime/storage'
 import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './file-adapters.js'
 import { createLocalBashOperations } from '@onething/backend/runtime/tools/bash-executor'
-import { getGuardedVariableRegistryForTools, VariableError } from '../variables/index.js'
+import { getGuardedVariableRegistryForTools, VariableError } from '@onething/backend/runtime/variables/variable-system'
 import {
   askUserAdapters,
   boardAdapters,

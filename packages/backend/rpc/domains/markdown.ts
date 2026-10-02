@@ -27,7 +27,7 @@ import {
   clampResolvedAsset,
   clampSavedAttachments,
   prepareMarkdownRequest,
-} from '../../wiring/markdown/asset-service.js'
+} from '@onething/backend/runtime/markdown/asset-sandbox'
 import { resolveRpcSandbox } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
 

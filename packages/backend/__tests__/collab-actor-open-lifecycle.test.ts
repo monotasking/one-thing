@@ -51,7 +51,7 @@ it.each(['agent', 'room'] as const)('drains a board-triggered real %s mailbox op
   const firstPath = path.join(root, 'first')
   const secondPath = path.join(root, 'second')
   backend = await assemble(firstPath)
-  const agents = await import('../wiring/agents/index.js')
+  const agents = await import('@onething/backend/runtime/agents/agent-store-access')
   agents.createAgent({ id: 'same-agent', name: 'First agent' })
   const sessions = await import('../stores/sessions.js')
   sessions.createSession('room', 'Room')
@@ -115,7 +115,7 @@ it.each(['agent', 'room'] as const)('drains a board-triggered real %s mailbox op
 
 it('binds an installed actor account to its creating Backend and rejects a late account write after reinstall', { timeout: 60000 }, async () => {
   backend = await assemble(path.join(root, 'first'))
-  const agents = await import('../wiring/agents/index.js')
+  const agents = await import('@onething/backend/runtime/agents/agent-store-access')
   const runtime = await import('@onething/backend/runtime/collab/actors/runtime')
   const accountModule = await import('@onething/backend/runtime/collab/actors/agent-mailbox')
   // Observe the actual store injected into actor construction; no replacement

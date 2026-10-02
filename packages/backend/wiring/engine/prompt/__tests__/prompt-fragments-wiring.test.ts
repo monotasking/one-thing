@@ -44,7 +44,7 @@ class DemoTool extends ToolkitTool<Record<string, never>, undefined> {
 const catalog = new Catalog()
 configureToolkitCatalog(catalog)
 
-vi.mock('../../../agents/index.js', () => ({
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: () => undefined,
   defaultAgent: () => ({ id: 'default', name: 'Default Agent', systemPrompt: '' }),
   DEFAULT_AGENT_ID: 'default',

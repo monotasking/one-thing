@@ -9,8 +9,8 @@
  * assistant message it was armed for is still the newest one. The second check
  * is what makes it safe if a clearTimeout is ever missed.
  */
-import { collectGoalFileChanges } from "../../goals/file-changes.js";
-import { recordTocTurn } from "../../toc/index.js";
+import { collectGoalFileChanges } from "@onething/backend/runtime/goals/file-change-collector";
+import { recordTocTurn } from "@onething/backend/runtime/toc/toc-recorder";
 import { sessionReads } from "../../../session/reads.js";
 import type { Trigger, TriggerContext } from "./index.js";
 import { getLogger } from '../../logging/index.js'

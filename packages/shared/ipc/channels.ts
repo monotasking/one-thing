@@ -201,7 +201,7 @@ export const IPC_CHANNELS = {
 	// RPC 通道(P4c 第十批,`@shared/ipc/evals.ts` 的 evalsRouter +
 	// `@shared/ipc/evals-workbench.ts` 的 evalsWorkbenchRouter)。
 	// 只剩这三条**推送** —— router 没有推送面;它们走
-	// `backend/wiring/evals/events.ts` 的 configureEvalsEventBroadcaster 注入端口。
+	// `backend/runtime/evals/events.ts` 的 configureEvalsEventBroadcaster 注入端口。
 	EVALS_RUN_PROGRESS: "evals:run-progress",
 	EVALS_REPLAY_PROGRESS: "evals:replay-progress",
 	EVALS_DIAGNOSE_PROGRESS: "evals:diagnose-progress",

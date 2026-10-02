@@ -75,7 +75,7 @@ vi.mock('@onething/backend/core/storage', () => ({
 
 vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-reactions-test' }))
 
-vi.mock('@onething/backend/wiring/usage/index.js', () => ({
+vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),
 }))
 
@@ -133,7 +133,7 @@ vi.mock('@onething/backend/wiring/engine/index.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/wiring/agents/index.js', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
+vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
 
 vi.mock('../board-store.js', () => ({
   forgetCollabBoardRoom: () => {},

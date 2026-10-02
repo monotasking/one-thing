@@ -1,5 +1,5 @@
 import { AdmissionGate, QuiescibleScopes } from '@onething/backend/core/lifecycle'
-import { getUsageLedger } from '../usage/index.js'
+import { getUsageLedger } from '@onething/backend/runtime/usage/usage-recorder'
 import { getCurrentBackendInstance } from '../../current.js'
 
 /** Backend admission owns every strategy scope, including timed-out selects. */
