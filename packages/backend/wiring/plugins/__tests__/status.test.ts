@@ -17,7 +17,7 @@ import {
   CORE_PLUGIN_STATUS_THROTTLE_MS,
   CorePluginStatusRegistry,
   PLUGIN_STATUS_PART_TYPE,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import { SESSION_STREAM_TERMINAL_EVENTS, isSessionStreamTerminalEvent } from '@shared/events/session-events'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-status-'))
@@ -202,7 +202,7 @@ describe('R6 status registry — 格子语义与清扫', () => {
     const handCopied = /'stream:complete'\s*,\s*'stream:error'\s*,\s*'stream:aborted'|'stream:complete'\s*\|\|[^\n]*'stream:aborted'/
     // renderer/stores/voice.ts 曾在名单里,随 Vue 宿主于 2026-09-04 退役删除。
     for (const relative of [
-      '../../../../onething-runtime/src/collab/typing.ts',
+      '../../../runtime/collab/typing.ts',
     ]) {
       const source = fs.readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8')
       expect(source, `${relative} must not re-list the terminal events`).not.toMatch(handCopied)
@@ -213,7 +213,7 @@ describe('R6 status registry — 格子语义与清扫', () => {
 
 describe('R6 status — 装配层接线', () => {
   async function loadStatus() {
-    const module = await import('@onething/runtime/plugins/status-bound')
+    const module = await import('@onething/backend/runtime/plugins/status-bound')
     module.resetPluginStatusHostForTests()
     const emitted: Array<{ sessionId: string; event: any }> = []
     module.configurePluginStatusHost({
@@ -432,7 +432,7 @@ describe('R6 status — 插件 API 面', () => {
     pluginApi = await import('../api.js')
   })
   async function createApi(pluginId = 'demo') {
-    const status = await import('@onething/runtime/plugins/status-bound')
+    const status = await import('@onething/backend/runtime/plugins/status-bound')
     status.resetPluginStatusHostForTests()
     const emitted: Array<{ sessionId: string; event: any }> = []
     status.configurePluginStatusHost({
@@ -509,7 +509,7 @@ describe('R6 验收口径 — 新增插件状态零改动 shared 契约', () => 
 
 describe('R6 验收 — log-monitor 示范(流内形态)', () => {
   it('shows progress from inside a tool, under one id, and clears in finally', async () => {
-    const { registerOnethingLogMonitorStatusDemo } = await import('@onething/runtime/plugins')
+    const { registerOnethingLogMonitorStatusDemo } = await import('@onething/backend/runtime/plugins')
 
     const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-status-demo-'))
     fs.writeFileSync(path.join(logDir, 'agent-2026-08-07.log'), 'a\n')
@@ -544,8 +544,8 @@ describe('R6 验收 — log-monitor 示范(流内形态)', () => {
   })
 
   it('leaves no residue when the tool throws before clear', async () => {
-    const { registerOnethingLogMonitorStatusDemo } = await import('@onething/runtime/plugins')
-    const status = await import('@onething/runtime/plugins/status-bound')
+    const { registerOnethingLogMonitorStatusDemo } = await import('@onething/backend/runtime/plugins')
+    const status = await import('@onething/backend/runtime/plugins/status-bound')
     status.resetPluginStatusHostForTests()
     const emitted: Array<{ sessionId: string; event: any }> = []
     status.configurePluginStatusHost({

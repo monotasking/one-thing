@@ -1,12 +1,12 @@
 /**
  * 引擎的**装配层薄片**(P3'e-A2a)。
  *
- * 引擎本体已经归位到 `@onething/runtime/engine`;这里剩下的全部工作是把
+ * 引擎本体已经归位到 `@onething/backend/runtime/engine`;这里剩下的全部工作是把
  * `ProductStreamEnginePorts` 的五个端口接到后端脊柱与各域接线上,然后
  * `new ProductStreamEngine(runtime, ports)`。没有子类、没有第二条路径 ——
  * 判断逻辑一行都不许住在这里,一住进来就又是一个「引擎在装配层」。
  *
- * 五个端口在 `runtime/src/engine/ports.ts` 里逐条写了**缺席行为**;这里五个全填,
+ * 五个端口在 `runtime/engine/ports.ts` 里逐条写了**缺席行为**;这里五个全填,
  * 所以桌面/服务端/CLI 三宿主的行为与归位前逐字相同。
  */
 import {
@@ -19,7 +19,7 @@ import {
 	type StreamEngineRoomIngressPort,
 	type StreamEngineSessionRouterPort,
 	type StreamEngineSteeringDeliveryPort,
-} from "@onething/runtime/engine";
+} from "@onething/backend/runtime/engine";
 import type { MessageOrigin } from "@shared/ipc.js";
 import type { EventBus } from "../../events/event-bus.js";
 import { getChannelSessionRouter } from "../../channel/index.js";
@@ -35,7 +35,7 @@ import {
 } from "../plugins/sessions.js";
 import { resolveAgentProfileForSession } from "../agents/profile.js";
 import { takeExternalAgentSteering } from "../external-agents/index.js";
-import { defaultAgent, findAgent } from "@onething/runtime/agents/store-bound.wiring";
+import { defaultAgent, findAgent } from "@onething/backend/runtime/agents/store-bound.wiring";
 import {
 	createMainStreamEngineRuntime,
 	type MainStreamEngineRuntime,
@@ -45,7 +45,7 @@ export type {
 	BindableStreamSender,
 	StreamSender,
 	StreamSenderPayload,
-} from "@onething/runtime/engine";
+} from "@onething/backend/runtime/engine";
 
 /** 后端这一侧的引擎类型名(全仓 88 处 `StreamEngine` 说的就是它)。 */
 export type StreamEngine = ProductStreamEngine<EventBus>;

@@ -1,6 +1,6 @@
 import {
   configureOnethingSkillManageRuntime,
-} from '@onething/runtime/skills'
+} from '@onething/backend/runtime/skills'
 import {
   getUserSkillsPath,
   loadAllSkills,
@@ -23,7 +23,7 @@ export {
   executeSkillManage,
   isSkillManageMutation,
   previewSkillManage,
-} from '@onething/runtime/skills'
+} from '@onething/backend/runtime/skills'
 export type {
   OnethingSkillManageAdapters,
   SkillManageAction,
@@ -31,4 +31,4 @@ export type {
   SkillManageOptions,
   SkillManagePreview,
   SkillManageResult,
-} from '@onething/runtime/skills'
+} from '@onething/backend/runtime/skills'

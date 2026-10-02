@@ -2,7 +2,7 @@
  * Collab v3 的 actor 装配面(`@onething/backend` 的 `collab/actors/`)。
  *
  * 这里是带 IO 的那一半:账落盘、mailbox 广播、宿主端口、C4 快照供数。规则(账的
- * 转换、三道闸、发牌策略)在纯层的 `@onething/runtime/collab/actors`,两边共用
+ * 转换、三道闸、发牌策略)在纯层的 `@onething/backend/runtime/collab/actors`,两边共用
  * **同一个** `decide()`,金重放因此验的是真机的代码而不是它的复制品。
  *
  * D1 是房间,D2 是 AgentActor(心智循环 / 信箱 / 笔记 / MindPort);Referee(D3)、
@@ -16,28 +16,28 @@ export {
   collabRoomActorsDir,
   createCollabRoomAccountFileStore,
   createCollabRoomAccountMemoryStore,
-} from '@onething/runtime/collab/actors/room-account'
-export type { CollabRoomAccountStore } from '@onething/runtime/collab/actors/room-account'
+} from '@onething/backend/runtime/collab/actors/room-account'
+export type { CollabRoomAccountStore } from '@onething/backend/runtime/collab/actors/room-account'
 
 export {
   buildCollabRoomActorSnapshot,
   CollabRoomActor,
   CollabRoomBroadcastError,
   collabRoomBroadcastRecipients,
-} from '@onething/runtime/collab/actors/room-actor.wiring'
+} from '@onething/backend/runtime/collab/actors/room-actor.wiring'
 export type {
   CollabRoomActorHost,
   CollabRoomActorOptions,
   CollabRoomMemberMailbox,
-} from '@onething/runtime/collab/actors/room-actor.wiring'
+} from '@onething/backend/runtime/collab/actors/room-actor.wiring'
 
 export {
   collabRoomMembersFromTranscript,
   createCollabRoomActorReplayPipeline,
-} from '@onething/runtime/collab/actors/room-replay.wiring'
+} from '@onething/backend/runtime/collab/actors/room-replay.wiring'
 export type {
   CollabRoomReplayOptions,
-} from '@onething/runtime/collab/actors/room-replay.wiring'
+} from '@onething/backend/runtime/collab/actors/room-replay.wiring'
 
 /* ── D2:AgentActor ─────────────────────────────────────────────────────── */
 
@@ -52,21 +52,21 @@ export {
   createCollabAgentAccountFileStore,
   createCollabAgentAccountMemoryStore,
   openCollabAgentMailbox,
-} from '@onething/runtime/collab/actors/agent-mailbox'
-export type { CollabAgentAccountStore } from '@onething/runtime/collab/actors/agent-mailbox'
+} from '@onething/backend/runtime/collab/actors/agent-mailbox'
+export type { CollabAgentAccountStore } from '@onething/backend/runtime/collab/actors/agent-mailbox'
 
 export {
   buildCollabAgentNotebookBlock,
   createCollabNotebookFileStore,
   createCollabNotebookMemoryStore,
-} from '@onething/runtime/collab/actors/notebook-store'
+} from '@onething/backend/runtime/collab/actors/notebook-store'
 export type {
   CollabNotebookAppendInput,
   CollabNotebookAppendResult,
   CollabNotebookStore,
-} from '@onething/runtime/collab/actors/notebook-store'
+} from '@onething/backend/runtime/collab/actors/notebook-store'
 
-export { createCollabScriptedMindPort } from '@onething/runtime/collab/actors/mind-port'
+export { createCollabScriptedMindPort } from '@onething/backend/runtime/collab/actors/mind-port'
 export type {
   CollabMindPort,
   CollabMindSay,
@@ -78,7 +78,7 @@ export type {
   CollabScriptedCall,
   CollabScriptedMindPort,
   CollabScriptedTurn,
-} from '@onething/runtime/collab/actors/mind-port'
+} from '@onething/backend/runtime/collab/actors/mind-port'
 
 /**
  * **刻意不从这个桶里导出的三样**:
@@ -92,7 +92,7 @@ export type {
  * 顺带把半个主进程拉起来(D2 实施时真的把 D1 的房间测试整个拖挂了)。两者各自
  * 按路径 import:工具在 `app/tools/builtin/index.ts` 注册,适配器在 D6 接线。
  */
-export { CollabAgentActor } from '@onething/runtime/collab/actors/agent-actor'
+export { CollabAgentActor } from '@onething/backend/runtime/collab/actors/agent-actor'
 export type {
   CollabAgentActorHost,
   CollabAgentActorOptions,
@@ -103,7 +103,7 @@ export type {
   CollabAgentWorkerFailure,
   CollabAgentWorkerOptions,
   CollabAgentWorkerRecovery,
-} from '@onething/runtime/collab/actors/agent-actor'
+} from '@onething/backend/runtime/collab/actors/agent-actor'
 
 /* ── D4:WorkerChildActor ───────────────────────────────────────────────── */
 
@@ -113,7 +113,7 @@ export {
   createCollabScriptedWorkerPort,
   createCollabWorkerBoardRecorder,
   createCollabWorkerSlotLedger,
-} from '@onething/runtime/collab/actors/worker-child'
+} from '@onething/backend/runtime/collab/actors/worker-child'
 export type {
   CollabScriptedWork,
   CollabScriptedWorkerCall,
@@ -129,7 +129,7 @@ export type {
   CollabWorkerRunRequest,
   CollabWorkerRunResult,
   CollabWorkerSlotLedger,
-} from '@onething/runtime/collab/actors/worker-child'
+} from '@onething/backend/runtime/collab/actors/worker-child'
 
 /* ── D3:RefereeActor ───────────────────────────────────────────────────── */
 
@@ -141,7 +141,7 @@ export {
   COLLAB_REFEREE_TIMEOUT_MS,
   CollabRefereeActor,
   createCollabScriptedRefereeJudgePort,
-} from '@onething/runtime/collab/actors/referee-actor'
+} from '@onething/backend/runtime/collab/actors/referee-actor'
 export type {
   CollabRefereeActorHost,
   CollabRefereeActorOptions,
@@ -151,7 +151,7 @@ export type {
   CollabRefereeTrace,
   CollabScriptedJudgement,
   CollabScriptedRefereeJudgePort,
-} from '@onething/runtime/collab/actors/referee-actor'
+} from '@onething/backend/runtime/collab/actors/referee-actor'
 
 /* ── D5:迁移器 ─────────────────────────────────────────────────────────── */
 
@@ -169,18 +169,18 @@ export {
 } from './migrate.js'
 export type { CollabV3MigrationOptions } from './migrate.js'
 
-export { collabDuetMembersOf, replayCollabDuet } from '@onething/runtime/collab/actors/agent-replay.wiring'
+export { collabDuetMembersOf, replayCollabDuet } from '@onething/backend/runtime/collab/actors/agent-replay.wiring'
 export type {
   CollabDuetReplayOptions,
   CollabDuetReplayResult,
   CollabDuetRoomSpec,
-} from '@onething/runtime/collab/actors/agent-replay.wiring'
+} from '@onething/backend/runtime/collab/actors/agent-replay.wiring'
 
 /* ── D8:调度时间轴的落盘面 ─────────────────────────────────────────────── */
 
 /**
  * 纯规则(行类型、构造、渲染/解析、按日切、房间转换 → 行)在
- * `@onething/runtime/collab/actors` 的 `scheduler-log-rules.ts`。这边只有 fs。
+ * `@onething/backend/runtime/collab/actors` 的 `scheduler-log-rules.ts`。这边只有 fs。
  */
 export {
   COLLAB_SCHEDULER_LOG_TAIL_DEFAULT,
@@ -193,9 +193,9 @@ export {
   readCollabSchedulerLogTail,
   resetCollabSchedulerLogWarnings,
   sweepCollabSchedulerLogs,
-} from '@onething/runtime/collab/actors/scheduler-log'
+} from '@onething/backend/runtime/collab/actors/scheduler-log'
 export type {
   CollabDeadLetterSinkOptions,
   CollabSchedulerLogStore,
   CollabSchedulerLogTailOptions,
-} from '@onething/runtime/collab/actors/scheduler-log'
+} from '@onething/backend/runtime/collab/actors/scheduler-log'

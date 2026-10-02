@@ -80,7 +80,7 @@ describe('install/update 的 catalog-changed 广播(审查回归)', () => {
 
   it('installPlugin 广播(面板入口与锚点清单不停在上一世);updatePlugin 同样广播', async () => {
     // 内置插件关掉:它们的真 entry 不该在这个测试里跑。
-    const { writePluginSettingsFile, getCorePluginSettingsPath } = await import('@onething/core/plugins')
+    const { writePluginSettingsFile, getCorePluginSettingsPath } = await import('@onething/backend/core/plugins')
     writePluginSettingsFile(getCorePluginSettingsPath({ storePath: storeRoot }), {
       enabled: { 'log-monitor': false, 'note-skills': false },
     })
@@ -118,7 +118,7 @@ describe('install/update 的 catalog-changed 广播(审查回归)', () => {
   })
 
   it('releases a drained bootstrap manager and ignores repeated shutdown of the old instance', async () => {
-    const { writePluginSettingsFile, getCorePluginSettingsPath } = await import('@onething/core/plugins')
+    const { writePluginSettingsFile, getCorePluginSettingsPath } = await import('@onething/backend/core/plugins')
     writePluginSettingsFile(getCorePluginSettingsPath({ storePath: storeRoot }), {
       enabled: { 'log-monitor': false, 'note-skills': false },
     })

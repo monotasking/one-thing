@@ -3,7 +3,7 @@
  * **同一条 delta 序列,落盘打包器与 UI 小批的 part 边界逐一致**。
  *
  * 这不是"我照抄了一遍规则"的断言 —— 两侧跑的是同一台状态机
- * (`@onething/core/session/part-boundary`),这里验的是**接线没接歪**:
+ * (`@onething/backend/core/session/part-boundary`),这里验的是**接线没接歪**:
  * 采集点盖的章原样传到了 coalescer,而 coalescer 只按那枚章攒批、不再自己判
  * 第二遍边界。哪天有人在 coalescer 里"顺手"重新推断段边界,这条就红。
  */
@@ -11,13 +11,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
 import type { StreamChunk } from '@shared/events/index.js'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 
-vi.mock('@onething/runtime/storage', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/runtime/storage')>()
+vi.mock('@onething/backend/runtime/storage', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/storage')>()
   return {
     ...actual,
     getOnethingSessionsDir: () => state.sessionsDir,

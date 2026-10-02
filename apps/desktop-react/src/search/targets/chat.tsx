@@ -3,7 +3,7 @@ import type { SearchContinuation } from '../continuations'
 import type { SearchRow } from '../types'
 
 /**
- * `kind: 'chat'` —— 一间会话(`runtime/src/search/capabilities/sessions.ts` 的
+ * `kind: 'chat'` —— 一间会话(`runtime/search/capabilities/sessions.ts` 的
  * `ChatTarget`)。
  *
  * 行的视觉与 S4a 之前**逐字相同**:徽写「会话」,正文是会话名 / 预览 / 章节那一段,

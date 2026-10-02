@@ -18,7 +18,7 @@
  * steering 通路。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ExternalAgentSteerOutcome } from '@onething/runtime/external-agents'
+import type { ExternalAgentSteerOutcome } from '@onething/backend/runtime/external-agents'
 
 const mocks = vi.hoisted(() => ({
   /** E0 能力表里 acp 的 `steer`。 */
@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
   calls: [] as { sessionId: string; text: string }[],
 }))
 
-vi.mock('@onething/runtime/external-agents', async importOriginal => {
+vi.mock('@onething/backend/runtime/external-agents', async importOriginal => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
@@ -51,7 +51,7 @@ vi.mock('@onething/runtime/external-agents', async importOriginal => {
   }
 })
 
-vi.mock('@onething/runtime/agents', () => ({
+vi.mock('@onething/backend/runtime/agents', () => ({
   findAgentExecutorDescriptor: (id: string) =>
     id === 'acp'
       ? { id, kind: 'external', capabilities: { steer: mocks.descriptorSteer } }
@@ -62,7 +62,7 @@ vi.mock('../../../store.js', () => ({
   getSession: () => undefined,
   getSettings: () => ({ network: {} }),
 }))
-vi.mock('@onething/runtime/storage', async importOriginal => ({
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-steer-test',
 }))

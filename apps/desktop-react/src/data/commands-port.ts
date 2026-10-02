@@ -23,7 +23,7 @@ import {
  * 是因为这两条本来就没有闸门;后端答什么就报什么(见下面那条留账)。
  *
  * ── 为什么内置那七条几乎不在这里 ────────────────────────────────────────────
- * 内置命令**表**不需要取数:它是 `@onething/core/slash-commands` 的
+ * 内置命令**表**不需要取数:它是 `@onething/backend/core/slash-commands` 的
  * `SHARED_SLASH_COMMANDS`,一份编译期常量,壳直接读(见 commands-source.ts)。
  * 执行也大多骑现成的口 —— `/new` 走建会话的编排点(由调用现场递进来)、
  * `/cd` 走 `sessions-port.updateWorkingDirectory`。只有 `/compact` 在这里多一条:

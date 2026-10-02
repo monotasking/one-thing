@@ -1,7 +1,7 @@
 /**
  * Provider facade.
  *
- * onething-runtime owns provider orchestration; Electron main only binds host
+ * packages/backend/runtime owns provider orchestration; Electron main only binds host
  * adapters such as OAuth, ACP prompt streaming, request dumps, and app fetch.
  */
 
@@ -16,11 +16,11 @@ import {
   type OnethingProviderFacadeStreamChunkWithTools,
   type OnethingProviderFacadeToolCall,
   type OnethingToolChatMessage,
-} from '@onething/runtime/providers'
-import { ACPManager } from '@onething/runtime/acp'
+} from '@onething/backend/runtime/providers'
+import { ACPManager } from '@onething/backend/runtime/acp'
 import type {
   AgentProvider,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 import { oauthManager } from './auth/oauth-manager.js'
 import * as modelRegistry from './model-registry.js'
 import {
@@ -48,9 +48,9 @@ import {
 import type {
   ProviderConfig,
   ProviderInfo,
-} from '@onething/runtime/providers/types.wiring'
+} from '@onething/backend/runtime/providers/types.wiring'
 import { consolePort, getLogger } from '../logging/index.js'
-import type { OnethingChatGenerationOptions, OnethingProviderFacadeAdapters } from '@onething/runtime/providers/provider-facade'
+import type { OnethingChatGenerationOptions, OnethingProviderFacadeAdapters } from '@onething/backend/runtime/providers/provider-facade'
 
 const log = getLogger('providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -73,7 +73,7 @@ export type {
   ProviderInfo,
   ProviderConfig,
   ProviderDefinition,
-} from '@onething/runtime/providers/types.wiring'
+} from '@onething/backend/runtime/providers/types.wiring'
 
 export type AIMessageContent = OnethingAIMessageContent
 export type AIToolCall = OnethingProviderFacadeToolCall

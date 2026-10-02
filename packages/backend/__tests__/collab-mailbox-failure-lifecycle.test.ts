@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { DurableMailbox } from '@onething/core/actors'
+import type { DurableMailbox } from '@onething/backend/core/actors'
 import type { OnethingBackend } from '../backend.js'
 
 let directory: string
@@ -37,8 +37,8 @@ async function assemble() {
   } })
   const agents = await import('../wiring/agents/index.js')
   const runtime = await import('../wiring/collab/actors/runtime.js')
-  const core = await import('@onething/core/actors')
-  const { inspectStoreLock } = await import('@onething/runtime/storage/store-lock')
+  const core = await import('@onething/backend/core/actors')
+  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   const event = (id: string) => core.createActorEvent({
     id, at: 1, type: 'probe', from: { kind: 'room', id: 'room' }, to: { kind: 'agent', id: 'failure-agent' },
     payload: { type: 'probe' },

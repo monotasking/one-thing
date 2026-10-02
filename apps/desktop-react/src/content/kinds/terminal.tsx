@@ -49,8 +49,8 @@ const TerminalLeaf = lazy(() =>
 /**
  * **两个产地的裁决:活的优先**(K2 修一轮)。
  *
- * 活的那一份跟着 `cd` 走 —— 人在项目里 `cd packages/core` 之后关掉这一格,⌘⇧T
- * 该回到 `packages/core`,不是回到它出生的目录。建的那一刻记的那一笔
+ * 活的那一份跟着 `cd` 走 —— 人在项目里 `cd packages/backend/core` 之后关掉这一格,⌘⇧T
+ * 该回到 `packages/backend/core`,不是回到它出生的目录。建的那一刻记的那一笔
  * (`terminal-memory`)是实例不在了之后唯一还读得到的东西,所以它是**回落**。
  *
  * 抽成纯函数是为了让这个次序**测得到**:两个产地都活在模块级单例里(一个是

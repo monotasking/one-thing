@@ -30,8 +30,8 @@ import {
 	pruneGoalHistory,
 	recordGoalContinuation,
 	recordGoalRunError,
-} from "@onething/runtime/goals";
-import type { SessionGoal, SessionGoalLimits } from "@onething/runtime/goals";
+} from "@onething/backend/runtime/goals";
+import type { SessionGoal, SessionGoalLimits } from "@onething/backend/runtime/goals";
 import { getEventBus } from "../../events/index.js";
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";

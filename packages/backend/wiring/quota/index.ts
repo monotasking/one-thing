@@ -12,17 +12,17 @@
  * 实例由 `OnethingBackend` 持有(`backend.quota`),`own()` 收尾 —— 计时器全在它身上。
  */
 import type { ProviderQuotaPushPayload } from '@shared/contracts/quota.js'
-import { fetchProviderQuota, providerQuotaSourceOf } from '@onething/runtime/providers/quota'
+import { fetchProviderQuota, providerQuotaSourceOf } from '@onething/backend/runtime/providers/quota'
 import {
   applySpaceProviderCredential,
   toSpaceCredentialMarker,
   type SpaceProviderCredentialResolution,
-} from '@onething/runtime/spaces/provider-credentials'
-import { getSpaceCredentialEntry, markSpaceCredentialCooldown } from '@onething/runtime/spaces/credentials'
-import { readSpaceProviderSettings } from '@onething/runtime/spaces/provider-settings'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
-import { parseSpaceOAuthToken } from '@onething/runtime/auth'
-import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
+} from '@onething/backend/runtime/spaces/provider-credentials'
+import { getSpaceCredentialEntry, markSpaceCredentialCooldown } from '@onething/backend/runtime/spaces/credentials'
+import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
+import { parseSpaceOAuthToken } from '@onething/backend/runtime/auth'
+import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
 import { createRequiredAppFetch } from '../../provider-binding/bound-fetch.js'
 import { getEventBus, isEventSystemInitialized } from '../../events/index.js'
 import { authService } from '../auth/auth-service.js'

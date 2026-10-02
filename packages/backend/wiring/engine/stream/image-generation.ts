@@ -11,7 +11,7 @@ import {
   generateCoreOpenAIImage,
   normalizeImageModelId,
   type CoreImageGenerationResult,
-} from '@onething/runtime/media'
+} from '@onething/backend/runtime/media'
 import { consolePort, getLogger } from '../../logging/index.js'
 
 const log = getLogger('engine.stream.image')

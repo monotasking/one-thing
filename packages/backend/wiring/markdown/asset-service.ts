@@ -15,7 +15,7 @@ import {
   type MarkdownAssetResolution,
   type MarkdownSaveAttachmentsResponse,
   type OnethingMarkdownAssetServiceAdapters,
-} from '@onething/runtime/markdown'
+} from '@onething/backend/runtime/markdown'
 import { isPathInside, resolveInsideSandbox, type RpcSandbox } from '../../rpc/sandbox.js'
 import { getSettings } from '../../stores/settings.js'
 import { getNotesSubsystemSafe, noteRootsNow } from '../notes/index.js'

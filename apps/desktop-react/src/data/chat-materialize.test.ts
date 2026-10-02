@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   createSessionProjectionState,
   reduceSessionProjection,
-} from '@onething/core/session/projection/reducer'
+} from '@shared/session/projection/reducer'
 import { __countMemoMisses, materializeChatMessagesCached, trimToGraphemeBoundary } from './chat-materialize'
 import { StreamWater } from './stream-water'
-import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
+import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
 import { missingAssistantText } from './missing-assistant-text'
 import { dumpPerf } from '../services/perf'
 
@@ -97,7 +97,7 @@ describe('materializeChatMessagesCached 的引用契约', () => {
   })
 
   it('与全量物化逐条同值(缓存只省钱,不改答案)', async () => {
-    const { materializeChatMessages } = await import('@onething/core/session/projection/chat-messages')
+    const { materializeChatMessages } = await import('@shared/session/projection/chat-messages')
     const state = fold(baseLedger())
     const cached = materializeChatMessagesCached(state, OPTS, 0)
     const full = materializeChatMessages(state, OPTS as never)

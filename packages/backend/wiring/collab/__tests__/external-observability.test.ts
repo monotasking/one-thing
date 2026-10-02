@@ -10,7 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { CollabSchedulerLogRow } from '@onething/runtime/collab/actors'
+import type { CollabSchedulerLogRow } from '@onething/backend/runtime/collab/actors'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
@@ -43,7 +43,7 @@ const {
   recordExternalAgentTool,
   recordExternalAgentTurn,
 } = await import('../external-observability.js')
-const { beginCollabV3Turn, clearCollabV3Turns } = await import('@onething/runtime/collab/actors/turn-context.wiring')
+const { beginCollabV3Turn, clearCollabV3Turns } = await import('@onething/backend/runtime/collab/actors/turn-context.wiring')
 
 /* ── 场子 ─────────────────────────────────────────────────────────────────── */
 

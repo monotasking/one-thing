@@ -42,9 +42,9 @@
  * 猜路由。
  */
 
-import { ResourceHomeUnavailableError, type ShellDispatch } from '@onething/core/resource'
+import { ResourceHomeUnavailableError, type ShellDispatch } from '@onething/backend/core/resource'
 import { formatRef, type ResourceRef } from '@shared/resource/ref'
-import { textResult, type Result, type RunContext } from '@onething/core/toolkit'
+import { textResult, type Result, type RunContext } from '@onething/backend/core/toolkit'
 import type { ResourceShellCommandEvent } from '@shared/events/index.js'
 import type { ShellCommandResult } from '@shared/ipc/resources.js'
 

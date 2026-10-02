@@ -1,6 +1,6 @@
 import type { SkillDefinition } from '@shared/ipc.js'
-import { DEFAULT_ONETHING_AGENT_ID } from '@onething/runtime/agents'
-import { createOnethingSessionSkillsRuntime } from '@onething/runtime/skills'
+import { DEFAULT_ONETHING_AGENT_ID } from '@onething/backend/runtime/agents'
+import { createOnethingSessionSkillsRuntime } from '@onething/backend/runtime/skills'
 import { getSettings } from '../../stores/settings.js'
 import {
   ensureSkillsDirectories,
@@ -8,7 +8,7 @@ import {
   loadProjectSkillsForDirectory,
 } from './index.js'
 import { consolePort, getLogger } from '../logging/index.js'
-import type { OnethingSessionSkillsRuntimeAdapters } from '@onething/runtime/skills/session-skills'
+import type { OnethingSessionSkillsRuntimeAdapters } from '@onething/backend/runtime/skills/session-skills'
 
 const log = getLogger('skills')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

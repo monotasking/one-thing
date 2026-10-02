@@ -31,12 +31,12 @@ import { sessionAccess } from '../../session/access.js'
 import {
   clearOnethingPermissionSessionForIpc,
   getOnethingPendingPermissionsForIpc,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'
 import type { PermissionRoutes } from '@shared/ipc/permissions.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingPermissionSessionIpcLogger } from '@onething/runtime/permissions/permission-session-presentation'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingPermissionSessionIpcLogger } from '@onething/backend/runtime/permissions/permission-session-presentation'
 
 const log = getLogger('rpc.permission')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */

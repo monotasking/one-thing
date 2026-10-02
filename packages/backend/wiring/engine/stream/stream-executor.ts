@@ -6,7 +6,7 @@
  * Uses StreamEngine for AbortController lifecycle management.
  */
 
-import { getProviderManifest } from '@onething/runtime/providers/manifest'
+import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
 import type { Principal } from '@shared/permission/principal'
 import type { SessionRunKind } from '@shared/session/events/types'
@@ -32,16 +32,16 @@ import {
 import { type StreamContext, type StreamSender } from './stream-processor.js'
 import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
-import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
-import type { AgentOutputModality } from '@onething/core/agent-loop'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
+import type { AgentOutputModality } from '@onething/backend/core/agent-loop'
 import {
   executeCoreMessageStream,
-} from '@onething/core/engine'
-import type { CoreInitialToolChoice } from '@onething/core/engine'
+} from '@onething/backend/core/engine'
+import type { CoreInitialToolChoice } from '@onething/backend/core/engine'
 import { consolePort, getLogger } from '../../logging/index.js'
 import { noteQuotaRunEnd } from '../../quota/engine-hooks.js'
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/runtime/providers/provider-config'
-import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/core/engine'
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config'
+import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/backend/core/engine'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

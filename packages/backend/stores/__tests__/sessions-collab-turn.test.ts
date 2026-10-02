@@ -23,7 +23,7 @@ let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer
 
 async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   vi.resetModules()
-  const paths = await import('@onething/runtime/storage')
+  const paths = await import('@onething/backend/runtime/storage')
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()

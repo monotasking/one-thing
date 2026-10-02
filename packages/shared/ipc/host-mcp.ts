@@ -47,5 +47,5 @@ export const hostMcpRouter = defineRouter<HostMcpRoutes>("host-mcp", ["listTools
 export const HOST_MCP_UNAUTHORIZED = "HOST_MCP_UNAUTHORIZED";
 
 // 桥进程的环境变量名 / 服务器名 / `/api/mcp` 路径住在产品层
-// `@onething/runtime/acp/mcp-bridge/server`:桥入口是产品层文件,而产品层不许 import
+// `@onething/backend/runtime/acp/mcp-bridge/server`:桥入口是产品层文件,而产品层不许 import
 // `@shared/ipc`(只有 `*.wiring.ts` 例外),所以那几个名字归它,装配层从它那里取。

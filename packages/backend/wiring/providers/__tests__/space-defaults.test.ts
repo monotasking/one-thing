@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../stores/sessions.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -25,11 +25,11 @@ vi.mock('../../../stores/sessions.js', async () => {
   }
 })
 
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   resetSpaceProviderSettingsCacheForTests,
   writeSpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
+} from '@onething/backend/runtime/spaces/provider-settings'
 import { resolveSessionSpaceDefaultSelection } from '../space-defaults.js'
 
 let tmpDir: string

@@ -1,4 +1,4 @@
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { DEFAULT_SESSION_OWNER, SessionAccessError } from '../../session/access.js'
 
 /** Only accepts the separate host option. Never inspect command/tool arguments for identity. */

@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   tryBeginContinuation: vi.fn(),
 }))
 
-vi.mock('@onething/runtime/goals', () => ({
+vi.mock('@onething/backend/runtime/goals', () => ({
   canAutoContinueGoal: () => true,
 }))
 

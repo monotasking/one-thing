@@ -5,8 +5,8 @@ import {
   buildHistoryToolResultContent,
   sanitizeHistoryToolResultForAI,
   sanitizeToolResultForAI,
-} from '@onething/core/engine'
-import { estimateSessionInputTokens } from '@onething/core/engine'
+} from '@onething/backend/core/engine'
+import { estimateSessionInputTokens } from '@onething/backend/core/engine'
 
 const base64Image = 'iVBORw0KGgo'.repeat(72_000) // ~792KB, like a real read-image payload
 

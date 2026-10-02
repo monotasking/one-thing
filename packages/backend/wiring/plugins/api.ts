@@ -6,7 +6,7 @@
 import {
   registerPluginToolInCatalog,
   unregisterPluginToolFromCatalog,
-} from '@onething/runtime/toolkit/plugin-tools'
+} from '@onething/backend/runtime/toolkit/plugin-tools'
 import type { EventBus } from '../../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine-bound.js'
 import { z } from 'zod'
@@ -36,37 +36,37 @@ import {
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
   PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT, type DisposeCorePluginStateOptions,
   PluginLlmError,
-} from '@onething/core/plugins'
-import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
+import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/backend/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
 import {
   emitPluginStatusPart,
   getPluginStatusRegistry,
   notePluginStatusPending,
   sweepPluginStatusForPlugin,
-} from '@onething/runtime/plugins/status-bound'
+} from '@onething/backend/runtime/plugins/status-bound'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/runtime/plugins/health'
+} from '@onething/backend/runtime/plugins/health'
 import {
   getEffectivePluginConfig,
   getPluginExternalRoot,
   subscribePluginConfigChange,
-} from '@onething/runtime/plugins/config'
+} from '@onething/backend/runtime/plugins/config'
 import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
-} from '@onething/runtime/skills/plugin-roots.wiring'
-import { registerPromptContextProvider } from '@onething/runtime/prompts/plugin-context.wiring'
+} from '@onething/backend/runtime/skills/plugin-roots.wiring'
+import { registerPromptContextProvider } from '@onething/backend/runtime/prompts/plugin-context.wiring'
 import {
   registerAfterAssistantResponseHook,
   registerBeforeContextCompactHook,
-} from '@onething/runtime/plugins/lifecycle.wiring'
-import { registerPluginInputInterceptHook } from '@onething/runtime/plugins/input-intercept-bound'
-import { registerPluginToolCallInterceptHook } from '@onething/runtime/plugins/tool-call-intercept-bound'
-import { registerPluginToolResultInterceptHook } from '@onething/runtime/plugins/tool-result-intercept-bound'
-import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
+} from '@onething/backend/runtime/plugins/lifecycle.wiring'
+import { registerPluginInputInterceptHook } from '@onething/backend/runtime/plugins/input-intercept-bound'
+import { registerPluginToolCallInterceptHook } from '@onething/backend/runtime/plugins/tool-call-intercept-bound'
+import { registerPluginToolResultInterceptHook } from '@onething/backend/runtime/plugins/tool-result-intercept-bound'
+import { getScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import type {
   AfterAssistantResponseHook,
   BeforeContextCompactHook,
@@ -86,10 +86,10 @@ import {
   disposeCorePluginState,
   executeCorePluginTool,
   type CorePluginAPIState,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import type { CompatLogger } from '@onething/core/logging'
+import type { CompatLogger } from '@onething/backend/core/logging'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('plugins')

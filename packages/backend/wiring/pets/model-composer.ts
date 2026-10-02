@@ -2,7 +2,7 @@
  * **模型作曲器** —— 一条时刻过了注意力预算、又没带现成台词时,让工具模型按宠物的口吻写一句
  * (宠物 P4,正本 `docs/design/pet-system-2026-09.md` §11.2)。
  *
- * 提示词与回复解析是产品层的两只纯函数(`@onething/runtime/pets` 的 `buildMomentPrompt` /
+ * 提示词与回复解析是产品层的两只纯函数(`@onething/backend/runtime/pets` 的 `buildMomentPrompt` /
  * `parseMomentReply`),这里只做装配层才做得了的三件事:拿小模型、跑一次、记账。
  *
  * ── 用哪只模型 ─────────────────────────────────────────────────────────────
@@ -22,8 +22,8 @@
  * 而宠物开口不属于任何会话;这一句话本身已经进了宠物自己的账本(话语行 / `nothing-to-say` 行)。
  */
 
-import { createAgentExecutionLifetime, runAgentLoop, type AgentLoopOptions } from '@onething/core/agent-loop'
-import { buildMomentPrompt, parseMomentReply, type MomentComposeInput, type MomentComposer } from '@onething/runtime/pets'
+import { createAgentExecutionLifetime, runAgentLoop, type AgentLoopOptions } from '@onething/backend/core/agent-loop'
+import { buildMomentPrompt, parseMomentReply, type MomentComposeInput, type MomentComposer } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc.js'
 import { getLogger } from '../logging/index.js'
 import { createUtilityProvider, type UtilityProviderRef } from '../providers/utility-provider.js'

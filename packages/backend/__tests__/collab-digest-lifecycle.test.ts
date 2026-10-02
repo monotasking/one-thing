@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createServer, type ServerResponse } from 'node:http'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { registerCustomProvidersForTest } from '@onething/runtime/providers/__tests__/custom-manifest-fixture'
+import { registerCustomProvidersForTest } from '@onething/backend/runtime/providers/__tests__/custom-manifest-fixture'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-digest"])
 
@@ -151,7 +151,7 @@ it('keeps the real auth promise and lease until it settles; shutdown blocks the 
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await vi.waitFor(() => expect(() => oldRunner.ensureCollabDigests('room', [day])).toThrow('shutting down'))
-  const { inspectStoreLock } = await import('@onething/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).toBe('held')
   expect(disposed).toBe(false)
   expect(local.requests).toHaveLength(0)
@@ -178,7 +178,7 @@ it('drains the real delayed model response under the A lease, bills A, and canno
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await vi.waitFor(() => expect(control.signals.at(-1)?.aborted).toBe(true))
-  const { inspectStoreLock } = await import('@onething/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   expect(inspectStoreLock({ storePath: storeA }).status).toBe('held')
   expect(disposed).toBe(false)
   // A provider may report billed usage before its ignored cancellation resolves.
@@ -254,7 +254,7 @@ it('preserves folded-day selection, request deduplication, parsing, usage and th
   const { getUsageLedger } = await import('../wiring/usage/index.js')
   await getUsageLedger().flush()
   expect(await usage(path.join(directory, 'a'))).toEqual([expect.objectContaining({ source: 'collab-digest', sessionId: 'room' })])
-  const digests = await import('@onething/runtime/collab/digest-store')
+  const digests = await import('@onething/backend/runtime/collab/digest-store')
   expect(digests.getCollabDigests('room')).toEqual([expect.objectContaining({ day, summary: 'The migration will ship tomorrow.', messageCount: 1 })])
   await backend.collabDigests.ensureCollabDigestsForRoom('room')
   expect(local.requests).toHaveLength(1)
@@ -270,7 +270,7 @@ it('does not release or repeat a timed-out model while the underlying provider r
   backend = await assemble(path.join(directory, 'a'))
   const day = await room()
   const { createCollabDigestRunner } = await import('../wiring/collab/digest-runner.js')
-  const { createCollabDigestStore } = await import('@onething/runtime/collab/digest-store')
+  const { createCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
   const { captureUsageRecorder } = await import('../wiring/usage/index.js')
   const runner = createCollabDigestRunner({
     store: createCollabDigestStore({ storePath: path.join(directory, 'a') }),

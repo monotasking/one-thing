@@ -19,10 +19,10 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Principal } from '@shared/permission/principal'
-import type { Authorizer, Decision } from '@onething/core/toolkit'
+import type { Authorizer, Decision } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import type { AcpClientRequestContext, AcpFsBridge } from '@onething/runtime/acp'
-import { buildTextDiffChange } from '@onething/runtime/external-agents'
+import type { AcpClientRequestContext, AcpFsBridge } from '@onething/backend/runtime/acp'
+import { buildTextDiffChange } from '@onething/backend/runtime/external-agents'
 import {
   fileMutationEffect,
   fileReadEffects,
@@ -30,10 +30,10 @@ import {
   resolveFileToolPath,
   type FileScope,
   type FileToolAdapters,
-} from '@onething/runtime/toolkit'
-import type { ToolAuditRecord } from '@onething/runtime/toolkit/audit-observer'
-import { readTextFileSnapshot } from '@onething/runtime/tools/file-snapshot'
-import { withFileMutationQueue, withFileReadAccess } from '@onething/runtime/tools/file-mutation-queue'
+} from '@onething/backend/runtime/toolkit'
+import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
+import { readTextFileSnapshot } from '@onething/backend/runtime/tools/file-snapshot'
+import { withFileMutationQueue, withFileReadAccess } from '@onething/backend/runtime/tools/file-mutation-queue'
 import { getLogger } from '../logging/index.js'
 import { mutatingFileAdapters, readAdapters } from '../toolkit/file-adapters.js'
 import { toolkitAuditSink } from '../toolkit/audit-sink.js'

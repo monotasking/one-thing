@@ -19,16 +19,16 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   PLUGIN_SKIN_MAX_ENTRIES,
   validatePluginContributes,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import {
   isPluginSkinKnob,
   isPluginSkinTier,
   listPluginSkinKnobs,
   resolvePluginSkins,
-} from '@onething/runtime/plugins/skin'
-import { projectOnethingPluginsForRenderer } from '@onething/runtime/plugins/plugin-list'
-import { SKIN_TIER_VALUES, SKIN_VAR_MAP, generateSkinVariables } from '@onething/runtime/themes/skin'
-import { applyTheme, initializeThemes } from '@onething/runtime/themes'
+} from '@onething/backend/runtime/plugins/skin'
+import { projectOnethingPluginsForRenderer } from '@onething/backend/runtime/plugins/plugin-list'
+import { SKIN_TIER_VALUES, SKIN_VAR_MAP, generateSkinVariables } from '@onething/backend/runtime/themes/skin'
+import { applyTheme, initializeThemes } from '@onething/backend/runtime/themes'
 
 /** 装配层只从插件管理器的**内存清单**读声明 —— 换成假的就能验完整条宿主链路。 */
 const managedPlugins: Array<{ definition: { id: string; enabled: boolean; manifest: unknown } }> = []

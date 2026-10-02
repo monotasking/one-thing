@@ -20,7 +20,7 @@ import {
   listOnethingAgentsForIpc,
   restoreOnethingAgentFromRequestForIpc,
   updateOnethingAgentFromRequestForIpc,
-} from '@onething/runtime/agents'
+} from '@onething/backend/runtime/agents'
 import {
   DEFAULT_AGENT_ID,
   createAgent,
@@ -32,10 +32,10 @@ import {
 } from '../../wiring/agents/index.js'
 import { getSessionsList } from '../../stores/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingAgentsIpcLogger } from '@onething/runtime/agents/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingAgentsIpcLogger } from '@onething/backend/runtime/agents/ipc-operations'
 import type { AgentDefinition } from '@shared/ipc.js'
-import type { ListOnethingAgentsOptions, CreateOnethingAgentFromRequestOptions, UpdateOnethingAgentFromRequestOptions } from '@onething/runtime/agents/ipc-operations'
+import type { ListOnethingAgentsOptions, CreateOnethingAgentFromRequestOptions, UpdateOnethingAgentFromRequestOptions } from '@onething/backend/runtime/agents/ipc-operations'
 
 const log = getLogger('ipc.agents')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

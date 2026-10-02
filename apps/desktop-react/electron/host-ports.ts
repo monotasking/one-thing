@@ -23,7 +23,7 @@
  * (批 1:系统浏览器 / 默认程序打开 / 在访达里定位);其余九项是 `null`。
  */
 import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session, shell } from 'electron'
-import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
+import type { OnethingTokenCryptoAdapter } from '@onething/backend/runtime/auth'
 import type { OnethingHostPorts } from '@onething/backend/host-ports.js'
 import {
   clearAppDispatcherCache,

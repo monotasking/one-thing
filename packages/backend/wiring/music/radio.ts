@@ -34,16 +34,16 @@ import {
   type OnethingRadioConductor,
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
-} from '@onething/runtime/music/index'
-import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/music/index'
+import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
-import { describeHostDoing, projectHostLog } from '@onething/runtime/music/host-log'
-import { addGrant } from '@onething/core'
-import { writeJsonFile } from '@onething/core/storage'
-import { agentExists, createAgent, findAgent, updateAgent } from '@onething/runtime/agents/store-bound.wiring'
-import { markSessionUnattended } from '@onething/runtime/permissions/unattended'
-import { resolveCollabVenue } from '@onething/runtime/collab'
+import { describeHostDoing, projectHostLog } from '@onething/backend/runtime/music/host-log'
+import { addGrant } from '@onething/backend/core'
+import { writeJsonFile } from '@onething/backend/core/storage'
+import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/runtime/agents/store-bound.wiring'
+import { markSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
+import { resolveCollabVenue } from '@onething/backend/runtime/collab'
 import { getSettings } from '../../stores/settings.js'
 import * as sessions from '../../stores/sessions.js'
 import { sessionReads } from '../../session/reads.js'
@@ -57,7 +57,7 @@ import type { EventBus } from '../../events/event-bus.js'
 
 import { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
-import type { OnethingRadioConductorOptions } from '@onething/runtime/music/radio-conductor'
+import type { OnethingRadioConductorOptions } from '@onething/backend/runtime/music/radio-conductor'
 
 const log = getLogger('music.radio')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -427,7 +427,7 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
     // Dynamic import mirrors the engine imports below: radio.ts is reachable
     // from the variable gateways, and static graph edges here have bitten
     // unrelated test module graphs before.
-    const { getVariableRegistry } = await import('@onething/runtime/variables/registry')
+    const { getVariableRegistry } = await import('@onething/backend/runtime/variables/registry')
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const variables = await getVariableRegistry().list({ sessionId })
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')

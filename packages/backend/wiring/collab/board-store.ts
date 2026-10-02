@@ -13,7 +13,7 @@
 import path from 'node:path'
 import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { readJsonFile, writeJsonFile } from '@onething/core/storage'
+import { readJsonFile, writeJsonFile } from '@onething/backend/core/storage'
 import {
   applyCollabBoardAction,
   emptyCollabBoard,
@@ -23,11 +23,11 @@ import {
   type CollabBoardEvent,
   type CollabSelfTaskFact,
   type CollabTask,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { getEventBus } from '../../events/index.js'
 import {
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
 

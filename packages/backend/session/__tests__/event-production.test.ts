@@ -20,9 +20,11 @@ import type { ChatMessage } from '@shared/ipc.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import {
   canonicalChatMessages,
-  projectChatMessages,
   projectModelHistory,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
+import {
+  projectChatMessages,
+} from '@shared/session/projection/chat-messages'
 
 const state = vi.hoisted(() => ({
   storeDir: '',
@@ -30,7 +32,7 @@ const state = vi.hoisted(() => ({
   messages: [] as ChatMessage[],
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

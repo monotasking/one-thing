@@ -2,7 +2,7 @@
  * Assembly-side entry to the agent capability profile.
  *
  * The rule itself is a pure function in the product layer
- * (`@onething/runtime/agents` → agents/profile.ts). This module is the only
+ * (`@onething/backend/runtime/agents` → agents/profile.ts). This module is the only
  * thing allowed to feed it the live stores, and it exists so the profile is
  * resolved ONCE per turn: the snapshot rides on StreamContext and every
  * downstream consumer reads it instead of re-deriving its own answer.
@@ -11,12 +11,12 @@
 import {
   resolveAgentProfile,
   type EffectiveAgentProfile,
-} from '@onething/runtime/agents'
-import { isUserDmRoom } from '@onething/runtime/collab'
+} from '@onething/backend/runtime/agents'
+import { isUserDmRoom } from '@onething/backend/runtime/collab'
 import type { ChatSession } from '@shared/ipc.js'
 import { getSession } from '../../stores/sessions.js'
 import { getSettings } from '../../stores/settings.js'
-import { defaultAgent, findAgent } from '@onething/runtime/agents/store-bound.wiring'
+import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/store-bound.wiring'
 
 export type { EffectiveAgentProfile }
 

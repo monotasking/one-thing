@@ -34,8 +34,8 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import type { ReadOutcome } from '@onething/core/resource'
-import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/core/toolkit'
+import type { ReadOutcome } from '@onething/backend/core/resource'
+import { TOOL_CANCELLED_MESSAGE, type Outcome } from '@onething/backend/core/toolkit'
 
 /** 本仓那批写面共用的回执形状(`@shared/ipc/sessions.ts` 的 `SessionMutationResponse` 等)。 */
 export type ResourceEnvelope =

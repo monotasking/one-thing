@@ -8,22 +8,22 @@ import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ip
 import type { Principal } from '@shared/permission/principal'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
-import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/runtime/mcp/index.wiring'
-import { resolveAIToolName } from '@onething/core/agent-loop'
+import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/runtime/mcp/index.wiring'
+import { resolveAIToolName } from '@onething/backend/core/agent-loop'
 import { createEventOnlyEmitter } from '../../../events/event-only-emitter.js'
-import type { PendingMessageQueue, CoreToolIdentityResolver, CoreStreamProcessorStore } from '@onething/core/engine'
-import type { CoreAgentLoopToolInputProcessor } from '@onething/core/engine'
-import type { AgentJsonObject, AgentOutputModality } from '@onething/core/agent-loop'
+import type { PendingMessageQueue, CoreToolIdentityResolver, CoreStreamProcessorStore } from '@onething/backend/core/engine'
+import type { CoreAgentLoopToolInputProcessor } from '@onething/backend/core/engine'
+import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/core/agent-loop'
 import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.js'
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
-} from '@onething/core/engine'
-import type { CoreInitialToolChoice } from '@onething/core/engine'
-import type { EffectiveAgentProfile } from '@onething/runtime/agents'
-import type { CoreSpaceCredentialMarker } from '@onething/runtime/providers'
+} from '@onething/backend/core/engine'
+import type { CoreInitialToolChoice } from '@onething/backend/core/engine'
+import type { EffectiveAgentProfile } from '@onething/backend/runtime/agents'
+import type { CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import {
   createOnethingStreamProcessor, type CreateOnethingStreamProcessorOptions,
-} from '@onething/runtime/stream-processor'
+} from '@onething/backend/runtime/stream-processor'
 
 export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig & {
   /**

@@ -70,7 +70,7 @@ import type {
  * ② **API 密钥** → `spaces.setCredential`,**不是** saveSettings。
  *    后端 `prepareSave` 走的 `splitEffectiveAISettings` 会把 `apiKey` /
  *    `oauthToken` / `authType` 三个键剥掉(`SPACE_PROVIDER_STRIPPED_FIELDS`,
- *    `packages/onething-runtime/src/spaces/provider-settings.ts:74-81`),而全局那一半
+ *    `packages/backend/runtime/spaces/provider-settings.ts:74-81`),而全局那一半
  *    (`AISettings`)只剩 `temperature` 与 `modelCatalog`。**把密钥塞进
  *    saveSettings 会被静默丢掉** —— 那是「看起来存上了、其实没有」,比报错更坏。
  *
@@ -169,7 +169,7 @@ export interface ProviderSettingsPort {
    *    所以 `devicePoll` 这条动词不在这张表上(它留给别的宿主)。
    *
    * ⑥ **订阅用量**→ `providers.usage`。今天只有 codex 真有数,其余家后端直接回
-   *    `unsupported: true`(`onething-runtime/src/providers/provider-usage.ts:69-73`)——
+   *    `unsupported: true`(`backend/runtime/providers/provider-usage.ts:69-73`)——
    *    所以「这家没有用量卡」是**后端说的**,不是这块面猜的。
    *
    * 有一件事这里**没有**:测连通。全仓没有这口(testConnection / validateApiKey

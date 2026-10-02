@@ -25,7 +25,7 @@ import {
   createCollabActorPassthroughPipeline,
   parseRoomTranscriptJsonl,
   replayRoomTranscript,
-} from '../packages/onething-runtime/src/collab/actors/replay.ts'
+} from '../packages/backend/runtime/collab/actors/replay.ts'
 
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(arg => arg.startsWith('--')))

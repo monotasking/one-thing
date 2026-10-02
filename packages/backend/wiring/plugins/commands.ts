@@ -6,7 +6,7 @@
  * `rpc/domains/plugins.ts`;为了不让同一段接线在域文件和宿主文件里各留一份,
  * 整段搬到这里,两边都调它。
  *
- * 编排本体在产品层(`@onething/runtime/plugins` 的
+ * 编排本体在产品层(`@onething/backend/runtime/plugins` 的
  * `executeOnethingPluginCommandForIpc` → `executeOnethingPluginCommand`);
  * 这里只把脊柱上的四样东西接上去:插件管理器、会话仓、事件总线,和**宿主注入的**
  * 子进程执行器(`configurePluginsHost({ execCommand })` —— execa 是桌面的依赖,
@@ -17,15 +17,15 @@ import {
   listOnethingPluginCommandsForIpcAllowingUninitialized,
   type ExecuteOnethingPluginCommandResult,
   type ListOnethingPluginCommandsForIpcResult,
-} from '@onething/runtime/plugins'
+} from '@onething/backend/runtime/plugins'
 import { getEventBus } from '../../events/index.js'
 import * as store from '../../store.js'
 import { consolePort, getLogger } from '../logging/index.js'
 import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './manager.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { DEFAULT_SESSION_OWNER, sessionAccess } from '../../session/access.js'
 
 const log = getLogger('plugins.commands')

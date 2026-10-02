@@ -139,7 +139,7 @@ vi.mock('../../wiring/tools/index.js', () => ({
   setInitContext: mocks.setInitContext,
 }))
 
-vi.mock('@onething/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
   getMCPToolsForAI: mocks.getMCPToolsForAI,
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
@@ -155,7 +155,7 @@ vi.mock('../../project-dirs/index.js', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('@onething/runtime/media/library-service-bound', () => ({
+vi.mock('@onething/backend/runtime/media/library-service-bound', () => ({
   mediaLibraryService: {
     ingestMessageAttachments: vi.fn(),
   },
@@ -166,7 +166,7 @@ vi.mock('../context-compact.js', () => ({
   getContextCompactReason: vi.fn(() => null),
 }))
 
-vi.mock('@onething/runtime/prompts/resolver.wiring', () => ({
+vi.mock('@onething/backend/runtime/prompts/resolver.wiring', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,

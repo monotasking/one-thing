@@ -10,7 +10,7 @@
  *    `/api/mcp/servers/<id>/oauth/logout` + `/api/mcp/probe`,以及 `server/runtime.ts`
  *    的 `mcp` facade adapter 与它背后那套 **per-owner 的第二台 `HeadlessMCPManager`**。
  *
- * 逻辑一行没搬:十六条方法**逐条**转调 `@onething/runtime/mcp` 的投影
+ * 逻辑一行没搬:十六条方法**逐条**转调 `@onething/backend/runtime/mcp` 的投影
  * (`*OnethingMCP*ForIpc`),管家取的是进程内那台真 `MCPManager`(桌面 / CLI /
  * server 共用的同一个单例),设置取的是 `@onething/backend/stores/settings` ——
  * 与迁移前 `@main` 那份适配逐字同义。
@@ -64,13 +64,13 @@ import {
   refreshOnethingMCPServerForIpc,
   removeOnethingMCPServerForIpc,
   updateOnethingMCPServerForIpc,
-} from '@onething/runtime/mcp'
+} from '@onething/backend/runtime/mcp'
 import {
   MCPManager,
   probeMCPServerConfig,
   registerMCPTools,
-} from '@onething/runtime/mcp/index.wiring'
-import { getMCPOAuthFlowManager } from '@onething/runtime/mcp/oauth/index'
+} from '@onething/backend/runtime/mcp/index.wiring'
+import { getMCPOAuthFlowManager } from '@onething/backend/runtime/mcp/oauth/index'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
@@ -83,9 +83,9 @@ import {
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingMCPIpcLogger } from '@onething/runtime/mcp/ipc-operations'
-import type { OnethingMCPServerIpcAdapters } from '@onething/runtime/mcp/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingMCPIpcLogger } from '@onething/backend/runtime/mcp/ipc-operations'
+import type { OnethingMCPServerIpcAdapters } from '@onething/backend/runtime/mcp/ipc-operations'
 
 const log = getLogger('rpc.mcp')
 /** 投影层收的是鸭子 logger;`@main` 那份原来直接递 `console`,这里递受管的那只。 */

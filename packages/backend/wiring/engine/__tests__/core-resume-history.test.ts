@@ -10,8 +10,8 @@ import {
   sanitizeToolResultForAI,
   type CoreHistoryMessage,
   type CoreHistoryChatMessage,
-} from '@onething/core/engine'
-import { providerDataFromOnethingContentPart } from '@onething/runtime/agent-loop/providers'
+} from '@onething/backend/core/engine'
+import { providerDataFromOnethingContentPart } from '@onething/backend/runtime/agent-loop/providers'
 
 describe('core resume history', () => {
   it('appends the paused assistant tool call and confirmed tool result messages', () => {

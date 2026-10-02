@@ -1,6 +1,6 @@
-import type { RuntimeRequestContext } from '@onething/core'
-import { createToolAbortError } from '@onething/core/toolkit'
-import { KeyedAdmissionGate, type KeyedWork } from '@onething/core/lifecycle'
+import type { RuntimeRequestContext } from '@onething/backend/core'
+import { createToolAbortError } from '@onething/backend/core/toolkit'
+import { KeyedAdmissionGate, type KeyedWork } from '@onething/backend/core/lifecycle'
 import { ownerMatchesContext, requestSessionOwner, type SessionAccess, type SessionAccessContext } from '../../session/access.js'
 import { getCurrentBackendSafe } from '../../current.js'
 

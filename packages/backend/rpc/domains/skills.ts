@@ -13,12 +13,12 @@
  *    的**第二份技能实现**(`owners/<uid>/<wid>/skills` 目录扫描 / frontmatter 解析 /
  *    创建 / 删除,十三个 `*ServerSkill*` 助手)。
  *
- * 逻辑一行没搬:十二条方法**逐条**转调 `@onething/runtime/skills` 的投影
+ * 逻辑一行没搬:十二条方法**逐条**转调 `@onething/backend/runtime/skills` 的投影
  * (`*OnethingSkill*ForIpc`),端口照旧从 `@onething/backend/wiring/skills` 与
  * 设置缓存取 —— 与迁移前 `@main` 那份适配逐字同义。
  *
  * **唯一需要宿主的那条是 `openDirectory`**:它要「在文件管理器里打开一个目录」,
- * 而这件事只有 Electron 桌面做得到。它现在走 `@onething/runtime/shell` 的
+ * 而这件事只有 Electron 桌面做得到。它现在走 `@onething/backend/runtime/shell` 的
  * `configureShellHost` 端口(P4c 第二批新立):桌面注入 Electron 的打开原语,
  * server / CLI 不注入 —— 于是拿到一句结构化的「宿主没有外壳能力」。这正是从前
  * server adapter 里那句「web server runtime 不支持打开本地技能目录」的同义降级,
@@ -39,8 +39,8 @@ import {
   setOnethingSkillAgentForIpc,
   toggleOnethingSkillEnabledForIpc,
   updateOnethingSkillDirectoryForIpc,
-} from '@onething/runtime/skills'
-import { getShellHost } from '@onething/runtime/shell/host-ports'
+} from '@onething/backend/runtime/skills'
+import { getShellHost } from '@onething/backend/runtime/shell/host-ports'
 import type { SkillsRoutes } from '@shared/ipc/skills.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
@@ -56,10 +56,10 @@ import {
   invalidateSkillsCache,
 } from '../../wiring/skills/session-skills.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { DeleteOnethingSkillForIpcOptions, OnethingSkillsIpcLogger } from '@onething/runtime/skills/ipc-operations'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { DeleteOnethingSkillForIpcOptions, OnethingSkillsIpcLogger } from '@onething/backend/runtime/skills/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
-import type { ListOnethingSkillsForIpcOptions, RefreshOnethingSkillsForIpcOptions, OpenOnethingSkillDirectoryForIpcOptions, CreateOnethingSkillForIpcOptions, ToggleOnethingSkillEnabledForIpcOptions, AddOnethingSkillDirectoryForIpcOptions, UpdateOnethingSkillDirectoryForIpcOptions, RemoveOnethingSkillDirectoryForIpcOptions, SetOnethingSkillAgentForIpcOptions } from '@onething/runtime/skills/ipc-operations'
+import type { ListOnethingSkillsForIpcOptions, RefreshOnethingSkillsForIpcOptions, OpenOnethingSkillDirectoryForIpcOptions, CreateOnethingSkillForIpcOptions, ToggleOnethingSkillEnabledForIpcOptions, AddOnethingSkillDirectoryForIpcOptions, UpdateOnethingSkillDirectoryForIpcOptions, RemoveOnethingSkillDirectoryForIpcOptions, SetOnethingSkillAgentForIpcOptions } from '@onething/backend/runtime/skills/ipc-operations'
 
 const log = getLogger('rpc.skills')
 /** 投影层收的是鸭子 logger;过渡替身与 `wiring/skills` 用的是同一个(area ① 统一后删)。 */

@@ -48,7 +48,7 @@ vi.mock('../../events/index.js', () => ({ getEventBus: () => bus }))
 vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }))
 vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
 vi.mock('../../wiring/evals/incident.js', () => incident)
-vi.mock('@onething/runtime', () => runtimeAmend)
+vi.mock('@onething/backend/runtime', () => runtimeAmend)
 vi.mock('../../session/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../session/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }

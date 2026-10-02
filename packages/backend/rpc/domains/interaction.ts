@@ -44,11 +44,11 @@
  * 提问/结算事件走会话事件通道(`interaction:requested` / `interaction:settled`),
  * 不是这个域的通道,所以 `@main/ipc/interaction.ts` 整只删掉(同 acp / collab 判例)。
  */
-import { Interaction } from '@onething/core/interaction'
+import { Interaction } from '@onething/backend/core/interaction'
 import {
   getPendingInteractionsForIpc,
   respondInteractionForIpc,
-} from '@onething/runtime/interaction/ipc-operations.wiring'
+} from '@onething/backend/runtime/interaction/ipc-operations.wiring'
 import type { InteractionRoutes } from '@shared/ipc/interaction.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { RpcRouteHandlers } from '../registry.js'

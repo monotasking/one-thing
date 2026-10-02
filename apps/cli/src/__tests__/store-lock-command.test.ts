@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { inspectStoreLock, StoreLock } from '@onething/runtime/storage/store-lock'
+import { inspectStoreLock, StoreLock } from '@onething/backend/runtime/storage/store-lock'
 import { storeLockCommand } from '../store-lock-command.js'
 
 const output = vi.hoisted(() => [] as string[])

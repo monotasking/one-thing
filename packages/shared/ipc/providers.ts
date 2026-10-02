@@ -14,7 +14,7 @@ export type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/ada
 
 /**
  * 服务商 id。**是数据,不是写死的名单**(服务商自述试点 P3):内置各家的名册在 runtime 的
- * `packages/onething-runtime/src/providers/vendors/manifests.ts`(每家一行),自定义服务商的
+ * `packages/backend/runtime/providers/vendors/manifests.ts`(每家一行),自定义服务商的
  * id 来自设置。契约层不列举任何一家。
  */
 export type AIProviderId = string

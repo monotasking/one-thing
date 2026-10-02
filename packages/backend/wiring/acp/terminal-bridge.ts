@@ -20,19 +20,19 @@
  */
 import { randomUUID } from 'node:crypto'
 import { constants as osConstants } from 'node:os'
-import type { Authorizer } from '@onething/core/toolkit'
+import type { Authorizer } from '@onething/backend/core/toolkit'
 import type {
   AcpClientRequestContext,
   AcpTerminalBridge,
   AcpTerminalExitStatus,
-} from '@onething/runtime/acp'
-import { describeAcpToolPermission } from '@onething/runtime/external-agents'
+} from '@onething/backend/runtime/acp'
+import { describeAcpToolPermission } from '@onething/backend/runtime/external-agents'
 import {
   getTerminalService,
   hasTerminalHost,
   type TerminalExitStatus,
   type TerminalService,
-} from '@onething/runtime/terminal/service.wiring'
+} from '@onething/backend/runtime/terminal/service.wiring'
 import { resolveExternalAgentSpawnEnv } from '../external-agents/spawn-env.js'
 import { authorizeAcpRequest } from './request-authorize.js'
 

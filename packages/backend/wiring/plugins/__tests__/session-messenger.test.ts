@@ -4,7 +4,7 @@
  *
  * 这一份打的是"只有产品层知道的事实"那一半:三态投递矩阵真的走了哪条既有链路、
  * 循环闸的两道门、注入消息的身份戳、以及快照的状态判定优先序。声明门与协议形状
- * 在 core 那一份(`packages/core/plugins/__tests__/sessions.test.ts`)。
+ * 在 core 那一份(`packages/backend/core/plugins/__tests__/sessions.test.ts`)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
@@ -27,7 +27,7 @@ vi.mock('../../../session/reads.js', () => import('../../../session/testing/faca
 vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => sessions.get(id))
 
-vi.mock('@onething/core/permission', () => ({
+vi.mock('@onething/backend/core/permission', () => ({
   Permission: {
     getPendingPrompts: (sessionId: string) => pendingPrompts.get(sessionId) ?? [],
   },

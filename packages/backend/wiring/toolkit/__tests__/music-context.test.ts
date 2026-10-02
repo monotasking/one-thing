@@ -20,10 +20,10 @@
  * **这条门在读那一侧今天不成立**,所以把它写进这张表会是一句假话。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ToolRunner } from '@onething/core/toolkit'
-import { ResourceTool } from '@onething/core/resource'
-import { ZodValidator } from '@onething/runtime/toolkit'
-import { allowAuthorizer, RecordingObserver } from '../../../../core/toolkit/__tests__/fakes.js'
+import { ToolRunner } from '@onething/backend/core/toolkit'
+import { ResourceTool } from '@onething/backend/core/resource'
+import { ZodValidator } from '@onething/backend/runtime/toolkit'
+import { allowAuthorizer, RecordingObserver } from '../../../core/toolkit/__tests__/fakes.js'
 
 const radio = vi.hoisted(() => ({
   radioToolOpen: vi.fn(async () => ({ active: true, intent: 'quiet', programmeLength: 1 })),

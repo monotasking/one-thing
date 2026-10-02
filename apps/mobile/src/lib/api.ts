@@ -17,7 +17,7 @@ import { httpRequest, rpc, type ServerTarget } from './rpc'
 
 export { ApiError, RpcError, baseUrlOf, type ServerTarget } from './rpc'
 
-/** Mirrors GET /api/capabilities (packages/core/runtime-facade.ts RuntimeHostCapabilities). */
+/** Mirrors GET /api/capabilities (packages/shared/contracts/runtime-capabilities.ts RuntimeHostCapabilities). */
 export interface Capabilities {
   localFileSystem: boolean
   workspaceFileSystem: boolean
@@ -81,7 +81,7 @@ export interface CommandResult {
 }
 
 /**
- * 命令词汇的**唯一权威**是 `packages/core/events/session-command-types.ts` 的
+ * 命令词汇的**唯一权威**是 `packages/backend/core/events/session-command-types.ts` 的
  * `SESSION_COMMAND_TYPES`。这里 `satisfies` 一下:字面量保留(值就是线上格式),
  * 但拼错一个字母、或者哪天这条命令改名,mobile 这一侧当场编译不过 —— 而不是
  * 等到真机上发出一条没人订阅的命令。

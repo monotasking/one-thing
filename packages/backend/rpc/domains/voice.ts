@@ -13,7 +13,7 @@
  *
  * `VOICE_EVENT` 与 `VOICE_RUNTIME_COMMAND` 早就是端口形状 ——
  * `configureVoiceHost` 的 `broadcastMessage` / `runtimeWindow.sendCommand`
- * (`runtime/src/voice/host-ports.wiring.ts`),事件源是装配层那台 VoiceService。
+ * (`runtime/voice/host-ports.wiring.ts`),事件源是装配层那台 VoiceService。
  * 所以本批不需要像 oauth / evals 那样新立广播端口;server 那侧的
  * `/api/voice/events` 与 `/api/voice/runtime-commands` 两条 SSE 也原样保留。
  *
@@ -56,8 +56,8 @@ import {
   listOnethingVoiceTTSModelsForIpc,
   testOnethingVoiceASRForIpc,
   testOnethingVoiceTTSForIpc,
-} from '@onething/runtime/voice'
-import { getVoiceHostPorts, hasVoiceHost } from '@onething/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/voice'
+import { getVoiceHostPorts, hasVoiceHost } from '@onething/backend/runtime/voice/host-ports.wiring'
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
 import type { VoiceRoutes } from '@shared/ipc/voice.js'
 import { getSettings } from '../../stores/settings.js'

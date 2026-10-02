@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import type { CorePluginCommandContext } from '@onething/core/plugins'
+import type { CorePluginCommandContext } from '@onething/backend/core/plugins'
 
 const state = vi.hoisted(() => ({ owner: 'alice', retarget: false, handler: vi.fn(), emit: vi.fn(async (_id: string, _event: unknown, _options?: unknown) => {}), read: vi.fn() }))
 vi.mock('../../../session/access.js', async importOriginal => {

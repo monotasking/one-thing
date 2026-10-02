@@ -10,7 +10,7 @@
  * `feature_*` 不在任何一档里(由 self-evolution feature 自己注册),门单独测。
  */
 import { describe, expect, it } from 'vitest'
-import { Catalog } from '@onething/core/toolkit'
+import { Catalog } from '@onething/backend/core/toolkit'
 import {
   createDesktopCatalog,
   createHeadlessCatalog,

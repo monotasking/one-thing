@@ -12,7 +12,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { FolderVault, type NoteVault } from '@onething/runtime/notes'
+import { FolderVault, type NoteVault } from '@onething/backend/runtime/notes'
 import { NoteSkillRoots } from '../skill-roots.js'
 
 const tempRoots: string[] = []

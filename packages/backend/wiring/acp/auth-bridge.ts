@@ -14,14 +14,14 @@
  * 握手里的 `auth.terminal` 只在有终端时才声明(`terminalAvailable()`)。
  */
 import { homedir } from 'node:os'
-import { ACPManager, authMethodsOf } from '@onething/runtime/acp'
-import type { AcpAuthBridge, AcpAuthenticateOutcome } from '@onething/runtime/acp'
+import { ACPManager, authMethodsOf } from '@onething/backend/runtime/acp'
+import type { AcpAuthBridge, AcpAuthenticateOutcome } from '@onething/backend/runtime/acp'
 import type { ACPAgentConfig } from '@shared/contracts/acp'
 import {
   getTerminalService,
   hasTerminalHost,
   type TerminalService,
-} from '@onething/runtime/terminal/service.wiring'
+} from '@onething/backend/runtime/terminal/service.wiring'
 import { resolveExternalAgentSpawnEnv } from '../external-agents/spawn-env.js'
 import { getLogger } from '../logging/index.js'
 

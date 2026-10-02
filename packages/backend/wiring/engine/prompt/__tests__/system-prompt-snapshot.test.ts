@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentModelCapabilities, AgentProvider } from '@onething/core/agent-loop'
+import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/core/agent-loop'
 import type { ToolDefinition } from '@shared/ipc.js'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/core/toolkit'
-import type { Result, ToolSpec } from '@onething/core/toolkit'
-import { configureToolkitCatalog } from '@onething/runtime/toolkit'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/core/toolkit'
+import type { Result, ToolSpec } from '@onething/backend/core/toolkit'
+import { configureToolkitCatalog } from '@onething/backend/runtime/toolkit'
 
 const deepseekTextCapabilities: AgentModelCapabilities = {
   capabilities: ['text-input', 'text-output'],
@@ -124,7 +124,7 @@ vi.mock('../../stream/codex-native-tools.js', () => ({
   getCodexNativeToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
-vi.mock('@onething/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
@@ -133,8 +133,8 @@ vi.mock('../../../providers/agent-runtime.js', () => ({
   createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
 }))
 
-vi.mock('@onething/core/agent-loop', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/core/agent-loop')>(),
+vi.mock('@onething/backend/core/agent-loop', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/core/agent-loop')>(),
   resolveAgentModelCapabilities: mocks.resolveAgentModelCapabilities,
   agentSupportsTools: mocks.agentSupportsTools,
 }))

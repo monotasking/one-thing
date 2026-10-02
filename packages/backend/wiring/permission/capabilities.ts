@@ -1,4 +1,4 @@
-import { registerCapability } from '@onething/runtime/permissions'
+import { registerCapability } from '@onething/backend/runtime/permissions'
 import { getTodoPlanStore } from '../todo-plan/store.js'
 
 /**

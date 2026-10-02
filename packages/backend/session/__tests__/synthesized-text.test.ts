@@ -9,11 +9,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { materializeChatMessages } from '@onething/core/session'
+import { materializeChatMessages } from '@shared/session/projection/chat-messages'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '', run: undefined as undefined | { runId: string; requestIndex?: number; partCounter: number } }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

@@ -4,7 +4,7 @@
  * 主进程的探针只能测量自身;渲染进程、GPU、网络服务和内置浏览器的每个标签页
  * 都是独立进程,由这里报告。Electron 接口通过参数注入,本文件不直接引用 electron。
  */
-import type { MemoryProcessProbe } from '@onething/core/memory'
+import type { MemoryProcessProbe } from '@onething/backend/core/memory'
 import type { MemoryProcessKind, MemoryProcessSample } from '@shared/memory/types'
 
 /** `Electron.ProcessMetric` 中用到的字段(单位 KiB)。 */

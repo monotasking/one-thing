@@ -7,7 +7,7 @@ import {
   type MCPClientLike,
   type CoreMCPClientRuntimeOptions,
   type CoreMCPProbeAdapters,
-} from '@onething/core/mcp'
+} from '@onething/backend/core/mcp'
 import {
   type CoreMCPProbeResult,
   type MCPConnectionStatus,
@@ -16,16 +16,16 @@ import {
   type MCPToolCallResult,
 } from '@shared/mcp/types'
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
-import { getMCPClientIdentity } from '@onething/runtime/mcp/identity'
+import { getMCPClientIdentity } from '@onething/backend/runtime/mcp/identity'
 import {
   ONETHING_MCP_CLIENT_CAPABILITIES,
   OnethingMCPClient,
-} from '@onething/runtime/mcp/client'
-import { getMCPOAuthFlowManager } from '@onething/runtime/mcp/oauth/index'
-import { notifyMCPCapabilitiesChanged } from '@onething/runtime/mcp/capabilities-changed'
+} from '@onething/backend/runtime/mcp/client'
+import { getMCPOAuthFlowManager } from '@onething/backend/runtime/mcp/oauth/index'
+import { notifyMCPCapabilitiesChanged } from '@onething/backend/runtime/mcp/capabilities-changed'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { LegacyDuckLogger } from '@onething/core/logging'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/backend/core/logging'
 
 const log = getLogger('server.mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

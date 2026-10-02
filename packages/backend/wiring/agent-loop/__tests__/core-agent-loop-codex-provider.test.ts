@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCodexAgentProvider } from '@onething/runtime/providers/vendors/codex/agent-provider'
+import { createCodexAgentProvider } from '@onething/backend/runtime/providers/vendors/codex/agent-provider'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

@@ -9,7 +9,7 @@
  *     不能少一块。
  *  3. `processPorts: 'host'` 不改写宿主的单槽端口(todo/scratchpad 是串联而不是覆盖)。
  */
-import { EventBus, StreamChannel } from '@onething/core'
+import { EventBus, StreamChannel } from '@onething/backend/core'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -24,7 +24,7 @@ import {
   createOnethingServerRuntimeOverBackend,
   toOnethingServerBackend,
 } from '../runtime.js'
-import { MCPManager as appMCPManager } from '@onething/runtime/mcp/index.wiring'
+import { MCPManager as appMCPManager } from '@onething/backend/runtime/mcp/index.wiring'
 import { createTestServerRuntime } from './test-helpers.js'
 
 /**

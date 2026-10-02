@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@onething/runtime/storage', () => {
+vi.mock('@onething/backend/runtime/storage', () => {
   let data: any = { grants: [] }
   return {
     getOnethingPermissionsDir: () => '/tmp/onething-permissions-test',

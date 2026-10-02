@@ -29,7 +29,7 @@
  * 那一层盖** —— 这里就是那一层。
  */
 
-import type { ResourceEvent, ResourceKernel } from '@onething/core/resource'
+import type { ResourceEvent, ResourceKernel } from '@onething/backend/core/resource'
 import type { EventBus } from '../../events/event-bus.js'
 
 /**

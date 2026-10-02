@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSessionProjectionState, reduceSessionProjection } from '@onething/core/session/projection/reducer'
+import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
 import { materializeChatMessagesCached } from './chat-materialize'
 import { rehangPageResults } from './page-results'
 import { imageMimeTypeOf, messageAttachmentMetadata } from './message-attachments'

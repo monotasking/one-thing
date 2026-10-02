@@ -22,7 +22,7 @@ import {
   buildCollabMentions,
   type CollabAgentLike,
   type CollabMentionLike,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'
 import { sessionCommands } from '../../session/commands.js'

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { InteractionAnswer, InteractionAskInput } from '@shared/interaction/types'
-import type { AcpElicitationContext, AcpElicitationRequest } from '@onething/runtime/acp'
+import type { AcpElicitationContext, AcpElicitationRequest } from '@onething/backend/runtime/acp'
 
 vi.mock('../../interaction/no-human.js', () => ({
   NO_HUMAN_DECLINE_REASON: 'nobody',

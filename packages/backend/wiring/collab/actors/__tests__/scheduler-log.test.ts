@@ -13,7 +13,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/core/actors'
+import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/core/actors'
 import {
   collabActorRef,
   collabAgentRaiseHand,
@@ -25,7 +25,7 @@ import {
   collabSchedulerPosted,
   type CollabActorVerb,
   type CollabSchedulerLogRow,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-scheduler-log-'))
 // P0.2 ③:被测模块改走 `sessionReads` / `sessionCommands`,而它们静态依赖真的
@@ -34,7 +34,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-scheduler-log-
 vi.mock('../../../../session/reads.js', () => import('../../../../session/testing/facade-mock.js'))
 vi.mock('../../../../session/commands.js', () => import('../../../../session/testing/facade-mock.js'))
 
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => storeRoot }))
+vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => storeRoot }))
 
 const {
   CollabAgentActor,
@@ -48,12 +48,12 @@ const {
   resetCollabSchedulerLogWarnings,
   sweepCollabSchedulerLogs,
 } = await import('../index.js')
-type CollabRoomActorHost = import('@onething/runtime/collab/actors/room-actor.wiring').CollabRoomActorHost
-type CollabAgentActorHost = import('@onething/runtime/collab/actors/agent-actor').CollabAgentActorHost
-const { createCollabAgentAccountMemoryStore } = await import('@onething/runtime/collab/actors/agent-mailbox')
-const { createCollabScriptedMindPort } = await import('@onething/runtime/collab/actors/mind-port')
-const { createCollabNotebookMemoryStore } = await import('@onething/runtime/collab/actors/notebook-store')
-const { createCollabScriptedWorkerPort } = await import('@onething/runtime/collab/actors/worker-child')
+type CollabRoomActorHost = import('@onething/backend/runtime/collab/actors/room-actor.wiring').CollabRoomActorHost
+type CollabAgentActorHost = import('@onething/backend/runtime/collab/actors/agent-actor').CollabAgentActorHost
+const { createCollabAgentAccountMemoryStore } = await import('@onething/backend/runtime/collab/actors/agent-mailbox')
+const { createCollabScriptedMindPort } = await import('@onething/backend/runtime/collab/actors/mind-port')
+const { createCollabNotebookMemoryStore } = await import('@onething/backend/runtime/collab/actors/notebook-store')
+const { createCollabScriptedWorkerPort } = await import('@onething/backend/runtime/collab/actors/worker-child')
 
 afterAll(() => {
   fs.rmSync(storeRoot, { recursive: true, force: true })

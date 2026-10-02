@@ -2,7 +2,7 @@
  * Music radio IPC types (ncm-cli backed AI radio)
  *
  * Wire types between renderer and main. Mirrors the runtime-level
- * OnethingMusic* types in packages/onething-runtime/src/music/ — keep the
+ * OnethingMusic* types in packages/backend/runtime/music/ — keep the
  * two in structural sync (same duplication convention as voice.ts).
  */
 
@@ -468,7 +468,7 @@ export interface MusicSettings {
 	/**
 	 * Which music CLI provider drives everything (binary, parsers, setup
 	 * wizard, bash policy). Unknown/absent ids resolve to 'ncm-cli' — the
-	 * registry lives in @onething/runtime/music/providers.
+	 * registry lives in @onething/backend/runtime/music/providers.
 	 */
 	provider: string
 	source: MusicRadioSource

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { OnethingRadioBrief } from '@onething/runtime/music/radio-store'
+import type { OnethingRadioBrief } from '@onething/backend/runtime/music/radio-store'
 import { LAST_PLAYBACK_WRITE_EVERY_MS, LastPlaybackRecorder } from '../last-playback.js'
 
 function harness() {

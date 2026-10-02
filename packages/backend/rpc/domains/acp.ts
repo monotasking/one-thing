@@ -11,7 +11,7 @@
  *    agent 列表原样投影成「永远 disconnected」、连接一律抛
  *    "ACP agent connections are disabled in the web server runtime." 的假管家。
  *
- * 逻辑一行没搬:八条方法**逐条**转调 `@onething/runtime/acp` 的投影
+ * 逻辑一行没搬:八条方法**逐条**转调 `@onething/backend/runtime/acp` 的投影
  * (`*OnethingACP*ForIpc`),管家取的是进程内那台真 `ACPManager`(桌面 / CLI /
  * server 共用的同一个单例),设置取的是 `@onething/backend/stores/settings` ——
  * 与迁移前 `@main` 那份适配逐字同义。
@@ -40,7 +40,7 @@ import {
   runOnethingACPRosterOperationForIpc,
   setOnethingACPSessionModeForIpc,
   updateOnethingACPAgentForIpc,
-} from '@onething/runtime/acp'
+} from '@onething/backend/runtime/acp'
 import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp.js'
 import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
@@ -51,9 +51,9 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '../../session/access.js'
 import { sessionReads } from '../../session/reads.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingACPIpcLogger } from '@onething/runtime/acp/ipc-operations'
-import type { OnethingACPIpcAdapters } from '@onething/runtime/acp/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingACPIpcLogger } from '@onething/backend/runtime/acp/ipc-operations'
+import type { OnethingACPIpcAdapters } from '@onething/backend/runtime/acp/ipc-operations'
 import type { ChatMessage } from '@shared/ipc/chat.js'
 import type { ACPAdoptSessionResponse } from '@shared/ipc/acp.js'
 import { sessionCommands } from '../../session/commands.js'

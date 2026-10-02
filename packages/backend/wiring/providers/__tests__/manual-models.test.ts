@@ -19,10 +19,10 @@ vi.mock('../../../stores/settings.js', () => ({
     state.settings = settings
   },
 }))
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'work' }] }),
 }))
-vi.mock('@onething/runtime/spaces/provider-settings', () => ({
+vi.mock('@onething/backend/runtime/spaces/provider-settings', () => ({
   readSpaceProviderSettings: () => null,
   createEmptySpaceProviderSettings: () => ({ provider: '', providers: {}, customProviders: [] }),
 }))

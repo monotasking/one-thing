@@ -9,12 +9,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { materializeChatMessages } from '@onething/core/session'
+import { materializeChatMessages } from '@shared/session/projection/chat-messages'
 import { CORE_INTERRUPTED_TOOL_ERROR } from '@shared/session/interrupted'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

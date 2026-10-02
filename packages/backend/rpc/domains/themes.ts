@@ -9,7 +9,7 @@
  *  - `server/http.ts` 的三条 REST 路由 + `/api/themes/<id>[/apply]` 那个正则块与
  *    `withThemeId` / `readThemeId` 两个助手、`server/runtime.ts` 的 `themes` facade adapter。
  *
- * 四条纯 runtime:逐条转调 `@onething/runtime/themes` 的
+ * 四条纯 runtime:逐条转调 `@onething/backend/runtime/themes` 的
  * `defaultOnethingThemeRuntime`(它自己 `initialize()` 是幂等的,每个方法都先过一遍
  * —— 所以宿主启动时那次 eager 预热不是必需的,随壳一起删)。
  *
@@ -24,14 +24,14 @@
  *
  * **2. `openFolder` 走宿主端口。**
  * 「在文件管理器里打开主题目录」只有 Electron 桌面做得到。它现在走
- * `@onething/runtime/shell` 的 `configureShellHost`(P4c 第二批立的端口):桌面注入
+ * `@onething/backend/runtime/shell` 的 `configureShellHost`(P4c 第二批立的端口):桌面注入
  * Electron 的目录打开原语,server / CLI 不注入 —— 于是拿到结构化的
  * 「宿主没有外壳能力」。这正是旧 server adapter 那句
  * "Opening the local themes folder is not available in the web server runtime."
  * 的同义降级,区别是它不再需要第二份实现。
  */
-import { getShellHost } from '@onething/runtime/shell/host-ports'
-import { defaultOnethingThemeRuntime } from '@onething/runtime/themes/theme-runtime'
+import { getShellHost } from '@onething/backend/runtime/shell/host-ports'
+import { defaultOnethingThemeRuntime } from '@onething/backend/runtime/themes/theme-runtime'
 import type { ThemesRoutes } from '@shared/ipc/themes.js'
 import { getPluginSkinTiers } from '../../wiring/plugins/skin.js'
 import {

@@ -19,17 +19,17 @@ import type { ProviderInfo, ProvidersRoutes } from '@shared/ipc/providers.js'
 import {
   inspectOnethingProviderEnvStatusForIpc,
   listOnethingProvidersForIpc,
-} from '@onething/runtime/providers'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+} from '@onething/backend/runtime/providers'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { getAvailableProviders } from '../../wiring/providers/index.js'
-import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
-import { listLabeledDialectsForIpc } from '@onething/runtime/agent-loop/providers/dialect-options'
+import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
+import { listLabeledDialectsForIpc } from '@onething/backend/runtime/agent-loop/providers/dialect-options'
 import { probeCustomProvider } from '../../wiring/providers/custom-probe.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingProviderPresentationIpcLogger } from '@onething/runtime/providers/provider-presentation'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingProviderPresentationIpcLogger } from '@onething/backend/runtime/providers/provider-presentation'
 import { getCurrentBackendInstance } from '../../current.js'
-import type { ListOnethingProvidersOptions } from '@onething/runtime/providers/provider-presentation'
+import type { ListOnethingProvidersOptions } from '@onething/backend/runtime/providers/provider-presentation'
 
 const log = getLogger('ipc.providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -7,8 +7,10 @@
  * domain reuses it, so adding a domain never touches transport plumbing again.
  *
  * This file imports the router *definition* from `@shared/ipc` and the router
- * type kernel from `@onething/core/ipc` — nothing else. A client must never
+ * type kernel from `@shared/ipc/router` — nothing else. A client must never
  * reach into `@onething/backend`: the dependency points one way.
+ * (那份类型内核原住 core 的 `ipc/index.ts`,server / client 拆分第①步并进了
+ * `shared/ipc/router.ts`。)
  *
  * `RpcResponse.ok === false` becomes a thrown `RpcError` here — the single
  * place where the result union turns back into the exception shape every

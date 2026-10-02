@@ -42,7 +42,7 @@ import { randomUUID } from 'node:crypto'
 import {
   COLLAB_USAGE_SOURCE_WORK,
   type CollabMentionLike,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import {
   COLLAB_WORKER_START_TIMEOUT_MS,
   COLLAB_WORKER_WALL_CLOCK_MS,
@@ -50,7 +50,7 @@ import {
   collectCollabWorkerEvidence,
   type CollabWorkerEvidenceRef,
   type CollabWorkerToolCallLike,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 import { isActiveAgent, type ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '../../agents/index.js'
@@ -58,7 +58,7 @@ import { getEventBus } from '../../../events/index.js'
 import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../../store.js'
 import { sessionReads } from '../../../session/reads.js'
-import { issueCollabDriveToken } from '@onething/runtime/collab/drive-guard'
+import { issueCollabDriveToken } from '@onething/backend/runtime/collab/drive-guard'
 import { collabRoomFolder, ensureCollabRoomFolder } from '../room-folder.js'
 import {
   abortCollabZombieStream,
@@ -66,12 +66,12 @@ import {
   collabDriveEnvelope,
   scanCollabRoomSays,
 } from '../turn-primitives.js'
-import type { CollabMindSay } from '@onething/runtime/collab/actors/mind-port'
+import type { CollabMindSay } from '@onething/backend/runtime/collab/actors/mind-port'
 import type {
   CollabWorkerMindPort,
   CollabWorkerRunRequest,
   CollabWorkerRunResult,
-} from '@onething/runtime/collab/actors/worker-child'
+} from '@onething/backend/runtime/collab/actors/worker-child'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../../logging/index.js'

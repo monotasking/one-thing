@@ -1,4 +1,4 @@
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import {
   SessionAccessError,
   sessionOwnerOf,

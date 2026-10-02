@@ -11,8 +11,8 @@
  *  - 已结算 / 不存在的提问回的是结构化失败,不是抛错。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '@onething/core/events'
-import { Interaction } from '@onething/core/interaction'
+import { EventBus } from '@onething/backend/core/events'
+import { Interaction } from '@onething/backend/core/interaction'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { interactionRouter } from '@shared/ipc/interaction.js'
 

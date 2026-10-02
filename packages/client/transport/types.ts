@@ -18,7 +18,7 @@ import type { RuntimeHostCapabilities } from '@shared/contracts/runtime-capabili
  * `GET /api/capabilities` 的形。
  *
  * **不新造一个类型**:server 侧 `backend/server/runtime.ts` 的
- * `currentServerCapabilities()` 出的就是这个,它住在 `@onething/core/runtime-facade`
+ * `currentServerCapabilities()` 出的就是这个,它住在 `@shared/contracts/runtime-capabilities`
  * (纯类型文件,零依赖)。客户端照抄一份 = 两个形状,某天服务器加一位而客户端
  * 不知道 —— 所以这里只是起个本地名字。
  */
@@ -107,7 +107,7 @@ export interface Transport {
 /**
  * 本包唯一的"往外说话"口子。
  *
- * 不 import `@onething/runtime/logging` 的 `getLogger` —— 那会把整条日志机制
+ * 不 import `@onething/backend/runtime/logging` 的 `getLogger` —— 那会把整条日志机制
  * (文件 sink / janitor / 崩溃钩子)拖进浏览器构建,而且 runtime 在本包的禁令表上。
  * 宿主想要日志就注一个进来;不注 = 一行不打。
  */

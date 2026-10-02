@@ -38,11 +38,11 @@ import type {
 	AgentProvider,
 	AgentTool,
 	AgentTurnRequest,
-} from "@onething/core/agent-loop";
+} from "@onething/backend/core/agent-loop";
 import type { JsonObject } from "@shared/json.js";
-import { Catalog, Intent, Tool as ToolkitTool } from "@onething/core/toolkit";
-import type { Result, ToolSpec } from "@onething/core/toolkit";
-import { configureToolkitCatalog } from "@onething/runtime/toolkit";
+import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/core/toolkit";
+import type { Result, ToolSpec } from "@onething/backend/core/toolkit";
+import { configureToolkitCatalog } from "@onething/backend/runtime/toolkit";
 import type { HistoryMessage } from "../message-helpers.js";
 import type { BuildPromptOptions } from "../../prompt/system-prompt.js";
 import type { StreamSender } from "../stream-processor.js";
@@ -287,7 +287,7 @@ vi.mock("../../triggers/index.js", () => ({
 	},
 }));
 
-vi.mock("@onething/runtime/plugins/lifecycle.wiring", () => ({
+vi.mock("@onething/backend/runtime/plugins/lifecycle.wiring", () => ({
 	runAfterAssistantResponseHooks: mocks.runAfterAssistantResponseHooks,
 }));
 
@@ -295,7 +295,7 @@ vi.mock("../../../skills/session-skills.js", () => ({
 	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
-vi.mock("@onething/runtime/mcp/index.wiring", () => ({
+vi.mock("@onething/backend/runtime/mcp/index.wiring", () => ({
 	getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 	getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 	isMCPTool: vi.fn(() => false),
@@ -333,7 +333,7 @@ vi.mock("../../context-compact.js", () => ({
 		mocks.shouldSkipAutoCompactForProviderUsageMismatch,
 }));
 
-vi.mock("@onething/runtime/prompts/resolver.wiring", () => ({
+vi.mock("@onething/backend/runtime/prompts/resolver.wiring", () => ({
 	resolvePromptReferences: vi.fn((content: string) => ({
 		modelContent: content,
 		displayContent: content,
@@ -343,8 +343,8 @@ vi.mock("@onething/runtime/prompts/resolver.wiring", () => ({
 
 // A0-3:ACP 走外部 agent 连接器,连接器在 runtime 里相对引用 `acp/manager.ts`,
 // 所以桩打在具体模块上(barrel 的再导出同样落到这一只)。
-vi.mock("@onething/runtime/acp/manager", async () => {
-	const { MemoryACPSessionLinkStore } = await import("@onething/runtime/acp/session-links");
+vi.mock("@onething/backend/runtime/acp/manager", async () => {
+	const { MemoryACPSessionLinkStore } = await import("@onething/backend/runtime/acp/session-links");
 	const links = new MemoryACPSessionLinkStore();
 	return {
 		ACPManager: {

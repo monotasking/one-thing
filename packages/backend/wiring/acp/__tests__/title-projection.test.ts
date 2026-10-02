@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { applySessionUpdate, createAcpSessionState } from '@onething/runtime/acp/session-state'
+import { applySessionUpdate, createAcpSessionState } from '@onething/backend/runtime/acp/session-state'
 import type { AcpSessionState } from '@shared/contracts/acp'
 import type { SessionTitleSource } from '@shared/ipc/chat.js'
 import { AcpTitleProjection } from '../title-projection.js'

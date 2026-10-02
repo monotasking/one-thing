@@ -27,7 +27,7 @@ vi.mock('../../auth/auth-service.js', () => ({
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}), getSpaceSettings: () => mocks.spaceSettings }))
 
 vi.mock('../../../stores/sessions.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -41,19 +41,19 @@ vi.mock('../registry.js', () => ({
   getProviderInfo: (id: string) => ({ id, name: id.toUpperCase() }),
 }))
 
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
-import type { AgentProvider } from '@onething/core/agent-loop'
+import type { AgentProvider } from '@onething/backend/core/agent-loop'
 import {
   getSpaceProviderCredentials,
   resetSpaceCredentialRotationForTests,
   resetSpaceCredentialsCacheForTests,
   writeSpaceCredentials,
   type SpaceCredentialEntry,
-} from '@onething/runtime/spaces/credentials'
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
+} from '@onething/backend/runtime/spaces/credentials'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import { createSessionCredentialRotator } from '../credential-rotation.js'
 
 let tmpDir: string
@@ -366,7 +366,7 @@ describe('批 E:轮换边界上的插件策略', () => {
     registry.resetPluginCredentialStrategiesForTests()
     registry.resetAppPluginCredentialStrategyHostForTests()
     registry.configureAppPluginCredentialStrategyHost()
-    const health = await import('@onething/runtime/plugins/health')
+    const health = await import('@onething/backend/runtime/plugins/health')
     health.resetPluginRuntimeHealthForTests()
   })
 
@@ -430,7 +430,7 @@ describe('批 E:轮换边界上的插件策略', () => {
 
   it('策略抛错 = 回落 + 记熔断,起流一点不受影响', async () => {
     const registry = await import('../credential-strategy.js')
-    const health = await import('@onething/runtime/plugins/health')
+    const health = await import('@onething/backend/runtime/plugins/health')
     seedPool('plugin:flaky:boom', [entry('a'), entry('b')])
     registry.registerPluginCredentialStrategy('flaky', {
       name: 'boom',

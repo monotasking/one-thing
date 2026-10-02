@@ -25,7 +25,7 @@ interface IsolatedModules {
 
 async function loadIsolated(): Promise<IsolatedModules> {
   vi.resetModules()
-  const paths = await import('@onething/runtime/storage')
+  const paths = await import('@onething/backend/runtime/storage')
   const sessions = await import('../../../stores/sessions.js')
   const presence = await import('../presence.js')
   loadedSessions = sessions

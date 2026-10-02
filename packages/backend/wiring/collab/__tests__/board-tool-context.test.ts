@@ -61,9 +61,9 @@ vi.mock('../board-store.js', () => ({
 }))
 
 const { boardAdapters } = await import('../../toolkit/adapters.js')
-const { createBoardTool } = await import('@onething/runtime/toolkit')
-const { Decision, ToolRunner } = await import('@onething/core/toolkit')
-const { ZodValidator } = await import('@onething/runtime/toolkit')
+const { createBoardTool } = await import('@onething/backend/runtime/toolkit')
+const { Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
+const { ZodValidator } = await import('@onething/backend/runtime/toolkit')
 
 async function board(sessionId: string, executionContext?: unknown): Promise<{ output: string }> {
   const runner = new ToolRunner({

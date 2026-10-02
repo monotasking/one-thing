@@ -56,10 +56,14 @@ import fs from 'node:fs'
 import {
   applySessionListProjectionToMeta,
   deriveSessionLastMessagePreview,
-  materializeNode,
   type CoreSessionPreviewMessageSource,
+} from '@onething/backend/core/session'
+import {
+  materializeNode,
+} from '@shared/session/projection/chat-messages'
+import {
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
 import type { SessionMeta } from '@shared/ipc.js'
 import { getSessionsList, updateSessionsIndexMetaForCommands } from '../stores/sessions.js'
 import { getLogger } from '../wiring/logging/index.js'

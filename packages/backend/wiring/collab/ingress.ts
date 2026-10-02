@@ -29,9 +29,9 @@ import {
   mergeCollabMentions,
   normalizeCollabMentions,
   type CollabAgentLike,
-} from '@onething/runtime/collab'
-import { isTrustedCollabDrive } from '@onething/runtime/collab/drive-guard'
-import { collabV3RoomPostPort } from '@onething/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab'
+import { isTrustedCollabDrive } from '@onething/backend/runtime/collab/drive-guard'
+import { collabV3RoomPostPort } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

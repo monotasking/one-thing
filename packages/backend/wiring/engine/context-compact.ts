@@ -1,11 +1,11 @@
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/runtime/providers/provider-config'
-import { getProviderManifest } from '@onething/runtime/providers/manifest'
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config'
+import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
 import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
-import { isAgentExecutionCheckpointError } from '@onething/core/agent-loop'
-import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/runtime/plugins/lifecycle.wiring'
+import { isAgentExecutionCheckpointError } from '@onething/backend/core/agent-loop'
+import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/backend/runtime/plugins/lifecycle.wiring'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { sessionCommands } from '../../session/commands.js'
@@ -33,10 +33,10 @@ import {
   shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
   summarizeContextInChunks,
   type SummarizeContextInChunksOptions,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { buildHistoryMessages } from './stream/message-helpers.js'
-import { collectCompactFileOperations } from '@onething/runtime/engine/compact-file-lists'
+import { collectCompactFileOperations } from '@onething/backend/runtime/engine/compact-file-lists'
 import * as modelRegistry from '../providers/model-registry.js'
 import { getLogger } from '../logging/index.js'
 
@@ -51,7 +51,7 @@ export {
   normalizeContextSummaryOutput,
   selectCompactPlan,
   shouldAutoCompactBeforeSend,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 
 export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
   providerId: string

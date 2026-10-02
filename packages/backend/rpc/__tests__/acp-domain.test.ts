@@ -5,7 +5,7 @@
  * `@main/ipc/acp.ts` 的壳适配,以及 server 的八条 REST 路由 + `acp` facade adapter
  * 背后那台 `ServerSafeACPManager`。
  *
- * 只桩**管家**(`@onething/runtime/acp` 的 `ACPManager` 单例)与设置缓存,
+ * 只桩**管家**(`@onething/backend/runtime/acp` 的 `ACPManager` 单例)与设置缓存,
  * **投影不桩** —— `*OnethingACP*ForIpc` 是真跑的,所以这组用例证的是「域把端口
  * 接对了」,而不是「域自己又实现了一遍」。
  *
@@ -47,8 +47,8 @@ const settings = vi.hoisted(() => ({
   saveSettings: vi.fn(),
 }))
 
-vi.mock('@onething/runtime/acp', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@onething/runtime/acp')
+vi.mock('@onething/backend/runtime/acp', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@onething/backend/runtime/acp')
   return { ...actual, ACPManager: manager }
 })
 vi.mock('../../stores/settings.js', () => settings)

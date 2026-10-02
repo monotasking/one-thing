@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { OnethingRadioBrief } from '@onething/runtime/music/radio-store'
+import type { OnethingRadioBrief } from '@onething/backend/runtime/music/radio-store'
 import { recentSpins } from '../recent-spins.js'
 
 const A = 'A'.repeat(32)

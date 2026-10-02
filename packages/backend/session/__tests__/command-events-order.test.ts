@@ -34,7 +34,7 @@ const state = vi.hoisted(() => ({
   sessionMetaAtPort: [] as (string | undefined)[],
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

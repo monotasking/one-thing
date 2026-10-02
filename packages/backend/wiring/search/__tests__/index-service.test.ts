@@ -35,15 +35,15 @@ process.env.ONETHING_STORE_PATH = storeRoot
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EventBus } from '../../../events/event-bus.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { encodeSessionLogEventLine } from '@onething/core/session'
+import { encodeSessionLogEventLine } from '@onething/backend/core/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
-import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '@onething/runtime/search/index'
-import type { IndexEndpoint } from '@onething/runtime/search/index'
-import type { IndexWorkerData } from '@onething/runtime/search/index/worker-data'
-import type { IndexWorkerHandle } from '@onething/runtime/search/index/worker-host'
-import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
-import { FolderVault } from '@onething/runtime/notes'
-import type { NoteVault } from '@onething/runtime/notes'
+import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '@onething/backend/runtime/search/index'
+import type { IndexEndpoint } from '@onething/backend/runtime/search/index'
+import type { IndexWorkerData } from '@onething/backend/runtime/search/index/worker-data'
+import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/worker-host'
+import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
+import { FolderVault } from '@onething/backend/runtime/notes'
+import type { NoteVault } from '@onething/backend/runtime/notes'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,

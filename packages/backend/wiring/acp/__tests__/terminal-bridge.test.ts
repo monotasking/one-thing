@@ -3,11 +3,11 @@
  * 起之前按 `execute` 效果问一次。服务与授权者都是桩 —— PTY 本身有它自己的真机冒烟测试。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/core/toolkit'
-import type { Authorizer, Intent } from '@onething/core/toolkit'
-import type { AcpClientRequestContext } from '@onething/runtime/acp'
+import { Decision } from '@onething/backend/core/toolkit'
+import type { Authorizer, Intent } from '@onething/backend/core/toolkit'
+import type { AcpClientRequestContext } from '@onething/backend/runtime/acp'
 import type { TerminalCreateRequest } from '@shared/ipc.js'
-import type { TerminalExitStatus } from '@onething/runtime/terminal/service.wiring'
+import type { TerminalExitStatus } from '@onething/backend/runtime/terminal/service.wiring'
 
 vi.mock('../../permission/message-anchor.js', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred ?? '',

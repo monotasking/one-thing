@@ -16,16 +16,18 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalChatMessage,
   canonicalHistoryMessages,
-  projectChatMessages,
   projectModelHistory,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
+import {
+  projectChatMessages,
+} from '@shared/session/projection/chat-messages'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { ChatMessage } from '@shared/ipc.js'
 import {
   dehydrateProjectedMessages,
   dehydrateSessionForStorage,
   rehydrateSessionFromStorage,
-} from '@onething/runtime/sessions/session-dehydrate'
+} from '@onething/backend/runtime/sessions/session-dehydrate'
 import {
   buildHistoryMessages,
   historyProjectionRecipe,

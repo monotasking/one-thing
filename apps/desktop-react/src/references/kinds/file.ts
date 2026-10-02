@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { createFileToken, expandFileTokens } from '@onething/runtime/prompts/prompt-references'
+import { createFileToken, expandFileTokens } from '@shared/prompts/prompt-references'
 import { resolveIcon } from '../../components/icons'
 import {
   FILE_MENTION_DEBOUNCE_MS,
@@ -206,7 +206,7 @@ export const fileReferenceKind: ReferenceKind<FileMention, FileRef> = {
      * 就换一次形。今天两边读的都是下面那只 `render`。
      */
     toRef: (hit) => ({ kind: 'fileRef' as const, path: hit.path }),
-    // chip 是呈现,token 才是位置(`@onething/runtime` 的 `FILE_REF_PATTERN` 那段注)。
+    // chip 是呈现,token 才是位置(`@onething/backend/runtime` 的 `FILE_REF_PATTERN` 那段注)。
     token: (ref) => createFileToken(ref.path),
     /*
      * **展开在草稿出口,而且只在那里**(a00e1728):交出去的那一句必须与账本上

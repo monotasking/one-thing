@@ -320,7 +320,7 @@ export interface ProviderSettingsState {
    * `modelCapabilitiesByModel[m]` 的五个能力键(vision / tools / reasoning /
    * imageOutput / fileInput)。后端早有这三张表(引擎读法
    * `model-registry.ts:895` / `agent-loop-runtime.ts:819` /
-   * `runtime/src/providers/model-capability.ts` 的 `resolveOnethingModelCapabilities`,
+   * `runtime/providers/model-capability.ts` 的 `resolveOnethingModelCapabilities`,
    * 覆盖一律优先于目录条目),缺的只是壳上的写面。
    *
    * `patch` 的三态是**明码**:某一格给数 / 布尔 = 写它,给 `null` = **删这个键**,
@@ -620,7 +620,7 @@ export function overrideDeltaOf(
   /*
    * 最大输出走**与上一格同一手**:同一种「按模型的数字表」,删键删干净、
    * 空表删整表。引擎读它的地方是
-   * `packages/core/engine/agent-loop-runtime.ts:819` —— 填了就直接当请求的
+   * `packages/backend/core/engine/agent-loop-runtime.ts:819` —— 填了就直接当请求的
    * max_tokens,所以这张表写错的后果与上一张一样是**发出去的请求变形**,
    * 不是屏幕上一个读数变形。
    */

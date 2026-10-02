@@ -15,7 +15,7 @@
  * 绝不抛:投影跑在引擎热路径上,记账坏掉不能让聊天挂掉(S1 三条纪律的第一条)。
  */
 
-import type { ProjectionIssue, ProjectionMaterializeOptions } from '@onething/core/session'
+import type { ProjectionIssue, ProjectionMaterializeOptions } from '@shared/session/projection/blobs'
 import type { BlobRef } from '@shared/session/events/types'
 import { readSessionBlob } from './blob-store.js'
 import { bumpSessionShadowStats } from './event-stats.js'

@@ -1,7 +1,7 @@
 /**
  * 在场推导的装配面(M6,docs/design/agent-domain-model.md §5)。
  *
- * 规则本身是产品层的纯函数(`@onething/runtime/agents` → agents/presence.ts);
+ * 规则本身是产品层的纯函数(`@onething/backend/runtime/agents` → agents/presence.ts);
  * 这里只做一件事:去 sessions store 取会话**元数据**喂给它。
  *
  * 刻意走 `getSessionsList()` 而不是 `getSessions()`:前者是 meta-only 的快索引
@@ -12,7 +12,7 @@
  * renderer 将来自己从 sessionsStore 现算(desktop 省一跳 IPC),两边共用同一个
  * `computeAgentPresence`,故口径不会漂。
  */
-import { computeAgentPresence, hasAgentReference, type AgentPresence } from '@onething/runtime/agents'
+import { computeAgentPresence, hasAgentReference, type AgentPresence } from '@onething/backend/runtime/agents'
 import { getSessionsList } from '../../stores/sessions.js'
 
 /**

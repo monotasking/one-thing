@@ -51,21 +51,21 @@ import {
   type PluginCredentialEntryView,
   type PluginCredentialFailureKind,
   type PluginCredentialUsage,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import {
   configureSpaceCredentialPluginStrategyHost,
   type SpaceCredentialEntry,
-} from '@onething/runtime/spaces/credentials'
+} from '@onething/backend/runtime/spaces/credentials'
 import {
   computeOnethingCredentialUsage,
   type OnethingUsageLedgerRecord,
-} from '@onething/runtime/usage'
+} from '@onething/backend/runtime/usage'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/runtime/plugins/health'
+} from '@onething/backend/runtime/plugins/health'
 import { captureCredentialStrategyScope, type CredentialStrategyScope } from './credential-strategy-lifetime.js'
 
 /**

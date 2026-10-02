@@ -13,9 +13,9 @@
  *  4. say 侧的拒绝(冻结/超预算)原样透传,措辞一个字不改写。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { COLLAB_SAY_REFUSED_EMPTY } from '@onething/runtime/collab'
-import { createSendMessageTool, ZodValidator } from '@onething/runtime/toolkit'
-import { Decision, ToolRunner } from '@onething/core/toolkit'
+import { COLLAB_SAY_REFUSED_EMPTY } from '@onething/backend/runtime/collab'
+import { createSendMessageTool, ZodValidator } from '@onething/backend/runtime/toolkit'
+import { Decision, ToolRunner } from '@onething/backend/core/toolkit'
 
 interface FakeSession {
   id: string

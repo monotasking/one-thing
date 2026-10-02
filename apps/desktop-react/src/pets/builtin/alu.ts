@@ -4,7 +4,7 @@ import type { PetManifest } from '../manifest'
  * **阿绿** —— 第二只宠物,一只绿鹦鹉(宠物 P5,正本 §12.3)。
  *
  * 话少、爱学舌。这里只有壳本地的那一半:名字与台词的字典键、卡片上的一句人设。
- * **形象不在这里**:它是产品层的一份声明式数据(`@onething/runtime/pets/builtin/alu.rig`),
+ * **形象不在这里**:它是产品层的一份声明式数据(`@onething/backend/runtime/pets/builtin/alu.rig`),
  * 由 `pet:` 的 `roster` 读法交来 —— 所以没有 `rig` 这一格,壳侧也没有阿绿的组件。
  */
 const HOLD_MS = 1_400

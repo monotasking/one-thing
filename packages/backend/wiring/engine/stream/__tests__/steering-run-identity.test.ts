@@ -15,12 +15,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 
-vi.mock('@onething/runtime/storage', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/runtime/storage')>()
+vi.mock('@onething/backend/runtime/storage', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/storage')>()
   return {
     ...actual,
     getOnethingSessionsDir: () => state.sessionsDir,

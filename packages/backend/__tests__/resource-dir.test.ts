@@ -109,7 +109,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('dir')
     expect(backend.resources.tools().map(tool => tool.spec.id)).toContain('dir')
 
-    const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
     expect(getToolkitCatalog()?.has('dir')).toBe(true)
   })
 
@@ -152,7 +152,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     })
 
     expect(outcome.kind).toBe('ok')
-    const { resultToText } = await import('@onething/core/toolkit')
+    const { resultToText } = await import('@onething/backend/core/toolkit')
     const text = outcome.kind === 'ok' ? resultToText(outcome.result) : ''
     expect(text).toContain('dir-provider.ts')
   })

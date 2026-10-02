@@ -3,7 +3,7 @@
  *
  * 分工:
  *  - core 给安全判据(颜色白名单)与全局规范顺序;
- *  - 产品层 `@onething/runtime/plugins/theme-overrides` 给纯裁决(键白名单 =
+ *  - 产品层 `@onething/backend/runtime/plugins/theme-overrides` 给纯裁决(键白名单 =
  *    `CSS_VAR_MAP`、后者胜、token → CSS 变量展开);
  *  - **这里**只做一件事:把"当前活着的插件清单"喂给裁决,给宿主一张可以直接
  *    叠在主题产出之上的变量表。
@@ -18,7 +18,7 @@ import {
   resolvePluginThemeOverrides,
   type PluginThemeOverrideEntry,
   type PluginThemeOverrideInput,
-} from '@onething/runtime/plugins/theme-overrides'
+} from '@onething/backend/runtime/plugins/theme-overrides'
 
 export interface PluginThemeOverrideTable {
   /** 喂给主题计算的那一份:主题 token 路径 → 颜色字面量(已裁决完冲突)。 */

@@ -16,7 +16,7 @@
  * agent-loop-executor / stream-processor、core/engine/history)在单测里拿的是
  * mock store,冻不到。真正的验收在 P0.2:调用点迁完后每区都要在冻结下跑全量。
  */
-import { deepFreeze } from '@onething/core/session'
+import { deepFreeze } from '@onething/backend/core/session'
 
 const TRUTHY = new Set(['1', 'true', 'on', 'yes'])
 

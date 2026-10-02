@@ -24,16 +24,16 @@ import {
   manifestOfCustomProvider,
   type CustomProviderManifestSource,
   type ProviderManifest,
-} from '@onething/runtime/providers/manifest'
+} from '@onething/backend/runtime/providers/manifest'
 import {
   dialectFromSpec,
   unsupportedAdapterSpecFields,
-} from '@onething/runtime/agent-loop/providers/dialects/custom-from-spec'
-import { registerDialect } from '@onething/runtime/agent-loop/providers/base/dialect'
+} from '@onething/backend/runtime/agent-loop/providers/dialects/custom-from-spec'
+import { registerDialect } from '@onething/backend/runtime/agent-loop/providers/base/dialect'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
-import { readSpaceProviderSettings } from '@onething/runtime/spaces/provider-settings'
-import { getSpacesStore } from '@onething/runtime/spaces/store'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
+import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { getSettings } from '../../stores/settings.js'
 import {
   configureSettingsEventBroadcaster,

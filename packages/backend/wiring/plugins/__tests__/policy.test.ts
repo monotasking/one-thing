@@ -27,7 +27,7 @@ import {
   pluginLoadLabel,
   pluginScope,
   resolvePluginScopeSeverity,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../..', import.meta.url))
 
@@ -313,15 +313,15 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
     expect(new Set(SAMPLES.map(entry => entry.factory)).size).toBe(Object.keys(pluginScope).length)
 
     const files = readSourceFiles([
-      path.join(REPO_ROOT, 'packages/core/plugins'),
+      path.join(REPO_ROOT, 'packages/backend/core/plugins'),
       path.join(REPO_ROOT, 'packages/backend'),
       // P3'c:health / 四个 `*-bound` / `lifecycle.wiring` 的判决路径搬进了产品层,
       // 三棵树一起扫才还是同一条判据。
-      path.join(REPO_ROOT, 'packages/onething-runtime/src/plugins'),
+      path.join(REPO_ROOT, 'packages/backend/runtime/plugins'),
       // P3'e-A2b:`prompt-context` 家族的判决路径(插件提示词 provider 的
       // 超时/异常记一次失败)随 `prompt/plugin-context.ts` 进了产品层的
       // `prompts/plugin-context.wiring.ts`,不加这一棵它会被误报成死规则。
-      path.join(REPO_ROOT, 'packages/onething-runtime/src/prompts'),
+      path.join(REPO_ROOT, 'packages/backend/runtime/prompts'),
     ])
 
     /*
@@ -408,7 +408,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 上每多一个 `register*(pluginId` 转发口,就必须在 PLUGIN_OPEN_REGISTRIES
      * 里有对应成员,否则一个开放了却没有拆除语义声明的注册表会悄悄溜过去。
      */
-    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/core/plugins/api-builder.ts'), 'utf-8')
+    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/core/plugins/api-builder.ts'), 'utf-8')
     const interfaceStart = hostSource.indexOf('export interface CorePluginAPIHost')
     const interfaceEnd = hostSource.indexOf('\n}', interfaceStart)
     const body = hostSource.slice(interfaceStart, interfaceEnd)

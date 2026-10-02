@@ -36,7 +36,7 @@ export type { SessionToolCallInspection } from "../session/tool-call-inspection.
 export type SessionEventType = SessionEventRecord['type'];
 
 /**
- * 轨迹树的形状住在 core(`packages/core/session/trace/`),这里同样只是
+ * 轨迹树的形状住在 core(`packages/backend/core/session/trace/`),这里同样只是
  * `export type` 的再导出 —— core 是零依赖的,但走同一条纪律让契约面保持
  * 「一个形状一个出处」。
  */

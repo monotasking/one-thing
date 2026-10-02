@@ -56,7 +56,7 @@ import type {
 } from '@shared/ipc/plugins.js'
 import type { PluginsRoutes } from '@shared/ipc/plugins.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { createPluginConfigAccess } from '@onething/runtime/plugins/config-access'
+import { createPluginConfigAccess } from '@onething/backend/runtime/plugins/config-access'
 import {
   abortOnethingPluginRequestForIpc,
   checkOnethingPluginUpdatesForIpc,
@@ -74,10 +74,10 @@ import {
   setOnethingPluginConfigForIpc,
   uninstallOnethingPluginForIpc,
   updateOnethingPluginForIpc,
-} from '@onething/runtime/plugins'
-import { getPluginAppVersion } from '@onething/runtime/plugins/app-version'
-import { clearPluginRuntimeHealth } from '@onething/runtime/plugins/health'
-import { readPluginTarballSummary } from '@onething/runtime/plugins/tarball.wiring'
+} from '@onething/backend/runtime/plugins'
+import { getPluginAppVersion } from '@onething/backend/runtime/plugins/app-version'
+import { clearPluginRuntimeHealth } from '@onething/backend/runtime/plugins/health'
+import { readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball.wiring'
 import { getServerPluginCatalogPort } from '../../server/plugin-catalog.js'
 import { getPluginBackgroundParams } from '../../wiring/plugins/background.js'
 import { executePluginCommandOnHost } from '../../wiring/plugins/commands.js'
@@ -92,8 +92,8 @@ import { getPluginFootprint } from '../../wiring/plugins/loader.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { requestSessionOwner, sessionAccess } from '../../session/access.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
 
 const log = getLogger('rpc.plugins')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */

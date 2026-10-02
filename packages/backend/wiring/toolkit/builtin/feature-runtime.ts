@@ -18,7 +18,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { isPathInside } from '../../../rpc/sandbox.js'
 import {
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import type { FeatureDefinition, FeatureUnmount } from '../../../features/index.js'
 
 /** 模型能挂东西的唯一目录,相对 store 根。 */

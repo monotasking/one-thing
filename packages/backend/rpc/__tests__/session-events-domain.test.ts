@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   encodeSessionEventLine,
   type SessionEventRecord,
-} from '@onething/runtime/sessions/session-events'
+} from '@onething/backend/runtime/sessions/session-events'
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
 import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
 
@@ -21,7 +21,7 @@ const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 
 // 与 event-log.ts 引的是同一个模块 —— 路径差一层就等于什么都没 mock,
 // 测试会转而去读用户真实的 ~/.onething/sessions。
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => paths.sessionsDir,
 }))
 

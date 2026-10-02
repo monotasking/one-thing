@@ -40,23 +40,23 @@ export default [
 
   // ── L4 日志迁移:迁完的区开 no-console(docs/design/logging-system-2026-08.md §8)
   // 区 ① core + runtime 产品层。core 通过注入 / `getCoreLogger` 拿 logger,
-  // 产品层用 `@onething/runtime/logging` 的 `getLogger(ns)`;`packages/shared`
+  // 产品层用 `@onething/backend/runtime/logging` 的 `getLogger(ns)`;`packages/shared`
   // 是纯契约,本来就一条 console 都没有。测试里的 console 不算。
   {
     files: [
-      'packages/core/**/*.ts',
+      'packages/backend/core/**/*.ts',
       'packages/shared/**/*.ts',
-      'packages/onething-runtime/src/**/*.ts',
+      'packages/backend/runtime/**/*.ts',
     ],
     ignores: [
       // 区 ② 的装配层自己开(文件不相交,§8.3)。
-      'packages/onething-runtime/src/app/**',
-      'packages/core/**/__tests__/**',
-      'packages/core/**/*.test.ts',
+      'packages/backend/runtime/app/**',
+      'packages/backend/core/**/__tests__/**',
+      'packages/backend/core/**/*.test.ts',
       'packages/shared/**/__tests__/**',
       'packages/shared/**/*.test.ts',
-      'packages/onething-runtime/src/**/__tests__/**',
-      'packages/onething-runtime/src/**/*.test.ts',
+      'packages/backend/runtime/**/__tests__/**',
+      'packages/backend/runtime/**/*.test.ts',
     ],
     rules: {
       'no-console': 'error',
@@ -69,12 +69,12 @@ export default [
   // `eslint-disable-next-line no-console` + 理由;测试里的 console 不算。
   {
     files: [
-      'packages/onething-runtime/src/app/**/*.ts',
+      'packages/backend/runtime/app/**/*.ts',
       'apps/server/src/**/*.ts',
     ],
     ignores: [
-      'packages/onething-runtime/src/app/**/__tests__/**',
-      'packages/onething-runtime/src/app/**/*.test.ts',
+      'packages/backend/runtime/app/**/__tests__/**',
+      'packages/backend/runtime/app/**/*.test.ts',
       'apps/server/src/**/__tests__/**',
       'apps/server/src/**/*.test.ts',
     ],

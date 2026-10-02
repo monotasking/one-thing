@@ -28,7 +28,7 @@
    * sidebar #DAD8CE → panel #D8D6CC → floating #C2C0B8),与静态 palette 的
    * 「越浮越白」方向相反 —— 那是主题自己的语义,跟着它走才叫「色值从主题管道来」。
    * 梯子本身是单调的,四档不会挤在一起。 */
-  /* 主题带了角色表(`--role-*`,`packages/onething-runtime/src/themes/shell-roles.ts`)
+  /* 主题带了角色表(`--role-*`,`packages/backend/runtime/themes/shell-roles.ts`)
    * 就**原样用它** —— 那是主题源文件直接给的色,没经过任何派生与护栏;没带才退回
    * 旧取法。今天带角色表的是 base46 主题(照 NvChad 自己怎么用 base_30 取值)。 */
   --surface-0: var(--role-canvas, var(--ui-surface-app-bg)); /* 应用底纸 */

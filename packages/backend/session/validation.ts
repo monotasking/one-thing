@@ -20,7 +20,7 @@ import {
   formatSessionValidationResult,
   type SessionManager,
   validateSessionStateConsistency,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../wiring/logging/index.js'

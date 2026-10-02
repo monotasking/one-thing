@@ -21,7 +21,7 @@ import type {
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
 import { createAgentProviderFromRuntime } from '../../wiring/agent-loop/providers/factory.js'
-import type { OnethingProviderOptions } from '@onething/runtime/providers/provider-options'
+import type { OnethingProviderOptions } from '@onething/backend/runtime/providers/provider-options'
 import {
   catalogFactsOf,
   createOnethingManualModelEntry,
@@ -44,19 +44,19 @@ import {
   type OnethingConfiguredModelSelection,
   modelsDevModelToOnethingCapabilityEntry,
   ONETHING_PROVIDER_MAPPING,
-} from '@onething/runtime/providers'
+} from '@onething/backend/runtime/providers'
 import {
   MODEL_SUGGESTION_CAPABILITY_KEYS,
   modelIdentityIndexOf,
   modelParameterSuggestionOf,
   type ModelIdentityIndex,
-} from '@onething/runtime/providers/model-identity'
+} from '@onething/backend/runtime/providers/model-identity'
 import { authService } from '../../wiring/auth/auth-service.js'
 import { createPolicyFetch } from '../../provider-binding/bound-fetch.js'
 import {
   VENDOR_RUNTIMES,
   type VendorModelsFetcherDeps,
-} from '@onething/runtime/providers/vendors/runtimes'
+} from '@onething/backend/runtime/providers/vendors/runtimes'
 import * as modelRegistry from '../../wiring/providers/model-registry.js'
 import {
   addManualModel,
@@ -66,12 +66,12 @@ import {
 import { getSettings, getSpaceSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/runtime/providers/model-registry'
-import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameAliasesOptions, OnethingModelQueryIpcLogger } from '@onething/runtime/providers/model-query-presentation'
-import type { OnethingModelRegistryRefreshLogger } from '@onething/runtime/providers/model-registry'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { GetAllOnethingModelRegistryModelsOptions } from '@onething/runtime/providers/model-query-presentation'
-import type { OnethingEndpointModelsFetcher } from '@onething/runtime/providers/model-registry'
+import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/backend/runtime/providers/model-registry'
+import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameAliasesOptions, OnethingModelQueryIpcLogger } from '@onething/backend/runtime/providers/model-query-presentation'
+import type { OnethingModelRegistryRefreshLogger } from '@onething/backend/runtime/providers/model-registry'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { GetAllOnethingModelRegistryModelsOptions } from '@onething/backend/runtime/providers/model-query-presentation'
+import type { OnethingEndpointModelsFetcher } from '@onething/backend/runtime/providers/model-registry'
 
 const log = getLogger('ipc.models')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

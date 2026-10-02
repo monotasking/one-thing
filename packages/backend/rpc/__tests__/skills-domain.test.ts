@@ -6,7 +6,7 @@
  * bridge 上那十二条包装、server 的六条 REST 路由 + 一个正则块。
  *
  * 只桩装配层的端口(设置缓存 / `wiring/skills` / 会话技能表),**投影不桩** ——
- * `@onething/runtime/skills` 的那批 `*ForIpc` 是真跑的,所以这组用例证的是
+ * `@onething/backend/runtime/skills` 的那批 `*ForIpc` 是真跑的,所以这组用例证的是
  * 「域把端口接对了」,而不是「域自己又实现了一遍」。
  *
  * 值得钉的三件:
@@ -18,7 +18,7 @@
  *    开着的技能顺手关掉)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureShellHost } from '@onething/runtime/shell/host-ports'
+import { configureShellHost } from '@onething/backend/runtime/shell/host-ports'
 import { skillsRouter } from '@shared/ipc/skills.js'
 
 const settings = vi.hoisted(() => ({

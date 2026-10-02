@@ -16,11 +16,11 @@ Answer in the user's language. Prefer the shortest path that matches the user's 
 
 | Script | Purpose | Requires |
 | --- | --- | --- |
-| `bun run scripts/smoke-test.ts` | Headless core conversation smoke test | `@onething/core` packages |
+| `bun run scripts/smoke-test.ts` | Headless core conversation smoke test | `@onething/backend/core` |
 | `bun run scripts/smoke-test-real.ts` | Real-provider integration test (DeepSeek/Anthropic) | `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` |
 | `bun run scripts/cli-test.ts` | CLI `--once --json` tool-call round-trip test | mock HTTP server (spawned inline) |
-| `bun run scripts/agent-loop-core-test.ts` | Core agent-loop unit test with mock provider | `@onething/core/agent-loop` |
-| `bun run scripts/gateway-smoke-test.ts` | Gateway bridge integration test | `@onething/gateway` |
+| `bun run scripts/agent-loop-core-test.ts` | Core agent-loop unit test with mock provider | `@onething/backend/core/agent-loop` |
+| `bun run scripts/gateway-smoke-test.ts` | Gateway bridge integration test | `@onething/backend/gateway` |
 | `bun test scripts/headless-boundary-check.ts` | Package boundary dependency checker | project source tree |
 | `node scripts/ttft-test.mjs` | Time-to-first-token benchmark (raw fetch vs AI SDK) | Kimi API key in settings |
 | `bun run scripts/diagnose-weekly.mjs` | Weekly evaluation triage report | `~/.onething/evals/online/records.jsonl` |
@@ -157,10 +157,10 @@ bun test scripts/headless-boundary-check.ts
 
 Rules enforced:
 
-- **Core package** (`packages/core/`): May not import `electron`, `src/main/`, `src/shared/`, `better-sqlite3`, `@modelcontextprotocol/sdk`, `@agentclientprotocol/sdk`, `zod`, `diff`, `uuid`
-- **Host boundary** (`packages/onething-runtime/`): May not import `electron`, `src/main/`, etc.
+- **Core package** (`packages/backend/core/`): May not import `electron`, `src/main/`, `src/shared/`, `better-sqlite3`, `@modelcontextprotocol/sdk`, `@agentclientprotocol/sdk`, `zod`, `diff`, `uuid`
+- **Host boundary** (`packages/backend/runtime/`): May not import `electron`, `src/main/`, etc.
 - **Electron main** (`src/main/`): May not directly import `electron` (must use host abstractions), may not import runtime/core source directly, may not contain legacy IPC handler patterns
-- **Gateway** (`packages/gateway/`): May not import `@onething/core` (non-gateway parts), may not import `@onething/runtime`, may not contain standalone AgentEngine patterns
+- **Gateway** (`packages/backend/gateway/`): May not import `@onething/backend/core` (non-gateway parts), may not import `@onething/backend/runtime`, may not contain standalone AgentEngine patterns
 - **Voice** (`packages/voice/`): May not import `electron`, `BrowserWindow`, tray APIs
 - Plus checks for media protocol, logging, accessibility, shell operations, network proxy, global shortcuts, power resume, window lifecycle, app lifecycle boundaries
 
@@ -224,7 +224,7 @@ Output:
 
 Failure modes:
 
-- `@onething/runtime` module not found → ensure packages are built.
+- `@onething/backend/runtime/*` module not found → ensure packages are built.
 - `records.jsonl` missing → no evaluations have been recorded yet. Run the app and collect data first.
 
 ---

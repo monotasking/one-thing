@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   nowPlaying: null as null | { status: string; title?: string; position: number; queueLength: number; currentIndex: number },
 }))
 
-vi.mock('@onething/runtime/music/process-runner', () => ({
+vi.mock('@onething/backend/runtime/music/process-runner', () => ({
   createElectronMusicProcessRunner: () => ({
     run: async (options: { args: string[]; env?: Record<string, string | undefined> }) => {
       mocks.runs.push({ args: options.args, env: options.env })
@@ -67,14 +67,14 @@ vi.mock('../player-volume.js', async importOriginal => ({
   readProviderVolume: () => mocks.volume,
 }))
 
-vi.mock('@onething/runtime/voice/host-ports.wiring', () => ({
+vi.mock('@onething/backend/runtime/voice/host-ports.wiring', () => ({
   broadcastVoiceHostMessage: vi.fn(),
   configureVoiceHost: vi.fn(),
   getVoiceHostPorts: () => ({}),
 }))
 
 vi.mock('../service.js', async () => {
-  const { ncmMusicProvider } = await import('@onething/runtime/music/index')
+  const { ncmMusicProvider } = await import('@onething/backend/runtime/music/index')
   return {
     // The real active-provider resolution (settings → registry) collapses to
     // ncm here: these tests exercise the founding provider's behavior.
@@ -93,7 +93,7 @@ vi.mock('../service.js', async () => {
 })
 
 // 注意:vi.mock 的相对路径按【本测试文件】解析,不是按被测模块解析。这里在
-// music/__tests__/ 下,radio.ts 的 '@onething/runtime/storage/index' 对本文件是 '@onething/runtime/storage/index'。
+// music/__tests__/ 下,radio.ts 的 '@onething/backend/runtime/storage/index' 对本文件是 '@onething/backend/runtime/storage/index'。
 // 曾因少写一层目录,paths mock 静默失效、getOnethingStorePath 走真实实现,7 个夹具把
 // ~/.onething/music/ 的真实电台状态反复清空(2026-07-17 事故),而测试自读自写全绿。
 /** 主持人声音(宠物 P3 起电台只认 `hostVoice`):假的,从不合成、从不出声。 */
@@ -102,7 +102,7 @@ const hostVoice = { prefetch: vi.fn(), speak: vi.fn().mockResolvedValue(undefine
 const moments = { trackStarted: vi.fn(), skipped: vi.fn(), liked: vi.fn(), observeSample: vi.fn(), observeNowPlaying: vi.fn() }
 /** 歌词就绪(09-18):电台手上那份歌词换了就报一声。 */
 const announceLyrics = vi.fn()
-vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '' }),
@@ -114,7 +114,7 @@ vi.mock('../../../stores/sessions.js', () => ({
   createSession: vi.fn(),
   updateSessionAgent: vi.fn(),
 }))
-vi.mock('@onething/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
+vi.mock('@onething/backend/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => mocks.settings }))
 
 const HEX = 'D71F6E90EA704F1C44183933E7E0F19'
@@ -124,7 +124,7 @@ async function loadRadio() {
   const radio = await import('../radio.js')
   activeRadio ??= radio.createRadioScope({
     storePath: mocks.dir,
-    service: { ...await import('../service.js'), runner: (await import('@onething/runtime/music/process-runner')).createElectronMusicProcessRunner() },
+    service: { ...await import('../service.js'), runner: (await import('@onething/backend/runtime/music/process-runner')).createElectronMusicProcessRunner() },
     hostVoice: () => hostVoice,
     moments,
     announceLyrics,

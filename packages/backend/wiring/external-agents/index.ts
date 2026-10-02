@@ -1,23 +1,23 @@
-import { ACPManager } from '@onething/runtime/acp'
+import { ACPManager } from '@onething/backend/runtime/acp'
 import {
   ACP_CONNECTOR_ID,
   createAcpConnector,
   describeExternalToolPermission,
-} from '@onething/runtime/external-agents'
+} from '@onething/backend/runtime/external-agents'
 import type {
   ExternalAgentConnector,
   ExternalAgentInteractionAsk,
   ExternalAgentPermissionAsk,
   ExternalAgentPermissionDecision,
   ExternalAgentSessionLink,
-} from '@onething/runtime/external-agents'
-import { findAgentExecutorDescriptor } from '@onething/runtime/agents'
-import { Interaction } from '@onething/core/interaction'
+} from '@onething/backend/runtime/external-agents'
+import { findAgentExecutorDescriptor } from '@onething/backend/runtime/agents'
+import { Interaction } from '@onething/backend/core/interaction'
 import type { InteractionAnswer } from '@shared/interaction/types'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
-import { AbortScope, Intent } from '@onething/core/toolkit'
-import type { Invocation } from '@onething/core/toolkit'
+import { AbortScope, Intent } from '@onething/backend/core/toolkit'
+import type { Invocation } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import { createPermissionAuthorizer } from '../toolkit/authorizer.js'
 import { resolveExternalAgentSpawnEnv } from './spawn-env.js'

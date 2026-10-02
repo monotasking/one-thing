@@ -28,7 +28,7 @@
  * 答 `accept`。
  */
 import { randomUUID } from 'node:crypto'
-import { Interaction } from '@onething/core/interaction'
+import { Interaction } from '@onething/backend/core/interaction'
 import type {
   InteractionAnswer,
   InteractionAskInput,
@@ -39,8 +39,8 @@ import type {
   AcpElicitationContext,
   AcpElicitationRequest,
   AcpElicitationResponse,
-} from '@onething/runtime/acp'
-import { getShellHost, hasShellHost } from '@onething/runtime/shell/host-ports'
+} from '@onething/backend/runtime/acp'
+import { getShellHost, hasShellHost } from '@onething/backend/runtime/shell/host-ports'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { resolvePermissionMessageAnchor } from '../permission/message-anchor.js'
 import { getLogger } from '../logging/index.js'

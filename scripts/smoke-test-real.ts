@@ -5,11 +5,11 @@ import {
   type Provider,
   type ToolCall,
   type ToolResult,
-} from '../packages/core/index.ts'
+} from '../packages/backend/core/index.ts'
 import {
   createAnthropicProvider,
   createDeepSeekProvider,
-} from '../packages/onething-runtime/src/providers/index.ts'
+} from '../packages/backend/runtime/providers/index.ts'
 
 type CliJsonEvent =
   | { type: 'text_delta'; text: string }

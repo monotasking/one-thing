@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AcpConnectorOptions } from '@onething/runtime/external-agents'
+import type { AcpConnectorOptions } from '@onething/backend/runtime/external-agents'
 
 const mocks = vi.hoisted(() => ({
   options: [] as AcpConnectorOptions[],
@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   steer: vi.fn(() => 'steered'),
 }))
 
-vi.mock('@onething/runtime/external-agents', async importOriginal => ({
+vi.mock('@onething/backend/runtime/external-agents', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   createAcpConnector: (options: AcpConnectorOptions) => {
     mocks.options.push(options)
@@ -23,7 +23,7 @@ vi.mock('@onething/runtime/external-agents', async importOriginal => ({
   },
 }))
 vi.mock('../../../store.js', () => ({ getSession: () => undefined, getSettings: () => ({ network: {} }) }))
-vi.mock('@onething/runtime/storage', async importOriginal => ({
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-connector-registry-test',
 }))

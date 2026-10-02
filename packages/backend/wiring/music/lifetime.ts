@@ -1,4 +1,4 @@
-import { AdmissionGate } from '@onething/core/lifecycle'
+import { AdmissionGate } from '@onething/backend/core/lifecycle'
 
 /** All work started by one music generation, including promises behind UI timeouts. */
 export class MusicWorkOwner {

@@ -319,7 +319,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', [
 /**
  * 一个能力对外说的全部话(§4.1b 的 `CapabilityManifest` 的**线上形**)。
  *
- * 这里刻意**不 import core** —— S1 会在 `packages/core/search/capability.ts` 建一份
+ * 这里刻意**不 import core** —— S1 会在 `packages/backend/core/search/capability.ts` 建一份
  * 同形的 `CapabilityManifest`,契约层与内核层各持一份是故意的:contract 是 wire 的
  * 形(要能过 JSON),core 那份还带 `visibility` / `schema` 这些**不出进程**的格。
  * 两份同形不同命,S1 落地时由能力侧一个纯函数投影过来。

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGeminiAgentProvider } from '@onething/runtime/providers/vendors/gemini/agent-provider'
+import { createGeminiAgentProvider } from '@onething/backend/runtime/providers/vendors/gemini/agent-provider'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

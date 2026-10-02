@@ -41,7 +41,7 @@ import {
 import { homedir } from 'os'
 import { join, relative } from 'path'
 
-// ── Paths (mirror packages/onething-runtime/src/storage/paths.ts) ──
+// ── Paths (mirror packages/backend/runtime/storage/paths.ts) ──
 
 const STORE_ROOT = process.env.ONETHING_STORE_PATH || join(homedir(), '.onething')
 const SETTINGS_PATH = join(STORE_ROOT, 'settings.json')

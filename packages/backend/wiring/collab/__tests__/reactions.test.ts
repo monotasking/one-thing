@@ -68,12 +68,12 @@ vi.mock('../../../session/commands.js', async () => {
 })
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/core/storage', () => ({
+vi.mock('@onething/backend/core/storage', () => ({
   readJsonFile: <T>(_path: string, fallback: T) => fallback,
   writeJsonFile: () => {},
 }))
 
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-reactions-test' }))
+vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-reactions-test' }))
 
 vi.mock('../../usage/index.js', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),

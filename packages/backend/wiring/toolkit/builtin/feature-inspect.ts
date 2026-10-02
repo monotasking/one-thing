@@ -6,9 +6,9 @@
  */
 
 import { z } from 'zod'
-import type { Result, RunContext, ToolSpec } from '@onething/core/toolkit'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
 import type { JsonObject } from '@shared/json'
-import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/runtime/toolkit'
+import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/runtime/toolkit'
 import { dumpFeatureEffects, dumpFeatures } from '../../../features/index.js'
 import {
   DEFAULT_ENTRY_FILENAME,

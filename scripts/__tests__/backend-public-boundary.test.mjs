@@ -13,9 +13,9 @@ function fixture() {
   write('packages/backend/package.json', JSON.stringify({ exports: { '.': './backend.ts' } }))
   write('packages/backend/backend.ts', 'export const api = true')
   write('packages/backend/session/commands.ts', 'export const command = true')
-  write('packages/onething-runtime/src/model.ts', 'export interface Model {}')
+  write('packages/backend/runtime/model.ts', 'export interface Model {}')
   const options = { moduleResolution: ts.ModuleResolutionKind.Bundler, module: ts.ModuleKind.ESNext, baseUrl: root,
-    paths: { '@hidden/*': ['packages/backend/session/*'], '@product/*': ['packages/onething-runtime/src/*'] } }
+    paths: { '@hidden/*': ['packages/backend/session/*'], '@product/*': ['packages/backend/runtime/*'] } }
   return { root, write, check: files => checkBackendPublicBoundaries({ root, files, compilerOptions: options }) }
 }
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }) })
@@ -46,7 +46,7 @@ it('blocks shared type and dynamic reverse edges even through relative paths and
   const { write, check } = fixture()
   const source = write('packages/shared/contracts.ts', `
     export type { Model } from '@product/model.js';
-    import('../onething-runtime/src/model.js');
+    import('../backend/runtime/model.js');
   `)
   const result = check([source])
   expect(result.violations).toHaveLength(2)

@@ -17,7 +17,7 @@ import {
   buildCollabReplyToSnapshot,
   shouldAttachCollabReplyTo,
   type CollabMessageLike,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import type { ChatMessage, ChatMessageReplyTo } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'

@@ -3,7 +3,7 @@ import {
   type ProjectionMaterializeOptions,
   type ProjectionNode,
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection'
 import type { ProjectedMessage } from './chat-fold'
 import type { StreamWater, WaterPartView, WaterProgressView } from './stream-water'
 import { missingAssistantText } from './missing-assistant-text'

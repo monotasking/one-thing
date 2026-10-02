@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { MCPServerConfig } from '@shared/mcp/types'
-import { HOST_MCP_TURN_GONE, type HostMcpHostTool } from '@onething/runtime/external-agents'
+import { HOST_MCP_TURN_GONE, type HostMcpHostTool } from '@onething/backend/runtime/external-agents'
 import { HOST_MCP_UNAUTHORIZED } from '@shared/ipc/host-mcp.js'
 import { HostMcpBridge, SEND_NOTIFICATION_TOOL_ID, type HostMcpBridgeDeps, type HostNotification } from '../host-mcp-bridge.js'
 import type { HostToolSurface } from '../../external-agents/host-tools.js'

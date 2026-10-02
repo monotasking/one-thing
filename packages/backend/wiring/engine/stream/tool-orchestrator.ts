@@ -3,13 +3,13 @@ import { getEventBus } from '../../../events/index.js'
 import type { SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
-import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
 import { executeToolAndUpdate } from './tool-execution.js'
 import {
   coreToolCallSnapshot,
   CoreToolOrchestrator,
   planToolCallArtifactRemoval,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 import { sessionReads } from '../../../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

@@ -15,7 +15,7 @@
  *    `@onething/backend/wiring/scheduler` —— 也就是 `createOnethingBackend` 在
  *    `configureAppScheduler()` 里装好的那一台,而不是第二台引擎。
  *
- * 这一层只做一件事:**把端口接到 `@onething/runtime/scheduler` 的依赖注入投影上**。
+ * 这一层只做一件事:**把端口接到 `@onething/backend/runtime/scheduler` 的依赖注入投影上**。
  * 判定、降级(`{ success:false, error }` 的包法)、缺省(runNow 的 `force ?? true`、
  * listRuns 的 recent 回退)全在那批 `*ForIpc` 里,传输面不复述它们 —— 逐条对着
  * 旧文件抄的正是这几处形状:
@@ -37,7 +37,7 @@ import {
   runOnethingSchedulerTaskNowForIpc,
   setOnethingSchedulerTaskEnabledForIpc,
   updateOnethingUserSchedulerTaskForIpc,
-} from '@onething/runtime/scheduler'
+} from '@onething/backend/runtime/scheduler'
 import type { SchedulerRoutes } from '@shared/ipc/scheduler.js'
 import type {
   SchedulerRunDetailDTO,
@@ -46,13 +46,13 @@ import type {
 } from '@shared/ipc/scheduler.js'
 import { toJsonValue } from '@shared/json.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
+import { getScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '@onething/runtime/scheduler/run-history-bound.wiring'
-import type { SchedulerRunRecord } from '@onething/runtime/scheduler'
+} from '@onething/backend/runtime/scheduler/run-history-bound.wiring'
+import type { SchedulerRunRecord } from '@onething/backend/runtime/scheduler'
 import {
   createUserSchedulerTask,
   canAccessSchedulerTask,
@@ -61,11 +61,11 @@ import {
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
 } from '../../wiring/scheduler/user-tasks.js'
-import type { DeleteOnethingUserSchedulerTaskOptions, OnethingSchedulerIpcLogger } from '@onething/runtime/scheduler/ipc-operations'
-import type { OnethingSchedulerUserTaskLogger } from '@onething/runtime/scheduler/user-tasks'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { DeleteOnethingUserSchedulerTaskOptions, OnethingSchedulerIpcLogger } from '@onething/backend/runtime/scheduler/ipc-operations'
+import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/runtime/scheduler/user-tasks'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { SchedulerUpdateTaskRequest } from '@shared/ipc.js'
-import type { ListOnethingSchedulerTasksOptions, RunOnethingSchedulerTaskNowOptions, SetOnethingSchedulerTaskEnabledOptions, UpdateOnethingUserSchedulerTaskOptions, ListOnethingSchedulerRunsOptions, GetOnethingSchedulerRunOptions } from '@onething/runtime/scheduler/ipc-operations'
+import type { ListOnethingSchedulerTasksOptions, RunOnethingSchedulerTaskNowOptions, SetOnethingSchedulerTaskEnabledOptions, UpdateOnethingUserSchedulerTaskOptions, ListOnethingSchedulerRunsOptions, GetOnethingSchedulerRunOptions } from '@onething/backend/runtime/scheduler/ipc-operations'
 
 const log = getLogger('rpc.scheduler')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */

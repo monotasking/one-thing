@@ -41,12 +41,12 @@ vi.mock('../../../session/reads.js', () => import('../../../session/testing/faca
 vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/core/storage', () => ({
+vi.mock('@onething/backend/core/storage', () => ({
   readJsonFile: <T>(_path: string, fallback: T) => fallback,
   writeJsonFile: () => {},
 }))
 
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-inspector' }))
+vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-inspector' }))
 
 vi.mock('../../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。

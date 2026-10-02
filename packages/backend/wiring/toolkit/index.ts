@@ -11,11 +11,11 @@
 export { createPermissionAuthorizer, PermissionAuthorizer } from './authorizer.js'
 export type { PermissionAuthorizerOptions } from './authorizer.js'
 
-export { AuditProjector, combineObservers } from '@onething/runtime/toolkit/audit-observer'
-export type { AuditProjectorOptions, ToolAuditRecord, ToolAuditSink } from '@onething/runtime/toolkit/audit-observer'
+export { AuditProjector, combineObservers } from '@onething/backend/runtime/toolkit/audit-observer'
+export type { AuditProjectorOptions, ToolAuditRecord, ToolAuditSink } from '@onething/backend/runtime/toolkit/audit-observer'
 
-export { deriveLegacyPermissionGuard } from '@onething/runtime/toolkit/guard-projection'
-export type { DeriveGuardOptions } from '@onething/runtime/toolkit/guard-projection'
+export { deriveLegacyPermissionGuard } from '@onething/backend/runtime/toolkit/guard-projection'
+export type { DeriveGuardOptions } from '@onething/backend/runtime/toolkit/guard-projection'
 
 export {
   createIpcObserver,
@@ -25,13 +25,13 @@ export {
   partialResultFromEvent,
   splitResultContent,
   stepFromEvent,
-} from '@onething/runtime/toolkit/ipc-observer.wiring'
+} from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
 export type {
   ExecutionResultProjectionInput,
   LegacyMetadataUpdate,
   LegacyToolAttachment,
   LegacyToolCallbacks,
-} from '@onething/runtime/toolkit/ipc-observer.wiring'
+} from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
 
 export { BackgroundJobRegistry } from './jobs.js'
 export type { BackgroundJobRegistryOptions } from './jobs.js'
@@ -75,28 +75,28 @@ export {
   refreshMcpToolsInCatalog,
   resetMcpCatalogSyncForTests,
   syncMcpToolsIntoCatalog,
-} from '@onething/runtime/toolkit/mcp-catalog.wiring'
+} from '@onething/backend/runtime/toolkit/mcp-catalog.wiring'
 
-export { toolkitPromptFragments, toolkitPromptSource } from '@onething/runtime/toolkit/prompt-source'
+export { toolkitPromptFragments, toolkitPromptSource } from '@onething/backend/runtime/toolkit/prompt-source'
 
 export type {
   ToolExecutionContext,
   ToolExecutionResult,
   ToolMetadataUpdate,
   ToolPartialResultUpdate,
-} from '@onething/runtime/toolkit/execution-types.wiring'
+} from '@onething/backend/runtime/toolkit/execution-types.wiring'
 
 export {
   toolDefinitionFromToolkitTool,
   toolDefinitionsFromCatalog,
   toolkitCatalogToolDefinitions,
-} from '@onething/runtime/toolkit/catalog-projection.wiring'
+} from '@onething/backend/runtime/toolkit/catalog-projection.wiring'
 
 export {
   registerPluginToolInCatalog,
   unregisterPluginToolFromCatalog,
-} from '@onething/runtime/toolkit/plugin-tools'
-export type { RegisterPluginToolInput } from '@onething/runtime/toolkit/plugin-tools'
+} from '@onething/backend/runtime/toolkit/plugin-tools'
+export type { RegisterPluginToolInput } from '@onething/backend/runtime/toolkit/plugin-tools'
 
 export {
   buildToolkitCatalog,

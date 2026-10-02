@@ -26,7 +26,7 @@ import {
   isUserDmRoom,
   type CollabBoard,
   type CollabBoardAction,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import {
   isActiveAgent,
   type CollabRoomBudgetsPatch,
@@ -37,7 +37,7 @@ import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { ownedCollabSessionId } from './owned-session-id.js'
 import { getEventBus } from '../../events/index.js'
 import { findAgent } from '../agents/index.js'
@@ -48,7 +48,7 @@ import {
   buildCollabCoordinatorState,
   forgetCollabInspector,
 } from './inspector.js'
-import { forgetCollabDigests } from '@onething/runtime/collab/digest-store'
+import { forgetCollabDigests } from '@onething/backend/runtime/collab/digest-store'
 import { resetCollabSeenCursor } from './agent-session.js'
 import { emitCollabRoomUpdated, postSystemLine } from './room-runtime.js'
 import { forgetCollabRoomBudgetCache } from './budget.js'
@@ -61,7 +61,7 @@ import {
   resumeCollabV3RoomWork,
   syncCollabV3RoomFloorPolicy,
 } from './actors/runtime.js'
-import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/runtime/collab/actors/turn-context.wiring'
+import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'

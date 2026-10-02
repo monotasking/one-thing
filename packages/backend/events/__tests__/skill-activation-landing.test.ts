@@ -16,8 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '', skills: [] as unknown[][] }))
 
-vi.mock('@onething/runtime/storage', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

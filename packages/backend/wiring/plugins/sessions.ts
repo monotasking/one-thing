@@ -1,7 +1,7 @@
 /**
  * N1 的**装配层实现**:跨会话投递(信使)与会话感知快照。
  *
- * 协议在 core(`@onething/core/plugins` 的 sessions.ts):枚举、常量、结果形状、
+ * 协议在 core(`@onething/backend/core/plugins` 的 sessions.ts):枚举、常量、结果形状、
  * 三态矩阵的纯函数。这里放的是那些**只有产品层知道**的事实:谁在生成、正在跑
  * 哪个工具、有没有挂着审批卡、上下文占了多少、最后一条消息说了什么,
  * 以及"起一轮"到底要往总线上发什么。
@@ -32,7 +32,7 @@
  * 而反过来(可被规避的精确值)是不可接受的。
  */
 import type { MessageOrigin } from '@shared/ipc.js'
-import { Permission } from '@onething/core/permission'
+import { Permission } from '@onething/backend/core/permission'
 import {
   PLUGIN_TRIGGER_MAX_HOP,
   PLUGIN_TRIGGER_RATE_LIMIT,
@@ -45,14 +45,14 @@ import {
   type PluginSessionPeek,
   type PluginSessionPeekLite,
   type PluginSessionState,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import type { EventBus } from '../../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine-bound.js'
 import { isCollabCoordinatorDrivenSession } from '../collab/ingress.js'
-import { pluginMessageSource } from '@onething/runtime/engine/message-sources'
+import { pluginMessageSource } from '@onething/backend/runtime/engine/message-sources'
 import * as modelRegistry from '../providers/model-registry.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'

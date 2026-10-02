@@ -10,10 +10,10 @@ import {
   OnethingAuthService,
   type OnethingAuthCallbackServerAdapter,
   type OnethingAuthServiceOptions,
-} from '@onething/runtime/auth'
+} from '@onething/backend/runtime/auth'
 import type { OAuthToken } from '@shared/ipc.js'
 import { createRequiredAppFetch } from '../../provider-binding/bound-fetch.js'
-import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
+import { getAuthHostPorts } from '@onething/backend/runtime/auth/host-ports'
 
 export interface MainAuthServiceOptions extends Partial<OnethingAuthServiceOptions<OAuthToken>> {
   callbackServer?: OnethingAuthCallbackServerAdapter

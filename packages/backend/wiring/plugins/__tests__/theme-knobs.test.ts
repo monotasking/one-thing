@@ -12,13 +12,13 @@
  *  6. **宿主链路 + 拆除** —— 旋钮叠在主题产出之上下发;停用后从表里消失。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { resolvePluginThemeOverrides } from '@onething/runtime/plugins/theme-overrides'
-import { projectOnethingPluginsForRenderer } from '@onething/runtime/plugins/plugin-list'
+import { resolvePluginThemeOverrides } from '@onething/backend/runtime/plugins/theme-overrides'
+import { projectOnethingPluginsForRenderer } from '@onething/backend/runtime/plugins/plugin-list'
 import {
   THEME_KNOB_ALPHA_FLOOR_PERCENT,
   THEME_KNOB_BLUR_CEILING_PX,
   themeKnobType,
-} from '@onething/runtime/themes/knobs'
+} from '@onething/backend/runtime/themes/knobs'
 
 const managedPlugins: Array<{ definition: { id: string; enabled: boolean; manifest: unknown } }> = []
 vi.mock('../manager.js', () => ({

@@ -20,8 +20,8 @@ import { FeatureToolRuntime } from '../catalog.js'
 import { createFeatureInspectTool } from '../builtin/feature-inspect.js'
 import { createFeatureMountTool } from '../builtin/feature-mount.js'
 import { createFeatureUnmountTool } from '../builtin/feature-unmount.js'
-import { SELF_EVOLUTION_SKILL_NAME } from '@onething/runtime/toolkit'
-import { annotationsOf, modelTextOf, redactText, runNewTool } from '@onething/runtime/toolkit/__tests__/support'
+import { SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/runtime/toolkit'
+import { annotationsOf, modelTextOf, redactText, runNewTool } from '@onething/backend/runtime/toolkit/__tests__/support'
 
 const FEATURES_DEV = join(STORE, 'features-dev')
 

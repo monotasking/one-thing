@@ -44,11 +44,11 @@ import {
   type NoteSystemState,
   type NoteVault,
   type NotesConfig,
-} from '@onething/runtime/notes'
+} from '@onething/backend/runtime/notes'
 import type { AppSettings } from '@shared/ipc.js'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import { getOnethingStorePath } from '@onething/runtime/storage'
+import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
@@ -444,6 +444,6 @@ function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => v
   }
 }
 
-export { NoteSystemRegistry } from '@onething/runtime/notes'
-export type { NoteVault, NotesConfig } from '@onething/runtime/notes'
+export { NoteSystemRegistry } from '@onething/backend/runtime/notes'
+export type { NoteVault, NotesConfig } from '@onething/backend/runtime/notes'
 export { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'

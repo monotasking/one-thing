@@ -21,7 +21,7 @@
  * 注册返回一个还原函数,于是 HTTP 面关掉时不会把上一位占用者的槽一起清掉
  * (桌面内嵌 HTTP 面 + `server:start` 在同一个进程里先后起落时的唯一正确语义)。
  */
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 
 /**
  * 六件事的原始形状 —— 逐字就是从前 `OnethingRuntimeFacade` 上那只

@@ -377,7 +377,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 不必为这条断言另造一个探针 —— 与 ⑩ 取 `isHostLocallyTrusted()` 同一个理由。
    */
   it('⑫ 宿主端口随 dispose 还原:voice:{} → dispose → voice:null 仍是没有', { timeout: 180_000 }, async () => {
-    const { hasVoiceHost } = await import('@onething/runtime/voice/host-ports.wiring')
+    const { hasVoiceHost } = await import('@onething/backend/runtime/voice/host-ports.wiring')
 
     expect(hasVoiceHost()).toBe(false)
 
@@ -413,7 +413,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 直接钉在它的两个方法上。
    */
   it('⑭ 在途 start 上来一发 dispose:MCPManager.shutdown 仍被调到', { timeout: 180_000 }, async () => {
-    const { MCPManager } = await import('@onething/runtime/mcp/index.wiring')
+    const { MCPManager } = await import('@onething/backend/runtime/mcp/index.wiring')
     const order: string[] = []
     let openGate = (): void => {}
     const gate = new Promise<void>(resolve => {
@@ -479,7 +479,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
-    const runtime = await import('@onething/runtime/external-agents')
+    const runtime = await import('@onething/backend/runtime/external-agents')
     const registry = await import('../wiring/external-agents/index.js')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
@@ -559,7 +559,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('cleans an unused early connector binding when afterSettings fails before any getter', { timeout: 180_000 }, async () => {
-    const runtime = await import('@onething/runtime/external-agents')
+    const runtime = await import('@onething/backend/runtime/external-agents')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     const registry = await import('../wiring/external-agents/index.js')

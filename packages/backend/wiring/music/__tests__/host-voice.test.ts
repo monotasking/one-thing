@@ -22,13 +22,13 @@ vi.mock('../../voice/providers.js', () => ({ synthesizeSpeech: mocks.synthesize 
 vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => ({ voice: { tts: { provider: 'openai-tts', system: { rate: 1, pitch: 1 } } } }),
 }))
-vi.mock('@onething/runtime/voice/host-ports.wiring', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/runtime/voice/host-ports.wiring')>()),
+vi.mock('@onething/backend/runtime/voice/host-ports.wiring', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/voice/host-ports.wiring')>()),
   broadcastVoiceHostMessage: mocks.broadcast,
 }))
 
-import { configureSpeechOutputHost, resetSpeechOutputHost } from '@onething/runtime/voice/speech-output'
-import { resetVoiceHost } from '@onething/runtime/voice/host-ports.wiring'
+import { configureSpeechOutputHost, resetSpeechOutputHost } from '@onething/backend/runtime/voice/speech-output'
+import { resetVoiceHost } from '@onething/backend/runtime/voice/host-ports.wiring'
 import { createDjVoiceScope } from '../dj-voice.js'
 import { createHostVoiceKit } from '../host-voice.js'
 

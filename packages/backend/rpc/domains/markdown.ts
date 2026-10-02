@@ -20,7 +20,7 @@ import {
   resolveOnethingMarkdownAssetForIpc,
   saveOnethingMarkdownAttachments,
   saveOnethingMarkdownAttachmentsForIpc,
-} from '@onething/runtime/markdown'
+} from '@onething/backend/runtime/markdown'
 import type { MarkdownRoutes } from '@shared/ipc/markdown.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import {

@@ -34,14 +34,14 @@
  *
  * ## 为什么它收的是一张表,而不是自己写 `'dir'`
  *
- * 「内核不认识任何 scheme」那条法(§2 不变量 3)管的是 `packages/core`,这只文件在
+ * 「内核不认识任何 scheme」那条法(§2 不变量 3)管的是 `packages/backend/core`,这只文件在
  * 装配层、名字里就写着它是一条策略。但同一条法的**形状**在这里照样成立:守卫认的
  * 是「谁被列进了本机限定」,而那份名单由 mount 那一处给
  * (`./index.ts`,加一种资源只改那一只文件)。守卫自己不认识任何一个命名空间 ——
  * 明天音乐或别的什么也要这条待遇,改的是名单不是这只文件。
  */
 
-import type { ReadGuard, ReadVerdict } from '@onething/core/resource'
+import type { ReadGuard, ReadVerdict } from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
 import type { Principal } from '@shared/permission/principal'
 

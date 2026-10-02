@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentLoopOptions, AgentProvider } from '@onething/core/agent-loop'
+import type { AgentLoopOptions, AgentProvider } from '@onething/backend/core/agent-loop'
 import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const mocks = vi.hoisted(() => ({
@@ -36,8 +36,8 @@ const mocks = vi.hoisted(() => ({
   billTocUsage: vi.fn(() => vi.fn()),
 }))
 
-vi.mock('@onething/core/agent-loop', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/core/agent-loop')>(),
+vi.mock('@onething/backend/core/agent-loop', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/core/agent-loop')>(),
   runAgentLoop: mocks.runAgentLoop,
 }))
 vi.mock('../../providers/utility-provider.js', () => ({
@@ -45,7 +45,7 @@ vi.mock('../../providers/utility-provider.js', () => ({
 }))
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}) }))
 vi.mock('../../usage/bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
-vi.mock('@onething/runtime/toc', async (importOriginal) => {
+vi.mock('@onething/backend/runtime/toc', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,
@@ -62,7 +62,7 @@ vi.mock('@onething/runtime/toc', async (importOriginal) => {
 const { recordTocTurn } = await import('../index.js')
 const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
 const { readSessionLogEventsSync } = await import('../../../session/event-log.js')
-const realAgentLoop = await vi.importActual<typeof import('@onething/core/agent-loop')>('@onething/core/agent-loop')
+const realAgentLoop = await vi.importActual<typeof import('@onething/backend/core/agent-loop')>('@onething/backend/core/agent-loop')
 let fixture: ReturnType<typeof installSessionLayerForTest>
 let storeDir: string
 

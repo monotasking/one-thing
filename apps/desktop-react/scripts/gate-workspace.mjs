@@ -103,7 +103,7 @@ const shotDir = path.join(appRoot, 'dist', 'gate-shots')
 const OWNER_UID = 'local-user'
 const OWNER_WID = 'default'
 
-/** 与 `@onething/runtime/spaces/types` 的 `DEFAULT_SPACE_ID` 同值。 */
+/** 与 `@onething/backend/runtime/spaces/types` 的 `DEFAULT_SPACE_ID` 同值。 */
 const DEFAULT_SPACE_ID = 'default'
 /** 第二个空间。id 由 `spaces.create` 现给,名字在这里钉死(要按名字找那张卡)。 */
 const WORK_NAME = '工作区门 · 第二个空间'

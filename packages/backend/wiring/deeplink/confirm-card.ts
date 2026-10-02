@@ -23,7 +23,7 @@ import {
   DEEPLINK_TEXT_MAX_BYTES,
   type DeepLinkIntent,
   type DeepLinkParseResult,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import { defaultAgent, findAgent } from '../agents/index.js'
 import { getPluginManager } from '../plugins/manager.js'
 import { describePluginDeepLinkAction } from './registry.js'

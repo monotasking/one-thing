@@ -23,7 +23,7 @@ import {
   clearOnethingWorkspacePermissionGrantsForIpc,
   listOnethingPermissionGrantsForIpc,
   revokeOnethingPermissionGrantForIpc,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'
 import type { PermissionGrantsRoutes } from '@shared/ipc/permission-grants.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import * as PermissionGrants from '../../wiring/permission/permission-grants.js'
@@ -32,12 +32,12 @@ import { isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner } fro
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingPermissionIpcLogger } from '@onething/runtime/permissions/permission-grants-presentation'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingPermissionIpcLogger } from '@onething/backend/runtime/permissions/permission-grants-presentation'
 import type { PermissionGrant } from '@shared/permission/grant'
 import { isRefScheme } from '@shared/resource/ref'
 import type { PermissionGrantProjection } from '@shared/ipc/permission-grants.js'
-import type { ListOnethingPermissionGrantsOptions } from '@onething/runtime/permissions/permission-grants-presentation'
+import type { ListOnethingPermissionGrantsOptions } from '@onething/backend/runtime/permissions/permission-grants-presentation'
 
 const log = getLogger('ipc.permission')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

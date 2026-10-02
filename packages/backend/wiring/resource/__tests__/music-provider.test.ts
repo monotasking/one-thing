@@ -12,14 +12,14 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { Principal } from '@shared/permission/principal'
-import { ToolRunner } from '@onething/core/toolkit'
-import type { Outcome, ToolEvent } from '@onething/core/toolkit'
-import { ResourceEventHub, ResourceTool } from '@onething/core/resource'
-import type { ResourceEvent } from '@onething/core/resource'
-import { ZodValidator } from '@onething/runtime/toolkit'
-import type { RadioToolAdapters, RadioToolStatus } from '@onething/runtime/toolkit'
-import type { OnethingMusicNowPlaying } from '@onething/runtime/music'
-import { allowAuthorizer, RecordingObserver } from '../../../../core/toolkit/__tests__/fakes.js'
+import { ToolRunner } from '@onething/backend/core/toolkit'
+import type { Outcome, ToolEvent } from '@onething/backend/core/toolkit'
+import { ResourceEventHub, ResourceTool } from '@onething/backend/core/resource'
+import type { ResourceEvent } from '@onething/backend/core/resource'
+import { ZodValidator } from '@onething/backend/runtime/toolkit'
+import type { RadioToolAdapters, RadioToolStatus } from '@onething/backend/runtime/toolkit'
+import type { OnethingMusicNowPlaying } from '@onething/backend/runtime/music'
+import { allowAuthorizer, RecordingObserver } from '../../../core/toolkit/__tests__/fakes.js'
 import {
   MusicResourceProvider,
   type MusicBackendAdapters,

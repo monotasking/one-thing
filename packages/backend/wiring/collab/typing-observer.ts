@@ -1,7 +1,7 @@
 /**
  * W19 真实 typing — the wiring half (docs/design/multi-agent-collab-im.md §4 W19).
  *
- * The pure tracker (`@onething/runtime/collab`) turns a stream of session events
+ * The pure tracker (`@onething/backend/runtime/collab`) turns a stream of session events
  * into typing pulses; this file is the only place that knows where those events
  * come from and where the pulses go.
  *
@@ -22,7 +22,7 @@
  * stops lighting it the moment its arguments are readable
  * (collab-send-channel-and-wake.md §4).
  */
-import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/runtime/collab'
+import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/backend/runtime/collab'
 import { getEventBus } from '../../events/index.js'
 import { broadcastCollabCoordinator, setCollabTypingState } from './inspector.js'
 

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { getOnethingLogDir, getOnethingRunDir, getOnethingStorePath } from '@onething/runtime/storage'
+import { getOnethingLogDir, getOnethingRunDir, getOnethingStorePath } from '@onething/backend/runtime/storage'
 
 export interface CliRuntimePaths {
   storePath: string
@@ -25,7 +25,7 @@ export function assertSupportedPlatform(): void {
 }
 
 export function getCliRuntimePaths(storePath = getOnethingStorePath()): CliRuntimePaths {
-  // run 目录的定义只有一处(@onething/runtime/storage),发现文件 http.json 与
+  // run 目录的定义只有一处(@onething/backend/runtime/storage),发现文件 http.json 与
   // daemon.sock / backend.lock 同住这里。
   const runDir = getOnethingRunDir({ storePath })
   const logDir = getOnethingLogDir({ storePath })

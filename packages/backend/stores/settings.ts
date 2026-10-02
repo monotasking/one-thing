@@ -1,21 +1,21 @@
 import type { AppSettings, PersistedAppSettings } from '@shared/ipc.js'
 import { createDefaultSettings, mergeWithDefaults } from './settings-defaults.js'
-import { createOnethingSettingsRepository } from '@onething/runtime/settings'
+import { createOnethingSettingsRepository } from '@onething/backend/runtime/settings'
 import {
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+} from '@onething/backend/runtime/spaces/provider-settings'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import {
   hasSpaceProviderSettingsMigrated,
   resolveEffectiveAppSettings,
   splitEffectiveAISettings,
 } from '../provider-binding/ai-settings-compose.js'
-import { getOnethingSettingsPath } from '@onething/runtime/storage'
+import { getOnethingSettingsPath } from '@onething/backend/runtime/storage'
 import { applyDiagnosticsMode } from '../wiring/logging/diagnostics.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingSettingsRepositoryLogger } from '@onething/runtime/settings/settings-repository'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingSettingsRepositoryLogger } from '@onething/backend/runtime/settings/settings-repository'
 
 const log = getLogger('settings')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -1,6 +1,6 @@
 import type { SessionsListRequest } from '@shared/ipc/sessions.js'
-import { listOnethingSessionsForIpc } from '@onething/runtime/sessions'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+import { listOnethingSessionsForIpc } from '@onething/backend/runtime/sessions'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import type { SessionAccess, SessionAccessContext } from './access.js'
 
 /** Authorization and product-space filtering share one query boundary for every transport. */

@@ -3,9 +3,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { EventEmitter } from 'node:events'
 import type { ServerResponse } from 'node:http'
 import path from 'node:path'
-import { createSessionProjectionState, reduceSessionProjection, materializeChatMessages } from '../../../packages/core/session/index'
-import { synthesizeCoreToolAnchors } from '../../../packages/core/session/render-anchors'
-import { buildAgentLoopFinalMessageUpdate } from '../../../packages/core/engine/agent-loop-executor'
+import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
+import { materializeChatMessages } from '@shared/session/projection/chat-messages'
+import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
+import { buildAgentLoopFinalMessageUpdate } from '../../../packages/backend/core/engine/agent-loop-executor'
 import { createSseDelivery, SSE_PENDING_BYTES_LIMIT } from '../../../packages/backend/server/sse-delivery'
 
 const [directory, output] = process.argv.slice(2)

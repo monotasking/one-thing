@@ -3,9 +3,9 @@
  * MCP (Model Context Protocol) server-related type definitions for IPC communication
  *
  * Base types (`MCPTransportType`, `MCPServerConfig`, …) are re-exported from
- * `@onething/core/mcp` — the engine is the single source of truth. Only the
+ * `@onething/backend/core/mcp` — the engine is the single source of truth. Only the
  * IPC request/response envelopes are defined locally here. Extend transports
- * in `packages/core/mcp/types.ts` and every layer follows.
+ * in `packages/backend/core/mcp/types.ts` and every layer follows.
  */
 
 import type { JsonArray, JsonObject, JsonValue } from '../json.js'

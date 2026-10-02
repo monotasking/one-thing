@@ -16,7 +16,7 @@
 import {
   COLLAB_USER_DEFAULT_LABEL,
   normalizeCollabUserHandle,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import * as store from '../../store.js'
 
 export interface CollabUserIdentity {

@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const drillDir = path.join(root, 'scripts/provider-vendor-drill')
-const VENDORS = 'packages/onething-runtime/src/providers/vendors'
+const VENDORS = 'packages/backend/runtime/providers/vendors'
 const ALLOWED_TOUCHES = new Set([
   `${VENDORS}/manifests.ts`,
   `${VENDORS}/runtimes.ts`,
@@ -76,7 +76,8 @@ function linkNodeModules(worktree) {
     symlinkSync(path.join(source, entry), path.join(target, entry))
   }
   mkdirSync(path.join(target, '@onething'))
-  const packages = { core: 'core', gateway: 'gateway', backend: 'backend', client: 'client', runtime: 'onething-runtime' }
+  // 合包(server / client 拆分第②步)以后只剩两个 workspace 包:core / runtime / gateway 都在 backend 里。
+  const packages = { backend: 'backend', client: 'client' }
   for (const [name, dir] of Object.entries(packages)) {
     symlinkSync(path.join(worktree, 'packages', dir), path.join(target, '@onething', name))
   }

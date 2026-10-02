@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { captureRuntimeLogs } from '@onething/runtime/logging'
+import { captureRuntimeLogs } from '@onething/backend/runtime/logging'
 
 interface FakeSession {
   id: string
@@ -86,7 +86,7 @@ vi.mock('../../../store.js', () => ({
 const { ensureCollabAgentSession } = await import('../agent-session.js')
 const { displayAgent, findAgent, getAgent, invalidateAgentsCache } =
   await import('../../agents/index.js')
-const { getOnethingAgentsPath } = await import('@onething/runtime/storage')
+const { getOnethingAgentsPath } = await import('@onething/backend/runtime/storage')
 
 let previousStorePath: string | undefined
 let tempStore: string

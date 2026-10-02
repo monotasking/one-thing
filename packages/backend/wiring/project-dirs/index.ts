@@ -13,11 +13,11 @@
  * explicit import — see src/main/variables/gateways.ts.
  */
 
-import { getProjectsStore } from '@onething/runtime/project-dirs/store'
+import { getProjectsStore } from '@onething/backend/runtime/project-dirs/store'
 import {
   buildProjectDirsPromptVars as buildProjectDirsPromptVarsForSpace,
   type ProjectDirsPromptVars,
-} from '@onething/runtime/project-dirs/prompt'
+} from '@onething/backend/runtime/project-dirs/prompt'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { getLogger } from '../logging/index.js'
 
@@ -61,10 +61,10 @@ export function buildProjectDirsPromptVars(
   })
 }
 
-export { getProjectsStore } from '@onething/runtime/project-dirs/store'
+export { getProjectsStore } from '@onething/backend/runtime/project-dirs/store'
 export type {
   ProjectDirsPromptVars,
   ActiveProjectVars,
   KnownProjectsVars,
-} from '@onething/runtime/project-dirs/prompt'
-export type { Project, ProjectIndexEntry, ProjectId } from '@onething/runtime/project-dirs'
+} from '@onething/backend/runtime/project-dirs/prompt'
+export type { Project, ProjectIndexEntry, ProjectId } from '@onething/backend/runtime/project-dirs'

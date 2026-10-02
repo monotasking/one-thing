@@ -12,7 +12,7 @@
  *  2. **过滤代码不知道自己跑在哪** —— 宿主由装配层选一个实现注进来。新增一种宿主
  *     = 这里多一个类 + 装配层一行注册,订阅代码一个字不改(§5 陌生能力演练)。
  */
-import type { RuntimeRequestContext } from "@onething/core";
+import type { RuntimeRequestContext } from "@onething/backend/core";
 import { ownsSessionRecord, type SessionOwnershipRecord } from '../session/access.js'
 export { sessionOwnerOf, ownerMatchesContext, ownsSessionRecord } from '../session/access.js'
 export type { SessionOwner, SessionOwnershipRecord } from '../session/access.js'

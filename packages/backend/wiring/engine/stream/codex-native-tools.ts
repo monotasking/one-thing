@@ -1,11 +1,11 @@
 import type { OAuthToken, ToolSettings } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
   resolveCodexNativeToolsFromModelInfo,
   shouldResolveCodexNativeTools,
-} from '@onething/runtime/providers/vendors/codex/native-tools'
+} from '@onething/backend/runtime/providers/vendors/codex/native-tools'
 
 export { CODEX_NATIVE_IMAGE_GENERATION_TOOL }
 

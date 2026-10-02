@@ -12,7 +12,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 // 真件,不 mock:留痕之所以要留,就是为了让这个纯函数答得出话。
-import { collabRoomVisibleUntil } from '@onething/runtime/collab'
+import { collabRoomVisibleUntil } from '@onething/backend/runtime/collab'
 
 interface FakeSession {
   ownerUserId?: string

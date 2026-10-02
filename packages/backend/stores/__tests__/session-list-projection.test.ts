@@ -14,7 +14,7 @@ import {
   deriveSessionLastMessagePreview,
   extractSessionMeta,
   findLastPreviewableMessage,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 describe('deriveSessionLastMessagePreview —— 预览文本的唯一产地', () => {
   it('取 user / assistant 的正文', () => {

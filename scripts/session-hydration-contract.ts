@@ -55,15 +55,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   canonicalChatMessage,
-  projectChatMessages,
   parseSessionLogEventLog,
   sanitizeSessionOnStartup,
   scanJsonlLog,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
+import { projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import {
   dehydrateProjectedMessages,
   rehydrateSessionFromStorage,
-} from '@onething/runtime/sessions/session-dehydrate'
+} from '@onething/backend/runtime/sessions/session-dehydrate'
 
 type AnyMessage = { id: string; role?: string } & Record<string, unknown>
 

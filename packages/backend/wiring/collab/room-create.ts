@@ -27,7 +27,7 @@ import { findAgent } from '../agents/index.js'
 import { emitCollabRoomUpdated } from './room-runtime.js'
 import { getLogger } from '../logging/index.js'
 import { sessionDeletion } from '../../session/deletion.js'
-import type { SessionInitialOwner } from '@onething/runtime/sessions/session-repository'
+import type { SessionInitialOwner } from '@onething/backend/runtime/sessions/session-repository'
 
 const log = getLogger('collab.room')
 

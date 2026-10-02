@@ -31,13 +31,13 @@ vi.mock('../../tools/core/permission-policy.js', () => ({
   enforcePermissionPolicy: harness.enforce,
 }))
 
-const { configureToolkitCatalog, resolveToolkitSurface } = await import('@onething/runtime/toolkit')
+const { configureToolkitCatalog, resolveToolkitSurface } = await import('@onething/backend/runtime/toolkit')
 const { createDesktopCatalog } = await import('../catalog.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
-const { registerPluginToolInCatalog } = await import('@onething/runtime/toolkit/plugin-tools')
-const { toolDefinitionFromToolkitTool, toolkitCatalogToolDefinitions } = await import('@onething/runtime/toolkit/catalog-projection.wiring')
+const { registerPluginToolInCatalog } = await import('@onething/backend/runtime/toolkit/plugin-tools')
+const { toolDefinitionFromToolkitTool, toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection.wiring')
 const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
-const { listOnethingSettingsTools } = await import('@onething/runtime/tools')
+const { listOnethingSettingsTools } = await import('@onething/backend/runtime/tools')
 const { z } = await import('zod')
 
 const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')

@@ -2,7 +2,7 @@
  * 提示词片段域，端到端穿过 dispatcher。
  *
  * 钉的是**与被拔掉的三条旧线的等价性**：删掉的
- * `apps/electron/src/main/ipc/prompts.ts` 调的是当年的 `@onething/app/prompts/store`(今 `@onething/runtime/prompts/store-bound`)
+ * `apps/electron/src/main/ipc/prompts.ts` 调的是当年的 `@onething/app/prompts/store`(今 `@onething/backend/runtime/prompts/store-bound`)
  * 的五个函数，删掉的 `/api/prompts*` 五条路由经 facade 调的是同一组 ipc-operations。
  * 迁移后必须还是那一组调用、同样的参数、结果原样回传。
  */
@@ -17,9 +17,9 @@ const store = vi.hoisted(() => ({
   deletePrompt: vi.fn(),
 }))
 
-// 这个 specifier 必须解析到 handler 自己 import 的那个模块（@onething/runtime/prompts/store-bound）。
+// 这个 specifier 必须解析到 handler 自己 import 的那个模块（@onething/backend/runtime/prompts/store-bound）。
 // 差一级目录就等于什么都没 mock，测试会安静地去写用户真实的 prompts.json。
-vi.mock('@onething/runtime/prompts/store-bound', () => store)
+vi.mock('@onething/backend/runtime/prompts/store-bound', () => store)
 
 const PROMPT = {
   id: 'prompt-1',

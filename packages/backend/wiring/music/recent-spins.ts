@@ -1,6 +1,6 @@
 import type { MusicRadioSpinDTO } from '@shared/ipc/music.js'
 import { RADIO_RECENT_LIMIT } from '@shared/ipc/music.js'
-import type { OnethingRadioBrief } from '@onething/runtime/music/radio-store'
+import type { OnethingRadioBrief } from '@onething/backend/runtime/music/radio-store'
 
 /**
  * The station's recent spins, newest first, each marked with what the listener

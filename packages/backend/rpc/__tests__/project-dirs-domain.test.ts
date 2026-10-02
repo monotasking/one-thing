@@ -25,7 +25,7 @@ const stores = vi.hoisted(() => {
   return { store, getProjectsStore: vi.fn(() => store) }
 })
 
-vi.mock('@onething/runtime/project-dirs/store', () => ({
+vi.mock('@onething/backend/runtime/project-dirs/store', () => ({
   getProjectsStore: stores.getProjectsStore,
 }))
 

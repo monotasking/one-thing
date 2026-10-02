@@ -19,14 +19,14 @@ import {
   type ResourceEventHub,
   type ResourceProvider,
   type ResourceSpec,
-} from '@onething/core/resource'
-import type { PlanContext, RunContext, ToolRunner } from '@onething/core/toolkit'
-import type { Utterance } from '@onething/runtime/pets'
+} from '@onething/backend/core/resource'
+import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/core/toolkit'
+import type { Utterance } from '@onething/backend/runtime/pets'
 import { EventBus } from '../../../events/event-bus.js'
 import { forwardResourceEventsToBus } from '../../resource/event-bridge.js'
 import { PetResourceProvider } from '../../resource/pet-provider.js'
 import { AmbientResourceProvider } from '../../resource/ambient-provider.js'
-import type { AmbientSource } from '@onething/runtime/ambient'
+import type { AmbientSource } from '@onething/backend/runtime/ambient'
 import type { HostVoiceKit, PatterSpeech } from '../../music/host-voice.js'
 import { PetsSubsystem, UnknownPetError } from '../subsystem.js'
 

@@ -1,7 +1,7 @@
 import { registerTargetRenderer } from './registry'
 
 /**
- * `kind: 'note'` —— 一篇笔记(`runtime/src/search/capabilities/notes.ts` 的
+ * `kind: 'note'` —— 一篇笔记(`runtime/search/capabilities/notes.ts` 的
  * `NoteTarget`)。
  *
  * **两形一个 kind**:`actionId` 在场的那条是「还没建出来」(文件不存在),缺席的

@@ -6,8 +6,8 @@ import {
   specialStreamExecutionResult,
   streamExecutionErrorResult,
   textStreamExecutionResult,
-} from '@onething/core/engine'
-import type { CoreInitialToolChoice } from '@onething/core/engine'
+} from '@onething/backend/core/engine'
+import type { CoreInitialToolChoice } from '@onething/backend/core/engine'
 
 describe('core stream executor helpers', () => {
   it('routes special-stream-capable models to the special path', () => {

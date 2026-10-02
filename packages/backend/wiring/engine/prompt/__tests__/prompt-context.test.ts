@@ -2,14 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { captureRuntimeLogs } from '@onething/runtime/logging'
-import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '@onething/runtime/prompts'
+import { captureRuntimeLogs } from '@onething/backend/runtime/logging'
+import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '@onething/backend/runtime/prompts'
 import type { BuildPromptContextOptions } from '../system-prompt.js'
 import {
   buildPrompt,
   loadAgentsMdInstructions,
 } from '../system-prompt.js'
-import { registerPromptContextProvider } from '@onething/runtime/prompts/plugin-context.wiring'
+import { registerPromptContextProvider } from '@onething/backend/runtime/prompts/plugin-context.wiring'
 
 const agentStoreMock = vi.hoisted(() => ({
   findAgent: vi.fn(),

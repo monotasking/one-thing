@@ -16,8 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', async () => {
-  const actual = await vi.importActual<typeof import('@onething/runtime/storage')>('@onething/runtime/storage')
+vi.mock('@onething/backend/runtime/storage', async () => {
+  const actual = await vi.importActual<typeof import('@onething/backend/runtime/storage')>('@onething/backend/runtime/storage')
   return {
     ...actual,
     getOnethingSessionsDir: () => state.sessionsDir,
@@ -32,7 +32,7 @@ const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCach
 const { resetSessionSurfaceCache } = await import('../../session/event-surface.js')
 const { resetSessionEventStatsCache } = await import('../../session/event-stats.js')
 const { resetSessionPrepareCache } = await import('../../session/prepare.js')
-const { foldSessionProjection, projectChatMessages } = await import('@onething/core/session')
+const { foldSessionProjection, projectChatMessages } = await import('@shared/session/projection/chat-messages.js')
 
 const SESSION = '11111111-2222-4333-8444-555555555555'
 let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>>

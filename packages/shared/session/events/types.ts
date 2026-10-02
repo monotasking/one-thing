@@ -2,7 +2,7 @@
  * 会话事件词表 v2 —— `docs/design/session-event-sourcing-2026-08.md` §9.1/§9.2。
  *
  * 这里是**唯一**的事件形状定义处:S0 之前七类住在
- * `packages/onething-runtime/src/sessions/session-events.ts`,那里 import 了
+ * `packages/backend/runtime/sessions/session-events.ts`,那里 import 了
  * `node:crypto`,renderer 只能靠 shared 层那个契约面的 `export type` 擦除来绕开。现在类型上移到 core(零依赖),runtime 那个文件降为**再导出 +
  * 哈希/检视工具**,盘上格式与既有消费者逐字不变。
  *

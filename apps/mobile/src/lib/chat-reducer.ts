@@ -45,7 +45,7 @@ export const initialChatState: ChatState = { messages: [], streamingMessageId: n
 
 /**
  * 词汇闸(结构债 P4 E1-a)—— 上面那批 `type` 字面量必须逐条是
- * `SESSION_EVENT_TYPES`(`packages/core/events/session-event-types.ts`,会话事件
+ * `SESSION_EVENT_TYPES`(`packages/backend/core/events/session-event-types.ts`,会话事件
  * 词汇的唯一权威)的成员。多一个拼错的、或者哪天线上把某条事件改名,这一行当场
  * 编译不过。
  *

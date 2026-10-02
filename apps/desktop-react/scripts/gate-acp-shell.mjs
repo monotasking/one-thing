@@ -92,9 +92,9 @@ const DEV_PORT = Number(process.env.ONETHING_GATE_VITE_PORT ?? 5194)
 
 /** 种下的那一台:命令一定不存在,所以它一定探测不到。 */
 const TEMP_AGENT = 'gate-missing-agent'
-/** ③④ 那一台:真说 ACP 的假 agent(`packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs`)。 */
+/** ③④ 那一台:真说 ACP 的假 agent(`packages/backend/runtime/acp/__tests__/fixtures/fake-agent.mjs`)。 */
 const FAKE_AGENT = 'gate-fake-agent'
-const fakeAgentScript = path.join(repoRoot, 'packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs')
+const fakeAgentScript = path.join(repoRoot, 'packages/backend/runtime/acp/__tests__/fixtures/fake-agent.mjs')
 const SEED_IDS = ['claude-code', 'gemini', 'codex']
 /** ⑤⑥ 那一台:同一只假 agent,打开审批与终端两条剧本;`unattended` 不写 = 缺省拒,卡真的上屏。 */
 const PERM_AGENT = 'gate-perm-agent'

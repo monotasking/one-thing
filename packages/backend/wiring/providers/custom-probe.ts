@@ -10,7 +10,7 @@
  *
  * 端口可注入(`ProbeCustomPorts`):单测替掉 fetch / 分析那一轮,门跑真的。
  */
-import { createAgentExecutionLifetime, runAgentLoop } from '@onething/core/agent-loop'
+import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/core/agent-loop'
 import {
   CUSTOM_ADAPTER_BASE_DIALECT,
   adapterReasoningPath,
@@ -18,9 +18,9 @@ import {
   probeCustomEndpoint,
   renderCustomAdapterProbePrompt,
   verifyAdapterSpec,
-} from '@onething/runtime/providers/custom-probe'
-import { EXTERNAL_AGENT_DIALECT_ID, getProviderManifest } from '@onething/runtime/providers/manifest'
-import type { ProviderDirectModelsFetch } from '@onething/runtime/providers/models-endpoint'
+} from '@onething/backend/runtime/providers/custom-probe'
+import { EXTERNAL_AGENT_DIALECT_ID, getProviderManifest } from '@onething/backend/runtime/providers/manifest'
+import type { ProviderDirectModelsFetch } from '@onething/backend/runtime/providers/models-endpoint'
 import type { AppSettings } from '@shared/ipc.js'
 import type {
   CustomAdapterSpec,

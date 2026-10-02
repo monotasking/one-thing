@@ -10,7 +10,7 @@ import type {
   RuntimeRequestContext,
   RuntimeStreamPayload,
   RuntimeUnsubscribe,
-} from '@onething/core'
+} from '@onething/backend/core'
 import type { JsonObject } from '@shared/json'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'

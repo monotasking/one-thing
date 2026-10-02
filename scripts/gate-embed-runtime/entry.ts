@@ -26,7 +26,7 @@
  * 以外的任何东西 —— 模型目录也只读。
  */
 
-import { createTransformersOnnxEmbedder } from '@onething/runtime/search/embedding/transformers-onnx'
+import { createTransformersOnnxEmbedder } from '@onething/backend/runtime/search/embedding/transformers-onnx'
 
 /** 门把这两格从环境里递进来;单跑这份产物时也能用同样两格。 */
 const modelDir = process.env.ONETHING_GATE_EMBED_MODEL_DIR ?? ''

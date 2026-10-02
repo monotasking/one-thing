@@ -17,8 +17,8 @@ import {
   type VoiceSubmitUtteranceRequest,
   type VoiceSynthesizeRequest,
 } from '@shared/ipc.js'
-import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/runtime/voice/audio-router.wiring'
-import { WakeWordEngine } from '@onething/runtime/voice/kws/engine.wiring'
+import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/backend/runtime/voice/audio-router.wiring'
+import { WakeWordEngine } from '@onething/backend/runtime/voice/kws/engine.wiring'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import type { StreamChunk } from '@shared/events/index.js'
 import type { Unsubscribe } from '../../events/types.js'
@@ -40,16 +40,16 @@ import {
   isOnethingMissingCloudTTSConfiguration,
   normalizeOnethingVoiceError,
   splitOnethingSpeakableSentences,
-} from '@onething/runtime/voice/index'
+} from '@onething/backend/runtime/voice/index'
 import {
   getVoiceHostPorts,
   sendVoiceHostMessageToWindow,
   type VoiceHostWebContents,
   type VoiceHostWindow,
-} from '@onething/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/voice/host-ports.wiring'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import type { OnethingVoiceSpeechStreamHandlers } from '@onething/runtime/voice/providers'
+import type { OnethingVoiceSpeechStreamHandlers } from '@onething/backend/runtime/voice/providers'
 
 const voiceWebContentsId = (webContents: { id: number } | null | undefined): number | undefined =>
   webContents?.id

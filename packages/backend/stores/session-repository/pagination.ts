@@ -10,7 +10,7 @@ import {
   encodeMessagePageCursor as encodeCoreMessagePageCursor,
   getMessagesPageFromArray as getCoreMessagesPageFromArray,
   getUserMessageMarkersFromArray as getCoreUserMessageMarkersFromArray,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 export function encodeMessagePageCursor(cursor: SessionMessagePageCursor): string {
   return encodeCoreMessagePageCursor(cursor)

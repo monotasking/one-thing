@@ -6,20 +6,20 @@ import {
   type AgentProviderRuntimeConfig as CoreAgentProviderRuntimeConfig,
   type CreateAgentProviderFromRuntimeOptions,
   type RegisterAgentProviderRuntimeOptions,
-} from '@onething/runtime/agent-loop/providers'
+} from '@onething/backend/runtime/agent-loop/providers'
 import type { OAuthToken } from '@shared/ipc.js'
-import { credentialTargetFromSpaceMarker } from '@onething/runtime/auth'
+import { credentialTargetFromSpaceMarker } from '@onething/backend/runtime/auth'
 import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
   resolveExternalAgentSessionLink,
 } from '../../external-agents/index.js'
 import { authService } from '../../auth/auth-service.js'
-import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
 import { dumpProviderRequest } from '../../../provider-binding/request-dump.js'
 import { providerMediaReader } from './media-reader.js'
-import type { AgentProvider } from '@onething/core/agent-loop'
+import type { AgentProvider } from '@onething/backend/core/agent-loop'
 
 export {
   getSupportedAgentProviderRuntimeIds,

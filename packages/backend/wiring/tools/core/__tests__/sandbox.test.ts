@@ -38,9 +38,9 @@ configureAppToolSandbox()
 
 import {
   getOnethingToolOutputsDir,
-} from '@onething/runtime/storage'
-import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
-import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
+} from '@onething/backend/runtime/storage'
+import { resetVariablesStoreForTests } from '@onething/backend/runtime/variables/store-bound'
+import { createDefaultVariablesFile } from '@onething/backend/runtime/variables/schema'
 
 describe('sandbox', () => {
   beforeEach(() => {

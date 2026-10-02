@@ -44,10 +44,14 @@
 import fs from 'node:fs'
 import {
   canonicalChatMessage,
+} from '@onething/backend/core/session'
+import {
   materializeNode,
+} from '@shared/session/projection/chat-messages'
+import {
   type ProjectionNode,
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
 import {
   canonicalProjectionMessagesSliced,
   createRefoldSliceGate,

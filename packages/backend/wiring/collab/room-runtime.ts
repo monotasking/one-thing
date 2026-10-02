@@ -28,7 +28,7 @@ import {
   COLLAB_SYSTEM_SOURCE_TASK,
   isAgentPairDmRoom,
   isCollabForcedSerialRoom,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
@@ -36,7 +36,7 @@ import { getEventBus } from '../../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import {
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
 

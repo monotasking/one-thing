@@ -47,10 +47,19 @@ export function countModuleLets(source) {
   return count
 }
 
+/**
+ * 合包(server / client 拆分第②步,2026-10-02)以后,`packages/backend` 下多了三棵原样搬进来的子树:
+ * `core/`(引擎骨架)、`runtime/`(产品层)、`gateway/`。这把尺子量的是**装配层**(脊柱 + `wiring/`)
+ * 长回全局变量,从来没量过那三个包(它们合包前根本不在扫描根里);把它们扫进来不会让装配层多一个 let,
+ * 只会让基线外凭空冒出几十个文件、把尺子变成另一把。所以按目录排除,口径与合包前逐字相同。
+ */
+const NOT_ASSEMBLY_SUBTREES = new Set(['core', 'runtime', 'gateway'].map(dir => path.join(scanRoot, dir)))
+
 function walk(dir, out) {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === '__tests__' || entry === 'dist') continue
     const absolute = path.join(dir, entry)
+    if (NOT_ASSEMBLY_SUBTREES.has(absolute)) continue
     if (statSync(absolute).isDirectory()) {
       walk(absolute, out)
       continue

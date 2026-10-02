@@ -44,13 +44,13 @@ import {
   type HostMcpCallResult,
   type HostMcpHostTool,
   type HostToolTurnContext,
-} from '@onething/runtime/external-agents'
+} from '@onething/backend/runtime/external-agents'
 import {
   HOST_MCP_BRIDGE_ENV,
   HOST_MCP_BRIDGE_SERVER_NAME,
   HOST_MCP_HTTP_PATH,
   normalizeInputSchema,
-} from '@onething/runtime/acp/mcp-bridge/server'
+} from '@onething/backend/runtime/acp/mcp-bridge/server'
 import { HOST_MCP_UNAUTHORIZED, type HostMcpToolListing } from '@shared/ipc/host-mcp.js'
 import type { AgentNotificationEvent } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'

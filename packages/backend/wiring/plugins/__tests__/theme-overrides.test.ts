@@ -24,14 +24,14 @@ import {
   isPluginThemeColorValue,
   sortByPluginCanonicalOrder,
   validatePluginContributes,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import {
   isPluginThemeOverrideToken,
   resolvePluginThemeOverrides,
-} from '@onething/runtime/plugins/theme-overrides'
-import { projectOnethingPluginsForRenderer } from '@onething/runtime/plugins/plugin-list'
-import { CSS_VAR_MAP } from '@onething/runtime/themes/css-mapper'
-import { applyTheme, initializeThemes } from '@onething/runtime/themes'
+} from '@onething/backend/runtime/plugins/theme-overrides'
+import { projectOnethingPluginsForRenderer } from '@onething/backend/runtime/plugins/plugin-list'
+import { CSS_VAR_MAP } from '@onething/backend/runtime/themes/css-mapper'
+import { applyTheme, initializeThemes } from '@onething/backend/runtime/themes'
 
 /**
  * 装配层只从插件管理器的**内存清单**读声明,所以这里把管理器换成一个假的

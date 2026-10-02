@@ -1,4 +1,4 @@
-import { createStoreBackup, restoreStoreBackup, verifyStoreBackup } from '@onething/runtime/storage'
+import { createStoreBackup, restoreStoreBackup, verifyStoreBackup } from '@onething/backend/runtime/storage'
 import { stdout } from './stdout.js'
 import { storeLockCommand } from './store-lock-command.js'
 

@@ -1,4 +1,4 @@
-import { createFileToken, expandFileTokens } from '@onething/runtime/prompts/prompt-references'
+import { createFileToken, expandFileTokens } from '@shared/prompts/prompt-references'
 import { resolveIcon } from '../../components/icons'
 import type { FileMention } from '../../data/file-mentions-source'
 import { basename } from '../../content/tools/result'

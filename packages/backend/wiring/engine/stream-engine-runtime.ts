@@ -4,24 +4,24 @@ import type {
 	ChatSession,
 	ProviderConfig,
 } from "@shared/ipc.js";
-import type { ProviderAuthContext } from "@onething/runtime/auth/types.wiring";
+import type { ProviderAuthContext } from "@onething/backend/runtime/auth/types.wiring";
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
-} from "@onething/runtime/product-stream-runtime";
+} from "@onething/backend/runtime/product-stream-runtime";
 import { Permission } from "../permission/index.js";
-import { Interaction } from '@onething/core/interaction';
+import { Interaction } from '@onething/backend/core/interaction';
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
 import { sessionCommands } from "../../session/commands.js";
 import { getSkillsForSession } from "../skills/session-skills.js";
-import { mediaLibraryService } from "@onething/runtime/media/library-service-bound";
+import { mediaLibraryService } from "@onething/backend/runtime/media/library-service-bound";
 import {
 	generateChatTitle,
 	isProviderSupported,
 	requiresOAuth,
 } from "../providers/index.js";
-import { resolveProviderApiKey } from "@onething/runtime/providers/env.wiring";
+import { resolveProviderApiKey } from "@onething/backend/runtime/providers/env.wiring";
 import {
 	applySessionProviderGates,
 	resolveSessionSpaceOAuthAuth,
@@ -29,7 +29,7 @@ import {
 import { resolveSessionSpaceDefaultSelection } from "../providers/space-defaults.js";
 import { getSessionSettings } from "../providers/space-ai-settings.js";
 import * as modelRegistry from "../providers/model-registry.js";
-import { resolvePromptReferences } from "@onething/runtime/prompts/resolver.wiring";
+import { resolvePromptReferences } from "@onething/backend/runtime/prompts/resolver.wiring";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream, failAssistantRun, openAssistantRun } from "./stream/stream-executor.js";
@@ -40,9 +40,9 @@ import {
 	getContextCompactReason,
 	shouldSkipAutoCompactForProviderUsageMismatch,
 } from "./context-compact.js";
-import type { OnethingStreamProviderAdapterOptions } from '@onething/runtime/providers/stream-provider-adapter'
-import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/core/engine'
-import { buildOnethingChatTitleGenerationRequest } from '@onething/runtime/providers'
+import type { OnethingStreamProviderAdapterOptions } from '@onething/backend/runtime/providers/stream-provider-adapter'
+import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/backend/core/engine'
+import { buildOnethingChatTitleGenerationRequest } from '@onething/backend/runtime/providers'
 import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
 
 export type MainStreamEngineRuntime = OnethingProductStreamRuntime<

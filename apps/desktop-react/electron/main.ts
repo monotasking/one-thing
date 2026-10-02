@@ -120,7 +120,7 @@ type HttpDiscoveryRecord = {
 const appRoot = path.resolve(__dirname, '..')
 
 /**
- * store 根。与 `packages/onething-runtime/src/storage/paths.ts` 的
+ * store 根。与 `packages/backend/runtime/storage/paths.ts` 的
  * `getOnethingStorePath()` **同语义**(env 优先,否则 `~/.onething`)。这一段发生在
  * `configureLogging` 之前(要先知道 store 才知道日志落哪),所以自己 resolve 一次。
  */
@@ -583,7 +583,7 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
  *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)——
  *    `webContents.send`,一条单向推送,没有后端那一侧。
  *  · `installTerminalReloadDetach` —— 它缺省调的那只 detach 住在
- *    `@onething/runtime/terminal/service.wiring`,读的是**那只包自己的模块级
+ *    `@onething/backend/runtime/terminal/service.wiring`,读的是**那只包自己的模块级
  *    单例**(`serviceInstance?.markAllDetached()`),不是 backend 访问器;没开过
  *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
  *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。
@@ -816,7 +816,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 /*
  * ── 本批留账 ────────────────────────────────────────────────────────────
  * ① `shell.jsonl` 不在 `LOG_DIR_POLICY.families` 里(那张表在
- *    packages/onething-runtime,本批边界外)。后果:归档只被 janitor 报成
+ *    packages/backend/runtime,本批边界外)。后果:归档只被 janitor 报成
  *    `unknown`,永不删。活账本本身照常轮转。加一行即可,留给下一批。
  * ② 内建 skills 目录按 cwd 解析成 `apps/desktop-react/resources/skills`(不存在),
  *    于是自演化那颗默认关闭的 builtin skill 在这个壳里加载不到。旧壳靠

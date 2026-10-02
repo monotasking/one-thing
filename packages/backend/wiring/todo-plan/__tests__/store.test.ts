@@ -28,7 +28,7 @@ vi.mock('../../../stores/settings.js', () => ({
   }),
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => root,
 }))
 

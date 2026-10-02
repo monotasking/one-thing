@@ -15,8 +15,8 @@
  * `docs/design/workspace-provider-config-review-2026-08-18.md` §7 / C2。
  */
 
-import { readSpaceProviderSettings } from '@onething/runtime/spaces/provider-settings'
-import type { CoreSpaceDefaultSelection } from '@onething/runtime/providers'
+import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
+import type { CoreSpaceDefaultSelection } from '@onething/backend/runtime/providers'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 
 /** 某个空间表达过的默认选择。没表达过 = `undefined`(解析链落到「没有默认」那支)。 */

@@ -16,13 +16,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 /** 账本写口上的探针:每一次 `writeSessionEvent` 的事件类型都记一笔。 */
 const written = vi.hoisted(() => ({ types: [] as string[], payloads: [] as unknown[] }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

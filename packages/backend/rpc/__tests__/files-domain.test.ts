@@ -39,9 +39,9 @@ vi.mock('../../utils/ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
  */
 const notes = vi.hoisted(() => ({ roots: [] as string[] }))
 vi.mock('../../wiring/notes/index.js', () => ({ noteRootsNow: () => notes.roots }))
-vi.mock('@onething/runtime/shell/host-ports', async () => {
-  const actual = await vi.importActual<typeof import('@onething/runtime/shell/host-ports')>(
-    '@onething/runtime/shell/host-ports',
+vi.mock('@onething/backend/runtime/shell/host-ports', async () => {
+  const actual = await vi.importActual<typeof import('@onething/backend/runtime/shell/host-ports')>(
+    '@onething/backend/runtime/shell/host-ports',
   )
   return { ...actual, getShellHost: () => shell }
 })
@@ -74,8 +74,8 @@ describe('files RPC domain', () => {
       = await Promise.all([
         import('../registry.js'),
         import('../domains/files.js'),
-        import('@onething/runtime/variables/store-bound'),
-        import('@onething/runtime/variables/schema'),
+        import('@onething/backend/runtime/variables/store-bound'),
+        import('@onething/backend/runtime/variables/schema'),
       ])
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()

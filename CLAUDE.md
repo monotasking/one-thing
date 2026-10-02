@@ -103,11 +103,12 @@ Dev ports: React desktop renderer dev server **5175** (`app:dev`), browser shell
 
 ## Architecture Overview
 
-This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The product lives in packages; the apps are thin sockets. Three-layer mental model:
+This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The product lives in packages; the apps are thin sockets. **One server package, one contract tree, one client SDK** since the server / client split (`docs/design/server-client-split-2026-10.md`; step ② landed 2026-10-02): `@onething/backend` (`packages/backend`) is the **one server package** — the former `@onething/core`, `@onething/runtime` and `@onething/gateway` were merged into it **mechanically** as the subtrees `core/`, `runtime/`, `gateway/` (paths changed, nothing else; folding `runtime/<d>` and `wiring/<d>` into one directory per domain is step ③). `packages/shared` (`@shared`) holds only the server ↔ client contract plus the pure logic both sides must compute identically, and imports nothing but itself (no node, no `@onething/*`); `packages/client` (`@onething/client`) is the client SDK. Client code (`apps/desktop-react/src`, `apps/mobile`, `packages/client`) imports only `@shared/*` and `@onething/client` — both enforced by zero-baseline boundary gates. Inside the server package the old three-layer mental model still holds, now as directories:
 
-- **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
-- **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (33 dirs: acp / agent-loop / agents / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / settings / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
+- **packages/backend/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
+- **packages/backend/runtime** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
+- **packages/backend** (everything outside the three subtrees) — the assembly layer (it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (33 dirs: acp / agent-loop / agents / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / settings / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1). The three subtrees `core/` / `runtime/` / `gateway/` are layers, not domains, so I1 does not count them.
+- **packages/backend/gateway** — WeChat/Telegram channel gateway; depends on `core/` only.
 - **apps/\*** — thin sockets: the React desktop (`apps/desktop-react`, also the browser shell via `--mode web`), server (HTTP/SSE), CLI daemon (`apps/cli`). The Vue host / renderer / web build were deleted 2026-09-04 (runtime unification step ④; `checkVueHostStaysRetired` keeps them out).
 
 ```
@@ -127,33 +128,37 @@ apps/*  (thin sockets)
 │  @shared allowed; hosts inject surfaces via configure*Host ports     │
 │  (never imports electron/@main/@preload)                             │
 ├──────────────────────────────────────────────────────────────────────┤
-│ packages/onething-runtime/src/*          PRODUCT ('@onething/runtime')│
+│ packages/backend/runtime/*   PRODUCT ('@onething/backend/runtime/…') │
 │  prompts, sessions, agent-loop providers, tools, themes, …          │
 │  Electron-free; no @shared/ipc; MUST NOT import @onething/backend    │
 ├──────────────────────────────────────────────────────────────────────┤
-│ packages/core                            SKELETON ('@onething/core') │
+│ packages/backend/core/*      SKELETON ('@onething/backend/core/…')   │
 │  engine, events, session, permission, tools, storage. Zero deps.     │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Dependency direction is one-way: product ← assembly ← hosts. Product code never imports `@onething/backend`.
+Dependency direction is one-way: product ← assembly ← hosts. Product code (`runtime/`) never imports the backend **spine** — `@onething/backend` itself or any subpath outside `core/` / `runtime/` / `gateway/` — and the three subtrees' relative imports never leave their own subtree (`packages/backend/core/__tests__/architecture-boundaries.test.ts`; the package boundary that used to say this is gone, so a directory rule says it now).
 
 ### Monorepo Layout
 
 ```
-packages/core/               # Bottom layer, zero deps. No src/ — files at package root:
-                             # agent-loop/ (provider-agnostic loop), engine/ (CoreStreamEngine),
-                             # events/, session/ (+storage/jsonl),
-                             # permission/, tools/, plugins/, mcp/, storage/ primitives.
-packages/onething-runtime/   # src/ = the product (prompts, sessions, agent-loop
-                             # providers, tools, themes, voice, music, …). Electron-free.
-packages/backend/            # Assembly layer ('@onething/backend'): createOnethingBackend
+packages/backend/            # THE server package ('@onething/backend'): createOnethingBackend
                              # + the backend spine at the package root, thin wiring under
-                             # wiring/<domain>/. @shared allowed, electron never.
-packages/gateway/            # WeChat/Telegram channel gateway. Depends on core only.
-                             # Remote permission approval (reply 1/2/3), markdown-safe streaming.
-packages/shared/             # Shared IPC/event contracts + defaults ('@shared'). Also
-                             # backend/ (store-lock for CLI), cli/, defaults/, types/, voice/.
+                             # wiring/<domain>/. @shared allowed, electron never. Plus three
+                             # subtrees merged in verbatim (step ②, 2026-10-02):
+  core/                      #   engine skeleton, zero deps: agent-loop/, engine/ (CoreStreamEngine),
+                             #   events/, session/ (+storage/jsonl), permission/, toolkit/, plugins/,
+                             #   mcp/, storage/ primitives (was packages/core).
+  runtime/                   #   the product (prompts, sessions, agent-loop providers, tools,
+                             #   themes, voice, music, …). Electron-free (was packages/onething-runtime/src).
+  gateway/                   #   WeChat/Telegram channel gateway; depends on core/ only. Remote
+                             #   permission approval (reply 1/2/3), markdown-safe streaming
+                             #   (was packages/gateway/src).
+packages/shared/             # The server ↔ client contract ('@shared'): IPC/RPC router contracts,
+                             # event vocabulary, the discovery-file record shape, plus the pure
+                             # logic both sides must agree on (session projection, references,
+                             # resource refs, effect table, text edit, slash commands, …).
+                             # Imports nothing but itself — no node, no @onething/*.
 packages/client/             # core 的客户端 SDK ('@onething/client'): Transport (http = fetch +
                              # fetch-stream SSE, Bearer header) + client.api(router) + events hub +
                              # pure model helpers. Node & browser; zero React/Vue/Electron.
@@ -235,12 +240,12 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 
 ### Guardrails
 
-- `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; `packages/onething-runtime` bans electron **and** `@shared/ipc` — except `*.wiring.ts` files, which may import `@shared/ipc`/`@shared/events` and which no non-wiring product file may import (`checkRuntimeWiringModulesStayAtTheEdge`); `packages/backend` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
+- `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; `packages/backend/runtime` bans electron **and** `@shared/ipc` — except `*.wiring.ts` files, which may import `@shared/ipc`/`@shared/events` and which no non-wiring product file may import (`checkRuntimeWiringModulesStayAtTheEdge`); `packages/backend`'s spine (everything outside `core/` / `runtime/` / `gateway/`, which keep their own rules) gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports). `packages/shared` imports only itself (`checkSharedImportsOnlyShared`, no exemptions) and the client side imports only `@shared/*` / `@onething/client` / itself (`checkClientImportsOnlySharedAndClient`).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs`, a **zero-baseline hard gate**: any `[boundary] failed:` line exits 1. The ratchet and `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds) were retired 2026-08-21 by 结构债方案 P2 — 4 reds were fixed in source, the other 9 were stale/false-positive assertions and were fixed in the checker. Two anti-footgun guards survive: no `[boundary] complete:` marker (checker crashed mid-run) or no `[boundary] ok:` line at all (output shape changed) is red, not green.
 - UI 组件与样式规则:通则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),**React 壳自己的施工规范与判例在 `apps/desktop-react/CLAUDE.md`** —— 那是今天唯一的壳。`bun run ui:gate` / `ui:check` 与它们背后的 `scripts/ui-gate.mjs` / `scripts/ui-style-check.mjs` 及基线 `docs/audit/ui-baseline-2026-08-13.txt` **已随 Vue 宿主一起退役**(2026-09-04,`50ff9cbd`;根 `package.json` 里 `ui*` 脚本为零)——那 12 条规则扫的是 `.vue` 文件。今天的 UI 执法全部在 `apps/desktop-react` 下:静态棘轮 `npm run ui:consume`(基础件消费门,`scripts/ui-consume-gate.mjs` over `ui-consume-check.mjs`,基线 `docs/audit/ui-consume-baseline-2026-09-01.txt`;响应链三条 `keydown-outside-focus` / `focus-outside-focus` / `active-element-read` 是**零基线硬闸**)、`npm run squeeze-gate`(基线 `docs/audit/squeeze-baseline-2026-08-30.txt`)与 `npm run motion-gate`(基线 `docs/audit/motion-baseline-2026-08-31.txt`);真机门 `npm run gate:squeeze` / `gate:a11y` / `gate:motion` / `gate:focus`,四条都已进 `npm run verify`。**同名的门有两半就跑两半**——真机量重叠,棘轮抓源码违例。
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run provider:gate` — `scripts/provider-vendor-gate.mjs` ratchet (服务商自述试点 P0): counts (vendor, file) pairs where a builtin vendor's id appears — as a string literal, object key or inside an identifier, parsed with the TypeScript parser so comments never count — outside its own `providers/vendors/<id>/`. Exempt: the two rosters, the shell's i18n / icon files, `providers/model-families/`, protocol names (`openai-chat`, `gemini-generateContent`, …), model-id regex literals, model paths (`openai/gpt-4o`), HTTP header names. Baseline `docs/audit/provider-vendor-baseline-2026-10.txt` (111 pairs; what is left and why: the design doc §4b). **Decrease-only**; `bun run provider:check` lists them. `bun run provider:drill` adds a fictional vendor in a throwaway worktree and asserts the only files touched outside its folder are the two rosters and the shell's two i18n files.
-- `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
+- `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend` (the assembly layer only — the merged `core/` / `runtime/` / `gateway/` subtrees were never on this ruler and are excluded by directory), baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
   at the top of this file. It enumerates every native binary this repo actually ships — **seven targets**
   today (the line said six until 2026-09-17; `fsevents`, the optional macOS workspace-watch dependency,
@@ -279,19 +284,19 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
   multilingual-e5-small`(`ONETHING_GATE_EMBED_MODEL_DIR` 可覆盖),不下载、不联网、不写盘;目录
   不在或 `node_modules/electron` 不可用就 **skipped + exit 0**,口径同 `gate:native` 跳过静态半边
   与 `gate:search-index` ⑫ 的 opt-in,跳过那一行打得很显眼。
-- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; apps/server is Electron-free (the Vue renderer / apps/web rules died with them on 2026-09-04).
+- `packages/backend/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/backend/runtime` / `@onething/backend/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import the backend spine** (`@onething/backend` itself or a subpath outside `core/` / `runtime/` / `gateway/`; dependency points one way: product ← assembly); **the three subtrees' non-test relative imports stay inside their own subtree** (added with the merge — it is the directory form of the package boundary that used to make this impossible); **I1 — `packages/backend`'s root directory names must not shadow a `packages/backend/runtime` domain name** (`wiring/` and the three layer subtrees excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/backend/core/<d>/x.ts` and `packages/backend/runtime/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; apps/server is Electron-free (the Vue renderer / apps/web rules died with them on 2026-09-04).
 
 Notes:
 
 - **Logging** (L0–L3 landed 2026-08-20, `docs/design/logging-system-2026-08.md` §7;
   current-state audit: `docs/audit/logging-inventory-2026-08-19.md`). One facade, one
   record shape, one governor:
-  - `packages/core/logging/` (zero deps, zero node imports) owns `Logger`
+  - `packages/backend/core/logging/` (zero deps, zero node imports) owns `Logger`
     (`trace/debug/info/warn/error/fatal/child(fields)`), `LogRecord
     {time, level, ns, msg, fields?, err?, src?}`, `LevelFilter`, `ConsoleSink(pretty|json)`,
     `MemoryRingSink`, `normalizeError`. The **mechanism** (JsonlFileSink /
     RollingFileLogger / LegacyConsoleSink / janitor / crash-hooks / legacy-debug-env)
-    is Electron-free and lives in `packages/onething-runtime/src/logging/` next to the
+    is Electron-free and lives in `packages/backend/runtime/logging/` next to the
     `getLogger` facade; `packages/backend/wiring/logging/`
     assembles it: **`configureLogging()` is the single wiring point** (idempotent — the
     desktop's embedded HTTP face never double-configures), and product code only ever
@@ -324,7 +329,7 @@ Notes:
   - **Renderer logs ride their own hub, not a console side-effect** (L3; the React shell's copy is
     `apps/desktop-react/src/services/log.ts`, the Vue original died 2026-09-04): `getLogger(ns)` over a `RendererLogHub`
     (memory ring 200, dev-only pretty echo, batched transport every 16ms / 50 records,
-    `beforeunload` + `fatal` flush immediately). It reuses the **same** `packages/core/logging`
+    `beforeunload` + `fatal` flush immediately). It reuses the **same** `packages/backend/core/logging`
     kernel the main process does — that package is browser-safe. Transport is the generic
     RPC envelope, **not** a hand-written channel: `logs` is a router domain
     (`@shared/ipc/logs.ts` + `backend/rpc/domains/logs.ts` + `platform/logs-client.ts`), so
@@ -341,8 +346,8 @@ Notes:
     its own, so gateway records land in `app.jsonl` under `gateway.wechat` /
     `gateway.telegram` / `gateway.bridge` / `gateway.storage`. Classes take an explicit
     `logger?`; free functions read the process-level factory
-    (`packages/gateway/src/core/logging.ts`). Nothing injected = a `LoggerRoot + ConsoleSink`
-    fallback, so `packages/gateway/src` has **zero** `console.*`.
+    (`packages/backend/gateway/core/logging.ts`). Nothing injected = a `LoggerRoot + ConsoleSink`
+    fallback, so `packages/backend/gateway` has **zero** `console.*`.
   - **The CLI daemon writes `daemon.jsonl`** (L2): `runDaemonServer` calls
     `configureLogging({ fileBaseName: 'daemon', src: 'daemon' })` before anything else,
     so it gets the janitor and the crash hooks like every other host. `daemon.log` survives
@@ -367,8 +372,8 @@ Notes:
   straight into `events.jsonl` (`migrateLegacySessionNow`, one `message/imported` per
   message; originals kept in `sessions/legacy-backup/`). `settings.storage.sessionFormat`
   ('jsonl' default | 'legacy-json') only decides the format of *new* sessions. Hybrid
-  driver: `packages/onething-runtime/src/sessions/storage-driver.ts`; pure jsonl
-  codec/pager in `packages/core/session/storage/jsonl/`. See
+  driver: `packages/backend/runtime/sessions/storage-driver.ts`; pure jsonl
+  codec/pager in `packages/backend/core/session/storage/jsonl/`. See
   `docs/design/session-storage-jsonl.md`.
 - **Cross-session search runs off a derived index, in a Worker** (检索重建 S3,
   `docs/design/search-index-2026-09.md`; the old line here said indexing belongs in
@@ -412,7 +417,7 @@ Notes:
   holds a **list** of retrievers, not a function: `[lexical, vector]` fused by RRF (k=60),
   and **which of them runs on a given call is data** — each capability declares
   `manifest.retrievers[<retrieverId>] = { when: 'relaxed' | 'explicit' | 'always' }`, so
-  `packages/core/search` never names a retriever, a capability, or a surface. The vector
+  `packages/backend/core/search` never names a retriever, a capability, or a surface. The vector
   half is `sqlite-vec`'s `vec0` virtual table inside the **same** `search.v1.sqlite`, one row
   per 512-token chunk, plus an `Embedder` registry (`runtime/search/embedding/`) whose real
   entry is `@huggingface/transformers` on the **onnxruntime-node (cpu)** backend, dynamically
@@ -496,7 +501,9 @@ Notes:
   F4-c, 2026-08-27; `docs/design/session-event-sourcing-2026-08.md` §17 系统宪法 is the
   three-law summary). Every fact — a user message, one streamed delta, a tool step,
   a permission decision — is one logical event on one stream; the projection reducer
-  (`packages/core/session/projection/`) folds that stream into state, and
+  (`packages/shared/session/projection/reducer.ts` + `chat-messages.ts` — shared since step ① of the
+  server / client split, because the shell folds the same ledger; model-history / canonical / checkpoint
+  stay in `packages/backend/core/session/projection/`) folds that stream into state, and
   `session.messages` in memory is only the **materialized view** of it; the encoder packs
   the same stream into `events.jsonl` (`assistant/chunks` batching is storage compression,
   not semantics). **`events.jsonl` is the only truth on disk**: the `messages.jsonl` write
@@ -514,7 +521,7 @@ Notes:
   (projection vs in-memory store) was retired in c4 because the store is no longer any
   read's source of truth — "comparing yourself with yourself" would go green for the wrong
   reason. Both sides still go through the one judge in
-  `packages/core/session/projection/canonical.ts` — extend that file, never add a local
+  `packages/backend/core/session/projection/canonical.ts` — extend that file, never add a local
   exemption. `ONETHING_SESSION_SHADOW=0` turns the refold bookkeeping off (events keep
   being written); it is **on by default**. Gates: `bun run sessions:shadow-report`
   (refold mismatches = 0 ∧ appendFailures = 0 over the real store),
@@ -529,7 +536,7 @@ Notes:
   (`apps/server/src/main.ts` only refuses `owner !== 'server'`) — the foreign-writer guard
   catches that after the fact.
 - **Trace = the read-only query surface over `events.jsonl`** (S3, §12 of the same doc).
-  One pure assembler (`packages/core/session/trace/assemble.ts` → `Session → Run →
+  One pure assembler (`packages/backend/core/session/trace/assemble.ts` → `Session → Run →
   Request → ToolCall`; timestamps only, no stored durations, no response body) feeds three
   outlets: `onething trace <sessionId> [--run <id>|--last] [--json] [--response <k>]`
   (reads the file directly, no daemon, never writes), the `sessionEvents` RPC domain's
@@ -539,7 +546,7 @@ Notes:
   Response text is materialized on demand from the `assistant/chunks` fold, never carried
   on the tree. It reads the same ledger the product reads.
 - **Notes are a domain, and Obsidian is one driver of it** (`docs/design/notes-obsidian-cli-2026-09.md`,
-  P1–P4 landed 2026-09-18). `packages/onething-runtime/src/notes/` owns `NoteVault` (daily note /
+  P1–P4 landed 2026-09-18). `packages/backend/runtime/notes/` owns `NoteVault` (daily note /
   create / attachment path / link text / resolve-by-name / list / live search / open-in-app) and a
   `NoteSystemRegistry` of self-describing `NoteSystemDriver`s (first claim wins, `vaultFor` = longest
   prefix); `obsidian/` talks to the **official Obsidian CLI** (`ObsidianCli`: `vault=<id>` is argv[0],
@@ -562,7 +569,7 @@ Notes:
   over the `notes` RPC domain (`list` / `refresh` / `openInApp` — the only call that may launch
   the app). Gate: `bun run gate:notes` (read-only, only open vaults, skipped when the socket is
   not there).
-- **Process memory is managed in one place** (2026-09-25). Mechanism: `packages/core/memory/`
+- **Process memory is managed in one place** (2026-09-25). Mechanism: `packages/backend/core/memory/`
   (`MemoryRegistry` + `MemoryGovernor`, zero deps); assembly: `packages/backend/wiring/memory/`,
   exposed as `backend.memory`.
   - **Holders.** A module that keeps rebuildable data in memory implements `MemoryHolder` and is
@@ -598,11 +605,11 @@ Notes:
 - Plugin system (R0–R7 complete, 2026-08-07). The plugin's entire power is the injected
   `api` object.
   **Where the code lives (P3'c, 2026-08-21 — three homes, no fourth):**
-  `packages/core/plugins/` = the **contract + kernel** (37 files: manifest/api shape,
+  `packages/backend/core/plugins/` = the **contract + kernel** (37 files: manifest/api shape,
   the `Core*` registries for lifecycle / input-intercept / tool-call-intercept /
   tool-result-intercept / status / sessions / storage, the policy + breaker tables,
   `ui-anchor.ts`, `file-pick.ts`, `canonical-order.ts` — zero deps);
-  `packages/onething-runtime/src/plugins/` = the **product half** (the one
+  `packages/backend/runtime/plugins/` = the **product half** (the one
   built-in plugin `log-monitor` — `note-skills` was retired by 笔记 P3 on 2026-09-18, note
   vaults reach the skill loader through `wiring/notes/skill-roots.ts` instead — the config store + schema projection,
   npm-tarball reading, runtime health, the IPC-shape projections, and the
@@ -624,7 +631,7 @@ Notes:
     A registered tool may declare `executionMode: 'parallel' | 'sequential'` (N3,
     2026-08-10 — `docs/design/pi-benchmark-adoption-2026-08.md` §8): it flows through
     to `AgentTool.executionMode`, whose **single** reader is the agent-loop runner
-    (`packages/core/agent-loop/runner.ts:397` → `ToolExecutionScheduler` barrier).
+    (`packages/backend/core/agent-loop/runner.ts:397` → `ToolExecutionScheduler` barrier).
     Undeclared = barrier = unchanged behavior; an illegal literal rejects that one
     tool at registration (no silent degrade, no breaker count).
   - **Cross-session messenger + session peek** (N1, 2026-08-10 —
@@ -647,7 +654,7 @@ Notes:
     plugin code), declarative UI-slot blocks on host-named anchors
     (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — **five** host-named anchors,
     each carrying a **kind** decided by the host table, never by the plugin
-    (`packages/core/plugins/ui-anchor.ts`): three always-on *blocks* —
+    (`packages/backend/core/plugins/ui-anchor.ts`): three always-on *blocks* —
     `composer.above` above the composer, `chat.status-bar` below the message list,
     `message.footer` per assistant message (the first message-level anchor, its
     render ctx additionally carries `messageId`) — and two *triggers* (D 期,
@@ -661,7 +668,7 @@ Notes:
     a slot declaring `drawer: true` gets host-drawn toggles and three host-owned states
     (expanded 240px / peek 32px / collapsed to one chip in the S status band); the plugin
     only sees `ctx.drawerState` (`'expanded' | 'peek'`) and the state machine lives in
-    the Vue renderer's `ui-anchor-registry` (deleted 2026-09-04 with the Vue host — the plugin UI-slot surface has **no React consumer yet**; the contract in `packages/core/plugins/ui-anchor.ts` stands).
+    the Vue renderer's `ui-anchor-registry` (deleted 2026-09-04 with the Vue host — the plugin UI-slot surface has **no React consumer yet**; the contract in `packages/backend/core/plugins/ui-anchor.ts` stands).
     Render ctx carries `anchor` +
     `sessionId`, the host re-pulls on session switch. Renderer pieces:
     `components/plugins/{UiSlotHost,UiSlotBlock,PluginTriggerPopover}.vue` +
@@ -714,7 +721,7 @@ Notes:
     plugin registers a connector and inbound is not wired, so the pilot validates the
     contract and teardown semantics, not the delivery path. Which registries are
     deliberately *not* open, and why, is in `PLUGIN_DEFERRED_REGISTRIES`
-    (`packages/core/plugins/policy.ts`) — read it before opening another.
+    (`packages/backend/core/plugins/policy.ts`) — read it before opening another.
   - **Isolation**: timeout budgets, per-`pluginId+scope` failure breaker, and a severity
     policy table (`policy.ts`) deciding disable-plugin vs degrade-one-surface. Teardown is
     two-sided (code registries + data footprint) and guarded by a CI teardown test.
@@ -805,7 +812,7 @@ Notes:
   The server's HTTP session store is backed by the same `@onething/backend` store the engine
   uses in-process — a second repository over the same files would fork the in-memory truth.
 - Store isolation: the store root resolves `ONETHING_STORE_PATH` → `~/.onething`
-  (`packages/onething-runtime/src/storage/paths.ts`). All app-layer paths must resolve
+  (`packages/backend/runtime/storage/paths.ts`). All app-layer paths must resolve
   through `getOnethingStorePath()` / its `getOnething*Path` helpers — never hardcode.
   Single-instance safety via `StoreLock` (`acquire('desktop')` / `'daemon'`). The
   `'server'` owner exists in the type but `apps/server` deliberately does **not** take the
@@ -820,9 +827,9 @@ Notes:
   at the HTTP boundary; affinity guards against cross-channel spoofing on the bus).
 - Renderer code talks to core only through `@onething/client` (`createOnethingClient` over an http `Transport`); the React shell's data plane has no IPC at all — its two IPC channels are `host:connection` (the `{ baseUrl, token }` handshake) and, since B1-a (`72c998f8`, 2026-09-12), `host:native-view` (the window-system pipe for native views). `window.electronAPI` no longer exists anywhere.
 - System prompt assembly is a single "directory at top, copy below" builder in
-  `packages/onething-runtime/src/prompts/builder.ts`, composed by a **`PromptComposer`
+  `packages/backend/runtime/prompts/builder.ts`, composed by a **`PromptComposer`
   over `PromptSource`s** (2026-08-18, `docs/design/prompt-composition-2026-08.md`).
-  One shape (`CorePromptFragment`, `packages/core/engine/prompt-fragments.ts`: `slot`
+  One shape (`CorePromptFragment`, `packages/backend/core/engine/prompt-fragments.ts`: `slot`
   guidelines / workspace-rules / section, `source`, `order`, `requiresTools` /
   `requiresAnyTools` / `when`, `content`); one interface (`PromptSource.collect(ctx)`,
   `prompts/composer.ts`); sources: `builtinPromptSource` (the section table),
@@ -915,7 +922,7 @@ renderer (React) → client.api(sessionCommandRouter).emit({ sessionId, command:
    http: command:abort is handled locally and a channel-less permission respond
    adopts the pending ask's targetChannel — nothing else is destructured away)
 → EventBus (packages/backend/events/, per-session ring buffers)
-→ ProductStreamEngine.handleSendMessage (packages/onething-runtime/src/engine/stream-engine.ts)
+→ ProductStreamEngine.handleSendMessage (packages/backend/runtime/engine/stream-engine.ts)
   → persist messages → emit events + stream chunks
 → desktop: IPCBridge → 'session:event' / 'session:stream' to WebContents
   web:     GET /api/events SSE (same event names; ?after= replays from ring buffers)
@@ -961,21 +968,16 @@ Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/comma
 
 Two mechanisms, and which one a package uses is a fact about that package, not a style choice.
 
-**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/core", "packages/gateway", "packages/onething-runtime", "packages/backend", "packages/client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{core,gateway,runtime,backend,client}`, so `@onething/core` / `@onething/gateway` / `@onething/runtime` (90 export keys) / `@onething/backend` (88: 85 explicit subpaths generated from the repo's actual import specifiers, `"."` → `./backend.ts`, plus the two fallbacks `"./*.js"` and `"./*"` → `./*.ts`) resolve through **their own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` in all three tsconfigs honours exports pointing straight at `.ts` sources). There is no alias entry and no tsconfig `paths` entry for them: **add a new subpath to that package's `package.json` "exports"**, and a missing one now fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
+**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/backend", "packages/client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{backend,client}`. `@onething/backend` resolves through **its own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` honours exports pointing straight at `.ts` sources): **exact keys only, no wildcard fallback** — one key per import specifier that actually appears in the repo (412 keys after the merge: the spine's own `./x.js` keys plus `./core/…`, `./runtime/…`, `./gateway/…`; a directory barrel gets its own key, e.g. `"./runtime/providers"` → `./runtime/providers/index.ts`; a few keys keep the name the merged package exported them under, e.g. `"./core/search/index"` → `./core/search/index/index.ts`). `@onething/client` uses the family wildcard (`"./*.js"` / `"./*"` → `./*.ts`) plus an explicit `./node`. Files inside `packages/backend` import the merged subtrees by package specifier too (`@onething/backend/core/…`, `@onething/backend/runtime/…` — the package's self-reference resolves through the root `node_modules/@onething/backend` link). There is no alias entry and no tsconfig `paths` entry for them, and a missing key fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
 
 **Alias table.** There is none any more: `onething.aliases.ts` (the `@onething/electron-host/*` family) died with the Vue host on 2026-09-04. The only non-package alias left is `@shared` (= `packages/shared`), declared per-config (root `tsconfig.json` paths, `vitest.config.ts`, the React shell's vite/esbuild configs).
 
-**Adding a new runtime or backend subpath:**
-
-1. Add the key to that package's `package.json` `"exports"` (`packages/onething-runtime` or `packages/backend`). Prefer the family wildcard (`"./x/*": "./src/x/*.ts"`) that is usually already there — a whole new family needs the pair `"./x": "./src/x/index.ts"` + `"./x/*": "./src/x/*.ts"`, and a nested directory barrel (`src/x/y/index.ts`) needs its own exact key `"./x/y"` because `*` cannot express "directory index". Exact keys win over wildcards; keep them above their wildcard sibling anyway.
-2. No alias edit, no tsconfig edit, no config edit — all four build/test configs and tsc go through the same exports map, and a missing key fails at **typecheck**.
-
-Every `@onething/*` family is a workspace package, so a missing exports key fails at typecheck.
+**Adding a new backend subpath** (spine, `core/`, `runtime/` or `gateway/` alike): add one exact key to `packages/backend/package.json` `"exports"` (`"./runtime/x/y": "./runtime/x/y.ts"`; a directory barrel needs its own key `"./runtime/x": "./runtime/x/index.ts"`). No alias edit, no tsconfig edit, no config edit — all build/test configs and tsc go through the same exports map, and a missing key fails at **typecheck**.
 
 ### Directory Structure
 
 ```
-packages/core/                 # no src/ — files at the package root
+packages/backend/core/         # SKELETON subtree (was packages/core; merged verbatim in step ②)
 │   ├── agent-loop/            # provider-agnostic loop: runner, stream, retry, scheduler
 │   ├── engine/                # CoreStreamEngine, context-compact, history
 │   ├── events/                # event-bus, ring-buffer, stream-channel, stream-chunks
@@ -985,9 +987,11 @@ packages/core/                 # no src/ — files at the package root
 │   ├── tools/                 # what survives beside it: effects, abort, diff-hunks, tool-result
 │   ├── logging/               # Logger/LogRecord/LevelFilter/sinks — zero deps, zero node imports
 │   ├── plugins/  mcp/  context/  storage/  providers/ (types)  http/
-│   └── gateway-runtime.ts  runtime-facade.ts  slash-commands.ts
+│   └── gateway-runtime.ts  runtime-facade.ts
+│                              # (slash-commands / references / text / json / the session projection
+│                              #  reducer moved to packages/shared in step ①)
 │
-packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
+packages/backend/runtime/      # PRODUCT subtree (was packages/onething-runtime/src)
 │   ├── prompts/               # system prompt builder + content/*.md
 │   ├── sessions/              # session-repository, storage-driver (jsonl/legacy hybrid)
 │   ├── agent-loop/providers/  # hand-rolled fetch/SSE providers (claude/codex/deepseek/
@@ -1003,7 +1007,9 @@ packages/onething-runtime/src/ # PRODUCT layer ('@onething/runtime')
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
 │   └── stream-sender.ts       # 命令目标(sender)形状:产品层的公开类型
 │
-packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared allowed)
+packages/backend/gateway/      # gateway subtree (was packages/gateway/src); depends on core/ only
+│
+packages/backend/              # THE server package ('@onething/backend'); the spine below is the ASSEMBLY layer
 │   ├── backend.ts  store.ts   # createOnethingBackend — the single assembly recipe
 │   ├── events/                # event-bus, stream-channel, ring-buffer, stream-coalescer
 │   ├── stores/                # sessions (repository wiring), settings cache, app-state, docs-paths
@@ -1054,19 +1060,19 @@ packages/shared/               # '@shared'
 
 ### Key Systems
 
-**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/onething-runtime/src/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **five optional ports** (`runtime/src/engine/ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before), never a substitute implementation. The assembly layer's whole share is `packages/backend/wiring/engine/stream-engine-bound.ts`: it fills all five ports from the backend spine (`channel/`, `wiring/collab`, `wiring/plugins`, `wiring/agents`, `wiring/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; `wiring/engine/index.ts` owns the singleton. The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled next to it in `wiring/engine/stream-engine-runtime.ts`.
+**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/backend/runtime/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **five optional ports** (`runtime/src/engine/ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before), never a substitute implementation. The assembly layer's whole share is `packages/backend/wiring/engine/stream-engine-bound.ts`: it fills all five ports from the backend spine (`channel/`, `wiring/collab`, `wiring/plugins`, `wiring/agents`, `wiring/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; `wiring/engine/index.ts` owns the singleton. The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled next to it in `wiring/engine/stream-engine-runtime.ts`.
 
-**EventBus** (`packages/backend/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers; primitives in `packages/core/events/`.
+**EventBus** (`packages/backend/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers; primitives in `packages/backend/core/events/`.
 
-**Providers**: **one vendor, one folder** (服务商自述试点 P0–P5, 2026-10-01, `docs/design/architecture-direction-2026-10.md` §3–§4b). Each builtin vendor lives in `packages/onething-runtime/src/providers/vendors/<id>/` — its `manifest.ts` (pure data, the shell's facts arrive via RPC: name, dialect, auth, models source, dials, env vars, model identity, catalog aliases, error descriptions, endpoint hooks, model-rule table, reasoning wires, default `seed`, `family.role`) and its behavior files (dialect, thinking wire, `runtime.ts` with `createProvider` / `quotaSources` / `oauth` / `createModelsFetcher` / `fallbackModels`). Two rosters register them, one row each: `vendors/manifests.ts` (data, also `VENDOR_FAMILIES`) and `vendors/runtimes.ts` (behavior). Generic code reads fields and never names a vendor; knowledge about a *model family* served by several vendors (claude-*, gemini-*, gpt/o-series) lives in `providers/model-families/`. Adding a vendor = its folder + one row per roster + the shell's i18n line (icon optional) — `bun run provider:drill` proves it; `bun run provider:gate` is the ratchet on vendor names leaking outside their folder. Registry wiring in `packages/backend/wiring/providers/`; the three binding pieces that tie a runtime provider to the settings cache and the logger (`bound-fetch` / `request-dump` / `ai-settings-compose`) are spine and live in `packages/backend/provider-binding/`; the `@shared/ipc`-shaped type/env/utility-model adapters are `packages/onething-runtime/src/providers/*.wiring.ts`; the hand-rolled fetch/SSE implementations live in `packages/onething-runtime/src/agent-loop/providers/` (Vercel AI SDK was removed). New providers implement `ProviderDefinition`.
+**Providers**: **one vendor, one folder** (服务商自述试点 P0–P5, 2026-10-01, `docs/design/architecture-direction-2026-10.md` §3–§4b). Each builtin vendor lives in `packages/backend/runtime/providers/vendors/<id>/` — its `manifest.ts` (pure data, the shell's facts arrive via RPC: name, dialect, auth, models source, dials, env vars, model identity, catalog aliases, error descriptions, endpoint hooks, model-rule table, reasoning wires, default `seed`, `family.role`) and its behavior files (dialect, thinking wire, `runtime.ts` with `createProvider` / `quotaSources` / `oauth` / `createModelsFetcher` / `fallbackModels`). Two rosters register them, one row each: `vendors/manifests.ts` (data, also `VENDOR_FAMILIES`) and `vendors/runtimes.ts` (behavior). Generic code reads fields and never names a vendor; knowledge about a *model family* served by several vendors (claude-*, gemini-*, gpt/o-series) lives in `providers/model-families/`. Adding a vendor = its folder + one row per roster + the shell's i18n line (icon optional) — `bun run provider:drill` proves it; `bun run provider:gate` is the ratchet on vendor names leaking outside their folder. Registry wiring in `packages/backend/wiring/providers/`; the three binding pieces that tie a runtime provider to the settings cache and the logger (`bound-fetch` / `request-dump` / `ai-settings-compose`) are spine and live in `packages/backend/provider-binding/`; the `@shared/ipc`-shaped type/env/utility-model adapters are `packages/backend/runtime/providers/*.wiring.ts`; the hand-rolled fetch/SSE implementations live in `packages/backend/runtime/agent-loop/providers/` (Vercel AI SDK was removed). New providers implement `ProviderDefinition`.
 
-**Tools — toolkit (2026-08-18 rebuild; the legacy tree was deleted in R4b, 2026-08-19)**: the tool system is `packages/core/toolkit/` (kernel: `ToolSpec` / `Tool { plan → apply }` / `Intent` / `Outcome` / `AbortScope` / `OutputBudget` / `Job` / `Catalog` / `Surface` / `ToolRunner` + effect policy table) + `packages/onething-runtime/src/toolkit/` (zod contract, family base classes, the builtin tools, `PluginTool`/`McpTool`, `resolveScene`) + `packages/backend/wiring/toolkit/` (ports that touch the spine: `PermissionAuthorizer` over `enforcePermissionPolicy`, `AuditProjector` → `events.jsonl` `tool/audit`, `BackgroundJobRegistry`, three-tier catalogs, `createAppToolRunner`, `wiring.ts`) + `packages/onething-runtime/src/toolkit/` 的投影半边(`prompt-source.ts` / `audit-observer.ts` / `plugin-tools.ts` / `guard-projection.ts` 与四个 `*.wiring.ts`:`catalog-projection` / `execution-types` / `ipc-observer` / `mcp-catalog`,P3'b-B). Every call runs `validate → intercept → plan → effect-based authorize → apply → budget`; permission looks only at `Intent.effects` (`EffectClass` table in `core/toolkit/effects.ts` — external agents ride the `external-agent` row, so ACP agents (Claude Code among them — the Claude SDK connector `claude-code-agent` was retired in A6-b, 2026-09-26) go through the same `Authorizer.decide` as a local tool; **`browser_navigate` was added by B1-a `72c998f8`, 2026-09-12** — `ask` / `barrier: false`, and the reason it is not `net_fetch` is written on the row: a navigation in the built-in browser is a request carrying the user's own cookies and identity, which is a different act from an anonymous fetch, and `net_fetch` is `silent`. The `browser:` provider assigns it per principal — the user's own clicks declare `[]`, everyone else's `open` / `navigate` / `reload` / `back` / `forward` declare `browser_navigate`, while `activate` / `close` are `ui_change` because they only move that person's own window; the two reads `page` / `screenshot` carry no effects at all, structurally — `ReadSpec` has no effects field). There is **no kill switch and no second path**: `Tool.define` / `ToolInfo` / `permissionGuard` / `autoExecute` are gone, and `permissionGuard?` survives only as a deprecated, derived field on the `@shared/ipc` contract (`runtime/src/toolkit/guard-projection.ts`). What is left in `packages/onething-runtime/src/tools/` is pure modules only (sandbox, bash executor/classifier, edit engine, replacers, diff hunks, file snapshot/mutation, output accumulation/truncation, sensitive files, background jobs, `builtin/time-runtime.ts`, `builtin/web-search/{page-fetch,providers}`) plus four dependency-injected IPC-shape projections; `packages/backend/wiring/tools/core/` keeps just two host-injection ports now — `configureSandboxHost` (`sandbox.ts`) and `enforcePermissionPolicy` (`permission-policy.ts`); the bash-executor and replacers facades were deleted (callers import `@onething/runtime/tools/*` directly) and background jobs moved to `runtime/src/tools/background-jobs-bound.ts` (P3'a-2). Design + per-phase records: `docs/design/tool-system-oop-2026-08.md` (§17 = the R4b deletion record). **Registration is a catalog, the per-turn surface is scene-resolved**: `runtime/src/toolkit/scene.ts` (`resolveScene`) plus each tool's own `visibleIn` decide what a turn actually sends the model — plain chat = bash/read/write/edit/variable/time/web_search/web_open/radio/practice/task/ask_user, plus `search` — the assistant reads the **same** cross-session index the palette does, on `surface: 'agent-tool'` (检索重建 S6, `docs/design/search-index-2026-09.md` §14), so it declares no `visibleIn` and is visible everywhere; `goal` only while the session goal is `active`; collab tools (`send_message`/`board`/`history`/`notebook`) only in their venue (`collab/tool-surface.ts` is the single table); `task` hidden inside task sessions; skill-scene tools only when that skill is enabled — today the self-evolution trio `feature_mount/unmount/inspect` rides the default-off builtin skill `resources/skills/onething-self-evolution` (frontmatter `default-enabled: false`), registered by the self-evolution feature itself (`backend/features/builtin/self-evolution.ts`), not by any tier catalog. Retired 2026-08-18: `find`/`grep`/`glob` (use bash rg/fd), `fart`, `bash_output`/`kill_bash` (bash `run_in_background` now reports the log path + pid; tail/kill via bash).
+**Tools — toolkit (2026-08-18 rebuild; the legacy tree was deleted in R4b, 2026-08-19)**: the tool system is `packages/backend/core/toolkit/` (kernel: `ToolSpec` / `Tool { plan → apply }` / `Intent` / `Outcome` / `AbortScope` / `OutputBudget` / `Job` / `Catalog` / `Surface` / `ToolRunner` + effect policy table) + `packages/backend/runtime/toolkit/` (zod contract, family base classes, the builtin tools, `PluginTool`/`McpTool`, `resolveScene`) + `packages/backend/wiring/toolkit/` (ports that touch the spine: `PermissionAuthorizer` over `enforcePermissionPolicy`, `AuditProjector` → `events.jsonl` `tool/audit`, `BackgroundJobRegistry`, three-tier catalogs, `createAppToolRunner`, `wiring.ts`) + `packages/backend/runtime/toolkit/` 的投影半边(`prompt-source.ts` / `audit-observer.ts` / `plugin-tools.ts` / `guard-projection.ts` 与四个 `*.wiring.ts`:`catalog-projection` / `execution-types` / `ipc-observer` / `mcp-catalog`,P3'b-B). Every call runs `validate → intercept → plan → effect-based authorize → apply → budget`; permission looks only at `Intent.effects` (`EffectClass` table in `core/toolkit/effects.ts` — external agents ride the `external-agent` row, so ACP agents (Claude Code among them — the Claude SDK connector `claude-code-agent` was retired in A6-b, 2026-09-26) go through the same `Authorizer.decide` as a local tool; **`browser_navigate` was added by B1-a `72c998f8`, 2026-09-12** — `ask` / `barrier: false`, and the reason it is not `net_fetch` is written on the row: a navigation in the built-in browser is a request carrying the user's own cookies and identity, which is a different act from an anonymous fetch, and `net_fetch` is `silent`. The `browser:` provider assigns it per principal — the user's own clicks declare `[]`, everyone else's `open` / `navigate` / `reload` / `back` / `forward` declare `browser_navigate`, while `activate` / `close` are `ui_change` because they only move that person's own window; the two reads `page` / `screenshot` carry no effects at all, structurally — `ReadSpec` has no effects field). There is **no kill switch and no second path**: `Tool.define` / `ToolInfo` / `permissionGuard` / `autoExecute` are gone, and `permissionGuard?` survives only as a deprecated, derived field on the `@shared/ipc` contract (`runtime/src/toolkit/guard-projection.ts`). What is left in `packages/backend/runtime/tools/` is pure modules only (sandbox, bash executor/classifier, edit engine, replacers, diff hunks, file snapshot/mutation, output accumulation/truncation, sensitive files, background jobs, `builtin/time-runtime.ts`, `builtin/web-search/{page-fetch,providers}`) plus four dependency-injected IPC-shape projections; `packages/backend/wiring/tools/core/` keeps just two host-injection ports now — `configureSandboxHost` (`sandbox.ts`) and `enforcePermissionPolicy` (`permission-policy.ts`); the bash-executor and replacers facades were deleted (callers import `@onething/backend/runtime/tools/*` directly) and background jobs moved to `runtime/src/tools/background-jobs-bound.ts` (P3'a-2). Design + per-phase records: `docs/design/tool-system-oop-2026-08.md` (§17 = the R4b deletion record). **Registration is a catalog, the per-turn surface is scene-resolved**: `runtime/src/toolkit/scene.ts` (`resolveScene`) plus each tool's own `visibleIn` decide what a turn actually sends the model — plain chat = bash/read/write/edit/variable/time/web_search/web_open/radio/practice/task/ask_user, plus `search` — the assistant reads the **same** cross-session index the palette does, on `surface: 'agent-tool'` (检索重建 S6, `docs/design/search-index-2026-09.md` §14), so it declares no `visibleIn` and is visible everywhere; `goal` only while the session goal is `active`; collab tools (`send_message`/`board`/`history`/`notebook`) only in their venue (`collab/tool-surface.ts` is the single table); `task` hidden inside task sessions; skill-scene tools only when that skill is enabled — today the self-evolution trio `feature_mount/unmount/inspect` rides the default-off builtin skill `resources/skills/onething-self-evolution` (frontmatter `default-enabled: false`), registered by the self-evolution feature itself (`backend/features/builtin/self-evolution.ts`), not by any tier catalog. Retired 2026-08-18: `find`/`grep`/`glob` (use bash rg/fd), `fart`, `bash_output`/`kill_bash` (bash `run_in_background` now reports the log path + pid; tail/kill via bash).
 
-**Permission**: core `Permission` in `packages/core/permission/` (channel-affinity enforcement); assembly wiring in `packages/backend/wiring/permission/`.
+**Permission**: core `Permission` in `packages/backend/core/permission/` (channel-affinity enforcement); assembly wiring in `packages/backend/wiring/permission/`.
 
 **会话消息(P0,2026-08-19,`docs/design/session-commands-p0-2026-08.md`)**:唯一写面是
 `sessionCommands`(`packages/backend/session/commands.ts`,12 条消息命令 +
-`patchSession` 会话级补丁;纯 reducer 在 `packages/core/session/commands.ts`,负责 COW /
+`patchSession` 会话级补丁;纯 reducer 在 `packages/backend/core/session/commands.ts`,负责 COW /
 写计划 / lazy 档),唯一读面是 `sessionReads`(同目录 `reads.ts`,返回值一律 `readonly`)。
 `session.messages` 只允许出现在白名单文件里(命令面 / 读面 / `sessions/storage-driver.ts` /
 `sessions/session-dehydrate.ts` / `sessions/session-repository.ts`,理由逐条写在
@@ -1078,7 +1084,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 端口实现走命令面。**一个反复踩的坑**:命令是 COW 的 —— 先捕获 `session.messages`、再
 `await`、再读那个变量会拿到旧数组;await 之后重读。
 
-**MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/onething-runtime/src/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `bridge.wiring.ts` reachable through `index.wiring.ts`); ACP / skills assembly wiring in `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/onething-runtime/src/themes/`), as is the rest of the product logic.
+**MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/backend/runtime/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `bridge.wiring.ts` reachable through `index.wiring.ts`); ACP / skills assembly wiring in `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/backend/runtime/themes/`), as is the rest of the product logic.
 
 **CLI daemon**: `bin/onething.mjs` → `dist/cli/main.cjs` (`scripts/build-cli.mjs`, esbuild with the React main process's recipe; source at `apps/cli/src/index.ts` since step ④a, 2026-09-03). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 
@@ -1117,7 +1123,7 @@ dist/
 ```
 
 **`search-worker.cjs` — three copies, one recipe** (检索重建 S3b): the search index worker
-(`packages/onething-runtime/src/search/index/worker.ts`) is a **second/third entry point in
+(`packages/backend/runtime/search/index/worker.ts`) is a **second/third entry point in
 each host's own build recipe**, and its product always lands **beside that host's entry** —
 that adjacency is the contract the assembly reads (`packages/backend/wiring/search/worker.ts`
 resolves `search-worker.cjs` next to `import.meta.url`; no host passes a path, so adding a
@@ -1135,7 +1141,7 @@ patch; `gate:packaged` proves that (`search.status.mode === 'owner'` on the pack
 | ------- | ----------- |
 | Desktop | Electron |
 | Frontend | React + TypeScript (zustand) — `apps/desktop-react`, desktop and browser |
-| AI SDK | Hand-rolled fetch/SSE per provider (`packages/onething-runtime/src/agent-loop/providers/`) |
+| AI SDK | Hand-rolled fetch/SSE per provider (`packages/backend/runtime/agent-loop/providers/`) |
 | Storage | File-based (JSON + per-session JSONL) |
 | Build | Vite (renderer) + esbuild (main / preload / CLI, `apps/desktop-react/scripts/build-electron.mjs` recipe); vite SSR for apps/server |
 | Test | Vitest |

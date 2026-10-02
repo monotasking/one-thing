@@ -28,7 +28,7 @@
  * actionId、聚焦),在 A1-a 的 `searchWindowRouter` 上;server 那侧的
  * `POST /api/search/actions` 也因此留着。`SEARCH_ACTION` 是推送,同理不在。
  */
-import type { CapabilityManifest, PreviewPayload } from '@onething/core/search'
+import type { CapabilityManifest, PreviewPayload } from '@onething/backend/core/search'
 import {
   NoPreviewError,
   PreviewUnavailableError,
@@ -36,7 +36,7 @@ import {
   type OnethingSearchService,
   type SearchPreviewItem,
   type SearchServiceRequest,
-} from '@onething/runtime/search'
+} from '@onething/backend/runtime/search'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type {
@@ -84,7 +84,7 @@ function runtimeContext(context: RpcDispatchContext) {
  *  - `query` —— 走 `SearchService`(注册表 + 流水线 + S3 起的索引)。S2 换路时的判据
  *    是**行为零变化**,由 `search:parity-A` 拿真库跑 200 条查询逐字节对过;那道门与
  *    `search:parity-B` 在 S5 随旧扫描路一起退役(参照物没了),守过的东西改由
- *    `runtime/src/search/__tests__/golden-snapshot.test.ts` 的严格档命中集快照守。
+ *    `runtime/search/__tests__/golden-snapshot.test.ts` 的严格档命中集快照守。
  *  - `preview` / `invoke` —— **S4a 起是真件**,走 `SearchService.preview / .invoke`。
  *    四个内置能力实现了 `preview`(messages / daily / files 是 lazy,chats 是 inline
  *    并随候选带在 `SearchResult.preview` 上);`invoke` 接通了但**本批没有任何能力

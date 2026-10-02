@@ -50,7 +50,7 @@
 import fs from 'node:fs'
 import { canAccessEvalSource, requireEvalRepositoryAccess, requireEvalSourceAccess } from './evals-access.js'
 import path from 'node:path'
-import { getOnethingEvalsFixturesAutoDir } from '@onething/runtime/storage'
+import { getOnethingEvalsFixturesAutoDir } from '@onething/backend/runtime/storage'
 import type {
   ContextSnapshotMessage,
   EvalCaseMeta,
@@ -184,7 +184,7 @@ function scanFixturesDir(dir: string, out: EvalFixtureMeta[]): void {
 }
 
 /**
- * Case YAML parsing/generation lives in @onething/runtime (case-file.ts) —
+ * Case YAML parsing/generation lives in @onething/backend/runtime (case-file.ts) —
  * a single implementation shared with the CLI runner, per design §7 (the
  * mini-YAML parser and generator must not drift between consumers).
  */
@@ -238,7 +238,7 @@ function scanCasesDir(
 }
 
 async function loadAllCases(repoDir: string): Promise<EvalCaseMeta[]> {
-  const { parseCaseYaml } = await import('@onething/runtime')
+  const { parseCaseYaml } = await import('@onething/backend/runtime')
   const casesDir = getEvalsCasesDir(repoDir)
   const sentinelDir = path.join(casesDir, 'sentinel')
   const allCases: EvalCaseMeta[] = []
@@ -294,7 +294,7 @@ async function runEvalsInBackground(
   }
 
   try {
-    const { runEvals } = await import('@onething/runtime')
+    const { runEvals } = await import('@onething/backend/runtime')
 
     const callModel = createEvalsModelCaller(request.providerId, request.model, { signal })
 
@@ -328,7 +328,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
         return { success: false, error: 'Missing sessionId or turnId' }
       }
 
-      const { recordExplicitDown } = await import('@onething/runtime')
+      const { recordExplicitDown } = await import('@onething/backend/runtime')
 
       const session = store.getSession(request.sessionId)
       const workingDirectory = session?.workingDirectory
@@ -405,7 +405,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
 
   async listRecords(request, context = { transport: 'ipc' }) {
     try {
-      const { loadMergedRecords, recordHasNegative } = await import('@onething/runtime')
+      const { loadMergedRecords, recordHasNegative } = await import('@onething/backend/runtime')
 
       let records = loadMergedRecords().filter(record => canAccessEvalSource(context, record.sessionId))
 
@@ -741,7 +741,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
 
       // Generate case YAML via the shared runtime generator
-      const { generateCaseYaml } = await import('@onething/runtime')
+      const { generateCaseYaml } = await import('@onething/backend/runtime')
       const expect: Record<string, unknown> = {}
       const e = request.expect
       // Tool Call
@@ -826,7 +826,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
 
       const { loadMergedRecords, filterRecordsByWeeks, generateTriageReport } = await import(
-        '@onething/runtime'
+        '@onething/backend/runtime'
       )
 
       const records = loadMergedRecords().filter(record => canAccessEvalSource(context, record.sessionId))

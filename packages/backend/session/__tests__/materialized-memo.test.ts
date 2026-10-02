@@ -21,13 +21,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const { materializeNode } = await import('@onething/core/session')
-const { rehydrateSessionFromStorage } = await import('@onething/runtime/sessions/session-dehydrate')
+const { materializeNode } = await import('@shared/session/projection/chat-messages.js')
+const { rehydrateSessionFromStorage } = await import('@onething/backend/runtime/sessions/session-dehydrate')
 const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
 const { writeSessionEvent } = await import('../event-writer.js')

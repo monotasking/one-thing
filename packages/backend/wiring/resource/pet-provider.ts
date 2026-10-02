@@ -1,5 +1,5 @@
 /**
- * `pet:` 这一 scheme 的实现(自述在 `@onething/runtime/pets/resource-spec`,正本
+ * `pet:` 这一 scheme 的实现(自述在 `@onething/backend/runtime/pets/resource-spec`,正本
  * `docs/design/pet-system-2026-09.md` §9.3)。
  *
  * 读 / 做都转给 `PetsSubsystem`,这里只管三件事:地址对不对、参数对不对、结果怎么交。
@@ -22,15 +22,15 @@
  * 钩子,所以登记方在注销后调 `dispose()` 撤掉那只 hub(与 `todo` / `music` 同一条)。
  */
 
-import { planFromSpec } from '@onething/core/resource'
+import { planFromSpec } from '@onething/backend/core/resource'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/core/toolkit'
-import { PET_CURRENT_PATH, petResourceSpec } from '@onething/runtime/pets/resource-spec'
+import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/core/toolkit'
+import { PET_CURRENT_PATH, petResourceSpec } from '@onething/backend/runtime/pets/resource-spec'
 import { UnknownPetError, type PetsSubsystem } from '../pets/subsystem.js'
 
 export type PetOpPayload =

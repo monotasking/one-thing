@@ -40,7 +40,7 @@ import type {
   AgentLoopOptions,
   AgentStreamEvent,
   AgentTool,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 import type { CoreAssistantPartRef } from '@shared/session/events/chunk-codec'
 import type {
   BlobRef,
@@ -63,26 +63,26 @@ import type {
   UiAssistantDeltaChunk,
   UiAssistantPartEndChunk,
 } from '@shared/events/stream-chunks'
-import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/core/agent-loop'
+import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/backend/core/agent-loop'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
-// `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
+// `@onething/backend/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
 // (与上面 provider-data 那条 import 同一条理由)。
-import { nextAgentLoopTurnIndexAfterFinish } from '@onething/core/engine/agent-loop-turn'
+import { nextAgentLoopTurnIndexAfterFinish } from '@onething/backend/core/engine/agent-loop-turn'
 // §13.17:changes 的判定点与引擎写消息时同源(`changesFromToolMetadata`)。引
-// 那一个叶子文件而不是 `@onething/core/engine` barrel —— 同上"避免拖进整棵执行器
+// 那一个叶子文件而不是 `@onething/backend/core/engine` barrel —— 同上"避免拖进整棵执行器
 // 模块图"的理由。
-import { changesFromToolMetadata, resultTextFromToolMetadata } from '@onething/core/engine/tool-orchestration'
+import { changesFromToolMetadata, resultTextFromToolMetadata } from '@onething/backend/core/engine/tool-orchestration'
 // 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
 // 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
 // 会话事件那一层"的同一条理由)。
-import { planOnethingProviderDataPart } from '@onething/runtime/agent-loop/providers/provider-data'
+import { planOnethingProviderDataPart } from '@onething/backend/runtime/agent-loop/providers/provider-data'
 import {
   hashSessionEventContent,
   hashSessionEventSystemPrompt,
   hashSessionEventTools,
   isSameRequestHeaderEnvelope,
   truncateSessionEventPreview,
-} from '@onething/runtime/sessions/session-events'
+} from '@onething/backend/runtime/sessions/session-events'
 import {
   type SessionEventToolSchema,
   type SessionRequestHeaderEventData,

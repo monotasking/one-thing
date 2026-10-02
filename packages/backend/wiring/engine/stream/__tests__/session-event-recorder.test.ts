@@ -9,20 +9,20 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { streamAgentLoopProviderChunks } from '@onething/core/agent-loop'
+import { streamAgentLoopProviderChunks } from '@onething/backend/core/agent-loop'
 import type {
   AgentLoopOptions,
   AgentProvider,
   AgentTool,
   AgentTurnStreamEvent,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 
 // 只替换两条路径(会话目录 / store 根),其余原样 —— 记录器现在会连带把
 // blob store 与统计账单拉进来,那两个模块要的是 `getOnethingLogDir` 之类的真实实现。
-vi.mock('@onething/runtime/storage', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/runtime/storage')>()
+vi.mock('@onething/backend/runtime/storage', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/storage')>()
   return {
     ...actual,
     getOnethingSessionsDir: () => state.sessionsDir,

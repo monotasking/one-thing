@@ -12,7 +12,7 @@
  * 这里只做一件事:**把依赖递给 runtime 的 `*ForIpc` 一族**。所有判定 ——
  * 默认空间不许删、只删空的、只对**已登记**的空间开放 overlay/providers/credentials、
  * 默认空间不许「从默认空间导入」—— 全在
- * `packages/onething-runtime/src/spaces/ipc-operations.ts` 里,传输面不许自己加分支。
+ * `packages/backend/runtime/spaces/ipc-operations.ts` 里,传输面不许自己加分支。
  * 搬家时逐条对着旧文件抄的也正是这些注入点:
  *  - `removeSpace` 的占用统计吃 `countSessionsInWorkspace`(spaces store 不认识会话);
  *  - `hasSpace` 一律是 `getSpacesStore().list()` 的存在性判定 —— 否则一个手滑的 id
@@ -38,16 +38,16 @@ import {
   setOnethingSpaceOverlayForIpc,
   setOnethingSpaceProviderSettingsForIpc,
   updateOnethingSpaceForIpc,
-} from '@onething/runtime/spaces'
-import { readSpaceOverlay, writeSpaceOverlay } from '@onething/runtime/spaces/overlay'
+} from '@onething/backend/runtime/spaces'
+import { readSpaceOverlay, writeSpaceOverlay } from '@onething/backend/runtime/spaces/overlay'
 import {
   createEmptySpaceProviderSettings,
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings as RuntimeSpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
-import { getSpacesStore } from '@onething/runtime/spaces/store'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+} from '@onething/backend/runtime/spaces/provider-settings'
+import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import {
   clearSpaceProviderCredential,
   getSpaceCredentialsSummary,

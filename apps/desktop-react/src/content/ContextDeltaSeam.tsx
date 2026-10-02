@@ -45,7 +45,7 @@ import c from './ContextDeltaSeam.module.css'
  *
  * ── 块名从哪来 ────────────────────────────────────────────────────────
  * `set` 的键是**块 id**,产地只有三处,全部是回合通道的片段 id
- * (`packages/onething-runtime/src/prompts/builder.ts` 的六个 `channel: "turn"` 片段、
+ * (`packages/backend/runtime/prompts/builder.ts` 的六个 `channel: "turn"` 片段、
  * `variable-board.ts` 的 `variables`、`plugin-context.ts` 的 `plugin:<id>/<provider>`),
  * 外加一条历史读法:老会话的整块 `contextUpdate` 被读成 `variables`
  * (`LEGACY_TURN_CONTEXT_SECTION_ID`)。映射表就在下面那个纯函数里,**未知键原样

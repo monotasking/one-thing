@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildMessageBodyShapePayload,
   chatLogContentTextLength,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 
 describe('core chat logger helpers', () => {
   it('computes message body shape rows and totals', () => {

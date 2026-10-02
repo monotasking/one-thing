@@ -40,7 +40,7 @@ import type {
   NotesRoutes,
 } from '@shared/ipc/notes.js'
 import type { AppSettings } from '@shared/ipc.js'
-import { NoteVaultUnavailable, type NoteVault } from '@onething/runtime/notes'
+import { NoteVaultUnavailable, type NoteVault } from '@onething/backend/runtime/notes'
 import { getNotesSubsystem, type NotesInventory } from '../../wiring/notes/index.js'
 import { getSettings } from '../../stores/settings.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'

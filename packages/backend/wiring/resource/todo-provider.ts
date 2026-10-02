@@ -1,5 +1,5 @@
 /**
- * 待办这一 scheme 的实现(自述在 `@onething/runtime/todo-plan/resource-spec`)。
+ * 待办这一 scheme 的实现(自述在 `@onething/backend/runtime/todo-plan/resource-spec`)。
  *
  * 与 `dir` / `music` 同形:自述在产品层,实现在装配层 —— 它要够得着这台后端的
  * `TodoPlanRuntime`(同一个 store 的自写缓存与同一个文件监听器)。
@@ -26,16 +26,16 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import { applyBatch, joinLines, splitLines, type LineEdit } from '@shared/text/line-edit'
-import { planFromSpec } from '@onething/core/resource'
+import { planFromSpec } from '@onething/backend/core/resource'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/core/toolkit'
-import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from '@onething/runtime/todo-plan'
-import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/runtime/todo-plan/resource-spec'
+import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/backend/core/toolkit'
+import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from '@onething/backend/runtime/todo-plan'
+import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/backend/runtime/todo-plan/resource-spec'
 import { getTodoPlanStore, onTodoPlanChanged, type TodoPlanChangeListener, type TodoPlanChangeOrigin } from '../todo-plan/store.js'
 
 /**

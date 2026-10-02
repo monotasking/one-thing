@@ -1,13 +1,13 @@
 /**
  * K3-c —— 目录这一 scheme 的实现(`docs/design/atom-2026-09.md` §9 K3 三样板)。
  *
- * 自述在产品层(`@onething/runtime/files/resource-spec`),实现在这里 —— 与会话那
+ * 自述在产品层(`@onething/backend/runtime/files/resource-spec`),实现在这里 —— 与会话那
  * 一对同一个形状,理由也逐字相同:只有装配层够得着脊柱(这里够的是宿主外壳口与
  * 沙箱端口)。
  *
  * ── 列目录 / stat 的代码从哪来:一行都没有新写的 ──────────────────────────────
  * `listOnethingDirectory` / `statOnethingPath` / `revealOnethingPath` 是
- * `@onething/runtime/files` 里的**纯函数**(fs 由调用方注入),`rpc/domains/files.ts`
+ * `@onething/backend/runtime/files` 里的**纯函数**(fs 由调用方注入),`rpc/domains/files.ts`
  * 的 `listDirectory` / `stat` / `reveal` 调的就是它们。所以这只 provider 递的是同一
  * 组函数、同一份注入(`fs.readdir(withFileTypes)` / `fs.stat().catch(()=>null)` /
  * `getShellHost().revealPath`),不是第二份写法:`node_modules` / `.git` 跳过、目录
@@ -76,20 +76,20 @@ import {
   revealOnethingPath,
   statOnethingPath,
   type OnethingDirectoryEntry,
-} from '@onething/runtime/files'
-import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/runtime/shell/host-ports'
-import { dirResourceSpec } from '@onething/runtime/files/resource-spec'
-import { planFromSpec } from '@onething/core/resource'
+} from '@onething/backend/runtime/files'
+import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/runtime/shell/host-ports'
+import { dirResourceSpec } from '@onething/backend/runtime/files/resource-spec'
+import { planFromSpec } from '@onething/backend/core/resource'
 import { formatRef } from '@shared/resource/ref'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import { Intent, textResult } from '@onething/core/toolkit'
+import { Intent, textResult } from '@onething/backend/core/toolkit'
 import { resolveReadable, resolveWritable } from './path-guard.js'
 
 /** 一个目录项 / 一次 stat 交出去的「是什么」。与自述那两格逐字同名。 */

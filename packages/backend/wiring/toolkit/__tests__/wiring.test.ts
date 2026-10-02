@@ -19,7 +19,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BashOperations } from '@onething/runtime/tools/bash-executor'
+import type { BashOperations } from '@onething/backend/runtime/tools/bash-executor'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 
@@ -54,15 +54,15 @@ vi.mock('../../tools/core/permission-policy.js', () => ({
   enforcePermissionPolicy: harness.enforce,
 }))
 
-vi.mock('@onething/runtime/plugins/tool-call-intercept-bound', () => ({
+vi.mock('@onething/backend/runtime/plugins/tool-call-intercept-bound', () => ({
   runPluginToolCallIntercept: harness.callIntercept,
 }))
 
-vi.mock('@onething/runtime/plugins/tool-result-intercept-bound', () => ({
+vi.mock('@onething/backend/runtime/plugins/tool-result-intercept-bound', () => ({
   runPluginToolResultIntercept: harness.resultIntercept,
 }))
 
-vi.mock('@onething/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
   isMCPTool: (id: string) => id.startsWith('mcp:'),
   executeMCPTool: harness.mcpExecute,
   resolveMCPServerIdForToolRef: () => 'server-1',
@@ -73,10 +73,10 @@ vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   MCPManager: { getServerState: () => null },
 }))
 
-const { configureToolkitCatalog } = await import('@onething/runtime/toolkit')
+const { configureToolkitCatalog } = await import('@onething/backend/runtime/toolkit')
 const { createDesktopCatalog } = await import('../catalog.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
-const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/runtime/toolkit/mcp-catalog.wiring')
+const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/backend/runtime/toolkit/mcp-catalog.wiring')
 const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
 const { getStreamChannel } = await import('../../../events/index.js')
 
@@ -406,8 +406,8 @@ describe('R2b:审计落进 events.jsonl', () => {
 
 describe('R2b 缝 1:工具面由 Surface 解析', () => {
   it('Surface 投影出来的定义喂给 planAgentLoopTools,名字与目录一致', async () => {
-    const { resolveToolkitSurface, toolkitAgentSourceTools } = await import('@onething/runtime/toolkit')
-    const { planAgentLoopTools } = await import('@onething/core/engine')
+    const { resolveToolkitSurface, toolkitAgentSourceTools } = await import('@onething/backend/runtime/toolkit')
+    const { planAgentLoopTools } = await import('@onething/backend/core/engine')
 
     const surface = resolveToolkitSurface({
       session: { id: SESSION_ID, kind: 'chat', workingDirectory: workspace },
@@ -435,7 +435,7 @@ describe('R2b 缝 1:工具面由 Surface 解析', () => {
   })
 
   it('空白名单 = 不限制(旧路语义,归一门在接线处过一次)', async () => {
-    const { resolveToolkitSurface } = await import('@onething/runtime/toolkit')
+    const { resolveToolkitSurface } = await import('@onething/backend/runtime/toolkit')
     const surface = resolveToolkitSurface({
       session: { id: SESSION_ID, kind: 'chat', workingDirectory: workspace },
       allowlist: [],

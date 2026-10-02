@@ -26,12 +26,12 @@
  *  - `temperature: 0` —— 同一份材料应该排出同一个次序。裁决的随机性没有任何产品价值,
  *    它只会让「为什么这次是他先说」变成一个答不出的问题。
  */
-import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
+import { isAgentPairDmRoom, isUserDmRoom } from '@onething/backend/runtime/collab'
 import {
   buildCollabRefereeJudgePrompt,
   parseCollabRefereeVerdict,
   type CollabRefereeVerdict,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 import { isActiveAgent } from '@shared/ipc.js'
 
 import { findAgent } from '../../agents/index.js'
@@ -40,9 +40,9 @@ import { generateChatResponse } from '../../providers/index.js'
 import * as store from '../../../store.js'
 import { billCollabPlanUsage } from '../../usage/bill-side-line.js'
 import { collabUserPromptFields } from '../user-identity.js'
-import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/runtime/collab/actors/referee-actor'
+import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/backend/runtime/collab/actors/referee-actor'
 import { getLogger } from '../../logging/index.js'
-import type { BuildCollabRefereeJudgePromptOptions } from '@onething/runtime/collab/actors/referee-rules'
+import type { BuildCollabRefereeJudgePromptOptions } from '@onething/backend/runtime/collab/actors/referee-rules'
 
 const log = getLogger('collab.referee')
 

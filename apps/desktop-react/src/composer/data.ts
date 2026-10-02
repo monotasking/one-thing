@@ -38,7 +38,7 @@ export const DEV_COMMANDS: CommandEntry[] = [
  *  - `MOCK_FILES` → `data/file-mentions-source.ts`(`files.list`,按会话工作目录
  *    当 cwd 现搜;去抖 120ms 归调用现场);
  *  - `MOCK_COMMANDS` → `data/commands-source.ts`(内置七条来自
- *    `@onething/core/slash-commands` 的 `SHARED_SLASH_COMMANDS`,插件那一半来自
+ *    `@onething/backend/core/slash-commands` 的 `SHARED_SLASH_COMMANDS`,插件那一半来自
  *    `plugins.commands`)。那三条 `/review` `/plan` `/test` **没有搬家,是被删掉的**:
  *    整仓没有这三条命令,它们从来只是三行样例文案。
  *

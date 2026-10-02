@@ -1,10 +1,10 @@
 import * as PermissionGrants from '../../permission/permission-grants.js'
-import type { PermissionBridge } from '@onething/core/permission'
+import type { PermissionBridge } from '@onething/backend/core/permission'
 import { Permission } from '../../permission/index.js'
-import { isHostUnattended, isSessionUnattended } from '@onething/runtime/permissions/unattended'
+import { isHostUnattended, isSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
 import {
   createOnethingPermissionRuntime,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'
 import * as store from '../../../store.js'
 import { sessionReads } from '../../../session/reads.js'
 import { isSystemInternalOrigin, latestRealOrigin } from '../../../channel/origin.js'
@@ -12,7 +12,7 @@ import { writeAppLog } from '../../logging/index.js'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'
 import type { MessageOrigin } from '@shared/ipc.js'
 import { getLogger } from '../../logging/index.js'
 
@@ -333,4 +333,4 @@ export type {
   PermissionPolicyMode,
   PermissionPolicyResult,
   PermissionPreview,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'

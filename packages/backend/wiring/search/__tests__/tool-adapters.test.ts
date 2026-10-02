@@ -18,8 +18,8 @@ import type {
   SearchServiceGroup,
   SearchServiceRequest,
   SearchServiceResponse,
-} from '@onething/runtime/search'
-import type { SearchToolPrincipal } from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/search'
+import type { SearchToolPrincipal } from '@onething/backend/runtime/toolkit'
 import { createAppSearchToolAdapters } from '../tool-adapters.js'
 
 const PRINCIPAL: SearchToolPrincipal = {

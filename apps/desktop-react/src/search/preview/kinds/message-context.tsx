@@ -5,7 +5,7 @@ import s from '../Preview.module.css'
 
 /**
  * `kind: 'message-context'` —— 命中那条消息 ± 2 条
- * (`runtime/src/search/capabilities/preview.ts` 的 `MessageContextPreview`)。
+ * (`runtime/search/capabilities/preview.ts` 的 `MessageContextPreview`)。
  *
  * ── 零副作用是硬规矩(§4.5 ④)────────────────────────────────────────────
  * 这个组件**不碰任何 store**:不进会话、不改已读、不动 `locate-message` 那格待办、

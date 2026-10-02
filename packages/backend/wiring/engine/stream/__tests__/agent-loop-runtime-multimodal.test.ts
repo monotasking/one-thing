@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop } from '@onething/core/agent-loop'
-import { PendingMessageQueue } from '@onething/core/engine'
+import { runAgentLoop } from '@onething/backend/core/agent-loop'
+import { PendingMessageQueue } from '@onething/backend/core/engine'
 import {
   createDefaultSettings,
 } from '../../../../stores/defaults/settings.js'
@@ -13,10 +13,10 @@ import type {
   AgentToolChoice,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 import type { BuildPromptOptions } from '../../prompt/system-prompt.js'
 import type { HistoryMessage } from '../message-helpers.js'
-import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
 import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
 
 interface SeenRequest {
@@ -174,7 +174,7 @@ vi.mock('../../../../session/commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
 } }))
 
-vi.mock('@onething/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
@@ -237,7 +237,7 @@ vi.mock('../../../../events/index.js', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 
-vi.mock('@onething/runtime/prompts/resolver.wiring', () => ({
+vi.mock('@onething/backend/runtime/prompts/resolver.wiring', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,

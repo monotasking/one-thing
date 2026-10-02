@@ -32,31 +32,31 @@ import type {
   PluginManifest,
   PluginSettings,
   PluginSource,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 /**
  * R4b:旧 `Tool.Metadata` 就是 `object`(旧 `tools/tool.ts` 的第 20 行)。旧树
  * 删掉之后这个别名原样留在这里 —— 它是插件对外契约的一部分(`registerTool` 的
  * 第二个类型参数),与工具系统内部机制无关。
  */
 export type ToolMetadata = object
-import type { PluginSkillRootProvider } from '@onething/runtime/skills/plugin-roots.wiring'
+import type { PluginSkillRootProvider } from '@onething/backend/runtime/skills/plugin-roots.wiring'
 import type {
   PluginPromptContext,
   PluginPromptContextProvider,
-} from '@onething/runtime/prompts/plugin-context.wiring'
+} from '@onething/backend/runtime/prompts/plugin-context.wiring'
 import type {
   BeforeContextCompactContext,
   BeforeContextCompactHook,
   AfterAssistantResponseContext,
   AfterAssistantResponseHook,
-} from '@onething/runtime/plugins/lifecycle.wiring'
+} from '@onething/backend/runtime/plugins/lifecycle.wiring'
 import type {
   SchedulerRunOptions,
   SchedulerRunRecord,
   SchedulerTaskHandle,
   SchedulerTaskRegistration,
   SchedulerTaskSnapshot,
-} from '@onething/runtime/scheduler'
+} from '@onething/backend/runtime/scheduler'
 
 export type {
   CorePluginDefinition,

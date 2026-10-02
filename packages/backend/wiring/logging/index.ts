@@ -8,33 +8,33 @@ import {
   type LogSource,
   type Logger,
   type LoggerRootOptions,
-} from '@onething/core/logging'
+} from '@onething/backend/core/logging'
 import { type LogLevel } from '@shared/logging/types'
 import {
   ensureDir,
   getOnethingLogDir,
-} from '@onething/runtime/storage/index'
-import { setRuntimeLoggerRoot } from '@onething/runtime/logging/index'
-import { JsonlFileSink } from '@onething/runtime/logging/jsonl-file-sink'
-import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from '@onething/runtime/logging/legacy-console-sink'
-import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from '@onething/runtime/logging/crash-hooks'
-import { LogDirJanitor } from '@onething/runtime/logging/janitor'
-import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/runtime/logging/legacy-debug-env'
-import type { AppLogLevel } from '@onething/runtime/logging/rolling-file-logger'
+} from '@onething/backend/runtime/storage/index'
+import { setRuntimeLoggerRoot } from '@onething/backend/runtime/logging/index'
+import { JsonlFileSink } from '@onething/backend/runtime/logging/jsonl-file-sink'
+import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from '@onething/backend/runtime/logging/legacy-console-sink'
+import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from '@onething/backend/runtime/logging/crash-hooks'
+import { LogDirJanitor } from '@onething/backend/runtime/logging/janitor'
+import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/backend/runtime/logging/legacy-debug-env'
+import type { AppLogLevel } from '@onething/backend/runtime/logging/rolling-file-logger'
 
-export { JsonlFileSink, readRollingFileEnvOptions } from '@onething/runtime/logging/jsonl-file-sink'
-export { LegacyConsoleSink, LEGACY_CONSOLE_NS, callsiteOf } from '@onething/runtime/logging/legacy-console-sink'
-export { installProcessCrashHooks } from '@onething/runtime/logging/crash-hooks'
-export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from '@onething/runtime/logging/janitor'
-export { RollingFileLogger } from '@onething/runtime/logging/rolling-file-logger'
-export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/runtime/logging/legacy-debug-env'
-// P3'a-3:`consolePort` 是纯适配器,已归位 `@onething/runtime/logging`。装配层
+export { JsonlFileSink, readRollingFileEnvOptions } from '@onething/backend/runtime/logging/jsonl-file-sink'
+export { LegacyConsoleSink, LEGACY_CONSOLE_NS, callsiteOf } from '@onething/backend/runtime/logging/legacy-console-sink'
+export { installProcessCrashHooks } from '@onething/backend/runtime/logging/crash-hooks'
+export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from '@onething/backend/runtime/logging/janitor'
+export { RollingFileLogger } from '@onething/backend/runtime/logging/rolling-file-logger'
+export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/backend/runtime/logging/legacy-debug-env'
+// P3'a-3:`consolePort` 是纯适配器,已归位 `@onething/backend/runtime/logging`。装配层
 // 原样再导出 —— 34 个 `import { consolePort, getLogger } from './index.js'`
 // 调用点一行不改(`getLogger` 这半边仍是装配层自己的那一个,不能一起换源)。
-export { consolePort } from '@onething/runtime/logging/index'
-export type { ConsoleLikePort } from '@onething/runtime/logging/index'
-export type { LegacyDebugAliasSpec } from '@onething/runtime/logging/legacy-debug-env'
-export type { AppLogLevel, AppLogRecord } from '@onething/runtime/logging/rolling-file-logger'
+export { consolePort } from '@onething/backend/runtime/logging/index'
+export type { ConsoleLikePort } from '@onething/backend/runtime/logging/index'
+export type { LegacyDebugAliasSpec } from '@onething/backend/runtime/logging/legacy-debug-env'
+export type { AppLogLevel, AppLogRecord } from '@onething/backend/runtime/logging/rolling-file-logger'
 
 /**
  * 装配层的日志入口(docs/design/logging-system-2026-08.md L1)。
@@ -181,7 +181,7 @@ let activeLogDir = ''
  * 绝不第二次劫持 console 或再开一个文件 sink。
  */
 export function configureLogging(options: ConfigureLoggingOptions = {}): LoggingHandle {
-  // 产品层(`@onething/runtime`)与 core 的注入端口:它们不能 import 装配层,
+  // 产品层(`@onething/backend/runtime`)与 core 的注入端口:它们不能 import 装配层,
   // 所以由这一句把**同一个 root** 递过去(§8.3 区 ①)。放在幂等闸之前 ——
   // 第二次调用是嵌入式 server,它同样该指向这一个 root。
   setRuntimeLoggerRoot(root)

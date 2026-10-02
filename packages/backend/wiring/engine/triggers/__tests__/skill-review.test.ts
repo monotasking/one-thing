@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/core/agent-loop'
+import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/core/agent-loop'
 import { createAgentProviderFromRuntime } from '../../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../../skills/index.js'
 import { executeSkillManage } from '../../../skills/manage.js'
@@ -19,16 +19,16 @@ import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
 import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
-} from '@onething/runtime/spaces/credentials'
-import { Catalog } from '@onething/core/toolkit'
+} from '@onething/backend/runtime/spaces/credentials'
+import { Catalog } from '@onething/backend/core/toolkit'
 import {
   configureToolkitCatalog,
   createEditTool,
   createReadTool,
   createWriteTool,
-} from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/toolkit'
 import { createSkillReviewTrigger } from '../skill-review.js'
-import { clearSkillReviewState } from '@onething/runtime/triggers/skill-review-state.wiring'
+import { clearSkillReviewState } from '@onething/backend/runtime/triggers/skill-review-state.wiring'
 import type { TriggerContext } from '../index.js'
 import { installStoreSessionLayerForTest } from '../../../../session/testing/store-layer.js'
 import { clearAllSessionCache } from '../../../../stores/sessions.js'
@@ -58,8 +58,8 @@ vi.mock('../../../agent-loop/index.js', async importOriginal => {
   }
 })
 
-vi.mock('@onething/core/agent-loop', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/core/agent-loop')>()
+vi.mock('@onething/backend/core/agent-loop', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/core/agent-loop')>()
   return {
     ...actual,
     runAgentLoop: vi.fn(),

@@ -24,7 +24,7 @@
  */
 
 import * as path from 'node:path'
-import type { NoteVault } from '@onething/runtime/notes'
+import type { NoteVault } from '@onething/backend/runtime/notes'
 
 /**
  * 一个技能根。形状是技能加载器的 `SkillDirectoryConfig` 加一格

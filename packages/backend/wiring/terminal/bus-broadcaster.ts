@@ -5,7 +5,7 @@
  *
  * ## 为什么是「住装配层的一只小工厂」,而不是宿主自己写
  *
- * `TerminalBroadcaster` 是产品层声明的端口(`@onething/runtime/terminal/
+ * `TerminalBroadcaster` 是产品层声明的端口(`@onething/backend/runtime/terminal/
  * service.wiring`),它只说「把这两种事件推给消费者」。**推到哪** 是宿主的事 ——
  * 而今天两扇会用它的壳(React 桌面壳、将来的 web 宿主)推的地方是同一个:这台
  * 进程的事件总线。写在装配层因此不是「替宿主做决定」,而是把那个决定做成一件
@@ -34,7 +34,7 @@
  * 算了」是同一条判例(它用的也是 `isEventSystemInitialized()`)。
  */
 
-import type { TerminalBroadcaster } from '@onething/runtime/terminal/service.wiring'
+import type { TerminalBroadcaster } from '@onething/backend/runtime/terminal/service.wiring'
 import type { TerminalDataEvent, TerminalExitEvent } from '@shared/ipc.js'
 import { getEventBus, isEventSystemInitialized } from '../../events/index.js'
 import { getLogger } from '../logging/index.js'

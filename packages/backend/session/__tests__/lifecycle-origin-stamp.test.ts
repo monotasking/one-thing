@@ -16,7 +16,7 @@ import { sessionOriginFingerprint } from '@shared/session/events/origin'
 
 const state = vi.hoisted(() => ({ storePath: '', written: [] as { type: string; data: unknown }[] }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => state.storePath,
   getOnethingLogDir: () => state.storePath,
 }))

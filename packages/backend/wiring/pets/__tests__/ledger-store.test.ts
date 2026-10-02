@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { PetLedgerLine } from '@onething/runtime/pets'
+import type { PetLedgerLine } from '@onething/backend/runtime/pets'
 import { PetLedgerStore } from '../ledger-store.js'
 
 let dir: string

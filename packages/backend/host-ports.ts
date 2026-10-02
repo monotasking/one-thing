@@ -77,43 +77,43 @@ import {
   configureAuthHost,
   resetAuthHost,
   type AuthHostPorts,
-} from '@onething/runtime/auth/host-ports'
+} from '@onething/backend/runtime/auth/host-ports'
 import {
   configureShellHost,
   resetShellHost,
   type ShellHostPorts,
-} from '@onething/runtime/shell/host-ports'
+} from '@onething/backend/runtime/shell/host-ports'
 import {
   configureVoiceHost,
   resetVoiceHost,
   type VoiceHostPorts,
-} from '@onething/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/voice/host-ports.wiring'
 import {
   configureTerminalBroadcaster,
   killAllTerminals,
   type TerminalHostPorts,
-} from '@onething/runtime/terminal/service.wiring'
+} from '@onething/backend/runtime/terminal/service.wiring'
 import {
   configureScratchpadHost,
   resetScratchpadHost,
   type ScratchpadHostPorts,
-} from '@onething/runtime/scratchpad/service-bound'
+} from '@onething/backend/runtime/scratchpad/service-bound'
 import {
   configureSpeechOutputHost,
   resetSpeechOutputHost,
   type SpeechOutputPort,
-} from '@onething/runtime/voice/speech-output'
+} from '@onething/backend/runtime/voice/speech-output'
 import {
   configureDialogHost,
   resetDialogHost,
   type DialogHostPorts,
-} from '@onething/runtime/dialog/host-ports'
-import { configureMCPClientHost } from '@onething/runtime/mcp/manager'
+} from '@onething/backend/runtime/dialog/host-ports'
+import { configureMCPClientHost } from '@onething/backend/runtime/mcp/manager'
 import {
   configureMCPClientIdentity,
   resetMCPClientIdentity,
-} from '@onething/runtime/mcp/identity'
-import type { MCPClientFactory, MCPClientLike } from '@onething/core/mcp'
+} from '@onething/backend/runtime/mcp/identity'
+import type { MCPClientFactory, MCPClientLike } from '@onething/backend/core/mcp'
 
 /**
  * 两件不可 `null` 的端口形状顺手再导出一次:宿主要声明"我记下来的那份是什么"

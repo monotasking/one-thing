@@ -2,7 +2,7 @@
  * 「改动」面 —— git 工作树这一 scheme 的实现
  * (`apps/desktop-react/docs/changes-panel-2026-09.md` §2.2)。
  *
- * 自述在产品层(`@onething/runtime/files/git-resource-spec`),实现在这里 —— 与目录
+ * 自述在产品层(`@onething/backend/runtime/files/git-resource-spec`),实现在这里 —— 与目录
  * 那一对同一个形状、同一条理由:只有装配层够得着脊柱(这里够的是沙箱端口)。
  *
  * ── 沙箱:与目录资源同一把尺子、同一序 ──────────────────────────────────────
@@ -76,14 +76,14 @@ import {
   GIT_FILE_MAX_BYTES,
   GIT_UNTRACKED_COUNT_BUDGET_BYTES,
   gitResourceSpec,
-} from '@onething/runtime/files/git-resource-spec'
+} from '@onething/backend/runtime/files/git-resource-spec'
 import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
 import { getLogger } from '../logging/index.js'
 import { DirOutsideSandboxError, resolveReadable } from './path-guard.js'
 

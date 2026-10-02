@@ -72,7 +72,7 @@ vi.mock('../../../../store.js', () => ({
   },
 }))
 
-vi.mock('@onething/runtime/collab/drive-guard', () => ({
+vi.mock('@onething/backend/runtime/collab/drive-guard', () => ({
   issueCollabDriveToken: () => 'drive-token',
 }))
 

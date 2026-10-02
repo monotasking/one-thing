@@ -33,11 +33,11 @@ const plugins = vi.hoisted(() => ({
   getPluginSkinTiers: vi.fn(),
 }))
 
-vi.mock('@onething/runtime/themes/theme-runtime', () => ({
+vi.mock('@onething/backend/runtime/themes/theme-runtime', () => ({
   defaultOnethingThemeRuntime: themeRuntime,
 }))
 
-vi.mock('@onething/runtime/shell/host-ports', () => ({
+vi.mock('@onething/backend/runtime/shell/host-ports', () => ({
   getShellHost: () => shell,
 }))
 

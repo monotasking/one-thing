@@ -107,7 +107,7 @@ const service = vi.hoisted(() => ({
  */
 const kernelSlot = vi.hoisted(() => ({ current: undefined as unknown }))
 
-vi.mock('@onething/runtime/music/process-runner', () => ({
+vi.mock('@onething/backend/runtime/music/process-runner', () => ({
   createElectronMusicProcessRunner: () => runner,
 }))
 vi.mock('../../current.js', async importOriginal => ({
@@ -149,7 +149,7 @@ describe('music RPC domain', () => {
      */
     const [{ createResourceKernel, createMusicResourceProvider }, { ToolRunner }] = await Promise.all([
       import('../../wiring/resource/index.js'),
-      import('@onething/core/toolkit'),
+      import('@onething/backend/core/toolkit'),
     ])
     kernelSlot.current = { music }
     const resourceKernel = createResourceKernel(validator => new ToolRunner({

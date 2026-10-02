@@ -23,7 +23,7 @@
  *
  * 现在缓存跟着**领域对象**走:成品按 `(投影节点, node.rev)` 记住,列表组装 =
  * 对可见节点 map 一次,命中即取。改一条 delta 只让**那一条**节点的号前进
- * (`forWrite`,见 `core/session/projection/reducer.ts`),其余全部命中。
+ * (`forWrite`,见 `shared/session/projection/reducer.ts`),其余全部命中。
  * 两张表都是 `WeakMap`:节点 / 活投影整份重建时,旧成品随对象一起消失,
  * 没有"谁去清"这个问题 —— 也就没有清漏的可能。
  *
@@ -59,11 +59,15 @@
 import type { ChatMessage } from '@shared/ipc.js'
 import {
   materializeNode,
+} from '@shared/session/projection/chat-messages'
+import {
   type ProjectionMaterializeOptions,
+} from '@shared/session/projection/blobs'
+import {
   type ProjectionNode,
   type SessionProjectionState,
-} from '@onething/core/session'
-import { rehydrateSessionFromStorage } from '@onething/runtime/sessions/session-dehydrate'
+} from '@shared/session/projection/reducer'
+import { rehydrateSessionFromStorage } from '@onething/backend/runtime/sessions/session-dehydrate'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './projection-cache.js'
 import { getLogger } from '../wiring/logging/index.js'

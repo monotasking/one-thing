@@ -7,7 +7,7 @@ import type { TocChapter, TocKey } from './types'
 import type { MessageKey } from '../i18n'
 import s from './PianoKeys.module.css'
 
-/** 段的类型:后端只有这两种(runtime/src/toc:动过文件 = task,否则 question)。 */
+/** 段的类型:后端只有这两种(runtime/toc:动过文件 = task,否则 question)。 */
 const CHAPTER_KIND_KEY: Record<TocChapter['kind'], MessageKey> = {
   task: 'toc.chapterTask',
   question: 'toc.chapterQuestion',

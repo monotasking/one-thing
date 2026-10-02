@@ -1,7 +1,7 @@
 /**
  * v2 → v3 迁移器的**装配面**(docs/design/collab-actor-v3.md §4,D5)。
  *
- * 规则(映射与对账算式)在纯层 `@onething/runtime/collab/actors` 的
+ * 规则(映射与对账算式)在纯层 `@onething/backend/runtime/collab/actors` 的
  * `migrate-rules.ts`;这里只做四件带 IO 的事:**读盘、备份、写盘、落 marker**。
  *
  * ## 三条硬纪律
@@ -33,10 +33,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { DurableMailbox, readActorMailboxLog, type ActorEvent } from '@onething/core/actors'
-import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '@onething/core/storage'
-import { AGENT_EXEC_SESSION_PREFIX } from '@onething/runtime/agents/identity'
-import type { CollabMessageLike } from '@onething/runtime/collab'
+import { DurableMailbox, readActorMailboxLog, type ActorEvent } from '@onething/backend/core/actors'
+import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '@onething/backend/core/storage'
+import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/runtime/agents/identity'
+import type { CollabMessageLike } from '@onething/backend/runtime/collab'
 import {
   COLLAB_V2_BACKUP_DIR_PREFIX,
   COLLAB_V3_MIGRATION_MARKER_FILE,
@@ -54,21 +54,21 @@ import {
   type CollabRoomPostedVerb,
   type CollabV3MigrationMarker,
   type CollabV3MigrationReport,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 
 import { sessionReads } from '../../../session/reads.js'
 import {
   getOnethingSessionsDir,
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import {
   collabAgentAccountPath,
   collabAgentActorDir,
   COLLAB_AGENT_MAILBOX_NAME,
   createCollabAgentAccountFileStore,
-} from '@onething/runtime/collab/actors/agent-mailbox'
-import { collabRoomAccountPath, createCollabRoomAccountFileStore } from '@onething/runtime/collab/actors/room-account'
-import { collabRoomBroadcastRecipients } from '@onething/runtime/collab/actors/room-actor.wiring'
+} from '@onething/backend/runtime/collab/actors/agent-mailbox'
+import { collabRoomAccountPath, createCollabRoomAccountFileStore } from '@onething/backend/runtime/collab/actors/room-account'
+import { collabRoomBroadcastRecipients } from '@onething/backend/runtime/collab/actors/room-actor.wiring'
 
 /** `<store>/collab/`。v2 的账根,也是 v3 房间账与 marker 的家。 */
 export function collabStoreDir(): string {

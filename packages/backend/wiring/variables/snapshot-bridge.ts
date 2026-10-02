@@ -1,6 +1,6 @@
 import type { EventBus } from '../../events/event-bus.js'
-import type { ContextVariable } from '@onething/runtime/variables'
-import type { getVariableRegistry } from '@onething/runtime/variables/registry'
+import type { ContextVariable } from '@onething/backend/runtime/variables'
+import type { getVariableRegistry } from '@onething/backend/runtime/variables/registry'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
 /** One installation owns its queued refreshes, subscriptions and event target. */

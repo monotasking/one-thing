@@ -605,7 +605,7 @@ describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
   /**
    * **病 ② 的端到端形**(09-13 真机第二次报障)。上一条治的是壳这一侧的两句话,
    * 这一条治的是**引擎那一侧**:它在落库之前就把正文换掉了 —— `@/abs/x.lua`
-   * 展成一整份 34KB 的 `<file>` 块(`packages/core/engine/file-mentions.ts`),
+   * 展成一整份 34KB 的 `<file>` 块(`packages/backend/core/engine/file-mentions.ts`),
    * 于是「同一串字节」这条判据在这条路上结构上不成立。
    *
    * 今天认领靠**身份**:壳发送前铸好 id 随命令带过去,引擎照用。

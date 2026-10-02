@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, Set<(envelope: unknown) => void>>(),
 }))
 
-vi.mock('@onething/runtime/music/process-runner', () => ({
+vi.mock('@onething/backend/runtime/music/process-runner', () => ({
   createElectronMusicProcessRunner: () => ({
     run: async () => ({ code: 0, stdout: '{"success": true}', stderr: '' }),
     spawn: () => ({ done: Promise.resolve({ code: 0, stdout: '', stderr: '' }), kill: () => {} }),
@@ -38,14 +38,14 @@ vi.mock('../player-volume.js', async importOriginal => ({
   readProviderVolume: () => undefined,
 }))
 
-vi.mock('@onething/runtime/voice/host-ports.wiring', () => ({
+vi.mock('@onething/backend/runtime/voice/host-ports.wiring', () => ({
   broadcastVoiceHostMessage: vi.fn(),
   configureVoiceHost: vi.fn(),
   getVoiceHostPorts: () => ({}),
 }))
 
 vi.mock('../service.js', async () => {
-  const { ncmMusicProvider } = await import('@onething/runtime/music/index')
+  const { ncmMusicProvider } = await import('@onething/backend/runtime/music/index')
   return {
     getActiveMusicProvider: () => ncmMusicProvider,
     getMusicNowPlaying: () => null,
@@ -60,7 +60,7 @@ vi.mock('../service.js', async () => {
   }
 })
 
-vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '', tools: ['bash'], kind: 'service' }),
@@ -76,7 +76,7 @@ vi.mock('../../../stores/sessions.js', () => ({
   onSessionsDeleted: () => () => {},
 }))
 
-vi.mock('@onething/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
+vi.mock('@onething/backend/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => mocks.settings }))
 
 /*
@@ -92,11 +92,11 @@ vi.mock('../../../session/access.js', async importOriginal => {
     }),
   }
 })
-vi.mock('@onething/core', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/core')>()),
+vi.mock('@onething/backend/core', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/core')>()),
   addGrant: vi.fn(),
 }))
-vi.mock('@onething/runtime/permissions/unattended', () => ({ markSessionUnattended: vi.fn() }))
+vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: vi.fn() }))
 
 vi.mock('../../../session/reads.js', () => ({
   sessionReads: {
@@ -133,7 +133,7 @@ async function loadRadio() {
     storePath: mocks.dir,
     service: {
       ...(await import('../service.js')),
-      runner: (await import('@onething/runtime/music/process-runner')).createElectronMusicProcessRunner(),
+      runner: (await import('@onething/backend/runtime/music/process-runner')).createElectronMusicProcessRunner(),
     },
     hostVoice: () => hostVoice,
   } as unknown as Parameters<typeof radio.createRadioScope>[0])

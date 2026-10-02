@@ -18,8 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', async () => {
-  const actual = await vi.importActual<typeof import('@onething/runtime/storage')>('@onething/runtime/storage')
+vi.mock('@onething/backend/runtime/storage', async () => {
+  const actual = await vi.importActual<typeof import('@onething/backend/runtime/storage')>('@onething/backend/runtime/storage')
   return {
     ...actual,
     getOnethingSessionsDir: () => state.sessionsDir,

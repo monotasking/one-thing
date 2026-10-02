@@ -3,7 +3,7 @@
  *
  * 接的是被删掉的那十条 `ipcMain.handle`(`apps/electron/src/main/ipc/practice.ts`)
  * 的测试位:那些转发从来没有自己的用例,真正值得钉的是**搬家没搬丢形状** ——
- * 传输面只递不判,判定与缺省全在 `@onething/runtime/practice` 的服务函数里。所以这里
+ * 传输面只递不判,判定与缺省全在 `@onething/backend/runtime/practice` 的服务函数里。所以这里
  * 逐条盯的是:
  *  - 十个方法全在 router 的白名单上(少一个 = 渲染侧那一格静默失灵);
  *  - 引擎返回的是**裸 snapshot**,由这一层包成 `{ snapshot }`(契约层的响应形状);
@@ -27,7 +27,7 @@ const practice = vi.hoisted(() => ({
   writePracticeConfig: vi.fn(),
 }))
 
-vi.mock('@onething/runtime/practice/service.wiring', () => practice)
+vi.mock('@onething/backend/runtime/practice/service.wiring', () => practice)
 
 const IDLE = { status: 'idle' as const }
 const RUNNING = { status: 'running' as const, kind: 'kegel' as const }

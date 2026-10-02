@@ -18,9 +18,9 @@ import {
   type Candidate,
   type CapabilityManifest,
   type SearchCapability,
-} from '@onething/core/search'
-import type { OnethingSearchService } from '@onething/runtime/search/service'
-import { getOnethingSearchServiceSafe } from '@onething/runtime/search/service-bound'
+} from '@onething/backend/core/search'
+import type { OnethingSearchService } from '@onething/backend/runtime/search/service'
+import { getOnethingSearchServiceSafe } from '@onething/backend/runtime/search/service-bound'
 import {
   PLUGIN_SEARCH_PROVIDER_RESULT_CAP,
   PLUGIN_SEARCH_PROVIDER_TIMEOUT_MS,
@@ -29,13 +29,13 @@ import {
   sanitizePluginSearchResults,
   type CorePluginSearchActionContext,
   type CorePluginSearchProviderRegistration,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/runtime/plugins/health'
+} from '@onething/backend/runtime/plugins/health'
 
 /** 一次聚合里,全体插件结果的总预算 —— 再多也不让插件淹没内置结果。 */
 export const PLUGIN_SEARCH_TOTAL_BUDGET = 12

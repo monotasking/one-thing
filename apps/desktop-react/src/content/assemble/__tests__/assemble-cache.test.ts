@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   createSessionProjectionState,
   reduceSessionProjection,
-} from '@onething/core/session/projection/reducer'
+} from '@shared/session/projection/reducer'
 import { materializeChatMessagesCached, messageStamp } from '../../../data/chat-materialize'
 import { StreamWater } from '../../../data/stream-water'
 import { __resetAssembleCacheForTests, assembleMessage } from '../index'

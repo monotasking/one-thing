@@ -87,16 +87,16 @@ vi.mock('../../wiring/plugins/loader.js', () => ({
 vi.mock('../../wiring/plugins/commands.js', () => ({
   executePluginCommandOnHost: mocks.executePluginCommandOnHost,
 }))
-vi.mock('@onething/runtime/plugins/config-access', () => ({
+vi.mock('@onething/backend/runtime/plugins/config-access', () => ({
   createPluginConfigAccess: () => mocks.configAccess,
 }))
-vi.mock('@onething/runtime/plugins/tarball.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/tarball.wiring', () => ({
   readPluginTarballSummary: mocks.readPluginTarballSummary,
 }))
-vi.mock('@onething/runtime/plugins/app-version', () => ({
+vi.mock('@onething/backend/runtime/plugins/app-version', () => ({
   getPluginAppVersion: () => '1.0.0',
 }))
-vi.mock('@onething/runtime/plugins/health', () => ({
+vi.mock('@onething/backend/runtime/plugins/health', () => ({
   clearPluginRuntimeHealth: vi.fn(),
 }))
 

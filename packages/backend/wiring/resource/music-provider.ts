@@ -2,7 +2,7 @@
  * K3-b —— 音乐这一 scheme 的实现(`docs/design/atom-2026-09.md` §9 K3 的第一个
  * 样板:**纯 core 驱动**)。
  *
- * 自述在产品层(`@onething/runtime/music/resource-spec`),实现在这里 —— 与会话那
+ * 自述在产品层(`@onething/backend/runtime/music/resource-spec`),实现在这里 —— 与会话那
  * 一对逐字同一个理由:只有装配层够得着脊柱(`backend.music`)。
  *
  * ── 一条端口都不重写 ───────────────────────────────────────────────────────
@@ -56,7 +56,7 @@
  *   · `station` —— 音乐条那份简报、节目单、节目单编辑,外加 2026-09-18 的
  *                  「跟主持人说话」(`wiring/music/{operations,radio}`);
  *   · `backend` —— 音乐后端自己:装到哪一步、跑一步向导、有哪几只 CLI、搜歌、换 CLI
- *                  (`wiring/music/{service,operations}` + `@onething/runtime/music`)。
+ *                  (`wiring/music/{service,operations}` + `@onething/backend/runtime/music`)。
  *
  * 构造参数从两个位置参数改成**一个对象**,理由是四个位置参数的调用点读起来是
  * 「第三个是 station 还是 backend」——那种记不住的顺序迟早会有人装反,而装反了
@@ -75,12 +75,12 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import type { ResourceEventHub, ResourceProvider, ResourceReadContext } from '@onething/core/resource'
-import { planFromSpec } from '@onething/core/resource'
+import type { ResourceEventHub, ResourceProvider, ResourceReadContext } from '@onething/backend/core/resource'
+import { planFromSpec } from '@onething/backend/core/resource'
 import { type ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
-import { Intent } from '@onething/core/toolkit'
-import type { RadioToolAdapters, RadioToolStatus } from '@onething/runtime/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
+import { Intent } from '@onething/backend/core/toolkit'
+import type { RadioToolAdapters, RadioToolStatus } from '@onething/backend/runtime/toolkit'
 import {
   listMusicProviderDescriptors,
   runOnethingMusicSetupForIpc,
@@ -88,14 +88,14 @@ import {
   type OnethingMusicNowPlaying,
   type OnethingMusicRuntimeState,
   type OnethingMusicSetupRequest,
-} from '@onething/runtime/music'
+} from '@onething/backend/runtime/music'
 import {
   MUSIC_PLAYER_PATH,
   MUSIC_PROVIDER_PATH,
   MUSIC_RADIO_PATH,
   MUSIC_RESOURCE_SCHEME,
   musicResourceSpec,
-} from '@onething/runtime/music/resource-spec'
+} from '@onething/backend/runtime/music/resource-spec'
 import type {
   MusicCommand,
   MusicLyrics,

@@ -25,7 +25,7 @@ vi.mock('../../../stores/settings.js', () => ({
 }))
 
 vi.mock('../space-ai-settings.js', async () => {
-  const { DEFAULT_SPACE_ID } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID } = await import('@onething/backend/runtime/spaces/types')
   return {
     getSessionSettings: (id: string | undefined | null) => {
       const spaceId = (id && mocks.sessions.get(id)?.workspaceId) || DEFAULT_SPACE_ID
@@ -35,12 +35,12 @@ vi.mock('../space-ai-settings.js', async () => {
   }
 })
 
-vi.mock('@onething/runtime/providers/env.wiring', () => ({
+vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
   getProviderEnvStatus: () => ({ detectedEnvVar: undefined }),
 }))
 
 vi.mock('../../../stores/sessions.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -58,7 +58,7 @@ vi.mock('../registry.js', () => ({
   }),
 }))
 
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'default', name: '默认空间', createdAt: 0 }] }),
 }))
 
@@ -69,9 +69,9 @@ vi.mock('../../auth/auth-service.js', () => ({
 import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
-} from '@onething/runtime/spaces/credentials'
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
-import { createOnethingStreamProviderAdapter } from '@onething/runtime/providers/stream-provider-adapter'
+} from '@onething/backend/runtime/spaces/credentials'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
+import { createOnethingStreamProviderAdapter } from '@onething/backend/runtime/providers/stream-provider-adapter'
 import { applySessionProviderGates } from '../space-credentials.js'
 
 let tmpDir: string

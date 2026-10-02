@@ -11,9 +11,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { SearchContext } from '@onething/core/search'
-import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
-import { FolderVault, type NoteVault } from '@onething/runtime/notes'
+import type { SearchContext } from '@onething/backend/core/search'
+import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
+import { FolderVault, type NoteVault } from '@onething/backend/runtime/notes'
 import { createAppSearchAuthorization } from '../authorization.js'
 
 /** 本机操作者(`DEFAULT_SESSION_OWNER`)—— 笔记根只对它开。 */

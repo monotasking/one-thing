@@ -23,8 +23,8 @@
  * **不搬运上下文**(§3.4 防滥用):这里一个字的群历史都不转运。发起方要交代
  * 背景就自己写进 message —— 工具描述里也是这么说的,两处必须一致。
  */
-import type { CollabDmSendResult } from '@onething/runtime/toolkit'
-import { isColleague } from '@onething/runtime/agents'
+import type { CollabDmSendResult } from '@onething/backend/runtime/toolkit'
+import { isColleague } from '@onething/backend/runtime/agents'
 import {
   COLLAB_SAY_REFUSED_EMPTY,
   COLLAB_SAY_REFUSED_UNKNOWN_ROOM,
@@ -35,7 +35,7 @@ import {
   formatCollabWakeRefusedTargetNotMember,
   normalizeCollabSayContent,
   resolveCollabSayRoomSessionId,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { isActiveAgent } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { findAgent, listAgents } from '../agents/index.js'
@@ -48,7 +48,7 @@ import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.j
 import { registerCollabWakeFollowup } from './wake-followup.js'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 
 /** 拒绝文案。每一条都说清"是哪一种拒绝",因为模型能据此改做别的事。 */
 const DM_REFUSED_NO_SELF = '这一轮没有可用的发言身份,私聊发不出去。'

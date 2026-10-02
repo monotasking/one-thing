@@ -13,7 +13,7 @@
  *    adapter 里对应的十一个方法(连同它们背后的 `toServerClientMediaAsset` /
  *    `toServerClientLegacyMediaItem` 路径改写)。
  *
- * 逻辑一行没搬:十一条**逐条**转调 `@onething/runtime/media` 的投影
+ * 逻辑一行没搬:十一条**逐条**转调 `@onething/backend/runtime/media` 的投影
  * (`*OnethingMedia*` / `*ForIpc`),库本体照旧是 `library-service-bound` 那台
  * 单例 —— 与迁移前 `@main` 那份适配逐字同义。
  *
@@ -21,7 +21,7 @@
  * 对话框)、`openPreview` / `openGallery`(`BrowserWindow`)。它们要的是宿主本体
  * 而不是数据,所以仍是手写通道。`getPreview` 跟着数据走:它读的是那本进程内的
  * 预览登记簿,开窗那半写、这半读,两边共用
- * `@onething/runtime/media/image-preview-registry-bound` 的同一本簿子。
+ * `@onething/backend/runtime/media/image-preview-registry-bound` 的同一本簿子。
  *
  * **`ingestFiles` 的入参是「本机路径列表」**(桌面拖拽给的是 filePath,浏览器
  * 给的是 base64)。域挂上 router 之后它经 server 也可达,于是 server 会去读
@@ -37,9 +37,9 @@
 import {
   ingestOnethingMediaFilesForIpc, readOnethingImageFileDataUrl, readOnethingImageFileDataUrlForIpc,
   type OnethingMediaLibraryService, type OnethingMediaSession, type OnethingImagePreviewRegistry,
-} from '@onething/runtime/media'
-import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
-import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
+} from '@onething/backend/runtime/media'
+import { imagePreviewRegistry } from '@onething/backend/runtime/media/image-preview-registry-bound'
+import { mediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { MediaRoutes } from '@shared/ipc/media.js'
 import { getSession, getSessionsList } from '../../stores/sessions.js'

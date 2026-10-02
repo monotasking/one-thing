@@ -1,9 +1,9 @@
-import { configureOnethingPermissionGrantStorage, type OnethingPermissionGrantStorageAdapters } from '@onething/runtime/permissions'
+import { configureOnethingPermissionGrantStorage, type OnethingPermissionGrantStorageAdapters } from '@onething/backend/runtime/permissions'
 import {
   getOnethingPermissionsDir,
   readJsonFile,
   writeJsonFile,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { registerBuiltinCapabilities } from './capabilities.js'
 
 let permissionGrantsConfigured = false
@@ -36,7 +36,7 @@ export {
   matchGrant,
   resetPermissionGrantsForTests,
   revokeGrant,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'
 export type {
   OnethingPermissionGrantStorageAdapters,
   PermissionGrantFileStorageAdapters,
@@ -44,5 +44,5 @@ export type {
   PermissionGrantMatchInput,
   PermissionGrantStorage,
   PermissionGrantWorkspaceFile,
-} from '@onething/runtime/permissions'
+} from '@onething/backend/runtime/permissions'
 export type { PermissionGrant, PermissionGrantScope } from '@shared/permission/grant'

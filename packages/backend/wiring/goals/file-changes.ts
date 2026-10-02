@@ -15,11 +15,11 @@ import {
 	summarizeGoalFileChanges,
 	type GoalFileChange,
 	type GoalFileMutationRecordLike,
-} from "@onething/runtime/goals";
+} from "@onething/backend/runtime/goals";
 import type { GoalFileDiff } from "@shared/ipc.js";
 import {
   getOnethingFileMutationsDir,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import * as store from "../../store.js";
 
 /**

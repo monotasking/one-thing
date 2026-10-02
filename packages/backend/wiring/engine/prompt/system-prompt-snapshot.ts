@@ -6,7 +6,7 @@ import type {
   SystemPromptSnapshot,
   ToolDefinition,
 } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import * as store from '../../../store.js'
 import {
   createAgentProviderFromRuntime,
@@ -14,7 +14,7 @@ import {
 import { defaultAgent, findAgent } from '../../agents/index.js'
 import { resolveAgentProfileForSession } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
-import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wiring'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index.wiring'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import {
   isProviderSupported,
@@ -25,20 +25,20 @@ import {
   resolveProviderAuth,
 } from '../stream/provider-helpers.js'
 import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
-import { resolveToolkitSurface } from '@onething/runtime/toolkit'
-import { toolDefinitionFromToolkitTool } from '@onething/runtime/toolkit/catalog-projection.wiring'
-import { resolveOnethingAgentLoopStreamRoute } from '@onething/runtime/agent-loop'
+import { resolveToolkitSurface } from '@onething/backend/runtime/toolkit'
+import { toolDefinitionFromToolkitTool } from '@onething/backend/runtime/toolkit/catalog-projection.wiring'
+import { resolveOnethingAgentLoopStreamRoute } from '@onething/backend/runtime/agent-loop'
 import { buildPrompt } from './system-prompt.js'
 import {
   agentSupportsTools,
   agentToolDefinitionsFromSourceTools,
   resolveAgentModelCapabilities,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 import {
   buildSystemPromptSnapshotWithAdapters,
-} from '@onething/runtime/prompts'
-import type { BuildSystemPromptSnapshotWithAdaptersOptions } from '@onething/runtime/prompts/system-prompt-snapshot'
-import type { CreateAgentProviderFromRuntimeOptions } from '@onething/runtime/agent-loop/providers/factory'
+} from '@onething/backend/runtime/prompts'
+import type { BuildSystemPromptSnapshotWithAdaptersOptions } from '@onething/backend/runtime/prompts/system-prompt-snapshot'
+import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/agent-loop/providers/factory'
 
 type ProviderConfigWithAuth = ProviderConfig & {
   authContext?: ProviderAuthContext

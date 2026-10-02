@@ -1,11 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "include": [
-    "packages/core/**/*",
-    "packages/onething-runtime/**/*",
     "packages/backend/**/*",
     "packages/client/**/*",
-    "packages/gateway/**/*",
     "apps/cli/**/*",
     "apps/server/**/*",
     "scripts/gateway-smoke-test.ts",

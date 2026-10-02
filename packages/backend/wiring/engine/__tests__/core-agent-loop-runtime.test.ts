@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 // A0-3 起 core 不内置「acp 的上下文归它自己管」这条事实;生产里它由 backend.ts 静态 import
 // 执行器注册表登记进来,这里照同一条路登记,压缩门才认得 acp。
-import '@onething/runtime/agents/executor/registry'
+import '@onething/backend/runtime/agents/executor/registry'
 import {
   agentLoopInitSkills,
   agentLoopSkillContexts,
@@ -28,8 +28,8 @@ import {
   runAgentLoopAfterTurnWithAdapters,
   runAgentLoopBeforeTurnWithAdapters,
   shouldStartAgentLoopContextCompact,
-} from '@onething/core/engine'
-import { getOnethingAgentLoopThinkingOptions } from '@onething/runtime/agent-loop/providers'
+} from '@onething/backend/core/engine'
+import { getOnethingAgentLoopThinkingOptions } from '@onething/backend/runtime/agent-loop/providers'
 
 describe('core agent-loop runtime helpers', () => {
   it('normalizes provider configs and skill snapshots without main process types', () => {

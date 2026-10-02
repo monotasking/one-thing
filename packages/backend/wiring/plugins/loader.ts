@@ -14,9 +14,9 @@ import {
   describePluginWebviewPanelProblem,
   isPluginWebviewPanel,
   type PluginContributionUiSlot, type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters,
-} from '@onething/core/plugins'
-import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/runtime/storage'
-import { writeJsonFile } from '@onething/core/storage'
+} from '@onething/backend/core/plugins'
+import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/backend/runtime/storage'
+import { writeJsonFile } from '@onething/backend/core/storage'
 import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
@@ -39,15 +39,15 @@ import {
   setPluginEnabledWithAdapters,
   setPluginHealthInSettings,
   writePluginSettingsFile,
-} from '@onething/core/plugins'
-import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/core/plugins'
-import { getPluginAppVersion } from '@onething/runtime/plugins/app-version'
-import { clearPluginRuntimeHealth } from '@onething/runtime/plugins/health'
+} from '@onething/backend/core/plugins'
+import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/backend/core/plugins'
+import { getPluginAppVersion } from '@onething/backend/runtime/plugins/app-version'
+import { clearPluginRuntimeHealth } from '@onething/backend/runtime/plugins/health'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/log-monitor.js'
 import { consolePort, getLogger } from '../logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { LegacyDuckLogger } from '@onething/core/logging'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/backend/core/logging'
 
 const log = getLogger('plugins.loader')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

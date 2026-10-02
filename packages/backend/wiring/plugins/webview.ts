@@ -18,7 +18,7 @@ import {
   getCorePluginScratchDir,
   isPluginWebviewPanel,
   resolvePluginWebviewRoot,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import { getPluginsDir } from './loader.js'
 import { getPluginManager } from './manager.js'
 

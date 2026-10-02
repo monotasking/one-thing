@@ -11,15 +11,15 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Catalog, textResult } from '@onething/core/toolkit'
-import { ScriptedTool } from '../../../core/toolkit/__tests__/fakes.js'
+import { Catalog, textResult } from '@onething/backend/core/toolkit'
+import { ScriptedTool } from '../../core/toolkit/__tests__/fakes.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { toolsRouter } from '@shared/ipc/tools.js'
 
-vi.mock('@onething/runtime/plugins/tool-call-intercept-bound', () => ({
+vi.mock('@onething/backend/runtime/plugins/tool-call-intercept-bound', () => ({
   runPluginToolCallIntercept: async (context: { input: unknown }) => ({ action: 'allow', input: context.input, rewrittenBy: [], ran: 0 }),
 }))
-vi.mock('@onething/runtime/plugins/tool-result-intercept-bound', () => ({
+vi.mock('@onething/backend/runtime/plugins/tool-result-intercept-bound', () => ({
   runPluginToolResultIntercept: vi.fn(async (context: { result: unknown }) => ({ action: 'keep', result: context.result, rewrittenBy: [], ran: 0 })),
 }))
 vi.mock('../../wiring/tools/core/permission-policy.js', () => ({ enforcePermissionPolicy: async () => undefined }))
@@ -56,7 +56,7 @@ beforeEach(async () => {
   wiring = await import('../../wiring/toolkit/wiring.js')
   wiring.resetToolkitCatalogForTests()
   catalog = new Catalog()
-  const { configureToolkitCatalog } = await import('@onething/runtime/toolkit')
+  const { configureToolkitCatalog } = await import('@onething/backend/runtime/toolkit')
   configureToolkitCatalog(catalog)
   current = await import('../../current.js')
   registry = await import('../registry.js')
@@ -241,7 +241,7 @@ it('keeps cancellation authoritative while the plugin result finalizer is still 
   const finalizing = barrier()
   const release = barrier()
   cleanups.push(release.release)
-  const { runPluginToolResultIntercept } = await import('@onething/runtime/plugins/tool-result-intercept-bound')
+  const { runPluginToolResultIntercept } = await import('@onething/backend/runtime/plugins/tool-result-intercept-bound')
   vi.mocked(runPluginToolResultIntercept).mockImplementationOnce(async context => {
     finalizing.release()
     await release.promise
@@ -261,7 +261,7 @@ it('keeps cancellation authoritative while the plugin result finalizer is still 
 
 it('stops a real bash child before reporting cancellation complete', { timeout: 15000 }, async () => {
   const { createDesktopCatalog } = await import('../../wiring/toolkit/catalog.js')
-  const { createLocalBashOperations } = await import('@onething/runtime/tools/bash-executor')
+  const { createLocalBashOperations } = await import('@onething/backend/runtime/tools/bash-executor')
   const builtin = createDesktopCatalog({ bash: {
     getDefaultWorkingDirectory: () => directory,
     getToolOutputsDir: () => path.join(directory, 'outputs'),

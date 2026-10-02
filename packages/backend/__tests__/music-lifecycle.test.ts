@@ -107,7 +107,7 @@ it('owns real player processes and delayed provider requests through shutdown, t
   } })
   await ready.promise
   process.env.ONETHING_STORE_PATH = storeA
-  const { inspectStoreLock } = await import('@onething/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await terminated.promise

@@ -12,7 +12,7 @@
  *  - `server/http.ts` 上对应的 REST 路由与 `server/runtime.ts` 那套 per-owner 的
  *    第二份会话实现(sessions / messages / chat 三个 adapter 里对应的方法)。
  *
- * 逻辑一行没搬:二十六条**逐条**转调 `@onething/runtime/sessions` 的投影
+ * 逻辑一行没搬:二十六条**逐条**转调 `@onething/backend/runtime/sessions` 的投影
  * (`*OnethingSession*` / `*ForIpc`),仓本体照旧是 `@onething/backend/store` 那一份
  * —— 与迁移前 `@main` 那份适配逐字同义,连 `logger: console` 都只是换成了同一个
  * 鸭子 logger 端口。
@@ -58,10 +58,10 @@ import {
   describeInvalidOnethingCreateSessionRequestForIpc,
   ONETHING_SESSION_NOT_FOUND,
   switchOnethingSessionForIpc,
-} from '@onething/runtime/sessions'
-import { isValidSpaceId } from '@onething/runtime/spaces/types'
-import { collectSessionCascadeDeleteIds } from '@onething/core/session'
-import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/runtime/sessions/resource-spec'
+} from '@onething/backend/runtime/sessions'
+import { isValidSpaceId } from '@onething/backend/runtime/spaces/types'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
+import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/backend/runtime/sessions/resource-spec'
 import type {
   ChatMessage,
   ChatSession,
@@ -93,11 +93,11 @@ import { BackendNotAssembledError, getCurrentBackendInstance } from '../../curre
 import { SessionNotFoundError } from '../../wiring/resource/session-provider.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { CreateOnethingBranchSessionAdapters } from '@onething/runtime/sessions/branching'
-import type { ReadOutcome } from '@onething/core/resource'
+import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/runtime/sessions/branching'
+import type { ReadOutcome } from '@onething/backend/core/resource'
 import type { JsonObject } from '@shared/json'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingSessionsIpcLogger } from '@onething/backend/runtime/sessions/ipc-operations'
 
 const log = getLogger('rpc.sessions')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */

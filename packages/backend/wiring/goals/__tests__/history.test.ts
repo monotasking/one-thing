@@ -12,7 +12,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
-import type { SessionGoal } from '@onething/runtime/goals'
+import type { SessionGoal } from '@onething/backend/runtime/goals'
 
 interface StoredSession {
   id: string

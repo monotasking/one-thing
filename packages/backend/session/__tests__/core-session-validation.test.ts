@@ -3,7 +3,7 @@ import {
   formatSessionValidationResult,
   validateSessionStateConsistency,
   type SessionState,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 function state(overrides: Partial<SessionState> = {}): SessionState {
   return {

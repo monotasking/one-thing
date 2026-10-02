@@ -53,8 +53,8 @@ vi.mock('../user-identity.js', () => ({
 }))
 // 直接读盘那一支在测试里没有真实文件 —— 让它落到 store 兜底分支，
 // 转录数据仍然由上面的 store mock 提供（读盘与否是性能问题，不是语义问题）。
-vi.mock('@onething/runtime/storage', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/storage')>(),
   getOnethingSessionsDir: () => '/nonexistent-for-tests',
 }))
 
@@ -132,8 +132,8 @@ describe('授权（多给一条就是事故）', () => {
     ownedBy('exec-iris', 'alice', 'tenant-a')
     ownedBy('cumo', 'alice', 'tenant-a')
     const { historyAdapters } = await import('../../toolkit/adapters.js')
-    const { createHistoryTool, ZodValidator } = await import('@onething/runtime/toolkit')
-    const { ToolRunner, Decision } = await import('@onething/core/toolkit')
+    const { createHistoryTool, ZodValidator } = await import('@onething/backend/runtime/toolkit')
+    const { ToolRunner, Decision } = await import('@onething/backend/core/toolkit')
     const runner = new ToolRunner({
       authorizer: { async decide() { return Decision.allow() } },
       observer: { on() {} }, validator: new ZodValidator(),

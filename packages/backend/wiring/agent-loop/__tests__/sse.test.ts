@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readJsonSseData, readSseData, readSseEvents } from '@onething/runtime/agent-loop/providers'
+import { readJsonSseData, readSseData, readSseEvents } from '@onething/backend/runtime/agent-loop/providers'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

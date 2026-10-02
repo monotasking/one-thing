@@ -20,10 +20,10 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { Preview, Result, RunContext, ToolSpec } from '@onething/core/toolkit'
+import type { Preview, Result, RunContext, ToolSpec } from '@onething/backend/core/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import type { JsonObject } from '@shared/json'
-import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/runtime/toolkit'
+import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/runtime/toolkit'
 import { dumpFeatures, hasFeature, mountFeature } from '../../../features/index.js'
 import {
   asFeatureDefinition,

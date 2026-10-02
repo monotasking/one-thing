@@ -16,7 +16,7 @@
  *
  * ## 为什么这些函数住在这里(而不是 refold.ts 里)
  *
- * 它们只依赖 `@onething/core/session`,不碰后端脊柱 —— 于是:
+ * 它们只依赖 `@onething/backend/core/session`,不碰后端脊柱 —— 于是:
  *  1. 合同测试可以直接跑它们(不用把整只 app store 拉起来);
  *  2. 离线探针可以在**真机账本**上跑**生产同一份代码**量阻塞分布,而不是量一份
  *     抄写版。
@@ -35,16 +35,22 @@
 import {
   canonicalChatMessage,
   createSessionAccountState,
-  createSessionProjectionState,
   decodeSessionLogEventLine,
-  materializeNode,
   reduceSessionAccount,
-  reduceSessionProjection,
   type CoreTimelineMessage,
-  type ProjectionMaterializeOptions,
   type SessionAccountState,
+} from '@onething/backend/core/session'
+import {
+  createSessionProjectionState,
+  reduceSessionProjection,
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
+import {
+  materializeNode,
+} from '@shared/session/projection/chat-messages'
+import {
+  type ProjectionMaterializeOptions,
+} from '@shared/session/projection/blobs'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 
 /**

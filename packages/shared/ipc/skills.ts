@@ -224,7 +224,7 @@ export interface SetSkillAgentResponse {
  * 那套 per-owner 的第二实现,一起消失。
  *
  * 只有 `openDirectory` 需要宿主能力(在文件管理器里打开一个目录)。它现在走
- * `@onething/runtime/shell` 的 `configureShellHost` 端口 —— 桌面注入 Electron
+ * `@onething/backend/runtime/shell` 的 `configureShellHost` 端口 —— 桌面注入 Electron
  * `shell.openPath`,server / CLI 不注入,于是拿到结构化的
  * `{ success:false, error:'shell host not available' }`,与从前 server adapter
  * 那句「web server runtime 不支持打开本地技能目录」同义而不再需要第二份实现。

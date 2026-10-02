@@ -7,7 +7,7 @@ import {
   resolveToolIdentity,
   type CoreStreamStepLike,
   type CoreStreamToolCallLike,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 
 describe('core stream processor helpers', () => {
   it('resolves regular, MCP router, and short MCP tool identities through host adapters', () => {

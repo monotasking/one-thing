@@ -8,7 +8,7 @@
  * 与它们背后的 `chat` / `prompts` 两个 facade adapter 和 `streams.abort/active`。
  *
  * 只桩**仓本体**(`@onething/backend/store`)与装配侧的四个端口(引擎 / 权限 /
- * 事件总线 / 协作房停止),**投影不桩** —— `@onething/runtime` 那批
+ * 事件总线 / 协作房停止),**投影不桩** —— `@onething/backend/runtime` 那批
  * `*ForIpc` 是真跑的,所以这组用例证的是「域把端口接对了」,而不是「域自己又
  * 实现了一遍」。
  *

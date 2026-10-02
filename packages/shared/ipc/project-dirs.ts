@@ -90,7 +90,7 @@ export interface ProjectDirsRemoveResponse {
 /**
  * project-dirs(项目目录名册)域 —— 结构债 P4c 第六域。
  *
- * 五件套全是**纯数据面**,判定与错误码住在 `@onething/runtime/project-dirs` 的
+ * 五件套全是**纯数据面**,判定与错误码住在 `@onething/backend/runtime/project-dirs` 的
  * 投影里,传输面只按请求里的 `workspaceId` 取那个空间的 store。
  *
  * **迁后 web 行为会变(变对)**:被删掉的 `platform/web.ts` 那五条 REST 镜像

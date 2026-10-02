@@ -1,7 +1,7 @@
 import {
   AgentEngine,
   SessionManager,
-} from '../packages/core/index.ts'
+} from '../packages/backend/core/index.ts'
 
 const sessionId = `smoke-${Date.now()}`
 const engine = new AgentEngine()

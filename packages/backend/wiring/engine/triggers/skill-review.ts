@@ -1,9 +1,9 @@
-import type { AgentToolExecutionContext } from '@onething/core/agent-loop'
+import type { AgentToolExecutionContext } from '@onething/backend/core/agent-loop'
 import type {
   CoreSkillReviewFileToolAdapter,
   CoreSkillReviewManageArgs,
-} from '@onething/runtime/triggers'
-import { createOnethingSkillReviewTrigger } from '@onething/runtime/triggers'
+} from '@onething/backend/runtime/triggers'
+import { createOnethingSkillReviewTrigger } from '@onething/backend/runtime/triggers'
 import { getUserSkillsPath } from '../../skills/index.js'
 import { executeSkillManage, type SkillManageArgs } from '../../skills/manage.js'
 import {
@@ -14,15 +14,15 @@ import type { Trigger, TriggerContext } from './index.js'
 import { billSkillUsage } from '../../usage/bill-side-line.js'
 import { createUtilityProvider } from '../../providers/utility-provider.js'
 // 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
-import { Decision } from '@onething/core/toolkit'
-import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/core/toolkit'
-import { Outcome as OutcomeOps } from '@onething/core/toolkit'
+import { Decision } from '@onething/backend/core/toolkit'
+import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/backend/core/toolkit'
+import { Outcome as OutcomeOps } from '@onething/backend/core/toolkit'
 import { toJsonObject, type JsonObject } from '@shared/json.js'
-import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
+import { contractForSchema, getToolkitCatalog } from '@onething/backend/runtime/toolkit'
 import { createAppToolRunner } from '../../toolkit/runner.js'
 import { consolePort, getLogger } from '../../logging/index.js'
-import type { CoreSkillReviewVisibleSkill } from '@onething/runtime/triggers/skill-review-core'
-import type { OnethingSkillReviewAdapters } from '@onething/runtime/triggers/skill-review'
+import type { CoreSkillReviewVisibleSkill } from '@onething/backend/runtime/triggers/skill-review-core'
+import type { OnethingSkillReviewAdapters } from '@onething/backend/runtime/triggers/skill-review'
 
 const log = getLogger('engine.triggers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

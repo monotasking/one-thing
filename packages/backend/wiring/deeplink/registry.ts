@@ -23,13 +23,13 @@ import {
   pluginScope,
   type CorePluginDeepLinkActionRegistration,
   type CorePluginDeepLinkResult,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/runtime/plugins/health'
+} from '@onething/backend/runtime/plugins/health'
 
 interface PluginDeepLinkEntry {
   pluginId: string

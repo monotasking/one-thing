@@ -460,7 +460,7 @@ export interface PickPluginFileResponse {
  * 目录清单里的一条(列表投影的**过线形状**)。
  *
  * 这里只声明每个宿主都保证给出的那几格 —— 主进程的投影
- * (`@onething/runtime/plugins` 的 `OnethingRendererPluginInfo`)在此之上还带着
+ * (`@onething/backend/runtime/plugins` 的 `OnethingRendererPluginInfo`)在此之上还带着
  * `contributes` / `configFields` / `source` 等等,渲染侧按自己的局部形状读它们
  * (`services/ipc-hub.ts` 的 `PluginCatalogEntry`、设置页的 `PluginInfo`)。
  * **契约不复述那棵投影树**:它的单源在产品层,抄一份到 `@shared` 只会多一处

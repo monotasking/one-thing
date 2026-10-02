@@ -34,15 +34,15 @@ import {
   splitCollabHandleQuery,
   wrapCollabMessageEnvelope,
   type CollabHandleQuery,
-} from '@onething/runtime/collab'
-import type { HistoryToolResult } from '@onething/runtime/toolkit'
-import { scanJsonlLog } from '@onething/core/session'
+} from '@onething/backend/runtime/collab'
+import type { HistoryToolResult } from '@onething/backend/runtime/toolkit'
+import { scanJsonlLog } from '@onething/backend/core/session'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { findAgent, listAgents } from '../agents/index.js'
 import { resolveDmTarget } from './dm-target.js'
 import { resolveUserIdentity } from './user-identity.js'

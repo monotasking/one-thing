@@ -2,7 +2,7 @@ import type { AgentProviderRuntimeConfig } from '../agent-loop/providers/factory
 import { createAgentProviderFromRuntime } from '../agent-loop/providers/factory.js'
 import type {
   AgentProvider,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 import {
   ONETHING_ACP_RUNTIME_PROVIDER_ID,
   createOnethingUtilityAgentProvider,
@@ -14,8 +14,8 @@ import {
   type OnethingProviderToolDefinitionMap,
   type OnethingProviderToolParameter,
   type OnethingProviderToolSourceDefinition,
-} from '@onething/runtime/providers'
-import type { OnethingProviderRuntimeRouteAdapters } from '@onething/runtime/providers/agent-runtime-route'
+} from '@onething/backend/runtime/providers'
+import type { OnethingProviderRuntimeRouteAdapters } from '@onething/backend/runtime/providers/agent-runtime-route'
 
 export const ACP_PROVIDER_ID = ONETHING_ACP_RUNTIME_PROVIDER_ID
 

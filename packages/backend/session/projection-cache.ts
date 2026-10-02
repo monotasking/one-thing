@@ -33,15 +33,19 @@
 
 import {
   createSessionAccountState,
-  createSessionProjectionState,
-  foldSessionLogicalDeltaAhead,
-  materializeNode,
   reduceSessionAccount,
-  reduceSessionProjection,
   type CoreTimelineMessage,
   type SessionAccountState,
+} from '@onething/backend/core/session'
+import {
+  createSessionProjectionState,
+  foldSessionLogicalDeltaAhead,
+  reduceSessionProjection,
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
+import {
+  materializeNode,
+} from '@shared/session/projection/chat-messages'
 import { type SessionLogicalDelta } from '@shared/session/events/chunk-codec'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionLogEventAppendObserver } from './event-log.js'

@@ -7,7 +7,7 @@
  * 出现**两条**自己的话,第二条还排在 AI 的回复**后面**,而且永不消失。
  *
  * 真因不在壳里画重了,而在**引擎落库之前就把正文换掉了**:
- * `packages/core/engine/file-mentions.ts` 把 `@/abs/x.lua` 展成一整份
+ * `packages/backend/core/engine/file-mentions.ts` 把 `@/abs/x.lua` 展成一整份
  * `<file …>` 块(真账本里 34KB),账本上的 `content` 于是是**模型版**,
  * 而壳那一格乐观气泡从前靠「正文逐字相同」认领自己那条消息 —— 比的两句话
  * 从来就不是同一句,所以那一格永远留屏。第二条气泡不是多发了一条,
@@ -509,7 +509,7 @@ async function main() {
 
     /*
      * 技能夹具:用户技能目录就是 `<store>/skills/<名>/SKILL.md`
-     * (`@onething/runtime/skills/loader.getUserSkillsPath`)。frontmatter 两格
+     * (`@onething/backend/runtime/skills/loader.getUserSkillsPath`)。frontmatter 两格
      * 就够 —— 名字进 `/skill:<名>`,说明进抽屉那一行。
      */
     const skillDir = path.join(store, 'skills', SKILL_NAME)

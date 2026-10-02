@@ -35,7 +35,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const RULE_A_ALLOWED = new Set([
   // 冷加载修复(§17.7.1 批 3:老 reducer 删了,这里只剩两个具名入口 ——
   // 修复要摸整份消息数组)
-  'packages/core/session/commands.ts',
+  'packages/backend/core/session/commands.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
   'packages/backend/session/commands.ts',
   'packages/backend/session/reads.ts',
@@ -47,11 +47,11 @@ const RULE_A_ALLOWED = new Set([
   // 都落在驱动自己那个 `SessionLike { messages?: unknown[] }` 上,元素类型是
   // `unknown`,本来就不构成规则 A 说的"一条会话的消息日志"。实测拿掉这条 0 命中,
   // 所以收掉:哪天有人把驱动重新类型化到真的 `ChatMessage`,这道闸该响。
-  'packages/onething-runtime/src/sessions/session-dehydrate.ts',
+  'packages/backend/runtime/sessions/session-dehydrate.ts',
   // 仓库层 = 读门面的底座(P0.4):四处都是"jsonl/sqlite 取不到时回落到内存
   // 权威副本"的取数原语(getSessionMessages / 分页 / marker / 缓存快照),
   // 下面没有别的层可以再问一次,不是业务读。
-  'packages/onething-runtime/src/sessions/session-repository.ts',
+  'packages/backend/runtime/sessions/session-repository.ts',
 ])
 
 /**
@@ -78,7 +78,7 @@ const RULE_A_ALLOWED = new Set([
  * 规则 B 本来就够不着它 —— 名单里不需要有它。)
  */
 const RULE_B_ALLOWED = new Set([
-  'packages/core/session/commands.ts',
+  'packages/backend/core/session/commands.ts',
 ])
 
 /**
@@ -94,7 +94,7 @@ const RULE_B_ALLOWED = new Set([
  * 一路查下来所有分岔的病根。
  */
 const RULE_C_ALLOWED = new Set([
-  'packages/onething-runtime/src/sessions/session-repository.ts',
+  'packages/backend/runtime/sessions/session-repository.ts',
 ])
 
 const MUTATING_ARRAY_METHODS = new Set(['push', 'splice', 'pop', 'shift', 'unshift', 'sort', 'reverse'])
@@ -109,10 +109,10 @@ function shouldScan(rel) {
   if (rel.startsWith('node_modules/')) return false
   if (rel.endsWith('.d.ts')) return false
   return (
-    rel.startsWith('packages/core/') ||
-    rel.startsWith('packages/onething-runtime/') ||
+    rel.startsWith('packages/backend/core/') ||
+    rel.startsWith('packages/backend/runtime/') ||
     rel.startsWith('packages/backend/') ||
-    rel.startsWith('packages/gateway/') ||
+    rel.startsWith('packages/backend/gateway/') ||
     rel.startsWith('packages/shared/') ||
     rel.startsWith('apps/')
   )

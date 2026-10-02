@@ -14,7 +14,7 @@ import {
   PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
   PLUGIN_REGISTRY_POLICY,
   type CorePluginCredentialStrategyContext,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-cred-strategy-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -43,7 +43,7 @@ async function load() {
   const [api, registry, health, logging] = await Promise.all([
     import('../../plugins/api.js'),
     import('../credential-strategy.js'),
-    import('@onething/runtime/plugins/health'),
+    import('@onething/backend/runtime/plugins/health'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
     // **同一份**里拿,否则收的是别的 root(L4)。
     import('../../logging/index.js'),
@@ -368,7 +368,7 @@ describe('批 E 凭证策略 —— 拆除', () => {
     const mods = await load()
     const { CredentialStrategyService } = await import('../credential-strategy-lifetime.js')
     const service = new CredentialStrategyService()
-    const credentials = await import('@onething/runtime/spaces/credentials')
+    const credentials = await import('@onething/backend/runtime/spaces/credentials')
     mods.registry.configureAppPluginCredentialStrategyHost()
     let entered!: () => void
     const started = new Promise<void>(resolve => { entered = resolve })
@@ -428,7 +428,7 @@ describe('批 E 凭证策略 —— 拆除', () => {
      * 策略撤下之后,**选择仍然成功**(回落内置 failover),而不是失败。
      */
     const mods = await load()
-    const credentials = await import('@onething/runtime/spaces/credentials')
+    const credentials = await import('@onething/backend/runtime/spaces/credentials')
     mods.registry.resetAppPluginCredentialStrategyHostForTests()
     mods.registry.configureAppPluginCredentialStrategyHost()
 

@@ -23,11 +23,11 @@ import { getProjectsStore } from "../project-dirs/index.js";
 import { resolveSessionSpaceId } from "../../stores/sessions.js";
 import * as appStore from "../../store.js";
 import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
-import { getVariableRegistry } from "@onething/runtime/variables/registry";
-import { registerStandardVariableProviders } from "@onething/runtime/variables/bootstrap";
-import { getVariablesStore } from "@onething/runtime/variables/store-bound";
-import type { SetInput, VariableProvider } from "@onething/runtime/variables";
-import { createChannelSessionGuard } from "@onething/runtime/variables/channel-guard";
+import { getVariableRegistry } from "@onething/backend/runtime/variables/registry";
+import { registerStandardVariableProviders } from "@onething/backend/runtime/variables/bootstrap";
+import { getVariablesStore } from "@onething/backend/runtime/variables/store-bound";
+import type { SetInput, VariableProvider } from "@onething/backend/runtime/variables";
+import { createChannelSessionGuard } from "@onething/backend/runtime/variables/channel-guard";
 import {
 	noteVaultsGateway,
 	globalStoreGateway,
@@ -43,12 +43,12 @@ import {
 import {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
-} from "@onething/runtime/variables/format";
-import type { ContextVariable } from "@onething/runtime/variables";
+} from "@onething/backend/runtime/variables/format";
+import type { ContextVariable } from "@onething/backend/runtime/variables";
 
 import { createVariableSnapshotBridge } from './snapshot-bridge.js'
 import { getLogger } from '../logging/index.js'
-import type { CoreProviderAdapters } from '@onething/runtime/variables/providers/core'
+import type { CoreProviderAdapters } from '@onething/backend/runtime/variables/providers/core'
 
 const log = getLogger('variables')
 
@@ -263,20 +263,20 @@ export function registerVariableProvider(provider: VariableProvider): void {
 }
 
 // Re-exports for ergonomic imports at call sites.
-export { getVariableRegistry } from "@onething/runtime/variables/registry";
+export { getVariableRegistry } from "@onething/backend/runtime/variables/registry";
 export {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
-} from "@onething/runtime/variables/format";
-export { VariableError } from "@onething/runtime/variables";
+} from "@onething/backend/runtime/variables/format";
+export { VariableError } from "@onething/backend/runtime/variables";
 export type {
 	ContextVariable,
 	SetInput,
 	VariableContext,
 	VariableProvider,
-} from "@onething/runtime/variables";
+} from "@onething/backend/runtime/variables";
 export {
 	notifySessionVariablesChanged,
 	notifyWorkdirChanged,
 } from "./gateways.js";
-export { getVariablesStore } from "@onething/runtime/variables/store-bound";
+export { getVariablesStore } from "@onething/backend/runtime/variables/store-bound";

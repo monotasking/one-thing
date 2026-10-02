@@ -5,14 +5,14 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 import {
   createSessionProjectionState,
   reduceSessionProjection,
-} from '@onething/core/session/projection/reducer'
+} from '@shared/session/projection/reducer'
 import { materializeChatMessagesCached } from './chat-materialize'
 import { StreamWater } from './stream-water'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@shared/events/envelope'
 import type { PermissionResponse } from '@shared/ipc/permissions'
-import { coreRenderMessageHasToolWork } from '@onething/core/session/render-anchors'
+import { coreRenderMessageHasToolWork } from '@shared/session/render-anchors'
 import {
   appendTail,
   applyToolProgress,

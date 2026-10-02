@@ -19,8 +19,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
-import { Interaction } from '@onething/core/interaction'
-import { Permission } from '@onething/core/permission'
+import { Interaction } from '@onething/backend/core/interaction'
+import { Permission } from '@onething/backend/core/permission'
 
 interface FakeMessage {
   id: string
@@ -56,7 +56,7 @@ vi.mock('../../../store.js', () => ({
   getSettings: () => ({ network: {} }),
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => '/tmp/onething-e4-test',
   // R4b:授权入口换成 `Authorizer.decide` 之后,设置仓库进了这条路的静态图。
   getOnethingSettingsPath: () => '/tmp/onething-e4-test/settings.json',
@@ -101,7 +101,7 @@ vi.mock('../host-tools.js', () => ({
   resolveHostToolSurface: vi.fn(),
 }))
 
-vi.mock('@onething/runtime/agents', () => ({
+vi.mock('@onething/backend/runtime/agents', () => ({
   findAgentExecutorDescriptor: (id: string) =>
     id === 'acp'
       ? { id, kind: 'external', capabilities: { interrupt: mocks.interruptCapable } }

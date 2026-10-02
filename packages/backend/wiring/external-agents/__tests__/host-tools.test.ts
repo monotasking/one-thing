@@ -20,14 +20,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '../../logging/index.js'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
-import { COLLAB_SAY_SOURCE } from '@onething/runtime/collab'
+import { COLLAB_SAY_SOURCE } from '@onething/backend/runtime/collab'
 import {
   bindHostToolContext,
   clearHostToolContexts,
   hostMcpToolName,
   resolveHostToolContext,
   toHostMcpToolDefinition,
-} from '@onething/runtime/external-agents'
+} from '@onething/backend/runtime/external-agents'
 
 interface FakeMessage {
   id: string
@@ -61,7 +61,7 @@ const mocks = vi.hoisted(() => ({
   profileTools: null as string[] | null,
   /** 注册表里有哪些工具对象。 */
   registry: new Map<string, unknown>(),
-  hostTools: [] as import('@onething/runtime/external-agents').HostMcpHostTool[],
+  hostTools: [] as import('@onething/backend/runtime/external-agents').HostMcpHostTool[],
 }))
 
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
@@ -155,13 +155,13 @@ async function bindHostSurface(request: {
 }
 const { clearCollabSayIdempotence, speakIntoCollabRoom }
   = await import('../../collab/say-tool.js')
-const { Catalog, Decision, ToolRunner } = await import('@onething/core/toolkit')
+const { Catalog, Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
 const {
   configureToolkitCatalog,
   contractForSchema,
   createSendMessageTool,
   ZodValidator,
-} = await import('@onething/runtime/toolkit')
+} = await import('@onething/backend/runtime/toolkit')
 
 /**
  * R4b:宿主工具面从旧注册表(`getTool`)换成**目录**。这里装一份只有
@@ -211,7 +211,7 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   configureCollabV3SpeakPort,
-} = await import('@onething/runtime/collab/actors/turn-context.wiring')
+} = await import('@onething/backend/runtime/collab/actors/turn-context.wiring')
 
 const ROOM = 'room-1'
 const EXEC = 'agent-exec-fe-room-1'

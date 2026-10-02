@@ -22,8 +22,8 @@
  * 而不是门里:每个执行器那句话都要说出**下一步**,一句通用的「场子不对」会让
  * 模型不知道能做什么(与 board/history/send_message 同一条纪律)。
  */
-import { COLLAB_NOTEBOOK_INJECT_MAX_CHARS } from '@onething/runtime/collab/actors'
-import type { NotebookToolResult } from '@onething/runtime/toolkit'
+import { COLLAB_NOTEBOOK_INJECT_MAX_CHARS } from '@onething/backend/runtime/collab/actors'
+import type { NotebookToolResult } from '@onething/backend/runtime/toolkit'
 
 import * as store from '../../../store.js'
 import { collabVenueOf } from '../venue.js'

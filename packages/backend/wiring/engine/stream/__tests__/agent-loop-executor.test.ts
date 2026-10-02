@@ -24,12 +24,12 @@ import {
   runAgentLoopPostResponseHooks,
   type AgentLoopExecutorState,
 } from '../agent-loop-executor.js'
-import { shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream } from '@onething/runtime/agent-loop'
+import { shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream } from '@onething/backend/runtime/agent-loop'
 import { triggerManager } from '../../triggers/index.js'
-import { runAfterAssistantResponseHooks } from '@onething/runtime/plugins/lifecycle.wiring'
-import type { saveMediaImage } from '@onething/runtime/media/save-image'
+import { runAfterAssistantResponseHooks } from '@onething/backend/runtime/plugins/lifecycle.wiring'
+import type { saveMediaImage } from '@onething/backend/runtime/media/save-image'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
-import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
 import type { StreamProcessor, StreamSender } from '../stream-processor.js'
 
 type SaveMediaImageInput = Parameters<typeof saveMediaImage>[0]
@@ -82,11 +82,11 @@ vi.mock('../../triggers/index.js', () => ({
   },
 }))
 
-vi.mock('@onething/runtime/plugins/lifecycle.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/lifecycle.wiring', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock('@onething/runtime/media/save-image', () => ({
+vi.mock('@onething/backend/runtime/media/save-image', () => ({
   saveMediaImage: mediaMocks.saveMediaImage,
 }))
 

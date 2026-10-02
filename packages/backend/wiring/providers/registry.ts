@@ -6,8 +6,8 @@
  */
 
 import { builtinProviders } from './builtin/index.js'
-import { createProviderRegistry } from '@onething/runtime/providers'
-import type { ProviderDefinition, ProviderInfo } from '@onething/runtime/providers/types.wiring'
+import { createProviderRegistry } from '@onething/backend/runtime/providers'
+import type { ProviderDefinition, ProviderInfo } from '@onething/backend/runtime/providers/types.wiring'
 
 const registry = createProviderRegistry<ProviderDefinition>(builtinProviders)
 
@@ -84,4 +84,4 @@ export function getProviderDefinition(providerId: string): ProviderDefinition | 
 }
 
 // Export types for convenience
-export type { ProviderDefinition, ProviderInfo, ProviderConfig } from '@onething/runtime/providers/types.wiring'
+export type { ProviderDefinition, ProviderInfo, ProviderConfig } from '@onething/backend/runtime/providers/types.wiring'

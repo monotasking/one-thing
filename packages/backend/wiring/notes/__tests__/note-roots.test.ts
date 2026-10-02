@@ -11,7 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { NoteVault } from '@onething/runtime/notes'
+import type { NoteVault } from '@onething/backend/runtime/notes'
 
 const backend = vi.hoisted(() => ({ handle: null as unknown }))
 vi.mock('../../../current.js', () => ({

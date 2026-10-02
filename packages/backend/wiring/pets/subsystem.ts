@@ -48,7 +48,7 @@
  * `hushed` 之前算「正在说」(`PetHost.markVoicing`),于是这段时间里电台来认领会等它说完。
  */
 
-import type { ResourceEventHub, ResourceRegistry } from '@onething/core/resource'
+import type { ResourceEventHub, ResourceRegistry } from '@onething/backend/core/resource'
 import {
   PET_CURRENT_PATH,
   PET_RESOURCE_SCHEME,
@@ -68,9 +68,9 @@ import {
   type PetRosterEntry,
   type PetSummary,
   type Utterance,
-} from '@onething/runtime/pets'
+} from '@onething/backend/runtime/pets'
 import type { EventBus } from '../../events/event-bus.js'
-import { audioDurationMs } from '@onething/runtime/voice/audio-duration'
+import { audioDurationMs } from '@onething/backend/runtime/voice/audio-duration'
 import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '../music/host-voice.js'
 import { getLogger } from '../logging/index.js'
 import { PetLedgerStore } from './ledger-store.js'

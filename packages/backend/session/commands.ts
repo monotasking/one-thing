@@ -55,7 +55,7 @@ import {
   findLastPreviewableMessage,
   type SessionAccountState,
   type SessionAccountTruncationEffect,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 import type { sessionCommandEvents } from './command-events.js'
 import type { sessionReads } from './reads.js'
 import { getCurrentBackend } from '../current.js'

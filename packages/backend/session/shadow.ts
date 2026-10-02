@@ -40,7 +40,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   getOnethingLogDir,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import {
   peekSessionProjection,
   resetSessionProjectionCache,

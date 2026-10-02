@@ -9,7 +9,7 @@
  * (轻量单测 / 已经收尾)就什么都不做。
  */
 import type { ProviderQuota } from '@shared/contracts/quota.js'
-import { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from '@onething/runtime/agent-loop/providers/provider-data-policy'
+import { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from '@onething/backend/runtime/agent-loop/providers/provider-data-policy'
 import { getCurrentBackendInstance } from '../../current.js'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { getLogger } from '../logging/index.js'

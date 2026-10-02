@@ -7,7 +7,7 @@
  * 里对应的方法。
  *
  * 只桩**仓本体**(`@onething/backend/store`)与四个装配侧端口,**投影不桩** ——
- * `@onething/runtime/sessions` 的那批 `*OnethingSession*` / `*ForIpc` 是真跑的,
+ * `@onething/backend/runtime/sessions` 的那批 `*OnethingSession*` / `*ForIpc` 是真跑的,
  * 所以这组用例证的是「域把端口接对了」,而不是「域自己又实现了一遍」。
  *
  * 值得钉的三件:
@@ -24,7 +24,7 @@ import path from 'node:path'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { collectSessionCascadeDeleteIds } from '@onething/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
 import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
 import { createSessionListQuery } from '../../session/index.js'
 import type { SessionCommands } from '../../session/commands.js'
@@ -219,7 +219,7 @@ describe('sessions RPC domain', () => {
 
     const [{ createResourceKernel, SessionResourceProvider }, { ToolRunner }] = await Promise.all([
       import('../../wiring/resource/index.js'),
-      import('@onething/core/toolkit'),
+      import('@onething/backend/core/toolkit'),
     ])
     const resourceKernel = createResourceKernel(validator => new ToolRunner({
       authorizer: { decide: async () => ({ kind: 'allow' as const }) },
@@ -574,7 +574,7 @@ describe('sessions RPC domain', () => {
     expect(Object.keys(emitted)).toEqual(['type', 'name'])
 
     const engineSource = fs.readFileSync(
-      new URL('../../../core/engine/core-stream-engine.ts', import.meta.url),
+      new URL('../../core/engine/core-stream-engine.ts', import.meta.url),
       'utf-8',
     )
     // 引擎那两发(正常 + 兜底标题)都长这样:type 一行、name 一行,再无第三格。

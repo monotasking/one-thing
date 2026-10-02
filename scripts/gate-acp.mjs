@@ -4,7 +4,7 @@
  * `docs/design/acp-integration-2026-09.md` §7 与 §11.1)。
  *
  * 它证的是**产物**:`dist/server/main.js` 起在一间临时 store 上,名册里只有一台假 agent
- * (`packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs`,真子进程、真 ndjson
+ * (`packages/backend/runtime/acp/__tests__/fixtures/fake-agent.mjs`,真子进程、真 ndjson
  * JSON-RPC,按环境变量剧本行事),全程只走 `POST /api/rpc` 与 `GET /api/events`,不 spawn 真 CLI。
  * 单测里的连接是同进程的;这道门照的是「装配好的 server 真的把 agent 起起来、真的把它说的话
  * 送到 SSE 与账本上」那条整链。
@@ -103,7 +103,7 @@ import { fileURLToPath } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const serverEntry = path.join(repoRoot, 'dist/server/main.js')
-const fakeAgent = path.join(repoRoot, 'packages/onething-runtime/src/acp/__tests__/fixtures/fake-agent.mjs')
+const fakeAgent = path.join(repoRoot, 'packages/backend/runtime/acp/__tests__/fixtures/fake-agent.mjs')
 const AGENT_ID = 'fake'
 /** A3-b 那几步用的第二台:同一只夹具,打开审批 / 文件 / 终端三条剧本,不设 `unattended`。 */
 const A3_AGENT_ID = 'fake-a3'
@@ -113,7 +113,7 @@ const AUTH_AGENT_ID = 'fake-auth'
 const CRASH_AGENT_ID = 'fake-crash'
 /** ⑳㉑ 用的第五台:自报 list / fork / load,目录里预置两条带历史的会话。 */
 const REMOTE_AGENT_ID = 'fake-remote'
-/** 退避那句话里一定有的几个字(`runtime/src/acp/reconnect-backoff.ts` 的 `acpReconnectRefusal`)。 */
+/** 退避那句话里一定有的几个字(`runtime/acp/reconnect-backoff.ts` 的 `acpReconnectRefusal`)。 */
 const BACKOFF_REFUSAL = 'automatic reconnect is paused'
 /** ⑯ 的无人应答超时(毫秒);⑪–⑭ 门答卡远快于它。 */
 const UNANSWERED_TIMEOUT_MS = 2000

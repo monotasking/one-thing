@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest'
 import {
   COLLAB_DEFAULT_MAX_CHAIN,
   COLLAB_DM_PAIR_MAX_CHAIN,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { maxChainFor } from '../room-runtime.js'
 
 interface RoomShape {

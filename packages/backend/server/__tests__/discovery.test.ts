@@ -18,7 +18,7 @@ import {
   writeHttpDiscovery as writeDiscovery,
   type HttpDiscoveryRecord,
 } from '../discovery.js'
-import { StoreLock } from '@onething/runtime/storage'
+import { StoreLock } from '@onething/backend/runtime/storage'
 
 describe('http discovery file', () => {
   let storePath: string
@@ -245,11 +245,12 @@ describe('http discovery file', () => {
 /**
  * **一把尺子**(C0,`docs/design/client-sdk-2026-09.md` §9 留账那条)。
  *
- * 判活与记录形状已经搬进 `@shared/backend/http-discovery.ts`,好让
- * `@onething/client/node`(禁 import backend / runtime)问同一个「core 活没活」。
- * 代价是那份 shared 模块必须自己解析 store 根目录 —— 于是有了两处三段解析。
+ * 记录形状在 `@shared/backend/http-discovery.ts`;读与判活在 server / client 各一份
+ * (server / client 拆分第②步:shared 不许碰 node),好让 `@onething/client/node`
+ * (禁 import backend)问同一个「core 活没活」。代价是 client 那份必须自己解析 store
+ * 根目录(`packages/client/http-discovery-io.ts`)—— 于是有了两处三段解析。
  * **它们不许分叉,而这件事由这一格钉住,不由注释保证**:上面那句注释一旦成了
- * 谎话(比如 shared 那边忘了认 `ONETHING_STORE_PATH`),这里当场红。
+ * 谎话(比如 client 那边忘了认 `ONETHING_STORE_PATH`),这里当场红。
  */
 describe('discovery 的 store 解析与 @shared 那份同形', () => {
   let storePath: string
@@ -269,8 +270,8 @@ describe('discovery 的 store 解析与 @shared 那份同形', () => {
 
   it('显式 storePath / 环境变量 / 缺省家目录 三段都对得上', async () => {
     const { resolveOnethingStoreRoot, httpDiscoveryPathIn } =
-      await import('@shared/backend/http-discovery.js')
-    const { getOnethingStorePath } = await import('@onething/runtime/storage')
+      await import('@onething/client/http-discovery-io.js')
+    const { getOnethingStorePath } = await import('@onething/backend/runtime/storage')
 
     // ① 环境变量那一段
     expect(resolveOnethingStoreRoot()).toBe(getOnethingStorePath())

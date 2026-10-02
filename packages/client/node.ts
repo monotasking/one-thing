@@ -5,22 +5,24 @@
  * 什么?」。CLI(下一批 C3)拿到就 `createHttpTransport` 当 core 的客户端,拿不到
  * 再走今天的自装配路。
  *
- * **判活与 `apps/server/src/main.ts` 的拒启判据是同一份代码**
- * (`@shared/backend/http-discovery.ts`,C0 抽出来的;§9 留账那条):pid 活着
- * **且**端口连得上。两边各写一份的话,CLI 与 server 会对「core 活没活」各说各话。
+ * **判活与 `apps/server/src/main.ts` 的拒启判据是同一把尺子**:pid 活着**且**端口连得上。
+ * 记录形状在 `@shared/backend/http-discovery.ts`(C0 抽出来的;§9 留账那条);读与判活这一半
+ * 碰 node,shared 放不下,server / client 拆分第②步起两边各一份(本包 `http-discovery-io.ts` 与
+ * `packages/backend/server/http-discovery-io.ts`),逐字同形,对拍测试钉住两份给同一个答案 ——
+ * 不然 CLI 与 server 会对「core 活没活」各说各话。
  *
  * 单列成子路径而不是并进 `index.ts`,是因为它 import `node:fs` / `node:net` ——
  * 并进去会让浏览器打包器在一个根本不会走到的分支上炸,或者更糟:静默塞进一个
  * polyfill。子路径让「引没引 Node 面」在 import 语句上一眼看得见。
  */
+import { httpDiscoveryUrl } from '@shared/backend/http-discovery.js'
+import type { HttpDiscoveryOwner, HttpDiscoveryRecord } from '@shared/backend/http-discovery.js'
 import {
   httpDiscoveryPathIn,
-  httpDiscoveryUrl,
   isHttpDiscoveryAlive,
   readHttpDiscoveryAt,
   resolveOnethingStoreRoot,
-} from '@shared/backend/http-discovery.js'
-import type { HttpDiscoveryOwner, HttpDiscoveryRecord } from '@shared/backend/http-discovery.js'
+} from './http-discovery-io.js'
 
 export type { HttpDiscoveryOwner, HttpDiscoveryRecord }
 
@@ -73,9 +75,9 @@ export async function readCoreDiscovery(
   }
 }
 
+export { httpDiscoveryUrl } from '@shared/backend/http-discovery.js'
 export {
   httpDiscoveryPathIn,
-  httpDiscoveryUrl,
   isHttpDiscoveryAlive,
   resolveOnethingStoreRoot,
-} from '@shared/backend/http-discovery.js'
+} from './http-discovery-io.js'

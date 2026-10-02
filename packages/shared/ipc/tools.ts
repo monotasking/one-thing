@@ -49,7 +49,7 @@ export interface ToolDefinition {
   autoExecute: boolean       // Whether to auto-execute when called
   /**
    * @deprecated R4b —— 概念已退役。权限只认 `Intent.effects`(见
-   * `packages/core/toolkit/effects.ts` 的策略表);这个字段活着只是因为契约与
+   * `packages/backend/core/toolkit/effects.ts` 的策略表);这个字段活着只是因为契约与
    * 渲染层还在读它,它的值由 `app/toolkit/guard-projection.ts` 从 `spec.effects`
    * **派生**。没有任何工具作者再写它,也没有任何判定读它做决定。
    */
@@ -274,7 +274,7 @@ export interface BackgroundJobsListRequest {
 export interface BackgroundJobsListResponse {
   success: boolean
   /**
-   * 后台任务的形状住在产品层(`runtime/src/tools/background-jobs.ts` 的
+   * 后台任务的形状住在产品层(`runtime/tools/background-jobs.ts` 的
    * `BackgroundJob`),契约层不抄第二份 —— 两个消费者都是就地 `as` 成自己的视图
    * 类型,与迁移前 `jobs?: Array<Record<string, any>>` 那一格同义。
    */

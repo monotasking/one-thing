@@ -27,14 +27,14 @@
 import {
   formatCollabAgentHandle,
   formatCollabWakePoke,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { getEventBus } from '../../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'

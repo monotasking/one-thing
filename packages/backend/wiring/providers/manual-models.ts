@@ -1,7 +1,7 @@
 /**
  * 手填模型的装配半边(批 2,`docs/design/provider-settings-rework-2026-09.md` §4)。
  *
- * 判据全在产品层的纯函数里(`@onething/runtime/providers/manual-models`);这里只做
+ * 判据全在产品层的纯函数里(`@onething/backend/runtime/providers/manual-models`);这里只做
  * 装配层才知道的事 —— 目录住在全局 `ai.modelCatalog`、勾选住在每个空间的
  * `providers.json`,两半怎么读、怎么一发写完。
  *
@@ -28,14 +28,14 @@ import {
   applyRemoveManualModel,
   foldOrphansIntoManual,
   type ManualModelEditResult,
-} from '@onething/runtime/providers/manual-models'
-import type { OnethingCatalogModelEntry } from '@onething/runtime/providers/model-registry'
+} from '@onething/backend/runtime/providers/manual-models'
+import type { OnethingCatalogModelEntry } from '@onething/backend/runtime/providers/model-registry'
 import {
   createEmptySpaceProviderSettings,
   readSpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
-import { getSpacesStore } from '@onething/runtime/spaces/store'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+} from '@onething/backend/runtime/spaces/provider-settings'
+import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { getSettings, getSpaceSettings, saveSettings } from '../../stores/settings.js'
 
 type ConfigLike = { selectedModels?: unknown; model?: unknown } | undefined

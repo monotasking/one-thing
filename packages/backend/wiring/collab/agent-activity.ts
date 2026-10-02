@@ -47,21 +47,21 @@ import {
   collabRoomActiveLeases,
   type CollabAgentAccount,
   type CollabRoomAccount,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 // 两个内核的**只读**口(E6 的 `waitingOn`)。引的是 core 而不是装配层的门面:
 // 这个文件会被 IPC 层直接调用,一条通往门面的边会把「读一份快照」重新变成
 // 「把半个主进程拉起来」—— 与文件头那条端口纪律同一个理由。
-import { Interaction } from '@onething/core/interaction'
-import { Permission } from '@onething/core/permission'
+import { Interaction } from '@onething/backend/core/interaction'
+import { Permission } from '@onething/backend/core/permission'
 
 import { getEventBus } from '../../events/index.js'
-import { collabV3TurnsOfAgent } from '@onething/runtime/collab/actors/turn-context.wiring'
+import { collabV3TurnsOfAgent } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 import {
   clearCollabSnapshotThrottle,
   createCollabSnapshotThrottle,
   scheduleCollabSnapshot,
   type CollabSnapshotThrottle,
-} from '@onething/runtime/collab/snapshot-throttle'
+} from '@onething/backend/runtime/collab/snapshot-throttle'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

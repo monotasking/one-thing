@@ -22,13 +22,13 @@
  *  - `assistant/part-end.synthetic` —— 这一格是引擎直接落到消息上的:不受
  *    "这一轮收齐了吗"那道闸管(它没有 `turn-end`),也不派生 `turnIndex`
  *    (消息上那一格就没有);
- *  - `onething-blob://<hash>` —— 正文里的 blob 占位符(`core/session/projection/blobs.ts`)。
+ *  - `onething-blob://<hash>` —— 正文里的 blob 占位符(`shared/session/projection/blobs.ts`)。
  *
  * **老账本照旧**:里面那些 `kind:'image'` 的 part 仍然按 A2 的豁免物化成
  * image part(修复前的事实,一个字节不改)。
  */
 
-import { projectionBlobUrl } from '@onething/core/session'
+import { projectionBlobUrl } from '@shared/session/projection/blobs'
 import { nextSessionRequestIndex } from './event-log.js'
 import { writeSessionEvent } from './event-writer.js'
 import { putSessionBlob } from './blob-store.js'

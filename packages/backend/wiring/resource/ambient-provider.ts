@@ -2,15 +2,15 @@ import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
 import {
   AMBIENT_HERE_PATH,
   AMBIENT_RESOURCE_SCHEME,
   ambientResourceSpecFor,
   type AmbientSource,
-} from '@onething/runtime/ambient'
+} from '@onething/backend/runtime/ambient'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('ambient')

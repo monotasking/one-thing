@@ -125,7 +125,7 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
    * 仍然在扫光。
    *
    * 判据是**「它是不是序列上的最后一件」**,不是账本上的 `part.ended`。后者今天
-   * 到不了这一层:`packages/core/session/projection/reducer.ts` 的 `assistant/part-end`
+   * 到不了这一层:`packages/shared/session/projection/reducer.ts` 的 `assistant/part-end`
    * 确实在 part 上写了 `ended`,但 `materializeContentParts` 交出去的那一份把这一格
    * 丢掉了;而顶部推理(`message.reasoning`)在投影里压根就是一整串合并好的字,
    * **没有 part 身份**可言。所以判据取「序列上还有没有别的东西排在它后面」——

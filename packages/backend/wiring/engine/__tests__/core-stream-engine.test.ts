@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   normalizeCoreStreamError,
   resolveStreamPermissionMode,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 // 错误码说明归各家自己的 manifest,由 provider 注册表加载时经 core 的查询口接进来
 // (`configureProviderErrorCodeDescriber`)。core 自己不认识任何一家,所以这里要把注册表载上。
-import '@onething/runtime/providers/manifest'
+import '@onething/backend/runtime/providers/manifest'
 
 describe('core stream engine helpers', () => {
   it('resolves permission mode from session, settings, then default fallback', () => {

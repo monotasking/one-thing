@@ -1,11 +1,11 @@
 import {
   createOpenAICompatibleAgentProvider as createCoreOpenAICompatibleAgentProvider,
   type OpenAICompatibleAgentProviderOptions,
-} from '@onething/runtime/agent-loop/providers'
+} from '@onething/backend/runtime/agent-loop/providers'
 import { createRequiredAppFetch } from '../../../provider-binding/bound-fetch.js'
-import type { AgentProvider } from '@onething/core/agent-loop'
+import type { AgentProvider } from '@onething/backend/core/agent-loop'
 
-export type { OpenAICompatibleAgentProviderOptions } from '@onething/runtime/agent-loop/providers'
+export type { OpenAICompatibleAgentProviderOptions } from '@onething/backend/runtime/agent-loop/providers'
 
 export function createOpenAICompatibleAgentProvider(options: OpenAICompatibleAgentProviderOptions): AgentProvider {
   return createCoreOpenAICompatibleAgentProvider({

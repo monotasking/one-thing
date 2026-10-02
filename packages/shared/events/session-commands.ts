@@ -180,7 +180,7 @@ export interface PermissionRespondCommand {
    */
   toolCallId?: string
   /**
-   * 与 `Permission.Response` 逐字同形(`packages/core/permission/index.ts`)。
+   * 与 `Permission.Response` 逐字同形(`packages/backend/core/permission/index.ts`)。
    * `'always'` = 本项目里始终允许这个应用做这一类事;只有当那次 ask 的
    * `alwaysScope` 在场时它才是合法应答,否则内核结构化忽略。
    * `'reject-always'` 只在那次 ask 带着 `choices` 且其中有这一格时合法(A3-a)。

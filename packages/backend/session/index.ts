@@ -13,7 +13,7 @@ import {
   createEmptySessionState,
   collectSessionCascadeDeleteIds,
   type SessionState,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 import { getCurrentBackend } from '../current.js'
 import { createSessionEventLayer } from './event-layer.js'
 import { createSessionCommands } from './commands.js'
@@ -21,7 +21,7 @@ import { createSessionReads, type SessionHistoryBuilder, type SessionReads } fro
 import * as store from '../stores/sessions.js'
 import type { SessionsListRequest } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import { getOnethingSessionsDir } from '@onething/runtime/storage'
+import { getOnethingSessionsDir } from '@onething/backend/runtime/storage'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { createSessionAccess, type SessionOwnershipRecord, type SessionAccessContext } from './access.js'
 import { createSessionListQuery } from './queries.js'

@@ -30,7 +30,7 @@
  * 一次修复,是一次改名。留着,并在这里说清它判的是**路径**不是目录。
  */
 
-import type { SandboxPolicy } from '@onething/core/toolkit'
+import type { SandboxPolicy } from '@onething/backend/core/toolkit'
 
 /**
  * 这个路径不许读 / 写。

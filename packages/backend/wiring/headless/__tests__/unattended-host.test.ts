@@ -9,7 +9,7 @@
  * 装配被替身掉:这里问的不是「后端能不能起来」,那是 `assembly-lifecycle` 的事。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isHostUnattended } from '@onething/runtime/permissions/unattended'
+import { isHostUnattended } from '@onething/backend/runtime/permissions/unattended'
 
 const disposers: Array<{ label: string; dispose: () => void | Promise<void> }> = []
 let assembleFails = false
@@ -64,7 +64,7 @@ describe('HeadlessBackend 的无人值守声明', () => {
   })
 
   it('A3-b:守护进程挂 ACP 的审批 / 文件 / 终端三只桥,关机时一并摘掉', async () => {
-    const { ACPManager } = await import('@onething/runtime/acp')
+    const { ACPManager } = await import('@onething/backend/runtime/acp')
     const { HeadlessBackend } = await import('../backend.js')
     const backend = new HeadlessBackend()
     await backend.start({ storePath: '/tmp/onething-unattended-host-test' })

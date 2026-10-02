@@ -35,7 +35,7 @@ export interface SessionsPort {
    * 建一条会话(D1 开工批)。
    *
    * **不带 name** 是刻意的:缺席时后端自己落 `'New Chat'`
-   * (`runtime/src/sessions/ipc-operations.ts` 的 `options.name || … || 'New Chat'`),
+   * (`runtime/sessions/ipc-operations.ts` 的 `options.name || … || 'New Chat'`),
    * 而会话标题是**存进账本的数据**不是界面文案 —— 由渲染层按当下语言现造一个,
    * 换一次语言之后老会话的名字就成了说谎的那一格。默认名归后端,只有一个产地。
    *

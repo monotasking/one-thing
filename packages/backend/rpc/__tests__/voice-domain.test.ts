@@ -72,7 +72,7 @@ async function loadDomain() {
   const [registry, domain, hostPorts] = await Promise.all([
     import('../registry.js'),
     import('../domains/voice.js'),
-    import('@onething/runtime/voice/host-ports.wiring'),
+    import('@onething/backend/runtime/voice/host-ports.wiring'),
   ])
   return { ...registry, ...domain, ...hostPorts }
 }
@@ -106,7 +106,7 @@ describe('voice RPC domain', () => {
     dispose = undefined
     const { resetRpcRegistryForTests } = await import('../registry.js')
     resetRpcRegistryForTests()
-    const { resetVoiceHostForTests } = await import('@onething/runtime/voice/host-ports.wiring')
+    const { resetVoiceHostForTests } = await import('@onething/backend/runtime/voice/host-ports.wiring')
     resetVoiceHostForTests()
     vi.resetModules()
   })

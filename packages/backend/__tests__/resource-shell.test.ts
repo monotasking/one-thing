@@ -306,7 +306,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
    * `catalog.unregister`,第二句断言红 —— 目录里会留着一只调不动的 `workbench`。
    */
   it('K3-a 露面:mountShell 之后 workbench 在工具目录里,unmountShell 之后不在', async () => {
-    const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
     const catalog = getToolkitCatalog()!
     // 上一条用例把这扇壳摘掉了 —— 所以此刻它本来就不该在目录里。
     expect(catalog.has('workbench')).toBe(false)
@@ -316,7 +316,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     await Promise.resolve()
     expect(catalog.has('workbench')).toBe(true)
     // 它不进「这台宿主注册了哪些工具」那份清单 —— 与 session 同一条判据。
-    const { toolkitCatalogToolDefinitions } = await import('@onething/runtime/toolkit/catalog-projection.wiring')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection.wiring')
     expect((toolkitCatalogToolDefinitions() ?? []).map(tool => tool.id)).not.toContain('workbench')
 
     await backend.shellResources.unmountShell(SHELL)

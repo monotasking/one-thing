@@ -5,24 +5,24 @@ import {
   streamOnethingAgentLoopChunks,
   type BuildOnethingAgentLoopStreamRuntimeResult,
   type OnethingAgentLoopContextBudget,
-} from '@onething/runtime/agent-loop'
+} from '@onething/backend/runtime/agent-loop'
 import type {
   AgentLoopOptions,
   AgentLoopResult,
   AgentMessage,
   AgentProviderStreamChunk,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 import {
   getAgentLoopTransientTail,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 import * as store from '../../../store.js'
 import { sessionCommands } from '../../../session/commands.js'
 import { sessionReads } from '../../../session/reads.js'
 import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
-import { scratchpadRuntimeHooks } from '@onething/runtime/scratchpad/service-bound'
+import { scratchpadRuntimeHooks } from '@onething/backend/runtime/scratchpad/service-bound'
 import { resolveAgentProfileForSessionObject } from '../../agents/profile.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
-import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wiring'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index.wiring'
 import * as modelRegistry from '../../providers/model-registry.js'
 import { createAgentProviderFromRuntime } from '../../providers/agent-runtime.js'
 import type { ChatMessage, ChatSession, SkillDefinition } from '@shared/ipc.js'
@@ -30,26 +30,26 @@ import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import type { StreamContext } from './stream-processor.js'
 import { buildPrompt } from '../prompt/system-prompt.js'
-import { SessionTurnContext, type SessionTurnContextStore } from '@onething/runtime/engine/session-turn-context.wiring'
+import { SessionTurnContext, type SessionTurnContextStore } from '@onething/backend/runtime/engine/session-turn-context.wiring'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { executeToolDirectly } from './tool-execution.js'
 import { compactSessionContext } from '../context-compact.js'
 import * as contextCompact from '../context-compact.js'
 import { getEventBus } from '../../../events/index.js'
-import { resolvePromptReferences } from '@onething/runtime/prompts/resolver.wiring'
-import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
+import { resolvePromptReferences } from '@onething/backend/runtime/prompts/resolver.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../../logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingAgentLoopLogger } from '@onething/runtime/agent-loop/stream-runtime'
-import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingAgentLoopLogger } from '@onething/backend/runtime/agent-loop/stream-runtime'
+import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/runtime/toolkit/execution-types.wiring'
 import type { ContextCompactResult } from '../context-compact.js'
 import type { PromptRequestMessage } from '../prompt/system-prompt.js'
-import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/core/engine'
+import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/core/engine'
 import type { ProviderConfigWithKey } from './stream-executor.js'
 import type { AppSettings, ContentPart, ToolDefinition } from '@shared/ipc.js'
-import type { OnethingAgentLoopRuntimeHostAdapters } from '@onething/runtime/agent-loop/stream-runtime'
+import type { OnethingAgentLoopRuntimeHostAdapters } from '@onething/backend/runtime/agent-loop/stream-runtime'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

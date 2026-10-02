@@ -7,9 +7,9 @@ import {
   type TodoPlanDocument,
   type TodoPlanSnapshot,
   type TodoPlanUpdateRequest,
-} from '@onething/runtime/todo-plan'
+} from '@onething/backend/runtime/todo-plan'
 import { getSettings } from '../../stores/settings.js'
-import { getOnethingStorePath } from '@onething/runtime/storage'
+import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { getCurrentBackendInstance } from '../../current.js'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getLogger } from '../logging/index.js'

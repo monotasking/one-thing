@@ -32,7 +32,7 @@
  *    升级而来,见 `guardForeignWriter`),绝不盲写。
  *    `surfaceOp replace` 是按 seq 区间遮蔽的,重复 seq 会变成静默的历史错乱。
  *
- * 类型与纯编解码在 core(`@onething/core/session`);这里只负责路径、文件、
+ * 类型与纯编解码在 core(`@onething/backend/core/session`);这里只负责路径、文件、
  * 计数器与队列。
  */
 
@@ -44,7 +44,7 @@ import {
   decodeSessionLogEventLine,
   encodeSessionLogEventLine,
   parseSessionLogEventLog,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 import {
   collectSessionBlobRefHashes,
   type SessionLogEventDataFor,
@@ -59,10 +59,10 @@ import {
   type SessionEventDataFor,
   type SessionEventRecord,
   type SessionEventType,
-} from '@onething/runtime/sessions/session-events'
+} from '@onething/backend/runtime/sessions/session-events'
 import {
   getOnethingSessionsDir,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import {
   countSessionEventFailure,
   flushSessionEventStats,

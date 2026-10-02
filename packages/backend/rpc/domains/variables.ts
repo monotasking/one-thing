@@ -10,7 +10,7 @@
  *  - `app/server/http.ts` 的三条 REST 路由与 `server/runtime.ts` 里
  *    **只被这三条路由用到**的 `variables` facade adapter。
  *
- * 这一层只做一件事:**把注册表接到 `@onething/runtime/variables` 的依赖注入投影上**。
+ * 这一层只做一件事:**把注册表接到 `@onething/backend/runtime/variables` 的依赖注入投影上**。
  * 错误码(`VariableError.code` → `{ success:false, error, code }`)与 `SetInput`
  * 的拆包都在那批投影里,传输面不复述。
  *
@@ -30,8 +30,8 @@ import {
   deleteOnethingVariableForIpc,
   listOnethingVariablesForIpc,
   setOnethingVariableForIpc,
-} from '@onething/runtime/variables'
-import { getVariableRegistry } from '@onething/runtime/variables/registry'
+} from '@onething/backend/runtime/variables'
+import { getVariableRegistry } from '@onething/backend/runtime/variables/registry'
 import type { VariablesRoutes } from '@shared/ipc/variables.js'
 
 export const variablesRpcHandlers: RpcRouteHandlers<VariablesRoutes> = {

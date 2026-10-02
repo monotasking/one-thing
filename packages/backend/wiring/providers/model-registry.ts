@@ -3,7 +3,7 @@
  *
  * Electron main owns host adapters here: settings persistence, bound fetch, and
  * provider-direct fallback hooks. Model metadata conversion/query logic lives in
- * @onething/runtime/providers.
+ * @onething/backend/runtime/providers.
  */
 
 import type { OpenRouterModel } from "@shared/ipc.js";
@@ -32,28 +32,28 @@ import {
 	type OnethingModelsDevResponse,
 	type OnethingOpenRouterModel,
 	type OnethingProviderModelConfigs,
-} from "@onething/runtime/providers";
+} from "@onething/backend/runtime/providers";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
 	createModelsDevCache,
 	MODELS_DEV_CACHE_FILE_NAME,
-} from "@onething/runtime/providers/models-dev-cache";
-import { getOnethingCachePath } from "@onething/runtime/storage/paths";
+} from "@onething/backend/runtime/providers/models-dev-cache";
+import { getOnethingCachePath } from "@onething/backend/runtime/storage/paths";
 import { getSettings, getSpaceSettings, saveSettings } from "../../stores/settings.js";
-import { fetchProviderDirectModels, type ModelsListMapping } from "@onething/runtime/providers/models-endpoint";
-import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
+import { fetchProviderDirectModels, type ModelsListMapping } from "@onething/backend/runtime/providers/models-endpoint";
+import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "./space-credentials.js";
 import { createRequiredAppFetch } from "../../provider-binding/bound-fetch.js";
 import {
 	VENDOR_RUNTIMES,
 	type VendorFallbackModels,
-} from "@onething/runtime/providers/vendors/runtimes";
+} from "@onething/backend/runtime/providers/vendors/runtimes";
 import { consolePort, getLogger } from '../logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingModelRegistryRefreshLogger } from '@onething/runtime/providers/model-registry'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingModelRegistryRefreshLogger } from '@onething/backend/runtime/providers/model-registry'
 import type { AppSettings } from '@shared/ipc.js'
-import type { OnethingModelRegistryRefreshAdapters } from '@onething/runtime/providers/model-registry'
+import type { OnethingModelRegistryRefreshAdapters } from '@onething/backend/runtime/providers/model-registry'
 
 const log = getLogger('providers.registry')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -330,7 +330,7 @@ export async function modelSupportsTemperature(
 }
 
 // modelSupportsReasoning(Sync) deleted 2026-07-18 — reasoning support is
-// resolved by @onething/runtime/providers/model-capability now.
+// resolved by @onething/backend/runtime/providers/model-capability now.
 
 export async function modelSupportsImageGeneration(
 	modelId: string,

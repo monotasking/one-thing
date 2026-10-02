@@ -14,7 +14,7 @@ vi.mock('../settings.js', () => ({
 // 概念)。这里连它一起替掉 —— 真会话仓库太重,而这两行判据本身在
 // spaces/__tests__ 里有真实覆盖。
 vi.mock('../sessions.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     getSession: (id: string) => mocks.sessions.get(id),
     resolveSessionSpaceId: (id: string | undefined | null) => {
@@ -26,8 +26,8 @@ vi.mock('../sessions.js', async () => {
 
 // overlay 的落盘/判废在 spaces/__tests__/overlay.test.ts 里测真的;这里只替换
 // 「某个 space 登记了哪些目录」这一格,合并/去重规则仍用真实实现。
-vi.mock('@onething/runtime/spaces/overlay', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/runtime/spaces/overlay')>()
+vi.mock('@onething/backend/runtime/spaces/overlay', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/spaces/overlay')>()
   return {
     ...actual,
     getSpaceOverlayConnectedDirectories: (spaceId: string) => mocks.overlays.get(spaceId) ?? [],

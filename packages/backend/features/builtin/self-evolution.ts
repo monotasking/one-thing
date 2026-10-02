@@ -84,7 +84,7 @@
  * `mountFeature` 真的调用 `mount` 的那一刻
  * (`app/__tests__/import-side-effect-free.test.ts`)。
  */
-import { getToolkitCatalog } from '@onething/runtime/toolkit'
+import { getToolkitCatalog } from '@onething/backend/runtime/toolkit'
 import { FeatureToolRuntime, registerFeatureTools } from '../../wiring/toolkit/catalog.js'
 import type { FeatureContext, FeatureDefinition } from '../index.js'
 

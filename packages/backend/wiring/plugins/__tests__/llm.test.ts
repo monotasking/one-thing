@@ -6,7 +6,7 @@
  * 未配置时的 unsupported。声明门与输入校验在 core 那一份(core/plugins llm.test.ts)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '@onething/core/plugins'
+import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '@onething/backend/core/plugins'
 
 const settingsRef: { current: any } = { current: null }
 const generateChatResponse = vi.fn()
@@ -15,7 +15,7 @@ const recordUsage = vi.fn()
 vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => settingsRef.current,
 }))
-vi.mock('@onething/runtime/providers/env.wiring', () => ({
+vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
 vi.mock('../../providers/index.js', () => ({

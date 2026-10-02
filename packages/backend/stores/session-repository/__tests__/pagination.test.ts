@@ -9,7 +9,7 @@ import {
   getMessagesPageFromJson,
   resolveSessionMessagesPage,
   resolveSessionUserMessageMarkers,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 function message(index: number, role: ChatMessage['role'] = 'assistant'): ChatMessage {
   return {

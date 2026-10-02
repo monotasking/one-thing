@@ -35,7 +35,7 @@ import {
   parseAcpRegistryIndex,
   rebaseManifest,
   type AcpRegistryEntry,
-} from '@onething/runtime/acp/manifest'
+} from '@onething/backend/runtime/acp/manifest'
 import { getLogger } from '../logging/index.js'
 import { detectAgent, locateAgentBin } from './detect.js'
 

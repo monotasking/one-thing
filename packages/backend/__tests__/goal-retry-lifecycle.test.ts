@@ -62,7 +62,7 @@ it('cancels a real Backend goal retry on shutdown and flushes pending usage befo
     await scanEntered
     const stopping = backend.dispose()
     await Promise.resolve()
-    const { inspectStoreLock } = await import('@onething/runtime/storage/store-lock')
+    const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
     expect(inspectStoreLock({ storePath: directory }).status).toBe('held')
     releaseScan!()
     await stopping

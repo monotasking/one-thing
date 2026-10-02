@@ -19,16 +19,16 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '@onething/core/toolkit'
+import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '@onething/backend/core/toolkit'
 import {
   listBackgroundJobs,
   readBackgroundJobOutput,
   refreshBackgroundJob,
   stopBackgroundJob,
   type BackgroundJob,
-} from '@onething/runtime/tools/background-jobs'
-import type { BashOperations } from '@onething/runtime/tools/bash-executor'
-import { createLocalBashOperations } from '@onething/runtime/tools/bash-executor'
+} from '@onething/backend/runtime/tools/background-jobs'
+import type { BashOperations } from '@onething/backend/runtime/tools/bash-executor'
+import { createLocalBashOperations } from '@onething/backend/runtime/tools/bash-executor'
 import { getSettings } from '../../stores/settings.js'
 
 /** 轮询间隔:`events()` 靠它把"日志长长了 / 进程没了"变成一条流。 */

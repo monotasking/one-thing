@@ -13,17 +13,17 @@ const state = vi.hoisted(() => ({
 vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => ({ ai: { customProviders: state.global } }),
 }))
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => Object.keys(state.spaces).filter((id) => id !== 'default').map((id) => ({ id })) }),
 }))
-vi.mock('@onething/runtime/spaces/provider-settings', () => ({
+vi.mock('@onething/backend/runtime/spaces/provider-settings', () => ({
   readSpaceProviderSettings: (spaceId: string) =>
     state.spaces[spaceId] ? { provider: '', providers: {}, customProviders: state.spaces[spaceId] } : null,
 }))
 
-import { getProviderManifest, resetProviderManifestRegistryForTests } from '@onething/runtime/providers/manifest'
+import { getProviderManifest, resetProviderManifestRegistryForTests } from '@onething/backend/runtime/providers/manifest'
 import { CustomProviderManifestSync } from '../custom-manifests.js'
-import { getDialect } from '@onething/runtime/agent-loop/providers/base/dialect'
+import { getDialect } from '@onething/backend/runtime/agent-loop/providers/base/dialect'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,

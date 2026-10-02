@@ -4,9 +4,9 @@ import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createOnethingRuntimeFacade } from '@onething/core'
+import { createOnethingRuntimeFacade } from '@onething/backend/core'
 import { defineRouter } from '@shared/ipc/router'
-import type { CorePluginCommandContext } from '@onething/core/plugins'
+import type { CorePluginCommandContext } from '@onething/backend/core/plugins'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '../../rpc/registry.js'
 import { pluginsRpcHandlers } from '../../rpc/domains/plugins.js'
 import { pluginsRouter } from '@shared/ipc/plugins.js'
@@ -22,7 +22,7 @@ import { toolsRouter } from '@shared/ipc/tools.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
-import { Permission, resetPermissionGrantsForTests } from '@onething/core/permission'
+import { Permission, resetPermissionGrantsForTests } from '@onething/backend/core/permission'
 import { createDefaultSettings } from '../../stores/settings-defaults.js'
 import { chatRouter } from '@shared/ipc/chat.js'
 import { createOnethingHttpServer as createRawHttpServer, type OnethingHttpServerOptions } from '../http.js'
@@ -1006,7 +1006,7 @@ describe('createOnethingHttpServer', () => {
     // 直接往 alice 那份 owner 媒体库里存一张图 —— 从前这一步走
     // `POST /api/media/save-image`,那条路由随数据面一起迁走了,而它写的是
     // 同一台 `MediaLibraryService`、同一个目录布局。
-    const { MediaLibraryService } = await import('@onething/runtime/media')
+    const { MediaLibraryService } = await import('@onething/backend/runtime/media')
     const aliceMediaRoot = join(dataRoot, 'owners', 'alice', 'media-workspace', 'media')
     const sourceSession = await createSession(baseUrlValue, 'Alice media source', aliceHeaders)
     const aliceLibrary = new MediaLibraryService({

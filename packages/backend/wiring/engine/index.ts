@@ -8,12 +8,12 @@
  */
 
 import type { StreamChunk } from '@shared/events/index.js'
-import type { CoreStreamEngineRuntime as CoreRuntime } from '@onething/core/engine'
+import type { CoreStreamEngineRuntime as CoreRuntime } from '@onething/backend/core/engine'
 import {
   createOnethingRuntimeFromStreamRuntime,
   type OnethingRuntime,
-} from '@onething/runtime/runtime'
-import type { CoreConversationRuntime } from '@onething/core/gateway-runtime'
+} from '@onething/backend/runtime/runtime'
+import type { CoreConversationRuntime } from '@onething/backend/core/gateway-runtime'
 import type { EventBus } from '../../events/event-bus.js'
 import type { StreamChannel } from '../../events/stream-channel.js'
 import {

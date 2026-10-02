@@ -17,14 +17,14 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '../../stores/defaults/settings.js'
-import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
+import { createDefaultVariablesFile } from '@onething/backend/runtime/variables/schema'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
+import { resetVariablesStoreForTests } from '@onething/backend/runtime/variables/store-bound'
 import { updateSettingsInMemory } from '../../stores/settings.js'
 import { markdownRpcHandlers } from '../domains/markdown.js'
 import { configureHostLocalTrust } from '../../server/host-trust.js'
-import { FolderVault } from '@onething/runtime/notes'
-import type { NoteVault } from '@onething/runtime/notes'
+import { FolderVault } from '@onething/backend/runtime/notes'
+import type { NoteVault } from '@onething/backend/runtime/notes'
 
 /**
  * 笔记领域的假件:一张「这条路径归哪个库」的表。

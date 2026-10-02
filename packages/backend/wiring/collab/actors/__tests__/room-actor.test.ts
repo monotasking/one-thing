@@ -3,13 +3,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/core/actors'
+import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/core/actors'
 import {
   classifyCollabRoomMessage,
   computeCollabChainCount,
   isCollabRoomFact,
   isCollabSayMessage,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import {
   collabActorRef,
   collabAgentRaiseHand,
@@ -22,7 +22,7 @@ import {
   type CollabActorVerb,
   type CollabResolvedFloorPolicy,
   type CollabRoomTranscriptMessage,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-collab-actor-'))
 // P0.2 ③:被测模块改走 `sessionReads` / `sessionCommands`,而它们静态依赖真的
@@ -31,7 +31,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-collab-actor-'
 vi.mock('../../../../session/reads.js', () => import('../../../../session/testing/facade-mock.js'))
 vi.mock('../../../../session/commands.js', () => import('../../../../session/testing/facade-mock.js'))
 
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
+vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
 const storeRootRef = { value: storeRoot }
 
 const {
@@ -43,8 +43,8 @@ const {
   createCollabRoomAccountFileStore,
   createCollabRoomAccountMemoryStore,
 } = await import('../index.js')
-type CollabRoomActorHost = import('@onething/runtime/collab/actors/room-actor.wiring').CollabRoomActorHost
-type CollabRoomAccountStore = import('@onething/runtime/collab/actors/room-account').CollabRoomAccountStore
+type CollabRoomActorHost = import('@onething/backend/runtime/collab/actors/room-actor.wiring').CollabRoomActorHost
+type CollabRoomAccountStore = import('@onething/backend/runtime/collab/actors/room-account').CollabRoomAccountStore
 
 afterAll(() => {
   fs.rmSync(storeRoot, { recursive: true, force: true })

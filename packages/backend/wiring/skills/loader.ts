@@ -1,17 +1,17 @@
 import {
   configureOnethingSkillsLoaderRuntime,
-} from '@onething/runtime/skills'
+} from '@onething/backend/runtime/skills'
 import {
   builtinMusicProviders,
   getMusicProvider,
-} from '@onething/runtime/music'
+} from '@onething/backend/runtime/music'
 import {
   listPluginSkillRoots,
-} from '@onething/runtime/skills/plugin-roots.wiring'
+} from '@onething/backend/runtime/skills/plugin-roots.wiring'
 import {
   findBuiltinResourcePath,
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import {
   getSettings,
 } from '../../stores/settings.js'
@@ -112,7 +112,7 @@ export {
   loadAllSkills,
   loadProjectSkillsForDirectory,
   readSkillFile,
-} from '@onething/runtime/skills'
+} from '@onething/backend/runtime/skills'
 export type {
   OnethingSkillsLoaderAdapters,
-} from '@onething/runtime/skills'
+} from '@onething/backend/runtime/skills'

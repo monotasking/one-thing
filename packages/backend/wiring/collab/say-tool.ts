@@ -39,9 +39,9 @@ import {
   resolveCollabSayRoomSessionId,
   stripCollabAgentHandles,
   type CollabAgentLike,
-} from '@onething/runtime/collab'
-import type { SayToolResult } from '@onething/runtime/toolkit'
-import { registerRetiredAgentToolName } from '@onething/core'
+} from '@onething/backend/runtime/collab'
+import type { SayToolResult } from '@onething/backend/runtime/toolkit'
+import { registerRetiredAgentToolName } from '@onething/backend/core'
 import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
@@ -59,7 +59,7 @@ import {
   collabV3RoomPostPort,
   resolveCollabV3SpeakRoute,
   type CollabV3SpeakPort,
-} from '@onething/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

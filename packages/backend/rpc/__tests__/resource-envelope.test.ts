@@ -7,8 +7,8 @@
  * 只看得见最终信封,看不见是这里折错的。
  */
 import { describe, expect, it } from 'vitest'
-import { Outcome, TOOL_CANCELLED_MESSAGE, textResult } from '@onething/core/toolkit'
-import { ReadOutcome } from '@onething/core/resource'
+import { Outcome, TOOL_CANCELLED_MESSAGE, textResult } from '@onething/backend/core/toolkit'
+import { ReadOutcome } from '@onething/backend/core/resource'
 import { foldOutcomeToEnvelope, foldReadOutcomeToEnvelope } from '../resource-envelope.js'
 
 class DomainSpecificError extends Error {

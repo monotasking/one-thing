@@ -9,7 +9,7 @@
  * the owning background task; they must not be mistaken for a completed call.
  */
 import { randomUUID } from "node:crypto";
-import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/core/agent-loop";
+import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/core/agent-loop";
 import { beginAuxiliaryModelRequest } from '../engine/auxiliary-model-checkpoint.js';
 import {
 	applyTurnDecision,
@@ -21,10 +21,10 @@ import {
 	renderTocTurnSystemPrompt,
 	type SessionSegment,
 	type SessionSegmentFile,
-} from "@onething/runtime/toc";
+} from "@onething/backend/runtime/toc";
 import {
   getOnethingSessionsDir,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { createUtilityProvider } from "../providers/utility-provider.js";
 import { billTocUsage } from "../usage/bill-side-line.js";
 import { getSettings } from "../../stores/settings.js";

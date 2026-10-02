@@ -88,7 +88,7 @@ vi.mock('../../../../session/commands.js', async () => {
 })
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 
@@ -215,11 +215,11 @@ const {
   setCollabRoomFrozen,
 } = await import('../../room-config.js')
 const { applyBoardAction, loadCollabBoard } = await import('../../board-store.js')
-const { createCollabScriptedMindPort } = await import('@onething/runtime/collab/actors/mind-port')
-const { createCollabScriptedWorkerPort } = await import('@onething/runtime/collab/actors/worker-child')
-const { createCollabScriptedRefereeJudgePort } = await import('@onething/runtime/collab/actors/referee-actor')
-const { collabAgentSessionId } = await import('@onething/runtime/collab')
-const { collabRoomAccountPath } = await import('@onething/runtime/collab/actors/room-account')
+const { createCollabScriptedMindPort } = await import('@onething/backend/runtime/collab/actors/mind-port')
+const { createCollabScriptedWorkerPort } = await import('@onething/backend/runtime/collab/actors/worker-child')
+const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/runtime/collab/actors/referee-actor')
+const { collabAgentSessionId } = await import('@onething/backend/runtime/collab')
+const { collabRoomAccountPath } = await import('@onething/backend/runtime/collab/actors/room-account')
 
 const ROOM = 'room-1'
 const CARD_TITLE = '把登录页的埋点补上'
@@ -268,7 +268,7 @@ function roomEvents(type: string): Array<Record<string, unknown>> {
   return mocks.emitted.filter(entry => entry.event.type === type).map(entry => entry.event)
 }
 
-const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/runtime/collab/digest-store')
+const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
 let digestStore: ReturnType<typeof createCollabDigestStore>
 let releaseDigestStore: () => void
 

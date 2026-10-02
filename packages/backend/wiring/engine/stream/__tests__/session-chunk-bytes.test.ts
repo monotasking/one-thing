@@ -9,7 +9,7 @@
  *
  * ## 怎么造的金样(下一个人要重录时照做)
  *
- * 1. `git checkout <搬家前的 commit> -- packages/core/session packages/backend/wiring/engine/stream/session-event-recorder.ts`
+ * 1. `git checkout <搬家前的 commit> -- packages/backend/core/session packages/backend/wiring/engine/stream/session-event-recorder.ts`
  * 2. `ONETHING_RECORD_CHUNK_BYTES=1 npx vitest run .../session-chunk-bytes.test.ts`
  *    —— 本文件只用 recorder 的公开面,所以在搬家前的树上照样跑得起来;
  * 3. 把生产代码换回来,不带 env 再跑一遍 —— 绿 = 逐字节相同。
@@ -25,11 +25,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

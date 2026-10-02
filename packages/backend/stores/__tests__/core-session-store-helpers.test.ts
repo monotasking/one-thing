@@ -42,7 +42,7 @@ import {
   sumSessionMessageUsage,
   syncSessionSideEffectWithReadyAdapters,
   updateSessionIndexMeta,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 describe('core session store helpers', () => {
   it('owns the default agent id used by session storage', () => {

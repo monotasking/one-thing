@@ -17,13 +17,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
 import type { SessionAssistantChunksEvent } from '@shared/session/events/types'
 import type { StreamDeltaStamp } from '@shared/events/index.js'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

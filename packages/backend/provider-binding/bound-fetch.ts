@@ -12,7 +12,7 @@ import {
   type OnethingHttpPolicyName,
   type OnethingHttpRequestOptions,
   type OnethingFetchFn,
-} from '@onething/runtime/providers'
+} from '@onething/backend/runtime/providers'
 import { getSettings } from '../stores/settings.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
 

@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/ipc.js'
-import type { SearchPrincipal } from '@onething/core/search'
+import type { SearchPrincipal } from '@onething/backend/core/search'
 import { VISIBLE_SESSIONS_CAP, visibleSessionIdsFor } from '../visibility.js'
 
 /** 到顶报警的口是注入的 —— 用例接一只数组,不 mock 日志模块。 */

@@ -64,20 +64,20 @@ import {
   PLUGIN_RESOURCE_CALL_TIMEOUT_MS,
   pluginResourceSurface,
   pluginScope,
-} from '@onething/core/plugins'
-import { ReadOutcome } from '@onething/core/resource'
+} from '@onething/backend/core/plugins'
+import { ReadOutcome } from '@onething/backend/core/resource'
 import { parseRef } from '@shared/resource/ref'
-import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/core/resource'
+import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/core/resource'
 import { systemPrincipal } from '@shared/permission/principal'
 import type { Principal } from '@shared/permission/principal'
-import { Outcome } from '@onething/core/toolkit'
-import type { Outcome as OutcomeValue } from '@onething/core/toolkit'
+import { Outcome } from '@onething/backend/core/toolkit'
+import type { Outcome as OutcomeValue } from '@onething/backend/core/toolkit'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/runtime/plugins/health'
+} from '@onething/backend/runtime/plugins/health'
 
 /**
  * 内核里插件用得到的那三格。

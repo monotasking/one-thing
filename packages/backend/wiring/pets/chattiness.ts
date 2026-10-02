@@ -3,14 +3,14 @@
  *
  * 设置 `pets.chattiness` 一保存,宠物子系统当场换档:读初值交给构造,之后订「设置刚保存过」
  * 调 `setChattiness`。档位的含义(冷却几秒、哪些 `low` 也开口)住产品层那张表
- * (`@onething/runtime/pets` 的 `PET_CHATTINESS`),这里只搬一个档名。
+ * (`@onething/backend/runtime/pets` 的 `PET_CHATTINESS`),这里只搬一个档名。
  *
  * **串联,不是占槽** —— 与 `wiring/search/index.ts` 的 `watchSettingsChanged` 同一条判例:
  * 设置推送是单槽端口,直接写进去会把宿主那条推送(SSE)掐掉。先让上一位走,再干自己的;
  * 还原带身份守卫,后来又有人串了一层时不抹掉它。**settings 域一个字都不知道有宠物。**
  */
 
-import { normalizePetChattiness, type PetChattiness } from '@onething/runtime/pets'
+import { normalizePetChattiness, type PetChattiness } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { getLogger } from '../logging/index.js'
 import {

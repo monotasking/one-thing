@@ -10,18 +10,18 @@ import {
   type OnethingMusicNowPlaying,
   type OnethingMusicRadioSource,
   type NowPlayingWatcher,
-} from '@onething/runtime/music/index'
+} from '@onething/backend/runtime/music/index'
 import {
   createElectronMusicProcessRunner,
   writeElectronMusicSecretFile,
-} from '@onething/runtime/music/process-runner'
-import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/music/process-runner'
+import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '../../stores/defaults/settings.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { consolePort, getLogger } from '../logging/index.js'
-import type { MusicSetupServiceOptions } from '@onething/runtime/music/setup-service'
-import type { NowPlayingWatcherOptions } from '@onething/runtime/music/now-playing'
+import type { MusicSetupServiceOptions } from '@onething/backend/runtime/music/setup-service'
+import type { NowPlayingWatcherOptions } from '@onething/backend/runtime/music/now-playing'
 
 const log = getLogger('music')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

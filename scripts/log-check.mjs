@@ -2,7 +2,7 @@
 // 日志迁移棘轮的检查器:数**非测试源码**里的 `console.*` 调用点。
 //
 // 口径(docs/design/logging-system-2026-08.md §2.6):
-//   - 扫 packages/{core,onething-runtime/src,backend,renderer,gateway/src,shared} 与
+//   - 扫 packages/{backend(含 core / runtime / gateway 子树),renderer,shared} 与
 //     apps/{server,cli}/src;
 //   - 跳过测试(`__tests__/`、`*.test.*`、`*.spec.*`)、类型声明、构建产物;
 //   - 白名单:`scripts/`(本来就是给人看的终端输出)与
@@ -18,11 +18,10 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+// 合包(server / client 拆分第②步)以后 core / runtime / gateway 都是 `packages/backend` 的子树,
+// 扫它一棵就覆盖了原来的四棵(再单列会把同一处 console 数两遍)。
 const ROOTS = [
-  'packages/core',
-  'packages/onething-runtime/src',
   'packages/backend',
-  'packages/gateway/src',
   'packages/shared',
   'apps/server/src',
   'apps/cli/src',

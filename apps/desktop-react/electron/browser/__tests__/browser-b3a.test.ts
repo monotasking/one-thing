@@ -6,7 +6,7 @@
  * session、DownloadItem、计时器、文件系统),这里喂的是记调用的替身。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { assertResourceSpec } from '@onething/core/resource'
+import { assertResourceSpec } from '@onething/backend/core/resource'
 
 import { beginsNewFindSession, foldFoundInPage } from '../find.js'
 import {

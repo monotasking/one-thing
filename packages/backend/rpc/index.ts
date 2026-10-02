@@ -186,7 +186,7 @@ const BUILTIN_FEATURES: FeatureDefinition[] = [
   // `getProjectsStore(workspaceId)` 了。
   { id: 'rpc:project-dirs', mount: ctx => { ctx.registerRpcDomain(projectDirsRouter, projectDirsRpcHandlers) } },
   // P4c 第二批唯一的域(skills)。它是本仓第一个**要宿主能力**的迁移域 ——
-  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/runtime/shell`),
+  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/backend/runtime/shell`),
   // 未注入即结构化降级,所以 server / CLI 不再需要那份「不支持」的空实现。
   // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
   // 一个 store 一份技能表,web 与桌面从此读同一份。

@@ -1,5 +1,5 @@
-import { MediaLibraryService, type OnethingMediaLibraryPaths } from '@onething/runtime/media'
-import type { RuntimeMediaAdapter, RuntimeRequestContext } from '@onething/core/runtime-facade'
+import { MediaLibraryService, type OnethingMediaLibraryPaths } from '@onething/backend/runtime/media'
+import type { RuntimeMediaAdapter, RuntimeRequestContext } from '@onething/backend/core/runtime-facade'
 import type { SessionAccess } from '../session/access.js'
 import { mediaFileNameOf, resolveMediaFileByName } from '../wiring/media/resolve-file.js'
 

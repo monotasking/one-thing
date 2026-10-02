@@ -30,12 +30,12 @@ vi.mock('../../tools/core/permission-policy.js', () => ({
   enforcePermissionPolicy: harness.enforce,
 }))
 
-const { configureToolkitCatalog } = await import('@onething/runtime/toolkit')
+const { configureToolkitCatalog } = await import('@onething/backend/runtime/toolkit')
 const { createDesktopCatalog } = await import('../catalog.js')
 const { getOrBuildToolkitCatalog, resetToolkitCatalogForTests } = await import('../wiring.js')
-const { registerPluginToolInCatalog, unregisterPluginToolFromCatalog } = await import('@onething/runtime/toolkit/plugin-tools')
+const { registerPluginToolInCatalog, unregisterPluginToolFromCatalog } = await import('@onething/backend/runtime/toolkit/plugin-tools')
 const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
-const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('@onething/runtime/plugins/health')
+const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('@onething/backend/runtime/plugins/health')
 const { z } = await import('zod')
 
 const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')

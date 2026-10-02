@@ -69,12 +69,12 @@ import {
   listOnethingSettingsToolsForIpc,
   type OnethingToolCallStateLike,
   stopOnethingBackgroundJobForIpc,
-} from '@onething/runtime/tools'
+} from '@onething/backend/runtime/tools'
 import {
   listBackgroundJobs,
   stopBackgroundJob,
-} from '@onething/runtime/tools/background-jobs-bound'
-import { getMCPToolDefinitionsForModel } from '@onething/runtime/mcp/index.wiring'
+} from '@onething/backend/runtime/tools/background-jobs-bound'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index.wiring'
 import type { JsonObject } from '@shared/json.js'
 import type { ToolsRoutes } from '@shared/ipc/tools.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
@@ -90,16 +90,16 @@ import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { isHistoricalLocalOperator, requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingToolsIpcLogger } from '@onething/runtime/tools/ipc-operations'
-import type { OnethingToolListIpcLogger } from '@onething/runtime/tools/tool-list-presentation'
-import type { OnethingToolExecutionIpcLogger } from '@onething/runtime/tools/tool-execution-context'
-import type { OnethingToolCallStateIpcLogger } from '@onething/runtime/tools/tool-call-state'
-import type { ApplyOnethingToolCallUpdateOptions, OnethingToolStepStateLike, OnethingToolMessageStateLike } from '@onething/runtime/tools/tool-call-state'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingToolsIpcLogger } from '@onething/backend/runtime/tools/ipc-operations'
+import type { OnethingToolListIpcLogger } from '@onething/backend/runtime/tools/tool-list-presentation'
+import type { OnethingToolExecutionIpcLogger } from '@onething/backend/runtime/tools/tool-execution-context'
+import type { OnethingToolCallStateIpcLogger } from '@onething/backend/runtime/tools/tool-call-state'
+import type { ApplyOnethingToolCallUpdateOptions, OnethingToolStepStateLike, OnethingToolMessageStateLike } from '@onething/backend/runtime/tools/tool-call-state'
 import type { JsonArray } from '@shared/json'
-import type { ExecuteOnethingToolWithSessionContextOptions } from '@onething/runtime/tools/tool-execution-context'
+import type { ExecuteOnethingToolWithSessionContextOptions } from '@onething/backend/runtime/tools/tool-execution-context'
 import type { ToolDefinition, ChatSession } from '@shared/ipc.js'
-import type { ListOnethingSettingsToolsOptions } from '@onething/runtime/tools/tool-list-presentation'
+import type { ListOnethingSettingsToolsOptions } from '@onething/backend/runtime/tools/tool-list-presentation'
 
 const log = getLogger('rpc.tools')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */

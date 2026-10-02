@@ -24,18 +24,24 @@ import type { ChatMessage, GetSessionMessagesPageRequest, GetSessionMessagesPage
 import fs from 'node:fs'
 import {
   buildSessionEventJumpIndex,
-  materializeNode,
-  materializeChatMessages,
-  materializeStep,
   pageEventMessages,
   readLedgerWatermark,
   userMarkersFromProjected,
-  type ProjectedChatMessage,
   type SessionEventByteReader,
   type SessionEventJumpIndex,
+} from '@onething/backend/core/session'
+import {
+  materializeNode,
+  materializeChatMessages,
+} from '@shared/session/projection/chat-messages'
+import {
+  materializeStep,
   type ProjectionNode,
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
+import {
+  type ProjectedChatMessage,
+} from '@shared/session/projection/types'
 import type { SessionProjectionCache } from './projection-cache.js'
 import type { sessionProjectionOptions } from './projection-blobs.js'
 import { getCurrentBackend } from '../current.js'

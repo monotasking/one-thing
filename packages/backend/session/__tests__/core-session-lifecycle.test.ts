@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { EventBus, StreamChannel } from '@onething/core/events'
+import { EventBus, StreamChannel } from '@onething/backend/core/events'
 import {
   getCoreSessionManager,
   initializeCoreSessionLayer,
   isCoreSessionLayerInitialized,
   shutdownCoreSessionLayer,
-} from '@onething/core/session'
+} from '@onething/backend/core/session'
 
 describe('core session lifecycle', () => {
   afterEach(() => {

@@ -1,4 +1,4 @@
-import { listMusicProviderDescriptors, type OnethingMusicEvent, type OnethingMusicNowPlaying } from '@onething/runtime/music'
+import { listMusicProviderDescriptors, type OnethingMusicEvent, type OnethingMusicNowPlaying } from '@onething/backend/runtime/music'
 import { DEFAULT_MUSIC_SETTINGS } from '../../stores/defaults/settings.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { createMusicServiceScope } from './service.js'

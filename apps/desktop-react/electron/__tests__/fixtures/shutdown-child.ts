@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { BackendResources } from '../../../../../packages/backend/lifecycle.js'
-import { StoreLock } from '@onething/runtime/storage/store-lock'
+import { StoreLock } from '@onething/backend/runtime/storage/store-lock'
 import { createDesktopShutdownRequest } from '../../shutdown.js'
 
 async function main(): Promise<void> {

@@ -7,7 +7,7 @@ import {
   type CorePluginFilesUsage,
   type CorePluginMessageStateStore,
   type CorePluginStorage, type CreateCorePluginFilesOptions,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import { getPluginsDir } from './loader.js'
 
 /**

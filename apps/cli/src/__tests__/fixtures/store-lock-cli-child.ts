@@ -1,4 +1,4 @@
-import { StoreLock } from '@onething/runtime/storage/store-lock'
+import { StoreLock } from '@onething/backend/runtime/storage/store-lock'
 
 // Only the test parent owns this process. Exiting over IPC leaves the real lease
 // intact, without platform-specific signals or touching any other process.

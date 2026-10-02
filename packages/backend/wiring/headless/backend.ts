@@ -29,7 +29,7 @@ import {
   updateOnethingHeadlessToolSetting,
   upsertOnethingHeadlessProviderConfig,
   useOnethingHeadlessProvider,
-} from '@onething/runtime/headless/index'
+} from '@onething/backend/runtime/headless/index'
 import { createOnethingBackend, type OnethingBackend, type OnethingBackendOptions } from '../../backend.js'
 import {
   createSession,
@@ -50,15 +50,15 @@ import {
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
 import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../../stores/settings.js'
-import { toolkitCatalogToolDefinitions } from '@onething/runtime/toolkit/catalog-projection.wiring'
+import { toolkitCatalogToolDefinitions } from '@onething/backend/runtime/toolkit/catalog-projection.wiring'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
-import { collectSessionCascadeDeleteIds } from '@onething/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '../../stores/settings-defaults.js'
 import { localUserPrincipal } from '@shared/permission/principal'
-import { markHostUnattended } from '@onething/runtime/permissions/unattended'
+import { markHostUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { registerACPPermissionBridge } from '../acp/permission-bridge.js'
 import type { Principal } from '@shared/permission/principal'
 import {
@@ -74,7 +74,7 @@ import type {
 } from '@shared/ipc/resources.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import type { BindableOnethingStreamSender } from '@onething/runtime/stream-sender'
+import type { BindableOnethingStreamSender } from '@onething/backend/runtime/stream-sender'
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 

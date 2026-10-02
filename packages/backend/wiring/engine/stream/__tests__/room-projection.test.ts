@@ -1,6 +1,6 @@
 /**
  * The PRODUCTION room projection (buildHistoryMessages over a kind='room'
- * session). The rules are specified in @onething/runtime/collab projection.ts;
+ * session). The rules are specified in @onething/backend/runtime/collab projection.ts;
  * this file guards the ChatMessage-level adapter that actually feeds the
  * provider — the 2026-07-28 incident lived exactly in the gap between the two
  * (W9.1: system lines were dropped here, so the reviewer only ever saw what
@@ -32,7 +32,7 @@ import {
 	buildHistoryMessages,
 	projectRoomMessagesForModel,
 } from "../message-helpers.js";
-import { projectRoomHistory } from "@onething/runtime/collab";
+import { projectRoomHistory } from "@onething/backend/runtime/collab";
 import type { ChatMessage } from "@shared/ipc.js";
 
 /**

@@ -57,7 +57,7 @@ const { migrateCollabToV3 } = await import(
   '@onething/backend/wiring/collab/actors/migrate.js'
 )
 const { formatCollabMigrationReport } = await import(
-  '../packages/onething-runtime/src/collab/actors/migrate-rules.ts'
+  '../packages/backend/runtime/collab/actors/migrate-rules.ts'
 )
 
 const report = await migrateCollabToV3({ dryRun })

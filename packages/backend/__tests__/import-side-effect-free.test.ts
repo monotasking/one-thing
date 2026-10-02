@@ -11,35 +11,35 @@ import { describe, expect, it, vi } from 'vitest'
 
 const spy = vi.hoisted(() => ({ calls: [] as string[] }))
 
-vi.mock('@onething/runtime/tools/sandbox-runtime', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/tools/sandbox-runtime', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingToolSandboxRuntime: () => { spy.calls.push('sandbox') },
 }))
-vi.mock('@onething/runtime/tools/background-jobs', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/tools/background-jobs', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureCoreBackgroundJobs: () => { spy.calls.push('background-jobs') },
 }))
 // P3'a-3:绑定件归位后从 `./scheduler.js` 直取(runtime 源码不自引用包名),所以
 // 打在 barrel 上的桩够不着了 —— 换成打在**具体模块**上。barrel 的 `export *` 同样
 // 解析到这一个 id,走 barrel 的调用方照旧拿到桩。
-vi.mock('@onething/runtime/scheduler/scheduler', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/scheduler/scheduler', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingScheduler: () => { spy.calls.push('scheduler') },
 }))
-vi.mock('@onething/runtime/files/ripgrep', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/files/ripgrep', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingRipgrepRuntime: () => { spy.calls.push('ripgrep') },
 }))
-vi.mock('@onething/runtime/search', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/search', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingSearchProviders: () => { spy.calls.push('search') },
 }))
-vi.mock('@onething/runtime/skills', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/skills', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingSkillManageRuntime: () => { spy.calls.push('skill-manage') },
   configureOnethingSkillsLoaderRuntime: () => { spy.calls.push('skills-loader') },
 }))
-vi.mock('@onething/runtime/permissions', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/permissions', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingPermissionGrantStorage: () => { spy.calls.push('permission-grants') },
 }))
@@ -47,7 +47,7 @@ vi.mock('../wiring/providers/registry.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))
-vi.mock('@onething/runtime/spaces/credentials', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/spaces/credentials', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureSpaceCredentialsCrypto: () => { spy.calls.push('space-credentials-crypto') },
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
@@ -61,10 +61,10 @@ vi.mock('../wiring/permission/capabilities.js', async (importOriginal) => ({
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
     await import('../wiring/tools/core/sandbox.js')
-    await import('@onething/runtime/tools/background-jobs-bound')
-    await import('@onething/runtime/tools/bash-executor')
+    await import('@onething/backend/runtime/tools/background-jobs-bound')
+    await import('@onething/backend/runtime/tools/bash-executor')
     await import('../wiring/providers/index.js')
-    await import('@onething/runtime/scheduler/scheduler-bound')
+    await import('@onething/backend/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
     await import('../wiring/search/providers.js')
     await import('../wiring/skills/manage.js')

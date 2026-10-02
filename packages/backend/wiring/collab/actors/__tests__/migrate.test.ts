@@ -25,7 +25,7 @@ bindSessionFacadeMock({
   },
 })
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => storeRootRef.value,
   getOnethingSessionsDir: () => path.join(storeRootRef.value, 'sessions'),
 }))
@@ -36,10 +36,10 @@ const {
   migrateCollabToV3,
   readCollabV3MigrationMarker,
 } = await import('../migrate.js')
-const { collabAgentAccountPath, collabAgentActorDir } = await import('@onething/runtime/collab/actors/agent-mailbox')
-const { collabRoomAccountPath, createCollabRoomAccountFileStore } = await import('@onething/runtime/collab/actors/room-account')
-const { createCollabRoomAccount } = await import('@onething/runtime/collab/actors')
-const { readActorMailboxLog } = await import('@onething/core/actors')
+const { collabAgentAccountPath, collabAgentActorDir } = await import('@onething/backend/runtime/collab/actors/agent-mailbox')
+const { collabRoomAccountPath, createCollabRoomAccountFileStore } = await import('@onething/backend/runtime/collab/actors/room-account')
+const { createCollabRoomAccount } = await import('@onething/backend/runtime/collab/actors')
+const { readActorMailboxLog } = await import('@onething/backend/core/actors')
 
 afterAll(() => {
   fs.rmSync(storeRoot, { recursive: true, force: true })

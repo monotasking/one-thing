@@ -133,7 +133,7 @@ function readCount(value: number | undefined): number | null {
 /**
  * 这一轮送进去多少 token。产地是两格里**大的那个**:
  * `max(contextSize, lastInputTokens)` —— 与 core 自己的口径逐字相同
- * (`packages/core/engine/context-usage.ts` 的 `providerInputTokens`)。
+ * (`packages/backend/core/engine/context-usage.ts` 的 `providerInputTokens`)。
  * 压缩刚发生时 contextSize 已经落回来了而 lastInputTokens 还是压缩前的那次,
  * 取大的那个才是「模型这一轮真的看见了多少」。
  */

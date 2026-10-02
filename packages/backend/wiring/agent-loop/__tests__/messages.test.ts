@@ -3,7 +3,7 @@ import {
   agentContentFromHistoryContent,
   agentMessagesFromHistory,
   agentToolCallsFromHistory,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 
 describe('agent loop message conversion', () => {
   it('preserves multimodal user content as agent content parts', () => {

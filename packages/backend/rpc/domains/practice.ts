@@ -9,7 +9,7 @@
  * 一起删掉 —— **server 侧零改动**:域挂上 router 之后就经 `POST /api/rpc`
  * 自动可达,web 端从此拿到的是**真实**的练习状态,不再是永远 idle 的假象。
  *
- * 这里只做一件事:**把请求原样递给 `@onething/runtime/practice` 的服务函数**。
+ * 这里只做一件事:**把请求原样递给 `@onething/backend/runtime/practice` 的服务函数**。
  * 传输面不许自己加分支 —— 逐条对着旧文件抄的正是这几处形状:
  *  - `start` / `pause` / `resume` / `stop` / `getState` 返回的是裸 snapshot,
  *    由这一层包成 `{ snapshot }`(契约层的响应形状,不是引擎的);
@@ -34,7 +34,7 @@ import {
   startPractice,
   stopPractice,
   writePracticeConfig,
-} from '@onething/runtime/practice/service.wiring'
+} from '@onething/backend/runtime/practice/service.wiring'
 
 export const practiceRpcHandlers: RouteHandlers<PracticeRoutes> = {
   async start(request) {

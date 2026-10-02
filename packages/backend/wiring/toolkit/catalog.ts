@@ -19,7 +19,7 @@
  * 的宿主(readonly 档)一个字都不注册。**默认拒绝**。
  */
 
-import { Catalog } from '@onething/core/toolkit'
+import { Catalog } from '@onething/backend/core/toolkit'
 import {
   createAskUserTool,
   createBashTool,
@@ -53,12 +53,12 @@ import {
   type VariableToolAdapters,
   type WebOpenToolAdapters,
   type WebSearchToolAdapters,
-} from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/toolkit'
 import { getSettings } from '../../stores/settings.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
-import { getOnethingToolOutputsDir } from '@onething/runtime/storage'
+import { getOnethingToolOutputsDir } from '@onething/backend/runtime/storage'
 import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './file-adapters.js'
-import { createLocalBashOperations } from '@onething/runtime/tools/bash-executor'
+import { createLocalBashOperations } from '@onething/backend/runtime/tools/bash-executor'
 import { getGuardedVariableRegistryForTools, VariableError } from '../variables/index.js'
 import {
   askUserAdapters,

@@ -22,22 +22,22 @@
  * 装进来),`feature_*` 由 self-evolution feature 自己装。
  */
 
-import type { Catalog, Decision, Intent, Invocation, Outcome, Result } from '@onething/core/toolkit'
-import { Outcome as OutcomeOps } from '@onething/core/toolkit'
-import type { Authorizer } from '@onething/core/toolkit'
+import type { Catalog, Decision, Intent, Invocation, Outcome, Result } from '@onething/backend/core/toolkit'
+import { Outcome as OutcomeOps } from '@onething/backend/core/toolkit'
+import type { Authorizer } from '@onething/backend/core/toolkit'
 import type { Principal } from '@shared/permission/principal'
 import type { JsonObject } from '@shared/json.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
-import { configureToolkitCatalog, getToolkitCatalog } from '@onething/runtime/toolkit'
-import type { ToolExecutionResult as OnethingToolExecutionResult } from '@onething/runtime/toolkit/execution-types.wiring'
+import { configureToolkitCatalog, getToolkitCatalog } from '@onething/backend/runtime/toolkit'
+import type { ToolExecutionResult as OnethingToolExecutionResult } from '@onething/backend/runtime/toolkit/execution-types.wiring'
 import { createCatalogForTier, type ToolCatalogTier } from './catalog.js'
-import { IpcProjector, type LegacyMetadataUpdate, type LegacyToolProgressUpdate } from '@onething/runtime/toolkit/ipc-observer.wiring'
+import { IpcProjector, type LegacyMetadataUpdate, type LegacyToolProgressUpdate } from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
 import { createPermissionAuthorizer } from './authorizer.js'
 import { createAppToolRunner } from './runner.js'
 import { toolkitAuditSink } from './audit-sink.js'
-import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from '@onething/runtime/toolkit/mcp-catalog.wiring'
-import { runPluginToolCallIntercept } from '@onething/runtime/plugins/tool-call-intercept-bound'
-import { runPluginToolResultIntercept } from '@onething/runtime/plugins/tool-result-intercept-bound'
+import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from '@onething/backend/runtime/toolkit/mcp-catalog.wiring'
+import { runPluginToolCallIntercept } from '@onething/backend/runtime/plugins/tool-call-intercept-bound'
+import { runPluginToolResultIntercept } from '@onething/backend/runtime/plugins/tool-result-intercept-bound'
 import { getLogger } from '../logging/index.js'
 import { getCurrentBackend } from '../../current.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
@@ -273,7 +273,7 @@ export async function runToolkitToolDirectly(
 }
 
 async function runPreparedTool(
-  tool: import('@onething/core/toolkit').Tool,
+  tool: import('@onething/backend/core/toolkit').Tool,
   catalog: Catalog,
   toolName: string,
   args: JsonObject,
@@ -354,7 +354,7 @@ async function runPreparedTool(
     },
   })
 
-  const trackedTool: import('@onething/core/toolkit').Tool = {
+  const trackedTool: import('@onething/backend/core/toolkit').Tool = {
     id: tool.id,
     spec: tool.spec,
     prepare: env => tool.prepare(env),

@@ -2,8 +2,8 @@ import {
   type CoreBuildPromptContextOptions,
   type CoreBuildPromptResult,
   type CorePromptRequestMessage,
-} from '@onething/core/engine'
-import type { AgentProviderData } from '@onething/core/agent-loop'
+} from '@onething/backend/core/engine'
+import type { AgentProviderData } from '@onething/backend/core/agent-loop'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
 import type { JsonObject, JsonObjectProperty } from '@shared/json.js'
 import {
@@ -18,10 +18,10 @@ import {
   VariableBoardSource,
   type BuildOnethingPromptContextOptions,
   type ComposedPrompt,
-} from '@onething/runtime/prompts'
-import { toolkitPromptSource } from '@onething/runtime/toolkit/prompt-source'
+} from '@onething/backend/runtime/prompts'
+import { toolkitPromptSource } from '@onething/backend/runtime/toolkit/prompt-source'
 import { buildStateVariablesPromptText } from '../../variables/index.js'
-import { pluginPromptSource } from '@onething/runtime/prompts/plugin-context.wiring'
+import { pluginPromptSource } from '@onething/backend/runtime/prompts/plugin-context.wiring'
 import {
   getMacOSAutomationDocsPath,
 } from '../../../stores/docs-paths.js'
@@ -33,16 +33,16 @@ import {
   buildCollabWorkContext,
   isAgentPairDmRoom,
   isUserDmRoom,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { collabRoomMembers } from '../../collab/members.js'
 import { collabUserPromptFields } from '../../collab/user-identity.js'
-import type { PromptProviderConfig } from '@onething/runtime/prompts/plugin-context.wiring'
+import type { PromptProviderConfig } from '@onething/backend/runtime/prompts/plugin-context.wiring'
 import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,
-} from '@onething/core/engine'
-import type { VariableBoardRenderer } from '@onething/runtime/prompts/variable-board'
-import type { OnethingPromptHostAdapters } from '@onething/runtime/prompts/builder'
+} from '@onething/backend/core/engine'
+import type { VariableBoardRenderer } from '@onething/backend/runtime/prompts/variable-board'
+import type { OnethingPromptHostAdapters } from '@onething/backend/runtime/prompts/builder'
 
 export interface BuildPromptContextOptions extends Omit<CoreBuildPromptContextOptions, 'settings' | 'skills' | 'activeProject' | 'knownProjects'> {
   settings?: AppSettings

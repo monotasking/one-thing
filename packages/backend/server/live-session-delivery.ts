@@ -1,8 +1,8 @@
-import type { AgentEngineSessionEvent, AgentEngineStreamChunk, EventBus } from '@onething/core'
+import type { AgentEngineSessionEvent, AgentEngineStreamChunk, EventBus } from '@onething/backend/core'
 import type {
   RuntimeEventsAdapter, RuntimeRequestContext, RuntimeStreamsAdapter,
   RuntimeStreamPayload, RuntimeUnsubscribe,
-} from '@onething/core/runtime-facade'
+} from '@onething/backend/core/runtime-facade'
 import { canReceiveSessionRemoval } from '../session/removal-event.js'
 import type { SessionAudience, SessionAudienceFactory } from './audience.js'
 

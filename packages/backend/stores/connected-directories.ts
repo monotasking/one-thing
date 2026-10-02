@@ -35,7 +35,7 @@ import type { SkillDirectoryConfig } from '@shared/ipc/skills.js'
 import {
   getSpaceOverlayConnectedDirectories,
   mergeConnectedDirectories,
-} from '@onething/runtime/spaces/overlay'
+} from '@onething/backend/runtime/spaces/overlay'
 import { resolveSessionSpaceId } from './sessions.js'
 import { getSettings } from './settings.js'
 

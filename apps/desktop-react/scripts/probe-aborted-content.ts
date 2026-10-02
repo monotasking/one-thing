@@ -1,7 +1,8 @@
 /** Read-only replay: compare the live overlay with cold history after an abort. */
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { createSessionProjectionState, reduceSessionProjection, materializeChatMessages } from '../../../packages/core/session/index'
+import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
+import { materializeChatMessages } from '@shared/session/projection/chat-messages'
 import { materializeChatMessagesCached } from '../src/data/chat-materialize'
 import { StreamWater } from '../src/data/stream-water'
 import { anchorMessage } from '../src/content/assemble/anchor'

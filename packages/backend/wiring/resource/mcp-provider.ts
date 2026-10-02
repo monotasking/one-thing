@@ -2,7 +2,7 @@
  * K5-a —— 一台外部 server 这一 scheme 的实现
  * (`docs/design/atom-2026-09.md` §9 K5「外部」的第一个驱动:**MCP 投影驱动**)。
  *
- * 自述在产品层(`@onething/runtime/mcp/resource-spec` 的 `projectMcpResource`),
+ * 自述在产品层(`@onething/backend/runtime/mcp/resource-spec` 的 `projectMcpResource`),
  * 实现在这里 —— 与 `music` / `session` / `dir` 三对逐字同一条纪律。差别只有一条:
  * 这一份自述是**算出来的**,所以 provider 的构造参数里带着投影的产物(自述 + op
  * 名对照表),而不是一个字面量。
@@ -34,18 +34,18 @@
  * 地址系统自己给出,不必再拼一遍字符串。
  */
 
-import type { ResourceProvider, ResourceReadContext, ResourceSpec } from '@onething/core/resource'
+import type { ResourceProvider, ResourceReadContext, ResourceSpec } from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import { planFromSpec } from '@onething/core/resource'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import { planFromSpec } from '@onething/backend/core/resource'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
 import type { JsonObject } from '@shared/json'
 import type { MCPToolCallResult } from '@shared/mcp/types'
-import { withMCPResultOutputText } from '@onething/core/mcp'
-import { mcpResultText } from '@onething/runtime/toolkit'
+import { withMCPResultOutputText } from '@onething/backend/core/mcp'
+import { mcpResultText } from '@onething/backend/runtime/toolkit'
 import {
   MCP_RESOURCE_SINGLETON_PATH,
   type McpResourceProjection,
-} from '@onething/runtime/mcp/resource-spec'
+} from '@onething/backend/runtime/mcp/resource-spec'
 
 /**
  * 这只 provider 看得见的客户端面 —— **一件事**,不是整只 `MCPManager`。

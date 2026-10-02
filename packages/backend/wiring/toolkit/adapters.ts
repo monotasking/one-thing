@@ -16,12 +16,12 @@
 import {
   createBraveSearchProvider,
   type SearchProvider,
-} from '@onething/runtime/tools'
-import { remainingGoalTokens } from '@onething/runtime/goals'
+} from '@onething/backend/runtime/tools'
+import { remainingGoalTokens } from '@onething/backend/runtime/goals'
 import {
   resolveCollabAgentHandle,
   type CollabBoardAction,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import type {
   AskUserToolAdapters,
   BoardToolAdapters,
@@ -35,17 +35,17 @@ import type {
   TaskToolPorts,
   WebOpenToolAdapters,
   WebSearchToolAdapters,
-} from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/toolkit'
 
 import * as store from '../../store.js'
 import { getSettings } from '../../stores/settings.js'
 import { createRequiredAppFetch } from '../../provider-binding/bound-fetch.js'
 import { getGoal, goalLimits, updateGoalFromModel } from '../goals/index.js'
-import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/runtime/practice/service.wiring'
+import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/runtime/practice/service.wiring'
 import { getCurrentBackendInstance } from '../../current.js'
 import { assertMusicOperator } from '../music/access.js'
 import { dispatchTask } from '../tasks/dispatch.js'
-import { Interaction } from '@onething/core/interaction'
+import { Interaction } from '@onething/backend/core/interaction'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
 import { findAgent } from '../agents/index.js'
 import { collabRoomMembers } from '../collab/members.js'
@@ -58,7 +58,7 @@ import { collabLinkedRoomSessionId } from '../collab/venue.js'
 import { appendNote } from '../collab/actors/notebook-tool.js'
 import { sessionAccess, SessionAccessError } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
-import type { BraveSearchProviderAdapters } from '@onething/runtime/tools/builtin/web-search/providers/brave'
+import type { BraveSearchProviderAdapters } from '@onething/backend/runtime/tools/builtin/web-search/providers/brave'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────
 

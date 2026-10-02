@@ -3,7 +3,7 @@ import {
   clearOnethingSessionUsage,
   getOnethingSessionUsage,
   updateOnethingSessionUsage,
-} from '@onething/runtime/sessions'
+} from '@onething/backend/runtime/sessions'
 import * as store from '../store.js'
 import { deepEqual } from './shadow.js'
 import { appendSessionShadowLine, summarizeShadowDiff } from './shadow.js'

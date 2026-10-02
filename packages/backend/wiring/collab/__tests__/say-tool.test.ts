@@ -16,9 +16,9 @@ import {
   COLLAB_SAY_SOURCE,
   COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
   COLLAB_SEND_MESSAGE_TOOL_NAME,
-} from '@onething/runtime/collab'
-import { clearRetiredAgentToolNames, resolveRetiredAgentToolName } from '@onething/core'
-import { createSendMessageTool, ZodValidator } from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/collab'
+import { clearRetiredAgentToolNames, resolveRetiredAgentToolName } from '@onething/backend/core'
+import { createSendMessageTool, ZodValidator } from '@onething/backend/runtime/toolkit'
 
 const noop = () => { throw new Error('adapter not used in this case') }
 

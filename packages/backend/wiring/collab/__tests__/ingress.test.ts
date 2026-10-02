@@ -58,7 +58,7 @@ vi.mock('../../agents/index.js', () => ({
 }))
 
 import { handleCollabRoomSendMessage } from '../ingress.js'
-import { configureCollabDriveGuard } from '@onething/runtime/collab/drive-guard'
+import { configureCollabDriveGuard } from '@onething/backend/runtime/collab/drive-guard'
 
 const REPLY_TO = { messageId: 'm1', authorLabel: '阿明', excerpt: '我建议先做接口' }
 

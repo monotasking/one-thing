@@ -11,7 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings } from '@shared/ipc.js'
-import { judgeObsidianState, NoteVaultUnavailable, type NoteVault } from '@onething/runtime/notes'
+import { judgeObsidianState, NoteVaultUnavailable, type NoteVault } from '@onething/backend/runtime/notes'
 import type { NotesInventory } from '../../wiring/notes/index.js'
 
 const state = {

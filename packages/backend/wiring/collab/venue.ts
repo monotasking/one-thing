@@ -30,7 +30,7 @@ import {
   resolveCollabVenue,
   type CollabVenue,
   type CollabVenueTool,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import * as store from '../../store.js'
 
 /** 会话形状里门要用到的那一小块。传对象而不是 id,调用方多半已经取过会话了。 */

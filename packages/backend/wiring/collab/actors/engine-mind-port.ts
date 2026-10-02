@@ -30,7 +30,7 @@ import {
   COLLAB_MESSAGE_SOURCE,
   COLLAB_USAGE_SOURCE_ROOM,
   type CollabMentionLike,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import type { ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '../../agents/index.js'
@@ -39,7 +39,7 @@ import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../../store.js'
 import { sessionReads } from '../../../session/reads.js'
 import { noteCollabAdoptedEcho } from '../agent-session.js'
-import { issueCollabDriveToken } from '@onething/runtime/collab/drive-guard'
+import { issueCollabDriveToken } from '@onething/backend/runtime/collab/drive-guard'
 import { emitCollabTurnActive, observeCollabSayTyping } from '../typing-observer.js'
 import {
   abortCollabZombieStream,
@@ -53,12 +53,12 @@ import type {
   CollabMindSteerRequest,
   CollabMindTurnRequest,
   CollabMindTurnResult,
-} from '@onething/runtime/collab/actors/mind-port'
+} from '@onething/backend/runtime/collab/actors/mind-port'
 import {
   beginCollabV3Turn,
   collabV3SpeakPort,
   endCollabV3Turn,
-} from '@onething/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../../logging/index.js'

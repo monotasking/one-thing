@@ -21,7 +21,7 @@ const registry = vi.hoisted(() => ({
   delete: vi.fn(),
 }))
 
-vi.mock('@onething/runtime/variables/registry', () => ({
+vi.mock('@onething/backend/runtime/variables/registry', () => ({
   getVariableRegistry: () => registry,
 }))
 
@@ -129,7 +129,7 @@ describe('variables RPC domain', () => {
 
   it('a registry error keeps its code and stays a { success:false } payload', async () => {
     const { dispatchRpc } = await loadDomain()
-    const { VariableError } = await import('@onething/runtime/variables')
+    const { VariableError } = await import('@onething/backend/runtime/variables')
     registry.set.mockRejectedValue(new VariableError('READONLY', 'workdir is read-only'))
 
     await expect(dispatchRpc({

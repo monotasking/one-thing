@@ -31,7 +31,7 @@ vi.mock('../../../../session/access.js', async importOriginal => {
   }) }
 })
 
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
+vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
 const storeRootRef = { value: storeRoot }
 vi.mock('../../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
@@ -42,13 +42,13 @@ const {
   COLLAB_NOTEBOOK_WRONG_VENUE,
   appendNote,
 } = await import('../notebook-tool.js')
-const { collabAgentNotebookPath } = await import('@onething/runtime/collab/actors/agent-mailbox')
-const { createNotebookTool, NotebookInputSchema } = await import('@onething/runtime/toolkit')
+const { collabAgentNotebookPath } = await import('@onething/backend/runtime/collab/actors/agent-mailbox')
+const { createNotebookTool, NotebookInputSchema } = await import('@onething/backend/runtime/toolkit')
 const { createCollabActorNotebookStore } = await import('../owned-notebook-store.js')
 const { createCollabActorAuthorization } = await import('../execution-authorization.js')
 const { createSessionAccess } = await import('../../../../session/access.js')
-const { Decision, ToolRunner } = await import('@onething/core/toolkit')
-const { ZodValidator } = await import('@onething/runtime/toolkit')
+const { Decision, ToolRunner } = await import('@onething/backend/core/toolkit')
+const { ZodValidator } = await import('@onething/backend/runtime/toolkit')
 
 /**
  * R4b:旧 `NotebookTool.execute(args, ctx)` 随旧树删除。同一条链现在是

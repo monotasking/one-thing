@@ -26,7 +26,7 @@ import {
   collabIdentityFromAgent,
   collabUserIdentity,
   type CollabIdentity,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { listAgents } from '../agents/index.js'
 import { resolveUserIdentity } from './user-identity.js'
 import { getLogger } from '../logging/index.js'

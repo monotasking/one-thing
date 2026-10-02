@@ -7,8 +7,8 @@ import * as store from '../../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
-import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
-import { resolveProviderApiKey } from '@onething/runtime/providers/env.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
+import { resolveProviderApiKey } from '@onething/backend/runtime/providers/env.wiring'
 import {
   applySessionProviderGates,
   credentialTargetFromMarker,
@@ -27,10 +27,10 @@ import {
   resolveOnethingProviderAuth,
   resolveOnethingProviderConfigForChat,
   type OnethingProviderErrorDetails,
-} from '@onething/runtime/providers'
+} from '@onething/backend/runtime/providers'
 import { consolePort, getLogger } from '../../logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { CoreProviderAuthLogger } from '@onething/runtime/providers/provider-config'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { CoreProviderAuthLogger } from '@onething/backend/runtime/providers/provider-config'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

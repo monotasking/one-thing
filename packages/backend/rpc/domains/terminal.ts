@@ -6,7 +6,7 @@
  * 工厂,与 `@main/ipc/terminal.ts` 里对着它写的七条壳适配。搬完之后主进程那只
  * 文件只剩**广播注入**与**消费者掉线的 detach 边**两件真宿主的事。
  *
- * 服务本体一格没动:`@onething/runtime/terminal/service.wiring` 的
+ * 服务本体一格没动:`@onething/backend/runtime/terminal/service.wiring` 的
  * `getTerminalService()` 是懒单例(never constructed inside
  * `createOnethingBackend`),所以 CLI daemon 与 readonly server 仍然不会 load
  * node-pty —— 本域的宿主闸(见下)保证了这一点不会因为「域挂上了」而破。
@@ -39,7 +39,7 @@
 import {
   getTerminalService,
   hasTerminalHost,
-} from '@onething/runtime/terminal/service.wiring'
+} from '@onething/backend/runtime/terminal/service.wiring'
 import type { TerminalRoutes } from '@shared/ipc/terminal.js'
 import type { RpcRouteHandlers } from '../registry.js'
 

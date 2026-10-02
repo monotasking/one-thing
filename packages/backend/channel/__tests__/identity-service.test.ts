@@ -6,7 +6,7 @@ import type { MessageOrigin } from '@shared/ipc.js'
 
 let tempDir = ''
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => tempDir,
   readJsonFile: <T>(filePath: string, defaultValue: T): T => {
     try {

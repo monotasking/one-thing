@@ -36,7 +36,7 @@ import {
   DurableMailbox,
   createActorEvent,
   type ActorEvent,
-} from '@onething/core/actors'
+} from '@onething/backend/core/actors'
 import {
   COLLAB_DEFAULT_DAILY_COST_USD,
   buildCollabDriveRoomContext,
@@ -53,7 +53,7 @@ import {
   wrapCollabMessageEnvelope,
   type CollabAgentLike,
   type CollabMessageLike,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import {
   collabActorRef,
   collabAgentSpawnWorker,
@@ -76,7 +76,7 @@ import {
   type CollabRoomAccount,
   type CollabRoomEffects,
   type CollabRoomJudgmentRequest,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 import {
   isActiveAgent,
   type ChatMessage,
@@ -104,7 +104,7 @@ import { sessionReads } from '../../../session/reads.js'
 import { getCurrentBackend } from '../../../current.js'
 import { sessionAccess, type SessionAccess, type SessionOwnershipRecord } from '../../../session/access.js'
 import { fixedExecutionContext } from '../../engine/execution-context.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { createCollabActorAuthorization, type CollabActorAuthorization } from './execution-authorization.js'
 import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-session.js'
 import {
@@ -116,8 +116,8 @@ import {
   shutdownCollabBoardBroadcasts,
 } from '../board-store.js'
 import { readCollabRoomSpentTodayUSD } from '../budget.js'
-import { getCollabDigestsForDays } from '@onething/runtime/collab/digest-store'
-import { configureCollabDriveGuard } from '@onething/runtime/collab/drive-guard'
+import { getCollabDigestsForDays } from '@onething/backend/runtime/collab/digest-store'
+import { configureCollabDriveGuard } from '@onething/backend/runtime/collab/drive-guard'
 import { buildCollabIdentityDirectory } from '../identity-directory.js'
 import {
   broadcastCollabCoordinator,
@@ -139,26 +139,26 @@ import {
   CollabAgentActor,
   type CollabAgentActorHost,
   type CollabAgentRoomContextInput, type CollabAgentActorOptions,
-} from '@onething/runtime/collab/actors/agent-actor'
-import { openCollabAgentMailbox, createCollabAgentAccountFileStore } from '@onething/runtime/collab/actors/agent-mailbox'
-import { getOnethingStorePath } from '@onething/runtime/storage'
+} from '@onething/backend/runtime/collab/actors/agent-actor'
+import { openCollabAgentMailbox, createCollabAgentAccountFileStore } from '@onething/backend/runtime/collab/actors/agent-mailbox'
+import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { createCollabEngineMindPort } from './engine-mind-port.js'
-import type { CollabMindPort } from '@onething/runtime/collab/actors/mind-port'
+import type { CollabMindPort } from '@onething/backend/runtime/collab/actors/mind-port'
 import { createCollabActorNotebookStore } from './owned-notebook-store.js'
 import {
   CollabRefereeActor,
   type CollabRefereeActorHost,
   type CollabRefereeJudgePort, type CollabRefereeActorOptions,
-} from '@onething/runtime/collab/actors/referee-actor'
+} from '@onething/backend/runtime/collab/actors/referee-actor'
 import { createCollabEngineRefereeJudgePort } from './referee-judge.js'
-import { collabRoomActorsDir, createCollabRoomAccountFileStore } from '@onething/runtime/collab/actors/room-account'
-import { CollabRoomActor, type CollabRoomActorHost } from '@onething/runtime/collab/actors/room-actor.wiring'
+import { collabRoomActorsDir, createCollabRoomAccountFileStore } from '@onething/backend/runtime/collab/actors/room-account'
+import { CollabRoomActor, type CollabRoomActorHost } from '@onething/backend/runtime/collab/actors/room-actor.wiring'
 import {
   createCollabDeadLetterSink,
   createCollabSchedulerLogFileStore,
   sweepCollabSchedulerLogs,
   type CollabSchedulerLogStore,
-} from '@onething/runtime/collab/actors/scheduler-log'
+} from '@onething/backend/runtime/collab/actors/scheduler-log'
 import {
   clearCollabV3Turns,
   collabV3TurnsInRoom,
@@ -169,13 +169,13 @@ import {
   configureCollabV3TurnObserver,
   type CollabV3SpeakInput,
   type CollabV3SpeakResult,
-} from '@onething/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 import {
   createCollabWorkerSlotLedger,
   type CollabWorkerBoardPort,
   type CollabWorkerMindPort,
   type CollabWorkerSlotLedger,
-} from '@onething/runtime/collab/actors/worker-child'
+} from '@onething/backend/runtime/collab/actors/worker-child'
 import { createCollabEngineWorkerPort } from './worker-mind-port.js'
 import { migrateCollabToV3 } from './migrate.js'
 

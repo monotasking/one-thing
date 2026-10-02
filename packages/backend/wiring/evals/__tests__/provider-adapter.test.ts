@@ -12,7 +12,7 @@ vi.mock('../../../store.js', async () => {
 })
 vi.mock('../../usage/index.js', () => ({ captureUsageRecorder: () => vi.fn() }))
 vi.mock('../../auth/auth-service.js', () => ({ authService: {} }))
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'default', name: 'Default' }] }),
 }))
 
@@ -24,14 +24,14 @@ import {
   setSpaceProviderCredentialPool,
   spaceCredentialsFilePath,
   upsertSpaceProviderOAuthToken,
-} from '@onething/runtime/spaces/credentials'
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
+} from '@onething/backend/runtime/spaces/credentials'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   resetSpaceProviderSettingsCacheForTests,
   spaceProviderSettingsPath,
   writeSpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
-import { getProviderApiKeyEnvCandidates } from '@onething/runtime/providers/env.wiring'
+} from '@onething/backend/runtime/spaces/provider-settings'
+import { getProviderApiKeyEnvCandidates } from '@onething/backend/runtime/providers/env.wiring'
 import {
   getSettings,
   invalidateSettingsCache,

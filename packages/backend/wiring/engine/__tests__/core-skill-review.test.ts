@@ -43,7 +43,7 @@ import {
   supportFileActions,
   uniqueSkillSupportFileActions,
   uniqueSkillSupportFilePath,
-} from '@onething/runtime/triggers'
+} from '@onething/backend/runtime/triggers'
 
 describe('onething runtime skill-review helpers', () => {
   afterEach(() => {

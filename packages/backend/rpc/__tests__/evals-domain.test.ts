@@ -39,7 +39,7 @@ const runtime = vi.hoisted(() => ({
 }))
 const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<string, unknown>)) }))
 
-vi.mock('@onething/runtime', () => runtime)
+vi.mock('@onething/backend/runtime', () => runtime)
 vi.mock('../../stores/settings.js', () => settings)
 vi.mock('../../store.js', () => ({
   getSettings: settings.getSettings,

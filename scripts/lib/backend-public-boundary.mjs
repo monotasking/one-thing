@@ -74,7 +74,7 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
   root = fs.realpathSync(path.resolve(root))
   const backend = path.join(root, 'packages/backend')
   const shared = path.join(root, 'packages/shared')
-  const runtime = path.join(root, 'packages/onething-runtime')
+  const runtime = path.join(root, 'packages/backend/runtime')
   const manifest = JSON.parse(fs.readFileSync(path.join(backend, 'package.json'), 'utf8'))
   const exports = manifest.exports ?? {}
   if (!compilerOptions) {
@@ -111,11 +111,14 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
       }
       const resolved = ts.resolveModuleName(specifier, file, compilerOptions, ts.sys, cache).resolvedModule?.resolvedFileName
       const target = resolved && fs.realpathSync(resolved)
-      if (within(file, shared) && (specifier.startsWith('@onething/runtime') || specifier.startsWith('@onething/backend')
+      if (within(file, shared) && (specifier.startsWith('@onething/backend/runtime') || specifier.startsWith('@onething/backend')
         || (target && (within(target, runtime) || within(target, backend))))) {
         violations.push(`${label}: shared contracts depend on a product/backend implementation`)
       }
-      if (!within(file, backend) && target && privateFile(target)) {
+      // 合包(第②步)以后 core / runtime / gateway 也住进了 packages/backend;「同包装配」只指脊柱
+      // (三棵子树以外),产品层照旧不许绕过公开边界去碰内部会话模块。
+      const inSpine = within(file, backend) && !['core', 'runtime', 'gateway'].some(dir => within(file, path.join(backend, dir)))
+      if (!inSpine && target && privateFile(target)) {
         violations.push(`${label}: relative or aliased import bypasses the public Backend boundary`)
       }
     }

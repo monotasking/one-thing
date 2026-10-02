@@ -1,5 +1,5 @@
 import type { PresentedResource } from '@shared/events/session-commands'
-import type { materializeChatMessages } from '@onething/core/session/projection/chat-messages'
+import type { materializeChatMessages } from '@shared/session/projection/chat-messages'
 /* 「部件里哪几格是显示文字」的唯一判据 —— 画气泡那一半读的也是它(见
  * `reconcileOverlay` 的注)。这一行只吃 `segment.ts` 里的那只纯函数,
  * 不碰引用种类注册表(它不需要表装好,也不该把表拖进数据层)。 */

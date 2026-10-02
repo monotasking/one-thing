@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ResourceEventHub } from '@onething/core/resource'
-import type { AmbientSource } from '@onething/runtime/ambient'
+import type { ResourceEventHub } from '@onething/backend/core/resource'
+import type { AmbientSource } from '@onething/backend/runtime/ambient'
 import { AmbientResourceProvider } from '../ambient-provider.js'
 
 function fakeSource(id: string, event: string) {

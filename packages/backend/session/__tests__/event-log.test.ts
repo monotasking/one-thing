@@ -15,7 +15,7 @@ import { createBackendHandle, setCurrentBackend } from '../../current.js'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', failStatsPath: false }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => {
     if (state.failStatsPath) throw new Error('diagnostic store unavailable')

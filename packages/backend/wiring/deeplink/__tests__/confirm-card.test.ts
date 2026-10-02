@@ -5,7 +5,7 @@
  * 默认),一类是让用户确认一个不会发生的动作(插件已停用 / 动作被熔断)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseDeepLink } from '@onething/core/plugins'
+import { parseDeepLink } from '@onething/backend/core/plugins'
 
 const findAgent = vi.hoisted(() => vi.fn())
 const defaultAgent = vi.hoisted(() => vi.fn())

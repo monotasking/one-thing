@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
+import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
 import {
   appendAgentLoopTurnToolCallOnce,
   appendOrderedPart,
@@ -48,7 +48,7 @@ import {
   startAgentLoopToolExecution,
   structuredToolResult,
   textFromPartialResult,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 import type { JsonObject, JsonValue } from '@shared/json'
 
 describe('core agent-loop executor helpers', () => {

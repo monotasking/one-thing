@@ -46,9 +46,9 @@ import type {
   ShellResultRequest,
   UnmountShellResourcesRequest,
 } from '@shared/ipc/resources.js'
-import type { ReadOutcome, ResourceKernel, ResourceSpec } from '@onething/core/resource'
-import type { Outcome, Result } from '@onething/core/toolkit'
-import { resultToText } from '@onething/core/toolkit'
+import type { ReadOutcome, ResourceKernel, ResourceSpec } from '@onething/backend/core/resource'
+import type { Outcome, Result } from '@onething/backend/core/toolkit'
+import { resultToText } from '@onething/backend/core/toolkit'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '../../current.js'
 import { principalOf } from '../principal.js'
 import type { ShellMountRegistry } from '../../wiring/resource/index.js'

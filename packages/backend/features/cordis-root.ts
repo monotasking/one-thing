@@ -4,7 +4,7 @@
  *
  * 「改为 Cordis」的落点只有这一个：`@onething/backend` 装配层内部持有一个 cordis
  * 应用，feature = cordis plugin，注册的可逆性由 fiber/effect 承载。边界是硬的
- * —— `packages/core`、runtime 产品层、各 host 一概不感知 cordis（boundary
+ * —— `packages/backend/core`、runtime 产品层、各 host 一概不感知 cordis（boundary
  * checker 有对应规则）。
  *
  * **惰性创建**是契约不是优化：`packages/backend/__tests__/import-side-effect-free.test.ts`

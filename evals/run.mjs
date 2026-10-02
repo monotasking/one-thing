@@ -4,7 +4,7 @@
  * Evals Runner (CLI Shell)
  *
  * Thin CLI shell that delegates to the shared runner core in
- * packages/onething-runtime/src/evals/runner.ts.
+ * packages/backend/runtime/evals/runner.ts.
  *
  * CLI uses an OpenAI-compatible fetch as the model caller;
  * the desktop app injects its own provider-stack caller via IPC.
@@ -156,7 +156,7 @@ async function main() {
 		};
 	};
 
-	const { runEvals } = await import("@onething/runtime");
+	const { runEvals } = await import("@onething/backend/runtime");
 
 	const entry = await runEvals({
 		repoDir: REPO_DIR,

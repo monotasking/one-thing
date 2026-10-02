@@ -10,7 +10,7 @@ import {
   MemoryRegistry,
   type MemoryBudget,
   type MemoryProcessProbe,
-} from '@onething/core/memory'
+} from '@onething/backend/core/memory'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('app.memory')

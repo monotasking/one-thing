@@ -4,8 +4,8 @@ import * as os from 'os'
 import * as path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '../../../stores/defaults/settings.js'
-import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
-import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
+import { createDefaultVariablesFile } from '@onething/backend/runtime/variables/schema'
+import { resetVariablesStoreForTests } from '@onething/backend/runtime/variables/store-bound'
 import { getSettings, updateSettingsInMemory } from '../../../stores/settings.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import type {
@@ -19,8 +19,8 @@ import {
   configureHostLocalTrust,
   resetHostLocalTrustForTests,
 } from '../../../server/host-trust.js'
-import { FolderVault } from '@onething/runtime/notes'
-import type { NoteLinkKind, NoteVault } from '@onething/runtime/notes'
+import { FolderVault } from '@onething/backend/runtime/notes'
+import type { NoteLinkKind, NoteVault } from '@onething/backend/runtime/notes'
 
 /**
  * 笔记领域的假件(P3)。

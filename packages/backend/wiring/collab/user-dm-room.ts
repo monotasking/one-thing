@@ -12,11 +12,11 @@
  *  - **房名 = agent 名字**,不加任何前缀——它就是"和小李的对话"。
  */
 import { isActiveAgent } from '@shared/ipc.js'
-import { isColleague, userDmRoomId } from '@onething/runtime/agents'
+import { isColleague, userDmRoomId } from '@onething/backend/runtime/agents'
 import * as store from '../../store.js'
 import { findAgent } from '../agents/index.js'
 import { emitCollabRoomUpdated } from './room-runtime.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import { ownedCollabSessionId } from './owned-session-id.js'

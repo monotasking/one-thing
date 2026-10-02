@@ -2,7 +2,7 @@ import * as store from "../../../store.js";
 import { sessionCommands } from "../../../session/commands.js";
 import { sessionReads } from "../../../session/reads.js";
 import { ensureSessionWritable } from "../../../session/index.js";
-import { synthesizeCoreToolAnchors } from "@onething/core/session/render-anchors";
+import { synthesizeCoreToolAnchors } from "@shared/session/render-anchors";
 import {
 	endSessionRun,
 	ensureSessionRun,
@@ -29,26 +29,26 @@ import {
 	isAgentExecutionCheckpointError,
 	createAgentExecutionLifetime,
 	type AgentProviderStreamChunk,
-} from "@onething/core/agent-loop";
+} from "@onething/backend/core/agent-loop";
 import type { HistoryMessage } from "./message-helpers.js";
 import type { StreamContext, StreamProcessor } from "./stream-processor.js";
 import { createStreamProcessor, resolveToolIdentity } from "./stream-processor.js";
-import type { IPCEmitter } from "@onething/runtime/engine/ipc-emitter.wiring";
+import type { IPCEmitter } from "@onething/backend/runtime/engine/ipc-emitter.wiring";
 import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
 import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "@onething/runtime/providers/provider-config";
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "@onething/backend/runtime/providers/provider-config";
 import { observeQuotaProviderData } from "../../quota/engine-hooks.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
-import { saveMediaImage } from "@onething/runtime/media/save-image";
-import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
-import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/runtime/agent-loop/providers/provider-data";
+import { saveMediaImage } from "@onething/backend/runtime/media/save-image";
+import { applyOnethingAgentLoopProviderData } from "@onething/backend/runtime/agent-loop/providers";
+import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/backend/runtime/agent-loop/providers/provider-data";
 import { updateSessionUsage } from "../../../session/usage.js";
 import { recordUsage, usageAttributionOf } from "../../usage/index.js";
 import { triggerManager } from "../triggers/index.js";
-import { runAfterAssistantResponseHooks } from "@onething/runtime/plugins/lifecycle.wiring";
+import { runAfterAssistantResponseHooks } from "@onething/backend/runtime/plugins/lifecycle.wiring";
 import type { ChatMessage, ChatSession } from "@shared/ipc.js";
 import {
 	applyAgentLoopStreamChunkWithAdapters as coreApplyAgentLoopStreamChunkWithAdapters,
@@ -62,15 +62,15 @@ import {
 	lastUserMessageText,
 	persistAgentLoopTurnContentPartsWithAdapters,
 	runAgentLoopPostResponseHooksWithAdapters, type CoreAgentLoopContentPartStore, type CoreAgentLoopToolExecutionStore, type CompleteAgentLoopStreamWithAdaptersOptions, type EmitAgentLoopFinalMessageUpdateWithAdaptersOptions,
-} from "@onething/core/engine";
+} from "@onething/backend/core/engine";
 import type {
 	CorePromptCapture,
 	CoreEvalRawRequest,
 	CoreEvalRawResponse,
 	CoreRequestMessage,
-} from "@onething/core/engine";
-import type { AgentJsonObject } from "@onething/core/agent-loop";
-import { hashSections } from "@onething/runtime";
+} from "@onething/backend/core/engine";
+import type { AgentJsonObject } from "@onething/backend/core/agent-loop";
+import { hashSections } from "@onething/backend/runtime";
 import {
 	attachSessionEventRecorder,
 	type SessionCancelledToolResult,
@@ -82,7 +82,7 @@ import { consolePort, getLogger } from '../../logging/index.js'
 import type { JsonObject } from '@shared/json'
 import type { AppSettings } from '@shared/ipc.js'
 import type { StreamProviderConfig } from './stream-processor.js'
-import type { RunAgentLoopPostResponseHooksWithAdaptersOptions, ApplyAgentLoopStreamChunkWithAdaptersOptions } from '@onething/core/engine'
+import type { RunAgentLoopPostResponseHooksWithAdaptersOptions, ApplyAgentLoopStreamChunkWithAdaptersOptions } from '@onething/backend/core/engine'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -584,7 +584,7 @@ export function runAgentLoopPostResponseHooks(options: {
  * 1. **渲染锚点**(`data-steps`)。它按 canonical G4 **故意不进事件、不进投影**
  *    —— 这是裁定,不是缺口。但"不进账本"不等于"必须由写手保管":锚点是
  *    steps 的 `turnIndex` 的**纯函数**,从折叠产物**现算**即可,而且必须与
- *    renderer 加载路径逐字同算(单实现:`@onething/core/session/render-anchors`)。
+ *    renderer 加载路径逐字同算(单实现:`@shared/session/render-anchors`)。
  *    于是流式那一刻看到的分界,与刷新之后看到的分界,是同一个函数算出来的。
  * 2. **收场结局的自引用**(`captureCancelledToolResults` 读的正是它自己待写的
  *    `tool/result{cancelled}`)。这一条**不是靠"改读投影"解决的,那条路走不通**
@@ -762,7 +762,7 @@ export async function completeAgentLoopStream(
 		//
 		// 从前锚点由活 run 的写手对象保管,于是快照非读写手不可。今天锚点由
 		// **同一个共享纯件**从折叠产物现算(`readSettleMessage` →
-		// `@onething/core/session/render-anchors`),renderer 加载路径用的正是它 ——
+		// `@shared/session/render-anchors`),renderer 加载路径用的正是它 ——
 		// 于是"流式收尾看到的分界"与"刷新之后看到的分界"逐字同源,而写手对象不再是
 		// 锚点的必经保管人。锚点仍然**只走推送路**:账本一格没多(G4 裁定不变)。
 		getMessage: (sessionId, messageId) =>

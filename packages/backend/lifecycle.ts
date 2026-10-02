@@ -172,4 +172,4 @@ export class BackendResources {
  * 一台会在关机时排空的子系统(工单 5 §1)。形状住在 core —— 产品层的子系统
  * (媒体库、练习、collab 摘要档)也在实现它,而它们够不着装配层。
  */
-export type { Quiescible } from '@onething/core/lifecycle'
+export type { Quiescible } from '@onething/backend/core/lifecycle'

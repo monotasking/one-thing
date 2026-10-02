@@ -34,9 +34,9 @@ import {
   type ResourceProvider,
   type ResourceReadContext,
   type ResourceSpec,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import { type ResourceRef } from '@shared/resource/ref'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/core/toolkit'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
 import type { EffectClass } from '@shared/toolkit/effects'
 import type {
   SerializedEventSpec,

@@ -28,8 +28,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 
-vi.mock('@onething/runtime/storage', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/runtime/storage')>()
+vi.mock('@onething/backend/runtime/storage', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/storage')>()
   return {
     ...actual,
     getOnethingSessionsDir: () => state.sessionsDir,
@@ -41,7 +41,7 @@ vi.mock('@onething/runtime/storage', async importOriginal => {
 // 这条路一步都不进流,所以把整台单例引擎挡在门外。
 vi.mock('../../index.js', () => ({ getStreamEngine: () => ({}) }))
 
-const { CoreStreamEngine } = await import('@onething/core/engine')
+const { CoreStreamEngine } = await import('@onething/backend/core/engine')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../../../../session/event-log.js'
 )

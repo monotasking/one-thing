@@ -12,9 +12,9 @@
 import {
   acpBuiltinProvider,
   onethingPortableBuiltinProviders,
-} from '@onething/runtime/providers'
+} from '@onething/backend/runtime/providers'
 
-import type { ProviderDefinition } from '@onething/runtime/providers/types.wiring'
+import type { ProviderDefinition } from '@onething/backend/runtime/providers/types.wiring'
 
 // All built-in providers.
 //

@@ -8,7 +8,7 @@ import type { MessageKey, TFn } from '../../i18n'
  * 后端哪天加一档新效果类就在运行时炸(`format` 拿到 undefined)。列成表之后,
  * 认不出来的类**原样显示那个英文枚举**:那是事实,而编一句中文是猜。
  *
- * 表里这 18 行与 `packages/core/toolkit/effects.ts` 的 `EffectClass` 今天一一对应。
+ * 表里这 18 行与 `packages/backend/core/toolkit/effects.ts` 的 `EffectClass` 今天一一对应。
  * 它不是那张表的第二个产地 —— 它是那张表的**读法**:核回答「有哪些类、各自怎么
  * 处理」,这里只回答「这一类在屏幕上念作什么」。加一类效果 = 核加一行 + 这里加一行,
  * 忘了加这里的后果是屏幕上出现那个英文枚举,不是屏幕出错。

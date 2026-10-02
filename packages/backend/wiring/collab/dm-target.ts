@@ -18,7 +18,7 @@ import {
   resolveCollabAgentHandle,
   splitCollabHandleQuery,
   type CollabAgentLike,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import { resolveUserIdentity } from './user-identity.js'
 
 export type CollabDmTarget =

@@ -5,7 +5,7 @@
  *
  * 它存的是事件行里放不下的那部分正文:附件的 `base64Data`、超过 64KB 的工具
  * 结果、图片 part。事件行里留下的只有 `BlobRef {hash, bytes, mime?}`
- * (`@onething/core/session` 的 `isBlobRef` 是两侧共用的判据)。
+ * (`@onething/backend/core/session` 的 `isBlobRef` 是两侧共用的判据)。
  *
  * 四条约定,读这个文件时请带着:
  *

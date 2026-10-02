@@ -33,7 +33,7 @@ import {
   OnethingTokenStore,
   parseSpaceOAuthToken,
   type OnethingOAuthToken,
-} from '@onething/runtime/auth'
+} from '@onething/backend/runtime/auth'
 import {
   readSpaceCredentials,
   readSpaceCredentialsAtRest,
@@ -46,28 +46,28 @@ import {
   SPACE_CREDENTIAL_SOURCE_USER,
   type SpaceCredentialEntry,
   type SpaceCredentialsFile,
-} from '@onething/runtime/spaces/credentials'
+} from '@onething/backend/runtime/spaces/credentials'
 import {
   readSpaceOverlay,
   writeSpaceOverlay,
   type SpaceOverlay,
-} from '@onething/runtime/spaces/overlay'
+} from '@onething/backend/runtime/spaces/overlay'
 import {
   createEmptySpaceProviderSettings,
   hasSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
-import { getSpacesStore } from '@onething/runtime/spaces/store'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
-import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
+} from '@onething/backend/runtime/spaces/provider-settings'
+import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
+import { getAuthHostPorts } from '@onething/backend/runtime/auth/host-ports'
 import {
   getOnethingSettingsPath,
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { getPersistedSettings, savePersistedSettings } from '../../stores/settings.js'
 import { getProviderInfo } from './registry.js'
-import { providerDialFieldsOf } from '@onething/runtime/spaces/provider-credentials'
+import { providerDialFieldsOf } from '@onething/backend/runtime/spaces/provider-credentials'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('providers')

@@ -11,9 +11,9 @@
  *  ② 把**三条订阅**接上:进程内 append 观察者(毫秒级)、总线的 `session:renamed`
  *     与 `session:deleted`。三条都只喊一声 sessionId,不带内容(§5.2 / §5.3);
  *  ③ 用宿主的适配器造一份带六个内置能力的 `SearchService`(能力清单来自
- *     `@onething/runtime/search/capabilities` 的那张表,这里不点名任何一类);
+ *     `@onething/backend/runtime/search/capabilities` 的那张表,这里不点名任何一类);
  *  ④ 把已在册的插件供给方接成 `remote` 能力(§4.2 第四行);
- *  ⑤ 把服务装进进程单槽(`@onething/runtime/search/service-bound`)——
+ *  ⑤ 把服务装进进程单槽(`@onething/backend/runtime/search/service-bound`)——
  *     `rpc/domains/search.ts` 从那里读;
  *  ⑥ 返回**一个** disposer,装配层 `own()` 它。
  *
@@ -41,25 +41,25 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import type { CapabilityManifest } from '@onething/core/search'
+import type { CapabilityManifest } from '@onething/backend/core/search'
 import {
   createOnethingSearchService,
   type OnethingSearchProvidersAdapters,
   type OnethingSearchService,
-} from '@onething/runtime/search'
+} from '@onething/backend/runtime/search'
 import {
   chatsSearchManifest,
   messagesSearchManifest,
   notesSearchManifest,
   type SearchIndexQueryFace,
-} from '@onething/runtime/search/capabilities'
-import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from '@onething/runtime/search/index'
-import type { IndexWorkerData } from '@onething/runtime/search/index/worker-data'
-import type { IndexWorkerHandle } from '@onething/runtime/search/index/worker-host'
-import { configureSearchVisibilityPort } from '@onething/runtime/search/capabilities'
-import { configureOnethingSearchService } from '@onething/runtime/search/service-bound'
-import { configureSearchToolAdapters } from '@onething/runtime/toolkit'
-import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/runtime/storage/paths'
+} from '@onething/backend/runtime/search/capabilities'
+import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from '@onething/backend/runtime/search/index'
+import type { IndexWorkerData } from '@onething/backend/runtime/search/index/worker-data'
+import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/worker-host'
+import { configureSearchVisibilityPort } from '@onething/backend/runtime/search/capabilities'
+import { configureOnethingSearchService } from '@onething/backend/runtime/search/service-bound'
+import { configureSearchToolAdapters } from '@onething/backend/runtime/toolkit'
+import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/backend/runtime/storage/paths'
 import { DEFAULT_SEMANTIC_MODEL_ID } from '@shared/ipc/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
@@ -75,7 +75,7 @@ import {
 } from '../settings/events.js'
 import { getLogger } from '../logging/index.js'
 import { getNotesSubsystemSafe } from '../notes/index.js'
-import type { NoteVault } from '@onething/runtime/notes'
+import type { NoteVault } from '@onething/backend/runtime/notes'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
 import { createAppSearchToolAdapters } from './tool-adapters.js'

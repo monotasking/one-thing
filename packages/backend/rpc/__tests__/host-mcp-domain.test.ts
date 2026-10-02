@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { HOST_MCP_UNAUTHORIZED, hostMcpRouter } from '@shared/ipc/host-mcp.js'
-import { HOST_MCP_RPC } from '@onething/runtime/acp/mcp-bridge/server'
+import { HOST_MCP_RPC } from '@onething/backend/runtime/acp/mcp-bridge/server'
 import { createHostMcpRpcHandlers } from '../domains/host-mcp.js'
 import { HostMcpBridge } from '../../wiring/acp/host-mcp-bridge.js'
 

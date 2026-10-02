@@ -20,8 +20,8 @@ let expectedPersistenceFailure = false
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
@@ -44,7 +44,7 @@ const {
   textOrBlobForEvent,
 } = await import('../blob-store.js')
 const { sessionProjectionOptions } = await import('../projection-blobs.js')
-const { projectChatMessages } = await import('@onething/core/session')
+const { projectChatMessages } = await import('@shared/session/projection/chat-messages.js')
 
 beforeEach(() => {
   expectedPersistenceFailure = false

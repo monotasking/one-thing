@@ -19,7 +19,7 @@
  * 从没注入过的进程(CLI 守护)因此连监听都不装。
  */
 import { authService } from './auth-service.js'
-import type { OnethingAuthFlowEvent } from '@onething/runtime/auth'
+import type { OnethingAuthFlowEvent } from '@onething/backend/runtime/auth'
 import { getEventBus, isEventSystemInitialized } from '../../events/index.js'
 import { getLogger } from '../logging/index.js'
 

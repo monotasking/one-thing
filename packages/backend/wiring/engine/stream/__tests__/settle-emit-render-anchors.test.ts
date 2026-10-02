@@ -17,7 +17,7 @@ import { completeAgentLoopStream, type AgentLoopExecutorState } from '../agent-l
  * 钉死(§16.24 第五节证据一)。
  *
  * 今天(§16.25 钥匙①):收尾**只读折叠产物**,锚点由共享纯件
- * `@onething/core/session/render-anchors` 从 steps 的 turnIndex **现算** ——
+ * `@shared/session/render-anchors` 从 steps 的 turnIndex **现算** ——
  * 与 renderer 加载路径逐字同源。于是本门的判据变成:**读投影,而快照里锚点还在**。
  *
  * 三条断言,后两条是反证:
@@ -92,11 +92,11 @@ vi.mock('../../triggers/index.js', () => ({
   triggerManager: { runPostResponse: vi.fn(() => Promise.resolve()) },
 }))
 
-vi.mock('@onething/runtime/plugins/lifecycle.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/lifecycle.wiring', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock('@onething/runtime/media/save-image', () => ({
+vi.mock('@onething/backend/runtime/media/save-image', () => ({
   saveMediaImage: vi.fn(),
 }))
 

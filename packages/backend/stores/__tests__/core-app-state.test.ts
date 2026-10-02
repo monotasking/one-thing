@@ -10,7 +10,7 @@ import {
   setOnethingCurrentSessionId,
   setOnethingCurrentWorkspaceId,
   writeOnethingAppState,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 
 const tempDirs: string[] = []
 

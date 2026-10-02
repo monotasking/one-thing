@@ -12,7 +12,7 @@
  */
 
 import type { ContextVariable } from '@shared/ipc.js'
-import type { ResourceKernel, StateScope } from '@onething/core/resource'
+import type { ResourceKernel, StateScope } from '@onething/backend/core/resource'
 import { systemPrincipal } from '@shared/permission/principal'
 import * as store from '../../store.js'
 import { getCurrentBackendInstance } from '../../current.js'
@@ -20,35 +20,35 @@ import { getEventBus } from '../../events/index.js'
 import { getProjectsStore } from '../project-dirs/index.js'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { expandPath } from '../tools/core/sandbox.js'
-import { getVariablesStore } from '@onething/runtime/variables/store-bound'
-import { DEFAULT_ONETHING_AGENT_ID } from '@onething/runtime/agents'
-import { canonicalizeProjectRoot, projectIdFromPath } from '@onething/runtime/project-dirs'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
-import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/global-store'
-import type { GoalVariableGateway } from '@onething/runtime/variables/providers/goal'
-import type { KeyedStoreGateway } from '@onething/runtime/variables/providers/keyed-store'
-import type { MusicRadioGateway } from '@onething/runtime/variables/providers/music-radio'
+import { getVariablesStore } from '@onething/backend/runtime/variables/store-bound'
+import { DEFAULT_ONETHING_AGENT_ID } from '@onething/backend/runtime/agents'
+import { canonicalizeProjectRoot, projectIdFromPath } from '@onething/backend/runtime/project-dirs'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
+import type { GlobalStoreGateway } from '@onething/backend/runtime/variables/providers/global-store'
+import type { GoalVariableGateway } from '@onething/backend/runtime/variables/providers/goal'
+import type { KeyedStoreGateway } from '@onething/backend/runtime/variables/providers/keyed-store'
+import type { MusicRadioGateway } from '@onething/backend/runtime/variables/providers/music-radio'
 import type {
   ResourceStateFact,
   ResourceStateVariableGateway,
-} from '@onething/runtime/variables/providers/resource-state'
-import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
-import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
+} from '@onething/backend/runtime/variables/providers/resource-state'
+import type { SessionStoreGateway } from '@onething/backend/runtime/variables/providers/session-store'
+import type { WorkdirGateway } from '@onething/backend/runtime/variables/providers/core'
 import type {
   NoteVaultsGateway,
   NoteVaultSummary,
-} from '@onething/runtime/variables/providers/note-vaults'
+} from '@onething/backend/runtime/variables/providers/note-vaults'
 import { getGoal, goalLimits } from '../goals/index.js'
 import { getMusicNowPlaying } from '../music/service.js'
 import { getRadioStore } from '../music/radio.js'
 import { getNoteSystemRegistry } from '../notes/index.js'
-import { computeAgentPresence } from '@onething/runtime/agents'
-import { isAgentPairDmRoom } from '@onething/runtime/collab'
+import { computeAgentPresence } from '@onething/backend/runtime/agents'
+import { isAgentPairDmRoom } from '@onething/backend/runtime/collab'
 import type {
   AgentSelfCardFact,
   AgentSelfChatFact,
   AgentSelfStateGateway,
-} from '@onething/runtime/variables/providers/agent-self'
+} from '@onething/backend/runtime/variables/providers/agent-self'
 import { findAgent } from '../agents/index.js'
 import { getCollabSelfTaskFacts } from '../collab/board-store.js'
 import { resolveUserIdentity } from '../collab/user-identity.js'

@@ -26,7 +26,7 @@ vi.mock('../../../stores/settings.js', () => ({
   },
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storeRoot,
   getOnethingSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
 }))
@@ -35,11 +35,11 @@ vi.mock('../registry.js', () => ({
   getProviderInfo: (id: string) => ({ id, name: id.toUpperCase() }),
 }))
 
-vi.mock('@onething/runtime/auth/host-ports', () => ({
+vi.mock('@onething/backend/runtime/auth/host-ports', () => ({
   getAuthHostPorts: () => ({}),
 }))
 
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
@@ -50,16 +50,16 @@ import {
   readSpaceCredentialsAtRest,
   resetSpaceCredentialsCacheForTests,
   spaceCredentialsFilePath,
-} from '@onething/runtime/spaces/credentials'
+} from '@onething/backend/runtime/spaces/credentials'
 import {
   readSpaceOverlay,
   resetSpaceOverlayCacheForTests,
-} from '@onething/runtime/spaces/overlay'
+} from '@onething/backend/runtime/spaces/overlay'
 import {
   readSpaceProviderSettings,
   resetSpaceProviderSettingsCacheForTests,
-} from '@onething/runtime/spaces/provider-settings'
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
+} from '@onething/backend/runtime/spaces/provider-settings'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   buildMigratedCredentialEntries,
   buildSpaceProviderSettings,

@@ -15,13 +15,17 @@
 import { describe, expect, it } from 'vitest'
 import {
   canonicalChatMessage,
-  createSessionProjectionState,
   encodeSessionLogEventLine,
-  materializeNode,
   parseSessionLogEventLog,
+} from '@onething/backend/core/session'
+import {
+  createSessionProjectionState,
   reduceSessionProjection,
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
+import {
+  materializeNode,
+} from '@shared/session/projection/chat-messages'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 
 import {

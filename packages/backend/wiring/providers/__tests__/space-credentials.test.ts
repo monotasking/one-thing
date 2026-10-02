@@ -19,12 +19,12 @@ vi.mock('../../../stores/settings.js', () => ({
 }))
 
 // Pool behavior must not depend on credentials present in the test host's environment.
-vi.mock('@onething/runtime/providers/env.wiring', () => ({
+vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
   getProviderEnvStatus: () => ({ detectedEnvVar: undefined }),
 }))
 
 vi.mock('../../../stores/sessions.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -42,7 +42,7 @@ vi.mock('../registry.js', () => ({
   }),
 }))
 
-vi.mock('@onething/runtime/spaces/store', () => ({
+vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
@@ -56,8 +56,8 @@ vi.mock('../../auth/auth-service.js', () => ({
 import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
-} from '@onething/runtime/spaces/credentials'
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
+} from '@onething/backend/runtime/spaces/credentials'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   applySessionSpaceCredentials,
   credentialTargetFromMarker,
@@ -72,7 +72,7 @@ import {
   getSpaceProviderCredentials,
   upsertSpaceProviderOAuthToken,
   writeSpaceCredentials,
-} from '@onething/runtime/spaces/credentials'
+} from '@onething/backend/runtime/spaces/credentials'
 
 let tmpDir: string
 

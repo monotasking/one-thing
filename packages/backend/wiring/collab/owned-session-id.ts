@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { DEFAULT_SESSION_OWNER } from '../../session/access.js'
 
 /** Naming only: callers must still authorize an existing session through Access. */

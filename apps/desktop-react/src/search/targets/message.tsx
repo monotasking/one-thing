@@ -4,7 +4,7 @@ import type { SearchContinuation } from '../continuations'
 import type { SearchRow } from '../types'
 
 /**
- * `kind: 'message'` —— 一条消息正文命中(`runtime/src/search/capabilities/messages.ts`
+ * `kind: 'message'` —— 一条消息正文命中(`runtime/search/capabilities/messages.ts`
  * 的 `MessageTarget`)。
  *
  * 与 `chat` 的差别只有一格:它**带 messageId**,所以落点是「进会话 + 滚到那条消息」。

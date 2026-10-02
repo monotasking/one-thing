@@ -35,8 +35,8 @@ vi.mock('../../wiring/plugins/index.js', async importOriginal => {
   }
 })
 
-import type { TerminalBroadcaster } from '@onething/runtime/terminal/service.wiring'
-import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/runtime/terminal/service.wiring'
+import type { TerminalBroadcaster } from '@onething/backend/runtime/terminal/service.wiring'
+import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/runtime/terminal/service.wiring'
 import { getPluginManager } from '../../wiring/plugins/index.js'
 import {
   configureHostLocalTrust,

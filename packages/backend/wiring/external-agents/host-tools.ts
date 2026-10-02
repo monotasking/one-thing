@@ -31,17 +31,17 @@
  * 工具,目录里有一份、这里有一份,而两份名单漂了不会报错。按名字问目录,答案只有
  * 一处 —— 而且拿到的就是本地回合调的那只工具。
  */
-import { filterHostToolSurface } from '@onething/runtime/external-agents'
+import { filterHostToolSurface } from '@onething/backend/runtime/external-agents'
 import type { JsonObject } from '@shared/json.js'
-import type { HostMcpHostTool } from '@onething/runtime/external-agents'
+import type { HostMcpHostTool } from '@onething/backend/runtime/external-agents'
 import { getSession } from '../../stores/sessions.js'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import { resolveAgentProfileForSession } from '../agents/profile.js'
 import { collabVenueOf } from '../collab/venue.js'
-import { findCollabV3Turn } from '@onething/runtime/collab/actors/turn-context.wiring'
+import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
-import { contractForSchema, getToolkitCatalog } from '@onething/runtime/toolkit'
+import { contractForSchema, getToolkitCatalog } from '@onething/backend/runtime/toolkit'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('external-agents')

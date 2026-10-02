@@ -14,13 +14,13 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createSearchContext } from '@onething/runtime/search'
+import { createSearchContext } from '@onething/backend/runtime/search'
 import {
   createPromptsSearchCapability,
   searchResultOf,
-} from '@onething/runtime/search/capabilities'
-import type { SearchQuery } from '@onething/core/search'
-import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/runtime/prompts/store-bound'
+} from '@onething/backend/runtime/search/capabilities'
+import type { SearchQuery } from '@onething/backend/core/search'
+import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/backend/runtime/prompts/store-bound'
 import { createAppSearchProvidersAdapters } from '../adapters.js'
 
 let tmpDir: string

@@ -36,7 +36,7 @@
  *      `ONETHING_SEARCH_EMBEDDER=fake` 换成确定性的假嵌入器 —— 门不下 110MB 模型)
  *      → `status.vector` 走过 downloading / embedding 到 `'ready'` → 黄金复述集里
  *      的一条**改写句**经 HTTP 命中那条消息。假嵌入器证的是**链路**不是模型
- *      (`packages/core/search/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
+ *      (`packages/backend/core/search/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
  *   ⑫ **真嵌入器真的跑得起来**(2026-09-17;**默认不跑** —— 它要下 130MB 模型、要出外网)。
  *      `ONETHING_GATE_REAL_EMBEDDER=1` 且 `HTTPS_PROXY` / `HF_ENDPOINT` 至少有一个在场
  *      才跑;否则打印跳过的理由。判的是「`device: 'cpu'` 那条路通到底」:状态走到
@@ -66,7 +66,7 @@
  * 的反证 —— 那走的是「索引不可用」那条支,三档答零结果,量到的是一条闲着的主线程。
  * 真反证是把 SqliteIndex 的整键重折搬回主线程,而那要动产品代码 —— **⑤c 就是为它
  * 立的那条线**:那个窗口里除了折没有别的事,折一搬过来必红。除此之外门里还有一条
- * **结构判据**(⑤d):`packages/backend/**` 与 `packages/onething-runtime/src/search/`
+ * **结构判据**(⑤d):`packages/backend/**` 与 `packages/backend/runtime/search/`
  * 的 `service.ts` / `capabilities/**` 里**零 `node:sqlite` import** —— 主线程这一侧
  * 碰不到 sqlite 是结构保证的,而不是靠这次跑出来的读数运气好。
  *
@@ -1213,8 +1213,8 @@ async function runLoopDelayPhase() {
     // ── ⑤d 结构判据(见文件头「反证」)──────────────────────────────
     const sqliteHits = spawnSync('grep', ['-rln', "node:sqlite",
       path.join(repoRoot, 'packages/backend'),
-      path.join(repoRoot, 'packages/onething-runtime/src/search/service.ts'),
-      path.join(repoRoot, 'packages/onething-runtime/src/search/capabilities'),
+      path.join(repoRoot, 'packages/backend/runtime/search/service.ts'),
+      path.join(repoRoot, 'packages/backend/runtime/search/capabilities'),
     ], { encoding: 'utf-8' })
     // grep 没命中时退出码是 1;命中了才有 stdout。
     const offenders = (sqliteHits.stdout ?? '').trim()
@@ -1232,9 +1232,9 @@ async function runLoopDelayPhase() {
      */
     const wasmHits = spawnSync('grep', ['-rln', '@huggingface/transformers',
       path.join(repoRoot, 'packages/backend'),
-      path.join(repoRoot, 'packages/core'),
-      path.join(repoRoot, 'packages/onething-runtime/src/search/service.ts'),
-      path.join(repoRoot, 'packages/onething-runtime/src/search/capabilities'),
+      path.join(repoRoot, 'packages/backend/core'),
+      path.join(repoRoot, 'packages/backend/runtime/search/service.ts'),
+      path.join(repoRoot, 'packages/backend/runtime/search/capabilities'),
       path.join(repoRoot, 'apps/desktop-react/electron'),
     ], { encoding: 'utf-8' })
     const wasmOffenders = (wasmHits.stdout ?? '').trim()
@@ -1244,7 +1244,7 @@ async function runLoopDelayPhase() {
 
     // ── 种账本:300 会话 × 30 条消息,含 10 条 > 64KB 的正文 ────────
     const corpus = JSON.parse(fs.readFileSync(
-      path.join(repoRoot, 'packages/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
+      path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
     const seedStartedAt = Date.now()
     const seeded = seedLedger({ storePath: storeB, sessions: 300, messagesPerSession: 30, corpus })
     console.log(`  info 种了 ${seeded.sessions} 间 × ${seeded.messages / seeded.sessions} 条 = `
@@ -1456,14 +1456,14 @@ async function runLoopDelayPhase() {
  */
 async function runSemanticPhase() {
   const storeC = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-semantic-gate-'))
-  const paraphrasePath = path.join(repoRoot, 'packages/core/search/__tests__/fixtures/paraphrase.json')
+  const paraphrasePath = path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/paraphrase.json')
   let server
   let provider
   try {
     console.log(`[gate:search-index] ⑧ temp store: ${storeC}`)
     const paraphrase = JSON.parse(fs.readFileSync(paraphrasePath, 'utf-8'))
     const corpus = JSON.parse(fs.readFileSync(
-      path.join(repoRoot, 'packages/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
+      path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
 
     /*
      * 挑复述集的**两条**,各自的原文各进一间会话,再拿各自的改写句去查 ——
@@ -1634,7 +1634,7 @@ async function runSemanticPhase() {
  */
 async function runSemanticHotApplyPhase() {
   const storeD = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-hotapply-gate-'))
-  const paraphrasePath = path.join(repoRoot, 'packages/core/search/__tests__/fixtures/paraphrase.json')
+  const paraphrasePath = path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/paraphrase.json')
   let server
   let provider
   try {

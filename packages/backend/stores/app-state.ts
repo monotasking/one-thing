@@ -1,4 +1,4 @@
-import { getOnethingAppStatePath } from '@onething/runtime/storage'
+import { getOnethingAppStatePath } from '@onething/backend/runtime/storage'
 import {
   getOnethingCurrentSessionId,
   getOnethingCurrentWorkspaceId,
@@ -8,7 +8,7 @@ import {
   writeOnethingAppState,
   type OnethingAppState,
   type OnethingSerializedTab,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 
 export interface SerializedTab extends OnethingSerializedTab {}
 export interface AppState extends OnethingAppState {}

@@ -31,10 +31,10 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/core/toolkit'
-import type { Authorizer, Invocation, Outcome, Tool } from '@onething/core/toolkit'
+import { Decision } from '@onething/backend/core/toolkit'
+import type { Authorizer, Invocation, Outcome, Tool } from '@onething/backend/core/toolkit'
 import type { Principal } from '@shared/permission/principal'
-import { encodeSessionLogEventLine } from '@onething/core/session'
+import { encodeSessionLogEventLine } from '@onething/backend/core/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionMeta } from '@shared/ipc.js'
 import {
@@ -44,13 +44,13 @@ import {
   LedgerFeed,
   SqliteIndex,
   defaultDocumentFilters,
-} from '@onething/runtime/search/index'
-import type { IndexEndpoint } from '@onething/runtime/search/index'
-import type { IndexWorkerData } from '@onething/runtime/search/index/worker-data'
-import type { IndexWorkerHandle } from '@onething/runtime/search/index/worker-host'
-import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
-import { configureSearchVisibilityPort } from '@onething/runtime/search/capabilities'
-import type { ToolAuditRecord } from '@onething/runtime/toolkit/audit-observer'
+} from '@onething/backend/runtime/search/index'
+import type { IndexEndpoint } from '@onething/backend/runtime/search/index'
+import type { IndexWorkerData } from '@onething/backend/runtime/search/index/worker-data'
+import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/worker-host'
+import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
+import { configureSearchVisibilityPort } from '@onething/backend/runtime/search/capabilities'
+import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 import { EventBus } from '../../../events/event-bus.js'
 
 const bus = new EventBus()
@@ -386,7 +386,7 @@ describe('expand 走预览路', () => {
 
 describe('协作房里 search 与 history 并存,不越权(§14.2「场景」那一行)', () => {
   it('房里两只工具都在面上 —— `search` 不靠场景门躲开协作房', async () => {
-    const { resolveScene } = await import('@onething/runtime/toolkit')
+    const { resolveScene } = await import('@onething/backend/runtime/toolkit')
     const catalog = createDesktopCatalog()
     const scene = resolveScene({ session: { id: 'r-mine', kind: 'room' } })
 

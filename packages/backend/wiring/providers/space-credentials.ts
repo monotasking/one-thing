@@ -1,7 +1,7 @@
 /**
  * per-space provider 凭证的**宿主接线**(批 B3)。
  *
- * 规则本身住在产品层(`@onething/runtime/spaces/provider-credentials`);这里只做
+ * 规则本身住在产品层(`@onething/backend/runtime/spaces/provider-credentials`);这里只做
  * 三件宿主才知道的事:会话属于哪个空间、这个 provider 是不是 OAuth 型、
  * 它和这个空间叫什么名字(错误文案要说人话)。
  *
@@ -11,16 +11,16 @@
  * 多一份会分家的判据。
  */
 
-import { getAuthHostPorts } from '@onething/runtime/auth/host-ports'
+import { getAuthHostPorts } from '@onething/backend/runtime/auth/host-ports'
 import { isProviderEnabledIn } from '@shared/provider-families'
-import { builtinProviderFamilyLookup } from '@onething/runtime/providers/builtin-manifests'
+import { builtinProviderFamilyLookup } from '@onething/backend/runtime/providers/builtin-manifests'
 import {
   applySpaceProviderCredential,
   describeProviderDisabled,
   providerDialFieldsOf,
   resolveSpaceProviderCredential,
   type SpaceProviderCredentialResolution, type ResolveSpaceProviderCredentialOptions,
-} from '@onething/runtime/spaces/provider-credentials'
+} from '@onething/backend/runtime/spaces/provider-credentials'
 import {
   addSpaceProviderCredentialEntry,
   advanceSpaceCredentialCursor,
@@ -43,9 +43,9 @@ import {
   writeSpaceCredentials,
   type ImportableProviderCredential,
   type SpaceCredentialEntry,
-} from '@onething/runtime/spaces/credentials'
-import { pickRoute, type RouteCandidate } from '@onething/runtime/providers/route'
-import { withResolvedProviderBaseUrl } from '@onething/runtime/providers/provider-config'
+} from '@onething/backend/runtime/spaces/credentials'
+import { pickRoute, type RouteCandidate } from '@onething/backend/runtime/providers/route'
+import { withResolvedProviderBaseUrl } from '@onething/backend/runtime/providers/provider-config'
 import { getCurrentBackendInstance } from '../../current.js'
 import {
   isPluginCredentialStrategyAvailable,
@@ -54,40 +54,40 @@ import {
 import {
   classifyOAuthRefreshError,
   providerErrorCooldownUntil,
-} from '@onething/runtime/agent-loop/provider-error-classification'
+} from '@onething/backend/runtime/agent-loop/provider-error-classification'
 import {
   credentialTargetFromSpaceMarker,
   parseSpaceOAuthToken,
   type OnethingCredentialTarget,
-} from '@onething/runtime/auth'
+} from '@onething/backend/runtime/auth'
 import type {
   SpaceCredentialImportSkip,
   SpaceCredentialsSummary,
   SpacesClearCredentialRequest,
   SpacesSetCredentialPoolRequest,
   SpacesSetCredentialRequest,
-} from '@onething/runtime/spaces/ipc-operations'
-import { isExternalAgentExecutorProvider } from '@onething/runtime/agents'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+} from '@onething/backend/runtime/spaces/ipc-operations'
+import { isExternalAgentExecutorProvider } from '@onething/backend/runtime/agents'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import {
   createEmptySpaceProviderSettings,
   hasSpaceProviderSettings,
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
+} from '@onething/backend/runtime/spaces/provider-settings'
 import { providerSeedOf } from '../../stores/settings-defaults.js'
 import type {
   CoreProviderConfigLike,
   CoreSpaceCredentialMarker,
-} from '@onething/runtime/providers'
-import { getSpacesStore } from '@onething/runtime/spaces/store'
-import { getProviderManifest } from '@onething/runtime/providers/manifest'
+} from '@onething/backend/runtime/providers'
+import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
+import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
 import { authService } from '../auth/auth-service.js'
-import type { ProviderAuthContext } from '@onething/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import { resolveSessionSpaceId } from '../../stores/sessions.js'
 import { getProviderInfo, requiresOAuth } from './registry.js'
-import { getProviderEnvStatus } from '@onething/runtime/providers/env.wiring'
+import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
 import { getSessionSettings, getSpaceSettings } from './space-ai-settings.js'
 
 function providerLabel(providerId: string): string {

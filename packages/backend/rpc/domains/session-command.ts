@@ -52,7 +52,7 @@
  *     它看起来像个疏漏 —— 不是:给一条来自网络的命令盖上「桌面来源」的 origin
  *     才是说谎。
  */
-import { emitCoreSessionCommandForIpc } from '@onething/core/events'
+import { emitCoreSessionCommandForIpc } from '@onething/backend/core/events'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { SessionCommand } from '@shared/events/index.js'
 import type { SessionCommandEmitResult, SessionCommandRoutes } from '@shared/ipc/session-command.js'
@@ -136,7 +136,7 @@ function amendTurnSignal(input: {
   kind: 'retry' | 'edit-resend'
 }): void {
   Promise.all([
-    import('@onething/runtime'),
+    import('@onething/backend/runtime'),
     import('../../wiring/evals/incident.js'),
   ])
     .then(async ([runtime, { createIncidentForTurn }]) => {

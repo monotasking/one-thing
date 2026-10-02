@@ -45,7 +45,7 @@
  * 它有没有结局、要不要授权、别的进程该不该知道。** 三个都否 = 视图状态。
  */
 
-import type { ResourceSpec } from '@onething/core/resource'
+import type { ResourceSpec } from '@onething/backend/core/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const BROWSER_RESOURCE_SCHEME = 'browser'

@@ -12,7 +12,7 @@
  *    条正则分支,连同 `server/runtime.ts` 里 `chat` / `prompts` 两个 adapter 和
  *    `streams` 上的 `abort` / `active` 两只 —— 那是同一件事的**第二份实现**。
  *
- * 逻辑一行没搬:六条逐条转调 `@onething/runtime` 的投影
+ * 逻辑一行没搬:六条逐条转调 `@onething/backend/runtime` 的投影
  * (`getOnethingChatHistoryForIpc` / `generateOnethingChatTitleForIpc` /
  * `buildOnethingSystemPromptSnapshotForIpc` /
  * `updateOnethingMessageThinkingTimeForIpc` / `abortOnethingStreamsForIpc` /
@@ -41,18 +41,18 @@
  *     态、补一条带 aborted 标记的终结事件),而不是只 `engine.abort` 一下就回
  *     `{success:true}`。web 因此不再出现「停了但那条消息永远停在流式态」。
  */
-import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/runtime/prompts'
+import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/backend/runtime/prompts'
 import {
   generateOnethingChatTitleForIpc,
   getOnethingCaughtErrorMessage,
-} from '@onething/runtime/providers'
+} from '@onething/backend/runtime/providers'
 import {
   abortOnethingStreamsForIpc,
   getOnethingChatHistoryForIpc,
   listOnethingActiveStreamsForIpc,
   updateOnethingMessageThinkingTimeForIpc,
-} from '@onething/runtime/sessions'
-import { emitCoreSessionEventSafely } from '@onething/core/events'
+} from '@onething/backend/runtime/sessions'
+import { emitCoreSessionEventSafely } from '@onething/backend/core/events'
 import type { ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'
@@ -75,15 +75,15 @@ import { billTitleUsage } from '../../wiring/usage/bill-side-line.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { requestSessionOwner, sessionAccess } from '../../session/access.js'
-import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/runtime/sessions/stream-abort'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
-import type { CoreProviderAuthLogger } from '@onething/runtime/providers/provider-config'
-import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/runtime/prompts/system-prompt-snapshot'
-import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/runtime/sessions/stream-abort'
-import type { OnethingAuthAccount } from '@onething/runtime/auth/types'
+import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/backend/runtime/sessions/stream-abort'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingSessionsIpcLogger } from '@onething/backend/runtime/sessions/ipc-operations'
+import type { CoreProviderAuthLogger } from '@onething/backend/runtime/providers/provider-config'
+import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/runtime/prompts/system-prompt-snapshot'
+import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/backend/runtime/sessions/stream-abort'
+import type { OnethingAuthAccount } from '@onething/backend/runtime/auth/types'
 import type { ProviderConfig, OAuthToken, ChatSession } from '@shared/ipc.js'
-import type { OnethingChatTitleGenerationAdapters } from '@onething/runtime/providers/provider-runtime'
+import type { OnethingChatTitleGenerationAdapters } from '@onething/backend/runtime/providers/provider-runtime'
 
 const log = getLogger('rpc.chat')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */

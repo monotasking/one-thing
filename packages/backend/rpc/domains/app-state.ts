@@ -48,7 +48,7 @@ import {
   readOnethingAppState,
   saveOnethingUiStateForIpc,
   type OnethingUiStatePatch,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { DEFAULT_SESSION_OWNER, requestSessionOwner, sessionAccess } from '../../session/access.js'
 import { tenantDirectory } from '../../server/tenant-paths.js'
 

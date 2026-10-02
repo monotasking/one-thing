@@ -70,7 +70,7 @@ export const BROWSER_SCHEME_PREFIX = 'browser:'
  * 自述里 `tabs` 读与 `open` 做是命名空间级的(`ref === null`,
  * `electron/browser/resource-provider.ts` 的 `NAMESPACE_MEMBERS`:这两条根本不读
  * ref)。但 **RPC 那一侧的 `ref` 是一个必填串** —— `resources.read/do` 收的是
- * `{ref: string}`,而 `parseRef` 要求 path 非空(`packages/core/resource/ref.ts`)。
+ * `{ref: string}`,而 `parseRef` 要求 path 非空(`packages/backend/core/resource/ref.ts`)。
  * 「没有地址」这件事 AI 那条路表达得出来,三个出口都表达不出。
  *
  * 所以照 `SESSION_COLLECTION_PATH`(`@all`)那条先例用一个**保留坐标**:一个不可能

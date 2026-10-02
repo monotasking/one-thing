@@ -35,7 +35,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage } from '@shared/ipc.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
-import { synthesizeCoreToolAnchors } from '@onething/core/session/render-anchors'
+import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
 
 const state = vi.hoisted(() => ({
   storeDir: '',
@@ -43,7 +43,7 @@ const state = vi.hoisted(() => ({
   messages: new Map<string, ChatMessage[]>(),
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

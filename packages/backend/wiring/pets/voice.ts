@@ -17,7 +17,7 @@
  *
  * 没配语音(`settings.voice` 缺席)→ 合成那一步答 `null` → 不出声,但气泡照出(§10.2)。
  */
-import type { PetVoice } from '@onething/runtime/pets'
+import type { PetVoice } from '@onething/backend/runtime/pets'
 import type { VoiceSettings } from '@shared/ipc.js'
 import type { PatterVoiceStyle } from '../music/host-voice.js'
 

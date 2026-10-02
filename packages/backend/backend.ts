@@ -19,15 +19,15 @@
 // 执行器注册表在模块加载时把「哪些 provider 是外部执行体、上下文归它自己管」登记进
 // core(A0-3 起 core 不再内置任何 provider 名字)。静态 import 在这里,是为了保证任何
 // 一个宿主装配、引擎做第一次压缩判定之前它已经跑过 —— 不靠别的模块碰巧 import 到它。
-import '@onething/runtime/agents/executor/registry'
+import '@onething/backend/runtime/agents/executor/registry'
 import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from './session/event-log.js'
-import { createStoreLease, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'
-import { MediaLibraryService } from '@onething/runtime/media'
-import { configureMediaLibraryService } from '@onething/runtime/media/library-service-bound'
-import { OnethingUsageLedger } from '@onething/runtime/usage'
+import { createStoreLease, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/runtime/storage'
+import { MediaLibraryService } from '@onething/backend/runtime/media'
+import { configureMediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
+import { OnethingUsageLedger } from '@onething/backend/runtime/usage'
 import { configureUsageLedger, captureUsageRecorder } from './wiring/usage/index.js'
-import { createCollabDigestStore, configureCollabDigestStore } from '@onething/runtime/collab/digest-store'
+import { createCollabDigestStore, configureCollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
 import { createCollabDigestRunner, type CollabDigestRunner } from './wiring/collab/digest-runner.js'
 import { createCollabInspector, configureCollabInspector } from './wiring/collab/inspector.js'
 import { PluginLlmService } from './wiring/plugins/llm.js'
@@ -35,15 +35,15 @@ import { CredentialStrategyService } from './wiring/providers/credential-strateg
 import { disposeCredentialStrategyState } from './wiring/providers/credential-strategy.js'
 import { TodoPlanRuntime } from './wiring/todo-plan/store.js'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './lifecycle.js'
-import { PracticeService, configurePracticeService } from '@onething/runtime/practice/service.wiring'
+import { PracticeService, configurePracticeService } from '@onething/backend/runtime/practice/service.wiring'
 import { MusicSubsystem } from './wiring/music/subsystem.js'
 import { PetsSubsystem } from './wiring/pets/subsystem.js'
 import { petChattinessOf, watchPetChattiness } from './wiring/pets/chattiness.js'
 import { ModelMomentComposer } from './wiring/pets/model-composer.js'
 import { createVoiceService, configureVoiceService } from './wiring/voice/service.js'
 import { createTaskDispatchLayer, type TaskDispatchLayer } from './wiring/tasks/dispatch.js'
-import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/runtime/sessions'
-import { getTracesDir } from '@onething/runtime/evals/trace-store'
+import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/backend/runtime/sessions'
+import { getTracesDir } from '@onething/backend/runtime/evals/trace-store'
 import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
 import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
@@ -53,7 +53,7 @@ import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
 import { configureAppToolSandbox } from './wiring/tools/core/sandbox.js'
 import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
-import { configureAppBackgroundJobs } from '@onething/runtime/tools/background-jobs-bound'
+import { configureAppBackgroundJobs } from '@onething/backend/runtime/tools/background-jobs-bound'
 import { configureAppProviderRegistry } from './wiring/providers/index.js'
 import { configureAppSpaceCredentialsCrypto } from './wiring/providers/space-credentials.js'
 import {
@@ -62,7 +62,7 @@ import {
   upgradeSpaceCredentialsEncryptionAtRest,
 } from './wiring/providers/space-config-migration.js'
 import { configureAppPluginCredentialStrategyHost } from './wiring/providers/credential-strategy.js'
-import { configureAppScheduler } from '@onething/runtime/scheduler/scheduler-bound'
+import { configureAppScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import { configureAppRipgrep } from './utils/ripgrep.js'
 import { configureAppSearchProviders } from './wiring/search/providers.js'
 import { configureAppSkillManage } from './wiring/skills/manage.js'
@@ -89,7 +89,7 @@ import { registerBuiltinTriggers } from './wiring/engine/triggers/index.js'
 import { createSessionTocTrigger } from './wiring/engine/triggers/session-toc.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from './wiring/collab/index.js'
 import { Permission } from './wiring/permission/index.js'
-import { Interaction } from '@onething/core/interaction'
+import { Interaction } from '@onething/backend/core/interaction'
 import { bootstrapVariableSystem } from './wiring/variables/index.js'
 import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from './wiring/goals/index.js'
@@ -101,7 +101,7 @@ import { bootstrapNoteVaultSkillRoots } from './wiring/skills/note-vault-roots.j
 import { migrateNotesSettings } from './wiring/notes/migration.js'
 import type { NotesSubsystem } from './wiring/notes/index.js'
 import { createAppSearchService } from './wiring/search/index.js'
-import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
+import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/backend/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
 import { createAppToolRunner, sessionWorkspaceRootFor } from './wiring/toolkit/runner.js'
 import { createPermissionAuthorizer } from './wiring/toolkit/authorizer.js'
@@ -115,14 +115,14 @@ import {
   ShellCommandDispatch,
   ShellMountRegistry,
 } from './wiring/resource/index.js'
-import type { ResourceKernel } from '@onething/core/resource'
+import type { ResourceKernel } from '@onething/backend/core/resource'
 import { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from './wiring/evals/task-owner.js'
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './wiring/skills/session-skills.js'
-import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
+import { MCPManager, registerMCPTools } from '@onething/backend/runtime/mcp/index.wiring'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
-import { ACPManager } from '@onething/runtime/acp'
+import { ACPManager } from '@onething/backend/runtime/acp'
 import { McpSubsystem } from './wiring/mcp/subsystem.js'
 import { AcpSubsystem } from './wiring/acp/subsystem.js'
 import { onSessionsDeletedFromBus } from './wiring/acp/events.js'
@@ -131,8 +131,8 @@ import { AcpAgentRegistry, type AcpRegistryFetch } from './wiring/acp/registry.j
 import { getAppBuiltinResourcePath } from './wiring/skills/loader.js'
 import { createAppFetch } from './provider-binding/bound-fetch.js'
 import { resolveExternalAgentSpawnEnv } from './wiring/external-agents/spawn-env.js'
-import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
-import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
+import { killTrackedDetachedChildren } from '@onething/backend/runtime/tools/bash-executor'
+import { killAllTerminals } from '@onething/backend/runtime/terminal/service.wiring'
 import type { SessionHistoryBuilder } from './session/reads.js'
 import { buildHistoryMessages, historyProjectionRecipe } from './wiring/engine/stream/message-helpers.js'
 import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from './wiring/logging/index.js'
@@ -147,7 +147,7 @@ import {
 } from './current.js'
 import type { EventBus } from './events/event-bus.js'
 import type { StreamChannel } from './events/stream-channel.js'
-import type { SessionManager } from '@onething/core/session'
+import type { SessionManager } from '@onething/backend/core/session'
 
 const log = getLogger('app.backend')
 
@@ -882,7 +882,7 @@ export class OnethingBackend implements BackendHandle {
       // promptVersion stamps eval traces with the live minimal-scene output so
       // recorded incidents replay against the prompt that actually shipped.
       try {
-        const { initPromptVersion, buildOnethingSystemPrompt } = await import('@onething/runtime')
+        const { initPromptVersion, buildOnethingSystemPrompt } = await import('@onething/backend/runtime')
         const { system, developer } = await buildOnethingSystemPrompt({ hasTools: false, skills: [] })
         initPromptVersion([system, ...developer].filter(Boolean).join('\n\n'))
       } catch (error) {

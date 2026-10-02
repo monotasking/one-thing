@@ -14,8 +14,8 @@ import {
   providerSupportsInputModality,
   providerSupportsOutputModality,
   providerSupportsToolResultModality,
-} from '@onething/core/agent-loop'
-import type { AgentModelCapabilities, AgentProvider } from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
+import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/core/agent-loop'
 
 describe('agent loop capabilities', () => {
   it('detects audio and video input modalities from content parts', () => {

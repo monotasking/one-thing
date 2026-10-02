@@ -29,7 +29,7 @@ import {
   resolvePluginFilePickAccept,
   sanitizePluginImportFileName,
   type PluginFilePickResult,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import { getPluginsDir } from './loader.js'
 
 export interface PluginFileImportRequest {

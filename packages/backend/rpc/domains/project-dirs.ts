@@ -31,8 +31,8 @@ import {
   listOnethingProjectDirsForIpc,
   removeOnethingProjectDirForIpc,
   updateOnethingProjectDirForIpc,
-} from '@onething/runtime/project-dirs'
-import { getProjectsStore } from '@onething/runtime/project-dirs/store'
+} from '@onething/backend/runtime/project-dirs'
+import { getProjectsStore } from '@onething/backend/runtime/project-dirs/store'
 import type { ProjectDirsRoutes } from '@shared/ipc/project-dirs.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'

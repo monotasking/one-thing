@@ -15,19 +15,19 @@
  * `wiring/<domain>` 是「只为把一个领域插进脊柱而存在」的那一档(结构债 P3 定的),
  * 而这里正是:自述在产品层、内核在 core,这一层只负责把两头接上并交给装配。
  * I1(backend 根目录名不许影子化 runtime 领域名)对 `wiring/` 豁免;I2 那条不适用
- * ——`packages/onething-runtime/src` 下**没有** `resource/` 目录,会话那份自述住在
+ * ——`packages/backend/runtime` 下**没有** `resource/` 目录,会话那份自述住在
  * `sessions/` 里,不新开一棵同名树。
  */
 
-import type { AmbientSource } from '@onething/runtime/ambient'
+import type { AmbientSource } from '@onething/backend/runtime/ambient'
 import { defaultAmbientSources } from '../ambient/sources.js'
 import { AmbientResourceProvider } from './ambient-provider.js'
-import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/core/resource'
-import type { ResourceKernelOptions } from '@onething/core/resource'
-import { combineValidators, type ToolRunner, type Validator } from '@onething/core/toolkit'
-import { ZodValidator } from '@onething/runtime/toolkit'
-import { DIR_RESOURCE_SCHEME } from '@onething/runtime/files/resource-spec'
-import { GIT_RESOURCE_SCHEME } from '@onething/runtime/files/git-resource-spec'
+import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/backend/core/resource'
+import type { ResourceKernelOptions } from '@onething/backend/core/resource'
+import { combineValidators, type ToolRunner, type Validator } from '@onething/backend/core/toolkit'
+import { ZodValidator } from '@onething/backend/runtime/toolkit'
+import { DIR_RESOURCE_SCHEME } from '@onething/backend/runtime/files/resource-spec'
+import { GIT_RESOURCE_SCHEME } from '@onething/backend/runtime/files/git-resource-spec'
 import * as store from '../../store.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { createSandboxPolicy } from '../toolkit/runner.js'

@@ -26,7 +26,7 @@ vi.mock('../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
   updateSessionWorkingDirectory: vi.fn(),
 }))
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 

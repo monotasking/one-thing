@@ -18,14 +18,14 @@ const mocks = vi.hoisted(() => ({
 
 // 只覆盖两条取路径的口子,其余原样透传 —— `space-credentials` 那条链上还有
 // 别的路径函数(会话目录等),整份替换会在动态 import 时炸成「没有这个导出」。
-vi.mock('@onething/runtime/storage', async importOriginal => ({
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getOnethingStorePath: () => mocks.storeRoot,
   getOnethingSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
 }))
 
 vi.mock('../../../stores/sessions.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -38,12 +38,12 @@ import {
   composeEffectiveAISettings,
   splitEffectiveAISettings,
 } from '../../../stores/defaults/ai-settings.js'
-import { setRootDirForTests } from '@onething/runtime/spaces/persistence'
+import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   readSpaceProviderSettings,
   resetSpaceProviderSettingsCacheForTests,
   writeSpaceProviderSettings,
-} from '@onething/runtime/spaces/provider-settings'
+} from '@onething/backend/runtime/spaces/provider-settings'
 import {
   getPersistedSettings,
   getSpaceSettings,

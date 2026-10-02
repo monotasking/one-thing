@@ -60,13 +60,13 @@
  *    `error` 上;末行按 §13.x 那条判词照实说「这一类没搜成」,而不是让它冒充「没有」。
  */
 
-import type { FacetFilter, SearchContext, SearchPrincipal } from '@onething/core/search'
+import type { FacetFilter, SearchContext, SearchPrincipal } from '@onething/backend/core/search'
 import type {
   OnethingSearchService,
   SearchServiceGroup,
   SearchServiceRequest,
   SearchServiceResponse,
-} from '@onething/runtime/search'
+} from '@onething/backend/runtime/search'
 import type {
   SearchToolAdapters,
   SearchToolHit,
@@ -74,7 +74,7 @@ import type {
   SearchToolPage,
   SearchToolPrincipal,
   SearchToolQuery,
-} from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/toolkit'
 
 /** §14.1:AI 这一路的消费面名。core 不枚举消费面,所以这个串只出现在这里。 */
 export const AGENT_TOOL_SURFACE = 'agent-tool'

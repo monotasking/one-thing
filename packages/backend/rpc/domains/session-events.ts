@@ -12,7 +12,7 @@ import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '../../session/access.js'
 import type { SessionEventsRoutes } from '@shared/ipc/session-events.js'
-import { resolveToolCallInspection } from '@onething/runtime/sessions/session-events'
+import { resolveToolCallInspection } from '@onething/backend/runtime/sessions/session-events'
 import { readSessionEvents, readSessionLogEvents } from '../../session/event-log.js'
 import { readSessionBlob } from '../../session/blob-store.js'
 // 路径消毒的那道门与轨迹读实现同住一处:S3 之前它是本文件的私有函数,而 S3 把

@@ -10,7 +10,7 @@
 import {
   COLLAB_DEFAULT_DAILY_COST_USD,
   collabAgentSessionIdsForScan,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import * as store from '../../store.js'
 import { getUsageLedger } from '../usage/index.js'
 import { loadCollabBoard } from './board-store.js'
@@ -25,7 +25,7 @@ const log = getLogger('collab.budget')
  *
  *  默认值本身搬去了纯层(`collab/types.ts`,理由见那儿),这里原样再导出一次 ——
  *  已有的导入点不必跟着搬家,而"闸的默认额度"读起来仍然在闸这个文件里。 */
-export { COLLAB_DEFAULT_DAILY_COST_USD } from '@onething/runtime/collab'
+export { COLLAB_DEFAULT_DAILY_COST_USD } from '@onething/backend/runtime/collab'
 const BUDGET_CACHE_MS = 60_000
 
 /**

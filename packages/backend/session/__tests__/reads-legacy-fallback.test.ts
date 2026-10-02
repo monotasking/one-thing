@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/core/session'
+import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend/core/session'
 import { createSessionReads } from '../reads.js'
 
 let sessionsDir = ''

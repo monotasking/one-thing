@@ -12,7 +12,7 @@ import {
   CORE_PLUGIN_FAILURE_THRESHOLD,
   PLUGIN_PERMISSION_DEEPLINK_HANDLE,
   PLUGIN_REGISTRY_POLICY,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-deeplink-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -32,7 +32,7 @@ async function load() {
   const [api, registry, health, logging] = await Promise.all([
     import('../../plugins/api.js'),
     import('../registry.js'),
-    import('@onething/runtime/plugins/health'),
+    import('@onething/backend/runtime/plugins/health'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
     // **同一份**里拿,否则收的是别的 root(L4)。
     import('../../logging/index.js'),

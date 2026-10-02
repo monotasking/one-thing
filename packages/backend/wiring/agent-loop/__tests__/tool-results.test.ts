@@ -5,7 +5,7 @@ import {
   agentToolMessageContentToStructuredPayload,
   agentToolResultToMessageContent,
   agentToolResultToMessageContentForCapabilities,
-} from '@onething/core/agent-loop'
+} from '@onething/backend/core/agent-loop'
 
 describe('agent tool result message content', () => {
   it('keeps plain text tool results as text', () => {

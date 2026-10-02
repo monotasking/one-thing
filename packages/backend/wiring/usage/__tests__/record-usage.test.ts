@@ -6,11 +6,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { OnethingUsageLedger } from '@onething/runtime/usage'
+import { OnethingUsageLedger } from '@onething/backend/runtime/usage'
 
 const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-record-usage-'))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => storeDir,
 }))
 

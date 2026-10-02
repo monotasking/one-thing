@@ -25,12 +25,12 @@ import s from './ModelOverridePopover.module.css'
  * 后端早就有这三张表 —— `settings.ai.providers[pid].contextLengthByModel[m]`、
  * `maxOutputByModel[m]` 与 `modelCapabilitiesByModel[m]`,引擎读它们的地方是
  * `model-registry.ts` 的 `getOnethingModelContextLength`(上下文,覆盖优先于目录、
- * 优先于 128k 兜底)、`packages/core/engine/agent-loop-runtime.ts` 的
+ * 优先于 128k 兜底)、`packages/backend/core/engine/agent-loop-runtime.ts` 的
  * `resolveAgentLoopContextBudgetValues`(最大输出,**填了就直接当请求的 max_tokens**;
  * 没填则按注册上限的一半发,**注册上限也没有就不带 `max_tokens`** —— 09-09 之前
  * 这里兜底 4096 再对半成 2048,那个编出来的数连同它的产地一起在同日删掉了;
  * 全局 `settings.chat.maxTokens` 也在同日整格退役,请求侧只剩这两个来源)
- * 与 `runtime/src/providers/model-capability.ts` 的 `resolveOnethingModelCapabilities`
+ * 与 `runtime/providers/model-capability.ts` 的 `resolveOnethingModelCapabilities`
  * (五项能力,覆盖优先于目录条目、优先于按名字猜的规则表)。
  * 缺的一直只是壳上的写面:手填进来的模型只能进 `selectedModels`,它的窗口有多大、
  * 一次能吐多长、支不支持工具,用户明明知道却没地方说。这块浮层就是那张嘴,

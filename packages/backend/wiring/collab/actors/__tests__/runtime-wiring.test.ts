@@ -81,7 +81,7 @@ vi.mock('../../../external-agents/index.js', () => ({
   },
 }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 
@@ -216,15 +216,15 @@ const {
   warmCollabV3Agents,
 } = await import('../runtime.js')
 const { handleCollabRoomSendMessage } = await import('../../ingress.js')
-const { createCollabScriptedMindPort } = await import('@onething/runtime/collab/actors/mind-port')
-const { createCollabScriptedRefereeJudgePort } = await import('@onething/runtime/collab/actors/referee-actor')
+const { createCollabScriptedMindPort } = await import('@onething/backend/runtime/collab/actors/mind-port')
+const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/runtime/collab/actors/referee-actor')
 const { collabV3MigrationMarkerPath, readCollabV3MigrationMarker } = await import('../migrate.js')
-const { beginCollabV3Turn, endCollabV3Turn, findCollabV3Turn } = await import('@onething/runtime/collab/actors/turn-context.wiring')
+const { beginCollabV3Turn, endCollabV3Turn, findCollabV3Turn } = await import('@onething/backend/runtime/collab/actors/turn-context.wiring')
 const { getCollabAgentActivity } = await import('../../agent-activity.js')
-const { readCollabSchedulerLogTail } = await import('@onething/runtime/collab/actors/scheduler-log')
+const { readCollabSchedulerLogTail } = await import('@onething/backend/runtime/collab/actors/scheduler-log')
 const { speakIntoCollabRoom } = await import('../../say-tool.js')
-const { COLLAB_SAY_SOURCE } = await import('@onething/runtime/collab')
-const { isTrustedCollabDrive } = await import('@onething/runtime/collab/drive-guard')
+const { COLLAB_SAY_SOURCE } = await import('@onething/backend/runtime/collab')
+const { isTrustedCollabDrive } = await import('@onething/backend/runtime/collab/drive-guard')
 
 const ROOM = 'room-1'
 
@@ -249,7 +249,7 @@ function fireBus(eventType: string, sessionId: string, event: Record<string, unk
   for (const handler of mocks.busHandlers.get(eventType) ?? []) handler({ sessionId, event })
 }
 
-const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/runtime/collab/digest-store')
+const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
 const { createCollabInspector, configureCollabInspector } = await import('../../inspector.js')
 const { getSession } = await import('../../../../store.js')
 const { getEventBus } = await import('../../../../events/index.js')

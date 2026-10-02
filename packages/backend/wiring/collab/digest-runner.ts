@@ -23,7 +23,7 @@ import {
   planCollabHistoryWindow,
   type CollabAgentLike,
   type CollabDayDigest,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
@@ -35,14 +35,14 @@ import {
   resolveProviderAuth,
 } from '../engine/stream/provider-helpers.js'
 import { collabUserPromptFields } from './user-identity.js'
-import type { CollabDigestStore } from '@onething/runtime/collab/digest-store'
+import type { CollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
 import { getLogger } from '../logging/index.js'
 
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import type { SessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import type { captureUsageRecorder } from '../usage/index.js'
-import { ONETHING_USAGE_SOURCES } from '@onething/runtime/usage'
+import { ONETHING_USAGE_SOURCES } from '@onething/backend/runtime/usage'
 import { getCurrentBackend } from '../../current.js'
 
 const log = getLogger('collab.digest')

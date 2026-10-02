@@ -12,9 +12,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installStoreSessionLayerForTest } from '../../../session/testing/store-layer.js'
-import { Decision } from '@onething/core/toolkit'
-import type { Authorizer, Invocation } from '@onething/core/toolkit'
-import type { BashOperations } from '@onething/runtime/tools/bash-executor'
+import { Decision } from '@onething/backend/core/toolkit'
+import type { Authorizer, Invocation } from '@onething/backend/core/toolkit'
+import type { BashOperations } from '@onething/backend/runtime/tools/bash-executor'
 import {
   bashAdapters,
   createCatalogForTier,
@@ -25,8 +25,8 @@ import {
   readAdapters,
   variableAdapters,
 } from '../catalog.js'
-import { IpcProjector } from '@onething/runtime/toolkit/ipc-observer.wiring'
-import { AuditProjector, type ToolAuditRecord } from '@onething/runtime/toolkit/audit-observer'
+import { IpcProjector } from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
+import { AuditProjector, type ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 import { createAppToolRunner } from '../runner.js'
 
 const dirs: string[] = []

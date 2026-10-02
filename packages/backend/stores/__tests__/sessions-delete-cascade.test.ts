@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSessionTraceDir, getTurnTraceDir } from '@onething/runtime/evals/trace-store'
+import { getSessionTraceDir, getTurnTraceDir } from '@onething/backend/runtime/evals/trace-store'
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 
@@ -22,7 +22,7 @@ let storeLayer: Awaited<ReturnType<typeof import('../../session/testing/store-la
 
 async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   vi.resetModules()
-  const paths = await import('@onething/runtime/storage')
+  const paths = await import('@onething/backend/runtime/storage')
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()

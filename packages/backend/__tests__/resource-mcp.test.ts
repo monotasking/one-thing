@@ -29,7 +29,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import type { MCPClientLike } from '@onething/core/mcp'
+import type { MCPClientLike } from '@onething/backend/core/mcp'
 import type { MCPServerConfig, MCPServerState, MCPToolCallResult } from '@shared/mcp/types'
 import type { JsonObject } from '@shared/json'
 
@@ -194,7 +194,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       }
 
       // ③ 模型面上没有第二只工具 —— AI 走 `McpTool`。
-      const { getToolkitCatalog } = await import('@onething/runtime/toolkit/host')
+      const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
       expect(getToolkitCatalog()?.has(SCHEME)).toBe(false)
       // 但它确实是一种资源:元工具的 list 里有它。
       const meta = getToolkitCatalog()?.get('resources')

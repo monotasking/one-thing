@@ -3,7 +3,7 @@
  *
  * 没有真的 Obsidian、没有子进程:`createNotesSubsystem` 在不可信宿主下**一个
  * 驱动都不注册**,而可信那一路这里只断言驱动注册进去了 + 订阅接上了
- * (驱动本身的行为由 `runtime/src/notes` 那几份单测钉住)。
+ * (驱动本身的行为由 `runtime/notes` 那几份单测钉住)。
  */
 
 import * as fs from 'node:fs'
@@ -17,7 +17,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
 } from '../../settings/events.js'
-import type { NoteSystemDriver, NoteSystemState } from '@onething/runtime/notes'
+import type { NoteSystemDriver, NoteSystemState } from '@onething/backend/runtime/notes'
 import { createNotesSubsystem, obsidianSocketPath, toNotesConfig } from '../index.js'
 import { updateSettingsInMemory } from '../../../stores/settings.js'
 

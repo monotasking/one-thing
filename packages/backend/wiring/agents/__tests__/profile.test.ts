@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { resolveAgentToolSurface } from '@onething/runtime/agents'
+import { resolveAgentToolSurface } from '@onething/backend/runtime/agents'
 import type { AgentDefinition, ChatSession } from '@shared/ipc.js'
 
 /* Mock paths are resolved from THIS file, not from the module under test. */
@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
 }))
 
-vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   // 生产代码走 findAgent ?? defaultAgent();夹具用同一个 state.agent 顶两个口,
   // 与旧 getAgent mock(忽略入参直接回 state.agent)行为一致。
   findAgent: () => state.agent,

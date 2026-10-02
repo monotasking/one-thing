@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 
-vi.mock('@onething/runtime/storage/index', () => ({
+vi.mock('@onething/backend/runtime/storage/index', () => ({
   ensureDir: mocks.ensureDir,
   getOnethingLogDir: () => mocks.logDir,
 }))
@@ -176,7 +176,7 @@ describe('diagnostics mode', () => {
   })
 
   it('flips the level spec and the provider request dump together', async () => {
-    vi.doMock('@onething/runtime/providers/index', () => ({
+    vi.doMock('@onething/backend/runtime/providers/index', () => ({
       setOnethingProviderRequestDumpEnabled: (enabled: boolean | undefined) => { dumpState.enabled = enabled },
     }))
     const logging = await import('../index.js')
@@ -196,6 +196,6 @@ describe('diagnostics mode', () => {
     expect(dumpState.enabled).toBeUndefined()
 
     await logging.shutdownAppLogging()
-    vi.doUnmock('@onething/runtime/providers/index')
+    vi.doUnmock('@onething/backend/runtime/providers/index')
   })
 })

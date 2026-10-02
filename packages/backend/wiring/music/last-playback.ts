@@ -1,5 +1,5 @@
-import type { OnethingMusicNowPlaying } from '@onething/runtime/music'
-import type { OnethingRadioBrief, OnethingRadioLastPlayback } from '@onething/runtime/music/radio-store'
+import type { OnethingMusicNowPlaying } from '@onething/backend/runtime/music'
+import type { OnethingRadioBrief, OnethingRadioLastPlayback } from '@onething/backend/runtime/music/radio-store'
 
 /**
  * **上次放到哪了**(09-19 用户:「播放状态找上次播放的状态」)。

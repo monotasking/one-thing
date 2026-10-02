@@ -35,7 +35,7 @@ interface Seen {
 
 async function loadIsolatedStores() {
   vi.resetModules()
-  const paths = await import('@onething/runtime/storage')
+  const paths = await import('@onething/backend/runtime/storage')
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()

@@ -5,8 +5,8 @@
  * ③ 用量记账;④ 脏回复 / `{"say": null}` 答 `null`;⑤ 超时答 `null`,不挂住。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentLoopOptions } from '@onething/core/agent-loop'
-import { HEIDOU, type Moment } from '@onething/runtime/pets'
+import type { AgentLoopOptions } from '@onething/backend/core/agent-loop'
+import { HEIDOU, type Moment } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc.js'
 import { collectLogRecordsForTests } from '../../logging/index.js'
 import { ModelMomentComposer, type ModelMomentComposerPorts } from '../model-composer.js'

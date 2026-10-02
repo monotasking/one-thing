@@ -29,8 +29,8 @@ import { searchRouter } from '@shared/ipc/search.js'
 import {
   createOnethingSearchService,
   type OnethingSearchProvidersAdapters,
-} from '@onething/runtime/search'
-import type { SearchIndexQueryFace } from '@onething/runtime/search/capabilities'
+} from '@onething/backend/runtime/search'
+import type { SearchIndexQueryFace } from '@onething/backend/runtime/search/capabilities'
 
 /**
  * 索引替身(检索重建 S3b)。这份文件钉的是**域**的分叉与信封,不是命中语义,
@@ -112,7 +112,7 @@ describe('search RPC domain', () => {
       import('../domains/search.js'),
       import('../../server/search-providers.js'),
       import('../../server/host-trust.js'),
-      import('@onething/runtime/search/service-bound'),
+      import('@onething/backend/runtime/search/service-bound'),
     ])
     dispatchRpc = registry.dispatchRpc
     configureServerSearchPort = port.configureServerSearchPort
@@ -211,7 +211,7 @@ describe('search RPC domain', () => {
   /**
    * `preview` —— S4a 起是**真件**(设计 §4.5)。这里钉的是**域**这一层:信封对不对、
    * 载荷有没有原样过去、算不出那次说的是不是原话。载荷长什么样是能力的事,由
-   * `runtime/src/search/__tests__/preview.test.ts` 逐格守着。
+   * `runtime/search/__tests__/preview.test.ts` 逐格守着。
    *
    * 反证:把 handler 改回「S4 才有」那句常量,这三条当场红。
    */

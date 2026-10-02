@@ -12,12 +12,12 @@ import {
   isOnethingToolPathContained,
   resolveOnethingToolPath,
   type CoreFileAccessTargetType,
-} from '@onething/runtime/tools/sandbox-runtime'
+} from '@onething/backend/runtime/tools/sandbox-runtime'
 import { getSettings } from '../../../stores/settings.js'
 import { getConnectedDirectories } from '../../../stores/connected-directories.js'
 import {
   getOnethingToolOutputsDir,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { noteRootsNow } from '../../notes/index.js'
 
 export interface SandboxHost {

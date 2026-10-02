@@ -7,7 +7,7 @@
  * 做得到(Electron 宿主的 gateway/lifecycle 那套原语)。server / CLI 守护进程
  * 没有这套东西。
  *
- * 判例照 `runtime/src/shell/host-ports.ts` 与 `runtime/src/auth/host-ports.ts`:
+ * 判例照 `runtime/shell/host-ports.ts` 与 `runtime/auth/host-ports.ts`:
  * **零依赖**(本文件只 import `@shared/ipc/gateway.js` 的类型)、**late-bound**
  * (每次调用现读,宿主接线晚于模块求值也照样生效)、**未注入即结构化降级**
  * 而不是抛错 —— 没有宿主的进程里「拉起微信网关」是一件做不到的事,不是 bug。
@@ -15,7 +15,7 @@
  * ## 为什么放 backend/wiring 而不是 runtime
  *
  * 端口的形状**就是** `@shared/ipc/gateway.js` 上那八对请求/响应类型,而产品层
- * (`packages/onething-runtime`)是禁 `@shared/ipc` 的(只有 `*.wiring.ts` 例外)。
+ * (`packages/backend/runtime`)是禁 `@shared/ipc` 的(只有 `*.wiring.ts` 例外)。
  * gateway 域在装配层本来就有住处(`backend/channel/`、`backend/wiring/`),把端口
  * 放这里既不需要给产品层开一个 `.wiring.ts` 的口子,也不用把八对类型再抄一份。
  * 对比 `shell/host-ports.ts` 放在产品层,是因为它的形状(`openPath` /

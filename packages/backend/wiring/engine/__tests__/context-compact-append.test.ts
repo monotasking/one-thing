@@ -30,7 +30,7 @@ afterEach(async () => {
   fs.rmSync(storeDir, { recursive: true, force: true })
 })
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import { CONTEXT_COMPACT_CHUNK_TIMEOUT_MS } from '@onething/core/engine'
+import { CONTEXT_COMPACT_CHUNK_TIMEOUT_MS } from '@onething/backend/core/engine'
 import { buildHistoryMessages } from '../stream/message-helpers.js'
 
 const runBeforeContextCompactHooks = vi.fn()
@@ -38,7 +38,7 @@ const generateChatResponse = vi.fn()
 const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 const contentWrites: Array<{ messageId: string; content: string }> = []
 
-vi.mock('@onething/runtime/plugins/lifecycle.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/lifecycle.wiring', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
 vi.mock('../../providers/index.js', () => ({

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createBackendHandle, setCurrentBackend } from '../../current.js'
 
 const location = vi.hoisted(() => ({ store: '', sessions: '' }))
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSessionsDir: () => location.sessions,
   getOnethingLogDir: () => path.join(location.store, 'log'),
 }))

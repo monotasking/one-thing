@@ -337,7 +337,7 @@ export interface ReferencePartParse<Ref> {
  * **这一种在线上那条 `<ref/>` 里的两半**(B2,正本 §2.4)。
  *
  * ── 为什么它是一格自述,而不是编解码器里的一张表 ──────────────────────────
- * `packages/core/references/ref-tag.ts` 把 `type` 与每一格属性都当**不透明的
+ * `packages/backend/core/references/ref-tag.ts` 把 `type` 与每一格属性都当**不透明的
  * 字符串**读:它不知道 `file` 要 `path`、`reference` 要 `href`。知道这件事的只有
  * 这一格 —— 于是「加一种 `<ref type="session"/>`」是写一只 `kinds/session.ts`
  * 加一行登记,编解码器、`to-inline` / `to-blocks` / `InlineRun`、`segment.ts`

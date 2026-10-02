@@ -1,4 +1,4 @@
-import { KeyedAdmissionGate, type KeyedWork } from '@onething/core/lifecycle'
+import { KeyedAdmissionGate, type KeyedWork } from '@onething/backend/core/lifecycle'
 
 /** Accepted eval jobs remain owned until their real model and file work settles. */
 export class EvalsTaskOwner {

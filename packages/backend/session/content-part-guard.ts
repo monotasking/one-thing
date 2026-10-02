@@ -26,7 +26,7 @@
  * core reducer,而 core 是零依赖层,拿不到这个开关。
  */
 
-import { isEphemeralContentPart } from '@onething/core/session'
+import { isEphemeralContentPart } from '@onething/backend/core/session'
 
 import { isSessionFreezeEnabled } from './freeze.js'
 import { getLogger } from '../wiring/logging/index.js'

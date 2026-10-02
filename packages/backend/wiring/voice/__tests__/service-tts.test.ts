@@ -69,7 +69,7 @@ vi.mock('../../../stores/sessions.js', () => ({
 
 // The service reaches the runtime window/tray through late-bound host ports —
 // configure the real port module with test doubles instead of module mocks.
-import { configureVoiceHost } from '@onething/runtime/voice/host-ports.wiring'
+import { configureVoiceHost } from '@onething/backend/runtime/voice/host-ports.wiring'
 
 configureVoiceHost({
   broadcastMessage: ({ channel, payload, exceptWebContentsId }) => {

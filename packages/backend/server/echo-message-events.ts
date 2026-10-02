@@ -1,5 +1,6 @@
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import { createSessionProjectionState, reduceSessionProjection, materializeNode } from '@onething/core/session'
+import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
+import { materializeNode } from '@shared/session/projection/chat-messages'
 import type { SessionCommandEvents } from '../session/command-events.js'
 
 /** Explicit echo-host adapter. Its transcript is independent of the production ledger. */

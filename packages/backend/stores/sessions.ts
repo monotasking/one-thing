@@ -24,7 +24,7 @@ import {
 	writeJsonFile,
 	writeJsonFileAsync,
 	deleteJsonFile,
-} from '@onething/runtime/storage';
+} from '@onething/backend/runtime/storage';
 import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
 import { sessionLifecycleEvents } from "../session/lifecycle-events.js";
 import { sessionCommandEvents } from "../session/command-events.js";
@@ -39,16 +39,16 @@ import { materializeSessionMessages } from "../session/materialized-messages.js"
 import { eventsHasMessage } from "../session/events-reads.js";
 import { hasLiveSessionProjection } from "../session/projection-cache.js";
 import { getSettings } from "./settings.js";
-import { expandOnethingToolSandboxPath as expandPath } from '@onething/runtime/tools/sandbox-runtime';
+import { expandOnethingToolSandboxPath as expandPath } from '@onething/backend/runtime/tools/sandbox-runtime';
 import {
 	createHybridSessionStorageDriver,
 	createOnethingSessionRepository,
-} from "@onething/runtime/sessions";
-import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/runtime/collab";
+} from "@onething/backend/runtime/sessions";
+import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/backend/runtime/collab";
 import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
 	isValidSpaceId,
-} from "@onething/runtime/spaces/types";
+} from "@onething/backend/runtime/spaces/types";
 import {
 	guardFrozenMessages,
 	guardFrozenSessionMessages,
@@ -62,13 +62,13 @@ import {
 	getSessionTokenUsageSnapshot,
 	repairSessionTimelineMetadata,
 	sanitizeSessionOnStartup,
-} from "@onething/core/session";
+} from "@onething/backend/core/session";
 import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
 import { assertPortFactIsFolded } from '../session/port-fact-assert.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
-import type { HybridSessionStorageDriverOptions } from '@onething/runtime/sessions/storage-driver'
-import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger, SessionCreateOptions, SessionInitialOwner } from '@onething/runtime/sessions/session-repository'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { HybridSessionStorageDriverOptions } from '@onething/backend/runtime/sessions/storage-driver'
+import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger, SessionCreateOptions, SessionInitialOwner } from '@onething/backend/runtime/sessions/session-repository'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 
 const log = getLogger('sessions')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

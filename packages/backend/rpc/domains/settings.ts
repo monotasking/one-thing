@@ -58,14 +58,14 @@
  * 从头到尾只住在宿主里。
  */
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
-import { ACPManager } from '@onething/runtime/acp'
-import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
+import { ACPManager } from '@onething/backend/runtime/acp'
+import { MCPManager, registerMCPTools } from '@onething/backend/runtime/mcp/index.wiring'
 import { getCurrentBackendInstance } from '../../current.js'
 import {
   getOnethingSettingsForIpc,
   getOnethingSystemThemeForIpc,
   saveOnethingSettingsWithRuntimeEffectsForIpc,
-} from '@onething/runtime/settings'
+} from '@onething/backend/runtime/settings'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { AppSettings, SaveSettingsRequest } from '@shared/ipc/settings.js'
 import type { SettingsRoutes } from '@shared/ipc/settings.js'
@@ -87,9 +87,9 @@ import { testOnethingProxy } from '../../wiring/settings/proxy.js'
 import { getVoiceServiceSafe } from '../../wiring/voice/service.js'
 import { startTodoPlanWatcher } from '../../wiring/todo-plan/store.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingSettingsIpcLogger } from '@onething/runtime/settings/ipc-operations'
-import type { SaveOnethingSettingsWithRuntimeEffectsOptions } from '@onething/runtime/settings/settings-save'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { OnethingSettingsIpcLogger } from '@onething/backend/runtime/settings/ipc-operations'
+import type { SaveOnethingSettingsWithRuntimeEffectsOptions } from '@onething/backend/runtime/settings/settings-save'
 
 const log = getLogger('rpc.settings')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */

@@ -115,7 +115,7 @@ export function createTurnEvaluationTrigger(): Trigger {
 					getSkeletonVersion,
 					versionFromSections,
 					promptCaptureCache,
-				} = await import("@onething/runtime");
+				} = await import("@onething/backend/runtime");
 
 				// Load actual skills for fixture context
 				const skills = getSkillsForSession(evalCtx.workingDirectory);
@@ -139,7 +139,7 @@ export function createTurnEvaluationTrigger(): Trigger {
 				// prompt/tools/params — the parts the session jsonl can't rebuild.
 				if (promptCapture) {
 					promptCaptureCache.set(evalCtx.turnId, promptCapture);
-					import("@onething/runtime")
+					import("@onething/backend/runtime")
 						.then(({ saveCaptureToDisk }) =>
 							saveCaptureToDisk(evalCtx.turnId, promptCapture),
 						)
@@ -160,7 +160,7 @@ export function createTurnEvaluationTrigger(): Trigger {
 				let incidentRef: string | null = null;
 				if (promptCapture && negativeAtTurnEnd) {
 					const { createIncidentBundle, extractTurnTrace } = await import(
-						"@onething/runtime"
+						"@onething/backend/runtime"
 					);
 					const turnTrace = extractTurnTrace(
 						ctx.messages as Parameters<typeof extractTurnTrace>[0],

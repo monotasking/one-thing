@@ -1,11 +1,11 @@
-import type { OnethingConversationRuntime, OnethingTextStreamChunk } from '@onething/runtime'
-import type { Channel, InboundMessage, OutboundMessage } from '@onething/gateway/core'
+import type { OnethingConversationRuntime, OnethingTextStreamChunk } from '@onething/backend/runtime'
+import type { Channel, InboundMessage, OutboundMessage } from '@onething/backend/gateway/core'
 import {
   Allowlist,
   GatewayBridge,
   GatewaySessionRegistry,
   RateLimiter,
-} from '@onething/gateway/core'
+} from '@onething/backend/gateway/core'
 
 class MockChannel implements Channel {
   readonly id = 'mock'

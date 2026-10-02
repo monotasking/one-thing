@@ -20,7 +20,7 @@
 import {
   COLLAB_DEFAULT_DAILY_COST_USD,
   isCollabPlanRoom,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import type {
   CollabCoordinatorLogEntry,
   CollabCoordinatorState,
@@ -33,7 +33,7 @@ import {
   createCollabSnapshotThrottle,
   scheduleCollabSnapshot,
   type CollabSnapshotThrottle,
-} from '@onething/runtime/collab/snapshot-throttle'
+} from '@onething/backend/runtime/collab/snapshot-throttle'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

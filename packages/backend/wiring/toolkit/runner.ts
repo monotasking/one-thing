@@ -9,7 +9,7 @@
  * 把这个 runner 接到那三处缝上是 R2b。
  */
 
-import { ToolRunner } from '@onething/core/toolkit'
+import { ToolRunner } from '@onething/backend/core/toolkit'
 import type {
   Authorizer,
   Interceptor,
@@ -20,15 +20,15 @@ import type {
   SessionSnapshot,
   SpillPort,
   Validator,
-} from '@onething/core/toolkit'
-import { ZodValidator } from '@onething/runtime/toolkit'
-import { classifySensitiveFile } from '@onething/runtime/tools/sensitive-files'
+} from '@onething/backend/core/toolkit'
+import { ZodValidator } from '@onething/backend/runtime/toolkit'
+import { classifySensitiveFile } from '@onething/backend/runtime/tools/sensitive-files'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as store from '../../store.js'
 import {
   getOnethingToolOutputsDir,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import {
   findReadSandboxRootForPath,
   getSandboxBoundary,
@@ -37,7 +37,7 @@ import {
 } from '../tools/core/sandbox.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { createPermissionAuthorizer } from './authorizer.js'
-import { AuditProjector, combineObservers, type ToolAuditSink } from '@onething/runtime/toolkit/audit-observer'
+import { AuditProjector, combineObservers, type ToolAuditSink } from '@onething/backend/runtime/toolkit/audit-observer'
 import { BackgroundJobRegistry } from './jobs.js'
 
 /**

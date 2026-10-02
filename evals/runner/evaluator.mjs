@@ -1,7 +1,7 @@
 /**
  * Evaluator (Phase 2/3 runner) — CLI mirror
  *
- * Mirrors packages/onething-runtime/src/evals/evaluator.ts.
+ * Mirrors packages/backend/runtime/evals/evaluator.ts.
  * The CLI runner delegates to the runtime package, so this file is
  * kept in sync for standalone use / testing.
  */

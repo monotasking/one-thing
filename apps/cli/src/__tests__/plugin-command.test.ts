@@ -42,13 +42,13 @@ vi.mock('@onething/backend/wiring/plugins/install.js', () => ({
   })),
 }))
 
-vi.mock('@onething/runtime/plugins/tarball.wiring', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/runtime/plugins/tarball.wiring')>()
+vi.mock('@onething/backend/runtime/plugins/tarball.wiring', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/plugins/tarball.wiring')>()
   return { ...actual, readPluginTarballSummary: vi.fn() }
 })
 
 const install = await import('@onething/backend/wiring/plugins/install.js')
-const tarball = await import('@onething/runtime/plugins/tarball.wiring')
+const tarball = await import('@onething/backend/runtime/plugins/tarball.wiring')
 const { pluginCommand } = await import('../plugin-command.js')
 
 const probeNpm = vi.mocked(install.probePluginNpmAvailability)

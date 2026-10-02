@@ -14,7 +14,7 @@ import {
   normalizeImageModelId,
   normalizeOpenAIImageBaseUrl,
   planImageGenerationRequest,
-} from '@onething/runtime/media'
+} from '@onething/backend/runtime/media'
 
 describe('onething runtime image generation helpers', () => {
   it('normalizes known OpenAI image model aliases', () => {

@@ -7,7 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@onething/core": "file:../../packages/core",
-    "@onething/runtime": "file:../../packages/onething-runtime"
+    "@onething/backend": "file:../../packages/backend"
   }
 }

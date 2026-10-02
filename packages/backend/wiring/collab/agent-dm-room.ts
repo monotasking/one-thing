@@ -15,10 +15,10 @@
  * 那种基础设施。
  */
 import { isActiveAgent } from '@shared/ipc.js'
-import { agentDmRoomId, isColleague } from '@onething/runtime/agents'
+import { agentDmRoomId, isColleague } from '@onething/backend/runtime/agents'
 import * as store from '../../store.js'
 import { findAgent } from '../agents/index.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import { ownedCollabSessionId } from './owned-session-id.js'

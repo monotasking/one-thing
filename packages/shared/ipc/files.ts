@@ -5,7 +5,7 @@
  * 迁到通用 `rpc:invoke` / `POST /api/rpc`。留在通道表里的只有一条**推送**:
  * `FILE_WATCH_EVENT`(router 今天没有推送面)。
  *
- * 形状取自两处**本来就一致**的定义:`@onething/runtime/files` 的投影层
+ * 形状取自两处**本来就一致**的定义:`@onething/backend/runtime/files` 的投影层
  * (`Onething*Request` / `Onething*Response`)与渲染层 `types/index.ts` 上那批
  * 壳方法的返回类型。这里重写一遍而不是 re-export runtime 的类型,是因为
  * `packages/shared` 在依赖方向上位于 runtime **之下**(壳与 server 都要 import

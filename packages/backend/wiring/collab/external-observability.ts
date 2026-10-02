@@ -46,11 +46,11 @@ import {
   type CollabSchedulerInteractionPhase,
   type CollabSchedulerLogRow,
   type CollabSchedulerLogSink,
-} from '@onething/runtime/collab/actors'
+} from '@onething/backend/runtime/collab/actors'
 
 import { getEventBus } from '../../events/index.js'
 import { broadcastCollabAgentActivity } from './agent-activity.js'
-import { findCollabV3Turn } from '@onething/runtime/collab/actors/turn-context.wiring'
+import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'

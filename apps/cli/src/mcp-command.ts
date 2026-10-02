@@ -54,7 +54,7 @@ import {
   ResourceRegistry,
   toolDescriptionOf,
   toolInputSchemaOf,
-} from '@onething/core/resource'
+} from '@onething/backend/core/resource'
 import { resourceSpecFromShell } from '@onething/backend/wiring/resource/index.js'
 import { getLogger, getRootLogger } from '@onething/backend/wiring/logging/index.js'
 import type {

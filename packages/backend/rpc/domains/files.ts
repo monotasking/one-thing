@@ -59,7 +59,7 @@
  *    「联网宿主上有没有 rg 二进制」不是这一批该赌的事。
  *
  * 2. **`reveal` 要宿主外壳**。「在文件管理器里定位」只有 Electron 桌面做得到,
- *    走 `@onething/runtime/shell` 的 `configureShellHost`(P4c 第二批立的端口,
+ *    走 `@onething/backend/runtime/shell` 的 `configureShellHost`(P4c 第二批立的端口,
  *    那个文件头写着 files 留给后批 —— 就是这一批)。未注入即结构化降级,
  *    与旧 server 那句写死的 "Revealing local files is not available in the web
  *    server runtime." 同义,区别是不再需要第二份实现。**注意先夹后降级**:
@@ -91,9 +91,9 @@ import {
   startOnethingFileWatchForIpc,
   statOnethingPath,
   stopOnethingFileWatchForIpc,
-} from '@onething/runtime/files'
-import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/runtime/shell/host-ports'
-import { applyFileMutationUndo } from '@onething/runtime/tools'
+} from '@onething/backend/runtime/files'
+import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/runtime/shell/host-ports'
+import { applyFileMutationUndo } from '@onething/backend/runtime/tools'
 import { noteRootsNow } from '../../wiring/notes/index.js'
 import type { FilesRoutes } from '@shared/ipc/files.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
@@ -111,12 +111,12 @@ import {
 } from '../sandbox.js'
 import type { RpcDispatchPorts, RpcRouteHandlersWithPorts } from '../registry.js'
 import { sessionAccess } from '../../session/access.js'
-import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/runtime/files/file-search'
-import type { RollbackOnethingFileOptions } from '@onething/runtime/files/file-rollback'
-import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/runtime/files/file-operations'
-import type { ListOnethingDirectoriesForCompletionOptions } from '@onething/runtime/files/directory-listing'
-import type { OnethingDirectoryIpcLogger } from '@onething/runtime/files/directory-listing'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
+import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/backend/runtime/files/file-search'
+import type { RollbackOnethingFileOptions } from '@onething/backend/runtime/files/file-rollback'
+import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/backend/runtime/files/file-operations'
+import type { ListOnethingDirectoriesForCompletionOptions } from '@onething/backend/runtime/files/directory-listing'
+import type { OnethingDirectoryIpcLogger } from '@onething/backend/runtime/files/directory-listing'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 
 const log = getLogger('rpc.files')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
@@ -419,7 +419,7 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
    * **这两条的行为有一格有意的差别,不是漏改**:这里是 `recursive: true`(界面上
    * 一个人看着文件树按下删除,他知道自己删的是一棵树),资源面是 `false`(那条路上
    * 的调用方可能是模型 / 插件 / 脚本,而误删一个空目录可恢复,误删一棵树不可)。
-   * 理由的正本写在 `@onething/runtime/files/resource-spec` 的 `delete` 上。
+   * 理由的正本写在 `@onething/backend/runtime/files/resource-spec` 的 `delete` 上。
    */
   async delete(request, context = DESKTOP_RPC_CONTEXT) {
     const path = clamp(context, request?.path)

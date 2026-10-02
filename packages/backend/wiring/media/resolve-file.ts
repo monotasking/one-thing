@@ -23,8 +23,8 @@
  * 调用方「这个名字别人有」。
  */
 import { basename, isAbsolute, relative } from 'node:path'
-import { canonicalizeStorePath } from '@onething/runtime/storage'
-import type { OnethingMediaLibraryService } from '@onething/runtime/media'
+import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
+import type { OnethingMediaLibraryService } from '@onething/backend/runtime/media'
 import { SessionAccessError, type SessionAccess, type SessionAccessContext } from '../../session/access.js'
 import { assertMediaAccess } from './access.js'
 

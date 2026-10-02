@@ -11,7 +11,7 @@ import {
   type CorePluginManagerHost,
   type CorePluginUninstallResult,
   type CorePluginUpdateResult, type CorePluginBootstrapperOptions,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import { createPluginAPI, disposePlugin, drainPlugin, type PluginState } from './api.js'
 import {
   archiveCorePluginData,
@@ -21,7 +21,7 @@ import {
   readPluginLedger,
   restoreCorePluginDataArchive,
   scanPluginSourceEntries,
-} from '@onething/core/plugins'
+} from '@onething/backend/core/plugins'
 import {
   scanPlugins,
   loadPluginEntry,
@@ -38,12 +38,12 @@ import {
   setPluginEnabled,
   writePluginConfig,
 } from './loader.js'
-import { configurePluginConfigHost, invalidatePluginConfigCache } from '@onething/runtime/plugins/config'
+import { configurePluginConfigHost, invalidatePluginConfigCache } from '@onething/backend/runtime/plugins/config'
 import {
   configurePluginStatusHost,
   detachPluginStatusHost,
   subscribePluginStatusSweep,
-} from '@onething/runtime/plugins/status-bound'
+} from '@onething/backend/runtime/plugins/status-bound'
 import { configureIMConnectorHooks } from '../../channel/connector-registry.js'
 import {
   fetchPluginMarketIndex,
@@ -52,8 +52,8 @@ import {
   readInstalledPluginSpec,
   uninstallPluginPackage,
 } from './install.js'
-import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/core/plugins'
-import { configurePluginConfigBroadcast } from '@onething/runtime/plugins/config-access'
+import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/backend/core/plugins'
+import { configurePluginConfigBroadcast } from '@onething/backend/runtime/plugins/config-access'
 import {
   clearPluginRuntimeHealth,
   describePluginSurfaceDegradation,
@@ -64,11 +64,11 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
   restorePluginRuntimeHealth,
-} from '@onething/runtime/plugins/health'
+} from '@onething/backend/runtime/plugins/health'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
 import { consolePort, getLogger } from '../logging/index.js'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { LegacyDuckLogger } from '@onething/core/logging'
+import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
+import type { LegacyDuckLogger } from '@onething/backend/core/logging'
 
 const log = getLogger('plugins.manager')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

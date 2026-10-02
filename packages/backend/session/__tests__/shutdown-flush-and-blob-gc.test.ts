@@ -19,8 +19,8 @@ let expectedPersistenceFailure = false
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))

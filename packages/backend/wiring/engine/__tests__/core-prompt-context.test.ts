@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildContextCompactPrompt,
-} from '@onething/core/engine'
+} from '@onething/backend/core/engine'
 import {
   buildSystemPromptSnapshotWithAdapters,
   mcpToolSnapshot,
@@ -10,7 +10,7 @@ import {
   skillForInit,
   skillSnapshot,
   toolSnapshot,
-} from '@onething/runtime/prompts'
+} from '@onething/backend/runtime/prompts'
 import {
   buildOnethingPrompt as buildPrompt,
   buildOnethingSystemPrompt as buildSystemPrompt,
@@ -19,7 +19,7 @@ import {
   getPromptContextProviderCount,
   normalizePromptContextProviderId,
   registerPromptContextProvider,
-} from '@onething/runtime/prompts'
+} from '@onething/backend/runtime/prompts'
 
 describe('core prompt context helpers', () => {
   afterEach(() => {

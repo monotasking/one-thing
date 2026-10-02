@@ -1,7 +1,7 @@
 import type { ChatMessage, ToolCall } from '@shared/ipc.js'
 import {
   buildOnethingResumeHistoryAfterToolConfirmation,
-} from '@onething/runtime/sessions'
+} from '@onething/backend/runtime/sessions'
 import type { HistoryMessage } from './message-helpers.js'
 
 type ResumeAssistantMessage = Pick<ChatMessage, 'content' | 'reasoning'> & {

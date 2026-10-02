@@ -76,14 +76,14 @@ import type {
 } from '@shared/ipc/music.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import type { Outcome } from '@onething/core/toolkit'
-import type { ReadOutcome } from '@onething/core/resource'
+import type { Outcome } from '@onething/backend/core/toolkit'
+import type { ReadOutcome } from '@onething/backend/core/resource'
 import {
   MUSIC_PLAYER_PATH,
   MUSIC_PROVIDER_PATH,
   MUSIC_RADIO_PATH,
   MUSIC_RESOURCE_SCHEME,
-} from '@onething/runtime/music/resource-spec'
+} from '@onething/backend/runtime/music/resource-spec'
 import { assertMusicOperator } from '../../wiring/music/access.js'
 import { resolveDjSpeakDone } from '../../wiring/music/dj-voice.js'
 import { getMusicNowPlaying } from '../../wiring/music/service.js'

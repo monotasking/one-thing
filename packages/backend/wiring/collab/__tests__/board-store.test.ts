@@ -7,7 +7,7 @@
  * the audit trail keeps every step.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CollabBoard } from '@onething/runtime/collab'
+import type { CollabBoard } from '@onething/backend/runtime/collab'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: { type?: string; board?: CollabBoard } }>,
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   removed: [] as string[],
 }))
 
-vi.mock('@onething/core/storage', () => ({
+vi.mock('@onething/backend/core/storage', () => ({
   readJsonFile: <T>(filePath: string, fallback: T) =>
     (mocks.files.has(filePath) ? mocks.files.get(filePath) as T : fallback),
   writeJsonFile: (filePath: string, value: unknown) => { mocks.files.set(filePath, value) },
@@ -31,7 +31,7 @@ vi.mock('node:fs', () => ({
   },
 }))
 
-vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-board-test' }))
+vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-board-test' }))
 
 vi.mock('../../../events/index.js', () => ({
   getEventBus: () => ({

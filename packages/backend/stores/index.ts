@@ -1,8 +1,8 @@
-import { ensureOnethingStoreDirs } from '@onething/runtime/storage'
+import { ensureOnethingStoreDirs } from '@onething/backend/runtime/storage'
 import { initializeSessionRepositoryIndex } from './sessions.js'
 
 // Re-export all store modules
-export { ensureOnethingStoreDirs, getOnethingStorePath } from '@onething/runtime/storage'
+export { ensureOnethingStoreDirs, getOnethingStorePath } from '@onething/backend/runtime/storage'
 export { getSettings, saveSettings } from './settings.js'
 export { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 export {

@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { SandboxPolicy } from '@onething/core/toolkit'
+import type { SandboxPolicy } from '@onething/backend/core/toolkit'
 
 const previousStorePath = process.env.ONETHING_STORE_PATH
 const storeRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-sandbox-readable-')))
@@ -42,7 +42,7 @@ fs.writeFileSync(
 let policy: SandboxPolicy
 
 beforeAll(async () => {
-  const runtime = await import('@onething/runtime/tools/sandbox-runtime')
+  const runtime = await import('@onething/backend/runtime/tools/sandbox-runtime')
   runtime.resetOnethingToolSandboxRuntimeForTests()
   runtime.configureOnethingToolSandboxRuntime({
     getDefaultWorkingDirectory: () => workDir,
@@ -54,7 +54,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  const runtime = await import('@onething/runtime/tools/sandbox-runtime')
+  const runtime = await import('@onething/backend/runtime/tools/sandbox-runtime')
   runtime.resetOnethingToolSandboxRuntimeForTests()
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath

@@ -12,9 +12,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { CollabAgentAccount, CollabRoomAccount } from '@onething/runtime/collab/actors'
-import { Interaction } from '@onething/core/interaction'
-import { Permission } from '@onething/core/permission'
+import type { CollabAgentAccount, CollabRoomAccount } from '@onething/backend/runtime/collab/actors'
+import { Interaction } from '@onething/backend/core/interaction'
+import { Permission } from '@onething/backend/core/permission'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
@@ -40,7 +40,7 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   endCollabV3Turn,
-} = await import('@onething/runtime/collab/actors/turn-context.wiring')
+} = await import('@onething/backend/runtime/collab/actors/turn-context.wiring')
 
 /* ── 假数据源 ─────────────────────────────────────────────────────────────── */
 

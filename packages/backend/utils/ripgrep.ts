@@ -1,6 +1,6 @@
 import {
   configureOnethingRipgrepRuntime,
-} from '@onething/runtime/files/ripgrep'
+} from '@onething/backend/runtime/files/ripgrep'
 import { createRequiredAppFetch } from '../provider-binding/bound-fetch.js'
 
 let ripgrepConfigured = false
@@ -28,10 +28,10 @@ export {
   resetOnethingRipgrepRuntimeForTests,
   search,
   searchOnethingRipgrep,
-} from '@onething/runtime/files/ripgrep'
+} from '@onething/backend/runtime/files/ripgrep'
 export type {
   OnethingRipgrepListFilesOptions,
   OnethingRipgrepRuntimeAdapters,
   OnethingRipgrepSearchOptions,
   OnethingRipgrepSearchResult,
-} from '@onething/runtime/files/ripgrep'
+} from '@onething/backend/runtime/files/ripgrep'

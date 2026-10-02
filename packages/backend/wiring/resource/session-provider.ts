@@ -2,7 +2,7 @@
  * K1 —— 会话这一 scheme 的实现(`docs/design/atom-2026-09.md` §3 那张表的
  * `session:` 三行)。
  *
- * 自述在产品层(`@onething/runtime/sessions/resource-spec`),实现在这里 —— 因为
+ * 自述在产品层(`@onething/backend/runtime/sessions/resource-spec`),实现在这里 —— 因为
  * 只有装配层够得着脊柱:读走 `sessionReads`(返回 readonly 的唯一读面),做走
  * 会话写面那几扇既有的门。
  *
@@ -28,7 +28,7 @@
  *
  * ── 规则书只有一本 ──────────────────────────────────────────────────────────
  * 五条做法的判定(改不到 = 查无此会话、room 会话不许直接绑 agent、未知 agent、
- * 目录不存在 / 不是目录)全都住在 `@onething/runtime/sessions` 的那几只投影函数
+ * 目录不存在 / 不是目录)全都住在 `@onething/backend/runtime/sessions` 的那几只投影函数
  * 里 —— provider 只递形状,不留规则,与域从前那几行逐字同义。它们回
  * `{ success:false, error }`;这里把那一格**抛**出去(`SessionOpRefusedError`),
  * 因为管线的答案是 `Outcome` 而不是信封,而 `Outcome.failed` 原样带着这句话 ——
@@ -93,20 +93,20 @@ import type {
   ResourceProvider,
   ResourceReadContext,
   ResourceEventHub,
-} from '@onething/core/resource'
-import { planFromSpec } from '@onething/core/resource'
+} from '@onething/backend/core/resource'
+import { planFromSpec } from '@onething/backend/core/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/core/toolkit'
-import { Intent, textResult } from '@onething/core/toolkit'
+import type { PlanContext, Result, RunContext } from '@onething/backend/core/toolkit'
+import { Intent, textResult } from '@onething/backend/core/toolkit'
 import type { Principal } from '@shared/permission/principal'
-import { emitCoreSessionEventSafely } from '@onething/core/events'
+import { emitCoreSessionEventSafely } from '@onething/backend/core/events'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { collectSessionCascadeDeleteIds } from '@onething/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
 import {
   SESSION_COLLECTION_PATH,
   SESSION_PERMISSION_MODES,
   sessionResourceSpec,
-} from '@onething/runtime/sessions/resource-spec'
+} from '@onething/backend/runtime/sessions/resource-spec'
 import {
   addOnethingSystemMessageForIpc,
   deleteOnethingSessionForIpc,
@@ -121,10 +121,10 @@ import {
   updateOnethingSessionModel,
   updateOnethingSessionPermissionMode,
   updateOnethingSessionPinForIpc,
-} from '@onething/runtime/sessions'
-import { updateOnethingSessionWorkingDirectory } from '@onething/runtime/sessions/working-directory'
-import { expandOnethingToolSandboxPath } from '@onething/runtime/tools/sandbox-runtime'
-import { DEFAULT_SPACE_ID } from '@onething/runtime/spaces/types'
+} from '@onething/backend/runtime/sessions'
+import { updateOnethingSessionWorkingDirectory } from '@onething/backend/runtime/sessions/working-directory'
+import { expandOnethingToolSandboxPath } from '@onething/backend/runtime/tools/sandbox-runtime'
+import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'

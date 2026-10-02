@@ -50,8 +50,8 @@
  * 登记过哪几个 id,就摘哪几个。
  */
 
-import type { Catalog, Tool } from '@onething/core/toolkit'
-import { ResourceMetaTool, type ResourceKernel } from '@onething/core/resource'
+import type { Catalog, Tool } from '@onething/backend/core/toolkit'
+import { ResourceMetaTool, type ResourceKernel } from '@onething/backend/core/resource'
 import type { ToolCatalogTier } from '../toolkit/catalog.js'
 
 export interface ResourceCatalogSyncOptions {

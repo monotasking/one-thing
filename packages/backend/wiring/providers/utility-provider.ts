@@ -11,17 +11,17 @@
  *
  * See docs/design/session-toc.md §10.
  */
-import type { AgentProvider } from "@onething/core/agent-loop";
+import type { AgentProvider } from "@onething/backend/core/agent-loop";
 import type { AppSettings } from "@shared/ipc.js";
 import { createAgentProviderFromRuntime } from "../agent-loop/index.js";
-import { pickOnethingProviderOptions } from "@onething/runtime/providers";
+import { pickOnethingProviderOptions } from "@onething/backend/runtime/providers";
 import {
 	getProviderApiType,
 	resolveProviderAuth,
 } from "../engine/stream/provider-helpers.js";
-import { resolveUtilityModel } from "@onething/runtime/providers/utility-model.wiring";
+import { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model.wiring";
 import { applySessionSpaceCredentials } from "./space-credentials.js";
-import type { CreateAgentProviderFromRuntimeOptions } from '@onething/runtime/agent-loop/providers/factory'
+import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/agent-loop/providers/factory'
 
 export interface UtilityProviderRef {
 	provider: AgentProvider;
@@ -51,7 +51,7 @@ export interface CreateUtilityProviderOptions {
 // The routing question ("which provider/model does background work use?") lives
 // in its own leaf so the plugin LLM surface can ask it without dragging the
 // agent-loop in behind it. See utility-model.ts.
-export { resolveUtilityModel } from "@onething/runtime/providers/utility-model.wiring";
+export { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model.wiring";
 
 /**
  * Returns undefined whenever the provider cannot be built — unconfigured,

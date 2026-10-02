@@ -14,8 +14,8 @@
  * 回答。两条路两种量级、两套写法,谁都不是真店。现在只有这一份。
  *
  * ── 它给出的是**真编码**,不是「长得像」 ──────────────────────────────────
- * 每一行都按 `packages/core/session/events/types.ts` 的事件形写,能被
- * `packages/core/session/projection/` 的折叠器原样折出来:
+ * 每一行都按 `packages/backend/core/session/events/types.ts` 的事件形写,能被
+ * `packages/backend/core/session/projection/` 的折叠器原样折出来:
  *
  *  · 一轮 = `user/message` → `run/start` → `request/start` → 若干
  *    `assistant/chunks`(**打包行**:一行装几条逻辑 delta,`dt` 与 `text` 等长,
@@ -72,7 +72,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 
-/** 与 `@onething/core/session` 的 `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 同一个数。 */
+/** 与 `@onething/backend/core/session` 的 `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 同一个数。 */
 export const BLOB_THRESHOLD_BYTES = 64 * 1024
 
 /**

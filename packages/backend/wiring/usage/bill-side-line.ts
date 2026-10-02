@@ -10,7 +10,7 @@
  * Each helper returns a callback so the call sites stay one line, and each one
  * swallows its own errors: billing must never break the work it is measuring.
  */
-import { ONETHING_USAGE_SOURCES } from "@onething/runtime/usage";
+import { ONETHING_USAGE_SOURCES } from "@onething/backend/runtime/usage";
 import { recordUsage } from "./index.js";
 import { getLogger } from '../logging/index.js'
 

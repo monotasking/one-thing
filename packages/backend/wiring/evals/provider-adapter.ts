@@ -2,7 +2,7 @@
  * Evals Provider Adapter
  *
  * Bridges the injectable EvalModelCaller interface (from
- * packages/onething-runtime/src/evals/model-call.ts) to the app's
+ * packages/backend/runtime/evals/model-call.ts) to the app's
  * configured provider credentials.
  *
  * Design D3: The runner does not embed an HTTP client. This adapter
@@ -22,10 +22,10 @@
  */
 
 import * as store from "../../store.js";
-import type { EvalModelCaller } from "@onething/runtime";
-import { onethingBaseBuiltinProviders } from "@onething/runtime/providers";
-import { resolveProviderApiKey } from "@onething/runtime/providers/env.wiring";
-import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
+import type { EvalModelCaller } from "@onething/backend/runtime";
+import { onethingBaseBuiltinProviders } from "@onething/backend/runtime/providers";
+import { resolveProviderApiKey } from "@onething/backend/runtime/providers/env.wiring";
+import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "../providers/space-credentials.js";
 import { captureUsageRecorder } from "../usage/index.js";
 import { getLogger } from "../logging/index.js";

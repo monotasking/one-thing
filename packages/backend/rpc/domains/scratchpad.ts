@@ -28,7 +28,7 @@ import {
   readScratchpad,
   removeScratchpad,
   updateScratchpad,
-} from '@onething/runtime/scratchpad/service-bound'
+} from '@onething/backend/runtime/scratchpad/service-bound'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

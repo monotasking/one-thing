@@ -8,7 +8,7 @@ import {
   getOnethingStorePath,
   readJsonFile,
   writeJsonFile,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { LOCAL_CLIENT_USER_ID } from './origin.js'
 
 interface ChannelIdentityStoreData {

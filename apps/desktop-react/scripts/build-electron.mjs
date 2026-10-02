@@ -123,7 +123,7 @@ const invokedDirectly = process.argv[1]
  * 它与 main 同一份 `shellEsbuildOptions`:node 平台、CJS、原生模块 external。
  * `node:sqlite` 是内建模块,esbuild 的 node 平台自动 external,不必列。
  */
-export const SEARCH_WORKER_ENTRY = 'packages/onething-runtime/src/search/index/worker.ts'
+export const SEARCH_WORKER_ENTRY = 'packages/backend/runtime/search/index/worker.ts'
 export const SEARCH_WORKER_NAME = 'search-worker'
 
 export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
@@ -145,7 +145,7 @@ export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
  * 与 node 内建,一个原生模块都不碰 —— 所以同一份产物在系统 Node 与 Electron-as-node 下
  * 都跑得起来(N-API 那条法在这里无从咬起)。
  */
-export const ACP_MCP_BRIDGE_ENTRY = 'packages/onething-runtime/src/acp/mcp-bridge/entry.ts'
+export const ACP_MCP_BRIDGE_ENTRY = 'packages/backend/runtime/acp/mcp-bridge/entry.ts'
 export const ACP_MCP_BRIDGE_NAME = 'acp-mcp-bridge'
 
 export function acpMcpBridgeEsbuildOptions({ outdir, repoRoot: root }) {

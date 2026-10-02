@@ -3,7 +3,7 @@
  * 钟是手摇的,播放器与音量都是假的 —— 从不起播放器、从不碰真音量文件。
  */
 import { describe, expect, it } from 'vitest'
-import type { OnethingMusicNowPlaying } from '@onething/runtime/music/index'
+import type { OnethingMusicNowPlaying } from '@onething/backend/runtime/music/index'
 import { MusicMoments, RESUME_AFTER_PAUSE_MS, SKIP_STREAK_WINDOW_MS, type MusicMomentEvent } from '../moments.js'
 import { SpeechActivityDuck } from '../player-volume.js'
 

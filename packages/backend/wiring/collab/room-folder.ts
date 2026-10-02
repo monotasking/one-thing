@@ -21,7 +21,7 @@ import path from 'node:path'
 import * as store from '../../store.js'
 import {
   getOnethingStorePath,
-} from '@onething/runtime/storage'
+} from '@onething/backend/runtime/storage'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('collab.room')

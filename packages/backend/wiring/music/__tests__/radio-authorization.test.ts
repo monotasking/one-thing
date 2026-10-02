@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OnethingRadioConductorOptions } from '@onething/runtime/music/radio-conductor'
+import type { OnethingRadioConductorOptions } from '@onething/backend/runtime/music/radio-conductor'
 
 type Meta = { id: string; ownerUserId?: string; ownerWorkspaceId?: string; agentId?: string; kind?: string; app?: string; updatedAt: number }
 const fixture = vi.hoisted(() => ({
@@ -11,9 +11,9 @@ const fixture = vi.hoisted(() => ({
   unattended: vi.fn(), variables: vi.fn(), refreshEnv: vi.fn(), patch: vi.fn(),
   deletedListener: undefined as ((ids: readonly string[]) => void) | undefined,
 }))
-vi.mock('@onething/runtime/storage/index', () => ({ getOnethingStorePath: () => fixture.dir }))
-vi.mock('@onething/runtime/music/index', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/runtime/music/index')>(),
+vi.mock('@onething/backend/runtime/storage/index', () => ({ getOnethingStorePath: () => fixture.dir }))
+vi.mock('@onething/backend/runtime/music/index', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/music/index')>(),
   createOnethingRadioConductor: (options: OnethingRadioConductorOptions) => {
     fixture.conductor = options
     return { onSample: vi.fn(), quiesce: vi.fn(), idle: async () => {} }
@@ -36,22 +36,22 @@ vi.mock('../../../stores/sessions.js', () => ({
 }))
 vi.mock('../../../session/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
-vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '' }),
   updateAgent: (...args: unknown[]) => fixture.updateAgent(...args),
 }))
-vi.mock('@onething/core', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/core')>(),
+vi.mock('@onething/backend/core', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/core')>(),
   addGrant: (...args: unknown[]) => fixture.grant(...args),
 }))
-vi.mock('@onething/runtime/permissions/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
-vi.mock('@onething/runtime/variables/registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
+vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
+vi.mock('@onething/backend/runtime/variables/registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
 vi.mock('../../engine/index.js', () => ({ getStreamEngineSafe: () => ({ getController: () => undefined }) }))
 vi.mock('../../../events/index.js', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
 vi.mock('../service.js', async () => {
-  const { ncmMusicProvider } = await import('@onething/runtime/music/index')
+  const { ncmMusicProvider } = await import('@onething/backend/runtime/music/index')
   return {
     getActiveMusicProvider: () => ncmMusicProvider,
     getMusicNowPlaying: () => null,

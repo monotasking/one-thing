@@ -1,7 +1,7 @@
 /**
  * G 期验收(L2.5)的**宿主链路**部分:清单投影 → 胜出描述符 → 运行期调参 → 拆除。
  *
- * 判据与裁决本身在 `packages/core/plugins/__tests__/background.test.ts`;
+ * 判据与裁决本身在 `packages/backend/core/plugins/__tests__/background.test.ts`;
  * 这里钉的是"装配层有没有把它们接对":
  *  1. 逐插件投影带四态(active / shadowed / inactive / invalid + reason);
  *  2. 胜出描述符挂在**清单响应**上(零新通道 —— renderer 已经在重拉这份清单);
@@ -9,8 +9,8 @@
  *  4. 拆除撤层:停用 → 没有赢家;清运行期参数 → 回 manifest 缺省。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { projectOnethingPluginsForRenderer } from '@onething/runtime/plugins/plugin-list'
-import { listOnethingPluginsForIpc } from '@onething/runtime/plugins/ipc-operations'
+import { projectOnethingPluginsForRenderer } from '@onething/backend/runtime/plugins/plugin-list'
+import { listOnethingPluginsForIpc } from '@onething/backend/runtime/plugins/ipc-operations'
 
 /** 装配层只从插件管理器的内存清单读声明 —— 换成假的就能走完整条宿主链路。 */
 const managedPlugins: Array<{

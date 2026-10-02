@@ -30,7 +30,7 @@ const runBeforeContextCompactHooks = vi.fn()
 const generateChatResponse = vi.fn()
 const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 
-vi.mock('@onething/runtime/plugins/lifecycle.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/lifecycle.wiring', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
 vi.mock('../../providers/index.js', () => ({

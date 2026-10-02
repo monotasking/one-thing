@@ -4,10 +4,10 @@
  */
 
 import type { ChatMessage } from "@shared/ipc.js";
-import type { AgentProviderData } from "@onething/core/agent-loop";
+import type { AgentProviderData } from "@onething/backend/core/agent-loop";
 import type { JsonObject, JsonValue } from "@shared/json.js";
 import type { AIMessageContent } from "../../providers/index.js";
-import { logMessageBodyShape } from "@onething/runtime/engine/chat-logger-bound";
+import { logMessageBodyShape } from "@onething/backend/runtime/engine/chat-logger-bound";
 import {
 	formatMessagesForLog,
 	getTextFromContent,
@@ -15,14 +15,14 @@ import {
 	renderContextUpdateBlock,
 	sanitizeToolResultForAI,
 	TurnContextLedger,
-} from "@onething/core/engine";
+} from "@onething/backend/core/engine";
 import {
 	buildOnethingHistoryMessages,
 	buildOnethingMessageContent,
 	filterOnethingHistoryForNonToolAPI,
 	onethingHistoryBuildRecipe,
-} from "@onething/runtime/sessions";
-import type { CoreHistoryChatMessage } from "@onething/core/engine";
+} from "@onething/backend/runtime/sessions";
+import type { CoreHistoryChatMessage } from "@onething/backend/core/engine";
 import {
 	appendCollabReactionSummary,
 	buildCollabChatRoomPayload,
@@ -39,12 +39,12 @@ import {
 	renderCollabModelMention,
 	resolveCollabSpeakerLabel,
 	type CollabAgentLike,
-} from "@onething/runtime/collab";
+} from "@onething/backend/runtime/collab";
 import { findAgent } from "../../agents/index.js";
 import { resolveUserIdentity } from "../../collab/user-identity.js";
 import * as store from "../../../store.js";
 import { getLogger } from '../../logging/index.js'
-import type { BuildOnethingHistoryMessagesOptions } from '@onething/runtime/sessions/history-messages'
+import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/runtime/sessions/history-messages'
 
 const log = getLogger('engine.history')
 

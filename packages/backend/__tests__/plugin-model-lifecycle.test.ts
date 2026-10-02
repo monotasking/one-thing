@@ -64,7 +64,7 @@ async function assemble(name: string) {
 }
 
 async function createManager(instance: OnethingBackend, options: { entry?: (api: PluginAPI) => void | Promise<void>; waitForInitialize?: boolean } = {}) {
-  const { CorePluginManager } = await import('@onething/core/plugins')
+  const { CorePluginManager } = await import('@onething/backend/core/plugins')
   const apiModule = await import('../wiring/plugins/api.js')
   const instances: PluginAPI[] = []
   const definition: PluginDefinition = {
@@ -158,7 +158,7 @@ it('Backend shutdown retains its lease and bills the original store until the re
   const shuttingDown = instance.dispose().then(() => { disposed = true })
   await rejected
   expect(disposed).toBe(false)
-  const { inspectStoreLock } = await import('@onething/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).not.toBe('absent')
   await expect(old.llm.complete(request)).rejects.toThrow()
   const { createOnethingBackend } = await import('../backend.js')

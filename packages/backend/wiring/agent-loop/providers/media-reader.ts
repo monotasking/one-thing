@@ -2,7 +2,7 @@
  * `ProviderMediaReader` 的装配层实现(P4-2,设计稿 §5.2 Gemini 行)。
  *
  * runtime 的 provider 只声明「按 mediaId 取一张图的字节」这个**只读**接口
- * (`@onething/runtime/agent-loop/providers` 的 `ProviderMediaReader`);知道
+ * (`@onething/backend/runtime/agent-loop/providers` 的 `ProviderMediaReader`);知道
  * 媒体库长什么样、索引在哪、文件落在哪一格,是装配层的事。Gemini 的多轮改图
  * 需要它:消息上留下的只有一段 markdown
  * (`![Generated Image|mediaId:<id>](media://<id>.png)`),字节在库里。
@@ -17,9 +17,9 @@
  * 这一层因此不碰 `node:fs` —— `wiring/` 目录的边界规则不许它有别的 node 依赖,
  * 而「怎么把一个图片文件读成 base64」本来也是媒体库的事,不是接线的事。
  */
-import type { ProviderMediaImage, ProviderMediaReader } from '@onething/runtime/agent-loop/providers'
-import { readOnethingImageFileDataUrl } from '@onething/runtime/media'
-import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
+import type { ProviderMediaImage, ProviderMediaReader } from '@onething/backend/runtime/agent-loop/providers'
+import { readOnethingImageFileDataUrl } from '@onething/backend/runtime/media'
+import { mediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
 import { getLogger } from '../../logging/index.js'
 
 const log = getLogger('providers.media')

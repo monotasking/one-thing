@@ -23,12 +23,12 @@
 import {
   collabAgentSessionId,
   collabAgentSessionName,
-} from '@onething/runtime/collab'
+} from '@onething/backend/runtime/collab'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { findAgent } from '../agents/index.js'
 import { ensureCollabRoomFolder } from './room-folder.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { sessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 import { ownedCollabSessionId } from './owned-session-id.js'

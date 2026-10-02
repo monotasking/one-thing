@@ -1,5 +1,5 @@
 import type { ChatMessage, MessageOrigin } from "@shared/ipc.js";
-import { registerPromptContextProvider } from "@onething/runtime/prompts/plugin-context.wiring";
+import { registerPromptContextProvider } from "@onething/backend/runtime/prompts/plugin-context.wiring";
 import { sessionReads } from "../session/reads.js";
 import {
 	latestRealOrigin,

@@ -51,24 +51,24 @@ import {
   renderTaskReport,
   taskSessionName,
   type TaskOutcome,
-} from '@onething/runtime/tasks'
+} from '@onething/backend/runtime/tasks'
 import type {
   TaskDispatchOutcome,
   TaskDispatchRequest,
-} from '@onething/runtime/toolkit'
+} from '@onething/backend/runtime/toolkit'
 
 import * as store from '../../store.js'
 import type { sessionReads } from '../../session/reads.js'
 import type { EventBus } from '../../events/event-bus.js'
 import type { StreamEngine } from '../engine/stream-engine-bound.js'
 import { getCurrentBackend } from '../../current.js'
-import type { Quiescible } from '@onething/core/lifecycle'
-import { taskMessageSource } from '@onething/runtime/engine/message-sources'
+import type { Quiescible } from '@onething/backend/core/lifecycle'
+import { taskMessageSource } from '@onething/backend/runtime/engine/message-sources'
 import { deliverInternalMessage } from '../plugins/sessions.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
-import type { RuntimeRequestContext } from '@onething/core'
+import type { RuntimeRequestContext } from '@onething/backend/core'
 import { SessionAccessError, type SessionAccess } from '../../session/access.js'
 import { fixedExecutionContext } from '../engine/execution-context.js'
 

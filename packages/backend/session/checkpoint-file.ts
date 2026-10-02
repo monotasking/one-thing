@@ -59,8 +59,10 @@ import {
   SESSION_PROJECTION_CHECKPOINT_VERSION,
   type SessionAccountState,
   type SessionProjectionCheckpointPayload,
+} from '@onething/backend/core/session'
+import {
   type SessionProjectionState,
-} from '@onething/core/session'
+} from '@shared/session/projection/reducer'
 import {
   getSessionEventsLogPath,
   getSessionProjectionCheckpointPath,

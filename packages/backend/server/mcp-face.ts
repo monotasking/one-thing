@@ -24,7 +24,7 @@ import {
   HOST_MCP_HTTP_PATH,
   installHostMcpToolHandlers,
   type HostMcpServerLike,
-} from '@onething/runtime/acp/mcp-bridge/server'
+} from '@onething/backend/runtime/acp/mcp-bridge/server'
 import { hostMcpRouter } from '@shared/ipc/host-mcp.js'
 import type { RpcDispatchContext, RpcRequest } from '@shared/ipc/rpc.js'
 import { dispatchRpc } from '../rpc/registry.js'
