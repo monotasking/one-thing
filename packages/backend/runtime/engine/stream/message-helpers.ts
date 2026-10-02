@@ -4,7 +4,7 @@
  */
 
 import type { ChatMessage } from "@shared/ipc.js";
-import type { AgentProviderData } from "@onething/backend/core/agent-loop";
+import type { AgentProviderData } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { JsonObject, JsonValue } from "@shared/json.js";
 import type { AIMessageContent } from "@onething/backend/runtime/providers/chat-facade";
 import { logMessageBodyShape } from "@onething/backend/runtime/engine/chat-logger-bound";
@@ -15,14 +15,14 @@ import {
 	renderContextUpdateBlock,
 	sanitizeToolResultForAI,
 	TurnContextLedger,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import {
 	buildOnethingHistoryMessages,
 	buildOnethingMessageContent,
 	filterOnethingHistoryForNonToolAPI,
 	onethingHistoryBuildRecipe,
 } from "@onething/backend/runtime/sessions";
-import type { CoreHistoryChatMessage } from "@onething/backend/core/engine";
+import type { CoreHistoryChatMessage } from "@onething/backend/runtime/engine/engine-primitives";
 import {
 	appendCollabReactionSummary,
 	buildCollabChatRoomPayload,

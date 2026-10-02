@@ -6,7 +6,7 @@ import type { CompactMarkerSource } from './marker'
  * 压缩标记的解析(壳侧唯一产地)。
  *
  * 正文的**产地是后端** —— `buildContextCompactContent`
- * (`packages/backend/core/engine/context-compact-content.ts`)。所以这里的夹具一律用
+ * (`packages/shared/engine/context-compact-content.ts`)。所以这里的夹具一律用
  * 那个函数写出来的形状**逐字**摆:手抄一份自己想象中的 JSON 去测,测的是想象。
  */
 

@@ -33,15 +33,15 @@ import { type StreamContext, type StreamSender } from './stream-processor.js'
 import { getStreamEngine } from '../engine-layer.js'
 import type { HistoryMessage } from './message-helpers.js'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
-import type { AgentOutputModality } from '@onething/backend/core/agent-loop'
+import type { AgentOutputModality } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   executeCoreMessageStream,
-} from '@onething/backend/core/engine'
-import type { CoreInitialToolChoice } from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreInitialToolChoice } from '@onething/backend/runtime/engine/engine-primitives'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import { noteQuotaRunEnd } from '@onething/backend/runtime/quota/engine-hooks'
 import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config'
-import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/backend/core/engine'
+import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/backend/runtime/engine/engine-primitives'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

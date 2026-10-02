@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildAgentLoopDirectToolsWithAdapters } from '@onething/backend/core/engine/agent-loop-runtime'
-import { executeCoreDirectTool } from '@onething/backend/core/engine/direct-tool-execution'
+import { buildAgentLoopDirectToolsWithAdapters } from '@onething/backend/runtime/engine/agent-loop-runtime'
+import { executeCoreDirectTool } from '@onething/backend/runtime/engine/direct-tool-execution'
 import { principalId, type Principal } from '@shared/permission/principal.js'
 
 /**

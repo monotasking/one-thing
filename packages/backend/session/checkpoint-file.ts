@@ -1,7 +1,7 @@
 /**
  * **投影检查点的落盘面**(工单 4 B)—— 写在哪、什么时候作数、什么时候扔掉。
  *
- * 编解码在 core(`core/session/projection/checkpoint.ts`,它连"文件"两个字都不
+ * 编解码在 core(`runtime/sessions/projection/checkpoint.ts`,它连"文件"两个字都不
  * 认识);**判据在这里**,因为判据问的全是账本这个文件此刻长什么样。
  *
  * ## 一句话
@@ -59,7 +59,7 @@ import {
   SESSION_PROJECTION_CHECKPOINT_VERSION,
   type SessionAccountState,
   type SessionProjectionCheckpointPayload,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import {
   type SessionProjectionState,
 } from '@shared/session/projection/reducer'

@@ -32,7 +32,7 @@ import {
 	type TurnBlock,
 	type TurnContextCarrier,
 	type TurnContextDelta,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import type { ChatMessage } from '@shared/ipc.js'
 
 /**

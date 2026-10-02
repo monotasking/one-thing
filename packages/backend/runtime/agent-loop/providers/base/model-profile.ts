@@ -21,7 +21,7 @@ import type {
 	AgentModelCapabilities,
 	AgentOutputModality,
 	AgentProvider,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	resolveOnethingModelCapabilities,
 	type OnethingCapabilityEntryLike,

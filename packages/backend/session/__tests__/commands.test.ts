@@ -8,14 +8,14 @@
  *  - **落盘档**(`lazy`)—— 逐字复刻归约器退役前的 `resolveLazy`;
  *  - **索引元数据** —— 哪条命令盖、哪条不盖;
  *  - **会话账落格** —— 身份三格与截断效果都从**折叠块**取(这里注入一份假账,
- *    产地本身由 `core/session/__tests__/session-account.test.ts` 与 battery 守)。
+ *    产地本身由 `runtime/sessions/__tests__/session-account.test.ts` 与 battery 守)。
  *
  * 写计划不再有:存储驱动自 S3w-3 批 6b 起就不读它了(`storage-driver.ts` 的
  * `void plan`),归约器一死它连产地都没有 —— 断言跟着一起退役。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import type { SessionAccountState } from '@onething/backend/core/session'
+import type { SessionAccountState } from '@onething/backend/runtime/sessions/session-primitives'
 
 const state = vi.hoisted(() => ({
   messages: [] as ChatMessage[],

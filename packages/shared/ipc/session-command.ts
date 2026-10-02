@@ -16,7 +16,7 @@
  *     → `sessionCommandRouter`(本文件)
  *     → `sessionCommandRpcHandlers.emit`(backend/rpc/domains/session-command.ts)
  *     → `emitCoreSessionCommandForIpc`(runtime/event-bus/ipc-operations.ts)
- *     → `CoreStreamEngine` 的命令派发表(core/engine/core-stream-engine.ts)
+ *     → `CoreStreamEngine` 的命令派发表(runtime/engine/core-stream-engine.ts)
  *     → `handleSendMessage`
  *
  * 一个方法就够:命令的**分派**在总线那一侧按 `command.type` 走(那张表已经是

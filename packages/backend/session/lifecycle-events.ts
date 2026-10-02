@@ -30,7 +30,7 @@ const log = getLogger('sessions.events')
 
 /**
  * **产地印章**(§17.7 #2+#1)—— 写这条 `session/created` 的时候,这个进程认为
- * 自己的 store 在哪儿。形状与理由见 `core/session/events/origin.ts`。
+ * 自己的 store 在哪儿。形状与理由见 `packages/shared/session/events/origin.ts`。
  *
  * 按 store 路径缓存(而不是每进程算一次):测试会在一个进程里换好几个临时 store,
  * 算错就等于给那本账盖了别人的章。指纹本身是纯函数,一次几十个字符的循环。

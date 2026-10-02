@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
-import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/core/agent-loop";
+import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,

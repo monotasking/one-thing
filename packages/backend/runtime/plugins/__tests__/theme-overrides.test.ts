@@ -24,7 +24,7 @@ import {
   isPluginThemeColorValue,
   sortByPluginCanonicalOrder,
   validatePluginContributes,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   isPluginThemeOverrideToken,
   resolvePluginThemeOverrides,

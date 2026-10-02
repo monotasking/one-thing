@@ -16,7 +16,7 @@ import {
 	type AgentSkillContext,
 	type AgentSourceToolDefinition,
 	type AgentToolChoice,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { Principal } from "@shared/permission/principal";
 import {
 	agentLoopInitSkills,
@@ -53,7 +53,7 @@ import {
 	type PromptSection,
 	type CorePendingAgentLoopInputMessage,
 	type CorePromptRequestMessage, type ResolveAgentLoopContextBudgetOptions, type CoreAgentLoopTurnQueueAdapters, type CoreAgentLoopEphemeralTailAdapters,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import type { JsonObject } from "@shared/json";
 import {
 	createAgentProviderFromRuntime,

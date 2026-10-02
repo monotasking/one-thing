@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { EventBus } from '../event-bus.js'
 import { emitCoreSessionCommandForIpc } from '../ipc-operations.js'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
-import { CoreStreamEngine, type CoreExecutionOptions, type CoreStreamEngineRuntime } from '@onething/backend/core/engine/core-stream-engine'
+import { CoreStreamEngine, type CoreExecutionOptions, type CoreStreamEngineRuntime } from '@onething/backend/runtime/engine/core-stream-engine'
 
 describe('trusted command delivery context', () => {
   it('passes the separate host context to an execution while excluding it from JSON and ignoring payload claims', async () => {

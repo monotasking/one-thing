@@ -3,10 +3,10 @@
  *
  * 打的是"只有装配层知道的事实"那一半:受管三要素的真实行为 —— 计费进账本
  * (source = plugin:<id>)、配额超限抛错、硬超时抛错、maxTokens 钳制、provider
- * 未配置时的 unsupported。声明门与输入校验在 core 那一份(core/plugins llm.test.ts)。
+ * 未配置时的 unsupported。声明门与输入校验在 core 那一份(runtime/plugins llm.test.ts)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '@onething/backend/core/plugins'
+import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '@onething/backend/runtime/plugins/plugin-contract'
 
 const settingsRef: { current: any } = { current: null }
 const generateChatResponse = vi.fn()

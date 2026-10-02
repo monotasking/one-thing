@@ -35,8 +35,8 @@ import {
   findMarketIndexEntry,
   readPluginLedger,
   unscopedPluginIdFromPackageName,
-} from '@onething/backend/core/plugins'
-import type { CorePluginMarketIndex } from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
+import type { CorePluginMarketIndex } from '@onething/backend/runtime/plugins/plugin-contract'
 import { stdout, stderr } from './stdout.js'
 
 /** 装完/卸完的提示 —— CLI 不加载插件,桌面那边要自己刷新。 */

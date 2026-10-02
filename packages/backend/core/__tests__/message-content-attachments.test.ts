@@ -4,7 +4,7 @@ import {
 	INLINE_TEXT_ATTACHMENT_MAX_CHARS,
 	INLINE_TEXT_ATTACHMENT_TOTAL_CHARS,
 	type CoreMessageAttachment,
-} from "../engine/message-content.js";
+} from "@onething/backend/runtime/engine/message-content";
 
 function b64(text: string): string {
 	return Buffer.from(text, "utf-8").toString("base64");

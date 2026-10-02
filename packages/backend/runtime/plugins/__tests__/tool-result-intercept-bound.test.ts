@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CORE_PLUGIN_FAILURE_THRESHOLD, PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from '@onething/backend/core/plugins'
+import { CORE_PLUGIN_FAILURE_THRESHOLD, PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from '@onething/backend/runtime/plugins/plugin-contract'
 
 import {
   clearPluginRuntimeHealth,

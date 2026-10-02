@@ -213,7 +213,7 @@ const sessionCommandEvents = {
           patch: kept,
           // §17.7.1 批 2 裁定 2:`fullBody` 这一档就是 upsert 的整条替换,而它
           // 与 `patchMessage` 在会话账上的待遇不同(前者盖 `updatedAt`)。事件上
-          // 记的是**调用类别**这个事实,盖不盖章的策略住 `core/session/account.ts`。
+          // 记的是**调用类别**这个事实,盖不盖章的策略住 `runtime/sessions/account.ts`。
           ...(options.fullBody ? { via: 'upsert' as const } : {}),
         },
         at,
@@ -421,7 +421,7 @@ export const sessionCommandEvents: SessionCommandEvents = {
 
 /**
  * `truncateFrom{inclusive:false}` 改写出来的那条消息 —— **逐字镜像**
- * `packages/backend/core/session/commands.ts` 的 `applyTruncate`:
+ * `packages/backend/runtime/sessions/commands.ts` 的 `applyTruncate`:
  *
  * ```
  * target.content = command.newContent

@@ -28,7 +28,7 @@ import {
   runAgentLoopAfterTurnWithAdapters,
   runAgentLoopBeforeTurnWithAdapters,
   shouldStartAgentLoopContextCompact,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { getOnethingAgentLoopThinkingOptions } from '@onething/backend/runtime/agent-loop/providers'
 
 describe('core agent-loop runtime helpers', () => {

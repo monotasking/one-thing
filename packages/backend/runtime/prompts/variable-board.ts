@@ -18,7 +18,7 @@
 import {
 	type CoreBuildPromptContextOptions,
 	type CorePromptFragment,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import type { PromptSource } from "./composer.js";
 
 /** The one thing this source needs: text for a session's board. */

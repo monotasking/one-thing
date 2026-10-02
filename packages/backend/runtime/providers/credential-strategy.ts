@@ -51,7 +51,7 @@ import {
   type PluginCredentialEntryView,
   type PluginCredentialFailureKind,
   type PluginCredentialUsage,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   configureSpaceCredentialPluginStrategyHost,
   type SpaceCredentialEntry,

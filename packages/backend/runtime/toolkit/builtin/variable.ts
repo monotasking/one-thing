@@ -14,7 +14,7 @@
 import { z } from 'zod'
 import { Intent, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { CoreToolPromptContribution } from '@onething/backend/core/engine'
+import type { CoreToolPromptContribution } from '@onething/backend/runtime/engine/engine-primitives'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { isCapabilityVariable } from '../../variables/types.js'
 import type { VariableScope, VariableType } from '../../variables/types.js'

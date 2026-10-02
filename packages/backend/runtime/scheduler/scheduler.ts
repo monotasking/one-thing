@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import type { CorePluginSchedulerHost } from '@onething/backend/core/plugins'
+import type { CorePluginSchedulerHost } from '@onething/backend/runtime/plugins/plugin-contract'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {

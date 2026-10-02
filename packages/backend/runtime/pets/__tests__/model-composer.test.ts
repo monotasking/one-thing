@@ -5,7 +5,7 @@
  * ③ 用量记账;④ 脏回复 / `{"say": null}` 答 `null`;⑤ 超时答 `null`,不挂住。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentLoopOptions } from '@onething/backend/core/agent-loop'
+import type { AgentLoopOptions } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { HEIDOU, type Moment } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc.js'
 import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'

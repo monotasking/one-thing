@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { CorePluginCredentialStrategyContext } from '@onething/backend/core/plugins'
+import type { CorePluginCredentialStrategyContext } from '@onething/backend/runtime/plugins/plugin-contract'
 import type { OnethingBackend } from '../backend.js'
 
 let directory: string

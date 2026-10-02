@@ -18,7 +18,7 @@ import {
   assembleSessionTrace,
   materializeTraceResponseText,
   traceResponseTextFromProjection,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import { type SessionTrace, type SessionTraceResponseText } from '@shared/session/trace/types'
 import { readSessionLogEvents } from './event-log.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './projection-cache.js'

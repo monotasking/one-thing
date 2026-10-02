@@ -13,7 +13,7 @@ import {
   type CoreLogMonitorPluginOptions,
   type CoreLogMonitorPluginApi,
   type CoreLogMonitorPluginRuntime, type CoreLogMonitorDiskWriterOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 // Manifests are product data: the plugin's id/描述/作者只有产品层认识,
 // core 只提供无名的日志监控原语(守卫:packages/backend/core knows no concrete
@@ -186,7 +186,7 @@ export function registerOnethingLogMonitorStatusDemo(
     name: 'scan_log_files',
     description: 'Scan the agent log directory and report per-file sizes.',
     parameters: z.object({}),
-    // R4b:`permissionGuard` 已退役,这里不再写它(见 core/plugins/log-monitor.ts)。
+    // R4b:`permissionGuard` 已退役,这里不再写它(见 runtime/plugins/log-monitor-primitives.ts)。
     async execute(_args, ctx) {
       const statusId = 'scan'
       api.status?.show(ctx.sessionId, { id: statusId, label: 'Scanning log files…' })

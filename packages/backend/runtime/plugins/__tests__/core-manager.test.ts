@@ -22,9 +22,9 @@ import {
   type CorePluginManagerHost,
   type CorePluginLoaderLogger,
   type CorePluginStateLike,
-} from '@onething/backend/core/plugins'
-import type { CorePluginDefinition } from '@onething/backend/core/plugins'
-import type { PluginSettings } from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
+import type { CorePluginDefinition } from '@onething/backend/runtime/plugins/plugin-contract'
+import type { PluginSettings } from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface TestAPI {
   registerCommand(name: string): void

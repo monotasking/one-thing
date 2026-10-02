@@ -16,7 +16,7 @@
 import {
   CorePluginStatusRegistry,
   type CorePluginStatusPart, type CorePluginStatusRegistryOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

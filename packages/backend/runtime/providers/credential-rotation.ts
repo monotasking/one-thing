@@ -4,7 +4,7 @@
  * ## 边界:请求/重试边界,流中绝不换
  *
  * 唯一的挂载点是 core agent-loop 的 turn 级重试(`AgentLoopOptions.rotateCredential`,
- * `packages/backend/core/agent-loop/runner.ts` 的 attempt 循环 catch 块)。那里有三个
+ * `packages/backend/runtime/agent-loop/runner.ts` 的 attempt 循环 catch 块)。那里有三个
  * 现成的保证,一个都不用重造:
  *
  *  - 它在**流已经失败之后**跑 —— 不存在"换到一半"的流。
@@ -35,7 +35,7 @@
  * → 整个钩子**返回 undefined 不挂载**,core 的重试逻辑一行都不会变。
  */
 
-import type { AgentCredentialRotation, AgentProvider } from '@onething/backend/core/agent-loop'
+import type { AgentCredentialRotation, AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   classifyProviderError,
   providerErrorCooldownUntil,

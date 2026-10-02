@@ -24,7 +24,7 @@ import {
   textFromStructuredToolResult,
   toolResultObject,
   type CoreToolResultLike,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import type { JsonValue } from '@shared/json'
 
 describe('core tool orchestration helpers', () => {

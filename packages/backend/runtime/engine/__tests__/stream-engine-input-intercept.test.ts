@@ -2,7 +2,7 @@
  * N2 —— 发送前拦截的**挂点**验收(引擎这一半)。
  *
  * 协议层(三态归一化、链的次序与累积、fail-open、声明门)在
- * `packages/backend/core/plugins/__tests__/input-intercept.test.ts`。这一份打的是
+ * `packages/backend/runtime/plugins/__tests__/input-intercept.test.ts`。这一份打的是
  * 只有引擎说了算的四件事:
  *
  *  1. 哪些命令**进链**(真实用户发送)、哪些**豁免**(系统内部源,含 `plugin:` 前缀族);
@@ -31,8 +31,8 @@ const mocks = vi.hoisted(() => ({
 
 // P3'e A1:`OnethingStreamEngine` 那层已并进 `ProductStreamEngine`,基类直接就是
 // core 的 `CoreStreamEngine` —— 桩就打在它身上(其余导出保留真身)。
-vi.mock('@onething/backend/core/engine', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/core/engine')>()),
+vi.mock('@onething/backend/runtime/engine/engine-primitives', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/engine/engine-primitives')>()),
   CoreStreamEngine: class {
     authorizeExecution(...args: unknown[]): void { mocks.authorizeExecution(...(args as [])) }
     assertAccepting(): void {}

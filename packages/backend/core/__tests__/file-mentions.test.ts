@@ -7,7 +7,7 @@ import {
 	isFileMentionTrustedChannel,
 	INLINE_FILE_MENTION_MAX_CHARS,
 	INLINE_FILE_MENTION_MAX_READ_BYTES,
-} from "../engine/file-mentions.js";
+} from "@onething/backend/runtime/engine/file-mentions";
 
 let root: string;
 const paths: Record<string, string> = {};

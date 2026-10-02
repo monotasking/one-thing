@@ -8,7 +8,7 @@ import type {
  * **压缩标记的唯一解析产地**(壳侧)。
  *
  * 一次压缩在账本上只是**一条 system 消息**,正文是后端
- * `buildContextCompactContent`(`packages/backend/core/engine/context-compact-content.ts`)
+ * `buildContextCompactContent`(`packages/shared/engine/context-compact-content.ts`)
  * 写出去的一段 JSON;压缩的三个阶段(在压 / 压完 / 失败)全靠**刷同一条消息的正文**
  * 表达。所以壳这边不需要第二套协议、不需要订 `context:compact-*` 事件 ——
  * 需要的只是「把这段正文读成一件事实」,而那件事必须只有一个产地:

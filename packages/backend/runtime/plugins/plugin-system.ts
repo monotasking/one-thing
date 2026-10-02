@@ -9,7 +9,7 @@
 export type {
   CorePluginInfo,
   CorePluginManagerHost,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 export { bootstrapPluginSystem, getPluginManager, PluginManager } from './plugin-manager.js'
 export {

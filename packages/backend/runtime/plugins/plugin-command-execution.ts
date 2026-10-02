@@ -1,7 +1,7 @@
 import type {
   CorePluginCommandContext,
   CorePluginCommandDefinition,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

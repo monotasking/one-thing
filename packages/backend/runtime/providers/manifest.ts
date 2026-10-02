@@ -17,7 +17,7 @@ import type { OnethingModelsDevModel } from './model-registry.js'
 import type { DialSpec } from './dials.js'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import type { ProviderFamilyRole } from '@shared/provider-families.js'
-import { configureProviderErrorCodeDescriber } from '@onething/backend/core/engine/error-details'
+import { configureProviderErrorCodeDescriber } from '@onething/backend/runtime/engine/error-details'
 import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
 import { ONETHING_PROTOCOL_DEFAULT_MODEL_RULES } from './model-families/index.js'
 

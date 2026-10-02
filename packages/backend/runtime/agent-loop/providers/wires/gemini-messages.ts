@@ -17,7 +17,7 @@
  *     data URI 变 `inlineData` —— 这条线上**没有 `Undeliverable`**,音频/视频
  *     都有对应的块。
  */
-import { agentToolMessageContentToText } from "@onething/backend/core/agent-loop";
+import { agentToolMessageContentToText } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
@@ -26,7 +26,7 @@ import type {
 	AgentMessageContent,
 	AgentTool,
 	AgentToolChoice,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	delivered,
 	type Logger,

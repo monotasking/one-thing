@@ -7,7 +7,7 @@ import type {
   AgentToolResultContentPart,
   AgentTurnStreamEvent,
   AgentUsage,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { buildTextDiffChange, type TextDiffChange } from '../external-agents/diff-changes.js'
 
 /**

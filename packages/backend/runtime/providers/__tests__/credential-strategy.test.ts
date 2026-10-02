@@ -14,7 +14,7 @@ import {
   PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
   PLUGIN_REGISTRY_POLICY,
   type CorePluginCredentialStrategyContext,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-cred-strategy-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH

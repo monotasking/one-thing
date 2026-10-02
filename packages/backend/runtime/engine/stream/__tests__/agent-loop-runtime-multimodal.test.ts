@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop } from '@onething/backend/core/agent-loop'
-import { PendingMessageQueue } from '@onething/backend/core/engine'
+import { runAgentLoop } from '@onething/backend/runtime/agent-loop/loop-primitives'
+import { PendingMessageQueue } from '@onething/backend/runtime/engine/engine-primitives'
 import {
   createDefaultSettings,
 } from '@onething/backend/stores/defaults/settings.js'
@@ -13,7 +13,7 @@ import type {
   AgentToolChoice,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { BuildPromptOptions } from '../../prompt/system-prompt.js'
 import type { HistoryMessage } from '../message-helpers.js'
 import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'

@@ -22,7 +22,7 @@ import type { Tool } from './tool.js'
  * 内核语义(不变):`undefined` = 不限制,**空数组 = 明确的"一个工具都不给"**。
  * 一个空的白名单是一句说出口的话,把它读成"随便你"是让一次收紧变成一次放开。
  *
- * 但旧路(`core/engine/agent-loop-runtime.ts` 的
+ * 但旧路(`runtime/engine/agent-loop-runtime.ts` 的
  * `allowedToolIds && allowedToolIds.length > 0 ? new Set(...) : null`)把空数组读成
  * "不限制"。两者对同一个值给出**相反**的工具面,所以接线时必须显式归一,而不是
  * 让两套语义在同一个字段上碰运气。

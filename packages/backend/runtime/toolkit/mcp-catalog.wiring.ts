@@ -1,7 +1,7 @@
 /**
  * R2b —— MCP 工具进目录(§13.7 裁定 5)。
  *
- * 旧路里 MCP 是 `core/engine/direct-tool-execution.ts` 里一整支 `if (isMCPTool)`;
+ * 旧路里 MCP 是 `runtime/engine/direct-tool-execution.ts` 里一整支 `if (isMCPTool)`;
  * 新路里它就是目录里的一个普通 `Tool`(`McpTool`),对 Catalog / Surface / Runner /
  * Authorizer 一视同仁(尺子⑥)。
  *

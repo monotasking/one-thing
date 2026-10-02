@@ -10,7 +10,7 @@ import {
   sanitizeToolResultForAI,
   type CoreHistoryMessage,
   type CoreHistoryChatMessage,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { providerDataFromOnethingContentPart } from '@onething/backend/runtime/agent-loop/providers'
 
 describe('core resume history', () => {

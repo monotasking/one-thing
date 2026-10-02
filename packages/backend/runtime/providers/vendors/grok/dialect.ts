@@ -37,7 +37,7 @@
 import type {
 	AgentModelCapabilities,
 	AgentTurnStreamEvent,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type {
 	RequestBodyBuilder,
 	ToolChoicePolicy,

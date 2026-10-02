@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CoreTriggerManager, type CoreTrigger } from '@onething/backend/core/engine'
+import { CoreTriggerManager, type CoreTrigger } from '@onething/backend/runtime/engine/engine-primitives'
 
 interface TestTriggerContext {
   sessionId: string

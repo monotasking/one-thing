@@ -45,7 +45,7 @@ vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
-import type { AgentProvider } from '@onething/backend/core/agent-loop'
+import type { AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   getSpaceProviderCredentials,
   resetSpaceCredentialRotationForTests,

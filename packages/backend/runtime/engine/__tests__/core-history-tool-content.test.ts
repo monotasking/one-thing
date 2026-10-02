@@ -4,7 +4,7 @@ import {
   agentToolMessageContentFromHistoryResult,
   type AgentHistoryMessage,
   type AgentModelCapabilities,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 const textOnly: AgentModelCapabilities = {
   capabilities: ['tool-calls', 'structured-tool-results'],

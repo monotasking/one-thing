@@ -14,7 +14,7 @@
  * 变成另一家的形状,而用户以为自己选了 OpenRouter。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/core/agent-loop";
+import type { AgentTurnRequest } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,

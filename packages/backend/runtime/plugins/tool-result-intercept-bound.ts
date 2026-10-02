@@ -1,7 +1,7 @@
 /**
  * N5 的**装配层实现**:工具结果改写链的进程内注册表 + 健康态接线。
  *
- * 协议在 core(`@onething/backend/core/plugins` 的 tool-result-intercept.ts):两态、
+ * 协议在 core(`@onething/backend/runtime/plugins/plugin-contract` 的 tool-result-intercept.ts):两态、
  * 归一化、链的次序、长度上限与 fail-open 语义。这里做两件产品层的事(比 N4 少
  * 一件 —— N5 改的是自由文本,没有 schema 校验口要接):
  *
@@ -28,7 +28,7 @@ import {
   type PluginToolResultInterceptContext,
   type PluginToolResultInterceptHandler,
   type PluginToolResultInterceptOutcome, type CorePluginToolResultInterceptRegistryOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   probePluginSurface,
   reportPluginRuntimeFailure,

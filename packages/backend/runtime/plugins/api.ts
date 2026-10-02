@@ -36,8 +36,8 @@ import {
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
   PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT, type DisposeCorePluginStateOptions,
   PluginLlmError,
-} from '@onething/backend/core/plugins'
-import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
+import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/backend/runtime/plugins/plugin-contract'
 import type { IMConnector } from '@shared/ipc.js'
 import {
   emitPluginStatusPart,
@@ -86,7 +86,7 @@ import {
   disposeCorePluginState,
   executeCorePluginTool,
   type CorePluginAPIState,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import type { CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'

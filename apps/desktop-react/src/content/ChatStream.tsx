@@ -1134,7 +1134,7 @@ const MessageRow = memo(function MessageRow({
             读数行那条「同一个位置只有一个」说的是「生成中 vs 生成完」这两态,而这
             一行属于生成完的那一态,是动作行上面的一句陈述,不是第三态。
             判据只有一个 `message.stop`:投影已经把「哪些收场值得说」与「结局成没
-            成立」两道闸都判完了(`core/session/projection/stop-reasons.ts` +
+            成立」两道闸都判完了(`packages/shared/session/projection/stop-reasons.ts` +
             `materializeStop`),壳这边**不再抄第二份判据**。`!streaming` 这一问是
             防御(活消息按定义拿不到这一格),留着是因为壳上还有尾巴合成那条路。
           */}

@@ -14,7 +14,7 @@ import {
   describePluginWebviewPanelProblem,
   isPluginWebviewPanel,
   type PluginContributionUiSlot, type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
 import {
@@ -39,8 +39,8 @@ import {
   setPluginEnabledWithAdapters,
   setPluginHealthInSettings,
   writePluginSettingsFile,
-} from '@onething/backend/core/plugins'
-import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
+import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/backend/runtime/plugins/plugin-contract'
 import { getPluginAppVersion } from '@onething/backend/runtime/plugins/app-version'
 import { clearPluginRuntimeHealth } from '@onething/backend/runtime/plugins/health'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './types.js'

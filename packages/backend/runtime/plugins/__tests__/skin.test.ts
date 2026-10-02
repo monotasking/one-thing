@@ -19,7 +19,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   PLUGIN_SKIN_MAX_ENTRIES,
   validatePluginContributes,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   isPluginSkinKnob,
   isPluginSkinTier,

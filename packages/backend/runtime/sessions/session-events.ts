@@ -28,7 +28,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { decodeSessionLogEventLine, encodeSessionLogEventLine } from '@onething/backend/core/session'
+import { decodeSessionLogEventLine, encodeSessionLogEventLine } from '@onething/backend/runtime/sessions/session-primitives'
 import { SESSION_LEGACY_EVENT_TYPES } from '@shared/session/events/types'
 import type {
   SessionAssistantFirstTokenEvent,
@@ -58,14 +58,14 @@ import type { SessionToolCallInspection } from '@shared/session/tool-call-inspec
 /**
  * ── S0 之后的分工(docs/design/session-event-sourcing-2026-08.md §9)────────
  *
- * **类型与行编解码已上移到 `packages/backend/core/session/events/`**(core 零依赖,
+ * **类型与行编解码已上移到 `packages/backend/runtime/sessions/events/`**(core 零依赖,
  * renderer 也能直接引)。本文件保留的是:
  *  - 既有名字的**再导出**(盘上格式与全部消费者逐字不变);
  *  - 需要 `node:crypto` 的指纹函数(core 里不许有 node 依赖);
  *  - 轨迹面板的检视工具(`resolveToolCallInspection`)。
  *
  * `SessionEventRecord` 在这里**仍然只是 E0 的七类**。v2 的全集叫
- * `SessionLogEventRecord`,从 `@onething/backend/core/session` 取 —— 这样轨迹面板、
+ * `SessionLogEventRecord`,从 `@onething/backend/runtime/sessions/session-primitives` 取 —— 这样轨迹面板、
  * shared 层那个契约面与 rpc 域的类型面一动不动,而 S1 接新事件时
  * 是显式换类型,不是被联合悄悄放大。
  */

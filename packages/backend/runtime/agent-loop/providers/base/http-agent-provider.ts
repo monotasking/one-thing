@@ -16,7 +16,7 @@
 import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { AgentProviderRequestDumpValue } from "../request-dump.js";
 import { BaseAgentProvider } from "./base-agent-provider.js";
 import type { ProviderContext } from "./provider-context.js";

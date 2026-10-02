@@ -9,7 +9,7 @@
  * `app/engine/stream/__tests__/agent-loop-runtime-compact.test.ts` 钉住。)
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CoreStreamEngine } from "../engine/core-stream-engine.js";
+import { CoreStreamEngine } from "@onething/backend/runtime/engine/core-stream-engine";
 
 interface FakeMessage {
 	id: string;

@@ -4,7 +4,7 @@ import {
   runAgentLoop,
   type AgentProvider,
   type AgentJsonObject, type AgentLoopOptions,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import path from 'path'
 import {
   SUPPORT_FILE_ROOTS,
@@ -32,7 +32,7 @@ import type { CoreSkillReviewSettings } from './skill-review-state-core.js'
 import type {
   CoreTrigger,
   CoreTriggerContext,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import {
   isFile,
   listFilesUnderRoots,

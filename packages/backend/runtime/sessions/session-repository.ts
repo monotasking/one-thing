@@ -49,10 +49,10 @@ import {
   type NormalizeWorkingDirectoryRootsOptions,
   type StoredChatMessage,
   type UserMessageMarker, type ApplySessionMetadataMutationWithAdaptersOptions, type ApplySessionSideEffectMutationWithAdaptersOptions, type SyncSessionSideEffectWithReadyAdaptersOptions, type LoadSessionWithAdaptersOptions,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 // §17.8 U1-a:走**叶子路径** —— 按路径读盘的那一口带 `node:fs`,把它留在
-// `@onething/backend/core/session` 那个桶上,整条桶就在浏览器里 import 不动。
-import { getMessagesPageFromJsonFilePath } from '@onething/backend/core/session/storage/json-message-page-file'
+// `@onething/backend/runtime/sessions/session-primitives` 那个桶上,整条桶就在浏览器里 import 不动。
+import { getMessagesPageFromJsonFilePath } from '@onething/backend/runtime/sessions/storage/json-message-page-file'
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/runtime/storage/storage-primitives'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './retired-providers.js'
@@ -61,7 +61,7 @@ import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { writeDurableJson } from '../storage/durable-json.js'
-import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from '@onething/backend/core/session/storage'
+import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from '@onething/backend/runtime/sessions/storage'
 
 export interface OnethingSessionRepositoryLogger {
   log?(...args: unknown[]): void
@@ -316,7 +316,7 @@ export class OnethingSessionRepository<
    *
    * 启动期修复(`sanitizeSessionOnStartup`)在这之后由 `getSession` 的
    * `repairOnFirstTouch` 跑,两条路同款 —— 事件侧虽然已经有 `prepare` 合成过
-   * 中断结局(两者口径由 `core/session/interrupted.ts` 统一),但 `isStreaming`
+   * 中断结局(两者口径由 `packages/shared/session/interrupted.ts` 统一),但 `isStreaming`
    * 与会话级时间线元数据那几格仍然只有它管。
    */
   private loadStoredSession(sessionId: string): TSession | undefined {

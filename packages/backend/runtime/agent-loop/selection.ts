@@ -4,7 +4,7 @@ import {
   type AgentLoopStreamEnabledBy,
   type AgentLoopStreamRoute,
   type AgentLoopStreamSelectionContext as CoreAgentLoopStreamSelectionContext,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import {
   getSupportedAgentProviderRuntimeIds,
   isAgentProviderRuntimeSupported,

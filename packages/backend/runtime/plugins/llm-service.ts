@@ -1,7 +1,7 @@
 /**
  * N7-b 的**装配层实现**:受管 LLM 调用口。
  *
- * 协议在 core(`@onething/backend/core/plugins` 的 llm.ts):权限枚举、披露文案、受管常量、
+ * 协议在 core(`@onething/backend/runtime/plugins/plugin-contract` 的 llm.ts):权限枚举、披露文案、受管常量、
  * 请求/结果形状、结构化错误、纯校验。这里放**受管三要素** —— 与 pi 的裸
  * `ctx.modelRegistry` 的全部差异都在这一个文件里:
  *
@@ -30,7 +30,7 @@ import {
   clampPluginLlmMaxTokens,
   type PluginLlmCompleteOptions,
   type PluginLlmCompleteResult,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 import { QuiescibleScopes } from '@onething/backend/runtime/lifecycle'
 import { getSettings } from '@onething/backend/stores/settings.js'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurnRequest } from '@onething/backend/core/agent-loop'
+import type { AgentTurnRequest } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { createAgentProviderFromRuntime, type AgentProviderRuntimeConfig } from '../factory.js'
 import { drain, sseResponse } from './wire-snapshots/snapshot-harness.js'
 import { projectOnethingThinkingLevels, resolveOnethingModelCapabilities } from '../../../providers/model-capability.js'

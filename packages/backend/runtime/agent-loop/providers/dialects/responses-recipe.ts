@@ -32,9 +32,9 @@
 import type {
 	AgentModelCapabilities,
 	AgentProvider,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { getLogger } from "../../../logging/index.js";
-import type { AgentTurnStreamEvent } from "@onething/backend/core/agent-loop";
+import type { AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	LedgerModelProfileResolver,
 	registerDialect,

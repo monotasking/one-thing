@@ -9,7 +9,7 @@
 import { z } from 'zod'
 import { createTwoFilesPatch } from 'diff'
 import { toJsonObject } from '@shared/json'
-import type { CoreToolPromptContribution } from '@onething/backend/core/engine'
+import type { CoreToolPromptContribution } from '@onething/backend/runtime/engine/engine-primitives'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { dirnamePath, ensureDirAsync, writeTextFileAsync } from '@onething/backend/runtime/storage/storage-primitives'
 import { computeDiffHunks, trimDiffHunks } from '../../tools/diff-hunks.js'

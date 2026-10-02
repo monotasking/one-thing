@@ -26,7 +26,7 @@ import {
   type CorePluginRequestContext,
   type CorePluginRequestHandler,
   type CorePluginStateLike,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface TestAPI {
   registerRequestHandler(action: string, handler: CorePluginRequestHandler): void

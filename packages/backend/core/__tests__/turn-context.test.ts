@@ -6,7 +6,7 @@ import {
 	visibleMessagesAfterSummary,
 	type TurnBlock,
 	type TurnContextCarrier,
-} from "../engine/turn-context.js";
+} from "@onething/backend/runtime/engine/turn-context";
 
 const ledger = new TurnContextLedger();
 

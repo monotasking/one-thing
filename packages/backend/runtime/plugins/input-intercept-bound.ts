@@ -1,7 +1,7 @@
 /**
  * N2 的**装配层实现**:发送前拦截链的进程内注册表 + 健康态接线。
  *
- * 协议在 core(`@onething/backend/core/plugins` 的 input-intercept.ts):三态、归一化、
+ * 协议在 core(`@onething/backend/runtime/plugins/plugin-contract` 的 input-intercept.ts):三态、归一化、
  * 链的次序与 fail-open 语义。这里只做两件产品层的事:
  *
  *  1. **一个进程一本注册表**(与 lifecycle 钩子同构),生命周期跟着插件的
@@ -24,7 +24,7 @@ import {
   type PluginInputInterceptContext,
   type PluginInputInterceptHandler,
   type PluginInputInterceptOutcome, type CorePluginInputInterceptRegistryOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   probePluginSurface,
   reportPluginRuntimeFailure,

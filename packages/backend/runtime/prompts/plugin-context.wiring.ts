@@ -5,7 +5,7 @@
  * 断路器记账**(每次超时/异常记一次 `promptContext` 失败,成功即清零)。
  * 只有装配层与别的 `.wiring` 读它;`prompts/index.ts` 刻意不再导出它。
  */
-import { pluginScope } from '@onething/backend/core/plugins'
+import { pluginScope } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   PluginPromptContextSource,
   clearPromptContextProvidersForPlugin as clearRuntimePromptContextProvidersForPlugin,
@@ -28,7 +28,7 @@ import type {
 import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,

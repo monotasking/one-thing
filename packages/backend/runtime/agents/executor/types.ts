@@ -13,7 +13,7 @@
  * `interrupt`/`dispose` 的调用者在 E5 接(停止三级)。本期先让能力查询有唯一
  * 落点,把散在三处的 Set 判定收进来。
  */
-import type { AgentTurnRequest, AgentTurnStreamEvent } from '@onething/backend/core/agent-loop'
+import type { AgentTurnRequest, AgentTurnStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 /**
  * 执行器 id。与 providerId 同名不是巧合——今天外部 agent 就是靠 providerId

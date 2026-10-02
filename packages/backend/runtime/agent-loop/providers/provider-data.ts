@@ -1,10 +1,10 @@
-import type { AgentProviderData } from '@onething/backend/core/agent-loop'
+import type { AgentProviderData } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   appendOrderedPart,
   type ApplyAgentLoopProviderDataRuntimeOptions,
   type CoreHistoryContentPart,
   type CoreOrderedPartLike,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { ONETHING_QUOTA_PROVIDER_DATA_TYPE, providerDataTagPolicy } from './provider-data-policy.js'
 
 export { ONETHING_QUOTA_PROVIDER_DATA_TYPE }

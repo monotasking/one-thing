@@ -14,7 +14,7 @@
 import type {
 	AgentModelCapabilities,
 	AgentProvider,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	ANTHROPIC_TRANSPORT_CAPABILITIES,

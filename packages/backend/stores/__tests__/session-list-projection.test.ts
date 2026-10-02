@@ -2,7 +2,7 @@
  * **会话列表投影的两格**(共享层读侧补齐 E 批):`lastMessagePreview` 与
  * `messageCount`。
  *
- * 这里只测**纯函数那一层**(`core/session/store-helpers.ts`)—— 写侧那批维护点
+ * 这里只测**纯函数那一层**(`runtime/sessions/store-helpers.ts`)—— 写侧那批维护点
  * 落在 `backend/session/__tests__/commands.test.ts`,读侧的形状落在
  * `packages/backend/rpc/__tests__/`。三层分开是故意的:规则改了该红的是这只文件,
  * 而不是十个接线测试一起变黄。
@@ -14,7 +14,7 @@ import {
   deriveSessionLastMessagePreview,
   extractSessionMeta,
   findLastPreviewableMessage,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 
 describe('deriveSessionLastMessagePreview —— 预览文本的唯一产地', () => {
   it('取 user / assistant 的正文', () => {

@@ -10,7 +10,7 @@ import { authService } from '@onething/backend/runtime/auth/process-auth-service
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
 import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
 import { dumpProviderRequest } from '@onething/backend/provider-binding/request-dump.js'
-import type { AgentProvider } from '@onething/backend/core/agent-loop'
+import type { AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 export interface CodexAgentProviderOptions extends Omit<
   CoreCodexAgentProviderOptions,

@@ -18,7 +18,7 @@ import {
 	type CoreStreamEngineRuntime,
 	type CoreStreamPermissionModeSession,
 	type CoreStreamPermissionModeSettings,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,

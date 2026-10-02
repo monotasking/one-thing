@@ -1,7 +1,7 @@
 /**
  * 提示音裁决的行为测试(M1)——「响不响」的三道闸。
  *
- * 枚举本身的形状测试在 `packages/backend/core/plugins/__tests__/notify-sound.test.ts`;
+ * 枚举本身的形状测试在 `packages/backend/runtime/plugins/__tests__/notify-sound-enum.test.ts`;
  * 这里只测要读宿主状态的部分:全局总开关、每插件静音、每插件限频。
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'

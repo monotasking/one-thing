@@ -4,7 +4,7 @@
  * 打的是 compactSessionContext 的分支:某插件返回了替换摘要 → **跳过宿主的
  * summarizeInChunks**,直接把它写进会话摘要;无人返回(或 fail-open 回落)→
  * 宿主自压照常。协议层(第一个胜出 / 空串无效 / fail-open)在 core 那一份
- * (core/plugins lifecycle-compact.test.ts)。
+ * (runtime/plugins lifecycle-compact.test.ts)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'

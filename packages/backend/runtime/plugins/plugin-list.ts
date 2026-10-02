@@ -9,7 +9,7 @@ import {
   isPluginWebviewPanel,
   resolvePluginAmbients,
   resolvePluginBackgrounds,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import type {
   PluginAmbientDescriptor,
   PluginAmbientEntry,
@@ -18,7 +18,7 @@ import type {
   PluginBackgroundEntry,
   PluginBackgroundInput,
   PluginBackgroundParamsPatch,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   resolvePluginThemeOverrides,
   type PluginThemeOverrideEntry,

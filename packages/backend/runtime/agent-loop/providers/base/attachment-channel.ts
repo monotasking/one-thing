@@ -18,7 +18,7 @@
  * 那一块原样留在消息里,codec 会把它落成可见的 `Undeliverable` 文本,同时
  * `turn.warn('attachment-extract-failed', …)` 留痕(§2.4:不静默)。
  */
-import type { AgentContentPart } from "@onething/backend/core/agent-loop";
+import type { AgentContentPart } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { TurnContext } from "./turn-context.js";
 
 export interface AttachmentChannel {

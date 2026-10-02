@@ -6,13 +6,13 @@ import {
   type CorePromptKnownProjects,
   type CorePromptProviderConfig,
   type CorePromptProviderConfigValue,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import type { PromptSource } from './composer.js'
 import {
   CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,
   isCorePluginTimeoutError,
   runWithPluginTimeout,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 export type OnethingPromptContextRole = 'system' | 'developer' | 'user'
 export type OnethingPromptProviderConfigValue = CorePromptProviderConfigValue

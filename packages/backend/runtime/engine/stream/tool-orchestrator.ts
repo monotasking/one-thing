@@ -9,7 +9,7 @@ import {
   coreToolCallSnapshot,
   CoreToolOrchestrator,
   planToolCallArtifactRemoval,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { sessionReads } from '../../../session/reads.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

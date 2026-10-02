@@ -19,7 +19,7 @@ import {
   type StreamEngineSkillsAdapter,
   type StreamEngineStreamsAdapter,
   type StreamEngineStoreAdapter,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 
 export type OnethingStreamRuntime<
   TSettings extends CoreStreamSettings = CoreStreamSettings,

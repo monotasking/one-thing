@@ -105,8 +105,8 @@ import `@shared` 与 `@onething/client`,碰不到 core 了,所以这一层同样
    `checkRuntimeDomainKernelImportClosure` 与架构测试里同名的那一条一起撤掉 —— 它的源头是「kernel 当 core 判」。
 4. 「core 的大桶必须交出 AgentEngine / EventBus / … 这几个名字」(`checkCorePublicExports`):撤掉。core 不再是对外的
    公共入口;哪只桶交出哪个名字,由用它的人的 import 与类型检查守着。
-5. 只为「不许回到 core」而立的位置断言:`core/tools/` 下 13 只纯模块、core 的 storage 目录下 `app-state.ts` 不许存在 ——
-   那些目录本身并进了 runtime,撤掉。
+5. 只为「不许回到 core」而立的位置断言:`core/tools/` 下 13 只纯模块、core 的 storage 目录下 `app-state.ts`(批 1),
+   core 的 engine 目录下 `system-prompt-snapshot.ts` / `plugin-context.ts`(批 2)不许存在 —— 那些目录本身并进了 runtime,撤掉。
 
 **保留的规则**:
 
@@ -117,13 +117,16 @@ import `@shared` 与 `@onething/client`,碰不到 core 了,所以这一层同样
    不许有 exports 键)。测试基建(`__tests__/`、`testing/`)不进 exports,跨子树也照旧写相对路径。
 4. I1(包根目录不与 runtime 领域同名)、I2(`core/<d>/x.ts` 与 `runtime/<d>/x.ts` 不同名;白名单只减不增,批 1 以后为空)。
 5. **内容**断言按新路径继续守:「内核不点名具体功能」(`checkCoreKnowsNoConcreteFeatures`,量 core 剩下的部分 + 接收了
-   core 文件的那 14 个 runtime 目录)、「检索内核不点名能力」、「provider-agnostic 层不点名服务商」、各「X 拥有 Y」的
+   core 文件的 17 个 runtime 目录 + 从 core 并进 `runtime/plugins/` 的那 58 只插件契约 / 内核文件 —— plugins 不能整目录量,
+   产品那一半就是各个具体插件)、「内置插件只经注入的 api 认识宿主」(放行的仍是插件契约那一批文件,只是包说明符换成了
+   `@onething/backend/runtime/plugins/<那几只>`)、「检索内核不点名能力」、「provider-agnostic 层不点名服务商」、各「X 拥有 Y」的
    位置断言(只改路径,断言名同步改成新址)。
 6. `assembly:gate` 量脊柱 + 整个 `runtime/`(`runtime/<d>/kernel/` 除外;core、gateway 不在尺子上)。从 core 搬进 runtime
    的文件从此在尺子上,按搬家时的值记入基线,同样只许降。
 
 搬家脚本都在会话 scratchpad 里:`fold-domain.mjs` / `flatten.mjs` / `flatten-wiring-*.mjs`(第③步),`s4-move-core.mjs`
-(去 core 批 1:普通文件改名、import / exports 精确键 / 注释路径改写、过时路径按文件名找现址,带 `--dry`)。
+(去 core 批 1:普通文件改名、import / exports 精确键 / 注释路径改写、过时路径按文件名找现址,带 `--dry`)与
+`s4-move-core2.mjs`(批 2:同一份脚本换了领域表与改名表,过时路径先找 `packages/shared/` 下的原样镜像)。
 
 ## 5. 第④步要点
 
@@ -926,3 +929,71 @@ worktree 上用独立 `GIT_INDEX_FILE` 重放,578 个产物路径与主检出逐
 `apps/desktop-react/src/workbench/kinds.ts` 一处折行的注释路径、上一批留下的三处 core 注释、根 `CLAUDE.md`、本文。
 脚本把 37 处早已过时的注释路径(`core/toolkit/effects.ts`、`core/resource/ref.ts`、`core/permission/principal.ts`、
 `core/tools/tool-result.ts`、`core/events/session-*-types.ts`、`core/interaction/types.ts`)按文件名改成了 `packages/shared/` 下的现址。
+
+### 去 core 批 2 落地记录(2026-10-03,未提交)
+
+**一句话**:`core/plugins` → `runtime/plugins`、`core/session` → `runtime/sessions`(`storage/jsonl`、`projection/`、`trace/`、`events/`
+等子目录原样做子目录)、`core/engine` → `runtime/engine`、`core/agent-loop` → `runtime/agent-loop`。174 个文件搬家(51 份测试)。一笔做完
+(scratchpad 的 `s4-move-core2.mjs`,同批 1 的脚本换了领域表与改名表;别的会话在改的 `apps/desktop-react/src/data/chat-*` 不在改写范围;
+在 HEAD 的临时 worktree 上用独立 `GIT_INDEX_FILE` 重放,786 个产物路径里只差 8 只手改文件,补上之后零差异)。
+`ls packages/backend/core` 剩 `__tests__ freeze.ts gateway-runtime.ts index.ts runtime-facade.ts`。
+
+**冲突改名表**:
+
+| 旧路径(`packages/backend/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `core/plugins/index.ts` | `runtime/plugins/plugin-contract.ts` | 插件契约与内核的出口桶(`CorePluginAPI` …);`index.ts` 是插件系统产品那一半的出口 |
+| `core/plugins/types.ts` | `runtime/plugins/plugin-api-types.ts` | 插件 api / definition / manifest 的类型面 |
+| `core/plugins/log-monitor.ts` | `runtime/plugins/log-monitor-primitives.ts` | 无名的日志监控原语(缓冲、落盘、检索);`log-monitor.ts` 是那只内置插件本体,名字被插件 id 钉住 |
+| `core/plugins/__tests__/llm.test.ts` | `runtime/plugins/__tests__/llm-protocol.test.ts` | 受管 LLM 口的协议层(声明门、输入校验、降级);`llm.test.ts` 考的是计费 / 配额 / 超时 |
+| `core/plugins/__tests__/local-plugins.test.ts` | `runtime/plugins/__tests__/local-plugins-scan.test.ts` | 单文件插件的扫描语义;`local-plugins.test.ts` 考装载 |
+| `core/plugins/__tests__/notify-sound.test.ts` | `runtime/plugins/__tests__/notify-sound-enum.test.ts` | 提示音枚举的形状;`notify-sound.test.ts` 考「响不响」三道闸 |
+| `core/session/index.ts` | `runtime/sessions/session-primitives.ts` | Session / SessionManager / 状态 / 存储编解码的出口桶 |
+| `core/engine/index.ts` | `runtime/engine/engine-primitives.ts` | CoreStreamEngine 与引擎零件的出口桶;`index.ts` 是 ProductStreamEngine 出口 |
+| `core/agent-loop/index.ts` | `runtime/agent-loop/loop-primitives.ts` | `runAgentLoop` 与重试 / 调度 / 工具名表的出口桶;`index.ts` 是本进程那一半的出口 |
+
+**同一件事的两半(没合)**:上表每一行的新旧两只(出口桶 + 领域根 `index.ts`、日志监控原语 + 插件本体、三对协议 / 行为测试);
+`runtime/engine/{context-compact,compact-session}.ts`(算法 + 带 IO 的执行,上批已列);`runtime/sessions` 里会话内核与仓储驱动。
+
+**守门**(检查器 135 条,前后条数相同;架构测试 10 条):
+1. 位置断言只改路径;两条断言名改成新址(`runtime/agent-loop keeps loop primitives out of its process-providers entry`、
+   `runtime/engine primitives keep prompt assembly out`),agent-loop 那条的提示语改指 `loop-primitives`。
+2. 撤两格「不许回到 core」:`core/engine/system-prompt-snapshot.ts`、`core/engine/plugin-context.ts`(目录并进了 runtime)。
+3. `checkRuntimeOwnsSystemPromptSnapshot` 里「经 core 的 engine 桶那条相对路径引组装函数」那一格:相对路径不存在了,判据改成
+   「组装函数从 `@onething/backend/runtime/prompts` 引」(意图不变,今天绿)。
+4. `MAIN_CORE_SYSTEM_DIRS` 的全套尺子量整个 `runtime/engine`;core 搬来的 `file-mentions.ts` 本职读文件(`node:fs`),改按文件 IO 那一级量
+   (`MAIN_FILE_IO_SYSTEM_DIRS` 多一只文件,全套尺子遍历时跳过它)。
+5. 「内核不点名具体功能」:`runtime/{sessions,engine,agent-loop}` 整目录量(今天零命中);`runtime/plugins` 只量从 core 搬来的 58 只文件
+   (`CORE_MERGED_PLUGIN_FILES`)—— 产品那一半就是具体插件。
+6. 「内置插件只经注入的 api 认识宿主」:放行从 `@onething/backend/core/**` 改成「`@onething/backend/runtime/plugins/` 下那张表上的契约 /
+   内核文件」,其余照旧不许。改前改后都绿(搬家当场红过一次:`runtime/plugins/log-monitor.ts` 引 `plugin-contract`)。
+7. 架构测试「provider-agnostic 层不点名服务商」改量 `runtime/agent-loop`、`runtime/engine` 整目录,照样绿。
+8. `session:check` / `session:gate`:`scripts/session-check.mjs` 的规则 A / B 白名单 `core/session/commands.ts` → `runtime/sessions/commands.ts`
+   (脚本改写),`session:check` 输出前后逐字相同(4 处既有发现)。
+9. assembly 基线:新进尺子的 `runtime/engine/error-details.ts` 1、`runtime/sessions/lifecycle.ts` 1 按当时的值记入。
+   `assembly-gate.mjs` 里「kernel 按 core 判」那句注释按协调者的话本批不动。
+
+**exports**:改名 15 格、新增 4 格(564 → 568);`./core/…` 键 18 → 4(`./core`、`./core/gateway-runtime`、`./core/runtime-facade`,
+以及新增的 `./core/freeze` —— 搬走的文件原来相对 import 它)。
+
+**core 大桶**再导出的这 4 组改成从新址再导出。经大桶拿名字的使用者只有 agent-loop 一组:`runtime/collab/say-tool.ts`
+(`registerRetiredAgentToolName`)、`runtime/sessions/history-messages.ts`(`getAIToolName` / `AgentProviderData`)、两份测试;
+engine / plugins / sessions 三组没有使用者。
+
+**手改的文件**:检查器;`packages/shared/ipc/chat.ts` 一处花括号提法、`shared/session/events/chunk-codec.ts` 两处「原 part-boundary.ts」
+历史注释、`ui-stream-part-boundary.test.ts` 一处注释(那只状态机早已迁进 shared 的 chunk-codec,脚本找不到唯一现址);
+`apps/desktop-react/src/data/chat-port.test.ts` 一行相对 import(它在 `chat-*` 名下但不在别的会话的改动里,不改 typecheck 就红);
+`scripts/provider-vendor-drill/acme-drill.test.ts.txt` 一行 import(`.txt` 不在脚本范围;键改了名,不改演练就红);
+`resources/skills/onething-verification/SKILL.md`、`scratchpad/shadow-replay.ts` 各一处路径;assembly 基线;根 `CLAUDE.md`;本文。
+脚本把 10 处过时注释路径按 `packages/shared/` 下的原样镜像改成了现址。
+
+**留下的**:别的会话在改的 `apps/desktop-react/src/data/chat-{fold,source}.ts`(及 `chat-source.test.ts`)里 7 处注释还写着 core 的旧路径,
+没碰;`RESOURCES.md`、`evals/DESIGN.md` 里 4 处是合包以前的 `packages/core/…` 路径;`.pi-glla/` 与检索语料 fixture 是数据。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(产物 0 处 `node:`)
+成功;根全量 vitest 改前 11416 / 19 红,改后 11416 / 19 红,失败集合逐条相同;壳 7344 / 1 红(A9),相同;`gate:acp` 前后 108 ok;
+boundary(135 条)/ transport / log / assembly / session / provider / gate:native 门输出前后逐字相同(assembly 仍只红 radio.ts)。
+`sessions:shadow-battery` 前后各 130 行,逐行比只差三行:两行 `web-<id>` 会话名、`refoldChecks` 216 → 217(采样次数,随调度浮动);
+27 个场景的 PASS / FAIL 逐行相同,`compact-half-run-log` FAIL 与 `appendFailures 8` 两边一样。`provider-vendor-drill` 在主检出上红
+(它在 HEAD 上开临时 worktree,而演练模板读的是工作区里已改的那份;HEAD 上还是旧的 exports 键),在重放 worktree 上做一笔不挂分支的
+临时提交、从那里跑就全绿 —— 本批提交以后在主检出上同样会绿。

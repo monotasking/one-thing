@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PLUGIN_FILE_PICK_EXTENSIONS,
   PLUGIN_FILE_PICK_MAX_BYTES,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   coercePluginConfig,
   deepFreezePluginConfig,

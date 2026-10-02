@@ -583,6 +583,9 @@ const MAIN_FILE_IO_SYSTEM_DIRS = [
   // P3'b-A:`backend/mcp/` 整域归位 `runtime/mcp/`(闭包零脊柱边),
   // 装配层不再有 mcp 目录 —— 这一条随之退役。
   'packages/backend/runtime/plugins',
+  // 去 core 批 2(2026-10-03):core 的 engine 目录并进了 `runtime/engine/`(上面那把全套尺子量的目录);其中这一只
+  // 本职就是读 `@` 提及的文件内容(`node:fs`),从没在全套尺子上 —— 改按这一级量,全套尺子遍历时跳过它。
+  'packages/backend/runtime/engine/file-mentions.ts',
 ]
 
 const MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
@@ -2366,8 +2369,8 @@ function matchingCodeLines(filePath: string, patterns: RegExp[]): string[] {
  * 只在 **import / require 说明符** 上匹配,不在整行上匹配。
  *
  * 起因(08-21 P2/D 组):"必须走包公开入口"那几条 check 拿 `packages/backend/core/` 之类
- * 的裸字符串扫全行,15 条命中全是注释里的交叉引用(`见 packages/backend/core/plugins/…`)
- * 和静态扫描测试里的路径串(`path.join(REPO_ROOT, 'packages/backend/core/plugins')`)——
+ * 的裸字符串扫全行,15 条命中全是注释里的交叉引用(`见 packages/backend/runtime/plugins/…`)
+ * 和静态扫描测试里的路径串(`path.join(REPO_ROOT, 'packages/backend/runtime/plugins')`)——
  * 前者是文档,后者是那些测试的**工作对象**,都不是 import。
  *
  * 这里先剥注释(`codeOnlyLines`),再从代码里抠出 `from '…'` / `import('…')` /
@@ -3072,13 +3075,16 @@ function checkMainUsesGatewayPackageImports(): void {
  */
 
 function checkMainCoreSystemAdapters(): void {
+  const fileIoEntries = new Set(MAIN_FILE_IO_SYSTEM_DIRS.map(entry => path.join(root, entry)))
   const lines = [
     ...MAIN_CORE_SYSTEM_DIRS
       .map(entry => path.join(root, entry))
       .flatMap(entry => (fs.existsSync(entry) && fs.statSync(entry).isFile() ? [entry] : walkFiles(entry)))
+      .filter(file => !fileIoEntries.has(file))
       .flatMap(file => matchingLines(file, MAIN_FORBIDDEN_IMPORT_PATTERNS)),
     ...MAIN_FILE_IO_SYSTEM_DIRS
-      .flatMap(dir => walkFiles(path.join(root, dir)))
+      .map(entry => path.join(root, entry))
+      .flatMap(entry => (fs.existsSync(entry) && fs.statSync(entry).isFile() ? [entry] : walkFiles(entry)))
       .flatMap(file => matchingLines(file, MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS)),
   ].filter(line => !isAllowedMainAdapterLine(line))
   assertNoMatches('main core-system directories only keep explicit adapter imports', lines)
@@ -3415,27 +3421,26 @@ function checkChatResumeAfterToolConfirmStaysRetired(): void {
 
 function checkCorePromptAssemblyOwnedByRuntime(): void {
   const files = [
-    path.join(root, 'packages/backend/core/engine/system-prompt.ts'),
-    path.join(root, 'packages/backend/core/engine/index.ts'),
+    path.join(root, 'packages/backend/runtime/engine/system-prompt.ts'),
+    path.join(root, 'packages/backend/runtime/engine/engine-primitives.ts'),
   ]
-  const removedFiles = [
-    'packages/backend/core/engine/system-prompt-snapshot.ts',
-  ].filter(file => fs.existsSync(path.join(root, file)))
+  // 「快照组装不许回到 core 的 engine 目录」那一格随去 core 批 2(2026-10-03)撤掉:那个目录整个并进了
+  // `runtime/engine/`,快照组装本来就住在 `runtime/engine/prompt/`,core 侧的位置不存在了。
+  const removedFiles: string[] = []
   const lines = [
     ...files
       .filter(file => fs.existsSync(file))
       .flatMap(file => matchingLines(file, CORE_PROMPT_ASSEMBLY_FORBIDDEN_PATTERNS)),
     ...removedFiles.map(file => `${file}: prompt snapshot assembly belongs in packages/backend/runtime`),
   ]
-  assertNoMatches('packages/backend/core keeps prompt assembly out of the headless boundary', lines)
+  assertNoMatches('packages/backend/runtime/engine primitives keep prompt assembly out', lines)
 }
 
 function checkCorePromptContextRegistryOwnedByRuntime(): void {
-  const removedFiles = [
-    'packages/backend/core/engine/plugin-context.ts',
-    // core 的 storage 目录下那只 `app-state.ts` 这一格随去 core 批 1(2026-10-03)撤掉:那个目录整个并进了
-    // `runtime/storage/`,应用状态本来就住在那里,「不许回到 core」没有对象了。
-  ].filter(file => fs.existsSync(path.join(root, file)))
+  // 这条从前守两格「不许回到 core」:core 的 storage 目录下那只 `app-state.ts`(去 core 批 1 撤)与 core 的 engine
+  // 目录下那只 `plugin-context.ts`(去 core 批 2,2026-10-03 撤)。两个目录都整个并进了 runtime,core 侧的位置不存在了,
+  // 名单清空;断言留着,等批 3 删 core 目录时一起撤。
+  const removedFiles: string[] = []
 
   assertNoMatches(
     'packages/backend/core keeps runtime registries out of the headless boundary',
@@ -3729,11 +3734,11 @@ function checkCoreOwnsAgentLoopPureFacades(): void {
   // providers/sse …)回来即红。那个目录整只平铺进了 `runtime/agent-loop`,照搬过来 `providers/sse.ts` 正是产品本体,
   // 其余几只与 core 的同名文件是不是「转发壳」也不再由住址说明 —— 前提是两层,撤掉。下面「入口不许再导出 core API」那一条照旧。
   const lines = ([] as string[])
-    .concat(mainIndexContent.includes("@onething/backend/core/agent-loop")
-      ? [`${rel(mainIndexFile)}: agent-loop index should only export Electron host adapters; import @onething/backend/core/agent-loop directly for core APIs`]
+    .concat(mainIndexContent.includes("@onething/backend/runtime/agent-loop/loop-primitives")
+      ? [`${rel(mainIndexFile)}: agent-loop entry should only export the process-bound providers; import @onething/backend/runtime/agent-loop/loop-primitives directly for loop primitives`]
       : [])
 
-  assertNoMatches('packages/backend/core owns pure agent-loop facades', lines)
+  assertNoMatches('packages/backend/runtime/agent-loop keeps loop primitives out of its process-providers entry', lines)
 }
 
 function checkRuntimeOwnsProviderRequestDump(): void {
@@ -4114,7 +4119,7 @@ function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
  * **工具调用状态的编排归 core**,装配层不许自己再写一份。
  */
 function checkRuntimeOwnsToolUpdateOrchestration(): void {
-  const coreFile = path.join(root, 'packages/backend/core/engine/index.ts')
+  const coreFile = path.join(root, 'packages/backend/runtime/engine/engine-primitives.ts')
   const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/tool-execution.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -4138,7 +4143,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
   const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/stream-processor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   // F4-b1(§16.16):`createCoreId` 从这张必备表里下线 —— 适配器不再持有 step id
-  // 的工厂(id 由 callId 派生,产地在 `core/engine/tool-step.ts`)。规则要守的
+  // 的工厂(id 由 callId 派生,产地在 `packages/shared/engine/tool-step.ts`)。规则要守的
   // "装配 core 处理器的是 runtime 适配器、后端只留门面"由这两个符号照旧钉住。
   const requiredRuntimeSymbols = [
     'createOnethingStreamProcessor',
@@ -5134,7 +5139,77 @@ const CORE_MERGED_RUNTIME_DIRS = [
   'packages/backend/runtime/storage',
   'packages/backend/runtime/toolkit',
   'packages/backend/runtime/tools',
+  // 去 core 批 2(2026-10-03):core 的 session / engine / agent-loop 并进了这三个目录(整目录量;并进来之前这些目录里
+  // 原有的文件同样零命中)。plugins 那一份不能整目录量 —— 产品那一半就是各个具体插件 —— 见下一张表。
+  'packages/backend/runtime/sessions',
+  'packages/backend/runtime/engine',
+  'packages/backend/runtime/agent-loop',
 ]
+
+/**
+ * 去 core 批 2(2026-10-03)从 core 的 plugins 目录并进 `runtime/plugins/` 的插件契约与内核文件(含它们的测试)。
+ * `runtime/plugins/` 里其余文件是具体插件与插件系统的产品一半,本来就要点名插件,所以这条内容断言只跟着这些文件走。
+ */
+const CORE_MERGED_PLUGIN_FILES = [
+  '__tests__/agent-identity.test.ts',
+  '__tests__/ambient.test.ts',
+  '__tests__/background.test.ts',
+  '__tests__/credential-strategy.test.ts',
+  '__tests__/deep-link.test.ts',
+  '__tests__/external-root-plugin-capability.test.ts',
+  '__tests__/file-pick.test.ts',
+  '__tests__/input-intercept.test.ts',
+  '__tests__/layout-verbs.test.ts',
+  '__tests__/lifecycle-compact.test.ts',
+  '__tests__/llm-protocol.test.ts',
+  '__tests__/local-plugins-scan.test.ts',
+  '__tests__/notify-sound-enum.test.ts',
+  '__tests__/search-provider.test.ts',
+  '__tests__/sessions.test.ts',
+  '__tests__/storage-files.test.ts',
+  '__tests__/tool-call-intercept.test.ts',
+  '__tests__/tool-execution-mode.test.ts',
+  '__tests__/tool-result-intercept.test.ts',
+  '__tests__/webview-panel-channel.test.ts',
+  '__tests__/webview.test.ts',
+  'ambient.ts',
+  'api-builder.ts',
+  'api-state.ts',
+  'background.ts',
+  'canonical-order.ts',
+  'credential-strategy.ts',
+  'deep-link.ts',
+  'file-pick.ts',
+  'freeze.ts',
+  'input-intercept.ts',
+  'install.ts',
+  'lifecycle.ts',
+  'llm.ts',
+  'loader.ts',
+  'log-monitor-primitives.ts',
+  'manager.ts',
+  'panel.ts',
+  'plugin-api-types.ts',
+  'plugin-contract.ts',
+  'policy.ts',
+  'request-channel.ts',
+  'resources.ts',
+  'runtime-guard-constants.ts',
+  'runtime-guard.ts',
+  'scheduler.ts',
+  'search-provider.ts',
+  'sessions.ts',
+  'status.ts',
+  'storage-files.ts',
+  'storage.ts',
+  'store.ts',
+  'theme-contribution.ts',
+  'tool-call-intercept.ts',
+  'tool-execution-mode.ts',
+  'tool-result-intercept.ts',
+  'ui-anchor.ts',
+  'webview.ts',
+].map(name => `packages/backend/runtime/plugins/${name}`)
 
 function checkCoreKnowsNoConcreteFeatures(): void {
   const known = [...new Set(
@@ -5162,7 +5237,11 @@ function checkCoreKnowsNoConcreteFeatures(): void {
   // 断言,跟着那些文件走 —— 量 core 剩下的部分,外加接收了 core 文件的那 14 个领域目录(整目录量;并进来之前
   // 这些目录里原有的文件同样零命中)。
   const scanRoots = ['packages/backend/core', ...CORE_MERGED_RUNTIME_DIRS]
-  for (const file of scanRoots.flatMap(dir => walkFiles(path.join(root, dir), [], { includeTests: true }))) {
+  const scanFiles = [
+    ...scanRoots.flatMap(dir => walkFiles(path.join(root, dir), [], { includeTests: true })),
+    ...CORE_MERGED_PLUGIN_FILES.map(file => path.join(root, file)).filter(file => fs.existsSync(file)),
+  ]
+  for (const file of scanFiles) {
     if (!/\.(ts|tsx|js|mjs|cjs)$/.test(file)) continue
     const content = fs.readFileSync(file, 'utf-8')
     const reported = new Set<number>()
@@ -5231,7 +5310,16 @@ const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [PLUGIN_HOST_MODULE_SPECIFIER]
  * 所以对内置插件放行 `@shared/*`;**`@shared/ipc` 仍禁** —— 那是传输层的契约,插件不该认识宿主
  * 怎么跟外界说话。用户插件不变:它们住在仓外,`@shared` 对它们本来就不存在。
  */
-const BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER = /['"](@onething\/(?!backend\/core(?:\/|['"]))|@shared\/ipc(?:\/|\.js['"]|['"])|@main\/|@preload\/|@renderer|@\/|electron['"]|electron\/)/
+// 去 core 批 2(2026-10-03):插件契约与内核从 core 的 plugins 目录并进了 `runtime/plugins/`(`CORE_MERGED_PLUGIN_FILES`),
+// 内置插件取它们的包说明符从 core 的 plugins 桶变成 `@onething/backend/runtime/plugins/<那几只文件>`。
+// 放行的仍是同一批文件 —— 只放那张表上的名字,不是整个 `runtime/plugins`(产品那一半是宿主,插件照旧不许认识)。
+const CORE_MERGED_PLUGIN_SPECIFIER_NAMES = CORE_MERGED_PLUGIN_FILES
+  .filter(file => !file.includes('/__tests__/'))
+  .map(file => file.slice('packages/backend/runtime/plugins/'.length).replace(/\.ts$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+const BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER = new RegExp(
+  `['"](@onething\\/(?!backend\\/core(?:\\/|['"])|backend\\/runtime\\/plugins\\/(?:${CORE_MERGED_PLUGIN_SPECIFIER_NAMES.join('|')})(?:\\.js)?['"])`
+  + `|@shared\\/ipc(?:\\/|\\.js['"]|['"])|@main\\/|@preload\\/|@renderer|@\\/|electron['"]|electron\\/)`,
+)
 const BUILTIN_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER]
 
 const USER_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
@@ -5875,7 +5963,9 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `packages/backend/runtime/prompts/system-prompt-snapshot.ts: missing runtime-owned ${symbol}`),
-    ...(mainContent.includes("from '../../../../packages/backend/core/engine/index.js'") && mainContent.includes('buildSystemPromptSnapshotWithAdapters')
+    // 去 core 批 2(2026-10-03):从前判的是「经 core 的 engine 桶那条相对路径引组装函数」;那个目录并进了 runtime,
+    // 相对路径不存在了。意图不变 —— 组装函数要从产品那一份(`runtime/prompts`)引 —— 判据改成直接看它是不是从那里来的。
+    ...(mainContent.includes('buildSystemPromptSnapshotWithAdapters') && !/buildSystemPromptSnapshotWithAdapters,?\s*\}\s*from\s*'@onething\/backend\/runtime\/prompts'/.test(mainContent)
       ? [`${rel(mainFile)}: system prompt snapshot adapter should import runtime-owned builder`]
       : []),
     ...(fs.existsSync(chatIpcFile)

@@ -1,7 +1,7 @@
 import {
 	promptFragmentsFromToolContribution,
 	type CoreToolPromptContribution,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import {
 	EDIT_TOOL_PROMPT,
 	VARIABLE_TOOL_PROMPT,

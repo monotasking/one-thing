@@ -63,7 +63,7 @@
  */
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage, AgentTurnRequest } from "@onething/backend/core/agent-loop";
+import type { AgentMessage, AgentTurnRequest } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,

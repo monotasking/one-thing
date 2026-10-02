@@ -48,7 +48,7 @@ import {
   startAgentLoopToolExecution,
   structuredToolResult,
   textFromPartialResult,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import type { JsonObject, JsonValue } from '@shared/json'
 
 describe('core agent-loop executor helpers', () => {

@@ -38,7 +38,7 @@ import type {
 	AgentProvider,
 	AgentTool,
 	AgentTurnRequest,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { JsonObject } from "@shared/json.js";
 import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/runtime/toolkit/tool-protocol";
 import type { Result, ToolSpec } from "@onething/backend/runtime/toolkit/tool-protocol";

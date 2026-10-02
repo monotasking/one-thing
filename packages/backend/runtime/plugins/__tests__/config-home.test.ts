@@ -19,7 +19,7 @@ import {
   findCorePluginHomeOrphans,
   getCorePluginSettingsPath,
   writePluginSettingsFile,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-config-home-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH

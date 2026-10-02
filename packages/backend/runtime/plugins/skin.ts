@@ -12,7 +12,7 @@
  * H3 收的是**档位名**,CSS 值由宿主查表得到 —— 插件递进来的字符串永远不会出现在
  * CSS 里,所以这里没有、也不需要任何"值的消毒"。
  */
-import { comparePluginCanonicalOrder } from '@onething/backend/core/plugins'
+import { comparePluginCanonicalOrder } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   SKIN_TIER_VALUES,
   SKIN_VAR_MAP,

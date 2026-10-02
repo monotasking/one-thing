@@ -52,7 +52,7 @@ import { ensureCollabGroupRoom } from '@onething/backend/runtime/collab/room-cre
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { toolkitCatalogToolDefinitions } from '@onething/backend/runtime/toolkit/catalog-projection.wiring'
 import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/engine-layer.js'

@@ -614,7 +614,7 @@ describe("worker 交付兜底行(不冒名)", () => {
 /**
  * 旧名 `say` 的静默别名(collab-turn-protocol-and-identity.md A.3)。
  *
- * 别名的**路由**由 core 的退役名表负责(packages/backend/core/agent-loop/runner.test.ts
+ * 别名的**路由**由 core 的退役名表负责(packages/backend/runtime/agent-loop/runner.test.ts
  * 守着"旧名被执行、且不进请求 tools 参数"),这里守的是另一半:它绝不能从任何
  * 一条"模型看得见"的通道漏出去 —— 一进工具面就成了两个同义工具。
  */

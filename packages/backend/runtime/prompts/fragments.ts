@@ -21,7 +21,7 @@
  *
  * Module state is one Map; importing this file registers nothing.
  */
-import type { CorePromptFragment } from '@onething/backend/core/engine'
+import type { CorePromptFragment } from '@onething/backend/runtime/engine/engine-primitives'
 import type { PromptSource } from './composer.js'
 
 export class PromptFragmentRegistry implements PromptSource {

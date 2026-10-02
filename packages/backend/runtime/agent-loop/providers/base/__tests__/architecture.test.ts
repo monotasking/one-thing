@@ -15,8 +15,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { undeliverableAttachmentText } from "@onething/backend/core/agent-loop";
-import type { AgentModelCapabilities } from "@onething/backend/core/agent-loop";
+import { undeliverableAttachmentText } from "@onething/backend/runtime/agent-loop/loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { AgentProviderRuntimeConfig } from "../../factory.js";
 import { computeOnethingUsageCostUSD } from "../../../../usage/pricing.js";
 import {

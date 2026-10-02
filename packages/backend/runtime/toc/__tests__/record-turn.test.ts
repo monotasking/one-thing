@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentLoopOptions, AgentProvider } from '@onething/backend/core/agent-loop'
+import type { AgentLoopOptions, AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'
 
 const mocks = vi.hoisted(() => ({
@@ -36,8 +36,8 @@ const mocks = vi.hoisted(() => ({
   billTocUsage: vi.fn(() => vi.fn()),
 }))
 
-vi.mock('@onething/backend/core/agent-loop', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/core/agent-loop')>(),
+vi.mock('@onething/backend/runtime/agent-loop/loop-primitives', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/agent-loop/loop-primitives')>(),
   runAgentLoop: mocks.runAgentLoop,
 }))
 vi.mock('@onething/backend/runtime/providers/utility-provider', () => ({
@@ -62,7 +62,7 @@ vi.mock('@onething/backend/runtime/toc', async (importOriginal) => {
 const { recordTocTurn } = await import('../toc-recorder.js')
 const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
 const { readSessionLogEventsSync } = await import('../../../session/event-log.js')
-const realAgentLoop = await vi.importActual<typeof import('@onething/backend/core/agent-loop')>('@onething/backend/core/agent-loop')
+const realAgentLoop = await vi.importActual<typeof import('@onething/backend/runtime/agent-loop/loop-primitives')>('@onething/backend/runtime/agent-loop/loop-primitives')
 let fixture: ReturnType<typeof installSessionLayerForTest>
 let storeDir: string
 

@@ -8,7 +8,7 @@ import {
 	CoreTriggerManager,
 	type CoreTrigger,
 	type CoreTriggerContext,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import { createGoalContinuationTrigger } from "./goal-continuation.js";
 import { createTurnEvaluationTrigger } from "./turn-evaluation.js";
 

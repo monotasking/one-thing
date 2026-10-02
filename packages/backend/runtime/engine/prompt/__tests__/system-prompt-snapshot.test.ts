@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/core/agent-loop'
+import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { ToolDefinition } from '@shared/ipc.js'
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
@@ -133,8 +133,8 @@ vi.mock('@onething/backend/runtime/providers/agent-runtime', () => ({
   createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
 }))
 
-vi.mock('@onething/backend/core/agent-loop', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/core/agent-loop')>(),
+vi.mock('@onething/backend/runtime/agent-loop/loop-primitives', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/agent-loop/loop-primitives')>(),
   resolveAgentModelCapabilities: mocks.resolveAgentModelCapabilities,
   agentSupportsTools: mocks.agentSupportsTools,
 }))

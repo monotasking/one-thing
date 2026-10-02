@@ -11,7 +11,7 @@ import type {
   StreamEngineSkillsAdapter,
   StreamEngineStreamsAdapter,
   StreamEngineStoreAdapter,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import {
   createOnethingStreamProviderAdapter,
   type OnethingStreamProviderAdapterOptions,

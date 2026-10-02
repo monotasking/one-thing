@@ -1,4 +1,4 @@
-import type { AgentReasoningEffort, AgentTurnStreamEvent } from '@onething/backend/core/agent-loop'
+import type { AgentReasoningEffort, AgentTurnStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { InteractionAnswer, InteractionQuestion } from '@shared/interaction/types'
 
 /**

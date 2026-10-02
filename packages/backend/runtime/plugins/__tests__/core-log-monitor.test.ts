@@ -29,7 +29,7 @@ import {
   shouldNotifyLogEntry,
   summarizeLogEvent,
   type CoreLogMonitorDiskStreamLike,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 function barrier<T = void>() {
   let resolve!: (value: T) => void

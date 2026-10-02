@@ -50,7 +50,7 @@ import {
   type SearchPage,
   type SearchQuery,
 } from '@onething/backend/runtime/search/kernel'
-import { canApplyGeneratedSessionTitle } from '@onething/backend/core/engine'
+import { canApplyGeneratedSessionTitle } from '@onething/backend/runtime/engine/engine-primitives'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import type { OnethingSearchProvidersAdapters, OnethingSearchSessionMeta } from '../providers.js'
 import {
@@ -126,7 +126,7 @@ function asksForRecentSessions(query: SearchQuery): boolean {
  * 「New Chat」不是标题,是「这间还没起名」的另一种写法 —— 它上了检索面就成了一堆
  * 长得一模一样的行。判据不新写:`canApplyGeneratedSessionTitle(name, '')` 恰好就是
  * 「这个名字是空的或是那句占位」,而它正是**起标题**那条路判「能不能覆盖」用的
- * 同一句话(`core/engine/title.ts`)。两处一个判据,占位名的写法将来变了也只改一处。
+ * 同一句话(`runtime/engine/title.ts`)。两处一个判据,占位名的写法将来变了也只改一处。
  *
  * 归空之后画什么(首条用户消息 / 「未命名会话」)是**壳**的事 —— 后端交事实,
  * 不替壳编一个标题。

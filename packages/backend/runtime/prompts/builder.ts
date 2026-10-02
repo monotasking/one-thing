@@ -12,7 +12,7 @@ import {
 	type CorePromptFragment,
 	type CorePromptKnownProjects,
 	type CorePromptRequestMessage,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import {
 	PromptComposer,
 	StaticPromptSource,

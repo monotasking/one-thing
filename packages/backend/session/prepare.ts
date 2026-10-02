@@ -40,7 +40,7 @@
  */
 
 import fs from 'node:fs'
-import { scanEventsBackward, type SessionEventByteReader } from '@onething/backend/core/session'
+import { scanEventsBackward, type SessionEventByteReader } from '@onething/backend/runtime/sessions/session-primitives'
 import { CORE_INTERRUPTED_TOOL_ERROR } from '@shared/session/interrupted'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionEventWriter } from './event-writer.js'
@@ -63,7 +63,7 @@ const PREPARE_TAIL_BYTES = 4 * 1024 * 1024
 /**
  * 合成的中断结果给模型看的那句话。
  *
- * R-a(§13.6):它现在是**三处共用**的那一个常量(`core/session/interrupted.ts`)——
+ * R-a(§13.6):它现在是**三处共用**的那一个常量(`packages/shared/session/interrupted.ts`)——
  * 消息侧的崩溃修复(`computeInterruptedStepRepair`)与投影的
  * `lingeringToolError` 说的是同一句话,不再各写各的。
  */

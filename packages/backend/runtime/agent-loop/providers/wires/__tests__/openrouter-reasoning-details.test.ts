@@ -23,8 +23,8 @@ import type {
   AgentJsonValue,
   AgentMessage,
   AgentTurnStreamEvent,
-} from '@onething/backend/core/agent-loop'
-import { getHistoryProviderData } from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
+import { getHistoryProviderData } from '@onething/backend/runtime/engine/engine-primitives'
 import { createAgentProviderFromRuntime } from '../../factory.js'
 import { planOnethingProviderDataPart, providerDataFromOnethingContentPart } from '../../provider-data.js'
 import { OpenAIChatPartCodec, openRouterReasoningDetails } from '../openai-chat-messages.js'

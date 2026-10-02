@@ -105,7 +105,7 @@ Dev ports: React desktop renderer dev server **5175** (`app:dev`), browser shell
 
 This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The product lives in packages; the apps are thin sockets. **One server package, one contract tree, one client SDK** since the server / client split (`docs/design/server-client-split-2026-10.md`; step ② landed 2026-10-02): `@onething/backend` (`packages/backend`) is the **one server package** — the former `@onething/core`, `@onething/runtime` and `@onething/gateway` were merged into it **mechanically** as the subtrees `core/`, `runtime/`, `gateway/` (paths changed, nothing else; folding each domain into one `runtime/<d>` directory was step ③, done 2026-10-02). `packages/shared` (`@shared`) holds only the server ↔ client contract plus the pure logic both sides must compute identically, and imports nothing but itself (no node, no `@onething/*`); `packages/client` (`@onething/client`) is the client SDK. Client code (`apps/desktop-react/src`, `apps/mobile`, `packages/client`) imports only `@shared/*` and `@onething/client` — both enforced by zero-baseline boundary gates. Inside the server package the old three-layer mental model still holds, now as directories:
 
-- **packages/backend/core** — what is left of the old engine skeleton: `agent-loop/`, `engine/`, `plugins/`, `session/` and the root files (`index.ts` barrel, `freeze.ts`, `gateway-runtime.ts`, `runtime-facade.ts`). **core is being dissolved** (user ruling 2026-10-02/03, `docs/design/server-client-split-2026-10.md` §4): its "zero-dependency skeleton" existed so the UI side could reuse it, and since step ① the UI may only import `@shared` and `@onething/client`. 去 core 批 1 (2026-10-03) merged its 14 small directories into `runtime/<d>/` (agent → `runtime/agents`, events → `runtime/event-bus`, the rest same-name) and withdrew core's layer rules — no core-only import bans, no "core at the bottom", no kernel closure; what remains in core gets the same host bans as every backend file. Batches 2–3 move the rest and delete the directory.
+- **packages/backend/core** — what is left of the old engine skeleton: only the root files (`index.ts` barrel, `freeze.ts`, `gateway-runtime.ts`, `runtime-facade.ts`) and `__tests__/`. **core is being dissolved** (user ruling 2026-10-02/03, `docs/design/server-client-split-2026-10.md` §4): its "zero-dependency skeleton" existed so the UI side could reuse it, and since step ① the UI may only import `@shared` and `@onething/client`. 去 core 批 1 (2026-10-03) merged its 14 small directories into `runtime/<d>/` (agent → `runtime/agents`, events → `runtime/event-bus`, the rest same-name) and withdrew core's layer rules — no core-only import bans, no "core at the bottom", no kernel closure; what remains in core gets the same host bans as every backend file. 去 core 批 2 (same day) merged `plugins/` → `runtime/plugins`, `session/` → `runtime/sessions` (its `storage/jsonl`, `projection/`, `trace/` … kept as subdirectories), `engine/` → `runtime/engine`, `agent-loop/` → `runtime/agent-loop`. Batch 3 moves the root files and `__tests__/` and deletes the directory.
 - **packages/backend/runtime** — the product itself (prompts, sessions, tools, providers, themes, …), **one feature, one directory, flat** (user ruling 2026-10-02, `docs/design/server-client-split-2026-10.md` §4: inside the server package there is no longer a split between "wiring" and "product logic" — a domain's files, including what used to be its assembly wiring, sit side by side in `runtime/<d>/`; a fake for a test is a function parameter, not a separate layer). Electron-free (electron / `@main` / `@preload` still banned); since that ruling it may import the backend spine and `@shared/ipc` like the spine does. A domain-only engine kernel lives in `runtime/<d>/kernel/`; since 去 core 批 1 that is an ordinary subdirectory (the kernel import-closure rule went with core's layer rules). The `*.wiring.ts` filename suffix (I3) no longer grants anything; the files keep the name for now.
 - **packages/backend** (everything outside the three subtrees) — the assembly layer (it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **There is no `wiring/` directory any more** (server / client split step ③, finished 2026-10-02): every domain's wiring and product logic live flat in one `runtime/<d>/` — search, mcp, acp, plugins, collab and music first, then 28 domains in ③-收尾 A, providers / toolkit / resource / agent-loop in ③-收尾 B, and engine / logging / headless in ③-收尾 C, whose last file, the IM gateway's lifecycle port, moved into the gateway subtree as `gateway/lifecycle-port.ts`. Same-name files were renamed by what they do (e.g. the engine layer → `runtime/engine/engine-layer.ts`, `configureLogging` → `runtime/logging/configure-logging.ts`); the tables are in `docs/design/server-client-split-2026-10.md` §6. Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home, and I1 keeps the package root from growing a directory named like a `runtime/` domain. The three subtrees `core/` / `runtime/` / `gateway/` are layers, not domains, so I1 does not count them.
 - **packages/backend/gateway** — WeChat/Telegram channel gateway; depends on `core/` and `@shared` only; also holds the IM gateway lifecycle port `lifecycle-port.ts` (`configureGatewayHost`).
@@ -132,7 +132,7 @@ apps/*  (thin sockets)
 │  Electron-free; may import the spine and @shared/ipc (since step 3)  │
 ├──────────────────────────────────────────────────────────────────────┤
 │ packages/backend/core/*      ('@onething/backend/core/…')            │
-│  engine, session, plugins, agent-loop: being merged into runtime/    │
+│  root files only (index barrel, freeze, facades): batch 3 removes it │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -145,12 +145,11 @@ packages/backend/            # THE server package ('@onething/backend'): createO
                              # + the backend spine at the package root (no wiring/ dir since
                              # step ③). @shared allowed, electron never. Plus three
                              # subtrees merged in verbatim (step ②, 2026-10-02):
-  core/                      #   what is left of the engine skeleton, being dissolved into runtime/:
-                             #   agent-loop/, engine/ (CoreStreamEngine), session/ (+storage/jsonl), plugins/
-                             #   + root files (was packages/core; mcp/ and search/ folded into runtime/<d>/kernel
-                             #   in step ③, actors/ into runtime/collab/kernel; the 14 small dirs — agent, context,
-                             #   events, http, lifecycle, interaction, logging, memory, permission, providers,
-                             #   resource, storage, toolkit, tools — into runtime/<d>/ on 2026-10-03).
+  core/                      #   what is left of the engine skeleton: the root files (index.ts barrel,
+                             #   freeze.ts, gateway-runtime.ts, runtime-facade.ts) + __tests__/ (was packages/core;
+                             #   mcp/ and search/ folded into runtime/<d>/kernel in step ③, actors/ into
+                             #   runtime/collab/kernel; everything else into runtime/<d>/ on 2026-10-03 —
+                             #   events → event-bus, agent → agents, session → sessions, the rest same-name).
   runtime/                   #   the product (prompts, sessions, agent-loop providers, tools,
                              #   themes, voice, music, …). Electron-free (was packages/onething-runtime/src).
   gateway/                   #   WeChat/Telegram channel gateway; core + @shared only. Remote
@@ -247,7 +246,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - UI 组件与样式规则:通则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),**React 壳自己的施工规范与判例在 `apps/desktop-react/CLAUDE.md`** —— 那是今天唯一的壳。`bun run ui:gate` / `ui:check` 与它们背后的 `scripts/ui-gate.mjs` / `scripts/ui-style-check.mjs` 及基线 `docs/audit/ui-baseline-2026-08-13.txt` **已随 Vue 宿主一起退役**(2026-09-04,`50ff9cbd`;根 `package.json` 里 `ui*` 脚本为零)——那 12 条规则扫的是 `.vue` 文件。今天的 UI 执法全部在 `apps/desktop-react` 下:静态棘轮 `npm run ui:consume`(基础件消费门,`scripts/ui-consume-gate.mjs` over `ui-consume-check.mjs`,基线 `docs/audit/ui-consume-baseline-2026-09-01.txt`;响应链三条 `keydown-outside-focus` / `focus-outside-focus` / `active-element-read` 是**零基线硬闸**)、`npm run squeeze-gate`(基线 `docs/audit/squeeze-baseline-2026-08-30.txt`)与 `npm run motion-gate`(基线 `docs/audit/motion-baseline-2026-08-31.txt`);真机门 `npm run gate:squeeze` / `gate:a11y` / `gate:motion` / `gate:focus`,四条都已进 `npm run verify`。**同名的门有两半就跑两半**——真机量重叠,棘轮抓源码违例。
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run provider:gate` — `scripts/provider-vendor-gate.mjs` ratchet (服务商自述试点 P0): counts (vendor, file) pairs where a builtin vendor's id appears — as a string literal, object key or inside an identifier, parsed with the TypeScript parser so comments never count — outside its own `providers/vendors/<id>/`. Exempt: the two rosters, the shell's i18n / icon files, `providers/model-families/`, protocol names (`openai-chat`, `gemini-generateContent`, …), model-id regex literals, model paths (`openai/gpt-4o`), HTTP header names. Baseline `docs/audit/provider-vendor-baseline-2026-10.txt` (111 pairs; what is left and why: the design doc §4b). **Decrease-only**; `bun run provider:check` lists them. `bun run provider:drill` adds a fictional vendor in a throwaway worktree and asserts the only files touched outside its folder are the two rosters and the shell's two i18n files.
-- `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend` — the spine plus, since the ③ flatten, all of `runtime/` except `runtime/<d>/kernel/`; `core/` and `gateway/` are excluded by directory (the files 去 core 批 1 moved into `runtime/` entered the ruler at their current values: 3 files, 5 `let`s), baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files at A3; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
+- `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend` — the spine plus, since the ③ flatten, all of `runtime/` except `runtime/<d>/kernel/`; `core/` and `gateway/` are excluded by directory (the files 去 core 批 1 / 批 2 moved into `runtime/` entered the ruler at their current values: 3 files / 5 `let`s and 2 files / 2 `let`s), baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files at A3; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
   at the top of this file. It enumerates every native binary this repo actually ships — **seven targets**
   today (the line said six until 2026-09-17; `fsevents`, the optional macOS workspace-watch dependency,
@@ -377,7 +376,7 @@ Notes:
   message; originals kept in `sessions/legacy-backup/`). `settings.storage.sessionFormat`
   ('jsonl' default | 'legacy-json') only decides the format of *new* sessions. Hybrid
   driver: `packages/backend/runtime/sessions/storage-driver.ts`; pure jsonl
-  codec/pager in `packages/backend/core/session/storage/jsonl/`. See
+  codec/pager in `packages/backend/runtime/sessions/storage/jsonl/`. See
   `docs/design/session-storage-jsonl.md`.
 - **Cross-session search runs off a derived index, in a Worker** (检索重建 S3,
   `docs/design/search-index-2026-09.md`; the old line here said indexing belongs in
@@ -507,7 +506,7 @@ Notes:
   a permission decision — is one logical event on one stream; the projection reducer
   (`packages/shared/session/projection/reducer.ts` + `chat-messages.ts` — shared since step ① of the
   server / client split, because the shell folds the same ledger; model-history / canonical / checkpoint
-  stay in `packages/backend/core/session/projection/`) folds that stream into state, and
+  stay in `packages/backend/runtime/sessions/projection/`) folds that stream into state, and
   `session.messages` in memory is only the **materialized view** of it; the encoder packs
   the same stream into `events.jsonl` (`assistant/chunks` batching is storage compression,
   not semantics). **`events.jsonl` is the only truth on disk**: the `messages.jsonl` write
@@ -525,7 +524,7 @@ Notes:
   (projection vs in-memory store) was retired in c4 because the store is no longer any
   read's source of truth — "comparing yourself with yourself" would go green for the wrong
   reason. Both sides still go through the one judge in
-  `packages/backend/core/session/projection/canonical.ts` — extend that file, never add a local
+  `packages/backend/runtime/sessions/projection/canonical.ts` — extend that file, never add a local
   exemption. `ONETHING_SESSION_SHADOW=0` turns the refold bookkeeping off (events keep
   being written); it is **on by default**. Gates: `bun run sessions:shadow-report`
   (refold mismatches = 0 ∧ appendFailures = 0 over the real store),
@@ -540,7 +539,7 @@ Notes:
   (`apps/server/src/main.ts` only refuses `owner !== 'server'`) — the foreign-writer guard
   catches that after the fact.
 - **Trace = the read-only query surface over `events.jsonl`** (S3, §12 of the same doc).
-  One pure assembler (`packages/backend/core/session/trace/assemble.ts` → `Session → Run →
+  One pure assembler (`packages/backend/runtime/sessions/trace/assemble.ts` → `Session → Run →
   Request → ToolCall`; timestamps only, no stored durations, no response body) feeds three
   outlets: `onething trace <sessionId> [--run <id>|--last] [--json] [--response <k>]`
   (reads the file directly, no daemon, never writes), the `sessionEvents` RPC domain's
@@ -608,13 +607,14 @@ Notes:
   `source: 'memory'` so historical ledger rows resolve.
 - Plugin system (R0–R7 complete, 2026-08-07). The plugin's entire power is the injected
   `api` object.
-  **Where the code lives (two homes since the 2026-10-02 flatten — one feature, one directory):**
-  `packages/backend/core/plugins/` = the **contract + kernel** (37 files: manifest/api shape,
-  the `Core*` registries for lifecycle / input-intercept / tool-call-intercept /
+  **Where the code lives (one directory since 去 core 批 2, 2026-10-03 — one feature, one directory):**
+  `packages/backend/runtime/plugins/` holds it all, flat. The **contract + kernel** (37 files that were
+  core's `plugins/` until 2026-10-03: manifest/api shape — barrel `plugin-contract.ts`, types
+  `plugin-api-types.ts` —, the `Core*` registries for lifecycle / input-intercept / tool-call-intercept /
   tool-result-intercept / status / sessions / storage, the policy + breaker tables,
-  `ui-anchor.ts`, `file-pick.ts`, `canonical-order.ts` — zero deps; it stays in core because
-  other domains import it);
-  `packages/backend/runtime/plugins/` = **everything else, flat**: the one built-in plugin
+  `ui-anchor.ts`, `file-pick.ts`, `canonical-order.ts`, the unnamed log-monitor primitives
+  `log-monitor-primitives.ts`; zero deps, and the only part of the directory a built-in plugin
+  implementation may import) sits next to **everything else**: the one built-in plugin
   `log-monitor` (`note-skills` was retired by 笔记 P3 on 2026-09-18, note vaults reach the skill
   loader through `runtime/notes/skill-roots.ts` instead), the config store + schema projection,
   npm-tarball reading, runtime health, the IPC-shape projections, the process-singleton bindings
@@ -633,7 +633,7 @@ Notes:
     A registered tool may declare `executionMode: 'parallel' | 'sequential'` (N3,
     2026-08-10 — `docs/design/pi-benchmark-adoption-2026-08.md` §8): it flows through
     to `AgentTool.executionMode`, whose **single** reader is the agent-loop runner
-    (`packages/backend/core/agent-loop/runner.ts:397` → `ToolExecutionScheduler` barrier).
+    (`packages/backend/runtime/agent-loop/runner.ts:397` → `ToolExecutionScheduler` barrier).
     Undeclared = barrier = unchanged behavior; an illegal literal rejects that one
     tool at registration (no silent degrade, no breaker count).
   - **Cross-session messenger + session peek** (N1, 2026-08-10 —
@@ -656,7 +656,7 @@ Notes:
     plugin code), declarative UI-slot blocks on host-named anchors
     (`contributes.uiSlots` + `api.registerUiSlot`, R5.x — **five** host-named anchors,
     each carrying a **kind** decided by the host table, never by the plugin
-    (`packages/backend/core/plugins/ui-anchor.ts`): three always-on *blocks* —
+    (`packages/backend/runtime/plugins/ui-anchor.ts`): three always-on *blocks* —
     `composer.above` above the composer, `chat.status-bar` below the message list,
     `message.footer` per assistant message (the first message-level anchor, its
     render ctx additionally carries `messageId`) — and two *triggers* (D 期,
@@ -670,7 +670,7 @@ Notes:
     a slot declaring `drawer: true` gets host-drawn toggles and three host-owned states
     (expanded 240px / peek 32px / collapsed to one chip in the S status band); the plugin
     only sees `ctx.drawerState` (`'expanded' | 'peek'`) and the state machine lives in
-    the Vue renderer's `ui-anchor-registry` (deleted 2026-09-04 with the Vue host — the plugin UI-slot surface has **no React consumer yet**; the contract in `packages/backend/core/plugins/ui-anchor.ts` stands).
+    the Vue renderer's `ui-anchor-registry` (deleted 2026-09-04 with the Vue host — the plugin UI-slot surface has **no React consumer yet**; the contract in `packages/backend/runtime/plugins/ui-anchor.ts` stands).
     Render ctx carries `anchor` +
     `sessionId`, the host re-pulls on session switch. Renderer pieces:
     `components/plugins/{UiSlotHost,UiSlotBlock,PluginTriggerPopover}.vue` +
@@ -696,7 +696,7 @@ Notes:
     host lacks a control, add the control, don't move the config into a panel.
     `accept`/`maxBytes` semantics and their validator are literally the same
     ones the `file-pick` descriptor node uses
-    (`core/plugins/file-pick.ts` → `describePluginFileImportDeclarationProblem`);
+    (`runtime/plugins/file-pick.ts` → `describePluginFileImportDeclarationProblem`);
     unknown `format` values are ignored per JSON Schema, an illegal declaration
     marks the whole config area unsupported without blocking the load),
     a unified request channel
@@ -723,7 +723,7 @@ Notes:
     plugin registers a connector and inbound is not wired, so the pilot validates the
     contract and teardown semantics, not the delivery path. Which registries are
     deliberately *not* open, and why, is in `PLUGIN_DEFERRED_REGISTRIES`
-    (`packages/backend/core/plugins/policy.ts`) — read it before opening another.
+    (`packages/backend/runtime/plugins/policy.ts`) — read it before opening another.
   - **Isolation**: timeout budgets, per-`pluginId+scope` failure breaker, and a severity
     policy table (`policy.ts`) deciding disable-plugin vs degrade-one-surface. Teardown is
     two-sided (code registries + data footprint) and guarded by a CI teardown test.
@@ -831,7 +831,7 @@ Notes:
 - System prompt assembly is a single "directory at top, copy below" builder in
   `packages/backend/runtime/prompts/builder.ts`, composed by a **`PromptComposer`
   over `PromptSource`s** (2026-08-18, `docs/design/prompt-composition-2026-08.md`).
-  One shape (`CorePromptFragment`, `packages/backend/core/engine/prompt-fragments.ts`: `slot`
+  One shape (`CorePromptFragment`, `packages/backend/runtime/engine/prompt-fragments.ts`: `slot`
   guidelines / workspace-rules / section, `source`, `order`, `requiresTools` /
   `requiresAnyTools` / `when`, `content`); one interface (`PromptSource.collect(ctx)`,
   `prompts/composer.ts`); sources: `builtinPromptSource` (the section table),
@@ -979,21 +979,21 @@ Two mechanisms, and which one a package uses is a fact about that package, not a
 ### Directory Structure
 
 ```
-packages/backend/core/         # what is left of the skeleton (was packages/core; being dissolved into runtime/)
-│   ├── agent-loop/            # provider-agnostic loop: runner, stream, retry, scheduler
-│   ├── engine/                # CoreStreamEngine, context-compact, history
-│   ├── session/               # Session class, manager, state, storage/ (jsonl codec+pager)
-│   ├── plugins/               # plugin contract + kernel
-│   └── index.ts  freeze.ts  gateway-runtime.ts  runtime-facade.ts
+packages/backend/core/         # what is left of the skeleton (was packages/core; batch 3 removes it)
+│   └── index.ts  freeze.ts  gateway-runtime.ts  runtime-facade.ts  __tests__/
 │                              # (去 core 批 1, 2026-10-03: events/ → runtime/event-bus/, and agent/ context/
 │                              #  http/ lifecycle/ interaction/ logging/ memory/ permission/ providers/
-│                              #  resource/ storage/ toolkit/ tools/ → runtime/<d>/)
+│                              #  resource/ storage/ toolkit/ tools/ → runtime/<d>/; 批 2: plugins/ session/
+│                              #  engine/ agent-loop/ → runtime/{plugins,sessions,engine,agent-loop}/)
 │                              # (slash-commands / references / text / json / the session projection
 │                              #  reducer moved to packages/shared in step ①)
 │
 packages/backend/runtime/      # PRODUCT subtree (was packages/onething-runtime/src)
 │   ├── prompts/               # system prompt builder + content/*.md
-│   ├── sessions/              # session-repository, storage-driver (jsonl/legacy hybrid)
+│   ├── sessions/              # session-repository, storage-driver (jsonl/legacy hybrid) + since 批 2 core's
+│   │                          # session kernel: Session / manager / commands.ts (pure reducer), projection/,
+│   │                          # trace/assemble.ts, storage/jsonl (codec + pager); barrel session-primitives.ts
+│   ├── agent-loop/            # provider-agnostic loop (runner, stream, retry, scheduler; barrel loop-primitives.ts)
 │   ├── agent-loop/providers/  # hand-rolled fetch/SSE providers (claude/codex/deepseek/
 │   │                          # gemini/openai-compatible/acp) + factory + thinking-options
 │   ├── media/  scheduler/  agents/  auth/  settings/  storage/ (paths, store-lock)
@@ -1002,7 +1002,8 @@ packages/backend/runtime/      # PRODUCT subtree (was packages/onething-runtime/
 │   ├── event-bus/             # generic event-bus, ring-buffer, stream-channel (core's events/ until 2026-10-03)
 │   ├── tools/  skills/  plugins/  providers/  themes/  variables/  goals/  voice/  music/
 │   │                          # (tools/ = pure modules only since R4b: sandbox, bash, edit engine, …)
-│   ├── engine/                # ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定)
+│   ├── engine/                # CoreStreamEngine, context-compact, history (core's engine/ until 批 2; barrel
+│   │                          # engine-primitives.ts) + ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定)
 │   │                          # + ports.ts(五个可选端口)/ turn-principal / message-sources
 │   │                          # + P3'e-A2b:compact-file-lists / chat-logger-bound /
 │   │                          # ipc-emitter.wiring / session-turn-context.wiring
@@ -1061,7 +1062,7 @@ packages/shared/               # '@shared'
 
 **会话消息(P0,2026-08-19,`docs/design/session-commands-p0-2026-08.md`)**:唯一写面是
 `sessionCommands`(`packages/backend/session/commands.ts`,12 条消息命令 +
-`patchSession` 会话级补丁;纯 reducer 在 `packages/backend/core/session/commands.ts`,负责 COW /
+`patchSession` 会话级补丁;纯 reducer 在 `packages/backend/runtime/sessions/commands.ts`,负责 COW /
 写计划 / lazy 档),唯一读面是 `sessionReads`(同目录 `reads.ts`,返回值一律 `readonly`)。
 `session.messages` 只允许出现在白名单文件里(命令面 / 读面 / `sessions/storage-driver.ts` /
 `sessions/session-dehydrate.ts` / `sessions/session-repository.ts`,理由逐条写在

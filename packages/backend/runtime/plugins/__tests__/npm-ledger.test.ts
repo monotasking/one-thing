@@ -15,7 +15,7 @@ import {
   readPluginLedger,
   scanCorePlugins,
   unscopedPluginIdFromPackageName,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-ledger-'))

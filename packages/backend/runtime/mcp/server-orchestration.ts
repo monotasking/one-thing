@@ -1,4 +1,4 @@
-import { createCoreId } from '@onething/backend/core/engine'
+import { createCoreId } from '@onething/backend/runtime/engine/engine-primitives'
 
 type MaybePromise<T> = T | Promise<T>
 

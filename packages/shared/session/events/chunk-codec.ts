@@ -15,7 +15,7 @@
  * ## 谁住在这里,谁不住
  *
  * 住在这里的是**编码**那件事的全部:段边界判定(U0 的状态机,从
- * `core/session/part-boundary.ts` 迁居而来)、攒批、两道闸、刷行。
+ * core 的 session 目录下那只 `part-boundary.ts` 迁居而来)、攒批、两道闸、刷行。
  *
  * **不**住在这里的是"这一段身上挂着什么"(runId / messageId / turnIndex /
  * 正文累计 / len+hash / UI 流 / 掉账记账)—— 那些是调用方的账,每个落点各不相同,
@@ -29,7 +29,7 @@
 import type { SessionAssistantChunksEventData, SessionAssistantDeltaPartKind } from './types.js'
 
 // ---------------------------------------------------------------------------
-// 段边界状态机(U0 迁居:原 `core/session/part-boundary.ts`,逐字保留)
+// 段边界状态机(U0 迁居:原 core 的 session 目录下那只 `part-boundary.ts`,逐字保留)
 // ---------------------------------------------------------------------------
 
 /**

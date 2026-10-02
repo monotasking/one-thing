@@ -24,7 +24,7 @@ import type {
 	AgentModelCapabilities,
 	AgentTurnStreamEvent,
 	AgentJsonObject,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { getLogger } from "../../../logging/index.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";

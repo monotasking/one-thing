@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/core/agent-loop'
+import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { createAgentProviderFromRuntime } from '@onething/backend/runtime/agent-loop/process-providers'
 import { getUserSkillsPath } from '@onething/backend/runtime/skills/skill-operations'
 import { executeSkillManage } from '@onething/backend/runtime/skills/manage-setup'
@@ -58,8 +58,8 @@ vi.mock('@onething/backend/runtime/agent-loop/process-providers', async importOr
   }
 })
 
-vi.mock('@onething/backend/core/agent-loop', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/core/agent-loop')>()
+vi.mock('@onething/backend/runtime/agent-loop/loop-primitives', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/agent-loop/loop-primitives')>()
   return {
     ...actual,
     runAgentLoop: vi.fn(),

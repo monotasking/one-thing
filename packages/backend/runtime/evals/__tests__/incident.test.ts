@@ -17,7 +17,7 @@ import {
 	readIncidentTurnTrace,
 	getIncidentDir,
 } from "../incident.js";
-import type { CorePromptCapture } from "@onething/backend/core/engine";
+import type { CorePromptCapture } from "@onething/backend/runtime/engine/engine-primitives";
 import { hashSections } from "../section-hash.js";
 
 let tmpDir: string;

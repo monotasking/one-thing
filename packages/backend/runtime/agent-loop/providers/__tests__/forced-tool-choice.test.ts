@@ -17,8 +17,8 @@
  * caller may hand in.
  */
 import { describe, expect, it } from "vitest";
-import { runAgentLoop } from "@onething/backend/core/agent-loop";
-import type { AgentProvider, AgentTool } from "@onething/backend/core/agent-loop";
+import { runAgentLoop } from "@onething/backend/runtime/agent-loop/loop-primitives";
+import type { AgentProvider, AgentTool } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { createClaudeAgentProvider } from "../../../providers/vendors/claude/agent-provider.js";
 import { toCodexToolChoice } from "../../../providers/vendors/codex/agent-provider.js";
 import { createDeepSeekAgentProvider } from "../../../providers/vendors/deepseek/agent-provider.js";

@@ -7,7 +7,7 @@ import {
   type CorePluginFilesUsage,
   type CorePluginMessageStateStore,
   type CorePluginStorage, type CreateCorePluginFilesOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { getPluginsDir } from './disk-loader.js'
 
 /**

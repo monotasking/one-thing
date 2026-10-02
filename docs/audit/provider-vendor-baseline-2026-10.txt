@@ -4,7 +4,7 @@
 # 减了之后跑 `node scripts/provider-vendor-gate.mjs --write-baseline` 收紧。
 claude apps/desktop-react/src/dev/Gallery.tsx
 claude packages/backend/runtime/acp/elicitation-bridge.ts
-claude packages/backend/core/session/events/ephemeral-policy.ts
+claude packages/backend/runtime/sessions/events/ephemeral-policy.ts
 claude packages/backend/runtime/acp/client.ts
 claude packages/backend/runtime/acp/manifest.ts
 claude packages/backend/runtime/acp/session-links.ts

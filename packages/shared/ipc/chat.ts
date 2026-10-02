@@ -596,7 +596,7 @@ export interface ChatMessage {
   }
   /**
    * 这一轮**最后一条请求为什么提前结束**(2026-09-09)。投影独家产出
-   * (`core/session/projection/{stop-reasons,reducer}.ts`),正常 `stop` /
+   * (`packages/shared/session/projection/{stop-reasons,reducer}.ts`),正常 `stop` /
    * `tool_calls` 收场时缺席,流式期间也缺席 —— 它是这一轮的**结局**,
    * `run/end` 之后才成立。壳按 `kind` 查文案表,不读 `reason` 做判断。
    */

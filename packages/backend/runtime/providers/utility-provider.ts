@@ -11,7 +11,7 @@
  *
  * See docs/design/session-toc.md §10.
  */
-import type { AgentProvider } from "@onething/backend/core/agent-loop";
+import type { AgentProvider } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { AppSettings } from "@shared/ipc.js";
 import { createAgentProviderFromRuntime } from "../agent-loop/process-providers.js";
 import { pickOnethingProviderOptions } from "@onething/backend/runtime/providers";

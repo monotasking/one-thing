@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CorePluginCommandContext } from '@onething/backend/core/plugins'
+import type { CorePluginCommandContext } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   executeOnethingPluginCommand,
   normalizeOnethingPluginCommandName,

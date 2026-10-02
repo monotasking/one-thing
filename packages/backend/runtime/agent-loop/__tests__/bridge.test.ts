@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isAgentLoopPauseForConfirmationError, streamAgentLoopProviderChunks } from '@onething/backend/core/agent-loop'
-import type { AgentProvider, AgentProviderStreamChunk, AgentTurn } from '@onething/backend/core/agent-loop'
+import { isAgentLoopPauseForConfirmationError, streamAgentLoopProviderChunks } from '@onething/backend/runtime/agent-loop/loop-primitives'
+import type { AgentProvider, AgentProviderStreamChunk, AgentTurn } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 function withTimeout<T>(promise: Promise<T>, message = 'timed out waiting for bridge abort'): Promise<T> {
   return Promise.race([

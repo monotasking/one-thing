@@ -9,7 +9,7 @@
  * 与线上层(真发出去的 body 里到底有没有 `temperature`)。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/core/agent-loop";
+import type { AgentTurnRequest } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,

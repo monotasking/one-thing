@@ -7,7 +7,7 @@
  * 随 DeepSeek vision 一起删除 —— 「能力说行、线协议做得到」的块必须
  * `delivered`,做不到的必须留成可见文本,没有第三种。
  */
-import { agentToolMessageContentToText } from "@onething/backend/core/agent-loop";
+import { agentToolMessageContentToText } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
@@ -17,7 +17,7 @@ import type {
 	AgentProviderData,
 	AgentTool,
 	AgentTurnStreamEvent,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	Undeliverable,
 	delivered,

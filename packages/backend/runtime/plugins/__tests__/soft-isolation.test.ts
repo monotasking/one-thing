@@ -6,7 +6,7 @@
  *   2. 一个挂起的 promptContextProvider 不阻塞消息发送路径(提示词装配超时后返回);
  *   3. 连续失败的插件被自动禁用,且状态可查。
  */
-import { pluginScope } from '@onething/backend/core/plugins'
+import { pluginScope } from '@onething/backend/runtime/plugins/plugin-contract'
 import { describe, expect, it, vi } from 'vitest'
 import {
   CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -26,7 +26,7 @@ import {
   type CorePluginManagerHost,
   type CorePluginStateLike,
   type PluginSettings,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface TestAPI {
   registerCommand(name: string): void

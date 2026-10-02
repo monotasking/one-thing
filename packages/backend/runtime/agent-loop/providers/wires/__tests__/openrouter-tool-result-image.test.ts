@@ -23,11 +23,11 @@
  * 没变。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/core/agent-loop";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	agentSupportsToolResultModality,
 	agentToolMessageContentForCapabilities,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { getLogger } from "../../../../logging/index.js";
 import {
 	LedgerModelProfileResolver,

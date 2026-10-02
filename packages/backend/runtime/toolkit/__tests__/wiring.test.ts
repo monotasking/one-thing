@@ -407,7 +407,7 @@ describe('R2b:审计落进 events.jsonl', () => {
 describe('R2b 缝 1:工具面由 Surface 解析', () => {
   it('Surface 投影出来的定义喂给 planAgentLoopTools,名字与目录一致', async () => {
     const { resolveToolkitSurface, toolkitAgentSourceTools } = await import('@onething/backend/runtime/toolkit')
-    const { planAgentLoopTools } = await import('@onething/backend/core/engine')
+    const { planAgentLoopTools } = await import('@onething/backend/runtime/engine/engine-primitives')
 
     const surface = resolveToolkitSurface({
       session: { id: SESSION_ID, kind: 'chat', workingDirectory: workspace },

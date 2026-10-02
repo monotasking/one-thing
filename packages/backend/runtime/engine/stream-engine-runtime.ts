@@ -41,7 +41,7 @@ import {
 	shouldSkipAutoCompactForProviderUsageMismatch,
 } from "./compact-session.js";
 import type { OnethingStreamProviderAdapterOptions } from '@onething/backend/runtime/providers/stream-provider-adapter'
-import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/backend/core/engine'
+import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/backend/runtime/engine/engine-primitives'
 import { buildOnethingChatTitleGenerationRequest } from '@onething/backend/runtime/providers'
 import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
 

@@ -11,7 +11,7 @@
  */
 
 import type { JsonObject } from '@shared/json.js'
-import type { CoreToolPromptContribution } from '@onething/backend/core/engine/prompt-fragments'
+import type { CoreToolPromptContribution } from '@onething/backend/runtime/engine/prompt-fragments'
 import type { EffectClass } from '@shared/toolkit/effects.js'
 
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'

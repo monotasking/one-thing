@@ -10,7 +10,7 @@ import {
   type CorePluginDefinition,
   type CorePluginManagerHost,
   type CorePluginStateLike,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface TestAPI { id: string }
 type TestEntry = (api: TestAPI) => void | Promise<void>

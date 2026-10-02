@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { scanJsonlLog } from '@onething/backend/core/session'
+import { scanJsonlLog } from '@onething/backend/runtime/sessions/session-primitives'
 import type { ChatMessage } from '@shared/ipc.js'
 
 /** Read-only compatibility until ensureWritable imports the historical source. */

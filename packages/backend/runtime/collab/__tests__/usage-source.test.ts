@@ -18,7 +18,7 @@ import {
   COLLAB_USAGE_SOURCE_ROOM,
   COLLAB_USAGE_SOURCE_WORK,
 } from '../index.js'
-import { buildTextStreamContext, executeCoreMessageStream } from '@onething/backend/core/engine'
+import { buildTextStreamContext, executeCoreMessageStream } from '@onething/backend/runtime/engine/engine-primitives'
 
 async function runWith(usageSource?: string): Promise<Record<string, unknown>> {
   let seen: Record<string, unknown> = {}

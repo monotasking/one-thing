@@ -8,7 +8,7 @@ import {
   type AgentMessage,
   type AgentMessageContent,
   type AgentProviderData,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { toJsonObject, type JsonObject } from '@shared/json'
 
 export type OnethingProviderOpaqueValue = AgentJsonValue | object

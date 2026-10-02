@@ -1,7 +1,7 @@
 /**
  * G 期验收(L2.5)的**宿主链路**部分:清单投影 → 胜出描述符 → 运行期调参 → 拆除。
  *
- * 判据与裁决本身在 `packages/backend/core/plugins/__tests__/background.test.ts`;
+ * 判据与裁决本身在 `packages/backend/runtime/plugins/__tests__/background.test.ts`;
  * 这里钉的是"装配层有没有把它们接对":
  *  1. 逐插件投影带四态(active / shadowed / inactive / invalid + reason);
  *  2. 胜出描述符挂在**清单响应**上(零新通道 —— renderer 已经在重拉这份清单);

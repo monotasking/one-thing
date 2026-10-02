@@ -2,7 +2,7 @@
  * 插件的三个动词接到内核上(原子 K4-b,`docs/design/atom-2026-09.md` §4
  * 「调度 / 网关 / 插件」那一行:「都是 `Principal` 不同的 `do`」)。
  *
- * core 那一侧(`core/plugins/api-builder.ts` 的 `api.resources`)只有晚到闸、声明门
+ * core 那一侧(`runtime/plugins/api-builder.ts` 的 `api.resources`)只有晚到闸、声明门
  * 与转手;**这只文件放的是四件只有装配层知道的事**:
  *
  *  ① 主体是谁;② 一次调用的预算;③ 熔断的四步套;④ 内核在不在这个进程里。
@@ -64,7 +64,7 @@ import {
   PLUGIN_RESOURCE_CALL_TIMEOUT_MS,
   pluginResourceSurface,
   pluginScope,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { ReadOutcome } from '@onething/backend/runtime/resource/resource-api'
 import { parseRef } from '@shared/resource/ref'
 import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/runtime/resource/resource-api'

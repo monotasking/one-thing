@@ -14,7 +14,7 @@
  * 今天的兼容字段是**顶层** `statusCode` / `responseBody` / `isRetryable`
  * (+ `retryAfterAt`)。`responseBody` / `retryAfterAt` 由 `ProviderHttpError`
  * 自带,另外两个由 `CodexHttpError` 这个薄子类补上 —— `isRetryable` 是
- * `core/agent-loop/retry.ts` 里**优先级最高**的判据(`typeof isRetryable ===
+ * `runtime/agent-loop/retry.ts` 里**优先级最高**的判据(`typeof isRetryable ===
  * 'boolean'` 直接返回),丢了它这一家的重试口径当场就变。
  *
  * 所以 `isRetryable` 只挂在 **`fromResponse`** 造的那种错误上:流中的错误事件

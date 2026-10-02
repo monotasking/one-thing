@@ -213,8 +213,8 @@ describe('architecture boundaries', () => {
 
     // Comments are stripped first: the point is that no code branches on a
     // provider, not that the history cannot be written down next to it.
-    expect(findForbiddenReferencesInCode('packages/backend/core/agent-loop', [idComparison, namedKnob])).toEqual([])
-    expect(findForbiddenReferencesInCode('packages/backend/core/engine', [idComparison, namedKnob])).toEqual([])
+    expect(findForbiddenReferencesInCode('packages/backend/runtime/agent-loop', [idComparison, namedKnob])).toEqual([])
+    expect(findForbiddenReferencesInCode('packages/backend/runtime/engine', [idComparison, namedKnob])).toEqual([])
   })
 
   /**

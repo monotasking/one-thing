@@ -1,4 +1,4 @@
-import type { StreamEngineProviderAdapter } from '@onething/backend/core/engine'
+import type { StreamEngineProviderAdapter } from '@onething/backend/runtime/engine/engine-primitives'
 import type {
   CoreAppSettingsWithAI,
   CoreProviderAuthLike,

@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { writePluginSettingsFile, getCorePluginSettingsPath } from '@onething/backend/core/plugins'
+import { writePluginSettingsFile, getCorePluginSettingsPath } from '@onething/backend/runtime/plugins/plugin-contract'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-p1-acceptance-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -127,7 +127,7 @@ describe.skipIf(!E2E)('B:真 npm 生命周期(生产适配器 runPluginNpm)', ()
     const {
       scanCorePlugins,
       installCorePluginPackage: _unused, // 防误用:这层只走生产适配器
-    } = await import('@onething/backend/core/plugins')
+    } = await import('@onething/backend/runtime/plugins/plugin-contract')
 
     // 1. 装:脚手架 + file: 通道(pkg = 包内 package.json 的 name)
     const result = await installPluginPackage(pluginsDir, {

@@ -13,15 +13,15 @@ import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from 
 import type { StreamContext } from '@onething/backend/runtime/engine/stream/stream-processor'
 import type { StreamCompleteData, StreamErrorData } from '@shared/events/session-events.js'
 import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
-import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@onething/backend/core/engine'
-import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/backend/core/engine'
+import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/backend/runtime/engine/engine-primitives'
 import { getEventBus, getStreamChannel } from './index.js'
 import { claimDeltaStamp } from './delta-stamp.js'
 import { writeSessionEvent } from '../session/event-writer.js'
 import { currentSessionRunId } from '../session/runs.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { JsonObject } from '@shared/json'
-import type { CreateCoreEventOnlyEmitterOptions } from '@onething/backend/core/engine'
+import type { CreateCoreEventOnlyEmitterOptions } from '@onething/backend/runtime/engine/engine-primitives'
 
 /**
  * core 因边界规则(不得 import `@shared`)把事件与流块的形状重抄了一份,泛型

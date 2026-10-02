@@ -10,7 +10,7 @@ import {
   type GetSessionMessagesPageRequest,
   type JsonlChunkReader,
   type StoredChatMessage,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 
 interface TestMessage extends StoredChatMessage {
   role: 'user' | 'assistant'

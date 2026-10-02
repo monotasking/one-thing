@@ -101,7 +101,7 @@ import { Intent, textResult } from '@onething/backend/runtime/toolkit/tool-proto
 import type { Principal } from '@shared/permission/principal'
 import { emitCoreSessionEventSafely } from '@onething/backend/runtime/event-bus'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import {
   SESSION_COLLECTION_PATH,
   SESSION_PERMISSION_MODES,
@@ -559,7 +559,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
          * 不是域里:AI 经资源面改名与界面改名是同一件事,而从前只有界面那一路推,
          * 于是模型改完标题,别的客户端对着旧名字。
          *
-         * 载荷与自动起题那一发逐字同形(`core/engine/core-stream-engine.ts` 的
+         * 载荷与自动起题那一发逐字同形(`runtime/engine/core-stream-engine.ts` 的
          * `generateAndApplySessionTitle`:`{ type, name }` 两格),走的也是同一条
          * 总线;`name` 原样带出参数里那个字符串(仓的改名不归一化)。
          * **失败不发** —— `settle` 已经在上面抛掉了那一支。

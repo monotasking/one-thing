@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurnRequest } from '@onething/backend/core/agent-loop'
+import type { AgentTurnRequest } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
 import { createCodexAgentProvider } from '../../providers/vendors/codex/agent-provider.js'
 import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'

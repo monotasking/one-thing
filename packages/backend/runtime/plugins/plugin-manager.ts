@@ -11,7 +11,7 @@ import {
   type CorePluginManagerHost,
   type CorePluginUninstallResult,
   type CorePluginUpdateResult, type CorePluginBootstrapperOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { createPluginAPI, disposePlugin, drainPlugin, type PluginState } from './api.js'
 import {
   archiveCorePluginData,
@@ -21,7 +21,7 @@ import {
   readPluginLedger,
   restoreCorePluginDataArchive,
   scanPluginSourceEntries,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   scanPlugins,
   loadPluginEntry,
@@ -52,7 +52,7 @@ import {
   readInstalledPluginSpec,
   uninstallPluginPackage,
 } from './npm-process.js'
-import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/backend/core/plugins'
+import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/backend/runtime/plugins/plugin-contract'
 import { configurePluginConfigBroadcast } from '@onething/backend/runtime/plugins/config-access'
 import {
   clearPluginRuntimeHealth,

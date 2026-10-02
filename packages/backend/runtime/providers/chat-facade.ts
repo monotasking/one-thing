@@ -20,7 +20,7 @@ import {
 import { ACPManager } from '@onething/backend/runtime/acp'
 import type {
   AgentProvider,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { oauthManager } from './auth/oauth-manager.js'
 import * as modelRegistry from './model-registry-service.js'
 import {

@@ -8,13 +8,13 @@
  * 为什么要熔断:加载期错误会写进 CorePluginInfo.error,**运行期**错误在此之前
  * 不进任何用户可见状态 —— 一个每回合都抛错的插件会一直显示 Active。
  */
-import type { PluginFailureScope, CorePluginHealthTrackerOptions } from '@onething/backend/core/plugins'
-import { PLUGIN_SURFACE_PROBE_INTERVAL_MS } from '@onething/backend/core/plugins'
+import type { PluginFailureScope, CorePluginHealthTrackerOptions } from '@onething/backend/runtime/plugins/plugin-contract'
+import { PLUGIN_SURFACE_PROBE_INTERVAL_MS } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   CorePluginHealthTracker,
   type CorePluginRuntimeHealth,
   type PersistedPluginHealth,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('plugins.health')

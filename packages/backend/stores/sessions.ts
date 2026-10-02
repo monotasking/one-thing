@@ -62,7 +62,7 @@ import {
 	getSessionTokenUsageSnapshot,
 	repairSessionTimelineMetadata,
 	sanitizeSessionOnStartup,
-} from "@onething/backend/core/session";
+} from "@onething/backend/runtime/sessions/session-primitives";
 import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
 import { assertPortFactIsFolded } from '../session/port-fact-assert.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
@@ -646,7 +646,7 @@ export async function deleteSession(sessionId: string, expectedIds: readonly str
 //
 // **回的是仓层那句「改到了没有」**(09-02:显式改名要发 `session:renamed`,发之前
 // 得先知道这一改到底落没落盘)。仓里那条布尔只有一个含义 —— `applied: false`
-// ⟺ 查无此会话(`core/session/store-helpers.ts` 的
+// ⟺ 查无此会话(`runtime/sessions/store-helpers.ts` 的
 // `applySessionMetadataMutationWithAdapters`:拿不到 session 就直接回 false,
 // 别的分支一条都不产生 false),所以它不是「成功/失败」而是「这条会话在不在」。
 // 从前这里把它吞了,于是改一条不存在的会话也一路回 success —— 再往总线上推一条

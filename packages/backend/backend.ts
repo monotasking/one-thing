@@ -147,7 +147,7 @@ import {
 } from './current.js'
 import type { EventBus } from './events/event-bus.js'
 import type { StreamChannel } from './events/stream-channel.js'
-import type { SessionManager } from '@onething/backend/core/session'
+import type { SessionManager } from '@onething/backend/runtime/sessions/session-primitives'
 
 const log = getLogger('app.backend')
 

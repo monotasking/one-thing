@@ -12,14 +12,14 @@
  * 1. **消息**由折叠产物维护(`refreshMessagesFromProjection` 是全仓唯一换装点,
  *    §16.27);
  * 2. **会话账**(`updatedAt` / `lastProvider` / `lastModel` / 截断的用量结算与
- *    timeline 修复)由**事件折叠**产出(`core/session/account.ts`),这里只把它
+ *    timeline 修复)由**事件折叠**产出(`runtime/sessions/account.ts`),这里只把它
  *    落到会话容器那几格;
  * 3. **落盘档**(lazy)与**索引元数据**由这里按命令种类自算 —— 从前那张表是
  *    `applySessionCommand` 的返回值,而那个归约器批 3 已经删了。
  *
  * ### 老 reducer 去哪儿了(§17.5 #2 / §17.7.1 批 3)
  *
- * `core/session/commands.ts` 的 `applySessionCommand` 与它的 7 条分支、
+ * `runtime/sessions/commands.ts` 的 `applySessionCommand` 与它的 7 条分支、
  * `SessionCommand` 联合、`adoptSessionCommandResult`、`withSessionCommandPin`、
  * 三口 `get/has/findMessageFromStore`、`OnethingSessionMessageRuntime` 的 9 个
  * 命令口 —— **全部删除**。它最后的身份("会话级派生的算法")随批 2 的折叠器上线
@@ -55,13 +55,13 @@ import {
   findLastPreviewableMessage,
   type SessionAccountState,
   type SessionAccountTruncationEffect,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import type { sessionCommandEvents } from './command-events.js'
 import type { sessionReads } from './reads.js'
 import { getCurrentBackend } from '../current.js'
 
 /**
- * `patchMessage` 的落盘档提示(从 `core/session/commands.ts` 搬过来 —— 批 3 之后
+ * `patchMessage` 的落盘档提示(从 `runtime/sessions/commands.ts` 搬过来 —— 批 3 之后
  * 写档是**写门**的事,不再是归约器的返回值)。
  *
  * `'stream'` = 逐 token 的高频路径,走 5s 的 lazy 档;`'settle'` = 收尾/元数据,
@@ -72,7 +72,7 @@ export type SessionCommandWriteHint = 'stream' | 'settle'
 /**
  * 不给 hint 时按 patch 的键推断:键集合完全落在这四格里就算 stream 档。
  *
- * **逐字复刻**归约器退役前的 `resolveLazy`(`core/session/commands.ts`)——
+ * **逐字复刻**归约器退役前的 `resolveLazy`(`runtime/sessions/commands.ts`)——
  * 这一格是可感知的(写盘节流窗口 5s vs 300ms),搬家不许顺手改口径。
  */
 const LEGACY_LAZY_PATCH_KEYS = new Set(['content', 'reasoning', 'contentParts', 'thinkingTime'])
@@ -222,7 +222,7 @@ export interface CreateSessionCommandsOptions {
 /**
  * 把会话账的**身份三格**落到会话容器。
  *
- * 产地是折叠(`core/session/account.ts`);这里只是搬运。三格的语义与归约器
+ * 产地是折叠(`runtime/sessions/account.ts`);这里只是搬运。三格的语义与归约器
  * 退役前逐字相同 —— 批 2 的影子对拍(682 次 0 失配)证的就是这一条。
  *
  * `at` 是这条命令取的那一次刻(时钟同源)。折叠对这几条命令给出的 `updatedAt`

@@ -2,8 +2,8 @@ import {
   type CoreBuildPromptContextOptions,
   type CoreBuildPromptResult,
   type CorePromptRequestMessage,
-} from '@onething/backend/core/engine'
-import type { AgentProviderData } from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/engine/engine-primitives'
+import type { AgentProviderData } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
 import type { JsonObject, JsonObjectProperty } from '@shared/json.js'
 import {
@@ -40,7 +40,7 @@ import type { PromptProviderConfig } from '@onething/backend/runtime/prompts/plu
 import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import type { VariableBoardRenderer } from '@onething/backend/runtime/prompts/variable-board'
 import type { OnethingPromptHostAdapters } from '@onething/backend/runtime/prompts/builder'
 

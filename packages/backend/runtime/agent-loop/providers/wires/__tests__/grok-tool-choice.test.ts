@@ -28,7 +28,7 @@ import {
 	type Dialect,
 } from "../../base/index.js";
 import { responsesToolChoicePolicy } from "../index.js";
-import type { AgentTurnRequest } from "@onething/backend/core/agent-loop";
+import type { AgentTurnRequest } from "@onething/backend/runtime/agent-loop/loop-primitives";
 
 const GROK_MODEL = "grok-4.6";
 

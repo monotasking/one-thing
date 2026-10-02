@@ -19,7 +19,7 @@
  * 本地价目估算(`costUSD`)照旧由账本按价目表算:agent id 不在价目表里,于是它是 `null`,
  * 厂商报价另存 `providerCostUSD` —— 账本两格并存的约定,见 `usage/types.ts`。
  */
-import type { AgentUsage } from '@onething/backend/core/agent-loop'
+import type { AgentUsage } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 /** 账本里 ACP 回合的类目。 */
 export const ACP_USAGE_SOURCE = 'acp'

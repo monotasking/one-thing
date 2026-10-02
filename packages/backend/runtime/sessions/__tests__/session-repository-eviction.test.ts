@@ -10,7 +10,7 @@ import type {
   CoreSessionMeta,
   StoredChatMessage,
   UserMessageMarker,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import { createOnethingSessionRepository } from '../session-repository.js'
 
 interface TestMessage

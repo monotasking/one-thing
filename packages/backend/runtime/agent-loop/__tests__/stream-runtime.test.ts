@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import type {
   AgentProvider,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type {
   CoreBuildPromptOptions,
   CorePendingAgentLoopInputMessage,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog } from '../../toolkit/host.js'

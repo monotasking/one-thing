@@ -31,7 +31,7 @@ import path from 'node:path'
 
 import type { DocPayload, DocumentFeed, FeedPolicy } from '@onething/backend/runtime/search/kernel'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
-import { parseSessionLogEventLog } from '@onething/backend/core/session'
+import { parseSessionLogEventLog } from '@onething/backend/runtime/sessions/session-primitives'
 
 import { getLogger } from '../../logging/index.js'
 import type { SessionMetaSnapshot } from './projector.js'

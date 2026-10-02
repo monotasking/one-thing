@@ -12,7 +12,7 @@
  *  4. **回验。** `verifyAdapterSpec` 用 `dialectFromSpec` 编出来的方言,经**真的**那条线把样本
  *     重放一遍:≥1 个文本增量;样本里有 usage 段就得解出 input/output;模型列表 ≥1 项。
  */
-import type { AgentTurnStreamEvent } from "@onething/backend/core/agent-loop";
+import type { AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	CUSTOM_ADAPTER_DEFAULT_PATHS,
 	CUSTOM_ADAPTER_SPEC_JSON_SCHEMA,

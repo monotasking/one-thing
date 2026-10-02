@@ -39,7 +39,7 @@ import {
   decodeSessionProjectionCheckpoint,
   parseSessionLogEventLog,
   canonicalChatMessage,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer.js'
 import { materializeChatMessages, projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import { SurfaceIndex } from '@shared/session/projection/surface.js'

@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFileToken } from '@shared/prompts/prompt-references'
-import { buildMessageContent } from '../../../../packages/backend/core/engine/message-content'
+import { buildMessageContent } from '../../../../packages/backend/runtime/engine/message-content'
 import type { MessageAttachment } from '@shared/ipc/chat'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'
 import { createMemoryTransport, createOnethingClient } from '@onething/client'

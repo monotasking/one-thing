@@ -27,7 +27,7 @@ import {
   pluginLoadLabel,
   pluginScope,
   resolvePluginScopeSeverity,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 const REPO_ROOT = fileURLToPath(new URL('../../../../..', import.meta.url))
 
@@ -313,7 +313,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
     expect(new Set(SAMPLES.map(entry => entry.factory)).size).toBe(Object.keys(pluginScope).length)
 
     const files = readSourceFiles([
-      path.join(REPO_ROOT, 'packages/backend/core/plugins'),
+      path.join(REPO_ROOT, 'packages/backend/runtime/plugins'),
       path.join(REPO_ROOT, 'packages/backend'),
       // P3'c:health / 四个 `*-bound` / `lifecycle.wiring` 的判决路径搬进了产品层,
       // 三棵树一起扫才还是同一条判据。
@@ -408,7 +408,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 上每多一个 `register*(pluginId` 转发口,就必须在 PLUGIN_OPEN_REGISTRIES
      * 里有对应成员,否则一个开放了却没有拆除语义声明的注册表会悄悄溜过去。
      */
-    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/core/plugins/api-builder.ts'), 'utf-8')
+    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/runtime/plugins/api-builder.ts'), 'utf-8')
     const interfaceStart = hostSource.indexOf('export interface CorePluginAPIHost')
     const interfaceEnd = hostSource.indexOf('\n}', interfaceStart)
     const body = hostSource.slice(interfaceStart, interfaceEnd)

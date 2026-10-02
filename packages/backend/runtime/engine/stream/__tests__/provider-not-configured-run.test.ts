@@ -41,7 +41,7 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => {
 // 这条路一步都不进流,所以把整台单例引擎挡在门外。
 vi.mock('../../engine-layer.js', () => ({ getStreamEngine: () => ({}) }))
 
-const { CoreStreamEngine } = await import('@onething/backend/core/engine')
+const { CoreStreamEngine } = await import('@onething/backend/runtime/engine/engine-primitives')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../../../../session/event-log.js'
 )

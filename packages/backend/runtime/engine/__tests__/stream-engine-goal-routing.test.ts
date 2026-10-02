@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 // P3'e A1:基类现在直接是 core 的 `CoreStreamEngine`(中间那层已并入)。
-vi.mock('@onething/backend/core/engine', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/core/engine')>()),
+vi.mock('@onething/backend/runtime/engine/engine-primitives', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/engine/engine-primitives')>()),
   CoreStreamEngine: class {
     authorizeExecution(): void {}
     assertAccepting(): void {}

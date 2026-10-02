@@ -29,7 +29,7 @@ import {
 	isAgentExecutionCheckpointError,
 	createAgentExecutionLifetime,
 	type AgentProviderStreamChunk,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { HistoryMessage } from "./message-helpers.js";
 import type { StreamContext, StreamProcessor } from "./stream-processor.js";
 import { createStreamProcessor, resolveToolIdentity } from "./stream-processor.js";
@@ -62,14 +62,14 @@ import {
 	lastUserMessageText,
 	persistAgentLoopTurnContentPartsWithAdapters,
 	runAgentLoopPostResponseHooksWithAdapters, type CoreAgentLoopContentPartStore, type CoreAgentLoopToolExecutionStore, type CompleteAgentLoopStreamWithAdaptersOptions, type EmitAgentLoopFinalMessageUpdateWithAdaptersOptions,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import type {
 	CorePromptCapture,
 	CoreEvalRawRequest,
 	CoreEvalRawResponse,
 	CoreRequestMessage,
-} from "@onething/backend/core/engine";
-import type { AgentJsonObject } from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/engine/engine-primitives";
+import type { AgentJsonObject } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { hashSections } from "@onething/backend/runtime";
 import {
 	attachSessionEventRecorder,
@@ -82,7 +82,7 @@ import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { JsonObject } from '@shared/json'
 import type { AppSettings } from '@shared/ipc.js'
 import type { StreamProviderConfig } from './stream-processor.js'
-import type { RunAgentLoopPostResponseHooksWithAdaptersOptions, ApplyAgentLoopStreamChunkWithAdaptersOptions } from '@onething/backend/core/engine'
+import type { RunAgentLoopPostResponseHooksWithAdaptersOptions, ApplyAgentLoopStreamChunkWithAdaptersOptions } from '@onething/backend/runtime/engine/engine-primitives'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -366,7 +366,7 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
  * afterTurn 发的 boundary 之后,**下一轮的 `beforeTurn` 排在那个 turn-start 之前**:
  * 若这一轮恰好判成 `finalPlan.kind === 'rebuild'`,`rebuildAgentMessagesFromSession`
  * 就会在上一条 assistant 还挂着 `isStreaming: true` 的时候去读 store,而
- * `buildHistoryMessages` 见 `isStreaming` 整条跳过(`core/engine/history.ts`
+ * `buildHistoryMessages` 见 `isStreaming` 整条跳过(`runtime/engine/history.ts`
  * :753/:812)—— 重建出来的历史**真的少一整轮**,模型看不见上一条回复。
  * 这不是账记歪,是发出去的请求少了东西。
  *

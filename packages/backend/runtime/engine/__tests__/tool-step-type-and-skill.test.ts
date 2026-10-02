@@ -13,8 +13,8 @@ import { describe, expect, it } from 'vitest'
 import {
   createCoreToolInputStartArtifacts,
   startAgentLoopToolExecution,
-} from '@onething/backend/core/engine'
-import type { CoreStreamToolCallLike } from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreStreamToolCallLike } from '@onething/backend/runtime/engine/engine-primitives'
 
 /** 就用引擎自己那份形状 —— 占位工厂产出的就是它,免得测试里再手抄一份。 */
 type TestToolCall = CoreStreamToolCallLike

@@ -10,7 +10,7 @@
  */
 import {
   registerCoreProviderExecution,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import {
   findAgentExecutorDescriptor,
   isExternalAgentExecutorId,

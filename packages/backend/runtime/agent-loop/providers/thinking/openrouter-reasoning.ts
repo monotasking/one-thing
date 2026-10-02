@@ -17,11 +17,11 @@
  * 落一格 `{type:'provider-data', providerData, turnIndex}`(非 codex 走 core 的
  * 缺省计划),历史重建再把那一格摊回 `AgentMessage.providerData[]`。
  */
-import type { AgentTurnStreamEvent } from "@onething/backend/core/agent-loop";
+import type { AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type {
 	AgentJsonObject,
 	AgentJsonValue,
-} from "@onething/backend/core/agent-loop";
+} from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
 import { OpenAIChatThinkingWire } from "./openai-chat-thinking-wire.js";
 

@@ -18,8 +18,8 @@ import {
   selectCompactPlan,
   shouldAutoCompactBeforeSend,
   summarizeContextInChunks,
-} from '@onething/backend/core/engine'
-import type { CoreCompactMessage, CoreCompactSession, CoreContextSummaryRequest } from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreCompactMessage, CoreCompactSession, CoreContextSummaryRequest } from '@onething/backend/runtime/engine/engine-primitives'
 
 function message(index: number, role: 'user' | 'assistant'): CoreCompactMessage {
   return {

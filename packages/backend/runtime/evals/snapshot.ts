@@ -5,7 +5,7 @@ import type {
 	CoreRequestMessage,
 	CoreEvalRawRequest,
 	CoreEvalRawResponse,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 import { hashSections } from "./section-hash.js";
 import {
 	getOnethingEvalsFixturesAutoDir,

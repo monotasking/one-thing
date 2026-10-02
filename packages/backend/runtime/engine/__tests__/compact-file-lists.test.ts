@@ -10,7 +10,7 @@ import {
   formatCompactFileOperations,
   mergeCompactFileOperations,
   stripCompactFileOperations,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { collectCompactFileOperations } from '../compact-file-lists.js'
 
 type ToolCallSpec = { toolId: string; arguments: Record<string, string | number> }

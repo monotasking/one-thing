@@ -39,7 +39,7 @@ import {
   comparePluginCanonicalOrder,
   isPluginThemeColorValue,
   normalizePluginThemeColorValue,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   canonicalHighlightToken,
   isHighlightAliasToken,

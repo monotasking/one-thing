@@ -11,10 +11,10 @@ import type {
   AgentLoopResult,
   AgentMessage,
   AgentProviderStreamChunk,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   getAgentLoopTransientTail,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '../../../session/commands.js'
 import { sessionReads } from '../../../session/reads.js'
@@ -46,7 +46,7 @@ import type { OnethingAgentLoopLogger } from '@onething/backend/runtime/agent-lo
 import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/runtime/toolkit/execution-types.wiring'
 import type { ContextCompactResult } from '../compact-session.js'
 import type { PromptRequestMessage } from '../prompt/system-prompt.js'
-import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/core/engine'
+import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/runtime/engine/engine-primitives'
 import type { ProviderConfigWithKey } from './stream-executor.js'
 import type { AppSettings, ContentPart, ToolDefinition } from '@shared/ipc.js'
 import type { OnethingAgentLoopRuntimeHostAdapters } from '@onething/backend/runtime/agent-loop/stream-runtime'

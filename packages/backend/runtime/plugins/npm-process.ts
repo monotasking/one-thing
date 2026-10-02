@@ -14,7 +14,7 @@ import {
   type CorePluginMarketIndex,
   type InstallCorePluginPackageInput,
   type InstallCorePluginPackageResult,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './disk-loader.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

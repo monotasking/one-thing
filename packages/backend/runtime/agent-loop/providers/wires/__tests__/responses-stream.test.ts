@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentTurnStreamEvent } from "@onething/backend/core/agent-loop";
+import type { AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { getLogger } from "../../../../logging/index.js";
 import "../../dialects/index.js";
 import { LedgerModelProfileResolver, RequestBodyBuilder, TurnContext, listDialects } from "../../base/index.js";

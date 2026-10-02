@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createScopedPluginScheduler } from '@onething/backend/core/plugins'
+import { createScopedPluginScheduler } from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface TestTask {
   id: string

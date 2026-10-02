@@ -12,7 +12,7 @@
  * | 档 | 种类 | 理由 |
  * |---|---|---|
  * | **承载** | `text` / `reasoning` / `provider-data` / `image` | 事件词表里有对应的 part kind |
- * | **豁免** | `waiting` / `image-loading` / 未结算的 `plugin-status` | **策略表条目**(定律三,`core/session/events/ephemeral-policy.ts` 的 `contentPart.placeholder` / `contentPart.plugin-status.unsettled`):有取代它的持久事件,判据当场丢掉它们 |
+ * | **豁免** | `waiting` / `image-loading` / 未结算的 `plugin-status` | **策略表条目**(定律三,`runtime/sessions/events/ephemeral-policy.ts` 的 `contentPart.placeholder` / `contentPart.plugin-status.unsettled`):有取代它的持久事件,判据当场丢掉它们 |
  * | **豁免** | `data-steps` | **渲染锚点**(G4),位置算得出来,不是正文 —— 与上一档不同源,理由也不同 |
  * | **承载** | **已结算**的 `plugin-status` | §17.8 前置批起有产地(`plugin/status` 带 `durationMs`,唯一生产者是后台子代理指示器),折叠侧物化在这一轮正文之后 |
  * | **红** | 其余 | 消息上有、账本上没有、判据也不放过 = 一条必然的不等 |
@@ -26,7 +26,7 @@
  * core reducer,而 core 是零依赖层,拿不到这个开关。
  */
 
-import { isEphemeralContentPart } from '@onething/backend/core/session'
+import { isEphemeralContentPart } from '@onething/backend/runtime/sessions/session-primitives'
 
 import { isSessionFreezeEnabled } from './freeze.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

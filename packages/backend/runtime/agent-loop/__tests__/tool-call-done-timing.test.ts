@@ -13,7 +13,7 @@
  * 不在此钉。)
  */
 import { describe, expect, it } from 'vitest'
-import type { AgentTurnStreamEvent } from '@onething/backend/core/agent-loop'
+import type { AgentTurnStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { createOpenAICompatibleAgentProvider } from '../providers/openai-compatible.js'
 import { createDeepSeekAgentProvider } from '../../providers/vendors/deepseek/agent-provider.js'
 

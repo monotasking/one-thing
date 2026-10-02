@@ -60,7 +60,7 @@ import {
   switchOnethingSessionForIpc,
 } from '@onething/backend/runtime/sessions'
 import { isValidSpaceId } from '@onething/backend/runtime/spaces/types'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/backend/runtime/sessions/resource-spec'
 import type {
   ChatMessage,
@@ -320,7 +320,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       await readSession(context, request.sessionId, 'messages', {
         // **总是带一个 anchor**:它是「给我一页」与「给我整份」的判别(同一条读法,
         // 判据是说没说分页的话)。`'tail'` 与 anchor 缺席在 pager 里走的是同一支
-        // (`core/session/storage/jsonl/pager.ts`),所以这一行不改任何行为。
+        // (`runtime/sessions/storage/jsonl/pager.ts`),所以这一行不改任何行为。
         anchor: request.anchor ?? 'tail',
         ...(request.cursor ? { cursor: request.cursor } : {}),
         ...(request.limit !== undefined ? { limit: request.limit } : {}),

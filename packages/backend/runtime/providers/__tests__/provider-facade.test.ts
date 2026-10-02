@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   AgentProvider,
   AgentTurnRequest,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   createOnethingProviderFacade,
   type OnethingProviderRequestDumpContext,

@@ -21,7 +21,7 @@ import type { SessionLogEventRecord } from '@shared/session/events/types'
 import {
   canonicalChatMessages,
   projectModelHistory,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import {
   projectChatMessages,
 } from '@shared/session/projection/chat-messages'

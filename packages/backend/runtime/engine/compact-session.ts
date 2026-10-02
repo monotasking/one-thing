@@ -4,7 +4,7 @@ import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
 import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
-import { isAgentExecutionCheckpointError } from '@onething/backend/core/agent-loop'
+import { isAgentExecutionCheckpointError } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/backend/runtime/plugins/lifecycle.wiring'
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../session/reads.js'
@@ -33,7 +33,7 @@ import {
   shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
   summarizeContextInChunks,
   type SummarizeContextInChunksOptions,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from '@onething/backend/runtime/engine/compact-file-lists'
@@ -51,7 +51,7 @@ export {
   normalizeContextSummaryOutput,
   selectCompactPlan,
   shouldAutoCompactBeforeSend,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 
 export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
   providerId: string

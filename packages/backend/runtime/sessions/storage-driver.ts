@@ -18,7 +18,7 @@
  *
  * - **写**:jsonl 会话只写 `meta.json`(会话外壳 + `log` 索引)。`write()` 仍然
  *   收 `SessionWritePlan`,但**不再读它** —— 写计划是命令面 reducer 的产物
- *   (`core/session/commands.ts`),它的退役属于 F 线,不是这里。
+ *   (`runtime/sessions/commands.ts`),它的退役属于 F 线,不是这里。
  * - **读**:`messages.jsonl` 的读半边**原样保留**(裁定 9a:存量抄本永久原地
  *   只读)。分页 / user marker / `history` 工具 / `verify #6` 的存量对账都还从
  *   它取数;停写之后出生的会话没有这个文件,那些口就返回 `undefined`,调用方
@@ -45,9 +45,9 @@ import {
   type IndexedSessionMessage,
   type StoredChatMessage,
   type UserMessageMarker,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
-import type { JsonlLogPageSource } from '@onething/backend/core/session/storage'
+import type { JsonlLogPageSource } from '@onething/backend/runtime/sessions/storage'
 
 export type SessionStorageFormat = 'legacy-json' | 'jsonl'
 

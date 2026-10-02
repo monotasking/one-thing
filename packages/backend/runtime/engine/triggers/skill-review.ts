@@ -1,4 +1,4 @@
-import type { AgentToolExecutionContext } from '@onething/backend/core/agent-loop'
+import type { AgentToolExecutionContext } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type {
   CoreSkillReviewFileToolAdapter,
   CoreSkillReviewManageArgs,

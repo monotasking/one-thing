@@ -9,13 +9,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { streamAgentLoopProviderChunks } from '@onething/backend/core/agent-loop'
+import { streamAgentLoopProviderChunks } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type {
   AgentLoopOptions,
   AgentProvider,
   AgentTool,
   AgentTurnStreamEvent,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
 

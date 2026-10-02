@@ -4,5 +4,5 @@ export {
   encodeMessagePageCursor,
   getMessagesPageFromArray,
   getUserMessageMarkersFromArray,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 export { getMessagesPageFromJsonFile } from './json-message-page.js'

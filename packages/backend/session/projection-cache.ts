@@ -36,7 +36,7 @@ import {
   reduceSessionAccount,
   type CoreTimelineMessage,
   type SessionAccountState,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import {
   createSessionProjectionState,
   foldSessionLogicalDeltaAhead,
@@ -88,7 +88,7 @@ interface LiveProjection {
   /**
    * 这条会话的**会话账**(§17.7.1 批 2 / #8b-i)—— 与消息投影同源同刷新点:
    * 同一个 F1 观察者、同一次重建。它是**独立的值语义结构**,不挂进
-   * `SessionProjectionState`(理由见 `core/session/account.ts` 文件头)。
+   * `SessionProjectionState`(理由见 `runtime/sessions/account.ts` 文件头)。
    */
   account: SessionAccountState
   /** 已经折进 state 的最后一条 seq。 */

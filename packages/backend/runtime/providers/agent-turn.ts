@@ -12,7 +12,7 @@ import {
   type AgentTool,
   type AgentTurnRequest,
   type AgentUsage,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   onethingAgentMessagesFromToolChatMessages,
   onethingUtilityAgentMessagesFromMessages,

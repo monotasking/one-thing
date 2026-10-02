@@ -5,11 +5,11 @@
  * 默认值填充、变更推送全由宿主做,**不执行一行插件代码**。直接的红利:
  * 未启用(甚至从没加载过)的插件也能在设置页配置。
  */
-import { pluginScope } from '@onething/backend/core/plugins'
+import { pluginScope } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS,
   runWithPluginTimeout,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   coercePluginConfig,
   deepFreezePluginConfig,

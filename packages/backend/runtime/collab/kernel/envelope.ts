@@ -9,7 +9,7 @@
  * 跨房转投),去重的责任在收件方,判据是事件 id。所以 id 必须是**事件的身份**而
  * 不是「这一次投递的流水号」—— 同一封信重投多少次,id 都得是同一个。
  */
-import { createCoreId } from '@onething/backend/core/engine/ids'
+import { createCoreId } from '@onething/backend/runtime/engine/ids'
 
 /**
  * 一个 actor 的地址。

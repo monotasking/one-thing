@@ -1,7 +1,7 @@
 /**
  * `file-pick` 的拷贝执行面(B 期,用户壁纸)。
  *
- * core 的判据已经被 `packages/backend/core/plugins/__tests__/file-pick.test.ts` 钉住了,
+ * core 的判据已经被 `packages/backend/runtime/plugins/__tests__/file-pick.test.ts` 钉住了,
  * 这里钉的是**接线**:闸真的挂在拷贝入口上、落点真的在这个插件的数据目录里、
  * 同名真的不覆盖、以及 `pluginStorageImageExists` 真的挡得住指向空气的图。
  */

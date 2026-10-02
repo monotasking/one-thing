@@ -6,7 +6,7 @@ import type {
   SessionNotification,
   StopReason,
 } from '@agentclientprotocol/sdk'
-import type { AgentUsage } from '@onething/backend/core/agent-loop'
+import type { AgentUsage } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type {
   ACPAgentConfig,
   ACPAgentState,

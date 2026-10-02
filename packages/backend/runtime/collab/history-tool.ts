@@ -36,7 +36,7 @@ import {
   type CollabHandleQuery,
 } from '@onething/backend/runtime/collab'
 import type { HistoryToolResult } from '@onething/backend/runtime/toolkit'
-import { scanJsonlLog } from '@onething/backend/core/session'
+import { scanJsonlLog } from '@onething/backend/runtime/sessions/session-primitives'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../session/reads.js'

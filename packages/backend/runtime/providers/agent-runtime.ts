@@ -2,7 +2,7 @@ import type { AgentProviderRuntimeConfig } from '../agent-loop/providers/process
 import { createAgentProviderFromRuntime } from '../agent-loop/providers/process-factory.js'
 import type {
   AgentProvider,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   ONETHING_ACP_RUNTIME_PROVIDER_ID,
   createOnethingUtilityAgentProvider,

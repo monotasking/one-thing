@@ -22,7 +22,7 @@
  * 一份思考摘要是自相矛盾的(理由写在 `thinking/openai-responses-reasoning.ts`)。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/core/agent-loop";
+import type { AgentTurnRequest } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import {
 	captureWireRequest,
 	sseResponse,

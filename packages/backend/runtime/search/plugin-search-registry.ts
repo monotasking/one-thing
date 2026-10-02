@@ -29,7 +29,7 @@ import {
   sanitizePluginSearchResults,
   type CorePluginSearchActionContext,
   type CorePluginSearchProviderRegistration,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,

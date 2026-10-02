@@ -496,7 +496,7 @@ export interface SessionMessagePatchedEventData {
    *
    * `upsertMessage` 命中已有消息时写的是"整条替换"的那一档(`fullBody`),而它
    * 与 `patchMessage` 在**会话账**上的待遇不同:upsert 盖 `updatedAt`,patch 不盖
-   * (`core/session/commands.ts` 的两条分支)。两者的事件形状完全同构,所以
+   * (`runtime/sessions/commands.ts` 的两条分支)。两者的事件形状完全同构,所以
    * 事件上必须带一格**调用类别**——它是命令面亲知的事实(§13.8:可以记别人
    * 说的话),而"盖不盖章"这条**策略**住在折叠器一处(`session/account.ts`)。
    *
@@ -808,7 +808,7 @@ export interface SessionAssistantPartEndEventData {
 
 /**
  * G5(§10.1):技能被激活。今天它是一条**流事件**(`skill:activated`,
- * `core/engine/event-only-emitter.ts`),只在内存里活到 renderer 把
+ * `runtime/engine/event-only-emitter.ts`),只在内存里活到 renderer 把
  * `message.skillUsed` 写上为止 —— 重载后那一格从消息字段里读回来,而事件账本
  * 上没有任何痕迹。这里给它一条自己的账:`skillUsed` 因此是派生的,不是补丁。
  */

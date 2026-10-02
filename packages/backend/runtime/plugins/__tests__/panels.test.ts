@@ -32,7 +32,7 @@ import {
   type CorePluginRequestHandler,
   type CorePluginStateLike,
   type PluginPanelTree,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface TestAPI {
   registerWorkspacePanel(registration: CorePluginPanelRegistration): void

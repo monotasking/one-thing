@@ -6,7 +6,7 @@
  * 收尾映射表只加词不改词、SSE 结束标记可注入。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/core/agent-loop";
+import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { getLogger } from "../../../../logging/index.js";
 import { readJsonSseData } from "../../sse.js";
 import {

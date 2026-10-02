@@ -12,7 +12,7 @@
  * 阻塞点,压缩抛错/中断都不能把会话卡死。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CoreStreamEngine } from "../engine/core-stream-engine.js";
+import { CoreStreamEngine } from "@onething/backend/runtime/engine/core-stream-engine";
 
 interface FakeMessage {
 	id: string;

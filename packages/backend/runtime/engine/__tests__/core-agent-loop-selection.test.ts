@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   resolveAgentLoopStreamRoute,
   shouldUseAgentLoopStream,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 
 describe('core agent-loop stream selection', () => {
   const TEST_AGENT_LOOP_STREAM_ENV = 'HEADLESS_AGENT_LOOP_STREAM'

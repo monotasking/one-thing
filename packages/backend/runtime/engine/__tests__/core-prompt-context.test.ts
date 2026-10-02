@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildContextCompactPrompt,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 import {
   buildSystemPromptSnapshotWithAdapters,
   mcpToolSnapshot,

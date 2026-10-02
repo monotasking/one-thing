@@ -22,7 +22,7 @@
  * 而宠物开口不属于任何会话;这一句话本身已经进了宠物自己的账本(话语行 / `nothing-to-say` 行)。
  */
 
-import { createAgentExecutionLifetime, runAgentLoop, type AgentLoopOptions } from '@onething/backend/core/agent-loop'
+import { createAgentExecutionLifetime, runAgentLoop, type AgentLoopOptions } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { buildMomentPrompt, parseMomentReply, type MomentComposeInput, type MomentComposer } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

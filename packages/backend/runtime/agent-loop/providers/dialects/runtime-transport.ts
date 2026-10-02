@@ -14,7 +14,7 @@
  * 读的是**默认模型**那一条:静态 `capabilities` 字段是「这个 provider 大概能
  * 干什么」的一张名片,per-model 的真话由 `getModelCapabilities()` 现算。
  */
-import type { AgentCapability, AgentModelCapabilities } from "@onething/backend/core/agent-loop";
+import type { AgentCapability, AgentModelCapabilities } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { catalogEntryFacts } from "../../../providers/manual-models.js";
 
 /**

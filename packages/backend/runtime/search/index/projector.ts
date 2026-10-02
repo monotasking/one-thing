@@ -46,7 +46,7 @@
  */
 
 import type { DocPayload } from '@onething/backend/runtime/search/kernel'
-// 事件词表与投影都经 `@onething/backend/core/session` 这一个桶出口(`session/index.ts` 的
+// 事件词表与投影都经 `@onething/backend/runtime/sessions/session-primitives` 这一个桶出口(`session/index.ts` 的
 // 末两行把 `events/` 与 `projection/` 都再导出了)—— 不为这一处新开子路径键。
 import type {
   ProjectedChatMessage,

@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 /** 账本写口上的探针:每一次 `writeSessionEvent` 的事件类型都记一笔。 */

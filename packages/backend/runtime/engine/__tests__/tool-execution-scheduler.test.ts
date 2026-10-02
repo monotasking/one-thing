@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ToolExecutionScheduler } from '@onething/backend/core/agent-loop'
+import { ToolExecutionScheduler } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void

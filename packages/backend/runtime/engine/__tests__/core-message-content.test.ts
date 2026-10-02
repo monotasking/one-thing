@@ -3,7 +3,7 @@ import {
   buildMessageContent,
   formatMessagesForLog,
   getTextFromContent,
-} from '@onething/backend/core/engine'
+} from '@onething/backend/runtime/engine/engine-primitives'
 
 describe('core message content helpers', () => {
   it('redacts image payloads in log messages', () => {

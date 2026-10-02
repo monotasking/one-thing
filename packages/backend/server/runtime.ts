@@ -6,7 +6,7 @@ import { sessionDeletion } from '../session/deletion.js'
 import { sessionAccess, createSessionAccess } from '../session/access.js'
 import { createServerLiveSessionDelivery } from './live-session-delivery.js'
 import { createServerMediaDelivery } from './media-delivery.js'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import type { OnethingPermissionGrantStorageAdapters } from "@onething/backend/runtime/permissions";
 import { EventEmitter } from "node:events";
 import {
@@ -123,7 +123,7 @@ import {
 	type CorePluginDefinition,
 	type CorePluginInfo,
 	type PluginSettings, type CorePluginSettingsStorageAdapters,
-} from "@onething/backend/core/plugins";
+} from "@onething/backend/runtime/plugins/plugin-contract";
 import {
 	createMCPServerState,
 	HeadlessMCPManager,
@@ -285,7 +285,7 @@ import {
 import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
-} from "@onething/backend/core/session";
+} from "@onething/backend/runtime/sessions/session-primitives";
 import { mergeWithDefaults } from "../stores/settings-defaults.js";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";

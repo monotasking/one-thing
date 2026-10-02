@@ -3,13 +3,13 @@
  * (F4-c 定律二,`docs/design/session-event-sourcing-2026-08.md` §16.19 / §16.21)。
  *
  * 定律二说"打包是压缩,不是语义"。搬家(段边界状态机 + 攒批 + 两道闸从
- * recorder 迁进 `core/session/events/chunk-codec.ts`)只有一条验收:**盘上那几行
+ * recorder 迁进 `packages/shared/session/events/chunk-codec.ts`)只有一条验收:**盘上那几行
  * 一个字节都不许变**。这条用例把一个固定剧本喂给真 recorder,读回
  * `events.jsonl` 的原始文本,与金样逐字节比。
  *
  * ## 怎么造的金样(下一个人要重录时照做)
  *
- * 1. `git checkout <搬家前的 commit> -- packages/backend/core/session packages/backend/runtime/engine/stream/session-event-recorder.ts`
+ * 1. `git checkout <搬家前的 commit> -- packages/backend/runtime/sessions packages/backend/runtime/engine/stream/session-event-recorder.ts`
  * 2. `ONETHING_RECORD_CHUNK_BYTES=1 npx vitest run .../session-chunk-bytes.test.ts`
  *    —— 本文件只用 recorder 的公开面,所以在搬家前的树上照样跑得起来;
  * 3. 把生产代码换回来,不带 env 再跑一遍 —— 绿 = 逐字节相同。
@@ -25,7 +25,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 

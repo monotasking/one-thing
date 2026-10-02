@@ -48,7 +48,7 @@ import {
   type CorePluginUiSlotContext,
   type PluginPanelTree,
   type UiAnchor,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { projectOnethingPluginsForRenderer } from '../plugin-list.js'
 
 interface TestAPI {

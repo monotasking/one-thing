@@ -23,7 +23,7 @@ import {
   pluginScope,
   type CorePluginDeepLinkActionRegistration,
   type CorePluginDeepLinkResult,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,

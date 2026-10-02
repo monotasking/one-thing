@@ -10,7 +10,7 @@
  *
  * 端口可注入(`ProbeCustomPorts`):单测替掉 fetch / 分析那一轮,门跑真的。
  */
-import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/core/agent-loop'
+import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   CUSTOM_ADAPTER_BASE_DIALECT,
   adapterReasoningPath,

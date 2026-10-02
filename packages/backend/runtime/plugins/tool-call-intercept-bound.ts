@@ -1,7 +1,7 @@
 /**
  * N4 的**装配层实现**:工具调用拦截链的进程内注册表 + 健康态接线 + 校验口。
  *
- * 协议在 core(`@onething/backend/core/plugins` 的 tool-call-intercept.ts):三态、
+ * 协议在 core(`@onething/backend/runtime/plugins/plugin-contract` 的 tool-call-intercept.ts):三态、
  * 归一化、链的次序与 fail-closed 语义。这里做三件产品层的事:
  *
  *  1. **一个进程一本注册表**(与 N2 同构),生命周期跟着插件的 `lifecycleUnsubs`
@@ -32,7 +32,7 @@ import {
   type PluginToolCallInterceptContext,
   type PluginToolCallInterceptHandler,
   type PluginToolCallInterceptOutcome, type CorePluginToolCallInterceptRegistryOptions,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import type { JsonObject } from '@shared/json.js'
 import {
   probePluginSurface,

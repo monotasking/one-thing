@@ -7,8 +7,8 @@ import type {
   PluginAmbientDescriptor,
   PluginBackgroundDescriptor,
   PluginBackgroundParamsPatch,
-} from '@onething/backend/core/plugins'
-import { compareCoreSemver, unscopedPluginIdFromPackageName } from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
+import { compareCoreSemver, unscopedPluginIdFromPackageName } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   executeOnethingPluginCommand,
   type ExecuteOnethingPluginCommandOptions,

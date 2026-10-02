@@ -57,7 +57,7 @@ import {
   applySessionListProjectionToMeta,
   deriveSessionLastMessagePreview,
   type CoreSessionPreviewMessageSource,
-} from '@onething/backend/core/session'
+} from '@onething/backend/runtime/sessions/session-primitives'
 import {
   materializeNode,
 } from '@shared/session/projection/chat-messages'

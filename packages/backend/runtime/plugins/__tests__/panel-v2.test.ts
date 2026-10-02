@@ -12,7 +12,7 @@ import {
   validatePluginPanelTree,
   type PluginPanelNode,
   type PluginPanelTree,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 function treeOf(body: PluginPanelNode, extra: Partial<PluginPanelTree> = {}): PluginPanelTree {
   return { version: PLUGIN_PANEL_PROTOCOL_VERSION, body, ...extra }

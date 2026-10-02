@@ -24,7 +24,7 @@ import path from 'node:path'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/core/session'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
 import { createSessionListQuery } from '../../session/index.js'
 import type { SessionCommands } from '../../session/commands.js'
@@ -449,7 +449,7 @@ describe('sessions RPC domain', () => {
    * 改名要发一条 `session:renamed`(读路战役 7e:桌面壳听得见、别的客户端听不见)。
    *
    * 从前这条 RPC 改完盘就结束了 —— 全仓唯一的 `session:renamed` 产地是自动起题
-   * (`core/engine/core-stream-engine.ts` 的 `generateAndApplySessionTitle`),显式
+   * (`runtime/engine/core-stream-engine.ts` 的 `generateAndApplySessionTitle`),显式
    * 改名一发都不发,于是浏览器那一份 / 另一扇窗里的名字要等整表重拉才跟上。
    */
   it('rename 成功时往总线上发一条 session:renamed(sessionId + name 都对)', async () => {
@@ -574,7 +574,7 @@ describe('sessions RPC domain', () => {
     expect(Object.keys(emitted)).toEqual(['type', 'name'])
 
     const engineSource = fs.readFileSync(
-      new URL('../../core/engine/core-stream-engine.ts', import.meta.url),
+      new URL('../../runtime/engine/core-stream-engine.ts', import.meta.url),
       'utf-8',
     )
     // 引擎那两发(正常 + 兜底标题)都长这样:type 一行、name 一行,再无第三格。

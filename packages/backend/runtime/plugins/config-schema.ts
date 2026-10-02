@@ -25,7 +25,7 @@ import {
   resolvePluginFilePickAccept,
   PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT,
   PLUGIN_SETTINGS_FILE_IMPORT_FORMAT,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 /** 控件集 —— 与 PluginsSettingsTab 的渲染分支一一对应。 */
 export const PLUGIN_CONFIG_CONTROLS = [

@@ -3,7 +3,7 @@
  * renderer 只渲染 —— 所以 join 语义(徽标/置灰/缓存过期)全部钉在这里。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { CorePluginMarketIndex } from '@onething/backend/core/plugins'
+import type { CorePluginMarketIndex } from '@onething/backend/runtime/plugins/plugin-contract'
 import { getOnethingPluginMarketForIpc, type OnethingPluginMarketSnapshot } from '../ipc-operations.js'
 
 const INDEX: CorePluginMarketIndex = {

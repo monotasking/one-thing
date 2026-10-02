@@ -1,9 +1,9 @@
-import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/core/agent-loop'
+import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   agentSupportsInputModality,
   agentSupportsOutputModality,
   resolveAgentModelCapabilities,
-} from '@onething/backend/core/agent-loop'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 type MaybePromise<T> = T | Promise<T>
 

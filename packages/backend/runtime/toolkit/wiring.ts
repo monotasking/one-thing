@@ -107,7 +107,7 @@ export function resetToolkitCatalogForTests(): void {
 /* ── 缝 3:两条插件拦截链 → 一个 Interceptor ───────────────────────────────── */
 
 /**
- * 与 `core/engine/direct-tool-execution.ts` 的私有 `toolResultView` **逐字相同**。
+ * 与 `runtime/engine/direct-tool-execution.ts` 的私有 `toolResultView` **逐字相同**。
  *
  * 复制而不是 import,理由同 R2a 决定⑥ / R3a §13.6-1:那个文件在 §6 的删除清单上,
  * 新树对它的每一条 import 都是一根会在 R4 断掉的绳子。这是十行纯函数。

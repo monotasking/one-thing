@@ -33,7 +33,7 @@ import {
 	type CorePromptFragment,
 	type PromptSection,
 	type TurnBlock,
-} from "@onething/backend/core/engine";
+} from "@onething/backend/runtime/engine/engine-primitives";
 
 export interface PromptSource {
 	/** Diagnostics only (which source said what); never branched on. */

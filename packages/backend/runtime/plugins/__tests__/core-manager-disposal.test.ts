@@ -4,7 +4,7 @@ import {
   type CorePluginDefinition,
   type CorePluginManagerHost,
   type CorePluginStateLike,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 interface State extends CorePluginStateLike {
   pluginId: string

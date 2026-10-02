@@ -8,7 +8,7 @@
  */
 
 import type { StreamChunk } from '@shared/events/index.js'
-import type { CoreStreamEngineRuntime as CoreRuntime } from '@onething/backend/core/engine'
+import type { CoreStreamEngineRuntime as CoreRuntime } from '@onething/backend/runtime/engine/engine-primitives'
 import {
   createOnethingRuntimeFromStreamRuntime,
   type OnethingRuntime,

@@ -1,5 +1,5 @@
 import type { AppSettings, ChatMessage, ChatSession, ProviderConfig } from '@shared/ipc.js'
-import { pluginScope } from '@onething/backend/core/plugins'
+import { pluginScope } from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   CorePluginLifecycleRegistry,
   type CoreAfterAssistantResponseContext,
@@ -7,7 +7,7 @@ import {
   type CoreBeforeContextCompactContext,
   type CoreBeforeContextCompactHook,
   type CoreBeforeContextCompactOutcome,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,

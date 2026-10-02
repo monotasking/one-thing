@@ -29,7 +29,7 @@ import {
   resolvePluginFilePickAccept,
   sanitizePluginImportFileName,
   type PluginFilePickResult,
-} from '@onething/backend/core/plugins'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 import { getPluginsDir } from './disk-loader.js'
 
 export interface PluginFileImportRequest {

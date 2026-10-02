@@ -76,7 +76,7 @@ export {
   ToolExecutionScheduler,
   throwIfAgentAborted,
   TEXT_ONLY_AGENT_CAPABILITIES,
-} from './agent-loop/index.js'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 export type {
   AgentAfterTurnHook,
   AgentAudioContentPart,
@@ -137,7 +137,7 @@ export type {
   AgentVideoContentPart,
   BuildAgentLoopRuntimeOptions,
   ToolExecutionScheduleOptions,
-} from './agent-loop/index.js'
+} from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 // MCP 内核(原 `./mcp/`)第③步(2026-10-02)并进了 `runtime/mcp/kernel/` —— 它只有 mcp 领域与脊柱在用,
 // 不是通用骨架。core 的桶不再再导出它(那会让 core 倒挂到 runtime);要用就 import `@onething/backend/runtime/mcp/kernel`。
@@ -175,7 +175,7 @@ export type {
   PluginSettings,
   PluginSource,
   PluginTaskSnapshotLike,
-} from './plugins/index.js'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 export {
   CorePluginLifecycleRegistry,
   CorePluginManager,
@@ -195,10 +195,10 @@ export {
   scanPluginDirectories,
   setPluginEnabledInSettings,
   writePluginSettingsFile,
-} from './plugins/index.js'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 export type {
   PluginStoreOptions,
-} from './plugins/index.js'
+} from '@onething/backend/runtime/plugins/plugin-contract'
 
 export {
   DEFAULT_INTERACTION_ABORTED_REASON,
@@ -348,7 +348,7 @@ export {
   normalizeSessionTitle,
   PendingMessageQueue,
   resolveToolCallModel,
-} from './engine/index.js'
+} from '@onething/backend/runtime/engine/engine-primitives'
 export type {
   AbortLikeCommand,
   CoreCommandEnvelope,
@@ -382,7 +382,7 @@ export type {
   StreamEngineProviderConfigLike,
   StreamEngineSettingsWithProviders,
   StreamEngineToolCallModelSettings,
-} from './engine/index.js'
+} from '@onething/backend/runtime/engine/engine-primitives'
 
 export {
   EventBus,
@@ -423,7 +423,7 @@ export {
   sanitizeSessionOnStartup,
   shutdownCoreSessionLayer,
   validateSessionStateConsistency,
-} from './session/index.js'
+} from '@onething/backend/runtime/sessions/session-primitives'
 export type {
   CoreSessionValidationInput,
   CoreSessionValidationResult,
@@ -443,7 +443,7 @@ export type {
   TurnUsage,
   TimelineMetadataRepairOptions,
   UserMessageMarker,
-} from './session/index.js'
+} from '@onething/backend/runtime/sessions/session-primitives'
 
 export {
   createOnethingRuntimeFacade,

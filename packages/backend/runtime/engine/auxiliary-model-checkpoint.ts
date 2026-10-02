@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from '@onething/backend/core/agent-loop'
+import { awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { ensureSessionWritable } from '@onething/backend/session/index.js'
 import { writeSessionEvent } from '../../session/event-writer.js'
 import { flushSessionEventLog } from '../../session/event-log.js'

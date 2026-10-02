@@ -1,4 +1,4 @@
-import type { CoreCompactFileOperations, CoreCompactMessage } from '@onething/backend/core/engine'
+import type { CoreCompactFileOperations, CoreCompactMessage } from '@onething/backend/runtime/engine/engine-primitives'
 
 /**
  * C5-1(2026-08-14):确定性文件清单。
