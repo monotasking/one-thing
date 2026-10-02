@@ -24,7 +24,6 @@ const projectRoot = process.cwd()
 const SCAN_ROOTS = [
   'packages/backend/runtime',
   'packages/backend',
-  'packages/backend/core',
   'apps/desktop-react/src',
 ]
 

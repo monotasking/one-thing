@@ -33,7 +33,7 @@ import {
   configureSandboxHost,
   resetSandboxHost,
   type SandboxHost,
-} from '@onething/backend/runtime/tools/core/sandbox'
+} from '@onething/backend/runtime/tools/access-control/sandbox'
 import {
   configureAppLoggingHost,
   resetAppLoggingHost,
@@ -58,7 +58,7 @@ import {
   configureGatewayHost,
   resetGatewayHost,
   type GatewayHostPorts,
-} from '@onething/backend/gateway/lifecycle-port'
+} from '@onething/backend/runtime/gateway/lifecycle-port'
 import {
   configureSettingsHost,
   resetSettingsHost,

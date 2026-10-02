@@ -118,8 +118,8 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
       // 合包(第②步)以后 core / runtime / gateway 也住进了 packages/backend。第③步拍平(2026-10-02,用户拍板
       // 「server 包内部不再区分接线与产品逻辑」,正本 `docs/design/server-client-split-2026-10.md` §4)以后,
       // runtime 与脊柱是同一层:都可以碰内部会话模块(它们没有 exports 键,只能相对 import)。
-      // core 与 gateway 两棵子树照旧不许 —— 骨架不认识会话的内部实现,gateway 只依赖 core。
-      const inSpine = within(file, backend) && !['core', 'gateway'].some(dir => within(file, path.join(backend, dir)))
+      // 从前 core 与 gateway 两棵子树不许;去 core 批 3(2026-10-03)两者都并进了 runtime,整个后端包都可以碰。
+      const inSpine = within(file, backend)
       if (!inSpine && target && privateFile(target)) {
         violations.push(`${label}: relative or aliased import bypasses the public Backend boundary`)
       }

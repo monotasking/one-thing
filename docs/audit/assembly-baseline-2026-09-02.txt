@@ -6,6 +6,7 @@
 # 2026-10-02 第③步拍平:尺子从「runtime/<d>/wiring」扩到整个 runtime/(kernel 除外),新进尺子的 49 个文件按当时的值记入(合计 69 个模块级 let)。
 # 2026-10-03 去 core 批 1:core 的 14 个小目录并进 runtime/<d>/,从此在尺子上;新进尺子的 3 个文件按当时的值记入(合计 5 个模块级 let,文件末尾)。
 # 2026-10-03 去 core 批 2:core 的 plugins / session / engine / agent-loop 并进 runtime/<d>/,新进尺子的 2 个文件按当时的值记入(合计 2 个模块级 let,文件末尾)。
+# 2026-10-03 去 core 批 3:尺子不再跳过 core / gateway / runtime/<d>/kernel(都已并进 runtime);kernel 里零个模块级 let,gateway 的 3 个文件按当时的值记入(合计 5 个,文件末尾;其中 lifecycle-port.ts 是 ③-收尾 C 离开尺子的那一行,回到尺子)。
 packages/backend/channel/connector-registry.ts 1
 packages/backend/channel/identity-service.ts 1
 packages/backend/channel/identity-store.ts 1
@@ -108,7 +109,7 @@ packages/backend/runtime/skills/manage-setup.ts 1
 packages/backend/runtime/skills/session-skill-cache.ts 1
 packages/backend/runtime/todo-plan/todo-plan-service.ts 1
 packages/backend/runtime/toolkit/wiring.ts 2
-packages/backend/runtime/tools/core/sandbox.ts 2
+packages/backend/runtime/tools/access-control/sandbox.ts 2
 packages/backend/runtime/usage/usage-recorder.ts 1
 packages/backend/runtime/variables/variable-system.ts 2
 packages/backend/runtime/voice/service.ts 1
@@ -117,3 +118,6 @@ packages/backend/runtime/permission/permission-grants.ts 2
 packages/backend/runtime/storage/json-file.ts 1
 packages/backend/runtime/engine/error-details.ts 1
 packages/backend/runtime/sessions/lifecycle.ts 1
+packages/backend/runtime/gateway/channels/wechat/ilink/sender.ts 2
+packages/backend/runtime/gateway/hub/logging.ts 2
+packages/backend/runtime/gateway/lifecycle-port.ts 1

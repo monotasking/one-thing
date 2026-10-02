@@ -9,7 +9,7 @@ import type { MutatingFileToolAdapters, ReadToolAdapters } from '@onething/backe
 import { getOnethingFileMutationsDir } from '@onething/backend/runtime/storage'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
-import { getDefaultReadRoots } from '@onething/backend/runtime/tools/core/sandbox'
+import { getDefaultReadRoots } from '@onething/backend/runtime/tools/access-control/sandbox'
 
 export function defaultToolWorkingDirectory(): string | undefined {
   return getSettings().tools?.bash?.defaultWorkingDirectory

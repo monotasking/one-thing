@@ -11,7 +11,7 @@ import type { Authorizer, Decision, Invocation, Preview } from '@onething/backen
 import type { Effect } from '@shared/toolkit/effects'
 import { resolvePermissionMessageAnchor } from '@onething/backend/runtime/permission/message-anchor'
 import { createPermissionAuthorizer } from '@onething/backend/runtime/toolkit/authorizer'
-import { enforcePermissionPolicyRejectingUnanswered } from '@onething/backend/runtime/tools/core/permission-policy'
+import { enforcePermissionPolicyRejectingUnanswered } from '@onething/backend/runtime/tools/access-control/permission-policy'
 
 /**
  * 卡没人答时怎么办。`'wait'` = 一直等(有人守着卡的宿主:桌面壳,今天的行为);

@@ -42,17 +42,23 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import {
 	EventBus,
-	Permission,
 	StreamChannel,
+} from "@onething/backend/runtime/event-bus";
+import {
+	Permission,
+} from "@onething/backend/runtime/permission/permission-asks";
+import {
 	createOnethingRuntimeFacade,
-	type AgentEngineSessionEvent,
-	type AgentEngineStreamChunk,
 	type OnethingRuntimeFacade,
 	type RuntimeOAuthTokenEvent,
 	type RuntimeRequestContext,
 	type RuntimeStreamPayload,
 	type RuntimeUnsubscribe,
-} from "@onething/backend/core";
+} from "@onething/backend/server/runtime-facade.js";
+import type {
+	AgentEngineSessionEvent,
+	AgentEngineStreamChunk,
+} from "@onething/backend/runtime/agents/agent-engine";
 import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
@@ -351,10 +357,10 @@ import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { VariablesStorePersistence } from '@onething/backend/runtime/variables/store'
 import type { OnethingPromptStoreAdapters } from '@onething/backend/runtime/prompts/store'
-import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/backend/core/runtime-facade'
+import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/backend/server/runtime-facade.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
-import type { RuntimeGlobalEventsAdapter, RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from '@onething/backend/core/runtime-facade'
+import type { RuntimeGlobalEventsAdapter, RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from '@onething/backend/server/runtime-facade.js'
 import { GLOBAL_EVENT_LEAVES_PROCESS } from '@shared/events/index.js'
 
 const log = getLogger('server.runtime')

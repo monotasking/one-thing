@@ -1,7 +1,7 @@
 /**
  * 守护进程自己说「这台宿主没人值守」(K4-d)。
  *
- * 判据的另一半在 `runtime/tools/core/__tests__/permission-policy-unattended-host.test.ts`
+ * 判据的另一半在 `runtime/tools/access-control/__tests__/permission-policy-unattended-host.test.ts`
  * (声明之后 `system` 主体的卡 60 秒被答掉)。这一份只钉两件事:**谁说的**、
  * **什么时候收回** —— 收回若漏了,同一个进程里起过一次 daemon 之后,后面所有的
  * 后端(测试里、将来的嵌入场景里)都会以为自己无人值守。

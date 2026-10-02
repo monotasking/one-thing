@@ -42,8 +42,8 @@ vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
   findAgent: () => ({ systemPrompt: '' }),
   updateAgent: (...args: unknown[]) => fixture.updateAgent(...args),
 }))
-vi.mock('@onething/backend/core', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/core')>(),
+vi.mock('@onething/backend/runtime/permission/permission-asks', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/permission/permission-asks')>(),
   addGrant: (...args: unknown[]) => fixture.grant(...args),
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))

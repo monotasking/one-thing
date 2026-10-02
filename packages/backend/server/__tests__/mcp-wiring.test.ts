@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { EventBus, StreamChannel } from '@onething/backend/core'
+import { EventBus, StreamChannel } from '@onething/backend/runtime/event-bus'
 import { MCPManager as appMCPManager } from '@onething/backend/runtime/mcp/index.wiring'
 import {
   createMCPServerState,

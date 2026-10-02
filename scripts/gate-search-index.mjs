@@ -1232,7 +1232,6 @@ async function runLoopDelayPhase() {
      */
     const wasmHits = spawnSync('grep', ['-rln', '@huggingface/transformers',
       path.join(repoRoot, 'packages/backend'),
-      path.join(repoRoot, 'packages/backend/core'),
       path.join(repoRoot, 'packages/backend/runtime/search/service.ts'),
       path.join(repoRoot, 'packages/backend/runtime/search/capabilities'),
       path.join(repoRoot, 'apps/desktop-react/electron'),

@@ -41,7 +41,7 @@ import {
   type CollabAgentLike,
 } from '@onething/backend/runtime/collab'
 import type { SayToolResult } from '@onething/backend/runtime/toolkit'
-import { registerRetiredAgentToolName } from '@onething/backend/core'
+import { registerRetiredAgentToolName } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '../../session/commands.js'

@@ -60,7 +60,7 @@ vi.mock('@onething/backend/runtime/permission/capabilities', async (importOrigin
 
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
-    await import('@onething/backend/runtime/tools/core/sandbox')
+    await import('@onething/backend/runtime/tools/access-control/sandbox')
     await import('@onething/backend/runtime/tools/background-jobs-bound')
     await import('@onething/backend/runtime/tools/bash-executor')
     await import('@onething/backend/runtime/providers/chat-facade')

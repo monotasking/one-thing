@@ -68,7 +68,7 @@ import { deliverInternalMessage } from '@onething/backend/runtime/plugins/sessio
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import { SessionAccessError, type SessionAccess } from '@onething/backend/session/access.js'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 

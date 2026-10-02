@@ -8,8 +8,7 @@
  * 冒号右边随便有多少斜杠与冒号,所以 `dir:/Users/x/a:b` 是一个合法地址。
  *
  * ── 为什么住在 `files/` 而不是新开一棵 `resource/` 树 ──────────────────────────
- * I2(`packages/backend/core/<d>/x.ts` 与 `packages/backend/runtime/<d>/x.ts` 不许同名
- * 并存)与 P3 那条「包按环境、包内按领域」:目录的读法与做法用的就是 `files/` 这一
+ * I2(当时的「core 与 runtime 同一个领域名下不许同名并存」,core 于 2026-10-03 并进 runtime 后撤掉)与 P3 那条「包按环境、包内按领域」:目录的读法与做法用的就是 `files/` 这一
  * 族既有的纯函数(`listOnethingDirectory` / `statOnethingPath`),自述与它们同一个
  * 领域、同一棵树。会话那份自述住在 `sessions/` 也是同一条(`runtime/resource/index.ts`
  * 的头注释写着这句)。

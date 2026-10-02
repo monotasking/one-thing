@@ -10,7 +10,7 @@ import type { JsonObject } from '@shared/json'
  * `@shared/ipc/tools.ts` 的 `ToolCall` 上确实有 `permissionId` / `canRespond` /
  * `permissionQueued` 三格 —— 但屏幕上那棵树不是从那个形状来的:它是
  * `materializeChatMessagesCached` 交出来的 **core 折叠产物**,而 core 的投影里
- * 压根没有这三格(`grep permissionId packages/backend/core` 只落在 `permission/` 自己身上)。
+ * 压根没有这三格(`grep permissionId` 只落在权限目录 `runtime/permission/` 自己身上)。
  * 硬把字段接到那些对象上有两个后果,都是这台壳明令禁止的:①物化是**按 `(节点,
  * node.rev)` 缓存**的,而一次审批不改账本、`rev` 不动 —— 补上去的字段永远不会
  * 上屏;②那棵树的产地只有一处(「React 侧零拼装」,`chat-source.ts` 文件头),

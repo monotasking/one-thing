@@ -107,7 +107,7 @@ configureChatPort({
  * 状态),执行口一律 `success:false` —— 没有哪个用例该因为默认端口而真的
  * 跑了一条插件命令。要验的用例自己 `configureCommandsPort` 换一个。
  *
- * 内置那七条不经端口:它们是 `@onething/backend/core/slash-commands` 的编译期常量。
+ * 内置那七条不经端口:它们是 `@shared/slash-commands` 的编译期常量。
  */
 import { configureCommandsPort } from '../data/commands-port'
 

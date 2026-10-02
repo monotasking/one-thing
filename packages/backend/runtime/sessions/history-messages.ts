@@ -1,4 +1,4 @@
-import { getAIToolName, type AgentProviderData } from '@onething/backend/core'
+import { getAIToolName, type AgentProviderData } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { toJsonValue, type JsonObject, type JsonValue } from '@shared/json'
 import {
   buildHistoryMessages as buildCoreHistoryMessages,

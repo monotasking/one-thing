@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { collabAgentNotebookPath } from '@onething/backend/runtime/collab/actors/agent-mailbox'
 import { createCollabNotebookFileStore, type CollabNotebookStore } from '@onething/backend/runtime/collab/actors/notebook-store'

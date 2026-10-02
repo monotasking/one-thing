@@ -310,7 +310,7 @@ describe('files RPC domain', () => {
 
   it('offers notes and Downloads as directory roots for a bare @ on the desktop', async () => {
     declareDesktopHost()
-    const { getDownloadsDirectory } = await import('@onething/backend/runtime/tools/core/sandbox')
+    const { getDownloadsDirectory } = await import('@onething/backend/runtime/tools/access-control/sandbox')
     const noteRoot = '/notes/personal'
     notes.roots = [noteRoot]
     ripgrep.listFiles.mockReturnValue(emit([]))

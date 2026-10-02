@@ -12,7 +12,7 @@
  * 现在两侧同读一条规则:原生 image_generation 工具可用 ⇒ 具备 image 输出。
  */
 import { describe, expect, it } from "vitest";
-import { assertAgentOutputModalitiesSupportedByCapabilities } from "@onething/backend/core";
+import { assertAgentOutputModalitiesSupportedByCapabilities } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import { createAgentProviderFromRuntime } from "../factory.js";
 
 /** 真机 `~/.onething/settings.json` 里 /codex/models/gpt-5.5 那条的形状。 */

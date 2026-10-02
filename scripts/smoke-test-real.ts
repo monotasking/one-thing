@@ -1,11 +1,11 @@
+import { AgentEngine } from '../packages/backend/runtime/agents/agent-engine.ts'
 import {
-  AgentEngine,
   AllowAllPolicy,
   ToolRegistry,
-  type Provider,
   type ToolCall,
   type ToolResult,
-} from '../packages/backend/core/index.ts'
+} from '../packages/backend/runtime/tools/tool-helpers.ts'
+import type { Provider } from '../packages/backend/runtime/providers/types.ts'
 import {
   createAnthropicProvider,
   createDeepSeekProvider,

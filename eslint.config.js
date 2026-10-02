@@ -39,20 +39,17 @@ export default [
   },
 
   // ── L4 日志迁移:迁完的区开 no-console(docs/design/logging-system-2026-08.md §8)
-  // 区 ① core + runtime 产品层。core 通过注入 / `getCoreLogger` 拿 logger,
-  // 产品层用 `@onething/backend/runtime/logging` 的 `getLogger(ns)`;`packages/shared`
-  // 是纯契约,本来就一条 console 都没有。测试里的 console 不算。
+  // 区 ① runtime + shared。runtime 里从 core 并进来的那些文件通过注入 / `getCoreLogger` 拿 logger,
+  // 其余用 `@onething/backend/runtime/logging` 的 `getLogger(ns)`;`packages/shared`
+  // 是纯契约,本来就一条 console 都没有。测试里的 console 不算。(core 目录于 2026-10-03 并进 runtime。)
   {
     files: [
-      'packages/backend/core/**/*.ts',
       'packages/shared/**/*.ts',
       'packages/backend/runtime/**/*.ts',
     ],
     ignores: [
       // 区 ② 的装配层自己开(文件不相交,§8.3)。
       'packages/backend/runtime/app/**',
-      'packages/backend/core/**/__tests__/**',
-      'packages/backend/core/**/*.test.ts',
       'packages/shared/**/__tests__/**',
       'packages/shared/**/*.test.ts',
       'packages/backend/runtime/**/__tests__/**',

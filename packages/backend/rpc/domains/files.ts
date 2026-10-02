@@ -100,7 +100,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
 import { listFiles as ripgrepListFiles } from '../../utils/ripgrep.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { getDownloadsDirectory } from '@onething/backend/runtime/tools/core/sandbox'
+import { getDownloadsDirectory } from '@onething/backend/runtime/tools/access-control/sandbox'
 import { walkWorkspaceFiles } from '@onething/backend/runtime/files/workspace-walk'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import {

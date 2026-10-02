@@ -51,7 +51,7 @@ import { getSettings, initializeSettings, invalidateSettingsCache } from './stor
 import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { initializeAgents } from '@onething/backend/runtime/agents/agent-store-access'
-import { configureAppToolSandbox } from '@onething/backend/runtime/tools/core/sandbox'
+import { configureAppToolSandbox } from '@onething/backend/runtime/tools/access-control/sandbox'
 import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/backend/runtime/tools/background-jobs-bound'
 import { configureAppProviderRegistry } from '@onething/backend/runtime/providers/chat-facade'

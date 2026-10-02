@@ -6,7 +6,7 @@
  * (B 期,用户壁纸)要拉起 `dialog.showOpenDialog`,并且要挂在**发起这次点击的
  * 那个窗口**上 —— 只有 Electron 桌面宿主有这两样。
  *
- * 判例照 `gateway/lifecycle-port.ts`:**late-bound**(每次调用现读,宿主接线
+ * 判例照 `runtime/gateway/lifecycle-port.ts`:**late-bound**(每次调用现读,宿主接线
  * 晚于模块求值也照样生效)、**未注入即结构化降级**而不是抛错 —— 没有窗口的
  * 进程里「拉起文件对话框」是一件做不到的事,不是 bug。降级文案逐字沿用迁移前
  * `platform/web.ts` 那只硬桩。

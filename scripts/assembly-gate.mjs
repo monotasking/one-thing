@@ -48,29 +48,17 @@ export function countModuleLets(source) {
 }
 
 /**
- * 合包(server / client 拆分第②步,2026-10-02)以后,`packages/backend` 下多了三棵原样搬进来的子树:
- * `core/`(引擎骨架)、`runtime/`(产品层)、`gateway/`。这把尺子量的是**装配层**(脊柱;③-收尾 C 之前还有一个接线子目录,现已并进 `runtime/`)
- * 长回全局变量,从来没量过那三个包(它们合包前根本不在扫描根里);把它们扫进来不会让装配层多一个 let,
- * 只会让基线外凭空冒出几十个文件、把尺子变成另一把。所以按目录排除。
+ * 这把尺子量整个 `packages/backend`:包根(后端入口与门面)+ `runtime/<功能>/`。
  *
- * 第③步拍平(2026-10-02,用户拍板「server 包内部不再区分接线与产品逻辑」,正本
- * `docs/design/server-client-split-2026-10.md` §4)起,装配代码平铺在 `runtime/<d>/` 里,「装配层」不再能按目录
- * 认出来。所以尺子改量**整个 `runtime/`**,只跳过 `runtime/<d>/kernel/`:kernel 按 core 判,core 本来就不在
- * 这把尺子上(骨架的模块状态由 core 自己的规矩管)。runtime 里新进尺子的文件按当时的值写进基线,同样只许降。
+ * 来历:合包(第②步,2026-10-02)时包里还有 `core/`、`gateway/` 两棵原样搬进来的子树,尺子按目录排除了它们;第③步拍平
+ * 以后尺子扩到整个 `runtime/`,只跳过 `runtime/<d>/kernel/`(那时 kernel 按 core 判)。去 core 批 1–3(2026-10-03)把
+ * core、gateway 都并进了 runtime,kernel 也只是领域里一个普通子目录,所以排除名单与 kernel 那一格一起撤掉。
+ * 每次新进尺子的文件都按当时的值写进基线,同样只许降。
  */
-const NOT_ASSEMBLY_SUBTREES = new Set(['core', 'gateway'].map(dir => path.join(scanRoot, dir)))
-const RUNTIME_SUBTREE = path.join(scanRoot, 'runtime')
-
-/** `runtime/<d>/kernel`:按 core 判,不上这把尺子。 */
-function isRuntimeKernelDir(absolute) {
-  return path.dirname(path.dirname(absolute)) === RUNTIME_SUBTREE && path.basename(absolute) === 'kernel'
-}
-
 function walk(dir, out) {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === '__tests__' || entry === 'dist') continue
     const absolute = path.join(dir, entry)
-    if (NOT_ASSEMBLY_SUBTREES.has(absolute) || isRuntimeKernelDir(absolute)) continue
     if (statSync(absolute).isDirectory()) {
       walk(absolute, out)
       continue

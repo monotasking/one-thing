@@ -11,7 +11,7 @@ import type { CommandSpec } from '../composer/types'
  * 发送前的那次分派也从这里查表。
  *
  * ── 表 = 两处事实的并,不是壳自己编的一张 ─────────────────────────────────
- *  ① 内置七条 = `@onething/backend/core/slash-commands` 的 `SHARED_SLASH_COMMANDS`。
+ *  ① 内置七条 = `@shared/slash-commands` 的 `SHARED_SLASH_COMMANDS`。
  *     它是**编译期常量**,所以不需要取数、不需要状态、不会失败。抽屉里那几个字
  *     (`displayLabel` / `description` / `usage`)一个都不由壳现造 —— 现造就是
  *     在第二处定义同一件事,而那两份一定会漂。

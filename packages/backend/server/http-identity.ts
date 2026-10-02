@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import { validateTenantScopes } from './tenant-paths.js'
 
 export interface HttpIdentityOptions {

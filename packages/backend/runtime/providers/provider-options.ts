@@ -5,7 +5,7 @@
  * endpoint, qwen's and kimi's api mode and region. Those used to travel as named fields on
  * every config type between the settings store and the provider factory — nine
  * files had to list `zhipuApiMode` by name just to hand it along, including
- * `packages/backend/core`, which is supposed to be provider-agnostic.
+ * the engine skeleton (then `core/`, now `runtime/{engine,agent-loop}`), which is supposed to be provider-agnostic.
  *
  * The failure mode was not the ugliness. `CoreAgentLoopProviderRuntimeConfigFor`
  * is a `Pick<>` whitelist: a field nobody remembered to add there is dropped

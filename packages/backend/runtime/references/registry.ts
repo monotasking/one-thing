@@ -4,7 +4,7 @@ import type { RefTypeSpec } from './spec.js'
 /**
  * 线上引用类型的注册表。
  *
- * **这个文件里不出现任何一种引用的名字**,和 `packages/backend/core/references` 一样 ——
+ * **这个文件里不出现任何一种引用的名字**,和 `packages/shared/references` 一样 ——
  * 它只管「唯一性」与「顺序」两件事:
  *
  * - 重复 `type` 直接抛。两份同名自述谁赢是说不清的,而提示词是要逐字稳定的。

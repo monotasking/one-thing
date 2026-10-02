@@ -21,7 +21,7 @@
  * late-bound(每次现读)+ 注册返回**还原**函数:桌面内嵌 HTTP 面与 `server:start`
  * 在同一个进程里先后起落时,后者的 shutdown 不会把前者的槽一起清掉。
  */
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 
 export interface ServerSearchPort {
   query(request: unknown, context?: RuntimeRequestContext): Promise<unknown>

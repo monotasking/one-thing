@@ -92,7 +92,7 @@ export const MCP_SERVER_VERSION = '1.1.7'
  *
  * **K4-d 之后这一格是双保险,不再是唯一的止损**(那条留账已还):守护进程装配时
  * 声明自己无人值守(`markHostUnattended`),于是 `system` 主体的 ask 由
- * `packages/backend/runtime/tools/core/permission-policy.ts` 的 `unattendedHostBridge`
+ * `packages/backend/runtime/tools/access-control/permission-policy.ts` 的 `unattendedHostBridge`
  * 在同样的 60 秒后经 `Permission.respond` **真的答掉**。两个 60 秒谁先跑赢由调度
  * 决定,而两种次序的结局都是对的:
  *  - 桥先超时 → 它回一句「需要审批,无人应答」,daemon 那边稍后把卡答掉,不留 pending;

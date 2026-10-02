@@ -34,7 +34,7 @@ import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 import { sessionAccess } from '@onething/backend/session/access.js'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

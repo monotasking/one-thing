@@ -16,8 +16,8 @@ import {
 } from '@onething/backend/runtime/plugins/plugin-contract'
 
 // Manifests are product data: the plugin's id/描述/作者只有产品层认识,
-// core 只提供无名的日志监控原语(守卫:packages/backend/core knows no concrete
-// plugin or feature names)。
+// 插件内核只提供无名的日志监控原语(`log-monitor-primitives.ts`;守卫:runtime dirs and files merged
+// from core know no concrete plugin or feature names)。
 /**
  * schema 是这个插件配置的**唯一事实源**(R3 裁决:没有运行期 registerSettings)。
  * 内置插件的 manifest 住在代码里,所以它就写在这儿;用户插件写在 plugin.json。

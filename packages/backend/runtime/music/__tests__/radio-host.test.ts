@@ -93,8 +93,8 @@ vi.mock('@onething/backend/session/access.js', async importOriginal => {
     }),
   }
 })
-vi.mock('@onething/backend/core', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/core')>()),
+vi.mock('@onething/backend/runtime/permission/permission-asks', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/permission/permission-asks')>()),
   addGrant: vi.fn(),
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: vi.fn() }))

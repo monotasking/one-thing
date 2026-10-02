@@ -63,15 +63,9 @@ const ELECTRON_PRELOAD_ENTRY_FORBIDDEN_PATTERNS: RegExp[] = [
   /index:\s*resolve\(__dirname,\s*['"]src\/preload\/index\.ts['"]\)/,
 ]
 
-const GATEWAY_CORE_DEPENDENCY_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]@onething\/backend\/core(?!\/gateway-runtime['"])(?:\/[^'"]*)?['"]/,
-]
-
-const GATEWAY_RUNTIME_DEPENDENCY_FORBIDDEN_PATTERNS: RegExp[] = [
-  /from\s+['"]@onething\/backend\/runtime['"]/,
-  /from\s+['"]@onething\/backend\/runtime\/[^'"]+['"]/,
-  /"@onething\/backend\/runtime"/,
-]
+// 「gateway 只依赖 core + `@shared`」那两张表(不许 import core 的其余部分、不许 import runtime)随去 core 批 3(2026-10-03)
+// 撤掉:core 没了,gateway 子树搬进了 `runtime/gateway/`,它就是 runtime 里一个普通功能(用户拍板)。宿主禁令由
+// `checkRuntimeHostBoundary` 管。
 
 const GATEWAY_STANDALONE_AGENT_FORBIDDEN_PATTERNS: RegExp[] = [
   /AgentEngine/,
@@ -91,8 +85,8 @@ const GATEWAY_CHANNEL_SELECTION_FORBIDDEN_PATTERNS: RegExp[] = [
 ]
 
 /**
- * 这三张表只喂 `matchingImportSpecifierLines` —— 匹配的是 import/require 的说明符,
- * 不是整行。注释里的交叉引用、静态扫描测试里的 `path.join(REPO_ROOT, 'packages/backend/core/…')`
+ * 这张表只喂 `matchingImportSpecifierLines` —— 匹配的是 import/require 的说明符,
+ * 不是整行。注释里的交叉引用、静态扫描测试里的 `path.join(REPO_ROOT, 'packages/backend/runtime/…')`
  * 都不算命中;`packages/backend`(P3'd 前的 `src/app`)是独立的 workspace 包,它进
  * runtime 走 `@onething/backend/runtime/<sub>` 包说明符,天然不含这串字面量。
  */
@@ -100,9 +94,8 @@ const MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
   /packages\/backend\/runtime/,
 ]
 
-const MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
-  /packages\/backend\/core\//,
-]
+// core、gateway 两张同形的表(说明符里不许出现它们的仓内路径)随去 core 批 3(2026-10-03)撤掉:core 目录没了,
+// gateway 搬进了 `runtime/gateway/`,上面 runtime 那一张已经管到它。
 
 const MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS: RegExp[] = [
   /const\s+\{\s*getEventBus\s*\}\s*=\s*await\s+import\(['"]\.\.\/events\/index\.js['"]\)/,
@@ -117,9 +110,6 @@ const MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS: RegExp[] = [
   /console\.error\(['"]\[ChatIPC\]\s+EventBus emit failed:/,
 ]
 
-const MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
-  /packages\/backend\/gateway/,
-]
 
 const MAIN_GATEWAY_ENABLEMENT_FORBIDDEN_PATTERNS: RegExp[] = [
   /GATEWAY_CHANNELS/,
@@ -566,14 +556,14 @@ const MAIN_CORE_SYSTEM_DIRS = [
   // (除 consolePort 外零脊柱边),目录不复存在。
   // ③-收尾 A(2026-10-02):装配层的 permission、tools 两个目录平铺进了 runtime。尺子只跟着**搬过去的那几只文件**走:
   // 当时 `runtime/permission/` 整个目录就是原来装配层那一个;装配层的 tools 目录里只有 `core/`,所以这里写
-  // `runtime/tools/core`,不写 `runtime/tools` —— 后者还住着本职就做文件 IO 的纯模块(bash 执行器、文件快照),从没在这把尺子上。
+  // `runtime/tools/access-control`,不写 `runtime/tools` —— 后者还住着本职就做文件 IO 的纯模块(bash 执行器、文件快照),从没在这把尺子上。
   // 去 core 批 1(2026-10-03):core 的 permission 目录也并进了 `runtime/permission/`,而那一半本职就要 `node:path`
   // (授权按路径匹配)、从没在这把尺子上。所以这里从「整个目录」改成点名原来装配层那四只文件,尺子量的东西不变。
   'packages/backend/runtime/permission/capabilities.ts',
   'packages/backend/runtime/permission/grant-storage.ts',
   'packages/backend/runtime/permission/index.ts',
   'packages/backend/runtime/permission/message-anchor.ts',
-  'packages/backend/runtime/tools/core',
+  'packages/backend/runtime/tools/access-control',
 ]
 
 /** 有真实文件 IO 职责的装配目录:只禁宿主与原生 SDK,不禁 fs/path。 */
@@ -1975,20 +1965,6 @@ const SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS: RegExp[] = [
   /type\s+StreamChunk\s*=/,
 ]
 
-const SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS: RegExp[] = [
-  /type\s+JsonPrimitive\s*=/,
-  /type\s+JsonValue\s*=/,
-  /type\s+JsonObjectProperty\s*=/,
-  /interface\s+JsonObject/,
-  /type\s+JsonArray\s*=/,
-  /interface\s+JsonSchemaObject/,
-  /function\s+isJsonObject/,
-  /function\s+parseJsonObject/,
-  /function\s+toJsonValue/,
-  /function\s+toJsonObject/,
-  /function\s+toJsonSchemaObject/,
-]
-
 const SHARED_IPC_ROUTER_FORBIDDEN_PATTERNS: RegExp[] = [
   /type\s+RoutePayload\s*=/,
   /interface\s+RouteConfig/,
@@ -2368,7 +2344,7 @@ function matchingCodeLines(filePath: string, patterns: RegExp[]): string[] {
 /**
  * 只在 **import / require 说明符** 上匹配,不在整行上匹配。
  *
- * 起因(08-21 P2/D 组):"必须走包公开入口"那几条 check 拿 `packages/backend/core/` 之类
+ * 起因(08-21 P2/D 组):"必须走包公开入口"那几条 check 拿 `packages/backend/runtime/` 之类
  * 的裸字符串扫全行,15 条命中全是注释里的交叉引用(`见 packages/backend/runtime/plugins/…`)
  * 和静态扫描测试里的路径串(`path.join(REPO_ROOT, 'packages/backend/runtime/plugins')`)——
  * 前者是文档,后者是那些测试的**工作对象**,都不是 import。
@@ -2460,12 +2436,11 @@ const APP_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
 // runtime 本来就能 import `@shared/ipc` 了,后缀不再表达任何权限。`*.wiring.ts` 文件名本批不改,留给下一步。
 
 /**
- * 合包(server / client 拆分第②步,2026-10-02)以后,`packages/backend` 下住着两类东西:装配层的脊柱
- * (包根的 backend.ts / server / rpc / session / …;从前还有一个接线子目录,③-收尾 C 撤掉了),以及原样搬进来的三棵子树 ——
- * `core/`(引擎骨架)、`runtime/`(产品层)、`gateway/`。从前「住在 backend 包里」就等于「是装配层」,
- * 现在要按目录判:落在三棵子树以外的才是脊柱。
+ * `packages/backend` 下住着两类东西:包根(后端入口与门面:backend.ts / server / rpc / stores / session / events / …)
+ * 与 `runtime/<功能>/`(一个功能一个目录,平铺)。合包(第②步)时还有 `core/`、`gateway/` 两棵子树;去 core 批 1–3
+ * (2026-10-03)把它们并进了 `runtime/`,今天只剩 runtime 这一棵。落在它以外的就是包根。
  */
-const BACKEND_PRODUCT_SUBTREES = ['core', 'runtime', 'gateway']
+const BACKEND_PRODUCT_SUBTREES = ['runtime']
 
 function isBackendSpineFile(file: string): boolean {
   const backendRoot = path.join(root, 'packages/backend')
@@ -2484,10 +2459,10 @@ function checkRuntimeHostBoundary(): void {
   // 宿主禁令(electron / `@main` / `@preload` / 渲染层别名)。runtime 照旧不许 import cordis(装配底座专属,
   // 今天 runtime 里零处)。
   //
-  // 去 core 批 1(2026-10-03):core 的专属禁令撤掉,core 剩下的文件按 runtime 判(同一套宿主禁令 + cordis)。
+  // 去 core 批 1(2026-10-03):core 的专属禁令撤掉,core 剩下的文件按 runtime 判(同一套宿主禁令 + cordis);
+  // 批 3 起 core 目录不存在,gateway 也在 `runtime/gateway/` 里,一并按 runtime 判。
   const backendRoot = path.join(root, 'packages/backend')
   const lines = [
-    ...walkFiles(path.join(root, 'packages/backend/core')),
     ...walkFiles(path.join(root, 'packages/backend/runtime')),
     ...walkFiles(backendRoot).filter(isBackendSpineFile),
   ]
@@ -2497,7 +2472,7 @@ function checkRuntimeHostBoundary(): void {
         ? APP_ASSEMBLY_FORBIDDEN_PATTERNS
         : [...APP_ASSEMBLY_FORBIDDEN_PATTERNS, ...CORDIS_FORBIDDEN_PATTERNS],
     ))
-  assertNoMatches('packages/backend/core + runtime + packages/backend have no Electron/main/preload/renderer forbidden imports', lines)
+  assertNoMatches('packages/backend/runtime + packages/backend have no Electron/main/preload/renderer forbidden imports', lines)
 }
 
 /**
@@ -2602,20 +2577,18 @@ function checkSessionVocabularyUsesTheRegistry(): void {
 }
 
 function checkGatewayHostBoundary(): void {
-  // ③-收尾 C(2026-10-02):gateway 子树的依赖从「只 core」放宽成「core + `@shared`(含 `@shared/ipc`)」——
-  // shared 是 server ↔ client 的契约,后端引用它是合理的;网关生命周期端口(`gateway/lifecycle-port.ts`)的形状
-  // 就是 `@shared/ipc/gateway.js` 上那八对类型。宿主禁令(electron / src/main / 相对爬进 shared 源码)照旧。
-  const lines = walkFiles(path.join(root, 'packages/backend/gateway'))
+  // ③-收尾 C(2026-10-02):gateway 的依赖从「只 core」放宽成「core + `@shared`(含 `@shared/ipc`)」;去 core 批 3
+  // (2026-10-03)把「只依赖 core + `@shared`」这一半整个撤掉 —— core 没了,gateway 搬进 `runtime/gateway/` 成了普通功能,
+  // 它 import runtime 的别的功能是正常的。留下的是宿主禁令(electron / src/main / 相对爬进 shared 源码)。
+  const lines = walkFiles(path.join(root, 'packages/backend/runtime/gateway'))
     .flatMap(file => matchingLines(file, [
       ...HOST_BOUNDARY_FORBIDDEN_PATTERNS.filter(pattern => pattern.source !== 'shared\\/ipc'),
-      ...GATEWAY_CORE_DEPENDENCY_FORBIDDEN_PATTERNS,
-      ...GATEWAY_RUNTIME_DEPENDENCY_FORBIDDEN_PATTERNS,
     ]))
-  assertNoMatches('packages/backend/gateway has no Electron/main forbidden imports (core + @shared only)', lines)
+  assertNoMatches('packages/backend/runtime/gateway has no Electron/main forbidden imports', lines)
 }
 
 function checkGatewayLoadsRuntimeFromHostBoundary(): void {
-  const gatewayFile = path.join(root, 'packages/backend/gateway/index.ts')
+  const gatewayFile = path.join(root, 'packages/backend/runtime/gateway/index.ts')
   const content = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
   const requiredSymbols = [
     'ONETHING_GATEWAY_RUNTIME_MODULE',
@@ -2628,15 +2601,15 @@ function checkGatewayLoadsRuntimeFromHostBoundary(): void {
       .map(symbol => `${rel(gatewayFile)}: missing gateway runtime loader symbol ${symbol}`),
     ...(fs.existsSync(gatewayFile)
       ? matchingLines(gatewayFile, GATEWAY_STANDALONE_AGENT_FORBIDDEN_PATTERNS)
-      : ['packages/backend/gateway/index.ts: missing gateway package entrypoint']),
+      : ['packages/backend/runtime/gateway/index.ts: missing gateway package entrypoint']),
   ]
 
-  assertNoMatches('packages/backend/gateway loads onething runtime from host instead of creating an agent', lines)
+  assertNoMatches('packages/backend/runtime/gateway loads onething runtime from host instead of creating an agent', lines)
 }
 
 function checkGatewayUsesExplicitTypingSignal(): void {
-  const channelFile = path.join(root, 'packages/backend/gateway/core/channel.ts')
-  const bridgeFile = path.join(root, 'packages/backend/gateway/core/bridge.ts')
+  const channelFile = path.join(root, 'packages/backend/runtime/gateway/hub/channel.ts')
+  const bridgeFile = path.join(root, 'packages/backend/runtime/gateway/hub/bridge.ts')
   const channelContent = fs.existsSync(channelFile) ? fs.readFileSync(channelFile, 'utf-8') : ''
   const bridgeContent = fs.existsSync(bridgeFile) ? fs.readFileSync(bridgeFile, 'utf-8') : ''
   const lines = [
@@ -2648,15 +2621,15 @@ function checkGatewayUsesExplicitTypingSignal(): void {
       : []),
     ...(fs.existsSync(bridgeFile)
       ? matchingLines(bridgeFile, GATEWAY_BRIDGE_TYPING_FORBIDDEN_PATTERNS)
-      : ['packages/backend/gateway/core/bridge.ts: missing gateway bridge']),
+      : ['packages/backend/runtime/gateway/hub/bridge.ts: missing gateway bridge']),
   ]
 
-  assertNoMatches('packages/backend/gateway uses explicit typing signal instead of empty text messages', lines)
+  assertNoMatches('packages/backend/runtime/gateway uses explicit typing signal instead of empty text messages', lines)
 }
 
 function checkGatewayRegistersConfiguredChannels(): void {
-  const gatewayFile = path.join(root, 'packages/backend/gateway/index.ts')
-  const gatewayConfigFile = path.join(root, 'packages/backend/gateway/config.ts')
+  const gatewayFile = path.join(root, 'packages/backend/runtime/gateway/index.ts')
+  const gatewayConfigFile = path.join(root, 'packages/backend/runtime/gateway/config.ts')
   const content = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
   const configContent = fs.existsSync(gatewayConfigFile) ? fs.readFileSync(gatewayConfigFile, 'utf-8') : ''
   const requiredGatewaySymbols = [
@@ -2678,16 +2651,16 @@ function checkGatewayRegistersConfiguredChannels(): void {
       .map(symbol => `${rel(gatewayConfigFile)}: missing configured gateway channel config symbol ${symbol}`),
     ...(fs.existsSync(gatewayFile)
       ? matchingLines(gatewayFile, GATEWAY_CHANNEL_SELECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/gateway/index.ts: missing gateway entrypoint']),
+      : ['packages/backend/runtime/gateway/index.ts: missing gateway entrypoint']),
   ]
 
-  assertNoMatches('packages/backend/gateway registers configured IM channels', lines)
+  assertNoMatches('packages/backend/runtime/gateway registers configured IM channels', lines)
 }
 
 function checkGatewayWechatQrStateHandling(): void {
-  const channelFile = path.join(root, 'packages/backend/gateway/channels/wechat/index.ts')
-  const channelTestFile = path.join(root, 'packages/backend/gateway/channels/wechat/__tests__/channel.test.ts')
-  const pollerTestFile = path.join(root, 'packages/backend/gateway/channels/wechat/ilink/__tests__/poller.test.ts')
+  const channelFile = path.join(root, 'packages/backend/runtime/gateway/channels/wechat/index.ts')
+  const channelTestFile = path.join(root, 'packages/backend/runtime/gateway/channels/wechat/__tests__/channel.test.ts')
+  const pollerTestFile = path.join(root, 'packages/backend/runtime/gateway/channels/wechat/ilink/__tests__/poller.test.ts')
   const channelContent = fs.existsSync(channelFile) ? fs.readFileSync(channelFile, 'utf-8') : ''
   const channelTestContent = fs.existsSync(channelTestFile) ? fs.readFileSync(channelTestFile, 'utf-8') : ''
   const pollerTestContent = fs.existsSync(pollerTestFile) ? fs.readFileSync(pollerTestFile, 'utf-8') : ''
@@ -2729,7 +2702,7 @@ function checkGatewayWechatQrStateHandling(): void {
       .map(symbol => `${rel(pollerTestFile)}: missing WeChat poller getupdates compatibility test coverage ${symbol}`),
   ]
 
-  assertNoMatches('packages/backend/gateway follows official WeChat iLink QR and getupdates compatibility', lines)
+  assertNoMatches('packages/backend/runtime/gateway follows official WeChat iLink QR and getupdates compatibility', lines)
 }
 
 function checkAgentsDomainRidesTheRpcChannel(): void {
@@ -3055,17 +3028,6 @@ function checkMainUsesRuntimePackageImports(): void {
   assertNoMatches('Electron main and tests import packages/backend/runtime via package public entrypoints', lines)
 }
 
-function checkMainUsesCorePackageImports(): void {
-  const lines = walkFiles(path.join(root, 'packages/backend'), [], { includeTests: true })
-    .flatMap(file => matchingImportSpecifierLines(file, MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
-  assertNoMatches('Electron main and tests import headless core via package public entrypoints', lines)
-}
-
-function checkMainUsesGatewayPackageImports(): void {
-  const lines = walkFiles(path.join(root, 'packages/backend'), [], { includeTests: true })
-    .flatMap(file => matchingImportSpecifierLines(file, MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
-  assertNoMatches('Electron main and tests import gateway via package public entrypoints', lines)
-}
 
 /**
  * 「core 只许 import 批准表里的第三方包」(`checkCorePackageDependencies`)与「core 的大桶必须交出 AgentEngine /
@@ -3163,7 +3125,7 @@ function checkCoreOwnsToolSchemaProjection(): void {
 
 /**
  * 2026-10(server / client 拆分第①步,`docs/design/server-client-split-2026-10.md` §2):
- * 下面四条从前叫「packages/backend/core owns …」—— 协议定义在 core,shared 留一个再导出门面,
+ * 下面四条从前叫「core owns …」—— 协议定义在 core,shared 留一个再导出门面,
  * 并禁止 shared 自己再写一份。①a / ①c 把这几份协议整块搬进了 shared(它们是 server 与
  * client 之间的契约,或两边必须算出同一个答案的纯逻辑),门面随之删除,core 改为从 shared 取。
  * 规则的**意图没变** —— 一份协议只有一个主人、别处不许再抄一份 —— 变的是主人的住址,
@@ -3340,12 +3302,11 @@ function checkSharedOwnsStreamChunkProtocol(): void {
 function checkSharedOwnsJsonProtocol(): void {
   const sharedFile = path.join(root, 'packages/shared/json.ts')
   const sharedTestFile = path.join(root, 'packages/shared/__tests__/json.test.ts')
-  const retiredCoreFile = path.join(root, 'packages/backend/core/json.ts')
-  // 合包后 core 没有自己的清单;「`./json` 出口已退役」改为查合并后清单里不许有 `./core/json`。
-  const corePackageFile = path.join(root, 'packages/backend/package.json')
+  // 去 core 批 3(2026-10-03):「core 下不许再有 `json.ts`」「清单里不许有 `./core/json` 键」「不许在 core 里再抄一份」三格
+  // 随 core 目录一起撤掉。最后一格没有改成扫整个后端:后端里本来就有几只按需写的本地小帮手(变量的类型值、ACP 会话、
+  // 工具契约的 schema 形状),它们不是 JSON 协议的第二份,那条判据只对 core 成立。
   const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
   const sharedTestContent = fs.existsSync(sharedTestFile) ? fs.readFileSync(sharedTestFile, 'utf-8') : ''
-  const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
   const requiredSymbols = [
     'JsonPrimitive',
     'JsonValue',
@@ -3372,15 +3333,6 @@ function checkSharedOwnsJsonProtocol(): void {
     ...requiredSymbols
       .filter(symbol => !sharedTestContent.includes(symbol))
       .map(symbol => `${rel(sharedTestFile)}: missing JSON protocol test coverage for ${symbol}`),
-    ...(fs.existsSync(retiredCoreFile)
-      ? [`${rel(retiredCoreFile)}: the JSON protocol lives in packages/shared/json.ts; core must not grow a second copy`]
-      : []),
-    ...(corePackageContent.includes('"./core/json"')
-      ? [`${rel(corePackageFile)}: @onething/backend/core/json is retired; import @shared/json`]
-      : []),
-    // 不许在 core 里再抄一份。
-    ...walkFiles(path.join(root, 'packages/backend/core'))
-      .flatMap(file => matchingLines(file, SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS)),
   ]
 
   assertNoMatches('packages/shared owns JSON protocol', lines)
@@ -3436,17 +3388,8 @@ function checkCorePromptAssemblyOwnedByRuntime(): void {
   assertNoMatches('packages/backend/runtime/engine primitives keep prompt assembly out', lines)
 }
 
-function checkCorePromptContextRegistryOwnedByRuntime(): void {
-  // 这条从前守两格「不许回到 core」:core 的 storage 目录下那只 `app-state.ts`(去 core 批 1 撤)与 core 的 engine
-  // 目录下那只 `plugin-context.ts`(去 core 批 2,2026-10-03 撤)。两个目录都整个并进了 runtime,core 侧的位置不存在了,
-  // 名单清空;断言留着,等批 3 删 core 目录时一起撤。
-  const removedFiles: string[] = []
-
-  assertNoMatches(
-    'packages/backend/core keeps runtime registries out of the headless boundary',
-    removedFiles.map(file => `${file}: runtime-owned state belongs in packages/backend/runtime`),
-  )
-}
+// `checkCorePromptContextRegistryOwnedByRuntime`(「运行时注册表 / 应用状态不许回到 core」)随去 core 批 3(2026-10-03)撤掉:
+// 批 1、批 2 已经把它守的两格清空,core 目录本身也删了。
 
 function checkRuntimeOwnsOnethingStoragePaths(): void {
   const file = path.join(root, 'packages/backend/runtime/storage/paths.ts')
@@ -5211,6 +5154,13 @@ const CORE_MERGED_PLUGIN_FILES = [
   'webview.ts',
 ].map(name => `packages/backend/runtime/plugins/${name}`)
 
+/** 去 core 批 3(2026-10-03):core 根上那三只文件的新家。 */
+const CORE_MERGED_ROOT_FILES = [
+  'packages/backend/runtime/gateway/conversation-runtime.ts',
+  'packages/backend/server/runtime-facade.ts',
+  'packages/backend/utils/deep-freeze.ts',
+]
+
 function checkCoreKnowsNoConcreteFeatures(): void {
   const known = [...new Set(
     [...listBuiltinPluginIds(), ...RETIRED_FEATURE_TOKENS].map(normalizeFeatureToken),
@@ -5236,10 +5186,11 @@ function checkCoreKnowsNoConcreteFeatures(): void {
   // 去 core 批 1(2026-10-03):core 的小目录并进了 runtime 的同名领域目录,这条「内核不点名具体功能」是**内容**
   // 断言,跟着那些文件走 —— 量 core 剩下的部分,外加接收了 core 文件的那 14 个领域目录(整目录量;并进来之前
   // 这些目录里原有的文件同样零命中)。
-  const scanRoots = ['packages/backend/core', ...CORE_MERGED_RUNTIME_DIRS]
+  // 去 core 批 3(2026-10-03):core 目录没了;它根上那三只文件跟着各自的新家量。
+  const scanRoots = [...CORE_MERGED_RUNTIME_DIRS]
   const scanFiles = [
     ...scanRoots.flatMap(dir => walkFiles(path.join(root, dir), [], { includeTests: true })),
-    ...CORE_MERGED_PLUGIN_FILES.map(file => path.join(root, file)).filter(file => fs.existsSync(file)),
+    ...[...CORE_MERGED_PLUGIN_FILES, ...CORE_MERGED_ROOT_FILES].map(file => path.join(root, file)).filter(file => fs.existsSync(file)),
   ]
   for (const file of scanFiles) {
     if (!/\.(ts|tsx|js|mjs|cjs)$/.test(file)) continue
@@ -5280,7 +5231,7 @@ function checkCoreKnowsNoConcreteFeatures(): void {
     }
   }
 
-  assertNoMatches('packages/backend/core + runtime dirs merged from core know no concrete plugin or feature names', lines)
+  assertNoMatches('runtime dirs and files merged from core know no concrete plugin or feature names', lines)
 }
 
 /**
@@ -5300,7 +5251,8 @@ function checkNoRawControlCharacters(): void {
   assertNoMatches('source files carry no raw control characters', offenders)
 }
 
-const PLUGIN_HOST_MODULE_SPECIFIER = /['"](@onething\/(?!backend\/core(?:\/|['"]))|@shared|@main\/|@preload\/|@renderer|@\/|electron['"]|electron\/)/
+// 用户插件(仓外)从前还许 import core 的包说明符;去 core 批 3(2026-10-03)core 没了,这个口子随之关掉(样例插件零处用它)。
+const PLUGIN_HOST_MODULE_SPECIFIER = /['"](@onething\/|@shared|@main\/|@preload\/|@renderer|@\/|electron['"]|electron\/)/
 const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [PLUGIN_HOST_MODULE_SPECIFIER]
 
 /**
@@ -5317,7 +5269,7 @@ const CORE_MERGED_PLUGIN_SPECIFIER_NAMES = CORE_MERGED_PLUGIN_FILES
   .filter(file => !file.includes('/__tests__/'))
   .map(file => file.slice('packages/backend/runtime/plugins/'.length).replace(/\.ts$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
 const BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER = new RegExp(
-  `['"](@onething\\/(?!backend\\/core(?:\\/|['"])|backend\\/runtime\\/plugins\\/(?:${CORE_MERGED_PLUGIN_SPECIFIER_NAMES.join('|')})(?:\\.js)?['"])`
+  `['"](@onething\\/(?!backend\\/runtime\\/plugins\\/(?:${CORE_MERGED_PLUGIN_SPECIFIER_NAMES.join('|')})(?:\\.js)?['"])`
   + `|@shared\\/ipc(?:\\/|\\.js['"]|['"])|@main\\/|@preload\\/|@renderer|@\\/|electron['"]|electron\\/)`,
 )
 const BUILTIN_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [BUILTIN_PLUGIN_HOST_MODULE_SPECIFIER]
@@ -5332,7 +5284,7 @@ const USER_PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [
 function checkPluginsOnlyUseInjectedApi(): void {
   const lines: string[] = []
 
-  // (a) 内置插件实现:只准 Node 内置 / zod / @onething/backend/core / shared 的非传输契约(见上)。
+  // (a) 内置插件实现:只准 Node 内置 / zod / 插件契约那几只文件 / shared 的非传输契约(见上)。
   for (const pluginId of listBuiltinPluginIds()) {
     const implFile = path.join(root, BUILTIN_PLUGIN_RUNTIME_DIR, `${pluginId}.ts`)
     if (!fs.existsSync(implFile)) continue
@@ -6593,7 +6545,7 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/tools/sandbox-runtime.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/backend/runtime/tools/__tests__/sandbox-runtime.test.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/tools/core/sandbox.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/tools/access-control/sandbox.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -6637,7 +6589,7 @@ function checkRuntimeOwnsToolEditEngine(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/tools/edit-engine.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/backend/runtime/tools/__tests__/edit-engine.test.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/tools/core/edit-engine.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/tools/access-control/edit-engine.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -6687,16 +6639,16 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
     'packages/backend/runtime/tools/builtin/index.ts',
     'packages/backend/runtime/tools/builtin/headless.ts',
     'packages/backend/runtime/tools/builtin/readonly.ts',
-    'packages/backend/runtime/tools/core/bash-classifier.ts',
-    'packages/backend/runtime/tools/core/edit-engine.ts',
-    'packages/backend/runtime/tools/core/file-mutation-audit.ts',
-    'packages/backend/runtime/tools/core/file-mutation-queue.ts',
-    'packages/backend/runtime/tools/core/output-accumulator.ts',
-    'packages/backend/runtime/tools/core/sensitive-files.ts',
-    'packages/backend/runtime/tools/core/text-truncation.ts',
-    'packages/backend/runtime/tools/core/tool-effect.ts',
-    'packages/backend/runtime/tools/core/tool-result.ts',
-    'packages/backend/runtime/tools/core/tool.ts',
+    'packages/backend/runtime/tools/access-control/bash-classifier.ts',
+    'packages/backend/runtime/tools/access-control/edit-engine.ts',
+    'packages/backend/runtime/tools/access-control/file-mutation-audit.ts',
+    'packages/backend/runtime/tools/access-control/file-mutation-queue.ts',
+    'packages/backend/runtime/tools/access-control/output-accumulator.ts',
+    'packages/backend/runtime/tools/access-control/sensitive-files.ts',
+    'packages/backend/runtime/tools/access-control/text-truncation.ts',
+    'packages/backend/runtime/tools/access-control/tool-effect.ts',
+    'packages/backend/runtime/tools/access-control/tool-result.ts',
+    'packages/backend/runtime/tools/access-control/tool.ts',
     // R4b:旧的 `Tool.define` 工具对象。它们的实现搬进了 `toolkit/builtin/`。
     'packages/backend/runtime/tools/builtin/read.ts',
     'packages/backend/runtime/tools/builtin/write.ts',
@@ -6709,7 +6661,6 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   ].filter(file => fs.existsSync(path.join(root, file)))
   const publicExportPaths = [
     path.join(root, 'packages/backend/runtime/tools/tool-helpers.ts'),
-    path.join(root, 'packages/backend/core/index.ts'),
   ]
   const toolkitIndexFile = path.join(root, 'packages/backend/runtime/toolkit/index.ts')
   const toolkitTimeFile = path.join(root, 'packages/backend/runtime/toolkit/builtin/time.ts')
@@ -6756,7 +6707,7 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
  * 前端框架(react / vue),也不认识宿主(electron / `@main` / `@preload`),也不
  * 反向依赖上层(`@onething/backend` / `@onething/backend/runtime` —— 依赖是单向的:
  * 产品 ← 装配 ← 宿主,而客户端在这条链之外,只吃 `@shared` 契约)。2026-10 ①d 起
- * 连 `@onething/backend/core` 的纯类型也不许了,那一条由 `checkClientImportsOnlySharedAndClient`
+ * 连 core 的纯类型也不许了(core 已于 2026-10-03 整个并进 runtime),那一条由 `checkClientImportsOnlySharedAndClient`
  * 统一守(它覆盖 client 侧三棵树)。`@renderer` / `@/` 是 Vue 渲染层的两个别名 —— 搬家的**目的**就是
  * 把这一层从那棵树里摘出来,搬完再引回去等于白搬。
  */
@@ -7131,8 +7082,6 @@ checkPermissionGrantsDomainRidesTheRpcChannel()
 checkProvidersDomainRidesTheRpcChannel()
 checkModelsDomainRidesTheRpcChannel()
 checkMainUsesRuntimePackageImports()
-checkMainUsesCorePackageImports()
-checkMainUsesGatewayPackageImports()
 checkMainCoreSystemAdapters()
 checkCoreToolHelperTestsLiveInCorePackage()
 checkCoreOwnsToolSchemaProjection()
@@ -7144,7 +7093,6 @@ checkSharedOwnsJsonProtocol()
 checkSharedOwnsStreamChunkProtocol()
 checkChatResumeAfterToolConfirmStaysRetired()
 checkCorePromptAssemblyOwnedByRuntime()
-checkCorePromptContextRegistryOwnedByRuntime()
 checkRuntimeOwnsOnethingStoragePaths()
 checkRuntimeOwnsPermissionGrantFileStorage()
 checkRuntimeOwnsPermissionGrantsIpcPresentation()

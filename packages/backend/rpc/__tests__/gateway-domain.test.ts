@@ -21,7 +21,7 @@ async function loadDomain() {
     = await Promise.all([
       import('../registry.js'),
       import('../domains/gateway.js'),
-      import('@onething/backend/gateway/lifecycle-port'),
+      import('@onething/backend/runtime/gateway/lifecycle-port'),
     ])
   return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, gatewayRpcHandlers, ports }
 }

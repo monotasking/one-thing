@@ -109,10 +109,9 @@ function shouldScan(rel) {
   if (rel.startsWith('node_modules/')) return false
   if (rel.endsWith('.d.ts')) return false
   return (
-    rel.startsWith('packages/backend/core/') ||
     rel.startsWith('packages/backend/runtime/') ||
     rel.startsWith('packages/backend/') ||
-    rel.startsWith('packages/backend/gateway/') ||
+    rel.startsWith('packages/backend/runtime/gateway/') ||
     rel.startsWith('packages/shared/') ||
     rel.startsWith('apps/')
   )

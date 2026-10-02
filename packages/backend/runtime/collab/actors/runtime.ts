@@ -104,7 +104,7 @@ import { sessionReads } from '../../../session/reads.js'
 import { getCurrentBackend } from '@onething/backend/current.js'
 import { sessionAccess, type SessionAccess, type SessionOwnershipRecord } from '@onething/backend/session/access.js'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import { createCollabActorAuthorization, type CollabActorAuthorization } from './execution-authorization.js'
 import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-exec-session.js'
 import {

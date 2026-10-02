@@ -72,61 +72,63 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 逐领域(先选最散的:search、mcp、acp、plugins、collab、music),照 provider 试点的做法:先量、立快照、搬、证明不变、
 一个领域一笔提交。目标:一个领域在 server 包里只有一个目录。
 
-### 目录规矩(search 立下,2026-10-02 拍平后改写,2026-10-03 去 core 后再改写)
+### 目录规矩(search 立下,2026-10-02 拍平后改写,2026-10-03 去 core 收尾)
 
 **用户拍板(2026-10-02):server 包内部不再区分「接线」与「产品逻辑」。** 一个功能的文件平铺在 `runtime/<d>/` 下,
 没有 `wiring/` 子目录。理由:后端只剩一个包、将来只跑在一个后端进程里;「接线」那一层原本是为了让同一份逻辑装进
 多个宿主(Vue 主进程、server、CLI daemon、React 壳)而存在的,宿主收敛成一个以后它没有对象了。测试要注入假件,
 靠函数参数就行,不需要一层目录来表达。(search 那批立的是「产品住领域根、装配住 `wiring/`」,同一天被这条拍板取代。)
 
-**用户拍板(2026-10-02 / 03):core 也不要了。** core 的「零依赖骨架」原本是为了让界面那侧复用;第①步以后界面只许
-import `@shared` 与 `@onething/client`,碰不到 core 了,所以这一层同样没有对象。core 分三批并进 `runtime/<d>/`:
-批 1(2026-10-03)撤掉 core 这一层的规则、14 个小目录并进 runtime;批 2 是 `core/{plugins,session,engine,agent-loop}`;
-批 3 是 core 根上的文件、`core/__tests__/`、gateway 子树 → `runtime/gateway`,最后删掉 `core/` 目录。
+**用户拍板(2026-10-02 / 03):core 也不要了,gateway 是普通功能。** core 的「零依赖骨架」原本是为了让界面那侧复用;
+第①步以后界面只许 import `@shared` 与 `@onething/client`,碰不到 core 了,所以这一层同样没有对象。分三批做完(2026-10-03):
+批 1 撤掉 core 这一层的规则、14 个小目录并进 runtime;批 2 是 `core/{plugins,session,engine,agent-loop}`;批 3 删掉大桶
+`core/index.ts`、根上三只文件各回各家、`core/__tests__/` → 包根 `__tests__/`、gateway 子树 → `runtime/gateway/`,`core/` 目录删除。
 
-**一个领域的家是 `runtime/<d>/`**:
+**今天的 `packages/backend` 只有两样东西**:
 
-- 领域根:这个功能的全部文件,不分「产品」「装配」「骨架」。同名冲突按文件**做的事**起名(不用 wiring / host / bound /
-  app / assembly 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,另一个按内容改名。内容上是
-  同一件事的两半(例如协议 + 实现)也不合,只在落地记录里列出来。
-- `runtime/<d>/kernel/`:第③步从 `core/<d>` 并进来的只服务本领域的内核(search、mcp、collab 的 actors)。去 core 以后
-  它只是领域里一个普通子目录,不再「当 core 判」。
-- 目录名与包根的脊柱目录同名会触发 I1(例如包根已有 `events/`),这时按内容另起目录名(core 的 `events/` → `runtime/event-bus/`)。
+- **包根**:后端的入口与门面 —— `backend.ts`(`createOnethingBackend`)/ `store.ts` / `current.ts` / `host-ports.ts` +
+  `server/`(HTTP/SSE 门面,含各宿主门面共用的 `OnethingRuntimeFacade` 契约 `server/runtime-facade.ts`)/ `rpc/` / `stores/` /
+  `session/` / `events/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/`。
+- **`runtime/<d>/`**:一个功能一个目录,平铺。这个功能的全部文件,不分「产品」「装配」「骨架」。同名冲突按文件**做的事**起名
+  (不用 wiring / host / bound / app / assembly / core 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,
+  另一个按内容改名;内容上是同一件事的两半(例如协议 + 实现)也不合,只在落地记录里列出来。`runtime/<d>/kernel/` 与其他子目录
+  一样只是子目录。目录名与包根目录同名会触发 I1(例如包根已有 `events/`),这时按内容另起目录名(core 的 `events/` → `runtime/event-bus/`)。
 - RPC 处理器(`rpc/domains/<d>.ts`)不动 —— RPC 注册表那张表的形状是第④步的事。
 
-**撤掉的规则**(去 core 批 1,2026-10-03;理由同上一条拍板 —— core 不再是一层):
+**撤掉的规则**(理由都是同一句:core / gateway 不再是层):
 
 1. core 的专属禁令(`@shared/ipc`、better-sqlite3、MCP / ACP SDK、zod / diff / uuid,以及只许 `@anthropic-ai/sdk` 的第三方包批准表):
-   检查器 `checkCoreForbiddenImports` 与 `checkCorePackageDependencies` 撤掉。宿主那一半(electron / `@main` / `@preload` /
-   渲染层别名 + cordis)并进 `checkRuntimeHostBoundary`,core 剩下的文件照旧被它管着。
-2. 「core 在最底层」(core 不许 import runtime / gateway):`architecture-boundaries.test.ts` 那一条撤掉。批 2 / 批 3 之前
-   core 剩下的文件 import 已经搬进 runtime 的模块是正常的(包说明符,不许相对路径)。
-3. kernel 的 import 闭包(kernel 只许 import 自己、core、`@shared` 与 node 内建):检查器
-   `checkRuntimeDomainKernelImportClosure` 与架构测试里同名的那一条一起撤掉 —— 它的源头是「kernel 当 core 判」。
-4. 「core 的大桶必须交出 AgentEngine / EventBus / … 这几个名字」(`checkCorePublicExports`):撤掉。core 不再是对外的
-   公共入口;哪只桶交出哪个名字,由用它的人的 import 与类型检查守着。
-5. 只为「不许回到 core」而立的位置断言:`core/tools/` 下 13 只纯模块、core 的 storage 目录下 `app-state.ts`(批 1),
-   core 的 engine 目录下 `system-prompt-snapshot.ts` / `plugin-context.ts`(批 2)不许存在 —— 那些目录本身并进了 runtime,撤掉。
+   `checkCoreForbiddenImports`、`checkCorePackageDependencies`(批 1)。宿主那一半并进 `checkRuntimeHostBoundary`。
+2. 「core 在最底层」、kernel 的 import 闭包(`checkRuntimeDomainKernelImportClosure` 与架构测试里同名那条)(批 1)。
+3. 「core 的大桶必须交出这几个名字」(`checkCorePublicExports`,批 1);大桶本身批 3 删掉。
+4. 只为「不许回到 core」而立的位置断言:`core/tools/` 下 13 只纯模块、core 的 storage 下 `app-state.ts`(批 1),core 的 engine 下
+   `system-prompt-snapshot.ts` / `plugin-context.ts`(批 2);批 3 撤掉装它们的那条 `checkCorePromptContextRegistryOwnedByRuntime`,
+   以及 `checkSharedOwnsJsonProtocol` 里「core 下不许有 `json.ts` / 不许有 `./core/json` 键 / 不许在 core 里抄一份」三格
+   (后一格没有改成扫整个后端:后端里有几只按需写的本地小帮手,判据只对 core 成立)。
+5. 架构测试「core 无宿主 import」、I2(`core/<d>/x.ts` 与 `runtime/<d>/x.ts` 不许同名)(批 3:core 没了)。
+6. 「gateway 只依赖 core + `@shared`」(检查器 `checkGatewayHostBoundary` 的依赖那一半、架构测试同名那条)与「runtime 不许 import
+   gateway」(架构测试 runtime 那条里的一格)(批 3:gateway 搬进 runtime 成了普通功能)。
+7. 「说明符里不许出现 `packages/backend/core/` / `packages/backend/gateway` 仓内路径」两条(`checkMainUsesCorePackageImports`、
+   `checkMainUsesGatewayPackageImports`)(批 3:两个目录都没了,runtime 那条照旧管)。
+8. 用户插件(仓外)许 import core 包说明符的那个口子(批 3;样例插件零处用它)。
 
 **保留的规则**:
 
 1. client → shared ← server 边界(`checkSharedImportsOnlyShared`、`checkClientImportsOnlySharedAndClient`)。
-2. 后端(core 剩下的部分、runtime、脊柱、gateway)不许 import electron / `@main` / `@preload` / 渲染层别名;cordis 只许脊柱用。
-3. 「三棵子树的非测试相对 import 不出自己的子树」:core 消失前 core 仍是一棵子树。跨子树一律写包说明符(搬家脚本两个方向都改);
-   唯一的口子照旧是 runtime 相对 import 内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`
-   不许有 exports 键)。测试基建(`__tests__/`、`testing/`)不进 exports,跨子树也照旧写相对路径。
-4. I1(包根目录不与 runtime 领域同名)、I2(`core/<d>/x.ts` 与 `runtime/<d>/x.ts` 不同名;白名单只减不增,批 1 以后为空)。
-5. **内容**断言按新路径继续守:「内核不点名具体功能」(`checkCoreKnowsNoConcreteFeatures`,量 core 剩下的部分 + 接收了
-   core 文件的 17 个 runtime 目录 + 从 core 并进 `runtime/plugins/` 的那 58 只插件契约 / 内核文件 —— plugins 不能整目录量,
-   产品那一半就是各个具体插件)、「内置插件只经注入的 api 认识宿主」(放行的仍是插件契约那一批文件,只是包说明符换成了
-   `@onething/backend/runtime/plugins/<那几只>`)、「检索内核不点名能力」、「provider-agnostic 层不点名服务商」、各「X 拥有 Y」的
-   位置断言(只改路径,断言名同步改成新址)。
-6. `assembly:gate` 量脊柱 + 整个 `runtime/`(`runtime/<d>/kernel/` 除外;core、gateway 不在尺子上)。从 core 搬进 runtime
-   的文件从此在尺子上,按搬家时的值记入基线,同样只许降。
+2. 后端(包根 + runtime)不许 import electron / `@main` / `@preload` / 渲染层别名;runtime 不许 cordis(cordis 只许包根用)。
+3. 「子树的非测试相对 import 不出自己的子树」:今天只剩 `runtime/` 一棵,指向包根的一律写包说明符;唯一的口子照旧是 runtime 相对
+   import 内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 不许有 exports 键,批 3 起整个后端包都能碰)。
+   测试基建(`__tests__/`、`testing/`)不进 exports。
+4. I1(包根目录不与 runtime 领域同名;排除名单只剩 `runtime`)。
+5. **内容**断言按新路径继续守:「内核不点名具体功能」(`checkCoreKnowsNoConcreteFeatures`,量接收了 core 文件的 17 个 runtime 目录、
+   从 core 并进 `runtime/plugins/` 的 58 只插件契约 / 内核文件、core 根上那三只文件的新家)、「内置插件只经注入的 api 认识宿主」
+   (放行的是插件契约那一批文件)、「检索内核不点名能力」、「provider-agnostic 层不点名服务商」、各「X 拥有 Y」的位置断言。
+6. `assembly:gate` 量整个 `packages/backend`(批 3 起不再跳过 core / gateway / kernel);新进尺子的文件按当时的值记入基线,只许降。
 
 搬家脚本都在会话 scratchpad 里:`fold-domain.mjs` / `flatten.mjs` / `flatten-wiring-*.mjs`(第③步),`s4-move-core.mjs`
-(去 core 批 1:普通文件改名、import / exports 精确键 / 注释路径改写、过时路径按文件名找现址,带 `--dry`)与
-`s4-move-core2.mjs`(批 2:同一份脚本换了领域表与改名表,过时路径先找 `packages/shared/` 下的原样镜像)。
+(去 core 批 1:普通文件改名、import / exports 精确键 / 注释路径改写、过时路径按文件名找现址,带 `--dry`)、
+`s4-move-core2.mjs`(批 2:换领域表与改名表,过时路径先找 `packages/shared/` 下的原样镜像)、
+`s4-dissolve-barrel.mjs` + `s4-move-core3.mjs` + `s4-reformat-imports.mjs`(批 3:拆大桶、按任意源 / 目标表搬家、多行 import 还原)。
 
 ## 5. 第④步要点
 
@@ -997,3 +999,67 @@ boundary(135 条)/ transport / log / assembly / session / provider / gate:native
 27 个场景的 PASS / FAIL 逐行相同,`compact-half-run-log` FAIL 与 `appendFailures 8` 两边一样。`provider-vendor-drill` 在主检出上红
 (它在 HEAD 上开临时 worktree,而演练模板读的是工作区里已改的那份;HEAD 上还是旧的 exports 键),在重放 worktree 上做一笔不挂分支的
 临时提交、从那里跑就全绿 —— 本批提交以后在主检出上同样会绿。
+
+### 去 core 批 3 落地记录(2026-10-03,未提交)
+
+**一句话**:大桶 `core/index.ts` 删掉,41 个经它取名字的文件改成从各功能目录取;core 根上三只文件各回各家;`core/__tests__/` → 包根
+`__tests__/`;gateway 子树 → `runtime/gateway/`(它那个叫 core 的子目录改名 `hub/`);`runtime/tools/core/` 改名 `access-control/`;
+`packages/backend/core/` 目录删除。三只脚本按序跑(scratchpad 的 `s4-dissolve-barrel.mjs` → `s4-move-core3.mjs` → `s4-reformat-imports.mjs`),
+在 HEAD 的临时 worktree 上用独立 `GIT_INDEX_FILE` 重放,218 个产物路径里只差 33 只手改文件,补上之后零差异。
+`ls packages/backend`:`__tests__ backend.ts channel current.ts events features host-ports.ts lifecycle.ts package.json provider-binding rpc runtime server session store.ts stores types.d.ts utils`。
+
+**大桶的使用者**(改成从下列来源取):`RuntimeRequestContext` / `OnethingRuntimeFacade` / `createOnethingRuntimeFacade` / `Runtime*`
+→ `@onething/backend/server/runtime-facade.js`(server 下的门面文件、`session/access.ts`、runtime 的 collab 各房间与工具、
+`engine/execution-context.ts`、`plugins/commands.ts`、`tasks/dispatch.ts`、`toolkit/executions.ts` 与测试);`EventBus` / `StreamChannel` → `runtime/event-bus`;
+`AgentEngine` 与两个事件类型 → `runtime/agents/agent-engine`;`Permission` / `addGrant` → `runtime/permission/permission-asks`
+(三份 radio 测试的 `vi.mock(…, importOriginal)` 跟着改 mock 这只模块);`getAIToolName` / `AgentProviderData` /
+`registerRetiredAgentToolName` 等 → `runtime/agent-loop/loop-primitives`。拆完一行的 import,原来写成多行的两处(`server/http.ts`、
+`server/runtime.ts`)按原缩进还原成多行(否则 `transport:gate` 量的 `server/http.ts` 行数会变)。
+
+**删掉的文件**(删掉大桶后零使用者):`runtime/agents/agent-engine-exports.ts`、`runtime/providers/stream-provider-contract.ts`、
+`runtime/context/index.ts`(三只都只有大桶在用;`runtime/context/context-manager.ts` 照旧,被 `agents/agent-engine.ts`、
+`providers/types.ts` 相对 import)。
+
+**去向表**:
+
+| 旧路径(`packages/backend/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `core/gateway-runtime.ts` | `runtime/gateway/conversation-runtime.ts` | 网关吃的那份会话运行时契约(`CoreConversationRuntime` …),随 gateway 走 |
+| `core/runtime-facade.ts` | `server/runtime-facade.ts` | `OnethingRuntimeFacade`:各宿主门面(HTTP/SSE)共用的契约,住包根的门面目录 |
+| `core/freeze.ts` | `utils/deep-freeze.ts` | 通用深冻结,插件快照、会话命令面三处在用 |
+| `core/__tests__/*`(8 份) | `__tests__/*` | 包根的跨领域测试(架构测试等),原名不撞 |
+| `gateway/**` | `runtime/gateway/**` | 用户拍板:core 没了,gateway 是普通功能 |
+| `gateway/core/**` | `runtime/gateway/hub/**` | 渠道无关的网关本体(Gateway 注册表、bridge、会话表、权限协调、存储、中间件) |
+| `runtime/tools/core/**` | `runtime/tools/access-control/**` | 沙箱根 + 权限策略两件 |
+
+**同一件事的两半(没合)**:`runtime/gateway/conversation-runtime.ts` 与 `runtime/gateway-runtime.ts`(契约 + 产品侧实现;后者仍在
+runtime 根上,本批没动);`utils/deep-freeze.ts` 与 `runtime/plugins/freeze.ts`(实现 + 插件那一份旧名出口)。
+
+**规则**(检查器 135 → 132 条;架构测试 10 → 7 条):
+- 撤:`checkMainUsesCorePackageImports`、`checkMainUsesGatewayPackageImports`(两个目录都没了,runtime 那条照旧管)、
+  `checkCorePromptContextRegistryOwnedByRuntime`(批 1、2 已清空);`checkGatewayHostBoundary` 的依赖那一半(只留宿主禁令,断言名去掉
+  `(core + @shared only)`);`checkSharedOwnsJsonProtocol` 里 core 的三格;用户插件许 import core 的口子;内置插件放行里 core 那一格。
+- 架构测试撤:「core 无宿主 import」、I2、「gateway 只依赖 core + `@shared`」、runtime 那条里「不许 import gateway」。
+- 改:子树概念只剩 runtime(检查器 `BACKEND_PRODUCT_SUBTREES = ['runtime']`、架构测试的子树相对 import、I1 排除名单只剩 `runtime`、
+  `backend-public-boundary.mjs` 的「core / gateway 不许碰内部会话模块」);`checkRuntimeHostBoundary` 不再单独走 core(断言名
+  `packages/backend/runtime + packages/backend …`);「内核不点名功能」补上 core 根上三只文件的新家;R4b 那张「不许复活」表里
+  `runtime/tools/core/*` 那 11 格只改路径到 `access-control/`。
+- assembly:不再跳过 core / gateway / kernel(注释重写);kernel 零个模块级 let,gateway 3 个文件按当时的值记入
+  (`channels/wechat/ilink/sender.ts` 2、`hub/logging.ts` 2、`lifecycle-port.ts` 1 —— ③-收尾 C 删掉的那一行回到尺子上)。
+- 别的门与配置只改路径:`eslint.config.js` 的 no-console 区去掉 core 两行、`session-check.mjs` 扫描面去掉 core 一行、
+  `gate-search-index.mjs` 少一个 core 路径、`manifest-no-enumeration.test.ts` 扫描根去掉 core、两只 smoke 脚本改从功能目录 import。
+
+**exports**:568 → 566(删 `./core` 与三只出口桶的键、`./runtime/context`,新增 `./runtime/agents/agent-engine`、`./runtime/providers/types`;
+改名 7 格)。`./core/…`、`./gateway/…` 键为零。
+
+**收尾 grep**:`backend/core|@onething/backend/core|packages/core/` 在代码 / 配置 / 脚本里为零;剩下的在文档(`README.md`、`RESOURCES.md`、
+`evals/DESIGN.md`、`apps/desktop-react/docs/`、`docs/`)、数据夹具(检索语料 `corpus.json`、files-panel 测试与 `.design-sync` 预览里的
+示例路径、`.pi-glla/`)、一个外部 URL(gemini-cli 的 `packages/core/…`,批 1 之前的一次改写把它误改成 `packages/backend/core`,本批改回原样),
+以及别的会话在改的 `chat-{fold,source}.ts`。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;
+根全量 vitest 改前 11416 / 20 红(19 + workspace-watch 偶发),改后第一次 11413 / 20 红(少的 3 条是架构测试按设计撤掉的,多出
+`host-process` 一条 POSIX 信号偶发、单跑 5 绿,workspace-watch 这次没红),重跑 11413 / 19 红,与批 2 改后的 19 条逐条相同;
+壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;boundary(132 条)/ transport / log / assembly / session / provider / gate:native 门输出前后逐字相同;
+`session:check` 只差扫描文件数 2730 → 2726(core 的大桶与三只出口桶删了),4 处发现相同;`sessions:shadow-battery` 前后各 130 行,
+逐行只差两行 `web-<id>` 会话名;`provider-vendor-drill` 在主检出上就绿(本批没动演练模板)。

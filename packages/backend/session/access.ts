@@ -1,4 +1,4 @@
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionAccessOperation } from '@shared/contracts/session-access.js'
 import { getCurrentBackend } from '../current.js'

@@ -4,7 +4,8 @@
  * stub so they never boot real providers or touch the user's store — the
  * real path (createOnethingBackend) is covered by host smokes instead.
  */
-import { AgentEngine, EventBus, StreamChannel } from '@onething/backend/core'
+import { AgentEngine } from '@onething/backend/runtime/agents/agent-engine'
+import { EventBus, StreamChannel } from '@onething/backend/runtime/event-bus'
 import type {
   OnethingServerBackend,
   OnethingServerRuntime,

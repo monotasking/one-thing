@@ -27,7 +27,7 @@
  */
 
 import type { ServerResponse } from 'node:http'
-import type { OnethingRuntimeFacade, RuntimeRequestContext, RuntimeUnsubscribe } from '@onething/backend/core'
+import type { OnethingRuntimeFacade, RuntimeRequestContext, RuntimeUnsubscribe } from '@onething/backend/server/runtime-facade.js'
 import { GLOBAL_EVENT_LEAVES_PROCESS, type GlobalEvent } from '@shared/events/index.js'
 import { writeSse, type SseDelivery } from './sse-delivery.js'
 

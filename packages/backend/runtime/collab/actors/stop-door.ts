@@ -11,7 +11,7 @@
  * 从没被驱动过的房按下停止,答案是"没停下任何东西",而不是一个 null 漏到界面上。
  */
 import { stopCollabV3RoomFloor } from './runtime.js'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 
 /**
  * 停下这间房的对话。返回 true = 真的停下了什么(渲染层据此决定要不要提示)。

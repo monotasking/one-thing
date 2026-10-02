@@ -1,4 +1,4 @@
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import {
   SessionAccessError,
   sessionOwnerOf,

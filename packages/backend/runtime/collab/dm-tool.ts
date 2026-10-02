@@ -48,7 +48,7 @@ import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.j
 import { registerCollabWakeFollowup } from './wake-followup.js'
 import { sessionAccess } from '@onething/backend/session/access.js'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
-import type { RuntimeRequestContext } from '@onething/backend/core'
+import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 
 /** 拒绝文案。每一条都说清"是哪一种拒绝",因为模型能据此改做别的事。 */
 const DM_REFUSED_NO_SELF = '这一轮没有可用的发言身份,私聊发不出去。'

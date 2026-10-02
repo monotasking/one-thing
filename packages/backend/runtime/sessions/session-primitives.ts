@@ -235,7 +235,7 @@ export type {
   CoreSessionCommandSession,
   CoreSessionCommandStep,
 } from './commands.js'
-export { deepFreeze } from '@onething/backend/core/freeze'
+export { deepFreeze } from '@onething/backend/utils/deep-freeze.js'
 export {
   applyTimelineRepair,
   computeInterruptedStepRepair,
