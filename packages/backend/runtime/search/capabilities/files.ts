@@ -14,7 +14,7 @@ import type {
   PreviewPayload,
   SearchCapability,
   SearchContext,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { scanBackedCapability, type ScanRunOutcome, type SearchServiceResult } from './scan-adapter.js'
 import { expandPath, matchRangesOf, normalizeSearchQuery } from './text-match.js'
@@ -172,7 +172,7 @@ export const filesSearchManifest: CapabilityManifest = {
    * **整发搜索一个结果都不出**,两条 rg 挂在 462% CPU 上。
    *
    * 现在超时有第三种结局:`searchFiles` 交已经扫到的那些并标 `partial`,`fanout`
-   * 据此判成「答过了,没答完」而不是错误(见 `core/search/pipeline/fanout.ts`)。
+   * 据此判成「答过了,没答完」而不是错误(见 `runtime/search/kernel/pipeline/fanout.ts`)。
    * 于是钉预算不再等于把慢盘判死 —— 它只是把「等多久」变成一个说得出口的数。
    */
   budget: { default: 10, timeoutMs: 3000 },

@@ -2,7 +2,7 @@
  * `acp-mcp-bridge.cjs` 在这台宿主上的哪儿(ACP A4-a,`docs/design/acp-integration-2026-09.md`
  * §3.6)。
  *
- * 与 `wiring/search/worker.ts` 的 `resolveSearchWorkerPath` **同一条规矩、同一种写法**:
+ * 与 `runtime/search/wiring/worker.ts` 的 `resolveSearchWorkerPath` **同一条规矩、同一种写法**:
  * 三份构建配方(`apps/desktop-react/scripts/build-electron.mjs` 第四个 esbuild、
  * `scripts/build-cli.mjs` 第三个、`scripts/build-server.mjs` ③)都把它放在宿主入口旁边,
  * 这里按宿主 bundle 自己的 `import.meta.url` 往旁边找 —— 没有一个宿主递路径,加第四个宿主
@@ -57,7 +57,7 @@ function unpackedTwin(filePath: string): string | undefined {
   return filePath.replace(marker, `app.asar.unpacked${path.sep}`)
 }
 
-/** 宿主 bundle 所在目录。与 `wiring/search/worker.ts` 的 `hostDirectory` 逐字同型。 */
+/** 宿主 bundle 所在目录。与 `runtime/search/wiring/worker.ts` 的 `hostDirectory` 逐字同型。 */
 function hostDirectory(): string | undefined {
   try {
     const here = import.meta.url

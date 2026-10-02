@@ -51,14 +51,31 @@ export function countModuleLets(source) {
  * 合包(server / client 拆分第②步,2026-10-02)以后,`packages/backend` 下多了三棵原样搬进来的子树:
  * `core/`(引擎骨架)、`runtime/`(产品层)、`gateway/`。这把尺子量的是**装配层**(脊柱 + `wiring/`)
  * 长回全局变量,从来没量过那三个包(它们合包前根本不在扫描根里);把它们扫进来不会让装配层多一个 let,
- * 只会让基线外凭空冒出几十个文件、把尺子变成另一把。所以按目录排除,口径与合包前逐字相同。
+ * 只会让基线外凭空冒出几十个文件、把尺子变成另一把。所以按目录排除。
+ *
+ * 第③步(「一个领域一个目录」,2026-10-02)起,装配层不再只住在脊柱与 `wiring/` 里:领域的接线搬进了
+ * `runtime/<d>/wiring/`。尺子跟着**路径角色**走,不跟着住址走 —— `runtime/` 子树照旧不量,但它下面每个
+ * `<d>/wiring/` 目录都量(否则接线文件的模块级 `let` 换个住处就从尺子下溜走了)。
  */
 const NOT_ASSEMBLY_SUBTREES = new Set(['core', 'runtime', 'gateway'].map(dir => path.join(scanRoot, dir)))
+const RUNTIME_SUBTREE = path.join(scanRoot, 'runtime')
+
+/** `runtime/<d>/wiring` 目录:runtime 子树里唯一属于装配层的那一种。 */
+function runtimeDomainWiringDirs() {
+  if (!existsSync(RUNTIME_SUBTREE)) return []
+  return readdirSync(RUNTIME_SUBTREE)
+    .map(domain => path.join(RUNTIME_SUBTREE, domain, 'wiring'))
+    .filter(dir => existsSync(dir) && statSync(dir).isDirectory())
+}
 
 function walk(dir, out) {
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules' || entry === '__tests__' || entry === 'dist') continue
     const absolute = path.join(dir, entry)
+    if (absolute === RUNTIME_SUBTREE) {
+      for (const wiringDir of runtimeDomainWiringDirs()) walk(wiringDir, out)
+      continue
+    }
     if (NOT_ASSEMBLY_SUBTREES.has(absolute)) continue
     if (statSync(absolute).isDirectory()) {
       walk(absolute, out)

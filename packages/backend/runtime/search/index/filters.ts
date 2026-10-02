@@ -15,12 +15,12 @@
  *    也隐去了。
  */
 
-import type { DocPayload, DocumentFilter, DocumentFilterContext } from '@onething/backend/core/search'
-import { redactText } from '@onething/backend/core/search/redact'
+import type { DocPayload, DocumentFilter, DocumentFilterContext } from '@onething/backend/runtime/search/kernel'
+import { redactText } from '@onething/backend/runtime/search/kernel/redact'
 import { plainTextOf } from '../text/plain.js'
 
 /**
- * 脱敏:把每一个字段的正文过一遍 core 的规则表(八条,`core/search/redact.ts`)。
+ * 脱敏:把每一个字段的正文过一遍 core 的规则表(八条,`runtime/search/kernel/redact.ts`)。
  *
  * 洗的是 `fields` —— 它既是倒排的输入,也是摘要开窗的正文(§5.1「正文**存进**
  * 文档表」),一处洗两处干净。`facets` 不洗:它是能力声明的枚举值(sessionId /

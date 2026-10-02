@@ -12,7 +12,7 @@
  *     的目录(`.obsidian` / `.trash` / `.git` 自然都在里面)与 `node_modules`;
  *  ② **facets 多两格**:`vault`(哪个库 —— 库表是能力自述里那张 enum)与
  *     `daily`(这篇是不是日记文件夹里的)。两格都是**数据**:能力按它们过滤,
- *     `packages/backend/core/search` 一个字都不认识它们。
+ *     `packages/backend/runtime/search/kernel` 一个字都不认识它们。
  *
  * key = 库相对路径(**posix 分隔符**,见 `toKey`),`fingerprint` = `mtimeMs:size`,
  * `documentsOf` = 一个文件一份文档(`fields: { title, content }`,title 取文件名
@@ -27,7 +27,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { DocPayload, DocumentFeed, FeedPolicy } from '@onething/backend/core/search'
+import type { DocPayload, DocumentFeed, FeedPolicy } from '@onething/backend/runtime/search/kernel'
 
 import { getLogger } from '../../logging/index.js'
 import {

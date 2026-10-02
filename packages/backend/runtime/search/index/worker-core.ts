@@ -38,14 +38,14 @@ import type {
   VectorHit,
   VectorIndex,
   VectorSearchScope,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import {
   buildLexicalQuery,
   composeDocumentFilters,
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
-} from '@onething/backend/core/search'
-import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
+import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '@onething/backend/runtime/search/kernel'
 
 import { getLogger } from '../../logging/index.js'
 import type { ModelDownloader, ModelState, ModelStatus } from './model-download.js'

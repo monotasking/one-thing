@@ -22,7 +22,7 @@ import type {
   CapabilityManifest,
   SearchCapability,
   SearchQuery,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { staticBackedCapability, type SearchServiceResult } from './scan-adapter.js'
 import { matchRangesOf, normalizeSearchQuery, scoreText } from './text-match.js'

@@ -28,7 +28,7 @@ import { clearPluginBackgroundParams, setPluginBackgroundParams } from './backgr
 import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '../../channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '../deeplink/registry.js'
-import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
+import { registerPluginSearchProvider } from '@onething/backend/runtime/search/wiring/plugin-search-registry'
 import { registerPluginCredentialStrategy } from '../providers/credential-strategy.js'
 import { captureCredentialStrategyScope, type CredentialStrategyScope } from '../providers/credential-strategy-lifetime.js'
 import {

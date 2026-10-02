@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { isBuiltin } from 'node:module'
 import { dirname, extname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -15,7 +16,8 @@ const skippedDirectories = new Set([
 
 describe('architecture boundaries', () => {
   it('keeps packages/backend/core free of Electron, renderer, and host imports', () => {
-    expect(findForbiddenReferences('packages/backend/core', [
+    // 第③步起只服务一个领域的内核并进 `runtime/<d>/kernel/`,身份仍是骨架,这两条 core 规则跟着它走。
+    expect(['packages/backend/core', ...runtimeDomainKernelDirectories()].flatMap(directory => findForbiddenReferences(directory, [
       /from\s+['"]electron['"]/,
       /import\s*\(\s*['"]electron['"]\s*\)/,
       /require\s*\(\s*['"]electron['"]\s*\)/,
@@ -26,7 +28,7 @@ describe('architecture boundaries', () => {
       /\bipcMain\b/,
       /\bipcRenderer\b/,
       /src\/(?:main|renderer|preload)\//,
-    ])).toEqual([])
+    ]))).toEqual([])
   })
 
   it('keeps packages/backend/core at the bottom of the package hierarchy', () => {
@@ -34,6 +36,31 @@ describe('architecture boundaries', () => {
       importOf('@onething/backend/runtime'),
       importOf('@onething/backend/gateway'),
     ])).toEqual([])
+  })
+
+  /**
+   * 领域内核(`runtime/<d>/kernel/`)也在最底层:非测试文件只许 import 自己那个 kernel 目录(相对路径且落在
+   * 目录内)、`@onething/backend/core/**` 与 node 内建 —— 同领域的产品文件、`wiring/`、脊柱、gateway 一概不许。
+   * 检查器里同名的那条(`checkRuntimeDomainKernelImportClosure`)判的是同一句话。
+   */
+  it('keeps runtime/*/kernel at the bottom — only its own kernel, core, and node builtins', () => {
+    const escapes: string[] = []
+    for (const kernel of runtimeDomainKernelDirectories()) {
+      for (const filePath of collectSourceFiles(kernel)) {
+        if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)) continue
+        const code = stripComments(readFileSync(join(projectRoot, filePath), 'utf8'))
+        for (const match of code.matchAll(anyImportPattern)) {
+          const specifier = match[1]
+          if (specifier.startsWith('.')) {
+            const target = join(dirname(filePath), specifier)
+            if (target !== kernel && !target.startsWith(`${kernel}/`)) escapes.push(`${filePath} -> ${specifier}`)
+          } else if (!/^@onething\/backend\/core(?:\/|$)/.test(specifier) && !isBuiltin(specifier)) {
+            escapes.push(`${filePath} -> ${specifier}`)
+          }
+        }
+      }
+    }
+    expect(escapes).toEqual([])
   })
 
   it('keeps packages/backend/runtime free of Electron, hosts, and gateway', () => {
@@ -55,9 +82,11 @@ describe('architecture boundaries', () => {
     // (`runtime/` 子树),core 是 `core/` 子树。所以「不许碰装配层」改成按目录说:不许 import
     // `@onething/backend` 的脊柱(包根本身,以及 `core/`、`runtime/`、`gateway/` 三棵子树以外的任何子路径)。
     // 相对路径爬出 runtime 子树的情形由下面「三棵子树的相对 import 不出自己的子树」那条守。
+    // `runtime/<d>/wiring/**` 是住在领域家里的装配层(第③步,2026-10-02),它 import 脊柱正是它的工作,豁免;
+    // 反方向(产品层不许 import 它)由检查器的 `checkRuntimeProductDoesNotImportDomainWiring` 守。
     expect(findForbiddenReferences('packages/backend/runtime', [
       backendSpineImportPattern,
-    ])).toEqual([])
+    ], { allowFile: isRuntimeDomainWiringPath })).toEqual([])
   })
 
   /**
@@ -72,6 +101,11 @@ describe('architecture boundaries', () => {
       const relativeDirectory = `packages/backend/${subtree}`
       for (const filePath of collectSourceFiles(relativeDirectory)) {
         if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)) continue
+        // `runtime/<d>/wiring/**` 按路径角色是脊柱(装配层),这条守的是**产品代码**别爬进脊柱,所以它不在射程里。
+        // 这个豁免是被逼出来的,不是图省事:内部会话模块(`session/reads.ts`、`session/event-log.ts` …)按
+        // `scripts/lib/backend-public-boundary.mjs` 的规矩**不许有 exports 键**,接线拿它们只能走相对路径,
+        // 和包根下的脊柱文件一模一样。指向脊柱的其余 import 照样改成了包说明符。
+        if (isRuntimeDomainWiringPath(filePath)) continue
         const code = stripComments(readFileSync(join(projectRoot, filePath), 'utf8'))
         for (const match of code.matchAll(relativeImportPattern)) {
           const target = join(dirname(filePath), match[1])
@@ -256,6 +290,23 @@ describe('architecture boundaries', () => {
  * (合包以前这就是 `importOf('@onething/backend')` 整个包)。
  */
 const backendSpineImportPattern = /(?:from\s+['"]|import\s*\(\s*['"]|require\s*\(\s*['"])@onething\/backend(?:['"]|\/(?!(?:core|runtime|gateway)(?:\/|['"])))/
+
+/** 任意说明符(import / export-from / 动态 import / require)。 */
+const anyImportPattern = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"]([^'"]+)['"]/g
+
+/** `packages/backend/runtime/<d>/wiring/**`:住在领域家里的装配层。 */
+function isRuntimeDomainWiringPath(filePath: string): boolean {
+  return /^packages\/backend\/runtime\/[^/]+\/wiring\//.test(filePath)
+}
+
+/** 现有的领域内核目录(`packages/backend/runtime/<d>/kernel`),现算,不写死领域名。 */
+function runtimeDomainKernelDirectories(): string[] {
+  return topLevelDirectories('packages/backend/runtime')
+    .map(domain => `packages/backend/runtime/${domain}/kernel`)
+    .filter(directory => {
+      try { return statSync(join(projectRoot, directory)).isDirectory() } catch { return false }
+    })
+}
 
 /** 相对说明符(import / export-from / 动态 import / require)。 */
 const relativeImportPattern = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](\.{1,2}\/[^'"]*)['"]/g

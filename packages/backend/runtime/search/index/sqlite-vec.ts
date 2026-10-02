@@ -44,7 +44,7 @@
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import type { VectorHit, VectorIndex, VectorSearchScope } from '@onething/backend/core/search'
+import type { VectorHit, VectorIndex, VectorSearchScope } from '@onething/backend/runtime/search/kernel'
 
 import { getLogger } from '../../logging/index.js'
 

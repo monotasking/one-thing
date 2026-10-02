@@ -7,7 +7,7 @@
  * 分数取严格递减的逆序名次(与 `scan-adapter.ts` 里那条同一个手法:排序恒等)。
  */
 
-import type { IndexedDoc } from '@onething/backend/core/search'
+import type { IndexedDoc } from '@onething/backend/runtime/search/kernel'
 import type { SearchIndexQueryFace } from '../capabilities/indexed.js'
 
 export interface FakeIndexOptions {

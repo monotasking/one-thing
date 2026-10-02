@@ -3,12 +3,12 @@
  *
  * 这一层只问「**形**对不对」:三个主体各走哪一支、端口没装时是关还是开、范围怎么
  * 变成 `FacetFilter`。「谁是成员 / 哪个空间」的判据在装配层,由
- * `backend/wiring/search/__tests__/visibility.test.ts` 考。
+ * `backend/runtime/search/wiring/__tests__/visibility.test.ts` 考。
  */
 
 import { describe, expect, it } from 'vitest'
-import { matchesFacetFilter } from '@onething/backend/core/search/index/types'
-import type { SearchPrincipal } from '@onething/backend/core/search'
+import { matchesFacetFilter } from '@onething/backend/runtime/search/kernel/index/types'
+import type { SearchPrincipal } from '@onething/backend/runtime/search/kernel'
 import {
   configureSearchVisibilityPort,
   getSearchVisibilityPort,

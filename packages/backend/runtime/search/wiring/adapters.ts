@@ -11,12 +11,12 @@
  */
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
 import { createPrompt, listPrompts } from '@onething/backend/runtime/prompts/store-bound'
-import { getCurrentSessionId } from '../../stores/app-state.js'
-import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
-import { getSession, getSessionsList } from '../../stores/sessions.js'
-import { sessionReads } from '../../session/reads.js'
-import { listFiles } from '../../utils/ripgrep.js'
-import { noteVaultsNow, primaryNoteVaultNow } from '../notes/index.js'
+import { getCurrentSessionId } from '@onething/backend/stores/app-state.js'
+import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getSession, getSessionsList } from '@onething/backend/stores/sessions.js'
+import { sessionReads } from '../../../session/reads.js'
+import { listFiles } from '@onething/backend/utils/ripgrep.js'
+import { noteVaultsNow, primaryNoteVaultNow } from '@onething/backend/wiring/notes/index.js'
 
 export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapters {
   return {

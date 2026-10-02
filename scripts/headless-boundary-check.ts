@@ -2045,7 +2045,7 @@ const RETIRED_SCAN_PATH_MODULES = [
   'packages/backend/runtime/search/search-runtime.ts',
   'packages/backend/runtime/search/ipc-operations.ts',
   'packages/backend/runtime/search/protocol.ts',
-  'packages/backend/wiring/search/ipc.ts',
+  'packages/backend/runtime/search/wiring/ipc.ts',
   'scripts/search-parity-a.mjs',
   'scripts/search-parity-b.mjs',
 ]
@@ -2432,10 +2432,80 @@ function assertNoMatches(label: string, lines: string[]): void {
   process.exitCode = 1
 }
 
+/**
+ * 领域内核(server / client 拆分第③步,2026-10-02 起):`core/<d>` 只有在**别的领域也真 import 它**时才留在
+ * core;只服务一个领域的内核并进那个领域的家,落在 `runtime/<d>/kernel/`。它换了住处,但身份没换 —— 仍然是
+ * 零依赖的骨架,所以 core 身上的禁令按**路径角色**跟着它走:凡 `runtime/*\/kernel/**` 都当 core 判。
+ * 这里现算有哪些 kernel 目录,不写死任何领域名。
+ */
+function runtimeDomainKernelRoots(): string[] {
+  const runtimeRoot = path.join(root, 'packages/backend/runtime')
+  if (!fs.existsSync(runtimeRoot)) return []
+  return fs.readdirSync(runtimeRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => path.join(runtimeRoot, entry.name, 'kernel'))
+    .filter(dir => fs.existsSync(dir) && fs.statSync(dir).isDirectory())
+}
+
+/**
+ * `packages/backend/runtime/<d>/wiring/**` 里的文件 —— **装配层住在领域的家里**。
+ *
+ * 它与 `*.wiring.ts` 后缀是两回事,别混:`*.wiring.ts` 是**产品文件**,只被开了一道窄口(可以说
+ * `@shared/ipc` / `@shared/events` 的跨进程词汇),其余照产品层判;`runtime/<d>/wiring/` 目录则**就是装配层**,
+ * 享有与 `packages/backend/wiring/**` 逐条相同的规则集(可以 import 脊柱与 `@shared/ipc`,electron / `@main` /
+ * `@preload` 照禁),反方向则镜像 `*.wiring.ts` 那条:产品层不许回头 import 它。
+ */
+function isRuntimeDomainWiringFile(file: string): boolean {
+  return /(?:^|[\\/])packages[\\/]backend[\\/]runtime[\\/][^\\/]+[\\/]wiring[\\/]/.test(file)
+}
+
 function checkCoreForbiddenImports(): void {
-  const lines = walkFiles(path.join(root, 'packages/backend/core'))
+  const lines = [path.join(root, 'packages/backend/core'), ...runtimeDomainKernelRoots()]
+    .flatMap(dir => walkFiles(dir))
     .flatMap(file => matchingLines(file, CORE_FORBIDDEN_PATTERNS))
-  assertNoMatches('packages/backend/core has no Electron/main/shared/native npm forbidden imports', lines)
+  assertNoMatches('packages/backend/core + runtime/*/kernel have no Electron/main/shared/native npm forbidden imports', lines)
+}
+
+/**
+ * 领域内核的 import 闭包:非测试文件只许 import **自己那个 kernel 目录**里的东西(相对路径且解析在目录内)、
+ * `@onething/backend/core/**` 与 node 内建。同领域的产品文件、`wiring/`、脊柱、`@shared`、第三方包一概不许 ——
+ * 内核要能原样拿走,它就不能认识自己被谁用。比 core 的那条(`checkCorePackageDependencies`)更紧:core 还许
+ * `@shared/*` 与一张批准表,内核今天一样都用不着,就一样都不开。
+ */
+function checkRuntimeDomainKernelImportClosure(): void {
+  const lines = runtimeDomainKernelRoots().flatMap(kernelRoot => walkFiles(kernelRoot)
+    .filter(file => !isTestOrFixtureFile(file))
+    .flatMap(file => forbiddenImportLines(file, specifier => {
+      if (specifier.includes('${')) return false
+      const target = relativeTargetOf(file, specifier)
+      if (target) return !isInside(kernelRoot, target)
+      if (specifier === '@onething/backend/core' || specifier.startsWith('@onething/backend/core/')) return false
+      if (isNodeBuiltinSpecifier(specifier)) return false
+      return true
+    })))
+  assertNoMatches(
+    'packages/backend/runtime/*/kernel imports only its own kernel, @onething/backend/core and node builtins',
+    lines,
+  )
+}
+
+/**
+ * `runtime/<d>/wiring/**` 的反方向(镜像 `checkRuntimeWiringModulesStayAtTheEdge`):runtime 子树里**不在任何
+ * `wiring/` 目录**的非测试文件,不许 import `runtime/*\/wiring/**` —— 不论走包说明符还是相对路径。
+ * 脊柱与别的 `wiring` 目录可以(那正是装配的方向);产品层回头摸装配层 = 依赖方向倒了。
+ */
+const RUNTIME_DOMAIN_WIRING_SPECIFIER = /^@onething\/backend\/runtime\/[^/]+\/wiring(?:\/|$)/
+
+function checkRuntimeProductDoesNotImportDomainWiring(): void {
+  const runtimeRoot = path.join(root, 'packages/backend/runtime')
+  const lines = walkFiles(runtimeRoot)
+    .filter(file => !isRuntimeDomainWiringFile(file) && !isTestOrFixtureFile(file))
+    .flatMap(file => forbiddenImportLines(file, specifier => {
+      const target = relativeTargetOf(file, specifier)
+      if (target) return isRuntimeDomainWiringFile(target)
+      return RUNTIME_DOMAIN_WIRING_SPECIFIER.test(specifier)
+    }))
+  assertNoMatches('packages/backend/runtime product layer does not import runtime/*/wiring (the assembly layer)', lines)
 }
 
 // packages/backend (`@onething/backend`, P3'd 前叫 src/app,再往前是
@@ -2507,7 +2577,8 @@ function checkRuntimeHostBoundary(): void {
     .flatMap(file => matchingLines(
       file,
       // 脊柱是唯一可以 import cordis / @shared/ipc 的地方；产品层不感知底座。
-      isBackendSpineFile(file)
+      // `runtime/<d>/wiring/**` 是住在领域里的装配层,与脊柱同一套规则(见 `isRuntimeDomainWiringFile`)。
+      isBackendSpineFile(file) || isRuntimeDomainWiringFile(file)
         ? APP_ASSEMBLY_FORBIDDEN_PATTERNS
         : [
             ...(isRuntimeWiringFile(file) ? RUNTIME_WIRING_FORBIDDEN_PATTERNS : HOST_BOUNDARY_FORBIDDEN_PATTERNS),
@@ -2529,6 +2600,8 @@ const RUNTIME_WIRING_IMPORT_PATTERN = /(?:from\s+|import\s*\(\s*|require\s*\(\s*
 function checkRuntimeWiringModulesStayAtTheEdge(): void {
   const lines = walkFiles(path.join(root, 'packages/backend/runtime'))
     .filter(file => !isRuntimeWiringFile(file)
+      // `runtime/<d>/wiring/**` 是装配层:接 `*.wiring` 出口正是它的工作,与脊柱同样不受此限。
+      && !isRuntimeDomainWiringFile(file)
       // 测试是那个模块的**验证**,不是产品逻辑对它的依赖 —— 允许直接 import。
       && !file.includes(`${path.sep}__tests__${path.sep}`)
       && !/\.(?:test|spec)\.tsx?$/.test(file))
@@ -5814,15 +5887,15 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
  */
 function checkSearchHasOneQueryPath(): void {
   const sharedSearchFile = path.join(root, 'packages/shared/ipc/search.ts')
-  const facadeFile = path.join(root, 'packages/backend/wiring/search/providers.ts')
+  const facadeFile = path.join(root, 'packages/backend/runtime/search/wiring/providers.ts')
   const sharedSearchContent = fs.existsSync(sharedSearchFile) ? fs.readFileSync(sharedSearchFile, 'utf-8') : ''
   const facadeContent = fs.existsSync(facadeFile) ? fs.readFileSync(facadeFile, 'utf-8') : ''
   const facadeLines = facadeContent.split('\n').filter(line => line.trim().length > 0)
 
   // ① 旧路的形状:runtime 的检索树 + 装配层的检索接线 + 契约层那一份,全扫。
   const searchTrees = [
+    // 装配层的检索接线(第③步起住在 `runtime/search/wiring/`)已含在这一棵里。
     path.join(root, 'packages/backend/runtime/search'),
-    path.join(root, 'packages/backend/wiring/search'),
     path.join(root, 'packages/backend/rpc/domains'),
   ].filter(dir => fs.existsSync(dir))
 
@@ -5846,7 +5919,7 @@ function checkSearchHasOneQueryPath(): void {
     // ③ 门面极薄。
     ...(fs.existsSync(facadeFile)
       ? []
-      : ['packages/backend/wiring/search/providers.ts: missing search adapters assembly point']),
+      : ['packages/backend/runtime/search/wiring/providers.ts: missing search adapters assembly point']),
     ...(facadeLines.length > 40
       ? [`${rel(facadeFile)}: 取材面门面必须保持极薄(现在 ${facadeLines.length} 行)`]
       : []),
@@ -6932,9 +7005,12 @@ const CORE_SEARCH_CAPABILITY_NAME_PATTERNS: RegExp[] = [
 const CORE_SEARCH_KIND_SWITCH_PATTERN = /\bswitch\s*\([^)]*\.(?:kind|capability)\b/
 
 function checkCoreSearchNamesNoCapability(): void {
-  const searchRoot = path.join(root, 'packages/backend/core/search')
+  const searchRoot = path.join(root, 'packages/backend/runtime/search/kernel')
   if (!fs.existsSync(searchRoot)) {
-    console.log('[boundary] ok: core/search absent (S1 pending)')
+    // 从前目录不在时这里打一行「absent (S1 pending)」的 ok:S1 早已落地,目标目录不见了只可能是搬家没跟上,
+    // 绿着放过去就是「尺子丢了还报平安」。
+    assertNoMatches('packages/backend/runtime/search/kernel names no capability (no capability-id literals, no switch on .kind/.capability)',
+      [`${rel(searchRoot)}: search kernel directory is missing — the check lost its target`])
     return
   }
   // `__tests__` 不在射程内(`walkFiles` 缺省就跳过):夹具与用例当然要拿真能力
@@ -6945,7 +7021,7 @@ function checkCoreSearchNamesNoCapability(): void {
     CORE_SEARCH_KIND_SWITCH_PATTERN,
   ]))
   assertNoMatches(
-    'packages/backend/core/search names no capability (no capability-id literals, no switch on .kind/.capability)',
+    'packages/backend/runtime/search/kernel names no capability (no capability-id literals, no switch on .kind/.capability)',
     lines,
   )
 }
@@ -7178,6 +7254,8 @@ function checkVueHostStaysRetired(): void {
 }
 
 checkCoreForbiddenImports()
+checkRuntimeDomainKernelImportClosure()
+checkRuntimeProductDoesNotImportDomainWiring()
 checkVueHostStaysRetired()
 checkRuntimeHostBoundary()
 checkClientPackageBoundary()

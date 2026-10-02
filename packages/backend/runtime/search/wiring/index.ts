@@ -41,7 +41,7 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import type { CapabilityManifest } from '@onething/backend/core/search'
+import type { CapabilityManifest } from '@onething/backend/runtime/search/kernel'
 import {
   createOnethingSearchService,
   type OnethingSearchProvidersAdapters,
@@ -64,17 +64,17 @@ import { DEFAULT_SEMANTIC_MODEL_ID } from '@shared/ipc/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getEventBus } from '../../events/index.js'
-import { getSettings } from '../../stores/settings.js'
-import { registerSessionLogEventAppendObserver } from '../../session/event-log.js'
+import { getEventBus } from '@onething/backend/events/index.js'
+import { getSettings } from '@onething/backend/stores/settings.js'
+import { registerSessionLogEventAppendObserver } from '../../../session/event-log.js'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEvent,
   type SettingsEventBroadcaster,
-} from '../settings/events.js'
-import { getLogger } from '../logging/index.js'
-import { getNotesSubsystemSafe } from '../notes/index.js'
+} from '@onething/backend/wiring/settings/events.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getNotesSubsystemSafe } from '@onething/backend/wiring/notes/index.js'
 import type { NoteVault } from '@onething/backend/runtime/notes'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'

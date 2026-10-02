@@ -20,7 +20,7 @@
  * (§5.4)。**词法路一行不动** —— 那是同一个库里两套派生数据,各自重建。
  */
 
-import type { Embedder, IndexedDoc, VectorIndex } from '@onething/backend/core/search'
+import type { Embedder, IndexedDoc, VectorIndex } from '@onething/backend/runtime/search/kernel'
 import { normalizeError, type NormalizedLogError } from '@onething/backend/core/logging'
 
 import { getLogger } from '../../logging/index.js'

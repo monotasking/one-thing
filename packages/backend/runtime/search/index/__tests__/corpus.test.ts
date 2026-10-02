@@ -8,7 +8,7 @@
  * 都红。
  *
  * 语料与黄金表是 S0 从真库抽出来冻在仓里的
- * (`packages/backend/core/search/__tests__/fixtures/`),S1 的 `fixtures.test.ts` 只验了「夹具
+ * (`packages/backend/runtime/search/kernel/__tests__/fixtures/`),S1 的 `fixtures.test.ts` 只验了「夹具
  * 自洽」;把它们真跑在一个索引上,这里是第一次。
  *
  * **不经账本**:直接 `replaceKey` 灌 —— 这一条量的是索引本身,投影那一路有它自己
@@ -24,14 +24,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, DocPayload, LexicalQuery } from '@onething/backend/core/search'
+import type { CapabilityManifest, DocPayload, LexicalQuery } from '@onething/backend/runtime/search/kernel'
 import {
   buildLexicalQuery,
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
   parse,
   plan,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 
 import { SqliteIndex } from '../sqlite-index.js'
 
@@ -51,7 +51,7 @@ interface Golden { queries: Array<{ query: string; expectKeys: string[]; note: s
 
 const fixtures = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../../core/search/__tests__/fixtures',
+  '../../kernel/__tests__/fixtures',
 )
 const corpus = JSON.parse(fs.readFileSync(path.join(fixtures, 'corpus.json'), 'utf-8')) as Corpus
 const golden = JSON.parse(fs.readFileSync(path.join(fixtures, 'golden-queries.json'), 'utf-8')) as Golden
@@ -242,7 +242,7 @@ describe('SqliteIndex 真语料(S0 夹具)', () => {
     const at = (q: number): number => samples[Math.min(samples.length - 1, Math.floor(samples.length * q))]!
     const dbBytes = fs.statSync(path.join(tempRoot, 'corpus.sqlite')).size
     // 这是**读数**,不是日志:只在这一条用例里往测试报告上打一行,产品代码一个
-    // console 都没有(`log:gate` 只扫非测试源码,`packages/backend/core/search/__tests__/
+    // console 都没有(`log:gate` 只扫非测试源码,`packages/backend/runtime/search/kernel/__tests__/
     // benchmark.test.ts` 打基准也是这么打的)。
     console.log(`[S3a 读数] 冷灌 ${corpus.docs.length} 文档 ${coldMs.toFixed(0)}ms`
       + ` | 库 ${(dbBytes / 1024 / 1024).toFixed(2)}MiB`

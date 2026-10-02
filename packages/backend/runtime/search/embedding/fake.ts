@@ -1,11 +1,11 @@
 /**
- * 假嵌入器的**注册表适配器**。机制住 core(`@onething/backend/core/search` 的
+ * 假嵌入器的**注册表适配器**。机制住 core(`@onething/backend/runtime/search/kernel` 的
  * `createFakeEmbedder`,与 `MemoryIndex` 同一种身份);这个文件只做两件宿主的事:
  * 把映射表从磁盘读进来,把工厂挂进注册表。
  *
  * 设计:docs/design/search-index-2026-09.md §15.5
  *
- * 表与黄金复述集是**同一份数据**(`packages/backend/core/search/__tests__/fixtures/
+ * 表与黄金复述集是**同一份数据**(`packages/backend/runtime/search/kernel/__tests__/fixtures/
  * paraphrase.json` 的 `synonyms` 段),由 `ONETHING_SEARCH_EMBEDDER_FAKE_TABLE`
  * 指过来 —— 一份数据两个读者,不许抄两份。没指表 = 只有词面层,仍然确定性、仍然
  * 跑得通,只是不懂同义。
@@ -13,8 +13,8 @@
 
 import { readFileSync } from 'node:fs'
 
-import { FAKE_EMBEDDER_DIMS, createFakeEmbedder } from '@onething/backend/core/search'
-import type { Embedder } from '@onething/backend/core/search'
+import { FAKE_EMBEDDER_DIMS, createFakeEmbedder } from '@onething/backend/runtime/search/kernel'
+import type { Embedder } from '@onething/backend/runtime/search/kernel'
 
 import type { EmbedderCreateOptions, EmbedderFactory } from './registry.js'
 

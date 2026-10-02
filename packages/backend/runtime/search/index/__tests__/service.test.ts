@@ -8,8 +8,8 @@
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, SearchContext, SearchQuery } from '@onething/backend/core/search'
-import { PIN_FIELD_HIT_OFFSET, parse } from '@onething/backend/core/search'
+import type { CapabilityManifest, SearchContext, SearchQuery } from '@onething/backend/runtime/search/kernel'
+import { PIN_FIELD_HIT_OFFSET, parse } from '@onething/backend/runtime/search/kernel'
 
 import { LedgerFeed } from '../ledger-feed.js'
 import { SearchIndexService, createSqliteLexicalRetriever } from '../service.js'

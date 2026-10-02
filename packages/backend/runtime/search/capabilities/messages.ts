@@ -48,7 +48,7 @@ import {
   type SearchContext,
   type SearchPage,
   type SearchQuery,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import { createSqliteLexicalRetriever, createSqliteVectorRetriever } from '../index/service.js'
 import type { OnethingSearchMessage, OnethingSearchProvidersAdapters } from '../providers.js'
 import {

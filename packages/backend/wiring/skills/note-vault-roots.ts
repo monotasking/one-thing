@@ -8,7 +8,7 @@
  * 一直活到下一次别的事情碰巧让缓存失效为止。
  *
  * 订的是**笔记域的产物**(`NotesSubsystem.onRefreshed`)而不是 `settings:changed`
- * ——与 `wiring/search/index.ts` 同一条判例:库表由笔记域算,订设置会读到上一份。
+ * ——与 `runtime/search/wiring/index.ts` 同一条判例:库表由笔记域算,订设置会读到上一份。
  *
  * 第二条线是同一件事的另一半:一个笔记库答「附件该放哪」是异步的,而技能加载器
  * 整条链是同步的,所以第一次加载必然省掉 `<note_skill_context>` 里那一格;库答

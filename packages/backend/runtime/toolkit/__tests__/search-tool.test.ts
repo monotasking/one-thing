@@ -3,7 +3,7 @@
  *
  * 这里问的全是「工具**翻译**得对不对」:参数 → 查询、主体 → 检索主体、
  * 预览载荷 → 文本、注册表 → 描述。真索引 / 真授权在
- * `backend/wiring/search/__tests__/` 那两份里(store 级),不在这一层重测。
+ * `backend/runtime/search/wiring/__tests__/` 那两份里(store 级),不在这一层重测。
  *
  * 端口是手搓的 —— `RunContext` 里没有引擎、没有 store(尺子⑤),所以这份用例
  * 一个 mock 框架都不用。

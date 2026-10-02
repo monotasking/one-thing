@@ -15,7 +15,7 @@
  *  3. **黄金表可兑现**:每一个 `expectKey` 都真的是语料里的一个键。期望集里指着
  *     不存在的键,S1 那道门就永远是绿的假象。
  *
- * 本目录(`packages/backend/core/search/`)此刻**只有夹具与这个用例** —— 内核是 S1 的活。
+ * 本目录(`packages/backend/runtime/search/kernel/`)此刻**只有夹具与这个用例** —— 内核是 S1 的活。
  * 边界检查器的 `checkCoreSearchNamesNoCapability` 从 S0 起就守着它:core 里不许出现
  * 任何能力 id 的字面量。`__tests__` 不在那条规则的射程内(夹具当然要拿真名字当证词)。
  */
@@ -23,7 +23,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { REDACT_RULE_IDS, findRedactionHits, redactText } from '../../../../../scripts/lib/search-corpus-redact.mjs'
+import { REDACT_RULE_IDS, findRedactionHits, redactText } from '../../../../../../scripts/lib/search-corpus-redact.mjs'
 
 interface CorpusDoc {
   capability: 'messages' | 'sessions'

@@ -33,7 +33,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, DocPayload, Embedder } from '@onething/backend/core/search'
+import type { CapabilityManifest, DocPayload, Embedder } from '@onething/backend/runtime/search/kernel'
 import {
   VECTOR_RETRIEVER_ID,
   buildLexicalQuery,
@@ -42,7 +42,7 @@ import {
   createFakeEmbedder,
   parse,
   plan,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 
 import { chunkForEmbedding } from '../../embedding/embedder.js'
 import { SqliteIndex } from '../sqlite-index.js'
@@ -64,7 +64,7 @@ interface Paraphrase {
 
 const fixtures = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../../core/search/__tests__/fixtures',
+  '../../kernel/__tests__/fixtures',
 )
 const corpus = JSON.parse(fs.readFileSync(path.join(fixtures, 'corpus.json'), 'utf-8')) as Corpus
 const paraphrase = JSON.parse(

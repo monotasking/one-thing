@@ -56,7 +56,7 @@
  * **不重试到死**(§15.3)。词法路一个字不受影响。
  */
 
-import type { EmbedKind, Embedder } from '@onething/backend/core/search'
+import type { EmbedKind, Embedder } from '@onething/backend/runtime/search/kernel'
 
 import { getLogger } from '../../logging/index.js'
 import { resolveHuggingFaceEndpoint } from '../index/worker-network.js'

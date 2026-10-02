@@ -86,7 +86,7 @@ export type {
   SessionOverviewPreview,
 } from './preview.js'
 
-import type { SearchCapability } from '@onething/backend/core/search'
+import type { SearchCapability } from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { createActionsSearchCapability } from './actions.js'
 import { createChatsSearchCapability } from './sessions.js'

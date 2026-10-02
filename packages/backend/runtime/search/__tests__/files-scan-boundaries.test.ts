@@ -14,7 +14,7 @@
  * 第四条(壳查询带 signal)是壳与 HTTP 面的事,由 `gate:search-scan` 在真机上证。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ALL_CAPABILITIES } from '@onething/backend/core/search'
+import { ALL_CAPABILITIES } from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../providers.js'
 import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/index.js'
 import { searchFiles } from '../capabilities/files.js'
@@ -89,7 +89,7 @@ describe('① 扫盘根 = 当前语境那几个,不是授权全集', () => {
     const roots = calls.map(call => call.cwd)
     /*
      * 四个根:当前会话的工作目录 + 两个笔记库的根 + 接入目录。
-     * 反证:把 `backend/wiring/search/index.ts` 那一行
+     * 反证:把 `backend/runtime/search/wiring/index.ts` 那一行
      * `adapters.getSearchDirectories = access.fileRoots` 加回来(它接的是授权全集),
      * 这里就会变成 494 个根 —— 那正是真机上 31 条 `rg` 的成因。
      */

@@ -8,7 +8,7 @@
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { DocPayload, DocumentFeed, QueryNode } from '@onething/backend/core/search'
+import type { DocPayload, DocumentFeed, QueryNode } from '@onething/backend/runtime/search/kernel'
 
 import { LedgerFeed } from '../ledger-feed.js'
 import { SearchIndexService } from '../service.js'

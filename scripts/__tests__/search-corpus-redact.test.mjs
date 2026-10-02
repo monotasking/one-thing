@@ -3,7 +3,7 @@
  *
  * 八条规则**逐条**一组:一句「脏的」进去,断言换成了什么、`findRedactionHits` 认得出
  * 脏的、洗过之后认不出。最后一组守的是整份文件唯一的验收判据 —— **幂等**:洗两遍与
- * 洗一遍逐字相同。夹具自检(`packages/backend/core/search/__tests__/fixtures.test.ts`)在成品
+ * 洗一遍逐字相同。夹具自检(`packages/backend/runtime/search/kernel/__tests__/fixtures.test.ts`)在成品
  * 语料上跑的就是同一句话。
  *
  * 规则 8(`public-ipv4`)另有一节:它是唯一带 `accept` 谓词的规则,所以「形状命中」

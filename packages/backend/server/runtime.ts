@@ -159,7 +159,7 @@ import {
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
 } from "@onething/backend/runtime/search";
-import { unavailableIndexFace } from "../wiring/search/index.js";
+import { unavailableIndexFace } from "@onething/backend/runtime/search/wiring";
 import { noteVaultsNow, primaryNoteVaultNow } from "../wiring/notes/index.js";
 import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/runtime/media";
 import {

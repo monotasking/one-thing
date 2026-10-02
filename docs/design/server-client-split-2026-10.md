@@ -72,6 +72,36 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 逐领域(先选最散的:search、mcp、acp、plugins、collab、music),照 provider 试点的做法:先量、立快照、搬、证明不变、
 一个领域一笔提交。目标:一个领域在 server 包里只有一个目录。
 
+### 目录规矩(第一个领域 search 立下,后面的领域照抄)
+
+**一个领域的家是 `runtime/<d>/`。** 产品文件原地不动;从前散在别处的两片搬进来,各占一个按角色命名的子目录:
+
+- **`runtime/<d>/kernel/`**:从前的 `core/<d>`。一个 `core/<d>` 只有在**别的领域也真 import 它**时才配留在 core
+  (那才是通用骨架);只服务本领域的内核(search 的 `core/search` 就是:除 search 自己以外零真实 importer,其余命中
+  全是注释)并进领域,改叫 kernel。搬家不改它的身份:它仍是零依赖的骨架。
+- **`runtime/<d>/wiring/`**:从前的 `backend/wiring/<d>`。它是装配层,只是住进了领域的家。
+- RPC 处理器(`rpc/domains/<d>.ts`)这一步不动 —— RPC 注册表那张表的形状是第④步的事。
+
+**守门规矩按路径角色判,不按住址判**(语义一条不放松):
+
+1. kernel 当 core 判:core 身上的禁令(electron / `@shared/ipc` / 原生依赖 / MCP、ACP SDK / zod 等,以及「core 在最底层」)
+   原样作用于 `runtime/*/kernel/**`。另加一条更紧的闭包:kernel 的非测试文件只许 import 自己那个 kernel 目录里的东西、
+   `@onething/backend/core/**` 与 node 内建 —— 同领域的产品文件、`wiring/`、脊柱、`@shared`、第三方包一概不许。
+   内核要能原样拿走,它就不能认识自己被谁用。
+2. `runtime/<d>/wiring/**` 当装配层判:享有与 `backend/wiring/**` 逐条相同的规则集(可以 import 脊柱与 `@shared/ipc`,
+   electron / `@main` / `@preload` 照禁),「产品层不许 import 脊柱」「三棵子树的相对 import 不出子树」两条对它豁免。
+   反方向镜像 `*.wiring.ts` 那条:runtime 里**不在任何 `wiring/` 目录**的非测试文件不许 import `runtime/*/wiring/**`。
+   这与 `*.wiring.ts` 后缀是两回事:后缀标的是**产品文件**里那道「只许说跨进程词汇」的窄口,目录标的是**装配层本身**。
+3. 接线里指向脊柱的 import 一律写包说明符(`@onething/backend/wiring/logging/index.js` 这类,exports 缺键就补,风格照
+   脊柱现有的 `.js` 键);**唯一的例外是内部会话模块**(`session/reads.ts`、`session/event-log.ts` 等,
+   `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)—— 那条门规定它们不许有 exports 键,所以接线
+   照包根脊柱文件的样子相对 import 它们。runtime 子树的新键照 runtime 的风格不带 `.js`,目录桶有自己的键。
+4. `assembly:gate` 的尺子跟着角色走:`runtime/` 子树照旧不量,但它下面每个 `<d>/wiring/` 都量,基线里搬家文件的行只改路径。
+5. 按旧路径写的领域断言(search 的「只有一条查询路」、尸检表、「内核不点任何能力名」)只改路径。
+
+搬家脚本是可复用的(会话 scratchpad 里的 `fold-domain.mjs <d> [--kernel] [--dry]`:`git mv` + 相对路径按搬家前的落点
+重算 + 包说明符与注释里的路径改写 + exports 键改名补齐),`--kernel` 由「`core/<d>` 是否只有本领域在用」决定。
+
 ## 5. 第④步要点
 
 见 `architecture-direction-2026-10.md` §1:Electron 改为启动 / 停止后台后端(不开机自启,可配置随 Electron 退出或常驻)、
@@ -246,3 +276,60 @@ boundary / transport / log / provider gate 绿,assembly gate 仍只红 `wiring/m
 测试里当假目录树用的 `packages/core`(`files-panel.test.tsx`、`files-source.test.ts`、`gate-files.mjs`、
 `wiring/tasks/__tests__/dispatch.test.ts` 的提示词文本)与搜索夹具 `corpus.json` 里的真实会话文本是数据,不改;
 别的会话在途的 `src/data/chat-{fold,source}.ts` 里有 3 行注释提到旧路径,只许改 import 路径,没动。
+
+### ③-search 落地记录(2026-10-02,未提交)
+
+**一句话**:search 在 server 包里只剩一个家 `runtime/search/`。`core/search`(52 个文件,含测试与夹具)并进
+`runtime/search/kernel/`,`backend/wiring/search`(15 个,含 7 份测试)并进 `runtime/search/wiring/`,一律 `git mv`;
+`rpc/domains/search.ts` 按约定没动(第④步)。目录规矩见 §4「目录规矩」。
+
+**搬家与改写**(会话 scratchpad 的 `fold-domain.mjs search --kernel` 一次做完,在 HEAD 的临时 worktree 上重放一遍与
+主检出逐字相同):
+- 包说明符 `@onething/backend/core/search…` → `@onething/backend/runtime/search/kernel…`;脊柱里指向接线的
+  `./wiring/search/…`(`backend.ts`)、`../wiring/search/…`(`server/runtime.ts`)、`../search/…`(`wiring/plugins/api.ts`)
+  与 `import-side-effect-free.test.ts` 的动态 import 改成 `@onething/backend/runtime/search/wiring…`。
+- 接线里指向脊柱的相对 import 改成包说明符(`stores/*`、`utils/ripgrep`、`store`、`events/*`、`session/access`、
+  `wiring/{logging,notes,settings,engine,plugins,toolkit}/*`、`server/host-trust`、`rpc/domains/search`);
+  **`session/reads.js`、`session/event-log.js` 两处保持相对路径**(源文件与测试里的 `vi.mock` 各一处),理由见 §4 第 3 条。
+- 夹具路径跟着落点重算:`golden-snapshot` / `corpus` / `semantic` 三份测试拼的 `…/core/search/__tests__/fixtures`、
+  `fixtures.test.ts` 指向 `scripts/lib/search-corpus-redact.mjs` 的那一级、`scripts/lib/search-corpus-redact.mjs` 的再导出、
+  `gate-search-index.mjs` 与 `search-corpus-extract.mjs` 读写夹具的字面路径。
+- 注释里的旧路径同步改(壳的 i18n / SearchFooter / SearchPanel.test / search-settings-source、`packages/shared/ipc/search.ts`、
+  兄弟接线 `acp/mcp-bridge-path`、`notes/index`、`pets/chattiness`、`skills/note-vault-roots`、build-electron.mjs 的说明);
+  根 `CLAUDE.md` 的五处路径与 `wiring/<domain>/` 那句目录清单(原写 33 个且早已过时,改成今天的 41 个,search 已不在其中)。
+  `docs/` 与各 app 的 `docs/` 是历史,不改。
+- `packages/backend/package.json` exports:改名 6 格(`./core/search{,/__tests__/index-contract,/__tests__/unit-fixtures/corpus,
+  /index/types,/redact}` → `./runtime/search/kernel…`,`./wiring/search/providers.js` → `./runtime/search/wiring/providers`,
+  挪到 `./runtime/search` 那一组后面),新增 10 格:`./runtime/search/wiring`、`./runtime/search/wiring/plugin-search-registry`,
+  以及脊柱的 `./events/event-bus.js`、`./rpc/domains/search.js`、`./session/access.js`、`./stores/app-state.js`、
+  `./wiring/engine/execution-context.js`、`./wiring/plugins/api.js`、`./wiring/toolkit/{catalog,runner}.js`。
+- Worker 产物的位置契约不受影响:`runtime/search/wiring/worker.ts` 按宿主 bundle 自己的 `import.meta.url` 找旁边的
+  `search-worker.cjs`,源码住哪不进这条算术;Worker 入口 `runtime/search/index/worker.ts` 没动,三份构建配方无需改。
+
+**守门改写**(语义不放松;前四条是新规矩,后面是路径改写):
+1. 边界检查器 `checkCoreForbiddenImports` 同时扫 `runtime/*/kernel`(目录现算,不写领域名);新增
+   `checkRuntimeDomainKernelImportClosure`(kernel 只许 import 自己目录 / `@onething/backend/core/**` / node 内建)与
+   `checkRuntimeProductDoesNotImportDomainWiring`(runtime 里不在 `wiring/` 目录的非测试文件不许 import `runtime/*/wiring/**`,
+   包说明符与相对路径都判)。`checkRuntimeHostBoundary` 让 `runtime/<d>/wiring/**` 吃脊柱那套规则(`APP_ASSEMBLY_FORBIDDEN_PATTERNS`),
+   `checkRuntimeWiringModulesStayAtTheEdge` 对它豁免;两种 wiring 的关系写在 `isRuntimeDomainWiringFile` 的注释里。
+   断言总数 139 → 141。
+2. `architecture-boundaries.test.ts`:「core 不碰 electron / 宿主」扫 core 加每个 `runtime/*/kernel`;新增「kernel 在最底层」
+   一条(13 条);「runtime 产品层不许 import 脊柱」与「三棵子树相对 import 不出子树」对 `runtime/<d>/wiring/**` 豁免。
+   检查器里没有与前者同名的断言(查过),无需豁免。I1 / I2 不受影响(`core/search` 没了,`search` 退出 I2 的比对)。
+3. `scripts/lib/backend-public-boundary.mjs`:「内部会话模块只许脊柱碰」那条把 `runtime/<d>/wiring/**` 算作脊柱。
+4. `assembly:gate`:runtime 子树照旧不量,但下钻量每个 `runtime/<d>/wiring/`;基线里 `wiring/search/providers.ts 1`
+   改写为新路径,数字不变。transport / log / session / provider 四门的基线与白名单里没有 search 的旧路径。
+5. 路径改写:「检索只有一条查询路」的尸检表与 `facadeFile`(扫描树表里与 `runtime/search` 重复的那一格删掉,写了注释)、
+   「内核不点任何能力名」的目标目录。后者原来目录不在时打一行 ok(「S1 pending」),改成目录不在就红 —— 这是收紧。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 均零错;`server:build`、`build:cli` 成功,`dist/{server,cli}/search-worker.cjs`
+都在(1283480 → 1283608 字节,多出的是 bundle 里 12 条模块路径注释变长);桌面四个 bundle 打到临时目录成功;
+`golden-hit-sets.json` 没动,三份 json 夹具是纯改名(`git diff -M --stat` 0 行增删);根全量 vitest 改前 11418 条 / 20 红,
+改后 11419 条(多的是新断言)/ 19 红 —— 少的那条 `model-registry-abort` 是偶发红,单跑三次全绿,其余 19 条逐条相同;
+壳全量 7344 条,同一条 summon-entries A9 红;`gate:search-index` 改前改后同为 71 ok + 4 FAIL,失败的步完全相同
+(⑤d ×2 是第②步合包后 `grep -r packages/backend` 把 runtime 也扫进来的既有红,改后只是命中的路径换成新址;⑤c 计时、
+⑪a 既有);boundary / transport / log / session / provider gate 绿,assembly gate 仍只红 `wiring/music/radio.ts` 9 → 10;
+`provider-vendor-drill` 在 HEAD 上与「HEAD + 工作区改动」上都绿。新规矩自证:在 `kernel/redact.ts` 加一行
+`import … from '../service.js'`、在 `runtime/search/service.ts` 加一行 `./wiring/index.js` 与一行
+`@onething/backend/runtime/search/wiring/worker`,边界门三条红、架构测试那条红,撤掉后回绿。
+`git grep -nE "core/search|wiring/search"` 在代码 / 配置 / 脚本里为零,剩下的都在 `docs/` 与 `apps/desktop-react/docs/`。

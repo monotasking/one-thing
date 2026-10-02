@@ -47,7 +47,7 @@ import {
   type SearchContext,
   type SearchPage,
   type SearchQuery,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../notes/types.js'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import { vaultRelativeKey } from '../index/vault-feed.js'
@@ -314,7 +314,7 @@ export const NOTICE_ACTION_KIND = 'notice'
  *
  * 理由与 `create-daily` 从前那一条逐字相同:`invoke` 只收得到一个 actionId,而
  * 「建哪个文件」不能靠 `invoke` 那一侧再算一遍 —— 那就是第二个「今天是哪天 /
- * 落哪个库」的产地。授权那一侧(`wiring/search/authorization.ts`)把这条路径夹在
+ * 落哪个库」的产地。授权那一侧(`runtime/search/wiring/authorization.ts`)把这条路径夹在
  * 库根里,夹的也正是这一格。给人看的句子由壳按 `labelKey + params` 拼(R12)。
  */
 function actionWithPath(id: string, labelKey: string, filePath: string, params: Record<string, string>): ActionDescriptor {

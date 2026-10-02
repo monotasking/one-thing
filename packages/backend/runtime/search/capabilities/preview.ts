@@ -26,7 +26,7 @@
  * 不读 —— 后端只给路径,壳按查看器的 peek 态画(§4.5 ②那张表最后一行)。
  */
 
-import type { Candidate, TextRange } from '@onething/backend/core/search'
+import type { Candidate, TextRange } from '@onething/backend/runtime/search/kernel'
 
 /** 预览算不出时的原话。壳把它照抄到 error 态那一行上(§4.5 ⑤)。 */
 export class PreviewUnavailableError extends Error {

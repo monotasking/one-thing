@@ -1,6 +1,6 @@
 /**
  * 嵌入器这一侧的产品件:切段 + 归一化。**接口本身住 core**
- * (`packages/backend/core/search/index/types.ts` 的 `Embedder`),因为向量召回器要认它。
+ * (`packages/backend/runtime/search/kernel/index/types.ts` 的 `Embedder`),因为向量召回器要认它。
  *
  * 设计:docs/design/search-index-2026-09.md §15.3
  *
@@ -8,8 +8,8 @@
  * **一段正文怎么切成几段送进模型**。
  */
 
-import { normalizeVector } from '@onething/backend/core/search'
-import type { Embedder, EmbedKind } from '@onething/backend/core/search'
+import { normalizeVector } from '@onething/backend/runtime/search/kernel'
+import type { Embedder, EmbedKind } from '@onething/backend/runtime/search/kernel'
 
 export type { Embedder, EmbedKind }
 export { normalizeVector }

@@ -66,7 +66,7 @@ describe('@onething/backend import purity', () => {
     await import('../wiring/providers/index.js')
     await import('@onething/backend/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
-    await import('../wiring/search/providers.js')
+    await import('@onething/backend/runtime/search/wiring/providers')
     await import('../wiring/skills/manage.js')
     await import('../wiring/skills/loader.js')
     await import('../wiring/permission/permission-grants.js')

@@ -18,7 +18,7 @@ import {
   type Candidate,
   type CapabilityManifest,
   type SearchCapability,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchService } from '@onething/backend/runtime/search/service'
 import { getOnethingSearchServiceSafe } from '@onething/backend/runtime/search/service-bound'
 import {

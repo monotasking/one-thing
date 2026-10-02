@@ -4,7 +4,7 @@
  * 设计:docs/design/search-index-2026-09.md §0(引擎那一段)/ §5.1 / §5.4 / §6.5。
  *
  * 它与 core 的 `MemoryIndex` 答**同一份契约卷子**
- * (`packages/backend/core/search/__tests__/index-contract.ts`,两边各跑一遍)——
+ * (`packages/backend/runtime/search/kernel/__tests__/index-contract.ts`,两边各跑一遍)——
  * 那就是 §5.1 末句「换实现不改上层」从一句话变成活证据的地方。上层(索引基座的
  * 词法召回)只认 `InvertedIndex` / `DocTable` / `LexicalSearcher` / `Vocabulary`
  * 四个接口,谁来实现都一样。
@@ -56,7 +56,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '@onething/backend/core/search'
+import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '@onething/backend/runtime/search/kernel'
 import type {
   DocPayload,
   DocTable,
@@ -69,13 +69,13 @@ import type {
   LexicalSearcher,
   Posting,
   Vocabulary,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 import {
   DEFAULT_NORMALIZERS,
   composeNormalizers,
   createDefaultAnalyzerRegistry,
-} from '@onething/backend/core/search'
-import type { AnalyzerRegistry } from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
+import type { AnalyzerRegistry } from '@onething/backend/runtime/search/kernel'
 
 import { SqliteVectorIndex, attachVectorIndex, probeSqliteVecExtension } from './sqlite-vec.js'
 import { vectorTableFamily } from './storage.js'

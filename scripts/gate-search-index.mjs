@@ -36,7 +36,7 @@
  *      `ONETHING_SEARCH_EMBEDDER=fake` 换成确定性的假嵌入器 —— 门不下 110MB 模型)
  *      → `status.vector` 走过 downloading / embedding 到 `'ready'` → 黄金复述集里
  *      的一条**改写句**经 HTTP 命中那条消息。假嵌入器证的是**链路**不是模型
- *      (`packages/backend/core/search/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
+ *      (`packages/backend/runtime/search/kernel/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
  *   ⑫ **真嵌入器真的跑得起来**(2026-09-17;**默认不跑** —— 它要下 130MB 模型、要出外网)。
  *      `ONETHING_GATE_REAL_EMBEDDER=1` 且 `HTTPS_PROXY` / `HF_ENDPOINT` 至少有一个在场
  *      才跑;否则打印跳过的理由。判的是「`device: 'cpu'` 那条路通到底」:状态走到
@@ -1096,7 +1096,7 @@ async function runRealEmbedderPhase() {
      * 下载 —— 那一格现在只说「要不要用」,下载是这一发 RPC。
      *
      * 下完之后**不用再翻一次开关**:Worker 把「落定了」喊回宿主,装配在开关本来就开着
-     * 时换一条 Worker(`wiring/search/index.ts`)。所以下面那条等待既是「真模型装得起来」
+     * 时换一条 Worker(`runtime/search/wiring/index.ts`)。所以下面那条等待既是「真模型装得起来」
      * 的判据,也是「下完就生效」这条链的真机证据。
      */
     const already = (await rpc('search', 'status'))?.model?.state
@@ -1244,7 +1244,7 @@ async function runLoopDelayPhase() {
 
     // ── 种账本:300 会话 × 30 条消息,含 10 条 > 64KB 的正文 ────────
     const corpus = JSON.parse(fs.readFileSync(
-      path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
+      path.join(repoRoot, 'packages/backend/runtime/search/kernel/__tests__/fixtures/corpus.json'), 'utf-8'))
     const seedStartedAt = Date.now()
     const seeded = seedLedger({ storePath: storeB, sessions: 300, messagesPerSession: 30, corpus })
     console.log(`  info 种了 ${seeded.sessions} 间 × ${seeded.messages / seeded.sessions} 条 = `
@@ -1456,14 +1456,14 @@ async function runLoopDelayPhase() {
  */
 async function runSemanticPhase() {
   const storeC = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-semantic-gate-'))
-  const paraphrasePath = path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/paraphrase.json')
+  const paraphrasePath = path.join(repoRoot, 'packages/backend/runtime/search/kernel/__tests__/fixtures/paraphrase.json')
   let server
   let provider
   try {
     console.log(`[gate:search-index] ⑧ temp store: ${storeC}`)
     const paraphrase = JSON.parse(fs.readFileSync(paraphrasePath, 'utf-8'))
     const corpus = JSON.parse(fs.readFileSync(
-      path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
+      path.join(repoRoot, 'packages/backend/runtime/search/kernel/__tests__/fixtures/corpus.json'), 'utf-8'))
 
     /*
      * 挑复述集的**两条**,各自的原文各进一间会话,再拿各自的改写句去查 ——
@@ -1473,7 +1473,7 @@ async function runSemanticPhase() {
      * 下限**。`k = 5` 答的永远是最近的五条,哪怕全都不相关 —— 一间只有两条消息的
      * store 上,任何一句话都能把那两条召回来,所以「不相关的查询不该命中」在这个
      * 现场根本不成立(机制层面留了 `manifest.retrievers.vector.maxDistance` 这一格,
-     * 但今天故意没有定值,理由见 `core/search/capability.ts` 那格注释与 §13)。
+     * 但今天故意没有定值,理由见 `runtime/search/kernel/capability.ts` 那格注释与 §13)。
      * **能判的是区分度**:两条各自的改写句要各把自己那条排在第一。
      */
     const sourceOf = item => {
@@ -1626,15 +1626,15 @@ async function runSemanticPhase() {
  * 回去又回到 `'off'`。
  *
  * 为什么必须真机证:换的是一条 `worker_threads` 线程,而单测里的 Worker 是同线程的
- * `MessageChannel`(`wiring/search/__tests__/index-service.test.ts` 判的是装配算术)。
+ * `MessageChannel`(`runtime/search/wiring/__tests__/index-service.test.ts` 判的是装配算术)。
  * 「真起得来第二条线程、而且它开得了同一个库文件」只有产物上跑得出来。
  *
  * **走的是设置那条真路**(`settings.saveSettings` RPC → `settings:changed` →
- * `wiring/search/index.ts` 的那条订阅),不是一个门专用的后门。
+ * `runtime/search/wiring/index.ts` 的那条订阅),不是一个门专用的后门。
  */
 async function runSemanticHotApplyPhase() {
   const storeD = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-hotapply-gate-'))
-  const paraphrasePath = path.join(repoRoot, 'packages/backend/core/search/__tests__/fixtures/paraphrase.json')
+  const paraphrasePath = path.join(repoRoot, 'packages/backend/runtime/search/kernel/__tests__/fixtures/paraphrase.json')
   let server
   let provider
   try {

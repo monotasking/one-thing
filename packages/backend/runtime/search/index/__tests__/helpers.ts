@@ -18,7 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { MessageChannel } from 'node:worker_threads'
 
-import type { DocumentFeed, DocumentFilter } from '@onething/backend/core/search'
+import type { DocumentFeed, DocumentFilter } from '@onething/backend/runtime/search/kernel'
 import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types'
 import { encodeSessionLogEventLine } from '@onething/backend/core/session'
 

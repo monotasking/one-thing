@@ -49,7 +49,7 @@ packages/backend/wiring/providers/credential-strategy.ts 1
 packages/backend/wiring/providers/index.ts 1
 packages/backend/wiring/providers/space-credentials.ts 1
 packages/backend/wiring/scheduler/user-tasks.ts 1
-packages/backend/wiring/search/providers.ts 1
+packages/backend/runtime/search/wiring/providers.ts 1
 packages/backend/wiring/settings/events.ts 1
 packages/backend/wiring/settings/host-ports.ts 1
 packages/backend/wiring/skills/loader.ts 2

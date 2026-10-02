@@ -21,7 +21,7 @@
  * ## ref 与 `expand`
  *
  * ref 是 `${capability}:${candidate.id}` —— 跨调用稳定(候选 id 是能力内稳定的,
- * 见 `core/search/candidate.ts`)。`expand` 时从**第一个**冒号切:能力 id 里没有
+ * 见 `runtime/search/kernel/candidate.ts`)。`expand` 时从**第一个**冒号切:能力 id 里没有
  * 冒号,候选 id 里可能有(messages 的候选 id 就是 `msg:<sid>:<mid>`)。
  *
  * 预览要的不止 id,还要 `target`(「去哪儿取内容」那一格;`SearchPreviewItem` 的
@@ -60,7 +60,7 @@
  *    `error` 上;末行按 §13.x 那条判词照实说「这一类没搜成」,而不是让它冒充「没有」。
  */
 
-import type { FacetFilter, SearchContext, SearchPrincipal } from '@onething/backend/core/search'
+import type { FacetFilter, SearchContext, SearchPrincipal } from '@onething/backend/runtime/search/kernel'
 import type {
   OnethingSearchService,
   SearchServiceGroup,

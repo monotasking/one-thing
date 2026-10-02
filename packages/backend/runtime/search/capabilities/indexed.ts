@@ -22,7 +22,7 @@ import {
   composeNormalizers,
   hitRangesFromTokens,
   type TextRange,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 
 import type { SearchIndexService } from '../index/service.js'
 import { mapDisplayRangeToSource, toDisplayText } from '../text/plain.js'

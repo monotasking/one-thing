@@ -33,7 +33,7 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '../../../events/event-bus.js'
+import { EventBus } from '@onething/backend/events/event-bus.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { encodeSessionLogEventLine } from '@onething/backend/core/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
@@ -48,12 +48,12 @@ import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '../../settings/events.js'
+} from '@onething/backend/wiring/settings/events.js'
 import { DEFAULT_SEMANTIC_MODEL_ID, type AppSettings } from '@shared/ipc/settings'
 
 /** 总线:装配从 `getEventBus()` 拿,用例给一只真的 `EventBus`。 */
 let bus = new EventBus()
-vi.mock('../../../events/index.js', () => ({ getEventBus: () => bus }))
+vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => bus }))
 
 /**
  * append 观察者:装配注册的那只回调抓在手里,用例自己喊。
@@ -63,7 +63,7 @@ vi.mock('../../../events/index.js', () => ({ getEventBus: () => bus }))
  * 所以用例也必须递一条真事件,不能只递会话 id。
  */
 const appendObservers = new Set<(sessionId: string, record: SessionLogEventRecord) => void>()
-vi.mock('../../../session/event-log.js', () => ({
+vi.mock('../../../../session/event-log.js', () => ({
   registerSessionLogEventAppendObserver: (
     observer: (sessionId: string, record: SessionLogEventRecord) => void,
   ) => {
@@ -289,9 +289,9 @@ describe('search authorization before retrieval, preview and actions', () => {
       fs.writeFileSync(metaPath, JSON.stringify({ ...meta, ownerUserId, ownerWorkspaceId, workspaceId: 'same-product-space', workingDirectory: path.join(storeRoot, id) }))
     }
     await mount()
-    const { configureHostLocalTrust } = await import('../../../server/host-trust.js')
+    const { configureHostLocalTrust } = await import('@onething/backend/server/host-trust.js')
     const restore = configureHostLocalTrust({ origin: 'loopback-server' })
-    const { searchRpcHandlers } = await import('../../../rpc/domains/search.js')
+    const { searchRpcHandlers } = await import('@onething/backend/rpc/domains/search.js')
     return { rpc: searchRpcHandlers, restore }
   }
   function messageItem(id: string) {

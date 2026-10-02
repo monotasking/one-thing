@@ -117,7 +117,11 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
       }
       // 合包(第②步)以后 core / runtime / gateway 也住进了 packages/backend;「同包装配」只指脊柱
       // (三棵子树以外),产品层照旧不许绕过公开边界去碰内部会话模块。
-      const inSpine = within(file, backend) && !['core', 'runtime', 'gateway'].some(dir => within(file, path.join(backend, dir)))
+      // 第③步(2026-10-02)起领域的装配接线住进 `runtime/<d>/wiring/`:它按路径角色就是脊柱(装配层),
+      // 内部会话模块(`reads.ts` / `event-log.ts` …)本来就没有 exports 键,它只能、也应该照脊柱的样子相对 import。
+      const inDomainWiring = /[/\\]packages[/\\]backend[/\\]runtime[/\\][^/\\]+[/\\]wiring[/\\]/.test(file)
+      const inSpine = inDomainWiring
+        || (within(file, backend) && !['core', 'runtime', 'gateway'].some(dir => within(file, path.join(backend, dir))))
       if (!inSpine && target && privateFile(target)) {
         violations.push(`${label}: relative or aliased import bypasses the public Backend boundary`)
       }

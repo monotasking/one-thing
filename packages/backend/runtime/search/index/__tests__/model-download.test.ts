@@ -13,7 +13,7 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import type { Embedder } from '@onething/backend/core/search'
+import type { Embedder } from '@onething/backend/runtime/search/kernel'
 
 import { probeEmbedderModel } from '../../embedding/model-store.js'
 import type { EmbedderDownloadOptions, EmbedderFactory } from '../../embedding/registry.js'

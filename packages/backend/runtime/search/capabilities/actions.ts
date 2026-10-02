@@ -17,7 +17,7 @@
  *    `whenIntent` 换回常量 → 「command 意图 actions 8 条」用例红。
  */
 
-import type { CapabilityManifest, SearchCapability } from '@onething/backend/core/search'
+import type { CapabilityManifest, SearchCapability } from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { staticBackedCapability, type SearchServiceResult } from './scan-adapter.js'
 import { matchRangesOf, normalizeSearchQuery, scoreText } from './text-match.js'

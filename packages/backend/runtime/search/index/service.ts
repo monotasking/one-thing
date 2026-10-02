@@ -22,8 +22,8 @@ import type {
   SearchContext,
   SearchQuery,
   TextRange,
-} from '@onething/backend/core/search'
-import type { IndexedDoc, LexicalHit, VectorHit } from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
+import type { IndexedDoc, LexicalHit, VectorHit } from '@onething/backend/runtime/search/kernel'
 import {
   VECTOR_RETRIEVER_ID,
   applyRanking,
@@ -32,7 +32,7 @@ import {
   nearestPerDoc,
   queryTextOf,
   scoreOfDistance,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 
 import type { ModelState, ModelStatus } from './model-download.js'
 import type {
@@ -205,7 +205,7 @@ export function createSqliteLexicalRetriever(options: SqliteLexicalRetrieverOpti
 
 /**
  * 命中词落在查询串的哪一段(壳画「为什么命中」时用)。与
- * `core/search/bases/lexical-retriever.ts` 里那只同名私有函数**同一条判据** ——
+ * `runtime/search/kernel/bases/lexical-retriever.ts` 里那只同名私有函数**同一条判据** ——
  * 它没有导出,所以这里照抄了六行;两边都只读 `hit.matched` 与 AST,不会分家。
  */
 function queryRangesFor(query: SearchQuery, hit: LexicalHit): TextRange[] {

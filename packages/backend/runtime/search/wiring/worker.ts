@@ -37,7 +37,7 @@ import { Worker } from 'node:worker_threads'
 
 import type { IndexWorkerData } from '@onething/backend/runtime/search/index/worker-data'
 import type { IndexWorkerFactory, IndexWorkerHandle } from '@onething/backend/runtime/search/index/worker-host'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('search.index')
 

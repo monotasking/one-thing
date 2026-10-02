@@ -17,7 +17,7 @@
  *    形态名)。
  *
  * 所以这里只留**形**:主体 → 一串会话号 → `{ sessionId: [...] }`。谁是成员、哪个
- * 空间、什么叫「非协作」,全部由装配层注入的那一件答(`backend/wiring/search/
+ * 空间、什么叫「非协作」,全部由装配层注入的那一件答(`backend/runtime/search/wiring/
  * visibility.ts`)。**这个文件的代码里**一个协作 / 房 / 空间的概念都读不到 —— 上面这段
  * 注释提到它们,只是为了说明它们为什么不在下面。
  *
@@ -35,7 +35,7 @@
  * 两侧一致,所以「看不见任何东西」是一个**能被表达**的范围,不是一个洞。
  */
 
-import type { SearchPrincipal, VisibilityScope } from '@onething/backend/core/search'
+import type { SearchPrincipal, VisibilityScope } from '@onething/backend/runtime/search/kernel'
 
 /**
  * 会话可见范围的产地。装配层实现它,这里只声明形。

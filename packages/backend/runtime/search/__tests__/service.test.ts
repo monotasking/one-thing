@@ -6,7 +6,7 @@
  *  - `budgetPolicy` 改回常量 → 「command 意图 actions 8 条」用例红。
  */
 import { describe, expect, it } from 'vitest'
-import type { IndexedDoc } from '@onething/backend/core/search'
+import type { IndexedDoc } from '@onething/backend/runtime/search/kernel'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { FolderVault } from '../../notes/folder/vault.js'
 import { OnethingSearchService, createOnethingSearchService } from '../service.js'

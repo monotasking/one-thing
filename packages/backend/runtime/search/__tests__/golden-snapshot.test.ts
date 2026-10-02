@@ -44,14 +44,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, DocPayload, LexicalQuery } from '@onething/backend/core/search'
+import type { CapabilityManifest, DocPayload, LexicalQuery } from '@onething/backend/runtime/search/kernel'
 import {
   buildLexicalQuery,
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
   parse,
   plan,
-} from '@onething/backend/core/search'
+} from '@onething/backend/runtime/search/kernel'
 
 import { SqliteIndex } from '../index/sqlite-index.js'
 
@@ -71,7 +71,7 @@ interface Paraphrase { cases: Array<{ id: string; query: string; expect: string[
 interface HitSet { total: number; keys: string[] }
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const fixtures = path.join(here, '../../../core/search/__tests__/fixtures')
+const fixtures = path.join(here, '../kernel/__tests__/fixtures')
 const snapshotPath = path.join(here, '__fixtures__/golden-hit-sets.json')
 
 const corpus = JSON.parse(fs.readFileSync(path.join(fixtures, 'corpus.json'), 'utf-8')) as Corpus

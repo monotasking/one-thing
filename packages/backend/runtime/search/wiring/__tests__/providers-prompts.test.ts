@@ -1,7 +1,7 @@
 /**
  * 提示词那一类,穿过**装配层的取材面**打真的提示词仓。
  *
- * S5(2026-09-05)之前它问的是 `wiring/search/providers` 的 `executeSearch`(旧扫描
+ * S5(2026-09-05)之前它问的是 `runtime/search/wiring/providers` 的 `executeSearch`(旧扫描
  * 路的门面);旧路退役之后同一件事的入口是「这一类的能力 + 装配层的取材面」——
  * 断言一字未改,因为匹配器本来就是同一份代码(S5 只是把它从 `providers.ts` 搬进
  * `capabilities/prompts.ts`)。
@@ -19,7 +19,7 @@ import {
   createPromptsSearchCapability,
   searchResultOf,
 } from '@onething/backend/runtime/search/capabilities'
-import type { SearchQuery } from '@onething/backend/core/search'
+import type { SearchQuery } from '@onething/backend/runtime/search/kernel'
 import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/backend/runtime/prompts/store-bound'
 import { createAppSearchProvidersAdapters } from '../adapters.js'
 

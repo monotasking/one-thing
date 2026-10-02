@@ -107,7 +107,7 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 - **packages/backend/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/backend/runtime** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/backend** (everything outside the three subtrees) — the assembly layer (it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (33 dirs: acp / agent-loop / agents / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / settings / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1). The three subtrees `core/` / `runtime/` / `gateway/` are layers, not domains, so I1 does not count them.
+- **packages/backend** (everything outside the three subtrees) — the assembly layer (it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (41 dirs: acp / agent-loop / agents / ambient / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / mcp / media / memory / music / notes / permission / pets / plugins / project-dirs / providers / quota / resource / scheduler / settings / skills / tasks / terminal / toc / todo-plan / toolkit / tools / usage / variables / voice — search left on 2026-10-02, its wiring now lives in `runtime/search/wiring/`; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1). The three subtrees `core/` / `runtime/` / `gateway/` are layers, not domains, so I1 does not count them.
 - **packages/backend/gateway** — WeChat/Telegram channel gateway; depends on `core/` only.
 - **apps/\*** — thin sockets: the React desktop (`apps/desktop-react`, also the browser shell via `--mode web`), server (HTTP/SSE), CLI daemon (`apps/cli`). The Vue host / renderer / web build were deleted 2026-09-04 (runtime unification step ④; `checkVueHostStaysRetired` keeps them out).
 
@@ -417,7 +417,7 @@ Notes:
   holds a **list** of retrievers, not a function: `[lexical, vector]` fused by RRF (k=60),
   and **which of them runs on a given call is data** — each capability declares
   `manifest.retrievers[<retrieverId>] = { when: 'relaxed' | 'explicit' | 'always' }`, so
-  `packages/backend/core/search` never names a retriever, a capability, or a surface. The vector
+  `packages/backend/runtime/search/kernel` never names a retriever, a capability, or a surface. The vector
   half is `sqlite-vec`'s `vec0` virtual table inside the **same** `search.v1.sqlite`, one row
   per 512-token chunk, plus an `Embedder` registry (`runtime/search/embedding/`) whose real
   entry is `@huggingface/transformers` on the **onnxruntime-node (cpu)** backend, dynamically
@@ -432,14 +432,14 @@ Notes:
   index Worker** (that thread already has the managed fetch and the log relay) through the library's
   own mechanism, cancels by way of `WorkerDownloadSignal` wrapping that thread's `globalThis.fetch`
   (transformers has no signal parameter), and when it lands the Worker posts an id-less notify frame
-  so `wiring/search/index.ts` swaps the Worker — **a finished download takes effect without the user
+  so `runtime/search/wiring/index.ts` swaps the Worker — **a finished download takes effect without the user
   touching the switch again**. "Downloaded in full" is judged by a manifest written *after* the
   download settles (`embedding/model-store.ts`), never by "the files are there": transformers'
   `FileCache.put` writes straight to the final path, so a killed process leaves a truncated `.onnx`
   that a file-existence check would happily call complete. Same reason the empty-vector-table case
   re-queues: a Worker that wrote the header and then turned itself off must not make the next one
   think the index is already embedded.
-  **That switch is hot-applied** (2026-09-17): `wiring/search/index.ts` chains onto the
+  **That switch is hot-applied** (2026-09-17): `runtime/search/wiring/index.ts` chains onto the
   `settings:changed` broadcaster and calls `handle.applySemantic(settings)`, which replaces
   the index Worker when the effective value changed (same value = identity). The swap stops
   the old Worker before starting the new one — two Workers on one `search.v1.sqlite` are two
@@ -968,7 +968,7 @@ Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/comma
 
 Two mechanisms, and which one a package uses is a fact about that package, not a style choice.
 
-**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/backend", "packages/client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{backend,client}`. `@onething/backend` resolves through **its own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` honours exports pointing straight at `.ts` sources): **exact keys only, no wildcard fallback** — one key per import specifier that actually appears in the repo (412 keys after the merge: the spine's own `./x.js` keys plus `./core/…`, `./runtime/…`, `./gateway/…`; a directory barrel gets its own key, e.g. `"./runtime/providers"` → `./runtime/providers/index.ts`; a few keys keep the name the merged package exported them under, e.g. `"./core/search/index"` → `./core/search/index/index.ts`). `@onething/client` uses the family wildcard (`"./*.js"` / `"./*"` → `./*.ts`) plus an explicit `./node`. Files inside `packages/backend` import the merged subtrees by package specifier too (`@onething/backend/core/…`, `@onething/backend/runtime/…` — the package's self-reference resolves through the root `node_modules/@onething/backend` link). There is no alias entry and no tsconfig `paths` entry for them, and a missing key fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
+**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/backend", "packages/client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{backend,client}`. `@onething/backend` resolves through **its own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` honours exports pointing straight at `.ts` sources): **exact keys only, no wildcard fallback** — one key per import specifier that actually appears in the repo (412 keys after the merge: the spine's own `./x.js` keys plus `./core/…`, `./runtime/…`, `./gateway/…`; a directory barrel gets its own key, e.g. `"./runtime/providers"` → `./runtime/providers/index.ts`; a few keys keep the name the merged package exported them under, e.g. `"./runtime/search/index"` → `./runtime/search/index/index.ts`). `@onething/client` uses the family wildcard (`"./*.js"` / `"./*"` → `./*.ts`) plus an explicit `./node`. Files inside `packages/backend` import the merged subtrees by package specifier too (`@onething/backend/core/…`, `@onething/backend/runtime/…` — the package's self-reference resolves through the root `node_modules/@onething/backend` link). There is no alias entry and no tsconfig `paths` entry for them, and a missing key fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
 
 **Alias table.** There is none any more: `onething.aliases.ts` (the `@onething/electron-host/*` family) died with the Vue host on 2026-09-04. The only non-package alias left is `@shared` (= `packages/shared`), declared per-config (root `tsconfig.json` paths, `vitest.config.ts`, the React shell's vite/esbuild configs).
 
@@ -1036,7 +1036,7 @@ packages/backend/              # THE server package ('@onething/backend'); the s
 │                              # goals headless(HeadlessBackend) interaction
 │                              # logging(configureLogging) markdown music permission
 │                              # plugins(loader/manager/api/内置插件插座) project-dirs
-│                              # providers scheduler search skills tasks toc
+│                              # providers scheduler skills tasks toc
 │                              # todo-plan toolkit tools usage variables voice
 │
 apps/cli/src/                  # CLI daemon + commands: index.ts (arg parsing) daemon-client.ts
@@ -1125,7 +1125,7 @@ dist/
 **`search-worker.cjs` — three copies, one recipe** (检索重建 S3b): the search index worker
 (`packages/backend/runtime/search/index/worker.ts`) is a **second/third entry point in
 each host's own build recipe**, and its product always lands **beside that host's entry** —
-that adjacency is the contract the assembly reads (`packages/backend/wiring/search/worker.ts`
+that adjacency is the contract the assembly reads (`packages/backend/runtime/search/wiring/worker.ts`
 resolves `search-worker.cjs` next to `import.meta.url`; no host passes a path, so adding a
 fourth host means adding a build entry, not a wiring line). React desktop:
 `apps/desktop-react/scripts/build-electron.mjs`, third esbuild call. CLI:

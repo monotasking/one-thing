@@ -1,10 +1,10 @@
 import path from 'node:path'
-import { applyVisibility, type SearchContext } from '@onething/backend/core/search'
+import { applyVisibility, type SearchContext } from '@onething/backend/runtime/search/kernel'
 import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
 import type { OnethingSearchProvidersAdapters, SearchServiceOptions } from '@onething/backend/runtime/search'
-import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '../../session/access.js'
-import { fixedExecutionContext } from '../engine/execution-context.js'
-import { getConnectedDirectories, getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
+import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '@onething/backend/session/access.js'
+import { fixedExecutionContext } from '@onething/backend/wiring/engine/execution-context.js'
+import { getConnectedDirectories, getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
 
 /** Global notes, prompts and plugin catalogs are owned by the local operator. */
 export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAdapters) {

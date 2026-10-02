@@ -8,7 +8,7 @@
  * 注册表本身不认识任何模型 —— 它只按 id 存取工厂。
  */
 
-import type { Embedder } from '@onething/backend/core/search'
+import type { Embedder } from '@onething/backend/runtime/search/kernel'
 
 export interface EmbedderFactory {
   readonly id: string

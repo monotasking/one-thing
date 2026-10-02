@@ -117,7 +117,7 @@ const invokedDirectly = process.argv[1]
  *
  * 三个宿主(React 主进程 / CLI / server)各出一份 `search-worker.cjs`,**都与自己
  * 的宿主入口同目录** —— 装配层就是靠这条纪律按 `import.meta.url` 往旁边找的
- * (`packages/backend/wiring/search/worker.ts`)。所以这个常量在这里、被三份配方
+ * (`packages/backend/runtime/search/wiring/worker.ts`)。所以这个常量在这里、被三份配方
  * 共用,而不是三处各写一个字符串。
  *
  * 它与 main 同一份 `shellEsbuildOptions`:node 平台、CJS、原生模块 external。

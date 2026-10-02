@@ -51,11 +51,11 @@ import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/w
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
 import { configureSearchVisibilityPort } from '@onething/backend/runtime/search/capabilities'
 import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
-import { EventBus } from '../../../events/event-bus.js'
+import { EventBus } from '@onething/backend/events/event-bus.js'
 
 const bus = new EventBus()
-vi.mock('../../../events/index.js', () => ({ getEventBus: () => bus }))
-vi.mock('../../../session/event-log.js', () => ({
+vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => bus }))
+vi.mock('../../../../session/event-log.js', () => ({
   registerSessionLogEventAppendObserver: () => () => {},
 }))
 
@@ -150,8 +150,8 @@ vi.mock('../adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubA
 
 const { createAppSearchService } = await import('../index.js')
 const { visibleSessionIdsFor } = await import('../visibility.js')
-const { createDesktopCatalog } = await import('../../toolkit/catalog.js')
-const { createAppToolRunner } = await import('../../toolkit/runner.js')
+const { createDesktopCatalog } = await import('@onething/backend/wiring/toolkit/catalog.js')
+const { createAppToolRunner } = await import('@onething/backend/wiring/toolkit/runner.js')
 
 /* ── 同线程 Worker ─────────────────────────────────────────────────────── */
 
