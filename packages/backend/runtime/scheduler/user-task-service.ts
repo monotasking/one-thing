@@ -27,7 +27,7 @@ import { consolePort, getLogger } from '@onething/backend/runtime/logging/config
 import type { OnethingSchedulerAgentTaskEventBus, OnethingSchedulerAgentTaskSessionStore, OnethingSchedulerAgentTaskRunnerOptions, OnethingSchedulerAgentTaskLogger } from '@onething/backend/runtime/scheduler/agent-task-runner'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/runtime/scheduler/user-tasks'
-import { DEFAULT_SESSION_OWNER, isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner, sessionOwnerOf, sessionAccess, type SessionAccessContext } from '@onething/backend/session/access.js'
+import { DEFAULT_SESSION_OWNER, isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner, sessionOwnerOf, sessionAccess, type SessionAccessContext } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 
 const log = getLogger('scheduler')

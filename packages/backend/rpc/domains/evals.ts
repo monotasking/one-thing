@@ -62,7 +62,7 @@ import type {
   TurnEvalRecordView,
 } from '@shared/ipc/evals.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { sessionReads } from '../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import * as store from '../../store.js'
 import { createIncidentForTurn } from '@onething/backend/runtime/evals/turn-incident'
 import { broadcastEvalsRunProgress } from '@onething/backend/runtime/evals/events'

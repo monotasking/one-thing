@@ -39,7 +39,7 @@ async function assemble() {
 
 it('holds the actual Backend lease through tool cleanup and isolates a captured registry from a new Backend', { timeout: 60000 }, async () => {
   backend = await assemble()
-  const store = await import('../stores/sessions.js')
+  const store = await import('../runtime/sessions/session-store.js')
   store.createSession('session', 'Session')
   const first = backend.toolExecutions
   const cleanup = barrier()

@@ -4,7 +4,7 @@ import type {
   RuntimeEventsAdapter, RuntimeRequestContext, RuntimeStreamsAdapter,
   RuntimeStreamPayload, RuntimeUnsubscribe,
 } from '@onething/backend/server/runtime-facade.js'
-import { canReceiveSessionRemoval } from '../session/removal-event.js'
+import { canReceiveSessionRemoval } from '@onething/backend/runtime/sessions'
 import type { SessionAudience, SessionAudienceFactory } from './audience.js'
 
 export interface ServerLiveSessionDeliveryPorts {

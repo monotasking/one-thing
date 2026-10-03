@@ -18,7 +18,7 @@
  * 那一格一起换)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'

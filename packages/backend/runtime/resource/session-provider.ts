@@ -128,13 +128,13 @@ import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/store.js'
-import { sessionCommands } from '../../session/commands.js'
-import { sessionDeletion } from '../../session/deletion.js'
-import { sessionReads } from '../../session/reads.js'
+import { sessionCommands } from '@onething/backend/runtime/sessions'
+import { sessionDeletion } from '@onething/backend/runtime/sessions'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import {
   extractSessionPageResults,
   type SessionPageResultSlot,
-} from '@onething/backend/session/page-results.js'
+} from '@onething/backend/runtime/sessions'
 import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/runtime/agents/agent-store-access'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
@@ -366,7 +366,7 @@ function settle(result: { success: boolean; error?: string }, fallback: string):
  *
  * 三步各自带守卫(没有 pending 就不清,通道不在就不拆),所以一条没有任何进程内活计
  * 的会话上整段是 no-op。中止活流不在这里:它排在物理删除之前,由删除层自己的
- * `abortAndDrain` 端口做(`session/deletion.ts` 的三相位)。
+ * `abortAndDrain` 端口做(`runtime/sessions/deletion.ts` 的三相位)。
  */
 function releaseServedSession(sessionId: string): void {
   Permission.clearSession(sessionId)
@@ -522,7 +522,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
       }
       /**
        * 删整条会话。级联到哪几条**不在 plan 期算** —— 那是删除层自己要在开工的那一刻
-       * 重算并比对的东西(`session/deletion.ts` 的 `verify`:目标集合中途变过就拒),
+       * 重算并比对的东西(`runtime/sessions/deletion.ts` 的 `verify`:目标集合中途变过就拒),
        * 在这里先算一遍只会多出一份会过期的名单。
        */
       case 'delete':
@@ -641,7 +641,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
          * 另一个客户端改模型是同一件事,而从前只有壳自己点的那一下知道结果 —— 别的窗格
          * 的药丸一直对着旧模型。
          *
-         * 载的是**落库之后**那两格(从仓里读回来,与 `stores/sessions.ts` 记账时 `to`
+         * 载的是**落库之后**那两格(从仓里读回来,与 `runtime/sessions/session-store.ts` 记账时 `to`
          * 取落库值同一条理由);读不到才退回参数。**失败不发** —— `settle` 已经在上面
          * 抛掉了那一支。
          */
@@ -809,7 +809,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
    *
    * 两格过滤各自的判据:
    *   · `workspaceId` —— 产品空间。它与调用方是谁无关,所以留在这里;缺席不过滤,
-   *     空串是一次写错的请求(文案与 `session/queries.ts` 那句逐字相同,那是它今天
+   *     空串是一次写错的请求(文案与 `runtime/sessions/queries.ts` 那句逐字相同,那是它今天
    *     的产地)。老会话没有这一格,按缺省空间算 —— 与域那一路同一条规矩。
    *   · `includeArchived` —— 缺席 = 不过滤。
    *
@@ -944,7 +944,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
     /*
      * 工单 5 ①②:工具结果**只出现一次**。抽进侧表在这里而不是在折法里 ——
      * 折出来的那几只对象是投影 memo 缓存的本体,而侧表是**这条读法的形状**
-     * (判据全文在 `session/page-results.ts` 的文件头)。`canonical.ts` 那位
+     * (判据全文在 `runtime/sessions/page-results.ts` 的文件头)。`canonical.ts` 那位
      * 判官、`messages` / `record` / `listRaw` 三条老读法一格没动。
      */
     const { messages, results } = extractSessionPageResults(

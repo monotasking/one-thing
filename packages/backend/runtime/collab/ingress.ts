@@ -19,7 +19,7 @@ import {
   type VoiceTranscriptMetadata,
 } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
-import { sessionCommands } from '../../session/commands.js'
+import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { collabSessionRoomMembers } from './members.js'
 import {

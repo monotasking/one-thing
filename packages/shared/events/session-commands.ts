@@ -135,7 +135,7 @@ export interface SendMessageCommand {
   suppressTitleGeneration?: boolean
   /**
    * 这一轮呈现的资源(见 `PresentedResource`)。**只在 RPC 入口被读**:
-   * `backend/session/presentation.ts` 校验后交给登记的处理者,然后从命令上摘掉 ——
+   * `backend/runtime/sessions/presentation.ts` 校验后交给登记的处理者,然后从命令上摘掉 ——
    * 它不进总线、不落账。没有处理者登记时它只经过校验就被丢弃(鉴权暂缓期的形)。
    */
   presented?: PresentedResource[]

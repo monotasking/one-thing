@@ -24,7 +24,7 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   getOnethingSettingsPath: () => path.join(mocks.storeRoot, 'settings.json'),
 }))
 
-vi.mock('@onething/backend/stores/sessions.js', async () => {
+vi.mock('../../sessions/session-store.js', async () => {
   const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {

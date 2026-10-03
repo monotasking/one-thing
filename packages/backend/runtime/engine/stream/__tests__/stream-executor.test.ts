@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js'
-import { resetSessionRuns } from '@onething/backend/session/runs.js'
+import { installSessionLayerForTest } from '../../../sessions/testing/session-layer.js'
+import { resetSessionRuns } from '@onething/backend/runtime/sessions'
 
 let storeDir: string
 let fixture: ReturnType<typeof installSessionLayerForTest>
@@ -22,8 +22,8 @@ afterEach(async () => {
   vi.unstubAllEnvs()
   fs.rmSync(storeDir, { recursive: true, force: true })
 })
-vi.mock('../../../../session/commands.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../../../session/commands.js')>(),
+vi.mock('../../../sessions/session-commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../sessions/session-commands.js')>(),
   sessionCommands: { patchMessage: vi.fn(() => true) },
 }))
 import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'

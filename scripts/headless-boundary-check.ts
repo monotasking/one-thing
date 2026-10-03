@@ -570,7 +570,7 @@ const MAIN_CORE_SYSTEM_DIRS = [
 
 /** 有真实文件 IO 职责的装配目录:只禁宿主与原生 SDK,不禁 fs/path。 */
 const MAIN_FILE_IO_SYSTEM_DIRS = [
-  'packages/backend/session',
+  'packages/backend/runtime/sessions',
   'packages/backend/stores',
   // P3'b-A:`backend/mcp/` 整域归位 `runtime/mcp/`(闭包零脊柱边),
   // 装配层不再有 mcp 目录 —— 这一条随之退役。
@@ -4479,9 +4479,9 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
  * 存储测试过闸而加),工单 4 D1 删掉了它:闸门不迁就代码。
  */
 function checkSessionEventSingleWriteDoor(): void {
-  const door = 'packages/backend/session/event-writer.ts'
-  const definition = 'packages/backend/session/event-log.ts'
-  const assembly = 'packages/backend/session/event-layer.ts'
+  const door = 'packages/backend/runtime/sessions/event-writer.ts'
+  const definition = 'packages/backend/runtime/sessions/event-log.ts'
+  const assembly = 'packages/backend/runtime/sessions/event-layer.ts'
   const offenders = walkFiles(path.join(root, 'packages'), [], { includeTests: true })
     .filter(file => /\.ts$/.test(file))
     .filter(file => rel(file) !== door && rel(file) !== definition)
@@ -4492,7 +4492,7 @@ function checkSessionEventSingleWriteDoor(): void {
         && !(rel(file) === assembly && /^\s*(?:appendSessionLogEvent,|append:\s*appendSessionLogEvent,)\s*$/.test(code)))
       .map(({ raw, lineNo }) => `${rel(file)}:${lineNo}: ${raw.trim()}`))
   assertNoMatches(
-    'session event log has a single write door (packages/backend/session/event-writer.ts)',
+    'session event log has a single write door (packages/backend/runtime/sessions/event-writer.ts)',
     offenders,
   )
 }
@@ -4568,7 +4568,7 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
   const runtimeUsageFile = path.join(root, 'packages/backend/runtime/sessions/session-usage.ts')
   // P4c 第五批:调用点已是 RPC 域。
   const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
-  const usageFile = path.join(root, 'packages/backend/session/usage.ts')
+  const usageFile = path.join(root, 'packages/backend/runtime/sessions/usage.ts')
   const runtimeContent = [
     runtimeFile,
     runtimeUsageFile,
@@ -4610,7 +4610,7 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
       : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
     ...(fs.existsSync(usageFile)
       ? matchingLines(usageFile, MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS)
-      : ['packages/backend/session/usage.ts: missing session usage adapter']),
+      : ['packages/backend/runtime/sessions/usage.ts: missing session usage adapter']),
   ]
 
   assertNoMatches('packages/backend/runtime owns session IPC operations', lines)

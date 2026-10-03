@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   destroySession: vi.fn(),
 }))
 
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
 })
 
@@ -41,7 +41,7 @@ vi.mock('@onething/backend/runtime/events', () => ({
   })),
 }))
 
-vi.mock('@onething/backend/session/index.js', () => ({
+vi.mock('../../sessions/session-layer.js', () => ({
   ensureSessionWritable: vi.fn(async () => undefined),
   getSessionManager: vi.fn(() => ({
     getOrCreate: mocks.getOrCreate,

@@ -57,7 +57,7 @@ import type {
   SearchStorageResponse,
 } from '@shared/ipc/search.js'
 import { getServerSearchPort } from '../../server/search-providers.js'
-import { requestSessionOwner } from '../../session/access.js'
+import { requestSessionOwner } from '@onething/backend/runtime/sessions'
 import type { RpcRouteHandlers } from '../registry.js'
 
 /**

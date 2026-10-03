@@ -108,7 +108,7 @@ vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   findAgent: () => ({ systemPrompt: '' }),
   updateAgent: vi.fn(),
 }))
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   getSession: vi.fn(),
   getSessionsList: vi.fn(() => []),
   createSession: vi.fn(),

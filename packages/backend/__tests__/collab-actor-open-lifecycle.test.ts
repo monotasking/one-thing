@@ -53,7 +53,7 @@ it.each(['agent', 'room'] as const)('drains a board-triggered real %s mailbox op
   backend = await assemble(firstPath)
   const agents = await import('@onething/backend/runtime/agents/agent-store-access')
   agents.createAgent({ id: 'same-agent', name: 'First agent' })
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   sessions.createSession('room', 'Room')
   sessions.updateSessionCollab('room', { kind: 'room', room: { memberAgentIds: ['same-agent'] } })
   const runtime = await import('@onething/backend/runtime/collab/actors/runtime')

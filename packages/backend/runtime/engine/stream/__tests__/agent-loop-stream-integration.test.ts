@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js';
-import { resetSessionRuns } from '@onething/backend/session/runs.js';
+import { installSessionLayerForTest } from '../../../sessions/testing/session-layer.js';
+import { resetSessionRuns } from '@onething/backend/runtime/sessions';
 
 let storeDir: string;
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>;
@@ -239,12 +239,12 @@ vi.mock("@onething/backend/store.js", () => ({
 }));
 // Metadata lookup must use the fixture that owns this stream's session too.
 // The session layer above still owns the real journal and checkpoint barrier.
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../../sessions/session-store.js', () => ({
   getSession: mocks.store.getSession,
   resolveSessionSpaceId: () => 'default',
 }));
-vi.mock('../../../../session/commands.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../../../session/commands.js')>(),
+vi.mock('../../../sessions/session-commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../sessions/session-commands.js')>(),
   sessionCommands: {
     appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.store.addMessage(sessionId, message),
     patchMessage: vi.fn(() => true),
@@ -273,7 +273,7 @@ vi.mock("../../prompt/system-prompt.js", () => ({
 	buildPrompt: mocks.buildPrompt,
 }));
 
-vi.mock("@onething/backend/session/usage.js", () => ({
+vi.mock("../../../sessions/usage.js", () => ({
 	updateSessionUsage: mocks.updateSessionUsage,
 	// §17.7 #15:上下文两格由**账**落格(`event-only-emitter` 的 provider-finish
 	// 落点调它)。替身给 `false` = "这条会话没有账",于是走回落 —— 这一组用例钉的

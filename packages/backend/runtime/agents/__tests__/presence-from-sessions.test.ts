@@ -15,22 +15,22 @@ vi.mock('electron', () => ({ app: { isPackaged: false } }))
 
 let previousStorePath: string | undefined
 let tempHome: string
-let loadedSessions: typeof import('@onething/backend/stores/sessions.js') | null = null
-let sessionFixture: Awaited<ReturnType<typeof import('../../../session/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
+let loadedSessions: typeof import('../../sessions/session-store.js') | null = null
+let sessionFixture: Awaited<ReturnType<typeof import('../../sessions/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 interface IsolatedModules {
-  sessions: typeof import('@onething/backend/stores/sessions.js')
+  sessions: typeof import('../../sessions/session-store.js')
   presence: typeof import('../presence-from-sessions.js')
 }
 
 async function loadIsolated(): Promise<IsolatedModules> {
   vi.resetModules()
   const paths = await import('@onething/backend/runtime/storage')
-  const sessions = await import('@onething/backend/stores/sessions.js')
+  const sessions = await import('../../sessions/session-store.js')
   const presence = await import('../presence-from-sessions.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
-  const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../../sessions/testing/store-layer.js')
   sessionFixture = await installStoreSessionLayerForTest()
   return { sessions, presence }
 }

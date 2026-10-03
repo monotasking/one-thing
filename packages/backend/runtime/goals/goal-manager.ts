@@ -34,7 +34,7 @@ import {
 import type { SessionGoal, SessionGoalLimits } from "@onething/backend/runtime/goals";
 import { getEventBus } from "@onething/backend/runtime/events";
 import * as store from "@onething/backend/store.js";
-import { sessionReads } from "../../session/reads.js";
+import { sessionReads } from "@onething/backend/runtime/sessions";
 import { getCurrentBackendInstance } from '@onething/backend/current.js';
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";

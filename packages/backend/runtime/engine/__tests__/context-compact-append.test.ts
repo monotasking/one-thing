@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { installSessionLayerForTest } from '../../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../sessions/testing/session-layer.js'
 
 let storeDir: string
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
@@ -56,8 +56,8 @@ vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
 }))
 
 const sessionRef: { current: ChatSession } = { current: null as unknown as ChatSession }
-vi.mock('../../../session/commands.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../../session/commands.js')>(),
+vi.mock('../../sessions/session-commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../sessions/session-commands.js')>(),
   sessionCommands: {
   appendMessage: (_sessionId: string, { message }: { message: ChatMessage }) => {
     sessionRef.current.messages.push(message)
@@ -65,8 +65,8 @@ vi.mock('../../../session/commands.js', async importOriginal => ({
   },
 } }))
 
-vi.mock('../../../session/reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../../session/reads.js')>(),
+vi.mock('../../sessions/reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../sessions/reads.js')>(),
   // 读门面(P0.2 C1):这份 mock 与下面的 store mock 是同一个假会话
   // —— compact 的取数改走 `sessionReads.listMessages` 了。
   sessionReads: {

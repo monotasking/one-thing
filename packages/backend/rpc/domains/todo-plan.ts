@@ -10,7 +10,7 @@
  */
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import { sessionAccess, SessionAccessError } from '../../session/access.js'
+import { sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 import type { TodoPlanRoutes } from '@shared/ipc/todo-plan.js'
 import {

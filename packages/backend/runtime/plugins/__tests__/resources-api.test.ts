@@ -169,7 +169,7 @@ describe('插件的三个动词(K4-b)', () => {
       await disposePlugin(state)
     }
 
-    const { sessionReads } = await import('../../../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Second name')
 
     const rows = readResourceAuditRows()

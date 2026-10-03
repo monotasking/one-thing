@@ -40,8 +40,8 @@ const { executeToolDirectly } = await import('@onething/backend/runtime/engine/s
 const { listOnethingSettingsTools } = await import('@onething/backend/runtime/tools')
 const { z } = await import('zod')
 
-const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')
-const store = await import('@onething/backend/stores/sessions.js')
+const { installStoreSessionLayerForTest } = await import('../../sessions/testing/store-layer.js')
+const store = await import('../../sessions/session-store.js')
 let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
 
 const SESSION_ID = 'no-legacy-session'

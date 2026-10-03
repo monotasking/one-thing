@@ -8,6 +8,14 @@
  * 2026-10-03 起这里也是原 `session-primitives.ts`(core 时代会话内核的出口)的家:那只文件的再导出整段并进
  * 下半截后删除。上半截是产品侧(仓储、存储驱动、分支、补水 / 脱水、IPC 形状……),下半截是会话内核
  * (`Session` / `SessionManager`、事件词表与编解码、投影、轨迹、分页与 jsonl 编解码、store helpers)。
+ *
+ * **暂不进入口的五只**(包根归位第 1 笔,2026-10-03,「先 A 后 B」):`session-store.ts`(会话表,原
+ * `stores/sessions.ts`)、`session-layer.ts`(会话组合根 `createSessionLayer`)、`usage.ts`、`memory.ts`、
+ * `list-projection-backfill.ts`。会话表在**加载时**就建好仓储与存储驱动,并把设置(`stores/settings.ts`)、
+ * 应用状态(`stores/app-state.ts`)与日志的导出取进模块级的选项对象;另四只静态依赖它。它们一进入口,每个
+ * import 入口的模块都会在加载时带上这棵树 —— 实测 25 份只 mock 了存储 / 应用状态 / 日志一部分的测试因此加载
+ * 失败。所以外面暂时直接引用这五只文件(功能入口棘轮照数),下一笔 B 把会话表模块级的那几处取值改成用时再取,
+ * 让它加载时不碰设置与应用状态,然后把这五只收进入口、收掉这批临时的深层引用。
  */
 export * from './branching.js'
 export * from './history-messages.js'
@@ -16,7 +24,7 @@ export * from './renderer-sanitizer.js'
 export * from './session-dehydrate.js'
 /*
  * `session-message-runtime` —— **整件删除**(§17.7.1 批 3)。
- * 命令面的执行体随老 reducer 退役;用量快照那一口落在 `backend/stores/sessions.ts`。
+ * 命令面的执行体随老 reducer 退役;用量快照那一口落在 `backend/runtime/sessions/session-store.ts`。
  */
 export * from './session-repository.js'
 export * from './storage-driver.js'
@@ -31,6 +39,66 @@ export * from './resource-spec.js'
 // 按路径读盘的 legacy 整份 JSON 分页。从前它不进 `storage/index.ts` 那个桶,是为了让会话内核的出口在浏览器里也
 // import 得动;界面今天碰不到后端包,那条理由没了,所以外面要用就从入口拿。
 export { getMessagesPageFromJsonFilePath } from './storage/json-message-page-file.js'
+
+// ── 以下原是包根 `session/`(会话的命令面 / 读门面 / 事件账本),2026-10-03 并进本目录。外面真在用的名字逐个
+// 列在这里;访问判定与读门面两只是外面整只拿去用的(命名空间 import、`typeof import`),所以整只再导出。
+export * from './access.js'
+export { recordSynthesizedAssistantText } from './assistant-parts.js'
+export { runSessionBlobGc, scheduleSessionBlobGcOnStartup } from './blob-gc.js'
+export type { SessionBlobGcReport } from './blob-gc.js'
+export { readSessionBlob, textOrBlobForEvent } from './blob-store.js'
+export { sessionCommandEvents } from './command-events.js'
+export type { SessionCommandEvents } from './command-events.js'
+export { sessionDeletion } from './deletion.js'
+export { installSessionLedgerEventBroadcaster, uninstallSessionLedgerEventBroadcaster } from './event-broadcast.js'
+export {
+  acquireSessionEventLogStore,
+  appendSessionEvent,
+  findLastSessionEventSync,
+  flushSessionEventLog,
+  getSessionEventsLogPath,
+  nextSessionRequestIndex,
+  readSessionEvents,
+  readSessionLogEvents,
+  readSessionLogEventsSync,
+  registerSessionLogEventAppendObserver,
+  resetSessionEventLogCache,
+} from './event-log.js'
+export type { SessionEventLogStoreHandle } from './event-log.js'
+export { countSessionEventDroppedPart, readSessionShadowStats, resetSessionEventStatsCache } from './event-stats.js'
+export { resetSessionSurfaceCache } from './event-surface.js'
+export { writeSessionEvent } from './event-writer.js'
+export { sessionLifecycleEvents } from './lifecycle-events.js'
+export { extractSessionPageResults } from './page-results.js'
+export type { SessionPageResultSlot } from './page-results.js'
+export { installSessionPermissionEventRecorders, uninstallSessionPermissionEventRecorders } from './permission-events.js'
+export {
+  deliverPresentation,
+  presentationHandlerCount,
+  registerPresentationHandler,
+  takePresented,
+} from './presentation.js'
+export { foldLiveSessionLogicalDelta } from './projection-cache.js'
+export { warnOnForeignCoreForEventsRead } from './read-mode.js'
+export * from './reads.js'
+export { canReceiveSessionRemoval } from './removal-event.js'
+export {
+  beginSessionRun,
+  currentSessionRun,
+  currentSessionRunId,
+  endSessionRun,
+  ensureSessionRun,
+  markSessionRunOutcome,
+  nextSessionRunPartIndex,
+  resetSessionRuns,
+  rotateSessionRun,
+  setSessionRunRequestIndex,
+} from './runs.js'
+export type { BeginSessionRunInput } from './runs.js'
+export { createSessionCommands, sessionCommands } from './session-commands.js'
+export type { SessionCommands } from './session-commands.js'
+export { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from './trace-reads.js'
+export type { ReadSessionTraceOptions } from './trace-reads.js'
 
 // ── 以下原是 `session-primitives.ts`(会话内核的出口),2026-10-03 并入 ─────────────────
 export { Session } from './session.js'

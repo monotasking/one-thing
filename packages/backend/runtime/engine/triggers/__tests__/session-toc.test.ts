@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 // 读走门面(P0.2 区 ②):替身与生产同源,`bindSessionFacadeMock` 装的就是这张假会话表。
-vi.mock('../../../../session/reads.js', () => import('../../../../session/testing/facade-mock.js'))
+vi.mock('../../../sessions/reads.js', () => import('../../../sessions/testing/facade-mock.js'))
 
 vi.mock('@onething/backend/runtime/toc/toc-recorder', () => ({
   recordTocTurn: mocks.recordTocTurn,
@@ -23,7 +23,7 @@ vi.mock('@onething/backend/runtime/goals/file-change-collector', () => ({
   collectGoalFileChanges: mocks.collectGoalFileChanges,
 }))
 
-const { bindSessionFacadeMock } = await import('../../../../session/testing/facade-mock.js')
+const { bindSessionFacadeMock } = await import('../../../sessions/testing/facade-mock.js')
 const { createSessionTocTrigger } = await import('../session-toc.js')
 const triggers: ReturnType<typeof createSessionTocTrigger>[] = []
 const runTask = vi.fn()

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
 import type { OnethingMediaAssetAccess, OnethingMediaLibraryService } from '@onething/backend/runtime/media'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, ownsSessionRecord, type SessionAccess, type SessionAccessContext, type SessionAccessOperation } from '@onething/backend/session/access.js'
+import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, ownsSessionRecord, type SessionAccess, type SessionAccessContext, type SessionAccessOperation } from '@onething/backend/runtime/sessions'
 import { isPathInside, resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '@onething/backend/rpc/sandbox.js'
 
 /** Every source must still exist and be visible. Orphan links never become local uploads. */

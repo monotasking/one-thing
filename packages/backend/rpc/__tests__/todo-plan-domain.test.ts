@@ -7,8 +7,8 @@
  *    冒充成功（迁移前 server 给的就是这句实话）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSessionAccess } from '../../session/access.js'
-import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { createSessionAccess } from '@onething/backend/runtime/sessions'
+import { installSessionLayerForTest } from '../../runtime/sessions/testing/session-layer.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 
 const store = vi.hoisted(() => ({

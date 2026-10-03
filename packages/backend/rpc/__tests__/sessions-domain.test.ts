@@ -25,11 +25,11 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
-import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
-import { createSessionListQuery } from '../../session/index.js'
-import type { SessionCommands } from '../../session/commands.js'
-import type { SessionReadPorts } from '../../session/reads.js'
-import { createSessionAccess } from '../../session/access.js'
+import { installSessionLayerForTest } from '../../runtime/sessions/testing/session-layer.js'
+import { createSessionListQuery } from '../../runtime/sessions/session-layer.js'
+import type { SessionCommands } from '@onething/backend/runtime/sessions'
+import type { SessionReadPorts } from '@onething/backend/runtime/sessions'
+import { createSessionAccess } from '@onething/backend/runtime/sessions'
 
 const store = vi.hoisted(() => ({
   getSessionsList: vi.fn(() => [] as unknown[]),
@@ -91,7 +91,7 @@ const permission = vi.hoisted(() => ({ clearSession: vi.fn() }))
 
 /**
  * S2b:主读路径收口后,`getMessages` / `getMessagesPage` 从 `store.js` 改走
- * `session/reads.js` 的读门面 —— 门面在 `fromEvents()` 上取投影(批 6b 之后是
+ * `runtime/sessions/reads.ts` 的读门面 —— 门面在 `fromEvents()` 上取投影(批 6b 之后是
  * 唯一路)。为了逐字证「投影到得了这两条入口」,这里桩的是门面脚下的**两口井**
  * (events 投影 / 原始仓)而**不桩门面本体**:读门面真跑,只有井是假的。
  */
@@ -135,9 +135,9 @@ vi.mock('../../current.js', async importOriginal => ({
 vi.mock('../principal.js', () => ({
   principalOf: () => ({ kind: 'user', userId: 'local-user' }),
 }))
-vi.mock('../../stores/sessions.js', () => storesSessions)
-vi.mock('../../session/events-reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../session/events-reads.js')>(),
+vi.mock('../../runtime/sessions/session-store.js', () => storesSessions)
+vi.mock('../../runtime/sessions/events-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../runtime/sessions/events-reads.js')>(),
   ...eventsReads,
 }))
 vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
@@ -170,7 +170,7 @@ async function loadDomain() {
 }
 
 describe('sessions RPC domain', () => {
-  const ownership = new Map<string, import('../../session/access.js').SessionOwnershipRecord>()
+  const ownership = new Map<string, import('@onething/backend/runtime/sessions').SessionOwnershipRecord>()
   let dispose: (() => void) | undefined
   let unmountResources: (() => Promise<void>) | undefined
   let fixture: ReturnType<typeof installSessionLayerForTest>
@@ -235,7 +235,7 @@ describe('sessions RPC domain', () => {
       own: () => {},
     }
     // 每条写面都先问「这条会话在不在」(provider 的 plan 期判定,走
-    // `hasSessionInStore` → `stores/sessions.ts` 的 `getSessionMessages`)。这些
+    // `hasSessionInStore` → `runtime/sessions/session-store.ts` 的 `getSessionMessages`)。这些
     // 用例说的都是"对一条**在册**的会话做点什么",所以默认摆成在册;
     // "改一条不存在的会话"那一例自己把仓那句「没改到」的布尔扳回去。
     storesSessions.getSessionMessages.mockReturnValue([])
@@ -483,7 +483,7 @@ describe('sessions RPC domain', () => {
 
   /**
    * 改一条**不存在**的会话:仓层早就知道(`applyMetadataMutation` 拿不到 session 就
-   * 回 false),从前那条布尔被 `stores/sessions.ts` 吞掉,于是一路回 success、还顺手
+   * 回 false),从前那条布尔被 `runtime/sessions/session-store.ts` 吞掉,于是一路回 success、还顺手
    * 推一条改名出去 —— 别的客户端会因此显示一个不存在的名字。09-02 收紧:布尔传出来,
    * 投影据此回 `Session not found`,这一路自然一发都不发。
    */

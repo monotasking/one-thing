@@ -57,8 +57,8 @@ vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngin
 vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
 vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => eventBus }))
-vi.mock('../../session/runs.js', () => runs)
-vi.mock('../../session/reads.js', () => reads)
+vi.mock('../../runtime/sessions/runs.js', () => runs)
+vi.mock('../../runtime/sessions/reads.js', () => reads)
 vi.mock('@onething/backend/runtime/engine/prompt/system-prompt-snapshot', () => prompt)
 vi.mock('@onething/backend/runtime/providers/chat-facade', () => providers)
 vi.mock('@onething/backend/runtime/engine/stream/provider-helpers', () => ({
@@ -330,7 +330,7 @@ describe('chat RPC domain', () => {
   })
 })
 // Adapter fixtures explicitly belong to the local operator on both transports.
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../runtime/sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

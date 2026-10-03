@@ -45,7 +45,7 @@ import { NO_ORIGIN_SESSION } from '@onething/backend/runtime/resource/resource-a
 import type { SessionToolAuditEventData } from '@shared/session/events/types'
 import type { ToolAuditRecord, ToolAuditSink } from '@onething/backend/runtime/toolkit/audit-observer'
 import { getOnethingAuditDir, getOnethingResourceAuditPath } from '@onething/backend/runtime/storage'
-import { appendSessionEvent } from '../../session/event-log.js'
+import { appendSessionEvent } from '@onething/backend/runtime/sessions'
 
 /** 一条记录的可序列化投影。两条落点共用同一份形状 —— 换个文件不该换个口径。 */
 function projectAuditRecord(record: ToolAuditRecord): SessionToolAuditEventData {

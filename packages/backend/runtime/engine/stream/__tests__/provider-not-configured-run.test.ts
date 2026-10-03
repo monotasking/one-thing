@@ -43,13 +43,13 @@ vi.mock('../../engine-layer.js', () => ({ getStreamEngine: () => ({}) }))
 
 const { CoreStreamEngine } = await import('@onething/backend/runtime/engine/engine-primitives')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
-  '../../../../session/event-log.js'
+  '@onething/backend/runtime/sessions'
 )
-const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
-const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+const { resetSessionSurfaceCache } = await import('@onething/backend/runtime/sessions')
+const { installSessionLayerForTest } = await import('../../../sessions/testing/session-layer.js')
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
-const { resetSessionRuns } = await import('@onething/backend/session/runs.js')
-const { resetSessionEventStatsCache } = await import('@onething/backend/session/event-stats.js')
+const { resetSessionRuns } = await import('@onething/backend/runtime/sessions')
+const { resetSessionEventStatsCache } = await import('@onething/backend/runtime/sessions')
 const { failAssistantRun, openAssistantRun } = await import('../stream-executor.js')
 
 const SESSION_ID = 'provider-not-configured'

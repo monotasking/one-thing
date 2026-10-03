@@ -170,7 +170,7 @@ vi.mock('@onething/backend/store.js', () => ({
   getSession: mocks.getSession,
   addMessage: mocks.addMessage,
 }))
-vi.mock('../../../../session/commands.js', () => ({ sessionCommands: {
+vi.mock('../../../sessions/session-commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
 } }))
 

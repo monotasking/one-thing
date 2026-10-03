@@ -63,7 +63,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { getSettings } from '@onething/backend/stores/settings.js'
-import { registerSessionLogEventAppendObserver } from '../../session/event-log.js'
+import { registerSessionLogEventAppendObserver } from '@onething/backend/runtime/sessions'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,

@@ -16,7 +16,7 @@ import {
   toolkitFileToolAdapter,
 } from '../skill-review.js'
 // Schema/adapter tests provide metadata only; the fake FileTool performs no I/O.
-vi.mock('@onething/backend/stores/sessions.js', () => ({ getSession: () => ({ id: 's1' }) }))
+vi.mock('../../../sessions/session-store.js', () => ({ getSession: () => ({ id: 's1' }) }))
 
 class FileTool extends ToolkitTool<{ path: string }, { path: string }> {
   readonly spec: ToolSpec

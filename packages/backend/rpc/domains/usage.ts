@@ -10,7 +10,7 @@
  */
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import { isHistoricalLocalOperator, sessionAccess } from '../../session/access.js'
+import { isHistoricalLocalOperator, sessionAccess } from '@onething/backend/runtime/sessions'
 import type { UsageRoutes } from '@shared/ipc/usage.js'
 import {
   getSessionUsageTotal,

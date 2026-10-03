@@ -83,7 +83,7 @@ async function assemble(storePath: string) {
   } })
 }
 async function room(id = 'room') {
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   sessions.createSession(id, 'Digest room')
   sessions.updateSessionCollab(id, { kind: 'room', room: { memberAgentIds: [], context: { historyDays: 1, historyTailCount: 0 } } })
   const timestamp = Date.now() - 3 * 86400_000
@@ -258,7 +258,7 @@ it('preserves folded-day selection, request deduplication, parsing, usage and th
   expect(digests.getCollabDigests('room')).toEqual([expect.objectContaining({ day, summary: 'The migration will ship tomorrow.', messageCount: 1 })])
   await backend.collabDigests.ensureCollabDigestsForRoom('room')
   expect(local.requests).toHaveLength(1)
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   sessions.updateSessionCollab('room', { room: { memberAgentIds: [], context: { dailyDigest: false } } })
   digests.forgetCollabDigests('room')
   await backend.collabDigests.ensureCollabDigests('room', [day])
@@ -303,7 +303,7 @@ it.each(['auth', 'model'] as const)('rechecks the captured room identity after a
   if (phase === 'auth') control.auth = async () => { entered.release(); await release.promise }
   const work = backend.collabDigests.ensureCollabDigests('room', [day])
   await (phase === 'auth' ? entered.promise : local.waitForRequest(work))
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   const ownerPatch = { name: 'New owner room', ownerUserId: 'new-owner' }
   sessions.patchSessionFields('room', ownerPatch, meta => { Object.assign(meta, { ownerUserId: 'new-owner' }) })
   release.release()
@@ -331,7 +331,7 @@ it('waits for a real room digest when deleting that room and keeps the late resu
   local.respond()
   await work
   await removing
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   expect(sessions.getSession('room')).toBeUndefined()
   await expect(fs.stat(path.join(directory, 'a', 'collab', 'room', 'digests.json'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
@@ -342,7 +342,7 @@ it('registers a production MindPort follow-up before the room turn returns, so i
   await room()
   const agents = await import('@onething/backend/runtime/agents/agent-store-access')
   agents.createAgent({ id: 'digest-agent', name: 'Digest agent' })
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   sessions.createSession('exec', 'Agent execution')
   const { createCollabActorAuthorization } = await import('@onething/backend/runtime/collab/actors/execution-authorization')
   const authorization = createCollabActorAuthorization({ access: backend.sessionLayer.access, isAccepting: () => !backend!.isShuttingDown })

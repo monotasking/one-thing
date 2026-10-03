@@ -49,8 +49,8 @@ vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngin
 vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/evals/turn-incident', () => incident)
 vi.mock('@onething/backend/runtime', () => runtimeAmend)
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../runtime/sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })
 
@@ -361,7 +361,7 @@ describe('session-command RPC domain', () => {
   })
 
   /*
-   * 呈现事实(09-18,`session/presentation.ts`,正本
+   * 呈现事实(09-18,`runtime/sessions/presentation.ts`,正本
    * `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.5.0):入口摘下、交给处理者,
    * **不进总线**。鉴权暂缓期一个处理者都没有 —— 那时它只经过校验就被丢弃。
    */
@@ -376,7 +376,7 @@ describe('session-command RPC domain', () => {
 
     it.each([['ipc', IPC], ['http', HTTP]] as const)('%s: stripped before the bus even with no handler', async (_transport, context) => {
       const { dispatchRpc } = await loadDomain()
-      const { presentationHandlerCount } = await import('../../session/presentation.js')
+      const { presentationHandlerCount } = await import('@onething/backend/runtime/sessions')
       expect(presentationHandlerCount()).toBe(0)
 
       await dispatchRpc({
@@ -392,7 +392,7 @@ describe('session-command RPC domain', () => {
 
     it('a registered handler sees the normalized facts before the bus, with host-minted context', async () => {
       const { dispatchRpc } = await loadDomain()
-      const { registerPresentationHandler } = await import('../../session/presentation.js')
+      const { registerPresentationHandler } = await import('@onething/backend/runtime/sessions')
       const order: string[] = []
       bus.emit.mockImplementation(async () => {
         order.push('bus')
@@ -424,7 +424,7 @@ describe('session-command RPC domain', () => {
 
     it('a failing handler never blocks the send; non-send commands never reach handlers', async () => {
       const { dispatchRpc } = await loadDomain()
-      const { registerPresentationHandler } = await import('../../session/presentation.js')
+      const { registerPresentationHandler } = await import('@onething/backend/runtime/sessions')
       const onPresented = vi.fn(async () => {
         throw new Error('boom')
       })

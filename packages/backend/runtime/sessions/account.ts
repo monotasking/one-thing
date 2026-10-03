@@ -1,7 +1,7 @@
 /**
  * **会话账的折叠器**(§17.7.1 批 2 / #8b-i;`docs/design/session-event-sourcing-2026-08.md`)。
  *
- * 老 reducer(`session/commands.ts`)剩下的唯一身份是**会话级派生的算法**:
+ * 老 reducer(`runtime/sessions/commands.ts`)剩下的唯一身份是**会话级派生的算法**:
  * `updatedAt` / `lastProvider` / `lastModel` / usage 总账的扣减 /
  * `contextSize`·`lastInputTokens`·`summary` 的失效。这个文件把同一本账改成
  * **事件的折叠产物** —— 定律①(事实一条流,状态即折叠)在会话级的兑现。
@@ -19,7 +19,7 @@
  *     state 上,迟早有人拿旧引用读新账。
  *
  * 刷新点仍然同源:装配层把它挂在**同一个** F1 写入口观察者上
- * (`backend/session/projection-cache.ts`),与消息投影一起前进、一起重建。
+ * (`backend/runtime/sessions/projection-cache.ts`),与消息投影一起前进、一起重建。
  *
  * ## 产地表(逐格,与今天 reducer 的盖章面逐字对齐)
  *

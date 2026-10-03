@@ -2,8 +2,8 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { CorePluginCommandContext } from '@onething/backend/runtime/plugins/plugin-contract'
 
 const state = vi.hoisted(() => ({ owner: 'alice', retarget: false, handler: vi.fn(), emit: vi.fn(async (_id: string, _event: unknown, _options?: unknown) => {}), read: vi.fn() }))
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => id === 'session'
     ? { ownerUserId: state.owner, ownerWorkspaceId: 'tenant' } : undefined }) }
 })

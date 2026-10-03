@@ -54,7 +54,7 @@ vi.mock('@onething/backend/store.js', () => ({
   },
 }))
 
-vi.mock('../../../session/deletion.js', () => ({
+vi.mock('../../sessions/deletion.js', () => ({
   sessionDeletion: {
     async delete(id: string, targets: string[], authorize: (ids: string[]) => void) {
       authorize(targets)

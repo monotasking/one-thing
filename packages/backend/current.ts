@@ -2,7 +2,7 @@
  * 进程当前实例槽(方案 `docs/design/backend-composition-root-2026-09.md` 的 A2,§2.2)。
  *
  * **整个 `packages/backend` 里唯一允许的模块级 `let`。** A2 之前有三个:
- * `runtime/events/index.ts` 的 `eventBus`/`streamChannel`、`session/index.ts` 转给 core 的
+ * `runtime/events/index.ts` 的 `eventBus`/`streamChannel`、`runtime/sessions/session-layer.ts` 转给 core 的
  * 那一份、`runtime/engine/engine-layer.ts` 的 `streamEngine`/`onethingRuntime`。三份各自
  * "已存在 → warn → return",于是"装配 → 关机 → 再装配"这条路谁也说不清是谁的
  * 尸体还在。现在只有这一份,由 `OnethingBackend.assemble` 立、由 `dispose()` 清。
@@ -28,8 +28,8 @@
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
 import type { SessionManager } from '@onething/backend/runtime/sessions'
-import type { SessionLayer } from './session/index.js'
-import type { SessionEventLogStoreHandle } from './session/event-log.js'
+import type { SessionLayer } from './runtime/sessions/session-layer.js'
+import type { SessionEventLogStoreHandle } from '@onething/backend/runtime/sessions'
 import type { TaskDispatchLayer } from '@onething/backend/runtime/tasks/dispatch'
 import type { SessionDeletionRecovery } from '@onething/backend/runtime/sessions'
 import type { MediaLibraryService } from '@onething/backend/runtime/media'

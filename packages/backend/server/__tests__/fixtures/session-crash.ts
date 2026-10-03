@@ -13,7 +13,7 @@ const backend = await createOnethingBackend({
     gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null },
   sender: new Sender() as never, toolRegistry: 'headless',
 })
-const stores = await import('../../../stores/sessions.js')
+const stores = await import('../../../runtime/sessions/session-store.js')
 const initialOwner = { userId: 'alice', workspaceId: 'tenant' }
 stores.createSession(parentId, 'parent', { workspaceId: 'product-space', initialOwner })
 if (mode === 'create') process.exit(73)

@@ -8,7 +8,7 @@ import type { StreamContext, StreamProcessor } from '../stream/stream-processor.
 const mockBus = {
   emit: vi.fn(async () => undefined),
 }
-vi.mock('../../../session/reads.js', async () => {
+vi.mock('../../sessions/reads.js', async () => {
   const store = await import('@onething/backend/store.js')
   return { sessionReads: { getMessage: (sessionId: string, messageId: string) => store.getSession(sessionId)?.messages.find(message => message.id === messageId) } }
 })

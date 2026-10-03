@@ -20,7 +20,7 @@
  * 启动开销:cli 的产物是单文件 CJS 包(11.5MB),两种写法的包大小差 382 字节
  * (动态那一版反而大一点,多的是 esbuild 的惰性壳),但静态之后
  * `node dist/cli/main.cjs --help` 从 ~0.12s 变成 ~0.15s —— 每一次 `onething`
- * (含 `daemon status`、`--help`)都要先把 `@onething/backend/session/*` 与它拖着的
+ * (含 `daemon status`、`--help`)都要先把会话模块(当时的包根 `session/*`,今天在 `runtime/sessions/`)与它拖着的
  * 会话仓储 / 存储驱动的模块体跑一遍。命令模块按需加载,它们的 import 才必须是静态的:
  * 前者省的是**每次启动**,后者防的是**打包图**,两件事。(2026-09-09 K4-b 实测)
  *
@@ -32,7 +32,7 @@ import {
   readSessionTrace,
   readSessionTraceResponseText,
   type ReadSessionTraceOptions,
-} from '@onething/backend/session/trace.js'
+} from '@onething/backend/runtime/sessions'
 import type {
   SessionTrace,
   SessionTraceRequest,

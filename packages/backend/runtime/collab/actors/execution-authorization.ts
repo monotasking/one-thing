@@ -4,7 +4,7 @@ import {
   sessionOwnerOf,
   type SessionAccess,
   type SessionOwnershipRecord,
-} from '@onething/backend/session/access.js'
+} from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 
 export interface CollabActorAuthorization {

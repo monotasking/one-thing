@@ -15,8 +15,8 @@ import { applyCollabReaction, normalizeCollabReactionEmoji } from '@onething/bac
 import type { ChatMessageReaction, ChatMessageReactionActor } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { sessionCommands } from '../../session/commands.js'
-import { sessionReads } from '../../session/reads.js'
+import { sessionCommands } from '@onething/backend/runtime/sessions'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

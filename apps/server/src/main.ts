@@ -16,7 +16,7 @@ import {
 } from '@onething/backend/server/discovery.js'
 import { configureHostLocalTrust } from '@onething/backend/server/host-trust.js'
 import { getAppLogPath, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { warnOnForeignCoreForEventsRead } from '@onething/backend/session/read-mode.js'
+import { warnOnForeignCoreForEventsRead } from '@onething/backend/runtime/sessions'
 import { randomBytes } from 'node:crypto'
 
 const forced = process.argv.includes('--force')

@@ -36,7 +36,7 @@ const aliceHttp: RpcDispatchContext = { transport: 'http', ownerUid: 'alice', wo
 const bobHttp: RpcDispatchContext = { transport: 'http', ownerUid: 'bob', workspaceId: 'one' }
 let directory: string
 let previous: string | undefined
-let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js')['installStoreSessionLayerForTest']>>
+let fixture: Awaited<ReturnType<typeof import('../../runtime/sessions/testing/store-layer.js')['installStoreSessionLayerForTest']>>
 let registry: typeof import('../registry.js')
 let current: typeof import('../../current.js')
 let wiring: typeof import('@onething/backend/runtime/toolkit/wiring')
@@ -47,9 +47,9 @@ beforeEach(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tool-cancellation-'))
   previous = process.env.ONETHING_STORE_PATH
   process.env.ONETHING_STORE_PATH = directory
-  const { installStoreSessionLayerForTest } = await import('../../session/testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../../runtime/sessions/testing/store-layer.js')
   fixture = await installStoreSessionLayerForTest()
-  const store = await import('../../stores/sessions.js')
+  const store = await import('../../runtime/sessions/session-store.js')
   store.createSession('alice-session', 'Alice', { initialOwner: alice })
   store.createSession('alice-second', 'Alice second', { initialOwner: alice })
   store.createSession('bob-session', 'Bob', { initialOwner: bob })

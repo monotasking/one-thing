@@ -12,10 +12,10 @@ function fixture() {
   const write = (name, text) => { const file = path.join(root, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); return file }
   write('packages/backend/package.json', JSON.stringify({ exports: { '.': './backend.ts' } }))
   write('packages/backend/backend.ts', 'export const api = true')
-  write('packages/backend/session/commands.ts', 'export const command = true')
+  write('packages/backend/runtime/sessions/session-commands.ts', 'export const command = true')
   write('packages/backend/runtime/model.ts', 'export interface Model {}')
   const options = { moduleResolution: ts.ModuleResolutionKind.Bundler, module: ts.ModuleKind.ESNext, baseUrl: root,
-    paths: { '@hidden/*': ['packages/backend/session/*'], '@product/*': ['packages/backend/runtime/*'] } }
+    paths: { '@hidden/*': ['packages/backend/runtime/sessions/*'], '@product/*': ['packages/backend/runtime/*'] } }
   return { root, write, check: files => checkBackendPublicBoundaries({ root, files, compilerOptions: options }) }
 }
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }) })
@@ -53,11 +53,13 @@ it('blocks shared type and dynamic reverse edges even through relative paths and
   expect(result.counts).toEqual({ type: 1, runtime: 1 })
 })
 
-it('blocks private external aliases and relative paths while allowing same-package assembly', () => {
+it('blocks private modules from outside runtime/sessions (aliases, relative paths, the package root) while allowing the feature itself', () => {
   const { write, check } = fixture()
-  const host = write('apps/example/main.ts', `import '@hidden/commands.js'; import '../../packages/backend/session/commands.js'`)
-  const assembly = write('packages/backend/assembly.ts', `import './session/commands.js'`)
-  expect(check([host, assembly]).violations).toHaveLength(2)
+  const host = write('apps/example/main.ts', `import '@hidden/session-commands.js'; import '../../packages/backend/runtime/sessions/session-commands.js'`)
+  const assembly = write('packages/backend/assembly.ts', `import './runtime/sessions/session-commands.js'`)
+  const inside = write('packages/backend/runtime/sessions/session-layer.ts', `import './session-commands.js'`)
+  expect(check([host, assembly]).violations).toHaveLength(3)
+  expect(check([inside]).violations).toHaveLength(0)
 })
 
 it('rejects renamed exports of internal modules and unexported named imports, but tolerates the wildcard', () => {
@@ -65,7 +67,7 @@ it('rejects renamed exports of internal modules and unexported named imports, bu
   // exports 兜底通配是 Alias Registry 的地基(加子路径 = 加一条 exports 键)。
   // 剩下的两条才是真要守的:改名开口一个内部会话模块 / 越过 exports 直取内部路径。
   const { write, check } = fixture()
-  write('packages/backend/package.json', JSON.stringify({ exports: { './*': './*.ts', './new-name': './session/commands.ts' } }))
+  write('packages/backend/package.json', JSON.stringify({ exports: { './*': './*.ts', './new-name': './runtime/sessions/session-commands.ts' } }))
   const host = write('apps/example/main.ts', `import '@onething/backend/secret.js'`)
   expect(check([host]).violations).toHaveLength(2)
 })

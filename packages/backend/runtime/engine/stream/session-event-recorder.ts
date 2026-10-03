@@ -88,16 +88,16 @@ import {
   type SessionRequestHeaderEventData,
   type SessionRequestRoute,
 } from '@shared/session/events/types'
-import { findLastSessionEventSync, flushSessionEventLog, nextSessionRequestIndex } from '../../../session/event-log.js'
-import { writeSessionEvent } from '../../../session/event-writer.js'
-import { foldLiveSessionLogicalDelta } from '../../../session/projection-cache.js'
-import { textOrBlobForEvent } from '@onething/backend/session/blob-store.js'
-import { countSessionEventDroppedPart } from '@onething/backend/session/event-stats.js'
+import { findLastSessionEventSync, flushSessionEventLog, nextSessionRequestIndex } from '@onething/backend/runtime/sessions'
+import { writeSessionEvent } from '@onething/backend/runtime/sessions'
+import { foldLiveSessionLogicalDelta } from '@onething/backend/runtime/sessions'
+import { textOrBlobForEvent } from '@onething/backend/runtime/sessions'
+import { countSessionEventDroppedPart } from '@onething/backend/runtime/sessions'
 import {
   currentSessionRunId,
   nextSessionRunPartIndex,
   setSessionRunRequestIndex,
-} from '@onething/backend/session/runs.js'
+} from '@onething/backend/runtime/sessions'
 import { getLogger } from '../../logging/configure-logging.js'
 
 const log = getLogger('sessions.events')

@@ -40,7 +40,7 @@
  *      那张表里根本看不见它们,于是那半条断言在量的是 vitest 自己的超时钟与同
  *      worker 的邻居,恒绿,还得写成"不高于"才不抖。删掉它不是放弃判据:定时器
  *      泄漏改由三个起定时器的模块**各自的单测**用 `vi.getTimerCount()` 钉
- *      (`session/__tests__/shutdown-flush-and-blob-gc` / `list-projection-backfill` /
+ *      (`runtime/sessions/__tests__/shutdown-flush-and-blob-gc` / `list-projection-backfill` /
  *      `runtime/scheduler/__tests__/user-task-service`,都带反证)—— fake timers 看得见
  *      unref 定时器,是唯一说得出话的口径。
  *   ⑩ **宿主表里的本机信任在装配那一刻就生效**(B3,方案
@@ -85,7 +85,7 @@
  *      时 start 仍在途"确定地成立,就得由 dispose 链自己去放闸,而正确实现正好
  *      死等那个闸,判据会把自己判死锁。
  *
- * **store 隔离**:`stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就
+ * **store 隔离**:`runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
  * 设好 —— 这就是这份文件里全部 import 都是**动态**的原因(顶层只留 vitest 的),
  * 照 `server/__tests__/runtime-over-backend.test.ts` 的 mkdtemp + afterAll 还原先例。
@@ -452,8 +452,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   it('accepted transport work drains before the journal and lease are released', { timeout: 180_000 }, async () => {
     const backend = await assemble(undefined, null, null, 'daemon')
     const lease = backend.storeLease
-    const { writeSessionEvent } = await import('../session/event-writer.js')
-    const { getSessionEventsLogPath } = await import('../session/event-log.js')
+    const { writeSessionEvent } = await import('@onething/backend/runtime/sessions')
+    const { getSessionEventsLogPath } = await import('@onething/backend/runtime/sessions')
     const sessionId = 'shutdown-accepted-request'
     const logPath = getSessionEventsLogPath(sessionId)
     let finish!: () => void

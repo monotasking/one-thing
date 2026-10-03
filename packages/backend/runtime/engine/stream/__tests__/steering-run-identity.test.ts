@@ -29,15 +29,15 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => {
 })
 
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
-  '../../../../session/event-log.js'
+  '@onething/backend/runtime/sessions'
 )
-const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
-const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+const { resetSessionSurfaceCache } = await import('@onething/backend/runtime/sessions')
+const { installSessionLayerForTest } = await import('../../../sessions/testing/session-layer.js')
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, endSessionRun, resetSessionRuns, rotateSessionRun } = await import(
-  '@onething/backend/session/runs.js'
+  '@onething/backend/runtime/sessions'
 )
-const { resetSessionEventStatsCache } = await import('@onething/backend/session/event-stats.js')
+const { resetSessionEventStatsCache } = await import('@onething/backend/runtime/sessions')
 const { createSessionEventRecorder } = await import('../session-event-recorder.js')
 
 const SESSION_ID = 'steering-run-identity'

@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { ServerResponse } from "node:http";
 import { watchClientDisconnect } from './request-abort.js'
 import { tenantDirectory, tenantKey } from './tenant-paths.js'
-import { sessionDeletion } from '../session/deletion.js'
-import { sessionAccess, createSessionAccess } from '../session/access.js'
+import { sessionDeletion } from '@onething/backend/runtime/sessions'
+import { sessionAccess, createSessionAccess } from '@onething/backend/runtime/sessions'
 import { createServerLiveSessionDelivery } from './live-session-delivery.js'
 import { createServerMediaDelivery } from './media-delivery.js'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
@@ -100,18 +100,18 @@ import {
 	createSessionCommands,
 	sessionCommands as appSessionCommands,
 	type SessionCommands,
-} from "../session/commands.js";
+} from "@onething/backend/runtime/sessions";
 import { createEchoMessageEvents } from './echo-message-events.js';
 import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
-} from "../session/reads.js";
-import { sessionCommandEvents } from "../session/command-events.js";
-import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
+} from "@onething/backend/runtime/sessions";
+import { sessionCommandEvents } from "@onething/backend/runtime/sessions";
+import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "../runtime/sessions/session-store.js";
 import {
 	findSessionIndexMeta as findAppStoreSessionIndexMeta,
 	onSessionIndexChanged,
-} from "@onething/backend/stores/sessions.js";
+} from "../runtime/sessions/session-store.js";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
 import { configureServerSearchPort } from "./search-providers.js";
 import {
@@ -404,7 +404,7 @@ type ServerChatSession = ChatSession & {
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
 
-import type { SessionLayer } from '../session/index.js';
+import type { SessionLayer } from '../runtime/sessions/session-layer.js';
 
 export interface OnethingServerRuntime {
 	/** Present for a production Backend; absent only for explicit test adapters. */
@@ -3360,7 +3360,7 @@ export function createAppBackedServerSessionStore(
 		// S2b:app-store 背书的这只读门面两条读法都收口到 `appSessionReads`,
 		// `ONETHING_SESSION_READ=events` 因此对分页也生效;messages 模式下
 		// `pageMessages` 逐字走同一个 `getSessionMessagesPage`(store.js 再导出的
-		// 就是 stores/sessions 那份),页信封一格不动。
+		// 就是 runtime/sessions/session-store.ts 那份),页信封一格不动。
 		getMessagesPage: (request) =>
 			appSessionReads.pageMessages(request) as GetSessionMessagesPageResponse,
 		getUserMessageMarkers: (sessionId) =>

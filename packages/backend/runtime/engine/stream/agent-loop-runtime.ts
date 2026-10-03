@@ -16,8 +16,8 @@ import {
   getAgentLoopTransientTail,
 } from '@onething/backend/runtime/engine/engine-primitives'
 import * as store from '@onething/backend/store.js'
-import { sessionCommands } from '../../../session/commands.js'
-import { sessionReads } from '../../../session/reads.js'
+import { sessionCommands } from '@onething/backend/runtime/sessions'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import { goalRuntimeHooks } from '@onething/backend/runtime/goals/runtime-hooks'
 import { scratchpadRuntimeHooks } from '@onething/backend/runtime/scratchpad/service-bound'
 import { resolveAgentProfileForSessionObject } from '@onething/backend/runtime/agents/profile-for-session'

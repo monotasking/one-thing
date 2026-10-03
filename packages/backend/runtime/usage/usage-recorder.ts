@@ -25,7 +25,7 @@ import { getModelCapabilityEntry } from "@onething/backend/runtime/providers/mod
 import { resolveSessionCredentialId } from "@onething/backend/runtime/providers/space-credentials";
 import { isSubscriptionProvider } from "@onething/backend/runtime/providers/manifest";
 import * as store from "@onething/backend/store.js";
-import { sessionReads } from "../../session/reads.js";
+import { sessionReads } from "@onething/backend/runtime/sessions";
 
 export interface RecordUsageInput {
 	sessionId?: string;

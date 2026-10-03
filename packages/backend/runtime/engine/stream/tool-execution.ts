@@ -3,7 +3,7 @@
  * Handles tool detection, execution, and step management
  */
 
-import { sessionReads } from '../../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import * as store from '@onething/backend/store.js'
 import type { DiffHunk, Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'

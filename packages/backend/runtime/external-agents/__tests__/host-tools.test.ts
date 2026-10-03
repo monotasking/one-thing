@@ -19,7 +19,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '@onething/backend/runtime/logging/configure-logging'
-import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../sessions/testing/facade-mock.js'
 import { COLLAB_SAY_SOURCE } from '@onething/backend/runtime/collab'
 import {
   bindHostToolContext,
@@ -67,12 +67,12 @@ const mocks = vi.hoisted(() => ({
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
-vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
+vi.mock('../../sessions/reads.js', () => import('../../sessions/testing/facade-mock.js'))
+vi.mock('../../sessions/session-commands.js', () => import('../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/session/access.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
   }) }
@@ -95,7 +95,7 @@ vi.mock('@onething/backend/store.js', () => ({
   createSessionWithoutFocus: vi.fn(),
 }))
 
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
 }))
 

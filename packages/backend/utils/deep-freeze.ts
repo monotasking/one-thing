@@ -7,7 +7,7 @@
  * 住在 core 根上是因为三边都要用:
  *   - 插件 api-builder 交出 `api.settings.get()` 的快照;
  *   - app 层的插件配置存储交出有效值快照;
- *   - 会话命令面(`session/commands.ts` + `app/session/reads.ts`)在开发/测试期
+ *   - 会话命令面(`runtime/sessions/session-commands.ts` + `app/session/reads.ts`)在开发/测试期
  *     把交出去的 `ChatMessage` 冻住,让"就地改消息"当场炸出来而不是静默生效。
  *
  * 原来它叫 `deepFreezeCorePluginValue` 住在 `plugins/freeze.ts`;那个名字仍然从

@@ -14,7 +14,7 @@
  */
 import type { DomainRoutes, RouteHandlers, RouteSessionAccess, Router } from '@shared/ipc/router'
 import type { SessionAccessOperation } from '@shared/contracts/session-access.js'
-import { sessionAccess } from '../session/access.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
 import { getCurrentBackendInstance } from '../current.js'
 import {
   DESKTOP_RPC_CONTEXT,

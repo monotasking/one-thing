@@ -49,7 +49,7 @@ import {
   saveOnethingUiStateForIpc,
   type OnethingUiStatePatch,
 } from '@onething/backend/runtime/storage'
-import { DEFAULT_SESSION_OWNER, requestSessionOwner, sessionAccess } from '../../session/access.js'
+import { DEFAULT_SESSION_OWNER, requestSessionOwner, sessionAccess } from '@onething/backend/runtime/sessions'
 import { tenantDirectory } from '../../server/tenant-paths.js'
 
 function statePath(context: RpcDispatchContext): string {

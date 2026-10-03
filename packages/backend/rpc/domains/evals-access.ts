@@ -3,7 +3,7 @@ import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 // 一个**授权判据**去动态拉整棵产品 barrel:授权本该是最先跑、最便宜的一步,
 // 结果它成了这条路上最贵的一步,而且拉进来的东西 99% 与事故无关。
 import { readIncident } from '@onething/backend/runtime/evals/incident'
-import { isHistoricalLocalOperator, sessionAccess, SessionAccessError, type SessionAccessOperation } from '../../session/access.js'
+import { isHistoricalLocalOperator, sessionAccess, SessionAccessError, type SessionAccessOperation } from '@onething/backend/runtime/sessions'
 
 /** The repository-wide eval corpus has no tenant column; its historical owner is fixed. */
 export function requireEvalRepositoryAccess(context: RpcDispatchContext): void {

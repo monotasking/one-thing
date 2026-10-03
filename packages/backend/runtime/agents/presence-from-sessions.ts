@@ -13,7 +13,7 @@
  * `computeAgentPresence`,故口径不会漂。
  */
 import { computeAgentPresence, hasAgentReference, type AgentPresence } from '@onething/backend/runtime/agents'
-import { getSessionsList } from '@onething/backend/stores/sessions.js'
+import { getSessionsList } from '../sessions/session-store.js'
 
 /**
  * 一个 agent 此刻在哪儿:dm 房 / 房间 / 执行会话 / 工作台会话四路。

@@ -835,7 +835,7 @@ export const sessionResourceSpec: ResourceSpec = {
      * 里存在与壳里有没有摆着它是两件事(§10.3「存在未打开」那一行)。
      *
      * 载荷带的是**这次真的删掉了哪几条**:删一条会话会级联到从它分出去的分支,而
-     * 「删除中」那一格(`session/deletion.ts` 的三相位)对同地址的并发做是**拒**
+     * 「删除中」那一格(`runtime/sessions/deletion.ts` 的三相位)对同地址的并发做是**拒**
      * (`SessionClosingError`),所以这一发到达时,名单上每一条都已经不在了。
      */
     deleted: {

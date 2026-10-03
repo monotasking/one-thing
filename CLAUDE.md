@@ -107,12 +107,12 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 **Inside the server package there are no layers** (user rulings 2026-10-02/03, `docs/design/server-client-split-2026-10.md` §4). `packages/backend` is two things:
 
-- **the package root** — the backend's entry points and faces: `backend.ts` (`createOnethingBackend`, the single assembly recipe) / `store.ts` / `current.ts` / `host-ports.ts` / `lifecycle.ts` + `server/` (the HTTP/SSE face, including `server/runtime-facade.ts`, the `OnethingRuntimeFacade` contract every host face serves) / `rpc/` / `stores/` / `session/` (the command and read doors) / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/` (cross-cutting tests, including `architecture-boundaries.test.ts`).
+- **the package root** — the backend's entry points and faces: `backend.ts` (`createOnethingBackend`, the single assembly recipe) / `store.ts` / `current.ts` / `host-ports.ts` / `lifecycle.ts` + `server/` (the HTTP/SSE face, including `server/runtime-facade.ts`, the `OnethingRuntimeFacade` contract every host face serves) / `rpc/` / `stores/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/` (cross-cutting tests, including `architecture-boundaries.test.ts`).
 - **`runtime/<feature>/`** — **one feature, one directory, flat**: prompts, sessions, tools, providers, plugins, engine, agent-loop, gateway, … Everything a feature has — what used to be its engine skeleton (`core/`), its product logic and its assembly wiring (`wiring/`) — sits side by side; same-name files were renamed by what they do (tables in the design doc §6), and a fake for a test is a function parameter, not a separate layer. A domain-only kernel may sit in `runtime/<d>/kernel/`, an ordinary subdirectory. There are no `*.wiring.ts` files any more: the suffix stopped granting anything with the flatten and was dropped from all 31 files on 2026-10-03 (colliding names renamed by content, e.g. `practice/service-slot.ts`, `mcp/index-with-bridge.ts`; table in the design doc §6).
 
 How it got here: step ② (2026-10-02) merged the former `@onething/core`, `@onething/runtime` and `@onething/gateway` packages verbatim as subtrees `core/`, `runtime/`, `gateway/`; step ③ folded every domain into one `runtime/<d>/` and deleted `wiring/`; 去 core 批 1–3 (2026-10-03) dissolved `core/` into `runtime/<d>/` (events → `runtime/event-bus`, which 收尾整理 2 then merged with the package root's `events/` into `runtime/events/`; agent → `runtime/agents`, session → `runtime/sessions`, the rest same-name; its big barrel `core/index.ts` was deleted, every import now names the feature directory) and moved `gateway/` to `runtime/gateway/`. Why: the "zero-dependency skeleton" existed so the UI side could reuse it, and since step ① the UI may only import `@shared` and `@onething/client`; the "wiring" layer existed to put one product into several hosts, and the hosts converged.
 
-What is still enforced: the client → shared ← server boundary; no backend file imports electron / `@main` / `@preload` / renderer aliases (and `runtime/` no cordis); the non-test relative imports of `runtime/` stay inside `runtime/` (point at the package root with a package specifier — the internal session modules are the one exception, they have no exports key); I1 — the package root never grows a directory named like a `runtime/` domain; and content rules (kernels name no concrete feature or capability, provider-agnostic code names no vendor). What was withdrawn, with reasons, is listed in the design doc §4.
+What is still enforced: the client → shared ← server boundary; no backend file imports electron / `@main` / `@preload` / renderer aliases (and `runtime/` no cordis); the non-test relative imports of `runtime/` stay inside `runtime/` (point at the package root with a package specifier); the internal session modules (`scripts/lib/backend-public-boundary.mjs` `privateSessionFiles`: the command door, the read door, the ledger write door and the caches behind them) have no exports key and may be imported only by non-test files inside `runtime/sessions/` — everyone else goes through the sessions entry; I1 — the package root never grows a directory named like a `runtime/` domain; and content rules (kernels name no concrete feature or capability, provider-agnostic code names no vendor). What was withdrawn, with reasons, is listed in the design doc §4.
 
 - **apps/\*** — thin sockets: the React desktop (`apps/desktop-react`, also the browser shell via `--mode web`), server (HTTP/SSE), CLI daemon (`apps/cli`). The Vue host / renderer / web build were deleted 2026-09-04 (runtime unification step ④; `checkVueHostStaysRetired` keeps them out).
 
@@ -127,7 +127,7 @@ apps/*  (thin sockets)
        │ createOnethingBackend(...)     │ /api → core      │
 ┌──────┴────────────────┴───────────────┴──────────────────┴──────────┐
 │ packages/backend                              ('@onething/backend') │
-│  package root: backend.ts (factory) + server/ rpc/ stores/ session/ │
+│  package root: backend.ts (factory) + server/ rpc/ stores/          │
 │  channel/ features/ utils/ …  — entry points and faces             │
 │  hosts inject surfaces via configure*Host ports                     │
 │  (no backend file imports electron/@main/@preload)                  │
@@ -145,7 +145,7 @@ apps/*  (thin sockets)
 ```
 packages/backend/            # THE server package ('@onething/backend'): createOnethingBackend
                              # + the package root (entry points and faces: server/ rpc/ stores/
-                             # session/ channel/ …). @shared allowed, electron never.
+                             # channel/ …). @shared allowed, electron never.
   runtime/                   #   one feature, one flat directory (prompts, sessions, engine, agent-loop,
                              #   tools, providers, plugins, gateway, voice, music, …). core/ (the old engine
                              #   skeleton), wiring/ and gateway/ were folded in on 2026-10-02/03.
@@ -186,7 +186,7 @@ apps/server/                 # Process shell only (main.ts + index.ts). The HTTP
 
 **`OnethingBackend` is a class, not a bag of globals** (组合根 A, `docs/design/backend-composition-root-2026-09.md`, landed 2026-09-02/03):
 
-- The assembly products are **fields** — `eventBus` / `streamChannel` / `sessionManager` / `engine` / `runtime` / `options` — created by pure factories (`runtime/events/index.ts` `createEventSystem()`, `session/index.ts` `createSessionLayer(eventBus, streamChannel)`, `runtime/engine/engine-layer.ts` `createStreamEngineLayer({eventBus, streamChannel})`) and passed step to step. The old `initializeX` / `shutdownX` pairs are gone.
+- The assembly products are **fields** — `eventBus` / `streamChannel` / `sessionManager` / `engine` / `runtime` / `options` — created by pure factories (`runtime/events/index.ts` `createEventSystem()`, `runtime/sessions/session-layer.ts` `createSessionLayer(eventBus, streamChannel)`, `runtime/engine/engine-layer.ts` `createStreamEngineLayer({eventBus, streamChannel})`) and passed step to step. The old `initializeX` / `shutdownX` pairs are gone.
 - **One process slot, `packages/backend/current.ts`** — the only module-level `let` the assembly layer keeps (`assembly:gate` exempts it). The 121 `getXxx()` accessors (`getEventBus`, `getStreamEngine`, `getSessionManager`, …) still exist but read the **current instance**; before assembly, or for a field not yet built, they throw `BackendNotAssembledError('<field>')`. Assembling while an instance is live throws `BackendAlreadyAssembledError` on the first line (it used to warn-and-return the first backend's engine). A failed assembly runs the disposers registered so far and clears the slot before rethrowing.
 - **`own(disposer, label)` / `dispose()`** — whoever starts something that leaves a tail registers its teardown next to the start line; `dispose()` runs the list in reverse, each disposer in its own try/catch, then clears the list, the five assembly-product fields and the slot. It is idempotent. **`own()` after `dispose()` has started runs the disposer on the spot** (returning its promise, errors logged not thrown) instead of silently dropping it — the guard that keeps a `.then()`-deferred registration racing a fast quit from leaking, e.g. an already-spawned MCP stdio child. `shutdown()` survives as a deprecated alias. `ownedLabels()` is a read-only snapshot for tests. The rule reaches the hosts: everything a host starts after assembly (embedded HTTP surface, user scheduler, watchers, MCP/ACP, gateway) is `backend.own(...)`'d at its start site, so every host's shutdown is one `await backend.dispose()`.
 
@@ -516,7 +516,7 @@ Notes:
   `pageMessages` / cold-load hydration) is projection-only — the `ONETHING_SESSION_READ`
   / `_HYDRATE` / `_TRANSCRIPT` rollback levers were **burned**, rollback is `git revert`.
   What survives of the old shadow machinery is the **refold durability gate**
-  (`backend/session/shadow.ts`, §14.3-B): at every run end the ledger's *file bytes* are
+  (`backend/runtime/sessions/shadow.ts`, §14.3-B): at every run end the ledger's *file bytes* are
   re-folded and compared with the live projection — two store-independent paths — and any
   diff lands one summary line in `<store>/log/session-shadow.jsonl` and counts into
   `session-shadow-stats.json` (`refoldChecks` / `refoldMismatches`). The identity gate
@@ -582,7 +582,7 @@ Notes:
     - `events.replay-buffers` (会话更新缓冲, `backend/runtime/events/memory.ts`): per-session event
       replay buffers with no subscriber.
     - `sessions.projections` (会话内容缓存) and `sessions.cache` (最近打开的会话),
-      `backend/session/memory.ts`. They are released together, because a cached session holds
+      `backend/runtime/sessions/memory.ts`. They are released together, because a cached session holds
       the messages built from its projection.
     - `browser.tabs` (内置浏览器网页, React shell only, `electron/browser/memory-holder.ts`):
       background tab release. A tab hidden for 10 min or more (soft) / 1 min or more (hard)
@@ -984,7 +984,15 @@ packages/backend/runtime/      # one feature, one flat directory (was packages/o
 │   ├── sessions/              # session-repository, storage-driver (jsonl/legacy hybrid) + since 批 2 core's
 │   │                          # session kernel: Session / manager / commands.ts (pure reducer), projection/,
 │   │                          # trace/assemble.ts, storage/jsonl (codec + pager); one entry index.ts (the old
-│   │                          # kernel barrel session-primitives.ts was merged into it, 2026-10-03)
+│   │                          # kernel barrel session-primitives.ts was merged into it, 2026-10-03); and since
+│   │                          # 包根归位第 1 笔 (2026-10-03) the former package-root session/ + stores/sessions.ts:
+│   │                          # sessionCommands (session-commands.ts) / sessionReads (reads.ts) / access /
+│   │                          # event-log + writer + blobs + checkpoint + refold/shadow / trace-reads.ts /
+│   │                          # freeze / createSessionLayer (session-layer.ts) / the session table
+│   │                          # (session-store.ts: LRU + 300ms throttled saves) / ipc-repository/ / testing/
+│   │                          # (session-store / session-layer / usage / memory / list-projection-backfill are not
+│   │                          # in the entry yet — the session table reads settings + app-state at load; callers
+│   │                          # import those five files directly until the follow-up batch makes that load lazy)
 │   ├── agent-loop/            # provider-agnostic loop (runner, stream, retry, scheduler; barrel loop-primitives.ts)
 │   ├── agent-loop/providers/  # hand-rolled fetch/SSE providers (claude/codex/deepseek/
 │   │                          # gemini/openai-compatible/acp) + factory + thinking-options
@@ -1009,8 +1017,7 @@ packages/backend/runtime/gateway/ # IM gateway (was packages/gateway/src): hub/ 
 │
 packages/backend/              # THE server package ('@onething/backend'); the package root below = entry points and faces
 │   ├── backend.ts  store.ts   # createOnethingBackend — the single assembly recipe
-│   ├── stores/                # sessions (repository wiring), settings cache, app-state, docs-paths
-│   ├── session/               # sessionCommands / sessionReads / event-log / trace / freeze
+│   ├── stores/                # settings cache, app-state, docs-paths (the session table moved to runtime/sessions/)
 │   ├── rpc/                   # router registry + domains/ (the only new-transport surface)
 │   ├── server/                # the core HTTP/SSE surface: http.ts (routes/SSE), runtime.ts
 │   │                          # (OnethingRuntimeFacade + session/settings/permission facades),
@@ -1055,15 +1062,15 @@ packages/shared/               # '@shared'
 **Permission**: one flat directory `packages/backend/runtime/permissions/` — the `Permission` namespace with channel-affinity enforcement (`permission-asks.ts`, plus `capability-registry` / `permission-grants` / `permission-policy`; core's `permission/` until 去 core 批 1, 2026-10-03), and the grant storage paths, the builtin capability set and the process `Permission` (③-收尾 A; exported through `permission.ts`), plus the product's grant and policy runtime (`permission-runtime.ts`, the two `*-presentation.ts`, `unattended.ts`, barrel `index.ts`) — two directories (`permission/` + `permissions/`) until 收尾整理 2 (2026-10-03) merged them.
 
 **会话消息(P0,2026-08-19,`docs/design/session-commands-p0-2026-08.md`)**:唯一写面是
-`sessionCommands`(`packages/backend/session/commands.ts`,12 条消息命令 +
+`sessionCommands`(`packages/backend/runtime/sessions/session-commands.ts`,12 条消息命令 +
 `patchSession` 会话级补丁;纯 reducer 在 `packages/backend/runtime/sessions/commands.ts`,负责 COW /
-写计划 / lazy 档),唯一读面是 `sessionReads`(同目录 `reads.ts`,返回值一律 `readonly`)。
+写计划 / lazy 档),唯一读面是 `sessionReads`(同目录 `reads.ts`,返回值一律 `readonly`;两扇门 2026-10-03 起都在 `runtime/sessions/`,外面经会话入口 `@onething/backend/runtime/sessions` 拿)。
 `session.messages` 只允许出现在白名单文件里(命令面 / 读面 / `sessions/storage-driver.ts` /
 `sessions/session-dehydrate.ts` / `sessions/session-repository.ts`,理由逐条写在
 `scripts/session-check.mjs`),对 `ChatMessage`/`Step`/`ToolCall` 的字段赋值只允许在
 `runtime/sessions/commands.ts` 的 reducer 里;`bun run session:check` 打全表、`bun run session:gate` 是**硬闸**(基线
 `docs/audit/session-gate-baseline-2026-08-19.txt` = 0,任何新命中直接红)。dev/vitest 下从
-store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session/freeze.ts`),漏网的
+store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/runtime/sessions/freeze.ts`),漏网的
 就地改当场抛 TypeError。core 引擎仍然通过注入的 store 端口写(那些小接口的形状 P0 不动),
 端口实现走命令面。**一个反复踩的坑**:命令是 COW 的 —— 先捕获 `session.messages`、再
 `await`、再读那个变量会拿到旧数组;await 之后重读。
@@ -1085,7 +1092,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 
 ### State Management
 
-- **Backend**: app-layer stores in `packages/backend/stores/` (sessions repository with LRU + 300ms throttled async saves, settings cache with sync hot path, app-state)
+- **Backend**: the session table in `packages/backend/runtime/sessions/session-store.ts` (repository with LRU + 300ms throttled async saves); settings cache with sync hot path and app-state in `packages/backend/stores/`
 - **Renderer**: zustand stores + query kernel in `apps/desktop-react/src/data/` (see its CLAUDE.md)
 - **Cross-process sync**: EventBus → SSE events (`@onething/client` events hub) + RPC calls
 

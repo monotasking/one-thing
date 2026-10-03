@@ -11,7 +11,7 @@
  */
 import { collectGoalFileChanges } from "@onething/backend/runtime/goals/file-change-collector";
 import { recordTocTurn } from "@onething/backend/runtime/toc/toc-recorder";
-import { sessionReads } from "../../../session/reads.js";
+import { sessionReads } from "@onething/backend/runtime/sessions";
 import type { Trigger, TriggerContext } from "./index.js";
 import { getLogger } from '../../logging/configure-logging.js'
 

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { OnethingMediaLibraryService, type OnethingMediaAsset } from '@onething/backend/runtime/media'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { createSessionAccess } from '@onething/backend/session/access.js'
+import { createSessionAccess } from '@onething/backend/runtime/sessions'
 import { mediaFileNameOf, resolveMediaFileByName } from '../resolve-file.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))

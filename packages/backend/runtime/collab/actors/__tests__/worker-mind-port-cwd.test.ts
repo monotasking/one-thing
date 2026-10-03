@@ -9,9 +9,9 @@
  * 现在的口径与紧邻的 permissionMode 同一条:**缺席才给默认值**。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSessionAccess } from '@onething/backend/session/access.js'
+import { createSessionAccess } from '@onething/backend/runtime/sessions'
 import { createCollabActorAuthorization } from '../execution-authorization.js'
-import { bindSessionFacadeMock } from '../../../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../../sessions/testing/facade-mock.js'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; options: unknown }>,
@@ -25,8 +25,8 @@ const mocks = vi.hoisted(() => ({
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../../../session/reads.js', () => import('../../../../session/testing/facade-mock.js'))
-vi.mock('../../../../session/commands.js', () => import('../../../../session/testing/facade-mock.js'))
+vi.mock('../../../sessions/reads.js', () => import('../../../sessions/testing/facade-mock.js'))
+vi.mock('../../../sessions/session-commands.js', () => import('../../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({

@@ -65,7 +65,7 @@ import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/r
 import { getVoiceService } from '@onething/backend/runtime/voice/service'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { isHistoricalLocalOperator, sessionAccess, SessionAccessError } from '../../session/access.js'
+import { isHistoricalLocalOperator, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 
 /** 逐字沿用被删掉的 server `voice` adapter 的那句话。 */

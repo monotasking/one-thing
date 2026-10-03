@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../../sessions/testing/session-layer.js'
 
 let testStore: string
 let fixture: ReturnType<typeof installSessionLayerForTest>
@@ -69,7 +69,7 @@ const storeMocks = vi.hoisted(() => ({
 vi.mock('@onething/backend/store.js', () => ({
   ...storeMocks,
 }))
-vi.mock('../../../../session/commands.js', () => ({
+vi.mock('../../../sessions/session-commands.js', () => ({
   sessionCommands: {
     appendMessage: (sessionId: string, { message }: { message: unknown }) => storeMocks.addMessage(sessionId, message),
     patchMessage: vi.fn(() => true),

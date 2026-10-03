@@ -80,14 +80,14 @@ jobs:
       - name: Check journal, blob, lifecycle and store lease durability
         run: >-
           bun run test
-          packages/backend/session/__tests__/event-log.test.ts
-          packages/backend/session/__tests__/event-log-checkpoint.test.ts
-          packages/backend/session/__tests__/event-log-s1.test.ts
-          packages/backend/session/__tests__/event-log-store-pinning.test.ts
-          packages/backend/session/__tests__/event-write-failure.test.ts
-          packages/backend/session/__tests__/shutdown-flush-and-blob-gc.test.ts
-          packages/backend/session/__tests__/event-log-store-lifecycle.test.ts
-          packages/backend/session/__tests__/event-log-blob-checkpoint.test.ts
+          packages/backend/runtime/sessions/__tests__/event-log.test.ts
+          packages/backend/runtime/sessions/__tests__/event-log-checkpoint.test.ts
+          packages/backend/runtime/sessions/__tests__/event-log-s1.test.ts
+          packages/backend/runtime/sessions/__tests__/event-log-store-pinning.test.ts
+          packages/backend/runtime/sessions/__tests__/event-write-failure.test.ts
+          packages/backend/runtime/sessions/__tests__/shutdown-flush-and-blob-gc.test.ts
+          packages/backend/runtime/sessions/__tests__/event-log-store-lifecycle.test.ts
+          packages/backend/runtime/sessions/__tests__/event-log-blob-checkpoint.test.ts
           packages/backend/runtime/collab/kernel/__tests__/mailbox-failure.test.ts
           packages/backend/__tests__/collab-mailbox-failure-lifecycle.test.ts
           packages/backend/runtime/storage/__tests__/store-lock.test.ts

@@ -48,7 +48,7 @@ import {
 } from '@onething/backend/runtime/plugins/plugin-contract'
 
 import * as store from '@onething/backend/store.js'
-import { sessionReads } from '../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { isCollabCoordinatorDrivenSession } from '@onething/backend/runtime/collab/ingress'

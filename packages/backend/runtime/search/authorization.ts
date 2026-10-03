@@ -3,7 +3,7 @@ import { applyVisibility, type SearchContext } from './kernel/index.js'
 import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import type { SearchServiceOptions } from './service.js'
-import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '@onething/backend/session/access.js'
+import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import { getConnectedDirectories, getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
 

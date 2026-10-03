@@ -12,8 +12,8 @@ import {
 import { Permission } from "@onething/backend/runtime/permissions/permission";
 import { Interaction } from '@onething/backend/runtime/interaction';
 import * as store from "@onething/backend/store.js";
-import { sessionReads } from "../../session/reads.js";
-import { sessionCommands } from "../../session/commands.js";
+import { sessionReads } from "@onething/backend/runtime/sessions";
+import { sessionCommands } from "@onething/backend/runtime/sessions";
 import { getSkillsForSession } from "@onething/backend/runtime/skills/session-skill-cache";
 import { mediaLibraryService } from "@onething/backend/runtime/media/library-service-bound";
 import {

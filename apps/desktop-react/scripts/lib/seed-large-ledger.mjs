@@ -28,7 +28,7 @@
  *  · **64KB 那条线由编码规则说了算**,不由这里拍:超过
  *    `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 的工具结果写进
  *    `sessions/<id>/blobs/<sha256 前 16 位>`,事件行里只留
- *    `result: { blob: {hash, bytes, mime} }` —— 与 `packages/backend/session/
+ *    `result: { blob: {hash, bytes, mime} }` —— 与 `packages/backend/runtime/sessions/
  *    blob-store.ts` 的 `textOrBlobForEvent` / `hashSessionBlob` 同一条规矩。
  *    所以**blob 里的字节不进 `events.jsonl`**,想把账本撑到 50MB 只能靠行内。
  *  · 图片走 `assistant/part-end { kind:'image', blob }` —— 那一格是

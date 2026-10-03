@@ -22,7 +22,7 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-vi.mock('@onething/backend/session/shadow.js', () => ({
+vi.mock('../../sessions/shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',
@@ -44,10 +44,10 @@ vi.mock('../index.js', () => ({
 }))
 
 const { flushSessionEventLog, readSessionLogEvents } = await import(
-  '../../../session/event-log.js'
+  '@onething/backend/runtime/sessions'
 )
-const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
-const { beginSessionRun, endSessionRun } = await import('@onething/backend/session/runs.js')
+const { installSessionLayerForTest } = await import('../../sessions/testing/session-layer.js')
+const { beginSessionRun, endSessionRun } = await import('@onething/backend/runtime/sessions')
 const { createEventOnlyEmitter } = await import('../event-only-emitter.js')
 
 const SESSION = 'skill-landing'

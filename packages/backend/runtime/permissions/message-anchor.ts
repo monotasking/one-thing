@@ -1,4 +1,4 @@
-import { sessionReads } from '../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 
 /**
  * 审批卡的**消息锚**——一次审批要挂在哪条消息上。

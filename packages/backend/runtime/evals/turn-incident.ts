@@ -13,7 +13,7 @@
  * 因此只有一份。
  */
 import { getSkillsForSession } from '../skills/session-skill-cache.js'
-import { sessionReads } from '../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import * as store from '@onething/backend/store.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 

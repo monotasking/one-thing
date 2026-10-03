@@ -21,7 +21,7 @@
 // 一个宿主装配、引擎做第一次压缩判定之前它已经跑过 —— 不靠别的模块碰巧 import 到它。
 import '@onething/backend/runtime/agents/executor/registry'
 import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
-import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from './session/event-log.js'
+import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from '@onething/backend/runtime/sessions'
 import { createStoreLease, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/runtime/storage'
 import { MediaLibraryService } from '@onething/backend/runtime/media'
 import { configureMediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
@@ -45,8 +45,8 @@ import { createTaskDispatchLayer, type TaskDispatchLayer } from '@onething/backe
 import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/backend/runtime/sessions'
 import { getTracesDir } from '@onething/backend/runtime/evals/trace-store'
 import path from 'node:path'
-import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
-import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
+import { scheduleSessionBlobGcOnStartup } from '@onething/backend/runtime/sessions'
+import { scheduleSessionListProjectionBackfillOnStartup } from './runtime/sessions/list-projection-backfill.js'
 import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
 import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
@@ -70,18 +70,18 @@ import { configureAppSkillsLoader } from '@onething/backend/runtime/skills/skill
 import { configureAppPermissionGrants } from '@onething/backend/runtime/permissions/grant-storage'
 import { createEventSystem } from '@onething/backend/runtime/events'
 import { createReplayBufferMemoryHolder } from '@onething/backend/runtime/events/memory'
-import { createSessionMemoryHolders } from './session/memory.js'
+import { createSessionMemoryHolders } from './runtime/sessions/memory.js'
 import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/runtime/memory'
 import { createQuotaService, type QuotaService } from '@onething/backend/runtime/quota'
-import { createSessionLayer, type SessionLayer } from './session/index.js'
+import { createSessionLayer, type SessionLayer } from './runtime/sessions/session-layer.js'
 import {
   installSessionPermissionEventRecorders,
   uninstallSessionPermissionEventRecorders,
-} from './session/permission-events.js'
+} from '@onething/backend/runtime/sessions'
 import {
   installSessionLedgerEventBroadcaster,
   uninstallSessionLedgerEventBroadcaster,
-} from './session/event-broadcast.js'
+} from '@onething/backend/runtime/sessions'
 import { createStreamEngineLayer, type MainOnethingRuntime } from '@onething/backend/runtime/engine/engine-layer'
 import type { PermissionMode } from '@shared/ipc.js'
 import type { BindableStreamSender, StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
@@ -133,7 +133,7 @@ import { createAppFetch } from './provider-binding/bound-fetch.js'
 import { resolveExternalAgentSpawnEnv } from '@onething/backend/runtime/external-agents/spawn-env'
 import { killTrackedDetachedChildren } from '@onething/backend/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/backend/runtime/terminal/service'
-import type { SessionHistoryBuilder } from './session/reads.js'
+import type { SessionHistoryBuilder } from '@onething/backend/runtime/sessions'
 import { buildHistoryMessages, historyProjectionRecipe } from '@onething/backend/runtime/engine/stream/message-helpers'
 import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/runtime/logging/configure-logging'
 import {

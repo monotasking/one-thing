@@ -57,7 +57,7 @@ import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import * as store from '@onething/backend/store.js'
-import { sessionReads } from '../../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import { issueCollabDriveToken } from '@onething/backend/runtime/collab/drive-guard'
 import { collabRoomFolder, ensureCollabRoomFolder } from '../room-folder.js'
 import {

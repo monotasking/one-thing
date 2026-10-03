@@ -123,7 +123,7 @@ export interface OnethingSessionRepositoryOptions<
    * (外壳仍来自 meta.json);返回 `undefined` / 空数组 = 这条会话的事件里没有
    * 历史,一字不改走老路。
    *
-   * 为什么是注入而不是直接 import:投影住在装配层(`backend/session/`,它认识
+   * 为什么是注入而不是直接 import:投影住在装配层(`backend/runtime/sessions/`,它认识
    * 事件文件、blob 与活投影缓存),而产品层的仓库不许反向依赖装配层 —— 仓库只
    * 知道"有没有人给我一份消息"。
    * (从前宿主那一侧还有个档位判定 `ONETHING_SESSION_HYDRATE`;F4-a 退役了它,

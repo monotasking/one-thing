@@ -26,14 +26,14 @@ import type {
 } from '@shared/ipc/collab.js'
 import { collabRouter } from '@shared/ipc/collab.js'
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../runtime/sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => id === 'alice-room' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }
       : ['room-1', 'chat-1'].includes(id) ? {} : undefined,
   }) }
 })
-vi.mock('../../stores/sessions.js', () => ({ getSessionsList: () => [{ id: 'room-1' }, { id: 'chat-1' }] }))
+vi.mock('../../runtime/sessions/session-store.js', () => ({ getSessionsList: () => [{ id: 'room-1' }, { id: 'chat-1' }] }))
 
 const executionOptions = { executionContext: { userId: 'local-user', workspaceId: 'default' } }
 const activityScope = { canReadSession: expect.any(Function), includeUnscoped: true }

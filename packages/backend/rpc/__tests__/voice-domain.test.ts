@@ -25,8 +25,8 @@ import { voiceRouter } from '@shared/ipc/voice.js'
 
 const sessionState = vi.hoisted(() => ({ currentId: undefined as string | undefined }))
 vi.mock('../../stores/app-state.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../runtime/sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
     id === 's1' ? {} : id === 'alice-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' } : undefined,
   }) }

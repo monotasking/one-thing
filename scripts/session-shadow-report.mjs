@@ -11,7 +11,7 @@
  * (`kind: 'refold'`,`events.jsonl` 的文件字节重折 vs 内存活投影)。
  *
  * c4 把恒等门退役了(读侧早已只有投影一条路,验证器侧没有了消费者 ——
- * 见 `packages/backend/session/shadow.ts` 的文件头)。于是:
+ * 见 `packages/backend/runtime/sessions/shadow.ts` 的文件头)。于是:
  *
  *  - `mismatches` / `historyChecks` / `duplicates` / `skipped` / `byKind`
  *    **不再产生**。字段与判据全部留着 —— 老 `session-shadow-stats.json` 里的

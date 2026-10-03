@@ -42,8 +42,8 @@ const mocks = vi.hoisted(() => ({
   renamed: [] as Array<{ id: string; name: string }>,
 }))
 
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
   }) }

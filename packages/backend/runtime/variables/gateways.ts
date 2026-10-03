@@ -1,8 +1,8 @@
 /**
  * Gateways adapt the variable subsystem to the rest of the app.
  *
- *   workdir       → session.workingDirectory in stores/sessions
- *   session vars  → session.variables in stores/sessions
+ *   workdir       → session.workingDirectory in runtime/sessions/session-store.ts
+ *   session vars  → session.variables in runtime/sessions/session-store.ts
  *   note dirs     → VariablesStore (variables.json)
  *
  * Project directories are owned by their own subsystem
@@ -18,7 +18,7 @@ import * as store from '@onething/backend/store.js'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { getProjectsStore } from '../project-dirs/bootstrap.js'
-import { resolveSessionSpaceId } from '@onething/backend/stores/sessions.js'
+import { resolveSessionSpaceId } from '../sessions/session-store.js'
 import { expandPath } from '../tools/access-control/sandbox.js'
 import { getVariablesStore } from '@onething/backend/runtime/variables/store-bound'
 import { DEFAULT_ONETHING_AGENT_ID } from '@onething/backend/runtime/agents'

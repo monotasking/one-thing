@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
 
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
     id === 'session-1' ? {} : id === 'foreign-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' } : undefined,
   }) }
@@ -63,7 +63,7 @@ vi.mock('../../agents/agent-store-access.js', () => ({
   agentExists: () => false,
 }))
 
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   updateSessionAgent: vi.fn(),
 }))
 

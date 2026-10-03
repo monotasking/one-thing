@@ -56,7 +56,7 @@ import {
   type CollabV3MigrationReport,
 } from '@onething/backend/runtime/collab/actors'
 
-import { sessionReads } from '../../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import {
   getOnethingSessionsDir,
   getOnethingStorePath,

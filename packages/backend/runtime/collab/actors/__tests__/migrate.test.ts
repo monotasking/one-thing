@@ -9,15 +9,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bindSessionFacadeMock } from '../../../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../../sessions/testing/facade-mock.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-collab-migrate-'))
 const storeRootRef = { value: storeRoot }
 // P0.2 ③:被测模块改走 `sessionReads` / `sessionCommands`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。换成共用替身,只留
 // 这个用例真正需要的那一口。
-vi.mock('../../../../session/reads.js', () => import('../../../../session/testing/facade-mock.js'))
-vi.mock('../../../../session/commands.js', () => import('../../../../session/testing/facade-mock.js'))
+vi.mock('../../../sessions/reads.js', () => import('../../../sessions/testing/facade-mock.js'))
+vi.mock('../../../sessions/session-commands.js', () => import('../../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock({
   getSession: () => undefined,
   readTranscript: (id: string) => {

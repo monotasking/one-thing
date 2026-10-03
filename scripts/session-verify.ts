@@ -251,7 +251,7 @@ export function verifySession(
   // 任何共享,与 refold 那道耐久门的哲学同源。
   //
   // 不在这里重验落盘那四道判据(版本 / 会话 id / 字节数 / 末行指纹):那是
-  // `packages/backend/session/checkpoint-file.ts` 那一处的法,抄第二份就是让
+  // `packages/backend/runtime/sessions/checkpoint-file.ts` 那一处的法,抄第二份就是让
   // 两份判据各自演化。这里只读信封的 `lastSeq` 与 `payload`(格名的产地也在
   // 那只文件上),真有一份**过了那四道门却折不出同一份**的检查点,恰恰是这道
   // 门该抓的东西。

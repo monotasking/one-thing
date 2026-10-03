@@ -21,7 +21,7 @@
  */
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import { sessionAccess } from '../../session/access.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
 import type { ScratchpadRoutes } from '@shared/ipc/scratchpad.js'
 import {
   adoptScratchpad,

@@ -31,14 +31,14 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => {
 })
 
 const { flushSessionEventLog, readSessionEvents, readSessionLogEvents, resetSessionEventLogCache } =
-  await import('../../../../session/event-log.js')
-const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
+  await import('@onething/backend/runtime/sessions')
+const { resetSessionSurfaceCache } = await import('@onething/backend/runtime/sessions')
 const { beginSessionRun, endSessionRun, resetSessionRuns, rotateSessionRun } = await import(
-  '@onething/backend/session/runs.js'
+  '@onething/backend/runtime/sessions'
 )
-const { readSessionShadowStats, resetSessionEventStatsCache } = await import('@onething/backend/session/event-stats.js')
+const { readSessionShadowStats, resetSessionEventStatsCache } = await import('@onething/backend/runtime/sessions')
 const { attachSessionEventRecorder, createSessionEventRecorder } = await import('../session-event-recorder.js')
-const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+const { installSessionLayerForTest } = await import('../../../sessions/testing/session-layer.js')
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 
 const SESSION_ID = 'session-under-test'

@@ -18,7 +18,7 @@
  * headless 档那一半在 `resource-kernel.test.ts` 里(它就是拿 `'headless'` 装的)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
@@ -109,7 +109,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
     )
     expect(done.kind).toBe('ok')
 
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(created.id)?.name).toBe('After')
 
     await backend.dispose()

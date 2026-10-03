@@ -38,7 +38,7 @@ vi.mock('../../store.js', () => ({
   setCurrentSessionId: mocks.setCurrentSessionId,
 }))
 
-vi.mock('../../session/index.js', () => ({
+vi.mock('../../runtime/sessions/session-layer.js', () => ({
   getSessionManager: () => ({
     getOrCreate: mocks.getOrCreate,
   }),

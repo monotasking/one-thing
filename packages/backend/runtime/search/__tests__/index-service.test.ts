@@ -58,12 +58,12 @@ vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => bus }))
 /**
  * append 观察者:装配注册的那只回调抓在手里,用例自己喊。
  *
- * **它收的是 `(sessionId, record)` 两格**(真签名就是这个,`backend/session/
+ * **它收的是 `(sessionId, record)` 两格**(真签名就是这个,`backend/runtime/sessions/
  * event-log.ts`):S3b 第二轮之后装配读 `record.type` 决定这一条值不值得重折,
  * 所以用例也必须递一条真事件,不能只递会话 id。
  */
 const appendObservers = new Set<(sessionId: string, record: SessionLogEventRecord) => void>()
-vi.mock('../../../session/event-log.js', () => ({
+vi.mock('../../sessions/event-log.js', () => ({
   registerSessionLogEventAppendObserver: (
     observer: (sessionId: string, record: SessionLogEventRecord) => void,
   ) => {
@@ -188,7 +188,7 @@ function writeSession(sessionId: string, text: string, name: string): void {
 }
 
 /**
- * 真写路做的两件事:**落盘 + 同步喊一声**(`backend/session/event-log.ts` 在分配
+ * 真写路做的两件事:**落盘 + 同步喊一声**(`backend/runtime/sessions/event-log.ts` 在分配
  * 到 seq 的同一个同步段通知观察者)。用例照做同样两件,所以「装配听见之后干了
  * 什么」是真的被考到了。
  */

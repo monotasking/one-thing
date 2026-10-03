@@ -10,7 +10,7 @@
  * 到批 3,它最后那个身份("会话级派生的算法")也没有了消费者 —— 整段归约器
  * 连同 `SessionCommand` 词汇一起删除。
  *
- * 今天的写路是一条直线,住在 `backend/session/commands.ts`:
+ * 今天的写路是一条直线,住在 `backend/runtime/sessions/session-commands.ts`:
  *
  *   判据(问投影)→ 事件 append(F1 同步可见)→ 会话账落格(折叠产物)
  *   → 落盘调度(写门自算的 lazy 档)→ 索引元数据

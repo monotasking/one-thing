@@ -74,7 +74,7 @@ import type { SessionTokenUsageReadout } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
-import { requestSessionOwner, sessionAccess, SessionAccessError, type SessionOwnershipRecord } from '../../session/access.js'
+import { requestSessionOwner, sessionAccess, SessionAccessError, type SessionOwnershipRecord } from '@onething/backend/runtime/sessions'
 import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
@@ -371,7 +371,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
    * `Invocation` 上只有 `Principal`,而两套身份词汇今天对不上:本机可信主体是
    * `{ kind: 'user', userId: 'local' }`(`packages/shared/permission/principal.ts` 的
    * `LOCAL_USER_ID`),会话归属那一侧的本机主人是 `'local-user'`
-   * (`session/access.ts` 的 `DEFAULT_SESSION_OWNER`)。照着 `Principal` 铸一个归属印,
+   * (`runtime/sessions/access.ts` 的 `DEFAULT_SESSION_OWNER`)。照着 `Principal` 铸一个归属印,
    * 新建的会话就归给了一个谁都不是的人 —— `ownsSessionRecord` 对不上,那条会话对它的
    * 创建者当场隐身。把 owner 塞进 `params` 更不行:那正是 `RpcDispatchContext` 头注
    * 禁死的「身份从信封上读」,一个模型就能替别人建会话。
@@ -472,7 +472,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
    *
    * 级联名单在这里算一遍(为了校验),provider 里再算一遍(为了删)。**不是重复**:
    * 中间隔着一次授权与三相位的等待,删除层自己就要在开工那一刻重算并比对
-   * (`session/deletion.ts` 的 `verify`:变过就拒)。这里这一份只用来判「能不能」,
+   * (`runtime/sessions/deletion.ts` 的 `verify`:变过就拒)。这里这一份只用来判「能不能」,
    * 那一份才是「删哪几条」。
    */
   async delete(request, context = DESKTOP_RPC_CONTEXT) {
@@ -580,7 +580,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
   },
   /**
    * **不进自述**(K2c-3):这两条问的不是「这条会话是什么」,而是**这个进程里那只
-   * LRU 此刻装着什么**(`stores/sessions.ts` 的内存缓存,桌面页签上那枚 “cached”
+   * LRU 此刻装着什么**(`runtime/sessions/session-store.ts` 的内存缓存,桌面页签上那枚 “cached”
    * 徽标的数据源)。它是进程内务,换一台宿主问同一条会话答案就不同 —— 而一份自述
    * 说的是这种资源的事实,不是某台机器的当下。
    */

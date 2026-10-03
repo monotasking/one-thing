@@ -17,7 +17,7 @@
  * 不注册,于是设置页的工具清单与 CLI 的 listTools 与今天逐字一样。
  *
  * store 隔离与全动态 import 的写法照 `assembly-lifecycle.test.ts`:
- * `stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -89,7 +89,7 @@ function callOptions(sessionId: string) {
  * `flushSessionEventLedger` 等的是同一件事)。
  */
 async function auditRowsFor(sessionId: string): Promise<Array<Record<string, unknown>>> {
-  const { flushSessionEventLog } = await import('../session/event-log.js')
+  const { flushSessionEventLog } = await import('@onething/backend/runtime/sessions')
   await flushSessionEventLog(sessionId)
   return readAuditRows(sessionId)
 }
@@ -206,7 +206,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 那一格摘掉 → ② 红。
    */
   it('工单 4 A:read page 给出尾页 + 水位,nextBefore 往上翻得到头', async () => {
-    const { sessionCommands } = await import('../session/commands.js')
+    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
     const store = await import('../store.js')
     const created = store.createSession(`resource-page-${Date.now()}`, 'Paged')
 
@@ -261,7 +261,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 把 provider 的 `results` 那一格摘掉 → 第一段红。
    */
   it('工单 5 ①②:页带 results 侧表,toolResult 是自述里的一条读法', async () => {
-    const { sessionCommands } = await import('../session/commands.js')
+    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
     const store = await import('../store.js')
     const created = store.createSession(`resource-results-${Date.now()}`, 'Results')
     sessionCommands.appendMessage(created.id, {
@@ -303,7 +303,7 @@ describe('资源内核在真装配里(K1)', () => {
     stop()
 
     expect(outcome.kind).toBe('ok')
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Second name')
     expect(seen).toEqual([
       { ref: `session:${sessionId}`, event: 'renamed', payload: { title: 'Second name' } },
@@ -338,7 +338,7 @@ describe('资源内核在真装配里(K1)', () => {
     stopAll()
 
     expect(outcome.kind).toBe('ok')
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(sessionId)?.workingDirectory).toBe(target)
     // 前缀卡在段边界上:`session:<id>/` 底下没有东西,所以只有整命名空间那条收得到。
     expect(seen).toEqual(['workingDirectoryChanged'])
@@ -459,8 +459,8 @@ describe('资源内核在真装配里(K1)', () => {
    */
   it("K3-a':removeMessage 按主体分档 —— 用户删不弹卡,AI 删停在真权限卡上", async () => {
     const { Permission } = await import('@onething/backend/runtime/permissions/permission')
-    const { sessionCommands } = await import('../session/commands.js')
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
 
     const message = (id: string) => ({ id, role: 'system' as const, content: 'k3a2', timestamp: Date.now() })
     for (const id of ['k3a2-user', 'k3a2-ai', 'k3a2-refused']) {
@@ -526,7 +526,7 @@ describe('资源内核在真装配里(K1)', () => {
     )
 
     expect(outcome.kind).toBe('ok')
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(sessionId)?.name).toBe('From nowhere')
 
     // 被改的那条会话的抄本里**一行都没多**:它是操作对象,不是发起方。
@@ -601,7 +601,7 @@ describe('资源内核在真装配里(K1)', () => {
         payload: { ref: `session:${sessionId}`, op: 'rename', params: { title: 'Via RPC' } },
       })
       expect((done as { data: { kind: string } }).data.kind).toBe('ok')
-      const { sessionReads } = await import('../session/reads.js')
+      const { sessionReads } = await import('@onething/backend/runtime/sessions')
       expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
 
       // 未知 op 走**校验器**那条路:是 invalid,不是 failed,而且不是一次异常 ——
@@ -635,7 +635,7 @@ describe('资源内核在真装配里(K1)', () => {
       expect(answer.ok === false && answer.error.message).toContain('no identity')
     }
     // 读也没发生过。
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
   })
 

@@ -46,7 +46,7 @@ import { resolveUserIdentity } from './user-identity.js'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.js'
 import { registerCollabWakeFollowup } from './wake-followup.js'
-import { sessionAccess } from '@onething/backend/session/access.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 

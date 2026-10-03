@@ -24,8 +24,8 @@ interface FakeSession {
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notebook-tool-'))
 const mocks = vi.hoisted(() => ({ sessions: new Map<string, unknown>() }))
 
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
   }) }
@@ -46,7 +46,7 @@ const { collabAgentNotebookPath } = await import('@onething/backend/runtime/coll
 const { createNotebookTool, NotebookInputSchema } = await import('@onething/backend/runtime/toolkit')
 const { createCollabActorNotebookStore } = await import('../owned-notebook-store.js')
 const { createCollabActorAuthorization } = await import('../execution-authorization.js')
-const { createSessionAccess } = await import('@onething/backend/session/access.js')
+const { createSessionAccess } = await import('@onething/backend/runtime/sessions')
 const { Decision, ToolRunner } = await import('@onething/backend/runtime/toolkit/tool-protocol')
 const { ZodValidator } = await import('@onething/backend/runtime/toolkit')
 

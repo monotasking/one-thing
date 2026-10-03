@@ -88,7 +88,7 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 
 - **包根**:后端的入口与门面 —— `backend.ts`(`createOnethingBackend`)/ `store.ts` / `current.ts` / `host-ports.ts` +
   `server/`(HTTP/SSE 门面,含各宿主门面共用的 `OnethingRuntimeFacade` 契约 `server/runtime-facade.ts`)/ `rpc/` / `stores/` /
-  `session/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/`。
+  `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/`。
 - **`runtime/<d>/`**:一个功能一个目录,平铺。这个功能的全部文件,不分「产品」「装配」「骨架」。同名冲突按文件**做的事**起名
   (不用 wiring / host / bound / app / assembly / core 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,
   另一个按内容改名;内容上是同一件事的两半(例如协议 + 实现)也不合,只在落地记录里列出来。`runtime/<d>/kernel/` 与其他子目录
@@ -123,8 +123,8 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 
 1. client → shared ← server 边界(`checkSharedImportsOnlyShared`、`checkClientImportsOnlySharedAndClient`)。
 2. 后端(包根 + runtime)不许 import electron / `@main` / `@preload` / 渲染层别名;runtime 不许 cordis(cordis 只许包根用)。
-3. 「子树的非测试相对 import 不出自己的子树」:今天只剩 `runtime/` 一棵,指向包根的一律写包说明符;唯一的口子照旧是 runtime 相对
-   import 内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 不许有 exports 键,批 3 起整个后端包都能碰)。
+3. 「子树的非测试相对 import 不出自己的子树」:今天只剩 `runtime/` 一棵,指向包根的一律写包说明符;内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的
+   `privateSessionFiles`)不许有 exports 键;包根归位第 1 笔(2026-10-03)把它们并进 `runtime/sessions/` 以后,只许这个目录里的非测试文件引用(见 §6)。
    测试基建(`__tests__/`、`testing/`)不进 exports。
 4. I1(包根目录不与 runtime 领域同名;排除名单只剩 `runtime`)。
 5. **内容**断言按新路径继续守:「内核不点名具体功能」(`checkCoreKnowsNoConcreteFeatures`,量接收了 core 文件的 17 个 runtime 目录、
@@ -1309,3 +1309,105 @@ sessions 的深层键 14 个全删(552 → 538),棘轮 sessions 一行 88 → 1�
 store 拷贝)上前后逐字相同,217 个会话 0 失败 —— 但这些会话都生于 2026-08-26 之后、没有 `messages.jsonl` 抄本(209 个 `no-transcript`、8 个 `no-events`),
 所以这条合同在这里比不出实质差异;真店才有旧抄本,本批不碰真店。transport / log / assembly / session / provider / gate:native / boundary(132 条)/ drill 前后
 逐字相同;`gate:search-index` ⑤d 命中清单前后相同、⑤c 前后都红、⑪a 前后都绿;golden 快照不变;`entry:gate` 绿(2598)。
+
+### 包根归位第 1 笔落地记录:会话的另一半并进 `runtime/sessions/`(2026-10-03,未提交)
+
+**一句话**:包根 `session/`(44 只源文件 + `testing/` 3 只测试替身 + 45 份测试)、`stores/sessions.ts`、`stores/session-repository/` 与 `stores/__tests__/`
+里测会话表的 10 份测试,共 111 只文件并进 `runtime/sessions/`;包根不再有 `session/` 目录,`stores/` 只剩设置、应用状态、文档路径与连接目录。
+这是「包根归位」两步里的第①步第 1 块(用户 10-03 拍板:先把包根里其实属于某个功能的几块并进各自功能,一块一笔;全部归位后再机械去掉 `runtime/` 这一层)。
+
+**放法**:平铺,不分子目录。这 44 只模块由组合根(`session-layer.ts`)整体装配、彼此引用很密,事件账本那一组(`event-log` / `event-writer` / `blob-*` /
+`checkpoint*` / `refold*` / `shadow`)和命令面、读门面互相穿插,划一个子目录的边界是凭空画线。`stores/session-repository/` 是一个整块的小目录,原样成为
+`runtime/sessions/ipc-repository/`(按内容起名:它是用 `@shared/ipc` 形状给会话仓储与分页套上类型的那一层)。
+
+**撞名改名**(目录里已有同名文件,按做的事改名):
+
+| 原位置 | 新位置 | 理由 |
+| --- | --- | --- |
+| `session/index.ts` | `runtime/sessions/session-layer.ts` | 会话组合根 `createSessionLayer`;`index.ts` 是功能入口 |
+| `session/commands.ts` | `runtime/sessions/session-commands.ts` | 会话命令面 `sessionCommands`;目录里已有 `commands.ts`(会话消息的形状词汇 + 冷载修复) |
+| `session/validation.ts` | `runtime/sessions/stream-validation.ts` | 开发期按 `stream:complete` 比对 store 与内存会话;目录里已有 `validation.ts`(校验结果的类型与判定) |
+| `session/trace.ts` | `runtime/sessions/trace-reads.ts` | 轨迹的「从哪取事件」;与轨迹装配器目录 `trace/` 区分 |
+| `stores/sessions.ts` | `runtime/sessions/session-store.ts` | 会话表(仓储 + LRU + 300ms 节流落盘) |
+| `session/__tests__/commands.test.ts` | `runtime/sessions/__tests__/session-commands.test.ts` | 随被测文件改名 |
+
+其余文件同名平移(`session/x.ts` → `runtime/sessions/x.ts`,`session/__tests__/*` → `runtime/sessions/__tests__/*`,`session/testing/*` → `runtime/sessions/testing/*`,
+`stores/session-repository/*` → `runtime/sessions/ipc-repository/*`,`stores/__tests__/{session-agent-switch,session-deletion-lifetime,session-initial-owner,
+session-removed-event,session-rename-applied,session-timeline-metadata,sessions-agent,sessions-collab-cursor,sessions-collab-turn,sessions-delete-cascade}.test.ts`
+→ `runtime/sessions/__tests__/`)。
+
+**两半,只列不合**:`ipc-repository/{pagination,json-message-page,types}.ts` 与 `storage/{pagination,json-message-page,types}.ts` —— 前者是后者套上 `@shared/ipc`
+类型的薄壳(同名函数逐个转手);`landSessionAccountUsage` 在目录里有三份同名函数(`store-helpers.ts` 的纯函数、`session-store.ts` 那一口、`usage.ts`
+按会话 id 落账那一份),各自签名不同,原样保留;入口照旧交出 `store-helpers.ts` 那一份,另两份外面按文件直引(见下)。
+
+**先 A 后 B(用户同意,2026-10-03)**:第一版把五只文件也收进了入口,根全量 vitest 新增 26 个文件失败。25 个是加载失败,链路逐个查过,全是
+「测试 → 某个生产模块 → `runtime/sessions/index.ts` → `session-store.ts` → `stores/settings.ts` / `stores/app-state.ts` / 日志」:会话表在**加载时**就建好仓储与
+存储驱动,把设置、应用状态与日志的导出取进模块级的选项对象;那些测试只 mock 了存储 / 应用状态 / 日志的一部分,从前它们的被测代码只碰得到 `access.ts`
+(闭包 2 只文件)、`reads.ts` 这类轻模块。(第 26 个是搬家脚本的一处 bug,见下。)修法三选一,定的是 **A**:入口闭包里含会话表的五只 ——
+`session-store.ts`(闭包 406 只)、`session-layer.ts`(424)、`usage.ts`(408)、`memory.ts`(407)、`list-projection-backfill.ts`(407)—— **暂不进入口**,
+外面直接引用这五只文件(相对路径,没加任何 exports 键),功能入口棘轮照数;**B**(另起一笔)把会话表模块级的那几处取值改成用时再取、让它加载时不碰设置
+与应用状态,再把五只收进入口、收掉这批临时深层引用。C(给 25 份测试的 mock 补 `importOriginal`)是改测试逻辑,没选。入口文件头写明了这段。
+
+**37 处临时深层引用**(非测试,指向那五只;B 要收回的就是这张表):
+
+| 目标 | 引用方 |
+| --- | --- |
+| `session-store.ts`(24) | 包根:`rpc/domains/{collab:39,media:45,permission-grants:30,spaces:58}`、`server/runtime.ts`:110 / 114、`stores/index.ts`:2 / 64、`stores/connected-directories.ts`:39;runtime:`acp/projections.ts`:12、`agents/{presence-from-sessions:16,profile-for-session:17}`、`external-agents/host-tools.ts`:37、`music/radio.ts`:48、`project-dirs/bootstrap.ts`:21、`providers/{credential-rotation:56,space-ai-settings:16,space-credentials:88,space-defaults:20}`、`quota/engine-hooks.ts`:14、`search/adapters.ts`:16、`variables/{gateways:21,variable-system:23}`、`voice/service.ts`:29 |
+| `session-layer.ts`(8) | `backend.ts`:76、`channel/session-router.ts`:4、`current.ts`:31(只引类型)、`server/runtime.ts`:407、`runtime/engine/{auxiliary-model-checkpoint:3,engine-layer:30,stream/agent-loop-executor:4,stream/stream-executor:21}` |
+| `usage.ts`(3) | `runtime/engine/compact-session.ts`:12、`runtime/engine/stream/agent-loop-executor.ts`:48、`runtime/events/event-only-emitter.ts`:10 |
+| `memory.ts`(1)、`list-projection-backfill.ts`(1) | `backend.ts`:73、`backend.ts`:49 |
+
+(逐行清单以 `node scripts/feature-entry-gate.mjs --list --verbose sessions` 为准。)
+
+**入口新交出的名字**(外面真在用的,逐个列;`access.ts`、`reads.ts` 被命名空间 import / `typeof import` 整只拿去用,所以 `export *`):
+`assistant-parts`(`recordSynthesizedAssistantText`)、`blob-gc`(`runSessionBlobGc` / `scheduleSessionBlobGcOnStartup` / 类型 `SessionBlobGcReport`)、
+`blob-store`(`readSessionBlob` / `textOrBlobForEvent`)、`command-events`(`sessionCommandEvents` / 类型)、`deletion`(`sessionDeletion`)、`event-broadcast`(装 / 卸)、
+`event-log`(11 个函数 + 类型 `SessionEventLogStoreHandle`)、`event-stats`(3)、`event-surface`(`resetSessionSurfaceCache`)、`event-writer`(`writeSessionEvent`)、
+`lifecycle-events`、`page-results`、`permission-events`(装 / 卸)、`presentation`(4)、`projection-cache`(`foldLiveSessionLogicalDelta`)、`read-mode`、
+`removal-event`、`runs`(10 + 类型)、`session-commands`(`createSessionCommands` / `sessionCommands` / 类型)、`trace-reads`(3 + 类型)。逐名核对过:新增名字与
+入口原有名字零处同名遮蔽,tsc 无 TS2308。
+
+**目录内的自引用**:搬进来的 26 只源文件 + 2 只测试替身原先从 `@onething/backend/runtime/sessions` 取名字,搬进来就成了入口自引用,按名字拆成直取定义
+它的那只文件(`scratchpad` 的 `s9/split-self.mjs`)。指向包根的相对路径改包说明符(`current.js` ×13、`stores/settings.js`、`stores/app-state.js`,都是现有键);
+`usage.ts` 原先经 `store.ts` 兼容桶取会话表,改成直取 `./session-store.js`(否则是 入口 → usage → store.ts → 会话表 的绕圈)。
+
+**内部会话模块规则**(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`):改写为「这些模块只许 `runtime/sessions/` 目录里的非测试文件引用」,
+表里 `commands.ts` 换成 `session-commands.ts`(否则会误指形状词汇那只 `commands.ts`)。没撤掉交给 `entry:gate`,理由:那是棘轮,只要求一行不升,而且同一行里
+还数着测试的 mock 与测试替身;这张表的意思是「零处」,一个新的非测试深层引用不该能躲在测试那一行的下降后面。这条规则自己的测试相应改了判据(包根引用
+内部会话模块从「允许」变成「拦」,另加一条「功能目录内允许」)—— 这是规则变化带来的测试逻辑变化,不是搬家。架构测试里读这张表的那一处同步了路径。
+
+**功能入口棘轮**:sessions 一行 1 → 333,其余 55 行逐字不变(总数 2598 → 2930),基线已收紧到 333。构成:
+
+| 类别 | 处数 |
+| --- | --- |
+| 非测试:那五只的临时深层引用(B 收回) | 37 |
+| 非测试:索引 Worker 的 `ledger-feed` 直取 `events/codec`(原有,有意保留) | 1 |
+| 测试:`vi.mock` 一族的参数子树里指向会话内部文件(含 mock 工厂里的 `import()` 与 `importOriginal<typeof import(…)>`) | 184 |
+| 测试:引用 `testing/` 三个测试替身 | 88 |
+| 测试:普通 import 那五只(入口不交出) | 23 |
+
+前四类之外的引用,今天在「包根 → 包根」时就存在,尺子量不到;搬家只是让它们第一次被量到,不是新增耦合,以后由棘轮往下收(用户拍板「接受这一笔把基线抬高」)。
+
+**exports**:删 13 个键(`./session/{lifecycle-events,index,read-mode,runs,trace,usage,access,assistant-parts,page-results,blob-store,event-stats,shadow}.js`、
+`./stores/sessions.js`),没加新键。
+
+**路径同步**:CI persistence 矩阵 8 条测试路径、`assembly-baseline` 7 行与 `session-gate-baseline` 2 处、`session-check.mjs` 白名单(命令面 / 读门面)、
+`headless-boundary-check.ts`(文件 IO 目录、账本单写门、usage 适配器)、`session-blob-gc` / `session-hydration-contract` / `session-verify` / `session-shadow-report`
+脚本、注释里的仓内路径提法、根 CLAUDE.md。注意:搬过去的文件在 git 里是未跟踪的新路径,`git grep` 搜不到,复查用 `grep -r`。
+
+**测试改动**:只改 import 说明符与位置;另有三处是「位置」带来的层数:两份测试拼 `scripts/` 路径的 `../` 层数、会话架构测试求仓库根的层数;测试替身
+`testing/{session,store}-layer.ts` 引 `current.js` 改包说明符(相对路径会出 `runtime/`)。`stores/__tests__/sessions-agent.test.ts` 里那条
+`vi.mock('../session-repository/sqlite-repository.js')` 指向的文件本来就不存在,只平移了路径,没删(删它是改测试逻辑)。
+
+**搬家脚本一处 bug(已修)**:第一趟把反引号里的数据当成了路径提法 —— `runtime/resource/todo-provider.ts` 三处 `` `session/${…}` ``(todo 资源地址)、
+`packages/shared/session/projection/reducer.ts` 与 `session-commands.ts` 各一处事件名 glob(`session/{agent,model,workdir}-changed` / `session/*-changed`)被改成了
+`runtime/sessions/…`;前者让 `todo-provider.test.ts` 红了两条,后两处只在注释里。全部改回,并把所有「不带前缀」的改写逐条复核过;另还原了四处其实
+指旧 core 文件(`session/index.ts` 那个桶、`session/commands.ts` 那个老 reducer)或带行号的历史提法(壳里 `stores/sessions.ts:699`)。
+
+**验收(改前 `s9-before` / 改后 `s9-after`)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;
+三份 `search-worker.cjs` 前后逐字节同大(1276269 / 1276269 / 1274739),主进程 bundle 涨 ≈ 24KB(`main.cjs`)/ 10KB(server `main.js`),是入口新交出的名字经总桶留下的;
+根全量 vitest 11413 / 21 红,失败集合逐条相同;壳 7344 / 1 → 2,多出的 `files-splits.test.tsx` 单跑三次 21/21 绿(偶发,壳不引后端);persistence 矩阵 19 文件 176 条绿;
+`import-side-effect-free` + `assembly-lifecycle` 21 条绿;`sessions:shadow-battery` 前后各 131 行,去掉时间戳与会话 id 后逐行相同(`refoldChecks` 217,都红在 `appendFailures 8`);
+`sessions:hydration-contract --all` 在固定夹具 store 上 217 个会话 0 失败,前后同;`session:check` 前后同 4 条命中(只是 writable 那条的路径变了);`gate:acp` 前后同(只差临时目录与会话 id);
+`gate:search-index` 前后都红在两条 ⑤d、⑪a 绿;transport / log / session / provider / gate:native / boundary(132 条)/ assembly(`radio.ts 9 → 10`,前后都红)/ drill 前后相同;
+`entry:gate` 绿(2930);CLI `--help` 在临时 store 上起得来且不写 store;golden 快照不变。

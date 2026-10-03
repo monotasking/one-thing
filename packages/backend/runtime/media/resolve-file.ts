@@ -25,7 +25,7 @@
 import { basename, isAbsolute, relative } from 'node:path'
 import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
 import type { OnethingMediaLibraryService } from '@onething/backend/runtime/media'
-import { SessionAccessError, type SessionAccess, type SessionAccessContext } from '@onething/backend/session/access.js'
+import { SessionAccessError, type SessionAccess, type SessionAccessContext } from '@onething/backend/runtime/sessions'
 import { assertMediaAccess } from './access.js'
 
 /** 一只纯函数只要库的三样读面;HTTP 那边的租户库与共享库都满足它。 */

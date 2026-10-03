@@ -19,7 +19,7 @@ import { agentDmRoomId, isColleague } from '@onething/backend/runtime/agents'
 import * as store from '@onething/backend/store.js'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
-import { sessionAccess } from '@onething/backend/session/access.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import { ownedCollabSessionId } from './owned-session-id.js'
 
@@ -68,7 +68,7 @@ export function ensureAgentDmRoom(
   if (existing) sessionAccess.resolve(executionContext, roomSessionId, 'write')
   if (!existing) {
     // 建房的发起者是一个 agent 的回合,把用户正在看的标签页抢走完全说不通 ——
-    // 所以走不动指针的那个变体(指针纪律见 stores/sessions.ts)。
+    // 所以走不动指针的那个变体(指针纪律见 runtime/sessions/session-store.ts)。
     store.createSessionWithoutFocus(roomSessionId, roomName, { initialOwner: executionContext })
   }
 

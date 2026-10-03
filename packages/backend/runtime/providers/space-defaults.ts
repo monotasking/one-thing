@@ -17,7 +17,7 @@
 
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 import type { CoreSpaceDefaultSelection } from '@onething/backend/runtime/providers'
-import { resolveSessionSpaceId } from '@onething/backend/stores/sessions.js'
+import { resolveSessionSpaceId } from '../sessions/session-store.js'
 
 /** 某个空间表达过的默认选择。没表达过 = `undefined`(解析链落到「没有默认」那支)。 */
 export function resolveSpaceDefaultSelection(

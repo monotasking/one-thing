@@ -37,8 +37,8 @@ const RULE_A_ALLOWED = new Set([
   // 修复要摸整份消息数组)
   'packages/backend/runtime/sessions/commands.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
-  'packages/backend/session/commands.ts',
-  'packages/backend/session/reads.ts',
+  'packages/backend/runtime/sessions/session-commands.ts',
+  'packages/backend/runtime/sessions/reads.ts',
   // 存储形状:脱水看的是"盘上长什么样",不是会话语义
   //
   // `storage-driver.ts` 曾经也在这里,理由是它的**消息写半边**(全量重写 / 后缀

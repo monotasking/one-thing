@@ -67,7 +67,7 @@ vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   updateAgent: vi.fn(),
 }))
 
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   getSession: (id: string) => ({ id, messages: [], contextSize: 0 }),
   getSessionsList: vi.fn(() => []),
   createSession: vi.fn(),
@@ -83,8 +83,8 @@ vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => mock
  * 归属这一层给一份真的(与 `radio-authorization.test.ts` 同一种摆法):每条会话都归
  * 那个固定的本机主体,于是 `sessionAccess.resolve` 走的是真判据,而不是被整只换掉。
  */
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return {
     ...actual,
     sessionAccess: actual.createSessionAccess({
@@ -98,7 +98,7 @@ vi.mock('@onething/backend/runtime/permissions/permission-asks', async importOri
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: vi.fn() }))
 
-vi.mock('../../../session/reads.js', () => ({
+vi.mock('../../sessions/reads.js', () => ({
   sessionReads: {
     lastMessageOfRole: (_sessionId: string, role: string) =>
       role === 'assistant' ? (mocks.lastAssistant ?? undefined) : undefined,

@@ -58,7 +58,7 @@ afterEach(async () => {
 }, 60_000)
 
 async function arm(backend: OnethingBackend) {
-  const stores = await import('@onething/backend/stores/sessions.js')
+  const stores = await import('../../sessions/session-store.js')
   const { triggerManager } = await import('@onething/backend/runtime/engine/triggers')
   const session = stores.createSession('s', 'TOC lifetime')
   backend.sessionLayer.commands.appendMessage('s', { message: {

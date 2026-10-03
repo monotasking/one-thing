@@ -173,7 +173,7 @@ export interface CoreTimelineMetadataRepair {
 /**
  * `repairSessionTimelineMetadata` 的**纯计算版**:只算该改什么,不改任何东西。
  *
- * 会话命令面(`session/commands.ts`)的 `truncateFrom` / `repairOnLoad` 走它,
+ * 会话命令面(`runtime/sessions/session-commands.ts`)的 `truncateFrom` / `repairOnLoad` 走它,
  * 下面那个就地改的同名函数也走它 —— 两条路一份算法,不会再分叉。
  * 只动会话级字段(summary 三件套 / contextSize / lastInputTokens),不动消息。
  *

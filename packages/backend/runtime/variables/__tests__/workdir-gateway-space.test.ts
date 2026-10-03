@@ -54,7 +54,7 @@ vi.mock('@onething/backend/store.js', () => ({
 }))
 
 // 会话 → 空间是会话表的一条投影;这里只需要它的口径(缺席 = default)。
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   resolveSessionSpaceId: (id: string | undefined | null) =>
     (id ? (mocks.sessionsById.get(id)?.workspaceId as string | undefined) : undefined) || 'default',
 }))

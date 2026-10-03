@@ -2,8 +2,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 
+// 会话的内部模块:命令面、读门面、账本写入口与它们背后的缓存 / 冷载 / 删除闸。2026-10-03 起它们住在
+// `runtime/sessions/`(原包根 `session/`;命令面那只改名 `session-commands.ts`,因为目录里已有一只 `commands.ts`
+// —— 会话消息的形状词汇 —— 它不在这张表里)。
 const privateSessionFiles = new Set([
-  'commands.ts', 'event-log.ts', 'event-layer.ts', 'event-writer.ts', 'event-surface.ts',
+  'session-commands.ts', 'event-log.ts', 'event-layer.ts', 'event-writer.ts', 'event-surface.ts',
   'prepare.ts', 'projection-cache.ts', 'events-reads.ts', 'reads.ts', 'writable.ts', 'deletion.ts',
 ])
 const within = (file, directory) => file.startsWith(directory + path.sep)
@@ -85,7 +88,8 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
   }
   const violations = []
   const counts = { type: 0, runtime: 0 }
-  const privateFile = file => path.dirname(file) === path.join(backend, 'session') && privateSessionFiles.has(path.basename(file))
+  const sessionsFeature = path.join(runtime, 'sessions')
+  const privateFile = file => path.dirname(file) === sessionsFeature && privateSessionFiles.has(path.basename(file))
   // 「wildcard export 一律违规」那条规则**已删**(工单 4 D3)。它与 CLAUDE.md 的
   // Alias Registry 正面顶撞:`@onething/backend` 的 exports 里那两条兜底
   // (`"./*.js"` / `"./*"`)与 runtime 的家族通配 (`"./x/*"`) 是这套解析方式的
@@ -115,13 +119,14 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
         || (target && (within(target, runtime) || within(target, backend))))) {
         violations.push(`${label}: shared contracts depend on a product/backend implementation`)
       }
-      // 合包(第②步)以后 core / runtime / gateway 也住进了 packages/backend。第③步拍平(2026-10-02,用户拍板
-      // 「server 包内部不再区分接线与产品逻辑」,正本 `docs/design/server-client-split-2026-10.md` §4)以后,
-      // runtime 与脊柱是同一层:都可以碰内部会话模块(它们没有 exports 键,只能相对 import)。
-      // 从前 core 与 gateway 两棵子树不许;去 core 批 3(2026-10-03)两者都并进了 runtime,整个后端包都可以碰。
-      const inSpine = within(file, backend)
-      if (!inSpine && target && privateFile(target)) {
-        violations.push(`${label}: relative or aliased import bypasses the public Backend boundary`)
+      // 内部会话模块只许 `runtime/sessions/` 目录里的(非测试)文件引用,外面一律从会话入口
+      // `@onething/backend/runtime/sessions` 拿名字。
+      // 从前(包根 `session/` 时代)这条判的是「后端包之外不许碰」,包根与 runtime 都可以相对 import 它们;
+      // 包根归位第 1 笔(2026-10-03)把它们并进 sessions 以后,它们就是 sessions 的内部实现,口子收到功能目录。
+      // 为什么不撤掉、交给 `entry:gate`:那是棘轮,只要求一行不升高,而且同一行里还数着测试的 mock 与测试替身;
+      // 这张表的意思是「零处」,一个新的非测试深层引用不该能躲在测试那一行的下降后面。测试照旧不判(见上面 isTest)。
+      if (target && privateFile(target) && !within(file, sessionsFeature)) {
+        violations.push(`${label}: import of an internal session module from outside runtime/sessions — use @onething/backend/runtime/sessions`)
       }
     }
   }

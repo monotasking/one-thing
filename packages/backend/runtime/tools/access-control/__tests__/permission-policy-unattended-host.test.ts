@@ -17,8 +17,8 @@ import { markHostUnattended } from '@onething/backend/runtime/permissions/unatte
 import { enforcePermissionPolicy } from '../permission-policy.js'
 import type { PermissionEffect } from '../permission-policy.js'
 
-vi.mock('@onething/backend/stores/sessions.js', () => ({ getSession: () => undefined }))
-vi.mock('../../../../session/reads.js', () => ({ sessionReads: {
+vi.mock('../../../sessions/session-store.js', () => ({ getSession: () => undefined }))
+vi.mock('../../../sessions/reads.js', () => ({ sessionReads: {
   listMessages: () => ({ messages: [], changed: false }),
   lastMessageOfRole: () => undefined,
 } }))

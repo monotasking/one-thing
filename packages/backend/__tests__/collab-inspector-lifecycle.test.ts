@@ -42,7 +42,7 @@ async function assemble(name: string, collab = false) {
 }
 
 async function room() {
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   sessions.createSession('room', 'Inspector room')
   sessions.updateSessionCollab('room', { kind: 'room', room: { memberAgentIds: [] } })
 }

@@ -1,7 +1,7 @@
 import type { ChatSession, MessageOrigin } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
-import { getSessionManager } from '../session/index.js'
+import { getSessionManager } from '../runtime/sessions/session-layer.js'
 import { getChannelIdentityService } from './identity-service.js'
 import {
   identitySessionKey,

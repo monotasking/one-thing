@@ -80,8 +80,8 @@ const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@
 const { executeToolDirectly } = await import('@onething/backend/runtime/engine/stream/tool-execution')
 const { getStreamChannel } = await import('@onething/backend/runtime/events')
 
-const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')
-const store = await import('@onething/backend/stores/sessions.js')
+const { installStoreSessionLayerForTest } = await import('../../sessions/testing/store-layer.js')
+const store = await import('../../sessions/session-store.js')
 let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
 
 const SESSION_ID = 'wiring-session'
@@ -385,7 +385,7 @@ describe('R2b:审计落进 events.jsonl', () => {
     const { context } = contextFor()
     await executeToolDirectly('read', { path: 'note.txt' }, context)
 
-    const { flushSessionEventLog } = await import('../../../session/event-log.js')
+    const { flushSessionEventLog } = await import('@onething/backend/runtime/sessions')
     await flushSessionEventLog(SESSION_ID)
 
     const lines = fs.readFileSync(

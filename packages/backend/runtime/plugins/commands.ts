@@ -26,7 +26,7 @@ import { getPluginManager } from './plugin-manager.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
-import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/session/access.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/runtime/sessions'
 
 const log = getLogger('plugins.commands')
 const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger = consolePort(log)

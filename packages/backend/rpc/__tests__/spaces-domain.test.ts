@@ -47,7 +47,7 @@ vi.mock('@onething/backend/runtime/spaces/store', () => ({ getSpacesStore: () =>
 vi.mock('@onething/backend/runtime/spaces/overlay', () => overlay)
 vi.mock('@onething/backend/runtime/spaces/provider-settings', () => providerSettings)
 vi.mock('@onething/backend/runtime/providers/space-credentials', () => credentials)
-vi.mock('../../stores/sessions.js', () => sessions)
+vi.mock('../../runtime/sessions/session-store.js', () => sessions)
 
 const SPACE = { id: 'work', name: '工作', createdAt: 1 }
 const DEFAULT_SPACE = { id: 'default', name: '默认空间', createdAt: 0 }

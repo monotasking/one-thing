@@ -7,7 +7,7 @@
  */
 
 import * as store from '@onething/backend/store.js'
-import { landSessionAccountUsage } from '@onething/backend/session/usage.js'
+import { landSessionAccountUsage } from '../sessions/usage.js'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
 import type { StreamContext } from '@onething/backend/runtime/engine/stream/stream-processor'
@@ -17,8 +17,8 @@ import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@oneth
 import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/backend/runtime/engine/engine-primitives'
 import { getEventBus, getStreamChannel } from './index.js'
 import { claimDeltaStamp } from './delta-stamp.js'
-import { writeSessionEvent } from '../../session/event-writer.js'
-import { currentSessionRunId } from '@onething/backend/session/runs.js'
+import { writeSessionEvent } from '@onething/backend/runtime/sessions'
+import { currentSessionRunId } from '@onething/backend/runtime/sessions'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { JsonObject } from '@shared/json'
 import type { CreateCoreEventOnlyEmitterOptions } from '@onething/backend/runtime/engine/engine-primitives'

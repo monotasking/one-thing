@@ -6,7 +6,7 @@ import {
   createOnethingPermissionRuntime,
 } from '@onething/backend/runtime/permissions'
 import * as store from '@onething/backend/store.js'
-import { sessionReads } from '../../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import { isSystemInternalOrigin, latestRealOrigin } from '@onething/backend/channel/origin.js'
 import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
 import type {

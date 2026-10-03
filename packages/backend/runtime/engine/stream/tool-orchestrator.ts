@@ -10,7 +10,7 @@ import {
   CoreToolOrchestrator,
   planToolCallArtifactRemoval,
 } from '@onething/backend/runtime/engine/engine-primitives'
-import { sessionReads } from '../../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'

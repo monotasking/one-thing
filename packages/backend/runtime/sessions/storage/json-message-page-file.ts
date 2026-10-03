@@ -9,7 +9,7 @@
  * 一段 JSON 文本)是纯的,留在原处。
  *
  * 这一件**不进桶**:要按路径读盘的调用方走这条叶子路径(今天两处,
- * `runtime/sessions/session-repository.ts` 与 `backend/stores/session-repository/`)。
+ * `runtime/sessions/session-repository.ts` 与 `backend/runtime/sessions/ipc-repository/`)。
  */
 
 import fs from 'node:fs'

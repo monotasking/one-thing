@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   ),
 }))
 
-vi.mock('../../stores/sessions.js', () => ({
+vi.mock('../../runtime/sessions/session-store.js', () => ({
   getSessionsList: mocks.getSessionsList,
 }))
 

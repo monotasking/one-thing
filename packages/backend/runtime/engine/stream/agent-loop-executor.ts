@@ -1,14 +1,14 @@
 import * as store from "@onething/backend/store.js";
-import { sessionCommands } from "../../../session/commands.js";
-import { sessionReads } from "../../../session/reads.js";
-import { ensureSessionWritable } from "@onething/backend/session/index.js";
+import { sessionCommands } from "@onething/backend/runtime/sessions";
+import { sessionReads } from "@onething/backend/runtime/sessions";
+import { ensureSessionWritable } from "../../sessions/session-layer.js";
 import { synthesizeCoreToolAnchors } from "@shared/session/render-anchors";
 import {
 	endSessionRun,
 	ensureSessionRun,
 	markSessionRunOutcome,
 	rotateSessionRun,
-} from "@onething/backend/session/runs.js";
+} from "@onething/backend/runtime/sessions";
 import {
 	IPC_CHANNELS,
 	type ContentPart,
@@ -45,7 +45,7 @@ import { resolveAgentProfileForSession } from "@onething/backend/runtime/agents/
 import { saveMediaImage } from "@onething/backend/runtime/media/save-image";
 import { applyOnethingAgentLoopProviderData } from "@onething/backend/runtime/agent-loop/providers";
 import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/backend/runtime/agent-loop/providers/provider-data";
-import { updateSessionUsage } from "@onething/backend/session/usage.js";
+import { updateSessionUsage } from "../../sessions/usage.js";
 import { recordUsage, usageAttributionOf } from "@onething/backend/runtime/usage/usage-recorder";
 import { triggerManager } from "../triggers/index.js";
 import { runAfterAssistantResponseHooks } from "@onething/backend/runtime/plugins/lifecycle-hooks";
@@ -1056,7 +1056,7 @@ export async function executeAgentLoopStreamGeneration(
 						content: message.content,
 					})),
 				// (S1b 的历史恒等门曾挂在 `onRequestRecipe` 上,F4-c c4 随恒等门
-				// 一起退役 —— 见 `session/shadow.ts` 的文件头。回调口本身留着:
+				// 一起退役 —— 见 `runtime/sessions/shadow.ts` 的文件头。回调口本身留着:
 				// 它是"配方写下去的那一刻"这个缝的通用旁听口,不是那道门的私产。)
 				// A6+A7(§13.1):工具身份归一交给**引擎那一个函数**。记录器不再
 				// 自己实现一遍别名表 / MCP 折叠 —— 一个判定点,两处落点。

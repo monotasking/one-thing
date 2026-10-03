@@ -16,7 +16,7 @@ vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   defaultAgent: () => state.agent,
 }))
 
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   getSession: () => state.session,
 }))
 

@@ -54,7 +54,7 @@ import { toolkitCatalogToolDefinitions } from '@onething/backend/runtime/toolkit
 import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import { sessionReads } from '../../session/reads.js'
+import { sessionReads } from '@onething/backend/runtime/sessions'
 import { getStreamEngine } from '../engine/engine-layer.js'
 import { createDefaultSettings } from '@onething/backend/stores/settings-defaults.js'
 import { localUserPrincipal } from '@shared/permission/principal'

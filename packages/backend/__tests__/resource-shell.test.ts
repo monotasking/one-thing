@@ -18,7 +18,7 @@
  *      上总线,而「谁能替谁说话」在 core 判 —— 一扇壳发不出别人命名空间的事实。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts` /
- * `assembly-lifecycle.test.ts`:`stores/sessions.ts` 在 **import 期**就解析 store 根。
+ * `assembly-lifecycle.test.ts`:`runtime/sessions/session-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -123,7 +123,7 @@ function watchCommands(backend: Backend): { seen: ResourceShellCommandEvent[]; s
 }
 
 async function auditRowsFor(sessionId: string): Promise<Array<Record<string, unknown>>> {
-  const { flushSessionEventLog } = await import('../session/event-log.js')
+  const { flushSessionEventLog } = await import('@onething/backend/runtime/sessions')
   await flushSessionEventLog(sessionId)
   const ledger = path.join(storeRoot, 'sessions', sessionId, 'events.jsonl')
   if (!fs.existsSync(ledger)) return []

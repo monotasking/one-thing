@@ -56,7 +56,7 @@ import { collabLinkedRoomSessionId } from '@onething/backend/runtime/collab/venu
 // R4b:落盘口不再在这里重建一份 —— 与旧 `app/collab/actors/notebook-tool.ts` 的
 // `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
 import { appendNote } from '@onething/backend/runtime/collab/actors/notebook-tool'
-import { sessionAccess, SessionAccessError } from '@onething/backend/session/access.js'
+import { sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import type { BraveSearchProviderAdapters } from '@onething/backend/runtime/tools/builtin/web-search/providers/brave'
 

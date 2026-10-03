@@ -17,7 +17,7 @@ import * as store from '@onething/backend/store.js'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { emitCollabRoomUpdated } from './room-runtime.js'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
-import { sessionAccess } from '@onething/backend/session/access.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import { ownedCollabSessionId } from './owned-session-id.js'
 
@@ -51,7 +51,7 @@ export function ensureUserDmRoom(
   if (existing) sessionAccess.resolve(executionContext, roomSessionId, 'write')
   if (!existing) {
     // 建房这件事本身不该切换用户在看的东西 —— 指针纪律收在 store 那一侧
-    // (stores/sessions.ts 的 createSessionWithoutFocus)。
+    // (runtime/sessions/session-store.ts 的 createSessionWithoutFocus)。
     store.createSessionWithoutFocus(roomSessionId, agent.name, { initialOwner: executionContext })
   }
 

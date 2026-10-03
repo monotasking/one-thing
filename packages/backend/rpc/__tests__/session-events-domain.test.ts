@@ -15,7 +15,7 @@ import {
   type SessionEventRecord,
 } from '@onething/backend/runtime/sessions'
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
-import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../runtime/sessions/testing/session-layer.js'
 
 const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 
@@ -325,7 +325,7 @@ describe('sessionEvents RPC domain', () => {
   })
 })
 // Adapter fixtures explicitly belong to the local operator on both transports.
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../runtime/sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

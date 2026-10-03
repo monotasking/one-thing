@@ -110,7 +110,7 @@ import {
   type RpcSandbox,
 } from '../sandbox.js'
 import type { RpcDispatchPorts, RpcRouteHandlersWithPorts } from '../registry.js'
-import { sessionAccess } from '../../session/access.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
 import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/backend/runtime/files/file-search'
 import type { RollbackOnethingFileOptions } from '@onething/backend/runtime/files/file-rollback'
 import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/backend/runtime/files/file-operations'

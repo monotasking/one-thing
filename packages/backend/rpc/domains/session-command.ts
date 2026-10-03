@@ -63,8 +63,8 @@ import { getStreamEngine } from '@onething/backend/runtime/engine/engine-layer'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { Permission } from '@onething/backend/runtime/permissions/permission'
 import type { RpcRouteHandlers } from '../registry.js'
-import { requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
-import { deliverPresentation, takePresented } from '../../session/presentation.js'
+import { requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
+import { deliverPresentation, takePresented } from '@onething/backend/runtime/sessions'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 
 const log = getLogger('rpc.session-command')
@@ -194,7 +194,7 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
     const sessionId = request?.sessionId
     sessionAccess.resolve(context, sessionId, 'write')
     /*
-     * 呈现事实(09-18,`session/presentation.ts`):在分传输之前摘下来 —— React 壳走的是
+     * 呈现事实(09-18,`runtime/sessions/presentation.ts`):在分传输之前摘下来 —— React 壳走的是
      * http 面,只摘 ipc 那一支就等于没摘。它不进总线;交给处理者要等到下面的校验都过了。
      */
     const taken = takePresented(request?.command as unknown)

@@ -1,5 +1,5 @@
 import { ensureOnethingStoreDirs } from '@onething/backend/runtime/storage'
-import { initializeSessionRepositoryIndex } from './sessions.js'
+import { initializeSessionRepositoryIndex } from '../runtime/sessions/session-store.js'
 
 // Re-export all store modules
 export { ensureOnethingStoreDirs, getOnethingStorePath } from '@onething/backend/runtime/storage'
@@ -61,7 +61,7 @@ export {
   patchSessionFields,
   invalidateSessionCache,
   getSessionCacheStats,
-} from './sessions.js'
+} from '../runtime/sessions/session-store.js'
 
 // Ensure all necessary directories exist on startup
 export function initializeStores(): void {

@@ -36,7 +36,7 @@ import {
   getSpaceOverlayConnectedDirectories,
   mergeConnectedDirectories,
 } from '@onething/backend/runtime/spaces/overlay'
-import { resolveSessionSpaceId } from './sessions.js'
+import { resolveSessionSpaceId } from '../runtime/sessions/session-store.js'
 import { getSettings } from './settings.js'
 
 /**
@@ -50,7 +50,7 @@ export function getConnectedDirectories(): string[] {
 }
 
 /**
- * 会话归属的 space id —— 批 B3 起搬到 `./sessions.ts`(它是会话表的投影,不是
+ * 会话归属的 space id —— 批 B3 起搬到 `../runtime/sessions/session-store.ts`(它是会话表的投影,不是
  * 目录概念)。这里保留一个再导出,是因为它与下面两个函数在同一句语义上成对出现。
  */
 export { resolveSessionSpaceId }

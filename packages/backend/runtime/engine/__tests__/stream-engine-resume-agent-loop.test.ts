@@ -56,13 +56,13 @@ vi.mock('@onething/backend/store.js', () => ({
   addMessage: mocks.addMessage,
   deleteMessage: mocks.deleteMessage,
 }))
-vi.mock('../../../session/commands.js', () => ({ sessionCommands: {
+vi.mock('../../sessions/session-commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
   deleteMessage: (sessionId: string, { messageId }: { messageId: string }) => mocks.deleteMessage(sessionId, messageId),
 } }))
 
 // 引擎的消息读走读门面(P0.2 C1):这份 mock 与上面的 store mock 是同一个假会话。
-vi.mock('../../../session/reads.js', () => ({
+vi.mock('../../sessions/reads.js', () => ({
   sessionReads: {
     listMessages: (sessionId: string) => ({
       messages: mocks.getSession(sessionId)?.messages ?? [],

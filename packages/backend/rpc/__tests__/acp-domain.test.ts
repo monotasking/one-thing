@@ -533,13 +533,13 @@ vi.mock('../domains/sessions.js', () => ({
   },
 }))
 // Adapter fixtures explicitly belong to the local operator on both transports.
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../runtime/sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })
 // `setSessionMode` 读会话的工作目录(开会话要 cwd);不装 backend 的单测给一张最小的会话表。
-vi.mock('../../session/reads.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/reads.js')>()
+vi.mock('../../runtime/sessions/reads.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../runtime/sessions/reads.js')>()
   return {
     ...actual,
     sessionReads: { ...actual.sessionReads, getSession: (id: string) => (id === 's1' ? { id, workingDirectory: '/work/s1' } : undefined) },

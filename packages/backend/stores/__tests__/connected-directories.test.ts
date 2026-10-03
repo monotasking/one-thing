@@ -13,7 +13,7 @@ vi.mock('../settings.js', () => ({
 // `resolveSessionSpaceId` 批 B3 起住在 sessions.ts(它是会话表的投影,不是目录
 // 概念)。这里连它一起替掉 —— 真会话仓库太重,而这两行判据本身在
 // spaces/__tests__ 里有真实覆盖。
-vi.mock('../sessions.js', async () => {
+vi.mock('../../runtime/sessions/session-store.js', async () => {
   const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     getSession: (id: string) => mocks.sessions.get(id),

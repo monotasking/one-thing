@@ -28,7 +28,7 @@ vi.mock('@onething/backend/store.js', () => ({
   getSession: () => undefined,
 }))
 
-vi.mock('../../../session/reads.js', () => ({
+vi.mock('../../sessions/reads.js', () => ({
   sessionReads: { getMessage: () => undefined },
 }))
 

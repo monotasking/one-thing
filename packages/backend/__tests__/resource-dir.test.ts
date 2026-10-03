@@ -33,7 +33,7 @@
  * 读。这台测试宿主声明 `desktop-embedded`,与桌面内嵌 HTTP 面逐字同一格。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -210,7 +210,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     fs.writeFileSync(path.join(bound, 'sub', 'note.md'), '# hi\n')
 
     const store = await import('../store.js')
-    const { sessionCommands } = await import('../session/commands.js')
+    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
     const withWorkdir = store.createSession(`resource-workdir-${Date.now()}`, 'Bound').id
     const without = store.createSession(`resource-no-workdir-${Date.now()}`, 'Unbound').id
     sessionCommands.patchSession(withWorkdir, { patch: { workingDirectory: bound } })

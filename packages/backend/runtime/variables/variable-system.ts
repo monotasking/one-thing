@@ -20,7 +20,7 @@
 import path from "node:path";
 import { getEventBus } from "@onething/backend/runtime/events";
 import { getProjectsStore } from "../project-dirs/bootstrap.js";
-import { resolveSessionSpaceId } from "@onething/backend/stores/sessions.js";
+import { resolveSessionSpaceId } from "../sessions/session-store.js";
 import * as appStore from "@onething/backend/store.js";
 import { enforcePermissionPolicy } from "../tools/access-control/permission-policy.js";
 import { getVariableRegistry } from "@onething/backend/runtime/variables/registry";

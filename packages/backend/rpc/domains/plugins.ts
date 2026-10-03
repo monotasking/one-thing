@@ -91,7 +91,7 @@ import {
 import { getPluginFootprint } from '@onething/backend/runtime/plugins/disk-loader'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
-import { requestSessionOwner, sessionAccess } from '../../session/access.js'
+import { requestSessionOwner, sessionAccess } from '@onething/backend/runtime/sessions'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
 

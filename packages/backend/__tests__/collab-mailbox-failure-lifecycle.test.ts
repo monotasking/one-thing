@@ -143,7 +143,7 @@ it('reports a failed save from a real mailbox whose open finishes after shutdown
 
 it('owns a deleted room cleanup through its delayed real mailbox failure before shutting down the Backend', { timeout: 60000 }, async () => {
   const { instance, runtime, core, inspectStoreLock, event } = await assemble()
-  const sessions = await import('../stores/sessions.js')
+  const sessions = await import('../runtime/sessions/session-store.js')
   sessions.createSession('room', 'Room being deleted')
   sessions.updateSessionCollab('room', { kind: 'room', room: { memberAgentIds: [] } })
   const opened = vi.spyOn(core.DurableMailbox, 'open')

@@ -19,7 +19,7 @@
  *
  * | | 抄本侧(老路) | 投影侧(今天唯一那条路) |
  * |---|---|---|
- * | 消息 | `messages.jsonl` → `scanJsonlLog`(= 驱动的 `loadJsonl`) | `events.jsonl` → `projectChatMessages`(= `eventsListMessages` 背后那一个),摘掉位置字段 `seq`(同 `session/hydrate.ts`) |
+ * | 消息 | `messages.jsonl` → `scanJsonlLog`(= 驱动的 `loadJsonl`) | `events.jsonl` → `projectChatMessages`(= `eventsListMessages` 背后那一个),摘掉位置字段 `seq`(同 `runtime/sessions/hydrate.ts`) |
  * | 外壳 | `meta.json` | **同一份** `meta.json` —— 补水只换消息那一格 |
  * | 补水 | `rehydrateSessionFromStorage`(重建 `step.toolCall` / `partialResult`) | 同一个函数(仓库的岔口在它上游) |
  * | 启动修复 | `sanitizeSessionOnStartup` | 同一个函数(`repairOnFirstTouch` 在两条路的下游) |
@@ -192,7 +192,7 @@ export function checkSession(sessionsDir: string, sessionId: string): HydrationC
   } catch (error) {
     push(`projection threw: ${String(error)}`)
   }
-  // `session/hydrate.ts` 摘掉位置字段 `seq`,这里同款(投影不产出位置)。
+  // `runtime/sessions/hydrate.ts` 摘掉位置字段 `seq`,这里同款(投影不产出位置)。
   projectedMessages = projectedMessages.map(message => {
     const { seq: _position, ...rest } = message as AnyMessage & { seq?: number }
     return rest as AnyMessage

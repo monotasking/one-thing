@@ -89,7 +89,7 @@ import { consolePort, getLogger } from '@onething/backend/runtime/logging/config
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import { isHistoricalLocalOperator, requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
+import { isHistoricalLocalOperator, requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingToolsIpcLogger } from '@onething/backend/runtime/tools/ipc-operations'
 import type { OnethingToolListIpcLogger } from '@onething/backend/runtime/tools/tool-list-presentation'

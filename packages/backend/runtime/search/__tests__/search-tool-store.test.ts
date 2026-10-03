@@ -55,7 +55,7 @@ import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 
 const bus = new EventBus()
 vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => bus }))
-vi.mock('../../../session/event-log.js', () => ({
+vi.mock('../../sessions/event-log.js', () => ({
   registerSessionLogEventAppendObserver: () => () => {},
 }))
 

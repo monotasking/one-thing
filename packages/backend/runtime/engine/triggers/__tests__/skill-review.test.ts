@@ -30,8 +30,8 @@ import {
 import { createSkillReviewTrigger } from '../skill-review.js'
 import { clearSkillReviewState } from '@onething/backend/runtime/triggers/ipc-skill-review-state'
 import type { TriggerContext } from '../index.js'
-import { installStoreSessionLayerForTest } from '../../../../session/testing/store-layer.js'
-import { clearAllSessionCache } from '@onething/backend/stores/sessions.js'
+import { installStoreSessionLayerForTest } from '../../../sessions/testing/store-layer.js'
+import { clearAllSessionCache } from '../../../sessions/session-store.js'
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },

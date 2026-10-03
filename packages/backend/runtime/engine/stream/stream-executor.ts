@@ -16,9 +16,9 @@ import {
   endSessionRun,
   ensureSessionRun,
   type BeginSessionRunInput,
-} from '@onething/backend/session/runs.js'
-import { sessionCommands } from '../../../session/commands.js'
-import { ensureSessionWritable } from '@onething/backend/session/index.js'
+} from '@onething/backend/runtime/sessions'
+import { sessionCommands } from '@onething/backend/runtime/sessions'
+import { ensureSessionWritable } from '../../sessions/session-layer.js'
 import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,

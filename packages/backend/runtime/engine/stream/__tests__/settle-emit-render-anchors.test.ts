@@ -60,7 +60,7 @@ vi.mock('@onething/backend/store.js', async (importActual) => ({
   getSession: vi.fn(() => ({ name: 'Session', messages: [] })),
 }))
 
-vi.mock('../../../../session/reads.js', async (importActual) => {
+vi.mock('../../../sessions/reads.js', async (importActual) => {
   const actual = await importActual<Record<string, unknown>>()
   return {
     ...actual,
@@ -72,7 +72,7 @@ vi.mock('../../../../session/reads.js', async (importActual) => {
   }
 })
 
-vi.mock('../../../../session/commands.js', async (importActual) => {
+vi.mock('../../../sessions/session-commands.js', async (importActual) => {
   const actual = await importActual<Record<string, unknown>>()
   return {
     ...actual,

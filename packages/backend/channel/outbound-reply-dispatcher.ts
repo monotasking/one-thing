@@ -152,7 +152,7 @@ export class OutboundReplyDispatcher {
 
   private async dispatchFromSession(owner: DispatchOwner, sessionId: string, messageId?: string): Promise<void> {
     if (!messageId) return
-    const { sessionReads } = await import('../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     const message = sessionReads.getMessage(sessionId, messageId)
     if (!message) return
     await this.deliver(owner, sessionId, message)

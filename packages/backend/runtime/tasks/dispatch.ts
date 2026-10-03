@@ -58,7 +58,7 @@ import type {
 } from '@onething/backend/runtime/toolkit'
 
 import * as store from '@onething/backend/store.js'
-import type { sessionReads } from '../../session/reads.js'
+import type { sessionReads } from '@onething/backend/runtime/sessions'
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { getCurrentBackend } from '@onething/backend/current.js'
@@ -69,7 +69,7 @@ import { deliverInternalMessage } from '@onething/backend/runtime/plugins/sessio
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
-import { SessionAccessError, type SessionAccess } from '@onething/backend/session/access.js'
+import { SessionAccessError, type SessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 
 const log = getLogger('tasks')

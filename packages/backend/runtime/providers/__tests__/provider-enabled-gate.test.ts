@@ -39,7 +39,7 @@ vi.mock('@onething/backend/runtime/providers/ipc-env', () => ({
   getProviderEnvStatus: () => ({ detectedEnvVar: undefined }),
 }))
 
-vi.mock('@onething/backend/stores/sessions.js', async () => {
+vi.mock('../../sessions/session-store.js', async () => {
   const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {

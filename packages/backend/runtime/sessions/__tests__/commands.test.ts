@@ -6,8 +6,8 @@
  *
  *  - **会话账**(`updatedAt` / `lastProvider` / `lastModel` / 截断的用量结算与
  *    timeline 修复)→ `__tests__/session-account.test.ts`(折叠器的产地逐格);
- *  - **写档与索引元数据** → `backend/session/__tests__/commands.test.ts`(写门那张表);
- *  - **事件产地与顺序** → `backend/session/__tests__/command-events-order.test.ts`。
+ *  - **写档与索引元数据** → `backend/runtime/sessions/__tests__/session-commands.test.ts`(写门那张表);
+ *  - **事件产地与顺序** → `backend/runtime/sessions/__tests__/command-events-order.test.ts`。
  *
  * 留在这里的只剩修复本身:它是**可再生的派生**(同一份消息折两次得同一个结果),
  * 住在读路,而且**不改入参**(COW:变了返回新会话,没变返回 `undefined`)。

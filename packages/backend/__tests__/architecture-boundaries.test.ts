@@ -171,7 +171,7 @@ describe('architecture boundaries', () => {
 
 })
 
-/** 内部会话模块(`packages/backend/session/<x>.ts`,名单与 `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 同源,现读)。 */
+/** 内部会话模块(`packages/backend/runtime/sessions/<x>.ts`,名单与 `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 同源,现读)。 */
 const privateSessionFiles = (() => {
   const text = readFileSync(join(projectRoot, 'scripts/lib/backend-public-boundary.mjs'), 'utf8')
   const list = /privateSessionFiles = new Set\(\[([\s\S]*?)\]\)/.exec(text)?.[1] ?? ''
@@ -179,7 +179,7 @@ const privateSessionFiles = (() => {
 })()
 
 function isPrivateSessionModule(target: string): boolean {
-  return dirname(target) === 'packages/backend/session' && privateSessionFiles.has(target.split('/').pop()!.replace(/\.js$/, '.ts'))
+  return dirname(target) === 'packages/backend/runtime/sessions' && privateSessionFiles.has(target.split('/').pop()!.replace(/\.js$/, '.ts'))
 }
 
 /** 相对说明符(import / export-from / 动态 import / require)。 */

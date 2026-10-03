@@ -16,7 +16,7 @@
  * 理由:契约门看不见绕过,这一组看得见。
  *
  * 它跑在**真装配**上(临时 store),写法照 `__tests__/resource-kernel.test.ts`:
- * `stores/sessions.ts` / `stores/settings.ts` 在 import 期就解析 store 根,所以
+ * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 import 期就解析 store 根,所以
  * 环境变量要在任何 import 之前钉好,并且全程动态 import。
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -198,7 +198,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
     expect(seen.viaKernel.kind).toBe('ok')
     expect(seen.domainAudit).toEqual(seen.kernelAudit)
 
-    const { sessionReads } = await import('../../session/reads.js')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
     expect(sessionReads.getSession(sessionId)?.workingDirectory).toBe(target)
   })
 
@@ -242,8 +242,8 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
    */
   it('removeMessage:两条路同结果、同一条 tool/audit', async () => {
     const { dispatchRpc } = await import('../registry.js')
-    const { sessionCommands } = await import('../../session/commands.js')
-    const { sessionReads } = await import('../../session/reads.js')
+    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/runtime/sessions')
 
     const message = (id: string) => ({
       id,
@@ -314,7 +314,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
 
     beforeAll(async () => {
       const store = await import('../../store.js')
-      const { sessionCommands } = await import('../../session/commands.js')
+      const { sessionCommands } = await import('@onething/backend/runtime/sessions')
       bigSessionId = store.createSession(`k2c2-${Date.now()}`, 'Big transcript').id
       for (let index = 0; index < PAGE_SIZE; index++) {
         sessionCommands.appendMessage(bigSessionId, {
@@ -462,7 +462,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
   describe('剩下那批 = 资源投影(K2c-3)', () => {
     it('addSystemMessage:两条路各写进一条系统消息,同一形状的审计', async () => {
       const { dispatchRpc } = await import('../registry.js')
-      const { sessionReads } = await import('../../session/reads.js')
+      const { sessionReads } = await import('@onething/backend/runtime/sessions')
       const message = (id: string) => ({ id, role: 'system' as const, content: '{"type":"note"}', timestamp: 1 })
 
       const before = resourceAuditRows().length
@@ -502,7 +502,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
      */
     it('removeFilesChangedMessage / removeGitStatusMessage:按标记删,removedId 从 details 上抬', async () => {
       const { dispatchRpc } = await import('../registry.js')
-      const { sessionCommands } = await import('../../session/commands.js')
+      const { sessionCommands } = await import('@onething/backend/runtime/sessions')
       const marked = (id: string, type: string) =>
         ({ id, role: 'system' as const, content: `{"type":"${type}","files":[]}`, timestamp: 2 })
       sessionCommands.appendMessage(sessionId, { message: marked('k2c3-files', 'files-changed') as never })
@@ -640,7 +640,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
    */
   it('域这一路的审计落 audit/resource.jsonl,被改那条会话的抄本一行不多', async () => {
     const { dispatchRpc } = await import('../registry.js')
-    const { flushSessionEventLog } = await import('../../session/event-log.js')
+    const { flushSessionEventLog } = await import('@onething/backend/runtime/sessions')
 
     const ledger = path.join(storeRoot, 'sessions', sessionId, 'events.jsonl')
     await flushSessionEventLog(sessionId)

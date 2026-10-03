@@ -3,7 +3,7 @@
  * `messageCount`。
  *
  * 这里只测**纯函数那一层**(`runtime/sessions/store-helpers.ts`)—— 写侧那批维护点
- * 落在 `backend/session/__tests__/commands.test.ts`,读侧的形状落在
+ * 落在 `backend/runtime/sessions/__tests__/session-commands.test.ts`,读侧的形状落在
  * `packages/backend/rpc/__tests__/`。三层分开是故意的:规则改了该红的是这只文件,
  * 而不是十个接线测试一起变黄。
  */

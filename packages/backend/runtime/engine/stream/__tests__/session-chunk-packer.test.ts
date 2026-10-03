@@ -25,7 +25,7 @@ vi.mock('@onething/backend/runtime/storage', () => ({
 
 // 这条用例只钉打包器。S1b 的影子断言排在 `endSessionRun` 之后,而它身后是读门面
 // 与整棵 store 树 —— 与本文件要证明的事一点关系都没有,所以就地摘掉。
-vi.mock('@onething/backend/session/shadow.js', () => ({
+vi.mock('../../../sessions/shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',
@@ -33,13 +33,13 @@ vi.mock('@onething/backend/session/shadow.js', () => ({
 }))
 
 const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } = await import(
-  '../../../../session/event-log.js'
+  '@onething/backend/runtime/sessions'
 )
-const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
-const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+const { resetSessionSurfaceCache } = await import('@onething/backend/runtime/sessions')
+const { installSessionLayerForTest } = await import('../../../sessions/testing/session-layer.js')
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
-const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/session/runs.js')
-const { resetSessionEventStatsCache } = await import('@onething/backend/session/event-stats.js')
+const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/runtime/sessions')
+const { resetSessionEventStatsCache } = await import('@onething/backend/runtime/sessions')
 const { createSessionEventRecorder, SESSION_CHUNK_BATCH_SIZE } = await import(
   '../session-event-recorder.js'
 )

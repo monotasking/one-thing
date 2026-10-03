@@ -7,7 +7,7 @@
  * 外加 v1 的两道闸(禁套娃 / 并发上限)。
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../sessions/testing/facade-mock.js'
 
 interface FakeSession {
   ownerUserId?: string
@@ -24,8 +24,8 @@ interface FakeSession {
 }
 
 const sessions = new Map<string, FakeSession>()
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => sessions.get(id) }) }
 })
 const storeCalls = {
@@ -40,8 +40,8 @@ const storeCalls = {
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
-vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
+vi.mock('../../sessions/reads.js', () => import('../../sessions/testing/facade-mock.js'))
+vi.mock('../../sessions/session-commands.js', () => import('../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => sessions.get(id))
 
 vi.mock('@onething/backend/store.js', () => ({
@@ -170,7 +170,7 @@ let taskLayer: import('../dispatch.js').TaskDispatchLayer
 async function newTaskLayer(overrides: Partial<Parameters<typeof import('../dispatch.js').createTaskDispatchLayer>[0]> = {}) {
   const [{ createTaskDispatchLayer }, { getEventBus }, { getStreamEngineSafe }, { sessionAccess }, { sessionReads }] = await Promise.all([
     import('../dispatch.js'), import('@onething/backend/runtime/events'), import('@onething/backend/runtime/engine/engine-layer'),
-    import('@onething/backend/session/access.js'), import('../../../session/reads.js'),
+    import('@onething/backend/runtime/sessions'), import('@onething/backend/runtime/sessions'),
   ])
   return createTaskDispatchLayer({ eventBus: getEventBus(), engine: getStreamEngineSafe()!, access: sessionAccess, reads: sessionReads, ...overrides })
 }

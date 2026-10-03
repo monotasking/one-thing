@@ -19,11 +19,11 @@ vi.mock('@onething/backend/runtime/music/index', async importOriginal => ({
     return { onSample: vi.fn(), quiesce: vi.fn(), idle: async () => {} }
   },
 }))
-vi.mock('@onething/backend/session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/session/access.js')>()
+vi.mock('../../sessions/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => fixture.metas.get(id) }) }
 })
-vi.mock('@onething/backend/stores/sessions.js', () => ({
+vi.mock('../../sessions/session-store.js', () => ({
   getSession: (id: string) => fixture.getSession(id),
   getSessionsList: () => [...fixture.metas.values()],
   createSession: (...args: unknown[]) => fixture.createSession(...args),
@@ -34,7 +34,7 @@ vi.mock('@onething/backend/stores/sessions.js', () => ({
     return () => { fixture.deletedListener = undefined }
   },
 }))
-vi.mock('../../../session/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
+vi.mock('../../sessions/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
 vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
 vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   agentExists: () => true,

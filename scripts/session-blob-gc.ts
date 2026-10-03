@@ -10,7 +10,7 @@
  * `sessions/<id>/blobs/orphan/`(归档,不硬删 —— 判据漏认一处,硬删就是把一段
  * 正文从唯一账本里抹掉,而 blob 没有第二份副本)。
  *
- * 判据与跳过闸全在 `packages/backend/session/blob-gc.ts`,与 `sessions:verify`
+ * 判据与跳过闸全在 `packages/backend/runtime/sessions/blob-gc.ts`,与 `sessions:verify`
  * 的引用完整性检查共用 core 里那一个 `collectSessionBlobRefHashes` —— 一边问
  * "有引用没文件",一边问"有文件没引用",判据分家迟早会分出一边删掉另一边认的。
  */
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 import {
   runSessionBlobGc,
   type SessionBlobGcReport,
-} from '../packages/backend/session/blob-gc.ts'
+} from '@onething/backend/runtime/sessions'
 
 function resolveStorePath(explicit?: string): string {
   return explicit || process.env.ONETHING_STORE_PATH || path.join(os.homedir(), '.onething')

@@ -30,7 +30,7 @@
  * 的 `create` 拉起来,而 RPC 域要到装配的最后几步才挂上。但端口是个单槽,谁都
  * 能在任何时刻调它 —— 一条输出丢了是一格屏幕少了一批字节(下一次 `attach` 的
  * ring 会补),为它抛一个异常却会顺着 `pty.onData` 的回调炸到 node-pty 的读循环
- * 里。所以这里 `warn` 一行然后丢,与 `stores/sessions.ts` 那处「有就发,没有就
+ * 里。所以这里 `warn` 一行然后丢,与 `runtime/sessions/session-store.ts` 那处「有就发,没有就
  * 算了」是同一条判例(它用的也是 `isEventSystemInitialized()`)。
  */
 

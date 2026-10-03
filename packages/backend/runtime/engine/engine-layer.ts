@@ -27,7 +27,7 @@ import {
 import {
   getSessionManager,
   ensureSessionWritable,
-} from '@onething/backend/session/index.js'
+} from '../sessions/session-layer.js'
 import * as store from '@onething/backend/store.js'
 import {
   OutboundReplyDispatcher,
@@ -36,7 +36,7 @@ import {
 } from '@onething/backend/channel/index.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/current.js'
 import { getLogger } from '../logging/configure-logging.js'
-import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/session/access.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from './execution-context.js'
 
 const log = getLogger('engine.stream')

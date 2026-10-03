@@ -15,7 +15,7 @@ import type { StreamSender } from './stream-processor.js'
 import {
   executeOnethingImageGenerationStream,
 } from '@onething/backend/runtime/media'
-import { recordSynthesizedAssistantText } from '@onething/backend/session/assistant-parts.js'
+import { recordSynthesizedAssistantText } from '@onething/backend/runtime/sessions'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/backend/runtime/media/image-generation'
 

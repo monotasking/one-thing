@@ -1,6 +1,6 @@
 import { MediaLibraryService, type OnethingMediaLibraryPaths } from '@onething/backend/runtime/media'
 import type { RuntimeMediaAdapter, RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
-import type { SessionAccess } from '../session/access.js'
+import type { SessionAccess } from '@onething/backend/runtime/sessions'
 import { mediaFileNameOf, resolveMediaFileByName } from '@onething/backend/runtime/media/resolve-file'
 
 export interface ServerMediaDeliveryPorts {

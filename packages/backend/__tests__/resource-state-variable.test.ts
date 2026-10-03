@@ -127,7 +127,7 @@ describe('资源 state 进提示词(K4-a)', () => {
    */
   it("K4-a':追一条消息之后,板上那一行逐字不变(计数不进提示词)", async () => {
     const { buildStateVariablesPromptText } = await import('@onething/backend/runtime/variables/variable-system')
-    const { sessionCommands } = await import('../session/commands.js')
+    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
     const rowOf = (text: string) =>
       text.split('\n').find(row => row.includes('resource_session_current'))
 

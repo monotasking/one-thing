@@ -13,9 +13,9 @@
  *     = 这里多一个类 + 装配层一行注册,订阅代码一个字不改(§5 陌生能力演练)。
  */
 import type { RuntimeRequestContext } from "@onething/backend/server/runtime-facade.js";
-import { ownsSessionRecord, type SessionOwnershipRecord } from '../session/access.js'
-export { sessionOwnerOf, ownerMatchesContext, ownsSessionRecord } from '../session/access.js'
-export type { SessionOwner, SessionOwnershipRecord } from '../session/access.js'
+import { ownsSessionRecord, type SessionOwnershipRecord } from '@onething/backend/runtime/sessions'
+export { sessionOwnerOf, ownerMatchesContext, ownsSessionRecord } from '@onething/backend/runtime/sessions'
+export type { SessionOwner, SessionOwnershipRecord } from '@onething/backend/runtime/sessions'
 
 /** 一条订阅的受众。 */
 export interface SessionAudience {
