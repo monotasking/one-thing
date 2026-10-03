@@ -320,3 +320,181 @@ ESM 在环上按依赖深度决定谁先求值,`class X extends 基类` 这种**
 替换目标从内部文件换成入口以后,整块工厂会把入口其余 429 个名字在那次测试里全抹掉。
 - 选项 A(**推荐**):允许,逐条改成 `importOriginal` 展开再覆盖,断言不动;B 类 3 处按第 3 节改参数注入,C 类 1 处随测试搬家。
 - 选项 B:这 30 处保留对内部文件的替换(棘轮里留这些处数),等对应文件搬进 providers 后再说。
+
+## 7. 去处与入口图(2026-10-04,只分析、未改代码)
+
+> 背景:第一次收口尝试(全部引用改走 providers 入口、不搬文件)在加载期崩了 —— 入口闭包 268 → 704 只文件,
+> 与 auth / settings / sessions / spaces 连成一个 60 只模块的值引用环,`class … extends` 读到未初始化的基类,
+> 根全量 vitest 367 个文件红。补丁留在会话 scratchpad 的 `s13/attempt1.diff`,工作区已退回 793651d4a。
+> 用户随后拍板:**不新建功能**,把 providers 里「用服务商干活」的那类文件按内容分进已有功能;先算图,不动代码。
+> 本节的全部数字出自 scratchpad 的 `s14/`(`sim.mjs` 是模拟器,`scen-*.json` 是各方案的搬家表,`out-*.json` 是结果)。
+
+### 7.1 量法
+
+**图**:`packages/backend` 与 `packages/shared` 的全部非测试文件,边是**值引用**。用 TypeScript checker 把每个被 import 的名字解析到声明它的文件:
+只引类型的名字(接口、类型别名、`import type`、没写 `type` 但实际只是类型的名字)不成边,因为编译后会被擦掉,esbuild 也会删;
+动态 `import()` 不成边,因为它不在加载期执行。环 = 这张图的强连通分量(下文写「SCC」,两只以上文件互相能走到)。
+
+**模拟搬家**:没有在 worktree 里真搬文件,而是在 HEAD 的代码上按「文件 → 所属功能」表重写边。理由是 SCC 只取决于「谁连到谁」,
+文件挪到哪个目录、说明符怎么写都不改变这张图;在图上改比真搬 19 只文件、重写几百处说明符快两个数量级,而且每个方案都从同一份 HEAD 出发,
+不会互相污染。重写规则:
+
+- 引用方 A 要一个住在 D 的名字:A 与 D 同功能 → 直连 D(目录里的相对引用);不同功能 → 连到 D 所属功能的入口 `runtime/<F>/index.ts`,
+  并记一条「入口 → D」(入口为外面再导出它)。`export *`、命名空间 import、副作用 import 按整只模块同样处理。
+- 本批只收口 providers:只有**目标文件今天住在 providers 里**的那些引用改走入口(`--route-orig providers`),其余功能之间的深层引用保持今天的样子。
+  这正是「providers 收口这一笔做完」的那一刻的图。
+- 入口自己今天的再导出行保留,只去掉指向「已搬去别的功能」的文件的那几行(那几行跟着文件去新家的入口,由外面是否真要决定)。
+- 包根(`backend.ts`、`rpc/`、`server/` …)与 `packages/shared` 没有入口,指向它们的边直连。
+
+**加载期跨环取值**(下文写「隐患」):模块 M 在求值时 —— 顶层语句,以及顶层调用到的函数体、`new` 到的构造器与实例字段 —— 读到一个
+模块级绑定(`const` / `let` / `class` / 命名空间),而那只绑定要经过与 M 在同一个 SCC 里的模块才拿得到。这种读法读到的是不是已初始化的值,
+取决于谁先被 import。函数声明会被提升,读它不算;调用它就顺着进函数体看。括号里单列其中 `class … extends` 的条数,因为它一旦读到未初始化
+就是加载时直接抛,没有任何惰性化的余地。
+
+**校验**:用同一个模拟器算「不搬家、只把 providers 的引用改走入口」,得到的 7 条隐患与第一次尝试在真代码上量到、并在探针里真崩的 7 处**逐条相同**
+(`process-auth-service` 的 `extends OnethingAuthService` 与两处取值、`external-agents/provider` 的 `extends BaseAgentProvider`、`settings-defaults`
+的名册行序、`permission-policy` 的两处);环是 57 只(真代码上量到 60,差的 3 只是真代码里那几处只引类型、没写 `type` 的引用,模拟器按「编译后擦掉」不算)。
+
+### 7.2 providers 里哪些文件是「重」的
+
+在 HEAD 的真实图上,providers 里有 19 只文件的值闭包会拉进 sessions / settings / spaces / toolkit 之一(闭包大小在括号里):
+
+- 对话与后台杂活:`chat-facade`(685)、`utility-provider`(693)、`custom-probe-analyst`(697,要请模型来分析)。
+- 按本进程宿主能力造 provider:`process-factory`(621)、`process-providers`(625)、`agent-runtime`(622)、`codex.ts`(305,无人调用的包装,第 4 项要删)、
+  `openai-compatible-fetch`(301,带代理的 fetch 走设置入口)。另有 `media-reader`(读媒体库)按这个口径不算重,但它只被 `process-factory` 用,随它一起走。
+- 凭证:`space-credentials`(544)、`credential-strategy`(544)、`credential-strategy-lifetime`(544)、`credential-rotation`(545)。
+- 按空间取默认值 / 设置 / 一次性迁移:`space-defaults`(462)、`space-ai-settings`(462)、`space-config-migration`(312)。
+- 模型目录:`model-registry-service`(544)、`manual-model-store`(297);把设置里的自定义服务商同步进 manifest 注册表的 `custom-manifests`(301)。
+- 旧 OAuth 兼容门面 `auth/oauth-manager`(304)。
+
+它们「重」的直接原因都是几条边:要带代理的 fetch 就 import 设置入口(`createRequiredAppFetch`),要 OAuth 就 import `auth/process-auth-service`,
+要按会话找空间就 import 会话入口,要空间的凭证 / 设置就 import `spaces/*`。`vendors/` 下各家一只都不重(各家 `oauth.ts` 只引 `auth/oauth-token`、`auth/jwt` 两只叶子)。
+
+### 7.3 方案比较
+
+每行一个方案。「新环」只列 HEAD 上没有的 SCC(HEAD 自己的 17 / 5 / 3 / 2 不算新)。九个使用者是第一次尝试里成环的那 9 只外面的文件,数字是它所在 SCC 的大小,
+1 = 不成环。
+
+| 方案 | 搬家表 | 最大 SCC | 新环 | 环里的入口 | 隐患(其中 extends) | 九个使用者里仍成环的 |
+| --- | --- | --- | --- | --- | --- | --- |
+| HEAD | 不搬、不收口 | 17 | 无 | 无 | 0(0) | usage-recorder 5(HEAD 已有的环,见 7.4) |
+| 0 | 不搬,只收口 | 57 | 57 | auth、providers、sessions、settings | 7(2) | 9 个全在 57 里 |
+| a1 | 对话 + 杂活 → engine;凭证四件 → auth;空间三件 → spaces;模型目录三件留 providers | 59 | 59 | auth、engine、providers、sessions、settings、spaces | 7(2) | 9 个全在 59 里 |
+| a2 | 同 a1,空间三件 → settings | 58 | 58 | auth、engine、providers、sessions、settings | 7(2) | 9 个全在 |
+| b | 同 a1,凭证四件 → spaces | 59 | 59 | 同 a1 | 7(2) | 9 个全在 |
+| c1 / c2 / c3 | a1 / a1 / b 之上,模型目录三件 → settings / engine / settings | 59 | 59 | 同 a1 | 7(2) | 9 个全在 |
+| d1 | 19 只重文件全部搬走(外加随 `process-factory` 走的 `media-reader`):对话、杂活、造 provider 那一族、`credential-rotation`、`custom-probe-analyst` → engine;凭证其余三件、空间三件、`manual-model-store`、`custom-manifests` → spaces;`oauth-manager` → auth;**模型目录服务 → engine** | 17 | 11 / 4 | engine、providers、spaces | 1(1) | provider-helpers 11、external-agents/provider 4、usage-recorder 11 |
+| d2 | 同 d1,模型目录服务 → settings | 22 | 22 / 4 | auth、providers、sessions、settings、spaces | 2(2) | external-agents/provider 4、usage-recorder 22 |
+| d3 | 同 d1,模型目录服务 → spaces | 17 | 6 / 4 | providers、spaces | 1(1) | external-agents/provider 4、usage-recorder 6 |
+| d3x | d3 之上,`external-agents/provider.ts` → providers | 17 | 6 | spaces | 0(0) | usage-recorder 6 |
+| d3x + 断边 | d3x 之上,`credential-strategy-lifetime` 不再静态 import `usage-recorder`(见 7.4) | 17 | 无 | 无 | 0(0) | 全不成环 |
+| d1x + 断边 | d1 + 同样两处(模型目录服务 → engine) | 17 | 无 | 无 | 0(0) | 全不成环 |
+| d2 + 同样两处 | 模型目录服务 → settings | 18 | 18 | auth、sessions、settings、spaces | 1(1) | 全不成环,但 settings 入口与 spaces、sessions、auth 成环 |
+| d3n2 | d3 + 断边,外部 agent 那条改成「factory 不再 import 外部 agent 的 provider」而不是搬文件 | 17 | 无 | 无 | 0(0) | 全不成环 |
+
+读法:
+
+- **候选表(a / b / c)一行都不行**,而且只比「不搬」多两只。原因不是那几只该去哪,而是**留在 providers 里的那几只重文件**:`process-factory`
+  (import 设置入口、`auth/process-auth-service`、外部 agent 的连接器注册表)、`agent-runtime` / `process-providers`(经它)、`auth/oauth-manager`(import auth 入口)、
+  `codex.ts`、`openai-compatible-fetch`、`custom-manifests`(import 设置入口)、`media-reader`(import 媒体库)。只要其中任何一只留着,providers 入口就还连着设置入口,
+  而设置入口里的 `settings-save` / `settings-defaults` 又要 providers 入口的轻名字,于是环原样还在。凭证放 auth 还是 spaces、空间三件放 spaces 还是 settings,
+  在这个前提下都不影响结果。
+- **19 只全搬走以后,只剩两个结**,而且两个都与「放哪」无关,是两条具体的边(7.4)。
+- **模型目录服务不能放 settings**:它要按空间凭证去拉(`space-credentials` 已在 spaces),放进 settings 就让设置入口 → 模型目录 → spaces 入口 → 会话 → 设置入口成环(d2 那 18 只)。
+  放 engine 或 spaces 都零环。
+- d3n2 说明外部 agent 那个结也可以不搬文件解开,代价是改登记方式(见 7.4)。
+
+### 7.4 放哪都成环的两处,卡在哪条边上
+
+1. **`providers/factory.ts` → `external-agents/provider.ts`,反方向 `external-agents/provider.ts` 的 `class … extends BaseAgentProvider`**。
+   `factory.ts` 在加载时调 `registerExternalAgentProviderRuntime("acp")`,登记的工厂用的是外部 agent 那只 provider 类;那只类又继承 providers 的基类。
+   providers 入口必须交出 `factory.ts` 的名字(agent-loop 要),所以只要外部 agent 的 provider 住在 providers 之外、又经入口拿基类,
+   就是「providers 入口 → factory → external-agents/provider → providers 入口」三只的环,而且是 `extends`(d3 那条 4 只的新环、1 条隐患)。
+   两种解法:**(i)** 把 `external-agents/provider.ts` 搬进 providers —— 它本来就是「外部 agent 这一种 AgentProvider 的实现」,与各家的 provider 是同一类东西,
+   它对外部 agent 功能只要类型与 `agents/executor/capabilities` 一只叶子(d3x);**(ii)** `factory.ts` 不再 import 它,改由外部 agent 功能在装配时自己
+   登记这一行工厂(d3n2)。(ii) 把一次加载期登记改成装配期登记,要动装配顺序,需要用户拍板;(i) 只是搬一只文件。
+2. **`credential-strategy-lifetime` → `usage/usage-recorder`(`getUsageLedger`),反方向 `usage-recorder` → `space-credentials`(`resolveSessionCredentialId`)与
+   模型目录服务(`getModelCapabilityEntry`)**。这是 HEAD 上就有的那个 5 只的环(`credential-strategy-lifetime` / `credential-strategy` / `model-registry-service` /
+   `space-credentials` / `usage-recorder`),今天它全是深层引用、不经过任何入口,所以无害;一旦 providers 收口,凭证那几只住在哪个功能,那个功能的入口就落进环里
+   (d3x 里是 spaces 入口那 6 只;把插件凭证策略两件改放 plugins 也只是换成 plugins 入口,环还在,测过)。这个环跨着 usage 与凭证两个功能,**没有一种放法能让它
+   在同一个功能里**,只能断一条边。最便宜的一条是 `credential-strategy-lifetime` 那一处:它只在 `captureLedger()` 的函数体里懒取账本,改成由装配处
+   (`backend.ts` 本来就在 `new CredentialStrategyService(...)`)把「取账本」的函数传进去,静态 import 就没了。反方向那两条是用量记账真要的事实,不宜断。
+   这一处要改 `CredentialStrategyService` 的构造参数与 `backend.ts` 的一行装配,需要用户拍板。
+
+### 7.5 今天的基线与「入口之间不许成环」这道门
+
+**HEAD 的读数**(同一算法,不搬、不改写):值引用 SCC 四个,大小 17 / 5 / 3 / 2;
+17 是 engine / collab / goals / toolkit 那一组(`engine-layer`、`stream-engine-runtime`、`agent-loop-executor`、`tool-execution`、`triggers/index`、`goals/kick`、`toolkit/wiring` 等 17 只),
+5 是上面 7.4 第 2 条那组,3 是 `plugins/{api,background-table,plugin-manager}`,2 是 `permissions/{permission-asks,permission-policy}`。
+**四个 SCC 里没有任何一只 `runtime/<功能>/index.ts`,也没有总桶 `runtime/index.ts`**;按上面的口径,加载期跨环取值 0 处。
+
+功能级的图(功能 A 有任一值边指向功能 B 就连一条)今天是**一个 50 个功能的大环**(378 条功能间的边),所以按功能级算的判据在今天就是满屏红,没法当门用;
+文件级的判据才分得出好坏。
+
+**建议的判据**(新门,例如 `entry:cycle-gate`):在上面这张值引用图上算 SCC,**任何一个 SCC 只要含有 `runtime/<功能>/index.ts` 或 `runtime/index.ts`,就红**,
+并打出那个 SCC 经入口的最短环(和本节表格里「卡在哪条边上」同一种输出)。今天读数 0,所以它是**零基线硬闸**,不需要基线文件。
+
+- 它管的正是这次出事的那件事:入口一旦在环里,外面谁先 import 谁就决定了入口背后的东西是否已初始化;第一次尝试里 `assembly-lifecycle` 单跑时还出现过 100 秒以上无输出、CPU 为 0 的情况,原因没有查清,只记作现象。
+- **不会误报的地方**:只引类型的名字(含没写 `type` 的)不成边,动态 `import()` 不成边,测试文件不扫 —— 这三类正是最容易让「图上有环、运行时没有」的来源。
+- **刻意不管的地方**:不经过任何入口的深层环(今天那四个)不红;它们是否该拆,是各功能自己收口时的事。
+- **有意的「误报」**:一个入口在环里、但环上恰好没有加载期取值,门照样红。这是故意的 —— 那种环今天不崩,只是因为 import 顺序碰巧对,下一次加一行顶层常量就会崩。
+- 加载期跨环取值(本节的「隐患」)今天也是 0,可以作为第二条判据,但它的函数体追踪是近似的(方法调用按 checker 能解析到的声明走,最深 8 层),
+  建议先只在门的输出里打出来,不作红绿判据。
+
+**一个提醒**:本节的推荐方案只保证「providers 这一笔收口做完的那一刻」入口不在环里。如果把**所有**功能之间的引用都同时改走入口,今天的图会变成一个
+653 只模块、45 个入口的环(只把 engine 一个功能收口就有 247 只的环,只收口 usage 有 71 只)—— 其他功能也有自己的「轻名字被下层要、重的那半在上层」的问题。
+这道门的作用正是让后面每个功能收口时当场看见自己造成的环,而不是在加载期崩了再查。推荐方案落地以后,留在 providers 里的文件对外只剩这些边:
+`agent-loop/loop-primitives`(9 处)、`auth/oauth-token`(5)与 `auth/jwt`(1)、`engine/error-details`(2)与 `engine/engine-primitives`(1)、`usage/pricing`、
+`spaces/credentials`(`route.ts` 用)、`agents/executor/{registry,capabilities}`、`agent-loop/provider-error-classification`。它们全是对方的叶子文件;
+等 auth / engine / usage / spaces / agents 自己收口时,这些叶子必须不和那些功能的重文件共用一个入口闭包,否则会在那时重新成环(例如只把 spaces 也收口,
+`route.ts` → spaces 入口 → 模型目录服务 → providers 入口就是 39 只的环)。
+
+### 7.6 `tools/access-control/permission-policy.ts:22` 的惰性化(不改代码,写法与理由)
+
+今天第 22 行在加载时执行 `const permissionRuntime = createOnethingPermissionRuntime({ grantMatcher: PermissionGrants.matchGrant, permissionBridge: Permission })`,
+把 `grant-storage` 的命名空间属性与 `permission-asks` 的 `Permission` 命名空间读进一个选项对象。在环上先求值它时,两者读到的会是 `undefined`,而且**不抛**:
+`decide` 有 `?? matchGrant` 兜底,`enforce` 不带桥的那一处(第 236 行)则会静默地拿到一个没有桥的运行时。
+
+改法:换成首次用到时才建的持有器 ——
+
+```ts
+const permissionRuntimeHolder: { current?: OnethingPermissionRuntime } = {}
+function permissionRuntime(): OnethingPermissionRuntime {
+  return (permissionRuntimeHolder.current ??= createOnethingPermissionRuntime({
+    grantMatcher: PermissionGrants.matchGrant,
+    permissionBridge: Permission,
+  }))
+}
+```
+
+文件里 9 处 `permissionRuntime.decide(…)` / `permissionRuntime.enforce(…)` 改成 `permissionRuntime().…`。持有器是 `const`(`assembly:gate` 只禁模块级 `let`)。
+
+等价理由:`createOnethingPermissionRuntime` 只是 `new OnethingPermissionRuntime(options)`,构造函数只把选项存进私有字段,不读设置、不碰磁盘、不起计时器;
+`matchGrant` 是函数声明的导出,`Permission` 是模块级命名空间对象,两者在各自模块里都从不被重新赋值,所以首次调用时读到的与加载时(在不成环的情况下)读到的是同一个函数、
+同一个对象;建一次以后同一只运行时一直用,和今天在加载时建的那一只行为相同。装配顺序不动 —— 第一次用到发生在权限判定的调用里,那时装配早已完成。
+
+### 7.7 推荐方案
+
+**推荐 d3x + 断边**,即:
+
+| 去处 | 文件(`runtime/providers/` 下) | 按内容的理由 |
+| --- | --- | --- |
+| `engine/` | `chat-facade`、`utility-provider`、`custom-probe-analyst`、`process-factory`、`process-providers`、`agent-runtime`、`media-reader`、`openai-compatible-fetch`、`credential-rotation`、`codex.ts`(第 4 项删) | 都是「拿本进程的宿主能力(带代理的 fetch、OAuth 刷新、媒体库、外部 agent 连接器)去用服务商干活」:发一轮对话、起标题、后台杂活、请模型分析自定义服务商、造这一轮要用的 AgentProvider、失败了换一把 key 重试。使用者也几乎全在引擎 |
+| `spaces/` | `space-credentials`、`credential-strategy`、`credential-strategy-lifetime`、`space-defaults`、`space-ai-settings`、`space-config-migration`、`manual-model-store`、`custom-manifests`、`model-registry-service` | 都是「某个空间的服务商配置」:凭证池与插件凭证策略、按会话所在空间取默认值和那份设置、旧凭证迁进默认空间、手填模型(勾选落空间)、把空间设置里的自定义服务商同步进 manifest 注册表、用这个空间的凭证去拉各家模型清单 |
+| `auth/` | `auth/oauth-manager` | 它是 auth 服务的旧兼容门面,头注就写着新代码直接用 auth 服务 |
+| `providers/`(搬进来) | `external-agents/provider.ts` | 它是「外部 agent」这一种 AgentProvider 的实现,与各家 provider 同类;留在外面就与 `factory.ts` 成 `extends` 环 |
+| 断一条边 | `credential-strategy-lifetime` 不再静态 import `usage-recorder`,账本由 `backend.ts` 构造 `CredentialStrategyService` 时传入 | HEAD 上那个 5 只的环跨 usage 与凭证两个功能,放哪都会把一个入口拉进环 |
+
+结果:providers 收口做完时,值引用 SCC 与 HEAD 完全相同(17 / 5→没了 / 3 / 2,HEAD 那个 5 只的环随断边一起消失),环里没有任何入口,加载期跨环取值 0 处,
+九个曾成环的使用者全部不成环;providers 剩下的文件对外只连别家的叶子文件(7.5 末尾那张清单)。这个方案同时满足「不新建功能」与「providers 不拆」——
+providers 留下的是服务商的事实、名册、各家目录、线协议与方言,以及不带宿主能力的 provider 工厂。
+
+**需要用户拍板的点**:
+
+1. **断边**(7.4 第 2 条):给 `CredentialStrategyService` 加一个「取用量账本」的构造参数,`backend.ts` 那一行装配传进去。装配顺序不变,但改了一个类的构造签名。
+2. **外部 agent 的 provider 进 providers**(7.4 第 1 条的 (i))。若更愿意不搬它,可选 (ii):`factory.ts` 不再在加载时登记外部 agent 那一行工厂,改由外部 agent 功能在装配时登记 —— 这是登记时机的改变,零环效果相同(d3n2)。
+3. **模型目录服务放 spaces 还是 engine**:两处都零环(d3x + 断边 / d1x + 断边)。推荐 spaces,理由是它按空间凭证拉、结果落设置,与手填模型同住;
+   放 engine 的好处是使用者(引擎、RPC models 域、插件、用量)多在引擎一侧,坏处是 engine 本身是 HEAD 上 17 只那个环的一员,往里加重文件会让它以后的收口更难。
+4. **「入口之间不许成环」这道门**(7.5)是否作为零基线硬闸、与这一笔一起落。
+5. 这一笔要搬 21 只文件(providers 里 20 只,外加搬进来的 `external-agents/provider.ts`),外加 `permission-policy` 的惰性化(7.6)与第一次尝试里已证明需要的两处惰性化(`settings-defaults` 的种子表、`process-auth-service` 的兜底 fetch;
+   在推荐方案下它们已不在环上,但仍是加载期调用外部工厂,建议照做以免后面别的功能收口时再踩)。
