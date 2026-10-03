@@ -52,10 +52,10 @@ import {
   listOnethingActiveStreamsForIpc,
   updateOnethingMessageThinkingTimeForIpc,
 } from '@onething/backend/runtime/sessions'
-import { emitCoreSessionEventSafely } from '@onething/backend/runtime/event-bus'
+import { emitCoreSessionEventSafely } from '@onething/backend/runtime/events/bus-primitives'
 import type { ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '../../store.js'
-import { getEventBus } from '../../events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { currentSessionRun } from '../../session/runs.js'
 import { sessionReads } from '../../session/reads.js'
 import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/runtime/collab/rooms'
@@ -66,7 +66,7 @@ import {
   resolveProviderAuth,
 } from '@onething/backend/runtime/engine/stream/provider-helpers'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { Permission } from '@onething/backend/runtime/permission'
+import { Permission } from '@onething/backend/runtime/permissions/permission'
 import {
   generateChatTitle,
   isProviderSupported,

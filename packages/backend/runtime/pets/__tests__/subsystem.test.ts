@@ -22,7 +22,7 @@ import {
 } from '@onething/backend/runtime/resource/resource-api'
 import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Utterance } from '@onething/backend/runtime/pets'
-import { EventBus } from '@onething/backend/events/event-bus.js'
+import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { forwardResourceEventsToBus } from '@onething/backend/runtime/resource/event-bridge'
 import { PetResourceProvider } from '@onething/backend/runtime/resource/pet-provider'
 import { AmbientResourceProvider } from '@onething/backend/runtime/resource/ambient-provider'

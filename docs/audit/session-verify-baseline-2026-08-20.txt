@@ -104,7 +104,7 @@ a5157107-dfac-4a42-b910-58148e982bfb messages: canonical differs for message b4a
 # (`permission/answered` 带 `reason:"Session cleared"`),于是投影比 messages.jsonl
 # **多出**三处 `rejectionReason`(`1.steps.1.rejectionReason` /
 # `1.steps.1.toolCall.rejectionReason` / `1.toolCalls.1.rejectionReason`,抄本侧一律
-# `(absent)`)。修在单一构造点(`runtime/permission/permission-asks.ts` 的 `SettleKind`,`dc810f4f`),
+# `(absent)`)。修在单一构造点(`runtime/permissions/permission-asks.ts` 的 `SettleKind`,`dc810f4f`),
 # 新写入不再产生这一格 —— 电池场景 `abort-while-awaiting-permission` 盯着,不复发。
 # 盘上这一条按 G3(事件只追加、不回填)留着,静音。
 # **hydration-contract 的 fail 1 也是它**:`scripts/session-hydration-contract.ts` 读的

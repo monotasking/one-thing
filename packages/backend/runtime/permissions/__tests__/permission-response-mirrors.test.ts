@@ -1,6 +1,6 @@
 /**
  * 权限应答那个联合有**三份**:核那份是产地
- * (`packages/backend/runtime/permission/permission-asks.ts` 的 `Permission.Response`),另外两份是它
+ * (`packages/backend/runtime/permissions/permission-asks.ts` 的 `Permission.Response`),另外两份是它
  * 跨进程的镜像 —— `@shared/ipc/permissions.ts` 的 `PermissionResponse`(RPC 形状)
  * 与 `@shared/events/session-commands.ts` 里 `PermissionRespondCommand.decision`
  * (命令总线上真正走的那一格)。
@@ -13,7 +13,7 @@
  * 多一支 —— 而镜像多出一支同样是谎(壳会画一个内核答不了的键)。
  */
 import { describe, expect, it } from 'vitest'
-import type { Permission } from '@onething/backend/runtime/permission/permission-asks'
+import type { Permission } from '@onething/backend/runtime/permissions/permission-asks'
 import type { PermissionResponse } from '@shared/ipc/permissions.js'
 import type { PermissionRespondCommand } from '@shared/events/session-commands.js'
 

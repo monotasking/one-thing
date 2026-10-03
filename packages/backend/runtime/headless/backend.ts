@@ -51,7 +51,7 @@ import {
 import { ensureCollabGroupRoom } from '@onething/backend/runtime/collab/room-create'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { toolkitCatalogToolDefinitions } from '@onething/backend/runtime/toolkit/catalog-projection'
-import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
+import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'

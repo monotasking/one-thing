@@ -10,7 +10,7 @@
  * effect,交给同一扇策略门。命令分析不在这里重写,而是调本地 bash 工具用的那一个
  * (`../tools/permission-effects.js` 的 `analyzeBashPermission`);文件工具的越界位
  * (`external`)也用本地那套沙箱判据算出来 —— 批 1 刚修的 auto-accept 判据正是只
- * 看这一位(`runtime/permission/permission-policy.ts:146`),立不起来就等于外部会话的
+ * 看这一位(`runtime/permissions/permission-policy.ts:146`),立不起来就等于外部会话的
  * 越界写在 `auto-accept-edits` 下一张卡都不弹。
  *
  * **认不出的工具名维持现状**:返回 `undefined`,调用方回落到工具名粒度的

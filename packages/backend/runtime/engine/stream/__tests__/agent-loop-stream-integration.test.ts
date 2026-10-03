@@ -229,7 +229,7 @@ vi.mock("../../engine-layer.js", () => ({
 	getStreamEngine: () => mocks.engine,
 }));
 
-vi.mock("@onething/backend/events/index.js", () => ({
+vi.mock("@onething/backend/runtime/events", () => ({
 	getEventBus: () => ({ emit: mocks.eventBusEmit }),
 	getStreamChannel: () => ({ push: mocks.streamPush }),
 }));

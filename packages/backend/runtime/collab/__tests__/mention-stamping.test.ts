@@ -54,7 +54,7 @@ vi.mock('@onething/backend/store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })

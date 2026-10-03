@@ -458,7 +458,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 红的也是同一句。
    */
   it("K3-a':removeMessage 按主体分档 —— 用户删不弹卡,AI 删停在真权限卡上", async () => {
-    const { Permission } = await import('@onething/backend/runtime/permission')
+    const { Permission } = await import('@onething/backend/runtime/permissions/permission')
     const { sessionCommands } = await import('../session/commands.js')
     const { sessionReads } = await import('../session/reads.js')
 

@@ -5,7 +5,7 @@
  * real path (createOnethingBackend) is covered by host smokes instead.
  */
 import { AgentEngine } from '@onething/backend/runtime/agents/agent-engine'
-import { EventBus, StreamChannel } from '@onething/backend/runtime/event-bus'
+import { EventBus, StreamChannel } from '@onething/backend/runtime/events/bus-primitives'
 import type {
   OnethingServerBackend,
   OnethingServerRuntime,

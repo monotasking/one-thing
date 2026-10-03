@@ -170,7 +170,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       // `resource-kernel.test.ts` 里 AI 删消息那条一样:先等卡出现,再答 `once`。
       const store = await import('../store.js')
       const sessionId = store.createSession(`resource-mcp-${Date.now()}`, 'MCP').id
-      const { Permission } = await import('@onething/backend/runtime/permission')
+      const { Permission } = await import('@onething/backend/runtime/permissions/permission')
 
       const running = backend.resources.do(
         `${SCHEME}:server`,

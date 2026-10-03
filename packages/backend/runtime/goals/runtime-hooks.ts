@@ -9,7 +9,7 @@ import {
 	renderGoalContinuationNudge,
 } from "@onething/backend/runtime/goals";
 import type { OnethingAgentLoopGoalHooks } from "@onething/backend/runtime/agent-loop";
-import { getEventBus } from "@onething/backend/events/index.js";
+import { getEventBus } from "@onething/backend/runtime/events";
 import {
 	goalLimits,
 	handleGoalAbort,

@@ -1,5 +1,5 @@
 import type { ChatMessage, ChannelReplyDeliveryRecord, MessageOrigin } from '@shared/ipc.js'
-import type { EventBus } from '../events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { getOnethingStorePath } from '@onething/backend/runtime/storage'
 import { createChannelReplyDeliveryStore } from './identity-store.js'
 import { sendIMReply } from './connector-registry.js'

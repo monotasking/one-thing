@@ -14,8 +14,8 @@ import {
   type OnethingRuntime,
 } from '@onething/backend/runtime/runtime'
 import type { CoreConversationRuntime } from '@onething/backend/runtime/gateway/conversation-runtime'
-import type { EventBus } from '@onething/backend/events/event-bus.js'
-import type { StreamChannel } from '@onething/backend/events/stream-channel.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
 import {
   createBoundStreamEngine,
   type StreamEngine,

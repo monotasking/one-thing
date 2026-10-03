@@ -120,7 +120,7 @@ vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   displayAgent: (id: string) => AGENTS[id],
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })

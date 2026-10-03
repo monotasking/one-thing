@@ -203,7 +203,7 @@ export interface ToolSettings {
    *
    * 第三条是权限面语义,不是便利开关:这些目录进入**可写沙箱根**
    * (`getCoreSandboxRoots`),于是 write/edit 的 effect 不再标 `external`,
-   * `auto-accept-edits` 模式下就不弹卡(`runtime/permission/permission-policy.ts:146`)。
+   * `auto-accept-edits` 模式下就不弹卡(`runtime/permissions/permission-policy.ts:146`)。
    * 所以只有用户显式添加的目录能进来 —— 默认空列表,行为与没有这个功能时逐字节一致。
    */
   connectedDirectories?: string[]

@@ -99,7 +99,7 @@ import type { ResourceRef } from '@shared/resource/ref'
 import type { PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { Intent, textResult } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Principal } from '@shared/permission/principal'
-import { emitCoreSessionEventSafely } from '@onething/backend/runtime/event-bus'
+import { emitCoreSessionEventSafely } from '@onething/backend/runtime/events/bus-primitives'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
 import {
@@ -135,10 +135,10 @@ import {
   extractSessionPageResults,
   type SessionPageResultSlot,
 } from '@onething/backend/session/page-results.js'
-import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
+import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/runtime/agents/agent-store-access'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { Permission } from '@onething/backend/runtime/permission'
+import { Permission } from '@onething/backend/runtime/permissions/permission'
 import { deleteSessionAiTodo } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { workdirGateway } from '@onething/backend/runtime/variables/gateways'
 import { readSessionSegments } from '@onething/backend/runtime/toc/toc-recorder'

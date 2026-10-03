@@ -10,7 +10,7 @@
  * 不抛 —— 状态是整张快照,下一次变化或一次 `acp.sessionState` 就补齐了。
  */
 import type { ACPAgentState, AcpSessionState } from '@shared/contracts/acp'
-import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
+import { getEventBus, isEventSystemInitialized } from '@onething/backend/runtime/events'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('app.acp.events')

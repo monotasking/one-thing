@@ -59,7 +59,7 @@ import type {
 
 import * as store from '@onething/backend/store.js'
 import type { sessionReads } from '../../session/reads.js'
-import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { getCurrentBackend } from '@onething/backend/current.js'
 import type { Quiescible } from '@onething/backend/runtime/lifecycle'

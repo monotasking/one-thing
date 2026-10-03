@@ -53,7 +53,7 @@ vi.mock('@onething/backend/runtime/spaces/credentials', async (importOriginal) =
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
   configureSpaceCredentialPluginStrategyHost: () => { spy.calls.push('credential-strategy-host') },
 }))
-vi.mock('@onething/backend/runtime/permission/capabilities', async (importOriginal) => ({
+vi.mock('@onething/backend/runtime/permissions/capabilities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
 }))
@@ -69,7 +69,7 @@ describe('@onething/backend import purity', () => {
     await import('@onething/backend/runtime/search/install-providers')
     await import('@onething/backend/runtime/skills/manage-setup')
     await import('@onething/backend/runtime/skills/skill-sources')
-    await import('@onething/backend/runtime/permission/grant-storage')
+    await import('@onething/backend/runtime/permissions/grant-storage')
     await import('@onething/backend/runtime/providers/space-credentials')
     await import('@onething/backend/runtime/providers/credential-strategy')
 

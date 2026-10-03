@@ -83,7 +83,7 @@ vi.mock('../../../../session/commands.js', async (importActual) => {
   }
 })
 
-vi.mock('@onething/backend/events/index.js', async (importActual) => ({
+vi.mock('@onething/backend/runtime/events', async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
   getEventBus: () => ({ emit: hoisted.emit }),
 }))

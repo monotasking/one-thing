@@ -54,7 +54,7 @@ import {
 import { isActiveAgent, type ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../../session/reads.js'

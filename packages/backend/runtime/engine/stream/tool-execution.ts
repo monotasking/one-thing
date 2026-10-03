@@ -10,7 +10,7 @@ import type { JsonObject } from '@shared/json.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/runtime/toolkit/execution-types'
 import type { Principal } from '@shared/permission/principal'
 import type { StreamContext } from './stream-processor.js'
-import { createEventOnlyEmitter } from '@onething/backend/events/event-only-emitter.js'
+import { createEventOnlyEmitter } from '@onething/backend/runtime/events/event-only-emitter'
 import { executeCoreToolAndUpdate } from '@onething/backend/runtime/engine/engine-primitives'
 import {
   createToolExecutionStepWithFactory,
@@ -26,7 +26,7 @@ import {
 } from '@shared/tools/tool-result'
 import { toJsonValue, type JsonValue } from '@shared/json'
 import { runToolkitToolDirectly } from '@onething/backend/runtime/toolkit/wiring'
-import { pushSessionToolProgress } from '@onething/backend/events/tool-progress-stream.js'
+import { pushSessionToolProgress } from '@onething/backend/runtime/events/tool-progress-stream'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/backend/runtime/logging/logger-primitives'

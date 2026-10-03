@@ -1,5 +1,5 @@
-import { EventBus as CoreEventBus } from '@onething/backend/runtime/event-bus'
-import type { CoreSessionCommandEmitterLike, CoreSessionEventEmitterLike, EmitResult } from '@onething/backend/runtime/event-bus'
+import { EventBus as CoreEventBus } from '@onething/backend/runtime/events/bus-primitives'
+import type { CoreSessionCommandEmitterLike, CoreSessionEventEmitterLike, EmitResult } from '@onething/backend/runtime/events/bus-primitives'
 import type { SessionCommand } from '@shared/events/index.js'
 import type { GlobalEvent, SessionBusMessage } from '@shared/events/index.js'
 

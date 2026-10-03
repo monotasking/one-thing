@@ -40,7 +40,7 @@ vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     onAny: (_sessionId: string, handler: (envelope: unknown) => void) => {
       handlers.push(handler)

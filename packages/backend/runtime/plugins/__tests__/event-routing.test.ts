@@ -27,7 +27,7 @@ afterAll(async () => {
 
 async function load() {
   const [{ EventBus }, api, apiModule] = await Promise.all([
-    import('@onething/backend/events/event-bus.js'),
+    import('@onething/backend/runtime/events/session-event-bus'),
     import('../api.js'),
     import('../api.js'),
   ])

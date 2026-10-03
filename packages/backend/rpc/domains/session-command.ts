@@ -10,7 +10,7 @@
  *   `sessionCommands.emit`(renderer/platform/session-command-client.ts)
  *     → `sessionCommandRouter`(@shared/ipc/session-command.ts)
  *     → **本文件的 `emit`**
- *     → `emitCoreSessionCommandForIpc`(runtime/event-bus/ipc-operations.ts)
+ *     → `emitCoreSessionCommandForIpc`(runtime/events/ipc-operations.ts)
  *     → `CoreStreamEngine.buildCommandHandlers()` 的常量键派发表
  *     → `handleSendMessage` / …
  *
@@ -52,16 +52,16 @@
  *     它看起来像个疏漏 —— 不是:给一条来自网络的命令盖上「桌面来源」的 origin
  *     才是说谎。
  */
-import { emitCoreSessionCommandForIpc } from '@onething/backend/runtime/event-bus'
+import { emitCoreSessionCommandForIpc } from '@onething/backend/runtime/events/bus-primitives'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { SessionCommand } from '@shared/events/index.js'
 import type { SessionCommandEmitResult, SessionCommandRoutes } from '@shared/ipc/session-command.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sanitizeRendererOrigin } from '../../channel/index.js'
-import { getEventBus } from '../../events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngine } from '@onething/backend/runtime/engine/engine-layer'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { Permission } from '@onething/backend/runtime/permission'
+import { Permission } from '@onething/backend/runtime/permissions/permission'
 import type { RpcRouteHandlers } from '../registry.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
 import { deliverPresentation, takePresented } from '../../session/presentation.js'

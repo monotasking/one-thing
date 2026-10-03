@@ -1,3 +1,8 @@
+/**
+ * 同目录 `conversation-runtime.ts` 那份会话运行时契约的产品侧实现:把 stream engine 包成网关吃的
+ * `OnethingConversationRuntime`(`createOnethingConversationRuntimeFromStreamEngine`)。
+ * 它从前住在 runtime 根上(`runtime/gateway-runtime.ts`),收尾整理 2(2026-10-03)搬进网关目录;两只文件没有合。
+ */
 import type { StreamChunkBase } from '@shared/events/stream-chunks'
 import type {
   CoreConversationEventBusLike,
@@ -26,7 +31,7 @@ export type {
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,
-} from './stream-sender.js'
+} from '../stream-sender.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

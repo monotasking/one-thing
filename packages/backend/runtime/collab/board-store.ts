@@ -24,7 +24,7 @@ import {
   type CollabSelfTaskFact,
   type CollabTask,
 } from '@onething/backend/runtime/collab'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import {
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'

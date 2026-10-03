@@ -14,7 +14,7 @@ import type {
   SchedulerUserTaskDTO,
 } from '@shared/ipc.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/agent-store-access.js'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import * as store from '@onething/backend/store.js'
 import { getScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'

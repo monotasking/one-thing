@@ -88,11 +88,12 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 
 - **包根**:后端的入口与门面 —— `backend.ts`(`createOnethingBackend`)/ `store.ts` / `current.ts` / `host-ports.ts` +
   `server/`(HTTP/SSE 门面,含各宿主门面共用的 `OnethingRuntimeFacade` 契约 `server/runtime-facade.ts`)/ `rpc/` / `stores/` /
-  `session/` / `events/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/`。
+  `session/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/`。
 - **`runtime/<d>/`**:一个功能一个目录,平铺。这个功能的全部文件,不分「产品」「装配」「骨架」。同名冲突按文件**做的事**起名
   (不用 wiring / host / bound / app / assembly / core 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,
   另一个按内容改名;内容上是同一件事的两半(例如协议 + 实现)也不合,只在落地记录里列出来。`runtime/<d>/kernel/` 与其他子目录
-  一样只是子目录。目录名与包根目录同名会触发 I1(例如包根已有 `events/`),这时按内容另起目录名(core 的 `events/` → `runtime/event-bus/`)。
+  一样只是子目录。目录名与包根目录同名会触发 I1,这时按内容另起目录名(去 core 批 1 时包根还有 `events/`,core 的 `events/` 因此先落在 `runtime/event-bus/`;
+  收尾整理 2 把包根 `events/` 也搬进 runtime,两半并成 `runtime/events/`)。
 - RPC 处理器(`rpc/domains/<d>.ts`)不动 —— RPC 注册表那张表的形状是第④步的事。
 
 **撤掉的规则**(理由都是同一句:core / gateway 不再是层):
@@ -1125,3 +1126,52 @@ runtime 根上,本批没动);`utils/deep-freeze.ts` 与 `runtime/plugins/freeze.
 assembly / session / provider / gate:native 门输出前后逐字相同(assembly 前后都红在 `music/radio.ts` 9 → 10,不是本笔的文件);
 `assembly:check` 只差四行改了名的路径;`session:check` 2726 个文件 / 4 处发现相同;`sessions:shadow-battery` 前后各 130 行、前后都红
 (`appendFailures 8 ≠ 0`,去 core 批 3 改后就是这样),逐行只差 `refoldChecks` 216 → 217 与两行耗时;`provider-vendor-drill` 绿。
+
+### 收尾整理 2 落地记录:合三对目录(2026-10-03,未提交)
+
+**一句话**:只合目录、不合文件内容。包根 `events/` 与 `runtime/event-bus/` 并成 `runtime/events/`(包根 `events/` 删掉,I1 本来就要求包根
+目录名不撞 runtime 领域名);`runtime/permission/` 并进 `runtime/permissions/`;`runtime/gateway-runtime.ts` 搬进 `runtime/gateway/`。
+脚本 scratchpad 的 `s5-merge-dirs.mjs`(底子是 `s4-move-core3.mjs`:普通文件改名、按表查;包根 → runtime 的相对 import 改包说明符,包根
+那几只 `./events/x.js` 形的 exports 键改成 runtime 形;不带前缀的 `events/…` 只在包根文件里、且真指向包根 `events/` 下的文件时才改);
+46 只文件搬家、202 只文件改写;在 HEAD 的临时 worktree 上用独立 `GIT_INDEX_FILE` 重放,输出逐行相同。
+
+**撞名的去向**(都在 `packages/backend/` 下):
+
+| 旧路径 | 新路径 | 理由 |
+| --- | --- | --- |
+| `events/index.ts` | `runtime/events/index.ts` | 对外入口(`createEventSystem` / `getEventBus` / `getStreamChannel`),目录桶留给它 |
+| `runtime/event-bus/index.ts` | `runtime/events/bus-primitives.ts` | 泛型原语的桶;与仓里 `engine-primitives.ts`、`loop-primitives.ts` 同一种叫法 |
+| `events/event-bus.ts` | `runtime/events/session-event-bus.ts` | 撞泛型 `event-bus.ts`;这只把总线钉成 `SessionBusMessage` / `GlobalEvent` |
+| `events/ring-buffer.ts` | `runtime/events/session-ring-buffer.ts` | 撞泛型 `ring-buffer.ts`;缓冲钉成 `SessionBusMessage` |
+| `events/stream-channel.ts` | `runtime/events/session-stream-channel.ts` | 撞泛型 `stream-channel.ts`;流通道钉成 `StreamChunk` |
+| `events/types.ts` | `runtime/events/session-bus-types.ts` | 撞泛型 `types.ts`;总线回调类型钉成总线载荷 |
+| `runtime/permission/index.ts` | `runtime/permissions/permission.ts` | 目录桶留给 permissions 原有的那只;这只是 `Permission` 的出口(并副作用 import `grant-storage.js`) |
+| `runtime/gateway-runtime.ts` | `runtime/gateway/engine-conversation-runtime.ts` | `conversation-runtime.ts` 那份契约的产品侧实现:把 stream engine 包成网关的会话运行时 |
+
+其余文件原名搬进新目录(`events/` 的 `delta-stamp` / `event-only-emitter` / `memory` / `stream-coalescer` / `tool-progress-stream` /
+`ui-stream` 与 4 份测试,`event-bus/` 的 `event-bus` / `ipc-operations` / `ring-buffer` / `stream-channel` / `types` 与 3 份测试,
+`permission/` 的 7 只文件与 13 份测试);测试名一个都不撞。
+
+**同一件事的两半(没合)**:`runtime/events/` 里四对「泛型原语 + 钉成总线载荷的子类 / 别名」(`event-bus` / `session-event-bus`、
+`ring-buffer` / `session-ring-buffer`、`stream-channel` / `session-stream-channel`、`types` / `session-bus-types`)与两只桶
+(`index.ts` / `bus-primitives.ts`);`runtime/permissions/` 的两只桶(`index.ts` / `permission.ts`);`runtime/gateway/` 的
+`conversation-runtime.ts` / `engine-conversation-runtime.ts`(契约 + 实现)。
+
+**规则与门**(只改路径):检查器 `MAIN_CORE_SYSTEM_DIRS` 的 `packages/backend/events` → `runtime/events`(从此量整个 `runtime/events`,
+原 core 原语那几只一并在内,照样全绿),点名的四只 permission 文件改到 `runtime/permissions/`(`index.ts` 那一格改成 `permission.ts`,
+`permissions/` 原有的文件不进这把尺子);「不许在权限目录里再抄一份」与 `CORE_MERGED_RUNTIME_DIRS` 的两格、「runtime/events owns session
+command/event IPC projections」(断言名跟着改)、`permission-grants.ts` 位置断言都只改路径。`probe-go-to-implementation.mjs` 的期望路径、
+`docs/audit/assembly-baseline-2026-09-02.txt` 两行(`grant-storage` / `permission-grants`,计数没动)同步。
+
+**exports**:566 → 567。改名 18 格(包根 `./events/*.js` 9 格改成 `./runtime/events/*`、`./runtime/event-bus*` 4 格、`./runtime/permission*` 5 格),
+新增 `./runtime/events/memory`(`backend.ts` 从前相对 import 包根的 `./events/memory.js`,搬进 runtime 以后改走包说明符)。
+
+**runtime 根上还散着的单文件(本笔不动,只列)**:除了领域桶 `runtime/index.ts`(`@onething/backend/runtime`,94 处在用),其余五只都是
+stream engine 的东西,按内容属于 `runtime/engine/`:`runtime.ts`(`createOnethingRuntime`:引擎 + 会话运行时)、`product-stream-runtime.ts`、
+`stream-runtime.ts`、`stream-processor.ts`(后两只与 `engine/` 里已有的同名文件撞名,搬时要按内容改名)、`stream-sender.ts`(流引擎的命令目标形状)。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;
+根全量 vitest 改前 11413 / 19 红,改后 11413 / 20 红 —— 按路径映射后唯一的差别是 `build-workspace-watch.test.mjs` 改后红(偶发,单跑 4 绿);
+壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;transport / log / assembly / session / provider / gate:native 门输出前后逐字相同;boundary
+132 条全 ok,只差一条断言名(`runtime/event-bus` → `runtime/events`);`assembly:check` 只差两行路径;`session:check` 2726 / 4 相同;
+`sessions:shadow-battery` 前后各 130 行、前后都红在 `appendFailures 8 ≠ 0`,逐行只差 `refoldChecks` 215 → 217 与耗时;drill 绿。

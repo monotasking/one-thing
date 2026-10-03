@@ -34,7 +34,7 @@ vi.mock('../stream-engine-bound.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: vi.fn(() => ({})),
   getStreamChannel: vi.fn(() => ({
     subscribe: vi.fn(() => vi.fn()),
@@ -72,7 +72,7 @@ describe('main gateway conversation runtime sessions', () => {
   it('creates gateway conversations as persistent sessions without stealing the current session', async () => {
     const { getConversationRuntime, createStreamEngineLayer } = await import('../engine-layer.js')
     const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
-    const { getEventBus, getStreamChannel } = await import('@onething/backend/events/index.js')
+    const { getEventBus, getStreamChannel } = await import('@onething/backend/runtime/events')
 
     // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
     // 读的就是那个槽。这份测试把事件系统整个 mock 成空对象,所以两件依赖直接
@@ -104,7 +104,7 @@ describe('main gateway conversation runtime sessions', () => {
     })
     const { getConversationRuntime, createStreamEngineLayer } = await import('../engine-layer.js')
     const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
-    const { getEventBus, getStreamChannel } = await import('@onething/backend/events/index.js')
+    const { getEventBus, getStreamChannel } = await import('@onething/backend/runtime/events')
 
     // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
     // 读的就是那个槽。这份测试把事件系统整个 mock 成空对象,所以两件依赖直接
@@ -129,7 +129,7 @@ describe('main gateway conversation runtime sessions', () => {
     mocks.sessions.set(id, { id, name: 'Private', ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
     const { getConversationRuntime, createStreamEngineLayer } = await import('../engine-layer.js')
     const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
-    const { getEventBus, getStreamChannel } = await import('@onething/backend/events/index.js')
+    const { getEventBus, getStreamChannel } = await import('@onething/backend/runtime/events')
     const layer = createStreamEngineLayer({ eventBus: getEventBus(), streamChannel: getStreamChannel() })
     setCurrentBackend(createBackendHandle({ engine: layer.engine, runtime: layer.runtime }))
     try {

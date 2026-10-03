@@ -10,7 +10,7 @@ vi.mock('@onething/backend/runtime/interaction/no-human', () => ({
   NO_HUMAN_DECLINE_REASON: 'nobody',
   noHumanInTheRoom: () => false,
 }))
-vi.mock('@onething/backend/runtime/permission/message-anchor', () => ({
+vi.mock('@onething/backend/runtime/permissions/message-anchor', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred,
 }))
 

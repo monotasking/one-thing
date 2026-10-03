@@ -13,7 +13,7 @@ import type {
   ACPPermissionRequestContext,
 } from '@onething/backend/runtime/acp'
 
-vi.mock('@onething/backend/runtime/permission/message-anchor', () => ({
+vi.mock('@onething/backend/runtime/permissions/message-anchor', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred ?? '',
 }))
 

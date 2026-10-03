@@ -92,8 +92,8 @@ vi.mock('@onething/backend/session/access.js', async importOriginal => {
     }),
   }
 })
-vi.mock('@onething/backend/runtime/permission/permission-asks', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/runtime/permission/permission-asks')>()),
+vi.mock('@onething/backend/runtime/permissions/permission-asks', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/permissions/permission-asks')>()),
   addGrant: vi.fn(),
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: vi.fn() }))
@@ -107,7 +107,7 @@ vi.mock('../../../session/reads.js', () => ({
 }))
 
 /** 一台只会记账与转发的假总线 —— 引擎那一半由用例自己扮演。 */
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, command: Record<string, unknown>) => {
       mocks.sent.push({ sessionId, command })

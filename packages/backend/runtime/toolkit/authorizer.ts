@@ -17,7 +17,7 @@
  * 迟早在两种会话里长成两张不同的卡。
  */
 
-import { Permission, decidePermission as decideCorePermission } from '@onething/backend/runtime/permission/permission-asks'
+import { Permission, decidePermission as decideCorePermission } from '@onething/backend/runtime/permissions/permission-asks'
 import { formatPermissionRejectedMessage } from '@shared/permission/rejection-message'
 import { Decision, withUserToolSettings } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type {

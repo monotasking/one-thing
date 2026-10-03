@@ -26,7 +26,7 @@ import type {
   CollabCoordinatorState,
 } from '@shared/ipc.js'
 import type * as store from '@onething/backend/store.js'
-import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { maxChainFor, maxConcurrentTurnsFor } from './room-runtime.js'
 import {
   clearCollabSnapshotThrottle,

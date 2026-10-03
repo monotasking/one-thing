@@ -14,13 +14,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CollabAgentAccount, CollabRoomAccount } from '@onething/backend/runtime/collab/actors'
 import { Interaction } from '@onething/backend/runtime/interaction'
-import { Permission } from '@onething/backend/runtime/permission/permission-asks'
+import { Permission } from '@onething/backend/runtime/permissions/permission-asks'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })

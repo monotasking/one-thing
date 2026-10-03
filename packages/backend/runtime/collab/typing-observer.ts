@@ -23,7 +23,7 @@
  * (collab-send-channel-and-wake.md §4).
  */
 import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/backend/runtime/collab'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { broadcastCollabCoordinator, setCollabTypingState } from './inspector.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

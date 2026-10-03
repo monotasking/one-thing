@@ -16,7 +16,7 @@ import type { ResourceKernel, StateScope } from '@onething/backend/runtime/resou
 import { systemPrincipal } from '@shared/permission/principal'
 import * as store from '@onething/backend/store.js'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { getProjectsStore } from '../project-dirs/bootstrap.js'
 import { resolveSessionSpaceId } from '@onething/backend/stores/sessions.js'
 import { expandPath } from '../tools/access-control/sandbox.js'

@@ -149,7 +149,7 @@ function useNow(tickMs: number, live: boolean): number {
  * 而本地起的表会在每一次重折时归零。**没有第二个产地**:壳这边一格都不记。
  *
  * ── tokens 那一格为什么不在这行字里 ───────────────────────────────────────
- * 流分片(`session:stream` 的 chunk)**不带用量**(`packages/backend/runtime/event-bus` 的
+ * 流分片(`session:stream` 的 chunk)**不带用量**(`packages/backend/runtime/events` 的
  * chunk 词汇里没有 usage 这一格),而消息级 `usage` 在投影里是被
  * `outcome === 'completed'` 闸住的 —— 这一轮跑完才有。也就是说流式期间壳手上
  * **没有**一个诚实的 token 读数。用字符数或 delta 条数冒充是造事实,所以这行字

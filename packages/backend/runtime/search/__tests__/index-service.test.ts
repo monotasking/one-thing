@@ -33,7 +33,7 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '@onething/backend/events/event-bus.js'
+import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions/session-primitives'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
@@ -53,7 +53,7 @@ import { DEFAULT_SEMANTIC_MODEL_ID, type AppSettings } from '@shared/ipc/setting
 
 /** 总线:装配从 `getEventBus()` 拿,用例给一只真的 `EventBus`。 */
 let bus = new EventBus()
-vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => bus }))
+vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => bus }))
 
 /**
  * append 观察者:装配注册的那只回调抓在手里,用例自己喊。

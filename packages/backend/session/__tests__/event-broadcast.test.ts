@@ -13,14 +13,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { EventBus } from '@onething/backend/runtime/event-bus'
+import { EventBus } from '@onething/backend/runtime/events/bus-primitives'
 import { installSessionLayerForTest } from '../testing/session-layer.js'
 
 const { resetSessionEventLogCache } = await import('../event-log.js')
 const { writeSessionEvent } = await import('../event-writer.js')
 const { installSessionLedgerEventBroadcaster, uninstallSessionLedgerEventBroadcaster } =
   await import('../event-broadcast.js')
-const { getEventBus } = await import('../../events/index.js')
+const { getEventBus } = await import('@onething/backend/runtime/events')
 const { setCurrentBackend, getCurrentBackend, createBackendHandle } = await import('../../current.js')
 
 const SESSION = 'ledger-broadcast-1'

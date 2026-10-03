@@ -19,7 +19,7 @@ const permission = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@onething/backend/runtime/permission', () => permission)
+vi.mock('@onething/backend/runtime/permissions/permission', () => permission)
 vi.mock('../../session/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../session/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }

@@ -39,7 +39,7 @@ import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { describeHostDoing, projectHostLog } from '@onething/backend/runtime/music/host-log'
-import { addGrant } from '@onething/backend/runtime/permission/permission-asks'
+import { addGrant } from '@onething/backend/runtime/permissions/permission-asks'
 import { writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/runtime/agents/store-bound'
 import { markSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
@@ -53,7 +53,7 @@ import type { HostVoice } from './host-voice.js'
 import type { MusicMoments } from './moments.js'
 // 类型口 —— 编译期擦除,不给这只模块添一条到事件系统的**运行时**边(见 `wakeRadioDj`
 // 里那段动态 import 的理由)。
-import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 
 import { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
@@ -636,7 +636,7 @@ async function wakeRadioDj(): Promise<void> {
   // module graph that touches variables (which broke unrelated tests).
   const [{ getStreamEngineSafe }, { getEventBus }] = await Promise.all([
     import('@onething/backend/runtime/engine/engine-layer'),
-    import('@onething/backend/events/index.js'),
+    import('@onething/backend/runtime/events'),
   ])
   sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
 
@@ -702,7 +702,7 @@ async function tellRadioHost(text: string): Promise<{ reply: Promise<string | un
   return owner.track((async () => {
     const store = getRadioStore()
     const sessionId = ensureDjSessionReady(store)
-    const { getEventBus } = await import('@onething/backend/events/index.js')
+    const { getEventBus } = await import('@onething/backend/runtime/events')
 
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const lastBefore = sessionReads.lastMessageOfRole(sessionId, 'assistant')?.id

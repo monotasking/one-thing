@@ -2,7 +2,7 @@
  * 进程当前实例槽(方案 `docs/design/backend-composition-root-2026-09.md` 的 A2,§2.2)。
  *
  * **整个 `packages/backend` 里唯一允许的模块级 `let`。** A2 之前有三个:
- * `events/index.ts` 的 `eventBus`/`streamChannel`、`session/index.ts` 转给 core 的
+ * `runtime/events/index.ts` 的 `eventBus`/`streamChannel`、`session/index.ts` 转给 core 的
  * 那一份、`runtime/engine/engine-layer.ts` 的 `streamEngine`/`onethingRuntime`。三份各自
  * "已存在 → warn → return",于是"装配 → 关机 → 再装配"这条路谁也说不清是谁的
  * 尸体还在。现在只有这一份,由 `OnethingBackend.assemble` 立、由 `dispose()` 清。
@@ -20,13 +20,13 @@
  *
  * ## 句柄不是类
  *
- * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`events/index.ts`
- * 要读它,而 `backend.ts` 要 import `events/index.ts`。窄接口住在这个叶子文件里,
+ * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`runtime/events/index.ts`
+ * 要读它,而 `backend.ts` 要 import `runtime/events/index.ts`。窄接口住在这个叶子文件里,
  * 那条环就不存在。(下面对 `runtime/engine/engine-layer.js` 的 `import type` 是**纯类型**,
  * 编译期即被抹掉,不产生运行期边。)
  */
-import type { EventBus } from './events/event-bus.js'
-import type { StreamChannel } from './events/stream-channel.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
 import type { SessionManager } from '@onething/backend/runtime/sessions/session-primitives'
 import type { SessionLayer } from './session/index.js'
 import type { SessionEventLogStoreHandle } from './session/event-log.js'

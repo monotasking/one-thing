@@ -33,7 +33,7 @@ vi.mock('node:fs', () => ({
 
 vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-board-test' }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: { type?: string; board?: CollabBoard }) => {
       mocks.emitted.push({ sessionId, event })

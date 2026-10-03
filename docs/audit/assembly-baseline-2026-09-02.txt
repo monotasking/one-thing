@@ -95,7 +95,7 @@ packages/backend/runtime/external-agents/connector-registry.ts 1
 packages/backend/runtime/goals/runtime-hooks.ts 1
 packages/backend/runtime/logging/diagnostics.ts 1
 packages/backend/runtime/logging/configure-logging.ts 10
-packages/backend/runtime/permission/grant-storage.ts 1
+packages/backend/runtime/permissions/grant-storage.ts 1
 packages/backend/runtime/project-dirs/bootstrap.ts 1
 packages/backend/runtime/providers/builtin/github-copilot.ts 1
 packages/backend/runtime/providers/credential-strategy.ts 1
@@ -114,7 +114,7 @@ packages/backend/runtime/usage/usage-recorder.ts 1
 packages/backend/runtime/variables/variable-system.ts 2
 packages/backend/runtime/voice/service.ts 1
 packages/backend/runtime/logging/port.ts 2
-packages/backend/runtime/permission/permission-grants.ts 2
+packages/backend/runtime/permissions/permission-grants.ts 2
 packages/backend/runtime/storage/json-file.ts 1
 packages/backend/runtime/engine/error-details.ts 1
 packages/backend/runtime/sessions/lifecycle.ts 1

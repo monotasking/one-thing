@@ -1,4 +1,4 @@
-import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { ContextVariable } from '@onething/backend/runtime/variables'
 import type { getVariableRegistry } from '@onething/backend/runtime/variables/registry'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

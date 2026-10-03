@@ -51,9 +51,9 @@ const { resetSessionSurfaceCache } = await import('../../../../session/event-sur
 const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/session/runs.js')
 const { resetSessionEventStatsCache } = await import('@onething/backend/session/event-stats.js')
 const { createSessionEventRecorder } = await import('../session-event-recorder.js')
-const { getStreamChannel } = await import('@onething/backend/events/index.js')
+const { getStreamChannel } = await import('@onething/backend/runtime/events')
 const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
-const { pushSessionToolProgress } = await import('@onething/backend/events/tool-progress-stream.js')
+const { pushSessionToolProgress } = await import('@onething/backend/runtime/events/tool-progress-stream')
 
 const SESSION = 'progress-ledger'
 const CALL_ID = 'c1'

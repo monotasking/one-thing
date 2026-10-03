@@ -16,7 +16,7 @@ import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import type { OutgoingStreamChunk } from '../stream-coalescer.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { createEventSystem, getStreamChannel } from '../index.js'
-import { createBackendHandle, setCurrentBackend } from '../../current.js'
+import { createBackendHandle, setCurrentBackend } from '@onething/backend/current.js'
 import { isToolProgressStreamEnabled, pushSessionToolProgress } from '../tool-progress-stream.js'
 import { SessionStreamCoalescer } from '../stream-coalescer.js'
 

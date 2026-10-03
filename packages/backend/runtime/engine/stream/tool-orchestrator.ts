@@ -1,5 +1,5 @@
 import * as store from '@onething/backend/store.js'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import type { SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'

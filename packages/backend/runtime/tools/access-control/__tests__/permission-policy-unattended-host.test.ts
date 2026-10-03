@@ -12,7 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { systemPrincipal, localUserPrincipal } from '@shared/permission/principal'
-import { Permission } from '../../../permission/index.js'
+import { Permission } from '../../../permissions/permission.js'
 import { markHostUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { enforcePermissionPolicy } from '../permission-policy.js'
 import type { PermissionEffect } from '../permission-policy.js'

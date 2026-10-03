@@ -1,4 +1,4 @@
-import { EventBus, StreamChannel } from '@onething/backend/runtime/event-bus'
+import { EventBus, StreamChannel } from '@onething/backend/runtime/events/bus-primitives'
 import { describe, expect, it, vi } from 'vitest'
 import { createOnethingRuntime } from '../runtime.js'
 

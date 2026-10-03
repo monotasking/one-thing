@@ -35,7 +35,7 @@ import { buildProjectDirsPromptVars } from '@onething/backend/runtime/project-di
 import { executeToolDirectly } from './tool-execution.js'
 import { compactSessionContext } from '../compact-session.js'
 import * as contextCompact from '../compact-session.js'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { resolvePromptReferences } from '@onething/backend/runtime/prompts/stored-prompt-resolver'
 import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
 

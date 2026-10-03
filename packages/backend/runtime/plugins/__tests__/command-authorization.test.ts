@@ -8,7 +8,7 @@ vi.mock('@onething/backend/session/access.js', async importOriginal => {
     ? { ownerUserId: state.owner, ownerWorkspaceId: 'tenant' } : undefined }) }
 })
 vi.mock('@onething/backend/store.js', () => ({ getSession: state.read }))
-vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => ({ emit: state.emit, emitGlobal: vi.fn() }) }))
+vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => ({ emit: state.emit, emitGlobal: vi.fn() }) }))
 vi.mock('../host-ports.js', () => ({ execPluginCommandOnHost: vi.fn() }))
 vi.mock('../plugin-manager.js', () => ({ getPluginManager: () => ({ getCommandHandler: () => ({
   handler: async (_args: string, context: CorePluginCommandContext) => {

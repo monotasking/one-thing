@@ -47,10 +47,10 @@ const { createSessionEventRecorder, attachSessionEventRecorder } = await import(
   '../session-event-recorder.js'
 )
 const { createStreamBuffer, appendStreamBufferChunk, drainStreamBuffer, SessionStreamCoalescer } = await import(
-  '@onething/backend/events/stream-coalescer.js'
+  '@onething/backend/runtime/events/stream-coalescer'
 )
 const { offerDeltaStamp, claimDeltaStamp, clearDeltaStamps } = await import(
-  '@onething/backend/events/delta-stamp.js'
+  '@onething/backend/runtime/events/delta-stamp'
 )
 
 const SESSION = 'stamp'

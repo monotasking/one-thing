@@ -64,7 +64,7 @@ import { DEFAULT_SEMANTIC_MODEL_ID } from '@shared/ipc/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { getSettings } from '@onething/backend/stores/settings.js'
 import { registerSessionLogEventAppendObserver } from '../../session/event-log.js'
 import {

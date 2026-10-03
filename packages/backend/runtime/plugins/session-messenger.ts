@@ -32,7 +32,7 @@
  * 而反过来(可被规避的精确值)是不可接受的。
  */
 import type { MessageOrigin } from '@shared/ipc.js'
-import { Permission } from '@onething/backend/runtime/permission/permission-asks'
+import { Permission } from '@onething/backend/runtime/permissions/permission-asks'
 import {
   PLUGIN_TRIGGER_MAX_HOP,
   PLUGIN_TRIGGER_RATE_LIMIT,
@@ -49,7 +49,7 @@ import {
 
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '../../session/reads.js'
-import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { isCollabCoordinatorDrivenSession } from '@onething/backend/runtime/collab/ingress'
 import { pluginMessageSource } from '@onething/backend/runtime/engine/message-sources'

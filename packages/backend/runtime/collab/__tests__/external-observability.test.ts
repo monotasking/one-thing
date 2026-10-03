@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   broadcasts: [] as string[],
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })

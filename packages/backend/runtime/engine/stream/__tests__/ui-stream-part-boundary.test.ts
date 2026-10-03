@@ -36,7 +36,7 @@ const { beginSessionRun, endSessionRun, resetSessionRuns } = await import(
 )
 const { resetSessionEventStatsCache } = await import('@onething/backend/session/event-stats.js')
 const { createSessionEventRecorder } = await import('../session-event-recorder.js')
-const { SessionStreamCoalescer } = await import('@onething/backend/events/stream-coalescer.js')
+const { SessionStreamCoalescer } = await import('@onething/backend/runtime/events/stream-coalescer')
 
 const SESSION_ID = 'ui-stream-contract'
 const MESSAGE_ID = 'assistant-1'

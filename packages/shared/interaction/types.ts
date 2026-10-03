@@ -76,7 +76,7 @@ export interface InteractionRequest {
   createdAt: number
   /**
    * 提问发往哪条通道。respond 的 channel 必须与它相等,否则拒收
-   * (照搬 Permission 的通道亲和:`packages/backend/runtime/permission/permission-asks.ts:263-269`)。
+   * (照搬 Permission 的通道亲和:`packages/backend/runtime/permissions/permission-asks.ts:263-269`)。
    */
   targetChannel?: string
 }

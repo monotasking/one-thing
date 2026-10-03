@@ -13,7 +13,7 @@
  */
 
 import type { JsonObject } from '@shared/json.js'
-import type { Permission } from '../permission/permission-asks.js'
+import type { Permission } from '../permissions/permission-asks.js'
 import type { Effect } from '@shared/toolkit/effects.js'
 import { policyOf } from '@shared/toolkit/effects.js'
 

@@ -32,7 +32,7 @@ import {
 	recordGoalRunError,
 } from "@onething/backend/runtime/goals";
 import type { SessionGoal, SessionGoalLimits } from "@onething/backend/runtime/goals";
-import { getEventBus } from "@onething/backend/events/index.js";
+import { getEventBus } from "@onething/backend/runtime/events";
 import * as store from "@onething/backend/store.js";
 import { sessionReads } from "../../session/reads.js";
 import { getCurrentBackendInstance } from '@onething/backend/current.js';

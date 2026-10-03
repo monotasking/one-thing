@@ -67,9 +67,9 @@ import { configureAppRipgrep } from './utils/ripgrep.js'
 import { configureAppSearchProviders } from '@onething/backend/runtime/search/install-providers'
 import { configureAppSkillManage } from '@onething/backend/runtime/skills/manage-setup'
 import { configureAppSkillsLoader } from '@onething/backend/runtime/skills/skill-sources'
-import { configureAppPermissionGrants } from '@onething/backend/runtime/permission/grant-storage'
-import { createEventSystem } from './events/index.js'
-import { createReplayBufferMemoryHolder } from './events/memory.js'
+import { configureAppPermissionGrants } from '@onething/backend/runtime/permissions/grant-storage'
+import { createEventSystem } from '@onething/backend/runtime/events'
+import { createReplayBufferMemoryHolder } from '@onething/backend/runtime/events/memory'
 import { createSessionMemoryHolders } from './session/memory.js'
 import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/runtime/memory'
 import { createQuotaService, type QuotaService } from '@onething/backend/runtime/quota'
@@ -88,7 +88,7 @@ import type { BindableStreamSender, StreamEngine } from '@onething/backend/runti
 import { registerBuiltinTriggers } from '@onething/backend/runtime/engine/triggers'
 import { createSessionTocTrigger } from '@onething/backend/runtime/engine/triggers/session-toc'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from '@onething/backend/runtime/collab/rooms'
-import { Permission } from '@onething/backend/runtime/permission'
+import { Permission } from '@onething/backend/runtime/permissions/permission'
 import { Interaction } from '@onething/backend/runtime/interaction'
 import { bootstrapVariableSystem } from '@onething/backend/runtime/variables/variable-system'
 import { bootstrapGoalStreamBreakers } from '@onething/backend/runtime/goals/runtime-hooks'
@@ -145,8 +145,8 @@ import {
   type BackendHandle,
   type BackendHandleParts,
 } from './current.js'
-import type { EventBus } from './events/event-bus.js'
-import type { StreamChannel } from './events/stream-channel.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
 import type { SessionManager } from '@onething/backend/runtime/sessions/session-primitives'
 
 const log = getLogger('app.backend')

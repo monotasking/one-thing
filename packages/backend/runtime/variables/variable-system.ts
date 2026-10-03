@@ -18,7 +18,7 @@
  */
 
 import path from "node:path";
-import { getEventBus } from "@onething/backend/events/index.js";
+import { getEventBus } from "@onething/backend/runtime/events";
 import { getProjectsStore } from "../project-dirs/bootstrap.js";
 import { resolveSessionSpaceId } from "@onething/backend/stores/sessions.js";
 import * as appStore from "@onething/backend/store.js";

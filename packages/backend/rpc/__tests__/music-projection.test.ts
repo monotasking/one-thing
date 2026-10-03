@@ -318,7 +318,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
    */
   it('setProvider:模型要换后端会停在一张真权限卡上,本机那个人不会', async () => {
     const store = await import('../../store.js')
-    const { Permission } = await import('@onething/backend/runtime/permission')
+    const { Permission } = await import('@onething/backend/runtime/permissions/permission')
     const sessionId = store.createSession(`music-projection-${Date.now()}`, 'Music').id
 
     // 人这一侧:一张卡都不出,当场就完。

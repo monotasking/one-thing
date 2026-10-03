@@ -65,7 +65,7 @@ vi.mock('@onething/backend/store.js', () => ({
   },
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 

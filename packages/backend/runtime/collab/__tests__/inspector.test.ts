@@ -57,7 +57,7 @@ vi.mock('@onething/backend/store.js', () => ({
   updateSessionAgent: () => true,
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })
@@ -143,7 +143,7 @@ beforeEach(async () => {
   vi.useRealTimers()
   shutdownCollabInspector()
   const { getSession } = await import('@onething/backend/store.js')
-  const { getEventBus } = await import('@onething/backend/events/index.js')
+  const { getEventBus } = await import('@onething/backend/runtime/events')
   configureCollabInspector(createCollabInspector({
     getSession, emit: getEventBus().emit, isActive: () => true, onError: error => { throw error },
   }))

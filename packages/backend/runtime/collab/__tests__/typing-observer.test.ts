@@ -21,7 +21,7 @@ vi.mock('../inspector.js', () => ({
   broadcastCollabCoordinator: vi.fn(),
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })

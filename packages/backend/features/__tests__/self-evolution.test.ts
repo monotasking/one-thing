@@ -20,7 +20,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { decidePermission, isGrantableType } from '@onething/backend/runtime/permission/permission-asks'
+import { decidePermission, isGrantableType } from '@onething/backend/runtime/permissions/permission-asks'
 import type { JsonObject } from '@shared/json.js'
 import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'

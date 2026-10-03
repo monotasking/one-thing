@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EventBus } from '../../events/event-bus.js'
+import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { createSessionAccess } from '../access.js'
 import { canReceiveSessionRemoval, withSessionRemovalOwner } from '../removal-event.js'
 

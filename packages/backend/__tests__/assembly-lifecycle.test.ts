@@ -193,7 +193,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     expect(first.eventBus).toBeTruthy()
     expect(first.streamChannel).toBeTruthy()
 
-    const { getEventBus } = await import('../events/index.js')
+    const { getEventBus } = await import('@onething/backend/runtime/events')
     expect(getEventBus()).toBe(first.eventBus)
     firstEventBus = first.eventBus
   })
@@ -210,7 +210,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   it('③ dispose 之后 getEventBus() 抛,装配产物那五格也清了', { timeout: 180_000 }, async () => {
     await first.dispose()
     const [{ getEventBus, isEventSystemInitialized }, { getStreamEngineSafe }] = await Promise.all([
-      import('../events/index.js'),
+      import('@onething/backend/runtime/events'),
       import('@onething/backend/runtime/engine/engine-layer'),
     ])
     expect(() => getEventBus()).toThrow()

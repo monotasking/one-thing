@@ -6,7 +6,7 @@ vi.mock('uuid', () => ({
   v4: vi.fn(() => `test-uuid-${++uuidCounter}`),
 }))
 
-import { Permission } from '../index'
+import { Permission } from '../permission'
 
 describe('Permission', () => {
   beforeEach(async () => {

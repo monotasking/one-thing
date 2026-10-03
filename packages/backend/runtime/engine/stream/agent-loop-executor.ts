@@ -16,13 +16,13 @@ import {
 	type ToolCall,
 	type ToolResult,
 } from "@shared/ipc.js";
-import { getEventBus } from "@onething/backend/events/index.js";
-import { createEventOnlyEmitter } from "@onething/backend/events/event-only-emitter.js";
-import { clearDeltaStamps, offerDeltaStamp } from "@onething/backend/events/delta-stamp.js";
+import { getEventBus } from "@onething/backend/runtime/events";
+import { createEventOnlyEmitter } from "@onething/backend/runtime/events/event-only-emitter";
+import { clearDeltaStamps, offerDeltaStamp } from "@onething/backend/runtime/events/delta-stamp";
 import {
 	isUiEventStreamEnabled,
 	pushSessionUiStreamEvent,
-} from "@onething/backend/events/ui-stream.js";
+} from "@onething/backend/runtime/events/ui-stream";
 import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from "@shared/events/stream-chunks";
 import {
 	streamAgentLoopProviderChunks,

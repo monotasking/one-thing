@@ -1,6 +1,6 @@
 import type { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
-import type { Permission } from '@onething/backend/runtime/permission/permission-asks'
+import type { Permission } from '@onething/backend/runtime/permissions/permission-asks'
 import { ACPManager } from '@onething/backend/runtime/acp'
 import { describeAcpToolPermission } from '@onething/backend/runtime/external-agents'
 import type {

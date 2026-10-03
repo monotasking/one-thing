@@ -1,5 +1,5 @@
 import type { AgentEngineSessionEvent, AgentEngineStreamChunk } from '@onething/backend/runtime/agents/agent-engine'
-import type { EventBus } from '@onething/backend/runtime/event-bus'
+import type { EventBus } from '@onething/backend/runtime/events/bus-primitives'
 import type {
   RuntimeEventsAdapter, RuntimeRequestContext, RuntimeStreamsAdapter,
   RuntimeStreamPayload, RuntimeUnsubscribe,

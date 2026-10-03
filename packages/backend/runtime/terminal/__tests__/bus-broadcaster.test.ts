@@ -17,7 +17,7 @@
  * backend:这只文件问的是"广播器把事件放上了哪条总线",不是装配顺序。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '@onething/backend/events/event-bus.js'
+import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { createBackendHandle, setCurrentBackend } from '@onething/backend/current.js'
 import { createEventBusTerminalBroadcaster } from '../bus-broadcaster.js'
 

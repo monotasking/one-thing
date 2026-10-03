@@ -6,8 +6,8 @@
  * main singletons and store side effects.
  */
 
-import * as store from '../store.js'
-import { landSessionAccountUsage } from '../session/usage.js'
+import * as store from '@onething/backend/store.js'
+import { landSessionAccountUsage } from '@onething/backend/session/usage.js'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
 import type { StreamContext } from '@onething/backend/runtime/engine/stream/stream-processor'
@@ -17,8 +17,8 @@ import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@oneth
 import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/backend/runtime/engine/engine-primitives'
 import { getEventBus, getStreamChannel } from './index.js'
 import { claimDeltaStamp } from './delta-stamp.js'
-import { writeSessionEvent } from '../session/event-writer.js'
-import { currentSessionRunId } from '../session/runs.js'
+import { writeSessionEvent } from '../../session/event-writer.js'
+import { currentSessionRunId } from '@onething/backend/session/runs.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { JsonObject } from '@shared/json'
 import type { CreateCoreEventOnlyEmitterOptions } from '@onething/backend/runtime/engine/engine-primitives'
@@ -133,7 +133,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
     store: storePort,
     debugStream: shouldTraceStream,
     /*
-     * R1:裸 delta 到台面上认领账本身份章(`events/delta-stamp.ts`)。
+     * R1:裸 delta 到台面上认领账本身份章(`runtime/events/delta-stamp.ts`)。
      *
      * 只认领、不铸造 —— 章的唯一产地是记录器那一处(审查条 2)。认领不到就不盖,
      * 老消费者不读这一格,行为逐字不变。

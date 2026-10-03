@@ -41,21 +41,21 @@ const PROBES = [
 	// 所以那里永远只会返回逐个声明了 emit 的对象。S2 装的是**口这一级**的边,所以探针
 	// 停在口的类型引用与注入点上:
 	{
-		file: 'packages/backend/runtime/event-bus/ipc-operations.ts',
+		file: 'packages/backend/runtime/events/ipc-operations.ts',
 		needle: 'eventBus: CoreSessionCommandEmitterLike',
-		expect: ['packages/backend/events/event-bus.ts'],
+		expect: ['packages/backend/runtime/events/session-event-bus.ts'],
 		note: '病历条 CoreSessionCommandEmitterLike → EventBus(全仓唯一生产供体)',
 	},
 	{
-		file: 'packages/backend/runtime/event-bus/ipc-operations.ts',
+		file: 'packages/backend/runtime/events/ipc-operations.ts',
 		needle: 'options.eventBus',
 		expect: ['packages/backend/rpc/domains/session-command.ts'],
 		note: '病历条:消费点 → 装配层注入点',
 	},
 	{
-		file: 'packages/backend/runtime/event-bus/ipc-operations.ts',
+		file: 'packages/backend/runtime/events/ipc-operations.ts',
 		needle: 'eventBus: CoreSessionEventEmitterLike',
-		expect: ['packages/backend/events/event-bus.ts'],
+		expect: ['packages/backend/runtime/events/session-event-bus.ts'],
 		note: 'CoreSessionEventEmitterLike → EventBus',
 	},
 
@@ -97,8 +97,8 @@ const PROBES = [
  * 断言 gi 落到生产实现文件。清单是 S2 施工完成后按真实落点生成的,不是手抄的期望。
  */
 const DECL_PROBES = [
-	['packages/backend/runtime/event-bus/ipc-operations.ts', 'CoreSessionCommandEmitterLike', ['packages/backend/events/event-bus.ts', 'packages/backend/runtime/plugins/session-messenger.ts']],
-	['packages/backend/runtime/event-bus/ipc-operations.ts', 'CoreSessionEventEmitterLike', ['packages/backend/events/event-bus.ts', 'packages/backend/runtime/plugins/session-messenger.ts']],
+	['packages/backend/runtime/events/ipc-operations.ts', 'CoreSessionCommandEmitterLike', ['packages/backend/runtime/events/session-event-bus.ts', 'packages/backend/runtime/plugins/session-messenger.ts']],
+	['packages/backend/runtime/events/ipc-operations.ts', 'CoreSessionEventEmitterLike', ['packages/backend/runtime/events/session-event-bus.ts', 'packages/backend/runtime/plugins/session-messenger.ts']],
 	['packages/backend/runtime/engine/stream-runtime.ts', 'StreamEngineStoreAdapter', ['packages/backend/runtime/engine/stream-engine-runtime.ts']],
 	['packages/backend/runtime/engine/stream-runtime.ts', 'StreamEnginePermissionAdapter', ['packages/backend/runtime/product-stream-runtime.ts']],
 	['packages/backend/runtime/engine/stream-runtime.ts', 'StreamEngineProviderAdapter', ['packages/backend/runtime/providers/stream-provider-adapter.ts']],
@@ -118,10 +118,10 @@ const DECL_PROBES = [
 	['packages/backend/runtime/engine/stream-processor.ts', 'CoreToolIdentityResolver', ['packages/backend/runtime/engine/stream-processor.ts', 'packages/backend/runtime/engine/stream/stream-processor.ts']],
 	['packages/backend/runtime/engine/history.ts', 'CoreBuildHistoryMessagesOptions', ['packages/backend/runtime/engine/history.ts', 'packages/backend/runtime/sessions/history-messages.ts', 'packages/backend/runtime/sessions/projection/model-history.ts']],
 	['packages/backend/runtime/engine/message-content.ts', 'BuildMessageContentOptions', ['packages/backend/runtime/engine/message-content.ts', 'packages/backend/runtime/sessions/history-messages.ts']],
-	['packages/backend/runtime/engine/event-only-emitter.ts', 'CoreEventOnlyEventBusLike', ['packages/backend/events/event-only-emitter.ts']],
-	['packages/backend/runtime/engine/event-only-emitter.ts', 'CoreEventOnlyStoreHooks', ['packages/backend/events/event-only-emitter.ts']],
-	['packages/backend/runtime/gateway/conversation-runtime.ts', 'CoreStreamChannelLike', ['packages/backend/runtime/gateway-runtime.ts']],
-	['packages/backend/runtime/permission/permission-policy.ts', 'PermissionBridge', ['packages/backend/runtime/tools/access-control/permission-policy.ts']],
+	['packages/backend/runtime/engine/event-only-emitter.ts', 'CoreEventOnlyEventBusLike', ['packages/backend/runtime/events/event-only-emitter.ts']],
+	['packages/backend/runtime/engine/event-only-emitter.ts', 'CoreEventOnlyStoreHooks', ['packages/backend/runtime/events/event-only-emitter.ts']],
+	['packages/backend/runtime/gateway/conversation-runtime.ts', 'CoreStreamChannelLike', ['packages/backend/runtime/gateway/engine-conversation-runtime.ts']],
+	['packages/backend/runtime/permissions/permission-policy.ts', 'PermissionBridge', ['packages/backend/runtime/tools/access-control/permission-policy.ts']],
 	['packages/backend/runtime/plugins/api-builder.ts', 'CorePluginAPIHost', ['packages/backend/runtime/plugins/api.ts']],
 	['packages/backend/runtime/plugins/manager.ts', 'CorePluginManagerHost', ['packages/backend/runtime/plugins/plugin-manager.ts']],
 	['packages/backend/runtime/plugins/scheduler.ts', 'CorePluginSchedulerHost', ['packages/backend/runtime/scheduler/scheduler.ts']],

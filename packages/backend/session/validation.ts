@@ -14,8 +14,8 @@
  */
 
 import { sessionReads } from './reads.js'
-import type { EventBus } from '../events/event-bus.js'
-import type { Unsubscribe } from '../events/types.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
+import type { Unsubscribe } from '@onething/backend/runtime/events/session-bus-types'
 import {
   formatSessionValidationResult,
   type SessionManager,

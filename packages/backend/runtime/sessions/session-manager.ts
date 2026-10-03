@@ -9,9 +9,9 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { EventBus } from '@onething/backend/runtime/event-bus/event-bus'
-import type { StreamChannel } from '@onething/backend/runtime/event-bus/stream-channel'
-import type { Unsubscribe } from '@onething/backend/runtime/event-bus/types'
+import type { EventBus } from '@onething/backend/runtime/events/event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/events/stream-channel'
+import type { Unsubscribe } from '@onething/backend/runtime/events/types'
 import { Session } from './session.js'
 import { getCoreLogger } from '@onething/backend/runtime/logging/logger-primitives'
 

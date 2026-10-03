@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionAccess } from '../../session/access.js'
 import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
-import { getEventBus } from '../../events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 
 // 授权判据直取子路径(工单 4 C2),替身跟着搬到同一条路上。
 vi.mock('@onething/backend/runtime/evals/incident', async importOriginal => ({

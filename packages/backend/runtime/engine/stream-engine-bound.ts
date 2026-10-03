@@ -21,7 +21,7 @@ import {
 	type StreamEngineSteeringDeliveryPort,
 } from "@onething/backend/runtime/engine";
 import type { MessageOrigin } from "@shared/ipc.js";
-import type { EventBus } from "@onething/backend/events/event-bus.js";
+import type { EventBus } from "@onething/backend/runtime/events/session-event-bus";
 import { getChannelSessionRouter } from "@onething/backend/channel/index.js";
 import {
 	handleCollabRoomSendMessage,

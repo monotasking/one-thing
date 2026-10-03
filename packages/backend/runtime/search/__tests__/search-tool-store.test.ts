@@ -51,10 +51,10 @@ import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/w
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
 import { configureSearchVisibilityPort } from '@onething/backend/runtime/search/capabilities'
 import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
-import { EventBus } from '@onething/backend/events/event-bus.js'
+import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 
 const bus = new EventBus()
-vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => bus }))
+vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => bus }))
 vi.mock('../../../session/event-log.js', () => ({
   registerSessionLogEventAppendObserver: () => () => {},
 }))

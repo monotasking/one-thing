@@ -15,7 +15,7 @@
  * 被合并的那几次调用就查不到自己的判决。
  */
 
-import { Permission } from '@onething/backend/runtime/permission/permission-asks'
+import { Permission } from '@onething/backend/runtime/permissions/permission-asks'
 import { Interaction } from '@onething/backend/runtime/interaction'
 import { writeSessionEvent } from './event-writer.js'
 import { currentSessionRunId } from './runs.js'

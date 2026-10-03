@@ -4,7 +4,7 @@ import type { JsonObject } from '../json.js'
  * 一条常驻授权的形状。
  *
  * 它是 `permissionGrants` RPC 域(`@shared/ipc/permission-grants.ts`)的载荷;授权的
- * 存取、匹配与签发住在后端 `packages/backend/runtime/permission/permission-grants.ts`(那边要用
+ * 存取、匹配与签发住在后端 `packages/backend/runtime/permissions/permission-grants.ts`(那边要用
  * `node:crypto` / `node:path`),从这里取形状。
  */
 export type PermissionGrantScope = 'session' | 'workspace'

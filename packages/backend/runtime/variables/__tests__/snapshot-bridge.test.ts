@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { VariableRegistry } from '@onething/backend/runtime/variables/registry'
 import type { ContextVariable } from '@onething/backend/runtime/variables'
-import { EventBus } from '@onething/backend/events/event-bus.js'
+import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { createVariableSnapshotBridge } from '../snapshot-bridge.js'
 
 describe('variable snapshot bridge ownership', () => {

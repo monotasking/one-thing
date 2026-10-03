@@ -42,14 +42,14 @@ vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   findAgent: () => ({ systemPrompt: '' }),
   updateAgent: (...args: unknown[]) => fixture.updateAgent(...args),
 }))
-vi.mock('@onething/backend/runtime/permission/permission-asks', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/runtime/permission/permission-asks')>(),
+vi.mock('@onething/backend/runtime/permissions/permission-asks', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/permissions/permission-asks')>(),
   addGrant: (...args: unknown[]) => fixture.grant(...args),
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
 vi.mock('@onething/backend/runtime/variables/registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
 vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngineSafe: () => ({ getController: () => undefined }) }))
-vi.mock('@onething/backend/events/index.js', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
+vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
 vi.mock('../service.js', async () => {
   const { ncmMusicProvider } = await import('@onething/backend/runtime/music/index')
   return {

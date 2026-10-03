@@ -227,7 +227,7 @@ vi.mock('../../compact-session.js', () => ({
   getContextCompactReason: mocks.getContextCompactReason,
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 

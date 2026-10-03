@@ -42,7 +42,7 @@ describe('EffectClass 目录与默认策略表', () => {
   })
 
   /**
-   * 合表之后 `runtime/permission/permission-policy.ts` 不再有自己的逐 kind 口径 ——
+   * 合表之后 `runtime/permissions/permission-policy.ts` 不再有自己的逐 kind 口径 ——
    * 它读的就是这张表。所以这条用例的角色从「两处不矛盾」变成「这张表自己的取值
    * 不许被人顺手改掉」;两处一致由 `permission/__tests__/silent-effects.test.ts`
    * 那条遍历量。

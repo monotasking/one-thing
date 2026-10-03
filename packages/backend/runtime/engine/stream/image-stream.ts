@@ -9,7 +9,7 @@
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { saveMediaImage } from '@onething/backend/runtime/media/save-image'
-import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
+import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { generateImage } from './image-generation.js'
 import type { StreamSender } from './stream-processor.js'
 import {

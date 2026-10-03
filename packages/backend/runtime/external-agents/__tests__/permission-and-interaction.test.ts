@@ -4,7 +4,7 @@
  * 三条:
  *
  *  1. **G1 — callId 必须过桥**。core 只在 `callId` 存在时才把这次审批与那个
- *     toolCall 关联起来(`runtime/permission/permission-asks.ts:393-400`),renderer 匹配不到
+ *     toolCall 关联起来(`runtime/permissions/permission-asks.ts:393-400`),renderer 匹配不到
  *     toolCall 就把事件永久缓存、一个字都不画。E4 之前这里写死 `callId: undefined`
  *     —— 审批卡从未上屏,这就是 F3 那 2 分 11 秒的直接成因。
  *  2. **G2 — 必须走策略门**。直调 `Permission.ask` 绕开了 `enforcePermissionPolicy`,
@@ -20,7 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 import { Interaction } from '@onething/backend/runtime/interaction'
-import { Permission } from '@onething/backend/runtime/permission/permission-asks'
+import { Permission } from '@onething/backend/runtime/permissions/permission-asks'
 
 interface FakeMessage {
   id: string
@@ -86,7 +86,7 @@ vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
  * 真的问),往 `mocks.grants` 里放一条就能验「记住的到底是哪一档」—— 而那正是 P0-4
  * 的全部内容。
  */
-vi.mock('../../permission/grant-storage.js', () => ({
+vi.mock('../../permissions/grant-storage.js', () => ({
   matchGrant: (input: { type: string; pattern: string | string[] }) => {
     const patterns = Array.isArray(input.pattern) ? input.pattern : [input.pattern]
     const hit = mocks.grants.find(

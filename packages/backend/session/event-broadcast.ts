@@ -38,7 +38,7 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { getEventBus } from '../events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { registerSessionEventObserver } from './event-writer.js'
 
 const log = getLogger('session.ledger-broadcast')

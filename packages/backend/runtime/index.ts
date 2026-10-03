@@ -34,7 +34,7 @@ export {
 	createOnethingConversationRuntimeFromStreamEngine,
 	isOnethingConversationRuntime,
 	isOnethingTextStreamChunk,
-} from "./gateway-runtime.js";
+} from "./gateway/engine-conversation-runtime.js";
 export type {
 	OnethingConversationRuntimeFromStreamEngineOptions,
 	OnethingConversationRuntime,
@@ -42,7 +42,7 @@ export type {
 	OnethingSessionRuntime,
 	OnethingStreamChannelLike,
 	OnethingTextStreamChunk,
-} from "./gateway-runtime.js";
+} from "./gateway/engine-conversation-runtime.js";
 export * from "./headless/index.js";
 export * from "./agent-loop/providers/index.js";
 export * from "./agent-loop/index.js";

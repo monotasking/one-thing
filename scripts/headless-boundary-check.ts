@@ -551,7 +551,7 @@ const MAIN_CORE_SYSTEM_DIRS = [
   'packages/backend/runtime/agent-loop',
   // ③-收尾 C:装配层 engine 目录同理平铺进 `runtime/engine`,尺子从此量整个 `runtime/engine`(产品引擎那一半一并在内,照样全绿)。
   'packages/backend/runtime/engine',
-  'packages/backend/events',
+  'packages/backend/runtime/events',
   // P3'a-3:`app/storage/` 已整只归位 `runtime/storage/storage-manager-bound.ts`
   // (除 consolePort 外零脊柱边),目录不复存在。
   // ③-收尾 A(2026-10-02):装配层的 permission、tools 两个目录平铺进了 runtime。尺子只跟着**搬过去的那几只文件**走:
@@ -559,10 +559,12 @@ const MAIN_CORE_SYSTEM_DIRS = [
   // `runtime/tools/access-control`,不写 `runtime/tools` —— 后者还住着本职就做文件 IO 的纯模块(bash 执行器、文件快照),从没在这把尺子上。
   // 去 core 批 1(2026-10-03):core 的 permission 目录也并进了 `runtime/permission/`,而那一半本职就要 `node:path`
   // (授权按路径匹配)、从没在这把尺子上。所以这里从「整个目录」改成点名原来装配层那四只文件,尺子量的东西不变。
-  'packages/backend/runtime/permission/capabilities.ts',
-  'packages/backend/runtime/permission/grant-storage.ts',
-  'packages/backend/runtime/permission/index.ts',
-  'packages/backend/runtime/permission/message-anchor.ts',
+  // 收尾整理 2(2026-10-03):`runtime/permission/` 并进 `runtime/permissions/`,目录桶 `index.ts` 按内容改名 `permission.ts`;
+  // 照旧只点这四只,`permissions/` 原有的文件不进这把尺子。
+  'packages/backend/runtime/permissions/capabilities.ts',
+  'packages/backend/runtime/permissions/grant-storage.ts',
+  'packages/backend/runtime/permissions/permission.ts',
+  'packages/backend/runtime/permissions/message-anchor.ts',
   'packages/backend/runtime/tools/access-control',
 ]
 
@@ -3190,8 +3192,8 @@ function checkSharedOwnsToolPermissionErrorText(): void {
     ...(fs.existsSync(retiredFacade)
       ? [`${rel(retiredFacade)}: the retired re-export facade must not come back (import @shared/permission/rejection-message)`]
       : []),
-    // 不许在权限目录(`runtime/permission`,去 core 批 1 起 core 那一半也住在这里)里再抄一份。
-    ...walkFiles(path.join(root, 'packages/backend/runtime/permission'))
+    // 不许在权限目录(`runtime/permissions`,去 core 批 1 起 core 那一半也住在这里)里再抄一份。
+    ...walkFiles(path.join(root, 'packages/backend/runtime/permissions'))
       .flatMap(file => matchingLines(file, SHARED_TOOL_ERRORS_FORBIDDEN_PATTERNS)),
   ]
 
@@ -3230,8 +3232,8 @@ function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
 
 function checkCoreOwnsSessionCommandIpcOperation(): void {
   const runtimeFiles = [
-    path.join(root, 'packages/backend/runtime/event-bus/ipc-operations.ts'),
-    path.join(root, 'packages/backend/runtime/event-bus/index.ts'),
+    path.join(root, 'packages/backend/runtime/events/ipc-operations.ts'),
+    path.join(root, 'packages/backend/runtime/events/bus-primitives.ts'),
   ]
   // 结构债 P4c 第四批:命令总线的入口从 `@main/ipc/handlers.ts` 的 `ipcMain.handle`
   // 搬到 `session-command` RPC 域,所以「不许在别处重抄一遍 emit」这条守的是域文件。
@@ -3254,7 +3256,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
       .map(file => `${rel(file)}: missing session command IPC operation`),
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/backend/runtime/event-bus/ipc-operations.ts: missing ${symbol}`),
+      .map(symbol => `packages/backend/runtime/events/ipc-operations.ts: missing ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
       : ['packages/backend/rpc/domains/session-command.ts: missing session-command RPC domain']),
@@ -3264,7 +3266,7 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
       : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
   ]
 
-  assertNoMatches('packages/backend/runtime/event-bus owns session command/event IPC projections', lines)
+  assertNoMatches('packages/backend/runtime/events owns session command/event IPC projections', lines)
 }
 
 function checkSharedOwnsStreamChunkProtocol(): void {
@@ -3293,7 +3295,7 @@ function checkSharedOwnsStreamChunkProtocol(): void {
       .filter(symbol => !sharedTestContent.includes(symbol))
       .map(symbol => `${rel(sharedTestFile)}: missing stream chunk protocol test coverage for ${symbol}`),
     // 不许在 core 的事件目录里再抄一份。
-    ...walkFiles(path.join(root, 'packages/backend/runtime/event-bus'))
+    ...walkFiles(path.join(root, 'packages/backend/runtime/events'))
       .flatMap(file => matchingLines(file, SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS)),
   ]
 
@@ -3402,7 +3404,7 @@ function checkRuntimeOwnsOnethingStoragePaths(): void {
 }
 
 function checkRuntimeOwnsPermissionGrantFileStorage(): void {
-  const file = path.join(root, 'packages/backend/runtime/permission/permission-grants.ts')
+  const file = path.join(root, 'packages/backend/runtime/permissions/permission-grants.ts')
   const lines = fs.existsSync(file)
     ? matchingLines(file, CORE_PERMISSION_FILE_STORAGE_FORBIDDEN_PATTERNS)
     : []
@@ -5071,13 +5073,13 @@ function normalizeFeatureToken(value: string): string {
 const CORE_MERGED_RUNTIME_DIRS = [
   'packages/backend/runtime/agents',
   'packages/backend/runtime/context',
-  'packages/backend/runtime/event-bus',
+  'packages/backend/runtime/events',
   'packages/backend/runtime/http',
   'packages/backend/runtime/lifecycle',
   'packages/backend/runtime/interaction',
   'packages/backend/runtime/logging',
   'packages/backend/runtime/memory',
-  'packages/backend/runtime/permission',
+  'packages/backend/runtime/permissions',
   'packages/backend/runtime/providers',
   'packages/backend/runtime/resource',
   'packages/backend/runtime/storage',
@@ -5258,7 +5260,7 @@ const PLUGIN_HOST_IMPORT_PATTERNS: RegExp[] = [PLUGIN_HOST_MODULE_SPECIFIER]
 
 /**
  * 内置插件的那一半。2026-10(server / client 拆分 ①a)把会话词汇等零依赖的契约叶子从 core
- * 搬进了 shared —— 内置插件从前经 core 的事件桶(今天的 `@onething/backend/runtime/event-bus`)取 `SESSION_EVENT_TYPES`,现在只能经
+ * 搬进了 shared —— 内置插件从前经 core 的事件桶(今天的 `@onething/backend/runtime/events/bus-primitives`)取 `SESSION_EVENT_TYPES`,现在只能经
  * `@shared/events/…` 取。shared 的这些叶子与它们在 core 时是同一种东西(词汇、形状、纯函数),
  * 所以对内置插件放行 `@shared/*`;**`@shared/ipc` 仍禁** —— 那是传输层的契约,插件不该认识宿主
  * 怎么跟外界说话。用户插件不变:它们住在仓外,`@shared` 对它们本来就不存在。

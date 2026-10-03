@@ -43,10 +43,10 @@ import { parse as parseYaml } from "yaml";
 import {
 	EventBus,
 	StreamChannel,
-} from "@onething/backend/runtime/event-bus";
+} from "@onething/backend/runtime/events/bus-primitives";
 import {
 	Permission,
-} from "@onething/backend/runtime/permission/permission-asks";
+} from "@onething/backend/runtime/permissions/permission-asks";
 import {
 	createOnethingRuntimeFacade,
 	type OnethingRuntimeFacade,
@@ -3755,7 +3755,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * 第四份手抄的联合已经退役 —— 这里直接用契约那一份(它自己与核逐字相同,由
- * `backend/runtime/permission/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
+ * `backend/runtime/permissions/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
  */
 type PermissionDecision = PermissionResponse;
 

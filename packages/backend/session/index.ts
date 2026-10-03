@@ -4,9 +4,9 @@
  */
 
 import { setupValidation } from './validation.js'
-import type { Unsubscribe } from '../events/types.js'
-import type { EventBus } from '../events/event-bus.js'
-import type { StreamChannel } from '../events/stream-channel.js'
+import type { Unsubscribe } from '@onething/backend/runtime/events/session-bus-types'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
+import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
 import {
   Session,
   SessionManager,

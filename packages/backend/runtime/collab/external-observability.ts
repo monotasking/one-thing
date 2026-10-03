@@ -48,7 +48,7 @@ import {
   type CollabSchedulerLogSink,
 } from '@onething/backend/runtime/collab/actors'
 
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { broadcastCollabAgentActivity } from './agent-activity.js'
 import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context'
 

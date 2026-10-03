@@ -24,7 +24,7 @@ import {
   type CollabMentionLike,
 } from '@onething/backend/runtime/collab'
 import * as store from '@onething/backend/store.js'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionReads } from '../../session/reads.js'
 

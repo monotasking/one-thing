@@ -13,7 +13,7 @@ import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logg
 /**
  * 交互协议内核(docs/design/claude-code-integration-v2.md §4,E1 期)。
  *
- * 与 `packages/backend/runtime/permission/permission-asks.ts` **并列的一等概念**,不是它的一个 case。
+ * 与 `packages/backend/runtime/permissions/permission-asks.ts` **并列的一等概念**,不是它的一个 case。
  * 结构上刻意与 Permission 同构(ask / respond / clearSession / getPending / 通道亲和
  * / 会话清理逐条 settle),这样两条等待链在观测面、停止链、宿主接线上是同一套心智;
  * 语义上刻意不同(见下「与 Permission 的差异」),这样两个概念不会被合并回去。

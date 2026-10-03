@@ -20,7 +20,7 @@ import {
 } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '../../session/commands.js'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { collabSessionRoomMembers } from './members.js'
 import {
   COLLAB_MESSAGE_SOURCE,

@@ -13,7 +13,7 @@
  * `{ broadcaster: createEventBusTerminalBroadcaster() }`,server / CLI daemon 照旧
  * `null`(它们没有终端消费者,注入了反而会让 `hasTerminalHost()` 说谎)。
  *
- * 装配层也是唯一能干这件事的层:`EventBus` 住在 `packages/backend/events/`,
+ * 装配层也是唯一能干这件事的层:`EventBus` 住在 `packages/backend/runtime/events/`,
  * 而产品层不认识它(那正是端口存在的理由)。
  *
  * ## 为什么每次调用才取总线(惰性,不是构造时抓)
@@ -36,7 +36,7 @@
 
 import type { TerminalBroadcaster } from '@onething/backend/runtime/terminal/service'
 import type { TerminalDataEvent, TerminalExitEvent } from '@shared/ipc.js'
-import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
+import { getEventBus, isEventSystemInitialized } from '@onething/backend/runtime/events'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('terminal.broadcast')

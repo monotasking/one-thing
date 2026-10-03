@@ -526,7 +526,7 @@ async function defaultResolveSurface(request: { localSessionId: string; executio
 }
 
 function defaultNotify(notification: HostNotification): void {
-  void import('@onething/backend/events/index.js').then(({ getEventBus }) => {
+  void import('@onething/backend/runtime/events').then(({ getEventBus }) => {
     getEventBus().emitGlobal({ type: 'agent:notification', ...notification })
   }).catch(error => log.warn('agent notification not delivered', { sessionId: notification.sessionId }, error))
 }

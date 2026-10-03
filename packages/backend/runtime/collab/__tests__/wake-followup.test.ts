@@ -27,7 +27,7 @@ vi.mock('@onething/backend/session/access.js', async importOriginal => {
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
 })
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     onAny(sessionId: string, handler: BusHandler) {
       const set = mocks.handlers.get(sessionId) ?? new Set<BusHandler>()

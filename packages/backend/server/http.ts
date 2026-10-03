@@ -13,7 +13,7 @@ import type {
 } from '@onething/backend/server/runtime-facade.js'
 import type { JsonObject } from '@shared/json'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
-import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'
+import { SessionStreamCoalescer } from '@onething/backend/runtime/events/stream-coalescer'
 import { dispatchRpc } from '@onething/backend/rpc/registry.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './runtime.js'

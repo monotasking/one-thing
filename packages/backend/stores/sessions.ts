@@ -54,7 +54,7 @@ import {
 	guardFrozenSessionMessages,
 } from "../session/freeze.js";
 import { SESSION_EVENT_TYPES } from "@shared/events/session-event-types";
-import { getEventBus, isEventSystemInitialized } from "../events/index.js";
+import { getEventBus, isEventSystemInitialized } from "@onething/backend/runtime/events";
 import {
 	CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
 	collectSessionCascadeDeleteIds,

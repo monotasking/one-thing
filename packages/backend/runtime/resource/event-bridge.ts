@@ -30,7 +30,7 @@
  */
 
 import type { ResourceEvent, ResourceKernel } from '@onething/backend/runtime/resource/resource-api'
-import type { EventBus } from '@onething/backend/events/event-bus.js'
+import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 
 /**
  * 订阅这台内核上**全部**已登记命名空间的事件,每条转成一条 `resource:event` 放上

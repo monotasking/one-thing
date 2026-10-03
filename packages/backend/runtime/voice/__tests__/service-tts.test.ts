@@ -39,7 +39,7 @@ vi.mock('@onething/backend/stores/app-state.js', () => ({
   getCurrentSessionId: () => 'session-1',
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: vi.fn(),
     onAny: vi.fn((_sessionId: string, handler: any) => {

@@ -28,7 +28,7 @@ import {
   formatCollabAgentHandle,
   formatCollabWakePoke,
 } from '@onething/backend/runtime/collab'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'

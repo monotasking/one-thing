@@ -96,7 +96,7 @@ import {
   installCollabExternalObservers,
 } from '../external-observability.js'
 import { findAgent, listAgents } from '@onething/backend/runtime/agents/agent-store-access'
-import { getEventBus } from '@onething/backend/events/index.js'
+import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '../../../session/commands.js'

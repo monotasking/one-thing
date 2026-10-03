@@ -146,8 +146,8 @@ vi.mock('@onething/backend/runtime/toc/toc-recorder', () => toc)
 vi.mock('@onething/backend/runtime/variables/gateways', () => variables)
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => agents)
 vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngine: () => engine }))
-vi.mock('@onething/backend/runtime/permission', () => ({ Permission: permission }))
-vi.mock('../../events/index.js', () => ({
+vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({ destroySession: events.destroySession, emit: events.emit }),
   getStreamChannel: () => ({ destroySession: events.streamDestroySession }),
 }))

@@ -113,7 +113,7 @@ vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   displayAgent: (id: string) => AGENTS[id],
 }))
 
-vi.mock('@onething/backend/events/index.js', () => ({
+vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {
       mocks.emitted.push({ sessionId, event })
@@ -252,7 +252,7 @@ function fireBus(eventType: string, sessionId: string, event: Record<string, unk
 const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
 const { createCollabInspector, configureCollabInspector } = await import('../../inspector.js')
 const { getSession } = await import('@onething/backend/store.js')
-const { getEventBus } = await import('@onething/backend/events/index.js')
+const { getEventBus } = await import('@onething/backend/runtime/events')
 let digestStore: ReturnType<typeof createCollabDigestStore>
 let releaseDigestStore: () => void
 let inspector: ReturnType<typeof createCollabInspector>

@@ -9,7 +9,7 @@ import type { AcpClientRequestContext } from '@onething/backend/runtime/acp'
 import type { TerminalCreateRequest } from '@shared/ipc.js'
 import type { TerminalExitStatus } from '@onething/backend/runtime/terminal/service'
 
-vi.mock('@onething/backend/runtime/permission/message-anchor', () => ({
+vi.mock('@onething/backend/runtime/permissions/message-anchor', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred ?? '',
 }))
 

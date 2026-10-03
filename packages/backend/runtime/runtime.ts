@@ -11,7 +11,7 @@ import type {
 } from '@onething/backend/runtime/gateway/conversation-runtime'
 import {
   createOnethingConversationRuntimeFromStreamEngine,
-} from './gateway-runtime.js'
+} from './gateway/engine-conversation-runtime.js'
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,
