@@ -41,7 +41,7 @@ const contentWrites: Array<{ messageId: string; content: string }> = []
 vi.mock('@onething/backend/runtime/plugins/lifecycle-hooks', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
-vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
+vi.mock('../engine-chat-facade.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 // 块大小随模型窗口走(2026-08-21):窗口大 → 单块;想逼出多块就把窗口调小。
@@ -50,7 +50,7 @@ let modelContextLength = 200_000
 // 注册输出上限也做成活的:2026-09-08 的夹法只有在「上限接近窗口」时才看得见。
 let registeredMaxOutputTokens = 8_192
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../settings/settings-model-registry-service.js', () => ({
   getModelContextLength: async () => modelContextLength,
   getKnownModelMaxOutputTokens: async () => registeredMaxOutputTokens,
 }))

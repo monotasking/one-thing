@@ -419,3 +419,14 @@ export type {
   CoreSessionRepairResult,
   CoreTimelineMetadataRepair,
 } from './timeline.js'
+
+// ── providers 归位(D24,2026-10-04)从 `providers/` 搬来的两只:按「这条会话属于哪个空间」取那个空间的
+// 生效设置与默认模型。`getSpaceSettings` 与设置入口的同名函数是同一个(这里原样转交),留在这里是因为
+// 「会话 → 空间设置」那条换源缝的使用者从这一处取,测试也在这一处替换它。
+export {
+  getSessionSettings,
+  getSpaceSettings,
+} from './session-space-ai-settings.js'
+export {
+  resolveSessionSpaceDefaultSelection,
+} from './session-space-defaults.js'

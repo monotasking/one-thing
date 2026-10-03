@@ -460,7 +460,7 @@ async function refreshModelsOnFirstStartup(signal: AbortSignal): Promise<void> {
     config => Object.keys((config as { models?: object })?.models ?? {}).length > 0,
   )
   if (hasModels) return
-  const { refreshAllProviders } = await import('@onething/backend/runtime/providers/model-registry-service')
+  const { modelRegistry: { refreshAllProviders } } = await import('@onething/backend/runtime/settings')
   signal.throwIfAborted()
   await refreshAllProviders({ signal })
 }

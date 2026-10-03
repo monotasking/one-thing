@@ -1,4 +1,4 @@
-import { setOnethingProviderRequestDumpEnabled } from '@onething/backend/runtime/providers/index'
+import { setOnethingProviderRequestDumpEnabled } from './logging-provider-request-dump.js'
 import { getLogger, resolveLevelSpec, setLogLevelSpec } from './configure-logging.js'
 
 /**

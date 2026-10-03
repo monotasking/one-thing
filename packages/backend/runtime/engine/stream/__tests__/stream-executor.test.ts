@@ -51,7 +51,7 @@ vi.mock('@onething/backend/runtime/quota/engine-hooks', () => ({
   noteQuotaRunEnd: mocks.noteQuotaRunEnd,
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
   modelServesImageOutputInLoop: mocks.modelServesImageOutputInLoop,
   modelSupportsTools: mocks.modelSupportsTools,

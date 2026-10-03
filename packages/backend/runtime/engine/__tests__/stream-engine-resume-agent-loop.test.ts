@@ -82,7 +82,7 @@ vi.mock('../stream/provider-helpers.js', () => ({
   getProviderApiType: vi.fn(() => 'chat'),
 }))
 
-vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
+vi.mock('../engine-chat-facade.js', () => ({
   isProviderSupported: vi.fn(() => true),
   requiresOAuth: vi.fn(() => false),
   convertToolDefinitionsForProvider: vi.fn(() => ({})),
@@ -138,7 +138,7 @@ vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../settings/settings-model-registry-service.js', () => ({
   modelSupportsTools: mocks.modelSupportsTools,
 }))
 

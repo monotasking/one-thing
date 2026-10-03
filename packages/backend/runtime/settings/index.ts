@@ -27,3 +27,21 @@ export {
   createPolicyFetch,
   createRequiredAppFetch,
 } from './proxy-fetch.js'
+
+// ── providers 归位(D24,2026-10-04)从 `providers/` 搬来的模型目录服务三件:目录缓存与刷新
+// (`settings-model-registry-service.ts`,整只以命名空间 `modelRegistry` 交出,调用处一律写 `modelRegistry.x`)、
+// 手填模型、自定义服务商进 manifest 注册表。它们的数据都住在设置里。
+export * as modelRegistry from './settings-model-registry-service.js'
+export { configureModelCatalogCredentials, type ModelCatalogApiKeyResolver } from './settings-model-registry-service.js'
+export {
+  CustomProviderManifestSync,
+} from './settings-custom-manifests.js'
+export {
+  addManualModel,
+  foldedCatalogFor,
+  persistManualOrphans,
+  removeManualModel,
+} from './settings-manual-model-store.js'
+export {
+  getModelCapabilityEntry,
+} from './settings-model-registry-service.js'

@@ -100,7 +100,7 @@ vi.mock('@onething/backend/runtime/usage/bill-side-line', () => ({
   billCollabPlanUsage: () => () => {},
 }))
 
-vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
+vi.mock('../../../engine/engine-chat-facade.js', () => ({
   generateChatResponse: async () => '',
 }))
 

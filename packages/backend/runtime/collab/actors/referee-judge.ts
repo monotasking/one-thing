@@ -36,7 +36,7 @@ import { isActiveAgent } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/runtime/engine/stream/provider-helpers'
-import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
+import { generateChatResponse } from '@onething/backend/runtime/engine'
 import * as store from '@onething/backend/store.js'
 import { billCollabPlanUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import { collabUserPromptFields } from '../user-identity.js'

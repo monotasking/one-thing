@@ -10,7 +10,7 @@
 import { VENDOR_RUNTIMES } from "../providers/vendors/runtimes.js";
 import type { OnethingAuthProviderDefinition } from "./types.js";
 
-export { generatePKCE, normalizeGenericOAuthToken } from "./oauth-token.js";
+export { generatePKCE, normalizeGenericOAuthToken } from "@onething/backend/runtime/network";
 
 let authProviders: Map<string, OnethingAuthProviderDefinition> | undefined;
 

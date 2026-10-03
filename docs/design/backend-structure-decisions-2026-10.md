@@ -37,6 +37,15 @@
 | D27 | 10-04 | engine 自己就是 247 只的环(只收口 engine 时) | 单独一批(F2→F4):前 core/engine 内核归 agent-loop;引擎组合根出成包根 `assemble-engine`;触发器各归其主;读当前引擎改读 `current.ts` 槽;六个功能全收口降到 3/2 | engine 的病与 providers 同种:内核(L1)、hub(L3)、组合根(L4)挤在一个目录 | Fable |
 | D28 | 10-04 | 依赖规则用现成工具(dependency-cruiser)还是自己写 | 先用自己的脚本(复用 Fable 的模拟器口径:只看运行期值引用、类型引用擦掉、按入口判);dependency-cruiser 作备选 | 需要的判据(「SCC 里含功能入口」「层次标签表」)要定制;模拟器已在三批数据上与真代码对得上 | 我 |
 | D29 | 10-04 | events 属于 L0 还是 L1(层次文档与层次表不一致) | **L1** | `runtime/events` 里的总线已钉成会话事件 / 全局事件的产品载荷(`session-event-bus` 等),认识产品概念,不是纯基础件 | 我 |
+| D30 | 10-04 | `custom-probe-analyst.ts`(设置页「自动识别自定义服务商」那一步)这一笔放哪 | 暂放在它唯一的使用者旁边:`rpc/domains/providers-custom-probe-analyst.ts`(包根,L4,直连);D21 落地时并进 providers 的 client-api | Fable 的放法表写明终点是 providers 的 client-api、放 engine 过不了 R2;今天 client-api 还不存在,放包根与终点同层、零环 | 我 |
+| D31 | 10-04 | 新功能 `credentials/` 的入口叫什么(新建 `index.ts` 会让 `name:gate` 升) | 按 N3 叫 `credentials/credentials.ts`;三道门(`cycle` / `entry` / `feature-map`,共用 `scripts/lib/backend-structure.mjs` 的 `entryFeatureOf` / `entryFileOf`)认两种入口形状:`<功能>/index.ts`,或目录里没有 `index.ts` 时的 `<功能>/<功能>.ts`(`scheduler/scheduler.ts` 是内部文件,入口仍是 `scheduler/index.ts`) | N3 是目标形状,新功能直接按它建;过渡期两种并存,路线第 6 项机械改名后只剩一种 | 我 |
+| D32 | 10-04 | 断边 ③ 之后进程那台登录服务怎么拿令牌存放面 | `process-auth-service.ts`:`getAuthService()` 首次用到时建(D12);服务拿到的是一层**转交**存放面,每次读写令牌时才取装配经 `configureProcessAuthTokenStore` 交进来的那一台(第一次交的为准);没装配就读写令牌 = 抛「先装配」 | 只起 HTTP 面、不装配 backend 的宿主(九个 server 测试)也要能建服务、挂事件监听;转交让「建服务」与「交存放面」谁先谁后都行。与从前唯一的差别:没装配时读写令牌从「直接读写真凭证池」变成抛 —— 生产里所有令牌读写都在装配之后 | 我 |
+| D33 | 10-04 | 断边 ② ③ 的两处装配注入挂在哪 | `backend.ts` 的 `configureAppRuntimeAdapters()`(与十一个 `configureApp*` 同一类幂等闩),不 `own()` | 两样都是无状态的函数 / 薄壳,装配之间不需要还原;挂进 `own()` 表会改 `owned-labels-snapshot.test.ts` 钉死的那张表。它们排在装配的最前面,原有各步的先后一步没动 | 我 |
+| D34 | 10-04 | 模型目录服务搬进 settings 之后,九处 `import * as modelRegistry from '…/model-registry-service'` 怎么改走入口 | 设置入口交出同名命名空间 `export * as modelRegistry from './settings-model-registry-service.js'`,调用处 `modelRegistry.x` 一字不动 | 九处都叫 `modelRegistry`;逐个改成具名导入要动几十处调用,且与设置自己的同名函数(`getSpaceSettings` 等)易混 | 我 |
+| D35 | 10-04 | 搬家后哪些引用改走入口 | 外面对搬走文件的引用、搬走文件对原来同目录兄弟的引用,非测试的一律改走入口,入口缺的名字补成具名导出(providers 入口追加一段,下一笔收口时与 `export *` 一起整理);测试里 `vi.mock` / 动态 `import()` 留深层,测试的静态 import 只在入口已交出全部名字时改走入口。原入口里对搬走文件的再导出(spaces → 池与规则、auth → 令牌写回、usage → 计价、providers → 请求转储)一律删掉,使用者改从新家入口拿 | 再导出留着就是低层入口引高层功能(spaces → credentials 即 L1 → L2),而且会把环带回来;`entry:gate` 的非测试处数因此 0 新增 | 我 |
+| D36 | 10-04 | 从 providers / auth 搬进 logging / network 的两只模块让索引 Worker 变大了 504 字节 | 这两只模块的顶层只放字面量与函数:`gzip` 首次压缩时才 `promisify`,三个由算式写成的常量改成算好的字面量(注释里留原算式) | esbuild 只会整只摇掉顶层无副作用的模块,`8 * 60 * 60 * 1000` 这种算式与顶层函数调用都会留下;Worker 不许变大 | 我 |
+| D37 | 10-04 | `usage/summary.ts` 里按凭证分桶的那块搬多少 | 只搬纯函数 `computeOnethingCredentialUsage` 与它签名里的两个类型(→ `credentials/credentials-usage.ts`);读账本再分桶的 `getOnethingCredentialUsage`(全仓零调用)留在 usage,改从凭证入口拿那个函数 | 派工单写的是「只搬函数」;usage → credentials 同层、经入口、不成环 | 我 |
+| D38 | 10-04 | 删无人调用的 `providers/codex.ts` 包装后,测它的 `agent-loop/__tests__/codex-provider.test.ts` 怎么办 | 改测 `vendors/codex/agent-provider` 的构造门面(四个用例都自带 `fetchImpl`,刷新用例自带 `refreshOAuthToken`,包装多出的两样缺省在测试里不起作用);令牌字面量多一格 `refreshToken`,按门面入参类型断言一次 | 断言一字不动;生产里 `createCodexAgentProvider`(包装那一只)零调用者,`engine-process-providers.ts` 的再导出一起删 | 我 |
 
 ## 可读性判据(D20)
 
@@ -89,6 +98,7 @@
 
 1. **先立门**:N1 文件名重复(今天 132,只减)、入口无环(D19,零基线硬闸)、层次表与违例(D23,今天 139,只减)。
 2. **providers 归位**(D24 / D25):29 只文件按层次去处、断三条边、`permission-policy` 惰性化,然后 providers 收口到一个入口(只用具名导出,N3)。
+   **前半 10-04 已落地**(文件归位 + 建 `credentials/` + 断三条边 + 三处惰性化,决策 D30–D38;实施结果见 `feature-layers-and-provider-placement-2026-10.md` 第 9 节),剩 providers 收口。
 3. **engine 归位**(D27,F2→F4)。
 4. 其余按层次收口:collab 的叶子下沉、tools access-control、prompts→plugins 等违例逐条结;每个功能收口都过入口无环门。
 5. **包根归位**:`server/` 核心 + `rpc/` 分发表 → `http-server/`;`rpc/domains/<d>` → `<d>/<d>-client-api.ts`(D26 第二入口);`server/` 里各功能的面回各功能;`channel/` → gateway;`features/`、`utils/` 按内容归位;删兼容桶 `store.ts`(拆 59 处整块 mock)。

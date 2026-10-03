@@ -1640,3 +1640,41 @@ providers → agent-loop 剩下的几乎全是 `loop-primitives.ts`(43 处,38 �
 `sessions:shadow-battery`(真 server + 假 provider,过线协议)前后只差 `refoldChecks` 与耗时,都红在 `appendFailures 8`;`hydration-contract` 217 / 0;`gate:acp` 去掉 id 后同;
 `gate:search-index` 前后同红 ⑤c / ⑤d;boundary / transport / log / session / provider / gate:native / assembly(`radio.ts` 前后都红)前后同;
 `provider:drill` 直接跑红(它从 HEAD 开 worktree,却读工作区里已改路径的模板),本地重放版 `s11/drill-local.mjs` 全绿;CLI `--help` 不写 store;golden 不变;`entry:gate` 绿。
+
+### providers 归位落地记录:29 只文件按层次去处 + 断三条边 + 建 `credentials/`(2026-10-04,未提交)
+
+**一句话**:按 Fable 的放法表(`feature-layers-and-provider-placement-2026-10.md` 第 2 节,决策 D24 / D25)把 providers 里「用服务商干活」的文件按各自依赖的层次
+搬进 engine / sessions / settings / 新功能 credentials,`oauth-token` / `jwt` 进 network,请求转储进 logging,外部 agent 的 provider 与计价搬进 providers;
+断第 3 节三条边;三处加载期取值改成首次用到时建。providers 本笔不收口。去向表与读数在那份文档第 9 节,这一节只记施工。
+
+**怎么搬的**:两趟脚本(scratchpad `s17/move.mjs`、`s17/entry-pass.mjs`,都带 `--dry`;普通改名,不动索引)。第一趟只搬家:指向搬走文件的说明符改成相对路径,
+搬走文件里的相对路径按新位置重算,注释 / 字符串里的仓内路径提法与 `docs/audit/*baseline*.txt` 里的路径按表改,exports 删 20 个键、加 `./runtime/credentials`。
+第二趟改走入口(D35):外面对搬走文件的引用、搬走文件对原兄弟的引用,非测试的一律改成 `@onething/backend/runtime/<功能>`,入口缺的名字补成具名导出;
+九处 `import * as modelRegistry` 改成设置入口的同名命名空间(D34);测试里 `vi.mock` / 动态 `import()` 留深层。之后再把同一说明符被拆成的几条 import 合并
+(只合并本笔造成的,`s17/merge-dups.mjs`)。原入口里对搬走文件的再导出全部删掉(spaces 的池与规则、auth 的令牌写回、usage 的计价、providers 的请求转储)。
+
+**入口自引成环的五处**(入口加了新名字以后,功能里的文件 import 自己的入口就成了 2–3 步的环):`auth-oauth-manager` → auth 入口、`session-space-{ai-settings,defaults}` →
+sessions 入口、`settings-{custom-manifests,manual-model-store,model-registry-service}` → 设置入口、`providers/{ipc-env,provider-table,builtin/index}` → providers 入口、
+`process-auth-service` → auth 入口,全部改成引兄弟文件。`cycle:gate` 收在 0。
+
+**门的改动**:`scripts/lib/backend-structure.mjs` 的 `entryFeatureOf` 与新 `entryFileOf`、`feature-entry-gate.mjs` 的 `classify`(加两条自检)、`feature-map.mjs` 认 N3 形状的入口
+`<功能>/<功能>.ts`(只在目录里没有 `index.ts` 时,D31);`headless-boundary-check.ts` 的 `checkRuntimeOwnsAuthTokenStorage` 从「`process-auth-service.ts` 不许出现
+`tokenStore` 这个词」改成「不许出现单槽那几样东西」,并正面钉住 `backend.ts` 把凭证池那一台交给了登录服务。四份基线收紧(layer / entry / name / provider),功能地图重新生成,
+层次表 credentials 那一行的 why 去掉「尚未建目录」。
+
+**为了 Worker 一个字节都不多**(D36):两只搬进 logging / network 入口的模块顶层只留字面量与函数(`gzip` 首次压缩时才 `promisify`,三个算式常量写成算好的字面量)。
+改之前 `dist/server/search-worker.cjs` 多了 504 字节。
+
+**测试的改动(断言一字未改,只有一处例外)**:七处 `vi.mock('…/process-auth-service', () => ({ authService }))` 改成 `getAuthService: () => …`;
+`credentials-strategy.test` 从 mock 记账模块的 `getUsageLedger` 改成 mock 兜底档 `captureCredentialStrategyScope`(喂的是同一份账本记录);
+`configure-logging.test` 的 `doMock` 打到转储开关的新家;`codex-provider.test` 改测 `vendors/codex` 的门面(D38);`summary.test` 里按凭证分桶的四条拆去
+`credentials-usage.test`。**例外**:`auth/__tests__/service-factory.test.ts` 那条「不给 tokenStore 就装上真的凭证池那一台」测的正是断边 ③ 删掉的缺省,改成钉新契约
+「给什么就用什么」。
+
+**验收(改前 `s17-before` / 改后 `s17-after`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功,`dist/web` 零 `node:` 字面量;三份 `search-worker.cjs`
+前后逐字节同大(1276211 / 1276211 / 1274675);server `main.js` 5903068 → 5906493、CLI `main.cjs` 11495618 → 11501297、`desk/main.cjs` 11468234 → 11475562;
+根全量 vitest 改前改后都是 11418 条、21 红,按搬家表映射路径后失败集合逐条相同;壳 7344 / 1 相同;四份线协议快照 + vendor-facts + 出厂设置冻结 154 绿,快照文件
+160 只按内容哈希前后逐字同;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 22 绿;`sessions:shadow-battery` 前后只差会话 id 与耗时,都红在
+`appendFailures 8` / `compact-half-run-log`;`hydration-contract` 217 / 0(夹具与自带 store 两份);`gate:acp` 去掉 id 后同;`gate:search-index` 前后同红 ⑤c / ⑤d;
+boundary / transport / log / session / gate:native 绿,assembly 前后同红(`music/radio.ts` 9 → 10,与本笔无关);cycle 0、layer 97 / 53、entry 2806、name 131、provider 109、
+feature-map 一致;`provider:drill` 直接跑绿;CLI `--help` 不写 store;server 单文件包在临时 store 上起得来并 listening;golden 不变。

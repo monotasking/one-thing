@@ -68,7 +68,7 @@ export interface ProviderBehaviors {
 
 /**
  * 「档位 / 地区 → 地址」这一组(有档位的家才有;`docs/design/architecture-direction-2026-10.md`
- * §4 P1)。从前是 `provider-options.ts` / `zhipu.ts` / `spaces/provider-credentials.ts` 里各一串
+ * §4 P1)。从前是 `provider-options.ts` / `zhipu.ts` / `credentials/credentials-provider-rules.ts` 里各一串
  * 按 id 的分支,现在每家把自己的那一半写在自己的 `vendors/<id>/`,通用代码只问这几格。
  * 每一格缺席 = 通用行为(没有专属格子、地址就是配置里的 `baseUrl`)。
  */

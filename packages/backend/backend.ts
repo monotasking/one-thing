@@ -26,13 +26,22 @@ import { createStoreLease, ensureOnethingStoreDirs, getOnethingAcpRegistryCacheP
 import { MediaLibraryService } from '@onething/backend/runtime/media'
 import { configureMediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
 import { OnethingUsageLedger } from '@onething/backend/runtime/usage'
-import { configureUsageLedger, captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
+import { configureUsageLedger, captureUsageRecorder, getUsageLedger } from '@onething/backend/runtime/usage/usage-recorder'
 import { createCollabDigestStore, configureCollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
 import { createCollabDigestRunner, type CollabDigestRunner } from '@onething/backend/runtime/collab/digest-runner'
 import { createCollabInspector, configureCollabInspector } from '@onething/backend/runtime/collab/inspector'
 import { PluginLlmService } from '@onething/backend/runtime/plugins/llm-service'
-import { CredentialStrategyService } from '@onething/backend/runtime/providers/credential-strategy-lifetime'
-import { disposeCredentialStrategyState } from '@onething/backend/runtime/providers/credential-strategy'
+import {
+  CredentialStrategyService,
+  disposeCredentialStrategyState,
+  configureAppSpaceCredentialsCrypto,
+  createOnethingSpaceTokenStore,
+  resolveSpaceProviderCredentialForSpace,
+  migrateOAuthSlotToDefaultSpace,
+  migrateProviderConfigToDefaultSpace,
+  upgradeSpaceCredentialsEncryptionAtRest,
+  configureAppPluginCredentialStrategyHost,
+} from '@onething/backend/runtime/credentials'
 import { TodoPlanRuntime } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './lifecycle.js'
 import { PracticeService, configurePracticeService } from '@onething/backend/runtime/practice/service-slot'
@@ -47,21 +56,20 @@ import { getTracesDir } from '@onething/backend/runtime/evals/trace-store'
 import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from '@onething/backend/runtime/sessions'
 import { scheduleSessionListProjectionBackfillOnStartup } from '@onething/backend/runtime/sessions'
-import { createAppFetch, getSettings, initializeSettings, invalidateSettingsCache } from '@onething/backend/runtime/settings'
-import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
+import {
+  createAppFetch,
+  getSettings,
+  initializeSettings,
+  invalidateSettingsCache,
+  configureModelCatalogCredentials,
+  CustomProviderManifestSync,
+} from '@onething/backend/runtime/settings'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { initializeAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { configureAppToolSandbox } from '@onething/backend/runtime/tools/access-control/sandbox'
 import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/backend/runtime/tools/background-jobs-bound'
-import { configureAppProviderRegistry } from '@onething/backend/runtime/providers/chat-facade'
-import { configureAppSpaceCredentialsCrypto } from '@onething/backend/runtime/providers/space-credentials'
-import {
-  migrateOAuthSlotToDefaultSpace,
-  migrateProviderConfigToDefaultSpace,
-  upgradeSpaceCredentialsEncryptionAtRest,
-} from '@onething/backend/runtime/providers/space-config-migration'
-import { configureAppPluginCredentialStrategyHost } from '@onething/backend/runtime/providers/credential-strategy'
+import { configureAppProviderRegistry } from '@onething/backend/runtime/engine'
 import { configureAppScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import { configureAppRipgrep } from './utils/ripgrep.js'
 import { configureAppSearchProviders } from '@onething/backend/runtime/search'
@@ -83,7 +91,7 @@ import {
   uninstallSessionLedgerEventBroadcaster,
 } from '@onething/backend/runtime/sessions'
 import { createStreamEngineLayer, type MainOnethingRuntime } from '@onething/backend/runtime/engine/engine-layer'
-import type { PermissionMode } from '@shared/ipc.js'
+import type { OAuthToken, PermissionMode } from '@shared/ipc.js'
 import type { BindableStreamSender, StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { registerBuiltinTriggers } from '@onething/backend/runtime/engine/triggers'
 import { createSessionTocTrigger } from '@onething/backend/runtime/engine/triggers/session-toc'
@@ -94,7 +102,7 @@ import { bootstrapVariableSystem } from '@onething/backend/runtime/variables/var
 import { bootstrapGoalStreamBreakers } from '@onething/backend/runtime/goals/runtime-hooks'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from '@onething/backend/runtime/goals/goal-manager'
 import { bootstrapProjectDirs } from '@onething/backend/runtime/project-dirs/bootstrap'
-import { authService } from '@onething/backend/runtime/auth/process-auth-service'
+import { configureProcessAuthTokenStore, getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
 import { installOAuthBusBroadcaster } from '@onething/backend/runtime/auth/oauth-events'
 import { bootstrapNotes } from '@onething/backend/runtime/notes/notes-subsystem'
 import { bootstrapNoteVaultSkillRoots } from '@onething/backend/runtime/skills/note-vault-roots'
@@ -168,6 +176,15 @@ export function configureAppRuntimeAdapters(): void {
   configureAppSkillManage()
   configureAppSkillsLoader()
   configureAppPermissionGrants()
+  // 凭证功能交给别人的两样东西(D24 断边 ② ③,2026-10-04):从前设置的模型目录服务与 auth 各自直接
+  // import 凭证功能里的文件,凭证那一侧又要读设置、要 auth 刷新令牌,三个功能互相引用成环;现在只在这里接一次。
+  // ① 进程那台登录服务的令牌存放面 = 空间凭证池(第一次交的为准;它是每次现读当前 store 的无状态薄壳)。
+  configureProcessAuthTokenStore(createOnethingSpaceTokenStore<OAuthToken>())
+  // ② 拉自定义服务商的 `/models` 时带哪把密钥:这个空间这一家的凭证解析出来的那一把,与从前逐字同一个判法。
+  configureModelCatalogCredentials((spaceId, providerId) => {
+    const resolution = resolveSpaceProviderCredentialForSpace(spaceId, providerId)
+    return resolution.kind === 'entry' ? resolution.entry.apiKey : undefined
+  })
   // S2b step C:`sliceForHistory` 的模型历史构造。两条路都用真机那份历史构造
   // (消息侧 `buildHistoryMessages`、事件侧 `historyProjectionRecipe` →
   // `projectModelHistory`),但它们身后是整棵 provider 树,`reads.ts` 不能静态
@@ -632,7 +649,8 @@ export class OnethingBackend implements BackendHandle {
     const pluginModels = new PluginLlmService(this)
     this.pluginModelService = pluginModels
     this.adopt('pluginModels', pluginModels)
-    const credentialStrategies = new CredentialStrategyService()
+    // 插件凭证策略按「每把钥匙最近用了多少」挑钥匙:取账本的函数在这里递进去(D24 断边 ①),凭证功能不再 import 用量的记账模块。
+    const credentialStrategies = new CredentialStrategyService(getUsageLedger)
     this.credentialStrategyService = credentialStrategies
     this.adopt('credentialStrategies', credentialStrategies)
     this.own(() => disposeCredentialStrategyState(), 'credentialStrategyState', 'resources')
@@ -784,10 +802,10 @@ export class OnethingBackend implements BackendHandle {
      * 广播器登记在事件系统之后;流的收尾与它同一处 own —— 关机时先收流(不发事件)、
      * 再解监听,残留的计时器一只都不留。
      */
-    this.own(installOAuthBusBroadcaster(authService), 'oauthBusBroadcaster')
+    this.own(installOAuthBusBroadcaster(getAuthService()), 'oauthBusBroadcaster')
     this.own(() => {
-      const flows = authService.dispose()
-      log.info('oauth flows disposed', { flows, timers: authService.pendingTimerCount() })
+      const flows = getAuthService().dispose()
+      log.info('oauth flows disposed', { flows, timers: getAuthService().pendingTimerCount() })
     }, 'oauthFlows')
 
     /**

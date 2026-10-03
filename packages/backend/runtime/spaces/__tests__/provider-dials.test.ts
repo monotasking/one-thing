@@ -25,12 +25,12 @@ import {
   parseSpaceCredentialEntry,
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
-} from '../credentials.js'
+} from '../../credentials/credentials-pool.js'
 import { setRootDirForTests } from '../persistence.js'
 import {
   applySpaceProviderCredential,
   resolveSpaceProviderCredential,
-} from '../provider-credentials.js'
+} from '../../credentials/credentials-provider-rules.js'
 import type { CoreProviderConfigLike, ProviderConfigWithDials } from '../../providers/provider-config.js'
 import { withResolvedProviderBaseUrl } from '../../providers/provider-config.js'
 import {

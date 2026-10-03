@@ -46,7 +46,7 @@ packages/backend/runtime/practice/service-slot.ts 2
 packages/backend/runtime/project-dirs/persistence.ts 1
 packages/backend/runtime/providers/model-identity.ts 1
 packages/backend/runtime/providers/quota/registry.ts 1
-packages/backend/runtime/providers/request-dump.ts 3
+packages/backend/runtime/logging/logging-provider-request-dump.ts 3
 packages/backend/runtime/providers/vendors/github-copilot/models.ts 1
 packages/backend/runtime/scheduler/scheduler-bound.ts 1
 packages/backend/runtime/scheduler/scheduler.ts 2
@@ -59,7 +59,7 @@ packages/backend/runtime/search/service-bound.ts 1
 packages/backend/runtime/shell/host-ports.ts 2
 packages/backend/runtime/skills/loader.ts 1
 packages/backend/runtime/skills/manage.ts 1
-packages/backend/runtime/spaces/credentials.ts 2
+packages/backend/runtime/credentials/credentials-pool.ts 2
 packages/backend/runtime/spaces/persistence.ts 1
 packages/backend/runtime/spaces/store.ts 1
 packages/backend/runtime/terminal/service.ts 2
@@ -98,9 +98,9 @@ packages/backend/runtime/logging/configure-logging.ts 10
 packages/backend/runtime/permissions/grant-storage.ts 1
 packages/backend/runtime/project-dirs/bootstrap.ts 1
 packages/backend/runtime/providers/builtin/github-copilot.ts 1
-packages/backend/runtime/providers/credential-strategy.ts 1
-packages/backend/runtime/providers/chat-facade.ts 1
-packages/backend/runtime/providers/space-credentials.ts 1
+packages/backend/runtime/credentials/credentials-strategy.ts 1
+packages/backend/runtime/engine/engine-chat-facade.ts 1
+packages/backend/runtime/credentials/credentials-resolution.ts 1
 packages/backend/runtime/scheduler/user-task-service.ts 1
 packages/backend/runtime/settings/events.ts 1
 packages/backend/runtime/settings/host-ports.ts 1

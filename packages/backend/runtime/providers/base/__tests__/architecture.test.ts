@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 import { undeliverableAttachmentText } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { AgentModelCapabilities } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { AgentProviderRuntimeConfig } from "../../factory.js";
-import { computeOnethingUsageCostUSD } from "../../../usage/pricing.js";
+import { computeOnethingUsageCostUSD } from "../../provider-pricing.js";
 import {
 	LedgerModelProfileResolver,
 	PathUsageNormalizer,

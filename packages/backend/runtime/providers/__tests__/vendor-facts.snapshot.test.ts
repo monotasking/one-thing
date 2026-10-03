@@ -21,7 +21,7 @@ import {
 import { listDialects } from '../base/dialect.js'
 import { thinkingWires } from '../base/thinking-wire.js'
 import '../thinking/index.js'
-import { providerDialFieldsOf } from '../../spaces/provider-credentials.js'
+import { providerDialFieldsOf } from '../../credentials/credentials-provider-rules.js'
 import { providerInfoOfManifest } from '../builtin-providers.js'
 import { getOnethingProviderApiKeyEnvCandidates } from '../env.js'
 import { getProviderManifestRegistry } from '../manifest.js'

@@ -57,7 +57,7 @@ vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
   consolePort: () => oauthLog,
 }))
 
-vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({ authService }))
+vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({ getAuthService: () => authService }))
 vi.mock('@onething/backend/runtime/auth/oauth-events', () => events)
 let shellHostPresent = true
 

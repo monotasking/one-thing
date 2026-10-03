@@ -8,7 +8,7 @@ import {
   getOnethingProviderEnvStatus,
   resolveOnethingProviderApiKey,
   withResolvedOnethingProviderApiKey,
-} from './index.js'
+} from './env.js'
 
 type ApiKeyConfig = Pick<ProviderConfig, 'apiKey'>
 

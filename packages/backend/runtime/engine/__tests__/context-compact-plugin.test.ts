@@ -33,10 +33,10 @@ const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 vi.mock('@onething/backend/runtime/plugins/lifecycle-hooks', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
-vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
+vi.mock('../engine-chat-facade.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../settings/settings-model-registry-service.js', () => ({
   getModelContextLength: async () => 200_000,
   getKnownModelMaxOutputTokens: async () => 8_192,
 }))

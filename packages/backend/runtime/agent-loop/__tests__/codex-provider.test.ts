@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CODEX_BASE_URL } from '@onething/backend/runtime/providers/vendors/codex/agent-provider'
-import { createCodexAgentProvider } from '../../providers/codex.js'
+import { CODEX_BASE_URL, createCodexAgentProvider } from '@onething/backend/runtime/providers/vendors/codex/agent-provider'
 import type { AgentJsonObject, AgentStreamEvent, AgentTurnStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
 
 type FetchInit = NonNullable<Parameters<typeof globalThis.fetch>[1]>
@@ -110,6 +109,8 @@ describe('Codex agent provider', () => {
     const refreshCalls: boolean[] = []
     const provider = createCodexAgentProvider({
       baseUrl: CODEX_BASE_URL,
+      // 2026-10-04 起直接测 `vendors/codex` 的构造门面(包根那层只换类型的包装已删);
+      // 这份令牌带着 `refreshToken`,比门面自己的令牌类型多一格,所以按门面的入参类型断言一次。
       authContext: {
         kind: 'oauth',
         token: {
@@ -119,7 +120,7 @@ describe('Codex agent provider', () => {
           tokenType: 'Bearer',
         },
         account: {},
-      },
+      } as Parameters<typeof createCodexAgentProvider>[0]['authContext'],
       fetchImpl,
       refreshOAuthToken: async (forceRefresh) => {
         refreshCalls.push(forceRefresh)

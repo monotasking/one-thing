@@ -45,13 +45,13 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({
-  authService: {
+  getAuthService: () => ({
     getToken: vi.fn(),
     refreshTokenIfNeeded: mocks.refreshTokenIfNeeded,
-  },
+  }),
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../runtime/settings/settings-model-registry-service.js', () => ({
   forceRefresh: mocks.forceRefresh,
   refreshProviderModels: mocks.refreshProviderModels,
   getAllModels: vi.fn(),

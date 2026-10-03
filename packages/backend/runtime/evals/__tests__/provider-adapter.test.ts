@@ -11,7 +11,7 @@ vi.mock('@onething/backend/store.js', async () => {
   return { getSettings: settings.getSettings }
 })
 vi.mock('../../usage/usage-recorder.js', () => ({ captureUsageRecorder: () => vi.fn() }))
-vi.mock('../../auth/process-auth-service.js', () => ({ authService: {} }))
+vi.mock('../../auth/process-auth-service.js', () => ({ getAuthService: () => ({}) }))
 vi.mock('@onething/backend/runtime/spaces/store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'default', name: 'Default' }] }),
 }))
@@ -24,7 +24,7 @@ import {
   setSpaceProviderCredentialPool,
   spaceCredentialsFilePath,
   upsertSpaceProviderOAuthToken,
-} from '@onething/backend/runtime/spaces/credentials'
+} from '../../credentials/credentials-pool.js'
 import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   resetSpaceProviderSettingsCacheForTests,
@@ -38,7 +38,7 @@ import {
   savePersistedSettings,
   updateSettingsInMemory,
 } from '@onething/backend/runtime/settings'
-import { setSpaceProviderCredential } from '@onething/backend/runtime/providers/space-credentials'
+import { setSpaceProviderCredential } from '@onething/backend/runtime/credentials'
 import { initializeRegistry } from '@onething/backend/runtime/providers/provider-table'
 import { createEvalsModelCaller, resolveEvalsCredentials } from '../provider-adapter.js'
 

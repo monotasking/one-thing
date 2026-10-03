@@ -30,7 +30,7 @@
     { "feature": "events", "layer": "L1", "why": "事件总线与流通道的工厂,以及读当前实例的访问器。" },
     { "feature": "settings", "layer": "L2", "why": "用户设置的读写缓存、出厂默认值与保存校验。" },
     { "feature": "auth", "layer": "L2", "why": "登录流程:OAuth 授权、刷新 token 与登录状态。" },
-    { "feature": "credentials", "layer": "L2", "why": "凭证:这条会话用哪把钥匙、失败换哪把、插件凭证策略、订阅额度路由与老凭证迁移(D25 定,尚未建目录)。" },
+    { "feature": "credentials", "layer": "L2", "why": "凭证:每个空间的凭证池与解析规则、这条会话用哪把钥匙、失败换哪把、插件凭证策略、订阅额度路由、每把钥匙用了多少、OAuth 令牌写回与老凭证迁移(D25)。" },
     { "feature": "sessions", "layer": "L2", "why": "会话:账本 events.jsonl、投影、仓储、命令面与读面、按会话取空间设置。" },
     { "feature": "usage", "layer": "L2", "why": "token 用量的账本、汇总与记账。" },
     { "feature": "quota", "layer": "L2", "why": "各家订阅额度的查询服务。" },

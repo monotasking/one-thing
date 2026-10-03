@@ -179,7 +179,7 @@ vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   getModelContextLength: mocks.getModelContextLength,
   getKnownModelMaxOutputTokens: mocks.getKnownModelMaxOutputTokens,
   getModelCapabilityEntry: vi.fn(() => undefined),
@@ -205,7 +205,7 @@ vi.mock('@onething/backend/runtime/project-dirs/bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('@onething/backend/runtime/providers/agent-runtime', () => {
+vi.mock('../../engine-agent-runtime.js', () => {
   const createAgentProviderFromRuntime = vi.fn(
     (_providerId?: string, _config?: unknown) => mocks.visionProvider,
   )
@@ -240,7 +240,7 @@ vi.mock('@onething/backend/runtime/prompts/stored-prompt-resolver', () => ({
 }))
 
 const { buildAgentLoopRuntimeFromStreamContext } = await import('../agent-loop-runtime.js')
-const { createAgentProviderFromRuntime } = await import('@onething/backend/runtime/providers/agent-runtime')
+const { createAgentProviderFromRuntime } = await import('../../engine-agent-runtime.js')
 
 function ctx(): StreamContext {
   return {

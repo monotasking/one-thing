@@ -64,7 +64,7 @@ const mocks = vi.hoisted(() => ({
   ),
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   modelSupportsImageGeneration: vi.fn(async () => false),
   // 账本一侧是真的 —— 没有 provider 配置就让它只读内置规则表。
   modelServesImageOutputInLoop: (modelId: string, providerId?: string) =>

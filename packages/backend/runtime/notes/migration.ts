@@ -20,7 +20,7 @@
  *
  *  - 标记 `settings.notes.migratedAt`。有值 = 一次同步返回,不读盘不写盘。
  *  - 写之前把 `settings.json` 复制到 `<store>/backups/`(照
- *    `runtime/providers/space-config-migration.ts` 的 `backupsDir()` /
+ *    `runtime/credentials/credentials-default-space-migration.ts` 的 `backupsDir()` /
  *    `backupStamp()`)。
  *  - **失败不写标记**:下次启动重跑。把整次装配拖垮是更坏的结果,所以只记不抛。
  *  - 路径一律经宿主端口 `getOnethingStorePath()`,不走模块级根 —— 08-18 C1 事故

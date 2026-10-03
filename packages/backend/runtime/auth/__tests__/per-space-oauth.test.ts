@@ -20,7 +20,7 @@ import {
   DEFAULT_CREDENTIAL_TARGET,
   normalizeCredentialTarget,
 } from '../credential-target.js'
-import { oauthTokenIdentity, parseSpaceOAuthToken, pickDefaultOAuthEntryId } from '../space-token-store.js'
+import { oauthTokenIdentity, parseSpaceOAuthToken, pickDefaultOAuthEntryId } from '../../credentials/credentials-token-store.js'
 import type {
   OnethingAuthProviderDefinition,
   OnethingOAuthToken,

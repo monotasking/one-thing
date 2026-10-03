@@ -25,8 +25,8 @@ vi.mock('@onething/backend/runtime/engine/stream/provider-helpers', async import
     },
   }
 })
-vi.mock('@onething/backend/runtime/providers/chat-facade', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/providers/chat-facade')>()
+vi.mock('../runtime/engine/engine-chat-facade.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../runtime/engine/engine-chat-facade.js')>()
   return { ...actual,
     generateChatResponse: (...args: Parameters<typeof actual.generateChatResponse>) => {
       control.onUsage = args[3]?.onUsage

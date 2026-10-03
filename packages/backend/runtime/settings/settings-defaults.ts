@@ -32,23 +32,33 @@ function buildProviderSeedTable(): ProviderSeedTable {
 }
 
 /**
- * 模块常量:里面的对象是各家 manifest 的 `seed` 本身,**只读**。交出去之前 `@shared` 那两个
+ * 种子表:里面的对象是各家 manifest 的 `seed` 本身,**只读**。交出去之前 `@shared` 那两个
  * 函数会深拷一份;本模块自己交出去的(`providerSeedOf`)也拷。
+ *
+ * 2026-10-04 起它**第一次用到时才建**,不再在加载时建(`docs/design/provider-entry-2026-10.md` §7.7 第 5 条):
+ * 加载时读名册,要看名册模块是不是已经初始化完 —— 本模块一旦与 providers 落在同一个 import 环上,读到的是不是
+ * 已初始化的值要看谁先被 import。等价理由:表只由两张常量表(名册各行的 `seed`、`NON_VENDOR_PROVIDER_SEEDS`)
+ * 算出来,不读设置、不碰磁盘;早建晚建算出的是同一张表,建一次以后同一个对象一直用。
  */
-const PROVIDER_SEED_TABLE: ProviderSeedTable = buildProviderSeedTable()
+const providerSeedTable: { current?: ProviderSeedTable } = {}
+
+function seedTable(): ProviderSeedTable {
+  return (providerSeedTable.current ??= buildProviderSeedTable())
+}
 
 export function createDefaultSettings(): AppSettings {
-  return createDefaultSettingsWithSeeds(PROVIDER_SEED_TABLE)
+  return createDefaultSettingsWithSeeds(seedTable())
 }
 
 export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
-  return mergeWithDefaultsWithSeeds(settings, PROVIDER_SEED_TABLE)
+  return mergeWithDefaultsWithSeeds(settings, seedTable())
 }
 
 /** 这一家在出厂设置里的那一条(深拷);出厂设置里没有这一家 = `undefined`。 */
 export function providerSeedOf(providerId: string): ProviderConfig | undefined {
-  const seed = Object.prototype.hasOwnProperty.call(PROVIDER_SEED_TABLE.providers, providerId)
-    ? PROVIDER_SEED_TABLE.providers[providerId]
+  const table = seedTable()
+  const seed = Object.prototype.hasOwnProperty.call(table.providers, providerId)
+    ? table.providers[providerId]
     : undefined
   return seed ? (JSON.parse(JSON.stringify(seed)) as ProviderConfig) : undefined
 }

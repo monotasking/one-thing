@@ -19,7 +19,6 @@
 4 agent-provider.ts
 4 endpoint.ts
 4 manager.ts
-4 provider.ts
 4 subsystem.ts
 4 thinking.ts
 4 usage.ts
@@ -35,6 +34,7 @@
 3 models.ts
 3 prompt.ts
 3 prompts.ts
+3 provider.ts
 3 providers.ts
 3 runner.ts
 3 sandbox.ts
@@ -67,7 +67,6 @@
 2 connector-registry.ts
 2 context.ts
 2 contract.ts
-2 credential-strategy.ts
 2 driver.ts
 2 engine.ts
 2 event-only-emitter.ts

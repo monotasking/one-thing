@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 功能入口无环门(决策 D19,docs/design/backend-structure-decisions-2026-10.md)。零基线硬闸。
 //
-// 为什么:每个功能只经自己的入口 `runtime/<功能>/index.ts` 对外(D9)。入口一旦卷进加载期的环,
+// 为什么:每个功能只经自己的入口 `runtime/<功能>/index.ts`(或命名规范 N3 的 `runtime/<功能>/<功能>.ts`)对外(D9)。入口一旦卷进加载期的环,
 // 就会重演 10-04 providers 的崩溃 —— 一个入口 `export *` 全交出去,60 只模块成环,`class X extends Base`
 // 在加载期读到 undefined。继承没法改成惰性,所以唯一的办法是保证入口之间是有向无环图(DAG)。
 //

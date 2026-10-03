@@ -19,13 +19,25 @@ import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 const log = getLogger('permission')
 
 
-const permissionRuntime = createOnethingPermissionRuntime({
-  grantMatcher: PermissionGrants.matchGrant,
-  permissionBridge: Permission,
-})
+/**
+ * 权限运行时的持有器:**第一次判权限时才建**(2026-10-04,`docs/design/provider-entry-2026-10.md` §7.6)。
+ * 从前在加载时建,要把 `grant-storage` 的 `matchGrant` 与 `Permission` 命名空间读进选项对象;本模块一旦落在
+ * import 环上被先求值,两者读到的会是 `undefined`,而且不抛(`decide` 有 `?? matchGrant` 兜底,不带桥的 `enforce`
+ * 会静默拿到一个没有桥的运行时)。等价理由:`createOnethingPermissionRuntime` 只是 `new OnethingPermissionRuntime(options)`,
+ * 构造函数只把选项存进私有字段,不读设置、不碰磁盘、不起计时器;`matchGrant` 是函数声明的导出、`Permission` 是模块级
+ * 命名空间对象,两者都从不被重新赋值,所以首次调用时读到的与从前加载时读到的是同一个函数、同一个对象;建一次以后
+ * 同一只一直用。第一次用到在权限判定的调用里,那时装配早已完成,装配顺序不动。
+ */
+const permissionRuntimeHolder: { current?: ReturnType<typeof createOnethingPermissionRuntime> } = {}
+function permissionRuntime(): ReturnType<typeof createOnethingPermissionRuntime> {
+  return (permissionRuntimeHolder.current ??= createOnethingPermissionRuntime({
+    grantMatcher: PermissionGrants.matchGrant,
+    permissionBridge: Permission,
+  }))
+}
 
 export function decidePermission(input: PermissionPolicyInput) {
-  return permissionRuntime.decide(input)
+  return permissionRuntime().decide(input)
 }
 
 /**
@@ -221,19 +233,19 @@ const collabReminderBridge: PermissionBridge = {
 export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInput): Promise<Permission.Response[]> {
   const enriched = enrichPermissionInput(input)
   if (isUnattendedTurn(input.sessionId)) {
-    return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedBridge })
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: unattendedBridge })
   }
   if (isCollabTurn(input.sessionId)) {
-    return permissionRuntime.enforce({ ...enriched, permissionBridge: collabReminderBridge })
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: collabReminderBridge })
   }
   if (isSystemDrivenTurn(input.sessionId)) {
-    return permissionRuntime.enforce({ ...enriched, permissionBridge: timeoutAskBridge })
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: timeoutAskBridge })
   }
   // 最后一位:不是回合的事,是调用方的事(理由写在 `unattendedHostBridge` 头上)。
   if (isUnattendedHostSystemCall(input.principal)) {
-    return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedHostBridge })
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: unattendedHostBridge })
   }
-  return permissionRuntime.enforce(enriched)
+  return permissionRuntime().enforce(enriched)
 }
 
 /**
@@ -254,12 +266,12 @@ export async function enforcePermissionPolicyRejectingUnanswered(
 ): Promise<Permission.Response[]> {
   const enriched = enrichPermissionInput(input)
   if (isUnattendedTurn(input.sessionId)) {
-    return permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedBridge })
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: unattendedBridge })
   }
   if (isCollabTurn(input.sessionId)) {
-    return permissionRuntime.enforce({ ...enriched, permissionBridge: collabReminderBridge })
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: collabReminderBridge })
   }
-  return permissionRuntime.enforce({ ...enriched, permissionBridge: timeoutAskBridge })
+  return permissionRuntime().enforce({ ...enriched, permissionBridge: timeoutAskBridge })
 }
 
 function enrichPermissionInput(input: EnforcePermissionPolicyInput): EnforcePermissionPolicyInput {

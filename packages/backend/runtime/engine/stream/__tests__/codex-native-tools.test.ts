@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getModelById: vi.fn<(modelId: string, providerId?: string) => Promise<OpenRouterModel | undefined>>(async () => undefined),
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   getModelById: mocks.getModelById,
 }))
 

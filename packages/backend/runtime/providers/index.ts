@@ -28,7 +28,6 @@ export * from './provider-definition.js'
 export * from './provider-options.js'
 export * from './provider-presentation.js'
 export * from './quota/index.js'
-export * from './request-dump.js'
 // 包根归位 3 第 1 笔(2026-10-03)从包根 `provider-binding/` 并进来的:把请求转储落进日志目录的那层薄壳。
 // 受管 fetch 与代理规则搬去了 `runtime/network/`;「生效 AI 设置」的合成搬去了 `runtime/settings/`,都不再经这个入口交出。
 export { dumpProviderRequest } from './request-dump-writer.js'
@@ -43,3 +42,72 @@ export * from './endpoint.js'
 // 2026-10-01 删除(服务商自述试点 P2):全仓零调用方,只剩这个桶的再导出。
 // `./codex.js` / `./codex-native-tools.js` / `./github-copilot.js` 于 P2 第 4 批搬回
 // `vendors/{codex,github-copilot}/`;它们的符号不再经这个桶导出,用的人从那一家的模块直接 import。
+
+// ── providers 归位(D24,2026-10-04)之后,搬去别的功能的那些文件(engine 的对话门面与进程工厂、settings 的
+// 模型目录服务、credentials 的凭证一族、custom-probe 分析器)还要用的 providers 名字,逐个列出;从前它们与这些
+// 文件同住 providers、直接互引。`provider-pricing.ts`(从 usage 搬来:一个模型一个 token 多少钱)也在这里交出。
+// providers 收口(下一笔)时这一段会与上面的 `export *` 一起整理成具名导出。
+export {
+  CUSTOM_ADAPTER_BASE_DIALECT,
+  adapterReasoningPath,
+  parseAdapterSpecAnswer,
+  probeCustomEndpoint,
+  renderCustomAdapterProbePrompt,
+  verifyAdapterSpec,
+} from './custom-probe.js'
+export {
+  getAvailableProviders,
+  getProviderInfo,
+  initializeRegistry,
+  isProviderSupported,
+  requiresOAuth,
+  requiresSystemMerge,
+} from './provider-table.js'
+export {
+  withResolvedProviderBaseUrl,
+} from './provider-config.js'
+export {
+  getProviderEnvStatus,
+} from './ipc-env.js'
+export type {
+  ProviderRequestDumpMode,
+} from './request-dump-writer.js'
+export type {
+  ProviderConfig,
+  ProviderDefinition,
+  ProviderInfo,
+} from './ipc-types.js'
+export {
+  createAgentProviderFromRuntime,
+  createOpenAICompatibleAgentProvider,
+  getSupportedAgentProviderRuntimeIds,
+  isAgentProviderRuntimeSupported,
+  registerAgentProviderRuntime,
+} from './agent-providers.js'
+export type {
+  AgentProviderRuntimeConfig,
+  CreateAgentProviderFromRuntimeOptions,
+  OpenAICompatibleAgentProviderOptions,
+  ProviderMediaImage,
+  ProviderMediaReader,
+  RegisterAgentProviderRuntimeOptions,
+} from './agent-providers.js'
+export {
+  resolveUtilityModel,
+} from './utility-model.js'
+export {
+  dialectFromSpec,
+  unsupportedAdapterSpecFields,
+} from './dialects/custom-from-spec.js'
+export {
+  registerDialect,
+} from './base/dialect.js'
+export {
+  VENDOR_RUNTIMES,
+} from './vendors/runtimes.js'
+export type {
+  VendorFallbackModels,
+} from './vendors/runtimes.js'
+export {
+  buildOnethingUsageLedgerRecord,
+} from './provider-pricing.js'

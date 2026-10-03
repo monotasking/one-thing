@@ -9,7 +9,7 @@ import { createOnethingStreamProviderAdapter } from '../stream-provider-adapter.
 
 /**
  * 严格隔离的**执行**面(批 B3):判定盖在 config 上,阻断发生在鉴权里。
- * 判定归 spaces/provider-credentials.ts 管(那里另有测试),这里只验一件事 ——
+ * 判定归 credentials/credentials-provider-rules.ts 管(那里另有测试),这里只验一件事 ——
  * 盖了「未配置」标记的 config,任何一条路都拿不到钥匙。
  */
 

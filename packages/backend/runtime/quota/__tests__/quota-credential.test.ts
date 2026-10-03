@@ -12,16 +12,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const refreshed = vi.hoisted(() => [] as unknown[])
 
 vi.mock('../../auth/process-auth-service.js', () => ({
-  authService: {
+  getAuthService: () => ({
     refreshTokenIfNeeded: async (_providerId: string, target: { spaceId: string; entryId?: string }) => {
       refreshed.push(target)
-      const { getSpaceCredentialEntry } = await import('@onething/backend/runtime/spaces/credentials')
+      const { getSpaceCredentialEntry } = await import('../../credentials/credentials-pool.js')
       return getSpaceCredentialEntry(target.spaceId, 'codex', target.entryId)?.oauthToken
     },
-  },
+  }),
 }))
 
-vi.mock('@onething/backend/runtime/providers/space-credentials', async () => {
+vi.mock('../../credentials/credentials-resolution.js', async () => {
   const { credentialTargetFromSpaceMarker } = await import('@onething/backend/runtime/auth')
   return {
     credentialTargetFromMarker: credentialTargetFromSpaceMarker,
@@ -33,7 +33,7 @@ import {
   configureSpaceCredentialsCrypto,
   resetSpaceCredentialsCacheForTests,
   writeSpaceCredentials,
-} from '@onething/backend/runtime/spaces/credentials'
+} from '../../credentials/credentials-pool.js'
 import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import { resolveQuotaCredential } from '../index.js'
 

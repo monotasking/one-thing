@@ -19,7 +19,7 @@
  *  - `entryId` 缺席在**登录**里表示「追加一条新 entry」(同一身份再登一次 = 更新那一条,
  *    判据在 `space-token-store.ts` 的 `oauthTokenIdentity`);在**读 / 刷新 / 退出**里表示
  *    「这一池的第一个可用账号」(兼容口,服务在动手之前先把它落成具体的 entryId)。
- *  - 单槽文件只剩一次性归位(`backend/runtime/providers/space-config-migration.ts`
+ *  - 单槽文件只剩一次性归位(`backend/runtime/credentials/credentials-default-space-migration.ts`
  *    `migrateOAuthSlotToDefaultSpace`)读它;读路不再回落。
  *
  * ## 这个 key 还是刷新单飞锁的锁名(盲点 5)

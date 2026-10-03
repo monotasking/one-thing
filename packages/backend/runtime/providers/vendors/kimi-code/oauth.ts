@@ -4,7 +4,7 @@
  * 服务商自述试点 P2 第 4 批从 `auth/registry.ts` 的手列五份配置里搬回家,逐字。
  * 授权服务器的 host 解析(`resolveKimiOAuthHost`,跟随官方 CLI 的两个环境变量)一起搬来。
  */
-import { normalizeGenericOAuthToken } from "../../../auth/oauth-token.js";
+import { normalizeGenericOAuthToken } from "@onething/backend/runtime/network";
 import type { OnethingAuthProviderDefinition } from "../../../auth/types.js";
 
 /** Kimi Code 授权服务器。两个环境变量与官方 CLI 同名,自建/灰度环境靠它切。 */

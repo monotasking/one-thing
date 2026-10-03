@@ -24,3 +24,14 @@ export {
   type OnethingHttpPolicyName,
   type OnethingHttpRequestOptions,
 } from './managed-fetch.js'
+
+// ── providers 归位(D24,2026-10-04)从 `auth/` 搬来的两只协议小件:PKCE 一对与 token 应答归一、JWT 解码。
+// 它们不认识任何服务商、不存任何 token;auth 与各家服务商的 OAuth 定义都要,放在最底层两边都能引。
+export {
+  parseJwtExpiration,
+  parseJwtPayload,
+} from './network-jwt.js'
+export {
+  generatePKCE,
+  normalizeGenericOAuthToken,
+} from './network-oauth-token.js'

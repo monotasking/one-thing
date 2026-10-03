@@ -12,7 +12,7 @@ import {
 } from '@onething/backend/runtime/skills/session-skill-cache'
 import type { Trigger, TriggerContext } from './index.js'
 import { billSkillUsage } from '@onething/backend/runtime/usage/bill-side-line'
-import { createUtilityProvider } from '@onething/backend/runtime/providers/utility-provider'
+import { createUtilityProvider } from '../engine-utility-provider.js'
 // 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
 import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'

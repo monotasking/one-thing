@@ -29,8 +29,11 @@ import { pluginStorageImageExists } from './file-import.js'
 import { registerIMConnector } from '@onething/backend/channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '@onething/backend/runtime/deeplink/registry'
 import { registerPluginSearchProvider } from '@onething/backend/runtime/search'
-import { registerPluginCredentialStrategy } from '@onething/backend/runtime/providers/credential-strategy'
-import { captureCredentialStrategyScope, type CredentialStrategyScope } from '@onething/backend/runtime/providers/credential-strategy-lifetime'
+import {
+  registerPluginCredentialStrategy,
+  captureCredentialStrategyScope,
+  type CredentialStrategyScope,
+} from '@onething/backend/runtime/credentials'
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,

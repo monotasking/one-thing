@@ -54,9 +54,9 @@ import {
   importDefaultSpaceCredentials,
   setSpaceProviderCredential,
   setSpaceProviderCredentialPoolForRequest,
-} from '@onething/backend/runtime/providers/space-credentials'
+} from '@onething/backend/runtime/credentials'
 import { countSessionsInWorkspace } from '@onething/backend/runtime/sessions'
-import { persistManualOrphans } from '@onething/backend/runtime/providers/manual-model-store'
+import { persistManualOrphans } from '@onething/backend/runtime/settings'
 import { getCurrentBackendInstance } from '../../current.js'
 
 /** 已登记判定。每个带 id 的方法都过这一关 —— 见文件头。 */
@@ -122,7 +122,7 @@ export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
   },
   async setProviderSettings(request) {
     // 写前那一份先捕获:手填模型的老孤儿(勾了但目录没有)要按「写前 ∪ 写后」折 ——
-    // 取消勾选一个老孤儿,写后那一份里已经没有它了(批 2,见 runtime/providers/manual-model-store.ts)。
+    // 取消勾选一个老孤儿,写后那一份里已经没有它了(批 2,见 runtime/settings/settings-manual-model-store.ts)。
     const previous = hasSpace(request.id) ? readSpaceProviderSettings(request.id) : null
     const result = setOnethingSpaceProviderSettingsForIpc({
       request: { id: request.id, ai: request.ai as unknown as RuntimeSpaceProviderSettings },

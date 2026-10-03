@@ -2,7 +2,7 @@ import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/ba
 import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
-import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
+import { generateChatResponse } from './engine-chat-facade.js'
 import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
 import { isAgentExecutionCheckpointError } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/backend/runtime/plugins/lifecycle-hooks'
@@ -37,7 +37,7 @@ import {
 import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { collectCompactFileOperations } from '@onething/backend/runtime/engine/compact-file-lists'
-import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
+import { modelRegistry } from '@onething/backend/runtime/settings'
 import { getLogger } from '../logging/configure-logging.js'
 
 const log = getLogger('engine.compact')

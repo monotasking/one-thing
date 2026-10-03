@@ -19,7 +19,7 @@ import {
 } from '@onething/backend/runtime/sessions'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { ensureSessionWritable } from '@onething/backend/runtime/sessions'
-import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
+import { modelRegistry } from '@onething/backend/runtime/settings'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
   getCodexNativeToolsForConfig,

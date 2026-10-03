@@ -33,7 +33,7 @@ it('aborts the real eval HTTP request and holds the Backend lease until its file
     const { createOnethingBackend } = await import('../backend.js')
     const { getEvalsTaskOwner } = await import('@onething/backend/runtime/evals/task-owner')
     const { createEvalsModelCaller } = await import('@onething/backend/runtime/evals/provider-adapter')
-    const { setSpaceProviderCredential } = await import('@onething/backend/runtime/providers/space-credentials')
+    const { setSpaceProviderCredential } = await import('../runtime/credentials/credentials-resolution.js')
     const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
       storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,

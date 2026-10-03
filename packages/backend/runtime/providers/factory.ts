@@ -29,7 +29,7 @@ import type { ProviderMediaReader } from "./base/index.js";
 import { OpenAIChatPartCodec } from "./wires/index.js";
 import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/index.js";
 import type { AgentProviderRequestDumper } from "./request-dumper.js";
-import { createExternalAgentProvider } from "../external-agents/provider.js";
+import { createExternalAgentProvider } from "./provider-external-agent.js";
 import { VENDOR_RUNTIMES, type VendorRuntimeKit } from "./vendors/runtimes.js";
 import type {
 	ExternalAgentConnector,

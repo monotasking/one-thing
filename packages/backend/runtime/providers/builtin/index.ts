@@ -12,7 +12,7 @@
 import {
   acpBuiltinProvider,
   onethingPortableBuiltinProviders,
-} from '@onething/backend/runtime/providers'
+} from '../builtin-providers.js'
 
 import type { ProviderDefinition } from '@onething/backend/runtime/providers/ipc-types'
 

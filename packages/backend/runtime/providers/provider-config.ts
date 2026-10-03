@@ -19,7 +19,7 @@ export { extractErrorDetails, extractResponseBodyDetails }
 
 /**
  * per-space 凭证解析的**运行期标记**(批 B3),由
- * `spaces/provider-credentials.ts` 盖上,**永不落盘** —— 与 `providerOptions`
+ * `credentials/credentials-provider-rules.ts` 盖上,**永不落盘** —— 与 `providerOptions`
  * 同一手法。存在的理由:解析点(`getEffectiveProviderConfig`)有 sessionId,
  * 鉴权点(`resolveAuth`)没有,判定只能顺着 config 往下走。
  *

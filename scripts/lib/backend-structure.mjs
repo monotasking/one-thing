@@ -30,10 +30,24 @@ export const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 
 export const isTestPath = (relative) => /__tests__|\.test\.|__fixtures__|\/testing\//.test(relative)
 
-/** 功能入口:`runtime/<功能>/index.ts`。只认这一种形状;将来入口改名(N3)或去掉 runtime/(D11),改这里一处。 */
-export function entryFeatureOf(relative) {
-  const match = /^packages\/backend\/runtime\/([^/]+)\/index\.ts$/.exec(relative)
-  return match && match[1] !== '__tests__' ? match[1] : null
+/**
+ * 功能入口:过渡期的老形状 `runtime/<功能>/index.ts`,或命名规范 N3 的形状 `runtime/<功能>/<功能>.ts`
+ * (2026-10-04 凭证功能起用;路线第 6 项机械改名之后只剩后一种)。目录里有 `index.ts` 时入口就是它 ——
+ * 今天 `scheduler/scheduler.ts` 是 scheduler 的一只内部文件,入口仍是 `scheduler/index.ts`。将来去掉 runtime/(D11),改这里一处。
+ */
+export function entryFeatureOf(relative, root = repoRoot) {
+  const match = /^packages\/backend\/runtime\/([^/]+)\/([^/]+)\.ts$/.exec(relative)
+  if (!match || match[1] === '__tests__') return null
+  if (match[2] === 'index') return match[1]
+  if (match[2] !== match[1]) return null
+  return fs.existsSync(path.join(root, RUNTIME, match[1], 'index.ts')) ? null : match[1]
+}
+
+/** 某个功能的入口文件(仓库相对路径):有 `<功能>/index.ts` 就是它;没有、但有 `<功能>/<功能>.ts`,就是后者。 */
+export function entryFileOf(feature, root = repoRoot) {
+  const index = `${RUNTIME}/${feature}/index.ts`
+  const named = `${RUNTIME}/${feature}/${feature}.ts`
+  return !fs.existsSync(path.join(root, index)) && fs.existsSync(path.join(root, named)) ? named : index
 }
 export const isBarrel = (relative) => relative === `${RUNTIME}/index.ts`
 

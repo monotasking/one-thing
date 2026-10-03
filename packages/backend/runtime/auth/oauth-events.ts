@@ -18,7 +18,7 @@
  * (import 本身零副作用 —— 见 `packages/backend/__tests__/import-side-effect-free.test.ts`),
  * 从没注入过的进程(CLI 守护)因此连监听都不装。
  */
-import { authService } from './process-auth-service.js'
+import { getAuthService, type AuthService } from './process-auth-service.js'
 import type { OnethingAuthFlowEvent } from '@onething/backend/runtime/auth'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/runtime/events'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
@@ -45,10 +45,10 @@ function emit(event: OAuthTokenEvent): void {
 function installAuthServiceListeners(): void {
   if (listenersInstalled) return
   listenersInstalled = true
-  authService.on('token-refreshed', (data: { providerId: string }) => {
+  getAuthService().on('token-refreshed', (data: { providerId: string }) => {
     emit({ type: 'oauth:token-refreshed', providerId: data.providerId })
   })
-  authService.on('token-expired', (data: { providerId: string; error?: string }) => {
+  getAuthService().on('token-expired', (data: { providerId: string; error?: string }) => {
     emit({ type: 'oauth:token-expired', providerId: data.providerId, error: data.error })
   })
 }
@@ -72,7 +72,7 @@ export function getOAuthEventBroadcaster(): OAuthEventBroadcaster | null {
  * 一字未变。
  */
 export function notifyOAuthTokenExpired(providerId: string, error?: string): void {
-  authService.emit('token-expired', { providerId, error })
+  getAuthService().emit('token-expired', { providerId, error })
 }
 
 /**
@@ -89,7 +89,7 @@ export function notifyOAuthTokenExpired(providerId: string, error?: string): voi
  * 之间监听不会叠。
  */
 export function installOAuthBusBroadcaster(
-  source: Pick<typeof authService, 'on' | 'off'> = authService,
+  source: Pick<AuthService, 'on' | 'off'> = getAuthService(),
 ): () => void {
   const onFlow = (event: OnethingAuthFlowEvent): void => {
     if (!isEventSystemInitialized()) {

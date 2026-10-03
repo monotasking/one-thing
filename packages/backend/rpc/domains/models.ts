@@ -20,7 +20,7 @@ import type {
   ProviderConfig,
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
-import { createAgentProviderFromRuntime } from '@onething/backend/runtime/providers/process-factory'
+import { createAgentProviderFromRuntime } from '@onething/backend/runtime/engine'
 import type { OnethingProviderOptions } from '@onething/backend/runtime/providers/provider-options'
 import {
   catalogFactsOf,
@@ -51,18 +51,20 @@ import {
   modelParameterSuggestionOf,
   type ModelIdentityIndex,
 } from '@onething/backend/runtime/providers/model-identity'
-import { authService } from '@onething/backend/runtime/auth/process-auth-service'
+import { getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
 import {
   VENDOR_RUNTIMES,
   type VendorModelsFetcherDeps,
 } from '@onething/backend/runtime/providers/vendors/runtimes'
-import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
 import {
+  modelRegistry,
   addManualModel,
   foldedCatalogFor,
   removeManualModel,
-} from '@onething/backend/runtime/providers/manual-model-store'
-import { createPolicyFetch, getSettings, getSpaceSettings } from '@onething/backend/runtime/settings'
+  createPolicyFetch,
+  getSettings,
+  getSpaceSettings,
+} from '@onething/backend/runtime/settings'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/backend/runtime/providers/model-registry'
@@ -91,9 +93,9 @@ function endpointModelsFetchers(
       modelRegistry.saveProviderModels(providerId, models as OpenRouterModel[]),
     configuredSelection: (providerId) =>
       getSettings()?.ai?.providers?.[providerId] as OnethingConfiguredModelSelection | undefined,
-    getToken: (providerId) => authService.getToken(providerId),
+    getToken: (providerId) => getAuthService().getToken(providerId),
     refreshTokenIfNeeded: (providerId) =>
-      authService.refreshTokenIfNeeded(providerId) as ReturnType<VendorModelsFetcherDeps['refreshTokenIfNeeded']>,
+      getAuthService().refreshTokenIfNeeded(providerId) as ReturnType<VendorModelsFetcherDeps['refreshTokenIfNeeded']>,
     fetch: (policy) => createPolicyFetch(policy),
     logger: consoleLog,
   }

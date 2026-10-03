@@ -12,23 +12,25 @@ import {
 import { Permission } from "@onething/backend/runtime/permissions/permission";
 import { Interaction } from '@onething/backend/runtime/interaction';
 import * as store from "@onething/backend/store.js";
-import { sessionReads } from "@onething/backend/runtime/sessions";
-import { sessionCommands } from "@onething/backend/runtime/sessions";
+import {
+  sessionReads,
+  sessionCommands,
+  resolveSessionSpaceDefaultSelection,
+  getSessionSettings,
+} from "@onething/backend/runtime/sessions";
 import { getSkillsForSession } from "@onething/backend/runtime/skills/session-skill-cache";
 import { mediaLibraryService } from "@onething/backend/runtime/media/library-service-bound";
 import {
 	generateChatTitle,
 	isProviderSupported,
 	requiresOAuth,
-} from "@onething/backend/runtime/providers/chat-facade";
+} from "./engine-chat-facade.js";
 import { resolveProviderApiKey } from "@onething/backend/runtime/providers/ipc-env";
 import {
 	applySessionProviderGates,
 	resolveSessionSpaceOAuthAuth,
-} from "@onething/backend/runtime/providers/space-credentials";
-import { resolveSessionSpaceDefaultSelection } from "@onething/backend/runtime/providers/space-defaults";
-import { getSessionSettings } from "@onething/backend/runtime/providers/space-ai-settings";
-import * as modelRegistry from "@onething/backend/runtime/providers/model-registry-service";
+} from "@onething/backend/runtime/credentials";
+import { modelRegistry } from "@onething/backend/runtime/settings";
 import { resolvePromptReferences } from "@onething/backend/runtime/prompts/stored-prompt-resolver";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";

@@ -6,7 +6,7 @@
  * 投影函数产出现行 `AgentUsage`。外部契约与落盘账本因此零改动。
  */
 import type { AgentUsage } from "@onething/backend/runtime/agent-loop/loop-primitives";
-import { computeOnethingUsageCostUSD } from "../../usage/pricing.js";
+import { computeOnethingUsageCostUSD } from "../provider-pricing.js";
 import type { OnethingUsageUnitPrice } from "../../usage/types.js";
 
 function assertNonNegative(name: string, value: number | undefined): void {

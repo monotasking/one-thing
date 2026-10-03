@@ -111,7 +111,7 @@ export function copilotModelInfoToOnethingOpenRouterModel(
 }
 
 /**
- * 目录里没有这一型时的兜底行(搬家前是 backend `runtime/providers/model-registry-service.ts` 的
+ * 目录里没有这一型时的兜底行(搬家前是 backend `runtime/settings/settings-model-registry-service.ts` 的
  * `copilotFallbackModel`,逐字)。
  */
 export function copilotFallbackModel(modelId: string): OnethingOpenRouterModel {

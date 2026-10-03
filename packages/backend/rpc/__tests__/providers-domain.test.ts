@@ -19,7 +19,7 @@ vi.mock('../../current.js', () => ({
   getCurrentBackendInstance: () => mocks.backend.current,
 }))
 
-vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
+vi.mock('../../runtime/engine/engine-chat-facade.js', () => ({
   getAvailableProviders: mocks.getAvailableProviders,
 }))
 

@@ -9,9 +9,9 @@
  * (公共构件 `providers/dialects/responses-recipe.ts`)。
  *
  * 保留这个门面(而不是让调用方直接 `new OpenAIResponsesWire`)有两个理由:
- *  - backend 的 `runtime/providers/codex.ts`(OAuth 类型桥接)与一批测试读它
- *    (服务商自述试点 P2 第 4 批从 `providers/codex.ts` 搬回家,`providers`
- *    桶的再导出随之删除 —— 与 deepseek 的构造捷径同一先例);
+ *  - 一批测试读它(服务商自述试点 P2 第 4 批从 `providers/codex.ts` 搬回家,`providers`
+ *    桶的再导出随之删除 —— 与 deepseek 的构造捷径同一先例;backend 那层只做 OAuth 类型桥接、
+ *    全仓无人调用的包装 `runtime/providers/codex.ts` 于 2026-10-04 删除);
  *  - **构造即校验**:一个 access token 都拿不到时当场抛「没登录」,而不是拖到
  *    第一回合才炸 —— 这是今天的行为,原样保留。
  */

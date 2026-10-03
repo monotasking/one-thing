@@ -7,7 +7,7 @@ export {
 export {
   parseJwtExpiration,
   parseJwtPayload,
-} from './jwt.js'
+} from '@onething/backend/runtime/network'
 export {
   OnethingAuthService,
 } from './auth-service.js'
@@ -39,13 +39,6 @@ export type {
   OnethingCredentialTarget,
   OnethingSpaceCredentialTarget,
 } from './credential-target.js'
-export {
-  createOnethingSpaceTokenStore,
-  oauthTokenIdentity,
-  parseSpaceOAuthToken,
-  pickDefaultOAuthEntryId,
-} from './space-token-store.js'
-export type { OnethingOAuthPoolEntry, OnethingSpaceAuthTokenStore } from './space-token-store.js'
 export type {
   OnethingAuthRuntimeOptions,
 } from './service-factory.js'
@@ -76,3 +69,9 @@ export type {
   OnethingOAuthToken,
   OnethingProviderAuthContext,
 } from './types.js'
+
+// ── providers 归位(D24,2026-10-04)从 `providers/auth/` 搬来的旧兼容门面:新代码直接用进程那台登录服务
+// (`process-auth-service.ts` 的 `getAuthService`)。
+export {
+  oauthManager,
+} from './auth-oauth-manager.js'

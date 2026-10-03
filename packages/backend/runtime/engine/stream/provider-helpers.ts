@@ -5,17 +5,16 @@
 
 import * as store from '@onething/backend/store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
-import { requiresOAuth } from '@onething/backend/runtime/providers/chat-facade'
-import { oauthManager } from '@onething/backend/runtime/providers/auth/oauth-manager'
+import { requiresOAuth } from '../engine-chat-facade.js'
+import { oauthManager } from '@onething/backend/runtime/auth'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
 import { resolveProviderApiKey } from '@onething/backend/runtime/providers/ipc-env'
 import {
   applySessionProviderGates,
   credentialTargetFromMarker,
   resolveSessionSpaceOAuthAuth,
-} from '@onething/backend/runtime/providers/space-credentials'
-import { resolveSessionSpaceDefaultSelection } from '@onething/backend/runtime/providers/space-defaults'
-import { getSessionSettings } from '@onething/backend/runtime/providers/space-ai-settings'
+} from '@onething/backend/runtime/credentials'
+import { resolveSessionSpaceDefaultSelection, getSessionSettings } from '@onething/backend/runtime/sessions'
 import {
   extractOnethingProviderErrorDetails,
   getEffectiveOnethingProviderConfig,

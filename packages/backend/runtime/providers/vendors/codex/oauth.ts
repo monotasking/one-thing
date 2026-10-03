@@ -4,8 +4,7 @@
  * 服务商自述试点 P2 第 4 批从 `auth/registry.ts` 的手列五份配置里搬回家,逐字。
  * token 归一多读 id_token / access_token 里 `https://api.openai.com/auth` 那组声明(账号、套餐、FedRAMP)。
  */
-import { parseJwtExpiration, parseJwtPayload } from "../../../auth/jwt.js";
-import { normalizeGenericOAuthToken } from "../../../auth/oauth-token.js";
+import { parseJwtExpiration, parseJwtPayload, normalizeGenericOAuthToken } from "@onething/backend/runtime/network";
 import type {
 	OnethingAuthProviderDefinition,
 	OnethingOAuthToken,

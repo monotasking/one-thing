@@ -161,3 +161,13 @@ export type { Logger, LogRecord } from '@onething/backend/runtime/logging/logger
  */
 export { consolePort } from './console-port.js'
 export type { ConsoleLikePort } from './console-port.js'
+
+// ── providers 归位(D24,2026-10-04)从 `providers/` 搬来的服务商请求转储:落 `log/dumps/`、归日志管家管、
+// 开关由诊断模式拨,所以是日志设施。写盘前那层薄壳(`dumpProviderRequest`)仍在 providers,经它的入口交出。
+export {
+  dumpOnethingProviderRequest,
+} from './logging-provider-request-dump.js'
+export type {
+  OnethingProviderRequestDumpLogger,
+  OnethingProviderRequestDumpPayload,
+} from './logging-provider-request-dump.js'

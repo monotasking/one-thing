@@ -13,7 +13,7 @@ import {
   getAuthProviderDefinition,
   normalizeGenericOAuthToken,
 } from './registry.js'
-import type { OnethingSpaceAuthTokenStore } from './space-token-store.js'
+import type { OnethingSpaceAuthTokenStore } from '@onething/backend/runtime/credentials'
 import type {
   OnethingAuthAccount,
   OnethingOAuthAccountStatus,

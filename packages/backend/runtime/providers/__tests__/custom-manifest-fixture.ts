@@ -1,7 +1,7 @@
 /**
  * 测试用:把自定义服务商登记进 manifest 注册表(批 M)。
  *
- * 生产里这件事由装配层按设置做(`runtime/providers/custom-manifests.ts`);单测不装配,
+ * 生产里这件事由装配层按设置做(`runtime/settings/settings-custom-manifests.ts`);单测不装配,
  * 所以直接按 id 登记。只给 id = `apiType` 缺席 = OpenAI 兼容(与设置里旧数据的缺省同读法)。
  * 已登记的 id 跳过。返回的函数把本次登记的卸掉。
  */

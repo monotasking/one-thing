@@ -468,7 +468,7 @@ export function maxOutputOf(model: OpenRouterModel): number | null {
  * 自定义模型)一律硬写 `"0"`,由下面 `<= 0` 那一条挡掉。
  *
  * 所以判据**不是**按源分辨、更不是拿阈值猜:这一层只有一个产地,单位是它的合同。
- * 旁证:`backend/runtime/usage/pricing.ts:36-40` 算完账才 `/ 1_000_000`。
+ * 旁证:`backend/runtime/providers/provider-pricing.ts:36-40` 算完账才 `/ 1_000_000`。
  */
 export function priceOf(model: OpenRouterModel): { input: number; output: number } | null {
   const input = Number(model.pricing?.prompt)

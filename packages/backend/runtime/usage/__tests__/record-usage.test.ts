@@ -14,13 +14,13 @@ vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => storeDir,
 }))
 
-vi.mock('@onething/backend/runtime/providers/model-registry-service', () => ({
+vi.mock('../../settings/settings-model-registry-service.js', () => ({
   getModelCapabilityEntry: () => ({
     pricing: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   }),
 }))
 
-vi.mock('@onething/backend/runtime/providers/space-credentials', () => ({
+vi.mock('../../credentials/credentials-resolution.js', () => ({
   resolveSessionCredentialId: () => undefined,
 }))
 

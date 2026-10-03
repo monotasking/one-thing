@@ -4,7 +4,7 @@
  * 一个插件用 `api.registerCredentialStrategy({ name, title, select })` 决定
  * 「这个空间的这个 provider,下一次请求该用池里的哪一条凭证」。批 D 已经把三种
  * 内置策略(single / priority-failover / round-robin)落在
- * `spaces/credentials.ts` 的**唯一分叉点**上;本屋只是让那个分叉点多认一种取值:
+ * `credentials/credentials-pool.ts` 的**唯一分叉点**上;本屋只是让那个分叉点多认一种取值:
  * `plugin:<pluginId>:<name>`。
  *
  * 三条红线,全落在这一个文件里:

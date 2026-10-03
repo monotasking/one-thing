@@ -176,3 +176,43 @@ F4 里剩的 61 条按性质分三类:(a) 工具误差 1 条(`logging/diagnostic
 2. **入口再导出的口径**。`--route-orig` 让各入口保留今天的再导出行,只删指向搬走文件的几行。真收口时各入口会增加新的再导出(外面要什么就出什么),闭包只会更接近「全部走入口」的那一档;本文每个场景都跑了「六个 / 十个功能全走入口」那一档,所以结论不依赖这个口径差。
 
 另外:`agent-loop` 批前,providers → engine 剩 3 条叶子边(`error-details` ×2、`engine-primitives` ×1),providers → agents 2 条(`executor/registry` 的谓词、`executor/capabilities`)。前者随内核归 agent-loop 消失;后者要 manifest 自述「这是外部 agent 执行器」,是 agents 批的事。
+
+## 9. 实施结果(s17,2026-10-04,未提交)
+
+按第 2 节放法表与第 3 节断边做完;决策记录新增 D30–D38(`backend-structure-decisions-2026-10.md`),施工账在 `server-client-split-2026-10.md` §6「providers 归位」。
+
+**文件去向**(非测试 28 只搬家 + 1 只删除 + 新建 2 只;随行测试 27 只同步搬家改名,另从 `usage/__tests__/summary.test.ts` 拆出 `credentials-usage.test.ts`):
+
+| 旧 | 新 |
+| --- | --- |
+| `providers/chat-facade` · `utility-provider` · `process-factory` · `process-providers` · `agent-runtime` · `media-reader` · `openai-compatible-fetch` | `engine/engine-chat-facade` · `engine-utility-provider` · `engine-provider-factory` · `engine-process-providers` · `engine-agent-runtime` · `engine-media-reader` · `engine-openai-compatible-fetch` |
+| `providers/custom-probe-analyst` | `rpc/domains/providers-custom-probe-analyst`(D30:暂放在唯一使用者旁边,D21 后并进 providers 的 client-api) |
+| `providers/codex.ts` | 删(连同 `createCodexAgentProvider` 的再导出;生产零调用者,D38) |
+| `providers/space-defaults` · `space-ai-settings` | `sessions/session-space-defaults` · `session-space-ai-settings` |
+| `providers/space-credentials` · `credential-rotation` · `credential-strategy` · `credential-strategy-lifetime` · `space-config-migration` · `route`;`spaces/credentials` · `provider-credentials`;`auth/space-token-store` | `credentials/credentials-resolution` · `-rotation` · `-strategy` · `-strategy-lifetime` · `-default-space-migration` · `-candidate-route` · `-pool` · `-provider-rules` · `-token-store` |
+| `usage/summary.ts` 里的 `computeOnethingCredentialUsage`(只搬函数与两个类型) | `credentials/credentials-usage.ts`(新) |
+| (新)功能入口 | `credentials/credentials.ts`(N3 形状,D31;按类分组的具名导出,文件头是 R3 说明书) |
+| `providers/model-registry-service` · `manual-model-store` · `custom-manifests` | `settings/settings-model-registry-service`(设置入口交出命名空间 `modelRegistry`,D34)· `settings-manual-model-store` · `settings-custom-manifests` |
+| `providers/auth/oauth-manager` | `auth/auth-oauth-manager`(改引兄弟文件,第 4 节脚注那条 2 环没有出现) |
+| `external-agents/provider` · `usage/pricing` | `providers/provider-external-agent` · `provider-pricing` |
+| `auth/oauth-token` · `jwt` | `network/network-oauth-token` · `network-jwt` |
+| `providers/request-dump` | `logging/logging-provider-request-dump`(`logging/diagnostics.ts` 不再 import providers 桶) |
+
+**断边**(三条都改成装配时给,`backend.ts`):① `CredentialStrategyService` 构造参数收「取账本」函数(`new CredentialStrategyService(getUsageLedger)`);
+② 模型目录服务的「取这个空间这一家的密钥」改成 `configureModelCatalogCredentials(…)` 注入,判法与从前逐字同一句;③ 令牌存放面由装配建好经
+`configureProcessAuthTokenStore(createOnethingSpaceTokenStore())` 交给进程那台登录服务,`authService` 常量改成首次用到时才建的 `getAuthService()`(D32)。
+②③ 挂在 `configureAppRuntimeAdapters()` 里、不进 `own()` 表(D33)。惰性化三处:`permission-policy` 的权限运行时(7.6 的写法)、`settings-defaults` 的种子表、
+`process-auth-service` 的兜底 fetch。三处都只是「首次用到时建、建一次一直用」,装配顺序不动。
+
+**读数**(改前 → 改后):
+
+| 门 | 改前 | 改后 |
+| --- | --- | --- |
+| `cycle:gate` | 0(58 个入口);深层环 17 / 5 / 3 / 2 | 0(59 个入口,多了 credentials);深层环 17 / 3 / 2 —— 与第 4 节 P 的预测一致(HEAD 那个 5 只的环随断边 ① 消失,预测里的 auth 2 环因 oauth-manager 改引兄弟文件没有出现) |
+| `layer:gate` | 139 条 / 61 对 | **97 条 / 53 对**(模拟 98);消失:providers → auth 17、settings 12、sessions 4、usage 3、external-agents 2、media 2、plugins 2、acp 1,providers → engine 4 → 3,logging → providers 1;新增 3 条都是第 6 节 (c) 类「用了引擎杂活回合的 L2 功能」:plugins → engine 2 → 3、pets → engine 0 → 1、toc → engine 1 → 2 |
+| `entry:gate` | 2899 | 2806;非测试新增 0。降:providers 213 → 123、spaces 105 → 79、auth 54 → 44、usage 34 → 30、external-agents 21 → 20、sessions 304 → 303;升的全是测试(`vi.mock` 打在搬走的文件上、搬家的测试引原兄弟的内部文件):engine 174 → 186、settings 97 → 100、agent-loop 193 → 194、credentials 新行 23 |
+| `name:gate` | 132 | 131(`provider.ts` 4 → 3、`credential-strategy.ts` 2 → 0;`index.ts` 98 不变 —— 新入口叫 `credentials.ts`) |
+| `provider:gate` | 111 对 | 109 对(删掉的 `codex.ts` 与它的再导出各一对) |
+
+providers 这一笔之后对外的去向与第 2 节末一致:network、logging、storage、agent-loop 的叶子、engine 的三条叶子边(`error-details` ×2、`engine-primitives` ×1)与 agents 两条。
+providers 入口为搬走的文件补了一段具名导出(从前它们同住 providers、直接互引),下一笔收口时与上面的 `export *` 一起整理。

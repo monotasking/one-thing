@@ -17,17 +17,19 @@ import {
   applySpaceProviderCredential,
   toSpaceCredentialMarker,
   type SpaceProviderCredentialResolution,
-} from '@onething/backend/runtime/spaces/provider-credentials'
-import { getSpaceCredentialEntry, markSpaceCredentialCooldown } from '@onething/backend/runtime/spaces/credentials'
+  getSpaceCredentialEntry,
+  markSpaceCredentialCooldown,
+  parseSpaceOAuthToken,
+  credentialTargetFromMarker,
+  decideSpaceProviderCredential,
+} from '@onething/backend/runtime/credentials'
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
-import { parseSpaceOAuthToken } from '@onething/backend/runtime/auth'
 import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
 import { createRequiredAppFetch } from '@onething/backend/runtime/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/runtime/events'
-import { authService } from '../auth/process-auth-service.js'
+import { getAuthService } from '../auth/process-auth-service.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { credentialTargetFromMarker, decideSpaceProviderCredential } from '@onething/backend/runtime/providers/space-credentials'
 import { QuotaService, type QuotaCredentialResolution, type QuotaServiceDeps } from './service.js'
 
 export * from './service.js'
@@ -74,7 +76,7 @@ export async function resolveQuotaCredential(
   }
   if (resolution.kind === 'oauth-entry') {
     const target = credentialTargetFromMarker(toSpaceCredentialMarker(resolution))
-    const token = parseSpaceOAuthToken(await authService.refreshTokenIfNeeded(providerId, target))
+    const token = parseSpaceOAuthToken(await getAuthService().refreshTokenIfNeeded(providerId, target))
     if (!token?.accessToken) return { kind: 'unavailable', credentialId: resolution.entry.id, message: 'Not logged in' }
     return {
       kind: 'ready',

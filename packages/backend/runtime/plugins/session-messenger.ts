@@ -53,7 +53,7 @@ import type { EventBus } from '@onething/backend/runtime/events/session-event-bu
 import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
 import { isCollabCoordinatorDrivenSession } from '@onething/backend/runtime/collab/ingress'
 import { pluginMessageSource } from '@onething/backend/runtime/engine/message-sources'
-import * as modelRegistry from '@onething/backend/runtime/providers/model-registry-service'
+import { modelRegistry } from '@onething/backend/runtime/settings'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

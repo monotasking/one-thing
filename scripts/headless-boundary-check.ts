@@ -3477,7 +3477,13 @@ function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
  *  - runtime 的 `token-store.ts` 还在,但**只读**(一次性归位读旧文件用),没有 `saveToken` /
  *    `deleteToken` / `writeFile`;
  *  - `token-store.wiring.ts` **回来就是红**(单槽复活);
- *  - 装配层那台 authService 不再注入任何 `tokenStore`、不提 `oauth-tokens.json`。
+ *  - 装配层那台 authService 不再注入单槽的 `tokenStore`、不提 `oauth-tokens.json`。
+ *
+ * 2026-10-04(D24 断边 ③)起 auth 不再缺省装上凭证池那一台:令牌存放面由 `backend.ts` 建好,经
+ * `configureProcessAuthTokenStore(createOnethingSpaceTokenStore(...))` 交给进程那台登录服务。所以这里不再禁
+ * `process-auth-service.ts` 提 `tokenStore` 这个词(它现在合法地持有一层转交),改禁的是单槽的那几样东西
+ * (`oauth-tokens.json`、`token-store.wiring`、单槽类 `OnethingTokenStore` / `./token-store.js`),并且正面钉住
+ * 装配交进来的是凭证池那一台。
  */
 function checkRuntimeOwnsAuthTokenStorage(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/auth/token-store.ts')
@@ -3485,6 +3491,8 @@ function checkRuntimeOwnsAuthTokenStorage(): void {
   const mainAuthServiceFile = path.join(root, 'packages/backend/runtime/auth/process-auth-service.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainAuthServiceFile) ? fs.readFileSync(mainAuthServiceFile, 'utf-8') : ''
+  const backendFile = path.join(root, 'packages/backend/backend.ts')
+  const backendContent = fs.existsSync(backendFile) ? fs.readFileSync(backendFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent
       ? [`${rel(runtimeFile)}: missing runtime-owned legacy OAuth token reader`]
@@ -3495,8 +3503,11 @@ function checkRuntimeOwnsAuthTokenStorage(): void {
     ...(fs.existsSync(retiredWiringFile)
       ? [`${rel(retiredWiringFile)}: the single-slot token store facade was retired in batch 8; tokens live in the space credential pool`]
       : []),
-    ...(/\btokenStore\b|oauth-tokens\.json|token-store\.wiring/.test(mainContent)
+    ...(/oauth-tokens\.json|token-store\.wiring|\bOnethingTokenStore\b|['"]\.\/token-store(?:\.js)?['"]/.test(mainContent)
       ? [`${rel(mainAuthServiceFile)}: the assembly auth service must not wire a single-slot token store`]
+      : []),
+    ...(!/configureProcessAuthTokenStore\(\s*createOnethingSpaceTokenStore\b/.test(backendContent)
+      ? [`${rel(backendFile)}: the process auth service must get the space credential pool as its token store (configureProcessAuthTokenStore(createOnethingSpaceTokenStore(...)))`]
       : []),
     ...(mainContent.includes('@onething/electron-host/')
       ? [`${rel(mainAuthServiceFile)}: auth service must stay host-agnostic (inject via configureAuthHost)`]
@@ -3679,7 +3690,7 @@ function checkRuntimeOwnsAgentLoopSelection(): void {
 }
 
 function checkCoreOwnsAgentLoopPureFacades(): void {
-  const mainIndexFile = path.join(root, 'packages/backend/runtime/providers/process-providers.ts')
+  const mainIndexFile = path.join(root, 'packages/backend/runtime/engine/engine-process-providers.ts')
   const mainIndexContent = fs.existsSync(mainIndexFile) ? fs.readFileSync(mainIndexFile, 'utf-8') : ''
   // ③-收尾 B(2026-10-02)撤:原来这里还点名装配层 agent-loop 目录下 13 只已删的转发壳(bridge / runner / types /
   // providers/sse …)回来即红。那个目录整只平铺进了 `runtime/agent-loop`,照搬过来 `providers/sse.ts` 正是产品本体,
@@ -3693,7 +3704,7 @@ function checkCoreOwnsAgentLoopPureFacades(): void {
 }
 
 function checkRuntimeOwnsProviderRequestDump(): void {
-  const runtimeFile = 'packages/backend/runtime/providers/request-dump.ts'
+  const runtimeFile = 'packages/backend/runtime/logging/logging-provider-request-dump.ts'
   // 包根归位 3(2026-10-03):落盘薄壳从包根 `provider-binding/request-dump.ts` 搬到 providers 目录里,判据照旧。
   const mainFile = path.join(root, 'packages/backend/runtime/providers/request-dump-writer.ts')
   const lines = [
@@ -3783,7 +3794,7 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
 
 function checkRuntimeOwnsProviderOauthConfigResolution(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/oauth-config.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-chat-facade.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingOAuthProviderConfig',
@@ -3796,7 +3807,7 @@ function checkRuntimeOwnsProviderOauthConfigResolution(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider OAuth config resolution ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_OAUTH_CONFIG_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/chat-facade.ts: missing provider facade']),
+      : ['packages/backend/runtime/engine/engine-chat-facade.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider OAuth config resolution', lines)
@@ -3806,7 +3817,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-facade.ts')
   const runtimeTestFile = path.join(root, 'packages/backend/runtime/providers/__tests__/provider-facade.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/providers/index.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-chat-facade.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -3838,7 +3849,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_FACADE_LOW_LEVEL_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/chat-facade.ts: missing provider facade']),
+      : ['packages/backend/runtime/engine/engine-chat-facade.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider facade orchestration', lines)
@@ -3846,7 +3857,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
 
 function checkRuntimeOwnsProviderTitleOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-chat-facade.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingProviderChatTitle',
@@ -3859,7 +3870,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider title orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TITLE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/chat-facade.ts: missing provider facade']),
+      : ['packages/backend/runtime/engine/engine-chat-facade.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider title orchestration', lines)
@@ -3867,7 +3878,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
 
 function checkRuntimeOwnsProviderTextResponseProjection(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-chat-facade.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   // streamOnethingTextChatResponse was deleted in P0 (zero callers); the
   // generate-side projection is still the live one.
@@ -3880,7 +3891,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider text response projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TEXT_RESPONSE_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/chat-facade.ts: missing provider facade']),
+      : ['packages/backend/runtime/engine/engine-chat-facade.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider text response projection', lines)
@@ -3888,7 +3899,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
 
 function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-chat-facade.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingChatResponseWithReasoning',
@@ -3902,7 +3913,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider generate-with-reasoning orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/chat-facade.ts: missing provider facade']),
+      : ['packages/backend/runtime/engine/engine-chat-facade.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider generate-with-reasoning orchestration', lines)
@@ -3910,7 +3921,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
 
 function checkRuntimeOwnsProviderAcpStreamProjection(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-chat-facade.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'streamOnethingACPChatResponseWithTools',
@@ -3924,7 +3935,7 @@ function checkRuntimeOwnsProviderAcpStreamProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP stream projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/chat-facade.ts: missing provider facade']),
+      : ['packages/backend/runtime/engine/engine-chat-facade.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider ACP stream projection', lines)
@@ -4229,7 +4240,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
 
 function checkRuntimeOwnsModelRegistryRefresh(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/model-registry.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/model-registry-service.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/settings/settings-model-registry-service.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'saveOnethingProviderModels',
@@ -4242,7 +4253,7 @@ function checkRuntimeOwnsModelRegistryRefresh(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MODEL_REGISTRY_REFRESH_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/model-registry-service.ts: missing main model registry facade']),
+      : ['packages/backend/runtime/settings/settings-model-registry-service.ts: missing main model registry facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns model registry refresh orchestration', lines)

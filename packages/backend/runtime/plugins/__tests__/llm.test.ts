@@ -18,7 +18,7 @@ vi.mock('../../settings/settings-store.js', () => ({
 vi.mock('@onething/backend/runtime/providers/ipc-env', () => ({
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
-vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({
+vi.mock('../../engine/engine-chat-facade.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({

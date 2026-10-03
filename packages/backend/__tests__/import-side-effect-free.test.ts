@@ -53,7 +53,7 @@ vi.mock('@onething/backend/runtime/providers/provider-table', async (importOrigi
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))
-vi.mock('@onething/backend/runtime/spaces/credentials', async (importOriginal) => ({
+vi.mock('../runtime/credentials/credentials-pool.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureSpaceCredentialsCrypto: () => { spy.calls.push('space-credentials-crypto') },
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
@@ -119,15 +119,15 @@ describe('@onething/backend import purity', () => {
     await import('@onething/backend/runtime/tools/access-control/sandbox')
     await import('@onething/backend/runtime/tools/background-jobs-bound')
     await import('@onething/backend/runtime/tools/bash-executor')
-    await import('@onething/backend/runtime/providers/chat-facade')
+    await import('../runtime/engine/engine-chat-facade.js')
     await import('@onething/backend/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
     await import('@onething/backend/runtime/search')
     await import('@onething/backend/runtime/skills/manage-setup')
     await import('@onething/backend/runtime/skills/skill-sources')
     await import('@onething/backend/runtime/permissions/grant-storage')
-    await import('@onething/backend/runtime/providers/space-credentials')
-    await import('@onething/backend/runtime/providers/credential-strategy')
+    await import('../runtime/credentials/credentials-resolution.js')
+    await import('../runtime/credentials/credentials-strategy.js')
 
     expect(spy.calls).toEqual([])
   })

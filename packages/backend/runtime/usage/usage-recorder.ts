@@ -21,8 +21,8 @@ import {
 import { type OnethingUsageSummaryResult } from "@shared/contracts/usage";
 import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
-import { getModelCapabilityEntry } from "@onething/backend/runtime/providers/model-registry-service";
-import { resolveSessionCredentialId } from "@onething/backend/runtime/providers/space-credentials";
+import { getModelCapabilityEntry } from "@onething/backend/runtime/settings";
+import { resolveSessionCredentialId } from "@onething/backend/runtime/credentials";
 import { isSubscriptionProvider } from "@onething/backend/runtime/providers/manifest";
 import * as store from "@onething/backend/store.js";
 import { sessionReads } from "@onething/backend/runtime/sessions";

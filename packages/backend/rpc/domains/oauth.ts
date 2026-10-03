@@ -53,7 +53,7 @@ import {
   startOnethingOAuthForIpc,
 } from '@onething/backend/runtime/auth'
 import type { OAuthRoutes } from '@shared/ipc/oauth.js'
-import { authService } from '@onething/backend/runtime/auth/process-auth-service'
+import { getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
 import { notifyOAuthTokenExpired } from '@onething/backend/runtime/auth/oauth-events'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
@@ -87,7 +87,7 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
     // 不递 `openExternal`:后端不开浏览器(见文件头)。
     return startOnethingOAuthForIpc({
       providerId: request.providerId,
-      start: providerId => authService.start(providerId, target),
+      start: providerId => getAuthService().start(providerId, target),
       logger: consoleLog,
     })
   },
@@ -98,7 +98,7 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
       code: request.code,
       state: request.state,
       completeManualCode: (providerId, code, state) =>
-        authService.completeManualCode(providerId, code, state, target),
+        getAuthService().completeManualCode(providerId, code, state, target),
       logger: consoleLog,
     })
   },
@@ -109,7 +109,7 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
       flowId: request.flowId,
       deviceCode: request.deviceCode,
       pollDeviceFlow: (providerId, flowId) =>
-        authService.pollDeviceFlow(providerId, flowId, target),
+        getAuthService().pollDeviceFlow(providerId, flowId, target),
       logger: consoleLog,
     })
   },
@@ -117,7 +117,7 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
     const target = targetOf(request)
     const refreshOnethingOAuthForIpcOptions: RefreshOnethingOAuthForIpcOptions = {
       providerId: request.providerId,
-      refreshToken: providerId => authService.refreshToken(providerId, target),
+      refreshToken: providerId => getAuthService().refreshToken(providerId, target),
       notifyTokenExpired: notifyOAuthTokenExpired,
       logger: consoleLog,
     };
@@ -127,7 +127,7 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
     const target = targetOf(request)
     return getOnethingOAuthStatusForIpc({
       providerId: request.providerId,
-      getStatus: providerId => authService.getStatus(providerId, target),
+      getStatus: providerId => getAuthService().getStatus(providerId, target),
       logger: consoleLog,
     })
   },
@@ -135,14 +135,14 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
     const target = targetOf(request)
     return logoutOnethingOAuthForIpc({
       providerId: request.providerId,
-      deleteToken: providerId => authService.deleteToken(providerId, target),
+      deleteToken: providerId => getAuthService().deleteToken(providerId, target),
       logger: consoleLog,
     })
   },
   async cancel(request) {
     const flowId = typeof request?.flowId === 'string' ? request.flowId : ''
     if (!flowId) return { success: false, cancelled: false, error: 'flowId is required' }
-    return { success: true, cancelled: authService.cancel(flowId) }
+    return { success: true, cancelled: getAuthService().cancel(flowId) }
   },
 }
 

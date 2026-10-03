@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // 功能入口棘轮(server / client 拆分 docs/design/server-client-split-2026-10.md §4「功能入口」)。
 //
-// 用户拍板(2026-10-03):每个功能只通过自己的入口 `packages/backend/runtime/<功能>/index.ts` 对外交出能力;
+// 用户拍板(2026-10-03):每个功能只通过自己的入口 `packages/backend/runtime/<功能>/index.ts` 对外交出能力
+// (命名规范 N3 的形状 `runtime/<功能>/<功能>.ts` 同样是入口,2026-10-04 凭证功能起用);
 // 功能目录里其余文件是内部实现,外面(包根、别的功能、apps、scripts、evals)不许直接引用。读一个功能,
 // 先看它的入口就知道它对外给了什么。
 //
@@ -139,6 +140,10 @@ export function classify(resolvedAbsolute, importerAbsolute, features) {
   if (importerAbsolute.startsWith(featureDir + path.sep)) return null
   const inner = parts.slice(1).join('/')
   if (inner === 'index.ts' || inner === 'index' || inner === 'index.js' || inner === '') return null
+  // 命名规范 N3 的入口形状 `<功能>/<功能>.ts`(2026-10-04 凭证功能起用)同样是入口,不计 ——
+  // 只在目录里没有 `index.ts` 时:`scheduler/scheduler.ts` 是 scheduler 的内部文件,入口仍是 `scheduler/index.ts`。
+  if ((inner === `${feature}.ts` || inner === `${feature}.js` || inner === feature)
+    && !existsSync(path.join(featureDir, 'index.ts'))) return null
   return { feature, target: inner }
 }
 
@@ -174,7 +179,7 @@ export function measure() {
 export function formatBaseline(counts) {
   const lines = [
     '# feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)',
-    '# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/runtime/<功能>/ 里入口 index.ts 以外文件的 import 处数。',
+    '# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/runtime/<功能>/ 里入口(`index.ts`,或 N3 形状的 `<功能>.ts`)以外文件的 import 处数。',
     '# `(总桶)` = 引用 packages/backend/runtime/index.ts(`@onething/backend/runtime` 不带子路径)的处数。',
     '# 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。',
     '# 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。',
@@ -243,6 +248,8 @@ function selfTest() {
   const R = (p) => path.join(root, RUNTIME, p)
   const outside = path.join(root, BACKEND, 'backend.ts')
   expect('入口不计', classify(R('search/index.ts'), outside, features) === null)
+  expect('N3 形状的入口也不计(目录里没有 index.ts)', classify(R('credentials/credentials.ts'), outside, new Set([...features, 'credentials'])) === null)
+  expect('有 index.ts 时同名文件是深层', classify(R('search/search.ts'), outside, features)?.target === 'search.ts')
   expect('深层计一处', classify(R('search/service.ts'), outside, features)?.feature === 'search')
   expect('子目录桶也是深层', classify(R('search/index/index.ts'), outside, features)?.target === 'index/index.ts')
   expect('功能内部不计', classify(R('search/service.ts'), R('search/capabilities/x.ts'), features) === null)

@@ -48,3 +48,9 @@ export type {
   ExternalAgentSteerOutcome,
   ExternalAgentTurnRequest,
 } from './types.js'
+
+// ── providers 归位(D24,2026-10-04):外部 agent 这一种 AgentProvider 的实现搬进了 providers
+// (`providers/provider-external-agent.ts`),它要读这里的图片输入类型。
+export type {
+  ExternalAgentImageInput,
+} from './types.js'

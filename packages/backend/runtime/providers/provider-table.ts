@@ -6,7 +6,7 @@
  */
 
 import { builtinProviders } from './builtin/index.js'
-import { createProviderRegistry } from '@onething/backend/runtime/providers'
+import { createProviderRegistry } from './registry.js'
 import type { ProviderDefinition, ProviderInfo } from '@onething/backend/runtime/providers/ipc-types'
 
 const registry = createProviderRegistry<ProviderDefinition>(builtinProviders)

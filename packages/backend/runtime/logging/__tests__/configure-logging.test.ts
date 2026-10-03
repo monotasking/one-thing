@@ -176,7 +176,8 @@ describe('diagnostics mode', () => {
   })
 
   it('flips the level spec and the provider request dump together', async () => {
-    vi.doMock('@onething/backend/runtime/providers/index', () => ({
+    // 2026-10-04 起转储开关与诊断模式同住 logging(`logging-provider-request-dump.ts`,D24),mock 打在它身上。
+    vi.doMock('../logging-provider-request-dump.js', () => ({
       setOnethingProviderRequestDumpEnabled: (enabled: boolean | undefined) => { dumpState.enabled = enabled },
     }))
     const logging = await import('../configure-logging.js')

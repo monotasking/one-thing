@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { createAgentProviderFromRuntime } from '@onething/backend/runtime/providers/process-providers'
+import { createAgentProviderFromRuntime } from '../../engine-process-providers.js'
 import { getUserSkillsPath } from '@onething/backend/runtime/skills/skill-operations'
 import { executeSkillManage } from '@onething/backend/runtime/skills/manage-setup'
 import { invalidateSessionSkillsCache as invalidateSkillsCache } from '@onething/backend/runtime/skills/session-skill-cache'
@@ -19,7 +19,7 @@ import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
 import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
-} from '@onething/backend/runtime/spaces/credentials'
+} from '../../../credentials/credentials-pool.js'
 import { Catalog } from '@onething/backend/runtime/toolkit/tool-protocol'
 import {
   configureToolkitCatalog,
@@ -39,8 +39,8 @@ vi.mock('electron', () => ({
   shell: { openPath: vi.fn() },
 }))
 
-vi.mock('@onething/backend/runtime/providers/process-providers', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/providers/process-providers')>()
+vi.mock('../../engine-process-providers.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../engine-process-providers.js')>()
   return {
     ...actual,
     createAgentProviderFromRuntime: vi.fn(() => ({

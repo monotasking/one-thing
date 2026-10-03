@@ -26,7 +26,7 @@ import { createAgentExecutionLifetime, runAgentLoop, type AgentLoopOptions } fro
 import { buildMomentPrompt, parseMomentReply, type MomentComposeInput, type MomentComposer } from '@onething/backend/runtime/pets'
 import type { AppSettings } from '@shared/ipc.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { createUtilityProvider, type UtilityProviderRef } from '@onething/backend/runtime/providers/utility-provider'
+import { createUtilityProvider, type UtilityProviderRef } from '@onething/backend/runtime/engine'
 import { getSettings } from '@onething/backend/runtime/settings'
 import { billPetUsage, type SideLineUsage } from '../usage/bill-side-line.js'
 

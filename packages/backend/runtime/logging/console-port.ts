@@ -23,7 +23,7 @@ import type { OnethingModelQueryIpcLogger } from '../providers/model-query-prese
 import type { OnethingModelRegistryRefreshLogger } from '../providers/model-registry.js'
 import type { CoreProviderAuthLogger } from '../providers/provider-config.js'
 import type { OnethingProviderPresentationIpcLogger } from '../providers/provider-presentation.js'
-import type { OnethingProviderRequestDumpLogger } from '../providers/request-dump.js'
+import type { OnethingProviderRequestDumpLogger } from './logging-provider-request-dump.js'
 import type { OnethingSchedulerAgentTaskLogger } from '../scheduler/agent-task-runner.js'
 import type { OnethingSchedulerIpcLogger } from '../scheduler/ipc-operations.js'
 import type { SchedulerRunHistoryLogger } from '../scheduler/run-history.js'

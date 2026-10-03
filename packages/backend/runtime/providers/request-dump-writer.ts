@@ -2,7 +2,7 @@ import {
   dumpOnethingProviderRequest,
   type OnethingProviderRequestDumpLogger,
   type OnethingProviderRequestDumpPayload,
-} from './request-dump.js'
+} from '@onething/backend/runtime/logging'
 import type { OnethingProviderRequestDumpMode } from './agent-turn.js'
 import {
   getOnethingLogDir,
