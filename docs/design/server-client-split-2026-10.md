@@ -1471,3 +1471,61 @@ CLI `main.cjs` 11489448 → 11496719(+7271);根全量 vitest 11413 → 11414(多
 (都红在 `appendFailures 8`,`refoldChecks` 217);`sessions:hydration-contract --all` 在固定夹具与本次 battery 的 store 上都是 217 个会话 0 失败;`session:check` 前后同 4 条;
 `gate:acp` 去掉 id 后逐字相同;`gate:search-index` 前后都红在两条 ⑤d 与 ⑤c,其余行只差记号 / token / 服务端输出尾的取窗;transport / log / session / provider / gate:native /
 boundary / assembly(`radio.ts 9 → 10`,前后都红)/ drill 前后相同;`entry:gate` 绿(2896);CLI `--help` 在临时 store 上起得来且不写 store;golden 快照不变。
+
+### 包根归位第 2 笔落地记录:包根 `stores/` 拆进各自功能(2026-10-03,未提交)
+
+**一句话**:包根 `stores/` 目录删除。设置缓存、出厂设置与默认值表进 `runtime/settings/`,「当前会话」指针进 `runtime/sessions/`,
+`configureStorePathHost` 进 `runtime/storage/`,接入目录进 `runtime/files/`;`stores/index.ts` 桶删掉,`initializeStores` 改成 `backend.ts` 里的
+`prepareStoreOnDisk()`;兼容桶 `store.ts` 保留(见留账),转发改指各功能入口。外面非测试引用全部走入口。
+
+**去处表**(用户 10-03 拍板接入目录归 files、`store.ts` 选「甲」、`agents-domain` 那处 mock 只换路径):
+
+| 原位置 | 新位置 | 做什么 / 理由 |
+| --- | --- | --- |
+| `stores/settings.ts` | `runtime/settings/settings-store.ts` | 设置缓存(B 改成的持有器原样保留);按内容改名,与 `session-store.ts` 对称 |
+| `stores/settings-defaults.ts` | `runtime/settings/settings-defaults.ts` | 带名册种子的出厂设置 |
+| `stores/defaults/{settings,ai-settings}.ts` + `__tests__/` | `runtime/settings/defaults/` | 默认值表与归一函数;整块平移 |
+| `stores/app-state.ts` | `runtime/sessions/current-session.ts` | 全仓只用 `get/setCurrentSessionId`(会话表、检索、待办、语音);整份应用状态的读写、当前空间 id 的读写与 `SerializedTab` / `AppState` 两个类型零使用者,删掉 |
+| `stores/docs-paths.ts` | `runtime/storage/docs-paths.ts` | 宿主注入的打包资源目录;与它包着的 `getOnethingDocsDir` 同住;对自己入口的自引用改成 `./paths.js` |
+| `stores/connected-directories.ts` | `runtime/files/connected-directories.ts` | 五个使用者问的都是「这条会话能碰哪些目录」;放 settings 会造成 settings ↔ sessions 双向依赖 |
+| `stores/index.ts` | 删除 | 使用者只有 `store.ts` 与 `rpc/domains/agents.ts`(改走会话入口);`initializeStores` 只有 `backend.ts` 一个调用方,改成配方里的本地函数 `prepareStoreOnDisk()` |
+| `stores/__tests__/*` | 随被测文件 | 冻结快照 + `__fixtures__/` → `runtime/settings/__tests__/`;`core-{app-state,async-save-queue,cached-json}` → `runtime/storage/__tests__/`;`core-session-store-helpers` / `session-list-projection` → `runtime/sessions/__tests__/`;`connected-directories` → `runtime/files/__tests__/` |
+
+**环的核对**(动手前):sessions 入口(457)、旧 `stores/settings.ts`(287)、`spaces/overlay`(24)、settings 入口(52)的静态闭包里都没有 `runtime/files/index.ts`,
+也没有接入目录的 8 个使用方之一,所以 files 入口 → 接入目录 → sessions / settings / spaces 不成模块级的环。files 入口闭包 7 → 467,settings 入口 52 → 288。
+有一个无害的小环:settings 入口 → `settings-store` → 包根 `provider-binding/ai-settings-compose.ts` → settings 入口(取 `defaults/ai-settings` 的三个纯函数);
+`ai-settings-compose` 顶层只有函数与再导出,加载期不取值。为此给它加了一个 exports 键(`./provider-binding/ai-settings-compose.js`)。
+
+**入口新增**:settings —— 设置缓存 8 个(`getSettings` / `saveSettings` / `getSpaceSettings` / `initializeSettings` / `invalidateSettingsCache` /
+`getPersistedSettings` / `savePersistedSettings` / `updateSettingsInMemory`)、`createDefaultSettings` / `mergeWithDefaults` / `providerSeedOf`、
+`DEFAULT_MUSIC_SETTINGS` / `normalizeConnectedDirectories`、`composeEffectiveAISettings` / `createEmptySpaceProviderSettings` / `splitEffectiveAISettings`;
+files —— `getConnectedDirectories` / `getConnectedDirectoriesForSession` / `listConnectedSkillRoots`;sessions —— `getCurrentSessionId` / `setCurrentSessionId`;
+storage —— `configureStorePathHost` / `resetStorePathHost` / `getMacOSAutomationDocsPath` + 类型 `StorePathHost`。四个入口逐名核对 0 处遮蔽。
+**同名**:`createDefaultSettings` / `mergeWithDefaults` 在 settings 里两份 —— 入口交出带名册种子的 `settings-defaults.ts` 那份;`defaults/settings.ts` 那份只带兜底种子,
+外面只有测试直接用它(23 处,含壳的一份),这些测试照旧按相对路径引它(改走入口会换成另一个函数,改变被测值)。
+
+**`store.ts`**:转发改为直接取自 settings / sessions 入口;删掉 7 个零使用者的名字(`initializeStores`、`initializeSessionRepositoryIndex`、
+`inheritSessionWorkingDirectory`、`updateSessionTokenUsage`、`landSessionAccountUsage`、`updateSessionPromptContext`、`deriveRetainedContextSize`),剩 52 个。
+**留账**:`store.ts` 只剩转发,按规矩该删、调用方改走各功能入口;但 59 处测试 `vi.mock('…/store.js')` 打在它上面,其中 36 处的工厂把会话函数与 `getSettings` /
+`get/setCurrentSessionId` 混在一个对象里,删桶要拆 mock,且改打在会话表模块上会让会话目录里的其它模块也看见假的。另起一笔做。
+
+**测试改动**:只改说明符与位置。`agents-domain.test.ts` 的 `vi.mock('../../stores/index.js')` 换成 `vi.mock('../../runtime/sessions/session-store.js')`(工厂不动);
+`import-side-effect-free.test.ts` 的设置仓储构造桩改打在 `../runtime/settings/settings-repository.js`(设置缓存搬进功能目录以后按相对路径取构造口,打在入口上的桩够不着了),
+B 那条断言另 import settings / files 入口与 `store.ts`;临时把设置缓存改回加载时建,断言红在 `settings-repository`,换回后绿。
+
+**同步**:exports 删 8 个 `./stores/*` 键、加 1 个;`assembly-baseline` 里 `docs-paths` 一行与 `provider-vendor-baseline` 7 行改路径;`headless-boundary-check.ts`
+文件 IO 目录表的 `packages/backend/stores` 换成搬走的五个文件 / 目录(量的东西不变);`provider:drill` 的演练测试模板改从设置入口取 `createDefaultSettings`;CLAUDE.md 的
+host-ports 表、包根说明、目录树与 State Management。
+
+**功能入口棘轮**:四行变,其余逐字不变 —— settings 28 → 88(+60:37 处测试 mock 设置缓存、23 处测试引兜底种子那份默认值表,从前指向包根不在尺子上)、
+sessions 299 → 304(+5:4 处测试 mock 当前会话、`agents-domain` 那处 mock)、files 18 → 19(+1:`files-domain` 测试 mock 接入目录)、storage 82 → 80
+(两份测试 `core-async-save-queue` / `core-cached-json` 搬进 storage 自己的目录)。新增的全是测试;非测试新增 0。基线已按此收紧(2960)。
+
+**验收(改前 `s11-before` / 改后 `s11-after`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功;三份 `search-worker.cjs` 逐字节同大;
+`desk/main.cjs` 11468566 → 11470566、server `main.js` 5902793 → 5903572、CLI `main.cjs` 11496719 → 11498100;根全量 vitest `11414 / 21 红 → 11414 / 20 红`,
+差异全是偶发:改前红的 `workspace-watch-driver` 与 `build-workspace-watch` 这次绿了,改后多红的 `dev-process-shutdown` 单跑三次 14/14 绿;壳 7344 / 1 相同;
+快照(4 份线协议 + vendor-facts + 出厂设置冻结)154 条绿、快照文件按内容哈希 160 行前后逐字同;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 22 绿;
+battery、`gate:acp`、`session:check`、boundary、transport / log / session / provider / gate:native 去掉 id 后前后逐字同;assembly 只差 `docs-paths` 换路径(`radio.ts` 前后都红);
+`hydration-contract` 217 / 0;`gate:search-index` 前后都红在两条 ⑤d,⑤c 改前绿改后红 —— 它在同一份代码上时红时绿(`s10-after` 红 8.872ms、`s11-before` 绿 1.733ms,
+两次是同一棵树),改后补跑一次仍红在 8.864ms;`provider:drill` 直接跑红(它从 HEAD 开 worktree,却读工作区里已改过的模板),
+用本地重放版(把未提交改动搬进临时 worktree 再演练,scratchpad `s11/drill-local.mjs`)全绿;CLI `--help` 不写 store;golden 不变;`entry:gate` 绿。

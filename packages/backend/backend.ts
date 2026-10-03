@@ -20,9 +20,9 @@
 // core(A0-3 起 core 不再内置任何 provider 名字)。静态 import 在这里,是为了保证任何
 // 一个宿主装配、引擎做第一次压缩判定之前它已经跑过 —— 不靠别的模块碰巧 import 到它。
 import '@onething/backend/runtime/agents/executor/registry'
-import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
+import { flushAllPendingSaves, getSession, initializeSessionRepositoryIndex } from '@onething/backend/runtime/sessions'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from '@onething/backend/runtime/sessions'
-import { createStoreLease, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/runtime/storage'
+import { createStoreLease, ensureOnethingStoreDirs, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/runtime/storage'
 import { MediaLibraryService } from '@onething/backend/runtime/media'
 import { configureMediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
 import { OnethingUsageLedger } from '@onething/backend/runtime/usage'
@@ -47,7 +47,7 @@ import { getTracesDir } from '@onething/backend/runtime/evals/trace-store'
 import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from '@onething/backend/runtime/sessions'
 import { scheduleSessionListProjectionBackfillOnStartup } from '@onething/backend/runtime/sessions'
-import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
+import { getSettings, initializeSettings, invalidateSettingsCache } from '@onething/backend/runtime/settings'
 import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { initializeAgents } from '@onething/backend/runtime/agents/agent-store-access'
@@ -260,6 +260,15 @@ export interface OnethingBackendOptions {
  * 没建到的那一格读起来抛 `BackendNotAssembledError('engine')`,与 A2 之前
  * "未初始化就抛"逐字同义。
  */
+
+/**
+ * 盘上的 store 备好:建齐 store 的各个目录,再把会话索引读进会话表。装配配方里的一步(包根归位 2,2026-10-03,
+ * 原是 `stores/index.ts` 的 `initializeStores`;那只桶删掉以后,只有这里调它,所以留在配方本身)。
+ */
+function prepareStoreOnDisk(): void {
+  ensureOnethingStoreDirs()
+  initializeSessionRepositoryIndex()
+}
 export class OnethingBackend implements BackendHandle {
   private readonly parts: BackendHandleParts = {}
   private readonly lifecycle: BackendResources
@@ -668,7 +677,7 @@ export class OnethingBackend implements BackendHandle {
     this.parts.journalStore = journal
     this.own(() => journal.drainAndRelease(), 'flushSessionEventLedger', 'flush')
 
-    initializeStores()
+    prepareStoreOnDisk()
     /*
      * 落盘是关机链上的**最后**两步,所以它们是最先登记的两件(逆序)。
      *
@@ -682,7 +691,7 @@ export class OnethingBackend implements BackendHandle {
     await initializeSettings()
     // 「诊断模式」是设置里的一格,但生效面在日志系统(等级 spec + provider 转储)。
     // 落点就在读完 settings 的第一时间 —— 再晚一点,启动期的 debug 行就已经被
-    // 默认等级滤掉了。之后每次保存设置由 `stores/settings.ts` 的同一个函数续上。
+    // 默认等级滤掉了。之后每次保存设置由 `runtime/settings/settings-store.ts` 的同一个函数续上。
     applyDiagnosticsMode(getSettings().diagnostics?.enabled === true)
     // provider 配置迁进空间层(C1)。位置是**刚读完 settings、任何人问「这个
     // provider 配了没有」之前** —— 引擎、工具、插件都会问,而迁移之前那个答案

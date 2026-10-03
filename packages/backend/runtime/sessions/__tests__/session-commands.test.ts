@@ -362,7 +362,7 @@ describe('写门 —— 会话账落格(产地是折叠)', () => {
  * **会话列表投影的两格**(E 批)——`lastMessagePreview` / `messageCount` 与
  * `updatedAt` 同刻维护,一格不多一格不少。
  *
- * 规则那一层由 `backend/stores/__tests__/session-list-projection.test.ts` 守;
+ * 规则那一层由 `backend/runtime/sessions/__tests__/session-list-projection.test.ts` 守;
  * 这里守的是**接线**:哪条命令盖、哪条不盖、盖的时候用的是哪一条消息。
  */
 describe('写门 —— 会话列表投影(lastMessagePreview / messageCount)', () => {

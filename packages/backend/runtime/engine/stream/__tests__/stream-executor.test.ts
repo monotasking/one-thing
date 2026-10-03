@@ -26,7 +26,7 @@ vi.mock('../../../sessions/session-commands.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../../sessions/session-commands.js')>(),
   sessionCommands: { patchMessage: vi.fn(() => true) },
 }))
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../../settings/defaults/settings.js'
 import type { ToolSettings } from '@shared/ipc.js'
 import type { StreamSender } from '../stream-processor.js'
 import type { ProviderConfigWithKey, StreamExecutionParams } from '../stream-executor.js'

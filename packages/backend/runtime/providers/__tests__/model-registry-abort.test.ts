@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 const ports = vi.hoisted(() => ({ settings: {} as ReturnType<typeof createDefaultSettings>, save: vi.fn(), fetch: vi.fn() }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ports.settings, saveSettings: ports.save }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ports.settings, saveSettings: ports.save }))
 vi.mock('@onething/backend/provider-binding/bound-fetch.js', () => ({ createRequiredAppFetch: () => ports.fetch }))
 
 const { refreshAllProviders } = await import('../model-registry-service.js')

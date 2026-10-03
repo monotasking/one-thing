@@ -13,7 +13,7 @@
  *
  * 逻辑一行没搬:八条方法**逐条**转调 `@onething/backend/runtime/acp` 的投影
  * (`*OnethingACP*ForIpc`),管家取的是进程内那台真 `ACPManager`(桌面 / CLI /
- * server 共用的同一个单例),设置取的是 `@onething/backend/stores/settings` ——
+ * server 共用的同一个单例),设置取的是 `@onething/backend/runtime/settings` ——
  * 与迁移前 `@main` 那份适配逐字同义。
  *
  * **本域没有需要按 `context.transport` 分叉的护栏**(拍板 #20 的纪律)。逐条核对
@@ -43,7 +43,7 @@ import {
 } from '@onething/backend/runtime/acp'
 import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp.js'
 import type { AcpRoutes } from '@shared/ipc/acp.js'
-import { getSettings, saveSettings } from '../../stores/settings.js'
+import { getSettings, saveSettings } from '@onething/backend/runtime/settings'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'

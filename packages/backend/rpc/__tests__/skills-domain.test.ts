@@ -43,7 +43,7 @@ const sessionSkills = vi.hoisted(() => ({
   invalidateSkillsCache: vi.fn(),
 }))
 
-vi.mock('../../stores/settings.js', () => settings)
+vi.mock('../../runtime/settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/runtime/skills/skill-operations', () => skillsWiring)
 vi.mock('@onething/backend/runtime/skills/session-skill-cache', () => sessionSkills)
 

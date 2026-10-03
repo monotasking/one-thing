@@ -33,7 +33,7 @@ import {
 } from '@onething/backend/runtime/plugins/plugin-contract'
 
 import { QuiescibleScopes } from '@onething/backend/runtime/lifecycle'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { resolveProviderApiKey } from '@onething/backend/runtime/providers/ipc-env'
 import { resolveUtilityModel } from '@onething/backend/runtime/providers/utility-model'
 import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'

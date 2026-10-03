@@ -30,14 +30,14 @@
  * 一次是权限面。
  */
 
-import { normalizeConnectedDirectories } from './defaults/settings.js'
+import { normalizeConnectedDirectories } from '@onething/backend/runtime/settings'
 import type { SkillDirectoryConfig } from '@shared/ipc/skills.js'
 import {
   getSpaceOverlayConnectedDirectories,
   mergeConnectedDirectories,
 } from '@onething/backend/runtime/spaces/overlay'
 import { resolveSessionSpaceId } from '@onething/backend/runtime/sessions'
-import { getSettings } from './settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 /**
  * **全局层**接入目录(绝对路径、去重、已过归一)。默认空数组。
@@ -50,7 +50,7 @@ export function getConnectedDirectories(): string[] {
 }
 
 /**
- * 会话归属的 space id —— 批 B3 起搬到 `../runtime/sessions/session-store.ts`(它是会话表的投影,不是
+ * 会话归属的 space id —— 批 B3 起搬到 `../sessions/session-store.ts`(它是会话表的投影,不是
  * 目录概念)。这里保留一个再导出,是因为它与下面两个函数在同一句语义上成对出现。
  */
 export { resolveSessionSpaceId }

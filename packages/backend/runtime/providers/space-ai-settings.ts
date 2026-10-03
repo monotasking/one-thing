@@ -14,7 +14,7 @@
 
 import type { AppSettings } from '@shared/ipc.js'
 import { resolveSessionSpaceId } from '@onething/backend/runtime/sessions'
-import { getSpaceSettings } from '@onething/backend/stores/settings.js'
+import { getSpaceSettings } from '@onething/backend/runtime/settings'
 
 /** 这条会话所在空间的生效 settings。缺 sessionId / 缺归属 = default 空间。 */
 export function getSessionSettings(sessionId: string | undefined | null): AppSettings {

@@ -35,7 +35,7 @@ vi.mock('../../sessions/session-store.js', () => ({
   },
 }))
 vi.mock('../../sessions/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
 vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),

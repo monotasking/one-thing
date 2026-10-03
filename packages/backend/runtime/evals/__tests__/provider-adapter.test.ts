@@ -2,12 +2,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 // Retain real settings composition and credential storage; unrelated session
 // stores and usage lifecycle are covered by the Backend lifecycle regression.
 vi.mock('@onething/backend/store.js', async () => {
-  const settings = await import('@onething/backend/stores/settings.js')
+  const settings = await import('../../settings/settings-store.js')
   return { getSettings: settings.getSettings }
 })
 vi.mock('../../usage/usage-recorder.js', () => ({ captureUsageRecorder: () => vi.fn() }))
@@ -37,7 +37,7 @@ import {
   invalidateSettingsCache,
   savePersistedSettings,
   updateSettingsInMemory,
-} from '@onething/backend/stores/settings.js'
+} from '@onething/backend/runtime/settings'
 import { setSpaceProviderCredential } from '@onething/backend/runtime/providers/space-credentials'
 import { initializeRegistry } from '@onething/backend/runtime/providers/provider-table'
 import { createEvalsModelCaller, resolveEvalsCredentials } from '../provider-adapter.js'

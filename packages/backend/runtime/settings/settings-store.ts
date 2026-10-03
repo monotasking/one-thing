@@ -1,6 +1,6 @@
 import type { AppSettings, PersistedAppSettings } from '@shared/ipc.js'
 import { createDefaultSettings, mergeWithDefaults } from './settings-defaults.js'
-import { createOnethingSettingsRepository } from '@onething/backend/runtime/settings'
+import { createOnethingSettingsRepository } from './settings-repository.js'
 import {
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
@@ -10,7 +10,7 @@ import {
   hasSpaceProviderSettingsMigrated,
   resolveEffectiveAppSettings,
   splitEffectiveAISettings,
-} from '../provider-binding/ai-settings-compose.js'
+} from '@onething/backend/provider-binding/ai-settings-compose.js'
 import { getOnethingSettingsPath } from '@onething/backend/runtime/storage'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
@@ -18,7 +18,7 @@ import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type {
   OnethingSettingsRepository,
   OnethingSettingsRepositoryLogger,
-} from '@onething/backend/runtime/settings/settings-repository'
+} from './settings-repository.js'
 
 /*
  * 设置仓储在**首次用到时**才建(包根归位 B,2026-10-03)。从前它在加载时建好,并把

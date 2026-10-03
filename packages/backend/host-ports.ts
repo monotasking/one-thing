@@ -28,7 +28,7 @@ import {
   configureStorePathHost,
   resetStorePathHost,
   type StorePathHost,
-} from './stores/docs-paths.js'
+} from '@onething/backend/runtime/storage'
 import {
   configureSandboxHost,
   resetSandboxHost,

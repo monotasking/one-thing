@@ -99,7 +99,7 @@ export interface ProviderModelIdentity {
 /**
  * 出厂种子:这一家在出厂设置里的那一条 provider 配置(服务商自述试点 P3)。从前是
  * `@shared/defaults/settings.ts` 里一张按家点名的大表,现在每家自己带,装配层
- * (`packages/backend/stores/settings-defaults.ts`)按名册拼回来交给 `@shared` 的
+ * (`packages/backend/runtime/settings/settings-defaults.ts`)按名册拼回来交给 `@shared` 的
  * `createDefaultSettings` / `mergeWithDefaults`;空白空间加第一把 key 时的模型预填也读它。
  *
  * **值是逐字照搬旧表的**,与上面的 `defaultModel` 不是一回事(两边今天本来就不一样,

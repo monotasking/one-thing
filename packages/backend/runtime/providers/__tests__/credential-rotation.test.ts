@@ -24,7 +24,7 @@ vi.mock('@onething/backend/runtime/auth/process-auth-service', () => ({
   },
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({}), getSpaceSettings: () => mocks.spaceSettings }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}), getSpaceSettings: () => mocks.spaceSettings }))
 
 vi.mock('../../sessions/session-store.js', async () => {
   const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/runtime/spaces/types')

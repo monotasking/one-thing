@@ -13,7 +13,7 @@ import {
   type OnethingHttpRequestOptions,
   type OnethingFetchFn,
 } from '@onething/backend/runtime/providers'
-import { getSettings } from '../stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('providers')

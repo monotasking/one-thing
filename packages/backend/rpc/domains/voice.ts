@@ -60,13 +60,13 @@ import {
 import { getVoiceHostPorts, hasVoiceHost } from '@onething/backend/runtime/voice/host-ports'
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
 import type { VoiceRoutes } from '@shared/ipc/voice.js'
-import { getSettings } from '../../stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/runtime/voice/provider-calls'
 import { getVoiceService } from '@onething/backend/runtime/voice/service'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { isHistoricalLocalOperator, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
-import { getCurrentSessionId } from '../../stores/app-state.js'
+import { getCurrentSessionId } from '@onething/backend/runtime/sessions'
 
 /** 逐字沿用被删掉的 server `voice` adapter 的那句话。 */
 const SERVER_VOICE_UNAVAILABLE_ERROR =

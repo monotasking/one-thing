@@ -18,7 +18,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => ({
     general: {
       todoPlan: {
@@ -33,7 +33,7 @@ vi.mock('@onething/backend/runtime/storage', () => ({
 }))
 
 let activeSessionId = ''
-vi.mock('@onething/backend/stores/app-state.js', () => ({
+vi.mock('../../sessions/current-session.js', () => ({
   getCurrentSessionId: () => activeSessionId,
 }))
 

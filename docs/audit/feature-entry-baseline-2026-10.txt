@@ -3,7 +3,7 @@
 # `(总桶)` = 引用 packages/backend/runtime/index.ts(`@onething/backend/runtime` 不带子路径)的处数。
 # 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
-299 sessions
+304 sessions
 256 logging
 240 agent-loop
 236 providers
@@ -13,7 +13,8 @@
 107 plugins
 105 spaces
 100 agents
-82 storage
+88 settings
+80 storage
 79 events
 77 collab
 72 permissions
@@ -29,12 +30,11 @@
 34 variables
 32 voice
 29 acp
-28 settings
 26 music
 25 goals
 21 external-agents
 20 scheduler
-18 files
+19 files
 18 project-dirs
 17 media
 17 terminal

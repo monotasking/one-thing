@@ -34,7 +34,7 @@ import {
   type PermissionEffect,
   type PermissionPreview,
 } from '@onething/backend/runtime/tools/access-control/permission-policy'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 /**
  * 一条**不可静默**的效果。`Intent.alwaysAsk` 靠它落地。

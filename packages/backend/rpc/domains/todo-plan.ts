@@ -11,7 +11,7 @@
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
-import { getCurrentSessionId } from '../../stores/app-state.js'
+import { getCurrentSessionId } from '@onething/backend/runtime/sessions'
 import type { TodoPlanRoutes } from '@shared/ipc/todo-plan.js'
 import {
   createOnethingTodoNoteForIpc,

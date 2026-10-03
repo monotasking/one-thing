@@ -115,7 +115,7 @@ vi.mock('../../sessions/session-store.js', () => ({
   updateSessionAgent: vi.fn(),
 }))
 vi.mock('@onething/backend/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => mocks.settings }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => mocks.settings }))
 
 const HEX = 'D71F6E90EA704F1C44183933E7E0F19'
 const entry = (n: number) => ({ encryptedId: HEX + n, originalId: String(n), title: `song ${n}` })

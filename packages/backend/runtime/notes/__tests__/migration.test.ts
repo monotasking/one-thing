@@ -12,14 +12,14 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings } from '@shared/ipc.js'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 const mocks = vi.hoisted(() => ({
   settings: {} as AppSettings,
   saved: [] as AppSettings[],
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getPersistedSettings: () => mocks.settings,
   savePersistedSettings: (next: AppSettings) => {
     mocks.saved.push(next)

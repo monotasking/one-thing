@@ -55,7 +55,7 @@ import {
   type SettingsEvent,
   type SettingsEventBroadcaster,
 } from '../settings/events.js'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { isHostLocallyTrusted } from '@onething/backend/server/host-trust.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/current.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

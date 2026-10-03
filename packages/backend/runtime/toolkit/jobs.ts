@@ -29,7 +29,7 @@ import {
 } from '@onething/backend/runtime/tools/background-jobs'
 import type { BashOperations } from '@onething/backend/runtime/tools/bash-executor'
 import { createLocalBashOperations } from '@onething/backend/runtime/tools/bash-executor'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 /** 轮询间隔:`events()` 靠它把"日志长长了 / 进程没了"变成一条流。 */
 const JOB_POLL_INTERVAL_MS = 500

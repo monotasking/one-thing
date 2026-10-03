@@ -206,7 +206,7 @@ describe('落盘', () => {
 
 describe('A6-b:退役 provider 留下的孤儿键', () => {
   it('providers.json 里的 claude-code-agent 条目:归一、合成、拆回都不抛,原样留着', async () => {
-    const { composeEffectiveAISettings, splitEffectiveAISettings } = await import('@onething/backend/stores/defaults/ai-settings.js')
+    const { composeEffectiveAISettings, splitEffectiveAISettings } = await import('@onething/backend/runtime/settings')
     const orphan = {
       model: 'claude-code-agent',
       selectedModels: ['claude-code-agent', 'claude-sonnet-5'],

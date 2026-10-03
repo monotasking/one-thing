@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 import { streamSynthesizeOnethingSpeech } from '../providers.js'
 
 const sockets = vi.hoisted(() => ({ created: [] as Array<{ closed: boolean }> }))

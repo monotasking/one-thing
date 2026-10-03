@@ -28,7 +28,7 @@ import { MusicWorkOwner } from './lifetime.js'
 import { readProviderVolume, volumeArgs } from './player-volume.js'
 import { getCurrentBackend } from '@onething/backend/current.js'
 import { listMusicProviderDescriptors } from '@onething/backend/runtime/music'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 export function createMusicOperationsScope(options: { service: MusicServiceScope; radio: RadioScope; assertOwned?: () => void }) {
   const owner = new MusicWorkOwner(options.assertOwned)

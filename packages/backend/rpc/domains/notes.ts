@@ -42,7 +42,7 @@ import type {
 import type { AppSettings } from '@shared/ipc.js'
 import { NoteVaultUnavailable, type NoteVault } from '@onething/backend/runtime/notes'
 import { getNotesSubsystem, type NotesInventory } from '@onething/backend/runtime/notes/notes-subsystem'
-import { getSettings } from '../../stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 

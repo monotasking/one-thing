@@ -11,7 +11,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppSettings } from '@shared/ipc.js'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
@@ -19,7 +19,7 @@ import {
 } from '../../settings/events.js'
 import type { NoteSystemDriver, NoteSystemState } from '@onething/backend/runtime/notes'
 import { createNotesSubsystem, obsidianSocketPath, toNotesConfig } from '../notes-subsystem.js'
-import { updateSettingsInMemory } from '@onething/backend/stores/settings.js'
+import { updateSettingsInMemory } from '@onething/backend/runtime/settings'
 
 let tmpDir: string
 let previousStorePath: string | undefined

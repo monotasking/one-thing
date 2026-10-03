@@ -175,7 +175,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
     restoreTrust = configureHostLocalTrust({ origin: 'desktop-embedded' })
 
     // 电台总开关:`openRadio` 的前置判据读它,而它默认是关的。
-    const settings = await import('../../stores/settings.js')
+    const settings = await import('@onething/backend/runtime/settings')
     const current = settings.getSettings()
     settings.saveSettings({
       ...current,

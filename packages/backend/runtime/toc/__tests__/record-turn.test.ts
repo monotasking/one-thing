@@ -43,7 +43,7 @@ vi.mock('@onething/backend/runtime/agent-loop/loop-primitives', async importOrig
 vi.mock('@onething/backend/runtime/providers/utility-provider', () => ({
   createUtilityProvider: mocks.createUtilityProvider,
 }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({}) }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}) }))
 vi.mock('../../usage/bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
 vi.mock('@onething/backend/runtime/toc', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()

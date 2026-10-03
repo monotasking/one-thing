@@ -37,7 +37,7 @@ vi.mock('../../sessions/session-store.js', async () => {
 import {
   composeEffectiveAISettings,
   splitEffectiveAISettings,
-} from '@onething/backend/stores/defaults/ai-settings.js'
+} from '@onething/backend/runtime/settings'
 import { setRootDirForTests } from '@onething/backend/runtime/spaces/persistence'
 import {
   readSpaceProviderSettings,
@@ -50,7 +50,7 @@ import {
   initializeSettings,
   invalidateSettingsCache,
   saveSettings,
-} from '@onething/backend/stores/settings.js'
+} from '@onething/backend/runtime/settings'
 import { getSessionSettings } from '../space-ai-settings.js'
 
 let tmpDir: string

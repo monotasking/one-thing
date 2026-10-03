@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { voiceRouter } from '@shared/ipc/voice.js'
 
 const sessionState = vi.hoisted(() => ({ currentId: undefined as string | undefined }))
-vi.mock('../../stores/app-state.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
+vi.mock('../../runtime/sessions/current-session.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
 vi.mock('../../runtime/sessions/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../runtime/sessions/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
@@ -60,7 +60,7 @@ vi.mock('@onething/backend/runtime/voice/provider-calls', () => ({
   transcribeUtterance: providers.transcribeUtterance,
 }))
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('../../runtime/settings/settings-store.js', () => ({
   getSettings: () => settings.getSettings(),
 }))
 

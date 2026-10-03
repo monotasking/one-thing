@@ -12,7 +12,7 @@ const settingsRef: { current: any } = { current: null }
 const generateChatResponse = vi.fn()
 const recordUsage = vi.fn()
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => settingsRef.current,
 }))
 vi.mock('@onething/backend/runtime/providers/ipc-env', () => ({

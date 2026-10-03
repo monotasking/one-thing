@@ -27,7 +27,7 @@ import {
 } from '@onething/backend/runtime/storage'
 import { createUtilityProvider } from "@onething/backend/runtime/providers/utility-provider";
 import { billTocUsage } from "../usage/bill-side-line.js";
-import { getSettings } from "@onething/backend/stores/settings.js";
+import { getSettings } from "@onething/backend/runtime/settings";
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const tocLog = getLogger('sessions.toc')

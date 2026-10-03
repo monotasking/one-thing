@@ -67,7 +67,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
 } from '@onething/backend/runtime/settings/events'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
 import { shellProxyPolicy } from '../host-ports.js'
 import type { ElectronProxySessionLike } from '../network-proxy.js'

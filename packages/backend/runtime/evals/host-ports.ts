@@ -16,7 +16,7 @@
  * `repoDir` 也可注入,是给测试与将来别的宿主留的显式覆盖口:注入之后连设置都不读,
  * 直接以它为准。桌面不注入这一格。
  */
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 export interface EvalsHostPorts {
   /** 宿主是否处于打包态。未注入 = 视为非打包(开发态)。 */

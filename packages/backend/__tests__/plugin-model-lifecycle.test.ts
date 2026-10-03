@@ -53,7 +53,7 @@ async function assemble(name: string) {
     },
   })
   backend = result
-  const settings = await import('../stores/settings.js')
+  const settings = await import('@onething/backend/runtime/settings')
   const current = settings.getSettings()
   settings.updateSettingsInMemory({
     ...current,

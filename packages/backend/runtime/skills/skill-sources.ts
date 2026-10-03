@@ -14,10 +14,10 @@ import {
 } from '@onething/backend/runtime/storage'
 import {
   getSettings,
-} from '@onething/backend/stores/settings.js'
+} from '@onething/backend/runtime/settings'
 import {
   listConnectedSkillRoots,
-} from '@onething/backend/stores/connected-directories.js'
+} from '@onething/backend/runtime/files'
 import { skillVaultRootsNow } from '../notes/notes-subsystem.js'
 
 /** Every provider's CLI skill dir; only the active provider's is exposed. */
@@ -80,7 +80,7 @@ export function configureAppSkillsLoader(): void {
     //
     // 笔记库这一条顶掉了 note-skills 内置插件(P3 退役):那条插件链路的技能 id
     // 里嵌的是**绝对路径的 sha1**,用户挪一次库,settings 里所有针对这些技能的
-    // 启用/绑定覆盖就全成孤儿(判词逐字见 `stores/connected-directories.ts`)。
+    // 启用/绑定覆盖就全成孤儿(判词逐字见 `runtime/files/connected-directories.ts`)。
     listCustomSkillRoots: () => [
       ...(getSettings().skills?.customDirectories ?? []),
       ...listConnectedSkillRoots(),

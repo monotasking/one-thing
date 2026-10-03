@@ -16,7 +16,7 @@
  * 理由:契约门看不见绕过,这一组看得见。
  *
  * 它跑在**真装配**上(临时 store),写法照 `__tests__/resource-kernel.test.ts`:
- * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 import 期就解析 store 根,所以
+ * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 import 期就解析 store 根,所以
  * 环境变量要在任何 import 之前钉好,并且全程动态 import。
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'

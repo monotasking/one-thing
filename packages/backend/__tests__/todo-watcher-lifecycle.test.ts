@@ -72,7 +72,7 @@ async function assemble(name: string) {
 }
 
 async function saveDirectory(target: string) {
-  const { getSettings } = await import('../stores/settings.js')
+  const { getSettings } = await import('@onething/backend/runtime/settings')
   const { dispatchRpc } = await import('../rpc/registry.js')
   const current = getSettings()
   return dispatchRpc({ domain: 'settings', method: 'saveSettings', payload: {

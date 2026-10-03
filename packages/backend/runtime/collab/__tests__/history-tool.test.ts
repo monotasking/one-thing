@@ -36,7 +36,7 @@ vi.mock('@onething/backend/store.js', () => ({
   getSessionsList: () => mocks.metas,
   getSettings: () => ({ general: {} }),
 }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({}) }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}) }))
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (id: string) => {
     const names: Record<string, string> = { iris: 'Iris', bram: 'Bram', nova: 'Nova' }

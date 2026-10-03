@@ -91,6 +91,8 @@ export { createSessionCommands, sessionCommands } from './session-commands.js'
 export type { SessionCommands } from './session-commands.js'
 export { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from './trace-reads.js'
 export type { ReadSessionTraceOptions } from './trace-reads.js'
+// 「当前会话」的 id(包根归位 2,2026-10-03 从包根 `stores/app-state.ts` 搬来)。
+export { getCurrentSessionId, setCurrentSessionId } from './current-session.js'
 
 // ── 会话表、会话组合根与三只挂在会话表上的件(包根归位 B,2026-10-03 进入口)。会话表从前在加载时就建仓储、
 // 读存储 / 应用状态 / 设置的导出,所以这五只一度不进入口;改成首次用到时才建以后(见 `session-store.ts` 那段说明),

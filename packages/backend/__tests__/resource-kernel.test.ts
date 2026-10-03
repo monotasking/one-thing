@@ -17,7 +17,7 @@
  * 不注册,于是设置页的工具清单与 CLI 的 listTools 与今天逐字一样。
  *
  * store 隔离与全动态 import 的写法照 `assembly-lifecycle.test.ts`:
- * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'

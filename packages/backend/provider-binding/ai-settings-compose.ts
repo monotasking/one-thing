@@ -17,7 +17,7 @@ import {
   composeEffectiveAISettings,
   createEmptySpaceProviderSettings,
   splitEffectiveAISettings,
-} from '../stores/defaults/ai-settings.js'
+} from '@onething/backend/runtime/settings'
 import type { SpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 
 export { composeEffectiveAISettings, createEmptySpaceProviderSettings, splitEffectiveAISettings }

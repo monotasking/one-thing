@@ -21,7 +21,7 @@ import {
   isPluginNotifySound,
   type PluginNotifySound,
 } from '@shared/plugins/notify-sound'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 /** 每插件最后一次**真的出声**的时刻。被静音/被限频的那些不记账。 */
 const lastSoundAt = new Map<string, number>()

@@ -79,7 +79,7 @@ it('owns real player processes and delayed provider requests through shutdown, t
   const oldTool = radioAdapters()
   const oldStore = oldRadio.getRadioStore()
   oldStore.writeBrief({ active: false, intent: 'A station', played: [], skipped: [], loved: [] })
-  const { getSettings, saveSettings } = await import('../stores/settings.js')
+  const { getSettings, saveSettings } = await import('@onething/backend/runtime/settings')
   const settings = getSettings()
   if (!settings.voice) throw new Error('Fixture requires the default voice settings')
   saveSettings({ ...settings, voice: { ...settings.voice, tts: {

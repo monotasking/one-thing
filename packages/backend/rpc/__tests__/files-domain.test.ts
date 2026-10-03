@@ -45,7 +45,7 @@ vi.mock('@onething/backend/runtime/shell/host-ports', async () => {
   )
   return { ...actual, getShellHost: () => shell }
 })
-vi.mock('../../stores/connected-directories.js', () => ({
+vi.mock('../../runtime/files/connected-directories.js', () => ({
   getConnectedDirectoriesForSession: connected.getConnectedDirectoriesForSession,
 }))
 

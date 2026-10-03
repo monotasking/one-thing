@@ -22,7 +22,7 @@
  * 关掉的宿主才会给一个自己的工厂」),所以这里连一处 `vi.mock` 都不需要。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts` / `resource-music.test.ts`:
- * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'

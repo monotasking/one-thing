@@ -452,7 +452,7 @@ function startPostWindowServices(): void {
 /** 首次启动从 models.dev 拉一次模型目录(已有目录就跳过)。 */
 async function refreshModelsOnFirstStartup(signal: AbortSignal): Promise<void> {
   signal.throwIfAborted()
-  const { getSettings } = await import('@onething/backend/stores/settings.js')
+  const { getSettings } = await import('@onething/backend/runtime/settings')
   signal.throwIfAborted()
   const providers = getSettings()?.ai?.providers
   if (!providers) return

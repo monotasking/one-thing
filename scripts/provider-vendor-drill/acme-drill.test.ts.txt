@@ -11,7 +11,7 @@ import { getOnethingModelsDevProviderId, ONETHING_PROVIDER_MAPPING } from '@onet
 import { pickOnethingProviderOptions } from '@onething/backend/runtime/providers/provider-options'
 import { fetchProviderQuota, providerQuotaSourceOf } from '@onething/backend/runtime/providers/quota'
 import { providerDialFieldsOf } from '@onething/backend/runtime/spaces/provider-credentials'
-import { createDefaultSettings } from '../stores/settings-defaults.js'
+import { createDefaultSettings } from '@onething/backend/runtime/settings'
 
 describe('陌生能力演练:加一家 acme', () => {
   it('通用代码全部认得它', async () => {

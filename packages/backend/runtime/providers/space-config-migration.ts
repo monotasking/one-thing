@@ -65,7 +65,7 @@ import {
   getOnethingSettingsPath,
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'
-import { getPersistedSettings, savePersistedSettings } from '@onething/backend/stores/settings.js'
+import { getPersistedSettings, savePersistedSettings } from '@onething/backend/runtime/settings'
 import { getProviderInfo } from './provider-table.js'
 import { providerDialFieldsOf } from '@onething/backend/runtime/spaces/provider-credentials'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

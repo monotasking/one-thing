@@ -85,7 +85,7 @@
  *      时 start 仍在途"确定地成立,就得由 dispose 链自己去放闸,而正确实现正好
  *      死等那个闸,判据会把自己判死锁。
  *
- * **store 隔离**:`runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就
+ * **store 隔离**:`runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
  * 设好 —— 这就是这份文件里全部 import 都是**动态**的原因(顶层只留 vitest 的),
  * 照 `server/__tests__/runtime-over-backend.test.ts` 的 mkdtemp + afterAll 还原先例。

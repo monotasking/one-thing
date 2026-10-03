@@ -11,8 +11,8 @@
  */
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createPrompt, listPrompts } from '@onething/backend/runtime/prompts/store-bound'
-import { getCurrentSessionId } from '@onething/backend/stores/app-state.js'
-import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getCurrentSessionId } from '@onething/backend/runtime/sessions'
+import { getConnectedDirectoriesForSession } from '@onething/backend/runtime/files'
 import { getSession, getSessionsList } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { listFiles } from '@onething/backend/utils/ripgrep.js'

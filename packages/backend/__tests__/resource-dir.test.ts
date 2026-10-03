@@ -33,7 +33,7 @@
  * 读。这台测试宿主声明 `desktop-embedded`,与桌面内嵌 HTTP 面逐字同一格。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -162,7 +162,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     const connected = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-connected-dir-')))
     fs.writeFileSync(path.join(connected, 'note.md'), '# hi\n')
 
-    const { getSettings, updateSettingsInMemory } = await import('../stores/settings.js')
+    const { getSettings, updateSettingsInMemory } = await import('@onething/backend/runtime/settings')
     const before = getSettings()
     try {
       // 接入之前:写根之外,拒。
@@ -170,7 +170,7 @@ describe('目录资源在真装配里(K3-c)', () => {
       expect(denied.kind).toBe('failed')
       expect(denied.kind === 'failed' && denied.error.name).toBe('DirOutsideSandboxError')
 
-      // 用户在设置里把它接进来(唯一读点是 `stores/connected-directories.ts`,
+      // 用户在设置里把它接进来(唯一读点是 `runtime/files/connected-directories.ts`,
       // 这里写的正是它读的那一格)。
       updateSettingsInMemory({
         ...before,
@@ -269,7 +269,7 @@ describe('目录资源在真装配里(K3-c)', () => {
    */
   it('⑥ AI 主体的写:createDirectory 停在真权限卡上,答完真建出来;delete 之后 deleted 到达', async () => {
     const workRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-dir-write-')))
-    const { getSettings, updateSettingsInMemory } = await import('../stores/settings.js')
+    const { getSettings, updateSettingsInMemory } = await import('@onething/backend/runtime/settings')
     const before = getSettings()
     const store = await import('../store.js')
     const { Permission } = await import('@onething/backend/runtime/permissions/permission')

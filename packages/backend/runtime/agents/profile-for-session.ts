@@ -15,7 +15,7 @@ import {
 import { isUserDmRoom } from '@onething/backend/runtime/collab'
 import type { ChatSession } from '@shared/ipc.js'
 import { getSession } from '@onething/backend/runtime/sessions'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/store-bound'
 
 export type { EffectiveAgentProfile }

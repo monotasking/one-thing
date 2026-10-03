@@ -49,14 +49,14 @@ import {
 // 同步的,而桶会把协调器整棵树一起拉起来 —— 邻居们的 `await import` 就是为了
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
 import { ensureCollabGroupRoom } from '@onething/backend/runtime/collab/room-create'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { toolkitCatalogToolDefinitions } from '@onething/backend/runtime/toolkit/catalog-projection'
 import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { getStreamEngine } from '../engine/engine-layer.js'
-import { createDefaultSettings } from '@onething/backend/stores/settings-defaults.js'
+import { createDefaultSettings } from '@onething/backend/runtime/settings'
 import { localUserPrincipal } from '@shared/permission/principal'
 import { markHostUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/permission-bridge'

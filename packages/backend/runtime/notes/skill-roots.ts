@@ -5,7 +5,7 @@
  * —— 与接入目录**同一条 `custom:` 链路**(递归、`custom:<dirId>:<rel>` 的 id、
  * 同一套启用/绑定覆盖),而不是从前 note-skills 插件那条 `plugin:<id>:<sha1>:<rel>`
  * 的链路:后者的 id 里嵌的是绝对路径的哈希,用户挪一次库,settings 里针对这些
- * 技能的覆盖全成孤儿(判词逐字见 `stores/connected-directories.ts`)。
+ * 技能的覆盖全成孤儿(判词逐字见 `runtime/files/connected-directories.ts`)。
  *
  * ## 那一段 `<note_skill_context>`,以及它为什么要缓存
  *

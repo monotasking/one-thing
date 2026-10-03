@@ -88,7 +88,8 @@ vi.mock('../runtime/sessions/storage-driver.js', async (importOriginal) => {
     }) as typeof actual.createHybridSessionStorageDriver,
   }
 })
-vi.mock('@onething/backend/runtime/settings', async (importOriginal) => {
+// 包根归位 2:设置缓存搬进 `runtime/settings/` 以后按相对路径取构造口,桩因此打在定义它的那只模块上。
+vi.mock('../runtime/settings/settings-repository.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@onething/backend/runtime/settings')>()
   return {
     ...actual,
@@ -154,7 +155,10 @@ describe('@onething/backend import purity', () => {
    */
   it('importing the sessions entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
     const sessions = await import('@onething/backend/runtime/sessions')
-    await import('../stores/index.js')
+    // 包根归位 2(2026-10-03):设置仓储进了设置入口、接入目录进了文件入口,兼容桶 `store.ts` 两边都转发;一并 import。
+    await import('@onething/backend/runtime/settings')
+    await import('@onething/backend/runtime/files')
+    await import('../store.js')
 
     expect(typeof sessions.getSession).toBe('function')
     expect(loadSpy.calls).toEqual([])

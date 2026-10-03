@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../utility-provider.js', () => ({ createUtilityProvider: vi.fn(async () => undefined) }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSpaceSettings: () => ({ ai: { providers: {} } }) }))
+vi.mock('../../settings/settings-store.js', () => ({ getSpaceSettings: () => ({ ai: { providers: {} } }) }))
 
 import { probeCustomProvider, type ProbeCustomPorts } from '../custom-probe-analyst.js'
 

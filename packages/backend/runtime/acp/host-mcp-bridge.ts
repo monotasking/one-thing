@@ -56,7 +56,7 @@ import type { AgentNotificationEvent } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { HostToolSurface } from '@onething/backend/runtime/external-agents/host-tools'
 import { httpDiscoveryUrl, readHttpDiscovery } from '@onething/backend/server/discovery.js'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { resolveAcpMcpBridgePath } from './mcp-bridge-path.js'
 
 const log = getLogger('app.acp.host-mcp')

@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   credentialFreeProviders: new Set<string>(),
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => ({}),
   getSpaceSettings: () => ({}),
 }))

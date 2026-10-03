@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
     (providerId: string, apiKey: string | undefined, target: unknown) => Promise<unknown>,
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => mocks.settings,
   getSpaceSettings: () => mocks.settings,
 }))

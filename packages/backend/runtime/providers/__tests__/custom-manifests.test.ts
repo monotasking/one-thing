@@ -10,7 +10,7 @@ const state = vi.hoisted(() => ({
   spaces: {} as Record<string, unknown[]>,
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => ({ ai: { customProviders: state.global } }),
 }))
 vi.mock('@onething/backend/runtime/spaces/store', () => ({

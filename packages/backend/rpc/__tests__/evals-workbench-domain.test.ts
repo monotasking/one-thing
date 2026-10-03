@@ -55,7 +55,7 @@ vi.mock('@onething/backend/runtime', () => runtime)
 // 授权判据(`requireIncidentAccess`)直取子路径(工单 4 C2),替身跟着搬。
 vi.mock('@onething/backend/runtime/evals/incident', () => ({ readIncident: runtime.readIncident }))
 vi.mock('../../store.js', () => ({ getSettings: settings.getSettings }))
-vi.mock('../../stores/settings.js', () => settings)
+vi.mock('../../runtime/settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/runtime/evals/provider-adapter', () => credentials)
 
 function unwrap(response: RpcResponse): Record<string, unknown> {

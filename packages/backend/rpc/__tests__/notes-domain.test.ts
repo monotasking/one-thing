@@ -31,7 +31,7 @@ vi.mock('../../server/host-trust.js', () => ({
   isHostLocallyTrusted: () => state.trusted,
 }))
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('../../runtime/settings/settings-store.js', () => ({
   getSettings: () => state.settings,
 }))
 

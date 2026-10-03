@@ -17,11 +17,11 @@ claude packages/backend/runtime/prompts/builder.ts
 claude packages/backend/runtime/providers/builtin-manifests.ts
 claude packages/backend/runtime/sessions/retired-providers.ts
 claude packages/shared/contracts/acp.ts
-claude packages/backend/stores/defaults/settings.ts
+claude packages/backend/runtime/settings/defaults/settings.ts
 claude-code packages/backend/runtime/acp/session-links.ts
 claude-code packages/backend/runtime/providers/builtin-manifests.ts
 claude-code packages/backend/runtime/sessions/retired-providers.ts
-claude-code packages/backend/stores/defaults/settings.ts
+claude-code packages/backend/runtime/settings/defaults/settings.ts
 codex packages/backend/runtime/agent-loop/process-providers.ts
 codex packages/backend/runtime/agent-loop/providers/codex.ts
 codex packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts
@@ -41,7 +41,7 @@ codex packages/backend/runtime/agent-loop/providers/wires/openai-responses-wire.
 codex packages/backend/runtime/logging/legacy-debug-env.ts
 codex packages/backend/runtime/providers/agent-turn.ts
 codex packages/backend/runtime/providers/model-capability.ts
-codex packages/backend/stores/defaults/settings.ts
+codex packages/backend/runtime/settings/defaults/settings.ts
 codex packages/shared/ipc/chat.ts
 deepseek apps/desktop-react/src/dev/Gallery.tsx
 deepseek packages/backend/rpc/domains/evals-workbench.ts
@@ -61,7 +61,7 @@ gemini packages/backend/runtime/agent-loop/providers/wires/gemini-wire.ts
 gemini packages/backend/runtime/agent-loop/providers/wires/index.ts
 gemini packages/backend/runtime/providers/custom-probe.ts
 gemini packages/backend/runtime/providers/model-capability.ts
-gemini packages/backend/stores/defaults/settings.ts
+gemini packages/backend/runtime/settings/defaults/settings.ts
 grok packages/backend/runtime/providers/model-registry-service.ts
 grok-oauth packages/backend/runtime/providers/model-registry-service.ts
 openai apps/desktop-react/src/providers/components/CustomProviderDialog.tsx
@@ -95,7 +95,7 @@ openai packages/backend/runtime/providers/provider-config.ts
 openai packages/backend/runtime/providers/provider-runtime.ts
 openai packages/backend/runtime/voice/providers.ts
 openai packages/backend/runtime/voice/service-runtime.ts
-openai packages/backend/stores/defaults/settings.ts
+openai packages/backend/runtime/settings/defaults/settings.ts
 openai packages/shared/ipc/providers.ts
 openai packages/shared/ipc/voice.ts
 openrouter packages/backend/rpc/domains/voice.ts
@@ -107,9 +107,9 @@ openrouter packages/backend/runtime/agent-loop/providers/wires/openai-chat-messa
 openrouter packages/backend/runtime/providers/model-capability.ts
 openrouter packages/backend/runtime/voice/providers.ts
 openrouter packages/backend/runtime/voice/service-runtime.ts
-openrouter packages/backend/stores/defaults/settings.ts
+openrouter packages/backend/runtime/settings/defaults/settings.ts
 openrouter packages/shared/ipc/voice.ts
 qwen packages/backend/runtime/voice/providers.ts
 qwen packages/backend/runtime/voice/service-runtime.ts
-qwen packages/backend/stores/defaults/settings.ts
+qwen packages/backend/runtime/settings/defaults/settings.ts
 qwen packages/shared/ipc/voice.ts

@@ -63,7 +63,7 @@ import {
   foldedCatalogFor,
   removeManualModel,
 } from '@onething/backend/runtime/providers/manual-model-store'
-import { getSettings, getSpaceSettings } from '../../stores/settings.js'
+import { getSettings, getSpaceSettings } from '@onething/backend/runtime/settings'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/backend/runtime/providers/model-registry'

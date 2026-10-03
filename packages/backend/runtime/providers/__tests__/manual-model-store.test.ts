@@ -4,14 +4,14 @@ import type { AppSettings } from '@shared/ipc.js'
 /**
  * 批 2 手填模型的装配半边:`models.addManual` / `removeManual` 两半一发写完,
  * 以及 `spaces.setProviderSettings` 随手落盘(写前 ∪ 写后)。设置仓换成内存里的一份:
- * 这一组钉的是「写什么、写几发」,拆分落盘本身由 `stores/settings.ts` 的测试管。
+ * 这一组钉的是「写什么、写几发」,拆分落盘本身由 `runtime/settings/settings-store.ts` 的测试管。
  */
 const state = vi.hoisted(() => ({
   settings: {} as AppSettings,
   saves: [] as Array<{ settings: AppSettings; spaceId?: string }>,
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => state.settings,
   getSpaceSettings: () => state.settings,
   saveSettings: (settings: AppSettings, options?: { spaceId?: string }) => {

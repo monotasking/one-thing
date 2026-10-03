@@ -20,7 +20,7 @@ vi.mock('../../sessions/session-store.js', () => ({
   getSession: () => state.session,
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => state.settings,
 }))
 

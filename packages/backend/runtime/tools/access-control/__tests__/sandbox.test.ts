@@ -3,7 +3,7 @@ import path from 'path'
 import os from 'os'
 
 // Mock settings store
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../../settings/settings-store.js', () => ({
   getSettings: vi.fn(() => ({})),
 }))
 
@@ -30,7 +30,7 @@ import {
   resolveToolPath,
   checkFileAccess,
 } from '../sandbox'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { configureAppToolSandbox } from '../sandbox'
 
 // Adapter wiring is an explicit assembly step now (no import-time config).

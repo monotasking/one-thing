@@ -1,16 +1,9 @@
-// This file re-exports from the new modular store structure
-// for backwards compatibility with existing imports
-
+// 兼容桶:只做转发,名字取自各功能入口(包根归位 2,2026-10-03:原先经 `stores/index.ts` 转一手,那只桶已删)。
+// 留着它是因为 59 处测试 `vi.mock` 打在这只文件上,拆那批 mock 另起一笔;新代码直接从功能入口取名字。
+// 这一笔顺手删掉了没有任何使用者的 7 个名字(`initializeStores` 等)。
+export { getSettings, saveSettings } from '@onething/backend/runtime/settings'
+export { getCurrentSessionId, setCurrentSessionId } from '@onething/backend/runtime/sessions'
 export {
-  // Settings
-  getSettings,
-  saveSettings,
-
-  // App state
-  getCurrentSessionId,
-  setCurrentSessionId,
-
-  // Sessions
   getSessions,
   getSession,
   createSession,
@@ -47,26 +40,16 @@ export {
   updateSessionVariables,
   updateSessionGoal,
   updateSessionGoals,
-  inheritSessionWorkingDirectory,
-  updateSessionTokenUsage,
   updateSessionContextSize,
-  landSessionAccountUsage,
-  updateSessionPromptContext,
   getSessionTokenUsage,
-  deriveRetainedContextSize,
-  // Optimized session loading (Phase 4: Metadata Separation)
   getSessionsList,
   getSessionDetails,
   getSessionMessages,
   getSessionMessagesPage,
   getSessionUserMessageMarkers,
-  initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
   patchSessionFields,
   invalidateSessionCache,
   getSessionCacheStats,
-
-  // Initialization
-  initializeStores,
-} from './stores/index.js'
+} from '@onething/backend/runtime/sessions'

@@ -107,7 +107,7 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 **Inside the server package there are no layers** (user rulings 2026-10-02/03, `docs/design/server-client-split-2026-10.md` §4). `packages/backend` is two things:
 
-- **the package root** — the backend's entry points and faces: `backend.ts` (`createOnethingBackend`, the single assembly recipe) / `store.ts` / `current.ts` / `host-ports.ts` / `lifecycle.ts` + `server/` (the HTTP/SSE face, including `server/runtime-facade.ts`, the `OnethingRuntimeFacade` contract every host face serves) / `rpc/` / `stores/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/` (cross-cutting tests, including `architecture-boundaries.test.ts`).
+- **the package root** — the backend's entry points and faces: `backend.ts` (`createOnethingBackend`, the single assembly recipe) / `store.ts` (a forward-only compatibility barrel kept for the test mocks aimed at it — new code imports feature entries) / `current.ts` / `host-ports.ts` / `lifecycle.ts` + `server/` (the HTTP/SSE face, including `server/runtime-facade.ts`, the `OnethingRuntimeFacade` contract every host face serves) / `rpc/` / `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/` (cross-cutting tests, including `architecture-boundaries.test.ts`).
 - **`runtime/<feature>/`** — **one feature, one directory, flat**: prompts, sessions, tools, providers, plugins, engine, agent-loop, gateway, … Everything a feature has — what used to be its engine skeleton (`core/`), its product logic and its assembly wiring (`wiring/`) — sits side by side; same-name files were renamed by what they do (tables in the design doc §6), and a fake for a test is a function parameter, not a separate layer. A domain-only kernel may sit in `runtime/<d>/kernel/`, an ordinary subdirectory. There are no `*.wiring.ts` files any more: the suffix stopped granting anything with the flatten and was dropped from all 31 files on 2026-10-03 (colliding names renamed by content, e.g. `practice/service-slot.ts`, `mcp/index-with-bridge.ts`; table in the design doc §6).
 
 How it got here: step ② (2026-10-02) merged the former `@onething/core`, `@onething/runtime` and `@onething/gateway` packages verbatim as subtrees `core/`, `runtime/`, `gateway/`; step ③ folded every domain into one `runtime/<d>/` and deleted `wiring/`; 去 core 批 1–3 (2026-10-03) dissolved `core/` into `runtime/<d>/` (events → `runtime/event-bus`, which 收尾整理 2 then merged with the package root's `events/` into `runtime/events/`; agent → `runtime/agents`, session → `runtime/sessions`, the rest same-name; its big barrel `core/index.ts` was deleted, every import now names the feature directory) and moved `gateway/` to `runtime/gateway/`. Why: the "zero-dependency skeleton" existed so the UI side could reuse it, and since step ① the UI may only import `@shared` and `@onething/client`; the "wiring" layer existed to put one product into several hosts, and the hosts converged.
@@ -127,7 +127,7 @@ apps/*  (thin sockets)
        │ createOnethingBackend(...)     │ /api → core      │
 ┌──────┴────────────────┴───────────────┴──────────────────┴──────────┐
 │ packages/backend                              ('@onething/backend') │
-│  package root: backend.ts (factory) + server/ rpc/ stores/          │
+│  package root: backend.ts (factory) + server/ rpc/                  │
 │  channel/ features/ utils/ …  — entry points and faces             │
 │  hosts inject surfaces via configure*Host ports                     │
 │  (no backend file imports electron/@main/@preload)                  │
@@ -144,7 +144,7 @@ apps/*  (thin sockets)
 
 ```
 packages/backend/            # THE server package ('@onething/backend'): createOnethingBackend
-                             # + the package root (entry points and faces: server/ rpc/ stores/
+                             # + the package root (entry points and faces: server/ rpc/
                              # channel/ …). @shared allowed, electron never.
   runtime/                   #   one feature, one flat directory (prompts, sessions, engine, agent-loop,
                              #   tools, providers, plugins, gateway, voice, music, …). core/ (the old engine
@@ -182,7 +182,7 @@ apps/server/                 # Process shell only (main.ts + index.ts). The HTTP
 
 ### createOnethingBackend — the single assembly recipe
 
-`packages/backend/backend.ts`. Every host boots through `OnethingBackend.assemble(options)` (`createOnethingBackend` is the alias every call site still uses); ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`; since 包根归位 B (2026-10-03) it also **reads no settings and builds no repository**: the session table (`runtime/sessions/session-store.ts`) and the settings store (`stores/settings.ts`) build their repository / storage driver / logger on first use behind a `const` holder, and the same test counts those constructors after importing the sessions entry (a module that needs state at load builds it lazily the same way, never in a module-level `let`); **the assembly itself is exercised end to end** by `packages/backend/__tests__/assembly-lifecycle.test.ts` (twelve assertions on a temp store: assemble → dispose → assemble, double-assembly rejection, mid-assembly failure rollback, latch re-registration, the `own()` ledger emptying, host-port restore, and `own()` after dispose running the disposer on the spot).
+`packages/backend/backend.ts`. Every host boots through `OnethingBackend.assemble(options)` (`createOnethingBackend` is the alias every call site still uses); ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`; since 包根归位 B (2026-10-03) it also **reads no settings and builds no repository**: the session table (`runtime/sessions/session-store.ts`) and the settings store (`runtime/settings/settings-store.ts`) build their repository / storage driver / logger on first use behind a `const` holder, and the same test counts those constructors after importing the sessions entry (a module that needs state at load builds it lazily the same way, never in a module-level `let`); **the assembly itself is exercised end to end** by `packages/backend/__tests__/assembly-lifecycle.test.ts` (twelve assertions on a temp store: assemble → dispose → assemble, double-assembly rejection, mid-assembly failure rollback, latch re-registration, the `own()` ledger emptying, host-port restore, and `own()` after dispose running the disposer on the spot).
 
 **`OnethingBackend` is a class, not a bag of globals** (组合根 A, `docs/design/backend-composition-root-2026-09.md`, landed 2026-09-02/03):
 
@@ -215,7 +215,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 
 | Key | Underlying port | File |
 | --- | --- | --- |
-| `storePath` (non-null) | `configureStorePathHost` | `backend/stores/docs-paths.ts` |
+| `storePath` (non-null) | `configureStorePathHost` | `backend/runtime/storage/docs-paths.ts` |
 | `sandbox` (non-null) | `configureSandboxHost` | `backend/runtime/tools/access-control/sandbox.ts` |
 | `auth` | `configureAuthHost` | `runtime/src/auth/host-ports.ts` (product layer since P3'a-1 — zero spine deps) |
 | `logging` | `configureAppLoggingHost` | `backend/runtime/logging/configure-logging.ts` |
@@ -1014,7 +1014,6 @@ packages/backend/runtime/gateway/ # IM gateway (was packages/gateway/src): hub/ 
 │
 packages/backend/              # THE server package ('@onething/backend'); the package root below = entry points and faces
 │   ├── backend.ts  store.ts   # createOnethingBackend — the single assembly recipe
-│   ├── stores/                # settings cache, app-state, docs-paths (the session table moved to runtime/sessions/)
 │   ├── rpc/                   # router registry + domains/ (the only new-transport surface)
 │   ├── server/                # the core HTTP/SSE surface: http.ts (routes/SSE), runtime.ts
 │   │                          # (OnethingRuntimeFacade + session/settings/permission facades),
@@ -1089,7 +1088,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/runtime
 
 ### State Management
 
-- **Backend**: the session table in `packages/backend/runtime/sessions/session-store.ts` (repository with LRU + 300ms throttled async saves); settings cache with sync hot path and app-state in `packages/backend/stores/`
+- **Backend**: the session table in `packages/backend/runtime/sessions/session-store.ts` (repository with LRU + 300ms throttled async saves); settings cache with sync hot path in `packages/backend/runtime/settings/settings-store.ts` (factory defaults in `settings-defaults.ts` + `defaults/`); the current-session pointer in `runtime/sessions/current-session.ts`; connected directories in `runtime/files/connected-directories.ts` (包根归位 2, 2026-10-03: the package-root `stores/` directory is gone)
 - **Renderer**: zustand stores + query kernel in `apps/desktop-react/src/data/` (see its CLAUDE.md)
 - **Cross-process sync**: EventBus → SSE events (`@onething/client` events hub) + RPC calls
 

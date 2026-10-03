@@ -24,7 +24,7 @@ import { buildStateVariablesPromptText } from '@onething/backend/runtime/variabl
 import { pluginPromptSource } from '@onething/backend/runtime/prompts/plugin-context-breaker'
 import {
   getMacOSAutomationDocsPath,
-} from '@onething/backend/stores/docs-paths.js'
+} from '@onething/backend/runtime/storage'
 import { getTodoPlanDirectory } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import * as store from '@onething/backend/store.js'

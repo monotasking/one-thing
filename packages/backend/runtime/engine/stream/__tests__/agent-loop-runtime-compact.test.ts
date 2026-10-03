@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createDefaultSettings,
   DEFAULT_CHAT_SETTINGS,
-} from '@onething/backend/stores/defaults/settings.js'
+} from '../../../settings/defaults/settings.js'
 import type { StreamContext, StreamSender } from '../stream-processor.js'
 
 const emit = vi.fn(() => Promise.resolve())

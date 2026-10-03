@@ -13,8 +13,8 @@ import {
   resolveOnethingToolPath,
   type CoreFileAccessTargetType,
 } from '@onething/backend/runtime/tools/sandbox-runtime'
-import { getSettings } from '@onething/backend/stores/settings.js'
-import { getConnectedDirectories } from '@onething/backend/stores/connected-directories.js'
+import { getSettings } from '@onething/backend/runtime/settings'
+import { getConnectedDirectories } from '@onething/backend/runtime/files'
 import {
   getOnethingToolOutputsDir,
 } from '@onething/backend/runtime/storage'

@@ -71,7 +71,7 @@ async function arm(backend: OnethingBackend) {
     await triggerManager.getTriggers().find(trigger => trigger.id === 'session-toc')!.execute({
       sessionId: 's', session, messages: [], lastUserMessage: 'Please rework the parser and its callers',
       lastAssistantMessage: 'Updated the parser and its callers', toolIterations: 2,
-      providerId: 'test', providerConfig: { model: 'test', selectedModels: ['test'] }, settings: (await import('@onething/backend/stores/settings.js')).getSettings(),
+      providerId: 'test', providerConfig: { model: 'test', selectedModels: ['test'] }, settings: (await import('@onething/backend/runtime/settings')).getSettings(),
     })
   } finally { timer.mockRestore() }
 }

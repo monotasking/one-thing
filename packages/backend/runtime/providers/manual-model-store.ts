@@ -36,7 +36,7 @@ import {
 } from '@onething/backend/runtime/spaces/provider-settings'
 import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
-import { getSettings, getSpaceSettings, saveSettings } from '@onething/backend/stores/settings.js'
+import { getSettings, getSpaceSettings, saveSettings } from '@onething/backend/runtime/settings'
 
 type ConfigLike = { selectedModels?: unknown; model?: unknown } | undefined
 

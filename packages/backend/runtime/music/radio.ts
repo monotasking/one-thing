@@ -44,7 +44,7 @@ import { writeJsonFile } from '@onething/backend/runtime/storage/storage-primiti
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/runtime/agents/store-bound'
 import { markSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { resolveCollabVenue } from '@onething/backend/runtime/collab'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import * as sessions from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'

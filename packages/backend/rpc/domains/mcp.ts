@@ -12,7 +12,7 @@
  *
  * 逻辑一行没搬:十六条方法**逐条**转调 `@onething/backend/runtime/mcp` 的投影
  * (`*OnethingMCP*ForIpc`),管家取的是进程内那台真 `MCPManager`(桌面 / CLI /
- * server 共用的同一个单例),设置取的是 `@onething/backend/stores/settings` ——
+ * server 共用的同一个单例),设置取的是 `@onething/backend/runtime/settings` ——
  * 与迁移前 `@main` 那份适配逐字同义。
  *
  * ## 四道护栏(拍板 #20 的纪律:不放宽)
@@ -80,7 +80,7 @@ import {
   sanitizeMCPMutationResultForClient,
   sanitizeMCPServerStatesForClient,
 } from '../../server/mcp-secrets.js'
-import { getSettings, saveSettings } from '../../stores/settings.js'
+import { getSettings, saveSettings } from '@onething/backend/runtime/settings'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

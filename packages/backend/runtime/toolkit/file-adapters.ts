@@ -7,8 +7,8 @@
  */
 import type { MutatingFileToolAdapters, ReadToolAdapters } from '@onething/backend/runtime/toolkit'
 import { getOnethingFileMutationsDir } from '@onething/backend/runtime/storage'
-import { getSettings } from '@onething/backend/stores/settings.js'
-import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getSettings } from '@onething/backend/runtime/settings'
+import { getConnectedDirectoriesForSession } from '@onething/backend/runtime/files'
 import { getDefaultReadRoots } from '@onething/backend/runtime/tools/access-control/sandbox'
 
 export function defaultToolWorkingDirectory(): string | undefined {

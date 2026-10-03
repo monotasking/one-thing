@@ -34,7 +34,7 @@ import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,

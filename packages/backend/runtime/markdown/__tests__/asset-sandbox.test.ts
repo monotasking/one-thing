@@ -3,10 +3,10 @@ import type { Dirent, PathLike } from 'node:fs'
 import * as os from 'os'
 import * as path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 import { createDefaultVariablesFile } from '@onething/backend/runtime/variables/schema'
 import { resetVariablesStoreForTests } from '@onething/backend/runtime/variables/store-bound'
-import { getSettings, updateSettingsInMemory } from '@onething/backend/stores/settings.js'
+import { getSettings, updateSettingsInMemory } from '@onething/backend/runtime/settings'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import type {
   MarkdownAssetResolution,

@@ -38,7 +38,7 @@ import type {
 } from '@onething/backend/runtime/toolkit'
 
 import * as store from '@onething/backend/store.js'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getGoal, goalLimits, updateGoalFromModel } from '@onething/backend/runtime/goals/goal-manager'
 import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/runtime/practice/service-slot'

@@ -51,7 +51,7 @@ vi.mock('@onething/backend/runtime/acp', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@onething/backend/runtime/acp')
   return { ...actual, ACPManager: manager }
 })
-vi.mock('../../stores/settings.js', () => settings)
+vi.mock('../../runtime/settings/settings-store.js', () => settings)
 
 /** `rpc.acp` 那一只 logger 的 warn:选项失败那一行要带 agent 的原话与错误码。 */
 const acpLogWarn = vi.hoisted(() => vi.fn())

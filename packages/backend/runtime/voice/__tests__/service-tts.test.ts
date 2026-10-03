@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 vi.mock('../../sessions/access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../sessions/access.js')>()
@@ -30,12 +30,12 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => mocks.settings,
   saveSettings: vi.fn(),
 }))
 
-vi.mock('@onething/backend/stores/app-state.js', () => ({
+vi.mock('../../sessions/current-session.js', () => ({
   getCurrentSessionId: () => 'session-1',
 }))
 

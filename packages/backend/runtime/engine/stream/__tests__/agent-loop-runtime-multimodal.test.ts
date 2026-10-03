@@ -3,7 +3,7 @@ import { runAgentLoop } from '@onething/backend/runtime/agent-loop/loop-primitiv
 import { PendingMessageQueue } from '@onething/backend/runtime/engine/engine-primitives'
 import {
   createDefaultSettings,
-} from '@onething/backend/stores/defaults/settings.js'
+} from '../../../settings/defaults/settings.js'
 import type { AppSettings, SkillDefinition, ToolDefinition, ToolSettings } from '@shared/ipc.js'
 import type {
   AgentMessage,

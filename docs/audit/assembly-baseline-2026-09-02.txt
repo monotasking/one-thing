@@ -84,7 +84,7 @@ packages/backend/runtime/sessions/freeze.ts 1
 packages/backend/runtime/sessions/port-fact-assert.ts 1
 packages/backend/runtime/sessions/read-mode.ts 1
 packages/backend/runtime/sessions/testing/facade-mock.ts 3
-packages/backend/stores/docs-paths.ts 1
+packages/backend/runtime/storage/docs-paths.ts 1
 packages/backend/runtime/sessions/session-store.ts 1
 packages/backend/utils/ripgrep.ts 1
 packages/backend/runtime/auth/oauth-events.ts 2

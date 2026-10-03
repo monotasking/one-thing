@@ -3,7 +3,7 @@
  *
  * 钉的是 Codex 缓存那条路的等价:有新鲜缓存就不刷 token 也不打后端、显式
  * forceRefresh 才去取、取失败退回缓存 + 兜底表。mock 的路径必须解析到 handler
- * 自己 import 的那些模块(`../../providers/...`、`../../stores/settings.js`)。
+ * 自己 import 的那些模块(`../../providers/...`、`../../runtime/settings/settings-store.js`)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings, OpenRouterModel } from '@shared/ipc.js'
@@ -77,7 +77,7 @@ vi.mock('@onething/backend/runtime/providers/vendors/github-copilot/models', asy
   fetchCopilotModels: vi.fn(),
 }))
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('../../runtime/settings/settings-store.js', () => ({
   getSettings: () => mocks.settings,
   getSpaceSettings: (id: string) => mocks.spaceSettings[id] ?? mocks.settings,
   saveSettings: vi.fn(),

@@ -62,7 +62,7 @@ vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingSettingsPath: () => '/tmp/onething-e4-test/settings.json',
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => ({ tools: { tools: {} } }),
 }))
 

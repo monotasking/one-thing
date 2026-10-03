@@ -62,7 +62,7 @@ import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { registerSessionLogEventAppendObserver } from '@onething/backend/runtime/sessions'
 import {
   configureSettingsEventBroadcaster,

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings, ModelCapabilityEntry } from '@shared/ipc.js'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 const state = vi.hoisted(() => ({
   settings: {} as AppSettings,
   saveSettings: vi.fn(),
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => state.settings,
   saveSettings: state.saveSettings,
 }))

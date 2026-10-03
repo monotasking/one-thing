@@ -61,7 +61,7 @@ vi.mock('@onething/backend/runtime/mcp/oauth/index', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getMCPOAuthFlowManager: () => ({ logout: vi.fn(async () => {}) }),
 }))
-vi.mock('../../stores/settings.js', () => settings)
+vi.mock('../../runtime/settings/settings-store.js', () => settings)
 
 const HTTP_CONTEXT = { transport: 'http' as const, sandboxRoot: '/tmp/sandbox' }
 const IPC_CONTEXT = { transport: 'ipc' as const }

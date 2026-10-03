@@ -18,7 +18,7 @@
  * headless 档那一半在 `resource-kernel.test.ts` 里(它就是拿 `'headless'` 装的)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `runtime/sessions/session-store.ts` / `stores/settings.ts` 在 **import 期**就解析 store 根。
+ * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'

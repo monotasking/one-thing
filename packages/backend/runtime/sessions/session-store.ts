@@ -25,7 +25,7 @@ import {
 	writeJsonFileAsync,
 	deleteJsonFile,
 } from '@onething/backend/runtime/storage';
-import { getCurrentSessionId, setCurrentSessionId } from "@onething/backend/stores/app-state.js";
+import { getCurrentSessionId, setCurrentSessionId } from "./current-session.js";
 import { sessionLifecycleEvents } from "./lifecycle-events.js";
 import { sessionCommandEvents } from "./command-events.js";
 import { assertSessionEventLogIdle, resetSessionEventLogCache } from "./event-log.js";
@@ -38,7 +38,7 @@ import { hydrateSessionMessagesFromProjection } from "./hydrate.js";
 import { materializeSessionMessages } from "./materialized-messages.js";
 import { eventsHasMessage } from "./events-reads.js";
 import { hasLiveSessionProjection } from "./projection-cache.js";
-import { getSettings } from "@onething/backend/stores/settings.js";
+import { getSettings } from "@onething/backend/runtime/settings";
 import { expandOnethingToolSandboxPath as expandPath } from '@onething/backend/runtime/tools/sandbox-runtime';
 import { createHybridSessionStorageDriver } from './storage-driver.js'
 import { createOnethingSessionRepository } from './session-repository.js'

@@ -119,7 +119,7 @@ vi.mock('../../current.js', async importOriginal => ({
 vi.mock('../principal.js', () => ({
   principalOf: () => ({ kind: 'user', userId: 'local-user' }),
 }))
-vi.mock('../../stores/settings.js', () => settings)
+vi.mock('../../runtime/settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/runtime/music/radio', () => radio)
 vi.mock('@onething/backend/runtime/music/service', () => service)
 vi.mock('@onething/backend/runtime/music/dj-voice', () => ({ resolveDjSpeakDone: vi.fn() }))

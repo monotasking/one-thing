@@ -13,7 +13,7 @@ import { broadcastVoiceHostMessage, hasVoiceHost } from '@onething/backend/runti
 import { getSpeechOutput } from '@onething/backend/runtime/voice/speech-output'
 import type { PatterSpeech, PatterVoiceStyle } from './host-voice.js'
 import { synthesizeSpeech } from '@onething/backend/runtime/voice/provider-calls'
-import { getSettings } from '@onething/backend/stores/settings.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 

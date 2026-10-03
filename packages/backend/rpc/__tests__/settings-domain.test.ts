@@ -17,7 +17,7 @@
  *  - `getSystemTheme` 读的是宿主端口(未注入 = 浅色)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mergeWithDefaults } from '../../stores/settings-defaults.js'
+import { mergeWithDefaults } from '@onething/backend/runtime/settings'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { SERVER_REDACTED_SECRET } from '../../server/mcp-secrets.js'
 import { settingsRouter } from '@shared/ipc/settings.js'
@@ -38,7 +38,7 @@ const ports = vi.hoisted(() => ({
   applyGatewaySettings: vi.fn(async () => {}),
 }))
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('../../runtime/settings/settings-store.js', () => ({
   getSettings: () => store.getSettings(),
   saveSettings: (next: AppSettings) => store.saveSettings(next),
 }))

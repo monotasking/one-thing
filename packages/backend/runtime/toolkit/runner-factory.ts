@@ -35,7 +35,7 @@ import {
   isPathContained,
   resolveToolPath,
 } from '@onething/backend/runtime/tools/access-control/sandbox'
-import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getConnectedDirectoriesForSession } from '@onething/backend/runtime/files'
 import { createPermissionAuthorizer } from './authorizer.js'
 import { AuditProjector, combineObservers, type ToolAuditSink } from '@onething/backend/runtime/toolkit/audit-observer'
 import { BackgroundJobRegistry } from './jobs.js'

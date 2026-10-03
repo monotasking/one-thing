@@ -33,7 +33,7 @@ import type { AppSettings } from '@shared/ipc.js'
 import type { NoteVaultPreference } from '@shared/ipc/settings.js'
 import { isInsideRoot, ObsidianRegistry, type ObsidianVaultRecord } from '@onething/backend/runtime/notes'
 import { getOnethingStorePath } from '@onething/backend/runtime/storage'
-import { getPersistedSettings, savePersistedSettings } from '@onething/backend/stores/settings.js'
+import { getPersistedSettings, savePersistedSettings } from '@onething/backend/runtime/settings'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('notes')

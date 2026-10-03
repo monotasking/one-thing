@@ -5,7 +5,7 @@ import type { OnethingSearchProvidersAdapters } from './providers.js'
 import type { SearchServiceOptions } from './service.js'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, createSessionAccess } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
-import { getConnectedDirectories, getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getConnectedDirectories, getConnectedDirectoriesForSession } from '@onething/backend/runtime/files'
 
 /** Global notes, prompts and plugin catalogs are owned by the local operator. */
 export function createAppSearchAuthorization(adapters: OnethingSearchProvidersAdapters) {

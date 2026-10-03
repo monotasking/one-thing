@@ -8,7 +8,7 @@
  *
  * 种子表的键序 = 各家 manifest 的 `seed` 按 `VENDOR_SEED_ORDER`(没有 `seed` 的家跳过),再接
  * `@shared` 的两条非服务商(`acp`、`custom`)—— 与 P3 之前那张大表逐字同序
- * (`stores/__tests__/settings-defaults.freeze.test.ts` 钉着)。
+ * (`runtime/settings/__tests__/settings-defaults.freeze.test.ts` 钉着)。
  */
 import type { AppSettings, ProviderConfig } from '@shared/ipc.js'
 import {

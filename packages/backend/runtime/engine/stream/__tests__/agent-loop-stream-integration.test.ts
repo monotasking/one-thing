@@ -26,7 +26,7 @@ afterEach(async () => {
 import {
 	createDefaultSettings,
 	DEFAULT_CHAT_SETTINGS,
-} from "@onething/backend/stores/defaults/settings.js";
+} from "../../../settings/defaults/settings.js";
 import type {
 	AppSettings,
 	SkillDefinition,

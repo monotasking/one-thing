@@ -1,6 +1,6 @@
 import { listMusicProviderDescriptors, type OnethingMusicEvent, type OnethingMusicNowPlaying } from '@onething/backend/runtime/music'
-import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/stores/defaults/settings.js'
-import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
+import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/runtime/settings'
+import { getSettings, saveSettings } from '@onething/backend/runtime/settings'
 import { createMusicServiceScope } from './service.js'
 import { createRadioScope } from './radio.js'
 import { createDjVoiceScope } from './dj-voice.js'

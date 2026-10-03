@@ -74,7 +74,7 @@ import {
 	type SessionIndexPort,
 	type SessionOwner as ServerSessionOwner,
 } from "./audience.js";
-import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/stores/settings.js";
+import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/runtime/settings";
 import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/runtime/agents/agent-store-access";
 import { getProjectsStore as getAppProjectsStore } from "@onething/backend/runtime/project-dirs/bootstrap";
 import {
@@ -292,7 +292,7 @@ import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
 } from "@onething/backend/runtime/sessions";
-import { mergeWithDefaults } from "../stores/settings-defaults.js";
+import { mergeWithDefaults } from "@onething/backend/runtime/settings";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/backend/rpc/sandbox.js";
@@ -1403,7 +1403,7 @@ async function createServerRuntimeOverServerBackend(
 			 * 走 `createDefaultContextServerSettingsStore`,它对**默认上下文**特判到
 			 * `createSingleFileServerSettingsStore(getOnethingSettingsPath({storePath}))`
 			 * = `<store>/settings.json`;而子系统读的 `getSettings().mcp` 走
-			 * `stores/settings.ts` 的 repository,`filePath: getOnethingSettingsPath`,
+			 * `runtime/settings/settings-store.ts` 的 repository,`filePath: getOnethingSettingsPath`,
 			 * 同一个文件、同一个 `mergeWithDefaults`(`resolveEffectiveAppSettings`
 			 * 只重算 `.ai`,不碰 `.mcp`)。`createRealServerBackend` 开头就把
 			 * `ONETHING_STORE_PATH` 钉到同一个 storePath,所以两边的路径也同一个。

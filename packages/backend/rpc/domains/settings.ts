@@ -19,7 +19,7 @@
  *
  * 旧 server 在 `settings` adapter 背后另开一本 per-owner 的设置账
  * (`settingsByOwner` + `ServerSettingsStore`),而桌面读写的是装配层那只
- * `stores/settings.ts` 单例。同一个 store 两本设置账,等于把「我改没改过设置」
+ * `runtime/settings/settings-store.ts` 单例。同一个 store 两本设置账,等于把「我改没改过设置」
  * 分叉;更要命的是 P4c 第六批之后 mcp 域的写面已经落在**单例**上,于是「从浏览器
  * 加一台 MCP server」写的是单例、`GET /api/settings` 读的是 owner 缓存 —— 已经
  * 自相矛盾。搬家取的是单例这一边:web 与桌面从此读同一本 `<store>/settings.json`。
@@ -74,7 +74,7 @@ import {
   sanitizeSettingsForClient,
 } from '../../server/settings-projection.js'
 import { invalidateProviderCache } from '@onething/backend/runtime/providers/provider-table'
-import { getSettings, saveSettings } from '../../stores/settings.js'
+import { getSettings, saveSettings } from '@onething/backend/runtime/settings'
 import { getGatewayHost } from '@onething/backend/runtime/gateway/lifecycle-port'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { broadcastSettingsChanged } from '@onething/backend/runtime/settings/events'

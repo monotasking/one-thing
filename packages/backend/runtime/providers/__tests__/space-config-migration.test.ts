@@ -10,7 +10,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 const mocks = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   spaces: [] as Array<{ id: string; name: string; createdAt: number }>,
 }))
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getPersistedSettings: () => mocks.settings,
   savePersistedSettings: (value: unknown) => {
     mocks.saved.push(value)

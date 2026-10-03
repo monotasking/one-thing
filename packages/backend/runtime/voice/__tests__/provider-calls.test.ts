@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 import { getOpenRouterTTSModels, getVoiceInputConfigurationError, streamSynthesizeSpeech, synthesizeSpeech, transcribeUtterance } from '../provider-calls.js'
 
-vi.mock('@onething/backend/stores/settings.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => ({
     ai: {
       providers: {

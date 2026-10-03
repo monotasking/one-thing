@@ -50,7 +50,7 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   const a = path.join(root, 'a')
   backend = await assemble(a, oldCommands)
   const { createSession } = await import('../runtime/sessions/session-store.js')
-  const { getSettings, saveSettings } = await import('../stores/settings.js')
+  const { getSettings, saveSettings } = await import('@onething/backend/runtime/settings')
   createSession('voice-session', 'Voice')
   const settings = getSettings()
   saveSettings({ ...settings, voice: { ...settings.voice!, enabled: true, tts: { ...settings.voice!.tts, autoSpeak: true, provider: 'openrouter-tts' } } })

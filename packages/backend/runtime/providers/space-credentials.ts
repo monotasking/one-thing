@@ -76,7 +76,7 @@ import {
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
 } from '@onething/backend/runtime/spaces/provider-settings'
-import { providerSeedOf } from '@onething/backend/stores/settings-defaults.js'
+import { providerSeedOf } from '@onething/backend/runtime/settings'
 import type {
   CoreProviderConfigLike,
   CoreSpaceCredentialMarker,

@@ -40,7 +40,7 @@ import {
 	MODELS_DEV_CACHE_FILE_NAME,
 } from "@onething/backend/runtime/providers/models-dev-cache";
 import { getOnethingCachePath } from "@onething/backend/runtime/storage/paths";
-import { getSettings, getSpaceSettings, saveSettings } from "@onething/backend/stores/settings.js";
+import { getSettings, getSpaceSettings, saveSettings } from "@onething/backend/runtime/settings";
 import { fetchProviderDirectModels, type ModelsListMapping } from "@onething/backend/runtime/providers/models-endpoint";
 import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "./space-credentials.js";

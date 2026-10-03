@@ -78,7 +78,7 @@ vi.mock('../../sessions/session-store.js', () => ({
 }))
 
 vi.mock('@onething/backend/runtime/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
-vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => mocks.settings }))
+vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => mocks.settings }))
 
 /*
  * 归属这一层给一份真的(与 `radio-authorization.test.ts` 同一种摆法):每条会话都归

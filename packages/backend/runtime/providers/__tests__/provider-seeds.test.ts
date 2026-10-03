@@ -1,6 +1,6 @@
 /**
  * 出厂种子(各家 manifest 的 `seed`,服务商自述试点 P3)的两条结构约束。
- * 值与键序的逐字证据在 `packages/backend/stores/__tests__/settings-defaults.freeze.test.ts`。
+ * 值与键序的逐字证据在 `packages/backend/runtime/settings/__tests__/settings-defaults.freeze.test.ts`。
  */
 import { describe, expect, it } from 'vitest'
 import { VENDOR_MANIFESTS, VENDOR_SEED_ORDER } from '../vendors/manifests.js'

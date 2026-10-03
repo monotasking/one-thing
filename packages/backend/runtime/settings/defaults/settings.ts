@@ -67,7 +67,7 @@ export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
  *
  * 从前这里是一张按家点名的大表。服务商 id 是数据,名册在 runtime(各家 manifest 的 `seed`,
  * `packages/backend/runtime/providers/vendors/manifests.ts`),而契约层不许反向依赖
- * runtime —— 所以各家那几条由装配层(`packages/backend/stores/settings-defaults.ts`)按名册
+ * runtime —— 所以各家那几条由装配层(`packages/backend/runtime/settings/settings-defaults.ts`)按名册
  * 拼好,经 `createDefaultSettings` / `mergeWithDefaults` 的参数传进来。这里只留不是服务商的
  * 两条(`NON_VENDOR_PROVIDER_SEEDS`)。
  */

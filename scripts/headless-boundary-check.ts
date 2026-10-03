@@ -571,7 +571,12 @@ const MAIN_CORE_SYSTEM_DIRS = [
 /** 有真实文件 IO 职责的装配目录:只禁宿主与原生 SDK,不禁 fs/path。 */
 const MAIN_FILE_IO_SYSTEM_DIRS = [
   'packages/backend/runtime/sessions',
-  'packages/backend/stores',
+  // 包根归位 2(2026-10-03):包根 `stores/` 拆进各自功能,目录没了;照旧量原来那几只文件(换成新址),尺子量的东西不变。
+  'packages/backend/runtime/settings/settings-store.ts',
+  'packages/backend/runtime/settings/settings-defaults.ts',
+  'packages/backend/runtime/settings/defaults',
+  'packages/backend/runtime/storage/docs-paths.ts',
+  'packages/backend/runtime/files/connected-directories.ts',
   // P3'b-A:`backend/mcp/` 整域归位 `runtime/mcp/`(闭包零脊柱边),
   // 装配层不再有 mcp 目录 —— 这一条随之退役。
   'packages/backend/runtime/plugins',

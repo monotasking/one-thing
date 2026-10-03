@@ -54,8 +54,8 @@ import {
   type WebOpenToolAdapters,
   type WebSearchToolAdapters,
 } from '@onething/backend/runtime/toolkit'
-import { getSettings } from '@onething/backend/stores/settings.js'
-import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'
+import { getSettings } from '@onething/backend/runtime/settings'
+import { getConnectedDirectoriesForSession } from '@onething/backend/runtime/files'
 import { getOnethingToolOutputsDir } from '@onething/backend/runtime/storage'
 import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './file-adapters.js'
 import { createLocalBashOperations } from '@onething/backend/runtime/tools/bash-executor'

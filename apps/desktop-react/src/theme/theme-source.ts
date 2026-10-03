@@ -135,7 +135,7 @@ let lastDecision: ThemeDecision | undefined
  * 「当前是哪套主题 + 哪个明暗」的判据 —— **与旧 Vue 壳逐字同源**:
  *  - 明暗:`settings.theme` 为 `'system'` 时取系统色(`settingsApi.getSystemTheme`,
  *    web 上就是看的人那台机器的 `prefers-color-scheme`),否则就是它自己
- *    (`stores/settings.ts` 的 `effectiveTheme`);
+ *    (`runtime/settings/settings-store.ts` 的 `effectiveTheme`);
  *  - 主题 id:按明暗分别取 `general.darkThemeId` / `general.lightThemeId`,
  *    空则兜底 `flexoki`(`stores/themes.ts` 的 `currentThemeId` + 两个 ref 的初值)。
  *
