@@ -516,7 +516,7 @@ export interface AbortPluginRequestRequest {
  * `PLUGINS_REQUEST_PROGRESS`(按 `callerId` 定向回发起窗,经
  * `configurePluginRequestProgressBroadcaster` 注入)。
  *
- * **http 分叉在域里**(`packages/backend/rpc/domains/plugins.ts`),不在这里:
+ * **http 分叉在域里**(`packages/backend/runtime/plugins/plugins-client-api.ts`),不在这里:
  * 六条读/开关面沿用 server 自己那本只读镜像目录,其余写面按「插件管理器在不在场」
  * 判定 —— 与迁移前 `platform/web.ts` 那批硬桩逐字相同的答案。
  */

@@ -8,7 +8,7 @@
  * **判活与 `apps/server/src/main.ts` 的拒启判据是同一把尺子**:pid 活着**且**端口连得上。
  * 记录形状在 `@shared/backend/http-discovery.ts`(C0 抽出来的;§9 留账那条);读与判活这一半
  * 碰 node,shared 放不下,server / client 拆分第②步起两边各一份(本包 `http-discovery-io.ts` 与
- * `packages/backend/server/http-discovery-io.ts`),逐字同形,对拍测试钉住两份给同一个答案 ——
+ * `packages/backend/http-server/http-server-discovery-io.ts`),逐字同形,对拍测试钉住两份给同一个答案 ——
  * 不然 CLI 与 server 会对「core 活没活」各说各话。
  *
  * 单列成子路径而不是并进 `index.ts`,是因为它 import `node:fs` / `node:net` ——

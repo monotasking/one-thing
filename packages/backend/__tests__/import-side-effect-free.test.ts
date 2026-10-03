@@ -138,14 +138,14 @@ describe('@onething/backend import purity', () => {
    * K0 的注册基座同样归这道栅栏管(内核收缩,
    * docs/design/kernel-shrink-builtin-plugins-2026-08.md §1 D2)。
    *
-   * 它比上面那批更容易在未来出事:`features/registry` 与 `rpc/index` 都在模块
+   * 它比上面那批更容易在未来出事:`features/registry` 与 `http-server/http-server-client-api-roster` 都在模块
    * 级持有表,而「顺手在模块级挂一个 feature」是个只要写一次就再也发现不了的
    * 错 —— 症状会是 apps/server 里 import 一下就把域注册了,与宿主自己的装配
    * 撞重复守卫。所以这里断言的是**表在 import 后是空的**。
    */
   it('importing the K0 feature base mounts nothing', { timeout: 60_000 }, async () => {
     const features = await import('../features/index.js')
-    await import('../rpc/index.js')
+    await import('../http-server/http-server-client-api-roster.js')
 
     expect(features.dumpFeatures()).toEqual([])
   })

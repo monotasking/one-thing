@@ -7,7 +7,7 @@
  *
  * ── 列目录 / stat 的代码从哪来:一行都没有新写的 ──────────────────────────────
  * `listOnethingDirectory` / `statOnethingPath` / `revealOnethingPath` 是
- * `@onething/backend/runtime/files` 里的**纯函数**(fs 由调用方注入),`rpc/domains/files.ts`
+ * `@onething/backend/runtime/files` 里的**纯函数**(fs 由调用方注入),`runtime/files/files-client-api.ts`
  * 的 `listDirectory` / `stat` / `reveal` 调的就是它们。所以这只 provider 递的是同一
  * 组函数、同一份注入(`fs.readdir(withFileTypes)` / `fs.stat().catch(()=>null)` /
  * `getShellHost().revealPath`),不是第二份写法:`node_modules` / `.git` 跳过、目录
@@ -231,7 +231,7 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
       case 'reveal': {
         // 沙箱与读那一条同一句话、同一把尺子(**读根** —— 列得出的目录指得出来):
         // **先夹后降级** —— 越界的答案是越界,不是「这台宿主没有外壳能力」
-        // (与 `rpc/domains/files.ts` 的 `reveal` 逐字同序)。
+        // (与 `runtime/files/files-client-api.ts` 的 `reveal` 逐字同序)。
         const target = resolveReadable(requireDirPath(ref, op), ctx.sandbox, scope)
         // 宿主口缺席在 **plan** 期就判,与 `ResourceTool` 对 `home: 'shell'` 的那一句
         // 同一个理由:一次注定跑不了的做法不该先去弹一张权限卡问人。
@@ -289,7 +289,7 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
     const payload = intent.payload
     switch (payload.op) {
       case 'reveal': {
-        // 投影函数与注入**逐字抄自 `rpc/domains/files.ts` 的 `reveal`**:先 stat(路径
+        // 投影函数与注入**逐字抄自 `runtime/files/files-client-api.ts` 的 `reveal`**:先 stat(路径
         // 不在就是失败,不是一次静默的无操作),再经宿主口定位;未注入 = 抛,投影自己
         // catch 成 `{ success:false, error }`。
         const response = await revealOnethingPath({

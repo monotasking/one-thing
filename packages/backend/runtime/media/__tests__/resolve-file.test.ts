@@ -1,7 +1,7 @@
 /**
  * `resolveMediaFileByName` —— 「按文件名找媒体库文件」全仓唯一那份判据(G 线 §23.2)。
  * 三条拒绝(越界路径 / 无权 / 不存在)各钉一条,外加一道静态门:HTTP 那条路
- * (`server/media-delivery.ts`)与 RPC 那条路(`rpc/domains/media.ts`)都调它,且 HTTP 那边
+ * (`runtime/media/media-client-api-delivery.ts`)与 RPC 那条路(`runtime/media/media-client-api.ts`)都调它,且 HTTP 那边
  * 不再自己做 basename 匹配 —— 判据抄回去一份,两边迟早各说各话。
  */
 import fs from 'node:fs'
@@ -72,8 +72,8 @@ describe('resolveMediaFileByName', () => {
   })
 
   it('is the one judgment both HTTP and RPC call (静态门)', () => {
-    const delivery = fs.readFileSync(path.join(backendRoot, 'server/media-delivery.ts'), 'utf8')
-    const domain = fs.readFileSync(path.join(backendRoot, 'rpc/domains/media.ts'), 'utf8')
+    const delivery = fs.readFileSync(path.join(backendRoot, 'runtime/media/media-client-api-delivery.ts'), 'utf8')
+    const domain = fs.readFileSync(path.join(backendRoot, 'runtime/media/media-client-api.ts'), 'utf8')
     expect(delivery).toContain('resolveMediaFileByName(')
     expect(domain).toContain('resolveMediaFileByName(')
     // HTTP 那边不再自己做 basename 匹配 / 根判定:那段只许住在 resolve-file.ts。

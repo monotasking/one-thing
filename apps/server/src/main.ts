@@ -2,19 +2,19 @@
  * `server:start` 的进程壳。
  *
  * A 期(docs/design/one-core-2026-08.md §3)之后 HTTP/SSE 面与 server runtime 的
- * **实现**都在 `@onething/backend/server/*`,这个文件只剩三件事:读环境、决定要不要
+ * **实现**都在 `@onething/backend/http-server`,这个文件只剩三件事:读环境、决定要不要
  * 让位给桌面 core 服务、以及进程生命周期(监听 / 发现文件 / 退出刷盘)。
  */
-import { createOnethingHttpServer } from '@onething/backend/server/http.js'
-import { createDevelopmentOnethingServerRuntime } from '@onething/backend/server/runtime.js'
+import { createOnethingHttpServer } from '@onething/backend/http-server'
+import { createDevelopmentOnethingServerRuntime } from '@onething/backend/http-server'
 import {
   httpDiscoveryUrl,
   isHttpDiscoveryAlive,
   readHttpDiscovery,
   removeHttpDiscovery,
   writeHttpDiscovery,
-} from '@onething/backend/server/discovery.js'
-import { configureHostLocalTrust } from '@onething/backend/server/host-trust.js'
+} from '@onething/backend/http-server'
+import { configureHostLocalTrust } from '@onething/backend/http-server'
 import { getAppLogPath, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { warnOnForeignCoreForEventsRead } from '@onething/backend/runtime/sessions'
 import { randomBytes } from 'node:crypto'
@@ -122,7 +122,7 @@ warnOnForeignCoreForEventsRead(
 )
 log.info('runtime created', { ms: Date.now() - runtimeCreateStart })
 log.info('logging to file', { path: getAppLogPath() })
-// 本机宿主可信(2026-08-30 拍板,`@onething/backend/server/host-trust.ts`):
+// 本机宿主可信(2026-08-30 拍板,`packages/backend/http-server/http-server-host-trust.ts`):
 // **只有回环绑定才声明可信**。回环 = 服务的是本机同一个用户的同一个 store,那时
 // `POST /api/rpc` 的 files 面与桌面 IPC 同权;绑到别的地址上就是"别人也够得着"的
 // 独立部署,护栏原样不动。`ONETHING_SERVER_FILES_SANDBOX=1` 压得住这条声明。

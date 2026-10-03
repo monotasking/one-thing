@@ -14,11 +14,11 @@ import type {
   MarkdownSaveAttachmentsRequest,
   MarkdownSaveAttachmentsResponse,
 } from '@shared/ipc/markdown.js'
-import { markdownRpcHandlers } from '@onething/backend/rpc/domains/markdown.js'
+import { markdownRpcHandlers } from '../markdown-client-api.js'
 import {
   configureHostLocalTrust,
   resetHostLocalTrustForTests,
-} from '@onething/backend/server/host-trust.js'
+} from '@onething/backend/http-server/http-server-host-trust.js'
 import { FolderVault } from '@onething/backend/runtime/notes'
 import type { NoteLinkKind, NoteVault } from '@onething/backend/runtime/notes'
 

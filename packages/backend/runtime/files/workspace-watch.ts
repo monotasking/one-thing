@@ -1,7 +1,7 @@
 /** Workspace watches belong to one server surface, shared by its RPC and SSE. */
 import { stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { isPathInside } from '@onething/backend/rpc/sandbox.js'
+import { isPathInside } from '@onething/backend/http-server/http-server-sandbox.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { createWorkspaceWatchDriver, type WorkspaceWatchDriver } from './workspace-watch-driver.js'
 

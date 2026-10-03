@@ -26,3 +26,18 @@ export { getMCPOAuthFlowManager } from './oauth/index.js'
 export { configureMCPClientIdentity, getMCPClientIdentity } from './identity.js'
 
 export { configureMCPCapabilitiesChangedHandler, notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
+
+// 不带界面单独跑的 server 自己那台 MCP 客户端(server runtime 装进 `configureMCPClientHost`;包根归位 2026-10-04 从 `server/mcp-client.ts` 搬来)。
+export { ServerMCPClient, probeServerMCPConfig, type ServerMCPClientOptions } from './mcp-server-client.js'
+
+// MCP 服务器配置里的私密字段:出网前脱敏、写回时合并(从 `server/mcp-secrets.ts` 搬来;设置面的出界投影也用它)。
+export {
+  MCP_SERVER_PRIVATE_KEYS,
+  SERVER_REDACTED_SECRET,
+  mergeRedactedMCPServerConfig,
+  sanitizeMCPMutationResultForClient,
+  sanitizeMCPServerConfigForClient,
+  sanitizeMCPServerStateForClient,
+  sanitizeMCPServerStatesForClient,
+  shouldRedactMcpPrivateValue,
+} from './mcp-secrets.js'

@@ -68,7 +68,7 @@ import { deliverInternalMessage } from '@onething/backend/runtime/plugins/sessio
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
+import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { fixedExecutionContext } from '../sessions/index.js'
 
 const log = getLogger('tasks')

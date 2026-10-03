@@ -45,7 +45,7 @@ export interface FileTarget {
  * `app-state.json`(那是一次会持久化的行为改动,按判例得先问用户)。
  *
  * **谁递得进来**:`search.query` 的本机可信那一支(`isHostLocallyTrusted()`,
- * 见 `backend/rpc/domains/search.ts`)。不可信的那一支根本走不到这个能力 ——
+ * 见 `backend/runtime/search/search-client-api.ts`)。不可信的那一支根本走不到这个能力 ——
  * 它问的是 server 侧那个 per-owner 沙箱端口。所以这里不再自建一道信任判据:
  * 判据只该有一个产地。
  */

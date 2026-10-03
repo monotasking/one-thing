@@ -549,9 +549,9 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('resources RPC 域:list / describe / read / do 都通,而且是通用的(K2a)', async () => {
-    const { dispatchRpc } = await import('../rpc/registry.js')
-    // 本机可信 = 桌面那条路,主体铸成本机用户(`rpc/principal.ts` 第一条)。
-    const { configureHostLocalTrust, resetHostLocalTrustForTests } = await import('../server/host-trust.js')
+    const { dispatchRpc } = await import('../http-server/http-server-dispatch-table.js')
+    // 本机可信 = 桌面那条路,主体铸成本机用户(`http-server/http-server-principal.ts` 第一条)。
+    const { configureHostLocalTrust, resetHostLocalTrustForTests } = await import('../http-server/http-server-host-trust.js')
     const restore = configureHostLocalTrust({ origin: 'desktop-embedded' })
 
     try {
@@ -620,8 +620,8 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('未认证的联网调用方:四条面一律说不出自己是谁(K2a)', async () => {
-    const { dispatchRpc } = await import('../rpc/registry.js')
-    const { resetHostLocalTrustForTests } = await import('../server/host-trust.js')
+    const { dispatchRpc } = await import('../http-server/http-server-dispatch-table.js')
+    const { resetHostLocalTrustForTests } = await import('../http-server/http-server-host-trust.js')
     resetHostLocalTrustForTests()
 
     for (const [method, payload] of [

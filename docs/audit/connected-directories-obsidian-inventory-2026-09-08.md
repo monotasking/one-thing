@@ -65,7 +65,7 @@ RPC:
 
 ### 1.5 测试
 
-`backend/stores/__tests__/connected-directories.test.ts`(核心口径)、`rpc/__tests__/files-domain.test.ts:294`、`rpc/__tests__/spaces-domain.test.ts`、`wiring/markdown/__tests__/asset-service.test.ts`、`wiring/providers/__tests__/space-config-migration.test.ts:264`(迁移不动它)、`runtime/spaces/__tests__/{overlay,ipc-operations,notifications}.test.ts`、`runtime/tools/__tests__/{sandbox,sandbox-runtime}.test.ts`、`runtime/files/__tests__/file-search.test.ts`、`runtime/search/__tests__/files-scan-boundaries.test.ts:91`(禁止把 fileRoots 接回扫盘)、`runtime/skills/__tests__/loader.test.ts`、`shared/defaults/__tests__/settings.test.ts`。
+`backend/stores/__tests__/connected-directories.test.ts`(核心口径)、`runtime/files/__tests__/files-client-api.test.ts:294`、`runtime/spaces/__tests__/spaces-client-api.test.ts`、`wiring/markdown/__tests__/asset-service.test.ts`、`wiring/providers/__tests__/space-config-migration.test.ts:264`(迁移不动它)、`runtime/spaces/__tests__/{overlay,ipc-operations,notifications}.test.ts`、`runtime/tools/__tests__/{sandbox,sandbox-runtime}.test.ts`、`runtime/files/__tests__/file-search.test.ts`、`runtime/search/__tests__/files-scan-boundaries.test.ts:91`(禁止把 fileRoots 接回扫盘)、`runtime/skills/__tests__/loader.test.ts`、`shared/defaults/__tests__/settings.test.ts`。
 
 ### 1.6 问题清单(读到什么写什么)
 
@@ -138,7 +138,7 @@ wiring 半边 `wiring/markdown/asset-service.ts`:`getNoteRoots` = `user_note_dir
 
 ### 2.6 测试
 
-`runtime/plugins/__tests__/note-skills.test.ts`、`wiring/plugins/builtin/__tests__/note-skills.test.ts`、`runtime/markdown/__tests__/asset-service.test.ts`、`wiring/markdown/__tests__/asset-service.test.ts`、`rpc/__tests__/markdown-sandbox.test.ts`、`runtime/search/__tests__/capabilities.test.ts:368,462`、`runtime/search/index/__tests__/daily-feed.test.ts`、`wiring/search/__tests__/index-service.test.ts:67-82`、`rpc/__tests__/search-domain.test.ts:89`、`backend/server/__tests__/http.test.ts:403-504,627`、`wiring/skills/__tests__/loader.test.ts:134`。
+`runtime/plugins/__tests__/note-skills.test.ts`、`wiring/plugins/builtin/__tests__/note-skills.test.ts`、`runtime/markdown/__tests__/asset-service.test.ts`、`wiring/markdown/__tests__/asset-service.test.ts`、`runtime/markdown/__tests__/markdown-client-api-sandbox.test.ts`、`runtime/search/__tests__/capabilities.test.ts:368,462`、`runtime/search/index/__tests__/daily-feed.test.ts`、`wiring/search/__tests__/index-service.test.ts:67-82`、`runtime/search/__tests__/search-client-api.test.ts:89`、`backend/http-server/__tests__/http-server-routes.test.ts:403-504,627`、`wiring/skills/__tests__/loader.test.ts:134`。
 
 ### 2.7 问题清单
 

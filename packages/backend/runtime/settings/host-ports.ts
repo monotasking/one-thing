@@ -2,7 +2,7 @@
  * 设置面的**宿主注入端口** —— 结构债 P4c 第十一批。
  *
  * settings 的四条数据面已经迁到通用 RPC 通道(`settingsRouter` +
- * `backend/rpc/domains/settings.ts`)。四条里有三件事只有 Electron 桌面做得到,
+ * `backend/runtime/settings/settings-client-api.ts`)。四条里有三件事只有 Electron 桌面做得到,
  * 它们从此走这个端口:
  *
  *  - `shouldUseDarkColors()` —— `nativeTheme.shouldUseDarkColors`。未注入时

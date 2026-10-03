@@ -1919,7 +1919,7 @@ const MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
   /Failed to load TTS models\./,
   /return\s+\{\s*success:\s*true,\s*transcript:/,
   // P4c 第十一批:`/return { success: true, models: … }/` 与 `/return { success: true }/`
-  // 两条从这张表里摘掉 —— 断言现在指的是 `rpc/domains/voice.ts`,而那里逐字保留着
+  // 两条从这张表里摘掉 —— 断言现在指的是 `runtime/voice/voice-client-api.ts`,而那里逐字保留着
   // 旧 server adapter 的 http 桩(`stop` 恒成功、`getTTSModels` 恒空表、`audioChunk`
   // 的空回执),形状与它们撞车。真正要守的「不许把投影再抄一份」由上面那几条
   // 文案与 `const transcript = await transcribeUtterance` 之类的实现痕迹继续守。
@@ -2720,8 +2720,8 @@ function checkAgentsDomainRidesTheRpcChannel(): void {
   ]
   const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
   const routerFile = path.join(root, 'packages/shared/ipc/agents.ts')
-  const domainFile = path.join(root, 'packages/backend/rpc/domains/agents.ts')
-  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
+  const domainFile = path.join(root, 'packages/backend/runtime/agents/agents-client-api.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/http-server/http-server-client-api-roster.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -2749,12 +2749,12 @@ function checkAgentsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing agents RPC domain symbol ${symbol}`),
-    // 装配点是 feature 描述子(`{ id: 'rpc:agents', mount: ctx =>
-    // ctx.registerRpcDomain(agentsRouter, agentsRpcHandlers) }`,K0/C0)。域文件
-    // 本身只导出 handlers —— 每域那只「只有测试在用的注册包装」已随 S3 删掉
-    // (它长得像入口,生产却零调用)。所以「域上了通用面」的判据认
-    // **装配点上 router + handlers 成对出现**,而不是域文件里的绑定调用。
-    ...(!registryIndexContent.includes('agentsRouter, agentsRpcHandlers')
+    // 装配点是名册(包根归位 2026-10-04,决策 D21 / D26):域文件用 `defineClientApi({ id: 'rpc:agents',
+    // router: agentsRouter, handlers: agentsRpcHandlers })` 交出一行,名册
+    // `http-server/http-server-client-api-roster.ts` 列出 `AGENTS_CLIENT_API`。所以「域上了通用面」的判据认
+    // **域文件里 router + handlers 成对交出、名册里有这一行**,而不是域文件里的绑定调用
+    // (每域那只「只有测试在用的注册包装」已随 S3 删掉)。
+    ...(!(domainContent.includes('router: agentsRouter, handlers: agentsRpcHandlers') && /\bAGENTS_CLIENT_API\b/.test(registryIndexContent))
       ? [`${rel(registryIndexFile)}: agents domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -2776,8 +2776,8 @@ function checkPromptsDomainRidesTheRpcChannel(): void {
   ]
   const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
   const routerFile = path.join(root, 'packages/shared/ipc/prompts.ts')
-  const domainFile = path.join(root, 'packages/backend/rpc/domains/prompts.ts')
-  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
+  const domainFile = path.join(root, 'packages/backend/runtime/prompts/prompts-client-api.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/http-server/http-server-client-api-roster.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -2805,7 +2805,7 @@ function checkPromptsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing prompts RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('promptsRouter, promptsRpcHandlers')
+    ...(!(domainContent.includes('router: promptsRouter, handlers: promptsRpcHandlers') && /\bPROMPTS_CLIENT_API\b/.test(registryIndexContent))
       ? [`${rel(registryIndexFile)}: prompts domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -2823,10 +2823,10 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
   ]
   const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
   const routerFile = path.join(root, 'packages/shared/ipc/markdown.ts')
-  const domainFile = path.join(root, 'packages/backend/rpc/domains/markdown.ts')
+  const domainFile = path.join(root, 'packages/backend/runtime/markdown/markdown-client-api.ts')
   const guardFile = path.join(root, 'packages/backend/runtime/markdown/asset-sandbox.ts')
-  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
-  const serverRuntimeFile = path.join(root, 'packages/backend/server/runtime.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/http-server/http-server-client-api-roster.ts')
+  const serverRuntimeFile = path.join(root, 'packages/backend/http-server/http-server-runtime.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -2872,7 +2872,7 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
     ...requiredGuardSymbols
       .filter(symbol => !guardContent.includes(symbol))
       .map(symbol => `${rel(guardFile)}: missing markdown workspace sandbox guard ${symbol}`),
-    ...(!registryIndexContent.includes('markdownRouter, markdownRpcHandlers')
+    ...(!(domainContent.includes('router: markdownRouter, handlers: markdownRpcHandlers') && /\bMARKDOWN_CLIENT_API\b/.test(registryIndexContent))
       ? [`${rel(registryIndexFile)}: markdown domain is not listed in the RPC assembly point`]
       : []),
     ...(/prepareServerMarkdownRequest|sanitizeServerMarkdownAsset/.test(serverRuntimeContent)
@@ -2889,10 +2889,10 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
   // 而不是「文件别回来」。
   const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
   const routerFile = path.join(root, 'packages/shared/ipc/permission-grants.ts')
-  const domainFile = path.join(root, 'packages/backend/rpc/domains/permission-grants.ts')
-  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
+  const domainFile = path.join(root, 'packages/backend/runtime/permissions/permissions-client-api-grants.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/http-server/http-server-client-api-roster.ts')
   const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
-  const serverRuntimeFile = path.join(root, 'packages/backend/server/runtime.ts')
+  const serverRuntimeFile = path.join(root, 'packages/backend/http-server/http-server-runtime.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -2922,7 +2922,7 @@ function checkPermissionGrantsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing permissionGrants RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('permissionGrantsRouter, permissionGrantsRpcHandlers')
+    ...(!(domainContent.includes('router: permissionGrantsRouter, handlers: permissionGrantsRpcHandlers') && /\bPERMISSION_GRANTS_CLIENT_API\b/.test(registryIndexContent))
       ? [`${rel(registryIndexFile)}: permissionGrants domain is not listed in the RPC assembly point`]
       : []),
     // `resolveServerWorkspaceGrantRoot` 已随 P4c 第二批(skills 整域迁 router)一起删 ——
@@ -2946,8 +2946,8 @@ function checkProvidersDomainRidesTheRpcChannel(): void {
   ]
   const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
   const routerFile = path.join(root, 'packages/shared/ipc/providers.ts')
-  const domainFile = path.join(root, 'packages/backend/rpc/domains/providers.ts')
-  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
+  const domainFile = path.join(root, 'packages/backend/runtime/providers/providers-client-api.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/http-server/http-server-client-api-roster.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -2974,7 +2974,7 @@ function checkProvidersDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing providers RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('providersRouter, providersRpcHandlers')
+    ...(!(domainContent.includes('router: providersRouter, handlers: providersRpcHandlers') && /\bPROVIDERS_CLIENT_API\b/.test(registryIndexContent))
       ? [`${rel(registryIndexFile)}: providers domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -2992,8 +2992,8 @@ function checkModelsDomainRidesTheRpcChannel(): void {
   ]
   const channelsFile = path.join(root, 'packages/shared/ipc/channels.ts')
   const routerFile = path.join(root, 'packages/shared/ipc/providers.ts')
-  const domainFile = path.join(root, 'packages/backend/rpc/domains/models.ts')
-  const registryIndexFile = path.join(root, 'packages/backend/rpc/index.ts')
+  const domainFile = path.join(root, 'packages/backend/runtime/providers/providers-client-api-models.ts')
+  const registryIndexFile = path.join(root, 'packages/backend/http-server/http-server-client-api-roster.ts')
   const channelsContent = fs.existsSync(channelsFile) ? fs.readFileSync(channelsFile, 'utf-8') : ''
   const routerContent = fs.existsSync(routerFile) ? fs.readFileSync(routerFile, 'utf-8') : ''
   const domainContent = fs.existsSync(domainFile) ? fs.readFileSync(domainFile, 'utf-8') : ''
@@ -3022,7 +3022,7 @@ function checkModelsDomainRidesTheRpcChannel(): void {
     ...requiredDomainSymbols
       .filter(symbol => !domainContent.includes(symbol))
       .map(symbol => `${rel(domainFile)}: missing models RPC domain symbol ${symbol}`),
-    ...(!registryIndexContent.includes('modelsRouter, modelsRpcHandlers')
+    ...(!(domainContent.includes('router: modelsRouter, handlers: modelsRpcHandlers') && /\bMODELS_CLIENT_API\b/.test(registryIndexContent))
       ? [`${rel(registryIndexFile)}: models domain is not listed in the RPC assembly point`]
       : []),
   ]
@@ -3242,9 +3242,9 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
   ]
   // 结构债 P4c 第四批:命令总线的入口从 `@main/ipc/handlers.ts` 的 `ipcMain.handle`
   // 搬到 `session-command` RPC 域,所以「不许在别处重抄一遍 emit」这条守的是域文件。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/session-command.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/sessions/sessions-client-api-commands.ts')
   // 2026-08-22(#21):`@main/ipc/chat.ts` 已随第七条一起删掉,只剩 chat 域要守。
-  const chatDomainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
+  const chatDomainFile = path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -3264,11 +3264,11 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
       .map(symbol => `packages/backend/runtime/events/ipc-operations.ts: missing ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/session-command.ts: missing session-command RPC domain']),
+      : ['packages/backend/runtime/sessions/sessions-client-api-commands.ts: missing session-command RPC domain']),
     // P4c 第五批:同一条规矩守 chat RPC 域(停止收尾在那里发会话事件)。
     ...(fs.existsSync(chatDomainFile)
       ? matchingLines(chatDomainFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
+      : ['packages/backend/runtime/engine/engine-client-api.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime/events owns session command/event IPC projections', lines)
@@ -3370,14 +3370,14 @@ function checkChatResumeAfterToolConfirmStaysRetired(): void {
 // (`apps/electron/src/ipc/files.ts`)与它的壳适配(`@main/ipc/files.ts`)**整只删掉**,
 // 连同 `apps/electron/package.json` 的 `./ipc/files` 导出。所以
 // `checkElectronHostOwnsFilesIpcHost` 也随之退休:没有宿主件要守了。
-// 域的形状由 `packages/backend/rpc/__tests__/files-domain.test.ts` 钉,
+// 域的形状由 `packages/backend/runtime/files/__tests__/files-client-api.test.ts` 钉,
 // 「投影逻辑不许搬进传输层」由下面六条 `checkRuntimeOwns*`(已改指域文件)守。
 
 // P4c 第五批:sessions 的 26 条数据面已迁 `sessionsRouter`,那只手写 IPC 工厂
 // (`apps/electron/src/ipc/sessions.ts`)与它的壳适配(`@main/ipc/sessions.ts`)
 // **整只删掉** —— 连同四条契约表外的字面量通道。所以
 // `checkElectronHostOwnsSessionsIpcHost` 也随之退休:没有宿主件要守了。
-// 域的形状由 `packages/backend/rpc/__tests__/sessions-domain.test.ts` 钉。
+// 域的形状由 `packages/backend/runtime/sessions/__tests__/sessions-client-api.test.ts` 钉。
 
 function checkCorePromptAssemblyOwnedByRuntime(): void {
   const files = [
@@ -3587,7 +3587,7 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
 function checkRuntimeOwnsOAuthIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/auth/ipc-operations.ts')
   // P4c 第七批:oauth 六条数据面整域迁 router,`@main` 那层壳适配已删 —— 判据改指域文件。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/oauth.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/auth/auth-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'startOnethingOAuthForIpc',
@@ -3606,7 +3606,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned OAuth IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/oauth.ts: missing OAuth RPC domain']),
+      : ['packages/backend/runtime/auth/auth-client-api.ts: missing OAuth RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns OAuth IPC operations', lines)
@@ -3943,7 +3943,7 @@ function checkRuntimeOwnsAcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/acp/ipc-operations.ts')
   // P4c 第六批:八条 acp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重实现
   // 一遍」这条禁令跟着改指到新家。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/acp.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/acp/acp-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'normalizeOnethingACPAgentConfig',
@@ -3965,7 +3965,7 @@ function checkRuntimeOwnsAcpIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_ACP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/acp.ts: missing ACP RPC domain']),
+      : ['packages/backend/runtime/acp/acp-client-api.ts: missing ACP RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns ACP IPC operations', lines)
@@ -4148,7 +4148,7 @@ function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
   // 适配器(RPC 域)与装配层的配额服务都**只读表**,一个 provider 名都不许出现 ——
   // 从前那张 `codexProviderIds` 枚举正是这条要防回来的东西。
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/quota/index.ts')
-  const adapterFile = path.join(root, 'packages/backend/rpc/domains/providers.ts')
+  const adapterFile = path.join(root, 'packages/backend/runtime/providers/providers-client-api.ts')
   const quotaWiringDir = path.join(root, 'packages/backend/runtime/quota')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const quotaWiringFiles = fs.existsSync(quotaWiringDir)
@@ -4171,7 +4171,7 @@ function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
 
 function checkRuntimeOwnsProvidersIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-presentation.ts')
-  const adapterFile = path.join(root, 'packages/backend/rpc/domains/providers.ts')
+  const adapterFile = path.join(root, 'packages/backend/runtime/providers/providers-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingProviders',
@@ -4259,7 +4259,7 @@ function checkRuntimeOwnsModelRegistryRefresh(): void {
 
 function checkRuntimeOwnsModelsIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/model-registry.ts')
-  const adapterFile = path.join(root, 'packages/backend/rpc/domains/models.ts')
+  const adapterFile = path.join(root, 'packages/backend/runtime/providers/providers-client-api-models.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'mergeOnethingModelsById',
@@ -4292,7 +4292,7 @@ function checkRuntimeOwnsModelsIpcPresentation(): void {
 
 function checkRuntimeOwnsModelQueryIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/model-query-presentation.ts')
-  const adapterFile = path.join(root, 'packages/backend/rpc/domains/models.ts')
+  const adapterFile = path.join(root, 'packages/backend/runtime/providers/providers-client-api-models.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getAllOnethingModelRegistryModels',
@@ -4322,7 +4322,7 @@ function checkRuntimeOwnsMcpServerOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/mcp/server-orchestration.ts')
   // P4c 第六批:十六条 mcp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重
   // 实现一遍」这条禁令跟着改指到新家。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/mcp.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/mcp/mcp-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'addOnethingMCPServer',
@@ -4338,7 +4338,7 @@ function checkRuntimeOwnsMcpServerOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_SERVER_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/mcp.ts: missing MCP RPC domain']),
+      : ['packages/backend/runtime/mcp/mcp-client-api.ts: missing MCP RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns MCP server orchestration', lines)
@@ -4348,7 +4348,7 @@ function checkRuntimeOwnsMcpCapabilityOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/mcp/capability-operations.ts')
   // P4c 第六批:十六条 mcp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重
   // 实现一遍」这条禁令跟着改指到新家。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/mcp.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/mcp/mcp-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingMCPTools',
@@ -4364,7 +4364,7 @@ function checkRuntimeOwnsMcpCapabilityOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_CAPABILITY_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/mcp.ts: missing MCP RPC domain']),
+      : ['packages/backend/runtime/mcp/mcp-client-api.ts: missing MCP RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns MCP capability operation projection', lines)
@@ -4374,7 +4374,7 @@ function checkRuntimeOwnsMcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/mcp/ipc-operations.ts')
   // P4c 第六批:十六条 mcp 通道从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重
   // 实现一遍」这条禁令跟着改指到新家。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/mcp.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/mcp/mcp-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingMCPServersForIpc',
@@ -4401,7 +4401,7 @@ function checkRuntimeOwnsMcpIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned MCP IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/mcp.ts: missing MCP RPC domain']),
+      : ['packages/backend/runtime/mcp/mcp-client-api.ts: missing MCP RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns MCP IPC operations', lines)
@@ -4412,7 +4412,7 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
   const runtimeIpcFile = 'packages/backend/runtime/sessions/ipc-operations.ts'
   // P4c 第五批:调用点从 `@main` 壳适配搬到了 RPC 域,「不许在调用点重实现一遍」
   // 这条禁令跟着改指到新家。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/sessions/sessions-client-api.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -4431,7 +4431,7 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
+      : ['packages/backend/runtime/sessions/sessions-client-api.ts: missing sessions RPC domain']),
   ]
 
   if (fs.existsSync(mainFile)) {
@@ -4448,7 +4448,7 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
 function checkRuntimeOwnsSessionUpdateFlows(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/session-updates.ts')
   // P4c 第五批:调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/sessions/sessions-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'updateOnethingSessionModel',
@@ -4461,7 +4461,7 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_UPDATE_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
+      : ['packages/backend/runtime/sessions/sessions-client-api.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns session update flows', lines)
@@ -4549,7 +4549,7 @@ function checkSharedContractsHoldShapesOnly(): void {
 function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/working-directory.ts')
   // P4c 第五批:调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/sessions/sessions-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('updateOnethingSessionWorkingDirectory')
@@ -4557,7 +4557,7 @@ function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_WORKDIR_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
+      : ['packages/backend/runtime/sessions/sessions-client-api.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns session working directory flow', lines)
@@ -4566,7 +4566,7 @@ function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
 function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/system-messages.ts')
   // P4c 第五批:调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/sessions/sessions-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('removeOnethingSystemMarkerMessage')
@@ -4574,7 +4574,7 @@ function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_SYSTEM_MARKER_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
+      : ['packages/backend/runtime/sessions/sessions-client-api.ts: missing sessions RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns session system marker flow', lines)
@@ -4584,7 +4584,7 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/ipc-operations.ts')
   const runtimeUsageFile = path.join(root, 'packages/backend/runtime/sessions/session-usage.ts')
   // P4c 第五批:调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/sessions.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/sessions/sessions-client-api.ts')
   const usageFile = path.join(root, 'packages/backend/runtime/sessions/usage.ts')
   const runtimeContent = [
     runtimeFile,
@@ -4624,7 +4624,7 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned session IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
+      : ['packages/backend/runtime/sessions/sessions-client-api.ts: missing sessions RPC domain']),
     ...(fs.existsSync(usageFile)
       ? matchingLines(usageFile, MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS)
       : ['packages/backend/runtime/sessions/usage.ts: missing session usage adapter']),
@@ -4639,8 +4639,8 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
     path.join(root, 'apps/electron/src/main/ipc/message-sanitizer.ts'),
     // P4c 第五批:会话与聊天两份调用点都已是 RPC 域(`@main/ipc/chat.ts` 在
     // 2026-08-22 的 #21 里整只删掉)。
-    path.join(root, 'packages/backend/rpc/domains/sessions.ts'),
-    path.join(root, 'packages/backend/rpc/domains/chat.ts'),
+    path.join(root, 'packages/backend/runtime/sessions/sessions-client-api.ts'),
+    path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts'),
   ]
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
@@ -4660,7 +4660,7 @@ function checkChatIpcDoesNotOwnLegacyStreamFlow(): void {
   // P4c 第五批:聊天面的六条已是 RPC 域;2026-08-22(#21)第七条与那层壳适配
   // 一起删掉之后,这条只剩域文件一处要守。
   const mainFiles = [
-    path.join(root, 'packages/backend/rpc/domains/chat.ts'),
+    path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts'),
   ]
   const lines = mainFiles.flatMap(file => fs.existsSync(file)
     ? matchingLines(file, MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS)
@@ -4672,7 +4672,7 @@ function checkChatIpcDoesNotOwnLegacyStreamFlow(): void {
 function checkRuntimeOwnsChatTitleGenerationFlow(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-runtime.ts')
   // P4c 第五批:标题生成的调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('generateOnethingChatTitle')
@@ -4692,7 +4692,7 @@ function checkRuntimeOwnsChatTitleGenerationFlow(): void {
           ...matchingLines(mainFile, MAIN_CHAT_IPC_TITLE_FORBIDDEN_PATTERNS),
           ...matchingLines(mainFile, MAIN_CHAT_IPC_PROVIDER_ERROR_FORBIDDEN_PATTERNS),
         ]
-      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
+      : ['packages/backend/runtime/engine/engine-client-api.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns chat title generation flow', lines)
@@ -4701,7 +4701,7 @@ function checkRuntimeOwnsChatTitleGenerationFlow(): void {
 function checkRuntimeOwnsChatSessionIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/ipc-operations.ts')
   // P4c 第五批:历史读取与思考时长补写的调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingChatHistoryForIpc',
@@ -4716,7 +4716,7 @@ function checkRuntimeOwnsChatSessionIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned chat session IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_SESSION_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
+      : ['packages/backend/runtime/engine/engine-client-api.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns chat session IPC operations', lines)
@@ -4725,7 +4725,7 @@ function checkRuntimeOwnsChatSessionIpcOperations(): void {
 function checkRuntimeOwnsChatActiveStreamListing(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/stream-abort.ts')
   // P4c 第五批:活流表的调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('listOnethingActiveStreamsForIpc')
@@ -4733,7 +4733,7 @@ function checkRuntimeOwnsChatActiveStreamListing(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_ACTIVE_STREAMS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
+      : ['packages/backend/runtime/engine/engine-client-api.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns active stream listing projection', lines)
@@ -4742,7 +4742,7 @@ function checkRuntimeOwnsChatActiveStreamListing(): void {
 function checkRuntimeOwnsChatAbortCleanupFlow(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/sessions/stream-abort.ts')
   // P4c 第五批:停止收尾的调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('cancelOnethingStreamingStepsForAbort')
@@ -4753,7 +4753,7 @@ function checkRuntimeOwnsChatAbortCleanupFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_ABORT_CLEANUP_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
+      : ['packages/backend/runtime/engine/engine-client-api.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns chat abort cleanup flow', lines)
@@ -4765,9 +4765,9 @@ function checkRuntimeOwnsChatAbortCleanupFlow(): void {
 
 // P4c 第九批:tools 的七条数据面已迁 `toolsRouter`,`@main/ipc/tools.ts` 与
 // `apps/electron/src/ipc/tools.ts` 整只删掉。下面四条「runtime 拥有 X 操作」的断言
-// 因此改指**域处理者**(`packages/backend/rpc/domains/tools.ts`)—— 守的还是同一件事:
+// 因此改指**域处理者**(`packages/backend/runtime/tools/tools-client-api.ts`)—— 守的还是同一件事:
 // 投影逻辑住在产品层,传输层只转调,不许在这里重抄一份。
-const TOOLS_RPC_DOMAIN_FILE = 'packages/backend/rpc/domains/tools.ts'
+const TOOLS_RPC_DOMAIN_FILE = 'packages/backend/runtime/tools/tools-client-api.ts'
 
 function checkRuntimeOwnsToolCallStateProjection(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/tools/tool-call-state.ts')
@@ -4911,7 +4911,7 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
   const runtimeIpcFile = path.join(root, 'packages/backend/runtime/settings/ipc-operations.ts')
   // P4c 第十一批:保存链的调用点从 `@main/ipc/settings.ts` 搬进了域处理者 ——
   // 断言改指它,守的仍是同一件事(装配层不许把编排逻辑再抄一份)。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/settings.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/settings/settings-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeIpcSymbols = [
@@ -4929,7 +4929,7 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned settings IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/settings.ts: missing settings RPC domain']),
+      : ['packages/backend/runtime/settings/settings-client-api.ts: missing settings RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns settings save orchestration', lines)
@@ -5177,7 +5177,7 @@ const CORE_MERGED_PLUGIN_FILES = [
 /** 去 core 批 3(2026-10-03):core 根上那三只文件的新家。 */
 const CORE_MERGED_ROOT_FILES = [
   'packages/backend/runtime/gateway/conversation-runtime.ts',
-  'packages/backend/server/runtime-facade.ts',
+  'packages/backend/http-server/http-server-runtime-facade.ts',
   'packages/backend/utils/deep-freeze.ts',
 ]
 
@@ -5329,7 +5329,7 @@ function checkPluginsOnlyUseInjectedApi(): void {
 function checkRuntimeOwnsSkillsRuntimeCache(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/skills/session-skills.ts')
   // P4c 第二批:skills 整域迁 router,`@main` 那层壳适配已删 —— 判据改指域文件。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/skills.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/skills/skills-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('OnethingSessionSkillsRuntime')
@@ -5337,7 +5337,7 @@ function checkRuntimeOwnsSkillsRuntimeCache(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_IPC_RUNTIME_CACHE_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/skills.ts: missing skills RPC domain']),
+      : ['packages/backend/runtime/skills/skills-client-api.ts: missing skills RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns skills runtime cache and settings projection', lines)
@@ -5346,7 +5346,7 @@ function checkRuntimeOwnsSkillsRuntimeCache(): void {
 function checkRuntimeOwnsSkillsIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/skills/ipc-operations.ts')
   // P4c 第二批:同上,消费投影的是 skills RPC 域而不再是 `@main` 的壳适配。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/skills.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/skills/skills-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingSkillsForIpc',
@@ -5366,7 +5366,7 @@ function checkRuntimeOwnsSkillsIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned skills IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/skills.ts: missing skills RPC domain']),
+      : ['packages/backend/runtime/skills/skills-client-api.ts: missing skills RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns skills IPC operations', lines)
@@ -5429,7 +5429,7 @@ function checkRuntimeOwnsMediaImageDataUrl(): void {
   const runtimeFile = 'packages/backend/runtime/media/image-file-data-url.ts'
   // P4c 第三批:`readImageBase64` 的调用点从 `@main` 壳适配搬到了 RPC 域,
   // 「不许在调用点重实现一遍」这条禁令跟着改指到新家。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/media.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/media/media-client-api.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -5451,7 +5451,7 @@ function checkRuntimeOwnsMediaImageDataUrl(): void {
 function checkRuntimeOwnsMediaLegacyList(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/media/media-library-service.ts')
   // P4c 第三批:`loadAll` 的调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/media.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/media/media-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('listLegacyImages')
@@ -5485,7 +5485,7 @@ function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
 function checkRuntimeOwnsMediaLibraryIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/media/media-library-presentation.ts')
   // P4c 第三批:媒体库那八条投影的调用点已是 RPC 域。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/media.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/media/media-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingMediaAssets',
@@ -5561,7 +5561,7 @@ function checkRuntimeOwnsVoiceIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/voice/ipc-operations.ts')
   // P4c 第十一批:十一条数据面的调用点从 `@main/ipc/voice.ts` 搬进了域处理者 ——
   // 断言改指它,守的仍是同一件事(装配层不许把投影逻辑再抄一份)。
-  const mainFile = path.join(root, 'packages/backend/rpc/domains/voice.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/voice/voice-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingVoiceStateForIpc',
@@ -5580,7 +5580,7 @@ function checkRuntimeOwnsVoiceIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/voice.ts: missing voice RPC domain']),
+      : ['packages/backend/runtime/voice/voice-client-api.ts: missing voice RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns voice IPC operations', lines)
@@ -5744,7 +5744,7 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
 /**
  * **检索只有一条查询路**(检索重建 S5)。
  *
- * 一条 = `rpc/domains/search.ts` → 进程单槽里的 `SearchService` → 注册表 → 能力。
+ * 一条 = `runtime/search/search-client-api.ts` → 进程单槽里的 `SearchService` → 注册表 → 能力。
  * 三条判据:
  *
  *  ① 旧扫描路的模块与它的形状(`switch(category)`、写死的类别清单、六个扫描器)
@@ -5765,8 +5765,15 @@ function checkSearchHasOneQueryPath(): void {
   const searchTrees = [
     // 装配层的检索接线(第③步起住在 `runtime/search/`)已含在这一棵里。
     path.join(root, 'packages/backend/runtime/search'),
-    path.join(root, 'packages/backend/rpc/domains'),
+    // 从前的 `rpc/domains/` 拆成了 `http-server/`(分发)与各功能的 `<功能>-client-api*.ts`(包根归位 2026-10-04),两半都扫。
+    path.join(root, 'packages/backend/http-server'),
   ].filter(dir => fs.existsSync(dir))
+  const runtimeRoot = path.join(root, 'packages/backend/runtime')
+  const clientApiFiles = fs.readdirSync(runtimeRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .flatMap(entry => fs.readdirSync(path.join(runtimeRoot, entry.name))
+      .filter(name => new RegExp(`^${entry.name}-client-api(-[a-z0-9-]+)?\\.ts$`).test(name))
+      .map(name => path.join(runtimeRoot, entry.name, name)))
 
   const lines = [
     ...RETIRED_SCAN_PATH_MODULES
@@ -5777,6 +5784,7 @@ function checkSearchHasOneQueryPath(): void {
       .map(module => `${module}: 缺一个内置能力的文件(一类 = 一个文件)`),
     ...searchTrees
       .flatMap(dir => walkFiles(dir))
+      .concat(clientApiFiles)
       .flatMap(file => matchingCodeLines(file, RETIRED_SCAN_PATH_PATTERNS)),
     ...(fs.existsSync(sharedSearchFile)
       ? matchingCodeLines(sharedSearchFile, RETIRED_SCAN_PATH_PATTERNS)
@@ -5865,7 +5873,7 @@ function checkRuntimeOwnsPromptsStore(): void {
   // P3'a-2:归位 `runtime/prompts/store-bound.ts`(与 runtime 的 `store.ts` 同概念异角色,故带 -bound)。
   const mainFile = path.join(root, 'packages/backend/runtime/prompts/store-bound.ts')
   // 迁移后调用 ipc-operations 的是 RPC 域,不再是 @main 的 handler。
-  const mainIpcFile = path.join(root, 'packages/backend/rpc/domains/prompts.ts')
+  const mainIpcFile = path.join(root, 'packages/backend/runtime/prompts/prompts-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -5901,7 +5909,7 @@ function checkRuntimeOwnsPromptsStore(): void {
       : ['packages/backend/runtime/prompts/store-bound.ts: missing prompts store facade']),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_PROMPTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/prompts.ts: missing prompts RPC domain']),
+      : ['packages/backend/runtime/prompts/prompts-client-api.ts: missing prompts RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns prompts store', lines)
@@ -5914,7 +5922,7 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
   ]
   const mainFile = path.join(root, 'packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts')
   // P4c 第五批:快照读取的调用点已是 RPC 域。
-  const chatIpcFile = path.join(root, 'packages/backend/rpc/domains/chat.ts')
+  const chatIpcFile = path.join(root, 'packages/backend/runtime/engine/engine-client-api.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -5942,7 +5950,7 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
       : []),
     ...(fs.existsSync(chatIpcFile)
       ? matchingLines(chatIpcFile, MAIN_CHAT_IPC_SYSTEM_PROMPT_SNAPSHOT_FORBIDDEN_PATTERNS)
-      : ['packages/backend/rpc/domains/chat.ts: missing chat RPC domain']),
+      : ['packages/backend/runtime/engine/engine-client-api.ts: missing chat RPC domain']),
   ]
 
   assertNoMatches('packages/backend/runtime owns system prompt snapshot assembly', lines)
@@ -6057,7 +6065,7 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
   const runtimeIpcFile = path.join(root, 'packages/backend/runtime/agents/ipc-operations.ts')
   // P3'a-2:归位 `runtime/agents/store-bound.ts`(吃 @shared/ipc 的 AgentDefinition;当年因此带 `.wiring` 后缀,2026-10-03 去掉)。
   const mainStoreFile = path.join(root, 'packages/backend/runtime/agents/store-bound.ts')
-  const adapterFile = path.join(root, 'packages/backend/rpc/domains/agents.ts')
+  const adapterFile = path.join(root, 'packages/backend/runtime/agents/agents-client-api.ts')
   const runtimeContent = [
     fs.existsSync(runtimeStoreFile) ? fs.readFileSync(runtimeStoreFile, 'utf-8') : '',
     fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : '',
@@ -6302,7 +6310,7 @@ function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
   const mainUserTasksFile = path.join(root, 'packages/backend/runtime/scheduler/user-task-service.ts')
   // 结构债 P4c:定时任务的传输面从 `@main/ipc/scheduler.ts` 换成了 RPC 域文件。
   // 断言本身不变 —— 传输面必须把运行详情的投影**委托**给 runtime,而不是自己拼。
-  const mainIpcFile = path.join(root, 'packages/backend/rpc/domains/scheduler.ts')
+  const mainIpcFile = path.join(root, 'packages/backend/runtime/scheduler/scheduler-client-api.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeRunnerContent = fs.existsSync(runtimeRunnerFile) ? fs.readFileSync(runtimeRunnerFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -6386,9 +6394,9 @@ function checkRuntimeOwnsSchedulerAgentTaskRunner(): void {
 
 // P4c 第八批:files 的十四条数据面已迁 `filesRouter`,`@main/ipc/files.ts` 与
 // `apps/electron/src/ipc/files.ts` 整只删掉。下面六条「runtime 拥有 X 操作」的断言
-// 因此改指**域处理者**(`packages/backend/rpc/domains/files.ts`)—— 守的还是同一件事:
+// 因此改指**域处理者**(`packages/backend/runtime/files/files-client-api.ts`)—— 守的还是同一件事:
 // 投影逻辑住在产品层,传输层只转调,不许在这里重抄一份。
-const FILES_RPC_DOMAIN_FILE = 'packages/backend/rpc/domains/files.ts'
+const FILES_RPC_DOMAIN_FILE = 'packages/backend/runtime/files/files-client-api.ts'
 
 function checkRuntimeOwnsFilesListIpcOperation(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/files/file-search.ts')
@@ -6953,7 +6961,7 @@ function checkShellsDoNotImportOtherShells(): void {
  * - 测试(`__tests__/`、`*.test.*`、`*.spec.*`)与 `__fixtures__/`:夹具要演「后端下发的那一份」,
  *   最诚实的做法是跑后端那一个投影,在测试里手抄一份才是会漂的第二产地。
  * - (从前还有一条:`packages/shared/backend/http-discovery.ts` 的四个 `node:` 内建。第②步把它碰 node 的
- *   那一半拆成 server / client 各一份最小实现 —— `packages/backend/server/http-discovery-io.ts` 与
+ *   那一半拆成 server / client 各一份最小实现 —— `packages/backend/http-server/http-server-discovery-io.ts` 与
  *   `packages/client/http-discovery-io.ts`,对拍测试钉住两份同答 —— shared 里只剩记录形状,放行随之删除。)
  *
  * 服务商自述试点 P4 的 `checkReactShellReadsProvidersOverRpc`(壳不许 import

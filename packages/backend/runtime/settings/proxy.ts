@@ -3,7 +3,7 @@
  *
  * 迁移前这段逻辑在仓里有**两份逐字相同的抄件**:
  *  - `apps/electron/src/main/ipc/network-proxy.ts` 的 `testProxy`(桌面 IPC);
- *  - `packages/backend/server/runtime.ts` 的 `testServerProxy`(`network` facade
+ *  - `packages/backend/http-server/http-server-runtime.ts` 的 `testServerProxy`(`network` facade
  *    adapter 背后的 `POST /api/network/test-proxy`)。
  *
  * 两条通道合并成 `settingsRouter.testProxy` 之后,抄件也合成这一份(拍板 #20)。

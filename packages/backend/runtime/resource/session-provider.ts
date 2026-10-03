@@ -32,7 +32,7 @@
  * 里 —— provider 只递形状,不留规则,与域从前那几行逐字同义。它们回
  * `{ success:false, error }`;这里把那一格**抛**出去(`SessionOpRefusedError`),
  * 因为管线的答案是 `Outcome` 而不是信封,而 `Outcome.failed` 原样带着这句话 ——
- * 域那一侧再折回同一个信封(`rpc/resource-envelope.ts`)。
+ * 域那一侧再折回同一个信封(`http-server/http-server-resource-envelope.ts`)。
  *
  * ── K2c-2:读面也退了,而且读走的是**读自己那条路** ─────────────────────────
  * `ResourceKernel.read` 不再经 `ToolRunner`(理由在 `runtime/resource/read-outcome.ts`
@@ -75,7 +75,7 @@
  *
  * 本单还搬进来两件从前住在域里的东西,理由都是「AI 走这条路也要有」:
  *   · **删的那一串副作用** —— 级联名单、三相位删除、AI todo 跟着走、把这条会话在这个
- *     进程里的活收干净(`releaseServedSession`)。它们从前住在 `rpc/domains/sessions.ts`
+ *     进程里的活收干净(`releaseServedSession`)。它们从前住在 `runtime/sessions/sessions-client-api.ts`
  *     的 `delete` 处理器里,于是「删会话」在仓库里只有界面那一条路。
  *   · **一张自述自己的表**:哪几种权限档位合法(`SESSION_PERMISSION_MODES`)。域从前
  *     把那三个字面量抄在自己的处理器里。
@@ -358,7 +358,7 @@ function settle(result: { success: boolean; error?: string }, fallback: string):
 
 /**
  * 删会话时,把这条会话在**这个进程里**的「活」收干净 —— 清权限询问、拆掉它的事件
- * 与流通道。K2c-3 从 `rpc/domains/sessions.ts` 逐字搬上来(那三步连同它的判据都没改)。
+ * 与流通道。K2c-3 从 `runtime/sessions/sessions-client-api.ts` 逐字搬上来(那三步连同它的判据都没改)。
  *
  * 它必须住在这里的理由与 `rename` 那一发广播逐字相同:AI / CLI / 调度删一条会话与
  * 界面删是同一件事,而从前只有界面那一条路会收尾 —— 留下的是一条对着已删会话还在
@@ -379,7 +379,7 @@ function releaseServedSession(sessionId: string): void {
  *
  * 具名的常量而不是一个匿名 `() => {}`:它是一处**留账**,不是一句省略。归属是调用方
  * 身份(`ownerUid` / `workspaceId`),而资源面的 `Invocation` 上只有 `Principal`;
- * 归属校验因此由 RPC 边界**前置**做掉(`rpc/domains/sessions.ts` 的 `delete`)。
+ * 归属校验因此由 RPC 边界**前置**做掉(`runtime/sessions/sessions-client-api.ts` 的 `delete`)。
  * 删除层自己那一半 —— 「目标集合中途变过没有」—— 一个字没动,它不依赖调用方。
  * per-caller 的归属进 `Invocation` 之后,这一格换成真的那一句。
  */
@@ -895,7 +895,7 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
 
     const response = sessionReads.pageMessages(page)
     // pager 说不(游标解不开、锚点不在)—— 那句话原样抛出去,域折回信封时用的就是
-    // 它(`rpc/resource-envelope.ts`),所以这条路上一个字都没被改写。
+    // 它(`http-server/http-server-resource-envelope.ts`),所以这条路上一个字都没被改写。
     if (!response.success) throw new SessionPageError(response.error ?? 'Failed to get message page')
     const { success: _success, messages, ...rest } = response
     return { ...rest, messages: sanitizeOnethingMessagesForRenderer(messages) }

@@ -16,8 +16,10 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| (包根) | 包根其余文件:装配配方 backend.ts、HTTP 服务器与 RPC 分发表、各功能开给界面的操作。 | (shared) 97 · (包根槽位) 53 · logging 36 · sessions 34 · plugins 20 · mcp 18 · settings 17 · evals 13 · acp 11 · collab 11 · permissions 10 · storage 10 · toolkit 10 · tools 10 · media 9 · skills 9 · agents 8 · auth 8 · events 8 · voice 8 · spaces 7 · todo-plan 7 · engine 6 · goals 6 · notes 6 · shell 6 · music 5 · project-dirs 5 · prompts 5 · providers 5 · scheduler 5 · terminal 5 · files 4 · gateway 4 · usage 4 · variables 4 · interaction 3 · markdown 3 · pets 3 · scratchpad 3 · search 3 · agent-loop 2 · credentials 2 · dialog 2 · external-agents 2 · practice 2 · resource 2 · memory 1 · network 1 · quota 1 · tasks 1 · themes 1 · toc 1 | — | 94 |
-| (总桶) | runtime/index.ts 总桶,把各功能的名字一起再导出(待删)。 | gateway 2 · agent-loop 1 · agents 1 · auth 1 · engine 1 · evals 1 · files 1 · headless 1 · markdown 1 · mcp 1 · media 1 · permissions 1 · plugins 1 · project-dirs 1 · prompts 1 · providers 1 · scheduler 1 · search 1 · sessions 1 · settings 1 · skills 1 · storage 1 · todo-plan 1 · tools 1 · triggers 1 · variables 1 · voice 1 | 2503(值 1415 / 类型 1088) | 1 |
+| (包根) | 包根其余文件:装配配方 backend.ts / assemble-engine.ts、feature 基座 features/、渠道 channel/(后两样是包根归位 B 部分)。 | (包根槽位) 11 · logging 7 · toolkit 7 · collab 6 · acp 5 · mcp 5 · skills 5 · agents 4 · sessions 4 · storage 4 · tools 4 · (shared) 3 · auth 3 · evals 3 · goals 3 · pets 3 · plugins 3 · voice 3 · engine 2 · events 2 · external-agents 2 · gateway 2 · http-server 2 · media 2 · notes 2 · permissions 2 · settings 2 · terminal 2 · todo-plan 2 · usage 2 · (开给界面的操作) 1 · agent-loop 1 · credentials 1 · dialog 1 · interaction 1 · memory 1 · music 1 · practice 1 · project-dirs 1 · prompts 1 · quota 1 · resource 1 · scheduler 1 · scratchpad 1 · search 1 · shell 1 · tasks 1 · toc 1 · variables 1 | — | 17 |
+| (开给界面的操作) | 各功能的第二个入口 runtime/<功能>/<功能>-client-api*.ts(决策 D26):名册里的域行、只有 HTTP 服务器用的投影与投递件。按「它被谁引、它引谁」判:只有 http-server 与同功能的 client-api 引它(client-api:gate 保证),它引任何功能的入口 —— 所以它与 http-server 同站 L4,不与它所属的功能同层;它引自己功能的文件算 L4 → 低层,不是违例。 | (shared) 83 · http-server 53 · (包根槽位) 36 · sessions 27 · logging 25 · plugins 14 · settings 13 · evals 10 · mcp 7 · media 7 · spaces 7 · permissions 6 · acp 5 · voice 5 · auth 4 · collab 4 · events 4 · music 4 · providers 4 · scheduler 4 · shell 4 · skills 4 · todo-plan 4 · tools 4 · engine 3 · goals 3 · notes 3 · prompts 3 · storage 3 · (包根) 2 · agents 2 · files 2 · gateway 2 · interaction 2 · markdown 2 · project-dirs 2 · resource 2 · usage 2 · variables 2 · agent-loop 1 · credentials 1 · dialog 1 · practice 1 · scratchpad 1 · search 1 · terminal 1 · themes 1 · toolkit 1 | — | 55 |
+| (总桶) | runtime/index.ts 总桶,把各功能的名字一起再导出(待删)。 | gateway 2 · agent-loop 1 · agents 1 · auth 1 · engine 1 · evals 1 · files 1 · headless 1 · markdown 1 · mcp 1 · media 1 · permissions 1 · plugins 1 · project-dirs 1 · prompts 1 · providers 1 · scheduler 1 · search 1 · sessions 1 · settings 1 · skills 1 · storage 1 · todo-plan 1 · tools 1 · triggers 1 · variables 1 · voice 1 | 2514(值 1425 / 类型 1089) | 1 |
+| http-server | 界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。 | (开给界面的操作) 52 · (包根槽位) 11 · (shared) 8 · (包根) 4 · mcp 4 · plugins 3 · sessions 3 · agents 2 · events 2 · files 2 · logging 2 · permissions 2 · project-dirs 2 · settings 2 · storage 2 · terminal 2 · tools 2 · acp 1 · auth 1 · collab 1 · markdown 1 · network 1 · notes 1 · prompts 1 · scratchpad 1 · search 1 · shell 1 · todo-plan 1 · toolkit 1 · variables 1 | — | 16 |
 
 ## L3 编排
 
@@ -28,7 +30,7 @@
 | collab | 多 agent 协作:房间、成员、发言调度与裁判。 | (shared) 29 · (包根槽位) 29 · agents 24 · sessions 24 · logging 20 · events 15 · storage 15 · agent-loop 3 · usage 3 · engine 2 · interaction 1 · permissions 1 | 327(值 243 / 类型 84) | 109 |
 | engine | 对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。 | agent-loop 23 · logging 16 · providers 15 · (shared) 13 · (包根槽位) 13 · sessions 13 · events 10 · settings 10 · agents 8 · media 7 · collab 6 · prompts 5 · toolkit 5 · auth 4 · credentials 4 · skills 4 · mcp 3 · plugins 3 · usage 3 · evals 2 · project-dirs 2 · quota 2 · acp 1 · external-agents 1 · goals 1 · interaction 1 · permissions 1 · scratchpad 1 · storage 1 · todo-plan 1 · variables 1 | 38(值 21 / 类型 17) | 35 |
 | gateway | 微信 / Telegram 渠道网关:收发消息与远程审批。 | (shared) 5 · agent-loop 2 · engine 1 · logging 1 | 38(值 16 / 类型 22) | 24 |
-| headless | 不带界面的后端(CLI 守护进程用的那一份装配)。 | (shared) 3 · (包根) 2(越层) · (包根槽位) 2 · acp 1 · collab 1 · events 1 · permissions 1 · sessions 1 · settings 1 · toolkit 1 | 21(值 11 / 类型 10) | 3 |
+| headless | 不带界面的后端(CLI 守护进程用的那一份装配)。 | (shared) 3 · (包根槽位) 2 · (包根) 1(越层) · acp 1 · collab 1 · events 1 · permissions 1 · resource 1 · sessions 1 · settings 1 · toolkit 1 | 21(值 11 / 类型 10) | 3 |
 
 ## L2 能力
 
@@ -36,7 +38,7 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| acp | ACP 外部 agent 的客户端、名册、桥接与权限。 | logging 16 · external-agents 7 · toolkit 5 · (shared) 3 · tools 3 · interaction 2 · permissions 2 · terminal 2 · (包根) 1(越层) · (包根槽位) 1 · agent-loop 1 · events 1 · sessions 1 · settings 1 · shell 1 · storage 1 · todo-plan 1 | 80(值 48 / 类型 32) | 30 |
+| acp | ACP 外部 agent 的客户端、名册、桥接与权限。 | logging 16 · external-agents 7 · toolkit 5 · (shared) 3 · tools 3 · (包根槽位) 2 · interaction 2 · permissions 2 · terminal 2 · agent-loop 1 · events 1 · sessions 1 · settings 1 · shell 1 · storage 1 · todo-plan 1 | 80(值 48 / 类型 32) | 30 |
 | agents | agent 档案:身份、模型、执行器与在场状态。 | tools 3 · collab 2(越层) · events 2 · logging 2 · sessions 2 · storage 2 · (shared) 1 · agent-loop 1 · context 1 · settings 1 | 100(值 59 / 类型 41) | 17 |
 | ambient | 环境信息来源:时钟、天气等。 | settings 1 | 17(值 11 / 类型 6) | 6 |
 | auth | 登录流程:OAuth 授权、刷新 token 与登录状态。 | logging 2 · network 2 · agent-loop 1 · events 1 · providers 1 · settings 1 · spaces 1 · storage 1 | 62(值 26 / 类型 36) | 14 |
@@ -48,7 +50,7 @@
 | goals | 会话目标:状态、续推、记录与改动收集。 | (包根槽位) 5 · (shared) 3 · events 3 · logging 3 · sessions 1 · storage 1 | 46(值 39 / 类型 7) | 12 |
 | interaction | 向用户提问(ask_user 一类交互)的登记表。 | (shared) 2 · logging 2 · (包根槽位) 1 · collab 1(越层) | 9(值 5 / 类型 4) | 4 |
 | markdown | Markdown 附件资源的沙箱与服务。 | notes 2 · (包根槽位) 1 · settings 1 | 19(值 7 / 类型 12) | 4 |
-| mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 7 · (shared) 5 · storage 3 · agent-loop 1 · auth 1 | 67(值 40 / 类型 27) | 28 |
+| mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 8 · (shared) 5 · storage 3 · agent-loop 1 · auth 1 | 78(值 50 / 类型 28) | 30 |
 | media | 媒体库:图片与文件的入库、导出与生图结果。 | storage 4 · sessions 2 · (shared) 1 · (包根槽位) 1 · logging 1 | 92(值 34 / 类型 58) | 11 |
 | music | 音乐与电台。 | (shared) 5 · logging 5 · settings 5 · voice 5 · (包根槽位) 4 · permissions 2 · sessions 2 · storage 2 · agents 1 · collab 1(越层) · lifecycle 1 | 89(值 38 / 类型 51) | 32 |
 | notes | 笔记领域:笔记库、Obsidian 与普通目录两种驱动、笔记根目录。 | settings 3 · (包根槽位) 2 · logging 2 · storage 2 | 70(值 37 / 类型 33) | 20 |
@@ -57,7 +59,7 @@
 | plugins | 插件系统:契约、加载、管理器、注入给插件的 api 与安装分发。 | logging 27 · (shared) 11 · storage 7 · (包根槽位) 5 · settings 3 · themes 3 · toolkit 3 · (包根) 2(越层) · agent-loop 2 · resource 2 · sessions 2 · collab 1(越层) · credentials 1 · deeplink 1 · engine 1(越层) · events 1 · lifecycle 1 · permissions 1 · prompts 1 · providers 1 · scheduler 1 · search 1 · skills 1 · usage 1 | 92(值 39 / 类型 53) | 75 |
 | project-dirs | 项目目录的名册、持久化与提示词片段。 | logging 3 · spaces 3 · sessions 1 · storage 1 | 41(值 24 / 类型 17) | 8 |
 | quota | 各家订阅额度的查询服务。 | logging 2 · providers 2 · spaces 2 · (包根槽位) 1 · auth 1 · credentials 1 · events 1 · sessions 1 · settings 1 | 14(值 9 / 类型 5) | 3 |
-| resource | 有地址的资源与读 / 做 / 看三动词的内核,以及各 scheme 的提供者。 | toolkit 19 · (shared) 18 · files 5 · (包根槽位) 4 · logging 4 · mcp 4 · music 4 · todo-plan 3 · ambient 2 · events 2 · pets 2 · sessions 2 · agents 1 · permissions 1 · shell 1 · spaces 1 · toc 1 · tools 1 · variables 1 | 78(值 55 / 类型 23) | 30 |
+| resource | 有地址的资源与读 / 做 / 看三动词的内核,以及各 scheme 的提供者。 | toolkit 20 · (shared) 18 · files 5 · (包根槽位) 4 · logging 4 · mcp 4 · music 4 · todo-plan 3 · ambient 2 · events 2 · pets 2 · sessions 2 · agents 1 · permissions 1 · shell 1 · spaces 1 · toc 1 · tools 1 · variables 1 | 81(值 58 / 类型 23) | 31 |
 | scheduler | 定时任务:cron、用户任务与运行记录。 | logging 3 · storage 3 · (包根槽位) 2 · (shared) 1 · agents 1 · events 1 · sessions 1 | 106(值 42 / 类型 64) | 12 |
 | scratchpad | 草稿纸:存储、监听与 AI 的静默感知。 | logging 1 · storage 1 | 4(值 2 / 类型 2) | 4 |
 | search | 跨会话检索:派生索引、检索器、能力登记表与查询服务。 | logging 16 · (shared) 4 · sessions 4 · notes 3 · (包根槽位) 2 · files 2 · plugins 2 · settings 2 · storage 2 · agent-loop 1 · collab 1(越层) · events 1 · network 1 · prompts 1 · toolkit 1 | 109(值 71 / 类型 38) | 86 |
@@ -107,4 +109,4 @@
 | storage | store 目录在哪、文件怎么原子地读写,以及打包资源目录的注入口。 | logging 1 | 117(值 95 / 类型 22) | 18 |
 | triggers | 技能复盘这个对话后触发器的判定与状态。 | (shared) 1 · agent-loop 1(越层) · storage 1 | 117(值 62 / 类型 55) | 6 |
 | (shared) | server 与 client 之间的契约,以及两边必须算得一样的纯逻辑。 | — | — | 118 |
-| (包根槽位) | 包根的进程槽位与小件:当前实例槽、主机信任、来源判定、几只工具函数(store.ts 兼容桶待删)。 | settings 2(越层) · (包根) 1(越层) · agent-loop 1(越层) · files 1(越层) · logging 1 · sessions 1(越层) | — | 9 |
+| (包根槽位) | 包根的进程槽位与小件:当前实例槽、主机信任、来源判定、几只工具函数(store.ts 兼容桶待删)。http-server 目录里有五只按路径归到这里:本机信任、RPC 沙箱、租户目录(纯路径计算)与发现文件的读写两只 —— 它们被 notes / resource / files / markdown / media / toolkit / acp 这些 L2 功能当判据或地址簿用,自己只引 storage 与包根槽位,所以站 L0,不随目录站 L4。 | (shared) 2 · settings 2(越层) · agent-loop 1(越层) · files 1(越层) · logging 1 · sessions 1(越层) · storage 1 | — | 12 |

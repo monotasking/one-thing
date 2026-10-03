@@ -1,7 +1,7 @@
 /**
  * 发现文件 `<store>/run/http.json` 的**记录形状** —— server 与 client 之间的契约。
  *
- * 产地是 `packages/backend/server/discovery.ts`(A 期,`docs/design/one-core-2026-08.md` §3);
+ * 产地是 `packages/backend/http-server/http-server-discovery.ts`(A 期,`docs/design/one-core-2026-08.md` §3);
  * C0(`docs/design/client-sdk-2026-09.md` §4.4 / §9)把「记录的形状 + 判活的两段」抽到这里,
  * 因为从此有**两个**问「这个 store 有没有活 core」的人,而他们不能各说各话:
  *
@@ -13,9 +13,9 @@
  * server / client 拆分第②步(2026-10-02,`docs/design/server-client-split-2026-10.md` §6)起,shared
  * 不许碰 node,所以这里只留**纯的一半**:记录形状、白名单式校验与解析(`parseHttpDiscoveryRecord`)、
  * `httpDiscoveryUrl`。碰 node 的那一半(读文件、两段判活、store 根目录的三段解析)按「两边各一份最小实现」
- * 分给 `packages/backend/server/http-discovery-io.ts` 与 `packages/client/http-discovery-io.ts`
+ * 分给 `packages/backend/http-server/http-server-discovery-io.ts` 与 `packages/client/http-discovery-io.ts`
  * (server 不能 import client,client 不能 import server);两份对同一组样例给同一个答案,由
- * `packages/backend/server/__tests__/http-discovery-io-parity.test.ts` 钉住,不由注释保证。
+ * `packages/backend/http-server/__tests__/http-server-discovery-io-parity.test.ts` 钉住,不由注释保证。
  *
  * 三件事(原文照搬产地的判例,别再各自重新发现一次):
  *  1. **文件存在 ≠ 活着**。进程被 SIGKILL / 掉电时文件会留下来。判活因此是两段判定:

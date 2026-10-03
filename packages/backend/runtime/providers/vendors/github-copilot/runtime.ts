@@ -76,7 +76,7 @@ async function getCopilotCompletionToken(
 export const GITHUB_COPILOT_RUNTIME: VendorRuntime = {
 	id: "github-copilot",
 	oauth: GITHUB_COPILOT_CONFIG,
-	// 列表口:与搬家前 `backend/rpc/domains/models.ts` 的 `fetchGitHubCopilotModelsRaw` 逐字同口径
+	// 列表口:与搬家前 `backend/runtime/providers/providers-client-api-models.ts` 的 `fetchGitHubCopilotModelsRaw` 逐字同口径
 	// (token 走 `getToken`,不刷新)。
 	createModelsFetcher: (deps) =>
 		createOnethingCopilotModelsFetcher({

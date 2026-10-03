@@ -7,7 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineRouter } from '@shared/ipc/router'
-import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../rpc/registry.js'
+import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
 import {
   dumpFeatures,
   hasFeature,

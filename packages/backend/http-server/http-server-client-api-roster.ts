@@ -1,0 +1,385 @@
+/**
+ * 各功能开给界面的操作的**名册**(决策 D21 / D26,`docs/design/backend-structure-decisions-2026-10.md`)。
+ *
+ * 每个功能在自己目录里的 `<功能>-client-api*.ts` 用 `defineClientApi` 交出一行(这个域的契约 + 处理者),
+ * 这里按装配顺序把它们排成一张表 —— 与服务商名册 `runtime/providers/vendors/manifests.ts` 同一个做法:
+ * **加一个开给界面的域 = 在功能里写一只 client-api 文件、在这里加一行**,HTTP 服务器的其余代码一个字不改,
+ * 它们只读这张表(`registerAppRpcDomains` 逐行挂载,`http-server-routes.ts` 问每行有没有 `serveBeforeIdentity`)。
+ * 这是 http-server 目录里**唯一**点名功能的文件。
+ *
+ * 表里两种成员:
+ *  - **名册行**(`ClientApiRow`):一行一个域,挂载时注册成 id 为 `rpc:<域>` 的 feature;
+ *  - **feature**(`FeatureDefinition`,今天是轨迹与自进化两只,住 `features/builtin/`):它自己决定注册什么。
+ *
+ * 历史(K0 / C2,`docs/design/kernel-shrink-builtin-plugins-2026-08.md` §3、`docs/design/cordis-adoption-2026-08.md` §2):
+ * 每个域从 K0 起就是一个 feature(`rpc:<域>`),注册项有主(`dumpFeatures()` 看得见),卸载逐 feature 逆序解绕;
+ * 2026-10-04 包根归位把「名册里内联的 `{ id, mount }` 包装」换成「功能自己交出的一行」,id、顺序与注册项一格未动。
+ * (遗留:函数仍叫 `registerAppRpcDomains`,名字比内容窄半格。)
+ */
+import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
+import { trajectoryFeature } from '../features/builtin/trajectory.js'
+import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
+import type { ClientApiRow } from './http-server-dispatch-table.js'
+import { ACP_CLIENT_API } from '../runtime/acp/acp-client-api.js'
+import { HOST_MCP_CLIENT_API } from '../runtime/acp/acp-client-api-host-mcp.js'
+import { AGENTS_CLIENT_API } from '../runtime/agents/agents-client-api.js'
+import { APP_STATE_CLIENT_API } from '../runtime/sessions/sessions-client-api-app-state.js'
+import { CHANNEL_IDENTITY_CLIENT_API } from '../runtime/gateway/gateway-client-api-channel-identity.js'
+import { CHAT_CLIENT_API } from '../runtime/engine/engine-client-api.js'
+import { COLLAB_CLIENT_API } from '../runtime/collab/collab-client-api.js'
+import { EVALS_CLIENT_API } from '../runtime/evals/evals-client-api.js'
+import { EVALS_WORKBENCH_CLIENT_API } from '../runtime/evals/evals-client-api-workbench.js'
+import { FILES_CLIENT_API } from '../runtime/files/files-client-api.js'
+import { GATEWAY_CLIENT_API } from '../runtime/gateway/gateway-client-api.js'
+import { GOAL_CLIENT_API } from '../runtime/goals/goals-client-api.js'
+import { INTERACTION_CLIENT_API } from '../runtime/interaction/interaction-client-api.js'
+import { MUSIC_CLIENT_API } from '../runtime/music/music-client-api.js'
+import { TOOLS_CLIENT_API } from '../runtime/tools/tools-client-api.js'
+import { LOGS_CLIENT_API } from '../runtime/logging/logging-client-api.js'
+import { MEMORY_CLIENT_API } from '../runtime/memory/memory-client-api.js'
+import { MARKDOWN_CLIENT_API } from '../runtime/markdown/markdown-client-api.js'
+import { MCP_CLIENT_API } from '../runtime/mcp/mcp-client-api.js'
+import { MEDIA_CLIENT_API } from '../runtime/media/media-client-api.js'
+import { MODELS_CLIENT_API } from '../runtime/providers/providers-client-api-models.js'
+import { OAUTH_CLIENT_API } from '../runtime/auth/auth-client-api.js'
+import { PERMISSION_GRANTS_CLIENT_API } from '../runtime/permissions/permissions-client-api-grants.js'
+import { PERMISSION_CLIENT_API } from '../runtime/permissions/permissions-client-api.js'
+import { PLUGINS_CLIENT_API } from '../runtime/plugins/plugins-client-api.js'
+import { PRACTICE_CLIENT_API } from '../runtime/practice/practice-client-api.js'
+import { PROJECT_DIRS_CLIENT_API } from '../runtime/project-dirs/project-dirs-client-api.js'
+import { PROMPTS_CLIENT_API } from '../runtime/prompts/prompts-client-api.js'
+import { RESOURCES_CLIENT_API } from '../runtime/resource/resource-client-api.js'
+import { PROVIDERS_CLIENT_API } from '../runtime/providers/providers-client-api.js'
+import { SCHEDULER_CLIENT_API } from '../runtime/scheduler/scheduler-client-api.js'
+import { SEARCH_CLIENT_API } from '../runtime/search/search-client-api.js'
+import { NOTES_CLIENT_API } from '../runtime/notes/notes-client-api.js'
+import { SCRATCHPAD_CLIENT_API } from '../runtime/scratchpad/scratchpad-client-api.js'
+import { SESSION_COMMAND_CLIENT_API } from '../runtime/sessions/sessions-client-api-commands.js'
+import { SESSIONS_CLIENT_API } from '../runtime/sessions/sessions-client-api.js'
+import { SKILLS_CLIENT_API } from '../runtime/skills/skills-client-api.js'
+import { DIALOG_CLIENT_API } from '../runtime/dialog/dialog-client-api.js'
+import { SHELL_CLIENT_API } from '../runtime/shell/shell-client-api.js'
+import { SETTINGS_CLIENT_API } from '../runtime/settings/settings-client-api.js'
+import { SPACES_CLIENT_API } from '../runtime/spaces/spaces-client-api.js'
+import { TERMINAL_CLIENT_API } from '../runtime/terminal/terminal-client-api.js'
+import { THEMES_CLIENT_API } from '../runtime/themes/themes-client-api.js'
+import { TODO_PLAN_CLIENT_API } from '../runtime/todo-plan/todo-plan-client-api.js'
+import { USAGE_CLIENT_API } from '../runtime/usage/usage-client-api.js'
+import { VARIABLES_CLIENT_API } from '../runtime/variables/variables-client-api.js'
+import { VOICE_CLIENT_API } from '../runtime/voice/voice-client-api.js'
+
+/**
+ * 内置 feature 的名册。**顺序即装配顺序**，与 K0 之前逐行调用的顺序逐字一致
+ * （包装不重排：K0 的宪法是行为零变化）。
+ *
+ * 两种成员，同一张表：
+ *  - **名册行**(`ClientApiRow`)—— 一行一个域,由所属功能的 client-api 文件交出;
+ *  - **feature**(`FeatureDefinition`)—— 一行一次 import,它自己决定要注册几项、注册什么。
+ */
+export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = [
+  // L3:渲染侧日志上行。排在最前 —— 它一个依赖也没有(只喂根 logger,
+  // 而根 logger 在模块求值时就存在),而它接住的是**别人出问题时**的那条上行路。
+  LOGS_CLIENT_API,
+  // 内存报告与手动释放缓存。
+  MEMORY_CLIENT_API,
+  USAGE_CLIENT_API,
+  PROMPTS_CLIENT_API,
+  GOAL_CLIENT_API,
+  TODO_PLAN_CLIENT_API,
+  // C2：轨迹是第一个迁成真 feature 的功能。它占的就是 `rpc:session-events`
+  // 从前那一格 —— 顺序不变，变的是这一行说的是「哪件功能」而不是「哪个域」。
+  trajectoryFeature,
+  CHANNEL_IDENTITY_CLIENT_API,
+  AGENTS_CLIENT_API,
+  PROVIDERS_CLIENT_API,
+  MODELS_CLIENT_API,
+  // 批 3：两个「带 context 的安全域」。护栏在 handler 里，靠 dispatch context
+  // 的 sandboxRoot / owner 判定，不再由 server 壳自己抄一份。
+  MARKDOWN_CLIENT_API,
+  PERMISSION_GRANTS_CLIENT_API,
+  // P0.3:第一个从「手写 IPC 工厂 + 壳适配」整只搬过来的域(spaces)。搬完之后
+  // server 侧一行没改 —— 域挂上 router 就经 `POST /api/rpc` 自动可达。
+  SPACES_CLIENT_API,
+  // P4a 第二个域(practice)。与 spaces 同一条搬法,差别只在它连「手写 IPC 工厂 +
+  // 壳适配」都没有 —— 旧线就是主进程里那十条裸 handle,所以搬完 `@main/ipc/practice.ts`
+  // 只剩 PRACTICE_EVENT 的广播注入(router 没有推送面)。
+  PRACTICE_CLIENT_API,
+  // P4a 第三个域(collab)。与前两个的差别是它**一条推送都没有** —— 看板/协调器/
+  // agent 的实时更新和表情回灌走的是会话事件,不是这个域的通道。所以搬完之后
+  // `@main/ipc/collab.ts` 整只删掉,而不是像 spaces / practice 那样留一条广播。
+  COLLAB_CLIENT_API,
+  // P4c 第一个域(scheduler)。旧线是三处镜像:手写 IPC 工厂 + 主进程壳、
+  // 渲染侧九条 REST 桩(**零调用点**)、server 九条 REST 路由背后**自己那台**
+  // per-owner Scheduler。搬完之后 server 与桌面吃的是同一台
+  // `@onething/backend/runtime/scheduler` —— 一个 store 一台调度器。
+  SCHEDULER_CLIENT_API,
+  // P4c 第二个域(variables)。旧线同样是三处镜像;与 scheduler 的差别是
+  // server adapter 有一道桌面没有的「会话不存在 → NOT_FOUND」前置检查,搬家取的是
+  // 桌面的形状 —— web 从此读的也是引擎真正在用的那台注册表(见域文件头)。
+  VARIABLES_CLIENT_API,
+  // P4c 第三个域(app-state)。这一个**不是零行为变化**:旧的 server adapter 现场
+  // 拼一份最小状态(恒定的单页签 + 侧栏不折叠),搬到桌面那条实现之后 web 读的是
+  // 同一个 store 的真 `app-state.json` —— 与 A 期「一个 store 一台 core」同向。
+  APP_STATE_CLIENT_API,
+  // P4c 第四个域(permission,活询问的读/清)。应答不在这里 —— 那是命令总线上的
+  // `command:permission-respond`;账页也不在这里 —— 那是 `permissionGrants` 域。
+  PERMISSION_CLIENT_API,
+  // P4c 第五个域(scratchpad)。与 spaces / practice 同型:四条数据面搬走,
+  // `SCRATCHPAD_CHANGED` 那条推送留在原地(它早就是 `configureScratchpadHost` 端口,
+  // 而 router 没有推送面),server 的 `/api/scratchpad/events` SSE 同样保留。
+  SCRATCHPAD_CLIENT_API,
+  // P4c 第六个域(project-dirs)。搬完顺带修掉一处说谎:web 壳原来把 `workspaceId`
+  // 收下就丢,浏览器里切空间等于没切 —— 走 router 之后它真的传到
+  // `getProjectsStore(workspaceId)` 了。
+  PROJECT_DIRS_CLIENT_API,
+  // P4c 第二批唯一的域(skills)。它是本仓第一个**要宿主能力**的迁移域 ——
+  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/backend/runtime/shell`),
+  // 未注入即结构化降级,所以 server / CLI 不再需要那份「不支持」的空实现。
+  // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
+  // 一个 store 一份技能表,web 与桌面从此读同一份。
+  SKILLS_CLIENT_API,
+  // 原生打开对话框(选目录 / 选文件)。拉起对话框的那一下是宿主的 `dialog` 端口,
+  // 未注入即答 `unavailable: true`,客户端退到路径输入框。
+  DIALOG_CLIENT_API,
+  // 系统浏览器 / 默认程序打开 / store 根(批 1)。契约 A1-b 就立着,Vue 宿主退役后没有处理者;
+  // 真正的那一下是宿主的 `shell` 端口,只对本机可信的宿主面开。
+  SHELL_CLIENT_API,
+  // P4c 第三批唯一的域(media)。旧线上除了六条契约通道,还挂着**五条写死的字面量
+  // 通道**(`media:save-image` / `media:load-all` / `media:delete` / `media:clear-all` /
+  // `media:read-image-base64`)—— 不在 `IPC_CHANNELS` 里,transport 门连数都数不到。
+  // 十一条数据面整只搬过来之后它们不再存在;留在宿主侧的是三条**要宿主本体**的:
+  // 「另存为」的原生对话框与两个 `BrowserWindow`(预览窗 / 画廊窗)。
+  // `getPreview` 跟数据走 —— 开窗那半写、这半读,两边共用 runtime 里那本
+  // `image-preview-registry-bound` 的进程内登记簿。
+  MEDIA_CLIENT_API,
+  // P4c 第四批唯一的域(session-command)—— **会话命令总线的入口**,全仓最后一条
+  // 主干「Proxy 属性 + 手写通道」。它只有一个方法(`emit`):分派在总线那一侧按
+  // `command.type` 走,router 再劈一遍等于把同一张表抄两份。搬完之后渲染层那一行
+  // `sessionCommands.emit(...)` 到 `handleSendMessage` 每一跳都是 TS 标识符。
+  // 位置在 media 之后、自进化之前:它要 `getStreamEngine()`(http 上的 abort 分支)
+  // 与 `Permission`(权限应答认领 targetChannel),而 `backend.ts` 的顺序是
+  // 引擎 → Permission → 工具注册 → registerAppRpcDomains,注册时两者都已就位。
+  SESSION_COMMAND_CLIENT_API,
+  // P4c 第五批唯一的域(sessions)—— 全仓最大的一域,26 条:22 条旧 `IPC_CHANNELS.*`
+  // 加**四条契约表外的字面量通道**(add-system-message / remove-files-changed-message /
+  // remove-git-status-message / remove-message),搬完之后后四条不再存在。
+  // 位置在 session-command 之后:两者互不依赖(会话仓是模块级单例),但读面排在
+  // 写面之后与「先有总线、再有查询」的叙事一致;真正的硬约束只有一条 —— 必须在
+  // 自进化之前,因为卸载要逆序。
+  SESSIONS_CLIENT_API,
+  // P4c 第五批的第二个域(chat)—— 聊天面剩下的六条:历史 / 标题 / 提示词快照 /
+  // 思考时长 / 停止 / 活流表。第七条「工具审批后恢复流」于 2026-08-22(#21)
+  // 连同它的 invoke 通道整条删除(渲染层零调用者、引擎 pause 路径已无生产者);
+  // 引擎的 `command:resume-after-confirm` 仍在命令总线上。
+  // 位置在 sessions 之后:`abortStream` 要 `getStreamEngine()` 与 `Permission`,
+  // 而 `backend.ts` 的顺序是引擎 → Permission → 工具注册 → registerAppRpcDomains,
+  // 注册时两者都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  CHAT_CLIENT_API,
+  // P4c 第六批第一个域(acp)—— 八条外部 agent 的增删改 / 连断 / 刷新 / 取消。
+  // 它一条推送都没有:agent 连上以后的流是**会话事件**,不是这个域的通道,所以
+  // `apps/electron/src/ipc/acp.ts` 整只删掉(同 collab 判例)。位置在 chat 之后、
+  // 自进化之前:它只要 `ACPManager` 的进程内单例与设置缓存,两者在装配到这一步时
+  // 都早已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  ACP_CLIENT_API,
+  // ACP A4-a:宿主工具面的跨进程出口。只认桥凭据(`context.bridgeCredential`),用户 token 进不来。
+  HOST_MCP_CLIENT_API,
+  // P4c 第六批第二个域(mcp)—— 十六条:服务器增删改 / 连接生命周期 / 能力面 /
+  // 配置导入。它与 acp 一样零推送(server 推来的 list-changed 由客户端就地回灌,
+  // 再经 `configureMCPCapabilitiesChangedHandler` 重生成模型面目录,不过传输面)。
+  // 本域是本批唯一**带 context 分叉**的:私密字段脱敏、更新时合并回真值、
+  // `readConfigFile` 在 http 上不读本机文件、stdio 探测在 http 上默认关闭(见域文件头)。
+  // 位置在 acp 之后、自进化之前 —— 同一条约束:卸载要逆序。
+  MCP_CLIENT_API,
+  // P4c 第七批第一个域(themes)—— 五条:列表 / 单取 / 应用 / 刷新 / 打开目录。
+  // 它零推送(系统深浅色变化走的是 `SYSTEM_THEME_CHANGED`,那是设置域的推送,
+  // 不是这个域的通道),所以 `apps/electron/src/ipc/themes.ts` 与
+  // `@main/ipc/themes.ts` 整只删掉(同 acp / collab 判例)。
+  // 两处口径变化写在域文件头:插件主题覆盖的合成从 `@main` 搬进了处理者(server
+  // 顺带获得,拍板 #20),`openFolder` 改走 `configureShellHost` 端口。
+  // 位置在 mcp 之后、自进化之前:它只要主题运行时的进程内单例与插件清单,
+  // 两者在装配到这一步时都早已就位;硬约束仍只有一条 —— 必须在自进化之前。
+  THEMES_CLIENT_API,
+  // P4c 第七批第二个域(oauth)—— 六条数据面。**两条推送留在原地**:
+  // `OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 改成注入端口
+  // (`configureOAuthEventBroadcaster`,同 practice / scratchpad 判例),
+  // 桌面推 webContents、server 串联进 `GET /api/oauth/events` 那条 SSE。
+  // server 那台 per-owner 的第二台 authService 随之消失 —— 一个 store 一本令牌账。
+  // 位置在 themes 之后、自进化之前:同一条约束(卸载要逆序)。
+  OAUTH_CLIENT_API,
+  // P4c 第八批第一个域(gateway)—— 八条:状态 / 起停 / 微信账号增删改与登出。
+  // 八条全都要**宿主本体**(主进程拉起来的子进程 + 一张二维码),所以域处理者
+  // 走 `runtime/gateway/lifecycle-port.ts` 的 `configureGatewayHost`:桌面在
+  // `main-process.ts` 注入八行转调,server / CLI 不注入 —— 拿到的是结构化降级,
+  // 而不是旧 server adapter 那句写死的「server runtime 上网关已禁用」。
+  // **本域零推送**(全仓没有 `GATEWAY_*_CHANGED`),所以 `@main/ipc/gateway.ts`
+  // 整只删掉,不像 oauth 还要留一层广播注入。
+  GATEWAY_CLIENT_API,
+  // P4c 第八批第二个域(files)—— 十四条,也是全仓**第一个逐方法带 http 夹紧**
+  // 的域(#19 的安全面):`transport:'ipc'` 不夹(桌面与迁移前逐字同义)、
+  // `transport:'http'` 每条带路径的方法都夹进 `sandboxRoot`,越界文案逐字沿用
+  // 旧 server 路由的原话。三处 http 分叉(`list` 的搜索根 / `reveal` 要外壳端口 /
+  // `watchStart|Stop` 桌面是投影桩而 http 是真监视器)逐条写在域文件头的表里。
+  // 一条推送留在原地:`FILE_WATCH_EVENT` 与它在 server 那侧的 SSE 源,
+  // 登记簿搬到 `runtime/files/workspace-watch.ts`,请求面与推送面共用同一张表。
+  FILES_CLIENT_API,
+  // P4c 第九批第一个域(tools)—— 七条:目录 / 执行 / 取消 / 后台任务表与停 /
+  // 刷 MCP 工具面 / 回写工具调用。它是继 files 之后第二个**逐方法带 http 分叉**
+  // 的域(#19 的安全面):`transport:'ipc'` 与迁移前逐字同义;`transport:'http'`
+  // 逐字照搬旧 server adapter 的语义 —— 执行面三道闸(白名单只有 `read`、会话必须
+  // 存在、路径夹进会话沙箱)、后台任务表恒空、停任务与回写工具调用按原话拒绝。
+  // **本域零推送**(工具进展走会话事件/流),所以两只宿主件整只删掉。
+  // 位置在 files 之后、自进化之前:它要工具目录与 runner,而 `backend.ts` 的顺序
+  // 是三档工具注册 → registerAppRpcDomains,注册时目录已就位;硬约束仍只有一条 ——
+  // 必须在自进化之前(卸载要逆序)。
+  TOOLS_CLIENT_API,
+  // P4c 第九批第二个域(interaction)—— 两条:补水读 pending、写回一次应答。
+  // 通道亲和的 `channel` 仍由**宿主**盖章(桌面恒 'ipc';http 认领那次提问自己的
+  // targetChannel,同 server 权限应答判例),不从请求里读。**本域零推送**
+  // (提问/结算走会话事件),所以宿主件整只删掉。
+  INTERACTION_CLIENT_API,
+  // P4c 第九批第三个域(music)—— 十四条:状态/向导/传输控制/现在播放/电台简报/
+  // 歌词/口播 ack/开台/搜索/点歌/节目单/节目单编辑/provider 列表与切换。
+  // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
+  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `runtime/music/operations.ts`。
+  MUSIC_CLIENT_API,
+  // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
+  // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`
+  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `runtime/evals/host-ports.ts`,
+  // 宿主只注入 `isPackaged` 这一位事实(未注入 = 非打包 = `process.cwd()`)。
+  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `runtime/evals/events.ts`
+  // 的 `configureEvalsEventBroadcaster` 端口 —— 顺带从单窗定向改成全窗广播,
+  // 与工作台那两条一致。四条按 wire 路径读盘的方法在 http 上直接拒绝(见域文件头)。
+  EVALS_CLIENT_API,
+  // P4c 第十批第二个域(evalsWorkbench)—— 十一条:事故包读写 / 回放起停 /
+  // AI 分析 / 晋升成回归用例 / 逐轮列表与重放 / 诊断。**两条推送留在原地**
+  // (`EVALS_REPLAY_PROGRESS` / `EVALS_DIAGNOSE_PROGRESS`),与 evals 域共用
+  // 同一个广播端口。它排在 evals 之后:`evals.recordDownvote` 要用本域的
+  // `analyzeIncidentInBackground`(模块级 import,与装配顺序无关),而这一格
+  // 的硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  EVALS_WORKBENCH_CLIENT_API,
+  // C4 第一档:自进化。名册里第一个**一个 RPC 域都不注册**的成员 —— 它注册的
+  // 是三个会话工具(feature_mount / feature_unmount / feature_inspect)。
+  //
+  // 位置在**最后**且不可上移:它的工具注册面有一道「已经有 bash 的宿主才给」的
+  // 门(见该文件头),判据要在工具注册表装好之后才为真;而 `backend.ts` 的顺序
+  // 恰好是「三档工具注册 → registerAppRpcDomains」。放在末尾还有第二重意义:
+  // 卸载时它第一个被解绕,模型现场挂进来的那批动态 feature 因此在内置域拆掉
+  // **之前**就已经收干净(动态 feature 可能骑在这些域上)。
+  // P4c 第十一批第一个域(settings)—— 四条:读 / 存 / 系统深浅色 / 代理自检。
+  // 它是本仓最后两个「无工厂的漏网 handler」之一:旧线就是
+  // `apps/electron/src/settings/ipc-host.ts` 那只裸 `ipcMain.handle` 工厂 + 主进程
+  // 壳适配,没有 `apps/electron/src/ipc/*` 那层可移植工厂。
+  // **两条留宿主**(C):`OPEN_SETTINGS_WINDOW`(BrowserWindow)与
+  // `SHOW_OPEN_DIALOG`(原生对话框,渲染侧 21 个调用点)。
+  // **一条推送留在原地**(`SETTINGS_CHANGED`),改走
+  // `runtime/settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
+  // 从「跳过发起窗」改成全窗广播(信封里没有「谁在问」这一格,同 evals 判例)。
+  // 三件要宿主的事(套代理 / 重注册全局快捷键 / 系统深浅色)走新立的
+  // `configureSettingsHost`;网关设置的套用复用第八批的 `configureGatewayHost`,
+  // 只在那张端口表上多一格 `applySettings`。
+  // http 分叉:出门脱敏与回来合并两道真护栏逐字保留(`runtime/settings/settings-client-api-projection.ts`),
+  // 而 server 那本 per-owner 的第二份设置账随之消失 —— 一个 store 一份设置(#20)。
+  // 位置在 evals-workbench 之后、自进化之前:它要设置仓、provider 缓存、MCP/ACP
+  // 管理器与网关端口,装配到这一步时都已就位;硬约束仍只有一条 —— 卸载要逆序。
+  SETTINGS_CLIENT_API,
+  // P4c 第十一批第二个域(voice)—— 十一条:状态 / 起停 / 两条上行 / 合成 /
+  // ASR·TTS 自检 / TTS 模型表 / 运行时窗就绪与事件。
+  // **两条推送留在原地而且一行没改**:`VOICE_EVENT` 与 `VOICE_RUNTIME_COMMAND`
+  // 早就是 `configureVoiceHost` 的端口,server 那两条 SSE 也原样保留。
+  // `runtimeReady` 的发起窗改由宿主回答(`runtimeWindow.getWebContents`);
+  // **`VOICE_AUDIO_CHUNK` 不在这个域里**:高频 PCM 单向上行不带回执,搬到只有
+  // 请求/响应面的 router 上等于给每块音频加一条空回执 —— 按拍板 #10 归**流式
+  // 单向残留集**,常量 / preload 的 `send` / 主进程那条 `ipcMain.on` 原样留着。
+  // http 上十一条逐字沿用旧 server adapter 的「server 上没有语音运行时」。
+  VOICE_CLIENT_API,
+  // P4 终态批 D2(terminal)—— 七条请求面:开 / 列 / 写 / 改尺寸 / 杀 / 附着 / 流控回执。
+  // **推送不在这个域里**:输出走 `configureTerminalBroadcaster` 注入端口
+  // (router 没有推送面)。T0 起那只端口的桌面实现把每条输出放上总线,骑全局事件
+  // `terminal:data` / `terminal:exit` 出 `GET /api/events`;两条同名的手写通道常量
+  // 同批删除(从 P4-D2 起就没有 import)。
+  // `ack` 从单向 `ipcRenderer.send` 变成带一条空回执的 invoke(渲染侧本来就不等它;
+  // 与 `VOICE_AUDIO_CHUNK` 退回单向的差别在频次 —— 那是每秒 10–25 块的稳定 PCM 上行)。
+  // **七条在 http 上一律结构化拒绝**:能力位 `terminal` 在 web 默认关(用户拍板),
+  // 而桌面自己也挂着同一份 HTTP 面,所以闸落在知道 transport 的域里;拒绝路径一次
+  // 都不求值 `getTerminalService()`,懒单例因此仍然不在 server / CLI 上 load node-pty。
+  TERMINAL_CLIENT_API,
+  // P4 终态批 C2(plugins)—— 十九条 invoke:目录读/启停/刷新、命令表与执行、
+  // 统一请求通道与取消、配置读写、足迹与卸载、npm 生命周期四条、装前预读、市场、
+  // file-pick 的宿主托管导入。三处镜像(portable 工厂 + 主进程壳 / preload 十九条 /
+  // web 的六条 REST + 十三条硬桩)连同 server 的 `/api/plugins*` 六条路由与那条
+  // 501 一起消失。
+  // **两条推送留在原地**:`PLUGINS_NOTIFICATION`(总线全局事件,IPCBridge 扇全窗)
+  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `runtime/plugins/events.ts` 的
+  // `configurePluginRequestProgressBroadcaster`,按 `context.callerId` **定向回发起窗**
+  // —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份别人的进度)。
+  // 两件要宿主本体的事走 `runtime/plugins/host-ports.ts` 的 `configurePluginsHost`:
+  // 原生文件对话框(`pickFile`)与插件命令的子进程执行器(`execCommand`,execa 是
+  // 桌面的依赖,不该被拖进 server 的单文件包)。未注入即结构化降级。
+  // http 分叉逐字保留 server 今天的语义:六条读/开关面走
+  // `runtime/plugins/plugins-client-api-catalog.ts` 那个单槽端口(装的就是从前六条 REST 背后的同一批
+  // 闭包),`configGet` 从那份清单就地派生只读值,其余写面按「插件管理器在不在场」
+  // 回迁移前 `platform/web.ts` 逐字相同的文案。渲染侧另有能力位 `pluginsManage`
+  // (web 默认关)让写面根本不发请求。
+  // 位置在 terminal 之后、自进化之前:它要插件管理器与事件总线,装配到这一步时
+  // 都已就位;硬约束仍只有一条 —— 必须在自进化之前(卸载要逆序)。
+  PLUGINS_CLIENT_API,
+  // P4 终态批 A1-b:search 的**数据面**一条(`query`)。A1-a 把搜索窗那四条动窗口的
+  // 迁进了宿主壳路由,同时判定这一条是数据面(处理者一行 electron 都不碰),该来
+  // 这里 —— 本批兑现。它按 `context.transport` 分叉:ipc 走桌面那份整机搜索,
+  // http 走 `runtime/search/search-client-api-providers.ts` 那个单槽端口(per-owner 沙箱里的同一件事,
+  // 装的就是从前 `POST /api/search/query` 背后的同一个闭包)。`executeAction` 与
+  // `SEARCH_ACTION` 不在这里(前者是窗口活,在 searchWindowRouter 上;后者是推送)。
+  SEARCH_CLIENT_API,
+  /*
+   * notes(P4,`docs/design/notes-obsidian-cli-2026-09.md` §4.6)。三条只读面 +
+   * 一个前台动作,投影 `backend.notes` 这只子系统。
+   *
+   * **位置:紧跟 search 之后**。硬约束只有一条 —— 它要 `backend.notes` 在场,
+   * 而笔记子系统是在 `bootstrapProjectDirs` 之后起的,远在 RPC 表之前;挂在这
+   * 一行是因为它与 search 是同一类东西(读一份派生出来的名册),挨着好找。
+   * 写面不在这里:改开关走 `settings.saveSettings`。
+   */
+  NOTES_CLIENT_API,
+  /*
+   * 原子 K2a(`docs/design/atom-2026-09.md` §4「所有出口都是投影」的「RPC 域」那一行)。
+   *
+   * **一个通用域,零个 scheme 名**:`list` / `describe` / `read` / `do` 对会话、文件、
+   * 音乐、邮件说的是同一句话,加一种资源不改这一行、也不改域文件一个字 ——
+   * 那正是 §8 陌生能力演练要的答案。它与今天那 24 个手写域的差别不是"少写了几行",
+   * 是授权归属:授权在管线里(`ToolRunner`),域不再各写。
+   *
+   * 位置在最后:它要资源内核(装配缝 4.1,排在工具目录之后)。
+   */
+  RESOURCES_CLIENT_API,
+  selfEvolutionFeature,
+]
+
+/** 名册行挂载成 feature:id 照抄,注册项只有那一个域 —— 与从前内联的 `{ id, mount }` 包装逐字同义。 */
+function featureOf(entry: ClientApiRow | FeatureDefinition): FeatureDefinition {
+  if ('mount' in entry) return entry
+  return { id: entry.id, mount: ctx => { ctx.registerRpcDomain(entry.router, entry.handlers) } }
+}
+
+/** 名册里带「在用户 token 那道闸前面看一眼」的那几行(今天只有 ACP 宿主工具面)。路由逐行问。 */
+export const PRE_IDENTITY_ROWS: readonly ClientApiRow[] = CLIENT_API_ROSTER.filter(
+  (entry): entry is ClientApiRow => !('mount' in entry) && entry.serveBeforeIdentity !== undefined,
+)
+
+/** Bind every builtin domain. Returns a disposer that unbinds all of them. */
+export async function registerAppRpcDomains(): Promise<() => Promise<void>> {
+  const unmounts: FeatureUnmount[] = []
+  for (const entry of CLIENT_API_ROSTER) {
+    unmounts.push(await mountFeature(featureOf(entry)))
+  }
+  return async () => {
+    // 逆序：与 FeatureContext.disposeAll 同一惯例（后挂的先卸）。
+    for (let i = unmounts.length - 1; i >= 0; i -= 1) await unmounts[i]()
+  }
+}
+
+export {
+  dispatchRpc,
+  hasRpcDomain,
+  registerRouterHandlers,
+  resetRpcRegistryForTests,
+} from './http-server-dispatch-table.js'

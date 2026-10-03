@@ -211,7 +211,7 @@ export const dirResourceSpec: ResourceSpec = {
      * 删掉这个路径。**一个文件,或者一个空目录** —— 不递归。
      *
      * 这一格与 `files` 域有意分叉,而且只有这一格:界面上的删除
-     * (`rpc/domains/files.ts` 的 `delete`)是 `fs.rm(recursive: true)`,因为那是一个
+     * (`runtime/files/files-client-api.ts` 的 `delete`)是 `fs.rm(recursive: true)`,因为那是一个
      * 人看着文件树、按下删除、并且知道自己删的是一棵树。这条路上不是 —— 这条路上的
      * 调用方可能是模型、插件、一段脚本,而「删一个空目录」的错删是可恢复的
      * (重建它),「删一棵树」的错删不是。要删一棵树的人有 `bash`,而且他会看见自己

@@ -4,7 +4,7 @@
  * 这一块从前住在 core 的 `ipc/index.ts`,本文件只是再导出 —— shared 因此要 import core,
  * 而 core 又从 shared 取词汇,两包成环。2026-10(server / client 拆分第①步 ①a)把它整块
  * 搬进来:路由契约是 server 与 client 之间的 API 本身,客户端 SDK(`@onething/client`)与
- * 后端的派发表(`packages/backend/rpc/registry.ts`)都从这里取。
+ * 后端的派发表(`packages/backend/http-server/http-server-dispatch-table.ts`)都从这里取。
  */
 
 /**

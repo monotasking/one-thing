@@ -19,7 +19,7 @@
  * 于是 `send_message` 走的还是那张牌、那把租约、那个幂等窗 —— E3 那条链一个字不改。
  *
  * 凭据不是用户 token,两张表互不相认:用户 token 调 `host-mcp` 一律拒(context 里没有
- * `bridgeCredential`),桥凭据也打不开 `host-mcp` 以外的任何一扇门(`server/mcp-face.ts`)。
+ * `bridgeCredential`),桥凭据也打不开 `host-mcp` 以外的任何一扇门(`runtime/acp/acp-client-api-host-mcp-face.ts`)。
  * 会话收了 / 子系统 dispose 时作废;作废之后同一把钥匙再来 → HTTP 面 401、域处理者拒。
  *
  * ## 工具集
@@ -55,7 +55,7 @@ import { HOST_MCP_UNAUTHORIZED, type HostMcpToolListing } from '@shared/ipc/host
 import type { AgentNotificationEvent } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { HostToolSurface } from '@onething/backend/runtime/external-agents/host-tools'
-import { httpDiscoveryUrl, readHttpDiscovery } from '@onething/backend/server/discovery.js'
+import { httpDiscoveryUrl, readHttpDiscovery } from '@onething/backend/http-server/http-server-discovery.js'
 import { getSettings } from '@onething/backend/runtime/settings'
 import { resolveAcpMcpBridgePath } from './mcp-bridge-path.js'
 

@@ -159,7 +159,7 @@ export type ResourceReadView =
  *
  * `shellId` 是那扇壳给自己起的名字,后端只拿它当**坐标**用:命令往哪扇壳发、
  * 断线时该撤哪一批自述、一条回执认不认。它不是身份 —— 身份是主体
- * (`rpc/principal.ts` 铸的那一个),两者不可互相替代。
+ * (`http-server/http-server-principal.ts` 铸的那一个),两者不可互相替代。
  *
  * `spec` 是 `describe` 交出去的那一份投影的**反方向**:函数字段过不了进程边界,
  * 所以壳交上来的自述里没有 `when` / `describe`,`whenGated` 交上来也会被忽略

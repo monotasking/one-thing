@@ -5,7 +5,7 @@
  * 字面量。S2(检索重建,`docs/design/search-index-2026-09.md` §10 S2)把它提成一个
  * 文件,当时的理由是「新旧两条路必须吃**同一份**取材面」;S5 删掉旧路之后理由只
  * 剩下一条,但它更硬:**取材面有两个装法** —— 桌面按整台机器装一份(下面这只
- * 函数),server 按 owner 现装一份(`server/runtime.ts` 的
+ * 函数),server 按 owner 现装一份(`http-server/http-server-runtime.ts` 的
  * `createSearchAdaptersForContext`)。两个装法各自成文件,`providers.ts` 只留那个
  * 进程单槽。
  */

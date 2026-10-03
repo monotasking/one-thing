@@ -13,8 +13,8 @@ import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import {
   configureHostLocalTrust,
   resetHostLocalTrustForTests,
-} from '../server/host-trust.js'
-import { principalOf, RpcPrincipalUnavailableError } from '../rpc/principal.js'
+} from '../http-server/http-server-host-trust.js'
+import { principalOf, RpcPrincipalUnavailableError } from '../http-server/http-server-principal.js'
 
 afterEach(() => {
   resetHostLocalTrustForTests()

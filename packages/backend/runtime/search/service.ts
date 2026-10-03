@@ -664,7 +664,7 @@ export class OnethingSearchService {
  * 就没有这三类结果 —— 而不是「悄悄退回旧扫描」(§13 留账那一条:旧扫描 S5 会删,
  * 这里不许再长出第二条路)。索引是 **store 级**的:桌面与回环 server 各装一份服务却传
  * 同一份索引。**按 owner 沙箱化的那一支例外** —— 索引文档上没有 owner 这一格,共用即串
- * owner,所以 `server/runtime.ts` 的不可信端口传的是 `unavailableIndexFace()`(如实答
+ * owner,所以 `http-server/http-server-runtime.ts` 的不可信端口传的是 `unavailableIndexFace()`(如实答
  * 「这台宿主没有索引」),而不是共用一份库再指望以后补过滤。
  */
 export function createOnethingSearchService(

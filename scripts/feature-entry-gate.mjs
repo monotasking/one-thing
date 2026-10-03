@@ -37,6 +37,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
+import { clientApiFeatureOf } from './lib/backend-structure.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/feature-entry-baseline-2026-10.txt')
@@ -144,6 +145,8 @@ export function classify(resolvedAbsolute, importerAbsolute, features) {
   // 只在目录里没有 `index.ts` 时:`scheduler/scheduler.ts` 是 scheduler 的内部文件,入口仍是 `scheduler/index.ts`。
   if ((inner === `${feature}.ts` || inner === `${feature}.js` || inner === feature)
     && !existsSync(path.join(featureDir, 'index.ts'))) return null
+  // 第二个入口 `<功能>-client-api*.ts`(D26)同样不计:谁可以引它由 `client-api:gate` 管(只许 HTTP 服务器)。
+  if (clientApiFeatureOf(`${RUNTIME}/${feature}/${inner.replace(/\.js$/, '.ts')}`) === feature) return null
   return { feature, target: inner }
 }
 
@@ -256,6 +259,9 @@ function selfTest() {
   expect('别的功能引用算深层', classify(R('search/service.ts'), R('mcp/x.ts'), features)?.feature === 'search')
   expect('总桶单列', classify(R('index.ts'), outside, features)?.feature === BARREL_ROW)
   expect('包根文件不计', classify(path.join(root, BACKEND, 'store.ts'), outside, features) === null)
+  expect('第二个入口 client-api 不计', classify(R('search/search-client-api.ts'), outside, features) === null)
+  expect('client-api 的方面文件也不计', classify(R('search/search-client-api-providers.ts'), outside, features) === null)
+  expect('别人名字打头的 client-api 照算深层', classify(R('search/mcp-client-api.ts'), outside, features)?.feature === 'search')
 
   // 3) 棘轮:升 → 红;降 → 提示;新功能 → 红;往返无损。
   const up = compare({ search: 1 }, { search: 2 })
@@ -274,7 +280,7 @@ function selfTest() {
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log('[feature-entry-gate] self-test ok — 14 checks passed')
+  console.log('[feature-entry-gate] self-test ok — 17 checks passed')
 }
 
 function main() {
@@ -353,4 +359,4 @@ function main() {
   )
 }
 
-main()
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

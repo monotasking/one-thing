@@ -88,7 +88,7 @@ describe('可信宿主', () => {
 
 describe('夹紧宿主', () => {
   /**
-   * 判据是 `isHostLocallyTrusted()`(与 `rpc/sandbox.ts` 的 `confined` 同一个
+   * 判据是 `isHostLocallyTrusted()`(与 `http-server/http-server-sandbox.ts` 的 `confined` 同一个
    * 谓词),而且**每次 refresh 都问一遍**。驱动照样注册(注册不发命令),不可信
    * 那一档由空表表达。
    */

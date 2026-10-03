@@ -10,7 +10,7 @@
  * 对话框」是做不到的事,不是 bug。降级答 `unavailable: true`,客户端据它退到路径输入框。
  *
  * 形状与跨进程契约里的 `ShowOpenDialogRequest/Response` 结构相同(产品层不许 import
- * 那份契约,所以这里自己写一份,由 `rpc/domains/dialog.ts` 的类型检查对齐)。
+ * 那份契约,所以这里自己写一份,由 `runtime/dialog/dialog-client-api.ts` 的类型检查对齐)。
  */
 
 export type OpenDialogProperty = 'openFile' | 'openDirectory' | 'multiSelections' | 'createDirectory'

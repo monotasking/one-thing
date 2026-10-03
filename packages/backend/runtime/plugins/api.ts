@@ -259,7 +259,7 @@ export function narrowApiForLocalPlugin(api: PluginAPI): PluginAPI {
  * 当前装配实例上那台资源内核,拿不到就 `undefined`(原子 K4-b)。
  *
  * 走 `getCurrentBackendInstance()` 而不是 `getCurrentBackendSafe()`,理由与
- * `rpc/domains/resources.ts` 的 `kernel()` 逐字相同:内核是**实例字段**,不在
+ * `runtime/resource/resource-client-api.ts` 的 `kernel()` 逐字相同:内核是**实例字段**,不在
  * `BackendHandle` 那张窄句柄上。`backend.resources` 在还没装到那一步时**抛**
  * (`BackendNotAssembledError`),而这条路的调用方要的是「有就用」——
  * 于是这里把那一抛折成 `undefined`,由 `createPluginResourceHostPorts` 回一句

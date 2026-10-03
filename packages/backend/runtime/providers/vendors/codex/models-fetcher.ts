@@ -1,7 +1,7 @@
 /**
  * Codex 的**列表口**(manifest `models.kind === 'endpoint'`):不点刷新 = 读缓存 ∪ 用户勾过的兜底;
  * 点了刷新 = 拿登录态现取、落盘,取不到退回缓存 ∪ 整张兜底表。由 `runtime.ts` 的
- * `createModelsFetcher` 交给宿主(`backend/rpc/domains/models.ts` 按名册建表,不再点名)。
+ * `createModelsFetcher` 交给宿主(`backend/runtime/providers/providers-client-api-models.ts` 按名册建表,不再点名)。
  *
  * 服务商自述试点 P2 第 4 批从 `providers/model-registry.ts` 搬回家(`createOnethingCodexModelsFetcher`
  * 逐字)。

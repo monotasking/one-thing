@@ -4,7 +4,7 @@ import { canonicalizeStorePath } from '@onething/backend/runtime/storage'
 import type { OnethingMediaAssetAccess, OnethingMediaLibraryService } from '@onething/backend/runtime/media'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, ownsSessionRecord, type SessionAccess, type SessionAccessContext, type SessionAccessOperation } from '@onething/backend/runtime/sessions'
-import { isPathInside, resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '@onething/backend/rpc/sandbox.js'
+import { isPathInside, resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 
 /** Every source must still exist and be visible. Orphan links never become local uploads. */
 export function assertMediaAccess(access: Pick<SessionAccess, 'resolve'>, context: SessionAccessContext, asset: OnethingMediaAssetAccess, operation: SessionAccessOperation = 'read'): void {

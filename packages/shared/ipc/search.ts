@@ -259,7 +259,7 @@ export const searchWindowRouter = defineRouter<SearchWindowRoutes>('search-windo
  *  - 本机可信(桌面 IPC / 桌面内嵌 HTTP 面 / 回环 `server:start`)= 这台进程装配的
  *    那份 `SearchService`,整台机器的一份会话 / 文件 / 提示词表 + store 级索引;
  *  - 不可信(独立部署的 server)= per-owner 沙箱里的同一件事
- *    (`server/search-providers.ts` 那个单槽端口,装的就是从前
+ *    (`runtime/search/search-client-api-providers.ts` 那个单槽端口,装的就是从前
  *    `POST /api/search/query` 背后的同一个闭包)。
  *
  * `SEARCH_ACTION` 是推送、`executeAction` 是窗口活(在 `searchWindowRouter` 上),

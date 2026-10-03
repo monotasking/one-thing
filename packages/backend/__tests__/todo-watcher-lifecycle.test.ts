@@ -73,7 +73,7 @@ async function assemble(name: string) {
 
 async function saveDirectory(target: string) {
   const { getSettings } = await import('@onething/backend/runtime/settings')
-  const { dispatchRpc } = await import('../rpc/registry.js')
+  const { dispatchRpc } = await import('../http-server/http-server-dispatch-table.js')
   const current = getSettings()
   return dispatchRpc({ domain: 'settings', method: 'saveSettings', payload: {
     ...current, general: { ...current.general, todoPlan: { ...current.general?.todoPlan, directory: target } },

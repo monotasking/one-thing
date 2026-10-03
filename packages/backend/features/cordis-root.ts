@@ -12,7 +12,7 @@
  * 在第一次 `mountFeature` 时才生。
  *
  * 这里**不注册任何 service**。C0 的宪法是行为零变化，装配顺序仍由调用方（
- * `rpc/index.ts` 的循环、`backend.ts` 的调用序）决定，不引入 `inject` 依赖激活
+ * `http-server/http-server-client-api-roster.ts` 的循环、`backend.ts` 的调用序）决定，不引入 `inject` 依赖激活
  * —— 那是 C1 的事。
  */
 import { Context } from '@deepseek-ai/cordis'

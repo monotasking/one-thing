@@ -74,10 +74,10 @@ packages/backend/runtime/variables/store-bound.ts 1
 packages/backend/runtime/voice/host-ports.ts 2
 packages/backend/runtime/voice/providers.ts 2
 packages/backend/runtime/voice/speech-output.ts 1
-packages/backend/server/embed.ts 1
-packages/backend/server/host-trust.ts 1
-packages/backend/server/plugin-catalog.ts 1
-packages/backend/server/search-providers.ts 1
+packages/backend/http-server/http-server-embed.ts 1
+packages/backend/http-server/http-server-host-trust.ts 1
+packages/backend/runtime/plugins/plugins-client-api-catalog.ts 1
+packages/backend/runtime/search/search-client-api-providers.ts 1
 packages/backend/runtime/sessions/event-broadcast.ts 1
 packages/backend/runtime/sessions/event-stats.ts 3
 packages/backend/runtime/sessions/freeze.ts 1

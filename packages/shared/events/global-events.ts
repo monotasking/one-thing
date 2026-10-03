@@ -198,7 +198,7 @@ export interface ResourceShellCommandEvent {
  * 缺的只是**一条到得了壳的路**。而今天的 React 壳只有一条 IPC(`host:connection`,
  * `transport:gate` 的 `ipcMain` 钉数就是它),渲染层与 core 之间只有 HTTP/SSE ——
  * 于是「再开一条通道」这条路在结构上已经关死了。全局事件本来就走
- * `GET /api/events`(`backend/server/global-event-delivery.ts`),转发那一侧不认识
+ * `GET /api/events`(`backend/http-server/http-server-global-events.ts`),转发那一侧不认识
  * 任何一种事件的名字,所以接上它 = 加一支联合 + 出网名单加一行,零传输面改动。
  *
  * ## 「SSE 不回放全局事件」在这里正好是对的

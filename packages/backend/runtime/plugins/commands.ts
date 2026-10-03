@@ -3,7 +3,7 @@
  *
  * 从前这一段住在 `apps/electron/src/main/ipc/plugins.ts`(`executePluginCommand`),
  * 有两个调用方:那只 IPC 工厂,和网关的命令提供者。IPC 那一半随 C2 迁进
- * `rpc/domains/plugins.ts`;为了不让同一段接线在域文件和宿主文件里各留一份,
+ * `runtime/plugins/plugins-client-api.ts`;为了不让同一段接线在域文件和宿主文件里各留一份,
  * 整段搬到这里,两边都调它。
  *
  * 编排本体在产品层(`@onething/backend/runtime/plugins` 的
@@ -25,7 +25,7 @@ import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './plugin-manager.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
-import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
+import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/runtime/sessions'
 
 const log = getLogger('plugins.commands')

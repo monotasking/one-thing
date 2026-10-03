@@ -59,7 +59,7 @@
  *   'permission-gated'`,与 `edit` 同档(`edit` 是本仓写盘工具里最严的那个)。
  * - **只从一个目录加载**。`<store>/features-dev/<id>/` 之外一律拒绝;`entryPath`
  *   夹进该 feature 自己的目录(不是夹到 features-dev 根就算数)。夹紧用的是
- *   `rpc/sandbox.ts` 的 `isPathInside` —— 与联网宿主的 RPC 沙箱同一份实现,
+ *   `http-server/http-server-sandbox.ts` 的 `isPathInside` —— 与联网宿主的 RPC 沙箱同一份实现,
  *   而不是再抄一遍 `startsWith`(那正是 skills 拒迁时记下的教训)。
  *
  * 另有一道**宿主档门**:三个工具只在「已经有 bash 的宿主」上注册。判据不是

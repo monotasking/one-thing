@@ -37,8 +37,8 @@ import { createRequire } from 'node:module'
 import { createOnethingBackend } from '@onething/backend/backend.js'
 import {
   startEmbeddedOnethingHttpServer,
-} from '@onething/backend/server/embed.js'
-import { readHttpDiscovery } from '@onething/backend/server/discovery.js'
+} from '@onething/backend/http-server'
+import { readHttpDiscovery } from '@onething/backend/http-server'
 
 /**
  * `configureLogging` 之后 `console.*` 与 stdout 都被 LegacyConsoleSink 收进账本

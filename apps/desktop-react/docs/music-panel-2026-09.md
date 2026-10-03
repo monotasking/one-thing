@@ -432,7 +432,7 @@ ncm-cli **私有**的,发布包是混淆过的(`@music163/ncm-cli@0.1.7 dist/ind
   连点三下 / 两下的发送序、失败回滚、后端说照做了但播放器不是那样。反证:把判据改成「永远听读数」→ 两条当场红;
 - `runtime/music/__tests__/now-playing.test.ts` 「commands」4 条:命令前起的读数被丢、`refresh()` 另起一发、
   `assume` 当场公布且不是 sample、回读一致无声 / 不一致纠正。反证:拆掉命令纪元 → 两条当场红;
-- `backend/rpc/__tests__/music-domain.test.ts`:pause 的次序是 begin → cli → assume、回读不挡回话;被拒的 pause 不公布任何效果。
+- `backend/runtime/music/__tests__/music-client-api.test.ts`:pause 的次序是 begin → cli → assume、回读不挡回话;被拒的 pause 不公布任何效果。
   (这只文件顺手修了夹具:假音乐子系统缺 `onPlayerFact`,整只文件在基线上是全红的;仍有两条读 `getState` / `getRadio`
   的用例红,与本单无关,基线同样红。)
 

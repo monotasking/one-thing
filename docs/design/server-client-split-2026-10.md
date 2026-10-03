@@ -1747,3 +1747,25 @@ feature-map 重新生成后一致;`provider:drill` 绿;CLI `--help` 不写 store
 `compact-half-run-log`;`hydration-contract` 217 / 0 ×2;`gate:acp` 去掉 pid / 时间戳后相同;`gate:search-index` 同红 ⑤c / ⑤d、其余只差耗时;assembly 同红(`music/radio.ts` 9 → 10,
 与本笔无关);boundary(含全量 checker)/ transport / log / session / gate:native 绿;cycle 0(深层 17 / 3 / 2 → 3 / 2)、layer 97 / 53 → 60 / 33、entry 2711 → 2546、name 131 → 122、
 provider 105(基线均已收紧);feature-map 重新生成后一致;`provider:drill` 绿;CLI `--help` 不写 store;server 包在临时 store 上 listening。
+
+### 包根归位 A 落地记录:`http-server/` + 各功能的 client-api(2026-10-04,未提交)
+
+**一句话**:包根的 `rpc/` 与 `server/` 拆成两半(决策 D21 修订 / D26,本笔自定 D63–D75):界面连进来的那台 HTTP 服务器成了包根目录 `http-server/`(21 只文件,一律 `http-server-<做什么>.ts`,入口 `http-server.ts`、exports 键 `./http-server`);
+50 只 RPC 域与 `server/` 里属于具体功能的 7 只面进了各自功能,成为 40 个功能的**第二个入口** `runtime/<功能>/<功能>-client-api[-<方面>].ts`(55 只;`custom-probe-analyst` 并进 `providers-client-api.ts`;`mcp-secrets` 与 server 自己的 MCP 客户端进 mcp 主体、经 mcp 入口交出)。
+分发表改成名册 `http-server-client-api-roster.ts`:每只 client-api 用 `defineClientApi({ id, router, handlers, serveBeforeIdentity? })` 交出一行,名册按装配顺序排列(轨迹 / 自进化两个 feature 照旧占原位),HTTP 服务器的其余代码只读表;路由在用户 token 闸前点名 ACP 的那一行换成「逐行问 `serveBeforeIdentity`」。
+新门 `client-api:gate`(零基线,CI 已接)守 D26:只有 `http-server/`、同功能的 client-api、测试与两对写了理由的例外可以引 client-api。
+
+**域 → 功能**:acp / host-mcp(+ 原 `server/mcp-face`)→ acp;agents → agents;app-state、sessions、session-command、session-events(+ 原 `server/live-session-delivery`)→ sessions;channel-identity、gateway → gateway;chat → engine;collab、dialog、files、interaction、markdown、media(+ `server/media-delivery`)、memory、music、notes、practice、project-dirs、prompts、scheduler、scratchpad、search(+ `server/search-providers`)、settings(+ `server/settings-projection`)、shell、skills、spaces、terminal、themes、todo-plan、tools、usage、variables、voice、plugins(+ `server/plugin-catalog`)→ 同名功能;evals / evals-workbench / evals-access → evals;goal → goals;logs → logging;mcp → mcp;models、providers、providers-custom-probe-analyst → providers;oauth → auth;permission / permission-grants → permissions;resources → resource(三只线上形状函数拆进 `resource-wire-views.ts`、经资源入口交出,CLI 改从入口拿,D70)。
+
+**怎么搬的**:搬家脚本 `s20/move.mjs`(`s19/move.mjs` 读表版,多一条:`runtime/` 下非测试文件指向包根文件一律写包说明符并按需补 exports 键,D72;表 `s20/map.json`,159 只文件含测试),再一趟测试路径提法改写;`s20/rows.mjs` 给 47 只域文件补名册行、把名册里内联的 `{ id, mount }` 换成行常量;其余手改(ACP 闸、analyst 合并、资源三函数、mcp 入口、http-server 入口、宿主 import)。
+测试随被测文件走(域测试 `<d>-domain.test.ts` → `<功能>/__tests__/<client-api 文件名>.test.ts`;server 测试 → `http-server/__tests__/http-server-*.test.ts`),断言一字未改;两份测试的仓根相对深度随目录变了(`acp-client-api-host-mcp-face.test.ts`),一份搬家脚本把 `.mjs` 写成 `.mjs.mjs`,手改回来。
+迁进 runtime 的 9 只域文件头注释里的 `ipcMain.handle` / `apps/electron/src/main/…` 历史句子改成人话(runtime 的宿主禁令按字面扫,D73)。`headless-boundary-check.ts` 六条「域上了通用面」的判据改认「域文件交出 router + handlers 那一行、名册里有这一行」,「检索只有一条查询路」的扫描范围改成 `http-server/` + 全部 client-api 文件。
+
+**验收(改前 `s20-before` = f97ad7525 + 别的会话的未提交改动 / 改后 `s20-after`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功、`dist/web` 零 `node:`;三份 `search-worker.cjs` 前后同大(1276211 / 1276211 / 1274675),
+server `main.js` 5900391 → 5905102、CLI `main.cjs` 11490880 → 11515582、`desk/main.cjs` 11462396 → 11473027(55 行名册常量、更长的模块路径注释,以及 mcp 入口交出 server 的 MCP 客户端后 CLI / 桌面包也带上了它);
+根全量 vitest 11420 条 / 21 红,失败集合 22 行按搬家表映射路径后逐条相同;壳 7344 / 1 相同;快照按内容哈希逐字同、快照测试 154 绿、golden 不变;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 24 绿;
+`sessions:shadow-battery`(走真 server 的 HTTP / RPC)131 行前后只差一处耗时、同红在 `appendFailures 8`;`hydration-contract` ×2 绿;`gate:acp`(也走 HTTP)去掉 pid / 时间戳后相同;`gate:search-index` 同红 ⑤c / ⑤d;
+assembly 同红(`music/radio.ts` 9 → 10,与本笔无关);boundary(含全量 checker)/ transport(5 处 / 5 文件、壳 964 行、ipcMain 2,键改路径)/ log / session / provider / gate:native 绿;cycle 0;layer 60 / 33 → 57 / 31;entry 2546 → 2331;name 122 → 109(三份基线已收紧);
+`client-api:gate` 55 只 / 40 个功能、0 越界;feature-map 重新生成后一致;`provider:drill` 改前就红(模板引 s19 删掉的键),修后绿;CLI `--help` 不写 store;server 包在临时 store 上 listening;`gate:web-shell`(React 浏览器壳,无头 Chromium、临时 store、web 端口改 15174)全绿。
+
+**留账**:`http-server-runtime.ts`(4229 行,server runtime 的装配与门面)仍点名约 30 个功能,分发表 `http-server-dispatch-table.ts` 为契约自述的会话授权引 sessions 入口 —— 「http-server 不点名功能」这一笔只落在名册与路由上;B 部分(`channel/` → gateway、`features/` 按内容归位、`utils/` 归使用者、删 `store.ts`)待做。

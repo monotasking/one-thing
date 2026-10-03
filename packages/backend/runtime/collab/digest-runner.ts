@@ -34,7 +34,7 @@ import { collabUserPromptFields } from './user-identity.js'
 import type { CollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
-import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
+import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { fixedExecutionContext } from '../sessions/index.js'
 import type { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
 import { ONETHING_USAGE_SOURCES } from '@onething/backend/runtime/usage'

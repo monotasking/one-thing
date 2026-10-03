@@ -1,0 +1,86 @@
+/**
+ * interaction(agent 提问 → 用户应答)域 —— 结构债 P4c 第九批,两条数据面整只从
+ * 手写 IPC 通道搬到通用 `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 替换掉两处镜像:
+ *  - `apps/electron/src/ipc/interaction.ts` 的手写 IPC 工厂(连同
+ *    `__tests__/interaction.test.ts`)+ `apps/electron/src/main/ipc/interaction.ts`
+ *    那层壳适配(`IPC_CHANNELS` 上那两条 `interaction:*` 通道);
+ *  - `preload/bridge.ts` 的两条包装与 `platform/web.ts` 的两个
+ *    `WEB_DESKTOP_ONLY_PLATFORM_METHODS` 名单项。
+ *
+ * server 侧本来就**一条路由都没有**(web 是硬桩),所以这一批 `http-server/http-server-routes.ts` 与
+ * `http-server/http-server-runtime.ts` 零改动 —— 域挂上 router 就经 `POST /api/rpc` 自动可达。
+ *
+ * ## 通道亲和:`channel` 由宿主填,不从请求里读
+ *
+ * 这是本域唯一带 transport 分叉的地方,而且分叉在**安全侧**:
+ *
+ *  - `transport:'ipc'`(桌面)—— 恒填 `'ipc'`,与迁移前 `@main/ipc/interaction.ts`
+ *    那一行逐字同义。
+ *  - `transport:'http'` —— **认领那次提问自己的 `targetChannel`**,与 server 的
+ *    HTTP 权限应答同一判例(调用方在 HTTP 边界已经被认证过;通道亲和防的是总线上
+ *    的跨通道冒答,不是这一层)。找不到对应的活提问时退回 `'ipc'`,让内核自己按
+ *    「没有待答项」如实拒绝,而不是在这里编一个通道出来。
+ *
+ * 两条路径都不读请求里的 `channel` —— 请求里根本没有那一格:让应答方自报通道,
+ * 那道闸就白设了。
+ *
+ * ## web 行为:能力位已放开(P4 终态批 B,拍板 #17)
+ *
+ * 迁走之前 web 两条都是硬桩;迁走之后通道通了,但渲染侧那颗 `interactionRespond`
+ * (`platform/types.ts`)默认 `false`,`stores/interactions.ts` 在它为 false 时
+ * 根本不发请求。P4 终态批 B 把它翻成 `true` —— 浏览器从此能补水 pending、能应答。
+ *
+ * 放开之所以安全,全压在上面那条**通道亲和**上:应答盖的章是那次提问自己的
+ * `targetChannel`,由宿主从内核活账里读出来,请求体里没有那一格。换句话说,
+ * 浏览器答的只能是**这台引擎真的在等的那个提问**,而不是它自称在答的那个 ——
+ * 与 server HTTP 权限应答同一判例(sessions:shadow-battery 的权限场景走的就是
+ * 这条路)。能力位关着时的旧行为(提问由内核 deadline 自结算)仍然是任何宿主把
+ * 这一位按下去之后的兜底。
+ *
+ * ## 本域零推送
+ *
+ * 提问/结算事件走会话事件通道(`interaction:requested` / `interaction:settled`),
+ * 不是这个域的通道,所以 `@main/ipc/interaction.ts` 整只删掉(同 acp / collab 判例)。
+ */
+import { Interaction } from '@onething/backend/runtime/interaction'
+import {
+  getPendingInteractionsForIpc,
+  respondInteractionForIpc,
+} from '@onething/backend/runtime/interaction/ipc-operations'
+import { interactionRouter, type InteractionRoutes } from '@shared/ipc/interaction.js'
+import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
+import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
+import { sessionAccess } from '@onething/backend/runtime/sessions'
+
+/**
+ * 这次应答该盖哪条通道的章。桌面恒 `'ipc'`;联网宿主认领那次提问自己的
+ * `targetChannel`(读的是内核的活账,不是请求体)。
+ */
+function resolveRespondChannel(
+  request: InteractionRoutes['respond']['input'],
+  context: RpcDispatchContext,
+): string {
+  if (context.transport === 'ipc') return 'ipc'
+  const pending = Interaction.getPending(request.sessionId)
+  const match = pending.find(item =>
+    (request.interactionId !== undefined && item.id === request.interactionId)
+    || (request.toolCallId !== undefined && item.toolCallId === request.toolCallId),
+  )
+  return match?.targetChannel || 'ipc'
+}
+
+export const interactionRpcHandlers: RpcRouteHandlers<InteractionRoutes> = {
+  async respond(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'permission')
+    return respondInteractionForIpc(request, resolveRespondChannel(request, context))
+  },
+  async getPending(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'permission')
+    return getPendingInteractionsForIpc(request.sessionId)
+  },
+}
+
+/** 名册 `http-server/http-server-client-api-roster.ts` 里的一行:域 `interaction` 的契约与处理者。 */
+export const INTERACTION_CLIENT_API = defineClientApi({ id: 'rpc:interaction', router: interactionRouter, handlers: interactionRpcHandlers })

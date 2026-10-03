@@ -24,7 +24,7 @@
  * 发现文件不在(或读不出来)就回退到 `ONETHING_API_URL || http://127.0.0.1:8787`
  * —— 手动起着的 `server:start` 仍然连得上。
  *
- * 路径拼法与 `@onething/backend/server/discovery.ts` 同义,这里用裸 node API 重写一遍
+ * 路径拼法与 `packages/backend/http-server/http-server-discovery.ts` 同义,这里用裸 node API 重写一遍
  * 是因为 vite.config 由 esbuild 单独打包,`@onething/*` 别名在那个上下文里不成立。
  */
 import { request as httpRequest } from 'node:http'
@@ -39,7 +39,7 @@ interface DiscoveryRecord {
   host: string
   token?: string
   pid: number
-  /** `shell` = React 壳内嵌的那只 core(A1,2026-08-31);见 backend/server/discovery.ts。 */
+  /** `shell` = React 壳内嵌的那只 core(A1,2026-08-31);见 backend/http-server/http-server-discovery.ts。 */
   owner: 'desktop' | 'server' | 'shell'
 }
 

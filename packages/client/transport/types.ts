@@ -17,7 +17,7 @@ import type { RuntimeHostCapabilities } from '@shared/contracts/runtime-capabili
 /**
  * `GET /api/capabilities` 的形。
  *
- * **不新造一个类型**:server 侧 `backend/server/runtime.ts` 的
+ * **不新造一个类型**:server 侧 `backend/http-server/http-server-runtime.ts` 的
  * `currentServerCapabilities()` 出的就是这个,它住在 `@shared/contracts/runtime-capabilities`
  * (纯类型文件,零依赖)。客户端照抄一份 = 两个形状,某天服务器加一位而客户端
  * 不知道 —— 所以这里只是起个本地名字。
@@ -46,7 +46,7 @@ export interface TransportEvent {
  *
  * 名字取自 `IPC_CHANNELS`(所以打错一个字母是 tsc 红,不是运行时静默),载荷取自
  * `@shared/events` 与 `@shared/ipc/settings`。这三条就是 `GET /api/events` 今天真会
- * 发出来的全部(`backend/server/http.ts` 的 `handleEvents`:会话事件 + 合批后的流分片
+ * 发出来的全部(`backend/http-server/http-server-routes.ts` 的 `handleEvents`:会话事件 + 合批后的流分片
  * + 骑同一条 SSE 的设置变更)—— 别把 `/api/voice/events`、`/api/oauth/events` 那些
  * **另外的** SSE 路由的词混进来,它们不在这条流上。
  *

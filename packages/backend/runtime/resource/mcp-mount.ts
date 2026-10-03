@@ -18,7 +18,7 @@
  *
  * `HeadlessMCPManager` **没有事件**(没有 emitter、没有订阅口,`getServerStates()`
  * 是一次快照)。`McpSubsystem` 也没有:它有 `start` / `applySettings` / `dispose`
- * 三个方法,而 RPC 的 connect / disconnect / refresh **不经过它**(`rpc/domains/mcp.ts`
+ * 三个方法,而 RPC 的 connect / disconnect / refresh **不经过它**(`runtime/mcp/mcp-client-api.ts`
  * 直接调 `MCPManager` + `registerMCPTools`)。既有的 `configureMCPCapabilitiesChangedHandler`
  * 与它的 toolkit 双胞胎是**单槽**、而且只覆盖「服务器推来 list_changed」这一种变化,
  * 抢任何一格都会让工具目录或宿主的 registerTools 失聪。

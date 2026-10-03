@@ -43,6 +43,18 @@ export function entryFeatureOf(relative, root = repoRoot) {
   return fs.existsSync(path.join(root, RUNTIME, match[1], 'index.ts')) ? null : match[1]
 }
 
+/**
+ * 功能的**第二个入口**(决策 D26):`runtime/<功能>/<功能>-client-api.ts` 或 `runtime/<功能>/<功能>-client-api-<方面>.ts`
+ * —— 这个功能开给界面(经 HTTP 服务器)的东西:名册里的域行、只有 HTTP 服务器用的投影与投递件。
+ * 判据只看路径:必须直接住在功能目录下、以自己的功能名打头,测试不算。是就返回功能名,否则 null。
+ * 使用者:`client-api:gate`(谁可以引它)、`entry:gate`(引它不算深层)、`layer:gate`(它站 L4)、`transport:gate`(扫描范围)。
+ */
+export const CLIENT_API_PATTERN = /^packages\/backend\/runtime\/([^/]+)\/([^/]+)-client-api(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\.ts$/
+export function clientApiFeatureOf(relative) {
+  const match = CLIENT_API_PATTERN.exec(relative)
+  return match && match[1] === match[2] && match[1] !== '__tests__' ? match[1] : null
+}
+
 /** 某个功能的入口文件(仓库相对路径):有 `<功能>/index.ts` 就是它;没有、但有 `<功能>/<功能>.ts`,就是后者。 */
 export function entryFileOf(feature, root = repoRoot) {
   const index = `${RUNTIME}/${feature}/index.ts`
@@ -313,7 +325,12 @@ export function loadLayerTable(root = repoRoot) {
   const fallbacks = table.slots.filter((slot) => slot.fallback)
   if (fallbacks.length !== 1) throw new Error(`层次表:兜底槽位(fallback)应恰好一行,现在 ${fallbacks.length} 行`)
   const fallback = fallbacks[0].slot
+  // 第二入口槽位(`"secondEntry": true`,只许一行):`<功能>-client-api*.ts` 归它,不归所属功能(D26)。
+  const secondEntries = table.slots.filter((slot) => slot.secondEntry)
+  if (secondEntries.length > 1) throw new Error(`层次表:第二入口槽位(secondEntry)最多一行,现在 ${secondEntries.length} 行`)
+  const secondEntry = secondEntries[0]?.slot
   const groupOf = (relative) => {
+    if (secondEntry && clientApiFeatureOf(relative)) return secondEntry
     const feature = runtimeFeatureOf(relative)
     if (feature) return feature
     if (relative.startsWith(`${RUNTIME}/`)) return relative.slice(BACKEND.length + 1) // runtime 顶层散文件:没登记,门会报

@@ -55,7 +55,7 @@ describe('resolveMemoryBudget', () => {
 
 describe('memory RPC domain on a real assembly', () => {
   it('reports the registered holders and this process; trim needs local trust', async () => {
-    const { dispatchRpc } = await import('@onething/backend/rpc/registry.js')
+    const { dispatchRpc } = await import('@onething/backend/http-server/http-server-dispatch-table.js')
     const untrusted = await assemble(null)
     try {
       const report = await dispatchRpc({ domain: 'memory', method: 'report', payload: {} })

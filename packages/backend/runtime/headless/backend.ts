@@ -65,7 +65,7 @@ import {
   serializeOutcome,
   serializeReadOutcome,
   serializeSpec,
-} from '@onething/backend/rpc/domains/resources.js'
+} from '@onething/backend/runtime/resource'
 import type {
   ListResourcesResponse,
   ResourceOutcomeView,
@@ -460,12 +460,12 @@ export class HeadlessBackend {
 
   /*
    * 四只转发口,加起来做**两件事**:铸主体、把调用交给 `backend.resources`,
-   * 然后按 RPC 域那三只 `serialize*` 投一次影。
+   * 然后按资源功能那三只 `serialize*` 投一次影。
    *
    * ## 主体:缺省 `localUserPrincipal()`,可由调用方顶掉(K4-c)
    *
    * CLI 是**本机进程** —— 它拿的是 `<store>/run/daemon.sock`(0600)上的一条连接,
-   * 能连上就已经是这台机器上的那个人。这与 `rpc/principal.ts` 第一条判据
+   * 能连上就已经是这台机器上的那个人。这与 `http-server/http-server-principal.ts` 第一条判据
    * (`isHostLocallyTrusted()` → `localUserPrincipal()`)说的是同一句话,只是
    * daemon 走的不是 HTTP 面、没有 `RpcDispatchContext` 可问,所以不复用那只函数
    * (复用它得先给它编一个假 context —— 那是把「谁在做」变成一次伪造练习)。
@@ -476,11 +476,11 @@ export class HeadlessBackend {
    * `readOptionalSystemPrincipal` 只让它是 `system` 一支,`user` / `agent` 当场拒 ——
    * 判据放在被调用的那一侧,改一行桥绕不过去。
    *
-   * ## 投影复用 RPC 域那三只
+   * ## 投影复用资源功能那三只
    *
    * §4 那张表要求每个出口都是**同一份自述的投影**。两份手抄的投影早晚在某一格上
-   * 分岔,而没有任何一道门会红 —— 所以这里 import 的是 `rpc/domains/resources.ts`
-   * 导出的同一批函数,不是抄一份。
+   * 分岔,而没有任何一道门会红 —— 所以这里 import 的是资源入口交出的那三只
+   * (`runtime/resource/resource-wire-views.ts`,界面那条 `resources` 域用的是同一批),不是抄一份。
    *
    * ## 发起坐标缺席
    *

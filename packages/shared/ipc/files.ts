@@ -199,7 +199,7 @@ export interface FilesWatchEvent {
  * `transport:'ipc'`(桌面)不夹,与迁移前 `@main` handler 逐字同义;
  * `transport:'http'`(server)每条带路径的方法都夹进 `sandboxRoot`,越界回
  * 旧 server 路由原话的结构化失败。逐条口径写在
- * `packages/backend/rpc/domains/files.ts` 的文件头表里。
+ * `packages/backend/runtime/files/files-client-api.ts` 的文件头表里。
  */
 import { defineRouter } from './router.js'
 

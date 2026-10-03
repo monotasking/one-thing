@@ -8,7 +8,7 @@
  * 为什么),而设置要装配之后才读得到 —— 两件事在时间上永远碰不到头。所以这一格
  * 设置的**启动期投影**是 `<store>/run/cdp.json`,而把设置折成那个文件的人是**宿主**:
  *
- *  - 设置域(`backend/rpc/domains/settings.ts`)因此**不认识 CDP** —— 它只管存那一格
+ *  - 设置域(`backend/runtime/settings/settings-client-api.ts`)因此**不认识 CDP** —— 它只管存那一格
  *    布尔与端口,和存主题、存语言没有任何区别;
  *  - 折叠这件事与 `applyCdpFlag` 同家(都在 `electron/browser/`),一处知识不分两地。
  *
@@ -23,7 +23,7 @@
  * ## 单槽端口要**串联**,不是覆盖
  *
  * `configureSettingsEventBroadcaster` 是一个单槽端口,而内嵌 HTTP 面已经占着它
- * (它要把设置变更扇成 SSE)。所以这里照 `server/runtime.ts:1473` 那条判例:
+ * (它要把设置变更扇成 SSE)。所以这里照 `http-server/http-server-runtime.ts:1473` 那条判例:
  * 先取走前一个,装一个「先叫前一个、再干自己的」,拆的时候原样装回去。
  * 覆盖 = 壳的设置页从此收不到 `settings:changed` 的回声。
  *
@@ -103,7 +103,7 @@ export interface CdpSettingsWatcherOptions {
  * 装上「设置 → 旗文件」这条路。返回摘掉它的那一手(**幂等**)。
  *
  * 摘掉时把单槽端口**原样装回去** —— 装回去的是「装我的时候那里放着的那一个」,
- * 不是 `null`:内嵌 HTTP 面的扇出还在它上面挂着(与 `server/runtime.ts` 的
+ * 不是 `null`:内嵌 HTTP 面的扇出还在它上面挂着(与 `http-server/http-server-runtime.ts` 的
  * `restoreSettingsEventBroadcaster` 同一条纪律)。
  */
 export function installCdpSettingsWatcher(options: CdpSettingsWatcherOptions): () => void {

@@ -16,7 +16,7 @@
  *
  * 笔记库是**这台机器上的用户自己的文件**。一台夹紧的宿主(远程 / 多租户的
  * `server:start`)上,调用方是另一个人,把本机 Obsidian 的六个库交出去是越权。
- * 判据是 `isHostLocallyTrusted()` —— 与 `rpc/sandbox.ts` 的 `confined` 同一个
+ * 判据是 `isHostLocallyTrusted()` —— 与 `http-server/http-server-sandbox.ts` 的 `confined` 同一个
  * 谓词。
  *
  * **这个问题在每次 `refresh` 时问,不在装配时问一次**(2026-09-18 review 打回
@@ -56,7 +56,7 @@ import {
   type SettingsEventBroadcaster,
 } from '../settings/events.js'
 import { getSettings } from '@onething/backend/runtime/settings'
-import { isHostLocallyTrusted } from '@onething/backend/server/host-trust.js'
+import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/current.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'

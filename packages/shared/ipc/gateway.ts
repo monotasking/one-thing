@@ -124,7 +124,7 @@ export interface GatewayWechatRenameAccountResponse {
  *
  * 八条方法**逐条对应**从前 `IPC_CHANNELS` 上那八条 `gateway:*` 通道,请求/响应
  * 形状一字未改;变的只是通道:壳上八条包装、`platform/web.ts` 的八条 REST 镜像、
- * `server/http.ts` 的八条路由与 `server/runtime.ts` 那份 `gateway` facade adapter,
+ * `http-server/http-server-routes.ts` 的八条路由与 `http-server/http-server-runtime.ts` 那份 `gateway` facade adapter,
  * 一起消失。
  *
  * **本域零推送** —— 全仓没有任何 `GATEWAY_*_CHANGED` 通道,状态靠调用方在每次

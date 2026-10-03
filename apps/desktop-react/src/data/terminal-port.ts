@@ -24,7 +24,7 @@ import type {
  * ── 两条推送骑的是**全局事件**,不是这七条 ───────────────────────────────
  * `terminal:data` / `terminal:exit` 是 `@shared/events` 上的两条全局事件
  * (T0,`GLOBAL_EVENT_LEAVES_PROCESS` 里置 true),走 `GET /api/events`。
- * 帧名就是事件的 `type`,载荷原样(`backend/server/global-event-delivery.ts`
+ * 帧名就是事件的 `type`,载荷原样(`backend/http-server/http-server-global-events.ts`
  * 那条纪律 3)。所以这里用 `client.events.onAny` 按名字挑 —— 与
  * `music-port.onResourceEvent` 逐字同一个理由:`EventHub.on` 的键收窄在
  * `TransportEvents` 那三条上,全局事件不在那张表里。

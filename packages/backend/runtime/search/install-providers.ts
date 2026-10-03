@@ -3,7 +3,7 @@
  *
  * S5(2026-09-05)之前这个文件还有第二件事:`executeSearch` —— 旧扫描路的门面
  * (`switch(category)` 那条路 + 插件结果并入)。旧路退役之后查询只剩一条:
- * `rpc/domains/search.ts` → 进程单槽里那份 `SearchService` → 注册表 → 能力。
+ * `runtime/search/search-client-api.ts` → 进程单槽里那份 `SearchService` → 注册表 → 能力。
  * 于是这里只剩装配:把宿主的取材面装进 runtime 的进程单槽。
  *
  * **P2 之后那个单槽一个读者都没有了**:它从前只服务两个不带参数被调到的口

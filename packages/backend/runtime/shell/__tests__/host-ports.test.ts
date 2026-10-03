@@ -53,7 +53,7 @@ describe('hasShellHost', () => {
   /**
    * 声明与「给了哪几件」是两件事:声明过、但那一件没给 → `hasShellHost()` 仍是
    * true,而门面照样交结构化失败。oauth 域的 `start` 因此不再把这条失败吞成成功
-   * (C0 R7 的另一半,见 `rpc/domains/oauth.ts`)。
+   * (C0 R7 的另一半,见 `runtime/auth/auth-client-api.ts`)。
    */
   it('C0 R7:声明过但没给这一件 → 门面仍是结构化失败', async () => {
     configureShellHost({ openExternal: async () => ({ success: true }) })

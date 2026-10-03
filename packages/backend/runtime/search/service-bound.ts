@@ -8,7 +8,7 @@
  * 一份」的东西。仓里既有的同款(`plugins/status-bound.ts` / `scratchpad/service-bound.ts`
  * / `tools/background-jobs-bound.ts`)也都住在产品层,文件名 `*-bound.ts` 就是它的角色。
  *
- * 形照 `backend/server/search-providers.ts` 那一对:`configure*` 返回**还原**函数,
+ * 形照 `backend/runtime/search/search-client-api-providers.ts` 那一对:`configure*` 返回**还原**函数,
  * 装配层 `own()` 它,于是 `backend.dispose()` 把进程放回「没有服务」的样子;后起先落
  * 的两只 backend 也不会互相清槽(身份守卫 `if (service === next)`)。
  */

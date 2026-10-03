@@ -14,7 +14,7 @@
 // 加两把尺子，量的是**另一种壳税**：不再是「手写了几条通道」，而是「有多少处
 // 代码把 `transport` 当成了它答不了的问题」。
 //
-//  · `forks:<域文件>` —— `packages/backend/rpc/domains/*.ts` 里逐文件计数
+//  · `forks:<域文件>` —— 各功能的 `runtime/<功能>/<功能>-client-api*.ts` 与 `http-server/` 里逐文件计数(2026-10-04 前是 `packages/backend/rpc/domains/*.ts`)
 //    `context.transport` 的读法(注释与字符串先剥掉)。B 期的整件事就是把
 //    「http 就拒 / http 就假态」改成问端口(这台宿主有没有这个外设)与问信任
 //    (`isHostLocallyTrusted`)，所以这些计数只许降。基线里没有的域文件出现
@@ -29,6 +29,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { clientApiFeatureOf } from './lib/backend-structure.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/transport-baseline-2026-08-14.txt')
@@ -36,19 +37,26 @@ const forksBaselinePath = path.join(root, 'docs/audit/transport-forks-baseline-2
 
 /** 壳文件：加一个域时历史上必须逐个改的地方(Vue 的 preload/bridge 与 renderer/web.ts 随 2026-09-04 退役删除)。 */
 const SHELL_FILES = [
-  'packages/backend/server/http.ts',
+  'packages/backend/http-server/http-server-routes.ts',
   'packages/shared/ipc/channels.ts',
 ]
 
 /**
- * `forks:` 那把尺子的扫描根。
+ * `forks:` 那把尺子的扫描范围。
  *
  * C0 R2(2026-09-03)把它从 `…/rpc/domains` 提到 `…/rpc` 并改成**递归**:
- * `rpc/sandbox.ts` 是七个域共用的沙箱判据、按 `context.transport` 分叉，却因为
- * 不在 domains/ 目录下而在棘轮量程之外整整一期。量程就该覆盖整棵 rpc 树 ——
+ * 沙箱判据(今天的 `http-server/http-server-sandbox.ts`)是七个域共用的、按 `context.transport` 分叉，却因为
+ * 不在 domains/ 目录下而在棘轮量程之外整整一期。量程就该覆盖整棵派发树 ——
  * 「哪个文件在拿 transport 当判据」与它排在哪一层目录无关。
+ *
+ * 包根归位(2026-10-04,决策 D21 / D26)之后这棵树拆成了两半,两半都量:
+ *   ① `packages/backend/http-server/` 整棵(递归)—— 分发表、principal、沙箱、资源信封与 HTTP 面本身;
+ *   ② 每个功能的第二个入口 `packages/backend/runtime/<功能>/<功能>-client-api*.ts`(从前的 `rpc/domains/*.ts`
+ *      与 `server/` 里各功能的面),判据与 `client-api:gate` 同一份(`scripts/lib/backend-structure.mjs`)。
+ * 基线里的 `forks:<文件>` 键随文件改了路径,数字一个没变。
  */
-const DOMAINS_DIR = 'packages/backend/rpc'
+const DISPATCH_DIR = 'packages/backend/http-server'
+const RUNTIME_DIR = 'packages/backend/runtime'
 /** 扫描规模下限：遍历坏了长得像「全治愈了」。 */
 const MIN_DOMAIN_FILES = 30
 
@@ -245,7 +253,10 @@ export function measure(readFile = readShell) {
     }
   }
 
-  const domainFiles = listTsFilesRecursive(DOMAINS_DIR)
+  const domainFiles = [
+    ...listTsFilesRecursive(DISPATCH_DIR),
+    ...listTsFilesRecursive(RUNTIME_DIR).filter(file => clientApiFeatureOf(file) !== null),
+  ].sort()
   if (domainFiles.length < MIN_DOMAIN_FILES) {
     throw new Error(
       `只扫到 ${domainFiles.length} 个 RPC 域文件(下限 ${MIN_DOMAIN_FILES})—— 遍历坏了，不认这次结果`,
@@ -402,25 +413,25 @@ export const OTHER = { NOT_COUNTED: 'x:y' }
 
   // 9) 多一处读法 → 红(棘轮的主判据)。
   const oneMore = compare(
-    { 'forks:packages/backend/rpc/domains/voice.ts': 1 },
-    { 'forks:packages/backend/rpc/domains/voice.ts': 2 },
+    { 'forks:packages/backend/runtime/voice/voice-client-api.ts': 1 },
+    { 'forks:packages/backend/runtime/voice/voice-client-api.ts': 2 },
   )
   expect('域文件多一处读法应产生 regression', oneMore.regressions.length === 1)
 
   // 10) 基线外的域文件出现读法 → 红。
   const newDomain = compare(
-    { 'forks:packages/backend/rpc/domains/voice.ts': 1 },
+    { 'forks:packages/backend/runtime/voice/voice-client-api.ts': 1 },
     {
-      'forks:packages/backend/rpc/domains/voice.ts': 1,
-      'forks:packages/backend/rpc/domains/agents.ts': 1,
+      'forks:packages/backend/runtime/voice/voice-client-api.ts': 1,
+      'forks:packages/backend/runtime/agents/agents-client-api.ts': 1,
     },
   )
   expect('基线外域文件应算 regression',
     newDomain.regressions.length === 1
-    && newDomain.regressions[0].key.endsWith('agents.ts'))
+    && newDomain.regressions[0].key.endsWith('agents-client-api.ts'))
 
   // 11) 域文件治愈(从当前表里消失)= improvement，不是「采不到」硬错。
-  const healed = compare({ 'forks:packages/backend/rpc/domains/voice.ts': 1 }, {})
+  const healed = compare({ 'forks:packages/backend/runtime/voice/voice-client-api.ts': 1 }, {})
   expect('域文件清零应算 improvement 且不算 missing',
     healed.improvements.length === 1 && healed.missing.length === 0 && healed.regressions.length === 0)
 
@@ -530,7 +541,7 @@ function main() {
     for (const item of regressions) {
       console.error(`  + ${item.key}: ${item.baseline} → ${item.current} (+${item.current - item.baseline})`)
     }
-    console.error('  加功能请走 router 域（packages/backend/rpc/domains/），不要再加手写通道。')
+    console.error('  加功能请走 router 域(功能目录里的 `<功能>-client-api.ts` + `http-server/http-server-client-api-roster.ts` 一行),不要再加手写通道。')
     console.error('  域里想按 transport 分叉：外设问 host-ports 的布尔访问器，信任问 isHostLocallyTrusted()')
     console.error('  —— 见 docs/design/backend-transport-forks-2026-09.md §2.1。')
     process.exit(1)

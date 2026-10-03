@@ -33,7 +33,7 @@ import type {
  * `watchStart` / `watchStop` 与那条文件变更推送都没有出现在这个端口上。
  * 理由不是忘了:桌面那两条**从来是投影桩**(校验 root 之后回 `{success:true}`,
  * 全仓没有任何地方往 `FILE_WATCH_EVENT` 发过消息,见
- * `packages/backend/rpc/domains/files.ts` 文件头第 3 条),http 那侧才是真的。
+ * `packages/backend/runtime/files/files-client-api.ts` 文件头第 3 条),http 那侧才是真的。
  * 而且那条推送**不在 `GET /api/events` 上** —— 它骑的是另一条 SSE 路由
  * (`/api/files/watch/events` 的 `workspace:file-changed`),不属于客户端事件枢纽
  * 今天认的三个名(`session:event` / `session:stream` / `settings:changed`)。

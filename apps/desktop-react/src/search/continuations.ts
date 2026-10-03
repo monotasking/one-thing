@@ -30,7 +30,7 @@ import type { SearchScopeChip } from './filters'
  * 带着它自己的 `SearchScope`」—— 那样连渲染器都不用认识 `messages` 这个名字。
  * 契约今天装不下它:`SearchActionDescriptor` 只有 `{ id, labelKey, icon?, danger? }`,
  * core 那份 `ActionDescriptor` 的 `kind` 与 `payload` 两格**过不来**(S4a 的
- * `previewDto` 已经把这笔账记在 `backend/rpc/domains/search.ts` 上)。补那两格是
+ * `previewDto` 已经把这笔账记在 `backend/runtime/search/search-client-api.ts` 上)。补那两格是
  * 契约改动,自成一批;在那之前,枢轴的落点写在渲染器里 —— 它是**今天做得到的
  * 最靠近能力的一处**,而不是散在面板里。
  */

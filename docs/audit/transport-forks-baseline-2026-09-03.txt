@@ -20,7 +20,7 @@
 #   `isHostLocallyTrusted()` 或去掉 `http &&`,只剩 session-command / interaction / logs 的通道亲和
 #   与 mcp / settings 的出界脱敏(那几处会改名 `payloadLeavesProcess`,计数不变)。
 # 2026-09-03 B2 收紧:信任与面六域清零 —— tools 4 / sessions 3 / evals 1 / files 1 /
-#   search 1 改问 `isHostLocallyTrusted()`(`server/host-trust.ts`,由 `local-trust.ts` 改名)
+#   search 1 改问 `isHostLocallyTrusted()`(`http-server/http-server-host-trust.ts`,由 `local-trust.ts` 改名)
 #   或直接去掉 `http &&`;mcp 的 stdio 闸改问 `hostLocalTrustOrigin() === 'desktop-embedded'`、
 #   读配置文件改问信任。15 → 5 处 / 10 → 5 文件。
 #   **与方案 §2.4 的目标基线的偏离**:那里写的是 `mcp 3 / settings 3`,实际到的是各 1。
@@ -30,10 +30,10 @@
 #   记账(logs)、出界脱敏(mcp / settings)。B3 之后这五处应当原地不动。
 # 2026-09-03 C0 R2(docs/design/backend-principal-and-mcp-lifecycle-2026-09.md):`forks:` 的扫描根
 #   从 `packages/backend/rpc/domains`(不递归)提到 `packages/backend/rpc`(**递归**,跳过
-#   `__tests__`)。理由:`rpc/sandbox.ts` 是七个域共用的沙箱判据、一直按 `context.transport`
+#   `__tests__`)。理由:`http-server/http-server-sandbox.ts` 是七个域共用的沙箱判据、一直按 `context.transport`
 #   分叉,却因为不在 domains/ 底下而在量程外整整一期(B0–B3 都没看见它)。同一批把它改成问
 #   `isHostLocallyTrusted()`,所以扩量程之后**表里不新增任何行** —— 递归扫到的另外两个文件
-#   (`rpc/index.ts` / `rpc/registry.ts`)读法为 0(index.ts 那处 `context.transport` 在注释里,
+#   (`http-server/http-server-client-api-roster.ts` / `http-server/http-server-dispatch-table.ts`)读法为 0(index.ts 那处 `context.transport` 在注释里,
 #   剥注释后不计)。反证:把 sandbox.ts 改回 transport 判 → `forks:…/rpc/sandbox.ts 0 → 1` 红。
 # 2026-09-12 B1-a(apps/desktop-react/docs/terminal-browser-2026-09.md §2.2-1)：
 #   **`ipcMain:apps/desktop-react/electron` 1 → 2，这一次上升是拍定的，不是长胖。**
@@ -51,10 +51,13 @@
 #   不递归的话这条通道住在 `electron/browser/` 子目录里根本数不到，尺子是白的。
 #   反证:把 `native-view-ipc.ts` 挪回 `electron/` 顶层 → 计数不变(递归口径下位置无关)；
 #   把它删掉 → 2 → 1，门提示可收紧。
+# 2026-10-04 包根归位(决策 D21 / D26):`rpc/` 与 `server/` 拆成 `http-server/` 与各功能的第二个入口
+#   `runtime/<功能>/<功能>-client-api*.ts`。`forks:` 的扫描范围改成「`http-server/` 整棵 + 全部 client-api 文件」,
+#   五行的键随文件改了路径,数字一个没变(5 处 / 5 文件)。
 # 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
-forks:packages/backend/rpc/domains/interaction.ts 1
-forks:packages/backend/rpc/domains/logs.ts 1
-forks:packages/backend/rpc/domains/mcp.ts 1
-forks:packages/backend/rpc/domains/session-command.ts 1
-forks:packages/backend/rpc/domains/settings.ts 1
+forks:packages/backend/runtime/interaction/interaction-client-api.ts 1
+forks:packages/backend/runtime/logging/logging-client-api.ts 1
+forks:packages/backend/runtime/mcp/mcp-client-api.ts 1
+forks:packages/backend/runtime/sessions/sessions-client-api-commands.ts 1
+forks:packages/backend/runtime/settings/settings-client-api.ts 1
 ipcMain:apps/desktop-react/electron 2

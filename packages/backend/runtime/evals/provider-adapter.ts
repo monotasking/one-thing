@@ -16,7 +16,7 @@
  *
  * 结构债 P4c 第十批从 `apps/electron/src/main/ipc/evals-provider-adapter.ts`
  * 整只搬到装配层,一行逻辑没改(它本来就一句 electron 也不碰)—— 两个调用方
- * (`rpc/domains/evals.ts` 与 `rpc/domains/evals-workbench.ts`)都在这一侧,
+ * (`runtime/evals/evals-client-api.ts` 与 `runtime/evals/evals-client-api-workbench.ts`)都在这一侧,
  * 留在宿主里只会逼着装配层去 import `@main`。日志命名空间从 `ipc.evals` 改成
  * `evals.provider`(它不再在 IPC 那一层)。
  */

@@ -6,7 +6,7 @@
  * 解析 SSE"这件事能不能成立(§7 C0 门的一半;另一半是 `gate:client` 在 Electron 下
  * 再跑一遍)。mock 掉 fetch 就把要证的东西证没了。
  *
- * 假服务器同时是**契约的复读机**:它按 `packages/backend/server/http.ts` 的形回话
+ * 假服务器同时是**契约的复读机**:它按 `packages/backend/http-server/http-server-routes.ts` 的形回话
  * (`/api/rpc` 永远 200 + `RpcResponse`;`/api/events` 的 `id:` 只盖在 `session:event`
  * 上;`?after=` 续播),并把每次请求的 header 与 URL 记下来给断言用。
  */

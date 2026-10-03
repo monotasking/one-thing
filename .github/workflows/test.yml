@@ -98,7 +98,7 @@ jobs:
           packages/backend/runtime/sessions/__tests__/deletion-recovery.test.ts
           packages/backend/runtime/sessions/__tests__/storage-driver.test.ts
           packages/backend/runtime/sessions/__tests__/session-repository.test.ts
-          packages/backend/server/__tests__/session-crash-recovery.test.ts
+          packages/backend/http-server/__tests__/http-server-runtime-session-crash-recovery.test.ts
 
   # 结构门禁(docs/design/structural-debt-plan-2026-08.md §2 P0.5):五道棘轮只在有人手动跑时
   # 才说话,transport 门红了两天无人理。进 CI 后任一红则 PR 红。
@@ -136,6 +136,9 @@ jobs:
 
       - name: cycle:gate
         run: bun run cycle:gate
+
+      - name: client-api:gate
+        run: bun run client-api:gate
 
       - name: layer:gate
         run: bun run layer:gate

@@ -71,8 +71,10 @@
   ],
   "slots": [
     { "slot": "(shared)", "layer": "L0", "match": ["packages/shared/"], "why": "server 与 client 之间的契约,以及两边必须算得一样的纯逻辑。" },
-    { "slot": "(包根槽位)", "layer": "L0", "match": ["packages/backend/current.ts", "packages/backend/store.ts", "packages/backend/utils/", "packages/backend/rpc/sandbox.ts", "packages/backend/server/host-trust.ts", "packages/backend/channel/origin.ts"], "why": "包根的进程槽位与小件:当前实例槽、主机信任、来源判定、几只工具函数(store.ts 兼容桶待删)。" },
-    { "slot": "(包根)", "layer": "L4", "fallback": true, "why": "包根其余文件:装配配方 backend.ts、HTTP 服务器与 RPC 分发表、各功能开给界面的操作。" },
+    { "slot": "(包根槽位)", "layer": "L0", "match": ["packages/backend/current.ts", "packages/backend/store.ts", "packages/backend/utils/", "packages/backend/http-server/http-server-sandbox.ts", "packages/backend/http-server/http-server-host-trust.ts", "packages/backend/http-server/http-server-tenant-paths.ts", "packages/backend/http-server/http-server-discovery.ts", "packages/backend/http-server/http-server-discovery-io.ts", "packages/backend/channel/origin.ts"], "why": "包根的进程槽位与小件:当前实例槽、主机信任、来源判定、几只工具函数(store.ts 兼容桶待删)。http-server 目录里有五只按路径归到这里:本机信任、RPC 沙箱、租户目录(纯路径计算)与发现文件的读写两只 —— 它们被 notes / resource / files / markdown / media / toolkit / acp 这些 L2 功能当判据或地址簿用,自己只引 storage 与包根槽位,所以站 L0,不随目录站 L4。" },
+    { "slot": "http-server", "layer": "L4", "match": ["packages/backend/http-server/"], "why": "界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。" },
+    { "slot": "(开给界面的操作)", "layer": "L4", "secondEntry": true, "why": "各功能的第二个入口 runtime/<功能>/<功能>-client-api*.ts(决策 D26):名册里的域行、只有 HTTP 服务器用的投影与投递件。按「它被谁引、它引谁」判:只有 http-server 与同功能的 client-api 引它(client-api:gate 保证),它引任何功能的入口 —— 所以它与 http-server 同站 L4,不与它所属的功能同层;它引自己功能的文件算 L4 → 低层,不是违例。" },
+    { "slot": "(包根)", "layer": "L4", "fallback": true, "why": "包根其余文件:装配配方 backend.ts / assemble-engine.ts、feature 基座 features/、渠道 channel/(后两样是包根归位 B 部分)。" },
     { "slot": "(总桶)", "layer": "L4", "why": "runtime/index.ts 总桶,把各功能的名字一起再导出(待删)。" }
   ]
 }

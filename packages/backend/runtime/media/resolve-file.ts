@@ -2,9 +2,9 @@
  * 「按文件名找媒体库里的那个文件」—— 这一份判据全仓只许有一处(G 线 §23.2)。
  *
  * 两个出口都调它:
- *  - HTTP:`GET /api/media/file/<name>`(`server/media-delivery.ts` 的 `resolveFile`),
+ *  - HTTP:`GET /api/media/file/<name>`(`runtime/media/media-client-api-delivery.ts` 的 `resolveFile`),
  *    浏览器壳经 dev 代理补 Bearer 时走这条;
- *  - RPC:`media.readFile { fileName }`(`rpc/domains/media.ts`),桌面壳渲染进程
+ *  - RPC:`media.readFile { fileName }`(`runtime/media/media-client-api.ts`),桌面壳渲染进程
  *    `<img>` 带不了 Bearer,字节只能走通用 RPC。
  * 从前这段只在 HTTP 那边;RPC 要是再抄一份,两边迟早各说各话(一边放行、一边 404),
  * 所以抽成纯函数,两边读同一张表。

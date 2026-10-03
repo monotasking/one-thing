@@ -60,7 +60,7 @@ let port: SearchVisibilityPort | null = null
 /**
  * 装上产地;返回**还原**函数(不是「清空」)。
  *
- * 还原而不是清空,与 `backend/server/search-providers.ts` 同一条判例:桌面内嵌
+ * 还原而不是清空,与 `backend/runtime/search/search-client-api-providers.ts` 同一条判例:桌面内嵌
  * 的那份与 `server:start` 那份可能在同一个进程里先后起落,后者落地时不该把前者
  * 的槽一起带走。
  */

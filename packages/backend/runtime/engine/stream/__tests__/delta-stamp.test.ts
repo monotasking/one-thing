@@ -353,7 +353,7 @@ describe('R1 合批器:只搬运,不编号', () => {
 /**
  * R1:**两条路同一份序列化**。
  *
- * 桌面 IPC(`IPCBridge`)与 web SSE(`server/http.ts`)是**同一台合帧器的两个 sink**
+ * 桌面 IPC(`IPCBridge`)与 web SSE(`http-server/http-server-routes.ts`)是**同一台合帧器的两个 sink**
  * —— 一个 `safeSend` 结构化克隆整个对象,一个 `JSON.stringify` 整个对象,两边都不挑
  * 字段。所以「章带没带到」这件事只需要在合帧器的出口证一次:出口带了,两条路就都带了。
  */

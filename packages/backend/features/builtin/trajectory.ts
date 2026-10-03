@@ -26,7 +26,7 @@
  * 真的调用 `mount` 的那一刻(`app/__tests__/import-side-effect-free.test.ts`)。
  */
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
-import { sessionEventsRpcHandlers } from '../../rpc/domains/session-events.js'
+import { sessionEventsRpcHandlers } from '../../runtime/sessions/sessions-client-api-events.js'
 import type { FeatureDefinition } from '../index.js'
 
 export const trajectoryFeature: FeatureDefinition = {

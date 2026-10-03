@@ -2,7 +2,7 @@
  * evals 的三条**推送端口** —— 结构债 P4c 第十批。
  *
  * evals / evals-workbench 的二十五条数据面已经迁到通用 RPC 通道
- * (`evalsRouter` / `evalsWorkbenchRouter` + `backend/rpc/domains/evals*.ts`),
+ * (`evalsRouter` / `evalsWorkbenchRouter` + `backend/runtime/evals/evals-client-api*.ts`),
  * 而 router 今天只有请求/响应面、没有推送面。三条进度推送
  * (`EVALS_RUN_PROGRESS` / `EVALS_REPLAY_PROGRESS` / `EVALS_DIAGNOSE_PROGRESS`)
  * 因此留在原地,按 practice / scratchpad / oauth 判例改成**注入端口**:

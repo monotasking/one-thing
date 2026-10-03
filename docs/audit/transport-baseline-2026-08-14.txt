@@ -14,7 +14,7 @@
 # 此后基线不再手改;只由 `--write-baseline` 在指标下降时收紧。任何上升 = 红,CI 的 gates job 会拦。
 # 2026-08-21(P3'd 路径改名,数值不变):`src/app` 整体成包 `packages/backend`,
 #   指标键 `lines:packages/onething-runtime/src/app/server/http.ts` 手工改名为
-#   `lines:packages/backend/server/http.ts`;同一个文件、同一个数值,不是收紧也不是放松。
+#   `lines:packages/backend/http-server/http-server-routes.ts`;同一个文件、同一个数值,不是收紧也不是放松。
 # 2026-08-21(续):practice 域迁 router 后收紧 —— channels 329→319、bridge 1855→1816、web 1707→1681、channels.ts 541→533。
 # 2026-08-21(续):collab 域迁 router 后收紧 —— channels 319→304、bridge 1816→1736(已低于 08-14 起点 1737)、web 1681→1666、channels.ts 533→499。
 # 2026-08-21(续):P4c 第一批六域(scheduler/variables/app-state/permission/scratchpad/project-dirs)迁 router + 删 server 镜像路由后收紧 —— channels 304→279、bridge 1736→1631、http 2028→1839、web 1666→1577、channels.ts 499→474。
@@ -53,7 +53,7 @@
 #   app:get-data-path / window:set-button-visibility)——前三条进新立的 shellRouter,第四条动的是发起窗本身、
 #   进 A1-a 就有的 windowRouter;工厂与它的测试整只删,checker 换成反向棘轮(那四条字面量不许回宿主树)。
 #   SEARCH_QUERY:A1-a 判定的那条数据面兑现 —— 进 backend 的 `search` RPC 域,按 context.transport 分叉
-#   (ipc 走桌面 executeSearch;http 走 server/search-providers.ts 单槽端口,装的是从前 POST /api/search/query
+#   (ipc 走桌面 executeSearch;http 走 runtime/search/search-client-api-providers.ts 单槽端口,装的是从前 POST /api/search/query
 #   背后的同一个闭包,facade 上 search.query 与那条 REST 一起删,executeAction 留 —— 它是窗口活的 server 对应物)。
 #   收紧:channels 62→42、bridge 718→674、http 730→726、web 785→758、channels.ts 256→234,四壳 2489→2392。
 # 2026-08-29 React 壳 D0(§5.6 甲案):**两项显式上调,不是新通道**。
@@ -103,6 +103,8 @@
 #   http.ts 732 一行未动:浏览器在 server 上不存在。
 #   本批**唯一**的上升在另一份基线里(`ipcMain` 1 → 2,`host:native-view`),理由写在
 #   `transport-forks-baseline-2026-09-03.txt` 那一段。
+# 2026-10-04 包根归位(决策 D21):`server/http.ts` 改名 `http-server/http-server-routes.ts`,按这把尺子的口径行数没变(仍是 732)——
+#   「在用户 token 那道闸前面看一眼」从点名 ACP 的一行换成按名册逐行问的一行。
 channels:IPC_CHANNELS 39
-lines:packages/backend/server/http.ts 732
+lines:packages/backend/http-server/http-server-routes.ts 732
 lines:packages/shared/ipc/channels.ts 232

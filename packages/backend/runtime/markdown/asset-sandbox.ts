@@ -16,7 +16,7 @@ import {
   type MarkdownSaveAttachmentsResponse,
   type OnethingMarkdownAssetServiceAdapters,
 } from '@onething/backend/runtime/markdown'
-import { isPathInside, resolveInsideSandbox, type RpcSandbox } from '@onething/backend/rpc/sandbox.js'
+import { isPathInside, resolveInsideSandbox, type RpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { getSettings } from '@onething/backend/runtime/settings'
 import { getNotesSubsystemSafe, noteRootsNow } from '../notes/notes-subsystem.js'
 

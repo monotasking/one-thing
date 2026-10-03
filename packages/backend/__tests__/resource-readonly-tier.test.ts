@@ -13,7 +13,7 @@
  * 只是那台宿主上的模型多了一只能改名、能归档、能删消息的工具。
  *
  * 同时钉住反面:`backend.resources` 照常在位、照常能做。「不进目录」说的只是
- * 「模型看不见」——界面 / 脚本经 `rpc/domains/resources.ts` 走管线那条路不受影响。
+ * 「模型看不见」——界面 / 脚本经 `runtime/resource/resource-client-api.ts` 走管线那条路不受影响。
  *
  * headless 档那一半在 `resource-kernel.test.ts` 里(它就是拿 `'headless'` 装的)。
  *

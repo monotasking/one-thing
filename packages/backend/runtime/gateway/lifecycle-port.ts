@@ -2,7 +2,7 @@
  * IM 网关生命周期的**宿主注入端口** —— 结构债 P4c 第八批。
  *
  * gateway 的八条数据面已经迁到通用 RPC 通道(`gatewayRouter` +
- * `backend/rpc/domains/gateway.ts`),而这八件事全都要**宿主本体**:微信网关是
+ * `backend/runtime/gateway/gateway-client-api.ts`),而这八件事全都要**宿主本体**:微信网关是
  * 一个由桌面主进程拉起来的子进程 + 一张二维码的生命周期,只有 Electron 桌面
  * 做得到(Electron 宿主的 gateway/lifecycle 那套原语)。server / CLI 守护进程
  * 没有这套东西。

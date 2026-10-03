@@ -4,7 +4,7 @@
  *
  * ## 它补的是一格**授权诚实账**,而且是过渡的
  *
- * `rpc/domains/files.ts` 的 `listDirectory` / `stat` 对非本机可信的调用方还有一层
+ * `runtime/files/files-client-api.ts` 的 `listDirectory` / `stat` 对非本机可信的调用方还有一层
  * per-caller 夹持:每条路径先夹进 `context.sandboxRoot`(那是这个调用方自己的
  * `<workspaceRoot>/<uid>/<wid>` 子树)。资源那条路上**没有这一格** —— `Invocation`
  * 里只有 `principal`,没有「这个调用方的根在哪」(K2c-1 / K2c-2 的留账)。于是同一个

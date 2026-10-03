@@ -2,14 +2,14 @@
  * OAuth 令牌事件的**推送端口** —— 结构债 P4c 第七批。
  *
  * oauth 域的六条数据面已经迁到通用 RPC 通道(`oauthRouter` +
- * `backend/rpc/domains/oauth.ts`),而 router 今天只有请求/响应面、没有推送面。
+ * `backend/runtime/auth/auth-client-api.ts`),而 router 今天只有请求/响应面、没有推送面。
  * 两条推送(`OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED`)因此留在原地,
  * 按 practice 判例(`configurePracticeEventBroadcaster`)改成一个**注入端口**:
  * 谁在跑就由谁决定往哪儿广播。
  *
  *  - 桌面(`apps/electron/src/main/ipc/oauth.ts`)注入 `webContents.send`,
  *    payload 与从前逐字相同(`{ providerId }` / `{ providerId, error }`);
- *  - server(`backend/server/runtime.ts`)**串联**上去,把事件扇进
+ *  - server(`backend/http-server/http-server-runtime.ts`)**串联**上去,把事件扇进
  *    `GET /api/oauth/events` 那条 SSE —— 单槽端口串联的判例同 todo-plan /
  *    scratchpad(`{ ...previous, broadcast: e => { previous?.(e); fanOut(e) } }`,
  *    并在 shutdown 时还原)。

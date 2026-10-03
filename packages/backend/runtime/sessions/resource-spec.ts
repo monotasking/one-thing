@@ -290,7 +290,7 @@ export const sessionResourceSpec: ResourceSpec = {
      * 交出去的是**索引元数据原样**,不是这里挑过一遍的字段:域那一层从来就没有投影
      * (`listMeta` 就是索引本身),而在自述里列一张字段表,等于给索引开第二份会漂移
      * 的形状说明 —— `isPinned` / `kind` / `lastMessagePreview` 正是那样悄悄消失的
-     * (`rpc/__tests__/sessions-domain.test.ts` 里那条用例说的就是这件事)。所以
+     * (`runtime/sessions/__tests__/sessions-client-api.test.ts` 里那条用例说的就是这件事)。所以
      * `result.sessions` 是一个不带 `items` 的数组。
      *
      * **它不做归属过滤**:那是「谁能看见哪几条」,而资源面今天还没有 per-caller 的

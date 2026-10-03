@@ -68,7 +68,7 @@ async function assemble(): Promise<Backend> {
       settings: null,
       evals: null,
       mcp: null,
-      // 账页那个域要一台**本机可信**的宿主才不夹沙箱(`rpc/sandbox.ts` 的不变量 2)。
+      // 账页那个域要一台**本机可信**的宿主才不夹沙箱(`http-server/http-server-sandbox.ts` 的不变量 2)。
       // 桌面壳声明的就是这一句。
       localTrust: { origin: 'desktop-embedded' },
       speechOutput: null,
@@ -89,7 +89,7 @@ describe('应用级许可在真装配里(2026-09-10)', () => {
       const store = await import('../store.js')
       const { Permission } = await import('@onething/backend/runtime/permissions/permission')
       const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-      const { permissionGrantsRpcHandlers } = await import('../rpc/domains/permission-grants.js')
+      const { permissionGrantsRpcHandlers } = await import('../runtime/permissions/permissions-client-api-grants.js')
       const { DESKTOP_RPC_CONTEXT } = await import('@shared/ipc/rpc.js')
 
       const sessionId = store.createSession(`always-${Date.now()}`, 'Always').id

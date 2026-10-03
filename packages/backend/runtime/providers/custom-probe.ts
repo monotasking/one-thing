@@ -8,7 +8,7 @@
  *     依次试 `/responses`、`/messages`(见 `content_block_delta` = anthropic)、Gemini 的
  *     `:streamGenerateContent`(见 `candidates[]`)。两份样本各截前 8KB(截在事件边界上)并脱敏。
  *  2. **规则先判。** 样本里的字段名全部命中默认路径 → 适配表只写 `wire`,不请分析模型。
- *  3. (AI 只填偏差 —— 在装配层,见 `backend/rpc/domains/providers.ts`。这里只给提示词与答案解析。)
+ *  3. (AI 只填偏差 —— 在装配层,见 `backend/runtime/providers/providers-client-api.ts`。这里只给提示词与答案解析。)
  *  4. **回验。** `verifyAdapterSpec` 用 `dialectFromSpec` 编出来的方言,经**真的**那条线把样本
  *     重放一遍:≥1 个文本增量;样本里有 usage 段就得解出 input/output;模型列表 ≥1 项。
  */

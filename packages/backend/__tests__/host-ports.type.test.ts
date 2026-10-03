@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { getSpeechOutput } from '@onething/backend/runtime/voice/speech-output'
 import { applyHostPorts, type OnethingHostPorts } from '../host-ports.js'
-import { dialogRpcHandlers } from '../rpc/domains/dialog.js'
+import { dialogRpcHandlers } from '../runtime/dialog/dialog-client-api.js'
 
 /** 十八项写全 = 合法(P3 加了第十七格 `speechOutput`,第十八格是 `dialog`)。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
 const complete: OnethingHostPorts = {

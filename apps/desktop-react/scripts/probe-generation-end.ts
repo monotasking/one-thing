@@ -7,7 +7,7 @@ import { createSessionProjectionState, reduceSessionProjection } from '@shared/s
 import { materializeChatMessages } from '@shared/session/projection/chat-messages'
 import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
 import { buildAgentLoopFinalMessageUpdate } from '../../../packages/backend/runtime/agent-loop/agent-loop-executor'
-import { createSseDelivery, SSE_PENDING_BYTES_LIMIT } from '../../../packages/backend/server/sse-delivery'
+import { createSseDelivery, SSE_PENDING_BYTES_LIMIT } from '../../../packages/backend/http-server/http-server-sse'
 
 const [directory, output] = process.argv.slice(2)
 if (!directory || !output) throw new Error('Usage: bun probe-generation-end.ts SESSION_DIRECTORY OUTPUT_JSON')

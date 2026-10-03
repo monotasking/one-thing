@@ -15,7 +15,7 @@
  *  - `openPath` 沿用 `shell.openPath` 的约定 —— **空串 = 成功**,非空串 = 失败原因;
  *  - `openExternal` / `revealPath` 回结构化的 `{ success, error? }`。
  *
- * 结构债 P4c 第二批:本批只有 skills 域接上它(`rpc/domains/skills.ts` 的
+ * 结构债 P4c 第二批:本批只有 skills 域接上它(`runtime/skills/skills-client-api.ts` 的
  * `openDirectory`);files / themes / oauth 三处留给后批(拍板 #19/#20)。
  */
 

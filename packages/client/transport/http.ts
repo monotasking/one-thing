@@ -1,5 +1,5 @@
 /**
- * HTTP/SSE 传输 —— core 那张 `packages/backend/server/http.ts` 的**客户端一端**。
+ * HTTP/SSE 传输 —— core 那张 `packages/backend/http-server/http-server-routes.ts` 的**客户端一端**。
  *
  * 三条路,与 server 逐字对齐(核对日 2026-09-03,C0):
  *

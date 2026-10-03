@@ -73,6 +73,8 @@
 		"name:gate": "node scripts/file-name-gate.mjs",
 		"cycle:check": "node scripts/feature-cycle-gate.mjs --list",
 		"cycle:gate": "node scripts/feature-cycle-gate.mjs",
+		"client-api:check": "node scripts/client-api-gate.mjs --list",
+		"client-api:gate": "node scripts/client-api-gate.mjs",
 		"layer:check": "node scripts/feature-layer-gate.mjs --list",
 		"layer:gate": "node scripts/feature-layer-gate.mjs",
 		"feature-map": "node scripts/feature-map.mjs",

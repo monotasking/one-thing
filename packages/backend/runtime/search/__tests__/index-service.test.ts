@@ -289,9 +289,9 @@ describe('search authorization before retrieval, preview and actions', () => {
       fs.writeFileSync(metaPath, JSON.stringify({ ...meta, ownerUserId, ownerWorkspaceId, workspaceId: 'same-product-space', workingDirectory: path.join(storeRoot, id) }))
     }
     await mount()
-    const { configureHostLocalTrust } = await import('@onething/backend/server/host-trust.js')
+    const { configureHostLocalTrust } = await import('@onething/backend/http-server/http-server-host-trust.js')
     const restore = configureHostLocalTrust({ origin: 'loopback-server' })
-    const { searchRpcHandlers } = await import('@onething/backend/rpc/domains/search.js')
+    const { searchRpcHandlers } = await import('../search-client-api.js')
     return { rpc: searchRpcHandlers, restore }
   }
   function messageItem(id: string) {

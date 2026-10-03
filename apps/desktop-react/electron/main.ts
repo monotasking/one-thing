@@ -48,8 +48,8 @@ import {
   startEmbeddedOnethingHttpServer,
   stopEmbeddedOnethingHttpServer,
   getEmbeddedOnethingHttpServer,
-} from '@onething/backend/server/embed.js'
-import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
+} from '@onething/backend/http-server'
+import { removeHttpDiscovery } from '@onething/backend/http-server'
 import { initializeUserSchedulerTasks } from '@onething/backend/runtime/scheduler/user-task-service'
 import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/permission-bridge'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
@@ -171,7 +171,7 @@ function portConnects(host: string, port: number, timeoutMs = 500): Promise<bool
 
 /**
  * 「文件存在 ≠ 活着」。判定两段:pid 还在 **且** 端口真能连上 —— 只看 pid 会被
- * pid 复用骗,只看端口会被别的程序占用同一端口骗。与 `backend/server/discovery.ts`
+ * pid 复用骗,只看端口会被别的程序占用同一端口骗。与 `backend/http-server/http-server-discovery.ts`
  * 的 `isHttpDiscoveryAlive` 同一条口径。
  */
 async function isAlive(record: HttpDiscoveryRecord): Promise<boolean> {
@@ -187,7 +187,7 @@ async function isAlive(record: HttpDiscoveryRecord): Promise<boolean> {
  * SSE / 命令的投递目标。EventBus 观察者(HTTP 面)自己盯总线,所以这里是个空壳 ——
  * 但**必须有**:引擎没有 commandTarget 时 `SEND_MESSAGE` 等四条命令直接 return
  * (core-stream-engine.ts:540-566),表现是「发消息毫无反应、也不报错」。
- * 形状照 `backend/server/runtime.ts` 的 `ServerNoopSender` 抄:EventEmitter +
+ * 形状照 `backend/http-server/http-server-runtime.ts` 的 `ServerNoopSender` 抄:EventEmitter +
  * `isDestroyed()` + `send()`,少一件 `engine.bind()` 就抛。
  */
 class ShellNoopSender extends EventEmitter {

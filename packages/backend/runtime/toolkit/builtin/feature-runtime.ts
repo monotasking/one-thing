@@ -15,7 +15,7 @@
 
 import { readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
-import { isPathInside } from '@onething/backend/rpc/sandbox.js'
+import { isPathInside } from '@onething/backend/http-server/http-server-sandbox.js'
 import {
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'

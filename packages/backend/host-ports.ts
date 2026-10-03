@@ -72,7 +72,7 @@ import {
 import {
   configureHostLocalTrust,
   type HostLocalTrustDeclaration,
-} from './server/host-trust.js'
+} from './http-server/http-server-host-trust.js'
 import {
   configureAuthHost,
   resetAuthHost,
@@ -182,7 +182,7 @@ export interface OnethingHostPorts {
    *
    * B2 之后 tools / search / evals / mcp / sessions / files 六个域都问
    * `isHostLocallyTrusted()`,而这句话在 B2 里**只在内嵌 HTTP 面挂载成功那一刻**
-   * 才说得出口(`server/embed.ts`)。于是桌面自己的 IPC 调用方在面起来之前、或者
+   * 才说得出口(`http-server/http-server-embed.ts`)。于是桌面自己的 IPC 调用方在面起来之前、或者
    * 面根本没起来(端口被占、挂载失败)时,被当成不可信的联网调用方 —— `search.query`
    * 直接抛 "not available on this host" 是其中最重的一条。
    *

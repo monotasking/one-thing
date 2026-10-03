@@ -1,6 +1,6 @@
 /**
  * GitHub Copilot 的**列表口**(manifest `models.kind === 'endpoint'`):每次现取;取不到退回设置里的
- * 缓存目录。由 `runtime.ts` 的 `createModelsFetcher` 交给宿主(`backend/rpc/domains/models.ts`
+ * 缓存目录。由 `runtime.ts` 的 `createModelsFetcher` 交给宿主(`backend/runtime/providers/providers-client-api-models.ts`
  * 按名册建表,不再点名)。
  *
  * 服务商自述试点 P2 第 4 批从 `providers/model-registry.ts` 搬回家(`fetchOnethingGitHubCopilotModelsWithAuth`

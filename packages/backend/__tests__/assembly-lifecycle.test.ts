@@ -53,7 +53,7 @@
  *      (`expected false to be true`)。**注意反证不是"改宿主的那张表"** ——
  *      这份文件交的是自己那张表;而 React 壳那张表改成 `null` 之后 smoke:core
  *      仍然绿,因为探针是在内嵌 HTTP 面挂上来**之后**才问的能力位,而
- *      `server/embed.ts` 会再声明一次同 origin(见那里的"两个声明点"注释)。
+ *      `http-server/http-server-embed.ts` 会再声明一次同 origin(见那里的"两个声明点"注释)。
  *      宿主表那一格救的正是**挂载之前 / 挂载失败**那段时间,真机探针够不着。
  *   ⑪ **关门之后来的 `own()` 就地执行**(C0 R1)。宿主里有几处登记排在一个
  *      `.then()` 里(React 壳的 MCP),而 `dispose()` 可能比那个 `.then()` 先跑完;
@@ -88,7 +88,7 @@
  * **store 隔离**:`runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
  * 设好 —— 这就是这份文件里全部 import 都是**动态**的原因(顶层只留 vitest 的),
- * 照 `server/__tests__/runtime-over-backend.test.ts` 的 mkdtemp + afterAll 还原先例。
+ * 照 `http-server/__tests__/http-server-runtime-over-backend.test.ts` 的 mkdtemp + afterAll 还原先例。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -121,7 +121,7 @@ afterAll(async () => {
 
 /**
  * 引擎在没有绑定 sender 时会静默丢命令(那道闸是给桌面的窗口生命周期用的)。
- * 形状照 `server/runtime.ts` 的 `ServerNoopSender`:三件事 —— 是个
+ * 形状照 `http-server/http-server-runtime.ts` 的 `ServerNoopSender`:三件事 —— 是个
  * EventEmitter、`isDestroyed()` 恒假、`send()` 什么也不做。
  */
 class NoopSender extends EventEmitter {
@@ -310,7 +310,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * **十六格全部**,⑫ 钉的是另外那十五格里的一格。
    */
   it('⑩ 宿主表的 localTrust 在装配那一刻生效,dispose 之后弹回', { timeout: 180_000 }, async () => {
-    const { isHostLocallyTrusted, hostLocalTrustOrigin } = await import('../server/host-trust.js')
+    const { isHostLocallyTrusted, hostLocalTrustOrigin } = await import('../http-server/http-server-host-trust.js')
 
     expect(isHostLocallyTrusted()).toBe(false)
     expect(hostLocalTrustOrigin()).toBeNull()

@@ -395,8 +395,8 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
   })
 
   it('四条壳面都走得通 RPC 域,而且未认证的联网调用方一条都用不了', async () => {
-    const { dispatchRpc } = await import('../rpc/registry.js')
-    const { configureHostLocalTrust, resetHostLocalTrustForTests } = await import('../server/host-trust.js')
+    const { dispatchRpc } = await import('../http-server/http-server-dispatch-table.js')
+    const { configureHostLocalTrust, resetHostLocalTrustForTests } = await import('../http-server/http-server-host-trust.js')
 
     // 未认证:三条面一律说不出自己是谁(与 K2a 的四条面同一条规则)。
     resetHostLocalTrustForTests()

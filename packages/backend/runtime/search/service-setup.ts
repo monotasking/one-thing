@@ -14,7 +14,7 @@
  *     `./capabilities/index.ts` 的那张表,这里不点名任何一类);
  *  ④ 把已在册的插件供给方接成 `remote` 能力(§4.2 第四行);
  *  ⑤ 把服务装进进程单槽(`./service-bound.ts`)——
- *     `rpc/domains/search.ts` 从那里读;
+ *     `runtime/search/search-client-api.ts` 从那里读;
  *  ⑥ 返回**一个** disposer,装配层 `own()` 它。
  *
  * ## 为什么观察者挂在**主线程**这一侧
@@ -549,7 +549,7 @@ async function startSearchIndexService(
  *
  * **串联,不是占槽**:`configureSettingsEventBroadcaster` 是个单槽端口(桌面 / server
  * 各自往自己那条推送面上扇出),直接写进去会把宿主那条推送掐掉。所以照
- * `server/runtime.ts` 那条既有判例串一层:先把上一位的活干掉,再干自己的。
+ * `http-server/http-server-runtime.ts` 那条既有判例串一层:先把上一位的活干掉,再干自己的。
  *
  * **方向是单向的**:search 认识 settings 的推送端口,settings 域一个字都不知道有
  * search 这回事 —— 与 `backend.mcp.applySettings` 那条链相反的接法,理由是那一条要
@@ -604,7 +604,7 @@ function subscribeLedger(index: SearchIndexService): Array<() => void> {
     registerSessionLogEventAppendObserver((sessionId, record) => {
       if (affectsIndexedDocuments(record)) touch(sessionId)
     }),
-    // ② 改名:会话事件,发在被改名的那条会话上(`rpc/domains/sessions.ts`)。
+    // ② 改名:会话事件,发在被改名的那条会话上(`runtime/sessions/sessions-client-api.ts`)。
     //    账本一个字节都没变,变的是 `meta.json` 的 mtime —— 指纹的后半格。
     bus.onAnySession(SESSION_EVENT_TYPES.SESSION_RENAMED, envelope => touch(envelope.sessionId)),
     // ③ 删除:全局事件(`shared/events/global-events.ts`)。会话目录已经没了,

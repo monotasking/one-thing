@@ -169,7 +169,7 @@ export type SessionsRoutes = {
 /*
  * 会话授权**写在契约里**(工单 5 §6,triage C1):每个方法自述"我拿哪一格当会话 id、
  * 对它做哪种操作",执法在 `dispatchRpc` 一处。加一个会话相关的域 = 这里一格,
- * `rpc/registry.ts` 零改动。
+ * `http-server/http-server-dispatch-table.ts` 零改动。
  *
  * 没列进这张表的方法(`list` / `listMeta` / `create` / `delete` / `getCacheStats`)
  * 各有各的理由:它们要么本来就按调用者过滤整张表,要么一次动多条会话、要么会话还

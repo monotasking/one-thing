@@ -80,7 +80,7 @@ export interface ResourceCatalogSyncOptions {
  * `headless`(CLI daemon)照给:它是个完整的宿主,只是没有界面。
  *
  * **`backend.resources` 不受影响** —— 不进目录说的只是「模型看不见」,RPC 那条路
- * (`rpc/domains/resources.ts`)照旧,界面与脚本照旧走管线。
+ * (`runtime/resource/resource-client-api.ts`)照旧,界面与脚本照旧走管线。
  */
 export function syncResourceToolsIntoCatalog(
   kernel: ResourceKernel,

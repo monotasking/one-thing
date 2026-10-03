@@ -11,7 +11,7 @@
  * `SearchContext` 带着 `principal` / `surface` / `spaceId` 三格,而它们决定授权
  * (§6.4b:范围在 fanout 调 `search()` **之前**就进了 filters)。工具那一侧只从
  * `RunContext.invocation` 上**读**这三格再原样递下来,它不许自己编一个 —— 判例与
- * `rpc/registry.ts` 那句「宿主在自己的鉴权跑完之后铸 context,永远不从信封上读
+ * `http-server/http-server-dispatch-table.ts` 那句「宿主在自己的鉴权跑完之后铸 context,永远不从信封上读
  * 身份」同源。
  *
  * `surface: 'agent-tool'` 是 §14.1 那一格。它今天不改变任何能力的参与(没有能力

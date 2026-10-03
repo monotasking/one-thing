@@ -6,7 +6,7 @@
  * `source: 'manual'` 条目(参数全空),勾不勾是另一件事。
  *
  * 这个文件只有纯函数:建条目、认条目、折孤儿、刷新时保留手填、加 / 删的守卫。
- * 落盘在装配层(`backend/rpc/domains/models.ts` 的 `addManual` / `removeManual`,
+ * 落盘在装配层(`backend/runtime/providers/providers-client-api-models.ts` 的 `addManual` / `removeManual`,
  * 与 `spaces.setProviderSettings` 的随手落盘)。
  */
 import type {

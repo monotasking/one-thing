@@ -25,7 +25,7 @@ export const CODEX_RUNTIME: VendorRuntime = {
 	id: "codex",
 	quotaSources: [codexQuotaSource],
 	oauth: CODEX_CONFIG,
-	// 列表口:与搬家前 `backend/rpc/domains/models.ts` 的 `fetchCodexModelsRaw` + 兜底表逐字同口径
+	// 列表口:与搬家前 `backend/runtime/providers/providers-client-api-models.ts` 的 `fetchCodexModelsRaw` + 兜底表逐字同口径
 	// (token 走 `refreshTokenIfNeeded`,取数走宿主的 `default` policy fetch)。
 	createModelsFetcher: (deps) =>
 		createOnethingCodexModelsFetcher({

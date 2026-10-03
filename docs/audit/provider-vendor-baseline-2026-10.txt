@@ -40,7 +40,7 @@ codex packages/backend/runtime/providers/wires/openai-responses-wire.ts
 codex packages/backend/runtime/settings/defaults/settings.ts
 codex packages/shared/ipc/chat.ts
 deepseek apps/desktop-react/src/dev/Gallery.tsx
-deepseek packages/backend/rpc/domains/evals-workbench.ts
+deepseek packages/backend/runtime/evals/evals-client-api-workbench.ts
 deepseek packages/backend/runtime/credentials/credentials-default-space-migration.ts
 deepseek packages/backend/runtime/logging/legacy-debug-env.ts
 deepseek packages/backend/runtime/sessions/resource-spec.ts
@@ -60,7 +60,7 @@ gemini packages/backend/runtime/settings/defaults/settings.ts
 grok packages/backend/runtime/settings/settings-model-registry-service.ts
 grok-oauth packages/backend/runtime/settings/settings-model-registry-service.ts
 openai apps/desktop-react/src/providers/components/CustomProviderDialog.tsx
-openai packages/backend/rpc/domains/models.ts
+openai packages/backend/runtime/providers/providers-client-api-models.ts
 openai packages/backend/runtime/credentials/credentials-default-space-migration.ts
 openai packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts
 openai packages/backend/runtime/engine/stream/image-generation.ts
@@ -92,7 +92,7 @@ openai packages/backend/runtime/voice/providers.ts
 openai packages/backend/runtime/voice/service-runtime.ts
 openai packages/shared/ipc/providers.ts
 openai packages/shared/ipc/voice.ts
-openrouter packages/backend/rpc/domains/voice.ts
+openrouter packages/backend/runtime/voice/voice-client-api.ts
 openrouter packages/backend/runtime/providers/model-capability.ts
 openrouter packages/backend/runtime/providers/thinking/index.ts
 openrouter packages/backend/runtime/providers/thinking/openrouter-reasoning.ts

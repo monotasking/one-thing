@@ -6,7 +6,7 @@
  * 两个出口吃同一段:
  *  - **stdio 桥**(`entry.ts` → `acp-mcp-bridge.cjs`):源 = 对活核 `POST /api/rpc`
  *    `host-mcp.*` 的调用({@link createRpcToolSource});
- *  - **HTTP 直连**(`backend/server/mcp-face.ts` 的 `/api/mcp`):源 = 进程内那只桥对象。
+ *  - **HTTP 直连**(`backend/runtime/acp/acp-client-api-host-mcp-face.ts` 的 `/api/mcp`):源 = 进程内那只桥对象。
  *
  * 所以「工具表长什么样、调用失败怎么说」只有这一份;两个出口的差别只剩传输。
  *
@@ -31,7 +31,7 @@ export const HOST_MCP_HTTP_PATH = '/api/mcp'
 
 /**
  * 桥说的 RPC 域。**必须**与共享层 `ipc/host-mcp.ts` 的 `hostMcpRouter` 一致 —— 这里
- * 不能 import 它(见文件头),对齐由 `backend/rpc/__tests__/host-mcp-domain.test.ts` 钉住。
+ * 不能 import 它(见文件头),对齐由 `backend/runtime/acp/__tests__/acp-client-api-host-mcp.test.ts` 钉住。
  */
 export const HOST_MCP_RPC = Object.freeze({
   domain: 'host-mcp',

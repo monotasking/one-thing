@@ -4,7 +4,7 @@
  * `files` 域的 `list` 在 `transport:'http'` 这一支要一个文件枚举器。桌面那一支
  * 用的是 ripgrep(`backend/utils/ripgrep.ts`,`hidden:false, noIgnore:true`);
  * 联网宿主上换成这份手写走查器,逐字对齐被替换掉的
- * `server/runtime.ts` 里 `listServerToolFiles` 的**无 glob 分支**:跳过 `.git`,
+ * `http-server/http-server-runtime.ts` 里 `listServerToolFiles` 的**无 glob 分支**:跳过 `.git`,
  * 产出相对 `root` 的 posix 路径。
  *
  * 为什么不让 http 也走 ripgrep:那要一个 rg 二进制,而「联网宿主上有没有它」

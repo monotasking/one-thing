@@ -130,7 +130,7 @@ import {
 import type { ResourceKernel } from '@onething/backend/runtime/resource/resource-api'
 import { ToolExecutionRegistry } from '@onething/backend/runtime/toolkit/executions'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/runtime/evals/task-owner'
-import { registerAppRpcDomains } from './rpc/index.js'
+import { registerAppRpcDomains } from './http-server/http-server-client-api-roster.js'
 import { initializeSessionSkills } from '@onething/backend/runtime/skills/session-skill-cache'
 import { MCPManager, registerMCPTools } from '@onething/backend/runtime/mcp/index-with-bridge'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
