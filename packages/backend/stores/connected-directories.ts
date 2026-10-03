@@ -36,7 +36,7 @@ import {
   getSpaceOverlayConnectedDirectories,
   mergeConnectedDirectories,
 } from '@onething/backend/runtime/spaces/overlay'
-import { resolveSessionSpaceId } from '../runtime/sessions/session-store.js'
+import { resolveSessionSpaceId } from '@onething/backend/runtime/sessions'
 import { getSettings } from './settings.js'
 
 /**

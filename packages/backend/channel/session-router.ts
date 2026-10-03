@@ -1,6 +1,9 @@
 import type { ChatSession, MessageOrigin } from '@shared/ipc.js'
 import * as store from '../store.js'
 import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
+// 临时留着的深层引用(包根归位 B,2026-10-03):走入口会让入口整棵求值,而入口里原有的十几只会话模块在加载时
+// 就 `getLogger(...)`;这份路由的测试把 `configure-logging` mock 成只有 `writeAppLog`,一走入口就加载失败。
+// 怎么收(把那些模块的 logger 也改成用时再取,或改测试的 mock)待用户定。
 import { getSessionManager } from '../runtime/sessions/session-layer.js'
 import { getChannelIdentityService } from './identity-service.js'
 import {

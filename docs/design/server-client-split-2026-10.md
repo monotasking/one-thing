@@ -1411,3 +1411,63 @@ session-removed-event,session-rename-applied,session-timeline-metadata,sessions-
 `sessions:hydration-contract --all` 在固定夹具 store 上 217 个会话 0 失败,前后同;`session:check` 前后同 4 条命中(只是 writable 那条的路径变了);`gate:acp` 前后同(只差临时目录与会话 id);
 `gate:search-index` 前后都红在两条 ⑤d、⑪a 绿;transport / log / session / provider / gate:native / boundary(132 条)/ assembly(`radio.ts 9 → 10`,前后都红)/ drill 前后相同;
 `entry:gate` 绿(2930);CLI `--help` 在临时 store 上起得来且不写 store;golden 快照不变。
+
+### 包根归位 B 落地记录:会话表加载期不取值,五只进入口(2026-10-03,未提交)
+
+**一句话**:会话表(`runtime/sessions/session-store.ts`)与设置仓储(`stores/settings.ts`)的日志、存储驱动、仓储改成**第一次用到时才建**,
+import 它们不再读存储 / 应用状态 / 设置模块的导出、不再建仓储;于是 `session-store` / `session-layer` / `usage` / `memory` / `list-projection-backfill`
+五只收进 `runtime/sessions/index.ts`,上一笔留下的 37 处临时深层引用收回 36 处(`channel/session-router.ts` 那一处暂留,见下)。
+
+**加载期取值清单**(量法:五只的静态值 import 闭包 427 只,减去旧入口闭包 353 只,剩 104 只;列每只文件顶层、函数体之外的调用 / `new` /
+读 import 绑定;脚本 scratchpad `s10/loadtime.mjs`):
+
+| 位置 | 加载时做了什么 | 处理 |
+| --- | --- | --- |
+| `session-store.ts`:71 / 73 | `getLogger('sessions')`、`consolePort(log)` | 改:进持有器 `sessionTable`,`log()` 首次调用时取 |
+| `session-store.ts`:92–103 | 读存储模块 5 个导出进驱动选项,`createHybridSessionStorageDriver(...)` | 改:挪进 `createSessionTableRepository()` |
+| `session-store.ts`:105–141 | 读存储 6 个、应用状态 2 个(`getCurrentSessionId` / `setCurrentSessionId`)、补水 / 物化 / 沙箱路径各 1 个导出进仓储选项,`createOnethingSessionRepository(...)` | 改:同上;51 处 `sessionRepository.` → `sessionRepository().` |
+| `stores/settings.ts`:20 / 22 / 25–30 | `getLogger('settings')`、`consolePort`、读 `getOnethingSettingsPath` / `createDefaultSettings`,`createOnethingSettingsRepository(...)` | 改:进持有器 `settingsStore`,10 处 `settingsRepository.` → `settingsRepository().` |
+| `usage.ts`:10、`list-projection-backfill.ts`:75、`content-part-guard` / `hydrate` / `materialized-messages` / `port-fact-assert` / `stream-validation` 各一处、`spaces/{notifications,persistence,provider-settings}` | 顶层 `getLogger(ns)` | 没改:只取日志模块的根常量(按 ns 记忆化),不碰设置 / 应用状态 / 仓储;与旧入口闭包里本来就有的二十来只(`event-log` / `reads` / `runs` / `checkpoint*` / `shadow` ……)同一个约定 |
+| `port-fact-assert.ts`:97 | `let override = readEnvFlag()`(读 `ONETHING_SESSION_PORT_ASSERT` 的快照) | 没改:是环境变量不是设置;现在在入口被加载时求值,环境变量在进程起来前就定了,只有它自己的测试经 setter 改 |
+| `agents/executor/registry.ts`:110 | `syncAgentExecutorsToCore()`(纯数据登记) | 没改:文件里写明是有意的加载期登记、幂等、无 I/O |
+| `stores/settings-defaults.ts`:38、`providers/{builtin-providers,model-identity}`、`collab/{plan,typing,willingness}`、`@shared/ipc/{agents,settings,rpc}` 等 | 由常量表算常量、`defineRouter`、`Object.freeze`、空 `Map` / `Set` | 没改:纯计算 |
+
+`stores/app-state.ts` 在加载时什么也不做(每个函数现取路径),不用改。
+
+**等价理由**(逐条,也写在两只文件的说明里):① 选项对象里放的是 import 进来的函数本身与常量,ES 模块的 import 绑定在各自模块里从不被重新赋值,首次用时
+读到的与加载时读到的是同一个对象;② 读设置的三处(会话表的 `newSessionFormat` / `getDefaultWorkingDirectory`、设置仓储的 `filePath`)本来就是每次调用时现取,
+从来不是加载时的快照,原样搬进构建函数;③ 三个构造(`OnethingSessionRepository` / 混合存储驱动 / `OnethingSettingsRepository`)只建内存里的 Map / LRU / 节流写队列
+(队列构造函数是空的,计时器在第一次排写时才起)/ 空缓存状态,零 I/O,早建晚建状态相同;④ `LoggerRoot.logger(ns)` 按命名空间记忆化,晚取拿到同一个 logger 对象。
+**没有挪进 `createOnethingBackend` 的装配步骤**:这些函数被几十处当自由函数直接调(装配中途的 `initializeStores()`、RPC 域、server 门面),挂到装配产物上会把
+「装配前也能用」变成 `BackendNotAssembledError`,那是行为变化;持有器是 `const`(`assembly:gate` 只禁模块级 `let`),装的是缓存。装配顺序一行没动。
+
+**入口新增**(外面真在用的名字逐个列):会话表 57 个函数 + 1 个别名(见「撞名」)(`getSession` / `getSessionsList` / `createSession` / `resolveSessionSpaceId` / `onSessionsDeleted` /
+`updateMessage*` / `updateSession*` …;`deriveRetainedContextSize` 入口原本就经 `timeline.js` 交出同一个声明,不重复列);会话组合根
+`createSessionLayer` / `ensureSessionWritable` / `getSessionManager` + 类型 `SessionLayer`;`updateSessionUsage`;`createSessionMemoryHolders`;
+`scheduleSessionListProjectionBackfillOnStartup`。**撞名**:`landSessionAccountUsage` 在目录里三份、签名各异,入口这个名字照旧是 `store-helpers.ts` 那份(就地改一个
+会话对象);会话表那份(按 id 落一份用量快照)以 `landSessionAccountUsageInStore` 交出,`stores/index.ts` 用 `as landSessionAccountUsage` 保住自己的表面名字;
+`usage.ts` 那份(按 id 从会话账折叠取快照再落)以 `landSessionAccountUsageFromAccount` 交出,两个调用方(`compact-session` / `event-only-emitter`)改用这个名字。
+入口每条 `export … from` 贡献的 537 个名字逐个核对解析到源模块的同一声明,0 处遮蔽(scratchpad `s10/entry-shadow.mjs`);tsc 无 TS2300 / TS2308。
+`music/radio.ts` 的 `import * as sessions` 改成入口命名空间,用到的 6 个名字都在清单里。入口闭包 353 → 457 只。
+
+**唯一暂留的深层引用 `channel/session-router.ts` → `session-layer.ts`(待用户定)**:它今天只从 `session-layer.js` 与 `store.js` 取名字(两只在测试里都被 mock),
+一处不碰入口;改走入口会让入口整棵求值,而入口里**原有的**十几只会话模块在加载时 `getLogger(...)`,这份路由的测试把 `configure-logging` mock 成只有 `writeAppLog`,
+实测报 `No "getLogger" export`(栈顶 `event-stats.ts:23`)。这与五只、与设置 / 应用状态都无关,惰性化会话表修不到它。三个选项:(a) 把 `runtime/sessions/` 里
+二十来只顶层 `getLogger` 的模块也改成用时再取(等价,但偏离全仓 `const log = getLogger(ns)` 的约定);(b) 这一处保留深层引用,像 `ledger-feed` 那样记在册
+(本笔临时这样做了,行上写了注释);(c) 给那份测试的 mock 补 `importOriginal`(改测试逻辑)。
+
+**新断言**:`import-side-effect-free.test.ts` 第三条 —— 用 `importOriginal` 包住 `createOnethingSessionRepository` / `createHybridSessionStorageDriver` /
+`createOnethingSettingsRepository` 三个构造口与 `getOnethingSettingsPath` / `getOnethingAppStatePath`(都照旧调真的),import 会话入口与 `stores/index.ts` 后断言计数为空。
+拿 HEAD 的两只旧文件临时换回去跑过一次:红,计数是 `settings-repository` / `session-storage-driver` / `session-repository`(路径函数在旧代码里也只被读绑定、
+不被调用,那两格计数只防将来有人在加载时去问路径)。为了不在测试里多出深层引用,两处 `importOriginal` 的类型参数写入口(`typeof import('@onething/backend/runtime/sessions')`)。
+
+**功能入口棘轮**:sessions 333 → 299(收回 36 处非测试引用,新断言的两处 `vi.mock` 路径是测试 mock 一类的新增 2 处),其余 55 行逐字不变,基线收紧到 299。
+剩下的非测试深层引用 2 处:`ledger-feed` → `events/codec`(有意保留)、`session-router` → `session-layer`(上面那条)。
+
+**验收(改前 `s10-before` / 改后 `s10-after`)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;
+三份 `search-worker.cjs` 前后逐字节同大(1276269 / 1276269 / 1274739),主进程 bundle `main.cjs` 11460834 → 11468566(+7732),server `main.js` 5898870 → 5902793(+3923),
+CLI `main.cjs` 11489448 → 11496719(+7271);根全量 vitest 11413 → 11414(多的是新断言)/ 21 红,失败集合逐条相同;壳 7344 / 1 相同;上一笔那 25 份测试单跑 25 / 25 绿
+(316 条,改前同);persistence 矩阵 19 文件 176 条绿;`import-side-effect-free` + `assembly-lifecycle` 22 条绿;`sessions:shadow-battery` 前后各 131 行,只差两处会话 id
+(都红在 `appendFailures 8`,`refoldChecks` 217);`sessions:hydration-contract --all` 在固定夹具与本次 battery 的 store 上都是 217 个会话 0 失败;`session:check` 前后同 4 条;
+`gate:acp` 去掉 id 后逐字相同;`gate:search-index` 前后都红在两条 ⑤d 与 ⑤c,其余行只差记号 / token / 服务端输出尾的取窗;transport / log / session / provider / gate:native /
+boundary / assembly(`radio.ts 9 → 10`,前后都红)/ drill 前后相同;`entry:gate` 绿(2896);CLI `--help` 在临时 store 上起得来且不写 store;golden 快照不变。

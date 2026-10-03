@@ -45,7 +45,7 @@ import { agentExists, createAgent, findAgent, updateAgent } from '@onething/back
 import { markSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { resolveCollabVenue } from '@onething/backend/runtime/collab'
 import { getSettings } from '@onething/backend/stores/settings.js'
-import * as sessions from '../sessions/session-store.js'
+import * as sessions from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
 import type { MusicServiceScope } from './service.js'

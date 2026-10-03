@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { ensureSessionWritable } from '../sessions/session-layer.js'
+import { ensureSessionWritable } from '@onething/backend/runtime/sessions'
 import { writeSessionEvent } from '@onething/backend/runtime/sessions'
 import { flushSessionEventLog } from '@onething/backend/runtime/sessions'
 import { textOrBlobForEvent } from '@onething/backend/runtime/sessions'

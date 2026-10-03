@@ -107,11 +107,11 @@ import {
 	sessionPreviewText,
 } from "@onething/backend/runtime/sessions";
 import { sessionCommandEvents } from "@onething/backend/runtime/sessions";
-import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "../runtime/sessions/session-store.js";
+import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/runtime/sessions";
 import {
 	findSessionIndexMeta as findAppStoreSessionIndexMeta,
 	onSessionIndexChanged,
-} from "../runtime/sessions/session-store.js";
+} from "@onething/backend/runtime/sessions";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
 import { configureServerSearchPort } from "./search-providers.js";
 import {
@@ -404,7 +404,7 @@ type ServerChatSession = ChatSession & {
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
 
-import type { SessionLayer } from '../runtime/sessions/session-layer.js';
+import type { SessionLayer } from '@onething/backend/runtime/sessions';
 
 export interface OnethingServerRuntime {
 	/** Present for a production Backend; absent only for explicit test adapters. */

@@ -182,7 +182,7 @@ apps/server/                 # Process shell only (main.ts + index.ts). The HTTP
 
 ### createOnethingBackend — the single assembly recipe
 
-`packages/backend/backend.ts`. Every host boots through `OnethingBackend.assemble(options)` (`createOnethingBackend` is the alias every call site still uses); ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`; **the assembly itself is exercised end to end** by `packages/backend/__tests__/assembly-lifecycle.test.ts` (twelve assertions on a temp store: assemble → dispose → assemble, double-assembly rejection, mid-assembly failure rollback, latch re-registration, the `own()` ledger emptying, host-port restore, and `own()` after dispose running the disposer on the spot).
+`packages/backend/backend.ts`. Every host boots through `OnethingBackend.assemble(options)` (`createOnethingBackend` is the alias every call site still uses); ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`; since 包根归位 B (2026-10-03) it also **reads no settings and builds no repository**: the session table (`runtime/sessions/session-store.ts`) and the settings store (`stores/settings.ts`) build their repository / storage driver / logger on first use behind a `const` holder, and the same test counts those constructors after importing the sessions entry (a module that needs state at load builds it lazily the same way, never in a module-level `let`); **the assembly itself is exercised end to end** by `packages/backend/__tests__/assembly-lifecycle.test.ts` (twelve assertions on a temp store: assemble → dispose → assemble, double-assembly rejection, mid-assembly failure rollback, latch re-registration, the `own()` ledger emptying, host-port restore, and `own()` after dispose running the disposer on the spot).
 
 **`OnethingBackend` is a class, not a bag of globals** (组合根 A, `docs/design/backend-composition-root-2026-09.md`, landed 2026-09-02/03):
 
@@ -990,9 +990,6 @@ packages/backend/runtime/      # one feature, one flat directory (was packages/o
 │   │                          # event-log + writer + blobs + checkpoint + refold/shadow / trace-reads.ts /
 │   │                          # freeze / createSessionLayer (session-layer.ts) / the session table
 │   │                          # (session-store.ts: LRU + 300ms throttled saves) / ipc-repository/ / testing/
-│   │                          # (session-store / session-layer / usage / memory / list-projection-backfill are not
-│   │                          # in the entry yet — the session table reads settings + app-state at load; callers
-│   │                          # import those five files directly until the follow-up batch makes that load lazy)
 │   ├── agent-loop/            # provider-agnostic loop (runner, stream, retry, scheduler; barrel loop-primitives.ts)
 │   ├── agent-loop/providers/  # hand-rolled fetch/SSE providers (claude/codex/deepseek/
 │   │                          # gemini/openai-compatible/acp) + factory + thinking-options

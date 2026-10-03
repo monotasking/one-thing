@@ -53,7 +53,7 @@ import { buildOnethingRequestProviderOptionsBag } from '@onething/backend/runtim
 import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from '@onething/backend/runtime/providers/route'
 import type { CoreProviderConfigLike, CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import { authService } from '@onething/backend/runtime/auth/process-auth-service'
-import { resolveSessionSpaceId } from '../sessions/session-store.js'
+import { resolveSessionSpaceId } from '@onething/backend/runtime/sessions'
 import {
   buildRoutedProviderConfig,
   isSubscriptionFallbackOn,

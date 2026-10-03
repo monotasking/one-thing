@@ -36,7 +36,7 @@
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { requestSessionOwner, sessionAccess } from '@onething/backend/runtime/sessions'
-import { getSessionsList } from '../../runtime/sessions/session-store.js'
+import { getSessionsList } from '@onething/backend/runtime/sessions'
 import type { CollabRoutes, CollabSchedulerLogEntry } from '@shared/ipc/collab.js'
 import { loadCollabBoard } from '@onething/backend/runtime/collab/board-store'
 import {

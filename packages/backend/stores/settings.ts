@@ -15,19 +15,34 @@ import { getOnethingSettingsPath } from '@onething/backend/runtime/storage'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { OnethingSettingsRepositoryLogger } from '@onething/backend/runtime/settings/settings-repository'
+import type {
+  OnethingSettingsRepository,
+  OnethingSettingsRepositoryLogger,
+} from '@onething/backend/runtime/settings/settings-repository'
 
-const log = getLogger('settings')
-/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog: ConsoleLikePort & OnethingSettingsRepositoryLogger = consolePort(log)
+/*
+ * 设置仓储在**首次用到时**才建(包根归位 B,2026-10-03)。从前它在加载时建好,并把
+ * `getOnethingSettingsPath` / `createDefaultSettings` 读进选项对象,于是 import 本模块(会话表与会话入口都 import 它)
+ * 就要求存储模块交出那个名字。这样做与从前等价:选项里放的是 import 进来的函数本身(绑定从不被重新赋值,晚读
+ * 读到同一个函数对象)与两个现场调用的箭头函数;`OnethingSettingsRepository` 的构造只建一份空的缓存状态,不读盘
+ * (读盘在 `initialize()` / 第一次 `get()`);`getLogger('settings')` 按命名空间记忆化。持有器是 `const`,装的是缓存。
+ */
+const settingsStore: { repository?: OnethingSettingsRepository<AppSettings> } = {}
 
+function settingsRepository(): OnethingSettingsRepository<AppSettings> {
+  return (settingsStore.repository ??= createSettingsRepository())
+}
 
-const settingsRepository = createOnethingSettingsRepository<AppSettings>({
-  filePath: getOnethingSettingsPath,
-  defaultValue: createDefaultSettings,
-  normalize: value => mergeWithDefaults(value as Partial<AppSettings>),
-  logger: consoleLog,
-})
+function createSettingsRepository(): OnethingSettingsRepository<AppSettings> {
+  /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+  const consoleLog: ConsoleLikePort & OnethingSettingsRepositoryLogger = consolePort(getLogger('settings'))
+  return createOnethingSettingsRepository<AppSettings>({
+    filePath: getOnethingSettingsPath,
+    defaultValue: createDefaultSettings,
+    normalize: value => mergeWithDefaults(value as Partial<AppSettings>),
+    logger: consoleLog,
+  })
+}
 
 // ============================================================================
 // Async Initialization (Recommended for startup)
@@ -40,14 +55,14 @@ const settingsRepository = createOnethingSettingsRepository<AppSettings>({
  * @returns Promise<AppSettings> - The loaded settings
  */
 export function initializeSettings(): Promise<AppSettings> {
-  return settingsRepository.initialize()
+  return settingsRepository().initialize()
 }
 
 /**
  * Check if settings have been initialized
  */
 export function isSettingsInitialized(): boolean {
-  return settingsRepository.isInitialized()
+  return settingsRepository().isInitialized()
 }
 
 // ============================================================================
@@ -61,12 +76,12 @@ export function isSettingsInitialized(): boolean {
  * 本文件自己。其余所有人要的都是 `getSettings()` —— 生效形状。
  */
 export function getPersistedSettings(): AppSettings {
-  return settingsRepository.get()
+  return settingsRepository().get()
 }
 
 /** 原样落盘,**不拆分**。同上,只给迁移用。 */
 export function savePersistedSettings(settings: AppSettings | PersistedAppSettings): void {
-  settingsRepository.save(settings as AppSettings)
+  settingsRepository().save(settings as AppSettings)
 }
 
 // ============================================================================
@@ -80,7 +95,7 @@ export function savePersistedSettings(settings: AppSettings | PersistedAppSettin
  */
 export function getSpaceSettings(spaceId: string | undefined | null): AppSettings {
   return resolveEffectiveAppSettings(
-    settingsRepository.get(),
+    settingsRepository().get(),
     readSpaceProviderSettings(spaceId ?? DEFAULT_SPACE_ID),
   )
 }
@@ -138,7 +153,7 @@ export async function saveSettingsAsync(
   settings: AppSettings,
   options?: SaveSettingsOptions,
 ): Promise<void> {
-  await settingsRepository.saveAsync(prepareSave(settings, options))
+  await settingsRepository().saveAsync(prepareSave(settings, options))
   // 「诊断模式」的**唯一续接点**:两条保存路都经过这里,所以设置页那一格
   // 一存就生效,不必等重启(applyDiagnosticsMode 自身幂等)。
   applyDiagnosticsMode(settings.diagnostics?.enabled === true)
@@ -149,7 +164,7 @@ export async function saveSettingsAsync(
  * Updates both disk and memory cache
  */
 export function saveSettings(settings: AppSettings, options?: SaveSettingsOptions): void {
-  settingsRepository.save(prepareSave(settings, options))
+  settingsRepository().save(prepareSave(settings, options))
   applyDiagnosticsMode(settings.diagnostics?.enabled === true)
 }
 
@@ -162,7 +177,7 @@ export function saveSettings(settings: AppSettings, options?: SaveSettingsOption
  * Next getSettings() call will reload from disk
  */
 export function invalidateSettingsCache(): void {
-  settingsRepository.invalidate()
+  settingsRepository().invalidate()
 }
 
 /**
@@ -170,5 +185,5 @@ export function invalidateSettingsCache(): void {
  * Useful for temporary overrides
  */
 export function updateSettingsInMemory(settings: AppSettings): void {
-  settingsRepository.updateInMemory(settings)
+  settingsRepository().updateInMemory(settings)
 }

@@ -55,7 +55,7 @@ import {
   setSpaceProviderCredential,
   setSpaceProviderCredentialPoolForRequest,
 } from '@onething/backend/runtime/providers/space-credentials'
-import { countSessionsInWorkspace } from '../../runtime/sessions/session-store.js'
+import { countSessionsInWorkspace } from '@onething/backend/runtime/sessions'
 import { persistManualOrphans } from '@onething/backend/runtime/providers/manual-model-store'
 import { getCurrentBackendInstance } from '../../current.js'
 

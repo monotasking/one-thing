@@ -64,6 +64,55 @@ vi.mock('@onething/backend/runtime/permissions/capabilities', async (importOrigi
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
 }))
 
+// 包根归位 B(2026-10-03):会话表与设置仓储改成首次用到时才建,import 会话入口不再读设置、不再建仓储。
+// 计数桩打在三个仓储 / 驱动的构造口与两条「要读设置 / 应用状态才会问」的路径函数上;都照旧调真的那一份。
+const loadSpy = vi.hoisted(() => ({ calls: [] as string[] }))
+
+vi.mock('../runtime/sessions/session-repository.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/sessions')>()
+  return {
+    ...actual,
+    createOnethingSessionRepository: ((options: never) => {
+      loadSpy.calls.push('session-repository')
+      return actual.createOnethingSessionRepository(options)
+    }) as typeof actual.createOnethingSessionRepository,
+  }
+})
+vi.mock('../runtime/sessions/storage-driver.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/sessions')>()
+  return {
+    ...actual,
+    createHybridSessionStorageDriver: ((options: never) => {
+      loadSpy.calls.push('session-storage-driver')
+      return actual.createHybridSessionStorageDriver(options)
+    }) as typeof actual.createHybridSessionStorageDriver,
+  }
+})
+vi.mock('@onething/backend/runtime/settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/settings')>()
+  return {
+    ...actual,
+    createOnethingSettingsRepository: ((options: never) => {
+      loadSpy.calls.push('settings-repository')
+      return actual.createOnethingSettingsRepository(options)
+    }) as typeof actual.createOnethingSettingsRepository,
+  }
+})
+vi.mock('@onething/backend/runtime/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/storage')>()
+  return {
+    ...actual,
+    getOnethingSettingsPath: () => {
+      loadSpy.calls.push('settings-path')
+      return actual.getOnethingSettingsPath()
+    },
+    getOnethingAppStatePath: () => {
+      loadSpy.calls.push('app-state-path')
+      return actual.getOnethingAppStatePath()
+    },
+  }
+})
+
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
     await import('@onething/backend/runtime/tools/access-control/sandbox')
@@ -96,6 +145,19 @@ describe('@onething/backend import purity', () => {
     await import('../rpc/index.js')
 
     expect(features.dumpFeatures()).toEqual([])
+  })
+
+  /**
+   * 会话入口交出会话表(`session-store.ts`)与会话组合根以后,import 它的模块在加载时都会带上会话表、设置与
+   * 应用状态那几只模块。这道栅栏断言的是**带上不等于用上**:加载期不建会话仓储、不建存储驱动、不建设置仓储,
+   * 也不去问设置 / 应用状态文件在哪。上面那条 `it` 已经连带加载过入口的话,这里照样数得到。
+   */
+  it('importing the sessions entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
+    const sessions = await import('@onething/backend/runtime/sessions')
+    await import('../stores/index.js')
+
+    expect(typeof sessions.getSession).toBe('function')
+    expect(loadSpy.calls).toEqual([])
   })
 
   it('configureAppRuntimeAdapters wires every adapter exactly once', { timeout: 60_000 }, async () => {

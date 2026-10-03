@@ -9,7 +9,7 @@ import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
-import { landSessionAccountUsage } from '../sessions/usage.js'
+import { landSessionAccountUsageFromAccount } from '@onething/backend/runtime/sessions'
 import { sessionLifecycleEvents } from '@onething/backend/runtime/sessions'
 import { billCompactUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import {
@@ -271,7 +271,7 @@ export async function compactSessionContext(options: {
     })
     // #15 裁定 1:容器上那两格由**账**落格。落点从写事件之**前**挪到之**后**
     // 一行 —— 账要先知道这件事,才落得出来;落不下来(没记账)回落老写者。
-    if (!landSessionAccountUsage(options.sessionId)) {
+    if (!landSessionAccountUsageFromAccount(options.sessionId)) {
       store.updateSessionContextSize(
         options.sessionId,
         retainedContextSize,

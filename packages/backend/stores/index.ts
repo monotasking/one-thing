@@ -1,5 +1,5 @@
 import { ensureOnethingStoreDirs } from '@onething/backend/runtime/storage'
-import { initializeSessionRepositoryIndex } from '../runtime/sessions/session-store.js'
+import { initializeSessionRepositoryIndex } from '@onething/backend/runtime/sessions'
 
 // Re-export all store modules
 export { ensureOnethingStoreDirs, getOnethingStorePath } from '@onething/backend/runtime/storage'
@@ -45,7 +45,7 @@ export {
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   updateSessionContextSize,
-  landSessionAccountUsage,
+  landSessionAccountUsageInStore as landSessionAccountUsage,
   updateSessionPromptContext,
   getSessionTokenUsage,
   deriveRetainedContextSize,
@@ -61,7 +61,7 @@ export {
   patchSessionFields,
   invalidateSessionCache,
   getSessionCacheStats,
-} from '../runtime/sessions/session-store.js'
+} from '@onething/backend/runtime/sessions'
 
 // Ensure all necessary directories exist on startup
 export function initializeStores(): void {

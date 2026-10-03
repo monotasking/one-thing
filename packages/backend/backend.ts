@@ -46,7 +46,7 @@ import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@on
 import { getTracesDir } from '@onething/backend/runtime/evals/trace-store'
 import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from '@onething/backend/runtime/sessions'
-import { scheduleSessionListProjectionBackfillOnStartup } from './runtime/sessions/list-projection-backfill.js'
+import { scheduleSessionListProjectionBackfillOnStartup } from '@onething/backend/runtime/sessions'
 import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
 import { CustomProviderManifestSync } from '@onething/backend/runtime/providers/custom-manifests'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
@@ -70,10 +70,10 @@ import { configureAppSkillsLoader } from '@onething/backend/runtime/skills/skill
 import { configureAppPermissionGrants } from '@onething/backend/runtime/permissions/grant-storage'
 import { createEventSystem } from '@onething/backend/runtime/events'
 import { createReplayBufferMemoryHolder } from '@onething/backend/runtime/events/memory'
-import { createSessionMemoryHolders } from './runtime/sessions/memory.js'
+import { createSessionMemoryHolders } from '@onething/backend/runtime/sessions'
 import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/runtime/memory'
 import { createQuotaService, type QuotaService } from '@onething/backend/runtime/quota'
-import { createSessionLayer, type SessionLayer } from './runtime/sessions/session-layer.js'
+import { createSessionLayer, type SessionLayer } from '@onething/backend/runtime/sessions'
 import {
   installSessionPermissionEventRecorders,
   uninstallSessionPermissionEventRecorders,

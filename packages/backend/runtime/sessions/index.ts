@@ -8,14 +8,6 @@
  * 2026-10-03 起这里也是原 `session-primitives.ts`(core 时代会话内核的出口)的家:那只文件的再导出整段并进
  * 下半截后删除。上半截是产品侧(仓储、存储驱动、分支、补水 / 脱水、IPC 形状……),下半截是会话内核
  * (`Session` / `SessionManager`、事件词表与编解码、投影、轨迹、分页与 jsonl 编解码、store helpers)。
- *
- * **暂不进入口的五只**(包根归位第 1 笔,2026-10-03,「先 A 后 B」):`session-store.ts`(会话表,原
- * `stores/sessions.ts`)、`session-layer.ts`(会话组合根 `createSessionLayer`)、`usage.ts`、`memory.ts`、
- * `list-projection-backfill.ts`。会话表在**加载时**就建好仓储与存储驱动,并把设置(`stores/settings.ts`)、
- * 应用状态(`stores/app-state.ts`)与日志的导出取进模块级的选项对象;另四只静态依赖它。它们一进入口,每个
- * import 入口的模块都会在加载时带上这棵树 —— 实测 25 份只 mock 了存储 / 应用状态 / 日志一部分的测试因此加载
- * 失败。所以外面暂时直接引用这五只文件(功能入口棘轮照数),下一笔 B 把会话表模块级的那几处取值改成用时再取,
- * 让它加载时不碰设置与应用状态,然后把这五只收进入口、收掉这批临时的深层引用。
  */
 export * from './branching.js'
 export * from './history-messages.js'
@@ -99,6 +91,79 @@ export { createSessionCommands, sessionCommands } from './session-commands.js'
 export type { SessionCommands } from './session-commands.js'
 export { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from './trace-reads.js'
 export type { ReadSessionTraceOptions } from './trace-reads.js'
+
+// ── 会话表、会话组合根与三只挂在会话表上的件(包根归位 B,2026-10-03 进入口)。会话表从前在加载时就建仓储、
+// 读存储 / 应用状态 / 设置的导出,所以这五只一度不进入口;改成首次用到时才建以后(见 `session-store.ts` 那段说明),
+// import 入口不再读设置、不再建仓储。外面真在用的名字逐个列出。
+//
+// `landSessionAccountUsage` 在本目录有三份,签名各不相同:入口用这个名字交出的是 `store-helpers.ts` 那份(就地改一个
+// 会话对象);会话表那份(按 id 把一份用量快照落进会话表)以 `landSessionAccountUsageInStore` 交出,`usage.ts` 那份
+// (按 id 从会话账折叠取快照、再落进会话表)以 `landSessionAccountUsageFromAccount` 交出。
+export {
+  addMessageContentPart,
+  addMessageStep,
+  countSessionsInWorkspace,
+  createBranchSession,
+  createSession,
+  createSessionWithoutFocus,
+  deleteSession,
+  findSessionIndexMeta,
+  flushAllPendingSaves,
+  flushSessionSave,
+  getSession,
+  getSessionCacheStats,
+  getSessionDetails,
+  getSessionMessages,
+  getSessionMessagesPage,
+  getSessionTokenUsage,
+  getSessionUserMessageMarkers,
+  getSessions,
+  getSessionsList,
+  inheritSessionWorkingDirectory,
+  initializeSessionRepositoryIndex,
+  invalidateSessionCache,
+  onSessionIndexChanged,
+  onSessionsDeleted,
+  patchSessionFields,
+  renameSession,
+  resolveSessionSpaceId,
+  updateMessageContent,
+  updateMessageContentParts,
+  updateMessageError,
+  updateMessageReasoning,
+  updateMessageSkill,
+  updateMessageStep,
+  updateMessageSteps,
+  updateMessageStreaming,
+  updateMessageThinkingTime,
+  updateMessageToolCalls,
+  updateMessageTurnContext,
+  updateMessageUsage,
+  updateSessionAgent,
+  updateSessionArchived,
+  updateSessionCollab,
+  updateSessionContextSize,
+  updateSessionGoal,
+  updateSessionGoals,
+  updateSessionModel,
+  updateSessionPermissionMode,
+  updateSessionPin,
+  updateSessionPromptContext,
+  updateSessionSummary,
+  updateSessionTask,
+  updateSessionTokenUsage,
+  updateSessionVariables,
+  updateSessionWorkingDirectory,
+  updateSessionWorkingDirectoryRoots,
+  updateSessionsIndexMetaForCommands,
+  updateStepsUsageByTurn,
+  landSessionAccountUsage as landSessionAccountUsageInStore,
+} from './session-store.js'
+export { createSessionLayer, ensureSessionWritable, getSessionManager } from './session-layer.js'
+export type { SessionLayer } from './session-layer.js'
+export { landSessionAccountUsage as landSessionAccountUsageFromAccount, updateSessionUsage } from './usage.js'
+export { createSessionMemoryHolders } from './memory.js'
+export { scheduleSessionListProjectionBackfillOnStartup } from './list-projection-backfill.js'
 
 // ── 以下原是 `session-primitives.ts`(会话内核的出口),2026-10-03 并入 ─────────────────
 export { Session } from './session.js'

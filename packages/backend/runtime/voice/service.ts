@@ -26,7 +26,7 @@ import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-lay
 import { getCurrentSessionId } from '@onething/backend/stores/app-state.js'
 import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'
 import { agentExists } from '../agents/agent-store-access.js'
-import { updateSessionAgent } from '../sessions/session-store.js'
+import { updateSessionAgent } from '@onething/backend/runtime/sessions'
 import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/runtime/sessions'
 import { getVoiceInputConfigurationError, streamSynthesizeSpeech, transcribeUtterance } from './provider-calls.js'
 import {

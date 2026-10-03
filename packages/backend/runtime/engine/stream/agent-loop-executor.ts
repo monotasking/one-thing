@@ -1,7 +1,7 @@
 import * as store from "@onething/backend/store.js";
 import { sessionCommands } from "@onething/backend/runtime/sessions";
 import { sessionReads } from "@onething/backend/runtime/sessions";
-import { ensureSessionWritable } from "../../sessions/session-layer.js";
+import { ensureSessionWritable } from "@onething/backend/runtime/sessions";
 import { synthesizeCoreToolAnchors } from "@shared/session/render-anchors";
 import {
 	endSessionRun,
@@ -45,7 +45,7 @@ import { resolveAgentProfileForSession } from "@onething/backend/runtime/agents/
 import { saveMediaImage } from "@onething/backend/runtime/media/save-image";
 import { applyOnethingAgentLoopProviderData } from "@onething/backend/runtime/agent-loop/providers";
 import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/backend/runtime/agent-loop/providers/provider-data";
-import { updateSessionUsage } from "../../sessions/usage.js";
+import { updateSessionUsage } from "@onething/backend/runtime/sessions";
 import { recordUsage, usageAttributionOf } from "@onething/backend/runtime/usage/usage-recorder";
 import { triggerManager } from "../triggers/index.js";
 import { runAfterAssistantResponseHooks } from "@onething/backend/runtime/plugins/lifecycle-hooks";

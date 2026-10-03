@@ -27,7 +27,7 @@ import {
 import {
   getSessionManager,
   ensureSessionWritable,
-} from '../sessions/session-layer.js'
+} from '@onething/backend/runtime/sessions'
 import * as store from '@onething/backend/store.js'
 import {
   OutboundReplyDispatcher,

@@ -7,7 +7,7 @@
  */
 
 import * as store from '@onething/backend/store.js'
-import { landSessionAccountUsage } from '../sessions/usage.js'
+import { landSessionAccountUsageFromAccount } from '@onething/backend/runtime/sessions'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
 import type { StreamContext } from '@onething/backend/runtime/engine/stream/stream-processor'
@@ -77,7 +77,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
     // 这里只在原落点时刻把账落格;账落不下来(没记账的泳道)才回落老写者,
     // 行为逐字如旧。
     updateSessionContextSize: (targetSessionId, contextSize) => {
-      if (landSessionAccountUsage(targetSessionId)) return
+      if (landSessionAccountUsageFromAccount(targetSessionId)) return
       store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish')
     },
     /*

@@ -42,7 +42,7 @@ import { imagePreviewRegistry } from '@onething/backend/runtime/media/image-prev
 import { mediaLibraryService } from '@onething/backend/runtime/media/library-service-bound'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { MediaRoutes } from '@shared/ipc/media.js'
-import { getSession, getSessionsList } from '../../runtime/sessions/session-store.js'
+import { getSession, getSessionsList } from '@onething/backend/runtime/sessions'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '@onething/backend/runtime/sessions'
 import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '@onething/backend/runtime/media/access'
 import { resolveMediaFileByName } from '@onething/backend/runtime/media/resolve-file'

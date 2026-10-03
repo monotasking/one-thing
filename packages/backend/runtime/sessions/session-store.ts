@@ -61,17 +61,13 @@ import { assertPortFactIsFolded } from './port-fact-assert.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { HybridSessionStorageDriverOptions } from './storage-driver.js'
 import type {
+  OnethingSessionRepository,
   OnethingSessionRepositoryOptions,
   OnethingSessionRepositoryLogger,
   SessionCreateOptions,
   SessionInitialOwner,
 } from './session-repository.js'
-import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-
-const log = getLogger('sessions')
-/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-const consoleLog: ConsoleLikePort & OnethingSessionRepositoryLogger = consolePort(log)
-
+import type { ConsoleLikePort, Logger } from '@onething/backend/runtime/logging'
 
 export {
 	deriveRetainedContextSize,
@@ -89,56 +85,93 @@ export {
 const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
 	writeJsonFileAsync(filePath, data, { pretty: false });
 
-const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
-	getSessionsDir: getOnethingSessionsDir,
-	getLegacySessionPath: getOnethingSessionPath,
-	// flag 只决定"新建会话"的格式(也是惰性迁移的开关);已有会话跟随盘上格式,
-	// settings.storage.sessionFormat 设为 legacy-json 即回滚
-	newSessionFormat: () => getSettings().storage?.sessionFormat ?? "jsonl",
-	readJsonFile,
-	writeJsonFileAsync: writeSessionJsonFileAsync,
-	deleteJsonFile,
-	logger: consoleLog,
-};
-const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>(hybridSessionStorageDriverOptions);
+/*
+ * ── 会话表在**首次用到时**才建(包根归位 B,2026-10-03) ─────────────────────────────
+ *
+ * 这只模块从前在加载时就把日志、存储驱动与仓储建好,并把存储、应用状态与设置那几只模块的导出读进模块级的
+ * 选项对象;于是任何 import 它的模块(今天包括会话入口 `index.ts`)在加载时都要带上那几只模块,且它们必须
+ * 交出这些名字 —— 只 mock 了其中一部分的测试一 import 就失败。现在三样东西都放进 `sessionTable` 这只持有器,
+ * 第一次有人要时才建,之后一直用同一份。这样做与从前**逐项等价**:
+ *
+ *  1. 选项对象里放的都是 import 进来的函数本身(`getOnethingSessionsDir`、`readJsonFile`、`getCurrentSessionId` ……)
+ *     与一个常量(`DEFAULT_AGENT_ID`)。ES 模块的 import 绑定在各自模块里从不被重新赋值,所以第一次用时读到的
+ *     与加载时读到的是同一个函数对象。
+ *  2. 读设置的两处(`newSessionFormat`、`getDefaultWorkingDirectory`)本来就包在箭头函数里、每次调用时现取,
+ *     从来不是加载时的快照;这里原样搬进来,语义不变。
+ *  3. `createHybridSessionStorageDriver` 与 `createOnethingSessionRepository` 的构造只建内存里的 Map / LRU /
+ *     节流写队列(队列的计时器在第一次排写时才起),不读盘、不读设置;早建晚建,建出来的状态相同。
+ *  4. `getLogger('sessions')` 按命名空间记忆化(`LoggerRoot.logger`),晚取拿到的是同一个 logger 对象。
+ *
+ * 不挪进 `createOnethingBackend` 的装配步骤:这些函数被几十处当自由函数直接调用(装配中途的
+ * `initializeStores()`、RPC 域、server 门面),挂到装配产物上会把「装配前也能用」变成「装配前抛错」。
+ * 持有器是 `const`(装配硬闸只禁模块级 `let`),它装的是缓存而不是装配期状态。
+ */
+type SessionTableRepository = OnethingSessionRepository<ChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker>
+const sessionTable: { log?: Logger; repository?: SessionTableRepository } = {}
 
-const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker> = {
-	defaultAgentId: DEFAULT_AGENT_ID,
-	getSessionsDir: getOnethingSessionsDir,
-	getSessionPath: getOnethingSessionPath,
-	readJsonFile,
-	writeJsonFile,
-	writeJsonFileAsync: writeSessionJsonFileAsync,
-	deleteJsonFile,
-	storageDriver: sessionStorageDriver,
-	deleteSessionsDurably: async ids => {
-		const recovery = getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery
-		const intent = recovery.prepare(ids)
-		await recovery.commit(intent)
-	},
-	isSessionDeleted: (id, generation) =>
-		getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery.isDeleted(id, generation),
-	// S3w-1:冷加载补水源。F4-a 起**无条件**走投影(档位 `ONETHING_SESSION_HYDRATE`
-	// 已退役);返回 undefined = 这条会话的事件里折不出历史,仓库照旧自己加载。
-	hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
-	// F4-c c4-d(§16.27):**物化视图** —— 每次交出会话时,消息那一格从折叠产物取。
-	// 这一口装上之后,内存 store 的消息数组只有一个维护者(折叠产物),18 个热写
-	// 端口整批空转;返回 undefined = 这条会话没有可用的折叠产物,保留仓库那一份。
-	materializeMessagesFromProjection: materializeSessionMessages,
-	getCurrentSessionId,
-	setCurrentSessionId,
-	getDefaultWorkingDirectory: () =>
-		getSettings().tools?.bash?.defaultWorkingDirectory,
-	expandPath,
-	logger: consoleLog,
-};
-const sessionRepository = createOnethingSessionRepository<
-	ChatSession,
-	ChatMessage,
-	SessionMeta,
-	SessionDetails,
-	UserMessageMarker
->(sessionRepositoryOptions);
+function log(): Logger {
+	return (sessionTable.log ??= getLogger('sessions'))
+}
+
+function sessionRepository(): SessionTableRepository {
+	return (sessionTable.repository ??= createSessionTableRepository())
+}
+
+function createSessionTableRepository(): SessionTableRepository {
+	/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+	const consoleLog: ConsoleLikePort & OnethingSessionRepositoryLogger = consolePort(log())
+	const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
+		getSessionsDir: getOnethingSessionsDir,
+		getLegacySessionPath: getOnethingSessionPath,
+		// flag 只决定"新建会话"的格式(也是惰性迁移的开关);已有会话跟随盘上格式,
+		// settings.storage.sessionFormat 设为 legacy-json 即回滚
+		newSessionFormat: () => getSettings().storage?.sessionFormat ?? "jsonl",
+		readJsonFile,
+		writeJsonFileAsync: writeSessionJsonFileAsync,
+		deleteJsonFile,
+		logger: consoleLog,
+	};
+	const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>(hybridSessionStorageDriverOptions);
+
+	const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker> = {
+		defaultAgentId: DEFAULT_AGENT_ID,
+		getSessionsDir: getOnethingSessionsDir,
+		getSessionPath: getOnethingSessionPath,
+		readJsonFile,
+		writeJsonFile,
+		writeJsonFileAsync: writeSessionJsonFileAsync,
+		deleteJsonFile,
+		storageDriver: sessionStorageDriver,
+		deleteSessionsDurably: async ids => {
+			const recovery = getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery
+			const intent = recovery.prepare(ids)
+			await recovery.commit(intent)
+		},
+		isSessionDeleted: (id, generation) =>
+			getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery.isDeleted(id, generation),
+		// S3w-1:冷加载补水源。F4-a 起**无条件**走投影(档位 `ONETHING_SESSION_HYDRATE`
+		// 已退役);返回 undefined = 这条会话的事件里折不出历史,仓库照旧自己加载。
+		hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
+		// F4-c c4-d(§16.27):**物化视图** —— 每次交出会话时,消息那一格从折叠产物取。
+		// 这一口装上之后,内存 store 的消息数组只有一个维护者(折叠产物),18 个热写
+		// 端口整批空转;返回 undefined = 这条会话没有可用的折叠产物,保留仓库那一份。
+		materializeMessagesFromProjection: materializeSessionMessages,
+		getCurrentSessionId,
+		setCurrentSessionId,
+		getDefaultWorkingDirectory: () =>
+			getSettings().tools?.bash?.defaultWorkingDirectory,
+		expandPath,
+		logger: consoleLog,
+	};
+	return createOnethingSessionRepository<
+		ChatSession,
+		ChatMessage,
+		SessionMeta,
+		SessionDetails,
+		UserMessageMarker
+	>(sessionRepositoryOptions);
+}
+
 
 /* ── 会话索引:写点通知 + 按 id 的视图(批 A) ───────────────────────────────
  *
@@ -175,7 +208,7 @@ function notifySessionIndexChanged(sessionId: string | undefined): void {
 		try {
 			listener(sessionId);
 		} catch (error) {
-			log.error("session index listener failed", { sessionId }, error);
+			log().error("session index listener failed", { sessionId }, error);
 		}
 	}
 }
@@ -212,7 +245,7 @@ export function findSessionIndexMeta(
 	const fingerprint = sessionsIndexFingerprint();
 	if (fingerprint !== sessionIndexFingerprint.value || sessionIndexById.size === 0) {
 		sessionIndexById.clear();
-		for (const meta of sessionRepository.getSessionsList()) {
+		for (const meta of sessionRepository().getSessionsList()) {
 			sessionIndexById.set(meta.id, meta);
 		}
 		sessionIndexFingerprint.value = fingerprint;
@@ -224,7 +257,7 @@ function updateSessionsIndexMeta(
 	sessionId: string,
 	update: (meta: SessionMeta) => void,
 ): boolean {
-	const applied = sessionRepository.updateSessionsIndexMeta(sessionId, update);
+	const applied = sessionRepository().updateSessionsIndexMeta(sessionId, update);
 	notifySessionIndexChanged(sessionId);
 	return applied;
 }
@@ -234,14 +267,14 @@ function updateSessionsIndexMeta(
  * 用于 stream 结束、session 删除前等关键点。
  */
 export async function flushSessionSave(sessionId: string): Promise<void> {
-	await sessionRepository.flushSessionSave(sessionId);
+	await sessionRepository().flushSessionSave(sessionId);
 }
 
 /**
  * 应用退出前调用,刷完所有挂起的异步写入。
  */
 export async function flushAllPendingSaves(): Promise<void> {
-	await sessionRepository.flushAllPendingSaves();
+	await sessionRepository().flushAllPendingSaves();
 }
 
 /**
@@ -249,7 +282,7 @@ export async function flushAllPendingSaves(): Promise<void> {
  * 默认节流异步,finalize/delete 等关键路径可调 flushSessionSave 强刷
  */
 function saveSessionToFile(sessionId: string, session: ChatSession): void {
-	sessionRepository.saveSessionToFile(sessionId, session);
+	sessionRepository().saveSessionToFile(sessionId, session);
 }
 
 /**
@@ -264,7 +297,7 @@ export function patchSessionFields(
 	patch: Partial<ChatSession>,
 	mutateIndexMeta?: (meta: SessionMeta, session: ChatSession) => void,
 ): boolean {
-	const applied = sessionRepository.patchSession(sessionId, patch, mutateIndexMeta);
+	const applied = sessionRepository().patchSession(sessionId, patch, mutateIndexMeta);
 	// 归属盖章(server 的 `stampOwner` → `save`)走的就是这一口,所以它也是索引写点。
 	notifySessionIndexChanged(sessionId);
 	return applied;
@@ -274,14 +307,14 @@ export function patchSessionFields(
  * 失效单个 session 缓存
  */
 export function invalidateSessionCache(sessionId: string): void {
-	sessionRepository.invalidateSessionCache(sessionId);
+	sessionRepository().invalidateSessionCache(sessionId);
 }
 
 /**
  * 清空所有缓存（应用重启时可能需要）
  */
 export function clearAllSessionCache(): void {
-	sessionRepository.clearAllSessionCache();
+	sessionRepository().clearAllSessionCache();
 }
 
 /**
@@ -292,7 +325,7 @@ export function releaseIdleCachedSessions(options: {
 	idleMs: number;
 	isProtected?(sessionId: string, session: ChatSession): boolean;
 }): string[] {
-	return sessionRepository.releaseIdleCachedSessions(options);
+	return sessionRepository().releaseIdleCachedSessions(options);
 }
 
 /**
@@ -303,17 +336,17 @@ export function getSessionCacheStats(): {
 	maxSize: number;
 	cachedSessionIds: string[];
 } {
-	return sessionRepository.getSessionCacheStats();
+	return sessionRepository().getSessionCacheStats();
 }
 
 // Load sessions index (metadata only)
 function loadSessionsIndex(): SessionMeta[] {
-	return sessionRepository.loadSessionsIndex();
+	return sessionRepository().loadSessionsIndex();
 }
 
 // Save sessions index
 function saveSessionsIndex(index: SessionMeta[]): void {
-	sessionRepository.saveSessionsIndex(index);
+	sessionRepository().saveSessionsIndex(index);
 	// 整份换掉 = 每一条都可能动过归属,按会话报不出来 —— 发 `undefined`(契约见
 	// `onSessionIndexChanged`),听者整本作废。
 	notifySessionIndexChanged(undefined);
@@ -321,7 +354,7 @@ function saveSessionsIndex(index: SessionMeta[]): void {
 
 // Get all sessions with full data (legacy, for backward compatibility)
 export function getSessions(): ChatSession[] {
-	return sessionRepository.getSessions();
+	return sessionRepository().getSessions();
 }
 
 // ============================================================================
@@ -368,7 +401,7 @@ function ensureWorkdirBackfill(metas: SessionMeta[]): void {
  * This is the optimized version for fast startup
  */
 export function getSessionsList(): SessionMeta[] {
-	const metas = sessionRepository.getSessionsList();
+	const metas = sessionRepository().getSessionsList();
 	ensureWorkdirBackfill(metas);
 	return metas.map((meta) => {
 		const workingDirectory = sessionWorkdirCache.get(meta.id);
@@ -377,7 +410,7 @@ export function getSessionsList(): SessionMeta[] {
 }
 
 export function initializeSessionRepositoryIndex(): void {
-	sessionRepository.initializeSessionRepositoryIndex();
+	sessionRepository().initializeSessionRepositoryIndex();
 }
 
 /**
@@ -387,7 +420,7 @@ export function initializeSessionRepositoryIndex(): void {
 export function getSessionDetails(
 	sessionId: string,
 ): SessionDetails | undefined {
-	return sessionRepository.getSessionDetails(sessionId);
+	return sessionRepository().getSessionDetails(sessionId);
 }
 
 /**
@@ -397,7 +430,7 @@ export function getSessionDetails(
 export function getSessionMessages(
 	sessionId: string,
 ): ChatMessage[] | undefined {
-	return guardFrozenMessages(sessionRepository.getSessionMessages(sessionId));
+	return guardFrozenMessages(sessionRepository().getSessionMessages(sessionId));
 }
 
 /**
@@ -410,7 +443,7 @@ export function getSessionMessages(
 export function getSessionMessagesPage(
 	request: GetSessionMessagesPageRequest,
 ): GetSessionMessagesPageResponse {
-	return sessionRepository.getSessionMessagesPage(
+	return sessionRepository().getSessionMessagesPage(
 		request,
 	) as GetSessionMessagesPageResponse;
 }
@@ -418,7 +451,7 @@ export function getSessionMessagesPage(
 export function getSessionUserMessageMarkers(
 	sessionId: string,
 ): UserMessageMarker[] | undefined {
-	return sessionRepository.getSessionUserMessageMarkers(sessionId);
+	return sessionRepository().getSessionUserMessageMarkers(sessionId);
 }
 
 /**
@@ -426,14 +459,14 @@ export function getSessionUserMessageMarkers(
  * Use for bulk read-only operations like search that scan many sessions.
  */
 export function getSessionRaw(sessionId: string): ChatSession | undefined {
-	return sessionRepository.getSessionRaw(sessionId);
+	return sessionRepository().getSessionRaw(sessionId);
 }
 
 // Get a single session by ID
 export function getSession(sessionId: string): ChatSession | undefined {
 	// 开发期深冻结(docs/design/session-commands-p0-2026-08.md §1):交出去的消息
 	// 对象冻住,漏网的就地改当场抛 TypeError。实现在 `app/session/freeze.ts`。
-	return guardFrozenSessionMessages(sessionRepository.getSession(sessionId));
+	return guardFrozenSessionMessages(sessionRepository().getSession(sessionId));
 }
 
 // Create a new session
@@ -444,7 +477,7 @@ export function createSession(
 ): ChatSession {
 	sessionDeletion.reopen(sessionId)
 	return recordSessionCreated(
-		sessionRepository.createSession(sessionId, name, options),
+		sessionRepository().createSession(sessionId, name, options),
 	);
 }
 
@@ -484,7 +517,7 @@ export function resolveSessionSpaceId(sessionId: string | undefined | null): str
 export function countSessionsInWorkspace(workspaceId: string): number {
 	const target = workspaceId || DEFAULT_WORKSPACE_ID;
 	let count = 0;
-	for (const meta of sessionRepository.getSessionsList()) {
+	for (const meta of sessionRepository().getSessionsList()) {
 		if ((meta.workspaceId || DEFAULT_WORKSPACE_ID) === target) count++;
 	}
 	return count;
@@ -510,7 +543,7 @@ export function createSessionWithoutFocus(
 	sessionDeletion.reopen(sessionId)
 	const previousSessionId = getCurrentSessionId();
 	const session = recordSessionCreated(
-		sessionRepository.createSession(sessionId, name, options),
+		sessionRepository().createSession(sessionId, name, options),
 	);
 	if (previousSessionId !== sessionId) setCurrentSessionId(previousSessionId);
 	return session;
@@ -528,7 +561,7 @@ export function updateSessionCollab(
 		collab?: ChatSession["collab"] | null;
 	},
 ): boolean {
-	return sessionRepository.updateSessionCollab(sessionId, fields);
+	return sessionRepository().updateSessionCollab(sessionId, fields);
 }
 
 /**
@@ -539,7 +572,7 @@ export function updateSessionTask(
 	sessionId: string,
 	task: ChatSession["task"] | null,
 ): boolean {
-	return sessionRepository.updateSessionTask(sessionId, task);
+	return sessionRepository().updateSessionTask(sessionId, task);
 }
 
 // Create a branch session
@@ -552,7 +585,7 @@ export function createBranchSession(
 	options: { initialOwner?: SessionInitialOwner } = {},
 ): ChatSession {
 	sessionDeletion.reopen(sessionId)
-	return sessionRepository.createBranchSession(
+	return sessionRepository().createBranchSession(
 		sessionId,
 		name,
 		parentSessionId,
@@ -599,17 +632,17 @@ function announceSessionsDeleted(cascadedSessionIds: string[], owners: Map<strin
 				cascadedSessionIds,
 			}, owners.get(deletedId) as SessionOwnershipRecord ?? {})
 			void getEventBus().emit(deletedId, event as never).catch(error => {
-				log.warn('session deleted event delivery failed', { sessionId: deletedId }, error)
+				log().warn('session deleted event delivery failed', { sessionId: deletedId }, error)
 			})
 		}
 	} catch (error) {
-		log.warn("session deleted event not emitted", { cascadedSessionIds }, error);
+		log().warn("session deleted event not emitted", { cascadedSessionIds }, error);
 	}
 }
 
 // Called only after the session layer seals all authorized writers.
 export async function deleteSession(sessionId: string, expectedIds: readonly string[]): Promise<DeleteSessionResult> {
-	const index = sessionRepository.getSessionsList()
+	const index = sessionRepository().getSessionsList()
 	const ids = collectSessionCascadeDeleteIds(index, sessionId)
 	if (ids.length !== expectedIds.length || ids.some(id => !expectedIds.includes(id))) {
 		throw new Error('Session deletion targets changed')
@@ -617,7 +650,7 @@ export async function deleteSession(sessionId: string, expectedIds: readonly str
 	sessionDeletion.assertSealed(ids)
 	assertSessionEventLogIdle(ids)
 	const owners = new Map(index.filter(meta => ids.includes(meta.id)).map(meta => [meta.id, { ...meta }]))
-	const result = await sessionRepository.deleteSession(sessionId);
+	const result = await sessionRepository().deleteSession(sessionId);
 	// 会话目录整棵被 `rmSync(recursive)` 掉(events.jsonl 与 blobs/ 都在里面),
 	// 所以这里只需要把进程内那三张表跟着摘掉 —— 留着的话,同 id 的新会话会接着
 	// 旧的 seq 数下去,而盘上那份已经没了。
@@ -633,7 +666,7 @@ export async function deleteSession(sessionId: string, expectedIds: readonly str
 		try {
 			listener(result.deletedIds);
 		} catch (error) {
-			log.error("session delete listener failed", { deletedIds: result.deletedIds }, error);
+			log().error("session delete listener failed", { deletedIds: result.deletedIds }, error);
 		}
 	}
 	announceSessionsDeleted(result.deletedIds, owners)
@@ -656,15 +689,15 @@ export async function deleteSession(sessionId: string, expectedIds: readonly str
 // `titleSource`(ACP A2-b):显式改名的入口递 `'user'`,自动起题的递 `'auto'`,名字与来源同一趟
 // 落进 meta.json(一次元数据写,不是两次)。不递 = 旧行为,只改名、不动来源那一格。
 export function renameSession(sessionId: string, newName: string, titleSource?: SessionTitleSource): boolean {
-	if (!titleSource) return sessionRepository.renameSession(sessionId, newName);
-	return sessionRepository.patchSession(sessionId, { name: newName, titleSource }, meta => {
+	if (!titleSource) return sessionRepository().renameSession(sessionId, newName);
+	return sessionRepository().patchSession(sessionId, { name: newName, titleSource }, meta => {
 		meta.name = newName;
 	});
 }
 
 // Update session pin status (does not affect sort order)
 export function updateSessionPin(sessionId: string, isPinned: boolean): void {
-	sessionRepository.updateSessionPin(sessionId, isPinned);
+	sessionRepository().updateSessionPin(sessionId, isPinned);
 }
 
 // Update session archived status (does not affect sort order)
@@ -673,7 +706,7 @@ export function updateSessionArchived(
 	isArchived: boolean,
 	archivedAt?: number | null,
 ): void {
-	sessionRepository.updateSessionArchived(sessionId, isArchived, archivedAt);
+	sessionRepository().updateSessionArchived(sessionId, isArchived, archivedAt);
 }
 
 // Update session working directory (does not affect sort order)
@@ -681,7 +714,7 @@ export function updateSessionPermissionMode(
 	sessionId: string,
 	permissionMode: ChatSession["permissionMode"],
 ): boolean {
-	return sessionRepository.updateSessionPermissionMode(
+	return sessionRepository().updateSessionPermissionMode(
 		sessionId,
 		permissionMode,
 	);
@@ -691,7 +724,7 @@ export function updateSessionWorkingDirectory(
 	sessionId: string,
 	workingDirectory: string | null,
 ): void {
-	sessionRepository.updateSessionWorkingDirectory(sessionId, workingDirectory);
+	sessionRepository().updateSessionWorkingDirectory(sessionId, workingDirectory);
 	sessionWorkdirCache.set(sessionId, workingDirectory ?? "");
 }
 
@@ -699,19 +732,19 @@ export function updateSessionWorkingDirectoryRoots(
 	sessionId: string,
 	roots: string[],
 ): void {
-	sessionRepository.updateSessionWorkingDirectoryRoots(sessionId, roots);
+	sessionRepository().updateSessionWorkingDirectoryRoots(sessionId, roots);
 }
 
 export function updateSessionVariables(
 	sessionId: string,
 	variables: ContextVariable[],
 ): void {
-	sessionRepository.updateSessionVariables(sessionId, variables);
+	sessionRepository().updateSessionVariables(sessionId, variables);
 }
 
 // Update session goal (does not affect sort order); null clears it
 export function updateSessionGoal(sessionId: string, goal: SessionGoal | null): void {
-	sessionRepository.updateSessionGoal(sessionId, goal);
+	sessionRepository().updateSessionGoal(sessionId, goal);
 }
 
 // Write the goal history plus its derived current goal (see goal-system-v3)
@@ -720,7 +753,7 @@ export function updateSessionGoals(
 	goals: SessionGoal[],
 	current: SessionGoal | null,
 ): void {
-	sessionRepository.updateSessionGoals(sessionId, goals, current);
+	sessionRepository().updateSessionGoals(sessionId, goals, current);
 }
 
 // Inherit working directory from workspace (does not update updatedAt)
@@ -728,7 +761,7 @@ export function inheritSessionWorkingDirectory(
 	sessionId: string,
 	workingDirectory: string,
 ): void {
-	sessionRepository.inheritSessionWorkingDirectory(sessionId, workingDirectory);
+	sessionRepository().inheritSessionWorkingDirectory(sessionId, workingDirectory);
 	sessionWorkdirCache.set(sessionId, workingDirectory);
 }
 
@@ -749,7 +782,7 @@ function sessionTokenUsageSnapshot(sessionId: string): {
 	// 工单 6 ②a:五格住在会话壳上,**问壳不问消息**。走 `getSession()` 的那个版本
 	// 为了这五个数把整份账本读两遍、折一遍、把 400 条消息物化一遍(真店夹具
 	// 53MB 上 835ms),而 core 是单线程的 —— 首屏那一页就排在它后面。
-	const usage = sessionRepository.getSessionUsageFields(sessionId);
+	const usage = sessionRepository().getSessionUsageFields(sessionId);
 	return usage ? getSessionTokenUsageSnapshot(usage) : null;
 }
 
@@ -760,9 +793,9 @@ export function updateSessionTokenUsage(
 	lastTurnUsage?: { inputTokens: number; outputTokens: number },
 ): void {
 	const before = sessionTokenUsageSnapshot(sessionId);
-	sessionRepository.updateSessionTokenUsage(sessionId, usage, lastTurnUsage);
+	sessionRepository().updateSessionTokenUsage(sessionId, usage, lastTurnUsage);
 	const after = sessionTokenUsageSnapshot(sessionId);
-	log.debug("session token usage updated", {
+	log().debug("session token usage updated", {
 		sessionId,
 		source: "stream-final-usage",
 		usageInputTokens: usage.inputTokens,
@@ -792,7 +825,7 @@ export function landSessionAccountUsage(
     lastInputTokens?: number
   },
 ): boolean {
-  return sessionRepository.landSessionAccountUsage(sessionId, snapshot);
+  return sessionRepository().landSessionAccountUsage(sessionId, snapshot);
 }
 
 export function updateSessionContextSize(
@@ -801,12 +834,12 @@ export function updateSessionContextSize(
 	source = "direct",
 ): boolean {
 	const before = sessionTokenUsageSnapshot(sessionId);
-	const updated = sessionRepository.updateSessionContextSize(
+	const updated = sessionRepository().updateSessionContextSize(
 		sessionId,
 		contextSize,
 	);
 	const after = sessionTokenUsageSnapshot(sessionId);
-	log.debug("session context size updated", {
+	log().debug("session context size updated", {
 		sessionId,
 		source,
 		contextSize,
@@ -823,7 +856,7 @@ export function updateSessionPromptContext(
 	sessionId: string,
 	promptContext: PromptContextState | null,
 ): boolean {
-	return sessionRepository.updateSessionPromptContext(sessionId, promptContext);
+	return sessionRepository().updateSessionPromptContext(sessionId, promptContext);
 }
 
 // Get session token usage
@@ -845,7 +878,7 @@ export function getSessionTokenUsage(sessionId: string): {
  */
 function stampCollabAgentId(sessionId: string, message: ChatMessage): ChatMessage {
 	if (message.role !== "assistant" || message.agentId) return message;
-	const session = sessionRepository.getSession(sessionId);
+	const session = sessionRepository().getSession(sessionId);
 	if (
 		!session ||
 		(session.kind !== "room" &&
@@ -925,7 +958,7 @@ export function updateSessionsIndexMetaForCommands(
 	sessionId: string,
 	update: (meta: { [key: string]: unknown }) => void,
 ): boolean {
-	const applied = sessionRepository.updateSessionsIndexMeta(sessionId, (meta) =>
+	const applied = sessionRepository().updateSessionsIndexMeta(sessionId, (meta) =>
 		update(meta as unknown as { [key: string]: unknown }),
 	);
 	notifySessionIndexChanged(sessionId);
@@ -948,7 +981,7 @@ export function saveSessionForCommands(
 	session: ChatSession,
 	options?: { lazy?: boolean },
 ): void {
-	sessionRepository.saveSessionToFile(sessionId, session, options);
+	sessionRepository().saveSessionToFile(sessionId, session, options);
 }
 
 /**
@@ -998,7 +1031,7 @@ function portTargetExists(sessionId: string, messageId: string): boolean {
 		return eventsHasMessage(sessionId, messageId);
 	}
 	return (
-		sessionRepository
+		sessionRepository()
 			.getSessionMessages(sessionId)
 			?.some((message) => message.id === messageId) ?? false
 	);
@@ -1123,7 +1156,7 @@ export function updateMessageThinkingTime(
 	_thinkingTime: number,
 ): boolean {
 	return (
-		sessionRepository
+		sessionRepository()
 			.getSessionMessages(sessionId)
 			?.some((message) => message.id === messageId) ?? false
 	);
@@ -1251,7 +1284,7 @@ export function updateSessionSummary(
 	summary: string,
 	summaryUpToMessageId: string,
 ): boolean {
-	return sessionRepository.updateSessionSummary(
+	return sessionRepository().updateSessionSummary(
 		sessionId,
 		summary,
 		summaryUpToMessageId,
@@ -1283,7 +1316,7 @@ export function updateSessionModel(
 	const before = getSession(sessionId);
 	const beforeModel = before?.lastModel;
 	const beforeProvider = before?.lastProvider;
-	const changed = sessionRepository.updateSessionModel(sessionId, provider, model, options);
+	const changed = sessionRepository().updateSessionModel(sessionId, provider, model, options);
 	if (!changed) return changed;
 	const after = getSession(sessionId);
 	if (after?.lastModel !== undefined && after.lastModel !== beforeModel) {
@@ -1318,7 +1351,7 @@ export function updateSessionAgent(
 	agentId: string,
 ): boolean {
 	const before = getSession(sessionId)?.agentId;
-	const changed = sessionRepository.updateSessionAgent(sessionId, agentId);
+	const changed = sessionRepository().updateSessionAgent(sessionId, agentId);
 	if (!changed) return false;
 	const after = getSession(sessionId)?.agentId;
 	if (after !== undefined && after !== before) {
