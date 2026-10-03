@@ -49,7 +49,9 @@ vi.mock('@onething/backend/runtime/permissions', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingPermissionGrantStorage: () => { spy.calls.push('permission-grants') },
 }))
-vi.mock('../runtime/providers/provider-table.js', async (importOriginal) => ({
+// providers 收口第二部分:装配处(`engine-chat-facade` 的 `configureAppProviderRegistry`)经服务商入口拿
+// `initializeRegistry`,所以桩打在入口上,不再打在入口背后的 `provider-table.ts`。
+vi.mock('@onething/backend/runtime/providers', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))

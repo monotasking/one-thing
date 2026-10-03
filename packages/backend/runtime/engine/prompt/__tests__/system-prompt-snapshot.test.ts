@@ -120,8 +120,8 @@ vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   modelSupportsTools: mocks.modelSupportsTools,
 }))
 
-vi.mock('../../stream/codex-native-tools.js', () => ({
-  getCodexNativeToolsForConfig: mocks.getCodexNativeToolsForConfig,
+vi.mock('../../stream/engine-native-tools.js', () => ({
+  getNativeProviderToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
 vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({

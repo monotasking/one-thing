@@ -1702,3 +1702,21 @@ server `main.js` 5906493 → 5897802、CLI `main.cjs` 11501297 → 11487749、`d
 `gate:search-index` 前后同红 ⑤c / ⑤d;assembly 前后同红(`music/radio.ts` 9 → 10,与本笔无关);boundary / transport / log / session / gate:native 绿;cycle 0、layer 97 / 53、
 entry 2806 → 2732(基线已收紧,只动 providers 一行 123 → 49)、name 131、provider 109;feature-map 重新生成后一致;`provider:drill` 改前假红、改后直接跑绿;
 CLI `--help` 不写 store;server 单文件包在临时 store 上起得来并 listening;golden 不变。
+
+### providers 收口第二部分落地记录:测试搬家、两个名册声明、入口替身(2026-10-04,未提交)
+
+**一句话**:引擎与自定义方言不再点名任何一家 —— codex 原生工具改成行为名册的可选钩子 `nativeTools`(D46),自定义线的底配方改成方言自述 `Dialect.referenceFor`(D47);
+只测一家的测试搬进 `vendors/<id>/__tests__/`、测好几家的搬进 `providers/__tests__/`(D48);打在 providers 内部文件上的整块工厂替身改打入口、`importOriginal` 展开再覆盖(D49);
+两条边界规则改认「内部门面直取兄弟文件」,入口删掉那十个只为迁就规则而交出的契约类型(D42 修订)。名单与读数在 `provider-entry-2026-10.md` 第 9 节。
+
+**怎么改的**:测试搬家用 `s18/move-tests.mjs`(带 dry 模式;普通 mv,不动索引),只按新位置重算相对说明符;搬进 providers 的测试里对本功能入口的引用改成引兄弟文件,
+kimi-code 那份对 auth 内部三只文件的引用改走 auth 入口。替身合并是一次性的小脚本(每份测试一条入口替身,保留注释)。新文件两只:`providers/provider-native-tools.ts`、
+`engine/stream/engine-native-tools.ts`(替掉 `codex-native-tools.ts`);门的改动只有 `headless-boundary-check.ts` 的两个判据(D42 修订)。
+
+**验收(改前 `s18b-before` = 536123cbf / 改后 `s18b-after`,脚本 `s17-checks.sh` + `s17-extras.sh`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功、
+`dist/web` 零 `node:`;三份 `search-worker.cjs` 逐字节同大(1276211 / 1276211 / 1274675),server `main.js` 5897802 → 5899467、CLI `main.cjs` 11487749 → 11489932、
+`desk/main.cjs` 11462128 → 11464323(多的是新钩子与注释);根全量 vitest 11419 条、21 红,失败集合按搬家映射路径后逐条相同(`thinking-wire` 那条存量红跟着文件搬进 providers);
+壳 7344 / 1 相同;快照文件按内容哈希逐字同、快照测试 154 绿;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 23 绿;`shadow-battery` 前后只差耗时、同红在
+`appendFailures 8`;`hydration-contract` 217 / 0 ×2;`gate:acp` 规整后相同;`gate:search-index` 同红 ⑤c / ⑤d;assembly 同红(`music/radio.ts` 9 → 10,与本笔无关);
+boundary / transport / log / session / gate:native 绿;cycle 0、layer 97 / 53、name 131、provider 109 → 105(基线已收紧)、entry 2732 → 2711(基线已收紧,providers 49 → 19 且非测试 0);
+feature-map 重新生成后一致;`provider:drill` 绿;CLI `--help` 不写 store;server 包在临时 store 上 listening;golden 不变。

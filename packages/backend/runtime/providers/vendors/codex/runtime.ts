@@ -18,6 +18,7 @@ import {
 } from "./models.js";
 import { createOnethingCodexModelsFetcher } from "./models-fetcher.js";
 import { CODEX_CONFIG } from "./oauth.js";
+import { resolveCodexNativeToolsFromModelInfo, shouldResolveCodexNativeTools } from "./native-tools.js";
 import { codexQuotaSource } from "./quota.js";
 
 export const CODEX_RUNTIME: VendorRuntime = {
@@ -36,6 +37,17 @@ export const CODEX_RUNTIME: VendorRuntime = {
 			getConfiguredCodexModelSelection: () => deps.configuredSelection("codex"),
 			logger: deps.logger,
 		}),
+	// 原生工具(订阅登录下的原生出图):与搬家前 `engine/stream/codex-native-tools.ts` 逐字同口径 ——
+	// 先看工具开关、工具能力与 OAuth,都过了才去问目录条目。
+	nativeTools: async (context) =>
+		shouldResolveCodexNativeTools({
+			providerId: "codex",
+			providerConfig: context.providerConfig,
+			toolSettings: context.toolSettings,
+			supportsTools: context.supportsTools,
+		})
+			? resolveCodexNativeToolsFromModelInfo(await context.modelInfo())
+			: [],
 	fallbackModels: {
 		model: (modelId) => getOnethingCodexFallbackModel(modelId),
 		all: () => getOnethingCodexFallbackModels(),

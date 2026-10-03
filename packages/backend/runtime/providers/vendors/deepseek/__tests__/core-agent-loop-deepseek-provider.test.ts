@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createDeepSeekAgentProvider } from '../../providers/vendors/deepseek/agent-provider.js'
+import { createDeepSeekAgentProvider } from '../agent-provider.js'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

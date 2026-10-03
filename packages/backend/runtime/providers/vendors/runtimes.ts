@@ -79,6 +79,28 @@ export interface VendorModelsFetcherDeps {
 	logger?: OnethingModelRegistryRefreshLogger;
 }
 
+/**
+ * 问一家「这一轮要不要挂你自己的原生工具」时交给它的东西(`VendorRuntime.nativeTools`)。
+ * 目录条目按需才取:这家先看开关、工具能力与登录方式,判定要看型号时才去问目录。
+ */
+export interface VendorNativeToolsContext {
+	/** 这一轮的生效配置(只读这几格:型号、登录方式、OAuth 令牌)。 */
+	providerConfig: {
+		model?: string;
+		authContext?: { kind?: string };
+		oauthToken?: { accessToken?: string };
+	};
+	/** 用户的工具总开关。 */
+	toolSettings?: { enableToolCalls?: boolean };
+	/** 这一型支不支持工具调用。 */
+	supportsTools: boolean;
+	/** 这一型的目录条目;调用才去取。 */
+	modelInfo(): Promise<
+		| { providerMetadata?: unknown; architecture?: { input_modalities?: string[] } }
+		| undefined
+	>;
+}
+
 /** 目录里没有时的兜底:`model` 答单个型号,`all` 答「这家的目录整个是空的」时列什么。 */
 export interface VendorFallbackModels {
 	model(modelId: string): OnethingOpenRouterModel | undefined;
@@ -100,6 +122,11 @@ export interface VendorRuntime {
 	createModelsFetcher?(deps: VendorModelsFetcherDeps): OnethingEndpointModelsFetcher;
 	/** 目录里没有这一型 / 整本目录是空的时的兜底行。缺席 = 没有兜底。 */
 	fallbackModels?: VendorFallbackModels;
+	/**
+	 * 这一轮这家要挂的原生工具名(例如订阅登录下的原生出图 `image_generation`)。缺席 = 这家没有原生工具。
+	 * 引擎经 `resolveProviderNativeTools` 按名册问,不认识任何一家。
+	 */
+	nativeTools?(context: VendorNativeToolsContext): Promise<readonly string[]>;
 	/** 缺席 = 这家没有专属工厂,按 manifest 的方言走通用那条路。 */
 	createProvider?(
 		config: AgentProviderRuntimeConfig,

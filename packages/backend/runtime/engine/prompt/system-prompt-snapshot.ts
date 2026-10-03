@@ -24,7 +24,7 @@ import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
 } from '../stream/provider-helpers.js'
-import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
+import { getNativeProviderToolsForConfig } from '../stream/engine-native-tools.js'
 import { resolveToolkitSurface } from '@onething/backend/runtime/toolkit'
 import { toolDefinitionFromToolkitTool } from '@onething/backend/runtime/toolkit/catalog-projection'
 import { resolveOnethingAgentLoopStreamRoute } from '@onething/backend/runtime/agent-loop'
@@ -163,7 +163,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     getMCPToolDefinitions: getMCPToolDefinitionsForModel,
     sourceToolsToModelDefinitions: tools => agentToolDefinitionsFromSourceTools(tools),
     resolveModelSupportsTools: resolveModelSupportsToolsForSnapshot,
-    getNativeProviderTools: getCodexNativeToolsForConfig,
+    getNativeProviderTools: getNativeProviderToolsForConfig,
     buildProjectDirsPromptVars,
     // persona 功能兜底(域模型 §3.3),与 system-prompt.ts 的 host 同一条规则。
     getAgent: (agentId?: string) => findAgent(agentId) ?? defaultAgent(),

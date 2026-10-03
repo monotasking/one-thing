@@ -64,8 +64,9 @@ import {
 	type ResponsesNativeTool,
 } from "../../wires/index.js";
 import { promptCacheKeyExtraBody } from "../../dialects/recipe.js";
+import { registerDialect } from "../../base/dialect.js";
 import {
-	defineResponsesDialect,
+	responsesDialect,
 	type ResponsesDialectSpec,
 } from "../../dialects/responses-recipe.js";
 
@@ -169,4 +170,10 @@ const responsesDialectSpec: ResponsesDialectSpec = {
 	label: "OpenAI Responses",
 	...OPENAI_DIALECT_SPEC,
 };
-export const OPENAI_DIALECT = defineResponsesDialect(responsesDialectSpec);
+// 自定义服务商选 openai-responses 线时以这份配方为底(`referenceFor`,`custom-from-spec.ts` 按线查名册)。
+// 建表 + 登记与 `defineResponsesDialect` 是同两步,只是多声明这一格。
+export const OPENAI_DIALECT = {
+	...responsesDialect(responsesDialectSpec),
+	referenceFor: "openai-responses" as const,
+};
+registerDialect(OPENAI_DIALECT);

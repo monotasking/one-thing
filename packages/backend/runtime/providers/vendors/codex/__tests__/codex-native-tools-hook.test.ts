@@ -1,17 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OAuthToken, OpenRouterModel, ToolSettings } from '@shared/ipc.js'
-import {
-  CODEX_NATIVE_IMAGE_GENERATION_TOOL,
-  getCodexNativeToolsForConfig,
-} from '../codex-native-tools.js'
+import { CODEX_NATIVE_IMAGE_GENERATION_TOOL } from '../native-tools.js'
+import { resolveProviderNativeTools, type ProviderNativeToolsRequest } from '../../../provider-native-tools.js'
 
+// 原生工具判据住进行为名册的 `nativeTools` 钩子以后(providers 收口第二部分),这份测试从
+// `engine/stream/__tests__/codex-native-tools.test.ts` 搬来:引擎从前那只包装把设置里的模型目录服务
+// 绑成「取目录条目」,现在这一格由调用方注入,所以这里直接注入计数桩,不再 mock 设置模块。用例与断言照旧。
 const mocks = vi.hoisted(() => ({
   getModelById: vi.fn<(modelId: string, providerId?: string) => Promise<OpenRouterModel | undefined>>(async () => undefined),
 }))
 
-vi.mock('../../../settings/settings-model-registry-service.js', () => ({
-  getModelById: mocks.getModelById,
-}))
+type NativeToolsOptions = Omit<ProviderNativeToolsRequest, 'getModelInfo' | 'providerConfig'> & {
+  providerConfig: { model?: string; authContext?: { kind?: string } & Record<string, unknown>; oauthToken?: OAuthToken }
+}
+
+function getCodexNativeToolsForConfig(options: NativeToolsOptions): Promise<string[]> {
+  return resolveProviderNativeTools({ ...options, getModelInfo: mocks.getModelById })
+}
 
 const enabledTools: ToolSettings = {
   enableToolCalls: true,

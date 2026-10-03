@@ -46,29 +46,33 @@ import {
 	type UsageNormalizer,
 	type UsagePathTable,
 } from "../base/index.js";
+import { referenceDialectFor } from "../base/dialect.js";
 import { encodeCustomReasoning } from "../thinking/custom-reasoning.js";
 import { openAIEffortWire } from "../thinking/index.js";
 import { openAIChatUsage } from "../wires/index.js";
 import { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
-// gemini-generateContent 这条线今天没有协议层的通用配方:自定义服务商的 gemini 适配表以官方
-// `gemini` 那一家的配方为底(搬回家后住 `vendors/gemini/dialect.ts`,P2 第 2 批)。
-import { GEMINI_DIALECT } from "../vendors/gemini/dialect.js";
-// openai-responses 这条线同理:自定义服务商的 Responses 适配表以官方 `openai` 那一家的配方为底
-// (搬回家后住 `vendors/openai/dialect.ts`,P2 第 4 批)。
-import { OPENAI_DIALECT } from "../vendors/openai/dialect.js";
 import { openAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
 import { customAdapterDialectId } from "../manifest.js";
 
 /** 适配表编译出来的方言 id —— 约定住在 manifest(那一侧也要认它),这里转一手。 */
 export { customAdapterDialectId, isCustomAdapterDialectOf } from "../manifest.js";
 
-/** 这条线编译时以哪份配方为底(也是「应用」时写进表单的「接口类型」)。 */
-export const CUSTOM_ADAPTER_BASE_DIALECT: Record<CustomAdapterSpec["wire"], string> = {
-	"openai-chat": "custom-openai",
-	"openai-responses": "openai",
-	"anthropic-messages": "custom-anthropic",
-	"gemini-generateContent": "gemini",
-};
+/**
+ * 这条线编译时以哪份配方为底(也是「应用」时写进表单的「接口类型」)。openai-chat 与 anthropic-messages 有协议层的
+ * 通用配方;另外两条线以名册里声明自己是这条线参考配方的那一份为底(`Dialect.referenceFor`,今天答出来仍是
+ * 官方 openai / gemini 两家的方言 id,与从前那张四格表逐格同值)。
+ */
+export function customAdapterBaseDialectId(wire: CustomAdapterSpec["wire"]): string {
+	switch (wire) {
+		case "openai-chat":
+			return "custom-openai";
+		case "anthropic-messages":
+			return CUSTOM_ANTHROPIC_DIALECT.id;
+		case "openai-responses":
+		case "gemini-generateContent":
+			return referenceDialectOf(wire).id;
+	}
+}
 
 function nonDefault(value: string | undefined, fallback: string): string | undefined {
 	const trimmed = value?.trim();
@@ -191,7 +195,7 @@ function staticExtraBody(spec: CustomAdapterSpec): Dialect["extraBody"] | undefi
 
 /** 另外三条线:通用配方换 id,`request` 那两格与 `extraBody` 叠上去。 */
 function rebased(base: Dialect, id: string, spec: CustomAdapterSpec): Dialect {
-	const { label: _label, ...rest } = base;
+	const { label: _label, referenceFor: _referenceFor, ...rest } = base;
 	const extra = staticExtraBody(spec);
 	const baseExtra = base.extraBody;
 	return {
@@ -208,15 +212,22 @@ function rebased(base: Dialect, id: string, spec: CustomAdapterSpec): Dialect {
 	};
 }
 
+function referenceDialectOf(wire: "openai-responses" | "gemini-generateContent"): Dialect {
+	const base = referenceDialectFor(wire);
+	if (!base) throw new Error(`no dialect declares itself the reference recipe for wire "${wire}"`);
+	return base;
+}
+
 export function dialectFromSpec(providerId: string, spec: CustomAdapterSpec): Dialect {
 	const id = customAdapterDialectId(providerId);
 	switch (spec.wire) {
 		case "anthropic-messages":
 			return rebased(CUSTOM_ANTHROPIC_DIALECT, id, spec);
+		// 这两条线没有协议层的通用配方:以名册里声明自己是这条线参考配方的那一份为底
+		// (`Dialect.referenceFor`;今天是官方 openai / gemini 两家各自声明),这里不点名任何一家。
 		case "openai-responses":
-			return rebased(OPENAI_DIALECT, id, spec);
 		case "gemini-generateContent":
-			return rebased(GEMINI_DIALECT, id, spec);
+			return rebased(referenceDialectOf(spec.wire), id, spec);
 		case "openai-chat":
 			break;
 	}

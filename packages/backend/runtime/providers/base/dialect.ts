@@ -79,6 +79,12 @@ export interface Dialect<W = unknown> {
 	 */
 	label?: string;
 	wire: WireId;
+	/**
+	 * 这份方言是这条线的**参考配方**:用户自定义服务商选了这条线、协议层又没有通用配方时,
+	 * 以它为底(`dialects/custom-from-spec.ts` 按线查,`referenceDialectFor`)。今天只有两条线要它
+	 * (openai-responses、gemini-generateContent),各由官方那一家在自己的方言文件里声明。缺席 = 不是。
+	 */
+	referenceFor?: WireId;
 	endpoint: DialectEndpoint;
 	auth: AuthStrategy;
 	request: DialectRequestShape;
@@ -150,4 +156,10 @@ export function getDialect(id: string): Dialect | undefined {
 
 export function listDialects(): Dialect[] {
 	return [...dialects.values()];
+}
+
+/** 这条线的参考配方(见 `Dialect.referenceFor`);名册里没有哪一家声明 = undefined。 */
+export function referenceDialectFor(wire: WireId): Dialect | undefined {
+	for (const dialect of dialects.values()) if (dialect.referenceFor === wire) return dialect;
+	return undefined;
 }

@@ -23,8 +23,6 @@ claude-code packages/backend/runtime/providers/builtin-manifests.ts
 claude-code packages/backend/runtime/sessions/retired-providers.ts
 claude-code packages/backend/runtime/settings/defaults/settings.ts
 codex packages/backend/runtime/engine/prompt/system-prompt-snapshot.ts
-codex packages/backend/runtime/engine/stream/codex-native-tools.ts
-codex packages/backend/runtime/engine/stream/stream-executor.ts
 codex packages/backend/runtime/logging/legacy-debug-env.ts
 codex packages/backend/runtime/providers/agent-turn.ts
 codex packages/backend/runtime/providers/base/http-agent-provider.ts
@@ -48,7 +46,6 @@ deepseek packages/backend/runtime/logging/legacy-debug-env.ts
 deepseek packages/backend/runtime/sessions/resource-spec.ts
 deepseek packages/backend/runtime/triggers/skill-review-core.ts
 gemini packages/backend/runtime/providers/custom-probe.ts
-gemini packages/backend/runtime/providers/dialects/custom-from-spec.ts
 gemini packages/backend/runtime/providers/dialects/gemini-recipe.ts
 gemini packages/backend/runtime/providers/dialects/index.ts
 gemini packages/backend/runtime/providers/factory.ts
@@ -77,7 +74,6 @@ openai packages/backend/runtime/providers/base/model-profile.ts
 openai packages/backend/runtime/providers/base/sampling-policy.ts
 openai packages/backend/runtime/providers/base/tool-call-codec.ts
 openai packages/backend/runtime/providers/base/tool-choice-policy.ts
-openai packages/backend/runtime/providers/dialects/custom-from-spec.ts
 openai packages/backend/runtime/providers/dialects/custom-openai.ts
 openai packages/backend/runtime/providers/dialects/index.ts
 openai packages/backend/runtime/providers/factory.ts

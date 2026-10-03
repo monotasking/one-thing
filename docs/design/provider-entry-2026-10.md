@@ -541,3 +541,31 @@ providers 目录里两处包名自引用改成相对路径(`builtin/index.ts`、
 
 **门**:entry 2806 → 2732(只有 providers 一行变,基线已收紧);layer 97 / 53 不变;cycle 0;name 131;provider 109;boundary / transport / log / session 绿;
 feature-map 重新生成(边数变了)。四份 bundle 的 Worker 逐字节同大,三份主包各小约 9–14KB。
+
+## 9. 实施结果(第二部分,s18,2026-10-04,未提交)
+
+决策 D42 修订与 D46–D50(`backend-structure-decisions-2026-10.md`);施工账在 `server-client-split-2026-10.md` §6「providers 收口第二部分」。
+
+**问题 5 的三处点名**:① `providers/codex.ts` 包装已在 s17 删掉(D38);② codex 原生工具改成行为名册的可选钩子 `nativeTools`(D46):`VendorRuntime.nativeTools(context)`
+由 codex 在自己的 `runtime.ts` 填,providers 的 `resolveProviderNativeTools` 按名册问,引擎的 `engine/stream/engine-native-tools.ts` 只绑「取目录条目」,
+`engine/stream/codex-native-tools.ts` 删除;③ 自定义线的底配方改成方言自述 `Dialect.referenceFor`(D47):官方 openai / gemini 各在自己的方言文件里声明,
+`custom-from-spec.ts` 按线查方言表,四格表 `CUSTOM_ADAPTER_BASE_DIALECT` 换成 `customAdapterBaseDialectId(wire)`(答出来逐格同值)。
+`provider:gate` 109 → **105**,消失的四对:`codex` × `engine/stream/codex-native-tools.ts`、`codex` × `engine/stream/stream-executor.ts`、
+`gemini` / `openai` × `providers/dialects/custom-from-spec.ts`。`codex` × `engine/prompt/system-prompt-snapshot.ts` 还在:它点名的是 `@shared/ipc/chat.ts`
+的契约字段 `codexNative` / `'codex-native'`,改名是契约改动,本笔没做。
+
+**问题 2**(D48):只测一家的 10 份测试搬进 `vendors/<id>/__tests__/`(claude 3、codex 4、deepseek 1、gemini 1、kimi-code 1;其中 codex 的
+`codex-native-tools-hook.test.ts` 是原 `engine/stream/__tests__/codex-native-tools.test.ts`,改成把「取目录条目」作为参数注入、不再 mock 设置模块,用例与断言照旧);
+对好几家都跑的 6 份搬进 `providers/__tests__/`(线协议层已在 D17 并进 providers,它们本来就是内部测试),没有改成遍历名册 —— 那样要改断言。
+
+**问题 7**(D49):六份测试里打在 `provider-table` / `ipc-env` 上的整块工厂替身改打在入口上,`importOriginal` 展开再覆盖,断言不动;
+`import-side-effect-free` 的 `initializeRegistry` 桩同样改打入口(装配处已经经入口拿它,不需要参数注入)。`models-domain.test.ts` 换 codex / Copilot 取数的两条留在原处(理由见 D49)。
+
+**D42 修订**:两条边界规则改认「内部门面直取兄弟文件」,入口删掉十个只为迁就规则而交出的契约类型,`provider-table.ts` 改回相对引用。
+
+**入口现在交出什么**:189 个名字(值 118、类型 71)。比第一部分少了十个契约类型、多了 `resolveProviderNativeTools` 与 `PROVIDER_NATIVE_IMAGE_GENERATION_TOOL`,
+`CUSTOM_ADAPTER_BASE_DIALECT` 换成 `customAdapterBaseDialectId`。
+
+**读数**:`entry:gate` providers 一行 49 → **19**,非测试 **0**(剩下的全是测试:`custom-manifest-fixture` 3、`builtin/index` 3、`provider-config` 3、models-domain 的 codex / Copilot 4、
+`provider-dials` 的两家地址常量 2、`ipc-env` / `manifest` / `base/dialect` / `provider-external-agent` 各 1);agent-loop 194 → 203、auth 44 → 45、settings 100 → 99(D50);
+总数 2732 → 2711。cycle 0(深层环 17 / 3 / 2 不变),layer 97 / 53 不变,name 131 不变。

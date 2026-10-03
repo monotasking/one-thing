@@ -12,11 +12,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentProvider, AgentTurnRequest } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
-import { createDeepSeekAgentProvider } from '../../providers/vendors/deepseek/agent-provider.js'
-import { createGeminiAgentProvider } from '../../providers/vendors/gemini/agent-provider.js'
-import { createOpenAICompatibleAgentProvider } from '../../providers/index.js'
-import { createCodexAgentProvider } from '../../providers/vendors/codex/agent-provider.js'
+import { createClaudeAgentProvider } from '../vendors/claude/agent-provider.js'
+import { createDeepSeekAgentProvider } from '../vendors/deepseek/agent-provider.js'
+import { createGeminiAgentProvider } from '../vendors/gemini/agent-provider.js'
+import { createOpenAICompatibleAgentProvider } from '../openai-compatible.js'
+import { createCodexAgentProvider } from '../vendors/codex/agent-provider.js'
 import {
   classifyProviderError,
   parseProviderRetryAfter,
@@ -25,7 +25,7 @@ import {
   providerErrorRetryAfterAt,
   PROVIDER_ERROR_COOLDOWN_MS,
   PROVIDER_RETRY_AFTER_MAX_MS,
-} from '../provider-error-classification.js'
+} from '../../agent-loop/provider-error-classification.js'
 
 const NOW = Date.UTC(2026, 7, 16, 12, 0, 0)
 

@@ -3741,8 +3741,11 @@ function checkRuntimeOwnsProviderRegistry(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider registry symbol ${symbol}`),
-    ...(!mainContent.includes('@onething/backend/runtime/providers')
-      ? [`${rel(mainFile)}: provider registry facade must delegate to @onething/backend/runtime/providers`]
+    // providers 收口(2026-10-04,D42 修订):注册表门面与它委派的注册表、类型面同住 providers,直取兄弟文件;
+    // 从前认的是包名 `@onething/backend/runtime/providers`(合包前的「app 层委派给 runtime」),同一个功能里
+    // 的文件经自己的入口取名字不合规矩,所以改认兄弟文件。
+    ...(!mainContent.includes('./registry.js') || !mainContent.includes('./ipc-types.js')
+      ? [`${rel(mainFile)}: provider registry facade must delegate to the runtime-owned registry and type facade (./registry.js, ./ipc-types.js)`]
       : []),
     ...(mainLines.length > 100
       ? [`${rel(mainFile)}: provider registry facade must stay thin`]
@@ -3757,10 +3760,8 @@ function checkRuntimeOwnsProviderRegistry(): void {
 
 function checkRuntimeOwnsProviderDefinitionTypes(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-definition.ts')
-  const runtimeIndexFile = path.join(root, 'packages/backend/runtime/providers/index.ts')
   const mainFile = path.join(root, 'packages/backend/runtime/providers/ipc-types.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'OnethingProviderInfo',
@@ -3776,13 +3777,10 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider definition type ${symbol}`),
-    ...(!runtimeIndexContent.includes('./provider-definition.js')
-      ? [`${rel(runtimeIndexFile)}: missing provider definition public export`]
-      : []),
-    // P3'b-B:这张 `@shared/ipc` 口味的类型面搬进了 `runtime/providers/`
-    // (闭包零脊柱边),所以"委派给 runtime"现在写成同包相对的 `./index.js`。
-    ...(!mainContent.includes('./index.js')
-      ? [`${rel(mainFile)}: provider type facade must delegate to the runtime provider barrel`]
+    // providers 收口(2026-10-04,D42 修订):类型面直取兄弟文件 `./provider-definition.js`,入口不再为外面没人用的
+    // 十个契约类型开口(R6),所以这里不再要求入口交出 `./provider-definition.js`。
+    ...(!mainContent.includes('./provider-definition.js')
+      ? [`${rel(mainFile)}: provider type facade must delegate to the runtime-owned provider definition types (./provider-definition.js)`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS)

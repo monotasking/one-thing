@@ -15,7 +15,7 @@ import type {
   OnethingProviderToolCallOption,
   OnethingProviderToolChoice,
   OnethingProviderToolSchema,
-} from './index.js'
+} from './provider-definition.js'
 
 // Re-export from shared for consistency
 export type { OpenRouterModel } from '@shared/ipc.js'

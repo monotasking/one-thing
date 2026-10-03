@@ -6,7 +6,12 @@
  * Uses StreamEngine for AbortController lifecycle management.
  */
 
-import { getProviderManifest, routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
+import {
+  getProviderManifest,
+  PROVIDER_NATIVE_IMAGE_GENERATION_TOOL,
+  routedProviderIdOf,
+  type CoreSpaceCredentialMarker,
+} from '@onething/backend/runtime/providers'
 import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
 import type { Principal } from '@shared/permission/principal'
 import type { SessionRunKind } from '@shared/session/events/types'
@@ -20,10 +25,7 @@ import {
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { ensureSessionWritable } from '@onething/backend/runtime/sessions'
 import { modelRegistry } from '@onething/backend/runtime/settings'
-import {
-  CODEX_NATIVE_IMAGE_GENERATION_TOOL,
-  getCodexNativeToolsForConfig,
-} from './codex-native-tools.js'
+import { getNativeProviderToolsForConfig } from './engine-native-tools.js'
 import { processImageGenerationStream } from './image-stream.js'
 import {
   executeAgentLoopStreamGeneration,
@@ -144,15 +146,15 @@ export interface StreamExecutionResult {
  *
  * 两条判据,顺序固定:
  *
- *  1. **codex 的原生工具表**(逐字不变)。ChatGPT 后台的模型元数据里带
- *     `nativeTools: ['image_generation']` 就要图。它必须留在最前面,因为
- *     codex 的判据还含 OAuth(`shouldResolveCodexNativeTools`)—— 账本回答不了
- *     「这次用的是订阅凭据还是 API key」。命中即返回;providerId 是 codex 而没
- *     命中的,到此为止(不再往下问账本 —— 否则 API-key 的 codex 会因为目录条目
- *     上的 `nativeTools` 而拿到图,那是行为变更)。
+ *  1. **这一家自己的原生工具表**(行为名册的可选钩子 `nativeTools`,判据逐字不变)。
+ *     今天只有订阅登录的那一家填了它:模型元数据里带 `nativeTools: ['image_generation']`
+ *     就要图。它必须留在最前面,因为那一家的判据还含 OAuth —— 账本回答不了
+ *     「这次用的是订阅凭据还是 API key」。命中即返回;没命中的,那一家的 manifest
+ *     自述 `imageOutputViaNativeToolOnly`,到此为止(不再往下问账本 —— 否则用 API key
+ *     的同一家会因为目录条目上的 `nativeTools` 而拿到图,那是行为变更)。
  *  2. **账本的 `imageOutputServedBy === 'in-loop'`**(拍板 #13,其余所有
  *     provider)。这一格说的是「图在回合里出」;谁来出、怎么拼,是方言的事:
- *     openai 走 `/v1/responses` 的原生 `image_generation` 工具(与 codex 逐字
+ *     openai 走 `/v1/responses` 的原生 `image_generation` 工具(与订阅登录的那一家逐字
  *     同规),openrouter 拼 `modalities`,gemini 拼 `responseModalities`。
  *     **OpenRouter / Gemini 的方言今天不读 `requestedOutputModalities`**
  *     (它们按 profile 自己决定发不发 modalities),所以对这两家填上它是无害的
@@ -179,13 +181,13 @@ async function resolveRequestedOutputModalities(
       params.configWithApiKey.model,
       sendTo,
     )
-    const nativeTools = await getCodexNativeToolsForConfig({
+    const nativeTools = await getNativeProviderToolsForConfig({
       providerId: sendTo,
       providerConfig: params.configWithApiKey,
       toolSettings: params.toolSettings,
       supportsTools,
     })
-    if (nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL)) return ['image']
+    if (nativeTools.includes(PROVIDER_NATIVE_IMAGE_GENERATION_TOOL)) return ['image']
     // 出图只经原生工具的那一家(manifest 自述,批 M):原生工具没开就是不出图,不再问回合内出图。
     if (getProviderManifest(sendTo)?.behaviors?.imageOutputViaNativeToolOnly) return undefined
 

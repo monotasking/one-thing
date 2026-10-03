@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentMessage, AgentTurnRequest, AgentTurnStreamEvent } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
-import { createGeminiAgentProvider } from '../../providers/vendors/gemini/agent-provider.js'
+import { createClaudeAgentProvider } from '../vendors/claude/agent-provider.js'
+import { createGeminiAgentProvider } from '../vendors/gemini/agent-provider.js'
 import {
   createOpenAICompatibleAgentProvider,
   type OpenAICompatibleAgentProviderOptions,
-} from '../../providers/index.js'
+} from '../openai-compatible.js'
 
 function sseResponse(lines: string[] = []): Response {
   const body = [

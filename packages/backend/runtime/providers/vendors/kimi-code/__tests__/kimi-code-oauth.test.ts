@@ -13,11 +13,13 @@
  *     不用手抄八位码。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { OnethingAuthService } from '../auth-service.js'
-import { getAuthProviderDefinition } from '../registry.js'
-import { resolveKimiOAuthHost } from '../../providers/vendors/kimi-code/oauth.js'
-import type { OnethingOAuthToken } from '../types.js'
-import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
+import {
+  getAuthProviderDefinition,
+  OnethingAuthService,
+  type OnethingOAuthToken,
+} from '@onething/backend/runtime/auth'
+import { resolveKimiOAuthHost } from '../oauth.js'
+import { MemoryPoolTokenStore as MemoryTokenStore } from '../../../../auth/__tests__/memory-pool-store.js'
 
 function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify(data), {

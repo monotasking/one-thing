@@ -13,7 +13,7 @@
 import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   adapterReasoningPath,
-  CUSTOM_ADAPTER_BASE_DIALECT,
+  customAdapterBaseDialectId,
   EXTERNAL_AGENT_DIALECT_ID,
   getProviderManifest,
   parseAdapterSpecAnswer,
@@ -200,7 +200,7 @@ export async function probeCustomProvider(
       spec,
     }
   }
-  const dialect = CUSTOM_ADAPTER_BASE_DIALECT[spec.wire]
+  const dialect = customAdapterBaseDialectId(spec.wire)
   const reasoningPath = adapterReasoningPath(spec, probe.samples)
   return {
     ok: true,

@@ -4,12 +4,12 @@ import {
   CodexResponsesErrorMapper,
   GeminiErrorMapper,
   OpenAIChatErrorMapper,
-} from '../../providers/wires/index.js'
+} from '../wires/index.js'
 import {
   classifyProviderError,
   providerErrorRetryAfterAt,
   providerErrorStatus,
-} from '../provider-error-classification.js'
+} from '../../agent-loop/provider-error-classification.js'
 
 /**
  * 分类器读**对象**的那条路(P1-d1)。

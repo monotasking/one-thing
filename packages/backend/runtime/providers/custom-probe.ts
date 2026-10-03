@@ -20,10 +20,7 @@ import {
 	type CustomAdapterWire,
 } from "@shared/contracts/adapter-spec";
 import { BearerApiKeyAuth, expandHeaderTemplates } from "./base/index.js";
-import {
-	CUSTOM_ADAPTER_BASE_DIALECT,
-	dialectFromSpec,
-} from "./dialects/custom-from-spec.js";
+import { dialectFromSpec } from "./dialects/custom-from-spec.js";
 import {
 	createAnthropicProvider,
 	createGeminiProvider,
@@ -565,4 +562,3 @@ export function adapterReasoningPath(spec: CustomAdapterSpec, samples: ProbeSamp
 	return seen ? CUSTOM_ADAPTER_DEFAULT_PATHS.reasoningDeltaPath : undefined;
 }
 
-export { CUSTOM_ADAPTER_BASE_DIALECT };

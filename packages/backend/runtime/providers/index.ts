@@ -14,9 +14,6 @@
 // 它依赖的功能(都是对方的叶子文件):network(受管 fetch、OAuth 协议小件)、logging、storage、agent-loop 的循环原语、
 // engine 的内核件(`error-details`、`engine-primitives`,engine 归位时归 agent-loop)、agents 的外部 agent 执行器谓词、
 // tools 的两只纯模块,以及 `@shared`。
-//
-// 还有一处外面的深层引用是有意留着的:`engine/stream/codex-native-tools.ts` 直取 `vendors/codex/native-tools.ts`。
-// 它点名 codex,交给入口就等于让入口点名 codex;等行为名册有了可选钩子 `nativeTools`,引擎不再认识 codex,那一处随之消失。
 
 // ── 服务商自述与名册:每一家是谁、用哪份方言、怎么登录、模型从哪来;两份名册每家一行,交出名册不点名任何一家。
 export {
@@ -33,19 +30,7 @@ export { VENDOR_SEED_ORDER } from './vendors/manifests.js'
 export { VENDOR_RUNTIMES } from './vendors/runtimes.js'
 export type { VendorFallbackModels, VendorModelsFetcherDeps } from './vendors/runtimes.js'
 
-// ── 服务商定义与注册表:一家服务商在注册表里长什么样,怎么登记、查找、丢掉缓存的实例。
-export type {
-  OnethingProviderCallMode,
-  OnethingProviderCallOptions,
-  OnethingProviderCallPreparationContext,
-  OnethingProviderConfig,
-  OnethingProviderDefinition,
-  OnethingProviderInfo,
-  OnethingProviderOptionsMap,
-  OnethingProviderToolCallOption,
-  OnethingProviderToolChoice,
-  OnethingProviderToolSchema,
-} from './provider-definition.js'
+// ── 服务商定义与注册表:一家服务商在注册表里长什么样(`ipc-types` 的三个形状),怎么登记、查找、丢掉缓存的实例。
 export type { ProviderConfig, ProviderDefinition, ProviderInfo } from './ipc-types.js'
 export {
   getAvailableProviders,
@@ -148,7 +133,7 @@ export type { OnethingProviderOptions } from './provider-options.js'
 export { resolveUtilityModel } from './utility-model.js'
 
 // ── 造 AgentProvider 与线协议:不带宿主能力的工厂(宿主能力由 engine 的进程工厂补上)、OpenAI 兼容线、方言登记与自定义方言、
-// 自定义服务商「自动识别」的纯函数、思考档位、各家私有的内容块(provider data)。
+// 自定义服务商「自动识别」的纯函数、思考档位、各家私有的内容块(provider data)、按名册问各家的原生工具。
 export {
   createAgentProviderFromRuntime,
   getSupportedAgentProviderRuntimeIds,
@@ -164,7 +149,7 @@ export { createOpenAICompatibleAgentProvider } from './openai-compatible.js'
 export type { OpenAICompatibleAgentProviderOptions } from './openai-compatible.js'
 export type { ProviderMediaImage, ProviderMediaReader } from './base/provider-context.js'
 export { registerDialect } from './base/dialect.js'
-export { CUSTOM_ADAPTER_BASE_DIALECT, dialectFromSpec, unsupportedAdapterSpecFields } from './dialects/custom-from-spec.js'
+export { customAdapterBaseDialectId, dialectFromSpec, unsupportedAdapterSpecFields } from './dialects/custom-from-spec.js'
 export {
   adapterReasoningPath,
   parseAdapterSpecAnswer,
@@ -192,6 +177,7 @@ export {
 } from './provider-data.js'
 export type { ApplyOnethingAgentLoopProviderDataOptions } from './provider-data.js'
 export { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from './provider-data-policy.js'
+export { PROVIDER_NATIVE_IMAGE_GENERATION_TOOL, resolveProviderNativeTools } from './provider-native-tools.js'
 
 // ── 对话门面与请求拼装:发一轮对话 / 起标题的编排(宿主把 fetch、日志、凭证经适配器交进来)、流式适配、工具定义与消息的线形状。
 export { createOnethingProviderFacade } from './provider-facade.js'

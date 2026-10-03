@@ -15,7 +15,9 @@ const recordUsage = vi.fn()
 vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => settingsRef.current,
 }))
-vi.mock('../../providers/ipc-env.js', () => ({
+// providers 收口第二部分:替身打在服务商入口上(被测代码经入口拿这几个名字),其余名字保留原件。
+vi.mock('@onething/backend/runtime/providers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/providers')>()),
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
 vi.mock('../../engine/engine-chat-facade.js', () => ({

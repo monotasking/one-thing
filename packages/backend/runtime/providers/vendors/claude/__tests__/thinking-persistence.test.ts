@@ -11,8 +11,8 @@ import {
   getHistoryProviderData,
 } from '@onething/backend/runtime/engine/engine-primitives'
 import type { AgentMessage, AgentTurnRequest } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { applyOnethingAgentLoopProviderData } from '../../providers/index.js'
-import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
+import { applyOnethingAgentLoopProviderData } from '../../../provider-data.js'
+import { createClaudeAgentProvider } from '../agent-provider.js'
 
 const CLAUDE_THINKING_DATA = {
   provider: 'claude',

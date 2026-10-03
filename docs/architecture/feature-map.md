@@ -17,7 +17,7 @@
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
 | (包根) | 包根其余文件:装配配方 backend.ts、HTTP 服务器与 RPC 分发表、各功能开给界面的操作。 | (shared) 97 · (包根槽位) 49 · logging 35 · sessions 33 · plugins 19 · mcp 18 · settings 17 · engine 13 · evals 13 · acp 11 · permissions 10 · storage 10 · toolkit 10 · tools 10 · collab 9 · media 9 · skills 9 · auth 8 · events 8 · voice 8 · spaces 7 · todo-plan 7 · agents 6 · notes 6 · shell 6 · goals 5 · music 5 · project-dirs 5 · prompts 5 · providers 5 · scheduler 5 · terminal 5 · files 4 · usage 4 · variables 4 · gateway 3 · interaction 3 · markdown 3 · pets 3 · scratchpad 3 · search 3 · credentials 2 · dialog 2 · practice 2 · resource 2 · agent-loop 1 · external-agents 1 · memory 1 · network 1 · quota 1 · tasks 1 · themes 1 | — | 93 |
-| (总桶) | runtime/index.ts 总桶,把各功能的名字一起再导出(待删)。 | engine 5 · agent-loop 1 · agents 1 · auth 1 · evals 1 · files 1 · gateway 1 · headless 1 · markdown 1 · mcp 1 · media 1 · permissions 1 · plugins 1 · project-dirs 1 · prompts 1 · providers 1 · scheduler 1 · search 1 · sessions 1 · settings 1 · skills 1 · storage 1 · todo-plan 1 · tools 1 · triggers 1 · variables 1 · voice 1 | 2534(值 1420 / 类型 1114) | 1 |
+| (总桶) | runtime/index.ts 总桶,把各功能的名字一起再导出(待删)。 | engine 5 · agent-loop 1 · agents 1 · auth 1 · evals 1 · files 1 · gateway 1 · headless 1 · markdown 1 · mcp 1 · media 1 · permissions 1 · plugins 1 · project-dirs 1 · prompts 1 · providers 1 · scheduler 1 · search 1 · sessions 1 · settings 1 · skills 1 · storage 1 · todo-plan 1 · tools 1 · triggers 1 · variables 1 · voice 1 | 2526(值 1422 / 类型 1104) | 1 |
 
 ## L3 编排
 
@@ -83,7 +83,7 @@
 | events | 事件总线与流通道的工厂,以及读当前实例的访问器。 | logging 6 · (包根槽位) 2 · (shared) 1 · engine 1(越层) · sessions 1(越层) | 7(值 7 / 类型 0) | 17 |
 | practice | 练习系统的题目、账本与汇总。 | — | 32(值 8 / 类型 24) | 7 |
 | prompts | 系统提示词的拼装:片段、来源与「目录在上、正文在下」的生成器。 | engine 4(越层) · logging 3 · plugins 3(越层) · (shared) 1 · providers 1 · references 1 · storage 1 | 107(值 51 / 类型 56) | 15 |
-| providers | 各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。 | (shared) 12 · logging 11 · agent-loop 10 · network 5 · engine 3(越层) · agents 2(越层) · storage 1 | 197(值 116 / 类型 81) | 191 |
+| providers | 各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。 | (shared) 12 · logging 11 · agent-loop 10 · network 5 · engine 3(越层) · agents 2(越层) · storage 1 | 189(值 118 / 类型 71) | 192 |
 | spaces | 空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层。 | logging 5 · project-dirs 1(越层) · storage 1 | 91(值 61 / 类型 30) | 8 |
 | themes | 主题的加载、解析与生成 CSS 变量。 | logging 4 · storage 2 | 27(值 12 / 类型 15) | 13 |
 | tools | 工具用到的纯逻辑模块:沙箱、bash 执行、编辑引擎、差异块、输出截断等。 | permissions 4(越层) · storage 4 · (shared) 3 · (包根槽位) 2 · files 1(越层) · logging 1 · music 1(越层) · notes 1(越层) · sessions 1(越层) · settings 1(越层) | 215(值 133 / 类型 82) | 37 |

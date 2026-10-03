@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readJsonSseData, readSseData, readSseEvents } from '../../providers/sse.js'
+import { readJsonSseData, readSseData, readSseEvents } from '../sse.js'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

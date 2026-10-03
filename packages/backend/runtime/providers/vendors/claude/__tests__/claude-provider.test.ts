@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
+import { createClaudeAgentProvider } from '../agent-provider.js'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()
