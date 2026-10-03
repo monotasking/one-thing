@@ -16,11 +16,8 @@ import type { AppSettings, PersistedAppSettings } from '@shared/ipc.js'
 import {
   composeEffectiveAISettings,
   createEmptySpaceProviderSettings,
-  splitEffectiveAISettings,
-} from '@onething/backend/runtime/settings'
+} from './defaults/ai-settings.js'
 import type { SpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
-
-export { composeEffectiveAISettings, createEmptySpaceProviderSettings, splitEffectiveAISettings }
 
 /** 这份 settings 跑过 C2 的整体搬迁没有。 */
 export function hasSpaceProviderSettingsMigrated(

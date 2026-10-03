@@ -16,8 +16,8 @@ import {
 } from '@onething/backend/runtime/external-agents/connector-registry'
 import { authService } from '@onething/backend/runtime/auth/process-auth-service'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
-import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
-import { dumpProviderRequest } from '@onething/backend/provider-binding/request-dump.js'
+import { createRequiredAppFetch } from '@onething/backend/runtime/settings'
+import { dumpProviderRequest } from '@onething/backend/runtime/providers'
 import { providerMediaReader } from './media-reader.js'
 import type { AgentProvider } from '@onething/backend/runtime/agent-loop/loop-primitives'
 

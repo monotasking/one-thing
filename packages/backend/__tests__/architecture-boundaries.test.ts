@@ -82,7 +82,8 @@ describe('architecture boundaries', () => {
     // 逻辑归 `runtime/<d>`,撞脊柱的接线归当时装配层的接线子目录,两种去向都离开包根。
     // P3'b-B(2026-08-21)摘掉 collab / providers / toolkit 三个;providers 的
     // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
-    // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。
+    // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。包根归位 3(2026-10-03)起这个目录也没了:
+    // 受管 fetch 的设置薄壳与 ai-settings-compose 进 `runtime/settings/`,request-dump 薄壳进 `runtime/providers/`。
     // P3'c(2026-08-21)摘掉最后一个 `plugins`:10 件进 `runtime/plugins/`
     // (与 core 同名的按 I2 带角色改名),17 件进 `backend/runtime/plugins/`。
     //

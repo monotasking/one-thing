@@ -10,8 +10,8 @@ import {
   shouldBypassOnethingAppProxy,
   validateOnethingAppProxyUrl,
   type OnethingAppFetchNetworkInit,
-  type OnethingProxySettings,
-} from '../index.js'
+} from '../managed-fetch.js'
+import type { OnethingProxySettings } from '../proxy.js'
 
 beforeEach(() => {
   clearOnethingAppDispatcherCache()

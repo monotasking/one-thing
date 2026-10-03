@@ -6,7 +6,7 @@
  * agent loop 里以 `inlineData` part 回来(GeminiWire 解析),不再有专用生图流。
  */
 
-import { createAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
+import { createAppFetch } from '@onething/backend/runtime/settings'
 import {
   generateCoreOpenAIImage,
   normalizeImageModelId,

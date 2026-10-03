@@ -20,7 +20,7 @@
  *    一刀切等于把它扔了。
  *
  * 剩下的这一条既通又说得全:**把这条线程的 `globalThis.fetch` 换成 provider 那只受管
- * fetch**(`providers/bound-fetch.ts` 的 `createOnethingAppFetch`)。绕过判据、代理
+ * fetch**(`network/managed-fetch.ts` 的 `createOnethingAppFetch`)。绕过判据、代理
  * dispatcher、SOCKS5 那一支全是**同一份实现**,这里一行判断都没有抄。Worker 线程有
  * 自己的 `globalThis`,所以主线程一个字不受影响。
  *
@@ -44,12 +44,10 @@
 import { getLogger } from '../../logging/index.js'
 import {
   createOnethingAppFetch,
-  type OnethingFetchFn,
-} from '../../providers/bound-fetch.js'
-import {
   validateOnethingProxyUrl,
+  type OnethingFetchFn,
   type OnethingProxySettings,
-} from '../../providers/network.js'
+} from '../../network/index.js'
 
 const log = getLogger('search.index.worker')
 

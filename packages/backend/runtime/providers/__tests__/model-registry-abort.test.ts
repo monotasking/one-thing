@@ -6,7 +6,7 @@ import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 const ports = vi.hoisted(() => ({ settings: {} as ReturnType<typeof createDefaultSettings>, save: vi.fn(), fetch: vi.fn() }))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ports.settings, saveSettings: ports.save }))
-vi.mock('@onething/backend/provider-binding/bound-fetch.js', () => ({ createRequiredAppFetch: () => ports.fetch }))
+vi.mock('../../settings/proxy-fetch.js', () => ({ createRequiredAppFetch: () => ports.fetch }))
 
 const { refreshAllProviders } = await import('../model-registry-service.js')
 // 目录走单份磁盘缓存(`<store>/cache/models-dev.json`):每条用例一个新 store,

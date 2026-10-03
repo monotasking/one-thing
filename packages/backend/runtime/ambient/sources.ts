@@ -1,5 +1,5 @@
 import { ClockSource, parseWttrReply, WeatherSource, type AmbientSource, type WeatherFetcher } from '@onething/backend/runtime/ambient'
-import { createAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
+import { createAppFetch } from '@onething/backend/runtime/settings'
 
 /**
  * **外界来源表**(09-19)。加一只来源 = 在这里加一行(它自己的类住在 `@onething/backend/runtime/ambient`)。

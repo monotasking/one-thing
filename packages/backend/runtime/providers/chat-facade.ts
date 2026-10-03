@@ -25,7 +25,7 @@ import { oauthManager } from './auth/oauth-manager.js'
 import * as modelRegistry from './model-registry-service.js'
 import {
   createRequiredAppFetch,
-} from '@onething/backend/provider-binding/bound-fetch.js'
+} from '@onething/backend/runtime/settings'
 import {
   isACPProviderRuntime as isACPProvider,
   resolveProviderRuntimeRoute,
@@ -36,7 +36,7 @@ import {
 import {
   dumpProviderRequest,
   type ProviderRequestDumpMode,
-} from '@onething/backend/provider-binding/request-dump.js'
+} from './request-dump-writer.js'
 import {
   getAvailableProviders as getProvidersFromRegistry,
   getProviderInfo as getInfoFromRegistry,

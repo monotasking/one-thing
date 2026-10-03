@@ -1,14 +1,14 @@
 import {
   dumpOnethingProviderRequest,
-  type OnethingProviderRequestDumpMode,
+  type OnethingProviderRequestDumpLogger,
   type OnethingProviderRequestDumpPayload,
-} from '@onething/backend/runtime/providers'
+} from './request-dump.js'
+import type { OnethingProviderRequestDumpMode } from './agent-turn.js'
 import {
   getOnethingLogDir,
 } from '@onething/backend/runtime/storage'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { OnethingProviderRequestDumpLogger } from '@onething/backend/runtime/providers/request-dump'
 
 const log = getLogger('providers.dump')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

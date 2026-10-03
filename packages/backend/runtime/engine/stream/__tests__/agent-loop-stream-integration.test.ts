@@ -257,7 +257,7 @@ vi.mock("@onething/backend/runtime/providers/model-registry-service", () => ({
 	getKnownModelMaxOutputTokens: mocks.getKnownModelMaxOutputTokens,
 }));
 
-vi.mock("@onething/backend/provider-binding/bound-fetch.js", () => ({
+vi.mock("../../../settings/proxy-fetch.js", () => ({
 	createRequiredAppFetch: () => mocks.requiredAppFetch,
 }));
 

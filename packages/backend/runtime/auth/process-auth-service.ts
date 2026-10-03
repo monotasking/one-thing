@@ -12,7 +12,7 @@ import {
   type OnethingAuthServiceOptions,
 } from '@onething/backend/runtime/auth'
 import type { OAuthToken } from '@shared/ipc.js'
-import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
+import { createRequiredAppFetch } from '@onething/backend/runtime/settings'
 import { getAuthHostPorts } from '@onething/backend/runtime/auth/host-ports'
 
 export interface MainAuthServiceOptions extends Partial<OnethingAuthServiceOptions<OAuthToken>> {

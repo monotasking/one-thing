@@ -138,7 +138,7 @@ export function semanticWorkerConfig(settings: AppSettings): IndexWorkerData['se
  * 网络那一格照抄进 `workerData`(2026-09-17)。
  *
  * **为什么要抄**:Worker 是另一条线程,它的全局 `fetch` 与主进程那只受管 fetch
- * (`provider-binding/bound-fetch.ts`)毫无关系。09-17 用户真机事故:设置里代理开着、
+ * (`settings/proxy-fetch.ts`)毫无关系。09-17 用户真机事故:设置里代理开着、
  * provider 通得好好的,语义召回的模型却一个字节也下不来。判据与手法住 Worker 那一侧
  * (`runtime/search/index/worker-network.ts`),装配这一侧只负责把数据递过去 ——
  * 递的是**设置里那一份**,不是这里现算的什么东西。

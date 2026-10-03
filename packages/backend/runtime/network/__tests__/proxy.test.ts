@@ -5,7 +5,7 @@ import {
   shouldBypassOnethingProxy,
   splitOnethingProxyBypassRules,
   validateOnethingProxyUrl,
-} from '../network.js'
+} from '../proxy.js'
 
 describe('onething network provider helpers', () => {
   it('validates and normalizes supported proxy URLs', () => {

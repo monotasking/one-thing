@@ -22,7 +22,7 @@ import type {
 	CreateAgentProviderFromRuntimeOptions,
 } from "../../agent-loop/providers/factory.js";
 import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/types.js";
-import type { OnethingHttpPolicyName } from "../bound-fetch.js";
+import type { OnethingHttpPolicyName } from "@onething/backend/runtime/network";
 import type {
 	OnethingAccessTokenLike,
 	OnethingConfiguredModelSelection,

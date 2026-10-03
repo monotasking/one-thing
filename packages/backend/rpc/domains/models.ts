@@ -52,7 +52,6 @@ import {
   type ModelIdentityIndex,
 } from '@onething/backend/runtime/providers/model-identity'
 import { authService } from '@onething/backend/runtime/auth/process-auth-service'
-import { createPolicyFetch } from '../../provider-binding/bound-fetch.js'
 import {
   VENDOR_RUNTIMES,
   type VendorModelsFetcherDeps,
@@ -63,7 +62,7 @@ import {
   foldedCatalogFor,
   removeManualModel,
 } from '@onething/backend/runtime/providers/manual-model-store'
-import { getSettings, getSpaceSettings } from '@onething/backend/runtime/settings'
+import { createPolicyFetch, getSettings, getSpaceSettings } from '@onething/backend/runtime/settings'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/backend/runtime/providers/model-registry'

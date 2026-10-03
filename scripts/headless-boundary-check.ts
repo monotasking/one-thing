@@ -3694,14 +3694,15 @@ function checkCoreOwnsAgentLoopPureFacades(): void {
 
 function checkRuntimeOwnsProviderRequestDump(): void {
   const runtimeFile = 'packages/backend/runtime/providers/request-dump.ts'
-  const mainFile = path.join(root, 'packages/backend/provider-binding/request-dump.ts')
+  // 包根归位 3(2026-10-03):落盘薄壳从包根 `provider-binding/request-dump.ts` 搬到 providers 目录里,判据照旧。
+  const mainFile = path.join(root, 'packages/backend/runtime/providers/request-dump-writer.ts')
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned provider request dump implementation`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_REQUEST_DUMP_FORBIDDEN_PATTERNS)
-      : ['packages/backend/provider-binding/request-dump.ts: missing main provider request dump facade']),
+      : ['packages/backend/runtime/providers/request-dump-writer.ts: missing main provider request dump facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider request dump implementation', lines)
@@ -4182,11 +4183,13 @@ function checkRuntimeOwnsProvidersIpcPresentation(): void {
 }
 
 function checkRuntimeOwnsNetworkPolicy(): void {
-  const runtimeFile = 'packages/backend/runtime/providers/network.ts'
-  const runtimeBoundFetchFile = 'packages/backend/runtime/providers/bound-fetch.ts'
-  const runtimeBoundFetchTestFile = 'packages/backend/runtime/providers/__tests__/bound-fetch.test.ts'
-  const runtimeIndexFile = path.join(root, 'packages/backend/runtime/providers/index.ts')
-  const mainFile = path.join(root, 'packages/backend/provider-binding/bound-fetch.ts')
+  // 包根归位 3(2026-10-03):代理规则与受管 fetch 从 `runtime/providers/` 提成独立功能 `runtime/network/`,
+  // 读设置的那层薄壳从包根 `provider-binding/bound-fetch.ts` 搬进 `runtime/settings/proxy-fetch.ts`。判据不变,只换地址。
+  const runtimeFile = 'packages/backend/runtime/network/proxy.ts'
+  const runtimeBoundFetchFile = 'packages/backend/runtime/network/managed-fetch.ts'
+  const runtimeBoundFetchTestFile = 'packages/backend/runtime/network/__tests__/managed-fetch.test.ts'
+  const runtimeIndexFile = path.join(root, 'packages/backend/runtime/network/index.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/settings/proxy-fetch.ts')
   const runtimeBoundFetchContent = fs.existsSync(path.join(root, runtimeBoundFetchFile))
     ? fs.readFileSync(path.join(root, runtimeBoundFetchFile), 'utf-8')
     : ''
@@ -4213,12 +4216,12 @@ function checkRuntimeOwnsNetworkPolicy(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeBoundFetchContent.includes(symbol))
       .map(symbol => `${runtimeBoundFetchFile}: missing runtime-owned ${symbol}`),
-    ...(!runtimeIndexContent.includes("export * from './bound-fetch.js'")
-      ? ['packages/backend/runtime/providers/index.ts: missing bound-fetch export']
+    ...(!runtimeIndexContent.includes("} from './managed-fetch.js'")
+      ? ['packages/backend/runtime/network/index.ts: missing managed-fetch export']
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_BOUND_FETCH_POLICY_FORBIDDEN_PATTERNS)
-      : ['packages/backend/provider-binding/bound-fetch.ts: missing main network fetch adapter']),
+      : ['packages/backend/runtime/settings/proxy-fetch.ts: missing main network fetch adapter']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider network policy and bound fetch runtime', lines)

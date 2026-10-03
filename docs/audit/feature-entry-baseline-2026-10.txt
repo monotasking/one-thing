@@ -6,14 +6,14 @@
 304 sessions
 256 logging
 240 agent-loop
-236 providers
+233 providers
 192 toolkit
 174 engine
 122 tools
 107 plugins
 105 spaces
 100 agents
-88 settings
+97 settings
 80 storage
 79 events
 77 collab

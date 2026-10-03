@@ -27,8 +27,7 @@ import type {
   ProbeCustomProviderRequest,
   ProbeCustomProviderResponse,
 } from '@shared/ipc/providers.js'
-import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
-import { getSpaceSettings } from '@onething/backend/runtime/settings'
+import { createRequiredAppFetch, getSpaceSettings } from '@onething/backend/runtime/settings'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { createUtilityProvider, type UtilityProviderRef } from './utility-provider.js'
 

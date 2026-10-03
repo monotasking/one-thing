@@ -34,8 +34,8 @@ vi.mock('@onething/backend/runtime/providers/chat-facade', async importOriginal 
     },
   }
 })
-vi.mock('../provider-binding/bound-fetch.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../provider-binding/bound-fetch.js')>(),
+vi.mock('../runtime/settings/proxy-fetch.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../runtime/settings/proxy-fetch.js')>(),
   // Real provider serializer, parser and TCP. Ignore transport cancellation to
   // exercise the underlying promise, rather than an already-settled abort race.
   createRequiredAppFetch: () => (url: string | URL | Request, init?: RequestInit) => {

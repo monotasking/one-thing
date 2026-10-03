@@ -23,7 +23,7 @@ import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/prov
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { parseSpaceOAuthToken } from '@onething/backend/runtime/auth'
 import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
-import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
+import { createRequiredAppFetch } from '@onething/backend/runtime/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/runtime/events'
 import { authService } from '../auth/process-auth-service.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

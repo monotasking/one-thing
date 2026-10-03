@@ -19,3 +19,11 @@ export {
 export { createDefaultSettings, mergeWithDefaults, providerSeedOf } from './settings-defaults.js'
 export { DEFAULT_MUSIC_SETTINGS, normalizeConnectedDirectories } from './defaults/settings.js'
 export { composeEffectiveAISettings, createEmptySpaceProviderSettings, splitEffectiveAISettings } from './defaults/ai-settings.js'
+// 包根归位 3 第 1 笔(2026-10-03)从包根 `provider-binding/bound-fetch.ts` 搬来的「按用户设置里的代理去请求」那层薄壳。
+// 它读设置缓存,所以住在设置里;它包着的受管 fetch 本体在 `runtime/network/`。
+export {
+  clearAppDispatcherCache,
+  createAppFetch,
+  createPolicyFetch,
+  createRequiredAppFetch,
+} from './proxy-fetch.js'

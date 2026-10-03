@@ -40,7 +40,7 @@ vi.mock('ai', () => ({
   jsonSchema: aiMocks.jsonSchema,
 }))
 
-vi.mock('@onething/backend/provider-binding/bound-fetch.js', () => ({
+vi.mock('../../settings/proxy-fetch.js', () => ({
   createRequiredAppFetch: () => fetchHolder.current,
 }))
 

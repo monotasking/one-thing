@@ -2,7 +2,7 @@
  * `ProviderContext` —— provider 实例的**只读**运行环境。
  *
  * 设计稿 `docs/design/provider-oop-2026-08.md` §4:装配层
- * (`packages/backend/provider-binding/{bound-fetch,request-dump,ai-settings-compose}`)
+ * (`packages/backend/runtime/settings/{proxy-fetch,ai-settings-compose}.ts`、`packages/backend/runtime/providers/request-dump-writer.ts`)
  * 负责组装它并注入;runtime 的基类只声明接口,不反向依赖 backend。
  *
  * 这里的每个字段都是**依赖**,不是状态:provider 实例本身没有可写字段,

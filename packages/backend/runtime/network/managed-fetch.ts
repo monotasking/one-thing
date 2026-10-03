@@ -6,7 +6,7 @@ import {
   shouldBypassOnethingProxy,
   validateOnethingProxyUrl,
   type OnethingProxySettings,
-} from './network.js'
+} from './proxy.js'
 
 export type OnethingFetchFn = typeof globalThis.fetch
 

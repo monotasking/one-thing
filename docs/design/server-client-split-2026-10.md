@@ -87,8 +87,8 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 **今天的 `packages/backend` 只有两样东西**:
 
 - **包根**:后端的入口与门面 —— `backend.ts`(`createOnethingBackend`)/ `store.ts` / `current.ts` / `host-ports.ts` +
-  `server/`(HTTP/SSE 门面,含各宿主门面共用的 `OnethingRuntimeFacade` 契约 `server/runtime-facade.ts`)/ `rpc/` / `stores/` /
-  `channel/` / `features/` / `provider-binding/` / `utils/` / `__tests__/`。
+  `server/`(HTTP/SSE 门面,含各宿主门面共用的 `OnethingRuntimeFacade` 契约 `server/runtime-facade.ts`)/ `rpc/` /
+  `channel/` / `features/` / `utils/` / `__tests__/`。
 - **`runtime/<d>/`**:一个功能一个目录,平铺。这个功能的全部文件,不分「产品」「装配」「骨架」。同名冲突按文件**做的事**起名
   (不用 wiring / host / bound / app / assembly / core 这类「层」的字眼);目录桶 `index.ts` 冲突时,领域根的那个留作对外入口,
   另一个按内容改名;内容上是同一件事的两半(例如协议 + 实现)也不合,只在落地记录里列出来。`runtime/<d>/kernel/` 与其他子目录
@@ -1529,3 +1529,60 @@ battery、`gate:acp`、`session:check`、boundary、transport / log / session / 
 `hydration-contract` 217 / 0;`gate:search-index` 前后都红在两条 ⑤d,⑤c 改前绿改后红 —— 它在同一份代码上时红时绿(`s10-after` 红 8.872ms、`s11-before` 绿 1.733ms,
 两次是同一棵树),改后补跑一次仍红在 8.864ms;`provider:drill` 直接跑红(它从 HEAD 开 worktree,却读工作区里已改过的模板),
 用本地重放版(把未提交改动搬进临时 worktree 再演练,scratchpad `s11/drill-local.mjs`)全绿;CLI `--help` 不写 store;golden 不变;`entry:gate` 绿。
+
+### 包根归位 3 第 1 笔落地记录:网络件独立 + `provider-binding/` 并进功能(2026-10-03,未提交)
+
+**一句话**:代理规则与受管 fetch 从 `runtime/providers/` 提成独立功能 `runtime/network/`(一个入口);包根 `provider-binding/` 目录删除,
+读设置的那层 fetch 薄壳与「生效 AI 设置」合成进 `runtime/settings/`,落盘薄壳进 `runtime/providers/`。外面非测试引用全部走入口。
+
+**去处表**:
+
+| 原位置 | 新位置 | 做什么 / 理由 |
+| --- | --- | --- |
+| `runtime/providers/network.ts` | `runtime/network/proxy.ts` | 代理 URL 校验、设置规整、绕行规则、dispatcher 缓存键 |
+| `runtime/providers/bound-fetch.ts` | `runtime/network/managed-fetch.ts` | 按代理设置选 dispatcher、绑超时 / 重试 / 中止转发的受管 fetch |
+| `runtime/providers/__tests__/{network,bound-fetch}.test.ts` | `runtime/network/__tests__/{proxy,managed-fetch}.test.ts` | 随被测文件;后者改从两只内部文件取名字(从前取 providers 入口) |
+| 包根 `provider-binding/bound-fetch.ts` | `runtime/settings/proxy-fetch.ts` | 把受管 fetch 接到设置缓存(每次请求现取 `network.proxy`)与日志;偏离派工单,用户审后接受(见下);4 个全仓零使用者的名字(`shouldBypassProxy` / `getAppDispatcher` / `createAppHttpClient` / `createBoundFetch`)按用户定删掉 |
+| 包根 `provider-binding/request-dump.ts` | `runtime/providers/request-dump-writer.ts` | 请求转储落进日志目录(vitest 下不落);与 providers 里已有的 `request-dump.ts`(转储本体)撞名,按内容改名 |
+| 包根 `provider-binding/ai-settings-compose.ts` | `runtime/settings/ai-settings-compose.ts` | 迁移标记 + 某空间 providers.json 与持久化形状的合成。派工单写的是进 providers;用户审后改定进 settings:唯一使用者是 `settings-store`,内容是按空间合成生效设置。两个纯函数改按相对路径从 `defaults/ai-settings.ts` 取,文件里那行零使用者的再导出删掉;不进任何入口 |
+
+**为什么设置薄壳不进 `runtime/network/`**:网络件的入口也被索引 Worker 用(`search/index/worker-network.ts`)。薄壳 import 设置入口(静态闭包 289),
+放进网络件入口,Worker 就要多装整棵设置闭包。实测(scratchpad `s12/probe/`,同一份 `shellEsbuildOptions`):只引受管 fetch 与代理规则两只文件的探针产物
+1035929 字节,经一个同时再导出薄壳的桶去引,1423629 字节(+387700);esbuild 删不掉设置闭包里那些模块顶层的 `getLogger(...)` / 常量表计算 / `defineRouter`。
+于是网络件只装两只纯文件(入口闭包 3),薄壳住设置:`settings/proxy.ts`(代理自检)本来就从它取 `createRequiredAppFetch` / `validateProxyUrl`,现在是同目录相对引用,
+从前那条「设置 → 薄壳 → 设置入口」的小环随之消失。设置入口闭包 288 → 291(多了网络件三只)。
+
+**入口交出的名字**:network —— `validateOnethingProxyUrl`、`OnethingProxySettings`(型)、`clearOnethingAppDispatcherCache`、`createOnethingAppFetch`、
+`createRequiredOnethingAppFetch`、`validateOnethingAppProxyUrl`、`OnethingFetchFn` / `OnethingHttpPolicyName` / `OnethingHttpRequestOptions`(型)
+(薄壳删掉 4 个名字以后,`createOnethingAppHttpClient` / `createOnethingBoundFetch` / `getOnethingAppDispatcher` / `shouldBypassOnethingAppProxy` / `OnethingHttpClient`
+在外面没有使用者,不进入口,`managed-fetch.ts` 里照旧在,边界检查要的符号也照旧在);
+settings 新增 —— `clearAppDispatcherCache`、`createAppFetch`、`createPolicyFetch`、`createRequiredAppFetch`(薄壳里另外四个 `shouldBypassProxy` / `getAppDispatcher` /
+`createAppHttpClient` / `createBoundFetch` 全仓零使用者,已删);providers 新增 —— `dumpProviderRequest`;providers 入口去掉 `bound-fetch` / `network` 两条 `export *`(这些名字从此只经网络件入口交出,总桶里随之没有它们,全仓无人经总桶取)。
+
+**与 settings 入口之间的环**:改前是「settings 入口 → `settings-store` → 包根 `ai-settings-compose` → settings 入口」那个小环;`ai-settings-compose` 进了 settings
+目录、两个纯函数按相对路径取以后,这个环没了。providers 入口不再交出它的名字,也不再 import 设置:providers 入口闭包 245(HEAD)→ 268,
+不含 settings 入口;多出的 25 只是落盘薄壳带进来的 storage 入口与日志装配(`configure-logging` 一圈),少掉的 2 只是搬去 network 的两只文件。
+settings 入口闭包 288 → 291(多了 network 三只),它含 providers 入口这件事改前就是如此(经设置保存等处),不是本笔造成的。
+(第一版曾把 `ai-settings-compose` 放进 providers,那时 providers 入口闭包 291、与 settings 入口互相在对方闭包里;用户审后改定。)
+
+**exports**:删 `./provider-binding/{bound-fetch,request-dump,ai-settings-compose}.js` 三个键与 `./runtime/providers/request-dump`(唯一使用者是被搬走的落盘薄壳的类型引用);
+加 `./runtime/network`。`ai-settings-compose` 不加任何键。
+
+**同步**:`headless-boundary-check.ts` 的 `checkRuntimeOwnsNetworkPolicy` / `checkRuntimeOwnsProviderRequestDump` 换到新路径(判据不变:薄壳里不许出现 undici / fs 等);
+注释里过时的路径(`worker-network` / `worker-data` / `service-setup` / `settings/proxy` / `provider-context` / 壳 `space-settings`、架构测试 I1 的说明);CLAUDE.md 的包根清单、
+目录树、Providers 一节与语义召回那段;§4 的包根清单(顺带去掉上一笔已删的 `stores/`)。`assembly-baseline` / `provider-vendor-baseline` 不涉及搬动的文件,不用改。
+
+**功能入口棘轮**:两行变,其余逐字不变 —— providers 236 → 233(Worker 那两处深层引用、落盘薄壳对 `request-dump` 的类型引用)、settings 88 → 97
+(+9 全是测试:7 份测试 `vi.mock` 受管 fetch 薄壳,两份带 `importOriginal` 的各算两处,改打在 `runtime/settings/proxy-fetch.js` 上;从前指向包根不在尺子上);
+network 一行没有(外面全走入口)。非测试新增 0。基线已按此改(2966)。
+
+**验收(改前 `s12-1-before` / 改后 `s12-1-after`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build`(0 处 `node:`)成功;
+三份 `search-worker.cjs` 1276269 / 1276211、1276269 / 1276211、1274739 / 1274675(各少 58–64 字节,Worker 闭包 84 → 85 只多了入口那只再导出文件);
+server `main.js` 5903572 → 5903079、CLI `main.cjs` 11498100 → 11497160、`desk/main.cjs` 11470566 → 11469754(用户审后改定那一轮的数;三份 Worker 与第一版同);根全量 vitest 11414 / 21 红、壳 7344 / 1 红,失败集合逐条相同;
+快照(4 份线协议 + vendor-facts + 出厂设置冻结)154 绿、快照文件按内容哈希前后逐字同;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 22 绿;
+battery 前后都红在 `appendFailures 8`,只差 `refoldChecks` 216 / 217;`hydration-contract` 217 / 0;`gate:acp` 去掉 id 后同;`gate:search-index` 前后都红在两条 ⑤d 与 ⑤c,
+⑪(模型下载走 app 代理、Worker 日志进宿主 jsonl)全绿;`gate:embed-runtime` 两个运行时 40 批全过(Electron 峰值 500.3 → 495.8MB);
+boundary / transport / log / session / provider / gate:native / assembly(`radio.ts` 前后都红)前后同;`provider:drill` 直接跑绿;`entry:gate` 绿;CLI `--help` 不写 store;golden 不变。
+用户审后改定(`ai-settings-compose` 进 settings、薄壳删 4 个名字)那一轮补跑(`s12-1-after2`):三套 tsc、四份构建与 `web:build`、根 / 壳全量 vitest
+失败集合与改前逐条相同(11414 / 21、7344 / 1)、`import-side-effect-free` + `assembly-lifecycle` 22 绿、快照 154 绿且哈希逐字同、boundary:gate / provider:gate /
+`provider:drill` / `entry:gate`(2966,行数同上)绿。

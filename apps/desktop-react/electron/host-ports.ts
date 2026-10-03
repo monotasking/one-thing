@@ -28,8 +28,8 @@ import type { OnethingHostPorts } from '@onething/backend/host-ports.js'
 import {
   clearAppDispatcherCache,
   createRequiredAppFetch,
-} from '@onething/backend/provider-binding/bound-fetch.js'
-import { getSettings } from '@onething/backend/runtime/settings'
+  getSettings,
+} from '@onething/backend/runtime/settings'
 import { createEventBusTerminalBroadcaster } from '@onething/backend/runtime/terminal/bus-broadcaster'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ProxySettings } from '@shared/ipc.js'

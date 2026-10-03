@@ -183,7 +183,7 @@ import {
 } from "@onething/backend/runtime/agents";
 import {
 	createRequiredOnethingAppFetch,
-} from "@onething/backend/runtime/providers";
+} from "@onething/backend/runtime/network";
 // 片段的 ipc-operations 已随 CRUD 一起迁到 RPC 域;这里只剩搜索面还要读 store。
 import { OnethingPromptStore } from "@onething/backend/runtime/prompts";
 import {

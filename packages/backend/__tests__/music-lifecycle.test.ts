@@ -5,8 +5,8 @@ import { createServer, type ServerResponse } from 'node:http'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const transport = vi.hoisted(() => ({ url: '', signals: [] as AbortSignal[] }))
-vi.mock('../provider-binding/bound-fetch.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../provider-binding/bound-fetch.js')>(),
+vi.mock('../runtime/settings/proxy-fetch.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../runtime/settings/proxy-fetch.js')>(),
   // Real provider serializer/parser and TCP request; this local transport deliberately
   // ignores abort to prove shutdown awaits the underlying response, not an abort race.
   createRequiredAppFetch: () => (_url: unknown, init?: RequestInit) => {

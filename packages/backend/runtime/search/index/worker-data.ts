@@ -45,7 +45,7 @@ export interface IndexWorkerData {
      *
      * 为什么它必须在 `workerData` 里:模型是**下载**来的,而 Worker 是另一条线程 ——
      * `@huggingface/transformers` 在它里面调的是那条线程自己的全局 `fetch`,与主进程
-     * 里 provider 那只受管 fetch(`providers/bound-fetch.ts`)完全无关。09-17 用户真机
+     * 里 provider 那只受管 fetch(`network/managed-fetch.ts`)完全无关。09-17 用户真机
      * 事故就是这一条:设置里代理开着、provider 通得好好的,语义召回的模型却一个字节都
      * 下不来(`TypeError: fetch failed`,967ms),状态行只说「没跑起来」。
      *

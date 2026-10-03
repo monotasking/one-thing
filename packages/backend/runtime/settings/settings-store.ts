@@ -6,11 +6,11 @@ import {
   writeSpaceProviderSettings,
 } from '@onething/backend/runtime/spaces/provider-settings'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
+import { splitEffectiveAISettings } from './defaults/ai-settings.js'
 import {
   hasSpaceProviderSettingsMigrated,
   resolveEffectiveAppSettings,
-  splitEffectiveAISettings,
-} from '@onething/backend/provider-binding/ai-settings-compose.js'
+} from './ai-settings-compose.js'
 import { getOnethingSettingsPath } from '@onething/backend/runtime/storage'
 import { applyDiagnosticsMode } from '@onething/backend/runtime/logging/diagnostics'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
