@@ -1,0 +1,349 @@
+// 后端结构门共用的几样东西:运行期值引用图、强连通分量、最短环、功能归属、「次数 名字」基线的读写与比较。
+//
+// 使用者:`scripts/feature-cycle-gate.mjs`(入口无环,D19)、`scripts/feature-layer-gate.mjs`(层次,D23)、
+// `scripts/feature-map.mjs`(功能地图,R4)、`scripts/file-name-gate.mjs`(文件名重复,N1,只用基线那几只)。
+// 决策正本:`docs/design/backend-structure-decisions-2026-10.md`。
+//
+// 值引用图的口径与 Fable 的模拟器(s15 `sim.mjs --real`)逐条一致,三批数据已经和真代码对上,所以这里照搬,不另起口径:
+//   - 节点 = `packages/backend` 与 `packages/shared` 下 `tsconfig.node.json` 收进来的非测试 `.ts` 文件
+//     (`__tests__/`、`*.test.*`、`__fixtures__/`、`testing/` 都算测试)。
+//   - 边 = 一条顶层 `import … from` / `import '…'` / `export … from` 语句,且它至少带进来一个**值**:
+//     副作用 import、命名空间 import、`export *` 整只算;具名的逐个用类型检查器解析到声明,只引接口 / 类型别名的名字、
+//     `import type` / `export type`、`import { type X }` 都不成边(编译后被擦掉)。
+//   - 动态 `import()`、`require`、类型位置的 `import('…')` 都不成边:它们不在加载期求值,不会造成加载期的环。
+//   - 说明符解析:相对路径按磁盘(`.js` → `.ts`、补 `/index.ts`);`@onething/backend/<子路径>` 按
+//     `packages/backend/package.json` 的 exports 精确键;`@shared/<路径>` 按 `packages/shared`;其余(npm 包)不算。
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
+
+export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+export const BACKEND = 'packages/backend'
+export const RUNTIME = `${BACKEND}/runtime`
+export const SHARED = 'packages/shared'
+/** 总桶 `runtime/index.ts` 在各张表里的名字(与 entry:gate 一致)。 */
+export const BARREL = '(总桶)'
+
+/** 按 UTF-16 码元比较:不随机器的区域设置变,生成文件在本机与 CI 上才逐字节相同。 */
+export const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+
+export const isTestPath = (relative) => /__tests__|\.test\.|__fixtures__|\/testing\//.test(relative)
+
+/** 功能入口:`runtime/<功能>/index.ts`。只认这一种形状;将来入口改名(N3)或去掉 runtime/(D11),改这里一处。 */
+export function entryFeatureOf(relative) {
+  const match = /^packages\/backend\/runtime\/([^/]+)\/index\.ts$/.exec(relative)
+  return match && match[1] !== '__tests__' ? match[1] : null
+}
+export const isBarrel = (relative) => relative === `${RUNTIME}/index.ts`
+
+/** 功能名:`runtime/<功能>/…` → `<功能>`;总桶 → `(总桶)`;其余(包根、shared、runtime 顶层的散文件)→ null。 */
+export function runtimeFeatureOf(relative) {
+  if (isBarrel(relative)) return BARREL
+  if (!relative.startsWith(`${RUNTIME}/`)) return null
+  const rest = relative.slice(RUNTIME.length + 1)
+  return rest.includes('/') ? rest.split('/')[0] : null
+}
+
+const isFile = (p) => fs.existsSync(p) && fs.statSync(p).isFile()
+function toFile(absolute) {
+  const stripped = absolute.replace(/\.(js|mjs|ts)$/, '')
+  for (const candidate of [`${stripped}.ts`, `${stripped}.tsx`, absolute, `${stripped}/index.ts`, `${absolute}/index.ts`]) {
+    if (isFile(candidate) && /\.tsx?$/.test(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * 建 HEAD 的运行期值引用图。
+ * @returns {{ files: string[], edges: Map<string, Set<string>>, program: ts.Program, checker: ts.TypeChecker, root: string }}
+ *   `files` / `edges` 里全是仓库相对路径(正斜杠)。
+ */
+export function buildValueGraph(root = repoRoot) {
+  const config = ts.parseJsonConfigFileContent(
+    ts.readConfigFile(path.join(root, 'tsconfig.node.json'), ts.sys.readFile).config, ts.sys, root,
+  )
+  const inScope = (f) => (f.startsWith(`${root}/${BACKEND}/`) || f.startsWith(`${root}/${SHARED}/`))
+    && !f.includes('/node_modules/') && !isTestPath(f) && /\.tsx?$/.test(f) && !f.endsWith('.d.ts')
+  const exportsMap = JSON.parse(fs.readFileSync(path.join(root, BACKEND, 'package.json'), 'utf8')).exports ?? {}
+  const resolve = (specifier, from) => {
+    if (specifier.startsWith('.')) return toFile(path.resolve(path.dirname(from), specifier))
+    if (specifier === '@onething/backend' || specifier.startsWith('@onething/backend/')) {
+      const target = exportsMap[`.${specifier.slice('@onething/backend'.length)}`]
+      return target ? path.resolve(root, BACKEND, target) : null
+    }
+    if (specifier.startsWith('@onething/client')) return null
+    if (specifier.startsWith('@shared/')) return toFile(path.resolve(root, SHARED, specifier.slice('@shared/'.length)))
+    return undefined
+  }
+  const options = { ...config.options, noEmit: true, composite: false }
+  const host = ts.createCompilerHost(options)
+  host.resolveModuleNames = (names, containing) => names.map((name) => {
+    const hit = resolve(name, containing)
+    if (hit) return { resolvedFileName: hit, extension: hit.endsWith('.tsx') ? ts.Extension.Tsx : ts.Extension.Ts, isExternalLibraryImport: false }
+    if (hit === null) return undefined
+    return ts.resolveModuleName(name, containing, config.options, ts.sys).resolvedModule
+  })
+  const program = ts.createProgram(config.fileNames.filter(inScope), options, host)
+  const checker = program.getTypeChecker()
+  const sources = program.getSourceFiles().filter((sf) => inScope(path.resolve(sf.fileName)))
+  const rel = (f) => path.relative(root, f).split(path.sep).join('/')
+
+  const aliased = (symbol) => {
+    let s = symbol
+    while (s && (s.flags & ts.SymbolFlags.Alias)) {
+      const next = checker.getAliasedSymbol(s)
+      if (next === s) break
+      s = next
+    }
+    return s
+  }
+  /** 这个名字落到一个值上吗?落到就返回它的声明所在文件,否则 null。 */
+  const valueFileOf = (symbol) => {
+    const s = aliased(symbol)
+    if (!s || !(s.flags & ts.SymbolFlags.Value)) return null
+    const decl = s.valueDeclaration ?? s.declarations?.find((d) => !ts.isInterfaceDeclaration(d) && !ts.isTypeAliasDeclaration(d))
+    return decl ? path.resolve(decl.getSourceFile().fileName) : null
+  }
+
+  const edges = new Map()
+  for (const sf of sources) edges.set(rel(path.resolve(sf.fileName)), new Set())
+  for (const sf of sources) {
+    const from = path.resolve(sf.fileName)
+    const fromRel = rel(from)
+    for (const st of sf.statements) {
+      const isImport = ts.isImportDeclaration(st)
+      if (!(isImport || (ts.isExportDeclaration(st) && st.moduleSpecifier))) continue
+      if (isImport ? st.importClause?.isTypeOnly : st.isTypeOnly) continue
+      const resolved = resolve(st.moduleSpecifier.text, from)
+      if (!resolved) continue
+      const target = path.resolve(resolved)
+      if (!inScope(target)) continue
+      let carriesValue = false
+      if (isImport) {
+        const clause = st.importClause
+        if (!clause) carriesValue = true // 副作用 import
+        else {
+          if (clause.name && valueFileOf(checker.getSymbolAtLocation(clause.name))) carriesValue = true
+          const bindings = clause.namedBindings
+          if (bindings && ts.isNamespaceImport(bindings)) carriesValue = true
+          else if (bindings) {
+            for (const element of bindings.elements) {
+              if (element.isTypeOnly) continue
+              const file = valueFileOf(checker.getSymbolAtLocation(element.name))
+              if (file && inScope(file)) carriesValue = true
+            }
+          }
+        }
+      } else if (!st.exportClause || ts.isNamespaceExport(st.exportClause)) carriesValue = true // export * / export * as ns
+      else {
+        for (const element of st.exportClause.elements) {
+          if (element.isTypeOnly) continue
+          const file = valueFileOf(checker.getSymbolAtLocation(element.name))
+          if (file && inScope(file)) carriesValue = true
+        }
+      }
+      if (carriesValue && target !== from) edges.get(fromRel).add(rel(target))
+    }
+  }
+  return { files: [...edges.keys()].sort(), edges, program, checker, root }
+}
+
+/** 一只入口文件交出的名字数:`{ total, values, types }`(按类型检查器的模块导出表,含再导出)。 */
+export function countModuleExports(graph, relative) {
+  const sf = graph.program.getSourceFile(path.join(graph.root, relative))
+  if (!sf) return null
+  const symbol = graph.checker.getSymbolAtLocation(sf)
+  if (!symbol) return { total: 0, values: 0, types: 0 }
+  let values = 0
+  let types = 0
+  for (const exported of graph.checker.getExportsOfModule(symbol)) {
+    let s = exported
+    while (s && (s.flags & ts.SymbolFlags.Alias)) {
+      const next = graph.checker.getAliasedSymbol(s)
+      if (next === s) break
+      s = next
+    }
+    if (s && (s.flags & ts.SymbolFlags.Value)) values += 1
+    else types += 1
+  }
+  return { total: values + types, values, types }
+}
+
+/** Tarjan(迭代版,不怕深递归)。返回大小 > 1 的强连通分量,每个是排好序的节点数组,按大小降序。 */
+export function stronglyConnected(edges) {
+  let counter = 0
+  const index = new Map()
+  const low = new Map()
+  const onStack = new Set()
+  const stack = []
+  const components = []
+  for (const start of edges.keys()) {
+    if (index.has(start)) continue
+    const work = [[start, [...(edges.get(start) ?? [])], 0]]
+    index.set(start, counter); low.set(start, counter); counter += 1; stack.push(start); onStack.add(start)
+    while (work.length) {
+      const top = work[work.length - 1]
+      const [node, next] = top
+      if (top[2] < next.length) {
+        const w = next[top[2]++]
+        if (!edges.has(w)) continue
+        if (!index.has(w)) {
+          index.set(w, counter); low.set(w, counter); counter += 1; stack.push(w); onStack.add(w)
+          work.push([w, [...(edges.get(w) ?? [])], 0])
+        } else if (onStack.has(w)) low.set(node, Math.min(low.get(node), index.get(w)))
+      } else {
+        work.pop()
+        if (work.length) { const parent = work[work.length - 1][0]; low.set(parent, Math.min(low.get(parent), low.get(node))) }
+        if (low.get(node) === index.get(node)) {
+          const members = []
+          let w
+          do { w = stack.pop(); onStack.delete(w); members.push(w) } while (w !== node)
+          if (members.length > 1) components.push(members.sort())
+        }
+      }
+    }
+  }
+  return components.sort((a, b) => b.length - a.length || byCodeUnit(a[0], b[0]))
+}
+
+/** 经过 `node` 的最短环(广度优先,邻居按字典序走,结果稳定);没有环返回 null。返回 `[node, …, node]`。 */
+export function shortestCycleThrough(edges, node) {
+  const previous = new Map()
+  const queue = []
+  for (const w of [...(edges.get(node) ?? [])].sort()) {
+    if (!previous.has(w)) { previous.set(w, node); queue.push(w) }
+  }
+  while (queue.length) {
+    const current = queue.shift()
+    if (current === node) break
+    for (const w of [...(edges.get(current) ?? [])].sort()) {
+      if (!previous.has(w)) { previous.set(w, current); queue.push(w) }
+    }
+  }
+  if (!previous.has(node)) return null
+  const chain = [node]
+  let at = previous.get(node)
+  while (at !== node) { chain.unshift(at); at = previous.get(at) }
+  chain.unshift(node)
+  return chain
+}
+
+// ── 「次数 名字」基线(name:gate 与 layer:gate 共用;形状同 entry:gate)
+
+export function parseCountBaseline(text) {
+  const counts = {}
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const at = line.indexOf(' ')
+    if (at < 0) continue
+    const value = Number.parseInt(line.slice(0, at), 10)
+    const key = line.slice(at + 1).trim()
+    if (!key || Number.isNaN(value)) continue
+    counts[key] = value
+  }
+  return counts
+}
+
+export function formatCountBaseline(headerLines, counts) {
+  const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || byCodeUnit(a, b))
+  return `${[...headerLines.map((line) => `# ${line}`), ...keys.map((key) => `${counts[key]} ${key}`)].join('\n')}\n`
+}
+
+/** 只减不增的比较:高于基线或基线里没有 = regression;低于基线 = improvement。 */
+export function compareCounts(baseline, current) {
+  const regressions = []
+  const improvements = []
+  for (const [key, n] of Object.entries(current)) {
+    const base = baseline[key] ?? 0
+    if (n > base) regressions.push({ key, baseline: base, current: n, isNew: !(key in baseline) })
+  }
+  for (const [key, base] of Object.entries(baseline)) {
+    const n = current[key] ?? 0
+    if (n < base) improvements.push({ key, baseline: base, current: n })
+  }
+  return { regressions, improvements }
+}
+
+// ── 层次表(`docs/audit/feature-layers-2026-10.json`)
+
+export const LAYER_TABLE = 'docs/audit/feature-layers-2026-10.json'
+
+/**
+ * 读层次表,返回:
+ *   - `layers`:按从低到高排好的 `{ id, name, meaning }`;
+ *   - `rankOf(feature)`:层次序号(0 起),没登记返回 undefined;
+ *   - `groupOf(relative)`:一只文件归哪一行(功能名或槽位名),没法归返回 `runtime/<散文件>` 这种名字,让门报「没登记」;
+ *   - `rows`:功能行与槽位行,`{ name, layer, why, kind: 'feature' | 'slot' }`。
+ */
+export function loadLayerTable(root = repoRoot) {
+  const table = JSON.parse(fs.readFileSync(path.join(root, LAYER_TABLE), 'utf8'))
+  const layers = table.layers
+  const rank = new Map(layers.map((layer, i) => [layer.id, i]))
+  const rows = []
+  const rankByName = new Map()
+  const register = (name, layer, why, kind) => {
+    if (!rank.has(layer)) throw new Error(`层次表:「${name}」的层次 ${layer} 不在 layers 里`)
+    if (rankByName.has(name)) throw new Error(`层次表:「${name}」登记了两次`)
+    rankByName.set(name, rank.get(layer))
+    rows.push({ name, layer, why, kind })
+  }
+  for (const row of table.features) register(row.feature, row.layer, row.why, 'feature')
+  for (const row of table.slots) register(row.slot, row.layer, row.why, 'slot')
+  // 槽位按文件归属:先看总桶 / 功能目录,再按槽位的路径前缀(长的先;以 `/` 结尾的是目录),
+  // 最后落到兜底槽位(`"fallback": true` 的那一行,只许一行)。
+  const prefixed = table.slots.filter((slot) => slot.match?.length)
+    .flatMap((slot) => slot.match.map((prefix) => [prefix, slot.slot]))
+    .sort((a, b) => b[0].length - a[0].length)
+  const fallbacks = table.slots.filter((slot) => slot.fallback)
+  if (fallbacks.length !== 1) throw new Error(`层次表:兜底槽位(fallback)应恰好一行,现在 ${fallbacks.length} 行`)
+  const fallback = fallbacks[0].slot
+  const groupOf = (relative) => {
+    const feature = runtimeFeatureOf(relative)
+    if (feature) return feature
+    if (relative.startsWith(`${RUNTIME}/`)) return relative.slice(BACKEND.length + 1) // runtime 顶层散文件:没登记,门会报
+    for (const [prefix, slot] of prefixed) if (relative === prefix || (prefix.endsWith('/') && relative.startsWith(prefix))) return slot
+    return fallback
+  }
+  return { layers, rows, rankOf: (name) => rankByName.get(name), groupOf, layerOf: (name) => rows.find((r) => r.name === name)?.layer }
+}
+
+/** 跨行(功能 / 槽位)的值边:`Map<"from → to", string[]>`(每条是「文件 → 文件」,仓库相对路径去掉 runtime 前缀)。 */
+export function crossGroupEdges(graph, groupOf) {
+  const pairs = new Map()
+  const short = (f) => f.replace(`${RUNTIME}/`, '')
+  for (const [from, targets] of graph.edges) {
+    const a = groupOf(from)
+    for (const to of targets) {
+      const b = groupOf(to)
+      if (a === b) continue
+      const key = `${a} → ${b}`
+      if (!pairs.has(key)) pairs.set(key, [])
+      pairs.get(key).push(`${short(from)} → ${short(to)}`)
+    }
+  }
+  for (const list of pairs.values()) list.sort()
+  return pairs
+}
+
+/** 低层引高层的边:`Map<"from → to", string[]>`,外加没登记的行名。 */
+export function layerViolations(graph, table) {
+  const pairs = crossGroupEdges(graph, table.groupOf)
+  const violations = new Map()
+  const unregistered = new Set()
+  let crossEdges = 0
+  for (const [key, list] of pairs) {
+    const [a, b] = key.split(' → ')
+    crossEdges += list.length
+    const ra = table.rankOf(a)
+    const rb = table.rankOf(b)
+    if (ra === undefined) unregistered.add(a)
+    if (rb === undefined) unregistered.add(b)
+    if (ra === undefined || rb === undefined) continue
+    if (ra < rb) violations.set(key, list)
+  }
+  // 没有任何跨边的功能也要登记:按目录再扫一遍。
+  for (const file of graph.files) { const g = table.groupOf(file); if (table.rankOf(g) === undefined) unregistered.add(g) }
+  return { violations, unregistered: [...unregistered].sort(), crossEdges }
+}

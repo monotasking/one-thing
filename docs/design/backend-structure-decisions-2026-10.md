@@ -26,16 +26,17 @@
 | D16 | 10-03 | 网络件(代理校验、受管 fetch) | 独立成 `runtime/network/` | 不属于服务商;索引 Worker 只要这两只,不该背整个 providers | 用户 |
 | D17 | 10-03 | `agent-loop/providers/`(线协议、方言基类、思考线型) | 并进 `runtime/providers/` | 「各条线协议怎么拼」与「各家怎么说」是同一件事;消掉最重的 providers ↔ agent-loop 环 | 用户 |
 | D18 | 10-04 | providers 一个入口全交出去 → 60 模块环、`class extends` 加载期 undefined | 推翻「providers 不拆」;**不新建功能**(`llm` 名字有歧义,CLAUDE.md「组件化而不是创建新的组件」),把「用服务商干活」那一类文件按内容分进已有功能;动手前先算入口图无环 | 一个既是叶子又是枢纽的功能不能只有一个入口;继承无法惰性化 | 用户 |
-| D19 | 10-04 | 功能入口规矩的另一半 | **入口之间成 DAG**(不许循环),做成门 | 没有它,别的功能会重演 providers 的崩溃 | 我(D18 的推论) |
+| D19 | 10-04 | 功能入口规矩的另一半 | **入口之间成 DAG**(不许循环),做成门:`bun run cycle:gate`(`scripts/feature-cycle-gate.mjs`,零基线硬闸:任何强连通分量含功能入口或总桶即红,并打出经过入口的最短环;10-04 立门时读数 0,不经入口的深层环 17 / 5 / 3 / 2 只打不判) | 没有它,别的功能会重演 providers 的崩溃 | 我(D18 的推论) |
 | D20 | 10-04 | 光「依赖不成环」不够,要能读、能维护 | 定下可读性判据 R1–R6(见下节),每一步的去处选择与验收都按它判;不满足的方案即使无环也不选 | 用户:「我不希望最终得到的是一个我无法阅读和维护的代码库」 | 用户 |
 | D21 | 10-04 | 包根的 `rpc/`、`runtime/`、`server/`、`features/`、`channel/`、`utils/` 从名字看不出里面是什么(违反 R1 / R2) | 目标:包根 = 后端自己的几只组装文件 + 一个功能一个目录。`runtime/` 去掉(D11);`server/` 的核心与 `rpc/` 的分发表合成 `http-server/`(「界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者认证、按表分发」,它不认识任何具体功能);`rpc/domains/<d>.ts` 搬进各功能,叫 `<d>/client-api.ts`(「这个功能开放给界面调用的操作」;功能自述,`http-server/` 读表)。**10-04 修订**:最初写的 `api/` 与 `rpc.ts` 仍是技术名词,用户追问「rpc 指的是什么」后改名;`server/` 里属于具体功能的面(mcp-*、media-delivery、plugin-catalog、search-providers、settings-projection、live-session-delivery)搬进各功能;`channel/` → gateway;`features/` 按内容命名;`utils/` 按使用者归位 | 目录名要回答「这里是什么」;`rpc` / `server` / `runtime` 回答的是「用什么技术 / 在哪一层」 | 用户指出,我定方案 |
-| D22 | 10-04 | 文件怎么命名(用户:同名文件太多、搜不出来;按行业标准定) | 命名规范 N1–N7(见下节):全包唯一、功能名打头、入口叫 `<功能>.ts` 且只用具名导出、泛名不单用、目录单数 | Angular / Google 风格指南与业界对桶文件的经验,加上本仓库的实测 | 用户授权,我按行业规范定 |
-| D23 | 10-04 | 功能之间要不要分层次 | **要**:L0 基础件 / L1 领域事实 / L2 能力 / L3 编排 / L4 对外接口,以**标签表**表达(目录仍一个功能一个、平铺);只许高层引低层,同层经入口且不成环,L0 不引功能。今天违例 139 条,做成只减不增的门 | Nx 模块边界与 Feature-Sliced Design;模拟证明 providers / engine / auth / usage 的环都是「一个目录里叶子与枢纽挤在一起」 | Fable(用户要求「合理的分层」) |
+| D22 | 10-04 | 文件怎么命名(用户:同名文件太多、搜不出来;按行业标准定) | 命名规范 N1–N7(见下节):全包唯一、功能名打头、入口叫 `<功能>.ts` 且只用具名导出、泛名不单用、目录单数。N1 做成门 `bun run name:gate`(`scripts/file-name-gate.mjs`,基线 `docs/audit/file-name-baseline-2026-10.txt`,每个文件名的次数只减不增) | Angular / Google 风格指南与业界对桶文件的经验,加上本仓库的实测 | 用户授权,我按行业规范定 |
+| D23 | 10-04 | 功能之间要不要分层次 | **要**:L0 基础件 / L1 领域事实 / L2 能力 / L3 编排 / L4 对外接口,以**标签表**表达(目录仍一个功能一个、平铺);只许高层引低层,同层经入口且不成环,L0 不引功能。今天违例 139 条,做成只减不增的门:`bun run layer:gate`(`scripts/feature-layer-gate.mjs`;层次表 `docs/audit/feature-layers-2026-10.json`,每个功能一行 feature / layer / why,没登记的功能即红;基线 `docs/audit/layer-violation-baseline-2026-10.txt` 按「从 → 到」成对计数,10-04 立门时 139 条 / 61 对)。R4 的功能地图 `docs/architecture/feature-map.md` 由 `bun run feature-map` 按这张表生成,`feature-map:check` 判它与代码一致 | Nx 模块边界与 Feature-Sliced Design;模拟证明 providers / engine / auth / usage 的环都是「一个目录里叶子与枢纽挤在一起」 | Fable(用户要求「合理的分层」) |
 | D24 | 10-04 | providers 里「用服务商干活」的 29 只文件放哪 | 按各自依赖的层次去:发对话 / 造实例 → engine;按会话取空间设置 → sessions;模型目录服务三件 → settings;凭证一族 → `credentials/`;oauth 兼容门面 → auth;`external-agents/provider` 与 `usage/pricing` 进 providers;`oauth-token` / `jwt` → network;`request-dump` → logging;断三条边(构造参数注入) | 模拟:providers、spaces、auth、settings、sessions、credentials、usage 依次收口都不成环;d3x 把重文件塞进被 13 个功能当叶子的 spaces,spaces 一收口就 37 只环 | Fable |
 | D25 | 10-04 | 凭证要不要单独成功能 | 新建 `credentials/`(凭证池、轮换、插件凭证策略、订阅额度路由、旧凭证迁移、token 写回) | 凭证今天散在 providers / spaces / auth 三处;放进任何一处都让那个功能既是叶子又是枢纽;名字无歧义、「凭证在哪」一个目录答完(R1 / R2);用户的偏好「不新建」让位于可读性(用户目标原话) | Fable |
 | D26 | 10-04 | 各功能开给界面的操作(原 `rpc/domains/*`)搬进功能后会把功能重新变枢纽 | `<功能>-client-api.ts` 是功能的**第二个入口**,只许 http-server 引用;它可引任何功能入口,任何功能入口不许引它;入口无环门只算主入口 | 否则路线第 2 项会把零环结论翻掉 | Fable |
 | D27 | 10-04 | engine 自己就是 247 只的环(只收口 engine 时) | 单独一批(F2→F4):前 core/engine 内核归 agent-loop;引擎组合根出成包根 `assemble-engine`;触发器各归其主;读当前引擎改读 `current.ts` 槽;六个功能全收口降到 3/2 | engine 的病与 providers 同种:内核(L1)、hub(L3)、组合根(L4)挤在一个目录 | Fable |
 | D28 | 10-04 | 依赖规则用现成工具(dependency-cruiser)还是自己写 | 先用自己的脚本(复用 Fable 的模拟器口径:只看运行期值引用、类型引用擦掉、按入口判);dependency-cruiser 作备选 | 需要的判据(「SCC 里含功能入口」「层次标签表」)要定制;模拟器已在三批数据上与真代码对得上 | 我 |
+| D29 | 10-04 | events 属于 L0 还是 L1(层次文档与层次表不一致) | **L1** | `runtime/events` 里的总线已钉成会话事件 / 全局事件的产品载荷(`session-event-bus` 等),认识产品概念,不是纯基础件 | 我 |
 
 ## 可读性判据(D20)
 
@@ -44,7 +45,7 @@
 - **R3 入口即说明书**:每个功能的 `index.ts` 文件头用几句人话写:它是做什么的、对外交出哪几类东西、它依赖哪些功能;交出的名字按类分组,不是一大串 `export *`。
 - **R4 方向一眼看得出**:有一张**生成出来**的功能地图(谁依赖谁、按层次排好),放在仓库里并由门保证与代码一致;依赖只朝一个方向(D19)。
 - **R5 一个功能能单独读懂**:读一个功能,不需要先读另一个功能的内部文件;功能之间只经入口。
-- **R6 小而完整的对外面**:入口交出的名字越少越好;总桶 `runtime/index.ts`(今天 2337 个名字)最终删除。
+- **R6 小而完整的对外面**:入口交出的名字越少越好;总桶 `runtime/index.ts`(今天约 2300–2760 个名字,口径不同读数不同)最终删除。
 
 
 ## 命名规范(D22,10-04 定)
@@ -57,7 +58,7 @@
 - 关于「桶文件」(只做 `export *` 转发的 `index.ts`)的业界经验:它是循环依赖的高发点,会拖慢构建与编辑器、妨碍摇树;Next.js、Atlassian 去掉桶文件后构建与编辑器明显变快(<https://reactuse.com/blog/barrel-files-tree-shaking/>、<https://atharvacm.dev/blog/barrel-exports-hidden-cost>)—— 与本仓库 providers 一个入口 `export *` 全交出去造成 60 模块环的实测一致。
 
 规则:
-- **N1 文件名全包唯一**:按文件名搜索只出一个结果。门:重名数只减不增(今天 132),目标 0。
+- **N1 文件名全包唯一**:按文件名搜索只出一个结果。门:`bun run name:gate`,重名数只减不增(今天 132),目标 0。
 - **N2 全小写、连字符分词、功能名打头**:`<功能>-<做什么>.ts`,例如 `session-store.ts`、`session-client-api.ts`、`search-index-worker.ts`;服务商目录里 `claude-manifest.ts`、`claude-dialect.ts`。点号只用于固定后缀:`.test.ts`、`.d.ts`。
 - **N3 入口文件 = `<功能>.ts`**(例如 `session/session.ts`),不用 `index.ts`;文件头是 R3 的说明书;**只用具名导出、按类分组,不用 `export *`**(业界对桶文件的教训,也是本仓库 providers 崩溃的原因)。`package.json` 的 exports 把 `./<功能>` 指向它。
 - **N4 泛名不能单独作文件名**:`index` / `types` / `utils` / `helpers` / `service` / `manager` / `runtime` / `registry` / `store` / `core` / `common` / `misc` 只能跟在功能名后面(`session-types.ts`)。

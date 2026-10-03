@@ -131,6 +131,18 @@ jobs:
       - name: entry:gate
         run: bun run entry:gate
 
+      - name: name:gate
+        run: bun run name:gate
+
+      - name: cycle:gate
+        run: bun run cycle:gate
+
+      - name: layer:gate
+        run: bun run layer:gate
+
+      - name: feature-map:check
+        run: bun run feature-map:check
+
       - name: Renderer UI boundary gate
         run: npm --prefix apps/desktop-react run ui:consume
 
