@@ -8,7 +8,16 @@
 import type { ThinkingEffort, UIMessage } from '@shared/ipc.js'
 import {
   createOnethingProviderFacade,
+  dumpProviderRequest,
+  getProviderInfo as getInfoFromRegistry,
+  getAvailableProviders as getProvidersFromRegistry,
+  initializeRegistry,
+  isProviderSupported as isSupportedFromRegistry,
+  requiresOAuth as requiresOAuthFromRegistry,
+  requiresSystemMerge as requiresSystemMergeFromRegistry,
   type OnethingAIMessageContent,
+  type OnethingChatGenerationOptions,
+  type OnethingProviderFacadeAdapters,
   type OnethingProviderFacadeChatResponseResult,
   type OnethingProviderFacadeRawRecord,
   type OnethingProviderFacadeReasoningStreamChunk,
@@ -16,14 +25,9 @@ import {
   type OnethingProviderFacadeStreamChunkWithTools,
   type OnethingProviderFacadeToolCall,
   type OnethingToolChatMessage,
-  dumpProviderRequest,
+  type ProviderConfig,
+  type ProviderInfo,
   type ProviderRequestDumpMode,
-  getAvailableProviders as getProvidersFromRegistry,
-  getProviderInfo as getInfoFromRegistry,
-  initializeRegistry,
-  isProviderSupported as isSupportedFromRegistry,
-  requiresOAuth as requiresOAuthFromRegistry,
-  requiresSystemMerge as requiresSystemMergeFromRegistry,
 } from '@onething/backend/runtime/providers'
 import { ACPManager } from '@onething/backend/runtime/acp'
 import type {
@@ -38,12 +42,6 @@ import {
   type ProviderToolDefinitionMap,
   type ProviderToolSourceDefinition,
 } from './engine-agent-runtime.js'
-import type {
-  ProviderConfig,
-  ProviderInfo,
-  OnethingChatGenerationOptions,
-  OnethingProviderFacadeAdapters,
-} from '@onething/backend/runtime/providers'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('providers')

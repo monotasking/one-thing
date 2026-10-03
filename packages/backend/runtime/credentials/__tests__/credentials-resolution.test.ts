@@ -19,7 +19,7 @@ vi.mock('../../settings/settings-store.js', () => ({
 }))
 
 // Pool behavior must not depend on credentials present in the test host's environment.
-vi.mock('@onething/backend/runtime/providers/ipc-env', () => ({
+vi.mock('../../providers/ipc-env.js', () => ({
   getProviderEnvStatus: () => ({ detectedEnvVar: undefined }),
 }))
 

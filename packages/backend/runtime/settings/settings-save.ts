@@ -1,4 +1,4 @@
-import { validateOnethingProviderReasoningSettings } from '../providers/model-capability.js'
+import { validateOnethingProviderReasoningSettings } from '../providers/index.js'
 
 type MaybePromise<T> = T | Promise<T>
 

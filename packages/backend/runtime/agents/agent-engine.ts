@@ -13,7 +13,7 @@ import type {
   ProviderRequest,
   ProviderStreamEvent,
   ProviderUsage,
-} from '../providers/types.js'
+} from '../providers/index.js'
 
 export type AgentEngineSessionEvent =
   | (EventBase & { type: typeof SESSION_EVENT_TYPES.MESSAGE_USER_CREATED; message: AgentMessage & { id: string } })

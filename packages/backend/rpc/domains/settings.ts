@@ -73,7 +73,7 @@ import {
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
 } from '../../server/settings-projection.js'
-import { invalidateProviderCache } from '@onething/backend/runtime/providers/provider-table'
+import { invalidateProviderCache } from '@onething/backend/runtime/providers'
 import { getSettings, saveSettings } from '@onething/backend/runtime/settings'
 import { getGatewayHost } from '@onething/backend/runtime/gateway/lifecycle-port'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'

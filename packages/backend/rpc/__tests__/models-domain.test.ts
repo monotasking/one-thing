@@ -66,14 +66,14 @@ vi.mock('../../runtime/settings/settings-model-registry-service.js', () => ({
 // Codex 的列表口与兜底表随这家搬回 `runtime/providers/vendors/codex/`(服务商自述试点 P2 第 4 批),
 // handler 经名册拿到的拉取器调的是那一家模块里的取数与兜底函数 —— mock 落在那里。取数函数多了一个
 // fetch 参数(宿主的 app fetch 经依赖交进去),这里只把 token 转给 mock,断言照旧。
-vi.mock('@onething/backend/runtime/providers/vendors/codex/models', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@onething/backend/runtime/providers/vendors/codex/models')>()),
+vi.mock('../../runtime/providers/vendors/codex/models.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../runtime/providers/vendors/codex/models.js')>()),
   fetchOnethingCodexModels: (token: unknown) => mocks.fetchCodexModels(token),
   getOnethingCodexFallbackModels: (ids?: string[]) => mocks.getCodexFallbackModels(ids),
 }))
 
-vi.mock('@onething/backend/runtime/providers/vendors/github-copilot/models', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@onething/backend/runtime/providers/vendors/github-copilot/models')>()),
+vi.mock('../../runtime/providers/vendors/github-copilot/models.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../runtime/providers/vendors/github-copilot/models.js')>()),
   fetchCopilotModels: vi.fn(),
 }))
 

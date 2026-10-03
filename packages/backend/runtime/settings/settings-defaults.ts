@@ -17,7 +17,7 @@ import {
   NON_VENDOR_PROVIDER_SEEDS,
   type ProviderSeedTable,
 } from './defaults/settings.js'
-import { VENDOR_SEED_ORDER } from '@onething/backend/runtime/providers/vendors/manifests'
+import { VENDOR_SEED_ORDER } from '@onething/backend/runtime/providers'
 
 function buildProviderSeedTable(): ProviderSeedTable {
   const providers: Record<string, ProviderConfig> = {}

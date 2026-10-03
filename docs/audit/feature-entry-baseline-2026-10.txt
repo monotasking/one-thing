@@ -8,7 +8,6 @@
 194 agent-loop
 192 toolkit
 186 engine
-123 providers
 122 tools
 107 plugins
 100 agents
@@ -19,6 +18,7 @@
 77 collab
 72 permissions
 51 resource
+49 providers
 45 mcp
 44 auth
 36 (总桶)

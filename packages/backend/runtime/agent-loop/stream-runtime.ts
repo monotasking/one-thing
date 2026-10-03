@@ -61,12 +61,12 @@ import {
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,
 	type CreateAgentProviderFromRuntimeOptions,
-} from "../providers/agent-providers.js";
-import { buildOnethingRequestProviderOptionsBag } from "../providers/provider-options.js";
+} from "../providers/index.js";
+import { buildOnethingRequestProviderOptionsBag } from "../providers/index.js";
 import {
 	routedProviderIdOf,
 	type CoreSpaceCredentialMarker,
-} from "../providers/provider-config.js";
+} from "../providers/index.js";
 
 /**
  * 换家时(批 6 轮转 v2)首次解析那份里**必须清掉**的端点一族与凭证一族。模型本身、

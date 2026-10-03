@@ -1,54 +1,171 @@
-export * from './builtin-providers.js'
-export * from './manifest.js'
-export * from './builtin-manifests.js'
-export type { DialField, DialOption, DialSpec } from './dials.js'
-export * from './agent-turn.js'
-export * from './agent-runtime-route.js'
-export * from './env.js'
-export * from './message-conversion.js'
-export * from './model-capability.js'
-export * from './model-registry.js'
-export * from './manual-models.js'
-export * from './models-dev-cache.js'
-export * from './effective-model.js'
-export * from './models-endpoint.js'
-export * from './model-identity.js'
-export * from './model-query-presentation.js'
-export * from './oauth-config.js'
-export * from './provider-routing.js'
-export * from './provider-runtime.js'
-// per-space 凭证解析(批 B3)要的两个类型:注入函数的签名住在宿主侧,
-// 但契约(「provider config 长什么样」「运行期标记长什么样」)在这里。
-export type {
-  CoreProviderConfigLike,
-  CoreSpaceCredentialMarker,
-} from './provider-config.js'
-export * from './provider-facade.js'
-export * from './provider-definition.js'
-export * from './provider-options.js'
-export * from './provider-presentation.js'
-export * from './quota/index.js'
-// 包根归位 3 第 1 笔(2026-10-03)从包根 `provider-binding/` 并进来的:把请求转储落进日志目录的那层薄壳。
-// 受管 fetch 与代理规则搬去了 `runtime/network/`;「生效 AI 设置」的合成搬去了 `runtime/settings/`,都不再经这个入口交出。
-export { dumpProviderRequest } from './request-dump-writer.js'
-export * from './stream-provider-adapter.js'
-export * from './registry.js'
-export * from './endpoint.js'
-// `./anthropic.js`(一只老式 Anthropic 实现,缺省模型写死 claude-3-5-haiku、
-// `max_tokens` 缺省 1024)于 2026-09-09 删除:全仓零调用方,真正在用的 Anthropic
-// 实现是 `providers/dialects/anthropic-recipe.ts`;留着它等于留着一个
-// 藏起来的输出上限默认值(用户裁定:宁可没有默认,也不要在用的时候被截断)。
-// `./deepseek.js`(老式 `Provider` 接口的 DeepSeek 实现)与 `./tool-result-content.js` 于
-// 2026-10-01 删除(服务商自述试点 P2):全仓零调用方,只剩这个桶的再导出。
-// `./codex.js` / `./codex-native-tools.js` / `./github-copilot.js` 于 P2 第 4 批搬回
-// `vendors/{codex,github-copilot}/`;它们的符号不再经这个桶导出,用的人从那一家的模块直接 import。
+// 服务商(providers)功能入口。
+//
+// 这个功能回答两件事:「有哪些服务商、每一家怎么说」与「这一轮该怎么把请求拼成那一家的线协议」。它住着各家的自述表
+// (manifest)与两份名册(数据名册 `vendors/manifests.ts`、行为名册 `vendors/runtimes.ts`)、模型目录的事实与纯逻辑、
+// 生效配置的解析规则、线协议与各家方言、不带宿主能力的 AgentProvider 工厂、配额取数与计价。用服务商干活的那一半
+// (发一轮对话、按空间取凭证与设置、模型目录服务)不在这里,分别在 engine、credentials、sessions、settings 里,
+// 它们只经这个入口拿名字。
+//
+// 对外交出的东西按类分组,见下面每一段的小标题:服务商自述与名册;服务商定义与注册表;模型目录与能力;生效配置与凭证解析;
+// 造 AgentProvider 与线协议;对话门面与请求拼装;界面形状的投影;配额、计价与诊断;旧接口类型。
+// 只用具名导出,不用 `export *`(决策 N3;一个 `export *` 全交出去的入口曾与 settings / sessions 连成 60 只模块的环)。
+// 目录里的文件互相按相对路径引用,不经这个入口。
+//
+// 它依赖的功能(都是对方的叶子文件):network(受管 fetch、OAuth 协议小件)、logging、storage、agent-loop 的循环原语、
+// engine 的内核件(`error-details`、`engine-primitives`,engine 归位时归 agent-loop)、agents 的外部 agent 执行器谓词、
+// tools 的两只纯模块,以及 `@shared`。
+//
+// 还有一处外面的深层引用是有意留着的:`engine/stream/codex-native-tools.ts` 直取 `vendors/codex/native-tools.ts`。
+// 它点名 codex,交给入口就等于让入口点名 codex;等行为名册有了可选钩子 `nativeTools`,引擎不再认识 codex,那一处随之消失。
 
-// ── providers 归位(D24,2026-10-04)之后,搬去别的功能的那些文件(engine 的对话门面与进程工厂、settings 的
-// 模型目录服务、credentials 的凭证一族、custom-probe 分析器)还要用的 providers 名字,逐个列出;从前它们与这些
-// 文件同住 providers、直接互引。`provider-pricing.ts`(从 usage 搬来:一个模型一个 token 多少钱)也在这里交出。
-// providers 收口(下一笔)时这一段会与上面的 `export *` 一起整理成具名导出。
+// ── 服务商自述与名册:每一家是谁、用哪份方言、怎么登录、模型从哪来;两份名册每家一行,交出名册不点名任何一家。
 export {
-  CUSTOM_ADAPTER_BASE_DIALECT,
+  getProviderManifest,
+  getProviderManifestRegistry,
+  isSubscriptionProvider,
+  manifestOfCustomProvider,
+  resetProviderManifestRegistryForTests,
+} from './manifest.js'
+export type { CustomProviderManifestSource, ProviderManifest } from './manifest.js'
+export { BUILTIN_PROVIDER_MANIFESTS, builtinProviderFamilyLookup, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
+export { onethingBaseBuiltinProviders, providerInfoOfManifest } from './builtin-providers.js'
+export { VENDOR_SEED_ORDER } from './vendors/manifests.js'
+export { VENDOR_RUNTIMES } from './vendors/runtimes.js'
+export type { VendorFallbackModels, VendorModelsFetcherDeps } from './vendors/runtimes.js'
+
+// ── 服务商定义与注册表:一家服务商在注册表里长什么样,怎么登记、查找、丢掉缓存的实例。
+export type {
+  OnethingProviderCallMode,
+  OnethingProviderCallOptions,
+  OnethingProviderCallPreparationContext,
+  OnethingProviderConfig,
+  OnethingProviderDefinition,
+  OnethingProviderInfo,
+  OnethingProviderOptionsMap,
+  OnethingProviderToolCallOption,
+  OnethingProviderToolChoice,
+  OnethingProviderToolSchema,
+} from './provider-definition.js'
+export type { ProviderConfig, ProviderDefinition, ProviderInfo } from './ipc-types.js'
+export {
+  getAvailableProviders,
+  getProviderInfo,
+  initializeRegistry,
+  invalidateProviderCache,
+  isProviderSupported,
+  requiresOAuth,
+  requiresSystemMerge,
+} from './provider-table.js'
+
+// ── 模型目录与能力:目录条目的形状与查询、某个型号能做什么、模型认亲、手填模型、models.dev 缓存与各家的模型列表接口。
+export {
+  fetchOnethingModelsDevData,
+  getAllOnethingModels,
+  getOnethingKnownModelMaxOutputTokens,
+  getOnethingModelById,
+  getOnethingModelCacheStatus,
+  getOnethingModelCapabilityEntry,
+  getOnethingModelContextLength,
+  getOnethingModelDisplayName,
+  getOnethingModelNameAliases,
+  getOnethingModelsForProvider,
+  getOnethingModelsWithCapabilities,
+  modelsDevModelToOnethingCapabilityEntry,
+  onethingCapabilityEntryToOpenRouterModel,
+  onethingModelServesImageOutputInLoop,
+  onethingModelSupportsImageGeneration,
+  onethingModelSupportsTemperature,
+  onethingModelSupportsTools,
+  openRouterModelToOnethingCapabilityEntry,
+  refreshAllOnethingProviderModels,
+  refreshOnethingProviderModels,
+  saveOnethingProviderModels,
+  searchOnethingModels,
+} from './model-registry.js'
+export type {
+  GetOnethingModelsWithCapabilitiesAdapters,
+  OnethingCatalogModelEntry,
+  OnethingConfiguredModelSelection,
+  OnethingEndpointModelsFetcher,
+  OnethingModelCapabilityEntry,
+  OnethingModelRegistryQueryOptions,
+  OnethingModelRegistryRefreshAdapters,
+  OnethingModelRegistryRefreshLogger,
+  OnethingModelsDevResponse,
+  OnethingOpenRouterModel,
+  OnethingProviderModelConfigs,
+} from './model-registry.js'
+export {
+  projectOnethingThinkingLevels,
+  resolveOnethingModelCapabilities,
+  validateOnethingProviderReasoningSettings,
+} from './model-capability.js'
+export { effectiveModelFactsOf, onethingModelOverrideFactsOf } from './effective-model.js'
+export { MODEL_SUGGESTION_CAPABILITY_KEYS, modelIdentityIndexOf, modelParameterSuggestionOf } from './model-identity.js'
+export type { ModelIdentityIndex } from './model-identity.js'
+export {
+  applyAddManualModel,
+  applyRemoveManualModel,
+  catalogFactsOf,
+  createOnethingManualModelEntry,
+  foldOrphansIntoManual,
+  isOnethingManualModelEntry,
+} from './manual-models.js'
+export type { ManualModelEditResult } from './manual-models.js'
+export { createModelsDevCache, MODELS_DEV_CACHE_FILE_NAME } from './models-dev-cache.js'
+export { ONETHING_PROVIDER_MAPPING } from './models-dev-catalog.js'
+export { fetchProviderDirectModels } from './models-endpoint.js'
+export type { ModelsListMapping, ProviderDirectModelsFetch } from './models-endpoint.js'
+
+// ── 生效配置与凭证解析:这次请求实际用哪一家、哪把 key、哪个地址;按环境变量找 key;服务商私有的运行时旋钮;后台杂活用哪个模型。
+export { routedProviderIdOf, withResolvedProviderBaseUrl } from './provider-config.js'
+export type {
+  CoreAppSettingsWithAI,
+  CoreProviderAuthLike,
+  CoreProviderAuthLogger,
+  CoreProviderConfigLike,
+  CoreSessionProviderSelection,
+  CoreSpaceCredentialMarker,
+  CoreSpaceDefaultSelection,
+} from './provider-config.js'
+export {
+  extractOnethingProviderErrorDetails,
+  generateOnethingChatTitleForIpc,
+  getEffectiveOnethingProviderConfig,
+  getOnethingApiKeyForProvider,
+  getOnethingCaughtErrorMessage,
+  getOnethingCredentialsError,
+  getOnethingCustomProviderConfig,
+  getOnethingProviderApiType,
+  getOnethingProviderConfig,
+  resolveOnethingProviderAuth,
+  resolveOnethingProviderConfigForChat,
+} from './provider-runtime.js'
+export type { OnethingChatTitleGenerationAdapters, OnethingProviderErrorDetails } from './provider-runtime.js'
+export { getProviderEnvStatus, resolveProviderApiKey } from './ipc-env.js'
+export { buildOnethingRequestProviderOptionsBag, pickOnethingProviderOptions } from './provider-options.js'
+export type { OnethingProviderOptions } from './provider-options.js'
+export { resolveUtilityModel } from './utility-model.js'
+
+// ── 造 AgentProvider 与线协议:不带宿主能力的工厂(宿主能力由 engine 的进程工厂补上)、OpenAI 兼容线、方言登记与自定义方言、
+// 自定义服务商「自动识别」的纯函数、思考档位、各家私有的内容块(provider data)。
+export {
+  createAgentProviderFromRuntime,
+  getSupportedAgentProviderRuntimeIds,
+  isAgentProviderRuntimeSupported,
+  registerAgentProviderRuntime,
+} from './factory.js'
+export type {
+  AgentProviderRuntimeConfig,
+  CreateAgentProviderFromRuntimeOptions,
+  RegisterAgentProviderRuntimeOptions,
+} from './factory.js'
+export { createOpenAICompatibleAgentProvider } from './openai-compatible.js'
+export type { OpenAICompatibleAgentProviderOptions } from './openai-compatible.js'
+export type { ProviderMediaImage, ProviderMediaReader } from './base/provider-context.js'
+export { registerDialect } from './base/dialect.js'
+export { CUSTOM_ADAPTER_BASE_DIALECT, dialectFromSpec, unsupportedAdapterSpecFields } from './dialects/custom-from-spec.js'
+export {
   adapterReasoningPath,
   parseAdapterSpecAnswer,
   probeCustomEndpoint,
@@ -56,58 +173,75 @@ export {
   verifyAdapterSpec,
 } from './custom-probe.js'
 export {
-  getAvailableProviders,
-  getProviderInfo,
-  initializeRegistry,
-  isProviderSupported,
-  requiresOAuth,
-  requiresSystemMerge,
-} from './provider-table.js'
-export {
-  withResolvedProviderBaseUrl,
-} from './provider-config.js'
-export {
-  getProviderEnvStatus,
-} from './ipc-env.js'
+  createOnethingUtilityAgentProvider,
+  isOnethingACPProviderRuntime,
+  ONETHING_ACP_RUNTIME_PROVIDER_ID,
+  resolveOnethingProviderRuntimeRoute,
+} from './agent-runtime-route.js'
 export type {
-  ProviderRequestDumpMode,
-} from './request-dump-writer.js'
+  OnethingProviderExecutableToolDefinition,
+  OnethingProviderRuntimeRoute,
+  OnethingProviderRuntimeRouteAdapters,
+} from './agent-runtime-route.js'
+export type { OnethingProviderRequestDumpMode, OnethingProviderRequestDumpValue } from './agent-turn.js'
+export { getOnethingAgentLoopThinkingOptions } from './thinking-options.js'
+export {
+  applyOnethingAgentLoopProviderData,
+  planOnethingProviderDataPart,
+  providerDataFromOnethingContentPart,
+} from './provider-data.js'
+export type { ApplyOnethingAgentLoopProviderDataOptions } from './provider-data.js'
+export { ONETHING_QUOTA_PROVIDER_DATA_TYPE } from './provider-data-policy.js'
+
+// ── 对话门面与请求拼装:发一轮对话 / 起标题的编排(宿主把 fetch、日志、凭证经适配器交进来)、流式适配、工具定义与消息的线形状。
+export { createOnethingProviderFacade } from './provider-facade.js'
 export type {
-  ProviderConfig,
-  ProviderDefinition,
-  ProviderInfo,
-} from './ipc-types.js'
-export {
-  createAgentProviderFromRuntime,
-  createOpenAICompatibleAgentProvider,
-  getSupportedAgentProviderRuntimeIds,
-  isAgentProviderRuntimeSupported,
-  registerAgentProviderRuntime,
-} from './agent-providers.js'
+  OnethingChatGenerationOptions,
+  OnethingProviderFacadeAdapters,
+  OnethingProviderFacadeChatResponseResult,
+  OnethingProviderFacadeRawRecord,
+  OnethingProviderFacadeReasoningStreamChunk,
+  OnethingProviderFacadeStreamCallbacks,
+  OnethingProviderFacadeStreamChunkWithTools,
+  OnethingProviderFacadeToolCall,
+} from './provider-facade.js'
+export { createOnethingStreamProviderAdapter } from './stream-provider-adapter.js'
+export type { OnethingStreamProviderAdapterOptions } from './stream-provider-adapter.js'
+export { buildOnethingChatTitleGenerationRequest } from './provider-routing.js'
 export type {
-  AgentProviderRuntimeConfig,
-  CreateAgentProviderFromRuntimeOptions,
-  OpenAICompatibleAgentProviderOptions,
-  ProviderMediaImage,
-  ProviderMediaReader,
-  RegisterAgentProviderRuntimeOptions,
-} from './agent-providers.js'
+  OnethingAIMessageContent,
+  OnethingProviderToolDefinitionInput,
+  OnethingProviderToolDefinitionMap,
+  OnethingProviderToolParameter,
+  OnethingProviderToolSourceDefinition,
+  OnethingToolChatMessage,
+} from './message-conversion.js'
+
+// ── 界面形状的投影:服务商列表、环境变量状态、模型查询、方言选项,按界面要的形状交出。
+export { inspectOnethingProviderEnvStatusForIpc, listOnethingProvidersForIpc } from './provider-presentation.js'
+export type { ListOnethingProvidersOptions, OnethingProviderPresentationIpcLogger } from './provider-presentation.js'
 export {
-  resolveUtilityModel,
-} from './utility-model.js'
-export {
-  dialectFromSpec,
-  unsupportedAdapterSpecFields,
-} from './dialects/custom-from-spec.js'
-export {
-  registerDialect,
-} from './base/dialect.js'
-export {
-  VENDOR_RUNTIMES,
-} from './vendors/runtimes.js'
+  getAllOnethingModelRegistryModelsForIpc,
+  getOnethingModelCapabilitiesForIpc,
+  getOnethingModelRegistryDisplayNameForIpc,
+  getOnethingModelRegistryNameAliasesForIpc,
+  refreshOnethingModelRegistryForIpc,
+  searchOnethingModelRegistryForIpc,
+} from './model-query-presentation.js'
 export type {
-  VendorFallbackModels,
-} from './vendors/runtimes.js'
-export {
-  buildOnethingUsageLedgerRecord,
-} from './provider-pricing.js'
+  GetAllOnethingModelRegistryModelsOptions,
+  GetOnethingModelRegistryNameAliasesOptions,
+  OnethingModelQueryIpcLogger,
+  RefreshOnethingModelRegistryOptions,
+} from './model-query-presentation.js'
+export { listLabeledDialectsForIpc } from './dialect-options.js'
+
+// ── 配额、计价与诊断:订阅额度 / 余额取数、一个模型一个 token 多少钱、把请求转储落进日志目录。
+export { fetchProviderQuota, providerQuotaSourceOf } from './quota/index.js'
+export type { QuotaFetchContext } from './quota/source.js'
+export { buildOnethingUsageLedgerRecord } from './provider-pricing.js'
+export { dumpProviderRequest } from './request-dump-writer.js'
+export type { ProviderRequestDumpMode } from './request-dump-writer.js'
+
+// ── 旧接口类型:老式 `Provider` 接口(agents 的老引擎还在用)。
+export type { Provider, ProviderRequest, ProviderStreamEvent, ProviderUsage } from './types.js'

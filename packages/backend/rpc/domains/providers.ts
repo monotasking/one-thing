@@ -17,19 +17,19 @@
 import type { RouteHandlers } from '@shared/ipc/router'
 import type { ProviderInfo, ProvidersRoutes } from '@shared/ipc/providers.js'
 import {
+  getProviderEnvStatus,
   inspectOnethingProviderEnvStatusForIpc,
+  listLabeledDialectsForIpc,
   listOnethingProvidersForIpc,
+  type ListOnethingProvidersOptions,
+  type OnethingProviderPresentationIpcLogger,
 } from '@onething/backend/runtime/providers'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { getAvailableProviders } from '@onething/backend/runtime/engine'
-import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
-import { listLabeledDialectsForIpc } from '@onething/backend/runtime/providers/dialect-options'
 import { probeCustomProvider } from './providers-custom-probe-analyst.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { OnethingProviderPresentationIpcLogger } from '@onething/backend/runtime/providers/provider-presentation'
 import { getCurrentBackendInstance } from '../../current.js'
-import type { ListOnethingProvidersOptions } from '@onething/backend/runtime/providers/provider-presentation'
 
 const log = getLogger('ipc.providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -32,7 +32,7 @@ import {
   resolveSpaceProviderCredential,
 } from '../../credentials/credentials-provider-rules.js'
 import type { CoreProviderConfigLike, ProviderConfigWithDials } from '../../providers/provider-config.js'
-import { withResolvedProviderBaseUrl } from '../../providers/provider-config.js'
+import { withResolvedProviderBaseUrl } from '../../providers/index.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,

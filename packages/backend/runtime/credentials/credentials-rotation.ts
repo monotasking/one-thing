@@ -48,9 +48,13 @@ import {
   isSpaceCredentialEntryUsable,
   markSpaceCredentialCooldown,
 } from './credentials-pool.js'
-import { getProviderManifest, buildOnethingRequestProviderOptionsBag } from '@onething/backend/runtime/providers'
+import {
+  buildOnethingRequestProviderOptionsBag,
+  getProviderManifest,
+  type CoreProviderConfigLike,
+  type CoreSpaceCredentialMarker,
+} from '@onething/backend/runtime/providers'
 import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from './credentials-candidate-route.js'
-import type { CoreProviderConfigLike, CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import { getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
 import { resolveSessionSpaceId, getSpaceSettings } from '@onething/backend/runtime/sessions'
 import {

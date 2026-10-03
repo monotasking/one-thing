@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { getProviderManifest } from "../providers/manifest.js";
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "../providers/provider-config.js";
+import { getProviderManifest } from "../providers/index.js";
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "../providers/index.js";
 import os from "node:os";
 import path from "node:path";
 import {

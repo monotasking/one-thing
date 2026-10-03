@@ -2,10 +2,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { promisify } from 'node:util'
-import type {
-  OnethingProviderRequestDumpMode as OnethingAgentTurnRequestDumpMode,
-  OnethingProviderRequestDumpValue,
-} from '@onething/backend/runtime/providers'
+import type { OnethingProviderRequestDumpMode as OnethingAgentTurnRequestDumpMode, OnethingProviderRequestDumpValue } from '@onething/backend/runtime/providers'
 
 /*
  * 本模块经日志入口交出(2026-10-04 从 providers 搬来,D24),而索引 Worker 也从日志入口拿 `getLogger`。

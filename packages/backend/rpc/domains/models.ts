@@ -21,41 +21,44 @@ import type {
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
 import { createAgentProviderFromRuntime } from '@onething/backend/runtime/engine'
-import type { OnethingProviderOptions } from '@onething/backend/runtime/providers/provider-options'
 import {
   catalogFactsOf,
   createOnethingManualModelEntry,
   effectiveModelFactsOf,
-  isOnethingManualModelEntry,
-  onethingModelOverrideFactsOf,
-  openRouterModelToOnethingCapabilityEntry,
-  type OnethingCatalogModelEntry,
-  type OnethingOpenRouterModel,
-  onethingCapabilityEntryToOpenRouterModel,
   getAllOnethingModelRegistryModelsForIpc,
-  getOnethingModelsWithCapabilities,
   getOnethingModelCapabilitiesForIpc,
   getOnethingModelRegistryDisplayNameForIpc,
   getOnethingModelRegistryNameAliasesForIpc,
+  getOnethingModelsWithCapabilities,
+  isOnethingManualModelEntry,
+  MODEL_SUGGESTION_CAPABILITY_KEYS,
+  modelIdentityIndexOf,
+  modelParameterSuggestionOf,
+  modelsDevModelToOnethingCapabilityEntry,
+  ONETHING_PROVIDER_MAPPING,
+  onethingCapabilityEntryToOpenRouterModel,
+  onethingModelOverrideFactsOf,
+  openRouterModelToOnethingCapabilityEntry,
   projectOnethingThinkingLevels,
   refreshOnethingModelRegistryForIpc,
   resolveOnethingModelCapabilities,
   searchOnethingModelRegistryForIpc,
-  type OnethingConfiguredModelSelection,
-  modelsDevModelToOnethingCapabilityEntry,
-  ONETHING_PROVIDER_MAPPING,
-} from '@onething/backend/runtime/providers'
-import {
-  MODEL_SUGGESTION_CAPABILITY_KEYS,
-  modelIdentityIndexOf,
-  modelParameterSuggestionOf,
-  type ModelIdentityIndex,
-} from '@onething/backend/runtime/providers/model-identity'
-import { getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
-import {
   VENDOR_RUNTIMES,
+  type GetAllOnethingModelRegistryModelsOptions,
+  type GetOnethingModelRegistryNameAliasesOptions,
+  type GetOnethingModelsWithCapabilitiesAdapters,
+  type ModelIdentityIndex,
+  type OnethingCatalogModelEntry,
+  type OnethingConfiguredModelSelection,
+  type OnethingEndpointModelsFetcher,
+  type OnethingModelQueryIpcLogger,
+  type OnethingModelRegistryRefreshLogger,
+  type OnethingOpenRouterModel,
+  type OnethingProviderOptions,
+  type RefreshOnethingModelRegistryOptions,
   type VendorModelsFetcherDeps,
-} from '@onething/backend/runtime/providers/vendors/runtimes'
+} from '@onething/backend/runtime/providers'
+import { getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
 import {
   modelRegistry,
   addManualModel,
@@ -67,12 +70,7 @@ import {
 } from '@onething/backend/runtime/settings'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import type { GetOnethingModelsWithCapabilitiesAdapters } from '@onething/backend/runtime/providers/model-registry'
-import type { RefreshOnethingModelRegistryOptions, GetOnethingModelRegistryNameAliasesOptions, OnethingModelQueryIpcLogger } from '@onething/backend/runtime/providers/model-query-presentation'
-import type { OnethingModelRegistryRefreshLogger } from '@onething/backend/runtime/providers/model-registry'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { GetAllOnethingModelRegistryModelsOptions } from '@onething/backend/runtime/providers/model-query-presentation'
-import type { OnethingEndpointModelsFetcher } from '@onething/backend/runtime/providers/model-registry'
 
 const log = getLogger('ipc.models')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

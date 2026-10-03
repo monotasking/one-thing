@@ -31,7 +31,7 @@ import {
   spaceProviderSettingsPath,
   writeSpaceProviderSettings,
 } from '@onething/backend/runtime/spaces/provider-settings'
-import { getProviderApiKeyEnvCandidates } from '@onething/backend/runtime/providers/ipc-env'
+import { getProviderApiKeyEnvCandidates } from '../../providers/ipc-env.js'
 import {
   getSettings,
   invalidateSettingsCache,
@@ -39,7 +39,7 @@ import {
   updateSettingsInMemory,
 } from '@onething/backend/runtime/settings'
 import { setSpaceProviderCredential } from '@onething/backend/runtime/credentials'
-import { initializeRegistry } from '@onething/backend/runtime/providers/provider-table'
+import { initializeRegistry } from '@onething/backend/runtime/providers'
 import { createEvalsModelCaller, resolveEvalsCredentials } from '../provider-adapter.js'
 
 let directory: string

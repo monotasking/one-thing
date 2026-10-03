@@ -14,13 +14,12 @@
 import type { AgentProvider } from "@onething/backend/runtime/agent-loop/loop-primitives";
 import type { AppSettings } from "@shared/ipc.js";
 import { createAgentProviderFromRuntime } from "./engine-process-providers.js";
-import { pickOnethingProviderOptions, resolveUtilityModel } from "@onething/backend/runtime/providers";
+import { pickOnethingProviderOptions, resolveUtilityModel, type CreateAgentProviderFromRuntimeOptions } from "@onething/backend/runtime/providers";
 import {
 	getProviderApiType,
 	resolveProviderAuth,
 } from "@onething/backend/runtime/engine/stream/provider-helpers";
 import { applySessionSpaceCredentials } from "@onething/backend/runtime/credentials";
-import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/providers'
 
 export interface UtilityProviderRef {
 	provider: AgentProvider;

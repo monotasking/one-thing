@@ -8,7 +8,7 @@ import {
   getProviderConfig,
   resolveProviderAuthWithAdapters,
   resolveProviderConfigForChat,
-} from '@onething/backend/runtime/providers/provider-config'
+} from '../../providers/provider-config.js'
 
 describe('onething runtime provider config helpers', () => {
   const settings = {

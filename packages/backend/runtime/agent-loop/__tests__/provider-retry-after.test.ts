@@ -15,7 +15,7 @@ import type { AgentProvider, AgentTurnRequest } from '@onething/backend/runtime/
 import { createClaudeAgentProvider } from '../../providers/vendors/claude/agent-provider.js'
 import { createDeepSeekAgentProvider } from '../../providers/vendors/deepseek/agent-provider.js'
 import { createGeminiAgentProvider } from '../../providers/vendors/gemini/agent-provider.js'
-import { createOpenAICompatibleAgentProvider } from '../../providers/openai-compatible.js'
+import { createOpenAICompatibleAgentProvider } from '../../providers/index.js'
 import { createCodexAgentProvider } from '../../providers/vendors/codex/agent-provider.js'
 import {
   classifyProviderError,

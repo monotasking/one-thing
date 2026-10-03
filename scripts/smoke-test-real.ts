@@ -5,7 +5,7 @@ import {
   type ToolCall,
   type ToolResult,
 } from '../packages/backend/runtime/tools/tool-helpers.ts'
-import type { Provider } from '../packages/backend/runtime/providers/types.ts'
+import type { Provider } from '../packages/backend/runtime/providers/index.ts'
 import {
   createAnthropicProvider,
   createDeepSeekProvider,

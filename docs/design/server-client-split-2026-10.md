@@ -1678,3 +1678,27 @@ sessions 入口、`settings-{custom-manifests,manual-model-store,model-registry-
 `appendFailures 8` / `compact-half-run-log`;`hydration-contract` 217 / 0(夹具与自带 store 两份);`gate:acp` 去掉 id 后同;`gate:search-index` 前后同红 ⑤c / ⑤d;
 boundary / transport / log / session / gate:native 绿,assembly 前后同红(`music/radio.ts` 9 → 10,与本笔无关);cycle 0、layer 97 / 53、entry 2806、name 131、provider 109、
 feature-map 一致;`provider:drill` 直接跑绿;CLI `--help` 不写 store;server 单文件包在临时 store 上起得来并 listening;golden 不变。
+
+### providers 收口第一部分落地记录:一个入口、只用具名导出(2026-10-04,未提交)
+
+**一句话**:providers 的入口 `runtime/providers/index.ts` 把 `export *` 全部换成按九类分组的具名导出(197 个名字,文件头是 R3 说明书),外面的非测试引用
+全部改走入口(只剩 codex 原生工具那一处,D40),exports 删掉 47 个深层键、只留 `./runtime/providers`。决策 D39–D45,名单、计数与读数在
+`provider-entry-2026-10.md` 第 8 节。第二部分(测试搬家、`nativeTools` 钩子、自定义线底配方、整块工厂 `vi.mock`)未做。
+
+**怎么改的**:先写入口(名单出自 `s18/needs.mjs`:TypeScript checker 把 providers 之外每处 import 的名字解析到声明文件),再跑 `s18/rewrite.mjs`(带 dry 模式):
+非测试一律改走入口,同一文件里指向 providers 的几条 import 合成一条;测试只在入口交出了那条 import 的全部名字时改走入口,否则留深层,包名深层说明符改成相对路径(D44);
+providers 目录里的包名自引用改相对。手改四处:总桶 `runtime/index.ts` 删 `export * from './providers/agent-providers.js'` 并删掉旧桶本身(D41)、`provider-table.ts` 经入口取类型(D42)、
+`__tests__/provider-facade.test.ts` 改引兄弟文件、壳的两只测试夹具改走入口(D43)。`scripts/provider-vendor-drill/acme-drill.test.ts.txt` 同步改写,顺手修掉它引 s17 已搬走路径的假红(D45)。
+`scripts/smoke-test-real.ts` 的类型 import 改走入口 —— 这只脚本本来就跑不起来(它 import 的 `createAnthropicProvider` / `createDeepSeekProvider` 早已删除),只是不让它再指一个已删的路径。
+
+**环与加载期**:`cycle:gate` 每一步都是 0,深层环 17 / 3 / 2 不变,没有断边;入口闭包 287 → 286,新进来的只有 `dialect-options.ts`(顶层不取值),所以没有新的 const 持有器。
+`import-side-effect-free.test.ts` 新增「import providers 入口不建仓库、不读设置」,并实测过:在 `ipc-env.ts` 顶层临时加 `getSettings()` 它就红在 `settings-repository` / `settings-path`。
+
+**验收(改前 `s18-before` / 改后 `s18-after`,脚本 `s17-checks.sh` + `s17-extras.sh` —— 与 `s9-checks.sh` / `s11-extras.sh` 是同一套,只是补了四道新门、快照路径跟上了 3-2 的搬家)**:
+typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功,`dist/web` 零 `node:` 字面量;三份 `search-worker.cjs` 前后逐字节同大(1276211 / 1276211 / 1274675),
+server `main.js` 5906493 → 5897802、CLI `main.cjs` 11501297 → 11487749、`desk/main.cjs` 11475562 → 11462128;根全量 vitest 11418 → 11419 条(多的是新栅栏)、21 红,失败集合逐条相同;
+壳 7344 / 1 相同;四份线协议快照 + vendor-facts + 出厂设置冻结 154 绿、快照文件按内容哈希逐字同;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 22 → 23 绿;
+`sessions:shadow-battery` 前后只差耗时,都红在 `appendFailures 8`;`hydration-contract` 217 / 0(夹具与自带 store);`gate:acp` 去掉 id / pid / 时间戳后同;
+`gate:search-index` 前后同红 ⑤c / ⑤d;assembly 前后同红(`music/radio.ts` 9 → 10,与本笔无关);boundary / transport / log / session / gate:native 绿;cycle 0、layer 97 / 53、
+entry 2806 → 2732(基线已收紧,只动 providers 一行 123 → 49)、name 131、provider 109;feature-map 重新生成后一致;`provider:drill` 改前假红、改后直接跑绿;
+CLI `--help` 不写 store;server 单文件包在临时 store 上起得来并 listening;golden 不变。

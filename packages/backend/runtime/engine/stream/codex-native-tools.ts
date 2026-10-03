@@ -5,7 +5,7 @@ import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
   resolveCodexNativeToolsFromModelInfo,
   shouldResolveCodexNativeTools,
-} from '@onething/backend/runtime/providers/vendors/codex/native-tools'
+} from '../../providers/vendors/codex/native-tools.js'
 
 export { CODEX_NATIVE_IMAGE_GENERATION_TOOL }
 

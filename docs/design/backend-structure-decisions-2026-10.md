@@ -46,6 +46,13 @@
 | D36 | 10-04 | 从 providers / auth 搬进 logging / network 的两只模块让索引 Worker 变大了 504 字节 | 这两只模块的顶层只放字面量与函数:`gzip` 首次压缩时才 `promisify`,三个由算式写成的常量改成算好的字面量(注释里留原算式) | esbuild 只会整只摇掉顶层无副作用的模块,`8 * 60 * 60 * 1000` 这种算式与顶层函数调用都会留下;Worker 不许变大 | 我 |
 | D37 | 10-04 | `usage/summary.ts` 里按凭证分桶的那块搬多少 | 只搬纯函数 `computeOnethingCredentialUsage` 与它签名里的两个类型(→ `credentials/credentials-usage.ts`);读账本再分桶的 `getOnethingCredentialUsage`(全仓零调用)留在 usage,改从凭证入口拿那个函数 | 派工单写的是「只搬函数」;usage → credentials 同层、经入口、不成环 | 我 |
 | D38 | 10-04 | 删无人调用的 `providers/codex.ts` 包装后,测它的 `agent-loop/__tests__/codex-provider.test.ts` 怎么办 | 改测 `vendors/codex/agent-provider` 的构造门面(四个用例都自带 `fetchImpl`,刷新用例自带 `refreshOAuthToken`,包装多出的两样缺省在测试里不起作用);令牌字面量多一格 `refreshToken`,按门面入参类型断言一次 | 断言一字不动;生产里 `createCodexAgentProvider`(包装那一只)零调用者,`engine-process-providers.ts` 的再导出一起删 | 我 |
+| D39 | 10-04 | providers 入口交出哪些名字 | 只交「外面真在用」的:非测试引用、今天已经走入口的测试、壳的测试夹具(`apps/desktop-react/src/data/__fixtures__`)要的名字,外加边界规则要入口交出的十个服务商定义契约类型;一律从**声明它的那只文件**具名导出、按九类分组(197 个:值 116、类型 81),`export *` 一行不剩。只被测试深层引用的名字(各家的构造门面、方言、地址常量等)不进入口 | R6「入口交出的名字越少越好」;从声明处导出是同一个符号,入口闭包反而少了两只纯转发文件(287 → 286) | 我 |
+| D40 | 10-04 | `engine/stream/codex-native-tools.ts` 对 `vendors/codex/native-tools.ts` 的引用 | 本笔留作深层引用(改成相对路径,不经包的 exports),是 providers 一行里唯一的非测试深层引用;第二部分改成行为名册的可选钩子 `nativeTools` 后消失 | 交给入口就等于让入口点名 codex(`provider:gate` 会多一对);provider-entry 问题 5 的定论本来就是改钩子 | 我 |
+| D41 | 10-04 | 旧桶 `providers/agent-providers.ts`(纯转发,原入口与总桶 `runtime/index.ts` 都 `export *` 它) | 删掉;总桶那一行 `export * from './providers/agent-providers.js'` 一起删(总桶仍 `export *` providers 入口);唯一剩下的使用者 `sse.test.ts` 改引 `sse.js` | 收口后零生产使用者;全仓没有经总桶拿 providers 名字的地方(TS checker 逐个解析过,0 处) | 我 |
+| D42 | 10-04 | 两条边界规则把「内部门面经入口取类型」写死了:`provider-table.ts` 必须出现入口说明符、`ipc-types.ts` 必须出现 `./index.js`、入口必须交出 `./provider-definition.js` | 不改门:`provider-table.ts` 的两处包名自引用(原来指 `…/providers/ipc-types` 深层键)改成经入口取类型,`ipc-types.ts` 照旧;两处都只引类型,编译后擦掉,不成值边(`cycle:gate` 0) | 规则是旧「app 层委派给 runtime」的化石,但改门比照着它写的风险大;只引类型不会成环 | 我 |
+| D43 | 10-04 | 壳的测试夹具(provider-entry 问题 6) | 选 A:两只夹具改走 providers 入口(`BUILTIN_PROVIDER_MANIFESTS`、`providerInfoOfManifest` 因此进入口) | providers 归位之后入口是轻的那一个(286 只、零设置 / 会话);壳 vitest 失败集合前后逐条相同 | 我 |
+| D44 | 10-04 | exports 删深层键之后,测试里还写着包名深层说明符的地方(`vi.mock`、`typeof import()`、入口没交出的名字) | 改成相对路径,深度不变;`vi.mock` 换的仍是同一只模块(按文件解析成同一个 id),被测代码经入口拿名字时照样拿到替身 | D35 允许测试的 `vi.mock` / 动态 import 留深层;exports 只留 `./runtime/providers` 一个键,包名就只能指入口 | 我 |
+| D45 | 10-04 | `provider:drill` 改前就是假红(模板 `acme-drill.test.ts.txt` 还引 s17 搬走的 `spaces/provider-credentials`) | 顺手修:模板里入口交出的名字走入口,入口不交出的五个与凭证规则按相对路径直取 | 模板反正要改(它用的十个深层键都删了);修好后 drill 直接跑绿 | 我 |
 
 ## 可读性判据(D20)
 
@@ -98,7 +105,9 @@
 
 1. **先立门**:N1 文件名重复(今天 132,只减)、入口无环(D19,零基线硬闸)、层次表与违例(D23,今天 139,只减)。
 2. **providers 归位**(D24 / D25):29 只文件按层次去处、断三条边、`permission-policy` 惰性化,然后 providers 收口到一个入口(只用具名导出,N3)。
-   **前半 10-04 已落地**(文件归位 + 建 `credentials/` + 断三条边 + 三处惰性化,决策 D30–D38;实施结果见 `feature-layers-and-provider-placement-2026-10.md` 第 9 节),剩 providers 收口。
+   **前半 10-04 已落地**(文件归位 + 建 `credentials/` + 断三条边 + 三处惰性化,决策 D30–D38;实施结果见 `feature-layers-and-provider-placement-2026-10.md` 第 9 节);
+   **收口第一部分 10-04 已落地**(入口只用具名导出、外面的非测试引用全走入口、exports 只留 `./runtime/providers`,决策 D39–D45;实施结果见 `provider-entry-2026-10.md` 第 8 节),
+   剩第二部分(只测一家的测试搬进 `vendors/<id>/__tests__/`、codex 原生工具改名册钩子、自定义线底配方、整块工厂 `vi.mock` 改 `importOriginal`)。
 3. **engine 归位**(D27,F2→F4)。
 4. 其余按层次收口:collab 的叶子下沉、tools access-control、prompts→plugins 等违例逐条结;每个功能收口都过入口无环门。
 5. **包根归位**:`server/` 核心 + `rpc/` 分发表 → `http-server/`;`rpc/domains/<d>` → `<d>/<d>-client-api.ts`(D26 第二入口);`server/` 里各功能的面回各功能;`channel/` → gateway;`features/`、`utils/` 按内容归位;删兼容桶 `store.ts`(拆 59 处整块 mock)。

@@ -14,7 +14,7 @@ import {
   onethingPortableBuiltinProviders,
 } from '../builtin-providers.js'
 
-import type { ProviderDefinition } from '@onething/backend/runtime/providers/ipc-types'
+import type { ProviderDefinition } from '../ipc-types.js'
 
 // All built-in providers.
 //

@@ -12,7 +12,7 @@
  * 实例由 `OnethingBackend` 持有(`backend.quota`),`own()` 收尾 —— 计时器全在它身上。
  */
 import type { ProviderQuotaPushPayload } from '@shared/contracts/quota.js'
-import { fetchProviderQuota, providerQuotaSourceOf } from '@onething/backend/runtime/providers/quota'
+import { fetchProviderQuota, getProviderEnvStatus, providerQuotaSourceOf } from '@onething/backend/runtime/providers'
 import {
   applySpaceProviderCredential,
   toSpaceCredentialMarker,
@@ -25,7 +25,6 @@ import {
 } from '@onething/backend/runtime/credentials'
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
-import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
 import { createRequiredAppFetch } from '@onething/backend/runtime/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/runtime/events'
 import { getAuthService } from '../auth/process-auth-service.js'

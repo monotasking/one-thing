@@ -8,13 +8,6 @@ import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/
 import { requiresOAuth } from '../engine-chat-facade.js'
 import { oauthManager } from '@onething/backend/runtime/auth'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
-import { resolveProviderApiKey } from '@onething/backend/runtime/providers/ipc-env'
-import {
-  applySessionProviderGates,
-  credentialTargetFromMarker,
-  resolveSessionSpaceOAuthAuth,
-} from '@onething/backend/runtime/credentials'
-import { resolveSessionSpaceDefaultSelection, getSessionSettings } from '@onething/backend/runtime/sessions'
 import {
   extractOnethingProviderErrorDetails,
   getEffectiveOnethingProviderConfig,
@@ -25,11 +18,18 @@ import {
   getOnethingProviderConfig,
   resolveOnethingProviderAuth,
   resolveOnethingProviderConfigForChat,
+  resolveProviderApiKey,
+  type CoreProviderAuthLogger,
   type OnethingProviderErrorDetails,
 } from '@onething/backend/runtime/providers'
+import {
+  applySessionProviderGates,
+  credentialTargetFromMarker,
+  resolveSessionSpaceOAuthAuth,
+} from '@onething/backend/runtime/credentials'
+import { resolveSessionSpaceDefaultSelection, getSessionSettings } from '@onething/backend/runtime/sessions'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { CoreProviderAuthLogger } from '@onething/backend/runtime/providers/provider-config'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

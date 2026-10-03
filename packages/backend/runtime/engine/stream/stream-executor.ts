@@ -6,7 +6,7 @@
  * Uses StreamEngine for AbortController lifecycle management.
  */
 
-import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
+import { getProviderManifest, routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import type { AppSettings, ChatMessage, ProviderConfig, ToolSettings } from '@shared/ipc.js'
 import type { Principal } from '@shared/permission/principal'
 import type { SessionRunKind } from '@shared/session/events/types'
@@ -40,7 +40,6 @@ import {
 import type { CoreInitialToolChoice } from '@onething/backend/runtime/engine/engine-primitives'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import { noteQuotaRunEnd } from '@onething/backend/runtime/quota/engine-hooks'
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config'
 import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/backend/runtime/engine/engine-primitives'
 
 const log = getLogger('engine.stream')

@@ -28,8 +28,8 @@ import {
   applyRemoveManualModel,
   foldOrphansIntoManual,
   type ManualModelEditResult,
+  type OnethingCatalogModelEntry,
 } from '@onething/backend/runtime/providers'
-import type { OnethingCatalogModelEntry } from '@onething/backend/runtime/providers'
 import {
   createEmptySpaceProviderSettings,
   readSpaceProviderSettings,

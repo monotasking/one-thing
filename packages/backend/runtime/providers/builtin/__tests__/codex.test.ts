@@ -11,7 +11,7 @@ import {
   ONETHING_CODEX_CLIENT_VERSION as CODEX_CLIENT_VERSION,
   getOnethingCodexFallbackModel as getCodexFallbackModel,
   getOnethingCodexFallbackModels as getCodexFallbackModels,
-} from '@onething/backend/runtime/providers/vendors/codex/models'
+} from '../../vendors/codex/models.js'
 
 function codexMetadata(model: { providerMetadata?: object | null } | null | undefined): JsonObject {
   return toJsonObject(toJsonObject(model?.providerMetadata).codex)

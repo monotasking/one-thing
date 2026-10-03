@@ -38,7 +38,7 @@ import {
   buildSystemPromptSnapshotWithAdapters,
 } from '@onething/backend/runtime/prompts'
 import type { BuildSystemPromptSnapshotWithAdaptersOptions } from '@onething/backend/runtime/prompts/system-prompt-snapshot'
-import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/providers/factory'
+import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/providers'
 
 type ProviderConfigWithAuth = ProviderConfig & {
   authContext?: ProviderAuthContext

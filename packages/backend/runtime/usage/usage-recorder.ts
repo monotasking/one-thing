@@ -9,7 +9,7 @@
  * as 'chat'. Side-line calls run on the tool-call model in the background —
  * `source` is the only thing that makes that spend visible in the usage panel.
  */
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config';
+import { isSubscriptionProvider, routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers';
 import {
 	OnethingUsageLedger,
 	getOnethingSessionUsageTotal,
@@ -23,7 +23,6 @@ import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getModelCapabilityEntry } from "@onething/backend/runtime/settings";
 import { resolveSessionCredentialId } from "@onething/backend/runtime/credentials";
-import { isSubscriptionProvider } from "@onething/backend/runtime/providers/manifest";
 import * as store from "@onething/backend/store.js";
 import { sessionReads } from "@onething/backend/runtime/sessions";
 

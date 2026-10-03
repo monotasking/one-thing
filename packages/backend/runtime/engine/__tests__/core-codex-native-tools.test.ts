@@ -4,7 +4,7 @@ import {
   providerConfigUsesCodexOAuth,
   resolveCodexNativeToolsFromModelInfo,
   shouldResolveCodexNativeTools,
-} from '@onething/backend/runtime/providers/vendors/codex/native-tools'
+} from '../../providers/vendors/codex/native-tools.js'
 
 describe('onething runtime Codex native tools helpers', () => {
   it('gates native tools to Codex OAuth with tool support enabled', () => {

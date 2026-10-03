@@ -21,7 +21,7 @@ import type {
   CoreProviderAuthLike,
   CoreProviderConfigLike,
   CoreSessionProviderSelection,
-} from '../providers/provider-config.js'
+} from '../providers/index.js'
 import {
   createOnethingStreamEngineRuntime,
 } from './stream-runtime-factory.js'

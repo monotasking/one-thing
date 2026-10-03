@@ -1,5 +1,4 @@
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers/provider-config'
-import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
+import { getProviderManifest, routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from './engine-chat-facade.js'

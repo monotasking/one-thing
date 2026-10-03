@@ -45,6 +45,8 @@ import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/backend/runti
 import {
   generateOnethingChatTitleForIpc,
   getOnethingCaughtErrorMessage,
+  type CoreProviderAuthLogger,
+  type OnethingChatTitleGenerationAdapters,
 } from '@onething/backend/runtime/providers'
 import {
   abortOnethingStreamsForIpc,
@@ -78,12 +80,10 @@ import { requestSessionOwner, sessionAccess } from '@onething/backend/runtime/se
 import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/backend/runtime/sessions'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/backend/runtime/sessions'
-import type { CoreProviderAuthLogger } from '@onething/backend/runtime/providers/provider-config'
 import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/runtime/prompts/system-prompt-snapshot'
 import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/backend/runtime/sessions'
 import type { OnethingAuthAccount } from '@onething/backend/runtime/auth/types'
 import type { ProviderConfig, OAuthToken, ChatSession } from '@shared/ipc.js'
-import type { OnethingChatTitleGenerationAdapters } from '@onething/backend/runtime/providers/provider-runtime'
 
 const log = getLogger('rpc.chat')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */

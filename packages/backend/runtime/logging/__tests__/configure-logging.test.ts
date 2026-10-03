@@ -197,6 +197,6 @@ describe('diagnostics mode', () => {
     expect(dumpState.enabled).toBeUndefined()
 
     await logging.shutdownAppLogging()
-    vi.doUnmock('@onething/backend/runtime/providers/index')
+    vi.doUnmock('@onething/backend/runtime/providers')
   })
 })

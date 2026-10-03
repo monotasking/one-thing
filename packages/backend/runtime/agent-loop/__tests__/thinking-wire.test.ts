@@ -5,7 +5,7 @@ import { createGeminiAgentProvider } from '../../providers/vendors/gemini/agent-
 import {
   createOpenAICompatibleAgentProvider,
   type OpenAICompatibleAgentProviderOptions,
-} from '../../providers/openai-compatible.js'
+} from '../../providers/index.js'
 
 function sseResponse(lines: string[] = []): Response {
   const body = [

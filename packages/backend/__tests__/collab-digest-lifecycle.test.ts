@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createServer, type ServerResponse } from 'node:http'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { registerCustomProvidersForTest } from '@onething/backend/runtime/providers/__tests__/custom-manifest-fixture'
+import { registerCustomProvidersForTest } from '../runtime/providers/__tests__/custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-digest"])
 

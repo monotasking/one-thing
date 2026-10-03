@@ -49,7 +49,7 @@ vi.mock('@onething/backend/runtime/permissions', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingPermissionGrantStorage: () => { spy.calls.push('permission-grants') },
 }))
-vi.mock('@onething/backend/runtime/providers/provider-table', async (importOriginal) => ({
+vi.mock('../runtime/providers/provider-table.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))
@@ -161,6 +161,18 @@ describe('@onething/backend import purity', () => {
     await import('../store.js')
 
     expect(typeof sessions.getSession).toBe('function')
+    expect(loadSpy.calls).toEqual([])
+  })
+
+  /**
+   * providers 收口(2026-10-04)以后,外面要服务商的名字一律经这一个入口拿,入口闭包里因此带着名册、模型目录、
+   * 生效配置与各家方言。这道栅栏断言 import 入口时不建会话仓储 / 设置仓储,也不去问设置 / 应用状态文件在哪:
+   * 入口里任何一只模块若在加载期读设置(例如顶层调 `getSettings()`),这里就会数到 `settings-repository` 而红。
+   */
+  it('importing the providers entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
+    const providers = await import('@onething/backend/runtime/providers')
+
+    expect(typeof providers.getProviderManifest).toBe('function')
     expect(loadSpy.calls).toEqual([])
   })
 

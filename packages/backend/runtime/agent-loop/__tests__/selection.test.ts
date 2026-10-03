@@ -4,7 +4,7 @@ import {
   resolveOnethingAgentLoopStreamRoute,
   shouldUseOnethingAgentLoopStream,
 } from '../selection.js'
-import { getSupportedAgentProviderRuntimeIds } from '../../providers/agent-providers.js'
+import { getSupportedAgentProviderRuntimeIds } from '../../providers/index.js'
 
 describe('onething agent-loop stream selection', () => {
   afterEach(() => {

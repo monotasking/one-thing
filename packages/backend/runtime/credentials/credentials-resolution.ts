@@ -15,11 +15,13 @@ import { getAuthHostPorts } from '@onething/backend/runtime/auth/host-ports'
 import { isProviderEnabledIn } from '@shared/provider-families'
 import {
   builtinProviderFamilyLookup,
-  withResolvedProviderBaseUrl,
-  getProviderManifest,
-  getProviderInfo,
-  requiresOAuth,
   getProviderEnvStatus,
+  getProviderInfo,
+  getProviderManifest,
+  requiresOAuth,
+  withResolvedProviderBaseUrl,
+  type CoreProviderConfigLike,
+  type CoreSpaceCredentialMarker,
 } from '@onething/backend/runtime/providers'
 import {
   applySpaceProviderCredential,
@@ -83,10 +85,6 @@ import {
   type SpaceProviderSettings,
 } from '@onething/backend/runtime/spaces/provider-settings'
 import { providerSeedOf } from '@onething/backend/runtime/settings'
-import type {
-  CoreProviderConfigLike,
-  CoreSpaceCredentialMarker,
-} from '@onething/backend/runtime/providers'
 import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
 import { getAuthService } from '@onething/backend/runtime/auth/process-auth-service'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'

@@ -12,16 +12,16 @@
  */
 import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
-  CUSTOM_ADAPTER_BASE_DIALECT,
   adapterReasoningPath,
+  CUSTOM_ADAPTER_BASE_DIALECT,
+  EXTERNAL_AGENT_DIALECT_ID,
+  getProviderManifest,
   parseAdapterSpecAnswer,
   probeCustomEndpoint,
   renderCustomAdapterProbePrompt,
   verifyAdapterSpec,
-  EXTERNAL_AGENT_DIALECT_ID,
-  getProviderManifest,
+  type ProviderDirectModelsFetch,
 } from '@onething/backend/runtime/providers'
-import type { ProviderDirectModelsFetch } from '@onething/backend/runtime/providers'
 import type { AppSettings } from '@shared/ipc.js'
 import type {
   CustomAdapterSpec,

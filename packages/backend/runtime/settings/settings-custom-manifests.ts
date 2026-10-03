@@ -20,13 +20,13 @@
  * (`unsupportedAdapterSpecFields`)登记照常,记一行 warn —— 那几格在运行期不生效。
  */
 import {
+  dialectFromSpec,
   getProviderManifestRegistry,
   manifestOfCustomProvider,
+  registerDialect,
+  unsupportedAdapterSpecFields,
   type CustomProviderManifestSource,
   type ProviderManifest,
-  dialectFromSpec,
-  unsupportedAdapterSpecFields,
-  registerDialect,
 } from '@onething/backend/runtime/providers'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'

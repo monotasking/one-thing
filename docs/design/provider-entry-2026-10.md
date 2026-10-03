@@ -498,3 +498,46 @@ providers 留下的是服务商的事实、名册、各家目录、线协议与�
 4. **「入口之间不许成环」这道门**(7.5)是否作为零基线硬闸、与这一笔一起落。
 5. 这一笔要搬 21 只文件(providers 里 20 只,外加搬进来的 `external-agents/provider.ts`),外加 `permission-policy` 的惰性化(7.6)与第一次尝试里已证明需要的两处惰性化(`settings-defaults` 的种子表、`process-auth-service` 的兜底 fetch;
    在推荐方案下它们已不在环上,但仍是加载期调用外部工厂,建议照做以免后面别的功能收口时再踩)。
+
+## 8. 实施结果(收口第一部分,s18,2026-10-04,未提交)
+
+在 providers 归位(第 7 节推荐方案的 Fable 修订版,`feature-layers-and-provider-placement-2026-10.md` 第 9 节)之后收口。决策 D39–D45 记在
+`backend-structure-decisions-2026-10.md`;施工账在 `server-client-split-2026-10.md` §6「providers 收口第一部分」。
+
+**入口交出什么**:`index.ts` 只剩具名导出,`export *` 一行不剩;文件头是 R3 说明书(做什么、交出哪几类、依赖哪些功能、有意留着的那一处深层引用)。
+197 个名字(值 116、类型 81),每个都从声明它的那只文件导出,按九类分组:
+
+| 类 | 值 | 类型 | 合 |
+| --- | --- | --- | --- |
+| 服务商自述与名册(manifest、内置 manifest / 服务商信息、两份名册) | 12 | 4 | 16 |
+| 服务商定义与注册表(十个契约类型、`ipc-types` 三个形状、注册表七个函数) | 7 | 13 | 20 |
+| 模型目录与能力(目录纯逻辑、能力账本、认亲、手填模型、models.dev 缓存、模型列表接口) | 40 | 15 | 55 |
+| 生效配置与凭证解析(`provider-config`、`provider-runtime`、环境变量 key、私有旋钮、杂活模型) | 18 | 10 | 28 |
+| 造 AgentProvider 与线协议(纯工厂、OpenAI 兼容线、方言登记与自定义方言、自动识别纯函数、运行时路由、思考档位、provider data) | 23 | 12 | 35 |
+| 对话门面与请求拼装(`createOnethingProviderFacade`、流式适配、起标题请求、消息与工具定义的线形状) | 3 | 15 | 18 |
+| 界面形状的投影(服务商列表、环境变量状态、模型查询、方言选项) | 9 | 6 | 15 |
+| 配额、计价与诊断 | 4 | 2 | 6 |
+| 旧接口类型(`Provider` 等,agents 的老引擎在用) | 0 | 4 | 4 |
+
+名单怎么定的:用 TypeScript checker 把 providers 目录之外每一处 import / re-export 的名字解析到声明文件(scratchpad `s18/needs.mjs`),取非测试引用、
+今天已经走入口的测试、壳的两只测试夹具要的名字;只被测试深层引用的 30 个名字(各家构造门面、方言、错误映射、地址常量……)不进入口。
+经总桶 `runtime/index.ts` 拿 providers 名字的地方是 0 处,所以总桶对旧桶 `agent-providers.ts` 的 `export *` 与旧桶本身一起删掉(D41)。
+
+**引用改走入口**(脚本 `s18/rewrite.mjs`,带 dry 模式):86 只文件。非测试 56 处改走入口(同一文件里指向 providers 的几条 import 合成一条);
+测试里名字全在入口的 14 处改走入口,其余 48 处留深层 —— 原来写包名深层说明符的 23 处(含 `vi.mock`、`typeof import()`)改成相对路径(D44),原来就是相对路径的 25 处不动。
+providers 目录里两处包名自引用改成相对路径(`builtin/index.ts`、`builtin/__tests__/codex.test.ts`),`provider-table.ts` 经入口取类型(D42),
+`__tests__/provider-facade.test.ts` 从 `../index.js` 改引兄弟文件。壳的两只测试夹具改走入口(问题 6 选 A,D43)。
+
+**留下的深层引用**:`entry:gate` providers 一行 123 → **49**,非测试只剩 1 处 —— `engine/stream/codex-native-tools.ts` → `vendors/codex/native-tools.ts`(D40,第二部分的 `nativeTools` 钩子收掉);
+其余 48 处全是测试:只测一家的构造门面 / 方言 / 地址常量 / OAuth(第二部分搬进 `vendors/<id>/__tests__/`)、`vi.mock` 打在 providers 内部文件上的 11 处(`provider-table` 6、`ipc-env` 3、codex / Copilot 模型取数各 1)、
+`custom-manifest-fixture` 3 处、`builtin/index` 3 处、`provider-config` 里入口不交出的测试用函数 3 处等。
+
+**exports**:删掉 47 个 `./runtime/providers/*` 深层键(含 `./runtime/providers/index`),只留 `./runtime/providers`。没有删不掉的键。
+
+**闭包与环**:入口闭包 287 → 286(少了纯转发的 `agent-providers.ts` 与只剩类型的 `provider-definition.ts`,多了 `dialect-options.ts`,它顶层只有一句已在闭包里的副作用 import,
+不取值)。新进闭包的模块没有加载期取值,所以本笔没有新的 const 持有器。`cycle:gate` 0(59 个入口);不经入口的深层环 17 / 3 / 2 与改前相同 —— 没有断边。
+`import-side-effect-free.test.ts` 加了一条「import providers 入口不建仓库、不读设置」;在 `ipc-env.ts` 顶层临时加一句 `getSettings()` 时它红在
+`['settings-repository', 'settings-path']`,恢复后绿。
+
+**门**:entry 2806 → 2732(只有 providers 一行变,基线已收紧);layer 97 / 53 不变;cycle 0;name 131;provider 109;boundary / transport / log / session 绿;
+feature-map 重新生成(边数变了)。四份 bundle 的 Worker 逐字节同大,三份主包各小约 9–14KB。

@@ -7,7 +7,8 @@
 
 import { builtinProviders } from './builtin/index.js'
 import { createProviderRegistry } from './registry.js'
-import type { ProviderDefinition, ProviderInfo } from '@onething/backend/runtime/providers/ipc-types'
+// 这三个类型经本功能的入口取(只引类型,编译后擦掉,不成值边):边界检查「注册表门面委派给 runtime providers」认的是入口说明符。
+import type { ProviderDefinition, ProviderInfo } from '@onething/backend/runtime/providers'
 
 const registry = createProviderRegistry<ProviderDefinition>(builtinProviders)
 
@@ -84,4 +85,4 @@ export function getProviderDefinition(providerId: string): ProviderDefinition | 
 }
 
 // Export types for convenience
-export type { ProviderDefinition, ProviderInfo, ProviderConfig } from '@onething/backend/runtime/providers/ipc-types'
+export type { ProviderDefinition, ProviderInfo, ProviderConfig } from '@onething/backend/runtime/providers'

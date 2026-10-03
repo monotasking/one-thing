@@ -4,18 +4,18 @@ import type {
   AgentProvider,
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
-  ONETHING_ACP_RUNTIME_PROVIDER_ID,
   createOnethingUtilityAgentProvider,
   isOnethingACPProviderRuntime,
+  ONETHING_ACP_RUNTIME_PROVIDER_ID,
   resolveOnethingProviderRuntimeRoute,
   type OnethingProviderExecutableToolDefinition,
   type OnethingProviderRuntimeRoute,
+  type OnethingProviderRuntimeRouteAdapters,
   type OnethingProviderToolDefinitionInput,
   type OnethingProviderToolDefinitionMap,
   type OnethingProviderToolParameter,
   type OnethingProviderToolSourceDefinition,
 } from '@onething/backend/runtime/providers'
-import type { OnethingProviderRuntimeRouteAdapters } from '@onething/backend/runtime/providers'
 
 export const ACP_PROVIDER_ID = ONETHING_ACP_RUNTIME_PROVIDER_ID
 

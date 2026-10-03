@@ -43,7 +43,7 @@ vi.mock('../../runtime/settings/settings-store.js', () => ({
   saveSettings: (next: AppSettings) => store.saveSettings(next),
 }))
 
-vi.mock('@onething/backend/runtime/providers/provider-table', () => ({
+vi.mock('../../runtime/providers/provider-table.js', () => ({
   invalidateProviderCache: ports.invalidateProviderCache,
 }))
 

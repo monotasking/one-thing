@@ -23,14 +23,14 @@
 import type {
   CoreProviderConfigLike,
   CoreSpaceCredentialMarker,
-} from '../providers/provider-config.js'
+} from '../providers/index.js'
 import {
   getSpaceProviderCredentials,
   selectSpaceCredentialEntryDetailed,
   spaceCredentialCursorKey,
   type SpaceCredentialEntry,
 } from './credentials-pool.js'
-import { getProviderManifest } from '../providers/manifest.js'
+import { getProviderManifest } from '../providers/index.js'
 import { DEFAULT_SPACE_ID, isValidSpaceId } from '@onething/backend/runtime/spaces'
 
 /**

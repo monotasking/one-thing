@@ -7,7 +7,7 @@
  *
  * 通用件(PKCE、token 归一)在叶子模块 `oauth-token.ts`,这里原样再导出,老的 import 路径不变。
  */
-import { VENDOR_RUNTIMES } from "../providers/vendors/runtimes.js";
+import { VENDOR_RUNTIMES } from "../providers/index.js";
 import type { OnethingAuthProviderDefinition } from "./types.js";
 
 export { generatePKCE, normalizeGenericOAuthToken } from "@onething/backend/runtime/network";

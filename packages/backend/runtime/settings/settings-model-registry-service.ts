@@ -8,36 +8,38 @@
 
 import type { OpenRouterModel } from "@shared/ipc.js";
 import {
-  fetchOnethingModelsDevData,
-  getProviderManifest,
-  getAllOnethingModels,
-  getOnethingModelById,
-  getOnethingModelCacheStatus,
-  getOnethingModelCapabilityEntry,
-  getOnethingModelContextLength,
-  getOnethingModelDisplayName,
-  getOnethingKnownModelMaxOutputTokens,
-  getOnethingModelNameAliases,
-  getOnethingModelsForProvider,
-  onethingModelServesImageOutputInLoop,
-  onethingModelSupportsImageGeneration,
-  onethingModelSupportsTemperature,
-  onethingModelSupportsTools,
-  refreshAllOnethingProviderModels,
-  refreshOnethingProviderModels,
-  saveOnethingProviderModels,
-  searchOnethingModels,
-  type OnethingModelCapabilityEntry,
-  type OnethingModelRegistryQueryOptions,
-  type OnethingModelsDevResponse,
-  type OnethingOpenRouterModel,
-  type OnethingProviderModelConfigs,
-  createModelsDevCache,
-  MODELS_DEV_CACHE_FILE_NAME,
-  fetchProviderDirectModels,
-  type ModelsListMapping,
-  VENDOR_RUNTIMES,
-  type VendorFallbackModels,
+	createModelsDevCache,
+	fetchOnethingModelsDevData,
+	fetchProviderDirectModels,
+	getAllOnethingModels,
+	getOnethingKnownModelMaxOutputTokens,
+	getOnethingModelById,
+	getOnethingModelCacheStatus,
+	getOnethingModelCapabilityEntry,
+	getOnethingModelContextLength,
+	getOnethingModelDisplayName,
+	getOnethingModelNameAliases,
+	getOnethingModelsForProvider,
+	getProviderManifest,
+	MODELS_DEV_CACHE_FILE_NAME,
+	onethingModelServesImageOutputInLoop,
+	onethingModelSupportsImageGeneration,
+	onethingModelSupportsTemperature,
+	onethingModelSupportsTools,
+	refreshAllOnethingProviderModels,
+	refreshOnethingProviderModels,
+	saveOnethingProviderModels,
+	searchOnethingModels,
+	VENDOR_RUNTIMES,
+	type ModelsListMapping,
+	type OnethingModelCapabilityEntry,
+	type OnethingModelRegistryQueryOptions,
+	type OnethingModelRegistryRefreshAdapters,
+	type OnethingModelRegistryRefreshLogger,
+	type OnethingModelsDevResponse,
+	type OnethingOpenRouterModel,
+	type OnethingProviderModelConfigs,
+	type VendorFallbackModels,
 } from "@onething/backend/runtime/providers";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -47,10 +49,6 @@ import { createRequiredAppFetch } from "./proxy-fetch.js";
 import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type {
-  OnethingModelRegistryRefreshLogger,
-  OnethingModelRegistryRefreshAdapters,
-} from '@onething/backend/runtime/providers'
 import type { AppSettings } from '@shared/ipc.js'
 
 const log = getLogger('providers.registry')

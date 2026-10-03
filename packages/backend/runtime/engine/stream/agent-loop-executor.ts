@@ -39,12 +39,15 @@ import {
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
 import { createSessionCredentialRotator } from "@onething/backend/runtime/credentials";
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "@onething/backend/runtime/providers/provider-config";
+import {
+	applyOnethingAgentLoopProviderData,
+	routedProviderIdOf,
+	type ApplyOnethingAgentLoopProviderDataOptions,
+	type CoreSpaceCredentialMarker,
+} from "@onething/backend/runtime/providers";
 import { observeQuotaProviderData } from "@onething/backend/runtime/quota/engine-hooks";
 import { resolveAgentProfileForSession } from "@onething/backend/runtime/agents/profile-for-session";
 import { saveMediaImage } from "@onething/backend/runtime/media/save-image";
-import { applyOnethingAgentLoopProviderData } from "@onething/backend/runtime/providers/agent-providers";
-import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/backend/runtime/providers/provider-data";
 import { updateSessionUsage } from "@onething/backend/runtime/sessions";
 import { recordUsage, usageAttributionOf } from "@onething/backend/runtime/usage/usage-recorder";
 import { triggerManager } from "../triggers/index.js";

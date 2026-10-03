@@ -3,7 +3,7 @@ import {
   resolveOnethingAgentLoopStreamRoute as resolveAgentLoopStreamRoute,
   shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream,
 } from '@onething/backend/runtime/agent-loop'
-import { builtinProviders } from '@onething/backend/runtime/providers/builtin'
+import { builtinProviders } from '../../../providers/builtin/index.js'
 
 describe('agent loop stream selection', () => {
   afterEach(() => {

@@ -25,7 +25,7 @@
  * 'quota'`)。批 6 的 `pickRoute` 读的就是这一格。
  */
 import type { ProviderQuota, ProviderQuotaPushPayload } from '@shared/contracts/quota.js'
-import type { QuotaFetchContext } from '@onething/backend/runtime/providers/quota'
+import type { QuotaFetchContext } from '@onething/backend/runtime/providers'
 import type { Logger } from '@onething/backend/runtime/logging/logger-primitives'
 
 export const QUOTA_CARD_TTL_MS = 60_000
