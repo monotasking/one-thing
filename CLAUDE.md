@@ -245,6 +245,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run provider:gate` — `scripts/provider-vendor-gate.mjs` ratchet (服务商自述试点 P0): counts (vendor, file) pairs where a builtin vendor's id appears — as a string literal, object key or inside an identifier, parsed with the TypeScript parser so comments never count — outside its own `providers/vendors/<id>/`. Exempt: the two rosters, the shell's i18n / icon files, `providers/model-families/`, protocol names (`openai-chat`, `gemini-generateContent`, …), model-id regex literals, model paths (`openai/gpt-4o`), HTTP header names. Baseline `docs/audit/provider-vendor-baseline-2026-10.txt` (111 pairs; what is left and why: the design doc §4b). **Decrease-only**; `bun run provider:check` lists them. `bun run provider:drill` adds a fictional vendor in a throwaway worktree and asserts the only files touched outside its folder are the two rosters and the shell's two i18n files.
 - `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under all of `packages/backend` — the package root and every `runtime/<feature>/`, kernel subdirectories included (until 去 core 批 3 it skipped `core/`, `gateway/` and `runtime/<d>/kernel/`; every file that entered the ruler since was recorded at its value then — 去 core 批 1 / 2 / 3: 3 / 2 / 3 files, 5 / 2 / 5 `let`s), baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files at A3; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
+- **功能入口**(用户拍板 2026-10-03,`docs/design/server-client-split-2026-10.md` §4):每个功能只通过自己的入口 `packages/backend/runtime/<功能>/index.ts`(说明符 `@onething/backend/runtime/<功能>`)对外交出能力;功能目录里其余文件是内部实现,功能目录之外(包根、别的功能、apps、scripts、evals)不许直接引用,目录里的文件互相按相对路径 import。读一个功能,先看它的入口就知道它对外给了什么。棘轮是 `bun run entry:gate`(`scripts/feature-entry-gate.mjs`):逐功能数「从功能目录之外引用入口以外文件」的 import 处(`import` / `export … from` / 动态与类型位置的 `import()` / `require` / `vi.mock` 一族都算,用 TypeScript 解析器取,包说明符先按 exports 精确键解析到文件再判),引用总桶 `runtime/index.ts` 单记一行 `(总桶)`;基线 `docs/audit/feature-entry-baseline-2026-10.txt`,**只许降**,`bun run entry:check` 打全表(加 `--verbose` 或功能名打逐处引用)。立尺时全仓 2693 处,search 收口后 2685;search 是第一个收口的功能(剩 2 处,都是构建 / 门脚本:`scripts/gate-embed-runtime/entry.ts` 引嵌入运行时、`scripts/lib/search-corpus-redact.mjs` 引脱敏规则表,理由见正本 §6)。
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
   at the top of this file. It enumerates every native binary this repo actually ships — **seven targets**
   today (the line said six until 2026-09-17; `fsevents`, the optional macOS workspace-watch dependency,
@@ -399,7 +400,7 @@ Notes:
   **deleted**, and so are the two reconciliation gates that compared against it
   (`search:parity-A` / `search:parity-B`: their reference no longer exists, so they were
   not "still runnable gates" but a lie). What they guarded is now a snapshot test,
-  `runtime/src/search/__tests__/golden-snapshot.test.ts` — the S0 corpus folded into a real
+  `runtime/search/__tests__/golden-snapshot.test.ts` — the S0 corpus folded into a real
   `SqliteIndex`, and the **strict-tier hit set** of the 20 golden queries + 20 golden
   paraphrases frozen as JSON. What survives of the old path lives where it belongs:
   each capability owns its own matcher (`capabilities/{actions,prompts,files}.ts`), the
@@ -408,7 +409,7 @@ Notes:
   `daily`, the "today" shortcut and the `create-daily` / `create-note` page actions, all read
   off the notes domain below) and
   `capabilities/scan-adapter.ts` (was `legacy.ts`) is just the base that wraps a
-  `(query, limit, filters) => SearchResult[]` matcher. `runtime/src/search/providers.ts`
+  `(query, limit, filters) => SearchResult[]` matcher. `runtime/search/providers.ts`
   is now only the adapter interface (`getNoteVaults?` / `getPrimaryNoteVault?` are how the
   notes domain reaches it). The boundary rule
   `search has exactly one query path` is the coroner's table: those shapes and names may
@@ -972,7 +973,7 @@ Two mechanisms, and which one a package uses is a fact about that package, not a
 
 **Alias table.** There is none any more: `onething.aliases.ts` (the `@onething/electron-host/*` family) died with the Vue host on 2026-09-04. The only non-package alias left is `@shared` (= `packages/shared`), declared per-config (root `tsconfig.json` paths, `vitest.config.ts`, the React shell's vite/esbuild configs).
 
-**Adding a new backend subpath** (package root or `runtime/` alike): add one exact key to `packages/backend/package.json` `"exports"` (`"./runtime/x/y": "./runtime/x/y.ts"`; a directory barrel needs its own key `"./runtime/x": "./runtime/x/index.ts"`). No alias edit, no tsconfig edit, no config edit — all build/test configs and tsc go through the same exports map, and a missing key fails at **typecheck**.
+**Adding a new backend subpath** (package root or `runtime/` alike): a feature under `runtime/<d>/` gets **one** key, its entry (`"./runtime/<d>": "./runtime/<d>/index.ts"`) — what outsiders need goes into that entry, not into a deep key (功能入口, see Guardrails; search has only `./runtime/search`). Otherwise add one exact key to `packages/backend/package.json` `"exports"` (`"./runtime/x/y": "./runtime/x/y.ts"`; a directory barrel needs its own key `"./runtime/x": "./runtime/x/index.ts"`). No alias edit, no tsconfig edit, no config edit — all build/test configs and tsc go through the same exports map, and a missing key fails at **typecheck**.
 
 ### Directory Structure
 

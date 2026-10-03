@@ -3,7 +3,7 @@
  *
  * 设计:docs/design/search-index-2026-09.md §0 拍点辛 / §6.4b / §14.2。
  *
- * 端口的形在 `@onething/backend/runtime/search/capabilities`(那一侧只知道「范围按
+ * 端口的形在 `./capabilities/index.ts`(那一侧只知道「范围按
  * sessionId 收」);这里是唯一认识「空间」与「协作」的地方,而两条判据都**不是这个
  * 文件自己写的**:
  *
@@ -43,8 +43,8 @@ import {
 } from '@onething/backend/runtime/collab'
 import type {
   SearchVisibilityPort,
-} from '@onething/backend/runtime/search/capabilities'
-import type { SearchPrincipal } from '@onething/backend/runtime/search/kernel'
+} from './capabilities/index.js'
+import type { SearchPrincipal } from './kernel/index.js'
 import type { SessionMeta } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/store.js'

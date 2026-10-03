@@ -29,7 +29,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { DocPayload, DocumentFeed, FeedPolicy } from '@onething/backend/runtime/search/kernel'
+import type { DocPayload, DocumentFeed, FeedPolicy } from '../kernel/index.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { parseSessionLogEventLog } from '@onething/backend/runtime/sessions/session-primitives'
 

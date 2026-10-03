@@ -9,7 +9,7 @@
  * `createSearchAdaptersForContext`)。两个装法各自成文件,`providers.ts` 只留那个
  * 进程单槽。
  */
-import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
+import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createPrompt, listPrompts } from '@onething/backend/runtime/prompts/store-bound'
 import { getCurrentSessionId } from '@onething/backend/stores/app-state.js'
 import { getConnectedDirectoriesForSession } from '@onething/backend/stores/connected-directories.js'

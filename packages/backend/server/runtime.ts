@@ -164,8 +164,8 @@ import {
 	createOnethingSearchService,
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
+	unavailableIndexFace,
 } from "@onething/backend/runtime/search";
-import { unavailableIndexFace } from "@onething/backend/runtime/search/service-setup";
 import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/runtime/notes/notes-subsystem";
 import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/runtime/media";
 import {

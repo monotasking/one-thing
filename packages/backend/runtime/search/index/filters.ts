@@ -15,8 +15,8 @@
  *    也隐去了。
  */
 
-import type { DocPayload, DocumentFilter, DocumentFilterContext } from '@onething/backend/runtime/search/kernel'
-import { redactText } from '@onething/backend/runtime/search/kernel/redact'
+import type { DocPayload, DocumentFilter, DocumentFilterContext } from '../kernel/index.js'
+import { redactText } from '../kernel/redact.js'
 import { plainTextOf } from '../text/plain.js'
 
 /**

@@ -29,8 +29,8 @@ import { searchRouter } from '@shared/ipc/search.js'
 import {
   createOnethingSearchService,
   type OnethingSearchProvidersAdapters,
+  type SearchIndexQueryFace,
 } from '@onething/backend/runtime/search'
-import type { SearchIndexQueryFace } from '@onething/backend/runtime/search/capabilities'
 
 /**
  * 索引替身(检索重建 S3b)。这份文件钉的是**域**的分叉与信封,不是命中语义,
@@ -112,7 +112,7 @@ describe('search RPC domain', () => {
       import('../domains/search.js'),
       import('../../server/search-providers.js'),
       import('../../server/host-trust.js'),
-      import('@onething/backend/runtime/search/service-bound'),
+      import('@onething/backend/runtime/search'),
     ])
     dispatchRpc = registry.dispatchRpc
     configureServerSearchPort = port.configureServerSearchPort

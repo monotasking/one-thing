@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { Embedder } from '@onething/backend/runtime/search/kernel'
+import type { Embedder } from '../../kernel/index.js'
 
 import { probeEmbedderModel } from '../../embedding/model-store.js'
 import type { EmbedderFactory } from '../../embedding/registry.js'

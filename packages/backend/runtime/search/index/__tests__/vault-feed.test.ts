@@ -18,7 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { compositeAnalyzer } from '@onething/backend/runtime/search/kernel'
+import { compositeAnalyzer } from '../../kernel/index.js'
 
 import { FolderVault } from '../../../notes/folder/vault.js'
 

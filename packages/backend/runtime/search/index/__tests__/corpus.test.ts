@@ -24,14 +24,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, DocPayload, LexicalQuery } from '@onething/backend/runtime/search/kernel'
+import type { CapabilityManifest, DocPayload, LexicalQuery } from '../../kernel/index.js'
 import {
   buildLexicalQuery,
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
   parse,
   plan,
-} from '@onething/backend/runtime/search/kernel'
+} from '../../kernel/index.js'
 
 import { SqliteIndex } from '../sqlite-index.js'
 

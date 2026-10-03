@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { matchesFacetFilter } from '@onething/backend/runtime/search/kernel/index/types'
-import type { SearchPrincipal } from '@onething/backend/runtime/search/kernel'
+import { matchesFacetFilter } from '../kernel/index/types.js'
+import type { SearchPrincipal } from '../kernel/index.js'
 import {
   configureSearchVisibilityPort,
   getSearchVisibilityPort,

@@ -1,0 +1,61 @@
+# feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)
+# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/runtime/<功能>/ 里入口 index.ts 以外文件的 import 处数。
+# `(总桶)` = 引用 packages/backend/runtime/index.ts(`@onething/backend/runtime` 不带子路径)的处数。
+# 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
+# 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
+256 logging
+240 agent-loop
+236 providers
+192 toolkit
+174 engine
+122 tools
+107 plugins
+105 spaces
+100 agents
+88 sessions
+82 storage
+79 events
+77 collab
+72 permissions
+54 auth
+51 resource
+45 mcp
+36 (总桶)
+36 skills
+35 evals
+34 notes
+34 prompts
+34 usage
+34 variables
+32 voice
+29 acp
+28 settings
+26 music
+25 goals
+21 external-agents
+20 scheduler
+18 files
+18 project-dirs
+17 media
+17 terminal
+17 todo-plan
+15 shell
+13 gateway
+8 themes
+7 practice
+6 interaction
+6 pets
+5 headless
+5 scratchpad
+4 memory
+4 toc
+4 triggers
+3 quota
+3 tasks
+2 context
+2 deeplink
+2 dialog
+2 search
+1 ambient
+1 markdown
+1 perf

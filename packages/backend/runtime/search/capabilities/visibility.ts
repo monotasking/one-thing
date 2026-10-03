@@ -35,7 +35,7 @@
  * 两侧一致,所以「看不见任何东西」是一个**能被表达**的范围,不是一个洞。
  */
 
-import type { SearchPrincipal, VisibilityScope } from '@onething/backend/runtime/search/kernel'
+import type { SearchPrincipal, VisibilityScope } from '../kernel/index.js'
 
 /**
  * 会话可见范围的产地。装配层实现它,这里只声明形。

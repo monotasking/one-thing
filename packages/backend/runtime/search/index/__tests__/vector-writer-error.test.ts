@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { Embedder, IndexedDoc, VectorHit, VectorIndex } from '@onething/backend/runtime/search/kernel'
+import type { Embedder, IndexedDoc, VectorHit, VectorIndex } from '../../kernel/index.js'
 
 import { captureRuntimeLogs } from '../../../logging/index.js'
 import {

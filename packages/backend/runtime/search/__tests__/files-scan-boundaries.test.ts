@@ -14,7 +14,7 @@
  * 第四条(壳查询带 signal)是壳与 HTTP 面的事,由 `gate:search-scan` 在真机上证。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ALL_CAPABILITIES } from '@onething/backend/runtime/search/kernel'
+import { ALL_CAPABILITIES } from '../kernel/index.js'
 import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../providers.js'
 import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/index.js'
 import { searchFiles } from '../capabilities/files.js'

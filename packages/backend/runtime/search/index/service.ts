@@ -22,8 +22,8 @@ import type {
   SearchContext,
   SearchQuery,
   TextRange,
-} from '@onething/backend/runtime/search/kernel'
-import type { IndexedDoc, LexicalHit, VectorHit } from '@onething/backend/runtime/search/kernel'
+} from '../kernel/index.js'
+import type { IndexedDoc, LexicalHit, VectorHit } from '../kernel/index.js'
 import {
   VECTOR_RETRIEVER_ID,
   applyRanking,
@@ -32,7 +32,7 @@ import {
   nearestPerDoc,
   queryTextOf,
   scoreOfDistance,
-} from '@onething/backend/runtime/search/kernel'
+} from '../kernel/index.js'
 
 import type { ModelState, ModelStatus } from './model-download.js'
 import type {

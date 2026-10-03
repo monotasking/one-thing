@@ -44,7 +44,7 @@ import {
   type SearchContext,
   type SearchPrincipal,
   type SearchQuery,
-} from '@onething/backend/runtime/search/kernel'
+} from './kernel/index.js'
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/index.js'
 import type { SearchIndexQueryFace } from './capabilities/indexed.js'

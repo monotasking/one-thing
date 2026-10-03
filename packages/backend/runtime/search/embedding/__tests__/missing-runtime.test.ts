@@ -28,7 +28,7 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { IndexedDoc, VectorIndex } from '@onething/backend/runtime/search/kernel'
+import type { IndexedDoc, VectorIndex } from '../../kernel/index.js'
 
 import { captureRuntimeLogs } from '../../../logging/index.js'
 import { VectorWriter } from '../../index/vector-writer.js'

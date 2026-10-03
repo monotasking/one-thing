@@ -4,11 +4,11 @@
  * 设计:docs/design/search-index-2026-09.md §3 落位的
  * `packages/backend/runtime/search/index/` 那一段。
  *
- * **注意目录名与隔壁那个文件同名**:`search/index.ts`(S2 的能力桶)与
- * `search/index/`(本目录)并存,`package.json` 的 `"./search/index"` 是一条**精确
- * 键**指向这里,精确键胜过 `"./search/*"` 通配。这不是巧合也不是失误 —— 落位表就
- * 把索引服务放在 `search/index/`,而 core 那边 `"./search/index": "./search/index/index.ts"`
- * 早已是同一个形。
+ * **注意目录名与隔壁那个文件同名**:`search/index.ts`(检索这个功能的对外入口)与
+ * `search/index/`(本目录)并存。这不是巧合也不是失误 —— 落位表就把索引服务放在
+ * `search/index/`。本目录是检索的内部实现:功能目录之外不许直接引用它(2026-10-03 收口以后
+ * `package.json` 里也没有指向这里的键了,从前那条 `"./runtime/search/index"` 精确键已删),
+ * 目录里的文件按相对路径 import 它。
  *
  * `worker.ts` **不**从这里出口:它是 Worker 的进程入口(顶层就 `new SqliteIndex`),
  * 被 import 一次就会去开库。宿主的构建配方直接指那个文件。

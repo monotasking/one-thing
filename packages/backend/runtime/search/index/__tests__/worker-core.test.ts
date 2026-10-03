@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { DocPayload, DocumentFeed, QueryNode } from '@onething/backend/runtime/search/kernel'
+import type { DocPayload, DocumentFeed, QueryNode } from '../../kernel/index.js'
 
 import { DIRECTORY_WATCH_DEBOUNCE_MS, LedgerFeed } from '../ledger-feed.js'
 import { IndexProjector } from '../projector.js'

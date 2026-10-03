@@ -33,7 +33,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, DocPayload, Embedder } from '@onething/backend/runtime/search/kernel'
+import type { CapabilityManifest, DocPayload, Embedder } from '../../kernel/index.js'
 import {
   VECTOR_RETRIEVER_ID,
   buildLexicalQuery,
@@ -42,7 +42,7 @@ import {
   createFakeEmbedder,
   parse,
   plan,
-} from '@onething/backend/runtime/search/kernel'
+} from '../../kernel/index.js'
 
 import { chunkForEmbedding } from '../../embedding/embedder.js'
 import { SqliteIndex } from '../sqlite-index.js'

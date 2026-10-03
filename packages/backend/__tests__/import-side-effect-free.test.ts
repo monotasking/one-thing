@@ -30,10 +30,16 @@ vi.mock('@onething/backend/runtime/files/ripgrep', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingRipgrepRuntime: () => { spy.calls.push('ripgrep') },
 }))
-vi.mock('@onething/backend/runtime/search', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  configureOnethingSearchProviders: () => { spy.calls.push('search') },
-}))
+// 检索收口(2026-10-03)以后 `install-providers` 是检索入口的一部分,不再经入口取
+// `configureOnethingSearchProviders`,所以桩打在入口的 `configureAppSearchProviders` 上:
+// 照旧调真的那一份(它的闩还在起作用),只把「真正去装」那一步换成计数。
+vi.mock('@onething/backend/runtime/search', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/runtime/search')>()
+  return {
+    ...actual,
+    configureAppSearchProviders: () => actual.configureAppSearchProviders(() => { spy.calls.push('search') }),
+  }
+})
 vi.mock('@onething/backend/runtime/skills', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingSkillManageRuntime: () => { spy.calls.push('skill-manage') },
@@ -66,7 +72,7 @@ describe('@onething/backend import purity', () => {
     await import('@onething/backend/runtime/providers/chat-facade')
     await import('@onething/backend/runtime/scheduler/scheduler-bound')
     await import('../utils/ripgrep.js')
-    await import('@onething/backend/runtime/search/install-providers')
+    await import('@onething/backend/runtime/search')
     await import('@onething/backend/runtime/skills/manage-setup')
     await import('@onething/backend/runtime/skills/skill-sources')
     await import('@onething/backend/runtime/permissions/grant-storage')

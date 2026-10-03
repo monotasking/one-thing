@@ -8,8 +8,8 @@
  * **一段正文怎么切成几段送进模型**。
  */
 
-import { normalizeVector } from '@onething/backend/runtime/search/kernel'
-import type { Embedder, EmbedKind } from '@onething/backend/runtime/search/kernel'
+import { normalizeVector } from '../kernel/index.js'
+import type { Embedder, EmbedKind } from '../kernel/index.js'
 
 export type { Embedder, EmbedKind }
 export { normalizeVector }

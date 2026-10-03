@@ -47,7 +47,7 @@ import {
   type SearchContext,
   type SearchPage,
   type SearchQuery,
-} from '@onething/backend/runtime/search/kernel'
+} from '../kernel/index.js'
 import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../notes/types.js'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import { vaultRelativeKey } from '../index/vault-feed.js'

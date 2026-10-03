@@ -35,7 +35,7 @@
  * 之前」栽过的同一个跟头。判据写在 `isEmphasisRun` 里。
  */
 
-import type { NormalizedText, TextRange } from '@onething/backend/runtime/search/kernel'
+import type { NormalizedText, TextRange } from '../kernel/index.js'
 
 /** 行首那几种记号:标题 / 引用 / 列表项 / 有序列表项。 */
 const LINE_PREFIX = /^[ \t]{0,3}(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/

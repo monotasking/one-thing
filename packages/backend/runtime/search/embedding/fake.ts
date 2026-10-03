@@ -1,5 +1,5 @@
 /**
- * 假嵌入器的**注册表适配器**。机制住 core(`@onething/backend/runtime/search/kernel` 的
+ * 假嵌入器的**注册表适配器**。机制住检索内核(`../kernel/index.ts` 的
  * `createFakeEmbedder`,与 `MemoryIndex` 同一种身份);这个文件只做两件宿主的事:
  * 把映射表从磁盘读进来,把工厂挂进注册表。
  *
@@ -13,8 +13,8 @@
 
 import { readFileSync } from 'node:fs'
 
-import { FAKE_EMBEDDER_DIMS, createFakeEmbedder } from '@onething/backend/runtime/search/kernel'
-import type { Embedder } from '@onething/backend/runtime/search/kernel'
+import { FAKE_EMBEDDER_DIMS, createFakeEmbedder } from '../kernel/index.js'
+import type { Embedder } from '../kernel/index.js'
 
 import type { EmbedderCreateOptions, EmbedderFactory } from './registry.js'
 

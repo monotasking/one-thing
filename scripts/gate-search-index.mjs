@@ -542,8 +542,12 @@ async function runSemanticProxyPhase() {
      * **`status.model.errorKind`** 上(`vectorErrorKind` 此刻答的是 `'model'`:
      * 「模型还没下」,那是另一句真话)。
      */
-    const noModel = await waitForStatus(rpc, status => status?.model?.state === 'absent',
-      '模型那一格说得出「没下」', 60_000)
+    // 等两个条件:`model.state` 是模型下载器自己答的,Worker 一起来就有;`vectorErrorKind` 要等向量写路
+    // 真去试过一次 `ready()` 才有值。只等前者,读的那一刻后者可能还没落,这一格就会随时序红绿不定。
+    // 等到「有值」而不是等到「等于 model」,所以说错原因(network / runtime / unknown)照样会在下面红。
+    const noModel = await waitForStatus(rpc,
+      status => status?.model?.state === 'absent' && status?.vectorErrorKind != null,
+      '模型那一格说得出「没下」且向量写路已报出原因', 60_000)
     check(noModel.status?.vectorErrorKind === 'model',
       `⑪a 模型没下时 vectorErrorKind 说的是 model(读到 ${JSON.stringify(noModel.status?.vectorErrorKind)})`)
 

@@ -13,7 +13,7 @@
  *     而不是任何一张系统名单。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { SearchQuery } from '@onething/backend/runtime/search/kernel'
+import type { SearchQuery } from '../kernel/index.js'
 import { FolderVault } from '../../notes/folder/vault.js'
 import { NoteVaultUnavailable, type NoteHit, type NoteVault } from '../../notes/types.js'
 import { vaultRelativeKey } from '../index/vault-feed.js'

@@ -19,8 +19,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { DocPayload, Embedder, VectorIndex } from '@onething/backend/runtime/search/kernel'
-import { createFakeEmbedder } from '@onething/backend/runtime/search/kernel'
+import type { DocPayload, Embedder, VectorIndex } from '../../kernel/index.js'
+import { createFakeEmbedder } from '../../kernel/index.js'
 import { MessageChannel } from 'node:worker_threads'
 
 import { SqliteIndex } from '../sqlite-index.js'

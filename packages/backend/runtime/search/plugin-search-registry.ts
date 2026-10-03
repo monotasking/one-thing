@@ -18,9 +18,9 @@ import {
   type Candidate,
   type CapabilityManifest,
   type SearchCapability,
-} from '@onething/backend/runtime/search/kernel'
-import type { OnethingSearchService } from '@onething/backend/runtime/search/service'
-import { getOnethingSearchServiceSafe } from '@onething/backend/runtime/search/service-bound'
+} from './kernel/index.js'
+import type { OnethingSearchService } from './service.js'
+import { getOnethingSearchServiceSafe } from './service-bound.js'
 import {
   PLUGIN_SEARCH_PROVIDER_RESULT_CAP,
   PLUGIN_SEARCH_PROVIDER_TIMEOUT_MS,

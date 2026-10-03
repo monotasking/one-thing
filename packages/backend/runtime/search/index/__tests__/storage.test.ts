@@ -16,8 +16,8 @@ import path from 'node:path'
 import { MessageChannel } from 'node:worker_threads'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { DocPayload } from '@onething/backend/runtime/search/kernel'
-import { createFakeEmbedder } from '@onething/backend/runtime/search/kernel'
+import type { DocPayload } from '../../kernel/index.js'
+import { createFakeEmbedder } from '../../kernel/index.js'
 
 import { SqliteIndex } from '../sqlite-index.js'
 import {

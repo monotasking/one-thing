@@ -18,8 +18,8 @@ import { createSearchContext } from '@onething/backend/runtime/search'
 import {
   createPromptsSearchCapability,
   searchResultOf,
-} from '@onething/backend/runtime/search/capabilities'
-import type { SearchQuery } from '@onething/backend/runtime/search/kernel'
+} from '../capabilities/index.js'
+import type { SearchQuery } from '../kernel/index.js'
 import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/backend/runtime/prompts/store-bound'
 import { createAppSearchProvidersAdapters } from '../adapters.js'
 

@@ -11,9 +11,9 @@
  *  ② 把**三条订阅**接上:进程内 append 观察者(毫秒级)、总线的 `session:renamed`
  *     与 `session:deleted`。三条都只喊一声 sessionId,不带内容(§5.2 / §5.3);
  *  ③ 用宿主的适配器造一份带六个内置能力的 `SearchService`(能力清单来自
- *     `@onething/backend/runtime/search/capabilities` 的那张表,这里不点名任何一类);
+ *     `./capabilities/index.ts` 的那张表,这里不点名任何一类);
  *  ④ 把已在册的插件供给方接成 `remote` 能力(§4.2 第四行);
- *  ⑤ 把服务装进进程单槽(`@onething/backend/runtime/search/service-bound`)——
+ *  ⑤ 把服务装进进程单槽(`./service-bound.ts`)——
  *     `rpc/domains/search.ts` 从那里读;
  *  ⑥ 返回**一个** disposer,装配层 `own()` 它。
  *
@@ -41,23 +41,20 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import type { CapabilityManifest } from '@onething/backend/runtime/search/kernel'
-import {
-  createOnethingSearchService,
-  type OnethingSearchProvidersAdapters,
-  type OnethingSearchService,
-} from '@onething/backend/runtime/search'
+import type { CapabilityManifest } from './kernel/index.js'
+import type { OnethingSearchProvidersAdapters } from './providers.js'
+import { createOnethingSearchService, type OnethingSearchService } from './service.js'
 import {
   chatsSearchManifest,
   messagesSearchManifest,
   notesSearchManifest,
   type SearchIndexQueryFace,
-} from '@onething/backend/runtime/search/capabilities'
-import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from '@onething/backend/runtime/search/index'
-import type { IndexWorkerData } from '@onething/backend/runtime/search/index/worker-data'
-import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/worker-host'
-import { configureSearchVisibilityPort } from '@onething/backend/runtime/search/capabilities'
-import { configureOnethingSearchService } from '@onething/backend/runtime/search/service-bound'
+} from './capabilities/index.js'
+import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from './index/index.js'
+import type { IndexWorkerData } from './index/worker-data.js'
+import type { IndexWorkerHandle } from './index/worker-host.js'
+import { configureSearchVisibilityPort } from './capabilities/index.js'
+import { configureOnethingSearchService } from './service-bound.js'
 import { configureSearchToolAdapters } from '@onething/backend/runtime/toolkit'
 import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/backend/runtime/storage/paths'
 import { DEFAULT_SEMANTIC_MODEL_ID } from '@shared/ipc/settings.js'

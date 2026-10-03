@@ -96,6 +96,12 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
   收尾整理 2 把包根 `events/` 也搬进 runtime,两半并成 `runtime/events/`)。
 - RPC 处理器(`rpc/domains/<d>.ts`)不动 —— RPC 注册表那张表的形状是第④步的事。
 
+**功能入口(用户拍板 2026-10-03)**:每个功能只通过自己的入口 `runtime/<d>/index.ts`(`@onething/backend/runtime/<d>`)对外交出能力;
+功能目录里其余文件是内部实现,外面(包根、别的功能、apps、scripts、evals)不许直接引用,目录里的文件互相按相对路径 import。
+目的是读一个功能先看它的入口就知道它对外给了什么。一个功能在 `packages/backend/package.json` 的 exports 里只有入口这一个键。
+棘轮 `bun run entry:gate`(`scripts/feature-entry-gate.mjs`,基线 `docs/audit/feature-entry-baseline-2026-10.txt`,只许降);
+总桶 `runtime/index.ts`(再导出 2337 个名字)最终要拆掉,它在棘轮里单记一行 `(总桶)`。逐功能收口,search 是第一个(见 §6)。
+
 **撤掉的规则**(理由都是同一句:core / gateway 不再是层):
 
 1. core 的专属禁令(`@shared/ipc`、better-sqlite3、MCP / ACP SDK、zod / diff / uuid,以及只许 `@anthropic-ai/sdk` 的第三方包批准表):
@@ -1210,3 +1216,51 @@ runtime 内 4 只;取的名字绝大多数是 evals 那一族。
 根全量 vitest 改前 11413 / 21 红,改后 11413 / 19 红 —— 按路径映射后的差别只有改前两条偶发(`workspace-watch-driver`、`model-registry-abort`)
 改后绿;壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;boundary(132 条)/ transport / log / assembly / session / provider / gate:native /
 `assembly:check` / `session:check` / drill 输出前后逐字相同;`sessions:shadow-battery` 前后各 130 行,除耗时外逐行相同(前后都红在 `appendFailures 8 ≠ 0`)。
+
+### 功能入口第 1、2 笔落地记录:棘轮 + search 收口(2026-10-03,未提交)
+
+**一句话**:立「功能入口」棘轮 `entry:gate`,search 第一个收口 —— 外面只从 `@onething/backend/runtime/search` 拿名字,exports 里 search 的深层键
+15 个全删,棘轮里 search 一行 10 → 2(剩下两处都是构建 / 门脚本,见下)。
+
+**第 1 笔:棘轮**(`scripts/feature-entry-gate.mjs`,`entry:check` / `entry:gate`,CI gates job 一步,基线 `docs/audit/feature-entry-baseline-2026-10.txt`)。
+口径:扫 `packages/`、`apps/`、`scripts/`、`evals/` 的源文件(跳过 node_modules、点目录、构建产物),用 TypeScript 解析器取模块说明符
+(`import` / 副作用 `import '…'` / `export … from` / `import = require` / 动态与类型位置的 `import()` / `require` / `vi.mock` 一族);包说明符先按
+exports 精确键解析到文件(`./runtime/search/index` 这种键指的是 `index/` 子目录的桶,不是入口),解析到 `runtime/<d>/index.ts` 不计、到功能目录里
+别的文件计一处、引用方自己在功能目录里不计;总桶 `runtime/index.ts` 单记 `(总桶)`。立尺时 2693 处 / 56 行。与会话里的量法 `deep.mjs`(2815)
+对账:2815 − 168(`deep.mjs` 把 `…/index.js`、`…/index.ts` 形的入口当成了深层)+ 36(总桶它不数)+ 10(它的正则看不见的写法:8 处副作用
+`import '…'`、2 处 `typeof import('…')`)= 2693。构建配方里按文件路径指 Worker 入口的字符串(`build-electron.mjs` 的 `SEARCH_WORKER_ENTRY`)
+不是 import,不计。
+
+**第 2 笔:search 收口**。入口 `runtime/search/index.ts` 在原有五行 `export *`(`providers` / `service` / `service-bound` / `capabilities` /
+`text/plain`)之外加了外面真要的五个名字:`configureAppSearchProviders`、`createAppSearchService`、`unavailableIndexFace`、
+`registerPluginSearchProvider`,与类型 `CapabilityManifest` / `PreviewPayload`。改走入口的 8 处:`backend.ts` 两处、`server/runtime.ts`、
+`rpc/domains/search.ts`、`runtime/plugins/api.ts`、`rpc/__tests__/search-domain.test.ts` 两处、`__tests__/import-side-effect-free.test.ts`。
+search 目录里 60 只文件的 100 处「用包说明符引自己的深层文件」改成相对路径(脚本 scratchpad 的 `s6-search-relative.mjs`),5 只非测试文件里
+「从自己的入口取名字」改成直取定义它的那只文件(入口现在再导出 `service-setup` / `install-providers`,不改就是入口自引用的环)。
+exports 567 → 552,删 15 键:`capabilities`、`index`、`index/worker-data`、`index/worker-host`、`service`、`service-bound`、`kernel`、
+`kernel/__tests__/index-contract`、`kernel/__tests__/unit-fixtures/corpus`、`kernel/index/types`、`kernel/redact`、`service-setup`、
+`plugin-search-registry`、`install-providers`、`embedding/transformers-onnx`(最后这个审过后删:门脚本改按相对文件路径引)。
+
+**没进入口的两处**(棘轮里 search 剩下的 2):`scripts/gate-embed-runtime/entry.ts` 引 `embedding/transformers-onnx`(进入口就会把嵌入库的
+动态 import 字面量带进主进程 bundle,而这道门的规矩正是「只 import 产品自己那份嵌入器」),改成按相对文件路径
+`../../packages/backend/runtime/search/embedding/transformers-onnx.js` 引用 —— 门脚本有意引用内部文件,棘轮照数;`scripts/lib/search-corpus-redact.mjs` 按相对路径再导出 `kernel/redact.ts`(bun 跑的语料脚本,
+走入口会把整个检索图连同 Worker 宿主一起拉进来),维持现状。
+
+**测试改动**:`import-side-effect-free.test.ts` 改了测试逻辑 —— 从前桩打在入口的 `configureOnethingSearchProviders` 上、`install-providers` 经入口
+取它;`install-providers` 进了入口以后再经入口取就是自引用,实测桩够不着(`'search'` 那一行数不到)。改成 `configureAppSearchProviders(configure?)`
+把「真正去装」那一步当参数递进来(装配从不传),桩换成「调真的那一份、只把 configure 换成计数」,闩照样被测到。代价:`install-providers`
+在 import 时若直接调真的 `configureOnethingSearchProviders`,这道栅栏不再看得见。其余测试只改 import 说明符。
+
+**证据**:三份 `search-worker.cjs` 前后逐字节相同(1283673 / 1283673 / 1282203);`backend.ts`、`server/runtime.ts` 的静态 import 闭包前后同一组文件
+(1456 / 1474),桌面 `main.cjs` 的 esbuild 输入同一组 2153 只,字节差(server +132、cli +332、桌面 +3241)是模块求值顺序与 esbuild 惰性初始化包装,
+三份主进程 bundle 里嵌入库 / onnxruntime 字面量前后都是 0。变大的是**入口本身的闭包**:search 入口 156 → 683 只文件、总桶 697 → 870、
+`plugins/api.ts` 791 → 878、`rpc/domains/search.ts` 185 → 686 —— 凡 import 入口的都背上了 `service-setup` 那棵树(包根 stores / session、notes、
+toolkit、Worker 宿主);在宿主里它们本来就在,bun 下 import 总桶照常装得上。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;根全量 vitest
+11413 / 20 红,失败集合逐条相同(含偶发的 `workspace-watch-driver`);壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;transport / log / assembly(radio.ts
+9→10 前后都在)/ session / provider / gate:native / boundary(132 条)/ `assembly:check` / `session:check` / drill 输出前后逐字相同;`sessions:shadow-battery`
+前后各 130 行,逐行只差 `refoldChecks` 216 → 217(前后都红在 `appendFailures 8`);`golden-hit-sets.json` 逐字不变;`entry:gate` 绿。`gate:search-index`
+⑤d 两条的命中清单前后逐字相同,⑤c 前后都红;⑪a(等到 `model.state === 'absent'` 就读 `vectorErrorKind`,读的时候向量写路未必已经试过嵌入,
+是门本身的竞态)HEAD 上跑 5 次红 1 次、改后跑 9 次红 7 次 —— 改后 server bundle 模块求值顺序变了,时序跟着挪,未查到行为差异。
+审过后修门:那次 `waitForStatus` 改成等「`model.state === 'absent'` 且 `vectorErrorKind` 已有值」,再照旧判它等于 `'model'`。

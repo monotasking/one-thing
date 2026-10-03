@@ -12,14 +12,22 @@
  * 现造一份给六个能力),因为 server 那侧的取材面是 per-owner 的,组不出进程单例。
  * 退役这个单槽要动 `configureAppRuntimeAdapters` 那张表,不在本单 —— 见报告留账。
  */
-import { configureOnethingSearchProviders } from '@onething/backend/runtime/search'
+import { configureOnethingSearchProviders } from './providers.js'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 
 let searchProvidersConfigured = false
 
-/** Explicit assembly step; also self-ensured by this module's wrapper. */
-export function configureAppSearchProviders(): void {
+/**
+ * Explicit assembly step; also self-ensured by this module's wrapper.
+ *
+ * `configure` 只给测试用:装配从不传它。从前这里经功能入口取 `configureOnethingSearchProviders`,
+ * 测试在入口上换掉它就能数到「装了几次」;这个文件进了入口以后再从入口取就成了入口自引用,
+ * 换掉的那份够不着这里,所以改成把「真正去装的那一步」当参数递进来。
+ */
+export function configureAppSearchProviders(
+  configure: typeof configureOnethingSearchProviders = configureOnethingSearchProviders,
+): void {
   if (searchProvidersConfigured) return
   searchProvidersConfigured = true
-  configureOnethingSearchProviders(createAppSearchProvidersAdapters())
+  configure(createAppSearchProvidersAdapters())
 }

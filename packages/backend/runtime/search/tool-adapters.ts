@@ -60,13 +60,13 @@
  *    `error` 上;末行按 §13.x 那条判词照实说「这一类没搜成」,而不是让它冒充「没有」。
  */
 
-import type { FacetFilter, SearchContext, SearchPrincipal } from '@onething/backend/runtime/search/kernel'
+import type { FacetFilter, SearchContext, SearchPrincipal } from './kernel/index.js'
 import type {
   OnethingSearchService,
   SearchServiceGroup,
   SearchServiceRequest,
   SearchServiceResponse,
-} from '@onething/backend/runtime/search'
+} from './service.js'
 import type {
   SearchToolAdapters,
   SearchToolHit,

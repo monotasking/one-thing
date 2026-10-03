@@ -56,7 +56,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '@onething/backend/runtime/search/kernel'
+import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '../kernel/index.js'
 import type {
   DocPayload,
   DocTable,
@@ -69,13 +69,13 @@ import type {
   LexicalSearcher,
   Posting,
   Vocabulary,
-} from '@onething/backend/runtime/search/kernel'
+} from '../kernel/index.js'
 import {
   DEFAULT_NORMALIZERS,
   composeNormalizers,
   createDefaultAnalyzerRegistry,
-} from '@onething/backend/runtime/search/kernel'
-import type { AnalyzerRegistry } from '@onething/backend/runtime/search/kernel'
+} from '../kernel/index.js'
+import type { AnalyzerRegistry } from '../kernel/index.js'
 
 import { SqliteVectorIndex, attachVectorIndex, probeSqliteVecExtension } from './sqlite-vec.js'
 import { vectorTableFamily } from './storage.js'

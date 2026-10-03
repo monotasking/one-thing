@@ -28,12 +28,13 @@
  * actionId、聚焦),在 A1-a 的 `searchWindowRouter` 上;server 那侧的
  * `POST /api/search/actions` 也因此留着。`SEARCH_ACTION` 是推送,同理不在。
  */
-import type { CapabilityManifest, PreviewPayload } from '@onething/backend/runtime/search/kernel'
 import {
   NoPreviewError,
   PreviewUnavailableError,
   getOnethingSearchServiceSafe,
+  type CapabilityManifest,
   type OnethingSearchService,
+  type PreviewPayload,
   type SearchPreviewItem,
   type SearchServiceRequest,
 } from '@onething/backend/runtime/search'

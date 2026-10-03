@@ -45,7 +45,7 @@
  * 读 `meta.json` 给进来(见 `SessionMetaSnapshot`),不是这里的事件。
  */
 
-import type { DocPayload } from '@onething/backend/runtime/search/kernel'
+import type { DocPayload } from '../kernel/index.js'
 // 事件词表与投影都经 `@onething/backend/runtime/sessions/session-primitives` 这一个桶出口(`session/index.ts` 的
 // 末两行把 `events/` 与 `projection/` 都再导出了)—— 不为这一处新开子路径键。
 import type {

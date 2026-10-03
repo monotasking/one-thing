@@ -44,12 +44,12 @@ import {
   LedgerFeed,
   SqliteIndex,
   defaultDocumentFilters,
-} from '@onething/backend/runtime/search/index'
-import type { IndexEndpoint } from '@onething/backend/runtime/search/index'
-import type { IndexWorkerData } from '@onething/backend/runtime/search/index/worker-data'
-import type { IndexWorkerHandle } from '@onething/backend/runtime/search/index/worker-host'
+} from '../index/index.js'
+import type { IndexEndpoint } from '../index/index.js'
+import type { IndexWorkerData } from '../index/worker-data.js'
+import type { IndexWorkerHandle } from '../index/worker-host.js'
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/runtime/search'
-import { configureSearchVisibilityPort } from '@onething/backend/runtime/search/capabilities'
+import { configureSearchVisibilityPort } from '../capabilities/index.js'
 import type { ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 

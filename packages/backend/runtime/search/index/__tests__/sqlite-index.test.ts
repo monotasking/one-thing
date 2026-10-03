@@ -2,7 +2,7 @@
  * `SqliteIndex` 答**同一份**索引契约卷子(⑧),外加只有它才答得出的那几条(⑨):
  * 短语 / 放宽四级 / 字段权重 / facet 过滤 / 前缀,以及关系边与检查点。
  *
- * 卷子本体在 `@onething/backend/runtime/search/kernel/__tests__/index-contract`,另一位考生是
+ * 卷子本体在 `runtime/search/kernel/__tests__/index-contract.ts`,另一位考生是
  * `MemoryIndex`。两边答得不一样,就说明「上层只认接口」是假话。
  */
 import fs from 'node:fs'
@@ -10,11 +10,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { describeIndexContract, DEFAULT_SCHEMA } from '@onething/backend/runtime/search/kernel/__tests__/index-contract'
-import type { ContractIndexOptions } from '@onething/backend/runtime/search/kernel/__tests__/index-contract'
-import { corpusDocuments, CAP_A } from '@onething/backend/runtime/search/kernel/__tests__/unit-fixtures/corpus'
-import type { LexicalQuery } from '@onething/backend/runtime/search/kernel'
-import { compositeAnalyzer } from '@onething/backend/runtime/search/kernel'
+import { describeIndexContract, DEFAULT_SCHEMA } from '../../kernel/__tests__/index-contract.js'
+import type { ContractIndexOptions } from '../../kernel/__tests__/index-contract.js'
+import { corpusDocuments, CAP_A } from '../../kernel/__tests__/unit-fixtures/corpus.js'
+import type { LexicalQuery } from '../../kernel/index.js'
+import { compositeAnalyzer } from '../../kernel/index.js'
 
 import { SqliteIndex } from '../sqlite-index.js'
 

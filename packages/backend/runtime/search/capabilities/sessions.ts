@@ -49,7 +49,7 @@ import {
   type SearchContext,
   type SearchPage,
   type SearchQuery,
-} from '@onething/backend/runtime/search/kernel'
+} from '../kernel/index.js'
 import { canApplyGeneratedSessionTitle } from '@onething/backend/runtime/engine/engine-primitives'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import type { OnethingSearchProvidersAdapters, OnethingSearchSessionMeta } from '../providers.js'
