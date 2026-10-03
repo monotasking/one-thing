@@ -1175,3 +1175,38 @@ stream engine 的东西,按内容属于 `runtime/engine/`:`runtime.ts`(`createOn
 壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;transport / log / assembly / session / provider / gate:native 门输出前后逐字相同;boundary
 132 条全 ok,只差一条断言名(`runtime/event-bus` → `runtime/events`);`assembly:check` 只差两行路径;`session:check` 2726 / 4 相同;
 `sessions:shadow-battery` 前后各 130 行、前后都红在 `appendFailures 8 ≠ 0`,逐行只差 `refoldChecks` 215 → 217 与耗时;drill 绿。
+
+### 收尾整理 3 落地记录:runtime 根上的五只散文件进 `runtime/engine/`(2026-10-03,未提交)
+
+**一句话**:只搬家,不合内容。runtime 根上只剩总桶 `runtime/index.ts`(`@onething/backend/runtime`)。脚本 scratchpad 的
+`s5-move-engine-root.mjs`(底子是 `s5-merge-dirs.mjs`,表换成单文件);8 只文件搬家(5 只源文件 + 3 份测试)、12 只文件改写;
+在 HEAD 的临时 worktree 上用独立 `GIT_INDEX_FILE` 重放,输出逐行相同。手改 4 只:`CLAUDE.md` 的目录树、`stream-sender.ts` 的说明头、
+两只改名文件补一段说明头;外加本文件。
+
+| 旧路径(`packages/backend/runtime/` 下) | 新路径 | 理由 |
+| --- | --- | --- |
+| `runtime.ts` | `engine/runtime.ts` | 不撞名;`createOnethingRuntime`(引擎 + 会话运行时) |
+| `product-stream-runtime.ts` | `engine/product-stream-runtime.ts` | 不撞名 |
+| `stream-runtime.ts` | `engine/stream-runtime-factory.ts` | 撞 `engine/stream-runtime.ts`(适配器接口表);这只是按适配器表造 `CoreStreamEngineRuntime` 的工厂 |
+| `stream-processor.ts` | `engine/stream-processor-factory.ts` | 撞 `engine/stream-processor.ts`(处理器本体);这只是把 onething 的选项形状转给 `createCoreStreamProcessor` 的工厂 |
+| `stream-sender.ts` | `engine/stream-sender.ts` | 不撞名;流引擎的命令目标形状 |
+| `__tests__/{product-stream-runtime,runtime}.test.ts` | `engine/__tests__/` 同名 | 测试跟着源文件走 |
+| `__tests__/stream-processor.test.ts` | `engine/__tests__/stream-processor-factory.test.ts` | 同上,名字跟源文件 |
+
+**同一件事的两半(没合)**:`engine/stream-runtime.ts` / `engine/stream-runtime-factory.ts`(接口表 + 工厂)、`engine/stream-processor.ts` /
+`engine/stream-processor-factory.ts`(本体 + 选项转接的工厂)。
+
+**exports**:567 → 567,改名 4 格(`./runtime/{runtime,product-stream-runtime,stream-processor,stream-sender}` → `./runtime/engine/…`;
+`stream-runtime` 本来就没有键,只经总桶出去)。检查器两条位置断言(`product-stream-runtime.ts`、`stream-processor-factory.ts`)与
+`probe-go-to-implementation.mjs` 三格只改路径。
+
+**总桶 `runtime/index.ts` 的现状**(本笔不动):再导出 2337 个名字 —— 24 只领域桶 `export *`(`providers` 422、`tools` 215、`evals` 161、
+`triggers` 116、`sessions` 114、`prompts` 107、`scheduler` 106、`search` 103、`agents` 100、…)加 `engine` / `skills` / `markdown` / `gateway`
+四处点名导出。经它取名字的只有 17 只文件:包外 3 只(`evals/run.mjs`、`scripts/diagnose-weekly.mjs`、`scripts/gateway-smoke-test.ts`),
+包根 8 只(`backend.ts` 与 `rpc/domains/{evals,evals-workbench,session-command}.ts` 及三份 mock 它的测试、`evals-access.ts` 只在注释里提到),
+runtime 内 4 只;取的名字绝大多数是 evals 那一族。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;
+根全量 vitest 改前 11413 / 21 红,改后 11413 / 19 红 —— 按路径映射后的差别只有改前两条偶发(`workspace-watch-driver`、`model-registry-abort`)
+改后绿;壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;boundary(132 条)/ transport / log / assembly / session / provider / gate:native /
+`assembly:check` / `session:check` / drill 输出前后逐字相同;`sessions:shadow-battery` 前后各 130 行,除耗时外逐行相同(前后都红在 `appendFailures 8 ≠ 0`)。

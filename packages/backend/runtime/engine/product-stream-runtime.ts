@@ -15,16 +15,16 @@ import type {
 import {
   createOnethingStreamProviderAdapter,
   type OnethingStreamProviderAdapterOptions,
-} from './providers/index.js'
+} from '../providers/index.js'
 import type {
   CoreAppSettingsWithAI,
   CoreProviderAuthLike,
   CoreProviderConfigLike,
   CoreSessionProviderSelection,
-} from './providers/provider-config.js'
+} from '../providers/provider-config.js'
 import {
   createOnethingStreamEngineRuntime,
-} from './stream-runtime.js'
+} from './stream-runtime-factory.js'
 
 export interface OnethingProductStreamRuntime<
   TSettings extends CoreAppSettingsWithAI<TProviderConfig> = CoreAppSettingsWithAI<any>,

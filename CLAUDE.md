@@ -998,8 +998,10 @@ packages/backend/runtime/      # one feature, one flat directory (was packages/o
 │   │                          # + ports.ts(五个可选端口)/ turn-principal / message-sources
 │   │                          # + P3'e-A2b:compact-file-lists / chat-logger-bound /
 │   │                          # session-stream-emitter / session-turn-context
+│   │                          # + 从 runtime 根搬来的五只(收尾整理 3):runtime.ts / product-stream-runtime.ts /
+│   │                          # stream-runtime-factory.ts / stream-processor-factory.ts / stream-sender.ts(命令目标形状)
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
-│   └── stream-sender.ts       # 命令目标(sender)形状:产品层的公开类型
+│   └── index.ts               # 总桶 '@onething/backend/runtime'(runtime 根上只剩它一只文件)
 │
 packages/backend/runtime/gateway/ # IM gateway (was packages/gateway/src): hub/ + channels/ + conversation-runtime.ts
 │

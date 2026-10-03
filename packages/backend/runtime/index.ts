@@ -1,34 +1,34 @@
-export { NoopOnethingStreamSender } from "./stream-sender.js";
+export { NoopOnethingStreamSender } from "./engine/stream-sender.js";
 export type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,
 	OnethingStreamSenderPayload,
-} from "./stream-sender.js";
-export { createOnethingStreamEngineRuntime } from "./stream-runtime.js";
+} from "./engine/stream-sender.js";
+export { createOnethingStreamEngineRuntime } from "./engine/stream-runtime-factory.js";
 export type {
 	OnethingStreamRuntime,
 	OnethingStreamRuntimeOptions,
-} from "./stream-runtime.js";
-export { createOnethingStreamProcessor } from "./stream-processor.js";
-export type { CreateOnethingStreamProcessorOptions } from "./stream-processor.js";
+} from "./engine/stream-runtime-factory.js";
+export { createOnethingStreamProcessor } from "./engine/stream-processor-factory.js";
+export type { CreateOnethingStreamProcessorOptions } from "./engine/stream-processor-factory.js";
 export {
 	createOnethingRuntime,
 	createOnethingRuntimeFromStreamRuntime,
-} from "./runtime.js";
+} from "./engine/runtime.js";
 export type {
 	OnethingRuntime,
 	OnethingRuntimeFromStreamRuntimeOptions,
 	OnethingRuntimeOptions,
-} from "./runtime.js";
+} from "./engine/runtime.js";
 export {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	createOnethingProductStreamRuntime,
-} from "./product-stream-runtime.js";
+} from "./engine/product-stream-runtime.js";
 export type {
 	OnethingProductStreamRuntime,
 	OnethingProductStreamRuntimeHostAdapters,
 	OnethingProductStreamRuntimeOptions,
-} from "./product-stream-runtime.js";
+} from "./engine/product-stream-runtime.js";
 export * from "./auth/index.js";
 export {
 	createOnethingConversationRuntimeFromStreamEngine,

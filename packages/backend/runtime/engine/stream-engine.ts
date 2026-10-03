@@ -23,7 +23,7 @@ import type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,
 	OnethingStreamSenderPayload,
-} from "../stream-sender.js";
+} from "./stream-sender.js";
 import { isSystemInternalSource } from "./message-sources.js";
 import { isTrustedCollabDrive } from "../collab/drive-guard.js";
 import { runPluginInputIntercept } from "../plugins/input-intercept-bound.js";

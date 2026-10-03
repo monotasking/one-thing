@@ -31,7 +31,7 @@ export type {
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,
-} from '../stream-sender.js'
+} from '../engine/stream-sender.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

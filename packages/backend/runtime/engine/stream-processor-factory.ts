@@ -1,3 +1,7 @@
+/**
+ * 把 onething 的选项形状转给 `createCoreStreamProcessor` 的工厂(`createOnethingStreamProcessor`)。它从前是 runtime
+ * 根上的 `stream-processor.ts`;收尾整理 3(2026-10-03)搬进 `runtime/engine/` 时与处理器本体那只撞名,按内容改名。
+ */
 import type { JsonObject } from '@shared/json'
 import {
   createCoreStreamProcessor,

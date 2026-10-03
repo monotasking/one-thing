@@ -3597,7 +3597,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
 }
 
 function checkRuntimeOwnsStreamRuntimeWiring(): void {
-  const runtimeFile = 'packages/backend/runtime/product-stream-runtime.ts'
+  const runtimeFile = 'packages/backend/runtime/engine/product-stream-runtime.ts'
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/index.ts')
   const mainFile = path.join(root, 'packages/backend/runtime/engine/stream-engine-runtime.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
@@ -4085,7 +4085,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
 }
 
 function checkRuntimeOwnsStreamProcessorAdapter(): void {
-  const runtimeFile = path.join(root, 'packages/backend/runtime/stream-processor.ts')
+  const runtimeFile = path.join(root, 'packages/backend/runtime/engine/stream-processor-factory.ts')
   const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/stream-processor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   // F4-b1(§16.16):`createCoreId` 从这张必备表里下线 —— 适配器不再持有 step id

@@ -74,7 +74,7 @@ import type {
 } from '@shared/ipc/resources.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import type { BindableOnethingStreamSender } from '@onething/backend/runtime/stream-sender'
+import type { BindableOnethingStreamSender } from '@onething/backend/runtime/engine/stream-sender'
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 

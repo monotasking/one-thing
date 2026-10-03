@@ -1,3 +1,8 @@
+/**
+ * 按适配器表(同目录 `stream-runtime.ts` 的 `StreamEngine*Adapter`)造出 `CoreStreamEngineRuntime` 的工厂
+ * (`createOnethingStreamEngineRuntime`)。它从前是 runtime 根上的 `stream-runtime.ts`;收尾整理 3(2026-10-03)
+ * 搬进 `runtime/engine/` 时与适配器接口那只撞名,按内容改名。两只文件没有合。
+ */
 import {
   createCoreId,
   type CoreContextCompactResultLike,

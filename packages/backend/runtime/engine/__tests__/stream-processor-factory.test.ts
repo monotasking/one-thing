@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createOnethingStreamProcessor } from '../stream-processor.js'
+import { createOnethingStreamProcessor } from '../stream-processor-factory.js'
 
 describe('onething stream processor', () => {
   it('owns stream processor context projection over the core processor', async () => {

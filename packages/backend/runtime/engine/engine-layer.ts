@@ -12,7 +12,7 @@ import type { CoreStreamEngineRuntime as CoreRuntime } from '@onething/backend/r
 import {
   createOnethingRuntimeFromStreamRuntime,
   type OnethingRuntime,
-} from '@onething/backend/runtime/runtime'
+} from '@onething/backend/runtime/engine/runtime'
 import type { CoreConversationRuntime } from '@onething/backend/runtime/gateway/conversation-runtime'
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'

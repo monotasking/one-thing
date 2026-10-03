@@ -23,7 +23,7 @@ import type { EffectiveAgentProfile } from '@onething/backend/runtime/agents'
 import type { CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import {
   createOnethingStreamProcessor, type CreateOnethingStreamProcessorOptions,
-} from '@onething/backend/runtime/stream-processor'
+} from '@onething/backend/runtime/engine/stream-processor-factory'
 
 export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig & {
   /**

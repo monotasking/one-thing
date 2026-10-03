@@ -4,7 +4,7 @@
  * 从前和 `OnethingStreamEngine` 同住 `stream-engine.ts`;那个 71 行的中间类已
  * 并进 `packages/backend/engine/stream-engine.ts`,但这三件是产品层自己的公开
  * 类型 —— `runtime.ts` / `gateway/engine-conversation-runtime.ts` 都拿它当泛型下界与默认 sender,
- * 所以留在产品层,单独成文件。
+ * 所以单独成文件。收尾整理 3(2026-10-03)从 runtime 根上搬进 `runtime/engine/`。
  */
 
 export type OnethingStreamSenderPayload =

@@ -8,7 +8,7 @@ import type { ProviderAuthContext } from "@onething/backend/runtime/auth/ipc-typ
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
-} from "@onething/backend/runtime/product-stream-runtime";
+} from "@onething/backend/runtime/engine/product-stream-runtime";
 import { Permission } from "@onething/backend/runtime/permissions/permission";
 import { Interaction } from '@onething/backend/runtime/interaction';
 import * as store from "@onething/backend/store.js";

@@ -11,7 +11,7 @@ import type {
 } from '@onething/backend/runtime/gateway/conversation-runtime'
 import {
   createOnethingConversationRuntimeFromStreamEngine,
-} from './gateway/engine-conversation-runtime.js'
+} from '../gateway/engine-conversation-runtime.js'
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,
@@ -19,7 +19,7 @@ import {
 import {
   createOnethingStreamEngineRuntime,
   type OnethingStreamRuntimeOptions,
-} from './stream-runtime.js'
+} from './stream-runtime-factory.js'
 
 export interface OnethingRuntime<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,
