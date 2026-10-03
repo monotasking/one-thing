@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractErrorDetails } from '@onething/backend/runtime/engine/error-details'
-import { createAgentProviderFromRuntime, isAgentProviderRuntimeSupported } from '@onething/backend/runtime/agent-loop/providers/factory'
+import { createAgentProviderFromRuntime, isAgentProviderRuntimeSupported } from '@onething/backend/runtime/providers/factory'
 import { onethingBaseBuiltinProviders } from '@onething/backend/runtime/providers/builtin-providers'
 import { getOnethingProviderApiKeyEnvCandidates } from '@onething/backend/runtime/providers/env'
 import { resolveOnethingProviderBaseUrl } from '@onething/backend/runtime/providers/endpoint'

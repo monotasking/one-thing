@@ -6,8 +6,8 @@
  * OAuth 凭证在 authContext 里,config.apiKey 对 OAuth provider 恒为空串 —— 必须走
  * `kit.accessToken`,与别的订阅型家同一条路。
  */
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../kimi/endpoint.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { KIMI_CODE_DIALECT } from "./dialect.js";

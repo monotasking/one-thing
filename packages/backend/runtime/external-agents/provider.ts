@@ -7,7 +7,7 @@ import type {
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { BaseAgentProvider } from '../agent-loop/providers/base/base-agent-provider.js'
+import { BaseAgentProvider } from '../providers/base/base-agent-provider.js'
 import { getLogger } from '../logging/index.js'
 import { findAgentExecutorDescriptor } from '../agents/executor/capabilities.js'
 import type {

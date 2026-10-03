@@ -9,8 +9,8 @@
  *
  * 与搬家前 `factory.ts` 那段登记逐字同口径。
  */
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createResponsesProvider } from "../../../agent-loop/providers/dialects/responses-recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createResponsesProvider } from "../../dialects/responses-recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { OPENAI_DIALECT } from "./dialect.js";
 

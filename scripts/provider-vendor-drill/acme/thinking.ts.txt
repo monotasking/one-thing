@@ -1,5 +1,5 @@
-import type { RequestBodyBuilder, TurnContext } from "../../../agent-loop/providers/base/index.js";
-import { OpenAIChatThinkingWire } from "../../../agent-loop/providers/thinking/openai-chat-thinking-wire.js";
+import type { RequestBodyBuilder, TurnContext } from "../../base/index.js";
+import { OpenAIChatThinkingWire } from "../../thinking/openai-chat-thinking-wire.js";
 
 export class AcmeThinkingWire extends OpenAIChatThinkingWire {
 	readonly id = "acme-thinking";

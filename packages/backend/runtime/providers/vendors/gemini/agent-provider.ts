@@ -5,7 +5,7 @@
  * 持有任何线协议逻辑:请求体构造、流解析、消息序列化、usage、错误、思考旋钮
  * 全部搬到 `wires/gemini-wire.ts` + `wires/gemini-messages.ts` +
  * `wires/gemini-errors.ts` + `thinking/gemini-thinking.ts` 上,方言配方在
- * 同目录 `dialect.ts`(公共构件 `agent-loop/providers/dialects/gemini-recipe.ts`)。
+ * 同目录 `dialect.ts`(公共构件 `providers/dialects/gemini-recipe.ts`)。
  *
  * 服务商自述试点 P2 第 2 批从 `agent-loop/providers/gemini.ts` 搬回家。**生产路不走这里**
  * (运行时工厂是同目录 `runtime.ts`;backend 那层只加了缺省 fetch / 媒体端口的包装零调用者,
@@ -17,9 +17,9 @@ import {
 	createGeminiProvider,
 	geminiAuth,
 	geminiDialect,
-} from "../../../agent-loop/providers/dialects/gemini-recipe.js";
-import type { ProviderMediaReader } from "../../../agent-loop/providers/base/index.js";
-import type { AgentProviderRequestDumper } from "../../../agent-loop/providers/request-dump.js";
+} from "../../dialects/gemini-recipe.js";
+import type { ProviderMediaReader } from "../../base/index.js";
+import type { AgentProviderRequestDumper } from "../../request-dumper.js";
 
 type FetchFn = typeof globalThis.fetch;
 

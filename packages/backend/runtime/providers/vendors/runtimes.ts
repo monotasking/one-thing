@@ -6,7 +6,7 @@
  *
  *  - import 本文件 = 各家方言登记进 `registerDialect`(方言模块定义即登记),各家思考参数
  *    登记进 `thinkingWires`(下面那个循环);
- *  - 运行时工厂由 `agent-loop/providers/factory.ts` 按名册接进工厂表 —— 那边持有表,
+ *  - 运行时工厂由 `providers/factory.ts` 按名册接进工厂表 —— 那边持有表,
  *    这里只交名册,免得两边互相 import;
  *  - 配额源(余额 / 用量)由 `providers/quota/registry.ts` 第一次被问到时**惰性**读名册
  *    (它若在加载时就读,会经本文件把整个 agent-loop 拉进来、与 manifest 注册表成环);
@@ -16,11 +16,11 @@
  *    自己才有的东西(auth 服务、app fetch、设置、落盘)经一份**不点名**的 `VendorModelsFetcherDeps` 交进来。
  */
 import type { AgentProvider } from "@onething/backend/runtime/agent-loop/loop-primitives";
-import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../../agent-loop/providers/base/index.js";
+import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../base/index.js";
 import type {
 	AgentProviderRuntimeConfig,
 	CreateAgentProviderFromRuntimeOptions,
-} from "../../agent-loop/providers/factory.js";
+} from "../factory.js";
 import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/types.js";
 import type { OnethingHttpPolicyName } from "@onething/backend/runtime/network";
 import type {

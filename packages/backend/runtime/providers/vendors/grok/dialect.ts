@@ -42,7 +42,7 @@ import type {
 	RequestBodyBuilder,
 	ToolChoicePolicy,
 	TurnContext,
-} from "../../../agent-loop/providers/base/index.js";
+} from "../../base/index.js";
 import { GROK_RESPONSES_THINKING_WIRES } from "./thinking.js";
 import {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
@@ -50,13 +50,13 @@ import {
 	toResponsesToolChoice,
 	type ResponsesNativeTool,
 	type ResponsesUsage,
-} from "../../../agent-loop/providers/wires/index.js";
+} from "../../wires/index.js";
 import { pickGrokSearchParameters } from "./search-parameters.js";
-import { promptCacheKeyExtraBody } from "../../../agent-loop/providers/dialects/recipe.js";
+import { promptCacheKeyExtraBody } from "../../dialects/recipe.js";
 import {
 	defineResponsesDialect,
 	type ResponsesDialectSpec,
-} from "../../../agent-loop/providers/dialects/responses-recipe.js";
+} from "../../dialects/responses-recipe.js";
 
 /** 两条 xAI 通路共用的地址 —— `POST https://api.x.ai/v1/responses`。 */
 export const GROK_BASE_URL = "https://api.x.ai/v1";

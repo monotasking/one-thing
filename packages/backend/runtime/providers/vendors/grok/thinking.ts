@@ -7,7 +7,7 @@
  *  - `GrokResponsesReasoningWire`(同 id,Responses 的 `reasoning.effort` + 恒发 `include`):只挂在
  *    这家的方言配方上(`GROK_RESPONSES_THINKING_WIRES`),从来不进全局表。
  *
- * 服务商自述试点 P2 第 4 批从 `agent-loop/providers/thinking/{grok-effort,grok-responses-reasoning}.ts`
+ * 服务商自述试点 P2 第 4 批从 `providers/thinking/{grok-effort,grok-responses-reasoning}.ts`
  * 搬回家(两条线型只服务这一家)。
  *
  * xAI effort policy shared by the Responses and legacy Chat transports.
@@ -17,13 +17,13 @@ import {
   resolveOnethingModelCapabilities,
   type OnethingReasoningProfile,
 } from '../../model-capability.js'
-import type { RequestBodyBuilder, ThinkingWire, TurnContext } from '../../../agent-loop/providers/base/index.js'
-import { OpenAIChatThinkingWire } from '../../../agent-loop/providers/thinking/openai-chat-thinking-wire.js'
+import type { RequestBodyBuilder, ThinkingWire, TurnContext } from '../../base/index.js'
+import { OpenAIChatThinkingWire } from '../../thinking/openai-chat-thinking-wire.js'
 import {
   RESPONSES_ENCRYPTED_REASONING_INCLUDE,
   RESPONSES_INCLUDE_PATH,
   RESPONSES_REASONING_PATH,
-} from '../../../agent-loop/providers/thinking/responses-reasoning.js'
+} from '../../thinking/responses-reasoning.js'
 
 export function clampGrokReasoningEffort(effort: string | undefined, model: string): string | undefined {
   const profile = resolveOnethingModelCapabilities({ providerId: 'grok', modelId: model }).reasoningProfile

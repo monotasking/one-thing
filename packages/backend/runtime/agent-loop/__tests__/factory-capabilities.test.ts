@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentProviderFromRuntime } from '../providers/factory.js'
+import { createAgentProviderFromRuntime } from '../../providers/factory.js'
 
 async function capabilitiesOf(providerId: string, config: Record<string, unknown>, model: string) {
   const provider = createAgentProviderFromRuntime(providerId, config)

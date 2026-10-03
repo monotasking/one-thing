@@ -778,7 +778,7 @@ export function buildHistoryMessages<
 				// user/assistant 交替的 provider(DeepSeek 系)垫一条 —— 历史里为
 				// 了迁就传输层而放一条模型从没说过的话,是在会话事实里掺假。
 				// 交替风险改由 provider 适配层的相邻同角色合并兜底
-				// (packages/backend/runtime/agent-loop/providers/)。
+				// (packages/backend/runtime/providers/)。
 				{
 					role: "user",
 					content: compactedHistoryPreamble(session.summary),

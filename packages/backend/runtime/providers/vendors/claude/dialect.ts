@@ -9,7 +9,7 @@
 import {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	defineAnthropicDialect,
-} from "../../../agent-loop/providers/dialects/anthropic-recipe.js";
+} from "../../dialects/anthropic-recipe.js";
 
 export const CLAUDE_DIALECT = defineAnthropicDialect({
 	id: "claude",

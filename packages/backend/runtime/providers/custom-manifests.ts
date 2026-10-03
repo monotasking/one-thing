@@ -28,8 +28,8 @@ import {
 import {
   dialectFromSpec,
   unsupportedAdapterSpecFields,
-} from '@onething/backend/runtime/agent-loop/providers/dialects/custom-from-spec'
-import { registerDialect } from '@onething/backend/runtime/agent-loop/providers/base/dialect'
+} from './dialects/custom-from-spec.js'
+import { registerDialect } from './base/dialect.js'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 import { getSpacesStore } from '@onething/backend/runtime/spaces/store'

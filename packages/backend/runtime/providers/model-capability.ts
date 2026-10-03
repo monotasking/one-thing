@@ -38,7 +38,7 @@
  * web build import it directly.
  */
 import { getProviderManifest, getProviderManifestRegistry } from './manifest.js'
-import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from '../agent-loop/providers/thinking/protocol-wire-ids.js'
+import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from './thinking/protocol-wire-ids.js'
 import {
   REASONING_EFFORT_LEVELS,
   resolveReasoningEffort as resolveOnethingReasoningEffort,
@@ -64,7 +64,7 @@ export type OnethingReasoningEffortOption = OnethingReasoningEffortLevel | 'none
 
 /**
  * How the thinking intent is expressed on the wire by the owning provider —
- * a thinking-wire id. 线型由协议层与各家登记(`agent-loop/providers/thinking/` 与各家
+ * a thinking-wire id. 线型由协议层与各家登记(`providers/thinking/` 与各家
  * `vendors/<id>/thinking.ts`),这里不列举;用户覆盖里哪些取值合法见
  * `isDeclarableReasoningWire`。
  */

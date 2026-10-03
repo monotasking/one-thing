@@ -12,8 +12,8 @@
  *  3. **回读**:只认 `reasoning_content`,不认 OpenRouter 那套统一的
  *     `reasoning`(设计稿 §13:两边的语义差 P0a 原样保留)。
  */
-import type { RequestBodyBuilder, TurnContext } from "../../../agent-loop/providers/base/index.js";
-import { OpenAIChatThinkingWire, openAIChatDelta } from "../../../agent-loop/providers/thinking/openai-chat-thinking-wire.js";
+import type { RequestBodyBuilder, TurnContext } from "../../base/index.js";
+import { OpenAIChatThinkingWire, openAIChatDelta } from "../../thinking/openai-chat-thinking-wire.js";
 
 export function isDeepSeekThinkingModel(modelId: string): boolean {
 	const lower = modelId.toLowerCase();

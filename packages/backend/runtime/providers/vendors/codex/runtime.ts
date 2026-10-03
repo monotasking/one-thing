@@ -8,7 +8,7 @@
 import {
 	codexAuth,
 	createResponsesProvider,
-} from "../../../agent-loop/providers/dialects/responses-recipe.js";
+} from "../../dialects/responses-recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { CODEX_DIALECT } from "./dialect.js";
 import {

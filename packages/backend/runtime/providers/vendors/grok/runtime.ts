@@ -10,8 +10,8 @@
  * `thinkingWires` 登记的是 chat 那条 `grok-effort`(`openai-compatible.ts` 的构造门面按
  * `reasoningStyle` 取);Responses 那条只挂在方言配方上,与搬家前一样不进全局表。
  */
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createResponsesProvider } from "../../../agent-loop/providers/dialects/responses-recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createResponsesProvider } from "../../dialects/responses-recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { GROK_DIALECT } from "./dialect.js";
 import { GROK_FALLBACK_CATALOG } from "./fallback-models.js";

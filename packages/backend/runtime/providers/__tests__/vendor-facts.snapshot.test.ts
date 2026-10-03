@@ -3,7 +3,7 @@
  *
  * 服务商自述试点要把每家散在公共大表里的数据(环境变量名、接口地址与档位、目录键、
  * 认亲品牌、错误码说明、模型能力规则、请求选项……)搬进 `vendors/<id>/`。搬家必须
- * **不改行为**。线协议快照(`agent-loop/providers/__tests__/wire-snapshots`)守的是
+ * **不改行为**。线协议快照(`providers/__tests__/wire-snapshots`)守的是
  * 「发出去的字节」;这份守的是**那些表推导出来的答案** —— 经由今天的公共函数逐家问一遍,
  * 结果冻进 `__fixtures__/vendor-facts.json`。
  *
@@ -17,10 +17,10 @@ import { extractErrorDetails as coreExtractErrorDetails } from '@onething/backen
 import {
   getSupportedAgentProviderRuntimeIds,
   isAgentProviderRuntimeSupported,
-} from '../../agent-loop/providers/factory.js'
-import { listDialects } from '../../agent-loop/providers/base/dialect.js'
-import { thinkingWires } from '../../agent-loop/providers/base/thinking-wire.js'
-import '../../agent-loop/providers/thinking/index.js'
+} from '../factory.js'
+import { listDialects } from '../base/dialect.js'
+import { thinkingWires } from '../base/thinking-wire.js'
+import '../thinking/index.js'
 import { providerDialFieldsOf } from '../../spaces/provider-credentials.js'
 import { providerInfoOfManifest } from '../builtin-providers.js'
 import { getOnethingProviderApiKeyEnvCandidates } from '../env.js'

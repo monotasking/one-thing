@@ -23,7 +23,7 @@ import {
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { getAvailableProviders } from '@onething/backend/runtime/providers/chat-facade'
 import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
-import { listLabeledDialectsForIpc } from '@onething/backend/runtime/agent-loop/providers/dialect-options'
+import { listLabeledDialectsForIpc } from '@onething/backend/runtime/providers/dialect-options'
 import { probeCustomProvider } from '@onething/backend/runtime/providers/custom-probe-analyst'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

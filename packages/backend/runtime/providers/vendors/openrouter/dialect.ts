@@ -11,25 +11,25 @@
  * (见 `openRouterExtraBody`)。
  */
 import type { AgentTurnStreamEvent } from "@onething/backend/runtime/agent-loop/loop-primitives";
-import type { Dialect, TurnContext, UsagePathTable } from "../../../agent-loop/providers/base/index.js";
+import type { Dialect, TurnContext, UsagePathTable } from "../../base/index.js";
 // 这条思考线型留在 agent-loop:它的「回传」那一半由线材 codec 读
 // (`wires/openai-chat-messages.ts` 认 `OPENROUTER_REASONING_DETAILS_TYPE`),搬进来就成了
 // 线材反向依赖服务商目录。所以这里从具体模块取,登记仍在 `thinking/index.ts`。
 import {
 	decodeOpenRouterReasoningDetails,
 	openRouterReasoningWire,
-} from "../../../agent-loop/providers/thinking/openrouter-reasoning.js";
+} from "../../thinking/openrouter-reasoning.js";
 import {
 	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	openAIChatUsage,
 	openAIChatUsageTable,
-} from "../../../agent-loop/providers/wires/index.js";
+} from "../../wires/index.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
 	promptCacheKeyExtraBody,
-} from "../../../agent-loop/providers/dialects/recipe.js";
+} from "../../dialects/recipe.js";
 
 /**
  * OpenRouter 的 usage 恒返回,`cache_write_tokens` 与 `cached_tokens` 都在

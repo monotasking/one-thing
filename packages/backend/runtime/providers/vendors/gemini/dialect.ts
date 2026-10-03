@@ -11,7 +11,7 @@
 import {
 	GEMINI_DEFAULT_BASE_URL,
 	defineGeminiDialect,
-} from "../../../agent-loop/providers/dialects/gemini-recipe.js";
+} from "../../dialects/gemini-recipe.js";
 
 export const GEMINI_DIALECT = defineGeminiDialect({
 	id: "gemini",

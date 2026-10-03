@@ -23,17 +23,17 @@
  * ## 各 provider 家族的真实错误形态(2026-08-15 实测自代码,勘误记在设计文档批 D)
  *
  * **P1-d1 起,provider 错误是一个对象:`ProviderHttpError`**
- * (`agent-loop/providers/base/errors.ts`)。它顶层就带 `status` / `providerId` /
+ * (`providers/base/errors.ts`)。它顶层就带 `status` / `providerId` /
  * `responseBody` / `retryAfterAt`,所以下面每个读取函数都**先认这个形状**,认出来
  * 就直接取字段,根本不去碰消息文本。三段兜底与前缀抠取原样留着,服务的是另外
  * 两类来源:OAuth 刷新失败(`auth-service.ts` 造的错误)与任何外来错误。
  *
  * | 家族 | 抛出处 | 形状 |
  * | --- | --- | --- |
- * | claude / claude-code / custom-anthropic | `agent-loop/providers/wires/anthropic-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>` |
- * | deepseek / openai / kimi / zhipu / qwen / grok / openrouter / copilot / custom… | `agent-loop/providers/wires/openai-chat-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>`;顶层 `responseBody` + `data { providerId, statusCode, responseBody }` 是保留的兼容字段 |
- * | gemini | `agent-loop/providers/wires/gemini-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>` |
- * | codex | `agent-loop/providers/wires/openai-responses-errors.ts` | `CodexHttpError`(`ProviderHttpError` 子类),消息 `Codex request failed (<status>): <detail>`;顶层 `statusCode` / `isRetryable` 是保留的兼容字段 |
+ * | claude / claude-code / custom-anthropic | `providers/wires/anthropic-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>` |
+ * | deepseek / openai / kimi / zhipu / qwen / grok / openrouter / copilot / custom… | `providers/wires/openai-chat-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>`;顶层 `responseBody` + `data { providerId, statusCode, responseBody }` 是保留的兼容字段 |
+ * | gemini | `providers/wires/gemini-errors.ts` | `ProviderHttpError`,消息 `<providerId> agent loop API error: <status> <body>` |
+ * | codex | `providers/wires/openai-responses-errors.ts` | `CodexHttpError`(`ProviderHttpError` 子类),消息 `Codex request failed (<status>): <detail>`;顶层 `statusCode` / `isRetryable` 是保留的兼容字段 |
  *
  * **`status === 0` = 没有 HTTP 状态**(流中的错误事件、首字节/空闲超时)。读取
  * 函数把它当作「读不到状态码」原样往下走文本判据 —— 那正是换装前这些错误的

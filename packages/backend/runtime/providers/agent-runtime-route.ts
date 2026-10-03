@@ -5,7 +5,7 @@ import type {
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type {
   AgentProviderRuntimeConfig,
-} from '../agent-loop/providers/factory.js'
+} from './factory.js'
 
 export const ONETHING_ACP_RUNTIME_PROVIDER_ID = 'acp'
 

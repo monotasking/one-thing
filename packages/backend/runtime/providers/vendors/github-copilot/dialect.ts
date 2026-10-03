@@ -6,8 +6,8 @@
  * 已知的今天行为(快照如实记录,P0b 才动):thinking 开着时仍然会丢掉
  * temperature,尽管这条线协议上根本发不出思考参数。
  */
-import { openAIChatNoThinkingWire } from "../../../agent-loop/providers/thinking/none.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../../agent-loop/providers/dialects/recipe.js";
+import { openAIChatNoThinkingWire } from "../../thinking/none.js";
+import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../dialects/recipe.js";
 
 export const GITHUB_COPILOT_DIALECT = defineOpenAIChatDialect({
 	id: "github-copilot",

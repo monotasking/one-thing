@@ -20,7 +20,7 @@ import type {
   ProviderConfig,
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
-import { createAgentProviderFromRuntime } from '@onething/backend/runtime/agent-loop/providers/process-factory'
+import { createAgentProviderFromRuntime } from '@onething/backend/runtime/providers/process-factory'
 import type { OnethingProviderOptions } from '@onething/backend/runtime/providers/provider-options'
 import {
   catalogFactsOf,

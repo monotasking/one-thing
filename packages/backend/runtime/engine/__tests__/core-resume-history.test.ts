@@ -11,7 +11,7 @@ import {
   type CoreHistoryMessage,
   type CoreHistoryChatMessage,
 } from '@onething/backend/runtime/engine/engine-primitives'
-import { providerDataFromOnethingContentPart } from '@onething/backend/runtime/agent-loop/providers'
+import { providerDataFromOnethingContentPart } from '@onething/backend/runtime/providers/agent-providers'
 
 describe('core resume history', () => {
   it('appends the paused assistant tool call and confirmed tool result messages', () => {

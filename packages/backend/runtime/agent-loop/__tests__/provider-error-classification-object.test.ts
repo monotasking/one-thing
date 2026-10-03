@@ -4,7 +4,7 @@ import {
   CodexResponsesErrorMapper,
   GeminiErrorMapper,
   OpenAIChatErrorMapper,
-} from '../providers/wires/index.js'
+} from '../../providers/wires/index.js'
 import {
   classifyProviderError,
   providerErrorRetryAfterAt,

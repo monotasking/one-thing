@@ -9,7 +9,7 @@
  * Responses(P4-4)。
  */
 import { GROK_DIALECT_SPEC } from "../grok/dialect.js";
-import { defineResponsesDialect, type ResponsesDialectSpec } from "../../../agent-loop/providers/dialects/responses-recipe.js";
+import { defineResponsesDialect, type ResponsesDialectSpec } from "../../dialects/responses-recipe.js";
 
 const responsesDialectSpec: ResponsesDialectSpec = {
 	id: "grok-oauth",

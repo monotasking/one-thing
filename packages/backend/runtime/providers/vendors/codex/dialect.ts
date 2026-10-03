@@ -31,12 +31,12 @@
  * codex 的那一份、仍住在 `responses-recipe.ts`:自定义服务商的 Responses 适配表也吃那几项缺省,
  * 它们是这条线协议的历史缺省,不是这一家的私货。
  */
-import type { DialectEndpoint } from "../../../agent-loop/providers/base/index.js";
-import { registerProviderDataTagPolicy } from "../../../agent-loop/providers/provider-data-policy.js";
+import type { DialectEndpoint } from "../../base/index.js";
+import { registerProviderDataTagPolicy } from "../../provider-data-policy.js";
 import {
 	defineResponsesDialect,
 	type ResponsesDialectSpec,
-} from "../../../agent-loop/providers/dialects/responses-recipe.js";
+} from "../../dialects/responses-recipe.js";
 import { codexQuotaFromHeaders } from "./quota.js";
 
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";

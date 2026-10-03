@@ -19,23 +19,23 @@ import {
 	type CustomAdapterSpec,
 	type CustomAdapterWire,
 } from "@shared/contracts/adapter-spec";
-import { BearerApiKeyAuth, expandHeaderTemplates } from "../agent-loop/providers/base/index.js";
+import { BearerApiKeyAuth, expandHeaderTemplates } from "./base/index.js";
 import {
 	CUSTOM_ADAPTER_BASE_DIALECT,
 	dialectFromSpec,
-} from "../agent-loop/providers/dialects/custom-from-spec.js";
+} from "./dialects/custom-from-spec.js";
 import {
 	createAnthropicProvider,
 	createGeminiProvider,
 	createOpenAIChatProvider,
 	createResponsesProvider,
-} from "../agent-loop/providers/dialects/index.js";
+} from "./dialects/index.js";
 import type {
 	AnthropicDialect,
 	GeminiDialect,
 	OpenAIChatDialect,
 	ResponsesDialect,
-} from "../agent-loop/providers/wires/index.js";
+} from "./wires/index.js";
 import customAdapterProbePromptRaw from "../prompts/content/custom-adapter-probe.md?raw";
 import {
 	directModelsRequestHeaders,

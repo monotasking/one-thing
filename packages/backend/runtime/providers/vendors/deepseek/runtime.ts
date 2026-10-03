@@ -4,13 +4,13 @@
  *
  * 由 `vendors/runtimes.ts` 登记;工厂里不再有「deepseek」这几个字。
  */
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
 import {
 	capabilitiesFromFlags,
 	capabilityLimitsFromRuntimeConfig,
 	runtimeCapabilityFlags,
-} from "../../../agent-loop/providers/dialects/runtime-transport.js";
+} from "../../dialects/runtime-transport.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { DEEPSEEK_DIALECT } from "./dialect.js";
 import { deepseekQuotaSource } from "./quota.js";

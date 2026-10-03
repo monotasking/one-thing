@@ -19,8 +19,8 @@
  *
  * 纯函数 + 注入 fetch:不碰 node / electron,单测直接喂假响应。
  */
-import { expandHeaderTemplates } from "../agent-loop/providers/base/auth-strategy.js";
-import { getPath } from "../agent-loop/providers/base/path.js";
+import { expandHeaderTemplates } from "./base/auth-strategy.js";
+import { getPath } from "./base/path.js";
 import type { CustomAdapterSpec } from "@shared/contracts/adapter-spec";
 import type {
 	OnethingOpenRouterModel,

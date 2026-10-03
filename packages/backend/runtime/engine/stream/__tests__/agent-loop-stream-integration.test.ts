@@ -346,7 +346,7 @@ vi.mock("@onething/backend/runtime/acp/manager", async () => {
 });
 
 const { registerAgentProviderRuntime } = await import(
-	"@onething/backend/runtime/agent-loop/process-providers"
+	"@onething/backend/runtime/providers/process-providers"
 );
 const { executeMessageStream } = await import("../stream-executor.js");
 

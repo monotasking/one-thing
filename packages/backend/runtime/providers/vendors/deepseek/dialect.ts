@@ -23,8 +23,8 @@ import {
 	type SamplingPolicy,
 	type TurnContext,
 	type UsagePathTable,
-} from "../../../agent-loop/providers/base/index.js";
-import { defineOpenAIChatDialect } from "../../../agent-loop/providers/dialects/recipe.js";
+} from "../../base/index.js";
+import { defineOpenAIChatDialect } from "../../dialects/recipe.js";
 import { deepSeekInferredThinkingWire, resolveDeepSeekThinking } from "./thinking.js";
 
 /**

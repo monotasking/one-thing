@@ -42,7 +42,7 @@ const ALLOWED_FILES = new Set([
  * `bun run provider:gate`(字面量 / 键 / 标识符都算,不只等值比较)。
  */
 const ALLOWED_DIRECTORIES = [
-  'packages/backend/runtime/agent-loop/providers/dialects/',
+  'packages/backend/runtime/providers/dialects/',
   'packages/backend/runtime/providers/vendors/',
 ]
 

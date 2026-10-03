@@ -9,7 +9,7 @@
 import {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	defineAnthropicDialect,
-} from "../../../agent-loop/providers/dialects/anthropic-recipe.js";
+} from "../../dialects/anthropic-recipe.js";
 
 export const CLAUDE_CODE_HEADER =
 	"You are Claude Code, Anthropic's official CLI for Claude.";

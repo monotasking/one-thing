@@ -10,8 +10,8 @@
  * (本家的 `QWEN_RUNTIME.thinkingWires`)。正则里出现的别家模型名说的是千问端点**转售**
  * 的那几族模型(见同目录 `manifest.ts` 的型号规则表)。
  */
-import type { RequestBodyBuilder, TurnContext } from "../../../agent-loop/providers/base/index.js";
-import { OpenAIChatThinkingWire } from "../../../agent-loop/providers/thinking/openai-chat-thinking-wire.js";
+import type { RequestBodyBuilder, TurnContext } from "../../base/index.js";
+import { OpenAIChatThinkingWire } from "../../thinking/openai-chat-thinking-wire.js";
 
 export function clampQwenReasoningEffort(
 	effort: string | undefined,

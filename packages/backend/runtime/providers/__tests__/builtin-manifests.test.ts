@@ -11,8 +11,8 @@ import {
 } from '../manifest.js'
 import { ONETHING_CODEX_BASE_URL, ONETHING_CODEX_DEFAULT_MODEL, ONETHING_CODEX_PROVIDER_ID } from '../vendors/codex/models.js'
 import { getAuthProviderDefinition } from '../../auth/registry.js'
-import { getDialect } from '../../agent-loop/providers/base/index.js'
-import '../../agent-loop/providers/dialects/index.js'
+import { getDialect } from '../base/index.js'
+import '../dialects/index.js'
 import { getOnethingModelsDevProviderId } from '../models-dev-catalog.js'
 
 // P4 删了产品代码里的 `getBuiltinProviderManifest`(唯一读者是壳,已改读下发名册);用例里就地查表。

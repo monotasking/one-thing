@@ -4,9 +4,9 @@
  * `includeAssistantReasoning:true`(qwen3.8-max 默认 preserve_thinking,
  * 历史里 `reasoning_content` 被丢掉会被拒)/ `reasoningStyle:'qwen-thinking'`。
  */
-import type { UsagePathTable } from "../../../agent-loop/providers/base/index.js";
-import { openAIChatUsage, openAIChatUsageTable } from "../../../agent-loop/providers/wires/index.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../../agent-loop/providers/dialects/recipe.js";
+import type { UsagePathTable } from "../../base/index.js";
+import { openAIChatUsage, openAIChatUsageTable } from "../../wires/index.js";
+import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../dialects/recipe.js";
 import { ONETHING_QWEN_DEFAULT_BASE_URL } from "./endpoint.js";
 import { qwenThinkingWire } from "./thinking.js";
 

@@ -75,7 +75,7 @@ import { changesFromToolMetadata, resultTextFromToolMetadata } from '@onething/b
 // 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
 // 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
 // 会话事件那一层"的同一条理由)。
-import { planOnethingProviderDataPart } from '@onething/backend/runtime/agent-loop/providers/provider-data'
+import { planOnethingProviderDataPart } from '@onething/backend/runtime/providers/provider-data'
 import {
   hashSessionEventContent,
   hashSessionEventSystemPrompt,

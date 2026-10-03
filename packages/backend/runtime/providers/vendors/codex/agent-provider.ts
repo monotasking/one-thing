@@ -6,11 +6,11 @@
  * 思考旋钮全部搬到 `wires/openai-responses-wire.ts` +
  * `wires/openai-responses-messages.ts` + `wires/openai-responses-errors.ts` +
  * `thinking/responses-reasoning.ts` 上,方言配方在同目录的 `dialect.ts`
- * (公共构件 `agent-loop/providers/dialects/responses-recipe.ts`)。
+ * (公共构件 `providers/dialects/responses-recipe.ts`)。
  *
  * 保留这个门面(而不是让调用方直接 `new OpenAIResponsesWire`)有两个理由:
- *  - backend 的 `runtime/agent-loop/providers/codex.ts`(OAuth 类型桥接)与一批测试读它
- *    (服务商自述试点 P2 第 4 批从 `agent-loop/providers/codex.ts` 搬回家,`agent-loop/providers`
+ *  - backend 的 `runtime/providers/codex.ts`(OAuth 类型桥接)与一批测试读它
+ *    (服务商自述试点 P2 第 4 批从 `providers/codex.ts` 搬回家,`providers`
  *    桶的再导出随之删除 —— 与 deepseek 的构造捷径同一先例);
  *  - **构造即校验**:一个 access token 都拿不到时当场抛「没登录」,而不是拖到
  *    第一回合才炸 —— 这是今天的行为,原样保留。
@@ -24,11 +24,11 @@ import {
 	resolveCodexToken,
 	responsesDialect,
 	type CodexAuthOptions,
-} from "../../../agent-loop/providers/dialects/responses-recipe.js";
+} from "../../dialects/responses-recipe.js";
 import type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
-} from "../../../agent-loop/providers/request-dump.js";
+} from "../../request-dumper.js";
 import { CODEX_DIALECT_SPEC } from "./dialect.js";
 import { codexQuotaFromHeaders } from "./quota.js";
 
@@ -39,12 +39,12 @@ export {
 	CODEX_CLIENT_VERSION,
 	CODEX_FALLBACK_INSTRUCTIONS,
 	CODEX_PROVIDER_ID,
-} from "../../../agent-loop/providers/dialects/responses-recipe.js";
+} from "../../dialects/responses-recipe.js";
 export type {
 	OAuthToken,
 	ProviderAuthContext,
-} from "../../../agent-loop/providers/dialects/responses-recipe.js";
-export { toCodexToolChoice } from "../../../agent-loop/providers/wires/openai-responses-messages.js";
+} from "../../dialects/responses-recipe.js";
+export { toCodexToolChoice } from "../../wires/openai-responses-messages.js";
 
 /** @deprecated Use `AgentProviderRequestDump` from ./request-dump.js. */
 export type CodexAgentProviderRequestDump = AgentProviderRequestDump & {

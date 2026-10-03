@@ -4,8 +4,8 @@
  *
  * 由 `vendors/runtimes.ts` 登记;工厂里不再有「kimi」这几个字。
  */
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { KIMI_DIALECT } from "./dialect.js";
 import { readOnethingKimiOptions, resolveOnethingKimiBaseUrl } from "./endpoint.js";

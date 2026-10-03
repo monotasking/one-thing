@@ -61,7 +61,7 @@ import {
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,
 	type CreateAgentProviderFromRuntimeOptions,
-} from "./providers/index.js";
+} from "../providers/agent-providers.js";
 import { buildOnethingRequestProviderOptionsBag } from "../providers/provider-options.js";
 import {
 	routedProviderIdOf,

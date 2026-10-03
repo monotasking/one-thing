@@ -5,8 +5,8 @@
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
 304 sessions
 256 logging
-240 agent-loop
-233 providers
+213 providers
+193 agent-loop
 192 toolkit
 174 engine
 122 tools

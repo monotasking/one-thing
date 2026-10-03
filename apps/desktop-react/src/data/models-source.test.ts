@@ -638,7 +638,7 @@ describe('目录投影:价格与思考四格', () => {
 
 /**
  * 「屏幕上写什么」的判据。它**照抄发送链**
- * (`agent-loop/providers/thinking-options.getGenericThinkingOptions`):
+ * (`providers/thinking-options.getGenericThinkingOptions`):
  * 明确 false = 关;明确 true = 开 + 那一档(没设就是服务端缺省档);
  * 缺席 = 一个参数都不发 = 开不开与用哪一档全由服务端缺省决定。
  *

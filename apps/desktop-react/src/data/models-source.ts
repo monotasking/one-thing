@@ -493,7 +493,7 @@ export function resolveModelSelection(
  * ══════════════════════════════════════════════════════════════════════════
  * 思考档位:**屏幕上写什么** 的唯一判据(09-05 庚)
  * ══════════════════════════════════════════════════════════════════════════
- * 它照抄的是**发送链**(`agent-loop/providers/thinking-options.ts` 的
+ * 它照抄的是**发送链**(`providers/thinking-options.ts` 的
  * `getGenericThinkingOptions`)那三句,不是另立一套:
  *   `thinkingByModel[m] === false` → 明确关掉,请求带 `thinking:'disabled'`;
  *   `=== true`                     → 明确开着,档由 `thinkingEffortByModel[m]` 说,

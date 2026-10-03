@@ -3679,7 +3679,7 @@ function checkRuntimeOwnsAgentLoopSelection(): void {
 }
 
 function checkCoreOwnsAgentLoopPureFacades(): void {
-  const mainIndexFile = path.join(root, 'packages/backend/runtime/agent-loop/process-providers.ts')
+  const mainIndexFile = path.join(root, 'packages/backend/runtime/providers/process-providers.ts')
   const mainIndexContent = fs.existsSync(mainIndexFile) ? fs.readFileSync(mainIndexFile, 'utf-8') : ''
   // ③-收尾 B(2026-10-02)撤:原来这里还点名装配层 agent-loop 目录下 13 只已删的转发壳(bridge / runner / types /
   // providers/sse …)回来即红。那个目录整只平铺进了 `runtime/agent-loop`,照搬过来 `providers/sse.ts` 正是产品本体,

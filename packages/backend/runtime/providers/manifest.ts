@@ -137,7 +137,7 @@ export interface ProviderManifest {
   description: string
   icon: string
   /**
-   * 已登记方言 id(`agent-loop/providers/dialects`)。外部执行体(ACP / Claude Code
+   * 已登记方言 id(`providers/dialects`)。外部执行体(ACP / Claude Code
    * Agent)没有线协议,写 `external-agent` —— 它们的 provider 由执行器注册表建,不查方言。
    */
   dialect: string
@@ -193,7 +193,7 @@ export interface ProviderManifest {
   seed?: ProviderSeed
   /**
    * 名字点了这一家的思考线型 id 里,用户能在思考覆盖(`reasoningProfile.wire`)里点名的那几条。
-   * 合法取值是各家这一格与协议层名单(`agent-loop/providers/thinking/protocol-wire-ids.ts`)的
+   * 合法取值是各家这一格与协议层名单(`providers/thinking/protocol-wire-ids.ts`)的
    * 并集,不分是哪一家的覆盖(从前那张手写名单就是全局的)。
    */
   reasoningWires?: readonly string[]

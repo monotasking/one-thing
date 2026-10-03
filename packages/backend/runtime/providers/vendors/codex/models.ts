@@ -9,7 +9,7 @@
  *
  * `doStream` / `doGenerate` 那条自带 SSE / usage / 错误 / effort 的请求路径在
  * P1-d2 整条删除(生产零调用方 —— codex 的真实通路是
- * `agent-loop/providers/wires/openai-responses-wire.ts` 上的 `CODEX_DIALECT`,
+ * `providers/wires/openai-responses-wire.ts` 上的 `CODEX_DIALECT`,
  * 设计稿 §9 P1「第二套 codex」)。新增请求侧行为一律改那条线,不要在这里复活。
  */
 import { toJsonObject } from '@shared/json'

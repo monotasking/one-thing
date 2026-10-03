@@ -6,7 +6,7 @@
  */
 import { ONETHING_ZHIPU_STANDARD_BASE_URL } from "./endpoint.js";
 import { zhipuThinkingWire } from "./thinking.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../../agent-loop/providers/dialects/recipe.js";
+import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../dialects/recipe.js";
 
 export const ZHIPU_DIALECT = defineOpenAIChatDialect({
 	id: "zhipu",

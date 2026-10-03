@@ -23,7 +23,7 @@ vi.mock('@onething/backend/runtime/spaces/provider-settings', () => ({
 
 import { getProviderManifest, resetProviderManifestRegistryForTests } from '@onething/backend/runtime/providers/manifest'
 import { CustomProviderManifestSync } from '../custom-manifests.js'
-import { getDialect } from '@onething/backend/runtime/agent-loop/providers/base/dialect'
+import { getDialect } from '../base/dialect.js'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,

@@ -16,15 +16,15 @@ import type {
 	TurnContext,
 	UsageFieldReader,
 	UsagePathTable,
-} from "../../../agent-loop/providers/base/index.js";
-import { thinkingTypeWire } from "../../../agent-loop/providers/thinking/thinking-type.js";
+} from "../../base/index.js";
+import { thinkingTypeWire } from "../../thinking/thinking-type.js";
 import { kimiFileExtractChannel } from "./attachments.js";
-import { openAIChatUsage, openAIChatUsageTable } from "../../../agent-loop/providers/wires/index.js";
+import { openAIChatUsage, openAIChatUsageTable } from "../../wires/index.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
 	promptCacheKeyExtraBody,
-} from "../../../agent-loop/providers/dialects/recipe.js";
+} from "../../dialects/recipe.js";
 
 /**
  * Kimi 把缓存命中报在 usage 的**顶层** `cached_tokens`,不在

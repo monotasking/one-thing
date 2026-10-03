@@ -15,7 +15,7 @@ import {
   type CoreResumeAssistantMessage,
 } from '@onething/backend/runtime/engine/engine-primitives'
 import { toolFailureResultForAI } from '@shared/tools/tool-result'
-import { providerDataFromOnethingContentPart } from '../agent-loop/providers/provider-data.js'
+import { providerDataFromOnethingContentPart } from '../providers/provider-data.js'
 
 export type OnethingHistoryAIMessageContent = CoreAIMessageContent
 

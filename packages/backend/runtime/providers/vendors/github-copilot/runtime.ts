@@ -8,8 +8,8 @@
  * 注意:列模型那一路(`models.ts` 的 `fetchCopilotModels`)另有一份**自己的**补全 token 缓存,语义略有出入
  * (那一份先落缓存再判 token 有没有),两份都是搬家前的原样,合并是行为变化,留待另拍。
  */
-import { ResolveAuth } from "../../../agent-loop/providers/base/index.js";
-import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
+import { ResolveAuth } from "../../base/index.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { GITHUB_COPILOT_DIALECT } from "./dialect.js";
 import { copilotFallbackModel, fetchCopilotModels } from "./models.js";

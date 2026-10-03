@@ -29,7 +29,7 @@ import {
   runAgentLoopBeforeTurnWithAdapters,
   shouldStartAgentLoopContextCompact,
 } from '@onething/backend/runtime/engine/engine-primitives'
-import { getOnethingAgentLoopThinkingOptions } from '@onething/backend/runtime/agent-loop/providers'
+import { getOnethingAgentLoopThinkingOptions } from '@onething/backend/runtime/providers/agent-providers'
 
 describe('core agent-loop runtime helpers', () => {
   it('normalizes provider configs and skill snapshots without main process types', () => {

@@ -13,9 +13,9 @@
  * (运行时工厂是同目录 `runtime.ts`);今天它的调用方是测试与两个桶的再导出。
  */
 import type { AgentProvider } from "@onething/backend/runtime/agent-loop/loop-primitives";
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
-import type { AgentProviderRequestDumper } from "../../../agent-loop/providers/request-dump.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
+import type { AgentProviderRequestDumper } from "../../request-dumper.js";
 import { DEEPSEEK_DIALECT } from "./dialect.js";
 
 type FetchFn = typeof globalThis.fetch;
@@ -24,7 +24,7 @@ export type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
 	AgentProviderRequestDumpValue,
-} from "../../../agent-loop/providers/request-dump.js";
+} from "../../request-dumper.js";
 
 /**
  * DeepSeek 的 reasoner 类模型默认思考,其余不。调用方什么都不说 = 「这个模型

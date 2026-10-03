@@ -9,7 +9,7 @@
 import {
 	createGeminiProvider,
 	geminiAuth,
-} from "../../../agent-loop/providers/dialects/gemini-recipe.js";
+} from "../../dialects/gemini-recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { GEMINI_DIALECT } from "./dialect.js";
 

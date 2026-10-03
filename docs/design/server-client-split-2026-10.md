@@ -1586,3 +1586,57 @@ boundary / transport / log / session / provider / gate:native / assembly(`radio.
 用户审后改定(`ai-settings-compose` 进 settings、薄壳删 4 个名字)那一轮补跑(`s12-1-after2`):三套 tsc、四份构建与 `web:build`、根 / 壳全量 vitest
 失败集合与改前逐条相同(11414 / 21、7344 / 1)、`import-side-effect-free` + `assembly-lifecycle` 22 绿、快照 154 绿且哈希逐字同、boundary:gate / provider:gate /
 `provider:drill` / `entry:gate`(2966,行数同上)绿。
+
+### 包根归位 3 第 2 笔落地记录:`agent-loop/providers/` 并进 `runtime/providers/`(2026-10-03,未提交)
+
+**一句话**:线协议、方言基类与配方、思考线型、各家构造门面、`factory` / `process-factory` / `openai-compatible(-fetch)` 等 286 只文件从 `runtime/agent-loop/providers/`
+搬进 `runtime/providers/`,`agent-loop/process-providers.ts`(只是三家构造门面的再导出)一起搬;`agent-loop/` 只留与服务商无关的循环。只搬家,不收口。
+搬家脚本 scratchpad `s12/b2/move2.mjs`(带 `--dry`;普通改名不动索引;说明符按新位置重算,providers 目录里互相引用一律改相对,跨功能的保持原写法、包说明符换新键;
+注释 / 字符串里的仓内路径按表改,指向早已删掉的文件的历史提法不改)。
+
+**去处表**:
+
+| 原位置(`runtime/agent-loop/`) | 新位置(`runtime/providers/`) | 说明 |
+| --- | --- | --- |
+| `providers/base/`(21 + 测试 5) | `base/` | 方言基类、`HttpAgentProvider` / `BaseAgentProvider`、编解码与策略接口;子目录原样 |
+| `providers/wires/`(16 + 测试 11) | `wires/` | 四条线协议(Anthropic Messages / OpenAI Chat / Responses / Gemini)的编码与流解析 |
+| `providers/dialects/`(9 + 测试 2) | `dialects/` | 各条线的方言配方、自定义线、运行时传输 |
+| `providers/thinking/`(15) | `thinking/` | 思考线型 |
+| `providers/__tests__/`(12 + `golden/` 17 + `wire-snapshots/` 163) | `__tests__/` 同名子路径 | 与 providers 原有测试 0 处同名;快照夹具相对位置不变 |
+| `providers/index.ts` | `agent-providers.ts` | 原来的桶;与 providers 入口撞名,按内容改名 |
+| `providers/request-dump.ts` | `request-dumper.ts` | 「请求转储器」的契约(类型);与 providers 里的转储实现 `request-dump.ts` 撞名 |
+| `providers/{codex,dialect-options,factory,media-reader,message-merge,openai-compatible,openai-compatible-fetch,process-factory,provider-data,provider-data-policy,sse,thinking-options}.ts` | 同名平铺 | `codex.ts` 是第 3 笔要删的无人调用包装,原样搬 |
+| `process-providers.ts` | `process-providers.ts` | 三家构造门面的再导出;边界检查 `checkCoreOwnsAgentLoopPureFacades` 的路径随之改 |
+
+**留在 agent-loop 的文件逐个看过**:`runner` / `stream` / `stream-runtime` / `retry` / `tools` / `tool-*` / `messages` / `chunks` / `bridge` / `capabilities` / `errors` /
+`execution-lifetime` / `prompts` / `runtime` / `selection` / `types` / `wire-format` / `provider-stream` / `loop-primitives` 都不点名服务商(provider:gate 的基线里
+agent-loop 剩下的文件 0 对)。两只名字像服务商的留下,理由:`provider-error-classification.ts` 是「这把 key 是不是用完了」的通用判据,喂的是循环的冷却与轮换,
+注释里那张各家错误形状表只是说明;`credential-rotation.test.ts` 测的是循环在 turn 级重试边界上的轮换语义(`runAgentLoop`),不是 providers 的凭证池。
+`loop-primitives.ts` 是循环对 provider 的契约(`AgentProvider` 等),providers 实现它,留在 agent-loop。`agent-loop/__tests__/` 里只测某一家的那批测试
+(`claude-provider` / `codex-provider` / `gemini-provider` …)照旧留着,按派工单是第 3 笔的事(搬进 `vendors/<id>/__tests__/`)。
+
+**exports**:9 个键改名(值随文件走,不删不加):`./runtime/agent-loop/providers` → `./runtime/providers/agent-providers`、`…/providers/{base/dialect,dialect-options,
+dialects/custom-from-spec,factory,provider-data,provider-data-policy,process-factory}` → `./runtime/providers/…`、`./runtime/agent-loop/process-providers` → `./runtime/providers/process-providers`。
+
+**§5.3 那对环(只数非测试)**:providers → agent-loop 值 83 / 型 41 → 值 12 / 型 56;agent-loop → providers 值 22 / 型 3 → 值 4 / 型 0
+(剩下的 4 条:`stream-runtime` → `agent-providers` / `provider-options` / `provider-config`,`selection` → `agent-providers`)。
+providers → agent-loop 剩下的几乎全是 `loop-primitives.ts`(43 处,38 处只引类型)外加 `base/errors.ts` → `provider-error-classification.ts` 1 处。
+入口闭包不变:providers 入口 268 → 268、agent-loop 入口 271 → 271、`loop-primitives` 21 → 21、旧桶 226 → `agent-providers.ts` 226、索引 Worker 85 → 85。
+
+**功能入口棘轮**:两行变,都降,基线已收紧(2966 → 2899)。providers 233 → 213(非测试 120 → 111、测试 113 → 102);agent-loop 240 → 193(非测试 184 → 118、测试 56 → 75)。
+毛增量照实列:providers 行新增 33 处 —— 非测试 12 处(`rpc/domains/{models,providers}`、`agent-loop/{selection,stream-runtime}`、`engine` 4 处、`external-agents/provider`、
+总桶 `runtime/index.ts`、`quota/engine-hooks`、`sessions/history-messages`,今天指 `agent-loop/providers/` 内部的引用跟着目标换了功能),测试 21 处;消失 53 处(非测试 21、测试 32,
+即被搬文件从前对 providers 内部的引用,现在是同功能)。agent-loop 行新增 82 处 —— 非测试 44(43 处 `loop-primitives`、1 处 `provider-error-classification`)、测试 38;
+消失 129 处(非测试 110、测试 19)。收口(让这些新增的外部引用走入口)是第 3 笔。
+
+**同步**:`provider-vendor-baseline` 47 行换路径(111 对不变);`headless-boundary-check.ts` 一处路径;`provider:drill` 的四份演练模板改指 `runtime/providers/{base,dialects,thinking,factory}`
+(ALLOWED_TOUCHES 不涉及);`base/__tests__/architecture.test.ts` 里「往上两层是 runtime」改成一层 —— 它扫的 `PROVIDERS_DIR` 从此是整个 `runtime/providers/`(含 `vendors/`),
+比从前宽,照旧绿;壳 `models-source.test.ts` 一处注释;CLAUDE.md 目录树、Providers 一节、AI SDK 那行。
+
+**验收(改前 `s12-2-before` / 改后 `s12-2-after`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功;三份 `search-worker.cjs` 前后逐字节同大
+(1276211 / 1276211 / 1274675);server `main.js` 5903079 → 5903068、CLI `main.cjs` 11497160 → 11495618、`desk/main.cjs` 11469754 → 11468234;
+根全量 vitest 改前 21 红、改后 22 红,多的一条 `session-repository-eviction`(LRU 逐出时冲写)单跑三次都绿,是偶发;壳 7344 / 1 相同;
+四份线协议快照 + vendor-facts + 出厂设置冻结 154 绿,快照文件 160 只按内容哈希前后逐字同;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle` 22 绿;
+`sessions:shadow-battery`(真 server + 假 provider,过线协议)前后只差 `refoldChecks` 与耗时,都红在 `appendFailures 8`;`hydration-contract` 217 / 0;`gate:acp` 去掉 id 后同;
+`gate:search-index` 前后同红 ⑤c / ⑤d;boundary / transport / log / session / provider / gate:native / assembly(`radio.ts` 前后都红)前后同;
+`provider:drill` 直接跑红(它从 HEAD 开 worktree,却读工作区里已改路径的模板),本地重放版 `s11/drill-local.mjs` 全绿;CLI `--help` 不写 store;golden 不变;`entry:gate` 绿。

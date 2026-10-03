@@ -1,5 +1,5 @@
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createOpenAIChatProvider } from "../../../agent-loop/providers/dialects/recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { ACME_DIALECT } from "./dialect.js";
 import { resolveAcmeBaseUrl } from "./endpoint.js";

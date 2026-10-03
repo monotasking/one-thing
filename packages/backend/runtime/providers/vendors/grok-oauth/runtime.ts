@@ -6,8 +6,8 @@
  * 对 OAuth provider 恒为空串 —— 必须走 `kit.accessToken`,与别的订阅型家同一条路。
  * 与搬家前 `factory.ts` 那段登记逐字同口径。
  */
-import { BearerApiKeyAuth } from "../../../agent-loop/providers/base/index.js";
-import { createResponsesProvider } from "../../../agent-loop/providers/dialects/responses-recipe.js";
+import { BearerApiKeyAuth } from "../../base/index.js";
+import { createResponsesProvider } from "../../dialects/responses-recipe.js";
 import type { VendorRuntime } from "../runtimes.js";
 import { GROK_OAUTH_DIALECT } from "./dialect.js";
 import { GROK_FALLBACK_CATALOG } from "../grok/fallback-models.js";

@@ -21,8 +21,8 @@ import {
 	anthropicAuth,
 	anthropicDialect,
 	createAnthropicProvider,
-} from "../../../agent-loop/providers/dialects/anthropic-recipe.js";
-import type { AgentProviderRequestDumper } from "../../../agent-loop/providers/request-dump.js";
+} from "../../dialects/anthropic-recipe.js";
+import type { AgentProviderRequestDumper } from "../../request-dumper.js";
 
 type FetchFn = typeof globalThis.fetch;
 

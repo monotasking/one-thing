@@ -1,4 +1,4 @@
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../../agent-loop/providers/dialects/recipe.js";
+import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../dialects/recipe.js";
 import { ACME_STANDARD_BASE_URL } from "./endpoint.js";
 import { acmeThinkingWire } from "./thinking.js";
 
