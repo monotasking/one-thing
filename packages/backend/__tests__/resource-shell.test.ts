@@ -141,7 +141,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
 
   it('mountShell:壳交上来的自述进得了同一台内核,而且 home 一律是 shell', async () => {
     backend = await assemble()
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     sessionId = store.createSession(`resource-k2b2-${Date.now()}`, 'Shell drill').id
 
     // 壳可以把 `home` 写成任何东西 —— 反序列化不读那一格。这份自述里写的是 'core',

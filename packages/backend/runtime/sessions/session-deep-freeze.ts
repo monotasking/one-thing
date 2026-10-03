@@ -4,7 +4,8 @@
  * `Object.freeze` 只冻顶层:一份 `{ tags: ['a'] }` 冻完之后 `snapshot.tags.push('x')`
  * 照样成功,而那个数组很可能是本体 —— 一次 push 就污染了此后所有读取方,直到重启。
  *
- * 住在 core 根上是因为三边都要用:
+ * 住处:包根归位 B(2026-10-04)从包根 `utils/deep-freeze.ts` 搬进 sessions,经会话入口交出 —— 它最主要的用户是
+ * 会话命令面的冻结(`freeze.ts` / `reads.ts`),会话入口本来就再导出它;插件那两处改从会话入口拿。三边都要用:
  *   - 插件 api-builder 交出 `api.settings.get()` 的快照;
  *   - app 层的插件配置存储交出有效值快照;
  *   - 会话命令面(`runtime/sessions/session-commands.ts` + `app/session/reads.ts`)在开发/测试期

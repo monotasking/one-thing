@@ -25,7 +25,7 @@ import type {
   CollabCoordinatorLogEntry,
   CollabCoordinatorState,
 } from '@shared/ipc.js'
-import type * as store from '@onething/backend/store.js'
+import type * as store from '@onething/backend/runtime/sessions'
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { maxChainFor, maxConcurrentTurnsFor } from './room-runtime.js'
 import {

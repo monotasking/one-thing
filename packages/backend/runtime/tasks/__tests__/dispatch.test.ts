@@ -44,7 +44,8 @@ vi.mock('../../sessions/reads.js', () => import('../../sessions/testing/facade-m
 vi.mock('../../sessions/session-commands.js', () => import('../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => sessions.get(id))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   patchSessionFields: (id: string, patch: object) => {
     const session = sessions.get(id)
     if (!session) return false
@@ -169,6 +170,9 @@ it('delegates the production facade to the current Backend task layer', async ()
 let taskLayer: import('../dispatch.js').TaskDispatchLayer
 
 async function newTaskLayer(overrides: Partial<Parameters<typeof import('../dispatch.js').createTaskDispatchLayer>[0]> = {}) {
+  // 先单独等会话入口的替身就位,再并发 import 其余:替身工厂要先展开真模块(异步),与 `dispatch.js` 的并发加载
+  // 抢跑时 `dispatch.js` 偶尔拿到真模块(包根归位 B 把替身从兼容桶 store.ts 挪到会话入口之后才有这个竞争)。
+  await import('@onething/backend/runtime/sessions')
   const [{ createTaskDispatchLayer }, { getEventBus }, { getStreamEngineSafe }, { sessionAccess }, { sessionReads }] = await Promise.all([
     import('../dispatch.js'), import('@onething/backend/runtime/events'), import('@onething/backend/current.js'),
     import('@onething/backend/runtime/sessions'), import('@onething/backend/runtime/sessions'),

@@ -18,7 +18,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import {
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'

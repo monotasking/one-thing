@@ -25,7 +25,7 @@
 import { COLLAB_NOTEBOOK_INJECT_MAX_CHARS } from '@onething/backend/runtime/collab/actors'
 import type { NotebookToolResult } from '@onething/backend/runtime/toolkit'
 
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { collabVenueOf } from '../venue.js'
 import { createOwnedCollabNotebookStore } from './owned-notebook-store.js'
 import { sessionAccess } from '@onething/backend/runtime/sessions'

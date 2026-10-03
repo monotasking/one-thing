@@ -9,7 +9,7 @@ import { z } from 'zod'
 import type { Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { JsonObject } from '@shared/json'
 import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/runtime/toolkit'
-import { dumpFeatureEffects, dumpFeatures } from '@onething/backend/features/index.js'
+import { dumpFeatureEffects, dumpFeatures } from '@onething/backend/runtime/feature-registry'
 import {
   DEFAULT_ENTRY_FILENAME,
   listCandidates,

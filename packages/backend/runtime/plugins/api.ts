@@ -26,7 +26,7 @@ import { capturePluginLlmScope, type PluginLlmScope } from './llm-service.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background-table.js'
 import { pluginStorageImageExists } from './file-import.js'
-import { registerIMConnector } from '@onething/backend/channel/connector-registry.js'
+import { registerIMConnector } from './plugins-im-connector-registry.js'
 import { registerPluginDeepLinkAction } from '@onething/backend/runtime/deeplink/registry'
 import { registerPluginSearchProvider } from '@onething/backend/runtime/search'
 import {

@@ -127,7 +127,8 @@ import { expandOnethingToolSandboxPath } from '@onething/backend/runtime/tools/s
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
+import { SessionNotFoundError } from '@onething/backend/runtime/sessions'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { sessionDeletion } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
@@ -148,15 +149,9 @@ const log = getLogger('resource.session')
 const consoleLog = consolePort(log)
 
 /** 这条会话不在。读与做都用它 —— 「不存在」是一句事实,不是一次降级。 */
-export class SessionNotFoundError extends Error {
-  readonly sessionId: string
-
-  constructor(sessionId: string) {
-    super(`No such session: ${sessionId}`)
-    this.name = 'SessionNotFoundError'
-    this.sessionId = sessionId
-  }
-}
+// 类本身住会话功能(`runtime/sessions/session-caller-ops.ts`,包根归位 B):会话的几条出口要按类认它,
+// 而会话入口不能反过来引资源。这里照旧从资源入口交出同一个类。
+export { SessionNotFoundError }
 
 /**
  * 规则书说不。

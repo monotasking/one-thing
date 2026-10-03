@@ -55,7 +55,8 @@ vi.mock('@onething/backend/runtime/events', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   createSessionWithoutFocus: (id: string, _name: string, options: { initialOwner: { userId: string; workspaceId: string } }) => {
     mocks.created.push({ id, options })

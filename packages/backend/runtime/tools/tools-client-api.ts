@@ -79,7 +79,7 @@ import type { JsonObject } from '@shared/json.js'
 import { toolsRouter, type ToolsRoutes } from '@shared/ipc/tools.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { isAbsolute, join, resolve } from 'node:path'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 // 工具列表与直接执行由目录 / runner 回答(设计文档 §10.2-④)。
 import {
   runToolkitToolDirectly,

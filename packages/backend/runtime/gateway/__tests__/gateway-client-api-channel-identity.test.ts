@@ -31,9 +31,14 @@ const channel = vi.hoisted(() => ({
   identitySessionKey: vi.fn(),
 }))
 
-vi.mock('../../../channel/index.js', () => ({
+vi.mock('../gateway-channel-identity-store.js', () => ({
   getChannelIdentityStore: () => channel.store,
+}))
+vi.mock('../gateway-channel-identity-service.js', () => ({
   getChannelIdentityService: () => channel.service,
+}))
+vi.mock('@onething/backend/runtime/agent-loop', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/agent-loop')>(),
   identitySessionKey: channel.identitySessionKey,
 }))
 

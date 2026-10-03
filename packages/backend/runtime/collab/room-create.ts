@@ -22,7 +22,7 @@
  * 用户点进去看到的是一间"没有成员的群",而没人知道它是怎么来的。
  */
 import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { emitCollabRoomUpdated } from './room-runtime.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

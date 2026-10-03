@@ -6,7 +6,7 @@ import {
 	originConnector,
 	originDisplayName,
 	originWorkspaceId,
-} from "./origin.js";
+} from "@onething/backend/runtime/agent-loop";
 
 const PROVIDER_PLUGIN_ID = "core-channel-identity";
 const PROVIDER_ID = "communication-context";

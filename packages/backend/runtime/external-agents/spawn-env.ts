@@ -1,4 +1,4 @@
-import { getSettings } from '@onething/backend/store.js'
+import { getSettings } from '@onething/backend/runtime/settings'
 
 /**
  * 外部 agent 子进程的环境:进程环境 + 应用代理(`settings.network.proxy`)。

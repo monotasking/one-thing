@@ -12,7 +12,7 @@ import { z } from 'zod'
 import type { Result, RunContext, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { JsonObject } from '@shared/json'
 import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/runtime/toolkit'
-import { dumpFeatures, hasFeature } from '@onething/backend/features/index.js'
+import { dumpFeatures, hasFeature } from '@onething/backend/runtime/feature-registry'
 import type { FeatureToolRuntime } from './feature-runtime.js'
 
 export const FeatureUnmountInputSchema = z.object({

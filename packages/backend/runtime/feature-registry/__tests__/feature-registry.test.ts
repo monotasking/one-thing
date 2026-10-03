@@ -7,13 +7,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineRouter } from '@shared/ipc/router'
-import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
+import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../../http-server/http-server-dispatch-table.js'
 import {
   dumpFeatures,
   hasFeature,
   mountFeature,
   resetFeaturesForTests,
-} from '../index.js'
+} from '../feature-registry.js'
 
 type ProbeRoutes = {
   echo: { input: { value: string }; output: { value: string } }

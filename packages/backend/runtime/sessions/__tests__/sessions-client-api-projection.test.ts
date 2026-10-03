@@ -107,7 +107,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
     const { configureHostLocalTrust } = await import('../../../http-server/http-server-host-trust.js')
     restoreTrust = configureHostLocalTrust({ origin: 'desktop-embedded' })
 
-    const store = await import('../../../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     sessionId = store.createSession(`k2c1-${Date.now()}`, 'First name').id
   }, 180_000)
 
@@ -313,7 +313,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
     let bigSessionId = ''
 
     beforeAll(async () => {
-      const store = await import('../../../store.js')
+      const store = await import('@onething/backend/runtime/sessions')
       const { sessionCommands } = await import('@onething/backend/runtime/sessions')
       bigSessionId = store.createSession(`k2c2-${Date.now()}`, 'Big transcript').id
       for (let index = 0; index < PAGE_SIZE; index++) {
@@ -576,7 +576,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
      */
     it('delete:用户删不弹卡,AI 删停在真权限卡上;删完索引没了、AI todo 也没了', async () => {
       const { Permission } = await import('@onething/backend/runtime/permissions/permission')
-      const store = await import('../../../store.js')
+      const store = await import('@onething/backend/runtime/sessions')
       const { dispatchRpc } = await import('../../../http-server/http-server-dispatch-table.js')
 
       const byUser = store.createSession(`k2c3-user-${Date.now()}`, 'Deleted by the user').id

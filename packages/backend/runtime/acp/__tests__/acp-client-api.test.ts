@@ -522,15 +522,15 @@ describe('acp RPC domain', () => {
     })
   })
 })
-// A5 的认领 / 分叉按需取 `sessions` 域建本地会话;这组用例不验那条路(`runtime/acp/__tests__/
-// session-lifecycle.test.ts` 与 gate:acp ⑳㉑ 验),给一只轻的替身,免得把整个 sessions 模块图装进来。
-vi.mock('../../sessions/sessions-client-api.js', () => ({
-  sessionsRpcHandlers: {
-    create: vi.fn(async () => ({ success: false, error: 'sessions domain stubbed' })),
-    delete: vi.fn(async () => ({ success: true, deletedCount: 0 })),
-    updateWorkingDirectory: vi.fn(async () => ({ success: true })),
-    updateModel: vi.fn(async () => ({ success: true })),
-  },
+// A5 的认领 / 分叉走会话入口交出的那组「以调用方身份」的步骤建本地会话;这组用例不验那条路(`runtime/acp/__tests__/
+// session-lifecycle.test.ts` 与 gate:acp ⑳㉑ 验),给一只轻的替身。包根归位 B(2026-10-04)之前替身打在 `sessions` 域文件上
+// (那时 ACP 动态 import 它),现在打在那组步骤住的文件上,答的仍是同样的四个结局。
+vi.mock('../../sessions/session-caller-ops.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../sessions/session-caller-ops.js')>(),
+  createPlainSessionAs: vi.fn(async () => ({ success: false, error: 'sessions domain stubbed' })),
+  authorizeSessionCascadeDelete: vi.fn(),
+  clampSessionWorkingDirectory: vi.fn((_context: unknown, workingDirectory: unknown) => ({ ok: true, workingDirectory })),
+  runSessionOpAs: vi.fn(async () => ({ kind: 'ok', result: { content: [] } })),
 }))
 // Adapter fixtures explicitly belong to the local operator on both transports.
 vi.mock('../../sessions/access.js', async importOriginal => {

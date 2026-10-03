@@ -7,13 +7,13 @@
 # 2026-10-03 去 core 批 1:core 的 14 个小目录并进 runtime/<d>/,从此在尺子上;新进尺子的 3 个文件按当时的值记入(合计 5 个模块级 let,文件末尾)。
 # 2026-10-03 去 core 批 2:core 的 plugins / session / engine / agent-loop 并进 runtime/<d>/,新进尺子的 2 个文件按当时的值记入(合计 2 个模块级 let,文件末尾)。
 # 2026-10-03 去 core 批 3:尺子不再跳过 core / gateway / runtime/<d>/kernel(都已并进 runtime);kernel 里零个模块级 let,gateway 的 3 个文件按当时的值记入(合计 5 个,文件末尾;其中 lifecycle-port.ts 是 ③-收尾 C 离开尺子的那一行,回到尺子)。
-packages/backend/channel/connector-registry.ts 1
-packages/backend/channel/identity-service.ts 1
-packages/backend/channel/identity-store.ts 1
-packages/backend/channel/outbound-reply-dispatcher.ts 1
-packages/backend/channel/prompt-context.ts 1
-packages/backend/channel/session-router.ts 1
-packages/backend/features/cordis-root.ts 1
+packages/backend/runtime/plugins/plugins-im-connector-registry.ts 1
+packages/backend/runtime/gateway/gateway-channel-identity-service.ts 1
+packages/backend/runtime/gateway/gateway-channel-identity-store.ts 1
+packages/backend/runtime/gateway/gateway-outbound-reply-dispatcher.ts 1
+packages/backend/runtime/gateway/gateway-channel-prompt-context.ts 1
+packages/backend/runtime/gateway/gateway-channel-session-router.ts 1
+packages/backend/runtime/feature-registry/feature-registry-cordis-root.ts 1
 packages/backend/runtime/auth/host-ports.ts 1
 packages/backend/runtime/auth/registry.ts 1
 packages/backend/runtime/collab/actors/runtime.ts 3
@@ -86,7 +86,7 @@ packages/backend/runtime/sessions/read-mode.ts 1
 packages/backend/runtime/sessions/testing/facade-mock.ts 3
 packages/backend/runtime/storage/docs-paths.ts 1
 packages/backend/runtime/sessions/session-store.ts 1
-packages/backend/utils/ripgrep.ts 1
+packages/backend/runtime/files/files-ripgrep-app-fetch.ts 1
 packages/backend/runtime/auth/oauth-events.ts 2
 packages/backend/assemble-engine.ts 1
 packages/backend/runtime/evals/events.ts 1

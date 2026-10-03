@@ -3,7 +3,7 @@ import type {
   ResolvedIdentity,
 } from '@shared/ipc.js'
 import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
-import { getChannelIdentityStore } from './identity-store.js'
+import { getChannelIdentityStore } from './gateway-channel-identity-store.js'
 import {
   createApiOrigin,
   createDesktopOrigin,
@@ -11,7 +11,7 @@ import {
   createVoiceOrigin,
   originConnector,
   originWorkspaceId,
-} from './origin.js'
+} from '@onething/backend/runtime/agent-loop'
 
 function sanitizeKeyPart(value: string | undefined, fallback: string): string {
   return (value || fallback).trim().replace(/[^a-zA-Z0-9_.@-]+/g, '_') || fallback

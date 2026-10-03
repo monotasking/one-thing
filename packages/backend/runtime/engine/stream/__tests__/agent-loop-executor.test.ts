@@ -66,7 +66,8 @@ const storeMocks = vi.hoisted(() => ({
   flushSessionSave: vi.fn(async () => undefined),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   ...storeMocks,
 }))
 vi.mock('../../../sessions/session-commands.js', () => ({

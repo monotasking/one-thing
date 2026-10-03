@@ -14,7 +14,7 @@
 import type { ContextVariable } from '@shared/ipc.js'
 import type { ResourceKernel, StateScope } from '@onething/backend/runtime/resource/resource-api'
 import { systemPrincipal } from '@shared/permission/principal'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { getProjectsStore } from '../project-dirs/bootstrap.js'

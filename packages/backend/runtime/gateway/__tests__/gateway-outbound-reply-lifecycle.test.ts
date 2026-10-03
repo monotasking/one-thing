@@ -5,12 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { inspectStoreLock, StoreLock } from '@onething/backend/runtime/storage'
 import type { ChatMessage } from '@shared/ipc.js'
-import { BackendResources } from '../../lifecycle.js'
-import { configureIMConnectorHooks, registerIMConnector } from '../connector-registry.js'
-import { createChannelReplyDeliveryStore } from '../identity-store.js'
-import { OutboundReplyDispatcher } from '../outbound-reply-dispatcher.js'
+import { BackendResources } from '../../../lifecycle.js'
+import { configureIMConnectorHooks, registerIMConnector } from '../../plugins/plugins-im-connector-registry.js'
+import { createChannelReplyDeliveryStore } from '../gateway-channel-identity-store.js'
+import { OutboundReplyDispatcher } from '../gateway-outbound-reply-dispatcher.js'
 
-vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({ writeAppLog: vi.fn(), getLogger: () => ({ error: vi.fn() }) }))
+// 替身只换这两样,其余照真(包根归位 B:IM 连接器登记表改从插件入口取以后,入口里的模块加载时要 `consolePort` 等)。
+vi.mock('@onething/backend/runtime/logging/configure-logging', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/logging/configure-logging')>(),
+  writeAppLog: vi.fn(),
+  getLogger: () => ({ error: vi.fn() }),
+}))
 
 function deferred() {
   let resolve!: () => void

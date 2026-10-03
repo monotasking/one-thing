@@ -20,7 +20,7 @@ import type {
 } from '@shared/ipc.js'
 import fs from 'node:fs'
 import path from 'node:path'
-import { deepFreeze } from '@onething/backend/utils/deep-freeze.js'
+import { deepFreeze } from './session-deep-freeze.js'
 import { materializeModelHistory, type ProjectModelHistoryMeta, type ProjectModelHistoryOptions } from './projection/index.js'
 import { sanitizeOnethingMessagesForRendererResult } from './renderer-sanitizer.js'
 import type * as SessionStore from './session-store.js'

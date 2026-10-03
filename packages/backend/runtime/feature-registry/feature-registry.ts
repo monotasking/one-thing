@@ -8,7 +8,7 @@ export {
   type FeatureContext,
   type FeatureDisposer,
   type FeatureDump,
-} from './context.js'
+} from './feature-registry-context.js'
 export {
   dumpFeatureEffects,
   dumpFeatures,
@@ -18,4 +18,4 @@ export {
   type FeatureDefinition,
   type FeatureEffectDump,
   type FeatureUnmount,
-} from './registry.js'
+} from './feature-registry-table.js'

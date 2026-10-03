@@ -2,14 +2,14 @@
 # 每行 `<次数> <文件名>`:packages/backend 下非测试 .ts 文件里,这个文件名出现的次数(只列出现两次以上的)。
 # 只许降:任一名字高于这里的数、或出现这里没有的重复名,`bun run name:gate` 红。
 # 降了之后跑 `node scripts/file-name-gate.mjs --write-baseline` 收紧。
-95 index.ts
+93 index.ts
 36 types.ts
 20 ipc-operations.ts
 17 manifest.ts
-16 registry.ts
 16 runtime.ts
 15 dialect.ts
-10 store.ts
+15 registry.ts
+9 store.ts
 8 host-ports.ts
 7 resource-spec.ts
 7 service.ts
@@ -51,8 +51,6 @@
 2 commands.ts
 2 composer.ts
 2 config.ts
-2 connector-registry.ts
-2 context.ts
 2 contract.ts
 2 driver.ts
 2 engine.ts
@@ -87,7 +85,6 @@
 2 render.ts
 2 replay.ts
 2 resolver.ts
-2 ripgrep.ts
 2 sandbox.ts
 2 scheduler.ts
 2 schema.ts

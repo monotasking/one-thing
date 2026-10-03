@@ -107,7 +107,7 @@ describe('插件的三个动词(K4-b)', () => {
   it('装配之后 session 这一种资源在场(本单的前提)', { timeout: 180_000 }, async () => {
     backend = await assemble()
     expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('session')
-    const store = await import('@onething/backend/store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     sessionId = store.createSession(`plugin-resources-${Date.now()}`, 'First name').id
   })
 

@@ -36,7 +36,7 @@
  */
 import type { Context as CordisContext } from '@deepseek-ai/cordis'
 import type { DomainRoutes, Router } from '@shared/ipc/router'
-import { registerRouterHandlers, type RpcRouteHandlers } from '../http-server/http-server-dispatch-table.js'
+import { registerRouterHandlers, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 /** 解绕一项注册。允许异步：未来的注册面（面板、连接）可能要等 I/O。 */
 export type FeatureDisposer = () => void | Promise<void>

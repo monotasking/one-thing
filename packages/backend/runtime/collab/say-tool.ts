@@ -43,7 +43,7 @@ import {
 import type { SayToolResult } from '@onething/backend/runtime/toolkit'
 import { registerRetiredAgentToolName } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { type ChatMessage } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionAccess, sessionCommands, sessionReads } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '../sessions/index.js'
 import { getEventBus } from '@onething/backend/runtime/events'

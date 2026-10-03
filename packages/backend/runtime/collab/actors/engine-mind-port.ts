@@ -35,7 +35,7 @@ import type { ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEventBus } from '@onething/backend/runtime/events'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { noteCollabAdoptedEcho } from '../agent-exec-session.js'
 import { issueCollabDriveToken } from '@onething/backend/runtime/collab/drive-guard'

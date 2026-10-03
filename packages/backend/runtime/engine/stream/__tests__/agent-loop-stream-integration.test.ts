@@ -231,8 +231,9 @@ vi.mock("@onething/backend/runtime/events", () => ({
 	getStreamChannel: () => ({ push: mocks.streamPush }),
 }));
 
-vi.mock("@onething/backend/store.js", () => ({
-	...mocks.store,
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  ...mocks.store,
 }));
 // Metadata lookup must use the fixture that owns this stream's session too.
 // The session layer above still owns the real journal and checkpoint barrier.

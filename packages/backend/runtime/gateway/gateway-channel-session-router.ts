@@ -1,16 +1,17 @@
 import type { ChatSession, MessageOrigin } from '@shared/ipc.js'
-import * as store from '../store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { writeAppLog } from '@onething/backend/runtime/logging/configure-logging'
-// 临时留着的深层引用(包根归位 B,2026-10-03):走入口会让入口整棵求值,而入口里原有的十几只会话模块在加载时
-// 就 `getLogger(...)`;这份路由的测试把 `configure-logging` mock 成只有 `writeAppLog`,一走入口就加载失败。
-// 怎么收(把那些模块的 logger 也改成用时再取,或改测试的 mock)待用户定。
-import { getSessionManager } from '../runtime/sessions/session-layer.js'
-import { getChannelIdentityService } from './identity-service.js'
+// 临时留着的深层引用(会话归位 B,2026-10-03 起):这份路由的测试把 `session-layer.js` 整只换成只有 `getSessionManager`
+// 的替身,走会话入口会碰到入口再导出的另外两个名字。2026-10-04 包根归位 B 把这只路由从包根 `channel/` 搬进 gateway、
+// 会话名字改从会话入口拿(兼容桶 store.ts 删了),测试里 `configure-logging` 的替身也改成展开真模块 —— 当年那半个理由已经没了,
+// 剩下这一处等那份测试的 `session-layer` 替身改成展开真模块时一起收。
+import { getSessionManager } from '../sessions/session-layer.js'
+import { getChannelIdentityService } from './gateway-channel-identity-service.js'
 import {
   identitySessionKey,
   originConnector,
   originDisplayName,
-} from './origin.js'
+} from '@onething/backend/runtime/agent-loop'
 
 export interface RoutedChannelSession {
   sessionId: string

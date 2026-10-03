@@ -25,9 +25,9 @@ import type { JsonObject } from '@shared/json.js'
 import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog, ZodValidator } from '@onething/backend/runtime/toolkit'
-import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
-import { dumpFeatures, hasFeature, mountFeature, resetFeaturesForTests } from '../index.js'
-import { selfEvolutionFeature } from '../builtin/self-evolution.js'
+import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../../http-server/http-server-dispatch-table.js'
+import { dumpFeatures, hasFeature, mountFeature, resetFeaturesForTests } from '../../feature-registry/feature-registry.js'
+import { selfEvolutionFeature } from '../toolkit-client-api-self-evolution.js'
 
 /**
  * 宿主档门的钥匙。三个工具只在「已经有 bash 的宿主」上注册（挂载一个 feature

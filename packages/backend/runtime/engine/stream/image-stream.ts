@@ -7,7 +7,7 @@
  */
 
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { saveMediaImage } from '@onething/backend/runtime/media/save-image'
 import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { generateImage } from './image-generation.js'

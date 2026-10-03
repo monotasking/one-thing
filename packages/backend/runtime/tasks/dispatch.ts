@@ -57,7 +57,7 @@ import type {
   TaskDispatchRequest,
 } from '@onething/backend/runtime/toolkit'
 
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { SessionAccessError, type SessionAccess, type sessionReads } from '@onething/backend/runtime/sessions'
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamEngine } from '@onething/backend/runtime/engine'

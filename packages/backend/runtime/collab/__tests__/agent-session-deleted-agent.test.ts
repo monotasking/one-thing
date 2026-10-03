@@ -40,9 +40,8 @@ vi.mock('../../sessions/access.js', async importOriginal => {
   }) }
 })
 
-vi.mock('@onething/backend/store.js', () => ({
-  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
-  getSettings: () => ({}),
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   updateSessionWorkingDirectory: vi.fn(),
   getSession: (id: string) => mocks.sessions.get(id),
   createSession: (id: string, name: string) => {
@@ -81,6 +80,11 @@ vi.mock('@onething/backend/store.js', () => ({
     if (fields.collab !== undefined) session.collab = fields.collab ?? undefined
     return true
   },
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
 }))
 
 const { ensureCollabAgentSession } = await import('../agent-exec-session.js')

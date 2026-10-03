@@ -15,13 +15,17 @@ const mocks = vi.hoisted(() => ({
   boardReads: [] as Array<{ roomSessionId: string; agentId: string }>,
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessionsById.get(id),
   getSessionsList: () => mocks.sessions,
-  getSettings: () => ({ general: { userProfile: { name: '一天' } } }),
   updateSessionWorkingDirectory: () => undefined,
   updateSessionWorkingDirectoryRoots: () => undefined,
   updateSessionVariables: () => undefined,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => ({ general: { userProfile: { name: '一天' } } }),
 }))
 
 vi.mock('../../agents/agent-store-access.js', () => ({

@@ -209,7 +209,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     fs.mkdirSync(path.join(bound, 'sub'), { recursive: true })
     fs.writeFileSync(path.join(bound, 'sub', 'note.md'), '# hi\n')
 
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     const { sessionCommands } = await import('@onething/backend/runtime/sessions')
     const withWorkdir = store.createSession(`resource-workdir-${Date.now()}`, 'Bound').id
     const without = store.createSession(`resource-no-workdir-${Date.now()}`, 'Unbound').id
@@ -271,7 +271,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     const workRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-dir-write-')))
     const { getSettings, updateSettingsInMemory } = await import('@onething/backend/runtime/settings')
     const before = getSettings()
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     const { Permission } = await import('@onething/backend/runtime/permissions/permission')
     const sessionId = store.createSession(`resource-dir-${Date.now()}`, 'Dir').id
     const target = path.join(workRoot, 'notes')

@@ -24,7 +24,7 @@ import type { Preview, Result, RunContext, ToolSpec } from '@onething/backend/ru
 import type { Effect } from '@shared/toolkit/effects'
 import type { JsonObject } from '@shared/json'
 import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/runtime/toolkit'
-import { dumpFeatures, hasFeature, mountFeature } from '@onething/backend/features/index.js'
+import { dumpFeatures, hasFeature, mountFeature } from '@onething/backend/runtime/feature-registry'
 import {
   asFeatureDefinition,
   bootstrapGuidance,

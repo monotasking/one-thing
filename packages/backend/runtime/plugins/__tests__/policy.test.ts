@@ -375,7 +375,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 实现是 throw,当时的测试只断言"理由字符串长度 > 20" —— 标签与实现完全没有
      * 绑定,第一条数据就是错的。
      */
-    const registry = await import('@onething/backend/channel/connector-registry.js')
+    const registry = await import('../plugins-im-connector-registry.js')
     const teardown = PLUGIN_REGISTRY_POLICY['im-connector'].teardown
 
     const unregister = registry.registerIMConnector({

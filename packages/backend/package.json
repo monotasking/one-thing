@@ -7,12 +7,6 @@
   "exports": {
     ".": "./backend.ts",
     "./backend.js": "./backend.ts",
-    "./channel/index.js": "./channel/index.ts",
-    "./channel/connector-registry.js": "./channel/connector-registry.ts",
-    "./channel/origin.js": "./channel/origin.ts",
-    "./store.js": "./store.ts",
-    "./utils/ripgrep.js": "./utils/ripgrep.ts",
-    "./utils/deep-freeze.js": "./utils/deep-freeze.ts",
     "./host-ports.js": "./host-ports.ts",
     "./current.js": "./current.ts",
     "./runtime": "./runtime/index.ts",
@@ -406,7 +400,6 @@
     "./runtime/voice/speech-output": "./runtime/voice/speech-output.ts",
     "./runtime/voice/provider-calls": "./runtime/voice/provider-calls.ts",
     "./runtime/voice/service": "./runtime/voice/service.ts",
-    "./features/index.js": "./features/index.ts",
     "./http-server/http-server-dispatch-table.js": "./http-server/http-server-dispatch-table.ts",
     "./http-server/http-server-tenant-paths.js": "./http-server/http-server-tenant-paths.ts",
     "./http-server/http-server-sandbox.js": "./http-server/http-server-sandbox.ts",
@@ -416,7 +409,8 @@
     "./http-server/http-server-discovery.js": "./http-server/http-server-discovery.ts",
     "./http-server/http-server-runtime-facade.js": "./http-server/http-server-runtime-facade.ts",
     "./http-server/http-server-audience.js": "./http-server/http-server-audience.ts",
-    "./http-server": "./http-server/http-server.ts"
+    "./http-server": "./http-server/http-server.ts",
+    "./runtime/feature-registry": "./runtime/feature-registry/feature-registry.ts"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.1",

@@ -31,31 +31,34 @@ const mocks = vi.hoisted(() => ({
   normalizeOrigin: vi.fn((origin: MessageOrigin) => origin),
 }))
 
-vi.mock('../../store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: mocks.getSession,
   createSession: mocks.createSession,
   getCurrentSessionId: mocks.getCurrentSessionId,
   setCurrentSessionId: mocks.setCurrentSessionId,
 }))
 
-vi.mock('../../runtime/sessions/session-layer.js', () => ({
+vi.mock('../../sessions/session-layer.js', () => ({
   getSessionManager: () => ({
     getOrCreate: mocks.getOrCreate,
   }),
 }))
 
-vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
+// 替身只换 `writeAppLog`,其余照真(包根归位 B:路由改从会话 / agent-loop 入口取名字以后,入口里的模块加载时就要 `getLogger`)。
+vi.mock('@onething/backend/runtime/logging/configure-logging', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/logging/configure-logging')>(),
   writeAppLog: vi.fn(),
 }))
 
-vi.mock('../identity-service.js', () => ({
+vi.mock('../gateway-channel-identity-service.js', () => ({
   getChannelIdentityService: () => ({
     normalizeOrigin: mocks.normalizeOrigin,
     resolveOrigin: mocks.resolveOrigin,
   }),
 }))
 
-const { ChannelSessionRouter } = await import('../session-router.js')
+const { ChannelSessionRouter } = await import('../gateway-channel-session-router.js')
 
 function gatewayOrigin(): MessageOrigin {
   return {

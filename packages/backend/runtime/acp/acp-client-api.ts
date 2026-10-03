@@ -50,6 +50,16 @@ import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-s
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
+import {
+  authorizeSessionCascadeDelete,
+  clampSessionWorkingDirectory,
+  createPlainSessionAs,
+  describeSessionError,
+  runSessionOpAs,
+  WORKDIR_SANDBOX_ERROR,
+} from '@onething/backend/runtime/sessions'
+import { foldOutcomeToEnvelope } from '@onething/backend/http-server/http-server-resource-envelope.js'
+import type { Outcome } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingACPIpcLogger } from '@onething/backend/runtime/acp/ipc-operations'
@@ -181,22 +191,23 @@ function optionsFailure(error: unknown): AcpRoutes['sessionOptions']['output'] {
 /** 认领在飞表(A5):按调用方造的 `AcpSessionLifecycle` 共用这一张,连点两下只认领一次。 */
 const adoptionsInFlight = new Map<string, Promise<ACPAdoptSessionResponse>>()
 
+/** 资源面的结局 → 与 `sessions` 域逐字相同的成败信封(只读 `success` / `error` 两格)。 */
+function foldSessionOutcome(outcome: Outcome) {
+  return foldOutcomeToEnvelope(outcome, { describeError: describeSessionError })
+}
+
 function envelopeError(result: { success?: boolean; error?: string } | undefined, fallback: string): string {
   return result?.error || fallback
 }
 
 /**
- * 会话生命(A5)的端口:本地会话走 `sessions` 域**同一组**处理器(建 / 分支 / 绑目录 / 指模型 /
- * 删),带着这一次的调用方身份 —— 归属印、沙箱夹持、事件与 `sessions.create` 逐字同一条路;
+ * 会话生命(A5)的端口:本地会话走 `sessions` 域**同一组**步骤(建 / 绑目录 / 指模型 / 删),带着这一次的
+ * 调用方身份 —— 归属印、沙箱夹持、事件与 `sessions.create` 逐字同一条路。包根归位 B(2026-10-04)起那组步骤住会话功能本身
+ * (`runtime/sessions/session-caller-ops.ts`,经会话入口交出),这里不再动态 import 那只开给界面的 sessions 域文件;
+ * 资源面的结局照旧用 HTTP 服务器那份信封折法折成同样的成败(`foldOutcomeToEnvelope` + 会话的 `describeSessionError`)。
  * 消息进账本走命令面 `replaceAll({ reason: 'replaced' })`(一条消息一条 `message/imported`)。
  */
 function lifecyclePorts(context: RpcDispatchContext): AcpSessionLifecyclePorts {
-  /*
-   * `sessions` 域按需取(调用时才 import):它的模块图很重(资源面、协作、分支…),而认领 / 分叉
-   * 是少见的动作 —— 静态 import 会让每个只想读 agent 列表的宿主与单测都先把它整个装一遍。
-   * 调用时早已装配完,动态 import 拿到的就是注册表里那一份模块。
-   */
-  const sessions = async () => (await import('../sessions/sessions-client-api.js')).sessionsRpcHandlers
   return {
     manager: {
       listRemoteSessions: (agentId, cwd) => ACPManager.listRemoteSessions(agentId, cwd),
@@ -219,13 +230,15 @@ function lifecyclePorts(context: RpcDispatchContext): AcpSessionLifecyclePorts {
         : undefined
     },
     createSession: async ({ sessionId, name, cwd, agentId }) => {
-      const sessionsRpcHandlers = await sessions()
-      const made = await sessionsRpcHandlers.create({ name, sessionId }, context)
+      const made = await createPlainSessionAs(context, { name, sessionId })
       if (!made.success || !made.session?.id) return { ok: false, error: envelopeError(made, 'Failed to create session') }
       const id = made.session.id
-      const workdir = await sessionsRpcHandlers.updateWorkingDirectory({ sessionId: id, workingDirectory: cwd }, context)
+      const clamped = clampSessionWorkingDirectory(context, cwd)
+      const workdir = clamped.ok
+        ? foldSessionOutcome(await runSessionOpAs(context, id, 'setWorkingDirectory', { path: clamped.workingDirectory ?? '' }))
+        : WORKDIR_SANDBOX_ERROR
       if (!workdir.success) return { ok: false, error: envelopeError(workdir, 'Failed to bind the working directory') }
-      const model = await sessionsRpcHandlers.updateModel({ sessionId: id, provider: 'acp', model: agentId }, context)
+      const model = foldSessionOutcome(await runSessionOpAs(context, id, 'setModel', { provider: 'acp', model: agentId }))
       if (!model.success) return { ok: false, error: envelopeError(model, 'Failed to select the ACP agent') }
       return { ok: true, sessionId: id }
     },
@@ -239,7 +252,8 @@ function lifecyclePorts(context: RpcDispatchContext): AcpSessionLifecyclePorts {
       await flushSessionEventLog(sessionId)
     },
     discardSession: async sessionId => {
-      await (await sessions()).delete({ sessionId }, context)
+      authorizeSessionCascadeDelete(context, sessionId)
+      await runSessionOpAs(context, sessionId, 'delete', {})
     },
   }
 }

@@ -7,7 +7,7 @@
  * 以及 server 的五条 REST 路由 + `/api/sessions/:id/system-prompt-snapshot`
  * 与它们背后的 `chat` / `prompts` 两个 facade adapter 和 `streams.abort/active`。
  *
- * 只桩**仓本体**(`@onething/backend/store`)与装配侧的四个端口(引擎 / 权限 /
+ * 只桩**仓本体**(会话入口 `@onething/backend/runtime/sessions`(兼容桶 `store.ts` 已于包根归位 B 删除))与装配侧的四个端口(引擎 / 权限 /
  * 事件总线 / 协作房停止),**投影不桩** —— `@onething/backend/runtime` 那批
  * `*ForIpc` 是真跑的,所以这组用例证的是「域把端口接对了」,而不是「域自己又
  * 实现了一遍」。
@@ -52,7 +52,14 @@ const providers = vi.hoisted(() => ({
   isProviderSupported: vi.fn(() => false),
 }))
 
-vi.mock('../../../store.js', () => store)
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  ...store,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: store.getSettings,
+}))
 vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/collab/rooms', () => collab)

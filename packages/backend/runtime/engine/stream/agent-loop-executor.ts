@@ -1,4 +1,4 @@
-import * as store from "@onething/backend/store.js";
+import * as store from "@onething/backend/runtime/sessions";
 import { sessionCommands } from "@onething/backend/runtime/sessions";
 import { sessionReads } from "@onething/backend/runtime/sessions";
 import { ensureSessionWritable } from "@onething/backend/runtime/sessions";

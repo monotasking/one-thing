@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   settings: { general: {} } as { general: { userProfile?: Record<string, string> } },
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
   getSettings: () => mocks.settings,
 }))
 

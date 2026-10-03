@@ -23,8 +23,8 @@
  * `mountFeature` 才会填。
  */
 import type { EffectMeta, Fiber } from '@deepseek-ai/cordis'
-import { FeatureContextImpl, type FeatureContext, type FeatureDump } from './context.js'
-import { dropFeatureRootContextForTests, getFeatureRootContext } from './cordis-root.js'
+import { FeatureContextImpl, type FeatureContext, type FeatureDump } from './feature-registry-context.js'
+import { dropFeatureRootContextForTests, getFeatureRootContext } from './feature-registry-cordis-root.js'
 
 /** 一个 feature 的定义。id 全局唯一，`mount` 只在挂载时跑一次。 */
 export interface FeatureDefinition {

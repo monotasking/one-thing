@@ -20,6 +20,17 @@ export {
  * 链路),不再需要一个插件来当中间人(正本 `docs/design/notes-obsidian-cli-2026-09.md`
  * §4.4)。同样不留转发桩。
  */
+// IM 连接器登记表(`api.registerIMConnector` 那一张,渠道网关的出站回复也读它)。包根归位 B(2026-10-04)
+// 从包根 `channel/connector-registry.ts` 搬来:它零依赖,写它的是插件、读它的是网关(L3),放在插件这一层两边都顺。
+export {
+  configureIMConnectorHooks,
+  getIMConnector,
+  getIMConnectorOwner,
+  listIMConnectorIds,
+  registerIMConnector,
+  sendIMReply,
+  type RegisterIMConnectorOptions,
+} from './plugins-im-connector-registry.js'
 export * from './plugin-command-execution.js'
 export * from './ipc-operations.js'
 export * from './plugin-list.js'

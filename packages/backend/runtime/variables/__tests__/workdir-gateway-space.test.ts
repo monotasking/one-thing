@@ -37,10 +37,10 @@ vi.mock('@onething/backend/runtime/variables/store-bound', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessionsById.get(id),
   getSessionsList: () => [...mocks.sessionsById.values()],
-  getSettings: () => ({}),
   updateSessionWorkingDirectory: (id: string, workdir: string) => {
     const session = mocks.sessionsById.get(id)
     if (session) session.workingDirectory = workdir
@@ -51,6 +51,10 @@ vi.mock('@onething/backend/store.js', () => ({
     if (session) session.workingDirectoryRoots = roots
   },
   updateSessionVariables: () => undefined,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => ({}),
 }))
 
 // 会话 → 空间是会话表的一条投影;这里只需要它的口径(缺席 = default)。

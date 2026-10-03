@@ -22,7 +22,14 @@ vi.mock('@onething/backend/runtime/external-agents', async importOriginal => ({
     }
   },
 }))
-vi.mock('@onething/backend/store.js', () => ({ getSession: () => undefined, getSettings: () => ({ network: {} }) }))
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  getSession: () => undefined,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => ({ network: {} }),
+}))
 vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-connector-registry-test',

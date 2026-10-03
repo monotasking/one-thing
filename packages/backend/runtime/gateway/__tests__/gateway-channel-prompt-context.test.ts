@@ -12,11 +12,12 @@ vi.mock('@onething/backend/runtime/prompts/plugin-context-breaker', () => ({
   registerPromptContextProvider: vi.fn(() => vi.fn()),
 }))
 
-vi.mock('../../store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: vi.fn(),
 }))
 
-const { __testing } = await import('../prompt-context.js')
+const { __testing } = await import('../gateway-channel-prompt-context.js')
 
 function desktopOrigin(): MessageOrigin {
   return {

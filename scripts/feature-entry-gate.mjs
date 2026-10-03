@@ -258,7 +258,7 @@ function selfTest() {
   expect('功能内部不计', classify(R('search/service.ts'), R('search/capabilities/x.ts'), features) === null)
   expect('别的功能引用算深层', classify(R('search/service.ts'), R('mcp/x.ts'), features)?.feature === 'search')
   expect('总桶单列', classify(R('index.ts'), outside, features)?.feature === BARREL_ROW)
-  expect('包根文件不计', classify(path.join(root, BACKEND, 'store.ts'), outside, features) === null)
+  expect('包根文件不计', classify(path.join(root, BACKEND, 'current.ts'), outside, features) === null)
   expect('第二个入口 client-api 不计', classify(R('search/search-client-api.ts'), outside, features) === null)
   expect('client-api 的方面文件也不计', classify(R('search/search-client-api-providers.ts'), outside, features) === null)
   expect('别人名字打头的 client-api 照算深层', classify(R('search/mcp-client-api.ts'), outside, features)?.feature === 'search')

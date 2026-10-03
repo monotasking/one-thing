@@ -82,20 +82,7 @@ import {
 	configureMCPClientHost,
 } from "@onething/backend/runtime/mcp/index-with-bridge";
 import { configureMCPClientIdentity } from "@onething/backend/runtime/mcp/identity";
-import {
-	createBranchSession as createAppStoreBranchSession,
-	createSession as createAppStoreSession,
-	flushAllPendingSaves as flushAllAppStorePendingSaves,
-	flushSessionSave as flushAppStoreSessionSave,
-	getCurrentSessionId as getAppStoreCurrentSessionId,
-	getSession as getAppStoreSession,
-	getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers,
-	getSessions as getAppStoreSessions,
-	getSessionsList as getAppStoreSessionsList,
-	setCurrentSessionId as setAppStoreCurrentSessionId,
-	updateSessionWorkingDirectory as updateAppSessionWorkingDirectory,
-	updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots,
-} from "@onething/backend/store.js";
+import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getCurrentSessionId as getAppStoreCurrentSessionId, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList, setCurrentSessionId as setAppStoreCurrentSessionId, updateSessionWorkingDirectory as updateAppSessionWorkingDirectory, updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots } from "@onething/backend/runtime/sessions";
 import {
 	createSessionCommands,
 	sessionCommands as appSessionCommands,

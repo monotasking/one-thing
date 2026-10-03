@@ -50,11 +50,15 @@ const mocks = vi.hoisted(() => ({
   executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
-  getSettings: mocks.getSettings,
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: mocks.getSession,
   addMessage: mocks.addMessage,
   deleteMessage: mocks.deleteMessage,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: mocks.getSettings,
 }))
 vi.mock('../../sessions/session-commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),

@@ -24,7 +24,8 @@ vi.mock('../../sessions/reads.js', () => import('../../sessions/testing/facade-m
 vi.mock('../../sessions/session-commands.js', () => import('../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
 }))
 

@@ -51,7 +51,8 @@ vi.mock('../runtime/sessions/session-layer.js', () => ({
   })),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: mocks.getSession,
   createSession: mocks.createSession,
   getCurrentSessionId: mocks.getCurrentSessionId,

@@ -339,7 +339,7 @@ export async function deleteOnethingSessionForIpc(
  * `session:renamed`,别的客户端就显示一个不存在的名字)。
  *
  * 判据刻意是**恒等于 `false`**,不是 falsy:端口的返回值声明成 `unknown`,今天既有
- * 返回布尔的仓(`@onething/backend/store`),也有返回 `undefined` 的接线与测试替身
+ * 返回布尔的仓(会话入口 `@onething/backend/runtime/sessions`(兼容桶 `store.ts` 已于包根归位 B 删除)),也有返回 `undefined` 的接线与测试替身
  * —— 「没说」不等于「说没有」,只有明确说了「没改到」才当作查无此会话。
  */
 export async function renameOnethingSessionForIpc(

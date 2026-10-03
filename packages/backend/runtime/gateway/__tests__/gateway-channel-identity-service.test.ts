@@ -25,8 +25,8 @@ vi.mock('@onething/backend/runtime/logging/configure-logging', () => ({
   writeAppLog: vi.fn(),
 }))
 
-const { ChannelIdentityService } = await import('../identity-service.js')
-const { getChannelIdentityStore } = await import('../identity-store.js')
+const { ChannelIdentityService } = await import('../gateway-channel-identity-service.js')
+const { getChannelIdentityStore } = await import('../gateway-channel-identity-store.js')
 
 function imOrigin(workspaceId: string, externalUserId = 'u-1'): MessageOrigin {
   return {

@@ -20,11 +20,15 @@ const mocks = vi.hoisted(() => ({
   storePath: '',
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
-  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
-  getSettings: () => ({}),
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   updateSessionWorkingDirectory: vi.fn(),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
 }))
 vi.mock('@onething/backend/runtime/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,

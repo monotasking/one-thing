@@ -16,7 +16,7 @@
 //       ① `packages/backend/http-server/` 下的文件(HTTP 服务器读名册、装投递件);
 //       ② 同一个功能的另一只 client-api 文件(一个功能开给界面的东西分几只文件写,彼此可以引);
 //       ③ 测试(`__tests__/`、`*.test.*`、`__fixtures__/`、`testing/`);
-//       ④ 下面 `EXCEPTIONS` 里逐条写了理由的文件。
+//       ④ 下面 `EXCEPTIONS` 里逐对写了理由的引用(今天为空)。
 //     其余任何一处 = 红(主入口引它、别的功能引它、包根别的文件引它、apps / scripts 引它)。
 //   - 主入口只算主入口:`cycle:gate` 的环判据不把 client-api 当入口(它不该被任何主入口引,本门保证这一点)。
 //
@@ -43,10 +43,8 @@ const HTTP_SERVER_DIR = 'packages/backend/http-server/'
  * 逐条写理由的例外:`引用方 → 被引的 client-api 文件`。删掉一条之前先让那个文件不再那样引。
  */
 export const EXCEPTIONS = new Map([
-  ['packages/backend/features/builtin/trajectory.ts → packages/backend/runtime/sessions/sessions-client-api-events.ts',
-    '轨迹 feature 注册 sessionEvents 域(名册里占 `rpc:session-events` 那一格);`features/` 按内容归位是包根归位的 B 部分,那时它随轨迹一起进 sessions'],
-  ['packages/backend/runtime/acp/acp-client-api.ts → packages/backend/runtime/sessions/sessions-client-api.ts',
-    'ACP 认领 / 分叉远端会话要走 `sessions.create` 同一条路(归属印、沙箱夹持、事件逐字同一条),调用时才动态 import(不是加载期的边);两边都是开给界面的那一侧'],
+  // 包根归位 A 时这里有两对(轨迹 feature → sessions 事件域、ACP → sessions 域),包根归位 B(2026-10-04)两对都消了:
+  // 轨迹并成了 sessions 事件域那一行名册,ACP 认领远端会话改走会话入口交出的 `session-caller-ops.ts`。
 ])
 
 function walk(dir, out) {
@@ -119,8 +117,8 @@ function selfTest() {
   expect('HTTP 服务器可以引', judge('packages/backend/http-server/http-server-client-api-roster.ts', api) === null)
   expect('同功能的 client-api 可以引', judge(api, aspect) === null)
   expect('测试可以引', judge('packages/backend/runtime/settings/__tests__/settings-client-api.test.ts', api) === null)
-  expect('例外表里的可以引', judge('packages/backend/features/builtin/trajectory.ts', 'packages/backend/runtime/sessions/sessions-client-api-events.ts') === null)
-  expect('例外只认那一对', judge('packages/backend/features/builtin/trajectory.ts', api) !== null)
+  expect('包根别处的 feature 引 = 红(轨迹那条例外已删)', judge('packages/backend/features/builtin/trajectory.ts', 'packages/backend/runtime/sessions/sessions-client-api-events.ts') !== null)
+  expect('别的功能的 client-api 动态引也 = 红(ACP 那条例外已删)', judge('packages/backend/runtime/acp/acp-client-api.ts', 'packages/backend/runtime/sessions/sessions-client-api.ts') !== null)
   expect('主入口引 = 红', judge('packages/backend/runtime/settings/index.ts', api) !== null)
   expect('功能内部文件引 = 红', judge('packages/backend/runtime/settings/settings-store.ts', api) !== null)
   expect('别的功能的 client-api 引 = 红', judge('packages/backend/runtime/mcp/mcp-client-api.ts', api) !== null)

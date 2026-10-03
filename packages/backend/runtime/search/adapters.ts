@@ -15,7 +15,7 @@ import { getCurrentSessionId } from '@onething/backend/runtime/sessions'
 import { getConnectedDirectoriesForSession } from '@onething/backend/runtime/files'
 import { getSession, getSessionsList } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
-import { listFiles } from '@onething/backend/utils/ripgrep.js'
+import { listFiles } from '@onething/backend/runtime/files'
 import { noteVaultsNow, primaryNoteVaultNow } from '@onething/backend/runtime/notes/notes-subsystem'
 
 export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapters {

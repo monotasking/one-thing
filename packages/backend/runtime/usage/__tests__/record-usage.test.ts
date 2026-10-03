@@ -24,7 +24,8 @@ vi.mock('../../credentials/credentials-resolution.js', () => ({
   resolveSessionCredentialId: () => undefined,
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: () => undefined,
 }))
 

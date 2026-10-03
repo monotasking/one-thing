@@ -81,7 +81,7 @@ describe('资源 state 进提示词(K4-a)', () => {
 
   beforeAll(async () => {
     backend = await assemble()
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     sessionId = store.createSession(`resource-state-${Date.now()}`, 'Board session').id
   }, 180_000)
 

@@ -18,7 +18,7 @@ import {
   type MessageOrigin,
   type VoiceTranscriptMetadata,
 } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { collabSessionRoomMembers } from './members.js'

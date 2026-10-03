@@ -6,9 +6,9 @@ import { createDefaultSettings } from '../../settings/defaults/settings.js'
 
 // Retain real settings composition and credential storage; unrelated session
 // stores and usage lifecycle are covered by the Backend lifecycle regression.
-vi.mock('@onething/backend/store.js', async () => {
+vi.mock('@onething/backend/runtime/settings', async importOriginal => {
   const settings = await import('../../settings/settings-store.js')
-  return { getSettings: settings.getSettings }
+  return { ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(), getSettings: settings.getSettings }
 })
 vi.mock('../../usage/usage-recorder.js', () => ({ captureUsageRecorder: () => vi.fn() }))
 vi.mock('../../auth/process-auth-service.js', () => ({ getAuthService: () => ({}) }))

@@ -55,8 +55,8 @@ const hoisted = vi.hoisted(() => ({
   patchMessage: vi.fn(),
 }))
 
-vi.mock('@onething/backend/store.js', async (importActual) => ({
-  ...(await importActual<Record<string, unknown>>()),
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: vi.fn(() => ({ name: 'Session', messages: [] })),
 }))
 

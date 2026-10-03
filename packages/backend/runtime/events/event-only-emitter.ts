@@ -6,7 +6,7 @@
  * main singletons and store side effects.
  */
 
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { landSessionAccountUsageFromAccount } from '@onething/backend/runtime/sessions'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'

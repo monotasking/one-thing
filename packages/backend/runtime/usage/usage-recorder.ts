@@ -23,7 +23,7 @@ import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getModelCapabilityEntry } from "@onething/backend/runtime/settings";
 import { resolveSessionCredentialId } from "@onething/backend/runtime/credentials";
-import * as store from "@onething/backend/store.js";
+import * as store from "@onething/backend/runtime/sessions";
 import { sessionReads } from "@onething/backend/runtime/sessions";
 
 export interface RecordUsageInput {

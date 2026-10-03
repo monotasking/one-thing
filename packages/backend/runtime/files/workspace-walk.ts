@@ -2,7 +2,7 @@
  * 联网宿主上的工作区文件枚举 —— 结构债 P4c 第八批。
  *
  * `files` 域的 `list` 在 `transport:'http'` 这一支要一个文件枚举器。桌面那一支
- * 用的是 ripgrep(`backend/utils/ripgrep.ts`,`hidden:false, noIgnore:true`);
+ * 用的是 ripgrep(`backend/runtime/files/files-ripgrep-app-fetch.ts`,`hidden:false, noIgnore:true`);
  * 联网宿主上换成这份手写走查器,逐字对齐被替换掉的
  * `http-server/http-server-runtime.ts` 里 `listServerToolFiles` 的**无 glob 分支**:跳过 `.git`,
  * 产出相对 `root` 的 posix 路径。

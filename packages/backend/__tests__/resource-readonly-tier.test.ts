@@ -98,7 +98,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
   })
 
   it('RPC 那条路不受影响:界面照样读得到、做得动', async () => {
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     const created = store.createSession(`readonly-${Date.now()}`, 'Before')
 
     const done = await backend.resources.do(

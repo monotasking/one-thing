@@ -7,7 +7,7 @@ import type {
   ToolDefinition,
 } from '@shared/ipc.js'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import {
   createAgentProviderFromRuntime,
 } from '../engine-agent-runtime.js'
@@ -19,7 +19,7 @@ import { buildProjectDirsPromptVars } from '@onething/backend/runtime/project-di
 import {
   isProviderSupported,
 } from '../engine-chat-facade.js'
-import { modelRegistry } from '@onething/backend/runtime/settings'
+import { modelRegistry, getSettings } from '@onething/backend/runtime/settings'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
@@ -136,7 +136,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
   const buildSystemPromptSnapshotWithAdaptersOptions: BuildSystemPromptSnapshotWithAdaptersOptions<AppSettings, ProviderConfigWithAuth, ToolDefinition, SkillDefinition> = {
     sessionId,
     getSession: id => store.getSession(id),
-    getSettings: () => store.getSettings(),
+    getSettings: () => getSettings(),
     resolveProvider: resolveProviderForSnapshot,
     resolveAgentLoopStreamRoute: resolveOnethingAgentLoopStreamRoute,
     getSkills: getSkillsForSession,

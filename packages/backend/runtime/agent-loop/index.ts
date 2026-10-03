@@ -715,6 +715,23 @@ export {
 	SYSTEM_INTERNAL_MESSAGE_SOURCES,
 	TASK_MESSAGE_SOURCE_PREFIX,
 } from "./agent-loop-message-sources.js";
+// 一条消息从哪来(`MessageOrigin` 的构造、清洗与读法)。包根归位 B(2026-10-04)从包根 `channel/origin.ts` 搬来:
+// 它只靠上面那组来源判据,工具权限(L1)、渠道网关、会话命令面都要它,所以住在内核这一层。
+export {
+	LOCAL_CLIENT_USER_ID,
+	cloneOrigin,
+	createApiOrigin,
+	createDesktopOrigin,
+	createLocalClientIdentity,
+	createVoiceOrigin,
+	identitySessionKey,
+	isSystemInternalOrigin,
+	latestRealOrigin,
+	originConnector,
+	originDisplayName,
+	originWorkspaceId,
+	sanitizeRendererOrigin,
+} from "./agent-loop-message-origin.js";
 export { mintTurnPrincipal } from "./agent-loop-turn-principal.js";
 export type { CollabDriveProver } from "./agent-loop-turn-principal.js";
 export { NoopOnethingStreamSender } from "./agent-loop-stream-sender.js";

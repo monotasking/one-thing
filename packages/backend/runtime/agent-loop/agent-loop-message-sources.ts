@@ -3,7 +3,7 @@
  *
  * 住在产品层而不是装配层(P3'e-A2a):引擎本体归位到 `runtime/engine/` 之后,
  * 路由旁路与 principal 铸造这两处判据都在产品层,而判据本身只是一个集合加两个
- * 前缀,没有任何脊柱依赖。`packages/backend/channel/origin.ts` 原样再导出这里的
+ * 前缀,没有任何脊柱依赖。`packages/backend/runtime/agent-loop/agent-loop-message-origin.ts` 原样再导出这里的
  * 每一个符号,所以「**这是 system-internal 的唯一定义**」这句话仍然成立:
  * 加一个新的内部发射源仍然只改这一处。
  */

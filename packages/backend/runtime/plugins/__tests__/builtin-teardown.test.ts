@@ -34,7 +34,7 @@ async function loadModules() {
     import('@onething/backend/runtime/plugins/tool-result-intercept-bound'),
     import('@onething/backend/runtime/scheduler/scheduler-bound'),
     import('@onething/backend/runtime/variables/variable-system'),
-    import('@onething/backend/channel/connector-registry.js'),
+    import('../plugins-im-connector-registry.js'),
     import('@onething/backend/runtime/deeplink/registry'),
     import('../../credentials/credentials-strategy.js'),
   ])

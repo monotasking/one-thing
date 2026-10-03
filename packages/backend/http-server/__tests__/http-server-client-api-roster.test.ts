@@ -12,7 +12,7 @@
  * 任何 I/O。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
-import { dumpFeatures, resetFeaturesForTests } from '../../features/index.js'
+import { dumpFeatures, resetFeaturesForTests } from '../../runtime/feature-registry/feature-registry.js'
 import { registerAppRpcDomains } from '../http-server-client-api-roster.js'
 import { hasRpcDomain, resetRpcRegistryForTests } from '../http-server-dispatch-table.js'
 

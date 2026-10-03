@@ -26,6 +26,7 @@
  * (解析后必须落在事故包目录里),其余全部按 `incidentId` 在事故目录内寻址。
  * 渲染侧仍由能力位 `evals`(web 默认关)挡着,与 evals 域同一个口径。
  */
+import { getSettings } from '@onething/backend/runtime/settings'
 import fs from 'node:fs'
 import { canAccessEvalSource, requireIncidentAccess, requireEvalRepositoryAccess } from './evals-client-api-access.js'
 import path from 'node:path'
@@ -38,7 +39,6 @@ import type {
   EvalsReplayStartRequest,
   EvalsRoundView,
 } from '@shared/ipc/evals.js'
-import * as store from '@onething/backend/store.js'
 import {
   broadcastEvalsDiagnoseProgress,
   broadcastEvalsReplayProgress,
@@ -59,7 +59,7 @@ const READ_FILE_MAX_BYTES = 4 * 1024 * 1024
 const incidentTaskKey = (id: string) => `incident:${id}`
 
 function getAnalysisModelConfig(): { providerId: string; model: string } {
-  const settings = store.getSettings()
+  const settings = getSettings()
   const configured = (
     settings as { evals?: { analysisModel?: { providerId: string; model: string } } }
   )?.evals?.analysisModel

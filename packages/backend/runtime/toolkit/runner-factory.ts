@@ -25,7 +25,7 @@ import { ZodValidator } from '@onething/backend/runtime/toolkit'
 import { classifySensitiveFile } from '@onething/backend/runtime/tools/sensitive-files'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import {
   getOnethingToolOutputsDir,
 } from '@onething/backend/runtime/storage'

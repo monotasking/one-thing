@@ -93,8 +93,12 @@ const mocks = vi.hoisted(() => ({
   })),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: mocks.getSession,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
   getSettings: mocks.getSettings,
 }))
 // Agent profile lookup uses the same explicit metadata fixture as prompt assembly.

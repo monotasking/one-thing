@@ -21,11 +21,15 @@ vi.mock("@onething/backend/runtime/agents/agent-store-access", () => ({
 /** W18: an execution session's history IS the room's, so the projection has to
  *  go and read it. */
 const rooms = new Map<string, unknown>();
-vi.mock("@onething/backend/store.js", () => ({
-	getSession: (id: string) => rooms.get(id),
-	// 用户消息的信封署名现取「我的资料」(agent-dm-user.md §2.3);空资料 =
-	// 回退到「用户」,也就是这些断言里的既有文案。
-	getSettings: () => ({ general: {} }),
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  getSession: (id: string) => rooms.get(id),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  // 用户消息的信封署名现取「我的资料」(agent-dm-user.md §2.3);空资料 =
+  // 回退到「用户」,也就是这些断言里的既有文案。
+  getSettings: () => ({ general: {} }),
 }));
 
 import {

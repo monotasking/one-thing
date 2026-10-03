@@ -29,7 +29,8 @@ vi.mock('../../sessions/shadow.js', () => ({
   resetSessionShadowCache: () => undefined,
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   addMessageStep: () => {},
   updateMessageStep: () => {},
   updateSessionContextSize: () => {},

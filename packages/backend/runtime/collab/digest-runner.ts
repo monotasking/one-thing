@@ -16,6 +16,7 @@
  *  - 同一间房同一天不并发跑两次(inFlight 去重),回合是并行的,而它们看到的
  *    折叠段是同一份。
  */
+import { getSettings } from '@onething/backend/runtime/settings'
 import {
   buildCollabDigestPrompt,
   collectCollabFoldedFacts,
@@ -25,7 +26,7 @@ import {
   type CollabDayDigest,
 } from '@onething/backend/runtime/collab'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionReads, type SessionAccess } from '@onething/backend/runtime/sessions'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { collabSessionRoomMembers } from './members.js'
@@ -135,7 +136,7 @@ export function createCollabDigestRunner(options: {
       const messages = messagesOfDay(session, day, Date.now())
       if (!messages.length || !options.store.needsCollabDigest(roomSessionId, day, messages.length)) return
 
-      const { providerId, providerConfig, model } = getEffectiveProviderConfig(store.getSettings(), roomSessionId, null)
+      const { providerId, providerConfig, model } = getEffectiveProviderConfig(getSettings(), roomSessionId, null)
       if (!providerConfig || !model) return
       const auth = await resolveProviderAuth(providerId, providerConfig)
       if (controller.signal.aborted || !auth) return

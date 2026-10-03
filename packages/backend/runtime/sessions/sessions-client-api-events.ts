@@ -8,10 +8,10 @@
  * `inspectCall` 先读整份日志再 resolve —— 而不是在写侧维护一份索引:
  * 事件日志是 append-only 的纯文件,一份索引就是第二份可能说谎的事实。
  */
-import type { RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
+import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '@onething/backend/runtime/sessions'
-import type { SessionEventsRoutes } from '@shared/ipc/session-events.js'
+import { sessionEventsRouter, type SessionEventsRoutes } from '@shared/ipc/session-events.js'
 import { resolveToolCallInspection } from '@onething/backend/runtime/sessions'
 import { readSessionEvents, readSessionLogEvents } from '@onething/backend/runtime/sessions'
 import { readSessionBlob } from '@onething/backend/runtime/sessions'
@@ -90,3 +90,13 @@ export const sessionEventsRpcHandlers: RpcRouteHandlers<SessionEventsRoutes> = {
     return { response: await readSessionTraceResponseText(request.sessionId, runId, requestIndex) }
   },
 }
+
+/**
+ * 名册 `http-server/http-server-client-api-roster.ts` 里的一行:域 `sessionEvents`(轨迹面板的后端半)的契约与处理者。
+ *
+ * **id 是 `trajectory`,不是 `rpc:session-events`**(C2,`docs/design/cordis-adoption-2026-08.md` §2):这一格从前是
+ * 包根 `features/builtin/trajectory.ts` 那只 feature,名册里这一行说的是「哪件功能」(会话事件日志的第二投影)而不是「哪个域」,
+ * `dumpFeatures()` 看得见 trajectory。包根归位 B(2026-10-04)把那只 feature 并成这一行:它从来只注册这一个域、没有卸载顺序,
+ * 挂成 feature 之后 id、注册项与从前逐字相同。日后轨迹要加导出 / 清理 / 后台索引,再把这一行换回一只 feature。
+ */
+export const SESSION_EVENTS_CLIENT_API = defineClientApi({ id: 'trajectory', router: sessionEventsRouter, handlers: sessionEventsRpcHandlers })

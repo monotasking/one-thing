@@ -16,7 +16,7 @@ import type {
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/agent-store-access.js'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngineSafe } from '@onething/backend/current.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/backend/runtime/scheduler'
 import {

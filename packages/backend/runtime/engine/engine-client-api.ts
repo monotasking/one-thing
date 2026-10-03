@@ -16,7 +16,7 @@
  * (`getOnethingChatHistoryForIpc` / `generateOnethingChatTitleForIpc` /
  * `buildOnethingSystemPromptSnapshotForIpc` /
  * `updateOnethingMessageThinkingTimeForIpc` / `abortOnethingStreamsForIpc` /
- * `listOnethingActiveStreamsForIpc`),仓本体照旧是 `@onething/backend/store`
+ * `listOnethingActiveStreamsForIpc`),仓本体照旧是 会话入口 `@onething/backend/runtime/sessions`(兼容桶 `store.ts` 已于包根归位 B 删除)
  * 那一份 —— 与迁移前 `@main` 那份适配逐字同义,连 `logger: console` 都只是换成
  * 了同一个鸭子 logger 端口。
  *
@@ -41,6 +41,7 @@
  *     态、补一条带 aborted 标记的终结事件),而不是只 `engine.abort` 一下就回
  *     `{success:true}`。web 因此不再出现「停了但那条消息永远停在流式态」。
  */
+import { getSettings } from '@onething/backend/runtime/settings'
 import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/backend/runtime/prompts'
 import {
   generateOnethingChatTitleForIpc,
@@ -56,7 +57,7 @@ import {
 } from '@onething/backend/runtime/sessions'
 import { emitCoreSessionEventSafely } from '@onething/backend/runtime/events/bus-primitives'
 import { chatRouter, type ChatRoutes } from '@shared/ipc/chat.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { currentSessionRun } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
@@ -134,7 +135,7 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
     };
     return generateOnethingChatTitleForIpc({
       userMessage: request.message,
-      settings: store.getSettings(),
+      settings: getSettings(),
       adapters: chatTitleGenerationAdapters,
     })
   },

@@ -78,7 +78,8 @@ vi.mock('../../sessions/reads.js', async importOriginal => ({
     getSession: () => sessionRef.current,
   },
 }))
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: () => sessionRef.current,
   addMessage: (_sessionId: string, message: ChatMessage) => {
     sessionRef.current.messages.push(message)

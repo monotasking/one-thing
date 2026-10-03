@@ -13,11 +13,11 @@
  * 不落盘、不 await),而一份镜像意味着改名后要有人负责让它失效 —— 那个"有人"
  * 正是这类 bug 的出处。
  */
+import { getSettings } from '@onething/backend/runtime/settings'
 import {
   COLLAB_USER_DEFAULT_LABEL,
   normalizeCollabUserHandle,
 } from '@onething/backend/runtime/collab'
-import * as store from '@onething/backend/store.js'
 
 export interface CollabUserIdentity {
   /** 模型面与 UI 署名用的显示名。 */
@@ -41,7 +41,7 @@ export function collabUserPromptFields(): { userLabel: string; userHandle: strin
 
 /** 读 settings 缓存,现取。缺省链:label→「用户」、handle→'user'。 */
 export function resolveUserIdentity(): CollabUserIdentity {
-  const profile = store.getSettings()?.general?.userProfile
+  const profile = getSettings()?.general?.userProfile
   const label = profile?.name?.trim() || COLLAB_USER_DEFAULT_LABEL
   const identity: CollabUserIdentity = {
     label,

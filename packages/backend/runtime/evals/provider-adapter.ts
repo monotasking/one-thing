@@ -21,7 +21,7 @@
  * `evals.provider`(它不再在 IPC 那一层)。
  */
 
-import * as store from "@onething/backend/store.js";
+import { getSettings } from '@onething/backend/runtime/settings'
 import type { EvalModelCaller } from "@onething/backend/runtime";
 import { onethingBaseBuiltinProviders, resolveProviderApiKey } from "@onething/backend/runtime/providers";
 import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
@@ -46,7 +46,7 @@ interface ResolvedEvalsCredentials {
 export function resolveEvalsCredentials(
 	providerId: string,
 ): ResolvedEvalsCredentials {
-	const settings = store.getSettings();
+	const settings = getSettings();
 	const providerConfig = (settings?.ai?.providers as any)?.[providerId];
 	const resolution = resolveSpaceProviderCredentialForSpace(DEFAULT_SPACE_ID, providerId);
 

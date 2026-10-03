@@ -30,7 +30,7 @@ import {
   isCollabForcedSerialRoom,
 } from '@onething/backend/runtime/collab'
 import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { getStreamEngineSafe } from '@onething/backend/current.js'

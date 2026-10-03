@@ -149,8 +149,8 @@ vi.mock('../../../sessions/access.js', async importOriginal => {
   }) }
 })
 
-vi.mock('@onething/backend/store.js', () => ({
-  getSettings: () => ({}),
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   getSessionsList: () => [...mocks.sessions.values()],
   addMessage: (sessionId: string, message: Record<string, unknown>) => {
@@ -183,6 +183,10 @@ vi.mock('@onething/backend/store.js', () => ({
       mocks.deleteListeners = mocks.deleteListeners.filter(entry => entry !== listener)
     }
   },
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => ({}),
 }))
 
 function engineStub(): Record<string, unknown> {
@@ -255,7 +259,7 @@ function fireBus(eventType: string, sessionId: string, event: Record<string, unk
 
 const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
 const { createCollabInspector, configureCollabInspector } = await import('../../inspector.js')
-const { getSession } = await import('@onething/backend/store.js')
+const { getSession } = await import('@onething/backend/runtime/sessions')
 const { getEventBus } = await import('@onething/backend/runtime/events')
 let digestStore: ReturnType<typeof createCollabDigestStore>
 let releaseDigestStore: () => void

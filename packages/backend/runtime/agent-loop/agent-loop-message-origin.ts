@@ -11,8 +11,11 @@ import type {
  * P3'e-A2a):引擎本体归位之后,路由旁路与 principal 铸造两处判据都在那边,而判据
  * 本身零依赖。这里只**用**它(`isSystemInternalOrigin` 是 origin 形状的那一层),
  * 不再原样再导出 —— 想要那些常量/构造器的调用点直接读产品层(P3'e-A2b)。
+ *
+ * 住处:包根归位 B(2026-10-04)从包根 `channel/origin.ts` 搬进 agent-loop,经 agent-loop 入口交出 —— 它只靠来源判据,
+ * 而工具权限(L1)、渠道网关与会话命令面都要它,放进网关(L3)会让工具权限越层。
  */
-import { isSystemInternalSource } from '../runtime/agent-loop/index.js'
+import { isSystemInternalSource } from './agent-loop-message-sources.js'
 
 export const LOCAL_CLIENT_USER_ID = 'local-owner'
 

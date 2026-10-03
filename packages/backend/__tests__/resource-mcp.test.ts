@@ -168,7 +168,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       //
       // 它停在一张真权限卡上(`mcp` = ask + barrier,见文件头),所以这里像
       // `resource-kernel.test.ts` 里 AI 删消息那条一样:先等卡出现,再答 `once`。
-      const store = await import('../store.js')
+      const store = await import('@onething/backend/runtime/sessions')
       const sessionId = store.createSession(`resource-mcp-${Date.now()}`, 'MCP').id
       const { Permission } = await import('@onething/backend/runtime/permissions/permission')
 

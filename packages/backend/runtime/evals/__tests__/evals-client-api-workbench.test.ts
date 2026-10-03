@@ -54,7 +54,10 @@ const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<stri
 vi.mock('@onething/backend/runtime', () => runtime)
 // 授权判据(`requireIncidentAccess`)直取子路径(工单 4 C2),替身跟着搬。
 vi.mock('@onething/backend/runtime/evals/incident', () => ({ readIncident: runtime.readIncident }))
-vi.mock('../../../store.js', () => ({ getSettings: settings.getSettings }))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: settings.getSettings,
+}))
 vi.mock('../../settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/runtime/evals/provider-adapter', () => credentials)
 

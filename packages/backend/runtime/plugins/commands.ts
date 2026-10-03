@@ -19,7 +19,7 @@ import {
   type ListOnethingPluginCommandsForIpcResult,
 } from '@onething/backend/runtime/plugins'
 import { getEventBus } from '@onething/backend/runtime/events'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './plugin-manager.js'

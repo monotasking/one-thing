@@ -37,7 +37,7 @@ import {
   resolveCollabSayRoomSessionId,
 } from '@onething/backend/runtime/collab'
 import { isActiveAgent } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { findAgent, listAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { ensureAgentDmRoom } from './agent-dm-room.js'
 import { ensureUserDmRoom } from './user-dm-room.js'

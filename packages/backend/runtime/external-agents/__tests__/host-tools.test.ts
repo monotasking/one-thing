@@ -84,8 +84,8 @@ vi.mock('@onething/backend/runtime/toolkit/wiring', () => ({
   }) => ({ success: true, data: await sendMessageHostTool.execute(args, context) }),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
-  getSettings: () => mocks.settings,
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   addMessage: (sessionId: string, message: FakeMessage) => {
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
@@ -93,6 +93,10 @@ vi.mock('@onething/backend/store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),
   createSession: vi.fn(),
   createSessionWithoutFocus: vi.fn(),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => mocks.settings,
 }))
 
 vi.mock('../../sessions/session-store.js', () => ({

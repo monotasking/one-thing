@@ -1,3 +1,4 @@
+import { getSettings } from '@onething/backend/runtime/settings'
 import type {
 	AppSettings,
 	ChatMessage,
@@ -11,7 +12,7 @@ import {
 } from "./product-stream-runtime.js";
 import { Permission } from "@onething/backend/runtime/permissions/permission";
 import { Interaction } from '@onething/backend/runtime/interaction';
-import * as store from "@onething/backend/store.js";
+import * as store from "@onething/backend/runtime/sessions";
 import {
   sessionReads,
   sessionCommands,
@@ -61,7 +62,7 @@ export type MainStreamEngineRuntime = OnethingProductStreamRuntime<
 
 export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 	const storePort: StreamEngineStoreAdapter<AppSettings, ChatSession, ChatMessage> = {
-		getSettings: () => store.getSettings(),
+		getSettings: () => getSettings(),
 		// 换源(C2):provider 设置整套 per-space 之后,不经过 getEffectiveConfig
 		// 的解析点(标题模型)也必须看这条会话所在空间的那一份。
 		getSettingsForSession: (sessionId: string) => getSessionSettings(sessionId),

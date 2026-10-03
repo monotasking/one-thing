@@ -407,7 +407,23 @@ export type {
   CoreSessionCommandSession,
   CoreSessionCommandStep,
 } from './commands.js'
-export { deepFreeze } from '@onething/backend/utils/deep-freeze.js'
+export { deepFreeze } from './session-deep-freeze.js'
+// 以某个调用方的身份建会话 / 做一次会话操作 / 夹工作目录 / 删前校验归属(包根归位 B 从界面那条 `sessions` 域提上来,
+// 界面的域与 ACP 认领远端会话共用这一份)。
+export {
+  authorizeSessionCascadeDelete,
+  checkSessionCreateRequestAs,
+  clampSessionWorkingDirectory,
+  createPlainSessionAs,
+  describeSessionError,
+  publicCreatedSession,
+  runSessionOpAs,
+  sessionCallOptions,
+  sessionResourceKernel,
+  SessionNotFoundError,
+  WORKDIR_SANDBOX_ERROR,
+  type SessionCallerStorePort,
+} from './session-caller-ops.js'
 export {
   applyTimelineRepair,
   computeInterruptedStepRepair,

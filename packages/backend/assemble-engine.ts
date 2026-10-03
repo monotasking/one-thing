@@ -54,13 +54,16 @@ import {
 	sessionAccess,
 } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from './runtime/sessions/index.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
+// 渠道的会话路由、出站回复与给模型的渠道上下文住 gateway(包根归位 B,2026-10-04 从包根 `channel/` 搬来)。
+// 这里直取那三只文件,不走 gateway 的 `index.ts`:那只入口同时是独立网关进程的启动文件(被当成主模块执行时就起网关),
+// 打进单文件包以后 `import.meta.url` 与进程入口相同,装配一 import 它就会起一台网关。拆出网关的功能入口是留账。
+import { getChannelSessionRouter } from './runtime/gateway/gateway-channel-session-router.js'
+import { OutboundReplyDispatcher } from './runtime/gateway/gateway-outbound-reply-dispatcher.js'
 import {
-  getChannelSessionRouter,
-  OutboundReplyDispatcher,
   registerChannelPromptContextProvider,
   unregisterChannelPromptContextProvider,
-} from '@onething/backend/channel/index.js'
+} from './runtime/gateway/gateway-channel-prompt-context.js'
 import {
   handleCollabRoomSendMessage,
   isCollabCoordinatorDrivenSession,

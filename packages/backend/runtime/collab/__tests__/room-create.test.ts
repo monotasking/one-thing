@@ -32,7 +32,8 @@ const mocks = vi.hoisted(() => ({
   deleted: [] as string[],
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   createSessionWithoutFocus: (id: string, name: string, options?: { initialOwner?: { userId: string; workspaceId: string } }) => {
     const session: FakeSession = { id, name, messages: [], ownerUserId: options?.initialOwner?.userId, ownerWorkspaceId: options?.initialOwner?.workspaceId }

@@ -226,7 +226,7 @@ it('rechecks current ownership after preparation and does not let either owner b
   fixture.sessionLayer.commands.patchSession('alice-session', {
     patch, mutateIndexMeta: meta => { Object.assign(meta, patch) },
   })
-  const reads = vi.spyOn(await import('../../../store.js'), 'getSession')
+  const reads = vi.spyOn(await import('@onething/backend/runtime/sessions'), 'getSession')
   cleanups.push(() => reads.mockRestore())
   for (const context of [aliceHttp, bobHttp]) {
     await expect(cancel('transferred-call', context)).resolves.toBe(false)

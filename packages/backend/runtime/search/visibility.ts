@@ -47,7 +47,7 @@ import type {
 import type { SearchPrincipal } from './kernel/index.js'
 import type { SessionMeta } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 const log = getLogger('search.visibility')

@@ -19,7 +19,7 @@ import { isPathInside } from '@onething/backend/http-server/http-server-sandbox.
 import {
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'
-import type { FeatureDefinition, FeatureUnmount } from '@onething/backend/features/index.js'
+import type { FeatureDefinition, FeatureUnmount } from '@onething/backend/runtime/feature-registry'
 
 /** 模型能挂东西的唯一目录,相对 store 根。 */
 export const FEATURES_DEV_DIR_NAME = 'features-dev'

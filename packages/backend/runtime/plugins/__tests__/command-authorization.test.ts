@@ -7,7 +7,10 @@ vi.mock('../../sessions/access.js', async importOriginal => {
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => id === 'session'
     ? { ownerUserId: state.owner, ownerWorkspaceId: 'tenant' } : undefined }) }
 })
-vi.mock('@onething/backend/store.js', () => ({ getSession: state.read }))
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  getSession: state.read,
+}))
 vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => ({ emit: state.emit, emitGlobal: vi.fn() }) }))
 vi.mock('../host-ports.js', () => ({ execPluginCommandOnHost: vi.fn() }))
 vi.mock('../plugin-manager.js', () => ({ getPluginManager: () => ({ getCommandHandler: () => ({

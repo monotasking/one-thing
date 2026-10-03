@@ -26,6 +26,7 @@
  *  - `temperature: 0` —— 同一份材料应该排出同一个次序。裁决的随机性没有任何产品价值,
  *    它只会让「为什么这次是他先说」变成一个答不出的问题。
  */
+import { getSettings } from '@onething/backend/runtime/settings'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/backend/runtime/collab'
 import {
   buildCollabRefereeJudgePrompt,
@@ -36,7 +37,7 @@ import { isActiveAgent } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { generateChatResponse, getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/runtime/engine'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { billCollabPlanUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import { collabUserPromptFields } from '../user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/backend/runtime/collab/actors/referee-actor'
@@ -135,7 +136,7 @@ export function createCollabEngineRefereeJudgePort(
         ? { providerId: referee.model.providerId, model: referee.model.modelId }
         : null
 
-      const settings = store.getSettings()
+      const settings = getSettings()
       const { providerId, providerConfig, model } = getEffectiveProviderConfig(
         settings,
         request.roomId,

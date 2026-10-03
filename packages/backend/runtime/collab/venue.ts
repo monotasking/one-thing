@@ -31,7 +31,7 @@ import {
   type CollabVenue,
   type CollabVenueTool,
 } from '@onething/backend/runtime/collab'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 
 /** 会话形状里门要用到的那一小块。传对象而不是 id,调用方多半已经取过会话了。 */
 export interface CollabVenueSession {

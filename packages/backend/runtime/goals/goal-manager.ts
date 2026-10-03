@@ -10,6 +10,7 @@
  * whole-file write, so per-token persistence would be pure write
  * amplification.
  */
+import { getSettings } from '@onething/backend/runtime/settings'
 import { randomUUID } from "node:crypto";
 import {
 	abandonGoal,
@@ -33,7 +34,7 @@ import {
 } from "@onething/backend/runtime/goals";
 import type { SessionGoal, SessionGoalLimits } from "@onething/backend/runtime/goals";
 import { getEventBus } from "@onething/backend/runtime/events";
-import * as store from "@onething/backend/store.js";
+import * as store from "@onething/backend/runtime/sessions";
 import { sessionReads } from "@onething/backend/runtime/sessions";
 import { getCurrentBackendInstance } from '@onething/backend/current.js';
 
@@ -52,7 +53,7 @@ const pendingUsage = new Map<string, { tokens: number; seconds: number }>();
 const roundsSinceContinuation = new Map<string, number>();
 
 export function goalLimits(): SessionGoalLimits {
-	const chat = store.getSettings().chat;
+	const chat = getSettings().chat;
 	return {
 		continuationLimit: chat?.goalContinuationLimit,
 		defaultTokenBudget: chat?.goalDefaultTokenBudget,

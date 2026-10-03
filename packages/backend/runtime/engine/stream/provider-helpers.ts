@@ -3,7 +3,7 @@
  * Handles provider configuration and credential management
  */
 
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
 import { requiresOAuth } from '../engine-chat-facade.js'
 import { oauthManager } from '@onething/backend/runtime/auth'
@@ -102,7 +102,7 @@ export function getEffectiveProviderConfig(
 ): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
   // **换源(C2)**:provider 设置整套 per-space 之后,`settings.ai` 必须是**这条
   // 会话所在空间**的那一份。调用方递进来的 settings 只保证是「一份 settings」,
-  // 它的 `ai` 可能是 default 空间的(`store.getSettings()` 的缺省)。换源放在
+  // 它的 `ai` 可能是 default 空间的(`getSettings()` 的缺省)。换源放在
   // 这条唯一的解析缝里 —— 让每个调用方各自记得换,就是漏一个的开始。
   const scoped = { ...settings, ai: getSessionSettings(sessionId).ai }
   return getEffectiveOnethingProviderConfig(scoped, sessionId, {

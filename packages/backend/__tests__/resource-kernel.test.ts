@@ -170,7 +170,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 正是它们**是两件事**:一条不带抄本、一条带。
    */
   it('read get 拿到的是摘要(不带抄本),record 拿到的是整份记录', async () => {
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     const created = store.createSession(`resource-k1-${Date.now()}`, 'First name')
     sessionId = created.id
 
@@ -207,7 +207,7 @@ describe('资源内核在真装配里(K1)', () => {
    */
   it('工单 4 A:read page 给出尾页 + 水位,nextBefore 往上翻得到头', async () => {
     const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     const created = store.createSession(`resource-page-${Date.now()}`, 'Paged')
 
     for (let index = 1; index <= 7; index++) {
@@ -262,7 +262,7 @@ describe('资源内核在真装配里(K1)', () => {
    */
   it('工单 5 ①②:页带 results 侧表,toolResult 是自述里的一条读法', async () => {
     const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-    const store = await import('../store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     const created = store.createSession(`resource-results-${Date.now()}`, 'Results')
     sessionCommands.appendMessage(created.id, {
       message: { id: 'q1', role: 'system' as const, content: 'one line', timestamp: 1 } as never,

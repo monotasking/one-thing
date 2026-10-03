@@ -123,7 +123,7 @@ describe('@onething/backend import purity', () => {
     await import('@onething/backend/runtime/tools/bash-executor')
     await import('../runtime/engine/engine-chat-facade.js')
     await import('@onething/backend/runtime/scheduler/scheduler-bound')
-    await import('../utils/ripgrep.js')
+    await import('../runtime/files/files-ripgrep-app-fetch.js')
     await import('@onething/backend/runtime/search')
     await import('@onething/backend/runtime/skills/manage-setup')
     await import('@onething/backend/runtime/skills/skill-sources')
@@ -138,13 +138,13 @@ describe('@onething/backend import purity', () => {
    * K0 的注册基座同样归这道栅栏管(内核收缩,
    * docs/design/kernel-shrink-builtin-plugins-2026-08.md §1 D2)。
    *
-   * 它比上面那批更容易在未来出事:`features/registry` 与 `http-server/http-server-client-api-roster` 都在模块
+   * 它比上面那批更容易在未来出事:`runtime/feature-registry/feature-registry-table` 与 `http-server/http-server-client-api-roster` 都在模块
    * 级持有表,而「顺手在模块级挂一个 feature」是个只要写一次就再也发现不了的
    * 错 —— 症状会是 apps/server 里 import 一下就把域注册了,与宿主自己的装配
    * 撞重复守卫。所以这里断言的是**表在 import 后是空的**。
    */
   it('importing the K0 feature base mounts nothing', { timeout: 60_000 }, async () => {
-    const features = await import('../features/index.js')
+    const features = await import('../runtime/feature-registry/feature-registry.js')
     await import('../http-server/http-server-client-api-roster.js')
 
     expect(features.dumpFeatures()).toEqual([])
@@ -157,10 +157,10 @@ describe('@onething/backend import purity', () => {
    */
   it('importing the sessions entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
     const sessions = await import('@onething/backend/runtime/sessions')
-    // 包根归位 2(2026-10-03):设置仓储进了设置入口、接入目录进了文件入口,兼容桶 `store.ts` 两边都转发;一并 import。
+    // 包根归位 2(2026-10-03):设置仓储进了设置入口、接入目录进了文件入口,一并 import。这里从前还 import 兼容桶 `store.ts`,
+    // 包根归位 B(2026-10-04)删桶之后它的名字都从会话 / 设置入口拿,两只入口上面已经各 import 过。
     await import('@onething/backend/runtime/settings')
     await import('@onething/backend/runtime/files')
-    await import('../store.js')
 
     expect(typeof sessions.getSession).toBe('function')
     expect(loadSpy.calls).toEqual([])

@@ -76,16 +76,20 @@ vi.mock('../../sessions/access.js', async importOriginal => {
   }) }
 })
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   updateSessionWorkingDirectory: vi.fn(),
-  // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。
-  getSettings: () => mocks.settings,
   getSession: (id: string) => mocks.sessions.get(id),
   addMessage: (sessionId: string, message: FakeMessage) => {
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
   },
   createSession: mocks.createSession,
   createSessionWithoutFocus: mocks.createSession,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。
+  getSettings: () => mocks.settings,
 }))
 
 vi.mock('@onething/backend/runtime/events', () => ({

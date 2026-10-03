@@ -11,7 +11,7 @@
  * 然后把 F3 涉及的四条真实路径各跑一遍。任何一处退回就地改,这里立刻红。
  */
 import { describe, expect, it } from 'vitest'
-import { deepFreeze } from '@onething/backend/utils/deep-freeze.js'
+import { deepFreeze } from '@onething/backend/runtime/sessions'
 import { createCoreStreamProcessor } from '../agent-loop-stream-processor.js'
 import { executeCoreToolAndUpdate } from '../agent-loop-tool-orchestration.js'
 import {

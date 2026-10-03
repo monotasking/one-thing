@@ -1,6 +1,9 @@
 import { expect, it, vi } from 'vitest'
 
-vi.mock('@onething/backend/store.js', () => ({ getSession: () => ({ kind: 'room', room: { memberAgentIds: [] } }) }))
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  getSession: () => ({ kind: 'room', room: { memberAgentIds: [] } }),
+}))
 vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({ getUsageLedger: () => ({ readRecordsInRange: async () => [
   { sessionId: 'alice-room', costUSD: 1 }, { sessionId: 'alice-work', costUSD: 2 },
   { sessionId: 'bob-work', costUSD: 100 }, { sessionId: 'deleted-unknown-owner', costUSD: 1000 },

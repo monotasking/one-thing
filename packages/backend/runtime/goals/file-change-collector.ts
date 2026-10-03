@@ -20,7 +20,7 @@ import type { GoalFileDiff } from "@shared/ipc.js";
 import {
   getOnethingFileMutationsDir,
 } from '@onething/backend/runtime/storage'
-import * as store from "@onething/backend/store.js";
+import * as store from "@onething/backend/runtime/sessions";
 
 /**
  * Per-side cap on shipping the full before/after text. Past it the renderer

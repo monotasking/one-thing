@@ -48,13 +48,17 @@ vi.mock('@onething/backend/runtime/storage/storage-primitives', () => ({
 
 vi.mock('@onething/backend/runtime/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-collab-inspector' }))
 
-vi.mock('@onething/backend/store.js', () => ({
-  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
-  getSettings: () => ({}),
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   getSessionsList: () => [...mocks.sessions.values()],
   addMessage: () => {},
   updateSessionAgent: () => true,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
+  getSettings: () => ({}),
 }))
 
 vi.mock('@onething/backend/runtime/events', () => ({
@@ -142,7 +146,7 @@ function events(): Array<Record<string, unknown>> {
 beforeEach(async () => {
   vi.useRealTimers()
   shutdownCollabInspector()
-  const { getSession } = await import('@onething/backend/store.js')
+  const { getSession } = await import('@onething/backend/runtime/sessions')
   const { getEventBus } = await import('@onething/backend/runtime/events')
   configureCollabInspector(createCollabInspector({
     getSession, emit: getEventBus().emit, isActive: () => true, onError: error => { throw error },

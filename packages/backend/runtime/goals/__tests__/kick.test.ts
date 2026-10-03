@@ -35,7 +35,8 @@ vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (sessionId: string) => mocks.getSession(sessionId),
 }))
 

@@ -3,7 +3,7 @@
  * Handles stream context, processor, and active stream management
  */
 
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ipc.js'
 import type { Principal } from '@shared/permission/principal'
 import type { ToolCall } from '@shared/ipc.js'

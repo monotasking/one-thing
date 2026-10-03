@@ -42,7 +42,7 @@ import {
 } from "@onething/backend/runtime/collab";
 import { findAgent } from "@onething/backend/runtime/agents/agent-store-access";
 import { resolveUserIdentity } from "@onething/backend/runtime/collab/user-identity";
-import * as store from "@onething/backend/store.js";
+import * as store from "@onething/backend/runtime/sessions";
 import { getLogger } from '../../logging/configure-logging.js'
 import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/runtime/sessions'
 

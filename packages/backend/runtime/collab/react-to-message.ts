@@ -13,7 +13,7 @@
  */
 import { applyCollabReaction, normalizeCollabReactionEmoji } from '@onething/backend/runtime/collab'
 import type { ChatMessageReaction, ChatMessageReactionActor } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'

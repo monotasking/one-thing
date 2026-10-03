@@ -79,13 +79,13 @@ vi.mock('@onething/backend/runtime/usage/usage-recorder', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   updateSessionWorkingDirectory: vi.fn(),
   // P2-10: the v3 runtime registers a room-disposal listener at startup.
   onSessionsDeleted: () => () => {},
   getSession: (id: string) => mocks.sessions.get(id),
   getSessionsList: () => [...mocks.sessions.values()],
-  getSettings: () => ({}),
   addMessage: (sessionId: string, message: FakeMessage) => {
     const session = mocks.sessions.get(sessionId) as FakeSession | undefined
     session?.messages.push(message)
@@ -94,6 +94,10 @@ vi.mock('@onething/backend/store.js', () => ({
   updateSessionCollab: vi.fn(() => true),
   updateSessionPermissionMode: vi.fn(() => true),
   renameSession: vi.fn(),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => ({}),
 }))
 
 vi.mock('@onething/backend/runtime/events', () => ({

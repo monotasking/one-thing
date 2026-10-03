@@ -41,9 +41,13 @@ const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<stri
 
 vi.mock('@onething/backend/runtime', () => runtime)
 vi.mock('../../settings/settings-store.js', () => settings)
-vi.mock('../../../store.js', () => ({
-  getSettings: settings.getSettings,
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: vi.fn(() => undefined),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: settings.getSettings,
 }))
 vi.mock('@onething/backend/runtime/skills/session-skill-cache', () => ({ getSkillsForSession: vi.fn(() => []) }))
 vi.mock('@onething/backend/runtime/evals/turn-incident', () => ({ createIncidentForTurn: vi.fn(async () => null) }))

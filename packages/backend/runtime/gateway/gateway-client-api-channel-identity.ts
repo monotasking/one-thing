@@ -14,11 +14,9 @@ import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-s
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '@onething/backend/runtime/sessions'
 import { channelIdentityRouter, type ChannelIdentityRoutes } from '@shared/ipc/channel-identity.js'
-import {
-  getChannelIdentityService,
-  getChannelIdentityStore,
-  identitySessionKey,
-} from '@onething/backend/channel/index.js'
+import { getChannelIdentityService } from './gateway-channel-identity-service.js'
+import { getChannelIdentityStore } from './gateway-channel-identity-store.js'
+import { identitySessionKey } from '@onething/backend/runtime/agent-loop'
 
 function failure(error: unknown): { success: false; error: string } {
   return { success: false, error: error instanceof Error ? error.message : String(error) }

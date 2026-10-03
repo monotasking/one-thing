@@ -31,20 +31,8 @@ import {
   useOnethingHeadlessProvider,
 } from '@onething/backend/runtime/headless/index'
 import { createOnethingBackend, type OnethingBackend, type OnethingBackendOptions } from '@onething/backend/backend.js'
-import {
-  createSession,
-  getCurrentSessionId,
-  getSession,
-  getSessionsList,
-  renameSession,
-  saveSettings,
-  setCurrentSessionId,
-  updateSessionArchived,
-  updateSessionModel,
-  updateSessionPermissionMode,
-  updateSessionPin,
-  updateSessionWorkingDirectory,
-} from '@onething/backend/store.js'
+import { createSession, getCurrentSessionId, getSession, getSessionsList, renameSession, setCurrentSessionId, updateSessionArchived, updateSessionModel, updateSessionPermissionMode, updateSessionPin, updateSessionWorkingDirectory } from '@onething/backend/runtime/sessions'
+import { saveSettings } from '@onething/backend/runtime/settings'
 // 建房走 app 层那一本规则书。直接指到 room-create 而不是 collab 桶:这条口是
 // 同步的,而桶会把协调器整棵树一起拉起来 —— 邻居们的 `await import` 就是为了
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。

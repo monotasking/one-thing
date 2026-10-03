@@ -13,7 +13,7 @@
  *    第二份会话实现(sessions / messages / chat 三个 adapter 里对应的方法)。
  *
  * 逻辑一行没搬:二十六条**逐条**转调 `@onething/backend/runtime/sessions` 的投影
- * (`*OnethingSession*` / `*ForIpc`),仓本体照旧是 `@onething/backend/store` 那一份
+ * (`*OnethingSession*` / `*ForIpc`),仓本体照旧是 会话入口 `@onething/backend/runtime/sessions`(兼容桶 `store.ts` 已于包根归位 B 删除) 那一份
  * —— 与迁移前 `@main` 那份适配逐字同义,连 `logger: console` 都只是换成了同一个
  * 鸭子 logger 端口。
  *
@@ -54,13 +54,8 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   activateOnethingSessionForIpc,
   createOnethingBranchSessionForIpc,
-  createOnethingSessionForIpc,
-  describeInvalidOnethingCreateSessionRequestForIpc,
-  ONETHING_SESSION_NOT_FOUND,
   switchOnethingSessionForIpc,
 } from '@onething/backend/runtime/sessions'
-import { isValidSpaceId } from '@onething/backend/runtime/spaces/types'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
 import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/backend/runtime/sessions'
 import type {
   ChatMessage,
@@ -73,8 +68,8 @@ import type { SessionSegment } from '@shared/ipc/toc.js'
 import type { SessionTokenUsageReadout } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
-import * as store from '@onething/backend/store.js'
-import { requestSessionOwner, sessionAccess, SessionAccessError, type SessionOwnershipRecord } from '@onething/backend/runtime/sessions'
+import * as store from '@onething/backend/runtime/sessions'
+import { requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/runtime/sessions'
 import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
@@ -82,16 +77,24 @@ import {
 } from '@onething/backend/runtime/collab/rooms'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/runtime/todo-plan/todo-plan-service'
-import { resolveInsideSandbox, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import {
   foldOutcomeToDetailedEnvelope,
   foldOutcomeToEnvelope,
   foldReadOutcomeToEnvelope,
 } from '@onething/backend/http-server/http-server-resource-envelope.js'
-import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
-import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/current.js'
-import { SessionNotFoundError } from '@onething/backend/runtime/resource/session-provider'
-import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
+import {
+  authorizeSessionCascadeDelete,
+  checkSessionCreateRequestAs,
+  clampSessionWorkingDirectory,
+  createPlainSessionAs,
+  describeSessionError,
+  publicCreatedSession,
+  runSessionOpAs,
+  sessionCallOptions,
+  sessionResourceKernel,
+  SessionNotFoundError,
+  WORKDIR_SANDBOX_ERROR,
+} from './session-caller-ops.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/runtime/sessions'
 import type { ReadOutcome } from '@onething/backend/runtime/resource/resource-api'
@@ -104,10 +107,6 @@ const log = getLogger('rpc.sessions')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
 const consoleLog: ConsoleLikePort & OnethingSessionsIpcLogger = consolePort(log)
 
-function publicCreatedSession(session: ChatSession): ChatSession {
-  const { ownerUserId: _user, ownerWorkspaceId: _workspace, userId: _legacy, storageGeneration: _generation, ...publicSession } = session as ChatSession & SessionOwnershipRecord & { storageGeneration?: string }
-  return publicSession
-}
 
 /** 会话切换时把「当前会话」写进 app-state,并叫醒那扇独立的 todo 窗。 */
 function setCurrentSession(sessionId: string): void {
@@ -116,11 +115,6 @@ function setCurrentSession(sessionId: string): void {
   notifyTodoPlanActiveSessionChanged()
 }
 
-/** 夹不住时的答案。**逐字**沿用被删掉的 server 路由那份文案。 */
-const WORKDIR_SANDBOX_ERROR = {
-  success: false as const,
-  error: 'Working directory must stay inside the workspace sandbox root.',
-}
 
 /**
  * ## 七条写面已经退成资源投影(原子 K2c-1)
@@ -157,35 +151,9 @@ const WORKDIR_SANDBOX_ERROR = {
  * `Result.details` 上抬 —— 那一格 `OutputBudget` 不裁,理由在 `http-server/http-server-resource-envelope.ts`。
  */
 
-/** 这个进程当前那台资源内核。与 `runtime/resource/resource-client-api.ts` 同一条读法、同一句「还没装配」。 */
-function resources() {
-  const backend = getCurrentBackendInstance()
-  if (!backend) throw new BackendNotAssembledError()
-  return backend.resources
-}
-
-/**
- * 一次调用的坐标。
- *
- * **不带 `sessionId`**:那一格是「从哪条会话里发起的」,不是操作对象。界面上改一条
- * 会话的名字与那条会话正在跑的回合无关,拿它顶上去,审计就读成「A 自己改了自己」
- * (K1 留账,K2a 的答案是保留坐标 + `<store>/audit/resource.jsonl`)。
- */
-function callOptions(context: RpcDispatchContext) {
-  return {
-    principal: principalOf(context),
-    ...(context.signal ? { signal: context.signal } : {}),
-  }
-}
-
-/**
- * 「这次失败在本域的契约里叫什么」。**只有一条**:二十六条方法共用的那句
- * `Session not found`(`ONETHING_SESSION_NOT_FOUND`)。其余原样交出管线那句话 ——
- * 域不发明文案。判据是类不是消息串。
- */
-function describeSessionError(error: Error): string | undefined {
-  return error instanceof SessionNotFoundError ? ONETHING_SESSION_NOT_FOUND : undefined
-}
+// 资源内核、调用坐标、「这次失败叫什么」三样住 `session-caller-ops.ts`(包根归位 B),这里与 ACP 共用。
+const resources = sessionResourceKernel
+const callOptions = sessionCallOptions
 
 /**
  * 拼参数 → **读那条路** → 折回信封。六条读面共用的那三句话(K2c-2)。
@@ -246,14 +214,7 @@ async function doSessionOpWithDetails<T extends object>(
   })
 }
 
-function runSessionOp(
-  context: RpcDispatchContext,
-  sessionId: string,
-  op: string,
-  params: Record<string, unknown>,
-) {
-  return resources().do(`${SESSION_RESOURCE_SCHEME}:${sessionId}`, op, params, callOptions(context))
-}
+const runSessionOp = runSessionOpAs
 
 /**
  * 两条标记消息删除的回执载荷。**`null` 不是 `undefined`**:契约那一格是
@@ -410,36 +371,19 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
         error: `Session kind '${kind}' is not supported on the server host`,
       }
     }
-    // workspaceId 进 `workspaces/<id>/` 的路径片段,字符集卡死;非法值
-    // 不报错、直接当没带(缺席 = default),不给它拖垮建会话这条路。
-    const resolvedWorkspaceId = isValidSpaceId(workspaceId) ? workspaceId : undefined
-    if (sessionId) sessionAccess.resolveOptional(context, sessionId, 'write')
-    // 建会话请求的三条规矩(自带 id 的格式、不认领已存在的会话、kind 只认
-    // 'room')连同失败文案都在运行时里;这里只把请求递过去、把判定原样递回。
-    const invalidRequest = await describeInvalidOnethingCreateSessionRequestForIpc({
-      sessionId,
-      kind,
-      getSession: id => store.getSession(id),
-    })
-    if (invalidRequest) return invalidRequest
-    if (kind === 'room') {
-      // 建房的规则书只有一本,在装配层(runtime/collab/room-create.ts)—— 成员过滤、
-      // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与
-      // 「改房」那条路(setCollabRoomConfig)对齐。这里只递形状,不留规则。
-      const result = await ensureCollabGroupRoom(name || 'New Chat', room as CollabGroupRoomInput | undefined, {
-        sessionId: sessionId ?? uuidv4(),
-        initialOwner: requestSessionOwner(context),
-      })
-      if (result.session) result.session = publicCreatedSession(result.session)
-      return result
-    }
-    const result = await createOnethingSessionForIpc({
+    // 建普通会话那一条(workspaceId 卡字符集、自带 id 要写权限、三条规矩)住会话功能本身
+    // (`session-caller-ops.ts`,包根归位 B),ACP 认领远端会话走的是同一份;这里只多房间那一支。
+    if (kind !== 'room') return createPlainSessionAs(context, { name, sessionId, workspaceId, kind }, store)
+    const checked = await checkSessionCreateRequestAs(context, { sessionId, workspaceId, kind }, store)
+    if (!checked.ok) return checked.response
+    // 建房的规则书只有一本,在装配层(runtime/collab/room-create.ts)—— 成员过滤、
+    // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与
+    // 「改房」那条路(setCollabRoomConfig)对齐。这里只递形状,不留规则。
+    const result = await ensureCollabGroupRoom(name || 'New Chat', room as CollabGroupRoomInput | undefined, {
       sessionId: sessionId ?? uuidv4(),
-      name,
-      createSession: (id, nextName) => publicCreatedSession(
-        store.createSession(id, nextName, { workspaceId: resolvedWorkspaceId, initialOwner: requestSessionOwner(context) })),
-      logger: consoleLog,
+      initialOwner: requestSessionOwner(context),
     })
+    if (result.session) result.session = publicCreatedSession(result.session)
     return result
   },
   /** `activate` 的孪生条 —— 同一条理由,见上面那一段。 */
@@ -477,8 +421,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
    * 那一份才是「删哪几条」。
    */
   async delete(request, context = DESKTOP_RPC_CONTEXT) {
-    sessionAccess.resolveAll(context,
-      collectSessionCascadeDeleteIds(store.getSessionsList(), request.sessionId), 'delete')
+    authorizeSessionCascadeDelete(context, request.sessionId, store)
     return doSessionOpWithDetails(context, request.sessionId, 'delete', {}, details => ({
       deletedCount: (details.deletedCount as number | undefined) ?? 0,
       ...(typeof details.parentSessionId === 'string' ? { parentSessionId: details.parentSessionId } : {}),
@@ -518,16 +461,9 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     // B2 去掉了 `transport === 'http' &&`:可信是面级事实,不是传输属性。没声明
     // 可信的进程里,`ipc` 的路径也会过一遍 `resolveInsideSandbox` 的**未夹紧**
     // 分支(那一支只做 `resolve()` + `~` 展开,不拒任何路径),所以桌面语义没变。
-    let workingDirectory = request.workingDirectory
-    if (
-      !isHostLocallyTrusted()
-      && typeof workingDirectory === 'string'
-      && workingDirectory !== ''
-    ) {
-      const inside = resolveInsideSandbox(resolveRpcSandbox(context), workingDirectory)
-      if (!inside) return WORKDIR_SANDBOX_ERROR
-      workingDirectory = inside
-    }
+    const clamped = clampSessionWorkingDirectory(context, request.workingDirectory)
+    if (!clamped.ok) return WORKDIR_SANDBOX_ERROR
+    const workingDirectory = clamped.workingDirectory
     // 目录存不存在、是不是目录、清空怎么算,全在 provider 那一路的规则书里
     // (`updateOnethingSessionWorkingDirectory`)—— AI 走资源面时判据一模一样。
     // 清空(null / '')在自述里就是空串:它是一条合法的值,不是缺席。

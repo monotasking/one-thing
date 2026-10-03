@@ -29,7 +29,7 @@ import {
 } from '@onething/backend/runtime/storage'
 import { getTodoPlanDirectory } from '@onething/backend/runtime/todo-plan/todo-plan-service'
 import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/agent-store-access'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import {
   buildCollabRoomSystemPrompt,
   buildCollabWorkContext,

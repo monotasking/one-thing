@@ -11,7 +11,7 @@ import {
   COLLAB_DEFAULT_DAILY_COST_USD,
   collabAgentSessionIdsForScan,
 } from '@onething/backend/runtime/collab'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getUsageLedger } from '@onething/backend/runtime/usage/usage-recorder'
 import { loadCollabBoard } from './board-store.js'
 import { postSystemLine } from './room-runtime.js'

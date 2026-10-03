@@ -44,7 +44,7 @@ import {
   detachPluginStatusHost,
   subscribePluginStatusSweep,
 } from '@onething/backend/runtime/plugins/status-bound'
-import { configureIMConnectorHooks } from '@onething/backend/channel/connector-registry.js'
+import { configureIMConnectorHooks } from './plugins-im-connector-registry.js'
 import {
   fetchPluginMarketIndex,
   installPluginPackage,

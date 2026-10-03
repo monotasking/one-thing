@@ -8,17 +8,18 @@
  * 这是 http-server 目录里**唯一**点名功能的文件。
  *
  * 表里两种成员:
- *  - **名册行**(`ClientApiRow`):一行一个域,挂载时注册成 id 为 `rpc:<域>` 的 feature;
- *  - **feature**(`FeatureDefinition`,今天是轨迹与自进化两只,住 `features/builtin/`):它自己决定注册什么。
+ *  - **名册行**(`ClientApiRow`):一行一个域,挂载时注册成 id 照抄的 feature(一律 `rpc:<域>`,唯一的例外是
+ *    轨迹那一行 `trajectory`,理由写在 `sessions-client-api-events.ts`);
+ *  - **feature**(`FeatureDefinition`,今天只剩自进化一只,住 `runtime/toolkit/toolkit-client-api-self-evolution.ts`):它自己决定注册什么(三个会话工具,一个域都不注册)。
+ *  挂载基座(`mountFeature` / `dumpFeatures`)是 `runtime/feature-registry/`。
  *
  * 历史(K0 / C2,`docs/design/kernel-shrink-builtin-plugins-2026-08.md` §3、`docs/design/cordis-adoption-2026-08.md` §2):
  * 每个域从 K0 起就是一个 feature(`rpc:<域>`),注册项有主(`dumpFeatures()` 看得见),卸载逐 feature 逆序解绕;
  * 2026-10-04 包根归位把「名册里内联的 `{ id, mount }` 包装」换成「功能自己交出的一行」,id、顺序与注册项一格未动。
  * (遗留:函数仍叫 `registerAppRpcDomains`,名字比内容窄半格。)
  */
-import { selfEvolutionFeature } from '../features/builtin/self-evolution.js'
-import { trajectoryFeature } from '../features/builtin/trajectory.js'
-import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '../features/index.js'
+import { selfEvolutionFeature } from '../runtime/toolkit/toolkit-client-api-self-evolution.js'
+import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '@onething/backend/runtime/feature-registry'
 import type { ClientApiRow } from './http-server-dispatch-table.js'
 import { ACP_CLIENT_API } from '../runtime/acp/acp-client-api.js'
 import { HOST_MCP_CLIENT_API } from '../runtime/acp/acp-client-api-host-mcp.js'
@@ -54,6 +55,7 @@ import { SCHEDULER_CLIENT_API } from '../runtime/scheduler/scheduler-client-api.
 import { SEARCH_CLIENT_API } from '../runtime/search/search-client-api.js'
 import { NOTES_CLIENT_API } from '../runtime/notes/notes-client-api.js'
 import { SCRATCHPAD_CLIENT_API } from '../runtime/scratchpad/scratchpad-client-api.js'
+import { SESSION_EVENTS_CLIENT_API } from '../runtime/sessions/sessions-client-api-events.js'
 import { SESSION_COMMAND_CLIENT_API } from '../runtime/sessions/sessions-client-api-commands.js'
 import { SESSIONS_CLIENT_API } from '../runtime/sessions/sessions-client-api.js'
 import { SKILLS_CLIENT_API } from '../runtime/skills/skills-client-api.js'
@@ -88,7 +90,8 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   TODO_PLAN_CLIENT_API,
   // C2：轨迹是第一个迁成真 feature 的功能。它占的就是 `rpc:session-events`
   // 从前那一格 —— 顺序不变，变的是这一行说的是「哪件功能」而不是「哪个域」。
-  trajectoryFeature,
+  // 包根归位 B(2026-10-04):那只 feature 并成了会话的一行名册(id 仍是 `trajectory`,见那一行的说明)。
+  SESSION_EVENTS_CLIENT_API,
   CHANNEL_IDENTITY_CLIENT_API,
   AGENTS_CLIENT_API,
   PROVIDERS_CLIENT_API,

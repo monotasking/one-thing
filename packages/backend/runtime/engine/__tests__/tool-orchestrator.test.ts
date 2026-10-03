@@ -4,16 +4,19 @@ import { createDefaultSettings } from '../../settings/defaults/settings.js'
 import type { JsonObject } from '@shared/json.js'
 import type { IPCEmitter } from '../../agent-loop/agent-loop-session-stream-emitter.js'
 import type { StreamContext, StreamProcessor } from '../stream/stream-processor.js'
+import * as sessionsEntry from '@onething/backend/runtime/sessions'
 
 const mockBus = {
   emit: vi.fn(async () => undefined),
 }
-vi.mock('../../sessions/reads.js', async () => {
-  const store = await import('@onething/backend/store.js')
-  return { sessionReads: { getMessage: (sessionId: string, messageId: string) => store.getSession(sessionId)?.messages.find(message => message.id === messageId) } }
-})
+// 读面替身经会话入口取 `getSession` 的替身。用到时才取(不在工厂里 `await import`):会话入口的替身展开真模块时
+// 会加载 `reads.js`,工厂里等会话入口加载完就是互相等(包根归位 B 之前替身打在兼容桶 store.ts 上,没有这个环)。
+vi.mock('../../sessions/reads.js', () => ({
+  sessionReads: { getMessage: (sessionId: string, messageId: string) => sessionsEntry.getSession(sessionId)?.messages.find(message => message.id === messageId) },
+}))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   updateMessageToolCalls: vi.fn(),
   updateMessageSteps: vi.fn(),
   updateMessageContentParts: vi.fn(),
@@ -164,7 +167,7 @@ describe('ToolOrchestrator', () => {
         throw new Error('read should have been discarded')
       }
     })
-    const store = await import('@onething/backend/store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     vi.mocked(store.getSession).mockReturnValue(testSession({
         toolCalls: [],
         steps: [
@@ -178,7 +181,7 @@ describe('ToolOrchestrator', () => {
   it('does not emit a stale message update for a hidden tool that was never published', async () => {
     const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
     const { executeToolAndUpdate } = await import('../stream/tool-execution')
-    const store = await import('@onething/backend/store.js')
+    const store = await import('@onething/backend/runtime/sessions')
     vi.mocked(executeToolAndUpdate).mockReset()
     mockBus.emit.mockClear()
 

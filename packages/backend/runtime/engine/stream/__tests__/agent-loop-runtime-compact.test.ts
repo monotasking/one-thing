@@ -23,7 +23,8 @@ const compactSessionContext = vi.fn((_input: {
 }))
 const shouldSkipAutoCompactForProviderUsageMismatch = vi.fn(() => false)
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession,
 }))
 

@@ -33,7 +33,8 @@ vi.mock('@onething/backend/runtime/permissions/permission-asks', () => ({
   },
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSessionDetails: (sessionId: string) => {
     const session = sessions.get(sessionId)
     return session

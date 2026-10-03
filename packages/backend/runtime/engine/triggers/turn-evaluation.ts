@@ -1,6 +1,6 @@
+import { getSettings } from '@onething/backend/runtime/settings'
 import type { Trigger, TriggerContext } from "@onething/backend/runtime/agent-loop";
 import { getSkillsForSession } from "@onething/backend/runtime/skills/session-skill-cache";
-import * as store from "@onething/backend/store.js";
 import { getLogger } from '../../logging/configure-logging.js'
 
 const log = getLogger('engine.triggers')
@@ -13,7 +13,7 @@ const log = getLogger('engine.triggers')
  */
 function getEvalsSampleRate(): number {
 	try {
-		const rate = (store.getSettings() as { evals?: { sampleRate?: unknown } })
+		const rate = (getSettings() as { evals?: { sampleRate?: unknown } })
 			?.evals?.sampleRate;
 		return typeof rate === "number" && rate > 0 && rate <= 1 ? rate : 0;
 	} catch {

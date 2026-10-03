@@ -30,7 +30,7 @@ const connected = vi.hoisted(() => ({
   getConnectedDirectoriesForSession: vi.fn((): string[] => []),
 }))
 
-vi.mock('../../../utils/ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
+vi.mock('../ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
 
 /**
  * 笔记根来自**笔记领域**(P3;从前是 `user_note_dir` / `work_note_dir` 两个变量)。

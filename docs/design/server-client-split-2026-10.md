@@ -1769,3 +1769,24 @@ assembly 同红(`music/radio.ts` 9 → 10,与本笔无关);boundary(含全量 ch
 `client-api:gate` 55 只 / 40 个功能、0 越界;feature-map 重新生成后一致;`provider:drill` 改前就红(模板引 s19 删掉的键),修后绿;CLI `--help` 不写 store;server 包在临时 store 上 listening;`gate:web-shell`(React 浏览器壳,无头 Chromium、临时 store、web 端口改 15174)全绿。
 
 **留账**:`http-server-runtime.ts`(4229 行,server runtime 的装配与门面)仍点名约 30 个功能,分发表 `http-server-dispatch-table.ts` 为契约自述的会话授权引 sessions 入口 —— 「http-server 不点名功能」这一笔只落在名册与路由上;B 部分(`channel/` → gateway、`features/` 按内容归位、`utils/` 归使用者、删 `store.ts`)待做。
+
+### 包根归位 B 落地记录:`channel/` / `features/` / `utils/` 归位、删兼容桶 `store.ts`、`sessions.create` 核心进会话入口(2026-10-04,未提交)
+
+**一句话**:包根只剩 `backend.ts` / `assemble-engine.ts` / `current.ts` / `host-ports.ts` / `lifecycle.ts` / `types.d.ts` + `http-server/` / `runtime/` / `__tests__/`(决策 D76–D88)。
+`channel/` 五只进 gateway(`gateway-channel-*.ts`、`gateway-outbound-reply-dispatcher.ts`),消息来源 `origin.ts` 进 agent-loop、IM 连接器登记表进 plugins(按层次,D76);
+`features/` 的注册基座成了新功能 `runtime/feature-registry/`(L2,D78),自我进化成了 toolkit 的名册成员 `toolkit-client-api-self-evolution.ts`(D80),轨迹并成 sessions 事件域那一行名册(id 仍 `trajectory`,D81);
+`utils/` 四只按使用者归位(`deep-freeze` → sessions、ripgrep 装配步 → files,`fuzzy` / `wildcard` 零调用者删,D82);兼容桶 `store.ts` 删掉(67 只生产文件改从会话 / 设置入口拿名字,59 份测试的整块替身改打在入口上,D83 / D84);
+`sessions.create` 等四步「以调用方身份对会话做的事」提进 `runtime/sessions/session-caller-ops.ts` 并经会话入口交出,界面的 `sessions` 域与 ACP 认领 / 分叉共用,`client-api:gate` 的例外表清空(D85 / D86)。
+
+**测试替身的统一改法(D84)**,代表例子 `runtime/collab/__tests__/agent-dm-room.test.ts`:
+从前 `vi.mock('@onething/backend/store.js', () => ({ getSettings: …, getSession: …, createSession: …, … }))` 一整块;现在拆成
+`vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({ ...await importOriginal<…>(), getSession: …, createSession: …, … }))` 与
+`vi.mock('@onething/backend/runtime/settings', async importOriginal => ({ ...await importOriginal<…>(), getSettings: … }))`,对象里每一格(连注释)原样保留,断言不动。
+因此带出来的三处替身调整:两份网关测试的 `configure-logging` 替身改成展开真模块;`tool-orchestrator.test` 的读面替身不再在工厂里 `await import` 会话入口(否则与会话入口的替身互等、钩子超时);
+`tasks/__tests__/dispatch.test.ts` 在并发 import 之前先单独 `await import` 会话入口(替身工厂异步展开真模块,与 `dispatch.js` 的并发加载抢跑时,`dispatch.js` 偶尔拿到真模块 —— 改前三跑两红,改后四跑全绿)。
+ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
+
+**验收(改前 `s20b-before` = 7b1826d60 + 别的会话的未提交改动 / 改后 `s20b-after`)**:见 `backend-structure-decisions-2026-10.md` D76–D88 与本节末的读数;要点:typecheck 三套零错;四份构建与 `web:build` 成功;三份 `search-worker.cjs` 前后同大;
+`sessions:shadow-battery`(真 server 的 HTTP / RPC)前后只差耗时;`gate:acp` 规整后相同;`gate:search-index` 同红 ⑤c / ⑤d;`gate:web-shell` 全绿;cycle 0;layer 57 / 31 → 48 / 26;name 109 → 106;entry 2331 → 2335(+4,见 D77 / D84);client-api 0 越界、0 例外。
+
+**留账**:gateway 的 `index.ts` 兼做独立网关进程的启动文件,装配只能直取渠道的三只文件(D77);`http-server-runtime.ts` 拆成各功能的 server 门面(D88);两者登记为路线第 8 条。

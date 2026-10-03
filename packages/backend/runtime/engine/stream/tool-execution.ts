@@ -4,7 +4,7 @@
  */
 
 import { sessionReads } from '@onething/backend/runtime/sessions'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import type { DiffHunk, Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/runtime/toolkit/execution-types'

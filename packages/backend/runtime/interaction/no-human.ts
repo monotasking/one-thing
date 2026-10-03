@@ -13,7 +13,7 @@
  */
 import { isAgentPairDmRoom } from '@onething/backend/runtime/collab'
 
-import { getSession } from '@onething/backend/store.js'
+import { getSession } from '@onething/backend/runtime/sessions'
 
 /**
  * 这次提问所在的房间(执行会话 → 它服务的那间房)。与

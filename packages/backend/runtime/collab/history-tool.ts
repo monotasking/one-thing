@@ -38,7 +38,7 @@ import {
 import type { HistoryToolResult } from '@onething/backend/runtime/toolkit'
 import { scanJsonlLog, sessionAccess, sessionReads } from '@onething/backend/runtime/sessions'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '../sessions/index.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { findAgent, listAgents } from '@onething/backend/runtime/agents/agent-store-access'

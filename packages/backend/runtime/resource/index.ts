@@ -26,7 +26,7 @@ import { combineValidators, type ToolRunner, type Validator } from '@onething/ba
 import { ZodValidator } from '@onething/backend/runtime/toolkit'
 import { DIR_RESOURCE_SCHEME } from '@onething/backend/runtime/files/resource-spec'
 import { GIT_RESOURCE_SCHEME } from '@onething/backend/runtime/files/git-resource-spec'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { createSandboxPolicy } from '../toolkit/runner-factory.js'
 import { DirResourceProvider } from './dir-provider.js'

@@ -1,4 +1,4 @@
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
 import type { SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'

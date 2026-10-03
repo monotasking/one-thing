@@ -6,7 +6,7 @@
  * 那 26 条包装,以及 server 的 REST 面 + sessions/messages/chat 三个 facade adapter
  * 里对应的方法。
  *
- * 只桩**仓本体**(`@onething/backend/store`)与四个装配侧端口,**投影不桩** ——
+ * 只桩**仓本体**(会话入口 `@onething/backend/runtime/sessions`(兼容桶 `store.ts` 已于包根归位 B 删除))与四个装配侧端口,**投影不桩** ——
  * `@onething/backend/runtime/sessions` 的那批 `*OnethingSession*` / `*ForIpc` 是真跑的,
  * 所以这组用例证的是「域把端口接对了」,而不是「域自己又实现了一遍」。
  *
@@ -118,7 +118,10 @@ const eventsReads = vi.hoisted(() => ({
  */
 const kernelSlot = vi.hoisted(() => ({ current: undefined as unknown }))
 
-vi.mock('../../../store.js', () => store)
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  ...store,
+}))
 vi.mock('../../../current.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../../current.js')>(),
   // 只换这一口:`installSessionLayerForTest` 用的 `setCurrentBackend` /

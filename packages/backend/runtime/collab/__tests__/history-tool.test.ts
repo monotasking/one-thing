@@ -31,9 +31,13 @@ vi.mock('../../sessions/access.js', async importOriginal => {
   }) }
 })
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   getSessionsList: () => mocks.metas,
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
   getSettings: () => ({ general: {} }),
 }))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}) }))

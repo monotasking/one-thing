@@ -39,7 +39,10 @@ const jobs = vi.hoisted(() => ({
   stopBackgroundJob: vi.fn(async () => true),
 }))
 
-vi.mock('../../../store.js', () => store)
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+  ...store,
+}))
 vi.mock('@onething/backend/runtime/toolkit/tool-ports', () => toolkit)
 vi.mock('@onething/backend/runtime/tools/background-jobs-bound', () => jobs)
 vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({

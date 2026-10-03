@@ -54,8 +54,8 @@ vi.mock('../../sessions/access.js', async importOriginal => {
   }) }
 })
 
-vi.mock('@onething/backend/store.js', () => ({
-  getSettings: () => mocks.settings,
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
   createSession: (id: string, name: string) => {
     const session: FakeSession = { id, name, messages: [] }
@@ -90,6 +90,10 @@ vi.mock('@onething/backend/store.js', () => ({
     if (session) session.name = name
   },
   updateSessionArchived: vi.fn(),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => mocks.settings,
 }))
 
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({

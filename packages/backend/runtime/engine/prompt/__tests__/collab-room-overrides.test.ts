@@ -30,8 +30,12 @@ vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   DEFAULT_AGENT_ID: 'default',
 }))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (id: string) => mocks.sessions.get(id),
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
   // 花名册/情况说明里的用户称呼从这里来(agent-dm-user.md §2.3)。
   getSettings: () => mocks.settings,
 }))

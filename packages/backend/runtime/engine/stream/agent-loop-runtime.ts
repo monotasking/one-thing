@@ -13,7 +13,7 @@ import type {
   AgentProviderStreamChunk,
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { getAgentLoopTransientTail, type CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/runtime/agent-loop'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { goalRuntimeHooks } from '@onething/backend/runtime/goals/runtime-hooks'

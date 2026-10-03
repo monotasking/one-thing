@@ -33,7 +33,7 @@ import {
   type CollabRoomUpdatePatch,
   type PermissionMode,
 } from '@shared/ipc.js'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import { sessionAccess, sessionCommands } from '@onething/backend/runtime/sessions'
 import { fixedExecutionContext } from '../sessions/index.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'

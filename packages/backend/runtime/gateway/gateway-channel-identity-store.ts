@@ -9,7 +9,7 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '@onething/backend/runtime/storage'
-import { LOCAL_CLIENT_USER_ID } from './origin.js'
+import { LOCAL_CLIENT_USER_ID } from '@onething/backend/runtime/agent-loop'
 
 interface ChannelIdentityStoreData {
   profiles: ChannelUserProfile[]

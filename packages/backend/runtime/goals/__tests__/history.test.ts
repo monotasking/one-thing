@@ -46,9 +46,9 @@ vi.mock('../../sessions/reads.js', () => import('../../sessions/testing/facade-m
 vi.mock('../../sessions/session-commands.js', () => import('../../sessions/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/store.js', () => ({
+vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
   getSession: (sessionId: string) => mocks.sessions.get(sessionId),
-  getSettings: () => ({ chat: {} }),
   updateSessionGoal: (sessionId: string, goal: SessionGoal | null) => {
     const session = mocks.sessions.get(sessionId)
     if (!session) return
@@ -63,6 +63,10 @@ vi.mock('@onething/backend/store.js', () => ({
     if (current === null) delete session.goal
     else session.goal = current
   },
+}))
+vi.mock('@onething/backend/runtime/settings', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/runtime/settings')>(),
+  getSettings: () => ({ chat: {} }),
 }))
 
 vi.mock('@onething/backend/runtime/events', () => ({

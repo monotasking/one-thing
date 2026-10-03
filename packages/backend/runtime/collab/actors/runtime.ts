@@ -97,7 +97,7 @@ import {
 } from '../external-observability.js'
 import { findAgent, listAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEventBus } from '@onething/backend/runtime/events'
-import * as store from '@onething/backend/store.js'
+import * as store from '@onething/backend/runtime/sessions'
 import {
   sessionAccess,
   sessionCommands,

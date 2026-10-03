@@ -9,6 +9,10 @@ const root = process.cwd()
 // cordis 是**装配层专属**依赖（C0 底座替换，
 // docs/design/cordis-adoption-2026-08.md §1）：只允许出现在
 // packages/backend/**。core 与 runtime 不许用、hosts 与 renderer 一概不感知 —— 写法照搬 electron 禁令。
+// 包根归位 B(2026-10-04):用 cordis 的那只底座(feature 挂载基座,从前的包根 `features/`)搬进了
+// `runtime/feature-registry/`,所以 runtime 里**只有这一个目录**可以 import cordis,其余照旧不许。
+const isFeatureRegistryFile = (file: string): boolean =>
+  file.split(path.sep).join('/').includes('/packages/backend/runtime/feature-registry/')
 const CORDIS_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]@deepseek-ai\/cordis['"]/,
   /import\(['"]@deepseek-ai\/cordis['"]\)/,
@@ -2476,7 +2480,7 @@ function checkRuntimeHostBoundary(): void {
   ]
     .flatMap(file => matchingLines(
       file,
-      isBackendSpineFile(file)
+      isBackendSpineFile(file) || isFeatureRegistryFile(file)
         ? APP_ASSEMBLY_FORBIDDEN_PATTERNS
         : [...APP_ASSEMBLY_FORBIDDEN_PATTERNS, ...CORDIS_FORBIDDEN_PATTERNS],
     ))
@@ -5178,7 +5182,7 @@ const CORE_MERGED_PLUGIN_FILES = [
 const CORE_MERGED_ROOT_FILES = [
   'packages/backend/runtime/gateway/conversation-runtime.ts',
   'packages/backend/http-server/http-server-runtime-facade.ts',
-  'packages/backend/utils/deep-freeze.ts',
+  'packages/backend/runtime/sessions/session-deep-freeze.ts',
 ]
 
 function checkCoreKnowsNoConcreteFeatures(): void {
@@ -6528,7 +6532,7 @@ function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/files/ripgrep.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/files/index.ts')
   const runtimeTestFile = path.join(root, 'packages/backend/runtime/files/__tests__/ripgrep.test.ts')
-  const mainFile = path.join(root, 'packages/backend/utils/ripgrep.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/files/files-ripgrep-app-fetch.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -6555,7 +6559,9 @@ function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
     ...(!runtimeIndexContent.includes('./ripgrep.js')
       ? [`${rel(runtimeIndexFile)}: missing ripgrep public export`]
       : []),
-    ...(!mainContent.includes('@onething/backend/runtime/files/ripgrep')
+    // 包根归位 B(2026-10-04):门面从包根 `utils/ripgrep.ts` 搬进了 files 自己(`files-ripgrep-app-fetch.ts`),
+    // 与实现同目录,委派写相对路径 `./ripgrep.js`;两种写法都认。
+    ...(!/@onething\/backend\/runtime\/files\/ripgrep|\.\/ripgrep\.js/.test(mainContent)
       ? [`${rel(mainFile)}: ripgrep facade must delegate to runtime ripgrep`]
       : []),
     ...(mainLines.length > 40

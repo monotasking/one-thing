@@ -77,7 +77,7 @@ import {
   type StreamEngine,
 } from '@onething/backend/runtime/engine'
 import { configureAppScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
-import { configureAppRipgrep } from './utils/ripgrep.js'
+import { configureAppRipgrep } from '@onething/backend/runtime/files'
 import { configureAppSearchProviders } from '@onething/backend/runtime/search'
 import { configureAppSkillManage } from '@onething/backend/runtime/skills/manage-setup'
 import { configureAppSkillsLoader } from '@onething/backend/runtime/skills/skill-sources'
