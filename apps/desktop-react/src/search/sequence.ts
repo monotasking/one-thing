@@ -174,7 +174,7 @@ export function sequenceOf(
  *
  * 契约上「不属于任何一行、属于这一页」的开放槽只有 `actions` 一格,所以能力把
  * 「这一次没用上某个笔记库」那句话也放在那儿,靠 `kind: 'notice'` 与真动作分开
- * (判词在 `runtime/search/capabilities/notes.ts` 的 `NOTICE_ACTION_KIND` 上)。
+ * (判词在 `search/capabilities/notes.ts` 的 `NOTICE_ACTION_KIND` 上)。
  *
  * 序列是**键盘走得到的那些项**,而一句提示按不下去 —— 所以它在这里被择出去:
  * 不进 ↑↓、不占末项、不进「有没有搜到」。它的落点是页脚那一行读数

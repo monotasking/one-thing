@@ -78,7 +78,7 @@ export interface AgentDefinition {
 /**
  * 社交面判定(M2):联系人区、roster 候选、群成员选择器、AgentSelector 只收
  * colleague。缺省 kind 按 colleague 解释(旧 agents.json 无此字段)。
- * 与 runtime 产品层 `packages/backend/runtime/agents/model.ts` 的同名函数
+ * 与 runtime 产品层 `packages/backend/agent/model.ts` 的同名函数
  * 语义镜像(产品层禁 import @shared/ipc,故两份实现;有镜像测试盯住)。
  */
 export function isColleague(agent: Pick<AgentDefinition, 'kind'>): boolean {

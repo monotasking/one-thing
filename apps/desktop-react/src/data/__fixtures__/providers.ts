@@ -1,5 +1,5 @@
 import type { ProviderInfo } from '@shared/ipc/providers'
-import { BUILTIN_PROVIDER_MANIFESTS, providerInfoOfManifest } from '@onething/backend/runtime/providers'
+import { BUILTIN_PROVIDER_MANIFESTS, providerInfoOfManifest } from '@onething/backend/provider'
 
 /**
  * 「后端下发的那一份」服务商名册 —— 只给测试用的夹具(服务商自述试点 P4)。

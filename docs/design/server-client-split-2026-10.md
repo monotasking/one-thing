@@ -1790,3 +1790,18 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 `sessions:shadow-battery`(真 server 的 HTTP / RPC)前后只差耗时;`gate:acp` 规整后相同;`gate:search-index` 同红 ⑤c / ⑤d;`gate:web-shell` 全绿;cycle 0;layer 57 / 31 → 48 / 26;name 109 → 106;entry 2331 → 2335(+4,见 D77 / D84);client-api 0 越界、0 例外。
 
 **留账**:gateway 的 `index.ts` 兼做独立网关进程的启动文件,装配只能直取渠道的三只文件(D77);`http-server-runtime.ts` 拆成各功能的 server 门面(D88);两者登记为路线第 8 条。
+
+### 机械改名 6a 落地记录:去掉 `runtime/` 这一层 + 功能目录单数 + 删总桶(2026-10-04,未提交)
+
+**做了什么**(决策 `backend-structure-decisions-2026-10.md` D89–D98,行为零变化):
+
+1. `packages/backend/runtime/<功能>/` → `packages/backend/<功能>/`,61 个功能目录整只搬(不用 `git mv`,主索引不动);`runtime/__tests__/` 的两只测试(`ipc-contracts`、`startup-trace`)并进包根 `__tests__/`,不撞名;`runtime/` 目录删除。
+2. 目录单数(N5)22 个:agents→agent、evals→eval、events→event、external-agents→external-agent、files→file、goals→goal、notes→note、permissions→permission、pets→pet、plugins→plugin、project-dirs→project-dir、prompts→prompt、providers→provider、references→reference、sessions→session、skills→skill、spaces→space、tasks→task、themes→theme、tools→tool、triggers→trigger、variables→variable。保持 settings / credentials / usage / media / memory / logging(复数或不可数)。理由逐条见 D90。
+3. 包根撞名:`lifecycle.ts`(关机阶段表与资源登记)→ `backend-shutdown.ts`,测试 `lifecycle.test.ts` → `backend-shutdown.test.ts`(D92)。
+4. 总桶 `runtime/index.ts` 删除(R6,D91):35 处使用者改从 `@onething/backend/eval` / `@onething/backend/prompt` / `@onething/backend/gateway/conversation-runtime` 直取,exports 新增 `./eval` 一键、删 `./runtime`。
+5. 改写:一只脚本(按旧布局解析每个相对说明符、再按新位置重算;包说明符 `@onething/backend/runtime/<功能>` → `@onething/backend/<单数功能>`;仓内路径文字 `packages/backend/runtime/<功能>`、`runtime/<功能>` 同步)改了 1577 只文件:包说明符 4100 处(含注释里的提法)、相对说明符 828 处(其中 25 处是非 import 语境的仓内路径,如测试里的 `resources/` 与 `scripts/` 相对路径,逐条核过)、仓内路径文字 1923 处、exports 键 392 条。之后手改:门脚本与库(`backend-structure.mjs` 的 `FEATURE_ROOT` / `NON_FEATURE_DIRS` / `LEGACY_FILE_PREFIX`,entry / cycle / map / client-api / transport / session-check / public-boundary)、边界检查器(D95)、`architecture-boundaries.test.ts`(三条改判,D92 / D93)、`provider/base/__tests__/architecture.test.ts`(脊柱的正则)、eslint 区 ①、层次表与三份基线、根 `CLAUDE.md` 的路径。
+6. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动(它们不引后端,改前改后 shasum 相同)。
+
+**验收(改前 `s21-before` = 97c71b4f2 + 别的会话的未提交改动 / 改后 `s21-after`)**:typecheck 三套零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build` 成功,三份 `search-worker.cjs` 各小 385 字节(路径注释变短)、`acp-mcp-bridge.cjs` 小 16 字节;三只主进程包各小约 146–215KB:总桶本身(约 88KB)与只有总桶够得着的 `trigger/skill-review*`、`headless/cli-projections` 不再进包(纯函数与常量,没有加载期副作用);全量 vitest 失败集合按改名映射后相同(壳侧 1 条、仓根 21 条,两条已知的时序抖动单跑通过);冻结快照、golden 命中集、wire 快照按内容哈希逐字相同;persistence 176 / import-side-effect-free + assembly-lifecycle 24 / 快照 154 全绿;`sessions:shadow-battery` 与改前同红同绿(appendFailures 8 是改前就有的红,refoldMismatch 0);hydration 两份绿;`gate:acp` 109 条 ok 不变;`gate:search-index` 同红 ⑤c / ⑤d;`gate:web-shell` 全绿;CLI 与 server 能起。门:boundary 132 ok 不变;transport / log / session / provider / native 逐字相同;assembly 同红(radio.ts 9 → 10,改前就红);entry 2335 → 2296、name 重复名 106 不变(`index.ts` 93 → 92、`lifecycle.ts` 3 → 2)、cycle 0 环(入口 60 → 59)、layer 48 / 26 不变(表 67 → 66 行)、feature-map 重生成、client-api 56 只 / 0 越界 —— 读数的每一处下降都由总桶删除与 `lifecycle.ts` 改名解释(D98)。`provider:drill` 在 HEAD 上开临时 worktree,HEAD 里还是 `runtime/providers/vendors/`,所以提交前跑不了(结构性,提交后再跑)。
+
+**留账**:6b(入口 `index.ts` → `<功能>.ts`、文件名加单数功能前缀、删 `LEGACY_FILE_PREFIX`;功能内部的复数子目录 `provider/vendors/`、`gateway/channels/`、`collab/actors/` 等一并判)。

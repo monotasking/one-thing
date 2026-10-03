@@ -1,0 +1,1166 @@
+import type { JsonObject } from "@shared/json";
+import { resolveOnethingModelCapabilities } from "./model-capability.js";
+import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
+import { getProviderManifest, type ProviderModelsSource } from "./manifest.js";
+import {
+	effectiveModelFactsOf,
+	onethingModelOverrideFactsOf,
+} from "./effective-model.js";
+import {
+	catalogFactsOf,
+	isOnethingManualModelEntry,
+	mergeRefreshedCatalog,
+} from "./manual-models.js";
+import type { CoreProviderConfigLike, ProviderConfigWithDials } from "./provider-config.js";
+import {
+	MODELS_DEV_API_URL,
+	type GetModelsDevDataOptions,
+	type ModelsDevCache,
+} from "./models-dev-cache.js";
+import { ONETHING_MODEL_DISPLAY_NAMES } from "./model-families/index.js";
+// Catalog-key rules live in models-dev-catalog.ts (the renderer imports that
+// file alone); re-exported here so existing callers keep their import path.
+export {
+	getOnethingModelsDevProviderId,
+	ONETHING_PROVIDER_MAPPING,
+} from "./models-dev-catalog.js";
+
+export const ONETHING_MODELS_DEV_API = MODELS_DEV_API_URL;
+
+
+// 型号的展示名别称说的是型号家族,不是哪一家服务商(哪一家卖这个型号都这么显示),
+// 各家族自己带(`providers/model-families/<family>.ts`,汇总在同目录 `index.ts`)。
+const MODEL_NAME_ALIASES: Record<string, string> = {
+	...ONETHING_MODEL_DISPLAY_NAMES,
+};
+
+export interface OnethingModelsDevModel {
+	id: string;
+	name: string;
+	family?: string;
+	release_date?: string;
+	last_updated?: string;
+	reasoning?: boolean;
+	temperature?: boolean;
+	tool_call?: boolean;
+	cost?: {
+		input?: number;
+		output?: number;
+		cache_read?: number;
+		cache_write?: number;
+	};
+	limit?: { context?: number; output?: number };
+	modalities?: { input?: string[]; output?: string[] };
+}
+
+export interface OnethingModelsDevProvider {
+	id: string;
+	name: string;
+	models: Record<string, OnethingModelsDevModel>;
+}
+
+export type OnethingModelsDevResponse = Record<
+	string,
+	OnethingModelsDevProvider
+>;
+
+export interface OnethingOpenRouterModel {
+	id: string;
+	name: string;
+	description?: string;
+	context_length: number;
+	architecture: {
+		modality: string;
+		input_modalities: string[];
+		output_modalities: string[];
+		tokenizer: string;
+	};
+	pricing: {
+		prompt: string;
+		completion: string;
+		request: string;
+		image: string;
+	};
+	top_provider: {
+		context_length: number;
+		max_completion_tokens: number;
+		is_moderated: boolean;
+	};
+	supported_parameters: string[];
+	last_updated?: string;
+	providerMetadata?: JsonObject;
+	/** 目录条目出处;缺席 = models.dev。`'manual'` 行没有任何参数(见 manual-models.ts)。 */
+	source?: OnethingModelEntrySource;
+	/** 接口没报的那几项(批 3 直连拉目录):读者按「不知道」处理,不按「不支持」。 */
+	unreported?: OnethingUnreportedFact[];
+}
+
+/** 目录条目出处(批 2)。缺席读作 `'models.dev'`。 */
+export type OnethingModelEntrySource = "models.dev" | "endpoint" | "manual";
+
+/**
+ * 一条接口拉来的目录条目**没报**的那一项(批 3 §6.2)。只报了 id 的 `/models` 不是在说
+ * 「这些模型都不支持工具」—— 把「没说」读成 `false` 会把自定义服务商的工具调用整条关掉。
+ * 条目上的布尔照旧在(形状不变),但读者先看这张表:在表里 = 不知道。
+ */
+export type OnethingUnreportedFact =
+	| "tools"
+	| "vision"
+	| "reasoning"
+	| "imageOutput"
+	| "fileInput"
+	| "temperature";
+
+export interface OnethingModelCapabilityOverride {
+	tools?: boolean;
+	vision?: boolean;
+	reasoning?: boolean;
+	imageOutput?: boolean;
+	audio?: boolean;
+	/** 拍板 #12:接不接文件附件,与 vision 分开的一条(P4-1)。 */
+	fileInput?: boolean;
+}
+
+export interface OnethingModelCapabilityEntry {
+	id: string;
+	name: string;
+	provider: string;
+	/** 缺席 = `'models.dev'`。手填条目是另一个形状:`OnethingManualModelEntry`。 */
+	source?: "models.dev" | "endpoint";
+	contextLength: number;
+	maxOutputTokens: number;
+	supportsTools: boolean;
+	supportsVision: boolean;
+	supportsReasoning: boolean;
+	supportsImageOutput: boolean;
+	supportsTemperature: boolean;
+	inputModalities: string[];
+	outputModalities: string[];
+	pricing: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	};
+	lastUpdated?: string;
+	providerMetadata?: JsonObject;
+	/** 接口没报的那几项;缺席 = 全报了(models.dev 条目与既有列表口一律缺席)。 */
+	unreported?: OnethingUnreportedFact[];
+}
+
+/**
+ * 手填模型的目录条目:**参数全空**。能力读者一律把它当「目录里没有这一型」
+ * (`catalogFactsOf` 返回 undefined),与批 2 之前「勾了但目录不认识」的读法逐字相同。
+ */
+export interface OnethingManualModelEntry {
+	id: string;
+	name: string;
+	provider: string;
+	source: "manual";
+}
+
+/** 目录里的一条:有参数的,或手填的。 */
+export type OnethingCatalogModelEntry =
+	| OnethingModelCapabilityEntry
+	| OnethingManualModelEntry;
+
+export interface OnethingProviderModelConfig {
+	/** 目录键与目录补缺按配置算(档位 / 地区格由各家 manifest 声明,按键读),这一格之外不点名。 */
+	baseUrl?: string;
+	models?: Record<string, OnethingCatalogModelEntry>;
+	modelsLastFetched?: number;
+	modelCapabilitiesByModel?: Record<string, OnethingModelCapabilityOverride>;
+	/** Per-model context-window override, keyed by model id. */
+	contextLengthByModel?: Record<string, number>;
+	/**
+	 * Per-model max-output override, keyed by model id. 与上面那格同一把尺:
+	 * 目录里没有的模型全靠用户自己填,而「填了」是 strict 变体判定「知道上限」
+	 * 的两个来源之一(2026-09-09)。
+	 */
+	maxOutputByModel?: Record<string, number>;
+}
+
+export type OnethingProviderModelConfigs = Record<
+	string,
+	OnethingProviderModelConfig | undefined
+>;
+
+export interface OnethingModelRegistryQueryOptions {
+	getFallbackModelsForProvider?(providerId: string): OnethingOpenRouterModel[];
+	getFallbackModel?(
+		modelId: string,
+		providerId?: string,
+	): OnethingOpenRouterModel | undefined;
+}
+
+export interface OnethingModelRegistrySettingsLike {
+	ai: {
+		providers: OnethingProviderModelConfigs;
+	};
+}
+
+export interface OnethingModelRegistryRefreshLogger {
+	log?: (...args: unknown[]) => void;
+	warn?: (...args: unknown[]) => void;
+	error?: (...args: unknown[]) => void;
+}
+
+export interface OnethingModelRegistryRefreshAdapters<
+	TSettings extends
+		OnethingModelRegistrySettingsLike = OnethingModelRegistrySettingsLike,
+> {
+	getSettings(): TSettings;
+	saveSettings(settings: TSettings): void;
+	fetchModelsDevData(): Promise<OnethingModelsDevResponse>;
+	/**
+	 * 直连拉目录(批 3 §6.2):问这一家自己的 `/models`。缺席 = 这个宿主没有直连能力,
+	 * `endpoint` 来源的家退回旧口径(跳过)。失败**抛**,带接口原话。
+	 */
+	fetchEndpointModels?(providerId: string): Promise<OnethingOpenRouterModel[]>;
+	now?(): number;
+	logger?: OnethingModelRegistryRefreshLogger;
+}
+
+export interface OnethingConfiguredModelSelection {
+	model?: string;
+	selectedModels?: string[];
+}
+
+export interface OnethingACPAgentModelLike {
+	id: string;
+	name?: string;
+	description?: string;
+	command?: string;
+	args?: string[];
+	enabled?: boolean;
+	/**
+	 * 名册那一半(A1-b):来处与探测结果。调用方有就带上,原样落进
+	 * `providerMetadata.acp`;没有(今天 `AcpSubsystem.modelAgents()` 交的是生效配置,
+	 * 不带这两格)就缺席 —— 壳侧真正的来处 / 装没装读的是 `acp.getAgents`。
+	 */
+	source?: "builtin" | "registry" | "user";
+	installed?: boolean;
+}
+
+export type FetchOnethingModelsDevDataOptions = GetModelsDevDataOptions;
+
+export interface GetOnethingModelsWithCapabilitiesRequest {
+	providerId: string;
+	forceRefresh?: boolean;
+}
+
+export interface GetOnethingModelsWithCapabilitiesResult {
+	success: boolean;
+	models?: OnethingOpenRouterModel[];
+	error?: string;
+}
+
+/**
+ * 服务商自己的模型列表口(manifest `models.kind === 'endpoint'`)。每家一只,**按
+ * provider id 登记**在 `endpointFetchers` 里;列表口的形状差异、失败怎么兜(退缓存 /
+ * 兜底表)都是它自己的事,调度那一层只认「这家是 endpoint、表里有它的拉取器」。
+ */
+export interface OnethingEndpointModelsFetcher {
+	list(
+		request: GetOnethingModelsWithCapabilitiesRequest,
+	): Promise<GetOnethingModelsWithCapabilitiesResult>;
+}
+
+export interface GetOnethingModelsWithCapabilitiesAdapters {
+	getModelsForProvider(providerId: string): Promise<OnethingOpenRouterModel[]>;
+	/** 这一家的模型来源。缺省 = 进程注册表里它的 manifest(批 M)。 */
+	modelsSourceOf?(providerId: string): ProviderModelsSource | undefined;
+	/** `endpoint` 来源的拉取器,按 provider id 登记。表里没有 = 退回通用路(读缓存)。 */
+	endpointFetchers?: Readonly<
+		Record<string, OnethingEndpointModelsFetcher | undefined>
+	>;
+	/** `roster` 来源那一家的名册(ACP 的生效 agent 表)。 */
+	getRoster?(providerId: string): OnethingACPAgentModelLike[] | undefined;
+	/**
+	 * 刷新钮对**通用厂商**的真动作:重拉目录(models.dev)并落盘,之后
+	 * `getModelsForProvider` 读到的就是新表(2026-09-11「刷新模型也不更新」)。
+	 *
+	 * **可选**:缺席 = 这个宿主没有重拉能力,行为退回旧口径(只读缓存),而不是
+	 * 报错。
+	 */
+	refreshProviderModels?(providerId: string): Promise<void> | void;
+	logger?: OnethingModelRegistryRefreshLogger;
+}
+
+
+/** 宿主 auth 服务交回来的 token 的最小形状(列表口拿它取数)。 */
+export interface OnethingAccessTokenLike {
+	accessToken?: string | null;
+}
+
+/**
+ * models.dev 目录。**经单份磁盘缓存**(`models-dev-cache.ts`,§5.4):24 小时内读文件,
+ * 过期或 `force` 时发条件请求(304 只推 `fetchedAt`),网络失败有缓存就交缓存。
+ * 网络、文件、时钟都在缓存里注入,这里只把「要一份目录」接上去。
+ */
+export async function fetchOnethingModelsDevData(
+	cache: Pick<ModelsDevCache, "get">,
+	options: FetchOnethingModelsDevDataOptions = {},
+): Promise<OnethingModelsDevResponse> {
+	const result = await cache.get(options);
+	return result.data;
+}
+
+export function getRefreshableOnethingProviderIds(
+	providers: OnethingProviderModelConfigs | undefined,
+): string[] {
+	if (!providers) return [];
+	return Object.keys(providers).filter(providerReadsModelsDevCatalog);
+}
+
+/**
+ * 这一家有没有一本 models.dev 目录可重拉:`models.dev` 来源,或 `endpoint` 来源但声明了
+ * `catalogKey`(列表现取、能力事实靠目录补的那种)。读 manifest,不点名(批 M)。
+ * 未登记的 id(设置里残留的旧键)没有目录可拉。
+ */
+export function providerReadsModelsDevCatalog(providerId: string): boolean {
+	const source = getProviderManifest(providerId)?.models;
+	if (!source) return false;
+	return source.kind === "models.dev" || (source.kind === "endpoint" && Boolean(source.catalogKey));
+}
+
+/**
+ * 这一家的目录走**通用直连**(`models-endpoint.ts`):`endpoint` 来源、没有一本 models.dev
+ * 目录可补(`catalogKey` 缺席)、且用 API 密钥(或不用)认证。OAuth 的 endpoint 家
+ * (Codex)有自己的专属拉取器,通用那一发拿不到它要的令牌。读 manifest,不点名。
+ */
+export function readsProviderDirectModels(providerId: string): boolean {
+	const manifest = getProviderManifest(providerId);
+	if (!manifest || manifest.models.kind !== "endpoint") return false;
+	if (manifest.models.catalogKey) return false;
+	return manifest.auth.kind !== "oauth";
+}
+
+export function mergeOnethingModelsById<TModel extends { id: string }>(
+	...groups: TModel[][]
+): TModel[] {
+	const merged = new Map<string, TModel>();
+	for (const group of groups) {
+		for (const model of group) {
+			if (!merged.has(model.id)) {
+				merged.set(model.id, model);
+			}
+		}
+	}
+	return Array.from(merged.values());
+}
+
+export function getConfiguredOnethingModelIds(
+	config?: OnethingConfiguredModelSelection,
+): string[] {
+	return Array.from(
+		new Set(
+			[
+				...(config?.selectedModels ?? []),
+				...(config?.model ? [config.model] : []),
+			].filter(Boolean),
+		),
+	);
+}
+
+export function getConfiguredOnethingFallbackModels(
+	config: OnethingConfiguredModelSelection | undefined,
+	getFallbackModels: (modelIds?: string[]) => OnethingOpenRouterModel[],
+): OnethingOpenRouterModel[] {
+	const modelIds = getConfiguredOnethingModelIds(config);
+	return modelIds.length > 0 ? getFallbackModels(modelIds) : [];
+}
+
+/**
+ * 一台 ACP agent 在模型目录里的那一行。
+ *
+ * **它不是一型模型**(2026-09-26 用户裁定:agent 不许被画成普通模型)。所以:
+ *  · 窗口两格写 0 —— 契约类型要一个数,而 0 在两头都读作「不知道」:壳的
+ *    `contextLengthOf` 只认 > 0,后端 `getOnethingModelContextLength` 的 `||` 链
+ *    把 0 落到它自己的缺省上(与从前编 128000 时的预算行为逐字相同)。从前那个
+ *    128000 是编的,在选择器里画成了一格「128k」;
+ *  · `providerMetadata.acp.agent: true` 是壳侧投影判「这一行是 agent 不是模型」
+ *    的**唯一判据**(渲染分支读 `kind`,不读 provider id 字串);
+ *  · `source` / `installed` 调用方给了就带上,没给就缺席(不编)。
+ */
+export function acpAgentToOnethingOpenRouterModel(
+	agent: OnethingACPAgentModelLike,
+): OnethingOpenRouterModel {
+	const acp: JsonObject = {
+		agent: true,
+		command: agent.command ?? null,
+		enabled: agent.enabled ?? null,
+		status: "local-agent",
+	};
+	if (agent.source) acp.source = agent.source;
+	if (typeof agent.installed === "boolean") acp.installed = agent.installed;
+	return {
+		id: agent.id,
+		name: agent.name || agent.id,
+		description:
+			agent.description ||
+			`ACP agent command: ${[agent.command, ...(agent.args ?? [])].filter(Boolean).join(" ")}`,
+		context_length: 0,
+		architecture: {
+			modality: "text",
+			input_modalities: ["text"],
+			output_modalities: ["text"],
+			tokenizer: "external",
+		},
+		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
+		top_provider: {
+			context_length: 0,
+			max_completion_tokens: 16384,
+			is_moderated: false,
+		},
+		supported_parameters: [],
+		providerMetadata: { acp },
+	};
+}
+
+export function acpAgentsToOnethingOpenRouterModels(
+	agents: OnethingACPAgentModelLike[] | undefined,
+): OnethingOpenRouterModel[] {
+	return (agents ?? []).map(acpAgentToOnethingOpenRouterModel);
+}
+
+/**
+ * 目录口的调度:按 manifest 的 `models.kind` 分派(批 M),不点任何一家的名字。
+ *  - `endpoint` + 表里有它的拉取器 → 拉取器;
+ *  - `roster` → 名册;
+ *  - 其余(`models.dev` / `none` / 没登记拉取器的 `endpoint`)→ 通用路:点了刷新先重拉
+ *    目录落盘,再读缓存。
+ */
+export async function getOnethingModelsWithCapabilities(
+	request: GetOnethingModelsWithCapabilitiesRequest,
+	adapters: GetOnethingModelsWithCapabilitiesAdapters,
+): Promise<GetOnethingModelsWithCapabilitiesResult> {
+	try {
+		const source =
+			adapters.modelsSourceOf?.(request.providerId) ??
+			getProviderManifest(request.providerId)?.models;
+
+		if (source?.kind === "endpoint") {
+			const fetcher = adapters.endpointFetchers?.[request.providerId];
+			if (fetcher) return await fetcher.list(request);
+		}
+
+		if (source?.kind === "roster") {
+			return {
+				success: true,
+				models: acpAgentsToOnethingOpenRouterModels(
+					adapters.getRoster?.(request.providerId),
+				),
+			};
+		}
+
+		// 通用厂商的刷新:先重拉目录落盘,再照旧读缓存。
+		// 重拉失败不让整发失败 —— 与 endpoint 拉取器「拉不到退缓存」同一口径。
+		// 退缓存这件事今天**只落在日志上**:`ModelsListResponse` 没有 stale /
+		// warning 的格,加一格要连壳一起改,不在这一单的范围里。
+		if (request.forceRefresh && adapters.refreshProviderModels) {
+			try {
+				await adapters.refreshProviderModels(request.providerId);
+			} catch (error) {
+				// `endpoint` 来源的家(直连拉目录)只有这一个来源:拉不到就是答案,原话交回去,
+				// 壳画「获取失败」+ Tooltip 原话、旧行留在屏上。models.dev 家照旧退缓存。
+				if (source?.kind === "endpoint") {
+					return {
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					};
+				}
+				adapters.logger?.warn?.(
+					"[Models] Failed to refresh provider models, using cache:",
+					error instanceof Error ? error.message : String(error),
+				);
+			}
+		}
+
+		const models = await adapters.getModelsForProvider(request.providerId);
+		return { success: true, models };
+	} catch (error) {
+		adapters.logger?.error?.(
+			"[Models] Failed to get models with capabilities:",
+			error,
+		);
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+export function saveOnethingProviderModels<
+	TSettings extends OnethingModelRegistrySettingsLike,
+>(
+	providerId: string,
+	models: OnethingOpenRouterModel[],
+	adapters: Pick<
+		OnethingModelRegistryRefreshAdapters<TSettings>,
+		"getSettings" | "saveSettings" | "now" | "logger"
+	>,
+): void {
+	const settings = adapters.getSettings();
+	const providerConfig = settings.ai.providers[providerId] || {};
+	// 只替换非手填的那一半(批 2):手填条目是用户亲手写的,刷新不替人删。
+	providerConfig.models = mergeRefreshedCatalog(
+		providerConfig.models,
+		createOnethingModelEntriesFromOpenRouterModels(providerId, models),
+	);
+	providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
+	settings.ai.providers[providerId] = providerConfig;
+	adapters.saveSettings(settings);
+	adapters.logger?.log?.(
+		`[ModelRegistry] Saved ${Object.keys(providerConfig.models).length} provider-direct models for ${providerId}`,
+	);
+}
+
+export async function refreshOnethingProviderModels<
+	TSettings extends OnethingModelRegistrySettingsLike,
+>(
+	providerId: string,
+	adapters: OnethingModelRegistryRefreshAdapters<TSettings>,
+): Promise<void> {
+	adapters.logger?.log?.(
+		`[ModelRegistry] Refreshing models for provider: ${providerId}`,
+	);
+
+	if (readsProviderDirectModels(providerId) && adapters.fetchEndpointModels) {
+		// 失败原样抛:这一家的目录只有这一个来源,「拉不到」就是答案(壳画「获取失败」+ 原话)。
+		const models = await adapters.fetchEndpointModels(providerId);
+		saveOnethingProviderModels(providerId, models, adapters);
+		return;
+	}
+
+	if (!providerReadsModelsDevCatalog(providerId)) {
+		adapters.logger?.log?.(
+			`[ModelRegistry] ${providerId} has no models.dev catalog (models come from ${getProviderManifest(providerId)?.models.kind ?? "nowhere"}); skipping`,
+		);
+		return;
+	}
+
+	const data = await adapters.fetchModelsDevData();
+	const settings = adapters.getSettings();
+	const providerConfig = settings.ai.providers[providerId] || {};
+	const models = createOnethingModelEntriesFromModelsDev(
+		providerId,
+		data,
+		providerConfig,
+	);
+
+	if (!models) {
+		adapters.logger?.warn?.(
+			`[ModelRegistry] No models.dev data found for provider: ${providerId} (dev key: ${getOnethingModelsDevProviderId(providerId, providerConfig)})`,
+		);
+		return;
+	}
+
+	providerConfig.models = mergeRefreshedCatalog(providerConfig.models, models);
+	providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
+	settings.ai.providers[providerId] = providerConfig;
+
+	adapters.saveSettings(settings);
+	adapters.logger?.log?.(
+		`[ModelRegistry] Saved ${Object.keys(models).length} models for provider ${providerId}`,
+	);
+}
+
+export async function refreshAllOnethingProviderModels<
+	TSettings extends OnethingModelRegistrySettingsLike,
+>(adapters: OnethingModelRegistryRefreshAdapters<TSettings>): Promise<void> {
+	const settings = adapters.getSettings();
+	const providers = settings?.ai?.providers;
+	if (!providers) return;
+
+	const providerIds = getRefreshableOnethingProviderIds(providers);
+
+	adapters.logger?.log?.(
+		`[ModelRegistry] Refreshing models for ${providerIds.length} providers: ${providerIds.join(", ")}`,
+	);
+
+	const data = await adapters.fetchModelsDevData();
+
+	for (const providerId of providerIds) {
+		const providerConfig = providers[providerId] || {};
+		const models = createOnethingModelEntriesFromModelsDev(
+			providerId,
+			data,
+			providerConfig,
+		);
+
+		if (!models) {
+			adapters.logger?.warn?.(
+				`[ModelRegistry] No models.dev data for provider: ${providerId}`,
+			);
+			continue;
+		}
+
+		providerConfig.models = mergeRefreshedCatalog(providerConfig.models, models);
+		providerConfig.modelsLastFetched = adapters.now?.() ?? Date.now();
+		settings.ai.providers[providerId] = providerConfig;
+
+		adapters.logger?.log?.(
+			`[ModelRegistry]   ${providerId}: ${Object.keys(models).length} models`,
+		);
+	}
+
+	adapters.saveSettings(settings);
+	adapters.logger?.log?.("[ModelRegistry] All providers refreshed");
+}
+
+export function modelsDevModelToOnethingCapabilityEntry(
+	model: OnethingModelsDevModel,
+	providerId: string,
+): OnethingModelCapabilityEntry {
+	const inputMods = model.modalities?.input || ["text"];
+	const outputMods = model.modalities?.output || ["text"];
+
+	return {
+		id: model.id,
+		name: MODEL_NAME_ALIASES[model.id] || model.name,
+		provider: providerId,
+		// 0 = unknown(§5.5):从前这里编 128000,`effective` 就没法说「目录没填」——
+		// 128k 兜底只在引擎的第四层(`getOnethingModelContextLength`)。
+		contextLength: model.limit?.context || 0,
+		// 0 = unknown. Never invent 4096 here: a made-up ceiling later reads as
+		// "the model's max" and nobody can tell it apart from a real one.
+		maxOutputTokens: model.limit?.output || 0,
+		supportsTools: model.tool_call === true,
+		supportsVision: inputMods.includes("image"),
+		supportsReasoning: model.reasoning === true,
+		supportsImageOutput: outputMods.includes("image"),
+		supportsTemperature: model.temperature !== false,
+		inputModalities: inputMods,
+		outputModalities: outputMods,
+		pricing: {
+			input: model.cost?.input ?? 0,
+			output: model.cost?.output ?? 0,
+			cacheRead: model.cost?.cache_read ?? 0,
+			cacheWrite: model.cost?.cache_write ?? 0,
+		},
+		lastUpdated: model.last_updated || model.release_date,
+	};
+}
+
+export function openRouterModelToOnethingCapabilityEntry(
+	model: OnethingOpenRouterModel,
+	providerId: string,
+): OnethingModelCapabilityEntry {
+	const inputModalities = model.architecture?.input_modalities || ["text"];
+	const outputModalities = model.architecture?.output_modalities || ["text"];
+	const supportedParameters = model.supported_parameters || [];
+
+	return {
+		id: model.id,
+		name: model.name || model.id,
+		provider: providerId,
+		source: "endpoint",
+		// 0 = 接口没报(§5.5:不编 128000,兜底只在引擎第四层)。
+		contextLength:
+			model.context_length || model.top_provider?.context_length || 0,
+		maxOutputTokens: model.top_provider?.max_completion_tokens || 0,
+		supportsTools: supportedParameters.includes("tools"),
+		supportsVision: inputModalities.includes("image"),
+		supportsReasoning: supportedParameters.includes("reasoning"),
+		supportsImageOutput: outputModalities.includes("image"),
+		supportsTemperature: supportedParameters.includes("temperature"),
+		inputModalities,
+		outputModalities,
+		pricing: {
+			input: Number(model.pricing?.prompt ?? 0) || 0,
+			output: Number(model.pricing?.completion ?? 0) || 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+		},
+		lastUpdated: model.last_updated,
+		providerMetadata: model.providerMetadata,
+		...(model.unreported?.length ? { unreported: [...model.unreported] } : {}),
+	};
+}
+
+export function onethingCapabilityEntryToOpenRouterModel(
+	entry: OnethingCatalogModelEntry,
+): OnethingOpenRouterModel {
+	// 手填条目**一格参数都不编**:旧信封把容量 / 价格 / 能力声明成必填,但读的人
+	// (壳的目录行、抽屉)把缺席读作「不知道」—— 编一个 0 / 128000 就是撒谎。
+	if (isOnethingManualModelEntry(entry)) {
+		return {
+			id: entry.id,
+			name: entry.name || entry.id,
+			source: "manual",
+		} as OnethingOpenRouterModel;
+	}
+	const supportedParams: string[] = [];
+	if (entry.supportsTemperature) supportedParams.push("temperature");
+	if (entry.supportsTools) supportedParams.push("tools");
+	if (entry.supportsReasoning) supportedParams.push("reasoning");
+
+	return {
+		id: entry.id,
+		name: entry.name,
+		context_length: entry.contextLength,
+		architecture: {
+			modality: entry.supportsVision ? "multimodal" : "text",
+			input_modalities: entry.inputModalities,
+			output_modalities: entry.outputModalities,
+			tokenizer: "unknown",
+		},
+		pricing: {
+			prompt: String(entry.pricing.input),
+			completion: String(entry.pricing.output),
+			request: "0",
+			image: "0",
+		},
+		top_provider: {
+			context_length: entry.contextLength,
+			max_completion_tokens: entry.maxOutputTokens,
+			is_moderated: false,
+		},
+		supported_parameters: supportedParams,
+		last_updated: entry.lastUpdated,
+		providerMetadata: entry.providerMetadata,
+		...(entry.source ? { source: entry.source } : {}),
+		...(entry.unreported?.length ? { unreported: [...entry.unreported] } : {}),
+	};
+}
+
+export function createOnethingModelEntriesFromModelsDev(
+	providerId: string,
+	data: OnethingModelsDevResponse,
+	config?: CoreProviderConfigLike | ProviderConfigWithDials,
+): Record<string, OnethingModelCapabilityEntry> | undefined {
+	const devProvider = data[getOnethingModelsDevProviderId(providerId, config)];
+	if (!devProvider) return undefined;
+
+	const models: Record<string, OnethingModelCapabilityEntry> = {};
+	for (const [modelId, model] of Object.entries(devProvider.models)) {
+		models[modelId] = modelsDevModelToOnethingCapabilityEntry(
+			model,
+			providerId,
+		);
+	}
+
+	// 目录补缺由这家 manifest 自己说(`catalogBackfill`,今天只有千问的按量目录缺旗舰)。
+	const backfill = getProviderManifest(providerId)?.catalogBackfill;
+	if (backfill) {
+		// Gap-fill only: a real catalog entry always outranks the backfill.
+		for (const model of backfill(config as Record<string, unknown> | undefined)) {
+			if (models[model.id]) continue;
+			models[model.id] = modelsDevModelToOnethingCapabilityEntry(
+				model,
+				providerId,
+			);
+		}
+	}
+
+	return models;
+}
+
+export function createOnethingModelEntriesFromOpenRouterModels(
+	providerId: string,
+	models: OnethingOpenRouterModel[],
+): Record<string, OnethingModelCapabilityEntry> {
+	const entries: Record<string, OnethingModelCapabilityEntry> = {};
+	for (const model of models) {
+		entries[model.id] = openRouterModelToOnethingCapabilityEntry(
+			model,
+			providerId,
+		);
+	}
+	return entries;
+}
+
+export function sortOnethingModels(
+	models: OnethingOpenRouterModel[],
+): OnethingOpenRouterModel[] {
+	return [...models].sort((a, b) => {
+		const ad = a.last_updated || "";
+		const bd = b.last_updated || "";
+		if (ad && !bd) return -1;
+		if (!ad && bd) return 1;
+		if (!ad && !bd) return a.id.localeCompare(b.id);
+		return bd.localeCompare(ad);
+	});
+}
+
+export function getOnethingModelsForProvider(
+	providers: OnethingProviderModelConfigs | undefined,
+	providerId: string,
+	options: OnethingModelRegistryQueryOptions = {},
+): OnethingOpenRouterModel[] {
+	const models = getProviderModels(providers, providerId);
+	if (!models) {
+		return options.getFallbackModelsForProvider?.(providerId) ?? [];
+	}
+
+	let entries = Object.values(models);
+	// manifest 的 `models.include`:这一家的列表只留型号 id 含这些子串的(Claude Code 只列 Claude)。
+	const source = getProviderManifest(providerId)?.models;
+	const include = source?.kind === "models.dev" ? source.include : undefined;
+	if (include) {
+		entries = entries.filter((entry) => {
+			const lower = entry.id.toLowerCase();
+			return include.some((pattern) => lower.includes(pattern));
+		});
+	}
+
+	return sortOnethingModels(
+		entries.map(onethingCapabilityEntryToOpenRouterModel),
+	);
+}
+
+export function getAllOnethingModels(
+	providers: OnethingProviderModelConfigs | undefined,
+): OnethingOpenRouterModel[] {
+	if (!providers) return [];
+
+	const all: OnethingOpenRouterModel[] = [];
+	for (const providerId of Object.keys(providers)) {
+		const models = providers[providerId]?.models;
+		if (!models) continue;
+		for (const entry of Object.values(models)) {
+			all.push(onethingCapabilityEntryToOpenRouterModel(entry));
+		}
+	}
+	return sortOnethingModels(all);
+}
+
+export function searchOnethingModels(
+	providers: OnethingProviderModelConfigs | undefined,
+	query: string,
+	providerId?: string,
+	options: OnethingModelRegistryQueryOptions = {},
+): OnethingOpenRouterModel[] {
+	const models = providerId
+		? getOnethingModelsForProvider(providers, providerId, options)
+		: getAllOnethingModels(providers);
+	const lower = query.toLowerCase();
+	return models.filter(
+		(model) =>
+			model.id.toLowerCase().includes(lower) ||
+			model.name.toLowerCase().includes(lower) ||
+			model.description?.toLowerCase().includes(lower),
+	);
+}
+
+export function getOnethingModelById(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+	options: OnethingModelRegistryQueryOptions = {},
+): OnethingOpenRouterModel | undefined {
+	const entry = getModelEntry(providers, modelId, providerId);
+	if (entry) return onethingCapabilityEntryToOpenRouterModel(entry);
+	return options.getFallbackModel?.(modelId, providerId);
+}
+
+/**
+ * Raw capability entry with numeric USD-per-1M-token pricing (input/output/
+ * cacheRead/cacheWrite), for cost math. `getOnethingModelById` converts this
+ * into the legacy OpenRouter string-pricing shape instead — use this
+ * accessor when you need to multiply, not just display.
+ */
+export function getOnethingModelCapabilityEntry(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): OnethingModelCapabilityEntry | undefined {
+	return getModelEntry(providers, modelId, providerId);
+}
+
+/**
+ * 这一型此刻按多大的窗口算。前三层(覆盖 > 接口 / 目录 > 不知道)是
+ * `effectiveModelFactsOf` 的判据,与 `models.getWithCapabilities` 每行的 `effective`
+ * 同一处算(§5.5,09-10 圆环 unknown 事故的根治)。
+ *
+ * **128000 兜底只在这里、只在第四层**:引擎要一个数去算压缩预算,「不知道」对它
+ * 不是一个可用答案;但这个数不进 `effective`,屏幕上照样画「不知道」。
+ */
+export function getOnethingModelContextLength(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+	options: OnethingModelRegistryQueryOptions = {},
+): number {
+	const facts = effectiveModelFactsOf({
+		override: providerId
+			? onethingModelOverrideFactsOf(providers?.[providerId], modelId)
+			: undefined,
+		entry: getModelEntry(providers, modelId, providerId),
+	});
+	if (facts.contextLength !== null) return facts.contextLength;
+
+	// 第四层:provider 直连的兜底表,再不行按 128k 算(只给引擎用,见上)。
+	const fallback = options.getFallbackModel?.(modelId, providerId);
+	return (
+		fallback?.context_length || fallback?.top_provider?.context_length || 128000
+	);
+}
+
+/**
+ * Strict variant: the model's real max output, or undefined when nobody knows.
+ * No 4096 fallback (2026-08-15 ruling): a caller that needs "no artificial
+ * cap" passes this straight through, and passes nothing when it is unknown.
+ *
+ * 覆盖优先(用户在浮层里填的「最大输出」就是「知道」)—— 判据在
+ * `effectiveModelFactsOf`,与目录行的 `effective.maxOutput` 同一处。
+ */
+export function getOnethingKnownModelMaxOutputTokens(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+	options: OnethingModelRegistryQueryOptions = {},
+): number | undefined {
+	const facts = effectiveModelFactsOf({
+		override: providerId
+			? onethingModelOverrideFactsOf(providers?.[providerId], modelId)
+			: undefined,
+		entry: getModelEntry(providers, modelId, providerId),
+	});
+	if (facts.maxOutput !== null) return facts.maxOutput;
+	const fallback = options.getFallbackModel?.(modelId, providerId);
+	const known = fallback?.top_provider?.max_completion_tokens;
+	return known && known > 0 ? known : undefined;
+}
+
+/** 名册来源的一家(ACP):条目是 agent 不是模型,不认工具、不认温度。 */
+function isRosterProvider(providerId: string | undefined): boolean {
+	return getProviderManifest(providerId)?.models.kind === "roster";
+}
+
+export function onethingModelSupportsTools(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): boolean {
+	if (isRosterProvider(providerId)) return false;
+
+	// 覆盖 > 目录:`effectiveModelFactsOf` 一处判(§5.5)。
+	const known = effectiveModelFactsOf({
+		override: providerId
+			? onethingModelOverrideFactsOf(providers?.[providerId], modelId)
+			: undefined,
+		entry: getModelEntry(providers, modelId, providerId),
+	}).capabilities.tools;
+	if (known !== null) return known;
+
+	// 第四层(只给引擎用):谁都没说时按名字猜。
+	const lower = modelId.toLowerCase();
+	if (
+		[
+			"image",
+			"vision-preview",
+			"dall-e",
+			"imagen",
+			"ocr",
+			"embedding",
+			"asr",
+		].some((pattern) => lower.includes(pattern))
+	) {
+		return false;
+	}
+	return true;
+}
+
+export function onethingModelSupportsTemperature(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): boolean {
+	if (isRosterProvider(providerId)) return false;
+
+	const entry = getModelEntry(providers, modelId, providerId);
+	// 接口没报温度这一项 = 不知道,不是「不支持」(批 3):照没有条目的口径放行。
+	if (entry && !entry.unreported?.includes("temperature")) return entry.supportsTemperature;
+	return true;
+}
+
+// Reasoning support moved to model-capability.ts (resolveOnethingModelCapabilities).
+// The two former lookups here (async + sync) had drifted apart and had no
+// callers outside this registry — deleted 2026-07-18.
+
+/**
+ * 「这个模型要不要走**专用生图流**」—— 不是「这个模型能不能出图」。
+ *
+ * 唯一消费者是 `packages/backend/engine/stream/stream-executor.ts` 的
+ * `supportsSpecialStream`:命中即整条消息绕开 agent loop,只把 prompt 交给
+ * `image-stream.ts` 的 `executeOnethingImageGenerationStream`(OpenAI images /
+ * Gemini image API)。所以这里返回 true 的代价是**整个对话通路被换掉**。
+ *
+ * 设置页的生图徽标不读这里 —— 它走
+ * `resolveOnethingModelCapabilities().imageOutput`
+ * (`packages/renderer/components/settings/provider/model-capabilities.ts`
+ * 的 `hasImageGeneration`)。两者故意分家:能力账本回答「能不能出图」,这个
+ * 函数回答「换不换通路」。
+ *
+ * 因此 **provider 在回合内用原生工具出图的模型一律排除**:账本把这类模型答成
+ * `imageOutputServedBy: 'in-loop'`(证据是 Codex 条目的
+ * `providerMetadata.codex.nativeTools: ['image_generation']`),图是 agent loop
+ * 里的一次工具调用产出的,专用流只会让它连普通对话都答不了。这条排除站在用户
+ * override 之前 —— override 表达的是「能出图」,不是「换通路」,而 `servedBy`
+ * 是账本对「谁来出」的裁定,不吃 override(P2-b:判据从直接认原生工具改成读
+ * `ModelProfile`/账本的 `servedBy`)。
+ */
+export function onethingModelSupportsImageGeneration(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): boolean {
+	const entry = getModelEntry(providers, modelId, providerId);
+	const override = getCapabilityOverride(
+		providers,
+		modelId,
+		providerId,
+		"imageOutput",
+	);
+
+	const servedBy = resolveOnethingModelCapabilities({
+		providerId: providerId ?? entry?.provider ?? "",
+		modelId,
+		...(entry ? { registryEntry: entry } : {}),
+		...(override === undefined ? {} : { override: { imageOutput: override } }),
+	}).imageOutputServedBy;
+	// 回合内出图的模型永远不换通路,哪怕用户 override 了 imageOutput=true。
+	if (servedBy === "in-loop") return false;
+
+	if (override !== undefined) return override;
+
+	// 名字兜底只留「专用生图端点」那一族(dall-e / gpt-image / imagen / flux /
+	// stable-diffusion / midjourney)。gemini 的名字兜底 P4-8 退役:Google 官方
+	// 端点的图像模型在账本上是 `imageOutputServedBy: 'in-loop'`(目录缺席时也由
+	// gemini 规则表的 `/image/` 行答出 imageOutput=true),走 GeminiWire 的普通流。
+	const lower = modelId.toLowerCase();
+	if (
+		[
+			"dall-e",
+			"dalle",
+			"imagen",
+			"gpt-image",
+			"flux",
+			"stable-diffusion",
+			"midjourney",
+		].some((pattern) => lower.includes(pattern))
+	) {
+		return true;
+	}
+
+	if (entry) return entry.supportsImageOutput;
+
+	return false;
+}
+
+/**
+ * 「这个模型是不是在**回合内**出图」—— `onethingModelSupportsImageGeneration`
+ * 的另一半(拍板 #13)。
+ *
+ * 那一支回答「换不换通路」(true = 整条消息离开 agent loop 去专用生图流);
+ * 这一支回答「留在回合里的那一类要不要开原生出图工具」。两者读的是账本同一个
+ * 字段 `imageOutputServedBy`,互斥:`'in-loop'` ⇒ 这里 true、那里 false。
+ *
+ * 唯一消费者是 `backend/engine/stream/stream-executor.ts` 的
+ * `resolveRequestedOutputModalities`:命中就把 `requestedOutputModalities` 填成
+ * `['image']`,方言据此往工具表里加 `{type:'image_generation'}`(openai /
+ * codex),或者按自己的规矩发 `modalities` / `responseModalities`
+ * (openrouter / gemini)。
+ *
+ * 用户 override 一票**否**决:`imageOutput: false` 时账本连 `servedBy` 都不答,
+ * 于是这里 false —— 「别给我出图」不该被闸门绕过去。
+ */
+export function onethingModelServesImageOutputInLoop(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): boolean {
+	const entry = getModelEntry(providers, modelId, providerId);
+	const override = getCapabilityOverride(
+		providers,
+		modelId,
+		providerId,
+		"imageOutput",
+	);
+
+	return (
+		resolveOnethingModelCapabilities({
+			providerId: providerId ?? entry?.provider ?? "",
+			modelId,
+			...(entry ? { registryEntry: entry } : {}),
+			...(override === undefined ? {} : { override: { imageOutput: override } }),
+		}).imageOutputServedBy === "in-loop"
+	);
+}
+
+export function getOnethingModelCacheStatus(
+	providers: OnethingProviderModelConfigs | undefined,
+): { lastFetched: number; modelCount: number; isStale: boolean } {
+	let total = 0;
+	let latest = 0;
+	if (providers) {
+		for (const providerId of Object.keys(providers)) {
+			const config = providers[providerId];
+			const count = config?.models ? Object.keys(config.models).length : 0;
+			total += count;
+			if (config?.modelsLastFetched && config.modelsLastFetched > latest)
+				latest = config.modelsLastFetched;
+		}
+	}
+	return { lastFetched: latest, modelCount: total, isStale: total === 0 };
+}
+
+export function getOnethingModelDisplayName(modelId: string): string {
+	return MODEL_NAME_ALIASES[modelId] || modelId;
+}
+
+export function getOnethingModelNameAliases(): Record<string, string> {
+	return { ...MODEL_NAME_ALIASES };
+}
+
+function getProviderModels(
+	providers: OnethingProviderModelConfigs | undefined,
+	providerId: string,
+): Record<string, OnethingCatalogModelEntry> | undefined {
+	return providers?.[providerId]?.models;
+}
+
+function getProviderModelEntry(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId: string,
+): OnethingCatalogModelEntry | undefined {
+	return providers?.[providerId]?.models?.[modelId];
+}
+
+function getAnyModelEntry(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+): OnethingModelCapabilityEntry | undefined {
+	if (!providers) return undefined;
+	for (const providerId of Object.keys(providers)) {
+		const facts = catalogFactsOf(providers[providerId]?.models?.[modelId]);
+		if (facts) return facts;
+	}
+	return undefined;
+}
+
+/**
+ * 能力 / 容量 / 价格读者的**唯一入口**。手填条目什么都没说过,这里一律答 undefined
+ * (`catalogFactsOf`)—— 与批 2 之前「目录里没有这一型」的读法逐字相同。
+ */
+function getModelEntry(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): OnethingModelCapabilityEntry | undefined {
+	if (providerId) return catalogFactsOf(getProviderModelEntry(providers, modelId, providerId));
+	return getAnyModelEntry(providers, modelId);
+}
+
+function getCapabilityOverride(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId: string | undefined,
+	key: keyof OnethingModelCapabilityOverride,
+): boolean | undefined {
+	if (!providerId) return undefined;
+	return providers?.[providerId]?.modelCapabilitiesByModel?.[modelId]?.[key];
+}

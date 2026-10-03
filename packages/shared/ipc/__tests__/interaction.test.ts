@@ -7,7 +7,7 @@
  * `import type` 的地方多出一段运行时代码。测试文件同进 `tsconfig.node.json` 的
  * include,所以守卫照样在 typecheck 里红。
  *
- * 这里额外守一条**别处没有的**:契约本体是从 `@onething/backend/runtime/interaction` 再导出的
+ * 这里额外守一条**别处没有的**:契约本体是从 `@onething/backend/interaction` 再导出的
  * (不是手抄的平行副本),所以下面的字段表同时也在盯 core 那边的形状 —— 两边漂移
  * 这件事在结构上就不成立了。
  */

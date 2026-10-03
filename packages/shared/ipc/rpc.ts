@@ -99,7 +99,7 @@ export interface RpcDispatchContext {
 	 *
 	 * 桥凭据不是用户 token:它是宿主为「某台 agent × 某条会话」签的一把一次性钥匙,只打得开
 	 * `host-mcp` 这一个域。同一条规矩:**由宿主在它自己那道闸验过之后铸**(HTTP 面
-	 * `runtime/acp/acp-client-api-host-mcp-face.ts` 查过凭据表才把它放进来),信封上没有可以放它的地方。域处理者
+	 * `acp/acp-client-api-host-mcp-face.ts` 查过凭据表才把它放进来),信封上没有可以放它的地方。域处理者
 	 * 拿它**再查一次**表 —— 查不到(作废了 / 从没签过)一律拒。用户 token 的 context
 	 * 永远没有这一格,所以用户 token 进不了 `host-mcp`。
 	 */

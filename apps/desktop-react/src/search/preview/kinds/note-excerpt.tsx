@@ -5,7 +5,7 @@ import s from '../Preview.module.css'
 
 /**
  * `kind: 'note-excerpt'` —— 一篇笔记里命中行 ±3 行
- * (`runtime/search/capabilities/preview.ts` 的 `NoteExcerptPreview`)。
+ * (`search/capabilities/preview.ts` 的 `NoteExcerptPreview`)。
  *
  * **画的是素文本,不是渲染后的 markdown**,而且这是刻意的:载荷是从文件里切出来的
  * **中间几行**,它在语法上根本不是一份完整的 markdown(一段可能从表格中间起笔、

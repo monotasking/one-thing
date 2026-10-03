@@ -259,7 +259,7 @@ export const searchWindowRouter = defineRouter<SearchWindowRoutes>('search-windo
  *  - 本机可信(桌面 IPC / 桌面内嵌 HTTP 面 / 回环 `server:start`)= 这台进程装配的
  *    那份 `SearchService`,整台机器的一份会话 / 文件 / 提示词表 + store 级索引;
  *  - 不可信(独立部署的 server)= per-owner 沙箱里的同一件事
- *    (`runtime/search/search-client-api-providers.ts` 那个单槽端口,装的就是从前
+ *    (`search/search-client-api-providers.ts` 那个单槽端口,装的就是从前
  *    `POST /api/search/query` 背后的同一个闭包)。
  *
  * `SEARCH_ACTION` 是推送、`executeAction` 是窗口活(在 `searchWindowRouter` 上),
@@ -319,7 +319,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', [
 /**
  * 一个能力对外说的全部话(§4.1b 的 `CapabilityManifest` 的**线上形**)。
  *
- * 这里刻意**不 import core** —— S1 会在 `packages/backend/runtime/search/kernel/capability.ts` 建一份
+ * 这里刻意**不 import core** —— S1 会在 `packages/backend/search/kernel/capability.ts` 建一份
  * 同形的 `CapabilityManifest`,契约层与内核层各持一份是故意的:contract 是 wire 的
  * 形(要能过 JSON),core 那份还带 `visibility` / `schema` 这些**不出进程**的格。
  * 两份同形不同命,S1 落地时由能力侧一个纯函数投影过来。
@@ -505,7 +505,7 @@ export interface SearchStatusResponse {
    * 「没跑起来。原因在日志里」,而真机上 Worker 的日志从来没有落过地 —— 那句话是假的,
    * 这一格与 `worker-logging.ts` 那半边一起把它变成真话。
    *
-   * 产地在 Worker 里(`runtime/search/index/vector-writer.ts` 的
+   * 产地在 Worker 里(`search/index/vector-writer.ts` 的
    * `describeEmbedderFailure`):**原话**,200 字封顶,后端一个中文字都不拼。
    * **它是诊断串,不是 UI 文案** —— 壳按 `vectorErrorKind` 查一句人话,再把这一格
    * 括在后面(`{reason}`)。
@@ -576,7 +576,7 @@ export type SearchStorageRequest = Record<string, never>
 /**
  * **检索占了多少地方**(2026-09-18)。四个数 + 它们的和 + 量的是哪一刻。
  *
- * 归类规矩(判据在 `runtime/search/index/storage.ts`,那里一张表名清单都没有):
+ * 归类规矩(判据在 `search/index/storage.ts`,那里一张表名清单都没有):
  *
  * | 格 | 装什么 |
  * | --- | --- |

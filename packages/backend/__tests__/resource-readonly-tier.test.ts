@@ -1,7 +1,7 @@
 /**
  * K3-a' —— **`readonly` 档装配之后,工具目录里一只资源工具都没有。**
  *
- * `runtime/resource/__tests__/catalog-sync.test.ts` 已经在一台裸内核 + 一本裸目录上
+ * `resource/__tests__/catalog-sync.test.ts` 已经在一台裸内核 + 一本裸目录上
  * 证过这条规则本身。这只文件证的是另一半,而那一半只有真装配说得出口:
  * `createOnethingBackend({ toolRegistry: 'readonly' })` 走完整条装配序列之后,
  * **模型真正看见的那一份目录**(产品层的 `getToolkitCatalog` 端口,回合面
@@ -13,12 +13,12 @@
  * 只是那台宿主上的模型多了一只能改名、能归档、能删消息的工具。
  *
  * 同时钉住反面:`backend.resources` 照常在位、照常能做。「不进目录」说的只是
- * 「模型看不见」——界面 / 脚本经 `runtime/resource/resource-client-api.ts` 走管线那条路不受影响。
+ * 「模型看不见」——界面 / 脚本经 `resource/resource-client-api.ts` 走管线那条路不受影响。
  *
  * headless 档那一半在 `resource-kernel.test.ts` 里(它就是拿 `'headless'` 装的)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
+ * `session/session-store.ts` / `settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
@@ -77,7 +77,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
       sender: new NoopSender() as never,
     })
 
-    const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
     expect(catalog?.has('resources')).toBe(false)
@@ -98,7 +98,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
   })
 
   it('RPC 那条路不受影响:界面照样读得到、做得动', async () => {
-    const store = await import('@onething/backend/runtime/sessions')
+    const store = await import('@onething/backend/session')
     const created = store.createSession(`readonly-${Date.now()}`, 'Before')
 
     const done = await backend.resources.do(
@@ -109,7 +109,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
     )
     expect(done.kind).toBe('ok')
 
-    const { sessionReads } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/session')
     expect(sessionReads.getSession(created.id)?.name).toBe('After')
 
     await backend.dispose()

@@ -1267,7 +1267,7 @@ function normalizeUsage(usage: SessionResponseUsage): ProjectedStepUsage {
  * 累加成**消息级** usage。
  *
  * 批 P-a:`providerCostUSD` 在这里被**丢掉**,不是漏了 —— 引擎的累加器
- * (`runtime/agent-loop/agent-loop-executor.ts` 的 `accumulatedUsage`)两个分支都逐字段
+ * (`agent-loop/agent-loop-executor.ts` 的 `accumulatedUsage`)两个分支都逐字段
  * 列名,里面没有成本那一格,所以 store 的 `message.usage` 从不带它。这里跟着丢,
  * 两边才逐字段相等;成本只活在 `usageByTurn` → `steps[].usage` 那一格。
  */
@@ -1855,7 +1855,7 @@ export function materializeStop(run: AssistantNode): ProjectedMessageStop | unde
 }
 
 /**
- * 推理段的**两个落点**(引擎侧的判据是 `runtime/agent-loop/agent-loop-executor.ts` 的
+ * 推理段的**两个落点**(引擎侧的判据是 `agent-loop/agent-loop-executor.ts` 的
  * `getAgentLoopReasoningPlacement`,这里是它在事件上的复刻):
  *
  *  - `'top'` —— 第 1 轮请求**开头**那一段(此前这次执行还没产出过任何正文 /
@@ -2007,7 +2007,7 @@ export function materializeContentParts(
    * 已结算的状态行挂在**这一轮正文之后**(留账 #10)。
    *
    * 位置为什么是末尾而不是"它当时插在哪":今天全仓**唯一**的结算态生产者是
-   * 后台子代理指示器(`backend/runtime/external-agents/background-status.ts`),
+   * 后台子代理指示器(`backend/external-agent/background-status.ts`),
    * 它一条会话只有一格(`id: 'background-tasks'`),而且在**这一轮正文流完之后**
    * 才结算 —— 末尾就是它当时的位置,不是近似。
    *

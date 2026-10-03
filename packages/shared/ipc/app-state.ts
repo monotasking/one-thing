@@ -3,12 +3,12 @@
  *
  * 两个方法,两种方向:`get` 读整份 `app-state.json`(渲染层启动时 hydrate 用的
  * 那一份),`saveUiState` 写一个**补丁**(只有出现的键才落盘,合并规则在
- * `@onething/backend/runtime/storage` 的 `mergeOnethingUiState` 里)。
+ * `@onething/backend/storage` 的 `mergeOnethingUiState` 里)。
  *
  * **`workspace` / `sessionReadMarks` 在这条通道上是不透明载荷**,故意不给结构:
  * 这两块的形状主人是渲染层(工作区树已经改过 v2→v4→v5 好几版),主进程只按键名
  * 整块读写、从不解释。契约层复述过一次的后果就在仓库里躺着 ——
- * `@onething/backend/runtime/storage` 的 `OnethingPersistedWorkspace` 停在 v2,和渲染层
+ * `@onething/backend/storage` 的 `OnethingPersistedWorkspace` 停在 v2,和渲染层
  * 的 v5 早就对不上了,只是过去被 IPC 边界的 `any` 遮住看不见。谁解释谁转型:
  * 渲染层在自己那侧收窄成 `PersistedWorkspace`,主进程在自己那侧收窄成
  * `OnethingUiStatePatch`。

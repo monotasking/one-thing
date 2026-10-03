@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // 功能入口棘轮(server / client 拆分 docs/design/server-client-split-2026-10.md §4「功能入口」)。
 //
-// 用户拍板(2026-10-03):每个功能只通过自己的入口 `packages/backend/runtime/<功能>/index.ts` 对外交出能力
-// (命名规范 N3 的形状 `runtime/<功能>/<功能>.ts` 同样是入口,2026-10-04 凭证功能起用);
+// 用户拍板(2026-10-03):每个功能只通过自己的入口 `packages/backend/<功能>/index.ts` 对外交出能力
+// (命名规范 N3 的形状 `<功能>/<功能>.ts` 同样是入口,2026-10-04 凭证功能起用);
 // 功能目录里其余文件是内部实现,外面(包根、别的功能、apps、scripts、evals)不许直接引用。读一个功能,
 // 先看它的入口就知道它对外给了什么。
 //
@@ -15,12 +15,13 @@
 //     `vi.mock` / `vi.doMock` / `vi.unmock` / `vi.doUnmock` / `vi.importActual` / `vi.importMock` 的第一个参数。
 //     用 TypeScript 解析器取,注释与普通字符串不算。
 //   - 包说明符 `@onething/backend/<子路径>` 先按 `packages/backend/package.json` 的 exports 精确键解析到文件
-//     (`./runtime/search/index` 这种键指的是 `runtime/search/index/` 子目录的桶,不是入口,所以必须按文件判);
+//     (`./search/index` 这种键指的是 `search/index/` 子目录的桶,不是入口,所以必须按文件判);
 //     没有键的按字面路径解析。相对路径按磁盘解析(`.js` → `.ts`、补 `.ts` / `/index.ts`)。
-//   - 解析到 `runtime/<功能>/index.ts` = 走入口,不计;解析到功能目录里的其他文件 = 深层,计一处;
+//   - 解析到 `<功能>/index.ts` = 走入口,不计;解析到功能目录里的其他文件 = 深层,计一处;
 //     引用方自己就在这个功能目录里 = 内部引用,不计。
-//   - 解析到总桶 `runtime/index.ts`(`@onething/backend/runtime` 不带子路径)单独记一行 `(总桶)`。
-//   - 「功能」= `packages/backend/runtime/` 下的每个直接子目录(`__tests__` 除外)。
+//   - 从前还有一行 `(总桶)`(引用总桶 `runtime/index.ts` 的处数);总桶 2026-10-04 删掉,这一行随之撤掉。
+//   - 「功能」= `packages/backend/` 下的每个直接子目录,`NON_FEATURE_DIRS`(`__tests__` / `http-server` / `node_modules`)除外;
+//     包根的散文件(backend.ts 等)与非功能目录不是功能,引用它们不计。(2026-10-04 去掉 `runtime/` 这一层之前,功能根是包根下的 `runtime/` 目录。)
 //   - 扫描范围 `packages/`、`apps/`、`scripts/`、`evals/` 下的 `.ts/.tsx/.mts/.cts/.js/.mjs/.cjs`;跳过 node_modules、
 //     点开头的目录与构建产物目录(dist、dist-*、build、release、coverage)。`.txt` 模板不是代码,不扫。
 //
@@ -37,14 +38,16 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { clientApiFeatureOf } from './lib/backend-structure.mjs'
+import { NON_FEATURE_DIRS, clientApiFeatureOf } from './lib/backend-structure.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/feature-entry-baseline-2026-10.txt')
 const BACKEND = 'packages/backend'
-const RUNTIME = `${BACKEND}/runtime`
+/** 功能目录的根:2026-10-04 起就是包根(功能目录直接住在 `packages/backend/` 下)。 */
+const FEATURE_ROOT = BACKEND
 const PACKAGE_NAME = '@onething/backend'
-const BARREL_ROW = '(总桶)'
+/** 防假绿:这只功能目录必须在,否则功能根已经搬走、指标失效。 */
+const SENTINEL_FEATURE = 'session'
 
 const SCAN_ROOTS = ['packages', 'apps', 'scripts', 'evals']
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'build', 'release', 'coverage'])
@@ -123,18 +126,16 @@ export function resolveSpecifier(specifier, importerAbsolute, exportsMap) {
 }
 
 /**
- * 判一处引用:返回 `{ feature, target }`(深层,feature 为功能名或 `(总桶)`),或 null(不计)。
+ * 判一处引用:返回 `{ feature, target }`(深层,feature 为功能名),或 null(不计)。
  * `features` 是功能目录名的集合。
  */
 export function classify(resolvedAbsolute, importerAbsolute, features) {
   if (!resolvedAbsolute) return null
-  const runtimeAbsolute = path.join(root, RUNTIME)
+  const runtimeAbsolute = path.join(root, FEATURE_ROOT)
   const rel = path.relative(runtimeAbsolute, resolvedAbsolute)
   if (rel.startsWith('..') || path.isAbsolute(rel)) return null
   const parts = rel.split(path.sep)
-  if (parts.length === 1) {
-    return /^index\.(?:ts|js)$/.test(parts[0]) || parts[0] === '' ? { feature: BARREL_ROW, target: 'index.ts' } : null
-  }
+  if (parts.length === 1) return null // 包根的散文件,不是功能
   const feature = parts[0]
   if (!features.has(feature)) return null
   const featureDir = path.join(runtimeAbsolute, feature)
@@ -146,19 +147,19 @@ export function classify(resolvedAbsolute, importerAbsolute, features) {
   if ((inner === `${feature}.ts` || inner === `${feature}.js` || inner === feature)
     && !existsSync(path.join(featureDir, 'index.ts'))) return null
   // 第二个入口 `<功能>-client-api*.ts`(D26)同样不计:谁可以引它由 `client-api:gate` 管(只许 HTTP 服务器)。
-  if (clientApiFeatureOf(`${RUNTIME}/${feature}/${inner.replace(/\.js$/, '.ts')}`) === feature) return null
+  if (clientApiFeatureOf(`${FEATURE_ROOT}/${feature}/${inner.replace(/\.js$/, '.ts')}`) === feature) return null
   return { feature, target: inner }
 }
 
 /** @returns {{ counts: Record<string, number>, sites: Array<{feature,target,importer,line,specifier}>, scanned: number }} */
 export function measure() {
-  const runtimeAbsolute = path.join(root, RUNTIME)
-  if (!existsSync(runtimeAbsolute)) {
+  const runtimeAbsolute = path.join(root, FEATURE_ROOT)
+  if (!existsSync(path.join(runtimeAbsolute, SENTINEL_FEATURE))) {
     // 目录不存在 ≠ 指标归零。真搬家了就该显式改这个脚本,而不是让 gate 替你庆祝。
-    throw new Error(`功能根不存在:${RUNTIME} —— 指标已失效,不认这次结果`)
+    throw new Error(`功能根不对:${FEATURE_ROOT}/${SENTINEL_FEATURE} 不存在 —— 指标已失效,不认这次结果`)
   }
   const features = new Set(readdirSync(runtimeAbsolute)
-    .filter((name) => name !== '__tests__' && !name.startsWith('.') && statSync(path.join(runtimeAbsolute, name)).isDirectory()))
+    .filter((name) => !NON_FEATURE_DIRS.has(name) && !name.startsWith('.') && statSync(path.join(runtimeAbsolute, name)).isDirectory()))
   const exportsMap = loadExports()
   const files = []
   for (const scanRoot of SCAN_ROOTS) {
@@ -182,8 +183,7 @@ export function measure() {
 export function formatBaseline(counts) {
   const lines = [
     '# feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)',
-    '# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/runtime/<功能>/ 里入口(`index.ts`,或 N3 形状的 `<功能>.ts`)以外文件的 import 处数。',
-    '# `(总桶)` = 引用 packages/backend/runtime/index.ts(`@onething/backend/runtime` 不带子路径)的处数。',
+    '# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/<功能>/ 里入口(`index.ts`,或 N3 形状的 `<功能>.ts`)以外文件的 import 处数。',
     '# 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。',
     '# 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。',
   ]
@@ -231,24 +231,24 @@ function selfTest() {
 
   // 1) 说明符采集:八种写法都算,注释与普通字符串不算。
   const fixture = [
-    "import a from '@onething/backend/runtime/search/service.js'",
-    "import '@onething/backend/runtime/search/side-effect.js'",
+    "import a from '@onething/backend/search/service.js'",
+    "import '@onething/backend/search/side-effect.js'",
     "export { b } from '../search/kernel/redact.js'",
-    "const c = await import('@onething/backend/runtime/search/capabilities')",
-    "type D = typeof import('@onething/backend/runtime/search/service')",
-    "vi.mock('@onething/backend/runtime/search/service-bound.js', () => ({}))",
-    "const e = await vi.importActual('@onething/backend/runtime/search/service-setup.js')",
+    "const c = await import('@onething/backend/search/capabilities')",
+    "type D = typeof import('@onething/backend/search/service')",
+    "vi.mock('@onething/backend/search/service-bound.js', () => ({}))",
+    "const e = await vi.importActual('@onething/backend/search/service-setup.js')",
     "const f = require('./x.cjs')",
-    "// import g from '@onething/backend/runtime/search/not-counted.js'",
-    "const h = 'from @onething/backend/runtime/search/not-counted.js'",
+    "// import g from '@onething/backend/search/not-counted.js'",
+    "const h = 'from @onething/backend/search/not-counted.js'",
   ].join('\n')
   const specs = collectSpecifiers('fixture.ts', fixture).map((s) => s.specifier)
   expect('应采到 8 处说明符', specs.length === 8)
   expect('注释与普通字符串不算', !specs.some((s) => s.includes('not-counted')))
 
-  // 2) 判定:入口不计、深层计、功能内部不计、总桶单列、包根以外的东西不计。
+  // 2) 判定:入口不计、深层计、功能内部不计、包根散文件与非功能目录不计。
   const features = new Set(['search', 'mcp'])
-  const R = (p) => path.join(root, RUNTIME, p)
+  const R = (p) => path.join(root, FEATURE_ROOT, p)
   const outside = path.join(root, BACKEND, 'backend.ts')
   expect('入口不计', classify(R('search/index.ts'), outside, features) === null)
   expect('N3 形状的入口也不计(目录里没有 index.ts)', classify(R('credentials/credentials.ts'), outside, new Set([...features, 'credentials'])) === null)
@@ -257,7 +257,7 @@ function selfTest() {
   expect('子目录桶也是深层', classify(R('search/index/index.ts'), outside, features)?.target === 'index/index.ts')
   expect('功能内部不计', classify(R('search/service.ts'), R('search/capabilities/x.ts'), features) === null)
   expect('别的功能引用算深层', classify(R('search/service.ts'), R('mcp/x.ts'), features)?.feature === 'search')
-  expect('总桶单列', classify(R('index.ts'), outside, features)?.feature === BARREL_ROW)
+  expect('非功能目录(http-server)不计', classify(R('http-server/http-server-routes.ts'), outside, features) === null)
   expect('包根文件不计', classify(path.join(root, BACKEND, 'current.ts'), outside, features) === null)
   expect('第二个入口 client-api 不计', classify(R('search/search-client-api.ts'), outside, features) === null)
   expect('client-api 的方面文件也不计', classify(R('search/search-client-api-providers.ts'), outside, features) === null)
@@ -272,8 +272,8 @@ function selfTest() {
   expect('新功能应算 regression', added.regressions.length === 1 && added.regressions[0].isNew)
   const healed = compare({ search: 2 }, {})
   expect('清零应算 improvement', healed.improvements.length === 1 && healed.improvements[0].current === 0)
-  const round = parseBaseline(formatBaseline({ search: 4, [BARREL_ROW]: 1 }))
-  expect('基线往返应无损', round.search === 4 && round[BARREL_ROW] === 1)
+  const round = parseBaseline(formatBaseline({ search: 4, mcp: 1 }))
+  expect('基线往返应无损', round.search === 4 && round.mcp === 1)
 
   if (failures.length > 0) {
     console.error('[feature-entry-gate] self-test FAILED:')
@@ -349,7 +349,7 @@ function main() {
       }
     }
     console.error('  规矩见 docs/design/server-client-split-2026-10.md §4「功能入口」:')
-    console.error('  外面要用的名字从 `@onething/backend/runtime/<功能>` 拿;入口没有的,先想清楚它该不该交出去,再加进入口。')
+    console.error('  外面要用的名字从 `@onething/backend/<功能>` 拿;入口没有的,先想清楚它该不该交出去,再加进入口。')
     process.exit(1)
   }
 

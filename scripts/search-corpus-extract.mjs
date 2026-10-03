@@ -13,7 +13,7 @@
  * 1. **全程只读**。一个字节都不往 store 里写:不加锁、不修坏行、不建目录。坏掉的
  *    `events.jsonl` 就跳过那一个会话并计数,不修。
  * 2. **正文一律过 `scripts/lib/search-corpus-redact.mjs`**。那份纯函数是唯一产地,
- *    夹具自检(`packages/backend/runtime/search/kernel/__tests__/fixtures.test.ts`)拿同一份再跑一遍,
+ *    夹具自检(`packages/backend/search/kernel/__tests__/fixtures.test.ts`)拿同一份再跑一遍,
  *    要求逐字相同。
  * 3. **id 一律哈希**。`sessionKey` = sessionId 的 sha256 前 12 位;消息 key =
  *    `${sessionKey}:${messageId 的 sha256 前 12 位}`。所以成品里没有一个真 id ——
@@ -44,7 +44,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { parseSessionLogEventLog } from '@onething/backend/runtime/sessions'
+import { parseSessionLogEventLog } from '@onething/backend/session'
 import { projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import { redactText } from './lib/search-corpus-redact.mjs'
 
@@ -168,7 +168,7 @@ function collectSession(sessionsDir, sessionId) {
 function main() {
   const args = parseArgs(process.argv.slice(2))
   const store = args.store ?? process.env.ONETHING_STORE_PATH ?? path.join(os.homedir(), '.onething')
-  const out = args.out ?? path.join(process.cwd(), 'packages/backend/runtime/search/kernel/__tests__/fixtures')
+  const out = args.out ?? path.join(process.cwd(), 'packages/backend/search/kernel/__tests__/fixtures')
   const limit = Number.isFinite(args.limit) && args.limit > 0 ? args.limit : DEFAULT_LIMIT
 
   const sessionsDir = path.join(store, 'sessions')

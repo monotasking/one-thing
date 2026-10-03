@@ -2,13 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSessionAccess } from '@onething/backend/runtime/sessions'
-import { installSessionLayerForTest } from '../../runtime/sessions/testing/session-layer.js'
-import { getEventBus } from '@onething/backend/runtime/events'
+import { createSessionAccess } from '@onething/backend/session'
+import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { getEventBus } from '@onething/backend/event'
 
 // 授权判据直取子路径(工单 4 C2),替身跟着搬到同一条路上。
-vi.mock('@onething/backend/runtime/evals/incident', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/runtime/evals/incident')>(),
+vi.mock('@onething/backend/eval/incident', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/eval/incident')>(),
   readIncident: vi.fn((id: string) => id === 'alice-incident' ? { id, sessionId: 'alice-session' } : undefined),
 }))
 
@@ -60,22 +60,22 @@ afterEach(async () => {
 
 type Case = [string, string, string, Record<string, unknown>]
 const loadDomains: Record<string, () => Promise<unknown>> = {
-  sessions: () => import('../../runtime/sessions/sessions-client-api.js'),
-  'session-command': () => import('../../runtime/sessions/sessions-client-api-commands.js'),
-  permission: () => import('../../runtime/permissions/permissions-client-api.js'),
-  interaction: () => import('../../runtime/interaction/interaction-client-api.js'),
-  variables: () => import('../../runtime/variables/variables-client-api.js'),
-  scratchpad: () => import('../../runtime/scratchpad/scratchpad-client-api.js'),
-  goal: () => import('../../runtime/goals/goals-client-api.js'),
-  acp: () => import('../../runtime/acp/acp-client-api.js'),
-  'session-events': () => import('../../runtime/sessions/sessions-client-api-events.js'),
-  chat: () => import('../../runtime/engine/engine-client-api.js'),
-  files: () => import('../../runtime/files/files-client-api.js'),
-  plugins: () => import('../../runtime/plugins/plugins-client-api.js'),
-  tools: () => import('../../runtime/tools/tools-client-api.js'),
-  usage: () => import('../../runtime/usage/usage-client-api.js'),
-  evals: () => import('../../runtime/evals/evals-client-api.js'),
-  'evals-workbench': () => import('../../runtime/evals/evals-client-api-workbench.js'),
+  sessions: () => import('../../session/sessions-client-api.js'),
+  'session-command': () => import('../../session/sessions-client-api-commands.js'),
+  permission: () => import('../../permission/permissions-client-api.js'),
+  interaction: () => import('../../interaction/interaction-client-api.js'),
+  variables: () => import('../../variable/variables-client-api.js'),
+  scratchpad: () => import('../../scratchpad/scratchpad-client-api.js'),
+  goal: () => import('../../goal/goals-client-api.js'),
+  acp: () => import('../../acp/acp-client-api.js'),
+  'session-events': () => import('../../session/sessions-client-api-events.js'),
+  chat: () => import('../../engine/engine-client-api.js'),
+  files: () => import('../../file/files-client-api.js'),
+  plugins: () => import('../../plugin/plugins-client-api.js'),
+  tools: () => import('../../tool/tools-client-api.js'),
+  usage: () => import('../../usage/usage-client-api.js'),
+  evals: () => import('../../eval/evals-client-api.js'),
+  'evals-workbench': () => import('../../eval/evals-client-api-workbench.js'),
 }
 
 /**

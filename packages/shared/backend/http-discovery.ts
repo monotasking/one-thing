@@ -29,7 +29,7 @@ export const HTTP_DISCOVERY_FILENAME = 'http.json'
 /** `<store>/run` —— 发现文件、`daemon.sock`、`backend.lock` 的那一格。 */
 export const ONETHING_RUN_DIR_NAME = 'run'
 
-/** `~/.onething` 的那个尾巴。与 `@onething/backend/runtime/storage` 的同名常量必须一致。 */
+/** `~/.onething` 的那个尾巴。与 `@onething/backend/storage` 的同名常量必须一致。 */
 export const ONETHING_STORE_DIR_NAME = '.onething'
 
 /**

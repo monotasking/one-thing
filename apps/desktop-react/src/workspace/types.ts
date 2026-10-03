@@ -4,7 +4,7 @@
  *
  * ── 一句话把这一批的边界说清 ─────────────────────────────────────────────
  * 「工作区」= 后端 `spaces` 域里的一条 `SpaceRecord`。它是**真的**:
- * 增删改查四条口都在(`packages/backend/runtime/spaces/spaces-client-api.ts`)。
+ * 增删改查四条口都在(`packages/backend/space/spaces-client-api.ts`)。
  * 但「当前是哪个工作区」后端**没有这个概念**(契约原话见 data/spaces-port.ts),
  * 所以它是这台壳自己的记忆,住在 localStorage。
  *

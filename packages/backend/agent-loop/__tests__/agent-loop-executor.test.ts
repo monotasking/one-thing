@@ -1,0 +1,1982 @@
+import { describe, expect, it } from 'vitest'
+import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
+import {
+  appendAgentLoopTurnToolCallOnce,
+  appendOrderedPart,
+  applyAgentLoopFinishChunkWithAdapters,
+  applyAgentLoopReasoningChunkWithAdapters,
+  applyAgentLoopTextChunkWithAdapters,
+  applyAgentLoopToolCallFallbackWithAdapters,
+  applyAgentLoopToolInputDeltaWithAdapters,
+  applyAgentLoopToolInputEndWithAdapters,
+  applyAgentLoopToolInputStartWithAdapters,
+  applyAgentLoopToolMetadata,
+  applyAgentLoopToolMetadataWithAdapters,
+  applyAgentLoopToolPartialResultWithAdapters,
+  applyAgentLoopProviderDataWithAdapters,
+  applyAgentLoopStreamChunkWithAdapters,
+  applyAgentLoopToolResultWithAdapters,
+  applyAgentLoopTurnStartWithAdapters,
+  buildAgentLoopFinalMessageUpdate,
+  buildAgentLoopPostResponseContexts,
+  buildAgentLoopToolPartialStepUpdate,
+  buildAgentLoopToolResultPresentation,
+  buildAgentLoopToolStartStepUpdate,
+  changesFromMetadata,
+  completeAgentLoopStreamWithAdapters,
+  createAgentLoopAssistantMessage,
+  createAgentLoopNextAssistantWriterPlan,
+  createAgentLoopExecutorTurnState,
+  dispatchAgentLoopToolContentPartsWithAdapters,
+  enabledToolNames,
+  emitAgentLoopFinalMessageUpdateWithAdapters,
+  executeAgentLoopStreamLifecycleWithAdapters,
+  getAgentLoopReasoningPlacement,
+  hasAgentLoopVisibleTurnActivity,
+  lastUserMessageText,
+  planAgentLoopToolCallFallback,
+  planAgentLoopFinishChunk,
+  planAgentLoopProviderData,
+  planAgentLoopToolContentPartsDispatch,
+  planAgentLoopTurnContentPersistence,
+  persistAgentLoopTurnContentPartsWithAdapters,
+  resultText,
+  rememberAgentLoopToolStepId,
+  runAgentLoopPostResponseHooksWithAdapters,
+  settleAgentLoopToolCallResult,
+  settleAgentLoopToolResultWithAdapters,
+  startAgentLoopToolExecution,
+  structuredToolResult,
+  textFromPartialResult,
+} from '@onething/backend/agent-loop'
+import type { JsonObject, JsonValue } from '@shared/json'
+
+describe('core agent-loop executor helpers', () => {
+  it('creates assistant message shells and final message updates in core', () => {
+    expect(createAgentLoopAssistantMessage({
+      id: 'assistant-1',
+      model: 'deepseek-chat',
+      provider: 'deepseek',
+      timestamp: 1234,
+    })).toEqual({
+      id: 'assistant-1',
+      role: 'assistant',
+      model: 'deepseek-chat',
+      provider: 'deepseek',
+      content: '',
+      timestamp: 1234,
+      isStreaming: true,
+      thinkingStartTime: 1234,
+      toolCalls: [],
+      contentParts: [],
+    })
+
+    expect(createAgentLoopNextAssistantWriterPlan({
+      id: 'assistant-2',
+      model: 'deepseek-reasoner',
+      provider: 'deepseek',
+      timestamp: 2234,
+    })).toEqual({
+      assistantMessage: {
+        id: 'assistant-2',
+        role: 'assistant',
+        model: 'deepseek-reasoner',
+        provider: 'deepseek',
+        content: '',
+        timestamp: 2234,
+        isStreaming: true,
+        thinkingStartTime: 2234,
+        toolCalls: [],
+        contentParts: [],
+      },
+      events: [
+        {
+          type: 'message:assistant-created',
+          message: {
+            id: 'assistant-2',
+            role: 'assistant',
+            model: 'deepseek-reasoner',
+            provider: 'deepseek',
+            content: '',
+            timestamp: 2234,
+            isStreaming: true,
+            thinkingStartTime: 2234,
+            toolCalls: [],
+            contentParts: [],
+          },
+        },
+        {
+          type: 'stream:start',
+          messageId: 'assistant-2',
+          assistantMessageId: 'assistant-2',
+          model: 'deepseek-reasoner',
+        },
+      ],
+    })
+
+    expect(buildAgentLoopFinalMessageUpdate({
+      content: 'done',
+      reasoning: 'because',
+      contentParts: [{ type: 'text', content: 'done' }],
+      toolCalls: [{ id: 'call-1' }],
+      steps: [{ id: 'step-1' }],
+      usage: { totalTokens: 4 },
+      errorDetails: 'details',
+    })).toEqual({
+      content: 'done',
+      reasoning: 'because',
+      contentParts: [{ type: 'text', content: 'done' }],
+      toolCalls: [{ id: 'call-1' }],
+      steps: [{ id: 'step-1' }],
+      usage: { totalTokens: 4 },
+      errorDetails: 'details',
+      isStreaming: false,
+    })
+  })
+
+  it('emits final message updates and completes streams through core adapters', async () => {
+    const message = {
+      id: 'assistant-1',
+      content: 'done',
+      reasoning: 'because',
+      contentParts: [{ type: 'text', content: 'done' }],
+      toolCalls: [],
+      steps: [],
+      usage: { totalTokens: 4 },
+      errorDetails: undefined,
+    }
+    const session = {
+      name: 'Updated Session',
+      messages: [message],
+    }
+    const events: unknown[] = []
+
+    await expect(emitAgentLoopFinalMessageUpdateWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'assistant-1',
+      getSession: () => session,
+      emitMessageUpdated: event => {
+        events.push(event)
+      },
+    })).resolves.toBe(true)
+    expect(events).toEqual([{
+      type: 'message:updated',
+      messageId: 'assistant-1',
+      updates: {
+        content: 'done',
+        reasoning: 'because',
+        contentParts: [{ type: 'text', content: 'done' }],
+        toolCalls: [],
+        steps: [],
+        usage: { totalTokens: 4 },
+        errorDetails: undefined,
+        isStreaming: false,
+      },
+    }])
+
+    await expect(emitAgentLoopFinalMessageUpdateWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'missing',
+      getSession: () => session,
+      emitMessageUpdated: event => {
+        events.push(event)
+      },
+    })).resolves.toBe(false)
+
+    const calls: string[] = []
+    const completions: unknown[] = []
+    await completeAgentLoopStreamWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'assistant-1',
+      sessionName: 'Fallback',
+      accumulatedUsage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+      lastTurnUsage: { inputTokens: 1, outputTokens: 2 },
+      finalize: () => {
+        calls.push('finalize')
+      },
+      getSession: () => session,
+      emitMessageUpdated: event => {
+        calls.push(`emit:${event.messageId}`)
+      },
+      sendStreamComplete: data => {
+        calls.push('complete')
+        completions.push(data)
+      },
+    })
+
+    expect(calls).toEqual(['finalize', 'emit:assistant-1', 'complete'])
+    expect(completions).toEqual([{
+      sessionName: 'Updated Session',
+      usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+      lastTurnUsage: { inputTokens: 1, outputTokens: 2 },
+    }])
+  })
+
+  /**
+   * **收尾修复的产物必须递给采集点,不许回读**(F4-c c4-b,§16.25)。
+   *
+   * 收尾链上排在 `emitFinalAssistantMessageUpdate` 后面的
+   * `captureCancelledToolResults` 要的是"这次修复判死了哪几个 step" ——
+   * 它是 `tool/result{cancelled:true}` 的**产地**。
+   *
+   * 施工时先按"改读投影"做过一版,探针当场量到 48/330 条**整批丢账**:修复的
+   * 落盘走命令面 `patchMessage{steps,toolCalls}`,而这两格在 `message/patched`
+   * 的 `DERIVED_KEYS` 里(投影只认 `tool/*` 折出来的那一份,不认补丁)——
+   * 于是投影侧那几个 step 永远停在 `running`,采集点一条都不写。
+   *
+   * 所以判据是:`onSettled` 交出来的**必须是修复之后**那一份。反证在同一条里 ——
+   * 入参那一份的 step 是 `running`(没有 `cancelled`,采集点会一条都不记)。
+   */
+  it('hands the settled (repaired) message to the capture hook, never the pre-repair one', async () => {
+    const running = {
+      id: 'step-c1',
+      status: 'running',
+      toolCallId: 'c1',
+      toolCall: { id: 'c1', status: 'executing' },
+    }
+    const message = {
+      id: 'assistant-settle',
+      content: '',
+      toolCalls: [{ id: 'c1', status: 'executing' }],
+      steps: [running],
+    }
+    const settled: Array<{ steps?: Array<{ status?: string; error?: string }> }> = []
+
+    await emitAgentLoopFinalMessageUpdateWithAdapters({
+      sessionId: 's-settle',
+      assistantMessageId: 'assistant-settle',
+      getSession: () => ({ messages: [message] }),
+      getMessage: () => message,
+      emitMessageUpdated: () => {},
+      errorMessage: 'User cancelled',
+      onSettled: next => {
+        settled.push(next as (typeof settled)[number])
+      },
+    })
+
+    expect(settled).toHaveLength(1)
+    // 修复之后:采集点看得到 cancelled,`tool/result{cancelled:true}` 才写得出来。
+    expect(settled[0]!.steps?.[0]?.status).toBe('cancelled')
+    expect(settled[0]!.steps?.[0]?.error).toBe('User cancelled')
+    // 反证:入参那一份还是 running —— 谁把采集点改回读它(或读任何一侧缓存),
+    // 被取消工具的结局就整批丢账。
+    expect(running.status).toBe('running')
+  })
+
+  /**
+   * **§15.16 同型合同:settle 快照必须带渲染锚点,来源不限。**
+   *
+   * §15.16 那一课的机械形状,搬到收尾链上重演一遍:
+   *
+   *  - settle 快照是**整体覆盖** —— renderer 的 `updateSessionMessage` 只做
+   *    `{...message, ...updates}`,不跑 `rebuildContentParts`、不补合成锚点;
+   *  - `data-steps` 锚点按 canonical G4 只住渲染侧,投影**故意不产出**;
+   *  - 于是快照少了锚点 = 覆盖后锚点归零 = work group 与整段工具渲染消失,
+   *    而**正文一个字都没丢**(§15.16 定性:不是数据丢失,是分界塌了)。
+   *
+   * **F4-b2 立这道门时的结论是"必须读活 run 的写手视图"**(锚点当时只有那一个
+   * 产地)。**F4-c c4-b(§16.25 钥匙①)换了来源,没换判据**:锚点改由推送侧用
+   * 共享纯件 `synthesizeCoreToolAnchors` 从**折叠产物自己的 steps** 现算,于是
+   * 写手对象不再是锚点的必经保管人 —— 那正是 18 个热写端口的解锁条件。
+   *
+   * 三条断言:①带锚点的取材 → 快照带锚点;②**裸的**投影取材 → 锚点归零(这一条
+   * 是反证,它说明现算那一步是承重的,不是装饰);③投影取材 + 现算 → 锚点回来,
+   * 而且正文三侧逐字相同。
+   */
+  it('the settle snapshot keeps render anchors — synthesized from the fold (§15.16 同型)', async () => {
+    const writerParts = [
+      { type: 'text', content: 'answer', turnIndex: 0 },
+      { type: 'data-steps', turnIndex: 0 },
+      { type: 'text', content: 'tail', turnIndex: 1 },
+    ]
+    // 投影侧同一条消息:正文逐字相同,锚点整格没有(G4)。
+    const projectedParts = writerParts.filter(part => part.type !== 'data-steps')
+    const baseMessage = {
+      id: 'assistant-anchor',
+      content: 'answer\ntail',
+      reasoning: undefined,
+      toolCalls: [],
+      steps: [{ id: 'step-c1', status: 'completed', toolCallId: 'c1', turnIndex: 0 }],
+      usage: undefined,
+      errorDetails: undefined,
+    }
+    const snapshotFrom = async (parts: unknown[]) => {
+      const message = { ...baseMessage, contentParts: parts }
+      const events: Array<{ updates: { contentParts?: unknown[]; content?: string } }> = []
+      await emitAgentLoopFinalMessageUpdateWithAdapters({
+        sessionId: 's-anchor',
+        assistantMessageId: 'assistant-anchor',
+        getSession: () => ({ messages: [message] }),
+        getMessage: () => message,
+        emitMessageUpdated: event => {
+          events.push(event as (typeof events)[number])
+        },
+      })
+      return events[0]!.updates
+    }
+    // renderer 那一步逐字复刻:整体覆盖,不补锚点。
+    const mergeIntoRenderer = (updates: { contentParts?: unknown[] }) =>
+      ({ ...baseMessage, contentParts: writerParts, ...updates })
+
+    const fromWriter = await snapshotFrom(writerParts)
+    const fromProjection = await snapshotFrom(projectedParts)
+
+    const anchors = (parts: unknown[] | undefined) =>
+      (parts ?? []).filter(part => (part as { type?: string }).type === 'data-steps').length
+    const text = (parts: unknown[] | undefined) =>
+      (parts ?? [])
+        .filter(part => (part as { type?: string }).type === 'text')
+        .map(part => (part as { content?: string }).content)
+
+    // 写手视图取材:锚点原样带出去,覆盖之后渲染层还有它。
+    expect(anchors(fromWriter.contentParts)).toBe(1)
+    expect(anchors(mergeIntoRenderer(fromWriter).contentParts)).toBe(1)
+    // 投影取材:快照少了锚点,而 renderer 的整体覆盖把渲染层原有的那一个也抹掉。
+    expect(anchors(fromProjection.contentParts)).toBe(0)
+    expect(anchors(mergeIntoRenderer(fromProjection).contentParts)).toBe(0)
+    // ③ c4-b:投影取材 **+ 现算** —— 锚点回来了,渲染层覆盖之后也还在。
+    const synthesized = synthesizeCoreToolAnchors(
+      projectedParts as Array<{ type: string; turnIndex?: number }>,
+      baseMessage,
+    )
+    const fromSynthesized = await snapshotFrom(synthesized!)
+    expect(anchors(fromSynthesized.contentParts)).toBe(1)
+    expect(anchors(mergeIntoRenderer(fromSynthesized).contentParts)).toBe(1)
+    // 而正文三侧逐字相同 —— 这正是 §15.16 的定性:丢的是分界,不是数据。
+    expect(text(fromWriter.contentParts)).toEqual(['answer', 'tail'])
+    expect(text(fromProjection.contentParts)).toEqual(['answer', 'tail'])
+    expect(text(fromSynthesized.contentParts)).toEqual(['answer', 'tail'])
+    expect(fromProjection.content).toBe(fromWriter.content)
+  })
+
+  it('creates turn state and merges adjacent ordered text/reasoning parts', () => {
+    const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+
+    appendOrderedPart(turn.orderedParts, { type: 'text', content: 'hello', turnIndex: 1 })
+    appendOrderedPart(turn.orderedParts, { type: 'text', content: ' world', turnIndex: 1 })
+    appendOrderedPart(turn.orderedParts, { type: 'reasoning', content: 'think', turnIndex: 1 })
+    appendOrderedPart(turn.orderedParts, { type: 'reasoning', content: ' more', turnIndex: 1 })
+
+    expect(turn).toMatchObject({
+      toolCalls: [],
+      content: { value: '' },
+      reasoning: { value: '' },
+      hasSentToolParts: false,
+      orderedParts: [
+        { type: 'text', content: 'hello world', turnIndex: 1 },
+        { type: 'reasoning', content: 'think more', turnIndex: 1 },
+      ],
+    })
+  })
+
+  it('applies turn-start, text, and reasoning chunks through core adapters', async () => {
+    const state = {
+      turnIndex: 1,
+      createNewAssistantOnNextTurnStart: true,
+    }
+    let created = 0
+    await applyAgentLoopTurnStartWithAdapters({
+      state,
+      turn: 2,
+      createNextAssistantWriter: () => {
+        created += 1
+      },
+    })
+    expect(state).toEqual({
+      turnIndex: 2,
+      createNewAssistantOnNextTurnStart: false,
+    })
+    expect(created).toBe(1)
+
+    const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+    const textApplied = applyAgentLoopTextChunkWithAdapters({
+      text: 'hello',
+      turnIndex: 2,
+      content: turn.content,
+      orderedParts: turn.orderedParts,
+      handleTextChunk(text, accumulator) {
+        accumulator.value += text
+        return text.toUpperCase()
+      },
+    })
+    expect(textApplied).toBe(true)
+    expect(turn.content.value).toBe('hello')
+    expect(turn.orderedParts).toEqual([
+      { type: 'text', content: 'HELLO', turnIndex: 2 },
+    ])
+
+    const firstTurn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+    const topPlacement = applyAgentLoopReasoningChunkWithAdapters({
+      reasoning: 'think',
+      turnIndex: 1,
+      accumulatedContent: '',
+      turn: firstTurn,
+      handleReasoningChunk(reasoning, accumulator) {
+        accumulator.value += reasoning
+      },
+    })
+    expect(topPlacement).toBe('top')
+    expect(firstTurn.reasoning.value).toBe('think')
+    expect(firstTurn.orderedParts).toEqual([])
+
+    const inlinePlacement = applyAgentLoopReasoningChunkWithAdapters({
+      reasoning: ' more',
+      turnIndex: 2,
+      accumulatedContent: 'answer',
+      turn,
+      handleReasoningChunk(reasoning, accumulator) {
+        accumulator.value += reasoning
+      },
+    })
+    expect(inlinePlacement).toBe('inline')
+    expect(turn.reasoning.value).toBe(' more')
+    expect(turn.orderedParts.at(-1)).toEqual({
+      type: 'reasoning',
+      content: ' more',
+      turnIndex: 2,
+    })
+  })
+
+  it('dispatches provider stream chunks through the core executor adapter', async () => {
+    interface TestPart {
+      type: string
+      content?: string
+      turnIndex?: number
+    }
+    interface TestToolCall {
+      id: string
+      toolName: string
+      arguments?: JsonObject
+      status?: string
+      result?: JsonValue
+      startTime?: number
+      endTime?: number
+    }
+
+    const events: string[] = []
+    const toolCalls: TestToolCall[] = []
+    const state = {
+      turnIndex: 1,
+      turn: createAgentLoopExecutorTurnState<TestToolCall, TestPart>(),
+      stepIdsByToolCallId: new Map<string, string>(),
+      accumulatedUsage: undefined as { inputTokens: number; outputTokens: number; totalTokens: number } | undefined,
+      lastTurnUsage: undefined as { inputTokens: number; outputTokens: number } | undefined,
+      toolIterations: 0,
+      skillManageCalled: false,
+      latestUserPrompt: 'draw',
+      createNewAssistantOnNextTurnStart: false,
+    }
+    const processor = {
+      toolCalls,
+      getStepIdForToolCall: (toolCallId: string) => `step_${toolCallId}`,
+      handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number) {
+        events.push(`input-start:${toolCallId}:${toolName}:${turnIndex}`)
+      },
+      handleToolInputDelta(toolCallId: string, argsTextDelta: string) {
+        events.push(`input-delta:${toolCallId}:${argsTextDelta}`)
+      },
+      handleToolInputEnd(toolCallId: string) {
+        events.push(`input-end:${toolCallId}`)
+        const call = {
+          id: toolCallId,
+          toolName: 'read',
+          arguments: { path: 'a.txt' },
+        }
+        toolCalls.push(call)
+        return call
+      },
+      handleToolCallChunk(chunk: { toolCallId: string; toolName: string; args: JsonObject }) {
+        const call = {
+          id: chunk.toolCallId,
+          toolName: chunk.toolName,
+          arguments: chunk.args,
+        }
+        toolCalls.push(call)
+        return call
+      },
+    }
+    const store = {
+      updateMessageToolCalls: (_sessionId: string, _messageId: string, calls: TestToolCall[]) => {
+        events.push(`store:${calls.map(call => `${call.id}:${call.status ?? 'none'}`).join(',')}`)
+      },
+    }
+    const emitter = {
+      sendContentPart(part: TestPart | { type: 'data-steps'; turnIndex: number }) {
+        events.push(`part:${part.type}:${'content' in part ? part.content ?? '' : part.turnIndex}`)
+      },
+      sendToolCall(call: TestToolCall) {
+        events.push(`tool-call:${call.id}:${call.status ?? 'none'}`)
+      },
+      sendToolResult(call: TestToolCall) {
+        events.push(`tool-result:${call.id}:${call.status ?? 'none'}`)
+      },
+      sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string) {
+        events.push(`exec-start:${toolCallId}:${stepId}:${toolName}`)
+      },
+      sendToolExecutionUpdate() {},
+      sendToolExecutionEnd(toolCallId: string, stepId: string, result?: unknown, isError?: boolean) {
+        events.push(`exec-end:${toolCallId}:${stepId}:${isError}:${JSON.stringify(result)}`)
+      },
+      sendStepUpdated(stepId: string, update: { status?: string }) {
+        events.push(`step:${stepId}:${update.status}`)
+      },
+      sendSkillActivated(skillName: string) {
+        events.push(`skill:${skillName}`)
+      },
+      sendContextSizeUpdate(inputTokens: number) {
+        events.push(`context:${inputTokens}`)
+      },
+      sendContinuation(turnIndex: number) {
+        events.push(`continue:${turnIndex}`)
+      },
+    }
+    const baseOptions = {
+      state,
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      model: 'deepseek-chat',
+      accumulatedContent: '',
+      processor,
+      store,
+      emitter,
+      createNextAssistantWriter: () => {
+        events.push('next-writer')
+      },
+      handleTextChunk(text: string, accumulator: { value: string }) {
+        accumulator.value += text
+        return text
+      },
+      handleReasoningChunk(reasoning: string, accumulator: { value: string }) {
+        accumulator.value += reasoning
+      },
+      persistTurnContentParts: () => {
+        events.push('persist')
+      },
+      createTurnState: () => createAgentLoopExecutorTurnState<TestToolCall, TestPart>(),
+      syncAccumulatedUsage: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => {
+        state.accumulatedUsage = usage
+        events.push(`usage:${usage.totalTokens}`)
+      },
+      syncLastTurnUsage: (usage: { inputTokens: number; outputTokens: number }) => {
+        state.lastTurnUsage = usage
+        events.push(`last:${usage.inputTokens}/${usage.outputTokens}`)
+      },
+      now: () => 100,
+    }
+
+    await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
+      ...baseOptions,
+      chunk: { type: 'text', text: 'hello' },
+    })
+    await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
+      ...baseOptions,
+      chunk: { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_1', toolName: 'read' } },
+    })
+    await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
+      ...baseOptions,
+      chunk: { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: '{"path":"a.txt"}' } },
+    })
+    await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
+      ...baseOptions,
+      chunk: { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' } },
+    })
+    await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
+      ...baseOptions,
+      chunk: { type: 'tool-result', toolResult: { toolCallId: 'call_1', result: { content: 'done' } } },
+    })
+    await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
+      ...baseOptions,
+      chunk: {
+        type: 'finish',
+        finishReason: 'tool-calls',
+        usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+      },
+    })
+
+    expect(state.turnIndex).toBe(2)
+    expect(state.toolIterations).toBe(1)
+    expect(state.accumulatedUsage).toEqual({ inputTokens: 3, outputTokens: 4, totalTokens: 7 })
+    expect(events).toEqual(expect.arrayContaining([
+      'part:text:hello',
+      'input-start:call_1:read:1',
+      'input-delta:call_1:{"path":"a.txt"}',
+      'input-end:call_1',
+      'tool-call:call_1:executing',
+      'tool-result:call_1:completed',
+      'exec-end:call_1:step_call_1:false:{"content":[{"type":"text","text":"done"}]}',
+      'context:3',
+      'persist',
+      'continue:2',
+    ]))
+  })
+
+  it('runs the agent-loop stream lifecycle through core adapters', async () => {
+    const events: string[] = []
+    let now = 100
+    const prepared = { supported: true as const, runtime: { id: 'runtime-1' } }
+
+    const result = await executeAgentLoopStreamLifecycleWithAdapters<
+      typeof prepared,
+      typeof prepared
+    >({
+      prepareRuntime: () => {
+        events.push('prepare')
+        return prepared
+      },
+      isRuntimeSupported: (value): value is typeof prepared => value.supported,
+      unsupportedReason: () => 'unsupported',
+      emitStreamStart: () => {
+        events.push('start')
+      },
+      async *streamChunks(value) {
+        events.push(`stream:${value.runtime.id}`)
+        yield { type: 'text', text: 'hello' }
+        yield { type: 'finish', finishReason: 'stop' as const }
+      },
+      applyChunk: chunk => {
+        events.push(`chunk:${chunk.type}`)
+      },
+      finalize: () => {
+        events.push('finalize')
+      },
+      updateUsage: durationMs => {
+        events.push(`usage:${durationMs}`)
+      },
+      completeStream: value => {
+        events.push(`complete:${value.runtime.id}`)
+      },
+      runPostResponseHooks: value => {
+        events.push(`hooks:${value.runtime.id}`)
+      },
+      isAbortError: error => error.name === 'AbortError',
+      sendStreamAborted: reason => {
+        events.push(`aborted:${reason}`)
+      },
+      updateMessageError: error => {
+        events.push(`message-error:${error}`)
+      },
+      emitFinalAssistantMessageUpdate: () => {
+        events.push('final-update')
+      },
+      sendStreamError: data => {
+        events.push(`stream-error:${data.error}:${data.preserved}`)
+      },
+      sendStreamComplete: data => {
+        events.push(`stream-complete:${data.sessionName ?? ''}:${data.error ?? ''}`)
+      },
+      now: () => {
+        now += 25
+        return now
+      },
+    })
+
+    expect(result).toEqual({ pausedForConfirmation: false })
+    expect(events).toEqual([
+      'prepare',
+      'start',
+      'stream:runtime-1',
+      'chunk:text',
+      'chunk:finish',
+      'usage:25',
+      'complete:runtime-1',
+      'hooks:runtime-1',
+    ])
+  })
+
+  it('handles agent-loop stream lifecycle errors in core', async () => {
+    const events: string[] = []
+
+    await expect(executeAgentLoopStreamLifecycleWithAdapters({
+      prepareRuntime: () => ({ supported: true as const }),
+      isRuntimeSupported: (prepared): prepared is { supported: true } => prepared.supported,
+      unsupportedReason: () => 'unsupported',
+      emitStreamStart: () => {
+        throw new Error('boom')
+      },
+      async *streamChunks() {},
+      applyChunk: () => {},
+      finalize: () => {
+        events.push('finalize')
+      },
+      completeStream: () => {
+        events.push('complete')
+      },
+      runPostResponseHooks: () => {
+        events.push('hooks')
+      },
+      isAbortError: error => error.name === 'AbortError',
+      sendStreamAborted: reason => {
+        events.push(`aborted:${reason}`)
+      },
+      updateMessageError: error => {
+        events.push(`message-error:${error}`)
+      },
+      emitFinalAssistantMessageUpdate: () => {
+        events.push('final-update')
+      },
+      sendStreamError: data => {
+        events.push(`stream-error:${data.error}:${data.preserved}`)
+      },
+      sendStreamComplete: data => {
+        events.push(`stream-complete:${data.error}`)
+      },
+      getSessionName: () => 'Session',
+    })).resolves.toEqual({ pausedForConfirmation: false })
+
+    expect(events).toEqual([
+      'finalize',
+      'message-error:boom',
+      'final-update',
+      'stream-error:boom:true',
+      'stream-complete:boom',
+    ])
+  })
+
+  it('tracks agent-loop tool-call fallback state in core', () => {
+    const stepIds = new Map<string, string>()
+    expect(rememberAgentLoopToolStepId(stepIds, 'call_1', undefined)).toBeUndefined()
+    expect(stepIds.size).toBe(0)
+    expect(rememberAgentLoopToolStepId(stepIds, 'call_1', 'step_1')).toBe('step_1')
+    expect(stepIds.get('call_1')).toBe('step_1')
+
+    const turnToolCalls = [{ id: 'call_1', toolName: 'read' }]
+    expect(appendAgentLoopTurnToolCallOnce(turnToolCalls, { id: 'call_1', toolName: 'read-again' })).toBe(false)
+    expect(appendAgentLoopTurnToolCallOnce(turnToolCalls, { id: 'call_2', toolName: 'write' })).toBe(true)
+    expect(turnToolCalls.map(toolCall => toolCall.id)).toEqual(['call_1', 'call_2'])
+
+    expect(planAgentLoopToolCallFallback([{ id: 'call_1' }], {
+      toolCallId: 'call_1',
+      toolName: 'read',
+      args: { path: '/tmp/a.txt' },
+    })).toEqual({
+      shouldStartPlaceholder: false,
+      toolCallId: 'call_1',
+      toolName: 'read',
+      args: { path: '/tmp/a.txt' },
+    })
+
+    expect(planAgentLoopToolCallFallback([], {
+      toolCallId: 'call_3',
+      toolName: 'bash',
+    })).toEqual({
+      shouldStartPlaceholder: true,
+      toolCallId: 'call_3',
+      toolName: 'bash',
+      args: {},
+    })
+  })
+
+  it('places first-turn reasoning at top until visible activity appears', () => {
+    const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+
+    expect(hasAgentLoopVisibleTurnActivity(turn)).toBe(false)
+    expect(getAgentLoopReasoningPlacement({
+      turnIndex: 1,
+      accumulatedContent: '',
+      turn,
+    })).toBe('top')
+
+    appendOrderedPart(turn.orderedParts, { type: 'provider-data', turnIndex: 1 })
+    expect(hasAgentLoopVisibleTurnActivity(turn)).toBe(false)
+    expect(getAgentLoopReasoningPlacement({
+      turnIndex: 1,
+      accumulatedContent: '',
+      turn,
+    })).toBe('top')
+
+    appendOrderedPart(turn.orderedParts, { type: 'text', content: 'hello', turnIndex: 1 })
+    expect(hasAgentLoopVisibleTurnActivity(turn)).toBe(true)
+    expect(getAgentLoopReasoningPlacement({
+      turnIndex: 1,
+      accumulatedContent: '',
+      turn,
+    })).toBe('inline')
+  })
+
+  it('formats tool results for display and structured IPC updates', () => {
+    expect(resultText({ content: 'ok', data: { ignored: true } })).toBe('ok')
+    expect(resultText({ data: { output: 'ok' } })).toBe('{"output":"ok"}')
+    expect(resultText({ error: 'boom' })).toBe('boom')
+
+    expect(structuredToolResult({ data: { output: 'ok' } })).toEqual({
+      content: [{ type: 'text', text: '{"output":"ok"}' }],
+      details: { output: 'ok' },
+    })
+    // S3.1(§10.11):开跑那一刻按**最终参数**重算 type —— 占位那条建在
+    // `tool_input_start`,参数还是 `{}`,bash 只能算出 `command`。
+    expect(buildAgentLoopToolStartStepUpdate({
+      id: 'call_1',
+      toolName: 'bash',
+      arguments: { command: 'cat skills/lenovo-scripts/SKILL.md' },
+      status: 'executing',
+    })).toEqual({
+      status: 'running',
+      type: 'skill-read',
+      toolCall: {
+        id: 'call_1',
+        toolName: 'bash',
+        arguments: { command: 'cat skills/lenovo-scripts/SKILL.md' },
+        status: 'executing',
+      },
+    })
+    expect(buildAgentLoopToolStartStepUpdate({
+      id: 'call_2',
+      toolName: 'bash',
+      arguments: { command: 'mkdir tmp' },
+    }).type).toBe('file-write')
+    expect(buildAgentLoopToolStartStepUpdate({
+      id: 'call_3',
+      toolName: 'read',
+      arguments: { path: 'README.md' },
+    }).type).toBe('tool-call')
+  })
+
+  it('settles agent-loop tool calls without store or emitter access', () => {
+    const completed = {
+      id: 'call_1',
+      toolId: 'read',
+      toolName: 'read',
+      status: 'executing',
+    }
+    // COW(P0.2 area ①,F3):结算返回**新** toolCall,入参那条一个字段都不动。
+    const settlement = settleAgentLoopToolCallResult(completed, {
+      content: 'ok',
+      data: { output: 'ok' },
+    }, 1234)
+    expect(settlement).toMatchObject({
+      awaitingConfirmation: false,
+      skillManageCalled: false,
+    })
+    expect(settlement.toolCall).not.toBe(completed)
+    expect(settlement.toolCall).toMatchObject({
+      status: 'completed',
+      result: { output: 'ok' },
+      endTime: 1234,
+      requiresConfirmation: false,
+    })
+    expect(completed.status).toBe('executing')
+    expect(buildAgentLoopToolResultPresentation(settlement.toolCall, {
+      content: 'ok',
+      data: { output: 'ok' },
+    })).toEqual({
+      executionEnd: {
+        result: {
+          content: [{ type: 'text', text: 'ok' }],
+          details: { output: 'ok' },
+        },
+        isError: false,
+        error: undefined,
+      },
+      stepUpdate: {
+        status: 'completed',
+        toolCall: { ...settlement.toolCall },
+        partialResult: {
+          content: [{ type: 'text', text: 'ok' }],
+          details: { output: 'ok' },
+        },
+        partialResultIsPartial: false,
+        result: 'ok',
+        error: undefined,
+        rejected: undefined,
+        rejectionReason: undefined,
+      },
+    })
+
+    const rejected = {
+      id: 'call_2',
+      toolId: 'edit',
+      toolName: 'edit',
+      status: 'executing',
+    }
+    const rejectedSettlement = settleAgentLoopToolCallResult(rejected, {
+      error: 'Denied',
+      data: { rejected: true, rejectionReason: 'No edits' },
+    }, 2345)
+    expect(rejectedSettlement.toolCall).toMatchObject({
+      status: 'failed',
+      rejected: true,
+      rejectionReason: 'No edits',
+      error: 'Denied',
+      endTime: 2345,
+    })
+    expect(buildAgentLoopToolResultPresentation(rejectedSettlement.toolCall, {
+      error: 'Denied',
+      data: { rejected: true, rejectionReason: 'No edits' },
+    })).toMatchObject({
+      executionEnd: {
+        result: undefined,
+        isError: true,
+        error: 'Denied',
+      },
+      stepUpdate: {
+        status: 'failed',
+        result: 'Denied',
+        error: 'Denied',
+        rejected: true,
+        rejectionReason: 'No edits',
+      },
+    })
+
+    const pending = {
+      id: 'call_3',
+      toolId: 'skill_manage',
+      toolName: 'skill_manage',
+      status: 'executing',
+    }
+    const pendingSettlement = settleAgentLoopToolCallResult(pending, {
+      requiresConfirmation: true,
+      error: 'Confirm skill update',
+      data: { commandType: 'dangerous' },
+    }, 3456)
+    expect(pendingSettlement).toMatchObject({
+      awaitingConfirmation: true,
+      // skill_manage 工具已移除,没有可识别的专用调用了。
+      skillManageCalled: false,
+    })
+    expect(pendingSettlement.toolCall).toMatchObject({
+      status: 'pending',
+      requiresConfirmation: true,
+      commandType: 'dangerous',
+      error: 'Confirm skill update',
+      endTime: 3456,
+    })
+    expect(buildAgentLoopToolResultPresentation(pendingSettlement.toolCall, {
+      requiresConfirmation: true,
+      error: 'Confirm skill update',
+      data: { commandType: 'dangerous' },
+    }, true)).toEqual({
+      stepUpdate: {
+        status: 'awaiting-confirmation',
+        toolCall: { ...pendingSettlement.toolCall },
+        error: 'Confirm skill update',
+      },
+    })
+  })
+
+  it('runs agent-loop tool lifecycle through headless store and emitter adapters', () => {
+    interface TestToolCall {
+      id: string
+      toolId?: string
+      toolName: string
+      arguments?: { path?: string }
+      status?: string
+      startTime?: number
+      endTime?: number
+      result?: JsonValue
+      error?: string
+      rejected?: boolean
+      rejectionReason?: string
+      requiresConfirmation?: boolean
+      commandType?: string
+      changes?: {
+        diff: string
+        filePath: string
+        additions: number
+        deletions: number
+      }
+    }
+
+    const toolCall: TestToolCall = {
+      id: 'call_1',
+      toolId: 'read',
+      toolName: 'read',
+      arguments: { path: 'a.txt' },
+      status: 'pending',
+    }
+    const toolCalls = [toolCall]
+    const stepIds = new Map([['call_1', 'step_1']])
+    const events: string[] = []
+    const store = {
+      updateMessageToolCalls: (_sessionId: string, _messageId: string, calls: TestToolCall[]) => {
+        events.push(`store:${calls[0].status}`)
+      },
+    }
+    const emitter = {
+      sendToolCall: (call: TestToolCall) => events.push(`tool-call:${call.status}`),
+      sendToolResult: (call: TestToolCall) => events.push(`tool-result:${call.status}`),
+      sendToolExecutionStart: (toolCallId: string, stepId: string, toolName: string, args: unknown) => {
+        events.push(`start:${toolCallId}:${stepId}:${toolName}:${JSON.stringify(args)}`)
+      },
+      sendToolExecutionUpdate: (toolCallId: string, stepId: string, partial: { content: Array<{ text?: string }> }) => {
+        events.push(`partial:${toolCallId}:${stepId}:${partial.content[0]?.text}`)
+      },
+      sendToolExecutionEnd: (toolCallId: string, stepId: string, result?: unknown, isError?: boolean, error?: string) => {
+        events.push(`end:${toolCallId}:${stepId}:${isError}:${error ?? ''}:${JSON.stringify(result)}`)
+      },
+      sendStepUpdated: (stepId: string, updates: { status?: string; title?: string; result?: string }) => {
+        events.push(`step:${stepId}:${updates.status ?? updates.title ?? updates.result}`)
+      },
+      sendSkillActivated: (skillName: string) => {
+        events.push(`skill:${skillName}`)
+      },
+    }
+
+    // COW(F3):开跑返回新对象并换进工作表;手里那条不动。
+    const started = startAgentLoopToolExecution({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCall,
+      toolCalls,
+      stepId: 'step_1',
+      store,
+      emitter,
+      now: () => 100,
+    })
+    expect(started).toMatchObject({ status: 'executing', startTime: 100 })
+    expect(toolCalls[0]).toBe(started)
+
+    expect(applyAgentLoopToolPartialResultWithAdapters({
+      toolCallId: 'call_1',
+      update: { content: [{ type: 'text', text: 'partial' }] },
+      stepIdsByToolCallId: stepIds,
+      emitter,
+    })).toBe(true)
+
+    expect(applyAgentLoopToolMetadataWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_1',
+      update: {
+        title: 'Read a.txt',
+        metadata: {
+          output: 'preview',
+          path: 'a.txt',
+          diff: '+hello',
+          additions: 1,
+          deletions: 0,
+        },
+      },
+      toolCalls,
+      stepIdsByToolCallId: stepIds,
+      store,
+      emitter,
+    })).toBe(true)
+    // 发现 A(§13.18):COW —— 入参那条(旧引用)不动,但带 changes 的新对象已换进工作表
+    // 并整表快照落盘,settle 从工作表重取时自然继承。
+    expect(toolCall.changes).toBeUndefined()
+    expect(toolCalls[0].changes).toMatchObject({ diff: '+hello', filePath: 'a.txt' })
+    expect(events.some(event => event.includes('step:step_1:Read a.txt'))).toBe(true)
+
+    const settlement = settleAgentLoopToolResultWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_1',
+      result: { content: 'done', data: { output: 'done' } },
+      toolCalls,
+      stepIdsByToolCallId: stepIds,
+      store,
+      emitter,
+      now: () => 200,
+    })
+
+    expect(settlement).toMatchObject({
+      found: true,
+      toolIterationsDelta: 1,
+      awaitingConfirmation: false,
+    })
+    // COW(F3):结算后的那一版在工作表里,`toolCall` 是旧引用。
+    expect(settlement.toolCall).toMatchObject({
+      status: 'completed',
+      result: { output: 'done' },
+      endTime: 200,
+    })
+    expect(toolCalls[0]).toBe(settlement.toolCall)
+    expect(events).toEqual([
+      'store:executing',
+      'tool-call:executing',
+      'start:call_1:step_1:read:{"path":"a.txt"}',
+      'step:step_1:running',
+      'partial:call_1:step_1:partial',
+      'step:step_1:running',
+      // 发现 A(§13.18):metadata 时刻多一次整表快照落盘(带 changes)。
+      'store:executing',
+      'step:step_1:Read a.txt',
+      'store:completed',
+      'tool-result:completed',
+      'end:call_1:step_1:false::{"content":[{"type":"text","text":"done"}],"details":{"output":"done"}}',
+      'step:step_1:completed',
+    ])
+  })
+
+  it('carries edit changes from tool-metadata into both the store snapshot and the settle step update (§13.18 发现 A)', () => {
+    interface TestToolCall {
+      id: string
+      toolId?: string
+      toolName: string
+      arguments?: { path?: string }
+      status?: string
+      startTime?: number
+      endTime?: number
+      result?: JsonValue
+      changes?: {
+        diff: string
+        filePath: string
+        additions: number
+        deletions: number
+      }
+    }
+
+    const toolCall: TestToolCall = {
+      id: 'call_edit',
+      toolId: 'edit',
+      toolName: 'edit',
+      arguments: { path: 'src/a.ts' },
+      status: 'pending',
+    }
+    const toolCalls = [toolCall]
+    const stepIds = new Map([['call_edit', 'step_edit']])
+
+    // 落盘快照:store 每次收到的整表(取第一条,深拷 changes 以免后续 COW 覆盖引用)。
+    const storeSnapshots: Array<TestToolCall['changes']> = []
+    const store = {
+      updateMessageToolCalls: (_s: string, _m: string, calls: TestToolCall[]) => {
+        storeSnapshots.push(calls[0]?.changes ? { ...calls[0].changes } : undefined)
+      },
+    }
+    let lastStepToolCall: TestToolCall | undefined
+    const emitter = {
+      sendToolCall: () => {},
+      sendToolResult: () => {},
+      sendToolExecutionStart: () => {},
+      sendToolExecutionUpdate: () => {},
+      sendToolExecutionEnd: () => {},
+      sendStepUpdated: (_stepId: string, updates: { toolCall?: TestToolCall }) => {
+        if (updates.toolCall) lastStepToolCall = updates.toolCall
+      },
+      sendSkillActivated: () => {},
+    }
+
+    startAgentLoopToolExecution({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCall,
+      toolCalls,
+      stepId: 'step_edit',
+      store,
+      emitter,
+      now: () => 100,
+    })
+
+    applyAgentLoopToolMetadataWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_edit',
+      update: {
+        metadata: {
+          output: 'edited',
+          path: 'src/a.ts',
+          diff: '@@ -1 +1 @@\n-old\n+new',
+          diffHunks: [],
+          additions: 1,
+          deletions: 1,
+        },
+      },
+      toolCalls,
+      stepIdsByToolCallId: stepIds,
+      store,
+      emitter,
+    })
+
+    // metadata 时刻:工作表已带 changes,并已整表快照落盘。
+    expect(toolCalls[0].changes).toMatchObject({ filePath: 'src/a.ts', additions: 1, deletions: 1 })
+    expect(storeSnapshots.at(-1)).toMatchObject({ filePath: 'src/a.ts' })
+
+    const settlement = settleAgentLoopToolResultWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_edit',
+      result: { content: 'done', data: { output: 'done' } },
+      toolCalls,
+      stepIdsByToolCallId: stepIds,
+      store,
+      emitter,
+      now: () => 200,
+    })
+
+    // settle 后:顶层快照(store 最后一次收到的)与 stepUpdate.toolCall **都带** changes。
+    expect(settlement.toolCall?.changes).toMatchObject({ filePath: 'src/a.ts' })
+    expect(storeSnapshots.at(-1)).toMatchObject({ filePath: 'src/a.ts' })
+    expect(lastStepToolCall?.changes).toMatchObject({ filePath: 'src/a.ts' })
+  })
+
+  it('extracts text from partial results and diff metadata', () => {
+    expect(textFromPartialResult({
+      content: [
+        { type: 'text', text: 'half' },
+        { type: 'text', text: 'way' },
+      ],
+    })).toBe('halfway')
+    expect(buildAgentLoopToolPartialStepUpdate({
+      content: [
+        { type: 'text', text: 'half' },
+        { type: 'text', text: 'way' },
+      ],
+    })).toEqual({
+      status: 'running',
+      partialResult: {
+        content: [
+          { type: 'text', text: 'half' },
+          { type: 'text', text: 'way' },
+        ],
+      },
+      partialResultIsPartial: true,
+      result: 'halfway',
+    })
+
+    expect(changesFromMetadata({
+      path: '/tmp/a.txt',
+      diff: '-old\n+new',
+      additions: 1,
+      deletions: 2,
+      originalContentHash: 'before',
+    })).toEqual({
+      filePath: '/tmp/a.txt',
+      diff: '-old\n+new',
+      additions: 1,
+      deletions: 2,
+      originalContent: undefined,
+      originalContentHash: 'before',
+      afterContentHash: undefined,
+      auditId: undefined,
+      auditPath: undefined,
+    })
+  })
+
+  it('builds tool metadata step updates without emitter access', () => {
+    const toolCall: {
+      id: string
+      toolName: string
+      status: string
+      changes?: {
+        diff: string
+        filePath: string
+        additions: number
+        deletions: number
+      }
+    } = {
+      id: 'call_1',
+      toolName: 'edit',
+      status: 'executing',
+    }
+
+    expect(applyAgentLoopToolMetadata(toolCall, {
+      title: 'Edited file',
+      metadata: {
+        output: 'updated',
+        path: '/tmp/a.txt',
+        diff: '-old\n+new',
+        additions: 1,
+        deletions: 1,
+      },
+    })).toEqual({
+      title: 'Edited file',
+      result: 'updated',
+      toolCall: {
+        ...toolCall,
+        changes: {
+          filePath: '/tmp/a.txt',
+          diff: '-old\n+new',
+          additions: 1,
+          deletions: 1,
+          originalContent: undefined,
+          originalContentHash: undefined,
+          afterContentHash: undefined,
+          auditId: undefined,
+          auditPath: undefined,
+        },
+      },
+    })
+    // COW(F3):`changes` 落在返回的新对象上,入参那条不动。
+    expect(toolCall.changes).toBeUndefined()
+
+    expect(applyAgentLoopToolMetadata(undefined, {
+      metadata: { count: 2 },
+    })).toEqual({ result: '{"count":2}' })
+  })
+
+  it('applies agent-loop tool input/call/result chunks through core adapters', () => {
+    interface TestToolCall {
+      id: string
+      toolId?: string
+      toolName: string
+      arguments?: { path?: string }
+      status?: string
+      startTime?: number
+      endTime?: number
+      result?: JsonValue
+      error?: string
+      rejected?: boolean
+      rejectionReason?: string
+      requiresConfirmation?: boolean
+    }
+
+    const toolCalls: TestToolCall[] = []
+    const events: string[] = []
+    const processor = {
+      toolCalls,
+      getStepIdForToolCall: (toolCallId: string) => `step_${toolCallId}`,
+      handleToolInputStart(toolCallId: string, toolName: string, turnIndex: number) {
+        events.push(`input-start:${toolCallId}:${toolName}:${turnIndex}`)
+      },
+      handleToolInputDelta(toolCallId: string, argsTextDelta: string) {
+        events.push(`input-delta:${toolCallId}:${argsTextDelta}`)
+      },
+      handleToolInputEnd(toolCallId: string): TestToolCall {
+        events.push(`input-end:${toolCallId}`)
+        const call = { id: toolCallId, toolId: 'read', toolName: 'read', arguments: { path: 'a.txt' } }
+        toolCalls.push(call)
+        return call
+      },
+      handleToolCallChunk(chunk: { toolCallId: string; toolName: string; args: { path?: string } }): TestToolCall {
+        events.push(`tool-chunk:${chunk.toolCallId}:${chunk.toolName}`)
+        const call = {
+          id: chunk.toolCallId,
+          toolId: chunk.toolName,
+          toolName: chunk.toolName,
+          arguments: chunk.args,
+        }
+        toolCalls.push(call)
+        return call
+      },
+    }
+    const store = {
+      updateMessageToolCalls: (_sessionId: string, _messageId: string, calls: TestToolCall[]) => {
+        events.push(`store:${calls.map(call => `${call.id}:${call.status}`).join(',')}`)
+      },
+    }
+    const emitter = {
+      sendContentPart: (part: { type: string; content?: string; turnIndex?: number }) => {
+        events.push(`part:${part.type}:${part.content ?? part.turnIndex}`)
+      },
+      sendToolCall: (call: TestToolCall) => events.push(`tool-call:${call.id}:${call.status}`),
+      sendToolResult: (call: TestToolCall) => events.push(`tool-result:${call.id}:${call.status}`),
+      sendToolExecutionStart: (toolCallId: string, stepId: string, toolName: string) => {
+        events.push(`exec-start:${toolCallId}:${stepId}:${toolName}`)
+      },
+      sendToolExecutionUpdate: () => {},
+      sendToolExecutionEnd: (toolCallId: string, stepId: string, result?: unknown, isError?: boolean) => {
+        events.push(`exec-end:${toolCallId}:${stepId}:${isError}:${JSON.stringify(result)}`)
+      },
+      sendStepUpdated: (stepId: string, update: { status?: string }) => {
+        events.push(`step:${stepId}:${update.status}`)
+      },
+      sendSkillActivated: (skillName: string) => {
+        events.push(`skill:${skillName}`)
+      },
+    }
+    const stepIdsByToolCallId = new Map<string, string>()
+    const turn = createAgentLoopExecutorTurnState<TestToolCall, { type: string; content?: string; turnIndex?: number }>()
+    turn.orderedParts.push({ type: 'text', content: 'before tool', turnIndex: 1 })
+
+    expect(applyAgentLoopToolInputStartWithAdapters({
+      turn,
+      turnIndex: 1,
+      toolCallId: 'call_1',
+      toolName: 'read',
+      processor,
+      stepIdsByToolCallId,
+      emitter,
+    })).toBe('step_call_1')
+    expect(stepIdsByToolCallId.get('call_1')).toBe('step_call_1')
+    expect(turn.hasSentToolParts).toBe(true)
+
+    applyAgentLoopToolInputDeltaWithAdapters(processor, 'call_1', '{"path"')
+
+    expect(applyAgentLoopToolInputEndWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_1',
+      turn,
+      processor,
+      stepIdsByToolCallId,
+      store,
+      emitter,
+      now: () => 100,
+    })).toMatchObject({ found: true, toolCall: { id: 'call_1', status: 'executing' } })
+
+    const fallbackTurn = createAgentLoopExecutorTurnState<TestToolCall, { type: string; content?: string; turnIndex?: number }>()
+    applyAgentLoopToolCallFallbackWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      turn: fallbackTurn,
+      turnIndex: 2,
+      toolCall: {
+        toolCallId: 'call_2',
+        toolName: 'write',
+        args: { path: 'b.txt' },
+      },
+      processor,
+      stepIdsByToolCallId,
+      store,
+      emitter,
+      now: () => 200,
+    })
+
+    const state = { toolIterations: 0, skillManageCalled: false }
+    expect(applyAgentLoopToolResultWithAdapters({
+      state,
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      toolCallId: 'call_1',
+      result: { content: 'done', data: { output: 'done' } },
+      toolCalls,
+      stepIdsByToolCallId,
+      store,
+      emitter,
+      now: () => 300,
+    })).toMatchObject({
+      found: true,
+      toolIterationsDelta: 1,
+      awaitingConfirmation: false,
+    })
+    expect(state).toEqual({ toolIterations: 1, skillManageCalled: false })
+    expect(events).toEqual(expect.arrayContaining([
+      'part:text:before tool',
+      'part:data-steps:1',
+      'input-start:call_1:read:1',
+      'input-delta:call_1:{"path"',
+      'input-end:call_1',
+      'tool-call:call_1:executing',
+      'exec-start:call_1:step_call_1:read',
+      'tool-chunk:call_2:write',
+      'tool-result:call_1:completed',
+      'exec-end:call_1:step_call_1:false:{"content":[{"type":"text","text":"done"}],"details":{"output":"done"}}',
+    ]))
+  })
+
+  it('builds post-response context helpers', () => {
+    expect(enabledToolNames({ toolNames: ['read'], mcpToolNames: ['mcp_search'] })).toEqual([
+      'read',
+      'mcp_search',
+    ])
+    expect(lastUserMessageText([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'answer' },
+      { role: 'user', content: [{ type: 'text', text: 'latest' }] },
+    ])).toBe('latest')
+
+    const contexts = buildAgentLoopPostResponseContexts({
+      session: {
+        id: 's1',
+        name: 'Session',
+        messages: [{ id: 'm1', role: 'user', content: 'latest' }],
+      },
+      sessionId: 's1',
+      assistantMessageId: 'a1',
+      lastAssistantMessage: 'assistant answer',
+      historyMessages: [
+        { role: 'user', content: 'first' },
+        { role: 'user', content: [{ type: 'text', text: 'latest' }] },
+      ],
+      providerId: 'deepseek',
+      providerConfig: { model: 'deepseek-chat' },
+      settings: { ai: { provider: 'deepseek' } },
+      toolIterations: 2,
+      skillManageCalled: true,
+      prepared: { toolNames: ['read'], mcpToolNames: ['mcp_search'] },
+    })
+
+    expect(contexts?.triggerContext).toMatchObject({
+      sessionId: 's1',
+      lastUserMessage: 'latest',
+      lastAssistantMessage: 'assistant answer',
+      providerId: 'deepseek',
+      toolIterations: 2,
+      skillManageCalled: true,
+      enabledToolNames: ['read', 'mcp_search'],
+    })
+    expect(contexts?.afterAssistantResponseContext).toMatchObject({
+      assistantMessageId: 'a1',
+      lastAssistantMessage: 'assistant answer',
+    })
+    expect(buildAgentLoopPostResponseContexts({
+      session: undefined,
+      sessionId: 's1',
+      assistantMessageId: 'a1',
+      lastAssistantMessage: 'assistant answer',
+      historyMessages: [],
+      providerId: 'deepseek',
+      providerConfig: {},
+      settings: {},
+      toolIterations: 0,
+      skillManageCalled: false,
+      prepared: { toolNames: [], mcpToolNames: [] },
+    })).toBeNull()
+  })
+
+  it('runs post-response trigger and plugin hooks through core adapters', () => {
+    const triggerCalls: unknown[] = []
+    const afterCalls: unknown[] = []
+    const errors: Array<{ source: string; message: string }> = []
+
+    const contexts = runAgentLoopPostResponseHooksWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'a1',
+      lastAssistantMessage: 'assistant answer',
+      historyMessages: [{ role: 'user', content: 'latest request' }],
+      providerId: 'deepseek',
+      providerConfig: { model: 'deepseek-chat' },
+      settings: { ai: { provider: 'deepseek' } },
+      toolIterations: 1,
+      skillManageCalled: false,
+      prepared: { toolNames: ['read'], mcpToolNames: [] },
+      getSession: () => ({
+        id: 's1',
+        messages: [{ id: 'u1', role: 'user', content: 'latest request' }],
+      }),
+      runTriggerContext: context => {
+        triggerCalls.push(context)
+      },
+      runAfterAssistantResponse: context => {
+        afterCalls.push(context)
+      },
+      onError: (source, error) => {
+        errors.push({ source, message: error instanceof Error ? error.message : String(error) })
+      },
+    })
+
+    expect(contexts?.triggerContext).toMatchObject({
+      sessionId: 's1',
+      lastUserMessage: 'latest request',
+      enabledToolNames: ['read'],
+    })
+    expect(triggerCalls).toHaveLength(1)
+    expect(afterCalls).toHaveLength(1)
+    expect(afterCalls[0]).toMatchObject({ assistantMessageId: 'a1' })
+    expect(errors).toEqual([])
+
+    expect(runAgentLoopPostResponseHooksWithAdapters({
+      sessionId: 'missing',
+      assistantMessageId: 'a1',
+      lastAssistantMessage: 'assistant answer',
+      historyMessages: [],
+      providerId: 'deepseek',
+      providerConfig: {},
+      settings: {},
+      toolIterations: 0,
+      skillManageCalled: false,
+      prepared: { toolNames: [], mcpToolNames: [] },
+      getSession: () => undefined,
+      runTriggerContext: () => {
+        throw new Error('should not run')
+      },
+      runAfterAssistantResponse: () => {
+        throw new Error('should not run')
+      },
+      onError: (source, error) => {
+        errors.push({ source, message: error instanceof Error ? error.message : String(error) })
+      },
+    })).toBeNull()
+
+    runAgentLoopPostResponseHooksWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'a1',
+      lastAssistantMessage: 'assistant answer',
+      historyMessages: [],
+      providerId: 'deepseek',
+      providerConfig: {},
+      settings: {},
+      toolIterations: 0,
+      skillManageCalled: false,
+      prepared: { toolNames: [], mcpToolNames: [] },
+      getSession: () => ({ messages: [] }),
+      runTriggerContext: () => {
+        throw new Error('trigger failed')
+      },
+      runAfterAssistantResponse: () => {
+        throw new Error('after failed')
+      },
+      onError: (source, error) => {
+        errors.push({ source, message: error instanceof Error ? error.message : String(error) })
+      },
+    })
+
+    expect(errors).toEqual([
+      { source: 'trigger', message: 'trigger failed' },
+      { source: 'afterAssistantResponse', message: 'after failed' },
+    ])
+  })
+
+  it('plans generic provider-data in core', () => {
+    const options = {
+      turnIndex: 2,
+      latestUserPrompt: ' draw a product ',
+      model: 'codex-image',
+      sessionId: 's1',
+      messageId: 'm1',
+    }
+
+    expect(planAgentLoopProviderData({
+      provider: 'other',
+      type: 'encrypted-reasoning',
+    }, {
+      ...options,
+    })).toEqual({
+      kind: 'provider-data',
+      orderedPart: {
+        type: 'provider-data',
+        providerData: {
+          provider: 'other',
+          type: 'encrypted-reasoning',
+        },
+        turnIndex: 2,
+      },
+    })
+
+    expect(planAgentLoopProviderData({
+      provider: 'codex',
+      type: 'encrypted-reasoning',
+      encryptedContent: 'secret',
+    }, options)).toEqual({
+      kind: 'provider-data',
+      orderedPart: {
+        type: 'provider-data',
+        providerData: {
+          provider: 'codex',
+          type: 'encrypted-reasoning',
+          encryptedContent: 'secret',
+        },
+        turnIndex: 2,
+      },
+    })
+
+    expect(planAgentLoopProviderData({
+      provider: 'provider-x',
+      type: 'ephemeral',
+    }, {
+      ...options,
+      planProviderData: () => ({ kind: 'ignore' }),
+    })).toEqual({ kind: 'ignore' })
+  })
+
+  it('applies provider-data through core adapters and exposes a runtime hook', async () => {
+    type TestPart = { type: string; content?: string; turnIndex?: number; providerData?: unknown }
+    const orderedParts: TestPart[] = []
+    const emittedParts: TestPart[] = []
+    const content = { value: 'existing' }
+
+    await expect(applyAgentLoopProviderDataWithAdapters<TestPart>({
+      providerData: {
+        provider: 'codex',
+        type: 'encrypted-reasoning',
+        encryptedContent: 'secret',
+      },
+      turnIndex: 1,
+      model: 'codex',
+      sessionId: 's1',
+      messageId: 'm1',
+      latestUserPrompt: 'draw',
+      content,
+      orderedParts,
+      emitter: {
+        sendContentPart: part => emittedParts.push(part),
+      },
+      handleTextChunk: () => null,
+    })).resolves.toBe(true)
+    expect(orderedParts).toEqual([{
+      type: 'provider-data',
+      providerData: {
+        provider: 'codex',
+        type: 'encrypted-reasoning',
+        encryptedContent: 'secret',
+      },
+      turnIndex: 1,
+    }])
+
+    await expect(applyAgentLoopProviderDataWithAdapters<TestPart>({
+      providerData: {
+        provider: 'provider-x',
+        type: 'custom-ui',
+      },
+      turnIndex: 2,
+      model: 'model-x',
+      sessionId: 's1',
+      messageId: 'm1',
+      content,
+      orderedParts,
+      emitter: {
+        sendContentPart: part => emittedParts.push(part),
+      },
+      handleTextChunk: () => null,
+      applyProviderData: runtimeOptions => {
+        runtimeOptions.emitter.sendContentPart({
+          type: 'custom-provider-ui',
+          turnIndex: runtimeOptions.turnIndex,
+        } as TestPart)
+        return true
+      },
+    })).resolves.toBe(true)
+    expect(emittedParts).toEqual([{
+      type: 'custom-provider-ui',
+      turnIndex: 2,
+    }])
+
+    await expect(applyAgentLoopProviderDataWithAdapters<TestPart>({
+      providerData: {
+        provider: 'other',
+        type: 'ignored-provider-data',
+      },
+      turnIndex: 4,
+      model: 'other',
+      sessionId: 's1',
+      messageId: 'm1',
+      content,
+      orderedParts,
+      emitter: {
+        sendContentPart: part => emittedParts.push(part),
+      },
+      handleTextChunk: () => null,
+      planProviderData: () => ({ kind: 'ignore' }),
+    })).resolves.toBe(false)
+  })
+
+  it('plans finish chunk usage accumulation and continuation state in core', () => {
+    expect(planAgentLoopFinishChunk({
+      turnIndex: 1,
+      accumulatedUsage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        durationMs: 100,
+      },
+      usage: {
+        inputTokens: 20,
+        outputTokens: 8,
+        totalTokens: 28,
+      },
+      finishReason: 'tool-calls',
+    })).toEqual({
+      accumulatedUsage: {
+        inputTokens: 30,
+        outputTokens: 13,
+        totalTokens: 43,
+        durationMs: 100,
+      },
+      lastTurnUsage: {
+        inputTokens: 20,
+        outputTokens: 8,
+        totalTokens: 28,
+      },
+      contextSizeInputTokens: 20,
+      nextTurnIndex: 2,
+      createNewAssistantOnNextTurnStart: false,
+      resetTurn: true,
+      continuationTurnIndex: 2,
+    })
+
+    expect(planAgentLoopFinishChunk({
+      turnIndex: 2,
+      finishReason: 'tool_calls',
+    })).toEqual({
+      accumulatedUsage: undefined,
+      lastTurnUsage: undefined,
+      contextSizeInputTokens: undefined,
+      nextTurnIndex: 3,
+      createNewAssistantOnNextTurnStart: false,
+      resetTurn: true,
+      continuationTurnIndex: 3,
+    })
+
+    expect(planAgentLoopFinishChunk({
+      turnIndex: 2,
+      finishReason: 'stop',
+    })).toEqual({
+      accumulatedUsage: undefined,
+      lastTurnUsage: undefined,
+      contextSizeInputTokens: undefined,
+      nextTurnIndex: 2,
+      createNewAssistantOnNextTurnStart: true,
+      resetTurn: false,
+    })
+  })
+
+  it('applies finish chunk state transitions through core adapters', () => {
+    const state = {
+      turnIndex: 1,
+      accumulatedUsage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        durationMs: 100,
+      },
+      lastTurnUsage: undefined as { inputTokens: number; outputTokens: number } | undefined,
+      createNewAssistantOnNextTurnStart: true,
+      turn: { id: 'old-turn' },
+    }
+    const synced: string[] = []
+
+    const plan = applyAgentLoopFinishChunkWithAdapters({
+      state,
+      usage: {
+        inputTokens: 20,
+        outputTokens: 8,
+        totalTokens: 28,
+      },
+      finishReason: 'tool-calls',
+      syncAccumulatedUsage: usage => {
+        synced.push(`acc:${usage.totalTokens}`)
+      },
+      syncLastTurnUsage: usage => {
+        synced.push(`last:${usage.totalTokens}`)
+      },
+      updateStepsUsageByTurn: (turnIndex, usage) => {
+        synced.push(`steps:${turnIndex}/${usage.inputTokens}`)
+      },
+      sendContextSizeUpdate: inputTokens => {
+        synced.push(`context:${inputTokens}`)
+      },
+      persistTurnContentParts: () => {
+        synced.push('persist')
+      },
+      createTurnState: () => ({ id: 'new-turn' }),
+      sendContinuation: turnIndex => {
+        synced.push(`continue:${turnIndex}`)
+      },
+    })
+
+    expect(plan.continuationTurnIndex).toBe(2)
+    expect(state).toEqual({
+      turnIndex: 2,
+      accumulatedUsage: {
+        inputTokens: 30,
+        outputTokens: 13,
+        totalTokens: 43,
+        durationMs: 100,
+      },
+      lastTurnUsage: {
+        inputTokens: 20,
+        outputTokens: 8,
+        totalTokens: 28,
+      },
+      createNewAssistantOnNextTurnStart: false,
+      turn: { id: 'new-turn' },
+    })
+    expect(synced).toEqual([
+      'acc:43',
+      'last:28',
+      'steps:1/20',
+      'context:20',
+      'persist',
+      'continue:2',
+    ])
+  })
+
+  it('plans agent-loop content-part dispatch and persistence in core', () => {
+    const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+    turn.orderedParts.push(
+      { type: 'provider-data', turnIndex: 1 },
+      { type: 'text', content: 'hello', turnIndex: 1 },
+      { type: 'reasoning', content: 'think', turnIndex: 1 },
+    )
+
+    expect(planAgentLoopToolContentPartsDispatch(turn, 1)).toEqual({
+      shouldSend: true,
+      parts: [
+        { type: 'text', content: 'hello', turnIndex: 1 },
+        { type: 'reasoning', content: 'think', turnIndex: 1 },
+      ],
+      dataStepsPart: { type: 'data-steps', turnIndex: 1 },
+    })
+
+    turn.hasSentToolParts = true
+    expect(planAgentLoopToolContentPartsDispatch(turn, 1)).toEqual({
+      shouldSend: false,
+      parts: [],
+    })
+
+    expect(planAgentLoopTurnContentPersistence(turn, 1)).toEqual({
+      persistParts: [
+        { type: 'provider-data', turnIndex: 1 },
+        { type: 'text', content: 'hello', turnIndex: 1 },
+        { type: 'reasoning', content: 'think', turnIndex: 1 },
+      ],
+      immediateParts: [
+        { type: 'text', content: 'hello', turnIndex: 1 },
+        { type: 'reasoning', content: 'think', turnIndex: 1 },
+      ],
+    })
+
+    turn.toolCalls.push({ id: 'call-1' })
+    expect(planAgentLoopTurnContentPersistence(turn, 1)).toEqual({
+      persistParts: [
+        { type: 'provider-data', turnIndex: 1 },
+        { type: 'text', content: 'hello', turnIndex: 1 },
+        { type: 'reasoning', content: 'think', turnIndex: 1 },
+        { type: 'data-steps', turnIndex: 1 },
+      ],
+      immediateParts: [],
+    })
+
+    const adapterTurn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+    adapterTurn.orderedParts.push(
+      { type: 'provider-data', turnIndex: 2 },
+      { type: 'text', content: 'adapter', turnIndex: 2 },
+    )
+    const sentParts: unknown[] = []
+    const persistedParts: unknown[] = []
+
+    expect(dispatchAgentLoopToolContentPartsWithAdapters({
+      turn: adapterTurn,
+      turnIndex: 2,
+      emitter: {
+        sendContentPart: part => sentParts.push(part),
+      },
+    })).toMatchObject({ shouldSend: true })
+    expect(adapterTurn.hasSentToolParts).toBe(true)
+    expect(sentParts).toEqual([
+      { type: 'text', content: 'adapter', turnIndex: 2 },
+      { type: 'data-steps', turnIndex: 2 },
+    ])
+
+    adapterTurn.toolCalls.push({ id: 'call-adapter' })
+    expect(persistAgentLoopTurnContentPartsWithAdapters({
+      sessionId: 's1',
+      assistantMessageId: 'm1',
+      turn: adapterTurn,
+      turnIndex: 2,
+      store: {
+        addMessageContentPart: (_sessionId, _messageId, part) => persistedParts.push(part),
+      },
+      emitter: {
+        sendContentPart: part => sentParts.push(part),
+      },
+    })).toMatchObject({ immediateParts: [] })
+    expect(persistedParts).toEqual([
+      { type: 'provider-data', turnIndex: 2 },
+      { type: 'text', content: 'adapter', turnIndex: 2 },
+      { type: 'data-steps', turnIndex: 2 },
+    ])
+  })
+
+  it('keeps the steps anchor at its streamed position when text follows the tool call (external agents)', () => {
+    // External agents interleave text → tool → text inside one turn: the
+    // dispatch records the anchor inline, and persistence must not append a
+    // second anchor at the end (which would yank the cards below the text).
+    const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+    turn.orderedParts.push({ type: 'text', content: 'before ', turnIndex: 0 })
+
+    const sent: unknown[] = []
+    dispatchAgentLoopToolContentPartsWithAdapters({
+      turn,
+      turnIndex: 0,
+      emitter: { sendContentPart: part => sent.push(part) },
+    })
+    turn.toolCalls.push({ id: 'call-1' })
+    // Post-tool text arrives after the anchor.
+    turn.orderedParts.push({ type: 'text', content: ' after', turnIndex: 0 })
+
+    expect(turn.orderedParts).toEqual([
+      { type: 'text', content: 'before ', turnIndex: 0 },
+      { type: 'data-steps', turnIndex: 0 },
+      { type: 'text', content: ' after', turnIndex: 0 },
+    ])
+    expect(planAgentLoopTurnContentPersistence(turn, 0)).toEqual({
+      persistParts: [
+        { type: 'text', content: 'before ', turnIndex: 0 },
+        { type: 'data-steps', turnIndex: 0 },
+        { type: 'text', content: ' after', turnIndex: 0 },
+      ],
+      immediateParts: [],
+    })
+  })
+})

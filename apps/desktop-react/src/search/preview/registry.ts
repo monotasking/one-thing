@@ -15,7 +15,7 @@ import { getLogger } from '../../services/log'
  *     「没有的画 Row 放大版」)并在 dev 下 warn 一次。
  *
  * ── 为什么 payload 是 `unknown` ──────────────────────────────────────────
- * 载荷的形由**产它的能力**定义(`runtime/search/capabilities/preview.ts` 那几个
+ * 载荷的形由**产它的能力**定义(`search/capabilities/preview.ts` 那几个
  * 接口),契约层与骨架都不解释它。渲染器与能力是一对:`message-context` 那个组件
  * 认识 `MessageContextPreview`,别人不认识也不需要认识。所以这张表的值类型只能是
  * `unknown` + 渲染器自己那一道校验(**验而不信**,与目标渲染器的 `payloadOf` 同款:

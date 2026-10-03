@@ -72,7 +72,7 @@ async function assemble(name: string) {
 }
 
 async function saveDirectory(target: string) {
-  const { getSettings } = await import('@onething/backend/runtime/settings')
+  const { getSettings } = await import('@onething/backend/settings')
   const { dispatchRpc } = await import('../http-server/http-server-dispatch-table.js')
   const current = getSettings()
   return dispatchRpc({ domain: 'settings', method: 'saveSettings', payload: {
@@ -118,7 +118,7 @@ it('shutdown drains a pending settings-triggered open and prevents the old insta
   let disposed = false
   const stopping = instance.dispose().then(() => { disposed = true })
   await expect(old.start()).rejects.toThrow()
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).toBe('held')
   expect(disposed).toBe(false)
   release()

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { CorePluginCredentialStrategyContext } from '@onething/backend/runtime/plugins/plugin-contract'
+import type { CorePluginCredentialStrategyContext } from '@onething/backend/plugin/plugin-contract'
 import type { OnethingBackend } from '../backend.js'
 
 let directory: string
@@ -63,7 +63,7 @@ async function assemble(name: string) {
 }
 
 async function seedUsage(tokens: number) {
-  const { getUsageLedger } = await import('@onething/backend/runtime/usage/usage-recorder')
+  const { getUsageLedger } = await import('@onething/backend/usage/usage-recorder')
   const ledger = getUsageLedger()
   ledger.record({
     workspaceId: 'work', credentialId: 'a', providerId: 'openai', modelId: 'test-model',
@@ -74,10 +74,10 @@ async function seedUsage(tokens: number) {
 }
 
 async function bindings() {
-  const registry = await import('../runtime/credentials/credentials-strategy.js')
-  const credentials = await import('../runtime/credentials/credentials-pool.js')
-  const health = await import('@onething/backend/runtime/plugins/health')
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const registry = await import('../credentials/credentials-strategy.js')
+  const credentials = await import('../credentials/credentials-pool.js')
+  const health = await import('@onething/backend/plugin/health')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   registry.configureAppPluginCredentialStrategyHost()
   const choose = () => credentials.selectSpaceCredentialEntryDetailed(
     { entries: candidates, policy }, { spaceId: input.spaceId, providerId: input.providerId },

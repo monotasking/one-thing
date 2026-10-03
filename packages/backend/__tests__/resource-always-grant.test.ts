@@ -86,10 +86,10 @@ describe('应用级许可在真装配里(2026-09-10)', () => {
   it('答一次「始终允许这个应用」→ 同一应用不再弹;账页按 app 分组;撤销后又弹', { timeout: 180_000 }, async () => {
     const backend = await assemble()
     try {
-      const store = await import('@onething/backend/runtime/sessions')
-      const { Permission } = await import('@onething/backend/runtime/permissions/permission')
-      const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-      const { permissionGrantsRpcHandlers } = await import('../runtime/permissions/permissions-client-api-grants.js')
+      const store = await import('@onething/backend/session')
+      const { Permission } = await import('@onething/backend/permission/permission')
+      const { sessionCommands } = await import('@onething/backend/session')
+      const { permissionGrantsRpcHandlers } = await import('../permission/permissions-client-api-grants.js')
       const { DESKTOP_RPC_CONTEXT } = await import('@shared/ipc/rpc.js')
 
       const sessionId = store.createSession(`always-${Date.now()}`, 'Always').id

@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { ServerResponse } from "node:http";
 import { watchClientDisconnect } from './http-server-request-abort.js'
 import { tenantDirectory, tenantKey } from './http-server-tenant-paths.js'
-import { sessionDeletion } from '@onething/backend/runtime/sessions'
-import { sessionAccess, createSessionAccess } from '@onething/backend/runtime/sessions'
-import { createServerLiveSessionDelivery } from '../runtime/sessions/sessions-client-api-live-delivery.js'
-import { createServerMediaDelivery } from '../runtime/media/media-client-api-delivery.js'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
-import type { OnethingPermissionGrantStorageAdapters } from "@onething/backend/runtime/permissions";
+import { sessionDeletion } from '@onething/backend/session'
+import { sessionAccess, createSessionAccess } from '@onething/backend/session'
+import { createServerLiveSessionDelivery } from '../session/sessions-client-api-live-delivery.js'
+import { createServerMediaDelivery } from '../media/media-client-api-delivery.js'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/session'
+import type { OnethingPermissionGrantStorageAdapters } from "@onething/backend/permission";
 import { EventEmitter } from "node:events";
 import {
 	existsSync,
@@ -43,10 +43,10 @@ import { parse as parseYaml } from "yaml";
 import {
 	EventBus,
 	StreamChannel,
-} from "@onething/backend/runtime/events/bus-primitives";
+} from "@onething/backend/event/bus-primitives";
 import {
 	Permission,
-} from "@onething/backend/runtime/permissions/permission-asks";
+} from "@onething/backend/permission/permission-asks";
 import {
 	createOnethingRuntimeFacade,
 	type OnethingRuntimeFacade,
@@ -58,12 +58,12 @@ import {
 import type {
 	AgentEngineSessionEvent,
 	AgentEngineStreamChunk,
-} from "@onething/backend/runtime/agents/agent-engine";
+} from "@onething/backend/agent/agent-engine";
 import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import type { McpSubsystem } from "@onething/backend/runtime/mcp/subsystem";
-import type { ConfigureLoggingOptions } from "@onething/backend/runtime/logging/configure-logging";
+import type { McpSubsystem } from "@onething/backend/mcp/subsystem";
+import type { ConfigureLoggingOptions } from "@onething/backend/logging/configure-logging";
 import {
 	createTenantAudienceFactory,
 	ownerMatchesContext,
@@ -74,33 +74,33 @@ import {
 	type SessionIndexPort,
 	type SessionOwner as ServerSessionOwner,
 } from "./http-server-audience.js";
-import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/runtime/settings";
-import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/runtime/agents/agent-store-access";
-import { getProjectsStore as getAppProjectsStore } from "@onething/backend/runtime/project-dirs/bootstrap";
+import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/settings";
+import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/agent/agent-store-access";
+import { getProjectsStore as getAppProjectsStore } from "@onething/backend/project-dir/bootstrap";
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
-} from "@onething/backend/runtime/mcp/index-with-bridge";
-import { configureMCPClientIdentity } from "@onething/backend/runtime/mcp/identity";
-import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getCurrentSessionId as getAppStoreCurrentSessionId, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList, setCurrentSessionId as setAppStoreCurrentSessionId, updateSessionWorkingDirectory as updateAppSessionWorkingDirectory, updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots } from "@onething/backend/runtime/sessions";
+} from "@onething/backend/mcp/index-with-bridge";
+import { configureMCPClientIdentity } from "@onething/backend/mcp/identity";
+import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getCurrentSessionId as getAppStoreCurrentSessionId, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList, setCurrentSessionId as setAppStoreCurrentSessionId, updateSessionWorkingDirectory as updateAppSessionWorkingDirectory, updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots } from "@onething/backend/session";
 import {
 	createSessionCommands,
 	sessionCommands as appSessionCommands,
 	type SessionCommands,
-} from "@onething/backend/runtime/sessions";
+} from "@onething/backend/session";
 import { createEchoMessageEvents } from './http-server-echo-message-events.js';
 import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
-} from "@onething/backend/runtime/sessions";
-import { sessionCommandEvents } from "@onething/backend/runtime/sessions";
-import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/runtime/sessions";
+} from "@onething/backend/session";
+import { sessionCommandEvents } from "@onething/backend/session";
+import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/session";
 import {
 	findSessionIndexMeta as findAppStoreSessionIndexMeta,
 	onSessionIndexChanged,
-} from "@onething/backend/runtime/sessions";
-import { configureServerPluginCatalogPort } from "../runtime/plugins/plugins-client-api-catalog.js";
-import { configureServerSearchPort } from "../runtime/search/search-client-api-providers.js";
+} from "@onething/backend/session";
+import { configureServerPluginCatalogPort } from "../plugin/plugins-client-api-catalog.js";
+import { configureServerSearchPort } from "../search/search-client-api-providers.js";
 import {
 	CorePluginStore,
 	createBuiltinPluginDefinitions,
@@ -116,45 +116,45 @@ import {
 	type CorePluginDefinition,
 	type CorePluginInfo,
 	type PluginSettings, type CorePluginSettingsStorageAdapters,
-} from "@onething/backend/runtime/plugins/plugin-contract";
+} from "@onething/backend/plugin/plugin-contract";
 import {
 	createMCPServerState,
 	HeadlessMCPManager,
 	type MCPClientLike,
-} from "@onething/backend/runtime/mcp/kernel";
+} from "@onething/backend/mcp/kernel";
 // P4c 第七批:oauth 的六条数据面(与它们背后那台 per-owner 的第二台 authService)
 // 已随 `oauthRouter` 迁走;server 这侧只剩令牌事件的广播端口。
 import {
 	configureOAuthEventBroadcaster,
 	getOAuthEventBroadcaster,
 	type OAuthTokenEvent,
-} from "@onething/backend/runtime/auth/oauth-events";
+} from "@onething/backend/auth/oauth-events";
 // E 批:设置变更的推送端口。数据面(读 / 存 / 系统深浅色 / 代理自检)仍然只走
 // `settingsRouter`,这里只串一条广播 —— 见下面 `settingsChangedHandlers`。
 import {
 	configureSettingsEventBroadcaster,
 	getSettingsEventBroadcaster,
 	type SettingsEvent,
-} from "@onething/backend/runtime/settings/events";
+} from "@onething/backend/settings/events";
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
-import { isCollabV3RuntimeRunning } from "@onething/backend/runtime/collab/rooms";
+import { isCollabV3RuntimeRunning } from "@onething/backend/collab/rooms";
 // B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
 // 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
-import { getPluginManager } from "@onething/backend/runtime/plugins/plugin-system";
+import { getPluginManager } from "@onething/backend/plugin/plugin-system";
 import { isHostLocallyTrusted } from "./http-server-host-trust.js";
-import { hasShellHost } from "@onething/backend/runtime/shell/host-ports";
-import { hasTerminalHost } from "@onething/backend/runtime/terminal/service";
-import { registerACPPermissionBridge } from "@onething/backend/runtime/acp/permission-bridge";
-import { createEventBusTerminalBroadcaster } from "@onething/backend/runtime/terminal";
+import { hasShellHost } from "@onething/backend/shell/host-ports";
+import { hasTerminalHost } from "@onething/backend/terminal/service";
+import { registerACPPermissionBridge } from "@onething/backend/acp/permission-bridge";
+import { createEventBusTerminalBroadcaster } from "@onething/backend/terminal";
 import {
 	createOnethingSearchService,
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
 	unavailableIndexFace,
-} from "@onething/backend/runtime/search";
-import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/runtime/notes/notes-subsystem";
-import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/runtime/media";
+} from "@onething/backend/search";
+import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/note/notes-subsystem";
+import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/media";
 import {
 	ONETHING_LOG_MONITOR_MANIFEST,
 	executeOnethingPluginCommandForIpc,
@@ -163,16 +163,16 @@ import {
 	listOnethingPluginCommandsForIpc,
 	listOnethingPluginsForIpc,
 	refreshOnethingPluginsForIpc,
-} from "@onething/backend/runtime/plugins";
+} from "@onething/backend/plugin";
 import {
 	createOnethingAgentStore,
 	DEFAULT_ONETHING_AGENT_ID,
-} from "@onething/backend/runtime/agents";
+} from "@onething/backend/agent";
 import {
 	createRequiredOnethingAppFetch,
-} from "@onething/backend/runtime/network";
+} from "@onething/backend/network";
 // 片段的 ipc-operations 已随 CRUD 一起迁到 RPC 域;这里只剩搜索面还要读 store。
-import { OnethingPromptStore } from "@onething/backend/runtime/prompts";
+import { OnethingPromptStore } from "@onething/backend/prompt";
 import {
 	addOnethingProjectDirForIpc,
 	getOnethingProjectDirForIpc,
@@ -188,7 +188,7 @@ import {
 	type ProjectDirsRemoveRequest,
 	type ProjectDirsUpdateRequest,
 	type ProjectIndexEntry,
-} from "@onething/backend/runtime/project-dirs";
+} from "@onething/backend/project-dir";
 import {
 	createOnethingDirectory,
 	createOnethingFile,
@@ -201,8 +201,8 @@ import {
 	rollbackOnethingFile,
 	saveOnethingFileContent,
 	statOnethingPath,
-} from "@onething/backend/runtime/files";
-import { applyFileMutationUndo } from "@onething/backend/runtime/tools/file-mutation-audit";
+} from "@onething/backend/file";
+import { applyFileMutationUndo } from "@onething/backend/tool/file-mutation-audit";
 import {
 	resolveOnethingMarkdownAsset,
 	resolveOnethingMarkdownAssetForIpc,
@@ -214,8 +214,8 @@ import {
 	type MarkdownSaveAttachmentsResponse,
 	type OnethingMarkdownAssetServiceAdapters,
 	type OnethingMarkdownEditorSettings,
-} from "@onething/backend/runtime/markdown";
-import { expandOnethingToolSandboxPath } from "@onething/backend/runtime/tools";
+} from "@onething/backend/markdown";
+import { expandOnethingToolSandboxPath } from "@onething/backend/tool";
 import {
 	addGrant,
 	clearOnethingPermissionSessionForIpc,
@@ -230,14 +230,14 @@ import {
 	listWorkspaceGrants,
 	revokeGrant,
 	revokeOnethingPermissionGrantForIpc,
-} from "@onething/backend/runtime/permissions";
+} from "@onething/backend/permission";
 import { type PermissionGrant } from "@shared/permission/grant";
 // todo/plan 的数据面已整体迁走(含 per-owner 分库);server 这侧只剩变更广播的载荷类型。
-import type { TodoPlanChangedPayload } from "@onething/backend/runtime/todo-plan";
+import type { TodoPlanChangedPayload } from "@onething/backend/todo-plan";
 import {
 	configureTodoPlanHost,
 	getTodoPlanHostPorts,
-} from "@onething/backend/runtime/todo-plan/todo-plan-service";
+} from "@onething/backend/todo-plan/todo-plan-service";
 import {
 	VariableRegistry,
 	VariablesStore,
@@ -252,7 +252,7 @@ import {
 	type VariablesFile,
 	type VariablesListRequest,
 	type VariablesSetRequest,
-} from "@onething/backend/runtime/variables";
+} from "@onething/backend/variable";
 import {
 	getOnethingAgentsPath,
 	getOnethingAppStatePath,
@@ -267,32 +267,32 @@ import {
 	getOnethingVariablesPath,
 	saveOnethingUiState,
 	setOnethingCurrentSessionId,
-} from "@onething/backend/runtime/storage";
-import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/runtime/sessions";
+} from "@onething/backend/storage";
+import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/session";
 import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
 	writeJsonFile as writeCoreJsonFile,
 	writeJsonFileAsync as writeCoreJsonFileAsync,
-} from "@onething/backend/runtime/storage/storage-primitives";
+} from "@onething/backend/storage/storage-primitives";
 import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
-} from "@onething/backend/runtime/sessions";
-import { mergeWithDefaults } from "@onething/backend/runtime/settings";
+} from "@onething/backend/session";
+import { mergeWithDefaults } from "@onething/backend/settings";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "./http-server-sandbox.js";
 import type { RpcDispatchPorts } from "./http-server-dispatch-table.js";
 /*
- * P4c 第九批:"有哪些工具 / 跑一个工具"整只迁到 `backend/runtime/tools/tools-client-api.ts`。
+ * P4c 第九批:"有哪些工具 / 跑一个工具"整只迁到 `backend/tool/tools-client-api.ts`。
  * 连同 echo/test 假路那份本地只读目录 + 本地 runner 一起消失 —— 一个 store 一份
  * 工具目录,http 侧的白名单与路径校验搬进了域处理者的 `transport:'http'` 分叉。
  */
 import {
 	createWorkspaceWatchService,
 	type WorkspaceFileChangedHandler,
-} from "@onething/backend/runtime/files/workspace-watch";
+} from "@onething/backend/file/workspace-watch";
 import type {
 	VoiceEvent,
 	VoiceRuntimeCommand,
@@ -306,7 +306,7 @@ import {
 	startScratchpadWatcher,
 	stopScratchpadWatcher,
 	updateScratchpad as updateAppScratchpad,
-} from "@onething/backend/runtime/scratchpad/service-bound";
+} from "@onething/backend/scratchpad/service-bound";
 import type {
 	ScratchpadAdoptRequest,
 	ScratchpadChangedPayload,
@@ -333,20 +333,20 @@ import type {
 	PermissionInfo,
 	PermissionResponse,
 } from "@shared/ipc/permissions.js";
-import { ServerMCPClient } from "@onething/backend/runtime/mcp";
-// P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 mcp(今天是 `runtime/mcp/mcp-secrets.ts`,经 mcp 入口交出);P4c 第十一批
-// 起设置面那半也搬到了 `runtime/settings/settings-client-api-projection.ts`,两处都由域处理者的 http 分叉调用。
+import { ServerMCPClient } from "@onething/backend/mcp";
+// P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 mcp(今天是 `mcp/mcp-secrets.ts`,经 mcp 入口交出);P4c 第十一批
+// 起设置面那半也搬到了 `settings/settings-client-api-projection.ts`,两处都由域处理者的 http 分叉调用。
 // 这里只剩一条再导出 —— 测试与旧调用点从 `http-server/http-server-runtime.js` 取那个哨兵常量。
-export { SERVER_REDACTED_SECRET } from "@onething/backend/runtime/mcp";
-import { sanitizeSettingsForClient } from "../runtime/settings/settings-client-api-projection.js";
+export { SERVER_REDACTED_SECRET } from "@onething/backend/mcp";
+import { sanitizeSettingsForClient } from "../settings/settings-client-api-projection.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import type { VariablesStorePersistence } from '@onething/backend/runtime/variables/store'
-import type { OnethingPromptStoreAdapters } from '@onething/backend/runtime/prompts/store'
+import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import type { VariablesStorePersistence } from '@onething/backend/variable/store'
+import type { OnethingPromptStoreAdapters } from '@onething/backend/prompt/store'
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from './http-server-runtime-facade.js'
-import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { OnethingPluginIpcLogger } from '@onething/backend/runtime/plugins/ipc-operations'
+import type { ConsoleLikePort } from '@onething/backend/logging'
+import type { OnethingPluginIpcLogger } from '@onething/backend/plugin/ipc-operations'
 import type { RuntimeGlobalEventsAdapter, RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from './http-server-runtime-facade.js'
 import { GLOBAL_EVENT_LEAVES_PROCESS } from '@shared/events/index.js'
 
@@ -391,7 +391,7 @@ type ServerChatSession = ChatSession & {
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
 
-import type { SessionLayer } from '@onething/backend/runtime/sessions';
+import type { SessionLayer } from '@onething/backend/session';
 
 export interface OnethingServerRuntime {
 	/** Present for a production Backend; absent only for explicit test adapters. */
@@ -890,7 +890,7 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 			/*
 			 * 终端缺省没有(`terminal` 域结构化拒,不 load node-pty)。
 			 * `ONETHING_SERVER_TERMINAL=1` 是运维显式打开的那一格:接上与 React 壳同一只
-			 * 总线广播器,PTY 输出骑 `GET /api/events` 出网 —— 这正是 `runtime/terminal/terminal-client-api.ts`
+			 * 总线广播器,PTY 输出骑 `GET /api/events` 出网 —— 这正是 `terminal/terminal-client-api.ts`
 			 * 头注里「将来放开 = 给 server 接广播器」那一步,只是今天只开给显式要它的人
 			 * (`gate:acp` ⑭ 靠它证 ACP 终端进 TerminalService)。拿到 Bearer 的人因此能在这台机器上
 			 * 开 shell —— 所以缺省关,只认 `'1'`。
@@ -1390,7 +1390,7 @@ async function createServerRuntimeOverServerBackend(
 			 * 走 `createDefaultContextServerSettingsStore`,它对**默认上下文**特判到
 			 * `createSingleFileServerSettingsStore(getOnethingSettingsPath({storePath}))`
 			 * = `<store>/settings.json`;而子系统读的 `getSettings().mcp` 走
-			 * `runtime/settings/settings-store.ts` 的 repository,`filePath: getOnethingSettingsPath`,
+			 * `settings/settings-store.ts` 的 repository,`filePath: getOnethingSettingsPath`,
 			 * 同一个文件、同一个 `mergeWithDefaults`(`resolveEffectiveAppSettings`
 			 * 只重算 `.ai`,不碰 `.mcp`)。`createRealServerBackend` 开头就把
 			 * `ONETHING_STORE_PATH` 钉到同一个 storePath,所以两边的路径也同一个。
@@ -1412,7 +1412,7 @@ async function createServerRuntimeOverServerBackend(
 			 * 初版实测把 `apps/server` 那 5s 预算吃干净(5.06s + `shutdown did not
 			 * finish in time; pending session writes may be lost`),从前是 0.05s。
 			 * **用户裁定不接受无界等待**,于是 `McpSubsystem.dispose()` 现在自带
-			 * 3000ms 上限(见 `runtime/mcp/subsystem.ts` 的
+			 * 3000ms 上限(见 `mcp/subsystem.ts` 的
 			 * `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`),超时记 warn 并放行,把余量留给排在
 			 * 后面的账本 flush:同一场景现在 3.05s,那行 `pending session writes` 消失。
 			 * MCP 正常(0 台 / 连不上但快速失败)时收尾仍是 0.04–0.18s。
@@ -1446,7 +1446,7 @@ async function createServerRuntimeOverServerBackend(
 	}
 
 	/**
-	 * 草稿纸的广播是**进程级**的:store 是 `@onething/backend/runtime/scratchpad` 的单例
+	 * 草稿纸的广播是**进程级**的:store 是 `@onething/backend/scratchpad` 的单例
 	 * (引擎在同一进程里读同一张纸),所以订阅者也不按 owner 分表 —— 分了就要
 	 * 有第二个 store,而第二个 store 就是第二份事实。
 	 */
@@ -1455,7 +1455,7 @@ async function createServerRuntimeOverServerBackend(
 	>();
 	/**
 	 * todo/plan 的广播和草稿纸同形:数据面迁到通用 RPC 通道之后,写发生在
-	 * `@onething/backend/runtime/todo-plan` 那一个进程级 store 里,per-owner 的第二个 store
+	 * `@onething/backend/todo-plan` 那一个进程级 store 里,per-owner 的第二个 store
 	 * 连同它的 per-owner 订阅表一起没了。**这个端口是 `/api/todo-plan/events`
 	 * 这条 SSE 唯一的货源** —— 少了它,浏览器端的变更推送会安静地断掉。
 	 */
@@ -2341,7 +2341,7 @@ async function createServerRuntimeOverServerBackend(
 		permissions: permissionsPort,
 		// P4c 第十一批:`settings` / `network` 两格 adapter 整只没了 —— 四条数据面
 		// (读 / 存 / 系统深浅色 / 代理自检)随 `settingsRouter` 走通用 RPC。
-		// 出门脱敏与回来合并两道真护栏搬进 `runtime/settings/settings-client-api-projection.ts`,由域处理者
+		// 出门脱敏与回来合并两道真护栏搬进 `settings/settings-client-api-projection.ts`,由域处理者
 		// 在 `transport === 'http'` 那一支上逐字调用;读写的那份设置从 server 自己
 		// 那本 per-owner 缓存改成装配层单例(拍板 #20,同 mcp / oauth / agents 判例)。
 		// **推送那一格 E 批加了回来**(数据面四条一字未动):浏览器 / React 壳读的是
@@ -2349,7 +2349,7 @@ async function createServerRuntimeOverServerBackend(
 		// 它骑既有的 `GET /api/events`,不新开路由;出门那份过同一个脱敏投影。
 		settings: settingsPort,
 		// P4 终态批 A1-b:`query` 这一格没了 —— 数据面随 `searchRouter` 走通用 RPC,
-		// **实现一行没搬**(同一个闭包改成注册进 `runtime/search/search-client-api-providers.ts` 的单槽
+		// **实现一行没搬**(同一个闭包改成注册进 `search/search-client-api-providers.ts` 的单槽
 		// 端口,见上面的 `restoreServerSearchPort`)。留下的 `executeAction` 是**窗口
 		// 活的 server 侧对应物**:它仍由 `POST /api/search/actions` 调用,而那条路由
 		// 正是 A1-a 里 web 壳 `searchWindowRouter.executeAction` 的真实现。
@@ -2364,13 +2364,13 @@ async function createServerRuntimeOverServerBackend(
 		 * files —— **只剩推送面一条**(结构债 P4c 第八批)。
 		 *
 		 * 十四条数据面已整只迁到通用 `POST /api/rpc`(`filesRouter` +
-		 * `backend/runtime/files/files-client-api.ts`),**护栏跟着走**:域处理者按
+		 * `backend/file/files-client-api.ts`),**护栏跟着走**:域处理者按
 		 * `context.transport` 逐方法夹紧 `sandboxRoot`,越界文案逐字沿用这里
 		 * 从前那几句(`resolveServerWorkspaceFilePath` 的公式本来就已经委托给
 		 * `http-server/http-server-sandbox.ts` 了,现在连调用点也归它)。
 		 *
 		 * 留下的一条是 `GET /api/files/watch/events` 那条 SSE 的货源。真正的监视器
-		 * 登记簿搬到了 `runtime/files/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
+		 * 登记簿搬到了 `file/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
 		 * / `watchStop`(请求面,在 router 上)与这里(推送面)指的是同一张表。
 		 */
 		files: filesPort,
@@ -2378,7 +2378,7 @@ async function createServerRuntimeOverServerBackend(
 		 * media —— **只剩两条不是 RPC 形状的**(结构债 P4c 第三批)。
 		 *
 		 * 十一条数据面已整只迁到通用 `POST /api/rpc`(`mediaRouter` +
-		 * `backend/runtime/media/media-client-api.ts`),连同它们背后那套 per-owner 的第二台
+		 * `backend/media/media-client-api.ts`),连同它们背后那套 per-owner 的第二台
 		 * `MediaLibraryService`——一个 store 一份媒体库,web 与桌面从此读同一份
 		 * (拍板 #27 同 agents / models / skills 判例)。随之消失的还有
 		 * `toServerClientMediaAsset` / `toServerClientLegacyMediaItem` 那层
@@ -2404,7 +2404,7 @@ async function createServerRuntimeOverServerBackend(
 		// P4 终态批 C2:六条读/开关面(list / enable / disable / refresh / commands /
 		// executeCommand)随 `pluginsRouter` 走通用 RPC,`/api/plugins*` 那六条 REST
 		// 路由与那条 501 的 `/api/plugins/:id/:action` 一起没了。**实现一行没搬** ——
-		// 同一批闭包改成注册进 `runtime/plugins/plugins-client-api-catalog.ts` 的单槽端口(见下面的
+		// 同一批闭包改成注册进 `plugin/plugins-client-api-catalog.ts` 的单槽端口(见下面的
 		// `restoreServerPluginCatalogPort`),域在 `transport === 'http'` 那一支上
 		// 原样调用,于是 web 读到的仍是这棵只读镜像树,一字不差。
 		// P4c 第七批:六条数据面已迁到 `oauthRouter`,连同 server 那台 per-owner 的
@@ -3007,7 +3007,7 @@ function stripSessionOwnerFields(meta: ServerSessionIndexMeta): SessionMeta {
 }
 
 // P4c 第九批:执行面那三件事(只读目录里的 runner、白名单校验、会话沙箱路径解析)
-// 随 `tools` 域一起搬到了 `backend/runtime/tools/tools-client-api.ts` 的 http 分叉里 —— 桌面与
+// 随 `tools` 域一起搬到了 `backend/tool/tools-client-api.ts` 的 http 分叉里 —— 桌面与
 // 联网宿主从此吃同一份实现,这里不再留第二份。
 
 async function* listServerToolFiles(options: {
@@ -3347,7 +3347,7 @@ export function createAppBackedServerSessionStore(
 		// S2b:app-store 背书的这只读门面两条读法都收口到 `appSessionReads`,
 		// `ONETHING_SESSION_READ=events` 因此对分页也生效;messages 模式下
 		// `pageMessages` 逐字走同一个 `getSessionMessagesPage`(store.js 再导出的
-		// 就是 runtime/sessions/session-store.ts 那份),页信封一格不动。
+		// 就是 session/session-store.ts 那份),页信封一格不动。
 		getMessagesPage: (request) =>
 			appSessionReads.pageMessages(request) as GetSessionMessagesPageResponse,
 		getUserMessageMarkers: (sessionId) =>
@@ -3742,7 +3742,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * 第四份手抄的联合已经退役 —— 这里直接用契约那一份(它自己与核逐字相同,由
- * `backend/runtime/permissions/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
+ * `backend/permission/__tests__/permission-response-mirrors.test.ts` 编译期钉住)。
  */
 type PermissionDecision = PermissionResponse;
 
@@ -3807,7 +3807,7 @@ function toPendingPermissionInfo(
 			typeof event.targetChannel === "string" ? event.targetChannel : "api",
 		workingDirectory: session.workingDirectory,
 		// 授权记录的归属被 `permission-grants` 域按**租户**过滤
-		// (`runtime/permissions/permissions-client-api-grants.ts:72-73`),所以这里给的是租户两格,
+		// (`permission/permissions-client-api-grants.ts:72-73`),所以这里给的是租户两格,
 		// 不是产品空间。
 		userId: sessionOwner(session).userId,
 		workspaceId: sessionOwner(session).workspaceId,

@@ -1,0 +1,230 @@
+/**
+ * chat(聊天面)域 —— 结构债 P4c 第五批,**六条**方法从手写 IPC 通道搬到通用
+ * `rpc:invoke` / `POST /api/rpc`。
+ *
+ * 替换掉四处镜像:
+ *  - `apps/electron/src/ipc/chat.ts` 的手写 IPC 工厂 + `@main/ipc/chat.ts` 那层
+ *    壳适配(两个文件本批只缩不删,2026-08-22 的 #21 把余下那一条也删了,见下);
+ *  - `preload/bridge.ts` 的六条包装与 `platform/web.ts` 的六条 REST 镜像;
+ *  - `http-server/http-server-routes.ts` 的五条路由(`/api/chat/history` / `/api/chat/title` /
+ *    `/api/chat/update-thinking-time` / `/api/streams/abort` /
+ *    `/api/streams/active`)与 `/api/sessions/:id/system-prompt-snapshot` 那一
+ *    条正则分支,连同 `http-server/http-server-runtime.ts` 里 `chat` / `prompts` 两个 adapter 和
+ *    `streams` 上的 `abort` / `active` 两只 —— 那是同一件事的**第二份实现**。
+ *
+ * 逻辑一行没搬:六条逐条转调后端功能(`@onething/backend/<功能>`)的投影
+ * (`getOnethingChatHistoryForIpc` / `generateOnethingChatTitleForIpc` /
+ * `buildOnethingSystemPromptSnapshotForIpc` /
+ * `updateOnethingMessageThinkingTimeForIpc` / `abortOnethingStreamsForIpc` /
+ * `listOnethingActiveStreamsForIpc`),仓本体照旧是 会话入口 `@onething/backend/session`(兼容桶 `store.ts` 已于包根归位 B 删除)
+ * 那一份 —— 与迁移前 `@main` 那份适配逐字同义,连 `logger: console` 都只是换成
+ * 了同一个鸭子 logger 端口。
+ *
+ * ## 第七条「工具审批后恢复流」于 2026-08-22(#21)连同它的 invoke 通道整条
+ * 删除:渲染层零调用者,且引擎侧 `result.requiresConfirmation === true` 早已
+ * 无生产者(toolkit 重建后审批在工具内阻塞,runner 的 pause 抛不出来)。引擎的
+ * `command:resume-after-confirm` 与 `handleResumeAfterConfirm` 仍在命令总线上。
+ *
+ * ## 一处 `transport` 分叉也没有
+ *
+ * 与 sessions 域不同,这六条在两个宿主上要碰的东西是同一套:引擎、会话仓、
+ * 权限。被删掉的 server 实现比桌面多的那两道门都不是行为契约 ——
+ * 「这条会话属不属于这个 owner」在单用户 server 上恒真(A 期:一个 store 一台
+ * core,鉴权在 HTTP 的 Bearer 边界上),而「清 server 壳自己那本待决权限镜像」
+ * 碰的是壳的私产,产品层看不见也不该看见(与 `sessions.delete` 同一处理)。
+ *
+ * 两处**行为确实变了**,都是往「一个 store 一台 core」的方向收(逐条记在报告里):
+ *  1. `getActiveStreams` 从此读引擎自己的活会话表(`getActiveSessionIds()`),
+ *     不再是 server 壳按 `stream:start` / 终结事件维护的那本影子账;字段名也
+ *     从 `streams` 归一到 `sessionIds`。
+ *  2. `abortStream` 从此走桌面那条完整收尾(取消挂起的调用、把消息落回非流式
+ *     态、补一条带 aborted 标记的终结事件),而不是只 `engine.abort` 一下就回
+ *     `{success:true}`。web 因此不再出现「停了但那条消息永远停在流式态」。
+ */
+import { getSettings } from '@onething/backend/settings'
+import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/backend/prompt'
+import {
+  generateOnethingChatTitleForIpc,
+  getOnethingCaughtErrorMessage,
+  type CoreProviderAuthLogger,
+  type OnethingChatTitleGenerationAdapters,
+} from '@onething/backend/provider'
+import {
+  abortOnethingStreamsForIpc,
+  getOnethingChatHistoryForIpc,
+  listOnethingActiveStreamsForIpc,
+  updateOnethingMessageThinkingTimeForIpc,
+} from '@onething/backend/session'
+import { emitCoreSessionEventSafely } from '@onething/backend/event/bus-primitives'
+import { chatRouter, type ChatRoutes } from '@shared/ipc/chat.js'
+import * as store from '@onething/backend/session'
+import { getEventBus } from '@onething/backend/event'
+import { currentSessionRun } from '@onething/backend/session'
+import { sessionReads } from '@onething/backend/session'
+import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/collab/rooms'
+import { getStreamEngine } from '@onething/backend/current.js'
+import {
+  buildSystemPromptSnapshot,
+  generateChatTitle,
+  getProviderApiType,
+  isProviderSupported,
+  resolveProviderAuth,
+} from '@onething/backend/engine'
+import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { Permission } from '@onething/backend/permission/permission'
+import { billTitleUsage } from '@onething/backend/usage/bill-side-line'
+import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { requestSessionOwner, sessionAccess } from '@onething/backend/session'
+import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/backend/session'
+import type { ConsoleLikePort } from '@onething/backend/logging'
+import type { OnethingSessionsIpcLogger } from '@onething/backend/session'
+import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/prompt/system-prompt-snapshot'
+import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/backend/session'
+import type { OnethingAuthAccount } from '@onething/backend/auth/types'
+import type { ProviderConfig, OAuthToken, ChatSession } from '@shared/ipc.js'
+
+const log = getLogger('rpc.chat')
+/** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
+const consoleLog: ConsoleLikePort & AbortOnethingStreamsForIpcLogger & BuildOnethingSystemPromptSnapshotForIpcLogger & CoreProviderAuthLogger & OnethingSessionsIpcLogger = consolePort(log)
+
+async function emitSessionEvent(
+  sessionId: string,
+  event: Parameters<ReturnType<typeof getEventBus>['emit']>[1],
+): Promise<void> {
+  await emitCoreSessionEventSafely({
+    sessionId,
+    event,
+    eventBus: getEventBus(),
+    logger: consoleLog,
+    errorLabel: '[ChatRPC] EventBus emit failed:',
+  })
+}
+
+export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
+  async getHistory(request) {
+    return getOnethingChatHistoryForIpc({
+      sessionId: request.sessionId,
+      getSession: id => store.getSession(id),
+      logger: consoleLog,
+    })
+  },
+  async generateTitle(request) {
+    const chatTitleGenerationAdapters: OnethingChatTitleGenerationAdapters<ProviderConfig, { kind: "api-key"; apiKey: string; } | { kind: "oauth"; token: OAuthToken; account: OnethingAuthAccount; }> = {
+      isProviderSupported,
+      resolveAuth: resolveProviderAuth,
+      getProviderApiType,
+      generateTitle: (providerId, providerConfig, message, options) =>
+        generateChatTitle(
+          providerId,
+          {
+            apiKey: providerConfig.apiKey,
+            authContext: providerConfig.authContext,
+            oauthToken: providerConfig.oauthToken as Parameters<typeof generateChatTitle>[1]['oauthToken'],
+            baseUrl: providerConfig.baseUrl,
+            model: providerConfig.model || '',
+            apiType: providerConfig.apiType,
+          },
+          message,
+          {
+            ...(options as Parameters<typeof generateChatTitle>[3]),
+            onUsage: billTitleUsage(providerId, providerConfig.model || ''),
+          },
+        ),
+      logger: consoleLog,
+    };
+    return generateOnethingChatTitleForIpc({
+      userMessage: request.message,
+      settings: getSettings(),
+      adapters: chatTitleGenerationAdapters,
+    })
+  },
+  async getSystemPromptSnapshot(request) {
+    return buildOnethingSystemPromptSnapshotForIpc({
+      sessionId: request.sessionId,
+      buildSnapshot: buildSystemPromptSnapshot,
+      errorMessage: (error, fallback) => getOnethingCaughtErrorMessage(error, fallback),
+      logger: consoleLog,
+    })
+  },
+  async updateMessageThinkingTime(request) {
+    return updateOnethingMessageThinkingTimeForIpc({
+      sessionId: request.sessionId,
+      messageId: request.messageId,
+      thinkingTime: request.thinkingTime,
+      updateMessageThinkingTime: (sid, mid, nextThinkingTime) =>
+        store.updateMessageThinkingTime(sid, mid, nextThinkingTime),
+      logger: consoleLog,
+    })
+  },
+  async abortStream(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!request.sessionId) {
+      const ids = sessionAccess.filterIds(context, getStreamEngine().getActiveSessionIds())
+      sessionAccess.resolveAll(context, ids, 'abort')
+      const executionContext = requestSessionOwner(context)
+      const targets = ids.flatMap(id => preflightCollabRoomStop(id, { executionContext }))
+      sessionAccess.resolveAll(context, targets, 'abort')
+      for (const sessionId of ids) await chatRpcHandlers.abortStream({ sessionId }, context)
+      return { success: true }
+    }
+    sessionAccess.resolve(context, request.sessionId, 'abort')
+    preflightCollabRoomStop(request.sessionId, { executionContext: requestSessionOwner(context) })
+    const abortOnethingStreamsForIpcOptions: AbortOnethingStreamsForIpcOptions<OnethingAbortToolCallLike, OnethingAbortStepLike<OnethingAbortToolCallLike>, OnethingAbortMessageLike<OnethingAbortStepLike<OnethingAbortToolCallLike>>, ChatSession> = {
+      sessionId: request.sessionId,
+      // 群聊房间的停止按钮(collab-team-v2 §5.1 入口①):房间会话上没有流,
+      // 真正要停的是本轮发言人的执行会话。装配层在这里注入,产品层不 import app。
+      abortCollabRoomTurn: sid => abortCollabRoomTurnForStop(sid, { executionContext: requestSessionOwner(context) }),
+      abortEngineStream: sid => {
+        try {
+          return getStreamEngine().abort(sid)
+        } catch {
+          // StreamEngine may not be initialized in legacy/bootstrap contexts.
+          return false
+        }
+      },
+      abortAllEngineStreams: () => {
+        try {
+          getStreamEngine().abortAll()
+          return true
+        } catch {
+          // StreamEngine may not be initialized in legacy/bootstrap contexts.
+          return false
+        }
+      },
+      clearPermission: sid => Permission.clearSession(sid),
+      // §16.25 钥匙②:停止按钮按**活 run 登记簿**寻址,不再按 `isStreaming` 反查。
+      // 登记簿(`currentSessionRun`)是引擎自己记的"这条会话正在跑哪次执行、写哪条
+      // assistant 消息";消息本体从折叠产物取。理由全文见 `getActiveRunMessage`。
+      getActiveRunMessage: sid => {
+        const runMessageId = currentSessionRun(sid)?.assistantMessageId
+        if (!runMessageId) return undefined
+        return sessionReads.getMessage(sid, runMessageId) as
+          | OnethingAbortMessageLike<OnethingAbortStepLike<OnethingAbortToolCallLike>>
+          | undefined
+      },
+      updateMessageStep: (sid, messageId, stepId, updates) =>
+        store.updateMessageStep(
+          sid,
+          messageId,
+          stepId,
+          updates as Parameters<typeof store.updateMessageStep>[3],
+        ),
+      updateMessageStreaming: (sid, messageId, streaming) =>
+        store.updateMessageStreaming(sid, messageId, streaming),
+      flushSessionSave: sid => store.flushSessionSave(sid),
+      emitEvent: (sid, event) =>
+        emitSessionEvent(sid, event as Parameters<typeof emitSessionEvent>[1]),
+      logger: consoleLog,
+    };
+    return abortOnethingStreamsForIpc(abortOnethingStreamsForIpcOptions)
+  },
+  async getActiveStreams(_request, context = DESKTOP_RPC_CONTEXT) {
+    const listOnethingActiveStreamsForIpcOptions: ListOnethingActiveStreamsForIpcOptions = {
+      getEngineActiveSessionIds: () => sessionAccess.filterIds(context, getStreamEngine().getActiveSessionIds()),
+    };
+    return listOnethingActiveStreamsForIpc(listOnethingActiveStreamsForIpcOptions)
+  },
+}
+
+/** 名册 `http-server/http-server-client-api-roster.ts` 里的一行:域 `chat` 的契约与处理者。 */
+export const CHAT_CLIENT_API = defineClientApi({ id: 'rpc:chat', router: chatRouter, handlers: chatRpcHandlers })

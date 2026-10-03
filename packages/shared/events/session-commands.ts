@@ -135,7 +135,7 @@ export interface SendMessageCommand {
   suppressTitleGeneration?: boolean
   /**
    * 这一轮呈现的资源(见 `PresentedResource`)。**只在 RPC 入口被读**:
-   * `backend/runtime/sessions/presentation.ts` 校验后交给登记的处理者,然后从命令上摘掉 ——
+   * `backend/session/presentation.ts` 校验后交给登记的处理者,然后从命令上摘掉 ——
    * 它不进总线、不落账。没有处理者登记时它只经过校验就被丢弃(鉴权暂缓期的形)。
    */
   presented?: PresentedResource[]
@@ -180,7 +180,7 @@ export interface PermissionRespondCommand {
    */
   toolCallId?: string
   /**
-   * 与 `Permission.Response` 逐字同形(`packages/backend/runtime/permissions/permission-asks.ts`)。
+   * 与 `Permission.Response` 逐字同形(`packages/backend/permission/permission-asks.ts`)。
    * `'always'` = 本项目里始终允许这个应用做这一类事;只有当那次 ask 的
    * `alwaysScope` 在场时它才是合法应答,否则内核结构化忽略。
    * `'reject-always'` 只在那次 ask 带着 `choices` 且其中有这一格时合法(A3-a)。

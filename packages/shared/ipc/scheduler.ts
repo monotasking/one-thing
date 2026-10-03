@@ -228,7 +228,7 @@ export interface SchedulerGetRunResponse {
  *
  * 九个方法全是**纯数据面**:列任务 / 读一个 / 立刻跑 / 开关 / 用户任务的增改删 /
  * 运行历史的列与读。判定与降级(`{ success, error }` 的包法)住在
- * `@onething/backend/runtime/scheduler` 的那批依赖注入投影(`*ForIpc`)里,传输面只把
+ * `@onething/backend/scheduler` 的那批依赖注入投影(`*ForIpc`)里,传输面只把
  * 端口接上去 —— 这也是它能整只搬进 `app/rpc/domains/scheduler.ts` 的原因。
  *
  * **无入参的方法一律 `Record<string, never>`**,调用处传 `{}`(spaces 的

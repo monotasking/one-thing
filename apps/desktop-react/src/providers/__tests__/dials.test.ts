@@ -14,7 +14,7 @@ import { servedProviderInfo } from '../../data/__fixtures__/providers'
  * 地址逐字对不对**,以及那句风险说明一个字没被改写。
  *
  * 地址的期望值抄自 runtime 的那两张表
- * (`backend/runtime/providers/qwen.ts:24-38` / `kimi.ts:28-37, 51-64`)。
+ * (`backend/provider/qwen.ts:24-38` / `kimi.ts:28-37, 51-64`)。
  * 这里再写一遍不是重复:它是**跨包的合同**,runtime 改了值而这块面没跟上时,
  * 该有一处红。
  *

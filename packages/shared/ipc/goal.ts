@@ -2,7 +2,7 @@
  * Goal subsystem IPC types.
  *
  * SessionGoal is a structural mirror of
- * `packages/backend/runtime/goals/types.ts` (same pattern as
+ * `packages/backend/goal/types.ts` (same pattern as
  * ContextVariable, which is duplicated in chat.ts). The runtime package owns
  * the canonical definition and all state transitions; these types only cross
  * the IPC boundary.
@@ -121,7 +121,7 @@ export interface GoalDiffsResponse {
  *
  * 迁移前 goal 只有 desktop 一条腿：web.ts 里三个函数返回写死的
  * "Goals are not available in the web build"。目标系统本身住在装配层
- * （`@onething/backend/runtime/goals/goal-manager`，每个宿主都装配了它），所以走通用通道之后 web/server
+ * （`@onething/backend/goal/goal-manager`，每个宿主都装配了它），所以走通用通道之后 web/server
  * 拿到的是真实现——这一条不是等价搬迁，是顺带补齐的能力。
  */
 export type GoalRoutes = {

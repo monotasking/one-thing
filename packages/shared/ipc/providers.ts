@@ -14,7 +14,7 @@ export type { CustomAdapterSpec, CustomReasoningMapping } from '../contracts/ada
 
 /**
  * 服务商 id。**是数据,不是写死的名单**(服务商自述试点 P3):内置各家的名册在 runtime 的
- * `packages/backend/runtime/providers/vendors/manifests.ts`(每家一行),自定义服务商的
+ * `packages/backend/provider/vendors/manifests.ts`(每家一行),自定义服务商的
  * id 来自设置。契约层不列举任何一家。
  */
 export type AIProviderId = string
@@ -100,7 +100,7 @@ export interface OpenRouterModel {
    */
   unreported?: ModelUnreportedFact[]
   // ── 思考档位的投影(2026-09-05,输入框的模型选择器)────────────────────────
-  // 真相在 `runtime/providers/model-capability.ts` 的 `OnethingReasoningProfile`,
+  // 真相在 `provider/model-capability.ts` 的 `OnethingReasoningProfile`,
   // 这四格是它的**只读投影**,由 `models.getWithCapabilities` 一次一家地填。
   // **可选**是因为这个信封有别的产地(测试夹具、旧缓存):缺席读作「这一发没投
   // 影过」,屏幕上与「这一型不思考」同一个样子(不写档),而不是编一个档出来。
@@ -119,7 +119,7 @@ export interface OpenRouterModel {
   thinkingLevelLabels?: Partial<Record<ThinkingEffort, string>>
   /**
    * **这一型此刻按多少算**(§5.5,`docs/design/provider-settings-rework-2026-09.md`)——
-   * 「用户覆盖 > 接口报的 / 目录 > 不知道」在后端一处折好(`runtime/providers/
+   * 「用户覆盖 > 接口报的 / 目录 > 不知道」在后端一处折好(`provider/
    * effective-model.ts` 的 `effectiveModelFactsOf`,引擎读的也是它),壳只读不折。
    * 上面那几格旧信封字段(`context_length` / `supported_parameters` …)仍是**目录自己
    * 说的**那一份(未经覆盖),行上「目录原值」从那里读。
@@ -130,7 +130,7 @@ export interface OpenRouterModel {
   effective?: ModelEffectiveFacts
   /**
    * 参数建议(批 3 §6.3):接口不报参数时,从 models.dev 里**确定性地**认出这一型大概是谁
-   * (`runtime/providers/model-identity.ts`,不用 AI),拿那一型的值给「不知道」的那几格
+   * (`provider/model-identity.ts`,不用 AI),拿那一型的值给「不知道」的那几格
    * 一个建议。只在 `effective.source.* === 'unknown'` 的格上出现;点了才写进覆盖表,
    * 写了之后那一格不再 unknown,建议自然消失。`models.getWithCapabilities` 填它。
    */

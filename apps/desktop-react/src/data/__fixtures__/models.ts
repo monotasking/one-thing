@@ -2,7 +2,7 @@ import type { ModelEffectiveFacts, OpenRouterModel, ProviderConfig } from '@shar
 import {
   effectiveModelFactsOf,
   onethingModelOverrideFactsOf,
-} from '@onething/backend/runtime/providers'
+} from '@onething/backend/provider'
 import type { CatalogModel, ModelOption, ProviderModelPrefs } from '../models-source'
 
 /**

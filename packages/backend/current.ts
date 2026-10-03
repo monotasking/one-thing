@@ -2,8 +2,8 @@
  * 进程当前实例槽(方案 `docs/design/backend-composition-root-2026-09.md` 的 A2,§2.2)。
  *
  * **整个 `packages/backend` 里唯一允许的模块级 `let`。** A2 之前有三个:
- * `runtime/events/index.ts` 的 `eventBus`/`streamChannel`、`runtime/sessions/session-layer.ts` 转给 core 的
- * 那一份、`runtime/engine/engine-layer.ts`(今包根 `assemble-engine.ts`)的 `streamEngine`/`onethingRuntime`。三份各自
+ * `event/index.ts` 的 `eventBus`/`streamChannel`、`session/session-layer.ts` 转给 core 的
+ * 那一份、`engine/engine-layer.ts`(今包根 `assemble-engine.ts`)的 `streamEngine`/`onethingRuntime`。三份各自
  * "已存在 → warn → return",于是"装配 → 关机 → 再装配"这条路谁也说不清是谁的
  * 尸体还在。现在只有这一份,由 `OnethingBackend.assemble` 立、由 `dispose()` 清。
  *
@@ -20,25 +20,25 @@
  *
  * ## 句柄不是类
  *
- * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`runtime/events/index.ts`
- * 要读它,而 `backend.ts` 要 import `runtime/events/index.ts`。窄接口住在这个叶子文件里,
+ * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`event/index.ts`
+ * 要读它,而 `backend.ts` 要 import `event/index.ts`。窄接口住在这个叶子文件里,
  * 那条环就不存在。(下面对 `assemble-engine.js` 的 `import type` 是**纯类型**,
  * 编译期即被抹掉,不产生运行期边。)
  */
-import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
-import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
-import type { SessionManager } from '@onething/backend/runtime/sessions'
-import type { SessionLayer } from '@onething/backend/runtime/sessions'
-import type { SessionEventLogStoreHandle } from '@onething/backend/runtime/sessions'
-import type { TaskDispatchLayer } from '@onething/backend/runtime/tasks/dispatch'
-import type { SessionDeletionRecovery } from '@onething/backend/runtime/sessions'
-import type { MediaLibraryService } from '@onething/backend/runtime/media'
-import type { ToolExecutionRegistry } from '@onething/backend/runtime/toolkit/executions'
-import type { PracticeService } from '@onething/backend/runtime/practice/service-slot'
-import type { MusicSubsystem } from '@onething/backend/runtime/music/subsystem'
-import type { CollabDigestRunner } from '@onething/backend/runtime/collab/digest-runner'
-import type { NotesSubsystem } from '@onething/backend/runtime/notes/notes-subsystem'
-import type { StreamEngine } from '@onething/backend/runtime/engine'
+import type { EventBus } from '@onething/backend/event/session-event-bus'
+import type { StreamChannel } from '@onething/backend/event/session-stream-channel'
+import type { SessionManager } from '@onething/backend/session'
+import type { SessionLayer } from '@onething/backend/session'
+import type { SessionEventLogStoreHandle } from '@onething/backend/session'
+import type { TaskDispatchLayer } from '@onething/backend/task/dispatch'
+import type { SessionDeletionRecovery } from '@onething/backend/session'
+import type { MediaLibraryService } from '@onething/backend/media'
+import type { ToolExecutionRegistry } from '@onething/backend/toolkit/executions'
+import type { PracticeService } from '@onething/backend/practice/service-slot'
+import type { MusicSubsystem } from '@onething/backend/music/subsystem'
+import type { CollabDigestRunner } from '@onething/backend/collab/digest-runner'
+import type { NotesSubsystem } from '@onething/backend/note/notes-subsystem'
+import type { StreamEngine } from '@onething/backend/engine'
 import type { MainOnethingRuntime } from './assemble-engine.js'
 import type { OnethingBackend } from './backend.js'
 
@@ -212,7 +212,7 @@ export function getCurrentBackendSafe(): BackendHandle | null {
  * 当前装配的那只引擎。没装配(或装配还没走到建引擎那一步)就抛 `BackendNotAssembledError('engine')`。
  *
  * 只读槽、不构造:各功能(目标续推、协作、语音、定时任务、CLI 守护、电台、RPC 域)要「现在这只引擎」时
- * 读这里。2026-10 engine 归位之前它住在 `runtime/engine/engine-layer.ts`,读法逐字相同;搬到这只叶子
+ * 读这里。2026-10 engine 归位之前它住在 `engine/engine-layer.ts`,读法逐字相同;搬到这只叶子
  * 文件之后,读引擎的人不再 import 装引擎的那只组装文件(`assemble-engine.ts`)。
  */
 export function getStreamEngine(): StreamEngine {

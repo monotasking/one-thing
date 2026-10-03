@@ -8,7 +8,7 @@
  * **This module does not know a single kind.** It reads `type` as an opaque
  * string and every attribute as an opaque string; what a kind means, which
  * attributes it takes and how it is drawn live in the tables that read this
- * codec — `packages/backend/runtime/references/types/` on the wire side and
+ * codec — `packages/backend/reference/types/` on the wire side and
  * the shell's own registry on the drawing side. Adding a kind must not touch
  * this file, which is the whole reason it exists.
  *

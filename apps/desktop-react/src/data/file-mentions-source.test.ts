@@ -93,7 +93,7 @@ describe('线上形状 → 屏幕形状', () => {
   /*
    * 08-31 真机走查:敲下 `@`,候选第二行是 `/Users/yitiansong/Downloads`。
    * 那是后端语义 —— `files.list` 把 cwd、笔记根、接入目录、下载目录**并列**当搜索根
-   * (runtime/files/file-search.ts 的 resolveOnethingFileSearchRoots),给了 cwd
+   * (file/file-search.ts 的 resolveOnethingFileSearchRoots),给了 cwd
    * 也照并。人在一条会话里敲 `@` 问的是「这个项目里的哪个文件」,所以壳这一层筛。
    */
   it('有工作目录时,根外的候选一条都不出(下载目录 / 笔记根 / 别的项目)', () => {

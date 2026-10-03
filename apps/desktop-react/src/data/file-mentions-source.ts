@@ -17,7 +17,7 @@ import { filesPort } from './files-port'
  * 拿不到时(没选会话 / 这条会话没有工作目录)**把这一格留空**,而不是在渲染层
  * 拼一个 `~`:后端 `files.list` 的 `cwd` 缺席就是「按宿主自己的搜索根找」——
  * 桌面那侧正是 `os.homedir()` + 下载目录 + 笔记根 + 按会话解析的接入目录
- * (`backend/runtime/files/files-client-api.ts` 文件头第 1 条)。文件树那侧要展开 `~` 是因为
+ * (`backend/file/files-client-api.ts` 文件头第 1 条)。文件树那侧要展开 `~` 是因为
  * `listDirectory` 直接 `readdir` 不认识它;这条口不需要,所以不该多解析一次 ——
  * 同一条判据两处各解析一遍就会漂。
  *
@@ -122,7 +122,7 @@ export function relativeLabel(path: string, cwd: string | null): string {
  *
  * ── 有工作目录时筛到该根名下(08-31 真机走查)──────────────────────────
  * 后端 `files.list` 的语义是「**cwd 是搜索根之一,不是搜索范围**」:
- * `resolveOnethingFileSearchRoots`(runtime/files/file-search.ts)把 cwd、笔记根、
+ * `resolveOnethingFileSearchRoots`(file/file-search.ts)把 cwd、笔记根、
  * 接入目录、下载目录**并列**加进根表,给不给 cwd 都一样并。于是真机上敲 `@` 的
  * 第二行候选是 `/Users/…/Downloads/…` —— 一个跟这条会话毫无关系的目录。
  *

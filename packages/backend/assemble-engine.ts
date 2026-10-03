@@ -9,7 +9,7 @@
  *    `new ProductStreamEngine(runtime, ports)` —— 判断逻辑一行都不住在这里;
  *  - `registerBuiltinTriggers()` 往内核那张触发器表里登记内置的三只。
  *
- * 2026-10 engine 归位(决策 D27)之前,这三件是 `runtime/engine/` 里的 `engine-layer.ts`、
+ * 2026-10 engine 归位(决策 D27)之前,这三件是 `engine/` 里的 `engine-layer.ts`、
  * `stream-engine-bound.ts`、`triggers/index.ts`;引擎本体从此不再引用这只文件。
  * 读当前引擎请用 `current.ts` 的 `getStreamEngine()` / `getStreamEngineSafe()`(只读槽)。
  */
@@ -25,7 +25,7 @@ import {
 	type StreamEngine,
 	type StreamSender,
 	type StreamSenderPayload,
-} from '@onething/backend/runtime/engine'
+} from '@onething/backend/engine'
 import {
 	triggerManager,
 	type CoreStreamEngineRuntime as CoreRuntime,
@@ -39,48 +39,48 @@ import {
 	type StreamEngineSessionRouterPort,
 	type StreamEngineSteeringDeliveryPort,
 	type Trigger,
-} from '@onething/backend/runtime/agent-loop'
+} from '@onething/backend/agent-loop'
 import {
   createOnethingRuntimeFromStreamRuntime,
   type OnethingRuntime,
-} from './runtime/gateway/gateway-onething-runtime.js'
-import type { CoreConversationRuntime } from '@onething/backend/runtime/gateway/conversation-runtime'
-import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
-import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
+} from './gateway/gateway-onething-runtime.js'
+import type { CoreConversationRuntime } from '@onething/backend/gateway/conversation-runtime'
+import type { EventBus } from '@onething/backend/event/session-event-bus'
+import type { StreamChannel } from '@onething/backend/event/session-stream-channel'
 import {
 	DEFAULT_SESSION_OWNER,
 	ensureSessionWritable,
 	getSessionManager,
 	sessionAccess,
-} from '@onething/backend/runtime/sessions'
-import { fixedExecutionContext } from './runtime/sessions/index.js'
-import * as store from '@onething/backend/runtime/sessions'
+} from '@onething/backend/session'
+import { fixedExecutionContext } from './session/index.js'
+import * as store from '@onething/backend/session'
 // 渠道的会话路由、出站回复与给模型的渠道上下文住 gateway(包根归位 B,2026-10-04 从包根 `channel/` 搬来)。
 // 这里直取那三只文件,不走 gateway 的 `index.ts`:那只入口同时是独立网关进程的启动文件(被当成主模块执行时就起网关),
 // 打进单文件包以后 `import.meta.url` 与进程入口相同,装配一 import 它就会起一台网关。拆出网关的功能入口是留账。
-import { getChannelSessionRouter } from './runtime/gateway/gateway-channel-session-router.js'
-import { OutboundReplyDispatcher } from './runtime/gateway/gateway-outbound-reply-dispatcher.js'
+import { getChannelSessionRouter } from './gateway/gateway-channel-session-router.js'
+import { OutboundReplyDispatcher } from './gateway/gateway-outbound-reply-dispatcher.js'
 import {
   registerChannelPromptContextProvider,
   unregisterChannelPromptContextProvider,
-} from './runtime/gateway/gateway-channel-prompt-context.js'
+} from './gateway/gateway-channel-prompt-context.js'
 import {
   handleCollabRoomSendMessage,
   isCollabCoordinatorDrivenSession,
   isCollabRoomSession,
   type CollabRoomInboundCommand,
-} from '@onething/backend/runtime/collab/ingress'
-import { isTrustedCollabDrive } from '@onething/backend/runtime/collab/drive-guard'
+} from '@onething/backend/collab/ingress'
+import { isTrustedCollabDrive } from '@onething/backend/collab/drive-guard'
 import {
   pluginPostInterceptReply,
   type PluginInterceptSteerPort,
-} from '@onething/backend/runtime/plugins/session-messenger'
-import { resolveAgentProfileForSession } from '@onething/backend/runtime/agents/profile-for-session'
-import { takeExternalAgentSteering } from '@onething/backend/runtime/external-agents/connector-registry'
-import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/store-bound'
-import { createGoalContinuationTrigger } from './runtime/goals/goal-continuation-trigger.js'
+} from '@onething/backend/plugin/session-messenger'
+import { resolveAgentProfileForSession } from '@onething/backend/agent/profile-for-session'
+import { takeExternalAgentSteering } from '@onething/backend/external-agent/connector-registry'
+import { defaultAgent, findAgent } from '@onething/backend/agent/store-bound'
+import { createGoalContinuationTrigger } from './goal/goal-continuation-trigger.js'
 import { getCurrentBackend } from '@onething/backend/current.js'
-import { getLogger } from './runtime/logging/configure-logging.js'
+import { getLogger } from './logging/configure-logging.js'
 
 export type { BindableStreamSender, StreamEngine, StreamSender, StreamSenderPayload }
 
@@ -304,7 +304,7 @@ export function registerBuiltinTriggers(options: { sessionToc: Trigger }): () =>
   if (builtinTriggersRegistered) return () => {}
   builtinTriggersRegistered = true
   // Skill review is intentionally not registered: createSkillReviewTrigger()
-  // still exists in runtime/skills/skill-review-trigger.ts — re-add it to the
+  // still exists in skill/skill-review-trigger.ts — re-add it to the
   // list below to bring it back.
   const triggers = [
     createGoalContinuationTrigger(),

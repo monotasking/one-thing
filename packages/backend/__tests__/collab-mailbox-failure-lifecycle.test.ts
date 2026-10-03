@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { DurableMailbox } from '@onething/backend/runtime/collab/kernel'
+import type { DurableMailbox } from '@onething/backend/collab/kernel'
 import type { OnethingBackend } from '../backend.js'
 
 let directory: string
@@ -35,10 +35,10 @@ async function assemble() {
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
     gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
   } })
-  const agents = await import('@onething/backend/runtime/agents/agent-store-access')
-  const runtime = await import('@onething/backend/runtime/collab/actors/runtime')
-  const core = await import('@onething/backend/runtime/collab/kernel')
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const agents = await import('@onething/backend/agent/agent-store-access')
+  const runtime = await import('@onething/backend/collab/actors/runtime')
+  const core = await import('@onething/backend/collab/kernel')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   const event = (id: string) => core.createActorEvent({
     id, at: 1, type: 'probe', from: { kind: 'room', id: 'room' }, to: { kind: 'agent', id: 'failure-agent' },
     payload: { type: 'probe' },
@@ -143,7 +143,7 @@ it('reports a failed save from a real mailbox whose open finishes after shutdown
 
 it('owns a deleted room cleanup through its delayed real mailbox failure before shutting down the Backend', { timeout: 60000 }, async () => {
   const { instance, runtime, core, inspectStoreLock, event } = await assemble()
-  const sessions = await import('../runtime/sessions/session-store.js')
+  const sessions = await import('../session/session-store.js')
   sessions.createSession('room', 'Room being deleted')
   sessions.updateSessionCollab('room', { kind: 'room', room: { memberAgentIds: [] } })
   const opened = vi.spyOn(core.DurableMailbox, 'open')

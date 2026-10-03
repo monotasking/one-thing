@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { projectChatMessages } from '/Users/yitiansong/data/code/start-electron/packages/shared/session/projection/chat-messages.js'
-import { canonicalChatMessage } from '/Users/yitiansong/data/code/start-electron/packages/backend/runtime/sessions/projection/canonical.js'
-import { rehydrateSessionFromStorage } from '/Users/yitiansong/data/code/start-electron/packages/backend/runtime/sessions/session-dehydrate.js'
+import { canonicalChatMessage } from '/Users/yitiansong/data/code/start-electron/packages/backend/session/projection/canonical.js'
+import { rehydrateSessionFromStorage } from '/Users/yitiansong/data/code/start-electron/packages/backend/session/session-dehydrate.js'
 
 const sessionId = process.argv[2] ?? '5e4d2cea-eb27-4c49-9aaa-fa7cfa3fa270'
 const dir = join(homedir(), '.onething', 'sessions', sessionId)

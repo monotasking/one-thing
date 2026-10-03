@@ -62,7 +62,7 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
 const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
-const providerDataSource = path.join(repoRoot, 'packages/backend/runtime/providers/provider-data.ts')
+const providerDataSource = path.join(repoRoot, 'packages/backend/provider/provider-data.ts')
 
 const PROD = process.argv.includes('--prod')
 const LANE = PROD ? 'prod' : 'dev'

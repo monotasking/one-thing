@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OnethingServerRuntime } from '../http-server-runtime.js'
 import { createAppServerRuntime } from './http-server-test-helpers.js'
-import { flushSessionEventLog } from '@onething/backend/runtime/sessions'
+import { flushSessionEventLog } from '@onething/backend/session'
 
 const runtimes: OnethingServerRuntime[] = []
 const tempDirs: string[] = []

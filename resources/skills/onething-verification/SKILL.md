@@ -16,11 +16,11 @@ Answer in the user's language. Prefer the shortest path that matches the user's 
 
 | Script | Purpose | Requires |
 | --- | --- | --- |
-| `bun run scripts/smoke-test.ts` | Headless core conversation smoke test | `@onething/backend/runtime/agents/agent-engine` + `runtime/sessions` |
+| `bun run scripts/smoke-test.ts` | Headless core conversation smoke test | `@onething/backend/agent/agent-engine` + `session` |
 | `bun run scripts/smoke-test-real.ts` | Real-provider integration test (DeepSeek/Anthropic) | `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` |
 | `bun run scripts/cli-test.ts` | CLI `--once --json` tool-call round-trip test | mock HTTP server (spawned inline) |
-| `bun run scripts/agent-loop-core-test.ts` | Core agent-loop unit test with mock provider | `@onething/backend/runtime/agent-loop/loop-primitives` |
-| `bun run scripts/gateway-smoke-test.ts` | Gateway bridge integration test | `@onething/backend/runtime/gateway` |
+| `bun run scripts/agent-loop-core-test.ts` | Core agent-loop unit test with mock provider | `@onething/backend/agent-loop/loop-primitives` |
+| `bun run scripts/gateway-smoke-test.ts` | Gateway bridge integration test | `@onething/backend/gateway` |
 | `bun test scripts/headless-boundary-check.ts` | Package boundary dependency checker | project source tree |
 | `node scripts/ttft-test.mjs` | Time-to-first-token benchmark (raw fetch vs AI SDK) | Kimi API key in settings |
 | `bun run scripts/diagnose-weekly.mjs` | Weekly evaluation triage report | `~/.onething/evals/online/records.jsonl` |
@@ -157,9 +157,9 @@ bun test scripts/headless-boundary-check.ts
 
 Rules enforced:
 
-- **Host boundary** (`packages/backend/runtime/` and the package root): May not import `electron`, `@main/`, `@preload/`, renderer aliases (runtime also not cordis). The old core-only bans went away with core (2026-10-03).
+- **Host boundary** (the feature directories `packages/backend/<feature>/` and the package root): May not import `electron`, `@main/`, `@preload/`, renderer aliases (runtime also not cordis). The old core-only bans went away with core (2026-10-03).
 - **Electron main** (`src/main/`): May not directly import `electron` (must use host abstractions), may not import runtime/core source directly, may not contain legacy IPC handler patterns
-- **Gateway** (`packages/backend/runtime/gateway/`): host bans as above; may not contain standalone AgentEngine patterns
+- **Gateway** (`packages/backend/gateway/`): host bans as above; may not contain standalone AgentEngine patterns
 - **Voice** (`packages/voice/`): May not import `electron`, `BrowserWindow`, tray APIs
 - Plus checks for media protocol, logging, accessibility, shell operations, network proxy, global shortcuts, power resume, window lifecycle, app lifecycle boundaries
 
@@ -223,7 +223,7 @@ Output:
 
 Failure modes:
 
-- `@onething/backend/runtime/*` module not found → ensure packages are built.
+- `@onething/backend/*` module not found → ensure packages are built.
 - `records.jsonl` missing → no evaluations have been recorded yet. Run the app and collect data first.
 
 ---

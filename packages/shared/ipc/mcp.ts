@@ -3,9 +3,9 @@
  * MCP (Model Context Protocol) server-related type definitions for IPC communication
  *
  * Base types (`MCPTransportType`, `MCPServerConfig`, …) are re-exported from
- * `@onething/backend/runtime/mcp/kernel` — the engine is the single source of truth. Only the
+ * `@onething/backend/mcp/kernel` — the engine is the single source of truth. Only the
  * IPC request/response envelopes are defined locally here. Extend transports
- * in `packages/backend/runtime/mcp/kernel/types.ts` and every layer follows.
+ * in `packages/backend/mcp/kernel/types.ts` and every layer follows.
  */
 
 import type { JsonArray, JsonObject, JsonValue } from '../json.js'
@@ -198,7 +198,7 @@ export interface MCPReadConfigFileResponse {
  * `@main/ipc/mcp.ts` 只剩 `initializeMCP` / `shutdownMCP` 两件生命周期。
  *
  * **三处按 `context.transport` 分叉的护栏**(拍板 #20 的纪律,逐字保留在 handler
- * 里,见 `packages/backend/runtime/mcp/mcp-client-api.ts` 的文件头):私密字段脱敏、更新时
+ * 里,见 `packages/backend/mcp/mcp-client-api.ts` 的文件头):私密字段脱敏、更新时
  * 把脱敏值合并回去、`readConfigFile` 在 http 上不读本机文件、stdio 探测在 http 上
  * 默认关闭。
  *

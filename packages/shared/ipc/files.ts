@@ -5,7 +5,7 @@
  * 迁到通用 `rpc:invoke` / `POST /api/rpc`。留在通道表里的只有一条**推送**:
  * `FILE_WATCH_EVENT`(router 今天没有推送面)。
  *
- * 形状取自两处**本来就一致**的定义:`@onething/backend/runtime/files` 的投影层
+ * 形状取自两处**本来就一致**的定义:`@onething/backend/file` 的投影层
  * (`Onething*Request` / `Onething*Response`)与渲染层 `types/index.ts` 上那批
  * 壳方法的返回类型。这里重写一遍而不是 re-export runtime 的类型,是因为
  * `packages/shared` 在依赖方向上位于 runtime **之下**(壳与 server 都要 import
@@ -199,7 +199,7 @@ export interface FilesWatchEvent {
  * `transport:'ipc'`(桌面)不夹,与迁移前 `@main` handler 逐字同义;
  * `transport:'http'`(server)每条带路径的方法都夹进 `sandboxRoot`,越界回
  * 旧 server 路由原话的结构化失败。逐条口径写在
- * `packages/backend/runtime/files/files-client-api.ts` 的文件头表里。
+ * `packages/backend/file/files-client-api.ts` 的文件头表里。
  */
 import { defineRouter } from './router.js'
 

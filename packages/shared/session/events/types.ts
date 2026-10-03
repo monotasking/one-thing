@@ -2,7 +2,7 @@
  * 会话事件词表 v2 —— `docs/design/session-event-sourcing-2026-08.md` §9.1/§9.2。
  *
  * 这里是**唯一**的事件形状定义处:S0 之前七类住在
- * `packages/backend/runtime/sessions/session-events.ts`,那里 import 了
+ * `packages/backend/session/session-events.ts`,那里 import 了
  * `node:crypto`,renderer 只能靠 shared 层那个契约面的 `export type` 擦除来绕开。现在类型上移到 core(零依赖),runtime 那个文件降为**再导出 +
  * 哈希/检视工具**,盘上格式与既有消费者逐字不变。
  *
@@ -496,7 +496,7 @@ export interface SessionMessagePatchedEventData {
    *
    * `upsertMessage` 命中已有消息时写的是"整条替换"的那一档(`fullBody`),而它
    * 与 `patchMessage` 在**会话账**上的待遇不同:upsert 盖 `updatedAt`,patch 不盖
-   * (`runtime/sessions/commands.ts` 的两条分支)。两者的事件形状完全同构,所以
+   * (`session/commands.ts` 的两条分支)。两者的事件形状完全同构,所以
    * 事件上必须带一格**调用类别**——它是命令面亲知的事实(§13.8:可以记别人
    * 说的话),而"盖不盖章"这条**策略**住在折叠器一处(`session/account.ts`)。
    *
@@ -808,7 +808,7 @@ export interface SessionAssistantPartEndEventData {
 
 /**
  * G5(§10.1):技能被激活。今天它是一条**流事件**(`skill:activated`,
- * `runtime/agent-loop/agent-loop-event-only-emitter.ts`),只在内存里活到 renderer 把
+ * `agent-loop/agent-loop-event-only-emitter.ts`),只在内存里活到 renderer 把
  * `message.skillUsed` 写上为止 —— 重载后那一格从消息字段里读回来,而事件账本
  * 上没有任何痕迹。这里给它一条自己的账:`skillUsed` 因此是派生的,不是补丁。
  */

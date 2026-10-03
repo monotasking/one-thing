@@ -8,7 +8,7 @@
  * 为什么),而设置要装配之后才读得到 —— 两件事在时间上永远碰不到头。所以这一格
  * 设置的**启动期投影**是 `<store>/run/cdp.json`,而把设置折成那个文件的人是**宿主**:
  *
- *  - 设置域(`backend/runtime/settings/settings-client-api.ts`)因此**不认识 CDP** —— 它只管存那一格
+ *  - 设置域(`backend/settings/settings-client-api.ts`)因此**不认识 CDP** —— 它只管存那一格
  *    布尔与端口,和存主题、存语言没有任何区别;
  *  - 折叠这件事与 `applyCdpFlag` 同家(都在 `electron/browser/`),一处知识不分两地。
  *
@@ -39,7 +39,7 @@ import type { HttpDiscoveryExtras } from '@shared/backend/http-discovery.js'
 import type {
   SettingsEvent,
   SettingsEventBroadcaster,
-} from '@onething/backend/runtime/settings/events'
+} from '@onething/backend/settings/events'
 import { writeCdpLaunchFlag, type CdpLaunchFlag } from './cdp-flag.js'
 
 /** Chromium 那个开关的名字。三处(append / 探活 / 发现文件)共用一个串。 */

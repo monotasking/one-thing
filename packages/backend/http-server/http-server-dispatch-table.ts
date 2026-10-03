@@ -15,7 +15,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { DomainRoutes, RouteHandlers, RouteSessionAccess, Router } from '@shared/ipc/router'
 import type { SessionAccessOperation } from '@shared/contracts/session-access.js'
-import { sessionAccess } from '@onething/backend/runtime/sessions'
+import { sessionAccess } from '@onething/backend/session'
 import { getCurrentBackendInstance } from '../current.js'
 import {
   DESKTOP_RPC_CONTEXT,
@@ -65,7 +65,7 @@ export type RpcRouteHandlersWithPorts<T extends DomainRoutes> = {
  *
  * 每个功能在自己的 `runtime/<功能>/<功能>-client-api*.ts` 里用 `defineClientApi` 交出一行(契约 + 处理者),
  * `http-server-client-api-roster.ts` 把这些行按装配顺序排成一张表,HTTP 服务器的其余代码只读表、不点名功能
- * —— 与服务商名册 `runtime/providers/vendors/manifests.ts` 同一个做法。
+ * —— 与服务商名册 `provider/vendors/manifests.ts` 同一个做法。
  *
  * `serveBeforeIdentity` 是可选的一格:在用户 token 那道闸**前面**看一眼这条请求(今天只有 ACP 宿主工具面的
  * 桥凭据用它)。答 `true` = 这条请求归这一行(已经或即将应答);`false` = 原样交回路由。

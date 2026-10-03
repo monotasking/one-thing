@@ -2,7 +2,7 @@
  * 内存报告与释放结果的形状。
  *
  * 它们是 `memory` RPC 域(`@shared/ipc/memory.ts`)的载荷;登记表、调度器以及
- * 「持有者 / 进程探针」这两个端口是后端的机制,留在 `packages/backend/runtime/memory/memory-registry.ts`,
+ * 「持有者 / 进程探针」这两个端口是后端的机制,留在 `packages/backend/memory/memory-registry.ts`,
  * 那边从这里取这些形状。
  */
 

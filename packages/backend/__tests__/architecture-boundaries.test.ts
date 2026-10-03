@@ -22,14 +22,16 @@ describe('architecture boundaries', () => {
   // core 的「零依赖骨架」是为了让界面那侧复用,第①步以后界面只许 import `@shared` 与 `@onething/client`,碰不到 core 了;
   // kernel 那条的源头就是「kernel 当 core 判」。
 
-  // 「runtime 不许 import gateway」那一半随去 core 批 3(2026-10-03)撤掉:gateway 搬进了 `runtime/gateway/`(用户拍板:
+  // 「runtime 不许 import gateway」那一半随去 core 批 3(2026-10-03)撤掉:gateway 搬进了 `gateway/`(用户拍板:
   // core 没了它就是普通功能),runtime 里别的功能 import 它是正常的。
-  it('keeps packages/backend/runtime free of Electron and hosts', () => {
-    expect(findForbiddenReferences('packages/backend/runtime', [
+  // 2026-10-04 去掉 `runtime/` 这一层以后,功能目录直接住在包根下:这一条照旧只扫功能目录(`featureDirectories()`),
+  // 包根的装配文件与 `http-server/` 不在它的范围里 —— 与搬家前扫 `runtime/` 的范围是同一批文件。
+  it('keeps the backend feature directories free of Electron and hosts', () => {
+    expect(featureDirectories().flatMap(feature => findForbiddenReferences(`packages/backend/${feature}`, [
       ...hostOnlyPatterns,
       /window\.electronAPI/,
       appSourceImportPattern,
-    ])).toEqual([])
+    ]))).toEqual([])
   })
 
   // 「runtime 产品层不许 import 脊柱」这一条随第③步拍平撤掉(2026-10-02,用户拍板「server 包内部不再区分接线与
@@ -43,21 +45,24 @@ describe('architecture boundaries', () => {
    * 去 core 批 3(2026-10-03)以后子树只剩 `runtime/` 一棵(core、gateway 都并进了它),指向包根的写包说明符。
    * (今天一处越界都没有;测试与 `__tests__` 照旧不受包方向约束。)
    */
-  it('keeps relative imports of runtime inside its own subtree', () => {
+  // 2026-10-04 去掉 `runtime/` 这一层以后,「子树」就是全体功能目录:功能的非测试代码,相对 import 只许落在
+  // 某个功能目录里,不许爬到包根的装配文件或 `http-server/`(那些写包说明符)。范围与判据都与搬家前相同。
+  it('keeps relative imports of the feature directories inside the feature directories', () => {
     const escapes: string[] = []
-    for (const subtree of ['runtime']) {
-      const relativeDirectory = `packages/backend/${subtree}`
+    const features = new Set(featureDirectories())
+    for (const feature of features) {
+      const relativeDirectory = `packages/backend/${feature}`
       for (const filePath of collectSourceFiles(relativeDirectory)) {
         if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(filePath)) continue
         const code = stripComments(readFileSync(join(projectRoot, filePath), 'utf8'))
         for (const match of code.matchAll(relativeImportPattern)) {
           const target = join(dirname(filePath), match[1])
-          // 唯一的口子:runtime 指向内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)。
+          // 唯一的口子:指向内部会话模块(`scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles`)。
           // 那条门规定它们**不许有 exports 键**,所以没有包说明符可写,只能相对 import —— 与包根下的脊柱文件一样。
-          if (subtree === 'runtime' && isPrivateSessionModule(target)) continue
-          if (target !== relativeDirectory && !target.startsWith(`${relativeDirectory}/`)) {
-            escapes.push(`${filePath} -> ${match[1]}`)
-          }
+          if (isPrivateSessionModule(target)) continue
+          const [packages, backend, first, ...rest] = target.split('/')
+          const inFeature = packages === 'packages' && backend === 'backend' && features.has(first) && rest.length > 0
+          if (!inFeature) escapes.push(`${filePath} -> ${match[1]}`)
         }
       }
     }
@@ -67,41 +72,22 @@ describe('architecture boundaries', () => {
   /**
    * I1(docs/design/structural-debt-plan-2026-08.md §0b.3):**一个领域一个家**。
    *
-   * 病根是"一个领域被横切成三片,其中一片叫 app" —— 读代码的人看见 `plugins/`
-   * 出现在三棵树里,不知道该找哪一个。P3'd 把装配层变成 `packages/backend` 之后,
-   * 这条不变量可以被机械地守住:**backend 包根的目录名不得与 runtime 顶层目录名
-   * 重名**。(从前装配层的接线子目录不参与比对;③-收尾 C(2026-10-02)起那个目录整个撤掉,
-   * 接线与产品逻辑同住 `runtime/<d>/`,排除名单里那一格随之删去。)
-   *
-   * 当前豁免的是 P3'b 待合并的厚孪生。**这是棘轮:只许缩,不许长。**
-   * 每摘掉一个就从这张表里删一行,表空了就把整张表删掉。
+   * 从前判的是「backend 包根的目录名不得与 runtime 顶层目录名重名」(防一个领域被横切成两片)。2026-10-04 去掉
+   * `runtime/` 这一层以后,功能目录本身就是包根的目录,目录与目录不可能重名;剩下能撞的是**包根的散文件与非功能
+   * 目录**:`lifecycle.ts`(关机骨架)与功能 `lifecycle/`(入场闸)并排时,读的人分不清 `./lifecycle.js` 是哪一个 ——
+   * 这次搬家就因此把包根那只改名为 `backend-shutdown.ts`。断言守的是「不许再长回来」。
    */
-  it('I1: keeps one home per domain — backend package root does not shadow a runtime domain', () => {
-    // P3'b 逐个摘除(厚孪生:两边都有真代码,合并要逐文件判定契约/实现/接线)。
-    // P3'b-A(2026-08-21)摘掉 logging / headless / mcp / voice / music 五个:
-    // 逻辑归 `runtime/<d>`,撞脊柱的接线归当时装配层的接线子目录,两种去向都离开包根。
-    // P3'b-B(2026-08-21)摘掉 collab / providers / toolkit 三个;providers 的
-    // 三件绑定件(bound-fetch / request-dump / ai-settings-compose)留在包根,
-    // 但目录改名 `provider-binding/` —— 它们是被依赖的脊柱件,不是接线。包根归位 3(2026-10-03)起这个目录也没了:
-    // 受管 fetch 的设置薄壳与 ai-settings-compose 进 `runtime/settings/`,request-dump 薄壳进 `runtime/providers/`。
-    // P3'c(2026-08-21)摘掉最后一个 `plugins`:10 件进 `runtime/plugins/`
-    // (与 core 同名的按 I2 带角色改名),17 件进 `backend/runtime/plugins/`。
-    //
-    // **表空了,但断言留着** —— 它现在守的是"不许再长回来":任何新的包根目录
-    // 只要与 runtime 顶层同名就直接红,想豁免必须先在这里写一行理由。
-    const pendingThickTwins = new Set<string>([])
-    const runtimeDomains = new Set(topLevelDirectories('packages/backend/runtime'))
-    // `runtime/` 不参与比对(它的顶层目录正是这里拿来比的领域表)。合包时排除名单里还有 `core`、`gateway` 两棵子树,
-    // 去 core 批 3(2026-10-03)两者都并进了 runtime,名单只剩它。
-    const collisions = topLevelDirectories('packages/backend')
-      .filter(name => name !== 'runtime')
-      .filter(name => runtimeDomains.has(name) && !pendingThickTwins.has(name))
-    expect(collisions).toEqual([])
+  it('I1: keeps one home per domain — no package-root file or non-feature directory shares a feature name', () => {
+    const features = new Set(featureDirectories())
+    const rootNames = readdirSync(join(projectRoot, 'packages/backend'), { withFileTypes: true })
+      .filter(entry => entry.isFile() || NON_FEATURE_DIRECTORIES.has(entry.name))
+      .map(entry => entry.name.replace(/\.d\.ts$|\.ts$/, ''))
+    expect(rootNames.filter(name => features.has(name))).toEqual([])
   })
 
   // I2(「同一个领域名下 `core/<d>/x.ts` 与 `runtime/<d>/x.ts` 不许同名」)与「gateway 只依赖 core + `@shared`」
   // 两条随去 core 批 3(2026-10-03)撤掉:core 目录不存在了,没有跨层同名可守(白名单批 1 就已清空);gateway 搬进了
-  // `runtime/gateway/`,宿主禁令由上面 runtime 那一条管,「只依赖 core」的前提随 core 一起没了。
+  // `gateway/`,宿主禁令由上面 runtime 那一条管,「只依赖 core」的前提随 core 一起没了。
 
   it('keeps the server host independent from Electron host code', () => {
     // apps/web(Vue 浏览器构建)于 2026-09-04 随 Vue 宿主退役;浏览器壳现在是 apps/desktop-react 的 web 模式。
@@ -142,8 +128,8 @@ describe('architecture boundaries', () => {
 
     // Comments are stripped first: the point is that no code branches on a
     // provider, not that the history cannot be written down next to it.
-    expect(findForbiddenReferencesInCode('packages/backend/runtime/agent-loop', [idComparison, namedKnob])).toEqual([])
-    expect(findForbiddenReferencesInCode('packages/backend/runtime/engine', [idComparison, namedKnob])).toEqual([])
+    expect(findForbiddenReferencesInCode('packages/backend/agent-loop', [idComparison, namedKnob])).toEqual([])
+    expect(findForbiddenReferencesInCode('packages/backend/engine', [idComparison, namedKnob])).toEqual([])
   })
 
   /**
@@ -172,7 +158,7 @@ describe('architecture boundaries', () => {
 
 })
 
-/** 内部会话模块(`packages/backend/runtime/sessions/<x>.ts`,名单与 `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 同源,现读)。 */
+/** 内部会话模块(`packages/backend/session/<x>.ts`,名单与 `scripts/lib/backend-public-boundary.mjs` 的 `privateSessionFiles` 同源,现读)。 */
 const privateSessionFiles = (() => {
   const text = readFileSync(join(projectRoot, 'scripts/lib/backend-public-boundary.mjs'), 'utf8')
   const list = /privateSessionFiles = new Set\(\[([\s\S]*?)\]\)/.exec(text)?.[1] ?? ''
@@ -180,7 +166,7 @@ const privateSessionFiles = (() => {
 })()
 
 function isPrivateSessionModule(target: string): boolean {
-  return dirname(target) === 'packages/backend/runtime/sessions' && privateSessionFiles.has(target.split('/').pop()!.replace(/\.js$/, '.ts'))
+  return dirname(target) === 'packages/backend/session' && privateSessionFiles.has(target.split('/').pop()!.replace(/\.js$/, '.ts'))
 }
 
 /** 相对说明符(import / export-from / 动态 import / require)。 */
@@ -189,12 +175,14 @@ const relativeImportPattern = /(?:from\s+|import\s*\(\s*|require\s*\(\s*)['"](\.
 /** Matches import/require/export-from of `src/main|renderer|preload` from any relative depth. */
 const appSourceImportPattern = /(?:from\s+['"]|import\s*\(\s*['"]|require\s*\(\s*['"])[^'"]*src\/(?:main|renderer|preload)\//
 
-/** 顶层目录名(领域名)。`__tests__` 不是领域,不参与 I1 的比对。 */
-function topLevelDirectories(relativeDirectory: string): string[] {
-  return readdirSync(join(projectRoot, relativeDirectory), { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
+/** 包根下不是功能的目录(与 `scripts/lib/backend-structure.mjs` 的 `NON_FEATURE_DIRS` 同一张名单)。 */
+const NON_FEATURE_DIRECTORIES = new Set(['__tests__', 'http-server', 'node_modules'])
+
+/** 功能目录:`packages/backend/` 下除非功能目录以外的每个直接子目录。 */
+function featureDirectories(): string[] {
+  return readdirSync(join(projectRoot, 'packages/backend'), { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && !NON_FEATURE_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.'))
     .map(entry => entry.name)
-    .filter(name => name !== '__tests__' && !skippedDirectories.has(name))
 }
 
 const hostOnlyPatterns = [

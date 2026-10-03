@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
  * `data/models-source.ts`(`contextWindowOf` / `readingsOf`)、设置面的
  * `providers/projection.ts`(`overrideOf` / `capsWithOverride`)。09-10「设了上下文圆环仍
  * unknown」就是壳那一份漏读了覆盖表。现在判据只在产品层一处
- * (`runtime/providers/effective-model.ts` 的 `effectiveModelFactsOf`),后端经
+ * (`provider/effective-model.ts` 的 `effectiveModelFactsOf`),后端经
  * `models.getWithCapabilities` 把每行的 `effective` 交下来,壳只读结果。
  *
  * 这条守卫钉的是「壳不再自己折」:`contextLengthByModel` / `maxOutputByModel` 在壳的

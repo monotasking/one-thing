@@ -55,9 +55,9 @@
 #   `runtime/<功能>/<功能>-client-api*.ts`。`forks:` 的扫描范围改成「`http-server/` 整棵 + 全部 client-api 文件」,
 #   五行的键随文件改了路径,数字一个没变(5 处 / 5 文件)。
 # 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
-forks:packages/backend/runtime/interaction/interaction-client-api.ts 1
-forks:packages/backend/runtime/logging/logging-client-api.ts 1
-forks:packages/backend/runtime/mcp/mcp-client-api.ts 1
-forks:packages/backend/runtime/sessions/sessions-client-api-commands.ts 1
-forks:packages/backend/runtime/settings/settings-client-api.ts 1
+forks:packages/backend/interaction/interaction-client-api.ts 1
+forks:packages/backend/logging/logging-client-api.ts 1
+forks:packages/backend/mcp/mcp-client-api.ts 1
+forks:packages/backend/session/sessions-client-api-commands.ts 1
+forks:packages/backend/settings/settings-client-api.ts 1
 ipcMain:apps/desktop-react/electron 2

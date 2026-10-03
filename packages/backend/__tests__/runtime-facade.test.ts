@@ -40,7 +40,7 @@ describe('createOnethingRuntimeFacade', () => {
       },
       // P4c 第十一批:`settings` / `network` 两格整只没了 —— 四条走 `settingsRouter`。
       // P4 终态批 A1-b:`search.query` 这一格没了 —— 数据面走 `searchRouter`,
-      // server 侧的实现改由 `packages/backend/runtime/search/search-client-api-providers.ts` 的单槽
+      // server 侧的实现改由 `packages/backend/search/search-client-api-providers.ts` 的单槽
       // 端口交给域。facade 上只剩窗口活在 server 上的对应物。
       search: {
         executeAction: vi.fn(async actionId => ({ success: true, actionId })),
@@ -60,7 +60,7 @@ describe('createOnethingRuntimeFacade', () => {
         }),
       },
       // P4 终态批 C2:`plugins` adapter 整只没了 —— 六条读/开关面随 `pluginsRouter`
-      // 走通用 RPC,server 那本只读镜像目录改由 `packages/backend/runtime/plugins/plugins-client-api-catalog.ts`
+      // 走通用 RPC,server 那本只读镜像目录改由 `packages/backend/plugin/plugins-client-api-catalog.ts`
       // 的单槽端口交给域。
       // P4c 第七批:六条数据面已迁到 `oauthRouter`,facade 上只剩推送面。
       oauth: {

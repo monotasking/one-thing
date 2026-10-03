@@ -7,7 +7,7 @@ import {
 	isFileMentionTrustedChannel,
 	INLINE_FILE_MENTION_MAX_CHARS,
 	INLINE_FILE_MENTION_MAX_READ_BYTES,
-} from "../runtime/agent-loop/agent-loop-file-mentions.js";
+} from "../agent-loop/agent-loop-file-mentions.js";
 
 let root: string;
 const paths: Record<string, string> = {};

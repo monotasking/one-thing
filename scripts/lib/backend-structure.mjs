@@ -20,10 +20,14 @@ import ts from 'typescript'
 
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 export const BACKEND = 'packages/backend'
-export const RUNTIME = `${BACKEND}/runtime`
+/**
+ * 功能目录的根。2026-10-04(路线第 6 项,机械改名 6a)去掉了 `runtime/` 这一层,功能目录直接住在包根下,
+ * 所以它与 `BACKEND` 相同;包根下哪些目录**不是**功能,见 `NON_FEATURE_DIRS`。
+ */
+export const FEATURE_ROOT = BACKEND
+/** 包根下不是功能的目录:包级测试、界面连进来的 HTTP 服务器(层次表里是槽位)、依赖。其余目录都是功能。 */
+export const NON_FEATURE_DIRS = new Set(['__tests__', 'http-server', 'node_modules'])
 export const SHARED = 'packages/shared'
-/** 总桶 `runtime/index.ts` 在各张表里的名字(与 entry:gate 一致)。 */
-export const BARREL = '(总桶)'
 
 /** 按 UTF-16 码元比较:不随机器的区域设置变,生成文件在本机与 CI 上才逐字节相同。 */
 export const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
@@ -31,44 +35,56 @@ export const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 export const isTestPath = (relative) => /__tests__|\.test\.|__fixtures__|\/testing\//.test(relative)
 
 /**
- * 功能入口:过渡期的老形状 `runtime/<功能>/index.ts`,或命名规范 N3 的形状 `runtime/<功能>/<功能>.ts`
- * (2026-10-04 凭证功能起用;路线第 6 项机械改名之后只剩后一种)。目录里有 `index.ts` 时入口就是它 ——
- * 今天 `scheduler/scheduler.ts` 是 scheduler 的一只内部文件,入口仍是 `scheduler/index.ts`。将来去掉 runtime/(D11),改这里一处。
+ * 功能入口:过渡期的老形状 `<功能>/index.ts`,或命名规范 N3 的形状 `<功能>/<功能>.ts`
+ * (2026-10-04 凭证功能起用;路线第 6 项入口改名(6b)之后只剩后一种)。目录里有 `index.ts` 时入口就是它 ——
+ * 今天 `scheduler/scheduler.ts` 是 scheduler 的一只内部文件,入口仍是 `scheduler/index.ts`。
  */
 export function entryFeatureOf(relative, root = repoRoot) {
-  const match = /^packages\/backend\/runtime\/([^/]+)\/([^/]+)\.ts$/.exec(relative)
-  if (!match || match[1] === '__tests__') return null
+  const match = /^packages\/backend\/([^/]+)\/([^/]+)\.ts$/.exec(relative)
+  if (!match || NON_FEATURE_DIRS.has(match[1])) return null
   if (match[2] === 'index') return match[1]
   if (match[2] !== match[1]) return null
-  return fs.existsSync(path.join(root, RUNTIME, match[1], 'index.ts')) ? null : match[1]
+  return fs.existsSync(path.join(root, FEATURE_ROOT, match[1], 'index.ts')) ? null : match[1]
 }
 
 /**
- * 功能的**第二个入口**(决策 D26):`runtime/<功能>/<功能>-client-api.ts` 或 `runtime/<功能>/<功能>-client-api-<方面>.ts`
+ * 功能的**第二个入口**(决策 D26):`<功能>/<功能>-client-api.ts` 或 `<功能>/<功能>-client-api-<方面>.ts`
  * —— 这个功能开给界面(经 HTTP 服务器)的东西:名册里的域行、只有 HTTP 服务器用的投影与投递件。
  * 判据只看路径:必须直接住在功能目录下、以自己的功能名打头,测试不算。是就返回功能名,否则 null。
  * 使用者:`client-api:gate`(谁可以引它)、`entry:gate`(引它不算深层)、`layer:gate`(它站 L4)、`transport:gate`(扫描范围)。
  */
-export const CLIENT_API_PATTERN = /^packages\/backend\/runtime\/([^/]+)\/([^/]+)-client-api(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\.ts$/
+export const CLIENT_API_PATTERN = /^packages\/backend\/([^/]+)\/([^/]+)-client-api(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\.ts$/
 export function clientApiFeatureOf(relative) {
   const match = CLIENT_API_PATTERN.exec(relative)
-  return match && match[1] === match[2] && match[1] !== '__tests__' ? match[1] : null
+  if (!match || NON_FEATURE_DIRS.has(match[1])) return null
+  return match[1] === match[2] || LEGACY_FILE_PREFIX[match[1]] === match[2] ? match[1] : null
 }
+
+/**
+ * 过渡表(机械改名 6a,2026-10-04):这一笔只把复数名的功能目录改成单数(命名规范 N5),**文件名不动**,
+ * 所以单数目录里的文件仍以旧的复数名打头(`session/sessions-client-api.ts`)。「以自己的功能名打头」这条判据在过渡期
+ * 认两种前缀:目录名本身,或这张表里它的旧名。下一笔 6b 给文件名加功能前缀时这些文件改成单数前缀,这张表随之删掉。
+ */
+export const LEGACY_FILE_PREFIX = Object.freeze({
+  agent: 'agents', eval: 'evals', event: 'events', 'external-agent': 'external-agents', file: 'files', goal: 'goals',
+  note: 'notes', permission: 'permissions', pet: 'pets', plugin: 'plugins', 'project-dir': 'project-dirs',
+  prompt: 'prompts', provider: 'providers', reference: 'references', session: 'sessions', skill: 'skills',
+  space: 'spaces', task: 'tasks', theme: 'themes', tool: 'tools', trigger: 'triggers', variable: 'variables',
+})
 
 /** 某个功能的入口文件(仓库相对路径):有 `<功能>/index.ts` 就是它;没有、但有 `<功能>/<功能>.ts`,就是后者。 */
 export function entryFileOf(feature, root = repoRoot) {
-  const index = `${RUNTIME}/${feature}/index.ts`
-  const named = `${RUNTIME}/${feature}/${feature}.ts`
+  const index = `${FEATURE_ROOT}/${feature}/index.ts`
+  const named = `${FEATURE_ROOT}/${feature}/${feature}.ts`
   return !fs.existsSync(path.join(root, index)) && fs.existsSync(path.join(root, named)) ? named : index
 }
-export const isBarrel = (relative) => relative === `${RUNTIME}/index.ts`
-
-/** 功能名:`runtime/<功能>/…` → `<功能>`;总桶 → `(总桶)`;其余(包根、shared、runtime 顶层的散文件)→ null。 */
+/** 功能名:`packages/backend/<功能>/…` → `<功能>`;其余(包根散文件、非功能目录、shared)→ null。(总桶 2026-10-04 删掉。) */
 export function runtimeFeatureOf(relative) {
-  if (isBarrel(relative)) return BARREL
-  if (!relative.startsWith(`${RUNTIME}/`)) return null
-  const rest = relative.slice(RUNTIME.length + 1)
-  return rest.includes('/') ? rest.split('/')[0] : null
+  if (!relative.startsWith(`${FEATURE_ROOT}/`)) return null
+  const rest = relative.slice(FEATURE_ROOT.length + 1)
+  if (!rest.includes('/')) return null
+  const first = rest.split('/')[0]
+  return NON_FEATURE_DIRS.has(first) ? null : first
 }
 
 const isFile = (p) => fs.existsSync(p) && fs.statSync(p).isFile()
@@ -300,7 +316,7 @@ export const LAYER_TABLE = 'docs/audit/feature-layers-2026-10.json'
  * 读层次表,返回:
  *   - `layers`:按从低到高排好的 `{ id, name, meaning }`;
  *   - `rankOf(feature)`:层次序号(0 起),没登记返回 undefined;
- *   - `groupOf(relative)`:一只文件归哪一行(功能名或槽位名),没法归返回 `runtime/<散文件>` 这种名字,让门报「没登记」;
+ *   - `groupOf(relative)`:一只文件归哪一行(功能名或槽位名);功能目录里的文件归功能,其余按槽位前缀、最后落兜底;
  *   - `rows`:功能行与槽位行,`{ name, layer, why, kind: 'feature' | 'slot' }`。
  */
 export function loadLayerTable(root = repoRoot) {
@@ -317,7 +333,7 @@ export function loadLayerTable(root = repoRoot) {
   }
   for (const row of table.features) register(row.feature, row.layer, row.why, 'feature')
   for (const row of table.slots) register(row.slot, row.layer, row.why, 'slot')
-  // 槽位按文件归属:先看总桶 / 功能目录,再按槽位的路径前缀(长的先;以 `/` 结尾的是目录),
+  // 槽位按文件归属:先看功能目录,再按槽位的路径前缀(长的先;以 `/` 结尾的是目录),
   // 最后落到兜底槽位(`"fallback": true` 的那一行,只许一行)。
   const prefixed = table.slots.filter((slot) => slot.match?.length)
     .flatMap((slot) => slot.match.map((prefix) => [prefix, slot.slot]))
@@ -333,17 +349,16 @@ export function loadLayerTable(root = repoRoot) {
     if (secondEntry && clientApiFeatureOf(relative)) return secondEntry
     const feature = runtimeFeatureOf(relative)
     if (feature) return feature
-    if (relative.startsWith(`${RUNTIME}/`)) return relative.slice(BACKEND.length + 1) // runtime 顶层散文件:没登记,门会报
     for (const [prefix, slot] of prefixed) if (relative === prefix || (prefix.endsWith('/') && relative.startsWith(prefix))) return slot
     return fallback
   }
   return { layers, rows, rankOf: (name) => rankByName.get(name), groupOf, layerOf: (name) => rows.find((r) => r.name === name)?.layer }
 }
 
-/** 跨行(功能 / 槽位)的值边:`Map<"from → to", string[]>`(每条是「文件 → 文件」,仓库相对路径去掉 runtime 前缀)。 */
+/** 跨行(功能 / 槽位)的值边:`Map<"from → to", string[]>`(每条是「文件 → 文件」;功能目录里的文件去掉 `packages/backend/` 前缀,其余写全路径)。 */
 export function crossGroupEdges(graph, groupOf) {
   const pairs = new Map()
-  const short = (f) => f.replace(`${RUNTIME}/`, '')
+  const short = (f) => (runtimeFeatureOf(f) ? f.slice(FEATURE_ROOT.length + 1) : f)
   for (const [from, targets] of graph.edges) {
     const a = groupOf(from)
     for (const to of targets) {

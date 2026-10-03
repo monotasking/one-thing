@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const drillDir = path.join(root, 'scripts/provider-vendor-drill')
-const VENDORS = 'packages/backend/runtime/providers/vendors'
+const VENDORS = 'packages/backend/provider/vendors'
 const ALLOWED_TOUCHES = new Set([
   `${VENDORS}/manifests.ts`,
   `${VENDORS}/runtimes.ts`,

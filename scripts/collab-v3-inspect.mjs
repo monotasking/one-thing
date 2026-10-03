@@ -79,17 +79,17 @@ if (tailArg !== undefined && (!Number.isFinite(Number(tailArg)) || Number(tailAr
 /* ── 纯层(唯一的真值口径:UI 与 CLI 用的是同一批函数)────────────────────── */
 
 const { normalizeCollabRoomAccount } = await import(
-  '../packages/backend/runtime/collab/actors/room-rules.ts'
+  '../packages/backend/collab/actors/room-rules.ts'
 )
 const { normalizeCollabAgentAccount } = await import(
-  '../packages/backend/runtime/collab/actors/mind-rules.ts'
+  '../packages/backend/collab/actors/mind-rules.ts'
 )
 const {
   collabSchedulerLogFileDayKey,
   isCollabSchedulerLogType,
   parseCollabSchedulerLogLine,
   COLLAB_SCHEDULER_LOG_TYPES,
-} = await import('../packages/backend/runtime/collab/actors/scheduler-log-rules.ts')
+} = await import('../packages/backend/collab/actors/scheduler-log-rules.ts')
 const {
   formatCollabInspectAgentDetail,
   formatCollabInspectAgentLine,
@@ -103,7 +103,7 @@ const {
   summarizeCollabInspectAgent,
   summarizeCollabInspectRoom,
   COLLAB_INSPECT_EXECUTING_NOTE,
-} = await import('../packages/backend/runtime/collab/actors/inspect-rules.ts')
+} = await import('../packages/backend/collab/actors/inspect-rules.ts')
 
 const types = typeArg
   ? typeArg.split(',').map(part => part.trim()).filter(Boolean)

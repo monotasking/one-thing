@@ -22,14 +22,14 @@
  * 关掉的宿主才会给一个自己的工厂」),所以这里连一处 `vi.mock` 都不需要。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts` / `resource-music.test.ts`:
- * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
+ * `session/session-store.ts` / `settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import type { MCPClientLike } from '@onething/backend/runtime/mcp/kernel'
+import type { MCPClientLike } from '@onething/backend/mcp/kernel'
 import type { MCPServerConfig, MCPServerState, MCPToolCallResult } from '@shared/mcp/types'
 import type { JsonObject } from '@shared/json'
 
@@ -168,9 +168,9 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       //
       // 它停在一张真权限卡上(`mcp` = ask + barrier,见文件头),所以这里像
       // `resource-kernel.test.ts` 里 AI 删消息那条一样:先等卡出现,再答 `once`。
-      const store = await import('@onething/backend/runtime/sessions')
+      const store = await import('@onething/backend/session')
       const sessionId = store.createSession(`resource-mcp-${Date.now()}`, 'MCP').id
-      const { Permission } = await import('@onething/backend/runtime/permissions/permission')
+      const { Permission } = await import('@onething/backend/permission/permission')
 
       const running = backend.resources.do(
         `${SCHEME}:server`,
@@ -194,7 +194,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       }
 
       // ③ 模型面上没有第二只工具 —— AI 走 `McpTool`。
-      const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
       expect(getToolkitCatalog()?.has(SCHEME)).toBe(false)
       // 但它确实是一种资源:元工具的 list 里有它。
       const meta = getToolkitCatalog()?.get('resources')

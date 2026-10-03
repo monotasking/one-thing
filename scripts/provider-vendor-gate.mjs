@@ -2,7 +2,7 @@
 // 服务商点名棘轮(方案 docs/design/architecture-direction-2026-10.md §4 P0)。
 //
 // 度量的是:**一家内置服务商的名字,出现在了它自己的家以外的哪些文件里。**
-// 家 = `packages/backend/runtime/providers/vendors/<id>/`。家以外每多一个文件
+// 家 = `packages/backend/provider/vendors/<id>/`。家以外每多一个文件
 // 认识这家,"加一家服务商"就多改一处 —— CLAUDE.md「加功能不许改骨架」那条法的
 // 陌生能力演练,在 provider 上就是这把尺子。
 //
@@ -34,8 +34,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/provider-vendor-baseline-2026-10.txt')
-const VENDORS_DIR = 'packages/backend/runtime/providers/vendors'
-const LEGACY_MANIFESTS = 'packages/backend/runtime/providers/builtin-manifests.ts'
+const VENDORS_DIR = 'packages/backend/provider/vendors'
+const LEGACY_MANIFESTS = 'packages/backend/provider/builtin-manifests.ts'
 
 // 合包(server / client 拆分第②步)以后 core 与 runtime 是 `packages/backend` 的子树,扫它一棵就覆盖了
 // 原来的三棵(再单列会把同一个文件扫两遍、同一对报两次)。
@@ -57,11 +57,11 @@ const RENDER_FILES = [
  * 不是哪一家服务商 —— 同一家族的型号由好几家卖(Copilot、OpenRouter、千问转售)。它们住
  * `providers/model-families/<family>.ts`,点家族的名是本分。
  */
-const MODEL_FAMILY_DIR = /^packages\/backend\/runtime\/providers\/model-families\//
+const MODEL_FAMILY_DIR = /^packages\/backend\/provider\/model-families\//
 
 /** 登记处:每家一行,本来就该点名。 */
 const REGISTRY_FILES = [
-  /^packages\/backend\/runtime\/providers\/vendors\/[^/]+\.ts$/,
+  /^packages\/backend\/provider\/vendors\/[^/]+\.ts$/,
 ]
 
 const NON_VENDOR_IDS = new Set(['acp'])

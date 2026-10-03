@@ -282,7 +282,7 @@ export interface DiagnosticsSettings {
  * 宠物的设置(宠物 P5,`docs/design/pet-system-2026-09.md` §12.4)。
  *
  * 只有一格:多久开口一次。三档是档位词,不是秒数(「设置极简」:调参收敛成档位);
- * 每档对应的冷却住产品层 `runtime/pets/chattiness.ts` 那张表,这里不写数。
+ * 每档对应的冷却住产品层 `pet/chattiness.ts` 那张表,这里不写数。
  * 换哪一只宠物**不在这里**:那是 `pet:` 资源自己的状态(`<store>/pets/current.json`)。
  */
 export type PetChattinessSetting = "quiet" | "balanced" | "chatty";
@@ -356,7 +356,7 @@ export interface SearchSettings {
 /**
  * 缺省模型 id。**契约层记它**,因为 defaults 与设置页都要用同一个值,而 runtime 的
  * 嵌入器模块不该被契约层 import(方向反了)。真正的模型知识住
- * `runtime/search/embedding/transformers-onnx.ts`,那边的 `E5_SMALL_EMBEDDER_ID`
+ * `search/embedding/transformers-onnx.ts`,那边的 `E5_SMALL_EMBEDDER_ID`
  * 与这一行必须是同一个串——一处改了另一处不改,注册表就解析不到,开关会自己关回去。
  */
 export const DEFAULT_SEMANTIC_MODEL_ID = "multilingual-e5-small";
@@ -533,7 +533,7 @@ export interface TestProxyResponse {
  * 是 `@shared/ipc/dialog.ts` 的 `dialogRouter`。
  *
  * **三条推送留在原地**(router 今天没有推送面):`SETTINGS_CHANGED` /
- * `SYSTEM_THEME_CHANGED` 改走 `backend/runtime/settings/events.ts` 的
+ * `SYSTEM_THEME_CHANGED` 改走 `backend/settings/events.ts` 的
  * `configureSettingsEventBroadcaster` 注入端口;`SETTINGS_NAVIGATE` 本来就是
  * 主进程→设置窗的单向通知,与本域无关。
  *

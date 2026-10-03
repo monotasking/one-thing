@@ -2,7 +2,7 @@
  * Music radio IPC types (ncm-cli backed AI radio)
  *
  * Wire types between renderer and main. Mirrors the runtime-level
- * OnethingMusic* types in packages/backend/runtime/music/ — keep the
+ * OnethingMusic* types in packages/backend/music/ — keep the
  * two in structural sync (same duplication convention as voice.ts).
  */
 
@@ -122,7 +122,7 @@ export interface MusicLyrics {
 /* ── 主持人抽屉(2026-09-26,正本 apps/desktop-react/docs/music-panel-2026-09.md §16)──
  *
  * 壳不认识 ncm-cli:DJ 会话里的工具调用由**后端**按动词表翻成人话
- * (`runtime/music/host-log.ts`),这里只是那几行的形。
+ * (`music/host-log.ts`),这里只是那几行的形。
  */
 
 /** 主持人此刻在干哪一类活。`thinking` = 在想(没有工具在飞)。 */
@@ -201,7 +201,7 @@ export interface MusicRadioState {
 	 * The host as a person (2026-09-26, music-panel §16): whether he is working and,
 	 * while he is, what he is doing right now in plain words. `working` mirrors
 	 * `djWorking`; `doing` is derived by the backend from the tool call in flight
-	 * in his session (the verb table lives in `runtime/music/host-log.ts`). Absent
+	 * in his session (the verb table lives in `music/host-log.ts`). Absent
 	 * on older backends.
 	 */
 	host?: MusicHostState
@@ -468,7 +468,7 @@ export interface MusicSettings {
 	/**
 	 * Which music CLI provider drives everything (binary, parsers, setup
 	 * wizard, bash policy). Unknown/absent ids resolve to 'ncm-cli' — the
-	 * registry lives in @onething/backend/runtime/music/providers.
+	 * registry lives in @onething/backend/music/providers.
 	 */
 	provider: string
 	source: MusicRadioSource
@@ -503,7 +503,7 @@ export interface MusicSettings {
  *
  * **四条推送留在原地**(`MUSIC_EVENT` / `MUSIC_NOW_PLAYING` / `MUSIC_LYRICS` /
  * `MUSIC_DJ_SPEAK`)—— router 今天没有推送面,而它们早就走
- * `broadcastVoiceHostMessage` 这个注入端口,由 `backend/runtime/music/*` 直接发。
+ * `broadcastVoiceHostMessage` 这个注入端口,由 `backend/music/*` 直接发。
  * 常量与渲染侧订阅因此原样保留。
  *
  * 无参的六条(`getState` / `getNowPlaying` / `getRadio` / `getLyrics` /

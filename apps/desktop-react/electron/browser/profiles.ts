@@ -42,7 +42,7 @@ import { DEFAULT_BROWSER_PROFILE_ID } from '@shared/ipc/settings.js'
 import type {
   SettingsEvent,
   SettingsEventBroadcaster,
-} from '@onething/backend/runtime/settings/events'
+} from '@onething/backend/settings/events'
 
 /** 名册在主进程这一侧要的全部:有哪几格,新 tab 缺省用哪一格。 */
 export interface BrowserProfileTable {

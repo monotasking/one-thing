@@ -74,7 +74,7 @@ export function chapterOfTurn(index: number, chapters: TocChapter[]): number {
  * 后端章节 → 目录章节。
  *
  * 落位靠 `startMessageId`:它就是这一段**第一条用户消息**的 id
- * (`runtime/toc/segment.ts` 的 `segmentFromTurns`:
+ * (`toc/segment.ts` 的 `segmentFromTurns`:
  * `startMessageId: first.userMessage.id`),所以它一定能在用户锚点列里找到位置。
  *
  * 找不到的段(旧账本没记 startMessageId,或那条消息已被删)**整段丢掉**,

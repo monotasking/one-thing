@@ -42,7 +42,7 @@
  * (与 `electron/browser/` 除 `index.ts` 外每一只文件同一条纪律)。
  */
 
-import { validateOnethingAppProxyUrl } from '@onething/backend/runtime/network'
+import { validateOnethingAppProxyUrl } from '@onething/backend/network'
 import type { ProxySettings } from '@shared/ipc.js'
 
 /** `Session.setProxy` 收的那两档(Electron `ProxyConfig` 里这只壳用得到的一片)。 */

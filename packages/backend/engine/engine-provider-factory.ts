@@ -1,0 +1,99 @@
+import {
+  createAgentProviderFromRuntime as createCoreAgentProviderFromRuntime,
+  getSupportedAgentProviderRuntimeIds,
+  isAgentProviderRuntimeSupported,
+  registerAgentProviderRuntime as registerCoreAgentProviderRuntime,
+  type AgentProviderRuntimeConfig as CoreAgentProviderRuntimeConfig,
+  type CreateAgentProviderFromRuntimeOptions,
+  type RegisterAgentProviderRuntimeOptions,
+} from '@onething/backend/provider'
+import type { OAuthToken } from '@shared/ipc.js'
+import { credentialTargetFromSpaceMarker } from '@onething/backend/auth'
+import {
+  getExternalAgentConnectors,
+  persistExternalAgentSessionLink,
+  resolveExternalAgentSessionLink,
+} from '@onething/backend/external-agent/connector-registry'
+import { getAuthService } from '@onething/backend/auth/process-auth-service'
+import type { ProviderAuthContext } from '@onething/backend/auth/ipc-types'
+import { createRequiredAppFetch } from '@onething/backend/settings'
+import { dumpProviderRequest } from '../provider/index.js'
+import { providerMediaReader } from './engine-media-reader.js'
+import type { AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
+
+export {
+  getSupportedAgentProviderRuntimeIds,
+  isAgentProviderRuntimeSupported,
+}
+export type {
+  CreateAgentProviderFromRuntimeOptions,
+  RegisterAgentProviderRuntimeOptions,
+}
+
+export interface AgentProviderRuntimeConfig extends Omit<CoreAgentProviderRuntimeConfig, 'oauthToken' | 'authContext'> {
+  oauthToken?: OAuthToken
+  authContext?: ProviderAuthContext
+}
+
+export type AgentProviderRuntimeFactory = (
+  config: AgentProviderRuntimeConfig,
+  options: CreateAgentProviderFromRuntimeOptions,
+) => AgentProvider | undefined
+
+export function registerAgentProviderRuntime(
+  providerId: string,
+  factory: AgentProviderRuntimeFactory,
+  options: RegisterAgentProviderRuntimeOptions = {},
+): () => void {
+  return registerCoreAgentProviderRuntime(
+    providerId,
+    (config, runtimeOptions) => factory(config as AgentProviderRuntimeConfig, runtimeOptions),
+    options,
+  )
+}
+
+function hasOAuthCredentials(config: AgentProviderRuntimeConfig): boolean {
+  return config.authContext?.kind === 'oauth' || Boolean(config.oauthToken)
+}
+
+/**
+ * authService is already keyed by provider id, so nothing here is codex-specific
+ * — it used to be only because the option was. Providers that never ask for a
+ * refresh simply never call it.
+ *
+ * per-space(批 B6):写回目标从 config 上的运行期标记来。**这一步不能省** ——
+ * 回合中途的刷新发生在 provider 闭包里,那里既没有 sessionId 也没有 space;
+ * 不带目标就会去刷默认空间的第一个账号(批 8 之前是 `oauth-tokens.json` 那一把单槽),
+ * 既动了别人的令牌,又让本空间那条 entry 永远停在旧 token 上。
+ */
+function createRefreshOAuthToken(
+  config: AgentProviderRuntimeConfig,
+): CreateAgentProviderFromRuntimeOptions['refreshOAuthToken'] | undefined {
+  if (!hasOAuthCredentials(config)) return undefined
+
+  const target = credentialTargetFromSpaceMarker(config.spaceCredential)
+  return (providerId, forceRefresh) => forceRefresh
+    ? getAuthService().refreshToken(providerId, target) as Promise<OAuthToken | undefined>
+    : getAuthService().refreshTokenIfNeeded(providerId, target) as Promise<OAuthToken | undefined>
+}
+
+export function createAgentProviderFromRuntime(
+  providerId: string,
+  config: AgentProviderRuntimeConfig,
+  options: CreateAgentProviderFromRuntimeOptions = {},
+): AgentProvider | undefined {
+  const createAgentProviderFromRuntimeOptions: CreateAgentProviderFromRuntimeOptions = {
+    ...options,
+    fetchImpl: options.fetchImpl ?? createRequiredAppFetch({ policy: 'streaming' }),
+    externalAgentConnectors: options.externalAgentConnectors ?? getExternalAgentConnectors(),
+    resolveExternalAgentSessionLink:
+      options.resolveExternalAgentSessionLink ?? resolveExternalAgentSessionLink,
+    onExternalAgentSessionLink:
+      options.onExternalAgentSessionLink ?? persistExternalAgentSessionLink,
+    refreshOAuthToken: options.refreshOAuthToken ?? createRefreshOAuthToken(config),
+    requestDumper: options.requestDumper ?? dumpProviderRequest,
+    // 多轮改图的只读媒体端口(P4-2)——runtime 只声明接口,库在这一层。
+    media: options.media ?? providerMediaReader,
+  };
+  return createCoreAgentProviderFromRuntime(providerId, config as CoreAgentProviderRuntimeConfig, createAgentProviderFromRuntimeOptions)
+}

@@ -51,12 +51,13 @@ const SHELL_FILES = [
  *
  * 包根归位(2026-10-04,决策 D21 / D26)之后这棵树拆成了两半,两半都量:
  *   ① `packages/backend/http-server/` 整棵(递归)—— 分发表、principal、沙箱、资源信封与 HTTP 面本身;
- *   ② 每个功能的第二个入口 `packages/backend/runtime/<功能>/<功能>-client-api*.ts`(从前的 `rpc/domains/*.ts`
+ *   ② 每个功能的第二个入口 `packages/backend/<功能>/<功能>-client-api*.ts`(从前的 `rpc/domains/*.ts`
  *      与 `server/` 里各功能的面),判据与 `client-api:gate` 同一份(`scripts/lib/backend-structure.mjs`)。
  * 基线里的 `forks:<文件>` 键随文件改了路径,数字一个没变。
  */
 const DISPATCH_DIR = 'packages/backend/http-server'
-const RUNTIME_DIR = 'packages/backend/runtime'
+// 功能目录的根:2026-10-04 去掉 `runtime/` 这一层以后就是包根;下面按 clientApiFeatureOf 只取功能目录里的 client-api 文件。
+const RUNTIME_DIR = 'packages/backend'
 /** 扫描规模下限：遍历坏了长得像「全治愈了」。 */
 const MIN_DOMAIN_FILES = 30
 
@@ -413,17 +414,17 @@ export const OTHER = { NOT_COUNTED: 'x:y' }
 
   // 9) 多一处读法 → 红(棘轮的主判据)。
   const oneMore = compare(
-    { 'forks:packages/backend/runtime/voice/voice-client-api.ts': 1 },
-    { 'forks:packages/backend/runtime/voice/voice-client-api.ts': 2 },
+    { 'forks:packages/backend/voice/voice-client-api.ts': 1 },
+    { 'forks:packages/backend/voice/voice-client-api.ts': 2 },
   )
   expect('域文件多一处读法应产生 regression', oneMore.regressions.length === 1)
 
   // 10) 基线外的域文件出现读法 → 红。
   const newDomain = compare(
-    { 'forks:packages/backend/runtime/voice/voice-client-api.ts': 1 },
+    { 'forks:packages/backend/voice/voice-client-api.ts': 1 },
     {
-      'forks:packages/backend/runtime/voice/voice-client-api.ts': 1,
-      'forks:packages/backend/runtime/agents/agents-client-api.ts': 1,
+      'forks:packages/backend/voice/voice-client-api.ts': 1,
+      'forks:packages/backend/agent/agents-client-api.ts': 1,
     },
   )
   expect('基线外域文件应算 regression',
@@ -431,7 +432,7 @@ export const OTHER = { NOT_COUNTED: 'x:y' }
     && newDomain.regressions[0].key.endsWith('agents-client-api.ts'))
 
   // 11) 域文件治愈(从当前表里消失)= improvement，不是「采不到」硬错。
-  const healed = compare({ 'forks:packages/backend/runtime/voice/voice-client-api.ts': 1 }, {})
+  const healed = compare({ 'forks:packages/backend/voice/voice-client-api.ts': 1 }, {})
   expect('域文件清零应算 improvement 且不算 missing',
     healed.improvements.length === 1 && healed.missing.length === 0 && healed.regressions.length === 0)
 

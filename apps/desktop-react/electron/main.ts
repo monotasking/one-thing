@@ -50,9 +50,9 @@ import {
   getEmbeddedOnethingHttpServer,
 } from '@onething/backend/http-server'
 import { removeHttpDiscovery } from '@onething/backend/http-server'
-import { initializeUserSchedulerTasks } from '@onething/backend/runtime/scheduler/user-task-service'
-import { registerACPPermissionBridge } from '@onething/backend/runtime/acp/permission-bridge'
-import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
+import { initializeUserSchedulerTasks } from '@onething/backend/scheduler/user-task-service'
+import { registerACPPermissionBridge } from '@onething/backend/acp/permission-bridge'
+import { getLogger } from '@onething/backend/logging/configure-logging'
 import { installAppMenu } from './app-menu-install.js'
 import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
@@ -120,7 +120,7 @@ type HttpDiscoveryRecord = {
 const appRoot = path.resolve(__dirname, '..')
 
 /**
- * store 根。与 `packages/backend/runtime/storage/paths.ts` 的
+ * store 根。与 `packages/backend/storage/paths.ts` 的
  * `getOnethingStorePath()` **同语义**(env 优先,否则 `~/.onething`)。这一段发生在
  * `configureLogging` 之前(要先知道 store 才知道日志落哪),所以自己 resolve 一次。
  */
@@ -452,7 +452,7 @@ function startPostWindowServices(): void {
 /** 首次启动从 models.dev 拉一次模型目录(已有目录就跳过)。 */
 async function refreshModelsOnFirstStartup(signal: AbortSignal): Promise<void> {
   signal.throwIfAborted()
-  const { getSettings } = await import('@onething/backend/runtime/settings')
+  const { getSettings } = await import('@onething/backend/settings')
   signal.throwIfAborted()
   const providers = getSettings()?.ai?.providers
   if (!providers) return
@@ -460,7 +460,7 @@ async function refreshModelsOnFirstStartup(signal: AbortSignal): Promise<void> {
     config => Object.keys((config as { models?: object })?.models ?? {}).length > 0,
   )
   if (hasModels) return
-  const { modelRegistry: { refreshAllProviders } } = await import('@onething/backend/runtime/settings')
+  const { modelRegistry: { refreshAllProviders } } = await import('@onething/backend/settings')
   signal.throwIfAborted()
   await refreshAllProviders({ signal })
 }
@@ -583,14 +583,14 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
  *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)——
  *    `webContents.send`,一条单向推送,没有后端那一侧。
  *  · `installTerminalReloadDetach` —— 它缺省调的那只 detach 住在
- *    `@onething/backend/runtime/terminal/service`,读的是**那只包自己的模块级
+ *    `@onething/backend/terminal/service`,读的是**那只包自己的模块级
  *    单例**(`serviceInstance?.markAllDetached()`),不是 backend 访问器;没开过
  *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
  *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。
  *  · `loadDevServer` 的 `session.clearCache()` —— 窗口自己的 session,与后端无关;
  *    它失败时那句 `getLogger('shell.boot').warn` 也安全:根 logger 在模块求值时
  *    就存在(只挂内存环),`configureLogging` 之前的记录留在环里
- *    (`backend/runtime/logging/configure-logging.ts` 的判词)。**代价**:落在装配之前的那几条
+ *    (`backend/logging/configure-logging.ts` 的判词)。**代价**:落在装配之前的那几条
  *    只进环、不进 `shell.jsonl`(文件 sink 是 `configureLogging` 才挂上的)——
  *    崩溃现场 `dumpRecentLogRecords()` 仍然捞得到,见文件末留账③。
  *  · `installAppMenu` / `FRAMELESS_ON_MAC` —— 本来就在装配之前(前者是
@@ -816,7 +816,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 /*
  * ── 本批留账 ────────────────────────────────────────────────────────────
  * ① `shell.jsonl` 不在 `LOG_DIR_POLICY.families` 里(那张表在
- *    packages/backend/runtime,本批边界外)。后果:归档只被 janitor 报成
+ *    packages/backend/logging,本批边界外)。后果:归档只被 janitor 报成
  *    `unknown`,永不删。活账本本身照常轮转。加一行即可,留给下一批。
  * ② 内建 skills 目录按 cwd 解析成 `apps/desktop-react/resources/skills`(不存在),
  *    于是自演化那颗默认关闭的 builtin skill 在这个壳里加载不到。旧壳靠

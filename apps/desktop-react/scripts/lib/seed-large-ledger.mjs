@@ -15,7 +15,7 @@
  *
  * ── 它给出的是**真编码**,不是「长得像」 ──────────────────────────────────
  * 每一行都按 `packages/shared/session/events/types.ts` 的事件形写,能被
- * `packages/backend/runtime/sessions/projection/` 的折叠器原样折出来:
+ * `packages/backend/session/projection/` 的折叠器原样折出来:
  *
  *  · 一轮 = `user/message` → `run/start` → `request/start` → 若干
  *    `assistant/chunks`(**打包行**:一行装几条逻辑 delta,`dt` 与 `text` 等长,
@@ -28,7 +28,7 @@
  *  · **64KB 那条线由编码规则说了算**,不由这里拍:超过
  *    `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 的工具结果写进
  *    `sessions/<id>/blobs/<sha256 前 16 位>`,事件行里只留
- *    `result: { blob: {hash, bytes, mime} }` —— 与 `packages/backend/runtime/sessions/
+ *    `result: { blob: {hash, bytes, mime} }` —— 与 `packages/backend/session/
  *    blob-store.ts` 的 `textOrBlobForEvent` / `hashSessionBlob` 同一条规矩。
  *    所以**blob 里的字节不进 `events.jsonl`**,想把账本撑到 50MB 只能靠行内。
  *  · 图片走 `assistant/part-end { kind:'image', blob }` —— 那一格是
@@ -72,7 +72,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 
-/** 与 `@onething/backend/runtime/sessions` 的 `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 同一个数。 */
+/** 与 `@onething/backend/session` 的 `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 同一个数。 */
 export const BLOB_THRESHOLD_BYTES = 64 * 1024
 
 /**

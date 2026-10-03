@@ -18,7 +18,7 @@
  *      上总线,而「谁能替谁说话」在 core 判 —— 一扇壳发不出别人命名空间的事实。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts` /
- * `assembly-lifecycle.test.ts`:`runtime/sessions/session-store.ts` 在 **import 期**就解析 store 根。
+ * `assembly-lifecycle.test.ts`:`session/session-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -123,7 +123,7 @@ function watchCommands(backend: Backend): { seen: ResourceShellCommandEvent[]; s
 }
 
 async function auditRowsFor(sessionId: string): Promise<Array<Record<string, unknown>>> {
-  const { flushSessionEventLog } = await import('@onething/backend/runtime/sessions')
+  const { flushSessionEventLog } = await import('@onething/backend/session')
   await flushSessionEventLog(sessionId)
   const ledger = path.join(storeRoot, 'sessions', sessionId, 'events.jsonl')
   if (!fs.existsSync(ledger)) return []
@@ -141,7 +141,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
 
   it('mountShell:壳交上来的自述进得了同一台内核,而且 home 一律是 shell', async () => {
     backend = await assemble()
-    const store = await import('@onething/backend/runtime/sessions')
+    const store = await import('@onething/backend/session')
     sessionId = store.createSession(`resource-k2b2-${Date.now()}`, 'Shell drill').id
 
     // 壳可以把 `home` 写成任何东西 —— 反序列化不读那一格。这份自述里写的是 'core',
@@ -204,7 +204,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
   })
 
   it('ui_change 不弹卡:同一条 do 经真 PermissionAuthorizer 走完,没有一张待答的权限卡', async () => {
-    const { Permission } = await import('@onething/backend/runtime/permissions/permission')
+    const { Permission } = await import('@onething/backend/permission/permission')
     const { seen, stop } = watchCommands(backend)
 
     // 兜底的掐:`ui_change` 万一进了 ask 那一支,`Permission.ask` 会一直等人回答,
@@ -302,11 +302,11 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
    * K3-a —— §10.4 的露面规则在**壳资源**上的样子:provider 随连接来,工具就随连接
    * 进工具目录;壳断线(`unmountShell`)之后它当场不在面上。
    *
-   * 这一条就是反证①的落点:拆掉 `runtime/resource/catalog-sync.ts` 对账里的
+   * 这一条就是反证①的落点:拆掉 `resource/catalog-sync.ts` 对账里的
    * `catalog.unregister`,第二句断言红 —— 目录里会留着一只调不动的 `workbench`。
    */
   it('K3-a 露面:mountShell 之后 workbench 在工具目录里,unmountShell 之后不在', async () => {
-    const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
     const catalog = getToolkitCatalog()!
     // 上一条用例把这扇壳摘掉了 —— 所以此刻它本来就不该在目录里。
     expect(catalog.has('workbench')).toBe(false)
@@ -316,7 +316,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     await Promise.resolve()
     expect(catalog.has('workbench')).toBe(true)
     // 它不进「这台宿主注册了哪些工具」那份清单 —— 与 session 同一条判据。
-    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/catalog-projection')
     expect((toolkitCatalogToolDefinitions() ?? []).map(tool => tool.id)).not.toContain('workbench')
 
     await backend.shellResources.unmountShell(SHELL)

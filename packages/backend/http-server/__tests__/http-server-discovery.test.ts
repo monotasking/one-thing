@@ -18,7 +18,7 @@ import {
   writeHttpDiscovery as writeDiscovery,
   type HttpDiscoveryRecord,
 } from '../http-server-discovery.js'
-import { StoreLock } from '@onething/backend/runtime/storage'
+import { StoreLock } from '@onething/backend/storage'
 
 describe('http discovery file', () => {
   let storePath: string
@@ -271,7 +271,7 @@ describe('discovery 的 store 解析与 @shared 那份同形', () => {
   it('显式 storePath / 环境变量 / 缺省家目录 三段都对得上', async () => {
     const { resolveOnethingStoreRoot, httpDiscoveryPathIn } =
       await import('@onething/client/http-discovery-io.js')
-    const { getOnethingStorePath } = await import('@onething/backend/runtime/storage')
+    const { getOnethingStorePath } = await import('@onething/backend/storage')
 
     // ① 环境变量那一段
     expect(resolveOnethingStoreRoot()).toBe(getOnethingStorePath())

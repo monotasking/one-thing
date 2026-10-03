@@ -16,7 +16,7 @@
  * 三条规则:
  *   A `session.messages` 的属性访问 —— 只许白名单文件;
  *   B 对 ChatMessage / Step / ToolCall 的属性赋值、`delete`、`Object.assign(x,…)`、
- *     `x.steps|contentParts|toolCalls.push/splice` —— 只许 `runtime/sessions/commands.ts`;
+ *     `x.steps|contentParts|toolCalls.push/splice` —— 只许 `session/commands.ts`;
  *   C `<session>.messages = …` 整体赋值 —— 白名单内也不许(命令面 COW 返回新数组)。
  *
  * 输出:每行 `[session] failed: <file>:<line> <rule>`,末尾一行 `[session] complete:`。
@@ -35,10 +35,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const RULE_A_ALLOWED = new Set([
   // 冷加载修复(§17.7.1 批 3:老 reducer 删了,这里只剩两个具名入口 ——
   // 修复要摸整份消息数组)
-  'packages/backend/runtime/sessions/commands.ts',
+  'packages/backend/session/commands.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
-  'packages/backend/runtime/sessions/session-commands.ts',
-  'packages/backend/runtime/sessions/reads.ts',
+  'packages/backend/session/session-commands.ts',
+  'packages/backend/session/reads.ts',
   // 存储形状:脱水看的是"盘上长什么样",不是会话语义
   //
   // `storage-driver.ts` 曾经也在这里,理由是它的**消息写半边**(全量重写 / 后缀
@@ -47,11 +47,11 @@ const RULE_A_ALLOWED = new Set([
   // 都落在驱动自己那个 `SessionLike { messages?: unknown[] }` 上,元素类型是
   // `unknown`,本来就不构成规则 A 说的"一条会话的消息日志"。实测拿掉这条 0 命中,
   // 所以收掉:哪天有人把驱动重新类型化到真的 `ChatMessage`,这道闸该响。
-  'packages/backend/runtime/sessions/session-dehydrate.ts',
+  'packages/backend/session/session-dehydrate.ts',
   // 仓库层 = 读门面的底座(P0.4):四处都是"jsonl/sqlite 取不到时回落到内存
   // 权威副本"的取数原语(getSessionMessages / 分页 / marker / 缓存快照),
   // 下面没有别的层可以再问一次,不是业务读。
-  'packages/backend/runtime/sessions/session-repository.ts',
+  'packages/backend/session/session-repository.ts',
 ])
 
 /**
@@ -63,10 +63,10 @@ const RULE_A_ALLOWED = new Set([
  * 老 reducer(`applySessionCommand`)**已经删了**。它最后的身份是"会话级派生的
  * 算法"(截断扣多少 token、`contextSize`/`summary` 怎么重算、`updatedAt` /
  * `lastProvider` 怎么定),而批 2 把同一本账做成了**事件的折叠产物**
- * (`runtime/sessions/account.ts`),批 3 让写门直接读折叠块 —— 于是那个算法没有了
+ * (`session/account.ts`),批 3 让写门直接读折叠块 —— 于是那个算法没有了
  * 第二处实现。
  *
- * 名单上仍然是 `runtime/sessions/commands.ts`,但它今天装的是**另一件东西**:
+ * 名单上仍然是 `session/commands.ts`,但它今天装的是**另一件东西**:
  * 冷加载修复的两个具名入口(`sanitizeSessionOnStartup` / `sanitizeLoadedSession`)
  * —— 修复要改 step / toolCall 的字段(把中断的改成 cancelled),而且它是**可再生
  * 的派生**,住在读路(`session-repository.repairOnFirstTouch`)。
@@ -78,7 +78,7 @@ const RULE_A_ALLOWED = new Set([
  * 规则 B 本来就够不着它 —— 名单里不需要有它。)
  */
 const RULE_B_ALLOWED = new Set([
-  'packages/backend/runtime/sessions/commands.ts',
+  'packages/backend/session/commands.ts',
 ])
 
 /**
@@ -94,7 +94,7 @@ const RULE_B_ALLOWED = new Set([
  * 一路查下来所有分岔的病根。
  */
 const RULE_C_ALLOWED = new Set([
-  'packages/backend/runtime/sessions/session-repository.ts',
+  'packages/backend/session/session-repository.ts',
 ])
 
 const MUTATING_ARRAY_METHODS = new Set(['push', 'splice', 'pop', 'shift', 'unshift', 'sort', 'reverse'])
@@ -109,9 +109,8 @@ function shouldScan(rel) {
   if (rel.startsWith('node_modules/')) return false
   if (rel.endsWith('.d.ts')) return false
   return (
-    rel.startsWith('packages/backend/runtime/') ||
     rel.startsWith('packages/backend/') ||
-    rel.startsWith('packages/backend/runtime/gateway/') ||
+    rel.startsWith('packages/backend/gateway/') ||
     rel.startsWith('packages/shared/') ||
     rel.startsWith('apps/')
   )

@@ -23,21 +23,21 @@ import { join } from 'node:path'
 
 /**
  * 插件管理器那一位是**这个进程装没装管理器**,而这只测试进程永远不装 —— 所以
- * 只能把那个判据函数换掉。换的是 `runtime/plugins/plugin-system.js` 的 `getPluginManager`
+ * 只能把那个判据函数换掉。换的是 `plugin/plugin-system.js` 的 `getPluginManager`
  * 本身(其余导出原样透传),也就是 plugins 域读的同一个口。
  */
 let pluginManagerPresent = false
-vi.mock('@onething/backend/runtime/plugins/plugin-system', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/plugins/plugin-system')>()
+vi.mock('@onething/backend/plugin/plugin-system', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/plugin/plugin-system')>()
   return {
     ...actual,
     getPluginManager: () => (pluginManagerPresent ? ({} as never) : null),
   }
 })
 
-import type { TerminalBroadcaster } from '@onething/backend/runtime/terminal/service'
-import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/runtime/terminal/service'
-import { getPluginManager } from '@onething/backend/runtime/plugins/plugin-system'
+import type { TerminalBroadcaster } from '@onething/backend/terminal/service'
+import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/terminal/service'
+import { getPluginManager } from '@onething/backend/plugin/plugin-system'
 import {
   configureHostLocalTrust,
   isHostLocallyTrusted,

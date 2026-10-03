@@ -4,7 +4,7 @@ import {
 	INLINE_TEXT_ATTACHMENT_MAX_CHARS,
 	INLINE_TEXT_ATTACHMENT_TOTAL_CHARS,
 	type CoreMessageAttachment,
-} from "../runtime/agent-loop/agent-loop-message-content.js";
+} from "../agent-loop/agent-loop-message-content.js";
 
 function b64(text: string): string {
 	return Buffer.from(text, "utf-8").toString("base64");

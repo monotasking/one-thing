@@ -20,7 +20,7 @@ import path from 'node:path'
 import { HTTP_DISCOVERY_FILENAME } from '@shared/backend/http-discovery.js'
 import type { HttpDiscoveryRecord } from '@shared/backend/http-discovery.js'
 import { readHttpDiscoveryAt } from './http-server-discovery-io.js'
-import { canonicalizeStorePath, getOnethingRunDir, type OnethingStorePathOptions, type StoreLease } from '@onething/backend/runtime/storage'
+import { canonicalizeStorePath, getOnethingRunDir, type OnethingStorePathOptions, type StoreLease } from '@onething/backend/storage'
 import { getCurrentBackendInstance } from '../current.js'
 
 export interface DiscoveryWriteOptions extends OnethingStorePathOptions {

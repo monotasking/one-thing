@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractErrorDetails } from '@onething/backend/runtime/agent-loop'
+import { extractErrorDetails } from '@onething/backend/agent-loop'
 import {
   createAgentProviderFromRuntime,
   fetchProviderQuota,
@@ -10,7 +10,7 @@ import {
   pickOnethingProviderOptions,
   providerQuotaSourceOf,
   resolveOnethingModelCapabilities,
-} from '@onething/backend/runtime/providers'
+} from '@onething/backend/provider'
 // 下面这几个名字服务商入口不交出(外面的生产代码没人要),演练测试按相对路径直取。
 import { getOnethingProviderApiKeyEnvCandidates } from '../runtime/providers/env.js'
 import { resolveOnethingProviderBaseUrl } from '../runtime/providers/endpoint.js'
@@ -18,7 +18,7 @@ import { normalizeOnethingReasoningProfileOverride } from '../runtime/providers/
 import { MODEL_VENDOR_ALIASES } from '../runtime/providers/model-identity.js'
 import { getOnethingModelsDevProviderId } from '../runtime/providers/models-dev-catalog.js'
 import { providerDialFieldsOf } from '../runtime/credentials/credentials-provider-rules.js'
-import { createDefaultSettings } from '@onething/backend/runtime/settings'
+import { createDefaultSettings } from '@onething/backend/settings'
 
 describe('陌生能力演练:加一家 acme', () => {
   it('通用代码全部认得它', async () => {

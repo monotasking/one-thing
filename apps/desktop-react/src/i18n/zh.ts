@@ -688,7 +688,7 @@ export const zh = {
    * 这一行说的是「全集有多大」—— 两个数,两句话。 */
   'search.totalCount': '共 {total} 条',
   /* 严格档没中、放宽之后才有的命中(§6.2)。不说出来,用户会以为自己那个词
-   * 精确命中了这些行。**三级三句**(阶梯在 runtime/search/kernel/pipeline/plan.ts:
+   * 精确命中了这些行。**三级三句**(阶梯在 search/kernel/pipeline/plan.ts:
    * ①严格 ②去相邻 ③至少一半的词 ④任一词)—— 从前一句「按任一词匹配」包打三级,
    * 那在只放宽到②的时候是一句谎话:它说得比实际远。 */
   'search.relaxed1': '已放宽:不要求相邻',
@@ -2019,7 +2019,7 @@ export const zh = {
    * 提示语一起退役:五格照抄就是二十五句,而那五句真正在说的「目录说了什么」
    * 现在由每一行右边的三态小字说,「关了会怎样」对五项是同一句 → 归组上的 hint)。
    * 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是引擎按名字猜的那张
-   * 规则表(`runtime/providers/model-capability.ts`),而「跟目录」这三个字
+   * 规则表(`provider/model-capability.ts`),而「跟目录」这三个字
    * 至少没有把「有个数在」这件事说死。 */
   'providers.overrideCapsLabel': '能力',
   'providers.overrideCapsHint': '覆盖模型列表里的能力标记。',
@@ -2160,7 +2160,7 @@ export const zh = {
 
   /* ── 音乐面(音乐收尾 · 壳半边,2026-09-10)─────────────────────────────
    * 面里每一颗按钮走的都是 `resources.do`(与模型调的同一条),所以这里的话
-   * 说的都是**做法自己的名字**,与自述 `runtime/music/resource-spec.ts` 上
+   * 说的都是**做法自己的名字**,与自述 `music/resource-spec.ts` 上
    * 那十三条一一对得上。歌名 / 简报正文 / 后端原话是**事实**不是界面文案,
    * 不进字典 —— 它们由数据带过来,插在 {title} / {message} 那一格上。 */
   'music.player': '正在播放',

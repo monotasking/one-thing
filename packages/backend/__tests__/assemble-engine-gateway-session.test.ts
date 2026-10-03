@@ -18,32 +18,32 @@ const mocks = vi.hoisted(() => ({
   destroySession: vi.fn(),
 }))
 
-vi.mock('../runtime/sessions/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../runtime/sessions/access.js')>()
+vi.mock('../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../session/access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
 })
 
-vi.mock('../runtime/engine/stream-engine-runtime.js', () => ({
+vi.mock('../engine/stream-engine-runtime.js', () => ({
   createMainStreamEngineRuntime: vi.fn(() => ({})),
 }))
 
 // 引擎本体换成空壳:这份测试只看 runtime 建会话那一段。端口接线(`createBoundStreamEngine`)与
 // 引擎层住在同一只 `assemble-engine.ts` 里之后,替身改打在引擎类声明的那只文件上。
-vi.mock('../runtime/engine/stream-engine.js', () => ({
+vi.mock('../engine/stream-engine.js', () => ({
   ProductStreamEngine: class {
     setEventBus(): void {}
     shutdown(): void {}
   },
 }))
 
-vi.mock('@onething/backend/runtime/events', () => ({
+vi.mock('@onething/backend/event', () => ({
   getEventBus: vi.fn(() => ({})),
   getStreamChannel: vi.fn(() => ({
     subscribe: vi.fn(() => vi.fn()),
   })),
 }))
 
-vi.mock('../runtime/sessions/session-layer.js', () => ({
+vi.mock('../session/session-layer.js', () => ({
   ensureSessionWritable: vi.fn(async () => undefined),
   getSessionManager: vi.fn(() => ({
     getOrCreate: mocks.getOrCreate,
@@ -51,8 +51,8 @@ vi.mock('../runtime/sessions/session-layer.js', () => ({
   })),
 }))
 
-vi.mock('@onething/backend/runtime/sessions', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/runtime/sessions')>(),
+vi.mock('@onething/backend/session', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/session')>(),
   getSession: mocks.getSession,
   createSession: mocks.createSession,
   getCurrentSessionId: mocks.getCurrentSessionId,
@@ -75,7 +75,7 @@ describe('main gateway conversation runtime sessions', () => {
   it('creates gateway conversations as persistent sessions without stealing the current session', async () => {
     const { getConversationRuntime, createStreamEngineLayer } = await import('../assemble-engine.js')
     const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
-    const { getEventBus, getStreamChannel } = await import('@onething/backend/runtime/events')
+    const { getEventBus, getStreamChannel } = await import('@onething/backend/event')
 
     // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
     // 读的就是那个槽。这份测试把事件系统整个 mock 成空对象,所以两件依赖直接
@@ -107,7 +107,7 @@ describe('main gateway conversation runtime sessions', () => {
     })
     const { getConversationRuntime, createStreamEngineLayer } = await import('../assemble-engine.js')
     const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
-    const { getEventBus, getStreamChannel } = await import('@onething/backend/runtime/events')
+    const { getEventBus, getStreamChannel } = await import('@onething/backend/event')
 
     // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
     // 读的就是那个槽。这份测试把事件系统整个 mock 成空对象,所以两件依赖直接
@@ -132,7 +132,7 @@ describe('main gateway conversation runtime sessions', () => {
     mocks.sessions.set(id, { id, name: 'Private', ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
     const { getConversationRuntime, createStreamEngineLayer } = await import('../assemble-engine.js')
     const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
-    const { getEventBus, getStreamChannel } = await import('@onething/backend/runtime/events')
+    const { getEventBus, getStreamChannel } = await import('@onething/backend/event')
     const layer = createStreamEngineLayer({ eventBus: getEventBus(), streamChannel: getStreamChannel() })
     setCurrentBackend(createBackendHandle({ engine: layer.engine, runtime: layer.runtime }))
     try {

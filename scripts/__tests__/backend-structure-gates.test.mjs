@@ -4,13 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import {
-  BARREL, compareCounts, entryFeatureOf, formatCountBaseline, layerViolations, loadLayerTable, parseCountBaseline,
+  compareCounts, entryFeatureOf, formatCountBaseline, layerViolations, loadLayerTable, parseCountBaseline,
   shortestCycleThrough, stronglyConnected,
 } from '../lib/backend-structure.mjs'
 import { findEntryCycles } from '../feature-cycle-gate.mjs'
 import { duplicateNames } from '../file-name-gate.mjs'
 
-const RT = 'packages/backend/runtime'
+// 功能目录的根:2026-10-04 去掉 `runtime/` 这一层以后就是包根。
+const RT = 'packages/backend'
 const graphOf = (pairs) => {
   const edges = new Map()
   for (const [a, b] of pairs) {
@@ -32,13 +33,13 @@ it('finds strongly connected components and the shortest cycle through a node', 
   expect(shortestCycleThrough(edges, 'x')).toBeNull()
 })
 
-it('reds a cycle only when it contains a feature entry or the barrel', () => {
+it('reds a cycle only when it contains a feature entry', () => {
   const entry = `${RT}/foo/index.ts`
   const { edges } = graphOf([
     [entry, `${RT}/foo/a.ts`], [`${RT}/foo/a.ts`, `${RT}/bar/index.ts`], [`${RT}/bar/index.ts`, entry], // 经入口的环
     [`${RT}/baz/x.ts`, `${RT}/baz/y.ts`], [`${RT}/baz/y.ts`, `${RT}/baz/x.ts`], // 功能内部的深层环
   ])
-  const isEntry = (f) => entryFeatureOf(f) !== null || f === `${RT}/index.ts`
+  const isEntry = (f) => entryFeatureOf(f) !== null
   const { offending, deep } = findEntryCycles(edges, isEntry)
   expect(offending).toHaveLength(1)
   expect(offending[0].entries.map((e) => e.entry)).toEqual([`${RT}/bar/index.ts`, entry])
@@ -67,7 +68,6 @@ const baseTable = (features) => ({
   slots: [
     { slot: '(包根槽位)', layer: 'L0', match: ['packages/backend/current.ts'], why: '' },
     { slot: '(包根)', layer: 'L4', fallback: true, why: '' },
-    { slot: BARREL, layer: 'L4', why: '' },
   ],
 })
 
@@ -76,7 +76,7 @@ it('judges upward edges by the layer table and reds an unregistered feature', ()
   const table = loadLayerTable(root)
   expect(table.groupOf('packages/backend/current.ts')).toBe('(包根槽位)')
   expect(table.groupOf('packages/backend/backend.ts')).toBe('(包根)')
-  expect(table.groupOf(`${RT}/index.ts`)).toBe(BARREL)
+  expect(table.groupOf('packages/backend/http-server/x.ts')).toBe('(包根)') // 非功能目录不是功能,落兜底
   const graph = graphOf([
     [`${RT}/providers/a.ts`, `${RT}/storage/index.ts`], // 高引低:合法
     [`${RT}/storage/x.ts`, `${RT}/providers/index.ts`], // 低引高:违例

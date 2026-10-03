@@ -15,7 +15,7 @@ import s from './DeclarativeRig.module.css'
 /**
  * **声明式形象的解释器**(宠物 P5,正本 `docs/design/pet-system-2026-09.md` §12.2)。
  *
- * 吃一份 `DeclarativeRigSpec`(纯数据,产品层 `@onething/backend/runtime/pets/rig-spec`)+ 与
+ * 吃一份 `DeclarativeRigSpec`(纯数据,产品层 `@onething/backend/pet/rig-spec`)+ 与
  * `HeidouRig` 同一套 `PetRigProps`,吐 SVG。它**不执行数据里的任何字符串**:没有
  * `dangerouslySetInnerHTML`、没有拼出来的样式串;元素全是按结构化字段 `createElement`
  * 出来的,颜色过一遍白名单(`isRigColor`)才落到 `fill` / `stroke` 上,变换是数字拼成的

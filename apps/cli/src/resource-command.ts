@@ -16,7 +16,7 @@
  *
  * `--json` 打的是**与 RPC 逐字相同**的那份投影(`@shared/ipc/resources.ts` 的
  * `SerializedResourceSpec` / `ResourceReadView` / `ResourceOutcomeView`),因为
- * daemon 那一侧调的就是 `runtime/resource/resource-client-api.ts` 导出的同三只 `serialize*`。
+ * daemon 那一侧调的就是 `resource/resource-client-api.ts` 导出的同三只 `serialize*`。
  * 缺省是给人看的表 —— 它是同一份投影的**排版**,不是第二份事实:凡是表里印出来
  * 的字,`--json` 里都找得到同一格。
  *

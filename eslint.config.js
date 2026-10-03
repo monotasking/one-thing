@@ -39,21 +39,24 @@ export default [
   },
 
   // ── L4 日志迁移:迁完的区开 no-console(docs/design/logging-system-2026-08.md §8)
-  // 区 ① runtime + shared。runtime 里从 core 并进来的那些文件通过注入 / `getCoreLogger` 拿 logger,
-  // 其余用 `@onething/backend/runtime/logging` 的 `getLogger(ns)`;`packages/shared`
-  // 是纯契约,本来就一条 console 都没有。测试里的 console 不算。(core 目录于 2026-10-03 并进 runtime。)
+  // 区 ① 后端的功能目录 + shared。从 core 并进来的那些文件通过注入 / `getCoreLogger` 拿 logger,
+  // 其余用 `@onething/backend/logging` 的 `getLogger(ns)`;`packages/shared`
+  // 是纯契约,本来就一条 console 都没有。测试里的 console 不算。(core 目录于 2026-10-03 并进 runtime;
+  // 2026-10-04 去掉 `runtime/` 这一层,功能目录直接住在包根下 —— 范围照旧只是功能目录,所以把包根的散文件、
+  // `http-server/` 与包级 `__tests__/` 排除在外,与搬家前扫 `runtime/**` 的文件集合相同。)
   {
     files: [
       'packages/shared/**/*.ts',
-      'packages/backend/runtime/**/*.ts',
+      'packages/backend/**/*.ts',
     ],
     ignores: [
-      // 区 ② 的装配层自己开(文件不相交,§8.3)。
-      'packages/backend/runtime/app/**',
+      'packages/backend/*.ts',
+      'packages/backend/http-server/**',
+      'packages/backend/node_modules/**',
       'packages/shared/**/__tests__/**',
       'packages/shared/**/*.test.ts',
-      'packages/backend/runtime/**/__tests__/**',
-      'packages/backend/runtime/**/*.test.ts',
+      'packages/backend/**/__tests__/**',
+      'packages/backend/**/*.test.ts',
     ],
     rules: {
       'no-console': 'error',
@@ -64,14 +67,13 @@ export default [
   // 白名单只有 `apps/server/src/main.ts` 的四条**启动期**行(`configureLogging()`
   // 在 runtime 装配之后才接线,那之前必须直写 stderr),它们逐条带
   // `eslint-disable-next-line no-console` + 理由;测试里的 console 不算。
+  // (从前这里还列着 `runtime/app/**` 的两条 glob,那个目录早已不存在、一只文件都匹配不到;
+  // 2026-10-04 去掉 `runtime/` 这一层时一并删去。)
   {
     files: [
-      'packages/backend/runtime/app/**/*.ts',
       'apps/server/src/**/*.ts',
     ],
     ignores: [
-      'packages/backend/runtime/app/**/__tests__/**',
-      'packages/backend/runtime/app/**/*.test.ts',
       'apps/server/src/**/__tests__/**',
       'apps/server/src/**/*.test.ts',
     ],

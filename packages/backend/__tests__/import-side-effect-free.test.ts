@@ -11,57 +11,57 @@ import { describe, expect, it, vi } from 'vitest'
 
 const spy = vi.hoisted(() => ({ calls: [] as string[] }))
 
-vi.mock('@onething/backend/runtime/tools/sandbox-runtime', async (importOriginal) => ({
+vi.mock('@onething/backend/tool/sandbox-runtime', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingToolSandboxRuntime: () => { spy.calls.push('sandbox') },
 }))
-vi.mock('@onething/backend/runtime/tools/background-jobs', async (importOriginal) => ({
+vi.mock('@onething/backend/tool/background-jobs', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureCoreBackgroundJobs: () => { spy.calls.push('background-jobs') },
 }))
 // P3'a-3:绑定件归位后从 `./scheduler.js` 直取(runtime 源码不自引用包名),所以
 // 打在 barrel 上的桩够不着了 —— 换成打在**具体模块**上。barrel 的 `export *` 同样
 // 解析到这一个 id,走 barrel 的调用方照旧拿到桩。
-vi.mock('@onething/backend/runtime/scheduler/scheduler', async (importOriginal) => ({
+vi.mock('@onething/backend/scheduler/scheduler', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingScheduler: () => { spy.calls.push('scheduler') },
 }))
-vi.mock('@onething/backend/runtime/files/ripgrep', async (importOriginal) => ({
+vi.mock('@onething/backend/file/ripgrep', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingRipgrepRuntime: () => { spy.calls.push('ripgrep') },
 }))
 // 检索收口(2026-10-03)以后 `install-providers` 是检索入口的一部分,不再经入口取
 // `configureOnethingSearchProviders`,所以桩打在入口的 `configureAppSearchProviders` 上:
 // 照旧调真的那一份(它的闩还在起作用),只把「真正去装」那一步换成计数。
-vi.mock('@onething/backend/runtime/search', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/search')>()
+vi.mock('@onething/backend/search', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/search')>()
   return {
     ...actual,
     configureAppSearchProviders: () => actual.configureAppSearchProviders(() => { spy.calls.push('search') }),
   }
 })
-vi.mock('@onething/backend/runtime/skills', async (importOriginal) => ({
+vi.mock('@onething/backend/skill', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingSkillManageRuntime: () => { spy.calls.push('skill-manage') },
   configureOnethingSkillsLoaderRuntime: () => { spy.calls.push('skills-loader') },
 }))
-vi.mock('@onething/backend/runtime/permissions', async (importOriginal) => ({
+vi.mock('@onething/backend/permission', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingPermissionGrantStorage: () => { spy.calls.push('permission-grants') },
 }))
 // providers 收口第二部分:装配处(`engine-chat-facade` 的 `configureAppProviderRegistry`)经服务商入口拿
 // `initializeRegistry`,所以桩打在入口上,不再打在入口背后的 `provider-table.ts`。
-vi.mock('@onething/backend/runtime/providers', async (importOriginal) => ({
+vi.mock('@onething/backend/provider', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   initializeRegistry: () => { spy.calls.push('provider-registry') },
 }))
-vi.mock('../runtime/credentials/credentials-pool.js', async (importOriginal) => ({
+vi.mock('../credentials/credentials-pool.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureSpaceCredentialsCrypto: () => { spy.calls.push('space-credentials-crypto') },
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
   configureSpaceCredentialPluginStrategyHost: () => { spy.calls.push('credential-strategy-host') },
 }))
-vi.mock('@onething/backend/runtime/permissions/capabilities', async (importOriginal) => ({
+vi.mock('@onething/backend/permission/capabilities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
 }))
@@ -70,8 +70,8 @@ vi.mock('@onething/backend/runtime/permissions/capabilities', async (importOrigi
 // 计数桩打在三个仓储 / 驱动的构造口与两条「要读设置 / 应用状态才会问」的路径函数上;都照旧调真的那一份。
 const loadSpy = vi.hoisted(() => ({ calls: [] as string[] }))
 
-vi.mock('../runtime/sessions/session-repository.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/sessions')>()
+vi.mock('../session/session-repository.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/session')>()
   return {
     ...actual,
     createOnethingSessionRepository: ((options: never) => {
@@ -80,8 +80,8 @@ vi.mock('../runtime/sessions/session-repository.js', async (importOriginal) => {
     }) as typeof actual.createOnethingSessionRepository,
   }
 })
-vi.mock('../runtime/sessions/storage-driver.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/sessions')>()
+vi.mock('../session/storage-driver.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/session')>()
   return {
     ...actual,
     createHybridSessionStorageDriver: ((options: never) => {
@@ -90,9 +90,9 @@ vi.mock('../runtime/sessions/storage-driver.js', async (importOriginal) => {
     }) as typeof actual.createHybridSessionStorageDriver,
   }
 })
-// 包根归位 2:设置缓存搬进 `runtime/settings/` 以后按相对路径取构造口,桩因此打在定义它的那只模块上。
-vi.mock('../runtime/settings/settings-repository.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/settings')>()
+// 包根归位 2:设置缓存搬进 `settings/` 以后按相对路径取构造口,桩因此打在定义它的那只模块上。
+vi.mock('../settings/settings-repository.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/settings')>()
   return {
     ...actual,
     createOnethingSettingsRepository: ((options: never) => {
@@ -101,8 +101,8 @@ vi.mock('../runtime/settings/settings-repository.js', async (importOriginal) => 
     }) as typeof actual.createOnethingSettingsRepository,
   }
 })
-vi.mock('@onething/backend/runtime/storage', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/runtime/storage')>()
+vi.mock('@onething/backend/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/backend/storage')>()
   return {
     ...actual,
     getOnethingSettingsPath: () => {
@@ -118,18 +118,18 @@ vi.mock('@onething/backend/runtime/storage', async (importOriginal) => {
 
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
-    await import('@onething/backend/runtime/tools/access-control/sandbox')
-    await import('@onething/backend/runtime/tools/background-jobs-bound')
-    await import('@onething/backend/runtime/tools/bash-executor')
-    await import('../runtime/engine/engine-chat-facade.js')
-    await import('@onething/backend/runtime/scheduler/scheduler-bound')
-    await import('../runtime/files/files-ripgrep-app-fetch.js')
-    await import('@onething/backend/runtime/search')
-    await import('@onething/backend/runtime/skills/manage-setup')
-    await import('@onething/backend/runtime/skills/skill-sources')
-    await import('@onething/backend/runtime/permissions/grant-storage')
-    await import('../runtime/credentials/credentials-resolution.js')
-    await import('../runtime/credentials/credentials-strategy.js')
+    await import('@onething/backend/tool/access-control/sandbox')
+    await import('@onething/backend/tool/background-jobs-bound')
+    await import('@onething/backend/tool/bash-executor')
+    await import('../engine/engine-chat-facade.js')
+    await import('@onething/backend/scheduler/scheduler-bound')
+    await import('../file/files-ripgrep-app-fetch.js')
+    await import('@onething/backend/search')
+    await import('@onething/backend/skill/manage-setup')
+    await import('@onething/backend/skill/skill-sources')
+    await import('@onething/backend/permission/grant-storage')
+    await import('../credentials/credentials-resolution.js')
+    await import('../credentials/credentials-strategy.js')
 
     expect(spy.calls).toEqual([])
   })
@@ -138,13 +138,13 @@ describe('@onething/backend import purity', () => {
    * K0 的注册基座同样归这道栅栏管(内核收缩,
    * docs/design/kernel-shrink-builtin-plugins-2026-08.md §1 D2)。
    *
-   * 它比上面那批更容易在未来出事:`runtime/feature-registry/feature-registry-table` 与 `http-server/http-server-client-api-roster` 都在模块
+   * 它比上面那批更容易在未来出事:`feature-registry/feature-registry-table` 与 `http-server/http-server-client-api-roster` 都在模块
    * 级持有表,而「顺手在模块级挂一个 feature」是个只要写一次就再也发现不了的
    * 错 —— 症状会是 apps/server 里 import 一下就把域注册了,与宿主自己的装配
    * 撞重复守卫。所以这里断言的是**表在 import 后是空的**。
    */
   it('importing the K0 feature base mounts nothing', { timeout: 60_000 }, async () => {
-    const features = await import('../runtime/feature-registry/feature-registry.js')
+    const features = await import('../feature-registry/feature-registry.js')
     await import('../http-server/http-server-client-api-roster.js')
 
     expect(features.dumpFeatures()).toEqual([])
@@ -156,11 +156,11 @@ describe('@onething/backend import purity', () => {
    * 也不去问设置 / 应用状态文件在哪。上面那条 `it` 已经连带加载过入口的话,这里照样数得到。
    */
   it('importing the sessions entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
-    const sessions = await import('@onething/backend/runtime/sessions')
+    const sessions = await import('@onething/backend/session')
     // 包根归位 2(2026-10-03):设置仓储进了设置入口、接入目录进了文件入口,一并 import。这里从前还 import 兼容桶 `store.ts`,
     // 包根归位 B(2026-10-04)删桶之后它的名字都从会话 / 设置入口拿,两只入口上面已经各 import 过。
-    await import('@onething/backend/runtime/settings')
-    await import('@onething/backend/runtime/files')
+    await import('@onething/backend/settings')
+    await import('@onething/backend/file')
 
     expect(typeof sessions.getSession).toBe('function')
     expect(loadSpy.calls).toEqual([])
@@ -172,7 +172,7 @@ describe('@onething/backend import purity', () => {
    * 入口里任何一只模块若在加载期读设置(例如顶层调 `getSettings()`),这里就会数到 `settings-repository` 而红。
    */
   it('importing the providers entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
-    const providers = await import('@onething/backend/runtime/providers')
+    const providers = await import('@onething/backend/provider')
 
     expect(typeof providers.getProviderManifest).toBe('function')
     expect(loadSpy.calls).toEqual([])
@@ -185,8 +185,8 @@ describe('@onething/backend import purity', () => {
    * 搬家以后同样只在函数里。
    */
   it('importing the engine entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
-    const engine = await import('@onething/backend/runtime/engine')
-    const agentLoop = await import('@onething/backend/runtime/agent-loop')
+    const engine = await import('@onething/backend/engine')
+    const agentLoop = await import('@onething/backend/agent-loop')
 
     expect(typeof engine.ProductStreamEngine).toBe('function')
     expect(typeof agentLoop.CoreStreamEngine).toBe('function')

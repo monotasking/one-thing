@@ -30,7 +30,7 @@
     //
     // C1 留的那条 `@/types` 精确键随 C2 一起**删掉了**:装配层那四处
     // `import type … from '@/types'`(rpc/domains/acp.ts、rpc/domains/providers.ts、
-    // runtime/engine/stream/agent-loop-runtime.ts、runtime/engine/stream/tool-execution.ts —— 当时在装配层的接线目录下)
+    // engine/stream/agent-loop-runtime.ts、engine/stream/tool-execution.ts —— 当时在装配层的接线目录下)
     // 已经改引 `@shared/ipc`(那张 Vue 类型桶本来就是从 `@shared` 再导出的),
     // 于是本程序的类型图里再没有一条指向 `packages/renderer` 的边。
     // 边界检查里多了一条硬闸盯着它不长回来(`packages/backend` 禁 `@/` 与 `@renderer`)。

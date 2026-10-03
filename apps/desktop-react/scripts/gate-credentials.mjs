@@ -74,7 +74,7 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
  */
 const CREDENTIAL_FILES = ['settings.json', 'oauth-tokens.json']
 const CREDENTIAL_DIRS = ['workspaces']
-/** 与 `@onething/backend/runtime/spaces/types` 的 `DEFAULT_SPACE_ID` 同值。 */
+/** 与 `@onething/backend/space/types` 的 `DEFAULT_SPACE_ID` 同值。 */
 const DEFAULT_SPACE_ID = 'default'
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))

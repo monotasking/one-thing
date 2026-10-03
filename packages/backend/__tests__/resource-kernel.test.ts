@@ -17,7 +17,7 @@
  * 不注册,于是设置页的工具清单与 CLI 的 listTools 与今天逐字一样。
  *
  * store 隔离与全动态 import 的写法照 `assembly-lifecycle.test.ts`:
- * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
+ * `session/session-store.ts` / `settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -89,7 +89,7 @@ function callOptions(sessionId: string) {
  * `flushSessionEventLedger` 等的是同一件事)。
  */
 async function auditRowsFor(sessionId: string): Promise<Array<Record<string, unknown>>> {
-  const { flushSessionEventLog } = await import('@onething/backend/runtime/sessions')
+  const { flushSessionEventLog } = await import('@onething/backend/session')
   await flushSessionEventLog(sessionId)
   return readAuditRows(sessionId)
 }
@@ -135,8 +135,8 @@ describe('资源内核在真装配里(K1)', () => {
     // 直接问产品层那台目录端口(回合面 `Surface.resolve` 与设置页工具清单读的都是
     // 它),而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户与
     // 模型真正看见的那一份**,不是装配的内部账。
-    const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
-    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/catalog-projection')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
     // 露面规则(§10.4 第三行):provider 在注册表里 = 那只工具在目录里。
@@ -153,7 +153,7 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('K3-a:元工具 resources 列的是注册表当下的样子(它自己不认识任何命名空间)', async () => {
-    const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
     const meta = getToolkitCatalog()?.get('resources')
     expect(meta).toBeTruthy()
     const intent = await meta!.plan({ list: true }, { invocation: { sessionId } } as never)
@@ -170,7 +170,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 正是它们**是两件事**:一条不带抄本、一条带。
    */
   it('read get 拿到的是摘要(不带抄本),record 拿到的是整份记录', async () => {
-    const store = await import('@onething/backend/runtime/sessions')
+    const store = await import('@onething/backend/session')
     const created = store.createSession(`resource-k1-${Date.now()}`, 'First name')
     sessionId = created.id
 
@@ -206,8 +206,8 @@ describe('资源内核在真装配里(K1)', () => {
    * 那一格摘掉 → ② 红。
    */
   it('工单 4 A:read page 给出尾页 + 水位,nextBefore 往上翻得到头', async () => {
-    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-    const store = await import('@onething/backend/runtime/sessions')
+    const { sessionCommands } = await import('@onething/backend/session')
+    const store = await import('@onething/backend/session')
     const created = store.createSession(`resource-page-${Date.now()}`, 'Paged')
 
     for (let index = 1; index <= 7; index++) {
@@ -261,8 +261,8 @@ describe('资源内核在真装配里(K1)', () => {
    * 把 provider 的 `results` 那一格摘掉 → 第一段红。
    */
   it('工单 5 ①②:页带 results 侧表,toolResult 是自述里的一条读法', async () => {
-    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-    const store = await import('@onething/backend/runtime/sessions')
+    const { sessionCommands } = await import('@onething/backend/session')
+    const store = await import('@onething/backend/session')
     const created = store.createSession(`resource-results-${Date.now()}`, 'Results')
     sessionCommands.appendMessage(created.id, {
       message: { id: 'q1', role: 'system' as const, content: 'one line', timestamp: 1 } as never,
@@ -303,7 +303,7 @@ describe('资源内核在真装配里(K1)', () => {
     stop()
 
     expect(outcome.kind).toBe('ok')
-    const { sessionReads } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/session')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Second name')
     expect(seen).toEqual([
       { ref: `session:${sessionId}`, event: 'renamed', payload: { title: 'Second name' } },
@@ -338,14 +338,14 @@ describe('资源内核在真装配里(K1)', () => {
     stopAll()
 
     expect(outcome.kind).toBe('ok')
-    const { sessionReads } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/session')
     expect(sessionReads.getSession(sessionId)?.workingDirectory).toBe(target)
     // 前缀卡在段边界上:`session:<id>/` 底下没有东西,所以只有整命名空间那条收得到。
     expect(seen).toEqual(['workingDirectoryChanged'])
   })
 
   it('AI 路径(直接 run 那只工具)与 do 拿到同形的 Outcome', async () => {
-    const { createAppToolRunner } = await import('@onething/backend/runtime/toolkit/runner-factory')
+    const { createAppToolRunner } = await import('@onething/backend/toolkit/runner-factory')
     const runner = createAppToolRunner({ observer: { on: () => {} } })
     // `tools()` 按 scheme 字典序,不能拿 [0] 当 session。
     const tool = backend.resources.toolFor('session')!
@@ -397,8 +397,8 @@ describe('资源内核在真装配里(K1)', () => {
   it('转发的订阅名单来自注册表,不是写死的 scheme 名(K2a)', async () => {
     // 装一个 core 从没听说过的命名空间,不碰装配一行代码 —— 它的事件照样上总线。
     // 这是 §8 陌生能力演练在**事件**这一侧的那半句。
-    const { planFromSpec } = await import('@onething/backend/runtime/resource/resource-api')
-    const { textResult } = await import('@onething/backend/runtime/toolkit/tool-protocol')
+    const { planFromSpec } = await import('@onething/backend/resource/resource-api')
+    const { textResult } = await import('@onething/backend/toolkit/tool-protocol')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',
@@ -458,9 +458,9 @@ describe('资源内核在真装配里(K1)', () => {
    * 红的也是同一句。
    */
   it("K3-a':removeMessage 按主体分档 —— 用户删不弹卡,AI 删停在真权限卡上", async () => {
-    const { Permission } = await import('@onething/backend/runtime/permissions/permission')
-    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
-    const { sessionReads } = await import('@onething/backend/runtime/sessions')
+    const { Permission } = await import('@onething/backend/permission/permission')
+    const { sessionCommands } = await import('@onething/backend/session')
+    const { sessionReads } = await import('@onething/backend/session')
 
     const message = (id: string) => ({ id, role: 'system' as const, content: 'k3a2', timestamp: Date.now() })
     for (const id of ['k3a2-user', 'k3a2-ai', 'k3a2-refused']) {
@@ -526,7 +526,7 @@ describe('资源内核在真装配里(K1)', () => {
     )
 
     expect(outcome.kind).toBe('ok')
-    const { sessionReads } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/session')
     expect(sessionReads.getSession(sessionId)?.name).toBe('From nowhere')
 
     // 被改的那条会话的抄本里**一行都没多**:它是操作对象,不是发起方。
@@ -570,7 +570,7 @@ describe('资源内核在真装配里(K1)', () => {
       // `setPermissionMode` / `appendSystemMessage`)—— 域剩下那批退成投影时长出来的。
       // 哪几条没进来、为什么(`create` / `createBranch` 卡在归属印上,`activate` /
       // `switch` 是视图状态,缓存那两条是进程内务),写在
-      // `runtime/sessions/resource-spec.ts` 的文件头。
+      // `session/resource-spec.ts` 的文件头。
       expect(Object.keys(spec.ops as object).sort()).toEqual([
         'appendSystemMessage',
         'delete',
@@ -601,7 +601,7 @@ describe('资源内核在真装配里(K1)', () => {
         payload: { ref: `session:${sessionId}`, op: 'rename', params: { title: 'Via RPC' } },
       })
       expect((done as { data: { kind: string } }).data.kind).toBe('ok')
-      const { sessionReads } = await import('@onething/backend/runtime/sessions')
+      const { sessionReads } = await import('@onething/backend/session')
       expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
 
       // 未知 op 走**校验器**那条路:是 invalid,不是 failed,而且不是一次异常 ——
@@ -635,7 +635,7 @@ describe('资源内核在真装配里(K1)', () => {
       expect(answer.ok === false && answer.error.message).toContain('no identity')
     }
     // 读也没发生过。
-    const { sessionReads } = await import('@onething/backend/runtime/sessions')
+    const { sessionReads } = await import('@onething/backend/session')
     expect(sessionReads.getSession(sessionId)?.name).toBe('Via RPC')
   })
 
@@ -644,10 +644,10 @@ describe('资源内核在真装配里(K1)', () => {
    *
    * 它跑在真装配上而不是单测里,因为要证的正是「`backend.dispose()` 到得了
    * `resourceKernel.dispose()`」这条接线:内核那一侧的行为由
-   * `runtime/resource/__tests__/kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
+   * `resource/__tests__/kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
    */
   it('backend.dispose():内核里在飞的做被掐成 aborted,关机不悬着(K2a\')', async () => {
-    const { planFromSpec } = await import('@onething/backend/runtime/resource/resource-api')
+    const { planFromSpec } = await import('@onething/backend/resource/resource-api')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',

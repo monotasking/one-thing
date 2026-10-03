@@ -55,7 +55,7 @@ export interface Router<T extends DomainRoutes, Op extends string = string> {
    * 声明了会话授权的方法;没声明的方法在这张表里缺席,派发行为一字不变。
    *
    * 整张表**可缺席** —— feature 在运行时手搓一个 router 字面量挂域是开着的扩展点
-   * (`runtime/toolkit/toolkit-self-evolution-feature.ts` 那条),它没有理由被迫写一格空对象。
+   * (`toolkit/toolkit-self-evolution-feature.ts` 那条),它没有理由被迫写一格空对象。
    */
   readonly session?: { readonly [K in keyof T & string]?: RouteSessionAccess<Op> }
 }

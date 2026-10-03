@@ -460,7 +460,7 @@ export interface PickPluginFileResponse {
  * 目录清单里的一条(列表投影的**过线形状**)。
  *
  * 这里只声明每个宿主都保证给出的那几格 —— 主进程的投影
- * (`@onething/backend/runtime/plugins` 的 `OnethingRendererPluginInfo`)在此之上还带着
+ * (`@onething/backend/plugin` 的 `OnethingRendererPluginInfo`)在此之上还带着
  * `contributes` / `configFields` / `source` 等等,渲染侧按自己的局部形状读它们
  * (`services/ipc-hub.ts` 的 `PluginCatalogEntry`、设置页的 `PluginInfo`)。
  * **契约不复述那棵投影树**:它的单源在产品层,抄一份到 `@shared` 只会多一处
@@ -516,7 +516,7 @@ export interface AbortPluginRequestRequest {
  * `PLUGINS_REQUEST_PROGRESS`(按 `callerId` 定向回发起窗,经
  * `configurePluginRequestProgressBroadcaster` 注入)。
  *
- * **http 分叉在域里**(`packages/backend/runtime/plugins/plugins-client-api.ts`),不在这里:
+ * **http 分叉在域里**(`packages/backend/plugin/plugins-client-api.ts`),不在这里:
  * 六条读/开关面沿用 server 自己那本只读镜像目录,其余写面按「插件管理器在不在场」
  * 判定 —— 与迁移前 `platform/web.ts` 那批硬桩逐字相同的答案。
  */

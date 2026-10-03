@@ -1,0 +1,48 @@
+import { configureOnethingPermissionGrantStorage, type OnethingPermissionGrantStorageAdapters } from '@onething/backend/permission'
+import {
+  getOnethingPermissionsDir,
+  readJsonFile,
+  writeJsonFile,
+} from '@onething/backend/storage'
+import { registerBuiltinCapabilities } from './capabilities.js'
+
+let permissionGrantsConfigured = false
+
+/** Explicit assembly step: grant storage paths + builtin capability set. */
+export function configureAppPermissionGrants(): void {
+  if (permissionGrantsConfigured) return
+  permissionGrantsConfigured = true
+  const permissionGrantStorageAdapters: OnethingPermissionGrantStorageAdapters = {
+    getPermissionsDir: getOnethingPermissionsDir,
+    readJsonFile,
+    writeJsonFile,
+  }
+  configureOnethingPermissionGrantStorage(permissionGrantStorageAdapters)
+  registerBuiltinCapabilities()
+}
+
+export {
+  addGrant,
+  clearSessionGrants,
+  clearWorkspaceGrants,
+  configureOnethingPermissionGrantStorage,
+  configurePermissionGrantFileStorage,
+  configurePermissionGrantStorage,
+  createPermissionGrantFileStorage,
+  getPermissionWorkspaceGrantsPath,
+  listSessionGrants,
+  findWorkspaceGrant,
+  listWorkspaceGrants,
+  matchGrant,
+  resetPermissionGrantsForTests,
+  revokeGrant,
+} from '@onething/backend/permission'
+export type {
+  OnethingPermissionGrantStorageAdapters,
+  PermissionGrantFileStorageAdapters,
+  PermissionGrantInput,
+  PermissionGrantMatchInput,
+  PermissionGrantStorage,
+  PermissionGrantWorkspaceFile,
+} from '@onething/backend/permission'
+export type { PermissionGrant, PermissionGrantScope } from '@shared/permission/grant'

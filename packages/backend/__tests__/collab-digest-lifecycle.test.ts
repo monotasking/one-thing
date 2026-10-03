@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createServer, type ServerResponse } from 'node:http'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { registerCustomProvidersForTest } from '../runtime/providers/__tests__/custom-manifest-fixture.js'
+import { registerCustomProvidersForTest } from '../provider/__tests__/custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-digest"])
 
@@ -13,8 +13,8 @@ const control = vi.hoisted(() => ({
   auth: async () => {},
   onUsage: undefined as ((usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void) | undefined,
 }))
-vi.mock('../runtime/engine/stream/provider-helpers.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../runtime/engine/stream/provider-helpers.js')>()
+vi.mock('../engine/stream/provider-helpers.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../engine/stream/provider-helpers.js')>()
   return { ...actual,
     getEffectiveProviderConfig: () => ({ providerId: 'custom-digest', model: 'digest-local', providerConfig: {
       model: 'digest-local', selectedModels: ['digest-local'], apiKey: 'local-test-only', apiType: 'openai', baseUrl: control.url,
@@ -25,8 +25,8 @@ vi.mock('../runtime/engine/stream/provider-helpers.js', async importOriginal => 
     },
   }
 })
-vi.mock('../runtime/engine/engine-chat-facade.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../runtime/engine/engine-chat-facade.js')>()
+vi.mock('../engine/engine-chat-facade.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../engine/engine-chat-facade.js')>()
   return { ...actual,
     generateChatResponse: (...args: Parameters<typeof actual.generateChatResponse>) => {
       control.onUsage = args[3]?.onUsage
@@ -34,8 +34,8 @@ vi.mock('../runtime/engine/engine-chat-facade.js', async importOriginal => {
     },
   }
 })
-vi.mock('../runtime/settings/proxy-fetch.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../runtime/settings/proxy-fetch.js')>(),
+vi.mock('../settings/proxy-fetch.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../settings/proxy-fetch.js')>(),
   // Real provider serializer, parser and TCP. Ignore transport cancellation to
   // exercise the underlying promise, rather than an already-settled abort race.
   createRequiredAppFetch: () => (url: string | URL | Request, init?: RequestInit) => {
@@ -83,7 +83,7 @@ async function assemble(storePath: string) {
   } })
 }
 async function room(id = 'room') {
-  const sessions = await import('../runtime/sessions/session-store.js')
+  const sessions = await import('../session/session-store.js')
   sessions.createSession(id, 'Digest room')
   sessions.updateSessionCollab(id, { kind: 'room', room: { memberAgentIds: [], context: { historyDays: 1, historyTailCount: 0 } } })
   const timestamp = Date.now() - 3 * 86400_000
@@ -151,7 +151,7 @@ it('keeps the real auth promise and lease until it settles; shutdown blocks the 
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await vi.waitFor(() => expect(() => oldRunner.ensureCollabDigests('room', [day])).toThrow('shutting down'))
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).toBe('held')
   expect(disposed).toBe(false)
   expect(local.requests).toHaveLength(0)
@@ -178,7 +178,7 @@ it('drains the real delayed model response under the A lease, bills A, and canno
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await vi.waitFor(() => expect(control.signals.at(-1)?.aborted).toBe(true))
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   expect(inspectStoreLock({ storePath: storeA }).status).toBe('held')
   expect(disposed).toBe(false)
   // A provider may report billed usage before its ignored cancellation resolves.
@@ -251,14 +251,14 @@ it('preserves folded-day selection, request deduplication, parsing, usage and th
   expect(local.requests).toHaveLength(1)
   local.respond('  The migration will ship tomorrow.  ')
   await work
-  const { getUsageLedger } = await import('@onething/backend/runtime/usage/usage-recorder')
+  const { getUsageLedger } = await import('@onething/backend/usage/usage-recorder')
   await getUsageLedger().flush()
   expect(await usage(path.join(directory, 'a'))).toEqual([expect.objectContaining({ source: 'collab-digest', sessionId: 'room' })])
-  const digests = await import('@onething/backend/runtime/collab/digest-store')
+  const digests = await import('@onething/backend/collab/digest-store')
   expect(digests.getCollabDigests('room')).toEqual([expect.objectContaining({ day, summary: 'The migration will ship tomorrow.', messageCount: 1 })])
   await backend.collabDigests.ensureCollabDigestsForRoom('room')
   expect(local.requests).toHaveLength(1)
-  const sessions = await import('../runtime/sessions/session-store.js')
+  const sessions = await import('../session/session-store.js')
   sessions.updateSessionCollab('room', { room: { memberAgentIds: [], context: { dailyDigest: false } } })
   digests.forgetCollabDigests('room')
   await backend.collabDigests.ensureCollabDigests('room', [day])
@@ -269,9 +269,9 @@ it('does not release or repeat a timed-out model while the underlying provider r
   const local = await provider()
   backend = await assemble(path.join(directory, 'a'))
   const day = await room()
-  const { createCollabDigestRunner } = await import('@onething/backend/runtime/collab/digest-runner')
-  const { createCollabDigestStore } = await import('@onething/backend/runtime/collab/digest-store')
-  const { captureUsageRecorder } = await import('@onething/backend/runtime/usage/usage-recorder')
+  const { createCollabDigestRunner } = await import('@onething/backend/collab/digest-runner')
+  const { createCollabDigestStore } = await import('@onething/backend/collab/digest-store')
+  const { captureUsageRecorder } = await import('@onething/backend/usage/usage-recorder')
   const runner = createCollabDigestRunner({
     store: createCollabDigestStore({ storePath: path.join(directory, 'a') }),
     access: backend.sessionLayer.access, assertOwned: () => {}, recordUsage: captureUsageRecorder(), timeoutMs: 30,
@@ -303,7 +303,7 @@ it.each(['auth', 'model'] as const)('rechecks the captured room identity after a
   if (phase === 'auth') control.auth = async () => { entered.release(); await release.promise }
   const work = backend.collabDigests.ensureCollabDigests('room', [day])
   await (phase === 'auth' ? entered.promise : local.waitForRequest(work))
-  const sessions = await import('../runtime/sessions/session-store.js')
+  const sessions = await import('../session/session-store.js')
   const ownerPatch = { name: 'New owner room', ownerUserId: 'new-owner' }
   sessions.patchSessionFields('room', ownerPatch, meta => { Object.assign(meta, { ownerUserId: 'new-owner' }) })
   release.release()
@@ -331,7 +331,7 @@ it('waits for a real room digest when deleting that room and keeps the late resu
   local.respond()
   await work
   await removing
-  const sessions = await import('../runtime/sessions/session-store.js')
+  const sessions = await import('../session/session-store.js')
   expect(sessions.getSession('room')).toBeUndefined()
   await expect(fs.stat(path.join(directory, 'a', 'collab', 'room', 'digests.json'))).rejects.toMatchObject({ code: 'ENOENT' })
 })
@@ -340,14 +340,14 @@ it('registers a production MindPort follow-up before the room turn returns, so i
   const local = await provider()
   backend = await assemble(path.join(directory, 'a'))
   await room()
-  const agents = await import('@onething/backend/runtime/agents/agent-store-access')
+  const agents = await import('@onething/backend/agent/agent-store-access')
   agents.createAgent({ id: 'digest-agent', name: 'Digest agent' })
-  const sessions = await import('../runtime/sessions/session-store.js')
+  const sessions = await import('../session/session-store.js')
   sessions.createSession('exec', 'Agent execution')
-  const { createCollabActorAuthorization } = await import('@onething/backend/runtime/collab/actors/execution-authorization')
+  const { createCollabActorAuthorization } = await import('@onething/backend/collab/actors/execution-authorization')
   const authorization = createCollabActorAuthorization({ access: backend.sessionLayer.access, isAccepting: () => !backend!.isShuttingDown })
   authorization.activateRoom('room', backend.sessionLayer.access.resolve({ userId: 'local-user', workspaceId: 'default' }, 'room', 'write'))
-  const { createCollabEngineMindPort } = await import('@onething/backend/runtime/collab/actors/engine-mind-port')
+  const { createCollabEngineMindPort } = await import('@onething/backend/collab/actors/engine-mind-port')
   const mind = createCollabEngineMindPort({ authorization })
   vi.spyOn(backend.engine, 'hasCommandTarget').mockReturnValue(true)
   const { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } = await import('@shared/events/index.js')

@@ -8,7 +8,7 @@
 //   - 做什么:层次表里那一行的 `why`;
 //   - 依赖的功能:运行期值引用图上(口径见 `scripts/lib/backend-structure.mjs` 文件头,只引类型不算)它引用的别的功能,
 //     带边数;低层引高层的标「越层」(即 `layer:gate` 的违例);
-//   - 入口交出多少个名字:入口 `runtime/<功能>/index.ts`(或 N3 形状的 `<功能>/<功能>.ts`)的模块导出表(含再导出),分值与类型;没有入口的写「无入口」。
+//   - 入口交出多少个名字:入口 `<功能>/index.ts`(或 N3 形状的 `<功能>/<功能>.ts`)的模块导出表(含再导出),分值与类型;没有入口的写「无入口」。
 // 包根与 shared 的槽位行一并列出。
 //
 // 用法:
@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  LAYER_TABLE, RUNTIME, BARREL, buildValueGraph, byCodeUnit, countModuleExports, crossGroupEdges, entryFileOf, loadLayerTable, repoRoot,
+  LAYER_TABLE, buildValueGraph, byCodeUnit, countModuleExports, crossGroupEdges, entryFileOf, loadLayerTable, repoRoot,
 } from './lib/backend-structure.mjs'
 
 const MAP_PATH = 'docs/architecture/feature-map.md'
@@ -35,10 +35,7 @@ export function renderFeatureMap(graph, table) {
   }
   const fileCount = new Map()
   for (const file of graph.files) { const g = table.groupOf(file); fileCount.set(g, (fileCount.get(g) ?? 0) + 1) }
-  const entryOf = (row) => {
-    if (row.name === BARREL) return `${RUNTIME}/index.ts`
-    return row.kind === 'feature' ? entryFileOf(row.name) : null
-  }
+  const entryOf = (row) => (row.kind === 'feature' ? entryFileOf(row.name) : null)
   const exportsCell = (row) => {
     const entry = entryOf(row)
     if (!entry) return '—'
@@ -63,7 +60,7 @@ export function renderFeatureMap(graph, table) {
     '',
     '- 从上往下是从高层到低层;规矩是**只许高层引低层**(决策 D23),同层之间经入口且不成环(D19)。',
     '- 「依赖的功能」是运行期值引用(只引类型的不算),数字是从这个功能的文件指向那个功能的文件的引用条数(同一对文件只算一条);标「越层」的是低层引高层,即 `bun run layer:gate` 记账的违例。',
-    '- 「入口交出」是入口 `runtime/<功能>/index.ts` 交出的名字数(含再导出),越少越好(R6)。',
+    '- 「入口交出」是入口 `<功能>/index.ts` 交出的名字数(含再导出),越少越好(R6)。',
     '- 「文件」是这个功能的非测试源文件数。括号里的行不是功能,是包根与 shared 按路径分的槽位。',
     '',
   ]

@@ -2,7 +2,7 @@
  * 各功能开给界面的操作的**名册**(决策 D21 / D26,`docs/design/backend-structure-decisions-2026-10.md`)。
  *
  * 每个功能在自己目录里的 `<功能>-client-api*.ts` 用 `defineClientApi` 交出一行(这个域的契约 + 处理者),
- * 这里按装配顺序把它们排成一张表 —— 与服务商名册 `runtime/providers/vendors/manifests.ts` 同一个做法:
+ * 这里按装配顺序把它们排成一张表 —— 与服务商名册 `provider/vendors/manifests.ts` 同一个做法:
  * **加一个开给界面的域 = 在功能里写一只 client-api 文件、在这里加一行**,HTTP 服务器的其余代码一个字不改,
  * 它们只读这张表(`registerAppRpcDomains` 逐行挂载,`http-server-routes.ts` 问每行有没有 `serveBeforeIdentity`)。
  * 这是 http-server 目录里**唯一**点名功能的文件。
@@ -10,65 +10,65 @@
  * 表里两种成员:
  *  - **名册行**(`ClientApiRow`):一行一个域,挂载时注册成 id 照抄的 feature(一律 `rpc:<域>`,唯一的例外是
  *    轨迹那一行 `trajectory`,理由写在 `sessions-client-api-events.ts`);
- *  - **feature**(`FeatureDefinition`,今天只剩自进化一只,住 `runtime/toolkit/toolkit-client-api-self-evolution.ts`):它自己决定注册什么(三个会话工具,一个域都不注册)。
- *  挂载基座(`mountFeature` / `dumpFeatures`)是 `runtime/feature-registry/`。
+ *  - **feature**(`FeatureDefinition`,今天只剩自进化一只,住 `toolkit/toolkit-client-api-self-evolution.ts`):它自己决定注册什么(三个会话工具,一个域都不注册)。
+ *  挂载基座(`mountFeature` / `dumpFeatures`)是 `feature-registry/`。
  *
  * 历史(K0 / C2,`docs/design/kernel-shrink-builtin-plugins-2026-08.md` §3、`docs/design/cordis-adoption-2026-08.md` §2):
  * 每个域从 K0 起就是一个 feature(`rpc:<域>`),注册项有主(`dumpFeatures()` 看得见),卸载逐 feature 逆序解绕;
  * 2026-10-04 包根归位把「名册里内联的 `{ id, mount }` 包装」换成「功能自己交出的一行」,id、顺序与注册项一格未动。
  * (遗留:函数仍叫 `registerAppRpcDomains`,名字比内容窄半格。)
  */
-import { selfEvolutionFeature } from '../runtime/toolkit/toolkit-client-api-self-evolution.js'
-import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '@onething/backend/runtime/feature-registry'
+import { selfEvolutionFeature } from '../toolkit/toolkit-client-api-self-evolution.js'
+import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '@onething/backend/feature-registry'
 import type { ClientApiRow } from './http-server-dispatch-table.js'
-import { ACP_CLIENT_API } from '../runtime/acp/acp-client-api.js'
-import { HOST_MCP_CLIENT_API } from '../runtime/acp/acp-client-api-host-mcp.js'
-import { AGENTS_CLIENT_API } from '../runtime/agents/agents-client-api.js'
-import { APP_STATE_CLIENT_API } from '../runtime/sessions/sessions-client-api-app-state.js'
-import { CHANNEL_IDENTITY_CLIENT_API } from '../runtime/gateway/gateway-client-api-channel-identity.js'
-import { CHAT_CLIENT_API } from '../runtime/engine/engine-client-api.js'
-import { COLLAB_CLIENT_API } from '../runtime/collab/collab-client-api.js'
-import { EVALS_CLIENT_API } from '../runtime/evals/evals-client-api.js'
-import { EVALS_WORKBENCH_CLIENT_API } from '../runtime/evals/evals-client-api-workbench.js'
-import { FILES_CLIENT_API } from '../runtime/files/files-client-api.js'
-import { GATEWAY_CLIENT_API } from '../runtime/gateway/gateway-client-api.js'
-import { GOAL_CLIENT_API } from '../runtime/goals/goals-client-api.js'
-import { INTERACTION_CLIENT_API } from '../runtime/interaction/interaction-client-api.js'
-import { MUSIC_CLIENT_API } from '../runtime/music/music-client-api.js'
-import { TOOLS_CLIENT_API } from '../runtime/tools/tools-client-api.js'
-import { LOGS_CLIENT_API } from '../runtime/logging/logging-client-api.js'
-import { MEMORY_CLIENT_API } from '../runtime/memory/memory-client-api.js'
-import { MARKDOWN_CLIENT_API } from '../runtime/markdown/markdown-client-api.js'
-import { MCP_CLIENT_API } from '../runtime/mcp/mcp-client-api.js'
-import { MEDIA_CLIENT_API } from '../runtime/media/media-client-api.js'
-import { MODELS_CLIENT_API } from '../runtime/providers/providers-client-api-models.js'
-import { OAUTH_CLIENT_API } from '../runtime/auth/auth-client-api.js'
-import { PERMISSION_GRANTS_CLIENT_API } from '../runtime/permissions/permissions-client-api-grants.js'
-import { PERMISSION_CLIENT_API } from '../runtime/permissions/permissions-client-api.js'
-import { PLUGINS_CLIENT_API } from '../runtime/plugins/plugins-client-api.js'
-import { PRACTICE_CLIENT_API } from '../runtime/practice/practice-client-api.js'
-import { PROJECT_DIRS_CLIENT_API } from '../runtime/project-dirs/project-dirs-client-api.js'
-import { PROMPTS_CLIENT_API } from '../runtime/prompts/prompts-client-api.js'
-import { RESOURCES_CLIENT_API } from '../runtime/resource/resource-client-api.js'
-import { PROVIDERS_CLIENT_API } from '../runtime/providers/providers-client-api.js'
-import { SCHEDULER_CLIENT_API } from '../runtime/scheduler/scheduler-client-api.js'
-import { SEARCH_CLIENT_API } from '../runtime/search/search-client-api.js'
-import { NOTES_CLIENT_API } from '../runtime/notes/notes-client-api.js'
-import { SCRATCHPAD_CLIENT_API } from '../runtime/scratchpad/scratchpad-client-api.js'
-import { SESSION_EVENTS_CLIENT_API } from '../runtime/sessions/sessions-client-api-events.js'
-import { SESSION_COMMAND_CLIENT_API } from '../runtime/sessions/sessions-client-api-commands.js'
-import { SESSIONS_CLIENT_API } from '../runtime/sessions/sessions-client-api.js'
-import { SKILLS_CLIENT_API } from '../runtime/skills/skills-client-api.js'
-import { DIALOG_CLIENT_API } from '../runtime/dialog/dialog-client-api.js'
-import { SHELL_CLIENT_API } from '../runtime/shell/shell-client-api.js'
-import { SETTINGS_CLIENT_API } from '../runtime/settings/settings-client-api.js'
-import { SPACES_CLIENT_API } from '../runtime/spaces/spaces-client-api.js'
-import { TERMINAL_CLIENT_API } from '../runtime/terminal/terminal-client-api.js'
-import { THEMES_CLIENT_API } from '../runtime/themes/themes-client-api.js'
-import { TODO_PLAN_CLIENT_API } from '../runtime/todo-plan/todo-plan-client-api.js'
-import { USAGE_CLIENT_API } from '../runtime/usage/usage-client-api.js'
-import { VARIABLES_CLIENT_API } from '../runtime/variables/variables-client-api.js'
-import { VOICE_CLIENT_API } from '../runtime/voice/voice-client-api.js'
+import { ACP_CLIENT_API } from '../acp/acp-client-api.js'
+import { HOST_MCP_CLIENT_API } from '../acp/acp-client-api-host-mcp.js'
+import { AGENTS_CLIENT_API } from '../agent/agents-client-api.js'
+import { APP_STATE_CLIENT_API } from '../session/sessions-client-api-app-state.js'
+import { CHANNEL_IDENTITY_CLIENT_API } from '../gateway/gateway-client-api-channel-identity.js'
+import { CHAT_CLIENT_API } from '../engine/engine-client-api.js'
+import { COLLAB_CLIENT_API } from '../collab/collab-client-api.js'
+import { EVALS_CLIENT_API } from '../eval/evals-client-api.js'
+import { EVALS_WORKBENCH_CLIENT_API } from '../eval/evals-client-api-workbench.js'
+import { FILES_CLIENT_API } from '../file/files-client-api.js'
+import { GATEWAY_CLIENT_API } from '../gateway/gateway-client-api.js'
+import { GOAL_CLIENT_API } from '../goal/goals-client-api.js'
+import { INTERACTION_CLIENT_API } from '../interaction/interaction-client-api.js'
+import { MUSIC_CLIENT_API } from '../music/music-client-api.js'
+import { TOOLS_CLIENT_API } from '../tool/tools-client-api.js'
+import { LOGS_CLIENT_API } from '../logging/logging-client-api.js'
+import { MEMORY_CLIENT_API } from '../memory/memory-client-api.js'
+import { MARKDOWN_CLIENT_API } from '../markdown/markdown-client-api.js'
+import { MCP_CLIENT_API } from '../mcp/mcp-client-api.js'
+import { MEDIA_CLIENT_API } from '../media/media-client-api.js'
+import { MODELS_CLIENT_API } from '../provider/providers-client-api-models.js'
+import { OAUTH_CLIENT_API } from '../auth/auth-client-api.js'
+import { PERMISSION_GRANTS_CLIENT_API } from '../permission/permissions-client-api-grants.js'
+import { PERMISSION_CLIENT_API } from '../permission/permissions-client-api.js'
+import { PLUGINS_CLIENT_API } from '../plugin/plugins-client-api.js'
+import { PRACTICE_CLIENT_API } from '../practice/practice-client-api.js'
+import { PROJECT_DIRS_CLIENT_API } from '../project-dir/project-dirs-client-api.js'
+import { PROMPTS_CLIENT_API } from '../prompt/prompts-client-api.js'
+import { RESOURCES_CLIENT_API } from '../resource/resource-client-api.js'
+import { PROVIDERS_CLIENT_API } from '../provider/providers-client-api.js'
+import { SCHEDULER_CLIENT_API } from '../scheduler/scheduler-client-api.js'
+import { SEARCH_CLIENT_API } from '../search/search-client-api.js'
+import { NOTES_CLIENT_API } from '../note/notes-client-api.js'
+import { SCRATCHPAD_CLIENT_API } from '../scratchpad/scratchpad-client-api.js'
+import { SESSION_EVENTS_CLIENT_API } from '../session/sessions-client-api-events.js'
+import { SESSION_COMMAND_CLIENT_API } from '../session/sessions-client-api-commands.js'
+import { SESSIONS_CLIENT_API } from '../session/sessions-client-api.js'
+import { SKILLS_CLIENT_API } from '../skill/skills-client-api.js'
+import { DIALOG_CLIENT_API } from '../dialog/dialog-client-api.js'
+import { SHELL_CLIENT_API } from '../shell/shell-client-api.js'
+import { SETTINGS_CLIENT_API } from '../settings/settings-client-api.js'
+import { SPACES_CLIENT_API } from '../space/spaces-client-api.js'
+import { TERMINAL_CLIENT_API } from '../terminal/terminal-client-api.js'
+import { THEMES_CLIENT_API } from '../theme/themes-client-api.js'
+import { TODO_PLAN_CLIENT_API } from '../todo-plan/todo-plan-client-api.js'
+import { USAGE_CLIENT_API } from '../usage/usage-client-api.js'
+import { VARIABLES_CLIENT_API } from '../variable/variables-client-api.js'
+import { VOICE_CLIENT_API } from '../voice/voice-client-api.js'
 
 /**
  * 内置 feature 的名册。**顺序即装配顺序**，与 K0 之前逐行调用的顺序逐字一致
@@ -114,7 +114,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // P4c 第一个域(scheduler)。旧线是三处镜像:手写 IPC 工厂 + 主进程壳、
   // 渲染侧九条 REST 桩(**零调用点**)、server 九条 REST 路由背后**自己那台**
   // per-owner Scheduler。搬完之后 server 与桌面吃的是同一台
-  // `@onething/backend/runtime/scheduler` —— 一个 store 一台调度器。
+  // `@onething/backend/scheduler` —— 一个 store 一台调度器。
   SCHEDULER_CLIENT_API,
   // P4c 第二个域(variables)。旧线同样是三处镜像;与 scheduler 的差别是
   // server adapter 有一道桌面没有的「会话不存在 → NOT_FOUND」前置检查,搬家取的是
@@ -136,7 +136,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // `getProjectsStore(workspaceId)` 了。
   PROJECT_DIRS_CLIENT_API,
   // P4c 第二批唯一的域(skills)。它是本仓第一个**要宿主能力**的迁移域 ——
-  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/backend/runtime/shell`),
+  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/backend/shell`),
   // 未注入即结构化降级,所以 server / CLI 不再需要那份「不支持」的空实现。
   // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
   // 一个 store 一份技能表,web 与桌面从此读同一份。
@@ -211,7 +211,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   OAUTH_CLIENT_API,
   // P4c 第八批第一个域(gateway)—— 八条:状态 / 起停 / 微信账号增删改与登出。
   // 八条全都要**宿主本体**(主进程拉起来的子进程 + 一张二维码),所以域处理者
-  // 走 `runtime/gateway/lifecycle-port.ts` 的 `configureGatewayHost`:桌面在
+  // 走 `gateway/lifecycle-port.ts` 的 `configureGatewayHost`:桌面在
   // `main-process.ts` 注入八行转调,server / CLI 不注入 —— 拿到的是结构化降级,
   // 而不是旧 server adapter 那句写死的「server runtime 上网关已禁用」。
   // **本域零推送**(全仓没有 `GATEWAY_*_CHANGED`),所以 `@main/ipc/gateway.ts`
@@ -223,7 +223,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // 旧 server 路由的原话。三处 http 分叉(`list` 的搜索根 / `reveal` 要外壳端口 /
   // `watchStart|Stop` 桌面是投影桩而 http 是真监视器)逐条写在域文件头的表里。
   // 一条推送留在原地:`FILE_WATCH_EVENT` 与它在 server 那侧的 SSE 源,
-  // 登记簿搬到 `runtime/files/workspace-watch.ts`,请求面与推送面共用同一张表。
+  // 登记簿搬到 `file/workspace-watch.ts`,请求面与推送面共用同一张表。
   FILES_CLIENT_API,
   // P4c 第九批第一个域(tools)—— 七条:目录 / 执行 / 取消 / 后台任务表与停 /
   // 刷 MCP 工具面 / 回写工具调用。它是继 files 之后第二个**逐方法带 http 分叉**
@@ -243,13 +243,13 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // P4c 第九批第三个域(music)—— 十四条:状态/向导/传输控制/现在播放/电台简报/
   // 歌词/口播 ack/开台/搜索/点歌/节目单/节目单编辑/provider 列表与切换。
   // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
-  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `runtime/music/operations.ts`。
+  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `music/operations.ts`。
   MUSIC_CLIENT_API,
   // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
   // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`
-  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `runtime/evals/host-ports.ts`,
+  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `eval/host-ports.ts`,
   // 宿主只注入 `isPackaged` 这一位事实(未注入 = 非打包 = `process.cwd()`)。
-  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `runtime/evals/events.ts`
+  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `eval/events.ts`
   // 的 `configureEvalsEventBroadcaster` 端口 —— 顺带从单窗定向改成全窗广播,
   // 与工作台那两条一致。四条按 wire 路径读盘的方法在 http 上直接拒绝(见域文件头)。
   EVALS_CLIENT_API,
@@ -275,12 +275,12 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // **两条留宿主**(C):`OPEN_SETTINGS_WINDOW`(BrowserWindow)与
   // `SHOW_OPEN_DIALOG`(原生对话框,渲染侧 21 个调用点)。
   // **一条推送留在原地**(`SETTINGS_CHANGED`),改走
-  // `runtime/settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
+  // `settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
   // 从「跳过发起窗」改成全窗广播(信封里没有「谁在问」这一格,同 evals 判例)。
   // 三件要宿主的事(套代理 / 重注册全局快捷键 / 系统深浅色)走新立的
   // `configureSettingsHost`;网关设置的套用复用第八批的 `configureGatewayHost`,
   // 只在那张端口表上多一格 `applySettings`。
-  // http 分叉:出门脱敏与回来合并两道真护栏逐字保留(`runtime/settings/settings-client-api-projection.ts`),
+  // http 分叉:出门脱敏与回来合并两道真护栏逐字保留(`settings/settings-client-api-projection.ts`),
   // 而 server 那本 per-owner 的第二份设置账随之消失 —— 一个 store 一份设置(#20)。
   // 位置在 evals-workbench 之后、自进化之前:它要设置仓、provider 缓存、MCP/ACP
   // 管理器与网关端口,装配到这一步时都已就位;硬约束仍只有一条 —— 卸载要逆序。
@@ -312,14 +312,14 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // web 的六条 REST + 十三条硬桩)连同 server 的 `/api/plugins*` 六条路由与那条
   // 501 一起消失。
   // **两条推送留在原地**:`PLUGINS_NOTIFICATION`(总线全局事件,IPCBridge 扇全窗)
-  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `runtime/plugins/events.ts` 的
+  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `plugin/events.ts` 的
   // `configurePluginRequestProgressBroadcaster`,按 `context.callerId` **定向回发起窗**
   // —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份别人的进度)。
-  // 两件要宿主本体的事走 `runtime/plugins/host-ports.ts` 的 `configurePluginsHost`:
+  // 两件要宿主本体的事走 `plugin/host-ports.ts` 的 `configurePluginsHost`:
   // 原生文件对话框(`pickFile`)与插件命令的子进程执行器(`execCommand`,execa 是
   // 桌面的依赖,不该被拖进 server 的单文件包)。未注入即结构化降级。
   // http 分叉逐字保留 server 今天的语义:六条读/开关面走
-  // `runtime/plugins/plugins-client-api-catalog.ts` 那个单槽端口(装的就是从前六条 REST 背后的同一批
+  // `plugin/plugins-client-api-catalog.ts` 那个单槽端口(装的就是从前六条 REST 背后的同一批
   // 闭包),`configGet` 从那份清单就地派生只读值,其余写面按「插件管理器在不在场」
   // 回迁移前 `platform/web.ts` 逐字相同的文案。渲染侧另有能力位 `pluginsManage`
   // (web 默认关)让写面根本不发请求。
@@ -329,7 +329,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // P4 终态批 A1-b:search 的**数据面**一条(`query`)。A1-a 把搜索窗那四条动窗口的
   // 迁进了宿主壳路由,同时判定这一条是数据面(处理者一行 electron 都不碰),该来
   // 这里 —— 本批兑现。它按 `context.transport` 分叉:ipc 走桌面那份整机搜索,
-  // http 走 `runtime/search/search-client-api-providers.ts` 那个单槽端口(per-owner 沙箱里的同一件事,
+  // http 走 `search/search-client-api-providers.ts` 那个单槽端口(per-owner 沙箱里的同一件事,
   // 装的就是从前 `POST /api/search/query` 背后的同一个闭包)。`executeAction` 与
   // `SEARCH_ACTION` 不在这里(前者是窗口活,在 searchWindowRouter 上;后者是推送)。
   SEARCH_CLIENT_API,

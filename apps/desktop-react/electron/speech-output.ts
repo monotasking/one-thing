@@ -3,8 +3,8 @@ import { accessSync, constants as fsConstants } from 'node:fs'
 import { unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/runtime/voice/speech-output'
-import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
+import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/voice/speech-output'
+import { getLogger } from '@onething/backend/logging/configure-logging'
 
 /**
  * **主进程出声**(宠物 P3,正本 `docs/design/pet-system-2026-09.md` §10.2「壳的实现」那一行)。
@@ -19,7 +19,7 @@ import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
  *   3. 都没有 → `play` **立刻 resolve**,记一条 warn(每个进程只记一次:每首歌一句的 warn
  *      只会把日志淹掉,不会多告诉谁什么)。
  * `PATH` 照音乐 CLI 那一套补上 Homebrew / /usr/local(Finder 双击起的 app 不带登录 shell 的
- * PATH,`runtime/music/process-runner.ts` 同一个理由)。
+ * PATH,`music/process-runner.ts` 同一个理由)。
  *
  * ── 规矩 ─────────────────────────────────────────────────────────────────
  *  · **同一时刻只放一段**:新的一段先停旧的(旧的那一次 `play` 随之 resolve);
@@ -152,7 +152,7 @@ export class ProcessSpeechOutput implements SpeechOutputPort {
   }
 }
 
-/** 与 `runtime/music/process-runner.ts` 同一份补丁:GUI 起的 app 不带登录 shell 的 PATH。 */
+/** 与 `music/process-runner.ts` 同一份补丁:GUI 起的 app 不带登录 shell 的 PATH。 */
 const EXTRA_PATH = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
 
 export function whichOnPath(command: string, envPath: string | undefined = process.env.PATH): string | null {

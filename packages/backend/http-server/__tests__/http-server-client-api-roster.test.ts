@@ -12,7 +12,7 @@
  * 任何 I/O。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
-import { dumpFeatures, resetFeaturesForTests } from '../../runtime/feature-registry/feature-registry.js'
+import { dumpFeatures, resetFeaturesForTests } from '../../feature-registry/feature-registry.js'
 import { registerAppRpcDomains } from '../http-server-client-api-roster.js'
 import { hasRpcDomain, resetRpcRegistryForTests } from '../http-server-dispatch-table.js'
 
@@ -93,7 +93,7 @@ const EXPECTED_DOMAIN_FEATURES = [
   // `configureGatewayHost` 注入端口 —— server / CLI 未注入即结构化降级)。
   ['rpc:gateway', 'gateway'],
   // P4c 第八批第二个域:files(十四条;全仓第一个**逐方法带 http 夹紧**的域,
-  // `FILE_WATCH_EVENT` 那条推送留在原地,登记簿在 runtime/files/workspace-watch)。
+  // `FILE_WATCH_EVENT` 那条推送留在原地,登记簿在 file/workspace-watch)。
   ['rpc:files', 'files'],
   // P4c 第九批:tools(七条;继 files 之后第二个逐方法带 http 分叉的域,零推送)、
   // interaction(两条;零推送,channel 由宿主盖章)、music(十四条;四条推送留在
@@ -120,7 +120,7 @@ const EXPECTED_DOMAIN_FEATURES = [
   ['rpc:plugins', 'plugins'],
   // P4 终态批 A1-b:search 的数据面一条(`query`)。A1-a 判定它不是壳面(处理者
   // 一行 electron 都不碰),本批兑现 —— 按 `context.transport` 分叉:ipc 走桌面
-  // 那份整机搜索,http 走 `runtime/search/search-client-api-providers.ts` 那个单槽端口。
+  // 那份整机搜索,http 走 `search/search-client-api-providers.ts` 那个单槽端口。
   ['rpc:search', 'search'],
   // P4:笔记库(三条只读面 + 一个前台动作)。紧跟 search —— 同一类东西(读一份
   // 派生出来的名册),而它的硬约束只有「`backend.notes` 已在场」。

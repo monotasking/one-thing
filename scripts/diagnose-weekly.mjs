@@ -4,7 +4,7 @@
  * Weekly Diagnosis Script (Phase 4)
  *
  * Reads ~/.onething/evals/online/records.jsonl via the shared
- * packages/backend/runtime/evals/records.ts module, clusters
+ * packages/backend/eval/records.ts module, clusters
  * low-score turns, and outputs an evals/triage.md draft section.
  *
  * The amend-merging logic lives in records.ts and is shared with
@@ -43,7 +43,7 @@ async function main() {
 		recordHasNegative,
 		generateTriageReport,
 		listIncidents,
-	} = await import("@onething/backend/runtime");
+	} = await import("@onething/backend/eval");
 
 	const allRecords = loadMergedRecords();
 	const records = filterRecordsByWeeks(allRecords, weeks);

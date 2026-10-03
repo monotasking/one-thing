@@ -23,7 +23,7 @@ const calls: Array<{ method: string; args: unknown[] }> = []
  * `ownedBackend` 要给出 `own` / `storeLease` / `runTask` 三样 —— `DaemonServer.start`
  * 与 `dispatch` 各自要一样,少一样就起不来。
  */
-vi.mock('@onething/backend/runtime/headless/backend', () => ({
+vi.mock('@onething/backend/headless/backend', () => ({
   HeadlessBackend: class {
     ownedBackend = {
       own: () => {},
@@ -71,7 +71,7 @@ describe('daemon 方法表:resource.list / describe / read / do', () => {
   afterEach(async () => {
     await stop?.()
     stop = undefined
-    const logging = await import('@onething/backend/runtime/logging/configure-logging')
+    const logging = await import('@onething/backend/logging/configure-logging')
     await logging.shutdownAppLogging()
     fs.rmSync(storePath, { recursive: true, force: true })
   })

@@ -148,7 +148,7 @@ export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
 /**
  * P4c 第十一批:`RuntimeSettingsAdapter` / `RuntimeNetworkAdapter` 整只没了 ——
  * 设置的读/存、系统深浅色与代理自检四条随 `settingsRouter` 走通用 RPC,出门脱敏
- * 与回来合并两道护栏搬进 `backend/runtime/settings/settings-client-api-projection.ts`,由域处理者在
+ * 与回来合并两道护栏搬进 `backend/settings/settings-client-api-projection.ts`,由域处理者在
  * `transport === 'http'` 那一支上调用。**本域在 server 上零推送**,所以 facade
  * 上一格不留(`SETTINGS_CHANGED` 是桌面独有的窗间广播)。
  *
@@ -169,8 +169,8 @@ export interface RuntimeSettingsAdapter {
 
 /**
  * 结构债 P4 终态批 A1-b:`query` 这一格没了 —— **数据面**随 `searchRouter` 走通用
- * RPC(`backend/runtime/search/search-client-api.ts`),server 那侧的实现改由
- * `backend/runtime/search/search-client-api-providers.ts` 的单槽端口交给域,`POST /api/search/query`
+ * RPC(`backend/search/search-client-api.ts`),server 那侧的实现改由
+ * `backend/search/search-client-api-providers.ts` 的单槽端口交给域,`POST /api/search/query`
  * 随之删除。留下的 `executeAction` 是**窗口活**在 server 上的对应物,仍由
  * `POST /api/search/actions` 调用(web 壳的 `searchWindowRouter.executeAction`
  * 打的就是它)。
@@ -252,7 +252,7 @@ export interface RuntimeScratchpadAdapter<TChangedPayload = unknown> {
 /**
  * P4 终态批 C2:`RuntimePluginsAdapter` 整只没了 —— 六条读/开关面随
  * `pluginsRouter` 走通用 RPC,server 那本只读镜像目录改由
- * `packages/backend/runtime/plugins/plugins-client-api-catalog.ts` 的单槽端口交给域
+ * `packages/backend/plugin/plugins-client-api-catalog.ts` 的单槽端口交给域
  * (它只有一个实现者、一个读者,放在 core 的 facade 上是多余的一格)。
  */
 

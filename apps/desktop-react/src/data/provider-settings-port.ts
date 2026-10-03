@@ -70,7 +70,7 @@ import type {
  * ② **API 密钥** → `spaces.setCredential`,**不是** saveSettings。
  *    后端 `prepareSave` 走的 `splitEffectiveAISettings` 会把 `apiKey` /
  *    `oauthToken` / `authType` 三个键剥掉(`SPACE_PROVIDER_STRIPPED_FIELDS`,
- *    `packages/backend/runtime/spaces/provider-settings.ts:74-81`),而全局那一半
+ *    `packages/backend/space/provider-settings.ts:74-81`),而全局那一半
  *    (`AISettings`)只剩 `temperature` 与 `modelCatalog`。**把密钥塞进
  *    saveSettings 会被静默丢掉** —— 那是「看起来存上了、其实没有」,比报错更坏。
  *
@@ -81,7 +81,7 @@ import type {
  *
  *  - 写偏了:用户站在工作区 B 里填的 key 与勾的模型,落进了 `default` 的文件;
  *  - 读不着:引擎起流时读的是**会话归属那个空间**的设置
- *    (`backend/runtime/engine/stream/provider-helpers.ts:110` 的
+ *    (`backend/engine/stream/provider-helpers.ts:110` 的
  *     `getSessionSettings(sessionId).ai` = `getSpaceSettings(会话的 workspaceId)`,
  *     凭证同理走 `resolveSessionProviderCredential(sessionId, providerId)`)。
  *    于是 B 里配得再全,B 的会话照样起不了流 —— 而设置页显示一切正常。
@@ -169,7 +169,7 @@ export interface ProviderSettingsPort {
    *    所以 `devicePoll` 这条动词不在这张表上(它留给别的宿主)。
    *
    * ⑥ **订阅用量**→ `providers.usage`。今天只有 codex 真有数,其余家后端直接回
-   *    `unsupported: true`(`backend/runtime/providers/provider-usage.ts:69-73`)——
+   *    `unsupported: true`(`backend/provider/provider-usage.ts:69-73`)——
    *    所以「这家没有用量卡」是**后端说的**,不是这块面猜的。
    *
    * 有一件事这里**没有**:测连通。全仓没有这口(testConnection / validateApiKey

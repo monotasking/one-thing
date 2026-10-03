@@ -1,7 +1,7 @@
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
 import { materializeNode } from '@shared/session/projection/chat-messages'
-import type { SessionCommandEvents } from '@onething/backend/runtime/sessions'
+import type { SessionCommandEvents } from '@onething/backend/session'
 
 /** Explicit echo-host adapter. Its transcript is independent of the production ledger. */
 export function createEchoMessageEvents(getSession: (id: string) => ChatSession | undefined): SessionCommandEvents {

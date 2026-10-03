@@ -40,8 +40,8 @@
  *      那张表里根本看不见它们,于是那半条断言在量的是 vitest 自己的超时钟与同
  *      worker 的邻居,恒绿,还得写成"不高于"才不抖。删掉它不是放弃判据:定时器
  *      泄漏改由三个起定时器的模块**各自的单测**用 `vi.getTimerCount()` 钉
- *      (`runtime/sessions/__tests__/shutdown-flush-and-blob-gc` / `list-projection-backfill` /
- *      `runtime/scheduler/__tests__/user-task-service`,都带反证)—— fake timers 看得见
+ *      (`session/__tests__/shutdown-flush-and-blob-gc` / `list-projection-backfill` /
+ *      `scheduler/__tests__/user-task-service`,都带反证)—— fake timers 看得见
  *      unref 定时器,是唯一说得出话的口径。
  *   ⑩ **宿主表里的本机信任在装配那一刻就生效**(B3,方案
  *      `backend-transport-forks-2026-09.md`)。B2 之前这句话只在内嵌 HTTP 面挂载
@@ -80,12 +80,12 @@
  *      反证(实跑过):把 `backend.ts` 那两句 `own(..., 'mcp'/'acp')` 挪回
  *      `if (options.mcpAcp)` 里 → ⑬ 与这一条一起红。
  *      **「shutdown 必须排在在途 start 落地之后」那半条判在别处**
- *      (`runtime/mcp/__tests__/subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
+ *      (`mcp/__tests__/subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
  *      `await inFlight` → 红):在整只 backend 上判不了它 —— 要让"关到 mcp 那一格
  *      时 start 仍在途"确定地成立,就得由 dispose 链自己去放闸,而正确实现正好
  *      死等那个闸,判据会把自己判死锁。
  *
- * **store 隔离**:`runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就
+ * **store 隔离**:`session/session-store.ts` / `settings/settings-store.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
  * 设好 —— 这就是这份文件里全部 import 都是**动态**的原因(顶层只留 vitest 的),
  * 照 `http-server/__tests__/http-server-runtime-over-backend.test.ts` 的 mkdtemp + afterAll 还原先例。
@@ -193,7 +193,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     expect(first.eventBus).toBeTruthy()
     expect(first.streamChannel).toBeTruthy()
 
-    const { getEventBus } = await import('@onething/backend/runtime/events')
+    const { getEventBus } = await import('@onething/backend/event')
     expect(getEventBus()).toBe(first.eventBus)
     firstEventBus = first.eventBus
   })
@@ -210,7 +210,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   it('③ dispose 之后 getEventBus() 抛,装配产物那五格也清了', { timeout: 180_000 }, async () => {
     await first.dispose()
     const [{ getEventBus, isEventSystemInitialized }, { getStreamEngineSafe }] = await Promise.all([
-      import('@onething/backend/runtime/events'),
+      import('@onething/backend/event'),
       import('../current.js'),
     ])
     expect(() => getEventBus()).toThrow()
@@ -261,7 +261,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 立刻红 —— 闩留在 true,第二份装配一条都不注册。
    */
   it('⑧ (b) 类闩重跑:内置触发器在第二份装配里重新注册', { timeout: 180_000 }, async () => {
-    const { triggerManager } = await import('@onething/backend/runtime/agent-loop')
+    const { triggerManager } = await import('@onething/backend/agent-loop')
 
     const fifth = await assemble()
     const afterAssemble = triggerManager.getTriggers().length
@@ -377,7 +377,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 不必为这条断言另造一个探针 —— 与 ⑩ 取 `isHostLocallyTrusted()` 同一个理由。
    */
   it('⑫ 宿主端口随 dispose 还原:voice:{} → dispose → voice:null 仍是没有', { timeout: 180_000 }, async () => {
-    const { hasVoiceHost } = await import('@onething/backend/runtime/voice/host-ports')
+    const { hasVoiceHost } = await import('@onething/backend/voice/host-ports')
 
     expect(hasVoiceHost()).toBe(false)
 
@@ -413,7 +413,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 直接钉在它的两个方法上。
    */
   it('⑭ 在途 start 上来一发 dispose:MCPManager.shutdown 仍被调到', { timeout: 180_000 }, async () => {
-    const { MCPManager } = await import('@onething/backend/runtime/mcp/index-with-bridge')
+    const { MCPManager } = await import('@onething/backend/mcp/index-with-bridge')
     const order: string[] = []
     let openGate = (): void => {}
     const gate = new Promise<void>(resolve => {
@@ -452,8 +452,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   it('accepted transport work drains before the journal and lease are released', { timeout: 180_000 }, async () => {
     const backend = await assemble(undefined, null, null, 'daemon')
     const lease = backend.storeLease
-    const { writeSessionEvent } = await import('@onething/backend/runtime/sessions')
-    const { getSessionEventsLogPath } = await import('@onething/backend/runtime/sessions')
+    const { writeSessionEvent } = await import('@onething/backend/session')
+    const { getSessionEventsLogPath } = await import('@onething/backend/session')
     const sessionId = 'shutdown-accepted-request'
     const logPath = getSessionEventsLogPath(sessionId)
     let finish!: () => void
@@ -479,8 +479,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
-    const runtime = await import('@onething/backend/runtime/external-agents')
-    const registry = await import('@onething/backend/runtime/external-agents/connector-registry')
+    const runtime = await import('@onething/backend/external-agent')
+    const registry = await import('@onething/backend/external-agent/connector-registry')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     try {
@@ -513,7 +513,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('drains a connector created by a failing early hook before allowing the next Backend', { timeout: 180_000 }, async () => {
-    const registry = await import('@onething/backend/runtime/external-agents/connector-registry')
+    const registry = await import('@onething/backend/external-agent/connector-registry')
     const { getCurrentBackendSafe } = await import('../current.js')
     const boom = new Error('afterSettings failed after creating a connector')
     let release!: () => void
@@ -559,10 +559,10 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('cleans an unused early connector binding when afterSettings fails before any getter', { timeout: 180_000 }, async () => {
-    const runtime = await import('@onething/backend/runtime/external-agents')
+    const runtime = await import('@onething/backend/external-agent')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
-    const registry = await import('@onething/backend/runtime/external-agents/connector-registry')
+    const registry = await import('@onething/backend/external-agent/connector-registry')
     const boom = new Error('afterSettings failed without creating a connector')
     try {
       await expect(assemble({ afterSettings: () => { throw boom } }))

@@ -29,7 +29,7 @@
  * ## 页面正文经 `untrusted-text` 包一层(方案 §9-3)
  *
  * `page` 读的是**登着账号的页面**,注入面比匿名 fetch 更大。包法与 `web_open`
- * 同一只函数(`@onething/backend/runtime/toolkit/untrusted-text`)—— 模型要认的标记只许有
+ * 同一只函数(`@onething/backend/toolkit/untrusted-text`)—— 模型要认的标记只许有
  * 一种。
  *
  * ## 零 electron import
@@ -43,12 +43,12 @@ import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/backend/runtime/resource/resource-api'
+} from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import { planFromSpec } from '@onething/backend/runtime/resource/resource-api'
-import type { PlanContext, Result, RunContext } from '@onething/backend/runtime/toolkit/tool-protocol'
-import { Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
-import { wrapUntrustedText } from '@onething/backend/runtime/toolkit/untrusted-text'
+import { planFromSpec } from '@onething/backend/resource/resource-api'
+import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit/tool-protocol'
+import { Intent } from '@onething/backend/toolkit/tool-protocol'
+import { wrapUntrustedText } from '@onething/backend/toolkit/untrusted-text'
 import type { BrowserTabState, BrowserZoomDirection } from './tab-state.js'
 import { BROWSER_RESOURCE_SCHEME, browserResourceSpec } from './resource-spec.js'
 

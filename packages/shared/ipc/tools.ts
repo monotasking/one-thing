@@ -203,7 +203,7 @@ export interface ToolSettings {
    *
    * 第三条是权限面语义,不是便利开关:这些目录进入**可写沙箱根**
    * (`getCoreSandboxRoots`),于是 write/edit 的 effect 不再标 `external`,
-   * `auto-accept-edits` 模式下就不弹卡(`runtime/permissions/permission-policy.ts:146`)。
+   * `auto-accept-edits` 模式下就不弹卡(`permission/permission-policy.ts:146`)。
    * 所以只有用户显式添加的目录能进来 —— 默认空列表,行为与没有这个功能时逐字节一致。
    */
   connectedDirectories?: string[]
@@ -246,7 +246,7 @@ export interface SendMessageStreamResponse {
  * `EXECUTE_TOOL` / `CANCEL_TOOL` / `BACKGROUND_JOBS_LIST` / `BACKGROUND_JOBS_STOP` /
  * `REFRESH_ASYNC_TOOLS` / `UPDATE_TOOL_CALL`),请求/响应形状一字未改;变的只是通道。
  * 今天只剩六条:`refreshAsyncTools` 全仓零调用点(bridge 从未暴露它),P4-F #34 退役 ——
- * 刷 MCP 工具面的那件事本身还在,只是没有传输面(`backend/runtime/toolkit` 的
+ * 刷 MCP 工具面的那件事本身还在,只是没有传输面(`backend/toolkit` 的
  * `refreshToolkitMcpTools`,由 `createOnethingBackend` 挂在 MCP 能力变更回调上)。
  *
  * 位置参数在这里被收成**单 id 包对象**(本仓 router 惯例):`executeTool` 从前是
@@ -274,7 +274,7 @@ export interface BackgroundJobsListRequest {
 export interface BackgroundJobsListResponse {
   success: boolean
   /**
-   * 后台任务的形状住在产品层(`runtime/tools/background-jobs.ts` 的
+   * 后台任务的形状住在产品层(`tool/background-jobs.ts` 的
    * `BackgroundJob`),契约层不抄第二份 —— 两个消费者都是就地 `as` 成自己的视图
    * 类型,与迁移前 `jobs?: Array<Record<string, any>>` 那一格同义。
    */

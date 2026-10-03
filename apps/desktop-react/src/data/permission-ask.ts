@@ -10,7 +10,7 @@ import type { JsonObject } from '@shared/json'
  * `@shared/ipc/tools.ts` 的 `ToolCall` 上确实有 `permissionId` / `canRespond` /
  * `permissionQueued` 三格 —— 但屏幕上那棵树不是从那个形状来的:它是
  * `materializeChatMessagesCached` 交出来的 **core 折叠产物**,而 core 的投影里
- * 压根没有这三格(`grep permissionId` 只落在权限目录 `runtime/permissions/` 自己身上)。
+ * 压根没有这三格(`grep permissionId` 只落在权限目录 `permission/` 自己身上)。
  * 硬把字段接到那些对象上有两个后果,都是这台壳明令禁止的:①物化是**按 `(节点,
  * node.rev)` 缓存**的,而一次审批不改账本、`rev` 不动 —— 补上去的字段永远不会
  * 上屏;②那棵树的产地只有一处(「React 侧零拼装」,`chat-source.ts` 文件头),
@@ -112,7 +112,7 @@ export const NO_PERMISSION_ASKS: Readonly<Record<string, PermissionAsk>> = Objec
 /**
  * 这一类效果的答案**记不记得住**。
  *
- * 读的是 core 那张策略表(`@onething/backend/runtime/toolkit/tool-protocol` 的 `effectPolicyFor`),不是
+ * 读的是 core 那张策略表(`@onething/backend/toolkit/tool-protocol` 的 `effectPolicyFor`),不是
  * 本地一份名单 —— `permission-grants.ts` 的 `isGrantableType` 读的就是同一列,
  * 而那只文件自己的文件头写着这条法的由来:「一份重复的名单迟早只被改一半」。
  * 壳不能直接 import 它(那只文件吃 `node:crypto` / `node:path`,进不了浏览器包),

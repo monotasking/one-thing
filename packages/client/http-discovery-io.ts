@@ -26,7 +26,7 @@ import {
 /**
  * store 根目录:显式给的 → `ONETHING_STORE_PATH` → `~/.onething`。
  *
- * 与 `@onething/backend/runtime/storage` 的 `getOnethingStorePath()` 逐条同形(见文件头:
+ * 与 `@onething/backend/storage` 的 `getOnethingStorePath()` 逐条同形(见文件头:
  * 那边不能被本文件 import,分叉由测试挡)。
  */
 export function resolveOnethingStoreRoot(storePath?: string): string {

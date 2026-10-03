@@ -64,7 +64,7 @@ export interface VariablesDeleteResponse {
  *
  * 三个方法全是**纯数据面**:读一个会话的变量快照、写一个、删一个。判定与错误
  * 码(`VariableError` → `{ success:false, error, code }`)住在
- * `@onething/backend/runtime/variables` 的投影里,传输面只把注册表接上去。
+ * `@onething/backend/variable` 的投影里,传输面只把注册表接上去。
  *
  * 与被删掉的那条线的差别:壳上那三个方法是**位置参数**的
  * (`setVariable(sessionId, name, value, description, scope)`),信封化之后位置

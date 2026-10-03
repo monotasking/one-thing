@@ -44,7 +44,7 @@ it.each(['create', 'branch', 'delete'])('opens a real Backend after an abrupt %s
     // The crashed host took no mutex (2026-08-24 ruling: only the CLI daemon
     // does), so reopening is not gated on operator recovery — the point of this
     // test is what the reopened Backend then shows.
-    const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+    const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
     expect(inspectStoreLock({ storePath: directory }).status).toBe('absent')
     const { createAppServerRuntime } = await import('./http-server-test-helpers.js')
     const opened = await createAppServerRuntime({ storePath: directory, workspaceRoot: path.join(directory, 'workspace') })

@@ -13,7 +13,7 @@
  * 反面)。单实现纪律因此把它放在 core:renderer 与 backend 各 import 一次,
  * 谁都不许再抄第二份。
  *
- * 纯函数、零依赖、浏览器安全 —— 与 `packages/backend/runtime/logging` 同款约束。
+ * 纯函数、零依赖、浏览器安全 —— 与 `packages/backend/logging` 同款约束。
  */
 
 /** 锚点合成只关心 part 的这两格(`type` 认锚点,`turnIndex` 定位置)。 */

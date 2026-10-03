@@ -88,7 +88,7 @@ describe('pet 这一 scheme 在真装配里(宠物 P2)', () => {
     try {
       expect(backend.resources.registry.has('pet')).toBe(true)
 
-      const { serializeSpec } = await import('../runtime/resource/resource-wire-views.js')
+      const { serializeSpec } = await import('../resource/resource-wire-views.js')
       const described = serializeSpec(backend.resources.registry.get('pet')!)
       expect(described.events.poked.moment).toEqual({ weight: 'low', gist: '用户戳了宠物' })
       expect(described.events.utterance.moment).toBeUndefined()

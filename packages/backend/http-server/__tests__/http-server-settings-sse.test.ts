@@ -19,7 +19,7 @@
 import { once } from 'node:events'
 import type { Server } from 'node:http'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createDefaultSettings } from '../../runtime/settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from '../http-server-routes.js'
 import { SERVER_REDACTED_SECRET, type OnethingServerRuntime } from '../http-server-runtime.js'
@@ -28,7 +28,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEvent,
-} from '@onething/backend/runtime/settings/events'
+} from '@onething/backend/settings/events'
 import { createTestServerRuntime } from './http-server-test-helpers.js'
 
 const servers: Server[] = []

@@ -66,7 +66,7 @@ interface ResolvedProviderModel {
 
 /**
  * Display-side mirror of the engine's provider resolution
- * (packages/backend/runtime/providers/provider-config.ts,
+ * (packages/backend/provider/provider-config.ts,
  * getEffectiveProviderConfig). The two MUST stay rule-for-rule identical —
  * this helper decides what the model picker SHOWS, the engine decides what
  * requests SEND, and any divergence means the UI displays one provider

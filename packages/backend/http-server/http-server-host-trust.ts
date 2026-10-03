@@ -13,7 +13,7 @@
  *
  * ## 它解决的是什么
  *
- * `runtime/files/files-client-api.ts` 按 `context.transport` 分两种语义:桌面 IPC 不夹路径,
+ * `file/files-client-api.ts` 按 `context.transport` 分两种语义:桌面 IPC 不夹路径,
  * 联网 HTTP 每条路径都夹进 `context.sandboxRoot`。这条判据在「联网宿主 = 别人的
  * 机器」的前提下是对的,但它把**本机自己那只 HTTP 面**也一起夹了:桌面内嵌的
  * HTTP/SSE 面(`embed.ts`)与本机回环上的 `server:start` 服务的都是同一个用户、
@@ -48,7 +48,7 @@
  * 未声明 = 这台进程没有本机可信的 HTTP 面(单元测试、CLI daemon、非回环 server),
  * files 域走的就是迁移前那条夹紧的路。
  */
-import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/configure-logging'
 
 const log = getLogger('server.host-trust')
 
@@ -56,7 +56,7 @@ const log = getLogger('server.host-trust')
  * 谁声明的。
  *
  * B2 之前只进日志、不参与判定;B2 起有**一个**判据读它:mcp 域的 stdio probe
- * (`canSpawnLocalProcesses`)只认 `desktop-embedded`。见 `runtime/mcp/mcp-client-api.ts`。
+ * (`canSpawnLocalProcesses`)只认 `desktop-embedded`。见 `mcp/mcp-client-api.ts`。
  */
 export type HostLocalTrustOrigin = 'desktop-embedded' | 'loopback-server'
 

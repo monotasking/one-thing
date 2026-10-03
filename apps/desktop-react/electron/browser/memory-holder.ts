@@ -9,7 +9,7 @@
  *  2. 没有在播放声音;
  *  3. 已创建视图。
  */
-import type { MemoryHolder } from '@onething/backend/runtime/memory/memory-registry'
+import type { MemoryHolder } from '@onething/backend/memory/memory-registry'
 import type { MemoryPressure } from '@shared/memory/types'
 
 export const BROWSER_HIBERNATE_AFTER_MS: Readonly<Record<MemoryPressure, number>> = {

@@ -3,16 +3,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { OnethingBackend } from '../backend.js'
-import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition } from '@onething/backend/runtime/plugins/types'
-import type { PluginState } from '@onething/backend/runtime/plugins/api'
+import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition } from '@onething/backend/plugin/types'
+import type { PluginState } from '@onething/backend/plugin/api'
 
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), manager: null as { shutdown(): Promise<void> } | null }))
-vi.mock('../runtime/engine/engine-chat-facade.js', async original => ({
-  ...await original<typeof import('../runtime/engine/engine-chat-facade.js')>(),
+vi.mock('../engine/engine-chat-facade.js', async original => ({
+  ...await original<typeof import('../engine/engine-chat-facade.js')>(),
   generateChatResponse: mocks.generate,
 }))
-vi.mock('@onething/backend/runtime/plugins/plugin-manager', async original => ({
-  ...await original<typeof import('@onething/backend/runtime/plugins/plugin-manager')>(),
+vi.mock('@onething/backend/plugin/plugin-manager', async original => ({
+  ...await original<typeof import('@onething/backend/plugin/plugin-manager')>(),
   getPluginManager: () => mocks.manager,
 }))
 
@@ -53,7 +53,7 @@ async function assemble(name: string) {
     },
   })
   backend = result
-  const settings = await import('@onething/backend/runtime/settings')
+  const settings = await import('@onething/backend/settings')
   const current = settings.getSettings()
   settings.updateSettingsInMemory({
     ...current,
@@ -64,8 +64,8 @@ async function assemble(name: string) {
 }
 
 async function createManager(instance: OnethingBackend, options: { entry?: (api: PluginAPI) => void | Promise<void>; waitForInitialize?: boolean } = {}) {
-  const { CorePluginManager } = await import('@onething/backend/runtime/plugins/plugin-contract')
-  const apiModule = await import('@onething/backend/runtime/plugins/api')
+  const { CorePluginManager } = await import('@onething/backend/plugin/plugin-contract')
+  const apiModule = await import('@onething/backend/plugin/api')
   const instances: PluginAPI[] = []
   const definition: PluginDefinition = {
     id: 'model-probe', manifest: { name: 'model-probe', version: '1.0.0' },
@@ -146,7 +146,7 @@ it('Backend shutdown retains its lease and bills the original store until the re
   const instance = await assemble('a')
   const { instances } = await createManager(instance)
   const old = instances[0]
-  const { getUsageLedger, captureUsageRecorder } = await import('@onething/backend/runtime/usage/usage-recorder')
+  const { getUsageLedger, captureUsageRecorder } = await import('@onething/backend/usage/usage-recorder')
   const ledger = getUsageLedger()
   const oldRecorder = captureUsageRecorder()
   const blocked = blockProvider()
@@ -158,7 +158,7 @@ it('Backend shutdown retains its lease and bills the original store until the re
   const shuttingDown = instance.dispose().then(() => { disposed = true })
   await rejected
   expect(disposed).toBe(false)
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).not.toBe('absent')
   await expect(old.llm.complete(request)).rejects.toThrow()
   const { createOnethingBackend } = await import('../backend.js')

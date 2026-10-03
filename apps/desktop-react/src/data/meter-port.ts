@@ -11,7 +11,7 @@ import { quotaPushOfFrame } from './provider-settings-port'
  * 两口,恰好是这四行读数的**两个真产地**:
  *  - `usageRouter` 的 `usage.getSession` —— 计费账本(tokens 六格 + 三种成本);
  *    C1 核账结论:这一条**早就有 router**(`@shared/ipc/usage.ts`,后端
- *    `packages/backend/runtime/usage/usage-client-api.ts` 已注册),Vue 那侧的
+ *    `packages/backend/usage/usage-client-api.ts` 已注册),Vue 那侧的
  *    `platformApi.getSessionUsage` 本来就是它的一行别名 —— 所以本批**不加新域**,
  *    方案 §9 那条「没有 router 就加」的账在这里结清:它有。
  *  - `sessionsRouter` 的 `sessions.getTokenUsage` —— 会话上的 token 读数

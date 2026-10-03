@@ -192,7 +192,7 @@ export interface PoolRow {
  * ── `canDelete` 已退役(09-02 批 11)────────────────────────────────────
  * 从前这里有一格 `canDelete: entries.length > 1`,理由写的是「后端本来就拒空列表」。
  * 那句话只对了一半:后端拒的是**用一次排序请求顺手清空一个 provider**
- * (`runtime/spaces/ipc-operations.ts:378`),而不是「这一家不许回到未配置」——
+ * (`space/ipc-operations.ts:378`),而不是「这一家不许回到未配置」——
  * 它自己那句错误话就指着正路:「要清空整段请用『清除』」。删最后一条改走
  * `spaces.clearCredential` 之后,**每一条都删得动**,这一格恒等于「有没有行」,
  * 一个恒真的字段只会让人以为它在判什么。所以删掉,不留恒真尸体。
@@ -418,7 +418,7 @@ export function filterRailRows(
  * 六格能力的判据。全部来自目录记录本身,一格都不猜。
  *
  * `fileIn` 那一格(09-10 加)的判据抄的是引擎那条,**同一张表**:
- * `runtime/providers/model-capability.ts` 的 `FILE_INPUT_MODALITIES`
+ * `provider/model-capability.ts` 的 `FILE_INPUT_MODALITIES`
  * = `['pdf', 'file']`(models.dev 说 `pdf`,少数 OpenRouter 条目说 `file`)。
  * 两处写的是同一件事 —— 那侧改了,这里跟着改一处。
  */
@@ -459,7 +459,7 @@ export function maxOutputOf(model: OpenRouterModel): number | null {
  * ── 这里曾经乘过 1e6,真机上把 gpt-5.6 画成了 $5000000 ──────────────────────
  * 病根是把 `OpenRouterModel` 这个**名字**当成了产地。它只是个遗留信封:全仓
  * 只有一个序列化口会产出目录行 ——
- * `packages/backend/runtime/providers/model-registry.ts:719`
+ * `packages/backend/provider/model-registry.ts:719`
  * (`onethingCapabilityEntryToOpenRouterModel`,:737-739 把数 `String()` 一下),
  * 而它的入参 `OnethingModelCapabilityEntry.pricing` 在 :881-886 白纸黑字写着是
  * **USD per 1M token**。没有任何代码去拉 `openrouter.ai/api/v1/models` ——
@@ -468,7 +468,7 @@ export function maxOutputOf(model: OpenRouterModel): number | null {
  * 自定义模型)一律硬写 `"0"`,由下面 `<= 0` 那一条挡掉。
  *
  * 所以判据**不是**按源分辨、更不是拿阈值猜:这一层只有一个产地,单位是它的合同。
- * 旁证:`backend/runtime/providers/provider-pricing.ts:36-40` 算完账才 `/ 1_000_000`。
+ * 旁证:`backend/provider/provider-pricing.ts:36-40` 算完账才 `/ 1_000_000`。
  */
 export function priceOf(model: OpenRouterModel): { input: number; output: number } | null {
   const input = Number(model.pricing?.prompt)

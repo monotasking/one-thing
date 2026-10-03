@@ -29,7 +29,7 @@
 
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { getOnethingRunDir } from '@onething/backend/runtime/storage'
+import { getOnethingRunDir } from '@onething/backend/storage'
 import type { ChromiumApp } from './user-agent.js'
 
 export const CDP_FLAG_FILENAME = 'cdp.json'

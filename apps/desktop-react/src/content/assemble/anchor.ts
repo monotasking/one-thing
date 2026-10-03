@@ -11,7 +11,7 @@ import type { BlobRef, ProjectedToolCall } from '../model/segments'
  * 从上到下的节点序列;后面四步只在这条序列上做事。
  *
  * ── 算法不在这里,在 core ────────────────────────────────────────────────
- * 「工具锚点插在哪」由 `synthesizeCoreToolAnchors`(`@onething/backend/runtime/sessions/
+ * 「工具锚点插在哪」由 `synthesizeCoreToolAnchors`(`@onething/backend/session/
  * render-anchors`)算 —— renderer(Vue)的加载路径与主进程的 settle 推送已经在用
  * 它,本壳是**第三个消费者**。三处必须逐字同算,否则「流式看到的分界」与「刷新后
  * 看到的分界」会分叉(§15.16 那一课的反面),所以这里一行算法都不写:只负责把

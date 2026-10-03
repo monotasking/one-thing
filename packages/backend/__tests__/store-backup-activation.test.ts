@@ -15,8 +15,8 @@ it('serves restored media after offline original-path activation', { timeout: 60
   try {
     process.env.ONETHING_STORE_PATH = original
     const { createOnethingBackend } = await import('../backend.js')
-    const { createStoreBackup, restoreStoreBackup, STORE_RESTORE_PENDING } = await import('@onething/backend/runtime/storage')
-    const { createServerMediaDelivery } = await import('../runtime/media/media-client-api-delivery.js')
+    const { createStoreBackup, restoreStoreBackup, STORE_RESTORE_PENDING } = await import('@onething/backend/storage')
+    const { createServerMediaDelivery } = await import('../media/media-client-api-delivery.js')
     const assemble = (storePath: string, afterSettings = () => {}) => createOnethingBackend({
       storePath, toolRegistry: 'headless', hooks: { afterSettings },
       host: {

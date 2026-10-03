@@ -28,8 +28,8 @@
 
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { readJsonFile, writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
-import { getOnethingStorePath } from '@onething/backend/runtime/storage'
+import { readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
+import { getOnethingStorePath } from '@onething/backend/storage'
 import type { BrowserTabPatch, BrowserTabState, PersistedTabTable } from './tab-state.js'
 import { EMPTY_TAB_TABLE, parseTabTable, persistTab } from './tab-state.js'
 import type { BrowserViewFactory } from './tab.js'

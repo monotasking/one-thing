@@ -123,7 +123,7 @@ function notesWrite<I>(
         detail: error.message,
       })
     },
-    // 后端订着 `settings:changed` 重问驱动(`runtime/notes/notes-subsystem.ts`),所以写完
+    // 后端订着 `settings:changed` 重问驱动(`note/notes-subsystem.ts`),所以写完
     // 之后名册可能真的变了(关掉一个系统 = 它的库整批退场)。对一次账。
     settle: () => notesListQuery.invalidate(),
   })

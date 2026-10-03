@@ -4,8 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const calls = vi.hoisted(() => ({ tts: vi.fn(), asr: vi.fn() }))
-vi.mock('@onething/backend/runtime/voice/provider-calls', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/runtime/voice/provider-calls')>(),
+vi.mock('@onething/backend/voice/provider-calls', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/voice/provider-calls')>(),
   streamSynthesizeSpeech: calls.tts,
   transcribeUtterance: calls.asr,
 }))
@@ -49,12 +49,12 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   const newCommands = vi.fn()
   const a = path.join(root, 'a')
   backend = await assemble(a, oldCommands)
-  const { createSession } = await import('../runtime/sessions/session-store.js')
-  const { getSettings, saveSettings } = await import('@onething/backend/runtime/settings')
+  const { createSession } = await import('../session/session-store.js')
+  const { getSettings, saveSettings } = await import('@onething/backend/settings')
   createSession('voice-session', 'Voice')
   const settings = getSettings()
   saveSettings({ ...settings, voice: { ...settings.voice!, enabled: true, tts: { ...settings.voice!.tts, autoSpeak: true, provider: 'openrouter-tts' } } })
-  const { getVoiceService } = await import('@onething/backend/runtime/voice/service')
+  const { getVoiceService } = await import('@onething/backend/voice/service')
   const first = getVoiceService()
   const tts = barrier()
   const asr = barrier()
@@ -82,7 +82,7 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   await aborted.promise
   expect(ttsSignal.aborted).toBe(true)
   expect(asrSignal.aborted).toBe(true)
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   expect(inspectStoreLock({ storePath: a }).status).toBe('held')
   await expect(first.synthesize({ text: 'new work' })).resolves.toMatchObject({ success: false })
   tts.release()

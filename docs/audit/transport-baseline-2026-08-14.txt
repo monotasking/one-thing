@@ -53,7 +53,7 @@
 #   app:get-data-path / window:set-button-visibility)——前三条进新立的 shellRouter,第四条动的是发起窗本身、
 #   进 A1-a 就有的 windowRouter;工厂与它的测试整只删,checker 换成反向棘轮(那四条字面量不许回宿主树)。
 #   SEARCH_QUERY:A1-a 判定的那条数据面兑现 —— 进 backend 的 `search` RPC 域,按 context.transport 分叉
-#   (ipc 走桌面 executeSearch;http 走 runtime/search/search-client-api-providers.ts 单槽端口,装的是从前 POST /api/search/query
+#   (ipc 走桌面 executeSearch;http 走 search/search-client-api-providers.ts 单槽端口,装的是从前 POST /api/search/query
 #   背后的同一个闭包,facade 上 search.query 与那条 REST 一起删,executeAction 留 —— 它是窗口活的 server 对应物)。
 #   收紧:channels 62→42、bridge 718→674、http 730→726、web 785→758、channels.ts 256→234,四壳 2489→2392。
 # 2026-08-29 React 壳 D0(§5.6 甲案):**两项显式上调,不是新通道**。

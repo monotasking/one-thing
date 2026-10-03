@@ -83,7 +83,7 @@ function sessionIdOf(ref: string): string {
   return ref.slice(ref.indexOf(':') + 1)
 }
 
-vi.mock('@onething/backend/runtime/headless/backend', () => ({
+vi.mock('@onething/backend/headless/backend', () => ({
   HeadlessBackend: class {
     ownedBackend = {
       own: () => {},
@@ -155,7 +155,7 @@ describe('onething mcp —— 资源投影成一台 MCP server', () => {
     closeMcp = undefined
     await stopDaemon?.()
     stopDaemon = undefined
-    const logging = await import('@onething/backend/runtime/logging/configure-logging')
+    const logging = await import('@onething/backend/logging/configure-logging')
     await logging.shutdownAppLogging()
     fs.rmSync(storePath, { recursive: true, force: true })
   }, MCP_TEST_TIMEOUT_MS)

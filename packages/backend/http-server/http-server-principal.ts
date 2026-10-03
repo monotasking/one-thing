@@ -4,10 +4,10 @@
  * ## 这不是一次新的身份设计
  *
  * 它做的事只有一件:**把 `turn-principal.ts` 已经成立的那套次序,在 RPC 这一侧
- * 复述一遍**。引擎那一侧(`runtime/agent-loop/agent-loop-turn-principal.ts`)每个回合铸一次
+ * 复述一遍**。引擎那一侧(`agent-loop/agent-loop-turn-principal.ts`)每个回合铸一次
  * 主体,规则是「能证明的才认,证不出来就最小权限」;RPC 这一侧从前**根本没有主体**
  * ——`RpcDispatchContext` 只有 `transport` / `ownerUid` / `workspaceId` / `callerId` /
- * `sandboxRoot`,而管线(`runtime/toolkit` 的 `ToolRunner`)要求每条 `Invocation` 带一个
+ * `sandboxRoot`,而管线(`toolkit` 的 `ToolRunner`)要求每条 `Invocation` 带一个
  * `Principal`。K1 把这一条明确留了账:「`RpcDispatchContext` 无 `Principal`,需要在
  * RPC 边界一次性铸主体的规则(与 09-03 搁置的凭证级主体同一片地,**别顺手拍板**)」。
  *
@@ -45,7 +45,7 @@ import { isHostLocallyTrusted } from './http-server-host-trust.js'
 /**
  * 这个调用方说不出自己是谁。
  *
- * 具名的错,不是一句字符串:判定读类名(`runtime/tools/abort.ts` 那条判例 —— 靠消息
+ * 具名的错,不是一句字符串:判定读类名(`tool/abort.ts` 那条判例 —— 靠消息
  * 文本分类,迟早把一次失败洗成一次别的东西)。
  */
 export class RpcPrincipalUnavailableError extends Error {

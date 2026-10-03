@@ -108,7 +108,7 @@ export function materializeNode(
  * 的"线性持有"约定的自然延伸)。**任何就地写者拿到它之前必须先 clone**;
  * 补水链上真出过这一刀 —— `rehydrateSessionFromStorage` 就地给 step 补
  * `toolCall`,把事件里没有的字段写进了活投影,refold 不变量当场破掉
- * (修法见 `backend/runtime/sessions/hydrate.ts`、判例见
+ * (修法见 `backend/session/hydrate.ts`、判例见
  * `sessions/session-dehydrate.ts` 的 `dehydrateProjectedMessages`)。
  */
 function materializeMessageNode(

@@ -107,7 +107,7 @@ export interface Transport {
 /**
  * 本包唯一的"往外说话"口子。
  *
- * 不 import `@onething/backend/runtime/logging` 的 `getLogger` —— 那会把整条日志机制
+ * 不 import `@onething/backend/logging` 的 `getLogger` —— 那会把整条日志机制
  * (文件 sink / janitor / 崩溃钩子)拖进浏览器构建,而且 runtime 在本包的禁令表上。
  * 宿主想要日志就注一个进来;不注 = 一行不打。
  */

@@ -62,12 +62,12 @@ import fs from 'node:fs'
 import nodePath from 'node:path'
 import { Menu, WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
 import type { OnethingBackend } from '@onething/backend'
-import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/configure-logging'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '@onething/backend/runtime/settings/events'
-import { getSettings } from '@onething/backend/runtime/settings'
+} from '@onething/backend/settings/events'
+import { getSettings } from '@onething/backend/settings'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
 import { shellProxyPolicy } from '../host-ports.js'
 import type { ElectronProxySessionLike } from '../network-proxy.js'

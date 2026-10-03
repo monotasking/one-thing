@@ -158,7 +158,7 @@ export interface MediaPreviewLookupResponse {
  * 按 P4 终态留在手写通道上(拍板 #10 的「窗口系残留集」)。
  *
  * `getPreview` 是数据面而不是窗口面 —— 它读的是那本进程内的预览登记簿
- * (`runtime/media/image-preview-registry-bound`),开窗那半留在宿主侧,两边
+ * (`media/image-preview-registry-bound`),开窗那半留在宿主侧,两边
  * 因此共用同一本簿子。
  *
  * 位置参数一律折成信封:`readImageBase64({ filePath })`、

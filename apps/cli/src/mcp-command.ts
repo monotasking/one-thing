@@ -54,9 +54,9 @@ import {
   ResourceRegistry,
   toolDescriptionOf,
   toolInputSchemaOf,
-} from '@onething/backend/runtime/resource/resource-api'
-import { resourceSpecFromShell } from '@onething/backend/runtime/resource'
-import { getLogger, getRootLogger } from '@onething/backend/runtime/logging/configure-logging'
+} from '@onething/backend/resource/resource-api'
+import { resourceSpecFromShell } from '@onething/backend/resource'
+import { getLogger, getRootLogger } from '@onething/backend/logging/configure-logging'
 import type {
   ListResourcesResponse,
   ResourceOutcomeView,
@@ -92,7 +92,7 @@ export const MCP_SERVER_VERSION = '1.1.7'
  *
  * **K4-d 之后这一格是双保险,不再是唯一的止损**(那条留账已还):守护进程装配时
  * 声明自己无人值守(`markHostUnattended`),于是 `system` 主体的 ask 由
- * `packages/backend/runtime/tools/access-control/permission-policy.ts` 的 `unattendedHostBridge`
+ * `packages/backend/tool/access-control/permission-policy.ts` 的 `unattendedHostBridge`
  * 在同样的 60 秒后经 `Permission.respond` **真的答掉**。两个 60 秒谁先跑赢由调度
  * 决定,而两种次序的结局都是对的:
  *  - 桥先超时 → 它回一句「需要审批,无人应答」,daemon 那边稍后把卡答掉,不留 pending;
@@ -172,7 +172,7 @@ function declaresEffects(serialized: SerializedResourceSpec): boolean {
 /**
  * 一份自述 → 一只 MCP 工具。
  *
- * `resourceSpecFromShell`(`@onething/backend/runtime/resource`)在这里当**还原函数**用(投影 → 内核认的自述形),不是
+ * `resourceSpecFromShell`(`@onething/backend/resource`)在这里当**还原函数**用(投影 → 内核认的自述形),不是
  * 因为这份自述来自某扇壳:它是仓里唯一一份现成的还原,而再抄一份就是「同一份事实
  * 两份代码」—— 那正是这条设计线整篇在反对的东西。它会把每条做法的 `home` 盖成
  * `'shell'`,在这里**无害且不可见**:还原出来的 spec 只被 `toolInputSchemaOf` /
@@ -223,7 +223,7 @@ function stringField(input: Record<string, unknown>, key: string): string | unde
 /**
  * 判别键与 `ref` 之外的一切 = 这次调用的参数。
  *
- * 与 `runtime/resource/tool.ts` 的 `restParams` 同一条规则(那一份是本机 AI 走的那条
+ * 与 `resource/tool.ts` 的 `restParams` 同一条规则(那一份是本机 AI 走的那条
  * 路)。两处同规不是巧合:模型看到的是**同一份 schema**,一份 schema 只能有一种读法。
  */
 function restParams(input: Record<string, unknown>, discriminator: string): Record<string, unknown> {
@@ -357,7 +357,7 @@ export interface McpIncomingRequest {
 /**
  * `createResourceMcpServer` 只用得到 SDK `Server` 的这几格。
  *
- * 结构子集而不是 import SDK 的类型 —— 与 `runtime/external-agents/host-mcp/server.ts`
+ * 结构子集而不是 import SDK 的类型 —— 与 `external-agent/host-mcp/server.ts`
  * 的 `CreateSdkMcpServerFn` 同一条纪律:SDK 保持软依赖,测试可以喂替身,而这只文件
  * 与 SDK 的接触面小到一眼看得完。
  */

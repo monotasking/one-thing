@@ -1,15 +1,15 @@
-import { AgentEngine } from '../packages/backend/runtime/agents/agent-engine.ts'
+import { AgentEngine } from '../packages/backend/agent/agent-engine.ts'
 import {
   AllowAllPolicy,
   ToolRegistry,
   type ToolCall,
   type ToolResult,
-} from '../packages/backend/runtime/tools/tool-helpers.ts'
-import type { Provider } from '../packages/backend/runtime/providers/index.ts'
+} from '../packages/backend/tool/tool-helpers.ts'
+import type { Provider } from '../packages/backend/provider/index.ts'
 import {
   createAnthropicProvider,
   createDeepSeekProvider,
-} from '../packages/backend/runtime/providers/index.ts'
+} from '../packages/backend/provider/index.ts'
 
 type CliJsonEvent =
   | { type: 'text_delta'; text: string }

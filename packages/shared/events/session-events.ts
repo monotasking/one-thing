@@ -149,7 +149,7 @@ export function isSessionStreamTerminalEvent(type: string): type is SessionStrea
 /**
  * 工具与步骤事件所属的 assistant 消息号。
  *
- * 发射器一律盖号(`runtime/agent-loop/agent-loop-event-only-emitter.ts`)。消费者**必须**优先认它,
+ * 发射器一律盖号(`agent-loop/agent-loop-event-only-emitter.ts`)。消费者**必须**优先认它,
  * 不要退回「当前活跃流是谁」去猜:那个绑定是本窗口的短暂事实,窗口中途重载、开第
  * 二个窗口、或跑起来之后才切进会话,它就不在了,而事件照发不误。可选只为兼容旧的
  * 重放数据。
@@ -298,7 +298,7 @@ export interface SessionGoalUpdatedEvent {
   /**
    * The session's full goal history, oldest first. Sent with every update so
    * the renderer never has to derive "which one is current" itself — that rule
-   * lives in exactly one place (packages/backend/runtime/goals/records.ts)
+   * lives in exactly one place (packages/backend/goal/records.ts)
    * and a second copy on this side would be one more thing to keep in sync.
    */
   goals?: SessionGoal[]

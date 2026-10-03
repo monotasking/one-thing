@@ -14,7 +14,7 @@
  *
  * 外加两条自我约束:`live` 档不投(`music` 那份自述在 headless 档上根本没 mount,
  * 所以这里用注册表现有的事实来判,不写死名单),以及 `singleton` + `turn` 今天
- * 投不出去这件事是**留账不是缺口**(`runtime/resource/spec.ts` 的 `StateScope`)。
+ * 投不出去这件事是**留账不是缺口**(`resource/spec.ts` 的 `StateScope`)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`。
  */
@@ -81,12 +81,12 @@ describe('资源 state 进提示词(K4-a)', () => {
 
   beforeAll(async () => {
     backend = await assemble()
-    const store = await import('@onething/backend/runtime/sessions')
+    const store = await import('@onething/backend/session')
     sessionId = store.createSession(`resource-state-${Date.now()}`, 'Board session').id
   }, 180_000)
 
   it('变量板上有 resource_session_current,值是这条真会话的摘要', async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/runtime/variables/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
     const board = await buildStateVariablesPromptText(sessionId)
 
     // ② 它进的是状态半边(`state="true"`),不是只报名字的名录半边。
@@ -104,7 +104,7 @@ describe('资源 state 进提示词(K4-a)', () => {
   })
 
   it('④ 什么都不动的两回合,板子逐字相同(尾块按块去重的前提)', async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/runtime/variables/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
     // 时间变量是小时粒度的,但为了不让这一条在整点翻页时偶红,只比资源那一行。
     const rowOf = (text: string) =>
       text.split('\n').find(row => row.includes('resource_session_current'))
@@ -126,8 +126,8 @@ describe('资源 state 进提示词(K4-a)', () => {
    * 这一例在定法之前是红的:值里带 `"messageCount":N`,追一条消息就变一次。
    */
   it("K4-a':追一条消息之后,板上那一行逐字不变(计数不进提示词)", async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/runtime/variables/variable-system')
-    const { sessionCommands } = await import('@onething/backend/runtime/sessions')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
+    const { sessionCommands } = await import('@onething/backend/session')
     const rowOf = (text: string) =>
       text.split('\n').find(row => row.includes('resource_session_current'))
 
@@ -150,7 +150,7 @@ describe('资源 state 进提示词(K4-a)', () => {
   })
 
   it('③ 改名之后,变量注册表朝这条会话发了一次变更', async () => {
-    const { getVariableRegistry } = await import('@onething/backend/runtime/variables/variable-system')
+    const { getVariableRegistry } = await import('@onething/backend/variable/variable-system')
     const seen: string[] = []
     const stop = getVariableRegistry().subscribe(ctx => seen.push(ctx.sessionId))
 
@@ -166,14 +166,14 @@ describe('资源 state 进提示词(K4-a)', () => {
 
     expect(seen).toContain(sessionId)
 
-    const { buildStateVariablesPromptText } = await import('@onething/backend/runtime/variables/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
     expect(await buildStateVariablesPromptText(sessionId)).toContain(
       '"title":"Renamed board session"',
     )
   })
 
   it('只投 turn 档:注册表上非 turn 的状态一格都不在板上', async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/runtime/variables/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
     const board = await buildStateVariablesPromptText(sessionId)
     // 名单从注册表现读,不写死 —— 第二种带 state 的资源落地时这一条不该跟着红。
     const notTurn: string[] = []
@@ -186,7 +186,7 @@ describe('资源 state 进提示词(K4-a)', () => {
   })
 
   it('这些名字是保留的:自建变量抢不到,于是变量板不会被 PROVIDER_CONFLICT 掀掉', async () => {
-    const { getVariableRegistry, VariableError } = await import('@onething/backend/runtime/variables/variable-system')
+    const { getVariableRegistry, VariableError } = await import('@onething/backend/variable/variable-system')
     await expect(
       getVariableRegistry().set({ sessionId }, {
         name: 'resource_session_current',

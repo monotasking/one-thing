@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // 第二入口门(决策 D26,docs/design/backend-structure-decisions-2026-10.md)。零基线硬闸。
 //
-// 为什么:每个功能有两个对外的口。主入口 `runtime/<功能>/index.ts`(或 N3 的 `<功能>.ts`)给别的功能用;
-// 第二个入口 `runtime/<功能>/<功能>-client-api*.ts` 给界面用 —— 它装的是这个功能开给 HTTP 服务器的东西
+// 为什么:每个功能有两个对外的口。主入口 `<功能>/index.ts`(或 N3 的 `<功能>.ts`)给别的功能用;
+// 第二个入口 `<功能>/<功能>-client-api*.ts` 给界面用 —— 它装的是这个功能开给 HTTP 服务器的东西
 // (名册里的域行、只有 HTTP 服务器用的投影与投递件),可以引任何功能的主入口,所以它天然是枢纽。
 // 如果别的功能、或者某个主入口去引它,有界面操作的功能就会重新变成枢纽,入口无环门(D19)的零环结论会翻掉
 // (`docs/design/feature-layers-and-provider-placement-2026-10.md` 第 8 节第 1 条)。
 //
 // 判据:
-//   - 「client-api 文件」只看路径:`packages/backend/runtime/<功能>/<功能>-client-api.ts` 或
+//   - 「client-api 文件」只看路径:`packages/backend/<功能>/<功能>-client-api.ts` 或
 //     `…/<功能>-client-api-<方面>.ts`(`scripts/lib/backend-structure.mjs` 的 `clientApiFeatureOf`)。
 //     文件名里带 `-client-api` 却不是这个形状(不在功能目录正下方、不以自己的功能名打头)= 红:名字是判据本身,不许含糊。
 //   - 引用 = 一处模块说明符(静态 / 动态 import、`export … from`、`require`、`vi.mock` 一族;口径与 `entry:gate` 同一份代码)。
@@ -30,7 +30,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectSpecifiers, resolveSpecifier } from './feature-entry-gate.mjs'
-import { clientApiFeatureOf, isTestPath, repoRoot } from './lib/backend-structure.mjs'
+import { clientApiFeatureOf, isTestPath, repoRoot, runtimeFeatureOf } from './lib/backend-structure.mjs'
 
 const SCAN_ROOTS = ['packages', 'apps', 'scripts', 'evals']
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'build', 'release', 'coverage'])
@@ -72,8 +72,8 @@ export function judge(importer, target) {
 /** 名字里带 `-client-api` 却不是判据认的形状:返回理由,否则 null。 */
 export function misnamed(relative) {
   if (isTestPath(relative) || !/-client-api/.test(path.basename(relative))) return null
-  if (!relative.startsWith('packages/backend/runtime/')) return null
-  return clientApiFeatureOf(relative) ? null : '文件名带 `-client-api`,但不是 `runtime/<功能>/<功能>-client-api[-<方面>].ts`'
+  if (!runtimeFeatureOf(relative)) return null // 只判功能目录里的文件(包根散文件、http-server 不判,与搬家前只判 runtime/ 下同一范围)
+  return clientApiFeatureOf(relative) ? null : '文件名带 `-client-api`,但不是 `<功能>/<功能>-client-api[-<方面>].ts`'
 }
 
 export function measure(root = repoRoot) {
@@ -106,25 +106,25 @@ export function measure(root = repoRoot) {
 function selfTest() {
   const failures = []
   const expect = (label, condition) => { if (!condition) failures.push(label) }
-  const api = 'packages/backend/runtime/settings/settings-client-api.ts'
-  const aspect = 'packages/backend/runtime/settings/settings-client-api-projection.ts'
+  const api = 'packages/backend/settings/settings-client-api.ts'
+  const aspect = 'packages/backend/settings/settings-client-api-projection.ts'
   expect('功能名打头、在功能目录正下方 = client-api', clientApiFeatureOf(api) === 'settings')
   expect('方面文件也是 client-api', clientApiFeatureOf(aspect) === 'settings')
-  expect('别人名字打头的不是', clientApiFeatureOf('packages/backend/runtime/settings/mcp-client-api.ts') === null)
-  expect('子目录里的不是', clientApiFeatureOf('packages/backend/runtime/settings/x/settings-client-api.ts') === null)
-  expect('测试不是', clientApiFeatureOf('packages/backend/runtime/settings/__tests__/settings-client-api.test.ts') === null)
-  expect('名字含糊 = 红', misnamed('packages/backend/runtime/settings/mcp-client-api.ts') !== null)
+  expect('别人名字打头的不是', clientApiFeatureOf('packages/backend/settings/mcp-client-api.ts') === null)
+  expect('子目录里的不是', clientApiFeatureOf('packages/backend/settings/x/settings-client-api.ts') === null)
+  expect('测试不是', clientApiFeatureOf('packages/backend/settings/__tests__/settings-client-api.test.ts') === null)
+  expect('名字含糊 = 红', misnamed('packages/backend/settings/mcp-client-api.ts') !== null)
   expect('HTTP 服务器可以引', judge('packages/backend/http-server/http-server-client-api-roster.ts', api) === null)
   expect('同功能的 client-api 可以引', judge(api, aspect) === null)
-  expect('测试可以引', judge('packages/backend/runtime/settings/__tests__/settings-client-api.test.ts', api) === null)
-  expect('包根别处的 feature 引 = 红(轨迹那条例外已删)', judge('packages/backend/features/builtin/trajectory.ts', 'packages/backend/runtime/sessions/sessions-client-api-events.ts') !== null)
-  expect('别的功能的 client-api 动态引也 = 红(ACP 那条例外已删)', judge('packages/backend/runtime/acp/acp-client-api.ts', 'packages/backend/runtime/sessions/sessions-client-api.ts') !== null)
-  expect('主入口引 = 红', judge('packages/backend/runtime/settings/index.ts', api) !== null)
-  expect('功能内部文件引 = 红', judge('packages/backend/runtime/settings/settings-store.ts', api) !== null)
-  expect('别的功能的 client-api 引 = 红', judge('packages/backend/runtime/mcp/mcp-client-api.ts', api) !== null)
+  expect('测试可以引', judge('packages/backend/settings/__tests__/settings-client-api.test.ts', api) === null)
+  expect('包根别处的 feature 引 = 红(轨迹那条例外已删)', judge('packages/backend/backend.ts', 'packages/backend/session/sessions-client-api-events.ts') !== null)
+  expect('别的功能的 client-api 动态引也 = 红(ACP 那条例外已删)', judge('packages/backend/acp/acp-client-api.ts', 'packages/backend/session/sessions-client-api.ts') !== null)
+  expect('主入口引 = 红', judge('packages/backend/settings/index.ts', api) !== null)
+  expect('功能内部文件引 = 红', judge('packages/backend/settings/settings-store.ts', api) !== null)
+  expect('别的功能的 client-api 引 = 红', judge('packages/backend/mcp/mcp-client-api.ts', api) !== null)
   expect('包根别的文件引 = 红', judge('packages/backend/backend.ts', api) !== null)
   expect('宿主引 = 红', judge('apps/server/src/main.ts', api) !== null)
-  expect('不是 client-api 的目标不判', judge('packages/backend/runtime/mcp/index.ts', 'packages/backend/runtime/settings/index.ts') === null)
+  expect('不是 client-api 的目标不判', judge('packages/backend/mcp/index.ts', 'packages/backend/settings/index.ts') === null)
   if (failures.length > 0) {
     console.error('[client-api-gate] self-test FAILED:')
     for (const label of failures) console.error('  ✗', label)
@@ -144,7 +144,7 @@ function main() {
   if (args.includes('--list')) {
     console.log(`[client-api] ${clientApis.length} 只 client-api 文件:`)
     for (const file of clientApis) {
-      console.log(`  ${file.replace('packages/backend/runtime/', '')}`)
+      console.log(`  ${file.replace('packages/backend/', '')}`)
       for (const site of importersOf.get(file)) console.log(`      ← ${site}`)
     }
   }

@@ -1,7 +1,7 @@
 /**
  * Session TOC IPC types.
  *
- * Structural mirror of `packages/backend/runtime/toc/types.ts` (same
+ * Structural mirror of `packages/backend/toc/types.ts` (same
  * pattern as SessionGoal): the runtime package owns the canonical definition
  * and all transitions; these types only cross the IPC boundary.
  */

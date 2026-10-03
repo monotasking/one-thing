@@ -1,7 +1,7 @@
 import { registerTargetRenderer } from './registry'
 
 /**
- * `kind: 'action'` —— 一条命令(`runtime/search/capabilities/actions.ts` 的
+ * `kind: 'action'` —— 一条命令(`search/capabilities/actions.ts` 的
  * `ActionTarget`)。
  *
  * 它是这张表里**唯一一种「没有去处」的目标**:点它是执行一件事,不是打开什么。

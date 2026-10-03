@@ -20,7 +20,7 @@ import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
  * `@shared/ipc/rpc.ts` 本身是零 import 的叶子文件,所以 tsc 这一侧也是气密的 ——
  * 既拿到了和服务端逐字同一份形状,又没有把任何运行时依赖拖进 RN 包。
  * 反过来,**值**(比如 `RPC_ERROR_CODES`)一律不 import:那会经由 barrel 把
- * `@onething/backend/runtime/interaction`(`node:crypto`)拖进来。
+ * `@onething/backend/interaction`(`node:crypto`)拖进来。
  */
 
 /** onething-server 在哪、怎么向它证明身份。 */

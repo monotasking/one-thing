@@ -3,7 +3,7 @@
  *
  * 与其它 scope 的关键差别:**不经 daemon**。插件只在 Electron 桌面宿主执行
  * (plan A),CLI daemon 根本不装配插件系统,所以这里也不走 PluginManager,
- * 直接调 `@onething/backend/runtime/plugins/npm-process` 那层宿主无关的安装机器 ——
+ * 直接调 `@onething/backend/plugin/npm-process` 那层宿主无关的安装机器 ——
  * 它只动账本(`<store>/plugins/package.json`)与 `node_modules/`,不加载任何
  * 插件代码。代价是装完不会热生效,每次成功后都得把这句话说给用户听。
  *
@@ -28,15 +28,15 @@ import {
   installPluginPackage,
   probePluginNpmAvailability,
   uninstallPluginPackage,
-} from '@onething/backend/runtime/plugins/npm-process'
-import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball'
-import { getPluginsDir } from '@onething/backend/runtime/plugins/disk-loader'
+} from '@onething/backend/plugin/npm-process'
+import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/backend/plugin/tarball'
+import { getPluginsDir } from '@onething/backend/plugin/disk-loader'
 import {
   findMarketIndexEntry,
   readPluginLedger,
   unscopedPluginIdFromPackageName,
-} from '@onething/backend/runtime/plugins/plugin-contract'
-import type { CorePluginMarketIndex } from '@onething/backend/runtime/plugins/plugin-contract'
+} from '@onething/backend/plugin/plugin-contract'
+import type { CorePluginMarketIndex } from '@onething/backend/plugin/plugin-contract'
 import { stdout, stderr } from './stdout.js'
 
 /** 装完/卸完的提示 —— CLI 不加载插件,桌面那边要自己刷新。 */

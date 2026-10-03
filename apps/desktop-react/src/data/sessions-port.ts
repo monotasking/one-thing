@@ -35,7 +35,7 @@ export interface SessionsPort {
    * 建一条会话(D1 开工批)。
    *
    * **不带 name** 是刻意的:缺席时后端自己落 `'New Chat'`
-   * (`runtime/sessions/ipc-operations.ts` 的 `options.name || … || 'New Chat'`),
+   * (`session/ipc-operations.ts` 的 `options.name || … || 'New Chat'`),
    * 而会话标题是**存进账本的数据**不是界面文案 —— 由渲染层按当下语言现造一个,
    * 换一次语言之后老会话的名字就成了说谎的那一格。默认名归后端,只有一个产地。
    *
@@ -49,7 +49,7 @@ export interface SessionsPort {
    * `SessionsCreateRequest` **没有 workingDirectory 这一格**(去看契约),而项目分组
    * 的判据恰恰是它(`expose/projection.ts` 的 `normalizeWorkingDirectory`)。所以
    * 「在某个项目下新建」在线上就是两步:先建,再落目录 —— 与 Vue 壳
-   * (`runtime/sessions/session-store.ts` 的草稿落地路径)是同一条路,不是这一层发明的。
+   * (`session/session-store.ts` 的草稿落地路径)是同一条路,不是这一层发明的。
    */
   updateWorkingDirectory(
     sessionId: string,
@@ -78,7 +78,7 @@ export interface SessionsPort {
    * 删一条会话(`sessions.delete`,契约同上 `:130`)。
    *
    * 它与别的写口不是同一个量级:**账本连同目录一起没了**,所以后端广播的是
-   * `session:removed`(`packages/backend/runtime/sessions/session-store.ts:587`),而那条事件
+   * `session:removed`(`packages/backend/session/session-store.ts:587`),而那条事件
    * 在壳这一侧有两个消费者 —— `onSessionsRemoved`(形态夹持)与
    * `onSessionsDeleted`(伴随面 / 停靠池 / 泊位忘账)。删除这条路**不自己**叫
    * 那两条接缝:叫了就是第二个产地,而级联删掉的子会话只有事件那一份名单

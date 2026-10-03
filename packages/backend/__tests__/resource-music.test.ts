@@ -12,13 +12,13 @@
  *      (读走的是 `ReadOutcome` 那条短路径,不是一段被 JSON 化的文本)。
  *
  * 端口这一侧是假的:真的那一份要拉起 ncm-cli 的守护进程与一台 DJ agent。假的办法是
- * 把 `runtime/music/{radio,operations,service}.js` 的**进程槽访问器**换掉 —— 那三只
+ * 把 `music/{radio,operations,service}.js` 的**进程槽访问器**换掉 —— 那三只
  * 模块正是 `radioAdapters()` / `musicPlayerAdapters()` 取端口的地方的另一头
  * (它们从 `getCurrentBackendInstance()?.music` 上取,所以这里连 `backend.music` 的
  * 那一格一起换)。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts`:
- * `runtime/sessions/session-store.ts` / `runtime/settings/settings-store.ts` 在 **import 期**就解析 store 根。
+ * `session/session-store.ts` / `settings/settings-store.ts` 在 **import 期**就解析 store 根。
  */
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
@@ -116,7 +116,7 @@ describe('music 这一 scheme 在真装配里(K3-b)', () => {
     try {
       expect(backend.resources.registry.list().map(spec => spec.scheme)).not.toContain('music')
 
-      const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
       const catalog = getToolkitCatalog()
       expect(catalog?.has('music')).toBe(false)
       // `radio` 退役了 —— 它在**任何**一档里都不该再出现。
@@ -131,7 +131,7 @@ describe('music 这一 scheme 在真装配里(K3-b)', () => {
     try {
       expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('music')
 
-      const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
       const catalog = getToolkitCatalog()
       expect(catalog?.has('music')).toBe(true)
       expect(catalog?.has('radio')).toBe(false)

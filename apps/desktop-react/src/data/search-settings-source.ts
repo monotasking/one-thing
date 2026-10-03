@@ -285,7 +285,7 @@ export function semanticStatusPollMs(
  * 交出来的回滚函数都要还,所以这里把它们串成一只。
  *
  * **后端是热生效的**(2026-09-17):`settings` 域保存成功后广播 `settings:changed`,
- * `backend/runtime/search/service-setup.ts` 订着它,当场换一条索引 Worker。所以这一行的副文案
+ * `backend/search/service-setup.ts` 订着它,当场换一条索引 Worker。所以这一行的副文案
  * 说的是「马上开始」,**不是**「重启后生效」—— 那是内置浏览器 CDP 那一格的话。
  */
 export const setSemanticSearchEnabledMutation: Mutation<boolean, void> = createMutation<boolean, void>(

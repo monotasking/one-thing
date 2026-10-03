@@ -20,7 +20,7 @@
  *    一行都写不出来,`app.jsonl` 里只有戛然而止。
  *
  * 修法是 `PIPELINE_OPTIONS` 里那一格 `enableCpuMemArena: false`
- * (`packages/backend/runtime/search/embedding/transformers-onnx.ts`)。
+ * (`packages/backend/search/embedding/transformers-onnx.ts`)。
  * **这道门存在的唯一理由,就是那一格不许再靠一段注释活着。**
  *
  * ## 判据

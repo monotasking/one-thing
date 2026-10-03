@@ -5,7 +5,7 @@ import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { build, type BuildOptions } from 'esbuild'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { inspectStoreLock, type StoreLockDiagnostic } from '@onething/backend/runtime/storage/store-lock'
+import { inspectStoreLock, type StoreLockDiagnostic } from '@onething/backend/storage/store-lock'
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 const directories: string[] = []

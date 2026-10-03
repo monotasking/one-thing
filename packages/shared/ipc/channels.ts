@@ -74,7 +74,7 @@ export const IPC_CHANNELS = {
 
 	// Music radio —— 十四条数据面已迁到通用 RPC 通道(musicRouter,P4c 第九批)。
 	// 这里只剩**四条推送**:router 今天没有推送面,而它们早就走
-	// `broadcastVoiceHostMessage` 端口从 `backend/runtime/music/*` 直接发出。
+	// `broadcastVoiceHostMessage` 端口从 `backend/music/*` 直接发出。
 	MUSIC_EVENT: "music:event",
 	/** main -> renderer: what is playing, or null when nothing is. */
 	MUSIC_NOW_PLAYING: "music:now-playing",
@@ -157,12 +157,12 @@ export const IPC_CHANNELS = {
 	//
 	// main → renderer 推送:api.ui.notify 与熔断自动禁用都走它。
 	// 在此之前 'plugin:notification' 只被 emitGlobal 到全局总线上,而全局总线
-	// 在 runtime/events 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。
+	// 在 event 之外零订阅者 —— 插件的唯一 UI 触点其实从未接通。
 	// 它由 IPCBridge 扇给所有窗,从头到尾不经过请求面(所以连注入端口都不用)。
 	PLUGINS_NOTIFICATION: "plugins:notification",
 	// 统一请求通道(R2)的**中间态**。请求与取消本身已经是
 	// `plugins.request` / `plugins.requestAbort` 两条 router 方法;进度改走
-	// `@onething/backend/runtime/plugins/events` 的注入端口,桌面按
+	// `@onething/backend/plugin/events` 的注入端口,桌面按
 	// `RpcDispatchContext.callerId` **定向回发起窗** —— 设置窗是独立 BrowserWindow,
 	// 广播出去等于每扇窗都收一份别人的进度。
 	PLUGINS_REQUEST_PROGRESS: "plugins:request-progress",
@@ -201,7 +201,7 @@ export const IPC_CHANNELS = {
 	// RPC 通道(P4c 第十批,`@shared/ipc/evals.ts` 的 evalsRouter +
 	// `@shared/ipc/evals-workbench.ts` 的 evalsWorkbenchRouter)。
 	// 只剩这三条**推送** —— router 没有推送面;它们走
-	// `backend/runtime/evals/events.ts` 的 configureEvalsEventBroadcaster 注入端口。
+	// `backend/eval/events.ts` 的 configureEvalsEventBroadcaster 注入端口。
 	EVALS_RUN_PROGRESS: "evals:run-progress",
 	EVALS_REPLAY_PROGRESS: "evals:replay-progress",
 	EVALS_DIAGNOSE_PROGRESS: "evals:diagnose-progress",

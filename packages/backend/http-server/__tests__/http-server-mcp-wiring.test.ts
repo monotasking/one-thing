@@ -17,16 +17,16 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { EventBus, StreamChannel } from '@onething/backend/runtime/events/bus-primitives'
-import { MCPManager as appMCPManager } from '@onething/backend/runtime/mcp/index-with-bridge'
+import { EventBus, StreamChannel } from '@onething/backend/event/bus-primitives'
+import { MCPManager as appMCPManager } from '@onething/backend/mcp/index-with-bridge'
 import {
   createMCPServerState,
   markMCPServerConnected,
   type MCPClientLike,
-} from '@onething/backend/runtime/mcp/kernel'
+} from '@onething/backend/mcp/kernel'
 import { type MCPServerConfig, type MCPServerState } from '@shared/mcp/types'
 import { createDevelopmentOnethingServerRuntime, type OnethingServerRuntime } from '../http-server-runtime.js'
-import { mcpRpcHandlers } from '../../runtime/mcp/mcp-client-api.js'
+import { mcpRpcHandlers } from '../../mcp/mcp-client-api.js'
 import { mcpRouter } from '@shared/ipc/mcp.js'
 import { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests } from '../http-server-dispatch-table.js'
 

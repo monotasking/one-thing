@@ -39,7 +39,7 @@ async function assemble() {
 
 it('holds the actual Backend lease through tool cleanup and isolates a captured registry from a new Backend', { timeout: 60000 }, async () => {
   backend = await assemble()
-  const store = await import('../runtime/sessions/session-store.js')
+  const store = await import('../session/session-store.js')
   store.createSession('session', 'Session')
   const first = backend.toolExecutions
   const cleanup = barrier()
@@ -54,7 +54,7 @@ it('holds the actual Backend lease through tool cleanup and isolates a captured 
   const stopping = backend.dispose()
   await aborted.promise
   await running
-  const { inspectStoreLock } = await import('@onething/backend/runtime/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
   expect(inspectStoreLock({ storePath: directory }).status).toBe('held')
   const { getCurrentBackendSafe } = await import('../current.js')
   expect(getCurrentBackendSafe()).toBe(backend)

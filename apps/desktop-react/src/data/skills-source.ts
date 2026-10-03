@@ -10,9 +10,9 @@ import { t } from '../i18n'
  * `/skill:<name>` 的**真数据源**(09-12,用户报障「skill 没接入 command」)。
  *
  * ── 后端一直认,壳一直没问 ────────────────────────────────────────────────
- * `packages/backend/runtime/prompts/resolver.ts` 的 `collectReferenceMatches`
+ * `packages/backend/prompt/resolver.ts` 的 `collectReferenceMatches`
  * 早就认 `/skill:<name>`(大小写不敏感,名字取自这条会话看得见的技能),
- * 而 `runtime/engine/stream/agent-loop-runtime.ts` 在**每一条用户消息**上跑
+ * 而 `engine/stream/agent-loop-runtime.ts` 在**每一条用户消息**上跑
  * `resolvePromptReferences`。也就是说:把 `/skill:写作 帮我改这段` 原样发出去,
  * 引擎那头就会把那份技能正文展开进这一轮。
  * 缺的一直只是**壳这一头的发现性** —— React 壳从没调过 `skills.getAll`,

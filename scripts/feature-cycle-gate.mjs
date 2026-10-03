@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // 功能入口无环门(决策 D19,docs/design/backend-structure-decisions-2026-10.md)。零基线硬闸。
 //
-// 为什么:每个功能只经自己的入口 `runtime/<功能>/index.ts`(或命名规范 N3 的 `runtime/<功能>/<功能>.ts`)对外(D9)。入口一旦卷进加载期的环,
+// 为什么:每个功能只经自己的入口 `<功能>/index.ts`(或命名规范 N3 的 `<功能>/<功能>.ts`)对外(D9)。入口一旦卷进加载期的环,
 // 就会重演 10-04 providers 的崩溃 —— 一个入口 `export *` 全交出去,60 只模块成环,`class X extends Base`
 // 在加载期读到 undefined。继承没法改成惰性,所以唯一的办法是保证入口之间是有向无环图(DAG)。
 //
 // 判据:在运行期值引用图上(口径见 `scripts/lib/backend-structure.mjs` 文件头:只引类型的名字、`import type`、
 // 动态 `import()`、测试文件都不成边;与 Fable 的模拟器 `sim.mjs --real` 逐边一致)算强连通分量。
-// **任何强连通分量只要含有某个功能入口 `runtime/<功能>/index.ts` 或总桶 `runtime/index.ts`,就红**,
+// **任何强连通分量只要含有某个功能入口 `<功能>/index.ts`,就红**(从前还有总桶 `runtime/index.ts`,2026-10-04 删掉),
 // 并打出经过该入口的最短环。没有基线:今天读数是 0,以后也只能是 0。
 //
 // 不经入口的深层环(功能目录内部、或包根文件之间)今天还有几个,这里照打它们的大小供参考,不判红 ——
@@ -21,13 +21,13 @@
 //   node scripts/feature-cycle-gate.mjs --list   另打每个深层环的成员(package.json: cycle:check)
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BARREL, buildValueGraph, entryFeatureOf, isBarrel, shortestCycleThrough, stronglyConnected } from './lib/backend-structure.mjs'
+import { buildValueGraph, entryFeatureOf, runtimeFeatureOf, shortestCycleThrough, stronglyConnected } from './lib/backend-structure.mjs'
 
 /** 图规模下限:解析坏了同样长得像「没有环」。 */
 const MIN_GRAPH_FILES = 1000
 const MIN_ENTRIES = 30
 
-const short = (f) => f.replace('packages/backend/runtime/', '').replace('packages/backend/', '(包根)/')
+const short = (f) => (runtimeFeatureOf(f) ? f.slice('packages/backend/'.length) : f.replace('packages/backend/', '(包根)/'))
 
 /** 纯判定:哪些强连通分量含入口,以及每个入口的最短环。 */
 export function findEntryCycles(edges, isEntry) {
@@ -45,7 +45,7 @@ export function findEntryCycles(edges, isEntry) {
 function main() {
   const args = process.argv.slice(2)
   const graph = buildValueGraph()
-  const isEntry = (f) => entryFeatureOf(f) !== null || isBarrel(f)
+  const isEntry = (f) => entryFeatureOf(f) !== null
   const entryCount = graph.files.filter(isEntry).length
   const edgeCount = [...graph.edges.values()].reduce((n, s) => n + s.size, 0)
   if (graph.files.length < MIN_GRAPH_FILES || entryCount < MIN_ENTRIES) {
@@ -64,12 +64,12 @@ function main() {
   }
 
   if (offending.length > 0) {
-    const entryNames = offending.flatMap((c) => c.entries.map(({ entry }) => (isBarrel(entry) ? BARREL : entryFeatureOf(entry))))
+    const entryNames = offending.flatMap((c) => c.entries.map(({ entry }) => entryFeatureOf(entry)))
     console.error(`[cycle-gate] failed: ${offending.length} 个环卷进了功能入口(${entryNames.join('、')})—— 入口之间必须是有向无环图(D19):`)
     for (const { members, entries } of offending) {
       console.error(`  环里 ${members.length} 只文件,含入口 ${entries.length} 个:`)
       for (const { entry, cycle } of entries) {
-        console.error(`    ${isBarrel(entry) ? BARREL : entryFeatureOf(entry)} 的最短环(${cycle.length - 1} 步):`)
+        console.error(`    ${entryFeatureOf(entry)} 的最短环(${cycle.length - 1} 步):`)
         console.error(`      ${cycle.map(short).join('\n        → ')}`)
       }
     }

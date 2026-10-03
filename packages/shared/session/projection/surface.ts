@@ -22,7 +22,7 @@ import { isSessionSurfaceNodeType } from '../events/types.js'
  * 一条事件在 surface 上代表**哪条消息**(不代表任何消息的返回 undefined)。
  *
  * 批 P-b:这是写读两侧共用的**唯一**一份判定 —— 写侧
- * (`backend/runtime/sessions/event-surface.ts`)从前自己抄了一份同名函数,两份判定各自
+ * (`backend/session/event-surface.ts`)从前自己抄了一份同名函数,两份判定各自
  * 演化就是"切点落在对面不认得的格上"那类静默错乱的温床。判定只此一处,
  * 与 `isSessionSurfaceNodeType` 同源。
  */

@@ -5,7 +5,7 @@
  * 用户;都没有 → **抛**。
  *
  * 第三条是这份文件唯一真正在守的东西:回落到本机用户就是提权(与
- * `runtime/agent-loop/agent-loop-turn-principal.ts` 头注释那句「一个继承默认 agent 全部可达范围
+ * `agent-loop/agent-loop-turn-principal.ts` 头注释那句「一个继承默认 agent 全部可达范围
  * 的兜底不是兜底,是绕过」同一句话)。反证在文件末尾那条注释里写了怎么做。
  */
 import { afterEach, describe, expect, it } from 'vitest'

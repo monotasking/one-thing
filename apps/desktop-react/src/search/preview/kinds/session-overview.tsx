@@ -5,7 +5,7 @@ import s from '../Preview.module.css'
 
 /**
  * `kind: 'session-overview'` —— 一间会话的四格
- * (`runtime/search/capabilities/preview.ts` 的 `SessionOverviewPreview`)。
+ * (`search/capabilities/preview.ts` 的 `SessionOverviewPreview`)。
  *
  * 它是**随候选带**的那一种(chats 的自述是 `preview: { mode: 'inline' }`),
  * 所以选中一条会话命中时预览窗**当场就有内容**,一发请求都不出门。

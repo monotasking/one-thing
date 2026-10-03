@@ -3,7 +3,7 @@ import type { MessageKey } from '../i18n'
 /**
  * **一只宠物的自述**(壳侧 P0 形,正本 §2.1)。纯数据。
  *
- * P2 起它的正本搬到 `packages/backend/runtime/pets/`,壳侧读 `pet:` 资源交来的那份;
+ * P2 起它的正本搬到 `packages/backend/pet/`,壳侧读 `pet:` 资源交来的那份;
  * 到那时台词从 i18n 键换成字面文本(插件宠物带不进壳的字典),形状其余不变。
  *
  * 陌生能力演练(仓根 09-02 法):加一只手画的宠物 = `builtin/<id>.ts` 一份这个 +

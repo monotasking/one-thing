@@ -1,7 +1,7 @@
 /**
  * ACP agent 配置与会话选项的形状(A0-3:只此一份)。
  *
- * 产品层 `runtime/acp/types.ts` 与契约层 `shared/ipc/acp.ts` 都 `import type` 这里:
+ * 产品层 `acp/types.ts` 与契约层 `shared/ipc/acp.ts` 都 `import type` 这里:
  * 契约层不许依赖产品层;立这份文件时产品层(非 `*.wiring.ts`)还不许 import `@shared/ipc`,
  * 两边都够得着、又不反向依赖的只有 `@shared/contracts`(那条规则已随第③步拍平撤掉,形状留在这里)。
  */
@@ -100,7 +100,7 @@ export type AcpAgentSource = 'builtin' | 'registry' | 'user'
 
 /**
  * 一台 agent 的**自述**。数据文件在 `resources/acp-agents/<id>.json`,或由注册表条目折出来;
- * 校验在 `runtime/acp/manifest.ts` 的 `parseAcpAgentManifest`。
+ * 校验在 `acp/manifest.ts` 的 `parseAcpAgentManifest`。
  * core / runtime / backend 里没有任何一处写死某一台 agent —— 加一台 = 加一个 JSON 文件。
  */
 export interface AcpAgentManifest {
@@ -339,7 +339,7 @@ export interface AcpRemoteSessionInfo {
  * (模式 / 可用命令 / 选项 / 计划 / 用量 / 标题 / 通知 / 压缩),加上承载它的进程。
  * 回合里说了什么(文本 / 思考 / 工具)不在这里,那是回合事件流。
  *
- * 形状住契约层:产品层的 reducer(`runtime/acp/session-state.ts`)产出它,
+ * 形状住契约层:产品层的 reducer(`acp/session-state.ts`)产出它,
  * 全局事件 `acp:session-state` 与 RPC `acp.sessionState` 原样交出它。
  */
 export interface AcpSessionState {

@@ -88,7 +88,7 @@ export function SearchFooter({
     )
   }
   /*
-   * **放宽三级三句**(步⑦ 留账 E-6 第二条)。阶梯在 `runtime/search/kernel/pipeline/plan.ts`:
+   * **放宽三级三句**(步⑦ 留账 E-6 第二条)。阶梯在 `search/kernel/pipeline/plan.ts`:
    * ①严格(AND + 短语相邻)②去相邻 ③至少一半的词 ④任一词 —— `relaxed` 就是落在
    * 第几级(0 = 没放宽)。从前一句「已放宽:按任一词匹配」包打三级,那在只放宽到
    * ② 的时候是一句**谎话**:它说得比实际远。三句各说各的,键名带级数。

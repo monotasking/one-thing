@@ -28,47 +28,47 @@ import {
   configureStorePathHost,
   resetStorePathHost,
   type StorePathHost,
-} from '@onething/backend/runtime/storage'
+} from '@onething/backend/storage'
 import {
   configureSandboxHost,
   resetSandboxHost,
   type SandboxHost,
-} from '@onething/backend/runtime/tools/access-control/sandbox'
+} from '@onething/backend/tool/access-control/sandbox'
 import {
   configureAppLoggingHost,
   resetAppLoggingHost,
   type AppLoggingHostPorts,
-} from '@onething/backend/runtime/logging/configure-logging'
+} from '@onething/backend/logging/configure-logging'
 import {
   configureSkillsEnvironmentHost,
   resetSkillsEnvironmentHost,
   type SkillsEnvironmentHostPorts,
-} from '@onething/backend/runtime/skills/skill-sources'
+} from '@onething/backend/skill/skill-sources'
 import {
   configureTodoPlanHost,
   resetTodoPlanHost,
   type TodoPlanHostPorts,
-} from '@onething/backend/runtime/todo-plan/todo-plan-service'
+} from '@onething/backend/todo-plan/todo-plan-service'
 import {
   configurePluginsHost,
   resetPluginsHost,
   type PluginsHostPorts,
-} from '@onething/backend/runtime/plugins/host-ports'
+} from '@onething/backend/plugin/host-ports'
 import {
   configureGatewayHost,
   resetGatewayHost,
   type GatewayHostPorts,
-} from '@onething/backend/runtime/gateway/lifecycle-port'
+} from '@onething/backend/gateway/lifecycle-port'
 import {
   configureSettingsHost,
   resetSettingsHost,
   type SettingsHostPorts,
-} from '@onething/backend/runtime/settings/host-ports'
+} from '@onething/backend/settings/host-ports'
 import {
   configureEvalsHost,
   resetEvalsHost,
   type EvalsHostPorts,
-} from '@onething/backend/runtime/evals/host-ports'
+} from '@onething/backend/eval/host-ports'
 import {
   configureHostLocalTrust,
   type HostLocalTrustDeclaration,
@@ -77,43 +77,43 @@ import {
   configureAuthHost,
   resetAuthHost,
   type AuthHostPorts,
-} from '@onething/backend/runtime/auth/host-ports'
+} from '@onething/backend/auth/host-ports'
 import {
   configureShellHost,
   resetShellHost,
   type ShellHostPorts,
-} from '@onething/backend/runtime/shell/host-ports'
+} from '@onething/backend/shell/host-ports'
 import {
   configureVoiceHost,
   resetVoiceHost,
   type VoiceHostPorts,
-} from '@onething/backend/runtime/voice/host-ports'
+} from '@onething/backend/voice/host-ports'
 import {
   configureTerminalBroadcaster,
   killAllTerminals,
   type TerminalHostPorts,
-} from '@onething/backend/runtime/terminal/service'
+} from '@onething/backend/terminal/service'
 import {
   configureScratchpadHost,
   resetScratchpadHost,
   type ScratchpadHostPorts,
-} from '@onething/backend/runtime/scratchpad/service-bound'
+} from '@onething/backend/scratchpad/service-bound'
 import {
   configureSpeechOutputHost,
   resetSpeechOutputHost,
   type SpeechOutputPort,
-} from '@onething/backend/runtime/voice/speech-output'
+} from '@onething/backend/voice/speech-output'
 import {
   configureDialogHost,
   resetDialogHost,
   type DialogHostPorts,
-} from '@onething/backend/runtime/dialog/host-ports'
-import { configureMCPClientHost } from '@onething/backend/runtime/mcp/manager'
+} from '@onething/backend/dialog/host-ports'
+import { configureMCPClientHost } from '@onething/backend/mcp/manager'
 import {
   configureMCPClientIdentity,
   resetMCPClientIdentity,
-} from '@onething/backend/runtime/mcp/identity'
-import type { MCPClientFactory, MCPClientLike } from '@onething/backend/runtime/mcp/kernel'
+} from '@onething/backend/mcp/identity'
+import type { MCPClientFactory, MCPClientLike } from '@onething/backend/mcp/kernel'
 
 /**
  * 两件不可 `null` 的端口形状顺手再导出一次:宿主要声明"我记下来的那份是什么"

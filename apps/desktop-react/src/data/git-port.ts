@@ -33,8 +33,8 @@ export interface GitPort {
    * 原话在 `@shared/ipc/resources.ts` 的 `ReadResourceRequest` 上)。
    *
    * **它是后端判读根的钥匙**:资源那条路的读根是「写根 ∪ 这条会话所在空间接入的
-   * 目录 ∪ 笔记根 ∪ 下载目录」(`backend/runtime/resource/path-guard.ts`),而
-   * 「哪一份接入目录」按发起会话取(`runtime/toolkit/runner-factory.ts` 的 `readable(target, scope)`)。
+   * 目录 ∪ 笔记根 ∪ 下载目录」(`backend/resource/path-guard.ts`),而
+   * 「哪一份接入目录」按发起会话取(`toolkit/runner-factory.ts` 的 `readable(target, scope)`)。
    * 不带它,真机上任何不在**当前**空间接入表里的仓都会被拒 —— 而改动面问的恰恰
    * 是「我这条会话所在的那个仓」。
    */
