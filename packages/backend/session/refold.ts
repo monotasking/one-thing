@@ -44,7 +44,7 @@
 import fs from 'node:fs'
 import {
   canonicalChatMessage,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   materializeNode,
 } from '@shared/session/projection/chat-messages'

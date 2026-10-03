@@ -28,7 +28,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { decodeSessionLogEventLine, encodeSessionLogEventLine } from '@onething/backend/runtime/sessions/session-primitives'
+import { decodeSessionLogEventLine, encodeSessionLogEventLine } from './events/index.js'
 import { SESSION_LEGACY_EVENT_TYPES } from '@shared/session/events/types'
 import type {
   SessionAssistantFirstTokenEvent,
@@ -65,7 +65,7 @@ import type { SessionToolCallInspection } from '@shared/session/tool-call-inspec
  *  - 轨迹面板的检视工具(`resolveToolCallInspection`)。
  *
  * `SessionEventRecord` 在这里**仍然只是 E0 的七类**。v2 的全集叫
- * `SessionLogEventRecord`,从 `@onething/backend/runtime/sessions/session-primitives` 取 —— 这样轨迹面板、
+ * `SessionLogEventRecord`,从会话入口 `@onething/backend/runtime/sessions`(定义在 `./events/`)取 —— 这样轨迹面板、
  * shared 层那个契约面与 rpc 域的类型面一动不动,而 S1 接新事件时
  * 是显式换类型,不是被联合悄悄放大。
  */

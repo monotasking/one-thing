@@ -29,7 +29,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { decodeJsonlLine } from '@onething/backend/runtime/sessions/session-primitives'
+import { decodeJsonlLine } from '@onething/backend/runtime/sessions'
 import {
   listSessionIds,
   resolveStorePath,

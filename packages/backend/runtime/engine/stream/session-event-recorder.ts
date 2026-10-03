@@ -82,7 +82,7 @@ import {
   hashSessionEventTools,
   isSameRequestHeaderEnvelope,
   truncateSessionEventPreview,
-} from '@onething/backend/runtime/sessions/session-events'
+} from '@onething/backend/runtime/sessions'
 import {
   type SessionEventToolSchema,
   type SessionRequestHeaderEventData,

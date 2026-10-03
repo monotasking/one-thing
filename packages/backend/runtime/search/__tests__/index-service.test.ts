@@ -35,7 +35,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions/session-primitives'
+import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '../index/index.js'
 import type { IndexEndpoint } from '../index/index.js'

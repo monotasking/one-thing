@@ -10,8 +10,8 @@ import type {
   CoreToolCallState,
   StoredChatMessage,
   UserMessageMarker,
-} from '@onething/backend/runtime/sessions/session-primitives'
-import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
+import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend/runtime/sessions'
 import { createOnethingSessionRepository } from '../session-repository.js'
 import { createHybridSessionStorageDriver } from '../storage-driver.js'
 

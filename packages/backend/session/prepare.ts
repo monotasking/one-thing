@@ -40,7 +40,7 @@
  */
 
 import fs from 'node:fs'
-import { scanEventsBackward, type SessionEventByteReader } from '@onething/backend/runtime/sessions/session-primitives'
+import { scanEventsBackward, type SessionEventByteReader } from '@onething/backend/runtime/sessions'
 import { CORE_INTERRUPTED_TOOL_ERROR } from '@shared/session/interrupted'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionEventWriter } from './event-writer.js'

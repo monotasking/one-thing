@@ -11,7 +11,7 @@ import {
 } from './run-detail.js'
 import type { SchedulerTaskContext } from './types.js'
 import type { OnethingSchedulerUserTask } from './user-tasks.js'
-import type { SessionInitialOwner } from '../sessions/session-repository.js'
+import type { SessionInitialOwner } from '../sessions/index.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

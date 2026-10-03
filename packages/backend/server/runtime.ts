@@ -6,7 +6,7 @@ import { sessionDeletion } from '../session/deletion.js'
 import { sessionAccess, createSessionAccess } from '../session/access.js'
 import { createServerLiveSessionDelivery } from './live-session-delivery.js'
 import { createServerMediaDelivery } from './media-delivery.js'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
 import type { OnethingPermissionGrantStorageAdapters } from "@onething/backend/runtime/permissions";
 import { EventEmitter } from "node:events";
 import {
@@ -281,7 +281,7 @@ import {
 	saveOnethingUiState,
 	setOnethingCurrentSessionId,
 } from "@onething/backend/runtime/storage";
-import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/runtime/sessions/session-repository";
+import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/runtime/sessions";
 import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
@@ -291,7 +291,7 @@ import {
 import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
-} from "@onething/backend/runtime/sessions/session-primitives";
+} from "@onething/backend/runtime/sessions";
 import { mergeWithDefaults } from "../stores/settings-defaults.js";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";

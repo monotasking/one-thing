@@ -36,7 +36,7 @@ import {
   reduceSessionAccount,
   type CoreTimelineMessage,
   type SessionAccountState,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   createSessionProjectionState,
   foldSessionLogicalDeltaAhead,

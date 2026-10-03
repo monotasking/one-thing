@@ -21,8 +21,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildHistoryMessages } from '@onething/backend/runtime/engine/engine-primitives'
-import { defaultHistoryMessageContent, materializeModelHistory } from '@onething/backend/runtime/sessions/session-primitives'
-import { rehydrateSessionFromStorage } from '@onething/backend/runtime/sessions/session-dehydrate'
+import { defaultHistoryMessageContent, materializeModelHistory } from '@onething/backend/runtime/sessions'
+import { rehydrateSessionFromStorage } from '@onething/backend/runtime/sessions'
 
 const state = vi.hoisted(() => ({
   storeDir: '',

@@ -20,7 +20,7 @@ import { MessageChannel } from 'node:worker_threads'
 
 import type { DocumentFeed, DocumentFilter } from '../../kernel/index.js'
 import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types'
-import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions/session-primitives'
+import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions'
 
 import { SqliteIndex } from '../sqlite-index.js'
 import { IndexWorkerCore } from '../worker-core.js'

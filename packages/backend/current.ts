@@ -27,7 +27,7 @@
  */
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import type { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
-import type { SessionManager } from '@onething/backend/runtime/sessions/session-primitives'
+import type { SessionManager } from '@onething/backend/runtime/sessions'
 import type { SessionLayer } from './session/index.js'
 import type { SessionEventLogStoreHandle } from './session/event-log.js'
 import type { TaskDispatchLayer } from '@onething/backend/runtime/tasks/dispatch'

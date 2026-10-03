@@ -20,7 +20,7 @@ import {
   PROJECTION_CHECKPOINT_FIELDS,
   reduceSessionAccount,
   SESSION_PROJECTION_CHECKPOINT_VERSION,
-} from '../session-primitives.js'
+} from '@onething/backend/runtime/sessions'
 import {
   createSessionProjectionState,
   reduceSessionProjection,

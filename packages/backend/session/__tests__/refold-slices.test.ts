@@ -17,7 +17,7 @@ import {
   canonicalChatMessage,
   encodeSessionLogEventLine,
   parseSessionLogEventLog,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   createSessionProjectionState,
   reduceSessionProjection,

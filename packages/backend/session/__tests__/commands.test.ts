@@ -15,7 +15,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import type { SessionAccountState } from '@onething/backend/runtime/sessions/session-primitives'
+import type { SessionAccountState } from '@onething/backend/runtime/sessions'
 
 const state = vi.hoisted(() => ({
   messages: [] as ChatMessage[],

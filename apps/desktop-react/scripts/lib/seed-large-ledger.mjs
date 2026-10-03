@@ -72,7 +72,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 
-/** 与 `@onething/backend/runtime/sessions/session-primitives` 的 `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 同一个数。 */
+/** 与 `@onething/backend/runtime/sessions` 的 `SESSION_EVENT_BLOB_THRESHOLD_BYTES` 同一个数。 */
 export const BLOB_THRESHOLD_BYTES = 64 * 1024
 
 /**

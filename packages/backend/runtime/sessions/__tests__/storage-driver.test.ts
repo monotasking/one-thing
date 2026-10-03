@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend/runtime/sessions/session-primitives'
+import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend/runtime/sessions'
 import { createHybridSessionStorageDriver, type SessionStorageDriver } from '../storage-driver.js'
 
 interface TestMessage {

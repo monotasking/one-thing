@@ -36,8 +36,6 @@ import {
   buildSessionMessagesPageResponse,
   collectTailMessages,
   decodeJsonlLine,
-  decodeSessionLogEventLine,
-  encodeSessionLogEventLine,
   getMessagesPageFromLogSource,
   scanJsonlLog,
   type GetSessionMessagesPageRequest,
@@ -45,9 +43,10 @@ import {
   type IndexedSessionMessage,
   type StoredChatMessage,
   type UserMessageMarker,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from './storage/index.js'
+import { decodeSessionLogEventLine, encodeSessionLogEventLine } from './events/index.js'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
-import type { JsonlLogPageSource } from '@onething/backend/runtime/sessions/storage'
+import type { JsonlLogPageSource } from './storage/index.js'
 
 export type SessionStorageFormat = 'legacy-json' | 'jsonl'
 

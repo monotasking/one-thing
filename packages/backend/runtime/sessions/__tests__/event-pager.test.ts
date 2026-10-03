@@ -17,7 +17,7 @@ import {
   listEventUserMessageMarkers,
   pageEventMessages,
   type SessionEventByteReader,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   projectChatMessages,
 } from '@shared/session/projection/chat-messages'

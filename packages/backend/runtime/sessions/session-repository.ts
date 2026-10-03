@@ -30,9 +30,6 @@ import {
   loadSessionWithAdapters,
   normalizeWorkingDirectoryRoots,
   resolveSessionDetailsSnapshot,
-  resolveSessionMessagesPage,
-  resolveSessionUserMessageMarkers,
-  sanitizeSessionOnStartup,
   syncSessionSideEffectWithReadyAdapters,
   type CoreSession,
   type CoreSessionDetails,
@@ -42,17 +39,25 @@ import {
   type CoreSessionMeta,
   type CoreSessionTokenUsage,
   type CoreSessionUsageFields,
-  type CoreTimelineSession,
   type CoreContextVariableInput,
+  type NormalizeWorkingDirectoryRootsOptions,
+  type ApplySessionMetadataMutationWithAdaptersOptions,
+  type ApplySessionSideEffectMutationWithAdaptersOptions,
+  type SyncSessionSideEffectWithReadyAdaptersOptions,
+  type LoadSessionWithAdaptersOptions,
+} from './store-helpers.js'
+import {
+  resolveSessionMessagesPage,
+  resolveSessionUserMessageMarkers,
   type GetSessionMessagesPageRequest,
   type GetSessionMessagesPageResponse,
-  type NormalizeWorkingDirectoryRootsOptions,
   type StoredChatMessage,
-  type UserMessageMarker, type ApplySessionMetadataMutationWithAdaptersOptions, type ApplySessionSideEffectMutationWithAdaptersOptions, type SyncSessionSideEffectWithReadyAdaptersOptions, type LoadSessionWithAdaptersOptions,
-} from '@onething/backend/runtime/sessions/session-primitives'
-// §17.8 U1-a:走**叶子路径** —— 按路径读盘的那一口带 `node:fs`,把它留在
-// `@onething/backend/runtime/sessions/session-primitives` 那个桶上,整条桶就在浏览器里 import 不动。
-import { getMessagesPageFromJsonFilePath } from '@onething/backend/runtime/sessions/storage/json-message-page-file'
+  type UserMessageMarker,
+} from './storage/index.js'
+import { sanitizeSessionOnStartup } from './commands.js'
+import type { CoreTimelineSession } from './timeline.js'
+// §17.8 U1-a 起按路径读盘的那一口住在叶子文件里(不进 `storage/index.ts` 那个纯的桶);目录内按相对路径直取。
+import { getMessagesPageFromJsonFilePath } from './storage/json-message-page-file.js'
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/runtime/storage/storage-primitives'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './retired-providers.js'
@@ -61,7 +66,7 @@ import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { writeDurableJson } from '../storage/durable-json.js'
-import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from '@onething/backend/runtime/sessions/storage'
+import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from './storage/index.js'
 
 export interface OnethingSessionRepositoryLogger {
   log?(...args: unknown[]): void

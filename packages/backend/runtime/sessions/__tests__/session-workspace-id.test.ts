@@ -18,7 +18,7 @@ import type {
   CoreSessionMeta,
   StoredChatMessage,
   UserMessageMarker,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import { createOnethingSessionRepository } from '../session-repository.js'
 import { DEFAULT_SPACE_ID, resolveSpaceId } from '../../spaces/types.js'
 

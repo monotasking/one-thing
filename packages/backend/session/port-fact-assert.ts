@@ -73,7 +73,7 @@
  * 分开。加新一行的人请先看着这个数涨。
  */
 
-import { canonicalChatMessage } from '@onething/backend/runtime/sessions/session-primitives'
+import { canonicalChatMessage } from '@onething/backend/runtime/sessions'
 import { deepEqual, summarizeShadowDiff, appendSessionShadowLine } from './shadow.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { hasLiveSessionProjection, peekSessionProjection } from './projection-cache.js'

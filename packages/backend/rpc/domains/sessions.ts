@@ -60,8 +60,8 @@ import {
   switchOnethingSessionForIpc,
 } from '@onething/backend/runtime/sessions'
 import { isValidSpaceId } from '@onething/backend/runtime/spaces/types'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
-import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/backend/runtime/sessions/resource-spec'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
+import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/backend/runtime/sessions'
 import type {
   ChatMessage,
   ChatSession,
@@ -93,11 +93,11 @@ import { BackendNotAssembledError, getCurrentBackendInstance } from '../../curre
 import { SessionNotFoundError } from '@onething/backend/runtime/resource/session-provider'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/runtime/sessions/branching'
+import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/runtime/sessions'
 import type { ReadOutcome } from '@onething/backend/runtime/resource/resource-api'
 import type { JsonObject } from '@shared/json'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { OnethingSessionsIpcLogger } from '@onething/backend/runtime/sessions/ipc-operations'
+import type { OnethingSessionsIpcLogger } from '@onething/backend/runtime/sessions'
 
 const log = getLogger('rpc.sessions')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { CoreSessionRepository, TurnUsage } from '@onething/backend/runtime/sessions/session-primitives'
+import type { CoreSessionRepository, TurnUsage } from '@onething/backend/runtime/sessions'
 
 interface TestMessage {
   id: string

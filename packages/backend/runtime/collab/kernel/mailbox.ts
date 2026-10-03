@@ -24,7 +24,7 @@ import {
   encodeJsonlHeaderLine,
   encodeJsonlMessageLine,
   scanJsonlLog,
-} from '@onething/backend/runtime/sessions/storage/jsonl/codec'
+} from '@onething/backend/runtime/sessions'
 import {
   appendTextFile,
   ensureDirAsync,

@@ -5,7 +5,7 @@ import {
   initializeCoreSessionLayer,
   isCoreSessionLayerInitialized,
   shutdownCoreSessionLayer,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 
 describe('core session lifecycle', () => {
   afterEach(() => {

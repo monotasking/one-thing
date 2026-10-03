@@ -58,12 +58,12 @@ import {
   parseSessionLogEventLog,
   sanitizeSessionOnStartup,
   scanJsonlLog,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import { projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import {
   dehydrateProjectedMessages,
   rehydrateSessionFromStorage,
-} from '@onething/backend/runtime/sessions/session-dehydrate'
+} from '@onething/backend/runtime/sessions'
 
 type AnyMessage = { id: string; role?: string } & Record<string, unknown>
 

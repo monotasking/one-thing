@@ -29,7 +29,7 @@ import {
   userMarkersFromProjected,
   type SessionEventByteReader,
   type SessionEventJumpIndex,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   materializeNode,
   materializeChatMessages,

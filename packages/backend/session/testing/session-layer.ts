@@ -1,7 +1,7 @@
 import { createBackendHandle, getCurrentBackendSafe, setCurrentBackend } from '../../current.js'
 import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 import { StreamChannel } from '@onething/backend/runtime/events/session-stream-channel'
-import { SessionManager } from '@onething/backend/runtime/sessions/session-primitives'
+import { SessionManager } from '@onething/backend/runtime/sessions'
 import { createSessionEventLayer } from '../event-layer.js'
 import type { SessionLayer } from '../index.js'
 import path from 'node:path'

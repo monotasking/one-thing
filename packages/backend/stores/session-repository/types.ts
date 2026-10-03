@@ -11,7 +11,7 @@ import type {
 import type {
   CoreSessionRepository,
   TurnUsage,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 
 export type { TurnUsage }
 export type {

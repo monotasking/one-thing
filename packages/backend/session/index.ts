@@ -13,7 +13,7 @@ import {
   createEmptySessionState,
   collectSessionCascadeDeleteIds,
   type SessionState,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import { getCurrentBackend } from '../current.js'
 import { createSessionEventLayer } from './event-layer.js'
 import { createSessionCommands } from './commands.js'

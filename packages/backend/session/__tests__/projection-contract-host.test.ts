@@ -17,7 +17,7 @@ import {
   canonicalChatMessage,
   canonicalHistoryMessages,
   projectModelHistory,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   projectChatMessages,
 } from '@shared/session/projection/chat-messages'
@@ -27,7 +27,7 @@ import {
   dehydrateProjectedMessages,
   dehydrateSessionForStorage,
   rehydrateSessionFromStorage,
-} from '@onething/backend/runtime/sessions/session-dehydrate'
+} from '@onething/backend/runtime/sessions'
 import {
   buildHistoryMessages,
   historyProjectionRecipe,

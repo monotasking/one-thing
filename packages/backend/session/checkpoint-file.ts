@@ -59,7 +59,7 @@ import {
   SESSION_PROJECTION_CHECKPOINT_VERSION,
   type SessionAccountState,
   type SessionProjectionCheckpointPayload,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import {
   type SessionProjectionState,
 } from '@shared/session/projection/reducer'

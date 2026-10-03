@@ -39,7 +39,7 @@ import {
   decodeSessionProjectionCheckpoint,
   parseSessionLogEventLog,
   canonicalChatMessage,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer.js'
 import { materializeChatMessages, projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import { SurfaceIndex } from '@shared/session/projection/surface.js'
@@ -52,7 +52,7 @@ import {
   type SessionOriginStamp,
   type SessionOriginVerdict,
 } from '@shared/session/events/origin.js'
-import { dehydrateProjectedMessages } from '@onething/backend/runtime/sessions/session-dehydrate'
+import { dehydrateProjectedMessages } from '@onething/backend/runtime/sessions'
 
 export interface SessionVerifyIssue {
   kind: 'seq' | 'surface' | 'projection' | 'blob' | 'unclosed-run' | 'messages' | 'checkpoint'

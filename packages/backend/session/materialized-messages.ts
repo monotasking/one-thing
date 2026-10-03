@@ -67,7 +67,7 @@ import {
   type ProjectionNode,
   type SessionProjectionState,
 } from '@shared/session/projection/reducer'
-import { rehydrateSessionFromStorage } from '@onething/backend/runtime/sessions/session-dehydrate'
+import { rehydrateSessionFromStorage } from '@onething/backend/runtime/sessions'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './projection-cache.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

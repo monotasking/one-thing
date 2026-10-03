@@ -25,7 +25,7 @@ import {
   materializeModelHistory,
   type ProjectModelHistoryMeta,
   type ProjectModelHistoryOptions,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 import { sanitizeOnethingMessagesForRendererResult } from '@onething/backend/runtime/sessions'
 import type * as SessionStore from '../stores/sessions.js'
 import type { SessionEventReads, SessionTailPageSnapshot } from './events-reads.js'

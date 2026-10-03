@@ -42,7 +42,7 @@ import {
   sumSessionMessageUsage,
   syncSessionSideEffectWithReadyAdapters,
   updateSessionIndexMeta,
-} from '@onething/backend/runtime/sessions/session-primitives'
+} from '@onething/backend/runtime/sessions'
 
 describe('core session store helpers', () => {
   it('owns the default agent id used by session storage', () => {

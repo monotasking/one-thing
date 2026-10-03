@@ -44,7 +44,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { parseSessionLogEventLog } from '@onething/backend/runtime/sessions/session-primitives'
+import { parseSessionLogEventLog } from '@onething/backend/runtime/sessions'
 import { projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import { redactText } from './lib/search-corpus-redact.mjs'
 

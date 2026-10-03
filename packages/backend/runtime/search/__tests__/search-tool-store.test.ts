@@ -34,7 +34,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Authorizer, Invocation, Outcome, Tool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Principal } from '@shared/permission/principal'
-import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions/session-primitives'
+import { encodeSessionLogEventLine } from '@onething/backend/runtime/sessions'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionMeta } from '@shared/ipc.js'
 import {

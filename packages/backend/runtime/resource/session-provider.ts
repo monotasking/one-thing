@@ -101,12 +101,12 @@ import { Intent, textResult } from '@onething/backend/runtime/toolkit/tool-proto
 import type { Principal } from '@shared/permission/principal'
 import { emitCoreSessionEventSafely } from '@onething/backend/runtime/events/bus-primitives'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions/session-primitives'
+import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
 import {
   SESSION_COLLECTION_PATH,
   SESSION_PERMISSION_MODES,
   sessionResourceSpec,
-} from '@onething/backend/runtime/sessions/resource-spec'
+} from '@onething/backend/runtime/sessions'
 import {
   addOnethingSystemMessageForIpc,
   deleteOnethingSessionForIpc,
@@ -122,7 +122,7 @@ import {
   updateOnethingSessionPermissionMode,
   updateOnethingSessionPinForIpc,
 } from '@onething/backend/runtime/sessions'
-import { updateOnethingSessionWorkingDirectory } from '@onething/backend/runtime/sessions/working-directory'
+import { updateOnethingSessionWorkingDirectory } from '@onething/backend/runtime/sessions'
 import { expandOnethingToolSandboxPath } from '@onething/backend/runtime/tools/sandbox-runtime'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'

@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   encodeSessionEventLine,
   type SessionEventRecord,
-} from '@onething/backend/runtime/sessions/session-events'
+} from '@onething/backend/runtime/sessions'
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
 import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
 

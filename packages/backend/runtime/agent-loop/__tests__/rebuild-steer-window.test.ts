@@ -21,7 +21,7 @@ import type { AgentProvider } from '@onething/backend/runtime/agent-loop/loop-pr
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog } from '../../toolkit/host.js'
-import { buildOnethingHistoryMessages } from '../../sessions/history-messages.js'
+import { buildOnethingHistoryMessages } from '../../sessions/index.js'
 import { buildOnethingAgentLoopStreamRuntime } from '../stream-runtime.js'
 
 class NoopTool extends ToolkitTool<Record<string, never>, undefined> {

@@ -1264,3 +1264,48 @@ toolkit、Worker 宿主);在宿主里它们本来就在,bun 下 import 总桶照
 ⑤d 两条的命中清单前后逐字相同,⑤c 前后都红;⑪a(等到 `model.state === 'absent'` 就读 `vectorErrorKind`,读的时候向量写路未必已经试过嵌入,
 是门本身的竞态)HEAD 上跑 5 次红 1 次、改后跑 9 次红 7 次 —— 改后 server bundle 模块求值顺序变了,时序跟着挪,未查到行为差异。
 审过后修门:那次 `waitForStatus` 改成等「`model.state === 'absent'` 且 `vectorErrorKind` 已有值」,再照旧判它等于 `'model'`。
+
+### 功能入口第 3 笔落地记录:sessions 收口(2026-10-03,未提交)
+
+**一句话**:sessions 的两个出口并成一个 —— `session-primitives.ts`(原 core 的会话内核出口,236 个名字)整段并进 `runtime/sessions/index.ts`
+后删除,入口另加 `session-events`、`resource-spec` 两行 `export *` 与 `getMessagesPageFromJsonFilePath`;外面 100 处引用改走入口,exports 里
+sessions 的深层键 14 个全删(552 → 538),棘轮 sessions 一行 88 → 1。
+
+**合并前的核对**:两只出口导出的名字零重叠(114 / 236,同名 0);合并后逐个核对每个 `export *` 源模块的每个名字在入口上解析到同一个声明
+(390 个,0 处被具名导出静默遮住);tsc 无 TS2308。
+
+**深层目标的去向**(改前 88 处):
+
+| 目标 | 处数 | 去向 | 理由 |
+| --- | --- | --- | --- |
+| `session-primitives` | 56 | 并进入口 | 本笔的主体;原文件删除 |
+| `session-dehydrate` / `session-repository` / `stream-abort` / `ipc-operations` / `history-messages` / `branching` / `working-directory` / `storage-driver` | 6 / 5 / 3 / 3 / 2 / 1 / 1 / 1 | 改调用方(说明符换成入口) | 入口原本就 `export *` 了它们,外面只是走了深路径 |
+| `storage/jsonl/codec`(collab mailbox) | 1 | 改调用方 | 用到的四个编解码函数早经 `session-primitives` → `storage/index` 出口 |
+| `commands`(一份测试) | 1 | 改调用方 | `sanitizeSessionOnStartup` 早在 `session-primitives` 里 |
+| `session-events` | 5 | 进入口 | RPC 域、引擎的事件记录器、包根 `session/event-log.ts` 都要它 |
+| `resource-spec` | 2 | 进入口 | RPC 域与资源提供方要 `session:` scheme 的常量与规格 |
+| `storage/json-message-page-file` | 1 | 进入口(具名一个) | 包根 `stores/session-repository/` 要按路径读 legacy JSON;它从前不进桶是为了让内核出口在浏览器里 import 得动,那条理由没了 |
+
+目录内:3 只非测试文件(`session-repository` / `session-events` / `storage-driver`)原先从 `session-primitives` 取名字,按名字拆成直取各自的再导出源
+(`store-helpers` / `storage/index` / `events/index` / `commands` / `timeline`,脚本 scratchpad 的 `s7-split-prim-imports.mjs`);包说明符引自己深层文件的
+3 处改相对路径;目录内 9 份测试改走入口。全仓改写脚本 `s7-entry-rewrite.mjs`(通用:`<功能> [--alias-entry=…]`)。
+
+**唯一留下的深层引用**:`runtime/search/index/ledger-feed.ts` 直取 `../../sessions/events/codec.js` 的 `parseSessionLogEventLog`。它跑在索引 Worker 里,
+走入口会让 Worker 的静态闭包从 115 只涨到 349 只(把仓储、存储驱动、历史重建连着整棵 provider / agent-loop 树带进去),桌面 `search-worker.cjs`
+实测 1282203 → 1685340 字节;直取以后 Worker 反而少了 11 只用不到的会话模块(1282203 → 1274739,server / cli 1283673 → 1276269)。
+
+**白名单与内部会话模块**:`scripts/session-check.mjs` 点名的文件一个都没搬、没改名,只改了它们的 import;`session:check` 前后同 4 条命中(扫描数少 1,
+是删掉的那只文件)。`backend-public-boundary.mjs` 的 `privateSessionFiles` 管的是包根 `session/`,本笔没加任何 exports 键,不涉及。
+
+**入口闭包**:入口 289(旧 `index.ts`)→ 290(并入后);旧 `session-primitives` 那一侧是 54。凡原来只引内核那半边的,闭包都涨到入口的大小:
+`session/refold-slices.ts` 55 → 291、`stores/session-repository/index.ts` 73 → 298、collab `mailbox.ts` 13 → 292(仍不碰包根脊柱:入口闭包里包根文件只有
+`utils/deep-freeze.ts`,和从前一样)。宿主 bundle 的输入集合只少了被删的那一只;`main.cjs` / server `main.js` 涨 ≈ 25KB / 17.5KB,是从前被摇掉的内核导出
+(例如 `SESSION_EPHEMERAL_FACT_POLICY` 那张表)因为总桶 `runtime/index.ts` 的 `export *` 现在连着它们而留了下来。循环依赖 / 初始化顺序:`import-side-effect-free`、
+`assembly-lifecycle` 绿,server 单文件包经 `gate:search-index` / `gate:acp` / battery 起得来,CLI `--help` 在临时 store 上起得来且不写 store。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;四份构建成功(web 0 处 `node:`);根全量 vitest 11413 / 19 红 → 20 红,多出的是偶发的
+`workspace-watch-driver`(单跑 18 绿),其余失败集合逐条相同;壳 7344 / 1 相同;`gate:acp` 108 ok;`sessions:shadow-battery` 前后各 131 行,逐行只差
+`refoldChecks` 217 → 215(采样次数,两次跑之间本来就浮动)、都红在 `appendFailures 8`;`sessions:hydration-contract --all` 在固定夹具 store(battery 留下的临时
+store 拷贝)上前后逐字相同,217 个会话 0 失败 —— 但这些会话都生于 2026-08-26 之后、没有 `messages.jsonl` 抄本(209 个 `no-transcript`、8 个 `no-events`),
+所以这条合同在这里比不出实质差异;真店才有旧抄本,本批不碰真店。transport / log / assembly / session / provider / gate:native / boundary(132 条)/ drill 前后
+逐字相同;`gate:search-index` ⑤d 命中清单前后相同、⑤c 前后都红、⑪a 前后都绿;golden 快照不变;`entry:gate` 绿(2598)。

@@ -12,7 +12,6 @@
 107 plugins
 105 spaces
 100 agents
-88 sessions
 82 storage
 79 events
 77 collab
@@ -59,3 +58,4 @@
 1 ambient
 1 markdown
 1 perf
+1 sessions

@@ -27,7 +27,7 @@ vi.mock('@onething/backend/runtime/storage', () => ({
 }))
 
 const { materializeNode } = await import('@shared/session/projection/chat-messages.js')
-const { rehydrateSessionFromStorage } = await import('@onething/backend/runtime/sessions/session-dehydrate')
+const { rehydrateSessionFromStorage } = await import('@onething/backend/runtime/sessions')
 const { flushSessionEventLog, resetSessionEventLogCache } =
   await import('../event-log.js')
 const { writeSessionEvent } = await import('../event-writer.js')

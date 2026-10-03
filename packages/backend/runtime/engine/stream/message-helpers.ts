@@ -44,7 +44,7 @@ import { findAgent } from "@onething/backend/runtime/agents/agent-store-access";
 import { resolveUserIdentity } from "@onething/backend/runtime/collab/user-identity";
 import * as store from "@onething/backend/store.js";
 import { getLogger } from '../../logging/configure-logging.js'
-import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/runtime/sessions/history-messages'
+import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/runtime/sessions'
 
 const log = getLogger('engine.history')
 
