@@ -39,7 +39,7 @@ vi.mock('../player-volume.js', async importOriginal => ({
   readProviderVolume: () => undefined,
 }))
 
-vi.mock('@onething/backend/runtime/voice/host-ports.wiring', () => ({
+vi.mock('@onething/backend/runtime/voice/host-ports', () => ({
   broadcastVoiceHostMessage: vi.fn(),
   configureVoiceHost: vi.fn(),
   getVoiceHostPorts: () => ({}),
@@ -61,7 +61,7 @@ vi.mock('../service.js', async () => {
   }
 })
 
-vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '', tools: ['bash'], kind: 'service' }),

@@ -1,6 +1,6 @@
 /**
- * 角色后缀 `.wiring`(I2,P3'e-A2b):同目录 `skill-review-state.ts` 的
- * `@shared/ipc` 具体化 —— 把泛型的 `TSettings` 钉成 `AppSettings`,别的什么都不做。
+ * 同目录 `skill-review-state.ts` 的 `@shared/ipc` 版本 —— 把泛型的 `TSettings` 钉成 `AppSettings`,
+ * 别的什么都不做。(从前叫 `skill-review-state.wiring.ts`,2026-10-03 去后缀时撞名,改成现在的名字。)
  */
 import {
   DEFAULT_SKILL_REVIEW_INTERVAL,

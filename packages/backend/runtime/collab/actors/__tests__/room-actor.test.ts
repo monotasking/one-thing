@@ -43,7 +43,7 @@ const {
   createCollabRoomAccountFileStore,
   createCollabRoomAccountMemoryStore,
 } = await import('../actor-io.js')
-type CollabRoomActorHost = import('@onething/backend/runtime/collab/actors/room-actor.wiring').CollabRoomActorHost
+type CollabRoomActorHost = import('@onething/backend/runtime/collab/actors/room-actor').CollabRoomActorHost
 type CollabRoomAccountStore = import('@onething/backend/runtime/collab/actors/room-account').CollabRoomAccountStore
 
 afterAll(() => {

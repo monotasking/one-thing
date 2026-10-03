@@ -26,10 +26,10 @@ import {
 } from '../agent-loop-executor.js'
 import { shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream } from '@onething/backend/runtime/agent-loop'
 import { triggerManager } from '../../triggers/index.js'
-import { runAfterAssistantResponseHooks } from '@onething/backend/runtime/plugins/lifecycle.wiring'
+import { runAfterAssistantResponseHooks } from '@onething/backend/runtime/plugins/lifecycle-hooks'
 import type { saveMediaImage } from '@onething/backend/runtime/media/save-image'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
 import type { StreamProcessor, StreamSender } from '../stream-processor.js'
 
 type SaveMediaImageInput = Parameters<typeof saveMediaImage>[0]
@@ -82,7 +82,7 @@ vi.mock('../../triggers/index.js', () => ({
   },
 }))
 
-vi.mock('@onething/backend/runtime/plugins/lifecycle.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/lifecycle-hooks', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 

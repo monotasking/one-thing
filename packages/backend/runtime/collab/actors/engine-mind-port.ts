@@ -58,7 +58,7 @@ import {
   beginCollabV3Turn,
   collabV3SpeakPort,
   endCollabV3Turn,
-} from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab/actors/turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

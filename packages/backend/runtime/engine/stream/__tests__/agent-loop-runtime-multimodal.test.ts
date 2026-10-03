@@ -16,7 +16,7 @@ import type {
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { BuildPromptOptions } from '../../prompt/system-prompt.js'
 import type { HistoryMessage } from '../message-helpers.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
 import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
 
 interface SeenRequest {
@@ -174,7 +174,7 @@ vi.mock('../../../../session/commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
 } }))
 
-vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
@@ -231,7 +231,7 @@ vi.mock('@onething/backend/events/index.js', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 
-vi.mock('@onething/backend/runtime/prompts/resolver.wiring', () => ({
+vi.mock('@onething/backend/runtime/prompts/stored-prompt-resolver', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,

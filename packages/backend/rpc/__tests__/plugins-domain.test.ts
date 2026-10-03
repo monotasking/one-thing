@@ -90,7 +90,7 @@ vi.mock('@onething/backend/runtime/plugins/commands', () => ({
 vi.mock('@onething/backend/runtime/plugins/config-access', () => ({
   createPluginConfigAccess: () => mocks.configAccess,
 }))
-vi.mock('@onething/backend/runtime/plugins/tarball.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/tarball', () => ({
   readPluginTarballSummary: mocks.readPluginTarballSummary,
 }))
 vi.mock('@onething/backend/runtime/plugins/app-version', () => ({

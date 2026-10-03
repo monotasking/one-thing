@@ -211,7 +211,7 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   configureCollabV3SpeakPort,
-} = await import('@onething/backend/runtime/collab/actors/turn-context.wiring')
+} = await import('@onething/backend/runtime/collab/actors/turn-context')
 
 const ROOM = 'room-1'
 const EXEC = 'agent-exec-fe-room-1'

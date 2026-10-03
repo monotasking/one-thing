@@ -74,7 +74,7 @@ import {
   listBackgroundJobs,
   stopBackgroundJob,
 } from '@onething/backend/runtime/tools/background-jobs-bound'
-import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index.wiring'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index-with-bridge'
 import type { JsonObject } from '@shared/json.js'
 import type { ToolsRoutes } from '@shared/ipc/tools.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'

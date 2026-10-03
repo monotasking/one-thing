@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { PracticeService } from '../service.wiring.js'
+import { PracticeService } from '../service-slot.js'
 
 function barrier() {
   let release!: () => void

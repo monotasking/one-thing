@@ -11,7 +11,7 @@ import {
   configureTerminalBroadcaster,
   hasTerminalHost,
   type TerminalBroadcaster,
-} from '../service.wiring.js'
+} from '../service.js'
 
 const broadcaster: TerminalBroadcaster = {
   sendData: vi.fn(),

@@ -21,7 +21,7 @@ import {
 } from '@onething/backend/runtime/prompts'
 import { toolkitPromptSource } from '@onething/backend/runtime/toolkit/prompt-source'
 import { buildStateVariablesPromptText } from '@onething/backend/runtime/variables/variable-system'
-import { pluginPromptSource } from '@onething/backend/runtime/prompts/plugin-context.wiring'
+import { pluginPromptSource } from '@onething/backend/runtime/prompts/plugin-context-breaker'
 import {
   getMacOSAutomationDocsPath,
 } from '@onething/backend/stores/docs-paths.js'
@@ -36,7 +36,7 @@ import {
 } from '@onething/backend/runtime/collab'
 import { collabRoomMembers } from '@onething/backend/runtime/collab/members'
 import { collabUserPromptFields } from '@onething/backend/runtime/collab/user-identity'
-import type { PromptProviderConfig } from '@onething/backend/runtime/prompts/plugin-context.wiring'
+import type { PromptProviderConfig } from '@onething/backend/runtime/prompts/plugin-context-breaker'
 import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,

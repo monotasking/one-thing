@@ -1,7 +1,7 @@
 /**
- * 角色后缀 `.wiring`(I2,P3'e-A2b):`CoreIPCEmitter` 的**跨进程词汇实例化** ——
- * core 出泛型(`packages/backend/runtime/engine/ipc-emitter.ts`),这里把七个类型参数钉成
- * `@shared/ipc` / `@shared/events` 的具体形状。它是一处而不是四处,所以不删门面:
+ * `CoreIPCEmitter` 钉成会话流的具体形状:同目录 `ipc-emitter.ts` 出泛型,这里把七个类型参数钉成
+ * `@shared/ipc` / `@shared/events` 里会话流的那几样(`Step` / `ToolCall` / 流结束与出错的数据)。
+ * (这只文件从前叫 `ipc-emitter.wiring.ts`;2026-10-03 去掉后缀时与泛型那一半撞名,按内容改叫现在的名字。)它是一处而不是四处,所以不删门面:
  * 删了就得让每个消费者各写一遍七参数应用,那才是真的复制。
  */
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart } from '@shared/ipc.js'

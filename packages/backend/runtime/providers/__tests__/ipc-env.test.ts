@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { getProviderEnvStatus, resolveProviderApiKey } from '../env.wiring.js'
+import { getProviderEnvStatus, resolveProviderApiKey } from '../ipc-env.js'
 
 const touchedEnvVars = new Set<string>()
 

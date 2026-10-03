@@ -14,7 +14,7 @@ import {
   onethingPortableBuiltinProviders,
 } from '@onething/backend/runtime/providers'
 
-import type { ProviderDefinition } from '@onething/backend/runtime/providers/types.wiring'
+import type { ProviderDefinition } from '@onething/backend/runtime/providers/ipc-types'
 
 // All built-in providers.
 //

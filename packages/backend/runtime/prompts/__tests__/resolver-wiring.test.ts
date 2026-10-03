@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPrompt, setPromptsPathForTests } from '../store-bound.js'
-import { displayContentForMessage, resolvePromptReferences } from '../resolver.wiring.js'
+import { displayContentForMessage, resolvePromptReferences } from '../stored-prompt-resolver.js'
 import {
   createPromptToken,
   createSkillToken,

@@ -17,8 +17,8 @@ import {
   type VoiceSubmitUtteranceRequest,
   type VoiceSynthesizeRequest,
 } from '@shared/ipc.js'
-import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/backend/runtime/voice/audio-router.wiring'
-import { WakeWordEngine } from '@onething/backend/runtime/voice/kws/engine.wiring'
+import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/backend/runtime/voice/audio-router'
+import { WakeWordEngine } from '@onething/backend/runtime/voice/kws/engine'
 import { getEventBus, getStreamChannel } from '@onething/backend/events/index.js'
 import type { StreamChunk } from '@shared/events/index.js'
 import type { Unsubscribe } from '@onething/backend/events/types.js'
@@ -46,7 +46,7 @@ import {
   sendVoiceHostMessageToWindow,
   type VoiceHostWebContents,
   type VoiceHostWindow,
-} from '@onething/backend/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/voice/host-ports'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { OnethingVoiceSpeechStreamHandlers } from '@onething/backend/runtime/voice/providers'

@@ -19,7 +19,7 @@ import {
 	getProviderApiType,
 	resolveProviderAuth,
 } from "@onething/backend/runtime/engine/stream/provider-helpers";
-import { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model.wiring";
+import { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model";
 import { applySessionSpaceCredentials } from "./space-credentials.js";
 import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/runtime/agent-loop/providers/factory'
 
@@ -51,7 +51,7 @@ export interface CreateUtilityProviderOptions {
 // The routing question ("which provider/model does background work use?") lives
 // in its own leaf so the plugin LLM surface can ask it without dragging the
 // agent-loop in behind it. See utility-model.ts.
-export { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model.wiring";
+export { resolveUtilityModel } from "@onething/backend/runtime/providers/utility-model";
 
 /**
  * Returns undefined whenever the provider cannot be built — unconfigured,

@@ -57,12 +57,12 @@ import {
 import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
-} from '@onething/backend/runtime/skills/plugin-roots.wiring'
-import { registerPromptContextProvider } from '@onething/backend/runtime/prompts/plugin-context.wiring'
+} from '@onething/backend/runtime/skills/plugin-roots'
+import { registerPromptContextProvider } from '@onething/backend/runtime/prompts/plugin-context-breaker'
 import {
   registerAfterAssistantResponseHook,
   registerBeforeContextCompactHook,
-} from '@onething/backend/runtime/plugins/lifecycle.wiring'
+} from '@onething/backend/runtime/plugins/lifecycle-hooks'
 import { registerPluginInputInterceptHook } from '@onething/backend/runtime/plugins/input-intercept-bound'
 import { registerPluginToolCallInterceptHook } from '@onething/backend/runtime/plugins/tool-call-intercept-bound'
 import { registerPluginToolResultInterceptHook } from '@onething/backend/runtime/plugins/tool-result-intercept-bound'

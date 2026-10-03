@@ -43,7 +43,7 @@ import type { TerminalFindDirection, TerminalScreen } from './screen'
  *
  * 超量:一次 `seq 1 20000` 是两万条短帧。这一层**不攒不丢**(攒 = 延迟,丢 =
  * 撒谎),只按 `seq` 去重后原样写进 xterm —— 攒批是 core 那边 16ms flush 的事
- * (`service.wiring.ts`),重画节流是 xterm 自己的事。真机读数进 `gate:terminal` ⑤。
+ * (`runtime/terminal/service.ts`),重画节流是 xterm 自己的事。真机读数进 `gate:terminal` ⑤。
  *
  * ══════════════════════════════════════════════════════════════════════════
  * 三件容易写错的事,各一段判词
@@ -61,7 +61,7 @@ import type { TerminalFindDirection, TerminalScreen } from './screen'
  *
  * **阈值 16KB。** 太小 = 每一小段输出配一发 RPC(一次 `seq 1 20000` 能打出上万
  * 发);太大 = 越过服务端 128KB 的高水位,它暂停读 PTY、挂 5 秒停滞表、然后
- * **自动 detach**(`service.wiring.ts` 的 `ackStallMs`)。16KB 在两者中间:
+ * **自动 detach**(`runtime/terminal/service.ts` 的 `ackStallMs`)。16KB 在两者中间:
  * 高水位之前能回执八次,而一屏输出通常一发都不到。
  */
 

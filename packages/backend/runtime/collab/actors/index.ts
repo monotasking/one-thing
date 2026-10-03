@@ -5,7 +5,7 @@
  * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)、
  * agent 的账与举手/drive 组装(D2 `mind-rules.ts`)、mailbox 折叠信封(D2
  * `envelope-fold.ts`)、跨房笔记(D2 `notebook-rules.ts`)。
- * P3'b-B 起,带 IO 的 actor 本体(`agent-actor` / `referee-actor` / `room-actor.wiring`
+ * P3'b-B 起,带 IO 的 actor 本体(`agent-actor` / `referee-actor` / `room-actor`
  * / `worker-child` / `mind-port` / `notebook-store` / `room-account` / `agent-mailbox`)
  * 也住在这个目录 —— 它们的闭包零脊柱边。只有真撞后端脊柱的宿主端口与装配
  * (`engine-mind-port` / `worker-mind-port` / `runtime.ts` / `stop-door` / `migrate`)

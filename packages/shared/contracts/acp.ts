@@ -2,8 +2,8 @@
  * ACP agent 配置与会话选项的形状(A0-3:只此一份)。
  *
  * 产品层 `runtime/acp/types.ts` 与契约层 `shared/ipc/acp.ts` 都 `import type` 这里:
- * 契约层不许依赖产品层,产品层(非 `*.wiring.ts`)不许 import `@shared/ipc`,
- * 两边都够得着、又不反向依赖的只有 `@shared/contracts`。
+ * 契约层不许依赖产品层;立这份文件时产品层(非 `*.wiring.ts`)还不许 import `@shared/ipc`,
+ * 两边都够得着、又不反向依赖的只有 `@shared/contracts`(那条规则已随第③步拍平撤掉,形状留在这里)。
  */
 import type { JsonObject } from '../json.js'
 

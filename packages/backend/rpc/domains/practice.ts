@@ -34,7 +34,7 @@ import {
   startPractice,
   stopPractice,
   writePracticeConfig,
-} from '@onething/backend/runtime/practice/service.wiring'
+} from '@onething/backend/runtime/practice/service-slot'
 
 export const practiceRpcHandlers: RouteHandlers<PracticeRoutes> = {
   async start(request) {

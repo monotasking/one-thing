@@ -69,7 +69,7 @@ import {
   MCPManager,
   probeMCPServerConfig,
   registerMCPTools,
-} from '@onething/backend/runtime/mcp/index.wiring'
+} from '@onething/backend/runtime/mcp/index-with-bridge'
 import { getMCPOAuthFlowManager } from '@onething/backend/runtime/mcp/oauth/index'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'

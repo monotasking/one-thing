@@ -59,7 +59,7 @@
  */
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import { ACPManager } from '@onething/backend/runtime/acp'
-import { MCPManager, registerMCPTools } from '@onething/backend/runtime/mcp/index.wiring'
+import { MCPManager, registerMCPTools } from '@onething/backend/runtime/mcp/index-with-bridge'
 import { getCurrentBackendInstance } from '../../current.js'
 import {
   getOnethingSettingsForIpc,

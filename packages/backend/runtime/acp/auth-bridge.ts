@@ -21,7 +21,7 @@ import {
   getTerminalService,
   hasTerminalHost,
   type TerminalService,
-} from '@onething/backend/runtime/terminal/service.wiring'
+} from '@onething/backend/runtime/terminal/service'
 import { resolveExternalAgentSpawnEnv } from '@onething/backend/runtime/external-agents/spawn-env'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 

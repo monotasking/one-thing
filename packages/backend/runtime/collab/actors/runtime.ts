@@ -152,7 +152,7 @@ import {
 } from '@onething/backend/runtime/collab/actors/referee-actor'
 import { createCollabEngineRefereeJudgePort } from './referee-judge.js'
 import { collabRoomActorsDir, createCollabRoomAccountFileStore } from '@onething/backend/runtime/collab/actors/room-account'
-import { CollabRoomActor, type CollabRoomActorHost } from '@onething/backend/runtime/collab/actors/room-actor.wiring'
+import { CollabRoomActor, type CollabRoomActorHost } from '@onething/backend/runtime/collab/actors/room-actor'
 import {
   createCollabDeadLetterSink,
   createCollabSchedulerLogFileStore,
@@ -169,7 +169,7 @@ import {
   configureCollabV3TurnObserver,
   type CollabV3SpeakInput,
   type CollabV3SpeakResult,
-} from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab/actors/turn-context'
 import {
   createCollabWorkerSlotLedger,
   type CollabWorkerBoardPort,

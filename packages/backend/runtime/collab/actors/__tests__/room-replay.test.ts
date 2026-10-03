@@ -22,7 +22,7 @@ import {
   collabRoomMembersFromTranscript,
   createCollabRoomActorReplayPipeline,
   type CollabRoomReplayOptions,
-} from '../room-replay.wiring.js'
+} from '../room-replay.js'
 
 const GOLDEN_DIR = join(__dirname, 'golden')
 

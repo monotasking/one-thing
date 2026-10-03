@@ -15,7 +15,7 @@ import {
   createElectronMusicProcessRunner,
   writeElectronMusicSecretFile,
 } from '@onething/backend/runtime/music/process-runner'
-import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports.wiring'
+import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/stores/defaults/settings.js'
 import { getSettings, saveSettings } from '@onething/backend/stores/settings.js'

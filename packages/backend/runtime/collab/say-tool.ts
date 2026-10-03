@@ -59,7 +59,7 @@ import {
   collabV3RoomPostPort,
   resolveCollabV3SpeakRoute,
   type CollabV3SpeakPort,
-} from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+} from '@onething/backend/runtime/collab/actors/turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

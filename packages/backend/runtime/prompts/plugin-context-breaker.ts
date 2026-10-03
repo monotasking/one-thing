@@ -1,9 +1,9 @@
 /**
- * 角色后缀 `.wiring`(I2,P3'e-A2b):与同目录的 `plugin-context.ts` 是同概念两半 ——
- * 那半是泛型的产品实现(注册表 + 超时 + 收集),这半把它钉成 `@shared/ipc` 的具体
- * 形状(`AppSettings` / `SkillDefinition` / `PromptContextRole`)并接上**桌面那套
- * 断路器记账**(每次超时/异常记一次 `promptContext` 失败,成功即清零)。
- * 只有装配层与别的 `.wiring` 读它;`prompts/index.ts` 刻意不再导出它。
+ * 与同目录的 `plugin-context.ts` 是同概念两半 —— 那半是泛型实现(注册表 + 超时 + 收集),
+ * 这半把它钉成 `@shared/ipc` 的具体形状(`AppSettings` / `SkillDefinition` / `PromptContextRole`)
+ * 并接上**断路器记账**(每次超时/异常记一次 `promptContext` 失败,成功即清零)。
+ * `prompts/index.ts` 刻意不导出它。(这只文件从前叫 `plugin-context.wiring.ts`;
+ * 2026-10-03 去掉后缀时与泛型那一半撞名,按它多做的那件事 —— 断路器 —— 改名。)
  */
 import { pluginScope } from '@onething/backend/runtime/plugins/plugin-contract'
 import {

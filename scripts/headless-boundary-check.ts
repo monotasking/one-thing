@@ -2433,7 +2433,8 @@ const APP_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
 
 // I3(§0b.3)「`*.wiring.ts` 是 runtime 里唯一许说 `@shared/ipc` 的文件形态」与它的另一半「非 wiring 文件不许
 // import `*.wiring` 模块」随第③步拍平一起撤掉(正本 §4):server 包内部不再区分接线与产品逻辑,
-// runtime 本来就能 import `@shared/ipc` 了,后缀不再表达任何权限。`*.wiring.ts` 文件名本批不改,留给下一步。
+// runtime 本来就能 import `@shared/ipc` 了,后缀不再表达任何权限。31 只 `*.wiring.ts` 随后(2026-10-03)去掉了后缀,
+// 撞名的按内容改名(正本 §6「去 .wiring 后缀」落地记录有去向表);今天仓里没有 `*.wiring.ts`。
 
 /**
  * `packages/backend` 下住着两类东西:包根(后端入口与门面:backend.ts / server / rpc / stores / session / events / …)
@@ -3094,7 +3095,7 @@ function checkCoreOwnsToolSchemaProjection(): void {
   const coreRegistryFile = path.join(root, 'packages/backend/runtime/tools/engine-tool-registry.ts')
   const coreIndexFile = path.join(root, 'packages/backend/runtime/tools/tool-helpers.ts')
   const coreTestFile = path.join(root, 'packages/backend/runtime/tools/__tests__/engine-tool-registry.test.ts')
-  const projectionFile = path.join(root, 'packages/backend/runtime/toolkit/catalog-projection.wiring.ts')
+  const projectionFile = path.join(root, 'packages/backend/runtime/toolkit/catalog-projection.ts')
   const coreRegistryContent = fs.existsSync(coreRegistryFile) ? fs.readFileSync(coreRegistryFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
@@ -3738,7 +3739,7 @@ function checkRuntimeOwnsProviderRegistry(): void {
 function checkRuntimeOwnsProviderDefinitionTypes(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/providers/provider-definition.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/providers/index.ts')
-  const mainFile = path.join(root, 'packages/backend/runtime/providers/types.wiring.ts')
+  const mainFile = path.join(root, 'packages/backend/runtime/providers/ipc-types.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -3766,7 +3767,7 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/providers/types.wiring.ts: missing provider type facade']),
+      : ['packages/backend/runtime/providers/ipc-types.ts: missing provider type facade']),
   ]
 
   assertNoMatches('packages/backend/runtime owns provider definition types', lines)
@@ -6035,8 +6036,8 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
 function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
   const runtimeStoreFile = path.join(root, 'packages/backend/runtime/agents/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/backend/runtime/agents/ipc-operations.ts')
-  // P3'a-2:归位 `runtime/agents/store-bound.wiring.ts`(吃 @shared/ipc 的 AgentDefinition,故带 .wiring)。
-  const mainStoreFile = path.join(root, 'packages/backend/runtime/agents/store-bound.wiring.ts')
+  // P3'a-2:归位 `runtime/agents/store-bound.ts`(吃 @shared/ipc 的 AgentDefinition;当年因此带 `.wiring` 后缀,2026-10-03 去掉)。
+  const mainStoreFile = path.join(root, 'packages/backend/runtime/agents/store-bound.ts')
   const adapterFile = path.join(root, 'packages/backend/rpc/domains/agents.ts')
   const runtimeContent = [
     fs.existsSync(runtimeStoreFile) ? fs.readFileSync(runtimeStoreFile, 'utf-8') : '',
@@ -6059,7 +6060,7 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_AGENTS_STORE_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/agents/store-bound.wiring.ts: missing agent store adapter']),
+      : ['packages/backend/runtime/agents/store-bound.ts: missing agent store adapter']),
     ...(fs.existsSync(adapterFile)
       ? matchingLines(adapterFile, MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
       : [`${rel(adapterFile)}: missing agents RPC domain`]),
@@ -6205,9 +6206,9 @@ function checkRuntimeOwnsSchedulerRunHistory(): void {
   const runtimeFile = path.join(root, 'packages/backend/runtime/scheduler/run-history.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/runtime/scheduler/index.ts')
   // P3'a-3:绑定件从 `app/scheduler/run-history.ts` 归位到
-  // `runtime/scheduler/run-history-bound.wiring.ts` —— 带 `.wiring` 是因为它吃
-  // `@shared/ipc` 的 `SchedulerRunDetailDTO`(I3:角色写在文件名里)。
-  const mainFile = path.join(root, 'packages/backend/runtime/scheduler/run-history-bound.wiring.ts')
+  // `runtime/scheduler/run-history-bound.ts` —— 它吃 `@shared/ipc` 的 `SchedulerRunDetailDTO`
+  // (当年因此带 `.wiring` 后缀,2026-10-03 去掉)。
+  const mainFile = path.join(root, 'packages/backend/runtime/scheduler/run-history-bound.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -6232,7 +6233,7 @@ function checkRuntimeOwnsSchedulerRunHistory(): void {
     ),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_RUN_HISTORY_FORBIDDEN_PATTERNS)
-      : ['packages/backend/runtime/scheduler/run-history-bound.wiring.ts: missing scheduler run-history adapter']),
+      : ['packages/backend/runtime/scheduler/run-history-bound.ts: missing scheduler run-history adapter']),
   ]
 
   assertNoMatches('packages/backend/runtime owns scheduler run-history storage', lines)

@@ -15,7 +15,7 @@ const recordUsage = vi.fn()
 vi.mock('@onething/backend/stores/settings.js', () => ({
   getSettings: () => settingsRef.current,
 }))
-vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
+vi.mock('@onething/backend/runtime/providers/ipc-env', () => ({
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
 vi.mock('@onething/backend/runtime/providers/chat-facade', () => ({

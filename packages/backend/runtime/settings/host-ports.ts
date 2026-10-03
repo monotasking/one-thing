@@ -18,8 +18,8 @@
  * **未注入即安静降级**而不是抛错 —— 没有宿主的进程里「给窗口套代理」不是 bug,
  * 是一件做不到的事。
  *
- * 放 `backend/wiring` 而不是 runtime:端口的形状就是 `@shared/ipc/settings.js`
- * 上的 `ProxySettings`,而产品层禁 `@shared/ipc`(只有 `*.wiring.ts` 例外)。
+ * 端口的形状就是 `@shared/ipc/settings.js` 上的 `ProxySettings`。(它从前放在 `backend/wiring`,
+ * 理由是当年产品层禁 `@shared/ipc`、只有 `*.wiring.ts` 例外;那条规则已随第③步拍平撤掉。)
  */
 import type { ProxySettings } from '@shared/ipc/settings.js'
 

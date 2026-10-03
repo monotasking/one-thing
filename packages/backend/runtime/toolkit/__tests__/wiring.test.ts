@@ -62,7 +62,7 @@ vi.mock('@onething/backend/runtime/plugins/tool-result-intercept-bound', () => (
   runPluginToolResultIntercept: harness.resultIntercept,
 }))
 
-vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   isMCPTool: (id: string) => id.startsWith('mcp:'),
   executeMCPTool: harness.mcpExecute,
   resolveMCPServerIdForToolRef: () => 'server-1',
@@ -76,7 +76,7 @@ vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
 const { configureToolkitCatalog } = await import('@onething/backend/runtime/toolkit')
 const { createDesktopCatalog } = await import('../tier-catalogs.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
-const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/backend/runtime/toolkit/mcp-catalog.wiring')
+const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/backend/runtime/toolkit/mcp-catalog')
 const { executeToolDirectly } = await import('@onething/backend/runtime/engine/stream/tool-execution')
 const { getStreamChannel } = await import('@onething/backend/events/index.js')
 

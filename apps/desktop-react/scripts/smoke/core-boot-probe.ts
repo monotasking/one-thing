@@ -48,7 +48,7 @@ const emit = process.stdout.write.bind(process.stdout)
 
 /**
  * 顺带把 ② 那个 shim 也验了:`createRequire(import.meta.url)` 正是 `pty-backend.ts`
- * 与 `kws/engine.wiring.ts` 顶层那一句。banner 配漏时这一行**在模块求值期**就抛
+ * 与 `kws/engine.ts` 顶层那一句。banner 配漏时这一行**在模块求值期**就抛
  * ERR_INVALID_ARG_VALUE —— 探针连第一条读数都印不出来,症状与真实故障逐字相同。
  */
 const requireRuntime = createRequire(import.meta.url)

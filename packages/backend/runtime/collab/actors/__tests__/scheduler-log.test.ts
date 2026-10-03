@@ -48,7 +48,7 @@ const {
   resetCollabSchedulerLogWarnings,
   sweepCollabSchedulerLogs,
 } = await import('../actor-io.js')
-type CollabRoomActorHost = import('@onething/backend/runtime/collab/actors/room-actor.wiring').CollabRoomActorHost
+type CollabRoomActorHost = import('@onething/backend/runtime/collab/actors/room-actor').CollabRoomActorHost
 type CollabAgentActorHost = import('@onething/backend/runtime/collab/actors/agent-actor').CollabAgentActorHost
 const { createCollabAgentAccountMemoryStore } = await import('@onething/backend/runtime/collab/actors/agent-mailbox')
 const { createCollabScriptedMindPort } = await import('@onething/backend/runtime/collab/actors/mind-port')

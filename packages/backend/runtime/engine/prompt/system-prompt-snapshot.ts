@@ -6,7 +6,7 @@ import type {
   SystemPromptSnapshot,
   ToolDefinition,
 } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
 import * as store from '@onething/backend/store.js'
 import {
   createAgentProviderFromRuntime,
@@ -14,7 +14,7 @@ import {
 import { defaultAgent, findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { resolveAgentProfileForSession } from '@onething/backend/runtime/agents/profile-for-session'
 import { getSkillsForSession } from '@onething/backend/runtime/skills/session-skill-cache'
-import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index.wiring'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/runtime/mcp/index-with-bridge'
 import { buildProjectDirsPromptVars } from '@onething/backend/runtime/project-dirs/bootstrap'
 import {
   isProviderSupported,
@@ -26,7 +26,7 @@ import {
 } from '../stream/provider-helpers.js'
 import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
 import { resolveToolkitSurface } from '@onething/backend/runtime/toolkit'
-import { toolDefinitionFromToolkitTool } from '@onething/backend/runtime/toolkit/catalog-projection.wiring'
+import { toolDefinitionFromToolkitTool } from '@onething/backend/runtime/toolkit/catalog-projection'
 import { resolveOnethingAgentLoopStreamRoute } from '@onething/backend/runtime/agent-loop'
 import { buildPrompt } from './system-prompt.js'
 import {

@@ -25,13 +25,13 @@ export {
   partialResultFromEvent,
   splitResultContent,
   stepFromEvent,
-} from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
+} from '@onething/backend/runtime/toolkit/ipc-observer'
 export type {
   ExecutionResultProjectionInput,
   LegacyMetadataUpdate,
   LegacyToolAttachment,
   LegacyToolCallbacks,
-} from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
+} from '@onething/backend/runtime/toolkit/ipc-observer'
 
 export { BackgroundJobRegistry } from './jobs.js'
 export type { BackgroundJobRegistryOptions } from './jobs.js'
@@ -75,7 +75,7 @@ export {
   refreshMcpToolsInCatalog,
   resetMcpCatalogSyncForTests,
   syncMcpToolsIntoCatalog,
-} from '@onething/backend/runtime/toolkit/mcp-catalog.wiring'
+} from '@onething/backend/runtime/toolkit/mcp-catalog'
 
 export { toolkitPromptFragments, toolkitPromptSource } from '@onething/backend/runtime/toolkit/prompt-source'
 
@@ -84,13 +84,13 @@ export type {
   ToolExecutionResult,
   ToolMetadataUpdate,
   ToolPartialResultUpdate,
-} from '@onething/backend/runtime/toolkit/execution-types.wiring'
+} from '@onething/backend/runtime/toolkit/execution-types'
 
 export {
   toolDefinitionFromToolkitTool,
   toolDefinitionsFromCatalog,
   toolkitCatalogToolDefinitions,
-} from '@onething/backend/runtime/toolkit/catalog-projection.wiring'
+} from '@onething/backend/runtime/toolkit/catalog-projection'
 
 export {
   registerPluginToolInCatalog,

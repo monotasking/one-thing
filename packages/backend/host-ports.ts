@@ -87,12 +87,12 @@ import {
   configureVoiceHost,
   resetVoiceHost,
   type VoiceHostPorts,
-} from '@onething/backend/runtime/voice/host-ports.wiring'
+} from '@onething/backend/runtime/voice/host-ports'
 import {
   configureTerminalBroadcaster,
   killAllTerminals,
   type TerminalHostPorts,
-} from '@onething/backend/runtime/terminal/service.wiring'
+} from '@onething/backend/runtime/terminal/service'
 import {
   configureScratchpadHost,
   resetScratchpadHost,

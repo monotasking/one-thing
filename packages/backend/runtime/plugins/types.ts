@@ -39,17 +39,17 @@ import type {
  * 第二个类型参数),与工具系统内部机制无关。
  */
 export type ToolMetadata = object
-import type { PluginSkillRootProvider } from '@onething/backend/runtime/skills/plugin-roots.wiring'
+import type { PluginSkillRootProvider } from '@onething/backend/runtime/skills/plugin-roots'
 import type {
   PluginPromptContext,
   PluginPromptContextProvider,
-} from '@onething/backend/runtime/prompts/plugin-context.wiring'
+} from '@onething/backend/runtime/prompts/plugin-context-breaker'
 import type {
   BeforeContextCompactContext,
   BeforeContextCompactHook,
   AfterAssistantResponseContext,
   AfterAssistantResponseHook,
-} from '@onething/backend/runtime/plugins/lifecycle.wiring'
+} from '@onething/backend/runtime/plugins/lifecycle-hooks'
 import type {
   SchedulerRunOptions,
   SchedulerRunRecord,

@@ -35,13 +35,13 @@ import {
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
 } from '@onething/backend/runtime/music/index'
-import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports.wiring'
+import { broadcastVoiceHostMessage } from '@onething/backend/runtime/voice/host-ports'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { describeHostDoing, projectHostLog } from '@onething/backend/runtime/music/host-log'
 import { addGrant } from '@onething/backend/runtime/permission/permission-asks'
 import { writeJsonFile } from '@onething/backend/runtime/storage/storage-primitives'
-import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/runtime/agents/store-bound.wiring'
+import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/runtime/agents/store-bound'
 import { markSessionUnattended } from '@onething/backend/runtime/permissions/unattended'
 import { resolveCollabVenue } from '@onething/backend/runtime/collab'
 import { getSettings } from '@onething/backend/stores/settings.js'

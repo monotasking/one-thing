@@ -44,7 +44,7 @@ export interface TerminalOutputSnapshot {
   exit?: TerminalExitStatus
 }
 import { createNodePtyBackend, type PtyBackend, type PtyHandle } from './pty-backend.js'
-import { buildSpawnProfile } from './spawn-profile.wiring.js'
+import { buildSpawnProfile } from './spawn-profile.js'
 
 export interface TerminalBroadcaster {
   sendData(event: TerminalDataEvent): void

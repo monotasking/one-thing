@@ -9,7 +9,7 @@ import {
   buildPrompt,
   loadAgentsMdInstructions,
 } from '../system-prompt.js'
-import { registerPromptContextProvider } from '@onething/backend/runtime/prompts/plugin-context.wiring'
+import { registerPromptContextProvider } from '@onething/backend/runtime/prompts/plugin-context-breaker'
 
 const agentStoreMock = vi.hoisted(() => ({
   findAgent: vi.fn(),

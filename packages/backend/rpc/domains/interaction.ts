@@ -48,7 +48,7 @@ import { Interaction } from '@onething/backend/runtime/interaction'
 import {
   getPendingInteractionsForIpc,
   respondInteractionForIpc,
-} from '@onething/backend/runtime/interaction/ipc-operations.wiring'
+} from '@onething/backend/runtime/interaction/ipc-operations'
 import type { InteractionRoutes } from '@shared/ipc/interaction.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { RpcRouteHandlers } from '../registry.js'

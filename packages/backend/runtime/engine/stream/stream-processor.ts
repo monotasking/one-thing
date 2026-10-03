@@ -8,7 +8,7 @@ import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ip
 import type { Principal } from '@shared/permission/principal'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
-import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/runtime/mcp/index.wiring'
+import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/runtime/mcp/index-with-bridge'
 import { resolveAIToolName } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { createEventOnlyEmitter } from '@onething/backend/events/event-only-emitter.js'
 import type { PendingMessageQueue, CoreToolIdentityResolver, CoreStreamProcessorStore } from '@onething/backend/runtime/engine/engine-primitives'

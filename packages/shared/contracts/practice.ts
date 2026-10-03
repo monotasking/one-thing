@@ -130,8 +130,8 @@ export interface OnethingPracticeSummaryResult {
  *
  * 它们从 `@shared/ipc/practice.ts` 搬到这里,理由与这个文件里其余形状一样:
  * **产品层要用它们**。`PracticeService` 是练习域的产品实现(节奏引擎 + 账本 +
- * 配置读写),它从前被困在 `service.wiring.ts` 里,唯一的原因就是这五个类型住在
- * `@shared/ipc` —— 一个产品层不许 import 的地方。形状本身是纯可序列化数据,不带
+ * 配置读写),它从前被困在 `service.wiring.ts`(今天的 `runtime/practice/service-slot.ts`)里,
+ * 唯一的原因就是这五个类型住在 `@shared/ipc` —— 当年产品层不许 import 的地方。形状本身是纯可序列化数据,不带
  * 任何路由/通道词汇,住在契约层才是它们本来的位置。`@shared/ipc/practice.ts`
  * 原样再导出,传输面的名字一个都没变。
  */

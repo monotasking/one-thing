@@ -24,7 +24,7 @@
 import * as store from "@onething/backend/store.js";
 import type { EvalModelCaller } from "@onething/backend/runtime";
 import { onethingBaseBuiltinProviders } from "@onething/backend/runtime/providers";
-import { resolveProviderApiKey } from "@onething/backend/runtime/providers/env.wiring";
+import { resolveProviderApiKey } from "@onething/backend/runtime/providers/ipc-env";
 import { DEFAULT_SPACE_ID } from "@onething/backend/runtime/spaces/types";
 import { resolveSpaceProviderCredentialForSpace } from "@onething/backend/runtime/providers/space-credentials";
 import { captureUsageRecorder } from "../usage/usage-recorder.js";

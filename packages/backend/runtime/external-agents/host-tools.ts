@@ -39,7 +39,7 @@ import { sessionAccess } from '@onething/backend/session/access.js'
 import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
 import { resolveAgentProfileForSession } from '../agents/profile-for-session.js'
 import { collabVenueOf } from '@onething/backend/runtime/collab/venue'
-import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/runtime/toolkit'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

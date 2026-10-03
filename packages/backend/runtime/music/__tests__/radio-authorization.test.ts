@@ -36,7 +36,7 @@ vi.mock('@onething/backend/stores/sessions.js', () => ({
 }))
 vi.mock('../../../session/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
 vi.mock('@onething/backend/stores/settings.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
-vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '' }),

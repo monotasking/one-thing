@@ -17,8 +17,8 @@ import {
 
 vi.mock('../../../storage/index.js', () => ({ getOnethingStorePath: () => '/tmp/onething-agent-duet-test' }))
 
-const { replayCollabDuet } = await import('../agent-replay.wiring.js')
-type CollabDuetReplayResult = import('../agent-replay.wiring.js').CollabDuetReplayResult
+const { replayCollabDuet } = await import('../agent-replay.js')
+type CollabDuetReplayResult = import('../agent-replay.js').CollabDuetReplayResult
 
 const GOLDEN_DIR = join(__dirname, 'golden')
 const SNAPSHOT = join(GOLDEN_DIR, 'werewolf-duet.expected.txt')

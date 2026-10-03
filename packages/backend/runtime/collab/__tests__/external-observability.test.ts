@@ -43,7 +43,7 @@ const {
   recordExternalAgentTool,
   recordExternalAgentTurn,
 } = await import('../external-observability.js')
-const { beginCollabV3Turn, clearCollabV3Turns } = await import('@onething/backend/runtime/collab/actors/turn-context.wiring')
+const { beginCollabV3Turn, clearCollabV3Turns } = await import('@onething/backend/runtime/collab/actors/turn-context')
 
 /* ── 场子 ─────────────────────────────────────────────────────────────────── */
 

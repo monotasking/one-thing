@@ -31,7 +31,7 @@ import {
   spaceProviderSettingsPath,
   writeSpaceProviderSettings,
 } from '@onething/backend/runtime/spaces/provider-settings'
-import { getProviderApiKeyEnvCandidates } from '@onething/backend/runtime/providers/env.wiring'
+import { getProviderApiKeyEnvCandidates } from '@onething/backend/runtime/providers/ipc-env'
 import {
   getSettings,
   invalidateSettingsCache,

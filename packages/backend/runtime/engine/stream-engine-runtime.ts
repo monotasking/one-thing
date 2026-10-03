@@ -4,7 +4,7 @@ import type {
 	ChatSession,
 	ProviderConfig,
 } from "@shared/ipc.js";
-import type { ProviderAuthContext } from "@onething/backend/runtime/auth/types.wiring";
+import type { ProviderAuthContext } from "@onething/backend/runtime/auth/ipc-types";
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
@@ -21,7 +21,7 @@ import {
 	isProviderSupported,
 	requiresOAuth,
 } from "@onething/backend/runtime/providers/chat-facade";
-import { resolveProviderApiKey } from "@onething/backend/runtime/providers/env.wiring";
+import { resolveProviderApiKey } from "@onething/backend/runtime/providers/ipc-env";
 import {
 	applySessionProviderGates,
 	resolveSessionSpaceOAuthAuth,
@@ -29,7 +29,7 @@ import {
 import { resolveSessionSpaceDefaultSelection } from "@onething/backend/runtime/providers/space-defaults";
 import { getSessionSettings } from "@onething/backend/runtime/providers/space-ai-settings";
 import * as modelRegistry from "@onething/backend/runtime/providers/model-registry-service";
-import { resolvePromptReferences } from "@onething/backend/runtime/prompts/resolver.wiring";
+import { resolvePromptReferences } from "@onething/backend/runtime/prompts/stored-prompt-resolver";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream, failAssistantRun, openAssistantRun } from "./stream/stream-executor.js";

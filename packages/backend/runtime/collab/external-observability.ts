@@ -50,7 +50,7 @@ import {
 
 import { getEventBus } from '@onething/backend/events/index.js'
 import { broadcastCollabAgentActivity } from './agent-activity.js'
-import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+import { findCollabV3Turn } from '@onething/backend/runtime/collab/actors/turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

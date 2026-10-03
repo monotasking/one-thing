@@ -22,7 +22,7 @@ import { getSpaceCredentialEntry, markSpaceCredentialCooldown } from '@onething/
 import { readSpaceProviderSettings } from '@onething/backend/runtime/spaces/provider-settings'
 import { DEFAULT_SPACE_ID } from '@onething/backend/runtime/spaces/types'
 import { parseSpaceOAuthToken } from '@onething/backend/runtime/auth'
-import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
+import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
 import { createRequiredAppFetch } from '@onething/backend/provider-binding/bound-fetch.js'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/events/index.js'
 import { authService } from '../auth/process-auth-service.js'

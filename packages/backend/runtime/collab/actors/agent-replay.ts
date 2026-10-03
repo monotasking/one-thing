@@ -33,7 +33,7 @@
  *    那条路是同步的,不受调度影响。
  */
 import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/runtime/collab/kernel'
-import type { CollabRoomMemberMailbox } from './room-actor.wiring.js'
+import type { CollabRoomMemberMailbox } from './room-actor.js'
 import type { CollabAgentOutbox } from './agent-actor.js'
 import {
   buildCollabDriveRoomContext,
@@ -68,7 +68,7 @@ import {
 } from './mind-port.js'
 import { createCollabNotebookMemoryStore, type CollabNotebookStore } from './notebook-store.js'
 import { createCollabRoomAccountMemoryStore } from './room-account.js'
-import { CollabRoomActor, type CollabRoomActorHost } from './room-actor.wiring.js'
+import { CollabRoomActor, type CollabRoomActorHost } from './room-actor.js'
 
 export interface CollabDuetRoomSpec {
   roomId: string

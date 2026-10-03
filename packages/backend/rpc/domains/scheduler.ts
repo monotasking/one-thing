@@ -51,7 +51,7 @@ import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '@onething/backend/runtime/scheduler/run-history-bound.wiring'
+} from '@onething/backend/runtime/scheduler/run-history-bound'
 import type { SchedulerRunRecord } from '@onething/backend/runtime/scheduler'
 import {
   createUserSchedulerTask,

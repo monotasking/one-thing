@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import { readPluginTarballSummary, readTarMembers } from '../tarball.wiring.js'
+import { readPluginTarballSummary, readTarMembers } from '../tarball.js'
 
 // ── 手写 tar:够用就好,只写我们的读端要认的那几个字段 ──
 

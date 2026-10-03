@@ -30,7 +30,7 @@ import {
   type CollabScriptedJudgement,
 } from '../referee-actor.js'
 import { createCollabRoomAccountMemoryStore } from '../room-account.js'
-import { CollabRoomActor, type CollabRoomActorHost } from '../room-actor.wiring.js'
+import { CollabRoomActor, type CollabRoomActorHost } from '../room-actor.js'
 
 const MEMBERS: CollabAgentLike[] = [
   { id: 'ana', name: 'ana' },

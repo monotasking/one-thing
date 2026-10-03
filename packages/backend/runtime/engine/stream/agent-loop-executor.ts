@@ -33,7 +33,7 @@ import {
 import type { HistoryMessage } from "./message-helpers.js";
 import type { StreamContext, StreamProcessor } from "./stream-processor.js";
 import { createStreamProcessor, resolveToolIdentity } from "./stream-processor.js";
-import type { IPCEmitter } from "@onething/backend/runtime/engine/ipc-emitter.wiring";
+import type { IPCEmitter } from "@onething/backend/runtime/engine/session-stream-emitter";
 import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
@@ -48,7 +48,7 @@ import type { ApplyOnethingAgentLoopProviderDataOptions } from "@onething/backen
 import { updateSessionUsage } from "@onething/backend/session/usage.js";
 import { recordUsage, usageAttributionOf } from "@onething/backend/runtime/usage/usage-recorder";
 import { triggerManager } from "../triggers/index.js";
-import { runAfterAssistantResponseHooks } from "@onething/backend/runtime/plugins/lifecycle.wiring";
+import { runAfterAssistantResponseHooks } from "@onething/backend/runtime/plugins/lifecycle-hooks";
 import type { ChatMessage, ChatSession } from "@shared/ipc.js";
 import {
 	applyAgentLoopStreamChunkWithAdapters as coreApplyAgentLoopStreamChunkWithAdapters,

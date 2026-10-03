@@ -133,7 +133,7 @@ vi.mock('@onething/backend/runtime/skills/session-skill-cache', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
 }))
 
-vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   getMCPToolsForAI: mocks.getMCPToolsForAI,
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
@@ -160,7 +160,7 @@ vi.mock('../compact-session.js', () => ({
   getContextCompactReason: vi.fn(() => null),
 }))
 
-vi.mock('@onething/backend/runtime/prompts/resolver.wiring', () => ({
+vi.mock('@onething/backend/runtime/prompts/stored-prompt-resolver', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,

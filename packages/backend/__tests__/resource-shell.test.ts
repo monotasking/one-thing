@@ -316,7 +316,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     await Promise.resolve()
     expect(catalog.has('workbench')).toBe(true)
     // 它不进「这台宿主注册了哪些工具」那份清单 —— 与 session 同一条判据。
-    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection.wiring')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection')
     expect((toolkitCatalogToolDefinitions() ?? []).map(tool => tool.id)).not.toContain('workbench')
 
     await backend.shellResources.unmountShell(SHELL)

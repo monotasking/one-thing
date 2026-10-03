@@ -67,7 +67,7 @@ vi.mock('../player-volume.js', async importOriginal => ({
   readProviderVolume: () => mocks.volume,
 }))
 
-vi.mock('@onething/backend/runtime/voice/host-ports.wiring', () => ({
+vi.mock('@onething/backend/runtime/voice/host-ports', () => ({
   broadcastVoiceHostMessage: vi.fn(),
   configureVoiceHost: vi.fn(),
   getVoiceHostPorts: () => ({}),
@@ -102,7 +102,7 @@ const hostVoice = { prefetch: vi.fn(), speak: vi.fn().mockResolvedValue(undefine
 const moments = { trackStarted: vi.fn(), skipped: vi.fn(), liked: vi.fn(), observeSample: vi.fn(), observeNowPlaying: vi.fn() }
 /** 歌词就绪(09-18):电台手上那份歌词换了就报一声。 */
 const announceLyrics = vi.fn()
-vi.mock('@onething/backend/runtime/agents/store-bound.wiring', () => ({
+vi.mock('@onething/backend/runtime/agents/store-bound', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '' }),

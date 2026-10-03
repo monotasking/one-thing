@@ -61,7 +61,7 @@ import {
   resumeCollabV3RoomWork,
   syncCollabV3RoomFloorPolicy,
 } from './actors/runtime.js'
-import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/runtime/collab/actors/turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'

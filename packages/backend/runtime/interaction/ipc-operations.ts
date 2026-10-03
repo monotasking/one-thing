@@ -6,8 +6,7 @@
  * 在仓库里有两个来路之外什么都没做,已随本拨删除。
  *
  * 留下的是真东西:两个把 core 的读写包成 `{success, …}` 信封的薄封装 ——
- * 宿主那一层不该各写各的 try/catch。文件名带 `.wiring` 是因为它吃
- * `@shared/ipc` 的请求/响应类型(I3)。
+ * 宿主那一层不该各写各的 try/catch。请求/响应类型是 `@shared/ipc` 的。
  *
  * **导入本模块不做任何配置** —— 接线发生在 `backend.ts` 调用
  * `Interaction.initialize` 那一刻(`import-side-effect-free.test.ts` 守着这条)。

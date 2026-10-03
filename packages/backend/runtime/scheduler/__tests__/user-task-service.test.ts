@@ -18,7 +18,7 @@ import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '@onething/backend/runtime/scheduler/run-history-bound.wiring'
+} from '@onething/backend/runtime/scheduler/run-history-bound'
 
 vi.mock('electron', () => ({
   app: {

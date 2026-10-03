@@ -7,7 +7,7 @@ import {
 } from '@onething/backend/runtime/music'
 import {
   listPluginSkillRoots,
-} from '@onething/backend/runtime/skills/plugin-roots.wiring'
+} from '@onething/backend/runtime/skills/plugin-roots'
 import {
   findBuiltinResourcePath,
   getOnethingStorePath,

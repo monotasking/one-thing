@@ -124,7 +124,7 @@ vi.mock('../../stream/codex-native-tools.js', () => ({
   getCodexNativeToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
-vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))

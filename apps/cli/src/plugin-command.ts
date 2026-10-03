@@ -29,7 +29,7 @@ import {
   probePluginNpmAvailability,
   uninstallPluginPackage,
 } from '@onething/backend/runtime/plugins/npm-process'
-import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball.wiring'
+import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball'
 import { getPluginsDir } from '@onething/backend/runtime/plugins/disk-loader'
 import {
   findMarketIndexEntry,

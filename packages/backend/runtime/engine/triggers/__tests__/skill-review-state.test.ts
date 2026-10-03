@@ -4,7 +4,7 @@ import {
   clearSkillReviewState,
   getSkillReviewCounter,
   recordSkillReviewCounter,
-} from '@onething/backend/runtime/triggers/skill-review-state.wiring'
+} from '@onething/backend/runtime/triggers/ipc-skill-review-state'
 
 function settings(interval?: number): AppSettings {
   return {

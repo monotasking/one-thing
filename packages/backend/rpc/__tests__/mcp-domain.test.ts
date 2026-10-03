@@ -5,7 +5,7 @@
  * `@main/ipc/mcp.ts` 的壳适配,以及 server 的九条 REST 路由 + 两个正则块 +
  * `mcp` facade adapter 背后那套 per-owner 的第二台 `HeadlessMCPManager`。
  *
- * 只桩**管家**(`@onething/backend/runtime/mcp/index.wiring` 的 `MCPManager` 单例、
+ * 只桩**管家**(`@onething/backend/runtime/mcp/index-with-bridge` 的 `MCPManager` 单例、
  * `registerMCPTools`、`probeMCPServerConfig`)与设置缓存,**投影不桩** ——
  * `*OnethingMCP*ForIpc` 是真跑的。
  *
@@ -52,7 +52,7 @@ const settings = vi.hoisted(() => ({
   saveSettings: vi.fn(async (_settings: Record<string, unknown>) => {}),
 }))
 
-vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   MCPManager: manager,
   registerMCPTools: wiring.registerMCPTools,
   probeMCPServerConfig: wiring.probeMCPServerConfig,

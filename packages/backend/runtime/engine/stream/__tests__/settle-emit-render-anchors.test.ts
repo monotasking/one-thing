@@ -92,7 +92,7 @@ vi.mock('../../triggers/index.js', () => ({
   triggerManager: { runPostResponse: vi.fn(() => Promise.resolve()) },
 }))
 
-vi.mock('@onething/backend/runtime/plugins/lifecycle.wiring', () => ({
+vi.mock('@onething/backend/runtime/plugins/lifecycle-hooks', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 

@@ -43,11 +43,11 @@ export function notifyMCPCapabilitiesChanged(serverId: string): void {
  * 断开了、换了设置、整个关掉了、工具表变了**,五种都要知道,而且它不能去抢那两格
  * 里的任何一格(抢一格就是让工具目录或者宿主的 registerTools 失聪)。
  *
- * 唯一同时覆盖那五种的汇合点是 `registerMCPTools()`(`bridge.wiring.ts`)——
+ * 唯一同时覆盖那五种的汇合点是 `registerMCPTools()`(`bridge.ts`)——
  * connect / disconnect / refresh / update / remove / 设置保存 / list_changed 的收尾
  * 一律经过它。所以这一族是**多播**的订阅表,通知点在那只函数的第一行。
  *
- * 它住在这只文件而不是 `bridge.wiring.ts`:这里是「MCP 的能力面变了」这件事的门面,
+ * 它住在这只文件而不是 `bridge.ts`:这里是「MCP 的能力面变了」这件事的门面,
  * 零依赖、可以被任何一层 import;那一只吃 zod、吃存储路径、吃跨进程契约。
  */
 const toolTableListeners = new Set<() => void>()

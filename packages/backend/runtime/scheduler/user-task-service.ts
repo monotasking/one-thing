@@ -22,7 +22,7 @@ import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/backen
 import {
   getOnethingSchedulerTasksPath,
 } from '@onething/backend/runtime/storage'
-import { saveSchedulerRunDetail } from '@onething/backend/runtime/scheduler/run-history-bound.wiring'
+import { saveSchedulerRunDetail } from '@onething/backend/runtime/scheduler/run-history-bound'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { OnethingSchedulerAgentTaskEventBus, OnethingSchedulerAgentTaskSessionStore, OnethingSchedulerAgentTaskRunnerOptions, OnethingSchedulerAgentTaskLogger } from '@onething/backend/runtime/scheduler/agent-task-runner'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'

@@ -41,7 +41,7 @@ const runHistory = vi.hoisted(() => ({
 
 vi.mock('@onething/backend/runtime/scheduler/scheduler-bound', () => ({ getScheduler: () => scheduler }))
 vi.mock('@onething/backend/runtime/scheduler/user-task-service', () => userTasks)
-vi.mock('@onething/backend/runtime/scheduler/run-history-bound.wiring', () => runHistory)
+vi.mock('@onething/backend/runtime/scheduler/run-history-bound', () => runHistory)
 
 const TASK = {
   id: 'user:task-1',

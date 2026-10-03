@@ -80,7 +80,7 @@ import { getProjectsStore as getAppProjectsStore } from "@onething/backend/runti
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
-} from "@onething/backend/runtime/mcp/index.wiring";
+} from "@onething/backend/runtime/mcp/index-with-bridge";
 import { configureMCPClientIdentity } from "@onething/backend/runtime/mcp/identity";
 import {
 	createBranchSession as createAppStoreBranchSession,
@@ -157,7 +157,7 @@ import { isCollabV3RuntimeRunning } from "@onething/backend/runtime/collab/rooms
 import { getPluginManager } from "@onething/backend/runtime/plugins/plugin-system";
 import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/backend/runtime/shell/host-ports";
-import { hasTerminalHost } from "@onething/backend/runtime/terminal/service.wiring";
+import { hasTerminalHost } from "@onething/backend/runtime/terminal/service";
 import { registerACPPermissionBridge } from "@onething/backend/runtime/acp/permission-bridge";
 import { createEventBusTerminalBroadcaster } from "@onething/backend/runtime/terminal";
 import {

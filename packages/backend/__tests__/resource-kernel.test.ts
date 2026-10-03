@@ -136,7 +136,7 @@ describe('资源内核在真装配里(K1)', () => {
     // 它),而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户与
     // 模型真正看见的那一份**,不是装配的内部账。
     const { getToolkitCatalog } = await import('@onething/backend/runtime/toolkit/host')
-    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection.wiring')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/runtime/toolkit/catalog-projection')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
     // 露面规则(§10.4 第三行):provider 在注册表里 = 那只工具在目录里。

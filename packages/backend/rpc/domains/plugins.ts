@@ -77,7 +77,7 @@ import {
 } from '@onething/backend/runtime/plugins'
 import { getPluginAppVersion } from '@onething/backend/runtime/plugins/app-version'
 import { clearPluginRuntimeHealth } from '@onething/backend/runtime/plugins/health'
-import { readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball.wiring'
+import { readPluginTarballSummary } from '@onething/backend/runtime/plugins/tarball'
 import { getServerPluginCatalogPort } from '../../server/plugin-catalog.js'
 import { getPluginBackgroundParams } from '@onething/backend/runtime/plugins/background-table'
 import { executePluginCommandOnHost } from '@onething/backend/runtime/plugins/commands'

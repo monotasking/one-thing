@@ -583,7 +583,7 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
  *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)——
  *    `webContents.send`,一条单向推送,没有后端那一侧。
  *  · `installTerminalReloadDetach` —— 它缺省调的那只 detach 住在
- *    `@onething/backend/runtime/terminal/service.wiring`,读的是**那只包自己的模块级
+ *    `@onething/backend/runtime/terminal/service`,读的是**那只包自己的模块级
  *    单例**(`serviceInstance?.markAllDetached()`),不是 backend 访问器;没开过
  *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
  *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。

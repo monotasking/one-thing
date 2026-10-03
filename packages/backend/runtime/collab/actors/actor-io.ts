@@ -24,20 +24,20 @@ export {
   CollabRoomActor,
   CollabRoomBroadcastError,
   collabRoomBroadcastRecipients,
-} from '@onething/backend/runtime/collab/actors/room-actor.wiring'
+} from '@onething/backend/runtime/collab/actors/room-actor'
 export type {
   CollabRoomActorHost,
   CollabRoomActorOptions,
   CollabRoomMemberMailbox,
-} from '@onething/backend/runtime/collab/actors/room-actor.wiring'
+} from '@onething/backend/runtime/collab/actors/room-actor'
 
 export {
   collabRoomMembersFromTranscript,
   createCollabRoomActorReplayPipeline,
-} from '@onething/backend/runtime/collab/actors/room-replay.wiring'
+} from '@onething/backend/runtime/collab/actors/room-replay'
 export type {
   CollabRoomReplayOptions,
-} from '@onething/backend/runtime/collab/actors/room-replay.wiring'
+} from '@onething/backend/runtime/collab/actors/room-replay'
 
 /* ── D2:AgentActor ─────────────────────────────────────────────────────── */
 
@@ -169,12 +169,12 @@ export {
 } from './migrate.js'
 export type { CollabV3MigrationOptions } from './migrate.js'
 
-export { collabDuetMembersOf, replayCollabDuet } from '@onething/backend/runtime/collab/actors/agent-replay.wiring'
+export { collabDuetMembersOf, replayCollabDuet } from '@onething/backend/runtime/collab/actors/agent-replay'
 export type {
   CollabDuetReplayOptions,
   CollabDuetReplayResult,
   CollabDuetRoomSpec,
-} from '@onething/backend/runtime/collab/actors/agent-replay.wiring'
+} from '@onething/backend/runtime/collab/actors/agent-replay'
 
 /* ── D8:调度时间轴的落盘面 ─────────────────────────────────────────────── */
 

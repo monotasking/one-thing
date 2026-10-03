@@ -35,7 +35,7 @@ import {
 } from "@onething/backend/runtime/plugins/session-messenger";
 import { resolveAgentProfileForSession } from "@onething/backend/runtime/agents/profile-for-session";
 import { takeExternalAgentSteering } from "@onething/backend/runtime/external-agents/connector-registry";
-import { defaultAgent, findAgent } from "@onething/backend/runtime/agents/store-bound.wiring";
+import { defaultAgent, findAgent } from "@onething/backend/runtime/agents/store-bound";
 import {
 	createMainStreamEngineRuntime,
 	type MainStreamEngineRuntime,

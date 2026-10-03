@@ -84,10 +84,10 @@ import type {
 import { getSpacesStore } from '@onething/backend/runtime/spaces/store'
 import { getProviderManifest } from '@onething/backend/runtime/providers/manifest'
 import { authService } from '@onething/backend/runtime/auth/process-auth-service'
-import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
 import { resolveSessionSpaceId } from '@onething/backend/stores/sessions.js'
 import { getProviderInfo, requiresOAuth } from './provider-table.js'
-import { getProviderEnvStatus } from '@onething/backend/runtime/providers/env.wiring'
+import { getProviderEnvStatus } from '@onething/backend/runtime/providers/ipc-env'
 import { getSessionSettings, getSpaceSettings } from './space-ai-settings.js'
 
 function providerLabel(providerId: string): string {

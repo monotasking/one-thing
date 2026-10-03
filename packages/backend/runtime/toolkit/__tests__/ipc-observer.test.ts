@@ -32,7 +32,7 @@ import type {
   RuntimeVariableSetInput,
 } from '../index.js'
 import type { BashOperations } from '../../tools/bash-executor.js'
-import { IpcProjector, splitResultContent, stepFromEvent, toolProgressFromEvent } from '../ipc-observer.wiring.js'
+import { IpcProjector, splitResultContent, stepFromEvent, toolProgressFromEvent } from '../ipc-observer.js'
 
 // ── 夹具 ────────────────────────────────────────────────────────────────────
 

@@ -7,8 +7,8 @@ import * as store from '@onething/backend/store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
 import { requiresOAuth } from '@onething/backend/runtime/providers/chat-facade'
 import { oauthManager } from '@onething/backend/runtime/providers/auth/oauth-manager'
-import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
-import { resolveProviderApiKey } from '@onething/backend/runtime/providers/env.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
+import { resolveProviderApiKey } from '@onething/backend/runtime/providers/ipc-env'
 import {
   applySessionProviderGates,
   credentialTargetFromMarker,

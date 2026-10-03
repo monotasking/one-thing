@@ -287,7 +287,7 @@ vi.mock("../../triggers/index.js", () => ({
 	},
 }));
 
-vi.mock("@onething/backend/runtime/plugins/lifecycle.wiring", () => ({
+vi.mock("@onething/backend/runtime/plugins/lifecycle-hooks", () => ({
 	runAfterAssistantResponseHooks: mocks.runAfterAssistantResponseHooks,
 }));
 
@@ -295,7 +295,7 @@ vi.mock("@onething/backend/runtime/skills/session-skill-cache", () => ({
 	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
-vi.mock("@onething/backend/runtime/mcp/index.wiring", () => ({
+vi.mock("@onething/backend/runtime/mcp/index-with-bridge", () => ({
 	getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 	getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 	isMCPTool: vi.fn(() => false),
@@ -320,7 +320,7 @@ vi.mock("../../compact-session.js", () => ({
 		mocks.shouldSkipAutoCompactForProviderUsageMismatch,
 }));
 
-vi.mock("@onething/backend/runtime/prompts/resolver.wiring", () => ({
+vi.mock("@onething/backend/runtime/prompts/stored-prompt-resolver", () => ({
 	resolvePromptReferences: vi.fn((content: string) => ({
 		modelContent: content,
 		displayContent: content,

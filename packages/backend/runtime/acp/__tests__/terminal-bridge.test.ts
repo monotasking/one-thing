@@ -7,7 +7,7 @@ import { Decision } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Authorizer, Intent } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { AcpClientRequestContext } from '@onething/backend/runtime/acp'
 import type { TerminalCreateRequest } from '@shared/ipc.js'
-import type { TerminalExitStatus } from '@onething/backend/runtime/terminal/service.wiring'
+import type { TerminalExitStatus } from '@onething/backend/runtime/terminal/service'
 
 vi.mock('@onething/backend/runtime/permission/message-anchor', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred ?? '',

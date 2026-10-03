@@ -41,9 +41,9 @@ import {
   collabRoomMembersFromTranscript,
   createCollabRoomActorReplayPipeline,
   type CollabRoomReplayOptions,
-} from '../room-replay.wiring.js'
+} from '../room-replay.js'
 import { createCollabRoomAccountMemoryStore } from '../room-account.js'
-import { CollabRoomActor, type CollabRoomActorHost } from '../room-actor.wiring.js'
+import { CollabRoomActor, type CollabRoomActorHost } from '../room-actor.js'
 
 const GOLDEN_DIR = join(__dirname, 'golden')
 

@@ -34,8 +34,8 @@ import {
 
 import { QuiescibleScopes } from '@onething/backend/runtime/lifecycle'
 import { getSettings } from '@onething/backend/stores/settings.js'
-import { resolveProviderApiKey } from '@onething/backend/runtime/providers/env.wiring'
-import { resolveUtilityModel } from '@onething/backend/runtime/providers/utility-model.wiring'
+import { resolveProviderApiKey } from '@onething/backend/runtime/providers/ipc-env'
+import { resolveUtilityModel } from '@onething/backend/runtime/providers/utility-model'
 import { generateChatResponse } from '@onething/backend/runtime/providers/chat-facade'
 import { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
 import type { ProviderConfigWithKey } from '@onething/backend/runtime/engine/stream/stream-executor'

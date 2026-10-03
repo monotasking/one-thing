@@ -55,7 +55,7 @@ import { Interaction } from '@onething/backend/runtime/interaction'
 import { Permission } from '@onething/backend/runtime/permission/permission-asks'
 
 import { getEventBus } from '@onething/backend/events/index.js'
-import { collabV3TurnsOfAgent } from '@onething/backend/runtime/collab/actors/turn-context.wiring'
+import { collabV3TurnsOfAgent } from '@onething/backend/runtime/collab/actors/turn-context'
 import {
   clearCollabSnapshotThrottle,
   createCollabSnapshotThrottle,

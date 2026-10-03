@@ -47,7 +47,7 @@ import {
 } from './index.js'
 
 import { createCollabRoomAccountMemoryStore } from './room-account.js'
-import { CollabRoomActor, type CollabRoomActorHost } from './room-actor.wiring.js'
+import { CollabRoomActor, type CollabRoomActorHost } from './room-actor.js'
 
 export interface CollabRoomReplayOptions {
   roomId: string

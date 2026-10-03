@@ -12,7 +12,7 @@ import {
   getVoiceHostPorts,
   hasVoiceHost,
   resetVoiceHostForTests,
-} from '../host-ports.wiring.js'
+} from '../host-ports.js'
 
 afterEach(() => {
   resetVoiceHostForTests()

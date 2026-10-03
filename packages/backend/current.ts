@@ -34,7 +34,7 @@ import type { TaskDispatchLayer } from '@onething/backend/runtime/tasks/dispatch
 import type { SessionDeletionRecovery } from '@onething/backend/runtime/sessions'
 import type { MediaLibraryService } from '@onething/backend/runtime/media'
 import type { ToolExecutionRegistry } from '@onething/backend/runtime/toolkit/executions'
-import type { PracticeService } from '@onething/backend/runtime/practice/service.wiring'
+import type { PracticeService } from '@onething/backend/runtime/practice/service-slot'
 import type { MusicSubsystem } from '@onething/backend/runtime/music/subsystem'
 import type { CollabDigestRunner } from '@onething/backend/runtime/collab/digest-runner'
 import type { NotesSubsystem } from '@onething/backend/runtime/notes/notes-subsystem'

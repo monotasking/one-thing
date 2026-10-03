@@ -25,7 +25,7 @@ import {
   readAdapters,
   variableAdapters,
 } from '../tier-catalogs.js'
-import { IpcProjector } from '@onething/backend/runtime/toolkit/ipc-observer.wiring'
+import { IpcProjector } from '@onething/backend/runtime/toolkit/ipc-observer'
 import { AuditProjector, type ToolAuditRecord } from '@onething/backend/runtime/toolkit/audit-observer'
 import { createAppToolRunner } from '../runner-factory.js'
 

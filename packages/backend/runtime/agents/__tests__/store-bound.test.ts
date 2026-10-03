@@ -15,7 +15,7 @@ import {
   listAgents,
   requireAgent,
   updateAgent,
-} from '../store-bound.wiring.js'
+} from '../store-bound.js'
 import {
   getOnethingAgentsPath,
 } from '@onething/backend/runtime/storage'

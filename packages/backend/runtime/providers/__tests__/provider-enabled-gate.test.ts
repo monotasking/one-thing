@@ -35,7 +35,7 @@ vi.mock('../space-ai-settings.js', async () => {
   }
 })
 
-vi.mock('@onething/backend/runtime/providers/env.wiring', () => ({
+vi.mock('@onething/backend/runtime/providers/ipc-env', () => ({
   getProviderEnvStatus: () => ({ detectedEnvVar: undefined }),
 }))
 

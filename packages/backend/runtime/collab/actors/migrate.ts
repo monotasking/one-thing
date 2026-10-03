@@ -68,7 +68,7 @@ import {
   createCollabAgentAccountFileStore,
 } from '@onething/backend/runtime/collab/actors/agent-mailbox'
 import { collabRoomAccountPath, createCollabRoomAccountFileStore } from '@onething/backend/runtime/collab/actors/room-account'
-import { collabRoomBroadcastRecipients } from '@onething/backend/runtime/collab/actors/room-actor.wiring'
+import { collabRoomBroadcastRecipients } from '@onething/backend/runtime/collab/actors/room-actor'
 
 /** `<store>/collab/`。v2 的账根,也是 v3 房间账与 marker 的家。 */
 export function collabStoreDir(): string {

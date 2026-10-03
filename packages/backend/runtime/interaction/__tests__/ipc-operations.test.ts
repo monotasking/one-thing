@@ -11,7 +11,7 @@ import { Interaction } from '@onething/backend/runtime/interaction'
 import {
   getPendingInteractionsForIpc,
   respondInteractionForIpc,
-} from '../ipc-operations.wiring.js'
+} from '../ipc-operations.js'
 
 const SESSION = 'app-interaction-session'
 

@@ -32,7 +32,7 @@ import {
 import { type StreamContext, type StreamSender } from './stream-processor.js'
 import { getStreamEngine } from '../engine-layer.js'
 import type { HistoryMessage } from './message-helpers.js'
-import type { ProviderAuthContext } from '@onething/backend/runtime/auth/types.wiring'
+import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
 import type { AgentOutputModality } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   executeCoreMessageStream,

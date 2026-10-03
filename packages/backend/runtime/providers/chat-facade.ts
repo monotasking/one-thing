@@ -48,7 +48,7 @@ import {
 import type {
   ProviderConfig,
   ProviderInfo,
-} from '@onething/backend/runtime/providers/types.wiring'
+} from '@onething/backend/runtime/providers/ipc-types'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { OnethingChatGenerationOptions, OnethingProviderFacadeAdapters } from '@onething/backend/runtime/providers/provider-facade'
 
@@ -73,7 +73,7 @@ export type {
   ProviderInfo,
   ProviderConfig,
   ProviderDefinition,
-} from '@onething/backend/runtime/providers/types.wiring'
+} from '@onething/backend/runtime/providers/ipc-types'
 
 export type AIMessageContent = OnethingAIMessageContent
 export type AIToolCall = OnethingProviderFacadeToolCall

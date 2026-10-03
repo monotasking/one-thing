@@ -1063,3 +1063,65 @@ runtime 根上,本批没动);`utils/deep-freeze.ts` 与 `runtime/plugins/freeze.
 壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;boundary(132 条)/ transport / log / assembly / session / provider / gate:native 门输出前后逐字相同;
 `session:check` 只差扫描文件数 2730 → 2726(core 的大桶与三只出口桶删了),4 处发现相同;`sessions:shadow-battery` 前后各 130 行,
 逐行只差两行 `web-<id>` 会话名;`provider-vendor-drill` 在主检出上就绿(本批没动演练模板)。
+
+### 去 `.wiring` 后缀落地记录(2026-10-03,未提交)
+
+**一句话**:`packages/backend` 下 31 只 `*.wiring.ts` 去掉后缀;它们的 3 份测试与 1 份快照跟着改名。后缀早在第③步拍平时就不再
+表达任何权限(I3 与「非 wiring 文件不许 import `*.wiring`」两条一起撤了),这一笔只改名字。默认去掉 `.wiring`;去掉后与同目录文件
+撞名的 10 只按**它比同名那一半多做的事**起名:只是「同一套 API 钉成 `@shared/ipc` 形状」的用 `ipc-` 前缀(仓里本来就有
+`auth/ipc-operations.ts`、`mcp/ipc-operations.ts` 这样的名字),多做了别的事的按那件事起名。脚本 scratchpad 的 `s5-rename-wiring.mjs`
+(普通文件改名、import / `vi.mock` / exports 精确键 / 注释里的路径提法按「目录 + 词干」查表改写,带 `--dry`);
+四处裸写的 `service.wiring.ts`(终端三处、练习一处,脚本分不清)与说后缀规则「现在仍有效」的注释手改。
+
+**去向表**(都在 `packages/backend/runtime/` 下):
+
+| 旧名 | 新名 | 理由 |
+| --- | --- | --- |
+| `auth/types.wiring.ts` | `auth/ipc-types.ts` | 撞 `auth/types.ts`;把 auth 类型钉成 `@shared/ipc` 的 `OAuthToken` 等形状,别的不做 |
+| `providers/types.wiring.ts` | `providers/ipc-types.ts` | 撞 `providers/types.ts`;同上,provider 的类型钉成 `@shared/ipc` 形状 |
+| `providers/env.wiring.ts` | `providers/ipc-env.ts` | 撞 `providers/env.ts`;API key 环境变量那几个函数的 `@shared/ipc` 签名版 |
+| `triggers/skill-review-state.wiring.ts` | `triggers/ipc-skill-review-state.ts` | 撞 `triggers/skill-review-state.ts`;把 `TSettings` 钉成 `AppSettings`,别的不做 |
+| `engine/ipc-emitter.wiring.ts` | `engine/session-stream-emitter.ts` | 撞 `engine/ipc-emitter.ts`(泛型);这只把七个类型参数钉成会话流的 `Step` / `ToolCall` / 流结束数据 |
+| `plugins/lifecycle.wiring.ts` | `plugins/lifecycle-hooks.ts` | 撞 `plugins/lifecycle.ts`(泛型注册表);多做的是进程里那一份钩子注册表 + 健康记账 |
+| `mcp/index.wiring.ts` | `mcp/index-with-bridge.ts` | 撞 `mcp/index.ts`;内容就是「目录桶 + 工具桥」 |
+| `prompts/resolver.wiring.ts` | `prompts/stored-prompt-resolver.ts` | 撞 `prompts/resolver.ts`;多做的是按提示词库(`store-bound` 的 `getPrompt`)解析引用 |
+| `prompts/plugin-context.wiring.ts` | `prompts/plugin-context-breaker.ts` | 撞 `prompts/plugin-context.ts`;多做的是断路器记账 |
+| `practice/service.wiring.ts` | `practice/service-slot.ts` | 撞 `practice/service.ts`;内容是单槽绑定 + 读单槽的那排自由函数 |
+| 其余 21 只 | 去掉 `.wiring` | 不撞名:`agents/store-bound`、`collab/actors/{agent-replay,room-actor,room-replay,turn-context}`、`engine/session-turn-context`、`interaction/ipc-operations`、`mcp/bridge`、`plugins/tarball`、`providers/utility-model`、`scheduler/run-history-bound`、`skills/plugin-roots`、`terminal/{service,spawn-profile}`、`toolkit/{catalog-projection,execution-types,ipc-observer,mcp-catalog}`、`voice/{audio-router,host-ports,kws/engine}` |
+
+测试:`plugins/__tests__/tarball.wiring.test.ts` → `tarball.test.ts`、`providers/__tests__/env.wiring.test.ts` → `ipc-env.test.ts`、
+`toolkit/__tests__/ipc-observer.wiring.test.ts` → `ipc-observer.test.ts`(快照文件同名改,内容没动)。
+
+**留着的层字眼**:`agents/store-bound.ts`、`scheduler/run-history-bound.ts`、`voice/host-ports.ts` 是默认去后缀得来的,不是新起的名字;
+`-bound`(`prompts/store-bound.ts`、`engine/chat-logger-bound.ts` …)与 `host-ports.ts`(宿主表那一格的端口,`auth/` `shell/` `dialog/` …
+都这么叫)在仓里本来就是通行的名字,本笔不动。
+
+**同一件事的两半(没合)**:上表撞名的 10 对都是「泛型 / 产品半边 + 钉成 `@shared/ipc` 形状(或多一样东西)的半边」。其中两对值得单独
+拿出来拍:`mcp/index.ts` 与 `mcp/index-with-bridge.ts`(规则撤了以后,桥可以直接进目录桶);`triggers/ipc-skill-review-state.ts` 只有
+`engine/triggers/__tests__/` 下两份测试在用,产品代码零处 —— 它与 `skill-review-state.ts`、`skill-review-state-core.ts` 是同一件事的三层。
+
+**exports**:566 → 566,29 格键与值改名(另外两只 `mcp/bridge`、`terminal/spawn-profile` 本来就没有键,只被相对 import)。
+
+**改写的断言**(只改路径):检查器 `checkCoreOwnsToolSchemaProjection` 读 `toolkit/catalog-projection.ts`、`checkRuntimeOwnsProviderDefinitionTypes` 读
+`providers/ipc-types.ts`、`agents/store-bound.ts` 与 `scheduler/run-history-bound.ts` 两条位置断言,`probe-go-to-implementation.mjs` 的四格
+期望路径;检查器 2434 一带「文件名本批不改」改成现状。`token-store.wiring.ts` 那条「死文件回来就是红」原样保留(它守的是一个早就删掉的文件)。
+`docs/audit/assembly-baseline-2026-09-02.txt` 四行改路径(`turn-context` / `practice/service-slot` / `terminal/service` / `voice/host-ports`),计数没动。
+
+**收尾 grep**:`git grep "\.wiring"` 在代码 / 配置 / 脚本里只剩说明历史的注释(`mcp/index.ts`、`mcp/index-with-bridge.ts`、
+`practice/service.ts`、`settings/host-ports.ts`、`shared/contracts/{acp,practice}.ts`、`shared/ipc/host-mcp.ts`、检查器 2434–2437 / 2459 /
+6039 / 6210、`CLAUDE.md` 两句)与 `token-store.wiring.ts` 那条守死文件的断言;文档里的旧名(`docs/`、`apps/desktop-react/docs/`)不改。
+
+**脚本与手改**:脚本改名 35 只、改写 169 只文件;在 HEAD 的临时 worktree 上用独立 `GIT_INDEX_FILE` 重放,输出与主检出逐行相同。手改 20 只:
+`CLAUDE.md`、本文件、`docs/audit/assembly-baseline-2026-09-02.txt`、壳的 `content/terminal/session.ts`、检查器,以及注释改成现状的
+`engine/{session-stream-emitter,session-turn-context}.ts`、`interaction/ipc-operations.ts`、`mcp/{index,index-with-bridge}.ts`、
+`practice/{service,service-slot}.ts`、`prompts/plugin-context-breaker.ts`、`scheduler/run-history-bound.ts`、`settings/host-ports.ts`、
+`triggers/ipc-skill-review-state.ts`、`voice/speech-output.ts`、`shared/contracts/{acp,practice}.ts`、`shared/ipc/host-mcp.ts`。
+测试只改了 import 说明符、`vi.mock` 路径与两处注释里的路径;三份改名测试与快照内容逐字相同(只差 import 那一行)。
+
+**验收(改前 / 改后)**:typecheck node / desktop / mobile 零错;`server:build`、`build:cli`、桌面四个 bundle、`web:build`(0 处 `node:`)成功;
+根全量 vitest 改前 11413 / 21 红,改后 11413 / 20 红 —— 按改名映射后唯一的差别是 `workspace-watch-driver` 改前红、改后绿(偶发);
+`http.test` 文件面那条与 `build-workspace-watch.test.mjs` 前后都红,后者与 workspace-watch 单跑 22 绿;与去 core 批 3 改后相比也只差
+这几条偶发(那次多一条 `host-process`)。壳 7344 / 1(A9)相同;`gate:acp` 前后 108 ok;boundary(132 条)/ transport / log /
+assembly / session / provider / gate:native 门输出前后逐字相同(assembly 前后都红在 `music/radio.ts` 9 → 10,不是本笔的文件);
+`assembly:check` 只差四行改了名的路径;`session:check` 2726 个文件 / 4 处发现相同;`sessions:shadow-battery` 前后各 130 行、前后都红
+(`appendFailures 8 ≠ 0`,去 core 批 3 改后就是这样),逐行只差 `refoldChecks` 216 → 217 与两行耗时;`provider-vendor-drill` 绿。

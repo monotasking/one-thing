@@ -1,14 +1,14 @@
 /**
  * 练习域的**产品实现**:节奏引擎 + 账本 + 配置读写(工单 5 §5,triage D8)。
  *
- * 它从前住在 `service.wiring.ts` 里,而那个文件名的意思是「这里只放跨进程词汇的
+ * 它从前住在 `service.wiring.ts`(今天的 `service-slot.ts`)里,而那时 `.wiring` 后缀的意思是「这里只放跨进程词汇的
  * 接线」—— 于是产品层的其他人想用 `PracticeService` 就得去 import 一个 wiring
  * 文件,而 wiring 文件按 I3 的规矩只有别的 wiring 文件能 import 它。困在里面的
  * 唯一原因是那五个请求形状住在传输契约包的 IPC 半边(产品层禁入的那一半);它们已经
  * 归位到 `@shared/contracts`(纯可序列化形状,产品层本来就可以 import),于是这个类
  * 回到它该在的地方。
  *
- * 留在 `.wiring.ts` 的:单槽绑定 + 那一排读单槽的自由函数(它们是宿主口)。
+ * 留在 `service-slot.ts` 的:单槽绑定 + 那一排读单槽的自由函数(它们是宿主口)。
  */
 import fsp from 'node:fs/promises'
 import path from 'node:path'

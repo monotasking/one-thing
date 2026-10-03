@@ -3,7 +3,7 @@ import { getEventBus } from '@onething/backend/events/index.js'
 import type { SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/ipc-emitter.wiring'
+import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
 import { executeToolAndUpdate } from './tool-execution.js'
 import {
   coreToolCallSnapshot,

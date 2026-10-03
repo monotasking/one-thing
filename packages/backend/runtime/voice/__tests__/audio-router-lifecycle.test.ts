@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@onething/backend/stores/defaults/settings.js'
-import { VoiceAudioRouter } from '../audio-router.wiring.js'
+import { VoiceAudioRouter } from '../audio-router.js'
 
 const state = vi.hoisted(() => ({ connect: vi.fn(), close: vi.fn() }))
 vi.mock('../volcano/asr-session.js', () => ({

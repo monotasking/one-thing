@@ -55,7 +55,7 @@ vi.mock('@onething/backend/runtime/voice/service', () => ({
   getVoiceServiceSafe: ports.getVoiceServiceSafe,
 }))
 
-vi.mock('@onething/backend/runtime/mcp/index.wiring', () => ({
+vi.mock('@onething/backend/runtime/mcp/index-with-bridge', () => ({
   MCPManager: { updateSettings: ports.updateMCPSettings },
   registerMCPTools: ports.registerMCPTools,
 }))
