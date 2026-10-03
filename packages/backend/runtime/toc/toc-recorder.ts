@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/runtime/agent-loop/loop-primitives";
-import { beginAuxiliaryModelRequest } from '@onething/backend/runtime/engine/auxiliary-model-checkpoint';
+import { beginAuxiliaryModelRequest, createUtilityProvider } from '@onething/backend/runtime/engine';
 import {
 	applyTurnDecision,
 	buildTocPrompt,
@@ -25,7 +25,6 @@ import {
 import {
   getOnethingSessionsDir,
 } from '@onething/backend/runtime/storage'
-import { createUtilityProvider } from "@onething/backend/runtime/engine";
 import { billTocUsage } from "../usage/bill-side-line.js";
 import { getSettings } from "@onething/backend/runtime/settings";
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'

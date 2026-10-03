@@ -124,7 +124,8 @@ vi.mock('@onething/backend/runtime/events', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
+vi.mock('@onething/backend/current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
   getStreamEngineSafe: () => ({
     hasCommandTarget: () => true,
     getController: () => undefined,

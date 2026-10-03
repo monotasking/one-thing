@@ -5,7 +5,7 @@
  *
  *  1. `buildToolkitCatalog(tier)` —— 缝 4:三档目录 + `feature_*` 独立入口,
  *     建好之后通过 `configureToolkitCatalog` 递给产品层的晚绑定端口(缝 1 落在
- *     `agent-loop/stream-runtime.ts`,那里不许 import `@onething/backend`)。
+ *     `engine/engine-agent-loop-stream-runtime.ts`,那里不许 import `@onething/backend`)。
  *  2. `runToolkitToolDirectly(...)` —— 缝 2:`executeToolDirectly` 的新路。签名与
  *     返回形状**与旧路逐字相同**(`OnethingToolExecutionResult`),所以
  *     `ipc-bridge.ts` / `apps/server/src/http.ts` / 渲染器一个字都不动。
@@ -40,7 +40,7 @@ import { runPluginToolCallIntercept } from '@onething/backend/runtime/plugins/to
 import { runPluginToolResultIntercept } from '@onething/backend/runtime/plugins/tool-result-intercept-bound'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { getCurrentBackend } from '@onething/backend/current.js'
-import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
+import { fixedExecutionContext } from '../sessions/index.js'
 import type { ToolExecutionControl } from './executions.js'
 
 const log = getLogger('toolkit')
@@ -107,7 +107,7 @@ export function resetToolkitCatalogForTests(): void {
 /* ── 缝 3:两条插件拦截链 → 一个 Interceptor ───────────────────────────────── */
 
 /**
- * 与 `runtime/engine/direct-tool-execution.ts` 的私有 `toolResultView` **逐字相同**。
+ * 与 `runtime/agent-loop/agent-loop-direct-tool-execution.ts` 的私有 `toolResultView` **逐字相同**。
  *
  * 复制而不是 import,理由同 R2a 决定⑥ / R3a §13.6-1:那个文件在 §6 的删除清单上,
  * 新树对它的每一条 import 都是一根会在 R4 断掉的绳子。这是十行纯函数。

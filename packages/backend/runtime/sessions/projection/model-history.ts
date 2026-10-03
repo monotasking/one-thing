@@ -7,7 +7,7 @@
  * replace。这条路与 `projectChatMessages` 的区别正在于此 —— 被压缩的消息在 UI
  * 上还在,在这里不在。
  *
- * 物化不自己写一遍:同一批节点交给 `runtime/engine/history.ts` 的
+ * 物化不自己写一遍:同一批节点交给 `runtime/agent-loop/agent-loop-history.ts` 的
  * `buildHistoryMessages`(今天真机走的那一份),按 surface 顺序切成"连续的
  * 非压缩段",每段一次。压缩节点渲染成 `compactedHistoryPreamble` 的那条 user
  * 消息 —— 与今天按 `session.summary` 切片走出来的第一条逐字节相同。
@@ -17,15 +17,15 @@
  * 交给 `buildHistoryMessages` 自己切。这不是兜底,是**事实所在处不同**。
  */
 
-import type { CoreBuildHistoryMessagesOptions, CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
+import type { CoreBuildHistoryMessagesOptions, CoreHistoryChatMessage, CoreHistoryMessage } from '../../agent-loop/index.js'
 import {
   buildHistoryMessages,
   canSplitHistoryTurnGroups,
   compactedHistoryPreamble,
   completedHistoryToolCalls,
   historyContentPartsCoverContent,
-} from '../../engine/history.js'
-import { TurnContextLedger } from '../../engine/turn-context.js'
+} from '../../agent-loop/agent-loop-history.js'
+import { TurnContextLedger } from '../../agent-loop/index.js'
 import type { BlobRef, SessionLogEventRecord } from '@shared/session/events/types.js'
 import { foldSessionProjection, materializeNode } from '@shared/session/projection/chat-messages.js'
 import { resolveHistoryBlobRefs, type ProjectionIssue, type ProjectionMaterializeOptions } from '@shared/session/projection/blobs.js'

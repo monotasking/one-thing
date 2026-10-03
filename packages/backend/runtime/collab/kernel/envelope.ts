@@ -9,7 +9,7 @@
  * 跨房转投),去重的责任在收件方,判据是事件 id。所以 id 必须是**事件的身份**而
  * 不是「这一次投递的流水号」—— 同一封信重投多少次,id 都得是同一个。
  */
-import { createCoreId } from '@onething/backend/runtime/engine/ids'
+import { createCoreId } from '../../agent-loop/index.js'
 
 /**
  * 一个 actor 的地址。
@@ -42,7 +42,7 @@ export const ACTOR_EVENT_ID_PREFIX = 'evt-'
  * 生成事件 id。
  *
  * 复用 core 既有的 `createCoreId()`(node:crypto randomUUID)—— core 禁 uuid 包,
- * 但 node 内置的 crypto 一直是这一层的既有做法(见 engine/ids.ts、permission/)。
+ * 但 node 内置的 crypto 一直是这一层的既有做法(见 agent-loop/agent-loop-ids.ts、permission/)。
  */
 export function createActorEventId(): string {
   return `${ACTOR_EVENT_ID_PREFIX}${createCoreId()}`

@@ -13,7 +13,7 @@ import {
   type CoreHistoryContentPart,
   type CoreMessageContentSource,
   type CoreResumeAssistantMessage,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import { toolFailureResultForAI } from '@shared/tools/tool-result'
 import { providerDataFromOnethingContentPart } from '../providers/index.js'
 

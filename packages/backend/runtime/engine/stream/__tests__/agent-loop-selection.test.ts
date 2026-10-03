@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   resolveOnethingAgentLoopStreamRoute as resolveAgentLoopStreamRoute,
   shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream,
-} from '@onething/backend/runtime/agent-loop'
+} from '../../engine-agent-loop-stream-selection.js'
 import { builtinProviders } from '../../../providers/builtin/index.js'
 
 describe('agent loop stream selection', () => {

@@ -65,7 +65,7 @@ vi.mock('@onething/backend/runtime/events', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngineSafe: () => undefined }))
+vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngineSafe: () => undefined }))
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({ findAgent: (id: string) => AGENTS[id] ?? null }))
 
 const {

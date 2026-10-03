@@ -6,7 +6,7 @@
  * as every other contributor, and the composer is what places it.
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { CoreBuildPromptContextOptions } from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreBuildPromptContextOptions } from '@onething/backend/runtime/agent-loop'
 import { VariableBoardSource } from '../variable-board.js'
 import { PromptComposer, StaticPromptSource } from '../composer.js'
 

@@ -2,7 +2,7 @@ import {
   extractErrorDetails,
   extractResponseBodyDetails,
   type CoreErrorDetails,
-} from '@onething/backend/runtime/engine/error-details'
+} from '../agent-loop/index.js'
 import { pickOnethingProviderOptions, type OnethingProviderOptions } from './provider-options.js'
 import { resolveOnethingProviderBaseUrl } from './endpoint.js'
 // 鉴权豁免改问执行器能力面(E0):判据是「它是不是外部执行体」,
@@ -10,7 +10,7 @@ import { resolveOnethingProviderBaseUrl } from './endpoint.js'
 import { isExternalAgentExecutorProvider } from '../agents/executor/registry.js'
 
 /**
- * 错误详情的提取只有一份,在 core(`@onething/backend/runtime/engine/engine-primitives` 的 `extractErrorDetails`)。
+ * 错误详情的提取只有一份,在 core(`packages/backend/runtime/agent-loop/index` 的 `extractErrorDetails`)。
  * 这里从前逐字抄了一份,连智谱的错误码表也抄了一份;现在错误码说明归各家自己的
  * manifest(`errorDescriptions`),经 core 的查询口接进去(见 `manifest.ts`)。
  */

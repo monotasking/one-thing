@@ -29,10 +29,7 @@ import {
   type CoreSkillReviewVisibleSkill,
 } from './skill-review-core.js'
 import type { CoreSkillReviewSettings } from './skill-review-state-core.js'
-import type {
-  CoreTrigger,
-  CoreTriggerContext,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreTrigger, CoreTriggerContext } from '@onething/backend/runtime/agent-loop'
 import {
   isFile,
   listFilesUnderRoots,

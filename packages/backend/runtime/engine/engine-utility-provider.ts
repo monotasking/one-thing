@@ -18,7 +18,7 @@ import { pickOnethingProviderOptions, resolveUtilityModel, type CreateAgentProvi
 import {
 	getProviderApiType,
 	resolveProviderAuth,
-} from "@onething/backend/runtime/engine/stream/provider-helpers";
+} from "./stream/provider-helpers.js";
 import { applySessionSpaceCredentials } from "@onething/backend/runtime/credentials";
 
 export interface UtilityProviderRef {

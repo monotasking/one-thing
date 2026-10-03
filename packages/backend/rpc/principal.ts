@@ -4,7 +4,7 @@
  * ## 这不是一次新的身份设计
  *
  * 它做的事只有一件:**把 `turn-principal.ts` 已经成立的那套次序,在 RPC 这一侧
- * 复述一遍**。引擎那一侧(`runtime/engine/turn-principal.ts`)每个回合铸一次
+ * 复述一遍**。引擎那一侧(`runtime/agent-loop/agent-loop-turn-principal.ts`)每个回合铸一次
  * 主体,规则是「能证明的才认,证不出来就最小权限」;RPC 这一侧从前**根本没有主体**
  * ——`RpcDispatchContext` 只有 `transport` / `ownerUid` / `workspaceId` / `callerId` /
  * `sandboxRoot`,而管线(`runtime/toolkit` 的 `ToolRunner`)要求每条 `Invocation` 带一个

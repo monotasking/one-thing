@@ -14,7 +14,7 @@ import {
 	getCapturesDir,
 } from "../capture-store.js";
 import { hashSections } from "../section-hash.js";
-import type { CorePromptCapture } from "@onething/backend/runtime/engine/engine-primitives";
+import type { CorePromptCapture } from "@onething/backend/runtime/agent-loop";
 
 let tmpDir: string;
 let storeOptions: { storePath: string };

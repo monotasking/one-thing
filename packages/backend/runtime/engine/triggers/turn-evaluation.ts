@@ -1,4 +1,4 @@
-import type { TriggerContext, Trigger } from "./index.js";
+import type { Trigger, TriggerContext } from "@onething/backend/runtime/agent-loop";
 import { getSkillsForSession } from "@onething/backend/runtime/skills/session-skill-cache";
 import * as store from "@onething/backend/store.js";
 import { getLogger } from '../../logging/configure-logging.js'

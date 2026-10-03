@@ -4,7 +4,7 @@ import {
   type ApplyAgentLoopProviderDataRuntimeOptions,
   type CoreHistoryContentPart,
   type CoreOrderedPartLike,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import { ONETHING_QUOTA_PROVIDER_DATA_TYPE, providerDataTagPolicy } from './provider-data-policy.js'
 
 export { ONETHING_QUOTA_PROVIDER_DATA_TYPE }

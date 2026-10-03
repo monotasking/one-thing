@@ -36,6 +36,8 @@ export { getMessagesPageFromJsonFilePath } from './storage/json-message-page-fil
 // 列在这里;访问判定与读门面两只是外面整只拿去用的(命名空间 import、`typeof import`),所以整只再导出。
 export * from './access.js'
 export { recordSynthesizedAssistantText } from './assistant-parts.js'
+// 2026-10 engine 归位:「这次执行属于谁」的固定执行上下文从 `engine/execution-context.ts` 搬来(它只吃访问判定那两个名字)。
+export { fixedExecutionContext } from './session-execution-context.js'
 export { runSessionBlobGc, scheduleSessionBlobGcOnStartup } from './blob-gc.js'
 export type { SessionBlobGcReport } from './blob-gc.js'
 export { readSessionBlob, textOrBlobForEvent } from './blob-store.js'

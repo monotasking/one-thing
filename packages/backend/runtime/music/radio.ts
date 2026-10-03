@@ -635,7 +635,7 @@ async function wakeRadioDj(): Promise<void> {
   // a static engine import would drag the whole provider stack into every
   // module graph that touches variables (which broke unrelated tests).
   const [{ getStreamEngineSafe }, { getEventBus }] = await Promise.all([
-    import('@onething/backend/runtime/engine/engine-layer'),
+    import('@onething/backend/current.js'),
     import('@onething/backend/runtime/events'),
   ])
   sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')

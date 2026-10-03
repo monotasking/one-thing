@@ -3,7 +3,7 @@
  * (`docs/design/session-event-sourcing-2026-08.md` §16.16;硬阻塞① = §16.13 第二节)。
  *
  * 病根是机械的,不是审美的:`sendStepUpdated(stepId, updates)`
- * (`runtime/engine/event-only-emitter.ts:343`)同时做两件事 —— 往 store 打
+ * (`runtime/agent-loop/agent-loop-event-only-emitter.ts:343`)同时做两件事 —— 往 store 打
  * `updateMessageStep(…, stepId, …)`(reducer 的 `patchStep` **按 id 认**:
  * `steps.findIndex(step => step.id === command.stepId)`),以及往渲染层推一条
  * `STEP_UPDATED`(不经过 store)。从前引擎那一侧的 id 是 `createCoreId()` 现生的
@@ -36,8 +36,8 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { createCoreId } from '../../engine/ids.js'
-import { createCoreStreamProcessor } from '../../engine/stream-processor.js'
+import { createCoreId } from '../../agent-loop/agent-loop-ids.js'
+import { createCoreStreamProcessor } from '../../agent-loop/agent-loop-stream-processor.js'
 import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 import { projectChatMessages } from '@shared/session/projection/chat-messages.js'

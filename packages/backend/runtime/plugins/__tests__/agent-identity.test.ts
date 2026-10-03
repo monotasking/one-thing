@@ -13,10 +13,7 @@
  * 互不替代 —— 权限降级到 system 的那一刻不该把插件的作用域也一起擦掉。
  */
 import { describe, expect, it } from 'vitest'
-import {
-  buildAgentLoopDirectToolsWithAdapters,
-  buildAgentLoopPostResponseContexts,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import { buildAgentLoopDirectToolsWithAdapters, buildAgentLoopPostResponseContexts } from '@onething/backend/runtime/agent-loop'
 import { executeCorePluginTool } from '@onething/backend/runtime/plugins/plugin-contract'
 import { systemPrincipal } from '@shared/permission/principal'
 

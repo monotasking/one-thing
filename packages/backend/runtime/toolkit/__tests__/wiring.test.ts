@@ -77,7 +77,7 @@ const { configureToolkitCatalog } = await import('@onething/backend/runtime/tool
 const { createDesktopCatalog } = await import('../tier-catalogs.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
 const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/backend/runtime/toolkit/mcp-catalog')
-const { executeToolDirectly } = await import('@onething/backend/runtime/engine/stream/tool-execution')
+const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
 const { getStreamChannel } = await import('@onething/backend/runtime/events')
 
 const { installStoreSessionLayerForTest } = await import('../../sessions/testing/store-layer.js')
@@ -407,7 +407,7 @@ describe('R2b:审计落进 events.jsonl', () => {
 describe('R2b 缝 1:工具面由 Surface 解析', () => {
   it('Surface 投影出来的定义喂给 planAgentLoopTools,名字与目录一致', async () => {
     const { resolveToolkitSurface, toolkitAgentSourceTools } = await import('@onething/backend/runtime/toolkit')
-    const { planAgentLoopTools } = await import('@onething/backend/runtime/engine/engine-primitives')
+    const { planAgentLoopTools } = await import('@onething/backend/runtime/agent-loop')
 
     const surface = resolveToolkitSurface({
       session: { id: SESSION_ID, kind: 'chat', workingDirectory: workspace },

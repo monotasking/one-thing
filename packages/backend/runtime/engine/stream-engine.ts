@@ -7,7 +7,7 @@
  * 都走 `ProductStreamEnginePorts` 的可选端口(`ports.ts` 里逐条写了缺席行为),
  * 所以这个文件零装配层依赖、零 shared IPC 契约依赖。
  *
- * 装配层那一薄片在 `packages/backend/runtime/engine/stream-engine-bound.ts`。
+ * 装配层那一薄片在包根 `packages/backend/assemble-engine.ts`(`createBoundStreamEngine`)。
  */
 import {
 	CoreStreamEngine,
@@ -18,16 +18,16 @@ import {
 	type CoreStreamEngineRuntime,
 	type CoreStreamPermissionModeSession,
 	type CoreStreamPermissionModeSettings,
-} from "@onething/backend/runtime/engine/engine-primitives";
+} from "@onething/backend/runtime/agent-loop";
 import type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,
 	OnethingStreamSenderPayload,
-} from "./stream-sender.js";
-import { isSystemInternalSource } from "./message-sources.js";
+} from "../agent-loop/index.js";
+import { isSystemInternalSource } from "../agent-loop/index.js";
 import { isTrustedCollabDrive } from "../collab/drive-guard.js";
 import { runPluginInputIntercept } from "../plugins/input-intercept-bound.js";
-import { mintTurnPrincipal } from "./turn-principal.js";
+import { mintTurnPrincipal } from "../agent-loop/index.js";
 import { composeAgentPermissionMode } from "../agents/index.js";
 import { getLogger } from "../logging/index.js";
 import type {
@@ -35,7 +35,9 @@ import type {
 	EngineOriginTransport,
 	EngineRoutedSession,
 	ProductStreamEnginePorts,
-} from "./ports.js";
+} from "../agent-loop/index.js";
+
+import type { EventBus } from "../events/session-event-bus.js";
 
 const log = getLogger('engine.stream')
 
@@ -108,6 +110,10 @@ export class ProductStreamEngine<
 	) {
 		super(runtime, { assertAccepting: ports.assertAccepting, prepareSession: ports.prepareSession, authorizeExecution: ports.authorizeExecution });
 	}
+
+	/** 铸回合主体时用的协作驱动验票:问 `collabDrive` 端口;端口缺席就答「证明不了」,声称的主体一律不采信。 */
+	private readonly proveCollabDrive = (command: { collabDriveToken?: unknown }): boolean =>
+		this.ports.collabDrive?.isTrusted(command) === true;
 
 	/**
 	 * session/settings chain (core) composed with the agent's declared mode by
@@ -196,7 +202,7 @@ export class ProductStreamEngine<
 				sessionId,
 				this.withAgentModelBinding(sessionId, {
 					...command,
-					principal: mintTurnPrincipal(command, command.origin),
+					principal: mintTurnPrincipal(command, command.origin, this.proveCollabDrive),
 				}),
 				sender,
 				options,
@@ -266,7 +272,7 @@ export class ProductStreamEngine<
 			channel: command.channel || channelForOrigin(routed.origin),
 			// Minted AFTER routing: the router is what resolves a gateway message
 			// to a channel identity, and that identity is the actor.
-			principal: mintTurnPrincipal(command, routed.origin),
+			principal: mintTurnPrincipal(command, routed.origin, this.proveCollabDrive),
 		};
 
 		if (intercepted.handled) {
@@ -521,3 +527,9 @@ function channelForOrigin(origin: EngineMessageOrigin): string {
 function shouldPreserveSessionId(command: { source?: string }): boolean {
 	return command.source === "gateway";
 }
+
+/**
+ * 后端这一侧的引擎类型名(全仓说 `StreamEngine` 的地方说的就是它):总线钉成产品的会话事件总线。
+ * 从前住在 `stream-engine-bound.ts`,装配件挪到包根 `assemble-engine.ts` 之后,类型名留在引擎自己这里。
+ */
+export type StreamEngine = ProductStreamEngine<EventBus>;

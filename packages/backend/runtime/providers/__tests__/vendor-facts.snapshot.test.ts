@@ -13,7 +13,7 @@
  * 序列化前递归排序对象 key(key 顺序不是行为),数组顺序原样保留。
  */
 import { describe, expect, it } from 'vitest'
-import { extractErrorDetails as coreExtractErrorDetails } from '@onething/backend/runtime/engine/engine-primitives'
+import { extractErrorDetails as coreExtractErrorDetails } from '@onething/backend/runtime/agent-loop'
 import {
   getSupportedAgentProviderRuntimeIds,
   isAgentProviderRuntimeSupported,

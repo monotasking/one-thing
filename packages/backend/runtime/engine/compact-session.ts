@@ -17,8 +17,8 @@ import {
   buildContextCompactSummaryMessages,
   buildContextUsageSnapshot,
   CompactTokenBudget,
-  createCoreId,
   createContextCompactMessage,
+  createCoreId,
   DEFAULT_KEEP_RECENT_TURNS,
   extractCompactFileOperations,
   formatCompactFileOperations,
@@ -28,14 +28,14 @@ import {
   providerReportedInputTokens,
   resolveContextCompactChunkTimeoutMs,
   selectCompactPlan,
-  stripCompactFileOperations,
   shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
+  stripCompactFileOperations,
   summarizeContextInChunks,
   type SummarizeContextInChunksOptions,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { buildHistoryMessages } from './stream/message-helpers.js'
-import { collectCompactFileOperations } from '@onething/backend/runtime/engine/compact-file-lists'
+import { collectCompactFileOperations } from '../agent-loop/index.js'
 import { modelRegistry } from '@onething/backend/runtime/settings'
 import { getLogger } from '../logging/configure-logging.js'
 
@@ -50,7 +50,7 @@ export {
   normalizeContextSummaryOutput,
   selectCompactPlan,
   shouldAutoCompactBeforeSend,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 
 export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
   providerId: string

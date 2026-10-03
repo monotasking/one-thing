@@ -211,7 +211,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     await first.dispose()
     const [{ getEventBus, isEventSystemInitialized }, { getStreamEngineSafe }] = await Promise.all([
       import('@onething/backend/runtime/events'),
-      import('@onething/backend/runtime/engine/engine-layer'),
+      import('../current.js'),
     ])
     expect(() => getEventBus()).toThrow()
     // C0 R10。前两条经进程当前实例槽(它在 dispose 末尾本来就清);
@@ -261,7 +261,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 立刻红 —— 闩留在 true,第二份装配一条都不注册。
    */
   it('⑧ (b) 类闩重跑:内置触发器在第二份装配里重新注册', { timeout: 180_000 }, async () => {
-    const { triggerManager } = await import('@onething/backend/runtime/engine/triggers')
+    const { triggerManager } = await import('@onething/backend/runtime/agent-loop')
 
     const fifth = await assemble()
     const afterAssemble = triggerManager.getTriggers().length

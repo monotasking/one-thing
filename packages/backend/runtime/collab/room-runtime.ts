@@ -33,7 +33,7 @@ import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
+import { getStreamEngineSafe } from '@onething/backend/current.js'
 import {
   getOnethingStorePath,
 } from '@onething/backend/runtime/storage'

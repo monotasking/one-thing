@@ -13,7 +13,7 @@
  *
  * P0.1 实测:vitest 全量在冻结下是绿的(10652 passed),所以默认就开着 —— 但要
  * 清醒地记着这份绿的含金量有限:core 引擎的已知就地改点(tool-orchestration /
- * agent-loop-executor / stream-processor、runtime/engine/history)在单测里拿的是
+ * agent-loop-executor / stream-processor、runtime/agent-loop/agent-loop-history)在单测里拿的是
  * mock store,冻不到。真正的验收在 P0.2:调用点迁完后每区都要在冻结下跑全量。
  */
 import { deepFreeze } from '@onething/backend/utils/deep-freeze.js'

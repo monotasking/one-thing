@@ -25,10 +25,7 @@ import type {
   PromptContextRole,
   SkillDefinition,
 } from '@shared/ipc.js'
-import type {
-  CorePromptActiveProject as PromptActiveProject,
-  CorePromptKnownProjects as PromptKnownProjects,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import type { CorePromptActiveProject as PromptActiveProject, CorePromptKnownProjects as PromptKnownProjects } from '@onething/backend/runtime/agent-loop'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,

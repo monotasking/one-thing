@@ -48,7 +48,7 @@ vi.mock('@onething/backend/runtime/permissions/permission-asks', async importOri
 }))
 vi.mock('@onething/backend/runtime/permissions/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
 vi.mock('@onething/backend/runtime/variables/registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngineSafe: () => ({ getController: () => undefined }) }))
+vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngineSafe: () => ({ getController: () => undefined }) }))
 vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
 vi.mock('../service.js', async () => {
   const { ncmMusicProvider } = await import('@onething/backend/runtime/music/index')

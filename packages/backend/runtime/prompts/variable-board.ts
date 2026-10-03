@@ -15,10 +15,7 @@
  * The rendered text is untouched: the section body is byte-for-byte what the
  * engine used to attach.
  */
-import {
-	type CoreBuildPromptContextOptions,
-	type CorePromptFragment,
-} from "@onething/backend/runtime/engine/engine-primitives";
+import type { CoreBuildPromptContextOptions, CorePromptFragment } from "@onething/backend/runtime/agent-loop";
 import type { PromptSource } from "./composer.js";
 
 /** The one thing this source needs: text for a session's board. */

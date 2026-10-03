@@ -178,6 +178,21 @@ describe('@onething/backend import purity', () => {
     expect(loadSpy.calls).toEqual([])
   })
 
+  /**
+   * engine 收口(2026-10,决策 D27)以后,外面要引擎的名字一律经引擎入口拿,入口闭包里带着对话门面、引擎 runtime 的
+   * 十二槽、历史投影与系统提示词快照,也连着 agent-loop 内核的入口。这道栅栏断言 import 两只入口时不建会话仓储 /
+   * 设置仓储,也不去问设置 / 应用状态文件在哪 —— 引擎从前的 `engine-layer.ts` 读当前引擎、建引擎都只在函数里,
+   * 搬家以后同样只在函数里。
+   */
+  it('importing the engine entry builds no repository and reads no settings', { timeout: 60_000 }, async () => {
+    const engine = await import('@onething/backend/runtime/engine')
+    const agentLoop = await import('@onething/backend/runtime/agent-loop')
+
+    expect(typeof engine.ProductStreamEngine).toBe('function')
+    expect(typeof agentLoop.CoreStreamEngine).toBe('function')
+    expect(loadSpy.calls).toEqual([])
+  })
+
   it('configureAppRuntimeAdapters wires every adapter exactly once', { timeout: 60_000 }, async () => {
     const { configureAppRuntimeAdapters } = await import('../backend.js')
 

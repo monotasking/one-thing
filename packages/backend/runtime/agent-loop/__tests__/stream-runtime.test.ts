@@ -5,11 +5,11 @@ import type {
 import type {
   CoreBuildPromptOptions,
   CorePendingAgentLoopInputMessage,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog } from '../../toolkit/host.js'
-import { buildOnethingAgentLoopStreamRuntime } from '../stream-runtime.js'
+import { buildOnethingAgentLoopStreamRuntime } from '../../engine/engine-agent-loop-stream-runtime.js'
 
 /**
  * R4b:内置工具面的唯一来源是目录(`Surface.resolve`)。这个测试原本靠

@@ -115,7 +115,7 @@ export const DEFAULT_AGENT_PERMISSION_MODE = 'normal'
 /**
  * Turn budget when neither the agent nor settings.chat.maxTurns says otherwise.
  * The core runner's own default (8) is far too small for real tool-heavy work;
- * `DEFAULT_CHAT_MAX_TURNS` in agent-loop/stream-runtime.ts is an alias of this
+ * `DEFAULT_CHAT_MAX_TURNS` in engine/engine-agent-loop-stream-runtime.ts is an alias of this
  * so the number has exactly one home.
  */
 export const DEFAULT_AGENT_MAX_TURNS = 100

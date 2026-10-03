@@ -27,7 +27,7 @@ import {
 import { getNativeProviderToolsForConfig } from '../stream/engine-native-tools.js'
 import { resolveToolkitSurface } from '@onething/backend/runtime/toolkit'
 import { toolDefinitionFromToolkitTool } from '@onething/backend/runtime/toolkit/catalog-projection'
-import { resolveOnethingAgentLoopStreamRoute } from '@onething/backend/runtime/agent-loop'
+import { resolveOnethingAgentLoopStreamRoute } from '../engine-agent-loop-stream-selection.js'
 import { buildPrompt } from './system-prompt.js'
 import {
   agentSupportsTools,

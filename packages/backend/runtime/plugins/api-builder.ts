@@ -1,6 +1,6 @@
 import type { CorePluginAPIState } from './api-state.js'
 import { toLogger, type CompatLogger } from '@onething/backend/runtime/logging/logger-primitives'
-import { describeToolPromptContributionProblem } from '../engine/prompt-fragments.js'
+import { describeToolPromptContributionProblem } from '../agent-loop/index.js'
 import {
   clampPluginBackgroundParamsPatch,
   describePluginRuntimeBackgroundImageProblem,

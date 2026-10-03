@@ -25,7 +25,7 @@ import s from './ModelOverridePopover.module.css'
  * 后端早就有这三张表 —— `settings.ai.providers[pid].contextLengthByModel[m]`、
  * `maxOutputByModel[m]` 与 `modelCapabilitiesByModel[m]`,引擎读它们的地方是
  * `model-registry.ts` 的 `getOnethingModelContextLength`(上下文,覆盖优先于目录、
- * 优先于 128k 兜底)、`packages/backend/runtime/engine/agent-loop-runtime.ts` 的
+ * 优先于 128k 兜底)、`packages/backend/runtime/agent-loop/agent-loop-runtime.ts` 的
  * `resolveAgentLoopContextBudgetValues`(最大输出,**填了就直接当请求的 max_tokens**;
  * 没填则按注册上限的一半发,**注册上限也没有就不带 `max_tokens`** —— 09-09 之前
  * 这里兜底 4096 再对半成 2048,那个编出来的数连同它的产地一起在同日删掉了;

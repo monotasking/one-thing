@@ -55,7 +55,7 @@ import { getEventBus, getStreamChannel } from '@onething/backend/runtime/events'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/runtime/sessions'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '@onething/backend/runtime/sessions'
-import { getStreamEngine } from '../engine/engine-layer.js'
+import { getStreamEngine } from '@onething/backend/current.js'
 import { createDefaultSettings } from '@onething/backend/runtime/settings'
 import { localUserPrincipal } from '@shared/permission/principal'
 import { markHostUnattended } from '@onething/backend/runtime/permissions/unattended'
@@ -74,7 +74,7 @@ import type {
 } from '@shared/ipc/resources.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import type { BindableOnethingStreamSender } from '@onething/backend/runtime/engine/stream-sender'
+import type { BindableOnethingStreamSender } from '../agent-loop/index.js'
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 

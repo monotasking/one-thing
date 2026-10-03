@@ -15,7 +15,7 @@ import type {
 } from '@shared/ipc.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/agent-store-access.js'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
+import { getStreamEngineSafe } from '@onething/backend/current.js'
 import * as store from '@onething/backend/store.js'
 import { getScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/backend/runtime/scheduler'
@@ -27,8 +27,16 @@ import { consolePort, getLogger } from '@onething/backend/runtime/logging/config
 import type { OnethingSchedulerAgentTaskEventBus, OnethingSchedulerAgentTaskSessionStore, OnethingSchedulerAgentTaskRunnerOptions, OnethingSchedulerAgentTaskLogger } from '@onething/backend/runtime/scheduler/agent-task-runner'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/runtime/scheduler/user-tasks'
-import { DEFAULT_SESSION_OWNER, isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner, sessionOwnerOf, sessionAccess, type SessionAccessContext } from '@onething/backend/runtime/sessions'
-import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
+import {
+  DEFAULT_SESSION_OWNER,
+  isHistoricalLocalOperator,
+  ownsSessionRecord,
+  requestSessionOwner,
+  sessionAccess,
+  sessionOwnerOf,
+  type SessionAccessContext,
+} from '@onething/backend/runtime/sessions'
+import { fixedExecutionContext } from '../sessions/index.js'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

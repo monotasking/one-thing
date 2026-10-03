@@ -33,7 +33,8 @@ vi.mock('@onething/backend/runtime/agents/agent-store-access', () => ({
   findAgent: (agentId: string) => ({ id: agentId, name: agentId, isActive: true }),
 }))
 
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
+vi.mock('@onething/backend/current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
   getStreamEngineSafe: () => ({
     hasCommandTarget: () => true,
     getChannel: () => 'ipc',

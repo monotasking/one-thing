@@ -8,7 +8,7 @@ import type { ProviderAuthContext } from "@onething/backend/runtime/auth/ipc-typ
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
-} from "@onething/backend/runtime/engine/product-stream-runtime";
+} from "./product-stream-runtime.js";
 import { Permission } from "@onething/backend/runtime/permissions/permission";
 import { Interaction } from '@onething/backend/runtime/interaction';
 import * as store from "@onething/backend/store.js";
@@ -42,7 +42,7 @@ import {
 	getContextCompactReason,
 	shouldSkipAutoCompactForProviderUsageMismatch,
 } from "./compact-session.js";
-import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/backend/runtime/engine/engine-primitives'
+import type { StreamEngineModelRegistryAdapter, StreamEngineStoreAdapter } from '@onething/backend/runtime/agent-loop'
 import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
 
 export type MainStreamEngineRuntime = OnethingProductStreamRuntime<

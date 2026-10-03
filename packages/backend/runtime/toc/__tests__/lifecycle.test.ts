@@ -59,7 +59,7 @@ afterEach(async () => {
 
 async function arm(backend: OnethingBackend) {
   const stores = await import('../../sessions/session-store.js')
-  const { triggerManager } = await import('@onething/backend/runtime/engine/triggers')
+  const { triggerManager } = await import('@onething/backend/runtime/agent-loop')
   const session = stores.createSession('s', 'TOC lifetime')
   backend.sessionLayer.commands.appendMessage('s', { message: {
     id: 'a1', role: 'assistant', content: 'Updated the parser and its callers', timestamp: 1000,

@@ -1,5 +1,5 @@
 import type { PluginInputInterceptHandler } from './input-intercept.js'
-import type { CoreToolPromptContribution } from '../engine/prompt-fragments.js'
+import type { CoreToolPromptContribution } from '../agent-loop/index.js'
 import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
 import type { PluginToolResultInterceptHandler } from './tool-result-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'

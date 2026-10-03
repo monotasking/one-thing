@@ -11,7 +11,7 @@ import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate
 import type { Principal } from '@shared/permission/principal'
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '@onething/backend/runtime/events/event-only-emitter'
-import { executeCoreToolAndUpdate } from '@onething/backend/runtime/engine/engine-primitives'
+import { executeCoreToolAndUpdate } from '@onething/backend/runtime/agent-loop'
 import {
   createToolExecutionStepWithFactory,
   detectSkillUsage,
@@ -31,7 +31,7 @@ import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/backend/runtime/logging/logger-primitives'
 import type { ToolMetadataUpdate } from '@onething/backend/runtime/toolkit/execution-types'
-import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '@onething/backend/runtime/engine/tool-orchestration'
+import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '../../agent-loop/index.js'
 
 const log = getLogger('toolkit.runner')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -87,7 +87,7 @@ export async function executeToolDirectly(
    *
    * 理由是这个函数的第一段注释说的那件事:它是**每一次工具直调的唯一必经点**。
    * 三条链路(agent-loop 的 tool-call-done、orchestrator 的 start、sub-agent 的
-   * 递归入口)各有各的上游 —— 接在 `runtime/engine/tool-orchestration.ts` 上只盖得住
+   * 递归入口)各有各的上游 —— 接在 `runtime/agent-loop/agent-loop-tool-orchestration.ts` 上只盖得住
    * 中间那一条,agent-loop 那条会整条漏掉。接在这里三条一次盖全,而且 core 一个
    * 字都不用改(进度是 `ToolEvent` 已有的词汇,新 chunk 只是它的一次投影)。
    *

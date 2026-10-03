@@ -582,7 +582,7 @@ const MAIN_FILE_IO_SYSTEM_DIRS = [
   'packages/backend/runtime/plugins',
   // 去 core 批 2(2026-10-03):core 的 engine 目录并进了 `runtime/engine/`(上面那把全套尺子量的目录);其中这一只
   // 本职就是读 `@` 提及的文件内容(`node:fs`),从没在全套尺子上 —— 改按这一级量,全套尺子遍历时跳过它。
-  'packages/backend/runtime/engine/file-mentions.ts',
+  'packages/backend/runtime/agent-loop/agent-loop-file-mentions.ts',
 ]
 
 const MAIN_HOST_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
@@ -3381,8 +3381,8 @@ function checkChatResumeAfterToolConfirmStaysRetired(): void {
 
 function checkCorePromptAssemblyOwnedByRuntime(): void {
   const files = [
-    path.join(root, 'packages/backend/runtime/engine/system-prompt.ts'),
-    path.join(root, 'packages/backend/runtime/engine/engine-primitives.ts'),
+    path.join(root, 'packages/backend/runtime/agent-loop/agent-loop-system-prompt.ts'),
+    path.join(root, 'packages/backend/runtime/agent-loop/index.ts'),
   ]
   // 「快照组装不许回到 core 的 engine 目录」那一格随去 core 批 2(2026-10-03)撤掉:那个目录整个并进了
   // `runtime/engine/`,快照组装本来就住在 `runtime/engine/prompt/`,core 侧的位置不存在了。
@@ -3669,7 +3669,7 @@ function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
 }
 
 function checkRuntimeOwnsAgentLoopSelection(): void {
-  const runtimeFile = 'packages/backend/runtime/agent-loop/selection.ts'
+  const runtimeFile = 'packages/backend/runtime/engine/engine-agent-loop-stream-selection.ts'
   // P3'e-A2b 删掉了装配层那个换名薄适配(`runtime/engine/stream/agent-loop-selection.ts`,
   // 28 行、只把三个 `Onething*` 符号改回短名):调用点直接读产品层。所以这条断言
   // 从「门面必须在」翻成「门面**回来**才算红」—— 它一旦重新出现,就说明有人又在
@@ -4080,7 +4080,7 @@ function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
  * **工具调用状态的编排归 core**,装配层不许自己再写一份。
  */
 function checkRuntimeOwnsToolUpdateOrchestration(): void {
-  const coreFile = path.join(root, 'packages/backend/runtime/engine/engine-primitives.ts')
+  const coreFile = path.join(root, 'packages/backend/runtime/agent-loop/index.ts')
   const mainFile = path.join(root, 'packages/backend/runtime/engine/stream/tool-execution.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''

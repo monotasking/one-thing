@@ -225,9 +225,6 @@ const mocks = vi.hoisted(() => ({
 	},
 }));
 
-vi.mock("../../engine-layer.js", () => ({
-	getStreamEngine: () => mocks.engine,
-}));
 
 vi.mock("@onething/backend/runtime/events", () => ({
 	getEventBus: () => ({ emit: mocks.eventBusEmit }),
@@ -281,7 +278,7 @@ vi.mock("../../../sessions/usage.js", () => ({
 	landSessionAccountUsage: () => false,
 }));
 
-vi.mock("../../triggers/index.js", () => ({
+vi.mock("../../../agent-loop/agent-loop-trigger-manager.js", () => ({
 	triggerManager: {
 		runPostResponse: mocks.triggerRunPostResponse,
 	},
@@ -357,6 +354,8 @@ function params(
 		sender: testSender(),
 		sessionId: "s1",
 		assistantMessageId: "m1",
+		// 引擎调执行器时把自己交进来(从前执行器去读当前装配的那只引擎,这里替身就是那只引擎)。
+		streamControllers: mocks.engine as unknown as StreamExecutionParams["streamControllers"],
 		messageContent: "hello",
 		historyMessages: [{ role: "user", content: "hello" }],
 		configWithApiKey: testProviderConfig(),

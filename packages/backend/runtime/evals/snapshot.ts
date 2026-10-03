@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
-	CorePromptCapture,
-	CoreRequestMessage,
 	CoreEvalRawRequest,
 	CoreEvalRawResponse,
-} from "@onething/backend/runtime/engine/engine-primitives";
+	CorePromptCapture,
+	CoreRequestMessage,
+} from "@onething/backend/runtime/agent-loop";
 import { hashSections } from "./section-hash.js";
 import {
 	getOnethingEvalsFixturesAutoDir,

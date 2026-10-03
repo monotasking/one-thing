@@ -9,9 +9,9 @@ import type {
   StreamEnginePromptAdapter,
   StreamEngineProviderAdapter,
   StreamEngineSkillsAdapter,
-  StreamEngineStreamsAdapter,
   StreamEngineStoreAdapter,
-} from '@onething/backend/runtime/engine/engine-primitives'
+  StreamEngineStreamsAdapter,
+} from '@onething/backend/runtime/agent-loop'
 import {
   createOnethingStreamProviderAdapter,
   type OnethingStreamProviderAdapterOptions,

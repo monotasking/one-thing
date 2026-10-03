@@ -3,13 +3,9 @@ import { getEventBus } from '@onething/backend/runtime/events'
 import type { SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { StreamContext, StreamProcessor } from './stream-processor.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
+import type { IPCEmitter } from '../../agent-loop/index.js'
 import { executeToolAndUpdate } from './tool-execution.js'
-import {
-  coreToolCallSnapshot,
-  CoreToolOrchestrator,
-  planToolCallArtifactRemoval,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import { coreToolCallSnapshot, CoreToolOrchestrator, planToolCallArtifactRemoval } from '@onething/backend/runtime/agent-loop'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

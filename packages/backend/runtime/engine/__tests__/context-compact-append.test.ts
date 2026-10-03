@@ -30,7 +30,7 @@ afterEach(async () => {
   fs.rmSync(storeDir, { recursive: true, force: true })
 })
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
-import { CONTEXT_COMPACT_CHUNK_TIMEOUT_MS } from '@onething/backend/runtime/engine/engine-primitives'
+import { CONTEXT_COMPACT_CHUNK_TIMEOUT_MS } from '@onething/backend/runtime/agent-loop'
 import { buildHistoryMessages } from '../stream/message-helpers.js'
 
 const runBeforeContextCompactHooks = vi.fn()

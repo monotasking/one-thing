@@ -808,7 +808,7 @@ export interface SessionAssistantPartEndEventData {
 
 /**
  * G5(§10.1):技能被激活。今天它是一条**流事件**(`skill:activated`,
- * `runtime/engine/event-only-emitter.ts`),只在内存里活到 renderer 把
+ * `runtime/agent-loop/agent-loop-event-only-emitter.ts`),只在内存里活到 renderer 把
  * `message.skillUsed` 写上为止 —— 重载后那一格从消息字段里读回来,而事件账本
  * 上没有任何痕迹。这里给它一条自己的账:`skillUsed` 因此是派生的,不是补丁。
  */

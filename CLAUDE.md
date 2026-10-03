@@ -186,8 +186,8 @@ apps/server/                 # Process shell only (main.ts + index.ts). The HTTP
 
 **`OnethingBackend` is a class, not a bag of globals** (组合根 A, `docs/design/backend-composition-root-2026-09.md`, landed 2026-09-02/03):
 
-- The assembly products are **fields** — `eventBus` / `streamChannel` / `sessionManager` / `engine` / `runtime` / `options` — created by pure factories (`runtime/events/index.ts` `createEventSystem()`, `runtime/sessions/session-layer.ts` `createSessionLayer(eventBus, streamChannel)`, `runtime/engine/engine-layer.ts` `createStreamEngineLayer({eventBus, streamChannel})`) and passed step to step. The old `initializeX` / `shutdownX` pairs are gone.
-- **One process slot, `packages/backend/current.ts`** — the only module-level `let` the assembly layer keeps (`assembly:gate` exempts it). The 121 `getXxx()` accessors (`getEventBus`, `getStreamEngine`, `getSessionManager`, …) still exist but read the **current instance**; before assembly, or for a field not yet built, they throw `BackendNotAssembledError('<field>')`. Assembling while an instance is live throws `BackendAlreadyAssembledError` on the first line (it used to warn-and-return the first backend's engine). A failed assembly runs the disposers registered so far and clears the slot before rethrowing.
+- The assembly products are **fields** — `eventBus` / `streamChannel` / `sessionManager` / `engine` / `runtime` / `options` — created by pure factories (`runtime/events/index.ts` `createEventSystem()`, `runtime/sessions/session-layer.ts` `createSessionLayer(eventBus, streamChannel)`, the package-root assembly file `assemble-engine.ts` `createStreamEngineLayer({eventBus, streamChannel})`) and passed step to step. The old `initializeX` / `shutdownX` pairs are gone.
+- **One process slot, `packages/backend/current.ts`** — the only module-level `let` the assembly layer keeps (`assembly:gate` exempts it). The 121 `getXxx()` accessors (`getEventBus`, `getStreamEngine`, `getSessionManager`, …) still exist but read the **current instance** (`getStreamEngine()` / `getStreamEngineSafe()` live in `current.ts` itself since the engine batch, 2026-10, D57 — whoever needs "the engine right now" reads the slot and never imports the file that builds it); before assembly, or for a field not yet built, they throw `BackendNotAssembledError('<field>')`. Assembling while an instance is live throws `BackendAlreadyAssembledError` on the first line (it used to warn-and-return the first backend's engine). A failed assembly runs the disposers registered so far and clears the slot before rethrowing.
 - **`own(disposer, label)` / `dispose()`** — whoever starts something that leaves a tail registers its teardown next to the start line; `dispose()` runs the list in reverse, each disposer in its own try/catch, then clears the list, the five assembly-product fields and the slot. It is idempotent. **`own()` after `dispose()` has started runs the disposer on the spot** (returning its promise, errors logged not thrown) instead of silently dropping it — the guard that keeps a `.then()`-deferred registration racing a fast quit from leaking, e.g. an already-spawned MCP stdio child. `shutdown()` survives as a deprecated alias. `ownedLabels()` is a read-only snapshot for tests. The rule reaches the hosts: everything a host starts after assembly (embedded HTTP surface, user scheduler, watchers, MCP/ACP, gateway) is `backend.own(...)`'d at its start site, so every host's shutdown is one `await backend.dispose()`.
 
 Options (`OnethingBackendOptions`):
@@ -199,7 +199,7 @@ Options (`OnethingBackendOptions`):
 - `sender?: BindableStreamSender` — `engine.bind(sender)`; EventBus-observing hosts pass a noop (the engine drops commands silently with no sender bound)
 - `hooks?: { afterSettings, afterEngine, afterTools }` — each is `(backend: OnethingBackend) => void | Promise<void>`: the instance is handed in **because `assemble` has not returned yet when hooks run**, and a hook that starts a watcher must `backend.own()` it
 
-Boot order (unchanged): `configureAppRuntimeAdapters()` (idempotent) → `applyHostPorts(options.host)` → stores → settings → afterSettings → event system → session layer → StreamEngine → triggers → afterEngine → `Permission.initialize` → variable system → goal breakers → project dirs → tool registry by tier → RPC domains → afterTools → optional sessionSkills / collab / MCP+ACP / bind. Steps that hold state return a disposer that is `own()`'d on the spot (`registerBuiltinTriggers`, `bootstrapVariableSystem`, `bootstrapGoalStreamBreakers`, `bootstrapProjectDirs`, the RPC table, the ledger broadcaster, the permission/interaction recorders) — 24 registrations in all, of which **9 sit in two explicit reverse-order blocks** (engine/Permission/Interaction, and the six plugins/MCP/ACP/gateway-era rows) because registration order there cannot express today's shutdown order; the eleven `configureApp*` adapter bindings stay idempotent latches by contract — and since providers 归位 (2026-10-04, D24) `configureAppRuntimeAdapters()` also hands the credentials feature's two answers to their users there, as idempotent latches rather than `own()`'d steps (so the owned-labels snapshot is unchanged): `configureProcessAuthTokenStore(createOnethingSpaceTokenStore())` (the process auth service's token store = the space credential pool; first one wins) and `configureModelCatalogCredentials(…)` (which key the model-catalog refresh sends to a custom provider's `/models`).
+Boot order (unchanged): `configureAppRuntimeAdapters()` (idempotent) → `applyHostPorts(options.host)` → stores → settings → afterSettings → event system → session layer → StreamEngine (`createStreamEngineLayer`) → triggers (`registerBuiltinTriggers`; both from `assemble-engine.ts`) → afterEngine → `Permission.initialize` → variable system → goal breakers → project dirs → tool registry by tier → RPC domains → afterTools → optional sessionSkills / collab / MCP+ACP / bind. Steps that hold state return a disposer that is `own()`'d on the spot (`registerBuiltinTriggers`, `bootstrapVariableSystem`, `bootstrapGoalStreamBreakers`, `bootstrapProjectDirs`, the RPC table, the ledger broadcaster, the permission/interaction recorders) — 24 registrations in all, of which **9 sit in two explicit reverse-order blocks** (engine/Permission/Interaction, and the six plugins/MCP/ACP/gateway-era rows) because registration order there cannot express today's shutdown order; the eleven `configureApp*` adapter bindings stay idempotent latches by contract — and since providers 归位 (2026-10-04, D24) `configureAppRuntimeAdapters()` also hands the credentials feature's two answers to their users there, as idempotent latches rather than `own()`'d steps (so the owned-labels snapshot is unchanged): `configureProcessAuthTokenStore(createOnethingSpaceTokenStore())` (the process auth service's token store = the space credential pool; first one wins) and `configureModelCatalogCredentials(…)` (which key the model-catalog refresh sends to a custom provider's `/models`).
 
 Host call sites (four; the Vue desktop is retired as a product but still compiles and boots):
 
@@ -833,7 +833,7 @@ Notes:
 - System prompt assembly is a single "directory at top, copy below" builder in
   `packages/backend/runtime/prompts/builder.ts`, composed by a **`PromptComposer`
   over `PromptSource`s** (2026-08-18, `docs/design/prompt-composition-2026-08.md`).
-  One shape (`CorePromptFragment`, `packages/backend/runtime/engine/prompt-fragments.ts`: `slot`
+  One shape (`CorePromptFragment`, `packages/backend/runtime/agent-loop/agent-loop-prompt-fragments.ts`: `slot`
   guidelines / workspace-rules / section, `source`, `order`, `requiresTools` /
   `requiresAnyTools` / `when`, `content`); one interface (`PromptSource.collect(ctx)`,
   `prompts/composer.ts`); sources: `builtinPromptSource` (the section table),
@@ -993,7 +993,6 @@ packages/backend/runtime/      # one feature, one flat directory (was packages/o
 │   │                          # event-log + writer + blobs + checkpoint + refold/shadow / trace-reads.ts /
 │   │                          # freeze / createSessionLayer (session-layer.ts) / the session table
 │   │                          # (session-store.ts: LRU + 300ms throttled saves) / ipc-repository/ / testing/
-│   ├── agent-loop/            # provider-agnostic loop (runner, stream, retry, scheduler; barrel loop-primitives.ts)
 │   ├── providers/             # one vendor, one folder (vendors/<id>/) + rosters + registry wiring, and since
 │   │                          # 包根归位 3 第 2 笔 (2026-10-03) the former agent-loop/providers/: the hand-rolled
 │   │                          # fetch/SSE wire protocols (wires/), dialect base classes (base/), dialect recipes
@@ -1012,13 +1011,19 @@ packages/backend/runtime/      # one feature, one flat directory (was packages/o
 │   │                          # (core's events/ + the package root's events/, merged 2026-10-03)
 │   ├── tools/  skills/  plugins/  providers/  themes/  variables/  goals/  voice/  music/
 │   │                          # (tools/ = pure modules only since R4b: sandbox, bash, edit engine, …)
-│   ├── engine/                # CoreStreamEngine, context-compact, history (core's engine/ until 批 2; barrel
-│   │                          # engine-primitives.ts) + ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定)
-│   │                          # + ports.ts(五个可选端口)/ turn-principal / message-sources
-│   │                          # + P3'e-A2b:compact-file-lists / chat-logger-bound /
-│   │                          # session-stream-emitter / session-turn-context
-│   │                          # + 从 runtime 根搬来的五只(收尾整理 3):runtime.ts / product-stream-runtime.ts /
-│   │                          # stream-runtime-factory.ts / stream-processor-factory.ts / stream-sender.ts(命令目标形状)
+│   ├── agent-loop/            # the turn kernel ("how one turn runs"): provider-agnostic runner, stream, retry, tool
+│   │                          # scheduler, wire format (barrel loop-primitives.ts),
+│   │                          # + since the engine batch (2026-10, D27/D51) the former core/engine kernel, all named
+│   │                          # agent-loop-*.ts: CoreStreamEngine (agent-loop-stream-engine), executor/runtime/selection,
+│   │                          # tool orchestration, context compact, history, turn context, prompt fragments, ids,
+│   │                          # message sources, turn principal, stream sender, the engine ports and the trigger table.
+│   │                          # Its entry index.ts IS the old engine-primitives barrel (D52). Depends on shared/logging/tools only.
+│   ├── engine/                # orchestration (L3): ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定), the 12-slot
+│   │                          # runtime (stream-engine-runtime), stream/ (executors, recorder, provider helpers), prompt/,
+│   │                          # triggers/turn-evaluation, the "use a provider" facades (chat / title / utility turn /
+│   │                          # AgentProvider factory), product-stream-runtime / stream-runtime-factory /
+│   │                          # stream-processor-factory, engine-agent-loop-stream-{runtime,selection}.
+│   │                          # One entry, named exports only (index.ts, D60); no deep exports keys.
 │   ├── mcp/  acp/  external-agents/  files/  search/  usage/  evals/  headless/  …
 │   └── index.ts               # 总桶 '@onething/backend/runtime'(runtime 根上只剩它一只文件)
 │
@@ -1035,9 +1040,9 @@ packages/backend/              # THE server package ('@onething/backend'); the p
 │   (包根 provider-binding/ 于包根归位 3 第 1 笔(2026-10-03)删除:受管 fetch 与代理规则成了独立功能
 │    runtime/network/,读设置的薄壳 proxy-fetch.ts 与 ai-settings-compose.ts 进 runtime/settings/,
 │    request-dump-writer.ts 进 runtime/providers/)
-│   (engine / logging / headless 的接线 ③-收尾 C 已并进 runtime/<d>/;runtime/engine/ 下
-│    engine-layer.ts(单例与生命周期)、stream-engine-bound.ts(端口装配)、stream-engine-runtime.ts
-│    (12 槽)、compact-session.ts,子目录 stream/ prompt/ triggers/ 原样)
+│   ├── assemble-engine.ts     # 装引擎(engine 归位,2026-10,D27):createStreamEngineLayer + createBoundStreamEngine
+│   │                          # (端口接线)+ registerBuiltinTriggers —— 从前是 runtime/engine/ 的 engine-layer.ts /
+│   │                          # stream-engine-bound.ts / triggers/index.ts。读当前引擎走 current.ts,不走这里。
 │
 apps/cli/src/                  # CLI daemon + commands: index.ts (arg parsing) daemon-client.ts
 │                              # daemon-server.ts (HeadlessBackend) ndjson.ts paths.ts stdout.ts
@@ -1060,7 +1065,7 @@ packages/shared/               # '@shared'
 
 ### Key Systems
 
-**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/backend/runtime/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **five optional ports** (`runtime/src/engine/ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before), never a substitute implementation. The assembly layer's whole share is `packages/backend/runtime/engine/stream-engine-bound.ts`: it fills all five ports from the backend spine (`channel/`, `runtime/collab`, `runtime/plugins`, `runtime/agents`, `runtime/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; `runtime/engine/engine-layer.ts` owns the singleton. The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled next to it in `runtime/engine/stream-engine-runtime.ts`.
+**StreamEngine** — the engine itself is product code: `ProductStreamEngine` in `packages/backend/runtime/engine/stream-engine.ts` (extends `CoreStreamEngine`), single owner of active stream lifecycle. Commands arrive via EventBus → engine handlers → persist → emit events → IPCBridge (desktop) or SSE (server). Handles send-message, edit-and-resend, retry-message, resume-after-confirm, steering, compact. Everything it needs from the assembly layer rides **six optional ports** (`runtime/agent-loop/agent-loop-engine-ports.ts`: `router` / `roomIngress` / `pluginIntercept` / `agentBinding` / `steeringDelivery` / `collabDrive`) — **an absent port means that capability does not exist** (no routing / no room refusal / no plugin post-reply / no agent binding / steering queues as before / no collab drive is ever trusted when minting the turn principal), never a substitute implementation. The assembly layer's whole share is `createBoundStreamEngine` in the package-root file `packages/backend/assemble-engine.ts`: it fills all six ports from the backend (`channel/`, `runtime/collab`, `runtime/plugins`, `runtime/agents`, `runtime/external-agents`) and calls `new ProductStreamEngine(streamRuntime, ports)`; the same file builds the engine layer (`createStreamEngineLayer`) and registers the built-in triggers, and `current.ts` answers "which engine is live" (`getStreamEngine()`). The engine never imports that assembly file: the stream executor gets the engine's controller registry as a call argument (`streamControllers`, D56), and the post-turn trigger table is a kernel instance (`agent-loop/agent-loop-trigger-manager.ts`) whose triggers live with their owners (goal continuation → goals, session TOC → toc, skill review → skills, turn evaluation → engine). The 12-slot product runtime (`CoreStreamEngineRuntime`) is assembled in `runtime/engine/stream-engine-runtime.ts`; the turn kernel (`CoreStreamEngine`, the agent-loop executor/runtime, history, compaction, tool orchestration) lives in `runtime/agent-loop/`.
 
 **EventBus** (`packages/backend/runtime/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers. One directory since 收尾整理 2 (2026-10-03): the generic primitives (`event-bus.ts` / `ring-buffer.ts` / `stream-channel.ts` / `types.ts`, barrel `bus-primitives.ts`; core's `events/` until 去 core 批 1) and what used to be the package root's `events/` (`index.ts` = `createEventSystem` / `getEventBus`, the bus-message-typed `session-event-bus.ts` / `session-ring-buffer.ts` / `session-stream-channel.ts` / `session-bus-types.ts`, `stream-coalescer.ts`, `ui-stream.ts`, …) sit side by side.
 

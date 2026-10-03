@@ -13,7 +13,7 @@ import {
   getCoreProviderExecution,
   registerCoreProviderExecution,
   shouldStartAgentLoopContextCompact,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import {
   agentExecutorOwnsContextWindow,
   createExternalAgentExecutor,

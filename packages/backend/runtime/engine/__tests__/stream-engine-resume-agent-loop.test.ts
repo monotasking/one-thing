@@ -3,7 +3,7 @@ import type { ChatMessage, ChatSession, ToolDefinition } from '@shared/ipc.js'
 import type { ResumeAfterConfirmCommand } from '@shared/events/session-commands.js'
 import { EventBus } from '@onething/backend/runtime/events/session-event-bus'
 
-import type { BindableStreamSender, StreamSender } from '../stream-engine-bound.js'
+import type { BindableStreamSender, StreamSender } from '../stream-engine.js'
 
 type SenderMock = Pick<BindableStreamSender, 'isDestroyed' | 'send' | 'on'>
 
@@ -168,7 +168,7 @@ vi.mock('@onething/backend/runtime/prompts/stored-prompt-resolver', () => ({
   })),
 }))
 
-const { createBoundStreamEngine } = await import('../stream-engine-bound.js')
+const { createBoundStreamEngine } = await import('../../../assemble-engine.js')
 
 function sender(): StreamSender {
   return mocks.sender as SenderMock as unknown as StreamSender

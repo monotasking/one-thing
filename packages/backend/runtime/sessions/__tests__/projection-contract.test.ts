@@ -51,13 +51,13 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { finalizeLingeringAgentLoopToolWork } from '../../engine/agent-loop-executor.js'
+import { finalizeLingeringAgentLoopToolWork } from '../../agent-loop/agent-loop-executor.js'
 import { CORE_ABORTED_TOOL_ERROR } from '@shared/engine/tool-call-errors.js'
-import { createCoreToolInputStartArtifacts } from '../../engine/stream-processor.js'
+import { createCoreToolInputStartArtifacts } from '../../agent-loop/agent-loop-stream-processor.js'
 import { coreToolInputStartStepTitle } from '@shared/engine/tool-step.js'
-import { buildHistoryMessages } from '../../engine/history.js'
+import { buildHistoryMessages } from '../../agent-loop/agent-loop-history.js'
 import { detectSkillUsage, getStepType } from '@shared/engine/tool-step.js'
-import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../engine/history.js'
+import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../agent-loop/agent-loop-history.js'
 import { buildContextCompactContent } from '@shared/engine/context-compact-content.js'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,
@@ -665,7 +665,7 @@ function writeTurnToExpected(
     const slot = timeline.requests[index]
 
     if (request.reasoning !== undefined) {
-      // 引擎的落点规则(`runtime/engine/agent-loop-executor.ts` 的
+      // 引擎的落点规则(`runtime/agent-loop/agent-loop-executor.ts` 的
       // `getAgentLoopReasoningPlacement`):第 1 轮请求开头、此前没产出过正文/
       // 工具调用的那一段是 `'top'` —— `updateMessageReasoning` 写**字段**,不进
       // contentParts;其余一律 `'inline'` —— `appendOrderedPart` 写 contentParts,

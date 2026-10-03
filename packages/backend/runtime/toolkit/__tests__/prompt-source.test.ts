@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
-import type { CoreBuildPromptContextOptions, CoreToolPromptContribution } from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreBuildPromptContextOptions, CoreToolPromptContribution } from '@onething/backend/runtime/agent-loop'
 import {
   configureToolkitCatalog,
   EDIT_TOOL_PROMPT,

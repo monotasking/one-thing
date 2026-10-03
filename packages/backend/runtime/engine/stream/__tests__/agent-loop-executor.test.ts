@@ -24,12 +24,12 @@ import {
   runAgentLoopPostResponseHooks,
   type AgentLoopExecutorState,
 } from '../agent-loop-executor.js'
-import { shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream } from '@onething/backend/runtime/agent-loop'
-import { triggerManager } from '../../triggers/index.js'
+import { shouldUseOnethingAgentLoopStream as shouldUseAgentLoopStream } from '../../engine-agent-loop-stream-selection.js'
+import { triggerManager } from '../../../agent-loop/agent-loop-trigger-manager.js'
 import { runAfterAssistantResponseHooks } from '@onething/backend/runtime/plugins/lifecycle-hooks'
 import type { saveMediaImage } from '@onething/backend/runtime/media/save-image'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
+import type { IPCEmitter } from '../../../agent-loop/agent-loop-session-stream-emitter.js'
 import type { StreamProcessor, StreamSender } from '../stream-processor.js'
 
 type SaveMediaImageInput = Parameters<typeof saveMediaImage>[0]
@@ -76,7 +76,7 @@ vi.mock('../../../sessions/session-commands.js', () => ({
   },
 }))
 
-vi.mock('../../triggers/index.js', () => ({
+vi.mock('../../../agent-loop/agent-loop-trigger-manager.js', () => ({
   triggerManager: {
     runPostResponse: vi.fn(() => Promise.resolve()),
   },

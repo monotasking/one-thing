@@ -35,7 +35,6 @@ import type { ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { noteCollabAdoptedEcho } from '../agent-exec-session.js'
@@ -62,7 +61,7 @@ import {
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getCurrentBackendInstance, getStreamEngineSafe } from '@onething/backend/current.js'
 
 const log = getLogger('collab.actors.mind')
 
@@ -261,7 +260,7 @@ export function createCollabEngineMindPort(
           // 标记说这是什么,令牌证明是谁发的:引擎的 room/exec 门因此不必信一个字符串。
           ...(driveToken ? { collabDriveToken: driveToken } : {}),
           // 令牌既然证明了「是协调者发的」,它就有资格指名这一轮的行动主体。
-          // 引擎那侧只在验票通过时才采信这个字段(engine/turn-principal.ts)。
+          // 引擎那侧只在验票通过时才采信这个字段(agent-loop/agent-loop-turn-principal.ts)。
           ...(driveToken ? { principal: { kind: 'agent', agentId: request.agentId } } : {}),
           // 这一轮答的是哪张牌。落在执行会话里 = 一份比内存账活得久的幂等凭据。
           collabLeaseId: request.lease.leaseId,

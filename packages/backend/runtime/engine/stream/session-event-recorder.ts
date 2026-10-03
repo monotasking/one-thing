@@ -65,13 +65,13 @@ import type {
 } from '@shared/events/stream-chunks'
 import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/backend/runtime/agent-loop/loop-primitives'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
-// `@onething/backend/runtime/engine/engine-primitives` barrel —— barrel 会把整棵执行器模块图拖进记录器
+// `packages/backend/runtime/agent-loop/index` barrel —— barrel 会把整棵执行器模块图拖进记录器
 // (与上面 provider-data 那条 import 同一条理由)。
-import { nextAgentLoopTurnIndexAfterFinish } from '@onething/backend/runtime/engine/agent-loop-turn'
+import { nextAgentLoopTurnIndexAfterFinish } from '../../agent-loop/index.js'
 // §13.17:changes 的判定点与引擎写消息时同源(`changesFromToolMetadata`)。引
-// 那一个叶子文件而不是 `@onething/backend/runtime/engine/engine-primitives` barrel —— 同上"避免拖进整棵执行器
+// 那一个叶子文件而不是 `packages/backend/runtime/agent-loop/index` barrel —— 同上"避免拖进整棵执行器
 // 模块图"的理由。
-import { changesFromToolMetadata, resultTextFromToolMetadata } from '@onething/backend/runtime/engine/tool-orchestration'
+import { changesFromToolMetadata, resultTextFromToolMetadata } from '../../agent-loop/index.js'
 // 直接引那一个纯文件而不是 providers 的 barrel:barrel 会把六个 provider 实现
 // 一并拖进记录器的模块图,而这里要的只是一张判定表(见文件头"本模块只依赖
 // 会话事件那一层"的同一条理由)。

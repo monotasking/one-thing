@@ -1,8 +1,5 @@
 import type { JsonSchemaObject, JsonValue } from '@shared/json'
-import type {
-  CorePromptActiveProject,
-  CorePromptKnownProjects,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import type { CorePromptActiveProject, CorePromptKnownProjects } from '@onething/backend/runtime/agent-loop'
 
 export interface CoreSnapshotSkillFile {
   name: string
@@ -453,7 +450,7 @@ export async function buildSystemPromptSnapshotWithAdapters<
   const allEnabledTools = enableToolCalls
     ? await options.getEnabledTools(settings.tools?.tools)
     : []
-  // Mirror planAgentLoopTools (runtime/engine/agent-loop-runtime.ts): a real turn
+  // Mirror planAgentLoopTools (runtime/agent-loop/agent-loop-runtime.ts): a real turn
   // drops `mcp:` singles unconditionally and then keeps only what the agent's
   // allowlist permits. The snapshot used to skip the second half, so it
   // reported tools this agent can never call.

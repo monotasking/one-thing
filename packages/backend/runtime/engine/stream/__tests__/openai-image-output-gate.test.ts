@@ -78,9 +78,6 @@ vi.mock('../agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 
-vi.mock('../../engine-layer.js', () => ({
-  getStreamEngine: () => mocks.engine,
-}))
 
 const { executeMessageStream } = await import('../stream-executor.js')
 
@@ -98,6 +95,7 @@ function params(model: string, providerId = 'openai'): StreamExecutionParams {
     sender,
     sessionId: 's1',
     assistantMessageId: 'm1',
+    streamControllers: mocks.engine as unknown as StreamExecutionParams['streamControllers'],
     messageContent: 'draw me an icon',
     historyMessages: [{ role: 'user', content: 'draw me an icon' }],
     configWithApiKey,

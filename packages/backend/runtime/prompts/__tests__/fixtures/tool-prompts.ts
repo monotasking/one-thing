@@ -1,7 +1,4 @@
-import {
-	promptFragmentsFromToolContribution,
-	type CoreToolPromptContribution,
-} from "@onething/backend/runtime/engine/engine-primitives";
+import { promptFragmentsFromToolContribution, type CoreToolPromptContribution } from "@onething/backend/runtime/agent-loop";
 import {
 	EDIT_TOOL_PROMPT,
 	VARIABLE_TOOL_PROMPT,

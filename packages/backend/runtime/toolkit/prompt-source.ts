@@ -20,11 +20,7 @@
  */
 
 import { resolveAIToolName } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import {
-  promptFragmentsFromToolContribution,
-  type CoreBuildPromptContextOptions,
-  type CorePromptFragment,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import { promptFragmentsFromToolContribution, type CoreBuildPromptContextOptions, type CorePromptFragment } from '@onething/backend/runtime/agent-loop'
 import type { PromptSource } from '../prompts/index.js'
 import { getToolkitCatalog } from './index.js'
 

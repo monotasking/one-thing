@@ -26,21 +26,16 @@ import {
 } from '@onething/backend/runtime/collab'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/store.js'
-import { sessionReads } from '@onething/backend/runtime/sessions'
+import { sessionReads, type SessionAccess } from '@onething/backend/runtime/sessions'
 import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { collabSessionRoomMembers } from './members.js'
-import { generateChatResponse } from '@onething/backend/runtime/engine'
-import {
-  getEffectiveProviderConfig,
-  resolveProviderAuth,
-} from '@onething/backend/runtime/engine/stream/provider-helpers'
+import { generateChatResponse, getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/runtime/engine'
 import { collabUserPromptFields } from './user-identity.js'
 import type { CollabDigestStore } from '@onething/backend/runtime/collab/digest-store'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
-import type { SessionAccess } from '@onething/backend/runtime/sessions'
-import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
+import { fixedExecutionContext } from '../sessions/index.js'
 import type { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
 import { ONETHING_USAGE_SOURCES } from '@onething/backend/runtime/usage'
 import { getCurrentBackend } from '@onething/backend/current.js'

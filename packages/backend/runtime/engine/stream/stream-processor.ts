@@ -11,19 +11,21 @@ import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/runtime/mcp/index-with-bridge'
 import { resolveAIToolName } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import { createEventOnlyEmitter } from '@onething/backend/runtime/events/event-only-emitter'
-import type { PendingMessageQueue, CoreToolIdentityResolver, CoreStreamProcessorStore } from '@onething/backend/runtime/engine/engine-primitives'
-import type { CoreAgentLoopToolInputProcessor } from '@onething/backend/runtime/engine/engine-primitives'
-import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import type { AgentRuntimeProviderConfig } from '../engine-agent-runtime.js'
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
-} from '@onething/backend/runtime/engine/engine-primitives'
-import type { CoreInitialToolChoice } from '@onething/backend/runtime/engine/engine-primitives'
+  type CoreAgentLoopToolInputProcessor,
+  type CoreInitialToolChoice,
+  type CoreStreamProcessorStore,
+  type CoreToolIdentityResolver,
+  type PendingMessageQueue,
+} from '@onething/backend/runtime/agent-loop'
+import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/runtime/agent-loop/loop-primitives'
+import type { AgentRuntimeProviderConfig } from '../engine-agent-runtime.js'
 import type { EffectiveAgentProfile } from '@onething/backend/runtime/agents'
 import type { CoreSpaceCredentialMarker } from '@onething/backend/runtime/providers'
 import {
   createOnethingStreamProcessor, type CreateOnethingStreamProcessorOptions,
-} from '@onething/backend/runtime/engine/stream-processor-factory'
+} from '../stream-processor-factory.js'
 
 export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig & {
   /**

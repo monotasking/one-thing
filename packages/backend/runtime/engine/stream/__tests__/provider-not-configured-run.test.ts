@@ -37,11 +37,8 @@ vi.mock('@onething/backend/runtime/storage', async importOriginal => {
   }
 })
 
-// stream-executor 的模块级 `getStreamEngine` 只有 `executeMessageStream` 用得着;
-// 这条路一步都不进流,所以把整台单例引擎挡在门外。
-vi.mock('../../engine-layer.js', () => ({ getStreamEngine: () => ({}) }))
 
-const { CoreStreamEngine } = await import('@onething/backend/runtime/engine/engine-primitives')
+const { CoreStreamEngine } = await import('@onething/backend/runtime/agent-loop')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '@onething/backend/runtime/sessions'
 )

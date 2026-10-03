@@ -704,7 +704,7 @@ export const PLUGIN_DEFERRED_REGISTRIES: Record<PluginDeferredRegistryId, Plugin
   'post-trigger': {
     reason: '触发器每轮都跑,属 disable-plugin 那一族;一个坏触发器会拖垮整条回合。',
     revisitWhen: '有"一个坏触发器不拖垮整条回合"的证据之后。',
-    ref: 'runtime/engine/triggers.ts',
+    ref: 'runtime/agent-loop/agent-loop-triggers.ts',
   },
   'background-job': {
     reason: '与调度器职责重叠 —— api.scheduler 已经能表达绝大多数需求。',

@@ -10,7 +10,7 @@
  * 本文件是**纯函数**:不碰时钟(`now` 一律传入)、不改输入(每个操作返回新账)。
  * 房间的账怎么落盘是 RoomActor(D1)的事,这里只定规则。
  */
-import { createCoreId } from '@onething/backend/runtime/engine/ids'
+import { createCoreId } from '../../agent-loop/index.js'
 
 export interface FloorLease {
   leaseId: string

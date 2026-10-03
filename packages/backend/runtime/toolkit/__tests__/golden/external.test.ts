@@ -4,7 +4,7 @@
  * R4b:插件那一半转成金标(旧包法 `Tool.define(...)+executeCorePluginTool` 随旧树
  * 删除;删除前对拍是绿的,所以快照里记的就是那份旧行为)。MCP 那一半**一个字不
  * 变** —— 它比的是新树复制过来的 `buildMcpPermissionPlan` 与 core 里那一份
- * (`@onething/backend/runtime/engine/engine-primitives` 的 `buildMCPPermissionPlan`),两份都还在,复制一份的
+ * (`packages/backend/runtime/agent-loop/index` 的 `buildMCPPermissionPlan`),两份都还在,复制一份的
  * 代价就是这条测试,它保证两份不会分家。
  */
 
@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
 import { executeCorePluginTool } from '@onething/backend/runtime/plugins/plugin-contract'
-import { buildMCPPermissionPlan, isReadOnlyMCPRouterCall } from '@onething/backend/runtime/engine/engine-primitives'
+import { buildMCPPermissionPlan, isReadOnlyMCPRouterCall } from '@onething/backend/runtime/agent-loop'
 import { zodToJsonSchema } from '../../contract.js'
 import {
   buildMcpPermissionPlan,

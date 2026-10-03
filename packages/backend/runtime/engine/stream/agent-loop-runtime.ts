@@ -5,16 +5,14 @@ import {
   streamOnethingAgentLoopChunks,
   type BuildOnethingAgentLoopStreamRuntimeResult,
   type OnethingAgentLoopContextBudget,
-} from '@onething/backend/runtime/agent-loop'
+} from '../engine-agent-loop-stream-runtime.js'
 import type {
   AgentLoopOptions,
   AgentLoopResult,
   AgentMessage,
   AgentProviderStreamChunk,
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import {
-  getAgentLoopTransientTail,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import { getAgentLoopTransientTail, type CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/runtime/agent-loop'
 import * as store from '@onething/backend/store.js'
 import { sessionCommands } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
@@ -30,26 +28,25 @@ import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
 import type { StreamContext } from './stream-processor.js'
 import { buildPrompt } from '../prompt/system-prompt.js'
-import { SessionTurnContext, type SessionTurnContextStore } from '@onething/backend/runtime/engine/session-turn-context'
+import { SessionTurnContext, type SessionTurnContextStore } from '../session-turn-context.js'
 import { buildProjectDirsPromptVars } from '@onething/backend/runtime/project-dirs/bootstrap'
 import { executeToolDirectly } from './tool-execution.js'
 import { compactSessionContext } from '../compact-session.js'
 import * as contextCompact from '../compact-session.js'
 import { getEventBus } from '@onething/backend/runtime/events'
 import { resolvePromptReferences } from '@onething/backend/runtime/prompts/stored-prompt-resolver'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
+import type { IPCEmitter } from '../../agent-loop/index.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { ConsoleLikePort } from '@onething/backend/runtime/logging'
-import type { OnethingAgentLoopLogger } from '@onething/backend/runtime/agent-loop/stream-runtime'
+import type { OnethingAgentLoopLogger } from '../engine-agent-loop-stream-runtime.js'
 import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/runtime/toolkit/execution-types'
 import type { ContextCompactResult } from '../compact-session.js'
 import type { PromptRequestMessage } from '../prompt/system-prompt.js'
-import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/runtime/engine/engine-primitives'
 import type { ProviderConfigWithKey } from './stream-executor.js'
 import type { AppSettings, ContentPart, ToolDefinition } from '@shared/ipc.js'
-import type { OnethingAgentLoopRuntimeHostAdapters } from '@onething/backend/runtime/agent-loop/stream-runtime'
+import type { OnethingAgentLoopRuntimeHostAdapters } from '../engine-agent-loop-stream-runtime.js'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

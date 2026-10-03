@@ -12,7 +12,7 @@
  * to the turn channel (skills, projects, todo, AGENTS.md, plugin context) and
  * an ablation matrix over those names would compare two identical requests.
  */
-import { TurnContextLedger, type TurnBlock } from "@onething/backend/runtime/engine/engine-primitives";
+import { TurnContextLedger, type TurnBlock } from "@onething/backend/runtime/agent-loop";
 
 const ledger = new TurnContextLedger();
 

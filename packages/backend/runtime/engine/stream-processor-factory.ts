@@ -12,8 +12,9 @@ import {
   type CoreStreamProcessorLogger,
   type CoreStreamProcessorStore,
   type CoreStreamStepLike,
-  type CoreStreamToolCallLike, type CreateCoreStreamProcessorOptions,
-} from '@onething/backend/runtime/engine/engine-primitives'
+  type CoreStreamToolCallLike,
+  type CreateCoreStreamProcessorOptions,
+} from '@onething/backend/runtime/agent-loop'
 
 export interface CreateOnethingStreamProcessorOptions<
   TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike,

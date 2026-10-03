@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop } from '@onething/backend/runtime/agent-loop/loop-primitives'
-import { PendingMessageQueue } from '@onething/backend/runtime/engine/engine-primitives'
+import { PendingMessageQueue } from '@onething/backend/runtime/agent-loop'
 import {
   createDefaultSettings,
 } from '../../../settings/defaults/settings.js'
@@ -16,7 +16,7 @@ import type {
 } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { BuildPromptOptions } from '../../prompt/system-prompt.js'
 import type { HistoryMessage } from '../message-helpers.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
+import type { IPCEmitter } from '../../../agent-loop/agent-loop-session-stream-emitter.js'
 import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
 
 interface SeenRequest {

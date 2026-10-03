@@ -10,18 +10,24 @@ import * as store from '@onething/backend/store.js'
 import { landSessionAccountUsageFromAccount } from '@onething/backend/runtime/sessions'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
-import type { StreamContext } from '@onething/backend/runtime/engine/stream/stream-processor'
+import type { StreamContext } from '@onething/backend/runtime/engine'
 import type { StreamCompleteData, StreamErrorData } from '@shared/events/session-events.js'
-import type { IPCEmitter } from '@onething/backend/runtime/engine/session-stream-emitter'
-import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@onething/backend/runtime/engine/engine-primitives'
-import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/backend/runtime/engine/engine-primitives'
+import type { IPCEmitter } from '../agent-loop/index.js'
+import {
+  createCoreEventOnlyEmitter,
+  type CoreEventOnlyEventBusLike,
+  type CoreEventOnlySessionEvent,
+  type CoreEventOnlyStoreHooks,
+  type CoreEventOnlyStreamChannelLike,
+  type CoreEventOnlyStreamChunk,
+  type CreateCoreEventOnlyEmitterOptions,
+} from '@onething/backend/runtime/agent-loop'
 import { getEventBus, getStreamChannel } from './index.js'
 import { claimDeltaStamp } from './delta-stamp.js'
 import { writeSessionEvent } from '@onething/backend/runtime/sessions'
 import { currentSessionRunId } from '@onething/backend/runtime/sessions'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import type { JsonObject } from '@shared/json'
-import type { CreateCoreEventOnlyEmitterOptions } from '@onething/backend/runtime/engine/engine-primitives'
 
 /**
  * core 因边界规则(不得 import `@shared`)把事件与流块的形状重抄了一份,泛型

@@ -59,7 +59,7 @@ import type { SessionCommandEmitResult, SessionCommandRoutes } from '@shared/ipc
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sanitizeRendererOrigin } from '../../channel/index.js'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { getStreamEngine } from '@onething/backend/runtime/engine/engine-layer'
+import { getStreamEngine } from '@onething/backend/current.js'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { Permission } from '@onething/backend/runtime/permissions/permission'
 import type { RpcRouteHandlers } from '../registry.js'

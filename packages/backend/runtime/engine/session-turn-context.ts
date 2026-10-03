@@ -31,7 +31,7 @@ import {
 	type TurnBlock,
 	type TurnContextCarrier,
 	type TurnContextDelta,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import type { ChatMessage } from '@shared/ipc.js'
 
 /**

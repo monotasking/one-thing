@@ -88,7 +88,7 @@ packages/backend/runtime/storage/docs-paths.ts 1
 packages/backend/runtime/sessions/session-store.ts 1
 packages/backend/utils/ripgrep.ts 1
 packages/backend/runtime/auth/oauth-events.ts 2
-packages/backend/runtime/engine/triggers/index.ts 1
+packages/backend/assemble-engine.ts 1
 packages/backend/runtime/evals/events.ts 1
 packages/backend/runtime/evals/host-ports.ts 1
 packages/backend/runtime/external-agents/connector-registry.ts 1
@@ -116,7 +116,7 @@ packages/backend/runtime/voice/service.ts 1
 packages/backend/runtime/logging/port.ts 2
 packages/backend/runtime/permissions/permission-grants.ts 2
 packages/backend/runtime/storage/json-file.ts 1
-packages/backend/runtime/engine/error-details.ts 1
+packages/backend/runtime/agent-loop/agent-loop-error-details.ts 1
 packages/backend/runtime/sessions/lifecycle.ts 1
 packages/backend/runtime/gateway/channels/wechat/ilink/sender.ts 2
 packages/backend/runtime/gateway/hub/logging.ts 2

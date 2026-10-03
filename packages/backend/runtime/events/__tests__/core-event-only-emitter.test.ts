@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCoreEventOnlyEmitter } from '@onething/backend/runtime/engine/engine-primitives'
+import { createCoreEventOnlyEmitter } from '@onething/backend/runtime/agent-loop'
 
 describe('core event-only emitter', () => {
   it('routes chunks, events, and store side effects through injected adapters', async () => {

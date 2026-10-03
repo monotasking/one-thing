@@ -66,9 +66,6 @@ vi.mock('../agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 
-vi.mock('../../engine-layer.js', () => ({
-  getStreamEngine: () => mocks.engine,
-}))
 
 const { executeMessageStream } = await import('../stream-executor.js')
 
@@ -93,6 +90,8 @@ function params(overrides: Partial<StreamExecutionParams> = {}): StreamExecution
     sender,
     sessionId: 's1',
     assistantMessageId: 'm1',
+    // 引擎调执行器时把自己交进来(从前执行器去读当前装配的那只引擎,这里替身就是那只引擎)。
+    streamControllers: mocks.engine as unknown as StreamExecutionParams['streamControllers'],
     messageContent: 'hello',
     historyMessages: [{ role: 'user', content: 'hello' }],
     configWithApiKey,

@@ -106,7 +106,7 @@ import type {
 import type { MusicHostLog } from '@shared/ipc/music.js'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { assertMusicOperator } from '@onething/backend/runtime/music/access'
-import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
+import { fixedExecutionContext } from '../sessions/index.js'
 import { setMusicProvider } from '@onething/backend/runtime/music/operations'
 import { radioAdapters } from '../toolkit/adapters.js'
 

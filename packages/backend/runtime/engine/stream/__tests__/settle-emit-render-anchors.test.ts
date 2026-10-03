@@ -88,7 +88,7 @@ vi.mock('@onething/backend/runtime/events', async (importActual) => ({
   getEventBus: () => ({ emit: hoisted.emit }),
 }))
 
-vi.mock('../../triggers/index.js', () => ({
+vi.mock('../../../agent-loop/agent-loop-trigger-manager.js', () => ({
   triggerManager: { runPostResponse: vi.fn(() => Promise.resolve()) },
 }))
 

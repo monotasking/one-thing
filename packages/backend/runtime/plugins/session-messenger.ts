@@ -50,9 +50,9 @@ import {
 import * as store from '@onething/backend/store.js'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
-import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
+import type { StreamEngine } from '@onething/backend/runtime/engine'
 import { isCollabCoordinatorDrivenSession } from '@onething/backend/runtime/collab/ingress'
-import { pluginMessageSource } from '@onething/backend/runtime/engine/message-sources'
+import { pluginMessageSource } from '../agent-loop/index.js'
 import { modelRegistry } from '@onething/backend/runtime/settings'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
@@ -307,7 +307,7 @@ export async function pluginSendMessage(
  *
  * 收窄到这一个动作(P3'e-A2b)而不是整个 `StreamEngine`,是因为调用点在
  * **引擎内部** —— 让引擎为了回调自己而先把自己整只递进来,是一个会诱人再多用
- * 一格的循环引用;写成动作端口之后,`stream-engine-bound.ts` 那边的惰性引用
+ * 一格的循环引用;写成动作端口之后,`assemble-engine.ts`(`createBoundStreamEngine`)那边的惰性引用
  * 收在一个箭头函数里,`if (!engine) return` 的空档判断也随之消失。
  */
 export interface PluginInterceptSteerPort {

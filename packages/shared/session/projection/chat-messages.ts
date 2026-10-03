@@ -19,7 +19,7 @@
  */
 
 // §17.8 U1-a:走**叶子路径** —— `context-compact.ts` 为了压缩算法要
-// `engine/history.js` → `agent-loop/tool-names.js`(`node:crypto`),而这里只要
+// `agent-loop/agent-loop-history.js` → `agent-loop/tool-names.js`(`node:crypto`),而这里只要
 // 那一个纯序列化函数。
 import { buildContextCompactContent } from '@shared/engine/context-compact-content.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types.js'

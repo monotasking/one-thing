@@ -8,9 +8,7 @@
  * 让**能力查询这一面**立刻可用——压缩门与鉴权豁免今天就能改问能力,不必
  * 等驱动搬完。
  */
-import {
-  registerCoreProviderExecution,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import { registerCoreProviderExecution } from '@onething/backend/runtime/agent-loop'
 import {
   findAgentExecutorDescriptor,
   isExternalAgentExecutorId,

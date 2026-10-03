@@ -195,7 +195,7 @@ function canonicalStep(step: unknown): unknown {
  * 会话事实 —— 所以进豁免表是终态,不是欠一条产地。** 判据是 §13.8 那条尺子
  * (「这句话在别处有没有产地」)的另一面:它说的不是"模型/工具做了什么",是
  * "**我们的流式层怎么知道参数说完了**"。逐口实测过消费面:全仓只有生产者
- * (`runtime/engine/stream-processor.ts` 盖章 → `event-only-emitter.ts` 顺着
+ * (`runtime/agent-loop/agent-loop-stream-processor.ts` 盖章 → `event-only-emitter.ts` 顺着
  * `TOOL_INPUT_END` 发出去),**没有任何一处拿它做判断** —— renderer 零引用、
  * 工具执行链零引用、权限链零引用。换句话说它连"影响读侧行为"的资格都没有,
  * 补一条产地只会让账本多记一句没人读的自述。

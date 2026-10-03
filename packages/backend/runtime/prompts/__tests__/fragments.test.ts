@@ -7,7 +7,7 @@
  * is pinned by the golden scenes.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import type { CorePromptFragment } from '@onething/backend/runtime/engine/engine-primitives'
+import type { CorePromptFragment } from '@onething/backend/runtime/agent-loop'
 import {
   BUILTIN_PROMPT_FRAGMENTS,
   buildOnethingSystemPrompt,

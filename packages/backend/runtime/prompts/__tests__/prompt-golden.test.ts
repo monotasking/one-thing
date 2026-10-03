@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import type { TurnBlock } from "@onething/backend/runtime/engine/engine-primitives";
+import type { TurnBlock } from "@onething/backend/runtime/agent-loop";
 import { buildOnethingSystemPrompt, buildOnethingPrompt } from "../builder.js";
 import { testPromptComposer } from "./fixtures/tool-prompts.js";
 import {

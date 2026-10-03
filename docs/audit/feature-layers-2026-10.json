@@ -22,7 +22,7 @@
     { "feature": "perf", "layer": "L0", "why": "启动耗时的打点记录。" },
     { "feature": "spaces", "layer": "L1", "why": "空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层。" },
     { "feature": "providers", "layer": "L1", "why": "各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。" },
-    { "feature": "agent-loop", "layer": "L1", "why": "一轮对话怎么跑的内核:调服务商、跑工具、重试与调度,不认识具体服务商。" },
+    { "feature": "agent-loop", "layer": "L1", "why": "一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),不认识具体服务商。" },
     { "feature": "tools", "layer": "L1", "why": "工具用到的纯逻辑模块:沙箱、bash 执行、编辑引擎、差异块、输出截断等。" },
     { "feature": "prompts", "layer": "L1", "why": "系统提示词的拼装:片段、来源与「目录在上、正文在下」的生成器。" },
     { "feature": "themes", "layer": "L1", "why": "主题的加载、解析与生成 CSS 变量。" },

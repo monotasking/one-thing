@@ -8,7 +8,7 @@ import {
   getOnethingStorePath,
 } from '../storage/index.js'
 import { getLogger } from '../logging/index.js'
-import type { OnethingAgentLoopScratchpadHooks } from '../agent-loop/stream-runtime.js'
+import type { OnethingAgentLoopScratchpadHooks } from '../engine/index.js'
 
 const log = getLogger('scratchpad')
 

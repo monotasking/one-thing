@@ -3,7 +3,7 @@
  *
  * 尺子⑥ 的兑现点:**注册表里只有一种工具**。插件工具与 MCP 工具今天各自是一条
  * 独立分支(`app/plugins/api.ts` 把插件 def 包成 `Tool.define`,MCP 在
- * `runtime/engine/direct-tool-execution.ts` 里是 `isMCPTool → buildMCPPermissionPlan
+ * `runtime/agent-loop/agent-loop-direct-tool-execution.ts` 里是 `isMCPTool → buildMCPPermissionPlan
  * → executeMCPTool` 一整支 if),对 Catalog / Surface / Runner / Authorizer 来说
  * 它们现在只是两个普通的 `Tool` 子类。
  *
@@ -29,7 +29,7 @@ import type {
 import type { Effect } from '@shared/toolkit/effects'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 import { toJsonObject, type JsonObject } from '@shared/json'
-import type { CoreToolPromptContribution } from '@onething/backend/runtime/engine/engine-primitives'
+import type { CoreToolPromptContribution } from '@onething/backend/runtime/agent-loop'
 import type { z } from 'zod'
 import { defineInput } from '../contract.js'
 
@@ -228,7 +228,7 @@ export interface McpToolAdapters {
 const EMPTY_SCHEMA: JsonSchema = { type: 'object', properties: {}, required: [] }
 
 /**
- * 判据与 `runtime/engine/tool-orchestration.ts` 的 `isMCPRouterToolName` /
+ * 判据与 `runtime/agent-loop/agent-loop-tool-orchestration.ts` 的 `isMCPRouterToolName` /
  * `isReadOnlyMCPRouterCall` / `resolveMCPPermissionResourceName` /
  * `buildMCPPermissionPlan` **逐字相同**,在这里复制一份而不是 import。
  *

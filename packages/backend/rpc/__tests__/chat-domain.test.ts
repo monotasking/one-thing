@@ -53,15 +53,15 @@ const providers = vi.hoisted(() => ({
 }))
 
 vi.mock('../../store.js', () => store)
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngine: () => engine }))
+vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/collab/rooms', () => collab)
 vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => eventBus }))
 vi.mock('../../runtime/sessions/runs.js', () => runs)
 vi.mock('../../runtime/sessions/reads.js', () => reads)
-vi.mock('@onething/backend/runtime/engine/prompt/system-prompt-snapshot', () => prompt)
+vi.mock('../../runtime/engine/prompt/system-prompt-snapshot.js', () => prompt)
 vi.mock('../../runtime/engine/engine-chat-facade.js', () => providers)
-vi.mock('@onething/backend/runtime/engine/stream/provider-helpers', () => ({
+vi.mock('../../runtime/engine/stream/provider-helpers.js', () => ({
   resolveProviderAuth: vi.fn(),
   getProviderApiType: vi.fn(),
 }))

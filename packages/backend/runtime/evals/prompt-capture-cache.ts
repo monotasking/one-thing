@@ -1,4 +1,4 @@
-import type { CorePromptCapture } from "@onething/backend/runtime/engine/engine-primitives";
+import type { CorePromptCapture } from "@onething/backend/runtime/agent-loop";
 
 /**
  * LRU cache of prompt captures keyed by turnId.

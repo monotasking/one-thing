@@ -21,7 +21,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { CorePromptCapture } from "@onething/backend/runtime/engine/engine-primitives";
+import type { CorePromptCapture } from "@onething/backend/runtime/agent-loop";
 import {
 	getOnethingEvalsIncidentsDir,
 	type OnethingStorePathOptions,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { CoreTemplateSkill } from "@onething/backend/runtime/engine/engine-primitives";
+import type { CoreTemplateSkill } from "@onething/backend/runtime/agent-loop";
 import type { CoreSystemPromptSnapshot } from "../prompts/system-prompt-snapshot.js";
 import {
 	getOnethingEvalsFixturesAutoDir,

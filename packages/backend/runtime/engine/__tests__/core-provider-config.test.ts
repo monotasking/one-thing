@@ -90,7 +90,7 @@ describe('onething runtime provider config helpers', () => {
   })
 
   it('lets an explicit override win outright over session and global', () => {
-    // The send path (packages/backend/runtime/engine/core-stream-engine.ts resolveProvider)
+    // The send path (packages/backend/runtime/agent-loop/agent-loop-stream-engine.ts resolveProvider)
     // passes the renderer's already-resolved selection here as `override` —
     // when it's present and points at a configured provider, it's returned
     // directly with no re-derivation, so there is no second independent

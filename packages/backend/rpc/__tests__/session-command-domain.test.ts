@@ -45,7 +45,7 @@ const runtimeAmend = vi.hoisted(() => ({
 }))
 
 vi.mock('@onething/backend/runtime/events', () => ({ getEventBus: () => bus }))
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngine: () => engine }))
+vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/evals/turn-incident', () => incident)
 vi.mock('@onething/backend/runtime', () => runtimeAmend)

@@ -23,7 +23,8 @@ vi.mock('@onething/backend/runtime/goals', () => ({
   renderGoalContinuationPrompt: () => 'continue',
 }))
 
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
+vi.mock('@onething/backend/current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
   getStreamEngineSafe: () => ({
     getController: mocks.getController,
     getChannel: mocks.getChannel,

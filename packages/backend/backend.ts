@@ -69,7 +69,13 @@ import { initializeAgents } from '@onething/backend/runtime/agents/agent-store-a
 import { configureAppToolSandbox } from '@onething/backend/runtime/tools/access-control/sandbox'
 import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/backend/runtime/tools/background-jobs-bound'
-import { configureAppProviderRegistry } from '@onething/backend/runtime/engine'
+import {
+  buildHistoryMessages,
+  configureAppProviderRegistry,
+  historyProjectionRecipe,
+  type BindableStreamSender,
+  type StreamEngine,
+} from '@onething/backend/runtime/engine'
 import { configureAppScheduler } from '@onething/backend/runtime/scheduler/scheduler-bound'
 import { configureAppRipgrep } from './utils/ripgrep.js'
 import { configureAppSearchProviders } from '@onething/backend/runtime/search'
@@ -90,11 +96,9 @@ import {
   installSessionLedgerEventBroadcaster,
   uninstallSessionLedgerEventBroadcaster,
 } from '@onething/backend/runtime/sessions'
-import { createStreamEngineLayer, type MainOnethingRuntime } from '@onething/backend/runtime/engine/engine-layer'
+import { createStreamEngineLayer, registerBuiltinTriggers, type MainOnethingRuntime } from './assemble-engine.js'
 import type { OAuthToken, PermissionMode } from '@shared/ipc.js'
-import type { BindableStreamSender, StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
-import { registerBuiltinTriggers } from '@onething/backend/runtime/engine/triggers'
-import { createSessionTocTrigger } from '@onething/backend/runtime/engine/triggers/session-toc'
+import { createSessionTocTrigger } from './runtime/toc/toc-session-trigger.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from '@onething/backend/runtime/collab/rooms'
 import { Permission } from '@onething/backend/runtime/permissions/permission'
 import { Interaction } from '@onething/backend/runtime/interaction'
@@ -141,7 +145,6 @@ import { resolveExternalAgentSpawnEnv } from '@onething/backend/runtime/external
 import { killTrackedDetachedChildren } from '@onething/backend/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/backend/runtime/terminal/service'
 import type { SessionHistoryBuilder } from '@onething/backend/runtime/sessions'
-import { buildHistoryMessages, historyProjectionRecipe } from '@onething/backend/runtime/engine/stream/message-helpers'
 import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/runtime/logging/configure-logging'
 import {
   BackendAlreadyAssembledError,

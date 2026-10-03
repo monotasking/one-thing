@@ -7,7 +7,7 @@
  * false。afterTurn 发的 boundary 之后,**下一轮的 `beforeTurn` 排在那个 turn-start
  * 之前** —— 压缩重建就跑在 `beforeTurn` 里。于是重建去读 store 时上一条 assistant
  * 还挂着 `isStreaming`,`buildHistoryMessages` 见了整条跳过
- * (`runtime/engine/history.ts` :753/:812),**模型真的看不到上一条回复**。
+ * (`runtime/agent-loop/agent-loop-history.ts` :753/:812),**模型真的看不到上一条回复**。
  *
  * 这条测试就是那件事的反证:同一条重建路,
  *  - 不接 `beforeRebuildMessages`(= 修前):重建出来的历史里没有上一条 assistant;
@@ -22,7 +22,7 @@ import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/runtime/
 import type { Result, ToolSpec } from '@onething/backend/runtime/toolkit/tool-protocol'
 import { configureToolkitCatalog } from '../../toolkit/host.js'
 import { buildOnethingHistoryMessages } from '../../sessions/index.js'
-import { buildOnethingAgentLoopStreamRuntime } from '../stream-runtime.js'
+import { buildOnethingAgentLoopStreamRuntime } from '../../engine/engine-agent-loop-stream-runtime.js'
 
 class NoopTool extends ToolkitTool<Record<string, never>, undefined> {
   readonly spec: ToolSpec = {

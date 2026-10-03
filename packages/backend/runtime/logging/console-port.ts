@@ -6,7 +6,7 @@ import type { LogLevel } from '@shared/logging/types'
 // 签名一个字节没改(它们的成员全是 `ConsoleLikePort` 已有方法的可选子集)。
 // 本文件按注释所述是过渡件,`Core*Logger` 统一成 `Logger` 之后连同这张表一起删。
 import type { OnethingACPIpcLogger } from '../acp/ipc-operations.js'
-import type { OnethingAgentLoopLogger } from '../agent-loop/stream-runtime.js'
+import type { OnethingAgentLoopLogger } from '../engine/index.js'
 import type { OnethingAgentsIpcLogger } from '../agents/ipc-operations.js'
 import type { OnethingOAuthIpcLogger } from '../auth/ipc-operations.js'
 import type { OnethingDirectoryIpcLogger } from '../files/directory-listing.js'

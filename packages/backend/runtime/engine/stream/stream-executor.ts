@@ -32,17 +32,18 @@ import {
   type AgentLoopStreamGenerationResult,
 } from './agent-loop-executor.js'
 import { type StreamContext, type StreamSender } from './stream-processor.js'
-import { getStreamEngine } from '../engine-layer.js'
 import type { HistoryMessage } from './message-helpers.js'
 import type { ProviderAuthContext } from '@onething/backend/runtime/auth/ipc-types'
 import type { AgentOutputModality } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import {
   executeCoreMessageStream,
-} from '@onething/backend/runtime/engine/engine-primitives'
-import type { CoreInitialToolChoice } from '@onething/backend/runtime/engine/engine-primitives'
+  type CoreInitialToolChoice,
+  type CoreStreamControllerRegistry,
+  type ExecuteCoreMessageStreamOptions,
+  type PendingMessageQueue,
+} from '@onething/backend/runtime/agent-loop'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import { noteQuotaRunEnd } from '@onething/backend/runtime/quota/engine-hooks'
-import type { CoreStreamControllerRegistry, PendingMessageQueue, ExecuteCoreMessageStreamOptions } from '@onething/backend/runtime/engine/engine-primitives'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -88,6 +89,12 @@ export interface StreamExecutionParams {
   initialToolChoice?: CoreInitialToolChoice
   /** Actor behind this turn; minted at the engine boundary, carried to tools. */
   principal?: Principal
+  /**
+   * 发起这次执行的引擎自己:这一轮的 abort 控制器在它那里登记 / 摘掉,追话与续话队列也从它取。
+   * 引擎经它持有的 runtime 调进来时随参数交过来(`agent-loop-stream-engine.ts` 的三个入口),
+   * 执行器因此不再去读「当前装配的是哪只引擎」。
+   */
+  streamControllers: CoreStreamControllerRegistry<AbortController, PendingMessageQueue>
   executionContext?: unknown
   /**
    * S1a(§10.2):这次执行是**哪一种** —— send / retry / edit-resend / resume。
@@ -329,7 +336,8 @@ export async function executeMessageStream(
   abortController?: AbortController
 ): Promise<StreamExecutionResult> {
   await ensureSessionWritable(params.sessionId)
-  const engine = getStreamEngine()
+  const engine = params.streamControllers
+  if (!engine) throw new Error('executeMessageStream: streamControllers is required (the engine passes itself in)')
   // 助手占位消息在进这扇门之前就建好了 —— 把它的时刻带进 `run/start`,投影
   // 物化出来的那一条才与事实同一个时刻(S1b 的影子断言按它比)。
   //
@@ -407,7 +415,7 @@ function isAbortLikeError(error: unknown): boolean {
 }
 
 async function runMessageStream(
-  engine: ReturnType<typeof getStreamEngine>,
+  engine: CoreStreamControllerRegistry<AbortController, PendingMessageQueue>,
   params: StreamExecutionParams,
   abortController: AbortController | undefined,
   rotated: { marker?: CoreSpaceCredentialMarker },

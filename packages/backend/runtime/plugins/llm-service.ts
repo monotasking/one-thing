@@ -35,9 +35,8 @@ import {
 import { QuiescibleScopes } from '@onething/backend/runtime/lifecycle'
 import { getSettings } from '@onething/backend/runtime/settings'
 import { resolveProviderApiKey, resolveUtilityModel } from '@onething/backend/runtime/providers'
-import { generateChatResponse } from '@onething/backend/runtime/engine'
+import { generateChatResponse, type ProviderConfigWithKey } from '@onething/backend/runtime/engine'
 import { captureUsageRecorder } from '@onething/backend/runtime/usage/usage-recorder'
-import type { ProviderConfigWithKey } from '@onething/backend/runtime/engine/stream/stream-executor'
 import { getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 

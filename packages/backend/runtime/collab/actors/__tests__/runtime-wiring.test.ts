@@ -81,7 +81,10 @@ vi.mock('@onething/backend/runtime/external-agents/connector-registry', () => ({
   },
 }))
 
-vi.mock('@onething/backend/runtime/storage', () => ({
+// 其余存储名字照真的(引擎入口加载时带上提示词仓库的存储端口;测试进程的 HOME 闸门保证摸不到真机库),
+// 只换 store 根。
+vi.mock('@onething/backend/runtime/storage', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/runtime/storage')>()),
   getOnethingStorePath: () => mocks.storePath,
 }))
 
@@ -97,12 +100,13 @@ vi.mock('../../../engine/engine-chat-facade.js', () => ({
   generateChatResponse: async () => '',
 }))
 
-vi.mock('@onething/backend/runtime/engine/stream/provider-helpers', () => ({
+vi.mock('../../../engine/stream/provider-helpers.js', () => ({
   getEffectiveProviderConfig: () => ({ providerId: '', providerConfig: null, model: '' }),
   resolveProviderAuth: async () => null,
 }))
 
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({
+vi.mock('@onething/backend/current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
   getStreamEngine: () => engineStub(),
   getStreamEngineSafe: () => engineStub(),
 }))

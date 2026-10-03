@@ -1,34 +1,34 @@
-export { NoopOnethingStreamSender } from "./engine/stream-sender.js";
+export { NoopOnethingStreamSender } from "./agent-loop/index.js";
 export type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,
 	OnethingStreamSenderPayload,
-} from "./engine/stream-sender.js";
-export { createOnethingStreamEngineRuntime } from "./engine/stream-runtime-factory.js";
+} from "./agent-loop/index.js";
+export { createOnethingStreamEngineRuntime } from "./engine/index.js";
 export type {
 	OnethingStreamRuntime,
 	OnethingStreamRuntimeOptions,
-} from "./engine/stream-runtime-factory.js";
-export { createOnethingStreamProcessor } from "./engine/stream-processor-factory.js";
-export type { CreateOnethingStreamProcessorOptions } from "./engine/stream-processor-factory.js";
+} from "./engine/index.js";
+export { createOnethingStreamProcessor } from "./engine/index.js";
+export type { CreateOnethingStreamProcessorOptions } from "./engine/index.js";
 export {
 	createOnethingRuntime,
 	createOnethingRuntimeFromStreamRuntime,
-} from "./engine/runtime.js";
+} from "./gateway/gateway-onething-runtime.js";
 export type {
 	OnethingRuntime,
 	OnethingRuntimeFromStreamRuntimeOptions,
 	OnethingRuntimeOptions,
-} from "./engine/runtime.js";
+} from "./gateway/gateway-onething-runtime.js";
 export {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	createOnethingProductStreamRuntime,
-} from "./engine/product-stream-runtime.js";
+} from "./engine/index.js";
 export type {
 	OnethingProductStreamRuntime,
 	OnethingProductStreamRuntimeHostAdapters,
 	OnethingProductStreamRuntimeOptions,
-} from "./engine/product-stream-runtime.js";
+} from "./engine/index.js";
 export * from "./auth/index.js";
 export {
 	createOnethingConversationRuntimeFromStreamEngine,
@@ -44,7 +44,6 @@ export type {
 	OnethingTextStreamChunk,
 } from "./gateway/engine-conversation-runtime.js";
 export * from "./headless/index.js";
-export * from "./agent-loop/index.js";
 export * from "./prompts/index.js";
 export * from "./project-dirs/index.js";
 export * from "./providers/index.js";

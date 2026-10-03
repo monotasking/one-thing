@@ -6,7 +6,7 @@ import {
   type CorePromptKnownProjects,
   type CorePromptProviderConfig,
   type CorePromptProviderConfigValue,
-} from '@onething/backend/runtime/engine/engine-primitives'
+} from '@onething/backend/runtime/agent-loop'
 import type { PromptSource } from './composer.js'
 import {
   CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,

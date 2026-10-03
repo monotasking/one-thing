@@ -33,7 +33,7 @@ import { findAgent } from '@onething/backend/runtime/agents/agent-store-access'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
 import { sessionAccess } from '@onething/backend/runtime/sessions'
-import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
+import { fixedExecutionContext } from '../sessions/index.js'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

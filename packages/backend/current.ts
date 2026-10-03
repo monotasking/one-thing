@@ -3,7 +3,7 @@
  *
  * **整个 `packages/backend` 里唯一允许的模块级 `let`。** A2 之前有三个:
  * `runtime/events/index.ts` 的 `eventBus`/`streamChannel`、`runtime/sessions/session-layer.ts` 转给 core 的
- * 那一份、`runtime/engine/engine-layer.ts` 的 `streamEngine`/`onethingRuntime`。三份各自
+ * 那一份、`runtime/engine/engine-layer.ts`(今包根 `assemble-engine.ts`)的 `streamEngine`/`onethingRuntime`。三份各自
  * "已存在 → warn → return",于是"装配 → 关机 → 再装配"这条路谁也说不清是谁的
  * 尸体还在。现在只有这一份,由 `OnethingBackend.assemble` 立、由 `dispose()` 清。
  *
@@ -22,7 +22,7 @@
  *
  * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`runtime/events/index.ts`
  * 要读它,而 `backend.ts` 要 import `runtime/events/index.ts`。窄接口住在这个叶子文件里,
- * 那条环就不存在。(下面对 `runtime/engine/engine-layer.js` 的 `import type` 是**纯类型**,
+ * 那条环就不存在。(下面对 `assemble-engine.js` 的 `import type` 是**纯类型**,
  * 编译期即被抹掉,不产生运行期边。)
  */
 import type { EventBus } from '@onething/backend/runtime/events/session-event-bus'
@@ -38,8 +38,8 @@ import type { PracticeService } from '@onething/backend/runtime/practice/service
 import type { MusicSubsystem } from '@onething/backend/runtime/music/subsystem'
 import type { CollabDigestRunner } from '@onething/backend/runtime/collab/digest-runner'
 import type { NotesSubsystem } from '@onething/backend/runtime/notes/notes-subsystem'
-import type { StreamEngine } from '@onething/backend/runtime/engine/stream-engine-bound'
-import type { MainOnethingRuntime } from '@onething/backend/runtime/engine/engine-layer'
+import type { StreamEngine } from '@onething/backend/runtime/engine'
+import type { MainOnethingRuntime } from './assemble-engine.js'
 import type { OnethingBackend } from './backend.js'
 
 /**
@@ -209,6 +209,30 @@ export function getCurrentBackendSafe(): BackendHandle | null {
 }
 
 /**
+ * 当前装配的那只引擎。没装配(或装配还没走到建引擎那一步)就抛 `BackendNotAssembledError('engine')`。
+ *
+ * 只读槽、不构造:各功能(目标续推、协作、语音、定时任务、CLI 守护、电台、RPC 域)要「现在这只引擎」时
+ * 读这里。2026-10 engine 归位之前它住在 `runtime/engine/engine-layer.ts`,读法逐字相同;搬到这只叶子
+ * 文件之后,读引擎的人不再 import 装引擎的那只组装文件(`assemble-engine.ts`)。
+ */
+export function getStreamEngine(): StreamEngine {
+  return getCurrentBackend('engine').engine
+}
+
+/**
+ * 当前装配的那只引擎,或 `null`。关机途中引擎可能已经拆掉,这时也答 `null`,不抛。
+ */
+export function getStreamEngineSafe(): StreamEngine | null {
+  const handle = getCurrentBackendSafe()
+  if (!handle) return null
+  try {
+    return handle.engine
+  } catch {
+    return null
+  }
+}
+
+/**
  * 当前槽里那只**完整的 `OnethingBackend` 实例**,或 `null`(C1,方案
  * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。
  *
@@ -220,7 +244,7 @@ export function getCurrentBackendSafe(): BackendHandle | null {
  * 判据是"**它 own 得了 disposer 吗**":`createBackendHandle()` 造出来的窄句柄
  * (只想要事件系统的那些轻量单测在用)没有 `own`,真实例有。`import type` 是纯类型
  * (编译期抹掉),所以这里不多一条指向 `backend.ts` 的运行期边 —— 与本文件顶上对
- * `runtime/engine/engine-layer.js` 那句同一个理由。
+ * `assemble-engine.js` 那句同一个理由。
  *
  * 拿不到就 `null`,由调用点自己退化(设置域在没有活实例时直接调 manager,与 C1
  * 之前逐字相同)—— 这个函数不抛。

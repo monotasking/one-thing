@@ -1,4 +1,4 @@
-import { createCoreId } from '@onething/backend/runtime/engine/engine-primitives'
+import { createCoreId } from '@onething/backend/runtime/agent-loop'
 import { describeAcpAgentConfigProblem, effectiveAgentConfig } from './manifest.js'
 import { RETIRED_ACP_AGENT_FIELDS, type ACPAgentConfig, type AcpAgentManifest } from '@shared/contracts/acp.js'
 

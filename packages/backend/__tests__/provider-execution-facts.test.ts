@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 describe('provider execution facts reach core through the assembly entry', () => {
   it('importing backend.ts registers the external executors before any compaction decision', { timeout: 60_000 }, async () => {
     await import('../backend.js')
-    const { coreProviderOwnsItsContextWindow, isCoreExternalAgentProvider } = await import('@onething/backend/runtime/engine/engine-primitives')
+    const { coreProviderOwnsItsContextWindow, isCoreExternalAgentProvider } = await import('@onething/backend/runtime/agent-loop')
     expect(coreProviderOwnsItsContextWindow('acp')).toBe(true)
     expect(isCoreExternalAgentProvider('acp')).toBe(true)
     expect(coreProviderOwnsItsContextWindow('deepseek')).toBe(false)

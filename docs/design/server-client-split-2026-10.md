@@ -1720,3 +1720,30 @@ kimi-code 那份对 auth 内部三只文件的引用改走 auth 入口。替身�
 `appendFailures 8`;`hydration-contract` 217 / 0 ×2;`gate:acp` 规整后相同;`gate:search-index` 同红 ⑤c / ⑤d;assembly 同红(`music/radio.ts` 9 → 10,与本笔无关);
 boundary / transport / log / session / gate:native 绿;cycle 0、layer 97 / 53、name 131、provider 109 → 105(基线已收紧)、entry 2732 → 2711(基线已收紧,providers 49 → 19 且非测试 0);
 feature-map 重新生成后一致;`provider:drill` 绿;CLI `--help` 不写 store;server 包在临时 store 上 listening;golden 不变。
+
+### engine 归位落地记录:内核归 agent-loop、组合根出成包根 `assemble-engine.ts`、引擎收口到一个入口(2026-10-04,未提交)
+
+**一句话**:按 Fable 的 engine 批(`feature-layers-and-provider-placement-2026-10.md` 第 5 节,决策 D27)四步做完再收口:前 core/engine 的内核 39 只进 agent-loop(`agent-loop-*.ts`,
+内核桶成了 agent-loop 的入口),agent-loop 里挑服务商运行时的两只反向进 engine;`engine-layer` + `stream-engine-bound` + 触发器登记合成包根 `assemble-engine.ts`;
+`runtime.ts` 进 gateway;三只触发器归 goals / toc / skills,触发器表实例进内核;`execution-context` 进 sessions;断五条边(evals 入口、`collabDrive` 端口、执行器随调用拿控制器表、
+内核触发器表、读当前引擎改读 `current.ts`);engine 入口只用具名导出、外面非测试引用全部走入口、exports 只留 `./runtime/engine`。决策 D51–D62,去向表与每步读数在那份文档第 10 节。
+
+**怎么搬的**:两趟搬家脚本(scratchpad `s19/move.mjs`,是 `s17/move.mjs` 读表版,带 `--dry`;普通改名,不动索引;表 `s19/map-1.json` / `map-2.json`),
+再手改合并三只装配件、端口、触发器表与两处读引擎的口;最后跑三趟「改走入口」(`s19/rewrite.mjs` 对 engine、`rewrite-al.mjs` 对 agent-loop 只改非测试、`rewrite-se.mjs` 对
+`fixedExecutionContext`)。搬家脚本的提法改写有两处误伤(`engine/triggers.ts` 的短形把 `engine/triggers/index.ts` 的提法改坏:assembly 基线一行、`probe-go-to-implementation.mjs` 一行),手改回来。
+
+**测试的改动(断言一字未改)**:随主搬 39 份(D53);四份直接调执行器的测试把引擎替身从组装文件的 getter 挪进参数(`streamControllers`,D56);12 份把 `getStreamEngine(Safe)` 的替身改打
+`current.js` 并展开真模块(D57);三份触发器表替身改打内核的 `agent-loop-trigger-manager.js`;`assemble-engine-gateway-session` 的引擎替身改打 `stream-engine.js` 的类
+(端口接线与引擎层同住一只文件以后,替身打不进同文件调用);`agent-loop-turn-principal.test` 给铸主体函数交协作的验票函数(D54);两份协作测试
+(`room-config` / `runtime-wiring`)的存储替身改成展开真模块再换 store 根 —— 裁判 / 摘要改经引擎入口取生效配置以后,入口闭包带上了提示词仓库的存储端口
+(测试进程的 HOME 闸门保证摸不到真机库);`import-side-effect-free.test.ts` 新增「import 引擎与 agent-loop 入口不建仓库、不读设置」,并实测过:在 `engine-utility-provider.ts`
+顶层临时加 `getOnethingSettingsPath()` 它就红在 `settings-path`。
+
+**验收(改前 `s19-before` = 3a0184f42 + 别的会话的未提交改动 / 改后 `s19-after`)**:typecheck node / desktop / mobile 零错;四份构建与 `web:build` 成功、`dist/web` 零 `node:`;
+三份 `search-worker.cjs` 前后同大(1276211 / 1276211 / 1274675;桌面那份前后 shasum 也相同),server `main.js` 5899467 → 5900391、CLI `main.cjs` 11489932 → 11490880、`desk/main.cjs` 11464323 → 11462396
+(总桶那行 `export * from './agent-loop/index.js'` 删掉之前桌面包多 50KB,D62);根全量 vitest 11419 → 11420 条(多的是新栅栏)、21 红,失败集合 22 行(21 条用例 + 1 份整文件红)按搬家表映射路径后逐条相同,
+21 条失败信息去掉堆栈与耗时后逐字相同;壳 7344 / 1 相同;快照文件按内容哈希逐字同、快照测试 154 绿、golden 不变;persistence 176 绿;`import-side-effect-free` + `assembly-lifecycle`
+23 → 24 绿;`owned-labels-snapshot` 前后都红、差异逐字相同(装配顺序与 `own()` 表没动);`sessions:shadow-battery` 131 行前后只差一处耗时、同红在 `appendFailures 8` /
+`compact-half-run-log`;`hydration-contract` 217 / 0 ×2;`gate:acp` 去掉 pid / 时间戳后相同;`gate:search-index` 同红 ⑤c / ⑤d、其余只差耗时;assembly 同红(`music/radio.ts` 9 → 10,
+与本笔无关);boundary(含全量 checker)/ transport / log / session / gate:native 绿;cycle 0(深层 17 / 3 / 2 → 3 / 2)、layer 97 / 53 → 60 / 33、entry 2711 → 2546、name 131 → 122、
+provider 105(基线均已收紧);feature-map 重新生成后一致;`provider:drill` 绿;CLI `--help` 不写 store;server 包在临时 store 上 listening。

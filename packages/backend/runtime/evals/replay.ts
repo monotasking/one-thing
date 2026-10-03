@@ -14,7 +14,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { CoreRequestMessage, TurnBlock } from "@onething/backend/runtime/engine/engine-primitives";
+import type { CoreRequestMessage, TurnBlock } from "@onething/backend/runtime/agent-loop";
 import { attachTurnBlocksToLastUserMessage } from "../prompts/turn-delivery.js";
 import {
 	getIncidentDir,

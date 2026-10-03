@@ -97,13 +97,16 @@ import {
 } from '../external-observability.js'
 import { findAgent, listAgents } from '@onething/backend/runtime/agents/agent-store-access'
 import { getEventBus } from '@onething/backend/runtime/events'
-import { getStreamEngineSafe } from '@onething/backend/runtime/engine/engine-layer'
 import * as store from '@onething/backend/store.js'
-import { sessionCommands } from '@onething/backend/runtime/sessions'
-import { sessionReads } from '@onething/backend/runtime/sessions'
-import { getCurrentBackend } from '@onething/backend/current.js'
-import { sessionAccess, type SessionAccess, type SessionOwnershipRecord } from '@onething/backend/runtime/sessions'
-import { fixedExecutionContext } from '@onething/backend/runtime/engine/execution-context'
+import {
+  sessionAccess,
+  sessionCommands,
+  sessionReads,
+  type SessionAccess,
+  type SessionOwnershipRecord,
+} from '@onething/backend/runtime/sessions'
+import { getCurrentBackend, getStreamEngineSafe } from '@onething/backend/current.js'
+import { fixedExecutionContext } from '../../sessions/index.js'
 import type { RuntimeRequestContext } from '@onething/backend/server/runtime-facade.js'
 import { createCollabActorAuthorization, type CollabActorAuthorization } from './execution-authorization.js'
 import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-exec-session.js'

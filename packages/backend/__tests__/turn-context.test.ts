@@ -6,7 +6,7 @@ import {
 	visibleMessagesAfterSummary,
 	type TurnBlock,
 	type TurnContextCarrier,
-} from "@onething/backend/runtime/engine/turn-context";
+} from "../runtime/agent-loop/agent-loop-turn-context.js";
 
 const ledger = new TurnContextLedger();
 

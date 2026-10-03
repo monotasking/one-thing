@@ -216,3 +216,57 @@ F4 里剩的 61 条按性质分三类:(a) 工具误差 1 条(`logging/diagnostic
 
 providers 这一笔之后对外的去向与第 2 节末一致:network、logging、storage、agent-loop 的叶子、engine 的三条叶子边(`error-details` ×2、`engine-primitives` ×1)与 agents 两条。
 providers 入口为搬走的文件补了一段具名导出(从前它们同住 providers、直接互引),下一笔收口时与上面的 `export *` 一起整理。
+
+## 10. engine 批实施结果(s19,2026-10-04,未提交)
+
+按第 5 节四步做完,外加第 5 步「engine 收口到一个入口」;决策记录新增 D51–D62(`backend-structure-decisions-2026-10.md`),施工账在 `server-client-split-2026-10.md` §6「engine 归位」。
+每步跑一次 `cycle:gate` 与本文的模拟器(`s15-fable/sim.mjs`,真树、`-` 场景、`--route-orig`),「六个」= providers spaces auth settings sessions engine。
+
+**每步的读数**:
+
+| 步 | 做了什么 | `cycle:gate`(深层环,不判) | 模拟:六个收口的 SCC | 第 5 节的预测 |
+| --- | --- | --- | --- | --- |
+| 改前 | — | 0;17 / 3 / 2 | 265 / 4 / 3 / 2(engine 自己的病) | — |
+| 1 | 内核 39 只归 agent-loop,`stream-runtime` / `selection` 反向进 engine | 0;17 / 3 / 2 | **37** / 4 / 3 / 2(环里的入口:search、engine) | 38 |
+| 2 | 组合根三件合成包根 `assemble-engine.ts`;`runtime.ts` → gateway;三只触发器归 goals / toc / skills;`execution-context` → sessions;断 `agent-loop-executor → 总桶` 与 `turn-principal → collab/drive-guard`;**第 3 步的触发器表实例这一半提前在这一步做(D55)** | 0;15 / 3 / 2 | **17** / 4 / 3 / 2(engine) | 20(F2)/ 19(F3) |
+| 3 | `stream-executor` 不再读当前引擎:引擎调它时把自己交过去(`streamControllers`,D56) | 0;15 / 3 / 2 | 17 / 4 / 3 / 2(engine;剩下的环全经 `assemble-engine` 的 `getStreamEngineSafe`) | 19 |
+| 4 | `getStreamEngine(Safe)` 搬进 `current.ts`,goals / collab / voice / scheduler / headless / music / RPC 改读槽 | 0;**3 / 2** | **4** / 3 / 2(spaces —— 那 4 只是 `spaces/store ↔ project-dirs/store`,第 5 节 spaces 批的那一条;加上它的断边就是 **3 / 2**,零入口、零加载期隐患) | 3 / 2 |
+| 5 | 引擎收口:38 个名字按五类具名导出,外面非测试引用全部走入口,删 11 个深层键 | 0;3 / 2 | 4 / 3 / 2(同上);六个 + agent-loop / usage / credentials / network 也是 4 / 3 / 2,加 spaces 那条断边是 3 / 2 | 3 / 2 |
+
+真实图(`--real`,不改走入口)改后也是 3 / 2:HEAD 那个 17 只的深层环(engine 的内核与 hub 互引)消失了,剩下的是本文第 4 节脚注里 `plugins/{api,background-table,plugin-manager}` 与 `permissions/{asks,policy}` 两个老环。
+
+**文件去向**(非测试 50 只搬家 —— 含 3 只压缩提示词 `.md`、2 只并进别的文件、新建 1 只;随行测试 39 份):
+
+| 旧 | 新 |
+| --- | --- |
+| `engine/` 前 core/engine 内核 39 只(`error-details` `core-stream-engine` `agent-loop-{runtime,executor,selection,turn}` `direct-tool-execution` `tool-orchestration` `context-compact` `stream-processor` `stream-executor` `event-only-emitter` `triggers` `history` `turn-context` `ids` `message-sources` `stream-sender` `prompt-fragments` `prompt-types` `message-content` `file-mentions` `turn-principal` `streaming-args` `compact-prompt` `context-usage` `message-queue` `title` `chat-logger` `tool-call-cow` `attachment-mime` `compact-file-lists` `external-agent-providers` `ports` `stream-runtime` `system-prompt` `ipc-emitter` `session-stream-emitter`)+ `content/*.md` | `agent-loop/agent-loop-<原名>.ts`(D51;四只改得更说内容:`agent-loop-stream-engine`、`agent-loop-engine-ports`、`agent-loop-engine-adapters`,已带前缀的四只不改名)+ `agent-loop/content/*.md` |
+| `engine/engine-primitives.ts`(内核桶) | `agent-loop/index.ts`(内核的入口,D52;旧的 agent-loop 入口随下一行两只去了 engine) |
+| `agent-loop/stream-runtime.ts` · `selection.ts` | `engine/engine-agent-loop-stream-runtime.ts` · `engine-agent-loop-stream-selection.ts` |
+| `engine/engine-layer.ts` + `stream-engine-bound.ts` + `triggers/index.ts` 的登记函数 | 包根 `assemble-engine.ts`(L4「包根」) |
+| `engine/triggers/index.ts` 的触发器表(类型、`TriggerManager`、`triggerManager`) | `agent-loop/agent-loop-trigger-manager.ts`(新,D55) |
+| `engine/runtime.ts` | `gateway/gateway-onething-runtime.ts` |
+| `engine/triggers/goal-continuation.ts` · `session-toc.ts` · `skill-review.ts` | `goals/goal-continuation-trigger.ts` · `toc/toc-session-trigger.ts` · `skills/skill-review-trigger.ts`(`turn-evaluation` 留 engine) |
+| `engine/execution-context.ts` | `sessions/session-execution-context.ts`(会话入口交出 `fixedExecutionContext`) |
+| `getStreamEngine` / `getStreamEngineSafe`(在 `engine-layer.ts`) | 包根 `current.ts`(D57) |
+| `StreamEngine` 类型名(在 `stream-engine-bound.ts`) | `engine/stream-engine.ts`,经引擎入口交出(D58) |
+
+**断边 / 端口**:① `agent-loop-executor → 总桶`(`hashSections`)改引 evals 入口(D59);② `turn-principal → collab/drive-guard` 改成第六个可选端口 `collabDrive`,
+缺席 = 一律不采信(D54);③ `stream-executor → engine-layer` 改成引擎随调用交出自己的控制器表(D56);④ `agent-loop-executor → triggers/index` 改引内核的触发器表(D55);
+⑤ goals / collab ×5 / voice / scheduler / headless / music / RPC chat · session-command → `engine-layer` 改读 `current.ts`(D57)。装配顺序一步没动:`backend.ts` 里仍是
+建会话目录触发器 → 建引擎层 → 登记内置触发器 → `afterEngine` → `Permission.initialize`,`own()` 表逐字相同(`owned-labels-snapshot` 的差异与改前一字不差)。
+
+**引擎入口交出的东西**(`engine/index.ts`,文件头是 R3 说明书):引擎本体(`ProductStreamEngine` 与四个类型名)、装配拆件(引擎 runtime 十二槽、回合评估触发器、历史投影)、
+拿服务商干活的门面(对话 / 标题 / 杂活回合 / AgentProvider / 辅助模型请求 / 生效配置三件 / 系统提示词快照)、引擎 runtime 的三个工厂、流运行时的三个钩子类型与流处理上下文。
+旧入口里指向别的功能文件的再导出(`mintTurnPrincipal`、消息来源判据、端口类型)删掉,改由 agent-loop 入口交出。
+
+**门**(改前 → 改后):
+
+| 门 | 改前 | 改后 |
+| --- | --- | --- |
+| `cycle:gate` | 0;深层 17 / 3 / 2 | 0;深层 **3 / 2** |
+| `layer:gate` | 97 条 / 53 对 | **60 条 / 33 对**(F4 预测 61);消失的全是「下层引 engine」那一族(prompts 4、providers 3、sessions 3、toolkit 3、scheduler / search / tasks 各 2、agent-loop → engine / agents / evals / toolkit、collab / goals / voice / scheduler / headless → 包根……);新增两对见 D61 |
+| `entry:gate` | 2711 | **2546**;engine 186 → 29(全是测试,非测试 0)、skills 36 → 28、goals 25 → 22、toc 4 → 3、总桶 36 → 35;升:agent-loop 203 → 207、gateway 13 → 14(D61) |
+| `name:gate` | 131 | **122** |
+| `assembly:gate` | 红(`music/radio.ts` 9 → 10,与本笔无关) | 同红;两行基线随文件改路径(D61) |
+
+**验收**(改前 `s19-before` / 改后 `s19-after`,脚本 `s17-checks.sh` + `s17-extras.sh`;两份协作测试修好后根 vitest 另跑一次 `s19-after2`):见 `server-client-split-2026-10.md` §6「engine 归位」末段。

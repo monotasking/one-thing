@@ -28,10 +28,7 @@ import {
   dehydrateSessionForStorage,
   rehydrateSessionFromStorage,
 } from '@onething/backend/runtime/sessions'
-import {
-  buildHistoryMessages,
-  historyProjectionRecipe,
-} from '@onething/backend/runtime/engine/stream/message-helpers'
+import { buildHistoryMessages, historyProjectionRecipe } from '@onething/backend/runtime/engine'
 
 /** 事件行 + 与它同源的那份消息数组(A 线 / B 线的唯一共享物是这个场景描述)。 */
 function scenario(messages: ChatMessage[]): {

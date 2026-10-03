@@ -61,18 +61,16 @@ import { getEventBus } from '@onething/backend/runtime/events'
 import { currentSessionRun } from '@onething/backend/runtime/sessions'
 import { sessionReads } from '@onething/backend/runtime/sessions'
 import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/runtime/collab/rooms'
-import { getStreamEngine } from '@onething/backend/runtime/engine/engine-layer'
-import { buildSystemPromptSnapshot } from '@onething/backend/runtime/engine/prompt/system-prompt-snapshot'
+import { getStreamEngine } from '@onething/backend/current.js'
 import {
+  buildSystemPromptSnapshot,
+  generateChatTitle,
   getProviderApiType,
+  isProviderSupported,
   resolveProviderAuth,
-} from '@onething/backend/runtime/engine/stream/provider-helpers'
+} from '@onething/backend/runtime/engine'
 import { consolePort, getLogger } from '@onething/backend/runtime/logging/configure-logging'
 import { Permission } from '@onething/backend/runtime/permissions/permission'
-import {
-  generateChatTitle,
-  isProviderSupported,
-} from '@onething/backend/runtime/engine'
 import { billTitleUsage } from '@onething/backend/runtime/usage/bill-side-line'
 import type { RpcRouteHandlers } from '../registry.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'

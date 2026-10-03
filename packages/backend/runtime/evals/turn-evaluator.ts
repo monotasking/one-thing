@@ -9,7 +9,7 @@ import {
 	createFixture,
 	exportFixture,
 } from "./fixture.js";
-import type { CoreTemplateSkill } from "@onething/backend/runtime/engine/engine-primitives";
+import type { CoreTemplateSkill } from "@onething/backend/runtime/agent-loop";
 
 import type {
   TurnSignals,

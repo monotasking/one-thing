@@ -27,7 +27,7 @@ import { browserTabOf, browserTabsQuery, readBrowserPage } from './browser-sourc
  *
  * **② 正文走附件,不进 `content`。**
  * (「附件链路」判例:文本 engine 内联)引擎对一件带 `sourceUrl` / `excerpt` 的
- * 附件有**现成的一支**(`packages/backend/runtime/engine/message-content.ts` 的
+ * 附件有**现成的一支**(`packages/backend/runtime/agent-loop/agent-loop-message-content.ts` 的
  * `webElementAttachmentTag`):它折成一个 `<attachment source_url="…" title="…">
  * …正文…</attachment>` 的**文本部件**,不要求磁盘上真有这份字节、也不要求模型
  * 有视觉。于是 AI 侧**一个字都不必加** —— 它本来就有 `browser` 工具的 `page`

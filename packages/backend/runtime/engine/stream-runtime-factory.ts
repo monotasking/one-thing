@@ -22,9 +22,9 @@ import {
   type StreamEnginePromptAdapter,
   type StreamEngineProviderAdapter,
   type StreamEngineSkillsAdapter,
-  type StreamEngineStreamsAdapter,
   type StreamEngineStoreAdapter,
-} from '@onething/backend/runtime/engine/engine-primitives'
+  type StreamEngineStreamsAdapter,
+} from '@onething/backend/runtime/agent-loop'
 
 export type OnethingStreamRuntime<
   TSettings extends CoreStreamSettings = CoreStreamSettings,

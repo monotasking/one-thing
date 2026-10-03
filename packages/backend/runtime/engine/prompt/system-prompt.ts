@@ -1,8 +1,10 @@
-import {
-  type CoreBuildPromptContextOptions,
-  type CoreBuildPromptResult,
-  type CorePromptRequestMessage,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import type {
+  CoreBuildPromptContextOptions,
+  CoreBuildPromptResult,
+  CorePromptRequestMessage,
+  CorePromptActiveProject as PromptActiveProject,
+  CorePromptKnownProjects as PromptKnownProjects,
+} from '@onething/backend/runtime/agent-loop'
 import type { AgentProviderData } from '@onething/backend/runtime/agent-loop/loop-primitives'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
 import type { JsonObject, JsonObjectProperty } from '@shared/json.js'
@@ -37,10 +39,6 @@ import {
 import { collabRoomMembers } from '@onething/backend/runtime/collab/members'
 import { collabUserPromptFields } from '@onething/backend/runtime/collab/user-identity'
 import type { PromptProviderConfig } from '@onething/backend/runtime/prompts/plugin-context-breaker'
-import type {
-  CorePromptActiveProject as PromptActiveProject,
-  CorePromptKnownProjects as PromptKnownProjects,
-} from '@onething/backend/runtime/engine/engine-primitives'
 import type { VariableBoardRenderer } from '@onething/backend/runtime/prompts/variable-board'
 import type { OnethingPromptHostAdapters } from '@onething/backend/runtime/prompts/builder'
 

@@ -6,7 +6,7 @@ import path from 'node:path'
 import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
 import { materializeChatMessages } from '@shared/session/projection/chat-messages'
 import { synthesizeCoreToolAnchors } from '@shared/session/render-anchors'
-import { buildAgentLoopFinalMessageUpdate } from '../../../packages/backend/runtime/engine/agent-loop-executor'
+import { buildAgentLoopFinalMessageUpdate } from '../../../packages/backend/runtime/agent-loop/agent-loop-executor'
 import { createSseDelivery, SSE_PENDING_BYTES_LIMIT } from '../../../packages/backend/server/sse-delivery'
 
 const [directory, output] = process.argv.slice(2)

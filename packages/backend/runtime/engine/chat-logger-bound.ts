@@ -1,5 +1,5 @@
 /**
- * 角色后缀 `-bound`(I2,P3'e-A2b):它与 `packages/backend/runtime/engine/chat-logger.ts` 同概念
+ * 角色后缀 `-bound`(I2,P3'e-A2b):它与 `packages/backend/runtime/agent-loop/agent-loop-chat-logger.ts` 同概念
  * 两半 —— core 那半出纯函数(形状分析),这一半把结果**绑到进程级 logger 单例**上。
  * 同名会让搜 `chat-logger.ts` 的人拿到两个结果且看不出哪个是契约,所以进产品层的
  * 这一半按角色改名。
@@ -13,15 +13,11 @@
  * 更是连写者都没有;能观测到的那份事实早已由 `sessions/<id>/events.jsonl`(S 线)
  * 与结构化日志承担。于是整只删掉,只留下唯一活着的这一个。
  *
- * 分层不变:`packages/backend/runtime/engine/chat-logger.ts` 出纯函数(形状分析),这里出副作用
+ * 分层不变:`packages/backend/runtime/agent-loop/agent-loop-chat-logger.ts` 出纯函数(形状分析),这里出副作用
  * (等级判定 + 落记录)。
  */
 
-import {
-  buildMessageBodyShapePayload,
-  type CoreChatLogMessageShape,
-  type CoreChatLogValue,
-} from '@onething/backend/runtime/engine/engine-primitives'
+import { buildMessageBodyShapePayload, type CoreChatLogMessageShape, type CoreChatLogValue } from '@onething/backend/runtime/agent-loop'
 import { getLogger } from '../logging/index.js'
 
 export type ChatLogMessageShape = CoreChatLogMessageShape

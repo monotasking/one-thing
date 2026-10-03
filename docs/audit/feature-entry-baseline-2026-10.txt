@@ -5,9 +5,8 @@
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
 303 sessions
 256 logging
-203 agent-loop
+207 agent-loop
 192 toolkit
-186 engine
 122 tools
 107 plugins
 100 agents
@@ -20,8 +19,7 @@
 51 resource
 45 auth
 45 mcp
-36 (总桶)
-36 skills
+35 (总桶)
 35 evals
 34 notes
 34 prompts
@@ -29,9 +27,11 @@
 32 voice
 30 usage
 29 acp
+29 engine
+28 skills
 26 music
-25 goals
 23 credentials
+22 goals
 20 external-agents
 20 scheduler
 19 files
@@ -41,7 +41,7 @@
 17 terminal
 17 todo-plan
 15 shell
-13 gateway
+14 gateway
 8 themes
 7 practice
 6 interaction
@@ -49,10 +49,10 @@
 5 headless
 5 scratchpad
 4 memory
-4 toc
 4 triggers
 3 quota
 3 tasks
+3 toc
 2 context
 2 deeplink
 2 dialog

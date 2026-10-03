@@ -125,6 +125,8 @@ vi.mock('../../current.js', async importOriginal => ({
   // `createBackendHandle` 仍是真的(那只窄句柄上没有资源内核这一格 —— 它是
   // `OnethingBackend` 的实例字段,见 `rpc/domains/resources.ts` 的 `kernel()`)。
   getCurrentBackendInstance: () => kernelSlot.current,
+  // 读当前引擎的那一口(从前替身打在 `engine-layer.ts` 上;读引擎的函数搬进了这只槽文件)。
+  getStreamEngine: () => engine,
 }))
 /**
  * 主体铸在 RPC 边界(K2a 的 `principalOf`),规则与它自己的用例在
@@ -145,7 +147,6 @@ vi.mock('@onething/backend/runtime/todo-plan/todo-plan-service', () => todoPlan)
 vi.mock('@onething/backend/runtime/toc/toc-recorder', () => toc)
 vi.mock('@onething/backend/runtime/variables/gateways', () => variables)
 vi.mock('@onething/backend/runtime/agents/agent-store-access', () => agents)
-vi.mock('@onething/backend/runtime/engine/engine-layer', () => ({ getStreamEngine: () => engine }))
 vi.mock('@onething/backend/runtime/permissions/permission', () => ({ Permission: permission }))
 vi.mock('@onething/backend/runtime/events', () => ({
   getEventBus: () => ({ destroySession: events.destroySession, emit: events.emit }),
@@ -449,7 +450,7 @@ describe('sessions RPC domain', () => {
    * 改名要发一条 `session:renamed`(读路战役 7e:桌面壳听得见、别的客户端听不见)。
    *
    * 从前这条 RPC 改完盘就结束了 —— 全仓唯一的 `session:renamed` 产地是自动起题
-   * (`runtime/engine/core-stream-engine.ts` 的 `generateAndApplySessionTitle`),显式
+   * (`runtime/agent-loop/agent-loop-stream-engine.ts` 的 `generateAndApplySessionTitle`),显式
    * 改名一发都不发,于是浏览器那一份 / 另一扇窗里的名字要等整表重拉才跟上。
    */
   it('rename 成功时往总线上发一条 session:renamed(sessionId + name 都对)', async () => {
@@ -574,7 +575,7 @@ describe('sessions RPC domain', () => {
     expect(Object.keys(emitted)).toEqual(['type', 'name'])
 
     const engineSource = fs.readFileSync(
-      new URL('../../runtime/engine/core-stream-engine.ts', import.meta.url),
+      new URL('../../runtime/agent-loop/agent-loop-stream-engine.ts', import.meta.url),
       'utf-8',
     )
     // 引擎那两发(正常 + 兜底标题)都长这样:type 一行、name 一行,再无第三格。
