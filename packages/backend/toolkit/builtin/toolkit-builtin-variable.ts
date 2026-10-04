@@ -8,14 +8,14 @@
  * 时再归族(把一个只有一个成员的家族提前建起来,那个家族只会长成这只工具的形状)。
  *
  * 描述、参数、提示词、渲染口径逐字沿用旧 `tools/builtin/variable.ts`;渲染在
- * `variable-render.ts`。
+ * `toolkit-builtin-variable-render.ts`。
  */
 
 import { z } from 'zod'
-import { Intent, Tool } from '@onething/backend/toolkit/tool-protocol'
+import { Intent, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
 import type { CoreToolPromptContribution } from '@onething/backend/agent-loop'
-import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
+import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { isCapabilityVariable } from '../../variable/variable-types.js'
 import type { VariableScope, VariableType } from '../../variable/variable-types.js'
 import contextVariablesRaw from '../../tool/builtin/prompts/variable-context.md?raw'
@@ -27,7 +27,7 @@ import {
   VARIABLE_READ_ACTIONS,
   type RuntimeContextVariable,
   type VariableAction,
-} from './variable-render.js'
+} from './toolkit-builtin-variable-render.js'
 
 export type { VariableAction, RuntimeContextVariable }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSessionProjectionState, reduceSessionProjection } from '@shared/session/projection/reducer'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
-import { createSessionEventReads } from '../events-reads.js'
+import { createSessionEventReads } from '../session-events-reads.js'
 
 function projection() {
   let state = createSessionProjectionState()

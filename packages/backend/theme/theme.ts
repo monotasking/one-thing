@@ -18,10 +18,10 @@ import {
   generateCSSVariables,
   isThemeTokenOverridable,
   pickHighlightTokenOverrides,
-} from './css-mapper.js'
+} from './theme-css-mapper.js'
 import { generateSkinVariables } from './theme-skin.js'
-import { generateShellRoleVariables } from './shell-roles.js'
-import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
+import { generateShellRoleVariables } from './theme-shell-roles.js'
+import { parseBase46Lua, convertBase46ToTheme } from './theme-base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
 import { getOnethingStorePath } from '../storage/storage-paths.js'
 
@@ -40,7 +40,7 @@ export type {
   ThemeFolderOpener,
   ThemeMeta,
 } from './theme-types.js'
-export * from './window-theme.js'
+export * from './theme-window.js'
 
 // Import built-in themes (using 'with' for Node.js 25+ compatibility)
 import flexokiTheme from './builtin/flexoki.json' with { type: 'json' }
@@ -433,7 +433,7 @@ function applyThemeInternal(
   // 合并放在最后是安全的，且**只对皮肤成立**：`--skin-*` 与主题变量名不相交，
   // 没有任何东西从皮肤变量派生。颜色覆盖必须前移到 resolveThemeUI 之前，正是
   // 因为反过来 —— 派生层整片挂在颜色上（见 §6.1.1 的差异记录）。
-  // 角色表(`shell-roles.ts`)同理放在最后:它的值是主题源文件原样给的,
+  // 角色表(`theme-shell-roles.ts`)同理放在最后:它的值是主题源文件原样给的,
   // 上面任何一步派生、护栏都不许碰;`--role-*` 与其余两组名字不相交。
   return {
     ...cssVariables,

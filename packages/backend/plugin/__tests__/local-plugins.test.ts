@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '@onething/backend/logging/configure-logging'
+import { collectLogRecordsForTests } from '@onething/backend/logging/logging-configure'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-local-plugins-app-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -47,7 +47,7 @@ function seedNpmLedgerPlugin(name: string): void {
 }
 
 async function loader() {
-  return import('../disk-loader.js')
+  return import('../plugin-disk-loader.js')
 }
 
 describe('scanPlugins —— 轻通道追加在 npm 账本扫描之后', () => {
@@ -111,7 +111,7 @@ describe('坏脚本隔离', () => {
 
 describe('能力收窄:LocalPluginAPI 物理不挂需声明的能力', () => {
   it('narrowApiForLocalPlugin 只保留白名单键,函数绑回原 api,子对象透传', async () => {
-    const { narrowApiForLocalPlugin } = await import('../api.js')
+    const { narrowApiForLocalPlugin } = await import('../plugin-api.js')
 
     const calls: string[] = []
     // 造一个"完整" api 的替身:白名单里的函数记录被调用,其余能力只需存在。

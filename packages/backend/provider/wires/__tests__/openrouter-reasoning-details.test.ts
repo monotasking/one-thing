@@ -23,11 +23,11 @@ import type {
   AgentJsonValue,
   AgentMessage,
   AgentTurnStreamEvent,
-} from '@onething/backend/agent-loop/loop-primitives'
+} from '@onething/backend/agent-loop/agent-loop-primitives'
 import { getHistoryProviderData } from '@onething/backend/agent-loop'
-import { createAgentProviderFromRuntime } from '../../factory.js'
+import { createAgentProviderFromRuntime } from '../../provider-factory.js'
 import { planOnethingProviderDataPart, providerDataFromOnethingContentPart } from '../../provider-data.js'
-import { OpenAIChatPartCodec, openRouterReasoningDetails } from '../openai-chat-messages.js'
+import { OpenAIChatPartCodec, openRouterReasoningDetails } from '../provider-wires-openai-chat-messages.js'
 
 const MODEL = 'openai/gpt-5.5'
 

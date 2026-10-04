@@ -20,7 +20,7 @@ vi.mock('@onething/backend/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
 }))
 
-const { readSessionTrace, readSessionTraceResponseText, isSafeSessionId } = await import('../trace-reads.js')
+const { readSessionTrace, readSessionTraceResponseText, isSafeSessionId } = await import('../session-trace-reads.js')
 
 let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
 // The real subscriptions and projection maps are released by their owner.

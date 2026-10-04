@@ -12,7 +12,7 @@
  * 自洽」;把它们真跑在一个索引上,这里是第一次。
  *
  * **不经账本**:直接 `replaceKey` 灌 —— 这一条量的是索引本身,投影那一路有它自己
- * 的用例(`projector.test.ts` / `worker-core.test.ts`)。
+ * 的用例(`projector.test.ts` / `search-index-worker-core.test.ts`)。
  *
  * 查询是走**真流水线**拼出来的:`parse`(归一化 + 短语 + 排除 + 意图前缀)→
  * `buildLexicalQuery`(同一个分析器切词 + 前缀展开)→ `index.search`。自己在测试里
@@ -33,7 +33,7 @@ import {
   plan,
 } from '../../kernel/search-kernel.js'
 
-import { SqliteIndex } from '../sqlite-index.js'
+import { SqliteIndex } from '../search-index-sqlite.js'
 
 interface CorpusDoc {
   capability: string

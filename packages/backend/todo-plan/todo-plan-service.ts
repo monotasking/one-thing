@@ -10,9 +10,9 @@ import {
 } from '@onething/backend/todo-plan'
 import { getSettings } from '@onething/backend/settings'
 import { getOnethingStorePath } from '@onething/backend/storage'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { getCurrentSessionId } from '@onething/backend/session'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('todo-plan')
 

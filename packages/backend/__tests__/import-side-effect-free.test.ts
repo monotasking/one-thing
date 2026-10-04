@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 const spy = vi.hoisted(() => ({ calls: [] as string[] }))
 
-vi.mock('@onething/backend/tool/sandbox-runtime', async (importOriginal) => ({
+vi.mock('@onething/backend/tool/tool-sandbox-runtime', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingToolSandboxRuntime: () => { spy.calls.push('sandbox') },
 }))
@@ -26,7 +26,7 @@ vi.mock('@onething/backend/scheduler/scheduler-cron-runner', async (importOrigin
   ...(await importOriginal<object>()),
   configureOnethingScheduler: () => { spy.calls.push('scheduler') },
 }))
-vi.mock('@onething/backend/file/ripgrep', async (importOriginal) => ({
+vi.mock('@onething/backend/file/file-ripgrep', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingRipgrepRuntime: () => { spy.calls.push('ripgrep') },
 }))
@@ -80,7 +80,7 @@ vi.mock('../session/session-repository.js', async (importOriginal) => {
     }) as typeof actual.createOnethingSessionRepository,
   }
 })
-vi.mock('../session/storage-driver.js', async (importOriginal) => {
+vi.mock('../session/session-storage-driver.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@onething/backend/session')>()
   return {
     ...actual,
@@ -119,15 +119,15 @@ vi.mock('@onething/backend/storage', async (importOriginal) => {
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
     await import('@onething/backend/tool/access-control/tool-access-control-sandbox')
-    await import('@onething/backend/tool/background-jobs-bound')
-    await import('@onething/backend/tool/bash-executor')
+    await import('@onething/backend/tool/tool-background-jobs-bound')
+    await import('@onething/backend/tool/tool-bash-executor')
     await import('../engine/engine-chat-facade.js')
     await import('@onething/backend/scheduler/scheduler-bound')
     await import('../file/file-ripgrep-app-fetch.js')
     await import('@onething/backend/search')
-    await import('@onething/backend/skill/manage-setup')
+    await import('@onething/backend/skill/skill-manage-setup')
     await import('@onething/backend/skill/skill-sources')
-    await import('@onething/backend/permission/grant-storage')
+    await import('@onething/backend/permission/permission-grant-storage')
     await import('../credentials/credentials-resolution.js')
     await import('../credentials/credentials-strategy.js')
 

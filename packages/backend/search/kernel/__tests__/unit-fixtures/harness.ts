@@ -9,17 +9,17 @@ import type {
   Candidate,
   SearchContext,
   SearchPrincipal,
-} from '../../candidate.js'
+} from '../../search-kernel-candidate.js'
 import type { CapabilityManifest, SearchCapability } from '../../search-kernel-capability.js'
 import { createCapabilityRegistry } from '../../search-kernel-capability.js'
 import { createDefaultAnalyzerRegistry } from '../../analyzer/search-kernel-analyzer-registry.js'
-import { MemoryIndex } from '../../index/memory-index.js'
-import type { DocPayload } from '../../feed.js'
+import { MemoryIndex } from '../../index/search-kernel-memory-index.js'
+import type { DocPayload } from '../../search-kernel-feed.js'
 import { indexedCapability } from '../../bases/search-kernel-bases-indexed.js'
-import { createLexicalRetriever } from '../../bases/lexical-retriever.js'
-import type { ExpanderRegistry } from '../../pipeline/expand.js'
-import { compose } from '../../pipeline/compose.js'
-import type { SearchPipeline } from '../../pipeline/compose.js'
+import { createLexicalRetriever } from '../../bases/search-kernel-bases-lexical-retriever.js'
+import type { ExpanderRegistry } from '../../pipeline/search-kernel-pipeline-expand.js'
+import { compose } from '../../pipeline/search-kernel-pipeline-compose.js'
+import type { SearchPipeline } from '../../pipeline/search-kernel-pipeline-compose.js'
 import { CAP_A, CORPUS_NOW, corpusDocuments } from './corpus.js'
 
 export const DEFAULT_SCHEMA = {

@@ -45,13 +45,13 @@ import type {
   SchedulerTaskSnapshotDTO,
 } from '@shared/ipc/scheduler.js'
 import { toJsonValue } from '@shared/json.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { getScheduler } from '@onething/backend/scheduler/scheduler-bound'
 import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '@onething/backend/scheduler/run-history-bound'
+} from '@onething/backend/scheduler/scheduler-run-history-bound'
 import type { SchedulerRunRecord } from '@onething/backend/scheduler'
 import {
   createUserSchedulerTask,
@@ -60,9 +60,9 @@ import {
   isUserSchedulerTask,
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
-} from '@onething/backend/scheduler/user-task-service'
+} from '@onething/backend/scheduler/scheduler-user-task-service'
 import type { DeleteOnethingUserSchedulerTaskOptions, OnethingSchedulerIpcLogger } from '@onething/backend/scheduler/scheduler-ipc-operations'
-import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/scheduler/user-tasks'
+import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/scheduler/scheduler-user-tasks'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { SchedulerUpdateTaskRequest } from '@shared/ipc.js'
 import type { ListOnethingSchedulerTasksOptions, RunOnethingSchedulerTaskNowOptions, SetOnethingSchedulerTaskEnabledOptions, UpdateOnethingUserSchedulerTaskOptions, ListOnethingSchedulerRunsOptions, GetOnethingSchedulerRunOptions } from '@onething/backend/scheduler/scheduler-ipc-operations'

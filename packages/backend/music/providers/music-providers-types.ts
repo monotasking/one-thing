@@ -13,9 +13,9 @@
  * the settings wizard generically.
  */
 
-import type { OnethingMusicLyricLine } from '../lyrics.js'
-import type { OnethingMusicNowPlaying } from '../now-playing.js'
-import type { OnethingRadioProgrammeEntry } from '../radio-store.js'
+import type { OnethingMusicLyricLine } from '../music-lyrics.js'
+import type { OnethingMusicNowPlaying } from '../music-now-playing.js'
+import type { OnethingRadioProgrammeEntry } from '../music-radio-store.js'
 import type {
   OnethingMusicBackend,
   OnethingMusicProcessRunner,

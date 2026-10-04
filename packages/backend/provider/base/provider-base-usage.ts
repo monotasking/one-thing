@@ -5,7 +5,7 @@
  * 到桶(Anthropic 零加减法;OpenAI `prompt − read − write`),再由**一个**
  * 投影函数产出现行 `AgentUsage`。外部契约与落盘账本因此零改动。
  */
-import type { AgentUsage } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentUsage } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { computeOnethingUsageCostUSD } from "../provider-pricing.js";
 import type { OnethingUsageUnitPrice } from "../../usage/usage-types.js";
 

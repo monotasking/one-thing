@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { AbortScope } from '../abort-scope.js'
+import { AbortScope } from '../toolkit-abort-scope.js'
 import { makeEffect } from '@shared/toolkit/effects.js'
-import { Decision, Intent } from '../intent.js'
-import { Outcome, TOOL_CANCELLED_MESSAGE } from '../outcome.js'
-import { emptyResult, resultToText, textResult } from '../result.js'
-import { createToolTimeoutError, isToolTimeoutError } from '../abort-scope.js'
-import { createToolAbortError, isToolAbortError } from '../../tool/abort.js'
+import { Decision, Intent } from '../toolkit-intent.js'
+import { Outcome, TOOL_CANCELLED_MESSAGE } from '../toolkit-outcome.js'
+import { emptyResult, resultToText, textResult } from '../toolkit-result.js'
+import { createToolTimeoutError, isToolTimeoutError } from '../toolkit-abort-scope.js'
+import { createToolAbortError, isToolAbortError } from '../../tool/tool-abort.js'
 
 describe('Intent', () => {
   it('none 是零效果的计划,但仍然要过授权', () => {
@@ -98,7 +98,7 @@ describe('Outcome', () => {
   })
 
   it('fromError:消息里出现 abort 字样但对象不是取消错误 → 仍是 failed', () => {
-    // tool/abort.ts 头注释里的那个坑:失败消息里可能嵌着文件内容。
+    // tool/tool-abort.ts 头注释里的那个坑:失败消息里可能嵌着文件内容。
     const outcome = Outcome.fromError(new Error('no match for "if (signal.aborted) return"'))
     expect(outcome.kind).toBe('failed')
   })

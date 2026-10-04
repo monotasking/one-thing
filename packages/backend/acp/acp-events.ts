@@ -5,13 +5,13 @@
  * 装配层。这里把两条监听接成两种全局事件 `acp:session-state` / `acp:agent-state`,它们在
  * `GLOBAL_EVENT_LEAVES_PROCESS` 登记为可出网,于是经 `GET /api/events` 自动到壳,壳零通道代码。
  *
- * 写法照 `terminal/bus-broadcaster.ts`:**发送时才取总线**。子系统构造在装配中途,
+ * 写法照 `terminal/terminal-bus-broadcaster.ts`:**发送时才取总线**。子系统构造在装配中途,
  * 那时事件系统也许还没造出来;构造时抓总线会当场抛。装配没完成就有状态变化 → warn 一行丢掉,
  * 不抛 —— 状态是整张快照,下一次变化或一次 `acp.sessionState` 就补齐了。
  */
 import type { ACPAgentState, AcpSessionState } from '@shared/contracts/acp'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/event'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('app.acp.events')
 
@@ -57,7 +57,7 @@ const SESSION_REF_PREFIX = 'session:'
  * 「这几条会话删了」(A4-b:删会话 → 作废那条会话名下的 ACP 桥凭据)。
  *
  * 删除今天只有一个出口:`session:` 资源的 `delete` 操作,它在收完尾之后发 `deleted` 资源事件
- * (`resource/session-provider.ts`),经 `forwardResourceEventsToBus` 成为全局
+ * (`resource/resource-session-provider.ts`),经 `forwardResourceEventsToBus` 成为全局
  * `resource:event`。载荷里的 `cascadedSessionIds` 是连带删掉的整串(子会话在内),都算。
  * 订总线而不是往删除路径里再塞一个端口:删除那一段不该认识 ACP。
  */

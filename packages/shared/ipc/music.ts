@@ -122,7 +122,7 @@ export interface MusicLyrics {
 /* ── 主持人抽屉(2026-09-26,正本 apps/desktop-react/docs/music-panel-2026-09.md §16)──
  *
  * 壳不认识 ncm-cli:DJ 会话里的工具调用由**后端**按动词表翻成人话
- * (`music/host-log.ts`),这里只是那几行的形。
+ * (`music/music-host-log.ts`),这里只是那几行的形。
  */
 
 /** 主持人此刻在干哪一类活。`thinking` = 在想(没有工具在飞)。 */
@@ -201,7 +201,7 @@ export interface MusicRadioState {
 	 * The host as a person (2026-09-26, music-panel §16): whether he is working and,
 	 * while he is, what he is doing right now in plain words. `working` mirrors
 	 * `djWorking`; `doing` is derived by the backend from the tool call in flight
-	 * in his session (the verb table lives in `music/host-log.ts`). Absent
+	 * in his session (the verb table lives in `music/music-host-log.ts`). Absent
 	 * on older backends.
 	 */
 	host?: MusicHostState

@@ -4,11 +4,11 @@
  * **所有 hook 只接收它,不碰 this**;provider 实例因此没有可写字段,可以跨
  * 回合、跨凭据复用(§3.1「实例无状态」,架构测试守)。
  */
-import type { AgentMessage, AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentMessage, AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import type { Logger } from "./provider-context.js";
-import type { ModelProfile } from "./model-profile.js";
-import type { RequestBodyBuilder } from "./request-body-builder.js";
-import { ProviderWarning, type ProviderWarningKind } from "./warnings.js";
+import type { ModelProfile } from "./provider-base-model-profile.js";
+import type { RequestBodyBuilder } from "./provider-base-request-body-builder.js";
+import { ProviderWarning, type ProviderWarningKind } from "./provider-base-warnings.js";
 
 /**
  * 本回合能往哪儿、以什么身份发**副**请求(P4-6)。

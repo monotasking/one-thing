@@ -3,7 +3,7 @@
  *
  * 纯模块(壳经 manifest 也会走到这里)。
  */
-import { normalizeProviderBaseUrl } from '../../base-url.js'
+import { normalizeProviderBaseUrl } from '../../provider-normalize-base-url.js'
 
 export type OnethingZhipuApiMode = 'standard' | 'coding-plan'
 

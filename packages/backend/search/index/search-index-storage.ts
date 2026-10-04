@@ -9,7 +9,7 @@
  * ## 为什么归类判据在这里,而不是一张表名清单
  *
  * 「哪几张表算向量库」这个问题有两种答法。写死一张 `['vec_docs_384', …]` 的清单是
- * 一个**枚举点**:换一档嵌入器就换维度,`vec0` 的虚表名带着维数(`sqlite-vec.ts` 的
+ * 一个**枚举点**:换一档嵌入器就换维度,`vec0` 的虚表名带着维数(`search-index-sqlite-vec.ts` 的
  * `vecTableName`),影子表还会随 `sqlite-vec` 升版增减(今天是 `_chunks` / `_rowids` /
  * `_info` / `_vector_chunks00` / `_metadatachunks00` / `_metadatachunks01`,明天不一定)。
  * 抄一份迟早漂开,而漂开的后果是「向量库那一行长期报少」——一个不会报错的错。

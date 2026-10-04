@@ -1,7 +1,7 @@
 import type {
   CoreConversationRuntime as OnethingConversationRuntime,
   CoreTextStreamChunk as OnethingTextStreamChunk,
-} from '@onething/backend/gateway/conversation-runtime'
+} from '@onething/backend/gateway/gateway-conversation-runtime'
 import type { Channel, InboundMessage, OutboundMessage } from '@onething/backend/gateway/hub'
 import {
   Allowlist,

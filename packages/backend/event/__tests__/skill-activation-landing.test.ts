@@ -22,7 +22,7 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-vi.mock('../../session/shadow.js', () => ({
+vi.mock('../../session/session-shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',

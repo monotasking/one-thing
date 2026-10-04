@@ -22,16 +22,16 @@ import type {
 	AgentTool,
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
 	type CreateAgentProviderFromRuntimeOptions,
-} from "../../factory.js";
+} from "../../provider-factory.js";
 import type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
-} from "../../request-dumper.js";
+} from "../../provider-request-dumper.js";
 
 /**
  * 错误用例把 `Date.now` 钉在这里(2023-11-14T22:13:20.000Z = 1700000000000),

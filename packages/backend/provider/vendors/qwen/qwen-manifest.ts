@@ -5,9 +5,9 @@
  * 模型认亲、型号规则。通用代码只读这些字段,不写「qwen」。行为(方言、思考参数、
  * 运行时工厂)在同目录的 `runtime.ts` 及其伙伴。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
-import type { DialSpec } from '../../dials.js'
+import type { DialSpec } from '../../provider-dials.js'
 import type { ProviderManifest } from '../../provider-manifest.js'
 import {
   ONETHING_QWEN_DEFAULT_BASE_URL,
@@ -83,7 +83,7 @@ export const QWEN_MANIFEST: ProviderManifest = {
     keyOf: (config) => resolveOnethingQwenModelsDevProviderId(config as OnethingQwenEndpointConfig | undefined),
   },
   // 按量目录(alibaba / alibaba-cn)还没收旗舰,补上目录里缺的那几行(见 `onethingQwenBackfillModels`;
-  // 从 `model-registry.ts` 按 id 的分支搬来)。
+  // 从 `provider-model-registry.ts` 按 id 的分支搬来)。
   catalogBackfill: (config) => onethingQwenBackfillModels(config as OnethingQwenEndpointConfig | undefined),
   billing: 'api',
   dials: QWEN_DIALS,
@@ -108,7 +108,7 @@ export const QWEN_MANIFEST: ProviderManifest = {
     entryFields: { apiMode: 'qwenApiMode', region: 'qwenRegion' },
     ownsBaseUrl: true,
   },
-  // 型号规则表(从 `model-capability.ts` 的 `PROVIDER_MODEL_RULES.qwen` 搬来,逐字)。
+  // 型号规则表(从 `provider-model-capability.ts` 的 `PROVIDER_MODEL_RULES.qwen` 搬来,逐字)。
   // 千问 AI 平台 resells GLM / Kimi / DeepSeek / MiniMax next to its own Qwen
   // models, and each family keeps its own effort vocabulary on this endpoint ——
   // 所以下面几行的正则里出现别家模型名,说的是**这个端点转售的模型**,不是在点那几家的名。

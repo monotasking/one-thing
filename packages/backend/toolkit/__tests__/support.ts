@@ -7,7 +7,7 @@
  * 意义就是"用一个假 RunContext 单测任何工具"(尺子⑤),这里是它的第一个真实用户。
  */
 
-import { ToolRunner } from '@onething/backend/toolkit/tool-protocol'
+import { ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type {
   Authorizer,
   Intent,
@@ -19,7 +19,7 @@ import type {
   SessionSnapshot,
   Tool,
   ToolEvent,
-} from '@onething/backend/toolkit/tool-protocol'
+} from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { allowAuthorizer, RecordingObserver } from './fakes.js'
 import { ZodValidator } from '../toolkit-contract.js'
 

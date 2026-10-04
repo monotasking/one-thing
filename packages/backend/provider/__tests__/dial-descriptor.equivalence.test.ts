@@ -13,8 +13,8 @@ import {
   dialRegionApplies,
   normalizeDialValue,
 } from '@shared/provider-dials.js'
-import { BUILTIN_PROVIDER_MANIFESTS } from '../builtin-manifests.js'
-import { dialDescriptorOf, type DialSpec } from '../dials.js'
+import { BUILTIN_PROVIDER_MANIFESTS } from '../provider-builtin-manifests.js'
+import { dialDescriptorOf, type DialSpec } from '../provider-dials.js'
 
 const withDials = BUILTIN_PROVIDER_MANIFESTS.filter(
   (manifest): manifest is typeof manifest & { dials: DialSpec } => Boolean(manifest.dials),

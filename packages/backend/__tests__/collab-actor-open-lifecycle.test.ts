@@ -57,7 +57,7 @@ it.each(['agent', 'room'] as const)('drains a board-triggered real %s mailbox op
   sessions.createSession('room', 'Room')
   sessions.updateSessionCollab('room', { kind: 'room', room: { memberAgentIds: ['same-agent'] } })
   const runtime = await import('@onething/backend/collab/actors/collab-actors-runtime')
-  const board = await import('@onething/backend/collab/board-store')
+  const board = await import('@onething/backend/collab/collab-board-store')
   const { DurableMailbox } = await import('@onething/backend/collab/kernel')
   const close = vi.spyOn(DurableMailbox.prototype, 'close')
   const read = fs.readFile.bind(fs)
@@ -86,7 +86,7 @@ it.each(['agent', 'room'] as const)('drains a board-triggered real %s mailbox op
   expect(runtime.peekCollabV3Room('room')).toBeUndefined()
   let stopped = false
   const stopping = backend.dispose().then(() => { stopped = true })
-  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
   await new Promise(resolve => setTimeout(resolve, 20))
   expect(stopped).toBe(false)
   expect(inspectStoreLock({ storePath: firstPath }).status).toBe('held')
@@ -117,7 +117,7 @@ it('binds an installed actor account to its creating Backend and rejects a late 
   backend = await assemble(path.join(root, 'first'))
   const agents = await import('@onething/backend/agent/agent-store-access')
   const runtime = await import('@onething/backend/collab/actors/collab-actors-runtime')
-  const accountModule = await import('@onething/backend/collab/actors/agent-mailbox')
+  const accountModule = await import('@onething/backend/collab/actors/collab-actors-agent-mailbox')
   // Observe the actual store injected into actor construction; no replacement
   // store implementation or manual cache reset is used on either Backend.
   const accountStores = vi.spyOn(accountModule, 'createCollabAgentAccountFileStore')

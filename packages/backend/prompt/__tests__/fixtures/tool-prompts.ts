@@ -4,7 +4,7 @@ import {
 	VARIABLE_TOOL_PROMPT,
 	WRITE_TOOL_PROMPT,
 } from "../../../toolkit/toolkit.js";
-import { defaultOnethingPromptComposer } from "../../builder.js";
+import { defaultOnethingPromptComposer } from "../../prompt-builder.js";
 import { PromptComposer, StaticPromptSource } from "../../prompt-composer.js";
 
 /**

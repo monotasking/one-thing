@@ -39,13 +39,13 @@ import {
   setOnethingSpaceProviderSettingsForIpc,
   updateOnethingSpaceForIpc,
 } from '@onething/backend/space'
-import { readSpaceOverlay, writeSpaceOverlay } from '@onething/backend/space/overlay'
+import { readSpaceOverlay, writeSpaceOverlay } from '@onething/backend/space/space-overlay'
 import {
   createEmptySpaceProviderSettings,
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings as RuntimeSpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { getSpacesStore } from '@onething/backend/space/space-store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import {
@@ -57,7 +57,7 @@ import {
 } from '@onething/backend/credentials'
 import { countSessionsInWorkspace } from '@onething/backend/session'
 import { persistManualOrphans } from '@onething/backend/settings'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 /** 已登记判定。每个带 id 的方法都过这一关 —— 见文件头。 */

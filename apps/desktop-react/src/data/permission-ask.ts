@@ -112,7 +112,7 @@ export const NO_PERMISSION_ASKS: Readonly<Record<string, PermissionAsk>> = Objec
 /**
  * 这一类效果的答案**记不记得住**。
  *
- * 读的是 core 那张策略表(`@onething/backend/toolkit/tool-protocol` 的 `effectPolicyFor`),不是
+ * 读的是 core 那张策略表(`@onething/backend/toolkit/toolkit-tool-protocol` 的 `effectPolicyFor`),不是
  * 本地一份名单 —— `permission-grants.ts` 的 `isGrantableType` 读的就是同一列,
  * 而那只文件自己的文件头写着这条法的由来:「一份重复的名单迟早只被改一半」。
  * 壳不能直接 import 它(那只文件吃 `node:crypto` / `node:path`,进不了浏览器包),

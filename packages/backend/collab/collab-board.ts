@@ -8,8 +8,8 @@
  * report + review, review→todo → 打回 re-execution).
  */
 
-import { formatCollabAgentHandle } from './handles.js'
-import { escapeCollabPromptText } from './inline-tags.js'
+import { formatCollabAgentHandle } from './collab-handles.js'
+import { escapeCollabPromptText } from './collab-inline-tags.js'
 
 export type CollabTaskStatus = 'backlog' | 'todo' | 'doing' | 'review' | 'done' | 'blocked'
 

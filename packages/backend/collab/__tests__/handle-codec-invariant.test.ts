@@ -20,7 +20,7 @@ import {
   formatCollabAgentHandle,
   parseCollabHandleMentions,
   stripCollabAgentHandles,
-} from '../handles.js'
+} from '../collab-handles.js'
 
 /** 身份域:出站会给句柄的每一种人(collab-handle-codec.md §1 轴一)。 */
 const ACTIVE = collabIdentityFromAgent({ id: 'agent-3f9c1e2a-1111-4222-8333-444455556666', name: '小李' })
@@ -116,7 +116,7 @@ describe('点名 ≠ 提到:只有带 @ 的进 mentions', () => {
   })
 
   it('merge 之后句柄还在 —— 丢字段是"存了等于没存"的经典出口', async () => {
-    const { mergeCollabMentions } = await import('../mentions.js')
+    const { mergeCollabMentions } = await import('../collab-mentions.js')
     const parsed = parseCollabHandleMentions(`@${nameHandle(USER)} 在吗`, DIRECTORY)
     expect(mergeCollabMentions([], parsed)).toEqual([
       { kind: 'user', agentId: '', label: 'songyitian', userHandle: '666666' },

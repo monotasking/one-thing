@@ -123,7 +123,7 @@ describe.skipIf(!E2E)('B:真 npm 生命周期(生产适配器 runPluginNpm)', ()
       installPluginPackage,
       readInstalledPluginSpec,
       uninstallPluginPackage,
-    } = await import('../npm-process.js')
+    } = await import('../plugin-npm-process.js')
     const {
       scanCorePlugins,
       installCorePluginPackage: _unused, // 防误用:这层只走生产适配器
@@ -186,7 +186,7 @@ describe.skipIf(!E2E)('B:真 npm 生命周期(生产适配器 runPluginNpm)', ()
     fs.writeFileSync(path.join(fixtureDir, 'plugin.json'), JSON.stringify({ name: 'trap-pkg' }))
     fs.writeFileSync(path.join(fixtureDir, 'plugin-entry.js'), 'export default function () {}\n')
 
-    const { runPluginNpm, installPluginPackage } = await import('../npm-process.js')
+    const { runPluginNpm, installPluginPackage } = await import('../plugin-npm-process.js')
     const packed = await runPluginNpm(['pack'], fixtureDir)
     expect(packed.code).toBe(0)
     const tarball = path.join(fixtureDir, 'trap-pkg-1.0.0.tgz')

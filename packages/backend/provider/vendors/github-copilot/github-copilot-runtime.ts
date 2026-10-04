@@ -9,8 +9,8 @@
  * (那一份先落缓存再判 token 有没有),两份都是搬家前的原样,合并是行为变化,留待另拍。
  */
 import { ResolveAuth } from "../../base/provider-base.js";
-import { createOpenAIChatProvider } from "../../dialects/recipe.js";
-import type { VendorRuntime } from "../runtimes.js";
+import { createOpenAIChatProvider } from "../../dialects/provider-dialects-recipe.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { GITHUB_COPILOT_DIALECT } from "./github-copilot-dialect.js";
 import { copilotFallbackModel, fetchCopilotModels } from "./github-copilot-models.js";
 import {

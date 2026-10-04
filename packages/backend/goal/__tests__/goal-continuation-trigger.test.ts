@@ -17,7 +17,7 @@ vi.mock('@onething/backend/goal', () => ({
   canAutoContinueGoal: () => true,
 }))
 
-vi.mock('@onething/backend/goal/kick', () => ({
+vi.mock('@onething/backend/goal/goal-kick', () => ({
   emitGoalDrive: mocks.emitGoalDrive,
 }))
 

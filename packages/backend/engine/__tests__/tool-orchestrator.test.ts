@@ -3,7 +3,7 @@ import type { ChatMessage, ChatSession, ToolCall } from '@shared/ipc'
 import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import type { JsonObject } from '@shared/json.js'
 import type { IPCEmitter } from '../../agent-loop/agent-loop-session-stream-emitter.js'
-import type { StreamContext, StreamProcessor } from '../stream/stream-processor.js'
+import type { StreamContext, StreamProcessor } from '../stream/engine-stream-processor.js'
 import * as sessionsEntry from '@onething/backend/session'
 
 const mockBus = {
@@ -11,7 +11,7 @@ const mockBus = {
 }
 // 读面替身经会话入口取 `getSession` 的替身。用到时才取(不在工厂里 `await import`):会话入口的替身展开真模块时
 // 会加载 `reads.js`,工厂里等会话入口加载完就是互相等(包根归位 B 之前替身打在兼容桶 store.ts 上,没有这个环)。
-vi.mock('../../session/reads.js', () => ({
+vi.mock('../../session/session-reads.js', () => ({
   sessionReads: { getMessage: (sessionId: string, messageId: string) => sessionsEntry.getSession(sessionId)?.messages.find(message => message.id === messageId) },
 }))
 
@@ -37,7 +37,7 @@ vi.mock('@onething/backend/event', () => ({
   getEventBus: () => ({ emit: mockBus.emit }),
 }))
 
-vi.mock('../stream/tool-execution.js', () => ({
+vi.mock('../stream/engine-stream-tool-execution.js', () => ({
   executeToolDirectly: vi.fn(),
   executeToolAndUpdate: vi.fn(async (_ctx, toolCall: ToolCall) => {
     if (toolCall.id === 'edit') {
@@ -155,7 +155,7 @@ function toolArgs(args: JsonObject): JsonObject {
 describe('ToolOrchestrator', () => {
   beforeEach(async () => {
     mockBus.emit.mockClear()
-    const { executeToolAndUpdate } = await import('../stream/tool-execution')
+    const { executeToolAndUpdate } = await import('../stream/engine-stream-tool-execution')
     vi.mocked(executeToolAndUpdate).mockReset()
     vi.mocked(executeToolAndUpdate).mockImplementation(async (_ctx: StreamContext, toolCall: ToolCall) => {
       if (toolCall.id === 'edit') {
@@ -179,8 +179,8 @@ describe('ToolOrchestrator', () => {
   })
 
   it('does not emit a stale message update for a hidden tool that was never published', async () => {
-    const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
-    const { executeToolAndUpdate } = await import('../stream/tool-execution')
+    const { ToolOrchestrator } = await import('../stream/engine-stream-tool-orchestrator')
+    const { executeToolAndUpdate } = await import('../stream/engine-stream-tool-execution')
     const store = await import('@onething/backend/session')
     vi.mocked(executeToolAndUpdate).mockReset()
     mockBus.emit.mockClear()
@@ -227,7 +227,7 @@ describe('ToolOrchestrator', () => {
   })
 
   it('hides and discards tail after a rejected barrier', async () => {
-    const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
+    const { ToolOrchestrator } = await import('../stream/engine-stream-tool-orchestrator')
     const processorToolCalls = [toolCall('edit', 'edit'), toolCall('read', 'read')]
     const turnToolCalls: ToolCall[] = []
     const sent: ToolCall[] = []
@@ -258,8 +258,8 @@ describe('ToolOrchestrator', () => {
   })
 
   it('publishes a hidden tail only after the preceding barrier succeeds', async () => {
-    const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
-    const { executeToolAndUpdate } = await import('../stream/tool-execution')
+    const { ToolOrchestrator } = await import('../stream/engine-stream-tool-orchestrator')
+    const { executeToolAndUpdate } = await import('../stream/engine-stream-tool-execution')
     vi.mocked(executeToolAndUpdate).mockReset()
     vi.mocked(executeToolAndUpdate)
       .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
@@ -298,8 +298,8 @@ describe('ToolOrchestrator', () => {
   })
 
   it('continues hidden tail after a failed tool that is not a rejection', async () => {
-    const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
-    const { executeToolAndUpdate } = await import('../stream/tool-execution')
+    const { ToolOrchestrator } = await import('../stream/engine-stream-tool-orchestrator')
+    const { executeToolAndUpdate } = await import('../stream/engine-stream-tool-execution')
     vi.mocked(executeToolAndUpdate).mockReset()
     vi.mocked(executeToolAndUpdate)
       .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
@@ -337,7 +337,7 @@ describe('ToolOrchestrator', () => {
   })
 
   it('fails repeated identical tool calls before executing the fourth copy', async () => {
-    const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
+    const { ToolOrchestrator } = await import('../stream/engine-stream-tool-orchestrator')
     const processorToolCalls = [
       toolCall('read-1', 'read'),
       toolCall('read-2', 'read'),

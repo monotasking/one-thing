@@ -14,13 +14,13 @@ export {
   createSeenActorEventWindow,
   formatActorRef,
   parseActorRef,
-} from './envelope.js'
+} from './collab-kernel-envelope.js'
 export type {
   ActorEvent,
   ActorRef,
   CreateActorEventOptions,
   SeenActorEventWindow,
-} from './envelope.js'
+} from './collab-kernel-envelope.js'
 
 export {
   ACTOR_MAILBOX_CURSOR_VERSION,
@@ -29,13 +29,13 @@ export {
   InMemoryMailbox,
   decodeActorMailboxLine,
   readActorMailboxLog,
-} from './mailbox.js'
+} from './collab-kernel-mailbox.js'
 export type {
   ActorMailboxBatch,
   ActorMailboxCursorRecord,
   ActorMailboxSource,
   DurableMailboxOptions,
-} from './mailbox.js'
+} from './collab-kernel-mailbox.js'
 
 export {
   FLOOR_LEASE_INITIAL_EPOCH,
@@ -51,7 +51,7 @@ export {
   revokeFloorLease,
   validateFloorLease,
   validateFloorLeaseId,
-} from './lease.js'
+} from './collab-kernel-lease.js'
 export type {
   FloorLease,
   FloorLeaseCheck,
@@ -59,14 +59,14 @@ export type {
   FloorLeaseLedger,
   IssueFloorLeaseRequest,
   IssueFloorLeaseResult,
-} from './lease.js'
+} from './collab-kernel-lease.js'
 
 export {
   ActorBase,
   CallbackActor,
   DEFAULT_ACTOR_DEAD_LETTER_CAPACITY,
-} from './actor.js'
+} from './collab-kernel-actor.js'
 export type {
   ActorBaseOptions,
   ActorDeadLetter,
-} from './actor.js'
+} from './collab-kernel-actor.js'

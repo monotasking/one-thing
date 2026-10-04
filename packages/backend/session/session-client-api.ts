@@ -22,7 +22,7 @@
  *    (缺席 = default),不给它拖垮建会话这条路;
  *  - 「自带 id 的格式 / 不认领已存在的会话 / kind 只认 'room'」三条连同失败文案在
  *    `describeInvalidOnethingCreateSessionRequestForIpc`(运行时)里;
- *  - 建房的规则书只有一本,在 `collab/room-create.ts` —— 成员过滤、查无此人、
+ *  - 建房的规则书只有一本,在 `collab/collab-room-create.ts` —— 成员过滤、查无此人、
  *    退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与「改房」那条路对齐。
  * 这三段是逐字搬过来的:抄错一个分支就是改行为。
  *
@@ -74,8 +74,8 @@ import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
-} from '@onething/backend/collab/rooms'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+} from '@onething/backend/collab/collab-rooms'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/todo-plan/todo-plan-service'
 import {
   foldOutcomeToDetailedEnvelope,
@@ -123,7 +123,7 @@ function setCurrentSession(sessionId: string): void {
  * `updateModel` / `updateAgent` / `removeMessage` 这七条处理器里**不再有实现**:
  * 它们拼参数、交给 `backend.resources.do`、把 `Outcome` 折回原来那个信封
  * (`http-server/http-server-resource-envelope.ts`)。规则书、端口、事件全都搬进了
- * `resource/session-provider.ts` —— 与 AI 走的是同一台 `ToolRunner`,
+ * `resource/resource-session-provider.ts` —— 与 AI 走的是同一台 `ToolRunner`,
  * 于是授权、审计、取消、预算四样第一次真的同源(`docs/design/atom-2026-09.md`
  * §2 不变量 2:「没有第二条路,界面点按钮也走它」)。
  *
@@ -159,7 +159,7 @@ const callOptions = sessionCallOptions
  * 拼参数 → **读那条路** → 折回信封。六条读面共用的那三句话(K2c-2)。
  *
  * `backend.resources.read` 不经 `ToolRunner`:读不落审计、不吃输出预算、`ok` 带的是
- * **值**而不是一段文本(理由在 `resource/read-outcome.ts` 的文件头)。所以这一
+ * **值**而不是一段文本(理由在 `resource/resource-read-outcome.ts` 的文件头)。所以这一
  * 条与下面 `doSessionOp` 那一条形状相同、路径不同 —— 那正是本单的整句话。
  *
  * 日志:原文那批投影函数(`*ForIpc`)对**意料之外**的失败会记一行再把消息交出去;
@@ -376,7 +376,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     if (kind !== 'room') return createPlainSessionAs(context, { name, sessionId, workspaceId, kind }, store)
     const checked = await checkSessionCreateRequestAs(context, { sessionId, workspaceId, kind }, store)
     if (!checked.ok) return checked.response
-    // 建房的规则书只有一本,在装配层(collab/room-create.ts)—— 成员过滤、
+    // 建房的规则书只有一本,在装配层(collab/collab-room-create.ts)—— 成员过滤、
     // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与
     // 「改房」那条路(setCollabRoomConfig)对齐。这里只递形状,不留规则。
     const result = await ensureCollabGroupRoom(name || 'New Chat', room as CollabGroupRoomInput | undefined, {
@@ -406,7 +406,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
   },
   /**
    * K2c-3:删也退成投影。三相位删除、AI todo 跟着走、把这条会话在这个进程里的活收
-   * 干净 —— 整串副作用搬进了 `resource/session-provider.ts`,一步没换顺序。
+   * 干净 —— 整串副作用搬进了 `resource/resource-session-provider.ts`,一步没换顺序。
    * 搬的理由与 `rename` 那一发广播逐字相同:AI / CLI / 调度删一条会话与界面删是同一
    * 件事,而从前只有界面那一路做收尾。
    *
@@ -417,7 +417,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
    *
    * 级联名单在这里算一遍(为了校验),provider 里再算一遍(为了删)。**不是重复**:
    * 中间隔着一次授权与三相位的等待,删除层自己就要在开工那一刻重算并比对
-   * (`session/deletion.ts` 的 `verify`:变过就拒)。这里这一份只用来判「能不能」,
+   * (`session/session-deletion.ts` 的 `verify`:变过就拒)。这里这一份只用来判「能不能」,
    * 那一份才是「删哪几条」。
    */
   async delete(request, context = DESKTOP_RPC_CONTEXT) {

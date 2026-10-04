@@ -15,7 +15,7 @@ import type {
 	SessionTitleSource,
 } from "@shared/ipc.js";
 import { join } from "node:path";
-import { getCurrentBackend } from '@onething/backend/current.js'
+import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { existsSync, readFileSync, statSync } from "node:fs";
 import {
 	getOnethingSessionsDir,
@@ -25,22 +25,22 @@ import {
 	writeJsonFileAsync,
 	deleteJsonFile,
 } from '@onething/backend/storage';
-import { getCurrentSessionId, setCurrentSessionId } from "./current-session.js";
-import { sessionLifecycleEvents } from "./lifecycle-events.js";
-import { sessionCommandEvents } from "./command-events.js";
-import { assertSessionEventLogIdle, resetSessionEventLogCache } from "./event-log.js";
-import { sessionDeletion } from './deletion.js'
-import { withSessionRemovalOwner } from './removal-event.js'
+import { getCurrentSessionId, setCurrentSessionId } from "./session-current.js";
+import { sessionLifecycleEvents } from "./session-lifecycle-events.js";
+import { sessionCommandEvents } from "./session-command-events.js";
+import { assertSessionEventLogIdle, resetSessionEventLogCache } from "./session-event-log.js";
+import { sessionDeletion } from './session-deletion.js'
+import { withSessionRemovalOwner } from './session-removal-event.js'
 import type { SessionOwnershipRecord } from './session-access.js'
-import { resetSessionSurfaceCache } from "./event-surface.js";
-import { resetSessionRuns } from "./runs.js";
-import { hydrateSessionMessagesFromProjection } from "./hydrate.js";
-import { materializeSessionMessages } from "./materialized-messages.js";
-import { eventsHasMessage } from "./events-reads.js";
-import { hasLiveSessionProjection } from "./projection-cache.js";
+import { resetSessionSurfaceCache } from "./session-event-surface.js";
+import { resetSessionRuns } from "./session-runs.js";
+import { hydrateSessionMessagesFromProjection } from "./session-hydrate.js";
+import { materializeSessionMessages } from "./session-materialized-messages.js";
+import { eventsHasMessage } from "./session-events-reads.js";
+import { hasLiveSessionProjection } from "./session-projection-cache.js";
 import { getSettings } from "@onething/backend/settings";
-import { expandOnethingToolSandboxPath as expandPath } from '@onething/backend/tool/sandbox-runtime';
-import { createHybridSessionStorageDriver } from './storage-driver.js'
+import { expandOnethingToolSandboxPath as expandPath } from '@onething/backend/tool/tool-sandbox-runtime';
+import { createHybridSessionStorageDriver } from './session-storage-driver.js'
 import { createOnethingSessionRepository } from './session-repository.js'
 import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/backend/collab";
 import {
@@ -53,13 +53,13 @@ import {
 } from "./session-freeze.js";
 import { SESSION_EVENT_TYPES } from "@shared/events/session-event-types";
 import { getEventBus, isEventSystemInitialized } from "@onething/backend/event";
-import { CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID, collectSessionCascadeDeleteIds, getSessionTokenUsageSnapshot } from './store-helpers.js'
-import { deriveRetainedContextSize, repairSessionTimelineMetadata } from './timeline.js'
+import { CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID, collectSessionCascadeDeleteIds, getSessionTokenUsageSnapshot } from './session-store-helpers.js'
+import { deriveRetainedContextSize, repairSessionTimelineMetadata } from './session-timeline.js'
 import { sanitizeSessionOnStartup } from './session-message-shapes.js'
-import { assertContentPartIsCarriable } from './content-part-guard.js'
-import { assertPortFactIsFolded } from './port-fact-assert.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
-import type { HybridSessionStorageDriverOptions } from './storage-driver.js'
+import { assertContentPartIsCarriable } from './session-content-part-guard.js'
+import { assertPortFactIsFolded } from './session-port-fact-assert.js'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import type { HybridSessionStorageDriverOptions } from './session-storage-driver.js'
 import type {
   OnethingSessionRepository,
   OnethingSessionRepositoryOptions,
@@ -677,7 +677,7 @@ export async function deleteSession(sessionId: string, expectedIds: readonly str
 //
 // **回的是仓层那句「改到了没有」**(09-02:显式改名要发 `session:renamed`,发之前
 // 得先知道这一改到底落没落盘)。仓里那条布尔只有一个含义 —— `applied: false`
-// ⟺ 查无此会话(`session/store-helpers.ts` 的
+// ⟺ 查无此会话(`session/session-store-helpers.ts` 的
 // `applySessionMetadataMutationWithAdapters`:拿不到 session 就直接回 false,
 // 别的分支一条都不产生 false),所以它不是「成功/失败」而是「这条会话在不在」。
 // 从前这里把它吞了,于是改一条不存在的会话也一路回 success —— 再往总线上推一条
@@ -951,7 +951,7 @@ function stampCollabAgentId(sessionId: string, message: ChatMessage): ChatMessag
 
 /**
  * 索引元数据的写门。命令面是它的第一个调用者,E2 的列表投影回填
- * (`session/list-projection-backfill.ts`)是第二个 —— 两者写的是同一批格,
+ * (`session/session-list-projection-backfill.ts`)是第二个 —— 两者写的是同一批格,
  * 走同一扇门,所以"谁最后写的算数"这件事只有一处判据。
  */
 export function updateSessionsIndexMetaForCommands(
@@ -974,7 +974,7 @@ export function updateSessionsIndexMetaForCommands(
  * 这里只剩一条转发。
  *
  * **只转 `lazy`**:写计划自 S3w-3 批 6b 起在存储驱动里就没有读者了
- * (`storage-driver.ts` 的 `void plan`),仓库的缺省(structural)与从前逐字等效。
+ * (`session-storage-driver.ts` 的 `void plan`),仓库的缺省(structural)与从前逐字等效。
  */
 export function saveSessionForCommands(
 	sessionId: string,
@@ -1078,7 +1078,7 @@ export function updateMessageStreaming(
  * `request/response.usage` 逐轮落账,投影 reducer 求和折进 `node.usage`
  * (`reducer.ts:529`)。这里写的是**同一个事实的第二个落点**(活 run 写手视图
  * 上那一条),F4-c c4 给它挂上逐格断言:两侧此刻不等 = 事实与写路分岔,
- * 当场记一行(口径与边界全文见 `port-fact-assert.ts`)。
+ * 当场记一行(口径与边界全文见 `session-port-fact-assert.ts`)。
  */
 export function updateMessageUsage(
 	sessionId: string,

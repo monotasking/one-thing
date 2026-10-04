@@ -8,8 +8,8 @@
 import {
 	codexAuth,
 	createResponsesProvider,
-} from "../../dialects/responses-recipe.js";
-import type { VendorRuntime } from "../runtimes.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { CODEX_DIALECT } from "./codex-dialect.js";
 import {
 	fetchOnethingCodexModels,
@@ -18,7 +18,7 @@ import {
 } from "./codex-models.js";
 import { createOnethingCodexModelsFetcher } from "./codex-models-fetcher.js";
 import { CODEX_CONFIG } from "./codex-oauth.js";
-import { resolveCodexNativeToolsFromModelInfo, shouldResolveCodexNativeTools } from "./native-tools.js";
+import { resolveCodexNativeToolsFromModelInfo, shouldResolveCodexNativeTools } from "./codex-native-tools.js";
 import { codexQuotaSource } from "./codex-quota.js";
 
 export const CODEX_RUNTIME: VendorRuntime = {

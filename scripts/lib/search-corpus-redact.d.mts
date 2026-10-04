@@ -1,7 +1,7 @@
 /**
  * `search-corpus-redact.mjs` 的类型面。
  *
- * **S3a 之后规则表本体搬到了 `packages/backend/search/kernel/redact.ts`**(索引写路也要跑同一
+ * **S3a 之后规则表本体搬到了 `packages/backend/search/kernel/search-kernel-redact.ts`**(索引写路也要跑同一
  * 张表,而产品代码不许 import `scripts/`),`.mjs` 只剩一行再导出。这份声明因此**一个
  * 字不用改** —— 它描述的是这条 import 路径交出来的三样东西,而那三样逐字未变。
  *

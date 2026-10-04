@@ -52,13 +52,13 @@ const oauthLog = vi.hoisted(() => ({
   log: vi.fn(),
 }))
 
-vi.mock('@onething/backend/logging/configure-logging', () => ({
+vi.mock('@onething/backend/logging/logging-configure', () => ({
   getLogger: () => oauthLog,
   consolePort: () => oauthLog,
 }))
 
-vi.mock('@onething/backend/auth/process-auth-service', () => ({ getAuthService: () => authService }))
-vi.mock('@onething/backend/auth/oauth-events', () => events)
+vi.mock('@onething/backend/auth/auth-process-service', () => ({ getAuthService: () => authService }))
+vi.mock('@onething/backend/auth/auth-oauth-events', () => events)
 let shellHostPresent = true
 
 vi.mock('@onething/backend/shell/shell-host-ports', () => ({

@@ -3,19 +3,19 @@ import {
   sanitizeOnethingSessionForRenderer,
   type OnethingRendererMessageLike,
   type OnethingRendererSessionLike,
-} from './renderer-sanitizer.js'
+} from './session-renderer-sanitizer.js'
 import {
   createOnethingBranchSession,
   type CreateOnethingBranchSessionAdapters,
   type OnethingBranchSourceMessage,
   type OnethingBranchSourceSession,
-} from './branching.js'
+} from './session-branching.js'
 import {
   removeOnethingSystemMarkerMessage,
   type OnethingSystemMessageLike,
   type OnethingSystemMessageSessionLike,
   type RemoveOnethingSystemMarkerMessageResult,
-} from './system-messages.js'
+} from './session-system-messages.js'
 import {
   normalizeOnethingSessionTokenUsage,
   type OnethingSessionTokenUsageForIpc,

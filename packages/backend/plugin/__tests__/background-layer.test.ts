@@ -1,7 +1,7 @@
 /**
  * G 期验收(L2.5)的**宿主链路**部分:清单投影 → 胜出描述符 → 运行期调参 → 拆除。
  *
- * 判据与裁决本身在 `packages/backend/plugin/__tests__/background.test.ts`;
+ * 判据与裁决本身在 `packages/backend/plugin/__tests__/plugin-background.test.ts`;
  * 这里钉的是"装配层有没有把它们接对":
  *  1. 逐插件投影带四态(active / shadowed / inactive / invalid + reason);
  *  2. 胜出描述符挂在**清单响应**上(零新通道 —— renderer 已经在重拉这份清单);
@@ -29,7 +29,7 @@ const {
   getPluginBackgroundParams,
   getPluginBackgroundTable,
   setPluginBackgroundParams,
-} = await import('../background-table.js')
+} = await import('../plugin-background-table.js')
 
 function plugin(id: string, background: unknown, enabled = true) {
   return {
@@ -171,7 +171,7 @@ describe('api.theme.updateBackground 的落点', () => {
 
 describe('onething-plugin:// 的静态根对背景图开放', () => {
   it('一个面板都没有的背景插件照样开根 —— 否则它的图当场 404', async () => {
-    const { resolvePluginWebviewStaticRoot } = await import('../webview-root.js')
+    const { resolvePluginWebviewStaticRoot } = await import('../plugin-webview-root.js')
     setPlugins(plugin('ink-brand', { image: 'bg.svg' }))
     expect(resolvePluginWebviewStaticRoot('ink-brand')).toEqual({
       pluginId: 'ink-brand',
@@ -180,7 +180,7 @@ describe('onething-plugin:// 的静态根对背景图开放', () => {
   })
 
   it('停用即刻停服;背景声明非法也不开根(画不出层就没有理由端出包目录)', async () => {
-    const { resolvePluginWebviewStaticRoot } = await import('../webview-root.js')
+    const { resolvePluginWebviewStaticRoot } = await import('../plugin-webview-root.js')
     setPlugins(plugin('ink-brand', { image: 'bg.svg' }, false))
     expect(resolvePluginWebviewStaticRoot('ink-brand')).toBeNull()
 

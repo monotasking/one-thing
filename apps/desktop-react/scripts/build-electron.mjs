@@ -19,7 +19,7 @@
  *     toc/render、goals/render、toolkit/builtin/variable),那是 vite 的语法,
  *     esbuild 不认。这里补一个 12 行插件把它读成字符串。
  *
- *  ② `import.meta.url` 的 CJS 替身 —— `terminal/pty-backend.ts:46` 与
+ *  ② `import.meta.url` 的 CJS 替身 —— `terminal/terminal-pty-backend.ts:46` 与
  *     `voice/kws/voice-kws-engine.ts` 顶层就是 `createRequire(import.meta.url)`。
  *     CJS 产物里 `import.meta` 不存在,esbuild 会把它降成 `{}`,于是
  *     `createRequire(undefined)` 抛 ERR_INVALID_ARG_VALUE —— 而且是**模块求值期**
@@ -145,7 +145,7 @@ export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
  * 与 node 内建,一个原生模块都不碰 —— 所以同一份产物在系统 Node 与 Electron-as-node 下
  * 都跑得起来(N-API 那条法在这里无从咬起)。
  */
-export const ACP_MCP_BRIDGE_ENTRY = 'packages/backend/acp/mcp-bridge/entry.ts'
+export const ACP_MCP_BRIDGE_ENTRY = 'packages/backend/acp/mcp-bridge/acp-mcp-bridge-entry.ts'
 export const ACP_MCP_BRIDGE_NAME = 'acp-mcp-bridge'
 
 export function acpMcpBridgeEsbuildOptions({ outdir, repoRoot: root }) {

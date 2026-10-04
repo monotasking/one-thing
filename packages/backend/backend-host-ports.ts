@@ -38,7 +38,7 @@ import {
   configureAppLoggingHost,
   resetAppLoggingHost,
   type AppLoggingHostPorts,
-} from '@onething/backend/logging/configure-logging'
+} from '@onething/backend/logging/logging-configure'
 import {
   configureSkillsEnvironmentHost,
   resetSkillsEnvironmentHost,
@@ -58,7 +58,7 @@ import {
   configureGatewayHost,
   resetGatewayHost,
   type GatewayHostPorts,
-} from '@onething/backend/gateway/lifecycle-port'
+} from '@onething/backend/gateway/gateway-lifecycle-port'
 import {
   configureSettingsHost,
   resetSettingsHost,
@@ -102,7 +102,7 @@ import {
   configureSpeechOutputHost,
   resetSpeechOutputHost,
   type SpeechOutputPort,
-} from '@onething/backend/voice/speech-output'
+} from '@onething/backend/voice/voice-speech-output'
 import {
   configureDialogHost,
   resetDialogHost,

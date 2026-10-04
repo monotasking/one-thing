@@ -1,1 +1,1 @@
-export * from './assemble.js'
+export * from './session-trace-assemble.js'

@@ -61,7 +61,7 @@ import { getVoiceHostPorts, hasVoiceHost } from '@onething/backend/voice/voice-h
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
 import type { VoiceRoutes } from '@shared/ipc/voice.js'
 import { getSettings } from '@onething/backend/settings'
-import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/voice/provider-calls'
+import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/voice/voice-provider-calls'
 import { getVoiceService } from '@onething/backend/voice/voice-service'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'

@@ -5,10 +5,10 @@
  * 只做接线,一件不多:
  *   ① 建宿主:读 `current.json` 定是哪一只、读那一只账本尾部 50 行接上记忆;
  *   ② 订资源事件:挂在事件总线上**已经在转发**的 `resource:event` 那一路
- *      (`resource/event-bridge.ts` 放上去的),不另开订阅口;
+ *      (`resource/resource-event-bridge.ts` 放上去的),不另开订阅口;
  *   ③ 查表:对每条事件问注册表那种资源的自述 `events[event].moment` —— 没声明就忽略,
  *      声明了就折成 `Moment` 喂给宿主;
- *   ④ 收尾:宿主交回的账本行写盘(`ledger-store.ts`),话语作为 `pet:` 的 `utterance`
+ *   ④ 收尾:宿主交回的账本行写盘(`pet-ledger-store.ts`),话语作为 `pet:` 的 `utterance`
  *      事件发出去(经 provider 在 `attach` 时交来的那只 hub,于是它照样走 bridge → 总线 →
  *      SSE,与别的资源事实同一条路)。
  *
@@ -69,11 +69,11 @@ import {
   type PetSummary,
   type Utterance,
 } from '@onething/backend/pet'
-import type { EventBus } from '@onething/backend/event/session-event-bus'
-import { audioDurationMs } from '@onething/backend/voice/audio-duration'
-import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/music/host-voice'
-import { getLogger } from '@onething/backend/logging/configure-logging'
-import { PetLedgerStore } from './ledger-store.js'
+import type { EventBus } from '@onething/backend/event/event-session-bus'
+import { audioDurationMs } from '@onething/backend/voice/voice-audio-duration'
+import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/music/music-host-voice'
+import { getLogger } from '@onething/backend/logging/logging-configure'
+import { PetLedgerStore } from './pet-ledger-store.js'
 import { petVoiceStyle } from './pet-voice.js'
 
 const log = getLogger('pets')

@@ -8,7 +8,7 @@
  * **文件从 `sessions-clear-messages.test.ts` 改名而来**(F4-a,§16.12):清空
  * 本身的三条断言随 `stores/clearSessionMessages` 一起退役 —— 那个存储原语
  * P0.2 之后就零生产调用点了(群聊走命令面 `replaceAll{reason:'clear'}`,
- * `collab/room-config.ts`),批 6b 查明、本批按 §16.11 拍板 5 删除。
+ * `collab/collab-room-config.ts`),批 6b 查明、本批按 §16.11 拍板 5 删除。
  * 清空的行为判据在命令面那一侧:`session/__tests__/session-commands.test.ts` 与
  * `event-translator` 退役后的 `command-events` 一族。
  */
@@ -22,7 +22,7 @@ vi.mock('electron', () => ({ app: { isPackaged: false } }))
 let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../session-store.js') | null = null
-let fixture: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
+let fixture: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 async function loadIsolatedStores(): Promise<typeof import('../session-store.js')> {
   vi.resetModules()
@@ -30,7 +30,7 @@ async function loadIsolatedStores(): Promise<typeof import('../session-store.js'
   const sessions = await import('../session-store.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
-  fixture = await (await import('../testing/store-layer.js')).installStoreSessionLayerForTest()
+  fixture = await (await import('../testing/session-testing-store-layer.js')).installStoreSessionLayerForTest()
   return sessions
 }
 

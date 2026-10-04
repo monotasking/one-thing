@@ -1,5 +1,5 @@
 export * from './media-library-service.js'
 export * from './media-library-presentation.js'
 export * from './media-image-generation.js'
-export * from './image-preview-registry.js'
-export * from './image-file-data-url.js'
+export * from './media-image-preview-registry.js'
+export * from './media-image-file-data-url.js'

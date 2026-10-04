@@ -4,15 +4,15 @@ import {
   COLLAB_DRIVE_LABEL_TASK_REVIEW,
   decideCollabActivations,
   formatCollabActivationLabel,
-} from '../activation.js'
-import { computeCollabChainCount, collabMessageCountsTowardChain, collabMessageResetsChain } from '../chain.js'
-import { parseCollabMentions } from '../mentions.js'
-import { isCollabPassMessage } from '../pass.js'
-import { formatCollabReplyQuote, projectRoomHistory } from '../projection.js'
+} from '../collab-activation.js'
+import { computeCollabChainCount, collabMessageCountsTowardChain, collabMessageResetsChain } from '../collab-chain.js'
+import { parseCollabMentions } from '../collab-mentions.js'
+import { isCollabPassMessage } from '../collab-pass.js'
+import { formatCollabReplyQuote, projectRoomHistory } from '../collab-projection.js'
 import {
   buildCollabRoomContext,
   buildCollabRoomSystemPrompt,
-} from '../roster.js'
+} from '../collab-roster.js'
 import {
   COLLAB_HALT_REASON_EXCERPT_CHARS,
   COLLAB_NO_EVIDENCE_TEXT,
@@ -27,7 +27,7 @@ import {
   buildCollabTaskRequeueRefusedLine,
   formatCollabTaskEvidence,
   isCollabProjectedSystemLine,
-} from '../system-lines.js'
+} from '../collab-system-lines.js'
 import {
   COLLAB_HARVEST_SOURCE,
   isCollabDriveMessage,

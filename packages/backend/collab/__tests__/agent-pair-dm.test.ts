@@ -11,15 +11,15 @@
  *     群版与单成员私聊版一个字不动。
  */
 import { describe, expect, it } from "vitest";
-import { decideCollabActivations } from "../activation.js";
+import { decideCollabActivations } from "../collab-activation.js";
 import { COLLAB_DM_PAIR_MAX_CHAIN } from "../collab-types.js";
-import { COLLAB_ROOM_TOOLS } from "../tool-surface.js";
+import { COLLAB_ROOM_TOOLS } from "../collab-tool-surface.js";
 // 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表。
-import { resolveAgentToolSurface } from "../../agent/profile.js";
+import { resolveAgentToolSurface } from "../../agent/agent-profile.js";
 import {
 	buildCollabRoomContext,
 	buildCollabRoomSystemPrompt,
-} from "../roster.js";
+} from "../collab-roster.js";
 import type { CollabAgentLike } from "../collab-types.js";
 
 const FE: CollabAgentLike = { id: "fe", name: "小李", title: "工程师" };

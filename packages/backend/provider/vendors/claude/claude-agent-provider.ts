@@ -3,9 +3,9 @@
  *
  * P1-a(设计稿 `docs/design/provider-oop-2026-08.md` §9)之后,这个文件不再
  * 持有任何线协议逻辑:请求体构造、流解析、消息序列化、usage、错误、缓存断点
- * 全部搬到 `wires/anthropic-messages-wire.ts` + `wires/anthropic-messages.ts`
- * + `wires/anthropic-errors.ts` + `thinking/anthropic-*.ts` 上,方言配方在
- * `vendors/{claude,claude-code}/dialect.ts` 与 `dialects/custom-anthropic.ts`。
+ * 全部搬到 `wires/provider-anthropic-messages-wire.ts` + `wires/provider-wires-anthropic-messages.ts`
+ * + `wires/provider-wires-anthropic-errors.ts` + `thinking/anthropic-*.ts` 上,方言配方在
+ * `vendors/{claude,claude-code}/dialect.ts` 与 `dialects/provider-dialects-custom-anthropic.ts`。
  *
  * 服务商自述试点 P2 第 2 批从 `agent-loop/providers/claude.ts` 搬回家。**生产路不走这里**
  * (运行时工厂是同目录 `runtime.ts`;backend 那层只加了缺省 fetch 的包装零调用者,已删);
@@ -14,15 +14,15 @@
 import type {
 	AgentModelCapabilities,
 	AgentProvider,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	ANTHROPIC_TRANSPORT_CAPABILITIES,
 	anthropicAuth,
 	anthropicDialect,
 	createAnthropicProvider,
-} from "../../dialects/anthropic-recipe.js";
-import type { AgentProviderRequestDumper } from "../../request-dumper.js";
+} from "../../dialects/provider-dialects-anthropic-recipe.js";
+import type { AgentProviderRequestDumper } from "../../provider-request-dumper.js";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -52,7 +52,7 @@ export function createClaudeAgentProvider(
 	// 门面走 `anthropicDialect()` 而不是 `defineAnthropicDialect()`:每次构造
 	// 一份即用即弃的配方,不往进程级注册表里塞一个以 providerId 命名的条目
 	// (注册表里该有的是三份**具名**配方:`vendors/{claude,claude-code}/dialect.ts` 与
-	// `dialects/custom-anthropic.ts`)。
+	// `dialects/provider-dialects-custom-anthropic.ts`)。
 	const dialect = anthropicDialect({
 		id: providerId,
 		defaultBaseUrl: ANTHROPIC_DEFAULT_BASE_URL,

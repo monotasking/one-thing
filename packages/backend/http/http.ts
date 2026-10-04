@@ -2,8 +2,8 @@ export {
   assertOkResponse,
   readJsonSseData,
   readSseEvents,
-} from './fetch-utils.js'
+} from './http-fetch-utils.js'
 export type {
   FetchLike,
   SseEvent,
-} from './fetch-utils.js'
+} from './http-fetch-utils.js'

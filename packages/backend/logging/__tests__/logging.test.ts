@@ -10,7 +10,7 @@ import {
   normalizeError,
   parseLogLevelSpec,
   type LogRecord,
-} from '../logger-primitives.js'
+} from '../logging-logger-primitives.js'
 
 function collect(): { sink: { write(record: LogRecord): void }; records: LogRecord[] } {
   const records: LogRecord[] = []

@@ -8,9 +8,9 @@
  */
 
 import type { Analyzer } from './search-kernel-analyzer-types.js'
-import { cjkBigramAnalyzer } from './cjk-bigram.js'
-import { latinWordAnalyzer } from './latin-word.js'
-import { compositeAnalyzer } from './composite.js'
+import { cjkBigramAnalyzer } from './search-kernel-analyzer-cjk-bigram.js'
+import { latinWordAnalyzer } from './search-kernel-analyzer-latin-word.js'
+import { compositeAnalyzer } from './search-kernel-analyzer-composite.js'
 
 export class DuplicateAnalyzerError extends Error {
   readonly analyzerId: string

@@ -30,7 +30,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-resource-kerne
 process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('../backend-current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
@@ -136,7 +136,7 @@ describe('资源内核在真装配里(K1)', () => {
     // 它),而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户与
     // 模型真正看见的那一份**,不是装配的内部账。
     const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
-    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/catalog-projection')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/toolkit-catalog-projection')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
     // 露面规则(§10.4 第三行):provider 在注册表里 = 那只工具在目录里。
@@ -345,7 +345,7 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('AI 路径(直接 run 那只工具)与 do 拿到同形的 Outcome', async () => {
-    const { createAppToolRunner } = await import('@onething/backend/toolkit/runner-factory')
+    const { createAppToolRunner } = await import('@onething/backend/toolkit/toolkit-runner-factory')
     const runner = createAppToolRunner({ observer: { on: () => {} } })
     // `tools()` 按 scheme 字典序,不能拿 [0] 当 session。
     const tool = backend.resources.toolFor('session')!
@@ -398,7 +398,7 @@ describe('资源内核在真装配里(K1)', () => {
     // 装一个 core 从没听说过的命名空间,不碰装配一行代码 —— 它的事件照样上总线。
     // 这是 §8 陌生能力演练在**事件**这一侧的那半句。
     const { planFromSpec } = await import('@onething/backend/resource/resource-api')
-    const { textResult } = await import('@onething/backend/toolkit/tool-protocol')
+    const { textResult } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',
@@ -644,7 +644,7 @@ describe('资源内核在真装配里(K1)', () => {
    *
    * 它跑在真装配上而不是单测里,因为要证的正是「`backend.dispose()` 到得了
    * `resourceKernel.dispose()`」这条接线:内核那一侧的行为由
-   * `resource/__tests__/kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
+   * `resource/__tests__/resource-kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
    */
   it('backend.dispose():内核里在飞的做被掐成 aborted,关机不悬着(K2a\')', async () => {
     const { planFromSpec } = await import('@onething/backend/resource/resource-api')

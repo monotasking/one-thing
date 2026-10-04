@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { builtinProviderFamilyLookup as providerFamilyOf } from "../builtin-manifests.js";
+import { builtinProviderFamilyLookup as providerFamilyOf } from "../provider-builtin-manifests.js";
 
 /*
  * P4 从 `packages/shared/__tests__/` 搬来:家族表从 `@shared` 搬进了 runtime 名册,

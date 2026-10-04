@@ -87,7 +87,7 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
   getSettings: () => ({}),
 }))
 
-const { ensureCollabAgentSession } = await import('../agent-exec-session.js')
+const { ensureCollabAgentSession } = await import('../collab-agent-exec-session.js')
 const { displayAgent, findAgent, getAgent, invalidateAgentsCache } =
   await import('@onething/backend/agent/agent-store-access')
 const { getOnethingAgentsPath } = await import('@onething/backend/storage')

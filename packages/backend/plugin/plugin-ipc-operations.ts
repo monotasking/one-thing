@@ -15,7 +15,7 @@ import {
   type ExecuteOnethingPluginCommandResult,
   type OnethingPluginCommandSessionLike,
 } from './plugin-command-execution.js'
-import type { PluginConfigError, PluginConfigField } from './config-schema.js'
+import type { PluginConfigError, PluginConfigField } from './plugin-config-schema.js'
 import {
   projectOnethingPluginCommandsForRenderer,
   projectOnethingPluginsForRenderer,

@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
-import { VoiceAudioRouter } from '../audio-router.js'
+import { VoiceAudioRouter } from '../voice-audio-router.js'
 
 const state = vi.hoisted(() => ({ connect: vi.fn(), close: vi.fn() }))
-vi.mock('../volcano/asr-session.js', () => ({
+vi.mock('../volcano/voice-volcano-asr-session.js', () => ({
   OnethingDoubaoASRSession: class {
     connect = state.connect
     close = state.close

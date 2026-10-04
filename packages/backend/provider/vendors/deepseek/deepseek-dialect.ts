@@ -1,5 +1,5 @@
 /**
- * `deepseek` —— 唯一一份**不是**从 `openai-compatible.ts` 那批注册旋钮读出来的
+ * `deepseek` —— 唯一一份**不是**从 `provider-openai-compatible.ts` 那批注册旋钮读出来的
  * 配方:它来自整整一份 `deepseek.ts`。
  *
  *  1. **user 内容走线级 codec**(P0b-A):vision-exp 类模型收 `image_url`
@@ -16,7 +16,7 @@
  *     `DeepSeek` 的那个家名随 `displayName` 字段一起退役(设计稿 §10 第 1 条,
  *     P0b-B 拍板)。
  */
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	PathUsageNormalizer,
 	type RequestBodyBuilder,
@@ -24,13 +24,13 @@ import {
 	type TurnContext,
 	type UsagePathTable,
 } from "../../base/provider-base.js";
-import { defineOpenAIChatDialect } from "../../dialects/recipe.js";
+import { defineOpenAIChatDialect } from "../../dialects/provider-dialects-recipe.js";
 import { deepSeekInferredThinkingWire, resolveDeepSeekThinking } from "./deepseek-thinking.js";
 
 /**
  * DeepSeek 的 vision-exp 端点多一个 `original`(原图不缩放),其余三值同标准。
  * 值域是**这一家的事实**,不是白名单的宽窄 —— 所以按家给表,不取并集。
- * (从 `wires/openai-chat-provider-options.ts` 搬回家。)
+ * (从 `wires/provider-wires-openai-chat-options.ts` 搬回家。)
  */
 export const DEEPSEEK_IMAGE_DETAIL_VALUES = [
 	"auto",

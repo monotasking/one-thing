@@ -3,7 +3,7 @@
  *
  * **账本只写一次,写的人是引擎**:ACP 这一轮的 `finish` 分片带着 `usage` 走进 agent-loop,
  * 装配层的执行器在回合边界对**每一家** provider 都调一次 `recordUsage`
- * (`backend/engine/stream/engine-stream-agent-loop-executor.ts` 的 `syncLastTurnUsage`)。所以这里
+ * (`backend/engine/stream/engine-agent-loop-executor.ts` 的 `syncLastTurnUsage`)。所以这里
  * 不再另起一条写账的路 —— 那会是同一轮两行账。这里只负责把协议给的东西**一格不丢**地折进
  * `AgentUsage`:
  *
@@ -19,7 +19,7 @@
  * 本地价目估算(`costUSD`)照旧由账本按价目表算:agent id 不在价目表里,于是它是 `null`,
  * 厂商报价另存 `providerCostUSD` —— 账本两格并存的约定,见 `usage/usage-types.ts`。
  */
-import type { AgentUsage } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentUsage } from '@onething/backend/agent-loop/agent-loop-primitives'
 
 /** 账本里 ACP 回合的类目。 */
 export const ACP_USAGE_SOURCE = 'acp'

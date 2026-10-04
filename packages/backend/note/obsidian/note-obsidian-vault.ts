@@ -24,9 +24,9 @@
 
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { BasenameIndex } from '../basename-index.js'
-import { formatDailyDate } from '../daily-format.js'
-import { buildLinkText, isMarkdownNote, resolveAttachmentFolder, toLinkPathStyle, uniqueAttachmentName } from '../link-format.js'
+import { BasenameIndex } from '../note-basename-index.js'
+import { formatDailyDate } from '../note-daily-format.js'
+import { buildLinkText, isMarkdownNote, resolveAttachmentFolder, toLinkPathStyle, uniqueAttachmentName } from '../note-link-format.js'
 import { normalizeVaultRoot } from '../note-paths.js'
 import {
   DEFAULT_NOTES_DAILY_FORMAT,
@@ -41,7 +41,7 @@ import {
   type NoteVault,
   type NoteVaultUnavailableReason,
 } from '../note-types.js'
-import type { ObsidianCli } from './cli.js'
+import type { ObsidianCli } from './note-obsidian-cli.js'
 import type { ObsidianVaultRecord } from './note-obsidian-registry.js'
 import {
   attachmentPathScript,
@@ -52,7 +52,7 @@ import {
   vaultConfigScript,
   type ObsidianDailyNotesOptions,
   type ObsidianVaultConfigRead,
-} from './scripts.js'
+} from './note-obsidian-scripts.js'
 import type { ObsidianVaultSnapshot, SnapshotStore } from './note-obsidian-snapshot.js'
 
 export const OBSIDIAN_SYSTEM_ID = 'obsidian'

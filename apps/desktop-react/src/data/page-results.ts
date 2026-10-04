@@ -2,7 +2,7 @@ import type { ProjectedMessage } from './chat-fold'
 
 /**
  * **首屏尾页的工具结果侧表** —— 壳这一侧(工单 5 ①②;后端那一半在
- * `packages/backend/session/page-results.ts`,判据全文写在那儿)。
+ * `packages/backend/session/session-page-results.ts`,判据全文写在那儿)。
  *
  * ── 一句话 ────────────────────────────────────────────────────────────────
  * 页上每段工具结果**只走一次线**:后端把它抽进一张按 `toolCallId` 键的侧表,

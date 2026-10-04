@@ -34,14 +34,14 @@ vi.mock('../session-store.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { flushSessionEventLog, getSessionEventsLogPath } = await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { sessionReads } = await import('../reads.js')
-const { putSessionBlob } = await import('../blob-store.js')
+const { flushSessionEventLog, getSessionEventsLogPath } = await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
+const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { sessionReads } = await import('../session-reads.js')
+const { putSessionBlob } = await import('../session-blob-store.js')
 
 const SESSION = 'sess-tail'
 

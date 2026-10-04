@@ -34,7 +34,7 @@ import {
   scoreOfDistance,
 } from '../kernel/search-kernel.js'
 
-import type { ModelState, ModelStatus } from './model-download.js'
+import type { ModelState, ModelStatus } from './search-index-model-download.js'
 import type {
   IndexSearchRequest,
   IndexSearchResult,
@@ -42,9 +42,9 @@ import type {
   IndexStorage,
   IndexVectorSearchRequest,
   IndexVectorSearchResult,
-} from './worker-core.js'
-import type { IndexWorkerFactory } from './worker-host.js'
-import { IndexWorkerHost } from './worker-host.js'
+} from './search-index-worker-core.js'
+import type { IndexWorkerFactory } from './search-index-worker-host.js'
+import { IndexWorkerHost } from './search-index-worker-host.js'
 
 export interface SearchIndexServiceOptions {
   /** 「怎么造 Worker」。真宿主起 `worker_threads.Worker`;单测同线程跑 core。 */
@@ -156,7 +156,7 @@ export interface SqliteLexicalRetrieverOptions {
  * 索引型能力的词法召回路 —— 与 core 的 `createLexicalRetriever` 同一个位置,区别
  * 只有一处:**索引在另一条线程上**,所以它是异步的,而且不在这一侧拼
  * `LexicalQuery`(词典要用来做前缀展开,而词典跟着索引走 —— 详见
- * `worker-core.ts` 的 `IndexSearchRequest` 注释)。
+ * `search-index-worker-core.ts` 的 `IndexSearchRequest` 注释)。
  *
  * 打分仍然走 core 的 `applyRanking`:半衰、按 facet 值加权、某字段命中置顶三格
  * 全是 `manifest.ranking` 里的**数据**,这一侧一个能力名都没有。
@@ -205,7 +205,7 @@ export function createSqliteLexicalRetriever(options: SqliteLexicalRetrieverOpti
 
 /**
  * 命中词落在查询串的哪一段(壳画「为什么命中」时用)。与
- * `search/kernel/bases/lexical-retriever.ts` 里那只同名私有函数**同一条判据** ——
+ * `search/kernel/bases/search-kernel-bases-lexical-retriever.ts` 里那只同名私有函数**同一条判据** ——
  * 它没有导出,所以这里照抄了六行;两边都只读 `hit.matched` 与 AST,不会分家。
  */
 function queryRangesFor(query: SearchQuery, hit: LexicalHit): TextRange[] {
@@ -229,7 +229,7 @@ export interface SqliteVectorRetrieverOptions {
   }): Candidate
   /**
    * KNN 取几条。缺省 = `offset + limit`。**不放大** —— 授权是 `docId IN (子查询)`
-   * 下推进 KNN 的(见 `sqlite-vec.ts` 的读数表),范围外的候选根本不占名额,所以
+   * 下推进 KNN 的(见 `search-index-sqlite-vec.ts` 的读数表),范围外的候选根本不占名额,所以
    * 不需要「多取几条再筛」那种补偿。
    */
   overfetch?: number

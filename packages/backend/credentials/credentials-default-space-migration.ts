@@ -50,13 +50,13 @@ import {
   readSpaceOverlay,
   writeSpaceOverlay,
   type SpaceOverlay,
-} from '@onething/backend/space/overlay'
+} from '@onething/backend/space/space-overlay'
 import {
   createEmptySpaceProviderSettings,
   hasSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { getSpacesStore } from '@onething/backend/space/space-store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
@@ -67,7 +67,7 @@ import {
 import { getPersistedSettings, savePersistedSettings } from '@onething/backend/settings'
 import { getProviderInfo } from '@onething/backend/provider'
 import { providerDialFieldsOf } from './credentials-provider-rules.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('providers')
 

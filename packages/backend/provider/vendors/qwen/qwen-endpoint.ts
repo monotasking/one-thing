@@ -17,7 +17,7 @@
  *
  * 纯模块(壳经 manifest 也会走到这里):服务商自述试点 P2 从 `providers/qwen.ts` 搬回家。
  */
-import { normalizeProviderBaseUrl } from '../../base-url.js'
+import { normalizeProviderBaseUrl } from '../../provider-normalize-base-url.js'
 
 export type OnethingQwenApiMode = 'standard' | 'token-plan' | 'coding-plan'
 export type OnethingQwenRegion = 'cn' | 'intl'

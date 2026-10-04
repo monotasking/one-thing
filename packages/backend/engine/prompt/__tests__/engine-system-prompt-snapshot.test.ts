@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentModelCapabilities, AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type { ToolDefinition } from '@shared/ipc.js'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/tool-protocol'
-import type { Result, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Result, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { configureToolkitCatalog } from '@onething/backend/toolkit'
 
 const deepseekTextCapabilities: AgentModelCapabilities = {
@@ -111,7 +111,7 @@ vi.mock('@onething/backend/agent/agent-store-access', () => ({
   defaultAgent: () => mocks.findAgent(),
 }))
 
-vi.mock('../../stream/provider-helpers.js', () => ({
+vi.mock('../../stream/engine-stream-provider-helpers.js', () => ({
   getEffectiveProviderConfig: mocks.getEffectiveProviderConfig,
   resolveProviderAuth: mocks.resolveProviderAuth,
 }))
@@ -128,7 +128,7 @@ vi.mock('../../stream/engine-native-tools.js', () => ({
   getNativeProviderToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
-vi.mock('@onething/backend/mcp/index-with-bridge', () => ({
+vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
@@ -137,8 +137,8 @@ vi.mock('../../engine-agent-runtime.js', () => ({
   createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
 }))
 
-vi.mock('@onething/backend/agent-loop/loop-primitives', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/agent-loop/loop-primitives')>(),
+vi.mock('@onething/backend/agent-loop/agent-loop-primitives', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/agent-loop/agent-loop-primitives')>(),
   resolveAgentModelCapabilities: mocks.resolveAgentModelCapabilities,
   agentSupportsTools: mocks.agentSupportsTools,
 }))

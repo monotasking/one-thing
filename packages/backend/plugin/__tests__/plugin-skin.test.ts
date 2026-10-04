@@ -1,7 +1,7 @@
 /**
  * H3 验收:`contributes.theme.skin` 皮肤包(第一批旋钮)。
  *
- * 治理照抄 L2(`theme-overrides.test.ts`)一字不改,所以这里钉的是同一组性质:
+ * 治理照抄 L2(`plugin-theme-overrides.test.ts`)一字不改,所以这里钉的是同一组性质:
  *  1. **枚举面** —— 插件递的是**档位名**不是 CSS 值;不认识的旋钮、枚举外的档位
  *     逐条丢弃。皮肤没有、也不需要 L2 那套颜色字面量白名单:插件的字符串永远
  *     不进 CSS(这一条本身要被钉住,否则哪天有人把它改成收 CSS 值也没人发现)。
@@ -35,7 +35,7 @@ const managedPlugins: Array<{ definition: { id: string; enabled: boolean; manife
 vi.mock('../plugin-manager.js', () => ({
   getPluginManager: () => (managedPlugins.length ? { getPlugins: () => managedPlugins } : null),
 }))
-const { getPluginSkinTiers } = await import('../skin-table.js')
+const { getPluginSkinTiers } = await import('../plugin-skin-table.js')
 
 initializeThemes()
 

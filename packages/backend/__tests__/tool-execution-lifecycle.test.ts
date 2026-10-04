@@ -54,9 +54,9 @@ it('holds the actual Backend lease through tool cleanup and isolates a captured 
   const stopping = backend.dispose()
   await aborted.promise
   await running
-  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
   expect(inspectStoreLock({ storePath: directory }).status).toBe('held')
-  const { getCurrentBackendSafe } = await import('../current.js')
+  const { getCurrentBackendSafe } = await import('../backend-current.js')
   expect(getCurrentBackendSafe()).toBe(backend)
   cleanup.release()
   await stopping

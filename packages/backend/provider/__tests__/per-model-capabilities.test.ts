@@ -12,8 +12,8 @@
  * 现在两侧同读一条规则:原生 image_generation 工具可用 ⇒ 具备 image 输出。
  */
 import { describe, expect, it } from "vitest";
-import { assertAgentOutputModalitiesSupportedByCapabilities } from "@onething/backend/agent-loop/loop-primitives";
-import { createAgentProviderFromRuntime } from "../factory.js";
+import { assertAgentOutputModalitiesSupportedByCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
+import { createAgentProviderFromRuntime } from "../provider-factory.js";
 
 /** 真机 `~/.onething/settings.json` 里 /codex/models/gpt-5.5 那条的形状。 */
 const STALE_CODEX_ENTRY = {

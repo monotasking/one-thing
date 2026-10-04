@@ -33,14 +33,14 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '@onething/backend/event/session-event-bus'
+import { EventBus } from '@onething/backend/event/event-session-bus'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { encodeSessionLogEventLine } from '@onething/backend/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '../index/search-index.js'
 import type { IndexEndpoint } from '../index/search-index.js'
-import type { IndexWorkerData } from '../index/worker-data.js'
-import type { IndexWorkerHandle } from '../index/worker-host.js'
+import type { IndexWorkerData } from '../index/search-index-worker-data.js'
+import type { IndexWorkerHandle } from '../index/search-index-worker-host.js'
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/search'
 import { FolderVault } from '@onething/backend/note'
 import type { NoteVault } from '@onething/backend/note'
@@ -63,7 +63,7 @@ vi.mock('@onething/backend/event', () => ({ getEventBus: () => bus }))
  * 所以用例也必须递一条真事件,不能只递会话 id。
  */
 const appendObservers = new Set<(sessionId: string, record: SessionLogEventRecord) => void>()
-vi.mock('../../session/event-log.js', () => ({
+vi.mock('../../session/session-event-log.js', () => ({
   registerSessionLogEventAppendObserver: (
     observer: (sessionId: string, record: SessionLogEventRecord) => void,
   ) => {
@@ -110,7 +110,7 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
 }
 vi.mock('../search-adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
 
-const { createAppSearchService } = await import('../service-setup.js')
+const { createAppSearchService } = await import('../search-service-setup.js')
 
 // ---- 同线程 Worker(照装配算出来的 workerData 装) -----------------------
 
@@ -188,7 +188,7 @@ function writeSession(sessionId: string, text: string, name: string): void {
 }
 
 /**
- * 真写路做的两件事:**落盘 + 同步喊一声**(`backend/session/event-log.ts` 在分配
+ * 真写路做的两件事:**落盘 + 同步喊一声**(`backend/session/session-event-log.ts` 在分配
  * 到 seq 的同一个同步段通知观察者)。用例照做同样两件,所以「装配听见之后干了
  * 什么」是真的被考到了。
  */
@@ -337,7 +337,7 @@ describe('search authorization before retrieval, preview and actions', () => {
 
   it('uses the caller of tool expansion, even when another caller populated the result memo', async () => {
     const { restore } = await seedOwners()
-    const { createAppSearchToolAdapters } = await import('../tool-adapters.js')
+    const { createAppSearchToolAdapters } = await import('../search-tool-adapters.js')
     const tools = createAppSearchToolAdapters(handle!.service)
     const principal = { kind: 'user' as const, id: 'alice', sessionId: 'alice-a', spaceId: 'same-product-space', executionContext: { userId: 'alice', workspaceId: 'tenant-a' } }
     const body = vi.spyOn(stubAdapters, 'iterateSessionMessages')

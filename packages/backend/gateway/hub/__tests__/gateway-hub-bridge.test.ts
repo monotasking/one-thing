@@ -4,14 +4,14 @@ import type {
   CorePermissionRequestEvent,
   CorePermissionSurface,
   CoreTextStreamChunk,
-} from '@onething/backend/gateway/conversation-runtime'
+} from '@onething/backend/gateway/gateway-conversation-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../channel.js'
-import { LoggerRoot, type LogRecord, type LogSink } from '@onething/backend/logging/logger-primitives'
+import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../gateway-hub-channel.js'
+import { LoggerRoot, type LogRecord, type LogSink } from '@onething/backend/logging/logging-logger-primitives'
 import { GatewayBridge, type GatewayCommandProvider } from '../gateway-hub-bridge.js'
-import { Allowlist } from '../middleware/allowlist.js'
-import { RateLimiter } from '../middleware/rate-limiter.js'
-import { GatewaySessionRegistry } from '../session-registry.js'
+import { Allowlist } from '../middleware/gateway-hub-middleware-allowlist.js'
+import { RateLimiter } from '../middleware/gateway-hub-middleware-rate-limiter.js'
+import { GatewaySessionRegistry } from '../gateway-hub-session-registry.js'
 
 /**
  * L2:bridge 的失败留痕现在走**构造时注入的 logger**,不再是 console。

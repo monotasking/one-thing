@@ -24,7 +24,7 @@ import {
 	type Dialect,
 } from "../provider-base.js";
 import { getLogger } from "../../../logging/logging.js";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 
 function turnFor(providerId: string, request: AgentTurnRequest): TurnContext {
 	const profile = new LedgerModelProfileResolver().resolveSync(

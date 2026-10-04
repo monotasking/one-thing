@@ -22,7 +22,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import type { AgentNotificationEvent } from '@shared/events/index.js'
 import { HOST_MCP_UNAUTHORIZED } from '@shared/ipc/host-mcp.js'
-import { HOST_MCP_BRIDGE_ENV } from '@onething/backend/acp/mcp-bridge/server'
+import { HOST_MCP_BRIDGE_ENV } from '@onething/backend/acp/mcp-bridge/acp-mcp-bridge-server'
 import { createOnethingHttpServer } from '../../http-server/http-server-routes.js'
 import { createAppServerRuntime } from '../../http-server/__tests__/http-server-test-helpers.js'
 import type { OnethingServerRuntime } from '../../http-server/http-server-runtime.js'

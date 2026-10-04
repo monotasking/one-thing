@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession, ToolDefinition } from '@shared/ipc.js'
 import type { ResumeAfterConfirmCommand } from '@shared/events/session-commands.js'
-import { EventBus } from '@onething/backend/event/session-event-bus'
+import { EventBus } from '@onething/backend/event/event-session-bus'
 
-import type { BindableStreamSender, StreamSender } from '../stream-engine.js'
+import type { BindableStreamSender, StreamSender } from '../engine-stream-dispatcher.js'
 
 type SenderMock = Pick<BindableStreamSender, 'isDestroyed' | 'send' | 'on'>
 
@@ -66,7 +66,7 @@ vi.mock('../../session/session-commands.js', () => ({ sessionCommands: {
 } }))
 
 // 引擎的消息读走读门面(P0.2 C1):这份 mock 与上面的 store mock 是同一个假会话。
-vi.mock('../../session/reads.js', () => ({
+vi.mock('../../session/session-reads.js', () => ({
   sessionReads: {
     listMessages: (sessionId: string) => ({
       messages: mocks.getSession(sessionId)?.messages ?? [],
@@ -79,7 +79,7 @@ vi.mock('../../session/reads.js', () => ({
   },
 }))
 
-vi.mock('../stream/provider-helpers.js', () => ({
+vi.mock('../stream/engine-stream-provider-helpers.js', () => ({
   getEffectiveProviderConfig: mocks.getEffectiveProviderConfig,
   resolveProviderAuth: mocks.resolveProviderAuth,
   extractErrorDetails: vi.fn((error: { message?: string }) => error.message),
@@ -93,7 +93,7 @@ vi.mock('../engine-chat-facade.js', () => ({
   generateChatTitle: vi.fn(async () => 'Generated title'),
 }))
 
-vi.mock('../stream/stream-executor.js', () => ({
+vi.mock('../stream/engine-stream-executor.js', () => ({
   executeMessageStream: vi.fn(),
   // F4-c c4-d(§16.27):占位入库的同一同步段里开账,由引擎创建点调。
   openAssistantRun: vi.fn(),
@@ -101,12 +101,12 @@ vi.mock('../stream/stream-executor.js', () => ({
   failAssistantRun: vi.fn(),
 }))
 
-vi.mock('../stream/engine-stream-agent-loop-executor.js', () => ({
+vi.mock('../stream/engine-agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 
-vi.mock('../stream-engine-runtime.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../stream-engine-runtime.js')>()
+vi.mock('../engine-main-stream-runtime.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../engine-main-stream-runtime.js')>()
   return {
     ...actual,
     createMainStreamEngineRuntime: () => {
@@ -133,11 +133,11 @@ vi.mock('../prompt/engine-system-prompt.js', () => ({
   buildPrompt: mocks.buildPrompt,
 }))
 
-vi.mock('@onething/backend/skill/session-skill-cache', () => ({
+vi.mock('@onething/backend/skill/skill-session-cache', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
 }))
 
-vi.mock('@onething/backend/mcp/index-with-bridge', () => ({
+vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   getMCPToolsForAI: mocks.getMCPToolsForAI,
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
@@ -153,18 +153,18 @@ vi.mock('@onething/backend/project-dir/project-dir-bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('@onething/backend/media/library-service-bound', () => ({
+vi.mock('@onething/backend/media/media-library-service-bound', () => ({
   mediaLibraryService: {
     ingestMessageAttachments: vi.fn(),
   },
 }))
 
-vi.mock('../compact-session.js', () => ({
+vi.mock('../engine-compact-session.js', () => ({
   compactSessionContext: vi.fn(),
   getContextCompactReason: vi.fn(() => null),
 }))
 
-vi.mock('@onething/backend/prompt/stored-prompt-resolver', () => ({
+vi.mock('@onething/backend/prompt/prompt-stored-resolver', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,
@@ -172,7 +172,7 @@ vi.mock('@onething/backend/prompt/stored-prompt-resolver', () => ({
   })),
 }))
 
-const { createBoundStreamEngine } = await import('../../assemble-engine.js')
+const { createBoundStreamEngine } = await import('../../backend-assemble-engine.js')
 
 function sender(): StreamSender {
   return mocks.sender as SenderMock as unknown as StreamSender

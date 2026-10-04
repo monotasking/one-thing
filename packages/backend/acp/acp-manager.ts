@@ -19,7 +19,7 @@ import type {
 } from '@shared/contracts/acp.js'
 import type { InitializeResponse, SessionUpdate } from '@agentclientprotocol/sdk'
 import { ACPClient } from './acp-client.js'
-import { FileACPSessionLinkStore, type ACPSessionLinkStore } from './session-links.js'
+import { FileACPSessionLinkStore, type ACPSessionLinkStore } from './acp-session-links.js'
 
 import { getLogger } from '../logging/logging.js'
 

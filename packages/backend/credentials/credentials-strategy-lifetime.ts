@@ -1,6 +1,6 @@
 import { AdmissionGate, QuiescibleScopes } from '@onething/backend/lifecycle'
 import type { OnethingUsageLedger } from '@onething/backend/usage'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 
 /**
  * 「取用量账本」的那个函数。插件凭证策略要按「每把钥匙最近用了多少」挑钥匙,账本住在 usage 里;

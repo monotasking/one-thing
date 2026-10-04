@@ -3,7 +3,7 @@ import type {
   MarkdownResolveAssetRequest,
   MarkdownSaveAttachmentsRequest,
   MarkdownSaveAttachmentsResponse,
-} from './asset-service.js'
+} from './markdown-asset-service.js'
 
 type MaybePromise<T> = T | Promise<T>
 

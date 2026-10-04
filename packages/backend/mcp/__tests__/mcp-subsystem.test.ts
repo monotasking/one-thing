@@ -12,7 +12,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { MCPSettings } from '@shared/mcp/types'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import { McpSubsystem, type McpSubsystemDeps } from '../mcp-subsystem.js'
 
 const SETTINGS: MCPSettings = { enabled: true, servers: [] }

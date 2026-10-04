@@ -4,7 +4,7 @@ import {
   buildOnethingDoubaoHeaders,
   getOnethingDoubaoConfigurationError,
   type OnethingDoubaoWebSocketLike,
-} from '../volcano/asr-session'
+} from '../volcano/voice-volcano-asr-session'
 import {
   VolcanoMessageType,
   decodeVolcanoFrame,

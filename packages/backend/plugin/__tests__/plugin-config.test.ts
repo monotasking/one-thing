@@ -5,9 +5,9 @@
  * 于是**未启用的插件也能配**,整条路径不执行一行插件代码。
  *
  * 纯 schema 归约与取值归一化的用例在隔壁
- * (`config-schema.test.ts`)—— 那半是 manifest → 可渲染控件的归约,这半是存储与生效。
+ * (`plugin-config-schema.test.ts`)—— 那半是 manifest → 可渲染控件的归约,这半是存储与生效。
  *
- * P3'c(2026-08-21):存储侧从装配层搬进产品层(`config.ts` / `config-access.ts` /
+ * P3'c(2026-08-21):存储侧从装配层搬进产品层(`config.ts` / `plugin-config-access.ts` /
  * `health.ts` 的闭包除 `getLogger` 外零脊柱边),测试随之过来;日志见证也从装配层的
  * `collectLogRecordsForTests` 换成产品层的 `captureRuntimeLogs`(同一套记录形状,
  * 只是根 logger 换了一本 —— 本测试不跑 `configureLogging()`,两本没有被接到一起)。
@@ -25,12 +25,12 @@ import {
   setPluginConfig,
   subscribePluginConfigChange,
 } from '../plugin-config.js'
-import { createPluginConfigAccess } from '../config-access.js'
+import { createPluginConfigAccess } from '../plugin-config-access.js'
 import {
   configurePluginHealthHost,
   getPluginRuntimeHealth,
   resetPluginRuntimeHealthForTests,
-} from '../health.js'
+} from '../plugin-health.js'
 
 const DEMO_SCHEMA = {
   type: 'object',

@@ -7,12 +7,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Intent } from '../../toolkit/intent.js'
+import { Intent } from '../../toolkit/toolkit-intent.js'
 import { makeEffect } from '@shared/toolkit/effects.js'
-import { textResult } from '../../toolkit/result.js'
+import { textResult } from '../../toolkit/toolkit-result.js'
 import { ToolRunner } from '../../toolkit/toolkit-runner.js'
-import type { Outcome } from '../../toolkit/outcome.js'
-import { combineValidators, type Authorizer, type Validator } from '../../toolkit/ports.js'
+import type { Outcome } from '../../toolkit/toolkit-outcome.js'
+import { combineValidators, type Authorizer, type Validator } from '../../toolkit/toolkit-ports.js'
 import {
   allowAuthorizer,
   makeInvocation,
@@ -20,7 +20,7 @@ import {
   RecordingObserver,
 } from '../../toolkit/__tests__/fakes.js'
 import { ResourceTool, type ShellDispatch } from '../resource-tool.js'
-import { ResourceInputValidator } from '../validator.js'
+import { ResourceInputValidator } from '../resource-validator.js'
 import { DEMO_SCHEME, DemoProvider, demoSpec } from './fakes.js'
 
 /**

@@ -33,13 +33,13 @@
  * ## 流的生命周期在 authService 里
  *
  * 设备码轮询、回调等待、到点超时与 `cancel` 都在 `OnethingAuthService`;每次相位变化
- * 经全局事件 `oauth:flow` 出网(`auth/oauth-events.ts` 的 `installOAuthBusBroadcaster`)。
+ * 经全局事件 `oauth:flow` 出网(`auth/auth-oauth-events.ts` 的 `installOAuthBusBroadcaster`)。
  * `devicePoll` 这条动词保留给还在自己轮询的调用方,它与服务自己的轮询走同一口、同一条收尾。
  *
  * ## 两条推送不在这里
  *
  * `OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 走
- * `configureOAuthEventBroadcaster`(`./oauth-events.js`)——
+ * `configureOAuthEventBroadcaster`(`./auth-oauth-events.js`)——
  * router 今天没有推送面。`refresh` 里那句「刷新失败 = 令牌过期」因此改走
  * `notifyOAuthTokenExpired`(经事件源),而不是像从前桌面那样直接调 Electron 广播。
  */
@@ -53,9 +53,9 @@ import {
   startOnethingOAuthForIpc,
 } from '@onething/backend/auth'
 import { oauthRouter, type OAuthRoutes } from '@shared/ipc/oauth.js'
-import { getAuthService } from '@onething/backend/auth/process-auth-service'
-import { notifyOAuthTokenExpired } from '@onething/backend/auth/oauth-events'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { getAuthService } from '@onething/backend/auth/auth-process-service'
+import { notifyOAuthTokenExpired } from '@onething/backend/auth/auth-oauth-events'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/backend/auth/auth-ipc-operations'
 import type { ConsoleLikePort } from '@onething/backend/logging'

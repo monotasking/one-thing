@@ -90,11 +90,11 @@ import {
   configureCollabAgentActivitySource,
   shutdownCollabAgentActivity,
   type CollabAgentActivityView,
-} from '../agent-activity.js'
+} from '../collab-agent-activity.js'
 import {
   configureCollabExternalLogSink,
   installCollabExternalObservers,
-} from '../external-observability.js'
+} from '../collab-external-observability.js'
 import { findAgent, listAgents } from '@onething/backend/agent/agent-store-access'
 import { getEventBus } from '@onething/backend/event'
 import * as store from '@onething/backend/session'
@@ -105,11 +105,11 @@ import {
   type SessionAccess,
   type SessionOwnershipRecord,
 } from '@onething/backend/session'
-import { getCurrentBackend, getStreamEngineSafe } from '@onething/backend/current.js'
+import { getCurrentBackend, getStreamEngineSafe } from '@onething/backend/backend-current.js'
 import { fixedExecutionContext } from '../../session/session.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
-import { createCollabActorAuthorization, type CollabActorAuthorization } from './execution-authorization.js'
-import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-exec-session.js'
+import { createCollabActorAuthorization, type CollabActorAuthorization } from './collab-actors-execution-authorization.js'
+import { advanceSeenCursor, ensureCollabAgentSession } from '../collab-agent-exec-session.js'
 import {
   forgetCollabBoardRoom,
   getCollabTask,
@@ -117,17 +117,17 @@ import {
   onCollabBoardEvent,
   patchCollabTask,
   shutdownCollabBoardBroadcasts,
-} from '../board-store.js'
+} from '../collab-board-store.js'
 import { readCollabRoomSpentTodayUSD } from '../collab-budget.js'
-import { getCollabDigestsForDays } from '@onething/backend/collab/digest-store'
-import { configureCollabDriveGuard } from '@onething/backend/collab/drive-guard'
-import { buildCollabIdentityDirectory } from '../identity-directory.js'
+import { getCollabDigestsForDays } from '@onething/backend/collab/collab-digest-store'
+import { configureCollabDriveGuard } from '@onething/backend/collab/collab-drive-guard'
+import { buildCollabIdentityDirectory } from '../collab-identity-directory.js'
 import {
   broadcastCollabCoordinator,
   configureCollabRoomSnapshotSource,
   forgetCollabInspector,
-} from '../inspector.js'
-import { collabRoomMembers } from '../members.js'
+} from '../collab-inspector.js'
+import { collabRoomMembers } from '../collab-members.js'
 import {
   deleteRoomRuntime,
   maxChainFor,
@@ -135,33 +135,33 @@ import {
   postSystemLine,
   postTaskSystemLine,
   removeCollabRoomDirectory,
-} from '../room-runtime.js'
-import { collabUserPromptFields, resolveUserIdentity } from '../user-identity.js'
-import { clearCollabWakeFollowups } from '../wake-followup.js'
+} from '../collab-room-runtime.js'
+import { collabUserPromptFields, resolveUserIdentity } from '../collab-user-identity.js'
+import { clearCollabWakeFollowups } from '../collab-wake-followup.js'
 import {
   CollabAgentActor,
   type CollabAgentActorHost,
   type CollabAgentRoomContextInput, type CollabAgentActorOptions,
-} from '@onething/backend/collab/actors/agent-actor'
-import { openCollabAgentMailbox, createCollabAgentAccountFileStore } from '@onething/backend/collab/actors/agent-mailbox'
+} from '@onething/backend/collab/actors/collab-agent-actor'
+import { openCollabAgentMailbox, createCollabAgentAccountFileStore } from '@onething/backend/collab/actors/collab-actors-agent-mailbox'
 import { getOnethingStorePath } from '@onething/backend/storage'
-import { createCollabEngineMindPort } from './engine-mind-port.js'
-import type { CollabMindPort } from '@onething/backend/collab/actors/mind-port'
-import { createCollabActorNotebookStore } from './owned-notebook-store.js'
+import { createCollabEngineMindPort } from './collab-actors-engine-mind-port.js'
+import type { CollabMindPort } from '@onething/backend/collab/actors/collab-actors-mind-port'
+import { createCollabActorNotebookStore } from './collab-actors-owned-notebook-store.js'
 import {
   CollabRefereeActor,
   type CollabRefereeActorHost,
   type CollabRefereeJudgePort, type CollabRefereeActorOptions,
-} from '@onething/backend/collab/actors/referee-actor'
-import { createCollabEngineRefereeJudgePort } from './referee-judge.js'
-import { collabRoomActorsDir, createCollabRoomAccountFileStore } from '@onething/backend/collab/actors/room-account'
-import { CollabRoomActor, type CollabRoomActorHost } from '@onething/backend/collab/actors/room-actor'
+} from '@onething/backend/collab/actors/collab-referee-actor'
+import { createCollabEngineRefereeJudgePort } from './collab-actors-referee-judge.js'
+import { collabRoomActorsDir, createCollabRoomAccountFileStore } from '@onething/backend/collab/actors/collab-actors-room-account'
+import { CollabRoomActor, type CollabRoomActorHost } from '@onething/backend/collab/actors/collab-room-actor'
 import {
   createCollabDeadLetterSink,
   createCollabSchedulerLogFileStore,
   sweepCollabSchedulerLogs,
   type CollabSchedulerLogStore,
-} from '@onething/backend/collab/actors/scheduler-log'
+} from '@onething/backend/collab/actors/collab-actors-scheduler-log'
 import {
   clearCollabV3Turns,
   collabV3TurnsInRoom,
@@ -178,12 +178,12 @@ import {
   type CollabWorkerBoardPort,
   type CollabWorkerMindPort,
   type CollabWorkerSlotLedger,
-} from '@onething/backend/collab/actors/worker-child'
-import { createCollabEngineWorkerPort } from './worker-mind-port.js'
-import { migrateCollabToV3 } from './migrate.js'
+} from '@onething/backend/collab/actors/collab-actors-worker-child'
+import { createCollabEngineWorkerPort } from './collab-actors-worker-mind-port.js'
+import { migrateCollabToV3 } from './collab-actors-migrate.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('collab.runtime')
 
@@ -385,7 +385,7 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     log.warn('scheduler timeline sweep failed', {}, error)
   }
 
-  // ② 令牌:与 v2 同一把锁、同一个门面(`drive-guard.ts`)。引擎的房/exec 两道
+  // ② 令牌:与 v2 同一把锁、同一个门面(`collab-drive-guard.ts`)。引擎的房/exec 两道
   //    门认的是"这一条命令带的令牌等于本进程当前发出去的那一个",而令牌的
   //    **来源**从 v2 协调器换成了 v3 运行时 —— 门一行不用改,凭据换了发行方。
   configureCollabDriveGuard(randomUUID())
@@ -875,7 +875,7 @@ function agentActivityViewOf(
 }
 
 /**
- * 死信的三路出口(D8 §3.4)。实现在 `scheduler-log.ts` 的
+ * 死信的三路出口(D8 §3.4)。实现在 `collab-actors-scheduler-log.ts` 的
  * `createCollabDeadLetterSink` —— 这里只是把它接到两类 actor 上,并在第一路
  * (计数)上再推一次快照:计数本身是 ActorBase 的环长,不新记一本,但**没人播
  * 的话那个红点要等下一件事顺带才亮**,而系统静默变哑正是死信要治的那个病。
@@ -953,7 +953,7 @@ async function postToAgent(
 /**
  * 一条消息进房(入口面)。
  *
- * 两个调用点:`ingress.ts`(用户消息落库之后)与 `say-tool.ts` 的**跨房**分支
+ * 两个调用点:`ingress.ts`(用户消息落库之后)与 `collab-say-tool.ts` 的**跨房**分支
  * (私聊注入、工作台汇报 —— 那些不在某张牌的语境里,所以走不了 speak)。
  * 落库归调用方,这里只投信:房间的 `applyCollabRoomPosted` 对非 `extraMessages`
  * 的 posted 不写转录,正是为了让"谁落的库"只有一个答案。
@@ -1124,7 +1124,7 @@ export function stopCollabV3RoomFloor(
    * 里 `digest-runner` 那条同一个理由。
    */
   if (turns.length > 0) {
-    void import('@onething/backend/external-agent/connector-registry')
+    void import('@onething/backend/external-agent/external-agent-connector-registry')
       .then(async module => {
         runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {
@@ -1222,7 +1222,7 @@ export async function revokeCollabV3RoomLease(
   // 动态 import 与房级喊停同一个理由 —— 静态引会把连接器注册表拖进每一个 import
   // 这个文件的协作测试的收集阶段。
   if (turns.length > 0) {
-    void import('@onething/backend/external-agent/connector-registry')
+    void import('@onething/backend/external-agent/external-agent-connector-registry')
       .then(async module => {
         runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {
@@ -1434,7 +1434,7 @@ export async function resumeCollabV3RoomWork(roomSessionId: string): Promise<voi
  * 名册变了,告诉房间一声(`room:membership-changed`)。
  *
  * 协议里这个动词早就有,消费端也早就接好了 —— 房间落账后原样播给在册成员,
- * 每位同事把它折进下一轮的信封(`envelope-fold.ts`:「谁来了谁走了」)。缺的
+ * 每位同事把它折进下一轮的信封(`collab-actors-envelope-fold.ts`:「谁来了谁走了」)。缺的
  * 一直是**生产者**:改名册的那扇门还在 v2 协调器里,它只会贴一条群公告系统行。
  *
  * 群公告是给**人**看的(转录里那一行),折叠信封是给**模型**看的。两者不是同一

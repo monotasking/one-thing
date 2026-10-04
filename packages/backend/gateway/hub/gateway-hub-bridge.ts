@@ -1,7 +1,7 @@
 import {
   isCoreTextStreamChunk,
   type CoreConversationRuntime,
-} from '@onething/backend/gateway/conversation-runtime'
+} from '@onething/backend/gateway/gateway-conversation-runtime'
 import {
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,
@@ -11,17 +11,17 @@ import {
 import { projectRefTagsToPlainText } from '@shared/references/ref-tag'
 import { RefTagPlainTextStream } from '@shared/references/plain-text-stream'
 import type { GatewayPermissionConfig } from '../gateway-config.js'
-import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from './channel.js'
+import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from './gateway-hub-channel.js'
 import {
   GATEWAY_STREAM_FLUSH_INTERVAL_MS,
   GATEWAY_STREAM_IDLE_MS,
   MarkdownSafeOutboundBuffer,
-} from './markdown-safe-outbound-buffer.js'
+} from './gateway-hub-markdown-buffer.js'
 import { resolveGatewayLogger, type Logger } from './gateway-hub-logging.js'
-import type { Allowlist } from './middleware/allowlist.js'
-import type { RateLimiter } from './middleware/rate-limiter.js'
-import { GatewayPermissionCoordinator } from './permission-coordinator.js'
-import type { GatewaySessionRegistry } from './session-registry.js'
+import type { Allowlist } from './middleware/gateway-hub-middleware-allowlist.js'
+import type { RateLimiter } from './middleware/gateway-hub-middleware-rate-limiter.js'
+import { GatewayPermissionCoordinator } from './gateway-hub-permission-coordinator.js'
+import type { GatewaySessionRegistry } from './gateway-hub-session-registry.js'
 
 export interface GatewayBridgeOptions {
   allowlist: Allowlist

@@ -19,8 +19,8 @@ import {
   pathExists,
   writeJsonFile,
 } from '@onething/backend/storage/storage-primitives'
-import { describeNonSerializable } from './request-channel.js'
-import { getCoreLogger } from '@onething/backend/logging/logger-primitives'
+import { describeNonSerializable } from './plugin-request-channel.js'
+import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

@@ -33,14 +33,14 @@ vi.mock('../../agent/agent-store-access.js', () => ({
   DEFAULT_ONETHING_AGENT_ID: 'default',
 }))
 
-vi.mock('@onething/backend/collab/board-store', () => ({
+vi.mock('@onething/backend/collab/collab-board-store', () => ({
   getCollabSelfTaskFacts: (roomSessionId: string, agentId: string) => {
     mocks.boardReads.push({ roomSessionId, agentId })
     return mocks.cards.get(roomSessionId) ?? []
   },
 }))
 
-const { agentSelfGateway } = await import('../gateways.js')
+const { agentSelfGateway } = await import('../variable-gateways.js')
 
 const NOW = Date.now()
 

@@ -10,12 +10,12 @@
 import { toJsonObject, type JsonValue } from '@shared/json'
 import type { OnethingHttpPolicyName } from '@onething/backend/network'
 import { getLogger } from '../../../logging/logging.js'
-import { resolveOnethingModelCapabilities } from '../../model-capability.js'
+import { resolveOnethingModelCapabilities } from '../../provider-model-capability.js'
 import {
   ONETHING_MODEL_DESCRIPTIONS,
   onethingModelContextLengthHint,
 } from '../../model-families/provider-model-families.js'
-import type { OnethingOpenRouterModel } from '../../model-registry.js'
+import type { OnethingOpenRouterModel } from '../../provider-model-registry.js'
 
 export interface OnethingModelInfo {
   id: string

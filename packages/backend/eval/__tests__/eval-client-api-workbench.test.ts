@@ -15,7 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcResponse } from '@shared/ipc/rpc.js'
 import { evalsWorkbenchRouter } from '@shared/ipc/evals-workbench.js'
-import { EvalsTaskOwner, configureEvalsTaskOwner } from '@onething/backend/eval/task-owner'
+import { EvalsTaskOwner, configureEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 
 const incidentDirs = vi.hoisted(() => ({ root: '' }))
 const runtime = vi.hoisted(() => ({
@@ -53,13 +53,13 @@ const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<stri
 
 vi.mock('@onething/backend/eval', () => runtime)
 // 授权判据(`requireIncidentAccess`)直取子路径(工单 4 C2),替身跟着搬。
-vi.mock('@onething/backend/eval/incident', () => ({ readIncident: runtime.readIncident }))
+vi.mock('@onething/backend/eval/eval-incident', () => ({ readIncident: runtime.readIncident }))
 vi.mock('@onething/backend/settings', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/settings')>(),
   getSettings: settings.getSettings,
 }))
 vi.mock('../../settings/settings-store.js', () => settings)
-vi.mock('@onething/backend/eval/provider-adapter', () => credentials)
+vi.mock('@onething/backend/eval/eval-provider-adapter', () => credentials)
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
   if (!response.ok) throw new Error(`dispatch failed: ${response.error.message}`)

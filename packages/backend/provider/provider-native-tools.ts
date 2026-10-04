@@ -3,8 +3,8 @@
  * 要不要在这一轮挂上、挂哪几个,由那一家在行为名册上的可选钩子 `nativeTools` 自己回答。
  * 这里只按名册找到这一家那一行、有钩子就问;通用代码(引擎、系统提示快照)经这一个函数问,不点名任何一家。
  */
-import { VENDOR_RUNTIMES } from './vendors/runtimes.js'
-import type { VendorNativeToolsContext } from './vendors/runtimes.js'
+import { VENDOR_RUNTIMES } from './vendors/provider-vendor-runtimes.js'
+import type { VendorNativeToolsContext } from './vendors/provider-vendor-runtimes.js'
 
 /** Responses 协议原生出图工具的名字(协议层的名字,不属于任何一家)。 */
 export const PROVIDER_NATIVE_IMAGE_GENERATION_TOOL = 'image_generation'

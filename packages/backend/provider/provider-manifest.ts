@@ -5,25 +5,25 @@
  * 每多一种能力就得回去改一串 `if (providerId === …)`。现在反过来:**每家自己说**
  * 它用哪份方言、怎么登录、模型从哪来、按什么计费、同家的另一半是谁;别人只读字段。
  *
- *  - 内置各家 = `vendors/<id>/manifest.ts` 里各自的字面量,名册 `vendors/manifests.ts`,
- *    经 `builtin-manifests.ts` 补上家族格后在模块加载时登记进注册表;
+ *  - 内置各家 = `vendors/<id>/manifest.ts` 里各自的字面量,名册 `vendors/provider-vendor-manifests.ts`,
+ *    经 `provider-builtin-manifests.ts` 补上家族格后在模块加载时登记进注册表;
  *  - 自定义服务商 = 设置里的 `CustomProviderConfig`,经 `manifestOfCustomProvider`
  *    映射成同一个形状,由装配层逐个 `register` 并 `own()` 卸载函数。
  *
  * 本文件是**纯**模块:不碰 node / electron / `process`,壳也能 import。
  */
-import type { OnethingModelRule } from './model-capability.js'
-import type { OnethingModelsDevModel } from './model-registry.js'
-import type { DialSpec } from './dials.js'
+import type { OnethingModelRule } from './provider-model-capability.js'
+import type { OnethingModelsDevModel } from './provider-model-registry.js'
+import type { DialSpec } from './provider-dials.js'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import type { ProviderFamilyRole } from '@shared/provider-families.js'
 import { configureProviderErrorCodeDescriber } from '../agent-loop/agent-loop.js'
-import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './builtin-manifests.js'
+import { BUILTIN_PROVIDER_MANIFESTS, EXTERNAL_AGENT_DIALECT_ID } from './provider-builtin-manifests.js'
 import { ONETHING_PROTOCOL_DEFAULT_MODEL_RULES } from './model-families/provider-model-families.js'
 
 export { EXTERNAL_AGENT_DIALECT_ID }
 
-export type { DialSpec } from './dials.js'
+export type { DialSpec } from './provider-dials.js'
 
 /** 登录方式。`oauth.flow` 与 `auth/auth-registry.ts` 各家的 `flowKind` 同一套词。 */
 export type ProviderAuthSpec =
@@ -91,7 +91,7 @@ export interface ProviderModelIdentity {
   keys: readonly string[]
   /**
    * 这家的 models.dev 目录(`models.key`)是聚合站的「厂牌/型号」总表:带厂牌前缀的 id 在厂牌那家
-   * 查不到时,拿整串来这本目录里精确匹配(`model-identity.ts` 的第 ① 级)。
+   * 查不到时,拿整串来这本目录里精确匹配(`provider-model-identity.ts` 的第 ① 级)。
    */
   aggregator?: boolean
 }
@@ -149,21 +149,21 @@ export interface ProviderManifest {
   /**
    * 这家是家族里的哪一半(服务商自述试点 P4:家族事实的产地,替代了 `@shared` 里那张写死的
    * 家族表)。各家只说自己:API 那一半 `{ role: 'api' }`,订阅那一半再带合并卡片上的 `tag`。
-   * **哪两半是一家**登记在名册 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`(每个家族一行)——
+   * **哪两半是一家**登记在名册 `vendors/provider-vendor-manifests.ts` 的 `VENDOR_FAMILIES`(每个家族一行)——
    * 不写在半边的字面量里,因为那样订阅那一半就得点 API 那一家的名(`provider:gate` 不许
    * 一家的家里认识别家)。家族键 = API 那一半的 id,家名 = API 那一半的 `name`;
-   * `sibling` / `familyTag` 由 `builtin-manifests.ts` 算出,壳经 `ProviderInfo.family` 拿到。
+   * `sibling` / `familyTag` 由 `provider-builtin-manifests.ts` 算出,壳经 `ProviderInfo.family` 拿到。
    */
   family?: ProviderFamilyDeclaration
   /**
-   * 同家的另一半(由 `builtin-manifests.ts` 按两半的 `family` 声明算出,不写在字面量里)。
+   * 同家的另一半(由 `provider-builtin-manifests.ts` 按两半的 `family` 声明算出,不写在字面量里)。
    */
   sibling?: string
   /** 订阅那一半在合并卡片上的小标签(「Codex」「Claude Code」)。只在 `billing: 'subscription'` 且有 `sibling` 时读。 */
   familyTag?: string
   /** 计费档位(千问 / Kimi / 智谱)。 */
   dials?: DialSpec
-  /** 这家的模型按 `model-capability.ts` 哪一张型号规则表判(表 id,由带表的那家 `modelRuleTable` 给出)。 */
+  /** 这家的模型按 `provider-model-capability.ts` 哪一张型号规则表判(表 id,由带表的那家 `modelRuleTable` 给出)。 */
   modelRules: string
   behaviors?: ProviderBehaviors
   defaultBaseUrl: string
@@ -171,9 +171,9 @@ export interface ProviderManifest {
   defaultModel: string
   /** 读密钥的环境变量(按优先级)。缺席 = 只认 `<ID>_API_KEY`。 */
   envVars?: readonly string[]
-  /** 模型认亲(`model-identity.ts`)。 */
+  /** 模型认亲(`provider-model-identity.ts`)。 */
   modelIdentity?: ProviderModelIdentity
-  /** 这些 models.dev 目录键反查到这一家(`models-dev-catalog.ts` 的映射表)。 */
+  /** 这些 models.dev 目录键反查到这一家(`provider-models-dev-catalog.ts` 的映射表)。 */
   catalogAliases?: readonly string[]
   /** 这家接口的错误码 → 人话说明。经 core 的查询口接进错误详情。 */
   errorDescriptions?: Readonly<Record<string, string>>

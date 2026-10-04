@@ -2,16 +2,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createBackendHandle, setCurrentBackend } from '../../current.js'
+import { createBackendHandle, setCurrentBackend } from '../../backend-current.js'
 import {
   acquireSessionEventLogStore,
   flushSessionEventLog as flush,
   getSessionEventsLogPath,
   readSessionLogEventsSync,
   SESSION_EVENT_DIRECTORY_SYNC_SUPPORTED,
-} from '../event-log.js'
-import { createSessionEventLayer } from '../event-layer.js'
-import { getSessionBlobPath, putSessionBlob, readSessionBlob } from '../blob-store.js'
+} from '../session-event-log.js'
+import { createSessionEventLayer } from '../session-event-layer.js'
+import { getSessionBlobPath, putSessionBlob, readSessionBlob } from '../session-blob-store.js'
 
 let directory: string
 let owner: ReturnType<typeof acquireSessionEventLogStore>

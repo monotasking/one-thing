@@ -6,9 +6,9 @@
  * 下发之后必须是同一句话,不能悄悄换成「注册表里真有这个源」之类更严的判据。
  */
 import { describe, expect, it } from 'vitest'
-import { BUILTIN_PROVIDER_MANIFESTS, builtinProviderFamilyInfoOf } from '../builtin-manifests.js'
-import { providerInfoOfManifest } from '../builtin-providers.js'
-import { dialDescriptorOf } from '../dials.js'
+import { BUILTIN_PROVIDER_MANIFESTS, builtinProviderFamilyInfoOf } from '../provider-builtin-manifests.js'
+import { providerInfoOfManifest } from '../provider-builtin-info.js'
+import { dialDescriptorOf } from '../provider-dials.js'
 
 describe('providerInfoOfManifest · P4 三格', () => {
   for (const manifest of BUILTIN_PROVIDER_MANIFESTS) {

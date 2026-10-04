@@ -63,7 +63,7 @@ import {
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/health'
+} from '@onething/backend/plugin/plugin-health'
 import { captureCredentialStrategyScope, type CredentialStrategyScope } from './credentials-strategy-lifetime.js'
 
 /**

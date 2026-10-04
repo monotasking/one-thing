@@ -2019,7 +2019,7 @@ export const zh = {
    * 提示语一起退役:五格照抄就是二十五句,而那五句真正在说的「目录说了什么」
    * 现在由每一行右边的三态小字说,「关了会怎样」对五项是同一句 → 归组上的 hint)。
    * 第一格叫「跟目录」而不是「默认」:目录没填时它跟的是引擎按名字猜的那张
-   * 规则表(`provider/model-capability.ts`),而「跟目录」这三个字
+   * 规则表(`provider/provider-model-capability.ts`),而「跟目录」这三个字
    * 至少没有把「有个数在」这件事说死。 */
   'providers.overrideCapsLabel': '能力',
   'providers.overrideCapsHint': '覆盖模型列表里的能力标记。',

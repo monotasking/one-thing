@@ -27,7 +27,7 @@ import {
   clampResolvedAsset,
   clampSavedAttachments,
   prepareMarkdownRequest,
-} from '@onething/backend/markdown/asset-sandbox'
+} from '@onething/backend/markdown/markdown-asset-sandbox'
 import { resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 

@@ -11,15 +11,15 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { Catalog, textResult } from '@onething/backend/toolkit/tool-protocol'
+import { Catalog, textResult } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { ScriptedTool } from '../../toolkit/__tests__/fakes.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { toolsRouter } from '@shared/ipc/tools.js'
 
-vi.mock('@onething/backend/plugin/tool-call-intercept-bound', () => ({
+vi.mock('@onething/backend/plugin/plugin-tool-call-intercept-bound', () => ({
   runPluginToolCallIntercept: async (context: { input: unknown }) => ({ action: 'allow', input: context.input, rewrittenBy: [], ran: 0 }),
 }))
-vi.mock('@onething/backend/plugin/tool-result-intercept-bound', () => ({
+vi.mock('@onething/backend/plugin/plugin-tool-result-intercept-bound', () => ({
   runPluginToolResultIntercept: vi.fn(async (context: { result: unknown }) => ({ action: 'keep', result: context.result, rewrittenBy: [], ran: 0 })),
 }))
 vi.mock('@onething/backend/tool/access-control/tool-access-control-permission-policy', () => ({ enforcePermissionPolicy: async () => undefined }))
@@ -36,10 +36,10 @@ const aliceHttp: RpcDispatchContext = { transport: 'http', ownerUid: 'alice', wo
 const bobHttp: RpcDispatchContext = { transport: 'http', ownerUid: 'bob', workspaceId: 'one' }
 let directory: string
 let previous: string | undefined
-let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js')['installStoreSessionLayerForTest']>>
+let fixture: Awaited<ReturnType<typeof import('../../session/testing/session-testing-store-layer.js')['installStoreSessionLayerForTest']>>
 let registry: typeof import('../../http-server/http-server-dispatch-table.js')
-let current: typeof import('../../current.js')
-let wiring: typeof import('@onething/backend/toolkit/wiring')
+let current: typeof import('../../backend-current.js')
+let wiring: typeof import('@onething/backend/toolkit/toolkit-wiring')
 let catalog: Catalog
 const cleanups: Array<() => void> = []
 
@@ -47,18 +47,18 @@ beforeEach(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tool-cancellation-'))
   previous = process.env.ONETHING_STORE_PATH
   process.env.ONETHING_STORE_PATH = directory
-  const { installStoreSessionLayerForTest } = await import('../../session/testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../../session/testing/session-testing-store-layer.js')
   fixture = await installStoreSessionLayerForTest()
   const store = await import('../../session/session-store.js')
   store.createSession('alice-session', 'Alice', { initialOwner: alice })
   store.createSession('alice-second', 'Alice second', { initialOwner: alice })
   store.createSession('bob-session', 'Bob', { initialOwner: bob })
-  wiring = await import('@onething/backend/toolkit/wiring')
+  wiring = await import('@onething/backend/toolkit/toolkit-wiring')
   wiring.resetToolkitCatalogForTests()
   catalog = new Catalog()
   const { configureToolkitCatalog } = await import('@onething/backend/toolkit')
   configureToolkitCatalog(catalog)
-  current = await import('../../current.js')
+  current = await import('../../backend-current.js')
   registry = await import('../../http-server/http-server-dispatch-table.js')
   registry.resetRpcRegistryForTests()
   const { toolsRpcHandlers } = await import('../tool-client-api.js')
@@ -241,7 +241,7 @@ it('keeps cancellation authoritative while the plugin result finalizer is still 
   const finalizing = barrier()
   const release = barrier()
   cleanups.push(release.release)
-  const { runPluginToolResultIntercept } = await import('@onething/backend/plugin/tool-result-intercept-bound')
+  const { runPluginToolResultIntercept } = await import('@onething/backend/plugin/plugin-tool-result-intercept-bound')
   vi.mocked(runPluginToolResultIntercept).mockImplementationOnce(async context => {
     finalizing.release()
     await release.promise
@@ -260,8 +260,8 @@ it('keeps cancellation authoritative while the plugin result finalizer is still 
 })
 
 it('stops a real bash child before reporting cancellation complete', { timeout: 15000 }, async () => {
-  const { createDesktopCatalog } = await import('@onething/backend/toolkit/tier-catalogs')
-  const { createLocalBashOperations } = await import('@onething/backend/tool/bash-executor')
+  const { createDesktopCatalog } = await import('@onething/backend/toolkit/toolkit-tier-catalogs')
+  const { createLocalBashOperations } = await import('@onething/backend/tool/tool-bash-executor')
   const builtin = createDesktopCatalog({ bash: {
     getDefaultWorkingDirectory: () => directory,
     getToolOutputsDir: () => path.join(directory, 'outputs'),

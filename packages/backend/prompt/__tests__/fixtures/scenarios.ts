@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { BuildOnethingPromptContextOptions } from "../../builder.js";
+import type { BuildOnethingPromptContextOptions } from "../../prompt-builder.js";
 
 const FIXTURE_DIR = path.resolve(__dirname, "fixtures/fake-project");
 const FIXED_NOW = new Date("2026-07-07T12:00:00Z");

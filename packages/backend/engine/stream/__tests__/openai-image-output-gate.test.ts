@@ -39,10 +39,10 @@ vi.mock('../../../session/session-commands.js', async importOriginal => ({
 }))
 import { createDefaultSettings } from '../../../settings/defaults/settings-factory-defaults.js'
 import type { ToolSettings } from '@shared/ipc.js'
-import type { AgentOutputModality, AgentTurnStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentOutputModality, AgentTurnStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
 import { createAgentProviderFromRuntime, onethingModelServesImageOutputInLoop } from '@onething/backend/provider'
-import type { StreamSender } from '../stream-processor.js'
-import type { ProviderConfigWithKey, StreamExecutionParams } from '../stream-executor.js'
+import type { StreamSender } from '../engine-stream-processor.js'
+import type { ProviderConfigWithKey, StreamExecutionParams } from '../engine-stream-executor.js'
 
 interface CapturedStreamContext {
   requestedOutputModalities?: AgentOutputModality[]
@@ -70,16 +70,16 @@ vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   getModelById: vi.fn(async () => undefined),
 }))
 
-vi.mock('../image-stream.js', () => ({
+vi.mock('../engine-image-stream.js', () => ({
   processImageGenerationStream: vi.fn(async () => true),
 }))
 
-vi.mock('../engine-stream-agent-loop-executor.js', () => ({
+vi.mock('../engine-agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 
 
-const { executeMessageStream } = await import('../stream-executor.js')
+const { executeMessageStream } = await import('../engine-stream-executor.js')
 
 const sender: StreamSender = { isDestroyed: () => false, send: vi.fn() }
 

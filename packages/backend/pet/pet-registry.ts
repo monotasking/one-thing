@@ -5,7 +5,7 @@
  * 谁自己 new 一本」与资源注册表(`@onething/backend/resource/resource-api` 的 `ResourceRegistry`)同一条
  * 组合根纪律 —— 装配层把它当字段持有,测试起一本干净的。
  *
- * 陌生能力演练:加一只鹦鹉 = `builtin/alu.ts` 一份自述(形象是 `alu.rig.ts` 的数据)+
+ * 陌生能力演练:加一只鹦鹉 = `builtin/pet-builtin-alu.ts` 一份自述(形象是 `alu.rig.ts` 的数据)+
  * `BUILTIN_PETS` 一行(P5 真的这样加了一只)。`host.ts` / 装配层里不出现任何一只宠物的名字。
  *
  * ── 形象有问题的宠物不进名册(§12.2 末)──────────────────────────────────
@@ -14,8 +14,8 @@
  * 单独 `register` 一只画错的是调用方的错,当场抛 `PetRigInvalidError`。
  */
 
-import { ALU } from './builtin/alu.js'
-import { HEIDOU } from './builtin/heidou.js'
+import { ALU } from './builtin/pet-builtin-alu.js'
+import { HEIDOU } from './builtin/pet-builtin-heidou.js'
 import { petManifestProblems, type PetManifest } from './pet-manifest.js'
 import type { RigSpecProblem } from '@shared/pets/rig-spec.js'
 

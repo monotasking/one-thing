@@ -15,16 +15,16 @@ import type {
   SearchContext,
   SearchPage,
   SearchQuery,
-} from '../candidate.js'
+} from '../search-kernel-candidate.js'
 import type {
   CapabilityManifest,
   RetrieverPolicy,
   RetrieverWhen,
   SearchCapability,
 } from '../search-kernel-capability.js'
-import type { CursorCodec } from '../cursor.js'
-import { createCursorCodec, hashQueryShape } from '../cursor.js'
-import { paginate, readOffsetCursor } from '../pipeline/page.js'
+import type { CursorCodec } from '../search-kernel-cursor.js'
+import { createCursorCodec, hashQueryShape } from '../search-kernel-cursor.js'
+import { paginate, readOffsetCursor } from '../pipeline/search-kernel-pipeline-page.js'
 
 export interface RetrievedPage {
   items: Candidate[]

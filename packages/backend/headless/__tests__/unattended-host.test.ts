@@ -9,7 +9,7 @@
  * 装配被替身掉:这里问的不是「后端能不能起来」,那是 `assembly-lifecycle` 的事。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isHostUnattended } from '@onething/backend/permission/unattended'
+import { isHostUnattended } from '@onething/backend/permission/permission-unattended'
 
 const disposers: Array<{ label: string; dispose: () => void | Promise<void> }> = []
 let assembleFails = false

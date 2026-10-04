@@ -2,7 +2,7 @@
  * 各功能开给界面的操作的**名册**(决策 D21 / D26,`docs/design/backend-structure-decisions-2026-10.md`)。
  *
  * 每个功能在自己目录里的 `<功能>-client-api*.ts` 用 `defineClientApi` 交出一行(这个域的契约 + 处理者),
- * 这里按装配顺序把它们排成一张表 —— 与服务商名册 `provider/vendors/manifests.ts` 同一个做法:
+ * 这里按装配顺序把它们排成一张表 —— 与服务商名册 `provider/vendors/provider-vendor-manifests.ts` 同一个做法:
  * **加一个开给界面的域 = 在功能里写一只 client-api 文件、在这里加一行**,HTTP 服务器的其余代码一个字不改,
  * 它们只读这张表(`registerAppRpcDomains` 逐行挂载,`http-server-routes.ts` 问每行有没有 `serveBeforeIdentity`)。
  * 这是 http-server 目录里**唯一**点名功能的文件。
@@ -211,7 +211,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   OAUTH_CLIENT_API,
   // P4c 第八批第一个域(gateway)—— 八条:状态 / 起停 / 微信账号增删改与登出。
   // 八条全都要**宿主本体**(主进程拉起来的子进程 + 一张二维码),所以域处理者
-  // 走 `gateway/lifecycle-port.ts` 的 `configureGatewayHost`:桌面在
+  // 走 `gateway/gateway-lifecycle-port.ts` 的 `configureGatewayHost`:桌面在
   // `main-process.ts` 注入八行转调,server / CLI 不注入 —— 拿到的是结构化降级,
   // 而不是旧 server adapter 那句写死的「server runtime 上网关已禁用」。
   // **本域零推送**(全仓没有 `GATEWAY_*_CHANGED`),所以 `@main/ipc/gateway.ts`
@@ -223,7 +223,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // 旧 server 路由的原话。三处 http 分叉(`list` 的搜索根 / `reveal` 要外壳端口 /
   // `watchStart|Stop` 桌面是投影桩而 http 是真监视器)逐条写在域文件头的表里。
   // 一条推送留在原地:`FILE_WATCH_EVENT` 与它在 server 那侧的 SSE 源,
-  // 登记簿搬到 `file/workspace-watch.ts`,请求面与推送面共用同一张表。
+  // 登记簿搬到 `file/file-workspace-watch.ts`,请求面与推送面共用同一张表。
   FILES_CLIENT_API,
   // P4c 第九批第一个域(tools)—— 七条:目录 / 执行 / 取消 / 后台任务表与停 /
   // 刷 MCP 工具面 / 回写工具调用。它是继 files 之后第二个**逐方法带 http 分叉**
@@ -243,7 +243,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // P4c 第九批第三个域(music)—— 十四条:状态/向导/传输控制/现在播放/电台简报/
   // 歌词/口播 ack/开台/搜索/点歌/节目单/节目单编辑/provider 列表与切换。
   // **四条推送留在原地**(MUSIC_EVENT / NOW_PLAYING / LYRICS / DJ_SPEAK 早就走
-  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `music/operations.ts`。
+  // `broadcastVoiceHostMessage` 端口)。三件真逻辑搬进 `music/music-operations.ts`。
   MUSIC_CLIENT_API,
   // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
   // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`

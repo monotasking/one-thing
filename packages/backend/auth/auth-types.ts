@@ -72,7 +72,7 @@ export interface OnethingAuthFlowState {
   /**
    * 这一次登录的 token 该落到哪儿(批 B6;批 8 起只有空间池一种)。缺席 = 默认空间。
    * 类型故意写成结构体而不是 import —— types.ts 是叶子模块,不反向依赖
-   * credential-target.ts(那边要 import spaces/types)。
+   * auth-credential-target.ts(那边要 import spaces/types)。
    */
   target?: { kind: 'space'; spaceId: string; entryId?: string; label?: string }
   kind: OnethingAuthFlowKind

@@ -32,7 +32,7 @@ vi.mock('../ipc-repository/sqlite-repository.js', () => ({
 let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../session-store.js') | null = null
-let fixture: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
+let fixture: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 async function loadIsolatedStores(): Promise<{
   paths: typeof import('@onething/backend/storage')
@@ -43,7 +43,7 @@ async function loadIsolatedStores(): Promise<{
   const sessions = await import('../session-store.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
-  fixture = await (await import('../testing/store-layer.js')).installStoreSessionLayerForTest()
+  fixture = await (await import('../testing/session-testing-store-layer.js')).installStoreSessionLayerForTest()
   return { paths, sessions }
 }
 

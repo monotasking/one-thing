@@ -18,8 +18,8 @@ import type {
   SearchPage,
   SearchPrincipal,
   SearchQuery,
-} from './candidate.js'
-import type { DocumentFeed } from './feed.js'
+} from './search-kernel-candidate.js'
+import type { DocumentFeed } from './search-kernel-feed.js'
 
 /** 能力对外说的全部话。 */
 export interface CapabilityManifest {

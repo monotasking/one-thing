@@ -6,7 +6,7 @@ import {
   listOnethingMCPToolsForIpc,
   readOnethingMCPConfigFileForIpc,
 } from '../mcp-ipc-operations.js'
-import type { OnethingMCPSettingsLike } from '../server-orchestration.js'
+import type { OnethingMCPSettingsLike } from '../mcp-server-orchestration.js'
 
 interface TestServerConfig {
   id?: string

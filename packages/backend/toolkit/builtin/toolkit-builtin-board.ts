@@ -18,8 +18,8 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
-import type { CollabVenueTool } from '../../collab/tool-surface.js'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { CollabVenueTool } from '../../collab/collab-tool-surface.js'
 import {
   COLLAB_BOARD_START_RECEIPT_NOTE,
   COLLAB_TASK_STATUSES,

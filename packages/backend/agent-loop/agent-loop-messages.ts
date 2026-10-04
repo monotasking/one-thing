@@ -13,11 +13,11 @@ import type {
 import {
 	agentToolMessageContentFromHistoryResult,
 	agentToolResultIsErrorFromHistoryResult,
-} from "./tool-results.js";
+} from "./agent-loop-tool-results.js";
 import { agentSupportsInputModality } from "./agent-loop-capabilities.js";
-// wire 形态的两把尺搬去了 `wire-format.ts` —— 影子断言的判等器要用**同一份**
+// wire 形态的两把尺搬去了 `agent-loop-wire-format.ts` —— 影子断言的判等器要用**同一份**
 // (F10a):判等器对键排序,而这两个函数的输出对键序敏感。
-import { stringifyToolResult, toolCallArguments } from "./wire-format.js";
+import { stringifyToolResult, toolCallArguments } from "./agent-loop-wire-format.js";
 
 export type AgentHistoryContent =
 	| string

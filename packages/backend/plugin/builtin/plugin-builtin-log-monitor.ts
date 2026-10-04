@@ -6,7 +6,7 @@ import type { PluginAPI } from '../plugin-types.js'
 import {
   getOnethingLogDir,
 } from '@onething/backend/storage'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { RegisterOnethingLogMonitorPluginOptions } from '@onething/backend/plugin/plugin-log-monitor'
 
 const log = getLogger('plugins.log-monitor')

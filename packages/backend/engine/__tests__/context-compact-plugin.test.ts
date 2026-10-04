@@ -30,7 +30,7 @@ const runBeforeContextCompactHooks = vi.fn()
 const generateChatResponse = vi.fn()
 const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 
-vi.mock('@onething/backend/plugin/lifecycle-hooks', () => ({
+vi.mock('@onething/backend/plugin/plugin-lifecycle-hooks', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
 vi.mock('../engine-chat-facade.js', () => ({
@@ -40,7 +40,7 @@ vi.mock('../../settings/settings-model-registry-service.js', () => ({
   getModelContextLength: async () => 200_000,
   getKnownModelMaxOutputTokens: async () => 8_192,
 }))
-vi.mock('../stream/message-helpers.js', () => ({
+vi.mock('../stream/engine-stream-message-helpers.js', () => ({
   buildHistoryMessages: () => [],
 }))
 
@@ -54,8 +54,8 @@ vi.mock('../../session/session-commands.js', async importOriginal => ({
   },
 } }))
 
-vi.mock('../../session/reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../session/reads.js')>(),
+vi.mock('../../session/session-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../session/session-reads.js')>(),
   // 读门面(P0.2 C1):这份 mock 与下面的 store mock 是同一个假会话
   // —— compact 的取数改走 `sessionReads.listMessages` 了。
   sessionReads: {
@@ -80,7 +80,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   updateSessionContextSize: () => {},
 }))
 
-import { compactSessionContext } from '../compact-session.js'
+import { compactSessionContext } from '../engine-compact-session.js'
 
 function message(index: number, role: 'user' | 'assistant'): ChatMessage {
   return { id: `${role}-${index}`, role, content: `${role} ${index}`, timestamp: index }

@@ -25,7 +25,7 @@
  */
 
 import { getProviderManifest } from './provider-manifest.js'
-import { normalizeOnethingReasoningProfileOverride } from './model-capability.js'
+import { normalizeOnethingReasoningProfileOverride } from './provider-model-capability.js'
 
 /** Opaque to everything between the settings store and the owning factory. */
 export type OnethingProviderOptions = Record<string, unknown>

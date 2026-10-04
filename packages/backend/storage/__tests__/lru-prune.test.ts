@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LRUCache } from '../lru-cache.js'
+import { LRUCache } from '../storage-lru-cache.js'
 
 describe('LRUCache.pruneWhere', () => {
   it('drops exactly the entries the predicate names and reports their keys', () => {

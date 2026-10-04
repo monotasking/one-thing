@@ -7,11 +7,11 @@ export {
   saveCoreCachedJsonFile,
   saveCoreCachedJsonFileAsync,
   updateCoreCachedJsonInMemory,
-} from './cached-json.js'
+} from './storage-cached-json.js'
 export type {
   CoreCachedJsonFileOptions,
   CoreCachedJsonState,
-} from './cached-json.js'
+} from './storage-cached-json.js'
 export {
   deleteJsonFile,
   ensureDir,
@@ -46,35 +46,35 @@ export {
   writeTextFileIfMissing,
   writeJsonFile,
   writeJsonFileAsync,
-} from './json-file.js'
+} from './storage-json-file.js'
 export type {
   CoreDirEntry,
   CoreFileStat,
   CoreFileWatcher,
   ListFilesUnderRootsOptions,
-} from './json-file.js'
+} from './storage-json-file.js'
 export {
   LRUCache,
-} from './lru-cache.js'
+} from './storage-lru-cache.js'
 export {
   AsyncSaveQueue,
-} from './async-save-queue.js'
+} from './storage-async-save-queue.js'
 export type {
   AsyncSaveQueueOptions,
-} from './async-save-queue.js'
+} from './storage-async-save-queue.js'
 export {
   withFileLockSync,
-} from './file-mutex.js'
+} from './storage-file-mutex.js'
 export type {
   FileLockOptions,
-} from './file-mutex.js'
+} from './storage-file-mutex.js'
 export {
   CoreFileStorageProvider,
-} from './file-storage-base.js'
+} from './storage-file-base.js'
 export type {
   CoreFileStorageProviderOptions,
   CoreStorageDirectorySource,
-} from './file-storage-base.js'
+} from './storage-file-base.js'
 export {
   ensureStoreDirs,
   generateToolOutputFilename,
@@ -115,10 +115,10 @@ export {
   getWorkspaceAvatarsDir,
   getWorkspacePath,
   getWorkspacesDir,
-} from './store-layout.js'
+} from './storage-store-layout.js'
 export type {
   CoreStorePathOptions,
-} from './store-layout.js'
+} from './storage-store-layout.js'
 export {
   HeadlessStorageManager,
 } from './storage-provider.js'

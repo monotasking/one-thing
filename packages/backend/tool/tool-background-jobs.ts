@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
-import { sanitizeOutput } from './output-accumulator.js'
+import { sanitizeOutput } from './tool-output-accumulator.js'
 
 export type BackgroundJobStatus = 'running' | 'exited' | 'killed' | 'unknown'
 

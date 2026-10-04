@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { MCPOAuthCredentialStore } from '../credential-store.js'
+import { MCPOAuthCredentialStore } from '../mcp-oauth-credential-store.js'
 import { MCPOAuthProvider } from '../mcp-oauth-provider.js'
 import type { MCPOAuthFlowState } from '../mcp-oauth-types.js'
 

@@ -34,8 +34,8 @@ vi.mock('@onething/backend/music/music-process-runner', () => ({
   }),
 }))
 
-vi.mock('../player-volume.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('../player-volume.js')>()),
+vi.mock('../music-player-volume.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../music-player-volume.js')>()),
   readProviderVolume: () => undefined,
 }))
 
@@ -97,9 +97,9 @@ vi.mock('@onething/backend/permission/permission-asks', async importOriginal => 
   ...(await importOriginal<typeof import('@onething/backend/permission/permission-asks')>()),
   addGrant: vi.fn(),
 }))
-vi.mock('@onething/backend/permission/unattended', () => ({ markSessionUnattended: vi.fn() }))
+vi.mock('@onething/backend/permission/permission-unattended', () => ({ markSessionUnattended: vi.fn() }))
 
-vi.mock('../../session/reads.js', () => ({
+vi.mock('../../session/session-reads.js', () => ({
   sessionReads: {
     lastMessageOfRole: (_sessionId: string, role: string) =>
       role === 'assistant' ? (mocks.lastAssistant ?? undefined) : undefined,
@@ -127,10 +127,10 @@ vi.mock('@onething/backend/event', () => ({
 
 const hostVoice = { prefetch: vi.fn(), speak: vi.fn().mockResolvedValue(undefined) }
 
-let activeRadio: ReturnType<typeof import('../radio.js')['createRadioScope']> | undefined
+let activeRadio: ReturnType<typeof import('../music-radio.js')['createRadioScope']> | undefined
 
 async function loadRadio() {
-  const radio = await import('../radio.js')
+  const radio = await import('../music-radio.js')
   activeRadio ??= radio.createRadioScope({
     storePath: mocks.dir,
     service: {

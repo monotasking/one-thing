@@ -32,7 +32,7 @@ import {
 import { ACPManager } from '@onething/backend/acp'
 import type {
   AgentProvider,
-} from '@onething/backend/agent-loop/loop-primitives'
+} from '@onething/backend/agent-loop/agent-loop-primitives'
 import { oauthManager } from '@onething/backend/auth'
 import { modelRegistry, createRequiredAppFetch } from '@onething/backend/settings'
 import {
@@ -42,7 +42,7 @@ import {
   type ProviderToolDefinitionMap,
   type ProviderToolSourceDefinition,
 } from './engine-agent-runtime.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('providers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -1,5 +1,5 @@
 import type { CorePluginSchedulerAPI } from './plugin-api-types.js'
-import { getCoreLogger } from '@onething/backend/logging/logger-primitives'
+import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

@@ -1,19 +1,19 @@
-export { ToolExecutor } from './executor.js'
-export type { ToolExecutorOptions } from './executor.js'
+export { ToolExecutor } from './tool-executor.js'
+export type { ToolExecutorOptions } from './tool-executor.js'
 export {
   TOOL_ABORT_ERROR_NAME,
   createToolAbortError,
   isToolAbortError,
-} from './abort.js'
-export type { ToolAbortError } from './abort.js'
+} from './tool-abort.js'
+export type { ToolAbortError } from './tool-abort.js'
 export {
   coreDiffHunksFromJson,
   coreDiffHunksToJson,
-} from './diff-hunk-json.js'
+} from './tool-diff-hunk-json.js'
 export type {
   CoreDiffHunk,
   CoreDiffHunkLine,
-} from './diff-hunk-json.js'
+} from './tool-diff-hunk-json.js'
 export {
   isBarrierEffect,
 } from './tool-effect.js'
@@ -32,7 +32,7 @@ export type { PermissionPolicy } from './tool-policy.js'
  * 自己那台最小注册表(`ToolRegistry` + `types.ts` 的 `ToolDefinition` —— 它是
  * agent-engine 的工具形状,与被删掉的 `ToolInfo` 不是一回事)。
  */
-export { ToolRegistry } from './engine-tool-registry.js'
+export { ToolRegistry } from './tool-engine-registry.js'
 export {
   coreToolContextFromHost,
   coreToolDefinitionFromJsonSchema,
@@ -40,7 +40,7 @@ export {
   coreToolValidationFailureMessage,
   extractCoreErrorMessage,
   normalizeCoreToolParameterType,
-} from './engine-tool-registry.js'
+} from './tool-engine-registry.js'
 export type {
   CoreMaybePromise,
   CoreToolDecision,
@@ -54,7 +54,7 @@ export type {
   CoreToolRegistryRegisterResult,
   CoreToolSettingsLike,
   CoreToolValidationResult,
-} from './engine-tool-registry.js'
+} from './tool-engine-registry.js'
 export { executeToolCalls } from './tool-loop.js'
 /**
  * `permissionGuard` 的概念在新树里已经不存在(它是 `spec.effects` 的派生值,
@@ -64,11 +64,11 @@ export { executeToolCalls } from './tool-loop.js'
 export {
   isAutoExecutePermissionGuard,
   isInjectablePermissionGuard,
-} from './permission-guards.js'
+} from './tool-permission-guards.js'
 export type {
   CoreToolPermissionGuard,
   CoreToolPermissionGuardLike,
-} from './permission-guards.js'
+} from './tool-permission-guards.js'
 export type {
   ToolCall,
   ToolDefinition,

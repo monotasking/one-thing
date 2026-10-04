@@ -4,7 +4,7 @@ const { testFetch } = vi.hoisted(() => ({
   testFetch: async () => new Response(''),
 }))
 
-vi.mock('../../settings/proxy-fetch.js', () => ({
+vi.mock('../../settings/settings-proxy-fetch.js', () => ({
   createRequiredAppFetch: () => testFetch,
 }))
 

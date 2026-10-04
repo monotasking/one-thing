@@ -19,7 +19,7 @@
 //
 // 服务商名单不写死在这里(写死就违反它自己要守的法):
 //   - `vendors/` 下的每个目录名;
-//   - 过渡期还没迁走的,从 `builtin-manifests.ts` 的 `id: '…'` 读出来。
+//   - 过渡期还没迁走的,从 `provider-builtin-manifests.ts` 的 `id: '…'` 读出来。
 // `acp` 不是服务商:它是外部 agent 那条路的占位 id(EXTERNAL_AGENT),排除。
 //
 // 用法:
@@ -35,7 +35,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/provider-vendor-baseline-2026-10.txt')
 const VENDORS_DIR = 'packages/backend/provider/vendors'
-const LEGACY_MANIFESTS = 'packages/backend/provider/builtin-manifests.ts'
+const LEGACY_MANIFESTS = 'packages/backend/provider/provider-builtin-manifests.ts'
 
 // 合包(server / client 拆分第②步)以后 core 与 runtime 是 `packages/backend` 的子树,扫它一棵就覆盖了
 // 原来的三棵(再单列会把同一个文件扫两遍、同一对报两次)。

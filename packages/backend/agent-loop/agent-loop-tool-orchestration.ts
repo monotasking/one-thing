@@ -1,14 +1,14 @@
 import { coreToolCallSnapshot, findCoreToolCall, patchCoreToolCall, replaceCoreToolCall } from './agent-loop-tool-call-cow.js'
 import type { JsonObject, JsonValue } from '@shared/json.js'
-import { ToolExecutionScheduler } from './tool-execution-scheduler.js'
-import { coreDiffHunksFromJson, type CoreDiffHunk } from '@onething/backend/tool/diff-hunk-json'
+import { ToolExecutionScheduler } from './agent-loop-tool-execution-scheduler.js'
+import { coreDiffHunksFromJson, type CoreDiffHunk } from '@onething/backend/tool/tool-diff-hunk-json'
 import {
   detectSkillUsage,
   generateStepTitle,
   getStepType,
   type CoreStepType,
 } from '@shared/engine/tool-step.js'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 export interface CoreToolCallLike {
   id: string
@@ -361,8 +361,8 @@ export {
   stableStringify,
   toolCallSignature,
   type CoreRepeatedToolCallResult,
-} from './tool-signature.js'
-import { recordToolCallSignature, type CoreRepeatedToolCallResult } from './tool-signature.js'
+} from './agent-loop-tool-signature.js'
+import { recordToolCallSignature, type CoreRepeatedToolCallResult } from './agent-loop-tool-signature.js'
 
 export class CoreToolOrchestrator<
   TToolCall extends CoreMutableToolCallLike,

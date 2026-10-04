@@ -196,7 +196,7 @@ describe('markdown RPC domain · dispatch context decides the sandbox', () => {
    * 恒 `null`,与 `getNoteRoots: () => []` 同一条理由:笔记库是宿主机器上用户
    * 自己的文件)。于是那道守卫在这一侧问的是同一份适配器,答案恒真 —— 它留着
    * 是为了「哪天有宿主在夹紧态下真的交出库表」那一刻;它本身的判法由
-   * `markdown/__tests__/asset-service.test.ts` 直接钉住。
+   * `markdown/__tests__/markdown-asset-service.test.ts` 直接钉住。
    *
    * 这条用例证的因此是**更强的那句话**:夹紧侧根本不走库语义,附件落在沙箱里;
    * 桌面侧同一个库的配置照旧生效。

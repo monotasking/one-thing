@@ -29,6 +29,37 @@ export const FEATURE_ROOT = BACKEND
 export const NON_FEATURE_DIRS = new Set(['__tests__', 'http-server', 'node_modules'])
 export const SHARED = 'packages/shared'
 
+/**
+ * 集合目录:目录里每个子目录(或每只文件)是同一类东西里的一个条目,例如一家服务商、一个渠道、一个曲库源。
+ * 命名规范 N2 在这里的说法是「条目里的文件以条目名打头」(`provider/vendors/claude/claude-dialect.ts`、
+ * `gateway/channels/wechat/ilink/wechat-ilink-poller.ts`)—— 这是规则本身,不是豁免:一搜 `claude-` 就出来这一家。
+ * 路径相对 `packages/backend`。决策 D100(6b)、D112(6c)。
+ */
+export const ITEM_COLLECTION_DIRS = new Set(['provider/vendors', 'gateway/channels', 'music/providers'])
+
+/**
+ * 命名规范 N2「功能名打头」:一只 `packages/backend` 非测试文件的文件名(去扩展名)可以用哪些词打头。
+ * 功能目录(及其子目录)里 = 功能名;包根散文件 = `backend`(包名);`http-server/` 里 = `http-server`;
+ * 集合目录的条目里另外认条目名(条目下更深的子目录里也认它,`wechat/ilink/` 里认 `wechat`)。
+ * 「打头」= 文件名恰好是这个词,或以「这个词-」开头。使用者:`name:gate`(scripts/file-name-gate.mjs)。
+ */
+export function fileNameOwners(relative) {
+  const rest = relative.startsWith(`${BACKEND}/`) ? relative.slice(BACKEND.length + 1) : relative
+  const dirs = rest.split('/').slice(0, -1)
+  if (dirs.length === 0) return ['backend']
+  const owners = [dirs[0]]
+  for (let i = 1; i < dirs.length; i++) {
+    if (ITEM_COLLECTION_DIRS.has(dirs.slice(0, i).join('/'))) owners.push(dirs[i])
+  }
+  return owners
+}
+
+/** 文件名(去 `.ts` / `.d.ts`)是否以 `fileNameOwners` 里的某个词打头。 */
+export function fileNameStartsWithOwner(relative) {
+  const stem = path.basename(relative).replace(/\.d\.ts$|\.ts$/, '')
+  return fileNameOwners(relative).some((owner) => stem === owner || stem.startsWith(`${owner}-`))
+}
+
 /** 按 UTF-16 码元比较:不随机器的区域设置变,生成文件在本机与 CI 上才逐字节相同。 */
 export const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 

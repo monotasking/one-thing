@@ -1,23 +1,23 @@
 /**
  * 模型那三个动作**过得了 Worker 协议**,而且落定那一声喊得到宿主(§15.8)。
  *
- * 这一条与 `model-download.test.ts` 的分工是硬的:那个文件证的是**状态机**
+ * 这一条与 `search-index-model-download.test.ts` 的分工是硬的:那个文件证的是**状态机**
  * (进度怎么聚、取消是什么语义、清单什么时候写),这个文件证的是**协议**——
  * 三个动作的往返、状态跟着 `search.status` 一起回来、以及那个**不带 `id` 的通知帧**
- * 不会被当成一条没人等的答复扔掉(日志帧当年正是这么掉了两周,见 `worker-logging.ts`)。
+ * 不会被当成一条没人等的答复扔掉(日志帧当年正是这么掉了两周,见 `search-index-worker-logging.ts`)。
  *
- * 「下完就生效」整条链的最后一环在装配层(`backend/search/service-setup.ts` 收到这一声
+ * 「下完就生效」整条链的最后一环在装配层(`backend/search/search-service-setup.ts` 收到这一声
  * 就 `restart()`);这里钉的是**这一声真的发得出来**。
  */
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { Embedder } from '../../kernel/search-kernel.js'
 
-import { probeEmbedderModel } from '../../embedding/model-store.js'
+import { probeEmbedderModel } from '../../embedding/search-embedding-model-store.js'
 import type { EmbedderFactory } from '../../embedding/search-embedding-registry.js'
-import { ModelDownloader } from '../model-download.js'
+import { ModelDownloader } from '../search-index-model-download.js'
 import { SearchIndexService } from '../search-index-service.js'
-import { MODEL_UNAVAILABLE_ERROR } from '../worker-core.js'
+import { MODEL_UNAVAILABLE_ERROR } from '../search-index-worker-core.js'
 import { createSameThreadWorker, createTempStore } from './helpers.js'
 import type { SameThreadWorker, TempStore } from './helpers.js'
 

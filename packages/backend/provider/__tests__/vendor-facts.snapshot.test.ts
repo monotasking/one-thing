@@ -17,20 +17,20 @@ import { extractErrorDetails as coreExtractErrorDetails } from '@onething/backen
 import {
   getSupportedAgentProviderRuntimeIds,
   isAgentProviderRuntimeSupported,
-} from '../factory.js'
+} from '../provider-factory.js'
 import { listDialects } from '../base/provider-base-dialect.js'
-import { thinkingWires } from '../base/thinking-wire.js'
+import { thinkingWires } from '../base/provider-base-thinking-wire.js'
 import '../thinking/provider-thinking.js'
 import { providerDialFieldsOf } from '../../credentials/credentials-provider-rules.js'
-import { providerInfoOfManifest } from '../builtin-providers.js'
-import { getOnethingProviderApiKeyEnvCandidates } from '../env.js'
+import { providerInfoOfManifest } from '../provider-builtin-info.js'
+import { getOnethingProviderApiKeyEnvCandidates } from '../provider-env.js'
 import { getProviderManifestRegistry } from '../provider-manifest.js'
 import {
   resolveOnethingModelCapabilities,
   resolveOnethingProviderKind,
-} from '../model-capability.js'
-import { MODEL_VENDOR_ALIASES } from '../model-identity.js'
-import { getOnethingModelsDevProviderId, ONETHING_PROVIDER_MAPPING } from '../models-dev-catalog.js'
+} from '../provider-model-capability.js'
+import { MODEL_VENDOR_ALIASES } from '../provider-model-identity.js'
+import { getOnethingModelsDevProviderId, ONETHING_PROVIDER_MAPPING } from '../provider-models-dev-catalog.js'
 import { extractErrorDetails as runtimeExtractErrorDetails } from '../provider-config.js'
 import {
   buildOnethingRequestProviderOptionsBag,

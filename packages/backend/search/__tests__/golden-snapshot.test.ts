@@ -36,7 +36,7 @@
  * ## 不经账本
  *
  * 直接 `replaceKey` 灌 —— 这一条量的是「索引 + 查询流水线」这一段,投影那一路有它
- * 自己的用例(`search/index/__tests__/projector.test.ts` / `worker-core.test.ts`)。
+ * 自己的用例(`search/index/__tests__/search-index-projector.test.ts` / `search-index-worker-core.test.ts`)。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -53,7 +53,7 @@ import {
   plan,
 } from '../kernel/search-kernel.js'
 
-import { SqliteIndex } from '../index/sqlite-index.js'
+import { SqliteIndex } from '../index/search-index-sqlite.js'
 
 interface CorpusDoc {
   capability: string

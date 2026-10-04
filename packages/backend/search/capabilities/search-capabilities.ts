@@ -8,8 +8,8 @@
  * 而 `createGroupMerge` 用注册下标做同 order 的稳定次序。
  */
 
-export { createActionsSearchCapability, actionsSearchManifest } from './actions.js'
-export type { ActionTarget } from './actions.js'
+export { createActionsSearchCapability, actionsSearchManifest } from './search-capabilities-actions.js'
+export type { ActionTarget } from './search-capabilities-actions.js'
 export { createChatsSearchCapability, chatsSearchManifest, sessionTitleOf } from './search-capabilities-sessions.js'
 export type { ChatTarget } from './search-capabilities-sessions.js'
 export {
@@ -29,10 +29,10 @@ export {
   sanitizeNoteFileName,
   todayMatchesQuery,
   wantsLiveSearch,
-} from './notes.js'
-export type { LiveSearchOutcome, LiveSearchSkip, NoteTarget } from './notes.js'
-export { createFilesSearchCapability, filesSearchManifest } from './files.js'
-export type { FileTarget } from './files.js'
+} from './search-capabilities-notes.js'
+export type { LiveSearchOutcome, LiveSearchSkip, NoteTarget } from './search-capabilities-notes.js'
+export { createFilesSearchCapability, filesSearchManifest } from './search-capabilities-files.js'
+export type { FileTarget } from './search-capabilities-files.js'
 export { createMessagesSearchCapability, messagesSearchManifest } from './search-capabilities-messages.js'
 export type { MessageTarget } from './search-capabilities-messages.js'
 export {
@@ -45,19 +45,19 @@ export {
   scanBackedCapability,
   searchResultOf,
   staticBackedCapability,
-} from './scan-adapter.js'
+} from './search-capabilities-scan-adapter.js'
 export type {
   ResultBackedCandidate,
   ResultBackedCapabilityOptions,
   SearchResultSnippetWindow,
   SearchServiceResult,
-} from './scan-adapter.js'
+} from './search-capabilities-scan-adapter.js'
 export {
   expandPath,
   matchRangesOf,
   normalizeSearchQuery,
   scoreText,
-} from './text-match.js'
+} from './search-capabilities-text-match.js'
 export {
   configureSearchVisibilityPort,
   getSearchVisibilityPort,
@@ -77,21 +77,21 @@ export {
   firstCandidate,
   requireStringField,
   targetPayloadOf,
-} from './preview.js'
+} from './search-capabilities-preview.js'
 export type {
   FileExcerptPreview,
   MessageContextPreview,
   NoteExcerptPreview,
   PreviewMessage,
   SessionOverviewPreview,
-} from './preview.js'
+} from './search-capabilities-preview.js'
 
 import type { SearchCapability } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
-import { createActionsSearchCapability } from './actions.js'
+import { createActionsSearchCapability } from './search-capabilities-actions.js'
 import { createChatsSearchCapability } from './search-capabilities-sessions.js'
-import { createNotesSearchCapability } from './notes.js'
-import { createFilesSearchCapability } from './files.js'
+import { createNotesSearchCapability } from './search-capabilities-notes.js'
+import { createFilesSearchCapability } from './search-capabilities-files.js'
 import type { SearchIndexQueryFace } from './search-capabilities-indexed.js'
 import { createMessagesSearchCapability } from './search-capabilities-messages.js'
 import { createPromptsSearchCapability } from './search-capabilities-prompts.js'

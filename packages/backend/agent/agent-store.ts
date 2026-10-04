@@ -8,7 +8,7 @@ import {
   withFileLockSync,
   type CoreCachedJsonFileOptions,
 } from '@onething/backend/storage/storage-primitives'
-import { agentIdentity, agentTombstoneLabel, type OnethingAgentIdentity } from './model.js'
+import { agentIdentity, agentTombstoneLabel, type OnethingAgentIdentity } from './agent-model.js'
 
 import { getLogger } from '../logging/logging.js'
 

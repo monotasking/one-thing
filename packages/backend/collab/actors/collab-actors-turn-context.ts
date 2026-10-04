@@ -3,9 +3,9 @@
  *
  * 一个模块,零 import —— 这是刻意的。它被三方读写,而那三方之间不该有边:
  *
- *  - `engine-mind-port.ts` **登记**:一轮对话性回合开跑时把「这条执行会话此刻
+ *  - `collab-actors-engine-mind-port.ts` **登记**:一轮对话性回合开跑时把「这条执行会话此刻
  *    答的是哪间房、持哪张牌」记下来,收尾时销掉;
- *  - `say-tool.ts` **查询**:`send_message` 只拿得到 `sessionId`,而 v3 的房间
+ *  - `collab-say-tool.ts` **查询**:`send_message` 只拿得到 `sessionId`,而 v3 的房间
  *    要验票 —— 票在这张表里;
  *  - `actors/collab-actors-runtime.ts` **装配**:把真正的 speak 实现(RoomActor 的租约发言口)
  *    注册进来。

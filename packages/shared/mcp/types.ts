@@ -138,7 +138,7 @@ export const DEFAULT_MCP_SETTINGS: MCPSettings = {
   flatToolThreshold: MCP_DEFAULT_FLAT_TOOL_THRESHOLD,
 }
 
-/** 一次连通性探测的答复(`mcp` 域的契约里有它;探测本身在后端 `mcp/kernel/client-state.ts`)。 */
+/** 一次连通性探测的答复(`mcp` 域的契约里有它;探测本身在后端 `mcp/kernel/mcp-kernel-client-state.ts`)。 */
 export interface CoreMCPProbeResult {
   ok: boolean
   protocolVersion?: string

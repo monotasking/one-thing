@@ -56,11 +56,11 @@ import {
 import {
   readSpaceOverlay,
   resetSpaceOverlayCacheForTests,
-} from '@onething/backend/space/overlay'
+} from '@onething/backend/space/space-overlay'
 import {
   readSpaceProviderSettings,
   resetSpaceProviderSettingsCacheForTests,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { setRootDirForTests } from '@onething/backend/space/space-persistence'
 import {
   buildMigratedCredentialEntries,

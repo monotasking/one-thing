@@ -10,8 +10,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionAccess } from '@onething/backend/session'
-import { createCollabActorAuthorization } from '../execution-authorization.js'
-import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
+import { createCollabActorAuthorization } from '../collab-actors-execution-authorization.js'
+import { bindSessionFacadeMock } from '../../../session/testing/session-testing-facade-mock.js'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; options: unknown }>,
@@ -25,16 +25,16 @@ const mocks = vi.hoisted(() => ({
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
-vi.mock('../../../session/session-commands.js', () => import('../../../session/testing/facade-mock.js'))
+vi.mock('../../../session/session-reads.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
+vi.mock('../../../session/session-commands.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('@onething/backend/agent/agent-store-access', () => ({
   findAgent: (agentId: string) => ({ id: agentId, name: agentId, isActive: true }),
 }))
 
-vi.mock('@onething/backend/current.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()),
   getStreamEngineSafe: () => ({
     hasCommandTarget: () => true,
     getChannel: () => 'ipc',
@@ -74,11 +74,11 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   },
 }))
 
-vi.mock('@onething/backend/collab/drive-guard', () => ({
+vi.mock('@onething/backend/collab/collab-drive-guard', () => ({
   issueCollabDriveToken: () => 'drive-token',
 }))
 
-vi.mock('../../room-folder.js', () => ({
+vi.mock('../../collab-room-folder.js', () => ({
   collabRoomFolder: () => mocks.roomFolder,
   ensureCollabRoomFolder: (roomSessionId: string) => {
     mocks.ensuredRooms.push(roomSessionId)
@@ -86,7 +86,7 @@ vi.mock('../../room-folder.js', () => ({
   },
 }))
 
-vi.mock('../../turn-primitives.js', () => ({
+vi.mock('../../collab-turn-primitives.js', () => ({
   abortCollabZombieStream: () => {},
   collabAgentModelFields: () => ({}),
   collabDriveEnvelope: (input: Record<string, unknown>) => input,
@@ -95,7 +95,7 @@ vi.mock('../../turn-primitives.js', () => ({
 
 const handlers: Array<(envelope: unknown) => void> = []
 
-const { createCollabEngineWorkerPort } = await import('../worker-mind-port.js')
+const { createCollabEngineWorkerPort } = await import('../collab-actors-worker-mind-port.js')
 
 function createAuthorization() {
   const authorization = createCollabActorAuthorization({

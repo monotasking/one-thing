@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createSessionDeletionRecovery } from '../../deletion-recovery.js'
+import { createSessionDeletionRecovery } from '../../session-deletion-recovery.js'
 
 const [sessionsDir, stage] = process.argv.slice(2)
 const recovery = createSessionDeletionRecovery({ sessionsDir, assertOwned() {} })

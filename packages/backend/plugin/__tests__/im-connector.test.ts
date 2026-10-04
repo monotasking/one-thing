@@ -29,7 +29,7 @@ afterAll(async () => {
 async function load() {
   vi.resetModules()
   const [api, registry] = await Promise.all([
-    import('../api.js'),
+    import('../plugin-api.js'),
     import('../plugin-im-connector-registry.js'),
   ])
   return { api, registry }

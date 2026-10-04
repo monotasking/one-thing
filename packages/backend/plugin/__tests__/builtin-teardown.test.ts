@@ -12,7 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { PluginState } from '../api.js'
+import type { PluginState } from '../plugin-api.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-teardown-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -23,15 +23,15 @@ type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
 async function loadModules() {
   const [loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies] = await Promise.all([
-    import('../disk-loader.js'),
-    import('../api.js'),
+    import('../plugin-disk-loader.js'),
+    import('../plugin-api.js'),
     import('@onething/backend/toolkit'),
-    import('@onething/backend/prompt/plugin-context-breaker'),
-    import('@onething/backend/skill/plugin-roots'),
-    import('@onething/backend/plugin/lifecycle-hooks'),
-    import('@onething/backend/plugin/input-intercept-bound'),
-    import('@onething/backend/plugin/tool-call-intercept-bound'),
-    import('@onething/backend/plugin/tool-result-intercept-bound'),
+    import('@onething/backend/prompt/prompt-plugin-context-breaker'),
+    import('@onething/backend/skill/skill-plugin-roots'),
+    import('@onething/backend/plugin/plugin-lifecycle-hooks'),
+    import('@onething/backend/plugin/plugin-input-intercept-bound'),
+    import('@onething/backend/plugin/plugin-tool-call-intercept-bound'),
+    import('@onething/backend/plugin/plugin-tool-result-intercept-bound'),
     import('@onething/backend/scheduler/scheduler-bound'),
     import('@onething/backend/variable/variable-system'),
     import('../plugin-im-connector-registry.js'),

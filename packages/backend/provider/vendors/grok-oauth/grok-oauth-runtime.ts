@@ -7,10 +7,10 @@
  * 与搬家前 `factory.ts` 那段登记逐字同口径。
  */
 import { BearerApiKeyAuth } from "../../base/provider-base.js";
-import { createResponsesProvider } from "../../dialects/responses-recipe.js";
-import type { VendorRuntime } from "../runtimes.js";
+import { createResponsesProvider } from "../../dialects/provider-dialects-responses-recipe.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { GROK_OAUTH_DIALECT } from "./grok-oauth-dialect.js";
-import { GROK_FALLBACK_CATALOG } from "../grok/fallback-models.js";
+import { GROK_FALLBACK_CATALOG } from "../grok/grok-fallback-models.js";
 import { GROK_OAUTH_CONFIG } from "./grok-oauth-flow.js";
 
 export const GROK_OAUTH_RUNTIME: VendorRuntime = {

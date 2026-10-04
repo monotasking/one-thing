@@ -6,23 +6,23 @@ export {
   buildLexicalQuery,
   createLexicalRetriever,
   fieldWeights,
-} from './lexical-retriever.js'
+} from './search-kernel-bases-lexical-retriever.js'
 export type {
   LexicalHitContext,
   LexicalRetrieverIndex,
   LexicalRetrieverOptions,
-} from './lexical-retriever.js'
+} from './search-kernel-bases-lexical-retriever.js'
 export {
   VECTOR_RETRIEVER_ID,
   createVectorRetriever,
   nearestPerDoc,
   queryTextOf,
   scoreOfDistance,
-} from './vector-retriever.js'
-export type { VectorHitContext, VectorRetrieverOptions } from './vector-retriever.js'
-export { POSITION_CURSOR_KIND, scanCapability } from './scan.js'
-export type { ScanCapabilityOptions } from './scan.js'
-export { staticCapability } from './static.js'
-export type { StaticCapabilityOptions } from './static.js'
-export { remoteCapability } from './remote.js'
-export type { RemoteCapabilityOptions } from './remote.js'
+} from './search-kernel-bases-vector-retriever.js'
+export type { VectorHitContext, VectorRetrieverOptions } from './search-kernel-bases-vector-retriever.js'
+export { POSITION_CURSOR_KIND, scanCapability } from './search-kernel-bases-scan.js'
+export type { ScanCapabilityOptions } from './search-kernel-bases-scan.js'
+export { staticCapability } from './search-kernel-bases-static.js'
+export type { StaticCapabilityOptions } from './search-kernel-bases-static.js'
+export { remoteCapability } from './search-kernel-bases-remote.js'
+export type { RemoteCapabilityOptions } from './search-kernel-bases-remote.js'

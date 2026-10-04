@@ -1,7 +1,7 @@
 /**
  * `kimi-code` 的自述(`docs/design/architecture-direction-2026-10.md` §4 P1:每家的 manifest 住在自己家)。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`)。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`)。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from '../kimi/kimi-endpoint.js'
@@ -28,7 +28,7 @@ export const KIMI_CODE_MANIFEST: ProviderManifest = {
   // 套餐自己那本目录:型号名与按量那本一个都不重名。
   models: { kind: 'models.dev', key: ONETHING_KIMI_CODE_MODELS_DEV_ID },
   billing: 'subscription',
-  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/manifests.ts`)。
+  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/provider-vendor-manifests.ts`)。
   family: { role: 'subscription', tag: 'Kimi Code' },
   modelRules: 'kimi',
   defaultBaseUrl: ONETHING_KIMI_CODING_PLAN_BASE_URL,

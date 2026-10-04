@@ -6,8 +6,8 @@
 
 import { describe, it, expect } from "vitest";
 import { runReplay, contextToEvalMessages, type ReplayScene } from "../eval-replay.js";
-import { argsSimilarity, createMockToolResolver } from "../mock-tools.js";
-import type { EvalModelCaller, EvalModelResponse } from "../model-call.js";
+import { argsSimilarity, createMockToolResolver } from "../eval-mock-tools.js";
+import type { EvalModelCaller, EvalModelResponse } from "../eval-model-call.js";
 
 function scene(overrides: Partial<ReplayScene> = {}): ReplayScene {
 	return {

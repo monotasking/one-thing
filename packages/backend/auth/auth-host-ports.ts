@@ -1,4 +1,4 @@
-import type { OnethingTokenCryptoAdapter } from './token-store.js'
+import type { OnethingTokenCryptoAdapter } from './auth-token-store.js'
 
 /**
  * Host injection points for OAuth. The Electron host supplies net.fetch (with

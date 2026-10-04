@@ -44,14 +44,14 @@ vi.mock('../session-store.js', () => ({
 }))
 
 const { flushSessionEventLog, resetSessionEventLogCache } =
-  await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { resetSessionProjectionCache } = await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { sessionReads } = await import('../reads.js')
-const { resetSessionShadowCache } = await import('../shadow.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
+  await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { resetSessionProjectionCache } = await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { sessionReads } = await import('../session-reads.js')
+const { resetSessionShadowCache } = await import('../session-shadow.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
 
 const SESSION = 'read-mode-1'
 const RUN = 'run-1'

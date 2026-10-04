@@ -6,8 +6,8 @@ import ts from 'typescript'
 // `session/`(原包根 `session/`;命令面那只改名 `session-commands.ts`,因为目录里已有一只 `commands.ts`
 // —— 会话消息的形状词汇 —— 它不在这张表里)。
 const privateSessionFiles = new Set([
-  'session-commands.ts', 'event-log.ts', 'event-layer.ts', 'event-writer.ts', 'event-surface.ts',
-  'prepare.ts', 'projection-cache.ts', 'events-reads.ts', 'reads.ts', 'writable.ts', 'deletion.ts',
+  'session-commands.ts', 'session-event-log.ts', 'session-event-layer.ts', 'session-event-writer.ts', 'session-event-surface.ts',
+  'session-prepare.ts', 'session-projection-cache.ts', 'session-events-reads.ts', 'session-reads.ts', 'session-writable.ts', 'session-deletion.ts',
 ])
 const within = (file, directory) => file.startsWith(directory + path.sep)
 const isTest = file => /(?:^|[/\\])(?:__tests__|fixtures)(?:[/\\]|$)|\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file)

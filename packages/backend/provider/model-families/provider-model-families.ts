@@ -7,17 +7,17 @@
 import {
   ONETHING_CLAUDE_CONTEXT_LENGTH_HINTS,
   ONETHING_CLAUDE_MODEL_DESCRIPTIONS,
-} from './claude.js'
+} from './provider-model-families-claude.js'
 import {
   ONETHING_GEMINI_CONTEXT_LENGTH_HINTS,
   ONETHING_GEMINI_MODEL_DESCRIPTIONS,
   ONETHING_GEMINI_MODEL_DISPLAY_NAMES,
-} from './gemini.js'
+} from './provider-model-families-gemini.js'
 import {
   ONETHING_OPENAI_GPT_CONTEXT_LENGTH_HINTS,
   ONETHING_OPENAI_MODEL_DESCRIPTIONS,
   ONETHING_OPENAI_O_SERIES_CONTEXT_LENGTH_HINTS,
-} from './openai.js'
+} from './provider-model-families-openai.js'
 import type { OnethingModelContextLengthHint } from './provider-model-families-types.js'
 
 export type { OnethingModelContextLengthHint } from './provider-model-families-types.js'

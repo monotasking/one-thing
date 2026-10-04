@@ -3,10 +3,10 @@
  * import 这个桶 = 把它们全部登记进 `registerDialect` 的注册表
  * (设计稿 §9 P0a 门 ④:每份配方都得有 fixture 目录)。
  *
- * 搬回 `providers/vendors/<id>/` 的那几家,方言跟着家走;它们由 `vendors/runtimes.ts`
+ * 搬回 `providers/vendors/<id>/` 的那几家,方言跟着家走;它们由 `vendors/provider-vendor-runtimes.ts`
  * 的名册登记 —— 这里副作用 import 那份名册,「import 这个桶 = 全部登记」照旧成立。
  */
-import "../vendors/runtimes.js";
+import "../vendors/provider-vendor-runtimes.js";
 export {
 	ANTHROPIC_DEFAULT_BASE_URL,
 	ANTHROPIC_TRANSPORT_CAPABILITIES,
@@ -18,9 +18,9 @@ export {
 	type AnthropicAuthOptions,
 	type AnthropicDialectSpec,
 	type AnthropicProviderInit,
-} from "./anthropic-recipe.js";
+} from "./provider-dialects-anthropic-recipe.js";
 
-export { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
+export { CUSTOM_ANTHROPIC_DIALECT } from "./provider-dialects-custom-anthropic.js";
 
 export {
 	GEMINI_DEFAULT_BASE_URL,
@@ -33,7 +33,7 @@ export {
 	type GeminiAuthOptions,
 	type GeminiDialectSpec,
 	type GeminiProviderInit,
-} from "./gemini-recipe.js";
+} from "./provider-dialects-gemini-recipe.js";
 
 export {
 	capabilitiesFromFlags,
@@ -41,7 +41,7 @@ export {
 	runtimeCapabilityFlags,
 	type RuntimeCapabilityFlags,
 	type RuntimeTransportConfig,
-} from "./runtime-transport.js";
+} from "./provider-dialects-runtime-transport.js";
 
 export {
 	createOpenAIChatProvider,
@@ -52,7 +52,7 @@ export {
 	type OpenAIChatDialectSpec,
 	type OpenAIChatProviderInit,
 	type OpenAIChatTransportFlags,
-} from "./recipe.js";
+} from "./provider-dialects-recipe.js";
 
 export {
 	CODEX_CLIENT_VERSION,
@@ -74,6 +74,6 @@ export {
 	type ProviderAuthContext as CodexProviderAuthContextShape,
 	type ResponsesDialectSpec,
 	type ResponsesProviderInit,
-} from "./responses-recipe.js";
+} from "./provider-dialects-responses-recipe.js";
 
-export { CUSTOM_OPENAI_DIALECT } from "./custom-openai.js";
+export { CUSTOM_OPENAI_DIALECT } from "./provider-dialects-custom-openai.js";

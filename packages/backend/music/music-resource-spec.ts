@@ -383,7 +383,7 @@ const PROGRAMME_ACTION_PARAMS: JsonSchema = {
  *
  * **不写 `required`**,这一格是刻意的:缺一个数值与给错一个数值(NaN / Infinity)
  * 在旧路上是**同一句话**(`「seek 需要一个数值参数」`),而契约校验者只看判别键、
- * 不解释 params(`resource/validator.ts` 的文件头)。所以两种都由 `plan` 判、
+ * 不解释 params(`resource/resource-validator.ts` 的文件头)。所以两种都由 `plan` 判、
  * 由 `plan` 说那一句 —— 写成 `required` 只会让「缺」与「错」分头走两条路、说两句话。
  */
 const SEEK_PARAMS: JsonSchema = {
@@ -441,7 +441,7 @@ const SET_PROVIDER_PARAMS: JsonSchema = {
 
 /**
  * 主持人此刻的状态牌(§16.3):在不在干活、在干什么。`doing.label` 是后端按动词表
- * (`host-log.ts`)翻好的一句现在时,壳只画它 —— 壳不认识 ncm-cli。
+ * (`music-host-log.ts`)翻好的一句现在时,壳只画它 —— 壳不认识 ncm-cli。
  */
 const HOST_STATE_SCHEMA: JsonSchema = {
   type: 'object',
@@ -948,7 +948,7 @@ export const musicResourceSpec: ResourceSpec = {
      * 下面六条都是 `music:player` 上**音乐自己的事实**,各自带一格 `moment`:谁想对「用户
      * 跳过了一首歌」起反应,读这一格就够了。音乐不知道有谁在听 —— 这里一个「宠物」都没有。
      *
-     * 产地全在装配层(`music/moments.ts` 的 `MusicMoments` 与电台那几处调用),规矩写在
+     * 产地全在装配层(`music/music-moments.ts` 的 `MusicMoments` 与电台那几处调用),规矩写在
      * 那一只文件头上。权重的判据:`low` = 只值得记住(每首歌都会有),`normal` = 值得在冷却
      * 允许时说一句,`high` = 用户在用行动表达不满,值得插队说。
      */

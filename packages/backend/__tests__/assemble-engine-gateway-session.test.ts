@@ -23,13 +23,13 @@ vi.mock('../session/session-access.js', async importOriginal => {
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
 })
 
-vi.mock('../engine/stream-engine-runtime.js', () => ({
+vi.mock('../engine/engine-main-stream-runtime.js', () => ({
   createMainStreamEngineRuntime: vi.fn(() => ({})),
 }))
 
 // 引擎本体换成空壳:这份测试只看 runtime 建会话那一段。端口接线(`createBoundStreamEngine`)与
 // 引擎层住在同一只 `assemble-engine.ts` 里之后,替身改打在引擎类声明的那只文件上。
-vi.mock('../engine/stream-engine.js', () => ({
+vi.mock('../engine/engine-stream-dispatcher.js', () => ({
   ProductStreamEngine: class {
     setEventBus(): void {}
     shutdown(): void {}
@@ -73,8 +73,8 @@ describe('main gateway conversation runtime sessions', () => {
   })
 
   it('creates gateway conversations as persistent sessions without stealing the current session', async () => {
-    const { getConversationRuntime, createStreamEngineLayer } = await import('../assemble-engine.js')
-    const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
+    const { getConversationRuntime, createStreamEngineLayer } = await import('../backend-assemble-engine.js')
+    const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/backend-current.js')
     const { getEventBus, getStreamChannel } = await import('@onething/backend/event')
 
     // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
@@ -105,8 +105,8 @@ describe('main gateway conversation runtime sessions', () => {
       id: 'gateway:wechat:user@im.wechat',
       name: 'WeChat - user@im.wechat',
     })
-    const { getConversationRuntime, createStreamEngineLayer } = await import('../assemble-engine.js')
-    const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
+    const { getConversationRuntime, createStreamEngineLayer } = await import('../backend-assemble-engine.js')
+    const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/backend-current.js')
     const { getEventBus, getStreamChannel } = await import('@onething/backend/event')
 
     // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
@@ -130,8 +130,8 @@ describe('main gateway conversation runtime sessions', () => {
   it('does not adopt an existing gateway session belonging to another product owner', async () => {
     const id = 'gateway:wechat:user@im.wechat'
     mocks.sessions.set(id, { id, name: 'Private', ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
-    const { getConversationRuntime, createStreamEngineLayer } = await import('../assemble-engine.js')
-    const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/current.js')
+    const { getConversationRuntime, createStreamEngineLayer } = await import('../backend-assemble-engine.js')
+    const { createBackendHandle, setCurrentBackend } = await import('@onething/backend/backend-current.js')
     const { getEventBus, getStreamChannel } = await import('@onething/backend/event')
     const layer = createStreamEngineLayer({ eventBus: getEventBus(), streamChannel: getStreamChannel() })
     setCurrentBackend(createBackendHandle({ engine: layer.engine, runtime: layer.runtime }))

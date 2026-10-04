@@ -2,9 +2,9 @@
  * Built-in Provider Definitions
  *
  * This file exports all built-in provider definitions — a projection of the builtin
- * manifests (`provider/builtin-providers.ts`). To add a builtin provider, add its
+ * manifests (`provider/provider-builtin-info.ts`). To add a builtin provider, add its
  * folder under `provider/vendors/<id>/` and one row in each roster
- * (`vendors/manifests.ts`, `vendors/runtimes.ts`); nothing here changes.
+ * (`vendors/provider-vendor-manifests.ts`, `vendors/provider-vendor-runtimes.ts`); nothing here changes.
  *
  * Built-in providers are expected to route through agent runtimes by default.
  */
@@ -12,7 +12,7 @@
 import {
   acpBuiltinProvider,
   onethingPortableBuiltinProviders,
-} from '../builtin-providers.js'
+} from '../provider-builtin-info.js'
 
 import type { ProviderDefinition } from '../provider-ipc-types.js'
 

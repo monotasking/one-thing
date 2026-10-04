@@ -20,7 +20,7 @@ export {
 } from './toolkit-contract.js'
 export type { ToolContract, ZodValidatorOptions } from './toolkit-contract.js'
 
-export { ReadOnlyTool } from './families/read-only.js'
+export { ReadOnlyTool } from './families/toolkit-families-read-only.js'
 export {
   FileTool,
   SandboxViolationError,
@@ -30,13 +30,13 @@ export {
   resolveFileToolPath,
 } from './families/toolkit-families-file.js'
 export type { FileScope, FileToolAdapters, FileToolContextLike, ResolvedFilePath } from './families/toolkit-families-file.js'
-export { MAX_REVALIDATION_ATTEMPTS, MutatingFileTool, fileMutationEffect } from './families/mutating-file.js'
+export { MAX_REVALIDATION_ATTEMPTS, MutatingFileTool, fileMutationEffect } from './families/toolkit-families-mutating-file.js'
 export type {
   FileMutationDiff,
   FileMutationPlan,
   MutatingFileToolAdapters,
-} from './families/mutating-file.js'
-export { ProcessTool } from './families/process.js'
+} from './families/toolkit-families-mutating-file.js'
+export { ProcessTool } from './families/toolkit-families-process.js'
 export type {
   CommandClassification,
   CommandScope,
@@ -44,13 +44,13 @@ export type {
   ForegroundRunInput,
   ProcessOperationsOptions,
   ProcessToolAdapters,
-} from './families/process.js'
+} from './families/toolkit-families-process.js'
 
 export { NetworkTool } from './families/toolkit-families-network.js'
 export { CollabTool, collabActorAgentId, sceneVenue } from './families/toolkit-families-collab.js'
 export type { CollabScope, CollabToolAdapters } from './families/toolkit-families-collab.js'
-export { InteractiveTool } from './families/interactive.js'
-export type { InteractiveRequest } from './families/interactive.js'
+export { InteractiveTool } from './families/toolkit-families-interactive.js'
+export type { InteractiveRequest } from './families/toolkit-families-interactive.js'
 export { SessionTool } from './families/toolkit-families-session.js'
 export { CapabilityTool, SELF_EVOLUTION_SKILL_NAME } from './families/toolkit-families-capability.js'
 export {
@@ -61,7 +61,7 @@ export {
   mcpResultText,
   PluginTool,
   resolveMcpPermissionResourceName,
-} from './families/external.js'
+} from './families/toolkit-families-external.js'
 export type {
   ExternalToolIsolation,
   ExternalToolReporter,
@@ -73,7 +73,7 @@ export type {
   PluginToolDefinitionLike,
   PluginToolHostContext,
   PluginToolHostResult,
-} from './families/external.js'
+} from './families/toolkit-families-external.js'
 
 export {
   configureToolkitCatalog,
@@ -83,15 +83,15 @@ export {
 } from './toolkit-host.js'
 export type { ToolkitAgentSourceTool, ToolkitSurfaceInput } from './toolkit-host.js'
 
-export { resolveScene } from './scene.js'
-export type { ResolveSceneInput, SceneSessionLike } from './scene.js'
+export { resolveScene } from './toolkit-scene.js'
+export type { ResolveSceneInput, SceneSessionLike } from './toolkit-scene.js'
 
-export { BashTool, BASH_DESCRIPTION, BashInputSchema, createBashTool } from './builtin/bash.js'
-export type { BashInput, BashToolAdapters } from './builtin/bash.js'
-export { createEditTool, EditTool, EDIT_DESCRIPTION, EDIT_TOOL_PROMPT, EditInputSchema } from './builtin/edit.js'
-export type { EditInput, EditToolAdapters } from './builtin/edit.js'
-export { createReadTool, READ_DESCRIPTION, ReadInputSchema, ReadTool } from './builtin/read.js'
-export type { ReadInput, ReadToolAdapters } from './builtin/read.js'
+export { BashTool, BASH_DESCRIPTION, BashInputSchema, createBashTool } from './builtin/toolkit-builtin-bash.js'
+export type { BashInput, BashToolAdapters } from './builtin/toolkit-builtin-bash.js'
+export { createEditTool, EditTool, EDIT_DESCRIPTION, EDIT_TOOL_PROMPT, EditInputSchema } from './builtin/toolkit-builtin-edit.js'
+export type { EditInput, EditToolAdapters } from './builtin/toolkit-builtin-edit.js'
+export { createReadTool, READ_DESCRIPTION, ReadInputSchema, ReadTool } from './builtin/toolkit-builtin-read.js'
+export type { ReadInput, ReadToolAdapters } from './builtin/toolkit-builtin-read.js'
 export {
   configureSearchToolAdapters,
   createSearchTool,
@@ -114,8 +114,8 @@ export type {
   SearchToolPrincipal,
   SearchToolQuery,
 } from './builtin/toolkit-builtin-search.js'
-export { createTimeTool, TIME_DESCRIPTION, TimeInputSchema, TimeTool } from './builtin/time.js'
-export type { TimeInput } from './builtin/time.js'
+export { createTimeTool, TIME_DESCRIPTION, TimeInputSchema, TimeTool } from './builtin/toolkit-builtin-time.js'
+export type { TimeInput } from './builtin/toolkit-builtin-time.js'
 export {
   createVariableTool,
   VARIABLE_DESCRIPTION,
@@ -132,8 +132,8 @@ export type {
   VariableInput,
   VariableToolAdapters,
 } from './builtin/toolkit-builtin-variable.js'
-export { createWriteTool, WRITE_DESCRIPTION, WRITE_TOOL_PROMPT, WriteInputSchema, WriteTool } from './builtin/write.js'
-export type { WriteInput, WriteToolAdapters } from './builtin/write.js'
+export { createWriteTool, WRITE_DESCRIPTION, WRITE_TOOL_PROMPT, WriteInputSchema, WriteTool } from './builtin/toolkit-builtin-write.js'
+export type { WriteInput, WriteToolAdapters } from './builtin/toolkit-builtin-write.js'
 
 export {
   createAskUserTool,
@@ -142,8 +142,8 @@ export {
   ASK_USER_TIMEOUT_MS,
   AskUserInputSchema,
   AskUserTool,
-} from './builtin/ask-user.js'
-export type { AskUserAbortInput, AskUserAnswerRecord, AskUserAskInput, AskUserInput, AskUserToolAdapters } from './builtin/ask-user.js'
+} from './builtin/toolkit-builtin-ask-user.js'
+export type { AskUserAbortInput, AskUserAnswerRecord, AskUserAskInput, AskUserInput, AskUserToolAdapters } from './builtin/toolkit-builtin-ask-user.js'
 export {
   BOARD_DESCRIPTION,
   BoardInputSchema,
@@ -159,16 +159,16 @@ export {
   HISTORY_MAX_LIMIT,
   HistoryInputSchema,
   HistoryTool,
-} from './builtin/history.js'
-export type { HistoryEntry, HistoryInput, HistoryToolAdapters, HistoryToolResult } from './builtin/history.js'
+} from './builtin/toolkit-builtin-history.js'
+export type { HistoryEntry, HistoryInput, HistoryToolAdapters, HistoryToolResult } from './builtin/toolkit-builtin-history.js'
 export {
   createNotebookTool,
   NOTEBOOK_DESCRIPTION,
   NOTEBOOK_NOTE_MAX_CHARS,
   NotebookInputSchema,
   NotebookTool,
-} from './builtin/notebook.js'
-export type { NotebookInput, NotebookToolAdapters, NotebookToolResult } from './builtin/notebook.js'
+} from './builtin/toolkit-builtin-notebook.js'
+export type { NotebookInput, NotebookToolAdapters, NotebookToolResult } from './builtin/toolkit-builtin-notebook.js'
 export {
   createPracticeTool,
   PRACTICE_DESCRIPTION,
@@ -180,21 +180,21 @@ export type { PracticeInput, PracticeToolAdapters } from './builtin/toolkit-buil
  * K3-b —— `radio` 这只工具退役了(音乐成了一个 scheme,`music/music-resource-spec.ts`),
  * 但**它的适配器形状留下来**:那四条端口(开台 / 关台 / 状态 / 点歌)是装配层与
  * 音乐子系统之间既有的一份契约,`radioAdapters()` 与新的 `MusicResourceProvider`
- * 吃的都是它。类型搬到 `./radio-adapters.js`(纯类型,没有工具了)。
+ * 吃的都是它。类型搬到 `./toolkit-radio-adapters.js`(纯类型,没有工具了)。
  */
-export type { RadioToolAdapters, RadioToolStatus } from './radio-adapters.js'
+export type { RadioToolAdapters, RadioToolStatus } from './toolkit-radio-adapters.js'
 export {
   createSendMessageTool,
   SEND_MESSAGE_DESCRIPTION,
   SendMessageInputSchema,
   SendMessageTool,
-} from './builtin/send-message.js'
+} from './builtin/toolkit-builtin-send-message.js'
 export type {
   CollabDmSendResult,
   SayToolResult,
   SendMessageInput,
   SendMessageToolAdapters,
-} from './builtin/send-message.js'
+} from './builtin/toolkit-builtin-send-message.js'
 export { createTaskTool, TASK_DESCRIPTION, TaskInputSchema, TaskTool } from './builtin/toolkit-builtin-task.js'
 export type { TaskDispatchOutcome, TaskDispatchRequest, TaskInput, TaskToolPorts } from './builtin/toolkit-builtin-task.js'
 export {
@@ -202,12 +202,12 @@ export {
   WEB_OPEN_DESCRIPTION,
   WebOpenInputSchema,
   WebOpenTool,
-} from './builtin/web-open.js'
-export type { WebOpenInput, WebOpenToolAdapters } from './builtin/web-open.js'
+} from './builtin/toolkit-builtin-web-open.js'
+export type { WebOpenInput, WebOpenToolAdapters } from './builtin/toolkit-builtin-web-open.js'
 export {
   createWebSearchTool,
   WEB_SEARCH_DESCRIPTION,
   WebSearchInputSchema,
   WebSearchTool,
-} from './builtin/web-search.js'
-export type { WebSearchInput, WebSearchToolAdapters } from './builtin/web-search.js'
+} from './builtin/toolkit-builtin-web-search.js'
+export type { WebSearchInput, WebSearchToolAdapters } from './builtin/toolkit-builtin-web-search.js'

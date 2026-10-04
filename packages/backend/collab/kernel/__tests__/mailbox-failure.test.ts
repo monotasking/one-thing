@@ -2,8 +2,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createActorEvent } from '../envelope.js'
-import { DurableMailbox, readActorMailboxLog } from '../mailbox.js'
+import { createActorEvent } from '../collab-kernel-envelope.js'
+import { DurableMailbox, readActorMailboxLog } from '../collab-kernel-mailbox.js'
 
 let directory: string
 const opened: DurableMailbox[] = []

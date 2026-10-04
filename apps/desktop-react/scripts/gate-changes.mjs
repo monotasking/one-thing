@@ -588,7 +588,7 @@ async function main() {
      * **每条会话绑它自己那个仓 —— 那一句同时是「这道门读得到」的全部理由**。
      *
      * 资源那条路的读根 = 写根 ∪ **发起会话的工作目录** ∪ 接入目录 ∪ 笔记根 ∪
-     * 下载目录(`backend/resource/path-guard.ts` + `resource/resource.ts`
+     * 下载目录(`backend/resource/resource-path-guard.ts` + `resource/resource.ts`
      * 的 `workingDirectoryRootsFor`,2026-09-13 落地)。壳那一侧把发起坐标带上去
      * (`data/git-port.read` 的 `sessionId` = 环境会话),于是「这条会话看它自己
      * 那个仓」天生在界内 —— 这道门因此不需要给沙箱做任何额外安排。

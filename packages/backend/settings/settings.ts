@@ -18,7 +18,7 @@ export {
 } from './settings-store.js'
 export { createDefaultSettings, mergeWithDefaults, providerSeedOf } from './settings-defaults.js'
 export { DEFAULT_MUSIC_SETTINGS, normalizeConnectedDirectories } from './defaults/settings-factory-defaults.js'
-export { composeEffectiveAISettings, createEmptySpaceProviderSettings, splitEffectiveAISettings } from './defaults/ai-settings.js'
+export { composeEffectiveAISettings, createEmptySpaceProviderSettings, splitEffectiveAISettings } from './defaults/settings-defaults-ai.js'
 // 包根归位 3 第 1 笔(2026-10-03)从包根 `provider-binding/bound-fetch.ts` 搬来的「按用户设置里的代理去请求」那层薄壳。
 // 它读设置缓存,所以住在设置里;它包着的受管 fetch 本体在 `network/`。
 export {
@@ -26,7 +26,7 @@ export {
   createAppFetch,
   createPolicyFetch,
   createRequiredAppFetch,
-} from './proxy-fetch.js'
+} from './settings-proxy-fetch.js'
 
 // ── providers 归位(D24,2026-10-04)从 `providers/` 搬来的模型目录服务三件:目录缓存与刷新
 // (`settings-model-registry-service.ts`,整只以命名空间 `modelRegistry` 交出,调用处一律写 `modelRegistry.x`)、

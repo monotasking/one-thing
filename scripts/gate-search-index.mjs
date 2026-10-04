@@ -706,7 +706,7 @@ async function startCountingProxy() {
  *      `status.model.loadedBytes` 单调增、`totalBytes` 不缩,假站真的收到了请求
  *      (这一格同时是 ⑬a 那个 0 的**对照组** —— 不然「0 次」可能只是假站没接上)。
  *  ⑬c **取消**:中途 `semanticModelCancel` → 当场回 `absent`,而且此后**不会**变成
- *      `ready`(半截文件说不了「下全了」——判据是那份落定才写的清单,`model-store.ts`)。
+ *      `ready`(半截文件说不了「下全了」——判据是那份落定才写的清单,`search-embedding-model-store.ts`)。
  *  ⑬d **删除**:`semanticModelRemove` → `absent`,模型目录清干净。
  *  ⑬e **认领的另一半**(2026-09-17 §15.8):取消之后盘上留着几件、清单不在 —— 关开关
  *      换出来的那条 Worker 于是撞上「文件在、清单不在」那一形。这台假站的东西**装不
@@ -720,8 +720,8 @@ async function startCountingProxy() {
  * 二进制产物,两样都比它们要守的东西贵。所以分工是:
  *  - **走到 `ready`** 由可选的 ⑫(真嵌入器、真出网)守;
  *  - **状态机**(进度怎么聚、取消是什么语义、清单什么时候写、半截文件为什么不算数)
- *    由单测守(`search/index/__tests__/model-download.test.ts` +
- *    `search/embedding/__tests__/model-store.test.ts`);
+ *    由单测守(`search/index/__tests__/search-index-model-download.test.ts` +
+ *    `search/embedding/__tests__/search-embedding-model-store.test.ts`);
  *  - 这一条守的是**只有真机才说得出的那三句**:零网络、真出网、真取消。
  *
  * **反证**:把嵌入器装载第一句那个 `isEmbedderModelPresent` 拆掉(或把
@@ -829,7 +829,7 @@ async function runSemanticModelPhase() {
      * 所以正确答案是「不认领」:维持 `absent`、**文件一个都不删**、不出网。
      *
      * 「装得上就认领」那一半这一条证不到(假 onnx 建不出会话),它归单测
-     * (`model-download.test.ts`)与可选的 ⑫(真模型、删掉清单重起)。
+     * (`search-index-model-download.test.ts`)与可选的 ⑫(真模型、删掉清单重起)。
      */
     const modelDirG = path.join(storeG, 'models', 'embeddings', 'multilingual-e5-small')
     const beforeAdopt = fs.existsSync(modelDirG) ? listFilesDeep(modelDirG) : []
@@ -1100,7 +1100,7 @@ async function runRealEmbedderPhase() {
      * 下载 —— 那一格现在只说「要不要用」,下载是这一发 RPC。
      *
      * 下完之后**不用再翻一次开关**:Worker 把「落定了」喊回宿主,装配在开关本来就开着
-     * 时换一条 Worker(`search/service-setup.ts`)。所以下面那条等待既是「真模型装得起来」
+     * 时换一条 Worker(`search/search-service-setup.ts`)。所以下面那条等待既是「真模型装得起来」
      * 的判据,也是「下完就生效」这条链的真机证据。
      */
     const already = (await rpc('search', 'status'))?.model?.state
@@ -1145,7 +1145,7 @@ async function runRealEmbedderPhase() {
      * 「装不上就不认领」那一半由 ⑬e(假站那份零填 onnx)与单测守。
      */
     const manifestPath = path.join(storeF, 'models', 'embeddings', 'multilingual-e5-small',
-      // 清单文件名,`embedding/model-store.ts` 的 `MODEL_MANIFEST_FILE`。
+      // 清单文件名,`embedding/search-embedding-model-store.ts` 的 `MODEL_MANIFEST_FILE`。
       '.onething-model.json')
     check(fs.existsSync(manifestPath), '⑫b 下全之后盘上有一份清单(它就是「下全了」这句话)')
     fs.rmSync(manifestPath, { force: true })
@@ -1230,7 +1230,7 @@ async function runLoopDelayPhase() {
      *
      * ⑤a–⑤c 三个窗口跑的是**开关关着**的默认档,所以它们量不到嵌入 —— 「嵌入搬回
      * 主线程」这条反证在那三个窗口上照不出来。能照出来的是结构:
-     * `@huggingface/transformers` 只许出现在 `search/embedding/transformers-onnx.ts`
+     * `@huggingface/transformers` 只许出现在 `search/embedding/search-embedding-transformers-onnx.ts`
      * 一个文件里(而且是**动态** import),`packages/backend/**` 与主线程那一侧的
      * 检索代码里一次都不许出现。把它 import 到主线程 = 这一条当场红。
      */
@@ -1633,7 +1633,7 @@ async function runSemanticPhase() {
  * 「真起得来第二条线程、而且它开得了同一个库文件」只有产物上跑得出来。
  *
  * **走的是设置那条真路**(`settings.saveSettings` RPC → `settings:changed` →
- * `search/service-setup.ts` 的那条订阅),不是一个门专用的后门。
+ * `search/search-service-setup.ts` 的那条订阅),不是一个门专用的后门。
  */
 async function runSemanticHotApplyPhase() {
   const storeD = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-hotapply-gate-'))

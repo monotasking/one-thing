@@ -10,9 +10,9 @@
  * abort / 校验 / 权限 / 截断 / 沙箱 / 进度上报一个字都不出现 —— 那些是系统的事。
  */
 
-import type { Intent } from './intent.js'
-import type { Result } from './result.js'
-import type { PlanContext, RunContext } from './run-context.js'
+import type { Intent } from './toolkit-intent.js'
+import type { Result } from './toolkit-result.js'
+import type { PlanContext, RunContext } from './toolkit-run-context.js'
 import type { PrepareEnv, Scene, ToolSpec } from './toolkit-spec.js'
 
 export abstract class Tool<In = unknown, Payload = unknown> {

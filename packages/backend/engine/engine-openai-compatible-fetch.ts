@@ -1,6 +1,6 @@
 import { createOpenAICompatibleAgentProvider as createCoreOpenAICompatibleAgentProvider, type OpenAICompatibleAgentProviderOptions } from '@onething/backend/provider'
 import { createRequiredAppFetch } from '@onething/backend/settings'
-import type { AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
 
 export type { OpenAICompatibleAgentProviderOptions } from '@onething/backend/provider'
 

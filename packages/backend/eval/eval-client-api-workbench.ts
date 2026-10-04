@@ -47,10 +47,10 @@ import { resolveEvalsRepoDir } from '@onething/backend/eval/eval-host-ports'
 import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
-} from '@onething/backend/eval/provider-adapter'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+} from '@onething/backend/eval/eval-provider-adapter'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
-import { getEvalsTaskOwner } from '@onething/backend/eval/task-owner'
+import { getEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 
 const log = getLogger('rpc.evals-workbench')
 

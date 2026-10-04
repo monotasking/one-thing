@@ -19,7 +19,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { evalsRouter } from '@shared/ipc/evals.js'
-import { EvalsTaskOwner, configureEvalsTaskOwner } from '@onething/backend/eval/task-owner'
+import { EvalsTaskOwner, configureEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 
 const runtime = vi.hoisted(() => ({
   loadMergedRecords: vi.fn(() => [] as Array<Record<string, unknown>>),
@@ -49,9 +49,9 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/settings')>(),
   getSettings: settings.getSettings,
 }))
-vi.mock('@onething/backend/skill/session-skill-cache', () => ({ getSkillsForSession: vi.fn(() => []) }))
-vi.mock('@onething/backend/eval/turn-incident', () => ({ createIncidentForTurn: vi.fn(async () => null) }))
-vi.mock('@onething/backend/eval/provider-adapter', () => ({
+vi.mock('@onething/backend/skill/skill-session-cache', () => ({ getSkillsForSession: vi.fn(() => []) }))
+vi.mock('@onething/backend/eval/eval-turn-incident', () => ({ createIncidentForTurn: vi.fn(async () => null) }))
+vi.mock('@onething/backend/eval/eval-provider-adapter', () => ({
   resolveEvalsCredentials: vi.fn(() => ({ ok: true, apiKey: 'k', baseUrl: 'https://x' })),
   createEvalsModelCaller: vi.fn(() => async () => ({ content: '', toolCalls: [], finishReason: 'stop' })),
 }))

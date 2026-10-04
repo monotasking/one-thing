@@ -1,5 +1,5 @@
-import type { SpaceOverlay } from './overlay.js'
-import type { SpaceProviderSettings } from './provider-settings.js'
+import type { SpaceOverlay } from './space-overlay.js'
+import type { SpaceProviderSettings } from './space-provider-settings.js'
 import type { Space } from './space-types.js'
 
 export interface SpaceRecord {

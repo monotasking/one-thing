@@ -1,12 +1,12 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { ContextManager, type AgentMessage } from '../context/context-manager.js'
 import { EventBus } from '../event/event-bus.js'
-import { StreamChannel } from '../event/stream-channel.js'
+import { StreamChannel } from '../event/event-stream-channel.js'
 import type { EventBase } from '../event/event-types.js'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
-import { ToolExecutor } from '../tool/executor.js'
+import { ToolExecutor } from '../tool/tool-executor.js'
 import { DenyAllPolicy, type PermissionPolicy } from '../tool/tool-policy.js'
-import { ToolRegistry } from '../tool/engine-tool-registry.js'
+import { ToolRegistry } from '../tool/tool-engine-registry.js'
 import type { ToolCall, ToolResult } from '../tool/tool-types.js'
 import type {
   Provider,

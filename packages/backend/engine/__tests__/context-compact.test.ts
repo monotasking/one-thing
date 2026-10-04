@@ -6,7 +6,7 @@ import {
   normalizeContextSummaryOutput,
   selectCompactPlan,
   shouldAutoCompactBeforeSend,
-} from '../compact-session.js'
+} from '../engine-compact-session.js'
 
 function message(index: number, role: 'user' | 'assistant'): ChatMessage {
   return {

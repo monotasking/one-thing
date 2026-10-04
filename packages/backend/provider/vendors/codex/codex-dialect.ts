@@ -6,7 +6,7 @@
  * `CODEX_FALLBACK_INSTRUCTIONS`。
  *
  * P4-4 起这条线上还挂着 `grok` / `grok-oauth`,所以**codex 的每一样怪癖都得在
- * 配方上写明**(在此之前它们是 `responses-recipe.ts` 里的默认值)。这些字段
+ * 配方上写明**(在此之前它们是 `provider-dialects-responses-recipe.ts` 里的默认值)。这些字段
  * 集中在本文件的 `CODEX_DIALECT_SPEC` 常量里 —— 门面 `agent-provider.ts` 也用
  * 同一份,否则两个构造点会分叉:
  *
@@ -26,9 +26,9 @@
  * `if (providerId === 'codex')`。
  *
  * 服务商自述试点 P2 第 4 批从 `agent-loop/providers/dialects/codex.ts` 搬回家;只服务这一家的
- * 那几样(`CODEX_DIALECT_SPEC`、三态端点归一化、默认地址)一起从 `responses-recipe.ts` 搬来。
+ * 那几样(`CODEX_DIALECT_SPEC`、三态端点归一化、默认地址)一起从 `provider-dialects-responses-recipe.ts` 搬来。
  * 配方的几项**缺省值**(占位认证、传输声明、兜底 instructions、错误标签、思考线型)仍是
- * codex 的那一份、仍住在 `responses-recipe.ts`:自定义服务商的 Responses 适配表也吃那几项缺省,
+ * codex 的那一份、仍住在 `provider-dialects-responses-recipe.ts`:自定义服务商的 Responses 适配表也吃那几项缺省,
  * 它们是这条线协议的历史缺省,不是这一家的私货。
  */
 import type { DialectEndpoint } from "../../base/provider-base.js";
@@ -36,7 +36,7 @@ import { registerProviderDataTagPolicy } from "../../provider-data-policy.js";
 import {
 	defineResponsesDialect,
 	type ResponsesDialectSpec,
-} from "../../dialects/responses-recipe.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
 import { codexQuotaFromHeaders } from "./codex-quota.js";
 
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";

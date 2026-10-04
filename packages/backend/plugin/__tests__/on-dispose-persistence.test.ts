@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import type { PluginState } from '../api.js'
+import type { PluginState } from '../plugin-api.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ondispose-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -22,7 +22,7 @@ const cleanups: Array<() => Promise<void>> = []
 
 function ownState(state: PluginState, expectedError?: Error) {
   cleanups.push(async () => {
-    const { disposePlugin, drainPlugin } = await import('../api.js')
+    const { disposePlugin, drainPlugin } = await import('../plugin-api.js')
     disposePlugin(state)
     if (expectedError) await expect(drainPlugin(state)).rejects.toBe(expectedError)
     else await drainPlugin(state)
@@ -45,7 +45,7 @@ const bus = { emitGlobal: () => {}, onGlobal: () => () => {}, onAnySession: () =
 
 describe('onDispose persistence through the real plugin API', () => {
   it('lets a plugin write through BOTH storage and the KV store while tearing down', async () => {
-    const { createPluginAPI, disposePlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin } = await import('../plugin-api.js')
     const { api, state } = createPluginAPI('closer', bus as never, {} as never)
     ownState(state)
 
@@ -80,7 +80,7 @@ describe('onDispose persistence through the real plugin API', () => {
   })
 
   it('still refuses both write faces once teardown has finished', async () => {
-    const { createPluginAPI, disposePlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin } = await import('../plugin-api.js')
     const { api, state } = createPluginAPI('late-writer', bus as never, {} as never)
     ownState(state)
 
@@ -99,7 +99,7 @@ describe('onDispose persistence through the real plugin API', () => {
   })
 
   it('waits for async cleanup, saves both write faces after an await, and closes them exactly once', async () => {
-    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../plugin-api.js')
     const { api, state } = createPluginAPI('async-closer', bus as never, {} as never)
     ownState(state)
     let release!: () => void
@@ -131,7 +131,7 @@ describe('onDispose persistence through the real plugin API', () => {
   })
 
   it('keeps the first cleanup failure but waits for another callback to finish saving', async () => {
-    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../plugin-api.js')
     const { api, state } = createPluginAPI('failed-closer', bus as never, {} as never)
     const failure = new Error('first cleanup failed')
     ownState(state, failure)

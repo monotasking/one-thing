@@ -4,7 +4,7 @@ import type { SearchContinuation } from '../continuations'
 import type { SearchRow } from '../types'
 
 /**
- * `kind: 'file'` —— 一个文件(`search/capabilities/files.ts` 的
+ * `kind: 'file'` —— 一个文件(`search/capabilities/search-capabilities-files.ts` 的
  * `FileTarget`)。
  *
  * 徽上的字是**数据不是文案**:从路径推出来的扩展名(`.ts` → `TS`),换语言不该变。

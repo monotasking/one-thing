@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { encodeOnethingKeywordPhrase, parseOnethingKwsTokenVocabulary } from '../kws/text2token'
+import { encodeOnethingKeywordPhrase, parseOnethingKwsTokenVocabulary } from '../kws/voice-kws-text2token'
 
 // The bundled wenetspeech KWS vocabulary the app ships with.
 const tokensFile = readFileSync(

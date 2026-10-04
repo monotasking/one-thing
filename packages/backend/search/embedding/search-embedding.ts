@@ -9,8 +9,8 @@
  * 也不把 onnxruntime 拖进任何 bundle 的启动路径。
  */
 
-export { chunkForEmbedding, normalizeVector, MAX_CHUNKS_PER_DOC } from './embedder.js'
-export type { EmbeddingChunk, Embedder, EmbedKind } from './embedder.js'
+export { chunkForEmbedding, normalizeVector, MAX_CHUNKS_PER_DOC } from './search-embedding-embedder.js'
+export type { EmbeddingChunk, Embedder, EmbedKind } from './search-embedding-embedder.js'
 export {
   listEmbedders,
   registerEmbedder,
@@ -32,8 +32,8 @@ export {
   probeEmbedderModel,
   readModelManifest,
   removeEmbedderModel,
-} from './model-store.js'
-export type { ModelManifest, ModelPresence, ModelProbe } from './model-store.js'
+} from './search-embedding-model-store.js'
+export type { ModelManifest, ModelPresence, ModelProbe } from './search-embedding-model-store.js'
 export {
   FAKE_EMBEDDER_DIMS,
   FAKE_EMBEDDER_ID,
@@ -41,7 +41,7 @@ export {
   createFakeEmbedderFromEnv,
   fakeEmbedderFactory,
   loadFakeSynonyms,
-} from './fake.js'
+} from './search-embedding-fake.js'
 export {
   E5_SMALL_APPROX_BYTES,
   E5_SMALL_DIMS,
@@ -52,11 +52,11 @@ export {
   createTransformersOnnxEmbedder,
   downloadE5SmallModel,
   transformersOnnxEmbedderFactory,
-} from './transformers-onnx.js'
+} from './search-embedding-transformers-onnx.js'
 
-import { fakeEmbedderFactory } from './fake.js'
+import { fakeEmbedderFactory } from './search-embedding-fake.js'
 import { listEmbedders, registerEmbedder } from './search-embedding-registry.js'
-import { transformersOnnxEmbedderFactory } from './transformers-onnx.js'
+import { transformersOnnxEmbedderFactory } from './search-embedding-transformers-onnx.js'
 
 /** 幂等。加第三条嵌入器 = 这里多一行,别处一个字不改。 */
 export function registerBuiltinEmbedders(): void {

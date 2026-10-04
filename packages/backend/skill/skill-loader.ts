@@ -17,7 +17,7 @@ import os from 'os'
 import crypto from 'crypto'
 import { parse as parseYaml } from 'yaml'
 import { getLogger } from '../logging/logging.js'
-import { getBuiltinResourcePath } from '../storage/builtin-resources.js'
+import { getBuiltinResourcePath } from '../storage/storage-builtin-resources.js'
 import type {
   CustomSkillRoot,
   PluginSkillRoot,

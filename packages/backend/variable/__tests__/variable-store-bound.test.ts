@@ -13,7 +13,7 @@ const persistence = vi.hoisted(() => ({
 	saved: undefined as unknown,
 }));
 
-vi.mock("../store-persistence.js", () => ({
+vi.mock("../variable-store-persistence.js", () => ({
 	loadFromDisk: () =>
 		persistence.saved ?? {
 			global_variables: [],

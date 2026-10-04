@@ -35,7 +35,7 @@ vi.mock('../../settings/settings-store.js', () => ({
   saveSettings: vi.fn(),
 }))
 
-vi.mock('../../session/current-session.js', () => ({
+vi.mock('../../session/session-current.js', () => ({
   getCurrentSessionId: () => 'session-1',
 }))
 
@@ -55,8 +55,8 @@ vi.mock('@onething/backend/event', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/current.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()),
   getStreamEngineSafe: () => null,
 }))
 
@@ -91,7 +91,7 @@ configureVoiceHost({
   updateTray: vi.fn(),
 })
 
-vi.mock('../provider-calls.js', () => ({
+vi.mock('../voice-provider-calls.js', () => ({
   getVoiceInputConfigurationError: mocks.getVoiceInputConfigurationError,
   streamSynthesizeSpeech: mocks.streamSynthesizeSpeech,
   transcribeUtterance: mocks.transcribeUtterance,

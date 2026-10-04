@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import {
   createCollabDigestStore, configureCollabDigestStore, saveCollabDigest, getCollabDigests,
-} from '../digest-store.js'
+} from '../collab-digest-store.js'
 
 let directory: string
 let release: (() => void) | undefined

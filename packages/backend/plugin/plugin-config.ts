@@ -18,11 +18,11 @@ import {
   type PluginConfigError,
   type PluginConfigField,
   type PluginConfigSchemaDescription,
-} from './config-schema.js'
+} from './plugin-config-schema.js'
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from './health.js'
+} from './plugin-health.js'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('plugins')

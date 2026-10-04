@@ -30,7 +30,7 @@ import s from './ModelOverridePopover.module.css'
  * 没填则按注册上限的一半发,**注册上限也没有就不带 `max_tokens`** —— 09-09 之前
  * 这里兜底 4096 再对半成 2048,那个编出来的数连同它的产地一起在同日删掉了;
  * 全局 `settings.chat.maxTokens` 也在同日整格退役,请求侧只剩这两个来源)
- * 与 `provider/model-capability.ts` 的 `resolveOnethingModelCapabilities`
+ * 与 `provider/provider-model-capability.ts` 的 `resolveOnethingModelCapabilities`
  * (五项能力,覆盖优先于目录条目、优先于按名字猜的规则表)。
  * 缺的一直只是壳上的写面:手填进来的模型只能进 `selectedModels`,它的窗口有多大、
  * 一次能吐多长、支不支持工具,用户明明知道却没地方说。这块浮层就是那张嘴,

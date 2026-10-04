@@ -71,7 +71,7 @@ describe('daemon 方法表:resource.list / describe / read / do', () => {
   afterEach(async () => {
     await stop?.()
     stop = undefined
-    const logging = await import('@onething/backend/logging/configure-logging')
+    const logging = await import('@onething/backend/logging/logging-configure')
     await logging.shutdownAppLogging()
     fs.rmSync(storePath, { recursive: true, force: true })
   })

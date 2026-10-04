@@ -16,7 +16,7 @@
  * hosts a metadata document, one line here switches the mechanism.
  */
 
-import type { MCPOAuthCredentialStore } from './credential-store.js'
+import type { MCPOAuthCredentialStore } from './mcp-oauth-credential-store.js'
 import type {
   MCPOAuthClientInformation,
   MCPOAuthClientMetadata,

@@ -1,8 +1,8 @@
-export { ACP_CONNECTOR_ID, capabilitiesFromHandshake, createAcpConnector } from './acp-connector.js'
-export type { AcpConnectorDeps, AcpConnectorOptions, AcpHostMcpPort, AcpMcpCapabilitiesInput } from './acp-connector.js'
+export { ACP_CONNECTOR_ID, capabilitiesFromHandshake, createAcpConnector } from './external-agent-acp-connector.js'
+export type { AcpConnectorDeps, AcpConnectorOptions, AcpHostMcpPort, AcpMcpCapabilitiesInput } from './external-agent-acp-connector.js'
 export { describeAcpToolPermission, describeExternalToolPermission } from './external-agent-permission-effects.js'
-export { buildTextDiffChange } from './diff-changes.js'
-export type { TextDiffChange } from './diff-changes.js'
+export { buildTextDiffChange } from './external-agent-diff-changes.js'
+export type { TextDiffChange } from './external-agent-diff-changes.js'
 export type {
   AcpToolPermissionInput,
   AcpToolPermissionShape,

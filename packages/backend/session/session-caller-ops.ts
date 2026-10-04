@@ -17,11 +17,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { ChatSession } from '@shared/ipc.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/current.js'
+import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import { isValidSpaceId } from '@onething/backend/space/space-types'
 import { requestSessionOwner, sessionAccess, type SessionOwnershipRecord } from './session-access.js'
@@ -33,7 +33,7 @@ import {
 } from './session-ipc-operations.js'
 import { SESSION_RESOURCE_SCHEME } from './session-resource-spec.js'
 import * as sessionStore from './session-store.js'
-import { collectSessionCascadeDeleteIds } from './store-helpers.js'
+import { collectSessionCascadeDeleteIds } from './session-store-helpers.js'
 
 /** 与从前界面那条域同一个命名空间:建会话失败的那一行日志,换了住处仍落在 `rpc.sessions` 下。 */
 const log = getLogger('rpc.sessions')
@@ -54,7 +54,7 @@ const SESSION_STORE: SessionCallerStorePort = {
 }
 
 /**
- * 资源面找不到那条会话。资源的会话提供者(`resource/session-provider.ts`)抛它,
+ * 资源面找不到那条会话。资源的会话提供者(`resource/resource-session-provider.ts`)抛它,
  * 会话的几条出口按类(不按消息串)认它、答 `Session not found`。
  */
 export class SessionNotFoundError extends Error {

@@ -22,7 +22,7 @@ vi.mock('@onething/backend/storage', () => ({
  * `runs.ts` 身后挂着影子断言与整棵 store 树(它要在 run 收尾时排一次比对),
  * 而这组用例要的只是"这条会话现在跑着一次执行" —— 替身只答那两句话。
  */
-vi.mock('../runs.js', () => ({
+vi.mock('../session-runs.js', () => ({
   currentSessionRun: () => state.run,
   nextSessionRunPartIndex: () => {
     if (!state.run) return undefined
@@ -33,16 +33,16 @@ vi.mock('../runs.js', () => ({
 }))
 
 const { flushSessionEventLog, resetSessionEventLogCache } =
-  await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { inlineDataUrlsToBlobs, recordSynthesizedAssistantText } = await import('../assistant-parts.js')
-const { sessionProjectionOptions, resetSessionProjectionIssueCache } = await import('../projection-blobs.js')
+  await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
+const { resetSessionSurfaceCache } = await import('../session-event-surface.js')
+const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../session-projection-cache.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { inlineDataUrlsToBlobs, recordSynthesizedAssistantText } = await import('../session-assistant-parts.js')
+const { sessionProjectionOptions, resetSessionProjectionIssueCache } = await import('../session-projection-blobs.js')
 const { assertContentPartIsCarriable, describeUncarriableContentPart, resetContentPartGuardWarnings } =
-  await import('../content-part-guard.js')
+  await import('../session-content-part-guard.js')
 const { setSessionFreezeEnabled } = await import('../session-freeze.js')
 
 const SESSION = 'imaged'

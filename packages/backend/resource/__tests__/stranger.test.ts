@@ -22,7 +22,7 @@
  *    有人把违规代码放进一个新文件时同样是绿的。
  * ② 第二个陌生 scheme:**`session`**。K1 里第一个真 scheme 就是它,而它的自述与
  *    实现分别住在产品层(`session/session-resource-spec.ts`)与装配层
- *    (`backend/resource/session-provider.ts`)—— core 里一个字都不该有。
+ *    (`backend/resource/resource-session-provider.ts`)—— core 里一个字都不该有。
  *    这一条是「§8 演练的答案是能力自己的模块 + 一行注册」在**真**能力上的复核。
  *
  * ── 为什么词边界扫描放得过 `sessionId` ─────────────────────────────────────
@@ -55,16 +55,16 @@ const KERNEL_FILES = [
   'resource-contract.ts',
   'resource-errors.ts',
   'resource-events.ts',
-  'kernel.ts',
-  'meta-tool.ts',
+  'resource-kernel.ts',
+  'resource-meta-tool.ts',
   'resource-provider.ts',
-  'read-outcome.ts',
+  'resource-read-outcome.ts',
   'resource-registry.ts',
   'resource-api.ts',
   'resource-schema.ts',
   'resource-spec.ts',
   'resource-tool.ts',
-  'validator.ts',
+  'resource-validator.ts',
 ]
 
 /**

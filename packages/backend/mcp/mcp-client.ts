@@ -28,10 +28,10 @@ import { type CoreMCPProbeResult } from '@shared/mcp/types'
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
 import { getMCPOAuthFlowManager } from './oauth/mcp-oauth.js'
 import { getMCPClientIdentity } from './mcp-identity.js'
-import { notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
+import { notifyMCPCapabilitiesChanged } from './mcp-capabilities-changed.js'
 import { consolePort, getLogger } from '../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { LegacyDuckLogger } from '@onething/backend/logging/logger-primitives'
+import type { LegacyDuckLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getLogger('mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

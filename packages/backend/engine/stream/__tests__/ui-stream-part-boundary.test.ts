@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type { StreamChunk } from '@shared/events/index.js'
 
 const state = vi.hoisted(() => ({ sessionsDir: '', storeDir: '' }))
@@ -35,8 +35,8 @@ const { beginSessionRun, endSessionRun, resetSessionRuns } = await import(
   '@onething/backend/session'
 )
 const { resetSessionEventStatsCache } = await import('@onething/backend/session')
-const { createSessionEventRecorder } = await import('../session-event-recorder.js')
-const { SessionStreamCoalescer } = await import('@onething/backend/event/stream-coalescer')
+const { createSessionEventRecorder } = await import('../engine-stream-session-event-recorder.js')
+const { SessionStreamCoalescer } = await import('@onething/backend/event/event-stream-coalescer')
 
 const SESSION_ID = 'ui-stream-contract'
 const MESSAGE_ID = 'assistant-1'

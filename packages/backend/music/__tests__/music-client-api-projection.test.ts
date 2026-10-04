@@ -9,10 +9,10 @@
  *      —— 同一个 `toolId`、同一份效果、同一个主体、同一种结局。审计是管线发的
  *      (`AuditProjector` 只读 lifecycle,工具伪造不了),所以「审计行长得一样」就是
  *      「跑的是同一条管线」在文件上留下的证据;
- *   ③ 一次「读」两条路**一行审计都不落**(读不进管线,`resource/kernel.ts` 的
+ *   ③ 一次「读」两条路**一行审计都不落**(读不进管线,`resource/resource-kernel.ts` 的
  *      `read` 那段注释就是这条不变量的正本)。
  *
- * 反证(施工时跑过):把 `command` 处理器改回直接调 `music/operations.js`,
+ * 反证(施工时跑过):把 `command` 处理器改回直接调 `music/music-operations.js`,
  * ① 仍然绿 —— 信封是一样的 —— 而 ② 当场红:那一路一行审计都不落。契约门看不见绕过,
  * 这一组看得见。
  *
@@ -94,8 +94,8 @@ const music = vi.hoisted(() => {
   return { radio, operations, service, onNowPlayingChanged: vi.fn(() => () => {}) }
 })
 
-vi.mock('../../current.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../current.js')>()
+vi.mock('../../backend-current.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../backend-current.js')>()
   const withFakeMusic = (backend: unknown): unknown =>
     backend ? new Proxy(backend as object, {
       get(target, property, receiver) {
@@ -119,7 +119,7 @@ type Backend = Awaited<ReturnType<typeof import('../../backend.js')['createOneth
 
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const
 
-/** 无会话那本账。同步写(`toolkit/audit-sink.ts`),所以不用 flush。 */
+/** 无会话那本账。同步写(`toolkit/toolkit-audit-sink.ts`),所以不用 flush。 */
 function resourceAuditRows(): Array<Record<string, unknown>> {
   const ledger = path.join(storeRoot, 'audit', 'resource.jsonl')
   if (!fs.existsSync(ledger)) return []
@@ -289,7 +289,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
 
   /**
    * `seek` / `volume` 的数值参数:「缺」与「给错」是同一句话,而那句话的产地是
-   * `music/operations.ts` 的 `argsWithValue` —— 退成投影之后它没有改口。
+   * `music/music-operations.ts` 的 `argsWithValue` —— 退成投影之后它没有改口。
    */
   it('seek / volume:缺一个数与给一个非数说的是同一句话;给对了就原样递给端口', async () => {
     for (const command of ['seek', 'volume'] as const) {

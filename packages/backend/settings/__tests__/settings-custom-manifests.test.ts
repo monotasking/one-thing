@@ -16,7 +16,7 @@ vi.mock('../settings-store.js', () => ({
 vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => Object.keys(state.spaces).filter((id) => id !== 'default').map((id) => ({ id })) }),
 }))
-vi.mock('@onething/backend/space/provider-settings', () => ({
+vi.mock('@onething/backend/space/space-provider-settings', () => ({
   readSpaceProviderSettings: (spaceId: string) =>
     state.spaces[spaceId] ? { provider: '', providers: {}, customProviders: state.spaces[spaceId] } : null,
 }))

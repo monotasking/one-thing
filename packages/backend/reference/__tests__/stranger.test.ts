@@ -3,7 +3,7 @@ import { formatRefTag } from '@shared/references/ref-tag'
 import type { CorePromptFragment } from '@onething/backend/agent-loop'
 import { refTypes, renderReferenceGuide } from '../reference.js'
 import type { RefTypeSpec } from '../reference-spec.js'
-import { BUILTIN_PROMPT_FRAGMENTS } from '../../prompt/builder.js'
+import { BUILTIN_PROMPT_FRAGMENTS } from '../../prompt/prompt-builder.js'
 
 /**
  * 陌生能力演练(仓根 09-02 法 / 设计正本 §3)。

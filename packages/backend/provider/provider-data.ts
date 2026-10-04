@@ -1,4 +1,4 @@
-import type { AgentProviderData } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentProviderData } from '@onething/backend/agent-loop/agent-loop-primitives'
 import {
   appendOrderedPart,
   type ApplyAgentLoopProviderDataRuntimeOptions,

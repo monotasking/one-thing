@@ -8,7 +8,7 @@ import type {
   InteractionQuestionAnswer,
   InteractionRequest,
 } from '@shared/interaction/types.js'
-import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logger-primitives.js'
+import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logging-logger-primitives.js'
 
 /**
  * 交互协议内核(docs/design/claude-code-integration-v2.md §4,E1 期)。

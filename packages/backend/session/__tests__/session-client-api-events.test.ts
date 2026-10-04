@@ -19,7 +19,7 @@ import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 
 const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 
-// 与 event-log.ts 引的是同一个模块 —— 路径差一层就等于什么都没 mock,
+// 与 session-event-log.ts 引的是同一个模块 —— 路径差一层就等于什么都没 mock,
 // 测试会转而去读用户真实的 ~/.onething/sessions。
 vi.mock('@onething/backend/storage', () => ({
   getOnethingSessionsDir: () => paths.sessionsDir,

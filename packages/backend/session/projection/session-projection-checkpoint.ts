@@ -8,7 +8,7 @@
  * 冷启动第一次碰这条会话时,先读它、再把 N 之后的事件折上去,于是不必从
  * 55MB 的 `events.jsonl` 从头折一遍。它**永远不是真相** ——
  *
- *  - 对不上就丢掉从头折(判据在 `backend/session/checkpoint-file.ts`,不在这里);
+ *  - 对不上就丢掉从头折(判据在 `backend/session/session-checkpoint-file.ts`,不在这里);
  *  - 删掉它,下一次自己重建;
  *  - **绝不反过来改账本**。这一条没有例外:检查点里读出来的东西一个字节都不会
  *    被写回 `events.jsonl`,这只文件里连一个写账本的口都没有。
@@ -49,7 +49,7 @@
 import {
   createSessionAccountState,
   type SessionAccountState,
-} from '../account.js'
+} from '../session-account.js'
 import {
   createSessionProjectionState,
   rebuildSessionProjectionIndexes,

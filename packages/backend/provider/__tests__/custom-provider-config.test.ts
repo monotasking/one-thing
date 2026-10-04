@@ -6,21 +6,21 @@
  *  - 有自定义 `Authorization` 头时不再加默认 Bearer(不分大小写)。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,
-} from "../factory.js";
+} from "../provider-factory.js";
 import {
 	isSubscriptionProvider,
 	registerProviderManifest,
 	type ProviderManifest,
 } from "../provider-manifest.js";
-import { getOnethingModelsDevProviderId } from "../models-dev-catalog.js";
-import { providerReadsModelsDevCatalog } from "../model-registry.js";
-import { resolveOnethingProviderKind } from "../model-capability.js";
-import type { AgentProviderRequestDumper } from "../request-dumper.js";
+import { getOnethingModelsDevProviderId } from "../provider-models-dev-catalog.js";
+import { providerReadsModelsDevCatalog } from "../provider-model-registry.js";
+import { resolveOnethingProviderKind } from "../provider-model-capability.js";
+import type { AgentProviderRequestDumper } from "../provider-request-dumper.js";
 import { BearerApiKeyAuth, HeaderApiKeyAuth, expandHeaderTemplates } from "../base/provider-base.js";
 import { registerCustomProvidersForTest } from "./custom-manifest-fixture.js";
 import { drain, sseResponse, USER_MESSAGE } from "./wire-snapshots/snapshot-harness.js";

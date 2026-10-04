@@ -1,14 +1,14 @@
 /**
  * 笔记领域**唯一**碰 `child_process` / `net` 的文件。
  *
- * 派工单原话把这两件缺省实现放在 `obsidian/cli.ts` 里,理由是「让 cli.ts 成为
+ * 派工单原话把这两件缺省实现放在 `obsidian/note-obsidian-cli.ts` 里,理由是「让 cli.ts 成为
  * 唯一碰 child_process 的文件」。这里落在 `notes/process-runner.ts`,同一条纪律
  * 的更强形式:**下一个驱动(Logseq)也要起子进程**,而它不该 import
  * `notes/obsidian/` 里的任何东西 —— 那样「加一种笔记系统」就变成了「先读懂
  * Obsidian 那一坨」。领域级的端口住领域级的文件。
  *
  * 做法照 `music/music-process-runner.ts`:PATH 补上 GUI 进程看不见的安装前缀、进程组
- * 独立、SIGTERM → 1s → SIGKILL。两条 Obsidian 特有的纪律由 `obsidian/cli.ts`
+ * 独立、SIGTERM → 1s → SIGKILL。两条 Obsidian 特有的纪律由 `obsidian/note-obsidian-cli.ts`
  * 自己守(读完 stdout 再返回、首行判错)。
  */
 

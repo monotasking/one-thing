@@ -40,24 +40,24 @@ import type {
 import * as store from '@onething/backend/session'
 import { createRequiredAppFetch, getSettings } from '@onething/backend/settings'
 import { getGoal, goalLimits, updateGoalFromModel } from '@onething/backend/goal/goal-manager'
-import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/practice/service-slot'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/practice/practice-service-slot'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { assertMusicOperator } from '@onething/backend/music/music-access'
-import { dispatchTask } from '@onething/backend/task/dispatch'
+import { dispatchTask } from '@onething/backend/task/task-dispatch'
 import { Interaction } from '@onething/backend/interaction'
-import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/no-human'
+import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/interaction-no-human'
 import { findAgent } from '@onething/backend/agent/agent-store-access'
-import { collabRoomMembers } from '@onething/backend/collab/members'
-import { applyBoardAction } from '@onething/backend/collab/board-store'
-import { searchCollabHistory } from '@onething/backend/collab/history-tool'
-import { speakIntoCollabRoom } from '@onething/backend/collab/say-tool'
-import { collabLinkedRoomSessionId } from '@onething/backend/collab/venue'
+import { collabRoomMembers } from '@onething/backend/collab/collab-members'
+import { applyBoardAction } from '@onething/backend/collab/collab-board-store'
+import { searchCollabHistory } from '@onething/backend/collab/collab-history-tool'
+import { speakIntoCollabRoom } from '@onething/backend/collab/collab-say-tool'
+import { collabLinkedRoomSessionId } from '@onething/backend/collab/collab-venue'
 // R4b:落盘口不再在这里重建一份 —— 与旧 `app/collab/actors/notebook-tool.ts` 的
 // `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
-import { appendNote } from '@onething/backend/collab/actors/notebook-tool'
+import { appendNote } from '@onething/backend/collab/actors/collab-actors-notebook-tool'
 import { sessionAccess, SessionAccessError } from '@onething/backend/session'
 import { fixedExecutionContext } from '../session/session.js'
-import type { BraveSearchProviderAdapters } from '@onething/backend/tool/builtin/web-search/providers/brave'
+import type { BraveSearchProviderAdapters } from '@onething/backend/tool/builtin/web-search/providers/tool-web-search-brave'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ export function sendMessageAdapters(): SendMessageToolAdapters {
      * (私聊落库就是 say 的执行器),反向再加一条静态边就是一个环。
      */
     async sendDm(input, executionContext) {
-      const { sendCollabDm } = await import('@onething/backend/collab/dm-tool')
+      const { sendCollabDm } = await import('@onething/backend/collab/collab-dm-tool')
       return sendCollabDm({
         sessionId: input.sessionId,
         to: input.to,

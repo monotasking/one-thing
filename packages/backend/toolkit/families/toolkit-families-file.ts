@@ -17,9 +17,9 @@
  */
 
 import { makeEffect } from '@shared/toolkit/effects'
-import type { Invocation, Preview, SessionSnapshot } from '@onething/backend/toolkit/tool-protocol'
+import type { Invocation, Preview, SessionSnapshot } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
-import { Tool } from '@onething/backend/toolkit/tool-protocol'
+import { Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { basenamePath, dirnamePath, joinPaths } from '@onething/backend/storage/storage-primitives'
 import {
   findCoreReadSandboxRootForPath,
@@ -28,7 +28,7 @@ import {
   getCoreSandboxRoots,
   resolveCoreToolPath,
 } from '../../tool/tool-sandbox.js'
-import { classifySensitiveFile } from '../../tool/sensitive-files.js'
+import { classifySensitiveFile } from '../../tool/tool-sensitive-files.js'
 
 /** 宿主注入的沙箱面。形状与旧 read/write/edit 的 adapters 逐字同构。 */
 export interface FileToolAdapters {
@@ -156,7 +156,7 @@ export abstract class FileTool<In, Payload> extends Tool<In, Payload> {
  *
  * 为什么抽出来(A3-b):ACP agent 经 `fs/read_text_file` / `fs/write_text_file` 要读写文件,
  * 那两条请求不是一次工具调用,却必须与本地 read / write 用**同一套**沙箱判据 —— 同一个
- * 路径谁来问长一个样(`backend/acp/fs-bridge.ts`)。再抄一份就是两套判据。
+ * 路径谁来问长一个样(`backend/acp/acp-fs-bridge.ts`)。再抄一份就是两套判据。
  */
 export function resolveFileToolPath(
   rawPath: string,

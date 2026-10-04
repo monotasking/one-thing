@@ -4,7 +4,7 @@ export type {
   InboundMessage,
   OutboundMessage,
   TypingMessage,
-} from './channel.js'
+} from './gateway-hub-channel.js'
 export {
   GatewayBridge,
 } from './gateway-hub-bridge.js'
@@ -28,30 +28,30 @@ export type {
 } from './gateway-hub-bridge.js'
 export {
   GatewayPermissionCoordinator,
-} from './permission-coordinator.js'
+} from './gateway-hub-permission-coordinator.js'
 export type {
   GatewayPermissionCoordinatorOptions,
   GatewayPermissionWatchInput,
-} from './permission-coordinator.js'
+} from './gateway-hub-permission-coordinator.js'
 export {
   Gateway,
-} from './gateway-hub-gateway.js'
+} from './gateway-hub-channel-runner.js'
 export {
   GatewaySessionRegistry,
-} from './session-registry.js'
+} from './gateway-hub-session-registry.js'
 export type {
   GatewaySession,
   GatewaySessionRegistryOptions,
-} from './session-registry.js'
+} from './gateway-hub-session-registry.js'
 export {
   Allowlist,
-} from './middleware/allowlist.js'
+} from './middleware/gateway-hub-middleware-allowlist.js'
 export type {
   AllowlistConfig,
-} from './middleware/allowlist.js'
+} from './middleware/gateway-hub-middleware-allowlist.js'
 export {
   RateLimiter,
-} from './middleware/rate-limiter.js'
+} from './middleware/gateway-hub-middleware-rate-limiter.js'
 export type {
   RateLimiterConfig,
-} from './middleware/rate-limiter.js'
+} from './middleware/gateway-hub-middleware-rate-limiter.js'

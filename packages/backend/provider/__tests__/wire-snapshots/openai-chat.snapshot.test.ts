@@ -48,15 +48,15 @@
  */
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage, AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentMessage, AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,
-} from "../../factory.js";
+} from "../../provider-factory.js";
 import type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
-} from "../../request-dumper.js";
+} from "../../provider-request-dumper.js";
 import {
 	FIXED_NOW,
 	MULTIMODAL_USER_MESSAGE,

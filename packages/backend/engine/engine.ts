@@ -24,28 +24,28 @@
 // ── 1. 引擎本体
 export {
   ProductStreamEngine,
-} from './stream-engine.js'
+} from './engine-stream-dispatcher.js'
 export type {
   BindableStreamSender,
   StreamEngine,
   StreamSender,
   StreamSenderPayload,
-} from './stream-engine.js'
+} from './engine-stream-dispatcher.js'
 
 // ── 2. 装配要用的拆件(包根 `assemble-engine.ts` / `backend.ts`)
 export {
   createMainStreamEngineRuntime,
-} from './stream-engine-runtime.js'
+} from './engine-main-stream-runtime.js'
 export type {
   MainStreamEngineRuntime,
-} from './stream-engine-runtime.js'
+} from './engine-main-stream-runtime.js'
 export {
   createTurnEvaluationTrigger,
-} from './triggers/turn-evaluation.js'
+} from './triggers/engine-triggers-turn-evaluation.js'
 export {
   buildHistoryMessages,
   historyProjectionRecipe,
-} from './stream/message-helpers.js'
+} from './stream/engine-stream-message-helpers.js'
 
 // ── 3. 拿服务商干活的门面(providers 归位 D24 从 `providers/` 搬来的几只,外加生效配置与提示词快照)
 export {
@@ -66,15 +66,15 @@ export type {
 } from './engine-utility-provider.js'
 export {
   beginAuxiliaryModelRequest,
-} from './auxiliary-model-checkpoint.js'
+} from './engine-auxiliary-model-checkpoint.js'
 export {
   getEffectiveProviderConfig,
   getProviderApiType,
   resolveProviderAuth,
-} from './stream/provider-helpers.js'
+} from './stream/engine-stream-provider-helpers.js'
 export type {
   ProviderConfigWithKey,
-} from './stream/stream-executor.js'
+} from './stream/engine-stream-executor.js'
 export {
   buildSystemPromptSnapshot,
 } from './prompt/engine-system-prompt-snapshot.js'
@@ -82,26 +82,26 @@ export {
 // ── 4. 引擎 runtime 的工厂(gateway 的 `gateway-onething-runtime.ts` 与总桶用)
 export {
   createOnethingStreamEngineRuntime,
-} from './stream-runtime-factory.js'
+} from './engine-stream-runtime-factory.js'
 export type {
   OnethingStreamRuntime,
   OnethingStreamRuntimeOptions,
-} from './stream-runtime-factory.js'
+} from './engine-stream-runtime-factory.js'
 export {
   createOnethingStreamProcessor,
-} from './stream-processor-factory.js'
+} from './engine-stream-processor-factory.js'
 export type {
   CreateOnethingStreamProcessorOptions,
-} from './stream-processor-factory.js'
+} from './engine-stream-processor-factory.js'
 export {
   createOnethingProductStreamRuntime,
   createOnethingProductStreamRuntimeFromHostAdapters,
-} from './product-stream-runtime.js'
+} from './engine-product-stream-runtime.js'
 export type {
   OnethingProductStreamRuntime,
   OnethingProductStreamRuntimeHostAdapters,
   OnethingProductStreamRuntimeOptions,
-} from './product-stream-runtime.js'
+} from './engine-product-stream-runtime.js'
 
 // ── 5. agent-loop 流运行时的钩子类型与流处理上下文
 export type {
@@ -111,4 +111,4 @@ export type {
 } from './engine-agent-loop-stream-runtime.js'
 export type {
   StreamContext,
-} from './stream/stream-processor.js'
+} from './stream/engine-stream-processor.js'

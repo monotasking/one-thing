@@ -9,7 +9,7 @@
  *
  * ## 怎么造的金样(下一个人要重录时照做)
  *
- * 1. `git checkout <搬家前的 commit> -- packages/backend/session packages/backend/engine/stream/session-event-recorder.ts`
+ * 1. `git checkout <搬家前的 commit> -- packages/backend/session packages/backend/engine/stream/engine-stream-session-event-recorder.ts`
  * 2. `ONETHING_RECORD_CHUNK_BYTES=1 npx vitest run .../session-chunk-bytes.test.ts`
  *    —— 本文件只用 recorder 的公开面,所以在搬家前的树上照样跑得起来;
  * 3. 把生产代码换回来,不带 env 再跑一遍 —— 绿 = 逐字节相同。
@@ -25,7 +25,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
@@ -35,7 +35,7 @@ vi.mock('@onething/backend/storage', () => ({
 }))
 
 // 影子断言与本文件要证明的事无关(它身后是读门面与整棵 store 树)。
-vi.mock('../../../session/shadow.js', () => ({
+vi.mock('../../../session/session-shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',
@@ -51,7 +51,7 @@ let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/session')
 const { resetSessionEventStatsCache } = await import('@onething/backend/session')
 const { createSessionEventRecorder, SESSION_CHUNK_BATCH_SIZE } = await import(
-  '../session-event-recorder.js'
+  '../engine-stream-session-event-recorder.js'
 )
 
 const SESSION = 'bytes'

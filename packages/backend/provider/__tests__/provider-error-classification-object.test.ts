@@ -9,7 +9,7 @@ import {
   classifyProviderError,
   providerErrorRetryAfterAt,
   providerErrorStatus,
-} from '../../agent-loop/provider-error-classification.js'
+} from '../../agent-loop/agent-loop-provider-error-classification.js'
 
 /**
  * 分类器读**对象**的那条路(P1-d1)。

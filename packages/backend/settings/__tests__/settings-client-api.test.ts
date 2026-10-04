@@ -57,7 +57,7 @@ vi.mock('@onething/backend/voice/voice-service', () => ({
   getVoiceServiceSafe: ports.getVoiceServiceSafe,
 }))
 
-vi.mock('@onething/backend/mcp/index-with-bridge', () => ({
+vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   MCPManager: { updateSettings: ports.updateMCPSettings },
   registerMCPTools: ports.registerMCPTools,
 }))
@@ -66,7 +66,7 @@ vi.mock('@onething/backend/acp', () => ({
   ACPManager: { updateSettings: ports.updateACPSettings },
 }))
 
-vi.mock('@onething/backend/gateway/lifecycle-port', () => ({
+vi.mock('@onething/backend/gateway/gateway-lifecycle-port', () => ({
   getGatewayHost: () => ({ applySettings: ports.applyGatewaySettings }),
 }))
 

@@ -19,7 +19,7 @@ import {
   credentialTargetKey,
   DEFAULT_CREDENTIAL_TARGET,
   normalizeCredentialTarget,
-} from '../credential-target.js'
+} from '../auth-credential-target.js'
 import { oauthTokenIdentity, parseSpaceOAuthToken, pickDefaultOAuthEntryId } from '../../credentials/credentials-token-store.js'
 import type {
   OnethingAuthProviderDefinition,

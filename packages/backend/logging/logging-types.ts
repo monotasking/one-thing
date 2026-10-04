@@ -3,7 +3,7 @@
  *
  * 零依赖、零 node import —— 这几只文件只定义"记录长什么样"和"谁能接收它";
  * 落盘 / 轮转 / 目录治理的机制在同一个目录的其余文件里(jsonl / 轮转 / 治理那几只),
- * 由 `configure-logging.ts` 组装。
+ * 由 `logging-configure.ts` 组装。
  */
 
 import type { LogLevel } from '@shared/logging/types.js'

@@ -11,7 +11,7 @@
  * (`kind: 'refold'`,`events.jsonl` 的文件字节重折 vs 内存活投影)。
  *
  * c4 把恒等门退役了(读侧早已只有投影一条路,验证器侧没有了消费者 ——
- * 见 `packages/backend/session/shadow.ts` 的文件头)。于是:
+ * 见 `packages/backend/session/session-shadow.ts` 的文件头)。于是:
  *
  *  - `mismatches` / `historyChecks` / `duplicates` / `skipped` / `byKind`
  *    **不再产生**。字段与判据全部留着 —— 老 `session-shadow-stats.json` 里的
@@ -70,7 +70,7 @@ export function readStats(logDir) {
       // 分开打印,免得"200 个干净 run"被读成"比过 200 次历史"。
       historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
-      // c4:端口事实断言(`port-fact-assert.ts`)对不上的次数。**进门,必须是 0。**
+      // c4:端口事实断言(`session-port-fact-assert.ts`)对不上的次数。**进门,必须是 0。**
       portMismatches: Number(parsed.portMismatches) || 0,
       // c4:断言真的比过几次(`portMismatches = 0` 的分母)。只打印,不进门。
       portChecks: Number(parsed.portChecks) || 0,

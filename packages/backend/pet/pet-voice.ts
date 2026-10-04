@@ -19,7 +19,7 @@
  */
 import type { PetVoice } from '@onething/backend/pet'
 import type { VoiceSettings } from '@shared/ipc.js'
-import type { PatterVoiceStyle } from '@onething/backend/music/host-voice'
+import type { PatterVoiceStyle } from '@onething/backend/music/music-host-voice'
 
 const RATE: Record<PetVoice['rate'], number> = {
   slow: 0.85,

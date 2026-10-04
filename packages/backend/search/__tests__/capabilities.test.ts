@@ -745,7 +745,7 @@ describe('扫描型的预算(有边界,但超时不等于作废)', () => {
 
   /**
    * 一只**认信号**的慢扫描:被打断时交它已经扫到的那些,并说自己没扫完。
-   * 这正是 `capabilities/files.ts` 里 `searchFiles` 的形状。
+   * 这正是 `capabilities/search-capabilities-files.ts` 里 `searchFiles` 的形状。
    */
   function slowFilesCapability() {
     return scanBackedCapability({

@@ -45,9 +45,9 @@ const runtimeAmend = vi.hoisted(() => ({
 }))
 
 vi.mock('@onething/backend/event', () => ({ getEventBus: () => bus }))
-vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngine: () => engine }))
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
-vi.mock('@onething/backend/eval/turn-incident', () => incident)
+vi.mock('@onething/backend/eval/eval-turn-incident', () => incident)
 vi.mock('@onething/backend/eval', () => runtimeAmend)
 vi.mock('../session-access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../session-access.js')>()
@@ -361,7 +361,7 @@ describe('session-command RPC domain', () => {
   })
 
   /*
-   * 呈现事实(09-18,`session/presentation.ts`,正本
+   * 呈现事实(09-18,`session/session-presentation.ts`,正本
    * `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.5.0):入口摘下、交给处理者,
    * **不进总线**。鉴权暂缓期一个处理者都没有 —— 那时它只经过校验就被丢弃。
    */

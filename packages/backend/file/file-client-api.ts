@@ -54,7 +54,7 @@
  * 1. **`list` 的搜索根**。桌面给的是 `os.homedir()` + 下载目录 + 笔记根 +
  *    **按会话解析的接入目录**(批 B2),文件枚举走 ripgrep;http 给的是沙箱根
  *    (`homeDir` 也是沙箱根)、无下载目录、无笔记根、**无接入目录**,文件枚举走
- *    `file/workspace-walk.ts` 那个走查器 —— 逐字对齐旧 adapter 的 `listServerToolFiles`
+ *    `file/file-workspace-walk.ts` 那个走查器 —— 逐字对齐旧 adapter 的 `listServerToolFiles`
  *    无 glob 分支(跳过 `.git`,产出 posix 相对路径)。不改成 ripgrep,是因为
  *    「联网宿主上有没有 rg 二进制」不是这一批该赌的事。
  *
@@ -71,7 +71,7 @@
  *    http 那侧等待原生监听就绪,喂 `/api/files/watch/events` 的 SSE。
  *    这里**逐字保留这个差别**:给桌面装上真监视器会是一次未经拍板的行为变化
  *    (而且是一个没有消费者的 watcher 泄漏)。每个 server surface 拥有独立的
- *    `./workspace-watch.ts` 实例；鉴权后的请求 context 只绑定
+ *    `./file-workspace-watch.ts` 实例；鉴权后的请求 context 只绑定
  *    当前实例的两个监听端口，SSE 从同一实例订阅，退出等待真实关闭。
  */
 import * as fs from 'node:fs/promises'
@@ -98,10 +98,10 @@ import { noteRootsNow } from '@onething/backend/note/note-subsystem'
 import { filesRouter, type FilesRoutes } from '@shared/ipc/files.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'
-import { listFiles as ripgrepListFiles } from './ripgrep.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { listFiles as ripgrepListFiles } from './file-ripgrep.js'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { getDownloadsDirectory } from '@onething/backend/tool/access-control/tool-access-control-sandbox'
-import { walkWorkspaceFiles } from '@onething/backend/file/workspace-walk'
+import { walkWorkspaceFiles } from '@onething/backend/file/file-workspace-walk'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import {
   expandHomePath,
@@ -114,8 +114,8 @@ import { sessionAccess } from '@onething/backend/session'
 import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/backend/file/file-search'
 import type { RollbackOnethingFileOptions } from '@onething/backend/file/file-rollback'
 import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/backend/file/file-operations'
-import type { ListOnethingDirectoriesForCompletionOptions } from '@onething/backend/file/directory-listing'
-import type { OnethingDirectoryIpcLogger } from '@onething/backend/file/directory-listing'
+import type { ListOnethingDirectoriesForCompletionOptions } from '@onething/backend/file/file-directory-listing'
+import type { OnethingDirectoryIpcLogger } from '@onething/backend/file/file-directory-listing'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 
 const log = getLogger('rpc.files')
@@ -383,7 +383,7 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
 
   /*
    * K3-c' —— 资源面有同一件事的另一条出口:`dir` 的 `createDirectory` 做法
-   * (`resource/dir-provider.ts`)。**这一条不退成它的投影**,理由与
+   * (`resource/resource-dir-provider.ts`)。**这一条不退成它的投影**,理由与
    * `updateWorkingDirectory` 同一笔:它对非本机可信的调用方有 per-caller 的
    * `context.sandboxRoot` 夹持,而资源那条路的 `Invocation` 里今天没有这一格。
    * 两条路调的是同一只纯函数,分叉只在夹持这一层。

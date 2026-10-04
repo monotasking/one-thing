@@ -30,7 +30,7 @@ import type {
   RunContext,
   Scene,
   ToolSpec,
-} from '@onething/backend/toolkit/tool-protocol'
+} from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import {
   TASK_MAX_CONCURRENT_PER_SESSION,

@@ -19,10 +19,10 @@
  * gpt-5.5 发 `none`,gpt-5 一个字节都不多。`enabled` 一路照旧(四档钳位)。
  *
  * `effort:'none'` 的那一档**不带 `summary`**:一个思考 token 都不产的回合要
- * 一份思考摘要是自相矛盾的(理由写在 `thinking/openai-responses-reasoning.ts`)。
+ * 一份思考摘要是自相矛盾的(理由写在 `thinking/provider-thinking-openai-responses.ts`)。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	captureWireRequest,
 	sseResponse,

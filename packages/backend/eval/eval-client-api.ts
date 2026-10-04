@@ -65,17 +65,17 @@ import {
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sessionReads } from '@onething/backend/session'
 import * as store from '@onething/backend/session'
-import { createIncidentForTurn } from '@onething/backend/eval/turn-incident'
+import { createIncidentForTurn } from '@onething/backend/eval/eval-turn-incident'
 import { broadcastEvalsRunProgress } from '@onething/backend/eval/eval-events'
 import { resolveEvalsRepoDir } from '@onething/backend/eval/eval-host-ports'
 import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
-} from '@onething/backend/eval/provider-adapter'
-import { getLogger } from '@onething/backend/logging/configure-logging'
-import { getSkillsForSession } from '@onething/backend/skill/session-skill-cache'
+} from '@onething/backend/eval/eval-provider-adapter'
+import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
 import { analyzeIncidentInBackground } from './eval-client-api-workbench.js'
-import { getEvalsTaskOwner } from '@onething/backend/eval/task-owner'
+import { getEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 import { isPathInside, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
@@ -185,7 +185,7 @@ function scanFixturesDir(dir: string, out: EvalFixtureMeta[]): void {
 }
 
 /**
- * Case YAML parsing/generation lives in @onething/backend/eval (case-file.ts) —
+ * Case YAML parsing/generation lives in @onething/backend/eval (eval-case-file.ts) —
  * a single implementation shared with the CLI runner, per design §7 (the
  * mini-YAML parser and generator must not drift between consumers).
  */

@@ -29,13 +29,13 @@
  * 它是这套系统里泄漏最多的那一个 token(实测 35 处里占 17)。
  */
 import type { CollabAgentLike } from './collab-types.js'
-import { collabAgentHandle } from './handle-format.js'
+import { collabAgentHandle } from './collab-handle-format.js'
 
 /**
  * 永远能指到用户本人的两个词。**即使用户从没配置过资料**,`dm to:"用户"` 也
  * 必须可达 —— 一个只在配置之后才存在的通道等于没有通道。
  *
- * 单一属主:`dm-target.ts` 的收件人匹配与裸句柄的"名实相符"判据共用这一份,
+ * 单一属主:`collab-dm-target.ts` 的收件人匹配与裸句柄的"名实相符"判据共用这一份,
  * 两处各抄一份的下场是可预见的(改一处、另一处安静地不认)。
  */
 export const COLLAB_USER_CONSTANT_WORDS = ['用户', 'user'] as const

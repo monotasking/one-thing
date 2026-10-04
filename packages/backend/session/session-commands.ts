@@ -12,7 +12,7 @@
  * 1. **消息**由折叠产物维护(`refreshMessagesFromProjection` 是全仓唯一换装点,
  *    §16.27);
  * 2. **会话账**(`updatedAt` / `lastProvider` / `lastModel` / 截断的用量结算与
- *    timeline 修复)由**事件折叠**产出(`session/account.ts`),这里只把它
+ *    timeline 修复)由**事件折叠**产出(`session/session-account.ts`),这里只把它
  *    落到会话容器那几格;
  * 3. **落盘档**(lazy)与**索引元数据**由这里按命令种类自算 —— 从前那张表是
  *    `applySessionCommand` 的返回值,而那个归约器批 3 已经删了。
@@ -53,11 +53,11 @@ import {
   applySessionMessageAppendToMeta,
   applySessionUpdatedAtToMeta,
   findLastPreviewableMessage,
-} from './store-helpers.js'
-import type { SessionAccountState, SessionAccountTruncationEffect } from './account.js'
-import type { sessionCommandEvents } from './command-events.js'
-import type { sessionReads } from './reads.js'
-import { getCurrentBackend } from '@onething/backend/current.js'
+} from './session-store-helpers.js'
+import type { SessionAccountState, SessionAccountTruncationEffect } from './session-account.js'
+import type { sessionCommandEvents } from './session-command-events.js'
+import type { sessionReads } from './session-reads.js'
+import { getCurrentBackend } from '@onething/backend/backend-current.js'
 
 /**
  * `patchMessage` 的落盘档提示(从 `session/session-message-shapes.ts` 搬过来 —— 批 3 之后
@@ -101,7 +101,7 @@ export interface SessionCommandsPorts {
   getSession(sessionId: string): ChatSession | undefined
   /**
    * 落盘调度。**只有 `lazy` 这一格**:写计划(`SessionWritePlan`)自 S3w-3 批 6b
-   * 起在存储驱动里就没有读者了(`storage-driver.ts`:「`plan` 保留在签名里但不再
+   * 起在存储驱动里就没有读者了(`session-storage-driver.ts`:「`plan` 保留在签名里但不再
    * 被读」),归约器一死它连产地都没了 —— 与其在热路径上为一个没人读的字段做
    * 下标查找,不如不算。仓库那一侧的缺省(structural)与从前逐字等效。
    */
@@ -221,7 +221,7 @@ export interface CreateSessionCommandsOptions {
 /**
  * 把会话账的**身份三格**落到会话容器。
  *
- * 产地是折叠(`session/account.ts`);这里只是搬运。三格的语义与归约器
+ * 产地是折叠(`session/session-account.ts`);这里只是搬运。三格的语义与归约器
  * 退役前逐字相同 —— 批 2 的影子对拍(682 次 0 失配)证的就是这一条。
  *
  * `at` 是这条命令取的那一次刻(时钟同源)。折叠对这几条命令给出的 `updatedAt`

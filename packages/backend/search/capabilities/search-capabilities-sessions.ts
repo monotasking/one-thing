@@ -61,15 +61,15 @@ import {
   type SearchIndexQueryFace,
 } from './search-capabilities-indexed.js'
 import { sessionScopeVisibility } from './search-capabilities-visibility.js'
-import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
-import { normalizeSearchQuery } from './text-match.js'
+import type { ResultBackedCandidate, SearchServiceResult } from './search-capabilities-scan-adapter.js'
+import { normalizeSearchQuery } from './search-capabilities-text-match.js'
 import {
   PreviewUnavailableError,
   firstCandidate,
   requireStringField,
   targetPayloadOf,
   type SessionOverviewPreview,
-} from './preview.js'
+} from './search-capabilities-preview.js'
 
 /** 这一类的目标形。壳按 `kind` 从目标渲染注册表取组件(§4.1)。 */
 export interface ChatTarget {
@@ -251,7 +251,7 @@ export function createChatsSearchCapability(
         title: entry.result.title,
         subtitle: entry.result.subtitle,
         // 逆序名次:严格递减且唯一 → 组内排序恒等,`updatedAt` 降序原样保留
-        // (`scan-adapter.ts` 里那条同一个手法)。
+        // (`search-capabilities-scan-adapter.ts` 里那条同一个手法)。
         score: window.length - index,
         time: entry.result.timestamp,
         target: { kind: 'chat', payload: { sessionId: entry.result.sessionId ?? '' } } satisfies ChatTarget,

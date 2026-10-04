@@ -1,7 +1,7 @@
 /**
  * 工具副作用的**共用立面**。
  *
- * 这里住的东西原本长在 `builtin/bash.ts` 的 `analyze()` 里(以及 write/edit 各自
+ * 这里住的东西原本长在 `builtin/toolkit-builtin-bash.ts` 的 `analyze()` 里(以及 write/edit 各自
  * 抄了一份的 `filePermissionPattern`)。搬出来的理由只有一条:**同一个动作,谁跑
  * 都该长一个样**。
  *
@@ -17,7 +17,7 @@
 
 import { joinPaths, dirnamePath, isAbsolutePath, resolvePath } from '@onething/backend/storage/storage-primitives'
 import type { ToolEffect, ToolPreview } from '@onething/backend/tool/tool-helpers'
-import { classifyBashCommand, splitShellWords } from './bash-classifier.js'
+import { classifyBashCommand, splitShellWords } from './tool-bash-classifier.js'
 import { expandCorePath, isCorePathContained } from './tool-sandbox.js'
 
 /**

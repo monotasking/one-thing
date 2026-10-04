@@ -49,20 +49,20 @@ vi.mock('../session-store.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { flushSessionEventLog, resetSessionEventLogCache } = await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { resetSessionRuns } = await import('../runs.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
+const { flushSessionEventLog, resetSessionEventLogCache } = await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { resetSessionSurfaceCache } = await import('../session-event-surface.js')
+const { resetSessionRuns } = await import('../session-runs.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
 const {
   foldLiveSessionLogicalDelta,
   getLiveSessionProjection,
   liveSessionProjectionAheadDeltas,
   peekSessionProjection,
   resetSessionProjectionCache,
-} = await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
+} = await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
 
 const SESSION = 'c3a-delta-visibility'
 const RUN = 'run-1'

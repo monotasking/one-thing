@@ -19,8 +19,8 @@
  */
 import type { ProviderMediaImage, ProviderMediaReader } from '@onething/backend/provider'
 import { readOnethingImageFileDataUrl } from '@onething/backend/media'
-import { mediaLibraryService } from '@onething/backend/media/library-service-bound'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { mediaLibraryService } from '@onething/backend/media/media-library-service-bound'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('providers.media')
 

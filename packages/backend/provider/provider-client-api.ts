@@ -44,12 +44,12 @@ import {
 } from '@onething/backend/provider'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { createUtilityProvider, getAvailableProviders, type UtilityProviderRef } from '@onething/backend/engine'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
-import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/agent-loop/loop-primitives'
+import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type { AppSettings } from '@shared/ipc.js'
 import { createRequiredAppFetch, getSpaceSettings } from '@onething/backend/settings'
 
@@ -109,7 +109,7 @@ export const providersRpcHandlers: RouteHandlers<ProvidersRoutes> = {
 /*
  * ── 「自动识别」的装配半边(批 4 §7.3,`docs/design/provider-settings-rework-2026-09.md`)。
  *
- * 探测 / 规则 / 回验是产品层的纯函数(`provider/custom-probe.ts`);这里只做三件
+ * 探测 / 规则 / 回验是产品层的纯函数(`provider/provider-custom-probe.ts`);这里只做三件
  * 宿主才知道的事:用哪只 fetch(应用代理那一只)、**请谁来分析**、怎么把它跑一轮。
  *
  * 分析模型的挑法(§7.3 ③):一家**已配好**、**不是自定义服务商**(正在配置的这一家必然是

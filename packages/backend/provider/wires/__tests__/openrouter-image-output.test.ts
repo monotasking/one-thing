@@ -14,13 +14,13 @@
  * **待真机核**。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTurnStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
-import { createAgentProviderFromRuntime } from '../../factory.js'
+import type { AgentTurnStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { createAgentProviderFromRuntime } from '../../provider-factory.js'
 import {
   applyOnethingAgentLoopProviderData,
   planOnethingProviderDataPart,
 } from '../../provider-data.js'
-import { resolveOnethingModelCapabilities } from '../../model-capability.js'
+import { resolveOnethingModelCapabilities } from '../../provider-model-capability.js'
 
 const IMAGE_MODEL = 'google/gemini-2.5-flash-image'
 const TEXT_MODEL = 'openai/gpt-5.5'

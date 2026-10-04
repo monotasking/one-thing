@@ -25,13 +25,13 @@ export {
 	type TransportFileDelivery,
 	type ModelProfileResolver,
 	type ModelSamplingParam,
-} from "./model-profile.js";
+} from "./provider-base-model-profile.js";
 
 export { TurnContext, type TurnTransport } from "./provider-base-turn-context.js";
-export type { AttachmentChannel } from "./attachment-channel.js";
-export { RequestBodyBuilder } from "./request-body-builder.js";
-export { getPath, parsePath } from "./path.js";
-export { ProviderWarning, type ProviderWarningKind } from "./warnings.js";
+export type { AttachmentChannel } from "./provider-base-attachment-channel.js";
+export { RequestBodyBuilder } from "./provider-base-request-body-builder.js";
+export { getPath, parsePath } from "./provider-base-path.js";
+export { ProviderWarning, type ProviderWarningKind } from "./provider-base-warnings.js";
 
 export {
 	delivered,
@@ -42,7 +42,7 @@ export {
 	type PartDelivery,
 	type UndeliverablePartLike,
 	type UndeliverableReason,
-} from "./part-codec.js";
+} from "./provider-base-part-codec.js";
 
 export {
 	noThinkingWire,
@@ -50,7 +50,7 @@ export {
 	thinkingWires,
 	ThinkingWireRegistry,
 	type ThinkingWire,
-} from "./thinking-wire.js";
+} from "./provider-base-thinking-wire.js";
 
 export {
 	PathUsageNormalizer,
@@ -63,7 +63,7 @@ export {
 	type UsagePathTable,
 } from "./provider-base-usage.js";
 
-export { noCachePolicy, NoCachePolicy, type CachePolicy } from "./cache-policy.js";
+export { noCachePolicy, NoCachePolicy, type CachePolicy } from "./provider-base-cache-policy.js";
 
 export {
 	BearerApiKeyAuth,
@@ -73,13 +73,13 @@ export {
 	type AuthStrategy,
 	type AuthStrategyOptions,
 	type ResolvedAuthMaterial,
-} from "./auth-strategy.js";
+} from "./provider-base-auth-strategy.js";
 
 export {
 	openAIToolChoicePolicy,
 	OpenAIToolChoicePolicy,
 	type ToolChoicePolicy,
-} from "./tool-choice-policy.js";
+} from "./provider-base-tool-choice-policy.js";
 
 export {
 	noSamplingPolicy,
@@ -87,7 +87,7 @@ export {
 	openAISamplingPolicy,
 	OpenAISamplingPolicy,
 	type SamplingPolicy,
-} from "./sampling-policy.js";
+} from "./provider-base-sampling-policy.js";
 
 export {
 	DefaultErrorMapper,
@@ -104,7 +104,7 @@ export {
 	TableFinishReasonMapper,
 	type DialectFinishShape,
 	type FinishReasonMapper,
-} from "./finish-reason.js";
+} from "./provider-base-finish-reason.js";
 
 export {
 	LEGACY_FUNCTION_CALL_CODEC,
@@ -113,7 +113,7 @@ export {
 	ToolCallAccumulator,
 	type ToolCallCodec,
 	type ToolCallFragment,
-} from "./tool-call-codec.js";
+} from "./provider-base-tool-call-codec.js";
 
 export {
 	getDialect,
@@ -127,5 +127,5 @@ export {
 	type WireId,
 } from "./provider-base-dialect.js";
 
-export { BaseAgentProvider } from "./base-agent-provider.js";
-export { HttpAgentProvider, type RawTurnFinish } from "./http-agent-provider.js";
+export { BaseAgentProvider } from "./provider-base-agent.js";
+export { HttpAgentProvider, type RawTurnFinish } from "./provider-base-http-agent.js";

@@ -15,7 +15,7 @@
  * 这只工具**一字不改**就能搜符号(§14.4 的陌生能力演练)。
  *
  * 唯一一处按 kind 分支是 `expand` 的文本化(`renderPreview`),而它分的是**预览
- * 载荷的形**,不是能力 —— 四种形住 `search/capabilities/preview.ts`,认不出的形
+ * 载荷的形**,不是能力 —— 四种形住 `search/capabilities/search-capabilities-preview.ts`,认不出的形
  * 走 JSON 缩排兜底(不是报错:一个新能力带来一种新预览形,不该让 expand 塌掉)。
  *
  * ## 与协作 `history` 的关系
@@ -34,9 +34,9 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, Scene, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
+import type { Result, RunContext, Scene, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { defineInput } from '../toolkit-contract.js'
-import { ReadOnlyTool } from '../families/read-only.js'
+import { ReadOnlyTool } from '../families/toolkit-families-read-only.js'
 
 /* ── 适配器(装配层注入)────────────────────────────────────────────────── */
 

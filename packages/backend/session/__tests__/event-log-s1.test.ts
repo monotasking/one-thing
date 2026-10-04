@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { collectLogRecordsForTests } from '@onething/backend/logging/configure-logging'
+import { collectLogRecordsForTests } from '@onething/backend/logging/logging-configure'
 import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
@@ -26,14 +26,14 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const { flushSessionEventLog, getSessionEventsLogPath, readSessionLogEvents, resetSessionEventLogCache } = await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
+const { flushSessionEventLog, getSessionEventsLogPath, readSessionLogEvents, resetSessionEventLogCache } = await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
 const {
   flushSessionEventStats,
   getSessionShadowStatsPath,
   readSessionShadowStats,
   resetSessionEventStatsCache,
-} = await import('../event-stats.js')
+} = await import('../session-event-stats.js')
 const {
   getSessionBlobPath,
   listSessionBlobs,
@@ -42,8 +42,8 @@ const {
   readSessionBlobBase64,
   readSessionBlobText,
   textOrBlobForEvent,
-} = await import('../blob-store.js')
-const { sessionProjectionOptions } = await import('../projection-blobs.js')
+} = await import('../session-blob-store.js')
+const { sessionProjectionOptions } = await import('../session-projection-blobs.js')
 const { projectChatMessages } = await import('@shared/session/projection/chat-messages.js')
 
 beforeEach(() => {

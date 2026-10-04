@@ -7,7 +7,7 @@
  *
  * 纯模块:壳也会经 manifest 链走到这里。
  */
-import { normalizeProviderBaseUrl } from './base-url.js'
+import { normalizeProviderBaseUrl } from './provider-normalize-base-url.js'
 import { getProviderManifest } from './provider-manifest.js'
 
 export { normalizeProviderBaseUrl }

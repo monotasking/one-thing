@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { bumpSessionShadowStats, flushSessionEventStats, getSessionShadowStatsPath, readSessionShadowStats, resetSessionEventStatsCache } from '../event-stats.js'
+import { bumpSessionShadowStats, flushSessionEventStats, getSessionShadowStatsPath, readSessionShadowStats, resetSessionEventStatsCache } from '../session-event-stats.js'
 
 let root: string
 let previous: string | undefined

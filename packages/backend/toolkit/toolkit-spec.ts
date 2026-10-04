@@ -77,7 +77,7 @@ export interface ToolSpec {
    * `ResourceTool`,加一只元工具 `resources`)。
    *
    * 它答的问题只有一个:**这只工具进不进「工具清单」那个出口** —— 设置页的工具
-   * 列表与 CLI 的 `listTools` 读的那一份(`toolkit/catalog-projection.ts`)。
+   * 列表与 CLI 的 `listTools` 读的那一份(`toolkit/toolkit-catalog-projection.ts`)。
    * 那份清单答的是「这台宿主注册了哪些工具」,而资源的呈现(图标、标题、每个应用
    * 一格的许可)归应用登记表,不归工具清单;K1 的审查打回记的就是这一条:资源
    * 工具进目录时那份清单凭空多出一行 `session`,是一次没人裁定过的、用户可感知的

@@ -9,10 +9,10 @@
  * 服务商借用它。表里读的「gpt-5.x 收哪几档思考」是**型号家族**的知识,住
  * `providers/model-families/openai.ts`。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
-import { onethingOpenAIReasoningProfile } from '../../model-families/openai.js'
+import { onethingOpenAIReasoningProfile } from '../../model-families/provider-model-families-openai.js'
 
 export const OPENAI_MANIFEST: ProviderManifest = {
   id: 'openai',
@@ -24,7 +24,7 @@ export const OPENAI_MANIFEST: ProviderManifest = {
   auth: { kind: 'apiKey' },
   models: { kind: 'models.dev', key: 'openai' },
   billing: 'api',
-  // 家族里的哪一半(两半的对应登记在 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`)。
+  // 家族里的哪一半(两半的对应登记在 `vendors/provider-vendor-manifests.ts` 的 `VENDOR_FAMILIES`)。
   family: { role: 'api' },
   modelRules: 'openai',
   defaultBaseUrl: 'https://api.openai.com/v1',

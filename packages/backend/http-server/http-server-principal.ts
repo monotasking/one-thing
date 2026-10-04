@@ -45,7 +45,7 @@ import { isHostLocallyTrusted } from './http-server-host-trust.js'
 /**
  * 这个调用方说不出自己是谁。
  *
- * 具名的错,不是一句字符串:判定读类名(`tool/abort.ts` 那条判例 —— 靠消息
+ * 具名的错,不是一句字符串:判定读类名(`tool/tool-abort.ts` 那条判例 —— 靠消息
  * 文本分类,迟早把一次失败洗成一次别的东西)。
  */
 export class RpcPrincipalUnavailableError extends Error {

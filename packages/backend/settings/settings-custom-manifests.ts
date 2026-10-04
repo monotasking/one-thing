@@ -29,7 +29,7 @@ import {
   type ProviderManifest,
 } from '@onething/backend/provider'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
-import { readSpaceProviderSettings } from '@onething/backend/space/provider-settings'
+import { readSpaceProviderSettings } from '@onething/backend/space/space-provider-settings'
 import { getSpacesStore } from '@onething/backend/space/space-store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { getSettings } from './settings-store.js'
@@ -38,7 +38,7 @@ import {
   getSettingsEventBroadcaster,
   type SettingsEventBroadcaster,
 } from '@onething/backend/settings/settings-events'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('providers.manifests')
 

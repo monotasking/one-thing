@@ -18,72 +18,72 @@
  */
 
 import type { AmbientSource } from '@onething/backend/ambient'
-import { defaultAmbientSources } from '@onething/backend/ambient/sources'
-import { AmbientResourceProvider } from './ambient-provider.js'
+import { defaultAmbientSources } from '@onething/backend/ambient/ambient-sources'
+import { AmbientResourceProvider } from './resource-ambient-provider.js'
 import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/backend/resource/resource-api'
 import type { ResourceKernelOptions } from '@onething/backend/resource/resource-api'
-import { combineValidators, type ToolRunner, type Validator } from '@onething/backend/toolkit/tool-protocol'
+import { combineValidators, type ToolRunner, type Validator } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { ZodValidator } from '@onething/backend/toolkit'
 import { DIR_RESOURCE_SCHEME } from '@onething/backend/file/file-resource-spec'
-import { GIT_RESOURCE_SCHEME } from '@onething/backend/file/git-resource-spec'
+import { GIT_RESOURCE_SCHEME } from '@onething/backend/file/file-git-resource-spec'
 import * as store from '@onething/backend/session'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
-import { createSandboxPolicy } from '../toolkit/runner-factory.js'
-import { DirResourceProvider } from './dir-provider.js'
-import { GitResourceProvider } from './git-provider.js'
-import { createMusicResourceProvider } from './music-provider.js'
-import { PetResourceProvider } from './pet-provider.js'
+import { createSandboxPolicy } from '../toolkit/toolkit-runner-factory.js'
+import { DirResourceProvider } from './resource-dir-provider.js'
+import { GitResourceProvider } from './resource-git-provider.js'
+import { createMusicResourceProvider } from './resource-music-provider.js'
+import { PetResourceProvider } from './resource-pet-provider.js'
 import type { PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
-import { createLocalOnlyReadGuard } from './read-guard.js'
-import { SessionResourceProvider } from './session-provider.js'
-import { TodoResourceProvider } from './todo-provider.js'
-import type { ToolCatalogTier } from '../toolkit/tier-catalogs.js'
+import { createLocalOnlyReadGuard } from './resource-read-guard.js'
+import { SessionResourceProvider } from './resource-session-provider.js'
+import { TodoResourceProvider } from './resource-todo-provider.js'
+import type { ToolCatalogTier } from '../toolkit/toolkit-tier-catalogs.js'
 
-export { forwardResourceEventsToBus } from './event-bridge.js'
+export { forwardResourceEventsToBus } from './resource-event-bridge.js'
 export { serializeOutcome, serializeReadOutcome, serializeSpec } from './resource-wire-views.js'
-export { syncResourceToolsIntoCatalog } from './catalog-sync.js'
-export type { ResourceCatalogSyncOptions } from './catalog-sync.js'
-export { DEFAULT_SHELL_COMMAND_TIMEOUT_MS, ShellCommandDispatch, ShellCommandFailedError } from './shell-dispatch.js'
-export type { ShellCommandDispatchOptions } from './shell-dispatch.js'
-export { ShellResourceProvider, resourceSpecFromShell } from './shell-provider.js'
+export { syncResourceToolsIntoCatalog } from './resource-catalog-sync.js'
+export type { ResourceCatalogSyncOptions } from './resource-catalog-sync.js'
+export { DEFAULT_SHELL_COMMAND_TIMEOUT_MS, ShellCommandDispatch, ShellCommandFailedError } from './resource-shell-dispatch.js'
+export type { ShellCommandDispatchOptions } from './resource-shell-dispatch.js'
+export { ShellResourceProvider, resourceSpecFromShell } from './resource-shell-provider.js'
 export {
   DEFAULT_SHELL_HEARTBEAT_MS,
   ShellMountRegistry,
   ShellMountShapeError,
   ShellSchemeNotOwnedError,
   UnknownShellError,
-} from './shell-registry.js'
-export type { ShellMountRegistryOptions } from './shell-registry.js'
-export { SessionResourceProvider, SessionNotFoundError, SessionRefRequiredError } from './session-provider.js'
-export type { SessionOpPayload } from './session-provider.js'
+} from './resource-shell-registry.js'
+export type { ShellMountRegistryOptions } from './resource-shell-registry.js'
+export { SessionResourceProvider, SessionNotFoundError, SessionRefRequiredError } from './resource-session-provider.js'
+export type { SessionOpPayload } from './resource-session-provider.js'
 export {
   DirOperationFailedError,
   DirOutsideSandboxError,
   DirRefRequiredError,
   DirResourceProvider,
   DirShellUnavailableError,
-} from './dir-provider.js'
-export type { DirEntryKind, DirOpPayload, DirRefusalReason } from './dir-provider.js'
-export { resolveReadable, resolveWritable } from './path-guard.js'
+} from './resource-dir-provider.js'
+export type { DirEntryKind, DirOpPayload, DirRefusalReason } from './resource-dir-provider.js'
+export { resolveReadable, resolveWritable } from './resource-path-guard.js'
 export {
   GitOperationFailedError,
   GitRefRequiredError,
   GitResourceProvider,
   GitUnavailableError,
-} from './git-provider.js'
-export type { GitChangedFile, GitFileStatus } from './git-provider.js'
-export { TodoRefError, TodoResourceProvider, parseTodoTarget, revisionOf, summarizeTodoMarkdown } from './todo-provider.js'
-export type { TodoOpPayload, TodoTarget } from './todo-provider.js'
-export { createLocalOnlyReadGuard } from './read-guard.js'
-export type { LocalOnlyReadGuardOptions } from './read-guard.js'
-export { mountMcpResources } from './mcp-mount.js'
-export type { McpResourceManagerPort, McpResourceMountOptions } from './mcp-mount.js'
+} from './resource-git-provider.js'
+export type { GitChangedFile, GitFileStatus } from './resource-git-provider.js'
+export { TodoRefError, TodoResourceProvider, parseTodoTarget, revisionOf, summarizeTodoMarkdown } from './resource-todo-provider.js'
+export type { TodoOpPayload, TodoTarget } from './resource-todo-provider.js'
+export { createLocalOnlyReadGuard } from './resource-read-guard.js'
+export type { LocalOnlyReadGuardOptions } from './resource-read-guard.js'
+export { mountMcpResources } from './resource-mcp-mount.js'
+export type { McpResourceManagerPort, McpResourceMountOptions } from './resource-mcp-mount.js'
 export {
   McpResourceCallFailedError,
   McpResourceProvider,
   McpResourceRefMismatchError,
-} from './mcp-provider.js'
-export type { McpOpPayload, McpResourceCallPort } from './mcp-provider.js'
+} from './resource-mcp-provider.js'
+export type { McpOpPayload, McpResourceCallPort } from './resource-mcp-provider.js'
 export {
   createMusicResourceProvider,
   MusicCommandFailedError,
@@ -99,16 +99,16 @@ export {
   musicBackendAdapters,
   musicPlayerAdapters,
   musicStationAdapters,
-} from './music-provider.js'
-export { PetParamError, PetRefError, PetResourceProvider } from './pet-provider.js'
-export type { PetOpPayload } from './pet-provider.js'
+} from './resource-music-provider.js'
+export { PetParamError, PetRefError, PetResourceProvider } from './resource-pet-provider.js'
+export type { PetOpPayload } from './resource-pet-provider.js'
 export type {
   MusicBackendAdapters,
   MusicOpPayload,
   MusicPlayerAdapters,
   MusicResourceAdapters,
   MusicStationAdapters,
-} from './music-provider.js'
+} from './resource-music-provider.js'
 
 /**
  * 一台资源内核。注册表是**新建**的(不是进程单例):谁要一张表谁自己 new 一个,
@@ -137,7 +137,7 @@ export function createResourceKernel(
     /*
      * K3-c —— **沙箱与工具 runner 同一把尺子**。
      *
-     * `createAppToolRunner` 的缺省就是这一只(`toolkit/runner-factory.ts` 的
+     * `createAppToolRunner` 的缺省就是这一只(`toolkit/toolkit-runner-factory.ts` 的
      * `createSandboxPolicy()`),所以模型经 `read` 工具读一个路径、与经资源面读
      * 同一个路径,判的是同一条边界。两把尺子是「一个洞会在两处之一悄悄张开」的
      * 标准形状。
@@ -163,7 +163,7 @@ export function createResourceKernel(
       },
     }),
     /*
-     * K3-c —— 读的守卫。名单在这里给,判据在 `./read-guard.ts`(它自己不认识任何
+     * K3-c —— 读的守卫。名单在这里给,判据在 `./resource-read-guard.ts`(它自己不认识任何
      * 一个命名空间)。理由与退场条件写在那只文件的头上:资源面还没有 per-caller 的
      * 沙箱根,所以非本机可信的进程上本地文件那一族的读一律拒。
      *
@@ -222,7 +222,7 @@ export function mountBuiltinResources(
     kernel.mount(new SessionResourceProvider()),
     /*
      * K3-c / K3-c' —— 目录。**所有档都装**(含 `readonly`),与 `session` 同一条:
-     * `readonly` 那一档的契约由 `catalog-sync.ts` 执行 —— 它对那一档**一只工具都不
+     * `readonly` 那一档的契约由 `resource-catalog-sync.ts` 执行 —— 它对那一档**一只工具都不
      * 投**,于是模型看不见任何资源;内核本身照装,RPC 与脚本那条路照旧。
      *
      * K3-c 当时这一行的理由写的是「它一格写面都没有」,K3-c' 补上写面之后那句话不再

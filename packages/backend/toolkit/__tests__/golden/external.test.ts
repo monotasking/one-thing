@@ -22,7 +22,7 @@ import {
   PluginTool,
   type McpToolBridge,
   type PluginToolDefinitionLike,
-} from '../../families/external.js'
+} from '../../families/toolkit-families-external.js'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 
 // ── 插件工具 ────────────────────────────────────────────────────────────────

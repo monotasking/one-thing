@@ -5,7 +5,7 @@ import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,
 } from '@onething/backend/agent-loop'
-import type { AgentProviderData } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentProviderData } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
 import type { JsonObject, JsonObjectProperty } from '@shared/json.js'
 import {
@@ -21,9 +21,9 @@ import {
   type BuildOnethingPromptContextOptions,
   type ComposedPrompt,
 } from '@onething/backend/prompt'
-import { toolkitPromptSource } from '@onething/backend/toolkit/prompt-source'
+import { toolkitPromptSource } from '@onething/backend/toolkit/toolkit-prompt-source'
 import { buildStateVariablesPromptText } from '@onething/backend/variable/variable-system'
-import { pluginPromptSource } from '@onething/backend/prompt/plugin-context-breaker'
+import { pluginPromptSource } from '@onething/backend/prompt/prompt-plugin-context-breaker'
 import {
   getMacOSAutomationDocsPath,
 } from '@onething/backend/storage'
@@ -36,11 +36,11 @@ import {
   isAgentPairDmRoom,
   isUserDmRoom,
 } from '@onething/backend/collab'
-import { collabRoomMembers } from '@onething/backend/collab/members'
-import { collabUserPromptFields } from '@onething/backend/collab/user-identity'
-import type { PromptProviderConfig } from '@onething/backend/prompt/plugin-context-breaker'
-import type { VariableBoardRenderer } from '@onething/backend/prompt/variable-board'
-import type { OnethingPromptHostAdapters } from '@onething/backend/prompt/builder'
+import { collabRoomMembers } from '@onething/backend/collab/collab-members'
+import { collabUserPromptFields } from '@onething/backend/collab/collab-user-identity'
+import type { PromptProviderConfig } from '@onething/backend/prompt/prompt-plugin-context-breaker'
+import type { VariableBoardRenderer } from '@onething/backend/prompt/prompt-variable-board'
+import type { OnethingPromptHostAdapters } from '@onething/backend/prompt/prompt-builder'
 
 export interface BuildPromptContextOptions extends Omit<CoreBuildPromptContextOptions, 'settings' | 'skills' | 'activeProject' | 'knownProjects'> {
   settings?: AppSettings
@@ -112,7 +112,7 @@ function collabRoomOverrides(
    * 照列**(`includeRetired`)—— 与激活面相反,因为转录里还有它说过的话,花名册
    * 里没有它的话,模型读到那些发言会以为房间里混进了外人。
    *
-   * 投影本身走 `collab/members.ts` 的单一点(架构审查 B8)。
+   * 投影本身走 `collab/collab-members.ts` 的单一点(架构审查 B8)。
    */
   const members = collabRoomMembers(room.room.memberAgentIds, {
     withDescription: true,

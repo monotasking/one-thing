@@ -14,12 +14,12 @@
  * 变成另一家的形状,而用户以为自己选了 OpenRouter。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
-} from "../factory.js";
-import type { AgentProviderRequestDumper } from "../request-dumper.js";
+} from "../provider-factory.js";
+import type { AgentProviderRequestDumper } from "../provider-request-dumper.js";
 import { drain, sseResponse, SYSTEM_MESSAGE, TOOLS, USER_MESSAGE } from "./wire-snapshots/snapshot-harness.js";
 import { registerCustomProvidersForTest } from './custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。

@@ -12,8 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentLoopOptions, AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
-import { collectLogRecordsForTests } from '@onething/backend/logging/configure-logging'
+import type { AgentLoopOptions, AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { collectLogRecordsForTests } from '@onething/backend/logging/logging-configure'
 
 const mocks = vi.hoisted(() => ({
   runAgentLoop: vi.fn(async (_options: Record<string, unknown>) => ({
@@ -36,15 +36,15 @@ const mocks = vi.hoisted(() => ({
   billTocUsage: vi.fn(() => vi.fn()),
 }))
 
-vi.mock('@onething/backend/agent-loop/loop-primitives', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/agent-loop/loop-primitives')>(),
+vi.mock('@onething/backend/agent-loop/agent-loop-primitives', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/agent-loop/agent-loop-primitives')>(),
   runAgentLoop: mocks.runAgentLoop,
 }))
 vi.mock('../../engine/engine-utility-provider.js', () => ({
   createUtilityProvider: mocks.createUtilityProvider,
 }))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}) }))
-vi.mock('../../usage/bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
+vi.mock('../../usage/usage-bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
 vi.mock('@onething/backend/toc', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
@@ -62,7 +62,7 @@ vi.mock('@onething/backend/toc', async (importOriginal) => {
 const { recordTocTurn } = await import('../toc-recorder.js')
 const { installSessionLayerForTest } = await import('../../session/testing/session-testing-layer.js')
 const { readSessionLogEventsSync } = await import('@onething/backend/session')
-const realAgentLoop = await vi.importActual<typeof import('@onething/backend/agent-loop/loop-primitives')>('@onething/backend/agent-loop/loop-primitives')
+const realAgentLoop = await vi.importActual<typeof import('@onething/backend/agent-loop/agent-loop-primitives')>('@onething/backend/agent-loop/agent-loop-primitives')
 let fixture: ReturnType<typeof installSessionLayerForTest>
 let storeDir: string
 

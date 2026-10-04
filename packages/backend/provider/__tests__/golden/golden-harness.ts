@@ -11,12 +11,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
-import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
-} from "../../factory.js";
-import type { AgentProviderRequestDumper } from "../../request-dumper.js";
+} from "../../provider-factory.js";
+import type { AgentProviderRequestDumper } from "../../provider-request-dumper.js";
 import { drain, sseResponse, SYSTEM_MESSAGE, TOOLS, USER_MESSAGE } from "../wire-snapshots/snapshot-harness.js";
 
 export const GOLDEN_DIR = dirname(fileURLToPath(import.meta.url));

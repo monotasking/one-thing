@@ -5,9 +5,9 @@
  * 模型认亲、错误码说明、型号规则。通用代码只读这些字段,不写「zhipu」。
  * 行为(方言、思考参数、运行时工厂)在同目录的 `runtime.ts`。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
-import type { DialSpec } from '../../dials.js'
+import type { DialSpec } from '../../provider-dials.js'
 import type { ProviderManifest } from '../../provider-manifest.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,

@@ -15,7 +15,7 @@
  * 微信网关是主进程拉起来的子进程 + 一张二维码的生命周期,这件事只有 Electron
  * 桌面做得到。域处理者因此不直连宿主的 gateway/lifecycle 原语
  * (装配层禁 import Electron 宿主包,checker 守着),而是走
- * `./lifecycle-port.js` 的 `configureGatewayHost`:桌面在
+ * `./gateway-lifecycle-port.js` 的 `configureGatewayHost`:桌面在
  * `main-process.ts` 注入八行转调,server / CLI 不注入。
  *
  * ## 迁后 web 行为:501 → 结构化降级(拍板 #20 接受)
@@ -36,7 +36,7 @@
  * 整只删掉(不像 oauth 还要留一层广播注入)。状态刷新靠调用方轮询 `getStatus`。
  */
 import { gatewayRouter, type GatewayRoutes } from '@shared/ipc/gateway.js'
-import { getGatewayHost } from '@onething/backend/gateway/lifecycle-port'
+import { getGatewayHost } from '@onething/backend/gateway/gateway-lifecycle-port'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 export const gatewayRpcHandlers: RpcRouteHandlers<GatewayRoutes> = {

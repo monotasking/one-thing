@@ -14,7 +14,7 @@
  *     (先 `buildBody` 再 `extraBody`),只测 codec 证明不了它。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,
@@ -29,8 +29,8 @@ import {
 	sseResponse,
 	SYSTEM_MESSAGE,
 } from "../../__tests__/wire-snapshots/snapshot-harness.js";
-import type { OpenAIChatUserContentPart } from "../openai-chat-messages.js";
-import type { CodexInputContentPart } from "../openai-responses-messages.js";
+import type { OpenAIChatUserContentPart } from "../provider-wires-openai-chat-messages.js";
+import type { CodexInputContentPart } from "../provider-wires-openai-responses-messages.js";
 
 const PDF_PART: AgentContentPart = {
 	type: "file",

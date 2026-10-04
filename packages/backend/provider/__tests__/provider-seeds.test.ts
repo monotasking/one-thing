@@ -3,7 +3,7 @@
  * 值与键序的逐字证据在 `packages/backend/settings/__tests__/settings-defaults.freeze.test.ts`。
  */
 import { describe, expect, it } from 'vitest'
-import { VENDOR_MANIFESTS, VENDOR_SEED_ORDER } from '../vendors/manifests.js'
+import { VENDOR_MANIFESTS, VENDOR_SEED_ORDER } from '../vendors/provider-vendor-manifests.js'
 
 describe('出厂种子的名册', () => {
   it('VENDOR_SEED_ORDER 恰好是名册里每一家各一次(只是换了键序)', () => {

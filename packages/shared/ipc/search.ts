@@ -505,7 +505,7 @@ export interface SearchStatusResponse {
    * 「没跑起来。原因在日志里」,而真机上 Worker 的日志从来没有落过地 —— 那句话是假的,
    * 这一格与 `worker-logging.ts` 那半边一起把它变成真话。
    *
-   * 产地在 Worker 里(`search/index/vector-writer.ts` 的
+   * 产地在 Worker 里(`search/index/search-index-vector-writer.ts` 的
    * `describeEmbedderFailure`):**原话**,200 字封顶,后端一个中文字都不拼。
    * **它是诊断串,不是 UI 文案** —— 壳按 `vectorErrorKind` 查一句人话,再把这一格
    * 括在后面(`{reason}`)。

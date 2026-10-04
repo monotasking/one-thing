@@ -29,7 +29,7 @@ import { setRootDirForTests } from '@onething/backend/space/space-persistence'
 import {
   resetSpaceProviderSettingsCacheForTests,
   writeSpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { resolveSessionSpaceDefaultSelection } from '../session-space-defaults.js'
 
 let tmpDir: string

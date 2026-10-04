@@ -65,19 +65,19 @@ vi.mock('../session-store.js', () => ({
 }))
 
 const { createSessionCommands } = await import('../session-commands.js')
-const { eventsHasMessage } = await import('../events-reads.js')
-const { peekSessionAccount } = await import('../projection-cache.js')
-const { sessionCommandEvents } = await import('../command-events.js')
+const { eventsHasMessage } = await import('../session-events-reads.js')
+const { peekSessionAccount } = await import('../session-projection-cache.js')
+const { sessionCommandEvents } = await import('../session-command-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
-  '../event-log.js'
+  '../session-event-log.js'
 )
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { resetSessionRuns } = await import('../runs.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { resetSessionProjectionCache } = await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { sessionReads } = await import('../reads.js')
+const { resetSessionSurfaceCache } = await import('../session-event-surface.js')
+const { resetSessionRuns } = await import('../session-runs.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
+const { resetSessionProjectionCache } = await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { sessionReads } = await import('../session-reads.js')
 
 const SESSION = 'write-side-1'
 

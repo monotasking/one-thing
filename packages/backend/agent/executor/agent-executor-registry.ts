@@ -21,7 +21,7 @@ import {
   agentExecutorIdFromSelection,
   resolveAgentExecutorSelection,
   type AgentExecutorSelectionSource,
-} from './selection.js'
+} from './agent-executor-selection.js'
 import type { AgentExecutor } from './agent-executor-types.js'
 
 /**

@@ -2,14 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createBackendHandle, setCurrentBackend } from '../../current.js'
+import { createBackendHandle, setCurrentBackend } from '../../backend-current.js'
 import {
   acquireSessionEventLogStore,
   getSessionEventsLogPath,
   readSessionLogEventsSync,
   resetSessionEventLogCache,
-} from '../event-log.js'
-import { createSessionEventLayer } from '../event-layer.js'
+} from '../session-event-log.js'
+import { createSessionEventLayer } from '../session-event-layer.js'
 
 let directory: string
 let owner: ReturnType<typeof acquireSessionEventLogStore> | undefined

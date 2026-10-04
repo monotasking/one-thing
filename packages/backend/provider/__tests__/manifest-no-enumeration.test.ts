@@ -3,7 +3,7 @@
  *
  * 从前「这是不是 codex / copilot / custom-*」在十几个文件里各判一次,加一家、加一种
  * 能力就得回去改一串 `if (providerId === …)`。批 M 把这些事实收进各家的 manifest
- * (`builtin-manifests.ts`),读的人问字段(`billing` / `models.kind` / `auth.kind` /
+ * (`provider-builtin-manifests.ts`),读的人问字段(`billing` / `models.kind` / `auth.kind` /
  * `behaviors` / `origin`)。这把尺子守的是:它们不许长回来。
  *
  * 扫 runtime + backend + core + 壳的非测试源码(注释先剥掉),命中即红:
@@ -11,7 +11,7 @@
  *  - `startsWith('custom-')` —— 自定义服务商 = manifest 的 `origin: 'custom'`;
  *  - `SUBSCRIPTION_PROVIDER_IDS` —— 订阅家 = manifest 的 `billing: 'subscription'`。
  *
- * 允许写名字的只有:`builtin-manifests.ts`(唯一产地)与**各家自己的模块**(它们本来
+ * 允许写名字的只有:`provider-builtin-manifests.ts`(唯一产地)与**各家自己的模块**(它们本来
  * 就只讲自己:`providers/codex.ts`、`codex-native-tools.ts`、`github-copilot.ts`、
  * `dialects/<id>.ts` …)。
  */
@@ -30,7 +30,7 @@ const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'dist-electron', '_
 
 /** 唯一产地 + 各家自己的模块(相对仓根)。 */
 const ALLOWED_FILES = new Set([
-  'packages/backend/provider/builtin-manifests.ts',
+  'packages/backend/provider/provider-builtin-manifests.ts',
   'packages/backend/provider/codex.ts',
   'packages/backend/provider/codex-native-tools.ts',
   'packages/backend/provider/github-copilot.ts',

@@ -10,7 +10,7 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { OnethingPracticeRecordInput } from '../../practice/practice-types.js'
 import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 import type {
@@ -19,7 +19,7 @@ import type {
   OnethingPracticeSummaryResult,
 } from '@shared/contracts/practice.js'
 import { defineInput } from '../toolkit-contract.js'
-import { ReadOnlyTool } from '../families/read-only.js'
+import { ReadOnlyTool } from '../families/toolkit-families-read-only.js'
 
 export interface PracticeToolAdapters {
   log(input: Omit<OnethingPracticeRecordInput, 'kind' | 'source'>): OnethingPracticeLedgerRecord | Promise<OnethingPracticeLedgerRecord>

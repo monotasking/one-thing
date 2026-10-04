@@ -23,5 +23,5 @@ export function listMusicProviderDescriptors(): MusicProviderDescriptor[] {
 }
 
 export { ncmMusicProvider } from './ncm/ncm.js'
-export { ncmIdSchema } from './ncm/ids.js'
+export { ncmIdSchema } from './ncm/ncm-ids.js'
 export type * from './music-providers-types.js'

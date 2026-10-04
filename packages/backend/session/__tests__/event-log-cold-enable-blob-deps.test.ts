@@ -2,14 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createBackendHandle, setCurrentBackend } from '../../current.js'
+import { createBackendHandle, setCurrentBackend } from '../../backend-current.js'
 import {
   acquireSessionEventLogStore,
   flushSessionEventLog as flush,
   getSessionEventsLogPath,
-} from '../event-log.js'
-import { createSessionEventLayer } from '../event-layer.js'
-import { getSessionBlobPath as blobPathOf, putSessionBlob } from '../blob-store.js'
+} from '../session-event-log.js'
+import { createSessionEventLayer } from '../session-event-layer.js'
+import { getSessionBlobPath as blobPathOf, putSessionBlob } from '../session-blob-store.js'
 
 /**
  * **冷启用时那份 blob 依赖账**(工单 6 ②b)。

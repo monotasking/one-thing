@@ -60,19 +60,19 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/settings')>(),
   getSettings: store.getSettings,
 }))
-vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngine: () => engine }))
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
-vi.mock('@onething/backend/collab/rooms', () => collab)
+vi.mock('@onething/backend/collab/collab-rooms', () => collab)
 vi.mock('@onething/backend/event', () => ({ getEventBus: () => eventBus }))
-vi.mock('../../session/runs.js', () => runs)
-vi.mock('../../session/reads.js', () => reads)
+vi.mock('../../session/session-runs.js', () => runs)
+vi.mock('../../session/session-reads.js', () => reads)
 vi.mock('../prompt/engine-system-prompt-snapshot.js', () => prompt)
 vi.mock('../engine-chat-facade.js', () => providers)
-vi.mock('../stream/provider-helpers.js', () => ({
+vi.mock('../stream/engine-stream-provider-helpers.js', () => ({
   resolveProviderAuth: vi.fn(),
   getProviderApiType: vi.fn(),
 }))
-vi.mock('@onething/backend/usage/bill-side-line', () => ({ billTitleUsage: () => () => {} }))
+vi.mock('@onething/backend/usage/usage-bill-side-line', () => ({ billTitleUsage: () => () => {} }))
 
 const SESSION_ID = 'session-1'
 

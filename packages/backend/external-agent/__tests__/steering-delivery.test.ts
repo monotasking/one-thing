@@ -79,15 +79,15 @@ const noopLogger = () => {
   logger.child = () => logger
   return logger
 }
-vi.mock('@onething/backend/logging/configure-logging', () => ({
+vi.mock('@onething/backend/logging/logging-configure', () => ({
   writeAppLog: vi.fn(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))
-vi.mock('../host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
-vi.mock('@onething/backend/acp/host-mcp-port', () => ({ createAcpHostMcpPort: () => ({}) }))
+vi.mock('../external-agent-host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
+vi.mock('@onething/backend/acp/acp-host-mcp-port', () => ({ createAcpHostMcpPort: () => ({}) }))
 
-const { getExternalAgentConnectors, takeExternalAgentSteering } = await import('../connector-registry.js')
+const { getExternalAgentConnectors, takeExternalAgentSteering } = await import('../external-agent-connector-registry.js')
 
 describe('takeExternalAgentSteering', () => {
   beforeEach(() => {

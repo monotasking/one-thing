@@ -2,21 +2,21 @@ import type {
   AgentJsonObject,
   AgentProvider,
   AgentProviderData,
-} from '@onething/backend/agent-loop/loop-primitives'
+} from '@onething/backend/agent-loop/agent-loop-primitives'
 import {
   runOnethingUtilityAgentTurn,
   type OnethingProviderRequestDumpContext,
   type OnethingProviderRequestDumpMode,
   type OnethingUtilityAgentMessage,
-} from './agent-turn.js'
+} from './provider-agent-turn.js'
 import {
   isOnethingACPProviderRuntime,
   type OnethingAgentRuntimeProviderConfig,
-} from './agent-runtime-route.js'
+} from './provider-agent-runtime-route.js'
 import {
   type OnethingProviderOpaqueValue,
   type OnethingToolChatMessage,
-} from './message-conversion.js'
+} from './provider-message-conversion.js'
 import {
   generateOnethingChatResponseWithReasoning,
   generateOnethingProviderChatTitle,
@@ -30,7 +30,7 @@ import {
   type OnethingProviderTokenUsage,
   type OnethingThinkingEffort,
 } from './provider-routing.js'
-import { resolveOnethingOAuthProviderConfig } from './oauth-config.js'
+import { resolveOnethingOAuthProviderConfig } from './provider-oauth-config.js'
 
 export type OnethingProviderFacadeConfig = OnethingAgentRuntimeProviderConfig & {
   model: string

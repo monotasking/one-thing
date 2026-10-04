@@ -11,14 +11,14 @@
  *
  * See docs/design/session-toc.md §10.
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
 import type { AppSettings } from "@shared/ipc.js";
 import { createAgentProviderFromRuntime } from "./engine-process-providers.js";
 import { pickOnethingProviderOptions, resolveUtilityModel, type CreateAgentProviderFromRuntimeOptions } from "@onething/backend/provider";
 import {
 	getProviderApiType,
 	resolveProviderAuth,
-} from "./stream/provider-helpers.js";
+} from "./stream/engine-stream-provider-helpers.js";
 import { applySessionSpaceCredentials } from "@onething/backend/credentials";
 
 export interface UtilityProviderRef {

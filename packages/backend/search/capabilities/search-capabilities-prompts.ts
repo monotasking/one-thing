@@ -24,8 +24,8 @@ import type {
   SearchQuery,
 } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
-import { staticBackedCapability, type SearchServiceResult } from './scan-adapter.js'
-import { matchRangesOf, normalizeSearchQuery, scoreText } from './text-match.js'
+import { staticBackedCapability, type SearchServiceResult } from './search-capabilities-scan-adapter.js'
+import { matchRangesOf, normalizeSearchQuery, scoreText } from './search-capabilities-text-match.js'
 
 /**
  * 这一类的目标形:点开要做什么。

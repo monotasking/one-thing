@@ -17,7 +17,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest'
 import { applyTheme, initializeThemes } from '../theme.js'
-import { canonicalHighlightToken, pickHighlightTokenOverrides } from '../css-mapper.js'
+import { canonicalHighlightToken, pickHighlightTokenOverrides } from '../theme-css-mapper.js'
 
 const MAGENTA = '#ff00ff'
 

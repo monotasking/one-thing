@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CoreConversationRuntime } from '@onething/backend/gateway/conversation-runtime'
+import type { CoreConversationRuntime } from '@onething/backend/gateway/gateway-conversation-runtime'
 import type { Channel, InboundMessage, OutboundMessage } from '../hub/gateway-hub.js'
 import {
   createGatewayChannelsFromEnv,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatStateVariablesForPrompt } from '../format.js'
+import { formatStateVariablesForPrompt } from '../variable-format.js'
 import { SessionStoreProvider } from '../providers/variable-providers-session-store.js'
 import { parseVariablesFile } from '../variable-schema.js'
 import type { ContextVariable } from '../variable-types.js'

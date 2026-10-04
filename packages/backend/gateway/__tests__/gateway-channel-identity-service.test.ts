@@ -21,7 +21,7 @@ vi.mock('@onething/backend/storage', () => ({
   },
 }))
 
-vi.mock('@onething/backend/logging/configure-logging', () => ({
+vi.mock('@onething/backend/logging/logging-configure', () => ({
   writeAppLog: vi.fn(),
 }))
 

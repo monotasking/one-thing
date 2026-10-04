@@ -88,7 +88,7 @@ export function splitSpaceProviderSettings(
 /**
  * 这台机器跑过 C2 那次「provider 设置整体搬进空间」没有。
  *
- * **判据与后端逐字同一条**(`packages/backend/settings/ai-settings-compose.ts`
+ * **判据与后端逐字同一条**(`packages/backend/settings/settings-ai-compose.ts`
  * 的 `hasSpaceProviderSettingsMigrated`):看 `storage.spaceProviderSettingsMigratedAt`
  * 这一格在不在。它随 `settings.getSettings()` 一起下来,所以渲染层问得到 ——
  * 不必猜、也不必按「providers 是不是空的」去推(那会把「用户真的把默认空间清空了」

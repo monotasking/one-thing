@@ -44,8 +44,8 @@ const credentials = vi.hoisted(() => ({
 const sessions = vi.hoisted(() => ({ countSessionsInWorkspace: vi.fn() }))
 
 vi.mock('@onething/backend/space/space-store', () => ({ getSpacesStore: () => store }))
-vi.mock('@onething/backend/space/overlay', () => overlay)
-vi.mock('@onething/backend/space/provider-settings', () => providerSettings)
+vi.mock('@onething/backend/space/space-overlay', () => overlay)
+vi.mock('@onething/backend/space/space-provider-settings', () => providerSettings)
 vi.mock('../../credentials/credentials-resolution.js', () => credentials)
 vi.mock('../../session/session-store.js', () => sessions)
 

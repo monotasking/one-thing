@@ -52,7 +52,7 @@ const radio = vi.hoisted(() => {
   const status = { active: true, intent: '深夜', programmeLength: 1 }
   return {
   openRadioStation,
-  // 端口真正的入口。真实现(`music/radio.ts`)第一件事就是调
+  // 端口真正的入口。真实现(`music/music-radio.ts`)第一件事就是调
   // `openRadioStation`,mock 照做 —— 否则下面那条用例断言的东西会凭空消失。
   radioToolOpen: vi.fn(async (intent: string, options: { clearProgramme: boolean }) => {
     openRadioStation(intent, options)
@@ -110,8 +110,8 @@ const kernelSlot = vi.hoisted(() => ({ current: undefined as unknown }))
 vi.mock('@onething/backend/music/music-process-runner', () => ({
   createElectronMusicProcessRunner: () => runner,
 }))
-vi.mock('../../current.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../current.js')>(),
+vi.mock('../../backend-current.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../backend-current.js')>(),
   // 只换这一口:`setCurrentBackend` / `createBackendHandle` 仍是真的(那只窄句柄上
   // 没有资源内核这一格 —— 它是 `OnethingBackend` 的实例字段)。
   getCurrentBackendInstance: () => kernelSlot.current,
@@ -120,9 +120,9 @@ vi.mock('../../http-server/http-server-principal.js', () => ({
   principalOf: () => ({ kind: 'user', userId: 'local-user' }),
 }))
 vi.mock('../../settings/settings-store.js', () => settings)
-vi.mock('@onething/backend/music/radio', () => radio)
+vi.mock('@onething/backend/music/music-radio', () => radio)
 vi.mock('@onething/backend/music/music-service', () => service)
-vi.mock('@onething/backend/music/dj-voice', () => ({ resolveDjSpeakDone: vi.fn() }))
+vi.mock('@onething/backend/music/music-dj-voice', () => ({ resolveDjSpeakDone: vi.fn() }))
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
   if (!response.ok) throw new Error(`dispatch failed: ${response.error.message}`)
@@ -132,12 +132,12 @@ function unwrap(response: RpcResponse): Record<string, unknown> {
 describe('music RPC domain', () => {
   let dispatchRpc: typeof import('../../http-server/http-server-dispatch-table.js')['dispatchRpc']
   let dispose: (() => void) | undefined
-  let operations: ReturnType<typeof import('@onething/backend/music/operations')['createMusicOperationsScope']>
+  let operations: ReturnType<typeof import('@onething/backend/music/music-operations')['createMusicOperationsScope']>
   let unmountResources: (() => Promise<void>) | undefined
 
   beforeEach(async () => {
-    const { createMusicOperationsScope } = await import('@onething/backend/music/operations')
-    const { setCurrentBackend, createBackendHandle } = await import('../../current.js')
+    const { createMusicOperationsScope } = await import('@onething/backend/music/music-operations')
+    const { setCurrentBackend, createBackendHandle } = await import('../../backend-current.js')
     operations = createMusicOperationsScope({ service: { ...service, runner }, radio } as unknown as Parameters<typeof createMusicOperationsScope>[0])
     const music = { operations, radio, service, onNowPlayingChanged: () => () => {}, onPlayerFact: () => () => {}, onSetupEvent: () => () => {}, onRadioFact: () => () => {} }
     setCurrentBackend(createBackendHandle({ music: music as unknown as import('@onething/backend/music/music-subsystem').MusicSubsystem }))
@@ -149,7 +149,7 @@ describe('music RPC domain', () => {
      */
     const [{ createResourceKernel, createMusicResourceProvider }, { ToolRunner }] = await Promise.all([
       import('@onething/backend/resource'),
-      import('@onething/backend/toolkit/tool-protocol'),
+      import('@onething/backend/toolkit/toolkit-tool-protocol'),
     ])
     kernelSlot.current = { music }
     const resourceKernel = createResourceKernel(validator => new ToolRunner({
@@ -185,7 +185,7 @@ describe('music RPC domain', () => {
     unmountResources = undefined
     kernelSlot.current = undefined
     await operations.drain()
-    const { setCurrentBackend } = await import('../../current.js')
+    const { setCurrentBackend } = await import('../../backend-current.js')
     setCurrentBackend(null)
     dispose?.()
     dispose = undefined

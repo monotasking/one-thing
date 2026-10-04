@@ -74,29 +74,29 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@onething/backend/plugin/plugin-system', () => ({
   getPluginManager: () => mocks.currentManager.value,
 }))
-vi.mock('@onething/backend/plugin/background-table', () => ({
+vi.mock('@onething/backend/plugin/plugin-background-table', () => ({
   getPluginBackgroundParams: () => undefined,
 }))
-vi.mock('@onething/backend/plugin/npm-process', () => ({
+vi.mock('@onething/backend/plugin/plugin-npm-process', () => ({
   getPluginMarketIndexSnapshot: mocks.getPluginMarketIndexSnapshot,
   probePluginNpmAvailability: mocks.probePluginNpmAvailability,
 }))
-vi.mock('@onething/backend/plugin/disk-loader', () => ({
+vi.mock('@onething/backend/plugin/plugin-disk-loader', () => ({
   getPluginFootprint: mocks.getPluginFootprint,
 }))
 vi.mock('@onething/backend/plugin/plugin-commands', () => ({
   executePluginCommandOnHost: mocks.executePluginCommandOnHost,
 }))
-vi.mock('@onething/backend/plugin/config-access', () => ({
+vi.mock('@onething/backend/plugin/plugin-config-access', () => ({
   createPluginConfigAccess: () => mocks.configAccess,
 }))
-vi.mock('@onething/backend/plugin/tarball', () => ({
+vi.mock('@onething/backend/plugin/plugin-tarball', () => ({
   readPluginTarballSummary: mocks.readPluginTarballSummary,
 }))
-vi.mock('@onething/backend/plugin/app-version', () => ({
+vi.mock('@onething/backend/plugin/plugin-app-version', () => ({
   getPluginAppVersion: () => '1.0.0',
 }))
-vi.mock('@onething/backend/plugin/health', () => ({
+vi.mock('@onething/backend/plugin/plugin-health', () => ({
   clearPluginRuntimeHealth: vi.fn(),
 }))
 

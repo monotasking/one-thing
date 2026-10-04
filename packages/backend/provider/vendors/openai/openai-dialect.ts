@@ -20,7 +20,7 @@
  * | endpoint | `https://api.openai.com/v1` + `/responses` | `POST /v1/responses` |
  * | auth | `Authorization: Bearer <OPENAI_API_KEY>` | 各 guide 的 curl 例子 |
  * | store | `false` | `/docs/guides/reasoning`「Stateless mode applies when `store` is `false`」 |
- * | reasoning | `reasoning:{effort, summary:'auto'}` | `/docs/guides/reasoning`(取值表见 `openai-responses-reasoning.ts`) |
+ * | reasoning | `reasoning:{effort, summary:'auto'}` | `/docs/guides/reasoning`(取值表见 `provider-thinking-openai-responses.ts`) |
  * | include | 恒发 `['reasoning.encrypted_content']` | 同页:`store:false` 下**默认**就返回 `encrypted_content`,`include` 那条「still accepted… but doesn't require it」 |
  * | 原生工具 | `{type:'image_generation'}` | `/docs/guides/tools-image-generation`(Supported models 见下) |
  * | usage | 三桶 + `cache_write_tokens` | `/docs/guides/prompt-caching` 的 usage 例子逐字含 `input_tokens_details.{cached_tokens, cache_write_tokens}` |
@@ -47,28 +47,28 @@
  *  - 账本把「这个模型有原生出图工具」当独立事实(`OPENAI_IMAGE_TOOL_MODELS`,
  *    排在目录之前 —— 官方模型页的「Output modalities: text」说的是*模型*的
  *    输出模态,图是**工具**产出的),于是 `imageOutputServedBy: 'in-loop'`;
- *  - `backend/engine/stream/stream-executor.ts` 的
+ *  - `backend/engine/stream/engine-stream-executor.ts` 的
  *    `resolveRequestedOutputModalities` 对 codex 之外的家改问账本的
  *    `servedBy === 'in-loop'`,于是这一家的 `requestedOutputModalities` 真的会
  *    是 `['image']`。
  *
  * `gpt-image-*` 仍走专用生图流(`/v1/images/*`),那条通路不在回合里。
  */
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
 import type { TurnContext } from "../../base/provider-base.js";
-import { OPENAI_RESPONSES_THINKING_WIRES } from "../../thinking/openai-responses-reasoning.js";
-import { onethingOpenAIAcceptsOriginalImageDetail } from "../../model-families/openai.js";
+import { OPENAI_RESPONSES_THINKING_WIRES } from "../../thinking/provider-thinking-openai-responses.js";
+import { onethingOpenAIAcceptsOriginalImageDetail } from "../../model-families/provider-model-families-openai.js";
 import {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL,
 	type ResponsesNativeTool,
 } from "../../wires/provider-wires.js";
-import { promptCacheKeyExtraBody } from "../../dialects/recipe.js";
+import { promptCacheKeyExtraBody } from "../../dialects/provider-dialects-recipe.js";
 import { registerDialect } from "../../base/provider-base-dialect.js";
 import {
 	responsesDialect,
 	type ResponsesDialectSpec,
-} from "../../dialects/responses-recipe.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
 
 /** 官方 REST 根地址 —— `POST https://api.openai.com/v1/responses`。 */
 export const OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -84,7 +84,7 @@ export const OPENAI_PROVIDER_DATA_TAG = "openai";
  * 请求级袋这一家认哪些键。
  *
  * `verbosity` → `text.verbosity`(**只有这一家开**;chat 通路上它拼在顶层,
- * 见 `openai-chat-provider-options.ts`)。
+ * 见 `provider-wires-openai-chat-options.ts`)。
  * `imageDetail` → 每个 `input_image.detail`。Responses 上 `detail` 是内容块
  * 上的常规字段,codec 不给袋时恒发 `'auto'` —— 官方
  * `/docs/guides/images-vision`:「`auto`:Automatic detail selection.」
@@ -152,7 +152,7 @@ export const OPENAI_DIALECT_SPEC = {
 	defaultBaseUrl: OPENAI_BASE_URL,
 	reasoning: OPENAI_RESPONSES_THINKING_WIRES,
 	// 无状态:我们的历史是本地那份账本,服务端 30 天留存对我们只有坏处。
-	// 顺带换来加密思维链默认回传(见 `openai-responses-reasoning.ts` 的官方引文)。
+	// 顺带换来加密思维链默认回传(见 `provider-thinking-openai-responses.ts` 的官方引文)。
 	store: false,
 	// 一条 system 都没有时的兜底。Responses 的 `instructions` 必填,而我们的
 	// 系统提示词永远在,所以这一句实际只在测试里出现。
@@ -170,7 +170,7 @@ const responsesDialectSpec: ResponsesDialectSpec = {
 	label: "OpenAI Responses",
 	...OPENAI_DIALECT_SPEC,
 };
-// 自定义服务商选 openai-responses 线时以这份配方为底(`referenceFor`,`custom-from-spec.ts` 按线查名册)。
+// 自定义服务商选 openai-responses 线时以这份配方为底(`referenceFor`,`provider-dialects-custom-from-spec.ts` 按线查名册)。
 // 建表 + 登记与 `defineResponsesDialect` 是同两步,只是多声明这一格。
 export const OPENAI_DIALECT = {
 	...responsesDialect(responsesDialectSpec),

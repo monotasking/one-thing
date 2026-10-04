@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 import {
   isCoreConversationRuntime,
   type CoreConversationRuntime,
-} from '@onething/backend/gateway/conversation-runtime'
+} from '@onething/backend/gateway/gateway-conversation-runtime'
 import { TelegramChannel } from './channels/telegram/telegram.js'
 import { WechatChannel } from './channels/wechat/wechat.js'
 import {
@@ -171,7 +171,7 @@ async function loadGatewayConversationRuntimeFromEnv(
   const moduleSpecifier = env.ONETHING_GATEWAY_RUNTIME_MODULE ?? env.GATEWAY_RUNTIME_MODULE
   if (!moduleSpecifier?.trim()) {
     throw new Error(
-      'Standalone Gateway needs a real onething runtime. Set ONETHING_GATEWAY_RUNTIME_MODULE to a module that exports default/runtime/createGatewayRuntime returning an OnethingConversationRuntime (CoreConversationRuntime from @onething/backend/gateway/conversation-runtime).',
+      'Standalone Gateway needs a real onething runtime. Set ONETHING_GATEWAY_RUNTIME_MODULE to a module that exports default/runtime/createGatewayRuntime returning an OnethingConversationRuntime (CoreConversationRuntime from @onething/backend/gateway/gateway-conversation-runtime).',
     )
   }
 

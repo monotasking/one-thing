@@ -25,14 +25,14 @@ describe('daemon logging (L2)', () => {
   })
 
   afterEach(async () => {
-    const logging = await import('@onething/backend/logging/configure-logging')
+    const logging = await import('@onething/backend/logging/logging-configure')
     await logging.shutdownAppLogging()
     fs.rmSync(storePath, { recursive: true, force: true })
   })
 
   it('writes daemon.jsonl into the store log dir, one JSON record per line', async () => {
     const { configureDaemonLogging } = await import('../daemon-server.js')
-    const logging = await import('@onething/backend/logging/configure-logging')
+    const logging = await import('@onething/backend/logging/logging-configure')
 
     const handle = configureDaemonLogging(storePath)
     logging.getLogger('daemon').info('daemon listening', { socketPath: '/tmp/x.sock', pid: 4242 })

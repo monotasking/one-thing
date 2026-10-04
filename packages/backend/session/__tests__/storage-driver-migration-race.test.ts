@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHybridSessionStorageDriver, type SessionStorageDriver } from '../storage-driver.js'
+import { createHybridSessionStorageDriver, type SessionStorageDriver } from '../session-storage-driver.js'
 
 interface TestMessage {
   id: string

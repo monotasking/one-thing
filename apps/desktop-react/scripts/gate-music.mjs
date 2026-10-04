@@ -16,7 +16,7 @@
  *
  * ── 判据是**网线上那些信封**,不是 core 的账本 ──────────────────────────
  * 试过账本那条路,不成立:`<store>/audit/resource.jsonl` 落的是 `{callId, toolId,
- * principal, effects, outcome}`(`backend/toolkit/audit-sink.ts`),`toolId`
+ * principal, effects, outcome}`(`backend/toolkit/toolkit-audit-sink.ts`),`toolId`
  * 只到 scheme 那一层(`kernel.ts:411`),而**读根本不落审计**(§2 不变量 1:读是
  * 纯查询,不改任何东西也不该留痕)。拿它判「哪五条读发出去了」是在读一份不存在
  * 的记录。

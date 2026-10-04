@@ -5,13 +5,13 @@
  * 通用代码只读这些字段,不写「deepseek」。行为(方言、思考参数、运行时工厂、余额源)在
  * 同目录的 `runtime.ts` 及其伙伴。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 
 /**
  * DeepSeek 只收 high / max 两档。千问端点转售的 GLM / DeepSeek 也沿用这一对
- * 从 `model-capability.ts` 搬来。
+ * 从 `provider-model-capability.ts` 搬来。
  */
 const ONETHING_DEEPSEEK_EFFORTS = ['high', 'max'] as const
 
@@ -33,7 +33,7 @@ export const DEEPSEEK_MANIFEST: ProviderManifest = {
   envVars: ['DEEPSEEK_API_KEY'],
   modelIdentity: { brands: ['deepseek', 'deepseek-ai'], keys: ['deepseek'] },
   catalogAliases: ['deepseek'],
-  // 型号规则表(从 `model-capability.ts` 的 `PROVIDER_MODEL_RULES.deepseek` 搬来,逐字)。
+  // 型号规则表(从 `provider-model-capability.ts` 的 `PROVIDER_MODEL_RULES.deepseek` 搬来,逐字)。
   modelRuleTable: [
     {
       // DeepSeek 的图片输入只在 vision 实验族上(`image_url` / `file` 块,

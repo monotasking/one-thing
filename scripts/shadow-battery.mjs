@@ -1758,7 +1758,7 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
     ONETHING_SERVER_PORT: String(port),
     ONETHING_SERVER_TOKEN: token,
     ONETHING_SESSION_SHADOW: '1',
-    // F4-c c4:A 类端口的逐格断言(`port-fact-assert.ts`)。生产默认关,这里必须
+    // F4-c c4:A 类端口的逐格断言(`session-port-fact-assert.ts`)。生产默认关,这里必须
     // 显式打开 —— 恒等门退役之后,"事实已经在流上"那句话在真引擎上的唯一证人
     // 就是它。不等会记一行 `session-shadow.jsonl` + `portMismatches`,两样都进门。
     ONETHING_SESSION_PORT_ASSERT: '1',
@@ -1846,7 +1846,7 @@ async function runWriteFailureProbe({ mockPort, port, scenarioName, seed }) {
         surfaced ??= String(error?.message ?? error)
       }
       // 第一刀的失败是**排队之后**才发生的,所以给队列一点时间把它变成事实;
-      // 上抛的落点是**下一次**同步写口(见 `event-log.ts` 的 `writeFailure`)。
+      // 上抛的落点是**下一次**同步写口(见 `session-event-log.ts` 的 `writeFailure`)。
       await sleep(900)
     }
     fs.chmodSync(ledger, 0o644)
@@ -2038,7 +2038,7 @@ async function main() {
     //
     // **`legacy rollback` 那条泳道已退役**:它的取材池是"带抄本的会话",而抄本
     // 写代码批 6b 就删了,一次性 store 上再也造不出这种会话;杆本身也已随 F4-a
-    // 烧掉(§16.11 拍板 5,见 `read-mode.ts` 的墓志铭)。`laneTaken` 留着:
+    // 烧掉(§16.11 拍板 5,见 `session-read-mode.ts` 的墓志铭)。`laneTaken` 留着:
     // 哪天补回第二条泳道,"取材互不相交"这条纪律还在。
     const laneTaken = new Set()
     for (const spec of [

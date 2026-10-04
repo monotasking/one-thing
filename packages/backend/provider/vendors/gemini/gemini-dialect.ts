@@ -5,16 +5,16 @@
  * `GEMINI_CAPABILITIES` 原样。
  *
  * 服务商自述试点 P2 第 2 批从 `agent-loop/providers/dialects/gemini.ts` 搬回家;定义即登记。
- * 线协议的公共构件(`gemini-recipe.ts`、`wires/gemini-*`、`thinking/gemini-thinking.ts`)留在
+ * 线协议的公共构件(`provider-dialects-gemini-recipe.ts`、`wires/gemini-*`、`thinking/provider-thinking-gemini.ts`)留在
  * agent-loop。自定义服务商的 gemini 适配表以这份配方为底(下面的 `referenceFor`)。
  */
 import { registerDialect } from "../../base/provider-base-dialect.js";
 import {
 	GEMINI_DEFAULT_BASE_URL,
 	geminiDialect,
-} from "../../dialects/gemini-recipe.js";
+} from "../../dialects/provider-dialects-gemini-recipe.js";
 
-// 自定义服务商选 gemini-generateContent 线时以这份配方为底(`referenceFor`,`custom-from-spec.ts` 按线查名册)。
+// 自定义服务商选 gemini-generateContent 线时以这份配方为底(`referenceFor`,`provider-dialects-custom-from-spec.ts` 按线查名册)。
 // 建表 + 登记与 `defineGeminiDialect` 是同两步,只是多声明这一格。
 export const GEMINI_DIALECT = {
 	...geminiDialect({

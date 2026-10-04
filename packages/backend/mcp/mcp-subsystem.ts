@@ -15,9 +15,9 @@
  * 依赖全部从构造参数进来(manager / 设置读法 / 工具目录重建 / capabilities 通知口),
  * 所以它在单测里不需要真起一台 MCP —— 那正是这一期反证做得出来的原因。
  */
-import { configureMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/capabilities-changed'
+import { configureMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/mcp-capabilities-changed'
 import type { MCPSettings } from '@shared/mcp/types'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('app.mcp.subsystem')
 

@@ -16,7 +16,7 @@ import {
 	type AgentSkillContext,
 	type AgentSourceToolDefinition,
 	type AgentToolChoice,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import type { Principal } from "@shared/permission/principal";
 import {
 	agentLoopInitSkills,
@@ -87,18 +87,18 @@ const CLEARED_ON_PROVIDER_SWITCH = {
 	authContext: undefined,
 	spaceCredential: undefined,
 } as const;
-import { createTurnTraceRecorder } from "../eval/trace-store.js";
+import { createTurnTraceRecorder } from "../eval/eval-trace-store.js";
 import {
 	DEFAULT_AGENT_MAX_TURNS,
 	type EffectiveAgentProfile,
-} from "../agent/profile.js";
+} from "../agent/agent-profile.js";
 // 缝 1。目录由装配层通过 `configureToolkitCatalog` 递进来 —— 产品层不许
 // import `@onething/backend`。
 import {
 	resolveToolkitSurface,
 	toolkitAgentSourceTools,
 } from "../toolkit/toolkit-host.js";
-import type { SceneSessionLike as ToolkitSceneSessionLike } from "../toolkit/scene.js";
+import type { SceneSessionLike as ToolkitSceneSessionLike } from "../toolkit/toolkit-scene.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 

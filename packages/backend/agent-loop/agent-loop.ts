@@ -2,7 +2,7 @@
  * agent-loop:一轮对话怎么跑的内核(层次 L1「领域事实」)。
  *
  * 2026-10 engine 归位(决策 D27 / D51 / D52)之后,这里装着两样东西:与服务商无关的循环原语
- * (`loop-primitives.ts` 那个桶:runner、流、重试、工具调度、线格式),和前 core/engine 的内核 ——
+ * (`agent-loop-primitives.ts` 那个桶:runner、流、重试、工具调度、线格式),和前 core/engine 的内核 ——
  * `CoreStreamEngine`、agent-loop 执行器与运行时、工具编排、上下文压缩、历史重建、回合上下文、提示词片段、
  * 消息来源判据、回合主体、流发送器、引擎端口类型、回合后触发器表。这只入口就是从前的
  * `engine/engine-primitives.ts` 内核桶,原样搬来,末尾补了引擎归位时外面真在用的几组名字。

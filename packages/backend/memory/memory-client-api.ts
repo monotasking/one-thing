@@ -5,7 +5,7 @@
  * `trim` 会导致缓存重建,只允许本机可信的调用方使用(`isHostLocallyTrusted()`)。
  */
 import { memoryRouter, type MemoryRoutes } from '@shared/ipc/memory.js'
-import { getCurrentBackendInstance, BackendNotAssembledError } from '@onething/backend/current.js'
+import { getCurrentBackendInstance, BackendNotAssembledError } from '@onething/backend/backend-current.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 

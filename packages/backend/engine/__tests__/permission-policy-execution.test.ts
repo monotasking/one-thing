@@ -5,7 +5,7 @@ import { enforcePermissionPolicy } from '@onething/backend/tool/access-control/t
 import type { ToolEffect } from '@onething/backend/tool/tool-helpers'
 // This policy component fixture is a non-collaborative session; it owns no store.
 vi.mock('../../session/session-store.js', () => ({ getSession: () => undefined }))
-vi.mock('../../session/reads.js', () => ({ sessionReads: {
+vi.mock('../../session/session-reads.js', () => ({ sessionReads: {
   listMessages: () => ({ messages: [], changed: false }),
   lastMessageOfRole: () => undefined,
 } }))

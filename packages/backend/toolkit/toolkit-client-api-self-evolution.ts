@@ -77,20 +77,20 @@
  * 会把「这个宿主没配过这件事」这条信息抹掉。
  *
  * 三个工具的实现住在 `app/toolkit/builtin/feature-{mount,unmount,inspect}.ts`,
- * 共享的动态挂载表住在 `feature-runtime.ts`;本文件只剩「什么时候装、什么时候
+ * 共享的动态挂载表住在 `toolkit-builtin-feature-runtime.ts`;本文件只剩「什么时候装、什么时候
  * 摘」这一件事。
  *
  * 住处:包根归位 B(2026-10-04)从包根 `features/builtin/self-evolution.ts` 搬进 toolkit —— 它装的三只工具与那张
- * 动态挂载表(`builtin/feature-*.ts`、`tier-catalogs.ts` 的 `registerFeatureTools`)本来就住在这里。它是名册
+ * 动态挂载表(`builtin/feature-*.ts`、`toolkit-tier-catalogs.ts` 的 `registerFeatureTools`)本来就住在这里。它是名册
  * `http-server/http-server-client-api-roster.ts` 里的一个成员、只有名册读它,所以按第二入口命名(`toolkit-client-api-*`,D26):
- * 经 toolkit 主入口交出会成环(`tier-catalogs.ts` 引 toolkit 入口)。
+ * 经 toolkit 主入口交出会成环(`toolkit-tier-catalogs.ts` 引 toolkit 入口)。
  *
  * import 零副作用:本模块加载只产出一个常量对象,工具注册发生在
  * `mountFeature` 真的调用 `mount` 的那一刻
  * (`app/__tests__/import-side-effect-free.test.ts`)。
  */
 import { getToolkitCatalog } from './toolkit-host.js'
-import { FeatureToolRuntime, registerFeatureTools } from './tier-catalogs.js'
+import { FeatureToolRuntime, registerFeatureTools } from './toolkit-tier-catalogs.js'
 import type { FeatureContext, FeatureDefinition } from '@onething/backend/feature-registry'
 
 /**

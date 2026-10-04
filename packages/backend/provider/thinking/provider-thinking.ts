@@ -4,25 +4,25 @@
  *
  * 这个模块一加载就把已迁移的线型登记进进程级的 `thinkingWires`
  * (只服务一家的线型随那一家搬回了 `providers/vendors/<id>/thinking.ts`,由
- * `vendors/runtimes.ts` 的名册登记):
- * openai-chat 的四条(原先八条,智谱 / 千问 / DeepSeek / xAI 四条已回家;`openai-compatible.ts`
+ * `vendors/provider-vendor-runtimes.ts` 的名册登记):
+ * openai-chat 的四条(原先八条,智谱 / 千问 / DeepSeek / xAI 四条已回家;`provider-openai-compatible.ts`
  * 的构造门面靠它把 `reasoningStyle`
  * 换成对象 —— 那个 `switch` 从此不存在了),外加 anthropic-messages 的三条
  * (P1-a)与 gemini 的两条(P1-b)。
  */
 import { thinkingWires } from "../base/provider-base.js";
-import { anthropicAdaptiveThinkingWire } from "./anthropic-adaptive.js";
-import { anthropicAlwaysThinkingWire } from "./anthropic-always.js";
-import { anthropicBudgetThinkingWire } from "./anthropic-budget.js";
+import { anthropicAdaptiveThinkingWire } from "./provider-thinking-anthropic-adaptive.js";
+import { anthropicAlwaysThinkingWire } from "./provider-thinking-anthropic-always.js";
+import { anthropicBudgetThinkingWire } from "./provider-thinking-anthropic-budget.js";
 import {
 	geminiBudgetThinkingWire,
 	geminiLevelThinkingWire,
-} from "./gemini-thinking.js";
-import { openAIChatNoThinkingWire } from "./none.js";
-import { openAIEffortWire } from "./openai-effort.js";
-import { openRouterReasoningWire } from "./openrouter-reasoning.js";
-import { responsesReasoningWire } from "./responses-reasoning.js";
-import { thinkingTypeWire } from "./thinking-type.js";
+} from "./provider-thinking-gemini.js";
+import { openAIChatNoThinkingWire } from "./provider-thinking-none.js";
+import { openAIEffortWire } from "./provider-thinking-openai-effort.js";
+import { openRouterReasoningWire } from "./provider-thinking-openrouter-reasoning.js";
+import { responsesReasoningWire } from "./provider-thinking-responses-reasoning.js";
+import { thinkingTypeWire } from "./provider-thinking-type.js";
 
 thinkingWires
 	.register(thinkingTypeWire)
@@ -39,21 +39,21 @@ thinkingWires
 export {
 	AnthropicAdaptiveThinkingWire,
 	anthropicAdaptiveThinkingWire,
-} from "./anthropic-adaptive.js";
+} from "./provider-thinking-anthropic-adaptive.js";
 export {
 	ANTHROPIC_ALWAYS_THINKING_WIRE_ID,
 	AnthropicAlwaysThinkingWire,
 	anthropicAlwaysThinkingWire,
-} from "./anthropic-always.js";
+} from "./provider-thinking-anthropic-always.js";
 export {
 	AnthropicBudgetThinkingWire,
 	anthropicBudgetThinkingWire,
-} from "./anthropic-budget.js";
+} from "./provider-thinking-anthropic-budget.js";
 export {
 	AnthropicThinkingWire,
 	clampClaudeReasoningEffort,
 	type ClaudeEffort,
-} from "./anthropic-effort.js";
+} from "./provider-thinking-anthropic-effort.js";
 export {
 	GEMINI_THINKING_CONFIG_PATH,
 	GEMINI_THINKING_WIRES,
@@ -65,8 +65,8 @@ export {
 	isGemini25Model,
 	type GeminiThinkingConfig,
 	type GeminiThinkingLevel,
-} from "./gemini-thinking.js";
-export { OpenAIChatNoThinkingWire, openAIChatNoThinkingWire } from "./none.js";
+} from "./provider-thinking-gemini.js";
+export { OpenAIChatNoThinkingWire, openAIChatNoThinkingWire } from "./provider-thinking-none.js";
 export {
 	OpenAIEffortWire,
 	openAIEffortWire,
@@ -75,19 +75,19 @@ export {
 	openAIReasoningEffortsFor,
 	OPENAI_REASONING_EFFORT_LADDER,
 	type OpenAIReasoningEffort,
-} from "./openai-effort.js";
+} from "./provider-thinking-openai-effort.js";
 export {
 	OPENAI_RESPONSES_THINKING_WIRES,
 	OpenAIResponsesReasoningWire,
 	openAIResponsesReasoningWire,
 	type OpenAIResponsesReasoningOptions,
-} from "./openai-responses-reasoning.js";
+} from "./provider-thinking-openai-responses.js";
 export {
 	OPENROUTER_REASONING_DETAILS_TYPE,
 	OpenRouterReasoningWire,
 	decodeOpenRouterReasoningDetails,
 	openRouterReasoningWire,
-} from "./openrouter-reasoning.js";
+} from "./provider-thinking-openrouter-reasoning.js";
 export {
 	RESPONSES_ENCRYPTED_REASONING_INCLUDE,
 	RESPONSES_INCLUDE_PATH,
@@ -99,10 +99,10 @@ export {
 	responsesReasoningWire,
 	type CodexReasoningEffort,
 	type CodexReasoningOptions,
-} from "./responses-reasoning.js";
-export { ThinkingTypeWire, thinkingTypeWire } from "./thinking-type.js";
+} from "./provider-thinking-responses-reasoning.js";
+export { ThinkingTypeWire, thinkingTypeWire } from "./provider-thinking-type.js";
 export {
 	OpenAIChatThinkingWire,
 	openAIChatDelta,
 	type OpenAIChatReasoningDelta,
-} from "./openai-chat-thinking-wire.js";
+} from "./provider-thinking-openai-chat-wire.js";

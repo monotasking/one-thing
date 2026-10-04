@@ -5,12 +5,12 @@
  *
  * 兼容是硬要求。今天 `provider-error-classification.ts` 的状态码三段兜底
  * (顶层 `statusCode` → `data.statusCode` → 锚定前缀抠取)和一批既有测试
- * 读的是 `openai-compatible.ts` 造的那个对象:顶层 `responseBody` +
+ * 读的是 `provider-openai-compatible.ts` 造的那个对象:顶层 `responseBody` +
  * `data: { providerId, statusCode, responseBody }` + 顶层 `retryAfterAt`,
  * 消息形如 `${providerId} agent loop API error: ${status} ${body}`。
  * 这些**全部保留**,新字段只是加上去 —— 迁移时分类器与测试可以一行不改。
  */
-import { withProviderRetryAfter } from "../../agent-loop/provider-error-classification.js";
+import { withProviderRetryAfter } from "../../agent-loop/agent-loop-provider-error-classification.js";
 import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface ProviderHttpErrorInit {

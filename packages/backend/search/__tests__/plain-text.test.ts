@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { snippetOf, queryRangesOf } from '../capabilities/search-capabilities-indexed.js'
-import { mapDisplayRangeToSource, plainTextOf, toDisplayText } from '../text/plain.js'
+import { mapDisplayRangeToSource, plainTextOf, toDisplayText } from '../text/search-text-plain.js'
 
 describe('toDisplayText:剥记号 + 回原文的路', () => {
   it('强调 / 行内代码 / 标题 / 列表 / 链接的记号都不上屏', () => {

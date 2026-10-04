@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FolderVault } from '../note-folder-vault.js'
 import { FolderDriver } from '../note-folder-driver.js'
 import { createEmptyNotesConfig } from '../../note-types.js'
-import { BasenameIndex } from '../../basename-index.js'
+import { BasenameIndex } from '../../note-basename-index.js'
 
 let root: string
 

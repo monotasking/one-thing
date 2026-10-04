@@ -3,7 +3,7 @@ import {
   createDefaultSettings,
   DEFAULT_CHAT_SETTINGS,
 } from '../../../settings/defaults/settings-factory-defaults.js'
-import type { StreamContext, StreamSender } from '../stream-processor.js'
+import type { StreamContext, StreamSender } from '../engine-stream-processor.js'
 
 const emit = vi.fn(() => Promise.resolve())
 const getSession = vi.fn(() => ({
@@ -32,12 +32,12 @@ vi.mock('@onething/backend/event', () => ({
   getEventBus: () => ({ emit }),
 }))
 
-vi.mock('../../compact-session.js', () => ({
+vi.mock('../../engine-compact-session.js', () => ({
   compactSessionContext,
   shouldSkipAutoCompactForProviderUsageMismatch,
 }))
 
-const { maybeCompactAgentLoopContext } = await import('../engine-stream-agent-loop-runtime.js')
+const { maybeCompactAgentLoopContext } = await import('../engine-agent-loop-stream-context.js')
 
 function mockSender(): StreamSender {
   return {

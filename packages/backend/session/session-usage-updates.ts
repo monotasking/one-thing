@@ -1,11 +1,11 @@
 import type { SessionTokenUsage, TokenUsage } from '@shared/ipc.js'
 import { clearOnethingSessionUsage, getOnethingSessionUsage, updateOnethingSessionUsage } from './session-usage.js'
 import * as store from './session-store.js'
-import { deepEqual } from './shadow.js'
-import { appendSessionShadowLine, summarizeShadowDiff } from './shadow.js'
-import { bumpSessionShadowStats } from './event-stats.js'
-import { peekSessionAccount } from './projection-cache.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { deepEqual } from './session-shadow.js'
+import { appendSessionShadowLine, summarizeShadowDiff } from './session-shadow.js'
+import { bumpSessionShadowStats } from './session-event-stats.js'
+import { peekSessionAccount } from './session-projection-cache.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('sessions.usage')
 

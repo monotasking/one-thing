@@ -29,7 +29,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   getSession: () => undefined,
 }))
 
-vi.mock('../../session/reads.js', () => ({
+vi.mock('../../session/session-reads.js', () => ({
   sessionReads: { getMessage: () => undefined },
 }))
 

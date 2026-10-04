@@ -5,15 +5,15 @@
  * 证明:整套端口加起来不到 100 行,R1 的家族基类测试直接复用。
  */
 
-import { Decision, Intent } from '../intent.js'
+import { Decision, Intent } from '../toolkit-intent.js'
 import type { EffectClass } from '@shared/toolkit/effects.js'
 import type { ObservedEvent, ToolLifecycleEvent } from '../toolkit-events.js'
-import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '../job.js'
-import type { Outcome } from '../outcome.js'
-import type { Authorizer, Interceptor, Observer, ValidationResult, Validator } from '../ports.js'
-import type { Result } from '../result.js'
-import { textResult } from '../result.js'
-import type { Invocation, PlanContext, RunContext } from '../run-context.js'
+import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '../toolkit-job.js'
+import type { Outcome } from '../toolkit-outcome.js'
+import type { Authorizer, Interceptor, Observer, ValidationResult, Validator } from '../toolkit-ports.js'
+import type { Result } from '../toolkit-result.js'
+import { textResult } from '../toolkit-result.js'
+import type { Invocation, PlanContext, RunContext } from '../toolkit-run-context.js'
 import type { PrepareEnv, Scene, ToolBudgetHint, ToolSpec } from '../toolkit-spec.js'
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 import { Tool } from '../toolkit-tool.js'

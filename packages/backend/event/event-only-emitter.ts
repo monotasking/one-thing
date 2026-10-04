@@ -23,10 +23,10 @@ import {
   type CreateCoreEventOnlyEmitterOptions,
 } from '@onething/backend/agent-loop'
 import { getEventBus, getStreamChannel } from './event.js'
-import { claimDeltaStamp } from './delta-stamp.js'
+import { claimDeltaStamp } from './event-delta-stamp.js'
 import { writeSessionEvent } from '@onething/backend/session'
 import { currentSessionRunId } from '@onething/backend/session'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import type { JsonObject } from '@shared/json'
 
 /**
@@ -139,7 +139,7 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
     store: storePort,
     debugStream: shouldTraceStream,
     /*
-     * R1:裸 delta 到台面上认领账本身份章(`event/delta-stamp.ts`)。
+     * R1:裸 delta 到台面上认领账本身份章(`event/event-delta-stamp.ts`)。
      *
      * 只认领、不铸造 —— 章的唯一产地是记录器那一处(审查条 2)。认领不到就不盖,
      * 老消费者不读这一格,行为逐字不变。

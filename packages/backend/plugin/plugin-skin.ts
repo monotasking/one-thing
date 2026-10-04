@@ -1,7 +1,7 @@
 /**
  * 插件皮肤包的**裁决层**(H3)。
  *
- * 与 L2(`theme-overrides.ts`)逐条同构 —— 同一套治理照抄,不发明第二套规矩:
+ * 与 L2(`plugin-theme-overrides.ts`)逐条同构 —— 同一套治理照抄,不发明第二套规矩:
  *  - 键必须 ∈ `SKIN_TIER_VALUES` 的旋钮集合(**白名单就是那张表本身**);
  *  - 值必须 ∈ 该旋钮开放的档位集合(枚举,不是自由字符串);
  *  - 冲突按**全局规范顺序后者胜**(core 的 `comparePluginCanonicalOrder`,

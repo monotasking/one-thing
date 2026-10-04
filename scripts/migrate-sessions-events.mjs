@@ -406,7 +406,7 @@ export function coverageState(records) {
 
 /**
  * 一条事件在投影里落成的**消息节点 id**(折不出消息节点的事件返回 undefined)。
- * 与 `events-reads.ts` 的节点身份一致:user/system/imported → `data.message.id`,
+ * 与 `session-events-reads.ts` 的节点身份一致:user/system/imported → `data.message.id`,
  * `run/start` → `data.assistantMessageId`,`user/message-edited` → `data.messageId`。
  * `session/compacted` 的压缩卡 id 不在这里认 —— 认不出的覆盖会被下面的“干净后缀”
  * 判据当成未覆盖,从而保守跳过,绝不硬合。

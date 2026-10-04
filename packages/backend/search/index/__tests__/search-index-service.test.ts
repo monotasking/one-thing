@@ -11,9 +11,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { CapabilityManifest, SearchContext, SearchQuery } from '../../kernel/search-kernel.js'
 import { PIN_FIELD_HIT_OFFSET, parse } from '../../kernel/search-kernel.js'
 
-import { LedgerFeed } from '../ledger-feed.js'
+import { LedgerFeed } from '../search-index-ledger-feed.js'
 import { SearchIndexService, createSqliteLexicalRetriever } from '../search-index-service.js'
-import { IndexWorkerUnavailableError } from '../worker-host.js'
+import { IndexWorkerUnavailableError } from '../search-index-worker-host.js'
 import {
   createSameThreadWorker,
   createTempStore,

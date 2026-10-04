@@ -19,7 +19,7 @@
  * 在这里守着,免得「换线之后 detail 悄悄失效」。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { getLogger } from "../../../logging/logging.js";
 import "../../dialects/provider-dialects.js";
 import {
@@ -35,7 +35,7 @@ import {
 	sseResponse,
 	SYSTEM_MESSAGE,
 } from "../../__tests__/wire-snapshots/snapshot-harness.js";
-import type { OpenAIChatUserContentPart } from "../openai-chat-messages.js";
+import type { OpenAIChatUserContentPart } from "../provider-wires-openai-chat-messages.js";
 
 const IMAGE_PART: AgentContentPart = {
 	type: "image",

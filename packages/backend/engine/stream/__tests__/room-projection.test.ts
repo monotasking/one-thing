@@ -35,7 +35,7 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
 import {
 	buildHistoryMessages,
 	projectRoomMessagesForModel,
-} from "../message-helpers.js";
+} from "../engine-stream-message-helpers.js";
 import { projectRoomHistory } from "@onething/backend/collab";
 import type { ChatMessage } from "@shared/ipc.js";
 
@@ -134,7 +134,7 @@ describe("room projection for the model (W9.1)", () => {
 	});
 
 	it("carries the quote reply into the model view, quote line above the speech (W7)", () => {
-		// Same two-line shape the pure spec asserts (collab/projection.ts) — this
+		// Same two-line shape the pure spec asserts (collab/collab-projection.ts) — this
 		// is the adapter that actually feeds the provider, so both must agree.
 		const history = buildHistoryMessages(
 			[

@@ -1,28 +1,28 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Candidate, SearchCapability, SearchPage, SearchQuery } from '../search-kernel.js'
-import { ALL_CAPABILITIES } from '../candidate.js'
+import { ALL_CAPABILITIES } from '../search-kernel-candidate.js'
 import { createCapabilityRegistry } from '../search-kernel-capability.js'
 import { plan } from '../pipeline/search-kernel-pipeline-plan.js'
-import { parse } from '../pipeline/parse.js'
+import { parse } from '../pipeline/search-kernel-pipeline-parse.js'
 import { budgetPolicy } from '../pipeline/search-kernel-pipeline-budget.js'
-import { fanout } from '../pipeline/fanout.js'
-import { applyVisibility, assertAuthorized, visibilityScopeOf } from '../pipeline/authorize.js'
+import { fanout } from '../pipeline/search-kernel-pipeline-fanout.js'
+import { applyVisibility, assertAuthorized, visibilityScopeOf } from '../pipeline/search-kernel-pipeline-authorize.js'
 import {
   PREFIX_EXPANSION_LIMIT,
   createDefaultExpanderRegistry,
   createPrefixExpander,
   expandTerm,
-} from '../pipeline/expand.js'
-import { collectGroups, compose } from '../pipeline/compose.js'
-import { createGroupMerge } from '../pipeline/merge.js'
-import { defaultRanker, emptyRankingSignals } from '../pipeline/rank.js'
-import { buildSnippet, hitRangesFromTokens } from '../pipeline/snippet.js'
+} from '../pipeline/search-kernel-pipeline-expand.js'
+import { collectGroups, compose } from '../pipeline/search-kernel-pipeline-compose.js'
+import { createGroupMerge } from '../pipeline/search-kernel-pipeline-merge.js'
+import { defaultRanker, emptyRankingSignals } from '../pipeline/search-kernel-pipeline-rank.js'
+import { buildSnippet, hitRangesFromTokens } from '../pipeline/search-kernel-pipeline-snippet.js'
 import { rrfFusion } from '../bases/search-kernel-bases-indexed.js'
-import { staticCapability } from '../bases/static.js'
-import { scanCapability } from '../bases/scan.js'
-import { DEFAULT_NORMALIZERS, composeNormalizers } from '../analyzer/normalize.js'
-import { compositeAnalyzer } from '../analyzer/composite.js'
+import { staticCapability } from '../bases/search-kernel-bases-static.js'
+import { scanCapability } from '../bases/search-kernel-bases-scan.js'
+import { DEFAULT_NORMALIZERS, composeNormalizers } from '../analyzer/search-kernel-analyzer-normalize.js'
+import { compositeAnalyzer } from '../analyzer/search-kernel-analyzer-composite.js'
 import { CAP_A, CAP_B, CORPUS_NOW, corpusDocuments, secondaryDocuments } from './unit-fixtures/corpus.js'
 import {
   buildIndex,

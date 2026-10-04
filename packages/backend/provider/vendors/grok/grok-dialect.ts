@@ -37,7 +37,7 @@
 import type {
 	AgentModelCapabilities,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import type {
 	RequestBodyBuilder,
 	ToolChoicePolicy,
@@ -51,12 +51,12 @@ import {
 	type ResponsesNativeTool,
 	type ResponsesUsage,
 } from "../../wires/provider-wires.js";
-import { pickGrokSearchParameters } from "./search-parameters.js";
-import { promptCacheKeyExtraBody } from "../../dialects/recipe.js";
+import { pickGrokSearchParameters } from "./grok-search-parameters.js";
+import { promptCacheKeyExtraBody } from "../../dialects/provider-dialects-recipe.js";
 import {
 	defineResponsesDialect,
 	type ResponsesDialectSpec,
-} from "../../dialects/responses-recipe.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
 
 /** 两条 xAI 通路共用的地址 —— `POST https://api.x.ai/v1/responses`。 */
 export const GROK_BASE_URL = "https://api.x.ai/v1";
@@ -102,7 +102,7 @@ export const GROK_RESPONSES_USAGE = new ResponsesUsageNormalizer(
  * `imageDetail`:`input_image` 收 `detail`(`auto|low|high`)。
  * `searchParameters`:Live Search,官方在 `POST /v1/responses` 的 Request Body
  * 上原样列着 `search_parameters` —— 与 chat-completions **同一个对象**,所以
- * P3-5a 那张嵌套白名单一个字都不用改(它住同目录的 `search-parameters.ts`,
+ * P3-5a 那张嵌套白名单一个字都不用改(它住同目录的 `grok-search-parameters.ts`,
  * 以函数交给线协议层的袋 —— 服务商自述试点 P2 第 4 批前是 `wires/xai-search-parameters.ts`
  * 加一个布尔开关)。
  */

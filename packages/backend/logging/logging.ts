@@ -23,7 +23,7 @@ import {
   type LogRecord,
   type Logger,
   type LoggerRootOptions,
-} from '@onething/backend/logging/logger-primitives'
+} from '@onething/backend/logging/logging-logger-primitives'
 import { type LogLevel } from '@shared/logging/types'
 
 const FALLBACK_RING_SIZE = 200
@@ -45,14 +45,14 @@ let currentRoot: LoggerRoot = fallbackRoot
 let generation = 0
 
 /**
- * 装配层的接线口。`@onething/backend/logging/configure-logging` 的 `configureLogging()` 调它一次。
+ * 装配层的接线口。`@onething/backend/logging/logging-configure` 的 `configureLogging()` 调它一次。
  * 幂等地重复调用是安全的(只换引用 + 递增 generation)。
  */
 export function setRuntimeLoggerRoot(root: LoggerRoot | null | undefined): void {
   currentRoot = root ?? fallbackRoot
   generation += 1
   // core 的注入端口顺带填上 —— 它同样是「装配层给的那一套 sink」,不该让宿主
-  // 记着调第二句(`@onething/backend/logging/logger-primitives` 零依赖,这条 import 不带进任何东西)。
+  // 记着调第二句(`@onething/backend/logging/logging-logger-primitives` 零依赖,这条 import 不带进任何东西)。
   configureCoreLogging({ getLogger })
 }
 
@@ -149,18 +149,18 @@ export function captureRuntimeLogs(level = 'trace'): {
   }
 }
 
-export type { Logger, LogRecord } from '@onething/backend/logging/logger-primitives'
+export type { Logger, LogRecord } from '@onething/backend/logging/logging-logger-primitives'
 
 /**
  * `console` 形状的注入端口适配器(L4 迁移期的过渡件)。
  *
  * P3'a-3 从 `src/app/logging/` 搬到这里:它是 `Logger → console` 的**纯适配器**,
- * 只认识 `@onething/backend/logging/logger-primitives` 的类型,一条装配层的边都没有。留在 app 里就成了
+ * 只认识 `@onething/backend/logging/logging-logger-primitives` 的类型,一条装配层的边都没有。留在 app 里就成了
  * 一根假脊柱 —— 任何用得上它的产品层模块都会因为这一条 import 被钉死在 `src/app`。
- * 装配层的 `@onething/backend/logging/configure-logging` 原样再导出,老调用点一行不改。
+ * 装配层的 `@onething/backend/logging/logging-configure` 原样再导出,老调用点一行不改。
  */
-export { consolePort } from './console-port.js'
-export type { ConsoleLikePort } from './console-port.js'
+export { consolePort } from './logging-console-port.js'
+export type { ConsoleLikePort } from './logging-console-port.js'
 
 // ── providers 归位(D24,2026-10-04)从 `providers/` 搬来的服务商请求转储:落 `log/dumps/`、归日志管家管、
 // 开关由诊断模式拨,所以是日志设施。写盘前那层薄壳(`dumpProviderRequest`)仍在 providers,经它的入口交出。

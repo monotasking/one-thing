@@ -14,8 +14,8 @@
  * 被 import 一次就会去开库。宿主的构建配方直接指那个文件。
  */
 
-export { SqliteIndex, DEFAULT_MAX_FIELD_CHARS, SQLITE_INDEX_SCHEMA_VERSION } from './sqlite-index.js'
-export type { SqliteIndexOptions } from './sqlite-index.js'
+export { SqliteIndex, DEFAULT_MAX_FIELD_CHARS, SQLITE_INDEX_SCHEMA_VERSION } from './search-index-sqlite.js'
+export type { SqliteIndexOptions } from './search-index-sqlite.js'
 
 export {
   DEFAULT_MESSAGE_CAPABILITY,
@@ -26,13 +26,13 @@ export {
   REL_IN_SESSION,
   REL_TOUCHED_FILE,
   affectsIndexedDocuments,
-} from './projector.js'
+} from './search-index-projector.js'
 export type {
   IndexProjectorOptions,
   ProjectSessionInput,
   SessionMetaSnapshot,
   TouchedFileArgTable,
-} from './projector.js'
+} from './search-index-projector.js'
 
 export {
   DIRECTORY_POLL_INTERVAL_MS,
@@ -42,8 +42,8 @@ export {
   readLastSeq,
   readRecordsAfter,
   readSessionMeta,
-} from './ledger-feed.js'
-export type { LedgerFeedOptions, SubscribeAdapter } from './ledger-feed.js'
+} from './search-index-ledger-feed.js'
+export type { LedgerFeedOptions, SubscribeAdapter } from './search-index-ledger-feed.js'
 
 export {
   DEFAULT_NOTE_EXTENSIONS,
@@ -53,11 +53,11 @@ export {
   VaultFeed,
   vaultFeedIdOf,
   vaultRelativeKey,
-} from './vault-feed.js'
-export type { VaultFeedOptions, VaultFeedSpec } from './vault-feed.js'
+} from './search-index-vault-feed.js'
+export type { VaultFeedOptions, VaultFeedSpec } from './search-index-vault-feed.js'
 
-export { defaultDocumentFilters, exclusionFilter, redactionFilter } from './filters.js'
-export type { ExclusionPredicate } from './filters.js'
+export { defaultDocumentFilters, exclusionFilter, redactionFilter } from './search-index-filters.js'
+export type { ExclusionPredicate } from './search-index-filters.js'
 
 export {
   SqliteVectorIndex,
@@ -65,8 +65,8 @@ export {
   probeSqliteVecExtension,
   sqliteVecExtensionPath,
   vecTableName,
-} from './sqlite-vec.js'
-export type { SqliteVecOpenOptions, SqliteVectorIndexOptions } from './sqlite-vec.js'
+} from './search-index-sqlite-vec.js'
+export type { SqliteVecOpenOptions, SqliteVectorIndexOptions } from './search-index-sqlite-vec.js'
 
 export {
   DEFAULT_INDEX_MAINTENANCE_POLICY,
@@ -80,20 +80,20 @@ export type {
   IndexStorageBreakdown,
 } from './search-index-storage.js'
 
-export { EMBED_BATCH_SIZE, VectorWriter } from './vector-writer.js'
-export type { VectorState, VectorWriterIndexFace, VectorWriterOptions } from './vector-writer.js'
+export { EMBED_BATCH_SIZE, VectorWriter } from './search-index-vector-writer.js'
+export type { VectorState, VectorWriterIndexFace, VectorWriterOptions } from './search-index-vector-writer.js'
 
 export {
   MODEL_IN_USE_ERROR,
   MODEL_NOT_DOWNLOADABLE_ERROR,
   ModelDownloader,
-} from './model-download.js'
+} from './search-index-model-download.js'
 export type {
   ModelDownloadSignalSource,
   ModelDownloaderOptions,
   ModelState,
   ModelStatus,
-} from './model-download.js'
+} from './search-index-model-download.js'
 
 export {
   ENQUEUE_DEBOUNCE_MS,
@@ -101,7 +101,7 @@ export {
   MODEL_UNAVAILABLE_ERROR,
   WORKER_MODEL_MESSAGE_TYPE,
   isWorkerModelMessage,
-} from './worker-core.js'
+} from './search-index-worker-core.js'
 export type {
   IndexEndpoint,
   IndexKeyError,
@@ -117,10 +117,10 @@ export type {
   IndexWorkerResponse,
   IndexWriteFace,
   WorkerModelMessage,
-} from './worker-core.js'
+} from './search-index-worker-core.js'
 
-export { IndexWorkerHost, IndexWorkerUnavailableError, MAX_CONSECUTIVE_CRASHES } from './worker-host.js'
-export type { IndexWorkerFactory, IndexWorkerHandle } from './worker-host.js'
+export { IndexWorkerHost, IndexWorkerUnavailableError, MAX_CONSECUTIVE_CRASHES } from './search-index-worker-host.js'
+export type { IndexWorkerFactory, IndexWorkerHandle } from './search-index-worker-host.js'
 
 export {
   SearchIndexService,
@@ -133,4 +133,4 @@ export type {
   SqliteVectorRetrieverOptions,
 } from './search-index-service.js'
 
-export type { IndexWorkerData } from './worker-data.js'
+export type { IndexWorkerData } from './search-index-worker-data.js'

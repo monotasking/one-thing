@@ -1,17 +1,17 @@
-import { AgentSelfProvider, type AgentSelfStateGateway } from './providers/agent-self.js'
+import { AgentSelfProvider, type AgentSelfStateGateway } from './providers/variable-providers-agent-self.js'
 import { BackgroundJobsProvider, type BackgroundJobsProviderDeps } from './providers/variable-providers-background-jobs.js'
 import { CoreProvider, type CoreProviderAdapters, type WorkdirGateway } from './providers/variable-providers-core.js'
-import { DateTimeProvider } from './providers/datetime.js'
-import { GitBranchProvider } from './providers/git-branch.js'
-import { GlobalStoreProvider, type GlobalStoreGateway } from './providers/global-store.js'
+import { DateTimeProvider } from './providers/variable-providers-datetime.js'
+import { GitBranchProvider } from './providers/variable-providers-git-branch.js'
+import { GlobalStoreProvider, type GlobalStoreGateway } from './providers/variable-providers-global-store.js'
 import { GoalProvider, type GoalVariableGateway } from './providers/variable-providers-goal.js'
-import { KeyedStoreProvider, type KeyedStoreGateway } from './providers/keyed-store.js'
-import { MusicRadioProvider, type MusicRadioGateway } from './providers/music-radio.js'
-import { NoteVaultsProvider, type NoteVaultsGateway } from './providers/note-vaults.js'
+import { KeyedStoreProvider, type KeyedStoreGateway } from './providers/variable-providers-keyed-store.js'
+import { MusicRadioProvider, type MusicRadioGateway } from './providers/variable-providers-music-radio.js'
+import { NoteVaultsProvider, type NoteVaultsGateway } from './providers/variable-providers-note-vaults.js'
 import {
   ResourceStateProvider,
   type ResourceStateVariableGateway,
-} from './providers/resource-state.js'
+} from './providers/variable-providers-resource-state.js'
 import { SessionStoreProvider, type SessionStoreGateway } from './providers/variable-providers-session-store.js'
 import type { VariableRegistry } from './variable-registry.js'
 

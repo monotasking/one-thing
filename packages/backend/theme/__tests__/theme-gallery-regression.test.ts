@@ -3,7 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../theme-types.js'
-import { generateCSSVariables } from '../css-mapper.js'
+import { generateCSSVariables } from '../theme-css-mapper.js'
 import { resolveTheme, resolveThemeHighlights, resolveThemeUI } from '../theme-resolver.js'
 import {
   colorDistance,
@@ -11,7 +11,7 @@ import {
   parseCssColor,
   relativeLuminance,
   resolveColorOverBackground,
-} from '../role-mapping.js'
+} from '../theme-role-mapping.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const builtinThemeDir = path.resolve(dirname, '../builtin')

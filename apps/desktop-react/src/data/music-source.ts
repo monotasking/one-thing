@@ -190,7 +190,7 @@ export const musicRuntimeQuery = createQuery<MusicRuntimeState>('music.state', (
 /**
  * **主持人的记录流**(主持人抽屉 H2,2026-09-27;正本 `docs/music-panel-2026-09.md` §16.3)。
  *
- * 后端把 DJ 那条会话翻成人话的尾部几行(`music:radio#hostLog`,翻译住 `music/host-log.ts`),
+ * 后端把 DJ 那条会话翻成人话的尾部几行(`music:radio#hostLog`,翻译住 `music/music-host-log.ts`),
  * 壳只画行。它**不在** `ALL_QUERIES` 里:面板开着不等于有人在看这条流 —— 只有抽屉开着的那段时间
  * 订它(`useMusicHostLog`),关着时事实到了只标脏、不补拉,下一次打开再对账。
  * 读哪一条会话由后端按简报里的 `hostSessionId` 定,所以这里是一格单例;换了一本(DJ 会话满了

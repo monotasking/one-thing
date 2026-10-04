@@ -1,1 +1,1 @@
-export * from './cli-projections.js'
+export * from './headless-cli-projections.js'

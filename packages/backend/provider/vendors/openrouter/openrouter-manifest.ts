@@ -5,12 +5,12 @@
  * 通用代码只读这些字段,不写「openrouter」。行为(方言、运行时工厂、余额源)在同目录的
  * `runtime.ts` 及其伙伴。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop(余额源
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop(余额源
  * `quota.ts` 要记日志,所以只由 `runtime.ts` 带,这里不 import 它)。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 
-/** 网关的统一 `reasoning.effort` 值域(从 `model-capability.ts` 搬来)。 */
+/** 网关的统一 `reasoning.effort` 值域(从 `provider-model-capability.ts` 搬来)。 */
 export const ONETHING_OPENROUTER_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 export const OPENROUTER_MANIFEST: ProviderManifest = {
@@ -31,10 +31,10 @@ export const OPENROUTER_MANIFEST: ProviderManifest = {
   supportsCustomBaseUrl: false,
   defaultModel: 'openai/gpt-4o',
   envVars: ['OPENROUTER_API_KEY'],
-  // 认亲:这家的目录是「厂牌/型号」总表(从 `model-identity.ts` 第 ① 级的点名搬来)。它自己不是哪个
+  // 认亲:这家的目录是「厂牌/型号」总表(从 `provider-model-identity.ts` 第 ① 级的点名搬来)。它自己不是哪个
   // 型号厂牌的第一方,所以厂牌与目录键两格都是空表 —— 不进厂牌别名表。
   modelIdentity: { brands: [], keys: [], aggregator: true },
-  // 型号规则表(从 `model-capability.ts` 的 `PROVIDER_MODEL_RULES.openrouter` 搬来,逐字)。
+  // 型号规则表(从 `provider-model-capability.ts` 的 `PROVIDER_MODEL_RULES.openrouter` 搬来,逐字)。
   modelRuleTable: [
     // Capability comes from the registry; the profile applies once reasoning is known.
     {

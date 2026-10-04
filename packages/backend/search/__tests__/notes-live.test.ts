@@ -16,7 +16,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SearchQuery } from '../kernel/search-kernel.js'
 import { FolderVault } from '../../note/folder/note-folder-vault.js'
 import { NoteVaultUnavailable, type NoteHit, type NoteVault } from '../../note/note-types.js'
-import { vaultRelativeKey } from '../index/vault-feed.js'
+import { vaultRelativeKey } from '../index/search-index-vault-feed.js'
 import {
   LIVE_FILTER_KEY,
   LIVE_RETRIEVER_ID,

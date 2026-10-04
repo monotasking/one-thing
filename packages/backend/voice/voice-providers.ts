@@ -426,7 +426,7 @@ async function transcribeWithDoubao(
   const configurationError = getDoubaoConfigurationError(settings)
   if (configurationError) throw new Error(configurationError)
 
-  const { transcribeOnethingDoubaoUtterance } = await import('./volcano/asr-session.js')
+  const { transcribeOnethingDoubaoUtterance } = await import('./volcano/voice-volcano-asr-session.js')
   const text = (await transcribeOnethingDoubaoUtterance({
     audio: Buffer.from(request.audioBase64, 'base64'),
     mimeType: request.mimeType,
@@ -485,7 +485,7 @@ export async function streamSynthesizeOnethingSpeech(
 // and idle timer; a later Backend cannot adopt the previous service's cache.
 interface DoubaoTtsCache {
   key: string
-  connection: import('./volcano/tts-session.js').OnethingDoubaoTTSConnection
+  connection: import('./volcano/voice-volcano-tts-session.js').OnethingDoubaoTTSConnection
   idleTimer?: ReturnType<typeof setTimeout>
   dispose: () => void
 }
@@ -505,7 +505,7 @@ async function streamWithDoubao(
   if (!doubao?.apiKey?.trim() && !(doubao?.appId?.trim() && doubao?.accessToken?.trim())) {
     throw new Error('Add a Doubao (Volcano Engine) API key in Voice settings before using Doubao speech.')
   }
-  const { OnethingDoubaoTTSConnection, getOnethingDoubaoTTSMimeType } = await import('./volcano/tts-session.js')
+  const { OnethingDoubaoTTSConnection, getOnethingDoubaoTTSMimeType } = await import('./volcano/voice-volcano-tts-session.js')
   signal?.throwIfAborted()
   const key = JSON.stringify([doubao.apiKey, doubao.appId, doubao.accessToken, doubao.ttsResourceId, doubao.endpoint])
   const current = () => signal ? doubaoTTSLifetimeCaches.get(signal) : doubaoTTSConnectionCache

@@ -30,12 +30,12 @@ const bus = { emitGlobal: () => {}, onGlobal: () => () => {}, onAnySession: () =
 async function load() {
   vi.resetModules()
   const [api, registry, health, logging] = await Promise.all([
-    import('@onething/backend/plugin/api'),
+    import('@onething/backend/plugin/plugin-api'),
     import('../deeplink-registry.js'),
-    import('@onething/backend/plugin/health'),
+    import('@onething/backend/plugin/plugin-health'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
     // **同一份**里拿,否则收的是别的 root(L4)。
-    import('@onething/backend/logging/configure-logging'),
+    import('@onething/backend/logging/logging-configure'),
   ])
   registry.resetPluginDeepLinkActionsForTests()
   return { api, registry, health, logging }

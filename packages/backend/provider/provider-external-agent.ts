@@ -1,13 +1,13 @@
 import { statSync } from 'node:fs'
-import { agentContentToText } from '@onething/backend/agent-loop/loop-primitives'
+import { agentContentToText } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type {
   AgentMessageContent,
   AgentModelCapabilities,
   AgentProvider,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from '@onething/backend/agent-loop/loop-primitives'
-import { BaseAgentProvider } from './base/base-agent-provider.js'
+} from '@onething/backend/agent-loop/agent-loop-primitives'
+import { BaseAgentProvider } from './base/provider-base-agent.js'
 import { getLogger } from '../logging/logging.js'
 import { findAgentExecutorDescriptor } from '../agent/executor/agent-executor-capabilities.js'
 import type {

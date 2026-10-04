@@ -5,7 +5,7 @@
  *
  * 打包桌面档**不带**语义召回的运行时 —— `electron-builder.yml` 的 `files:` 排除了
  * `@huggingface/transformers` 与它拖来的 onnxruntime / sharp(理由与三条待拍的路
- * 写在那几行注释里)。于是打包 app 里,`transformers-onnx.ts` 那句
+ * 写在那几行注释里)。于是打包 app 里,`search-embedding-transformers-onnx.ts` 那句
  * `await import('@huggingface/transformers')` 抛 `ERR_MODULE_NOT_FOUND`。
  *
  * 这个文件钉死那一刻**该发生什么**:
@@ -31,14 +31,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IndexedDoc, VectorIndex } from '../../kernel/search-kernel.js'
 
 import { captureRuntimeLogs } from '../../../logging/logging.js'
-import { VectorWriter } from '../../index/vector-writer.js'
-import { describeEmbedderFailure } from '../../index/vector-writer.js'
-import { captureModelManifest } from '../model-store.js'
+import { VectorWriter } from '../../index/search-index-vector-writer.js'
+import { describeEmbedderFailure } from '../../index/search-index-vector-writer.js'
+import { captureModelManifest } from '../search-embedding-model-store.js'
 import {
   E5_SMALL_DIMS,
   E5_SMALL_EMBEDDER_ID,
   createTransformersOnnxEmbedder,
-} from '../transformers-onnx.js'
+} from '../search-embedding-transformers-onnx.js'
 
 /**
  * 逐字重现打包档里的现场:模块不在,node 的动态 import 抛 `ERR_MODULE_NOT_FOUND`。
@@ -61,7 +61,7 @@ interface Harness {
  * **模型得先在场**(2026-09-17 那一刀之后):装载的第一句问的是「本地有没有这份
  * 模型」,没有就当场抛 `'model'` 那一类,连 `import()` 都不走。而这个文件要证的是
  * **另一堵墙** —— 模型在、运行时不在(打包档的真实处境)。所以夹具先在临时目录里
- * 摆一份「下全了」的模型:一个假文件 + 一份清单(清单是判据的产地,见 `model-store.ts`)。
+ * 摆一份「下全了」的模型:一个假文件 + 一份清单(清单是判据的产地,见 `search-embedding-model-store.ts`)。
  */
 let modelDir: string
 

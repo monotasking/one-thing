@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '@shared/ipc.js'
-import { buildHistoryMessages, buildMessageContent } from '../message-helpers.js'
+import { buildHistoryMessages, buildMessageContent } from '../engine-stream-message-helpers.js'
 
 function userMessage(partial: Partial<ChatMessage>): ChatMessage {
   return {

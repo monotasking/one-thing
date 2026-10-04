@@ -4,7 +4,7 @@
  * Product-layer module (electron-free, wire-contract-free). Structural types
  * mirror the shared chat wire shapes; the app layer is where the two meet.
  */
-import type { CollabReactionLike } from './reactions.js'
+import type { CollabReactionLike } from './collab-reactions.js'
 
 /** 'agent' = an agent's own execution session (W18): where its room turns run. */
 export type CollabSessionKind = 'chat' | 'room' | 'work' | 'agent'
@@ -13,7 +13,7 @@ export interface CollabRoomBudgets {
   maxChain?: number
   maxConcurrentWork?: number
   dailyCostUSD?: number
-  /** 回合断路器上限 (W22, see collab/circuit-breaker.ts). Absent = the built-in
+  /** 回合断路器上限 (W22, see collab/collab-circuit-breaker.ts). Absent = the built-in
    *  default; **0 = 关闭该闸**, the same convention as dailyCostUSD/maxChain. */
   maxTurnToolCalls?: number
   maxTurnSayCalls?: number
@@ -92,7 +92,7 @@ export interface CollabMentionLike {
 
 /** Structural view of a persisted chat message, as the projection needs it. */
 export interface CollabMessageLike {
-  /** 房间消息 id。视野窗口(history-window.ts)按它定位每位同事的已读游标。 */
+  /** 房间消息 id。视野窗口(collab-history-window.ts)按它定位每位同事的已读游标。 */
   id?: string
   role: string
   content: string
@@ -164,7 +164,7 @@ export {
   COLLAB_MESSAGE_SOURCE,
   isCollabDriveMessage,
   isCollabHarvestMessage,
-} from './classify.js'
+} from './collab-classify.js'
 
 /**
  * Usage-ledger attribution labels (W13.3). Purely a reporting axis: the room

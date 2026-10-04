@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { restoreStoreBackup } from '../../store-backup.js'
-import { canonicalizeStorePath } from '../../store-lock.js'
-import { STORE_RESTORE_PENDING } from '../../store-backup.js'
+import { restoreStoreBackup } from '../../storage-store-backup.js'
+import { canonicalizeStorePath } from '../../storage-store-lock.js'
+import { STORE_RESTORE_PENDING } from '../../storage-store-backup.js'
 
 const [backupPath, storePath] = process.argv.slice(2) as [string, string]
 const canonicalTarget = canonicalizeStorePath(storePath)

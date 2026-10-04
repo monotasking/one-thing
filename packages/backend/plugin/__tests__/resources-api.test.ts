@@ -31,7 +31,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-resourc
 process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('@onething/backend/current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('@onething/backend/backend-current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
@@ -92,8 +92,8 @@ describe('插件的三个动词(K4-b)', () => {
     declaredPermissions: string[],
     resources?: () => unknown,
   ) {
-    const { createPluginAPI } = await import('../api.js')
-    const { getStreamEngine } = await import('@onething/backend/current.js')
+    const { createPluginAPI } = await import('../plugin-api.js')
+    const { getStreamEngine } = await import('@onething/backend/backend-current.js')
     return createPluginAPI(pluginId, backend.eventBus as never, getStreamEngine() as never, {
       declaredPermissions,
       declaredPanelIds: [],
@@ -122,14 +122,14 @@ describe('插件的三个动词(K4-b)', () => {
       // 摘要不带抄本(K3-a' 的口径);插件看到的与界面看到的是同一份。
       expect(value).not.toHaveProperty('messages')
     } finally {
-      const { disposePlugin } = await import('../api.js')
+      const { disposePlugin } = await import('../plugin-api.js')
       await disposePlugin(state)
     }
   })
 
   it('② 没声明就是结构化拒绝,而且熔断账一动不动', async () => {
     const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } =
-      await import('@onething/backend/plugin/health')
+      await import('@onething/backend/plugin/plugin-health')
     resetPluginRuntimeHealthForTests()
 
     // 三条权限一条都不声明。
@@ -153,7 +153,7 @@ describe('插件的三个动词(K4-b)', () => {
       // 关键的一句:声明门**不是**运行期故障。
       expect(getPluginRuntimeHealth('silent')).toBeUndefined()
     } finally {
-      const { disposePlugin } = await import('../api.js')
+      const { disposePlugin } = await import('../plugin-api.js')
       await disposePlugin(state)
     }
   })
@@ -165,7 +165,7 @@ describe('插件的三个动词(K4-b)', () => {
       const outcome = await api.resources.do(`session:${sessionId}`, 'rename', { title: 'Second name' })
       expect(outcome.kind).toBe('ok')
     } finally {
-      const { disposePlugin } = await import('../api.js')
+      const { disposePlugin } = await import('../plugin-api.js')
       await disposePlugin(state)
     }
 
@@ -190,7 +190,7 @@ describe('插件的三个动词(K4-b)', () => {
     expect(seen.map(entry => entry.event)).toContain('renamed')
     expect(seen[seen.length - 1].ref).toBe(`session:${sessionId}`)
 
-    const { disposePlugin } = await import('../api.js')
+    const { disposePlugin } = await import('../plugin-api.js')
     await disposePlugin(state)
 
     const countAtDispose = seen.length
@@ -202,7 +202,7 @@ describe('插件的三个动词(K4-b)', () => {
 
   it('⑤ 连败到阈值:这一个命名空间被降级,插件本身不被禁用', async () => {
     const { getPluginRuntimeHealth, isPluginSurfaceDegraded, resetPluginRuntimeHealthForTests } =
-      await import('@onething/backend/plugin/health')
+      await import('@onething/backend/plugin/plugin-health')
     resetPluginRuntimeHealthForTests()
 
     // 一台**会抛**的内核:内核自己从不抛,所以这是这条罚则在真机上唯一的产地
@@ -234,7 +234,7 @@ describe('插件的三个动词(K4-b)', () => {
       expect(other.kind).toBe('failed')
       expect(isPluginSurfaceDegraded('flaky', 'resource:dir')).toBe(false)
     } finally {
-      const { disposePlugin } = await import('../api.js')
+      const { disposePlugin } = await import('../plugin-api.js')
       await disposePlugin(state)
       resetPluginRuntimeHealthForTests()
     }

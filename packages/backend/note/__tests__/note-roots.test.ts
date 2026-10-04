@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NoteVault } from '@onething/backend/note'
 
 const backend = vi.hoisted(() => ({ handle: null as unknown }))
-vi.mock('@onething/backend/current.js', () => ({
+vi.mock('@onething/backend/backend-current.js', () => ({
   getCurrentBackendSafe: () => backend.handle,
   getCurrentBackend: () => {
     if (backend.handle === null) throw new Error('not assembled')

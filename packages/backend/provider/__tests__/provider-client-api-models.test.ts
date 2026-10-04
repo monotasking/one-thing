@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => {
   }
 })
 
-vi.mock('@onething/backend/auth/process-auth-service', () => ({
+vi.mock('@onething/backend/auth/auth-process-service', () => ({
   getAuthService: () => ({
     getToken: vi.fn(),
     refreshTokenIfNeeded: mocks.refreshTokenIfNeeded,
@@ -87,7 +87,7 @@ vi.mock('../../settings/settings-store.js', () => ({
 vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => [] }),
 }))
-vi.mock('@onething/backend/space/provider-settings', () => ({
+vi.mock('@onething/backend/space/space-provider-settings', () => ({
   readSpaceProviderSettings: () => null,
   createEmptySpaceProviderSettings: () => ({ provider: '', providers: {}, customProviders: [] }),
 }))

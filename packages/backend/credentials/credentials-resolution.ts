@@ -54,7 +54,7 @@ import {
   type SpaceCredentialEntry,
 } from './credentials-pool.js'
 import { pickRoute, type RouteCandidate } from './credentials-candidate-route.js'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import {
   isPluginCredentialStrategyAvailable,
   listPluginCredentialStrategies,
@@ -62,7 +62,7 @@ import {
 import {
   classifyOAuthRefreshError,
   providerErrorCooldownUntil,
-} from '@onething/backend/agent-loop/provider-error-classification'
+} from '@onething/backend/agent-loop/agent-loop-provider-error-classification'
 import {
   credentialTargetFromSpaceMarker,
   type OnethingCredentialTarget,
@@ -83,10 +83,10 @@ import {
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { providerSeedOf } from '@onething/backend/settings'
 import { getSpacesStore } from '@onething/backend/space/space-store'
-import { getAuthService } from '@onething/backend/auth/process-auth-service'
+import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { resolveSessionSpaceId, getSessionSettings, getSpaceSettings } from '@onething/backend/session'
 

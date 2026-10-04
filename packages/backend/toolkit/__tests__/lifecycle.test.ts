@@ -8,10 +8,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { makeEffect } from '@shared/toolkit/effects.js'
-import { Intent } from '../intent.js'
-import { jobSnapshot } from '../job.js'
-import { Outcome } from '../outcome.js'
-import { textResult } from '../result.js'
+import { Intent } from '../toolkit-intent.js'
+import { jobSnapshot } from '../toolkit-job.js'
+import { Outcome } from '../toolkit-outcome.js'
+import { textResult } from '../toolkit-result.js'
 import { ToolRunner } from '../toolkit-runner.js'
 import {
   allowAuthorizer,

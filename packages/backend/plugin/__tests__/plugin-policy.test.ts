@@ -301,7 +301,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       { factory: 'credentialStrategy', scope: pluginScope.credentialStrategy('plugin:b:least-used'), family: 'credential-strategy' },
       // 原子 K4-b:插件对一个命名空间的读 / 做自成一族 —— 记的只有「压根没拿到
       // 结局」那种失败(内核回的 failed / denied / invalid 是**答案**,不是故障),
-      // 罚则只停这一个命名空间。生产者在调用口(backend/plugin/resource-verbs.ts)。
+      // 罚则只停这一个命名空间。生产者在调用口(backend/plugin/plugin-resource-verbs.ts)。
       { factory: 'resourceCall', scope: pluginScope.resourceCall('session'), family: 'resource-call' },
     ]
 
@@ -319,7 +319,7 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // 三棵树一起扫才还是同一条判据。
       path.join(REPO_ROOT, 'packages/backend/plugin'),
       // P3'e-A2b:`prompt-context` 家族的判决路径(插件提示词 provider 的
-      // 超时/异常记一次失败)随 `prompt/plugin-context.ts` 进了产品层的
+      // 超时/异常记一次失败)随 `prompt/prompt-plugin-context.ts` 进了产品层的
       // `prompts/plugin-context-breaker.ts`,不加这一棵它会被误报成死规则。
       path.join(REPO_ROOT, 'packages/backend/prompt'),
     ])
@@ -408,7 +408,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 上每多一个 `register*(pluginId` 转发口,就必须在 PLUGIN_OPEN_REGISTRIES
      * 里有对应成员,否则一个开放了却没有拆除语义声明的注册表会悄悄溜过去。
      */
-    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/plugin/api-builder.ts'), 'utf-8')
+    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/plugin/plugin-api-builder.ts'), 'utf-8')
     const interfaceStart = hostSource.indexOf('export interface CorePluginAPIHost')
     const interfaceEnd = hostSource.indexOf('\n}', interfaceStart)
     const body = hostSource.slice(interfaceStart, interfaceEnd)

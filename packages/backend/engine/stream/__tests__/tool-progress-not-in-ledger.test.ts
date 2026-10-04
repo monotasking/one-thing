@@ -6,7 +6,7 @@
  * 事实。重开会话该看见的是结局(这次调用发生了、参数是什么、结局如何),不是
  * 「当时跑到第 7 行」。
  *
- * 所以这条测试**spy 住账本唯一的写口**(`session/event-writer.ts` 的
+ * 所以这条测试**spy 住账本唯一的写口**(`session/session-event-writer.ts` 的
  * `writeSessionEvent`),跑一段真的带进度的流,断言那口子从头到尾没被进度碰过。
  *
  * 拆掉 `session.ts` 的空 `case` 不会让它红(那一条守的是另一件事:进度不累进
@@ -16,7 +16,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 /** 账本写口上的探针:每一次 `writeSessionEvent` 的事件类型都记一笔。 */
@@ -27,15 +27,15 @@ vi.mock('@onething/backend/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-vi.mock('../../../session/shadow.js', () => ({
+vi.mock('../../../session/session-shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',
   resetSessionShadowCache: () => undefined,
 }))
 
-vi.mock('../../../session/event-writer.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/event-writer.js')>()
+vi.mock('../../../session/session-event-writer.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/session-event-writer.js')>()
   return {
   ...actual,
   writeSessionEvent: (_sessionId: string, type: string, data: unknown) => {
@@ -50,10 +50,10 @@ const { resetSessionEventLogCache, flushSessionEventLog } = await import('@oneth
 const { resetSessionSurfaceCache } = await import('@onething/backend/session')
 const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/session')
 const { resetSessionEventStatsCache } = await import('@onething/backend/session')
-const { createSessionEventRecorder } = await import('../session-event-recorder.js')
+const { createSessionEventRecorder } = await import('../engine-stream-session-event-recorder.js')
 const { getStreamChannel } = await import('@onething/backend/event')
 const { installSessionLayerForTest } = await import('../../../session/testing/session-testing-layer.js')
-const { pushSessionToolProgress } = await import('@onething/backend/event/tool-progress-stream')
+const { pushSessionToolProgress } = await import('@onething/backend/event/event-tool-progress-stream')
 
 const SESSION = 'progress-ledger'
 const CALL_ID = 'c1'

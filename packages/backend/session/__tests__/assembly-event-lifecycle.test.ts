@@ -4,10 +4,10 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatSession } from '@shared/ipc.js'
 import { materializeChatMessages } from '@shared/session/projection/chat-messages'
-import { flushSessionEventLog, readSessionLogEventsSync } from '../event-log.js'
+import { flushSessionEventLog, readSessionLogEventsSync } from '../session-event-log.js'
 import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
-import { writeSessionEvent } from '../event-writer.js'
-import { getLiveSessionProjection } from '../projection-cache.js'
+import { writeSessionEvent } from '../session-event-writer.js'
+import { getLiveSessionProjection } from '../session-projection-cache.js'
 
 describe('session event assembly lifecycle', () => {
   it('releases history recipes and rejects retained read and command handles before touching stores', async () => {

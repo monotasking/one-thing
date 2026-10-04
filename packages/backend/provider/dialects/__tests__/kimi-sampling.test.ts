@@ -9,7 +9,7 @@
  * 与线上层(真发出去的 body 里到底有没有 `temperature`)。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
@@ -18,9 +18,9 @@ import {
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
-} from "../../factory.js";
+} from "../../provider-factory.js";
 import { getLogger } from "../../../logging/logging.js";
-import type { AgentProviderRequestDumper } from "../../request-dumper.js";
+import type { AgentProviderRequestDumper } from "../../provider-request-dumper.js";
 import {
 	drain,
 	sseResponse,

@@ -12,7 +12,7 @@ import {
 	normalizeRubricClauses,
 	buildRubricJudgeMessages,
 	buildJudgePrompt,
-} from "../judge.js";
+} from "../eval-judge.js";
 
 describe("parseJudgeOutput (reasoning-first)", () => {
 	it("parses a verdict on the last line after analysis text", () => {

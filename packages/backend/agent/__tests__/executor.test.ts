@@ -23,7 +23,7 @@ import {
   resolveAgentExecutorId,
   resolveAgentExecutorSelection,
 } from '../executor/agent-executor.js'
-import { agentMind } from '../model.js'
+import { agentMind } from '../agent-model.js'
 import type { OnethingAgentDefinition } from '../agent-store.js'
 import {
   getProviderApiKeyWithAdapters,

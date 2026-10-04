@@ -16,8 +16,8 @@ export {
   getPluginThemeKnobVariables,
   getPluginThemeOverrideTable,
   getPluginThemeOverrideTokenValues,
-} from './theme-override-table.js'
-export type { PluginThemeOverrideTable } from './theme-override-table.js'
+} from './plugin-theme-override-table.js'
+export type { PluginThemeOverrideTable } from './plugin-theme-override-table.js'
 export type { PluginInfo } from './plugin-manager.js'
 export type {
   PluginAPI,

@@ -45,8 +45,8 @@ function simulateNpmInstall(pkg: string, version: string): void {
 const installCalls: Array<{ pkg: string; spec: string }> = []
 let installVersion = '1.0.0'
 
-vi.mock('../npm-process.js', async importOriginal => {
-  const original = await importOriginal<typeof import('../npm-process.js')>()
+vi.mock('../plugin-npm-process.js', async importOriginal => {
+  const original = await importOriginal<typeof import('../plugin-npm-process.js')>()
   return {
     ...original,
     installPluginPackage: async (_pluginsDir: string, input: { pkg: string; spec: string }) => {

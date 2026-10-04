@@ -9,7 +9,7 @@ import type {
   MCPToolCallResult,
   MCPToolInfo,
 } from '@shared/mcp/types.js'
-import { getCoreLogger } from '@onething/backend/logging/logger-primitives'
+import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getCoreLogger('core.mcp')
 

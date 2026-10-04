@@ -52,9 +52,9 @@ export {
   collectGoalFileSpans,
   countSpanLines,
   summarizeGoalFileChanges,
-} from './file-changes.js'
+} from './goal-file-changes.js'
 export type {
   GoalFileChange,
   GoalFileMutationRecordLike,
   GoalFileSpan,
-} from './file-changes.js'
+} from './goal-file-changes.js'

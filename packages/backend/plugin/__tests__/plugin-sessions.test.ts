@@ -4,12 +4,12 @@
  * 这一份打的是 core 说了算的那一半:三态矩阵的纯函数、两道声明门(未声明即拒,
  * 且**不计熔断**)、拒绝的结构化形状、以及"宿主没接这条线"时的诚实降级。
  * 真实投递链路与循环闸在装配层那一份
- * (`packages/backend/plugin/__tests__/session-messenger.test.ts`)。
+ * (`packages/backend/plugin/__tests__/plugin-session-messenger.test.ts`)。
  */
 import { describe, expect, it } from 'vitest'
 
-import { createCorePluginAPI } from '../api-builder.js'
-import { disposeCorePluginState } from '../api-state.js'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
+import { disposeCorePluginState } from '../plugin-api-state.js'
 import {
   PLUGIN_PERMISSION_SESSIONS_PEEK,
   PLUGIN_PERMISSION_SESSIONS_POST,

@@ -32,7 +32,7 @@ export const sessionEventsRpcHandlers: RpcRouteHandlers<SessionEventsRoutes> = {
    * `run/start`)全在七类之外,喂 `list` 折出来必然是空树。
    *
    * 两条读法**共用同一份文件**,分叉只在解码器:这里走 `readSessionLogEvents`
-   * (`event-log.ts` 的 v2 全集读法),`list` 一字不动。
+   * (`session-event-log.ts` 的 v2 全集读法),`list` 一字不动。
    */
   async listRaw(request, context = DESKTOP_RPC_CONTEXT) {
     if (!isSafeSessionId(request?.sessionId)) return { events: [] }

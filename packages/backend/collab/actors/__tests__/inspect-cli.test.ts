@@ -1,7 +1,7 @@
 /**
  * `scripts/collab-v3-inspect.mjs` 的**端到端**冒烟(D8 §5,O3)。
  *
- * 纯段的行为由 `inspect-rules.test.ts` 钉死;这一份问的是另一件事:**那个 `.mjs`
+ * 纯段的行为由 `collab-actors-inspect-rules.test.ts` 钉死;这一份问的是另一件事:**那个 `.mjs`
  * 真的跑得起来吗**。它读的是磁盘布局(`collab/<id>/actors/room.json`、
  * `agents-v3/<id>/{state.json,inbox.jsonl,inbox.cursor}`、`scheduler-log-<日>.jsonl`、
  * `sessions/<id>/meta.json`、`agents.json`)——那套布局没有任何一处类型能保证,
@@ -19,8 +19,8 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { createCollabAgentAccount } from '../mind-rules.js'
-import { createCollabRoomAccount } from '../room-rules.js'
+import { createCollabAgentAccount } from '../collab-actors-mind-rules.js'
+import { createCollabRoomAccount } from '../collab-actors-room-rules.js'
 import {
   collabSchedulerDeadLetter,
   collabSchedulerGateBlock,
@@ -33,7 +33,7 @@ import {
   collabSchedulerLogFileName,
   formatCollabSchedulerLogLine,
   type CollabSchedulerLogRow,
-} from '../scheduler-log-rules.js'
+} from '../collab-actors-scheduler-log-rules.js'
 
 const scriptPath = fileURLToPath(new URL('../../../../../scripts/collab-v3-inspect.mjs', import.meta.url))
 const repoRoot = fileURLToPath(new URL('../../../../../', import.meta.url))

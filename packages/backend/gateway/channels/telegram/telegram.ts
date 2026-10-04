@@ -1,4 +1,4 @@
-import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../hub/channel.js'
+import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../hub/gateway-hub-channel.js'
 import { resolveGatewayLogger, type Logger } from '../../hub/gateway-hub-logging.js'
 import type { TelegramApiResponse, TelegramMessage, TelegramUpdate } from './telegram-types.js'
 

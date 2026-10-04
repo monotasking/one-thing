@@ -5,7 +5,7 @@
  *
  * ## 为什么这里一行 pipeline 选项都不写
  *
- * 这道门要守的东西就在 `transformers-onnx.ts` 的 `PIPELINE_OPTIONS` 里
+ * 这道门要守的东西就在 `search-embedding-transformers-onnx.ts` 的 `PIPELINE_OPTIONS` 里
  * (`enableCpuMemArena: false`,2026-09-18 桌面一天崩四次的那一刀)。**在门里抄一份
  * 选项 = 门守的是抄件,产品改坏了门照样绿** —— 所以这里只 import 产品自己的工厂
  * `createTransformersOnnxEmbedder`,一个参数都不替它做主。
@@ -26,7 +26,7 @@
  * 以外的任何东西 —— 模型目录也只读。
  */
 
-import { createTransformersOnnxEmbedder } from '../../packages/backend/search/embedding/transformers-onnx.js'
+import { createTransformersOnnxEmbedder } from '../../packages/backend/search/embedding/search-embedding-transformers-onnx.js'
 
 /** 门把这两格从环境里递进来;单跑这份产物时也能用同样两格。 */
 const modelDir = process.env.ONETHING_GATE_EMBED_MODEL_DIR ?? ''

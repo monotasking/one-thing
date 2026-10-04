@@ -5,8 +5,8 @@ import { createServer, type ServerResponse } from 'node:http'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const transport = vi.hoisted(() => ({ url: '', signals: [] as AbortSignal[] }))
-vi.mock('../settings/proxy-fetch.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../settings/proxy-fetch.js')>(),
+vi.mock('../settings/settings-proxy-fetch.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../settings/settings-proxy-fetch.js')>(),
   // Real provider serializer/parser and TCP request; this local transport deliberately
   // ignores abort to prove shutdown awaits the underlying response, not an abort race.
   createRequiredAppFetch: () => (_url: unknown, init?: RequestInit) => {
@@ -107,7 +107,7 @@ it('owns real player processes and delayed provider requests through shutdown, t
   } })
   await ready.promise
   process.env.ONETHING_STORE_PATH = storeA
-  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await terminated.promise

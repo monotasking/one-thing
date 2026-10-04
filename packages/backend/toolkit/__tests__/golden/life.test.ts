@@ -4,7 +4,7 @@
  *
  * K3-b:`radio` 那一族金标随那只工具一起退役 —— 音乐成了一个资源 scheme,同一批
  * 用例(五条做法 / 两条参数校验 / 状态读法)逐条迁到
- * `packages/backend/resource/__tests__/music-provider.test.ts`。金标必须跟着
+ * `packages/backend/resource/__tests__/resource-music-provider.test.ts`。金标必须跟着
  * 实现走:留一份对着已删工具的快照,只会在下一个人跑 `-u` 的时候被静默清掉。
  */
 

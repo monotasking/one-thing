@@ -19,7 +19,7 @@ vi.mock('electron', () => ({ app: { isPackaged: false } }))
 let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../session-store.js') | null = null
-let fixture: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>>
+let fixture: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>>
 
 async function loadIsolatedStores(): Promise<typeof import('../session-store.js')> {
   vi.resetModules()
@@ -27,7 +27,7 @@ async function loadIsolatedStores(): Promise<typeof import('../session-store.js'
   const sessions = await import('../session-store.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
-  const { installStoreSessionLayerForTest } = await import('../testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../testing/session-testing-store-layer.js')
   fixture = await installStoreSessionLayerForTest()
   return sessions
 }

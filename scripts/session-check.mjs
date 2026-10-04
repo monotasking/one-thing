@@ -3,7 +3,7 @@
  * 会话消息写/读路径检查器 —— docs/design/session-commands-p0-2026-08.md §4。
  *
  * **用 TypeScript 编译器 API 做类型感知**,不是正则(上游 §7.2 M8 的原话:正则
- * 会命中 `message-queue.ts` 的 `this.messages`、`room-rules.ts` 的
+ * 会命中 `message-queue.ts` 的 `this.messages`、`collab-actors-room-rules.ts` 的
  * `effects.messages`、provider 的 `body.messages` —— 那些跟会话消息毫无关系)。
  * 判据落在类型上:
  *   - 会话形状 = 有 `messages` 属性、且元素类型同时有 `id` 与 `role`;
@@ -38,10 +38,10 @@ const RULE_A_ALLOWED = new Set([
   'packages/backend/session/session-message-shapes.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
   'packages/backend/session/session-commands.ts',
-  'packages/backend/session/reads.ts',
+  'packages/backend/session/session-reads.ts',
   // 存储形状:脱水看的是"盘上长什么样",不是会话语义
   //
-  // `storage-driver.ts` 曾经也在这里,理由是它的**消息写半边**(全量重写 / 后缀
+  // `session-storage-driver.ts` 曾经也在这里,理由是它的**消息写半边**(全量重写 / 后缀
   // 重写要逐条编码 `session.messages`)。S3w-3 批 6b 把那半边删了(§15.22),
   // 剩下的只有 `buildMeta` 摘掉 messages、以及 legacy 首触迁移里数一下条数 ——
   // 都落在驱动自己那个 `SessionLike { messages?: unknown[] }` 上,元素类型是
@@ -63,7 +63,7 @@ const RULE_A_ALLOWED = new Set([
  * 老 reducer(`applySessionCommand`)**已经删了**。它最后的身份是"会话级派生的
  * 算法"(截断扣多少 token、`contextSize`/`summary` 怎么重算、`updatedAt` /
  * `lastProvider` 怎么定),而批 2 把同一本账做成了**事件的折叠产物**
- * (`session/account.ts`),批 3 让写门直接读折叠块 —— 于是那个算法没有了
+ * (`session/session-account.ts`),批 3 让写门直接读折叠块 —— 于是那个算法没有了
  * 第二处实现。
  *
  * 名单上仍然是 `session/session-message-shapes.ts`,但它今天装的是**另一件东西**:
@@ -179,7 +179,7 @@ function elementTypeOf(checker, type) {
 /**
  * 会话形状:有 `messages`(元素是消息形状)**且**带至少一个会话级字段。
  *
- * 后半条是必需的,否则 `room-rules.ts` 的 `effects.messages`(collab 回合的待发
+ * 后半条是必需的,否则 `collab-actors-room-rules.ts` 的 `effects.messages`(collab 回合的待发
  * 消息袋)与 provider 的 `request.messages` 会一起命中 —— 它们的元素确实长得像
  * 消息,但那不是"一条会话的消息日志"。
  */

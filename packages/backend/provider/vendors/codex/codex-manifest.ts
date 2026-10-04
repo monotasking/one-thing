@@ -4,11 +4,11 @@
  * 这一家的**数据**全在这里:显示名、方言、目录、配额源、行为开关、型号规则表。行为(方言、
  * 运行时工厂、配额源、OAuth、列表口、兜底行)在同目录的 `runtime.ts` 及其伙伴。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 
-/** 目录里没报档位时(兜底行 / 旧缓存)的五档(从 `model-capability.ts` 搬回家,逐字)。 */
+/** 目录里没报档位时(兜底行 / 旧缓存)的五档(从 `provider-model-capability.ts` 搬回家,逐字)。 */
 export const ONETHING_CODEX_FALLBACK_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
 
 export const CODEX_MANIFEST: ProviderManifest = {
@@ -21,7 +21,7 @@ export const CODEX_MANIFEST: ProviderManifest = {
   auth: { kind: 'oauth', flow: 'pkce-callback' },
   models: { kind: 'endpoint' },
   billing: 'subscription',
-  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/manifests.ts`)。
+  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/provider-vendor-manifests.ts`)。
   family: { role: 'subscription', tag: 'Codex' },
   quotaSource: 'codex',
   modelRules: 'codex',

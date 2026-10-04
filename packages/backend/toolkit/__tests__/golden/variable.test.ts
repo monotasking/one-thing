@@ -14,7 +14,7 @@ import {
   type RuntimeVariableRegistry,
   type RuntimeVariableSetInput,
 } from '../../builtin/toolkit-builtin-variable.js'
-import { Outcome } from '@onething/backend/toolkit/tool-protocol'
+import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { annotationsOf, modelTextOf, partialsOf, runNewTool } from '../support.js'
 
 const SEED: RuntimeContextVariable[] = [

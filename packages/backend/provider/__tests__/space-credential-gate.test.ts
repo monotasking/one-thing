@@ -5,7 +5,7 @@ import {
   type CoreProviderConfigLike,
 } from '../provider-config.js'
 import { getEffectiveOnethingProviderConfig } from '../provider-runtime.js'
-import { createOnethingStreamProviderAdapter } from '../stream-provider-adapter.js'
+import { createOnethingStreamProviderAdapter } from '../provider-stream-adapter.js'
 
 /**
  * 严格隔离的**执行**面(批 B3):判定盖在 config 上,阻断发生在鉴权里。

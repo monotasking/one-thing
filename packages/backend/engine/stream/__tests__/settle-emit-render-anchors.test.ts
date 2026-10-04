@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import type { ChatMessage } from '@shared/ipc.js'
-import { completeAgentLoopStream, type AgentLoopExecutorState } from '../engine-stream-agent-loop-executor.js'
+import { completeAgentLoopStream, type AgentLoopExecutorState } from '../engine-agent-loop-executor.js'
 
 /**
  * 反向门:正常收尾发射的 settled 快照(`MESSAGE_UPDATED.updates.contentParts`)
@@ -60,7 +60,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   getSession: vi.fn(() => ({ name: 'Session', messages: [] })),
 }))
 
-vi.mock('../../../session/reads.js', async (importActual) => {
+vi.mock('../../../session/session-reads.js', async (importActual) => {
   const actual = await importActual<Record<string, unknown>>()
   return {
     ...actual,
@@ -92,11 +92,11 @@ vi.mock('../../../agent-loop/agent-loop-trigger-manager.js', () => ({
   triggerManager: { runPostResponse: vi.fn(() => Promise.resolve()) },
 }))
 
-vi.mock('@onething/backend/plugin/lifecycle-hooks', () => ({
+vi.mock('@onething/backend/plugin/plugin-lifecycle-hooks', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock('@onething/backend/media/save-image', () => ({
+vi.mock('@onething/backend/media/media-save-image', () => ({
   saveMediaImage: vi.fn(),
 }))
 

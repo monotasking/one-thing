@@ -4,9 +4,9 @@ import {
   projectOnethingThinkingLevels,
   resolveOnethingModelCapabilities,
   validateOnethingProviderReasoningSettings,
-} from '../model-capability.js'
+} from '../provider-model-capability.js'
 import { pickOnethingProviderOptions } from '../provider-options.js'
-import { normalizeSpaceProviderSettings } from '../../space/provider-settings.js'
+import { normalizeSpaceProviderSettings } from '../../space/space-provider-settings.js'
 
 describe('declarative reasoning profiles', () => {
   it('merges provider defaults with model levels and exposes the same labels to the picker', () => {

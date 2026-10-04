@@ -14,8 +14,8 @@
  * 没有这三条,下一个消费者还会自己写第四遍过滤,而漂移只有在真机上才看得出来。
  */
 import { describe, expect, it } from 'vitest'
-import { collectCollabFoldedFacts, planCollabHistoryWindow } from '../history-window.js'
-import { projectRoomHistory } from '../projection.js'
+import { collectCollabFoldedFacts, planCollabHistoryWindow } from '../collab-history-window.js'
+import { projectRoomHistory } from '../collab-projection.js'
 import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 
 const DAY = 86_400_000

@@ -17,18 +17,18 @@ import {
   type VoiceSubmitUtteranceRequest,
   type VoiceSynthesizeRequest,
 } from '@shared/ipc.js'
-import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/backend/voice/audio-router'
+import { VoiceAudioRouter, type VoiceDoubaoRecordingOptions } from '@onething/backend/voice/voice-audio-router'
 import { WakeWordEngine } from '@onething/backend/voice/kws/voice-kws-engine'
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
 import type { StreamChunk } from '@shared/events/index.js'
-import type { Unsubscribe } from '@onething/backend/event/session-bus-types'
-import { getStreamEngineSafe } from '@onething/backend/current.js'
+import type { Unsubscribe } from '@onething/backend/event/event-session-bus-types'
+import { getStreamEngineSafe } from '@onething/backend/backend-current.js'
 import { getCurrentSessionId } from '@onething/backend/session'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { agentExists } from '../agent/agent-store-access.js'
 import { updateSessionAgent } from '@onething/backend/session'
 import { DEFAULT_SESSION_OWNER, sessionAccess } from '@onething/backend/session'
-import { getVoiceInputConfigurationError, streamSynthesizeSpeech, transcribeUtterance } from './provider-calls.js'
+import { getVoiceInputConfigurationError, streamSynthesizeSpeech, transcribeUtterance } from './voice-provider-calls.js'
 import {
   applyOnethingVoiceRuntimeError,
   applyOnethingVoiceRuntimeMilestone,

@@ -3,7 +3,7 @@
  *
  * 这一层守的是**形状**:枚举本体、非法值降级、以及 `api.ui.notify` 的两种第二参
  * 长相。"响不响"由装配层判(静音 / 限频),那条线在
- * `packages/backend/plugin/__tests__/notify-sound.test.ts`。
+ * `packages/backend/plugin/__tests__/plugin-notify-sound.test.ts`。
  */
 import { describe, it, expect, vi } from 'vitest'
 import {
@@ -122,7 +122,7 @@ describe('api-builder 的 ui.notify 接线', () => {
    * 以及未知音名会记日志而不是静默。
    */
   async function buildApi() {
-    const { createCorePluginAPI } = await import('../api-builder.js')
+    const { createCorePluginAPI } = await import('../plugin-api-builder.js')
     const notify = vi.fn()
     const logger = { log: vi.fn(), error: vi.fn() }
     const { api } = createCorePluginAPI({

@@ -33,7 +33,7 @@ import {
 import {
   createEmptySpaceProviderSettings,
   readSpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { getSpacesStore } from '@onething/backend/space/space-store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { getSettings, getSpaceSettings, saveSettings } from './settings-store.js'

@@ -12,19 +12,19 @@
  *  6. **宿主链路 + 拆除** —— 旋钮叠在主题产出之上下发;停用后从表里消失。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { resolvePluginThemeOverrides } from '@onething/backend/plugin/theme-overrides'
+import { resolvePluginThemeOverrides } from '@onething/backend/plugin/plugin-theme-overrides'
 import { projectOnethingPluginsForRenderer } from '@onething/backend/plugin/plugin-list'
 import {
   THEME_KNOB_ALPHA_FLOOR_PERCENT,
   THEME_KNOB_BLUR_CEILING_PX,
   themeKnobType,
-} from '@onething/backend/theme/knobs'
+} from '@onething/backend/theme/theme-knobs'
 
 const managedPlugins: Array<{ definition: { id: string; enabled: boolean; manifest: unknown } }> = []
 vi.mock('../plugin-manager.js', () => ({
   getPluginManager: () => (managedPlugins.length ? { getPlugins: () => managedPlugins } : null),
 }))
-const { getPluginThemeKnobVariables } = await import('../theme-override-table.js')
+const { getPluginThemeKnobVariables } = await import('../plugin-theme-override-table.js')
 
 function makeListItem(id: string, enabled: boolean, overrides: Record<string, string>) {
   return {

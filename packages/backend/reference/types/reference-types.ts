@@ -6,10 +6,10 @@
  */
 
 import { refTypes } from '../reference-registry.js'
-import { commandRefType } from './command.js'
-import { dirRefType } from './dir.js'
+import { commandRefType } from './reference-types-command.js'
+import { dirRefType } from './reference-types-dir.js'
 import { fileRefType } from './reference-types-file.js'
-import { linkRefType } from './reference-types-reference.js'
+import { linkRefType } from './reference-types-link.js'
 import { skillRefType } from './reference-types-skill.js'
 
 refTypes.register(fileRefType)

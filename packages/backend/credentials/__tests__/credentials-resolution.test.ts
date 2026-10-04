@@ -45,7 +45,7 @@ vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
-vi.mock('@onething/backend/auth/process-auth-service', () => ({
+vi.mock('@onething/backend/auth/auth-process-service', () => ({
   getAuthService: () => ({
     resolveProviderAuth: (providerId: string, apiKey: string | undefined, target: unknown) =>
       mocks.resolveAuthImpl(providerId, apiKey, target),

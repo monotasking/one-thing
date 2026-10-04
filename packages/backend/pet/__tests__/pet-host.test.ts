@@ -3,7 +3,7 @@
  * 时钟是手摇的:每条规矩都在一个确定的毫秒上判。
  */
 import { describe, expect, it } from 'vitest'
-import { HEIDOU } from '../builtin/heidou.js'
+import { HEIDOU } from '../builtin/pet-builtin-heidou.js'
 import { SayPassthroughComposer, type MomentComposer } from '../pet-composer.js'
 import { estimateSpeechMs, PET_DEFAULT_COOLDOWN_MS, PetHost } from '../pet-host.js'
 import { foldPetMemory, parsePetLedgerLine, PET_MEMORY_LINES, PET_RECENT_UTTERANCES, type PetLedgerLine } from '../pet-ledger.js'

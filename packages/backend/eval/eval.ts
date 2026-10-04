@@ -10,9 +10,9 @@ export {
 	type EvalFixture,
 	type EvalFixtureContext,
 	type EvalAssistantResponse,
-} from "./fixture.js";
+} from "./eval-fixture.js";
 
-export { hashSections } from "./section-hash.js";
+export { hashSections } from "./eval-section-hash.js";
 export {
 	writeCaptureSnapshots,
 	writePromptSnapshot,
@@ -21,13 +21,13 @@ export {
 	writeResponseSnapshot,
 } from "./eval-snapshot.js";
 export type { SnapshotRefs } from "./eval-snapshot.js";
-export { promptCaptureCache } from "./prompt-capture-cache.js";
+export { promptCaptureCache } from "./eval-prompt-capture-cache.js";
 export {
 	saveCaptureToDisk,
 	loadCaptureFromDisk,
 	pruneCaptureRing,
 	getCapturesDir,
-} from "./capture-store.js";
+} from "./eval-capture-store.js";
 export {
 	createTurnTraceRecorder,
 	readTraceRounds,
@@ -38,13 +38,13 @@ export {
 	type TurnTraceRecorder,
 	type TraceRoundRecord,
 	type HydratedTraceRound,
-} from "./trace-store.js";
+} from "./eval-trace-store.js";
 export {
 	replayRound,
 	tracedMessagesToEvalMessages,
 	type RoundReplayAttempt,
 	type RoundReplayResult,
-} from "./round-replay.js";
+} from "./eval-round-replay.js";
 
 export {
 	recordTurn,
@@ -52,7 +52,7 @@ export {
 	amendTurnEditResend,
 	recordExplicitDown,
 	hasNegativeSignals,
-} from "./turn-evaluator.js";
+} from "./eval-turn-evaluator.js";
 
 export {
 	buildJudgePrompt,
@@ -62,7 +62,7 @@ export {
 	type JudgeResult,
 	type JudgeInput,
 	type JudgeCategory,
-} from "./judge.js";
+} from "./eval-judge.js";
 
 export {
 	evaluate,
@@ -71,7 +71,7 @@ export {
 	type EvalExpectation,
 	type EvalResponse,
 	type EvalResult,
-} from "./evaluator.js";
+} from "./eval-evaluator.js";
 
 export {
 	loadMergedRecords,
@@ -88,7 +88,7 @@ export {
 	parseCaseYaml,
 	generateCaseYaml,
 	type CaseDefinition,
-} from "./case-file.js";
+} from "./eval-case-file.js";
 
 export type {
 	EvalChatMessage,
@@ -96,7 +96,7 @@ export type {
 	EvalModelResponse,
 	EvalModelCallOptions,
 	EvalModelCaller,
-} from "./model-call.js";
+} from "./eval-model-call.js";
 
 export {
 	runEvals,
@@ -125,7 +125,7 @@ export {
 	type TurnTraceMessageLike,
 	type CreateIncidentOptions,
 	type CreateIncidentResult,
-} from "./incident.js";
+} from "./eval-incident.js";
 
 export {
 	createMockToolResolver,
@@ -135,7 +135,7 @@ export {
 	type MockToolResolution,
 	type MockResultSource,
 	type ToolSimulator,
-} from "./mock-tools.js";
+} from "./eval-mock-tools.js";
 
 export {
 	writeTranscript,
@@ -144,7 +144,7 @@ export {
 	type Transcript,
 	type TranscriptHeader,
 	type TranscriptEvent,
-} from "./transcript.js";
+} from "./eval-transcript.js";
 
 export {
 	runReplay,
@@ -161,7 +161,7 @@ export {
 	parseRubricVerdict,
 	normalizeRubricClauses,
 	type RubricVerdict,
-} from "./judge.js";
+} from "./eval-judge.js";
 
 export {
 	compareRunEntries,
@@ -173,7 +173,7 @@ export {
 	STABLE_FAIL,
 	type RunComparison,
 	type CaseFlip,
-} from "./compare.js";
+} from "./eval-compare.js";
 
 export {
 	measureReplayFidelity,
@@ -181,7 +181,7 @@ export {
 	traceDecisionSequence,
 	fidelityVerdict,
 	type FidelityReport,
-} from "./fidelity.js";
+} from "./eval-fidelity.js";
 
 export {
 	runSensitivityAudit,
@@ -190,7 +190,7 @@ export {
 	type SensitivityReport,
 	type SectionSensitivity,
 	type SensitivityProgressEvent,
-} from "./sensitivity.js";
+} from "./eval-sensitivity.js";
 
 export {
 	runJudgeCalibration,
@@ -203,7 +203,7 @@ export {
 	type CalibrationSample,
 	type CalibrationSampleOutcome,
 	type CalibrationOutcome,
-} from "./calibration.js";
+} from "./eval-calibration.js";
 
 export {
 	analyzeIncident,
@@ -216,11 +216,11 @@ export {
 	type IncidentAnalysis,
 	type DiagnosisConclusion,
 	type DiagnosisInput,
-} from "./analysis.js";
+} from "./eval-analysis.js";
 
 export {
 	diagnoseIncident,
 	type DiagnoseOptions,
 	type DiagnoseResult,
 	type DiagnoseProgress,
-} from "./diagnose.js";
+} from "./eval-diagnose.js";

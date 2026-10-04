@@ -59,8 +59,8 @@ import {
   trackIndexGeneration,
   type SearchIndexQueryFace,
 } from './search-capabilities-indexed.js'
-import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
-import { normalizeSearchQuery } from './text-match.js'
+import type { ResultBackedCandidate, SearchServiceResult } from './search-capabilities-scan-adapter.js'
+import { normalizeSearchQuery } from './search-capabilities-text-match.js'
 import { sessionTitleOf } from './search-capabilities-sessions.js'
 import { sessionScopeVisibility } from './search-capabilities-visibility.js'
 import {
@@ -70,7 +70,7 @@ import {
   targetPayloadOf,
   type MessageContextPreview,
   type PreviewMessage,
-} from './preview.js'
+} from './search-capabilities-preview.js'
 
 /** 这一类的目标形(§4.1;壳的 `locate-message` 落点吃它)。 */
 export interface MessageTarget {

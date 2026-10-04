@@ -250,7 +250,7 @@ function model(id: string, over: Partial<OpenRouterModel> = {}): OpenRouterModel
      *
      * 这个夹具从前写的是 `'0.000003'`(每 token),而**生产里没有任何一条路
      * 能产出那种数** —— 全仓只有一个序列化口会造目录行
-     * (`backend/provider/model-registry.ts:719`),它的入参在
+     * (`backend/provider/provider-model-registry.ts:719`),它的入参在
      * :881-886 白纸黑字写着是 per-1M。假夹具配上 projection 里那个 `* 1e6`,
      * 两个错刚好互相抵消,于是这条用例一直是绿的,而真机上 gpt-5.6 画成了
      * $5000000。**夹具照抄真机上的值**,这条用例才守得住单位。

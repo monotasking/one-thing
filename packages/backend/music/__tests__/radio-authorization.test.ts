@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OnethingRadioConductorOptions } from '@onething/backend/music/radio-conductor'
+import type { OnethingRadioConductorOptions } from '@onething/backend/music/music-radio-conductor'
 
 type Meta = { id: string; ownerUserId?: string; ownerWorkspaceId?: string; agentId?: string; kind?: string; app?: string; updatedAt: number }
 const fixture = vi.hoisted(() => ({
@@ -34,7 +34,7 @@ vi.mock('../../session/session-store.js', () => ({
     return () => { fixture.deletedListener = undefined }
   },
 }))
-vi.mock('../../session/reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
+vi.mock('../../session/session-reads.js', () => ({ sessionReads: { countMessages: () => 0 } }))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({ music: { enabled: true } }) }))
 vi.mock('@onething/backend/agent/agent-store-bound', () => ({
   agentExists: () => true,
@@ -46,9 +46,9 @@ vi.mock('@onething/backend/permission/permission-asks', async importOriginal => 
   ...await importOriginal<typeof import('@onething/backend/permission/permission-asks')>(),
   addGrant: (...args: unknown[]) => fixture.grant(...args),
 }))
-vi.mock('@onething/backend/permission/unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
+vi.mock('@onething/backend/permission/permission-unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
 vi.mock('@onething/backend/variable/variable-registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
-vi.mock('@onething/backend/current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/current.js')>()), getStreamEngineSafe: () => ({ getController: () => undefined }) }))
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngineSafe: () => ({ getController: () => undefined }) }))
 vi.mock('@onething/backend/event', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
 vi.mock('../music-service.js', async () => {
   const { ncmMusicProvider } = await import('@onething/backend/music/music')
@@ -61,9 +61,9 @@ vi.mock('../music-service.js', async () => {
 })
 
 
-let activeRadio: ReturnType<typeof import('../radio.js')['createRadioScope']> | undefined
+let activeRadio: ReturnType<typeof import('../music-radio.js')['createRadioScope']> | undefined
 async function loadRadio() {
-  const { createRadioScope } = await import('../radio.js')
+  const { createRadioScope } = await import('../music-radio.js')
   activeRadio ??= createRadioScope({
     storePath: fixture.dir,
     service: { ...await import('../music-service.js'), runner: { run: vi.fn(), spawn: vi.fn() } },

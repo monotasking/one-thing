@@ -3,7 +3,7 @@
  *
  * 这只文件钉的是**投影本身**(纯函数,没有连接、没有内核):归一的四种病、自述
  * 过不过契约门、指纹按什么变,以及那句「AI 走 `McpTool`」写在自述里而不是写在出口
- * 那一侧。寿命(连上 / 断开 / 重挂)在 `backend/resource/__tests__/mcp-mount.test.ts`。
+ * 那一侧。寿命(连上 / 断开 / 重挂)在 `backend/resource/__tests__/resource-mcp-mount.test.ts`。
  */
 
 import { describe, expect, it } from 'vitest'

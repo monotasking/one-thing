@@ -13,13 +13,13 @@ import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
   resolveExternalAgentSessionLink,
-} from '@onething/backend/external-agent/connector-registry'
-import { getAuthService } from '@onething/backend/auth/process-auth-service'
+} from '@onething/backend/external-agent/external-agent-connector-registry'
+import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { dumpProviderRequest } from '../provider/provider.js'
 import { providerMediaReader } from './engine-media-reader.js'
-import type { AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
 
 export {
   getSupportedAgentProviderRuntimeIds,

@@ -35,11 +35,11 @@
  * → 整个钩子**返回 undefined 不挂载**,core 的重试逻辑一行都不会变。
  */
 
-import type { AgentCredentialRotation, AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentCredentialRotation, AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
 import {
   classifyProviderError,
   providerErrorCooldownUntil,
-} from '@onething/backend/agent-loop/provider-error-classification'
+} from '@onething/backend/agent-loop/agent-loop-provider-error-classification'
 import {
   getSpaceCredentialEntry,
   getSpaceProviderCredentials,
@@ -55,7 +55,7 @@ import {
   type CoreSpaceCredentialMarker,
 } from '@onething/backend/provider'
 import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from './credentials-candidate-route.js'
-import { getAuthService } from '@onething/backend/auth/process-auth-service'
+import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import { resolveSessionSpaceId, getSpaceSettings } from '@onething/backend/session'
 import {
   buildRoutedProviderConfig,

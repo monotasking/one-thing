@@ -4,7 +4,7 @@
  * 协作四件套(send_message / board / history / notebook)共享三件事,今天这三件事
  * 在四个工具里各写了一遍:
  *
- *  1. **场子门**。`COLLAB_TOOL_VENUES` 是唯一事实(`collab/tool-surface.ts`),
+ *  1. **场子门**。`COLLAB_TOOL_VENUES` 是唯一事实(`collab/collab-tool-surface.ts`),
  *     归一化只有一个方向:认不出的 kind 一律算 `chat`。它在这里有**两个**出口 ——
  *     `visibleIn(scene)` 把工具从这一回合的面上摘掉(模型根本看不见它),
  *     `plan` 再判一次(有人硬调时,拒绝文案由各工具自己给)。两道都要:面是给
@@ -28,8 +28,8 @@
  * 知道下一步能做什么。基类只提供 `allowed` 这一位。
  */
 
-import { Intent, Tool } from '@onething/backend/toolkit/tool-protocol'
-import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/toolkit/tool-protocol'
+import { Intent, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import type { Principal } from '@shared/permission/principal'
 import {
@@ -37,7 +37,7 @@ import {
   resolveCollabVenue,
   type CollabVenue,
   type CollabVenueTool,
-} from '../../collab/tool-surface.js'
+} from '../../collab/collab-tool-surface.js'
 
 /** 场子门与身份回退要用到的宿主面。两项都可缺席(测试里就常常缺席)。 */
 export interface CollabToolAdapters {

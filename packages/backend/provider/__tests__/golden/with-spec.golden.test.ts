@@ -9,7 +9,7 @@ import { registerDialect } from "../../base/provider-base-dialect.js";
 import {
 	dialectFromSpec,
 	unsupportedAdapterSpecFields,
-} from "../../dialects/custom-from-spec.js";
+} from "../../dialects/provider-dialects-custom-from-spec.js";
 import { runGolden, type GoldenFixture } from "./golden-harness.js";
 
 const undo: Array<() => void> = [];

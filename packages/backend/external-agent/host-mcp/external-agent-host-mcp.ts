@@ -10,7 +10,7 @@ export {
   bindHostToolContext,
   clearHostToolContexts,
   resolveHostToolContext,
-} from './context.js'
+} from './external-agent-host-mcp-context.js'
 export {
   filterHostToolSurface,
   HOST_MCP_TOOL_CANDIDATES,

@@ -3,8 +3,8 @@ import { accessSync, constants as fsConstants } from 'node:fs'
 import { unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/voice/speech-output'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/voice/voice-speech-output'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 /**
  * **主进程出声**(宠物 P3,正本 `docs/design/pet-system-2026-09.md` §10.2「壳的实现」那一行)。

@@ -55,7 +55,7 @@ import type {
   AcpRemoteSessionInfo,
   AcpSessionState,
 } from '@shared/contracts/acp.js'
-import type { ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
+import type { ACPSessionLink, ACPSessionLinkStore } from './acp-session-links.js'
 import {
   applySessionUpdate,
   createAcpSessionState,
@@ -63,7 +63,7 @@ import {
   withAcpSessionProcess,
 } from './acp-session-state.js'
 import { acpAgentUsage, acpTurnCost } from './acp-usage.js'
-import { ACP_RECONNECT_MAX_ATTEMPTS, AcpReconnectBackoffGate, acpReconnectRefusal } from './reconnect-backoff.js'
+import { ACP_RECONNECT_MAX_ATTEMPTS, AcpReconnectBackoffGate, acpReconnectRefusal } from './acp-reconnect-backoff.js'
 
 import { getLogger } from '../logging/logging.js'
 

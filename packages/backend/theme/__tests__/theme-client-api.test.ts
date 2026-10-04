@@ -41,12 +41,12 @@ vi.mock('@onething/backend/shell/shell-host-ports', () => ({
   getShellHost: () => shell,
 }))
 
-vi.mock('@onething/backend/plugin/theme-override-table', () => ({
+vi.mock('@onething/backend/plugin/plugin-theme-override-table', () => ({
   getPluginThemeOverrideTokenValues: plugins.getPluginThemeOverrideTokenValues,
   getPluginThemeKnobVariables: plugins.getPluginThemeKnobVariables,
 }))
 
-vi.mock('@onething/backend/plugin/skin-table', () => ({
+vi.mock('@onething/backend/plugin/plugin-skin-table', () => ({
   getPluginSkinTiers: plugins.getPluginSkinTiers,
 }))
 

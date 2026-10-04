@@ -34,8 +34,8 @@ export {
 export * from './plugin-command-execution.js'
 export * from './plugin-ipc-operations.js'
 export * from './plugin-list.js'
-export * from './theme-overrides.js'
-export * from './config-schema.js'
+export * from './plugin-theme-overrides.js'
+export * from './plugin-config-schema.js'
 export type {
   OnethingLogMonitorConfig,
   OnethingLogMonitorPanelApi,

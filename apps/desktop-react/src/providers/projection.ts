@@ -418,7 +418,7 @@ export function filterRailRows(
  * 六格能力的判据。全部来自目录记录本身,一格都不猜。
  *
  * `fileIn` 那一格(09-10 加)的判据抄的是引擎那条,**同一张表**:
- * `provider/model-capability.ts` 的 `FILE_INPUT_MODALITIES`
+ * `provider/provider-model-capability.ts` 的 `FILE_INPUT_MODALITIES`
  * = `['pdf', 'file']`(models.dev 说 `pdf`,少数 OpenRouter 条目说 `file`)。
  * 两处写的是同一件事 —— 那侧改了,这里跟着改一处。
  */
@@ -459,7 +459,7 @@ export function maxOutputOf(model: OpenRouterModel): number | null {
  * ── 这里曾经乘过 1e6,真机上把 gpt-5.6 画成了 $5000000 ──────────────────────
  * 病根是把 `OpenRouterModel` 这个**名字**当成了产地。它只是个遗留信封:全仓
  * 只有一个序列化口会产出目录行 ——
- * `packages/backend/provider/model-registry.ts:719`
+ * `packages/backend/provider/provider-model-registry.ts:719`
  * (`onethingCapabilityEntryToOpenRouterModel`,:737-739 把数 `String()` 一下),
  * 而它的入参 `OnethingModelCapabilityEntry.pricing` 在 :881-886 白纸黑字写着是
  * **USD per 1M token**。没有任何代码去拉 `openrouter.ai/api/v1/models` ——

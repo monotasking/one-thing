@@ -2,9 +2,9 @@
  * Collab v3 的 actor 面(`@onething/backend/collab/actors`)。
  *
  * 这里是**协议**、**验收架**与**纯规则**:动词表(D0)、金重放架(D0)、
- * 房间的账与三道闸(D1 `room-rules.ts`)、发言策略族(D1 `floor-policy.ts`)、
- * agent 的账与举手/drive 组装(D2 `mind-rules.ts`)、mailbox 折叠信封(D2
- * `envelope-fold.ts`)、跨房笔记(D2 `notebook-rules.ts`)。
+ * 房间的账与三道闸(D1 `collab-actors-room-rules.ts`)、发言策略族(D1 `collab-actors-floor-policy.ts`)、
+ * agent 的账与举手/drive 组装(D2 `collab-actors-mind-rules.ts`)、mailbox 折叠信封(D2
+ * `collab-actors-envelope-fold.ts`)、跨房笔记(D2 `collab-actors-notebook-rules.ts`)。
  * P3'b-B 起,带 IO 的 actor 本体(`agent-actor` / `referee-actor` / `room-actor`
  * / `worker-child` / `mind-port` / `notebook-store` / `room-account` / `agent-mailbox`)
  * 也住在这个目录 —— 它们的闭包零脊柱边。只有真撞后端脊柱的宿主端口与装配
@@ -95,7 +95,7 @@ export {
   orderCollabHands,
   resolveCollabFloorPolicy,
   resolveCollabRoomFloorPolicy,
-} from './floor-policy.js'
+} from './collab-actors-floor-policy.js'
 export type {
   CollabFloorDecision,
   CollabFloorDecisionInput,
@@ -104,7 +104,7 @@ export type {
   CollabFloorPolicyState,
   CollabRaisedHand,
   CollabResolvedFloorPolicy,
-} from './floor-policy.js'
+} from './collab-actors-floor-policy.js'
 
 /* ── D3:Referee ────────────────────────────────────────────────────────── */
 
@@ -118,7 +118,7 @@ export {
   collabRefereeVerdictVerb,
   isCollabRoomJudgmentShape,
   parseCollabRefereeVerdict,
-} from './referee-rules.js'
+} from './collab-actors-referee-rules.js'
 export type {
   BuildCollabRefereeJudgePromptOptions,
   CollabRefereeJudgePrompt,
@@ -127,7 +127,7 @@ export type {
   CollabRoomJudgmentRequest,
   CollabRoomJudgmentState,
   ParseCollabRefereeVerdictOptions,
-} from './referee-rules.js'
+} from './collab-actors-referee-rules.js'
 
 export {
   applyCollabRoomPassthrough,
@@ -160,7 +160,7 @@ export {
   resolveCollabRoomHandBlock,
   revokeCollabRoomLease,
   settleCollabRoomBroadcast,
-} from './room-rules.js'
+} from './collab-actors-room-rules.js'
 export type {
   CollabRoomAccount,
   CollabRoomChainEntry,
@@ -171,7 +171,7 @@ export type {
   CollabRoomPendingBroadcast,
   CollabRoomStep,
   CollabRoomTranscriptMessage,
-} from './room-rules.js'
+} from './collab-actors-room-rules.js'
 
 export {
   buildCollabFoldedEnvelope,
@@ -180,7 +180,7 @@ export {
   COLLAB_FOLD_SPEAKER_FALLBACK_LABEL,
   COLLAB_FOLD_USER_LABEL,
   mergeCollabFoldEntries,
-} from './envelope-fold.js'
+} from './collab-actors-envelope-fold.js'
 export type {
   BuildCollabFoldedEnvelopeOptions,
   CollabFoldCardEntry,
@@ -189,7 +189,7 @@ export type {
   CollabFoldMembersEntry,
   CollabFoldPhaseEntry,
   CollabFoldWorkerEntry,
-} from './envelope-fold.js'
+} from './collab-actors-envelope-fold.js'
 
 export {
   buildCollabNotebookBlock,
@@ -201,12 +201,12 @@ export {
   COLLAB_NOTEBOOK_TRUNCATED_LINE,
   formatCollabNotebookEntry,
   formatCollabNotebookTime,
-} from './notebook-rules.js'
+} from './collab-actors-notebook-rules.js'
 export type {
   BuildCollabNotebookBlockOptions,
   CollabNotebookTail,
   FormatCollabNotebookEntryOptions,
-} from './notebook-rules.js'
+} from './collab-actors-notebook-rules.js'
 
 export {
   adoptCollabAgentWorkerOrphans,
@@ -233,7 +233,7 @@ export {
   settleCollabAgentWorker,
   startCollabAgentWorker,
   takeCollabAgentFold,
-} from './mind-rules.js'
+} from './collab-actors-mind-rules.js'
 export {
   adoptCollabWorkerOrphans,
   admitCollabWorker,
@@ -261,7 +261,7 @@ export {
   settleCollabWorkerRecord,
   truncateCollabWorkerSummary,
   upsertCollabWorkerRecord,
-} from './worker-rules.js'
+} from './collab-actors-worker-rules.js'
 export type {
   BuildCollabWorkerBriefingOptions,
   CollabAgentWorkerRecord,
@@ -271,7 +271,7 @@ export type {
   CollabWorkerOrphanAdoption,
   CollabWorkerStatus,
   CollabWorkerToolCallLike,
-} from './worker-rules.js'
+} from './collab-actors-worker-rules.js'
 
 export type {
   BuildCollabMindDriveOptions,
@@ -282,7 +282,7 @@ export type {
   CollabHandEvaluation,
   CollabHandEvaluationInput,
   CollabHandEvaluator,
-} from './mind-rules.js'
+} from './collab-actors-mind-rules.js'
 
 /* ── D5:v2 → v3 迁移的纯规则 ───────────────────────────────────────────── */
 
@@ -296,7 +296,7 @@ export {
   planCollabRoomAccountMigration,
   readCollabV2RoomState,
   summarizeCollabMigration,
-} from './migrate-rules.js'
+} from './collab-actors-migrate-rules.js'
 export type {
   CollabAgentRoomMigrationPlan,
   CollabAgentRoomMigrationSummary,
@@ -311,7 +311,7 @@ export type {
   CollabV2RoomStateView,
   CollabV3MigrationMarker,
   CollabV3MigrationReport,
-} from './migrate-rules.js'
+} from './collab-actors-migrate-rules.js'
 
 /* ── D8:调度时间轴的纯规则 ─────────────────────────────────────────────── */
 
@@ -350,7 +350,7 @@ export {
   isCollabSchedulerLogExpired,
   isCollabSchedulerLogType,
   parseCollabSchedulerLogLine,
-} from './scheduler-log-rules.js'
+} from './collab-actors-scheduler-log-rules.js'
 export type {
   CollabExternalTurnOutcome,
   CollabSchedulerBlockLatch,
@@ -377,4 +377,4 @@ export type {
   CollabSchedulerWorkerResultRow,
   CollabSchedulerWorkerSpawnRow,
   CollabSchedulerYieldRow,
-} from './scheduler-log-rules.js'
+} from './collab-actors-scheduler-log-rules.js'

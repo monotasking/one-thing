@@ -16,11 +16,11 @@
  * 它退成了**读法**(`music({read: 'radio'})`),而读的上下文里没有
  * `executionContext` 这一格 —— `ResourceReadContext` 带的是 `Principal`,两套词汇
  * 不通,硬折就是拿一个字符串冒充凭据。完整的理由与退场条件写在
- * `resource/music-provider.ts` 的 `read` 那一段注释上;这里只说清楚:
+ * `resource/resource-music-provider.ts` 的 `read` 那一段注释上;这里只说清楚:
  * **这条门在读那一侧今天不成立**,所以把它写进这张表会是一句假话。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ToolRunner } from '@onething/backend/toolkit/tool-protocol'
+import { ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { ResourceTool } from '@onething/backend/resource/resource-api'
 import { ZodValidator } from '@onething/backend/toolkit'
 import { allowAuthorizer, RecordingObserver } from './fakes.js'
@@ -31,7 +31,7 @@ const radio = vi.hoisted(() => ({
   radioToolStatus: vi.fn(() => ({ active: true, intent: 'quiet', programmeLength: 1 })),
   requestSong: vi.fn(async () => ({ success: true, title: 'song' })),
 }))
-vi.mock('@onething/backend/music/radio', () => radio)
+vi.mock('@onething/backend/music/music-radio', () => radio)
 
 const OPS: Array<readonly [string, Record<string, unknown>]> = [
   ['open', { op: 'open', intent: 'quiet music' }],
@@ -47,7 +47,7 @@ const OPS: Array<readonly [string, Record<string, unknown>]> = [
 describe('music resource trusted execution context', () => {
   it.each(OPS)('carries the host context through %s before touching the player', async (_name, input) => {
     vi.clearAllMocks()
-    const { createMusicResourceProvider } = await import('../../resource/music-provider.js')
+    const { createMusicResourceProvider } = await import('../../resource/resource-music-provider.js')
     const tool = new ResourceTool(createMusicResourceProvider())
     const runner = new ToolRunner({
       authorizer: allowAuthorizer,

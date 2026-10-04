@@ -1,7 +1,7 @@
 /**
  * K3-a' —— **`readonly` 档装配之后,工具目录里一只资源工具都没有。**
  *
- * `resource/__tests__/catalog-sync.test.ts` 已经在一台裸内核 + 一本裸目录上
+ * `resource/__tests__/resource-catalog-sync.test.ts` 已经在一台裸内核 + 一本裸目录上
  * 证过这条规则本身。这只文件证的是另一半,而那一半只有真装配说得出口:
  * `createOnethingBackend({ toolRegistry: 'readonly' })` 走完整条装配序列之后,
  * **模型真正看见的那一份目录**(产品层的 `getToolkitCatalog` 端口,回合面
@@ -31,7 +31,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-resource-reado
 process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('../backend-current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath

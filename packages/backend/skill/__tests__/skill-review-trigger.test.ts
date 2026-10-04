@@ -2,13 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/agent-loop/loop-primitives'
+import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/agent-loop/agent-loop-primitives'
 import { createAgentProviderFromRuntime } from '../../engine/engine-process-providers.js'
 import { getUserSkillsPath } from '@onething/backend/skill/skill-operations'
-import { executeSkillManage } from '@onething/backend/skill/manage-setup'
-import { invalidateSessionSkillsCache as invalidateSkillsCache } from '@onething/backend/skill/session-skill-cache'
+import { executeSkillManage } from '@onething/backend/skill/skill-manage-setup'
+import { invalidateSessionSkillsCache as invalidateSkillsCache } from '@onething/backend/skill/skill-session-cache'
 import { configureAppSkillsLoader } from '@onething/backend/skill/skill-sources'
-import { configureAppSkillManage } from '@onething/backend/skill/manage-setup'
+import { configureAppSkillManage } from '@onething/backend/skill/skill-manage-setup'
 
 // Adapter wiring is an explicit assembly step now (no import-time config).
 configureAppSkillsLoader()
@@ -20,7 +20,7 @@ import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
 } from '../../credentials/credentials-pool.js'
-import { Catalog } from '@onething/backend/toolkit/tool-protocol'
+import { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   configureToolkitCatalog,
   createEditTool,
@@ -28,9 +28,9 @@ import {
   createWriteTool,
 } from '@onething/backend/toolkit'
 import { createSkillReviewTrigger } from '../skill-review-trigger.js'
-import { clearSkillReviewState } from '@onething/backend/trigger/ipc-skill-review-state'
+import { clearSkillReviewState } from '@onething/backend/trigger/trigger-ipc-skill-review-state'
 import type { TriggerContext } from '../../agent-loop/agent-loop-trigger-manager.js'
-import { installStoreSessionLayerForTest } from '../../session/testing/store-layer.js'
+import { installStoreSessionLayerForTest } from '../../session/testing/session-testing-store-layer.js'
 import { clearAllSessionCache } from '../../session/session-store.js'
 
 vi.mock('electron', () => ({
@@ -58,8 +58,8 @@ vi.mock('../../engine/engine-process-providers.js', async importOriginal => {
   }
 })
 
-vi.mock('@onething/backend/agent-loop/loop-primitives', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/agent-loop/loop-primitives')>()
+vi.mock('@onething/backend/agent-loop/agent-loop-primitives', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/agent-loop/agent-loop-primitives')>()
   return {
     ...actual,
     runAgentLoop: vi.fn(),

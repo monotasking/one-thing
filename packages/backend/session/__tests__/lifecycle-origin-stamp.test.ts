@@ -21,19 +21,19 @@ vi.mock('@onething/backend/storage', () => ({
   getOnethingLogDir: () => state.storePath,
 }))
 
-vi.mock('../event-writer.js', () => ({
+vi.mock('../session-event-writer.js', () => ({
   writeSessionEvent: (_sessionId: string, type: string, data: unknown) => {
     state.written.push({ type, data })
     return state.written.length
   },
 }))
 
-vi.mock('../event-surface.js', () => ({
+vi.mock('../session-event-surface.js', () => ({
   isSessionTranslationEnabled: () => true,
   sessionSurface: () => ({ order: () => [], seqOf: () => undefined }),
 }))
 
-const { sessionLifecycleEvents } = await import('../lifecycle-events.js')
+const { sessionLifecycleEvents } = await import('../session-lifecycle-events.js')
 
 function session(id: string): ChatSession {
   return { id, name: id, messages: [], createdAt: 0, updatedAt: 0 } as unknown as ChatSession

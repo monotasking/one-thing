@@ -1,5 +1,5 @@
 /**
- * ACP A4-b:宿主工具面的运行时接线(`host-mcp-port.ts` + `HostMcpBridge` 的回合 / 作废面 +
+ * ACP A4-b:宿主工具面的运行时接线(`acp-host-mcp-port.ts` + `HostMcpBridge` 的回合 / 作废面 +
  * `AcpSubsystem` 的三处作废)。
  *
  *  1. 端口:`serversFor` 按 agent 的两格开关签凭据、组名册(`hostTools: false` 不签、只剩透传);
@@ -11,8 +11,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ACPAgentState, ACPSettings, AcpSessionState } from '@shared/contracts/acp'
 import type { MCPServerConfig } from '@shared/mcp/types'
-import { HostMcpBridge, type HostMcpBridgeDeps } from '../host-mcp-bridge.js'
-import { createAcpHostMcpPort, type AcpHostMcpAgentSwitches } from '../host-mcp-port.js'
+import { HostMcpBridge, type HostMcpBridgeDeps } from '../acp-host-mcp-bridge.js'
+import { createAcpHostMcpPort, type AcpHostMcpAgentSwitches } from '../acp-host-mcp-port.js'
 import { AcpSubsystem } from '../acp-subsystem.js'
 import { onSessionsDeletedFromBus, type SessionDeletionBus } from '../acp-events.js'
 

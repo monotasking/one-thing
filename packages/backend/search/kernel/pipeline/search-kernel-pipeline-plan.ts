@@ -16,8 +16,8 @@
  * 'phrase'`),③④ 才摊平(`'split'`),让「至少一半」「任一词」名副其实。
  */
 
-import type { LadderStep, SearchQuery } from '../candidate.js'
-import { collectQueryTerms } from './parse.js'
+import type { LadderStep, SearchQuery } from '../search-kernel-candidate.js'
+import { collectQueryTerms } from './search-kernel-pipeline-parse.js'
 
 // LadderStep 住在 candidate.ts(它要挂到 SearchQuery 上,放这里会成环)。
 export type { LadderStep }

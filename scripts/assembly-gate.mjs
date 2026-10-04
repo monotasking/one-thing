@@ -6,7 +6,7 @@
 //
 // 为什么是这把尺子:A 期整期在做的事就是「装配产物从模块全局变量搬进实例字段」。
 // 模块级 `let` 是那件事剩下的账 —— 每一个都是「这个进程里只有一份、而且没人说得清
-// 谁负责把它放回去」。A2 已经把三个单例模块清零并把唯一合法的那一份收进 `current.ts`
+// 谁负责把它放回去」。A2 已经把三个单例模块清零并把唯一合法的那一份收进 `backend-current.ts`
 // (本尺子对它豁免,理由见方案 §5 风险 3);A3 把四个装配期闩改成 disposer。往后
 // 加一个新的模块级 `let`,这里就红,写代码的人得先回答「谁 own 它」。
 //
@@ -14,7 +14,7 @@
 //   - 只数**行首**的 `let `(顶格,没有缩进)—— 函数体里的局部 `let` 一律缩进,
 //     所以这个朴素判据恰好等于「模块级」,不需要解析器;
 //   - 跳过 `__tests__/` 与 `*.test.ts`;
-//   - `current.ts` 豁免(方案里有意保留的唯一一个)。
+//   - `backend-current.ts` 豁免(方案里有意保留的唯一一个)。
 //
 // 与 transport-gate 同构的两条防假绿:度量文件读不到 = 硬错而不是 0;
 // 扫描规模低于下限 = 红(遍历坏了同样长得像「全治愈了」)。
@@ -33,7 +33,7 @@ const scanRoot = path.join(root, 'packages/backend')
 const baselinePath = path.join(root, 'docs/audit/assembly-baseline-2026-09-02.txt')
 
 /** 方案 §5 风险 3:进程当前实例槽是有意保留的唯一一个全局。 */
-const EXEMPT = new Set(['packages/backend/current.ts'])
+const EXEMPT = new Set(['packages/backend/backend-current.ts'])
 
 /** 扫描规模下限:遍历坏了 / 目录搬家了,同样长得像「全治愈了」。 */
 const MIN_SCANNED_FILES = 300
@@ -95,7 +95,7 @@ export function formatBaseline(counts) {
     '# assembly ratchet baseline (A3, docs/design/backend-composition-root-2026-09.md)',
     '# packages/backend 非测试 .ts 文件里的模块级 `let`(行首 `let `),逐文件计数。',
     '# 只许降:任一文件高于这里的数、或出现这里没有的文件,`bun run assembly:gate` 红。',
-    '# `packages/backend/current.ts` 豁免(方案 §5 风险 3:有意保留的唯一一个全局)。',
+    '# `packages/backend/backend-current.ts` 豁免(方案 §5 风险 3:有意保留的唯一一个全局)。',
     '# 降了之后跑 `node scripts/assembly-gate.mjs --write-baseline` 收紧。',
   ]
   for (const key of Object.keys(counts).sort()) lines.push(`${key} ${counts[key]}`)

@@ -12,8 +12,8 @@ import os from 'os'
 import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultValidationMessage, zodToJsonSchema } from '../../toolkit-contract.js'
-import { ReadInputSchema, ReadTool } from '../../builtin/read.js'
-import { Outcome } from '@onething/backend/toolkit/tool-protocol'
+import { ReadInputSchema, ReadTool } from '../../builtin/toolkit-builtin-read.js'
+import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   annotationsOf,
   attachmentsOf,

@@ -34,15 +34,15 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-connector-registry-test',
 }))
-vi.mock('@onething/backend/logging/configure-logging', () => {
+vi.mock('@onething/backend/logging/logging-configure', () => {
   const logger = {
     ns: 'test', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
     isLevelEnabled: () => false, child: () => logger,
   }
   return { writeAppLog: vi.fn(), getLogger: () => logger, consolePort: () => logger }
 })
-vi.mock('../host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
-vi.mock('@onething/backend/acp/host-mcp-port', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))
+vi.mock('../external-agent-host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
+vi.mock('@onething/backend/acp/acp-host-mcp-port', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))
 
 function deferred() {
   let resolve!: () => void
@@ -61,7 +61,7 @@ afterEach(() => { vi.restoreAllMocks() })
 
 describe('Backend external connector registry ownership', () => {
   it('retains lazy unowned callers and the existing connector ports', async () => {
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     const first = registry.getExternalAgentConnectors()
     expect(registry.getExternalAgentConnectors()).toBe(first)
     expect(mocks.options[0]).toMatchObject({ hostMcp: { port: 'host-mcp' } })
@@ -72,7 +72,7 @@ describe('Backend external connector registry ownership', () => {
   })
 
   it('releases an unused configuration and keeps its closed generation from lazily reopening', async () => {
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     const a = registry.bindExternalAgentConnectors()
     await a.ready
     await a.dispose()
@@ -86,7 +86,7 @@ describe('Backend external connector registry ownership', () => {
   })
 
   it('an old disposer or quiesce callback cannot clear the new generation', async () => {
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     const a = registry.bindExternalAgentConnectors()
     await a.ready
     registry.getExternalAgentConnectors()
@@ -106,7 +106,7 @@ describe('Backend external connector registry ownership', () => {
     const gate = deferred()
     const entered = deferred()
     mocks.disposeWork = async () => { entered.resolve(); await gate.promise }
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     const a = registry.bindExternalAgentConnectors()
     await a.ready
     registry.getExternalAgentConnectors()
@@ -128,7 +128,7 @@ describe('Backend external connector registry ownership', () => {
   it('preserves a failed owner and its first disposal error instead of silently replacing it', async () => {
     const error = new Error('accepted writer failed')
     mocks.disposeWork = async () => { throw error }
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     const a = registry.bindExternalAgentConnectors()
     await a.ready
     registry.getExternalAgentConnectors()
@@ -143,7 +143,7 @@ describe('Backend external connector registry ownership', () => {
     const gate = deferred()
     const entered = deferred()
     mocks.disposeWork = async () => { entered.resolve(); await gate.promise }
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     registry.getExternalAgentConnectors()
     const oldClosing = registry.disposeExternalAgentConnectors()
     const next = registry.bindExternalAgentConnectors()
@@ -170,7 +170,7 @@ describe('Backend external connector registry ownership', () => {
   it('keeps the new owner observable when legacy disposal fails during ready', async () => {
     const error = new Error('legacy child failed to close')
     mocks.disposeWork = async () => { throw error }
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     registry.getExternalAgentConnectors()
     const next = registry.bindExternalAgentConnectors()
     await expect(next.ready).rejects.toBe(error)
@@ -181,7 +181,7 @@ describe('Backend external connector registry ownership', () => {
   })
 
   it('honors synchronous Backend admission closure before phased disposal starts', async () => {
-    const registry = await import('../connector-registry.js')
+    const registry = await import('../external-agent-connector-registry.js')
     let active = true
     const owner = registry.bindExternalAgentConnectors({ isAccepting: () => active })
     await owner.ready

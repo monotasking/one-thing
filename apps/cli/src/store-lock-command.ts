@@ -3,7 +3,7 @@ import {
   inspectStoreLock,
   quarantineStoreLockForRecovery,
   type StoreLockIdentity,
-} from '@onething/backend/storage/store-lock'
+} from '@onething/backend/storage/storage-store-lock'
 import { stdout } from './stdout.js'
 
 type Flags = Readonly<Record<string, string | boolean>>

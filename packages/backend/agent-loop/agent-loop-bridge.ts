@@ -1,6 +1,6 @@
 import { runAgentLoop } from './agent-loop-runner.js'
-import { agentEventsToProviderStreamChunks, type AgentProviderStreamChunk } from './provider-stream.js'
-import { AgentEventQueue } from './stream.js'
+import { agentEventsToProviderStreamChunks, type AgentProviderStreamChunk } from './agent-loop-provider-stream.js'
+import { AgentEventQueue } from './agent-loop-stream.js'
 import type {
   AgentLoopOptions,
   AgentLoopResult,

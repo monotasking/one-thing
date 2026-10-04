@@ -19,16 +19,16 @@
 import {
   PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
   PLUGIN_PERMISSION_LLM_COMPLETE,
-} from './llm.js'
+} from './plugin-llm.js'
 import {
   PLUGIN_DEEPLINK_HANDLE_PERMISSION_NOTE,
   PLUGIN_PERMISSION_DEEPLINK_HANDLE,
-} from './deep-link.js'
+} from './plugin-deep-link.js'
 import {
   PLUGIN_CREDENTIAL_STRATEGY_PERMISSION_NOTE,
   PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
-} from './credential-strategy.js'
-import { PLUGIN_RESOURCE_PERMISSION_NOTES } from './resources.js'
+} from './plugin-credential-strategy.js'
+import { PLUGIN_RESOURCE_PERMISSION_NOTES } from './plugin-resources.js'
 
 /* ── 声明门(manifest contributes.permissions)───────────────────────────── */
 
@@ -63,16 +63,16 @@ export const PLUGIN_SESSION_PERMISSION_NOTES: Record<PluginSessionPermission, st
 /* ── 发送前拦截(N2)的声明门 ─────────────────────────────────────────────── */
 
 /**
- * 这两个常量住在**这个文件**而不是 `input-intercept.ts`,原因是依赖形状:
+ * 这两个常量住在**这个文件**而不是 `plugin-input-intercept.ts`,原因是依赖形状:
  *
  *  - 本文件是一个**零依赖叶子**,渲染层直接按子路径引它
  *    (`@onething/backend/plugin/sessions`)来渲染装前披露;
- *  - `input-intercept.ts` 要 `runWithPluginTimeout` / policy 表,把它拉进
+ *  - `plugin-input-intercept.ts` 要 `runWithPluginTimeout` / policy 表,把它拉进
  *    渲染层的包只为了一句英文文案是不值的。
  *
  * 于是本文件事实上是**插件权限的词汇表 + 披露口径**(`describePluginPermission`
  * 早就在这里),新权限加在这里,UI 一行不用改就把它念给用户听 ——
- * "宿主判了、界面没说"的漂移在结构上不成立。`input-intercept.ts` 原样再导出
+ * "宿主判了、界面没说"的漂移在结构上不成立。`plugin-input-intercept.ts` 原样再导出
  * 这两个名字,读那边代码的人不必跳文件。
  */
 
@@ -132,10 +132,10 @@ export const PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE =
 /**
  * `storage:external-root` —— 插件读写**用户亲手指定的一个目录**。
  *
- * 常量住这个文件而不是 `storage-files.ts`,理由与 `input:intercept` 逐字相同:
+ * 常量住这个文件而不是 `plugin-storage-files.ts`,理由与 `input:intercept` 逐字相同:
  * 那边要 `node:fs`,而本文件是渲染层直接按子路径引的**零依赖叶子**
  * (`@onething/backend/plugin/sessions`)。为了一句英文文案把 fs 拖进渲染包是不值的。
- * `storage-files.ts` 原样再导出这两个名字,读那边代码的人不必跳文件。
+ * `plugin-storage-files.ts` 原样再导出这两个名字,读那边代码的人不必跳文件。
  *
  * 敏感度:与家目录(宿主发的草稿纸,卸载即回收)**不是一个量级** —— 外部根里
  * 是用户自己的文件,他会亲手编辑、用别的工具打开、git 提交。所以它必须是一道

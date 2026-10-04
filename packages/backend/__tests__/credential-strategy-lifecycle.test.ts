@@ -76,8 +76,8 @@ async function seedUsage(tokens: number) {
 async function bindings() {
   const registry = await import('../credentials/credentials-strategy.js')
   const credentials = await import('../credentials/credentials-pool.js')
-  const health = await import('@onething/backend/plugin/health')
-  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
+  const health = await import('@onething/backend/plugin/plugin-health')
+  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
   registry.configureAppPluginCredentialStrategyHost()
   const choose = () => credentials.selectSpaceCredentialEntryDetailed(
     { entries: candidates, policy }, { spaceId: input.spaceId, providerId: input.providerId },

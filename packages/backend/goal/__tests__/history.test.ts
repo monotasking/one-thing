@@ -11,7 +11,7 @@
  * the point is the real read/write round trip through a stand-in session store.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../session/testing/session-testing-facade-mock.js'
 import type { SessionGoal } from '@onething/backend/goal'
 
 interface StoredSession {
@@ -42,8 +42,8 @@ const mocks = vi.hoisted(() => {
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../session/reads.js', () => import('../../session/testing/facade-mock.js'))
-vi.mock('../../session/session-commands.js', () => import('../../session/testing/facade-mock.js'))
+vi.mock('../../session/session-reads.js', () => import('../../session/testing/session-testing-facade-mock.js'))
+vi.mock('../../session/session-commands.js', () => import('../../session/testing/session-testing-facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('@onething/backend/session', async importOriginal => ({
@@ -73,11 +73,11 @@ vi.mock('@onething/backend/event', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 
-vi.mock('../file-change-collector.js', () => ({
+vi.mock('../goal-file-change-collector.js', () => ({
   collectGoalFileChanges: mocks.collectGoalFileChanges,
 }))
 
-vi.mock('@onething/backend/current.js', () => ({ getCurrentBackendInstance: () => ({
+vi.mock('@onething/backend/backend-current.js', () => ({ getCurrentBackendInstance: () => ({
   runTask: (_label: string, run: () => Promise<unknown>) => {
     const task = Promise.resolve().then(run)
     mocks.tasks.add(task)
@@ -110,12 +110,12 @@ function stored(): StoredSession {
   return session
 }
 
-// The completion path reaches file-changes.js through a lazy dynamic import.
+// The completion path reaches goal-file-changes.js through a lazy dynamic import.
 // Resolving that module graph the first time costs seconds — enough to blow a
 // per-test timeout — so pay it once, up front, rather than inside whichever
 // test happens to complete a goal first.
 beforeAll(async () => {
-  await import('../file-change-collector.js')
+  await import('../goal-file-change-collector.js')
 })
 
 function expectFileChanges(changes: FileChange[]): void {
@@ -290,7 +290,7 @@ describe('fileChanges backfill', () => {
     seedSession()
     createGoal(SESSION, { objective: 'x' })
     updateGoalFromModel(SESSION, 'complete', 'done')
-    // Generous timeout: the enrichment lazily dynamic-imports file-changes.js,
+    // Generous timeout: the enrichment lazily dynamic-imports goal-file-changes.js,
     // and the very first import in the process pays the module load.
     await vi.waitFor(() => expect(getGoals(SESSION)[0]?.fileChanges).toBeDefined(), { timeout: 5000 })
 

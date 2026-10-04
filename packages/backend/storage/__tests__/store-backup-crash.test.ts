@@ -5,8 +5,8 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
 import { expect, it } from 'vitest'
-import { createStoreBackup, restoreStoreBackup, verifyStoreBackup, STORE_RESTORE_PENDING } from '../store-backup.js'
-import { inspectStoreLock, quarantineStoreLockForRecovery } from '../store-lock.js'
+import { createStoreBackup, restoreStoreBackup, verifyStoreBackup, STORE_RESTORE_PENDING } from '../storage-store-backup.js'
+import { inspectStoreLock, quarantineStoreLockForRecovery } from '../storage-store-lock.js'
 
 it.each(['copied-file', 'before-complete', 'after-complete'] as const)('preserves restore barriers when a real child dies at %s', { timeout: 20000 }, async phase => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'store-restore-crash-'))

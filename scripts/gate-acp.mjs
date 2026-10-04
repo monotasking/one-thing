@@ -113,7 +113,7 @@ const AUTH_AGENT_ID = 'fake-auth'
 const CRASH_AGENT_ID = 'fake-crash'
 /** ⑳㉑ 用的第五台:自报 list / fork / load,目录里预置两条带历史的会话。 */
 const REMOTE_AGENT_ID = 'fake-remote'
-/** 退避那句话里一定有的几个字(`acp/reconnect-backoff.ts` 的 `acpReconnectRefusal`)。 */
+/** 退避那句话里一定有的几个字(`acp/acp-reconnect-backoff.ts` 的 `acpReconnectRefusal`)。 */
 const BACKOFF_REFUSAL = 'automatic reconnect is paused'
 /** ⑯ 的无人应答超时(毫秒);⑪–⑭ 门答卡远快于它。 */
 const UNANSWERED_TIMEOUT_MS = 2000

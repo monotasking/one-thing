@@ -6,4 +6,4 @@
  * 那一半」,也就是认识 `EventBus` 的那一件。
  */
 
-export { createEventBusTerminalBroadcaster } from './bus-broadcaster.js'
+export { createEventBusTerminalBroadcaster } from './terminal-bus-broadcaster.js'

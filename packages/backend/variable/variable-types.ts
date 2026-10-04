@@ -12,7 +12,7 @@ export type VariableScope = 'global' | 'session' | 'agent' | 'project'
  * Value type of a custom variable. `value` always holds the canonical string
  * serialization — scalars as plain text, collections as compact JSON — and
  * writes are validated/normalized against the declared type
- * (see typed-values.ts). 'set' is a list with unique elements.
+ * (see variable-typed-values.ts). 'set' is a list with unique elements.
  */
 export type VariableType = 'string' | 'number' | 'bool' | 'list' | 'map' | 'set'
 

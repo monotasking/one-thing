@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ACPSettings, AcpAgentDetect, AcpAgentManifest } from '@shared/contracts/acp'
 
 const warns = vi.hoisted(() => [] as Array<{ msg: string; fields?: unknown }>)
-vi.mock('@onething/backend/logging/configure-logging', () => {
+vi.mock('@onething/backend/logging/logging-configure', () => {
   const logger = {
     ns: 'test', trace() {}, debug() {}, info() {}, error() {}, fatal() {},
     warn(msg: string, fields?: unknown) { warns.push({ msg, fields }) },

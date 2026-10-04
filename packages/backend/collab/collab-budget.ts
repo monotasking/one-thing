@@ -13,9 +13,9 @@ import {
 } from '@onething/backend/collab'
 import * as store from '@onething/backend/session'
 import { getUsageLedger } from '@onething/backend/usage/usage-recorder'
-import { loadCollabBoard } from './board-store.js'
-import { postSystemLine } from './room-runtime.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { loadCollabBoard } from './collab-board-store.js'
+import { postSystemLine } from './collab-room-runtime.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('collab.budget')
 

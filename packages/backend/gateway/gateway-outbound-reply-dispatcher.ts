@@ -1,12 +1,12 @@
 import type { ChatMessage, ChannelReplyDeliveryRecord, MessageOrigin } from '@shared/ipc.js'
-import type { EventBus } from '@onething/backend/event/session-event-bus'
+import type { EventBus } from '@onething/backend/event/event-session-bus'
 import { getOnethingStorePath } from '@onething/backend/storage'
 import { createChannelReplyDeliveryStore } from './gateway-channel-identity-store.js'
 import { sendIMReply } from '@onething/backend/plugin'
-import { writeAppLog } from '@onething/backend/logging/configure-logging'
+import { writeAppLog } from '@onething/backend/logging/logging-configure'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('channel.outbound')
 

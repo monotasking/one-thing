@@ -12,7 +12,7 @@
  * (U+200B)。它们看不见是有意的:归一化那两条用例要的正是真输入,不是转义串。
  */
 
-import type { DocPayload } from '../../feed.js'
+import type { DocPayload } from '../../search-kernel-feed.js'
 
 export const CAP_A = 'alpha'
 export const CAP_B = 'beta'

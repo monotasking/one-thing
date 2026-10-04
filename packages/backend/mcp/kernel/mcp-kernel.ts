@@ -2,7 +2,7 @@
 export { HeadlessMCPManager } from './mcp-kernel-manager.js'
 export {
   CoreMCPBridgeRuntime,
-} from './bridge-runtime.js'
+} from './mcp-kernel-bridge-runtime.js'
 export {
   CoreMCPToolIdRegistry,
   LEGACY_MCP_ROUTER_TOOL_ID,
@@ -10,7 +10,7 @@ export {
   isMCPRouterToolId,
   isMCPToolId,
   sanitizeMCPToolName,
-} from './tool-id-registry.js'
+} from './mcp-kernel-tool-id-registry.js'
 export {
   buildMCPToolsCatalog,
   buildMCPToolsForAI,
@@ -28,10 +28,10 @@ export {
   resolveMCPRouterAction,
   resolveMCPRouterReference,
   withMCPResultOutputText,
-} from './router.js'
+} from './mcp-kernel-router.js'
 export {
   normalizeMCPContent,
-} from './content.js'
+} from './mcp-kernel-content.js'
 export {
   createMCPServerState,
   connectMCPClientWithAdapters,
@@ -68,10 +68,10 @@ export {
   setMCPServerStatus,
   updateMCPClientConfigWithAdapters,
   withMCPTimeout,
-} from './client-state.js'
+} from './mcp-kernel-client-state.js'
 export {
   CoreMCPClientRuntime,
-} from './client-runtime.js'
+} from './mcp-kernel-client-runtime.js'
 export {
   jsonSchemaDefault,
   jsonSchemaDescription,
@@ -81,7 +81,7 @@ export {
   mcpToolToCoreToolDefinition,
   planJsonSchemaValidation,
   planMCPInputSchemaValidation,
-} from './tool-definition.js'
+} from './mcp-kernel-tool-definition.js'
 export type {
   MCPClientFactory,
   MCPClientLike,
@@ -90,11 +90,11 @@ export type {
   CoreMCPBridgeRuntimeHost,
   WriteMCPToolsCatalogWithAdaptersOptions,
   WriteMCPToolsCatalogWithAdaptersResult,
-} from './bridge-runtime.js'
+} from './mcp-kernel-bridge-runtime.js'
 export type {
   MCPToolIdentity,
   MCPToolIdRegistryOptions,
-} from './tool-id-registry.js'
+} from './mcp-kernel-tool-id-registry.js'
 export type {
   MCPFunctionRef,
   MCPModelFacingToolDefinition,
@@ -111,14 +111,14 @@ export type {
   MCPToolExposureMode,
   MCPRouterInput,
   MCPToolsCatalogOptions,
-} from './router.js'
+} from './mcp-kernel-router.js'
 export type {
   CoreMCPToolDefinition,
   CoreMCPJsonSchemaValidationKind,
   CoreMCPJsonSchemaValidationPlan,
   CoreMCPToolParameter,
   CoreMCPToolParameterType,
-} from './tool-definition.js'
+} from './mcp-kernel-tool-definition.js'
 export type {
   RawMCPPrompt,
   RawMCPResource,
@@ -139,11 +139,11 @@ export type {
   UpdateMCPClientConfigAdapters,
   UpdateMCPClientConfigResult,
   UpdateMCPClientConfigWithAdaptersOptions,
-} from './client-state.js'
+} from './mcp-kernel-client-state.js'
 export type {
   CoreMCPClientRuntimeAdapters,
   CoreMCPClientRuntimeOptions,
-} from './client-runtime.js'
+} from './mcp-kernel-client-runtime.js'
 export {
   MCP_TASK_DEFAULT_INTERVAL_MS,
   MCP_TASK_DEFAULT_TIMEOUT_MS,
@@ -153,10 +153,10 @@ export {
   mcpTaskIsTerminal,
   mcpTaskProvenanceText,
   pollMCPTaskWithAdapters,
-} from './tasks.js'
+} from './mcp-kernel-tasks.js'
 export type {
   CoreMCPTask,
   CoreMCPTaskHandle,
   CoreMCPTaskPollOutcome,
   CoreMCPTaskStatus,
-} from './tasks.js'
+} from './mcp-kernel-tasks.js'

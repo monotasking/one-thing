@@ -1,7 +1,7 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { EventBase } from '@onething/backend/event/bus-primitives'
+import type { EventBase } from '@onething/backend/event/event-bus-primitives'
 import type { StreamChunkBase, StreamDeltaStamp } from '@shared/events/stream-chunks.js'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
 import type { JsonObject } from '@shared/json.js'
 import type { CoreIPCEmitter, CoreReasoningPlacement } from './agent-loop-ipc-emitter.js'
 import type { CoreToolArgsFinalizedBy } from './agent-loop-stream-processor.js'
@@ -136,7 +136,7 @@ export interface CreateCoreEventOnlyEmitterOptions<
    * **这条 delta 的账本身份章**(R 线 R1)。
    *
    * 口在这里、产地不在这里:章由引擎侧给打包行编号的那台机器铸好之后交到台面上
-   * (`backend/event/delta-stamp.ts`),发射器只按 `(kind, 这条 delta 的原文)`
+   * (`backend/event/event-delta-stamp.ts`),发射器只按 `(kind, 这条 delta 的原文)`
    * 去取。**对不上就不盖** —— 没走过那台机器的正文(重放 / 生图这类旁路)拿不到
    * 章,老行为逐字不变;宁可缺一枚章,不肯盖一枚错的。
    */

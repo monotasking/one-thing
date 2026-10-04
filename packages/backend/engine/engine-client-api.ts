@@ -55,14 +55,14 @@ import {
   listOnethingActiveStreamsForIpc,
   updateOnethingMessageThinkingTimeForIpc,
 } from '@onething/backend/session'
-import { emitCoreSessionEventSafely } from '@onething/backend/event/bus-primitives'
+import { emitCoreSessionEventSafely } from '@onething/backend/event/event-bus-primitives'
 import { chatRouter, type ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/session'
 import { getEventBus } from '@onething/backend/event'
 import { currentSessionRun } from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
-import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/collab/rooms'
-import { getStreamEngine } from '@onething/backend/current.js'
+import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/collab/collab-rooms'
+import { getStreamEngine } from '@onething/backend/backend-current.js'
 import {
   buildSystemPromptSnapshot,
   generateChatTitle,
@@ -70,16 +70,16 @@ import {
   isProviderSupported,
   resolveProviderAuth,
 } from '@onething/backend/engine'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
-import { billTitleUsage } from '@onething/backend/usage/bill-side-line'
+import { billTitleUsage } from '@onething/backend/usage/usage-bill-side-line'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { requestSessionOwner, sessionAccess } from '@onething/backend/session'
 import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/backend/session'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/backend/session'
-import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/prompt/prompt-system-prompt-snapshot'
+import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/prompt/prompt-system-snapshot'
 import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/backend/session'
 import type { OnethingAuthAccount } from '@onething/backend/auth/auth-types'
 import type { ProviderConfig, OAuthToken, ChatSession } from '@shared/ipc.js'

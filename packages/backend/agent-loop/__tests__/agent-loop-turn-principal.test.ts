@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { principalId } from '@shared/permission/principal'
-import { configureCollabDriveGuard, isTrustedCollabDrive } from '../../collab/drive-guard.js'
+import { configureCollabDriveGuard, isTrustedCollabDrive } from '../../collab/collab-drive-guard.js'
 import { mintTurnPrincipal as mintWithProver } from '../agent-loop-turn-principal.js'
 import type { EngineMessageOrigin } from '../agent-loop-engine-ports.js'
 

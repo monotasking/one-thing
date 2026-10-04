@@ -330,7 +330,7 @@ export interface RoomConfig {
     maxConcurrentTurns?: number
   }
   /**
-   * 每位同事看这间房时的**视野**配置(collab/history-window.ts)。
+   * 每位同事看这间房时的**视野**配置(collab/collab-history-window.ts)。
    *
    * 与 budgets 分开:那一格是花钱的闸(超了就拒),这一格是"给模型看多少",
    * 两者撞不到一起,而混在一个对象里迟早有人把「省钱」和「省上下文」当成同一件事。
@@ -431,7 +431,7 @@ export interface CollabWorkRef {
    * 收尾正文,已由框架代发进群,这是那条消息的 id。
    *
    * 存在的理由是一条视野盲区:被收养的消息署作者本人的名,而"自己的消息永不
-   * 进未读"(collab/history-window.ts)+「增量 drive 只带未读」= 作者永远读不到
+   * 进未读"(collab/collab-history-window.ts)+「增量 drive 只带未读」= 作者永远读不到
    * 它,于是它以为那段话还压在手里。下一次 drive 组装时读走这个字段、渲染一行
    * 事实回声,然后**清掉** —— 说一次就够,回声本身落进 drive 消息成为历史。
    */
@@ -570,7 +570,7 @@ export interface ChatMessage {
    *
    * 跨房私聊注入(`send_message` 带 `to`)与 wake poke 打这个标:它们的由头来自
    * 另一间房的一个回合,对这间房而言是新的外部输入 —— 与人类插话同语义。live
-   * 侧本来就就地清零,这个标记是它**可重放**的那一半:boot 重算(collab/chain.ts)
+   * 侧本来就就地清零,这个标记是它**可重放**的那一半:boot 重算(collab/collab-chain.ts)
    * 认它作清零边界,否则没有人类在场的 agent ⇄ agent 房重启后必然顶格冻死。
    * 缺席 = 普通消息(旧转录零迁移)。
    */
@@ -681,7 +681,7 @@ export interface SessionMeta {
    * 与 `previewText`(**第一条**用户消息)并列的另一格,不是它的替代:一个是
    * "从哪句话开的",一个是"最近说到哪儿"。写侧与 `updatedAt` 同刻维护,所以
    * 会话列表读仍然只是一次索引元数据读;存量会话由**启动后的一趟后台回填**
-   * 补上(E2,`backend/session/list-projection-backfill.ts`)—— E 批那句"不做
+   * 补上(E2,`backend/session/session-list-projection-backfill.ts`)—— E 批那句"不做
    * 启动期全量回填"只对还在长的库成立,对存量库等于这一格不存在。
    */
   lastMessagePreview?: string

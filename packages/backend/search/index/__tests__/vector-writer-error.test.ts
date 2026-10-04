@@ -2,7 +2,7 @@
  * 「语义召回为什么关回去了」这句话的产地(2026-09-17)。
  *
  * 设置页在这之前只会写「没跑起来。原因在日志里」,而日志那一半当时是假的
- * (`worker-logging.test.ts` 的文件头)。
+ * (`search-index-worker-logging.test.ts` 的文件头)。
  *
  * **R12 改口:后端只答码 + 原话**(同日晚)。第一版在这里拼了一句中文前缀「下载模型
  * 失败(检查网络代理):」—— 那是后端替壳写文案,英文界面上就是一句中文。所以这里判的
@@ -18,7 +18,7 @@ import {
   VECTOR_ERROR_MAX_LENGTH,
   VectorWriter,
   describeEmbedderFailure,
-} from '../vector-writer.js'
+} from '../search-index-vector-writer.js'
 
 describe('describeEmbedderFailure', () => {
   it('① 网络类:判据是错误链里真的有那几个字,而且原话一个字不加', () => {

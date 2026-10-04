@@ -1,7 +1,7 @@
 import { MediaLibraryService, type OnethingMediaLibraryPaths } from '@onething/backend/media'
 import type { RuntimeMediaAdapter, RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import type { SessionAccess } from '@onething/backend/session'
-import { mediaFileNameOf, resolveMediaFileByName } from '@onething/backend/media/resolve-file'
+import { mediaFileNameOf, resolveMediaFileByName } from '@onething/backend/media/media-resolve-file'
 
 export interface ServerMediaDeliveryPorts {
   defaultContext(): RuntimeRequestContext
@@ -25,7 +25,7 @@ export function createServerMediaDelivery(ports: ServerMediaDeliveryPorts) {
       const key = ports.ownerKey(context)
       let service = services.get(key)
       if (!service) { service = new MediaLibraryService(ports.libraryPaths(context)); services.set(key, service) }
-      // 按名找路径的判据只在 `media/resolve-file.ts` 一处(G 线 §23.2),RPC 的
+      // 按名找路径的判据只在 `media/media-resolve-file.ts` 一处(G 线 §23.2),RPC 的
       // `media.readFile` 调的是同一只函数;这里只负责「查哪几本库、按什么顺序」。
       const libraries = [ports.sharedLibrary, service].filter((value): value is MediaLibraryService => !!value)
       const found = resolveMediaFileByName(libraries, ports.access, context, input)

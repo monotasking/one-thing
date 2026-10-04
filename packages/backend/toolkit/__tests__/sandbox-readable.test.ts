@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { SandboxPolicy } from '@onething/backend/toolkit/tool-protocol'
+import type { SandboxPolicy } from '@onething/backend/toolkit/toolkit-tool-protocol'
 
 const previousStorePath = process.env.ONETHING_STORE_PATH
 const storeRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-sandbox-readable-')))
@@ -42,19 +42,19 @@ fs.writeFileSync(
 let policy: SandboxPolicy
 
 beforeAll(async () => {
-  const runtime = await import('@onething/backend/tool/sandbox-runtime')
+  const runtime = await import('@onething/backend/tool/tool-sandbox-runtime')
   runtime.resetOnethingToolSandboxRuntimeForTests()
   runtime.configureOnethingToolSandboxRuntime({
     getDefaultWorkingDirectory: () => workDir,
     getNoteDirectories: () => [noteDir],
     getHostPath: name => (name === 'downloads' ? downloadsDir : undefined),
   })
-  const { createSandboxPolicy } = await import('../runner-factory.js')
+  const { createSandboxPolicy } = await import('../toolkit-runner-factory.js')
   policy = createSandboxPolicy()
 })
 
 afterAll(async () => {
-  const runtime = await import('@onething/backend/tool/sandbox-runtime')
+  const runtime = await import('@onething/backend/tool/tool-sandbox-runtime')
   runtime.resetOnethingToolSandboxRuntimeForTests()
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath

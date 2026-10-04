@@ -38,7 +38,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-resource-mcp-'
 process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('../backend-current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
@@ -209,7 +209,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
     }
 
     // ④ 关机之后回到「未登记」。
-    const { getCurrentBackendSafe } = await import('../current.js')
+    const { getCurrentBackendSafe } = await import('../backend-current.js')
     expect(getCurrentBackendSafe()).toBeNull()
   })
 })

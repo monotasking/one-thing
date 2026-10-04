@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { LexicalQuery } from '../index/search-kernel-index-types.js'
-import { compositeAnalyzer } from '../analyzer/composite.js'
+import { compositeAnalyzer } from '../analyzer/search-kernel-analyzer-composite.js'
 import {
   DEFAULT_NORMALIZERS,
   cjkPunctuationNormalizer,
@@ -16,12 +16,12 @@ import {
   composeNormalizers,
   nfkcNormalizer,
   stripZeroWidthNormalizer,
-} from '../analyzer/normalize.js'
-import { MemoryIndex } from '../index/memory-index.js'
+} from '../analyzer/search-kernel-analyzer-normalize.js'
+import { MemoryIndex } from '../index/search-kernel-memory-index.js'
 import { createDefaultAnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
-import { PREFIX_EXPANSION_LIMIT, createPrefixExpander, expandTerm } from '../pipeline/expand.js'
-import { createCursorCodec, hashQueryShape } from '../cursor.js'
-import { OFFSET_CURSOR_KIND, readOffsetCursor } from '../pipeline/page.js'
+import { PREFIX_EXPANSION_LIMIT, createPrefixExpander, expandTerm } from '../pipeline/search-kernel-pipeline-expand.js'
+import { createCursorCodec, hashQueryShape } from '../search-kernel-cursor.js'
+import { OFFSET_CURSOR_KIND, readOffsetCursor } from '../pipeline/search-kernel-pipeline-page.js'
 import { CAP_A, CORPUS_NOW, corpusDocuments } from './unit-fixtures/corpus.js'
 import { DEFAULT_SCHEMA, buildIndex } from './unit-fixtures/harness.js'
 

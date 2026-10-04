@@ -59,8 +59,8 @@
  */
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import { ACPManager } from '@onething/backend/acp'
-import { MCPManager, registerMCPTools } from '@onething/backend/mcp/index-with-bridge'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
+import { MCPManager, registerMCPTools } from '@onething/backend/mcp/mcp-index-with-bridge'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import {
   getOnethingSettingsForIpc,
   getOnethingSystemThemeForIpc,
@@ -75,8 +75,8 @@ import {
 } from './settings-client-api-projection.js'
 import { invalidateProviderCache } from '@onething/backend/provider'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { getGatewayHost } from '@onething/backend/gateway/lifecycle-port'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { getGatewayHost } from '@onething/backend/gateway/gateway-lifecycle-port'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { broadcastSettingsChanged } from '@onething/backend/settings/settings-events'
 import {
   applyHostNetworkProxySettings,

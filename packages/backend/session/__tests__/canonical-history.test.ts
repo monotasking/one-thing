@@ -11,7 +11,7 @@
  * 缝钉死。
  */
 import { describe, expect, it } from 'vitest'
-import { canonicalHistoryMessages } from '../projection/canonical.js'
+import { canonicalHistoryMessages } from '../projection/session-projection-canonical.js'
 
 function toolResultHistory(result: unknown): unknown[] {
   return [

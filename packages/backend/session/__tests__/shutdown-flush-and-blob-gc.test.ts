@@ -25,19 +25,19 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-const { flushAllSessionEventLogs, flushSessionEventLedger, flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache, SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS } = await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
+const { flushAllSessionEventLogs, flushSessionEventLedger, flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache, SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS } = await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
 const {
   getSessionShadowStatsPath,
   resetSessionEventStatsCache,
-} = await import('../event-stats.js')
-const { putSessionBlob } = await import('../blob-store.js')
+} = await import('../session-event-stats.js')
+const { putSessionBlob } = await import('../session-blob-store.js')
 const {
   runSessionBlobGc,
   scanSessionBlobGc,
   scheduleSessionBlobGcOnStartup,
   SESSION_BLOB_ORPHAN_DIRNAME,
-} = await import('../blob-gc.js')
+} = await import('../session-blob-gc.js')
 
 beforeEach(() => {
   expectedPersistenceFailure = false
@@ -295,7 +295,7 @@ describe('session blob GC (§15.12 B1)', () => {
    * 的 `getTimerCount()` 看得见 unref 定时器,所以泄漏判据挪到这里,由每个起
    * 定时器的模块自己钉。
    *
-   * 反证(实跑过):把 `blob-gc.ts` 里 `return () => clearTimeout(timer)` 换成
+   * 反证(实跑过):把 `session-blob-gc.ts` 里 `return () => clearTimeout(timer)` 换成
    * `return () => {}` → 最后一句 `toBe(0)` 红(`expected 1 to be +0`)。
    */
   it('C0 R3:cancel 之后不留定时器(unref 的也算)', () => {

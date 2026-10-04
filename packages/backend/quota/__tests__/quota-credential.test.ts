@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const refreshed = vi.hoisted(() => [] as unknown[])
 
-vi.mock('../../auth/process-auth-service.js', () => ({
+vi.mock('../../auth/auth-process-service.js', () => ({
   getAuthService: () => ({
     refreshTokenIfNeeded: async (_providerId: string, target: { spaceId: string; entryId?: string }) => {
       refreshed.push(target)

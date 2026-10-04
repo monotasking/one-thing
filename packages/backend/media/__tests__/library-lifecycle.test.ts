@@ -4,7 +4,7 @@ import path from 'node:path'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { expect, it } from 'vitest'
-import { MediaLibraryService, configureMediaLibraryService, mediaLibraryService } from '../library-service-bound.js'
+import { MediaLibraryService, configureMediaLibraryService, mediaLibraryService } from '../media-library-service-bound.js'
 
 it('drains the actual download and never redirects an old bound operation into a replacement library', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-lifetime-'))

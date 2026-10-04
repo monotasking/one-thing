@@ -3,7 +3,7 @@ import { createDefaultSettings } from '../../settings/defaults/settings-factory-
 import { streamSynthesizeOnethingSpeech } from '../voice-providers.js'
 
 const sockets = vi.hoisted(() => ({ created: [] as Array<{ closed: boolean }> }))
-vi.mock('../volcano/tts-session.js', () => ({
+vi.mock('../volcano/voice-volcano-tts-session.js', () => ({
   getOnethingDoubaoTTSMimeType: () => 'audio/mpeg',
   OnethingDoubaoTTSConnection: class {
     closed = false

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import type { TurnBlock } from "@onething/backend/agent-loop";
-import { buildOnethingSystemPrompt, buildOnethingPrompt } from "../builder.js";
+import { buildOnethingSystemPrompt, buildOnethingPrompt } from "../prompt-builder.js";
 import { testPromptComposer } from "./fixtures/tool-prompts.js";
 import {
 	scenarios,
@@ -14,7 +14,7 @@ import {
 	initPromptVersion,
 	getPromptVersion,
 	computeStaticPromptVersion,
-} from "../../eval/fixture.js";
+} from "../../eval/eval-fixture.js";
 
 const GOLDEN_DIR = path.resolve(__dirname, "golden");
 const BUDGET_PATH = path.join(GOLDEN_DIR, "_budget.json");
@@ -251,7 +251,7 @@ describe("prompt golden snapshots", () => {
 		}
 
 		// Verify sections produce stable hashes
-		const { hashSections } = await import("../../eval/section-hash.js");
+		const { hashSections } = await import("../../eval/eval-section-hash.js");
 		const hashes1 = hashSections(result.sections!);
 		const hashes2 = hashSections(result.sections!);
 		expect(hashes1.promptVersion).toBe(hashes2.promptVersion);

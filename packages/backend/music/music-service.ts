@@ -19,17 +19,17 @@ import { broadcastVoiceHostMessage } from '@onething/backend/voice/voice-host-po
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/settings'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
-import type { MusicSetupServiceOptions } from '@onething/backend/music/setup-service'
-import type { NowPlayingWatcherOptions } from '@onething/backend/music/now-playing'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import type { MusicSetupServiceOptions } from '@onething/backend/music/music-setup-service'
+import type { NowPlayingWatcherOptions } from '@onething/backend/music/music-now-playing'
 
 const log = getLogger('music')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
 const consoleLog = consolePort(log)
 
 
-import { MusicWorkOwner } from './lifetime.js'
-import { getCurrentBackend } from '@onething/backend/current.js'
+import { MusicWorkOwner } from './music-lifetime.js'
+import { getCurrentBackend } from '@onething/backend/backend-current.js'
 
 export function createMusicServiceScope(options: {
   storePath: string
@@ -236,7 +236,7 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
         payload: nowPlaying,
       })
       // 一个坏掉的观察者不该把这次推送撤销掉,也不该把 watcher 的这一拍炸掉
-      // (与 `now-playing.ts` 对 `onSample` 的处理、`ResourceEventHub.emit` 对监听器
+      // (与 `music-now-playing.ts` 对 `onSample` 的处理、`ResourceEventHub.emit` 对监听器
       // 的处理是同一句话)。
       try {
         options.onNowPlaying?.(nowPlaying)

@@ -498,7 +498,7 @@ export interface SessionMessagePatchedEventData {
    * 与 `patchMessage` 在**会话账**上的待遇不同:upsert 盖 `updatedAt`,patch 不盖
    * (`session/session-message-shapes.ts` 的两条分支)。两者的事件形状完全同构,所以
    * 事件上必须带一格**调用类别**——它是命令面亲知的事实(§13.8:可以记别人
-   * 说的话),而"盖不盖章"这条**策略**住在折叠器一处(`session/account.ts`)。
+   * 说的话),而"盖不盖章"这条**策略**住在折叠器一处(`session/session-account.ts`)。
    *
    * 不另起 `message/replaced` 事件种:形状同构,分种只多一个词汇分支。
    * **成对交付**(§10.16):老账本没有这一格 → 按 `patchMessage` 待遇不盖,

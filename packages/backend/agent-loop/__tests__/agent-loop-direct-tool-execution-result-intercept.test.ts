@@ -1,7 +1,7 @@
 /**
  * N5 —— **挂点**验收:工具结果改写与工具执行链的先后。
  *
- * 这一份不管链内部的两态(那在 `packages/backend/plugin/__tests__/tool-result-intercept.test.ts`),
+ * 这一份不管链内部的两态(那在 `packages/backend/plugin/__tests__/plugin-tool-result-intercept.test.ts`),
  * 只钉死挂点的几件事:
  *  1. 结果改写排在工具执行**之后**(analyze → permission → execute → resultIntercept);
  *  2. N5 只过工具**真正产出**的结果 —— N4 的 block、权限拒绝、用户 abort 都不进;

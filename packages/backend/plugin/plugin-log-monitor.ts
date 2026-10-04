@@ -16,7 +16,7 @@ import {
 } from '@onething/backend/plugin/plugin-contract'
 
 // Manifests are product data: the plugin's id/描述/作者只有产品层认识,
-// 插件内核只提供无名的日志监控原语(`log-monitor-primitives.ts`;守卫:runtime dirs and files merged
+// 插件内核只提供无名的日志监控原语(`plugin-log-monitor-primitives.ts`;守卫:runtime dirs and files merged
 // from core know no concrete plugin or feature names)。
 /**
  * schema 是这个插件配置的**唯一事实源**(R3 裁决:没有运行期 registerSettings)。
@@ -186,7 +186,7 @@ export function registerOnethingLogMonitorStatusDemo(
     name: 'scan_log_files',
     description: 'Scan the agent log directory and report per-file sizes.',
     parameters: z.object({}),
-    // R4b:`permissionGuard` 已退役,这里不再写它(见 plugin/log-monitor-primitives.ts)。
+    // R4b:`permissionGuard` 已退役,这里不再写它(见 plugin/plugin-log-monitor-primitives.ts)。
     async execute(_args, ctx) {
       const statusId = 'scan'
       api.status?.show(ctx.sessionId, { id: statusId, label: 'Scanning log files…' })

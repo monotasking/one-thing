@@ -4,9 +4,9 @@ import {
   buildTocPrompt,
   sampleHeadAndTail,
   shouldIncludeReasoning,
-} from '../input.js'
-import { isTrivialTurn, parseTocDecision } from '../decide.js'
-import { applyTurnDecision, openSegmentOf } from '../apply.js'
+} from '../toc-input.js'
+import { isTrivialTurn, parseTocDecision } from '../toc-decide.js'
+import { applyTurnDecision, openSegmentOf } from '../toc-apply.js'
 import type { SessionSegment } from '../toc-types.js'
 
 function segment(overrides: Partial<SessionSegment> & { id: string }): SessionSegment {

@@ -7,7 +7,7 @@
  * 折回这个域一直在答的那个信封**。规则书、端口、事件、那些只有音乐自己知道的分档
  * (电台开着时 `next` 走节目单而不是播放器队列、`like` 按 onDeck 走服务端、
  * 配置改完之后那台保活播放器该不该活着)全部搬进了
- * `resource/music-provider.ts` —— 于是界面点音乐条上那个按钮,与模型调
+ * `resource/resource-music-provider.ts` —— 于是界面点音乐条上那个按钮,与模型调
  * `music` 工具,走的是**同一台 `ToolRunner`**:同一份授权、同一条审计、同一个取消
  * 源(§2 不变量 2:「没有第二条路,界面点按钮也走它」)。
  *
@@ -77,7 +77,7 @@ import {
 } from '@shared/ipc/music.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import type { Outcome } from '@onething/backend/toolkit/tool-protocol'
+import type { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { ReadOutcome } from '@onething/backend/resource/resource-api'
 import {
   MUSIC_PLAYER_PATH,
@@ -86,9 +86,9 @@ import {
   MUSIC_RESOURCE_SCHEME,
 } from '@onething/backend/music/music-resource-spec'
 import { assertMusicOperator } from '@onething/backend/music/music-access'
-import { resolveDjSpeakDone } from '@onething/backend/music/dj-voice'
+import { resolveDjSpeakDone } from '@onething/backend/music/music-dj-voice'
 import { getMusicNowPlaying } from '@onething/backend/music/music-service'
-import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/current.js'
+import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
 import {
   foldOutcomeToDetailedEnvelope,
@@ -157,7 +157,7 @@ function fallbackTo(fallback: string) {
  *
  * 表按 `MusicCommand` **全表**打:词表里加一条而这里忘了配,是一个编译错而不是一次
  * 运行时的「未知的播放命令」。那句兜底只为**契约外**的调用方留着(它的另一个产地
- * 在 `music/operations.ts` 的 argv 表守卫上,那一条今天从 RPC 这一路已经够
+ * 在 `music/music-operations.ts` 的 argv 表守卫上,那一条今天从 RPC 这一路已经够
  * 不着了 —— 留账:两处一句话,等下一次真要改文案时收成一处)。
  */
 const COMMAND_OPS: Readonly<Record<MusicCommand, { op: string; path: string; valueKey?: string }>> = {

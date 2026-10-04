@@ -24,7 +24,7 @@ export {
   agentExecutorSelectionFromProviderId,
   resolveAgentExecutorSelection,
   type AgentExecutorSelectionSource,
-} from './selection.js'
+} from './agent-executor-selection.js'
 export {
   agentExecutorOwnsContextWindow,
   createExternalAgentExecutor,

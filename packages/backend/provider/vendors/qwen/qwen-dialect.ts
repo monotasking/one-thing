@@ -6,7 +6,7 @@
  */
 import type { UsagePathTable } from "../../base/provider-base.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../../wires/provider-wires.js";
-import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../dialects/recipe.js";
+import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "../../dialects/provider-dialects-recipe.js";
 import { ONETHING_QWEN_DEFAULT_BASE_URL } from "./qwen-endpoint.js";
 import { qwenThinkingWire } from "./qwen-thinking.js";
 

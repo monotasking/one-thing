@@ -10,7 +10,7 @@ import {
   refreshAllOnethingProviderModels,
   refreshOnethingProviderModels,
   type OnethingModelsDevResponse,
-} from '../model-registry.js'
+} from '../provider-model-registry.js'
 
 /** Four catalogs, each with a marker model that exists in it and nowhere else. */
 const MODELS_DEV: OnethingModelsDevResponse = {

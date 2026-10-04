@@ -3,11 +3,11 @@
  * 运行时工厂与余额源。方言在同目录 `dialect.ts`,数据在 `manifest.ts`。
  * 思考线型 `openrouter-reasoning` 留在 agent-loop(理由见 `dialect.ts` 的 import 处)。
  *
- * 由 `vendors/runtimes.ts` 登记;工厂里不再有「openrouter」这几个字。
+ * 由 `vendors/provider-vendor-runtimes.ts` 登记;工厂里不再有「openrouter」这几个字。
  */
 import { BearerApiKeyAuth } from "../../base/provider-base.js";
-import { createOpenAIChatProvider } from "../../dialects/recipe.js";
-import type { VendorRuntime } from "../runtimes.js";
+import { createOpenAIChatProvider } from "../../dialects/provider-dialects-recipe.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { OPENROUTER_DIALECT } from "./openrouter-dialect.js";
 import { openrouterQuotaSource } from "./openrouter-quota.js";
 

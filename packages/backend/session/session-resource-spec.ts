@@ -19,7 +19,7 @@
  *
  * ── 为什么没有 `send` ──────────────────────────────────────────────────────
  * 「往一条会话里发一条消息」在今天有两条真实通路,两条都不是一两行:协作那条
- * (`toolkit/builtin/send-message.ts` → `speakIntoCollabRoom`)**要求这条会话有房**
+ * (`toolkit/builtin/toolkit-builtin-send-message.ts` → `speakIntoCollabRoom`)**要求这条会话有房**
  * ——普通聊天会话调它得到的是 `COLLAB_SAY_REFUSED_NO_ROOM`;引擎那条
  * (`command:send-message`)带着「目标空闲就起一个回合 / 目标忙就降级成 steer /
  * 只投递不触发」的三态矩阵(插件 `api.sendMessage` 那一套)与一整套跳数与频率闸。
@@ -44,14 +44,14 @@
  *      多一次全量序列化往返,且 `undefined` 会在往返里消失;
  *   ③ 管线每跑完一次就落一条 `tool/audit`(无发起会话的那一档是**同步**
  *      `appendFileSync` 到 `<store>/audit/resource.jsonl`)—— 那本账的流量假设写在
- *      `toolkit/audit-sink.ts` 上:「人点一次按钮 / 一次调度」量级,不是
+ *      `toolkit/toolkit-audit-sink.ts` 上:「人点一次按钮 / 一次调度」量级,不是
  *      界面每翻一页、每刷一次读数。
  * 写面没有这三条(回执是 `{success}` 两三个字段,而按钮是人点的),所以第一批
  * 只退写面。读面要退,先要给「读」一条能装结构化值、且不进审计账的路 —— 那是
  * 一次机制拍板,不是一次接线,留账给 K2c-2。
  *
  * ── K2c-2:那次拍板做完了,读面这一批跟着退 ────────────────────────────────
- * `ResourceKernel.read` 不再走 `ToolRunner`(`resource/read-outcome.ts` 的文件头
+ * `ResourceKernel.read` 不再走 `ToolRunner`(`resource/resource-read-outcome.ts` 的文件头
  * 是那次修正的全文):读有自己的短路径、返回 `ReadOutcome`(`ok` 装的是**值**)、
  * 不落审计不吃预算。上面那三条硬伤因此一条不剩,`sessions` 域六条读面
  * (`get` / `getMessages` / `getMessagesPage` / `getUserMarkers` / `getSegments` /
@@ -835,7 +835,7 @@ export const sessionResourceSpec: ResourceSpec = {
      * 里存在与壳里有没有摆着它是两件事(§10.3「存在未打开」那一行)。
      *
      * 载荷带的是**这次真的删掉了哪几条**:删一条会话会级联到从它分出去的分支,而
-     * 「删除中」那一格(`session/deletion.ts` 的三相位)对同地址的并发做是**拒**
+     * 「删除中」那一格(`session/session-deletion.ts` 的三相位)对同地址的并发做是**拒**
      * (`SessionClosingError`),所以这一发到达时,名单上每一条都已经不在了。
      */
     deleted: {

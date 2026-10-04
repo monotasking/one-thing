@@ -5,7 +5,7 @@ import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
-import { inspectStoreLock } from '@onething/backend/storage/store-lock'
+import { inspectStoreLock } from '@onething/backend/storage/storage-store-lock'
 import { createDesktopShutdownRequest } from '../shutdown.js'
 
 let fixtureDirectory: string

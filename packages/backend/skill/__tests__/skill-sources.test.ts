@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getExternalSkillsPaths, getUserSkillsPath, loadAllSkills } from '../skill-sources.js'
-import { registerPluginSkillRootProvider } from '@onething/backend/skill/plugin-roots'
+import { registerPluginSkillRootProvider } from '@onething/backend/skill/skill-plugin-roots'
 import { configureAppSkillsLoader } from '../skill-sources.js'
 
 /**

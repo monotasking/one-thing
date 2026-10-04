@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let directory: string
 let previousStorePath: string | undefined
-let fixture: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
+let fixture: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>> | undefined
 let store: typeof import('../session-store.js')
 
 beforeEach(async () => {
@@ -14,7 +14,7 @@ beforeEach(async () => {
   process.env.ONETHING_STORE_PATH = directory
   vi.resetModules()
   store = await import('../session-store.js')
-  const { installStoreSessionLayerForTest } = await import('../testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../testing/session-testing-store-layer.js')
   fixture = await installStoreSessionLayerForTest()
 })
 

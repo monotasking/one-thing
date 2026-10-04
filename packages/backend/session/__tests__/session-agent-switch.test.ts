@@ -28,20 +28,20 @@ vi.mock('@onething/backend/storage', async () => {
 
 const { createSessionWithoutFocus, updateSessionAgent } = await import('../session-store.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } =
-  await import('../event-log.js')
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
+  await import('../session-event-log.js')
+const { resetSessionSurfaceCache } = await import('../session-event-surface.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
 const { foldSessionProjection, projectChatMessages } = await import('@shared/session/projection/chat-messages.js')
 
 const SESSION = '11111111-2222-4333-8444-555555555555'
-let fixture: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>>
+let fixture: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>>
 
 beforeEach(async () => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agent-switch-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
-  fixture = await (await import('../testing/store-layer.js')).installStoreSessionLayerForTest()
+  fixture = await (await import('../testing/session-testing-store-layer.js')).installStoreSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionEventStatsCache()
   resetSessionPrepareCache()

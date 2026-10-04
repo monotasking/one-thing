@@ -21,7 +21,7 @@ import {
   type NoteSystemState,
   type NoteVault,
 } from '../note-types.js'
-import type { ObsidianCli } from './cli.js'
+import type { ObsidianCli } from './note-obsidian-cli.js'
 import { ObsidianRegistry, vaultNameFromPath } from './note-obsidian-registry.js'
 import { resolveObsidianState } from './note-obsidian-state.js'
 import type { SnapshotStore } from './note-obsidian-snapshot.js'

@@ -1,7 +1,7 @@
 /**
- * 子进程夹具:被 `crash-hooks.test.ts` 用 `node <this>` 直接跑。
+ * 子进程夹具:被 `logging-crash-hooks.test.ts` 用 `node <this>` 直接跑。
  *
- * 它 import 的是 `../crash-hooks.ts` —— Node 原生剥类型即可,因为那个文件只有
+ * 它 import 的是 `../logging-crash-hooks.ts` —— Node 原生剥类型即可,因为那个文件只有
  * `import type`,运行时零导入,不需要任何别名解析。夹具本身写成 `.mjs`,免得
  * 进到 tsc 的编译单元里(`.ts` 扩展名的显式 import 在 tsconfig 下是错)。
  *
@@ -10,7 +10,7 @@
  * ③退出码仍是 Node 的默认值(钩子没有把崩溃吞掉)。
  */
 import { appendFileSync } from 'node:fs'
-import { installProcessCrashHooks } from '../crash-hooks.ts'
+import { installProcessCrashHooks } from '../logging-crash-hooks.ts'
 
 const outFile = process.argv[2]
 const mode = process.argv[3] === 'uncaught' ? 'uncaught' : 'rejection'

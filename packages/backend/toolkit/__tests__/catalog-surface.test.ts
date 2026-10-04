@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { Catalog } from '../catalog.js'
-import { Intent } from '../intent.js'
-import type { Result } from '../result.js'
+import { Catalog } from '../toolkit-catalog.js'
+import { Intent } from '../toolkit-intent.js'
+import type { Result } from '../toolkit-result.js'
 import type { Scene, ToolSpec } from '../toolkit-spec.js'
-import { normalizeLegacyAllowlist, Surface } from '../surface.js'
+import { normalizeLegacyAllowlist, Surface } from '../toolkit-surface.js'
 import { Tool } from '../toolkit-tool.js'
 import { ScriptedTool } from './fakes.js'
 

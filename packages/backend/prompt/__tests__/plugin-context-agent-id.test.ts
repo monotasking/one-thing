@@ -15,7 +15,7 @@ import {
   registerPromptContextProvider,
   type OnethingPluginPromptContext,
 } from '../prompt.js'
-import { buildOnethingSystemPrompt } from '../builder.js'
+import { buildOnethingSystemPrompt } from '../prompt-builder.js'
 
 const host = {
   getAgent: (agentId: string | undefined) =>

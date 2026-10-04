@@ -2,7 +2,7 @@
  * 09-02 收紧:`store.renameSession` 把仓层那句「改到了没有」交出来。
  *
  * 仓库里那条布尔只有一个含义 —— `applied: false` ⟺ **查无此会话**
- * (`session/store-helpers.ts` 的 `applySessionMetadataMutationWithAdapters`
+ * (`session/session-store-helpers.ts` 的 `applySessionMetadataMutationWithAdapters`
  * 拿不到 session 就直接回 false,别的分支一条也不产生 false)。从前
  * `session/session-store.ts` 把它吞了,于是「改一条不存在的会话」与「真改了」在上层
  * 完全无法分辨:投影一路回 success,RPC 域据此往总线上推一条 `session:renamed`,
@@ -33,13 +33,13 @@ const { createSessionWithoutFocus, flushAllPendingSaves, getSession, getSessions
 
 const SESSION = '9a7b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d'
 const MISSING = '00000000-1111-4222-8333-444444444444'
-let fixture: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>>
+let fixture: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>>
 
 beforeEach(async () => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-rename-applied-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
-  fixture = await (await import('../testing/store-layer.js')).installStoreSessionLayerForTest()
+  fixture = await (await import('../testing/session-testing-store-layer.js')).installStoreSessionLayerForTest()
 })
 
 afterEach(async () => {

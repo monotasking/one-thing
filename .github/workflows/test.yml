@@ -80,7 +80,7 @@ jobs:
       - name: Check journal, blob, lifecycle and store lease durability
         run: >-
           bun run test
-          packages/backend/session/__tests__/event-log.test.ts
+          packages/backend/session/__tests__/session-event-log.test.ts
           packages/backend/session/__tests__/event-log-checkpoint.test.ts
           packages/backend/session/__tests__/event-log-s1.test.ts
           packages/backend/session/__tests__/event-log-store-pinning.test.ts
@@ -90,13 +90,13 @@ jobs:
           packages/backend/session/__tests__/event-log-blob-checkpoint.test.ts
           packages/backend/collab/kernel/__tests__/mailbox-failure.test.ts
           packages/backend/__tests__/collab-mailbox-failure-lifecycle.test.ts
-          packages/backend/storage/__tests__/store-lock.test.ts
-          packages/backend/storage/__tests__/durable-json.test.ts
-          packages/backend/storage/__tests__/store-backup.test.ts
+          packages/backend/storage/__tests__/storage-store-lock.test.ts
+          packages/backend/storage/__tests__/storage-durable-json.test.ts
+          packages/backend/storage/__tests__/storage-store-backup.test.ts
           packages/backend/storage/__tests__/store-backup-crash.test.ts
           packages/backend/__tests__/store-backup-activation.test.ts
-          packages/backend/session/__tests__/deletion-recovery.test.ts
-          packages/backend/session/__tests__/storage-driver.test.ts
+          packages/backend/session/__tests__/session-deletion-recovery.test.ts
+          packages/backend/session/__tests__/session-storage-driver.test.ts
           packages/backend/session/__tests__/session-repository.test.ts
           packages/backend/http-server/__tests__/http-server-runtime-session-crash-recovery.test.ts
 

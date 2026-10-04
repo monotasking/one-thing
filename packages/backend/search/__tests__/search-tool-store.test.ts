@@ -31,8 +31,8 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/backend/toolkit/tool-protocol'
-import type { Authorizer, Invocation, Outcome, Tool } from '@onething/backend/toolkit/tool-protocol'
+import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Authorizer, Invocation, Outcome, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Principal } from '@shared/permission/principal'
 import { encodeSessionLogEventLine } from '@onething/backend/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
@@ -46,16 +46,16 @@ import {
   defaultDocumentFilters,
 } from '../index/search-index.js'
 import type { IndexEndpoint } from '../index/search-index.js'
-import type { IndexWorkerData } from '../index/worker-data.js'
-import type { IndexWorkerHandle } from '../index/worker-host.js'
+import type { IndexWorkerData } from '../index/search-index-worker-data.js'
+import type { IndexWorkerHandle } from '../index/search-index-worker-host.js'
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/search'
 import { configureSearchVisibilityPort } from '../capabilities/search-capabilities.js'
-import type { ToolAuditRecord } from '@onething/backend/toolkit/audit-observer'
-import { EventBus } from '@onething/backend/event/session-event-bus'
+import type { ToolAuditRecord } from '@onething/backend/toolkit/toolkit-audit-observer'
+import { EventBus } from '@onething/backend/event/event-session-bus'
 
 const bus = new EventBus()
 vi.mock('@onething/backend/event', () => ({ getEventBus: () => bus }))
-vi.mock('../../session/event-log.js', () => ({
+vi.mock('../../session/session-event-log.js', () => ({
   registerSessionLogEventAppendObserver: () => () => {},
 }))
 
@@ -148,10 +148,10 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
 }
 vi.mock('../search-adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
 
-const { createAppSearchService } = await import('../service-setup.js')
+const { createAppSearchService } = await import('../search-service-setup.js')
 const { visibleSessionIdsFor } = await import('../search-visibility.js')
-const { createDesktopCatalog } = await import('@onething/backend/toolkit/tier-catalogs')
-const { createAppToolRunner } = await import('@onething/backend/toolkit/runner-factory')
+const { createDesktopCatalog } = await import('@onething/backend/toolkit/toolkit-tier-catalogs')
+const { createAppToolRunner } = await import('@onething/backend/toolkit/toolkit-runner-factory')
 
 /* ── 同线程 Worker ─────────────────────────────────────────────────────── */
 

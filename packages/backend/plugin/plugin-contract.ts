@@ -32,7 +32,7 @@ export {
   pluginSearchProviderSurface,
   pluginSearchResultHasForbiddenKey,
   sanitizePluginSearchResults,
-} from './search-provider.js'
+} from './plugin-search-provider.js'
 export {
   PLUGIN_CREDENTIAL_ENTRY_FIELDS,
   PLUGIN_CREDENTIAL_FAILURE_KINDS,
@@ -48,7 +48,7 @@ export {
   pluginCredentialStrategyPolicy,
   pluginCredentialStrategySurface,
   toPluginCredentialEntryView,
-} from './credential-strategy.js'
+} from './plugin-credential-strategy.js'
 export type {
   CorePluginCredentialStrategyContext,
   CorePluginCredentialStrategyRegistration,
@@ -57,7 +57,7 @@ export type {
   PluginCredentialEntryView,
   PluginCredentialFailureKind,
   PluginCredentialUsage,
-} from './credential-strategy.js'
+} from './plugin-credential-strategy.js'
 export type {
   CorePluginSearchActionContext,
   CorePluginSearchContext,
@@ -65,7 +65,7 @@ export type {
   PluginSearchIcon,
   PluginSearchResult,
   SanitizedPluginSearchResult,
-} from './search-provider.js'
+} from './plugin-search-provider.js'
 export {
   DEEPLINK_HOST_VERBS,
   DEEPLINK_PLUGIN_ID_PATTERN,
@@ -84,7 +84,7 @@ export {
   parseDeepLink,
   pluginDeepLinkAddress,
   pluginDeepLinkSurface,
-} from './deep-link.js'
+} from './plugin-deep-link.js'
 export type {
   CorePluginDeepLinkActionRegistration,
   CorePluginDeepLinkContext,
@@ -95,13 +95,13 @@ export type {
   DeepLinkParseResult,
   DeepLinkPluginIntent,
   DeepLinkRejectReason,
-} from './deep-link.js'
+} from './plugin-deep-link.js'
 export {
   CORE_PLUGIN_TOOL_EXECUTION_MODES,
   assertCorePluginToolExecutionMode,
   isCorePluginToolExecutionMode,
-} from './tool-execution-mode.js'
-export type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
+} from './plugin-tool-execution-mode.js'
+export type { CorePluginToolExecutionMode } from './plugin-tool-execution-mode.js'
 export {
   CSS_NAMED_COLORS,
   PLUGIN_SKIN_MAX_ENTRIES,
@@ -109,11 +109,11 @@ export {
   PLUGIN_THEME_OVERRIDE_MAX_ENTRIES,
   isPluginThemeColorValue,
   normalizePluginThemeColorValue,
-} from './theme-contribution.js'
+} from './plugin-theme-contribution.js'
 export {
   comparePluginCanonicalOrder,
   sortByPluginCanonicalOrder,
-} from './canonical-order.js'
+} from './plugin-canonical-order.js'
 export {
   PLUGIN_DELIVER_AS_NOTES,
   PLUGIN_PEEK_PREVIEW_MAX,
@@ -151,8 +151,8 @@ export {
   PLUGIN_RESOURCE_CALL_TIMEOUT_MS,
   PLUGIN_RESOURCE_PERMISSIONS,
   PLUGIN_RESOURCE_PERMISSION_NOTES,
-} from './resources.js'
-export type { PluginResourcePermission, PluginResourcesApi } from './resources.js'
+} from './plugin-resources.js'
+export type { PluginResourcePermission, PluginResourcesApi } from './plugin-resources.js'
 export {
   PLUGIN_PERMISSION_LLM_COMPLETE,
   PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
@@ -164,14 +164,14 @@ export {
   PluginLlmError,
   clampPluginLlmMaxTokens,
   normalizePluginLlmMessages,
-} from './llm.js'
+} from './plugin-llm.js'
 export type {
   PluginLlmCompleteOptions,
   PluginLlmCompleteResult,
   PluginLlmErrorCode,
   PluginLlmMessage,
   PluginLlmRole,
-} from './llm.js'
+} from './plugin-llm.js'
 export {
   CORE_PLUGIN_INPUT_INTERCEPT_TIMEOUT_MS,
   CorePluginInputInterceptRegistry,
@@ -181,7 +181,7 @@ export {
   PLUGIN_PERMISSION_INPUT_INTERCEPT,
   emptyPluginInputInterceptOutcome,
   normalizePluginInputInterceptResult,
-} from './input-intercept.js'
+} from './plugin-input-intercept.js'
 export type {
   CorePluginInputInterceptRegistryOptions,
   PluginInputInterceptAction,
@@ -191,7 +191,7 @@ export type {
   PluginInputInterceptOutcome,
   PluginInputInterceptResult,
   PluginInputInterceptSource,
-} from './input-intercept.js'
+} from './plugin-input-intercept.js'
 export {
   CORE_PLUGIN_TOOL_CALL_INTERCEPT_TIMEOUT_MS,
   CorePluginToolCallInterceptRegistry,
@@ -202,7 +202,7 @@ export {
   formatPluginToolCallBlockReason,
   formatPluginToolCallFailureReason,
   normalizePluginToolCallInterceptResult,
-} from './tool-call-intercept.js'
+} from './plugin-tool-call-intercept.js'
 export type {
   CorePluginToolCallInterceptRegistryOptions,
   PluginToolCallInputValidation,
@@ -213,7 +213,7 @@ export type {
   PluginToolCallInterceptHandler,
   PluginToolCallInterceptOutcome,
   PluginToolCallInterceptResult,
-} from './tool-call-intercept.js'
+} from './plugin-tool-call-intercept.js'
 export {
   CORE_PLUGIN_TOOL_RESULT_INTERCEPT_MAX_LENGTH,
   CORE_PLUGIN_TOOL_RESULT_INTERCEPT_TIMEOUT_MS,
@@ -225,7 +225,7 @@ export {
   capPluginToolResultContent,
   emptyPluginToolResultInterceptOutcome,
   normalizePluginToolResultInterceptResult,
-} from './tool-result-intercept.js'
+} from './plugin-tool-result-intercept.js'
 export type {
   CorePluginToolResultInterceptRegistryOptions,
   PluginToolResultInterceptAction,
@@ -235,7 +235,7 @@ export type {
   PluginToolResultInterceptOutcome,
   PluginToolResultInterceptResult,
   PluginToolResultView,
-} from './tool-result-intercept.js'
+} from './plugin-tool-result-intercept.js'
 export {
   PLUGIN_WEBVIEW_DEFAULT_ROOT,
   PLUGIN_WEBVIEW_MESSAGE_TYPES,
@@ -250,16 +250,16 @@ export {
   pluginWebviewOrigin,
   resolvePluginWebviewRequestSegments,
   resolvePluginWebviewRoot,
-} from './webview.js'
+} from './plugin-webview.js'
 export type {
   PluginPanelDeclarationLike,
   PluginPanelView,
-} from './webview.js'
-export { describePluginRelativeAssetPathProblem } from './webview.js'
+} from './plugin-webview.js'
+export { describePluginRelativeAssetPathProblem } from './plugin-webview.js'
 export {
   PLUGIN_STORAGE_URL_SEGMENT,
   pluginStorageAssetUrl,
-} from './webview.js'
+} from './plugin-webview.js'
 export {
   PLUGIN_FILE_PICK_EXTENSIONS,
   PLUGIN_FILE_PICK_MAX_BYTES,
@@ -274,12 +274,12 @@ export {
   nextAvailablePluginImportFileName,
   resolvePluginFilePickAccept,
   sanitizePluginImportFileName,
-} from './file-pick.js'
+} from './plugin-file-pick.js'
 export type {
   PluginFileImportCandidate,
   PluginFilePickNodeLike,
   PluginFilePickResult,
-} from './file-pick.js'
+} from './plugin-file-pick.js'
 export {
   PLUGIN_BACKGROUND_DEFAULT_BLUR,
   PLUGIN_BACKGROUND_DEFAULT_FIT,
@@ -301,7 +301,7 @@ export {
   mergePluginBackgroundParams,
   pluginBackgroundImageUrl,
   resolvePluginBackgrounds,
-} from './background.js'
+} from './plugin-background.js'
 export type {
   PluginBackgroundDeclarationLike,
   PluginBackgroundDescriptor,
@@ -312,7 +312,7 @@ export type {
   PluginBackgroundParamsPatch,
   PluginBackgroundResolution,
   PluginBackgroundStatus,
-} from './background.js'
+} from './plugin-background.js'
 export {
   PLUGIN_AMBIENT_MESSAGE_TYPES,
   describePluginAmbientProblem,
@@ -376,7 +376,7 @@ export {
   readPackageLockIntegrity,
   readPluginLedgerSpec,
   uninstallCorePluginPackage,
-} from './install.js'
+} from './plugin-install.js'
 export type {
   CorePluginMarketIndex,
   CorePluginMarketIndexEntry,
@@ -384,7 +384,7 @@ export type {
   CorePluginNpmRunResult,
   InstallCorePluginPackageInput,
   InstallCorePluginPackageResult,
-} from './install.js'
+} from './plugin-install.js'
 export type {
   CorePluginLedgerRead,
   CorePluginScanMode,
@@ -421,15 +421,15 @@ export {
   CorePluginTimeoutError,
   isCorePluginTimeoutError,
   runWithPluginTimeout,
-} from './runtime-guard.js'
+} from './plugin-runtime-guard.js'
 export type {
   CorePluginHealthStatus,
   CorePluginHealthTrackerOptions,
   CorePluginRuntimeHealth,
-} from './runtime-guard.js'
+} from './plugin-runtime-guard.js'
 export {
   disposeCorePluginState,
-} from './api-state.js'
+} from './plugin-api-state.js'
 export { deepFreezeCorePluginValue } from './plugin-freeze.js'
 export {
   PLUGIN_DEFERRED_REGISTRIES,
@@ -467,13 +467,13 @@ export {
   CORE_PLUGIN_STATUS_THROTTLE_MS,
   CorePluginStatusRegistry,
   PLUGIN_STATUS_PART_TYPE,
-} from './status.js'
+} from './plugin-status.js'
 export type {
   CorePluginStatusKey,
   CorePluginStatusPart,
   CorePluginStatusRecord,
   CorePluginStatusRegistryOptions,
-} from './status.js'
+} from './plugin-status.js'
 export type { CorePluginStatusAPI } from './plugin-api-types.js'
 export {
   MAX_PANEL_DEPTH,
@@ -489,7 +489,7 @@ export {
   isReservedPluginPanelAction,
   validatePluginPanelActionResult,
   validatePluginPanelTree,
-} from './panel.js'
+} from './plugin-panel.js'
 export type {
   CorePluginPanelContext,
   CorePluginPanelRegistration,
@@ -516,7 +516,7 @@ export type {
   PluginPanelTableNode,
   PluginPanelTabsNode,
   PluginPanelTree,
-} from './panel.js'
+} from './plugin-panel.js'
 export {
   PLUGIN_LAYOUT_GESTURE_WINDOW_MS,
   PLUGIN_UI_INVOKE_ACTION,
@@ -545,7 +545,7 @@ export {
   uiSlotAddress,
   uiSlotMaxWidth,
   uiSlotSurfaceId,
-} from './ui-anchor.js'
+} from './plugin-ui-anchor.js'
 export type {
   CorePluginUiSlotContext,
   CorePluginUiSlotRegistration,
@@ -558,7 +558,7 @@ export type {
   UiDrawerRenderState,
   UiDrawerState,
   UiSlotSide,
-} from './ui-anchor.js'
+} from './plugin-ui-anchor.js'
 export {
   PLUGIN_CONFIG_FILE_NAME,
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
@@ -613,7 +613,7 @@ export {
   describePluginFilesPathProblem,
   getPluginFilesFaultLane,
   getPluginFilesRefusalKind,
-} from './storage-files.js'
+} from './plugin-storage-files.js'
 export type {
   CorePluginFileEntry,
   CorePluginFiles,
@@ -625,15 +625,15 @@ export type {
   CorePluginFilesUsage,
   CorePluginStorageWithFiles,
   CreateCorePluginFilesOptions,
-} from './storage-files.js'
+} from './plugin-storage-files.js'
 export {
   createCorePluginAPI,
   executeCorePluginTool,
-} from './api-builder.js'
+} from './plugin-api-builder.js'
 export type {
   CorePluginHostToolContext,
   CorePluginHostToolResult,
-} from './api-builder.js'
+} from './plugin-api-builder.js'
 export {
   CorePluginRequestRegistry,
   PLUGIN_REQUEST_ABORTED_ERROR,
@@ -641,13 +641,13 @@ export {
   describeNonSerializable,
   normalizePluginRequestAction,
   pluginRequestErrorMessage,
-} from './request-channel.js'
+} from './plugin-request-channel.js'
 export type {
   CorePluginRequestContext,
   CorePluginRequestHandler,
   CorePluginRequestInput,
   CorePluginRequestResult,
-} from './request-channel.js'
+} from './plugin-request-channel.js'
 export {
   createScopedPluginScheduler,
   isPluginTaskSnapshot,
@@ -692,7 +692,7 @@ export {
   shouldDeleteLogMonitorFile,
   shouldNotifyLogEntry,
   summarizeLogEvent,
-} from './log-monitor-primitives.js'
+} from './plugin-log-monitor-primitives.js'
 export type {
   CoreLogEntry,
   CoreLogEnvelope,
@@ -708,17 +708,17 @@ export type {
   CoreLogMonitorPushResult,
   CoreLogMonitorSearchArgs,
   CoreLogMonitorToolContext,
-} from './log-monitor-primitives.js'
+} from './plugin-log-monitor-primitives.js'
 
 export type {
   CorePluginAPIState,
   DisposeCorePluginStateOptions,
-} from './api-state.js'
+} from './plugin-api-state.js'
 export type {
   CorePluginAPIHost,
   CorePluginAPILogger,
   CreateCorePluginAPIOptions,
-} from './api-builder.js'
+} from './plugin-api-builder.js'
 export type {
   CoreAfterAssistantResponseContext,
   CoreAfterAssistantResponseHook,

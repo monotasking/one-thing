@@ -3,7 +3,7 @@
  * 于是提示词逐字快照:改一个字都要有人看过这份 diff。
  */
 import { describe, expect, it } from 'vitest'
-import { HEIDOU } from '../builtin/heidou.js'
+import { HEIDOU } from '../builtin/pet-builtin-heidou.js'
 import type { PetLedgerLine } from '../pet-ledger.js'
 import { buildMomentPrompt, parseMomentReply, PET_PROMPT_MEMORY_LINES } from '../pet-prompt.js'
 import type { Moment } from '../pet-types.js'

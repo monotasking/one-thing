@@ -12,7 +12,7 @@ import {
   isOnethingToolPathContained,
   resolveOnethingToolPath,
   type CoreFileAccessTargetType,
-} from '@onething/backend/tool/sandbox-runtime'
+} from '@onething/backend/tool/tool-sandbox-runtime'
 import { getSettings } from '@onething/backend/settings'
 import { getConnectedDirectories } from '@onething/backend/file'
 import {

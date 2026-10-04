@@ -33,8 +33,8 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
 // refold 经 `shadow.ts` 拽进读面,而读面会把整只 app store 拉起来(设置仓库、
 // 会话仓库…)。这一套用例问的是"文件字节 vs 内存活投影",与抄本无关 ——
 // 与 `shadow.test.ts` 同款,把读面替换成一只空壳。
-vi.mock('../reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../reads.js')>(),
+vi.mock('../session-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../session-reads.js')>(),
   sessionReads: {
     listMessagesFromStore: () => [],
     getMessage: () => undefined,
@@ -42,17 +42,17 @@ vi.mock('../reads.js', async importOriginal => ({
   },
 }))
 
-const { flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache, SessionEventWriteError } = await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { putSessionBlob } = await import('../blob-store.js')
+const { flushSessionEventLog, getSessionEventsLogPath, resetSessionEventLogCache, SessionEventWriteError } = await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { putSessionBlob } = await import('../session-blob-store.js')
 const {
   flushSessionEventStats,
   readSessionShadowStats,
   resetSessionEventStatsCache,
-} = await import('../event-stats.js')
-const { checkSessionRefold, resetSessionRefoldSampling, scheduleSessionRefold } = await import('../refold.js')
-const { getSessionShadowLogPath } = await import('../shadow.js')
-const { resetSessionProjectionCache, getLiveSessionProjection } = await import('../projection-cache.js')
+} = await import('../session-event-stats.js')
+const { checkSessionRefold, resetSessionRefoldSampling, scheduleSessionRefold } = await import('../session-refold.js')
+const { getSessionShadowLogPath } = await import('../session-shadow.js')
+const { resetSessionProjectionCache, getLiveSessionProjection } = await import('../session-projection-cache.js')
 
 beforeEach(() => {
   expectedPersistenceFailure = false
@@ -140,7 +140,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
   })
 
   it('the translator lets a write failure out (everything else it still swallows)', async () => {
-    const { sessionCommandEvents } = await import('../command-events.js')
+    const { sessionCommandEvents } = await import('../session-command-events.js')
     const message = (id: string) =>
       ({ id, role: 'user', content: `x-${id}`, timestamp: 1 } as unknown as Parameters<
         typeof sessionCommandEvents.appendMessage

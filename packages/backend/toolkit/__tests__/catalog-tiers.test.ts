@@ -10,19 +10,19 @@
  * `feature_*` 不在任何一档里(由 self-evolution feature 自己注册),门单独测。
  */
 import { describe, expect, it } from 'vitest'
-import { Catalog } from '@onething/backend/toolkit/tool-protocol'
+import { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   createDesktopCatalog,
   createHeadlessCatalog,
   createReadonlyCatalog,
   FeatureToolRuntime,
   registerFeatureTools,
-} from '../tier-catalogs.js'
+} from '../toolkit-tier-catalogs.js'
 
 /**
  * 桌面档(full)。S6 起多一只 `search`(检索重建 §14.3:三档都给);
  * K3-b 起**少一只 `radio`** —— 音乐退成一个资源 scheme(`music`),它的工具是那份
- * 自述的投影,由 `resource/catalog-sync.ts` 按注册表对账进目录,不在这三档
+ * 自述的投影,由 `resource/resource-catalog-sync.ts` 按注册表对账进目录,不在这三档
  * 清单里(这里列的是「这一档手写注册了哪几只」)。
  */
 const FULL_IDS = [

@@ -3,9 +3,9 @@
  *
  * P1-c(设计稿 `docs/design/provider-oop-2026-08.md` §9)之后,这个文件不再
  * 持有任何线协议逻辑:请求体构造、流解析、消息序列化、usage、错误、认证、
- * 思考旋钮全部搬到 `wires/openai-responses-wire.ts` +
- * `wires/openai-responses-messages.ts` + `wires/openai-responses-errors.ts` +
- * `thinking/responses-reasoning.ts` 上,方言配方在同目录的 `dialect.ts`
+ * 思考旋钮全部搬到 `wires/provider-openai-responses-wire.ts` +
+ * `wires/provider-wires-openai-responses-messages.ts` + `wires/provider-wires-openai-responses-errors.ts` +
+ * `thinking/provider-thinking-responses-reasoning.ts` 上,方言配方在同目录的 `dialect.ts`
  * (公共构件 `providers/dialects/responses-recipe.ts`)。
  *
  * 保留这个门面(而不是让调用方直接 `new OpenAIResponsesWire`)有两个理由:
@@ -15,7 +15,7 @@
  *  - **构造即校验**:一个 access token 都拿不到时当场抛「没登录」,而不是拖到
  *    第一回合才炸 —— 这是今天的行为,原样保留。
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	CODEX_NOT_LOGGED_IN,
 	CODEX_PROVIDER_ID,
@@ -24,11 +24,11 @@ import {
 	resolveCodexToken,
 	responsesDialect,
 	type CodexAuthOptions,
-} from "../../dialects/responses-recipe.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
 import type {
 	AgentProviderRequestDump,
 	AgentProviderRequestDumper,
-} from "../../request-dumper.js";
+} from "../../provider-request-dumper.js";
 import { CODEX_DIALECT_SPEC } from "./codex-dialect.js";
 import { codexQuotaFromHeaders } from "./codex-quota.js";
 
@@ -39,12 +39,12 @@ export {
 	CODEX_CLIENT_VERSION,
 	CODEX_FALLBACK_INSTRUCTIONS,
 	CODEX_PROVIDER_ID,
-} from "../../dialects/responses-recipe.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
 export type {
 	OAuthToken,
 	ProviderAuthContext,
-} from "../../dialects/responses-recipe.js";
-export { toCodexToolChoice } from "../../wires/openai-responses-messages.js";
+} from "../../dialects/provider-dialects-responses-recipe.js";
+export { toCodexToolChoice } from "../../wires/provider-wires-openai-responses-messages.js";
 
 /** @deprecated Use `AgentProviderRequestDump` from ./request-dump.js. */
 export type CodexAgentProviderRequestDump = AgentProviderRequestDump & {

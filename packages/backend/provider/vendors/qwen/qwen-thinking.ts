@@ -5,13 +5,13 @@
  * low|medium|xhigh,转售的 GLM / DeepSeek 收 high|max;其余模型是
  * thinking_budget 驱动的,effort 和 budget 一起到会 400,所以什么都不发。
  *
- * 逐字复刻 `openai-compatible.ts` 的 `'qwen-thinking'` 分支 +
- * `clampQwenReasoningEffort`。登记进 `thinkingWires` 由 `vendors/runtimes.ts` 做
+ * 逐字复刻 `provider-openai-compatible.ts` 的 `'qwen-thinking'` 分支 +
+ * `clampQwenReasoningEffort`。登记进 `thinkingWires` 由 `vendors/provider-vendor-runtimes.ts` 做
  * (本家的 `QWEN_RUNTIME.thinkingWires`)。正则里出现的别家模型名说的是千问端点**转售**
  * 的那几族模型(见同目录 `manifest.ts` 的型号规则表)。
  */
 import type { RequestBodyBuilder, TurnContext } from "../../base/provider-base.js";
-import { OpenAIChatThinkingWire } from "../../thinking/openai-chat-thinking-wire.js";
+import { OpenAIChatThinkingWire } from "../../thinking/provider-thinking-openai-chat-wire.js";
 
 export function clampQwenReasoningEffort(
 	effort: string | undefined,

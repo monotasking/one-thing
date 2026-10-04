@@ -43,7 +43,7 @@ import { parse as parseYaml } from "yaml";
 import {
 	EventBus,
 	StreamChannel,
-} from "@onething/backend/event/bus-primitives";
+} from "@onething/backend/event/event-bus-primitives";
 import {
 	Permission,
 } from "@onething/backend/permission/permission-asks";
@@ -63,7 +63,7 @@ import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
 import type { McpSubsystem } from "@onething/backend/mcp/mcp-subsystem";
-import type { ConfigureLoggingOptions } from "@onething/backend/logging/configure-logging";
+import type { ConfigureLoggingOptions } from "@onething/backend/logging/logging-configure";
 import {
 	createTenantAudienceFactory,
 	ownerMatchesContext,
@@ -80,7 +80,7 @@ import { getProjectsStore as getAppProjectsStore } from "@onething/backend/proje
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
-} from "@onething/backend/mcp/index-with-bridge";
+} from "@onething/backend/mcp/mcp-index-with-bridge";
 import { configureMCPClientIdentity } from "@onething/backend/mcp/mcp-identity";
 import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getCurrentSessionId as getAppStoreCurrentSessionId, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList, setCurrentSessionId as setAppStoreCurrentSessionId, updateSessionWorkingDirectory as updateAppSessionWorkingDirectory, updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots } from "@onething/backend/session";
 import {
@@ -128,7 +128,7 @@ import {
 	configureOAuthEventBroadcaster,
 	getOAuthEventBroadcaster,
 	type OAuthTokenEvent,
-} from "@onething/backend/auth/oauth-events";
+} from "@onething/backend/auth/auth-oauth-events";
 // E 批:设置变更的推送端口。数据面(读 / 存 / 系统深浅色 / 代理自检)仍然只走
 // `settingsRouter`,这里只串一条广播 —— 见下面 `settingsChangedHandlers`。
 import {
@@ -138,14 +138,14 @@ import {
 } from "@onething/backend/settings/settings-events";
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
-import { isCollabV3RuntimeRunning } from "@onething/backend/collab/rooms";
+import { isCollabV3RuntimeRunning } from "@onething/backend/collab/collab-rooms";
 // B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
 // 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
 import { getPluginManager } from "@onething/backend/plugin/plugin-system";
 import { isHostLocallyTrusted } from "./http-server-host-trust.js";
 import { hasShellHost } from "@onething/backend/shell/shell-host-ports";
 import { hasTerminalHost } from "@onething/backend/terminal/terminal-service";
-import { registerACPPermissionBridge } from "@onething/backend/acp/permission-bridge";
+import { registerACPPermissionBridge } from "@onething/backend/acp/acp-permission-bridge";
 import { createEventBusTerminalBroadcaster } from "@onething/backend/terminal";
 import {
 	createOnethingSearchService,
@@ -202,7 +202,7 @@ import {
 	saveOnethingFileContent,
 	statOnethingPath,
 } from "@onething/backend/file";
-import { applyFileMutationUndo } from "@onething/backend/tool/file-mutation-audit";
+import { applyFileMutationUndo } from "@onething/backend/tool/tool-file-mutation-audit";
 import {
 	resolveOnethingMarkdownAsset,
 	resolveOnethingMarkdownAssetForIpc,
@@ -292,7 +292,7 @@ import type { RpcDispatchPorts } from "./http-server-dispatch-table.js";
 import {
 	createWorkspaceWatchService,
 	type WorkspaceFileChangedHandler,
-} from "@onething/backend/file/workspace-watch";
+} from "@onething/backend/file/file-workspace-watch";
 import type {
 	VoiceEvent,
 	VoiceRuntimeCommand,
@@ -341,7 +341,7 @@ export { SERVER_REDACTED_SECRET } from "@onething/backend/mcp";
 import { sanitizeSettingsForClient } from "../settings/settings-client-api-projection.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { VariablesStorePersistence } from '@onething/backend/variable/variable-store'
 import type { OnethingPromptStoreAdapters } from '@onething/backend/prompt/prompt-store'
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from './http-server-runtime-facade.js'
@@ -2370,7 +2370,7 @@ async function createServerRuntimeOverServerBackend(
 		 * `http-server/http-server-sandbox.ts` 了,现在连调用点也归它)。
 		 *
 		 * 留下的一条是 `GET /api/files/watch/events` 那条 SSE 的货源。真正的监视器
-		 * 登记簿搬到了 `file/workspace-watch.ts`,按沙箱根分表 —— `watchStart`
+		 * 登记簿搬到了 `file/file-workspace-watch.ts`,按沙箱根分表 —— `watchStart`
 		 * / `watchStop`(请求面,在 router 上)与这里(推送面)指的是同一张表。
 		 */
 		files: filesPort,

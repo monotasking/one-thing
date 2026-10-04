@@ -11,8 +11,8 @@ process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CorePluginSearchProviderRegistration } from '@onething/backend/plugin/plugin-contract'
-import { createPluginAPI } from '@onething/backend/plugin/api'
-import { resetPluginRuntimeHealthForTests } from '@onething/backend/plugin/health'
+import { createPluginAPI } from '@onething/backend/plugin/plugin-api'
+import { resetPluginRuntimeHealthForTests } from '@onething/backend/plugin/plugin-health'
 import {
   decodePluginSearchAction,
   invokePluginSearchAction,
@@ -20,7 +20,7 @@ import {
   registerPluginSearchProvider,
   resetPluginSearchProvidersForTests,
   searchPluginProviders,
-} from '../plugin-search-registry.js'
+} from '../search-plugin-registry.js'
 
 afterAll(async () => {
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH

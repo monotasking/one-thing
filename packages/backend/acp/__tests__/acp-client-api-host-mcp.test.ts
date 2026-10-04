@@ -8,9 +8,9 @@
 import { describe, expect, it } from 'vitest'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { HOST_MCP_UNAUTHORIZED, hostMcpRouter } from '@shared/ipc/host-mcp.js'
-import { HOST_MCP_RPC } from '@onething/backend/acp/mcp-bridge/server'
+import { HOST_MCP_RPC } from '@onething/backend/acp/mcp-bridge/acp-mcp-bridge-server'
 import { createHostMcpRpcHandlers } from '../acp-client-api-host-mcp.js'
-import { HostMcpBridge } from '@onething/backend/acp/host-mcp-bridge'
+import { HostMcpBridge } from '@onething/backend/acp/acp-host-mcp-bridge'
 
 const notes: unknown[] = []
 const bridge = new HostMcpBridge({

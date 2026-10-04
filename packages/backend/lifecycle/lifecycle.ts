@@ -10,7 +10,7 @@ export {
   KeyedAdmissionGate,
   type AdmissionRejection,
   type KeyedWork,
-} from './admission-gate.js'
+} from './lifecycle-admission-gate.js'
 
 /**
  * 一台「先停止接活,再等在途落定」的子系统。

@@ -23,15 +23,15 @@
  * **同一只 `read` 有两个调用方**(K2c-2):模型那条路经 `ResourceTool` 走完整条
  * 管线(拦截 → 校验 → 授权 → 预算),plan 出来的 `Intent` 恒无效果、授权者恒静默
  * 放行,读到的值最后投影成一段文本;界面 / 脚本那条路经 `ResourceKernel.read`,
- * 短路径、拿到的是**值本身**、不落审计不吃预算(理由在 `read-outcome.ts` 的文件
+ * 短路径、拿到的是**值本身**、不落审计不吃预算(理由在 `resource-read-outcome.ts` 的文件
  * 头)。实现这一侧对两者一视同仁 —— 它只管答,答给谁不是它的判据。
  */
 
-import { Intent } from '../toolkit/intent.js'
-import type { Result } from '../toolkit/result.js'
-import type { PlanContext, RunContext } from '../toolkit/run-context.js'
+import { Intent } from '../toolkit/toolkit-intent.js'
+import type { Result } from '../toolkit/toolkit-result.js'
+import type { PlanContext, RunContext } from '../toolkit/toolkit-run-context.js'
 import type { Scene } from '../toolkit/toolkit-spec.js'
-import type { SandboxPolicy } from '../toolkit/ports.js'
+import type { SandboxPolicy } from '../toolkit/toolkit-ports.js'
 import type { Effect, EffectClass } from '@shared/toolkit/effects.js'
 import type { Principal } from '@shared/permission/principal.js'
 import { ResourceOpUnknownError } from './resource-errors.js'
@@ -56,7 +56,7 @@ export interface ResourceReadContext {
    * 沙箱(K2c-2)。可选 —— 缺席 = 这台宿主没有沙箱这一格,不是「随便读」:
    * 一条要判越界的读法在缺席时该自己决定怎么退(结构化降级或拒绝),而不是把
    * `undefined` 当成放行。路径的解析与判定归宿主,内核既不认识 fs 也不认识仓库根
-   * (`toolkit/ports.ts` 的 `SandboxPolicy` 那句话)。
+   * (`toolkit/toolkit-ports.ts` 的 `SandboxPolicy` 那句话)。
    */
   readonly sandbox?: SandboxPolicy
   /** 现在几点。与 `PlanContext.now()` 同名同义 —— 实现不自己读 `Date.now()`。 */

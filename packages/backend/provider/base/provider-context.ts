@@ -2,15 +2,15 @@
  * `ProviderContext` —— provider 实例的**只读**运行环境。
  *
  * 设计稿 `docs/design/provider-oop-2026-08.md` §4:装配层
- * (`packages/backend/settings/{proxy-fetch,ai-settings-compose}.ts`、`packages/backend/provider/request-dump-writer.ts`)
+ * (`packages/backend/settings/{proxy-fetch,ai-settings-compose}.ts`、`packages/backend/provider/provider-request-dump-writer.ts`)
  * 负责组装它并注入;runtime 的基类只声明接口,不反向依赖 backend。
  *
  * 这里的每个字段都是**依赖**,不是状态:provider 实例本身没有可写字段,
  * 每回合的可变量一律活在 `TurnContext` 里(§3.1「实例无状态」)。
  */
 import type { getLogger } from "../../logging/logging.js";
-import type { AgentProviderRequestDumper } from "../request-dumper.js";
-import type { ModelProfileResolver } from "./model-profile.js";
+import type { AgentProviderRequestDumper } from "../provider-request-dumper.js";
+import type { ModelProfileResolver } from "./provider-base-model-profile.js";
 
 /** 产品层日志门面交出来的 logger 类型(不从 core 直接拿,免得两处漂移)。 */
 export type Logger = ReturnType<typeof getLogger>;

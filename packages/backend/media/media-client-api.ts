@@ -21,7 +21,7 @@
  * 对话框)、`openPreview` / `openGallery`(`BrowserWindow`)。它们要的是宿主本体
  * 而不是数据,所以仍是手写通道。`getPreview` 跟着数据走:它读的是那本进程内的
  * 预览登记簿,开窗那半写、这半读,两边共用
- * `@onething/backend/media/image-preview-registry-bound` 的同一本簿子。
+ * `@onething/backend/media/media-image-preview-registry-bound` 的同一本簿子。
  *
  * **`ingestFiles` 的入参是「本机路径列表」**(桌面拖拽给的是 filePath,浏览器
  * 给的是 base64)。域挂上 router 之后它经 server 也可达,于是 server 会去读
@@ -38,15 +38,15 @@ import {
   ingestOnethingMediaFilesForIpc, readOnethingImageFileDataUrl, readOnethingImageFileDataUrlForIpc,
   type OnethingMediaLibraryService, type OnethingMediaSession, type OnethingImagePreviewRegistry,
 } from '@onething/backend/media'
-import { imagePreviewRegistry } from '@onething/backend/media/image-preview-registry-bound'
-import { mediaLibraryService } from '@onething/backend/media/library-service-bound'
+import { imagePreviewRegistry } from '@onething/backend/media/media-image-preview-registry-bound'
+import { mediaLibraryService } from '@onething/backend/media/media-library-service-bound'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { mediaRouter, type MediaRoutes } from '@shared/ipc/media.js'
 import { getSession, getSessionsList } from '@onething/backend/session'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '@onething/backend/session'
 import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '@onething/backend/media/media-access'
-import { resolveMediaFileByName } from '@onething/backend/media/resolve-file'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { resolveMediaFileByName } from '@onething/backend/media/media-resolve-file'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 const log = getLogger('rpc.media')

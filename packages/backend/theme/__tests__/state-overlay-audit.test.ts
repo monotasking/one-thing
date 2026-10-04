@@ -16,10 +16,10 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../theme-types.js'
-import { generateCSSVariables } from '../css-mapper.js'
+import { generateCSSVariables } from '../theme-css-mapper.js'
 import { resolveTheme, resolveThemeUI } from '../theme-resolver.js'
-import type { ThemeColorScheme } from '../role-mapping.js'
-import { REGION_OVERLAY_STEPS, parseCssColor } from '../role-mapping.js'
+import type { ThemeColorScheme } from '../theme-role-mapping.js'
+import { REGION_OVERLAY_STEPS, parseCssColor } from '../theme-role-mapping.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const builtinThemeDir = path.resolve(dirname, '../builtin')

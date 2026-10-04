@@ -1,20 +1,20 @@
-import * as PermissionGrants from '../../permission/grant-storage.js'
+import * as PermissionGrants from '../../permission/permission-grant-storage.js'
 import type { PermissionBridge } from '@onething/backend/permission/permission-asks'
 import { Permission } from '../../permission/permission-with-grant-storage.js'
-import { isHostUnattended, isSessionUnattended } from '@onething/backend/permission/unattended'
+import { isHostUnattended, isSessionUnattended } from '@onething/backend/permission/permission-unattended'
 import {
   createOnethingPermissionRuntime,
 } from '@onething/backend/permission'
 import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { isSystemInternalOrigin, latestRealOrigin } from '@onething/backend/agent-loop'
-import { writeAppLog } from '@onething/backend/logging/configure-logging'
+import { writeAppLog } from '@onething/backend/logging/logging-configure'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
 } from '@onething/backend/permission'
 import type { MessageOrigin } from '@shared/ipc.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('permission')
 
@@ -154,7 +154,7 @@ const timeoutAskBridge = createAutoDenyBridge(
  *  - `isHostUnattended()` —— **宿主装配时自己声明**过这台进程上没人能答卡
  *    (今天只有 `HeadlessBackend` 说这句话)。桌面壳不说,所以它照旧弹卡给人答;
  *    为什么不拿 `hasShellHost()` / `isHostLocallyTrusted()` 反推,理由写在
- *    `permission/unattended.ts` 那半的头注上。
+ *    `permission/permission-unattended.ts` 那半的头注上。
  *
  * ## 它排在最后一位
  *
@@ -211,7 +211,7 @@ const collabReminderBridge: PermissionBridge = {
           if (!roomSessionId) return
           // Dynamic import: tools/core must not statically depend on the room
           // config door (which reaches the engine through the v3 runtime).
-          const { postCollabSystemLine } = await import('@onething/backend/collab/room-config')
+          const { postCollabSystemLine } = await import('@onething/backend/collab/collab-room-config')
           postCollabSystemLine(
             roomSessionId,
             `有一个权限请求已等待 30 分钟未处理:${request.title}(从看板任务卡打开工作会话审批)`,

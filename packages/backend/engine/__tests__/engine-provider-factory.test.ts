@@ -6,8 +6,8 @@ import {
 	registerAgentProviderRuntime,
 } from "../engine-provider-factory.js";
 import { builtinProviders } from "../../provider/builtin/provider-builtin.js";
-import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
-import { resolveAgentModelCapabilities } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
+import { resolveAgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { registerCustomProvidersForTest } from '../../provider/__tests__/custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-local-openai", "custom-local-anthropic"])

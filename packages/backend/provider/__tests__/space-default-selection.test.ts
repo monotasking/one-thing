@@ -14,7 +14,7 @@ import {
   type CoreProviderConfigLike,
 } from '../provider-config.js'
 import { getEffectiveOnethingProviderConfig } from '../provider-runtime.js'
-import { createOnethingStreamProviderAdapter } from '../stream-provider-adapter.js'
+import { createOnethingStreamProviderAdapter } from '../provider-stream-adapter.js'
 
 interface TestProvider extends CoreProviderConfigLike {
   apiKey?: string

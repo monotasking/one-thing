@@ -2,16 +2,16 @@
  * DeepSeek 的**行为**那一半(`docs/design/architecture-direction-2026-10.md` §4 P2):
  * 方言、思考参数、运行时工厂、余额源。数据那一半在同目录的 `manifest.ts`。
  *
- * 由 `vendors/runtimes.ts` 登记;工厂里不再有「deepseek」这几个字。
+ * 由 `vendors/provider-vendor-runtimes.ts` 登记;工厂里不再有「deepseek」这几个字。
  */
 import { BearerApiKeyAuth } from "../../base/provider-base.js";
-import { createOpenAIChatProvider } from "../../dialects/recipe.js";
+import { createOpenAIChatProvider } from "../../dialects/provider-dialects-recipe.js";
 import {
 	capabilitiesFromFlags,
 	capabilityLimitsFromRuntimeConfig,
 	runtimeCapabilityFlags,
-} from "../../dialects/runtime-transport.js";
-import type { VendorRuntime } from "../runtimes.js";
+} from "../../dialects/provider-dialects-runtime-transport.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { DEEPSEEK_DIALECT } from "./deepseek-dialect.js";
 import { deepseekQuotaSource } from "./deepseek-quota.js";
 import { deepSeekInferredThinkingWire } from "./deepseek-thinking.js";

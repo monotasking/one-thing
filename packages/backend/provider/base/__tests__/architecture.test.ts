@@ -15,9 +15,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { undeliverableAttachmentText } from "@onething/backend/agent-loop/loop-primitives";
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/loop-primitives";
-import type { AgentProviderRuntimeConfig } from "../../factory.js";
+import { undeliverableAttachmentText } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProviderRuntimeConfig } from "../../provider-factory.js";
 import { computeOnethingUsageCostUSD } from "../../provider-pricing.js";
 import {
 	LedgerModelProfileResolver,
@@ -419,7 +419,7 @@ interface ProfileCase {
  * **P4-1 有意改了其中两条**(拍板 #12 选 A):账本 vision 为真时不再顺手点亮
  * `file-input` / `file` —— 文件输入跟这条线的传输声明走,账本只管 `image`。
  * 两条 vision 用例的期望里因此少了那两项;这不是漂移,是 P0a 等价口径按新语义
- * 的一次**有意更新**(见 `base/model-profile.ts` 的 `toAgentModelCapabilities`
+ * 的一次**有意更新**(见 `base/provider-base-model-profile.ts` 的 `toAgentModelCapabilities`
  * 与 `base/__tests__/file-input-declaration.test.ts`)。
  */
 const PROFILE_CASES: ProfileCase[] = [

@@ -5,4 +5,4 @@ export {
   markStartupProcessStart,
   resetStartupTrace,
   type StartupMark,
-} from './startup-trace.js'
+} from './perf-startup-trace.js'

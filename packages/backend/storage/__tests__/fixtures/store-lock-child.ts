@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import { LockConflictError, StoreLock } from '../../store-lock.js'
+import { LockConflictError, StoreLock } from '../../storage-store-lock.js'
 
 const lock = new StoreLock({ storePath: process.argv[2], version: 'child-test' })
 const pauseAfterElection = process.argv[3] === 'pause-after-election'

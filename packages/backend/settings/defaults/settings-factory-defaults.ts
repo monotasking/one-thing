@@ -66,7 +66,7 @@ export const DEFAULT_EDITOR_SETTINGS: Required<EditorSettings> = {
  * `docs/design/architecture-direction-2026-10.md` §4)。
  *
  * 从前这里是一张按家点名的大表。服务商 id 是数据,名册在 runtime(各家 manifest 的 `seed`,
- * `packages/backend/provider/vendors/manifests.ts`),而契约层不许反向依赖
+ * `packages/backend/provider/vendors/provider-vendor-manifests.ts`),而契约层不许反向依赖
  * runtime —— 所以各家那几条由装配层(`packages/backend/settings/settings-defaults.ts`)按名册
  * 拼好,经 `createDefaultSettings` / `mergeWithDefaults` 的参数传进来。这里只留不是服务商的
  * 两条(`NON_VENDOR_PROVIDER_SEEDS`)。
@@ -415,7 +415,7 @@ export const DEFAULT_NOTES_DAILY_FORMAT = 'YYYY-MM-DD'
  * 任何一个笔记系统的名字。
  *
  * `vaults` / `folders` 出厂是空的 —— 播种是一次性迁移干的活(P1 的
- * `note/migration.ts`),不是 defaults 干的:defaults 跑在每一次读设置
+ * `note/note-migration.ts`),不是 defaults 干的:defaults 跑在每一次读设置
  * 上,而读 `obsidian.json` 是一次 IO。
  */
 export const DEFAULT_NOTES_SETTINGS: NotesSettings = {

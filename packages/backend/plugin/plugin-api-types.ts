@@ -1,24 +1,24 @@
-import type { PluginInputInterceptHandler } from './input-intercept.js'
+import type { PluginInputInterceptHandler } from './plugin-input-intercept.js'
 import type { CoreToolPromptContribution } from '../agent-loop/agent-loop.js'
-import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
-import type { PluginToolResultInterceptHandler } from './tool-result-intercept.js'
-import type { CorePluginRequestHandler } from './request-channel.js'
+import type { PluginToolCallInterceptHandler } from './plugin-tool-call-intercept.js'
+import type { PluginToolResultInterceptHandler } from './plugin-tool-result-intercept.js'
+import type { CorePluginRequestHandler } from './plugin-request-channel.js'
 import type { CorePluginStorage } from './plugin-storage.js'
 import type { PluginNotifyOptions } from '@shared/plugins/notify-sound.js'
-import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
-import type { CorePluginPanelRegistration } from './panel.js'
-import type { CorePluginUiSlotRegistration, PluginLayoutResult } from './ui-anchor.js'
-import type { CorePluginSearchProviderRegistration } from './search-provider.js'
-import type { CorePluginCredentialStrategyRegistration } from './credential-strategy.js'
-import type { CorePluginDeepLinkActionRegistration } from './deep-link.js'
+import type { CorePluginToolExecutionMode } from './plugin-tool-execution-mode.js'
+import type { CorePluginPanelRegistration } from './plugin-panel.js'
+import type { CorePluginUiSlotRegistration, PluginLayoutResult } from './plugin-ui-anchor.js'
+import type { CorePluginSearchProviderRegistration } from './plugin-search-provider.js'
+import type { CorePluginCredentialStrategyRegistration } from './plugin-credential-strategy.js'
+import type { CorePluginDeepLinkActionRegistration } from './plugin-deep-link.js'
 import type {
   PluginSendMessageOptions,
   PluginSendMessageResult,
   PluginSessionPeek,
   PluginSessionPeekLite,
 } from './plugin-sessions.js'
-import type { PluginLlmCompleteOptions, PluginLlmCompleteResult } from './llm.js'
-import type { PluginResourcesApi } from './resources.js'
+import type { PluginLlmCompleteOptions, PluginLlmCompleteResult } from './plugin-llm.js'
+import type { PluginResourcesApi } from './plugin-resources.js'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -353,7 +353,7 @@ export interface CorePluginToolDefinition<
    *
    * `'parallel'` = 声明本工具无共享状态冲突,可与兄弟并发;`'sequential'` =
    * 执行屏障,等前面的落定并挡住后面的(pi 的判例:多个调用抢同一个共享游标);
-   * 不声明 = 缺省 = 屏障 = 今天的行为。语义与校验见 `tool-execution-mode.ts`。
+   * 不声明 = 缺省 = 屏障 = 今天的行为。语义与校验见 `plugin-tool-execution-mode.ts`。
    */
   executionMode?: CorePluginToolExecutionMode
   /**

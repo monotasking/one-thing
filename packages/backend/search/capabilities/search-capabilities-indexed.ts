@@ -25,8 +25,8 @@ import {
 } from '../kernel/search-kernel.js'
 
 import type { SearchIndexService } from '../index/search-index-service.js'
-import { mapDisplayRangeToSource, toDisplayText } from '../text/plain.js'
-import type { SearchResultSnippetWindow } from './scan-adapter.js'
+import { mapDisplayRangeToSource, toDisplayText } from '../text/search-text-plain.js'
+import type { SearchResultSnippetWindow } from './search-capabilities-scan-adapter.js'
 
 /**
  * 能力要的索引面 —— 只有两句话。
@@ -139,7 +139,7 @@ export function queryRangesOf(source: string, query: string): TextRange[] {
  *
  * **窗口就是全文时不加这一格** —— 契约上「缺席 = 那串字就是全文」,而一个
  * `{offset:0,truncatedStart:false,truncatedEnd:false}` 与缺席在 JSON 上不可区分、
- * 在键比对上却是两件事(同 `scan-adapter.ts` 里 `preview` 那条判据)。
+ * 在键比对上却是两件事(同 `search-capabilities-scan-adapter.ts` 里 `preview` 那条判据)。
  */
 export function snippetWindowOf(snippet: FieldSnippet): SearchResultSnippetWindow | undefined {
   if (!snippet.truncatedStart && !snippet.truncatedEnd) return undefined

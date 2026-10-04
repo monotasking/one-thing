@@ -7,7 +7,7 @@
  *
  *  1. **被新树 import 的纯模块** —— 沙箱、bash 执行器与分类器、edit 引擎与
  *     replacers、diff hunks、文件快照 / 变更队列 / 变更账本、输出累加与截断、
- *     敏感文件判定、后台进程表、权限效果、`builtin/time-runtime.ts`、
+ *     敏感文件判定、后台进程表、权限效果、`builtin/tool-builtin-time-runtime.ts`、
  *     `builtin/web-search/{page-fetch,providers/*}`、`builtin/prompts/*.md`;
  *  2. **IPC 形状层** —— `tool-list-presentation` / `tool-execution-context` /
  *     `tool-call-state` / `ipc-operations`:四个纯投影模块,全部靠注入的函数
@@ -19,22 +19,22 @@ export * from "./tool-call-state.js";
 export * from "./tool-execution-context.js";
 export * from "./tool-list-presentation.js";
 export * from "./tool-ipc-operations.js";
-export * from "./sensitive-files.js";
+export * from "./tool-sensitive-files.js";
 export * from "./tool-background-jobs.js";
-export * from "./bash-executor.js";
-export * from "./output-accumulator.js";
-export * from "./text-truncation.js";
-export * from "./file-mutation-queue.js";
-export * from "./file-snapshot.js";
-export * from "./file-mutation-audit.js";
+export * from "./tool-bash-executor.js";
+export * from "./tool-output-accumulator.js";
+export * from "./tool-text-truncation.js";
+export * from "./tool-file-mutation-queue.js";
+export * from "./tool-file-snapshot.js";
+export * from "./tool-file-mutation-audit.js";
 export * from "./tool-sandbox.js";
-export * from "./sandbox-runtime.js";
-export * from "./edit-engine.js";
-export * from "./replacers.js";
-export * from "./bash-classifier.js";
+export * from "./tool-sandbox-runtime.js";
+export * from "./tool-edit-engine.js";
+export * from "./tool-replacers.js";
+export * from "./tool-bash-classifier.js";
 export * from "./tool-permission-effects.js";
-export * from "./diff-hunks.js";
-export * from "./builtin/time-runtime.js";
-export * from "./builtin/web-search/page-fetch.js";
-export * from "./builtin/web-search/providers/brave.js";
-export * from "./builtin/web-search/providers/tool-builtin-web-search-providers-types.js";
+export * from "./tool-diff-hunks.js";
+export * from "./builtin/tool-builtin-time-runtime.js";
+export * from "./builtin/web-search/tool-web-search-page-fetch.js";
+export * from "./builtin/web-search/providers/tool-web-search-brave.js";
+export * from "./builtin/web-search/providers/tool-web-search-provider-types.js";

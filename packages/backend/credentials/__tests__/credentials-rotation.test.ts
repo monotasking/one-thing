@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   spaceSettings: {} as Record<string, unknown>,
 }))
 
-vi.mock('@onething/backend/auth/process-auth-service', () => ({
+vi.mock('@onething/backend/auth/auth-process-service', () => ({
   getAuthService: () => ({
     refreshTokenIfNeeded: (providerId: string, target: unknown) => {
       mocks.refreshCalls.push({ providerId, target })
@@ -47,7 +47,7 @@ vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
-import type { AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
 import {
   getSpaceProviderCredentials,
   resetSpaceCredentialRotationForTests,
@@ -368,7 +368,7 @@ describe('批 E:轮换边界上的插件策略', () => {
     registry.resetPluginCredentialStrategiesForTests()
     registry.resetAppPluginCredentialStrategyHostForTests()
     registry.configureAppPluginCredentialStrategyHost()
-    const health = await import('@onething/backend/plugin/health')
+    const health = await import('@onething/backend/plugin/plugin-health')
     health.resetPluginRuntimeHealthForTests()
   })
 
@@ -432,7 +432,7 @@ describe('批 E:轮换边界上的插件策略', () => {
 
   it('策略抛错 = 回落 + 记熔断,起流一点不受影响', async () => {
     const registry = await import('../credentials-strategy.js')
-    const health = await import('@onething/backend/plugin/health')
+    const health = await import('@onething/backend/plugin/plugin-health')
     seedPool('plugin:flaky:boom', [entry('a'), entry('b')])
     registry.registerPluginCredentialStrategy('flaky', {
       name: 'boom',

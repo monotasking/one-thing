@@ -13,7 +13,7 @@ import {
 	writeContextSnapshot,
 	writeRequestSnapshot,
 } from "../eval-snapshot.js";
-import { hashSections } from "../section-hash.js";
+import { hashSections } from "../eval-section-hash.js";
 
 let tmpDir: string;
 let storeOptions: { storePath: string };

@@ -45,7 +45,7 @@ import {
   type UnmountShellResourcesRequest,
 } from '@shared/ipc/resources.js'
 import type { ResourceKernel } from './resource-api.js'
-import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/current.js'
+import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
 import type { ShellMountRegistry } from '@onething/backend/resource'
 import { serializeOutcome, serializeReadOutcome, serializeSpec } from './resource-wire-views.js'
@@ -80,7 +80,7 @@ function shells(): ShellMountRegistry {
 /**
  * 一次调用的坐标。**`sessionId` 缺席就是缺席** —— 不拿 `ref` 里那条会话顶上:
  * 那样审计会读成「A 自己改了自己」(K1 留账,K2a 的答案是保留坐标 +
- * `<store>/audit/resource.jsonl`,见 `toolkit/audit-sink.ts`)。
+ * `<store>/audit/resource.jsonl`,见 `toolkit/toolkit-audit-sink.ts`)。
  */
 function callOptions(context: RpcDispatchContext, sessionId?: string) {
   return {

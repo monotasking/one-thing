@@ -15,8 +15,8 @@ import type {
   SerializedResourceSpec,
 } from '@shared/ipc/resources.js'
 import type { ReadOutcome, ResourceSpec } from './resource-api.js'
-import type { Outcome, Result } from '@onething/backend/toolkit/tool-protocol'
-import { resultToText } from '@onething/backend/toolkit/tool-protocol'
+import type { Outcome, Result } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { resultToText } from '@onething/backend/toolkit/toolkit-tool-protocol'
 
 /**
  * 一份自述 → 可序列化投影。函数(`when` / `describe`)在这里被丢掉,只留一格

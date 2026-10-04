@@ -1,7 +1,7 @@
 /**
  * `SearchService` 的**进程单槽**(S2)。
  *
- * 设计:docs/design/search-index-2026-09.md §3(装配在 `backend/search/service-setup.ts`)。
+ * 设计:docs/design/search-index-2026-09.md §3(装配在 `backend/search/search-service-setup.ts`)。
  *
  * 为什么槽住在产品层而不是装配层:`assembly:gate`(组合根 A3)是**只许降**的棘轮 ——
  * `packages/backend` 里新长出一个模块级 `let` 就是红,而这个槽正是那种「进程里只有

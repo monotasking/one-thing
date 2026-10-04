@@ -2,7 +2,7 @@ import {
   stringifyOnethingMessageContent,
   type OnethingAIMessageContent,
   type OnethingToolChatMessage,
-} from './message-conversion.js'
+} from './provider-message-conversion.js'
 
 export type OnethingThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'max' | 'xhigh'
 export type OnethingAgentThinking = 'enabled' | 'disabled'

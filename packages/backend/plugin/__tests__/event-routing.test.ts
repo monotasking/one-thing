@@ -1,7 +1,7 @@
 /**
  * R2 评审修复第 7 条:事件分流走**真** EventBus。
  *
- * request-channel.test.ts 里那批用例全用 stub host,恰好绕开了
+ * plugin-request-channel.test.ts 里那批用例全用 stub host,恰好绕开了
  * `createPluginAPI` 里这段真实的分流代码 —— 而分流判据写错的后果是
  * "订阅了、永远收不到、零告警",测试不打在真总线上就永远看不见。
  */
@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { collectLogRecordsForTests } from '@onething/backend/logging/configure-logging'
+import { collectLogRecordsForTests } from '@onething/backend/logging/logging-configure'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-events-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -27,9 +27,9 @@ afterAll(async () => {
 
 async function load() {
   const [{ EventBus }, api, apiModule] = await Promise.all([
-    import('@onething/backend/event/session-event-bus'),
-    import('../api.js'),
-    import('../api.js'),
+    import('@onething/backend/event/event-session-bus'),
+    import('../plugin-api.js'),
+    import('../plugin-api.js'),
   ])
   return { EventBus, createPluginAPI: api.createPluginAPI, disposePlugin: api.disposePlugin, apiModule }
 }

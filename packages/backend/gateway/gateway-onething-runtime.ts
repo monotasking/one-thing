@@ -4,10 +4,10 @@ import type {
   CoreConversationRuntime,
   CoreSessionRuntime,
   CoreStreamChannelLike,
-} from '@onething/backend/gateway/conversation-runtime'
+} from '@onething/backend/gateway/gateway-conversation-runtime'
 import {
   createOnethingConversationRuntimeFromStreamEngine,
-} from './engine-conversation-runtime.js'
+} from './gateway-engine-conversation-runtime.js'
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,

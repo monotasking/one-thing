@@ -48,9 +48,9 @@ import {
 import type { OnethingSearchProvidersAdapters } from './search-providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/search-capabilities.js'
 import type { SearchIndexQueryFace } from './capabilities/search-capabilities-indexed.js'
-import type { ModelStatus } from './index/model-download.js'
-import type { IndexStorage } from './index/worker-core.js'
-import { searchResultOf, type SearchServiceResult } from './capabilities/scan-adapter.js'
+import type { ModelStatus } from './index/search-index-model-download.js'
+import type { IndexStorage } from './index/search-index-worker-core.js'
+import { searchResultOf, type SearchServiceResult } from './capabilities/search-capabilities-scan-adapter.js'
 
 /** 命令面板一页给多少条(旧路那个缺省值,数没变)。 */
 export const DEFAULT_SEARCH_LIMIT = 20
@@ -177,7 +177,7 @@ export interface SearchIndexStatus {
    * 缺席 = 「没关过 / 没开过」,不是「没出错」。契约层那一份的注释里有同一段话。
    */
   vectorError?: string
-  /** 那句原因属于哪一类(R12;与 `vectorError` 同生同灭,判据在 `vector-writer.ts`)。 */
+  /** 那句原因属于哪一类(R12;与 `vectorError` 同生同灭,判据在 `search-index-vector-writer.ts`)。 */
   vectorErrorKind?: 'network' | 'runtime' | 'model' | 'unknown'
   /**
    * **嵌入模型这件东西自己的状态**(2026-09-17)。与 `vector` 那一格是两件事:

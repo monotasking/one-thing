@@ -13,7 +13,7 @@
  * 设计稿 §9 P1「第二套 codex」)。新增请求侧行为一律改那条线,不要在这里复活。
  */
 import { toJsonObject } from '@shared/json'
-import type { OnethingOpenRouterModel } from '../../model-registry.js'
+import type { OnethingOpenRouterModel } from '../../provider-model-registry.js'
 import type { OnethingOAuthToken } from '../../../auth/auth-types.js'
 
 export const ONETHING_CODEX_PROVIDER_ID = 'codex'
@@ -269,7 +269,7 @@ function normalizeOnethingCodexModelNativeTools(raw: OnethingCodexRawValue): One
  * 一条规则,一个出口:Codex 的原生 `image_generation` 工具可用 ⇒ 该模型具备
  * image 输出。目录条目的 output_modalities 由它推导(Codex /models 从不报
  * output_modalities),能力解析器那一侧读同样的事实
- * (`model-capability.ts` 的 `codexMetadataDeclaresImageOutput`)。
+ * (`provider-model-capability.ts` 的 `codexMetadataDeclaresImageOutput`)。
  */
 export function codexNativeToolsDeclareImageOutput(
   nativeTools: readonly string[] | undefined,

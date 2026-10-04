@@ -3,7 +3,7 @@
  *
  * A2(`docs/design/backend-composition-root-2026-09.md` §2.2)之后这里**不再持有
  * 任何模块级 `let`**:`createEventSystem()` 只造两只对象交出去,`getEventBus()` /
- * `getStreamChannel()` 读的是进程当前实例(`@onething/backend/current.js`)。谁造的、谁关的,
+ * `getStreamChannel()` 读的是进程当前实例(`@onething/backend/backend-current.js`)。谁造的、谁关的,
  * 由 `OnethingBackend.assemble` / `dispose()` 一处说了算。
  *
  * Usage:
@@ -12,9 +12,9 @@
  *   bus.emit(sessionId, { type: 'stream:start', assistantMessageId })
  */
 
-import { EventBus } from './session-event-bus.js'
-import { StreamChannel } from './session-stream-channel.js'
-import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/current.js'
+import { EventBus } from './event-session-bus.js'
+import { StreamChannel } from './event-session-stream-channel.js'
+import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/backend-current.js'
 
 /**
  * 造一套事件系统。纯工厂:不碰任何全局,谁拿到谁负责关。
@@ -63,6 +63,6 @@ export function getStreamChannel(): StreamChannel {
 }
 
 // Re-export classes for direct use in tests
-export { EventBus } from './session-event-bus.js'
-export { StreamChannel } from './session-stream-channel.js'
-export { RingBuffer } from './session-ring-buffer.js'
+export { EventBus } from './event-session-bus.js'
+export { StreamChannel } from './event-session-stream-channel.js'
+export { RingBuffer } from './event-session-ring-buffer.js'

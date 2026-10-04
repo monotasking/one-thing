@@ -1,4 +1,4 @@
-import type { DialSpec } from '../../dials.js'
+import type { DialSpec } from '../../provider-dials.js'
 import type { ProviderManifest } from '../../provider-manifest.js'
 import { ACME_PRO_BASE_URL, ACME_STANDARD_BASE_URL, normalizeAcmeTier, resolveAcmeBaseUrl } from './acme-endpoint.js'
 

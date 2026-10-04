@@ -7,9 +7,9 @@
  * `kit.accessToken`,与别的订阅型家同一条路。
  */
 import { BearerApiKeyAuth } from "../../base/provider-base.js";
-import { createOpenAIChatProvider } from "../../dialects/recipe.js";
+import { createOpenAIChatProvider } from "../../dialects/provider-dialects-recipe.js";
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../kimi/kimi-endpoint.js";
-import type { VendorRuntime } from "../runtimes.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { KIMI_CODE_DIALECT } from "./kimi-code-dialect.js";
 import { KIMI_CODE_CONFIG } from "./kimi-code-oauth.js";
 

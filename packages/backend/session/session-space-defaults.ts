@@ -15,7 +15,7 @@
  * `docs/design/workspace-provider-config-review-2026-08-18.md` §7 / C2。
  */
 
-import { readSpaceProviderSettings } from '@onething/backend/space/provider-settings'
+import { readSpaceProviderSettings } from '@onething/backend/space/space-provider-settings'
 import type { CoreSpaceDefaultSelection } from '@onething/backend/provider'
 import { resolveSessionSpaceId } from './session-store.js'
 

@@ -37,7 +37,7 @@ describe('D6-a 三宿主装配冒烟', () => {
    * 本期要防的事,而只测"新的在"证明不了"旧的不在"。
    */
   it('collab 装配面只导出 v3 运行时,v2 协调器的生命周期口已不存在', { timeout: 60_000 }, async () => {
-    const collab = await import('../../rooms.js')
+    const collab = await import('../../collab-rooms.js')
     // 新的(也是唯一的)生产路径。
     expect(typeof collab.initializeCollabV3Runtime).toBe('function')
     expect(typeof collab.shutdownCollabV3Runtime).toBe('function')
@@ -45,7 +45,7 @@ describe('D6-a 三宿主装配冒烟', () => {
     expect((collab as Record<string, unknown>).shutdownCollabCoordinator).toBeUndefined()
     // 停止按钮那扇门换了实现,名字一个字没改(apps 侧零改动的判据)。
     expect(typeof collab.abortCollabRoomTurnForStop).toBe('function')
-    // 配置门搬了家(coordinator.ts → room-config.ts),对外的名字同样零改动。
+    // 配置门搬了家(coordinator.ts → collab-room-config.ts),对外的名字同样零改动。
     expect(typeof collab.setCollabRoomConfig).toBe('function')
     expect(typeof collab.setCollabRoomFrozen).toBe('function')
     expect(typeof collab.setCollabRoomBudgets).toBe('function')

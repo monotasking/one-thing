@@ -1,0 +1,252 @@
+/**
+ * Evals Provider Adapter
+ *
+ * Bridges the injectable EvalModelCaller interface (from
+ * packages/backend/eval/eval-model-call.ts) to the app's
+ * configured provider credentials.
+ *
+ * Design D3: The runner does not embed an HTTP client. This adapter
+ * provides the model-call function using the default space's selected
+ * credential and configured base URL, so eval runs use the same provider configuration
+ * as real chats (same base URL, same API key, same auth).
+ *
+ * Future: replace raw fetch with proper provider-stack integration
+ * (AI SDK generateText) once non-streaming single-turn support is
+ * confirmed across all providers (§7 风险).
+ *
+ * 结构债 P4c 第十批从 `apps/electron/src/main/ipc/evals-provider-adapter.ts`
+ * 整只搬到装配层,一行逻辑没改(它本来就一句 electron 也不碰)—— 两个调用方
+ * (`eval/eval-client-api.ts` 与 `eval/eval-client-api-workbench.ts`)都在这一侧,
+ * 留在宿主里只会逼着装配层去 import `@main`。日志命名空间从 `ipc.evals` 改成
+ * `evals.provider`(它不再在 IPC 那一层)。
+ */
+
+import { getSettings } from '@onething/backend/settings'
+import type { EvalModelCaller } from "./eval-model-call.js";
+import { onethingBaseBuiltinProviders, resolveProviderApiKey } from "@onething/backend/provider";
+import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
+import { resolveSpaceProviderCredentialForSpace } from "@onething/backend/credentials";
+import { captureUsageRecorder } from "../usage/usage-recorder.js";
+import { getLogger } from "@onething/backend/logging/logging-configure";
+
+const log = getLogger("evals.provider");
+
+interface ResolvedEvalsCredentials {
+	ok: boolean;
+	apiKey?: string;
+	baseUrl?: string;
+	reason?: string;
+}
+
+/**
+ * Resolve API credentials for an eval run without making a request, so
+ * the evals domain's `runStart` can fail fast instead of recording a run where every
+ * attempt throws "No API key".
+ */
+export function resolveEvalsCredentials(
+	providerId: string,
+): ResolvedEvalsCredentials {
+	const settings = getSettings();
+	const providerConfig = (settings?.ai?.providers as any)?.[providerId];
+	const resolution = resolveSpaceProviderCredentialForSpace(DEFAULT_SPACE_ID, providerId);
+
+	if (providerConfig?.authType === "oauth"
+		|| resolution.kind === "oauth-entry"
+		|| (resolution.kind === "unavailable" && resolution.reason === "oauth")) {
+		return {
+			ok: false,
+			reason: `Provider "${providerId}" uses OAuth; eval runs currently support API-key providers only`,
+		};
+	}
+
+	if (resolution.kind === "unavailable" && resolution.reason === "exhausted") {
+		return { ok: false, reason: resolution.message };
+	}
+	const apiKey = resolution.kind === "entry"
+		? resolution.entry.apiKey?.trim()
+		: resolution.kind === "env" ? resolveProviderApiKey(providerId, undefined) : undefined;
+	// Fall back to the provider's own registered default base URL, not a
+	// hardcoded OpenAI endpoint — e.g. deepseek without an explicit baseUrl
+	// must resolve to https://api.deepseek.com.
+	const builtinDefault = onethingBaseBuiltinProviders.find(
+		(p) => p.id === providerId,
+	)?.info.defaultBaseUrl;
+	const baseUrl: string =
+		(resolution.kind === "entry" && resolution.entry.baseUrl)
+		|| providerConfig?.baseUrl || builtinDefault || "https://api.openai.com/v1";
+
+	if (!apiKey) {
+		return {
+			ok: false,
+			reason: `No API key configured for provider "${providerId}"`,
+		};
+	}
+
+	return { ok: true, apiKey, baseUrl };
+}
+
+export function createEvalsModelCaller(
+	providerId: string,
+	model: string,
+	lifecycle: { signal?: AbortSignal } = {},
+): EvalModelCaller {
+	const recordUsage = captureUsageRecorder();
+	return async (opts) => {
+		const signal = lifecycle.signal && opts.signal
+			? AbortSignal.any([lifecycle.signal, opts.signal]) : lifecycle.signal ?? opts.signal;
+		signal?.throwIfAborted();
+		// Scene replays carry the ORIGIN provider/model (scene/params.json).
+		// Route to that provider when its credentials resolve — otherwise a
+		// claude incident would silently "reproduce" on the eval-default
+		// endpoint while the transcript claims the original model. When the
+		// origin can't be served, fall back to the eval binding INCLUDING its
+		// model name (the origin model doesn't exist on the fallback endpoint).
+		let effectiveModel = model;
+		let effectiveProviderId = providerId;
+		let credentials = resolveEvalsCredentials(providerId);
+		if (opts.provider && opts.provider !== providerId) {
+			const origin = resolveEvalsCredentials(opts.provider);
+			if (origin.ok) {
+				credentials = origin;
+				effectiveProviderId = opts.provider;
+				effectiveModel = opts.model || model;
+			} else {
+				log.warn("origin provider unavailable, falling back", {
+					originProvider: opts.provider,
+					reason: origin.reason,
+					fallbackProvider: providerId,
+					fallbackModel: model,
+				});
+			}
+		} else if (opts.provider === providerId && opts.model) {
+			// Same provider: honor the scene's exact model.
+			effectiveModel = opts.model;
+		}
+		if (!credentials.ok) {
+			throw new Error(credentials.reason);
+		}
+		const apiKey = credentials.apiKey!;
+		const baseUrl = credentials.baseUrl!;
+
+		const body: Record<string, unknown> = {
+			model: effectiveModel,
+			messages: opts.messages.map((m) => {
+				// Full tool-calling protocol so agent-loop replay is faithful
+				if (m.role === "tool") {
+					return {
+						role: "tool",
+						tool_call_id: m.toolCallId,
+						content: m.content,
+					};
+				}
+				const base: Record<string, unknown> = {
+					role: m.role === "developer" ? "system" : m.role,
+					content: m.content,
+				};
+				if (m.role === "assistant" && m.toolCalls?.length) {
+					base.tool_calls = m.toolCalls.map((tc) => ({
+						id: tc.id,
+						type: "function",
+						function: { name: tc.name, arguments: tc.argsJson },
+					}));
+				}
+				return base;
+			}),
+			// 输出上限只有场景明确给了才发(2026-09-09 用户裁定,与聊天链路同一条:
+			// 不知道就不传,让服务商按自己的上限跑)。从前这里 `?? 2048` 是评估台自己
+			// 藏的一个默认 —— 重放一条真会话时,思考模型把 2048 花在推理上就被截断,
+			// 评估结果因此说的是「上限太小」而不是被评的那条提示词。
+			...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
+		};
+
+		// Mirror the production deepseek rule: thinking-enabled requests carry
+		// thinking/reasoning_effort and OMIT temperature.
+		if (opts.thinking) {
+			body.thinking = { type: opts.thinking };
+			if (opts.thinking === "enabled" && opts.reasoningEffort) {
+				body.reasoning_effort = opts.reasoningEffort;
+			}
+		}
+		if (opts.thinking !== "enabled") {
+			body.temperature = opts.temperature ?? 0;
+		}
+
+		if (opts.tools && opts.tools.length > 0) {
+			body.tools = opts.tools.map((t) => ({
+				type: "function",
+				function: {
+					name: t.name,
+					description: t.description || "",
+					parameters: t.parameters || {
+						type: "object",
+						properties: {},
+					},
+				},
+			}));
+			body.tool_choice = "auto";
+		}
+
+		const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify(body),
+			signal,
+		});
+
+		if (!response.ok) {
+			const text = await response.text();
+			throw new Error(`API error ${response.status}: ${text.slice(0, 200)}`);
+		}
+
+		const data: any = await response.json();
+		const choice = data.choices?.[0];
+		if (!choice) throw new Error("No choices in response");
+
+		const message = choice.message || {};
+		const toolCalls = (message.tool_calls || []).map((tc: any) => ({
+			id: tc.id,
+			name: tc.function?.name || "unknown",
+			args: (() => {
+				try {
+					return JSON.parse(tc.function?.arguments || "{}");
+				} catch {
+					return {};
+				}
+			})(),
+		}));
+
+		if (data.usage) {
+			try {
+				recordUsage({
+					providerId: effectiveProviderId,
+					modelId: effectiveModel,
+					source: "evals",
+					usage: {
+						inputTokens: data.usage.prompt_tokens ?? 0,
+						outputTokens: data.usage.completion_tokens ?? 0,
+						totalTokens: data.usage.total_tokens,
+					},
+				});
+			} catch (error) {
+				log.error("record usage failed", undefined, error);
+			}
+		}
+
+		return {
+			content: message.content || "",
+			toolCalls,
+			finishReason: choice.finish_reason || "stop",
+			usage: data.usage
+				? {
+						promptTokens: data.usage.prompt_tokens,
+						completionTokens: data.usage.completion_tokens,
+						totalTokens: data.usage.total_tokens,
+					}
+				: undefined,
+		};
+	};
+}

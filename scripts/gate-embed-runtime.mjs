@@ -20,7 +20,7 @@
  *    一行都写不出来,`app.jsonl` 里只有戛然而止。
  *
  * 修法是 `PIPELINE_OPTIONS` 里那一格 `enableCpuMemArena: false`
- * (`packages/backend/search/embedding/transformers-onnx.ts`)。
+ * (`packages/backend/search/embedding/search-embedding-transformers-onnx.ts`)。
  * **这道门存在的唯一理由,就是那一格不许再靠一段注释活着。**
  *
  * ## 判据
@@ -242,7 +242,7 @@ async function main() {
 	print(`complete: 2 runtimes, ${red} failed`)
 	if (red > 0) {
 		console.error('[gate:embed-runtime] failed: 嵌入器在某个运行时下跑不完一段真活。')
-		console.error('[gate:embed-runtime] failed: 先看 transformers-onnx.ts 的 PIPELINE_OPTIONS.session_options'
+		console.error('[gate:embed-runtime] failed: 先看 search-embedding-transformers-onnx.ts 的 PIPELINE_OPTIONS.session_options'
 			+ ' —— `enableCpuMemArena: false` 还在不在。')
 	}
 	process.exit(red === 0 ? 0 : 1)

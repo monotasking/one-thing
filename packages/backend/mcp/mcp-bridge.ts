@@ -6,7 +6,7 @@
  */
 
 import { MCPManager } from './mcp-manager.js'
-import { notifyMCPToolTableChanged } from './capabilities-changed.js'
+import { notifyMCPToolTableChanged } from './mcp-capabilities-changed.js'
 import type { MCPToolInfo, MCPToolCallResult } from '@shared/mcp/types.js'
 import type { ToolDefinition } from '@shared/ipc.js'
 import {
@@ -187,7 +187,7 @@ export async function registerMCPTools(): Promise<void> {
    *
    * 这只函数是那件事唯一的汇合点:connect / disconnect / refresh / update /
    * remove / 设置保存 / 服务器推来的 list_changed,每一条路的收尾都调它
-   * (`mcp/server-orchestration.ts` 的六只、`McpSubsystem.start` / `applySettings`、
+   * (`mcp/mcp-server-orchestration.ts` 的六只、`McpSubsystem.start` / `applySettings`、
    * `settings-save.ts`)。资源面的 MCP 投影驱动订的就是它。
    *
    * 放在**三处 early-return 之前**:`plan.mode === 'none'` 是「MCP 关掉了 / 一台都

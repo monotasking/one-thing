@@ -7,11 +7,11 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Outcome } from '@onething/backend/toolkit/tool-protocol'
+import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
-import type { SearchProvider, SearchResponse } from '../../../tool/builtin/web-search/providers/tool-builtin-web-search-providers-types.js'
-import { createWebSearchTool, WebSearchInputSchema } from '../../builtin/web-search.js'
-import { createWebOpenTool, WebOpenInputSchema } from '../../builtin/web-open.js'
+import type { SearchProvider, SearchResponse } from '../../../tool/builtin/web-search/providers/tool-web-search-provider-types.js'
+import { createWebSearchTool, WebSearchInputSchema } from '../../builtin/toolkit-builtin-web-search.js'
+import { createWebOpenTool, WebOpenInputSchema } from '../../builtin/toolkit-builtin-web-open.js'
 import { annotationsOf, modelTextOf, normalizeDetails, partialsOf, runNewTool } from '../support.js'
 
 function fakeProvider(): SearchProvider {

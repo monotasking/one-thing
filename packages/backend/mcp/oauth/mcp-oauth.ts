@@ -11,11 +11,11 @@
 import {
   getOnethingMCPOAuthCredentialsPath,
 } from '../../storage/storage.js'
-import { MCPOAuthFlowManager } from './flow-manager.js'
+import { MCPOAuthFlowManager } from './mcp-oauth-flow-manager.js'
 
-export { MCPOAuthFlowManager, MCP_OAUTH_CALLBACK_PORTS } from './flow-manager.js'
+export { MCPOAuthFlowManager, MCP_OAUTH_CALLBACK_PORTS } from './mcp-oauth-flow-manager.js'
 export { MCPOAuthProvider } from './mcp-oauth-provider.js'
-export { MCPOAuthCredentialStore } from './credential-store.js'
+export { MCPOAuthCredentialStore } from './mcp-oauth-credential-store.js'
 export type {
   MCPOAuthClientInformation,
   MCPOAuthClientMetadata,

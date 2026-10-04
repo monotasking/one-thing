@@ -17,14 +17,14 @@ import type {
 	UsageFieldReader,
 	UsagePathTable,
 } from "../../base/provider-base.js";
-import { thinkingTypeWire } from "../../thinking/thinking-type.js";
-import { kimiFileExtractChannel } from "./attachments.js";
+import { thinkingTypeWire } from "../../thinking/provider-thinking-type.js";
+import { kimiFileExtractChannel } from "./kimi-attachments.js";
 import { openAIChatUsage, openAIChatUsageTable } from "../../wires/provider-wires.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
 	promptCacheKeyExtraBody,
-} from "../../dialects/recipe.js";
+} from "../../dialects/provider-dialects-recipe.js";
 
 /**
  * Kimi 把缓存命中报在 usage 的**顶层** `cached_tokens`,不在
@@ -55,7 +55,7 @@ function isKimiAlwaysThinkingModel(model: string): boolean {
 }
 
 /**
- * 「用户意图 → thinking/effort」的 Kimi 家规 —— 从 `thinking-options.ts` 那句
+ * 「用户意图 → thinking/effort」的 Kimi 家规 —— 从 `provider-thinking-options.ts` 那句
  * `ctx.providerId === 'kimi'` 的分支搬来,逐字。搬家的判据:家规是方言的,
  * 不是那个通用函数的;`kimi-code` 跑的是同一套模型,所以两份配方共用它。
  */

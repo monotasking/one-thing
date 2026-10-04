@@ -13,10 +13,10 @@
  */
 
 import type { JsonObject } from '@shared/json.js'
-import type { Decision, Intent } from './intent.js'
-import type { JobSnapshot } from './job.js'
-import type { Outcome } from './outcome.js'
-import type { Result } from './result.js'
+import type { Decision, Intent } from './toolkit-intent.js'
+import type { JobSnapshot } from './toolkit-job.js'
+import type { Outcome } from './toolkit-outcome.js'
+import type { Result } from './toolkit-result.js'
 
 /** 工具自己发的。`RunContext.emit` 只接受这些。 */
 export type ToolEvent =

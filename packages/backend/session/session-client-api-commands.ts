@@ -52,15 +52,15 @@
  *     它看起来像个疏漏 —— 不是:给一条来自网络的命令盖上「桌面来源」的 origin
  *     才是说谎。
  */
-import { emitCoreSessionCommandForIpc } from '@onething/backend/event/bus-primitives'
+import { emitCoreSessionCommandForIpc } from '@onething/backend/event/event-bus-primitives'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { SessionCommand } from '@shared/events/index.js'
 import { sessionCommandRouter, type SessionCommandEmitResult, type SessionCommandRoutes } from '@shared/ipc/session-command.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sanitizeRendererOrigin } from '@onething/backend/agent-loop'
 import { getEventBus } from '@onething/backend/event'
-import { getStreamEngine } from '@onething/backend/current.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { getStreamEngine } from '@onething/backend/backend-current.js'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/session'
@@ -137,7 +137,7 @@ function amendTurnSignal(input: {
 }): void {
   Promise.all([
     import('@onething/backend/eval'),
-    import('@onething/backend/eval/turn-incident'),
+    import('@onething/backend/eval/eval-turn-incident'),
   ])
     .then(async ([runtime, { createIncidentForTurn }]) => {
       const incident = await createIncidentForTurn({
@@ -194,7 +194,7 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
     const sessionId = request?.sessionId
     sessionAccess.resolve(context, sessionId, 'write')
     /*
-     * 呈现事实(09-18,`session/presentation.ts`):在分传输之前摘下来 —— React 壳走的是
+     * 呈现事实(09-18,`session/session-presentation.ts`):在分传输之前摘下来 —— React 壳走的是
      * http 面,只摘 ipc 那一支就等于没摘。它不进总线;交给处理者要等到下面的校验都过了。
      */
     const taken = takePresented(request?.command as unknown)

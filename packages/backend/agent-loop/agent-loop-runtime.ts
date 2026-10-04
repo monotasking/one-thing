@@ -19,12 +19,12 @@ import {
   type AgentModelToolDefinition,
   type AgentSourceToolDefinition,
 } from './agent-loop-tools.js'
-import { resolveAIToolName } from './tool-names.js'
+import { resolveAIToolName } from './agent-loop-tool-names.js'
 import type { Principal } from '@shared/permission/principal.js'
 import { coreProviderOwnsItsContextWindow } from './agent-loop-external-agent-providers.js'
 import type { AgentTool } from './agent-loop-types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '@shared/json.js'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 export interface CoreAgentLoopContextBudget {
   modelContextLength: number

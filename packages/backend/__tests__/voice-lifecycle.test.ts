@@ -4,8 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const calls = vi.hoisted(() => ({ tts: vi.fn(), asr: vi.fn() }))
-vi.mock('@onething/backend/voice/provider-calls', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/voice/provider-calls')>(),
+vi.mock('@onething/backend/voice/voice-provider-calls', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/voice/voice-provider-calls')>(),
   streamSynthesizeSpeech: calls.tts,
   transcribeUtterance: calls.asr,
 }))
@@ -82,7 +82,7 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   await aborted.promise
   expect(ttsSignal.aborted).toBe(true)
   expect(asrSignal.aborted).toBe(true)
-  const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
   expect(inspectStoreLock({ storePath: a }).status).toBe('held')
   await expect(first.synthesize({ text: 'new work' })).resolves.toMatchObject({ success: false })
   tts.release()

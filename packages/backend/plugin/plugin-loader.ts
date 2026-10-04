@@ -1,10 +1,10 @@
 import fs from 'fs'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
 import os from 'os'
 import path from 'path'
 import { pathToFileURL } from 'url'
-import { writeJsonFile } from '@onething/backend/storage/json-file'
-import { getCoreLogger } from '@onething/backend/logging/logger-primitives'
+import { writeJsonFile } from '@onething/backend/storage/storage-json-file'
+import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 
@@ -15,7 +15,7 @@ import type {
   PluginSettings,
   PluginSource,
 } from './plugin-api-types.js'
-import { PLUGIN_SKIN_MAX_ENTRIES, PLUGIN_THEME_OVERRIDE_MAX_ENTRIES } from './theme-contribution.js'
+import { PLUGIN_SKIN_MAX_ENTRIES, PLUGIN_THEME_OVERRIDE_MAX_ENTRIES } from './plugin-theme-contribution.js'
 
 export const DEFAULT_PLUGIN_ENTRY = 'plugin-entry.js'
 

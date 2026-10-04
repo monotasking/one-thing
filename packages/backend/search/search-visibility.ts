@@ -8,7 +8,7 @@
  * 文件自己写的**:
  *
  *  - 「是不是协作」= `resolveCollabVenue(kind) !== 'chat'` —— 协作域那张唯一的门
- *    (`collab/tool-surface.ts` 的文件头记着:四个工具各手写一遍这句 if,漏一份
+ *    (`collab/collab-tool-surface.ts` 的文件头记着:四个工具各手写一遍这句 if,漏一份
  *    就是一个静默的授权洞)。这里读它,不重写它。
  *  - 「我是不是这间房的成员」= `collabRoomVisibleUntil(room, agentId)` —— 协作
  *    `history` 工具今天用的同一个纯函数(§6.4b 末句要的正是「翻译成 messages 能力
@@ -48,7 +48,7 @@ import type { SearchPrincipal } from './kernel/search-kernel.js'
 import type { SessionMeta } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/session'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('search.visibility')
 
@@ -62,7 +62,7 @@ export const VISIBLE_SESSIONS_CAP = 2000
 
 /**
  * 「这条会话属于哪个空间」。缺席 = 空串,与投影器写进 `spaceId` facet 的那一格
- * 逐字同源(`search/index/projector.ts`:`input.meta?.workspaceId ?? ''`)——
+ * 逐字同源(`search/index/search-index-projector.ts`:`input.meta?.workspaceId ?? ''`)——
  * 两侧必须用同一个缺省,否则「没有空间的会话」在授权与索引里是两个不同的东西。
  */
 function spaceOf(meta: SessionMeta): string {
@@ -126,7 +126,7 @@ export function visibleSessionIdsFor(
 
 /**
  * 成品端口:取材是会话列表投影(**元数据**,不 load 任何会话)—— 与
- * `collab/history-tool.ts` 的 `candidateRooms` 同一条纪律:一次授权判断不该把
+ * `collab/collab-history-tool.ts` 的 `candidateRooms` 同一条纪律:一次授权判断不该把
  * 会话仓的 LRU 顶掉。
  */
 export function createAppSearchVisibilityPort(): SearchVisibilityPort {

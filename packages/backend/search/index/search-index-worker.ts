@@ -3,7 +3,7 @@
  *
  * 设计:docs/design/search-index-2026-09.md §3 落位 ——「`worker.ts`(Worker 入口:
  * 持有 SqliteIndex,收 enqueue / query / status / preview)」。本体在
- * `worker-core.ts`,它不认识 `worker_threads`;这个文件是唯一认识的地方,所以也是
+ * `search-index-worker-core.ts`,它不认识 `worker_threads`;这个文件是唯一认识的地方,所以也是
  * 唯一不能被单测直接跑的地方 —— 于是它里面不许有判断,只有装配。
  *
  * 每个宿主的构建配方各加一个 Worker 入口指向这里(§3 末行),`workerData` 递进来
@@ -15,19 +15,19 @@ import { parentPort, workerData } from 'node:worker_threads'
 
 import { registerBuiltinEmbedders, resolveEmbedder } from '../embedding/search-embedding.js'
 
-import { ModelDownloader } from './model-download.js'
+import { ModelDownloader } from './search-index-model-download.js'
 
-import { VaultFeed } from './vault-feed.js'
-import { defaultDocumentFilters } from './filters.js'
-import { LedgerFeed } from './ledger-feed.js'
-import { IndexProjector } from './projector.js'
-import { SqliteIndex } from './sqlite-index.js'
-import { IndexWorkerCore } from './worker-core.js'
-import type { IndexEndpoint } from './worker-core.js'
+import { VaultFeed } from './search-index-vault-feed.js'
+import { defaultDocumentFilters } from './search-index-filters.js'
+import { LedgerFeed } from './search-index-ledger-feed.js'
+import { IndexProjector } from './search-index-projector.js'
+import { SqliteIndex } from './search-index-sqlite.js'
+import { IndexWorkerCore } from './search-index-worker-core.js'
+import type { IndexEndpoint } from './search-index-worker-core.js'
 
-import type { IndexWorkerData } from './worker-data.js'
-import { installWorkerLogging } from './worker-logging.js'
-import { WorkerDownloadSignal, installWorkerProxyFetch } from './worker-network.js'
+import type { IndexWorkerData } from './search-index-worker-data.js'
+import { installWorkerLogging } from './search-index-worker-logging.js'
+import { WorkerDownloadSignal, installWorkerProxyFetch } from './search-index-worker-network.js'
 
 if (parentPort === null) throw new Error('search index worker must run inside a Worker')
 
@@ -38,14 +38,14 @@ const port = parentPort
  * **第一句就接日志**(2026-09-17)。这条线程里 `setRuntimeLoggerRoot()` 从来没有人调过,
  * 于是产品层的兜底 root 生效 —— 一只 200 条的内存环,线程一死就没了。下面第一句
  * `new SqliteIndex(...)` 就可能 warn(sqlite-vec 装不上),那句话也该落到宿主的
- * `app.jsonl` 里。理由与机制写在 `worker-logging.ts` 的文件头。
+ * `app.jsonl` 里。理由与机制写在 `search-index-worker-logging.ts` 的文件头。
  */
 installWorkerLogging(value => { port.postMessage(value) })
 
 /*
  * **出网先接代理**。模型是下载来的,而这条线程的 `fetch` 与主进程那只受管 fetch 毫无
  * 关系(09-17 事故:provider 走得好好的,模型一个字节下不来)。判据与手法在
- * `worker-network.ts`;代理没配就是一个字都不做,还原函数这里用不上 —— 线程活多久
+ * `search-index-worker-network.ts`;代理没配就是一个字都不做,还原函数这里用不上 —— 线程活多久
  * 这只 fetch 就活多久。
  */
 installWorkerProxyFetch(data.semantic?.proxy)
@@ -53,7 +53,7 @@ installWorkerProxyFetch(data.semantic?.proxy)
 /*
  * **取消那一层装在代理之上**(2026-09-17)。代理换的是「这一发怎么出去」,这一层
  * 加的是「这一发还要不要」—— 于是代理配没配都取消得了。那个库没有 signal 口,
- * 所以只能长在全局 `fetch` 上(理由写在 `worker-network.ts` 的 `WorkerDownloadSignal`)。
+ * 所以只能长在全局 `fetch` 上(理由写在 `search-index-worker-network.ts` 的 `WorkerDownloadSignal`)。
  */
 const downloadSignal = new WorkerDownloadSignal()
 downloadSignal.install()

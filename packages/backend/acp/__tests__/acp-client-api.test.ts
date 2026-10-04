@@ -55,8 +55,8 @@ vi.mock('../../settings/settings-store.js', () => settings)
 
 /** `rpc.acp` 那一只 logger 的 warn:选项失败那一行要带 agent 的原话与错误码。 */
 const acpLogWarn = vi.hoisted(() => vi.fn())
-vi.mock('@onething/backend/logging/configure-logging', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/logging/configure-logging')>()
+vi.mock('@onething/backend/logging/logging-configure', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/logging/logging-configure')>()
   return {
     ...actual,
     getLogger: (ns: string) => {
@@ -71,8 +71,8 @@ vi.mock('@onething/backend/logging/configure-logging', async importOriginal => {
 
 /** 活实例的 `acp` 子系统(A1-a 名册)。缺省 null = 不装 backend 的单测,域退回整只管家。 */
 const backendRef = vi.hoisted(() => ({ acp: null as null | Record<string, ReturnType<typeof vi.fn>> }))
-vi.mock('../../current.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../current.js')>()
+vi.mock('../../backend-current.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../backend-current.js')>()
   return {
     ...actual,
     // 调度器会借实例的 `runTask` 记在途账;假实例原样执行。
@@ -538,8 +538,8 @@ vi.mock('../../session/session-access.js', async importOriginal => {
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })
 // `setSessionMode` 读会话的工作目录(开会话要 cwd);不装 backend 的单测给一张最小的会话表。
-vi.mock('../../session/reads.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/reads.js')>()
+vi.mock('../../session/session-reads.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-reads.js')>()
   return {
     ...actual,
     sessionReads: { ...actual.sessionReads, getSession: (id: string) => (id === 's1' ? { id, workingDirectory: '/work/s1' } : undefined) },

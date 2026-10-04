@@ -38,18 +38,18 @@ import type {
 	AgentProvider,
 	AgentTool,
 	AgentTurnRequest,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import type { JsonObject } from "@shared/json.js";
-import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/toolkit/tool-protocol";
-import type { Result, ToolSpec } from "@onething/backend/toolkit/tool-protocol";
+import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/toolkit/toolkit-tool-protocol";
+import type { Result, ToolSpec } from "@onething/backend/toolkit/toolkit-tool-protocol";
 import { configureToolkitCatalog } from "@onething/backend/toolkit";
-import type { HistoryMessage } from "../message-helpers.js";
+import type { HistoryMessage } from "../engine-stream-message-helpers.js";
 import type { BuildPromptOptions } from "../../prompt/engine-system-prompt.js";
-import type { StreamSender } from "../stream-processor.js";
+import type { StreamSender } from "../engine-stream-processor.js";
 import type {
 	ProviderConfigWithKey,
 	StreamExecutionParams,
-} from "../stream-executor.js";
+} from "../engine-stream-executor.js";
 
 type RecordedAgentRequest = Omit<AgentTurnRequest, "messages"> & {
 	messages: AgentMessage[];
@@ -255,15 +255,15 @@ vi.mock("../../../settings/settings-model-registry-service.js", () => ({
 	getKnownModelMaxOutputTokens: mocks.getKnownModelMaxOutputTokens,
 }));
 
-vi.mock("../../../settings/proxy-fetch.js", () => ({
+vi.mock("../../../settings/settings-proxy-fetch.js", () => ({
 	createRequiredAppFetch: () => mocks.requiredAppFetch,
 }));
 
-vi.mock("../image-stream.js", () => ({
+vi.mock("../engine-image-stream.js", () => ({
 	processImageGenerationStream: mocks.processImageGenerationStream,
 }));
 
-vi.mock("../tool-execution.js", () => ({
+vi.mock("../engine-stream-tool-execution.js", () => ({
 	executeToolDirectly: mocks.executeToolDirectly,
 }));
 
@@ -285,15 +285,15 @@ vi.mock("../../../agent-loop/agent-loop-trigger-manager.js", () => ({
 	},
 }));
 
-vi.mock("@onething/backend/plugin/lifecycle-hooks", () => ({
+vi.mock("@onething/backend/plugin/plugin-lifecycle-hooks", () => ({
 	runAfterAssistantResponseHooks: mocks.runAfterAssistantResponseHooks,
 }));
 
-vi.mock("@onething/backend/skill/session-skill-cache", () => ({
+vi.mock("@onething/backend/skill/skill-session-cache", () => ({
 	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
-vi.mock("@onething/backend/mcp/index-with-bridge", () => ({
+vi.mock("@onething/backend/mcp/mcp-index-with-bridge", () => ({
 	getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 	getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 	isMCPTool: vi.fn(() => false),
@@ -311,14 +311,14 @@ vi.mock("@onething/backend/project-dir/project-dir-bootstrap", () => ({
 	buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }));
 
-vi.mock("../../compact-session.js", () => ({
+vi.mock("../../engine-compact-session.js", () => ({
 	compactSessionContext: vi.fn(),
 	getContextCompactReason: mocks.getContextCompactReason,
 	shouldSkipAutoCompactForProviderUsageMismatch:
 		mocks.shouldSkipAutoCompactForProviderUsageMismatch,
 }));
 
-vi.mock("@onething/backend/prompt/stored-prompt-resolver", () => ({
+vi.mock("@onething/backend/prompt/prompt-stored-resolver", () => ({
 	resolvePromptReferences: vi.fn((content: string) => ({
 		modelContent: content,
 		displayContent: content,
@@ -329,7 +329,7 @@ vi.mock("@onething/backend/prompt/stored-prompt-resolver", () => ({
 // A0-3:ACP 走外部 agent 连接器,连接器在 runtime 里相对引用 `acp/acp-manager.ts`,
 // 所以桩打在具体模块上(barrel 的再导出同样落到这一只)。
 vi.mock("@onething/backend/acp/acp-manager", async () => {
-	const { MemoryACPSessionLinkStore } = await import("@onething/backend/acp/session-links");
+	const { MemoryACPSessionLinkStore } = await import("@onething/backend/acp/acp-session-links");
 	const links = new MemoryACPSessionLinkStore();
 	return {
 		ACPManager: {
@@ -346,7 +346,7 @@ vi.mock("@onething/backend/acp/acp-manager", async () => {
 const { registerAgentProviderRuntime } = await import(
 	"../../engine-process-providers.js"
 );
-const { executeMessageStream } = await import("../stream-executor.js");
+const { executeMessageStream } = await import("../engine-stream-executor.js");
 
 function params(
 	overrides: Partial<StreamExecutionParams> = {},

@@ -2,7 +2,7 @@
  * N2 —— 发送前拦截的**挂点**验收(引擎这一半)。
  *
  * 协议层(三态归一化、链的次序与累积、fail-open、声明门)在
- * `packages/backend/plugin/__tests__/input-intercept.test.ts`。这一份打的是
+ * `packages/backend/plugin/__tests__/plugin-input-intercept.test.ts`。这一份打的是
  * 只有引擎说了算的四件事:
  *
  *  1. 哪些命令**进链**(真实用户发送)、哪些**豁免**(系统内部源,含 `plugin:` 前缀族);
@@ -51,11 +51,11 @@ vi.mock('@onething/backend/agent-loop', async importOriginal => ({
   },
 }))
 
-vi.mock('../../plugin/input-intercept-bound.js', () => ({
+vi.mock('../../plugin/plugin-input-intercept-bound.js', () => ({
   runPluginInputIntercept: mocks.runIntercept,
 }))
 
-const { ProductStreamEngine } = await import('../stream-engine.js')
+const { ProductStreamEngine } = await import('../engine-stream-dispatcher.js')
 
 // P3'e-A2a 的顺带收益:引擎对后端的需要全走端口,所以这一份不再 mock 装配层
 // 的任何模块 —— 桩就是端口本身,缺席的端口(roomIngress / agentBinding /

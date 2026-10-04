@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AgentLoopPauseForConfirmationError } from './agent-loop-errors.js'
 import { runAgentLoop } from './agent-loop-runner.js'
-import { clearRetiredAgentToolNames, registerRetiredAgentToolName } from './tool-names.js'
+import { clearRetiredAgentToolNames, registerRetiredAgentToolName } from './agent-loop-tool-names.js'
 import type {
   AgentLoopOptions,
   AgentProvider,
@@ -1120,7 +1120,7 @@ describe('runAgentLoop forced tool choice ⇄ thinking pairing', () => {
 })
 
 /**
- * 退役工具名(tool-names.ts)。改名一个模型每天都在调的工具时,历史里的旧调用
+ * 退役工具名(agent-loop-tool-names.ts)。改名一个模型每天都在调的工具时,历史里的旧调用
  * 范例不会跟着改 —— provider 是生成器,模仿旧范例吐一个旧名是必然会发生的事,
  * 而「Tool not available」丢的是一条本该送达的消息。
  */

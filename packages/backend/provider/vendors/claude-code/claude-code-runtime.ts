@@ -9,8 +9,8 @@
 import {
 	anthropicAuth,
 	createAnthropicProvider,
-} from "../../dialects/anthropic-recipe.js";
-import type { VendorRuntime } from "../runtimes.js";
+} from "../../dialects/provider-dialects-anthropic-recipe.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { CLAUDE_CODE_DIALECT, CLAUDE_CODE_OAUTH_BETA_HEADERS } from "./claude-code-dialect.js";
 import { CLAUDE_CODE_CONFIG } from "./claude-code-oauth.js";
 import { claudeCodeQuotaSource } from "./claude-code-quota.js";

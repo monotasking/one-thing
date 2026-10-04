@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { Outcome } from '@onething/backend/toolkit/tool-protocol'
+import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { EFFECT_POLICY } from '@shared/toolkit/effects'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
 import type { SessionGoal } from '../../../goal/goal-types.js'

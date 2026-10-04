@@ -9,7 +9,7 @@ import {
   type OnethingOAuthPoolEntry,
   type OnethingSpaceAuthTokenStore,
 } from '../../credentials/credentials-token-store.js'
-import type { OnethingSpaceCredentialTarget } from '../credential-target.js'
+import type { OnethingSpaceCredentialTarget } from '../auth-credential-target.js'
 import type { OnethingOAuthToken } from '../auth-types.js'
 
 interface MemoryEntry {

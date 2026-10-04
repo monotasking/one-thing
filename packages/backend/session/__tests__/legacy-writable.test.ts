@@ -11,8 +11,8 @@ describe('historical session execution preparation', () => {
     const previous = process.env.ONETHING_STORE_PATH
     process.env.ONETHING_STORE_PATH = root
     vi.resetModules()
-    const { installStoreSessionLayerForTest } = await import('../testing/store-layer.js')
-    const { readSessionLogEventsSync, flushSessionEventLog } = await import('../event-log.js')
+    const { installStoreSessionLayerForTest } = await import('../testing/session-testing-store-layer.js')
+    const { readSessionLogEventsSync, flushSessionEventLog } = await import('../session-event-log.js')
     const session = { id: `legacy-${format}`, name: 'Existing history', createdAt: 1, updatedAt: 2,
       messages: [
         { id: 'old-user', role: 'user', content: 'old question', timestamp: 1 },

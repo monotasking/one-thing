@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { makeEffect } from '@shared/toolkit/effects.js'
-import { Decision, Intent } from '../intent.js'
-import { Outcome } from '../outcome.js'
-import { withUserToolSettings } from '../ports.js'
-import { textResult } from '../result.js'
+import { Decision, Intent } from '../toolkit-intent.js'
+import { Outcome } from '../toolkit-outcome.js'
+import { withUserToolSettings } from '../toolkit-ports.js'
+import { textResult } from '../toolkit-result.js'
 import { assertWithinDeclaredEffects, EffectViolationError, ToolRunner } from '../toolkit-runner.js'
 import {
   allowAuthorizer,

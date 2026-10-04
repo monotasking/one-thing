@@ -9,13 +9,13 @@
  * 与接口类型为 anthropic 的自定义服务商借用它。表里读的「claude-* 是哪一代」是**型号家族**
  * 的知识,住 `providers/model-families/claude.ts`。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 import {
   onethingClaudeModelFamily,
   onethingClaudeReasoningProfile,
-} from '../../model-families/claude.js'
+} from '../../model-families/provider-model-families-claude.js'
 
 export const CLAUDE_MANIFEST: ProviderManifest = {
   id: 'claude',
@@ -27,7 +27,7 @@ export const CLAUDE_MANIFEST: ProviderManifest = {
   auth: { kind: 'apiKey' },
   models: { kind: 'models.dev', key: 'anthropic' },
   billing: 'api',
-  // 家族里的哪一半(两半的对应登记在 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`)。
+  // 家族里的哪一半(两半的对应登记在 `vendors/provider-vendor-manifests.ts` 的 `VENDOR_FAMILIES`)。
   family: { role: 'api' },
   modelRules: 'claude',
   defaultBaseUrl: 'https://api.anthropic.com/v1',

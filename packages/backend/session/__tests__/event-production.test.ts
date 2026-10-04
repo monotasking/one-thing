@@ -2,8 +2,8 @@ import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * 命令 / 采集点 → 事件的**产出表**(§9.3 / §10.6 第 2 条)。
  *
- * F2-c 之后产地只有两处:`command-events.ts`(十三条命令)与
- * `lifecycle-events.ts`(`session/created` / `session/compacted` 两个非命令
+ * F2-c 之后产地只有两处:`session-command-events.ts`(十三条命令)与
+ * `session-lifecycle-events.ts`(`session/created` / `session/compacted` 两个非命令
  * 采集点)—— 翻译器已整体退役(§16.9),本文件的名字随之从 event-translator 改成
  * event-production。
  *
@@ -38,8 +38,8 @@ vi.mock('@onething/backend/storage', () => ({
 }))
 
 // 事件产地只从读门面取消息(`session:gate` 的那条纪律),所以测试替的也是它。
-vi.mock('../reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../reads.js')>(),
+vi.mock('../session-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../session-reads.js')>(),
   sessionReads: {
     getMessage: (_sessionId: string, messageId: string) =>
       state.messages.find(message => message.id === messageId),
@@ -56,14 +56,14 @@ vi.mock('../reads.js', async importOriginal => ({
   },
 }))
 
-const { sessionCommandEvents } = await import('../command-events.js')
-const { sessionLifecycleEvents } = await import('../lifecycle-events.js')
+const { sessionCommandEvents } = await import('../session-command-events.js')
+const { sessionLifecycleEvents } = await import('../session-lifecycle-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
-  '../event-log.js'
+  '../session-event-log.js'
 )
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { beginSessionRun, endSessionRun, rotateSessionRun, resetSessionRuns } = await import('../runs.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
+const { resetSessionSurfaceCache } = await import('../session-event-surface.js')
+const { beginSessionRun, endSessionRun, rotateSessionRun, resetSessionRuns } = await import('../session-runs.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
 
 const SESSION = 's1'
 

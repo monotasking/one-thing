@@ -69,7 +69,7 @@ import {
   MCPManager,
   probeMCPServerConfig,
   registerMCPTools,
-} from '@onething/backend/mcp/index-with-bridge'
+} from '@onething/backend/mcp/mcp-index-with-bridge'
 import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'
@@ -81,7 +81,7 @@ import {
   sanitizeMCPServerStatesForClient,
 } from './mcp-secrets.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingMCPIpcLogger } from '@onething/backend/mcp/mcp-ipc-operations'

@@ -14,12 +14,12 @@
  * 判据一律是**线上那份 body**(`fetchImpl` 收到的 `init.body`),不是 dump。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
-} from "../factory.js";
-import type { AgentProviderRequestDumper } from "../request-dumper.js";
+} from "../provider-factory.js";
+import type { AgentProviderRequestDumper } from "../provider-request-dumper.js";
 import { drain, sseResponse, SYSTEM_MESSAGE, USER_MESSAGE } from "./wire-snapshots/snapshot-harness.js";
 
 const CACHE_KEY = "session-2f9c-cache-key";

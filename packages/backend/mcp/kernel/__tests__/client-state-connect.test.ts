@@ -3,7 +3,7 @@ import {
   connectMCPClientWithAdapters,
   createMCPServerState,
   disconnectMCPClientWithAdapters,
-} from '../client-state.js'
+} from '../mcp-kernel-client-state.js'
 import type { MCPServerConfig } from '@shared/mcp/types.js'
 
 function stdioConfig(): MCPServerConfig {

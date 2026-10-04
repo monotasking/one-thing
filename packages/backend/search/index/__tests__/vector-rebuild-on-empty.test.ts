@@ -23,9 +23,9 @@ import type { DocPayload, Embedder, VectorIndex } from '../../kernel/search-kern
 import { createFakeEmbedder } from '../../kernel/search-kernel.js'
 import { MessageChannel } from 'node:worker_threads'
 
-import { SqliteIndex } from '../sqlite-index.js'
-import { IndexWorkerCore } from '../worker-core.js'
-import type { IndexEndpoint } from '../worker-core.js'
+import { SqliteIndex } from '../search-index-sqlite.js'
+import { IndexWorkerCore } from '../search-index-worker-core.js'
+import type { IndexEndpoint } from '../search-index-worker-core.js'
 
 const MESSAGES = 'messages'
 const SCHEMA = {

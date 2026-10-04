@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let root: string
 let runtime: import('../todo-plan-service.js').TodoPlanRuntime | undefined
-vi.mock('@onething/backend/current.js', () => ({
+vi.mock('@onething/backend/backend-current.js', () => ({
   getCurrentBackendInstance: () => runtime ? { todoPlans: runtime } : null,
 }))
 
@@ -33,7 +33,7 @@ vi.mock('@onething/backend/storage', () => ({
 }))
 
 let activeSessionId = ''
-vi.mock('../../session/current-session.js', () => ({
+vi.mock('../../session/session-current.js', () => ({
   getCurrentSessionId: () => activeSessionId,
 }))
 

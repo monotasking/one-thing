@@ -26,7 +26,7 @@ const APPLY = process.argv.includes('--apply')
 const STORE = process.env.ONETHING_STORE_PATH || join(homedir(), '.onething')
 const SESSIONS = join(STORE, 'sessions')
 
-/** 与 `collab/handle-format.ts` 同一条规则。这里是脚本,不进构建,故重述一次。 */
+/** 与 `collab/collab-handle-format.ts` 同一条规则。这里是脚本,不进构建,故重述一次。 */
 const HANDLE_CHARS = 8
 const handleOf = (agentId) => {
   const key = String(agentId).trim().replace(/^agent-/, '')

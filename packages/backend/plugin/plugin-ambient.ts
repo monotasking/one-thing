@@ -21,11 +21,11 @@
  *     同一批闸)。用户主权(总闸 + 每插件静音)是宿主状态,落在装配/渲染层,
  *     不在这份纯裁决里 —— 与提示音的裁决点分层同规。
  */
-import { comparePluginCanonicalOrder } from './canonical-order.js'
+import { comparePluginCanonicalOrder } from './plugin-canonical-order.js'
 import {
   describePluginRelativeAssetPathProblem,
   pluginWebviewEntryUrl,
-} from './webview.js'
+} from './plugin-webview.js'
 
 /**
  * 宿主 ⇄ 氛围 iframe 的消息名。

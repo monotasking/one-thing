@@ -16,10 +16,10 @@ import { join } from 'node:path'
 const STORE = mkdtempSync(join(tmpdir(), 'onething-feature-tools-'))
 process.env.ONETHING_STORE_PATH = STORE
 
-import { FeatureToolRuntime } from '../tier-catalogs.js'
-import { createFeatureInspectTool } from '../builtin/feature-inspect.js'
-import { createFeatureMountTool } from '../builtin/feature-mount.js'
-import { createFeatureUnmountTool } from '../builtin/feature-unmount.js'
+import { FeatureToolRuntime } from '../toolkit-tier-catalogs.js'
+import { createFeatureInspectTool } from '../builtin/toolkit-builtin-feature-inspect.js'
+import { createFeatureMountTool } from '../builtin/toolkit-builtin-feature-mount.js'
+import { createFeatureUnmountTool } from '../builtin/toolkit-builtin-feature-unmount.js'
 import { SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/toolkit'
 import { annotationsOf, modelTextOf, redactText, runNewTool } from '@onething/backend/toolkit/__tests__/support'
 

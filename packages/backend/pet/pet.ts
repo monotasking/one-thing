@@ -4,15 +4,15 @@
  * `@onething/backend/pet/`。
  */
 
-export { ALU } from './builtin/alu.js'
-export { HEIDOU } from './builtin/heidou.js'
+export { ALU } from './builtin/pet-builtin-alu.js'
+export { HEIDOU } from './builtin/pet-builtin-heidou.js'
 export {
   normalizePetChattiness,
   PET_CHATTINESS,
   PET_CHATTINESS_LEVELS,
   PET_DEFAULT_CHATTINESS,
-} from './chattiness.js'
-export type { PetChattiness, PetChattinessProfile } from './chattiness.js'
+} from './pet-chattiness.js'
+export type { PetChattiness, PetChattinessProfile } from './pet-chattiness.js'
 export { SayOrElseComposer, SayPassthroughComposer } from './pet-composer.js'
 export type { MomentComposeInput, MomentComposer } from './pet-composer.js'
 export {

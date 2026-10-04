@@ -12,12 +12,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { parseCaseYaml, type CaseDefinition } from "./case-file.js";
-import { evaluate, type EvalResult } from "./evaluator.js";
-import { getPromptVersion } from "./fixture.js";
-import type { EvalModelCaller } from "./model-call.js";
-import type { EvalFixture } from "./fixture.js";
-import { attachTurnBlocksToLastUserMessage } from "../prompt/turn-delivery.js";
+import { parseCaseYaml, type CaseDefinition } from "./eval-case-file.js";
+import { evaluate, type EvalResult } from "./eval-evaluator.js";
+import { getPromptVersion } from "./eval-fixture.js";
+import type { EvalModelCaller } from "./eval-model-call.js";
+import type { EvalFixture } from "./eval-fixture.js";
+import { attachTurnBlocksToLastUserMessage } from "../prompt/prompt-turn-delivery.js";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -507,7 +507,7 @@ async function runSingleCase(options: {
 
 	// Build messages via the runtime's prompt builder
 	// (imported dynamically so CLI/UI both resolve the same builder)
-	const { buildOnethingPrompt } = await import("../prompt/builder.js");
+	const { buildOnethingPrompt } = await import("../prompt/prompt-builder.js");
 	const result = await buildOnethingPrompt({
 		providerId: fixture.provider || "eval",
 		model: fixture.model || "unknown",

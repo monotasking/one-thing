@@ -1,4 +1,4 @@
-import { projectIdFromPath } from './id.js'
+import { projectIdFromPath } from './project-dir-id.js'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('projects')

@@ -8,8 +8,8 @@
  * gone. Same for a registered fragment and its disposer.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/tool-protocol'
-import type { Result, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
+import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Result, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { promptFragments, registerPromptFragment } from '@onething/backend/prompt'
 import { configureToolkitCatalog } from '@onething/backend/toolkit'
 

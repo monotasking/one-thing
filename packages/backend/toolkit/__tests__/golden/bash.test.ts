@@ -13,11 +13,11 @@ import os from 'os'
 import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createToolAbortError } from '@onething/backend/tool/tool-helpers'
-import type { BashOperations } from '../../../tool/bash-executor.js'
+import type { BashOperations } from '../../../tool/tool-bash-executor.js'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
-import { createBashTool, BashInputSchema } from '../../builtin/bash.js'
-import { Outcome } from '@onething/backend/toolkit/tool-protocol'
-import type { Job, JobRegistry, JobSpec } from '@onething/backend/toolkit/tool-protocol'
+import { createBashTool, BashInputSchema } from '../../builtin/toolkit-builtin-bash.js'
+import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Job, JobRegistry, JobSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   annotationsOf,
   modelTextOf,

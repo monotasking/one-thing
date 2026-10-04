@@ -32,7 +32,7 @@ vi.mock('@onething/backend/agent-loop', async importOriginal => ({
   },
 }))
 
-const { ProductStreamEngine } = await import('../stream-engine.js')
+const { ProductStreamEngine } = await import('../engine-stream-dispatcher.js')
 
 // 路由是端口:桩直接注进去,不再 mock 装配层模块(P3'e-A2a)。
 function engine() {

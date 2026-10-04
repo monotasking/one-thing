@@ -4,8 +4,8 @@ import type { MCPServerConfig, MCPToolCallResult } from '@shared/mcp/types.js'
 const pendingResolvers: Array<(result: MCPToolCallResult) => void> = []
 const callLog: string[] = []
 
-vi.mock('../client-state.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../client-state.js')>()
+vi.mock('../mcp-kernel-client-state.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../mcp-kernel-client-state.js')>()
   return {
     ...original,
     runMCPConnectedClientOperation: (_client: unknown, operation: (client: unknown) => Promise<unknown>) =>
@@ -22,7 +22,7 @@ vi.mock('../client-state.js', async (importOriginal) => {
   }
 })
 
-import { CoreMCPClientRuntime } from '../client-runtime.js'
+import { CoreMCPClientRuntime } from '../mcp-kernel-client-runtime.js'
 
 function createRuntime() {
   const config: MCPServerConfig = {

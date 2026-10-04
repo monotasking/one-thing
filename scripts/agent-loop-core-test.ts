@@ -3,7 +3,7 @@ import {
   type AgentProvider,
   type AgentStreamEvent,
   type AgentTool,
-} from '../packages/backend/agent-loop/loop-primitives.ts'
+} from '../packages/backend/agent-loop/agent-loop-primitives.ts'
 
 const events: AgentStreamEvent[] = []
 let toolCallCount = 0

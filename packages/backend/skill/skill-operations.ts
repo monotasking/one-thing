@@ -26,13 +26,13 @@ export {
   executeSkillManage,
   isSkillManageMutation,
   previewSkillManage,
-} from './manage-setup.js'
+} from './skill-manage-setup.js'
 export type {
   SkillManageAction,
   SkillManageArgs,
   SkillManagePreview,
   SkillManageResult,
-} from './manage-setup.js'
+} from './skill-manage-setup.js'
 
 // Re-export types from shared
 export type {

@@ -8,7 +8,7 @@
 //   2. 放进一家虚构的服务商 `acme`(`scripts/provider-vendor-drill/acme/*.ts.txt` —— 档位与地址、环境变量、
 //      认亲、目录别名、错误码说明、型号规则表、自己的思考线型、方言、运行时工厂、配额源、出厂种子,
 //      每一种机制都用上);
-//   3. 只做「加一家」允许做的事:`vendors/manifests.ts` 名册一行、`vendors/runtimes.ts` 名册一行、
+//   3. 只做「加一家」允许做的事:`vendors/provider-vendor-manifests.ts` 名册一行、`vendors/provider-vendor-runtimes.ts` 名册一行、
 //      壳的两份文案各一行;
 //   4. 断言:改动的文件**恰好**是 `vendors/acme/` 加上这四个文件;node 侧 typecheck 零错;
 //      `provider:gate` 里 acme 在自己家以外零命中;端到端演练测试(`acme-drill.test.ts.txt`)全绿 ——
@@ -30,8 +30,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const drillDir = path.join(root, 'scripts/provider-vendor-drill')
 const VENDORS = 'packages/backend/provider/vendors'
 const ALLOWED_TOUCHES = new Set([
-  `${VENDORS}/manifests.ts`,
-  `${VENDORS}/runtimes.ts`,
+  `${VENDORS}/provider-vendor-manifests.ts`,
+  `${VENDORS}/provider-vendor-runtimes.ts`,
   'apps/desktop-react/src/i18n/zh.ts',
   'apps/desktop-react/src/i18n/en.ts',
 ])
@@ -97,9 +97,9 @@ try {
     cpSync(path.join(drillDir, 'acme', file), path.join(home, file.replace(/\.txt$/, '')))
   }
   // ② 名册各一行
-  edit(path.join(worktree, VENDORS, 'manifests.ts'), (s) =>
+  edit(path.join(worktree, VENDORS, 'provider-vendor-manifests.ts'), (s) =>
     appendToList(s.replace(/(import \{ \w+_MANIFEST \} from '\.\/[\w-]+\/[\w-]+-manifest\.js'\n)(?!import \{ \w+_MANIFEST)/, `$1import { ACME_MANIFEST } from './acme/acme-manifest.js'\n`), 'VENDOR_MANIFESTS', '  ACME_MANIFEST,'))
-  edit(path.join(worktree, VENDORS, 'runtimes.ts'), (s) =>
+  edit(path.join(worktree, VENDORS, 'provider-vendor-runtimes.ts'), (s) =>
     appendToList(s.replace(/(import \{ \w+_RUNTIME \} from "\.\/[\w-]+\/[\w-]+-runtime\.js";\n)(?!import \{ \w+_RUNTIME)/, `$1import { ACME_RUNTIME } from "./acme/acme-runtime.js";\n`), 'VENDOR_RUNTIMES', '\tACME_RUNTIME,'))
   // ③ 壳的文案
   for (const [lang, text] of [['zh', 'Acme 官方接口'], ['en', 'Official Acme API']]) {

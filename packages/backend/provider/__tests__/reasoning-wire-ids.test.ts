@@ -1,18 +1,18 @@
 /**
  * 用户思考覆盖里 `wire` 的合法取值(服务商自述试点 P3)。
  *
- * 从前是 `model-capability.ts` 里一行手写名单;现在是协议层名单
+ * 从前是 `provider-model-capability.ts` 里一行手写名单;现在是协议层名单
  * (`providers/thinking/protocol-wire-ids.ts`)+ 内置各家 manifest 的 `reasoningWires`
  * + 非线型的 `custom`。这里钉住:**搬家前合法的逐个仍合法,搬家前非法的仍非法**(尤其登记表里有、
  * 但从来不许用户点名的 DeepSeek 推断线型),以及名单与线型登记表对得上。
  */
 import { describe, expect, it } from 'vitest'
-import { normalizeOnethingReasoningProfileOverride } from '../model-capability.js'
-import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from '../thinking/protocol-wire-ids.js'
+import { normalizeOnethingReasoningProfileOverride } from '../provider-model-capability.js'
+import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from '../thinking/provider-thinking-protocol-wire-ids.js'
 import { getProviderManifestRegistry } from '../provider-manifest.js'
 import { thinkingWires } from '../base/provider-base.js'
 import '../thinking/provider-thinking.js'
-import '../vendors/runtimes.js'
+import '../vendors/provider-vendor-runtimes.js'
 
 /** 搬家前 `REASONING_WIRES` 的全部取值,逐字。 */
 const LEGAL_BEFORE_P3 = [

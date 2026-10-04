@@ -9,8 +9,8 @@
  * `VectorIndex` / `Embedder` S1 只定形,S7 接上真实现(sqlite-vec + wasm 嵌入器)。
  */
 
-import type { FacetFilter, FacetValue } from '../candidate.js'
-import type { DocPayload } from '../feed.js'
+import type { FacetFilter, FacetValue } from '../search-kernel-candidate.js'
+import type { DocPayload } from '../search-kernel-feed.js'
 
 /** 一条倒排项。positions 让短语相邻成为可能。 */
 export interface Posting {
@@ -54,7 +54,7 @@ export interface DocTable {
  * 一个闭包过不了 SQL 的 WHERE,只能先 KNN 拿 k 条、再挨个问谓词,于是授权范围外
  * 的候选先占掉了 k 个名额。改成与词法路同形的 facet 表之后,两条召回路问索引的
  * 是同一句话,授权在 KNN 里就已经生效(实测:vec0 把 `docId IN (子查询)` 下推进
- * KNN 扫描,而 SQL 的 JOIN 则是后过滤 —— 见 `sqlite-vec.ts` 的读数)。
+ * KNN 扫描,而 SQL 的 JOIN 则是后过滤 —— 见 `search-index-sqlite-vec.ts` 的读数)。
  */
 export interface VectorSearchScope {
   capability?: string

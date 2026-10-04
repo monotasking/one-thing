@@ -18,10 +18,10 @@ import type {
   ACPSettings,
   AcpSessionState,
 } from '@shared/contracts/acp'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import { installAcpStateBroadcaster, type AcpStateSource } from './acp-events.js'
 import type { AcpAgentRosterEntry, AcpRegistryRefreshOptions } from './acp-registry.js'
-import { HostMcpBridge } from './host-mcp-bridge.js'
+import { HostMcpBridge } from './acp-host-mcp-bridge.js'
 
 const log = getLogger('app.acp.subsystem')
 
@@ -130,7 +130,7 @@ export class AcpSubsystem {
   /** 后台那趟联网刷新的中止器;`dispose()` 拉闸。 */
   private readonly backgroundAbort = new AbortController()
   /**
-   * 宿主工具面的桥与凭据表(A4-a,`host-mcp-bridge.ts`)。**实例字段**,不是模块级槽:
+   * 宿主工具面的桥与凭据表(A4-a,`acp-host-mcp-bridge.ts`)。**实例字段**,不是模块级槽:
    * 凭据的寿命不长于签发它的这台 backend —— `dispose()` 全部作废,第二台 backend 不会
    * 认第一台签的钥匙。`host-mcp` 域与 `/api/mcp` 都从这里查。
    */

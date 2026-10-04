@@ -34,7 +34,7 @@ import {
   startPractice,
   stopPractice,
   writePracticeConfig,
-} from '@onething/backend/practice/service-slot'
+} from '@onething/backend/practice/practice-service-slot'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 export const practiceRpcHandlers: RouteHandlers<PracticeRoutes> = {

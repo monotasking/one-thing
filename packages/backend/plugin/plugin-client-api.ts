@@ -56,7 +56,7 @@ import type {
 } from '@shared/ipc/plugins.js'
 import type { PluginsRoutes } from '@shared/ipc/plugins.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { createPluginConfigAccess } from '@onething/backend/plugin/config-access'
+import { createPluginConfigAccess } from '@onething/backend/plugin/plugin-config-access'
 import {
   abortOnethingPluginRequestForIpc,
   checkOnethingPluginUpdatesForIpc,
@@ -75,11 +75,11 @@ import {
   uninstallOnethingPluginForIpc,
   updateOnethingPluginForIpc,
 } from '@onething/backend/plugin'
-import { getPluginAppVersion } from '@onething/backend/plugin/app-version'
-import { clearPluginRuntimeHealth } from '@onething/backend/plugin/health'
-import { readPluginTarballSummary } from '@onething/backend/plugin/tarball'
+import { getPluginAppVersion } from '@onething/backend/plugin/plugin-app-version'
+import { clearPluginRuntimeHealth } from '@onething/backend/plugin/plugin-health'
+import { readPluginTarballSummary } from '@onething/backend/plugin/plugin-tarball'
 import { getServerPluginCatalogPort } from './plugin-client-api-catalog.js'
-import { getPluginBackgroundParams } from '@onething/backend/plugin/background-table'
+import { getPluginBackgroundParams } from '@onething/backend/plugin/plugin-background-table'
 import { executePluginCommandOnHost } from '@onething/backend/plugin/plugin-commands'
 import { broadcastPluginRequestProgress } from '@onething/backend/plugin/plugin-events'
 import { pickPluginFileOnHost } from '@onething/backend/plugin/plugin-host-ports'
@@ -87,9 +87,9 @@ import { getPluginManager } from '@onething/backend/plugin/plugin-system'
 import {
   getPluginMarketIndexSnapshot,
   probePluginNpmAvailability,
-} from '@onething/backend/plugin/npm-process'
-import { getPluginFootprint } from '@onething/backend/plugin/disk-loader'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+} from '@onething/backend/plugin/plugin-npm-process'
+import { getPluginFootprint } from '@onething/backend/plugin/plugin-disk-loader'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { requestSessionOwner, sessionAccess } from '@onething/backend/session'
 import type { ConsoleLikePort } from '@onething/backend/logging'

@@ -49,7 +49,7 @@ export interface EmbedderFactory {
  * 这里**故意没有「必需文件清单」那一格**:文件清单与缓存布局是
  * `@huggingface/transformers` 自己的事(它决定去要哪几个文件、按什么目录摆),
  * 在这里抄一份就是第二份真相 —— 换一个 dtype、换一版库就会漂开,而漂开的后果是
- * 「下完了却永远说没下」。齐不齐由**下载真的落下了什么**说(`model-store.ts` 的
+ * 「下完了却永远说没下」。齐不齐由**下载真的落下了什么**说(`search-embedding-model-store.ts` 的
  * 清单文件),不由这里的一张表说。
  */
 export interface EmbedderModelSpec {

@@ -5,9 +5,9 @@
  * 模型认亲、型号规则。通用代码只读这些字段,不写「kimi」。行为(方言、附件旁路、
  * 运行时工厂、余额源)在同目录的 `runtime.ts` 及其伙伴。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
-import type { DialSpec } from '../../dials.js'
+import type { DialSpec } from '../../provider-dials.js'
 import type { ProviderManifest } from '../../provider-manifest.js'
 import {
   ONETHING_KIMI_DEFAULT_BASE_URL,
@@ -70,7 +70,7 @@ export const KIMI_MANIFEST: ProviderManifest = {
     keyOf: (config) => resolveOnethingKimiModelsDevProviderId(config as OnethingKimiEndpointConfig | undefined),
   },
   billing: 'api',
-  // 家族里的哪一半(两半的对应登记在 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`)。
+  // 家族里的哪一半(两半的对应登记在 `vendors/provider-vendor-manifests.ts` 的 `VENDOR_FAMILIES`)。
   family: { role: 'api' },
   quotaSource: 'kimi',
   dials: KIMI_DIALS,
@@ -91,7 +91,7 @@ export const KIMI_MANIFEST: ProviderManifest = {
     entryFields: { apiMode: 'kimiApiMode', region: 'kimiRegion' },
     ownsBaseUrl: true,
   },
-  // 型号规则表(从 `model-capability.ts` 的 `PROVIDER_MODEL_RULES.kimi` 搬来,逐字)。
+  // 型号规则表(从 `provider-model-capability.ts` 的 `PROVIDER_MODEL_RULES.kimi` 搬来,逐字)。
   // `kimi-code` 借这张表(它的 `modelRules` 也是 `'kimi'`),表只由主人带。
   modelRuleTable: [
     {

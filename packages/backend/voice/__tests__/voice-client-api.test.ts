@@ -24,7 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { voiceRouter } from '@shared/ipc/voice.js'
 
 const sessionState = vi.hoisted(() => ({ currentId: undefined as string | undefined }))
-vi.mock('../../session/current-session.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
+vi.mock('../../session/session-current.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
 vi.mock('../../session/session-access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
@@ -55,7 +55,7 @@ vi.mock('@onething/backend/voice/voice-service', () => ({
   getVoiceService: () => service,
 }))
 
-vi.mock('@onething/backend/voice/provider-calls', () => ({
+vi.mock('@onething/backend/voice/voice-provider-calls', () => ({
   getOpenRouterTTSModels: providers.getOpenRouterTTSModels,
   transcribeUtterance: providers.transcribeUtterance,
 }))

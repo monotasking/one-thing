@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isAgentLoopPauseForConfirmationError, runAgentLoop } from '@onething/backend/agent-loop/loop-primitives'
+import { isAgentLoopPauseForConfirmationError, runAgentLoop } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type {
   AgentMessage,
   AgentMessageContent,
@@ -8,7 +8,7 @@ import type {
   AgentToolChoice,
   AgentTurn,
   AgentTurnRequest,
-} from '@onething/backend/agent-loop/loop-primitives'
+} from '@onething/backend/agent-loop/agent-loop-primitives'
 
 type MessageSnapshot = Array<{
   role: AgentMessage['role']

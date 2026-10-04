@@ -29,13 +29,13 @@ vi.mock('@onething/backend/storage', () => ({
 const { materializeNode } = await import('@shared/session/projection/chat-messages.js')
 const { rehydrateSessionFromStorage } = await import('@onething/backend/session')
 const { flushSessionEventLog, resetSessionEventLogCache } =
-  await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../projection-cache.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
-const { sessionProjectionOptions } = await import('../projection-blobs.js')
-const { materializeSessionMessages } = await import('../materialized-messages.js')
+  await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { getLiveSessionProjection, resetSessionProjectionCache } = await import('../session-projection-cache.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
+const { sessionProjectionOptions } = await import('../session-projection-blobs.js')
+const { materializeSessionMessages } = await import('../session-materialized-messages.js')
 
 const SESSION = 'memo-1'
 

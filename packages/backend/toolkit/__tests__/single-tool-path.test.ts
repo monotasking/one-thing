@@ -32,15 +32,15 @@ vi.mock('@onething/backend/tool/access-control/tool-access-control-permission-po
 }))
 
 const { configureToolkitCatalog, resolveToolkitSurface } = await import('@onething/backend/toolkit')
-const { createDesktopCatalog } = await import('../tier-catalogs.js')
-const { resetToolkitCatalogForTests } = await import('../wiring.js')
-const { registerPluginToolInCatalog } = await import('@onething/backend/toolkit/plugin-tools')
-const { toolDefinitionFromToolkitTool, toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/catalog-projection')
-const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
+const { createDesktopCatalog } = await import('../toolkit-tier-catalogs.js')
+const { resetToolkitCatalogForTests } = await import('../toolkit-wiring.js')
+const { registerPluginToolInCatalog } = await import('@onething/backend/toolkit/toolkit-plugin-tools')
+const { toolDefinitionFromToolkitTool, toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/toolkit-catalog-projection')
+const { executeToolDirectly } = await import('../../engine/stream/engine-stream-tool-execution.js')
 const { listOnethingSettingsTools } = await import('@onething/backend/tool')
 const { z } = await import('zod')
 
-const { installStoreSessionLayerForTest } = await import('../../session/testing/store-layer.js')
+const { installStoreSessionLayerForTest } = await import('../../session/testing/session-testing-store-layer.js')
 const store = await import('../../session/session-store.js')
 let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
 

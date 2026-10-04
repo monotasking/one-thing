@@ -3,14 +3,14 @@
  *
  * 2 秒 / 64 条 / part 边界 / 请求结束,先到者触发。这条测试直接喂
  * `AgentStreamEvent`,不跑真 runner —— 要钉的是"什么时候落一行、落下来的那一行
- * 无损吗",而不是 runner 的编排(那条由 `session-event-recorder.test.ts` 的真
+ * 无损吗",而不是 runner 的编排(那条由 `engine-stream-session-event-recorder.test.ts` 的真
  * 循环钉)。
  */
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type {
   SessionAssistantChunksEvent,
   SessionLogEventRecord,
@@ -25,7 +25,7 @@ vi.mock('@onething/backend/storage', () => ({
 
 // 这条用例只钉打包器。S1b 的影子断言排在 `endSessionRun` 之后,而它身后是读门面
 // 与整棵 store 树 —— 与本文件要证明的事一点关系都没有,所以就地摘掉。
-vi.mock('../../../session/shadow.js', () => ({
+vi.mock('../../../session/session-shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',
@@ -41,7 +41,7 @@ let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/session')
 const { resetSessionEventStatsCache } = await import('@onething/backend/session')
 const { createSessionEventRecorder, SESSION_CHUNK_BATCH_SIZE } = await import(
-  '../session-event-recorder.js'
+  '../engine-stream-session-event-recorder.js'
 )
 
 const SESSION = 'packer'

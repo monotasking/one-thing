@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { LoggerRoot, type LogRecord, type LogSink, type Logger } from '@onething/backend/logging/logger-primitives'
-import { Gateway } from '../hub/gateway-hub-gateway.js'
+import { LoggerRoot, type LogRecord, type LogSink, type Logger } from '@onething/backend/logging/logging-logger-primitives'
+import { Gateway } from '../hub/gateway-hub-channel-runner.js'
 import { GatewayBridge } from '../hub/gateway-hub-bridge.js'
 import { WechatChannel } from '../channels/wechat/wechat.js'
 import { TelegramChannel } from '../channels/telegram/telegram.js'

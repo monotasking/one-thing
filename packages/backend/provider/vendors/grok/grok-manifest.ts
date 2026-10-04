@@ -7,11 +7,11 @@
  * 型号规则表由这一家带(它是 `modelRules: 'grok'` 那张表的主人);订阅那半边 `grok-oauth` 借用它。
  * 认亲那一行(`x-ai` / `xai` / `grok` → models.dev 的 `xai`)也只由这一家带,两半共用一本目录。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 
-/** grok-4.5 的三档(从 `model-capability.ts` 搬回家,逐字)。 */
+/** grok-4.5 的三档(从 `provider-model-capability.ts` 搬回家,逐字)。 */
 export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
 
 export const GROK_MANIFEST: ProviderManifest = {
@@ -24,7 +24,7 @@ export const GROK_MANIFEST: ProviderManifest = {
   auth: { kind: 'apiKey' },
   models: { kind: 'models.dev', key: 'xai' },
   billing: 'api',
-  // 家族里的哪一半(两半的对应登记在 `vendors/manifests.ts` 的 `VENDOR_FAMILIES`)。
+  // 家族里的哪一半(两半的对应登记在 `vendors/provider-vendor-manifests.ts` 的 `VENDOR_FAMILIES`)。
   family: { role: 'api' },
   modelRules: 'grok',
   // 用户能在思考覆盖(`reasoningProfile.wire`)里点名的线型(见 `ProviderManifest.reasoningWires`)。

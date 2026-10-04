@@ -5,7 +5,7 @@
  *
  *  1. A claim on the command is only honoured when the sender can PROVE it may
  *     make one. Today the single prover is the collab drive token
- *     (collab/drive-guard.ts, handed in by the caller as `proveCollabDrive`), because the coordinator is the only thing
+ *     (collab/collab-drive-guard.ts, handed in by the caller as `proveCollabDrive`), because the coordinator is the only thing
  *     entitled to say "this turn runs as agent X". Everything else gets its
  *     principal computed here and any claim it carried is discarded — apps/server
  *     forwards commands whole (`no field is destructured away`), so a trusted
@@ -15,7 +15,7 @@
  *     A fallback that inherits the default agent's reach is not a fallback, it
  *     is a bypass: `createCoreSessionRecord` stamps `agentId` on EVERY session,
  *     so "look up session.agentId" always answers, and always plausibly.
- *     collab/history-tool.ts:69-91 records where that road ends.
+ *     collab/collab-history-tool.ts:69-91 records where that road ends.
  *
  * See docs/design/agent-permission-system-2026-08.md §4.1 / §10 P0.
  */
@@ -30,7 +30,7 @@ import type { EngineMessageOrigin } from './agent-loop-engine-ports.js'
 
 /**
  * 「这条命令是不是在世的协作协调者发来的」的判据。内核不认识协作功能,所以由调用方交进来:
- * 引擎从它的 `collabDrive` 端口取(装配时填的是 `collab/drive-guard.ts` 的 `isTrustedCollabDrive`)。
+ * 引擎从它的 `collabDrive` 端口取(装配时填的是 `collab/collab-drive-guard.ts` 的 `isTrustedCollabDrive`)。
  * 没交 = 谁也证明不了,与协调者没起来时的答案相同。
  */
 export type CollabDriveProver = (command: { collabDriveToken?: unknown }) => boolean
@@ -45,7 +45,7 @@ const COLLAB_MESSAGE_SOURCE = 'collab'
  * routing behaviour. This one answers "who is acting".
  *
  * The scheduler is the case that makes the two differ — it drives turns with
- * `channel: 'scheduler'` and no `source` at all (scheduler/agent-task-runner.ts),
+ * `channel: 'scheduler'` and no `source` at all (scheduler/scheduler-agent-task-runner.ts),
  * so the routing set never sees it. Without this line a scheduled task would
  * mint the desktop owner and inherit everything the owner may do.
  *

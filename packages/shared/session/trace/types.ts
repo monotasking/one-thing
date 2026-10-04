@@ -2,7 +2,7 @@
  * 会话轨迹树的形状(S3 只读查询面)。
  *
  * 它们是 `sessionEvents` RPC 域(`@shared/ipc/session-events.ts`)交给客户端的载荷;
- * 装配器 `assembleSessionTrace` 是后端的纯函数,住在 `packages/backend/session/trace/assemble.ts`,
+ * 装配器 `assembleSessionTrace` 是后端的纯函数,住在 `packages/backend/session/trace/session-trace-assemble.ts`,
  * 从这里取形状。四条纪律(只记时刻、正文不进树……)写在装配器的文件头。
  */
 

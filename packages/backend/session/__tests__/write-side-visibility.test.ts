@@ -3,8 +3,8 @@ import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
  * **F1 合同:写侧同步可见**(`docs/design/session-event-sourcing-2026-08.md` §16.6)。
  *
  * 钉的是一条时序纪律:一条事件被写入口分配到 seq 的那一刻,**还没排队落盘之前**,
- * 它就已经在这个进程的每一份活状态上了 —— 活投影(`projection-cache.ts`)与
- * 活 surface(`event-surface.ts`)。于是"命令内读得到自己刚写的"不再是"每个读口
+ * 它就已经在这个进程的每一份活状态上了 —— 活投影(`session-projection-cache.ts`)与
+ * 活 surface(`session-event-surface.ts`)。于是"命令内读得到自己刚写的"不再是"每个读口
  * 都记得先 drain 一次"的约定,而是写入口自己保证的机制。
  *
  * ## 为什么断言用 `peekSessionProjection` 而不是 `getLiveSessionProjection`
@@ -48,17 +48,17 @@ vi.mock('../session-store.js', () => ({
   readSessionTranscriptFile: () => undefined,
 }))
 
-const { sessionCommandEvents } = await import('../command-events.js')
-const { flushSessionEventLog, resetSessionEventLogCache } = await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
-const { resetSessionSurfaceCache, sessionSurface } = await import('../event-surface.js')
-const { resetSessionRuns } = await import('../runs.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
+const { sessionCommandEvents } = await import('../session-command-events.js')
+const { flushSessionEventLog, resetSessionEventLogCache } = await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
+const { resetSessionSurfaceCache, sessionSurface } = await import('../session-event-surface.js')
+const { resetSessionRuns } = await import('../session-runs.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
 const { getLiveSessionProjection, peekSessionProjection, resetSessionProjectionCache } =
-  await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { checkSessionRefold, resetSessionRefoldSampling } = await import('../refold.js')
+  await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { checkSessionRefold, resetSessionRefoldSampling } = await import('../session-refold.js')
 
 const SESSION = 'f1-visibility'
 
@@ -186,7 +186,7 @@ describe('F1:活 surface 也由写入口推进 —— 两扇门都算数(§16.6)
     // 两侧同源正是 F1 要立的那条纪律。
     await flushSessionEventLog(SESSION)
     const { foldSurface } = await import('@shared/session/projection/surface.js')
-    const { readSessionLogEventsSync } = await import('../event-log.js')
+    const { readSessionLogEventsSync } = await import('../session-event-log.js')
     expect(foldSurface(readSessionLogEventsSync(SESSION)).order).toEqual(surface.order())
   })
 })

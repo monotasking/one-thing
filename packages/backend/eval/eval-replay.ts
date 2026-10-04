@@ -15,35 +15,35 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { CoreRequestMessage, TurnBlock } from "@onething/backend/agent-loop";
-import { attachTurnBlocksToLastUserMessage } from "../prompt/turn-delivery.js";
+import { attachTurnBlocksToLastUserMessage } from "../prompt/prompt-turn-delivery.js";
 import {
 	getIncidentDir,
 	readIncident,
 	readIncidentTurnTrace,
 	type IncidentMeta,
 	type TurnTraceEntry,
-} from "./incident.js";
+} from "./eval-incident.js";
 import {
 	createMockToolResolver,
 	stringifyToolValue,
 	type ToolSimulator,
-} from "./mock-tools.js";
+} from "./eval-mock-tools.js";
 import type {
 	EvalChatMessage,
 	EvalModelCaller,
 	EvalToolDef,
-} from "./model-call.js";
+} from "./eval-model-call.js";
 import {
 	buildRubricJudgeMessages,
 	parseRubricVerdict,
 	type RubricVerdict,
-} from "./judge.js";
+} from "./eval-judge.js";
 import {
 	transcriptToText,
 	type Transcript,
 	type TranscriptEvent,
 	type TranscriptHeader,
-} from "./transcript.js";
+} from "./eval-transcript.js";
 import type { OnethingStorePathOptions } from "../storage/storage-paths.js";
 
 const DEFAULT_MAX_ROUNDS = 8;
@@ -314,7 +314,7 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 	) {
 		systemPrompt = scene.capturedSystemPrompt;
 	} else {
-		const { buildOnethingPrompt } = await import("../prompt/builder.js");
+		const { buildOnethingPrompt } = await import("../prompt/prompt-builder.js");
 		const ctx = (scene.fixtureContext ?? {}) as Record<string, unknown>;
 		const built = await buildOnethingPrompt({
 			providerId: scene.params.provider || "eval",

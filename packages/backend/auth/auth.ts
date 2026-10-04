@@ -14,11 +14,11 @@ export {
 export {
   createOnethingAuthService,
   createOnethingAuthServiceOptions,
-} from './service-factory.js'
+} from './auth-service-factory.js'
 export {
   CallbackServerManager,
   callbackServerManager,
-} from './callback-server.js'
+} from './auth-callback-server.js'
 export * from './auth-ipc-operations.js'
 export type {
   OnethingAuthCallbackRegistration,
@@ -34,22 +34,22 @@ export {
   DEFAULT_CREDENTIAL_TARGET,
   isSpaceCredentialTarget,
   normalizeCredentialTarget,
-} from './credential-target.js'
+} from './auth-credential-target.js'
 export type {
   OnethingCredentialTarget,
   OnethingSpaceCredentialTarget,
-} from './credential-target.js'
+} from './auth-credential-target.js'
 export type {
   OnethingAuthRuntimeOptions,
-} from './service-factory.js'
+} from './auth-service-factory.js'
 export {
   getDefaultOnethingTokenFilePath,
   OnethingTokenStore,
-} from './token-store.js'
+} from './auth-token-store.js'
 export type {
   OnethingTokenCryptoAdapter,
   OnethingTokenStoreOptions,
-} from './token-store.js'
+} from './auth-token-store.js'
 export type {
   OnethingAuthBodyFormat,
   OnethingAuthAccount,
@@ -71,7 +71,7 @@ export type {
 } from './auth-types.js'
 
 // ── providers 归位(D24,2026-10-04)从 `providers/auth/` 搬来的旧兼容门面:新代码直接用进程那台登录服务
-// (`process-auth-service.ts` 的 `getAuthService`)。
+// (`auth-process-service.ts` 的 `getAuthService`)。
 export {
   oauthManager,
 } from './auth-oauth-manager.js'

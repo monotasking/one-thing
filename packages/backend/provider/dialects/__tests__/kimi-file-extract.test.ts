@@ -14,7 +14,7 @@
  * 以及**谁不走这条通道**(图仍是 `image_url`,表外格式一个字节都不上传)。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,
@@ -22,7 +22,7 @@ import {
 	TurnContext,
 	type TurnTransport,
 } from "../../base/provider-base.js";
-import { kimiFileExtractChannel } from "../../vendors/kimi/attachments.js";
+import { kimiFileExtractChannel } from "../../vendors/kimi/kimi-attachments.js";
 
 const BASE_URL = "https://api.moonshot.cn/v1";
 const FILE_ID = "file-unit-1";

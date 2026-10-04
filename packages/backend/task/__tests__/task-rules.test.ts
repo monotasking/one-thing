@@ -3,7 +3,7 @@
  * (`docs/audit/self-hosting-gap-audit-2026-08-11.md` P0-3 / P0-5)。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Decision, Outcome, ToolRunner } from '@onething/backend/toolkit/tool-protocol'
+import { Decision, Outcome, ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   createTaskTool,
   TaskInputSchema,

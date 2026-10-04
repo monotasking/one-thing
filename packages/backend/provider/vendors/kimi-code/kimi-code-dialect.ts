@@ -3,14 +3,14 @@
  * 地址钉死在套餐 host(不吃地区/档位),凭证是 OAuth access_token
  * (klip-14:「OAuth 模型和 API 兼容性与当前 Bearer key 完全一致」)。
  */
-import { thinkingTypeWire } from "../../thinking/thinking-type.js";
+import { thinkingTypeWire } from "../../thinking/provider-thinking-type.js";
 import { openAIChatUsage } from "../../wires/provider-wires.js";
 import {
 	defineOpenAIChatDialect,
 	openAIChatTransportCapabilities,
 	promptCacheKeyExtraBody,
-} from "../../dialects/recipe.js";
-import { kimiFileExtractChannel } from "../kimi/attachments.js";
+} from "../../dialects/provider-dialects-recipe.js";
+import { kimiFileExtractChannel } from "../kimi/kimi-attachments.js";
 import { KIMI_USAGE_TABLE, kimiSamplingPolicy, kimiThinkingIntent } from "../kimi/kimi-dialect.js";
 import { ONETHING_KIMI_CODING_PLAN_BASE_URL } from "../kimi/kimi-endpoint.js";
 

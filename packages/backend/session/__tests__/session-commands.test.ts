@@ -10,7 +10,7 @@
  *  - **会话账落格** —— 身份三格与截断效果都从**折叠块**取(这里注入一份假账,
  *    产地本身由 `session/__tests__/session-account.test.ts` 与 battery 守)。
  *
- * 写计划不再有:存储驱动自 S3w-3 批 6b 起就不读它了(`storage-driver.ts` 的
+ * 写计划不再有:存储驱动自 S3w-3 批 6b 起就不读它了(`session-storage-driver.ts` 的
  * `void plan`),归约器一死它连产地都没有 —— 断言跟着一起退役。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -34,12 +34,12 @@ const state = vi.hoisted(() => ({
 /** 写门问读门面时看到的那一份(写后)。 */
 const projected = () => state.projection ?? state.messages
 
-vi.mock('../events-reads.js', () => ({
+vi.mock('../session-events-reads.js', () => ({
   eventsHasMessage: (_sessionId: string, messageId: string) =>
     state.messages.some(item => item.id === messageId),
 }))
 
-vi.mock('../reads.js', () => ({
+vi.mock('../session-reads.js', () => ({
   sessionReads: {
     getMessage: (_sessionId: string, messageId: string) =>
       state.messages.find(item => item.id === messageId),
@@ -64,8 +64,8 @@ vi.mock('../reads.js', () => ({
 }))
 
 const { createSessionCommands } = await import('../session-commands.js')
-const { sessionReads } = await import('../reads.js')
-const { eventsHasMessage } = await import('../events-reads.js')
+const { sessionReads } = await import('../session-reads.js')
+const { eventsHasMessage } = await import('../session-events-reads.js')
 
 interface SaveCall {
   sessionId: string

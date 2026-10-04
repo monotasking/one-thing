@@ -26,7 +26,7 @@ import {
   type HostMcpListToolsResponse,
   type HostMcpRoutes,
 } from '@shared/ipc/host-mcp.js'
-import { HostMcpUnauthorizedError, type HostMcpBridge } from '@onething/backend/acp/host-mcp-bridge'
+import { HostMcpUnauthorizedError, type HostMcpBridge } from '@onething/backend/acp/acp-host-mcp-bridge'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { currentHostMcpBridge, serveBridgeRequest } from './acp-client-api-host-mcp-face.js'
 

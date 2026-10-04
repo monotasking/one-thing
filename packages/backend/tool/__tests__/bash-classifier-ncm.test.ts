@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyBashCommand } from '../bash-classifier.js'
+import { classifyBashCommand } from '../tool-bash-classifier.js'
 
 /**
  * The model plays music by driving ncm-cli through bash, so these commands run

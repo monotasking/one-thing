@@ -1,28 +1,28 @@
-import type { AgentToolExecutionContext } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentToolExecutionContext } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type {
   CoreSkillReviewFileToolAdapter,
   CoreSkillReviewManageArgs,
 } from '@onething/backend/trigger'
 import { createOnethingSkillReviewTrigger } from '@onething/backend/trigger'
 import { getUserSkillsPath } from './skill-operations.js'
-import { executeSkillManage, type SkillManageArgs } from './manage-setup.js'
+import { executeSkillManage, type SkillManageArgs } from './skill-manage-setup.js'
 import {
   getSkillsForSession,
   invalidateSessionSkillsCache as invalidateSkillsCache,
-} from './session-skill-cache.js'
+} from './skill-session-cache.js'
 import type { Trigger, TriggerContext } from '@onething/backend/agent-loop'
-import { billSkillUsage } from '@onething/backend/usage/bill-side-line'
+import { billSkillUsage } from '@onething/backend/usage/usage-bill-side-line'
 import { createUtilityProvider } from '../engine/engine.js'
 // 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
-import { Decision } from '@onething/backend/toolkit/tool-protocol'
-import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/backend/toolkit/tool-protocol'
-import { Outcome as OutcomeOps } from '@onething/backend/toolkit/tool-protocol'
+import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Outcome as OutcomeOps } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { toJsonObject, type JsonObject } from '@shared/json.js'
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'
-import { createAppToolRunner } from '@onething/backend/toolkit/runner-factory'
-import { consolePort, getLogger } from '../logging/configure-logging.js'
-import type { CoreSkillReviewVisibleSkill } from '@onething/backend/trigger/skill-review-core'
-import type { OnethingSkillReviewAdapters } from '@onething/backend/trigger/skill-review'
+import { createAppToolRunner } from '@onething/backend/toolkit/toolkit-runner-factory'
+import { consolePort, getLogger } from '../logging/logging-configure.js'
+import type { CoreSkillReviewVisibleSkill } from '@onething/backend/trigger/trigger-skill-review-core'
+import type { OnethingSkillReviewAdapters } from '@onething/backend/trigger/trigger-skill-review'
 
 const log = getLogger('engine.triggers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

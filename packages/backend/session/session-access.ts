@@ -1,7 +1,7 @@
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionAccessOperation } from '@shared/contracts/session-access.js'
-import { getCurrentBackend } from '@onething/backend/current.js'
+import { getCurrentBackend } from '@onething/backend/backend-current.js'
 
 /** Historical sessions have one stable owner, independent of the current caller. */
 export const DEFAULT_SESSION_OWNER = Object.freeze({ userId: 'local-user', workspaceId: 'default' })

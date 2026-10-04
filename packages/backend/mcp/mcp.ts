@@ -1,6 +1,6 @@
-export * from './capability-operations.js'
+export * from './mcp-capability-operations.js'
 export * from './mcp-ipc-operations.js'
-export * from './server-orchestration.js'
+export * from './mcp-server-orchestration.js'
 
 /*
  * P3'b-A(§2 P3'):`packages/backend/mcp/` 的目录级门面并到这里 —— I1「一个领域
@@ -9,7 +9,7 @@ export * from './server-orchestration.js'
  *
  * 唯一留在外面的是 `bridge.ts` —— 它说跨进程契约的 `ToolDefinition` 词汇。当年它叫
  * `bridge.wiring.ts`,而这条 barrel 不许 import `*.wiring`;那条规则已撤,桥照旧不从这里出去。
- * 要连桥一起拿的调用方走 `./index-with-bridge.js`。
+ * 要连桥一起拿的调用方走 `./mcp-index-with-bridge.js`。
  */
 
 export type {
@@ -25,7 +25,7 @@ export { getMCPOAuthFlowManager } from './oauth/mcp-oauth.js'
 
 export { configureMCPClientIdentity, getMCPClientIdentity } from './mcp-identity.js'
 
-export { configureMCPCapabilitiesChangedHandler, notifyMCPCapabilitiesChanged } from './capabilities-changed.js'
+export { configureMCPCapabilitiesChangedHandler, notifyMCPCapabilitiesChanged } from './mcp-capabilities-changed.js'
 
 // 不带界面单独跑的 server 自己那台 MCP 客户端(server runtime 装进 `configureMCPClientHost`;包根归位 2026-10-04 从 `server/mcp-client.ts` 搬来)。
 export { ServerMCPClient, probeServerMCPConfig, type ServerMCPClientOptions } from './mcp-server-client.js'

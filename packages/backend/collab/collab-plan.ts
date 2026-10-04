@@ -20,17 +20,17 @@ import {
   formatCollabAgentHandle,
   renderCollabModelMention,
   resolveCollabAgentHandle,
-} from './handles.js'
-import { renderCollabMentionText } from './mentions.js'
-import { escapeCollabPromptText } from './inline-tags.js'
-import { formatCollabDigestLines, type CollabDayDigest } from './digest.js'
-import { escapeCollabXmlAttribute, formatCollabFoldedLine } from './projection.js'
-import { createCollabFoldedAccumulator } from './history-window.js'
-import { formatCollabReplyQuote } from './projection.js'
-import { isCollabProjectedRoomMessage } from './cooldown.js'
-import { formatCollabProjectedSystemLine, isCollabProjectedSystemLine } from './system-lines.js'
-import { resolveCollabSpeakerLabel } from './roster.js'
-import { truncateAtCodePoint } from './truncate.js'
+} from './collab-handles.js'
+import { renderCollabMentionText } from './collab-mentions.js'
+import { escapeCollabPromptText } from './collab-inline-tags.js'
+import { formatCollabDigestLines, type CollabDayDigest } from './collab-digest.js'
+import { escapeCollabXmlAttribute, formatCollabFoldedLine } from './collab-projection.js'
+import { createCollabFoldedAccumulator } from './collab-history-window.js'
+import { formatCollabReplyQuote } from './collab-projection.js'
+import { isCollabProjectedRoomMessage } from './collab-cooldown.js'
+import { formatCollabProjectedSystemLine, isCollabProjectedSystemLine } from './collab-system-lines.js'
+import { resolveCollabSpeakerLabel } from './collab-roster.js'
+import { truncateAtCodePoint } from './collab-truncate.js'
 import type { CollabAgentLike, CollabMessageLike } from './collab-types.js'
 
 /** 编排最多几个 wave。模型偶尔会输出一长串,而长编排是"越往后越不可能还准"。 */

@@ -1,4 +1,4 @@
-import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging/logger-primitives'
+import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging/logging-logger-primitives'
 
 /** A named prompt section with its content (for hash-based versioning and snapshots). */
 export interface CorePromptSection {

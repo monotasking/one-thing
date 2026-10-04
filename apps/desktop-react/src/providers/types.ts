@@ -112,7 +112,7 @@ export type ModelCap = 'vision' | 'tools' | 'reasoning' | 'imageOut' | 'fileIn' 
  * 顺序固定:视 工 推 出 文件 音 —— 每一行的能力串都从同一条竖线起笔,列表才扫得动。
  *
  * 09-10 加进第六枚 `fileIn`(文件输入)。它不是 vision 的搭头:引擎那侧
- * `provider/model-capability.ts` 的 `fileInput` 是**独立一格**
+ * `provider/provider-model-capability.ts` 的 `fileInput` 是**独立一格**
  * (`FILE_INPUT_MODALITIES = ['pdf', 'file']`,判词 "ruling #12, not a vision rider"),
  * 而覆盖表 `ModelCapabilityOverride.fileInput` 早就在后端存在,缺的只是壳这张嘴。
  */
@@ -268,7 +268,7 @@ export const NO_MODEL_OVERRIDE: ModelOverride = Object.freeze({ caps: NO_OVERRID
 /**
  * 目录没填上下文窗口时,引擎实际按多少算。
  *
- * **来源是 `packages/backend/provider/model-registry.ts:914`**
+ * **来源是 `packages/backend/provider/provider-model-registry.ts:914`**
  * (`getOnethingModelContextLength` 的最后一行 `|| 128000`)——壳上要把这个数
  * 说给用户听(占位符「128k(默认)」与提示行「不填按 128k 算,压缩阈值也按
  * 它算」),所以它在这里立一个有名字的常量,而不是在两处各写一遍字面量。

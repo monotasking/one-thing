@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MusicRadioProvider, type MusicRadioGateway } from '../providers/music-radio.js'
+import { MusicRadioProvider, type MusicRadioGateway } from '../providers/variable-providers-music-radio.js'
 
 function gateway(overrides: Partial<MusicRadioGateway> = {}): MusicRadioGateway {
   return {

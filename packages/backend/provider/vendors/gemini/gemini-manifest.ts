@@ -10,13 +10,13 @@
  * 借用它)。表里读的「gemini 2.5 收预算、3.x 收档位、每代接受哪几档」是**型号家族**的知识,
  * 住 `providers/model-families/gemini.ts`。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 import {
   onethingGeminiReasoningProfile,
   onethingGeminiReasoningWire,
-} from '../../model-families/gemini.js'
+} from '../../model-families/provider-model-families-gemini.js'
 
 export const GEMINI_MANIFEST: ProviderManifest = {
   id: 'gemini',

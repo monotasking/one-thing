@@ -2,7 +2,7 @@ import {
   typedValueForAppend,
   typedValueForRemove,
   typedValueForSet,
-} from '../typed-values.js'
+} from '../variable-typed-values.js'
 import {
   readStateFlag,
   VARIABLE_LIMITS,

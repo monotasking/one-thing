@@ -9,8 +9,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defaultValidationMessage } from '../../toolkit-contract.js'
-import { TimeInputSchema, TimeTool } from '../../builtin/time.js'
-import { Outcome } from '@onething/backend/toolkit/tool-protocol'
+import { TimeInputSchema, TimeTool } from '../../builtin/toolkit-builtin-time.js'
+import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { annotationsOf, modelTextOf, partialsOf, runNewTool } from '../support.js'
 
 const FIXTURES: Array<{ name: string; args: Record<string, unknown> }> = [

@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   listOnethingRipgrepFiles,
   resetOnethingRipgrepRuntimeForTests,
-} from '../ripgrep.js'
+} from '../file-ripgrep.js'
 
 /**
  * 无视参数、吐三行、**然后彻底安静下去,永不结束**。

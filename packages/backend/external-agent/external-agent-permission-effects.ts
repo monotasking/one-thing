@@ -39,7 +39,7 @@ import {
   getCoreSandboxRoots,
   resolveCoreToolPath,
 } from '../tool/tool-sandbox.js'
-import { classifySensitiveFile } from '../tool/sensitive-files.js'
+import { classifySensitiveFile } from '../tool/tool-sensitive-files.js'
 
 export interface ExternalToolPermissionInput {
   /** SDK 侧的工具名,未归一化(宿主工具不会走到这里,它们在连接器里就分家了)。 */

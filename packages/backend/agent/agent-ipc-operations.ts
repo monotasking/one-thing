@@ -1,4 +1,4 @@
-import { hasAgentReference, type AgentReferenceSessionLike } from './presence.js'
+import { hasAgentReference, type AgentReferenceSessionLike } from './agent-presence.js'
 import {
   DEFAULT_ONETHING_AGENT_ID,
   type CreateOnethingAgentInput,

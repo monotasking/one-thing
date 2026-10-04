@@ -28,12 +28,12 @@
  *    **读路**(`session-repository.repairOnFirstTouch`),不是写路。
  */
 
-import type { CoreSessionTokenUsage } from './store-helpers.js'
+import type { CoreSessionTokenUsage } from './session-store-helpers.js'
 import type {
   CoreTimelineMessage,
   CoreTimelineStep,
-} from './timeline.js'
-import { computeSessionRepairOnLoad } from './timeline.js'
+} from './session-timeline.js'
+import { computeSessionRepairOnLoad } from './session-timeline.js'
 
 // ============ 形状 ============
 

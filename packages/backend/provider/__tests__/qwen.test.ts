@@ -18,8 +18,8 @@ import {
   resolveOnethingQwenModelsDevProviderId,
 } from '../vendors/qwen/qwen-endpoint.js'
 import { resolveOnethingProviderBaseUrl } from '../provider-endpoint.js'
-import { getOnethingModelsDevProviderId } from '../model-registry.js'
-import { resolveOnethingModelCapabilities } from '../model-capability.js'
+import { getOnethingModelsDevProviderId } from '../provider-model-registry.js'
+import { resolveOnethingModelCapabilities } from '../provider-model-capability.js'
 
 describe('qwen endpoint matrix', () => {
   it('resolves all six host combinations', () => {

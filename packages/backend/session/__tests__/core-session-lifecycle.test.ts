@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { EventBus, StreamChannel } from '@onething/backend/event/bus-primitives'
+import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
 import {
   getCoreSessionManager,
   initializeCoreSessionLayer,

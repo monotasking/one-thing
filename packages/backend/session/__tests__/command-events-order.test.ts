@@ -7,7 +7,7 @@ import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
  *
  * 1. **产地**:`appendMessage` / `deleteMessage` / `patchMessage`(F2-a)与
  *    `upsertMessage` / `truncateFrom`(F2-b)的事件构造已经不在翻译器里了
- *    (翻译器上连这五个方法名都没有),它住在 `command-events.ts`,是命令
+ *    (翻译器上连这五个方法名都没有),它住在 `session-command-events.ts`,是命令
  *    的第一手表达。而**写出来的事件逐字段与翻转前相同** —— 翻的是产地,不是账本。
  * 2. **时序**:事件 append 在 reducer 应用到 store **之前**。断言方式是从 store 端口
  *    (reducer 的那一步)**内部**回头看一眼活投影:如果事件真的先落了,那一刻投影里
@@ -56,21 +56,21 @@ vi.mock('../session-store.js', () => ({
 }))
 
 const { createSessionCommands } = await import('../session-commands.js')
-const { sessionReads } = await import('../reads.js')
-const { eventsHasMessage } = await import('../events-reads.js')
-const { peekSessionAccount } = await import('../projection-cache.js')
-const { sessionCommandEvents } = await import('../command-events.js')
-const { sessionLifecycleEvents } = await import('../lifecycle-events.js')
+const { sessionReads } = await import('../session-reads.js')
+const { eventsHasMessage } = await import('../session-events-reads.js')
+const { peekSessionAccount } = await import('../session-projection-cache.js')
+const { sessionCommandEvents } = await import('../session-command-events.js')
+const { sessionLifecycleEvents } = await import('../session-lifecycle-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
-  '../event-log.js'
+  '../session-event-log.js'
 )
-const { resetSessionSurfaceCache } = await import('../event-surface.js')
-const { resetSessionRuns } = await import('../runs.js')
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
+const { resetSessionSurfaceCache } = await import('../session-event-surface.js')
+const { resetSessionRuns } = await import('../session-runs.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
 const { getLiveSessionProjection, peekSessionProjection, resetSessionProjectionCache } =
-  await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
+  await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
 
 const SESSION = 'f2a-order'
 
@@ -163,7 +163,7 @@ async function events(): Promise<SessionLogEventRecord[]> {
 describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §16.9)', () => {
   it('翻译器整个模块已经不在了', () => {
     // F2-c 之后 `event-translator.ts` 整体退役 —— 十三条命令的事件产地全在
-    // `command-events.ts`,两个非命令采集点在 `lifecycle-events.ts`。
+    // `session-command-events.ts`,两个非命令采集点在 `session-lifecycle-events.ts`。
     // 留一个模块在那里 = 第二个产地,而"同一条命令写出两种事件"是静默的。
     expect(fs.existsSync(new URL('../event-translator.ts', import.meta.url))).toBe(false)
   })
@@ -331,7 +331,7 @@ describe('F2 产地:命令的事件构造全在命令面上(§16.7 / §16.8 / §
       patch: { role: 'assistant', content: 'settled', timestamp: 1 },
       // §17.7.1 批 2 裁定 2:整条替换这一档要说清自己是 upsert 写的 —— 它与
       // `patchMessage` 在会话账上的待遇不同(前者盖 `updatedAt`),而两者的事件
-      // 形状完全同构。盖不盖章的策略住 `session/account.ts` 一处。
+      // 形状完全同构。盖不盖章的策略住 `session/session-account.ts` 一处。
       via: 'upsert',
     })
   })

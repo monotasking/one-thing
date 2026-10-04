@@ -16,10 +16,10 @@ import {
 	type UsageNormalizer,
 } from "../../base/provider-base.js";
 import "../../dialects/provider-dialects.js";
-import { anthropicUsage } from "../anthropic-usage.js";
-import { geminiUsage } from "../gemini-wire.js";
-import { OPENAI_CHAT_USAGE_TABLE } from "../openai-chat-wire.js";
-import { codexResponsesUsage } from "../openai-responses-wire.js";
+import { anthropicUsage } from "../provider-wires-anthropic-usage.js";
+import { geminiUsage } from "../provider-gemini-wire.js";
+import { OPENAI_CHAT_USAGE_TABLE } from "../provider-openai-chat-wire.js";
+import { codexResponsesUsage } from "../provider-openai-responses-wire.js";
 
 /** 线级默认表 —— `HttpAgentProvider.usage` 回落到的那只(`defaultUsage`)。 */
 const OPENAI_CHAT_DEFAULT: UsageNormalizer = new PathUsageNormalizer(OPENAI_CHAT_USAGE_TABLE);

@@ -320,7 +320,7 @@ export interface ProviderSettingsState {
    * `modelCapabilitiesByModel[m]` 的五个能力键(vision / tools / reasoning /
    * imageOutput / fileInput)。后端早有这三张表(引擎读法
    * `model-registry.ts:895` / `agent-loop-runtime.ts:819` /
-   * `provider/model-capability.ts` 的 `resolveOnethingModelCapabilities`,
+   * `provider/provider-model-capability.ts` 的 `resolveOnethingModelCapabilities`,
    * 覆盖一律优先于目录条目),缺的只是壳上的写面。
    *
    * `patch` 的三态是**明码**:某一格给数 / 布尔 = 写它,给 `null` = **删这个键**,

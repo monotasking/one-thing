@@ -21,7 +21,7 @@ import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { SchedulerLogger } from '@onething/backend/scheduler/scheduler-cron-runner'
 
 const log = getLogger('scheduler')
-/** 注入式鸭子 logger 端口的过渡替身(logging/console-port.ts,area ① 统一后删)。 */
+/** 注入式鸭子 logger 端口的过渡替身(logging/logging-console-port.ts,area ① 统一后删)。 */
 const consoleLog: ConsoleLikePort & SchedulerLogger = consolePort(log)
 
 
@@ -65,7 +65,7 @@ export {
   isValidTimezone,
   nextCronRunAt,
   parseCronExpression,
-} from './cron.js'
+} from './scheduler-cron.js'
 
 export function getScheduler(): Scheduler {
   return getOnethingScheduler()

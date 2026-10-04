@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest'
 
 const root = path.resolve(import.meta.dirname, '../../../..')
 const selected = [
-  'session/session-layer.ts', 'session/session-commands.ts', 'session/event-layer.ts',
-  'session/event-writer.ts', 'session/event-surface.ts', 'session/prepare.ts',
-  'session/projection-cache.ts', 'session/events-reads.ts', 'session/reads.ts',
+  'session/session-layer.ts', 'session/session-commands.ts', 'session/session-event-layer.ts',
+  'session/session-event-writer.ts', 'session/session-event-surface.ts', 'session/session-prepare.ts',
+  'session/session-projection-cache.ts', 'session/session-events-reads.ts', 'session/session-reads.ts',
   'session/session-store.ts',
 ].map(file => path.join(root, 'packages/backend', file))
 

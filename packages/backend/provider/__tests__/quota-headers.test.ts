@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { createCodexAgentProvider } from "../vendors/codex/codex-agent-provider.js";
 import { planOnethingProviderDataPart } from "../provider-data.js";
 

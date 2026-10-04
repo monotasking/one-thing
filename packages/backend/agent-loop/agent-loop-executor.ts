@@ -8,13 +8,13 @@ import {
 } from "./agent-loop-tool-call-cow.js";
 import { toJsonObject, toJsonValue, type JsonObject, type JsonValue } from "@shared/json.js";
 import type { CorePromptCapture } from "./agent-loop-triggers.js";
-import type { AgentProviderStreamChunk } from "./provider-stream.js";
+import type { AgentProviderStreamChunk } from "./agent-loop-provider-stream.js";
 import type { AgentProviderData } from "./agent-loop-types.js";
 import { isAgentLoopPauseForConfirmationError, isAgentExecutionCheckpointError } from "./agent-loop-errors.js";
 import {
 	coreDiffHunksFromJson,
 	type CoreDiffHunk,
-} from "@onething/backend/tool/diff-hunk-json";
+} from "@onething/backend/tool/tool-diff-hunk-json";
 import {
 	getTextFromContent,
 	type CoreAIMessageContent,
@@ -976,7 +976,7 @@ export interface CoreAgentLoopSessionWithMessages<
  *    的 `DERIVED_KEYS` 里,收尾修复的补丁进不了账本):改成**不回读** ——
  *    修复的产物经 `onSettled` 直接递给采集点。
  *
- * 宿主侧今天的取材口:`packages/backend/engine/stream/engine-stream-agent-loop-executor.ts`
+ * 宿主侧今天的取材口:`packages/backend/engine/stream/engine-agent-loop-executor.ts`
  * 的 `readSettleMessage`(投影 + 现算锚点)。
  */
 export interface CoreAgentLoopFinalMessageUpdate<

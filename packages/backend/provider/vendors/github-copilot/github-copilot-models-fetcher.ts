@@ -11,7 +11,7 @@ import type {
 	OnethingEndpointModelsFetcher,
 	OnethingModelRegistryRefreshLogger,
 	OnethingOpenRouterModel,
-} from "../../model-registry.js";
+} from "../../provider-model-registry.js";
 import { copilotModelInfoToOnethingOpenRouterModel } from "./github-copilot-models.js";
 
 export interface FetchOnethingGitHubCopilotModelsWithAuthOptions<

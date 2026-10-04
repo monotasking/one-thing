@@ -19,7 +19,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { DocPayload } from '../../kernel/search-kernel.js'
 import { createFakeEmbedder } from '../../kernel/search-kernel.js'
 
-import { SqliteIndex } from '../sqlite-index.js'
+import { SqliteIndex } from '../search-index-sqlite.js'
 import {
   DEFAULT_INDEX_MAINTENANCE_POLICY,
   shouldOptimizeFullText,
@@ -27,8 +27,8 @@ import {
   vectorTableFamily,
 } from '../search-index-storage.js'
 import type { IndexMaintenanceStats } from '../search-index-storage.js'
-import { IndexWorkerCore } from '../worker-core.js'
-import type { IndexEndpoint, IndexWorkerCoreOptions, IndexWriteFace } from '../worker-core.js'
+import { IndexWorkerCore } from '../search-index-worker-core.js'
+import type { IndexEndpoint, IndexWorkerCoreOptions, IndexWriteFace } from '../search-index-worker-core.js'
 
 const MESSAGES = 'messages'
 const SCHEMA = { content: { analyzer: 'composite', weight: 1, embed: true } }

@@ -9,13 +9,13 @@ export {
   DEEPLINK_CARD_SOURCE_LABEL,
   buildDeepLinkCard,
   resolvePluginDisplayName,
-} from './confirm-card.js'
+} from './deeplink-confirm-card.js'
 export type {
   DeepLinkAskCard,
   DeepLinkCard,
   DeepLinkPluginCard,
   DeepLinkRejectionCard,
-} from './confirm-card.js'
+} from './deeplink-confirm-card.js'
 export {
   describePluginDeepLinkAction,
   invokePluginDeepLinkAction,

@@ -434,7 +434,7 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
 
 describe('R1 soft isolation — app wiring', () => {
   it('auto-disables the plugin through the host port and notifies the user', async () => {
-    const health = await import('../health.js')
+    const health = await import('../plugin-health.js')
     health.resetPluginRuntimeHealthForTests()
 
     const disabled: string[] = []
@@ -468,7 +468,7 @@ describe('R1 soft isolation — app wiring', () => {
    * 与原因 → 重启回灌后设置页仍能说明为什么关着。
    */
   it('runs the whole breaker chain: failures → disable → settings persisted → restored after restart', async () => {
-    const health = await import('../health.js')
+    const health = await import('../plugin-health.js')
     health.resetPluginRuntimeHealthForTests()
 
     // plugin-settings 的替身(真实实现是 <store>/plugin-settings.json)。

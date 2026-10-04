@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { OAuthToken, OpenRouterModel, ToolSettings } from '@shared/ipc.js'
-import { CODEX_NATIVE_IMAGE_GENERATION_TOOL } from '../native-tools.js'
+import { CODEX_NATIVE_IMAGE_GENERATION_TOOL } from '../codex-native-tools.js'
 import { resolveProviderNativeTools, type ProviderNativeToolsRequest } from '../../../provider-native-tools.js'
 
 // 原生工具判据住进行为名册的 `nativeTools` 钩子以后(providers 收口第二部分),这份测试从

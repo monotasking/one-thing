@@ -4,16 +4,16 @@ import { createOnethingSettingsRepository } from './settings-repository.js'
 import {
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
-import { splitEffectiveAISettings } from './defaults/ai-settings.js'
+import { splitEffectiveAISettings } from './defaults/settings-defaults-ai.js'
 import {
   hasSpaceProviderSettingsMigrated,
   resolveEffectiveAppSettings,
-} from './ai-settings-compose.js'
+} from './settings-ai-compose.js'
 import { getOnethingSettingsPath } from '@onething/backend/storage'
-import { applyDiagnosticsMode } from '@onething/backend/logging/diagnostics'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { applyDiagnosticsMode } from '@onething/backend/logging/logging-diagnostics'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type {
   OnethingSettingsRepository,

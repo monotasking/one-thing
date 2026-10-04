@@ -16,8 +16,8 @@
  * 不是"让它停下来")。要报效果的成员覆盖 `effectsFor`。
  */
 
-import { Intent, Tool } from '@onething/backend/toolkit/tool-protocol'
-import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/toolkit/tool-protocol'
+import { Intent, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 
 export abstract class CapabilityTool<In, Payload = In> extends Tool<In, Payload> {

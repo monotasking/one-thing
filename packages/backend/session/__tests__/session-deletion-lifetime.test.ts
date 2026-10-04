@@ -12,7 +12,7 @@ function barrier() {
 let previousPath: string | undefined
 let directory: string
 let stores: typeof import('../session-store.js')
-let layer: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>>
+let layer: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>>
 
 beforeEach(async () => {
   vi.resetModules()
@@ -20,7 +20,7 @@ beforeEach(async () => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'session-deletion-lifetime-'))
   process.env.ONETHING_STORE_PATH = directory
   stores = await import('../session-store.js')
-  const { installStoreSessionLayerForTest } = await import('../testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../testing/session-testing-store-layer.js')
   layer = await installStoreSessionLayerForTest()
 })
 
@@ -36,7 +36,7 @@ describe('deletion over the real session writer and store', () => {
   it('keeps the directory until a paused append finishes and rejects late writes after deletion', async () => {
     stores.createSession('held', 'held')
     await stores.flushSessionSave('held')
-    const { flushSessionEventLog } = await import('../event-log.js')
+    const { flushSessionEventLog } = await import('../session-event-log.js')
     await flushSessionEventLog('held')
     const entered = barrier()
     const release = barrier()
@@ -81,7 +81,7 @@ describe('deletion over the real session writer and store', () => {
       id: 'new-message', role: 'user', content: 'new', timestamp: 2,
     } })
     await layer.sessionLayer.ensureWritable('reuse')
-    const { flushSessionEventLog, readSessionLogEventsSync } = await import('../event-log.js')
+    const { flushSessionEventLog, readSessionLogEventsSync } = await import('../session-event-log.js')
     await flushSessionEventLog('reuse')
     expect(layer.sessionLayer.reads.listMessages('reuse').messages.map(message => message.id)).toEqual(['new-message'])
     expect(layer.sessionLayer.events.projections.getLiveSessionProjection('reuse')).not.toBe(old)

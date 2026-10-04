@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildOnethingSystemPromptSnapshotForIpc } from '../prompt-system-prompt-snapshot.js'
+import { buildOnethingSystemPromptSnapshotForIpc } from '../prompt-system-snapshot.js'
 
 describe('system prompt snapshot IPC facade', () => {
   it('wraps snapshot assembly in the renderer-facing success shape', async () => {

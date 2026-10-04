@@ -35,9 +35,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 
-import type { IndexWorkerData } from './index/worker-data.js'
-import type { IndexWorkerFactory, IndexWorkerHandle } from './index/worker-host.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import type { IndexWorkerData } from './index/search-index-worker-data.js'
+import type { IndexWorkerFactory, IndexWorkerHandle } from './index/search-index-worker-host.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('search.index')
 

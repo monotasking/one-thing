@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   OnethingDoubaoTTSConnection,
   getOnethingDoubaoTTSMimeType,
-} from '../volcano/tts-session'
-import type { OnethingDoubaoWebSocketLike } from '../volcano/asr-session'
+} from '../volcano/voice-volcano-tts-session'
+import type { OnethingDoubaoWebSocketLike } from '../volcano/voice-volcano-asr-session'
 import {
   VolcanoEvent,
   VolcanoMessageType,

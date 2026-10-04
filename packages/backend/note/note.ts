@@ -8,8 +8,8 @@
 export * from './note-types.js'
 export { NoteSystemRegistry, type NoteSystemRegistryLogger } from './note-registry.js'
 export { expandHome, isInsideRoot, normalizeVaultRoot } from './note-paths.js'
-export { formatDailyDate } from './daily-format.js'
-export { BasenameIndex, type BasenameIndexOptions } from './basename-index.js'
+export { formatDailyDate } from './note-daily-format.js'
+export { BasenameIndex, type BasenameIndexOptions } from './note-basename-index.js'
 export {
   buildLinkText,
   resolveAttachmentFolder,
@@ -17,7 +17,7 @@ export {
   uniqueAttachmentName,
   type LinkTextOptions,
   type NoteLinkPathStyle,
-} from './link-format.js'
+} from './note-link-format.js'
 export {
   createNodeProcessRunner,
   createSocketLivenessProbe,
@@ -37,7 +37,7 @@ export {
   type ObsidianCliOptions,
   type ObsidianCliResult,
   type ObsidianCliRunOptions,
-} from './obsidian/cli.js'
+} from './obsidian/note-obsidian-cli.js'
 export {
   ObsidianRegistry,
   obsidianConfigPathCandidates,

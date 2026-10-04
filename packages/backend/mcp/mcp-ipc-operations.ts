@@ -5,7 +5,7 @@ import {
   listOnethingMCPResources,
   listOnethingMCPTools,
   readOnethingMCPResource,
-} from './capability-operations.js'
+} from './mcp-capability-operations.js'
 import {
   addOnethingMCPServer,
   connectOnethingMCPServer,
@@ -18,7 +18,7 @@ import {
   type OnethingMCPServerManagerLike,
   type OnethingMCPServerStateLike,
   type OnethingMCPSettingsLike,
-} from './server-orchestration.js'
+} from './mcp-server-orchestration.js'
 
 type MaybePromise<T> = T | Promise<T>
 

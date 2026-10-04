@@ -7,7 +7,7 @@ import {
 } from '@onething/backend/music'
 import {
   listPluginSkillRoots,
-} from '@onething/backend/skill/plugin-roots'
+} from '@onething/backend/skill/skill-plugin-roots'
 import {
   findBuiltinResourcePath,
   getOnethingStorePath,
@@ -80,7 +80,7 @@ export function configureAppSkillsLoader(): void {
     //
     // 笔记库这一条顶掉了 note-skills 内置插件(P3 退役):那条插件链路的技能 id
     // 里嵌的是**绝对路径的 sha1**,用户挪一次库,settings 里所有针对这些技能的
-    // 启用/绑定覆盖就全成孤儿(判词逐字见 `file/connected-directories.ts`)。
+    // 启用/绑定覆盖就全成孤儿(判词逐字见 `file/file-connected-directories.ts`)。
     listCustomSkillRoots: () => [
       ...(getSettings().skills?.customDirectories ?? []),
       ...listConnectedSkillRoots(),

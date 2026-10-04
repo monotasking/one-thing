@@ -8,7 +8,7 @@
  *  ② 用宿主的真件喂给 Obsidian 驱动:进程 runner、socket 探针、快照库指向
  *     `<store>/notes/obsidian`;
  *  ③ 按 `getSettings().notes` 跑一次 `refresh`,并订「设置刚保存过」——
- *     **settings 域一个字都不知道有 notes 这回事**(与 `search/service-setup.ts`
+ *     **settings 域一个字都不知道有 notes 这回事**(与 `search/search-service-setup.ts`
  *     的 `watchSettingsChanged` 同一条判例:串联,不占槽);
  *  ④ 返回**一个** disposer,装配层 `own()` 它。
  *
@@ -57,9 +57,9 @@ import {
 } from '../settings/settings-events.js'
 import { getSettings } from '@onething/backend/settings'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
-import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/current.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
-import { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'
+import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/backend-current.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
+import { NoteSkillRoots, type NoteSkillRoot } from './note-skill-roots.js'
 
 const log = getLogger('notes')
 
@@ -168,7 +168,7 @@ export interface NotesSubsystem {
    * 它与 `onRefreshed` 是两件事,所以是两条口:那一条说的是**库表**重算过了,
    * 这一条说的是**同一张库表下**多知道了一格 —— 技能加载器是同步的,而库答
    * 附件落点是异步的,所以第一次加载必然省掉那一格,这一声就是「可以再扫一遍
-   * 了」。判词写在 `skill-roots.ts` 文件头。
+   * 了」。判词写在 `note-skill-roots.ts` 文件头。
    */
   onSkillContextResolved(listener: () => void): () => void
   /**
@@ -424,7 +424,7 @@ export function skillVaultRootsNow(): NoteSkillRoot[] {
 }
 
 /**
- * 订「设置刚保存过」。做法与 `search/service-setup.ts` 的同名函数逐字同源
+ * 订「设置刚保存过」。做法与 `search/search-service-setup.ts` 的同名函数逐字同源
  * (串联不占槽 + 身份守卫的还原),理由写在那边。
  */
 function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => void {
@@ -446,4 +446,4 @@ function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => v
 
 export { NoteSystemRegistry } from '@onething/backend/note'
 export type { NoteVault, NotesConfig } from '@onething/backend/note'
-export { NoteSkillRoots, type NoteSkillRoot } from './skill-roots.js'
+export { NoteSkillRoots, type NoteSkillRoot } from './note-skill-roots.js'

@@ -45,7 +45,7 @@ const sessionSkills = vi.hoisted(() => ({
 
 vi.mock('../../settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/skill/skill-operations', () => skillsWiring)
-vi.mock('@onething/backend/skill/session-skill-cache', () => sessionSkills)
+vi.mock('@onething/backend/skill/skill-session-cache', () => sessionSkills)
 
 const SKILL = {
   id: 'user:demo',

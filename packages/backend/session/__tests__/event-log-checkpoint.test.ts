@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createBackendHandle, setCurrentBackend } from '../../current.js'
+import { createBackendHandle, setCurrentBackend } from '../../backend-current.js'
 
 const location = vi.hoisted(() => ({ store: '', sessions: '' }))
 vi.mock('@onething/backend/storage', () => ({
@@ -21,8 +21,8 @@ const {
   resetSessionEventLogCache,
   SESSION_EVENT_DIRECTORY_SYNC_SUPPORTED,
   SessionEventWriteError,
-} = await import('../event-log.js')
-const { createSessionEventLayer } = await import('../event-layer.js')
+} = await import('../session-event-log.js')
+const { createSessionEventLayer } = await import('../session-event-layer.js')
 let journal: ReturnType<typeof acquireSessionEventLogStore>
 let layer: ReturnType<typeof createSessionEventLayer>
 /**
@@ -32,7 +32,7 @@ let layer: ReturnType<typeof createSessionEventLayer>
  */
 const append: ReturnType<typeof createSessionEventLayer>['writer']['write'] =
   (...args) => layer.writer.write(...args)
-const { resetSessionEventStatsCache } = await import('../event-stats.js')
+const { resetSessionEventStatsCache } = await import('../session-event-stats.js')
 
 beforeEach(() => {
   location.store = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'event-checkpoint-')))

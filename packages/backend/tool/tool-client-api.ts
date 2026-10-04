@@ -73,8 +73,8 @@ import {
 import {
   listBackgroundJobs,
   stopBackgroundJob,
-} from '@onething/backend/tool/background-jobs-bound'
-import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/index-with-bridge'
+} from '@onething/backend/tool/tool-background-jobs-bound'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-with-bridge'
 import type { JsonObject } from '@shared/json.js'
 import { toolsRouter, type ToolsRoutes } from '@shared/ipc/tools.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
@@ -84,8 +84,8 @@ import * as store from '@onething/backend/session'
 import {
   runToolkitToolDirectly,
   toolkitCatalogToolDefinitions,
-} from '@onething/backend/toolkit/tool-ports'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+} from '@onething/backend/toolkit/toolkit-tool-ports'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'

@@ -19,7 +19,7 @@ import {
 	updateSessionsIndexMetaForCommands,
 } from "../../session/session-store.js";
 import { createAppBackedServerSessionStore } from "../http-server-runtime.js";
-import { installStoreSessionLayerForTest } from "../../session/testing/store-layer.js";
+import { installStoreSessionLayerForTest } from "../../session/testing/session-testing-store-layer.js";
 let storeLayer: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>;
 
 describe("app 仓库背书的会话读面", () => {

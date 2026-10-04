@@ -27,8 +27,8 @@ vi.mock('@onething/backend/goal/goal-manager', () => ({
   updateGoalFromUser: goals.updateGoalFromUser,
   clearGoal: goals.clearGoal,
 }))
-vi.mock('@onething/backend/goal/kick', () => ({ kickGoalRunIfIdle: goals.kickGoalRunIfIdle }))
-vi.mock('@onething/backend/goal/file-change-collector', () => ({ collectGoalFileDiffs: goals.collectGoalFileDiffs }))
+vi.mock('@onething/backend/goal/goal-kick', () => ({ kickGoalRunIfIdle: goals.kickGoalRunIfIdle }))
+vi.mock('@onething/backend/goal/goal-file-change-collector', () => ({ collectGoalFileDiffs: goals.collectGoalFileDiffs }))
 
 const GOAL = { id: 'goal-1', objective: 'Ship it', status: 'active', createdAt: 100 }
 

@@ -11,8 +11,8 @@ import {
   SURFACE_GUARD_MIN_DELTA_L,
   THEME_STATUS_COLOR_TOKENS,
 } from '../theme-resolver.js'
-import { CSS_VAR_MAP, generateCSSVariables } from '../css-mapper.js'
-import { guaranteeMinAbsDeltaL, guaranteeMinDeltaL } from '../role-mapping.js'
+import { CSS_VAR_MAP, generateCSSVariables } from '../theme-css-mapper.js'
+import { guaranteeMinAbsDeltaL, guaranteeMinDeltaL } from '../theme-role-mapping.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const builtinThemeDir = path.resolve(dirname, '../builtin')

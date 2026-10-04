@@ -4,12 +4,12 @@
  * 这一家的**数据**全在这里:显示名、方言、目录、型号规则表。行为(方言、运行时工厂、OAuth、
  * 列表口、兜底行)在同目录的 `runtime.ts` 及其伙伴。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`),不许碰 node / agent-loop。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`),不许碰 node / agent-loop。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 
 // Copilot 后台卖的型号能力按名字判(四种能力;文件输入不在这张表里,落到缺省)。这四个正则说的是
-// 「Copilot 这张货架上哪些型号会什么」,只有这一家读,所以跟着它的规则表回家(从 `model-capability.ts`
+// 「Copilot 这张货架上哪些型号会什么」,只有这一家读,所以跟着它的规则表回家(从 `provider-model-capability.ts`
 // 的 `COPILOT_*` 与 `copilotPatternVerdict` 搬来,逐字)。
 const COPILOT_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner/
 const COPILOT_VISION_PATTERN = /gpt-4o|gpt-4-turbo|gpt-4-vision|gpt-4\.1|claude-3|claude-sonnet-4|claude-opus|gemini-1\.5|gemini-2|gemini-pro-vision/

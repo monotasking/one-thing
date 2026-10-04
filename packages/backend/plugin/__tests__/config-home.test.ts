@@ -48,7 +48,7 @@ function readCentralConfigRow(pluginId: string): Record<string, unknown> | undef
 }
 
 async function loader() {
-  return import('../disk-loader.js')
+  return import('../plugin-disk-loader.js')
 }
 
 describe('配置搬家(plugin-settings → plugins/<id>/config.json)', () => {

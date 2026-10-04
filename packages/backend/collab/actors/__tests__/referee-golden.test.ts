@@ -36,14 +36,14 @@ import {
   CollabRefereeActor,
   createCollabScriptedRefereeJudgePort,
   type CollabRefereeActorHost,
-} from '../referee-actor.js'
+} from '../collab-referee-actor.js'
 import {
   collabRoomMembersFromTranscript,
   createCollabRoomActorReplayPipeline,
   type CollabRoomReplayOptions,
-} from '../room-replay.js'
-import { createCollabRoomAccountMemoryStore } from '../room-account.js'
-import { CollabRoomActor, type CollabRoomActorHost } from '../room-actor.js'
+} from '../collab-actors-room-replay.js'
+import { createCollabRoomAccountMemoryStore } from '../collab-actors-room-account.js'
+import { CollabRoomActor, type CollabRoomActorHost } from '../collab-room-actor.js'
 
 const GOLDEN_DIR = join(__dirname, 'golden')
 
@@ -121,7 +121,7 @@ describe('金重放:free 批量举手裁决', () => {
     // 判了几次 = 开了几扇窗 = 下发了几份裁决。三个数必须相等,不然就有窗没关。
     expect(pipeline.judgeCalls()).toBe(windows.length)
     // 一只手至多进一扇窗:剧本里每次举手各开一扇,调用数因此不超过举手数。
-    // 「N 个候选一次调用」那一面在 referee-actor.test.ts 里钉(三只手、一扇窗)——
+    // 「N 个候选一次调用」那一面在 collab-referee-actor.test.ts 里钉(三只手、一扇窗)——
     // 这份剧本一次只来一只手,量不出 O(1),但量得出「没有哪只手被判两遍」。
     expect(pipeline.judgeCalls()).toBeLessThanOrEqual(
       result.verbs.filter(verb => verb.type === 'agent:raise-hand').length,

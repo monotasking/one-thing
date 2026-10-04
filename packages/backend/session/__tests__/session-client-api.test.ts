@@ -63,7 +63,7 @@ const collab = vi.hoisted(() => ({
 const todoPlan = vi.hoisted(() => ({
   deleteSessionAiTodo: vi.fn(async () => {}),
   notifyTodoPlanActiveSessionChanged: vi.fn(),
-  // `resource/todo-provider.ts`(待办 T0 / B 形之后随资源注册表一起被拉进来)
+  // `resource/resource-todo-provider.ts`(待办 T0 / B 形之后随资源注册表一起被拉进来)
   // 在模块顶层就读这两格(`ASSEMBLED_PORTS`),桩里缺它们整份文件在 import 时就挂掉,
   // 于是这组用例曾经一条都跑不起来。这组用例不碰待办资源,给空桩即可。
   getTodoPlanStore: vi.fn(),
@@ -91,7 +91,7 @@ const permission = vi.hoisted(() => ({ clearSession: vi.fn() }))
 
 /**
  * S2b:主读路径收口后,`getMessages` / `getMessagesPage` 从 `store.js` 改走
- * `session/reads.ts` 的读门面 —— 门面在 `fromEvents()` 上取投影(批 6b 之后是
+ * `session/session-reads.ts` 的读门面 —— 门面在 `fromEvents()` 上取投影(批 6b 之后是
  * 唯一路)。为了逐字证「投影到得了这两条入口」,这里桩的是门面脚下的**两口井**
  * (events 投影 / 原始仓)而**不桩门面本体**:读门面真跑,只有井是假的。
  */
@@ -122,8 +122,8 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/session')>(),
   ...store,
 }))
-vi.mock('../../current.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../current.js')>(),
+vi.mock('../../backend-current.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../backend-current.js')>(),
   // 只换这一口:`installSessionLayerForTest` 用的 `setCurrentBackend` /
   // `createBackendHandle` 仍是真的(那只窄句柄上没有资源内核这一格 —— 它是
   // `OnethingBackend` 的实例字段,见 `resource/resource-client-api.ts` 的 `kernel()`)。
@@ -141,14 +141,14 @@ vi.mock('../../http-server/http-server-principal.js', () => ({
   principalOf: () => ({ kind: 'user', userId: 'local-user' }),
 }))
 vi.mock('../session-store.js', () => storesSessions)
-vi.mock('../events-reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../events-reads.js')>(),
+vi.mock('../session-events-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../session-events-reads.js')>(),
   ...eventsReads,
 }))
-vi.mock('@onething/backend/collab/rooms', () => collab)
+vi.mock('@onething/backend/collab/collab-rooms', () => collab)
 vi.mock('@onething/backend/todo-plan/todo-plan-service', () => todoPlan)
 vi.mock('@onething/backend/toc/toc-recorder', () => toc)
-vi.mock('@onething/backend/variable/gateways', () => variables)
+vi.mock('@onething/backend/variable/variable-gateways', () => variables)
 vi.mock('@onething/backend/agent/agent-store-access', () => agents)
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
 vi.mock('@onething/backend/event', () => ({
@@ -223,7 +223,7 @@ describe('sessions RPC domain', () => {
 
     const [{ createResourceKernel, SessionResourceProvider }, { ToolRunner }] = await Promise.all([
       import('@onething/backend/resource'),
-      import('@onething/backend/toolkit/tool-protocol'),
+      import('@onething/backend/toolkit/toolkit-tool-protocol'),
     ])
     const resourceKernel = createResourceKernel(validator => new ToolRunner({
       authorizer: { decide: async () => ({ kind: 'allow' as const }) },

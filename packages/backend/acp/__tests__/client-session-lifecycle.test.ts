@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ACPClient, AcpCapabilityMissingError, AcpReconnectPausedError } from '../acp-client.js'
-import { AcpReconnectBackoffGate } from '../reconnect-backoff.js'
-import { MemoryACPSessionLinkStore } from '../session-links.js'
+import { AcpReconnectBackoffGate } from '../acp-reconnect-backoff.js'
+import { MemoryACPSessionLinkStore } from '../acp-session-links.js'
 import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**

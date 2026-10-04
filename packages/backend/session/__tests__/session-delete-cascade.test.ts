@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSessionTraceDir, getTurnTraceDir } from '@onething/backend/eval/trace-store'
+import { getSessionTraceDir, getTurnTraceDir } from '@onething/backend/eval/eval-trace-store'
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 
@@ -18,7 +18,7 @@ let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../session-store.js') | null = null
 let sessionsDir = ''
-let storeLayer: Awaited<ReturnType<typeof import('../testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
+let storeLayer: Awaited<ReturnType<typeof import('../testing/session-testing-store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 async function loadIsolatedStores(): Promise<typeof import('../session-store.js')> {
   vi.resetModules()
@@ -27,7 +27,7 @@ async function loadIsolatedStores(): Promise<typeof import('../session-store.js'
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
   sessionsDir = paths.getOnethingSessionsDir()
-  const { installStoreSessionLayerForTest } = await import('../testing/store-layer.js')
+  const { installStoreSessionLayerForTest } = await import('../testing/session-testing-store-layer.js')
   storeLayer = await installStoreSessionLayerForTest()
   return sessions
 }

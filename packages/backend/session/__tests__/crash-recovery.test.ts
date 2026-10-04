@@ -13,7 +13,7 @@ import type {
 } from '@onething/backend/session'
 import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend/session'
 import { createOnethingSessionRepository } from '../session-repository.js'
-import { createHybridSessionStorageDriver } from '../storage-driver.js'
+import { createHybridSessionStorageDriver } from '../session-storage-driver.js'
 
 // 启动阶段的全量 sanitize 扫描已删除,冷加载(repository.getSession)是
 // 崩溃恢复的唯一防线。本文件把原 sanitizeAllSessionsOnStartup 的四类修复

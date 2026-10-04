@@ -15,7 +15,7 @@ import {
   promptFragmentsFromToolContribution,
   renderCorePromptFragment,
 } from '../agent-loop-prompt-fragments.js'
-import { createCorePluginAPI } from '../../plugin/api-builder.js'
+import { createCorePluginAPI } from '../../plugin/plugin-api-builder.js'
 import type { CoreBuildPromptContextOptions } from '../agent-loop-system-prompt.js'
 
 const ctx = (over: Partial<CoreBuildPromptContextOptions> = {}): CoreBuildPromptContextOptions => ({

@@ -46,7 +46,7 @@ export interface OnethingSearchSessionMeta {
    * 这间会话有多少条消息(`session-overview` 预览那一格,S4a 加)。
    *
    * 它**不是新读数**:会话列表投影本来就维护 `SessionMeta.messageCount`
-   * (`session/store-helpers.ts`),宿主交下来的对象上一直有这一格,
+   * (`session/session-store-helpers.ts`),宿主交下来的对象上一直有这一格,
    * 只是从前这份收窄的形没有声明它。缺席 = 那台宿主的会话表不带这一格
    * (单测里的假 adapters 就是),预览按 0 画,**不去数账本补**。
    */
@@ -107,7 +107,7 @@ export interface OnethingSearchProvidersAdapters {
    * **这里没有 `getSearchDirectories`**(09-07 事故第一条修,故意留这段碑文)。
    *
    * 它曾经是「宿主替这次请求算好的根列表」,而宿主接进来的是**授权**那张全集
-   * (`backend/search/authorization.ts` 的 `fileRoots`:每一条可见会话的
+   * (`backend/search/search-authorization.ts` 的 `fileRoots`:每一条可见会话的
    * workingDirectory + 笔记目录 + 接入目录)。492 条会话 → 31 个扫描根 → 一次
    * 「不挑」的搜索起 31 条 `rg`,其中扎进 18GB 目录的三条永不返回。
    *

@@ -21,7 +21,7 @@
  */
 
 import type { NoteSystemState } from '../note-types.js'
-import type { ObsidianCli } from './cli.js'
+import type { ObsidianCli } from './note-obsidian-cli.js'
 import type { ObsidianRegistry, ObsidianRegistrySnapshot } from './note-obsidian-registry.js'
 
 /** 两个读数 → 一个码。纯函数。 */

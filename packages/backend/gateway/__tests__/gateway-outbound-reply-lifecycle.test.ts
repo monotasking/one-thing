@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '@onething/backend/event/session-event-bus'
+import { EventBus } from '@onething/backend/event/event-session-bus'
 import { inspectStoreLock, StoreLock } from '@onething/backend/storage'
 import type { ChatMessage } from '@shared/ipc.js'
 import { BackendResources } from '../../backend-shutdown.js'
@@ -11,8 +11,8 @@ import { createChannelReplyDeliveryStore } from '../gateway-channel-identity-sto
 import { OutboundReplyDispatcher } from '../gateway-outbound-reply-dispatcher.js'
 
 // 替身只换这两样,其余照真(包根归位 B:IM 连接器登记表改从插件入口取以后,入口里的模块加载时要 `consolePort` 等)。
-vi.mock('@onething/backend/logging/configure-logging', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/logging/configure-logging')>(),
+vi.mock('@onething/backend/logging/logging-configure', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/logging/logging-configure')>(),
   writeAppLog: vi.fn(),
   getLogger: () => ({ error: vi.fn() }),
 }))

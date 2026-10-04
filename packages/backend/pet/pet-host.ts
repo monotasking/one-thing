@@ -24,13 +24,13 @@
  *    声音放多久,话就说多久。
  *
  * ── 为什么「估计时长」复用音乐那一只 ─────────────────────────────────────
- * `music/lyrics.ts` 的 `estimateSpeechSeconds` 是电台口播今天判「这句话要说多久」的同一把
+ * `music/music-lyrics.ts` 的 `estimateSpeechSeconds` 是电台口播今天判「这句话要说多久」的同一把
  * 尺子(字数 / 4.2 秒,下限 3 秒)。P3 换成语音回执之前,两处用两把尺子等于同一句话在
  * 电台眼里说完了、在宠物眼里还在说。
  */
 
-import { estimateSpeechSeconds } from '../music/lyrics.js'
-import { PET_CHATTINESS, PET_DEFAULT_CHATTINESS, type PetChattiness } from './chattiness.js'
+import { estimateSpeechSeconds } from '../music/music-lyrics.js'
+import { PET_CHATTINESS, PET_DEFAULT_CHATTINESS, type PetChattiness } from './pet-chattiness.js'
 import type { MomentComposer } from './pet-composer.js'
 import {
   foldPetMemory,

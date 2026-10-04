@@ -115,7 +115,7 @@ describe('panel refresh fan-out', () => {
   it('coalesces a burst of ctx.refresh() into one signal per panel', async () => {
     // 插件在一次批量操作里对每个变化调一次 refresh 是完全合理的写法 ——
     // 但那是 N 条一模一样的信号,每条都会让 renderer 拉出同一棵树。
-    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../plugin-api.js')
     const emitted: Emitted[] = []
     const { api, state } = createPluginAPI(
       'demo',

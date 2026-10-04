@@ -5,7 +5,7 @@
  */
 
 import type { OnethingMusicPlayerBackend, OnethingMusicRuntimeState } from './music-types.js'
-import type { MusicSetupService } from './setup-service.js'
+import type { MusicSetupService } from './music-setup-service.js'
 
 export type OnethingMusicIpcResult<TPayload extends object = {}> =
   | ({ success: true } & TPayload)

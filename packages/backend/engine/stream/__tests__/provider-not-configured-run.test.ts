@@ -47,7 +47,7 @@ const { installSessionLayerForTest } = await import('../../../session/testing/se
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { resetSessionRuns } = await import('@onething/backend/session')
 const { resetSessionEventStatsCache } = await import('@onething/backend/session')
-const { failAssistantRun, openAssistantRun } = await import('../stream-executor.js')
+const { failAssistantRun, openAssistantRun } = await import('../engine-stream-executor.js')
 
 const SESSION_ID = 'provider-not-configured'
 

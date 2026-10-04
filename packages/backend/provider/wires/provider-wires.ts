@@ -13,17 +13,17 @@ export {
 	anthropicToolChoicePolicy,
 	type AnthropicDialect,
 	type AnthropicStreamEvent,
-} from "./anthropic-messages-wire.js";
+} from "./provider-anthropic-messages-wire.js";
 export {
 	AnthropicUsageNormalizer,
 	anthropicUsage,
 	anthropicUsageBuckets,
 	type AnthropicUsage,
-} from "./anthropic-usage.js";
+} from "./provider-wires-anthropic-usage.js";
 export {
 	AnthropicErrorMapper,
 	type AnthropicApiError,
-} from "./anthropic-errors.js";
+} from "./provider-wires-anthropic-errors.js";
 export {
 	AnthropicPartCodec,
 	anthropicParts,
@@ -42,7 +42,7 @@ export {
 	type AnthropicToolResultContentBlock,
 	type AnthropicToolUseBlock,
 	type AnthropicWireValue,
-} from "./anthropic-messages.js";
+} from "./provider-wires-anthropic-messages.js";
 export {
 	OPENAI_CHAT_USAGE_TABLE,
 	OpenAIChatWire,
@@ -51,11 +51,11 @@ export {
 	openAIChatUsageTable,
 	type OpenAIChatDialect,
 	type OpenAIChatStreamChunk,
-} from "./openai-chat-wire.js";
+} from "./provider-openai-chat-wire.js";
 export {
 	OpenAIChatErrorMapper,
 	type OpenAIChatApiError,
-} from "./openai-chat-errors.js";
+} from "./provider-wires-openai-chat-errors.js";
 export {
 	OPENAI_CHAT_IMAGE_DETAIL_VALUES,
 	OPENAI_CHAT_VERBOSITY_VALUES,
@@ -68,7 +68,7 @@ export {
 	type OpenAIChatProviderOptionSupport,
 	type OpenAIChatProviderOptions,
 	type OpenAIChatVerbosity,
-} from "./openai-chat-provider-options.js";
+} from "./provider-wires-openai-chat-options.js";
 export {
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES_WITH_ORIGINAL,
@@ -83,7 +83,7 @@ export {
 	type OpenAIResponsesProviderOptionSupport,
 	type OpenAIResponsesProviderOptions,
 	type OpenAIResponsesVerbosity,
-} from "./openai-responses-provider-options.js";
+} from "./provider-wires-openai-responses-options.js";
 export {
 	OPENAI_CHAT_PDF_DELIVERED_NOTE,
 	OpenAIChatPartCodec,
@@ -98,7 +98,7 @@ export {
 	type OpenAIChatToolContentPart,
 	type OpenAIChatUserContentPart,
 	type OpenAIChatWireValue,
-} from "./openai-chat-messages.js";
+} from "./provider-wires-openai-chat-messages.js";
 export {
 	GEMINI_TOOL_CALLS_FINISH,
 	GeminiFinishReasonMapper,
@@ -114,11 +114,11 @@ export {
 	type GeminiDialect,
 	type GeminiStreamChunk,
 	type GeminiUsageMetadata,
-} from "./gemini-wire.js";
+} from "./provider-gemini-wire.js";
 export {
 	GeminiErrorMapper,
 	type GeminiApiError,
-} from "./gemini-errors.js";
+} from "./provider-wires-gemini-errors.js";
 export {
 	GeminiPartCodec,
 	geminiDataPart,
@@ -133,7 +133,7 @@ export {
 	type GeminiTool,
 	type GeminiToolConfig,
 	type GeminiWireValue,
-} from "./gemini-messages.js";
+} from "./provider-wires-gemini-messages.js";
 export {
 	CodexFinishReasonMapper,
 	CodexResponsesUsageNormalizer,
@@ -150,14 +150,14 @@ export {
 	type ResponsesDialect,
 	ResponsesUsageNormalizer,
 	type ResponsesUsage,
-} from "./openai-responses-wire.js";
+} from "./provider-openai-responses-wire.js";
 export {
 	CodexHttpError,
 	CodexResponsesErrorMapper,
 	createCodexAgentApiError,
 	summarizeCodexErrorBody,
 	type CodexApiError,
-} from "./openai-responses-errors.js";
+} from "./provider-wires-openai-responses-errors.js";
 export {
 	ResponsesPartCodec,
 	codexEncryptedReasoning,
@@ -175,4 +175,4 @@ export {
 	type ResponsesCodec,
 	type ResponsesPartCodecOptions,
 	type ResponsesWireValue,
-} from "./openai-responses-messages.js";
+} from "./provider-wires-openai-responses-messages.js";

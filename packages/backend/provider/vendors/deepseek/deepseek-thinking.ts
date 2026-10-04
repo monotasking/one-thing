@@ -13,7 +13,7 @@
  *     `reasoning`(设计稿 §13:两边的语义差 P0a 原样保留)。
  */
 import type { RequestBodyBuilder, TurnContext } from "../../base/provider-base.js";
-import { OpenAIChatThinkingWire, openAIChatDelta } from "../../thinking/openai-chat-thinking-wire.js";
+import { OpenAIChatThinkingWire, openAIChatDelta } from "../../thinking/provider-thinking-openai-chat-wire.js";
 
 export function isDeepSeekThinkingModel(modelId: string): boolean {
 	const lower = modelId.toLowerCase();

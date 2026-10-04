@@ -2,8 +2,8 @@
  * 流引擎的**命令目标**形状(P3'e A1,2026-08-21)。
  *
  * 从前和 `OnethingStreamEngine` 同住 `stream-engine.ts`;那个 71 行的中间类已
- * 并进 `packages/backend/engine/stream-engine.ts`,但这三件是产品层自己的公开
- * 类型 —— `runtime.ts` / `gateway/engine-conversation-runtime.ts` 都拿它当泛型下界与默认 sender,
+ * 并进 `packages/backend/engine/engine-stream-dispatcher.ts`,但这三件是产品层自己的公开
+ * 类型 —— `runtime.ts` / `gateway/gateway-engine-conversation-runtime.ts` 都拿它当泛型下界与默认 sender,
  * 所以单独成文件。收尾整理 3(2026-10-03)从 runtime 根上搬进 `engine/`。
  */
 

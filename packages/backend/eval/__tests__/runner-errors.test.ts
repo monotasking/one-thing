@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { runEvals, type EvalRunProgressEvent } from "../eval-runner.js";
-import type { EvalModelCaller } from "../model-call.js";
+import type { EvalModelCaller } from "../eval-model-call.js";
 
 let repoDir: string;
 

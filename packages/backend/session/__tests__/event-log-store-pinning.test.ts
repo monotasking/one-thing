@@ -21,8 +21,8 @@ import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 
 const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } =
-  await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
+  await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
 
 const SESSION = 'pinning-1'
 

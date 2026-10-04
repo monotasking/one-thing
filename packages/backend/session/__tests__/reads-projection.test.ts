@@ -46,22 +46,22 @@ vi.mock('../session-store.js', () => ({
 }))
 
 const { flushSessionEventLog, resetSessionEventLogCache } =
-  await import('../event-log.js')
-const { writeSessionEvent } = await import('../event-writer.js')
+  await import('../session-event-log.js')
+const { writeSessionEvent } = await import('../session-event-writer.js')
 const { getLiveSessionProjection, resetSessionProjectionCache } =
-  await import('../projection-cache.js')
-const { resetSessionEventReadCache } = await import('../events-reads.js')
-const { resetSessionPrepareCache } = await import('../prepare.js')
-const { hydrateSessionMessagesFromProjection } = await import('../hydrate.js')
-const { sessionProjectionOptions } = await import('../projection-blobs.js')
-const { sessionReads, configureSessionHistoryBuilder } = await import('../reads.js')
+  await import('../session-projection-cache.js')
+const { resetSessionEventReadCache } = await import('../session-events-reads.js')
+const { resetSessionPrepareCache } = await import('../session-prepare.js')
+const { hydrateSessionMessagesFromProjection } = await import('../session-hydrate.js')
+const { sessionProjectionOptions } = await import('../session-projection-blobs.js')
+const { sessionReads, configureSessionHistoryBuilder } = await import('../session-reads.js')
 const { flushSessionEventStats, readSessionShadowStats, resetSessionEventStatsCache } =
-  await import('../event-stats.js')
+  await import('../session-event-stats.js')
 
 const SESSION = 'reads-read-mode-1'
 const RUN = 'run-1'
 
-/** core 默认配方:纯文本消息上与桌面端逐字节一致(见 model-history.ts 注释)。 */
+/** core 默认配方:纯文本消息上与桌面端逐字节一致(见 session-projection-model-history.ts 注释)。 */
 const RECIPE = { buildMessageContent: defaultHistoryMessageContent }
 
 let testSessionLayer: ReturnType<typeof installSessionLayerForTest>

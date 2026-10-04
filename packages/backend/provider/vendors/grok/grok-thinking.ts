@@ -2,7 +2,7 @@
  * xAI 的思考参数(`grok` / `grok-oauth` 两条通路共用):档位策略一份,两条线型各拼各的。
  *
  *  - `GrokEffortWire`(id `'grok-effort'`,chat-completions 的顶层 `reasoning_effort`):登记进进程级
- *    `thinkingWires`(经 `GROK_RUNTIME.thinkingWires`),`openai-compatible.ts` 的构造门面按
+ *    `thinkingWires`(经 `GROK_RUNTIME.thinkingWires`),`provider-openai-compatible.ts` 的构造门面按
  *    `reasoningStyle: 'grok-effort'` 取它;
  *  - `GrokResponsesReasoningWire`(同 id,Responses 的 `reasoning.effort` + 恒发 `include`):只挂在
  *    这家的方言配方上(`GROK_RESPONSES_THINKING_WIRES`),从来不进全局表。
@@ -16,14 +16,14 @@ import {
   clampOnethingReasoningEffort,
   resolveOnethingModelCapabilities,
   type OnethingReasoningProfile,
-} from '../../model-capability.js'
+} from '../../provider-model-capability.js'
 import type { RequestBodyBuilder, ThinkingWire, TurnContext } from '../../base/provider-base.js'
-import { OpenAIChatThinkingWire } from '../../thinking/openai-chat-thinking-wire.js'
+import { OpenAIChatThinkingWire } from '../../thinking/provider-thinking-openai-chat-wire.js'
 import {
   RESPONSES_ENCRYPTED_REASONING_INCLUDE,
   RESPONSES_INCLUDE_PATH,
   RESPONSES_REASONING_PATH,
-} from '../../thinking/responses-reasoning.js'
+} from '../../thinking/provider-thinking-responses-reasoning.js'
 
 export function clampGrokReasoningEffort(effort: string | undefined, model: string): string | undefined {
   const profile = resolveOnethingModelCapabilities({ providerId: 'grok', modelId: model }).reasoningProfile
@@ -59,7 +59,7 @@ export class GrokEffortWire extends OpenAIChatThinkingWire {
 export const grokEffortWire = new GrokEffortWire()
 
 /**
- * xAI Responses reasoning. Supported tiers come only from model-capability.ts.
+ * xAI Responses reasoning. Supported tiers come only from provider-model-capability.ts.
  * Checked against https://docs.x.ai/developers/model-capabilities/text/reasoning
  * and model-specific 4.3 docs, 2026-09-16. 4.5/4.6 cannot disable reasoning;
  * their old disabled setting is represented by low, never a silent high default.

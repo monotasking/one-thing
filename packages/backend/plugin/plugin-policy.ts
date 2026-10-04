@@ -17,9 +17,9 @@ import {
   PLUGIN_PANEL_INIT_ACTION,
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_RENDER_ACTION,
-} from './panel.js'
-import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './ui-anchor.js'
-import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
+} from './plugin-panel.js'
+import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './plugin-ui-anchor.js'
+import { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-runtime-guard-constants.js'
 
 // ── scope 的类型化构造 ──────────────────────────
 
@@ -467,7 +467,7 @@ const UI_SLOT_SURFACE_PATTERN = new RegExp(
 /**
  * 发送前拦截(N2)降级时停掉的界面名。
  *
- * 住在 policy.ts 而不是 input-intercept.ts,是为了避开一条真实的循环:
+ * 住在 policy.ts 而不是 plugin-input-intercept.ts,是为了避开一条真实的循环:
  * input-intercept 要 `runWithPluginTimeout`(runtime-guard),而 runtime-guard
  * 要 `resolvePluginScopeSeverity`(policy)。surface 名本来就是策略层的词汇。
  */
@@ -475,7 +475,7 @@ export const PLUGIN_INPUT_INTERCEPT_SURFACE = 'input-intercept'
 
 /**
  * 工具调用拦截(N4)降级时停掉的界面名。同住 policy.ts,同一条循环理由
- * (tool-call-intercept.ts 要 runtime-guard,runtime-guard 要 policy)。
+ * (plugin-tool-call-intercept.ts 要 runtime-guard,runtime-guard 要 policy)。
  */
 export const PLUGIN_TOOL_CALL_INTERCEPT_SURFACE = 'toolcall-intercept'
 
@@ -699,7 +699,7 @@ export const PLUGIN_DEFERRED_REGISTRIES: Record<PluginDeferredRegistryId, Plugin
       + '开放它,等于让插件自己定义自己的权限边界。',
     blockedBy: 'H 线硬隔离(子进程 ext host)',
     revisitWhen: '与 H 线一起设计。',
-    ref: 'permission/capability-registry.ts',
+    ref: 'permission/permission-capability-registry.ts',
   },
   'post-trigger': {
     reason: '触发器每轮都跑,属 disable-plugin 那一族;一个坏触发器会拖垮整条回合。',

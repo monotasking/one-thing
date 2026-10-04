@@ -43,7 +43,7 @@ import {
   readSpaceProviderSettings,
   resetSpaceProviderSettingsCacheForTests,
   writeSpaceProviderSettings,
-} from '@onething/backend/space/provider-settings'
+} from '@onething/backend/space/space-provider-settings'
 import {
   getPersistedSettings,
   getSpaceSettings,

@@ -9,7 +9,7 @@ export {
   userWasAway,
   type SegmentSourceMessage,
   type SegmentSourceTurn,
-} from './segment.js'
+} from './toc-segment.js'
 export {
   DEFAULT_SELF_EXPLANATORY_USER_CHARS,
   DEFAULT_TOC_INPUT_TOKEN_BUDGET,
@@ -18,7 +18,7 @@ export {
   shouldIncludeReasoning,
   type BuiltTocPrompt,
   type TocTurnInput,
-} from './input.js'
+} from './toc-input.js'
 export {
   DEFAULT_TRIVIAL_USER_CHARS,
   isTrivialTurn,
@@ -26,8 +26,8 @@ export {
   type TocAction,
   type TocDecision,
   type TurnSignals,
-} from './decide.js'
-export { applyTurnDecision, openSegmentOf, type ApplyTurnInput } from './apply.js'
+} from './toc-decide.js'
+export { applyTurnDecision, openSegmentOf, type ApplyTurnInput } from './toc-apply.js'
 export { renderTocTurnSystemPrompt } from './toc-render.js'
 export {
   SEGMENT_LOG_COMPACT_THRESHOLD,

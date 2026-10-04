@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { withProviderRetryAfter } from '../agent-loop/provider-error-classification.js'
+import { withProviderRetryAfter } from '../agent-loop/agent-loop-provider-error-classification.js'
 import {
   credentialRefreshKey,
   credentialTargetKey,
   normalizeCredentialTarget,
   type OnethingCredentialTarget,
   type OnethingSpaceCredentialTarget,
-} from './credential-target.js'
+} from './auth-credential-target.js'
 import {
   generatePKCE,
   getAuthProviderDefinition,

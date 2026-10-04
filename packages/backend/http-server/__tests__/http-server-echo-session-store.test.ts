@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { createEchoServerSessionStore } from '../http-server-runtime.js'
-import { getCurrentBackendSafe } from '../../current.js'
+import { getCurrentBackendSafe } from '../../backend-current.js'
 
 it('keeps an echo transcript readable after reopening without a production Backend or ledger', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'echo-transcript-'))

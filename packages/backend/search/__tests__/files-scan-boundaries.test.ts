@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ALL_CAPABILITIES } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../search-providers.js'
 import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/search-capabilities.js'
-import { searchFiles } from '../capabilities/files.js'
+import { searchFiles } from '../capabilities/search-capabilities-files.js'
 import { FolderVault } from '../../note/folder/note-folder-vault.js'
 import { OnethingSearchService } from '../search-service.js'
 
@@ -89,7 +89,7 @@ describe('① 扫盘根 = 当前语境那几个,不是授权全集', () => {
     const roots = calls.map(call => call.cwd)
     /*
      * 四个根:当前会话的工作目录 + 两个笔记库的根 + 接入目录。
-     * 反证:把 `backend/search/service-setup.ts` 那一行
+     * 反证:把 `backend/search/search-service-setup.ts` 那一行
      * `adapters.getSearchDirectories = access.fileRoots` 加回来(它接的是授权全集),
      * 这里就会变成 494 个根 —— 那正是真机上 31 条 `rg` 的成因。
      */

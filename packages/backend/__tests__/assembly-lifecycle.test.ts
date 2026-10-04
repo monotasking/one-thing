@@ -110,7 +110,7 @@ afterAll(async () => {
    * 同一条要 60s+),不是这份改动的性质问题 —— 但槽必须还干净,所以收尾无条件
    * 清一次。
    */
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('../backend-current.js')
   const leaked = getCurrentBackendSafe()
   if (leaked) setCurrentBackend(null)
 
@@ -211,7 +211,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     await first.dispose()
     const [{ getEventBus, isEventSystemInitialized }, { getStreamEngineSafe }] = await Promise.all([
       import('@onething/backend/event'),
-      import('../current.js'),
+      import('../backend-current.js'),
     ])
     expect(() => getEventBus()).toThrow()
     // C0 R10。前两条经进程当前实例槽(它在 dispose 末尾本来就清);
@@ -241,7 +241,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     const boom = new Error('afterSettings exploded')
     await expect(assemble({ afterSettings: () => { throw boom } })).rejects.toBe(boom)
 
-    const { getCurrentBackendSafe } = await import('../current.js')
+    const { getCurrentBackendSafe } = await import('../backend-current.js')
     expect(getCurrentBackendSafe()).toBeNull()
 
     const third = await assemble()
@@ -413,7 +413,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 直接钉在它的两个方法上。
    */
   it('⑭ 在途 start 上来一发 dispose:MCPManager.shutdown 仍被调到', { timeout: 180_000 }, async () => {
-    const { MCPManager } = await import('@onething/backend/mcp/index-with-bridge')
+    const { MCPManager } = await import('@onething/backend/mcp/mcp-index-with-bridge')
     const order: string[] = []
     let openGate = (): void => {}
     const gate = new Promise<void>(resolve => {
@@ -480,7 +480,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
 
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
     const runtime = await import('@onething/backend/external-agent')
-    const registry = await import('@onething/backend/external-agent/connector-registry')
+    const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     try {
@@ -513,8 +513,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('drains a connector created by a failing early hook before allowing the next Backend', { timeout: 180_000 }, async () => {
-    const registry = await import('@onething/backend/external-agent/connector-registry')
-    const { getCurrentBackendSafe } = await import('../current.js')
+    const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
+    const { getCurrentBackendSafe } = await import('../backend-current.js')
     const boom = new Error('afterSettings failed after creating a connector')
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
@@ -562,7 +562,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     const runtime = await import('@onething/backend/external-agent')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
-    const registry = await import('@onething/backend/external-agent/connector-registry')
+    const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
     const boom = new Error('afterSettings failed without creating a connector')
     try {
       await expect(assemble({ afterSettings: () => { throw boom } }))

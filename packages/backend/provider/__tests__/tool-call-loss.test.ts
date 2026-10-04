@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import { createCodexAgentProvider } from "../vendors/codex/codex-agent-provider.js";
 import { createDeepSeekAgentProvider } from "../vendors/deepseek/deepseek-agent-provider.js";
-import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
+import { createOpenAICompatibleAgentProvider } from "../provider-openai-compatible.js";
 
 function sseResponse(dataLines: string[]): Response {
 	return new Response(

@@ -15,10 +15,10 @@ import type {
 	AgentMessage,
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/loop-primitives";
-import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
+import { mergeAdjacentSameRoleMessages } from "../provider-message-merge.js";
 import { createDeepSeekAgentProvider } from "../vendors/deepseek/deepseek-agent-provider.js";
-import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
+import { createOpenAICompatibleAgentProvider } from "../provider-openai-compatible.js";
 import { createClaudeAgentProvider } from "../vendors/claude/claude-agent-provider.js";
 import { createCodexAgentProvider } from "../vendors/codex/codex-agent-provider.js";
 

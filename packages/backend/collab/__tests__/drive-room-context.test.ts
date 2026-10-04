@@ -10,8 +10,8 @@
  *  - 没有新东西就返回空串，让 drive 保持只有一行。
  */
 import { describe, expect, it } from 'vitest'
-import { buildCollabDriveRoomContext } from '../projection.js'
-import { planCollabHistoryWindow } from '../history-window.js'
+import { buildCollabDriveRoomContext } from '../collab-projection.js'
+import { planCollabHistoryWindow } from '../collab-history-window.js'
 import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 
 const AT = new Date(2026, 7, 2, 12, 0, 0).getTime()

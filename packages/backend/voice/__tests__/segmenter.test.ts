@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { splitOnethingSpeakableSentences as splitSpeakableSentences } from '../text.js'
+import { splitOnethingSpeakableSentences as splitSpeakableSentences } from '../voice-text.js'
 
 describe('splitSpeakableSentences', () => {
   it('keeps incomplete text as remainder', () => {

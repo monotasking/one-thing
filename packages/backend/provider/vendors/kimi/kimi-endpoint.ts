@@ -22,7 +22,7 @@
  * 纯模块(壳经 manifest 也会走到这里):服务商自述试点 P2 从 `providers/kimi.ts` 搬回家。
  * 编程套餐那一半的目录键与缺省模型住在 `vendors/kimi-code/kimi-code-manifest.ts`(那是它的事实)。
  */
-import { normalizeProviderBaseUrl } from '../../base-url.js'
+import { normalizeProviderBaseUrl } from '../../provider-normalize-base-url.js'
 
 export type OnethingKimiApiMode = 'standard' | 'coding-plan'
 export type OnethingKimiRegion = 'cn' | 'intl'

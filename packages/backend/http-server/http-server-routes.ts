@@ -13,12 +13,12 @@ import type {
 } from './http-server-runtime-facade.js'
 import type { JsonObject } from '@shared/json'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
-import { SessionStreamCoalescer } from '@onething/backend/event/stream-coalescer'
+import { SessionStreamCoalescer } from '@onething/backend/event/event-stream-coalescer'
 import { dispatchRpc } from './http-server-dispatch-table.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './http-server-runtime.js'
 import type { RpcDispatchPorts } from './http-server-dispatch-table.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import { PRE_IDENTITY_ROWS } from './http-server-client-api-roster.js'
 
 /**

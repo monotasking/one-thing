@@ -17,8 +17,8 @@ import {
   providerFamilyLookupOf,
   type ProviderEnabledOverride,
 } from '@shared/provider-families.js'
-import { builtinProviderFamilyLookup } from '../builtin-manifests.js'
-import { onethingBaseBuiltinProviders } from '../builtin-providers.js'
+import { builtinProviderFamilyLookup } from '../provider-builtin-manifests.js'
+import { onethingBaseBuiltinProviders } from '../provider-builtin-info.js'
 
 /* ── 旧写法,逐字冻结(原件:packages/shared/provider-families.ts @ 0507b4090)──────────── */
 

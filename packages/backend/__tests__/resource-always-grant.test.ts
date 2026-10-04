@@ -32,7 +32,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-always-project-'))
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('../backend-current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath

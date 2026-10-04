@@ -45,22 +45,22 @@ export {
   RESOURCE_META_TOOL_ID,
   ResourceMetaCallShapeError,
   ResourceMetaTool,
-} from './meta-tool.js'
-export type { ResourceMetaCall } from './meta-tool.js'
+} from './resource-meta-tool.js'
+export type { ResourceMetaCall } from './resource-meta-tool.js'
 
 export { ResourceEventHub } from './resource-events.js'
 export type { ResourceEvent, ResourceEventListener } from './resource-events.js'
 
-export { NO_ORIGIN_SESSION, ResourceKernel } from './kernel.js'
-export type { ReadGuard, ReadVerdict, ResourceCallOptions, ResourceKernelOptions } from './kernel.js'
+export { NO_ORIGIN_SESSION, ResourceKernel } from './resource-kernel.js'
+export type { ReadGuard, ReadVerdict, ResourceCallOptions, ResourceKernelOptions } from './resource-kernel.js'
 
-export { ReadOutcome } from './read-outcome.js'
+export { ReadOutcome } from './resource-read-outcome.js'
 
 export {
   describeResourceRefProblem,
   describeUnknownResourceReadProblem,
   ResourceInputValidator,
-} from './validator.js'
+} from './resource-validator.js'
 
 export {
   ResourceCallShapeError,

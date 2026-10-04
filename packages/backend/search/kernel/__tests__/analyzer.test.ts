@@ -13,7 +13,7 @@ import {
   composeNormalizers,
   mapRangeToSource,
   nfkcNormalizer,
-} from '../analyzer/normalize.js'
+} from '../analyzer/search-kernel-analyzer-normalize.js'
 
 const normalize = composeNormalizers(DEFAULT_NORMALIZERS)
 

@@ -12,7 +12,7 @@ import {
   type CorePluginUninstallResult,
   type CorePluginUpdateResult, type CorePluginBootstrapperOptions,
 } from '@onething/backend/plugin/plugin-contract'
-import { createPluginAPI, disposePlugin, drainPlugin, type PluginState } from './api.js'
+import { createPluginAPI, disposePlugin, drainPlugin, type PluginState } from './plugin-api.js'
 import {
   archiveCorePluginData,
   decidePluginOrphanArchive,
@@ -37,13 +37,13 @@ import {
   removePluginSourceDir,
   setPluginEnabled,
   writePluginConfig,
-} from './disk-loader.js'
+} from './plugin-disk-loader.js'
 import { configurePluginConfigHost, invalidatePluginConfigCache } from '@onething/backend/plugin/plugin-config'
 import {
   configurePluginStatusHost,
   detachPluginStatusHost,
   subscribePluginStatusSweep,
-} from '@onething/backend/plugin/status-bound'
+} from '@onething/backend/plugin/plugin-status-bound'
 import { configureIMConnectorHooks } from './plugin-im-connector-registry.js'
 import {
   fetchPluginMarketIndex,
@@ -51,9 +51,9 @@ import {
   packageNameFromNodeModulesPath,
   readInstalledPluginSpec,
   uninstallPluginPackage,
-} from './npm-process.js'
+} from './plugin-npm-process.js'
 import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/backend/plugin/plugin-contract'
-import { configurePluginConfigBroadcast } from '@onething/backend/plugin/config-access'
+import { configurePluginConfigBroadcast } from '@onething/backend/plugin/plugin-config-access'
 import {
   clearPluginRuntimeHealth,
   describePluginSurfaceDegradation,
@@ -64,11 +64,11 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
   restorePluginRuntimeHealth,
-} from '@onething/backend/plugin/health'
+} from '@onething/backend/plugin/plugin-health'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './plugin-types.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { LegacyDuckLogger } from '@onething/backend/logging/logger-primitives'
+import type { LegacyDuckLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getLogger('plugins.manager')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

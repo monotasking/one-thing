@@ -24,13 +24,13 @@ import {
   HOST_MCP_HTTP_PATH,
   installHostMcpToolHandlers,
   type HostMcpServerLike,
-} from '@onething/backend/acp/mcp-bridge/server'
+} from '@onething/backend/acp/mcp-bridge/acp-mcp-bridge-server'
 import { hostMcpRouter } from '@shared/ipc/host-mcp.js'
 import type { RpcDispatchContext, RpcRequest } from '@shared/ipc/rpc.js'
 import { dispatchRpc } from '@onething/backend/http-server/http-server-dispatch-table.js'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
-import type { HostMcpBridge } from '@onething/backend/acp/host-mcp-bridge'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
+import type { HostMcpBridge } from '@onething/backend/acp/acp-host-mcp-bridge'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('server.mcp-face')
 

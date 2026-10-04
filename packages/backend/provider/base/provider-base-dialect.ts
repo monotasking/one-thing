@@ -6,16 +6,16 @@
  * `dialect.* === '`)。需要代码的 provider 允许薄子类,但不许为了「每家一个
  * 类」而造空子类。
  */
-import type { AttachmentChannel } from "./attachment-channel.js";
-import type { AuthStrategy } from "./auth-strategy.js";
-import type { CachePolicy } from "./cache-policy.js";
+import type { AttachmentChannel } from "./provider-base-attachment-channel.js";
+import type { AuthStrategy } from "./provider-base-auth-strategy.js";
+import type { CachePolicy } from "./provider-base-cache-policy.js";
 import type { ErrorMapper } from "./provider-base-errors.js";
-import type { DialectFinishShape } from "./finish-reason.js";
-import type { PartCodec } from "./part-codec.js";
-import type { SamplingPolicy } from "./sampling-policy.js";
-import type { ThinkingWire } from "./thinking-wire.js";
-import type { ToolCallCodec } from "./tool-call-codec.js";
-import type { ToolChoicePolicy } from "./tool-choice-policy.js";
+import type { DialectFinishShape } from "./provider-base-finish-reason.js";
+import type { PartCodec } from "./provider-base-part-codec.js";
+import type { SamplingPolicy } from "./provider-base-sampling-policy.js";
+import type { ThinkingWire } from "./provider-base-thinking-wire.js";
+import type { ToolCallCodec } from "./provider-base-tool-call-codec.js";
+import type { ToolChoicePolicy } from "./provider-base-tool-choice-policy.js";
 import type { TurnContext } from "./provider-base-turn-context.js";
 import type { UsageNormalizer } from "./provider-base-usage.js";
 import type { ProviderQuota } from "@shared/contracts/quota.js";
@@ -55,7 +55,7 @@ export interface DialectRequestShape {
 
 /**
  * 用户意图那一侧的输入 —— 设置里的两张 per-model 表。形状与
- * `thinking-options.ts` 的 `OnethingAgentLoopThinkingProviderConfig` 结构等价
+ * `provider-thinking-options.ts` 的 `OnethingAgentLoopThinkingProviderConfig` 结构等价
  * (那边的类型是公开契约,这边不 import 它:`base/` 不该反向依赖上一层)。
  */
 export interface DialectThinkingConfig {
@@ -81,7 +81,7 @@ export interface Dialect<W = unknown> {
 	wire: WireId;
 	/**
 	 * 这份方言是这条线的**参考配方**:用户自定义服务商选了这条线、协议层又没有通用配方时,
-	 * 以它为底(`dialects/custom-from-spec.ts` 按线查,`referenceDialectFor`)。今天只有两条线要它
+	 * 以它为底(`dialects/provider-dialects-custom-from-spec.ts` 按线查,`referenceDialectFor`)。今天只有两条线要它
 	 * (openai-responses、gemini-generateContent),各由官方那一家在自己的方言文件里声明。缺席 = 不是。
 	 */
 	referenceFor?: WireId;
@@ -122,7 +122,7 @@ export interface Dialect<W = unknown> {
 	 * 不给 = 走通用规则(`thinkingByModel` 决定开关,`thinkingEffortByModel`
 	 * 决定档位)。给了就是这家的家规:Kimi 的三族模型(k3 只认
 	 * `reasoning_effort:'max'`、k2.7-code/k2-thinking 一个参数都不能发、
-	 * k2.5/k2.6 走 `thinking.type`)以前是 `thinking-options.ts` 里一句
+	 * k2.5/k2.6 走 `thinking.type`)以前是 `provider-thinking-options.ts` 里一句
 	 * `providerId === 'kimi'` 的分支。
 	 */
 	thinkingIntent?(

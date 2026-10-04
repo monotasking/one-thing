@@ -8,7 +8,7 @@
  * 不是在里面加 if。
  */
 
-import type { SearchQuery } from '../candidate.js'
+import type { SearchQuery } from '../search-kernel-candidate.js'
 import type { SearchCapability } from '../search-kernel-capability.js'
 
 export interface Budget {

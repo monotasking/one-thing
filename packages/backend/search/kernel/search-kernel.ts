@@ -27,8 +27,8 @@ export type {
   SearchQuery,
   SearchScope,
   TextRange,
-} from './candidate.js'
-export { ALL_CAPABILITIES, DEFAULT_INTENT } from './candidate.js'
+} from './search-kernel-candidate.js'
+export { ALL_CAPABILITIES, DEFAULT_INTENT } from './search-kernel-candidate.js'
 
 export {
   DuplicateCapabilityError,
@@ -53,14 +53,14 @@ export type {
   VisibilityScope,
 } from './search-kernel-capability.js'
 
-export { composeDocumentFilters } from './feed.js'
+export { composeDocumentFilters } from './search-kernel-feed.js'
 export type {
   DocPayload,
   DocumentFeed,
   DocumentFilter,
   DocumentFilterContext,
   FeedPolicy,
-} from './feed.js'
+} from './search-kernel-feed.js'
 
 export * from './analyzer/search-kernel-analyzer.js'
 export * from './index/search-kernel-index.js'
@@ -71,5 +71,5 @@ export {
   CursorDecodeError,
   createCursorCodec,
   hashQueryShape,
-} from './cursor.js'
-export type { CursorCodec, CursorPayload, OffsetCursor, PositionCursor } from './cursor.js'
+} from './search-kernel-cursor.js'
+export type { CursorCodec, CursorPayload, OffsetCursor, PositionCursor } from './search-kernel-cursor.js'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyBashCommand, splitCommandSegments } from '../bash-classifier.js'
+import { classifyBashCommand, splitCommandSegments } from '../tool-bash-classifier.js'
 
 /**
  * These are the concrete commands that used to classify as `allow` — the

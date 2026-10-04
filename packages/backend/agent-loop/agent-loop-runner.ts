@@ -25,13 +25,13 @@ import {
   runWithAgentAbort,
   streamAgentProviderTurnEvents,
   throwIfAgentAborted,
-} from './stream.js'
+} from './agent-loop-stream.js'
 import { applyPromptInjectors, createSkillPromptInjector } from './agent-loop-prompts.js'
 import { AgentLoopPauseForConfirmationError, isAgentLoopPauseForConfirmationError, awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from './agent-loop-errors.js'
 import {
   agentToolResultIsError,
   agentToolResultToMessageContentForCapabilities,
-} from './tool-results.js'
+} from './agent-loop-tool-results.js'
 import {
   assertAgentProviderCanRunTurn,
   agentSupportsForcedToolUse,
@@ -40,16 +40,16 @@ import {
   assertAgentMessagesSupportedByCapabilities,
   resolveAgentModelCapabilities,
 } from './agent-loop-capabilities.js'
-import { toolCallSignature } from './tool-signature.js'
-import { resolveRetiredAgentToolName } from './tool-names.js'
+import { toolCallSignature } from './agent-loop-tool-signature.js'
+import { resolveRetiredAgentToolName } from './agent-loop-tool-names.js'
 import {
   MAX_CREDENTIAL_ROTATIONS,
   MAX_TURN_RETRIES,
   turnRetryDelayMs,
   isRetryableAgentError,
   sleepWithAbort,
-} from './retry.js'
-import { ToolExecutionScheduler } from './tool-execution-scheduler.js'
+} from './agent-loop-retry.js'
+import { ToolExecutionScheduler } from './agent-loop-tool-execution-scheduler.js'
 
 const DEFAULT_MAX_TURNS = 8
 const DEFAULT_MAX_CONCURRENT_TOOLS = 8
@@ -315,7 +315,7 @@ async function executeAgentToolCall(input: {
 }): Promise<AgentToolResult> {
   const { options, toolMap, turn, toolCall } = input
   throwIfAgentAborted(options.abortSignal)
-  // miss 之后再查一次退役名表(tool-names.ts):改名后的灰度期里,模型会照着
+  // miss 之后再查一次退役名表(agent-loop-tool-names.ts):改名后的灰度期里,模型会照着
   // 历史里的旧调用范例吐旧名,而那本该是一次成功的调用。别名只在这里生效 ——
   // 请求的 tools 参数里没有它,提示词里也没有。
   const tool = toolMap.get(toolCall.name)

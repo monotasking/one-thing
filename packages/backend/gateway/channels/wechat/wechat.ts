@@ -1,4 +1,4 @@
-import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../hub/channel.js'
+import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../hub/gateway-hub-channel.js'
 import { resolveGatewayLogger, type Logger } from '../../hub/gateway-hub-logging.js'
 import {
   DEFAULT_ILINK_BASE_URL,
@@ -11,8 +11,8 @@ import {
   type WechatAuthState,
   type QRCodeStatusResponse,
 } from './ilink/wechat-ilink-auth.js'
-import { ILinkPoller } from './ilink/poller.js'
-import { sendText, sendTyping } from './ilink/sender.js'
+import { ILinkPoller } from './ilink/wechat-ilink-poller.js'
+import { sendText, sendTyping } from './ilink/wechat-ilink-sender.js'
 import type { WeixinMessage } from './ilink/wechat-ilink-types.js'
 
 interface WechatPollerLike {

@@ -1,4 +1,4 @@
-export * from './id.js'
+export * from './project-dir-id.js'
 export * from './project-dir-ipc-operations.js'
 export * from './project-dir-persistence.js'
 export * from './project-dir-prompt.js'

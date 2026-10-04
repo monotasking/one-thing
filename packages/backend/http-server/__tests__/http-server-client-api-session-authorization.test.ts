@@ -7,8 +7,8 @@ import { installSessionLayerForTest } from '../../session/testing/session-testin
 import { getEventBus } from '@onething/backend/event'
 
 // 授权判据直取子路径(工单 4 C2),替身跟着搬到同一条路上。
-vi.mock('@onething/backend/eval/incident', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/eval/incident')>(),
+vi.mock('@onething/backend/eval/eval-incident', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/eval/eval-incident')>(),
   readIncident: vi.fn((id: string) => id === 'alice-incident' ? { id, sessionId: 'alice-session' } : undefined),
 }))
 

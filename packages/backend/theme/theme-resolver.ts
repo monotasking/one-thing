@@ -14,7 +14,7 @@ import type {
   ThemeDefs,
   ThemeHighlightGroup,
 } from './theme-types.js'
-import type { ThemeSurfaceRoles } from './role-mapping.js'
+import type { ThemeSurfaceRoles } from './theme-role-mapping.js'
 import {
   type CategoryColor,
   colorMeetsContrast,
@@ -34,7 +34,7 @@ import {
   readableAgainst,
   resolveColorOverBackground,
   rgbaFromCssColor,
-} from './role-mapping.js'
+} from './theme-role-mapping.js'
 
 import { getLogger } from '../logging/logging.js'
 

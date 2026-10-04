@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
 import type { SessionAssistantChunksEvent } from '@shared/session/events/types'
 import type { StreamDeltaStamp } from '@shared/events/index.js'
 
@@ -28,7 +28,7 @@ vi.mock('@onething/backend/storage', () => ({
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
 
-vi.mock('../../../session/shadow.js', () => ({
+vi.mock('../../../session/session-shadow.js', () => ({
   scheduleSessionRunShadow: () => undefined,
   checkSessionRunShadow: () => 'skipped',
   checkSessionHistoryShadow: () => 'skipped',
@@ -44,13 +44,13 @@ let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, resetSessionRuns } = await import('@onething/backend/session')
 const { resetSessionEventStatsCache } = await import('@onething/backend/session')
 const { createSessionEventRecorder, attachSessionEventRecorder } = await import(
-  '../session-event-recorder.js'
+  '../engine-stream-session-event-recorder.js'
 )
 const { createStreamBuffer, appendStreamBufferChunk, drainStreamBuffer, SessionStreamCoalescer } = await import(
-  '@onething/backend/event/stream-coalescer'
+  '@onething/backend/event/event-stream-coalescer'
 )
 const { offerDeltaStamp, claimDeltaStamp, clearDeltaStamps } = await import(
-  '@onething/backend/event/delta-stamp'
+  '@onething/backend/event/event-delta-stamp'
 )
 
 const SESSION = 'stamp'

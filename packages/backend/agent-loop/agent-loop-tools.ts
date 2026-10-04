@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from '@shared/json.js'
 import { toJsonValue } from '@shared/json.js'
-import { createAIToolName } from './tool-names.js'
+import { createAIToolName } from './agent-loop-tool-names.js'
 import type { AgentTool, AgentToolExecutionContext } from './agent-loop-types.js'
 
 export interface AgentSourceToolDefinition {

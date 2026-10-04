@@ -58,7 +58,7 @@ import {
   type RefreshOnethingModelRegistryOptions,
   type VendorModelsFetcherDeps,
 } from '@onething/backend/provider'
-import { getAuthService } from '@onething/backend/auth/process-auth-service'
+import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import {
   modelRegistry,
   addManualModel,
@@ -68,8 +68,8 @@ import {
   getSettings,
   getSpaceSettings,
 } from '@onething/backend/settings'
-import { getCurrentBackendInstance } from '@onething/backend/current.js'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import { modelsRouter } from '@shared/ipc/providers.js'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'
@@ -355,7 +355,7 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
   },
   /**
    * P4-7:渲染层的「文件能力」诚实口。投影与错误成形归 runtime
-   * (`model-query-presentation.ts`),这一层只做装配层才知道的那一件事 ——
+   * (`provider-model-query-presentation.ts`),这一层只做装配层才知道的那一件事 ——
    * 把设置里的凭据 / 目录折成一个 provider。
    *
    * **不解析凭据**:`getModelCapabilities` 一次网络都不打(账本 + 传输声明,

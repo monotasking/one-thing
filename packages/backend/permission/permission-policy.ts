@@ -1,6 +1,6 @@
 import { Permission } from './permission-asks.js'
 import * as PermissionGrants from './permission-grants.js'
-import { coversAll } from './capability-registry.js'
+import { coversAll } from './permission-capability-registry.js'
 import { principalId, type Principal } from '@shared/permission/principal.js'
 import { parseRef } from '@shared/resource/ref.js'
 import { effectPolicyFor } from '@shared/toolkit/effects.js'

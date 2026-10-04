@@ -1,7 +1,7 @@
 /**
  * **什么时候写投影检查点**(工单 4 B 的调度那一半)。
  *
- * 格式与四道判据在 `checkpoint-file.ts`,冷载时怎么用在 `projection-cache.ts`;
+ * 格式与四道判据在 `session-checkpoint-file.ts`,冷载时怎么用在 `session-projection-cache.ts`;
  * 这只文件只回答一个问题:*这一刻值得写一份吗*。
  *
  * ## 两个挂点,一条写入口
@@ -33,14 +33,14 @@ import {
   liveSessionProjectionAheadDeltas,
   liveSessionProjectionCursor,
   peekSessionAccount,
-} from './projection-cache.js'
+} from './session-projection-cache.js'
 import {
   peekSessionProjectionCheckpointMeta,
   writeSessionProjectionCheckpoint,
   type SessionCheckpointWriteOutcome,
-} from './checkpoint-file.js'
-import { getSessionEventsLogPath } from './event-log.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+} from './session-checkpoint-file.js'
+import { getSessionEventsLogPath } from './session-event-log.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import fs from 'node:fs'
 
 const log = getLogger('sessions.checkpoint')

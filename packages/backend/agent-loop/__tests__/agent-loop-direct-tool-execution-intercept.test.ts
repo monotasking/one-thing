@@ -1,7 +1,7 @@
 /**
  * N4 —— **挂点**验收:插件拦截与工具执行链的先后。
  *
- * 这一份不管链内部的三态(那在 `packages/backend/plugin/__tests__/tool-call-intercept.test.ts`),
+ * 这一份不管链内部的三态(那在 `packages/backend/plugin/__tests__/plugin-tool-call-intercept.test.ts`),
  * 只钉死一件事:**拦截排在 analyze / permission 之前,改写后的参数才是被授权、
  * 被执行的那一份**;block 走既有的工具错误结果路径,而权限闸一步不少。
  *

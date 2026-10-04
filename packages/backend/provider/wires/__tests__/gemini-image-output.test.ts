@@ -18,11 +18,11 @@ import { describe, expect, it, vi } from "vitest";
 import type {
 	AgentMessage,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/loop-primitives";
-import { createAgentProviderFromRuntime } from "../../factory.js";
-import { geminiParts } from "../gemini-messages.js";
-import type { GeminiContent } from "../gemini-messages.js";
-import { resolveOnethingModelCapabilities } from "../../model-capability.js";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
+import { createAgentProviderFromRuntime } from "../../provider-factory.js";
+import { geminiParts } from "../provider-wires-gemini-messages.js";
+import type { GeminiContent } from "../provider-wires-gemini-messages.js";
+import { resolveOnethingModelCapabilities } from "../../provider-model-capability.js";
 
 const IMAGE_MODEL = "gemini-3-pro-image";
 const TEXT_MODEL = "gemini-3.1-pro";

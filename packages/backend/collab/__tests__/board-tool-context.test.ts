@@ -50,7 +50,7 @@ vi.mock('@onething/backend/agent/agent-store-access', () => ({
   findAgent: (id: string) => ({ id, name: id === 'fe' ? '小李' : id }),
 }))
 
-vi.mock('../board-store.js', () => ({
+vi.mock('../collab-board-store.js', () => ({
   applyBoardAction: async (
     roomSessionId: string,
     _action: unknown,
@@ -66,7 +66,7 @@ vi.mock('../board-store.js', () => ({
 
 const { boardAdapters } = await import('@onething/backend/toolkit/toolkit-adapters')
 const { createBoardTool } = await import('@onething/backend/toolkit')
-const { Decision, ToolRunner } = await import('@onething/backend/toolkit/tool-protocol')
+const { Decision, ToolRunner } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
 const { ZodValidator } = await import('@onething/backend/toolkit')
 
 async function board(sessionId: string, executionContext?: unknown): Promise<{ output: string }> {

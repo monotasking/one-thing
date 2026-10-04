@@ -45,7 +45,7 @@ import {
   type ApplySessionSideEffectMutationWithAdaptersOptions,
   type SyncSessionSideEffectWithReadyAdaptersOptions,
   type LoadSessionWithAdaptersOptions,
-} from './store-helpers.js'
+} from './session-store-helpers.js'
 import {
   resolveSessionMessagesPage,
   resolveSessionUserMessageMarkers,
@@ -55,17 +55,17 @@ import {
   type UserMessageMarker,
 } from './storage/session-storage.js'
 import { sanitizeSessionOnStartup } from './session-message-shapes.js'
-import type { CoreTimelineSession } from './timeline.js'
+import type { CoreTimelineSession } from './session-timeline.js'
 // §17.8 U1-a 起按路径读盘的那一口住在叶子文件里(不进 `storage/storage.ts` 那个纯的桶);目录内按相对路径直取。
-import { getMessagesPageFromJsonFilePath } from './storage/json-message-page-file.js'
+import { getMessagesPageFromJsonFilePath } from './storage/session-storage-json-message-page-file.js'
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/storage/storage-primitives'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
-import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './retired-providers.js'
+import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './session-retired-providers.js'
 import { getLogger } from '../logging/logging.js'
-import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
+import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './session-storage-driver.js'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
-import { writeDurableJson } from '../storage/durable-json.js'
+import { writeDurableJson } from '../storage/storage-durable-json.js'
 import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from './storage/session-storage.js'
 
 export interface OnethingSessionRepositoryLogger {
@@ -356,7 +356,7 @@ export class OnethingSessionRepository<
   }
 
   /**
-   * A6-b:外壳读时改写过的退役 provider(`retired-providers.ts`)在这里**落一次盘**——
+   * A6-b:外壳读时改写过的退役 provider(`session-retired-providers.ts`)在这里**落一次盘**——
    * 只写 `meta.json`(`kind: 'meta'`),并把 sessions 索引里那一格一起改;账本不动。
    * 落过盘的外壳再读就不再命中,所以每条会话一生只走这里一次,也只记一行 info。
    */

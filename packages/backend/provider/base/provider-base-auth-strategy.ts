@@ -1,0 +1,154 @@
+/**
+ * `AuthStrategy` —— 认证头怎么来,401 怎么办(设计稿 §3 / §2.10)。
+ *
+ * 两条纪律:
+ *  - **晚绑定**:`headers()` 每回合调一次,凭据轮换在 runner 层换 key,
+ *    provider 实例可以跨回合跨凭据复用;
+ *  - **401 刷新重试是它自己的事**,wire 不知道 OAuth 的存在。
+ *
+ * `Content-Type` 也在这里拼 —— 不是因为它属于认证,而是因为今天
+ * `provider-openai-compatible.ts` 就是把它和 Authorization 拼在同一个对象里的,
+ * 键序(以及「`headers` 能覆盖 Content-Type」这件事)是既有行为,不去动。
+ */
+import type { TurnContext } from "./provider-base-turn-context.js";
+
+export interface AuthStrategy {
+	headers(turn: TurnContext): Promise<Record<string, string>>;
+	/**
+	 * 收到 401 时给一套新头 = 重试一次;返回 undefined = 不重试,按错误处理。
+	 * 基类只重试**一次**。
+	 */
+	onUnauthorized?(
+		response: Response,
+		turn: TurnContext,
+	): Promise<Record<string, string> | undefined>;
+}
+
+export interface AuthStrategyOptions {
+	/** 静态附加头(`options.headers`)。 */
+	headers?: Record<string, string>;
+	/** 不给 = `application/json`;显式 `null` = 不发。 */
+	contentType?: string | null;
+}
+
+function withContentType(
+	options: AuthStrategyOptions | undefined,
+): Record<string, string> {
+	const contentType =
+		options?.contentType === null ? undefined : (options?.contentType ?? "application/json");
+	return contentType ? { "Content-Type": contentType } : {};
+}
+
+/** 静态附加头里有没有这一格(头名不分大小写)。 */
+function hasHeader(
+	headers: Record<string, string> | undefined,
+	name: string,
+): boolean {
+	if (!headers) return false;
+	const lower = name.toLowerCase();
+	return Object.keys(headers).some((key) => key.toLowerCase() === lower);
+}
+
+/**
+ * 自定义头里的 `{{apiKey}}` 换成当前凭证(批 M §5.3)。头存的是明文模板,密钥只在
+ * 密钥池;没有凭证时换成空串(与「不带 key」同读法),不留字面的 `{{apiKey}}` 出网。
+ */
+export function expandHeaderTemplates(
+	headers: Record<string, string> | undefined,
+	apiKey: string | undefined,
+): Record<string, string> | undefined {
+	if (!headers) return undefined;
+	const out: Record<string, string> = {};
+	for (const [name, value] of Object.entries(headers)) {
+		if (!name.trim()) continue;
+		out[name] = String(value).split("{{apiKey}}").join(apiKey ?? "");
+	}
+	return out;
+}
+
+/**
+ * `Authorization: Bearer <key>` —— OpenAI 系的默认。静态附加头里已经有
+ * `Authorization`(不分大小写)时让位:那是用户自己写的认证头(批 M §5.3)。
+ */
+export class BearerApiKeyAuth implements AuthStrategy {
+	constructor(
+		private readonly apiKey: string | undefined | (() => string | undefined),
+		private readonly options: AuthStrategyOptions = {},
+	) {}
+
+	async headers(): Promise<Record<string, string>> {
+		const key = typeof this.apiKey === "function" ? this.apiKey() : this.apiKey;
+		const yields = hasHeader(this.options.headers, "Authorization");
+		return {
+			...withContentType(this.options),
+			...(key && !yields ? { Authorization: `Bearer ${key}` } : {}),
+			...this.options.headers,
+		};
+	}
+}
+
+/** 自定义头位的 key(Anthropic `x-api-key`、Gemini `x-goog-api-key`)。 */
+export class HeaderApiKeyAuth implements AuthStrategy {
+	constructor(
+		private readonly headerName: string,
+		private readonly apiKey: string | undefined | (() => string | undefined),
+		private readonly options: AuthStrategyOptions = {},
+	) {}
+
+	async headers(): Promise<Record<string, string>> {
+		const key = typeof this.apiKey === "function" ? this.apiKey() : this.apiKey;
+		// 静态附加头里已经写了这一格(不分大小写)= 用户自己的认证头,让位。
+		const yields = hasHeader(this.options.headers, this.headerName);
+		return {
+			...withContentType(this.options),
+			...(key && !yields ? { [this.headerName]: key } : {}),
+			...this.options.headers,
+		};
+	}
+}
+
+export interface ResolvedAuthMaterial {
+	apiKey?: string;
+	headers?: Record<string, string>;
+}
+
+/**
+ * `provider-openai-compatible.ts` 的 `resolveAuth` 语义,逐字复刻:
+ * `apiKey = resolved.apiKey ?? options.apiKey ?? ''`,头的叠加顺序是
+ * `Content-Type` → `Authorization` → `options.headers` → `resolved.headers`。
+ */
+export class ResolveAuth implements AuthStrategy {
+	constructor(
+		private readonly resolve: (
+			turn: TurnContext,
+		) => Promise<ResolvedAuthMaterial | undefined>,
+		private readonly options: AuthStrategyOptions & { apiKey?: string } = {},
+		private readonly refresh?: (
+			response: Response,
+			turn: TurnContext,
+		) => Promise<ResolvedAuthMaterial | undefined>,
+	) {}
+
+	async headers(turn: TurnContext): Promise<Record<string, string>> {
+		return this.compose(await this.resolve(turn));
+	}
+
+	async onUnauthorized(
+		response: Response,
+		turn: TurnContext,
+	): Promise<Record<string, string> | undefined> {
+		if (!this.refresh) return undefined;
+		const refreshed = await this.refresh(response, turn);
+		return refreshed ? this.compose(refreshed) : undefined;
+	}
+
+	private compose(resolved: ResolvedAuthMaterial | undefined): Record<string, string> {
+		const apiKey = resolved?.apiKey ?? this.options.apiKey ?? "";
+		return {
+			...withContentType(this.options),
+			...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+			...this.options.headers,
+			...resolved?.headers,
+		};
+	}
+}

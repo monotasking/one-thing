@@ -6,7 +6,7 @@
  * 受管三要素(计费 / 超时 / 配额)的真实行为在装配层那一份(app/plugins llm.test.ts)。
  */
 import { describe, expect, it } from 'vitest'
-import { createCorePluginAPI } from '../api-builder.js'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
 import {
   PLUGIN_LLM_MAX_OUTPUT_TOKENS_CEILING,
   PLUGIN_PERMISSION_LLM_COMPLETE,

@@ -37,7 +37,7 @@ import { useExposeStore } from '../expose/store'
  * 「什么都没变」。
  */
 
-/* ── 读数的形(逐格对着 `file/git-resource-spec.ts`)─────────── */
+/* ── 读数的形(逐格对着 `file/file-git-resource-spec.ts`)─────────── */
 
 /** 一行改动的状态。与自述里那个 enum 逐字相同。 */
 export type GitFileStatus =
@@ -76,7 +76,7 @@ export interface GitStatusView {
    *
    * 地址常常是仓库的一个子目录(一条会话绑的工作目录就经常是 `repo/packages/foo`),
    * 而读根按发起会话的工作目录算 —— 那时后端交出的是**那一段下面**的改动,并用这
-   * 一格说清是哪一段。判词整段在 `file/git-resource-spec.ts` 上;要紧
+   * 一格说清是哪一段。判词整段在 `file/file-git-resource-spec.ts` 上;要紧
    * 的是它**不影响任何一行的坐标**:`files[].path` 照旧是仓库根相对,`root` 照旧是
    * 真正的仓根。
    *

@@ -31,14 +31,14 @@ afterEach(async () => {
 })
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import { CONTEXT_COMPACT_CHUNK_TIMEOUT_MS } from '@onething/backend/agent-loop'
-import { buildHistoryMessages } from '../stream/message-helpers.js'
+import { buildHistoryMessages } from '../stream/engine-stream-message-helpers.js'
 
 const runBeforeContextCompactHooks = vi.fn()
 const generateChatResponse = vi.fn()
 const summaryWrites: Array<{ summary: string; cutoff: string }> = []
 const contentWrites: Array<{ messageId: string; content: string }> = []
 
-vi.mock('@onething/backend/plugin/lifecycle-hooks', () => ({
+vi.mock('@onething/backend/plugin/plugin-lifecycle-hooks', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
 vi.mock('../engine-chat-facade.js', () => ({
@@ -65,8 +65,8 @@ vi.mock('../../session/session-commands.js', async importOriginal => ({
   },
 } }))
 
-vi.mock('../../session/reads.js', async importOriginal => ({
-  ...await importOriginal<typeof import('../../session/reads.js')>(),
+vi.mock('../../session/session-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../session/session-reads.js')>(),
   // 读门面(P0.2 C1):这份 mock 与下面的 store mock 是同一个假会话
   // —— compact 的取数改走 `sessionReads.listMessages` 了。
   sessionReads: {
@@ -97,7 +97,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   updateSessionContextSize: () => {},
 }))
 
-const { compactSessionContext } = await import('../compact-session.js')
+const { compactSessionContext } = await import('../engine-compact-session.js')
 
 function message(index: number, role: 'user' | 'assistant'): ChatMessage {
   return { id: `${role}-${index}`, role, content: `${role} ${index}`, timestamp: index }

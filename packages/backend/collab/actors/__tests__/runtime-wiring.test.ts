@@ -21,7 +21,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sessionAccess } from '@onething/backend/session'
-import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../../session/testing/session-testing-facade-mock.js'
 
 interface FakeSession {
   ownerUserId?: string
@@ -71,11 +71,11 @@ const mocks = vi.hoisted(() => ({
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
-vi.mock('../../../session/session-commands.js', () => import('../../../session/testing/facade-mock.js'))
+vi.mock('../../../session/session-reads.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
+vi.mock('../../../session/session-commands.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('@onething/backend/external-agent/connector-registry', () => ({
+vi.mock('@onething/backend/external-agent/external-agent-connector-registry', () => ({
   interruptExternalAgentSessions: async (sessionId: string) => {
     mocks.externallyInterrupted.push(sessionId)
   },
@@ -92,7 +92,7 @@ vi.mock('@onething/backend/usage/usage-recorder', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),
 }))
 
-vi.mock('@onething/backend/usage/bill-side-line', () => ({
+vi.mock('@onething/backend/usage/usage-bill-side-line', () => ({
   billCollabPlanUsage: () => () => {},
 }))
 
@@ -100,13 +100,13 @@ vi.mock('../../../engine/engine-chat-facade.js', () => ({
   generateChatResponse: async () => '',
 }))
 
-vi.mock('../../../engine/stream/provider-helpers.js', () => ({
+vi.mock('../../../engine/stream/engine-stream-provider-helpers.js', () => ({
   getEffectiveProviderConfig: () => ({ providerId: '', providerConfig: null, model: '' }),
   resolveProviderAuth: async () => null,
 }))
 
-vi.mock('@onething/backend/current.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()),
   getStreamEngine: () => engineStub(),
   getStreamEngineSafe: () => engineStub(),
 }))
@@ -223,16 +223,16 @@ const {
   stopCollabV3RoomFloor,
   warmCollabV3Agents,
 } = await import('../collab-actors-runtime.js')
-const { handleCollabRoomSendMessage } = await import('../../ingress.js')
-const { createCollabScriptedMindPort } = await import('@onething/backend/collab/actors/mind-port')
-const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/collab/actors/referee-actor')
-const { collabV3MigrationMarkerPath, readCollabV3MigrationMarker } = await import('../migrate.js')
+const { handleCollabRoomSendMessage } = await import('../../collab-ingress.js')
+const { createCollabScriptedMindPort } = await import('@onething/backend/collab/actors/collab-actors-mind-port')
+const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/collab/actors/collab-referee-actor')
+const { collabV3MigrationMarkerPath, readCollabV3MigrationMarker } = await import('../collab-actors-migrate.js')
 const { beginCollabV3Turn, endCollabV3Turn, findCollabV3Turn } = await import('@onething/backend/collab/actors/collab-actors-turn-context')
-const { getCollabAgentActivity } = await import('../../agent-activity.js')
-const { readCollabSchedulerLogTail } = await import('@onething/backend/collab/actors/scheduler-log')
-const { speakIntoCollabRoom } = await import('../../say-tool.js')
+const { getCollabAgentActivity } = await import('../../collab-agent-activity.js')
+const { readCollabSchedulerLogTail } = await import('@onething/backend/collab/actors/collab-actors-scheduler-log')
+const { speakIntoCollabRoom } = await import('../../collab-say-tool.js')
 const { COLLAB_SAY_SOURCE } = await import('@onething/backend/collab')
-const { isTrustedCollabDrive } = await import('@onething/backend/collab/drive-guard')
+const { isTrustedCollabDrive } = await import('@onething/backend/collab/collab-drive-guard')
 
 const ROOM = 'room-1'
 
@@ -257,8 +257,8 @@ function fireBus(eventType: string, sessionId: string, event: Record<string, unk
   for (const handler of mocks.busHandlers.get(eventType) ?? []) handler({ sessionId, event })
 }
 
-const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/collab/digest-store')
-const { createCollabInspector, configureCollabInspector } = await import('../../inspector.js')
+const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/collab/collab-digest-store')
+const { createCollabInspector, configureCollabInspector } = await import('../../collab-inspector.js')
 const { getSession } = await import('@onething/backend/session')
 const { getEventBus } = await import('@onething/backend/event')
 let digestStore: ReturnType<typeof createCollabDigestStore>

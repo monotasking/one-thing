@@ -12,7 +12,7 @@ import {
   fetchPluginMarketIndex,
   getPluginMarketIndexSnapshot,
   setPluginMarketIndexForTest,
-} from '../npm-process.js'
+} from '../plugin-npm-process.js'
 
 const V1 = {
   version: 1,

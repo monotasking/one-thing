@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CoreProvider, type WorkdirGateway } from '../providers/variable-providers-core.js'
-import { GlobalStoreProvider, type GlobalStoreGateway } from '../providers/global-store.js'
+import { GlobalStoreProvider, type GlobalStoreGateway } from '../providers/variable-providers-global-store.js'
 import { SessionStoreProvider, type SessionStoreGateway } from '../providers/variable-providers-session-store.js'
 import { VariableError, type ContextVariable, type VariableContext } from '../variable-types.js'
 

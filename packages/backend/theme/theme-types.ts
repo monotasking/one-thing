@@ -3,7 +3,7 @@
  * Supports JSON themes, color references, dark/light variants, and Base46 import
  */
 
-import type { ThemeShellRoles } from './shell-roles.js'
+import type { ThemeShellRoles } from './theme-shell-roles.js'
 
 // ============================================
 // Color Value Types
@@ -527,7 +527,7 @@ export interface Theme {
   theme: ThemeColors
   highlights?: ThemeHighlights
   ui?: ThemeUITokens
-  /** 壳的角色表:主题直说各面用哪个色,不经派生(`shell-roles.ts`)。 */
+  /** 壳的角色表:主题直说各面用哪个色,不经派生(`theme-shell-roles.ts`)。 */
   shellRoles?: ThemeShellRoles
 }
 

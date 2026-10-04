@@ -22,7 +22,7 @@
  *     最松那一档;
  *  ③ **授权是查询的输入**:给一个把期望会话排除在外的 `sessionId` 过滤,向量路
  *     答的必须是**范围内**最近的那几条,而不是「先取 k 条再筛成空」。这一条钉的是
- *     `sqlite-vec.ts` 文件头那张读数表(`IN (子查询)` 下推 vs JOIN 后过滤)。
+ *     `search-index-sqlite-vec.ts` 文件头那张读数表(`IN (子查询)` 下推 vs JOIN 后过滤)。
  *
  * 另外两条钉的是库头与融合:换 `embeddingModelId` 会重嵌;RRF 融合之后 `explain`
  * 说得出这条来自哪一路。
@@ -44,8 +44,8 @@ import {
   plan,
 } from '../../kernel/search-kernel.js'
 
-import { chunkForEmbedding } from '../../embedding/embedder.js'
-import { SqliteIndex } from '../sqlite-index.js'
+import { chunkForEmbedding } from '../../embedding/search-embedding-embedder.js'
+import { SqliteIndex } from '../search-index-sqlite.js'
 
 interface CorpusDoc {
   capability: string

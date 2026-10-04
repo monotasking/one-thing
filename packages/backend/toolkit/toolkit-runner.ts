@@ -18,12 +18,12 @@
  * 「取消时把最后一条 partial 附进结局」。
  */
 
-import { AbortScope } from './abort-scope.js'
+import { AbortScope } from './toolkit-abort-scope.js'
 import type { ObservedEvent, ToolLifecycleEvent } from './toolkit-events.js'
-import type { Intent } from './intent.js'
-import { Outcome } from './outcome.js'
-import { OutputBudget, type SpillPort } from './output-budget.js'
-import type { Result } from './result.js'
+import type { Intent } from './toolkit-intent.js'
+import { Outcome } from './toolkit-outcome.js'
+import { OutputBudget, type SpillPort } from './toolkit-output-budget.js'
+import type { Result } from './toolkit-result.js'
 import type {
   Authorizer,
   Clock,
@@ -32,9 +32,9 @@ import type {
   Observer,
   SandboxPolicy,
   Validator,
-} from './ports.js'
-import type { Invocation, SessionSnapshot } from './run-context.js'
-import { RunContext } from './run-context.js'
+} from './toolkit-ports.js'
+import type { Invocation, SessionSnapshot } from './toolkit-run-context.js'
+import { RunContext } from './toolkit-run-context.js'
 import type { ToolSpec } from './toolkit-spec.js'
 import type { Tool } from './toolkit-tool.js'
 

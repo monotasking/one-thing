@@ -1,5 +1,5 @@
 import type { RequestBodyBuilder, TurnContext } from "../../base/provider-base.js";
-import { OpenAIChatThinkingWire } from "../../thinking/openai-chat-thinking-wire.js";
+import { OpenAIChatThinkingWire } from "../../thinking/provider-thinking-openai-chat-wire.js";
 
 export class AcmeThinkingWire extends OpenAIChatThinkingWire {
 	readonly id = "acme-thinking";

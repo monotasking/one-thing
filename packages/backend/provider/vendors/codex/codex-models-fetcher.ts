@@ -13,7 +13,7 @@ import {
 	type OnethingEndpointModelsFetcher,
 	type OnethingModelRegistryRefreshLogger,
 	type OnethingOpenRouterModel,
-} from "../../model-registry.js";
+} from "../../provider-model-registry.js";
 
 export interface OnethingCodexModelsFetcherOptions {
 	fetchCodexModels(): Promise<OnethingOpenRouterModel[]>;

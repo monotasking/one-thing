@@ -4,8 +4,8 @@
  * 设计:docs/design/search-index-2026-09.md §5.1 末句 ——「`MemoryIndex`(core,
  * 纯 TS)只为单测与**「换实现不改上层」的活证据**而存在」。S1 那句话当时只有一半
  * 是真的:用例只跑了 MemoryIndex,「换实现」这半边没人验。S3a 把 SqliteIndex
- * (`search/index/sqlite-index.ts`,node:sqlite FTS5)接上来,于是这个文件
- * 从 `memory-index.test.ts` 里抽出来 —— **用例语义一字未改**,只是把「哪一个索引」
+ * (`search/index/search-index-sqlite.ts`,node:sqlite FTS5)接上来,于是这个文件
+ * 从 `search-kernel-memory-index.test.ts` 里抽出来 —— **用例语义一字未改**,只是把「哪一个索引」
  * 变成了参数。
  *
  * 两个实现要答同一份卷子的五件事(§5.1 那一行原话):短语相邻、BM25 字段权重、
@@ -19,13 +19,13 @@
 import { describe, expect, it } from 'vitest'
 
 import type { CapabilityManifest, FieldSchema } from '../search-kernel-capability.js'
-import type { DocPayload } from '../feed.js'
+import type { DocPayload } from '../search-kernel-feed.js'
 import type { IndexedDoc, LexicalQuery, LexicalResult } from '../index/search-kernel-index-types.js'
 import { matchesFacetFilter } from '../index/search-kernel-index-types.js'
-import { compositeAnalyzer } from '../analyzer/composite.js'
+import { compositeAnalyzer } from '../analyzer/search-kernel-analyzer-composite.js'
 import { createDefaultAnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
-import { buildLexicalQuery } from '../bases/lexical-retriever.js'
-import { parse } from '../pipeline/parse.js'
+import { buildLexicalQuery } from '../bases/search-kernel-bases-lexical-retriever.js'
+import { parse } from '../pipeline/search-kernel-pipeline-parse.js'
 import { plan } from '../pipeline/search-kernel-pipeline-plan.js'
 import { CAP_A, CORPUS_SIZE, corpusDocuments } from './unit-fixtures/corpus.js'
 import { DEFAULT_SCHEMA } from './unit-fixtures/harness.js'

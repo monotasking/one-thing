@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop } from '@onething/backend/agent-loop/loop-primitives'
+import { runAgentLoop } from '@onething/backend/agent-loop/agent-loop-primitives'
 import { PendingMessageQueue } from '@onething/backend/agent-loop'
 import {
   createDefaultSettings,
@@ -13,11 +13,11 @@ import type {
   AgentToolChoice,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from '@onething/backend/agent-loop/loop-primitives'
+} from '@onething/backend/agent-loop/agent-loop-primitives'
 import type { BuildPromptOptions } from '../../prompt/engine-system-prompt.js'
-import type { HistoryMessage } from '../message-helpers.js'
+import type { HistoryMessage } from '../engine-stream-message-helpers.js'
 import type { IPCEmitter } from '../../../agent-loop/agent-loop-session-stream-emitter.js'
-import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
+import type { StreamContext, StreamProviderConfig, StreamSender } from '../engine-stream-processor.js'
 
 interface SeenRequest {
   requestedOutputModalities?: AgentOutputModality[]
@@ -175,7 +175,7 @@ vi.mock('../../../session/session-commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
 } }))
 
-vi.mock('@onething/backend/mcp/index-with-bridge', () => ({
+vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
@@ -223,7 +223,7 @@ vi.mock('../../engine-agent-runtime.js', () => {
   }
 })
 
-vi.mock('../../compact-session.js', () => ({
+vi.mock('../../engine-compact-session.js', () => ({
   compactSessionContext: vi.fn(),
   getContextCompactReason: mocks.getContextCompactReason,
 }))
@@ -232,7 +232,7 @@ vi.mock('@onething/backend/event', () => ({
   getEventBus: () => ({ emit: mocks.emit }),
 }))
 
-vi.mock('@onething/backend/prompt/stored-prompt-resolver', () => ({
+vi.mock('@onething/backend/prompt/prompt-stored-resolver', () => ({
   resolvePromptReferences: vi.fn((content: string) => ({
     modelContent: content,
     displayContent: content,
@@ -240,7 +240,7 @@ vi.mock('@onething/backend/prompt/stored-prompt-resolver', () => ({
   })),
 }))
 
-const { buildAgentLoopRuntimeFromStreamContext } = await import('../engine-stream-agent-loop-runtime.js')
+const { buildAgentLoopRuntimeFromStreamContext } = await import('../engine-agent-loop-stream-context.js')
 const { createAgentProviderFromRuntime } = await import('../../engine-agent-runtime.js')
 
 function ctx(): StreamContext {

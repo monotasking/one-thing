@@ -18,7 +18,7 @@
  * 这些「认识磁盘的东西」换掉 —— 桥接的正确性正是在这几层之间,mock 掉就什么都没验。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { bindSessionFacadeMock } from '../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../session/testing/session-testing-facade-mock.js'
 import { Interaction } from '@onething/backend/interaction'
 import { Permission } from '@onething/backend/permission/permission-asks'
 
@@ -47,8 +47,8 @@ const mocks = vi.hoisted(() => ({
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../session/reads.js', () => import('../../session/testing/facade-mock.js'))
-vi.mock('../../session/session-commands.js', () => import('../../session/testing/facade-mock.js'))
+vi.mock('../../session/session-reads.js', () => import('../../session/testing/session-testing-facade-mock.js'))
+vi.mock('../../session/session-commands.js', () => import('../../session/testing/session-testing-facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
 vi.mock('@onething/backend/session', async importOriginal => ({
@@ -79,7 +79,7 @@ const noopLogger = () => {
   logger.child = () => logger
   return logger
 }
-vi.mock('@onething/backend/logging/configure-logging', () => ({
+vi.mock('@onething/backend/logging/logging-configure', () => ({
   writeAppLog: vi.fn(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
@@ -90,7 +90,7 @@ vi.mock('@onething/backend/logging/configure-logging', () => ({
  * 真的问),往 `mocks.grants` 里放一条就能验「记住的到底是哪一档」—— 而那正是 P0-4
  * 的全部内容。
  */
-vi.mock('../../permission/grant-storage.js', () => ({
+vi.mock('../../permission/permission-grant-storage.js', () => ({
   matchGrant: (input: { type: string; pattern: string | string[] }) => {
     const patterns = Array.isArray(input.pattern) ? input.pattern : [input.pattern]
     const hit = mocks.grants.find(
@@ -101,7 +101,7 @@ vi.mock('../../permission/grant-storage.js', () => ({
 }))
 
 // 宿主工具面认识注册表与 v3 登记簿 —— 与本文件无关,别把它拖进来。
-vi.mock('../host-tools.js', () => ({
+vi.mock('../external-agent-host-tools.js', () => ({
   resolveHostToolSurface: vi.fn(),
 }))
 
@@ -168,7 +168,7 @@ afterEach(() => {
 
 describe('外部审批走策略门(G1 + G2)', () => {
   it('SDK 的 toolUseID 一路带到 core 的 callId —— 卡片靠它才画得出来', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     const decision = askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -220,7 +220,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
     } satisfies FakeSession)
     Permission.clearSession('fresh-1')
 
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     const decision = askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'fresh-1',
@@ -249,7 +249,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
 
   it('无人应答 120s 后自动拒绝,理由可读地回到 SDK', async () => {
     vi.useFakeTimers()
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     const decision = askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -276,7 +276,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
   })
 
   it('用户拒绝时的理由同样原样回到 SDK', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     const decision = askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -309,7 +309,7 @@ describe('外部审批走策略门(G1 + G2)', () => {
  */
 describe('外部工具的审批粒度(P0-4)', () => {
   it('Bash 走命令级:卡片标题是命令原文,grant 记的是命令模式而不是工具名', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     const decision = askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -340,7 +340,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   })
 
   it('同一档命令二次来命中 grant;换一条命令仍然要问', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     // 用户上一次点了「总是允许」,记下的是 `rm *` 这一档。
     mocks.grants = [{ type: 'bash', pattern: 'rm *' }]
 
@@ -372,7 +372,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   })
 
   it('白名单命令与本地一样直接放行,不再逼用户去点「总是允许 Bash」', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     await expect(askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -386,7 +386,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   })
 
   it('文件工具按路径,越界写把 external 位立起来', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     void askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -407,7 +407,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
   })
 
   it('界内的写按目录记档,external 位不立', async () => {
-    const { askExternalAgentPermission } = await import('../connector-registry.js')
+    const { askExternalAgentPermission } = await import('../external-agent-connector-registry.js')
     void askExternalAgentPermission({
       connectorId: 'acp',
       localSessionId: 'chat-1',
@@ -429,7 +429,7 @@ describe('外部工具的审批粒度(P0-4)', () => {
 
 describe('提问的落点(§4)', () => {
   it('pair 房没有人类 → 当场 declined,不发起一次空等', async () => {
-    const { askExternalAgentInteraction } = await import('../connector-registry.js')
+    const { askExternalAgentInteraction } = await import('../external-agent-connector-registry.js')
     const answer = await askExternalAgentInteraction({
       connectorId: 'acp',
       localSessionId: 'pair-exec',
@@ -443,7 +443,7 @@ describe('提问的落点(§4)', () => {
   })
 
   it('有人在的房间照旧起一张真卡,并按 toolCallId 归位', async () => {
-    const { askExternalAgentInteraction } = await import('../connector-registry.js')
+    const { askExternalAgentInteraction } = await import('../external-agent-connector-registry.js')
     const answer = askExternalAgentInteraction({
       connectorId: 'acp',
       localSessionId: 'team-exec',
@@ -486,7 +486,7 @@ describe('提问的落点(§4)', () => {
       ],
     } as never)
 
-    const { askExternalAgentInteraction } = await import('../connector-registry.js')
+    const { askExternalAgentInteraction } = await import('../external-agent-connector-registry.js')
     const answer = askExternalAgentInteraction({
       connectorId: 'acp',
       localSessionId: 'team-exec',
@@ -515,7 +515,7 @@ describe('提问的落点(§4)', () => {
 
 describe('停止链上的外部中断(G10)', () => {
   it('能力表说有 interrupt 才调它', async () => {
-    const module = await import('../connector-registry.js')
+    const module = await import('../external-agent-connector-registry.js')
     const connector = module.getExternalAgentConnectors()['acp']!
     const spy = vi.spyOn(connector, 'interrupt').mockResolvedValue(undefined)
 

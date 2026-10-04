@@ -29,7 +29,7 @@ import {
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/health'
+} from '@onething/backend/plugin/plugin-health'
 
 interface PluginDeepLinkEntry {
   pluginId: string

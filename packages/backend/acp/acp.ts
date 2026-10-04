@@ -12,9 +12,9 @@ export {
   ACP_RECONNECT_WINDOW_MS,
   AcpReconnectBackoffGate,
   acpReconnectRefusal,
-} from './reconnect-backoff.js'
-export { ACP_CONNECTOR_ID, FileACPSessionLinkStore, MemoryACPSessionLinkStore } from './session-links.js'
-export { mapACPFinishReason, translateACPPromptStream } from './translate.js'
+} from './acp-reconnect-backoff.js'
+export { ACP_CONNECTOR_ID, FileACPSessionLinkStore, MemoryACPSessionLinkStore } from './acp-session-links.js'
+export { mapACPFinishReason, translateACPPromptStream } from './acp-translate.js'
 export {
   ACP_SESSION_NOTICE_LIMIT,
   applySessionUpdate,
@@ -23,8 +23,8 @@ export {
   seedAcpSessionState,
   withAcpSessionProcess,
 } from './acp-session-state.js'
-export type { ACPWireContentPart, ACPWireSessionUpdate, ACPWireStreamEvent, ACPWireToolCallContentPart } from './translate.js'
-export type { ACPAgentProfile, ACPSessionLink, ACPSessionLinkStore } from './session-links.js'
+export type { ACPWireContentPart, ACPWireSessionUpdate, ACPWireStreamEvent, ACPWireToolCallContentPart } from './acp-translate.js'
+export type { ACPAgentProfile, ACPSessionLink, ACPSessionLinkStore } from './acp-session-links.js'
 export { ACPManager } from './acp-manager.js'
 export {
   acpRegistryPlatformKey,

@@ -40,8 +40,8 @@ import {
   resolveCollabVenue,
   type CollabVenue,
   type CollabVenueTool,
-} from '../../collab/tool-surface.js'
-import { resolveAgentToolSurface } from '../../agent/profile.js'
+} from '../../collab/collab-tool-surface.js'
+import { resolveAgentToolSurface } from '../../agent/agent-profile.js'
 
 /**
  * 递给宿主工具的那一格上下文。
@@ -58,7 +58,7 @@ export interface HostMcpToolContext {
   abortSignal?: AbortSignal
   metadata(update: { title?: string; metadata?: Record<string, unknown> }): void
 }
-import { resolveHostToolContext } from './context.js'
+import { resolveHostToolContext } from './external-agent-host-mcp-context.js'
 import type { HostToolTurnContext } from './external-agent-host-mcp-types.js'
 
 /**
@@ -204,7 +204,7 @@ export function toHostMcpToolDefinition(
  * 同一只包装,语境由调用方给(A4-a)。
  *
  * 进程内 SDK 那条路的语境按**执行会话**绑(上面那只);跨进程的桥按**桥凭据**找语境
- * (`backend/acp/host-mcp-bridge.ts`)。两条路找语境的办法不同,但「语境不在就答
+ * (`backend/acp/acp-host-mcp-bridge.ts`)。两条路找语境的办法不同,但「语境不在就答
  * `HOST_MCP_TURN_GONE`」「执行器抛了才是 `isError`」「门拒不翻成错误」这三条必须是
  * **同一段代码** —— 抄一份,两条通路上同一件事就会长成两个样子(原则 1)。所以把
  * handler 的身体抽到这里,两边各递一个 `resolveContext`。

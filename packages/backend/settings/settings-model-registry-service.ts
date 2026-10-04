@@ -45,9 +45,9 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getOnethingCachePath } from "@onething/backend/storage/storage-paths";
 import { getSettings, getSpaceSettings, saveSettings } from "./settings-store.js";
-import { createRequiredAppFetch } from "./proxy-fetch.js";
+import { createRequiredAppFetch } from "./settings-proxy-fetch.js";
 import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { AppSettings } from '@shared/ipc.js'
 

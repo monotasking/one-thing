@@ -36,10 +36,10 @@ import type { SessionGoal, SessionGoalLimits } from "@onething/backend/goal";
 import { getEventBus } from "@onething/backend/event";
 import * as store from "@onething/backend/session";
 import { sessionReads } from "@onething/backend/session";
-import { getCurrentBackendInstance } from '@onething/backend/current.js';
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js';
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('goals')
 
@@ -228,7 +228,7 @@ async function enrichCompletedGoalWithFileChanges(
 	completed: SessionGoal,
 ): Promise<void> {
 	try {
-		const { collectGoalFileChanges } = await import("./file-change-collector.js");
+		const { collectGoalFileChanges } = await import("./goal-file-change-collector.js");
 		const fileChanges = await collectGoalFileChanges(
 			sessionId,
 			completed.createdAt,

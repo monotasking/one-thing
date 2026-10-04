@@ -9,7 +9,7 @@
  * the owning background task; they must not be mistaken for a completed call.
  */
 import { randomUUID } from "node:crypto";
-import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/agent-loop/loop-primitives";
+import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/agent-loop/agent-loop-primitives";
 import { beginAuxiliaryModelRequest, createUtilityProvider } from '@onething/backend/engine';
 import {
 	applyTurnDecision,
@@ -25,9 +25,9 @@ import {
 import {
   getOnethingSessionsDir,
 } from '@onething/backend/storage'
-import { billTocUsage } from "../usage/bill-side-line.js";
+import { billTocUsage } from "../usage/usage-bill-side-line.js";
 import { getSettings } from "@onething/backend/settings";
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 
 const tocLog = getLogger('sessions.toc')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

@@ -14,7 +14,7 @@ it('cancels a real Backend goal retry on shutdown and flushes pending usage befo
     const { createOnethingBackend } = await import('../backend.js')
     const store = await import('../session/session-store.js')
     const goals = await import('@onething/backend/goal/goal-manager')
-    const kick = await import('@onething/backend/goal/kick')
+    const kick = await import('@onething/backend/goal/goal-kick')
     const kicks = vi.spyOn(kick, 'kickGoalRunIfIdle')
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
       storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
@@ -62,7 +62,7 @@ it('cancels a real Backend goal retry on shutdown and flushes pending usage befo
     await scanEntered
     const stopping = backend.dispose()
     await Promise.resolve()
-    const { inspectStoreLock } = await import('@onething/backend/storage/store-lock')
+    const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
     expect(inspectStoreLock({ storePath: directory }).status).toBe('held')
     releaseScan!()
     await stopping

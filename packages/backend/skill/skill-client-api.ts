@@ -43,7 +43,7 @@ import {
 import { getShellHost } from '@onething/backend/shell/shell-host-ports'
 import { skillsRouter, type SkillsRoutes } from '@shared/ipc/skills.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import {
   createSkill,
   deleteSkill,
@@ -54,7 +54,7 @@ import {
   getAllSkillsForDisplay,
   initializeSkills,
   invalidateSkillsCache,
-} from '@onething/backend/skill/session-skill-cache'
+} from '@onething/backend/skill/skill-session-cache'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { DeleteOnethingSkillForIpcOptions, OnethingSkillsIpcLogger } from '@onething/backend/skill/skill-ipc-operations'
 import type { ConsoleLikePort } from '@onething/backend/logging'

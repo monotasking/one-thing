@@ -36,12 +36,12 @@ import {
 
 vi.mock('../../../storage/storage.js', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-golden-test' }))
 
-const { CollabAgentActor } = await import('../agent-actor.js')
-const { createCollabAgentAccountMemoryStore } = await import('../agent-mailbox.js')
-const { createCollabScriptedMindPort } = await import('../mind-port.js')
-const { createCollabNotebookMemoryStore } = await import('../notebook-store.js')
-const { createCollabScriptedWorkerPort, createCollabWorkerBoardRecorder } = await import('../worker-child.js')
-type CollabAgentActorHost = import('../agent-actor.js').CollabAgentActorHost
+const { CollabAgentActor } = await import('../collab-agent-actor.js')
+const { createCollabAgentAccountMemoryStore } = await import('../collab-actors-agent-mailbox.js')
+const { createCollabScriptedMindPort } = await import('../collab-actors-mind-port.js')
+const { createCollabNotebookMemoryStore } = await import('../collab-actors-notebook-store.js')
+const { createCollabScriptedWorkerPort, createCollabWorkerBoardRecorder } = await import('../collab-actors-worker-child.js')
+type CollabAgentActorHost = import('../collab-agent-actor.js').CollabAgentActorHost
 
 const GOLDEN = join(__dirname, 'golden/worker-delegation.expected.txt')
 

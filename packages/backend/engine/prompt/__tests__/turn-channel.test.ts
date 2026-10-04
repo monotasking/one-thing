@@ -45,8 +45,8 @@ vi.mock('@onething/backend/variable/variable-system', () => ({
 }))
 
 const { buildPrompt } = await import('../engine-system-prompt.js')
-const { SessionTurnContext } = await import('../../session-turn-context.js')
-const { buildMessageContent } = await import('../../stream/message-helpers.js')
+const { SessionTurnContext } = await import('../../engine-session-turn-context.js')
+const { buildMessageContent } = await import('../../stream/engine-stream-message-helpers.js')
 
 const SESSION = 'sess-1'
 

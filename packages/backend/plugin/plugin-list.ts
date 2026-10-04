@@ -1,4 +1,4 @@
-import { describePluginConfigSchema, type PluginConfigField } from './config-schema.js'
+import { describePluginConfigSchema, type PluginConfigField } from './plugin-config-schema.js'
 import {
   describePluginWebviewPanelProblem,
   isEffectiveUiDrawerSlot,
@@ -22,7 +22,7 @@ import type {
 import {
   resolvePluginThemeOverrides,
   type PluginThemeOverrideEntry,
-} from './theme-overrides.js'
+} from './plugin-theme-overrides.js'
 import {
   resolvePluginSkins,
   type PluginSkinEntry,

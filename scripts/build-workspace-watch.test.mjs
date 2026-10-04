@@ -13,7 +13,7 @@ import { shellEsbuildOptions } from '../apps/desktop-react/scripts/build-electro
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
-const driverEntry = path.join(root, 'packages/backend/file/workspace-watch-driver.ts')
+const driverEntry = path.join(root, 'packages/backend/file/file-workspace-watch-driver.ts')
 const fixtures = []
 const children = []
 

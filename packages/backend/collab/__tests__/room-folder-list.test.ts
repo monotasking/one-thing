@@ -34,7 +34,7 @@ vi.mock('@onething/backend/storage', () => ({
   getOnethingStorePath: () => mocks.storePath,
 }))
 
-const { listCollabRoomFolder } = await import('../room-folder.js')
+const { listCollabRoomFolder } = await import('../collab-room-folder.js')
 
 let tmpRoot = ''
 

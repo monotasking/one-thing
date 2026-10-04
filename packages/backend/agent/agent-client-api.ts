@@ -31,7 +31,7 @@ import {
   updateAgent,
 } from '@onething/backend/agent/agent-store-access'
 import { getSessionsList } from '@onething/backend/session'
-import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
+import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingAgentsIpcLogger } from '@onething/backend/agent/agent-ipc-operations'
 import type { AgentDefinition } from '@shared/ipc.js'

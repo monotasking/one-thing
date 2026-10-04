@@ -4,8 +4,8 @@ import * as path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { BackgroundJob } from '../../tool/tool-background-jobs.js'
 import { BackgroundJobsProvider } from '../providers/variable-providers-background-jobs.js'
-import { DateTimeProvider, formatHourGranularity } from '../providers/datetime.js'
-import { GitBranchProvider } from '../providers/git-branch.js'
+import { DateTimeProvider, formatHourGranularity } from '../providers/variable-providers-datetime.js'
+import { GitBranchProvider } from '../providers/variable-providers-git-branch.js'
 
 describe('DateTimeProvider', () => {
   it('emits a read-only turn variable at hour granularity', () => {

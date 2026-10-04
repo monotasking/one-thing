@@ -67,7 +67,7 @@ import {
   computeInterruptedStepRepair,
   computeSessionRepairOnLoad,
   computeSessionTimelineMetadataRepair,
-} from '../timeline.js'
+} from '../session-timeline.js'
 import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../session-message-shapes.js'
 import { encodeSessionLogEventLine } from '../events/session-event-vocabulary.js'
 import type { SessionLogEventRecord, SessionRunKind } from '@shared/session/events/types.js'
@@ -91,7 +91,7 @@ import {
 } from '@shared/session/projection/chat-messages.js'
 import { foldSurface, SurfaceIndex } from '@shared/session/projection/surface.js'
 import type { ProjectedStep, ProjectedStepUsage, ProjectedToolCall } from '@shared/session/projection/types.js'
-import { createSessionAccountState } from '../account.js'
+import { createSessionAccountState } from '../session-account.js'
 
 // ============================================================================
 // 场景描述(两条线共同的输入,唯一共享的东西)

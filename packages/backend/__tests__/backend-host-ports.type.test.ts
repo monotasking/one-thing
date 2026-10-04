@@ -11,7 +11,7 @@
  * 测试报告里留个名,真正的判据在它上面的类型层。
  */
 import { describe, expect, it } from 'vitest'
-import { getSpeechOutput } from '@onething/backend/voice/speech-output'
+import { getSpeechOutput } from '@onething/backend/voice/voice-speech-output'
 import { applyHostPorts, type OnethingHostPorts } from '../backend-host-ports.js'
 import { dialogRpcHandlers } from '../dialog/dialog-client-api.js'
 

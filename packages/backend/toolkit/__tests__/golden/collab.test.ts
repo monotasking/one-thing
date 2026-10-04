@@ -11,12 +11,12 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
-import { COLLAB_TOOL_VENUES, type CollabVenue } from '../../../collab/tool-surface.js'
+import { COLLAB_TOOL_VENUES, type CollabVenue } from '../../../collab/collab-tool-surface.js'
 import type { CollabBoard, CollabTask } from '../../../collab/collab-board.js'
 import { BoardInputSchema, createBoardTool, type BoardToolAdapters } from '../../builtin/toolkit-builtin-board.js'
-import { createHistoryTool, HistoryInputSchema, type HistoryToolAdapters, type HistoryToolResult } from '../../builtin/history.js'
-import { createNotebookTool, NotebookInputSchema, type NotebookToolAdapters } from '../../builtin/notebook.js'
-import { createSendMessageTool, SendMessageInputSchema, type SendMessageToolAdapters } from '../../builtin/send-message.js'
+import { createHistoryTool, HistoryInputSchema, type HistoryToolAdapters, type HistoryToolResult } from '../../builtin/toolkit-builtin-history.js'
+import { createNotebookTool, NotebookInputSchema, type NotebookToolAdapters } from '../../builtin/toolkit-builtin-notebook.js'
+import { createSendMessageTool, SendMessageInputSchema, type SendMessageToolAdapters } from '../../builtin/toolkit-builtin-send-message.js'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 
 const ROOM_SESSION = 'room-1'

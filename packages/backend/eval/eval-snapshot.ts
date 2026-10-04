@@ -6,7 +6,7 @@ import type {
 	CorePromptCapture,
 	CoreRequestMessage,
 } from "@onething/backend/agent-loop";
-import { hashSections } from "./section-hash.js";
+import { hashSections } from "./eval-section-hash.js";
 import {
 	getOnethingEvalsFixturesAutoDir,
 	type OnethingStorePathOptions,
@@ -51,7 +51,7 @@ export function writePromptSnapshot(options: {
 	const filename = `${baseName}.prompt.json`;
 	const filePath = path.join(dir, filename);
 
-	// Single authoritative joint-hash implementation (section-hash.ts);
+	// Single authoritative joint-hash implementation (eval-section-hash.ts);
 	// computed from full section contents, before any snapshot truncation.
 	const promptVersion = options.promptCapture.sections.length
 		? hashSections(options.promptCapture.sections).promptVersion

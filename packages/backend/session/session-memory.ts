@@ -6,7 +6,7 @@
  */
 import type { MemoryHolder } from '@onething/backend/memory/memory-registry'
 import { getSessionCacheStats, releaseIdleCachedSessions } from './session-store.js'
-import type { SessionProjectionCache } from './projection-cache.js'
+import type { SessionProjectionCache } from './session-projection-cache.js'
 
 const LRU_IDLE_MS = { soft: 10 * 60_000, hard: 0 } as const
 

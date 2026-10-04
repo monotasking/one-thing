@@ -1,7 +1,7 @@
 /**
  * D6-b 的**装配级**测试:v2 调度链删掉之后,那几扇配置门还站在原地吗。
  *
- * `room-config.ts` 里的每一个函数都是从 `coordinator.ts` 搬过来的,搬家本身不该
+ * `collab-room-config.ts` 里的每一个函数都是从 `coordinator.ts` 搬过来的,搬家本身不该
  * 改行为 —— 但它们的**执行方**全换了:喊停从「按 activeTurns 逐条 abort」换成
  * 租约换代,停活从协调器的 `activeByTask` 换成各位同事账里的子清单,清历史里
  * 那本 v2 内存账整个换成了房账。所以这份测试问的不是「函数还在不在」,而是
@@ -23,7 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sessionAccess } from '@onething/backend/session'
-import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
+import { bindSessionFacadeMock } from '../../../session/testing/session-testing-facade-mock.js'
 
 interface FakeSession {
   ownerUserId?: string
@@ -66,9 +66,9 @@ const mocks = vi.hoisted(() => ({
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
 // `app/stores/sessions.ts`(→ settings → paths → 整棵存储树)。这两扇门换成共用替身,
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
-vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
+vi.mock('../../../session/session-reads.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
 vi.mock('../../../session/session-commands.js', async () => {
-  const facade = await import('../../../session/testing/facade-mock.js')
+  const facade = await import('../../../session/testing/session-testing-facade-mock.js')
   return {
     sessionCommands: {
       ...facade.sessionCommands,
@@ -99,7 +99,7 @@ vi.mock('@onething/backend/usage/usage-recorder', () => ({
   getUsageLedger: () => ({ readRecordsInRange: async () => [] }),
 }))
 
-vi.mock('@onething/backend/usage/bill-side-line', () => ({
+vi.mock('@onething/backend/usage/usage-bill-side-line', () => ({
   billCollabPlanUsage: () => () => {},
 }))
 
@@ -107,13 +107,13 @@ vi.mock('../../../engine/engine-chat-facade.js', () => ({
   generateChatResponse: async () => '',
 }))
 
-vi.mock('../../../engine/stream/provider-helpers.js', () => ({
+vi.mock('../../../engine/stream/engine-stream-provider-helpers.js', () => ({
   getEffectiveProviderConfig: () => ({ providerId: '', providerConfig: null, model: '' }),
   resolveProviderAuth: async () => null,
 }))
 
-vi.mock('@onething/backend/current.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('@onething/backend/current.js')>()),
+vi.mock('@onething/backend/backend-current.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()),
   getStreamEngine: () => engineStub(),
   getStreamEngineSafe: () => engineStub(),
 }))
@@ -221,13 +221,13 @@ const {
   setCollabRoomBudgets,
   setCollabRoomConfig,
   setCollabRoomFrozen,
-} = await import('../../room-config.js')
-const { applyBoardAction, loadCollabBoard } = await import('../../board-store.js')
-const { createCollabScriptedMindPort } = await import('@onething/backend/collab/actors/mind-port')
-const { createCollabScriptedWorkerPort } = await import('@onething/backend/collab/actors/worker-child')
-const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/collab/actors/referee-actor')
+} = await import('../../collab-room-config.js')
+const { applyBoardAction, loadCollabBoard } = await import('../../collab-board-store.js')
+const { createCollabScriptedMindPort } = await import('@onething/backend/collab/actors/collab-actors-mind-port')
+const { createCollabScriptedWorkerPort } = await import('@onething/backend/collab/actors/collab-actors-worker-child')
+const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/collab/actors/collab-referee-actor')
 const { collabAgentSessionId } = await import('@onething/backend/collab')
-const { collabRoomAccountPath } = await import('@onething/backend/collab/actors/room-account')
+const { collabRoomAccountPath } = await import('@onething/backend/collab/actors/collab-actors-room-account')
 
 const ROOM = 'room-1'
 const CARD_TITLE = '把登录页的埋点补上'
@@ -276,7 +276,7 @@ function roomEvents(type: string): Array<Record<string, unknown>> {
   return mocks.emitted.filter(entry => entry.event.type === type).map(entry => entry.event)
 }
 
-const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/collab/digest-store')
+const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/backend/collab/collab-digest-store')
 let digestStore: ReturnType<typeof createCollabDigestStore>
 let releaseDigestStore: () => void
 
@@ -478,7 +478,7 @@ describe('卡级停止:账在子清单里(D6-b 缺口①)', () => {
     worker.release()
     await drainCollabV3Runtime()
     // 监护任务把子清单里那条记录改成收尾,要再让出一次执行权(它刻意不在心智
-    // 循环里跑 —— 并行豁免的落点,见 `worker-child.ts` 文件头)。
+    // 循环里跑 —— 并行豁免的落点,见 `collab-actors-worker-child.ts` 文件头)。
     await new Promise(resolve => setTimeout(resolve, 0))
     await drainCollabV3Runtime()
     expect(hasActiveCollabV3Work(cardId)).toBe(false)
@@ -534,7 +534,7 @@ describe('成员变更投 room:membership-changed(D6-b 缺口②)', () => {
     const result = setCollabRoomConfig(ROOM, { memberAgentIds: ['fe', 'pm', 'qa'] })
     expect(result.success).toBe(true)
     // 房间落了账并把动词播给在册成员;每位同事把它折进自己的下一轮信封。
-    // 折的是**条数**而不是名字(`envelope-fold.ts`:信封是一句「谁来了谁走了」,
+    // 折的是**条数**而不是名字(`collab-actors-envelope-fold.ts`:信封是一句「谁来了谁走了」,
     // 不是一份名册 —— 名册在提示词的花名册那一段,现取,不必在这里抄一份)。
     const joinedFold = () => (peekCollabV3Agent('fe')?.account.fold ?? [])
       .some(entry => entry.kind === 'members' && entry.joined === 1 && entry.left === 0)

@@ -61,7 +61,7 @@ vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'default', name: '默认空间', createdAt: 0 }] }),
 }))
 
-vi.mock('@onething/backend/auth/process-auth-service', () => ({
+vi.mock('@onething/backend/auth/auth-process-service', () => ({
   getAuthService: () => ({ resolveProviderAuth: async () => null }),
 }))
 

@@ -16,7 +16,7 @@ vi.mock('@onething/backend/storage', () => {
 
 describe('permission grants', () => {
   beforeEach(async () => {
-    const { resetPermissionGrantsForTests } = await import('../grant-storage')
+    const { resetPermissionGrantsForTests } = await import('../permission-grant-storage')
     resetPermissionGrantsForTests()
   })
 
@@ -24,7 +24,7 @@ describe('permission grants', () => {
     const {
       createPermissionGrantFileStorage,
       getPermissionWorkspaceGrantsPath,
-    } = await import('../grant-storage')
+    } = await import('../permission-grant-storage')
     let stored: unknown = { grants: [] }
     const touchedPaths: string[] = []
     const storage = createPermissionGrantFileStorage({
@@ -61,7 +61,7 @@ describe('permission grants', () => {
   })
 
   it('matches session grants only within the same session', async () => {
-    const { addGrant, matchGrant } = await import('../grant-storage')
+    const { addGrant, matchGrant } = await import('../permission-grant-storage')
     const grant = addGrant({
       scope: 'session',
       type: 'bash',
@@ -75,7 +75,7 @@ describe('permission grants', () => {
   })
 
   it('matches workspace grants only within the same workspace', async () => {
-    const { addGrant, matchGrant } = await import('../grant-storage')
+    const { addGrant, matchGrant } = await import('../permission-grant-storage')
     const grant = addGrant({
       scope: 'workspace',
       type: 'file_write',
@@ -89,7 +89,7 @@ describe('permission grants', () => {
   })
 
   it('isolates owner-scoped workspace grants by user and workspace id', async () => {
-    const { addGrant, clearWorkspaceGrants, listWorkspaceGrants, matchGrant } = await import('../grant-storage')
+    const { addGrant, clearWorkspaceGrants, listWorkspaceGrants, matchGrant } = await import('../permission-grant-storage')
     const aliceGrant = addGrant({
       scope: 'workspace',
       type: 'bash',
@@ -163,7 +163,7 @@ describe('permission grants', () => {
   })
 
   it('supports revoke and clear session grants', async () => {
-    const { addGrant, clearSessionGrants, listSessionGrants, matchGrant, revokeGrant } = await import('../grant-storage')
+    const { addGrant, clearSessionGrants, listSessionGrants, matchGrant, revokeGrant } = await import('../permission-grant-storage')
     const grant = addGrant({
       scope: 'session',
       type: 'mcp',

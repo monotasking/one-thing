@@ -68,6 +68,23 @@ it('name gate (zero baseline since 6b) flags duplicates, any index.ts and bare g
   expect(nameViolations(['p/a/a.ts', 'p/a/a-types.ts']).genericFiles).toEqual([])
 })
 
+it('name gate (N2, 6c) wants every file name to start with its feature, the package, or a collection item', () => {
+  const B = 'packages/backend'
+  const v = nameViolations([
+    `${B}/session/session-store.ts`, // 功能名打头
+    `${B}/session/storage/session-storage-pager.ts`, // 子目录里同样认功能名
+    `${B}/session/account.ts`, // 红:没有功能名
+    `${B}/backend-current.ts`, // 包根散文件认包名
+    `${B}/current.ts`, // 红
+    `${B}/provider/vendors/claude/claude-dialect.ts`, // 集合目录的条目认条目名
+    `${B}/provider/vendors/claude/dialect.ts`, // 红
+    `${B}/gateway/channels/wechat/ilink/wechat-ilink-poller.ts`, // 条目下更深一层也认条目名
+    `${B}/sessionx/sessionx-a.ts`,
+    `${B}/session/sessionfoo.ts`, // 红:只认「词」或「词-」
+  ])
+  expect(v.unprefixedFiles).toEqual([`${B}/session/account.ts`, `${B}/current.ts`, `${B}/provider/vendors/claude/dialect.ts`, `${B}/session/sessionfoo.ts`])
+})
+
 function writeTable(table) {
   fs.mkdirSync(path.join(root, 'docs/audit'), { recursive: true })
   fs.writeFileSync(path.join(root, 'docs/audit/feature-layers-2026-10.json'), JSON.stringify(table))

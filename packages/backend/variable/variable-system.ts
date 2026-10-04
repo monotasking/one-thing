@@ -27,7 +27,7 @@ import { getVariableRegistry } from "@onething/backend/variable/variable-registr
 import { registerStandardVariableProviders } from "@onething/backend/variable/variable-bootstrap";
 import { getVariablesStore } from "@onething/backend/variable/variable-store-bound";
 import type { SetInput, VariableProvider } from "@onething/backend/variable";
-import { createChannelSessionGuard } from "@onething/backend/variable/channel-guard";
+import { createChannelSessionGuard } from "@onething/backend/variable/variable-channel-guard";
 import {
 	noteVaultsGateway,
 	globalStoreGateway,
@@ -39,15 +39,15 @@ import {
 	agentSelfGateway,
 	projectStoreGateway,
 	resourceStateVariableGateway,
-} from "./gateways.js";
+} from "./variable-gateways.js";
 import {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
-} from "@onething/backend/variable/format";
+} from "@onething/backend/variable/variable-format";
 import type { ContextVariable } from "@onething/backend/variable";
 
-import { createVariableSnapshotBridge } from './snapshot-bridge.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { createVariableSnapshotBridge } from './variable-snapshot-bridge.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import type { CoreProviderAdapters } from '@onething/backend/variable/providers/variable-providers-core'
 
 const log = getLogger('variables')
@@ -163,7 +163,7 @@ export async function listContextVariables(
 	);
 }
 
-// Channel-session trust guard — see variable/channel-guard.ts for the rules.
+// Channel-session trust guard — see variable/variable-channel-guard.ts for the rules.
 const channelGuard = createChannelSessionGuard((sessionId) =>
 	appStore.getSession(sessionId),
 );
@@ -267,7 +267,7 @@ export { getVariableRegistry } from "@onething/backend/variable/variable-registr
 export {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
-} from "@onething/backend/variable/format";
+} from "@onething/backend/variable/variable-format";
 export { VariableError } from "@onething/backend/variable";
 export type {
 	ContextVariable,
@@ -278,5 +278,5 @@ export type {
 export {
 	notifySessionVariablesChanged,
 	notifyWorkdirChanged,
-} from "./gateways.js";
+} from "./variable-gateways.js";
 export { getVariablesStore } from "@onething/backend/variable/variable-store-bound";

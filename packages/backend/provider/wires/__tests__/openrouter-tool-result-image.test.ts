@@ -23,11 +23,11 @@
  * 没变。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
 import {
 	agentSupportsToolResultModality,
 	agentToolMessageContentForCapabilities,
-} from "@onething/backend/agent-loop/loop-primitives";
+} from "@onething/backend/agent-loop/agent-loop-primitives";
 import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,
@@ -36,11 +36,11 @@ import {
 	listDialects,
 	type PartCodec,
 } from "../../base/provider-base.js";
-import { createAgentProviderFromRuntime } from "../../factory.js";
+import { createAgentProviderFromRuntime } from "../../provider-factory.js";
 import type {
 	OpenAIChatCodec,
 	OpenAIChatMessage,
-} from "../openai-chat-messages.js";
+} from "../provider-wires-openai-chat-messages.js";
 
 const OPENROUTER_MODEL = "anthropic/claude-sonnet-5";
 /** openai-chat 这条线上「没开 `toolResultMultimodal`」的对照家(见文件头)。 */

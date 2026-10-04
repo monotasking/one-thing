@@ -4,7 +4,7 @@ import {
   writeJsonFile,
 } from '@onething/backend/storage/storage-primitives'
 import path from 'path'
-import { getCoreLogger } from '@onething/backend/logging/logger-primitives'
+import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
 
 const log = getCoreLogger('core.plugins')
 

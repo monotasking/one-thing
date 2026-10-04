@@ -15,7 +15,7 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '@onething/backend/session'
 import type { GoalRoutes } from '@shared/ipc/goal.js'
 import type { SessionGoal } from '@shared/ipc/goal.js'
-import { collectGoalFileDiffs } from '@onething/backend/goal/file-change-collector'
+import { collectGoalFileDiffs } from '@onething/backend/goal/goal-file-change-collector'
 import {
   clearGoal,
   createGoal,
@@ -23,7 +23,7 @@ import {
   getGoals,
   updateGoalFromUser,
 } from '@onething/backend/goal/goal-manager'
-import { kickGoalRunIfIdle } from '@onething/backend/goal/kick'
+import { kickGoalRunIfIdle } from '@onething/backend/goal/goal-kick'
 import { goalRouter } from '@shared/ipc/goal.js'
 
 function errorMessage(error: unknown): string {

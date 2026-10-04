@@ -12,16 +12,16 @@
  *  - the bash security policy (which subcommands run free vs. ask)
  */
 
-import { extractFirstJsonObject } from '../../cli-json.js'
-import { NcmCliDriver, extractNcmCliJson } from '../../ncm-cli-driver.js'
-import { parseLrcLyric, type OnethingMusicLyricLine } from '../../lyrics.js'
-import { parseNowPlaying } from '../../now-playing.js'
+import { extractFirstJsonObject } from '../../music-cli-json.js'
+import { NcmCliDriver, extractNcmCliJson } from '../../music-ncm-cli-driver.js'
+import { parseLrcLyric, type OnethingMusicLyricLine } from '../../music-lyrics.js'
+import { parseNowPlaying } from '../../music-now-playing.js'
 import type {
   MusicCliEnvelope,
   MusicProvider,
   MusicSearchRecord,
 } from '../music-providers-types.js'
-import { ncmIdSchema } from './ids.js'
+import { ncmIdSchema } from './ncm-ids.js'
 
 function parseEnvelope(stdout: string): MusicCliEnvelope {
   const envelope = extractNcmCliJson(stdout)

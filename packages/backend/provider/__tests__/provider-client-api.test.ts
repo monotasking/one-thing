@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   getAvailableProviders: vi.fn(() => []),
 }))
 
-vi.mock('../../current.js', () => ({
+vi.mock('../../backend-current.js', () => ({
   getCurrentBackendInstance: () => mocks.backend.current,
 }))
 

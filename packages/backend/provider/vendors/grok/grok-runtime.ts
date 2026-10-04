@@ -7,14 +7,14 @@
  * legacy,而加密思维链回放 / `input_file` / 结构化引文只在 Responses 上有出口。凭据形状一个字没变。
  * 与搬家前 `factory.ts` 那段登记逐字同口径。
  *
- * `thinkingWires` 登记的是 chat 那条 `grok-effort`(`openai-compatible.ts` 的构造门面按
+ * `thinkingWires` 登记的是 chat 那条 `grok-effort`(`provider-openai-compatible.ts` 的构造门面按
  * `reasoningStyle` 取);Responses 那条只挂在方言配方上,与搬家前一样不进全局表。
  */
 import { BearerApiKeyAuth } from "../../base/provider-base.js";
-import { createResponsesProvider } from "../../dialects/responses-recipe.js";
-import type { VendorRuntime } from "../runtimes.js";
+import { createResponsesProvider } from "../../dialects/provider-dialects-responses-recipe.js";
+import type { VendorRuntime } from "../provider-vendor-runtimes.js";
 import { GROK_DIALECT } from "./grok-dialect.js";
-import { GROK_FALLBACK_CATALOG } from "./fallback-models.js";
+import { GROK_FALLBACK_CATALOG } from "./grok-fallback-models.js";
 import { grokEffortWire } from "./grok-thinking.js";
 
 export const GROK_RUNTIME: VendorRuntime = {

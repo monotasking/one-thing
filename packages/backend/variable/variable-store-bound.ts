@@ -1,5 +1,5 @@
 import { VariablesStore } from './variable.js'
-import { loadFromDisk, saveToDisk } from './store-persistence.js'
+import { loadFromDisk, saveToDisk } from './variable-store-persistence.js'
 import type { VariablesStorePersistence } from './variable-store.js'
 
 let singleton: VariablesStore | null = null

@@ -7,7 +7,7 @@ import {
   currentCronRunAt,
   nextCronRunAt,
   parseCronExpression,
-} from './cron.js'
+} from './scheduler-cron.js'
 import type {
   SchedulerRunOptions,
   SchedulerRunReason,
@@ -35,7 +35,7 @@ export {
   isValidTimezone,
   nextCronRunAt,
   parseCronExpression,
-} from './cron.js'
+} from './scheduler-cron.js'
 
 const SCHEDULER_STATE_VERSION = 1
 const SCHEDULER_HEARTBEAT_MS = 60_000

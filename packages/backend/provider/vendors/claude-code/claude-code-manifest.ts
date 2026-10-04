@@ -1,7 +1,7 @@
 /**
  * `claude-code` 的自述(`docs/design/architecture-direction-2026-10.md` §4 P1:每家的 manifest 住在自己家)。
  *
- * 纯模块:壳也 import(经 `vendors/manifests.ts`)。
+ * 纯模块:壳也 import(经 `vendors/provider-vendor-manifests.ts`)。
  */
 import type { ProviderManifest } from '../../provider-manifest.js'
 
@@ -27,7 +27,7 @@ export const CLAUDE_CODE_MANIFEST: ProviderManifest = {
   // 目录键沿用今天的读法(自己的 id);列表只留 Claude 家的型号。
   models: { kind: 'models.dev', key: 'claude-code', include: CLAUDE_CODE_MODEL_PATTERNS },
   billing: 'subscription',
-  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/manifests.ts`)。
+  // 家族里的订阅那一半;`tag` 是合并卡片上的小标签(两半的对应登记在 `vendors/provider-vendor-manifests.ts`)。
   family: { role: 'subscription', tag: 'Claude Code' },
   quotaSource: 'claude-code',
   modelRules: 'claude',

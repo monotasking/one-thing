@@ -1,12 +1,12 @@
 export type { Analyzer, Token } from './search-kernel-analyzer-types.js'
-export { CjkBigramAnalyzer, cjkBigramAnalyzer, isCjkChar } from './cjk-bigram.js'
-export { LatinWordAnalyzer, latinWordAnalyzer, splitWordParts } from './latin-word.js'
+export { CjkBigramAnalyzer, cjkBigramAnalyzer, isCjkChar } from './search-kernel-analyzer-cjk-bigram.js'
+export { LatinWordAnalyzer, latinWordAnalyzer, splitWordParts } from './search-kernel-analyzer-latin-word.js'
 export {
   CompositeAnalyzer,
   DEFAULT_COMPOSITE_MEMBERS,
   compositeAnalyzer,
-} from './composite.js'
-export type { CompositeMember } from './composite.js'
+} from './search-kernel-analyzer-composite.js'
+export type { CompositeMember } from './search-kernel-analyzer-composite.js'
 export {
   DuplicateAnalyzerError,
   createAnalyzerRegistry,
@@ -23,5 +23,5 @@ export {
   mapRangeToSource,
   nfkcNormalizer,
   stripZeroWidthNormalizer,
-} from './normalize.js'
-export type { NormalizeResult, NormalizedText, Normalizer } from './normalize.js'
+} from './search-kernel-analyzer-normalize.js'
+export type { NormalizeResult, NormalizedText, Normalizer } from './search-kernel-analyzer-normalize.js'

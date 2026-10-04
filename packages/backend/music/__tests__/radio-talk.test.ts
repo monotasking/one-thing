@@ -7,7 +7,7 @@
  * 那两样在别的电台用例里一次都用不到,合进去等于让每个夹具都背着它们。
  *
  * 一件事这里**不**测:`hostReplied` 那条事实怎么发 —— 那是 provider 的事
- * (`resource/__tests__/music-provider.test.ts` 的 tell 一族)。音乐域只答
+ * (`resource/__tests__/resource-music-provider.test.ts` 的 tell 一族)。音乐域只答
  * 「他说了这句话」,不认识谁在听。
  */
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -33,8 +33,8 @@ vi.mock('@onething/backend/music/music-process-runner', () => ({
   }),
 }))
 
-vi.mock('../player-volume.js', async importOriginal => ({
-  ...(await importOriginal<typeof import('../player-volume.js')>()),
+vi.mock('../music-player-volume.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../music-player-volume.js')>()),
   readProviderVolume: () => undefined,
 }))
 
@@ -96,9 +96,9 @@ vi.mock('@onething/backend/permission/permission-asks', async importOriginal => 
   ...(await importOriginal<typeof import('@onething/backend/permission/permission-asks')>()),
   addGrant: vi.fn(),
 }))
-vi.mock('@onething/backend/permission/unattended', () => ({ markSessionUnattended: vi.fn() }))
+vi.mock('@onething/backend/permission/permission-unattended', () => ({ markSessionUnattended: vi.fn() }))
 
-vi.mock('../../session/reads.js', () => ({
+vi.mock('../../session/session-reads.js', () => ({
   sessionReads: {
     lastMessageOfRole: (_sessionId: string, role: string) =>
       role === 'assistant' ? (mocks.lastAssistant ?? undefined) : undefined,
@@ -125,10 +125,10 @@ vi.mock('@onething/backend/event', () => ({
 
 const hostVoice = { prefetch: vi.fn(), speak: vi.fn().mockResolvedValue(undefined) }
 
-let activeRadio: ReturnType<typeof import('../radio.js')['createRadioScope']> | undefined
+let activeRadio: ReturnType<typeof import('../music-radio.js')['createRadioScope']> | undefined
 
 async function loadRadio() {
-  const radio = await import('../radio.js')
+  const radio = await import('../music-radio.js')
   activeRadio ??= radio.createRadioScope({
     storePath: mocks.dir,
     service: {

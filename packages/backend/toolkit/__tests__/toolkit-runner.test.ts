@@ -11,10 +11,10 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { installStoreSessionLayerForTest } from '../../session/testing/store-layer.js'
-import { Decision } from '@onething/backend/toolkit/tool-protocol'
-import type { Authorizer, Invocation } from '@onething/backend/toolkit/tool-protocol'
-import type { BashOperations } from '@onething/backend/tool/bash-executor'
+import { installStoreSessionLayerForTest } from '../../session/testing/session-testing-store-layer.js'
+import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Authorizer, Invocation } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { BashOperations } from '@onething/backend/tool/tool-bash-executor'
 import {
   bashAdapters,
   createCatalogForTier,
@@ -24,10 +24,10 @@ import {
   mutatingFileAdapters,
   readAdapters,
   variableAdapters,
-} from '../tier-catalogs.js'
-import { IpcProjector } from '@onething/backend/toolkit/ipc-observer'
-import { AuditProjector, type ToolAuditRecord } from '@onething/backend/toolkit/audit-observer'
-import { createAppToolRunner } from '../runner-factory.js'
+} from '../toolkit-tier-catalogs.js'
+import { IpcProjector } from '@onething/backend/toolkit/toolkit-ipc-observer'
+import { AuditProjector, type ToolAuditRecord } from '@onething/backend/toolkit/toolkit-audit-observer'
+import { createAppToolRunner } from '../toolkit-runner-factory.js'
 
 const dirs: string[] = []
 let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>

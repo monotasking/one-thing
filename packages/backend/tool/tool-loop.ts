@@ -1,5 +1,5 @@
 import type { ToolCall, ToolExecutionContext, ToolResult } from './tool-types.js'
-import type { ToolExecutor } from './executor.js'
+import type { ToolExecutor } from './tool-executor.js'
 
 export async function executeToolCalls(
   calls: ToolCall[],

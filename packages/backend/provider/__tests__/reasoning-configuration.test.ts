@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurnRequest } from '@onething/backend/agent-loop/loop-primitives'
-import { createAgentProviderFromRuntime, type AgentProviderRuntimeConfig } from '../factory.js'
+import type { AgentTurnRequest } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { createAgentProviderFromRuntime, type AgentProviderRuntimeConfig } from '../provider-factory.js'
 import { drain, sseResponse } from './wire-snapshots/snapshot-harness.js'
-import { projectOnethingThinkingLevels, resolveOnethingModelCapabilities } from '../model-capability.js'
+import { projectOnethingThinkingLevels, resolveOnethingModelCapabilities } from '../provider-model-capability.js'
 import { registerCustomProvidersForTest } from './custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-budget", "custom-switch"])

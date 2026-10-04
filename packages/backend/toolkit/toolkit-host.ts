@@ -12,10 +12,10 @@
  * 换掉的是"这些定义从哪儿来",不是"定义怎么变成模型工具面"。
  */
 
-import { Surface, normalizeLegacyAllowlist } from '@onething/backend/toolkit/tool-protocol'
-import type { Catalog, ToolUserSetting } from '@onething/backend/toolkit/tool-protocol'
+import { Surface, normalizeLegacyAllowlist } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Catalog, ToolUserSetting } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { JsonObject } from '@shared/json'
-import { resolveScene, type SceneSessionLike } from './scene.js'
+import { resolveScene, type SceneSessionLike } from './toolkit-scene.js'
 
 let configuredCatalog: Catalog | undefined
 

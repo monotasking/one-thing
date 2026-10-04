@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { createNodePtyBackend } from '../pty-backend.js'
+import { createNodePtyBackend } from '../terminal-pty-backend.js'
 import { TerminalService } from '../terminal-service.js'
 
 // The spawned shell is a REAL interactive login zsh. Left alone it would

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { HeadlessMCPManager, type MCPClientLike } from '../mcp-kernel-manager.js'
-import { CoreMCPClientRuntime } from '../client-runtime.js'
-import { createMCPServerState, markMCPServerConnected } from '../client-state.js'
+import { CoreMCPClientRuntime } from '../mcp-kernel-client-runtime.js'
+import { createMCPServerState, markMCPServerConnected } from '../mcp-kernel-client-state.js'
 import type { MCPServerConfig, MCPServerState, MCPToolInfo } from '@shared/mcp/types.js'
 
 function tool(serverId: string, name: string): MCPToolInfo {

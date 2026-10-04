@@ -23,12 +23,12 @@ import {
   credentialTargetFromMarker,
   decideSpaceProviderCredential,
 } from '@onething/backend/credentials'
-import { readSpaceProviderSettings } from '@onething/backend/space/provider-settings'
+import { readSpaceProviderSettings } from '@onething/backend/space/space-provider-settings'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/event'
-import { getAuthService } from '../auth/process-auth-service.js'
-import { getLogger } from '@onething/backend/logging/configure-logging'
+import { getAuthService } from '../auth/auth-process-service.js'
+import { getLogger } from '@onething/backend/logging/logging-configure'
 import { QuotaService, type QuotaCredentialResolution, type QuotaServiceDeps } from './quota-service.js'
 
 export * from './quota-service.js'

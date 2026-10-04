@@ -19,7 +19,7 @@
  */
 
 // §17.8 U1-a:走**叶子路径** —— `context-compact.ts` 为了压缩算法要
-// `agent-loop/agent-loop-history.js` → `agent-loop/tool-names.js`(`node:crypto`),而这里只要
+// `agent-loop/agent-loop-history.js` → `agent-loop/agent-loop-tool-names.js`(`node:crypto`),而这里只要
 // 那一个纯序列化函数。
 import { buildContextCompactContent } from '@shared/engine/context-compact-content.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types.js'
@@ -108,7 +108,7 @@ export function materializeNode(
  * 的"线性持有"约定的自然延伸)。**任何就地写者拿到它之前必须先 clone**;
  * 补水链上真出过这一刀 —— `rehydrateSessionFromStorage` 就地给 step 补
  * `toolCall`,把事件里没有的字段写进了活投影,refold 不变量当场破掉
- * (修法见 `backend/session/hydrate.ts`、判例见
+ * (修法见 `backend/session/session-hydrate.ts`、判例见
  * `sessions/session-dehydrate.ts` 的 `dehydrateProjectedMessages`)。
  */
 function materializeMessageNode(

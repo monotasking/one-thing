@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { EventBus, StreamChannel } from '@onething/backend/event/bus-primitives'
+import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
 import type { AgentEngineSessionEvent, AgentEngineStreamChunk } from '@onething/backend/agent/agent-engine'
 import { createTenantAudienceFactory, type SessionOwnershipRecord } from '../../http-server/http-server-audience.js'
 import { createServerLiveSessionDelivery } from '../session-client-api-live-delivery.js'

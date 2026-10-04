@@ -1,4 +1,4 @@
-import { normalizeProviderBaseUrl } from '../../base-url.js'
+import { normalizeProviderBaseUrl } from '../../provider-normalize-base-url.js'
 
 export const ACME_STANDARD_BASE_URL = 'https://api.acme.test/v1'
 export const ACME_PRO_BASE_URL = 'https://pro.acme.test/v1'

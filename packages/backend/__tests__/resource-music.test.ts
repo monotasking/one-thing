@@ -31,7 +31,7 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-resource-music
 process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
-  const { getCurrentBackendSafe, setCurrentBackend } = await import('../current.js')
+  const { getCurrentBackendSafe, setCurrentBackend } = await import('../backend-current.js')
   if (getCurrentBackendSafe()) setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
@@ -57,8 +57,8 @@ const music = vi.hoisted(() => {
   return { radio, operations, service, onNowPlayingChanged: vi.fn(() => () => {}), onPlayerFact: vi.fn(() => () => {}) }
 })
 
-vi.mock('../current.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../current.js')>()
+vi.mock('../backend-current.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../backend-current.js')>()
   const withFakeMusic = (backend: unknown): unknown =>
     backend ? new Proxy(backend as object, {
       get(target, property, receiver) {
