@@ -11,7 +11,7 @@ import type {
 import { findAgentExecutorDescriptor } from '@onething/backend/agent'
 import { Interaction } from '@onething/backend/interaction'
 import type { InteractionAnswer } from '@shared/interaction/types'
-import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/interaction-no-human.js'
+import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/session'
 import { resolvePermissionMessageAnchor } from '../permission/permission.js'
 import { AbortScope, Intent, createPermissionAuthorizer } from '@onething/backend/toolkit'
 import type { Invocation } from '@onething/backend/toolkit'

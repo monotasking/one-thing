@@ -1,5 +1,4 @@
-import type { EventBus } from '@onething/backend/event/event-bus'
-import type { StreamChannel } from '@onething/backend/event/event-stream-channel'
+import type { EventBus, StreamChannel } from '@onething/backend/event'
 import { SessionManager } from './session-manager.js'
 
 let sessionManager: SessionManager | null = null
@@ -15,7 +14,7 @@ export function getCoreSessionManager(): SessionManager {
   return sessionManager
 }
 
-export function initializeCoreSessionLayer(eventBus: EventBus<any, any>, streamChannel: StreamChannel<any>): SessionManager {
+export function initializeCoreSessionLayer(eventBus: EventBus, streamChannel: StreamChannel): SessionManager {
   if (sessionManager) {
     return sessionManager
   }

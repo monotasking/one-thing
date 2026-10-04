@@ -15,7 +15,12 @@
 
 import type { EventBase, SessionEventEnvelope } from './event-types.js'
 
-export class RingBuffer<TEvent extends EventBase = EventBase> {
+/**
+ * 泛型基类(D191 从 `RingBuffer` 改名):带自己的消息类型参数,谁有自己的事件形状谁用它(独立 server 的旧引擎、
+ * agent 引擎)。会话那一只是把参数钉成 `SessionBusMessage` 的子类 `RingBuffer`(`event-session-ring-buffer.ts`)
+ * —— 两个类从前同名,读者分不清拿的是哪一只,所以基类改叫 `Generic*`。
+ */
+export class GenericRingBuffer<TEvent extends EventBase = EventBase> {
   private buffer: (SessionEventEnvelope<TEvent> | undefined)[]
   private head = 0  // Next write position
   private count = 0 // Number of items currently stored

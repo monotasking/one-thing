@@ -5,7 +5,7 @@
  * real path (createOnethingBackend) is covered by host smokes instead.
  */
 import { AgentEngine } from '@onething/backend/agent'
-import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event/event-bus-primitives'
 import type {
   OnethingServerBackend,
   OnethingServerRuntime,
@@ -17,8 +17,8 @@ import { EventEmitter } from 'node:events'
 type AnyEvent = { type?: string } & Record<string, unknown>
 
 export async function createEchoServerBackend(): Promise<OnethingServerBackend> {
-  const eventBus = new EventBus()
-  const streamChannel = new StreamChannel()
+  const eventBus = new GenericEventBus()
+  const streamChannel = new GenericStreamChannel()
   const engine = new AgentEngine({
     eventBus: eventBus as never,
     streamChannel: streamChannel as never,

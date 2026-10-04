@@ -56,8 +56,9 @@ beforeEach(async () => {
   wiring = await import('@onething/backend/toolkit/toolkit-wiring')
   wiring.resetToolkitCatalogForTests()
   catalog = new Catalog()
-  const { configureToolkitCatalog } = await import('@onething/backend/toolkit')
-  configureToolkitCatalog(catalog)
+  // D191:插件拦截链是装配时递进来的端口;装上生产那一只(它引的两条链被文件头的桩换掉)。
+  const { pluginToolInterceptor } = await import('@onething/backend/plugin')
+  wiring.installToolkitCatalogForTests(catalog, { interceptor: pluginToolInterceptor })
   current = await import('../../backend-current.js')
   registry = await import('../../http-server/http-server-dispatch-table.js')
   registry.resetRpcRegistryForTests()

@@ -2,26 +2,25 @@
 # 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。
 # 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
-294 session
-26 toolkit
+296 session
+16 toolkit
 11 tool
 40 agent
 78 settings
 56 plugin
 4 storage
-24 event
+11 event
 30 space
 33 permission
 27 collab
-10 resource
+9 resource
 8 auth
 20 mcp
 30 provider-call
-34 logging
 16 variable
 7 note
 10 usage
-27 agent-loop
+41 agent-loop
 12 voice
 22 credentials
 5 prompt
@@ -43,7 +42,7 @@
 7 engine
 2 theme
 4 headless
-5 interaction
+1 interaction
 1 practice
 1 quota
 2 task

@@ -29,7 +29,12 @@ export type StreamChannelPayloadHandler<TChunk> = (
   payload: StreamChannelPayload<TChunk>,
 ) => void
 
-export class StreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
+/**
+ * 泛型基类(D191 从 `StreamChannel` 改名):带自己的消息类型参数,谁有自己的事件形状谁用它(独立 server 的旧引擎、
+ * agent 引擎)。会话那一只是把参数钉成 `StreamChunk` 的子类 `StreamChannel`(`event-session-stream-channel.ts`)
+ * —— 两个类从前同名,读者分不清拿的是哪一只,所以基类改叫 `Generic*`。
+ */
+export class GenericStreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
   private subscribers = new Map<string, Set<StreamChunkHandler<TChunk>>>()
   private wildcardSubscribers = new Set<StreamChannelPayloadHandler<TChunk>>()
 

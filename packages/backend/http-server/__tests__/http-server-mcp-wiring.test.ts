@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event/event-bus-primitives'
 import { MCPManager as appMCPManager } from '@onething/backend/mcp/mcp-index-with-bridge'
 import {
   createMCPServerState,
@@ -78,8 +78,8 @@ describe('server MCP wiring', () => {
       storePath,
       // persistsMessages: true is what selects the app-subsystem path.
       createBackend: async () => ({
-        eventBus: new EventBus() as never,
-        streamChannel: new StreamChannel() as never,
+        eventBus: new GenericEventBus() as never,
+        streamChannel: new GenericStreamChannel() as never,
         persistsMessages: true,
         abortSession() {},
         async shutdown() {},

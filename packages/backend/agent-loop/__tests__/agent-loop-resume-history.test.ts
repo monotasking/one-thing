@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildCompactedToolResultContent,
-  buildHistoryMessages,
-  buildResumeHistoryAfterToolConfirmation,
-  filterHistoryForNonToolAPI,
-  getHistoryProviderData,
-  getMessageReasoningContent,
-  historyMessagesForLog,
-  sanitizeToolResultForAI,
-  type CoreHistoryMessage,
-  type CoreHistoryChatMessage,
-} from '@onething/backend/agent-loop'
+import { buildHistoryMessages, buildResumeHistoryAfterToolConfirmation, filterHistoryForNonToolAPI, historyMessagesForLog, sanitizeToolResultForAI, type CoreHistoryMessage, type CoreHistoryChatMessage } from '@onething/backend/agent-loop'
+import { buildCompactedToolResultContent, getHistoryProviderData, getMessageReasoningContent } from '../agent-loop-history.js'
 import { providerDataFromOnethingContentPart } from '@onething/backend/provider'
 
 describe('core resume history', () => {

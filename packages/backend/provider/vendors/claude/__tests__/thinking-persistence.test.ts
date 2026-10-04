@@ -6,7 +6,8 @@
  * this test pins the chain so a filter added at any hop turns red here.
  */
 import { describe, expect, it } from 'vitest'
-import { applyAgentLoopProviderDataWithAdapters, getHistoryProviderData } from '@onething/backend/agent-loop'
+import { applyAgentLoopProviderDataWithAdapters } from '../../../../agent-loop/agent-loop-executor.js'
+import { getHistoryProviderData } from '../../../../agent-loop/agent-loop-history.js'
 import type { AgentMessage, AgentTurnRequest } from '@onething/backend/agent-loop'
 import { applyOnethingAgentLoopProviderData } from '../../../provider-data.js'
 import { createClaudeAgentProvider } from '../claude-agent-provider.js'

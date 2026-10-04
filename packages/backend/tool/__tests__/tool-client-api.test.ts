@@ -43,7 +43,10 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/session')>(),
   ...store,
 }))
-vi.mock('@onething/backend/toolkit/toolkit-tool-ports', () => toolkit)
+vi.mock('@onething/backend/toolkit', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/toolkit')>(),
+  ...toolkit,
+}))
 vi.mock('@onething/backend/tool/tool-background-jobs-bound', () => jobs)
 vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   getMCPToolDefinitionsForModel: () => [],

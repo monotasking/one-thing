@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
 import { executeCorePluginTool } from '@onething/backend/plugin/plugin-contract'
-import { buildMCPPermissionPlan, isReadOnlyMCPRouterCall } from '@onething/backend/agent-loop'
+import { buildMCPPermissionPlan, isReadOnlyMCPRouterCall } from '../../../agent-loop/agent-loop-tool-orchestration.js'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
 import {
   buildMcpPermissionPlan,

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
+// D191:会话层收的是装配造的会话总线与通道(泛型基类钉死消息类型的子类),这里造的就是它们。
+import { EventBus, StreamChannel } from '@onething/backend/event'
 import {
   getCoreSessionManager,
   initializeCoreSessionLayer,

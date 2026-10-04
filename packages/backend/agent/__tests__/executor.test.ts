@@ -8,12 +8,8 @@
  *      都没有,Iris 全靠 providerId 走外部通路,这条不能因为接线而断。
  */
 import { describe, expect, it } from 'vitest'
-import {
-  coreProviderOwnsItsContextWindow,
-  getCoreProviderExecution,
-  registerCoreProviderExecution,
-  shouldStartAgentLoopContextCompact,
-} from '@onething/backend/agent-loop'
+import { coreProviderOwnsItsContextWindow, getCoreProviderExecution, registerCoreProviderExecution } from '../../agent-loop/agent-loop-external-agent-providers.js'
+import { shouldStartAgentLoopContextCompact } from '../../agent-loop/agent-loop-runtime.js'
 import {
   agentExecutorOwnsContextWindow,
   createExternalAgentExecutor,

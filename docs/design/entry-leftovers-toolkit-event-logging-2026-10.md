@@ -351,3 +351,45 @@ task(非测试 2 → 1,读者从 toolkit-adapters 换成 backend.ts)、interacti
   它该有自己的家,但 `sT-B.json` 证明搬去 session 会成 43 只环,搬去 engine 又让 task(L2)引 L3。留待 engine 三层拍板时一起看。
 - `toolkit-executions.ts:1` 引 `http-server/http-server-runtime-facade.js` 的类型(L2 引 L4 的类型位,值图不计),读起来仍扎眼。
 - `goal-manager.ts` 引自家入口 11 个名字,是 D126 的现存违例;本单第 3 步顺手修。
+
+## 7. 实施结果(2026-10-04,s32;决策记录 D192–D201)
+
+按本文第 0 节的决定施工,四单依次是 toolkit → event → logging → agent-loop 入口瘦身。本文写于 `69055c8e7`,施工时的 HEAD 是
+`653a433b7`(第四批已落地),所以先在今天的图上重跑了模拟:event、logging 两份场景原样成立;toolkit 的 `sT-A.json` 有 4 条 cut
+已不存在(第四批把 `toolkit-wiring` 改成引 plugin 入口、`toolkit-adapters` 改成引 goal / music / practice 入口、并修掉了
+`goal-manager` 的 D126),模拟出 66 只的环,是输入过期;按今天的边重写场景后入口级环 0(D192)。施工后真门 `cycle:gate` 0。
+
+**和本文不一样的地方**(都是事实逼出来的,行为面没有超出 §1.5 / §3.4):
+- 拦截端口缺席时,外层那段「定点停止之后结局仍是 aborted」的取消收尾照旧挂着,只是两条链不跑(D193)。两只手拼目录、靠插件桩断言
+  拦截的测试改用新测试钩子 `installToolkitCatalogForTests`(§1.4 没列)。
+- `radio` 那一格从目录的适配器表里删掉(目录从不读它);`backend.ts` 只递 goal / practice / task 三只,兜底目录少的也是这三只工具(D194)。
+- shared 里那只常量文件叫 `no-origin.ts`:资源内核的词边界门会把 `no-origin-session` 里的 `session` 当成 scheme 名(D195)。
+- task 的非测试深层读数是 2(`backend.ts` 两处),不是 1(D196)。
+- agent-loop 入口的实数是 ① 311 / ③ 101 / ④ 275,不是 272 / 109 / 306:§5 的脚本漏数了用相对路径引入口文件与 `export … from`
+  转交的读者(D200)。
+
+**读数**:
+- `entry:gate` 949 → **903**,非测试 91 → **56**;toolkit 26 → 16、event 24 → 11、logging 34 → 0(删行)、interaction 5 → 1、
+  resource 10 → 9 —— 前四家非测试全部归零;session 294 → 296、agent-loop 27 → 41 是测试替身 / 测试改引内部文件(D197 / D200,D14 口径手抬)。
+- `cycle` / `layer` / `name` / `client-api` / `boundary` / `assembly` / `provider` 全绿;`client-api:gate` 自检 17 → 26 条;
+  `assembly` 基线手改三行(总数不变)。
+- 检索 Worker 三份:1276543 → 1276556、1276543 → 1276556、1275007 → 1275020,各 +13 字节,diff 只有 esbuild 的路径注释
+  `logging.ts` → `logging-runtime-root.ts` 那一行;`acp-mcp-bridge` 748877 / 749191 不变。主进程包:桌面 11459659 → 11455248(−4411)、
+  CLI 11430364 → 11433678(+3314)、server 5766962 → 5767937(+975)。
+- agent-loop 入口 687 → 311 个名字(值 150 / 类型 161),`Core*` 前缀不动(留下的 80 个)。
+
+**可感知行为变化**,逐条对照 §1.5 / §3.4:
+1. §1.5-1「没有插件管理器的进程不再跑两条空链」—— 实际更窄:三个生产宿主都经 `backend.ts` 递了插件端口,链照跑;只有没走装配的目录
+   (测试、轻量进程)不拦截,结果与空链逐字相同。
+2. §1.5-2 兜底目录缺 goal / practice / task 三只工具(radio 本来就不在目录里),第一次懒建时记一行 info 日志。
+3. §1.5-3 `noHumanInTheRoom` 换了家、名字与行为不变。
+4. §3.4-1 / -2 接线之前的 `writeAppLog` / `setLogLevelSpec` 作用在入口的兜底 root 上;四个调用点与诊断模式都在接线之后,实际无差别。
+5. §3.4-3 `onething mcp`、独立 server、CLI 守护的接线一个字不动。
+event 与 agent-loop 两单没有行为变化。
+
+**验收**(改前 `s32-before` / 改后 `s32-after`,同一份 `s32-checks.sh`):三套 tsc 零错;四个 bundle 与 `web:build` 成功(`node:` 命中 0);
+全量 vitest 根 22 → 23 失败(多出的一条是 `http-server-workspace-watch-ownership` 里另一条文件监听用例,单跑三次全绿,改前那次同文件
+也有一条在全量负载下红;壳 1 → 1 相同);冻结快照与两份 golden 逐字相同;persistence 19 文件 / 176 条、import-side-effect-free +
+assembly-lifecycle 24 条绿;shadow-battery 改前改后同一个红(`appendFailures 8`,refold 0 不符);hydration 217 会话 0 失败;
+`gate:acp` / `gate:web-shell` / `gate:client` 绿;`gate:search-index` 改前改后同样 3 条红(⑤c / ⑤d ×2);`provider:drill` 绿;
+CLI 与 server 能起。

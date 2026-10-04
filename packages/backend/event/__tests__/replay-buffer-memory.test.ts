@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { EventBus } from '../event-bus.js'
+import { GenericEventBus } from '../event-bus.js'
 
 type Ev = { type: string }
 
-describe('EventBus replay buffers on the memory table', () => {
+describe('GenericEventBus replay buffers on the memory table', () => {
   it('counts buffered envelopes per session', async () => {
-    const bus = new EventBus<Ev>(3)
+    const bus = new GenericEventBus<Ev>(3)
     await bus.emit('a', { type: 'x' })
     await bus.emit('a', { type: 'x' })
     await bus.emit('b', { type: 'x' })
@@ -13,7 +13,7 @@ describe('EventBus replay buffers on the memory table', () => {
   })
 
   it('releases only idle, unsubscribed buffers and keeps the sequence going', async () => {
-    const bus = new EventBus<Ev>()
+    const bus = new GenericEventBus<Ev>()
     await bus.emit('idle', { type: 'x' })
     await bus.emit('watched', { type: 'x' })
     const off = bus.onAny('watched', () => {})
@@ -28,7 +28,7 @@ describe('EventBus replay buffers on the memory table', () => {
   })
 
   it('keeps a recently active buffer even without subscribers', async () => {
-    const bus = new EventBus<Ev>()
+    const bus = new GenericEventBus<Ev>()
     await bus.emit('fresh', { type: 'x' })
     expect(bus.releaseIdleBuffers(60_000).releasedSessions).toBe(0)
   })

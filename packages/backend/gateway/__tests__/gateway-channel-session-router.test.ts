@@ -46,8 +46,9 @@ vi.mock('../../session/session-layer.js', () => ({
 }))
 
 // 替身只换 `writeAppLog`,其余照真(包根归位 B:路由改从会话 / agent-loop 入口取名字以后,入口里的模块加载时就要 `getLogger`)。
-vi.mock('@onething/backend/logging/logging-configure', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/logging/logging-configure')>(),
+// D191:读者改从 logging 入口拿 `writeAppLog`,替身随之打在入口上(从前打在 `logging-configure`)。
+vi.mock('@onething/backend/logging', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/logging')>(),
   writeAppLog: vi.fn(),
 }))
 

@@ -5,9 +5,12 @@
  * 集合逐一相等,有测试钉着(`__tests__/catalog-tiers.test.ts` 把旧三个 barrel 的
  * `registerTool` 收集下来直接比)。
  *
- * 适配器的来源与旧 `app/tools/builtin/*.ts` / `app/collab/*-tool.ts` **逐字相同**
- * (见 `adapters.ts`)。这里只 import 那些 store 与适配函数,一个旧 Tool 对象都不
- * import —— 新树的目录不该经过旧树。
+ * 适配器的来源与旧 `app/tools/builtin/*.ts` / `app/collab/*-tool.ts` **逐字相同**。
+ * 这里只 import 那些 store 与适配函数,一个旧 Tool 对象都不 import —— 新树的目录不该经过旧树。
+ *
+ * D191:`goal` / `task` / `practice` 三只工具的适配器住在各自功能里(`goal-tool-adapters.ts` /
+ * `task-tool-adapters.ts` / `practice-tool-adapters.ts`),由 `backend.ts` 递进来;**没递就不登记那只工具**
+ * (工具目录不认识那三个功能,也就造不出它们的缺省)。其余工具的缺省适配器仍在 toolkit 里。
  *
  * ## `feature_*` 为什么不在三档里
  *
@@ -34,22 +37,14 @@ import { createWebOpenTool, type WebOpenToolAdapters } from './builtin/toolkit-b
 import { createWebSearchTool, type WebSearchToolAdapters } from './builtin/toolkit-builtin-web-search.js'
 import { createWriteTool } from './builtin/toolkit-builtin-write.js'
 import { type MutatingFileToolAdapters } from './families/toolkit-families-mutating-file.js'
-import { type RadioToolAdapters } from './toolkit-radio-adapters.js'
 import { getSettings } from '@onething/backend/settings'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'
 import { getOnethingToolOutputsDir } from '@onething/backend/storage'
 import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './toolkit-file-adapters.js'
 import { createLocalBashOperations } from '@onething/backend/tool'
 import { getGuardedVariableRegistryForTools, VariableError } from '@onething/backend/variable'
-import {
-  askUserAdapters,
-  goalAdapters,
-  practiceAdapters,
-  radioAdapters,
-  taskPorts,
-  webOpenAdapters,
-  webSearchAdapters,
-} from './toolkit-adapters.js'
+import { askUserAdapters } from './toolkit-ask-user-adapters.js'
+import { webOpenAdapters, webSearchAdapters } from './toolkit-web-adapters.js'
 import { createFeatureInspectTool } from './builtin/toolkit-builtin-feature-inspect.js'
 import { createFeatureMountTool } from './builtin/toolkit-builtin-feature-mount.js'
 import { createFeatureUnmountTool } from './builtin/toolkit-builtin-feature-unmount.js'
@@ -92,26 +87,26 @@ export function variableAdapters(): VariableToolAdapters {
   }
 }
 
-export interface CatalogAdapters {
+export interface ToolkitBuiltinAdapters {
   readonly read?: ReadToolAdapters
   readonly mutatingFile?: MutatingFileToolAdapters
   readonly bash?: BashToolAdapters
   readonly variable?: VariableToolAdapters
   readonly webSearch?: WebSearchToolAdapters
   readonly webOpen?: WebOpenToolAdapters
+  /** 下面三格由装配递进来(D191);缺席 = 目录里没有那只工具。 */
   readonly goal?: GoalToolAdapters
   readonly task?: TaskToolPorts
   readonly askUser?: AskUserToolAdapters
   readonly practice?: PracticeToolAdapters
-  /**
-   * K3-b:`radio` 那只工具退役了,但这一格留着 —— 它今天的读者是资源面那只
-   * `MusicResourceProvider`(经 `radioAdapters()`),而 `resolve()` 里的缺省
-   * 一行是那份契约唯一的产地。
-   */
-  readonly radio?: RadioToolAdapters
+  // K3-b 退役 `radio` 工具后这里还留着一格 `radio`,只为让 `resolve()` 的缺省一行当那份契约的产地;
+  // D191 把那组适配器搬回 music(`musicRadioAdapters`,资源面的 `MusicResourceProvider` 直接用),这一格随之删掉。
 }
 
-function resolve(adapters: CatalogAdapters): Required<CatalogAdapters> {
+type ResolvedCatalogAdapters = Required<Omit<ToolkitBuiltinAdapters, 'goal' | 'task' | 'practice'>>
+  & Pick<ToolkitBuiltinAdapters, 'goal' | 'task' | 'practice'>
+
+function resolve(adapters: ToolkitBuiltinAdapters): ResolvedCatalogAdapters {
   return {
     read: adapters.read ?? readAdapters(),
     mutatingFile: adapters.mutatingFile ?? mutatingFileAdapters(),
@@ -119,11 +114,10 @@ function resolve(adapters: CatalogAdapters): Required<CatalogAdapters> {
     variable: adapters.variable ?? variableAdapters(),
     webSearch: adapters.webSearch ?? webSearchAdapters(),
     webOpen: adapters.webOpen ?? webOpenAdapters(),
-    goal: adapters.goal ?? goalAdapters(),
-    task: adapters.task ?? taskPorts(),
+    goal: adapters.goal,
+    task: adapters.task,
     askUser: adapters.askUser ?? askUserAdapters(),
-    practice: adapters.practice ?? practiceAdapters(),
-    radio: adapters.radio ?? radioAdapters(),
+    practice: adapters.practice,
   }
 }
 
@@ -134,16 +128,18 @@ function resolve(adapters: CatalogAdapters): Required<CatalogAdapters> {
  * 每只工具自己的 `visibleIn(scene)` 算(协作四件套的场子 —— 它们由 collab 自己登记、goal 的 active、
  * task 的套娃闸)。
  */
-export function createDesktopCatalog(adapters: CatalogAdapters = {}): Catalog {
+export function createDesktopCatalog(adapters: ToolkitBuiltinAdapters = {}): Catalog {
   const resolved = resolve(adapters)
-  return new Catalog()
+  const catalog = new Catalog()
     .register(createBashTool(resolved.bash))
     .register(createEditTool(resolved.mutatingFile))
     .register(createReadTool(resolved.read))
     .register(createWriteTool(resolved.mutatingFile))
     .register(createVariableTool(resolved.variable))
-    .register(createPracticeTool(resolved.practice))
-    .register(createTaskTool(resolved.task))
+  // 三只回了各自功能的工具:递了适配器才登记,位置与从前逐字相同(登记顺序就是工具面的顺序)。
+  if (resolved.practice) catalog.register(createPracticeTool(resolved.practice))
+  if (resolved.task) catalog.register(createTaskTool(resolved.task))
+  catalog
     .register(createAskUserTool(resolved.askUser))
     .register(createTimeTool())
     /*
@@ -157,16 +153,17 @@ export function createDesktopCatalog(adapters: CatalogAdapters = {}): Catalog {
     .register(createSearchTool())
     .register(createWebSearchTool(resolved.webSearch))
     .register(createWebOpenTool(resolved.webOpen))
-    .register(createGoalTool(resolved.goal))
+  if (resolved.goal) catalog.register(createGoalTool(resolved.goal))
   // 协作四只(board / history / notebook / send_message)不在这里:越层清零 A1 起由协作自己的
   // `registerCollabTools(catalog, tier)` 在装配时紧接着登记,排在这一档的最后 —— 与从前的位置逐字相同。
+  return catalog
 }
 
 /**
  * CLI daemon 档 —— 与旧 `builtin/headless.ts` 同集(12 只,其中协作三只 board / history / send_message
  * 由 collab 的 `registerCollabTools` 登记;越层清零 A1 之后它们排在这一档的末尾,而不是 variable 与 time 之间)。
  */
-export function createHeadlessCatalog(adapters: CatalogAdapters = {}): Catalog {
+export function createHeadlessCatalog(adapters: ToolkitBuiltinAdapters = {}): Catalog {
   const resolved = resolve(adapters)
   return new Catalog()
     .register(createBashTool(resolved.bash))
@@ -185,7 +182,7 @@ export function createHeadlessCatalog(adapters: CatalogAdapters = {}): Catalog {
  * (4 只):对本机零副作用的工具。没有 bash / write / edit,也没有 variable
  * (它能重指工作目录)。
  */
-export function createReadonlyCatalog(adapters: CatalogAdapters = {}): Catalog {
+export function createReadonlyCatalog(adapters: ToolkitBuiltinAdapters = {}): Catalog {
   const resolved = resolve(adapters)
   return new Catalog()
     .register(createReadTool(resolved.read))
@@ -199,7 +196,7 @@ export function createReadonlyCatalog(adapters: CatalogAdapters = {}): Catalog {
 
 export type ToolCatalogTier = 'full' | 'headless' | 'readonly'
 
-export function createCatalogForTier(tier: ToolCatalogTier, adapters: CatalogAdapters = {}): Catalog {
+export function createCatalogForTier(tier: ToolCatalogTier, adapters: ToolkitBuiltinAdapters = {}): Catalog {
   if (tier === 'full') return createDesktopCatalog(adapters)
   if (tier === 'readonly') return createReadonlyCatalog(adapters)
   return createHeadlessCatalog(adapters)

@@ -38,7 +38,7 @@ import {
   configureAppLoggingHost,
   resetAppLoggingHost,
   type AppLoggingHostPorts,
-} from '@onething/backend/logging/logging-configure'
+} from '@onething/backend/logging'
 import {
   configureSkillsEnvironmentHost,
   resetSkillsEnvironmentHost,

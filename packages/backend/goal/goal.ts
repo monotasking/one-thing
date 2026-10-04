@@ -4,7 +4,7 @@
  *
  * 对外交出几类东西:目标的形状与常量、目标记录的读写纯函数、状态转移(暂停、阻塞、结算、计数)、
  * 给模型看的提示词渲染、本回合文件改动的汇总;以及运行期的一组(取目标、按模型的话改目标、
- * 续推触发器、引擎钩子与熔断、释放会话状态)。
+ * 续推触发器、引擎钩子与熔断、释放会话状态),外加装配用的 `goal` 工具适配器。
  * 依赖 session、event、settings、storage、logging 与包根的当前实例槽。
  */
 export {
@@ -79,3 +79,5 @@ export {
 export { createGoalContinuationTrigger } from './goal-continuation-trigger.js'
 export { bootstrapGoalStreamBreakers, goalRuntimeHooks } from './goal-runtime-hooks.js'
 export { collectGoalFileChanges } from './goal-file-change-collector.js'
+// `goal` 工具的适配器(D191 从工具目录搬回):`backend.ts` 在造目录那一步调它、递进 `buildToolkitCatalog`。
+export { goalToolAdapters } from './goal-tool-adapters.js'

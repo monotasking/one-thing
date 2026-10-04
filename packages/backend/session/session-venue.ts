@@ -93,3 +93,32 @@ export function isCollabCoordinatorDrivenSession(sessionId: string): boolean {
   const kind = getSession(sessionId)?.kind
   return kind === 'room' || kind === 'agent'
 }
+
+// ---------------------------------------------------------------------------
+// 工作会话 —— 「这条会话是不是被派出去干活的」(D191,从 task 下沉)
+// ---------------------------------------------------------------------------
+
+/**
+ * 一条工作会话在自己的元数据上带的那枚戳。
+ *
+ * 结构类型而不是 IPC 契约包里那份 `TaskSessionRef`:产品层禁止 import 那个包
+ * (boundary checker 强制)。两者字段同名同义,装配层传下来的就是那一份。
+ */
+export interface TaskSessionMarkLike {
+  /** 派工的那条会话 —— 完成回流投回它。 */
+  parentSessionId?: string
+}
+
+export interface TaskSessionLike {
+  task?: TaskSessionMarkLike | null
+}
+
+/**
+ * 这条会话是被派出去的工作会话吗(判据 = 会话元数据上的 task 戳)。
+ *
+ * 它问的是会话记录上 `task` 字段的含义,与上面几条「场子」判据同一类,所以与它们住在一起:
+ * task 的派工闸要问,工具目录的场景解析(`toolkit-scene.ts`)也要问。task 入口原样再交出它。
+ */
+export function isTaskSession(session: TaskSessionLike | null | undefined): boolean {
+  return Boolean(session?.task && typeof session.task === 'object')
+}

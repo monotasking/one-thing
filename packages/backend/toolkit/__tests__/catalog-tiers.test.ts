@@ -19,12 +19,14 @@ import {
   registerFeatureTools,
 } from '../toolkit-tier-catalogs.js'
 import { registerCollabTools } from '@onething/backend/collab'
+// D191:goal / practice / task 三只工具的适配器由装配递进来,夹具用生产同一套工厂。
+import { assemblyToolAdapters } from './assembly-adapters.js'
 
 /**
  * 越层清零 A1:协作四只由 collab 自己的 `registerCollabTools(catalog, tier)` 登记,装配里紧跟在
  * `buildToolkitCatalog` 之后。三个 id 集合**一字不改**,改的只是「先登记再比」。
  */
-const fullCatalog = () => { const c = createDesktopCatalog(); registerCollabTools(c, 'full'); return c }
+const fullCatalog = () => { const c = createDesktopCatalog(assemblyToolAdapters()); registerCollabTools(c, 'full'); return c }
 const headlessCatalog = () => { const c = createHeadlessCatalog(); registerCollabTools(c, 'headless'); return c }
 const readonlyCatalog = () => { const c = createReadonlyCatalog(); registerCollabTools(c, 'readonly'); return c }
 

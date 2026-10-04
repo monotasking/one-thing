@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  buildTextStreamContext,
-  executeCoreMessageStream,
-  resolveStreamExecutionRoute,
-  specialStreamExecutionResult,
-  streamExecutionErrorResult,
-  textStreamExecutionResult,
-} from '@onething/backend/agent-loop'
+import { executeCoreMessageStream } from '@onething/backend/agent-loop'
+import { buildTextStreamContext, resolveStreamExecutionRoute, specialStreamExecutionResult, streamExecutionErrorResult, textStreamExecutionResult } from '../agent-loop-stream-executor.js'
 import type { CoreInitialToolChoice } from '@onething/backend/agent-loop'
 
 describe('core stream executor helpers', () => {

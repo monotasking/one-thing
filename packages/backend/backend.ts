@@ -39,7 +39,7 @@ import {
   registerCollabAgentToolGrants,
   registerCollabTools,
 } from '@onething/backend/collab'
-import { PluginLlmService } from '@onething/backend/plugin'
+import { PluginLlmService, pluginToolInterceptor } from '@onething/backend/plugin'
 import {
   CredentialStrategyService,
   disposeCredentialStrategyState,
@@ -53,7 +53,7 @@ import {
 } from '@onething/backend/credentials'
 import { TodoPlanRuntime } from '@onething/backend/todo-plan'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './backend-shutdown.js'
-import { PracticeService, configurePracticeService } from '@onething/backend/practice'
+import { PracticeService, configurePracticeService, practiceToolAdapters } from '@onething/backend/practice'
 import { MusicSubsystem, registerMusicBashPolicies } from '@onething/backend/music'
 import { PetsSubsystem, petChattinessOf, watchPetChattiness, ModelMomentComposer } from '@onething/backend/pet'
 import { createVoiceService, configureVoiceService } from '@onething/backend/voice'
@@ -71,7 +71,7 @@ import {
   configureModelCatalogCredentials,
   CustomProviderManifestSync,
 } from '@onething/backend/settings'
-import { applyDiagnosticsMode } from '@onething/backend/logging/logging-diagnostics'
+import { applyDiagnosticsMode } from '@onething/backend/logging'
 import { initializeAgents } from '@onething/backend/agent'
 import { configureAppToolSandbox, configureAppPermissionGrants, Permission } from '@onething/backend/permission'
 import { applyHostPorts, type OnethingHostPorts } from './backend-host-ports.js'
@@ -111,21 +111,24 @@ import type { OAuthToken, PermissionMode } from '@shared/ipc.js'
 import { createSessionTocTrigger } from './toc/toc.js'
 import { Interaction } from '@onething/backend/interaction'
 import { bootstrapVariableSystem } from '@onething/backend/variable'
-import { bootstrapGoalStreamBreakers, flushGoalRuntimeUsage, disposeGoalRuntimeState } from '@onething/backend/goal'
+import { bootstrapGoalStreamBreakers, flushGoalRuntimeUsage, disposeGoalRuntimeState, goalToolAdapters } from '@onething/backend/goal'
 import { bootstrapProjectDirs } from '@onething/backend/project-dir'
 import { configureProcessAuthTokenStore, getAuthService, installOAuthBusBroadcaster } from '@onething/backend/auth'
 import { bootstrapNotes, migrateNotesSettings } from '@onething/backend/note'
 import type { NotesSubsystem } from '@onething/backend/note'
 import { createAppSearchService } from '@onething/backend/search'
 import { configureToolkitMCPCapabilitiesChangedHandler, McpSubsystem } from '@onething/backend/mcp'
-import { buildToolkitCatalog, refreshToolkitMcpTools } from '@onething/backend/toolkit/toolkit-wiring'
 import {
+  buildToolkitCatalog,
   createAppToolRunner,
+  refreshToolkitMcpTools,
   sessionWorkspaceRootFor,
   createPermissionAuthorizer,
+  toolkitAuditSink,
   ToolExecutionRegistry,
 } from '@onething/backend/toolkit'
-import { toolkitAuditSink } from '@onething/backend/toolkit/toolkit-audit-sink'
+// `task` 工具的端口工厂不经 task 入口(D191):task 入口一交出派工层就成环,所以装配处直接引它。
+import { taskToolPorts } from '@onething/backend/task/task-tool-adapters'
 import {
   createResourceKernel,
   forwardResourceEventsToBus,
@@ -1016,7 +1019,13 @@ export class OnethingBackend implements BackendHandle {
     // `feature_*` 与插件工具**不在这里**:前者由 self-evolution feature 在 mount 时
     // 自己装进目录,后者由 `api.registerTool` 装 —— 两者的寿命都不是"一档目录"的寿命。
     const toolRegistryTier = options.toolRegistry ?? 'headless'
-    const toolkitCatalog = buildToolkitCatalog(toolRegistryTier)
+    // 适配器与拦截端口由装配递进来(D191):goal / practice / task 三只工具的适配器住在各自功能里,
+    // 插件的两条拦截链是 plugin 交出的端口。三只工厂就在这一行调 —— practice 的服务在这一刻取一次,
+    // 与从前在目录里取的时刻相同。
+    const toolkitCatalog = buildToolkitCatalog(toolRegistryTier, {
+      adapters: { goal: goalToolAdapters(), practice: practiceToolAdapters(), task: taskToolPorts() },
+      interceptor: pluginToolInterceptor,
+    })
     // 协作的四只工具由协作自己登记(越层清零 A1):紧跟在三档目录之后、先于任何别的东西碰目录,
     // 所以 full 档的插入顺序与从前逐字相同。登记无条件 —— 不挂在 `collab: true` 上,server 不开协调器,
     // 四只工具照样在它的目录里。

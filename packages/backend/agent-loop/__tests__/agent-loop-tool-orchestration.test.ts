@@ -1,30 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  buildMCPPartialResultUpdate,
-  buildMCPPermissionPlan,
-  buildToolExecutionFinalPresentation,
-  buildToolExecutionPartialStepUpdate,
-  buildToolMetadataStepUpdate,
-  changesFromToolMetadata,
-  CoreToolOrchestrator,
-  executeCoreToolAndUpdate,
-  executeCoreDirectTool,
-  filterContentParts,
-  filterSteps,
-  isReadOnlyMCPRouterCall,
-  markToolCallAbortedBeforeExecution,
-  planToolCallArtifactRemoval,
-  queuedTailToolCallIdsAfter,
-  recordToolCallSignature,
-  removeToolCallsById,
-  resolveMCPPermissionResourceName,
-  shouldStopAfterTool,
-  stableStringify,
-  streamableToolResult,
-  textFromStructuredToolResult,
-  toolResultObject,
-  type CoreToolResultLike,
-} from '@onething/backend/agent-loop'
+import { changesFromToolMetadata, CoreToolOrchestrator, executeCoreToolAndUpdate, planToolCallArtifactRemoval } from '@onething/backend/agent-loop'
+import { buildMCPPartialResultUpdate, buildMCPPermissionPlan, buildToolExecutionFinalPresentation, buildToolExecutionPartialStepUpdate, buildToolMetadataStepUpdate, filterContentParts, filterSteps, isReadOnlyMCPRouterCall, markToolCallAbortedBeforeExecution, queuedTailToolCallIdsAfter, recordToolCallSignature, removeToolCallsById, resolveMCPPermissionResourceName, shouldStopAfterTool, stableStringify, streamableToolResult, textFromStructuredToolResult, toolResultObject, type CoreToolResultLike } from '../agent-loop-tool-orchestration.js'
+import { executeCoreDirectTool } from '../agent-loop-direct-tool-execution.js'
 import type { JsonValue } from '@shared/json'
 
 describe('core tool orchestration helpers', () => {

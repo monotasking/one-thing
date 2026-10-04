@@ -38,7 +38,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { NON_FEATURE_DIRS, clientApiFeatureOf } from './lib/backend-structure.mjs'
+import { NON_FEATURE_DIRS, clientApiFeatureOf, configureEntryFeatureOf } from './lib/backend-structure.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/feature-entry-baseline-2026-10.txt')
@@ -147,6 +147,8 @@ export function classify(resolvedAbsolute, importerAbsolute, features) {
   if (inner === `${feature}.ts` || inner === `${feature}.js` || inner === feature) return null
   // 第二个入口 `<功能>-client-api*.ts`(D26)同样不计:谁可以引它由 `client-api:gate` 管(只许 HTTP 服务器)。
   if (clientApiFeatureOf(`${FEATURE_ROOT}/${feature}/${inner.replace(/\.js$/, '.ts')}`) === feature) return null
+  // 装配入口 `<功能>-configure.ts`(D191)同理不计:谁可以引它(只许 L4 与 apps)也由 `client-api:gate` 管。
+  if (configureEntryFeatureOf(`${FEATURE_ROOT}/${feature}/${inner.replace(/\.js$/, '.ts')}`) === feature) return null
   return { feature, target: inner }
 }
 

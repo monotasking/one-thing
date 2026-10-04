@@ -32,15 +32,20 @@ import type {
   GlobalEventEnvelope,
   EventDeliveryOptions,
 } from './event-types.js'
-import { RingBuffer } from './event-ring-buffer.js'
+import { GenericRingBuffer } from './event-ring-buffer.js'
 import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logging.js'
 
-export class EventBus<
+/**
+ * 泛型基类(D191 从 `EventBus` 改名):带自己的消息类型参数,谁有自己的事件形状谁用它(独立 server 的旧引擎、
+ * agent 引擎)。会话总线是它把参数钉成 `SessionBusMessage` / `GlobalEvent` 的子类 `EventBus`(`event-session-bus.ts`)
+ * —— 两个类从前同名,读者分不清拿的是哪一只,所以基类改叫 `Generic*`。
+ */
+export class GenericEventBus<
   TSessionEvent extends EventBase = EventBase,
   TGlobalEvent extends EventBase = EventBase,
 > {
   /** Per-session ring buffers */
-  private buffers = new Map<string, RingBuffer<TSessionEvent>>()
+  private buffers = new Map<string, GenericRingBuffer<TSessionEvent>>()
 
   /** Per-session sequence counters */
   private sequences = new Map<string, number>()
@@ -125,7 +130,7 @@ export class EventBus<
 
     let buffer = this.buffers.get(sessionId)
     if (!buffer) {
-      buffer = new RingBuffer<TSessionEvent>(this.bufferCapacity)
+      buffer = new GenericRingBuffer<TSessionEvent>(this.bufferCapacity)
       this.buffers.set(sessionId, buffer)
     }
     buffer.push(envelope)

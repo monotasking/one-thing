@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  buildContextCompactPrompt,
-} from '@onething/backend/agent-loop'
+import { buildContextCompactPrompt } from '../agent-loop-compact-prompt.js'
 import {
   buildSystemPromptSnapshotWithAdapters,
   mcpToolSnapshot,

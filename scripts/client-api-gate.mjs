@@ -19,6 +19,9 @@
 //       ④ 下面 `EXCEPTIONS` 里逐对写了理由的引用(今天为空)。
 //     其余任何一处 = 红(主入口引它、别的功能引它、包根别的文件引它、apps / scripts 引它)。
 //   - 主入口只算主入口:`cycle:gate` 的环判据不把 client-api 当入口(它不该被任何主入口引,本门保证这一点)。
+//   - 装配入口(D191)`<功能>/<功能>-configure.ts`(`configureEntryFeatureOf`,今天只有 logging):装配期才建的状态与
+//     接线 API。允许引它的只有:层次表上站 L4 的文件(包根、http-server、两种第二入口槽位、L4 的功能)、`apps/` 下的宿主、
+//     测试。L0–L3 的功能文件引它 = 红 —— 它们要的无副作用函数面由主入口交出。
 //
 // 两条防假绿:client-api 文件少于 `MIN_CLIENT_API_FILES` 或扫描文件少于下限 = 红(搬家 / 遍历坏了不该像「全干净」)。
 //
@@ -30,7 +33,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { collectSpecifiers, resolveSpecifier } from './feature-entry-gate.mjs'
-import { clientApiFeatureOf, isTestPath, repoRoot, runtimeFeatureOf } from './lib/backend-structure.mjs'
+import { clientApiFeatureOf, configureEntryFeatureOf, isTestPath, loadLayerTable, repoRoot, runtimeFeatureOf } from './lib/backend-structure.mjs'
 
 const SCAN_ROOTS = ['packages', 'apps', 'scripts', 'evals']
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'build', 'release', 'coverage'])
@@ -58,8 +61,20 @@ function walk(dir, out) {
   return out
 }
 
+let layerTable
+/** 装配入口(D191)的判据:只许 L4、`apps/` 与测试引。合规返回 null,违规返回一句理由;目标不是装配入口返回 undefined。 */
+export function judgeConfigureEntry(importer, target, table = (layerTable ??= loadLayerTable())) {
+  const owner = configureEntryFeatureOf(target)
+  if (!owner) return undefined
+  if (isTestPath(importer) || importer.startsWith('apps/')) return null
+  if (table.layerOf(table.groupOf(importer)) === 'L4') return null
+  return `${owner} 的装配入口只许 L4(包根、${HTTP_SERVER_DIR}、两种第二入口、L4 的功能)、apps/ 与测试引用;无副作用的名字从 ${owner} 的主入口拿`
+}
+
 /** 判一处引用:合规返回 null,违规返回一句理由。`importer` / `target` 都是仓库相对路径。 */
 export function judge(importer, target) {
+  const configureVerdict = judgeConfigureEntry(importer, target)
+  if (configureVerdict !== undefined) return configureVerdict
   const owner = clientApiFeatureOf(target)
   if (!owner) return null
   if (importer.startsWith(HTTP_SERVER_DIR)) return null
@@ -84,7 +99,7 @@ export function measure(root = repoRoot) {
     if (existsSync(absolute)) walk(absolute, files)
   }
   const rel = (f) => path.relative(root, f).split(path.sep).join('/')
-  const clientApis = files.map(rel).filter((f) => clientApiFeatureOf(f) !== null).sort()
+  const clientApis = files.map(rel).filter((f) => clientApiFeatureOf(f) !== null || configureEntryFeatureOf(f) !== null).sort()
   const importersOf = new Map(clientApis.map((f) => [f, []]))
   const violations = []
   const misnamedFiles = files.map(rel).map((f) => [f, misnamed(f)]).filter(([, why]) => why)
@@ -125,12 +140,22 @@ function selfTest() {
   expect('包根别的文件引 = 红', judge('packages/backend/backend.ts', api) !== null)
   expect('宿主引 = 红', judge('apps/backend-server/src/main.ts', api) !== null)
   expect('不是 client-api 的目标不判', judge('packages/backend/mcp/mcp.ts', 'packages/backend/settings/settings.ts') === null)
+  const configure = 'packages/backend/logging/logging-configure.ts'
+  expect('装配入口:形状认得出', configureEntryFeatureOf(configure) === 'logging')
+  expect('装配入口:别人名字打头的不是', configureEntryFeatureOf('packages/backend/logging/storage-configure.ts') === null)
+  expect('装配入口:包根装配配方可以引', judge('packages/backend/backend.ts', configure) === null)
+  expect('装配入口:http-server 可以引', judge('packages/backend/http-server/http-server-runtime.ts', configure) === null)
+  expect('装配入口:client-api 可以引', judge('packages/backend/logging/logging-client-api.ts', configure) === null)
+  expect('装配入口:宿主可以引', judge('apps/cli/src/daemon-server.ts', configure) === null)
+  expect('装配入口:测试可以引', judge('packages/backend/toc/__tests__/record-turn.test.ts', configure) === null)
+  expect('装配入口:L2 的功能文件引 = 红', judge('packages/backend/permission/permission-enforcement.ts', configure) !== null)
+  expect('装配入口:同功能的普通文件引 = 红', judge('packages/backend/logging/logging-diagnostics.ts', configure) !== null)
   if (failures.length > 0) {
     console.error('[client-api-gate] self-test FAILED:')
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log('[client-api-gate] self-test ok — 17 checks passed')
+  console.log('[client-api-gate] self-test ok — 26 checks passed')
 }
 
 function main() {
@@ -156,7 +181,7 @@ function main() {
     process.exit(1)
   }
   const importerCount = [...importersOf.values()].reduce((n, list) => n + list.length, 0)
-  console.log(`[client-api-gate] ok — ${clientApis.length} client-api file(s) across ${new Set(clientApis.map(clientApiFeatureOf)).size} feature(s), ${importerCount} import site(s), 0 outside http-server / same-feature / tests / ${EXCEPTIONS.size} listed exception(s); ${scanned} file(s) scanned`)
+  console.log(`[client-api-gate] ok — ${clientApis.length} client-api / configure-entry file(s) across ${new Set(clientApis.map((f) => clientApiFeatureOf(f) ?? configureEntryFeatureOf(f))).size} feature(s), ${importerCount} import site(s), 0 outside http-server / same-feature / L4 / apps / tests / ${EXCEPTIONS.size} listed exception(s); ${scanned} file(s) scanned`)
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

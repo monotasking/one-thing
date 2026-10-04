@@ -47,25 +47,12 @@ export const TASK_WALL_CLOCK_MS = 30 * 60_000
 
 /* ── 会话标记 ─────────────────────────────────────────────────────────────── */
 
-/**
- * 一条工作会话在自己的元数据上带的那枚戳。
- *
- * 结构类型而不是 IPC 契约包里那份 `TaskSessionRef`:产品层禁止 import 那个包
- * (boundary checker 强制)。两者字段同名同义,装配层传下来的就是那一份。
- */
-export interface TaskSessionMarkLike {
-  /** 派工的那条会话 —— 完成回流投回它。 */
-  parentSessionId?: string
-}
+// 「这条会话是不是被派出去的工作会话」问的是会话记录上 `task` 字段的含义,工具目录的场景解析也要问,
+// 所以判据与它读的那一小片形状住在 session(`session-venue.ts`,与 `resolveCollabVenue` 并排,D191);
+// 这里原样再交出,task 自己的读者不必改说明符。
+import { isTaskSession, type TaskSessionLike } from '@onething/backend/session'
 
-export interface TaskSessionLike {
-  task?: TaskSessionMarkLike | null
-}
-
-/** 这条会话是被派出去的工作会话吗(判据 = 会话元数据上的 task 戳)。 */
-export function isTaskSession(session: TaskSessionLike | null | undefined): boolean {
-  return Boolean(session?.task && typeof session.task === 'object')
-}
+export { isTaskSession, type TaskSessionLike, type TaskSessionMarkLike } from '@onething/backend/session'
 
 /**
  * 这条会话的回合**看不见**哪些工具。

@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  HISTORY_STRING_HARD_CAP_CHARS,
-  HISTORY_TOOL_RESULT_BUDGET_CHARS,
-  buildHistoryToolResultContent,
-  sanitizeHistoryToolResultForAI,
-  sanitizeToolResultForAI,
-} from '@onething/backend/agent-loop'
+import { sanitizeToolResultForAI } from '@onething/backend/agent-loop'
+import { HISTORY_STRING_HARD_CAP_CHARS, HISTORY_TOOL_RESULT_BUDGET_CHARS, buildHistoryToolResultContent, sanitizeHistoryToolResultForAI } from '../agent-loop-history.js'
 import { estimateSessionInputTokens } from '@onething/backend/agent-loop'
 
 const base64Image = 'iVBORw0KGgo'.repeat(72_000) // ~792KB, like a real read-image payload

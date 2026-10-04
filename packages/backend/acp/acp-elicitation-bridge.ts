@@ -41,7 +41,7 @@ import type {
   AcpElicitationResponse,
 } from './acp-types.js'
 import { getShellHost, hasShellHost } from '@onething/backend/shell'
-import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/interaction-no-human'
+import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/session'
 import { resolvePermissionMessageAnchor } from '@onething/backend/permission'
 import { getLogger } from '@onething/backend/logging'
 

@@ -23,7 +23,7 @@
  * 的「做」(调度、deeplink、CLI、界面上一个与当前会话无关的按钮)只能借一条会话的
  * 坐标,而借到的通常正是**被改的那一条** —— 审计于是读成「A 自己改了自己」。
  *
- * K2a 的答案是一个保留坐标 `NO_ORIGIN_SESSION`(`@onething/backend/resource/resource-api`)加这只
+ * K2a 的答案是一个保留坐标 `NO_ORIGIN_SESSION`(`@shared/toolkit/no-origin`,D191 从资源内核搬去 shared)加这只
  * 文件里的一支分叉:带着那个坐标的记录**不进任何会话的抄本**,落
  * `<store>/audit/resource.jsonl`,一行一条,append-only。
  *
@@ -41,7 +41,7 @@
  */
 
 import { appendFileSync, mkdirSync } from 'node:fs'
-import { NO_ORIGIN_SESSION } from '@onething/backend/resource/resource-api'
+import { NO_ORIGIN_SESSION } from '@shared/toolkit/no-origin'
 import type { SessionToolAuditEventData } from '@shared/session/events/types'
 import type { ToolAuditRecord, ToolAuditSink } from '@onething/backend/toolkit/toolkit-audit-observer'
 import { getOnethingAuditDir, getOnethingResourceAuditPath } from '@onething/backend/storage'

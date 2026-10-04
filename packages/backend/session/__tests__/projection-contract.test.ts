@@ -53,7 +53,7 @@ import { describe, expect, it } from 'vitest'
 
 import { finalizeLingeringAgentLoopToolWork } from '../../agent-loop/agent-loop-executor.js'
 import { CORE_ABORTED_TOOL_ERROR } from '@shared/engine/tool-call-errors.js'
-import { createCoreToolInputStartArtifacts } from '../../agent-loop/agent-loop.js'
+import { createCoreToolInputStartArtifacts } from '../../agent-loop/agent-loop-stream-processor.js'
 import { coreToolInputStartStepTitle } from '@shared/engine/tool-step.js'
 import { buildHistoryMessages } from '../../agent-loop/agent-loop.js'
 import { detectSkillUsage, getStepType } from '@shared/engine/tool-step.js'

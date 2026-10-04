@@ -20,6 +20,7 @@ import { promises as fs } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Principal } from '@shared/permission/principal'
 import type { Authorizer, Decision, ToolAuditRecord } from '@onething/backend/toolkit'
+import { toolkitAuditSink } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import type { AcpClientRequestContext, AcpFsBridge } from './acp-types.js'
 import { buildTextDiffChange } from '@onething/backend/external-agent'
@@ -35,7 +36,6 @@ import {
 } from '@onething/backend/toolkit'
 import { readTextFileSnapshot, withFileMutationQueue, withFileReadAccess } from '@onething/backend/tool'
 import { getLogger } from '@onething/backend/logging'
-import { toolkitAuditSink } from '@onething/backend/toolkit/toolkit-audit-sink'
 import { authorizeAcpRequest } from './acp-request-authorize.js'
 
 const log = getLogger('acp.fs')

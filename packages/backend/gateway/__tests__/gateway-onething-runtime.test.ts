@@ -1,4 +1,4 @@
-import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event/event-bus-primitives'
 import { describe, expect, it, vi } from 'vitest'
 import { createOnethingRuntime } from '../gateway-onething-runtime.js'
 
@@ -64,8 +64,8 @@ interface TestEvent {
 }
 
 function createHarness() {
-  const eventBus = new EventBus<TestEvent, TestEvent>()
-  const streamChannel = new StreamChannel<TestChunk>()
+  const eventBus = new GenericEventBus<TestEvent, TestEvent>()
+  const streamChannel = new GenericStreamChannel<TestChunk>()
   const settings: TestSettings = {
     ai: {
       provider: 'test-provider',
@@ -107,7 +107,7 @@ function createHarness() {
     TestMessage,
     void,
     { success: boolean },
-    EventBus<TestEvent, TestEvent>,
+    GenericEventBus<TestEvent, TestEvent>,
     never,
     TestChunk
   >({

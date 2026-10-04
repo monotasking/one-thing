@@ -24,7 +24,7 @@ import type {
   AgentMessage,
   AgentTurnStreamEvent,
 } from '@onething/backend/agent-loop'
-import { getHistoryProviderData } from '@onething/backend/agent-loop'
+import { getHistoryProviderData } from '../../../agent-loop/agent-loop-history.js'
 import { createAgentProviderFromRuntime } from '../../provider-factory.js'
 import { planOnethingProviderDataPart, providerDataFromOnethingContentPart } from '../../provider-data.js'
 import { OpenAIChatPartCodec, openRouterReasoningDetails } from '../provider-wires-openai-chat-messages.js'

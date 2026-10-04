@@ -21,7 +21,8 @@ import {
   type LogsRoutes,
 } from '@shared/ipc/logs.js'
 import { isLogLevel, type LogRecord } from './logging-logger-primitives.js'
-import { getLogLevelSpec, getRootLogger } from './logging-configure.js'
+import { getRootLogger } from './logging-configure.js'
+import { getLogLevelSpec } from './logging-runtime-root.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 const RENDERER_NS_PREFIX = 'renderer.'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildAgentLoopDirectToolsWithAdapters } from '../../agent-loop/agent-loop.js'
-import { executeCoreDirectTool } from '../../agent-loop/agent-loop.js'
+import { executeCoreDirectTool } from '../../agent-loop/agent-loop-direct-tool-execution.js'
 import { principalId, type Principal } from '@shared/permission/principal.js'
 
 /**

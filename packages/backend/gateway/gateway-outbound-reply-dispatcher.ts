@@ -3,10 +3,9 @@ import type { EventBus } from '@onething/backend/event'
 import { getOnethingStorePath } from '@onething/backend/storage'
 import { createChannelReplyDeliveryStore } from './gateway-channel-identity-store.js'
 import { sendIMReply } from '@onething/backend/plugin'
-import { writeAppLog } from '@onething/backend/logging/logging-configure'
+import { writeAppLog, getLogger } from '@onething/backend/logging'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('channel.outbound')
 

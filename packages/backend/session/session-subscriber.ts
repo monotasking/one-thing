@@ -13,8 +13,7 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { EventBus } from '@onething/backend/event/event-bus'
-import type { StreamChannel } from '@onething/backend/event/event-stream-channel'
+import type { EventBus, StreamChannel } from '@onething/backend/event'
 import type { SessionEventEnvelope, Unsubscribe } from '@onething/backend/event'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 import { type SessionState, createEmptySessionState } from './session-state.js'
@@ -57,7 +56,7 @@ export class Session {
    * Attach this session to EventBus and StreamChannel.
    * Starts receiving events and chunks.
    */
-  attach(eventBus: EventBus<any, any>, streamChannel: StreamChannel<any>): void {
+  attach(eventBus: EventBus, streamChannel: StreamChannel): void {
     const sessionId = this._state.id
 
     // Subscribe to all events for this session

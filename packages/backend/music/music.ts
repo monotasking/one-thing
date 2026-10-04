@@ -5,7 +5,7 @@
  * 对外交出六类东西:
  * - 装配:音乐子系统 `MusicSubsystem`、音乐 CLI 的 bash 分类策略登记;
  * - 曲库源:内置的那几只、按 id 取、列出描述、网易云那一只,以及描述的形状;
- * - 运行期的读与改:正在播放、电台仓库、切换曲库源、「这个调用方能不能操作音乐」的判据;
+ * - 运行期的读与改:正在播放、电台仓库、切换曲库源、「这个调用方能不能操作音乐」的判据、电台那组操作的适配器;
  * - `music:` 资源的规格与三个地址常量;
  * - 主持人的嗓子(语音合成)要实现的形状与估一段话念多久;
  * - 设置向导那一步的操作与几个状态形状。
@@ -27,6 +27,8 @@ export { getMusicNowPlaying } from './music-service.js'
 export { getRadioStore } from './music-radio.js'
 export { setMusicProvider } from './music-operations.js'
 export { assertMusicOperator } from './music-access.js'
+// 电台那组操作的适配器(D191 从工具目录搬回):资源面的 `MusicResourceProvider` 用它。
+export { musicRadioAdapters } from './music-tool-adapters.js'
 export type { OnethingMusicNowPlaying } from './music-now-playing.js'
 export type { OnethingMusicRuntimeState } from './music-types.js'
 

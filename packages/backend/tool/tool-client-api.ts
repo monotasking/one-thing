@@ -83,7 +83,7 @@ import * as store from '@onething/backend/session'
 import {
   runToolkitToolDirectly,
   toolkitCatalogToolDefinitions,
-} from '@onething/backend/toolkit/toolkit-tool-ports'
+} from '@onething/backend/toolkit'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'

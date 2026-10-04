@@ -1,5 +1,7 @@
 /**
  * 事件总线泛型原语的桶(`event-bus.ts` / `event-ring-buffer.ts` / `event-stream-channel.ts` / `types.ts` / `ipc-operations.ts`)。
+ * **只给本目录用**(D191):三只会话子类文件经它拿泛型基类;外面要泛型基类(`GenericEventBus` / `GenericStreamChannel` /
+ * `GenericRingBuffer`)一律经 event 入口拿。还留着包说明符的键,是因为几只测试仍在引它。
  * 它从前是 core 的事件目录桶(`runtime/event-bus/index.ts`);收尾整理 2(2026-10-03)与包根的 `events/` 并成
  * `event/` 时,目录桶 `index.ts` 留给对外入口(`createEventSystem` / `getEventBus`),这只按内容改名。
  *
@@ -12,13 +14,13 @@
  * "getEventBus 抛了"要先分辨是哪一份。
  */
 
-export { EventBus } from './event-bus.js'
+export { GenericEventBus } from './event-bus.js'
 export {
   emitCoreSessionEventSafely,
   emitCoreSessionCommandForIpc,
 } from './event-ipc-operations.js'
-export { RingBuffer } from './event-ring-buffer.js'
-export { StreamChannel } from './event-stream-channel.js'
+export { GenericRingBuffer } from './event-ring-buffer.js'
+export { GenericStreamChannel } from './event-stream-channel.js'
 export type {
   CoreSessionCommandEmitterLike,
   CoreSessionCommandIpcResult,

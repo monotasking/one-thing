@@ -1,4 +1,4 @@
-import { EventBus as CoreEventBus } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus } from '@onething/backend/event/event-bus-primitives'
 import type { CoreSessionCommandEmitterLike, CoreSessionEventEmitterLike, EmitResult } from '@onething/backend/event/event-bus-primitives'
 import type { SessionCommand } from '@shared/events/index.js'
 import type { GlobalEvent, SessionBusMessage } from '@shared/events/index.js'
@@ -8,7 +8,7 @@ import type { GlobalEvent, SessionBusMessage } from '@shared/events/index.js'
  * 从这条总线上走(见 `SessionBusMessage` 的注释)。
  */
 export class EventBus
-	extends CoreEventBus<SessionBusMessage, GlobalEvent>
+	extends GenericEventBus<SessionBusMessage, GlobalEvent>
 	// S2(I4-缝收口):core 的 ipc-operations 两道口就是靠这个类供货的,写出来。
 	implements
 		CoreSessionCommandEmitterLike<SessionCommand, EmitResult<SessionBusMessage>>,

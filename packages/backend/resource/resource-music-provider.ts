@@ -7,7 +7,7 @@
  *
  * ── 一条端口都不重写 ───────────────────────────────────────────────────────
  * 与 K2c-1 给会话定的纪律逐字相同:**采用今天那一只端口**,不另写一份。
- *   · 电台四条 —— `radioAdapters()`(`toolkit/toolkit-adapters.ts`)。它就是旧
+ *   · 电台四条 —— `musicRadioAdapters()`(`music/music-tool-adapters.ts`,D191 从工具目录搬回 music)。它就是旧
  *     `radio` 工具吃的那一份,连 `assertMusicOperator(fixedExecutionContext(…))`
  *     那道信任门都是同一行;这里**复用**它,不把那四条转发抄第二遍。
  *   · 播放器四条 —— `runMusicCommand`(`music/music-operations.ts`),也就是音乐条
@@ -93,6 +93,7 @@ import {
   MUSIC_RESOURCE_SCHEME,
   musicResourceSpec,
   assertMusicOperator,
+  musicRadioAdapters,
   setMusicProvider,
 } from '@onething/backend/music'
 import type {
@@ -105,7 +106,6 @@ import type {
 import type { MusicHostLog } from '@shared/ipc/music.js'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { fixedExecutionContext } from '../session/session.js'
-import { radioAdapters } from '../toolkit/toolkit-adapters.js'
 
 /** 播放器那一半的端口。电台那一半是既有的 `RadioToolAdapters`,不另立。 */
 export interface MusicPlayerAdapters {
@@ -912,7 +912,7 @@ export class MusicResourceProvider implements ResourceProvider<MusicOpPayload> {
 }
 
 /**
- * 音乐子系统的取法。三只成品工厂共用 —— 与 `radioAdapters()` 逐字同一句:
+ * 音乐子系统的取法。三只成品工厂共用 —— 与 `musicRadioAdapters()` 逐字同一句:
  * **装配那一刻捕获**(不是每次调用重问),不在就抛。
  */
 function musicSubsystem(): () => NonNullable<ReturnType<typeof getCurrentBackendInstance>>['music'] {
@@ -924,7 +924,7 @@ function musicSubsystem(): () => NonNullable<ReturnType<typeof getCurrentBackend
 }
 
 /**
- * 播放器那一半的成品适配器:与 `radioAdapters()` 同一个形状、同一道信任门
+ * 播放器那一半的成品适配器:与 `musicRadioAdapters()` 同一个形状、同一道信任门
  * (`assertMusicOperator(fixedExecutionContext(…))`)、同一个「音乐服务不在就抛」
  * 的取法。
  */
@@ -1027,7 +1027,7 @@ export function musicBackendAdapters(): MusicBackendAdapters {
 /** 这台宿主上的音乐资源。四族端口全部**复用**既有工厂,不抄第二遍。 */
 export function createMusicResourceProvider(): MusicResourceProvider {
   return new MusicResourceProvider({
-    radio: radioAdapters(),
+    radio: musicRadioAdapters(),
     player: musicPlayerAdapters(),
     station: musicStationAdapters(),
     backend: musicBackendAdapters(),

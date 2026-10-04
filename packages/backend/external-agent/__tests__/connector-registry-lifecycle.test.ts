@@ -36,14 +36,14 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-connector-registry-test',
 }))
-vi.mock('@onething/backend/logging/logging-configure', () => ({ writeAppLog: vi.fn() }))
+// D191:读者改从 logging 入口拿 `writeAppLog`,替身随之打在入口上(从前打在 `logging-configure`)。
 vi.mock('@onething/backend/logging', async importOriginal => {
   const actual = await importOriginal<typeof import('@onething/backend/logging')>()
   const logger = {
     ns: 'test', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
     isLevelEnabled: () => false, child: () => logger,
   }
-  return { ...actual, getLogger: () => logger, consolePort: () => logger }
+  return { ...actual, getLogger: () => logger, consolePort: () => logger, writeAppLog: vi.fn() }
 })
 vi.mock('../external-agent-host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
 vi.mock('@onething/backend/acp/acp-host-mcp-port', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))

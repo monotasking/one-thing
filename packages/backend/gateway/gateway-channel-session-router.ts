@@ -1,6 +1,6 @@
 import type { ChatSession, MessageOrigin } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
-import { writeAppLog } from '@onething/backend/logging/logging-configure'
+import { writeAppLog } from '@onething/backend/logging'
 // 临时留着的深层引用(会话归位 B,2026-10-03 起):这份路由的测试把 `session-layer.js` 整只换成只有 `getSessionManager`
 // 的替身,走会话入口会碰到入口再导出的另外两个名字。2026-10-04 包根归位 B 把这只路由从包根 `channel/` 搬进 gateway、
 // 会话名字改从会话入口拿(兼容桶 store.ts 删了),测试里 `configure-logging` 的替身也改成展开真模块 —— 当年那半个理由已经没了,

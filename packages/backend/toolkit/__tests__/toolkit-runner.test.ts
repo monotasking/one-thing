@@ -26,6 +26,8 @@ import {
   variableAdapters,
 } from '../toolkit-tier-catalogs.js'
 import { IpcProjector } from '@onething/backend/toolkit/toolkit-ipc-observer'
+// D191:goal / practice / task 三只工具的适配器由装配递进来,夹具用生产同一套工厂。
+import { assemblyToolAdapters } from './assembly-adapters.js'
 import { AuditProjector, type ToolAuditRecord } from '@onething/backend/toolkit/toolkit-audit-observer'
 import { createAppToolRunner } from '../toolkit-runner-factory.js'
 
@@ -67,7 +69,7 @@ describe('三档目录', () => {
   // K3-b:full 档少一只 `radio`(音乐退成 `music` 这个资源 scheme,它的工具由
   // 注册表对账进目录,不是这一档手写注册的)。
   it('桌面 / headless / readonly 各装得起来(R3a 二十只 + S6 的 search − K3-b 的 radio)', () => {
-    expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort())
+    expect(createDesktopCatalog(assemblyToolAdapters()).all().map(tool => tool.spec.id).sort())
       .toEqual([
         'ask_user', 'bash', 'edit', 'goal', 'practice',
         'read', 'search', 'task', 'time', 'variable', 'web_open',
@@ -85,7 +87,7 @@ describe('三档目录', () => {
 
   it('createCatalogForTier 三个档位都对得上,未知档位退回 headless', () => {
     // 越层清零 A1:协作四只(full)/ 三只(headless)由 collab 在装配时登记,不在三档里。
-    expect(createCatalogForTier('full').size).toBe(13)
+    expect(createCatalogForTier('full', assemblyToolAdapters()).size).toBe(13)
     expect(createCatalogForTier('headless').size).toBe(9)
     expect(createCatalogForTier('readonly').size).toBe(5)
   })

@@ -7,13 +7,14 @@
  *
  * 对外交出这几类东西(下面按类分组):契约;写一只工具要的协议件;各族基类;目录与工具面;
  * 内置工具(每只一组);以及文件末尾 2026-10-04 深层引用收口第三批补的执行管线、装配用的工厂、
- * 目录投影与插件工具、执行结果的形状、外部文本的界定。
+ * 目录投影与插件工具、执行结果的形状、外部文本的界定;最后一组是装配用的接线(D191):建目录、直调工具、
+ * 审计落盘口、插件拦截端口的形状、留在 toolkit 的几只缺省适配器。
  *
- * 依赖:tool(纯逻辑模块)、storage、permission(授权器)、logging、settings、session、file、task、agent-loop、
+ * 依赖:tool(纯逻辑模块)、storage、permission(授权器)、logging、settings、session、file、interaction、agent-loop、
  * lifecycle、variable、shared,以及包根的当前实例槽 `backend-current`。
- * 引上层功能(resource / plugin / task 的接线)的四只文件 —— `toolkit-wiring`、`toolkit-audit-sink`、
- * `toolkit-tool-ports`、`toolkit-adapters` —— 不经这里交出:进入口会把上层拖进入口闭包并成环,装配处直接引它们。
- * 开给界面的操作在第二入口 `toolkit-client-api-self-evolution.ts`,不经这里。只用具名导出。
+ * 它不认识 plugin / resource / goal / practice / task / music(D191):插件的两条拦截链是装配时递进来的端口
+ * (`ToolkitInterceptor`),无会话坐标住在 shared,goal / practice / task 三只工具的适配器住在各自功能里、由
+ * `backend.ts` 递进 `buildToolkitCatalog`。开给界面的操作在第二入口 `toolkit-client-api-self-evolution.ts`,不经这里。只用具名导出。
  */
 
 export {
@@ -167,8 +168,8 @@ export type { PracticeInput, PracticeToolAdapters } from './builtin/toolkit-buil
 /*
  * K3-b —— `radio` 这只工具退役了(音乐成了一个 scheme,`music/music-resource-spec.ts`),
  * 但**它的适配器形状留下来**:那四条端口(开台 / 关台 / 状态 / 点歌)是装配层与
- * 音乐子系统之间既有的一份契约,`radioAdapters()` 与新的 `MusicResourceProvider`
- * 吃的都是它。类型搬到 `./toolkit-radio-adapters.js`(纯类型,没有工具了)。
+ * 音乐子系统之间既有的一份契约,`MusicResourceProvider` 吃的就是它(工厂 `musicRadioAdapters()` 在 music,D191)。
+ * 类型搬到 `./toolkit-radio-adapters.js`(纯类型,没有工具了)。
  */
 export type { RadioToolAdapters, RadioToolStatus } from './toolkit-radio-adapters.js'
 export { createTaskTool, TASK_DESCRIPTION, TaskInputSchema, TaskTool } from './builtin/toolkit-builtin-task.js'
@@ -224,3 +225,19 @@ export type { ToolAuditRecord } from './toolkit-audit-observer.js'
 
 // 外部文本(网页正文、搜索结果)的界定:标成数据,不是指令
 export { wrapUntrustedText } from './toolkit-untrusted-text.js'
+
+// 装配用的接线(D191):建目录与刷 MCP 工具面、直调一只工具、审计落盘口、插件拦截端口的形状、
+// 留在 toolkit 的三只缺省适配器(提问、网页检索、网页打开)。goal / practice / task 的适配器在各自功能里。
+export {
+  buildToolkitCatalog,
+  getOrBuildToolkitCatalog,
+  installToolkitCatalogForTests,
+  refreshToolkitMcpTools,
+  resetToolkitCatalogForTests,
+  runToolkitToolDirectly,
+} from './toolkit-wiring.js'
+export type { ToolkitCatalogPorts, ToolkitDirectContext, ToolkitInterceptor } from './toolkit-wiring.js'
+export { toolkitAuditSink } from './toolkit-audit-sink.js'
+export { askUserAdapters } from './toolkit-ask-user-adapters.js'
+export { webOpenAdapters, webSearchAdapters } from './toolkit-web-adapters.js'
+export type { ToolkitBuiltinAdapters } from './toolkit-tier-catalogs.js'

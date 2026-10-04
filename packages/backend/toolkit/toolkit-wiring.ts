@@ -10,7 +10,9 @@
  *     返回形状**与旧路逐字相同**(`OnethingToolExecutionResult`),所以
  *     `ipc-bridge.ts` / `apps/backend-server/src/http.ts` / 渲染器一个字都不动。
  *  3. 缝 3 的两半:四个回调 → `IpcProjector`(一个 Observer),两条插件拦截链 →
- *     一个 `Interceptor`。
+ *     一个 `Interceptor`。两条链本身由装配时递进来的端口 `ToolkitInterceptor` 给出
+ *     (D191:本文件不再认识 plugin;端口缺席 = 不拦截),插件那边的实现是
+ *     `plugin/plugin-tool-interceptor.ts`,`backend.ts` 在造目录那一步把它递进来。
  *
  * ## 目录里没有的工具怎么办
  *
@@ -30,13 +32,12 @@ import type { JsonObject } from '@shared/json.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 import { configureToolkitCatalog, getToolkitCatalog } from './toolkit-host.js'
 import type { ToolExecutionResult as OnethingToolExecutionResult } from '@onething/backend/toolkit/toolkit-execution-types'
-import { createCatalogForTier, type ToolCatalogTier } from './toolkit-tier-catalogs.js'
+import { createCatalogForTier, type ToolkitBuiltinAdapters, type ToolCatalogTier } from './toolkit-tier-catalogs.js'
 import { IpcProjector, type LegacyMetadataUpdate, type LegacyToolProgressUpdate } from '@onething/backend/toolkit/toolkit-ipc-observer'
 import { createPermissionAuthorizer } from './toolkit-authorizer.js'
 import { createAppToolRunner } from './toolkit-runner-factory.js'
 import { toolkitAuditSink } from './toolkit-audit-sink.js'
 import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from '@onething/backend/toolkit/toolkit-mcp-catalog'
-import { runPluginToolCallIntercept, runPluginToolResultIntercept } from '@onething/backend/plugin'
 import { getLogger } from '@onething/backend/logging'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { fixedExecutionContext } from '../session/session.js'
@@ -47,15 +48,52 @@ const log = getLogger('toolkit')
 
 /* ── 缝 4:目录 ───────────────────────────────────────────────────────────── */
 
-let built: { catalog: Catalog; tier: ToolCatalogTier } | undefined
+/**
+ * 工具调用拦截端口(D191)。两只函数的签名与插件那两条链的入口
+ * (`runPluginToolCallIntercept` / `runPluginToolResultIntercept`)逐字相同,形状在这里按结构写出来,
+ * 所以本文件不认识 plugin。**缺席 = 不拦截**:没有人递端口进来的目录(测试、没走装配的轻量进程)
+ * 直接跑工具,与「链上没有任何钩子」的结果逐字相同。
+ */
+export interface ToolkitInterceptor {
+  beforeCall(input: {
+    sessionId: string
+    toolName: string
+    toolCallId?: string
+    input: unknown
+  }): Promise<
+    | { action: 'allow'; input: unknown; rewrittenBy: string[]; ran: number }
+    | { action: 'block'; reason: string; blockedBy: string; ran: number }
+  >
+  afterResult(input: {
+    sessionId: string
+    toolName: string
+    toolCallId?: string
+    input: unknown
+    result: { content: string; isError: boolean }
+  }): Promise<{
+    action: 'keep' | 'replace'
+    result: { content: string; isError: boolean }
+    rewrittenBy: string[]
+    ran: number
+  }>
+}
+
+/** 装配时递进来的两样东西:内置工具的适配器(goal / practice / task 等回各自功能的那几只)与拦截端口。 */
+export interface ToolkitCatalogPorts {
+  adapters?: ToolkitBuiltinAdapters
+  interceptor?: ToolkitInterceptor
+}
+
+let built: { catalog: Catalog; tier: ToolCatalogTier; interceptor?: ToolkitInterceptor } | undefined
 
 /**
  * 建一档目录并挂到产品层端口上。`createOnethingBackend` 在工具注册阶段旁边调它
- * 一次(开关开时才调 —— 不调就零开销)。
+ * 一次(开关开时才调 —— 不调就零开销)。`ports` 由装配递进来(D191):适配器给 goal / practice / task
+ * 这些住在各自功能里的工具,拦截端口给插件的两条拦截链;都不给就是一份只有 toolkit 自己能造的工具的目录。
  */
-export function buildToolkitCatalog(tier: ToolCatalogTier): Catalog {
+export function buildToolkitCatalog(tier: ToolCatalogTier, ports: ToolkitCatalogPorts = {}): Catalog {
   if (built?.tier === tier) return built.catalog
-  const catalog = createCatalogForTier(tier)
+  const catalog = createCatalogForTier(tier, ports.adapters)
   /*
    * §13.5:`feature_*` 不在三档里(旧树同规)。
    *
@@ -66,7 +104,7 @@ export function buildToolkitCatalog(tier: ToolCatalogTier): Catalog {
    * 宿主档门与那张动态挂载表的寿命都跟着挪了过去。
    */
   configureToolkitCatalog(catalog)
-  built = { catalog, tier }
+  built = { catalog, tier, ...(ports.interceptor ? { interceptor: ports.interceptor } : {}) }
   return catalog
 }
 
@@ -84,12 +122,17 @@ export function refreshToolkitMcpTools(): void {
  *
  * R4b:`ONETHING_TOOLKIT_TIER` 这个切换期兜底环境变量随开关一起删(§14.5-5)。
  * 真宿主的档位一律由 `createOnethingBackend` 显式传进 `buildToolkitCatalog`。
+ *
+ * D191:懒建的这一份没有装配递进来的端口,所以目录里没有 goal / practice / task 三只工具(它们的适配器
+ * 住在各自功能里,由 `backend.ts` 递进来),工具调用也不经插件拦截。三个生产宿主都经 `backend.ts` 的正路建目录,
+ * 碰不到这里;这里服务的是测试与没走装配的轻量进程。
  */
 export function getOrBuildToolkitCatalog(): Catalog | undefined {
   if (built) return built.catalog
   const configured = getToolkitCatalog()
   if (configured) return configured
   try {
+    log.info('toolkit catalog built without assembly ports; goal / practice / task tools are absent and plugin interception is off')
     return buildToolkitCatalog('full')
   } catch (error) {
     log.error('toolkit catalog build failed; this host has no tools', {}, error)
@@ -101,6 +144,16 @@ export function getOrBuildToolkitCatalog(): Catalog | undefined {
 export function resetToolkitCatalogForTests(): void {
   built = undefined
   configureToolkitCatalog(undefined)
+}
+
+/**
+ * 测试钩子:装一份测试自己拼的目录,并带上装配时才递进来的拦截端口(D191 之后拦截端口跟着
+ * `buildToolkitCatalog` 走,只 `configureToolkitCatalog` 一份手拼目录的测试就没有拦截了)。
+ * 装上之后它占着 `full` 档:`resetToolkitCatalogForTests()` 之前再调 `buildToolkitCatalog('full')` 拿回的就是这一份。
+ */
+export function installToolkitCatalogForTests(catalog: Catalog, ports: Pick<ToolkitCatalogPorts, 'interceptor'> = {}): void {
+  configureToolkitCatalog(catalog)
+  built = { catalog, tier: 'full', ...(ports.interceptor ? { interceptor: ports.interceptor } : {}) }
 }
 
 /* ── 缝 3:两条插件拦截链 → 一个 Interceptor ───────────────────────────────── */
@@ -140,16 +193,20 @@ function outcomeWithReplacedResult(verdict: { content: string; isError: boolean 
 
 class PluginInterceptor {
   private readonly projector: IpcProjector
+  /** 装配递进来的拦截端口;缺席 = 不拦截(两个钩子原样放行),外面那层取消收尾照旧。 */
+  private readonly port: ToolkitInterceptor | undefined
   /** 改写之后的参数。结果拦截链要拿**最终跑的那份**,与旧路一致。 */
   private currentInput: unknown
 
-  constructor(projector: IpcProjector, initialInput: unknown) {
+  constructor(projector: IpcProjector, port: ToolkitInterceptor | undefined, initialInput: unknown) {
     this.projector = projector
+    this.port = port
     this.currentInput = initialInput
   }
 
   async beforePlan(invocation: Invocation) {
-    const outcome = await runPluginToolCallIntercept({
+    if (!this.port) return {}
+    const outcome = await this.port.beforeCall({
       sessionId: invocation.sessionId,
       toolName: invocation.toolId,
       toolCallId: invocation.callId,
@@ -170,8 +227,9 @@ class PluginInterceptor {
     // 只有工具**真正产出的结果**进改写链:被拦截器挡下、被权限拒绝、被用户取消
     // 的都不进(分别是拦截器的、权限系统的、用户的),与旧路逐字一致。
     if (outcome.kind === 'denied' || outcome.kind === 'aborted') return outcome
+    if (!this.port) return outcome
     const legacy = this.projector.toExecutionResult(outcome)
-    const verdict = await runPluginToolResultIntercept({
+    const verdict = await this.port.afterResult({
       sessionId: invocation.sessionId,
       toolName: invocation.toolId,
       toolCallId: invocation.callId,
@@ -321,7 +379,9 @@ async function runPreparedTool(
     ...(context.workingDirectoryRoots ? { workingDirectoryRoots: context.workingDirectoryRoots } : {}),
   }
 
-  const interceptor = new PluginInterceptor(projector, args)
+  // 端口缺席(没有装配递进来)= 不拦截:两个钩子原样放行,与「链上没有任何钩子」的结果逐字相同;
+  // 外面那层「定点停止之后结局必须仍是 aborted」的收尾不随端口缺席而消失。
+  const interceptor = new PluginInterceptor(projector, built?.interceptor, args)
   const isMcp = tool.spec.effects.includes('mcp')
   const authorizer = withSideEffectGate(
     createPermissionAuthorizer(),

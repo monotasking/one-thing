@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildMessageBodyShapePayload,
-  chatLogContentTextLength,
-} from '@onething/backend/agent-loop'
+import { buildMessageBodyShapePayload } from '@onething/backend/agent-loop'
+import { chatLogContentTextLength } from '../agent-loop-chat-logger.js'
 
 describe('core chat logger helpers', () => {
   it('computes message body shape rows and totals', () => {

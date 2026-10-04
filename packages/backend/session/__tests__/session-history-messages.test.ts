@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { agentContentToText } from '@onething/backend/agent-loop'
-import type { CoreHistoryChatMessage, CoreHistoryToolCall } from '@onething/backend/agent-loop'
+import type { CoreHistoryChatMessage } from '@onething/backend/agent-loop'
+import type { CoreHistoryToolCall } from '../../agent-loop/agent-loop-history.js'
 import {
   buildOnethingHistoryMessages,
   buildOnethingResumeHistoryAfterToolConfirmation,

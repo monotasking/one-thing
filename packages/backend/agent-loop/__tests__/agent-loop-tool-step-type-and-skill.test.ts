@@ -10,10 +10,8 @@
  * 裁定是"修引擎不供养怪癖":引擎在参数定稿那一刻重算 type、认一次技能并宣告。
  */
 import { describe, expect, it } from 'vitest'
-import {
-  createCoreToolInputStartArtifacts,
-  startAgentLoopToolExecution,
-} from '@onething/backend/agent-loop'
+import { createCoreToolInputStartArtifacts } from '../agent-loop-stream-processor.js'
+import { startAgentLoopToolExecution } from '../agent-loop-executor.js'
 import type { CoreStreamToolCallLike } from '@onething/backend/agent-loop'
 
 /** 就用引擎自己那份形状 —— 占位工厂产出的就是它,免得测试里再手抄一份。 */

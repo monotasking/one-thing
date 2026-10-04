@@ -55,6 +55,12 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/session')>(),
   getSession: (id: string) => mocks.sessions.get(id),
 }))
+// 「房里有没有人类」那只判据 D191 从 interaction 搬进 session,在会话目录里引兄弟 `session-store.js` 的 `getSession`,
+// 打在会话入口上的桩够不着它;照 D180 把同一只桩也打在声明 `getSession` 的那只文件上。
+vi.mock('../../session/session-store.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../session/session-store.js')>(),
+  getSession: (id: string) => mocks.sessions.get(id),
+}))
 vi.mock('@onething/backend/settings', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/settings')>(),
   getSettings: () => ({ network: {} }),
@@ -80,11 +86,10 @@ const noopLogger = () => {
   logger.child = () => logger
   return logger
 }
-vi.mock('@onething/backend/logging/logging-configure', () => ({
-  writeAppLog: vi.fn(),
-}))
+// D191:读者改从 logging 入口拿 `writeAppLog`,替身随之打在入口上(从前打在 `logging-configure`)。
 vi.mock('@onething/backend/logging', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/logging')>(),
+  writeAppLog: vi.fn(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))

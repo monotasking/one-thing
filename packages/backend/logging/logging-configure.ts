@@ -13,14 +13,16 @@ import {
   ensureDir,
   getOnethingLogDir,
 } from '@onething/backend/storage/storage'
-// 唯一一处引自家入口(D126 的例外,D156):取 logger 的实现留在入口里,搬进兄弟文件会让检索 Worker 变大。
-import { getLogger, getRuntimeLoggerRoot, setRuntimeLoggerRoot } from './logging.js'
+// D191:取 logger、当前 root 与写在它上面的函数住在 `logging-runtime-root.ts`,宿主端口槽与等级解析各一只兄弟;
+// 本文件不再引自家入口。
+import { getLogger, getRuntimeLoggerRoot, setLogLevelSpec, setRuntimeLoggerRoot } from './logging-runtime-root.js'
+import { appLoggingHostPorts, configureAppLoggingHost, type AppLoggingHostPorts } from './logging-host-ports.js'
+import { resolveLevelSpec } from './logging-level-spec.js'
 import { JsonlFileSink } from './logging-jsonl-file-sink.js'
 import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from './logging-legacy-console-sink.js'
 import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from './logging-crash-hooks.js'
 import { LogDirJanitor } from './logging-janitor.js'
-import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './logging-legacy-debug-env.js'
-import type { AppLogLevel } from './logging-rolling-file-logger.js'
+import { resolveLegacyDebugAliases } from './logging-legacy-debug-env.js'
 
 export { JsonlFileSink, readRollingFileEnvOptions } from './logging-jsonl-file-sink.js'
 export { LegacyConsoleSink, LEGACY_CONSOLE_NS, callsiteOf } from './logging-legacy-console-sink.js'
@@ -33,70 +35,28 @@ export { consolePort } from './logging-console-port.js'
 export type { ConsoleLikePort } from './logging-console-port.js'
 export type { LegacyDebugAliasSpec } from './logging-legacy-debug-env.js'
 export type { AppLogLevel, AppLogRecord } from './logging-rolling-file-logger.js'
+// D191 搬去兄弟文件、经入口交出的无副作用函数面;这里原样转交同一个函数,只留给仍从本文件拿它们的测试
+// (`toBe` 钉得住是同一个函数)。产品代码一律从入口拿。
+export { getLogLevelSpec, setLogLevelSpec, writeAppLog } from './logging-runtime-root.js'
+export { configureAppLoggingHost, resetAppLoggingHost } from './logging-host-ports.js'
+export type { AppLoggingHostPorts, RendererCaptureLogEntry } from './logging-host-ports.js'
+export { resolveLevelSpec } from './logging-level-spec.js'
 
 /**
- * 装配层的日志入口(docs/design/logging-system-2026-08.md L1)。
+ * logging 功能的**装配入口**(D191 登记:与 `<功能>-client-api.ts` 同类的第二入口,只许包根、http-server、
+ * 两种第二入口与 apps 引,`client-api:gate` 管;docs/design/logging-system-2026-08.md L1)。
+ *
+ * 这里只留**装配期才建的状态**:root 与它的 400 条内存环、文件 sink、目录管家、崩溃钩子、console 劫持、
+ * renderer 兜底采集,以及接线 API `configureLogging` / `shutdownAppLogging` / `getAppLogPath` / `getRootLogger`。
+ * 它们有模块级副作用、要存储层,经主入口交出会把它们连同存储层一起拖进检索 Worker(决定文档 §3.1 实测 +2643 字节),
+ * 所以单开这一扇门;无副作用的函数面(`writeAppLog`、等级、诊断模式、宿主端口槽)住在兄弟文件、经主入口交出。
  *
  * `configureLogging()` 是**唯一**的接线点:等级 spec、sink 组合、console 兜底、
  * 进程钩子、目录治理都在这里定;产品代码只见 `getLogger(ns)`。
  * `initializeAppLogging()` 保留为别名,宿主调用点不必同批改(L4 再收)。
  */
 
-/**
- * 宿主注入口。Electron 把 log 目录镜像进自己的崩溃工具、并接管 renderer 的
- * console 兜底;headless 宿主两个都不给,只落主进程自己的输出。
- */
-export interface AppLoggingHostPorts {
-  setAppLogsPath?: (logDir: string) => void
-  createRendererConsoleCapture?: (options: {
-    log: (entry: RendererCaptureLogEntry) => void
-  }) => { attach(): void; detach(): void }
-}
-
-/** 宿主兜底采集(Electron `console-message`)投递的形状。 */
-export interface RendererCaptureLogEntry {
-  level: LogLevel
-  /** 不给则记 `renderer`。 */
-  ns?: string
-  msg: string
-  fields?: Record<string, unknown>
-  /** 旧口径的标签(`renderer:<wcId>`),落进 `fields.source`。 */
-  source?: string
-}
-
-let hostPorts: AppLoggingHostPorts = {}
-
-export function configureAppLoggingHost(ports: AppLoggingHostPorts): void {
-  hostPorts = ports
-}
-
-/**
- * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
- * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
- */
-/**
- * 注意与 `resetLoggingForTests()` 的区别:那一个拆的是 `configureLogging()` 起的
- * 文件 sink / janitor / crash hooks(宿主在装配**之前**调、寿命比 backend 长);
- * 这一个只清宿主表 `logging` 那一格递进来的两件采集能力。
- */
-export function resetAppLoggingHost(): void {
-  hostPorts = {}
-}
-
-const DEFAULT_LEVEL_SPEC = 'info'
 const MEMORY_RING_SIZE = 400
-
-/**
- * 最终等级 spec = 显式参数 / `ONETHING_LOG` / 兜底 `info`,再拼上**已废弃**的
- * `ONETHING_DEBUG_*` 别名(见 `logging-legacy-debug-env.ts`,L5 删)。别名永远弱于显式 spec。
- */
-export function resolveLevelSpec(explicit?: string): string {
-  return composeLevelSpecWithLegacyAliases(
-    explicit ?? process.env.ONETHING_LOG,
-    DEFAULT_LEVEL_SPEC,
-    resolveLegacyDebugAliases(process.env),
-  )
-}
 
 const memoryRing = new MemoryRingSink(MEMORY_RING_SIZE)
 
@@ -195,8 +155,8 @@ export function configureLogging(options: ConfigureLoggingOptions = {}): Logging
   const logDir = options.logDir ?? getOnethingLogDir()
   activeLogDir = logDir
   ensureDir(logDir)
-  hostPorts = options.hostPorts ?? hostPorts
-  hostPorts.setAppLogsPath?.(logDir)
+  if (options.hostPorts) configureAppLoggingHost(options.hostPorts)
+  appLoggingHostPorts().setAppLogsPath?.(logDir)
 
   if (options.legacyConsole !== false) {
     legacyConsole = new LegacyConsoleSink({ root, src: options.src ?? 'main' })
@@ -290,15 +250,6 @@ function createHandle(): LoggingHandle {
   }
 }
 
-/** 运行时改等级(诊断模式 / `log:level` 之类的入口都走它)。 */
-export function setLogLevelSpec(spec: string): void {
-  root.setLevelSpec(spec)
-}
-
-export function getLogLevelSpec(): string {
-  return root.levelSpec
-}
-
 export function getAppLogDir(): string {
   return activeLogDir || getOnethingLogDir()
 }
@@ -331,28 +282,8 @@ export async function shutdownAppLogging(): Promise<void> {
   initialized = false
 }
 
-/**
- * 迁移期的结构化入口(channel/* 与权限策略的 8 个调用点)。
- * `source` 直接当命名空间用 —— 它们本来就写的是 `channel.identity` 这种点分名。
- */
-export function writeAppLog(
-  level: AppLogLevel,
-  source: string,
-  message: string,
-  metadata?: Record<string, unknown>,
-): void {
-  root.emit({
-    time: Date.now(),
-    level,
-    ns: source,
-    msg: message,
-    src: 'main',
-    ...(metadata && Object.keys(metadata).length > 0 ? { fields: metadata } : {}),
-  })
-}
-
 function attachLoggingCapture(): void {
-  rendererConsoleCapture = hostPorts.createRendererConsoleCapture?.({
+  rendererConsoleCapture = appLoggingHostPorts().createRendererConsoleCapture?.({
     log: entry => {
       root.emit({
         time: Date.now(),

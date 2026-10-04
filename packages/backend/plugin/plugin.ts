@@ -73,6 +73,8 @@ export { pluginScope } from './plugin-policy.js'
 export { runPluginInputIntercept } from './plugin-input-intercept-bound.js'
 export { runPluginToolCallIntercept } from './plugin-tool-call-intercept-bound.js'
 export { runPluginToolResultIntercept } from './plugin-tool-result-intercept-bound.js'
+// 工具目录的拦截端口(D191):装配在造目录时把它递进 `buildToolkitCatalog`,工具目录不再直接认识上面两条链。
+export { pluginToolInterceptor } from './plugin-tool-interceptor.js'
 export { runAfterAssistantResponseHooks, runBeforeContextCompactHooks } from './plugin-lifecycle-hooks.js'
 export type { BeforeContextCompactContext } from './plugin-lifecycle-hooks.js'
 export { deliverInternalMessage, pluginPostInterceptReply } from './plugin-session-messenger.js'

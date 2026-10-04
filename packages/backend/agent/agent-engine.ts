@@ -1,7 +1,6 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { ContextManager, type AgentMessage } from '../context/context.js'
-import { EventBus } from '../event/event-bus.js'
-import { StreamChannel } from '../event/event-stream-channel.js'
+import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event'
 import type { EventBase } from '../event/event.js'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 import { ToolExecutor, DenyAllPolicy, type PermissionPolicy, ToolRegistry } from '../tool/tool.js'
@@ -40,8 +39,8 @@ export type AgentEngineRequest = ProviderRequest
 export type AgentEngineProvider = Provider
 
 export interface AgentEngineOptions {
-  eventBus?: EventBus<AgentEngineSessionEvent>
-  streamChannel?: StreamChannel<AgentEngineStreamChunk>
+  eventBus?: GenericEventBus<AgentEngineSessionEvent>
+  streamChannel?: GenericStreamChannel<AgentEngineStreamChunk>
   contextManager?: ContextManager
   provider?: AgentEngineProvider
   toolRegistry?: ToolRegistry
@@ -63,8 +62,8 @@ export interface SendMessageResult {
 }
 
 export class AgentEngine {
-  readonly eventBus: EventBus<AgentEngineSessionEvent>
-  readonly streamChannel: StreamChannel<AgentEngineStreamChunk>
+  readonly eventBus: GenericEventBus<AgentEngineSessionEvent>
+  readonly streamChannel: GenericStreamChannel<AgentEngineStreamChunk>
   readonly contextManager: ContextManager
   readonly toolRegistry: ToolRegistry
   private provider: AgentEngineProvider
@@ -72,8 +71,8 @@ export class AgentEngine {
   private maxToolIterations: number
 
   constructor(options: AgentEngineOptions = {}) {
-    this.eventBus = options.eventBus ?? new EventBus<AgentEngineSessionEvent>()
-    this.streamChannel = options.streamChannel ?? new StreamChannel<AgentEngineStreamChunk>()
+    this.eventBus = options.eventBus ?? new GenericEventBus<AgentEngineSessionEvent>()
+    this.streamChannel = options.streamChannel ?? new GenericStreamChannel<AgentEngineStreamChunk>()
     this.contextManager = options.contextManager ?? new ContextManager()
     this.provider = options.provider ?? createEchoAgentProvider()
     this.toolRegistry = options.toolRegistry ?? new ToolRegistry()

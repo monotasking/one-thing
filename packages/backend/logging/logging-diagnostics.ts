@@ -1,6 +1,7 @@
 import { setOnethingProviderRequestDumpEnabled } from './logging-provider-request-dump.js'
-import { getLogger } from './logging.js'
-import { resolveLevelSpec, setLogLevelSpec } from './logging-configure.js'
+// D191:只引兄弟文件(当前 root 与写在它上面的等级、等级解析),不引入口、不引装配入口,所以入口能交出本文件。
+import { getLogger, setLogLevelSpec } from './logging-runtime-root.js'
+import { resolveLevelSpec } from './logging-level-spec.js'
 
 /**
  * 「诊断模式」(拍板 E②):设置页**一个**开关 = 全域 debug + provider 请求正文

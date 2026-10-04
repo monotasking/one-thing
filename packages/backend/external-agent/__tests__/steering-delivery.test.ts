@@ -81,11 +81,10 @@ const noopLogger = () => {
   logger.child = () => logger
   return logger
 }
-vi.mock('@onething/backend/logging/logging-configure', () => ({
-  writeAppLog: vi.fn(),
-}))
+// D191:读者改从 logging 入口拿 `writeAppLog`,替身随之打在入口上(从前打在 `logging-configure`)。
 vi.mock('@onething/backend/logging', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/logging')>(),
+  writeAppLog: vi.fn(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))

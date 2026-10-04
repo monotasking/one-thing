@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-	LEGACY_TURN_CONTEXT_SECTION_ID,
-	TurnContextLedger,
-	renderContextUpdateBlock,
-	visibleMessagesAfterSummary,
-	type TurnBlock,
-	type TurnContextCarrier,
-} from "../agent-loop/agent-loop.js";
+import { TurnContextLedger, renderContextUpdateBlock, visibleMessagesAfterSummary, type TurnBlock, type TurnContextCarrier } from "../agent-loop/agent-loop.js";
+import { LEGACY_TURN_CONTEXT_SECTION_ID } from "../agent-loop/agent-loop-turn-context.js";
 
 const ledger = new TurnContextLedger();
 

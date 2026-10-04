@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CoreTriggerManager, type CoreTrigger } from '@onething/backend/agent-loop'
+import { type CoreTrigger } from '@onething/backend/agent-loop'
+import { CoreTriggerManager } from '../agent-loop-triggers.js'
 
 interface TestTriggerContext {
   sessionId: string

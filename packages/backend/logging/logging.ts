@@ -2,168 +2,39 @@
  * logging:日志设施的入口(docs/design/logging-system-2026-08.md)。
  *
  * 它做什么:给任何模块一只 `getLogger(ns)`,定一条记录的形状(`LogRecord`)、logger 接口、sink、等级与错误归一,
- * 外加旧式 `console` 形状端口的适配器和服务商请求转储。写盘、轮转、目录管家、进程崩溃钩子与等级 spec 的接线
- * 在 `logging-configure.ts`,由宿主与装配配方在启动时调一次 `configureLogging()`。
+ * 外加旧式 `console` 形状端口的适配器、服务商请求转储,以及几只写在当前 root 上的无副作用函数。写盘、轮转、目录管家、
+ * 进程崩溃钩子与接线在功能的**装配入口** `logging-configure.ts`(D191 登记,只许包根、http-server 与 apps 引),
+ * 由宿主与装配配方在启动时调一次 `configureLogging()`。
  *
- * 对外交出四类东西:
- * 1. 取 logger 与当前 root(就写在本文件里)—— `getLogger` 是延迟绑定的那一只,跟着当前 root 走;
+ * 对外交出五类东西:
+ * 1. 取 logger 与当前 root(实现在 `logging-runtime-root.ts`)—— `getLogger` 是延迟绑定的那一只,跟着当前 root 走;
  *    `configureLogging()` 调 `setRuntimeLoggerRoot` 把当前 root 指到 configure 的 root,检索 Worker 则指到往宿主
  *    转发的那一只。`captureRuntimeLogs` 是测试用的抓取器。
  * 2. 日志原语 —— 记录与 logger 的类型、`LoggerRoot`、sink、等级表、错误归一,以及兼容层(`toLogger` / `CompatLogger`)
  *    与注入端口(`getCoreLogger`)。
  * 3. `console` 形状的端口适配器 `consolePort`(迁移期的过渡件)。
  * 4. 服务商请求转储(落 `log/dumps/`,开关由诊断模式拨)。
+ * 5. 无副作用的函数面(D191 从 configure 搬出):`writeAppLog`、读改当前等级、等级 spec 的解析、诊断模式开关、
+ *    宿主端口表 `logging` 那一格的槽。
  *
  * 依赖:只依赖 `@shared/logging` 与 node 内建;`logging-console-port.ts` 对各功能的引用全是类型。
  *
- * 全进程只有这一只 `getLogger`:2026-10-04 之前 `logging-configure.ts` 另有一只同名不同物的(直接绑在 configure
- * 自己的 root 上),D160 / D161 合成了这一只 —— configure 转交的就是这个函数。接线之前写的记录留在下面的
- * 200 条兜底环里、不落文件(合并之前两只都不落,`logging-configure.test.ts` 钉着)。
+ * 全进程只有这一只 `getLogger`(D160 / D161 合并了 configure 那只同名的)。接线之前写的记录留在 200 条兜底环里、
+ * 不落文件(`logging-configure.test.ts` 钉着)。
  *
- * 没有交出的:`logging-configure.ts` 的接线 API(`configureLogging` / `shutdownAppLogging` / `writeAppLog` /
- * `getAppLogPath` / `getRootLogger` / `configureAppLoggingHost` / `collectLogRecordsForTests` / …)与
- * `logging-diagnostics.ts` 的诊断模式开关,仍经深层键给宿主与装配配方 —— 经入口交出会把 configure 连同存储层
- * 一起拖进检索 Worker(D155 / D164)。
- *
- * 取 logger 那一段的实现留在入口里而没有搬进兄弟文件:搬出去会让检索 Worker 的产物多 13 个字节
- * (打包器给每只贡献代码的文件留一行路径注释),而 Worker 字节不许变大(D156)。
+ * 没有交出的:装配期才建的状态与接线 API(`configureLogging` / `shutdownAppLogging` / `getAppLogPath` / `getRootLogger` /
+ * `collectLogRecordsForTests` / …)。它们在模块求值时就建 root、内存环,并要存储层;经本入口交出会把它们连同存储层
+ * 一起拖进检索 Worker(决定文档 §3.1:+2643 字节),所以走装配入口那扇门。
  */
 
-import {
-  configureCoreLogging,
-  LoggerRoot,
-  MemoryRingSink,
-  type LogFields,
-  type LogRecord,
-  type Logger,
-  type LoggerRootOptions,
-} from './logging-logger-primitives.js'
-import { type LogLevel } from '@shared/logging/types'
-
-// ── 1. 取 logger 与当前 root ────────────────────────────────────────────────
-
-const FALLBACK_RING_SIZE = 200
-
-function resolveEnvLevelSpec(): string | undefined {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-  return env?.ONETHING_LOG
-}
-
-const fallbackRing = new MemoryRingSink(FALLBACK_RING_SIZE)
-const loggerRootOptions: LoggerRootOptions = {
-  level: resolveEnvLevelSpec(),
-  sinks: [fallbackRing],
-};
-const fallbackRoot = new LoggerRoot(loggerRootOptions)
-
-let currentRoot: LoggerRoot = fallbackRoot
-/** root 换了就让所有 DeferredLogger 重新取一次目标,避免每行都新建 child。 */
-let generation = 0
-
-/**
- * 接线口。`logging-configure.ts` 的 `configureLogging()` 调它一次;检索 Worker 换成转发 root 时也调它。
- * 幂等地重复调用是安全的(只换引用 + 递增 generation)。
- */
-export function setRuntimeLoggerRoot(root: LoggerRoot | null | undefined): void {
-  currentRoot = root ?? fallbackRoot
-  generation += 1
-  // 注入端口(`getCoreLogger` 背后那一格)顺带填上 —— 它同样该写进这一套 sink,不该让宿主
-  // 记着调第二句(`logging-port.ts` 零依赖,这条 import 不带进任何东西)。
-  configureCoreLogging({ getLogger })
-}
-
-export function getRuntimeLoggerRoot(): LoggerRoot {
-  return currentRoot
-}
-
-/** 未接线时兜住的那 200 条(接线后这一环就不再收新记录了)。 */
-export function dumpRuntimeLogRecords(): LogRecord[] {
-  return fallbackRing.dump()
-}
-
-class DeferredLogger implements Logger {
-  private cachedGeneration = -1
-  private cached: Logger | null = null
-
-  constructor(
-    readonly ns: string,
-    private readonly bound?: Record<string, unknown>,
-  ) {}
-
-  private target(): Logger {
-    if (this.cached && this.cachedGeneration === generation) return this.cached
-    const base = currentRoot.logger(this.ns)
-    this.cached = this.bound ? base.child(this.bound) : base
-    this.cachedGeneration = generation
-    return this.cached
-  }
-
-  isLevelEnabled(level: LogLevel): boolean {
-    return this.target().isLevelEnabled(level)
-  }
-
-  child(fields: Record<string, unknown>): Logger {
-    return new DeferredLogger(this.ns, { ...this.bound, ...fields })
-  }
-
-  trace(msg: string, fields?: LogFields, err?: unknown): void {
-    this.target().trace(msg, fields, err)
-  }
-
-  debug(msg: string, fields?: LogFields, err?: unknown): void {
-    this.target().debug(msg, fields, err)
-  }
-
-  info(msg: string, fields?: LogFields, err?: unknown): void {
-    this.target().info(msg, fields, err)
-  }
-
-  warn(msg: string, fields?: LogFields, err?: unknown): void {
-    this.target().warn(msg, fields, err)
-  }
-
-  error(msg: string, fields?: LogFields, err?: unknown): void {
-    this.target().error(msg, fields, err)
-  }
-
-  fatal(msg: string, fields?: LogFields, err?: unknown): void {
-    this.target().fatal(msg, fields, err)
-  }
-}
-
-const loggers = new Map<string, Logger>()
-
-/** 取一只延迟绑定的 logger:`const log = getLogger('sessions')`。 */
-export function getLogger(ns: string): Logger {
-  const existing = loggers.get(ns)
-  if (existing) return existing
-  const logger = new DeferredLogger(ns)
-  loggers.set(ns, logger)
-  return logger
-}
-
-/**
- * 测试用的抓取器:把 root 换成一个只挂内存环的临时 root,`restore()` 放回去。
- *
- * 迁移期需要它 —— 老测试断言的是 `vi.spyOn(console, 'warn')`,而日志已经不走
- * console 了;断言的对象应该是**记录**,不是某个 sink 的副作用。
- */
-
-export function captureRuntimeLogs(level = 'trace'): {
-  records(): LogRecord[]
-  ofLevel(level: LogLevel): LogRecord[]
-  restore(): void
-} {
-  const previous = currentRoot
-  const ring = new MemoryRingSink(500)
-  const loggerRootOptions2: LoggerRootOptions = { level, sinks: [ring] };
-  setRuntimeLoggerRoot(new LoggerRoot(loggerRootOptions2))
-  return {
-    records: () => ring.dump(),
-    ofLevel: (wanted: LogLevel) => ring.dump().filter(record => record.level === wanted),
-    restore: () => setRuntimeLoggerRoot(previous === fallbackRoot ? null : previous),
-  }
-}
+// ── 1. 取 logger 与当前 root(实现住在 `logging-runtime-root.ts`,D191)────────────
+export {
+  captureRuntimeLogs,
+  dumpRuntimeLogRecords,
+  getLogger,
+  getRuntimeLoggerRoot,
+  setRuntimeLoggerRoot,
+} from './logging-runtime-root.js'
 
 // ── 2. 日志原语 ─────────────────────────────────────────────────────────────
 export { LOG_LEVEL_VALUE } from './logging-types.js'
@@ -188,3 +59,12 @@ export type {
   OnethingProviderRequestDumpLogger,
   OnethingProviderRequestDumpPayload,
 } from './logging-provider-request-dump.js'
+
+// ── 5. 无副作用的函数面(D191 从 `logging-configure.ts` 搬出)────────────────
+// 写一条迁移期的结构化记录、读改当前等级(都写在当前 root 上,接线之后就是 configure 那只 root);
+// 等级 spec 的解析;诊断模式开关;宿主端口表 `logging` 那一格的槽。
+export { getLogLevelSpec, setLogLevelSpec, writeAppLog } from './logging-runtime-root.js'
+export { resolveLevelSpec } from './logging-level-spec.js'
+export { applyDiagnosticsMode, isDiagnosticsModeApplied, resetDiagnosticsModeForTests } from './logging-diagnostics.js'
+export { configureAppLoggingHost, resetAppLoggingHost } from './logging-host-ports.js'
+export type { AppLoggingHostPorts, RendererCaptureLogEntry } from './logging-host-ports.js'

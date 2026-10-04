@@ -2,33 +2,9 @@ import { describe, expect, it } from 'vitest'
 // A0-3 起 core 不内置「acp 的上下文归它自己管」这条事实;生产里它由 backend.ts 静态 import
 // 执行器注册表登记进来,这里照同一条路登记,压缩门才认得 acp。
 import '@onething/backend/agent/executor/agent-executor-registry'
-import {
-  agentLoopInitSkills,
-  agentLoopSkillContexts,
-  applyAgentLoopContextCompactResult,
-  buildAgentLoopContextCompactEventPlan,
-  buildAgentLoopDirectToolsWithAdapters,
-  buildPendingAgentLoopMessageInjections,
-  clampAgentLoopRequestMaxTokens,
-  configWithApiKey,
-  createAgentLoopCompactState,
-  getAgentLoopTransientTail,
-  getContextCompactReason,
-  getContextUsageTriggerReason,
-  maybeCompactAgentLoopContextWithAdapters,
-  planAgentLoopContextCompactFinal,
-  planAgentLoopContextCompactPass,
-  planAgentLoopPromptBuildOptions,
-  planAgentLoopRuntimePreparation,
-  planAgentLoopTools,
-  positiveTokenLimit,
-  resolvePendingAgentLoopMessages,
-  resolveAgentLoopContextBudgetValues,
-  resolveAgentLoopContextBudgetWithRegistry,
-  runAgentLoopAfterTurnWithAdapters,
-  runAgentLoopBeforeTurnWithAdapters,
-  shouldStartAgentLoopContextCompact,
-} from '@onething/backend/agent-loop'
+import { agentLoopInitSkills, agentLoopSkillContexts, buildAgentLoopDirectToolsWithAdapters, clampAgentLoopRequestMaxTokens, getAgentLoopTransientTail, getContextCompactReason, maybeCompactAgentLoopContextWithAdapters, planAgentLoopPromptBuildOptions, planAgentLoopRuntimePreparation, planAgentLoopTools, resolveAgentLoopContextBudgetWithRegistry, runAgentLoopAfterTurnWithAdapters, runAgentLoopBeforeTurnWithAdapters } from '@onething/backend/agent-loop'
+import { applyAgentLoopContextCompactResult, buildAgentLoopContextCompactEventPlan, buildPendingAgentLoopMessageInjections, configWithApiKey, createAgentLoopCompactState, planAgentLoopContextCompactFinal, planAgentLoopContextCompactPass, positiveTokenLimit, resolvePendingAgentLoopMessages, resolveAgentLoopContextBudgetValues, shouldStartAgentLoopContextCompact } from '../agent-loop-runtime.js'
+import { getContextUsageTriggerReason } from '../agent-loop-context-usage.js'
 import { getOnethingAgentLoopThinkingOptions } from '@onething/backend/provider'
 
 describe('core agent-loop runtime helpers', () => {

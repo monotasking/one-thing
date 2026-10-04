@@ -455,7 +455,7 @@ export {
   type AuxiliaryModelInput,
 } from './session-auxiliary-model-checkpoint.js'
 
-// 会话种类的事实(越层清零 A2,2026-10-04 从 collab 下沉):这条会话是什么场子、这间房是不是私聊、
+// 会话种类的事实(越层清零 A2,2026-10-04 从 collab 下沉;「是不是派出去的工作会话」D191 从 task 下沉):这条会话是什么场子、这间房是不是私聊、
 // 我在这间房能看到什么时候为止、消息上的协作来源标记。它们问的全是会话记录上 `kind` / `room` /
 // `collab` / `source` 字段的含义,七个功能都要问;「哪个协作工具在哪个场子成立」不在这里,留在协作。
 export {
@@ -464,9 +464,12 @@ export {
   collabVenueOf,
   collabVenueOfSession,
   isCollabCoordinatorDrivenSession,
+  isTaskSession,
   resolveCollabVenue,
   type CollabVenue,
   type CollabVenueSession,
+  type TaskSessionLike,
+  type TaskSessionMarkLike,
 } from './session-venue.js'
 export {
   isAgentPairDmRoom,
@@ -478,6 +481,8 @@ export {
   isCollabMessageVisible,
   type CollabRoomVisibilityLike,
 } from './session-room-visibility.js'
+// 「这间房里有没有人类能回答一次提问」(D191 从 interaction 下沉):提问工具与外部 agent 的提问桥都问它。
+export { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from './session-room-presence.js'
 export {
   COLLAB_HARVEST_SOURCE,
   COLLAB_MESSAGE_SOURCE,

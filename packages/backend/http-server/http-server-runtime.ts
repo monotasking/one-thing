@@ -41,9 +41,9 @@ import {
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import {
-	EventBus,
-	StreamChannel,
-} from "@onething/backend/event/event-bus-primitives";
+	GenericEventBus,
+	GenericStreamChannel,
+} from "@onething/backend/event";
 import {
 	Permission,
 	addGrant,
@@ -389,7 +389,7 @@ export interface OnethingServerRuntime {
 	/** Present for a production Backend; absent only for explicit test adapters. */
 	backend?: OnethingBackend;
 	runtime: OnethingRuntimeFacade;
-	eventBus: EventBus<AgentEngineSessionEvent>;
+	eventBus: GenericEventBus<AgentEngineSessionEvent>;
 	streamChannel: ServerStreamChannelLike;
 	/**
 	 * The resolved per-owner workspace sandbox base (`<root>/<uid>/<wid>`).
@@ -420,7 +420,7 @@ export interface ServerStreamChannelLike {
 export interface OnethingServerBackend {
 	mediaLibrary?: MediaLibraryService;
 	sessionLayer?: Pick<SessionLayer, 'reads' | 'events' | 'access'>;
-	eventBus: EventBus<AgentEngineSessionEvent>;
+	eventBus: GenericEventBus<AgentEngineSessionEvent>;
 	streamChannel: ServerStreamChannelLike;
 	/**
 	 * True when the backend's engine persists messages itself (the real
@@ -628,7 +628,7 @@ function currentServerCapabilities(): RuntimeHostCapabilities {
 	};
 }
 
-class ServerStreamChannel extends StreamChannel<AgentEngineStreamChunk> {
+class ServerStreamChannel extends GenericStreamChannel<AgentEngineStreamChunk> {
 	private readonly wildcardHandlers = new Set<StreamPayloadHandler>();
 
 	override push(sessionId: string, chunk: AgentEngineStreamChunk): void {
@@ -809,7 +809,7 @@ export function toOnethingServerBackend(
 ): OnethingServerBackend {
 	const ownsBackend = options.ownsBackend ?? true;
 	return {
-		eventBus: backend.eventBus as unknown as EventBus<AgentEngineSessionEvent>,
+		eventBus: backend.eventBus as unknown as GenericEventBus<AgentEngineSessionEvent>,
 		streamChannel: backend.streamChannel as unknown as ServerStreamChannelLike,
 		persistsMessages: true,
 		mediaLibrary: backend.mediaLibrary,

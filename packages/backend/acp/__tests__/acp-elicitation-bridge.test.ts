@@ -6,7 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { InteractionAnswer, InteractionAskInput } from '@shared/interaction/types'
 import type { AcpElicitationContext, AcpElicitationRequest } from '@onething/backend/acp'
 
-vi.mock('@onething/backend/interaction/interaction-no-human', () => ({
+vi.mock('@onething/backend/session', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/session')>(),
   NO_HUMAN_DECLINE_REASON: 'nobody',
   noHumanInTheRoom: () => false,
 }))

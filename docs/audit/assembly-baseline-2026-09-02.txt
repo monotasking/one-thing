@@ -26,7 +26,7 @@ packages/backend/collab/collab-inspector.ts 1
 packages/backend/dialog/dialog-host-ports.ts 1
 packages/backend/eval/eval-fixture.ts 1
 packages/backend/file/file-ripgrep.ts 2
-packages/backend/logging/logging.ts 2
+packages/backend/logging/logging-runtime-root.ts 2
 packages/backend/mcp/mcp-capabilities-changed.ts 2
 packages/backend/mcp/mcp-identity.ts 1
 packages/backend/mcp/mcp-manager.ts 1
@@ -94,7 +94,8 @@ packages/backend/eval/eval-host-ports.ts 1
 packages/backend/external-agent/external-agent-connector-registry.ts 1
 packages/backend/goal/goal-runtime-hooks.ts 1
 packages/backend/logging/logging-diagnostics.ts 1
-packages/backend/logging/logging-configure.ts 10
+packages/backend/logging/logging-configure.ts 9
+packages/backend/logging/logging-host-ports.ts 1
 packages/backend/permission/permission-grant-storage.ts 1
 packages/backend/project-dir/project-dir-bootstrap.ts 1
 packages/backend/provider/builtin/github-copilot.ts 1

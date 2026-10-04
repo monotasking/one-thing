@@ -11,12 +11,10 @@ import { createChannelReplyDeliveryStore } from '../gateway-channel-identity-sto
 import { OutboundReplyDispatcher } from '../gateway-outbound-reply-dispatcher.js'
 
 // 替身只换这两样,其余照真(包根归位 B:IM 连接器登记表改从插件入口取以后,入口里的模块加载时要 `consolePort` 等)。
-vi.mock('@onething/backend/logging/logging-configure', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/logging/logging-configure')>(),
-  writeAppLog: vi.fn(),
-}))
+// D191:读者改从 logging 入口拿 `writeAppLog`,替身随之打在入口上(从前打在 `logging-configure`)。
 vi.mock('@onething/backend/logging', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/logging')>(),
+  writeAppLog: vi.fn(),
   getLogger: () => ({ error: vi.fn() }),
 }))
 

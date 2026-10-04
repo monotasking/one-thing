@@ -9,8 +9,7 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { EventBus } from '@onething/backend/event/event-bus'
-import type { StreamChannel } from '@onething/backend/event/event-stream-channel'
+import type { EventBus, StreamChannel } from '@onething/backend/event'
 import type { Unsubscribe } from '@onething/backend/event'
 import { Session } from './session-subscriber.js'
 import { getCoreLogger } from '@onething/backend/logging'
@@ -20,11 +19,11 @@ const log = getCoreLogger('core.session')
 
 export class SessionManager {
   private sessions = new Map<string, Session>()
-  private eventBus: EventBus<any, any>
-  private streamChannel: StreamChannel<any>
+  private eventBus: EventBus
+  private streamChannel: StreamChannel
   private unsubscribers: Unsubscribe[] = []
 
-  constructor(eventBus: EventBus<any, any>, streamChannel: StreamChannel<any>) {
+  constructor(eventBus: EventBus, streamChannel: StreamChannel) {
     this.eventBus = eventBus
     this.streamChannel = streamChannel
 

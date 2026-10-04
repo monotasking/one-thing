@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  applyCoreToolCallChunk,
-  createCoreStreamProcessor,
-  createCoreToolInputStartArtifacts,
-  CoreStreamingToolInputBuffer,
-  resolveToolIdentity,
-  type CoreStreamStepLike,
-  type CoreStreamToolCallLike,
-} from '@onething/backend/agent-loop'
+import { createCoreStreamProcessor, resolveToolIdentity, type CoreStreamStepLike, type CoreStreamToolCallLike } from '@onething/backend/agent-loop'
+import { applyCoreToolCallChunk, createCoreToolInputStartArtifacts, CoreStreamingToolInputBuffer } from '../agent-loop-stream-processor.js'
 
 describe('core stream processor helpers', () => {
   it('resolves regular, MCP router, and short MCP tool identities through host adapters', () => {

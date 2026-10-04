@@ -1,5 +1,5 @@
 import type { AgentEngineSessionEvent, AgentEngineStreamChunk } from '@onething/backend/agent'
-import type { EventBus } from '@onething/backend/event/event-bus-primitives'
+import type { GenericEventBus } from '@onething/backend/event'
 import type {
   RuntimeEventsAdapter, RuntimeRequestContext, RuntimeStreamsAdapter,
   RuntimeStreamPayload, RuntimeUnsubscribe,
@@ -8,7 +8,7 @@ import { canReceiveSessionRemoval } from '@onething/backend/session'
 import type { SessionAudience, SessionAudienceFactory } from '@onething/backend/http-server/http-server-audience.js'
 
 export interface ServerLiveSessionDeliveryPorts {
-  eventBus: Pick<EventBus<AgentEngineSessionEvent>, 'replay' | 'onAny' | 'onAnySessionAny'>
+  eventBus: Pick<GenericEventBus<AgentEngineSessionEvent>, 'replay' | 'onAny' | 'onAnySessionAny'>
   streamChannel: {
     subscribe(sessionId: string, handler: (chunk: AgentEngineStreamChunk) => void): RuntimeUnsubscribe
     subscribeAny(handler: (payload: RuntimeStreamPayload<AgentEngineStreamChunk>) => void): RuntimeUnsubscribe

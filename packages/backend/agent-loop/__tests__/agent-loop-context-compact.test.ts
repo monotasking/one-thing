@@ -1,25 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  buildContextCompactCompletedContent,
-  buildContextCompactFailedContent,
-  buildContextCompactSummaryMessages,
-  buildContextUsageSnapshot,
-  createContextCompactMessage,
-  estimateSessionInputTokens,
-  estimateTextTokens,
-  formatMessagesForSummary,
-  normalizeContextCompactError,
-  normalizeContextSummaryOutput,
-  CompactTokenBudget,
-  COMPACT_PROMPT_OVERHEAD_TOKENS,
-  resolveCompactCharsPerToken,
-  resolveCompactChunkChars,
-  resolveCompactOutputTokens,
-  selectCompactPlan,
-  shouldAutoCompactBeforeSend,
-  summarizeContextInChunks,
-} from '@onething/backend/agent-loop'
-import type { CoreCompactMessage, CoreCompactSession, CoreContextSummaryRequest } from '@onething/backend/agent-loop'
+import { buildContextCompactCompletedContent, buildContextCompactFailedContent, buildContextCompactSummaryMessages, buildContextUsageSnapshot, createContextCompactMessage, estimateSessionInputTokens, estimateTextTokens, formatMessagesForSummary, normalizeContextCompactError, normalizeContextSummaryOutput, CompactTokenBudget, selectCompactPlan, shouldAutoCompactBeforeSend, summarizeContextInChunks } from '@onething/backend/agent-loop'
+import { COMPACT_PROMPT_OVERHEAD_TOKENS, resolveCompactCharsPerToken, resolveCompactChunkChars, resolveCompactOutputTokens } from '../agent-loop-context-compact.js'
+import type { CoreCompactMessage, CoreCompactSession, CoreContextSummaryRequest } from '../agent-loop-context-compact.js'
 
 function message(index: number, role: 'user' | 'assistant'): CoreCompactMessage {
   return {

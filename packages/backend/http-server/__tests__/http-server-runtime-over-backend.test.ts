@@ -9,7 +9,7 @@
  *     不能少一块。
  *  3. `processPorts: 'host'` 不改写宿主的单槽端口(todo/scratchpad 是串联而不是覆盖)。
  */
-import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event/event-bus-primitives'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -41,8 +41,8 @@ function createFakeBackend(): {
   const dispose = vi.fn(async () => {})
   const backend = {
     engine: { abort } as unknown as OnethingBackend['engine'],
-    eventBus: new EventBus() as unknown as OnethingBackend['eventBus'],
-    streamChannel: new StreamChannel() as unknown as OnethingBackend['streamChannel'],
+    eventBus: new GenericEventBus() as unknown as OnethingBackend['eventBus'],
+    streamChannel: new GenericStreamChannel() as unknown as OnethingBackend['streamChannel'],
     dispose,
     assertActive: vi.fn(),
   } as unknown as OnethingBackend
@@ -207,8 +207,8 @@ describe('server runtime MCP start (C1 收尾)', () => {
       // `persistsMessages: true` 是选中「真 backend」那条路的开关;`mcp` 就是
       // `toOnethingServerBackend` 从产品后端透传下来的那一格。
       createBackend: async () => ({
-        eventBus: new EventBus() as never,
-        streamChannel: new StreamChannel() as never,
+        eventBus: new GenericEventBus() as never,
+        streamChannel: new GenericStreamChannel() as never,
         persistsMessages: true,
         mcp: { start },
         abortSession() {},

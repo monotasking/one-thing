@@ -11,7 +11,7 @@
  *  - 已结算 / 不存在的提问回的是结构化失败,不是抛错。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EventBus } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus } from '@onething/backend/event/event-bus-primitives'
 import { Interaction } from '@onething/backend/interaction'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { interactionRouter } from '@shared/ipc/interaction.js'
@@ -41,7 +41,7 @@ describe('interaction RPC domain', () => {
     dispatchRpc = registry.dispatchRpc
     registry.resetRpcRegistryForTests()
     dispose = registry.registerRouterHandlers(interactionRouter, domain.interactionRpcHandlers)
-    Interaction.initialize(new EventBus(), () => 'ipc')
+    Interaction.initialize(new GenericEventBus(), () => 'ipc')
   })
 
   afterEach(() => {
@@ -93,7 +93,7 @@ describe('interaction RPC domain', () => {
     // 引擎把这个会话钉在 'gateway' 上 —— 桌面那句写死的 'ipc' 会被内核以
     // 「通道不对」拒收,而 http 分叉认领提问自己的通道,所以答得进去。
     Interaction.shutdown()
-    Interaction.initialize(new EventBus(), () => 'gateway')
+    Interaction.initialize(new GenericEventBus(), () => 'gateway')
     const settled = ask('s3', 't3')
 
     const wrongChannel = unwrap(

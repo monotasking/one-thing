@@ -89,6 +89,21 @@ export function clientApiFeatureOf(relative) {
   return match[1] === match[2] ? match[1] : null
 }
 
+/**
+ * 功能的**装配入口**(决策 D191):`<功能>/<功能>-configure.ts` —— 这个功能里装配期才建的状态与接线 API
+ * (今天只有 logging 一家:文件 sink、目录管家、崩溃钩子与 `configureLogging()`)。它有模块级副作用、要存储层,
+ * 经主入口交出会把这些拖进检索 Worker,所以与 client-api 一样单开一扇门。判据只看路径:直接住在功能目录下、
+ * 以自己的功能名打头、测试不算。是就返回功能名,否则 null。
+ * 使用者:`client-api:gate`(谁可以引它:只许 L4 与 apps)、`entry:gate`(引它不算深层)、`layer:gate` / `feature-map`
+ * (它归层次表里 `"configureEntry": true` 的那一行槽位,站 L4)。
+ */
+export const CONFIGURE_ENTRY_PATTERN = /^packages\/backend\/([^/]+)\/\1-configure\.ts$/
+export function configureEntryFeatureOf(relative) {
+  const match = CONFIGURE_ENTRY_PATTERN.exec(relative)
+  if (!match || NON_FEATURE_DIRS.has(match[1])) return null
+  return match[1]
+}
+
 /** 某个功能的入口文件(仓库相对路径):`<功能>/<功能>.ts`(N3)。 */
 export function entryFileOf(feature) {
   return `${FEATURE_ROOT}/${feature}/${feature}.ts`
@@ -360,8 +375,13 @@ export function loadLayerTable(root = repoRoot) {
   const secondEntries = table.slots.filter((slot) => slot.secondEntry)
   if (secondEntries.length > 1) throw new Error(`层次表:第二入口槽位(secondEntry)最多一行,现在 ${secondEntries.length} 行`)
   const secondEntry = secondEntries[0]?.slot
+  // 装配入口槽位(`"configureEntry": true`,只许一行):`<功能>-configure.ts` 归它,不归所属功能(D191)。
+  const configureEntries = table.slots.filter((slot) => slot.configureEntry)
+  if (configureEntries.length > 1) throw new Error(`层次表:装配入口槽位(configureEntry)最多一行,现在 ${configureEntries.length} 行`)
+  const configureEntry = configureEntries[0]?.slot
   const groupOf = (relative) => {
     if (secondEntry && clientApiFeatureOf(relative)) return secondEntry
+    if (configureEntry && configureEntryFeatureOf(relative)) return configureEntry
     const feature = runtimeFeatureOf(relative)
     if (feature) return feature
     for (const [prefix, slot] of prefixed) if (relative === prefix || (prefix.endsWith('/') && relative.startsWith(prefix))) return slot

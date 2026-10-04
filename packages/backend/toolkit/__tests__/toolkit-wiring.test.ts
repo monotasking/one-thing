@@ -73,9 +73,10 @@ vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   MCPManager: { getServerState: () => null },
 }))
 
-const { configureToolkitCatalog } = await import('@onething/backend/toolkit')
 const { createDesktopCatalog } = await import('../toolkit-tier-catalogs.js')
-const { resetToolkitCatalogForTests } = await import('../toolkit-wiring.js')
+const { installToolkitCatalogForTests, resetToolkitCatalogForTests } = await import('../toolkit-wiring.js')
+// D191:插件拦截链是装配时递进来的端口;这里装的就是生产那一只(它引的两条链被上面的桩换掉)。
+const { pluginToolInterceptor } = await import('@onething/backend/plugin')
 const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/backend/toolkit/toolkit-mcp-catalog')
 const { executeToolDirectly } = await import('../../engine/stream/engine-stream-tool-execution.js')
 const { getStreamChannel } = await import('@onething/backend/event')
@@ -128,7 +129,7 @@ function installCatalog(ops: BashOperations = echoOps()) {
       createOperations: () => ops,
     },
   })
-  configureToolkitCatalog(catalog)
+  installToolkitCatalogForTests(catalog, { interceptor: pluginToolInterceptor })
   return catalog
 }
 

@@ -13,7 +13,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import { EventBus } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus } from '@onething/backend/event/event-bus-primitives'
 import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 
 const { resetSessionEventLogCache } = await import('../session-event-log.js')
@@ -122,7 +122,7 @@ describe('会话账本事件的推送广播', () => {
   it('drains accepted broadcasts against their original bus before allowing a new installation', async () => {
     const original = getCurrentBackend()
     const busA = getEventBus()
-    const busB = new EventBus()
+    const busB = new GenericEventBus()
     const seenA: number[] = []; const seenB: number[] = []
     let started!: () => void; let release!: () => void
     const firstStarted = new Promise<void>(resolve => { started = resolve })

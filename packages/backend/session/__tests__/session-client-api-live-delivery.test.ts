@@ -1,12 +1,12 @@
 import { expect, it } from 'vitest'
-import { EventBus, StreamChannel } from '@onething/backend/event/event-bus-primitives'
+import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event/event-bus-primitives'
 import type { AgentEngineSessionEvent, AgentEngineStreamChunk } from '@onething/backend/agent'
 import { createTenantAudienceFactory, type SessionOwnershipRecord } from '../../http-server/http-server-audience.js'
 import { createServerLiveSessionDelivery } from '../session-client-api-live-delivery.js'
 
 it('revokes both scoped and wildcard delivery on ownership changes and releases every subscription', async () => {
-  const eventBus = new EventBus<AgentEngineSessionEvent>()
-  const streamChannel = new StreamChannel<AgentEngineStreamChunk>()
+  const eventBus = new GenericEventBus<AgentEngineSessionEvent>()
+  const streamChannel = new GenericStreamChannel<AgentEngineStreamChunk>()
   const rows = new Map<string, SessionOwnershipRecord>([['a', { ownerUserId: 'alice', ownerWorkspaceId: 'workspace' }]])
   const listeners = new Set<(id: string | undefined) => void>()
   const delivery = createServerLiveSessionDelivery({

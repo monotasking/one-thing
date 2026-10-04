@@ -16,8 +16,7 @@
  */
 
 import type { Scene } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { resolveCollabVenue } from '@onething/backend/session'
-import { isTaskSession, type TaskSessionLike } from '../task/task.js'
+import { isTaskSession, resolveCollabVenue, type TaskSessionLike } from '@onething/backend/session'
 
 /** 场景解析读的那一小片会话形状(结构类型 —— 产品层不认 IPC 契约包)。 */
 export interface SceneSessionLike extends TaskSessionLike {
