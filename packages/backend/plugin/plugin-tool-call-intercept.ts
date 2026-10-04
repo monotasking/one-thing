@@ -54,7 +54,7 @@
  */
 
 import { sortByPluginCanonicalOrder } from './plugin-canonical-order.js'
-import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging/logging-logger-primitives'
+import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
 import { PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from './plugin-policy.js'
 import { runWithPluginTimeout } from './plugin-runtime-guard.js'
 import {

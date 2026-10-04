@@ -6,7 +6,7 @@
  *  - 有自定义 `Authorization` 头时不再加默认 Bearer(不分大小写)。
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop";
 import {
 	createAgentProviderFromRuntime,
 	isAgentProviderRuntimeSupported,

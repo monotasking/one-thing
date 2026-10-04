@@ -14,7 +14,7 @@
  * **待真机核**。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTurnStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentTurnStreamEvent } from '@onething/backend/agent-loop'
 import { createAgentProviderFromRuntime } from '../../provider-factory.js'
 import {
   applyOnethingAgentLoopProviderData,

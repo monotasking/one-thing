@@ -23,7 +23,7 @@
  * 没变。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop";
 import {
 	agentSupportsToolResultModality,
 	agentToolMessageContentForCapabilities,

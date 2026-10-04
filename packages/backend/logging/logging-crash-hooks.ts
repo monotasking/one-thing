@@ -1,4 +1,4 @@
-import type { Logger } from '@onething/backend/logging/logging-logger-primitives'
+import type { Logger } from './logging-logger-primitives.js'
 
 /**
  * 进程级兜底(P7)。在它之前:全仓没有一处 `unhandledRejection` 监听,server

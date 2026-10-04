@@ -49,7 +49,7 @@ import type { ConsoleLikePort } from '@onething/backend/logging'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
-import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { createAgentExecutionLifetime, runAgentLoop } from '@onething/backend/agent-loop'
 import type { AppSettings } from '@shared/ipc.js'
 import { createRequiredAppFetch, getSpaceSettings } from '@onething/backend/settings'
 

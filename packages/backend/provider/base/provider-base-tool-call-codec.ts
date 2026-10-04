@@ -16,7 +16,7 @@
  * 片段里的原值**不做清洗**:`id` 用 `??` 兜底、`name` 按真值拼、`arguments` 缺席当空串 ——
  * 全是搬之前的读法,golden 与 wire-snapshots 钉着。
  */
-import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop";
 import { getPath } from "./provider-base-path.js";
 import type { TurnContext } from "./provider-base-turn-context.js";
 

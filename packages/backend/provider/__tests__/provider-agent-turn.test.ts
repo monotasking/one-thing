@@ -3,7 +3,7 @@ import type {
   AgentProvider,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import {
   runOnethingUtilityAgentTurn,
   type OnethingProviderRequestDumpContext,

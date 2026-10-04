@@ -28,7 +28,7 @@
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
 | collab | 多 agent 协作:房间、成员、发言调度与裁判。 | session 33 · (shared) 30 · agent 28 · logging 20 · event 15 · storage 15 · (包根槽位) 6 · toolkit 5 · agent-loop 3 · settings 3 · usage 3 · provider-call 2 · external-agent 1 · interaction 1 · permission 1 · variable 1 | 368(值 270 / 类型 98) | 115 |
-| engine | 对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。 | agent-loop 23 · session 15 · logging 14 · (shared) 13 · event 9 · provider 9 · agent 8 · settings 8 · collab 6 · media 5 · toolkit 5 · plugin 4 · prompt 4 · provider-call 4 · skill 4 · mcp 3 · usage 3 · credentials 2 · eval 2 · project-dir 2 · quota 2 · goal 1 · interaction 1 · permission 1 · scratchpad 1 · storage 1 · todo-plan 1 · variable 1 | 26(值 10 / 类型 16) | 27 |
+| engine | 对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。 | agent-loop 18 · session 15 · logging 14 · (shared) 13 · event 9 · provider 9 · agent 8 · settings 8 · collab 6 · media 5 · toolkit 5 · plugin 4 · prompt 4 · provider-call 4 · skill 4 · mcp 3 · usage 3 · credentials 2 · eval 2 · project-dir 2 · quota 2 · goal 1 · interaction 1 · permission 1 · scratchpad 1 · storage 1 · todo-plan 1 · variable 1 | 26(值 10 / 类型 16) | 27 |
 | gateway | 微信 / Telegram 渠道网关:收发消息与远程审批。 | (shared) 6 · agent-loop 6 · logging 4 · session 3 · plugin 2 · storage 2 · engine 1 | 38(值 16 / 类型 22) | 29 |
 
 ## L2 能力
@@ -63,8 +63,8 @@
 | resource | 有地址的资源与读 / 做 / 看三动词的内核,以及各 scheme 的提供者。 | toolkit 20 · (shared) 18 · file 5 · logging 4 · mcp 4 · music 4 · session 3 · todo-plan 3 · (包根槽位) 2 · ambient 2 · event 2 · pet 2 · agent 1 · permission 1 · shell 1 · space 1 · toc 1 · tool 1 · variable 1 | 81(值 58 / 类型 23) | 31 |
 | scheduler | 定时任务:cron、用户任务与运行记录。 | logging 3 · storage 3 · (shared) 1 · (包根槽位) 1 · agent 1 · event 1 · session 1 | 106(值 42 / 类型 64) | 12 |
 | scratchpad | 草稿纸:存储、监听与 AI 的静默感知。 | logging 1 · storage 1 | 4(值 2 / 类型 2) | 4 |
-| search | 跨会话检索:派生索引、检索器、能力登记表与查询服务。 | logging 16 · session 5 · (shared) 4 · note 3 · file 2 · plugin 2 · settings 2 · storage 2 · agent-loop 1 · event 1 · network 1 · prompt 1 · toolkit 1 | 109(值 71 / 类型 38) | 86 |
-| session | 会话:账本 events.jsonl、投影、仓储、命令面与读面、按会话取空间设置。 | (shared) 39 · logging 30 · (包根槽位) 17 · storage 13 · agent-loop 7 · space 4 · event 2 · settings 2 · interaction 1 · permission 1 · provider 1 · tool 1 | 580(值 369 / 类型 211) | 104 |
+| search | 跨会话检索:派生索引、检索器、能力登记表与查询服务。 | logging 14 · session 5 · (shared) 4 · note 3 · file 2 · plugin 2 · settings 2 · storage 2 · agent-loop 1 · event 1 · network 1 · prompt 1 · toolkit 1 | 109(值 71 / 类型 38) | 86 |
+| session | 会话:账本 events.jsonl、投影、仓储、命令面与读面、按会话取空间设置。 | (shared) 39 · logging 30 · (包根槽位) 17 · storage 13 · agent-loop 5 · space 4 · event 2 · settings 2 · interaction 1 · permission 1 · provider 1 · tool 1 | 580(值 369 / 类型 211) | 104 |
 | settings | 用户设置的读写缓存、出厂默认值与保存校验。 | space 9 · logging 5 · provider 5 · (shared) 4 · storage 3 · network 1 | 43(值 35 / 类型 8) | 16 |
 | skill | 技能的发现、加载与启用,以及对话后的技能复盘(复盘触发器的判定、状态与实现,2026-10-04 从 trigger/ 并入)。 | logging 4 · storage 3 · toolkit 3 · (shared) 2 · note 2 · settings 2 · agent 1 · agent-loop 1 · file 1 · music 1 · provider-call 1 · usage 1 | 73(值 34 / 类型 39) | 18 |
 | space | 空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层;名册与设置读写用户 store,所以是能力(L2)而不是纯事实。 | logging 5 · storage 1 | 92(值 62 / 类型 30) | 8 |
@@ -72,7 +72,7 @@
 | terminal | 真终端:PTY、输出分批、回放与流控。 | event 1 · logging 1 | 1(值 1 / 类型 0) | 5 |
 | toc | 会话目录:切段、决定、渲染与存储。 | logging 2 · session 2 · agent-loop 1 · goal 1 · provider-call 1 · settings 1 · storage 1 · usage 1 | 37(值 21 / 类型 16) | 10 |
 | todo-plan | 待办计划的存储、监听与资源描述。 | (包根槽位) 1 · logging 1 · session 1 · settings 1 · storage 1 | 24(值 11 / 类型 13) | 6 |
-| toolkit | 工具系统:契约、各族基类、内置工具、按场景决定每轮工具面与执行管线。 | tool 36 · (shared) 20 · storage 12 · session 6 · settings 5 · (包根槽位) 4 · logging 4 · permission 4 · feature-registry 3 · file 3 · task 3 · agent-loop 2 · goal 2 · interaction 2 · plugin 2 · variable 2 · lifecycle 1 · mcp 1 · music 1 · practice 1 · resource 1 | 180(值 103 / 类型 77) | 68 |
+| toolkit | 工具系统:契约、各族基类、内置工具、按场景决定每轮工具面与执行管线。 | tool 36 · (shared) 20 · storage 12 · session 6 · settings 5 · (包根槽位) 4 · logging 4 · permission 4 · feature-registry 3 · file 3 · task 3 · goal 2 · interaction 2 · plugin 2 · variable 2 · agent-loop 1 · lifecycle 1 · mcp 1 · music 1 · practice 1 · resource 1 | 180(值 103 / 类型 77) | 68 |
 | usage | token 用量的账本、汇总与记账。 | credentials 2 · provider 2 · logging 1 · session 1 · settings 1 · space 1 | 24(值 9 / 类型 15) | 6 |
 | variable | 变量系统:登记表、存储、格式化与给模型的变量板。 | logging 5 · project-dir 3 · (shared) 2 · event 2 · goal 2 · music 2 · permission 2 · session 2 · (包根槽位) 1 · agent 1 · note 1 · space 1 · storage 1 · tool 1 | 90(值 51 / 类型 39) | 30 |
 | voice | 语音识别、语音合成与唤醒词。 | (shared) 2 · settings 2 · (包根槽位) 1 · agent 1 · event 1 · session 1 | 54(值 25 / 类型 29) | 16 |
@@ -83,11 +83,11 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| agent-loop | 一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),以及执行器表(本地 / 外部执行体的能力面,2026-10-04 从 agent 并入),不认识具体服务商。 | (shared) 17 · logging 8 · tool 3 | 619(值 259 / 类型 360) | 63 |
+| agent-loop | 一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),以及执行器表(本地 / 外部执行体的能力面,2026-10-04 从 agent 并入),不认识具体服务商。 | (shared) 17 · logging 8 · tool 3 | 687(值 296 / 类型 391) | 63 |
 | event | 事件总线与流通道的工厂,以及读当前实例的访问器。 | logging 5 · (shared) 1 · (包根槽位) 1 | 7(值 7 / 类型 0) | 16 |
 | practice | 练习系统的题目、账本与汇总。 | — | 32(值 8 / 类型 24) | 7 |
 | prompt | 系统提示词的拼装:片段、来源与「目录在上、正文在下」的生成器。 | agent-loop 3 · logging 2 · (shared) 1 · provider 1 · reference 1 · storage 1 | 86(值 40 / 类型 46) | 13 |
-| provider | 各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。 | agent-loop 14 · (shared) 12 · logging 11 · network 5 · storage 1 | 189(值 118 / 类型 71) | 192 |
+| provider | 各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。 | agent-loop 13 · (shared) 12 · logging 11 · network 5 · storage 1 | 189(值 118 / 类型 71) | 192 |
 | theme | 主题的加载、解析与生成 CSS 变量。 | logging 4 · storage 2 | 27(值 12 / 类型 15) | 13 |
 | tool | 工具用到的纯逻辑模块:沙箱、bash 执行、编辑引擎、差异块、输出截断等。 | (shared) 3 · storage 3 | 217(值 134 / 类型 83) | 35 |
 
@@ -101,7 +101,7 @@
 | dialog | 原生「选目录 / 选文件」对话框的宿主注入口。 | — | 无入口 | 1 |
 | http | 发 HTTP 请求时共用的小工具:检查应答、逐条读 SSE 事件。 | — | 5(值 3 / 类型 2) | 2 |
 | lifecycle | 关机流程里反复要用的入场闸这类小状态机。 | — | 6(值 3 / 类型 3) | 2 |
-| logging | 日志门面 getLogger、JSONL 日志文件、日志目录管家与崩溃钩子。 | storage 1 | 12(值 7 / 类型 5) | 19 |
+| logging | 日志门面 getLogger、JSONL 日志文件、日志目录管家与崩溃钩子。 | storage 1 | 23(值 14 / 类型 9) | 19 |
 | memory | 进程内存的登记表、探针与按预算释放缓存的调度器。 | logging 1 | 5(值 4 / 类型 1) | 2 |
 | network | 代理设置的校验与绕行规则,以及按代理选通道、带超时重试中止的受管 fetch。 | — | 13(值 9 / 类型 4) | 5 |
 | perf | 启动耗时的打点记录。 | — | 6(值 5 / 类型 1) | 2 |

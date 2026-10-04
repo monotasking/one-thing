@@ -11,7 +11,7 @@ import type {
   AgentLoopResult,
   AgentMessage,
   AgentProviderStreamChunk,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import { getAgentLoopTransientTail, type CoreAgentLoopRuntimeToolSettingsLike } from '@onething/backend/agent-loop'
 import * as store from '@onething/backend/session'
 import { sessionCommands } from '@onething/backend/session'

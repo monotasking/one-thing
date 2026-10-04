@@ -16,7 +16,7 @@
  *     `DeepSeek` 的那个家名随 `displayName` 字段一起退役(设计稿 §10 第 1 条,
  *     P0b-B 拍板)。
  */
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop";
 import {
 	PathUsageNormalizer,
 	type RequestBodyBuilder,

@@ -33,7 +33,7 @@ import {
   agentSupportsTools,
   agentToolDefinitionsFromSourceTools,
   resolveAgentModelCapabilities,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import {
   buildSystemPromptSnapshotWithAdapters,
 } from '@onething/backend/prompt'

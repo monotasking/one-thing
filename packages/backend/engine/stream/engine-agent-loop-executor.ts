@@ -29,7 +29,7 @@ import {
 	isAgentExecutionCheckpointError,
 	createAgentExecutionLifetime,
 	type AgentProviderStreamChunk,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import type { HistoryMessage } from "./engine-stream-message-helpers.js";
 import type { StreamContext, StreamProcessor } from "./engine-stream-processor.js";
 import { createStreamProcessor, resolveToolIdentity } from "./engine-stream-processor.js";
@@ -76,7 +76,7 @@ import {
 } from "@onething/backend/agent-loop";
 import { runAfterAssistantResponseHooks } from "@onething/backend/plugin/plugin-lifecycle-hooks";
 import type { ChatMessage, ChatSession } from "@shared/ipc.js";
-import type { AgentJsonObject } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentJsonObject } from "@onething/backend/agent-loop";
 import { hashSections } from "../../eval/eval.js";
 import {
 	attachSessionEventRecorder,

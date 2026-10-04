@@ -10,7 +10,7 @@
  * 从 P0b-A 起入三桶(见下)。PDF 从 P3-1 起走 `file` 块 + `file-parser` 插件
  * (见 `openRouterExtraBody`)。
  */
-import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop";
 import type { Dialect, TurnContext, UsagePathTable } from "../../base/provider-base.js";
 // 这条思考线型留在 agent-loop:它的「回传」那一半由线材 codec 读
 // (`wires/provider-wires-openai-chat-messages.ts` 认 `OPENROUTER_REASONING_DETAILS_TYPE`),搬进来就成了

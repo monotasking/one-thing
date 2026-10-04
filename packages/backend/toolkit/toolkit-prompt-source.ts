@@ -19,7 +19,7 @@
  * 同一个结果,不是一次错误。
  */
 
-import { resolveAIToolName } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { resolveAIToolName } from '@onething/backend/agent-loop'
 import { promptFragmentsFromToolContribution, type CoreBuildPromptContextOptions, type CorePromptFragment } from '@onething/backend/agent-loop'
 import type { PromptSource } from '../prompt/prompt.js'
 import { getToolkitCatalog } from './toolkit.js'

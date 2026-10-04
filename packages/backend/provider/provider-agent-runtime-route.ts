@@ -2,7 +2,7 @@ import type {
   AgentJsonObject,
   AgentJsonValue,
   AgentProvider,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import type {
   AgentProviderRuntimeConfig,
 } from './provider-factory.js'

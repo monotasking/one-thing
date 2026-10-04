@@ -11,7 +11,7 @@ import type {
 	AgentInputModality,
 	AgentModelCapabilities,
 	AgentProvider,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import {
 	BearerApiKeyAuth,
 	LedgerModelProfileResolver,

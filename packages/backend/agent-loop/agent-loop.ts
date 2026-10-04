@@ -6,6 +6,8 @@
  * `CoreStreamEngine`、agent-loop 执行器与运行时、工具编排、上下文压缩、历史重建、回合上下文、提示词片段、
  * 消息来源判据、回合主体、流发送器、引擎端口类型、回合后触发器表。这只入口就是从前的
  * `engine/engine-primitives.ts` 内核桶,原样搬来,末尾补了引擎归位时外面真在用的几组名字。
+ * 2026-10-04 深层引用收口时,文件末尾再补一组「循环原语」(经 `agent-loop-primitives.ts` 那个桶转交,只交外面
+ * 真在用的名字)和服务商错误分类、线格式两小组:服务商与别的功能从此只经这只入口拿 agent-loop 的东西。
  *
  * 它不认识具体服务商,也不认识协作、插件、设置这些功能:要它们的地方都是端口(`agent-loop-engine-ports.ts`)
  * 或由调用方交进来的函数(例如回合主体的协作驱动验票)。对外只依赖 shared、logging、tools 三处叶子。
@@ -649,11 +651,15 @@ export {
 	buildHistoryToolResultContent,
 	buildHistoryMessages,
 	buildResumeHistoryAfterToolConfirmation,
+	canSplitHistoryTurnGroups,
 	compactedFailureToolResultForAI,
+	compactedHistoryPreamble,
 	compactedToolResultPlaceholder,
+	completedHistoryToolCalls,
 	filterHistoryForNonToolAPI,
 	getHistoryProviderData,
 	getMessageReasoningContent,
+	historyContentPartsCoverContent,
 	historyMessagesForLog,
 	historyMessagePayloadLength,
 	jsonLength,
@@ -754,3 +760,95 @@ export type { IPCEmitter } from "./agent-loop-session-stream-emitter.js";
 export { nextAgentLoopTurnIndexAfterFinish } from "./agent-loop-turn.js";
 export { resultTextFromToolMetadata } from "./agent-loop-tool-orchestration.js";
 export { collectCompactFileOperations } from "./agent-loop-compact-file-lists.js";
+
+// ── 循环原语(深层引用收口 2026-10-04,D157):与服务商无关的那一层 —— 跑一轮循环、流与收集、能力判据、
+// 工具名与工具定义、消息与工具结果的换算、执行期检查点,以及服务商实现要的全部类型。从前服务商(61 处)与
+// 别的功能直接引 `agent-loop-primitives.ts` 那个桶;这里只交出外面真在用的名字。**故意经那个桶转交而不是从
+// 声明文件转交**:三只测试(`skill-review-trigger`、`toc/record-turn`、`engine-system-prompt-snapshot`)在桶上
+// 打桩换掉 `runAgentLoop` / `resolveAgentModelCapabilities` / `agentSupportsTools`,经桶转交,桩照样拦得住
+// 改走入口的读者。
+export {
+	runAgentLoop,
+	buildAgentLoopRuntime,
+	createAgentExecutionLifetime,
+	AgentExecutionCheckpointError,
+	awaitAgentExecutionCheckpoint,
+	isAgentExecutionCheckpointError,
+} from "./agent-loop-primitives.js";
+// 服务商流 → 循环事件 → 一轮回合。
+export {
+	agentContentToText,
+	agentEventsToProviderStreamChunks,
+	collectAgentTurnFromStream,
+	safeParseAgentToolArguments,
+	streamAgentLoopProviderChunks,
+	streamAgentProviderTurnEvents,
+} from "./agent-loop-primitives.js";
+export type { AgentProviderStreamChunk } from "./agent-loop-primitives.js";
+// 模型能力判据。
+export {
+	agentProviderCanRunTurn,
+	agentSupportsInputModality,
+	agentSupportsOutputModality,
+	agentSupportsTools,
+	resolveAgentModelCapabilities,
+} from "./agent-loop-primitives.js";
+// 工具名、工具定义、消息与工具结果的换算。
+export {
+	agentContentFromHistoryContent,
+	agentMessagesFromHistory,
+	agentModelToolsFromDefinitions,
+	agentToolDefinitionsFromSourceTools,
+	agentToolMessageContentToStructuredPayload,
+	agentToolMessageContentToText,
+	createAIToolName,
+	getAIToolName,
+	registerRetiredAgentToolName,
+	resolveAIToolName,
+} from "./agent-loop-primitives.js";
+export type {
+	AgentHistoryMessage,
+	AgentSourceToolDefinition,
+} from "./agent-loop-primitives.js";
+// 循环与服务商之间的类型。
+export type {
+	AgentCapability,
+	AgentContentPart,
+	AgentCredentialRotation,
+	AgentFinishReason,
+	AgentInputModality,
+	AgentJsonObject,
+	AgentJsonValue,
+	AgentLoopOptions,
+	AgentLoopResult,
+	AgentMessage,
+	AgentMessageContent,
+	AgentModelCapabilities,
+	AgentOutputModality,
+	AgentProvider,
+	AgentProviderData,
+	AgentReasoningEffort,
+	AgentSkillContext,
+	AgentStreamEvent,
+	AgentTool,
+	AgentToolCall,
+	AgentToolChoice,
+	AgentToolExecutionContext,
+	AgentToolResult,
+	AgentToolResultContentPart,
+	AgentTurn,
+	AgentTurnRequest,
+	AgentTurnStreamEvent,
+	AgentUsage,
+} from "./agent-loop-primitives.js";
+
+// 服务商错误分类与冷却(凭证轮换、鉴权、服务商基类要它)。
+export {
+	classifyOAuthRefreshError,
+	classifyProviderError,
+	providerErrorCooldownUntil,
+	withProviderRetryAfter,
+} from "./agent-loop-provider-error-classification.js";
+
+// 发给模型的工具调用 / 工具结果的线格式(会话投影的规范化比较要它)。
+export { stringifyToolResult, toolCallArguments } from "./agent-loop-wire-format.js";

@@ -95,6 +95,7 @@ collab 今天是三种东西挤在一个目录:协作的四只工具(住在 tool
 **下一步按功能收口的优先顺序**(判据:对可读性的影响 = 非测试深层引用数 × 引它的功能数,再扣掉「本来就是基础件、深层引用无害」的):
 
 1. **logging(219)** —— `logging-configure.ts` 173(`getLogger` / `consolePort`)+ `logging-logger-primitives.ts` 44 + `logging-diagnostics.ts` 2。不是坏味道,是入口没交出这些名字(或交出了没人改)。一条 codemod:`@onething/backend/logging/logging-configure` → `@onething/backend/logging`。零风险,一次把总数砍五分之一。
+   **(2026-10-04 收口时更正:这句不成立。** `logging-configure.ts` 与入口各有一个同名不同物的 `getLogger`,入口转交 configure 的任何名字又会把存储层拖进检索 Worker;实际只收了 `logging-logger-primitives` 那 44 处,configure 的 173 处与 diagnostics 2 处停下待用户拍,见决策记录 D155。)
 2. **agent-loop(102)** —— 61 条来自 provider 引 `agent-loop-primitives`(循环原语、错误分类)。agent-loop 入口今天不交出原语(D50 留账),收口 = 入口交出 + codemod。先做这一家,provider 才算真正干净。
 3. **toolkit(88)+ tool(80)** —— toolkit → tool 46 条是工具系统引自己的纯模块,resource → toolkit 42 条是资源面引工具协议。两家一起收:`toolkit` 入口交出协议与族基类,`tool` 入口交出纯模块;A1 之后 toolkit → collab 的 14 条自然消失。
 4. **event(51)/ agent(50)/ collab(47)** —— session → event 15、collab → agent 21 是真耦合,收口要先看入口形状;collab 的 47 在 A1 / A2 做完会掉一半。

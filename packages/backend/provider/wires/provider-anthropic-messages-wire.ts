@@ -23,7 +23,7 @@ import type {
 	AgentFinishReason,
 	AgentJsonValue,
 	AgentProviderData,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { getLogger } from "../../logging/logging.js";
 import { onethingClaudeModelFamily } from "../model-families/provider-model-families-claude.js";
 import { mergeAdjacentSameRoleMessages } from "../provider-message-merge.js";

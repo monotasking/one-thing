@@ -14,7 +14,7 @@
  * 判据一律是**线上那份 body**(`fetchImpl` 收到的 `init.body`),不是 dump。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,

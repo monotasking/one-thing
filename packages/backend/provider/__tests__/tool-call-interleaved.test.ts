@@ -27,7 +27,7 @@ import { describe, expect, it } from "vitest";
 import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { OPENROUTER_DIALECT } from "../vendors/openrouter/openrouter-dialect.js";
 import { LedgerModelProfileResolver, type TurnContext } from "../base/provider-base.js";
 import { OpenAIChatWire, openAIChatLogger } from "../wires/provider-wires.js";

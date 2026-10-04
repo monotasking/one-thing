@@ -16,7 +16,7 @@ import {
 	type AgentSkillContext,
 	type AgentSourceToolDefinition,
 	type AgentToolChoice,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import type { Principal } from "@shared/permission/principal";
 import {
 	agentLoopInitSkills,

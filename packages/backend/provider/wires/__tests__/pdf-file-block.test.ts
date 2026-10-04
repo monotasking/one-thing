@@ -14,7 +14,7 @@
  *     (先 `buildBody` 再 `extraBody`),只测 codec 证明不了它。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop";
 import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,

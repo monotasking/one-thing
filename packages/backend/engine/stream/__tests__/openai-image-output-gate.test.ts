@@ -39,7 +39,7 @@ vi.mock('../../../session/session-commands.js', async importOriginal => ({
 }))
 import { createDefaultSettings } from '../../../settings/defaults/settings-factory-defaults.js'
 import type { ToolSettings } from '@shared/ipc.js'
-import type { AgentOutputModality, AgentTurnStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentOutputModality, AgentTurnStreamEvent } from '@onething/backend/agent-loop'
 import { createAgentProviderFromRuntime, onethingModelServesImageOutputInLoop } from '@onething/backend/provider'
 import type { StreamSender } from '../engine-stream-processor.js'
 import type { ProviderConfigWithKey, StreamExecutionParams } from '../engine-stream-executor.js'

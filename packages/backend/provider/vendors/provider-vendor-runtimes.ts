@@ -15,7 +15,7 @@
  *    (`backend/provider/provider-client-api-models.ts`、`backend/settings/settings-model-registry-service.ts`),宿主把
  *    自己才有的东西(auth 服务、app fetch、设置、落盘)经一份**不点名**的 `VendorModelsFetcherDeps` 交进来。
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop";
 import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../base/provider-base.js";
 import type {
 	AgentProviderRuntimeConfig,

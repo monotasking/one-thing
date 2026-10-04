@@ -19,7 +19,7 @@
 import type {
 	AgentMessage,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { getLogger } from "../../logging/logging.js";
 import { mergeAdjacentSameRoleMessages } from "../provider-message-merge.js";
 import { readJsonSseData } from "../provider-sse.js";
@@ -43,7 +43,7 @@ import {
 	type UsageNormalizer,
 	type UsagePathTable,
 } from "../base/provider-base.js";
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop";
 import { OpenAIChatErrorMapper } from "./provider-wires-openai-chat-errors.js";
 import {
 	OpenAIChatPartCodec,

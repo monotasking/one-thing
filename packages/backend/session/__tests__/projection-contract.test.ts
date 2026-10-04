@@ -53,11 +53,11 @@ import { describe, expect, it } from 'vitest'
 
 import { finalizeLingeringAgentLoopToolWork } from '../../agent-loop/agent-loop-executor.js'
 import { CORE_ABORTED_TOOL_ERROR } from '@shared/engine/tool-call-errors.js'
-import { createCoreToolInputStartArtifacts } from '../../agent-loop/agent-loop-stream-processor.js'
+import { createCoreToolInputStartArtifacts } from '../../agent-loop/agent-loop.js'
 import { coreToolInputStartStepTitle } from '@shared/engine/tool-step.js'
-import { buildHistoryMessages } from '../../agent-loop/agent-loop-history.js'
+import { buildHistoryMessages } from '../../agent-loop/agent-loop.js'
 import { detectSkillUsage, getStepType } from '@shared/engine/tool-step.js'
-import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../agent-loop/agent-loop-history.js'
+import type { CoreHistoryChatMessage, CoreHistoryMessage } from '../../agent-loop/agent-loop.js'
 import { buildContextCompactContent } from '@shared/engine/context-compact-content.js'
 import {
   CORE_INTERRUPTED_PERMISSION_ERROR,

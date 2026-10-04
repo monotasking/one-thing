@@ -9,7 +9,7 @@ import type { Principal } from '@shared/permission/principal'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/mcp/mcp-index-with-bridge'
-import { resolveAIToolName } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { resolveAIToolName } from '@onething/backend/agent-loop'
 import { createEventOnlyEmitter } from '../engine-event-only-emitter.js'
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
@@ -19,7 +19,7 @@ import {
   type CoreToolIdentityResolver,
   type PendingMessageQueue,
 } from '@onething/backend/agent-loop'
-import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/agent-loop'
 import type { AgentRuntimeProviderConfig } from '@onething/backend/provider-call'
 import type { EffectiveAgentProfile } from '@onething/backend/agent'
 import type { CoreSpaceCredentialMarker } from '@onething/backend/provider'

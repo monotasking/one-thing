@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CODEX_BASE_URL, createCodexAgentProvider } from '../codex-agent-provider.js'
-import type { AgentJsonObject, AgentStreamEvent, AgentTurnStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentJsonObject, AgentStreamEvent, AgentTurnStreamEvent } from '@onething/backend/agent-loop'
 
 type FetchInit = NonNullable<Parameters<typeof globalThis.fetch>[1]>
 type FetchBody = FetchInit['body']

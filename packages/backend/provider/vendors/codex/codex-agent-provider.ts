@@ -15,7 +15,7 @@
  *  - **构造即校验**:一个 access token 都拿不到时当场抛「没登录」,而不是拖到
  *    第一回合才炸 —— 这是今天的行为,原样保留。
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop";
 import {
 	CODEX_NOT_LOGGED_IN,
 	CODEX_PROVIDER_ID,

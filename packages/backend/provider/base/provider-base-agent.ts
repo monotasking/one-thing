@@ -7,14 +7,14 @@
  *
  * 实例无可写字段 —— 所有回合级的量活在 `TurnContext` 里。
  */
-import { collectAgentTurnFromStream } from "@onething/backend/agent-loop/agent-loop-primitives";
+import { collectAgentTurnFromStream } from "@onething/backend/agent-loop";
 import type {
 	AgentModelCapabilities,
 	AgentProvider,
 	AgentTurn,
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import type { BaseProviderContext, Logger } from "./provider-context.js";
 import type { TransportFileDelivery } from "./provider-base-model-profile.js";
 

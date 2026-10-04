@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   AgentProvider,
   AgentTurnRequest,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import { createOnethingProviderFacade } from '../provider-facade.js'
 import type { OnethingProviderRequestDumpContext } from '../provider-agent-turn.js'
 import { createDeepSeekAgentProvider } from '../vendors/deepseek/deepseek-agent-provider.js'

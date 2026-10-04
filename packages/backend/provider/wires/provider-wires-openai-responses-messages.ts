@@ -29,7 +29,7 @@
  * 的 provider 标签也来自配方。不给选项 = 今天 codex 的行为逐字不变
  * (`detail:'auto'` 恒发、标签 `'codex'`),`responsesParts` 这个单例就是那一份。
  */
-import { agentToolMessageContentToStructuredPayload } from "@onething/backend/agent-loop/agent-loop-primitives";
+import { agentToolMessageContentToStructuredPayload } from "@onething/backend/agent-loop";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
@@ -40,7 +40,7 @@ import type {
 	AgentTool,
 	AgentToolResultContentPart,
 	AgentTurnRequest,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import {
 	openAIResponsesImageDetail,
 	type OpenAIResponsesProviderOptionSupport,

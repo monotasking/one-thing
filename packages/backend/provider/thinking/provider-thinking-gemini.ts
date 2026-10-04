@@ -16,7 +16,7 @@
  *  - 「关」在这条线上是**降到最低档**而不是真关:2.5 flash 能把预算设成 0,
  *    2.5 pro 落到 `minimal` 的预算,3.x 落到该模型接受的最低档位。
  */
-import type { AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnRequest } from "@onething/backend/agent-loop";
 import {
 	ONETHING_GEMINI_THINKING_BUDGETS,
 	onethingGeminiThinkingLevels,

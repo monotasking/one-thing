@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { withProviderRetryAfter } from '../agent-loop/agent-loop-provider-error-classification.js'
+import { withProviderRetryAfter } from '../agent-loop/agent-loop.js'
 import {
   credentialRefreshKey,
   credentialTargetKey,

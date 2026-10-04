@@ -9,7 +9,7 @@
  * 包括老式带日期 id(`claude-3-7-sonnet-20250219`)的日期段被当版本号那条现状
  * (快照 `thinking-high.claude-3-7-sonnet.request.json` 钉着它;修正排 P1-d)。
  */
-import type { AgentReasoningEffort } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentReasoningEffort } from "@onething/backend/agent-loop";
 import {
 	onethingClaudeModelFamily,
 	type OnethingClaudeModelFamily,

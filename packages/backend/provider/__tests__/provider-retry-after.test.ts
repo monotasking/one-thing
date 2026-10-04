@@ -11,7 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentProvider, AgentTurnRequest } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentProvider, AgentTurnRequest } from '@onething/backend/agent-loop'
 import { createClaudeAgentProvider } from '../vendors/claude/claude-agent-provider.js'
 import { createDeepSeekAgentProvider } from '../vendors/deepseek/deepseek-agent-provider.js'
 import { createGeminiAgentProvider } from '../vendors/gemini/gemini-agent-provider.js'

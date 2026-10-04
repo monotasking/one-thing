@@ -1,4 +1,4 @@
-import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop";
 import type { OnethingCapabilityOverrideLike } from "./provider-model-capability.js";
 import {
 	BaseAgentProvider,

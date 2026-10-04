@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { createCodexAgentProvider } from "../vendors/codex/codex-agent-provider.js";
 import { createDeepSeekAgentProvider } from "../vendors/deepseek/deepseek-agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../provider-openai-compatible.js";

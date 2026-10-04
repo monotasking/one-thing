@@ -9,7 +9,7 @@
  * the owning background task; they must not be mistaken for a completed call.
  */
 import { randomUUID } from "node:crypto";
-import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/agent-loop/agent-loop-primitives";
+import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/agent-loop";
 import { createUtilityProvider } from '@onething/backend/provider-call';
 import { beginAuxiliaryModelRequest } from '@onething/backend/session';
 import {

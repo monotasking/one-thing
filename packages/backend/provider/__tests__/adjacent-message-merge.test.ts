@@ -15,7 +15,7 @@ import type {
 	AgentMessage,
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { mergeAdjacentSameRoleMessages } from "../provider-message-merge.js";
 import { createDeepSeekAgentProvider } from "../vendors/deepseek/deepseek-agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../provider-openai-compatible.js";

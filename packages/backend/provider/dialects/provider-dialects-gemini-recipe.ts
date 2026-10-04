@@ -9,7 +9,7 @@
 import type {
 	AgentModelCapabilities,
 	AgentProvider,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import {
 	HeaderApiKeyAuth,
 	LedgerModelProfileResolver,

@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { undeliverableAttachmentText } from "@onething/backend/agent-loop/agent-loop-primitives";
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop";
 import type { AgentProviderRuntimeConfig } from "../../provider-factory.js";
 import { computeOnethingUsageCostUSD } from "../../provider-pricing.js";
 import {

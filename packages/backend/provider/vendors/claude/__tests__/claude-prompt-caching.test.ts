@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurnRequest } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentTurnRequest } from '@onething/backend/agent-loop'
 import { createClaudeAgentProvider } from '../claude-agent-provider.js'
 
 interface CapturedBody {

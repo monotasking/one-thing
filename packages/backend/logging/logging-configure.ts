@@ -8,33 +8,34 @@ import {
   type LogSource,
   type Logger,
   type LoggerRootOptions,
-} from '@onething/backend/logging/logging-logger-primitives'
+} from './logging-logger-primitives.js'
 import { type LogLevel } from '@shared/logging/types'
 import {
   ensureDir,
   getOnethingLogDir,
 } from '@onething/backend/storage/storage'
-import { setRuntimeLoggerRoot } from '@onething/backend/logging/logging'
-import { JsonlFileSink } from '@onething/backend/logging/logging-jsonl-file-sink'
-import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from '@onething/backend/logging/logging-legacy-console-sink'
-import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from '@onething/backend/logging/logging-crash-hooks'
-import { LogDirJanitor } from '@onething/backend/logging/logging-janitor'
-import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/backend/logging/logging-legacy-debug-env'
-import type { AppLogLevel } from '@onething/backend/logging/logging-rolling-file-logger'
+// 唯一一处引自家入口(D126 的例外,D156):`setRuntimeLoggerRoot` 的实现留在入口里,搬进兄弟文件会让检索 Worker 变大。
+import { setRuntimeLoggerRoot } from './logging.js'
+import { JsonlFileSink } from './logging-jsonl-file-sink.js'
+import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from './logging-legacy-console-sink.js'
+import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from './logging-crash-hooks.js'
+import { LogDirJanitor } from './logging-janitor.js'
+import { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './logging-legacy-debug-env.js'
+import type { AppLogLevel } from './logging-rolling-file-logger.js'
 
-export { JsonlFileSink, readRollingFileEnvOptions } from '@onething/backend/logging/logging-jsonl-file-sink'
-export { LegacyConsoleSink, LEGACY_CONSOLE_NS, callsiteOf } from '@onething/backend/logging/logging-legacy-console-sink'
-export { installProcessCrashHooks } from '@onething/backend/logging/logging-crash-hooks'
-export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from '@onething/backend/logging/logging-janitor'
-export { RollingFileLogger } from '@onething/backend/logging/logging-rolling-file-logger'
-export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@onething/backend/logging/logging-legacy-debug-env'
-// P3'a-3:`consolePort` 是纯适配器,已归位 `@onething/backend/logging`。装配层
-// 原样再导出 —— 34 个 `import { consolePort, getLogger } from './logging-configure.js'`
-// 调用点一行不改(`getLogger` 这半边仍是装配层自己的那一个,不能一起换源)。
-export { consolePort } from '@onething/backend/logging/logging'
-export type { ConsoleLikePort } from '@onething/backend/logging/logging'
-export type { LegacyDebugAliasSpec } from '@onething/backend/logging/logging-legacy-debug-env'
-export type { AppLogLevel, AppLogRecord } from '@onething/backend/logging/logging-rolling-file-logger'
+export { JsonlFileSink, readRollingFileEnvOptions } from './logging-jsonl-file-sink.js'
+export { LegacyConsoleSink, LEGACY_CONSOLE_NS, callsiteOf } from './logging-legacy-console-sink.js'
+export { installProcessCrashHooks } from './logging-crash-hooks.js'
+export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from './logging-janitor.js'
+export { RollingFileLogger } from './logging-rolling-file-logger.js'
+export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './logging-legacy-debug-env.js'
+// P3'a-3:`consolePort` 是纯适配器(`logging-console-port.ts`,也经入口交出)。这里原样再导出,
+// 好让 `import { consolePort, getLogger } from '…/logging-configure'` 的调用点一处拿齐 ——
+// 那里的 `getLogger` 是本文件自己那一只,与入口的同名函数不是同一个(入口文件头、决策记录 D155)。
+export { consolePort } from './logging-console-port.js'
+export type { ConsoleLikePort } from './logging-console-port.js'
+export type { LegacyDebugAliasSpec } from './logging-legacy-debug-env.js'
+export type { AppLogLevel, AppLogRecord } from './logging-rolling-file-logger.js'
 
 /**
  * 装配层的日志入口(docs/design/logging-system-2026-08.md L1)。

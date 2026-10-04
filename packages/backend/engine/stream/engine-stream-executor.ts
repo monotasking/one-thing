@@ -34,7 +34,7 @@ import {
 import { type StreamContext, type StreamSender } from './engine-stream-processor.js'
 import type { HistoryMessage } from './engine-stream-message-helpers.js'
 import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
-import type { AgentOutputModality } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentOutputModality } from '@onething/backend/agent-loop'
 import {
   executeCoreMessageStream,
   type CoreInitialToolChoice,

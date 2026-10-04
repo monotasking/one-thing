@@ -307,7 +307,14 @@ Notes:
     is Electron-free and sits in the same directory next to the `getLogger` facade
     (`logging.ts`); `logging-configure.ts` assembles it: **`configureLogging()` is the single wiring point** (idempotent — the
     desktop's embedded HTTP face never double-configures), and product code only ever
-    calls `getLogger('engine.stream')`. `msg` is a fixed short sentence; variables go in
+    calls `getLogger('engine.stream')`. The entry `@onething/backend/logging` hands out the deferred
+    `getLogger`, the kernel names (`Logger` / `LogRecord` / `LoggerRoot` / sinks / `toLogger` / `getCoreLogger` / …),
+    `consolePort` and the provider request dump (深层引用收口 2026-10-04, D155–D156); **the wiring
+    functions and configure's own `getLogger` still come from the deep key `@onething/backend/logging/logging-configure`**
+    — re-exporting them from the entry would drag configure and the storage layer into the search Worker, and
+    configure's `getLogger` is a *different function* from the entry's (bound to configure's root, captured by
+    `collectLogRecordsForTests`, vs. following the swappable current root, captured by `captureRuntimeLogs`).
+    Whether to merge the two is an open behaviour ruling. `msg` is a fixed short sentence; variables go in
     `fields` (`log.info('stream finished', { sessionId, ms })`), errors go in `err`.
   - **Files are JSONL**: `<store>/log/app.jsonl` (desktop + CLI) / `server.jsonl`
     (standalone server), one `LogRecord` per line, rotated + gzipped by `JsonlFileSink`
@@ -1020,7 +1027,8 @@ packages/backend/<feature>/    # one feature, one flat directory, directly under
 │   ├── tool/  skill/  plugin/  theme/  variable/  goal/  voice/  music/
 │   │                          # (tool/ = pure modules only since R4b: sandbox, bash, edit engine, …)
 │   ├── agent-loop/            # the turn kernel ("how one turn runs"): provider-agnostic runner, stream, retry, tool
-│   │                          # scheduler, wire format (barrel agent-loop-primitives.ts),
+│   │                          # scheduler, wire format (barrel agent-loop-primitives.ts; outside readers get the
+│   │                          # names they use through the entry agent-loop.ts since 2026-10-04, D157),
 │   │                          # + since the engine batch (2026-10, D27/D51) the former core/engine kernel, all named
 │   │                          # agent-loop-*.ts: CoreStreamEngine (agent-loop-stream-engine), executor/runtime/selection,
 │   │                          # tool orchestration, context compact, history, turn context, prompt fragments, ids,

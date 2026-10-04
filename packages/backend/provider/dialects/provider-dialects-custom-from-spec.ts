@@ -26,13 +26,13 @@
  * 另外三条线(responses / anthropic / gemini)批 4 只接受 `wire` 与 `request` 两格:
  * 编译结果是那条线的通用配方换一个 id(§11 留账:那三条线的偏差没见过真实案例)。
  */
-import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop";
 import {
 	CUSTOM_ADAPTER_DEFAULT_PATHS,
 	type CustomAdapterFinishReason,
 	type CustomAdapterSpec,
 } from "@shared/contracts/adapter-spec";
-import type { AgentFinishReason } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentFinishReason } from "@onething/backend/agent-loop";
 import {
 	getPath,
 	LEGACY_FUNCTION_CALL_CODEC,

@@ -1,7 +1,7 @@
 import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
-import { getCoreLogger } from '../logging/logging-logger-primitives.js'
+import { getCoreLogger } from '../logging/logging.js'
 
 const log = getCoreLogger('core.storage')
 

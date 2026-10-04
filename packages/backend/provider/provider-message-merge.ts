@@ -2,7 +2,7 @@ import type {
 	AgentContentPart,
 	AgentMessage,
 	AgentMessageContent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 
 /**
  * 相邻同角色消息合并 —— **传输层的适配**,不是历史的改写。

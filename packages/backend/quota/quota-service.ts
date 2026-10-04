@@ -26,7 +26,7 @@
  */
 import type { ProviderQuota, ProviderQuotaPushPayload } from '@shared/contracts/quota.js'
 import type { QuotaFetchContext } from '@onething/backend/provider'
-import type { Logger } from '@onething/backend/logging/logging-logger-primitives'
+import type { Logger } from '@onething/backend/logging'
 
 export const QUOTA_CARD_TTL_MS = 60_000
 export const QUOTA_RUN_END_DEBOUNCE_MS = 30_000

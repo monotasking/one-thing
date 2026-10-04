@@ -25,7 +25,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 

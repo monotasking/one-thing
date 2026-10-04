@@ -20,7 +20,7 @@ import {
   writeJsonFile,
 } from '@onething/backend/storage/storage-primitives'
 import { describeNonSerializable } from './plugin-request-channel.js'
-import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
+import { getCoreLogger } from '@onething/backend/logging'
 
 const log = getCoreLogger('core.plugins')
 

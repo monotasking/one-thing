@@ -53,7 +53,7 @@
  * 补上采集点而不是豁免掉的);不会变的才写进这张表。
  */
 
-import { stringifyToolResult, toolCallArguments } from '../../agent-loop/agent-loop-wire-format.js'
+import { stringifyToolResult, toolCallArguments } from '../../agent-loop/agent-loop.js'
 import {
   EPHEMERAL_MESSAGE_KEYS,
   EPHEMERAL_STEP_KEYS,

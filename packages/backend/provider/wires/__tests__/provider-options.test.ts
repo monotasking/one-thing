@@ -19,7 +19,7 @@
  * 在这里守着,免得「换线之后 detail 悄悄失效」。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop";
 import { getLogger } from "../../../logging/logging.js";
 import "../../dialects/provider-dialects.js";
 import {

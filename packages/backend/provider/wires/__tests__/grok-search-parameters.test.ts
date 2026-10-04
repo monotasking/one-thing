@@ -36,7 +36,7 @@
  *     东西,拿它们喂进去应当一个事件都不产。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop";
 import { getLogger } from "../../../logging/logging.js";
 import "../../dialects/provider-dialects.js";
 import { decodeGrokResponsesCitations } from "../../vendors/grok/grok-dialect.js";

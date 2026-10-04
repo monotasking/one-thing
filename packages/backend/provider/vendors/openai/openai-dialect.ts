@@ -54,7 +54,7 @@
  *
  * `gpt-image-*` 仍走专用生图流(`/v1/images/*`),那条通路不在回合里。
  */
-import type { AgentModelCapabilities } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentModelCapabilities } from "@onething/backend/agent-loop";
 import type { TurnContext } from "../../base/provider-base.js";
 import { OPENAI_RESPONSES_THINKING_WIRES } from "../../thinking/provider-thinking-openai-responses.js";
 import { onethingOpenAIAcceptsOriginalImageDetail } from "../../model-families/provider-model-families-openai.js";

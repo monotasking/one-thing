@@ -20,8 +20,8 @@ import {
   type LogConfigResponse,
   type LogsRoutes,
 } from '@shared/ipc/logs.js'
-import { isLogLevel, type LogRecord } from '@onething/backend/logging/logging-logger-primitives'
-import { getLogLevelSpec, getRootLogger } from '@onething/backend/logging/logging-configure'
+import { isLogLevel, type LogRecord } from './logging-logger-primitives.js'
+import { getLogLevelSpec, getRootLogger } from './logging-configure.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 const RENDERER_NS_PREFIX = 'renderer.'

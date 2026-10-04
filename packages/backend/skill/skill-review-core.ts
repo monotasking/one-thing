@@ -1,5 +1,5 @@
 import path from 'path'
-import type { AgentTool, AgentToolExecutionContext } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentTool, AgentToolExecutionContext } from '@onething/backend/agent-loop'
 import { toJsonValue, type JsonObject, type JsonValue } from '@shared/json'
 
 type CoreMaybePromise<T> = T | Promise<T>

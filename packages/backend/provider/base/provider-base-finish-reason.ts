@@ -4,7 +4,7 @@
  * P0a 只落 OpenAI 形状,逐字复刻 `provider-openai-compatible.ts` 的 `mapFinishReason`。
  * context-overflow 归到压缩层(替掉 `retry.ts` 的文本正则)是 P2 的事。
  */
-import type { AgentFinishReason } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentFinishReason } from "@onething/backend/agent-loop";
 
 export interface FinishReasonMapper {
 	map(raw: string | null | undefined): AgentFinishReason;

@@ -5,7 +5,7 @@ import type {
   CorePromptActiveProject as PromptActiveProject,
   CorePromptKnownProjects as PromptKnownProjects,
 } from '@onething/backend/agent-loop'
-import type { AgentProviderData } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentProviderData } from '@onething/backend/agent-loop'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
 import type { JsonObject, JsonObjectProperty } from '@shared/json.js'
 import {

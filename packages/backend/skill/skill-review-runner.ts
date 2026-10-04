@@ -4,7 +4,7 @@ import {
   runAgentLoop,
   type AgentProvider,
   type AgentJsonObject, type AgentLoopOptions,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import path from 'path'
 import {
   SUPPORT_FILE_ROOTS,

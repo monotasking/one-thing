@@ -6,7 +6,7 @@
  * (§2.7):某个模型走哪条线由 `ModelProfile.reasoningWire` 说了算,方言只
  * 声明「我这家可能出现哪几条」。
  */
-import type { AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentMessage } from "@onething/backend/agent-loop";
 import type { OnethingReasoningWire } from "../provider-model-capability.js";
 import type { RequestBodyBuilder } from "./provider-base-request-body-builder.js";
 import type { TurnContext } from "./provider-base-turn-context.js";

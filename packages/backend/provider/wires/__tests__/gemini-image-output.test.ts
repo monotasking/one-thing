@@ -18,7 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
 	AgentMessage,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { createAgentProviderFromRuntime } from "../../provider-factory.js";
 import { geminiParts } from "../provider-wires-gemini-messages.js";
 import type { GeminiContent } from "../provider-wires-gemini-messages.js";

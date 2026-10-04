@@ -8,7 +8,7 @@ import {
   getStepType,
   type CoreStepType,
 } from '@shared/engine/tool-step.js'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging'
 
 export interface CoreToolCallLike {
   id: string

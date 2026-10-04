@@ -9,7 +9,7 @@
  * `thinkingWires.require(style)` 一句取到(§2.7:线型按账本的
  * `OnethingReasoningWire` 值建表,方言不持有线型)。
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop";
 import { ResolveAuth, thinkingWires } from "./base/provider-base.js";
 import {
 	createOpenAIChatProvider,

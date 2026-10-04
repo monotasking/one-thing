@@ -27,7 +27,7 @@ import { describe, expect, it } from "vitest";
 import {
 	agentMessagesFromHistory,
 	type AgentModelCapabilities,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,

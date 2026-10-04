@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { applyAgentLoopProviderDataWithAdapters, getHistoryProviderData } from '@onething/backend/agent-loop'
-import type { AgentMessage, AgentTurnRequest } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentMessage, AgentTurnRequest } from '@onething/backend/agent-loop'
 import { applyOnethingAgentLoopProviderData } from '../../../provider-data.js'
 import { createClaudeAgentProvider } from '../claude-agent-provider.js'
 

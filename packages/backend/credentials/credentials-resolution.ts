@@ -62,7 +62,7 @@ import {
 import {
   classifyOAuthRefreshError,
   providerErrorCooldownUntil,
-} from '@onething/backend/agent-loop/agent-loop-provider-error-classification'
+} from '@onething/backend/agent-loop'
 import {
   credentialTargetFromSpaceMarker,
   type OnethingCredentialTarget,

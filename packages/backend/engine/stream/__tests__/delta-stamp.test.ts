@@ -17,7 +17,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentStreamEvent } from '@onething/backend/agent-loop'
 import type { SessionAssistantChunksEvent } from '@shared/session/events/types'
 import type { StreamDeltaStamp } from '@shared/events/index.js'
 

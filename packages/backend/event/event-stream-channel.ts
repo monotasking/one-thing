@@ -15,7 +15,7 @@
 
 import type { StreamChunkHandler, Unsubscribe } from './event-types.js'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
-import { getCoreLogger } from '../logging/logging-logger-primitives.js'
+import { getCoreLogger } from '../logging/logging.js'
 
 const log = getCoreLogger('core.events')
 

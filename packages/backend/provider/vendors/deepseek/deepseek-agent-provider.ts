@@ -12,7 +12,7 @@
  * 服务商自述试点 P2 从 `agent-loop/providers/deepseek.ts` 搬回家。生产路不走这里
  * (运行时工厂是同目录 `runtime.ts`);今天它的调用方是测试与两个桶的再导出。
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop";
 import { BearerApiKeyAuth } from "../../base/provider-base.js";
 import { createOpenAIChatProvider } from "../../dialects/provider-dialects-recipe.js";
 import type { AgentProviderRequestDumper } from "../../provider-request-dumper.js";

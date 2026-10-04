@@ -16,7 +16,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { awaitAgentExecutionCheckpoint } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { awaitAgentExecutionCheckpoint } from '@onething/backend/agent-loop'
 import type { SessionRunKind } from '@shared/session/events/types'
 import { writeSessionEvent } from './session-event-writer.js'
 import { prepareSessionEventsOnce } from './session-prepare.js'

@@ -17,7 +17,7 @@
  *     指名要这个函数的回合不挂原生。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentTool, AgentTurnRequest } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentTool, AgentTurnRequest } from "@onething/backend/agent-loop";
 import { getLogger } from "../../../logging/logging.js";
 import "../../dialects/provider-dialects.js";
 import {

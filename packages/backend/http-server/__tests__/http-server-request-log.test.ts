@@ -8,7 +8,7 @@
 import { once } from 'node:events'
 import type { Server } from 'node:http'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { LogRecord } from '@onething/backend/logging/logging-logger-primitives'
+import type { LogRecord } from '@onething/backend/logging'
 import { getRootLogger } from '@onething/backend/logging/logging-configure'
 import { createOnethingHttpServer, sessionIdFromPath } from '../http-server-routes.js'
 

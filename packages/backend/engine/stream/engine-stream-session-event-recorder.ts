@@ -40,7 +40,7 @@ import type {
   AgentLoopOptions,
   AgentStreamEvent,
   AgentTool,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import type { CoreAssistantPartRef } from '@shared/session/events/chunk-codec'
 import type {
   BlobRef,
@@ -63,7 +63,7 @@ import type {
   UiAssistantDeltaChunk,
   UiAssistantPartEndChunk,
 } from '@shared/events/stream-chunks'
-import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/backend/agent-loop/agent-loop-primitives'
+import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/backend/agent-loop'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
 // `packages/backend/agent-loop/agent-loop` barrel —— barrel 会把整棵执行器模块图拖进记录器
 // (与上面 provider-data 那条 import 同一条理由)。

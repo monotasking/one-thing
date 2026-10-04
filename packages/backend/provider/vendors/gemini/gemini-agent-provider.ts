@@ -11,7 +11,7 @@
  * (运行时工厂是同目录 `runtime.ts`;backend 那层只加了缺省 fetch / 媒体端口的包装零调用者,
  * 已删);今天它的调用方是几个测试 —— 拿它当构造捷径。
  */
-import type { AgentProvider } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentProvider } from "@onething/backend/agent-loop";
 import {
 	GEMINI_DEFAULT_BASE_URL,
 	createGeminiProvider,

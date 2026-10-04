@@ -1879,3 +1879,16 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 
 **读数**:`layer:check` 25 / 9 → 5 / 3(单 5)→ **0 / 0**(单 6);`entry:gate` 2275 → 2254 → 2250;`cycle:gate` 0;`name:gate` 0;`assembly:gate` 绿。验收全文见 `layer-violations-to-zero-2026-10.md` 第 6 节。
 
+
+### 深层引用收口第一批落地记录:logging + agent-loop(2026-10-04,未提交)
+
+**做了什么**(按 `layer-violations-to-zero-2026-10.md` 第 3 节收口顺序的前两家;决策 D155–D159;生产行为零变化):
+
+1. **agent-loop**:入口末尾加一组「循环原语」(只交外面非测试真在用的 58 个名字,经 `agent-loop-primitives.ts` 那个桶转交,好让三只在桶上打桩的测试照样拦得住),再补服务商错误分类 4 个、线格式 2 个、历史 4 个;入口 619 → 687 个名字。外面非测试的深层引用 **102 → 0**(服务商 61、engine 13、provider-call 5、session 5 ……,另有 `scripts/agent-loop-core-test.ts` 与壳的 `probe-generation-end.ts` 两只脚本改相对路径指入口),测试 78 处改走入口,27 处按 D35 / D39 留着(D158)。
+2. **logging**:入口改成 R3 说明书 + 四类具名导出(取 logger 与当前 root、日志原语、`consolePort`、服务商请求转储;12 → 23 个名字);`logging-logger-primitives` 的外部引用 **44 → 0**(非测试)、测试 7 → 0;logging 目录里对自家文件的包说明符改相对路径。**`logging-configure` 的 173 处与 `logging-diagnostics` 的 2 处停下**:入口转交 configure 的任何名字,检索 Worker 就多 24 只模块、+4218 字节;而且 configure 的 `getLogger` 与入口的 `getLogger` 同名不同物,换说明符等于换函数(D155,两条路列给用户)。取 logger 的实现留在入口里(搬进兄弟文件会让 Worker 多 13 字节,D156),configure 引 `setRuntimeLoggerRoot` 是 D126 唯一的例外。
+3. exports 删 9 把(`./logging/logging`、七把 logging 内部键、`./agent-loop/agent-loop-provider-error-classification`),留 3 把(D159)。
+4. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动(改前改后 sha 相同)。
+
+**读数**:`entry:gate` 2250 → **2019**(logging 254 → 203,非测试 219 → 175 全是停下的那 175 处;agent-loop 207 → 27,非测试 0),其余各行不变;`cycle:gate` 0(值边 4723 → 4722);`layer:gate` 0;`name:gate` 0;检索 Worker 1275007 字节不变。
+
+**验收**(改前 `s27-before` = 6b0de2f97 + 别的会话的未提交改动 / 改后 `s27-after`):三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build` 成功,三份 `search-worker.cjs` 字节逐字不变(桌面 1275007、server / CLI 1276543),`acp-mcp-bridge` 不变,主进程包略小(桌面 11311439 → 11310810、CLI 11366660 → 11366032);全量 vitest 失败集合**逐行相同**(仓根 21 条、壳侧 1 条,都是改前就有的);快照与 golden sha 不变;persistence 176 条、side-effect + lifecycle 24 条全绿;shadow-battery 场景表逐行相同(appendFailures 8 与改前同);hydration 两店各 217 / 0;`gate:acp` 109 条 ok;`gate:search-index` 72 ok / 3 FAIL 与改前同一组(⑤c / ⑤d);`gate:web-shell` / `gate:client` 绿;cycle / layer / name / entry / client-api / feature-map / boundary / transport / provider(105 对)/ log / assembly / session / native 全绿;`provider:drill` 直接跑绿;CLI 与 server 能起。

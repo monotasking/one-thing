@@ -2,7 +2,7 @@ import type {
   AgentJsonObject,
   AgentProvider,
   AgentProviderData,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import {
   runOnethingUtilityAgentTurn,
   type OnethingProviderRequestDumpContext,

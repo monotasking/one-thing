@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import type {
 	AgentMessage,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import { createAgentProviderFromRuntime } from "../provider-factory.js";
 
 const VISION_MODEL = "deepseek-v4-flash-vision-exp";

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LoggerRoot, type LogRecord } from '@onething/backend/logging/logging-logger-primitives'
+import { LoggerRoot, type LogRecord } from '@onething/backend/logging'
 import { configureGatewayLogging } from '../../../../hub/gateway-hub-logging.js'
 import { ILinkPoller } from '../wechat-ilink-poller.js'
 import type { GetUpdatesResponse } from '../wechat-ilink-types.js'

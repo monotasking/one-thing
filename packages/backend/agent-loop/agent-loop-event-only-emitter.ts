@@ -1,7 +1,7 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import type { EventBase } from '@onething/backend/event/event-bus-primitives'
 import type { StreamChunkBase, StreamDeltaStamp } from '@shared/events/stream-chunks.js'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging'
 import type { JsonObject } from '@shared/json.js'
 import type { CoreIPCEmitter, CoreReasoningPlacement } from './agent-loop-ipc-emitter.js'
 import type { CoreToolArgsFinalizedBy } from './agent-loop-stream-processor.js'

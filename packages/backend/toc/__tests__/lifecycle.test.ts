@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentProvider } from '@onething/backend/agent-loop'
 import type { OnethingBackend } from '@onething/backend/backend.js'
 
 function barrier() {

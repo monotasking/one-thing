@@ -15,7 +15,7 @@ import type {
 	AgentContentPart,
 	AgentMessage,
 	AgentTurnStreamEvent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import type { TurnContext } from "./provider-base-turn-context.js";
 
 /** 这个 part 为什么进不了请求体。P0a 只有一条 —— 线协议没有这种块。 */

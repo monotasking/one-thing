@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
+import type { AgentProvider } from '@onething/backend/agent-loop'
 import {
   createOnethingUtilityAgentProvider,
   isOnethingACPProviderRuntime,

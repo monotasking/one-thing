@@ -38,7 +38,7 @@ import type {
 	AgentContentPart,
 	AgentMessage,
 	AgentMessageContent,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import type { AttachmentChannel, TurnContext, TurnTransport } from "../../base/provider-base.js";
 
 /** 上传时的 `purpose` —— 内容抽取这一支(另外三个值是 image / video / batch)。 */

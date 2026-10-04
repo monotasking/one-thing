@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { JsonObject } from '@shared/json.js'
 import type { Principal } from '@shared/permission/principal.js'
 import * as PermissionGrants from './permission-grants.js'
-import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logging-logger-primitives.js'
+import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logging.js'
 import { formatPermissionRejectedMessage } from '@shared/permission/rejection-message.js'
 
 export interface PermissionCommandEnvelope<TCommand = unknown> {

@@ -33,7 +33,7 @@ import type {
   EventDeliveryOptions,
 } from './event-types.js'
 import { RingBuffer } from './event-ring-buffer.js'
-import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logging-logger-primitives.js'
+import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logging.js'
 
 export class EventBus<
   TSessionEvent extends EventBase = EventBase,

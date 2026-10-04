@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession, ToolCall } from '@shared/ipc'
 import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import type { JsonObject } from '@shared/json.js'
-import type { IPCEmitter } from '../../agent-loop/agent-loop-session-stream-emitter.js'
+import type { IPCEmitter } from '../../agent-loop/agent-loop.js'
 import type { StreamContext, StreamProcessor } from '../stream/engine-stream-processor.js'
 import * as sessionsEntry from '@onething/backend/session'
 

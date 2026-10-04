@@ -6,7 +6,7 @@ import {
 	visibleMessagesAfterSummary,
 	type TurnBlock,
 	type TurnContextCarrier,
-} from "../agent-loop/agent-loop-turn-context.js";
+} from "../agent-loop/agent-loop.js";
 
 const ledger = new TurnContextLedger();
 

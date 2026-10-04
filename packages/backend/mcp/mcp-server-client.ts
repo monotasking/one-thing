@@ -25,7 +25,7 @@ import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import { notifyMCPCapabilitiesChanged } from '@onething/backend/mcp/mcp-capabilities-changed'
 import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { LegacyDuckLogger } from '@onething/backend/logging/logging-logger-primitives'
+import type { LegacyDuckLogger } from '@onething/backend/logging'
 
 const log = getLogger('server.mcp')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

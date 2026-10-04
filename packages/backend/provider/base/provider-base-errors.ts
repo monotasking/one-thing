@@ -10,7 +10,7 @@
  * 消息形如 `${providerId} agent loop API error: ${status} ${body}`。
  * 这些**全部保留**,新字段只是加上去 —— 迁移时分类器与测试可以一行不改。
  */
-import { withProviderRetryAfter } from "../../agent-loop/agent-loop-provider-error-classification.js";
+import { withProviderRetryAfter } from "../../agent-loop/agent-loop.js";
 import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface ProviderHttpErrorInit {

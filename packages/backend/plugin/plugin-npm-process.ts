@@ -18,7 +18,7 @@ import {
 import { PLUGIN_NPM_INSTALL_TIMEOUT_MS } from './plugin-disk-loader.js'
 import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { LegacyDuckLogger } from '@onething/backend/logging/logging-logger-primitives'
+import type { LegacyDuckLogger } from '@onething/backend/logging'
 
 const log = getLogger('plugins.market')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

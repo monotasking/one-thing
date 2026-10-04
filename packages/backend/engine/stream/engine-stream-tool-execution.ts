@@ -29,7 +29,7 @@ import { runToolkitToolDirectly } from '@onething/backend/toolkit/toolkit-wiring
 import { pushSessionToolProgress } from '@onething/backend/event/event-tool-progress-stream'
 import { consolePort, getLogger } from '../../logging/logging-configure.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { LegacyDuckLogger } from '@onething/backend/logging/logging-logger-primitives'
+import type { LegacyDuckLogger } from '@onething/backend/logging'
 import type { ToolMetadataUpdate } from '@onething/backend/toolkit/toolkit-execution-types'
 import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '../../agent-loop/agent-loop.js'
 

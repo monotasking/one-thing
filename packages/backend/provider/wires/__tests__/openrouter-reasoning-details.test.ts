@@ -23,7 +23,7 @@ import type {
   AgentJsonValue,
   AgentMessage,
   AgentTurnStreamEvent,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import { getHistoryProviderData } from '@onething/backend/agent-loop'
 import { createAgentProviderFromRuntime } from '../../provider-factory.js'
 import { planOnethingProviderDataPart, providerDataFromOnethingContentPart } from '../../provider-data.js'

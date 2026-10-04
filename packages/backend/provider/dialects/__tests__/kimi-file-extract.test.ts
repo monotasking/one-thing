@@ -14,7 +14,7 @@
  * 以及**谁不走这条通道**(图仍是 `image_url`,表外格式一个字节都不上传)。
  */
 import { describe, expect, it, vi } from "vitest";
-import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop";
 import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,

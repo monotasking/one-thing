@@ -2,7 +2,7 @@ import {
   CORE_PLUGIN_LIFECYCLE_HOOK_TIMEOUT_MS,
   runWithPluginTimeout,
 } from './plugin-runtime-guard.js'
-import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging/logging-logger-primitives'
+import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
 
 export interface CoreBeforeContextCompactContext<
   TSettings = unknown,

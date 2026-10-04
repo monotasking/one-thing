@@ -24,7 +24,7 @@ import {
   compactedHistoryPreamble,
   completedHistoryToolCalls,
   historyContentPartsCoverContent,
-} from '../../agent-loop/agent-loop-history.js'
+} from '../../agent-loop/agent-loop.js'
 import { TurnContextLedger } from '../../agent-loop/agent-loop.js'
 import type { BlobRef, SessionLogEventRecord } from '@shared/session/events/types.js'
 import { foldSessionProjection, materializeNode } from '@shared/session/projection/chat-messages.js'

@@ -1,4 +1,4 @@
-import { getCoreLogger } from '@onething/backend/logging/logging-logger-primitives'
+import { getCoreLogger } from '@onething/backend/logging'
 
 const log = getCoreLogger('core.session')
 

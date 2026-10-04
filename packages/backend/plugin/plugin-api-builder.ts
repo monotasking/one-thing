@@ -1,5 +1,5 @@
 import type { CorePluginAPIState } from './plugin-api-state.js'
-import { toLogger, type CompatLogger } from '@onething/backend/logging/logging-logger-primitives'
+import { toLogger, type CompatLogger } from '@onething/backend/logging'
 import { describeToolPromptContributionProblem } from '../agent-loop/agent-loop.js'
 import {
   clampPluginBackgroundParamsPatch,

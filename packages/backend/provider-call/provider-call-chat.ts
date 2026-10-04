@@ -32,7 +32,7 @@ import {
 import { ACPManager } from '@onething/backend/acp'
 import type {
   AgentProvider,
-} from '@onething/backend/agent-loop/agent-loop-primitives'
+} from '@onething/backend/agent-loop'
 import { oauthManager } from '@onething/backend/auth'
 import { modelRegistry, createRequiredAppFetch } from '@onething/backend/settings'
 import {

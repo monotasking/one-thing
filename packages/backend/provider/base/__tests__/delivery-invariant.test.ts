@@ -34,7 +34,7 @@
  * 六行删完了,表现在是空的。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContentPart, AgentInputModality } from "@onething/backend/agent-loop/agent-loop-primitives";
+import type { AgentContentPart, AgentInputModality } from "@onething/backend/agent-loop";
 import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,

@@ -15,7 +15,7 @@
  *  3. user 侧 PDF 走 `document` 块,其余二进制留成可见文本(`Undeliverable`);
  *     tool_result 侧**没有** `document` 块,PDF 在那边只会变成文本。
  */
-import { agentToolMessageContentToText } from "@onething/backend/agent-loop/agent-loop-primitives";
+import { agentToolMessageContentToText } from "@onething/backend/agent-loop";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
@@ -24,7 +24,7 @@ import type {
 	AgentMessageContent,
 	AgentTool,
 	AgentToolChoice,
-} from "@onething/backend/agent-loop/agent-loop-primitives";
+} from "@onething/backend/agent-loop";
 import {
 	Undeliverable,
 	delivered,

@@ -7,7 +7,7 @@ import type {
 } from '@onething/backend/gateway/gateway-conversation-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../gateway-hub-channel.js'
-import { LoggerRoot, type LogRecord, type LogSink } from '@onething/backend/logging/logging-logger-primitives'
+import { LoggerRoot, type LogRecord, type LogSink } from '@onething/backend/logging'
 import { GatewayBridge, type GatewayCommandProvider } from '../gateway-hub-bridge.js'
 import { Allowlist } from '../middleware/gateway-hub-middleware-allowlist.js'
 import { RateLimiter } from '../middleware/gateway-hub-middleware-rate-limiter.js'
