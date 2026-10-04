@@ -27,11 +27,8 @@
  * 头)。实现这一侧对两者一视同仁 —— 它只管答,答给谁不是它的判据。
  */
 
-import { Intent } from '../toolkit/toolkit-intent.js'
-import type { Result } from '../toolkit/toolkit-result.js'
-import type { PlanContext, RunContext } from '../toolkit/toolkit-run-context.js'
-import type { Scene } from '../toolkit/toolkit-spec.js'
-import type { SandboxPolicy } from '../toolkit/toolkit-ports.js'
+import { Intent } from '../toolkit/toolkit.js'
+import type { Result, PlanContext, RunContext, Scene, SandboxPolicy } from '../toolkit/toolkit.js'
 import type { Effect, EffectClass } from '@shared/toolkit/effects.js'
 import type { Principal } from '@shared/permission/principal.js'
 import { ResourceOpUnknownError } from './resource-errors.js'

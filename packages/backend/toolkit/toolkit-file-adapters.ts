@@ -5,7 +5,8 @@
  * 用**同一份**根列表,而它不该为此 import 整张工具目录(那会把每只内置工具都拖进 server /
  * daemon 的装配依赖图)。目录照旧从这里拿,口径只有一处。
  */
-import type { MutatingFileToolAdapters, ReadToolAdapters } from '@onething/backend/toolkit'
+import type { MutatingFileToolAdapters } from './families/toolkit-families-mutating-file.js'
+import type { ReadToolAdapters } from './builtin/toolkit-builtin-read.js'
 import { getOnethingFileMutationsDir } from '@onething/backend/storage'
 import { getSettings } from '@onething/backend/settings'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'

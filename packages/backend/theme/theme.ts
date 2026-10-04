@@ -23,7 +23,7 @@ import { generateSkinVariables } from './theme-skin.js'
 import { generateShellRoleVariables } from './theme-shell-roles.js'
 import { parseBase46Lua, convertBase46ToTheme } from './theme-base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
-import { getOnethingStorePath } from '../storage/storage-paths.js'
+import { getOnethingStorePath } from '../storage/storage.js'
 
 import { getLogger } from '../logging/logging.js'
 

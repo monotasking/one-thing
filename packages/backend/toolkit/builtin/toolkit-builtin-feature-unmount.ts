@@ -11,7 +11,8 @@
 import { z } from 'zod'
 import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { JsonObject } from '@shared/json'
-import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/toolkit'
+import { CapabilityTool, SELF_EVOLUTION_SKILL_NAME } from '../families/toolkit-families-capability.js'
+import { defineInput } from '../toolkit-contract.js'
 import { dumpFeatures, hasFeature } from '@onething/backend/feature-registry'
 import type { FeatureToolRuntime } from './toolkit-builtin-feature-runtime.js'
 

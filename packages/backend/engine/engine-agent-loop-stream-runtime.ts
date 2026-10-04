@@ -91,14 +91,14 @@ import { createTurnTraceRecorder } from "../eval/eval-trace-store.js";
 import {
 	DEFAULT_AGENT_MAX_TURNS,
 	type EffectiveAgentProfile,
-} from "../agent/agent-profile.js";
+} from "../agent/agent.js";
 // 缝 1。目录由装配层通过 `configureToolkitCatalog` 递进来 —— 产品层不许
 // import `@onething/backend`。
 import {
 	resolveToolkitSurface,
 	toolkitAgentSourceTools,
-} from "../toolkit/toolkit-host.js";
-import type { SceneSessionLike as ToolkitSceneSessionLike } from "../toolkit/toolkit-scene.js";
+} from "../toolkit/toolkit.js";
+import type { SceneSessionLike as ToolkitSceneSessionLike } from "../toolkit/toolkit.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 

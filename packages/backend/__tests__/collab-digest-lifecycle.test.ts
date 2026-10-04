@@ -151,7 +151,7 @@ it('keeps the real auth promise and lease until it settles; shutdown blocks the 
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await vi.waitFor(() => expect(() => oldRunner.ensureCollabDigests('room', [day])).toThrow('shutting down'))
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).toBe('held')
   expect(disposed).toBe(false)
   expect(local.requests).toHaveLength(0)
@@ -178,7 +178,7 @@ it('drains the real delayed model response under the A lease, bills A, and canno
   let disposed = false
   const stopping = backend.dispose().then(() => { disposed = true })
   await vi.waitFor(() => expect(control.signals.at(-1)?.aborted).toBe(true))
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   expect(inspectStoreLock({ storePath: storeA }).status).toBe('held')
   expect(disposed).toBe(false)
   // A provider may report billed usage before its ignored cancellation resolves.

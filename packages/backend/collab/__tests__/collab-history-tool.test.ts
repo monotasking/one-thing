@@ -138,7 +138,7 @@ describe('授权（多给一条就是事故）', () => {
     const { historyAdapters } = await import('../tools/collab-tool-adapters.js')
     const { createHistoryTool } = await import('../tools/collab-tool-history.js')
     const { ZodValidator } = await import('@onething/backend/toolkit')
-    const { ToolRunner, Decision } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
+    const { ToolRunner, Decision } = await import('@onething/backend/toolkit')
     const runner = new ToolRunner({
       authorizer: { async decide() { return Decision.allow() } },
       observer: { on() {} }, validator: new ZodValidator(),

@@ -1,8 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { getOnethingStorePath } from '../storage/storage-paths.js'
-import { spaceDir } from '../space/space-persistence.js'
-import { DEFAULT_SPACE_ID, isValidSpaceId } from '../space/space-types.js'
+import { getOnethingStorePath } from '../storage/storage.js'
+import { spaceDir, DEFAULT_SPACE_ID, isValidSpaceId } from '../space/space.js'
 import {
   parseProject,
   parseProjectIndex,

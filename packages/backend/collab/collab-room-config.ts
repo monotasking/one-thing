@@ -41,7 +41,7 @@ import { fixedExecutionContext } from '../session/session.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { ownedCollabSessionId } from './collab-owned-session-id.js'
 import { getEventBus } from '@onething/backend/event'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { applyBoardAction, clearCollabBoard } from './collab-board-store.js'
 import { emitCollabTyping } from './collab-typing-observer.js'
 import {

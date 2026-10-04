@@ -11,7 +11,7 @@
  * 反证②(拆掉断开时的注销)咬的是「断开之后注册表里没有它」那一条。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Catalog, ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Catalog, ToolRunner } from '@onething/backend/toolkit'
 import { ResourceKernel, ResourceRegistry } from '@onething/backend/resource/resource-api'
 import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types'
 import { syncResourceToolsIntoCatalog } from '../resource-catalog-sync.js'

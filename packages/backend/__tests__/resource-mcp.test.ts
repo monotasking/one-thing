@@ -194,7 +194,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       }
 
       // ③ 模型面上没有第二只工具 —— AI 走 `McpTool`。
-      const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit')
       expect(getToolkitCatalog()?.has(SCHEME)).toBe(false)
       // 但它确实是一种资源:元工具的 list 里有它。
       const meta = getToolkitCatalog()?.get('resources')

@@ -97,7 +97,7 @@ import {
   configureCollabExternalLogSink,
   installCollabExternalObservers,
 } from '../collab-external-observability.js'
-import { findAgent, listAgents } from '@onething/backend/agent/agent-store-access'
+import { findAgent, listAgents } from '@onething/backend/agent'
 import { getEventBus } from '@onething/backend/event'
 import * as store from '@onething/backend/session'
 import {

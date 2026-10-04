@@ -31,7 +31,7 @@
 
 import type { ResourceEvent } from '@onething/backend/resource/resource-events'
 import type { ReadOutcome } from '@onething/backend/resource/resource-read-outcome'
-import type { Outcome } from '@onething/backend/toolkit/toolkit-outcome'
+import type { Outcome } from '@onething/backend/toolkit'
 
 /* ── 声明门(manifest contributes.permissions)───────────────────────────── */
 

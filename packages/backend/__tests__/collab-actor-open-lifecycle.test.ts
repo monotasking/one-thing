@@ -86,7 +86,7 @@ it.each(['agent', 'room'] as const)('drains a board-triggered real %s mailbox op
   expect(runtime.peekCollabV3Room('room')).toBeUndefined()
   let stopped = false
   const stopping = backend.dispose().then(() => { stopped = true })
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   await new Promise(resolve => setTimeout(resolve, 20))
   expect(stopped).toBe(false)
   expect(inspectStoreLock({ storePath: firstPath }).status).toBe('held')

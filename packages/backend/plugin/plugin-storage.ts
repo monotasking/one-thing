@@ -18,7 +18,7 @@ import {
   isDirectory,
   pathExists,
   writeJsonFile,
-} from '@onething/backend/storage/storage-primitives'
+} from '@onething/backend/storage'
 import { describeNonSerializable } from './plugin-request-channel.js'
 import { getCoreLogger } from '@onething/backend/logging'
 

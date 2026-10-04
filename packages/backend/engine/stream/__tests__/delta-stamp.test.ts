@@ -50,7 +50,7 @@ const { createStreamBuffer, appendStreamBufferChunk, drainStreamBuffer, SessionS
   '@onething/backend/event/event-stream-coalescer'
 )
 const { offerDeltaStamp, claimDeltaStamp, clearDeltaStamps } = await import(
-  '@onething/backend/event/event-delta-stamp'
+  '@onething/backend/event'
 )
 
 const SESSION = 'stamp'

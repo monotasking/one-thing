@@ -50,9 +50,9 @@
  * 登记过哪几个 id,就摘哪几个。
  */
 
-import type { Catalog, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Catalog, Tool } from '@onething/backend/toolkit'
 import { ResourceMetaTool, type ResourceKernel } from '@onething/backend/resource/resource-api'
-import type { ToolCatalogTier } from '../toolkit/toolkit-tier-catalogs.js'
+import type { ToolCatalogTier } from '../toolkit/toolkit.js'
 
 export interface ResourceCatalogSyncOptions {
   /** 这一档目录是哪一档。缺席 = 不按档减(单测里那种自己 new 一本目录的用法)。 */

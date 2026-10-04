@@ -25,7 +25,7 @@ import type { CorePromptCapture } from "@onething/backend/agent-loop";
 import {
 	getOnethingEvalsIncidentsDir,
 	type OnethingStorePathOptions,
-} from "../storage/storage-paths.js";
+} from "../storage/storage.js";
 import {
 	buildPromptSnapshotObject,
 	buildContextSnapshotContent,

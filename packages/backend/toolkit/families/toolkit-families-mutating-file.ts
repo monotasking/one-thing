@@ -17,23 +17,24 @@
  * hash 把它捞回来。重校验(文件在审批期间被改了)照旧,判据逐字不变。
  */
 
-import { coreDiffHunksToJson, type CoreDiffHunk } from '@onething/backend/tool/tool-helpers'
+import { coreDiffHunksToJson, type CoreDiffHunk } from '@onething/backend/tool'
 import { Intent } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
 import type { JsonObject, JsonValue } from '@shared/json'
 import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect, EffectClass } from '@shared/toolkit/effects'
-import { basenamePath } from '@onething/backend/storage/storage-primitives'
-import { filePermissionPattern } from '../../tool/tool-permission-effects.js'
-import { withFileMutationQueue } from '../../tool/tool-file-mutation-queue.js'
-import { truncateDiffHunksForDisplay } from '../../tool/tool-diff-hunks.js'
-import { truncateDiffForDisplay } from '../../tool/tool-replacers.js'
-import { readTextFileSnapshot, type TextFileSnapshot } from '../../tool/tool-file-snapshot.js'
+import { basenamePath } from '@onething/backend/storage'
 import {
+  filePermissionPattern,
+  withFileMutationQueue,
+  truncateDiffHunksForDisplay,
+  truncateDiffForDisplay,
+  readTextFileSnapshot,
+  type TextFileSnapshot,
   recordFileMutationAudit,
   type FileMutationOperation,
   type RecordFileMutationAuditResult,
-} from '../../tool/tool-file-mutation-audit.js'
+} from '../../tool/tool.js'
 import { FileTool, type FileToolAdapters, type ResolvedFilePath } from './toolkit-families-file.js'
 
 /** 旧 edit/write 各抄了一份的同一个常量。 */

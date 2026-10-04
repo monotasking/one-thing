@@ -114,7 +114,10 @@ vi.mock('../../session/session-store.js', () => ({
   createSession: vi.fn(),
   updateSessionAgent: vi.fn(),
 }))
-vi.mock('@onething/backend/storage/storage', () => ({ getOnethingStorePath: () => mocks.dir }))
+vi.mock('@onething/backend/storage/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage/storage')>(),
+  getOnethingStorePath: () => mocks.dir,
+}))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => mocks.settings }))
 
 const HEX = 'D71F6E90EA704F1C44183933E7E0F19'

@@ -1,13 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { CoreToolPromptContribution } from '@onething/backend/agent-loop'
-import type { Result, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
+  Catalog,
+  Intent,
+  Tool as ToolkitTool,
   configureToolkitCatalog,
   EDIT_TOOL_PROMPT,
   VARIABLE_TOOL_PROMPT,
   WRITE_TOOL_PROMPT,
 } from '@onething/backend/toolkit'
+import type { CoreToolPromptContribution } from '@onething/backend/agent-loop'
+import type { Result, ToolSpec } from '@onething/backend/toolkit'
 import type { BuildPromptContextOptions, PromptRequestMessage } from '../engine-system-prompt.js'
 import { buildPrompt } from '../engine-system-prompt.js'
 

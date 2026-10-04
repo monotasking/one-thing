@@ -48,7 +48,7 @@ const { createNotebookTool, NotebookInputSchema } = await import('../../tools/co
 const { createCollabActorNotebookStore } = await import('../collab-actors-owned-notebook-store.js')
 const { createCollabActorAuthorization } = await import('../collab-actors-execution-authorization.js')
 const { createSessionAccess } = await import('@onething/backend/session')
-const { Decision, ToolRunner } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
+const { Decision, ToolRunner } = await import('@onething/backend/toolkit')
 const { ZodValidator } = await import('@onething/backend/toolkit')
 
 /**

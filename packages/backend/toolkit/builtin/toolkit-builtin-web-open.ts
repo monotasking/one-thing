@@ -13,7 +13,7 @@ import {
   fetchSearchPage,
   type FetchedSearchPage,
   type FetchFn,
-} from '../../tool/builtin/web-search/tool-web-search-page-fetch.js'
+} from '../../tool/tool.js'
 import { defineInput } from '../toolkit-contract.js'
 import { NetworkTool } from '../families/toolkit-families-network.js'
 import { wrapUntrustedText } from '../toolkit-untrusted-text.js'

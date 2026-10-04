@@ -32,7 +32,7 @@
 import path from 'node:path'
 
 import { DurableMailbox, type ActorEvent } from '@onething/backend/collab/kernel'
-import { readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
+import { readJsonFile, writeJsonFile } from '@onething/backend/storage'
 import {
   createCollabAgentAccount,
   normalizeCollabAgentAccount,

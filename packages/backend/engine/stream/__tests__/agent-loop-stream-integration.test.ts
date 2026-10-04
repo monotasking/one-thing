@@ -40,9 +40,8 @@ import type {
 	AgentTurnRequest,
 } from "@onething/backend/agent-loop/agent-loop-primitives";
 import type { JsonObject } from "@shared/json.js";
-import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/toolkit/toolkit-tool-protocol";
-import type { Result, ToolSpec } from "@onething/backend/toolkit/toolkit-tool-protocol";
-import { configureToolkitCatalog } from "@onething/backend/toolkit";
+import { Catalog, Intent, Tool as ToolkitTool, configureToolkitCatalog } from "@onething/backend/toolkit";
+import type { Result, ToolSpec } from "@onething/backend/toolkit";
 import type { HistoryMessage } from "../engine-stream-message-helpers.js";
 import type { BuildPromptOptions } from "../../prompt/engine-system-prompt.js";
 import type { StreamSender } from "../engine-stream-processor.js";
@@ -226,7 +225,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 
-vi.mock("@onething/backend/event", () => ({
+vi.mock("@onething/backend/event", async (importOriginal) => ({
+	...await importOriginal<typeof import("@onething/backend/event")>(),
 	getEventBus: () => ({ emit: mocks.eventBusEmit }),
 	getStreamChannel: () => ({ push: mocks.streamPush }),
 }));

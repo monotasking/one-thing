@@ -37,7 +37,7 @@ import type {
 	ProductStreamEnginePorts,
 } from "../agent-loop/agent-loop.js";
 
-import type { EventBus } from "../event/event-session-bus.js";
+import type { EventBus } from "../event/event.js";
 
 const log = getLogger('engine.stream')
 

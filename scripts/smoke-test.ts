@@ -1,4 +1,4 @@
-import { AgentEngine } from '../packages/backend/agent/agent-engine.ts'
+import { AgentEngine } from '../packages/backend/agent/agent.ts'
 import { SessionManager } from '../packages/backend/session/session.ts'
 
 const sessionId = `smoke-${Date.now()}`

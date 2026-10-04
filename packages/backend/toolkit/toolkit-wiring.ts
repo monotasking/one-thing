@@ -28,7 +28,7 @@ import type { Authorizer } from '@onething/backend/toolkit/toolkit-tool-protocol
 import type { Principal } from '@shared/permission/principal'
 import type { JsonObject } from '@shared/json.js'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
-import { configureToolkitCatalog, getToolkitCatalog } from '@onething/backend/toolkit'
+import { configureToolkitCatalog, getToolkitCatalog } from './toolkit-host.js'
 import type { ToolExecutionResult as OnethingToolExecutionResult } from '@onething/backend/toolkit/toolkit-execution-types'
 import { createCatalogForTier, type ToolCatalogTier } from './toolkit-tier-catalogs.js'
 import { IpcProjector, type LegacyMetadataUpdate, type LegacyToolProgressUpdate } from '@onething/backend/toolkit/toolkit-ipc-observer'

@@ -38,7 +38,7 @@ import {
   setOnethingSpaceOverlayForIpc,
   setOnethingSpaceProviderSettingsForIpc,
   updateOnethingSpaceForIpc,
-} from '@onething/backend/space'
+} from './space-ipc-operations.js'
 import { readSpaceOverlay, writeSpaceOverlay } from '@onething/backend/space/space-overlay'
 import {
   createEmptySpaceProviderSettings,

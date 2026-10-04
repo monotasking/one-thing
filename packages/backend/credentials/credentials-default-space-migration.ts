@@ -50,15 +50,13 @@ import {
   readSpaceOverlay,
   writeSpaceOverlay,
   type SpaceOverlay,
-} from '@onething/backend/space/space-overlay'
-import {
   createEmptySpaceProviderSettings,
   hasSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
-} from '@onething/backend/space/space-provider-settings'
-import { getSpacesStore } from '@onething/backend/space/space-store'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+  getSpacesStore,
+  DEFAULT_SPACE_ID,
+} from '@onething/backend/space'
 import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
 import {
   getOnethingSettingsPath,

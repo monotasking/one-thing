@@ -17,7 +17,7 @@
  */
 import path from 'node:path'
 
-import { readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
+import { readJsonFile, writeJsonFile } from '@onething/backend/storage'
 import {
   createCollabRoomAccount,
   normalizeCollabRoomAccount,

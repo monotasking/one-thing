@@ -36,7 +36,7 @@ import type { JsonObject } from '@shared/json.js'
 import type { HostMcpHostTool } from '@onething/backend/external-agent'
 import { getSession, sessionAccess } from '@onething/backend/session'
 import { fixedExecutionContext } from '../session/session.js'
-import { resolveAgentProfileForSession } from '../agent/agent-profile-for-session.js'
+import { resolveAgentProfileForSession } from '../agent/agent.js'
 import { collabVenueOf } from '@onething/backend/session'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'

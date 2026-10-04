@@ -6,11 +6,10 @@
  * (会话、消息锚、目录)与授权者(桌面等人答 / server 与 daemon 没人答就拒)若各写一份,
  * 早晚在某一格上分岔 —— 同一台 agent 的读文件与跑命令在同一台宿主上就会长成两种等法。
  */
-import { AbortScope, Intent } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Authorizer, Decision, Invocation, Preview } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { AbortScope, Intent, createPermissionAuthorizer } from '@onething/backend/toolkit'
+import type { Authorizer, Decision, Invocation, Preview } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import { resolvePermissionMessageAnchor } from '@onething/backend/permission/permission-message-anchor'
-import { createPermissionAuthorizer } from '@onething/backend/toolkit/toolkit-authorizer'
 import { enforcePermissionPolicyRejectingUnanswered } from '@onething/backend/permission'
 
 /**

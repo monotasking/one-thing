@@ -77,7 +77,7 @@ describe("readonly 档不给资源工具(K3-a')", () => {
       sender: new NoopSender() as never,
     })
 
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
     expect(catalog?.has('resources')).toBe(false)

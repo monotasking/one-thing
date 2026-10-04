@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { createSessionDeletionRecovery } from '../session-deletion-recovery.js'
-import { writeDurableJson as writeDurableSessionJson } from '../../storage/storage-durable-json.js'
+import { writeDurableJson as writeDurableSessionJson } from '../../storage/storage.js'
 
 let directory: string
 const metaPath = (id: string) => path.join(directory, id, 'meta.json')

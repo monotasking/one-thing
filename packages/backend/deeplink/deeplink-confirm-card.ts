@@ -24,7 +24,7 @@ import {
   type DeepLinkIntent,
   type DeepLinkParseResult,
 } from '@onething/backend/plugin/plugin-contract'
-import { defaultAgent, findAgent } from '../agent/agent-store-access.js'
+import { defaultAgent, findAgent } from '../agent/agent.js'
 import { getPluginManager } from '@onething/backend/plugin/plugin-manager'
 import { describePluginDeepLinkAction } from './deeplink-registry.js'
 

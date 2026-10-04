@@ -15,13 +15,13 @@
 import { z } from 'zod'
 import { toJsonObject } from '@shared/json'
 import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { SearchProvider, SearchResponse } from '../../tool/builtin/web-search/providers/tool-web-search-provider-types.js'
+import type { SearchProvider, SearchResponse } from '../../tool/tool.js'
 import {
   fetchSearchPages,
   type FetchedSearchPage,
   type FetchFn,
   type SearchPageRequest,
-} from '../../tool/builtin/web-search/tool-web-search-page-fetch.js'
+} from '../../tool/tool.js'
 import { defineInput } from '../toolkit-contract.js'
 import { NetworkTool } from '../families/toolkit-families-network.js'
 import { wrapUntrustedText } from '../toolkit-untrusted-text.js'

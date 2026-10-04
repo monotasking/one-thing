@@ -20,7 +20,7 @@ import {
   listOnethingAgentsForIpc,
   restoreOnethingAgentFromRequestForIpc,
   updateOnethingAgentFromRequestForIpc,
-} from '@onething/backend/agent'
+} from './agent-ipc-operations.js'
 import {
   DEFAULT_AGENT_ID,
   createAgent,

@@ -25,7 +25,8 @@ bindSessionFacadeMock({
   },
 })
 
-vi.mock('@onething/backend/storage', () => ({
+vi.mock('@onething/backend/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage')>(),
   getOnethingStorePath: () => storeRootRef.value,
   getOnethingSessionsDir: () => path.join(storeRootRef.value, 'sessions'),
 }))

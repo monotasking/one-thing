@@ -29,9 +29,7 @@ import {
   type ProviderManifest,
 } from '@onething/backend/provider'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
-import { readSpaceProviderSettings } from '@onething/backend/space/space-provider-settings'
-import { getSpacesStore } from '@onething/backend/space/space-store'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import { readSpaceProviderSettings, getSpacesStore, DEFAULT_SPACE_ID } from '@onething/backend/space'
 import { getSettings } from './settings-store.js'
 import {
   configureSettingsEventBroadcaster,

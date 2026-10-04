@@ -10,7 +10,7 @@ import {
   joinPaths,
   readJsonFile,
   writeJsonFile,
-} from '@onething/backend/storage/storage-primitives'
+} from '@onething/backend/storage'
 
 import { getLogger } from '../logging/logging.js'
 

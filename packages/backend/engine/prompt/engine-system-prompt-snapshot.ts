@@ -11,8 +11,7 @@ import * as store from '@onething/backend/session'
 import {
   createAgentProviderFromRuntime,
 } from '@onething/backend/provider-call'
-import { defaultAgent, findAgent } from '@onething/backend/agent/agent-store-access'
-import { resolveAgentProfileForSession } from '@onething/backend/agent/agent-profile-for-session'
+import { defaultAgent, findAgent, resolveAgentProfileForSession } from '@onething/backend/agent'
 import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
 import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { buildProjectDirsPromptVars } from '@onething/backend/project-dir/project-dir-bootstrap'
@@ -25,8 +24,7 @@ import {
   resolveProviderAuth,
 } from '@onething/backend/provider-call'
 import { getNativeProviderToolsForConfig } from '../stream/engine-native-tools.js'
-import { resolveToolkitSurface } from '@onething/backend/toolkit'
-import { toolDefinitionFromToolkitTool } from '@onething/backend/toolkit/toolkit-catalog-projection'
+import { resolveToolkitSurface, toolDefinitionFromToolkitTool } from '@onething/backend/toolkit'
 import { resolveOnethingAgentLoopStreamRoute } from '../engine-agent-loop-stream-selection.js'
 import { buildPrompt } from './engine-system-prompt.js'
 import {

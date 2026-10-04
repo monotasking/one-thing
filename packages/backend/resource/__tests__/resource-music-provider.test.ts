@@ -12,11 +12,10 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { Principal } from '@shared/permission/principal'
-import { ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { ToolRunner, ZodValidator } from '@onething/backend/toolkit'
 import type { Outcome, ToolEvent } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { ResourceEventHub, ResourceTool } from '@onething/backend/resource/resource-api'
 import type { ResourceEvent } from '@onething/backend/resource/resource-api'
-import { ZodValidator } from '@onething/backend/toolkit'
 import type { RadioToolAdapters, RadioToolStatus } from '@onething/backend/toolkit'
 import type { OnethingMusicNowPlaying } from '@onething/backend/music'
 import { allowAuthorizer, RecordingObserver } from '../../toolkit/__tests__/fakes.js'

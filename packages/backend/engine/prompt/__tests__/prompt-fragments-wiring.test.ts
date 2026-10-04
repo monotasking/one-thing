@@ -8,10 +8,9 @@
  * gone. Same for a registered fragment and its disposer.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Result, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Catalog, Intent, Tool as ToolkitTool, configureToolkitCatalog } from '@onething/backend/toolkit'
+import type { Result, ToolSpec } from '@onething/backend/toolkit'
 import { promptFragments, registerPromptFragment } from '@onething/backend/prompt'
-import { configureToolkitCatalog } from '@onething/backend/toolkit'
 
 /**
  * R4b:工具的那一半读源从旧注册表换成了目录(`toolkitPromptSource`)。钉的语义

@@ -16,10 +16,6 @@
  * 不再手抄第二份。一个进程里已有活实例时再装配一次,`assemble` 第一行就抛
  * `BackendAlreadyAssembledError`。
  */
-// 执行器注册表在模块加载时把「哪些 provider 是外部执行体、上下文归它自己管」登记进
-// core(A0-3 起 core 不再内置任何 provider 名字)。静态 import 在这里,是为了保证任何
-// 一个宿主装配、引擎做第一次压缩判定之前它已经跑过 —— 不靠别的模块碰巧 import 到它。
-import '@onething/backend/agent/executor/agent-executor-registry'
 import { flushAllPendingSaves, getSession, initializeSessionRepositoryIndex } from '@onething/backend/session'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from '@onething/backend/session'
 import { createStoreLease, ensureOnethingStoreDirs, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/storage'
@@ -66,10 +62,10 @@ import {
   CustomProviderManifestSync,
 } from '@onething/backend/settings'
 import { applyDiagnosticsMode } from '@onething/backend/logging/logging-diagnostics'
-import { initializeAgents } from '@onething/backend/agent/agent-store-access'
+import { initializeAgents } from '@onething/backend/agent'
 import { configureAppToolSandbox } from '@onething/backend/permission'
 import { applyHostPorts, type OnethingHostPorts } from './backend-host-ports.js'
-import { configureAppBackgroundJobs } from '@onething/backend/tool/tool-background-jobs-bound'
+import { configureAppBackgroundJobs, killTrackedDetachedChildren } from '@onething/backend/tool'
 import {
   buildHistoryMessages,
   historyProjectionRecipe,
@@ -83,8 +79,7 @@ import { configureAppSearchProviders } from '@onething/backend/search'
 import { configureAppSkillManage } from '@onething/backend/skill/skill-manage-setup'
 import { configureAppSkillsLoader } from '@onething/backend/skill/skill-sources'
 import { configureAppPermissionGrants } from '@onething/backend/permission/permission-grant-storage'
-import { createEventSystem } from '@onething/backend/event'
-import { createReplayBufferMemoryHolder } from '@onething/backend/event/event-memory'
+import { createEventSystem, createReplayBufferMemoryHolder } from '@onething/backend/event'
 import { createSessionMemoryHolders } from '@onething/backend/session'
 import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/memory'
 import { createQuotaService, type QuotaService } from '@onething/backend/quota'
@@ -117,8 +112,12 @@ import { createAppSearchService } from '@onething/backend/search'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/mcp-capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from '@onething/backend/toolkit/toolkit-wiring'
 import { registerCollabAgentPresence, registerCollabAgentToolGrants, registerCollabTools } from '@onething/backend/collab'
-import { createAppToolRunner, sessionWorkspaceRootFor } from '@onething/backend/toolkit/toolkit-runner-factory'
-import { createPermissionAuthorizer } from '@onething/backend/toolkit/toolkit-authorizer'
+import {
+  createAppToolRunner,
+  sessionWorkspaceRootFor,
+  createPermissionAuthorizer,
+  ToolExecutionRegistry,
+} from '@onething/backend/toolkit'
 import { toolkitAuditSink } from '@onething/backend/toolkit/toolkit-audit-sink'
 import {
   createResourceKernel,
@@ -130,7 +129,6 @@ import {
   ShellMountRegistry,
 } from '@onething/backend/resource'
 import type { ResourceKernel } from '@onething/backend/resource/resource-api'
-import { ToolExecutionRegistry } from '@onething/backend/toolkit/toolkit-executions'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 import { registerAppRpcDomains } from './http-server/http-server-client-api-roster.js'
 import { registerRouterHandlers } from './http-server/http-server-dispatch-table.js'
@@ -146,7 +144,6 @@ import { createAcpSessionProjections } from '@onething/backend/acp/acp-projectio
 import { AcpAgentRegistry, type AcpRegistryFetch } from '@onething/backend/acp/acp-registry'
 import { getAppBuiltinResourcePath } from '@onething/backend/skill/skill-sources'
 import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent/external-agent-spawn-env'
-import { killTrackedDetachedChildren } from '@onething/backend/tool/tool-bash-executor'
 import { killAllTerminals } from '@onething/backend/terminal/terminal-service'
 import type { SessionHistoryBuilder } from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging'
@@ -160,8 +157,7 @@ import {
   type BackendHandle,
   type BackendHandleParts,
 } from './backend-current.js'
-import type { EventBus } from '@onething/backend/event/event-session-bus'
-import type { StreamChannel } from '@onething/backend/event/event-session-stream-channel'
+import type { EventBus, StreamChannel } from '@onething/backend/event'
 import type { SessionManager } from '@onething/backend/session'
 
 const log = getLogger('app.backend')

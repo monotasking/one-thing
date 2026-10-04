@@ -19,7 +19,7 @@
 
 import type { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { JsonObject } from '@shared/json'
-import { McpTool, type McpToolBridge, type McpToolDescription } from './toolkit.js'
+import { McpTool, type McpToolBridge, type McpToolDescription } from './families/toolkit-families-external.js'
 import {
   executeMCPTool,
   getMCPToolDefinitionsForModel,

@@ -29,10 +29,8 @@
  * 管线(拦截 / 预算 / 审计),与资源上的「读」那一支同一个位置。
  */
 
-import { Intent } from '../toolkit/toolkit-intent.js'
-import { textResult, type Result } from '../toolkit/toolkit-result.js'
-import { Tool } from '../toolkit/toolkit-tool.js'
-import type { ToolSpec } from '../toolkit/toolkit-spec.js'
+import { Intent, textResult, type Result, Tool } from '../toolkit/toolkit.js'
+import type { ToolSpec } from '../toolkit/toolkit.js'
 import type { ResourceRegistry } from './resource-registry.js'
 import type { OpSpec, ReadSpec, ResourceSpec } from './resource-spec.js'
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'

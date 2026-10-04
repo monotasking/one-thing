@@ -11,10 +11,8 @@
  * 一份,是为了让「资源工具就是一只普通工具」这句话在测试里也成立。
  */
 
-import { Intent } from '../../toolkit/toolkit-intent.js'
-import { textResult, type Result } from '../../toolkit/toolkit-result.js'
-import type { PlanContext, RunContext } from '../../toolkit/toolkit-run-context.js'
-import type { Scene } from '../../toolkit/toolkit-spec.js'
+import { Intent, textResult, type Result } from '../../toolkit/toolkit.js'
+import type { PlanContext, RunContext, Scene } from '../../toolkit/toolkit.js'
 import type { ResourceProvider, ResourceReadContext } from '../resource-provider.js'
 import type { ResourceEventHub } from '../resource-events.js'
 import type { ResourceRef } from '@shared/resource/ref.js'

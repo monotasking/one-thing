@@ -13,7 +13,7 @@ import type {
   SchedulerUpdateTaskRequest,
   SchedulerUserTaskDTO,
 } from '@shared/ipc.js'
-import { DEFAULT_AGENT_ID, agentExists } from '../agent/agent-store-access.js'
+import { DEFAULT_AGENT_ID, agentExists } from '../agent/agent.js'
 import { getEventBus } from '@onething/backend/event'
 import { getStreamEngineSafe } from '@onething/backend/backend-current.js'
 import * as store from '@onething/backend/session'

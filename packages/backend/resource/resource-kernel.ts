@@ -46,11 +46,8 @@
  * 两条都只等 `Outcome`,不等 `abort()` 返回 —— 「信号发出去了」不等于「不再写了」。
  */
 
-import type { Outcome } from '../toolkit/toolkit-outcome.js'
-import { Outcome as OutcomeOps } from '../toolkit/toolkit-outcome.js'
-import type { Clock, SandboxPolicy } from '../toolkit/toolkit-ports.js'
-import type { Invocation } from '../toolkit/toolkit-run-context.js'
-import type { ToolRunner } from '../toolkit/toolkit-runner.js'
+import type { Outcome, Clock, SandboxPolicy, Invocation, ToolRunner } from '../toolkit/toolkit.js'
+import { Outcome as OutcomeOps } from '../toolkit/toolkit.js'
 import type { Principal } from '@shared/permission/principal.js'
 import { ResourceSchemeUnknownError } from './resource-errors.js'
 import { ResourceEventHub } from './resource-events.js'

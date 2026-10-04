@@ -11,11 +11,7 @@ import { z } from 'zod'
 import { toJsonObject } from '@shared/json'
 import { Intent, jobSnapshot } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import {
-  DEFAULT_OUTPUT_MAX_BYTES,
-  DEFAULT_OUTPUT_MAX_LINES,
-} from '../../tool/tool-output-accumulator.js'
-import { readBackgroundJobOutput } from '../../tool/tool-background-jobs.js'
+import { DEFAULT_OUTPUT_MAX_BYTES, DEFAULT_OUTPUT_MAX_LINES, readBackgroundJobOutput } from '../../tool/tool.js'
 import { defineInput, listZodIssues } from '../toolkit-contract.js'
 import {
   formatProcessOutput,

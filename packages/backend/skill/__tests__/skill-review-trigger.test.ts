@@ -20,8 +20,8 @@ import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
 } from '../../credentials/credentials-pool.js'
-import { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
+  Catalog,
   configureToolkitCatalog,
   createEditTool,
   createReadTool,

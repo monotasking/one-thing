@@ -14,12 +14,15 @@ import type { Trigger, TriggerContext } from '@onething/backend/agent-loop'
 import { billSkillUsage } from '@onething/backend/usage/usage-bill-side-line'
 import { createUtilityProvider } from '@onething/backend/provider-call'
 // 三只文件工具从**目录**取,执行走 runner(设计文档 §10.2-④)。
-import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { Outcome as OutcomeOps } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import {
+  Decision,
+  Outcome as OutcomeOps,
+  contractForSchema,
+  getToolkitCatalog,
+  createAppToolRunner,
+} from '@onething/backend/toolkit'
+import type { Invocation, Observer, Tool as ToolkitTool } from '@onething/backend/toolkit'
 import { toJsonObject, type JsonObject } from '@shared/json.js'
-import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'
-import { createAppToolRunner } from '@onething/backend/toolkit/toolkit-runner-factory'
 import { consolePort, getLogger } from '../logging/logging.js'
 import type { CoreSkillReviewVisibleSkill } from './skill-review-core.js'
 import type { OnethingSkillReviewAdapters } from './skill-review-runner.js'

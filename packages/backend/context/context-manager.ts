@@ -1,4 +1,4 @@
-import type { ToolCall } from '../tool/tool-types.js'
+import type { ToolCall } from '../tool/tool.js'
 
 export type AgentMessageRole = 'system' | 'user' | 'assistant' | 'tool'
 

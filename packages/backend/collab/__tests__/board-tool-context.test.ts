@@ -66,7 +66,7 @@ vi.mock('../collab-board-store.js', () => ({
 
 const { boardAdapters } = await import('../tools/collab-tool-adapters.js')
 const { createBoardTool } = await import('../tools/collab-tool-board.js')
-const { Decision, ToolRunner } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
+const { Decision, ToolRunner } = await import('@onething/backend/toolkit')
 const { ZodValidator } = await import('@onething/backend/toolkit')
 
 async function board(sessionId: string, executionContext?: unknown): Promise<{ output: string }> {

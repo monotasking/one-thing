@@ -25,7 +25,7 @@ import path from "node:path";
 import {
 	getOnethingEvalsDir,
 	type OnethingStorePathOptions,
-} from "../storage/storage-paths.js";
+} from "../storage/storage.js";
 
 export interface TraceRoundRecord {
 	v: 1;

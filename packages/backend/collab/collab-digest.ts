@@ -9,7 +9,7 @@
  *
  * 所以分工是明确的:**摘要当主力,工具当兜底**。
  */
-import { agentTombstoneLabel } from '../agent/agent-model.js'
+import { agentTombstoneLabel } from '../agent/agent.js'
 import { escapeCollabPromptText } from './collab-inline-tags.js'
 import { COLLAB_SYSTEM_SPEAKER_LABEL, isCollabProjectedSystemLine } from './collab-system-lines.js'
 import type { CollabAgentLike, CollabMessageLike } from './collab-types.js'

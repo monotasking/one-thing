@@ -8,8 +8,7 @@
  * 在三条路上长一个样,所以只写一处。
  */
 import { createTwoFilesPatch } from 'diff'
-import { countLineChanges } from '../tool/tool-file-snapshot.js'
-import { trimDiff, truncateDiffForDisplay } from '../tool/tool-replacers.js'
+import { countLineChanges, trimDiff, truncateDiffForDisplay } from '../tool/tool.js'
 
 export interface TextDiffChange {
   path: string

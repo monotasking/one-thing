@@ -18,7 +18,8 @@ import type { CoreToolPromptContribution } from '@onething/backend/agent-loop'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { isCapabilityVariable } from '../../variable/variable-types.js'
 import type { VariableScope, VariableType } from '../../variable/variable-types.js'
-import contextVariablesRaw from '../../tool/builtin/prompts/variable-context.md?raw'
+// 变量块的说明文字只有这只工具用,随工具住在 toolkit(深层引用收口第三批从 tool/builtin/prompts 搬来)。
+import contextVariablesRaw from './prompts/variable-context.md?raw'
 import { defineInput } from '../toolkit-contract.js'
 import {
   metadataTitleForAction,

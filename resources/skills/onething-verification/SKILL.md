@@ -16,7 +16,7 @@ Answer in the user's language. Prefer the shortest path that matches the user's 
 
 | Script | Purpose | Requires |
 | --- | --- | --- |
-| `bun run scripts/smoke-test.ts` | Headless core conversation smoke test | `@onething/backend/agent/agent-engine` + `session` |
+| `bun run scripts/smoke-test.ts` | Headless core conversation smoke test | `@onething/backend/agent`(`AgentEngine`)+ `session` |
 | `bun run scripts/smoke-test-real.ts` | Real-provider integration test (DeepSeek/Anthropic) | `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` |
 | `bun run scripts/cli-test.ts` | CLI `--once --json` tool-call round-trip test | mock HTTP server (spawned inline) |
 | `bun run scripts/agent-loop-core-test.ts` | Core agent-loop unit test with mock provider | `@onething/backend/agent-loop/agent-loop-primitives` |

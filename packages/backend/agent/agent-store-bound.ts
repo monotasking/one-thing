@@ -3,7 +3,7 @@ import {
   createOnethingAgentStore,
   type CreateOnethingAgentInput,
   type UpdateOnethingAgentInput,
-} from './agent.js'
+} from './agent-store.js'
 import type { AgentDefinition, AgentIdentity } from '@shared/ipc.js'
 import {
   getOnethingAgentsPath,

@@ -25,7 +25,7 @@
  * 自己没什么用,却能让"这次调用为什么是 aborted"变得没法回答。
  */
 
-import { createToolAbortError, isToolAbortError } from '../tool/tool-abort.js'
+import { createToolAbortError, isToolAbortError } from '../tool/tool.js'
 
 /**
  * 超时。刻意也带上 `aborted: true`:对正在跑的执行体来说,超时和取消是同一件事

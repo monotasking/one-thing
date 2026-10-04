@@ -115,8 +115,8 @@ import {
 import type { ResourceEvent } from '@onething/backend/resource/resource-events'
 import { ReadOutcome } from '@onething/backend/resource/resource-read-outcome'
 import type { ReadOutcome as ReadOutcomeValue } from '@onething/backend/resource/resource-read-outcome'
-import { Outcome } from '@onething/backend/toolkit/toolkit-outcome'
-import type { Outcome as OutcomeValue } from '@onething/backend/toolkit/toolkit-outcome'
+import { Outcome } from '@onething/backend/toolkit'
+import type { Outcome as OutcomeValue } from '@onething/backend/toolkit'
 
 /** @deprecated 统一为 `Logger`(§8.3 区 ①);过渡期仍收老鸭子形状。 */
 export type CorePluginAPILogger = CompatLogger

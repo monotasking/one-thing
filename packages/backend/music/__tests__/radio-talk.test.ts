@@ -76,7 +76,10 @@ vi.mock('../../session/session-store.js', () => ({
   onSessionsDeleted: () => () => {},
 }))
 
-vi.mock('@onething/backend/storage/storage', () => ({ getOnethingStorePath: () => mocks.dir }))
+vi.mock('@onething/backend/storage/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage/storage')>(),
+  getOnethingStorePath: () => mocks.dir,
+}))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => mocks.settings }))
 
 /*

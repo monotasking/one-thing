@@ -7,7 +7,7 @@
  * 只看得见最终信封,看不见是这里折错的。
  */
 import { describe, expect, it } from 'vitest'
-import { Outcome, TOOL_CANCELLED_MESSAGE, textResult } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Outcome, TOOL_CANCELLED_MESSAGE, textResult } from '@onething/backend/toolkit'
 import { ReadOutcome } from '@onething/backend/resource/resource-api'
 import { foldOutcomeToEnvelope, foldReadOutcomeToEnvelope } from '../http-server-resource-envelope.js'
 

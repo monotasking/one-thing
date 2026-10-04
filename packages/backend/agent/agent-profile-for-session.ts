@@ -8,10 +8,7 @@
  * downstream consumer reads it instead of re-deriving its own answer.
  */
 
-import {
-  resolveAgentProfile,
-  type EffectiveAgentProfile,
-} from '@onething/backend/agent'
+import { resolveAgentProfile, type EffectiveAgentProfile } from './agent-profile.js'
 import { isUserDmRoom } from '@onething/backend/session'
 import type { ChatSession } from '@shared/ipc.js'
 import { getSession } from '@onething/backend/session'

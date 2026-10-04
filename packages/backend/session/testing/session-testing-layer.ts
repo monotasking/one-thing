@@ -1,6 +1,5 @@
 import { createBackendHandle, getCurrentBackendSafe, setCurrentBackend } from '@onething/backend/backend-current.js'
-import { EventBus } from '@onething/backend/event/event-session-bus'
-import { StreamChannel } from '@onething/backend/event/event-session-stream-channel'
+import { EventBus, StreamChannel } from '@onething/backend/event'
 import { SessionManager } from '../session-manager.js'
 import { createSessionEventLayer } from '../session-event-layer.js'
 import type { SessionLayer } from '../session-layer.js'

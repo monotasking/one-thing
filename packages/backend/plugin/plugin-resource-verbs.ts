@@ -70,8 +70,8 @@ import { parseRef } from '@shared/resource/ref'
 import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/resource/resource-api'
 import { systemPrincipal } from '@shared/permission/principal'
 import type { Principal } from '@shared/permission/principal'
-import { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Outcome as OutcomeValue } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Outcome } from '@onething/backend/toolkit'
+import type { Outcome as OutcomeValue } from '@onething/backend/toolkit'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,

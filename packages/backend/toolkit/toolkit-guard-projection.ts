@@ -19,7 +19,7 @@
 
 import { type ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { isKnownEffectClass, type EffectClass } from '@shared/toolkit/effects'
-import type { CoreToolPermissionGuard } from '@onething/backend/tool/tool-helpers'
+import type { CoreToolPermissionGuard } from '@onething/backend/tool'
 
 /** 写文件的三个 kind。任意一个出现 = 旧的 `permission-gated`。 */
 const FILE_MUTATION: ReadonlySet<EffectClass> = new Set<EffectClass>([

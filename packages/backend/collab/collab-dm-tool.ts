@@ -24,7 +24,7 @@
  * 背景就自己写进 message —— 工具描述里也是这么说的,两处必须一致。
  */
 import type { CollabDmSendResult } from './tools/collab-tool-send-message.js'
-import { isColleague } from '@onething/backend/agent'
+import { isColleague, findAgent, listAgents } from '@onething/backend/agent'
 import {
   COLLAB_SAY_REFUSED_EMPTY,
   COLLAB_SAY_REFUSED_UNKNOWN_ROOM,
@@ -38,7 +38,6 @@ import {
 } from '@onething/backend/collab'
 import { isActiveAgent } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
-import { findAgent, listAgents } from '@onething/backend/agent/agent-store-access'
 import { ensureAgentDmRoom } from './collab-agent-dm-room.js'
 import { ensureUserDmRoom } from './collab-user-dm-room.js'
 import { resolveDmTarget } from './collab-dm-target.js'

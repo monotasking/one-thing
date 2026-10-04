@@ -1,10 +1,10 @@
-import { AgentEngine } from '../packages/backend/agent/agent-engine.ts'
+import { AgentEngine } from '../packages/backend/agent/agent.ts'
 import {
   AllowAllPolicy,
   ToolRegistry,
   type ToolCall,
   type ToolResult,
-} from '../packages/backend/tool/tool-helpers.ts'
+} from '../packages/backend/tool/tool.ts'
 import type { Provider } from '../packages/backend/provider/provider.ts'
 import {
   createAnthropicProvider,

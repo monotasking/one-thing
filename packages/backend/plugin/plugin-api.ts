@@ -6,8 +6,8 @@
 import {
   registerPluginToolInCatalog,
   unregisterPluginToolFromCatalog,
-} from '@onething/backend/toolkit/toolkit-plugin-tools'
-import type { EventBus } from '@onething/backend/event/event-session-bus'
+} from '@onething/backend/toolkit'
+import type { EventBus } from '@onething/backend/event'
 import type { StreamEngine } from '@onething/backend/engine'
 import { z } from 'zod'
 import { PluginStore, createPluginFiles, createPluginMessageState, createPluginStorage } from './plugin-data-home.js'

@@ -14,7 +14,7 @@ import {
   clearBackgroundJobsForTests,
   configureCoreBackgroundJobs,
 } from '@onething/backend/tool/tool-background-jobs'
-import { createLocalBashOperations } from '@onething/backend/tool/tool-bash-executor'
+import { createLocalBashOperations } from '@onething/backend/tool'
 import { BackgroundJobRegistry } from '../toolkit-jobs.js'
 
 const dirs: string[] = []

@@ -36,7 +36,7 @@ import {
 	type AnalysisModel,
 	type DiagnosisConclusion,
 } from "./eval-analysis.js";
-import type { OnethingStorePathOptions } from "../storage/storage-paths.js";
+import type { OnethingStorePathOptions } from "../storage/storage.js";
 
 export interface DiagnoseProgress {
 	type: "step" | "ablation" | "done" | "error";

@@ -23,7 +23,7 @@
  * 字符串切片与 Map 装填,相对一次工具调用可忽略。
  */
 import { collabIdentityFromAgent, collabUserIdentity, type CollabIdentity } from './collab-identity.js'
-import { listAgents } from '@onething/backend/agent/agent-store-access'
+import { listAgents } from '@onething/backend/agent'
 import { resolveUserIdentity } from './collab-user-identity.js'
 import { getLogger } from '@onething/backend/logging'
 

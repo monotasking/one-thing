@@ -11,7 +11,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { getOnethingStorePath } from '../storage/storage-paths.js'
+import { getOnethingStorePath } from '../storage/storage.js'
 import type { OnethingOAuthToken } from './auth-types.js'
 
 export interface OnethingTokenCryptoAdapter {

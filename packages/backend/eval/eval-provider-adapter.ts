@@ -24,7 +24,7 @@
 import { getSettings } from '@onething/backend/settings'
 import type { EvalModelCaller } from "./eval-model-call.js";
 import { onethingBaseBuiltinProviders, resolveProviderApiKey } from "@onething/backend/provider";
-import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
+import { DEFAULT_SPACE_ID } from "@onething/backend/space";
 import { resolveSpaceProviderCredentialForSpace } from "@onething/backend/credentials";
 import { captureUsageRecorder } from "../usage/usage-recorder.js";
 import { getLogger } from "@onething/backend/logging";

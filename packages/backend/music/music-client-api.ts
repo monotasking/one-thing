@@ -77,7 +77,7 @@ import {
 } from '@shared/ipc/music.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import type { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Outcome } from '@onething/backend/toolkit'
 import type { ReadOutcome } from '@onething/backend/resource/resource-api'
 import {
   MUSIC_PLAYER_PATH,

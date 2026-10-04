@@ -13,7 +13,7 @@ import {
   sessionAccess,
   SessionAccessError,
 } from '@onething/backend/session'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { resolveCollabAgentHandle } from '../collab-handles.js'
 import type { CollabBoardAction } from '../collab-board.js'
 import { collabRoomMembers } from '../collab-members.js'

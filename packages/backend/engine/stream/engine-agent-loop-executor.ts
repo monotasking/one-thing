@@ -16,9 +16,8 @@ import {
 	type ToolCall,
 	type ToolResult,
 } from "@shared/ipc.js";
-import { getEventBus } from "@onething/backend/event";
+import { getEventBus, clearDeltaStamps, offerDeltaStamp } from "@onething/backend/event";
 import { createEventOnlyEmitter } from "../engine-event-only-emitter.js";
-import { clearDeltaStamps, offerDeltaStamp } from "@onething/backend/event/event-delta-stamp";
 import {
 	isUiEventStreamEnabled,
 	pushSessionUiStreamEvent,
@@ -46,7 +45,7 @@ import {
 	type CoreSpaceCredentialMarker,
 } from "@onething/backend/provider";
 import { observeQuotaProviderData } from "@onething/backend/quota/quota-engine-hooks";
-import { resolveAgentProfileForSession } from "@onething/backend/agent/agent-profile-for-session";
+import { resolveAgentProfileForSession } from "@onething/backend/agent";
 import { saveMediaImage } from "@onething/backend/media/media-save-image";
 import { updateSessionUsage } from "@onething/backend/session";
 import { recordUsage, usageAttributionOf } from "@onething/backend/usage/usage-recorder";

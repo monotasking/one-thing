@@ -33,8 +33,13 @@
  * ("停用之后注册表里一个字都不剩")在新树上同样成立。
  */
 
-import { getToolkitCatalog, PluginTool } from './toolkit.js'
-import type { PluginToolDefinitionLike, PluginToolHostContext, PluginToolHostResult } from './toolkit.js'
+import { getToolkitCatalog } from './toolkit-host.js'
+import { PluginTool } from './families/toolkit-families-external.js'
+import type {
+  PluginToolDefinitionLike,
+  PluginToolHostContext,
+  PluginToolHostResult,
+} from './families/toolkit-families-external.js'
 import type { JsonObject } from '@shared/json.js'
 import { getLogger } from '../logging/logging.js'
 

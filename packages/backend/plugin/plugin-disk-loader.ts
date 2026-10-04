@@ -15,8 +15,7 @@ import {
   isPluginWebviewPanel,
   type PluginContributionUiSlot, type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters,
 } from '@onething/backend/plugin/plugin-contract'
-import { getOnethingPluginDataDir, getOnethingStorePath } from '@onething/backend/storage'
-import { writeJsonFile } from '@onething/backend/storage/storage-primitives'
+import { getOnethingPluginDataDir, getOnethingStorePath, writeJsonFile } from '@onething/backend/storage'
 import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,

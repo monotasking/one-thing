@@ -1,6 +1,5 @@
 import { createBackendHandle, getCurrentBackendSafe, setCurrentBackend } from '@onething/backend/backend-current.js'
-import { EventBus } from '@onething/backend/event/event-session-bus'
-import { StreamChannel } from '@onething/backend/event/event-session-stream-channel'
+import { EventBus, StreamChannel } from '@onething/backend/event'
 import { acquireSessionEventLogStore } from '../session-event-log.js'
 import { createSessionLayer, type SessionLayer } from '../session-layer.js'
 import { collectSessionCascadeDeleteIds } from '../session-store-helpers.js'
@@ -11,7 +10,7 @@ import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import * as store from '../session-store.js'
 import type { SessionAccessContext } from '../session-access.js'
 import path from 'node:path'
-import { ToolExecutionRegistry } from '@onething/backend/toolkit/toolkit-executions'
+import { ToolExecutionRegistry } from '@onething/backend/toolkit'
 
 /** Real store + production session assembly, with an explicit isolated execution port. */
 export async function installStoreSessionLayerForTest(options: { abortAndDrain?(id: string): Promise<void> } = {}) {

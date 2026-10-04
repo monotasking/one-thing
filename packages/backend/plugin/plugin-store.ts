@@ -2,7 +2,7 @@ import {
   ensureDir,
   readJsonFile,
   writeJsonFile,
-} from '@onething/backend/storage/storage-primitives'
+} from '@onething/backend/storage'
 import path from 'path'
 import { getCoreLogger } from '@onething/backend/logging'
 

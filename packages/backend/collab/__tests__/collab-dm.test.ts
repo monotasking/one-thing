@@ -16,7 +16,7 @@ import {
 	buildCollabRoomContext,
 	buildCollabRoomSystemPrompt,
 } from "../collab-roster.js";
-import { resolveAgentToolSurface } from "../../agent/agent-profile.js";
+import { resolveAgentToolSurface } from "../../agent/agent.js";
 import type { CollabAgentLike } from "../collab-types.js";
 // 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
 import { registerCollabAgentToolGrants } from '../tools/collab-agent-tool-grants.js'

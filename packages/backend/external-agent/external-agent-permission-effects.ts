@@ -24,22 +24,20 @@
  * 这个名字,而它的 `file_path` 位置是一样的。
  */
 
-import { basenamePath, joinPaths, dirnamePath } from '@onething/backend/storage/storage-primitives'
-import type { ToolEffect, ToolPreview } from '@onething/backend/tool/tool-helpers'
+import { basenamePath, joinPaths, dirnamePath } from '@onething/backend/storage'
+import type { ToolEffect, ToolPreview } from '@onething/backend/tool'
 import type { Effect } from '@shared/toolkit/effects'
 import type { JsonObject, JsonValue } from '@shared/json'
 import {
   analyzeBashPermission,
   filePermissionPattern,
-} from '../tool/tool-permission-effects.js'
-import {
   findCoreReadSandboxRootForPath,
   findCoreSandboxRootForPath,
   getCoreSandboxBoundary,
   getCoreSandboxRoots,
   resolveCoreToolPath,
-} from '../tool/tool-sandbox.js'
-import { classifySensitiveFile } from '../tool/tool-sensitive-files.js'
+  classifySensitiveFile,
+} from '../tool/tool.js'
 
 export interface ExternalToolPermissionInput {
   /** SDK 侧的工具名,未归一化(宿主工具不会走到这里,它们在连接器里就分家了)。 */

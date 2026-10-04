@@ -26,11 +26,8 @@
  * 具体 scheme 的名字就红 —— 那是 §2 不变量 3 的门。
  */
 
-import { Intent } from '../toolkit/toolkit-intent.js'
-import { textResult, type Result } from '../toolkit/toolkit-result.js'
-import type { PlanContext, RunContext } from '../toolkit/toolkit-run-context.js'
-import { Tool } from '../toolkit/toolkit-tool.js'
-import type { Scene, ToolSpec } from '../toolkit/toolkit-spec.js'
+import { Intent, textResult, type Result, Tool } from '../toolkit/toolkit.js'
+import type { PlanContext, RunContext, Scene, ToolSpec } from '../toolkit/toolkit.js'
 import {
   ResourceCallShapeError,
   ResourceEffectViolationError,

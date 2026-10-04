@@ -23,7 +23,7 @@ import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-
 import { resolveInsideSandbox, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import { isValidSpaceId } from '@onething/backend/space/space-types'
+import { isValidSpaceId } from '@onething/backend/space'
 import { requestSessionOwner, sessionAccess, type SessionOwnershipRecord } from './session-access.js'
 import {
   createOnethingSessionForIpc,

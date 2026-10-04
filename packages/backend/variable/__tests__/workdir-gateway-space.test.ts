@@ -70,7 +70,7 @@ const { getProjectsStore } = await import('@onething/backend/project-dir/project
 const { buildProjectDirsPromptVars } = await import('../../project-dir/project-dir-bootstrap.js')
 const { setRootDirForTests } = await import('@onething/backend/project-dir/project-dir-persistence')
 const { setRootDirForTests: setSpacesRootForTests } = await import(
-  '@onething/backend/space/space-persistence'
+  '@onething/backend/space'
 )
 const { resetProjectsStoreForTests } = await import('@onething/backend/project-dir/project-dir-store')
 

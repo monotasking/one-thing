@@ -116,7 +116,7 @@ describe('music 这一 scheme 在真装配里(K3-b)', () => {
     try {
       expect(backend.resources.registry.list().map(spec => spec.scheme)).not.toContain('music')
 
-      const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit')
       const catalog = getToolkitCatalog()
       expect(catalog?.has('music')).toBe(false)
       // `radio` 退役了 —— 它在**任何**一档里都不该再出现。
@@ -131,7 +131,7 @@ describe('music 这一 scheme 在真装配里(K3-b)', () => {
     try {
       expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('music')
 
-      const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit')
       const catalog = getToolkitCatalog()
       expect(catalog?.has('music')).toBe(true)
       expect(catalog?.has('radio')).toBe(false)

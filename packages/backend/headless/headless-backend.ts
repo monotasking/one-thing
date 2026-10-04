@@ -38,7 +38,7 @@ import { saveSettings } from '@onething/backend/settings'
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
 import { ensureCollabGroupRoom } from '@onething/backend/collab/collab-room-create'
 import { getSettings } from '@onething/backend/settings'
-import { toolkitCatalogToolDefinitions } from '@onething/backend/toolkit/toolkit-catalog-projection'
+import { toolkitCatalogToolDefinitions } from '@onething/backend/toolkit'
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/session'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'

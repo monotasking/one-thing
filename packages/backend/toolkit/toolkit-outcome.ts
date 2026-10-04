@@ -9,7 +9,7 @@
  * `packages/shared/tools/tool-result.ts` 里 cancelled 的口径对齐。
  */
 
-import { isToolAbortError } from '../tool/tool-abort.js'
+import { isToolAbortError } from '../tool/tool.js'
 import { isToolTimeoutError } from './toolkit-abort-scope.js'
 import type { Result } from './toolkit-result.js'
 import { resultToText } from './toolkit-result.js'

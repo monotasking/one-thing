@@ -23,7 +23,8 @@ import { makeEffect } from '@shared/toolkit/effects'
 import type { Preview, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import type { JsonObject } from '@shared/json'
-import { CapabilityTool, defineInput, SELF_EVOLUTION_SKILL_NAME } from '@onething/backend/toolkit'
+import { CapabilityTool, SELF_EVOLUTION_SKILL_NAME } from '../families/toolkit-families-capability.js'
+import { defineInput } from '../toolkit-contract.js'
 import { dumpFeatures, hasFeature, mountFeature } from '@onething/backend/feature-registry'
 import {
   asFeatureDefinition,

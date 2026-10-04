@@ -4,8 +4,8 @@
  * 记会话级拒绝。授权者注入成桩 —— 权限核本身的判据有它自己的测试,这里只钉「进什么、出什么」。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Authorizer, Intent, Invocation } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Decision } from '@onething/backend/toolkit'
+import type { Authorizer, Intent, Invocation } from '@onething/backend/toolkit'
 import { ACPManager } from '@onething/backend/acp'
 import type {
   ACPPermissionBridge,

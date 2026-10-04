@@ -17,7 +17,7 @@ import {
   resetProjectsStoreForTests,
 } from '../project-dir-store.js'
 import { projectDirsRoot, setRootDirForTests } from '../project-dir-persistence.js'
-import { setRootDirForTests as setSpacesRootForTests } from '../../space/space-persistence.js'
+import { setRootDirForTests as setSpacesRootForTests } from '../../space/space.js'
 
 let legacyRoot: string
 let workspacesRoot: string

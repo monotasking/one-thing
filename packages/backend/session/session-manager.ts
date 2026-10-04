@@ -11,7 +11,7 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import type { EventBus } from '@onething/backend/event/event-bus'
 import type { StreamChannel } from '@onething/backend/event/event-stream-channel'
-import type { Unsubscribe } from '@onething/backend/event/event-types'
+import type { Unsubscribe } from '@onething/backend/event'
 import { Session } from './session-subscriber.js'
 import { getCoreLogger } from '@onething/backend/logging'
 

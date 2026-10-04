@@ -1,4 +1,4 @@
-import { listBackgroundJobs, type BackgroundJob } from '../../tool/tool-background-jobs.js'
+import { listBackgroundJobs, type BackgroundJob } from '../../tool/tool.js'
 import type { ContextVariable, VariableContext, VariableProvider } from '../variable-types.js'
 
 const NAME = 'background_jobs'

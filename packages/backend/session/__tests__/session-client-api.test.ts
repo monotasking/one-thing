@@ -151,7 +151,8 @@ vi.mock('@onething/backend/toc/toc-recorder', () => toc)
 vi.mock('@onething/backend/variable/variable-gateways', () => variables)
 vi.mock('@onething/backend/agent/agent-store-access', () => agents)
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
-vi.mock('@onething/backend/event', () => ({
+vi.mock('@onething/backend/event', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/event')>(),
   getEventBus: () => ({ destroySession: events.destroySession, emit: events.emit }),
   getStreamChannel: () => ({ destroySession: events.streamDestroySession }),
 }))

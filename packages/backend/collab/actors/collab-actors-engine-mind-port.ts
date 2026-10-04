@@ -33,7 +33,7 @@ import {
 } from '@onething/backend/collab'
 import type { ChatMessage } from '@shared/ipc.js'
 
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { getEventBus } from '@onething/backend/event'
 import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'

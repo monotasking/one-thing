@@ -55,10 +55,9 @@ import {
   listOnethingActiveStreamsForIpc,
   updateOnethingMessageThinkingTimeForIpc,
 } from '@onething/backend/session'
-import { emitCoreSessionEventSafely } from '@onething/backend/event/event-bus-primitives'
+import { emitCoreSessionEventSafely, getEventBus } from '@onething/backend/event'
 import { chatRouter, type ChatRoutes } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/session'
-import { getEventBus } from '@onething/backend/event'
 import { currentSessionRun } from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/collab/collab-rooms'

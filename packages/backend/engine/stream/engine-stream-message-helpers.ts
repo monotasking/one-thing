@@ -40,7 +40,7 @@ import {
 	resolveCollabSpeakerLabel,
 	type CollabAgentLike,
 } from "@onething/backend/collab";
-import { findAgent } from "@onething/backend/agent/agent-store-access";
+import { findAgent } from "@onething/backend/agent";
 import { resolveUserIdentity } from "@onething/backend/collab/collab-user-identity";
 import * as store from "@onething/backend/session";
 import { getLogger } from '../../logging/logging.js'

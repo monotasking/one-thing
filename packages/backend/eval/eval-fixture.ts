@@ -6,7 +6,7 @@ import type { CoreSystemPromptSnapshot } from "../prompt/prompt-system-snapshot.
 import {
 	getOnethingEvalsFixturesAutoDir,
 	type OnethingStorePathOptions,
-} from "../storage/storage-paths.js";
+} from "../storage/storage.js";
 import {
 	ONETHING_DEFAULT_SYSTEM_PROMPT,
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,

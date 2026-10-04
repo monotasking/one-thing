@@ -7,7 +7,12 @@ import { sessionReads } from '@onething/backend/session'
 import * as store from '@onething/backend/session'
 import type { DiffHunk, Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
-import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/toolkit/toolkit-execution-types'
+import type {
+  ToolExecutionContext,
+  ToolExecutionResult,
+  ToolPartialResultUpdate,
+  ToolMetadataUpdate,
+} from '@onething/backend/toolkit'
 import type { Principal } from '@shared/permission/principal'
 import type { StreamContext } from './engine-stream-processor.js'
 import { createEventOnlyEmitter } from '../engine-event-only-emitter.js'
@@ -30,7 +35,6 @@ import { pushSessionToolProgress } from '@onething/backend/event/event-tool-prog
 import { consolePort, getLogger } from '../../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging'
-import type { ToolMetadataUpdate } from '@onething/backend/toolkit/toolkit-execution-types'
 import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '../../agent-loop/agent-loop.js'
 
 const log = getLogger('toolkit.runner')

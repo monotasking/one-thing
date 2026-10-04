@@ -20,15 +20,15 @@ import { makeEffect } from '@shared/toolkit/effects'
 import type { Invocation, Preview, SessionSnapshot } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
 import { Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { basenamePath, dirnamePath, joinPaths } from '@onething/backend/storage/storage-primitives'
+import { basenamePath, dirnamePath, joinPaths } from '@onething/backend/storage'
 import {
   findCoreReadSandboxRootForPath,
   findCoreSandboxRootForPath,
   getCoreSandboxBoundary,
   getCoreSandboxRoots,
   resolveCoreToolPath,
-} from '../../tool/tool-sandbox.js'
-import { classifySensitiveFile } from '../../tool/tool-sensitive-files.js'
+  classifySensitiveFile,
+} from '../../tool/tool.js'
 
 /** 宿主注入的沙箱面。形状与旧 read/write/edit 的 adapters 逐字同构。 */
 export interface FileToolAdapters {

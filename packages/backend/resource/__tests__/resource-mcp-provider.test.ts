@@ -8,11 +8,10 @@
  * ②工具说不(两种)→ `Outcome.failed`;③单例地址给错了当场说不。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { ToolRunner, ZodValidator } from '@onething/backend/toolkit'
+import type { Outcome } from '@onething/backend/toolkit'
 import { ResourceTool } from '@onething/backend/resource/resource-api'
 import type { MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types'
-import { ZodValidator } from '@onething/backend/toolkit'
 import { projectMcpResource } from '@onething/backend/mcp/mcp-resource-spec'
 import { allowAuthorizer, RecordingObserver } from '../../toolkit/__tests__/fakes.js'
 import { McpResourceProvider, type McpResourceCallPort } from '../resource-mcp-provider.js'

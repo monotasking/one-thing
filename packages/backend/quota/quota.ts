@@ -23,8 +23,7 @@ import {
   credentialTargetFromMarker,
   decideSpaceProviderCredential,
 } from '@onething/backend/credentials'
-import { readSpaceProviderSettings } from '@onething/backend/space/space-provider-settings'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import { readSpaceProviderSettings, DEFAULT_SPACE_ID } from '@onething/backend/space'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/event'
 import { getAuthService } from '../auth/auth-process-service.js'

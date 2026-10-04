@@ -59,7 +59,7 @@ import {
   WORKDIR_SANDBOX_ERROR,
 } from '@onething/backend/session'
 import { foldOutcomeToEnvelope } from '@onething/backend/http-server/http-server-resource-envelope.js'
-import type { Outcome } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Outcome } from '@onething/backend/toolkit'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingACPIpcLogger } from '@onething/backend/acp/acp-ipc-operations'

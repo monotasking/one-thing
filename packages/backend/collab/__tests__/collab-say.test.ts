@@ -47,7 +47,7 @@ import {
   COLLAB_WORK_REQUIRED_TOOLS,
 } from "../tools/collab-tool-surface.js";
 // 「这一回合能用哪些工具」只有一处实现(C2「工具面单点」),collab 这边只留地板表。
-import { resolveAgentToolSurface } from "../../agent/agent-profile.js";
+import { resolveAgentToolSurface } from "../../agent/agent.js";
 import type { CollabAgentLike, CollabMessageLike } from "../collab-types.js";
 // 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
 import { registerCollabAgentToolGrants } from '../tools/collab-agent-tool-grants.js'

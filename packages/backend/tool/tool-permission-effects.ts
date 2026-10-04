@@ -15,7 +15,7 @@
  * 认识工具注册表、不认识 SDK、不读盘 —— 谁拿到 effects 谁去过 `enforcePermissionPolicy`。
  */
 
-import { joinPaths, dirnamePath, isAbsolutePath, resolvePath } from '@onething/backend/storage/storage-primitives'
+import { joinPaths, dirnamePath, isAbsolutePath, resolvePath } from '@onething/backend/storage'
 import type { ToolEffect, ToolPreview } from '@onething/backend/tool/tool-helpers'
 import { classifyBashCommand, splitShellWords } from './tool-bash-classifier.js'
 import { expandCorePath, isCorePathContained } from './tool-sandbox.js'

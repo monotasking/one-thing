@@ -109,7 +109,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('dir')
     expect(backend.resources.tools().map(tool => tool.spec.id)).toContain('dir')
 
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit')
     expect(getToolkitCatalog()?.has('dir')).toBe(true)
   })
 
@@ -138,7 +138,7 @@ describe('目录资源在真装配里(K3-c)', () => {
   })
 
   it('④ AI 那条路(直接 run 那只工具)读得到同一份东西', async () => {
-    const { createAppToolRunner } = await import('@onething/backend/toolkit/toolkit-runner-factory')
+    const { createAppToolRunner } = await import('@onething/backend/toolkit')
     const runner = createAppToolRunner({ observer: { on: () => {} } })
     const tool = backend.resources.toolFor('dir')
     expect(tool).toBeTruthy()
@@ -152,7 +152,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     })
 
     expect(outcome.kind).toBe('ok')
-    const { resultToText } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
+    const { resultToText } = await import('@onething/backend/toolkit')
     const text = outcome.kind === 'ok' ? resultToText(outcome.result) : ''
     expect(text).toContain('resource-dir-provider.ts')
   })
@@ -189,7 +189,7 @@ describe('目录资源在真装配里(K3-c)', () => {
       // 写根没有跟着放宽:同一个路径,`read` 工具那条路照旧报 `external_directory`
       // 的判据(`findSandboxRootForPath` 命中与否)不在这里断言,但沙箱端口的
       // `contains` 就在手边,直接问它。
-      const { createSandboxPolicy } = await import('@onething/backend/toolkit/toolkit-runner-factory')
+      const { createSandboxPolicy } = await import('@onething/backend/toolkit')
       expect(createSandboxPolicy().contains(path.join(connected, 'note.md'))).toBe(false)
     } finally {
       updateSettingsInMemory(before)
@@ -218,7 +218,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     try {
       // 前提:它在进程写根之外(写根是 `process.cwd()`,这棵树在 `os.tmpdir()` 下),
       // 也不是接入目录 —— 所以下面读得到,靠的只能是那条会话绑的工作目录。
-      const { createSandboxPolicy } = await import('@onething/backend/toolkit/toolkit-runner-factory')
+      const { createSandboxPolicy } = await import('@onething/backend/toolkit')
       expect(createSandboxPolicy().contains(path.join(bound, 'sub'))).toBe(false)
       expect(createSandboxPolicy().readable(path.join(bound, 'sub'), withWorkdir)).toBe(false)
 

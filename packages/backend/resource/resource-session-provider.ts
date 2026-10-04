@@ -96,10 +96,10 @@ import type {
 } from '@onething/backend/resource/resource-api'
 import { planFromSpec } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { Intent, textResult } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit'
+import { Intent, textResult } from '@onething/backend/toolkit'
 import type { Principal } from '@shared/permission/principal'
-import { emitCoreSessionEventSafely } from '@onething/backend/event/event-bus-primitives'
+import { emitCoreSessionEventSafely, getEventBus, getStreamChannel } from '@onething/backend/event'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { collectSessionCascadeDeleteIds } from '@onething/backend/session'
 import {
@@ -123,8 +123,8 @@ import {
   updateOnethingSessionPinForIpc,
 } from '@onething/backend/session'
 import { updateOnethingSessionWorkingDirectory } from '@onething/backend/session'
-import { expandOnethingToolSandboxPath } from '@onething/backend/tool/tool-sandbox-runtime'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import { expandOnethingToolSandboxPath } from '@onething/backend/tool'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/session'
@@ -136,8 +136,7 @@ import {
   extractSessionPageResults,
   type SessionPageResultSlot,
 } from '@onething/backend/session'
-import { getEventBus, getStreamChannel } from '@onething/backend/event'
-import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/agent/agent-store-access'
+import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/agent'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { deleteSessionAiTodo } from '@onething/backend/todo-plan/todo-plan-service'

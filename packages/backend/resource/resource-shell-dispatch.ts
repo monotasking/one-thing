@@ -44,7 +44,7 @@
 
 import { ResourceHomeUnavailableError, type ShellDispatch } from '@onething/backend/resource/resource-api'
 import { formatRef, type ResourceRef } from '@shared/resource/ref'
-import { textResult, type Result, type RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { textResult, type Result, type RunContext } from '@onething/backend/toolkit'
 import type { ResourceShellCommandEvent } from '@shared/events/index.js'
 import type { ShellCommandResult } from '@shared/ipc/resources.js'
 

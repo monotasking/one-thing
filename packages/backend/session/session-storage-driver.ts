@@ -31,7 +31,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { writeDurableJson } from '../storage/storage-durable-json.js'
+import { writeDurableJson } from '../storage/storage.js'
 import {
   buildSessionMessagesPageResponse,
   collectTailMessages,

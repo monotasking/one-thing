@@ -23,7 +23,7 @@
  */
 import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { emitCollabRoomUpdated } from './collab-room-runtime.js'
 import { getLogger } from '@onething/backend/logging'
 import { sessionDeletion } from '@onething/backend/session'

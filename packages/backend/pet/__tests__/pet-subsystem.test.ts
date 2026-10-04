@@ -20,9 +20,9 @@ import {
   type ResourceProvider,
   type ResourceSpec,
 } from '@onething/backend/resource/resource-api'
-import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/toolkit'
 import type { Utterance } from '@onething/backend/pet'
-import { EventBus } from '@onething/backend/event/event-session-bus'
+import { EventBus } from '@onething/backend/event'
 import { forwardResourceEventsToBus } from '@onething/backend/resource/resource-event-bridge'
 import { PetResourceProvider } from '@onething/backend/resource/resource-pet-provider'
 import { AmbientResourceProvider } from '@onething/backend/resource/resource-ambient-provider'

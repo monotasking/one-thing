@@ -61,15 +61,14 @@
  * 刷工具面这件事没有跟着消失:`backend/toolkit` 的 `refreshToolkitMcpTools`
  * 仍由 `createOnethingBackend` 挂在 MCP 能力变更回调上,只是不再有传输面。
  */
+import { applyOnethingToolCallUpdateForIpc, type OnethingToolCallStateLike } from './tool-call-state.js'
 import {
-  applyOnethingToolCallUpdateForIpc,
   cancelOnethingToolForIpc,
-  executeOnethingToolWithSessionContextForIpc,
   listOnethingBackgroundJobsForIpc,
-  listOnethingSettingsToolsForIpc,
-  type OnethingToolCallStateLike,
   stopOnethingBackgroundJobForIpc,
-} from '@onething/backend/tool'
+} from './tool-ipc-operations.js'
+import { executeOnethingToolWithSessionContextForIpc } from './tool-execution-context.js'
+import { listOnethingSettingsToolsForIpc } from './tool-list-presentation.js'
 import {
   listBackgroundJobs,
   stopBackgroundJob,

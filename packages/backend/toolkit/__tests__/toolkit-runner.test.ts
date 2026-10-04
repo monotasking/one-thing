@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { installStoreSessionLayerForTest } from '../../session/testing/session-testing-store-layer.js'
 import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Authorizer, Invocation } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { BashOperations } from '@onething/backend/tool/tool-bash-executor'
+import type { BashOperations } from '@onething/backend/tool'
 import {
   bashAdapters,
   createCatalogForTier,

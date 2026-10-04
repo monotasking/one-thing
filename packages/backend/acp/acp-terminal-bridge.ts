@@ -20,7 +20,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { constants as osConstants } from 'node:os'
-import type { Authorizer } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Authorizer } from '@onething/backend/toolkit'
 import type {
   AcpClientRequestContext,
   AcpTerminalBridge,

@@ -11,7 +11,10 @@ const fixture = vi.hoisted(() => ({
   unattended: vi.fn(), variables: vi.fn(), refreshEnv: vi.fn(), patch: vi.fn(),
   deletedListener: undefined as ((ids: readonly string[]) => void) | undefined,
 }))
-vi.mock('@onething/backend/storage/storage', () => ({ getOnethingStorePath: () => fixture.dir }))
+vi.mock('@onething/backend/storage/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage/storage')>(),
+  getOnethingStorePath: () => fixture.dir,
+}))
 vi.mock('@onething/backend/music/music', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/music/music')>(),
   createOnethingRadioConductor: (options: OnethingRadioConductorOptions) => {

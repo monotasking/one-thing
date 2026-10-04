@@ -21,14 +21,14 @@ import {
   type BuildOnethingPromptContextOptions,
   type ComposedPrompt,
 } from '@onething/backend/prompt'
-import { toolkitPromptSource } from '@onething/backend/toolkit/toolkit-prompt-source'
+import { toolkitPromptSource } from '@onething/backend/toolkit'
 import { buildStateVariablesPromptText } from '@onething/backend/variable/variable-system'
 import { pluginPromptSource } from '@onething/backend/plugin'
 import {
   getMacOSAutomationDocsPath,
 } from '@onething/backend/storage'
 import { getTodoPlanDirectory } from '@onething/backend/todo-plan/todo-plan-service'
-import { defaultAgent, findAgent } from '@onething/backend/agent/agent-store-access'
+import { defaultAgent, findAgent } from '@onething/backend/agent'
 import * as store from '@onething/backend/session'
 import {
   buildCollabRoomSystemPrompt,

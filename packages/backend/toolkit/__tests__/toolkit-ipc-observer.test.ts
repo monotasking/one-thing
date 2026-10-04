@@ -31,7 +31,7 @@ import type {
   RuntimeVariableRegistry,
   RuntimeVariableSetInput,
 } from '../toolkit.js'
-import type { BashOperations } from '../../tool/tool-bash-executor.js'
+import type { BashOperations } from '../../tool/tool.js'
 import { IpcProjector, splitResultContent, stepFromEvent, toolProgressFromEvent } from '../toolkit-ipc-observer.js'
 
 // ── 夹具 ────────────────────────────────────────────────────────────────────

@@ -37,7 +37,7 @@
 import type { ResourceProvider, ResourceReadContext, ResourceSpec } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
 import { planFromSpec } from '@onething/backend/resource/resource-api'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit'
 import type { JsonObject } from '@shared/json'
 import type { MCPToolCallResult } from '@shared/mcp/types'
 import { withMCPResultOutputText } from '@onething/backend/mcp/kernel'

@@ -135,8 +135,8 @@ describe('资源内核在真装配里(K1)', () => {
     // 直接问产品层那台目录端口(回合面 `Surface.resolve` 与设置页工具清单读的都是
     // 它),而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户与
     // 模型真正看见的那一份**,不是装配的内部账。
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
-    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/toolkit-catalog-projection')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit')
+    const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
     // 露面规则(§10.4 第三行):provider 在注册表里 = 那只工具在目录里。
@@ -153,7 +153,7 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('K3-a:元工具 resources 列的是注册表当下的样子(它自己不认识任何命名空间)', async () => {
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit')
     const meta = getToolkitCatalog()?.get('resources')
     expect(meta).toBeTruthy()
     const intent = await meta!.plan({ list: true }, { invocation: { sessionId } } as never)
@@ -345,7 +345,7 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('AI 路径(直接 run 那只工具)与 do 拿到同形的 Outcome', async () => {
-    const { createAppToolRunner } = await import('@onething/backend/toolkit/toolkit-runner-factory')
+    const { createAppToolRunner } = await import('@onething/backend/toolkit')
     const runner = createAppToolRunner({ observer: { on: () => {} } })
     // `tools()` 按 scheme 字典序,不能拿 [0] 当 session。
     const tool = backend.resources.toolFor('session')!
@@ -398,7 +398,7 @@ describe('资源内核在真装配里(K1)', () => {
     // 装一个 core 从没听说过的命名空间,不碰装配一行代码 —— 它的事件照样上总线。
     // 这是 §8 陌生能力演练在**事件**这一侧的那半句。
     const { planFromSpec } = await import('@onething/backend/resource/resource-api')
-    const { textResult } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
+    const { textResult } = await import('@onething/backend/toolkit')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',

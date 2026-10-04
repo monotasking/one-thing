@@ -1,7 +1,7 @@
 import { coreToolCallSnapshot, findCoreToolCall, patchCoreToolCall, replaceCoreToolCall } from './agent-loop-tool-call-cow.js'
 import type { JsonObject, JsonValue } from '@shared/json.js'
 import { ToolExecutionScheduler } from './agent-loop-tool-execution-scheduler.js'
-import { coreDiffHunksFromJson, type CoreDiffHunk } from '@onething/backend/tool/tool-diff-hunk-json'
+import { coreDiffHunksFromJson, type CoreDiffHunk } from '@onething/backend/tool'
 import {
   detectSkillUsage,
   generateStepTitle,

@@ -82,7 +82,7 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   await aborted.promise
   expect(ttsSignal.aborted).toBe(true)
   expect(asrSignal.aborted).toBe(true)
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   expect(inspectStoreLock({ storePath: a }).status).toBe('held')
   await expect(first.synthesize({ text: 'new work' })).resolves.toMatchObject({ success: false })
   tts.release()

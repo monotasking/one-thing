@@ -1,11 +1,7 @@
 import type { AppSettings, PersistedAppSettings } from '@shared/ipc.js'
 import { createDefaultSettings, mergeWithDefaults } from './settings-defaults.js'
 import { createOnethingSettingsRepository } from './settings-repository.js'
-import {
-  readSpaceProviderSettings,
-  writeSpaceProviderSettings,
-} from '@onething/backend/space/space-provider-settings'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import { readSpaceProviderSettings, writeSpaceProviderSettings, DEFAULT_SPACE_ID } from '@onething/backend/space'
 import { splitEffectiveAISettings } from './defaults/settings-defaults-ai.js'
 import {
   hasSpaceProviderSettingsMigrated,

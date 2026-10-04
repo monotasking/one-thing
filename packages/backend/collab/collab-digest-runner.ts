@@ -28,7 +28,7 @@ import {
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { sessionReads, type SessionAccess } from '@onething/backend/session'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { collabSessionRoomMembers } from './collab-members.js'
 import { generateChatResponse, getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/provider-call'
 import { collabUserPromptFields } from './collab-user-identity.js'

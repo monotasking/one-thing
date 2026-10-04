@@ -9,11 +9,17 @@
  */
 
 import { createTwoFilesPatch } from 'diff'
-import { basenamePath } from '@onething/backend/storage/storage-primitives'
-import { computeDiffHunks, trimDiffHunks } from '../../tool/tool-diff-hunks.js'
-import { countLineChanges, type TextFileSnapshot } from '../../tool/tool-file-snapshot.js'
-import { editFailureError, prepareExactEditPreview, type ExactEdit } from '../../tool/tool-edit-engine.js'
-import { trimDiff } from '../../tool/tool-replacers.js'
+import { basenamePath } from '@onething/backend/storage'
+import {
+  computeDiffHunks,
+  trimDiffHunks,
+  countLineChanges,
+  type TextFileSnapshot,
+  editFailureError,
+  prepareExactEditPreview,
+  type ExactEdit,
+  trimDiff,
+} from '../../tool/tool.js'
 import type { FileMutationDiff } from '../families/toolkit-families-mutating-file.js'
 
 /** 大段删除的两条判据。阈值与旧 `getEditRisk` 逐字相同。 */

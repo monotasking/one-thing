@@ -2,7 +2,7 @@ import fs from "node:fs";
 import {
 	getOnethingEvalsOnlineRecordsPath,
 	type OnethingStorePathOptions,
-} from "../storage/storage-paths.js";
+} from "../storage/storage.js";
 import {
 	type EvalFixture,
 	type EvalAssistantResponse,

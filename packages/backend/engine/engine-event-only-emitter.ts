@@ -26,8 +26,7 @@ import {
   type CoreEventOnlyStreamChunk,
   type CreateCoreEventOnlyEmitterOptions,
 } from '@onething/backend/agent-loop'
-import { getEventBus, getStreamChannel } from '@onething/backend/event'
-import { claimDeltaStamp } from '@onething/backend/event/event-delta-stamp'
+import { getEventBus, getStreamChannel, claimDeltaStamp } from '@onething/backend/event'
 import { writeSessionEvent } from '@onething/backend/session'
 import { currentSessionRunId } from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging'

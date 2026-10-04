@@ -60,7 +60,8 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
   getSettings: () => ({ network: {} }),
 }))
 
-vi.mock('@onething/backend/storage', () => ({
+vi.mock('@onething/backend/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage')>(),
   getOnethingStorePath: () => '/tmp/onething-e4-test',
   // R4b:授权入口换成 `Authorizer.decide` 之后,设置仓库进了这条路的静态图。
   getOnethingSettingsPath: () => '/tmp/onething-e4-test/settings.json',

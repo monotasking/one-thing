@@ -10,16 +10,13 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { ToolRunner } from '../../toolkit/toolkit-runner.js'
+import { ToolRunner, combineValidators, textResult } from '../../toolkit/toolkit.js'
 import type { ObservedEvent } from '../../toolkit/toolkit-events.js'
-import type { Invocation } from '../../toolkit/toolkit-run-context.js'
-import type { Observer } from '../../toolkit/toolkit-ports.js'
-import { combineValidators } from '../../toolkit/toolkit-ports.js'
+import type { Invocation, Observer } from '../../toolkit/toolkit.js'
 import { allowAuthorizer, passthroughValidator } from '../../toolkit/__tests__/fakes.js'
 import { NO_ORIGIN_SESSION, ResourceKernel } from '../resource-kernel.js'
 import { ResourceRegistry } from '../resource-registry.js'
 import { ResourceInputValidator } from '../resource-validator.js'
-import { textResult } from '../../toolkit/toolkit-result.js'
 import { DEMO_SCHEME, DemoProvider, demoSpec } from './fakes.js'
 
 const PRINCIPAL = { kind: 'user', userId: 'local' } as const

@@ -87,9 +87,9 @@ import type {
   ResourceReadContext,
 } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import { Intent, textResult } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Intent, textResult } from '@onething/backend/toolkit'
 import { resolveReadable, resolveWritable } from './resource-path-guard.js'
 
 /** 一个目录项 / 一次 stat 交出去的「是什么」。与自述那两格逐字同名。 */

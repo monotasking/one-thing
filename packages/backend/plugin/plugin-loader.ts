@@ -3,7 +3,7 @@ import { toLogger, type CompatLogger } from '@onething/backend/logging'
 import os from 'os'
 import path from 'path'
 import { pathToFileURL } from 'url'
-import { writeJsonFile } from '@onething/backend/storage/storage-json-file'
+import { writeJsonFile } from '@onething/backend/storage'
 import { getCoreLogger } from '@onething/backend/logging'
 
 const log = getCoreLogger('core.plugins')

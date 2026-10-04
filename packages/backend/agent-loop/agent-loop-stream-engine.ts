@@ -1,7 +1,7 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 import type { SessionCommandType } from '@shared/events/session-command-types.js'
-import type { Unsubscribe } from '@onething/backend/event/event-types'
+import type { Unsubscribe } from '@onething/backend/event'
 import { PendingMessageQueue } from './agent-loop-message-queue.js'
 import { isAgentExecutionCheckpointError } from './agent-loop-errors.js'
 import type { PendingMessage } from './agent-loop-message-queue.js'

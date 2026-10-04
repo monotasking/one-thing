@@ -6,7 +6,7 @@
  * 一段时间内没有新事件。
  */
 import type { MemoryHolder } from '@onething/backend/memory/memory-registry'
-import type { EventBus } from './event.js'
+import type { EventBus } from './event-session-bus.js'
 
 /** 缓冲闲置多久后可以释放:soft 10 分钟,hard 1 分钟。 */
 const IDLE_MS = { soft: 10 * 60_000, hard: 60_000 } as const

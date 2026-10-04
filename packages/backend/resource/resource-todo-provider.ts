@@ -33,7 +33,7 @@ import type {
   ResourceReadContext,
 } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/backend/toolkit'
 import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from '@onething/backend/todo-plan'
 import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/backend/todo-plan/todo-plan-resource-spec'
 import { getTodoPlanStore, onTodoPlanChanged, type TodoPlanChangeListener, type TodoPlanChangeOrigin } from '@onething/backend/todo-plan/todo-plan-service'

@@ -10,7 +10,7 @@ import { createHostVoiceKit, type HostVoice, type HostVoiceFactory, type HostVoi
 import { MusicMoments, type MusicMomentEvent } from './music-moments.js'
 import type { MusicLyrics } from '@shared/ipc/music.js'
 import { readProviderVolume, setProviderVolume, SpeechActivityDuck } from './music-player-volume.js'
-import type { EventBus } from '@onething/backend/event/event-session-bus'
+import type { EventBus } from '@onething/backend/event'
 import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('music')

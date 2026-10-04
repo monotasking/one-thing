@@ -52,13 +52,12 @@
  *     它看起来像个疏漏 —— 不是:给一条来自网络的命令盖上「桌面来源」的 origin
  *     才是说谎。
  */
-import { emitCoreSessionCommandForIpc } from '@onething/backend/event/event-bus-primitives'
+import { emitCoreSessionCommandForIpc, getEventBus } from '@onething/backend/event'
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { SessionCommand } from '@shared/events/index.js'
 import { sessionCommandRouter, type SessionCommandEmitResult, type SessionCommandRoutes } from '@shared/ipc/session-command.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sanitizeRendererOrigin } from '@onething/backend/agent-loop'
-import { getEventBus } from '@onething/backend/event'
 import { getStreamEngine } from '@onething/backend/backend-current.js'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'

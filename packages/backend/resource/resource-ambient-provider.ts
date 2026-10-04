@@ -4,7 +4,7 @@ import type {
   ResourceReadContext,
 } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit'
 import {
   AMBIENT_HERE_PATH,
   AMBIENT_RESOURCE_SCHEME,

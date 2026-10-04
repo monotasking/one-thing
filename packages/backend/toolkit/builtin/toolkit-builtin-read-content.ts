@@ -7,8 +7,8 @@
  * 钉住:同一份字节喂给新旧两条路,输出必须逐字相同。
  */
 
-import { extnamePath } from '@onething/backend/storage/storage-primitives'
-import { formatSize, utf8Bytes } from '../../tool/tool-text-truncation.js'
+import { extnamePath } from '@onething/backend/storage'
+import { formatSize, utf8Bytes } from '../../tool/tool.js'
 
 export const DEFAULT_LIMIT = 2000
 export const DEFAULT_MAX_BYTES = 50 * 1024

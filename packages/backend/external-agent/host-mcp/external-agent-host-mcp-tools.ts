@@ -36,7 +36,7 @@
  */
 import { z } from 'zod'
 import { resolveCollabVenue, type CollabVenue } from '@onething/backend/session'
-import { resolveAgentToolSurface } from '../../agent/agent-profile.js'
+import { resolveAgentToolSurface } from '../../agent/agent.js'
 
 /**
  * 递给宿主工具的那一格上下文。

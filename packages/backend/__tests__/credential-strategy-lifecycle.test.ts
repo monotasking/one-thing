@@ -77,7 +77,7 @@ async function bindings() {
   const registry = await import('../credentials/credentials-strategy.js')
   const credentials = await import('../credentials/credentials-pool.js')
   const health = await import('@onething/backend/plugin/plugin-health')
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   registry.configureAppPluginCredentialStrategyHost()
   const choose = () => credentials.selectSpaceCredentialEntryDetailed(
     { entries: candidates, policy }, { spaceId: input.spaceId, providerId: input.providerId },

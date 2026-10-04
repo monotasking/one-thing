@@ -158,7 +158,7 @@ it('Backend shutdown retains its lease and bills the original store until the re
   const shuttingDown = instance.dispose().then(() => { disposed = true })
   await rejected
   expect(disposed).toBe(false)
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   expect(inspectStoreLock({ storePath: path.join(directory, 'a') }).status).not.toBe('absent')
   await expect(old.llm.complete(request)).rejects.toThrow()
   const { createOnethingBackend } = await import('../backend.js')

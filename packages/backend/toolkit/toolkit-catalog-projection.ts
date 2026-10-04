@@ -19,11 +19,11 @@
  * 由渲染层自己叠(`tools/tool-list-presentation.ts` 之后的那一段)。
  */
 
-import { coreToolDefinitionFromJsonSchema } from '@onething/backend/tool/tool-helpers'
+import { coreToolDefinitionFromJsonSchema } from '@onething/backend/tool'
 import type { Catalog, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { JsonSchemaObject } from '@shared/json.js'
 import type { ToolDefinition } from '@shared/ipc.js'
-import { getToolkitCatalog } from './toolkit.js'
+import { getToolkitCatalog } from './toolkit-host.js'
 import { deriveLegacyPermissionGuard } from './toolkit-guard-projection.js'
 
 /**

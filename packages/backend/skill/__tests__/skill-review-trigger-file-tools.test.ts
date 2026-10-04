@@ -8,9 +8,14 @@
  * 恒 allow 的授权者(后台触发不弹卡),以及"三只缺一整组不给"。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { configureToolkitCatalog, createReadTool } from '@onething/backend/toolkit'
+import {
+  Catalog,
+  Intent,
+  Tool as ToolkitTool,
+  configureToolkitCatalog,
+  createReadTool,
+} from '@onething/backend/toolkit'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit'
 import {
   createToolkitSkillReviewFileToolAdapters,
   toolkitFileToolAdapter,

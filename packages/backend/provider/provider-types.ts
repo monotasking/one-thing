@@ -1,5 +1,5 @@
 import type { AgentMessage } from '../context/context-manager.js'
-import type { ToolCall, ToolDefinition } from '../tool/tool-types.js'
+import type { ToolCall, ToolDefinition } from '../tool/tool.js'
 
 export interface ProviderRequest {
   sessionId: string

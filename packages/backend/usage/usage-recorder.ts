@@ -19,7 +19,7 @@ import {
 	type OnethingUsageSummaryRequest,
 } from "@onething/backend/usage";
 import { type OnethingUsageSummaryResult } from "@shared/contracts/usage";
-import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
+import { DEFAULT_SPACE_ID } from "@onething/backend/space";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
 import { getModelCapabilityEntry } from "@onething/backend/settings";
 import { resolveSessionCredentialId } from "@onething/backend/credentials";

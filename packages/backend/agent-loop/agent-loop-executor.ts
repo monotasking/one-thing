@@ -14,7 +14,7 @@ import { isAgentLoopPauseForConfirmationError, isAgentExecutionCheckpointError }
 import {
 	coreDiffHunksFromJson,
 	type CoreDiffHunk,
-} from "@onething/backend/tool/tool-diff-hunk-json";
+} from "@onething/backend/tool";
 import {
 	getTextFromContent,
 	type CoreAIMessageContent,

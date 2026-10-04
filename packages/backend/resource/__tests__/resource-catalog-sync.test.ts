@@ -21,11 +21,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Catalog, ToolRunner, Intent } from '@onething/backend/toolkit'
 import { ResourceKernel, ResourceRegistry, type ResourceProvider, type ResourceSpec } from '@onething/backend/resource/resource-api'
-import { ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { Intent } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Result } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Result } from '@onething/backend/toolkit'
 import { syncResourceToolsIntoCatalog } from '../resource-catalog-sync.js'
 
 /** 一个 core 与装配层都没听说过的命名空间。它只活在这只文件里。 */

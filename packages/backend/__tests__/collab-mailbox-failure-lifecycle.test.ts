@@ -38,7 +38,7 @@ async function assemble() {
   const agents = await import('@onething/backend/agent/agent-store-access')
   const runtime = await import('@onething/backend/collab/actors/collab-actors-runtime')
   const core = await import('@onething/backend/collab/kernel')
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   const event = (id: string) => core.createActorEvent({
     id, at: 1, type: 'probe', from: { kind: 'room', id: 'room' }, to: { kind: 'agent', id: 'failure-agent' },
     payload: { type: 'probe' },

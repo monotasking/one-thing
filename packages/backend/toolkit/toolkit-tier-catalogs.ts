@@ -20,37 +20,26 @@
  */
 
 import { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import {
-  createAskUserTool,
-  createBashTool,
-  createEditTool,
-  createGoalTool,
-  createPracticeTool,
-  createReadTool,
-  createSearchTool,
-  createTaskTool,
-  createTimeTool,
-  createVariableTool,
-  createWebOpenTool,
-  createWebSearchTool,
-  createWriteTool,
-  type AskUserToolAdapters,
-  type BashToolAdapters,
-  type GoalToolAdapters,
-  type MutatingFileToolAdapters,
-  type PracticeToolAdapters,
-  type RadioToolAdapters,
-  type ReadToolAdapters,
-  type TaskToolPorts,
-  type VariableToolAdapters,
-  type WebOpenToolAdapters,
-  type WebSearchToolAdapters,
-} from '@onething/backend/toolkit'
+import { createAskUserTool, type AskUserToolAdapters } from './builtin/toolkit-builtin-ask-user.js'
+import { createBashTool, type BashToolAdapters } from './builtin/toolkit-builtin-bash.js'
+import { createEditTool } from './builtin/toolkit-builtin-edit.js'
+import { createGoalTool, type GoalToolAdapters } from './builtin/toolkit-builtin-goal.js'
+import { createPracticeTool, type PracticeToolAdapters } from './builtin/toolkit-builtin-practice.js'
+import { createReadTool, type ReadToolAdapters } from './builtin/toolkit-builtin-read.js'
+import { createSearchTool } from './builtin/toolkit-builtin-search.js'
+import { createTaskTool, type TaskToolPorts } from './builtin/toolkit-builtin-task.js'
+import { createTimeTool } from './builtin/toolkit-builtin-time.js'
+import { createVariableTool, type VariableToolAdapters } from './builtin/toolkit-builtin-variable.js'
+import { createWebOpenTool, type WebOpenToolAdapters } from './builtin/toolkit-builtin-web-open.js'
+import { createWebSearchTool, type WebSearchToolAdapters } from './builtin/toolkit-builtin-web-search.js'
+import { createWriteTool } from './builtin/toolkit-builtin-write.js'
+import { type MutatingFileToolAdapters } from './families/toolkit-families-mutating-file.js'
+import { type RadioToolAdapters } from './toolkit-radio-adapters.js'
 import { getSettings } from '@onething/backend/settings'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'
 import { getOnethingToolOutputsDir } from '@onething/backend/storage'
 import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './toolkit-file-adapters.js'
-import { createLocalBashOperations } from '@onething/backend/tool/tool-bash-executor'
+import { createLocalBashOperations } from '@onething/backend/tool'
 import { getGuardedVariableRegistryForTools, VariableError } from '@onething/backend/variable/variable-system'
 import {
   askUserAdapters,

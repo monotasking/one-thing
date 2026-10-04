@@ -31,7 +31,10 @@ const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-collab-actor-'
 vi.mock('../../../session/session-reads.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
 vi.mock('../../../session/session-commands.js', () => import('../../../session/testing/session-testing-facade-mock.js'))
 
-vi.mock('@onething/backend/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
+vi.mock('@onething/backend/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage')>(),
+  getOnethingStorePath: () => storeRootRef.value,
+}))
 const storeRootRef = { value: storeRoot }
 
 const {

@@ -31,7 +31,10 @@ vi.mock('node:fs', () => ({
   },
 }))
 
-vi.mock('@onething/backend/storage', () => ({ getOnethingStorePath: () => '/tmp/onething-board-test' }))
+vi.mock('@onething/backend/storage', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/storage')>(),
+  getOnethingStorePath: () => '/tmp/onething-board-test',
+}))
 
 vi.mock('@onething/backend/event', () => ({
   getEventBus: () => ({

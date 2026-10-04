@@ -115,7 +115,7 @@ it('keeps the Backend lease until an already-started real EventBus emission comp
   let stopped = false
   const stopping = instance.dispose().then(() => { stopped = true })
   await vi.waitFor(() => expect(drain).toHaveBeenCalled())
-  const { inspectStoreLock } = await import('@onething/backend/storage/storage-store-lock')
+  const { inspectStoreLock } = await import('@onething/backend/storage')
   expect(inspectStoreLock({ storePath: path.join(root, 'a') }).status).toBe('held')
   expect(stopped).toBe(false)
   inspector.broadcast('room')

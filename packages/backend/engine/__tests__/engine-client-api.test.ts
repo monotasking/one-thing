@@ -63,7 +63,10 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
 vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
 vi.mock('@onething/backend/collab/collab-rooms', () => collab)
-vi.mock('@onething/backend/event', () => ({ getEventBus: () => eventBus }))
+vi.mock('@onething/backend/event', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/event')>(),
+  getEventBus: () => eventBus,
+}))
 vi.mock('../../session/session-runs.js', () => runs)
 vi.mock('../../session/session-reads.js', () => reads)
 vi.mock('../prompt/engine-system-prompt-snapshot.js', () => prompt)

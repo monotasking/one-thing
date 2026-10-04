@@ -44,7 +44,7 @@ import {
 	type TranscriptEvent,
 	type TranscriptHeader,
 } from "./eval-transcript.js";
-import type { OnethingStorePathOptions } from "../storage/storage-paths.js";
+import type { OnethingStorePathOptions } from "../storage/storage.js";
 
 const DEFAULT_MAX_ROUNDS = 8;
 

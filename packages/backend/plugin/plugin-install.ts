@@ -17,7 +17,7 @@
 import fs from 'fs'
 import { toLogger } from '@onething/backend/logging'
 import path from 'path'
-import { writeJsonFile } from '@onething/backend/storage/storage-json-file'
+import { writeJsonFile } from '@onething/backend/storage'
 import {
   compareCoreSemver,
   unscopedPluginIdFromPackageName,

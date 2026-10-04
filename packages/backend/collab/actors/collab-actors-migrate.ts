@@ -34,8 +34,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { DurableMailbox, readActorMailboxLog, type ActorEvent } from '@onething/backend/collab/kernel'
-import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
-import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/agent/agent-identity'
+import {
+  ensureDir,
+  pathExists,
+  readJsonFile,
+  writeJsonFile,
+  getOnethingSessionsDir,
+  getOnethingStorePath,
+} from '@onething/backend/storage'
+import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/agent'
 import type { CollabMessageLike } from '@onething/backend/collab'
 import {
   COLLAB_V2_BACKUP_DIR_PREFIX,
@@ -57,10 +64,6 @@ import {
 } from '@onething/backend/collab/actors'
 
 import { sessionReads } from '@onething/backend/session'
-import {
-  getOnethingSessionsDir,
-  getOnethingStorePath,
-} from '@onething/backend/storage'
 import {
   collabAgentAccountPath,
   collabAgentActorDir,

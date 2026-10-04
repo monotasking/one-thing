@@ -1906,3 +1906,19 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 **读数**:`entry:gate` 2019 → **1850**(logging 203 → 34:非测试 175 → 12,测试 28 → 22);`cycle:gate` 0(值边 4722 → 4725);layer / name 0;检索 Worker 1275007 字节不变。
 
 **验收**(改前 = `s27-after`,与提交 5c2ee482f 同一份代码 / 改后 `s28-after`):三套 tsc 零错;四份 bundle 与 `server:build` / `build:cli` / `web:build` 成功,三份 `search-worker.cjs` 字节逐字不变(1275007 / 1276543 / 1276543),主进程包略小;全量 vitest 失败集合逐行相同(仓根 21、壳侧 1,仓根多一条新钉子且绿);快照与 golden sha 不变;persistence 176、side-effect + lifecycle 24 全绿;shadow-battery 场景表相同(appendFailures 8 与改前同);hydration 两店各 217 / 0;`gate:acp` 109 ok;`gate:search-index` 72 ok / 3 FAIL 同一组;`gate:web-shell` / `gate:client` 绿;全部结构门绿;`provider:drill` 绿;CLI 与 server 能起。
+
+### 深层引用收口第三批落地记录:toolkit / tool / storage / event / agent / space(2026-10-04,未提交)
+
+**做了什么**(决策 D166–D175;生产行为零变化):
+
+1. **施工法**(D166):一只计划脚本逐功能出单 —— 名字用类型检查器解析到符号(同名而符号不同 = 停下),入口改完的样子先在内存里的值引用图上算环,让入口成环的读者停下;每个名字从声明它的文件转交,读者今天引的是有测试打桩的桶时经那只桶转交(D157 同理)。顺序 space → tool → agent → toolkit → storage → event,每家做完跑 tsc、cycle / layer / name、两份 Worker 字节与全量 vitest 逐文件比对。
+2. **四家归零**:space 入口 92 → 23 个名字、外面非测试 34 → 0(D167);tool 217 → 89、72 → 0,toolkit 变量工具那只 `?raw` 的 md 随它唯一的读者搬进 `toolkit/builtin/prompts/`(D168);agent 100 → 34、47 → 0,`backend.ts` 里那条早已没有副作用的空 import 删掉(D169);storage 117 → 102、54 → 0,读写原语经 `storage-primitives.ts` 桶转交(D171)。四只入口都从 `export *` 改成按类分组的具名导出 + R3 说明书,只交外面真在用的名字。
+3. **两家停下**:toolkit 入口 180 → 215(追加 35 个),非测试 88 → **7** —— 剩下的都引四只引上层功能的文件(`toolkit-wiring` / `-audit-sink` / `-tool-ports` / `-adapters`),交出即成环(D170);event 入口 7 → 18,非测试 49 → **12** —— 10 处是同名不同物(泛型基类 `EventBus` / `StreamChannel` 与入口交出的同名会话子类),2 处是环(两只兄弟要的 `getStreamChannel` 就声明在入口里)(D172)。可选做法都列在决策里,待协调者。
+4. **测试**:能只换说明符的测试走入口(space 8、tool 14、agent 6、toolkit 81、storage 21、event 16 处);17 只在 storage / event 入口上用裸工厂打桩的测试补 `importOriginal` 展开,断言不动(D173,D163 先例)。
+5. **D126**:20 处功能内部引自家入口改引兄弟,storage 入口的包说明符自引用改相对路径;剩 event 两只例外(D175)。
+6. exports 删 25 把深键(392 → 367);entry 基线手改六行;边界检查一条写死深键说明符的断言放宽成认入口(D174)。
+7. 别的会话的五只 `chat-*.ts`:零改动(改前改后 sha 相同)。
+
+**读数**:`entry:gate` 1850 → **1379**(toolkit 188 → 26、tool 97 → 11、agent 93 → 40、storage 79 → 4、event 77 → 24、space 72 → 30;非测试合计 344 → 19),其余各行不变;`cycle:gate` 0(值边 4725 → 4696);layer / name 0;检索 Worker 1275007 字节不变。
+
+**验收**(改前 `s29-before` = 86ef256f2 + 别的会话的未提交改动 / 改后 `s29-after`):三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(`node:` 命中 0)成功,三份 `search-worker.cjs` 与 `acp-mcp-bridge` 字节逐字不变(1275007 / 1276543 / 1276543;749191 / 748877),主进程包略大(桌面 11308924 → 11309306、CLI 11364346 → 11372444、server 5765051 → 5766096 —— 入口闭包比从前钻的单只文件大);全量 vitest 壳侧失败集合相同(1 条),仓根第一遍多两条负载敏感的抖动(`http-server-workspace-watch-ownership` 超时、`settings-model-registry-abort` 清理目录 ENOTEMPTY,单跑三遍全绿),重跑一遍仓根失败集合与改前**逐行相同**(21 条);快照与 golden sha 不变;persistence 176、side-effect + lifecycle 24 全绿;shadow-battery 场景表相同(appendFailures 8 与改前同);hydration 两店各 217 / 0;`gate:acp` 108 ok;`gate:search-index` 72 ok / 3 FAIL 与改前同一组(⑤c / ⑤d);`gate:web-shell` / `gate:client` 绿;全部结构门绿;`provider:drill` 绿;CLI 与 server 能起。

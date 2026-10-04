@@ -8,8 +8,7 @@
  */
 import * as store from '@onething/backend/session'
 import { isAgentPairDmRoom } from '@onething/backend/session'
-import { computeAgentPresence } from '@onething/backend/agent'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { computeAgentPresence, findAgent } from '@onething/backend/agent'
 import {
   registerAgentPresenceSource,
   type AgentSelfCardFact,

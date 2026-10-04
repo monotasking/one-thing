@@ -6,7 +6,7 @@ import { Decision, Intent } from '../toolkit-intent.js'
 import { Outcome, TOOL_CANCELLED_MESSAGE } from '../toolkit-outcome.js'
 import { emptyResult, resultToText, textResult } from '../toolkit-result.js'
 import { createToolTimeoutError, isToolTimeoutError } from '../toolkit-abort-scope.js'
-import { createToolAbortError, isToolAbortError } from '../../tool/tool-abort.js'
+import { createToolAbortError, isToolAbortError } from '../../tool/tool.js'
 
 describe('Intent', () => {
   it('none 是零效果的计划,但仍然要过授权', () => {

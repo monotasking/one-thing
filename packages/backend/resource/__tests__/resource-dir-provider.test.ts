@@ -35,11 +35,11 @@ import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { PlanContext, RunContext, SandboxPolicy } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { PlanContext, RunContext, SandboxPolicy } from '@onething/backend/toolkit'
 import { ResourceEventHub } from '@onething/backend/resource/resource-api'
 import type { ResourceEvent, ResourceReadContext } from '@onething/backend/resource/resource-api'
 import { isCorePathContained, resolveCoreToolPath } from '@onething/backend/tool/tool-sandbox'
-import { classifySensitiveFile } from '@onething/backend/tool/tool-sensitive-files'
+import { classifySensitiveFile } from '@onething/backend/tool'
 import { configureShellHost, resetShellHost } from '@onething/backend/shell/shell-host-ports'
 import {
   DirOperationFailedError,

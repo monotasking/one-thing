@@ -15,9 +15,8 @@
  * 那种基础设施。
  */
 import { isActiveAgent } from '@shared/ipc.js'
-import { agentDmRoomId, isColleague } from '@onething/backend/agent'
+import { agentDmRoomId, isColleague, findAgent } from '@onething/backend/agent'
 import * as store from '@onething/backend/session'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { sessionAccess } from '@onething/backend/session'
 import { fixedExecutionContext } from '../session/session.js'

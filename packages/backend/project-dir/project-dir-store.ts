@@ -10,7 +10,7 @@ import {
   saveIndex,
   saveProject,
 } from './project-dir-persistence.js'
-import { DEFAULT_SPACE_ID, isValidSpaceId } from '../space/space-types.js'
+import { DEFAULT_SPACE_ID, isValidSpaceId } from '../space/space.js'
 import {
   normalizeProjectRoots,
   projectRootsInclude,

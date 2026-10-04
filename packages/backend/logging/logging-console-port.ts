@@ -7,7 +7,7 @@ import type { LogLevel } from '@shared/logging/types'
 // 本文件按注释所述是过渡件,`Core*Logger` 统一成 `Logger` 之后连同这张表一起删。
 import type { OnethingACPIpcLogger } from '../acp/acp-ipc-operations.js'
 import type { OnethingAgentLoopLogger } from '../engine/engine.js'
-import type { OnethingAgentsIpcLogger } from '../agent/agent-ipc-operations.js'
+import type { OnethingAgentsIpcLogger } from '../agent/agent.js'
 import type { OnethingOAuthIpcLogger } from '../auth/auth-ipc-operations.js'
 import type { OnethingDirectoryIpcLogger } from '../file/file-directory-listing.js'
 import type { OnethingFilesIpcLogger } from '../file/file-search.js'
@@ -35,10 +35,12 @@ import type { AbortOnethingStreamsForIpcLogger } from '../session/session.js'
 import type { OnethingSettingsIpcLogger } from '../settings/settings-ipc-operations.js'
 import type { OnethingSettingsRepositoryLogger } from '../settings/settings-repository.js'
 import type { OnethingSkillsIpcLogger } from '../skill/skill-ipc-operations.js'
-import type { OnethingToolsIpcLogger } from '../tool/tool-ipc-operations.js'
-import type { OnethingToolCallStateIpcLogger } from '../tool/tool-call-state.js'
-import type { OnethingToolExecutionIpcLogger } from '../tool/tool-execution-context.js'
-import type { OnethingToolListIpcLogger } from '../tool/tool-list-presentation.js'
+import type {
+  OnethingToolsIpcLogger,
+  OnethingToolCallStateIpcLogger,
+  OnethingToolExecutionIpcLogger,
+  OnethingToolListIpcLogger,
+} from '../tool/tool.js'
 import type { LegacyDuckLogger } from './logging-logger-primitives.js'
 
 /**

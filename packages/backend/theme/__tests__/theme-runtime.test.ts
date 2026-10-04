@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getOnethingStorePath } from '../../storage/storage-paths.js'
+import { getOnethingStorePath } from '../../storage/storage.js'
 import { OnethingThemeRuntime } from '../theme-runtime.js'
 
 describe('OnethingThemeRuntime', () => {

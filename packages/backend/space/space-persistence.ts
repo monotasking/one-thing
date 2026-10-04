@@ -1,6 +1,6 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { getOnethingWorkspacesDir } from '../storage/storage-paths.js'
+import { getOnethingWorkspacesDir } from '../storage/storage.js'
 import { parseSpaceIndex, type SpaceIndex } from './space-types.js'
 
 import { getLogger } from '../logging/logging.js'

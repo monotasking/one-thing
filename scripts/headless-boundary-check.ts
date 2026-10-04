@@ -6625,7 +6625,9 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
     ...(!runtimeIndexContent.includes('./tool-sandbox-runtime.js')
       ? [`${rel(runtimeIndexFile)}: missing sandbox-runtime public export`]
       : []),
-    ...(!mainContent.includes('@onething/backend/tool/tool-sandbox-runtime')
+    // 深层引用收口第三批(2026-10-04)起门面经 tool 入口拿这几只函数(入口从 `./tool-sandbox-runtime.js` 转交,上面那条已经判了),
+    // 所以「委托给 sandbox-runtime」认入口或深层两种写法。
+    ...(!mainContent.includes('@onething/backend/tool/tool-sandbox-runtime') && !/from '@onething\/backend\/tool'/.test(mainContent)
       ? [`${rel(mainFile)}: sandbox facade must delegate to runtime sandbox-runtime`]
       : []),
     ...(mainLines.length > 70

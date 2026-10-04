@@ -10,7 +10,7 @@ import { hashSections } from "./eval-section-hash.js";
 import {
 	getOnethingEvalsFixturesAutoDir,
 	type OnethingStorePathOptions,
-} from "../storage/storage-paths.js";
+} from "../storage/storage.js";
 
 import { getLogger } from '../logging/logging.js'
 

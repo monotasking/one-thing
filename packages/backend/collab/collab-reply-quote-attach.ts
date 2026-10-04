@@ -23,7 +23,7 @@ import * as store from '@onething/backend/session'
 import { getEventBus } from '@onething/backend/event'
 import { sessionCommands } from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { resolveUserIdentity } from './collab-user-identity.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

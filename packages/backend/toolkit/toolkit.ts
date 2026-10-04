@@ -1,13 +1,19 @@
 /**
- * `@onething/backend/toolkit` —— R1 的工具树(`docs/design/tool-system-oop-2026-08.md`
- * §4/§8)。
+ * toolkit:工具系统(层次 L2)—— 一只工具怎么写、怎么登记、每一轮给模型看哪些、怎么执行。
  *
- * 与旧 `tools/` 并行存在、**一处未接线**:R1 的验收全部在 `__tests__/parity/` 的
- * 对拍里完成(同一组夹具喂给新旧两条路,比模型文本、权限输入、错误路径、渲染信息)。
- * 引擎侧的三处缝是 R2。
+ * 一次调用走 `校验 → 拦截 → plan → 按效果授权 → apply → 输出预算`;权限只看意图里声明的效果。
+ * 这里有工具的契约(zod 输入)、协议件(`Tool` / `Intent` / `Catalog`)、各族基类、全部内置工具、
+ * 按场景决定回合工具面的 `resolveScene`、执行管线(运行器、中止、结果)、目录投影与提示词来源。
  *
- * 产品层的三条禁令(桌面宿主运行时、宿主 IPC 契约包、装配层)在这棵子树上原样
- * 成立 —— 静态检查器逐字扫这些名字,所以这段注释也不写它们。
+ * 对外交出这几类东西(下面按类分组):契约;写一只工具要的协议件;各族基类;目录与工具面;
+ * 内置工具(每只一组);以及文件末尾 2026-10-04 深层引用收口第三批补的执行管线、装配用的工厂、
+ * 目录投影与插件工具、执行结果的形状、外部文本的界定。
+ *
+ * 依赖:tool(纯逻辑模块)、storage、permission(授权器)、logging、settings、session、file、task、agent-loop、
+ * lifecycle、variable、shared,以及包根的当前实例槽 `backend-current`。
+ * 引上层功能(resource / plugin / task 的接线)的四只文件 —— `toolkit-wiring`、`toolkit-audit-sink`、
+ * `toolkit-tool-ports`、`toolkit-adapters` —— 不经这里交出:进入口会把上层拖进入口闭包并成环,装配处直接引它们。
+ * 开给界面的操作在第二入口 `toolkit-client-api-self-evolution.ts`,不经这里。只用具名导出。
  */
 
 export {
@@ -181,3 +187,40 @@ export {
   WebSearchTool,
 } from './builtin/toolkit-builtin-web-search.js'
 export type { WebSearchInput, WebSearchToolAdapters } from './builtin/toolkit-builtin-web-search.js'
+
+/*
+ * 深层引用收口第三批(2026-10-04):外面从前直接钻进内部文件拿的名字,补在这里,每个从声明它的那只文件转交。
+ */
+// 执行管线:运行器、中止、结果、意图里的授权判定、端口形状
+export { ToolRunner } from './toolkit-runner.js'
+export { AbortScope } from './toolkit-abort-scope.js'
+export { Outcome, TOOL_CANCELLED_MESSAGE } from './toolkit-outcome.js'
+export { Decision } from './toolkit-intent.js'
+export { resultToText, textResult } from './toolkit-result.js'
+export type { Invocation } from './toolkit-run-context.js'
+export { combineValidators } from './toolkit-ports.js'
+export type { Authorizer, Clock, Observer, PartialValidator, SandboxPolicy, ValidationResult, Validator } from './toolkit-ports.js'
+
+// 装配用的工厂:运行器、沙箱策略、授权器、执行登记表、文件适配器
+export { createAppToolRunner, createSandboxPolicy, sessionWorkspaceRootFor } from './toolkit-runner-factory.js'
+export { createPermissionAuthorizer } from './toolkit-authorizer.js'
+export { ToolExecutionRegistry } from './toolkit-executions.js'
+export { mutatingFileAdapters, readAdapters } from './toolkit-file-adapters.js'
+
+// 目录投影、提示词来源与插件工具
+export { toolDefinitionFromToolkitTool, toolkitCatalogToolDefinitions } from './toolkit-catalog-projection.js'
+export { toolkitPromptSource } from './toolkit-prompt-source.js'
+export { registerPluginToolInCatalog, unregisterPluginToolFromCatalog } from './toolkit-plugin-tools.js'
+export type { ToolCatalogTier } from './toolkit-tier-catalogs.js'
+
+// 执行结果与审计记录的形状
+export type {
+  ToolExecutionContext,
+  ToolExecutionResult,
+  ToolMetadataUpdate,
+  ToolPartialResultUpdate,
+} from './toolkit-execution-types.js'
+export type { ToolAuditRecord } from './toolkit-audit-observer.js'
+
+// 外部文本(网页正文、搜索结果)的界定:标成数据,不是指令
+export { wrapUntrustedText } from './toolkit-untrusted-text.js'

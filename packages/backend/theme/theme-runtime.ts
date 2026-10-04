@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { getOnethingDebugDir } from '../storage/storage-paths.js'
+import { getOnethingDebugDir } from '../storage/storage.js'
 import type {
   ApplyThemeResponse,
   GetThemeResponse,

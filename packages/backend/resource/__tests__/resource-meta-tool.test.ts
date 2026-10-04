@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { ToolRunner } from '../../toolkit/toolkit-runner.js'
+import { ToolRunner } from '../../toolkit/toolkit.js'
 import { allowAuthorizer, makeInvocation, passthroughValidator, RecordingObserver } from '../../toolkit/__tests__/fakes.js'
 import { RESOURCE_META_TOOL_ID, ResourceMetaCallShapeError, ResourceMetaTool } from '../resource-meta-tool.js'
 import { ResourceRegistry } from '../resource-registry.js'

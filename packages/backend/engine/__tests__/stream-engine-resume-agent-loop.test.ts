@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession, ToolDefinition } from '@shared/ipc.js'
 import type { ResumeAfterConfirmCommand } from '@shared/events/session-commands.js'
-import { EventBus } from '@onething/backend/event/event-session-bus'
+import { EventBus } from '@onething/backend/event'
 
 import type { BindableStreamSender, StreamSender } from '../engine-stream-dispatcher.js'
 

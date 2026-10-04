@@ -74,18 +74,18 @@ import type {
   SpacesClearCredentialRequest,
   SpacesSetCredentialPoolRequest,
   SpacesSetCredentialRequest,
-} from '@onething/backend/space/space-ipc-operations'
+} from '@onething/backend/space'
 import { isExternalAgentExecutorProvider } from '@onething/backend/agent'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import {
+  DEFAULT_SPACE_ID,
   createEmptySpaceProviderSettings,
   hasSpaceProviderSettings,
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
-} from '@onething/backend/space/space-provider-settings'
+  getSpacesStore,
+} from '@onething/backend/space'
 import { providerSeedOf } from '@onething/backend/settings'
-import { getSpacesStore } from '@onething/backend/space/space-store'
 import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { resolveSessionSpaceId, getSessionSettings, getSpaceSettings } from '@onething/backend/session'

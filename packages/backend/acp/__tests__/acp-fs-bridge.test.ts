@@ -6,10 +6,9 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { Authorizer, Intent, Invocation } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Decision } from '@onething/backend/toolkit'
+import type { Authorizer, Intent, Invocation, ToolAuditRecord } from '@onething/backend/toolkit'
 import type { AcpClientRequestContext } from '@onething/backend/acp'
-import type { ToolAuditRecord } from '@onething/backend/toolkit/toolkit-audit-observer'
 
 vi.mock('@onething/backend/permission/permission-message-anchor', () => ({
   resolvePermissionMessageAnchor: (_sessionId: string, preferred?: string) => preferred ?? '',

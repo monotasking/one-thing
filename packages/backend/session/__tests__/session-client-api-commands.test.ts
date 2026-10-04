@@ -44,7 +44,10 @@ const runtimeAmend = vi.hoisted(() => ({
   amendTurnEditResend: vi.fn(),
 }))
 
-vi.mock('@onething/backend/event', () => ({ getEventBus: () => bus }))
+vi.mock('@onething/backend/event', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/backend/event')>(),
+  getEventBus: () => bus,
+}))
 vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
 vi.mock('@onething/backend/eval/eval-turn-incident', () => incident)

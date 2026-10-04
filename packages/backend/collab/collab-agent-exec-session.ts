@@ -26,7 +26,7 @@ import {
 } from '@onething/backend/collab'
 import * as store from '@onething/backend/session'
 import { sessionAccess, sessionReads } from '@onething/backend/session'
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { ensureCollabRoomFolder } from './collab-room-folder.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { fixedExecutionContext } from '../session/session.js'

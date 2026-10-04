@@ -45,8 +45,7 @@ import {
   type OnethingRuntime,
 } from './gateway/gateway-onething-runtime.js'
 import type { CoreConversationRuntime } from '@onething/backend/gateway/gateway-conversation-runtime'
-import type { EventBus } from '@onething/backend/event/event-session-bus'
-import type { StreamChannel } from '@onething/backend/event/event-session-stream-channel'
+import type { EventBus, StreamChannel } from '@onething/backend/event'
 import {
 	DEFAULT_SESSION_OWNER,
 	ensureSessionWritable,
@@ -79,9 +78,8 @@ import {
   pluginPostInterceptReply,
   type PluginInterceptSteerPort,
 } from '@onething/backend/plugin/plugin-session-messenger'
-import { resolveAgentProfileForSession } from '@onething/backend/agent/agent-profile-for-session'
+import { resolveAgentProfileForSession, defaultAgent, findAgent } from '@onething/backend/agent'
 import { takeExternalAgentSteering } from '@onething/backend/external-agent/external-agent-connector-registry'
-import { defaultAgent, findAgent } from '@onething/backend/agent/agent-store-bound'
 import { createGoalContinuationTrigger } from './goal/goal-continuation-trigger.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { getLogger } from './logging/logging.js'

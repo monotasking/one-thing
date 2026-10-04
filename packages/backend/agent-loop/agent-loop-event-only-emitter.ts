@@ -1,5 +1,5 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { EventBase } from '@onething/backend/event/event-bus-primitives'
+import type { EventBase } from '@onething/backend/event'
 import type { StreamChunkBase, StreamDeltaStamp } from '@shared/events/stream-chunks.js'
 import { toLogger, type CompatLogger } from '@onething/backend/logging'
 import type { JsonObject } from '@shared/json.js'

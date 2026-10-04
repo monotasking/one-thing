@@ -11,10 +11,8 @@ import { createTwoFilesPatch } from 'diff'
 import { toJsonObject } from '@shared/json'
 import type { CoreToolPromptContribution } from '@onething/backend/agent-loop'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { dirnamePath, ensureDirAsync, writeTextFileAsync } from '@onething/backend/storage/storage-primitives'
-import { computeDiffHunks, trimDiffHunks } from '../../tool/tool-diff-hunks.js'
-import { countLineChanges, type TextFileSnapshot } from '../../tool/tool-file-snapshot.js'
-import { trimDiff } from '../../tool/tool-replacers.js'
+import { dirnamePath, ensureDirAsync, writeTextFileAsync } from '@onething/backend/storage'
+import { computeDiffHunks, trimDiffHunks, countLineChanges, type TextFileSnapshot, trimDiff } from '../../tool/tool.js'
 import { defineInput, listZodIssues } from '../toolkit-contract.js'
 import {
   MAX_REVALIDATION_ATTEMPTS,

@@ -34,7 +34,7 @@ import {
   readJsonFile,
   writeJsonFile,
   writeTextFileIfMissing,
-} from '@onething/backend/storage/storage-json-file'
+} from '@onething/backend/storage'
 import {
   createSeenActorEventWindow,
   DEFAULT_SEEN_ACTOR_EVENT_WINDOW,

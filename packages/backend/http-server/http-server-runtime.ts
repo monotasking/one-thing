@@ -58,7 +58,7 @@ import {
 import type {
 	AgentEngineSessionEvent,
 	AgentEngineStreamChunk,
-} from "@onething/backend/agent/agent-engine";
+} from "@onething/backend/agent";
 import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
@@ -75,7 +75,11 @@ import {
 	type SessionOwner as ServerSessionOwner,
 } from "./http-server-audience.js";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/settings";
-import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/agent/agent-store-access";
+import {
+	invalidateAgentsCache as invalidateAppAgentsCache,
+	createOnethingAgentStore,
+	DEFAULT_ONETHING_AGENT_ID,
+} from "@onething/backend/agent";
 import { getProjectsStore as getAppProjectsStore } from "@onething/backend/project-dir/project-dir-bootstrap";
 import {
 	MCPManager as appMCPManager,
@@ -165,10 +169,6 @@ import {
 	refreshOnethingPluginsForIpc,
 } from "@onething/backend/plugin";
 import {
-	createOnethingAgentStore,
-	DEFAULT_ONETHING_AGENT_ID,
-} from "@onething/backend/agent";
-import {
 	createRequiredOnethingAppFetch,
 } from "@onething/backend/network";
 // 片段的 ipc-operations 已随 CRUD 一起迁到 RPC 域;这里只剩搜索面还要读 store。
@@ -202,7 +202,7 @@ import {
 	saveOnethingFileContent,
 	statOnethingPath,
 } from "@onething/backend/file";
-import { applyFileMutationUndo } from "@onething/backend/tool/tool-file-mutation-audit";
+import { applyFileMutationUndo, expandOnethingToolSandboxPath } from "@onething/backend/tool";
 import {
 	resolveOnethingMarkdownAsset,
 	resolveOnethingMarkdownAssetForIpc,
@@ -215,7 +215,6 @@ import {
 	type OnethingMarkdownAssetServiceAdapters,
 	type OnethingMarkdownEditorSettings,
 } from "@onething/backend/markdown";
-import { expandOnethingToolSandboxPath } from "@onething/backend/tool";
 import {
 	addGrant,
 	clearOnethingPermissionSessionForIpc,
@@ -267,14 +266,12 @@ import {
 	getOnethingVariablesPath,
 	saveOnethingUiState,
 	setOnethingCurrentSessionId,
-} from "@onething/backend/storage";
-import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/session";
-import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
 	writeJsonFile as writeCoreJsonFile,
 	writeJsonFileAsync as writeCoreJsonFileAsync,
-} from "@onething/backend/storage/storage-primitives";
+} from "@onething/backend/storage";
+import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/session";
 import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,

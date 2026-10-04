@@ -1,4 +1,4 @@
-import { agentTombstoneLabel } from "../agent/agent-model.js";
+import { agentTombstoneLabel } from "../agent/agent.js";
 import { buildCollabCommonRules } from "./collab-agent-rules.js";
 import { formatCollabAgentHandle } from "./collab-handles.js";
 import type { CollabAgentLike } from "./collab-types.js";

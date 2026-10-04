@@ -39,7 +39,8 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   },
 }))
 
-vi.mock('../../event/event.js', () => ({
+vi.mock('../../event/event.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../event/event.js')>(),
   getEventBus: () => ({ emit: async () => {} }),
   getStreamChannel: () => ({ push: () => {} }),
 }))

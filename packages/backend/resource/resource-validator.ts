@@ -44,7 +44,7 @@
  */
 
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'
-import type { PartialValidator, ValidationResult } from '../toolkit/toolkit-ports.js'
+import type { PartialValidator, ValidationResult } from '../toolkit/toolkit.js'
 import { parseRef } from '@shared/resource/ref.js'
 import { RESOURCE_OP_KEY, RESOURCE_READ_KEY, RESOURCE_REF_KEY } from './resource-schema.js'
 import type { ResourceSpec } from './resource-spec.js'

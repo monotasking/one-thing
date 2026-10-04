@@ -78,9 +78,8 @@ import type { JsonObject } from '@shared/json'
 import type { ResourceEventHub, ResourceProvider, ResourceReadContext } from '@onething/backend/resource/resource-api'
 import { planFromSpec } from '@onething/backend/resource/resource-api'
 import { type ResourceRef } from '@shared/resource/ref'
-import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { Intent } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { RadioToolAdapters, RadioToolStatus } from '@onething/backend/toolkit'
+import type { PlanContext, Result, RunContext, RadioToolAdapters, RadioToolStatus } from '@onething/backend/toolkit'
+import { Intent } from '@onething/backend/toolkit'
 import {
   listMusicProviderDescriptors,
   runOnethingMusicSetupForIpc,

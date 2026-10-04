@@ -15,7 +15,7 @@ import { decideCollabActivations } from "../collab-activation.js";
 import { COLLAB_DM_PAIR_MAX_CHAIN } from "../collab-types.js";
 import { COLLAB_ROOM_TOOLS } from "../tools/collab-tool-surface.js";
 // 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表。
-import { resolveAgentToolSurface } from "../../agent/agent-profile.js";
+import { resolveAgentToolSurface } from "../../agent/agent.js";
 import {
 	buildCollabRoomContext,
 	buildCollabRoomSystemPrompt,

@@ -15,7 +15,7 @@
  *    那是 `openPath` 的事,不该借 `openExternal` 这扇门进来。宿主口自己也拒一遍
  *    (`apps/desktop-react/electron/host-ports.ts`),两层各守各的。
  */
-import { getOnethingStorePath } from '@onething/backend/storage/storage-paths'
+import { getOnethingStorePath } from '@onething/backend/storage'
 import { getShellHost } from '@onething/backend/shell/shell-host-ports'
 import { shellRouter, type ShellRoutes } from '@shared/ipc/shell.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'

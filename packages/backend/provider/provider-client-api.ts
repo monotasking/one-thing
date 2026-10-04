@@ -42,7 +42,7 @@ import {
   verifyAdapterSpec,
   type ProviderDirectModelsFetch,
 } from '@onething/backend/provider'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space'
 import { createUtilityProvider, getAvailableProviders, type UtilityProviderRef } from '@onething/backend/provider-call'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'

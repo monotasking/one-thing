@@ -53,7 +53,7 @@ import {
 } from '@onething/backend/collab/actors'
 import { isActiveAgent, type ChatMessage } from '@shared/ipc.js'
 
-import { findAgent } from '@onething/backend/agent/agent-store-access'
+import { findAgent } from '@onething/backend/agent'
 import { getEventBus } from '@onething/backend/event'
 import { getStreamEngineSafe } from '@onething/backend/backend-current.js'
 import * as store from '@onething/backend/session'

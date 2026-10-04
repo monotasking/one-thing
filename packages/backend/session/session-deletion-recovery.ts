@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { syncDirectoryChain, writeDurableJson } from '../storage/storage-durable-json.js'
+import { syncDirectoryChain, writeDurableJson } from '../storage/storage.js'
 
 type SessionRecord = { id: string; storageGeneration?: string; [key: string]: unknown }
 interface DeletionTarget { id: string; generation: string; directory: boolean; legacy: boolean; associated?: readonly string[] }

@@ -17,15 +17,13 @@ import {
   type SearchProvider,
 } from '@onething/backend/tool'
 import { remainingGoalTokens } from '@onething/backend/goal'
-import type {
-  AskUserToolAdapters,
-  GoalToolAdapters,
-  PracticeToolAdapters,
-  RadioToolAdapters,
-  TaskToolPorts,
-  WebOpenToolAdapters,
-  WebSearchToolAdapters,
-} from '@onething/backend/toolkit'
+import type { AskUserToolAdapters } from './builtin/toolkit-builtin-ask-user.js'
+import type { GoalToolAdapters } from './builtin/toolkit-builtin-goal.js'
+import type { PracticeToolAdapters } from './builtin/toolkit-builtin-practice.js'
+import type { RadioToolAdapters } from './toolkit-radio-adapters.js'
+import type { TaskToolPorts } from './builtin/toolkit-builtin-task.js'
+import type { WebOpenToolAdapters } from './builtin/toolkit-builtin-web-open.js'
+import type { WebSearchToolAdapters } from './builtin/toolkit-builtin-web-search.js'
 
 import { createRequiredAppFetch, getSettings } from '@onething/backend/settings'
 import { getGoal, goalLimits, updateGoalFromModel } from '@onething/backend/goal/goal-manager'
@@ -36,7 +34,7 @@ import { dispatchTask } from '@onething/backend/task/task-dispatch'
 import { Interaction } from '@onething/backend/interaction'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/interaction-no-human'
 import { fixedExecutionContext } from '../session/session.js'
-import type { BraveSearchProviderAdapters } from '@onething/backend/tool/builtin/web-search/providers/tool-web-search-brave'
+import type { BraveSearchProviderAdapters } from '@onething/backend/tool'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────
 

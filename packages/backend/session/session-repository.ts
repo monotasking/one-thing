@@ -58,14 +58,14 @@ import { sanitizeSessionOnStartup } from './session-message-shapes.js'
 import type { CoreTimelineSession } from './session-timeline.js'
 // §17.8 U1-a 起按路径读盘的那一口住在叶子文件里(不进 `storage/storage.ts` 那个纯的桶);目录内按相对路径直取。
 import { getMessagesPageFromJsonFilePath } from './storage/session-storage-json-message-page-file.js'
-import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/storage/storage-primitives'
+import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/storage'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './session-retired-providers.js'
 import { getLogger } from '../logging/logging.js'
 import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './session-storage-driver.js'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
-import { writeDurableJson } from '../storage/storage-durable-json.js'
+import { writeDurableJson } from '../storage/storage.js'
 import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from './storage/session-storage.js'
 
 export interface OnethingSessionRepositoryLogger {

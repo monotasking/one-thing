@@ -17,7 +17,7 @@ import {
   composeEffectiveAISettings,
   createEmptySpaceProviderSettings,
 } from './defaults/settings-defaults-ai.js'
-import type { SpaceProviderSettings } from '@onething/backend/space/space-provider-settings'
+import type { SpaceProviderSettings } from '@onething/backend/space'
 
 /** 这份 settings 跑过 C2 的整体搬迁没有。 */
 export function hasSpaceProviderSettingsMigrated(

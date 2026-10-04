@@ -25,7 +25,7 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
 }))
 
 vi.mock('../session-store.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/space-types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -38,7 +38,7 @@ import {
   composeEffectiveAISettings,
   splitEffectiveAISettings,
 } from '@onething/backend/settings'
-import { setRootDirForTests } from '@onething/backend/space/space-persistence'
+import { setRootDirForTests } from '@onething/backend/space'
 import {
   readSpaceProviderSettings,
   resetSpaceProviderSettingsCacheForTests,

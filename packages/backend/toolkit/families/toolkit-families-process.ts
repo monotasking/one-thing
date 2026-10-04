@@ -22,17 +22,19 @@
 import { Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { AbortView, Job, Preview, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Effect } from '@shared/toolkit/effects'
-import type { ToolEffect, ToolPreview } from '@onething/backend/tool/tool-helpers'
+import type { ToolEffect, ToolPreview } from '@onething/backend/tool'
 import { toJsonObject } from '@shared/json'
-import type { BashOperations } from '../../tool/tool-bash-executor.js'
-import { analyzeBashPermission } from '../../tool/tool-permission-effects.js'
-import { classifyBashCommand, parseCommand } from '../../tool/tool-bash-classifier.js'
+import type { BashOperations } from '../../tool/tool.js'
 import {
+  analyzeBashPermission,
+  classifyBashCommand,
+  parseCommand,
   DEFAULT_OUTPUT_MAX_BYTES,
   OutputAccumulator,
   type OutputSnapshot,
-} from '../../tool/tool-output-accumulator.js'
-import { getCoreSandboxBoundary, getCoreSandboxRoots } from '../../tool/tool-sandbox.js'
+  getCoreSandboxBoundary,
+  getCoreSandboxRoots,
+} from '../../tool/tool.js'
 import { fileScopeOf, type FileToolContextLike } from './toolkit-families-file.js'
 
 import { getLogger } from '../../logging/logging.js'

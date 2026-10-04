@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Principal } from '@shared/permission/principal'
-import type { Authorizer, Decision } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Authorizer, Decision, ToolAuditRecord } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import type { AcpClientRequestContext, AcpFsBridge } from '@onething/backend/acp'
 import { buildTextDiffChange } from '@onething/backend/external-agent'
@@ -30,12 +30,11 @@ import {
   resolveFileToolPath,
   type FileScope,
   type FileToolAdapters,
+  mutatingFileAdapters,
+  readAdapters,
 } from '@onething/backend/toolkit'
-import type { ToolAuditRecord } from '@onething/backend/toolkit/toolkit-audit-observer'
-import { readTextFileSnapshot } from '@onething/backend/tool/tool-file-snapshot'
-import { withFileMutationQueue, withFileReadAccess } from '@onething/backend/tool/tool-file-mutation-queue'
+import { readTextFileSnapshot, withFileMutationQueue, withFileReadAccess } from '@onething/backend/tool'
 import { getLogger } from '@onething/backend/logging'
-import { mutatingFileAdapters, readAdapters } from '@onething/backend/toolkit/toolkit-file-adapters'
 import { toolkitAuditSink } from '@onething/backend/toolkit/toolkit-audit-sink'
 import { authorizeAcpRequest } from './acp-request-authorize.js'
 

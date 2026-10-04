@@ -21,8 +21,8 @@ import type {
   SpillPort,
   Validator,
 } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { ZodValidator } from '@onething/backend/toolkit'
-import { classifySensitiveFile } from '@onething/backend/tool/tool-sensitive-files'
+import { ZodValidator } from './toolkit-contract.js'
+import { classifySensitiveFile } from '@onething/backend/tool'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as store from '@onething/backend/session'

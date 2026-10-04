@@ -25,15 +25,14 @@
  * 那条环就不存在。(下面对 `assemble-engine.js` 的 `import type` 是**纯类型**,
  * 编译期即被抹掉,不产生运行期边。)
  */
-import type { EventBus } from '@onething/backend/event/event-session-bus'
-import type { StreamChannel } from '@onething/backend/event/event-session-stream-channel'
+import type { EventBus, StreamChannel } from '@onething/backend/event'
 import type { SessionManager } from '@onething/backend/session'
 import type { SessionLayer } from '@onething/backend/session'
 import type { SessionEventLogStoreHandle } from '@onething/backend/session'
 import type { TaskDispatchLayer } from '@onething/backend/task/task-dispatch'
 import type { SessionDeletionRecovery } from '@onething/backend/session'
 import type { MediaLibraryService } from '@onething/backend/media'
-import type { ToolExecutionRegistry } from '@onething/backend/toolkit/toolkit-executions'
+import type { ToolExecutionRegistry } from '@onething/backend/toolkit'
 import type { PracticeService } from '@onething/backend/practice/practice-service-slot'
 import type { MusicSubsystem } from '@onething/backend/music/music-subsystem'
 import type { CollabDigestRunner } from '@onething/backend/collab/collab-digest-runner'

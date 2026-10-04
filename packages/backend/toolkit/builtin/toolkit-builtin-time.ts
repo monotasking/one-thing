@@ -13,7 +13,7 @@ import { textResult } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   executeCoreTimeTool,
   type CoreTimeArgs,
-} from '../../tool/builtin/tool-builtin-time-runtime.js'
+} from '../../tool/tool.js'
 import { defineInput } from '../toolkit-contract.js'
 import { ReadOnlyTool } from '../families/toolkit-families-read-only.js'
 

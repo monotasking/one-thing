@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { AbortScope } from '../toolkit-abort-scope.js'
-import { isToolAbortError } from '../../tool/tool-abort.js'
+import { isToolAbortError } from '../../tool/tool.js'
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (error: unknown) => void } {
   let resolve!: (value: T) => void

@@ -69,7 +69,7 @@ import {
   type PetSummary,
   type Utterance,
 } from '@onething/backend/pet'
-import type { EventBus } from '@onething/backend/event/event-session-bus'
+import type { EventBus } from '@onething/backend/event'
 import { audioDurationMs } from '@onething/backend/voice/voice-audio-duration'
 import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/music/music-host-voice'
 import { getLogger } from '@onething/backend/logging'

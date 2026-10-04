@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { combineValidators, type Validator } from '../../toolkit/toolkit-ports.js'
+import { combineValidators, type Validator } from '../../toolkit/toolkit.js'
 import { toolInputSchemaOf } from '../resource-schema.js'
 import { ResourceInputValidator } from '../resource-validator.js'
 import { demoSpec, DEMO_SCHEME } from './fakes.js'

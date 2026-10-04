@@ -12,7 +12,7 @@
  * renderer 将来自己从 sessionsStore 现算(desktop 省一跳 IPC),两边共用同一个
  * `computeAgentPresence`,故口径不会漂。
  */
-import { computeAgentPresence, hasAgentReference, type AgentPresence } from '@onething/backend/agent'
+import { computeAgentPresence, hasAgentReference, type AgentPresence } from './agent-presence.js'
 import { getSessionsList } from '@onething/backend/session'
 
 /**

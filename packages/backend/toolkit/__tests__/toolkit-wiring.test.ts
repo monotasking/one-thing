@@ -19,7 +19,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BashOperations } from '@onething/backend/tool/tool-bash-executor'
+import type { BashOperations } from '@onething/backend/tool'
 import type { Step, ToolPartialResult } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 
