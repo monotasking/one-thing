@@ -39,7 +39,7 @@ import { PLUGIN_FILES_QUOTA_WARNING_EVENT } from './plugin-storage-files.js'
 import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from './plugin-sessions.js'
 import { type DisposeCorePluginStateOptions } from './plugin-api-state.js'
 import { PluginLlmError } from './plugin-llm.js'
-import type { PluginContributionUiSlot } from './plugin-api-types.js'
+import type { PluginContributionUiSlot } from './plugin-manifest-types.js'
 import type { PluginFailureScope } from '@onething/backend/plugin-contract'
 import type { IMConnector } from '@shared/ipc.js'
 import {

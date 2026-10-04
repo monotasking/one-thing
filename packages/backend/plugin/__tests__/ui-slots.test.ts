@@ -46,7 +46,7 @@ import {
 import { createCorePluginAPI } from '../plugin-api-builder.js'
 import { disposeCorePluginState } from '../plugin-api-state.js'
 import { validatePluginContributes } from '../plugin-loader.js'
-import { type CorePluginDefinition } from '../plugin-api-types.js'
+import { type CorePluginDefinition } from '../plugin-manifest-types.js'
 import { projectOnethingPluginsForRenderer } from '../plugin-list.js'
 
 interface TestAPI {

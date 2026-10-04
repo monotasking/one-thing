@@ -26,7 +26,7 @@
  *
  * 与 `sessions.ts` / `llm.ts` / `plugin-deep-link.ts` 同一条:零运行期依赖(下面两条
  * `import type` 在编译后什么都不剩),渲染层按子路径引它渲染装前披露。判定逻辑
- * (声明门、熔断、超时、主体)分别在 `plugin-api-builder.ts` 与装配层 —— 这里只有词汇。
+ * (声明门、熔断、超时、主体)分别在 `plugin-api-build-sessions.ts` 与装配层 —— 这里只有词汇。
  */
 
 import type { ResourceEvent, ReadOutcome } from '@onething/backend/resource'

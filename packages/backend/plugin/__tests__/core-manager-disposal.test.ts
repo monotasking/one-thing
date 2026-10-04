@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '../plugin-manager-base.js'
-import { type CorePluginDefinition } from '../plugin-api-types.js'
+import { type CorePluginDefinition } from '../plugin-manifest-types.js'
 
 interface State extends CorePluginStateLike {
   pluginId: string

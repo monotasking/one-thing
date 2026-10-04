@@ -185,6 +185,7 @@
     "./plugin/plugin-manager-base": "./plugin/plugin-manager-base.ts",
     "./plugin/plugin-loader": "./plugin/plugin-loader.ts",
     "./plugin/plugin-api-types": "./plugin/plugin-api-types.ts",
+    "./plugin/plugin-manifest-types": "./plugin/plugin-manifest-types.ts",
     "./plugin/plugin-api-state": "./plugin/plugin-api-state.ts",
     "./plugin/plugin-api-builder": "./plugin/plugin-api-builder.ts",
     "./practice": "./practice/practice.ts",

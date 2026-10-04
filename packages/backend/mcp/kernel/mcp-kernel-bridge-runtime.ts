@@ -1,21 +1,23 @@
 import type { JsonObject } from '@shared/json.js'
 import {
-  buildMCPToolsForAI,
   executeMCPBridgeTool,
   getMCPFunctionRefs as getCoreMCPFunctionRefs,
   getMCPRouterDefinition,
-  planMCPToolRegistration,
   planMCPToolsCatalogWrite,
-  resolveMCPToolExposure,
   type MCPFunctionRef,
   type MCPModelFacingToolDefinition,
-  type MCPRegisteredToolLike,
   type MCPToolsCatalogOptions,
   type MCPToolsCatalogWritePlan,
+} from './mcp-kernel-router.js'
+import {
+  buildMCPToolsForAI,
+  planMCPToolRegistration,
+  resolveMCPToolExposure,
+  type MCPRegisteredToolLike,
   type MCPToolsForAIResult,
   type MCPRouterToolSetting,
   type MCPToolRegistrationPlan,
-} from './mcp-kernel-router.js'
+} from './mcp-kernel-tool-exposure.js'
 import { isMCPToolId, CoreMCPToolIdRegistry } from './mcp-kernel-tool-id-registry.js'
 import { mcpRouterToCoreToolDefinition, mcpToolToCoreToolDefinition, type CoreMCPToolDefinition } from './mcp-kernel-tool-definition.js'
 import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types.js'

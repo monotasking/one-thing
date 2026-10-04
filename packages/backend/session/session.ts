@@ -158,8 +158,6 @@ export { getCurrentSessionId, setCurrentSessionId } from './session-current.js'
 // 会话对象);会话表那份(按 id 把一份用量快照落进会话表)以 `landSessionAccountUsageInStore` 交出,`usage.ts` 那份
 // (按 id 从会话账折叠取快照、再落进会话表)以 `landSessionAccountUsageFromAccount` 交出。
 export {
-  addMessageContentPart,
-  addMessageStep,
   countSessionsInWorkspace,
   createBranchSession,
   createSession,
@@ -185,18 +183,6 @@ export {
   patchSessionFields,
   renameSession,
   resolveSessionSpaceId,
-  updateMessageContent,
-  updateMessageContentParts,
-  updateMessageError,
-  updateMessageReasoning,
-  updateMessageSkill,
-  updateMessageStep,
-  updateMessageSteps,
-  updateMessageStreaming,
-  updateMessageThinkingTime,
-  updateMessageToolCalls,
-  updateMessageTurnContext,
-  updateMessageUsage,
   updateSessionAgent,
   updateSessionArchived,
   updateSessionCollab,
@@ -214,9 +200,26 @@ export {
   updateSessionWorkingDirectory,
   updateSessionWorkingDirectoryRoots,
   updateSessionsIndexMetaForCommands,
-  updateStepsUsageByTurn,
   landSessionAccountUsage as landSessionAccountUsageInStore,
 } from './session-store.js'
+// 十五个消息热写端口(大文件拆分批 2 从 `session-store.ts` 拆出,名字与签名不变)。
+export {
+  addMessageContentPart,
+  addMessageStep,
+  updateMessageContent,
+  updateMessageContentParts,
+  updateMessageError,
+  updateMessageReasoning,
+  updateMessageSkill,
+  updateMessageStep,
+  updateMessageSteps,
+  updateMessageStreaming,
+  updateMessageThinkingTime,
+  updateMessageToolCalls,
+  updateMessageTurnContext,
+  updateMessageUsage,
+  updateStepsUsageByTurn,
+} from './session-store-messages.js'
 export { createSessionLayer, ensureSessionWritable, getSessionManager } from './session-layer.js'
 export type { SessionLayer } from './session-layer.js'
 export { landSessionAccountUsage as landSessionAccountUsageFromAccount, updateSessionUsage } from './session-usage-updates.js'

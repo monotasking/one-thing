@@ -25,7 +25,8 @@ import {
   setPluginEnabledInSettings,
   setPluginHealthInSettings,
 } from '../plugin-loader.js'
-import { type CorePluginDefinition, type PluginSettings } from '../plugin-api-types.js'
+import { type PluginSettings } from '../plugin-api-types.js'
+import { type CorePluginDefinition } from '../plugin-manifest-types.js'
 
 interface TestAPI {
   registerCommand(name: string): void

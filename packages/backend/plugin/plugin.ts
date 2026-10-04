@@ -27,7 +27,8 @@ export {
 } from './plugin-log-monitor.js'
 
 // 插件 API 与定义的形状。
-export type { CorePluginCommandDefinition, CorePluginDefinition, PluginSettings } from './plugin-api-types.js'
+export type { CorePluginCommandDefinition, PluginSettings } from './plugin-api-types.js'
+export type { CorePluginDefinition } from './plugin-manifest-types.js'
 export type { CorePluginInfo } from './plugin-manager-base.js'
 export type { CorePluginSchedulerHost } from './plugin-scheduler.js'
 

@@ -30,7 +30,7 @@ import { PLUGIN_FILES_MAX_FILE_BYTES, createCorePluginFiles } from '../plugin-st
 import { createCorePluginAPI } from '../plugin-api-builder.js'
 import { disposeCorePluginState } from '../plugin-api-state.js'
 import { scanPluginSourceEntries } from '../plugin-loader.js'
-import { type CorePluginDefinition } from '../plugin-api-types.js'
+import { type CorePluginDefinition } from '../plugin-manifest-types.js'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-data-'))

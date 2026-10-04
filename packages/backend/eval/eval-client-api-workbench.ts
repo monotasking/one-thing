@@ -51,12 +51,51 @@ import {
 import { getLogger } from '@onething/backend/logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { getEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
+import type { IncidentMeta } from './eval-incident.js'
+import type { ToolSimulator } from './eval-mock-tools.js'
+import type { ReplayScene } from './eval-replay.js'
 
 const log = getLogger('rpc.evals-workbench')
 
 const READ_FILE_MAX_BYTES = 4 * 1024 * 1024
 
 const incidentTaskKey = (id: string) => `incident:${id}`
+
+/**
+ * 回放、分析与诊断用到的那十四个 eval 函数,从声明它们的兄弟文件动态取(用到时才加载,与从前一样)。
+ *
+ * 从前这里递的是整个 eval 入口的命名空间(`await import('@onething/backend/eval')`);现在递一个只含这十四格的
+ * 对象(D241:功能内的文件不绕回自家入口)。每一格是取值器而不是取出来的值:读到哪一格才去模块上取哪一格,
+ * 与读命名空间的属性同一个时机 —— 只替身了其中几格的单测照样能跑没碰到的那些路径。
+ */
+async function loadEvalReplayRuntime() {
+  const [incident, replay, analysis, transcript, traceStore, roundReplay, diagnose] = await Promise.all([
+    import('./eval-incident.js'),
+    import('./eval-replay.js'),
+    import('./eval-analysis.js'),
+    import('./eval-transcript.js'),
+    import('./eval-trace-store.js'),
+    import('./eval-round-replay.js'),
+    import('./eval-diagnose.js'),
+  ])
+  return {
+    get readIncident() { return incident.readIncident },
+    get getIncidentDir() { return incident.getIncidentDir },
+    get updateIncident() { return incident.updateIncident },
+    get readIncidentTurnTrace() { return incident.readIncidentTurnTrace },
+    get loadSceneFromIncident() { return replay.loadSceneFromIncident },
+    get runReplay() { return replay.runReplay },
+    get createAiToolSimulator() { return analysis.createAiToolSimulator },
+    get analyzeIncident() { return analysis.analyzeIncident },
+    get renderAnalyzedMarkdown() { return analysis.renderAnalyzedMarkdown },
+    get writeTranscript() { return transcript.writeTranscript },
+    get readTraceRounds() { return traceStore.readTraceRounds },
+    get readTraceRoundsFromDir() { return traceStore.readTraceRoundsFromDir },
+    get replayRound() { return roundReplay.replayRound },
+    get diagnoseIncident() { return diagnose.diagnoseIncident },
+  }
+}
+type EvalReplayRuntime = Awaited<ReturnType<typeof loadEvalReplayRuntime>>
 
 function getAnalysisModelConfig(): { providerId: string; model: string } {
   const settings = getSettings()
@@ -144,15 +183,15 @@ function extractResponseToolCalls(
 // ── Background replay executor ─────────────────────────
 
 async function runReplayInBackground(options: {
-  runtime: typeof import('@onething/backend/eval')
+  runtime: EvalReplayRuntime
   incident: { id: string; promptVersion?: string }
-  scene: import('@onething/backend/eval').ReplayScene
+  scene: ReplayScene
   request: EvalsReplayStartRequest
   runId: string
   callModel: ReturnType<typeof createEvalsModelCaller>
   analysis: { callModel: ReturnType<typeof createEvalsModelCaller>; model: string } | null
   rubric?: string
-  simulateTool?: import('@onething/backend/eval').ToolSimulator
+  simulateTool?: ToolSimulator
   signal: AbortSignal
 }): Promise<void> {
   const { runtime, incident, scene, request, runId } = options
@@ -249,7 +288,7 @@ async function runReplayInBackground(options: {
 export async function analyzeIncidentInBackground(incidentId: string): Promise<void> {
   try {
     await getEvalsTaskOwner().start(incidentTaskKey(incidentId), async signal => {
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       await analyzeIncidentById(runtime, incidentId, signal)
     })
   } catch (error) {
@@ -258,11 +297,11 @@ export async function analyzeIncidentInBackground(incidentId: string): Promise<v
 }
 
 async function analyzeIncidentById(
-  runtime: typeof import('@onething/backend/eval'),
+  runtime: EvalReplayRuntime,
   incidentId: string,
   signal?: AbortSignal,
 ): Promise<
-  | { ok: true; incident: import('@onething/backend/eval').IncidentMeta }
+  | { ok: true; incident: IncidentMeta }
   | { ok: false; error: string }
 > {
   const incident = runtime.readIncident(incidentId)
@@ -307,7 +346,7 @@ async function analyzeIncidentById(
 export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> = {
   async incidentList(_request, context = { transport: 'ipc' }) {
     try {
-      const { listIncidents } = await import('@onething/backend/eval')
+      const { listIncidents } = await import('./eval-incident.js')
       return {
         success: true,
         incidents: listIncidents({ limit: 200 }).filter(incident => canAccessEvalSource(context, incident.sessionId)) as unknown as EvalsIncidentMetaDTO[],
@@ -320,7 +359,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   async incidentGet(request, context = { transport: 'ipc' }) {
     await requireIncidentAccess(request.incidentId, context, 'read')
     try {
-      const { readIncident, getIncidentDir } = await import('@onething/backend/eval')
+      const { readIncident, getIncidentDir } = await import('./eval-incident.js')
       const incident = readIncident(request.incidentId)
       if (!incident) return { success: false, error: 'Incident not found' }
       const dir = getIncidentDir(request.incidentId)
@@ -344,7 +383,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   async incidentUpdate(request, context = { transport: 'ipc' }) {
     await requireIncidentAccess(request.incidentId, context, 'write')
     try {
-      const { updateIncident } = await import('@onething/backend/eval')
+      const { updateIncident } = await import('./eval-incident.js')
       const incident = updateIncident(request.incidentId, request.patch as never)
       if (!incident) return { success: false, error: 'Incident not found' }
       return {
@@ -359,7 +398,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   async incidentReadFile(request, context = { transport: 'ipc' }) {
     await requireIncidentAccess(request.incidentId, context, 'read')
     try {
-      const { getIncidentDir } = await import('@onething/backend/eval')
+      const { getIncidentDir } = await import('./eval-incident.js')
       const dir = getIncidentDir(request.incidentId)
       const resolved = path.resolve(dir, request.relativePath)
       // Path containment guard
@@ -389,7 +428,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
           error: 'An operation is already running for this incident',
         }
       }
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       const incident = runtime.readIncident(request.incidentId)
       if (!incident) return { success: false, error: 'Incident not found' }
       const scene = runtime.loadSceneFromIncident(request.incidentId)
@@ -429,7 +468,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   async incidentAnalyze(request, context = { transport: 'ipc' }) {
     await requireIncidentAccess(request.incidentId, context, 'write')
     try {
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       const updated = await getEvalsTaskOwner().start(incidentTaskKey(request.incidentId), signal => analyzeIncidentById(runtime, request.incidentId, signal))
       if (!updated.ok) return { success: false, error: updated.error }
       return {
@@ -445,7 +484,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     await requireIncidentAccess(request.incidentId, context, 'write')
     requireEvalRepositoryAccess(context)
     try {
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
         return { success: false, error: 'Evals repo not configured' }
@@ -494,7 +533,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   async roundList(request, context = { transport: 'ipc' }) {
     await requireIncidentAccess(request.incidentId, context, 'read')
     try {
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       const incident = runtime.readIncident(request.incidentId)
       if (!incident) return { success: false, error: 'Incident not found' }
 
@@ -530,7 +569,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
   async roundReplay(request, context = { transport: 'ipc' }) {
     await requireIncidentAccess(request.incidentId, context, 'write')
     try {
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       const incident = runtime.readIncident(request.incidentId)
       if (!incident) return { success: false, error: 'Incident not found' }
 
@@ -578,7 +617,7 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
           error: 'An operation is already running for this incident',
         }
       }
-      const runtime = await import('@onething/backend/eval')
+      const runtime = await loadEvalReplayRuntime()
       const incident = runtime.readIncident(request.incidentId)
       if (!incident) return { success: false, error: 'Incident not found' }
       const scene = runtime.loadSceneFromIncident(request.incidentId)

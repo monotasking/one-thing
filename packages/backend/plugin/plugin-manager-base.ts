@@ -1,6 +1,6 @@
 import path from 'path'
 import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
-import type { CorePluginDefinition } from './plugin-api-types.js'
+import type { CorePluginDefinition } from './plugin-manifest-types.js'
 import { describePluginPanelResultProblem } from '@onething/backend/plugin-contract'
 import {
   findPluginUpdate,

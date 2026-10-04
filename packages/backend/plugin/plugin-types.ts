@@ -15,7 +15,6 @@ import type {
   CorePluginAPI,
   CorePluginCommandContext,
   CorePluginCommandDefinition,
-  CorePluginDefinition,
   CorePluginEntry,
   CorePluginEventHandler,
   CorePluginSchedulerAPI,
@@ -25,10 +24,9 @@ import type {
   CorePluginToolDefinition,
   CorePluginToolResult,
   MinimalCorePluginUI,
-  PluginManifest,
   PluginSettings,
-  PluginSource,
 } from './plugin-api-types.js'
+import type { CorePluginDefinition, PluginManifest, PluginSource } from './plugin-manifest-types.js'
 import type { CorePluginStorage } from './plugin-storage.js'
 import type { CorePluginStorageWithFiles } from './plugin-storage-files.js'
 import type { CorePluginToolExecutionMode } from './plugin-tool-execution-mode.js'

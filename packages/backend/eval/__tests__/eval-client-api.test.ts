@@ -39,7 +39,17 @@ const runtime = vi.hoisted(() => ({
 }))
 const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<string, unknown>)) }))
 
-vi.mock('@onething/backend/eval', () => runtime)
+// 域从声明这几个名字的兄弟文件动态取它们(D241:不再绕回 eval 入口),替身跟着打在这四只声明文件上;
+// 仍是 `runtime` 里同一批 vi.fn,断言不动。
+vi.mock('../eval-records.js', () => ({
+  loadMergedRecords: runtime.loadMergedRecords,
+  recordHasNegative: runtime.recordHasNegative,
+  filterRecordsByWeeks: runtime.filterRecordsByWeeks,
+  generateTriageReport: runtime.generateTriageReport,
+}))
+vi.mock('../eval-turn-evaluator.js', () => ({ recordExplicitDown: runtime.recordExplicitDown }))
+vi.mock('../eval-case-file.js', () => ({ parseCaseYaml: runtime.parseCaseYaml, generateCaseYaml: runtime.generateCaseYaml }))
+vi.mock('../eval-runner.js', () => ({ runEvals: runtime.runEvals }))
 vi.mock('../../settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/session', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/session')>(),

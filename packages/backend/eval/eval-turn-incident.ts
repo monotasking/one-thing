@@ -40,14 +40,15 @@ export async function createIncidentForTurn(options: {
 	userMessage: string;
 	assistantText: string;
 } | null> {
+	// 各从声明它们的兄弟文件动态取(D241:不再绕回 eval 入口;动态 import 照旧,事故单这条路用到时才加载)。
 	const {
 		createIncidentBundle,
 		extractTurnTrace,
 		synthesizeContextFromMessages,
-		promptCaptureCache,
-		loadCaptureFromDisk,
-		getSkeletonVersion,
-	} = await import("@onething/backend/eval");
+	} = await import("./eval-incident.js");
+	const { promptCaptureCache } = await import("./eval-prompt-capture-cache.js");
+	const { loadCaptureFromDisk } = await import("./eval-capture-store.js");
+	const { getSkeletonVersion } = await import("./eval-fixture.js");
 
 	const session = store.getSession(options.sessionId);
 	const messages = [...sessionReads.listMessages(options.sessionId).messages] as Array<{

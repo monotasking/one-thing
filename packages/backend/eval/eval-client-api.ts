@@ -239,7 +239,7 @@ function scanCasesDir(
 }
 
 async function loadAllCases(repoDir: string): Promise<EvalCaseMeta[]> {
-  const { parseCaseYaml } = await import('@onething/backend/eval')
+  const { parseCaseYaml } = await import('./eval-case-file.js')
   const casesDir = getEvalsCasesDir(repoDir)
   const sentinelDir = path.join(casesDir, 'sentinel')
   const allCases: EvalCaseMeta[] = []
@@ -295,7 +295,7 @@ async function runEvalsInBackground(
   }
 
   try {
-    const { runEvals } = await import('@onething/backend/eval')
+    const { runEvals } = await import('./eval-runner.js')
 
     const callModel = createEvalsModelCaller(request.providerId, request.model, { signal })
 
@@ -329,7 +329,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
         return { success: false, error: 'Missing sessionId or turnId' }
       }
 
-      const { recordExplicitDown } = await import('@onething/backend/eval')
+      const { recordExplicitDown } = await import('./eval-turn-evaluator.js')
 
       const session = store.getSession(request.sessionId)
       const workingDirectory = session?.workingDirectory
@@ -406,7 +406,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
 
   async listRecords(request, context = { transport: 'ipc' }) {
     try {
-      const { loadMergedRecords, recordHasNegative } = await import('@onething/backend/eval')
+      const { loadMergedRecords, recordHasNegative } = await import('./eval-records.js')
 
       let records = loadMergedRecords().filter(record => canAccessEvalSource(context, record.sessionId))
 
@@ -742,7 +742,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
 
       // Generate case YAML via the shared runtime generator
-      const { generateCaseYaml } = await import('@onething/backend/eval')
+      const { generateCaseYaml } = await import('./eval-case-file.js')
       const expect: Record<string, unknown> = {}
       const e = request.expect
       // Tool Call
@@ -827,7 +827,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
 
       const { loadMergedRecords, filterRecordsByWeeks, generateTriageReport } = await import(
-        '@onething/backend/eval'
+        './eval-records.js'
       )
 
       const records = loadMergedRecords().filter(record => canAccessEvalSource(context, record.sessionId))

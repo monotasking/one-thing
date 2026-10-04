@@ -206,3 +206,28 @@ shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydrati
 `gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(含新门 `cohesion:gate`,改前它是红的;
 `session:check` 与改前同 4 条);CLI 与 server 能起;`gateway:start` 与改前一样因缺 `ONETHING_GATEWAY_RUNTIME_MODULE` exit 1、零写入。
 别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。
+
+## 实施结果(s39,2026-10-04,未提交):批 2 + 批 1 留下的几处
+
+决策 D237–D241(`backend-structure-decisions-2026-10.md`),落地记录同见 `server-client-split-2026-10.md` §6。
+
+1. **`session-store`**(D237):拆成门面 969 行 + `session-store-messages.ts` 295 行(十五个消息热写端口)+ `session-store-table.ts` 137 行(会话表持有器)。
+   多出持有器一只是本文 2.2 节没算到的:端口读的 `sessionRepository()` 是门面私有的,留在门面里就是一对兄弟环。三只合起来 `split:prove` 93 条逐字相同
+   (`split:prove` 看不见 `log` / `sessionRepository` 加了 `export`,如实记在 D237)。`vi.mock` 清单 35 处:搬走的名字 ∩ 工厂给的名字 = 0;
+   2.2 节说的「三处 `import * as` 要改路径」实际 0 处(五只命名空间引用方都不用搬走的名字)。
+2. **`plugin-api-builder`**(D238):1982 → 160 行,另出上下文一只(595 行,两个大形状原样搬来 + 上下文)与五只建造件(capabilities 292 / sessions 321 /
+   ui 445 / storage 160 / registries 305)。两处偏离 2.2 节:两个大形状住上下文那只而不并进 `plugin-api-types.ts`(那只本来就在 cohesion 名单上,并进去是第三块);
+   拼装按拆分前的键序逐格写出,不用 `{ id, ...a, ...b }`(键在原字面量里是交错排的,展开会改 `Object.keys(api)`)。证明:`split:prove` 只报 `createCorePluginAPI`
+   一条变了;另一只脚本证 33 格方法正文、两只内嵌函数、上下文那一段各逐字出现一次;实跑比 34 格键序与嵌套对象的键序相同。
+3. **cohesion 名单 4 只**(D239):`mcp-kernel-router`(→ 拆出 `mcp-kernel-tool-exposure.ts`,40 条逐字相同)与 `plugin-api-types`(→ 拆出 `plugin-manifest-types.ts`,
+   28 条逐字相同)是两件事,拆开删行;`agent-loop-context-compact`(同一次压缩的几步,线在驱动 `engine-compact-session.ts` 里)与 `plugin-contract-panel`
+   (节点形状与校验器是同一份协议,线是 `type` 字面量)暂留,理由写进名单文件头;判据不改。名单 4 → 2。
+4. **media 的 `export *`**(D240):四个带服务商名的值(连同四个伴生形状)按内容改名(`generateImageViaImagesApi` 等),入口改具名、只交外面真用的 18 个名字;
+   `provider:gate` 105 → 104 对(引擎那只文件不再点名);生图实现那只因用户可见的错误文本 `OpenAI image API error:` 仍在名单上(改它是改行为)。
+5. **自引入口 25 处**(D241):theme 1(入口的定义原样搬进 `theme-catalog.ts`)、session 1、eval 23 —— 先把测试替身改打声明那个名字的兄弟文件(同一批 vi.fn,
+   断言不动),再改引兄弟;eval 工作台不再递整个入口命名空间,改递一只只含它用到的 14 个函数的对象。`entry:gate` 规则①②改零基线硬闸,基线删 `self:` 三行与 `star:media`。
+
+**读数**:`cohesion:gate` 已知名单 4 → 2;`entry:gate` 非测试 0、`export *` 0、自引入口 0(三条硬闸)、测试深层引用 838 不变;`provider:gate` 104;
+`cycle:gate` 0 环、深层环 3 / 2 不变;其余结构门全绿。三份检索 Worker 与 ACP 桥每一步都逐字节不变。
+
+验收与读数见 `server-client-split-2026-10.md` §6「大文件拆分批 2 + 批 1 留下的几处」。

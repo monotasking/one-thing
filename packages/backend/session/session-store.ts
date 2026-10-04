@@ -1,9 +1,6 @@
 import type {
 	ChatMessage,
 	ChatSession,
-	ToolCall,
-	Step,
-	ContentPart,
 	SessionMeta,
 	SessionDetails,
 	ContextVariable,
@@ -15,15 +12,10 @@ import type {
 	SessionTitleSource,
 } from "@shared/ipc.js";
 import { join } from "node:path";
-import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { existsSync, readFileSync, statSync } from "node:fs";
 import {
 	getOnethingSessionsDir,
-	getOnethingSessionPath,
 	readJsonFile,
-	writeJsonFile,
-	writeJsonFileAsync,
-	deleteJsonFile,
 } from '@onething/backend/storage';
 import { getCurrentSessionId, setCurrentSessionId } from "./session-current.js";
 import { sessionLifecycleEvents } from "./session-lifecycle-events.js";
@@ -34,14 +26,6 @@ import { withSessionRemovalOwner } from './session-removal-event.js'
 import type { SessionOwnershipRecord } from './session-access.js'
 import { resetSessionSurfaceCache } from "./session-event-surface.js";
 import { resetSessionRuns } from "./session-runs.js";
-import { hydrateSessionMessagesFromProjection } from "./session-hydrate.js";
-import { materializeSessionMessages } from "./session-materialized-messages.js";
-import { eventsHasMessage } from "./session-events-reads.js";
-import { hasLiveSessionProjection } from "./session-projection-cache.js";
-import { getSettings } from "@onething/backend/settings";
-import { expandOnethingToolSandboxPath as expandPath } from '@onething/backend/tool';
-import { createHybridSessionStorageDriver } from './session-storage-driver.js'
-import { createOnethingSessionRepository } from './session-repository.js'
 import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "./session-message-source.js";
 import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
@@ -53,127 +37,22 @@ import {
 } from "./session-freeze.js";
 import { SESSION_EVENT_TYPES } from "@shared/events/session-event-types";
 import { getEventBus, isEventSystemInitialized } from "@onething/backend/event";
-import { CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID } from './session-meta.js'
 import { collectSessionCascadeDeleteIds } from './session-create-delete.js'
 import { getSessionTokenUsageSnapshot } from './session-usage-fold.js'
 import { deriveRetainedContextSize, repairSessionTimelineMetadata } from './session-timeline.js'
 import { sanitizeSessionOnStartup } from './session-message-shapes.js'
-import { assertContentPartIsCarriable } from './session-content-part-guard.js'
-import { assertPortFactIsFolded } from './session-port-fact-assert.js'
-import { consolePort, getLogger } from '@onething/backend/logging'
-import type { HybridSessionStorageDriverOptions } from './session-storage-driver.js'
 import type {
-  OnethingSessionRepository,
-  OnethingSessionRepositoryOptions,
-  OnethingSessionRepositoryLogger,
   SessionCreateOptions,
   SessionInitialOwner,
 } from './session-repository.js'
-import type { ConsoleLikePort, Logger } from '@onething/backend/logging'
+// 会话表持有器(首次用到时才建的仓储与日志)住在 `session-store-table.ts`;十五个消息热写端口住在 `session-store-messages.ts`。
+import { log, sessionRepository } from './session-store-table.js'
 
 export {
 	deriveRetainedContextSize,
 	repairSessionTimelineMetadata,
 	sanitizeSessionOnStartup,
 };
-
-// ============ 异步节流落盘 ============
-// Streaming updates (每个 token) 会频繁触发 updateMessageContent 等写入,
-// 同步 writeFileSync 会阻塞事件循环并拖慢流式节奏。
-// 策略:更新内存缓存后,用 300ms 节流把脏 session 异步写盘。
-// 同一 session 的多次写入在 promise 链上串行化,避免旧异步写盖新数据。
-// 关键生命周期(finalize / delete / 应用退出)会强制 flush。
-// 会话体是大文件且只被程序读取,紧凑序列化;index.json 等仍走 pretty 的 writeJsonFile。
-const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
-	writeJsonFileAsync(filePath, data, { pretty: false });
-
-/*
- * ── 会话表在**首次用到时**才建(包根归位 B,2026-10-03) ─────────────────────────────
- *
- * 这只模块从前在加载时就把日志、存储驱动与仓储建好,并把存储、应用状态与设置那几只模块的导出读进模块级的
- * 选项对象;于是任何 import 它的模块(今天包括会话入口 `index.ts`)在加载时都要带上那几只模块,且它们必须
- * 交出这些名字 —— 只 mock 了其中一部分的测试一 import 就失败。现在三样东西都放进 `sessionTable` 这只持有器,
- * 第一次有人要时才建,之后一直用同一份。这样做与从前**逐项等价**:
- *
- *  1. 选项对象里放的都是 import 进来的函数本身(`getOnethingSessionsDir`、`readJsonFile`、`getCurrentSessionId` ……)
- *     与一个常量(`DEFAULT_AGENT_ID`)。ES 模块的 import 绑定在各自模块里从不被重新赋值,所以第一次用时读到的
- *     与加载时读到的是同一个函数对象。
- *  2. 读设置的两处(`newSessionFormat`、`getDefaultWorkingDirectory`)本来就包在箭头函数里、每次调用时现取,
- *     从来不是加载时的快照;这里原样搬进来,语义不变。
- *  3. `createHybridSessionStorageDriver` 与 `createOnethingSessionRepository` 的构造只建内存里的 Map / LRU /
- *     节流写队列(队列的计时器在第一次排写时才起),不读盘、不读设置;早建晚建,建出来的状态相同。
- *  4. `getLogger('sessions')` 按命名空间记忆化(`LoggerRoot.logger`),晚取拿到的是同一个 logger 对象。
- *
- * 不挪进 `createOnethingBackend` 的装配步骤:这些函数被几十处当自由函数直接调用(装配中途的
- * `initializeStores()`、RPC 域、server 门面),挂到装配产物上会把「装配前也能用」变成「装配前抛错」。
- * 持有器是 `const`(装配硬闸只禁模块级 `let`),它装的是缓存而不是装配期状态。
- */
-type SessionTableRepository = OnethingSessionRepository<ChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker>
-const sessionTable: { log?: Logger; repository?: SessionTableRepository } = {}
-
-function log(): Logger {
-	return (sessionTable.log ??= getLogger('sessions'))
-}
-
-function sessionRepository(): SessionTableRepository {
-	return (sessionTable.repository ??= createSessionTableRepository())
-}
-
-function createSessionTableRepository(): SessionTableRepository {
-	/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
-	const consoleLog: ConsoleLikePort & OnethingSessionRepositoryLogger = consolePort(log())
-	const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
-		getSessionsDir: getOnethingSessionsDir,
-		getLegacySessionPath: getOnethingSessionPath,
-		// flag 只决定"新建会话"的格式(也是惰性迁移的开关);已有会话跟随盘上格式,
-		// settings.storage.sessionFormat 设为 legacy-json 即回滚
-		newSessionFormat: () => getSettings().storage?.sessionFormat ?? "jsonl",
-		readJsonFile,
-		writeJsonFileAsync: writeSessionJsonFileAsync,
-		deleteJsonFile,
-		logger: consoleLog,
-	};
-	const sessionStorageDriver = createHybridSessionStorageDriver<ChatSession>(hybridSessionStorageDriverOptions);
-
-	const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker> = {
-		defaultAgentId: DEFAULT_AGENT_ID,
-		getSessionsDir: getOnethingSessionsDir,
-		getSessionPath: getOnethingSessionPath,
-		readJsonFile,
-		writeJsonFile,
-		writeJsonFileAsync: writeSessionJsonFileAsync,
-		deleteJsonFile,
-		storageDriver: sessionStorageDriver,
-		deleteSessionsDurably: async ids => {
-			const recovery = getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery
-			const intent = recovery.prepare(ids)
-			await recovery.commit(intent)
-		},
-		isSessionDeleted: (id, generation) =>
-			getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery.isDeleted(id, generation),
-		// S3w-1:冷加载补水源。F4-a 起**无条件**走投影(档位 `ONETHING_SESSION_HYDRATE`
-		// 已退役);返回 undefined = 这条会话的事件里折不出历史,仓库照旧自己加载。
-		hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
-		// F4-c c4-d(§16.27):**物化视图** —— 每次交出会话时,消息那一格从折叠产物取。
-		// 这一口装上之后,内存 store 的消息数组只有一个维护者(折叠产物),18 个热写
-		// 端口整批空转;返回 undefined = 这条会话没有可用的折叠产物,保留仓库那一份。
-		materializeMessagesFromProjection: materializeSessionMessages,
-		getCurrentSessionId,
-		setCurrentSessionId,
-		getDefaultWorkingDirectory: () =>
-			getSettings().tools?.bash?.defaultWorkingDirectory,
-		expandPath,
-		logger: consoleLog,
-	};
-	return createOnethingSessionRepository<
-		ChatSession,
-		ChatMessage,
-		SessionMeta,
-		SessionDetails,
-		UserMessageMarker
-	>(sessionRepositoryOptions);
-}
-
 
 /* ── 会话索引:写点通知 + 按 id 的视图(批 A) ───────────────────────────────
  *
@@ -1002,283 +881,6 @@ export function readSessionTranscriptFile(sessionId: string): string | undefined
 }
 
 export { stampCollabAgentId };
-
-/**
- * ## F4-c c4-d(§16.27):**15 个热写端口整批空转**
- *
- * 从这一批起,内存 store 的消息数组由**折叠产物**维护(仓库的
- * `refreshMessagesFromProjection` 是全仓唯一的换装点)。于是这些端口往数组里写的
- * 那一笔**没有读者**:下一次 `getSession` 就把它换掉了。留着写不是"保险",是
- * 第二个维护者 —— 而两个维护者正是 c3/c4 一路查下来所有分岔的病根。
- *
- * 每一口的事实在账本上都有产地(§16.23 的 18 端口分类表,A/B/D 三类):
- * 正文与推理是逻辑 delta(c3-a 盖章即折)、工具三口是 `tool/call|result|annotate`、
- * 用量是 `request/response.usage`、技能是 `skill/activated`、错误是 `run/end.error`、
- * 回合上下文是 `context/turn-update`、`isStreaming` 由 `run/start`/`run/end` 开闭推导。
- *
- * **端口本身不删**:它们的签名是 core 引擎注入的 store 端口(P0 §6 冻结),
- * 删签名是一次跨包的接口改动,与本批无关。空转之后它们只回答一个问题 ——
- * **"这条消息在不在"**(RPC 面靠这个布尔回 `success`;`image-stream` 那两处靠它
- * 判"写进去了没有")。
- *
- * `updateMessageStreaming` 一并空转:§16.23 第五节判它"今天翻不得",理由是
- * **恒等门会当场红**(store 摘掉这一格而折叠侧的 run 还没闭)。恒等门 c4 已经
- * 退役(§16.24),而"读改物化"正是那一节写的解除条件 —— 本批两件同批落地。
- */
-function portTargetExists(sessionId: string, messageId: string): boolean {
-	// 有活投影就问它(O(1),不物化);没有就退回内存 store 那一份 —— 与
-	// `materializeSessionMessages` 的边界同源:没有活投影时消息数组仍归仓库。
-	// **不主动建活投影**:建表要同步读整份文件,这一口挂在逐 token 的热路径上。
-	if (hasLiveSessionProjection(sessionId)) {
-		return eventsHasMessage(sessionId, messageId);
-	}
-	return (
-		sessionRepository()
-			.getSessionMessages(sessionId)
-			?.some((message) => message.id === messageId) ?? false
-	);
-}
-
-// Update message content (for streaming, does not affect sort order)
-export function updateMessageContent(
-	sessionId: string,
-	messageId: string,
-	_newContent: string,
-): boolean {
-	// **c4-d 起空转**(见 `portTargetExists` 上面那段)。产地 = `assistant/chunks`
-	// 的逻辑 delta(c3-a 盖章即折);生图 / 压缩那三条非 provider 正文各有自己的
-	// 产地(`assistant/part-end{contentOnly}` / `session/compacted`)。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Update message reasoning (for streaming, does not affect sort order)
-export function updateMessageReasoning(
-	sessionId: string,
-	messageId: string,
-	_reasoning: string,
-): boolean {
-	// **c4-d 起空转**。产地同 `updateMessageContent`(reasoning kind 的逻辑 delta)。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Update message streaming status (does not affect sort order)
-export function updateMessageStreaming(
-	sessionId: string,
-	messageId: string,
-	_isStreaming: boolean,
-): boolean {
-	// **c4-d 起空转**。`isStreaming` 由 run 开闭推导(`chat-messages.ts` 的
-	// `...(node.ended ? {} : { isStreaming: true })`),不是一格独立事实 ——
-	// c4-b 的钥匙② 已经把最后一个把它当寻址索引的消费者(停止按钮)换掉了。
-	return portTargetExists(sessionId, messageId);
-}
-
-/**
- * Update message usage (does not affect sort order).
- *
- * **A 类端口**(§16.23 分类表 #15):这一格的事实早就在流上 ——
- * `request/response.usage` 逐轮落账,投影 reducer 求和折进 `node.usage`
- * (`reducer.ts:529`)。这里写的是**同一个事实的第二个落点**(活 run 写手视图
- * 上那一条),F4-c c4 给它挂上逐格断言:两侧此刻不等 = 事实与写路分岔,
- * 当场记一行(口径与边界全文见 `session-port-fact-assert.ts`)。
- */
-export function updateMessageUsage(
-	sessionId: string,
-	messageId: string,
-	usage: {
-		inputTokens: number;
-		outputTokens: number;
-		totalTokens: number;
-		cacheReadTokens?: number;
-		cacheWriteTokens?: number;
-		reasoningTokens?: number;
-	},
-): boolean {
-	assertPortFactIsFolded(sessionId, messageId, 'usage', usage);
-	// **c4-d 起空转**(断言留任:它比的是"端口手里的事实 ≡ 折叠值")。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Update message tool calls (does not affect sort order)
-export function updateMessageToolCalls(
-	sessionId: string,
-	messageId: string,
-	_toolCalls: ToolCall[],
-): boolean {
-	// **c4-d 起空转**。产地 = `tool/call` / `tool/result` / `tool/annotate`;
-	// 参数流是 `tool-input` kind 的 delta 段。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Update message content parts (does not affect sort order)
-export function updateMessageContentParts(
-	sessionId: string,
-	messageId: string,
-	_contentParts: ChatMessage["contentParts"],
-): boolean {
-	// **c4-d 起空转**。产地 = `assistant/part-end` + parts 物化。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Add a single content part to message (does not affect sort order)
-export function addMessageContentPart(
-	sessionId: string,
-	messageId: string,
-	part: ContentPart,
-): boolean {
-	// §13.6 第 9 条:这一格在事件账本上有落点吗?开发/测试期当场抛,生产期 warn。
-	// 引擎的 `persistTurnContentParts` 走的是这条路(不是命令面),所以守卫必须
-	// 也站在这里 —— 两个调用点,一个判定函数。
-	assertContentPartIsCarriable(sessionId, part)
-	// **c4-d 起空转**(守卫留任:它问的是"这一格在账本上有没有落点")。
-	return portTargetExists(sessionId, messageId);
-}
-
-/**
- * Update message thinking time —— **F4-c c4 起空转**(§16.24,用户裁定
- * "thinkingTime 取投影值")。
- *
- * 这一格从来不是引擎的事实,是**渲染层的回写**:`MessageList.vue` 算完那段
- * "思考了几秒"再经 `chat` 域写回来(全仓唯一的生产写者)。而账本上它早就有
- * 产地 —— 投影的 `deriveThinkingTime` 从 `assistant/chunks` 的时刻算出同一个数
- * (`chat-messages.ts`),判据侧 `canonicalChatMessage` 更是把它列进
- * `ALWAYS_DROPPED_KEYS`:两条推导谁也没在对账,写回来的那一份只是覆盖了一个
- * 本来就折得出来的值。
- *
- * 于是这一口的实现只剩"这条消息在不在"—— RPC 面靠这个布尔回 `success`,渲染层
- * 一行没改。**不再写 store,也不再产生 `message/patched`**:一格由 fold 推导的
- * 派生态,多一个产地就是多一次分岔的机会(§16.23 第五节钉的同族判例)。
- *
- * 端口本身留着而不是删掉:`chatRouter.updateMessageThinkingTime` 是 `@shared/ipc`
- * 上的契约,删它是一次传输面改动,与本批无关。
- */
-export function updateMessageThinkingTime(
-	sessionId: string,
-	messageId: string,
-	_thinkingTime: number,
-): boolean {
-	return (
-		sessionRepository()
-			.getSessionMessages(sessionId)
-			?.some((message) => message.id === messageId) ?? false
-	);
-}
-
-/**
- * Update message skill used (does not affect sort order).
- *
- * **A 类端口**(§16.23 分类表 #9):产地是 `skill/activated`,折叠落点
- * `run.skillUsed`(`reducer.ts:694`)。挂逐格断言,理由同 `updateMessageUsage`。
- */
-export function updateMessageSkill(
-	sessionId: string,
-	messageId: string,
-	skillUsed: string,
-): boolean {
-	assertPortFactIsFolded(sessionId, messageId, 'skillUsed', skillUsed);
-	// **c4-d 起空转**(断言留任)。
-	return portTargetExists(sessionId, messageId);
-}
-
-/**
- * Update message error details (for API errors during streaming).
- *
- * **A 类端口**(§16.23 分类表 #10):产地是 `run/end.error`,折叠落点
- * `run.errorDetails`(`reducer.ts:513`)。挂逐格断言,理由同 `updateMessageUsage`。
- */
-export function updateMessageError(
-	sessionId: string,
-	messageId: string,
-	errorDetails: string,
-): boolean {
-	assertPortFactIsFolded(sessionId, messageId, 'errorDetails', errorDetails);
-	// **c4-d 起空转**(断言留任)。
-	return portTargetExists(sessionId, messageId);
-}
-
-/*
- * `updateMessageReactions` / `updateMessageReplyTo` / `updateMessageMentions`
- * —— **已删除**(F4-c c4,§16.24)。
- *
- * 三条 IM 元数据写路(W8 表情 / W13.2 引用快照 / W14a @身份)早在 P0.2 就整体迁到
- * 命令面的 `patchMessage` 上了(`collab/` 那三处协调器);c3-a 的 18 端口
- * 全量分类(§16.23 第二节)量明它们**生产上一次都不调**,只剩三只测试的 mock 还
- * 认得这三个名字——而那三只测试的注释白纸黑字写着"迁移前这条写走
- * `store.updateMessageXxx`;命令面上它是一次普通 patch"。
- *
- * 删除是纯减法:不需要任何新产地(命令面的 `message/patched` 就是它们的产地),
- * 也不改变任何一条 IM 写路的行为。
- */
-
-/**
- * Persist the turn-context delta on a user message (prompt-channels
- * 2026-08-18). Written once per turn by `SessionTurnContext`; does not affect
- * sort order.
- *
- * **A 类端口**(§16.23 分类表 #14):产地是 `context/turn-update`,折叠落点
- * `node.turnContext`(`reducer.ts:684`)。挂逐格断言,理由同 `updateMessageUsage`。
- */
-export function updateMessageTurnContext(
-	sessionId: string,
-	messageId: string,
-	turnContext: NonNullable<ChatMessage["turnContext"]>,
-): boolean {
-	assertPortFactIsFolded(sessionId, messageId, 'turnContext', turnContext);
-	// **c4-d 起空转**(断言留任)。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Add a step to a message (does not affect sort order)
-export function addMessageStep(
-	sessionId: string,
-	messageId: string,
-	_step: Step,
-): boolean {
-	// **c4-d 起空转**。产地 = `tool/call` → `materializeSteps`。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Update a step in a message (does not affect sort order)
-// Searches recursively in childSteps
-export function updateMessageStep(
-	sessionId: string,
-	messageId: string,
-	_stepId: string,
-	_updates: Partial<Step>,
-): boolean {
-	// **c4-d 起空转**。产地 = `tool/call` / `tool/result` / `tool/annotate`。
-	return portTargetExists(sessionId, messageId);
-}
-
-export function updateMessageSteps(
-	sessionId: string,
-	messageId: string,
-	_steps: Step[] | undefined,
-): boolean {
-	// **c4-d 起空转**。产地同 `updateMessageStep`。
-	return portTargetExists(sessionId, messageId);
-}
-
-// Update usage for all steps in a specific turn (does not affect sort order)
-export function updateStepsUsageByTurn(
-	sessionId: string,
-	messageId: string,
-	_turnIndex: number,
-	_usage: {
-		inputTokens: number;
-		outputTokens: number;
-		totalTokens: number;
-		cacheReadTokens?: number;
-		cacheWriteTokens?: number;
-		reasoningTokens?: number;
-	},
-): string[] {
-	// **c4-d 起空转**。产地 = `request/response.usageTurnIndex` → `run.usageByTurn`
-	// → `steps[].usage`(§13.9)。返回值(改到了哪几个 step)全仓零消费者。
-	void sessionId;
-	void messageId;
-	return [];
-}
 
 // Update session summary (for context compacting)
 export function updateSessionSummary(

@@ -10,7 +10,7 @@
 import fs from 'fs'
 import path from 'path'
 import { describePluginBackgroundProblem, describePluginWebviewPanelProblem, isPluginWebviewPanel } from '@onething/backend/plugin-contract'
-import { type PluginContributionUiSlot } from './plugin-api-types.js'
+import { type PluginContributionUiSlot } from './plugin-manifest-types.js'
 import { type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters } from './plugin-loader.js'
 import { getOnethingPluginDataDir, getOnethingStorePath, writeJsonFile } from '@onething/backend/storage'
 import {

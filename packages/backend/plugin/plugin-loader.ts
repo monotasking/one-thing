@@ -9,12 +9,8 @@ import { getCoreLogger } from '@onething/backend/logging'
 const log = getCoreLogger('core.plugins')
 
 import type { PersistedPluginHealth } from '@onething/backend/plugin-contract'
-import type {
-  CorePluginDefinition,
-  PluginManifest,
-  PluginSettings,
-  PluginSource,
-} from './plugin-api-types.js'
+import type { PluginSettings } from './plugin-api-types.js'
+import type { CorePluginDefinition, PluginManifest, PluginSource } from './plugin-manifest-types.js'
 import { PLUGIN_SKIN_MAX_ENTRIES, PLUGIN_THEME_OVERRIDE_MAX_ENTRIES } from './plugin-theme-contribution.js'
 
 export const DEFAULT_PLUGIN_ENTRY = 'plugin-entry.js'

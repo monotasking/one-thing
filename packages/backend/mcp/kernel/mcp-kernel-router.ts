@@ -1,10 +1,10 @@
 import type { JsonObject, JsonSchemaObject } from '@shared/json.js'
 import {
-  MCP_DEFAULT_FLAT_TOOL_THRESHOLD,
   type MCPToolCallResult,
   type MCPToolInfo,
 } from '@shared/mcp/types.js'
-import { isMCPRouterToolId, MCP_ROUTER_TOOL_ID, type MCPToolIdentity } from './mcp-kernel-tool-id-registry.js'
+import { isMCPRouterToolId, type MCPToolIdentity } from './mcp-kernel-tool-id-registry.js'
+// 平铺还是只露路由器(混合阈值)与注册计划在 `mcp-kernel-tool-exposure.ts`;这里是路由器工具本身。
 
 export type MCPModelFacingToolDefinition = {
   description: string
@@ -35,154 +35,12 @@ export type MCPToolsCatalogWritePlan =
   | { action: 'skip'; generated: false; reason: 'mcp-disabled' | 'no-tools'; toolCount: number }
   | { action: 'write'; generated: true; content: string; toolCount: number }
 
-export interface MCPRouterToolSetting {
-  enabled: boolean
-  autoExecute?: boolean
-}
-
-export type MCPToolsForAISkipReason = 'mcp-disabled' | 'no-tools' | 'router-disabled'
-
-export interface MCPToolsForAIOptions {
-  enabled: boolean
-  mcpTools: MCPToolInfo[]
-  toolsSettings?: Record<string, MCPRouterToolSetting>
-  routerToolId?: string
-  routerDefinition?: MCPModelFacingToolDefinition
-  /**
-   * Hybrid flat-mode threshold (决策点 #1): at or below this many tools the
-   * model sees each tool as its own definition and the router is hidden;
-   * above it only the router is exposed. `0` = always router; undefined =
-   * `MCP_DEFAULT_FLAT_TOOL_THRESHOLD`.
-   */
-  flatThreshold?: number
-  /** Sanitized model-facing ids per tool (from the tool-id registry). */
-  toolIds?: Map<MCPToolInfo, string>
-}
-
-export type MCPToolExposureMode = 'flat' | 'router' | 'none'
-
-export interface MCPToolExposure {
-  mode: MCPToolExposureMode
-  skipReason?: MCPToolsForAISkipReason
-}
-
-/**
- * The single mode decision for hybrid exposure (roadmap 决策点 #1). Every
- * surface — model-facing tool list, registration plan, catalog planning —
- * resolves through here so they can never disagree about which mode we are
- * in. Modes are MUTUALLY EXCLUSIVE: flat hides the router, router hides the
- * flat tools.
- */
-export function resolveMCPToolExposure(input: {
-  enabled: boolean
-  toolCount: number
-  flatThreshold?: number
-}): MCPToolExposure {
-  if (!input.enabled) {
-    return { mode: 'none', skipReason: 'mcp-disabled' }
-  }
-  if (input.toolCount === 0) {
-    return { mode: 'none', skipReason: 'no-tools' }
-  }
-  const threshold = input.flatThreshold ?? MCP_DEFAULT_FLAT_TOOL_THRESHOLD
-  if (threshold > 0 && input.toolCount <= threshold) {
-    return { mode: 'flat' }
-  }
-  return { mode: 'router' }
-}
-
-/**
- * One flat-exposure model-facing definition: the tool describes itself
- * (parameters + full JSON schema), no router wrapper.
- */
-export function mcpToolToModelFacingDefinition(mcpTool: MCPToolInfo): MCPModelFacingToolDefinition {
-  const required = mcpTool.inputSchema.required || []
-  const parameters: MCPModelFacingToolDefinition['parameters'] = []
-  if (mcpTool.inputSchema.properties) {
-    for (const [name, schema] of Object.entries(mcpTool.inputSchema.properties)) {
-      const jsonType = Array.isArray(schema.type)
-        ? schema.type.find(type => type !== 'null')
-        : schema.type
-      const enumValues = Array.isArray(schema.enum)
-        ? schema.enum.filter((item): item is string => typeof item === 'string')
-        : undefined
-      parameters.push({
-        name,
-        type: typeof jsonType === 'string' ? jsonType : 'object',
-        description: typeof schema.description === 'string' ? schema.description : '',
-        required: required.includes(name),
-        ...(enumValues && enumValues.length > 0 ? { enum: enumValues } : {}),
-      })
-    }
-  }
-  return {
-    description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
-    parameters,
-    parameterSchema: mcpTool.inputSchema as JsonSchemaObject,
-  }
-}
-
-export interface MCPToolsForAIResult {
-  tools: Record<string, MCPModelFacingToolDefinition>
-  shouldRememberTools: boolean
-  skipReason?: MCPToolsForAISkipReason
-}
-
-export interface MCPRegisteredToolLike {
-  id: string
-}
-
-export interface MCPToolRegistrationPlan {
-  toolIdsToUnregister: string[]
-  shouldGenerateCatalog: boolean
-  shouldExposeRouter: boolean
-  /** Resolved hybrid exposure mode (决策点 #1) — flat hides the router. */
-  mode?: MCPToolExposureMode
-  toolCount: number
-  logMessage?: string
-}
-
 export type MCPRouterActionResult =
   | { kind: 'handled'; result: MCPToolCallResult }
   | { kind: 'call'; ref: MCPFunctionRef; args: JsonObject }
 
 export interface MCPRouterActionOptions {
   onPartialResult?: (text: string, phase: string) => void
-}
-
-export function buildMCPToolsForAI(options: MCPToolsForAIOptions): MCPToolsForAIResult {
-  const tools: Record<string, MCPModelFacingToolDefinition> = {}
-  const routerToolId = options.routerToolId ?? MCP_ROUTER_TOOL_ID
-
-  const exposure = resolveMCPToolExposure({
-    enabled: options.enabled,
-    toolCount: options.mcpTools.length,
-    flatThreshold: options.flatThreshold,
-  })
-  if (exposure.mode === 'none') {
-    return { tools, shouldRememberTools: false, skipReason: exposure.skipReason }
-  }
-
-  const routerSetting = options.toolsSettings?.[routerToolId]
-  if (routerSetting && !routerSetting.enabled) {
-    return { tools, shouldRememberTools: false, skipReason: 'router-disabled' }
-  }
-
-  // Flat mode: each tool is its own model-facing definition, keyed by the
-  // same sanitized ids the execution path parses (`mcp_<server>_<tool>`).
-  if (exposure.mode === 'flat') {
-    for (const mcpTool of options.mcpTools) {
-      const toolId = options.toolIds?.get(mcpTool) ?? `mcp:${mcpTool.serverId}:${mcpTool.name}`
-      tools[toolId] = mcpToolToModelFacingDefinition(mcpTool)
-    }
-    return { tools, shouldRememberTools: true }
-  }
-
-  tools[routerToolId] = options.routerDefinition ?? getMCPRouterDefinition()
-  return {
-    tools,
-    shouldRememberTools: true,
-  }
 }
 
 interface FuzzyMatchTarget<T> {
@@ -526,48 +384,6 @@ export function planMCPToolsCatalogWrite(
       getServerName: input.getServerName,
     }),
     toolCount: input.mcpTools.length,
-  }
-}
-
-export function planMCPToolRegistration(input: {
-  enabled: boolean
-  mcpTools: MCPToolInfo[]
-  existingTools: MCPRegisteredToolLike[]
-  flatThreshold?: number
-}): MCPToolRegistrationPlan {
-  const toolIdsToUnregister = input.existingTools
-    .map(tool => tool.id)
-    .filter(id => id.startsWith('mcp:'))
-
-  const exposure = resolveMCPToolExposure({
-    enabled: input.enabled,
-    toolCount: input.mcpTools.length,
-    flatThreshold: input.flatThreshold,
-  })
-
-  if (exposure.mode === 'none') {
-    return {
-      toolIdsToUnregister,
-      shouldGenerateCatalog: false,
-      shouldExposeRouter: false,
-      mode: exposure.mode,
-      toolCount: input.mcpTools.length,
-    }
-  }
-
-  // The catalog file exists to give the model the documentation the ROUTER
-  // hides; in flat mode every tool is already self-describing, so writing a
-  // second copy would only go stale.
-  const isRouter = exposure.mode === 'router'
-  return {
-    toolIdsToUnregister,
-    shouldGenerateCatalog: isRouter,
-    shouldExposeRouter: isRouter,
-    mode: exposure.mode,
-    toolCount: input.mcpTools.length,
-    logMessage: isRouter
-      ? `[MCPBridge] MCP router ready (${input.mcpTools.length} functions)`
-      : `[MCPBridge] MCP flat exposure (${input.mcpTools.length} tools, threshold not exceeded)`,
   }
 }
 

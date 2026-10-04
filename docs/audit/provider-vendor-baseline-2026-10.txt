@@ -63,7 +63,6 @@ openai apps/desktop-react/src/providers/components/CustomProviderDialog.tsx
 openai packages/backend/provider/provider-client-api-models.ts
 openai packages/backend/credentials/credentials-default-space-migration.ts
 openai packages/backend/engine/prompt/engine-system-prompt-snapshot.ts
-openai packages/backend/engine/stream/engine-image-generation.ts
 openai packages/backend/engine/stream/engine-image-stream.ts
 openai packages/backend/provider-call/provider-call-auth.ts
 openai packages/backend/media/media-image-generation.ts

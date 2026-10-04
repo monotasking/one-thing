@@ -18,7 +18,7 @@ import {
 } from '../plugin-manager-base.js'
 import { createBuiltinPluginDefinitions, scanCorePlugins } from '../plugin-loader.js'
 import { installCorePluginPackage, readPluginLedgerSpec, type CorePluginMarketIndex } from '../plugin-install.js'
-import { type CorePluginDefinition } from '../plugin-api-types.js'
+import { type CorePluginDefinition } from '../plugin-manifest-types.js'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-install-'))

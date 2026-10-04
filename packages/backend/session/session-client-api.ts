@@ -68,7 +68,10 @@ import type { SessionSegment } from '@shared/ipc/toc.js'
 import type { SessionTokenUsageReadout } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
-import * as store from '@onething/backend/session'
+// 会话表从声明它的 `session-store.ts` 取(递给 `session-caller-ops` 的端口也是这只命名空间),「当前会话」那一格从
+// `session-current.ts` 取 —— 不绕回会话入口(D241)。
+import * as store from './session-store.js'
+import { setCurrentSessionId } from './session-current.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from './session-access.js'
 import {
   ensureCollabGroupRoom,
@@ -110,7 +113,7 @@ const consoleLog: ConsoleLikePort & OnethingSessionsIpcLogger = consolePort(log)
 
 /** 会话切换时把「当前会话」写进 app-state,并叫醒那扇独立的 todo 窗。 */
 function setCurrentSession(sessionId: string): void {
-  store.setCurrentSessionId(sessionId)
+  setCurrentSessionId(sessionId)
   // The detached todo window renders whichever session is active.
   notifyTodoPlanActiveSessionChanged()
 }

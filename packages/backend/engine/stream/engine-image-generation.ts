@@ -8,7 +8,7 @@
 
 import { createAppFetch } from '@onething/backend/settings'
 import {
-  generateCoreOpenAIImage,
+  generateImageViaImagesApi,
   normalizeImageModelId,
   type CoreImageGenerationResult,
 } from '@onething/backend/media'
@@ -36,7 +36,7 @@ export async function generateImage(
   prompt: string,
   options: { size?: string; quality?: string; style?: string } = {}
 ): Promise<ImageGenerationResult> {
-  return generateCoreOpenAIImage({
+  return generateImageViaImagesApi({
     apiKey,
     baseUrl,
     model,

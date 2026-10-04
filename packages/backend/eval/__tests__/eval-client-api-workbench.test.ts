@@ -51,9 +51,28 @@ const credentials = vi.hoisted(() => ({
 }))
 const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<string, unknown>)) }))
 
-vi.mock('@onething/backend/eval', () => runtime)
-// 授权判据(`requireIncidentAccess`)直取子路径(工单 4 C2),替身跟着搬。
-vi.mock('@onething/backend/eval/eval-incident', () => ({ readIncident: runtime.readIncident }))
+// 域从声明这些名字的兄弟文件动态取它们(D241:不再绕回 eval 入口),替身跟着打在七只声明文件上;
+// 仍是 `runtime` 里同一批 vi.fn,断言不动。授权判据(`requireIncidentAccess`)本来就直取 `eval-incident`(工单 4 C2)。
+vi.mock('@onething/backend/eval/eval-incident', () => ({
+  listIncidents: runtime.listIncidents,
+  readIncident: runtime.readIncident,
+  updateIncident: runtime.updateIncident,
+  getIncidentDir: runtime.getIncidentDir,
+  readIncidentTurnTrace: runtime.readIncidentTurnTrace,
+}))
+vi.mock('../eval-replay.js', () => ({ loadSceneFromIncident: runtime.loadSceneFromIncident, runReplay: runtime.runReplay }))
+vi.mock('../eval-analysis.js', () => ({
+  createAiToolSimulator: runtime.createAiToolSimulator,
+  analyzeIncident: runtime.analyzeIncident,
+  renderAnalyzedMarkdown: runtime.renderAnalyzedMarkdown,
+}))
+vi.mock('../eval-transcript.js', () => ({ writeTranscript: runtime.writeTranscript }))
+vi.mock('@onething/backend/eval/eval-trace-store', () => ({
+  readTraceRounds: runtime.readTraceRounds,
+  readTraceRoundsFromDir: runtime.readTraceRoundsFromDir,
+}))
+vi.mock('../eval-round-replay.js', () => ({ replayRound: runtime.replayRound }))
+vi.mock('../eval-diagnose.js', () => ({ diagnoseIncident: runtime.diagnoseIncident }))
 vi.mock('@onething/backend/settings', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/settings')>(),
   getSettings: settings.getSettings,

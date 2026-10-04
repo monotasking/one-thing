@@ -1,9 +1,13 @@
-# cohesion gate known list (docs/design/oversized-files-2026-10.md §1.1 形状 A;决策 D225 / D229)
-# 每行 `<第二大块的行数> <文件>`:立门那天(2026-10-04)就命中形状 A、尚待 Fable 裁定的文件。
-# Fable 的分析只量过 1000 行以上的文件,这 4 只在 1000 行以下,没进拆分批次;它们是该拆、还是判据该细化(例如
-# `agent-loop-context-compact` Fable 判过是「一件事:压缩算法」),由 Fable 定。
+# cohesion gate known list (docs/design/oversized-files-2026-10.md §1.1 形状 A;决策 D225 / D229 / D239)
+# 每行 `<第二大块的行数> <文件>`:立门那天(2026-10-04)就命中形状 A 的文件。门只比成员、不比数字。
 # 只许减:名单外的文件命中形状 A 就红;名单里的文件拆开了,`bun run cohesion:gate` 会提示删行。名单不收新行。
+#
+# 立门时 4 只,批 2(D239)逐只读过之后:`mcp-kernel-router`(露不露路由器 vs 路由器本身)与 `plugin-api-types`
+# (插件 API 的形状 vs 插件清单的形状)是两件事,已按块纯搬家拆开、删行。剩下两只判为「一件事、判据看不见那根线」,
+# 判据不改(改了会放过别的),暂留在这里,理由:
+#   - agent-loop-context-compact:四块(选哪段去压 / 按窗口定块大小 / 分块摘要 / 文件操作标签)是同一次压缩的几步,
+#     唯一的驱动 `engine/engine-compact-session.ts` 按顺序吃全部四块;线在驱动里,不在这只文件里。等批 3 拆压缩闸时一起看。
+#   - plugin-contract-panel:节点类型的形状与校验器是同一份面板协议,加一种节点要同时改两块(类型联合 + `PANEL_NODE_TYPES`
+#     与 `validateNode`);两块之间靠 `type` 字段的字符串字面量相连,判据只认标识符,看不见。
 185 packages/backend/agent-loop/agent-loop-context-compact.ts
-211 packages/backend/mcp/kernel/mcp-kernel-router.ts
 205 packages/backend/plugin-contract/plugin-contract-panel.ts
-167 packages/backend/plugin/plugin-api-types.ts

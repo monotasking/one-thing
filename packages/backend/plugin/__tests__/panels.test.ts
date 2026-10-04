@@ -30,7 +30,7 @@ import {
 } from '@onething/backend/plugin-contract'
 import { createCorePluginAPI } from '../plugin-api-builder.js'
 import { disposeCorePluginState } from '../plugin-api-state.js'
-import { type CorePluginDefinition } from '../plugin-api-types.js'
+import { type CorePluginDefinition } from '../plugin-manifest-types.js'
 
 interface TestAPI {
   registerWorkspacePanel(registration: CorePluginPanelRegistration): void

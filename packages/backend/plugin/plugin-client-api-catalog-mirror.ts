@@ -25,11 +25,8 @@ import {
 	writePluginSettingsFile,
 	type CorePluginSettingsStorageAdapters,
 } from "./plugin-loader.js";
-import {
-	type CorePluginCommandDefinition,
-	type CorePluginDefinition,
-	type PluginSettings,
-} from "./plugin-api-types.js";
+import { type CorePluginCommandDefinition, type PluginSettings } from "./plugin-api-types.js";
+import { type CorePluginDefinition } from "./plugin-manifest-types.js";
 import {
 	type CorePluginInfo,
 } from "./plugin-manager-base.js";

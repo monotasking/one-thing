@@ -408,7 +408,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 上每多一个 `register*(pluginId` 转发口,就必须在 PLUGIN_OPEN_REGISTRIES
      * 里有对应成员,否则一个开放了却没有拆除语义声明的注册表会悄悄溜过去。
      */
-    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/plugin/plugin-api-builder.ts'), 'utf-8')
+    const hostSource = fs.readFileSync(path.join(REPO_ROOT, 'packages/backend/plugin/plugin-api-context.ts'), 'utf-8')
     const interfaceStart = hostSource.indexOf('export interface CorePluginAPIHost')
     const interfaceEnd = hostSource.indexOf('\n}', interfaceStart)
     const body = hostSource.slice(interfaceStart, interfaceEnd)

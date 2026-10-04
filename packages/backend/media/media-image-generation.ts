@@ -26,13 +26,13 @@ export interface CoreImageGenerationRequestPlan {
   baseUrl?: string
 }
 
-export interface CoreOpenAIImageGenerationOptions {
+export interface CoreImagesApiImageOptions {
   size?: string
   quality?: string
   style?: string
 }
 
-export interface CoreOpenAIImageGenerationRequest {
+export interface CoreImagesApiRequest {
   model: string
   prompt: string
   size: string
@@ -41,7 +41,7 @@ export interface CoreOpenAIImageGenerationRequest {
   response_format?: 'b64_json'
 }
 
-export interface CoreOpenAIImageGenerationPayload {
+export interface CoreImagesApiPayload {
   data?: Array<{
     b64_json?: string
     revised_prompt?: string
@@ -63,12 +63,12 @@ export interface CoreImageGenerationResult {
   error?: string
 }
 
-export interface GenerateCoreOpenAIImageOptions {
+export interface GenerateImageViaImagesApiOptions {
   apiKey: string
   baseUrl: string
   model: string
   prompt: string
-  imageOptions?: CoreOpenAIImageGenerationOptions
+  imageOptions?: CoreImagesApiImageOptions
   fetch: FetchLike
   logger?: {
     error?: (...args: unknown[]) => void
@@ -89,16 +89,16 @@ export function planImageGenerationRequest(options: {
   }
 }
 
-export function normalizeOpenAIImageBaseUrl(baseUrl: string | undefined): string {
+export function normalizeImagesApiBaseUrl(baseUrl: string | undefined): string {
   return (baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '')
 }
 
-export function buildOpenAIImageGenerationRequest(
+export function buildImagesApiRequest(
   model: string,
   prompt: string,
-  options: CoreOpenAIImageGenerationOptions = {},
-): CoreOpenAIImageGenerationRequest {
-  const body: CoreOpenAIImageGenerationRequest = {
+  options: CoreImagesApiImageOptions = {},
+): CoreImagesApiRequest {
+  const body: CoreImagesApiRequest = {
     model,
     prompt,
     size: options.size || '1024x1024',
@@ -117,8 +117,8 @@ export function buildOpenAIImageGenerationRequest(
   return body
 }
 
-export function extractOpenAIImageGenerationPayload(
-  payload: CoreOpenAIImageGenerationPayload,
+export function extractImagesApiPayload(
+  payload: CoreImagesApiPayload,
 ): CoreImageGenerationResult {
   if (payload.error?.message) {
     return { success: false, error: payload.error.message }
@@ -170,12 +170,12 @@ async function fetchImageUrlAsBase64(url: string, fetchImpl: FetchLike): Promise
  * The host supplies fetch so Electron can bind proxy/network settings while
  * headless callers can pass globalThis.fetch directly.
  */
-export async function generateCoreOpenAIImage(
-  options: GenerateCoreOpenAIImageOptions,
+export async function generateImageViaImagesApi(
+  options: GenerateImageViaImagesApiOptions,
 ): Promise<CoreImageGenerationResult> {
   try {
-    const body = buildOpenAIImageGenerationRequest(options.model, options.prompt, options.imageOptions)
-    const response = await options.fetch(`${normalizeOpenAIImageBaseUrl(options.baseUrl)}/images/generations`, {
+    const body = buildImagesApiRequest(options.model, options.prompt, options.imageOptions)
+    const response = await options.fetch(`${normalizeImagesApiBaseUrl(options.baseUrl)}/images/generations`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -190,8 +190,8 @@ export async function generateCoreOpenAIImage(
       ))
     }
 
-    const payload = await response.json() as CoreOpenAIImageGenerationPayload
-    const extracted = extractOpenAIImageGenerationPayload(payload)
+    const payload = await response.json() as CoreImagesApiPayload
+    const extracted = extractImagesApiPayload(payload)
     if (!extracted.success && extracted.error) throw new Error(extracted.error)
 
     const imageBase64 = extracted.imageBase64 || (extracted.imageUrl

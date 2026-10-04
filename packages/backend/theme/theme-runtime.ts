@@ -17,7 +17,7 @@ import {
   initializeThemes,
   loadCustomThemes,
   refreshThemes,
-} from './theme.js'
+} from './theme-catalog.js'
 import { buildThemeDebugReport, type ThemeDebugData } from './theme-debug.js'
 
 function errorMessage(error: unknown): string {

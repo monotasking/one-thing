@@ -26,7 +26,7 @@ import {
 import { createCorePluginAPI } from '@onething/backend/plugin/plugin-api-builder'
 import { createScopedPluginScheduler } from '@onething/backend/plugin/plugin-scheduler'
 import { disposeCorePluginState } from '@onething/backend/plugin/plugin-api-state'
-import { type CorePluginDefinition } from '@onething/backend/plugin/plugin-api-types'
+import { type CorePluginDefinition } from '@onething/backend/plugin/plugin-manifest-types'
 
 interface TestAPI {
   registerRequestHandler(action: string, handler: CorePluginRequestHandler): void

@@ -24,7 +24,7 @@ import {
 } from '../plugin-loader.js'
 import { executeCorePluginTool } from '../plugin-api-builder.js'
 import { type CorePluginToolContext, type CorePluginToolResult } from '../plugin-api-types.js'
-import type { CorePluginDefinition } from '../plugin-api-types.js'
+import type { CorePluginDefinition } from '../plugin-manifest-types.js'
 import type { PluginSettings } from '../plugin-api-types.js'
 
 interface TestAPI {

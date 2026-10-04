@@ -12,10 +12,13 @@ export {
   sanitizeMCPToolName,
 } from './mcp-kernel-tool-id-registry.js'
 export {
-  buildMCPToolsCatalog,
   buildMCPToolsForAI,
   resolveMCPToolExposure,
   mcpToolToModelFacingDefinition,
+  planMCPToolRegistration,
+} from './mcp-kernel-tool-exposure.js'
+export {
+  buildMCPToolsCatalog,
   describeMCPFunction,
   executeMCPBridgeTool,
   findMCPFunctionRef,
@@ -23,7 +26,6 @@ export {
   getMCPRouterDefinition,
   listMCPFunctions,
   mcpContentToString,
-  planMCPToolRegistration,
   planMCPToolsCatalogWrite,
   resolveMCPRouterAction,
   resolveMCPRouterReference,
@@ -96,19 +98,21 @@ export type {
   MCPToolIdRegistryOptions,
 } from './mcp-kernel-tool-id-registry.js'
 export type {
-  MCPFunctionRef,
-  MCPModelFacingToolDefinition,
   MCPRegisteredToolLike,
-  MCPRouterActionOptions,
-  MCPRouterActionResult,
   MCPRouterToolSetting,
   MCPToolsForAIOptions,
   MCPToolsForAIResult,
   MCPToolsForAISkipReason,
-  MCPToolsCatalogWritePlan,
   MCPToolRegistrationPlan,
   MCPToolExposure,
   MCPToolExposureMode,
+} from './mcp-kernel-tool-exposure.js'
+export type {
+  MCPFunctionRef,
+  MCPModelFacingToolDefinition,
+  MCPRouterActionOptions,
+  MCPRouterActionResult,
+  MCPToolsCatalogWritePlan,
   MCPRouterInput,
   MCPToolsCatalogOptions,
 } from './mcp-kernel-router.js'

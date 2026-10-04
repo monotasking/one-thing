@@ -140,7 +140,23 @@ vi.mock('../../backend-current.js', async importOriginal => ({
 vi.mock('../../http-server/http-server-principal.js', () => ({
   principalOf: () => ({ kind: 'user', userId: 'local-user' }),
 }))
-vi.mock('../session-store.js', () => storesSessions)
+// 域取会话表的地方是声明它们的 `session-store.ts`、取「当前会话」的地方是 `session-current.ts`(D241:不再绕回会话入口;
+// 递给 `session-caller-ops` 的也是 `session-store.ts` 那只命名空间),所以 `store` 里这八格的替身也打在这两只声明文件上 ——
+// 与入口上那份是同一批 vi.fn,断言不动。
+vi.mock('../session-store.js', () => ({
+  ...storesSessions,
+  getSession: store.getSession,
+  getSessionDetails: store.getSessionDetails,
+  getSessionCacheStats: store.getSessionCacheStats,
+  invalidateSessionCache: store.invalidateSessionCache,
+  createBranchSession: store.createBranchSession,
+  createSession: store.createSession,
+  getSessionsList: store.getSessionsList,
+}))
+vi.mock('../session-current.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../session-current.js')>(),
+  setCurrentSessionId: store.setCurrentSessionId,
+}))
 vi.mock('../session-events-reads.js', async importOriginal => ({
   ...await importOriginal<typeof import('../session-events-reads.js')>(),
   ...eventsReads,

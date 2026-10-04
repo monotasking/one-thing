@@ -2054,3 +2054,26 @@ shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydrati
 `gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(含新门 `cohesion:gate`,改前它是红的;
 `session:check` 与改前同 4 条);CLI 与 server 能起;`gateway:start` 与改前一样因缺 `ONETHING_GATEWAY_RUNTIME_MODULE` exit 1、零写入。
 别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。
+
+### 大文件拆分批 2 + 批 1 留下的几处落地记录(D227 / D237–D241,2026-10-04,未提交)
+
+1. **批 2 两只**:`session-store` → 门面 969 行 + `session-store-messages.ts`(十五个消息热写端口)+ `session-store-table.ts`(会话表持有器;多出这只是为了不造兄弟环,
+   D237),`split:prove` 93 条逐字相同;`plugin-api-builder` 1982 → 160 行 + `plugin-api-context.ts` + 五只按面的建造件(D238),闭包变上下文、方法正文逐字不动、
+   拼装按拆分前的键序逐格写出(`Object.keys(api)` 34 格同序)。
+2. **cohesion 名单 4 → 2**(D239):`mcp-kernel-router`(拆出 `mcp-kernel-tool-exposure.ts`)与 `plugin-api-types`(拆出 `plugin-manifest-types.ts`)纯搬家拆开;
+   `agent-loop-context-compact` 与 `plugin-contract-panel` 判为一件事、暂留,理由写进名单文件头,判据不改。
+3. **media `export *` 收掉**(D240):四个带服务商名的值连同四个伴生形状按内容改名,入口改具名(生图那一组交出 30 → 18 个名字),`provider:gate` 105 → 104 对。
+4. **自引入口 25 → 0**(D241):theme 的定义搬进 `theme-catalog.ts`;session 与 eval 先把测试替身改打声明那个名字的兄弟文件,再改引兄弟;eval 工作台改递一只只含
+   14 个函数的对象。`entry:gate` 的「主入口 `export *`」与「功能内引自家主入口」两条改零基线硬闸,基线里的 `self:` / `star:` 行撤掉(再出现判陈账红)。
+5. CLAUDE.md 门表与 N3 / 入口规矩两段、`docs/architecture/backend-structure.md` 那段「没有门」改成现状;`feature-map` 重生成。
+
+**验收**(改前 `$S/s39-before/`、改后 `$S/s39-after/`,同一份脚本 `$S/s39-checks.sh`,沿用 s38 那套,另加插件目录全部测试 + `plugin-model-lifecycle`、
+会话目录全部测试、`sessions:verify` / `sessions:events-selfcheck`(夹具店与 battery 自留店,不碰真店)、Worker 字节):三套 tsc 零错;四个 bundle 全成,三份检索
+Worker 与 ACP 桥逐字节不变(每一步都比过);主包 server 5,766,771 → 5,767,871、CLI 11,461,336 → 11,472,322(CLI 不压缩,多出的是 eval 那几处改成动态 import
+各只兄弟后,打包器给这 14 只兄弟各建的模块命名空间对象);插件 971 条、会话 874 条逐条相同;全量 vitest 根 11,431 条、壳 7,344 条:壳失败集合相同;根两轮都比改前多出两条文件监视的用例
+(`file-workspace-watch-driver`「read-only directory」—— 它的 import 闭包只有 2 只文件、一只改动都不含;`http-server-workspace-watch-ownership`「A shutdown」,s38 已记为负载抖动),
+另各多一条互不相同的(第一轮 `storage-store-backup`、第二轮 `settings-model-registry-abort`),这四只文件单跑两遍 36 条全绿 —— 判为负载抖动;快照与 golden sha 不变;
+`http-server/__tests__` + `apps/backend-server` 逐条相同;theme 两只金样逐条相同;persistence / import-side-effect-free + assembly-lifecycle 绿;shadow-battery 与改前同一组红
+(refold mismatch 0);hydration 0 失败;`sessions:verify` GATE GREEN、`events-selfcheck` 0 NEW;`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);
+`gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(`session:check` 与改前同 4 条);CLI 与 server 能起;
+`gateway:start` 与改前一样 exit 1。别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。

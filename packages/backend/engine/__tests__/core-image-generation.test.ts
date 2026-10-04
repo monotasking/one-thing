@@ -6,13 +6,13 @@ import {
   buildImageStreamResponseContent,
   buildImageStreamStartEventPlan,
   buildImageStreamSuccessEventPlan,
-  buildOpenAIImageGenerationRequest,
+  buildImagesApiRequest,
   executeCoreImageGenerationStream,
   extractImageGenerationResponseError,
-  extractOpenAIImageGenerationPayload,
-  generateCoreOpenAIImage,
+  extractImagesApiPayload,
+  generateImageViaImagesApi,
   normalizeImageModelId,
-  normalizeOpenAIImageBaseUrl,
+  normalizeImagesApiBaseUrl,
   planImageGenerationRequest,
 } from '@onething/backend/media'
 
@@ -49,10 +49,10 @@ describe('onething runtime image generation helpers', () => {
   })
 
   it('builds and parses OpenAI-compatible image generation payloads in core', () => {
-    expect(normalizeOpenAIImageBaseUrl('https://openai.test/v1/')).toBe('https://openai.test/v1')
-    expect(normalizeOpenAIImageBaseUrl(undefined)).toBe('https://api.openai.com/v1')
+    expect(normalizeImagesApiBaseUrl('https://openai.test/v1/')).toBe('https://openai.test/v1')
+    expect(normalizeImagesApiBaseUrl(undefined)).toBe('https://api.openai.com/v1')
 
-    expect(buildOpenAIImageGenerationRequest('dall-e-3', 'draw', {
+    expect(buildImagesApiRequest('dall-e-3', 'draw', {
       size: '1024x1792',
       quality: 'hd',
       style: 'natural',
@@ -65,14 +65,14 @@ describe('onething runtime image generation helpers', () => {
       response_format: 'b64_json',
     })
 
-    expect(buildOpenAIImageGenerationRequest('gpt-image-1', 'draw')).toEqual({
+    expect(buildImagesApiRequest('gpt-image-1', 'draw')).toEqual({
       model: 'gpt-image-1',
       prompt: 'draw',
       size: '1024x1024',
       quality: 'auto',
     })
 
-    expect(extractOpenAIImageGenerationPayload({
+    expect(extractImagesApiPayload({
       data: [{
         b64_json: 'abc',
         revised_prompt: 'better draw',
@@ -84,7 +84,7 @@ describe('onething runtime image generation helpers', () => {
       revisedPrompt: 'better draw',
     })
 
-    expect(extractOpenAIImageGenerationPayload({
+    expect(extractImagesApiPayload({
       data: [{ url: 'https://cdn.test/generated.png' }],
     })).toEqual({
       success: true,
@@ -93,7 +93,7 @@ describe('onething runtime image generation helpers', () => {
       revisedPrompt: undefined,
     })
 
-    expect(extractOpenAIImageGenerationPayload({
+    expect(extractImagesApiPayload({
       error: { message: 'bad key' },
     })).toEqual({ success: false, error: 'bad key' })
     expect(extractImageGenerationResponseError(
@@ -120,7 +120,7 @@ describe('onething runtime image generation helpers', () => {
       return new Response(new Uint8Array([1, 2, 3]), { status: 200 })
     }
 
-    await expect(generateCoreOpenAIImage({
+    await expect(generateImageViaImagesApi({
       apiKey: 'key',
       baseUrl: 'https://openai.test/v1/',
       model: 'dall-e-3',
@@ -153,7 +153,7 @@ describe('onething runtime image generation helpers', () => {
       headers: { 'content-type': 'application/json' },
     })
 
-    await expect(generateCoreOpenAIImage({
+    await expect(generateImageViaImagesApi({
       apiKey: 'bad',
       baseUrl: 'https://openai.test/v1',
       model: 'gpt-image-1',
