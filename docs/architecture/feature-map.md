@@ -28,7 +28,7 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| collab | 多 agent 协作:房间、成员、发言调度与裁判。 | session 34 · (shared) 30 · agent 24 · logging 21 · event 15 · storage 11 · (包根槽位) 6 · toolkit 5 · agent-loop 3 · settings 3 · usage 3 · provider-call 2 · external-agent 1 · interaction 1 · permission 1 · variable 1 | 416(值 315 / 类型 101) | 116 |
+| collab | 多 agent 协作:房间、成员、发言调度与裁判。 | session 35 · (shared) 31 · agent 25 · logging 21 · event 16 · storage 11 · (包根槽位) 6 · toolkit 5 · agent-loop 3 · settings 3 · usage 3 · provider-call 2 · external-agent 1 · interaction 1 · permission 1 · variable 1 | 416(值 315 / 类型 101) | 117 |
 | engine | 对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。 | agent-loop 19 · session 15 · (shared) 14 · logging 14 · provider 9 · settings 8 · agent 7 · event 6 · media 4 · plugin 4 · prompt 4 · provider-call 4 · skill 4 · toolkit 4 · collab 3 · mcp 3 · usage 3 · credentials 2 · eval 2 · project-dir 2 · quota 2 · goal 1 · interaction 1 · permission 1 · scratchpad 1 · storage 1 · todo-plan 1 · variable 1 | 26(值 10 / 类型 16) | 28 |
 | gateway | 微信 / Telegram 渠道网关:收发消息与远程审批。 | (shared) 6 · agent-loop 6 · logging 4 · plugin 2 · session 2 · storage 2 · engine 1 | 49(值 23 / 类型 26) | 31 |
 

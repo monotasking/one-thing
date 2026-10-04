@@ -256,3 +256,18 @@ shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydrati
 其余结构门全绿。三份检索 Worker 与 ACP 桥每一步都逐字节不变。
 
 验收与读数见 `server-client-split-2026-10.md` §6「大文件拆分批 3」。
+
+## 实施结果(s41,2026-10-04,未提交):批 3 的 collab 那一步
+
+决策 D247(端口方案,批准)、D248(落法)、D249(钉住「收摊 → 再起」的测试)。s40 停下的第 4 项(D245)按 D247 做完:
+
+- 四个宿主适配器连同板事件处理、房间语境拼装共 16 条顶层声明搬进 `collab-actors-runtime-hosts.ts`(453 行),运行时文件 2072 → 1665 行。
+  不改参数:运行时文件顶上的 `hostOps` 把 `postToRoom` / `postToAgent` / `ensureAgent` / `scheduleJudgment` / `roomOverBudget` / `budgetCell` /
+  `budgetLimitOf` / `runtimeAccepting` 这八只函数**本身**递给适配器,`= state` 缺省原样;单例的读者仍只在运行时文件里。新文件只 `import type` 运行时文件,
+  值图上运行时 → 适配器单向(`budgetDay` / `wiredHandEvaluator` 住新文件、运行时引回);`cycle:gate` 0 环、深层环 3 / 2 不变。
+- 证明:成员级对照脚本 —— 搬走的 16 条按端口替换表在新文件里各逐字出现一次,留下的 60 条里 53 条逐字相同、7 条只差「四个状态形状加 export、建适配器多递 hostOps」。
+- 「收摊 → 再起」窗口里迟到的裁决:原来没有测试,`runtime-wiring.test.ts` 补一条钉住今天的行为(投进新运行时的房间信箱);搬家前跑绿,变异成「显式递旧 runtime」
+  当场红,搬家后连跑三遍全绿。
+- 新文件 cohesion 4 块、第二块 44 行,不红;cohesion 名单不变(1 只)。
+
+验收与读数见 `server-client-split-2026-10.md` §6「大文件拆分批 3 · collab 宿主适配器」。

@@ -2099,3 +2099,18 @@ persistence / import-side-effect-free + assembly-lifecycle 绿;shadow-battery �
 `sessions:verify` GATE GREEN、`events-selfcheck` 0 NEW(夹具店与 battery 自留店);`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);`gate:acp` 全绿(㉒ opt-in 跳过);
 `gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(`session:check` 与改前同 4 条);CLI 与 server 能起;
 `gateway:start` 与改前一样 exit 1。别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。
+
+### 大文件拆分批 3 · collab 宿主适配器落地记录(D247–D249,2026-10-04,未提交)
+
+1. **适配器搬家**(D247 / D248):16 条顶层声明进 `collab/actors/collab-actors-runtime-hosts.ts`;八只读单例的函数本身经 `hostOps` 递进去,缺省不变;
+   新文件只引运行时文件的类型;运行时文件里随之不用的 31 个 import 名字删掉(那几只模块仍经新文件加载,说明符相同)。
+2. **钉住今天的行为**(D249):`runtime-wiring.test.ts` 新增「收摊 → 再起之间在飞的裁决,答完投进新运行时的房间信箱」,变异核对证明它分得清两种行为。
+3. `feature-map` 重生成。
+
+**验收**(改前 = s40 改后那一份 `$S/s40-after/`,代码与提交 67e60100f 相同;改后 `$S/s41-after/`;同一份脚本 `$S/s40-checks.sh`):三套 tsc 零错;四个 bundle 全成,
+三份检索 Worker 与 ACP 桥逐字节不变;主包 server 5,773,209 → 5,773,462、CLI 11,480,671 → 11,481,510;collab 目录 + `__tests__/collab-*` 1573 条逐条相同、
+另多新增的那一条(1574 条全绿);music / acp / agent-loop + engine / 插件逐条相同;会话目录 874 条全绿(改前那一轮的 5 条负载红这次没出);全量 vitest 根 11,432 条、
+失败 22 条,是改前 27 条(也是 s40 改前 24 条)的子集,壳失败集合相同;快照与 golden sha 不变;`http-server/__tests__` + `apps/backend-server` 逐条相同;
+theme 金样逐条相同;persistence / import-side-effect-free + assembly-lifecycle 绿;shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydration 0 失败;
+`sessions:verify` GATE GREEN、`events-selfcheck` 0 NEW;`gate:search-index` 与改前同三条红;`gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` /
+`log:smoke` / `provider:drill` 绿;全部结构门绿;CLI 与 server 能起;`gateway:start` 与改前一样 exit 1。别的会话的五只 `chat-*.ts` 零改动。

@@ -762,6 +762,65 @@ describe('D6-a 装配:生命周期', () => {
     expect(isTrustedCollabDrive({ collabDriveToken: 'nope' })).toBe(false)
     expect(peekCollabV3RoomSnapshot(ROOM)).toBeNull()
   })
+
+  /**
+   * 钉住今天的行为(D245 / D247):「收摊 → 再起」之间还在飞的那次裁决,答完之后投进的是**新**运行时的房间。
+   *
+   * 起裁决走 `void Promise.resolve().then(...)`,不登记进收摊要等的任务表,所以收摊不等它;裁判答完经
+   * `postToRoom` 投信,而 `postToRoom` 的 `runtime = state` 缺省读的是投信那一刻的单例。这条用例断言的是
+   * 今天的结果,不是「应该如此」—— 哪天要改成丢掉迟到的裁决,是一次行为裁定,得先改这里。
+   */
+  it('收摊 → 再起之间在飞的裁决,答完投进新运行时的房间信箱', async () => {
+    seedRoom()
+    const { DurableMailbox } = await import('@onething/backend/collab/kernel')
+    const appends: Array<{ mailbox: unknown; ownerId: string; event: { payload?: { params?: { verdictToken?: string } } }; settled: Promise<'ok' | 'rejected'> }> = []
+    const realAppend = DurableMailbox.prototype.append
+    const spy = vi.spyOn(DurableMailbox.prototype, 'append').mockImplementation(function (this: { ownerId: string }, event: unknown) {
+      const pending = realAppend.call(this as never, event as never)
+      appends.push({
+        mailbox: this,
+        ownerId: this.ownerId,
+        event: event as (typeof appends)[number]['event'],
+        settled: pending.then(() => 'ok' as const, () => 'rejected' as const),
+      })
+      return pending
+    })
+    try {
+      let answer!: (verdict: { token: string; grants: string[] }) => void
+      const requests: Array<{ token: string }> = []
+      const judge = {
+        name: 'deferred',
+        judge: (request: { token: string }) => {
+          requests.push(request)
+          return new Promise<{ token: string; grants: string[] }>(resolve => { answer = resolve })
+        },
+      }
+      await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort(), judge } })
+      await warmCollabV3Agents()
+      await handleCollabRoomSendMessage(ROOM, { content: '这个需求谁跟一下' })
+      await vi.waitFor(() => expect(requests).toHaveLength(1), { timeout: 3000 })
+      const firstRoomMailboxes = new Set(appends.filter(entry => entry.ownerId === ROOM).map(entry => entry.mailbox))
+      expect(firstRoomMailboxes.size).toBeGreaterThan(0)
+
+      // 裁判还没答:收摊不等它。
+      await shutdownCollabV3Runtime()
+      expect(isCollabV3RuntimeRunning()).toBe(false)
+      await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort() } })
+
+      answer({ token: requests[0]!.token, grants: [] })
+      await vi.waitFor(() => {
+        expect(appends.some(entry => entry.event.payload?.params?.verdictToken === requests[0]!.token)).toBe(true)
+      }, { timeout: 3000 })
+      const delivered = appends.filter(entry => entry.event.payload?.params?.verdictToken === requests[0]!.token)
+      expect(delivered).toHaveLength(1)
+      expect(delivered[0]!.ownerId).toBe(ROOM)
+      // 投进的是新运行时开出来的那只信箱,不是上一条命里已经关掉的那只。
+      expect(firstRoomMailboxes.has(delivered[0]!.mailbox)).toBe(false)
+      await expect(delivered[0]!.settled).resolves.toBe('ok')
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })
 
 /**
