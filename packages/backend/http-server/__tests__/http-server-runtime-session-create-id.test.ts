@@ -2,10 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  createLocalServerSessionStore,
-  type OnethingServerRuntime,
-} from '../http-server-runtime.js'
+import { createLocalServerSessionStore } from '../../session/session-client-api-server-store.js'
+import type { OnethingServerRuntime } from '../http-server-runtime.js'
 import { createTestServerRuntime } from './http-server-test-helpers.js'
 
 // 方案 A 防回归:sessions.create 接受客户端指定的 session id(renderer 的

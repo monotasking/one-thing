@@ -52,3 +52,31 @@ export function tenantDirectory(root: string, ownerId: string, scopeId: string):
 export function tenantKey(ownerId: string, scopeId: string): string {
   return JSON.stringify([validateTenantId(ownerId), validateTenantId(scopeId)])
 }
+
+/**
+ * 默认租户:单用户宿主上没有带身份的请求时,一律按这一位算(`local-user` / `default`)。
+ * 2026-10-04 随 server runtime 拆分从 `http-server-runtime.ts` 搬来(决策 D219),各功能的
+ * server 门面与名册读同一份。
+ */
+export function defaultRequestContext(): { userId: string; workspaceId: string } {
+  return {
+    userId: 'local-user',
+    workspaceId: 'default',
+  }
+}
+
+/** 这个请求上下文是不是默认租户(两格都相同)。 */
+export function isDefaultServerRequestContext(
+  context: { userId: string; workspaceId: string } = defaultRequestContext(),
+): boolean {
+  const defaultContext = defaultRequestContext()
+  return (
+    context.userId === defaultContext.userId &&
+    context.workspaceId === defaultContext.workspaceId
+  )
+}
+
+/** 按 owner 分表时用的键(校验两格,与 `tenantKey` 同一个算法)。 */
+export function ownerKey(context: { userId: string; workspaceId: string } = defaultRequestContext()): string {
+  return tenantKey(context.userId, context.workspaceId)
+}

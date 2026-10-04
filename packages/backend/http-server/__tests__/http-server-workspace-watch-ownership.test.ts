@@ -11,7 +11,8 @@ import { dispatchRpc, registerRouterHandlers } from '../http-server-dispatch-tab
 import { configureHostLocalTrust } from '../http-server-host-trust.js'
 import { createOnethingHttpServer } from '../http-server-routes.js'
 import type { ManagedHttpServer } from '../http-server-lifecycle.js'
-import { createServerRpcDispatchContext, createServerRpcDispatchPorts, type OnethingServerRuntime } from '../http-server-runtime.js'
+import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from '../http-server-rpc-context.js'
+import type { OnethingServerRuntime } from '../http-server-runtime.js'
 import { createTestServerRuntime } from './http-server-test-helpers.js'
 
 const identity: RuntimeRequestContext = { userId: 'alice', workspaceId: 'watch-workspace' }

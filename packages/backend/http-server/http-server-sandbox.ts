@@ -38,7 +38,7 @@
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { isHostLocallyTrusted } from './http-server-host-trust.js'
-import { tenantDirectory, validateTenantId } from './http-server-tenant-paths.js'
+import { defaultRequestContext, tenantDirectory, validateTenantId } from './http-server-tenant-paths.js'
 
 /** 未夹紧：桌面宿主，请求可以碰用户机器上的任何路径（迁移前的行为）。 */
 export interface UnconfinedRpcSandbox {
@@ -156,4 +156,15 @@ export function ownerSandboxRoot(
   workspaceId: string,
 ): string {
   return tenantDirectory(workspaceRoot, ownerUid, workspaceId)
+}
+
+/**
+ * `<workspaceRoot>/<uid>/<wid>` —— 按请求上下文取 per-owner 沙箱根(`ownerSandboxRoot` 的薄壳)。
+ * 2026-10-04 随 server runtime 拆分从 `http-server-runtime.ts` 搬来(决策 D219)。
+ */
+export function workspaceSandboxRoot(
+  workspaceRoot: string,
+  context: { userId: string; workspaceId: string } = defaultRequestContext(),
+): string {
+  return ownerSandboxRoot(workspaceRoot, context.userId, context.workspaceId)
 }

@@ -1996,3 +1996,30 @@ assembly / provider / feature-map 全绿;检索 Worker 三份各 −16 字节,di
 shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);`gate:acp` / `gate:web-shell` /
 `gate:client` / `provider:drill` 绿;全部结构门绿(`session:check` 与改前同 4 条);CLI 与 server 能起;`bun run gateway:start` 起来后因缺
 `ONETHING_GATEWAY_RUNTIME_MODULE` 打一行 fatal、exit 1、临时 store 零写入。别的会话的五只 `chat-*.ts` 零改动(sha 相同)。
+
+### server 门面按功能拆落地记录:`http-server-runtime.ts` 4208 → 190 行(路线第 8 条,2026-10-04,未提交)
+
+决策 D219–D223(`backend-structure-decisions-2026-10.md`)。网关入口那一半随 D202 已落地,本笔做 server 门面那一半。
+
+1. **各功能的 server 门面回各功能**,一律是第二入口的方面文件(D26,只许 http-server 引)、`createServerX(ports)` 形状(先例
+   `createServerLiveSessionDelivery`),代码原样搬、要的东西经参数递:session 三只(`-server-store` 两只会话仓、`-server-projection`
+   回声投影与会话级规则、`-server-working-set` 工作集 + 受众 + `ServerRuntimeStore` 订阅 + `sessions` / `messages` 两格)与随回声仓搬来的
+   `session-echo-message-events.ts`;settings 两只(`-server-store`、`-change-events`);`permission-client-api-pending`;`mcp-client-api-server-host`;
+   `auth-client-api-token-events`;`todo-plan-` / `scratchpad-client-api-change-events`;`plugin-client-api-catalog-mirror`;`search-client-api-owner`;
+   `file-client-api-workspace-watch`;`voice-client-api-server-events`;`media-client-api-owner-paths`。
+2. **http-server 里按内容拆**:`-runtime-types`、`-standalone-backend`、`-capabilities`、`-rpc-context`、`-runtime-roster`(唯一点名功能的
+   server 门面装配处:装的顺序 + 拆的顺序,D220),全局事件那一格并进 `-global-events`;默认租户三件进 `-tenant-paths`、`workspaceSandboxRoot`
+   进 `-sandbox`(D223)。`http-server-runtime.ts` 只剩三个入口与「读名册 → 拼门面 → 收尾」,值引用的功能 28 → 2(logging、storage)。
+3. **顺序**:拆的顺序逐格不动(标签照旧进 `server surface cleanup failed { step }`);装的顺序只挪了纯构造与互不相干的单槽端口(D221)。
+   `ServerRuntimeStore` 仍是一条订阅、同一个标签、同样三段顺序;日志命名空间仍是 `server.runtime`。死代码按 D222 删。
+
+**读数**:`client-api:gate` 57 → 72 只文件(41 个功能),`entry:gate` 非测试 0 / 测试 838 不变,`cycle:gate` 0 环(入口 62 不变),
+`layer:gate` 0,`name:gate` 0,`assembly:gate` 169 不变,`transport:gate` 不变,`feature-map` 重生成(68 行)。
+
+**验收**(改前 `$S/s35-before/`、改后 `$S/s35-after/`,同一份脚本 `$S/s35-checks.sh`):三套 tsc 零错;四个 bundle 全成(server 主包 +6,051 字节、
+桌面主进程 −959、CLI 主包与三份检索 Worker / ACP 桥字节数不变);全量 vitest 根 11,431 条,失败集合除 `settings-model-registry-abort` 一条
+负载抖动外相同(单跑三次 2/2 绿),壳 7,344 条失败集合相同;`http-server/__tests__` + `apps/backend-server` 逐条对照 231 条结果相同
+(唯一一条红 `serves sandboxed file methods … watch SSE` 改前就红);快照与 golden 的 sha 不变;persistence / import-side-effect-free +
+assembly-lifecycle 绿;shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydration 0 失败;`gate:search-index` 与改前同三条红;
+`gate:acp` / `gate:web-shell` / `gate:client` / `log:smoke` / `provider:drill` 绿;全部结构门绿;CLI 与 server 能起(server 启动日志除端口 /
+令牌 / 耗时外逐行相同)。第一轮全量曾红一条 `media-resolve-file.test` 的静态门(媒体库路径并进投递件文件),已改成单开一只文件后重跑全套。

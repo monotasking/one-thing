@@ -27,7 +27,9 @@
  */
 
 import type { ServerResponse } from 'node:http'
-import type { OnethingRuntimeFacade, RuntimeRequestContext, RuntimeUnsubscribe } from './http-server-runtime-facade.js'
+import type { OnethingRuntimeFacade, RuntimeGlobalEventsAdapter, RuntimeRequestContext, RuntimeUnsubscribe } from './http-server-runtime-facade.js'
+import type { GenericEventBus } from '@onething/backend/event'
+import type { AgentEngineSessionEvent } from '@onething/backend/agent'
 import { GLOBAL_EVENT_LEAVES_PROCESS, type GlobalEvent } from '@shared/events/index.js'
 import { writeSse, type SseDelivery } from './http-server-sse.js'
 
@@ -84,4 +86,42 @@ export function subscribeNonSessionEvents(
 ): void {
   subscribeSettingsEvents(context, unsubs)
   subscribeGlobalEvents(context, unsubs)
+}
+
+/**
+ * 门面的 `globalEvents` 一格:按 `GLOBAL_EVENT_LEAVES_PROCESS` 逐条 `onGlobal`。
+ * 2026-10-04 随 server runtime 拆分从 `http-server-runtime.ts` 原样搬来(决策 D219)。
+ */
+export function createServerGlobalEventsPort(
+	eventBus: Pick<GenericEventBus<AgentEngineSessionEvent>, 'onGlobal'>,
+): RuntimeGlobalEventsAdapter {
+	/**
+	 * 全局(非会话)事件的推送面(原子 K2a')。
+	 *
+	 * 名单来自 `@shared/events` 的 `GLOBAL_EVENT_LEAVES_PROCESS` —— **这里逐条
+	 * `onGlobal` 而不是挂一个"什么都收"的钩子**:`EventBus` 只有按类型的订阅面,
+	 * 而为转发在总线上新开一个通配钩子,等于给一个只有一个读者的需求加一种机制。
+	 * 名单是数据(加一种事件在那张表上加一行),这一句循环里没有任何事件的名字。
+	 *
+	 * 过滤在**这一头**做一次(哪些出得了进程),SSE 那头(`global-event-delivery.ts`)
+	 * 再读同一张表做一次:一次是"不订阅",一次是"不写帧"。两处读同一张表,不是两份
+	 * 名单 —— 别的宿主将来装自己的 `globalEvents` 端口时,SSE 那一道仍然在。
+	 */
+	const globalEventsPort: RuntimeGlobalEventsAdapter = {
+		subscribe(handler: (event: unknown) => void): RuntimeUnsubscribe {
+			const unsubs: RuntimeUnsubscribe[] = [];
+			for (const [type, leaves] of Object.entries(GLOBAL_EVENT_LEAVES_PROCESS)) {
+				if (!leaves) continue;
+				unsubs.push(
+					eventBus.onGlobal(type as never, (envelope: { event: unknown }) => {
+						handler(envelope.event);
+					}),
+				);
+			}
+			return () => {
+				for (const unsubscribe of unsubs.splice(0)) unsubscribe();
+			};
+		},
+	};
+	return globalEventsPort;
 }

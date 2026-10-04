@@ -22,7 +22,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from '../http-server-routes.js'
-import { SERVER_REDACTED_SECRET, type OnethingServerRuntime } from '../http-server-runtime.js'
+import { SERVER_REDACTED_SECRET } from '@onething/backend/mcp'
+import type { OnethingServerRuntime } from '../http-server-runtime.js'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,

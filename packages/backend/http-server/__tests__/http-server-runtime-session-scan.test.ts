@@ -2,10 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createLocalServerSessionStore,
-  type OnethingServerRuntime,
-} from '../http-server-runtime.js'
+import { createLocalServerSessionStore } from '../../session/session-client-api-server-store.js'
+import type { OnethingServerRuntime } from '../http-server-runtime.js'
 import { createTestServerRuntime } from './http-server-test-helpers.js'
 
 // P1′ 防回归:server 运行时不允许在创建 / 列表 / 取会话路径上做

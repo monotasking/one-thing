@@ -26,11 +26,9 @@ import { Permission, resetPermissionGrantsForTests } from '@onething/backend/per
 import { createDefaultSettings } from '@onething/backend/settings'
 import { chatRouter } from '@shared/ipc/chat.js'
 import { createOnethingHttpServer as createRawHttpServer, type OnethingHttpServerOptions } from '../http-server-routes.js'
-import {
-  SERVER_REDACTED_SECRET,
-  createAppBackedServerSessionStore,
-  type OnethingServerRuntime,
-} from '../http-server-runtime.js'
+import { SERVER_REDACTED_SECRET } from '@onething/backend/mcp'
+import { createAppBackedServerSessionStore } from '../../session/session-client-api-server-store.js'
+import type { OnethingServerRuntime } from '../http-server-runtime.js'
 // P4c 第十一批:设置面的 http 投影搬出 `runtime.ts`,由域处理者调用。
 import {
   mergeServerSettingsUpdate,

@@ -2,7 +2,7 @@ import { mkdtemp, rm, readFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { createEchoServerSessionStore } from '../http-server-runtime.js'
+import { createEchoServerSessionStore } from '../../session/session-client-api-server-store.js'
 import { getCurrentBackendSafe } from '../../backend-current.js'
 
 it('keeps an echo transcript readable after reopening without a production Backend or ledger', async () => {

@@ -30,14 +30,16 @@ export {
 export {
   createDevelopmentOnethingServerRuntime,
   createOnethingServerRuntimeOverBackend,
-  createFileServerSettingsStore,
-  createSingleFileServerSettingsStore,
   toOnethingServerBackend,
   type OnethingServerRuntime,
   type OnethingServerRuntimeOptions,
   type OnethingServerRuntimeOverBackendOptions,
-  type ServerSettingsStore,
 } from './http-server-runtime.js'
+export {
+  createFileServerSettingsStore,
+  createSingleFileServerSettingsStore,
+  type ServerSettingsStore,
+} from '../settings/settings-client-api-server-store.js'
 
 // 3. 发现文件
 export {

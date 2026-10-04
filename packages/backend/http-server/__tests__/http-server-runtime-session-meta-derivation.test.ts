@@ -18,7 +18,7 @@ import {
 	onSessionIndexChanged,
 	updateSessionsIndexMetaForCommands,
 } from "../../session/session-store.js";
-import { createAppBackedServerSessionStore } from "../http-server-runtime.js";
+import { createAppBackedServerSessionStore } from "../../session/session-client-api-server-store.js";
 import { installStoreSessionLayerForTest } from "../../session/testing/session-testing-store-layer.js";
 let storeLayer: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>;
 
