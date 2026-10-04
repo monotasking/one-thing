@@ -1,4 +1,4 @@
-import type { ContextVariable, VariableContext, VariableProvider } from '../types.js'
+import type { ContextVariable, VariableContext, VariableProvider } from '../variable-types.js'
 
 const CARDS = 'my_cards'
 const ROOMS = 'my_rooms'

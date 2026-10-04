@@ -84,10 +84,10 @@ import {
   MUSIC_PROVIDER_PATH,
   MUSIC_RADIO_PATH,
   MUSIC_RESOURCE_SCHEME,
-} from '@onething/backend/music/resource-spec'
-import { assertMusicOperator } from '@onething/backend/music/access'
+} from '@onething/backend/music/music-resource-spec'
+import { assertMusicOperator } from '@onething/backend/music/music-access'
 import { resolveDjSpeakDone } from '@onething/backend/music/dj-voice'
-import { getMusicNowPlaying } from '@onething/backend/music/service'
+import { getMusicNowPlaying } from '@onething/backend/music/music-service'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/current.js'
 import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
 import {
@@ -98,7 +98,7 @@ import {
 } from '@onething/backend/http-server/http-server-resource-envelope.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
-/** 这个进程当前那台资源内核。与 `session/sessions-client-api.ts` 同一条读法、同一句「还没装配」。 */
+/** 这个进程当前那台资源内核。与 `session/session-client-api.ts` 同一条读法、同一句「还没装配」。 */
 function resources() {
   const backend = getCurrentBackendInstance()
   if (!backend) throw new BackendNotAssembledError()

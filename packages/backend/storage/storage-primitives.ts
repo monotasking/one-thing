@@ -121,11 +121,11 @@ export type {
 } from './store-layout.js'
 export {
   HeadlessStorageManager,
-} from './provider.js'
+} from './storage-provider.js'
 export type {
   CoreStorageConfig,
   CoreStorageProvider,
   CoreStorageProviderFactory,
   CoreStorageType,
   GetStorageOptions,
-} from './provider.js'
+} from './storage-provider.js'

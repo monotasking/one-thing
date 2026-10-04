@@ -7,7 +7,7 @@ import {
   compositeAnalyzer,
   latinWordAnalyzer,
   splitWordParts,
-} from '../analyzer/index.js'
+} from '../analyzer/search-kernel-analyzer.js'
 import {
   DEFAULT_NORMALIZERS,
   composeNormalizers,

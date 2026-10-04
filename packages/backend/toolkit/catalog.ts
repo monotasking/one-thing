@@ -9,8 +9,8 @@
  * 现连、异步 schema 在第一次列表时现拉),各自重复实现"只跑一次"且都不并发安全。
  */
 
-import type { Tool } from './tool.js'
-import type { PrepareEnv } from './spec.js'
+import type { Tool } from './toolkit-tool.js'
+import type { PrepareEnv } from './toolkit-spec.js'
 
 export class Catalog {
   private readonly tools = new Map<string, Tool>()

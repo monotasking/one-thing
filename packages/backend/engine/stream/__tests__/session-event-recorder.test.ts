@@ -38,7 +38,7 @@ const { beginSessionRun, endSessionRun, resetSessionRuns, rotateSessionRun } = a
 )
 const { readSessionShadowStats, resetSessionEventStatsCache } = await import('@onething/backend/session')
 const { attachSessionEventRecorder, createSessionEventRecorder } = await import('../session-event-recorder.js')
-const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
+const { installSessionLayerForTest } = await import('../../../session/testing/session-testing-layer.js')
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 
 const SESSION_ID = 'session-under-test'
@@ -1048,7 +1048,7 @@ describe('session event recorder (agent loop integration)', () => {
    *
    * Claude Code SDK 连接器把一整段多轮会话装进一次 `streamTurn`:工具由它自己
    * 执行(`externallyExecuted`),工具结果到齐后发一条 `finish(tool_calls)` 当轮
-   * 分界,runner **当场转发**(`agent-loop/runner.ts` 那段 2026-08-11 的注释)。
+   * 分界,runner **当场转发**(`agent-loop/agent-loop-runner.ts` 那段 2026-08-11 的注释)。
    * 这里跑的是**真的** agent-loop + 真的记录器,provider 说的就是那套话。
    */
   function externalRoundBoundaryProvider(): AgentProvider {

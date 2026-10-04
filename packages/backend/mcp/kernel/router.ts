@@ -700,7 +700,7 @@ export function resolveMCPRouterAction(
  * drift, and the shape of that drift is exactly the bug this function exists to
  * prevent.
  *
- * `toolOutputToText` (agent-loop/tools.ts) JSON.stringifies any payload
+ * `toolOutputToText` (agent-loop/agent-loop-tools.ts) JSON.stringifies any payload
  * that has no `output` string. For a result carrying an image part that meant
  * the base64 was inlined into the tool message text *and* attached again as a
  * real image part — the same bytes charged twice. The summary keeps binary

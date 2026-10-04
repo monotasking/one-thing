@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import {
 	flattenContextMessages,
 	type RawContextMessage,
-} from "../runner.js";
+} from "../eval-runner.js";
 
 describe("flattenContextMessages", () => {
 	it("passes through plain user/assistant messages", () => {

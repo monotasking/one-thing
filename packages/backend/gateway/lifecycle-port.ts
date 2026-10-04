@@ -7,7 +7,7 @@
  * 做得到(Electron 宿主的 gateway/lifecycle 那套原语)。server / CLI 守护进程
  * 没有这套东西。
  *
- * 判例照 `shell/host-ports.ts` 与 `auth/host-ports.ts`:
+ * 判例照 `shell/shell-host-ports.ts` 与 `auth/auth-host-ports.ts`:
  * **零依赖**(本文件只 import `@shared/ipc/gateway.js` 的类型)、**late-bound**
  * (每次调用现读,宿主接线晚于模块求值也照样生效)、**未注入即结构化降级**
  * 而不是抛错 —— 没有宿主的进程里「拉起微信网关」是一件做不到的事,不是 bug。

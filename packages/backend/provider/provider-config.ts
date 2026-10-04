@@ -2,15 +2,15 @@ import {
   extractErrorDetails,
   extractResponseBodyDetails,
   type CoreErrorDetails,
-} from '../agent-loop/index.js'
+} from '../agent-loop/agent-loop.js'
 import { pickOnethingProviderOptions, type OnethingProviderOptions } from './provider-options.js'
-import { resolveOnethingProviderBaseUrl } from './endpoint.js'
+import { resolveOnethingProviderBaseUrl } from './provider-endpoint.js'
 // 鉴权豁免改问执行器能力面(E0):判据是「它是不是外部执行体」,
 // 不是「它的 id 在不在某张名单里」。表在 agents/executor/capabilities.ts。
-import { isExternalAgentExecutorProvider } from '../agent/executor/registry.js'
+import { isExternalAgentExecutorProvider } from '../agent/executor/agent-executor-registry.js'
 
 /**
- * 错误详情的提取只有一份,在 core(`packages/backend/agent-loop/index` 的 `extractErrorDetails`)。
+ * 错误详情的提取只有一份,在 core(`packages/backend/agent-loop/agent-loop` 的 `extractErrorDetails`)。
  * 这里从前逐字抄了一份,连智谱的错误码表也抄了一份;现在错误码说明归各家自己的
  * manifest(`errorDescriptions`),经 core 的查询口接进去(见 `manifest.ts`)。
  */

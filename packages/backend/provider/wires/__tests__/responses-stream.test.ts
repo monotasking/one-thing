@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
-import "../../dialects/index.js";
-import { LedgerModelProfileResolver, RequestBodyBuilder, TurnContext, listDialects } from "../../base/index.js";
+import { getLogger } from "../../../logging/logging.js";
+import "../../dialects/provider-dialects.js";
+import { LedgerModelProfileResolver, RequestBodyBuilder, TurnContext, listDialects } from "../../base/provider-base.js";
 import { OpenAIResponsesWire, parseCodexResponsesSse, type ResponsesDialect } from "../openai-responses-wire.js";
 
 class TestResponsesWire extends OpenAIResponsesWire {

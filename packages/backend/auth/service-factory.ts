@@ -3,8 +3,8 @@ import {
   type OnethingAuthServiceOptions,
 } from './auth-service.js'
 import { callbackServerManager } from './callback-server.js'
-import { getAuthProviderDefinition } from './registry.js'
-import type { OnethingOAuthToken } from './types.js'
+import { getAuthProviderDefinition } from './auth-registry.js'
+import type { OnethingOAuthToken } from './auth-types.js'
 
 /**
  * 令牌存放面 `tokenStore` 必须由调用方给(D24 断边 ③,2026-10-04)。从前缺省时这里自己装上凭证池那一台

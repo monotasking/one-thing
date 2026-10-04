@@ -8,7 +8,7 @@
  * 这里只放机制(零依赖纯 TS,四个宿主共享),接线在 app 层。
  */
 
-import { describePluginSurface, resolvePluginScopeSeverity, type PluginFailureScope } from './policy.js'
+import { describePluginSurface, resolvePluginScopeSeverity, type PluginFailureScope } from './plugin-policy.js'
 import { CORE_PLUGIN_FAILURE_THRESHOLD } from './runtime-guard-constants.js'
 
 /** 提示词装配是每次发消息的热路径,预算必须小。 */

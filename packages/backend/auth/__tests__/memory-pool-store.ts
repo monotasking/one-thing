@@ -10,7 +10,7 @@ import {
   type OnethingSpaceAuthTokenStore,
 } from '../../credentials/credentials-token-store.js'
 import type { OnethingSpaceCredentialTarget } from '../credential-target.js'
-import type { OnethingOAuthToken } from '../types.js'
+import type { OnethingOAuthToken } from '../auth-types.js'
 
 interface MemoryEntry {
   id: string

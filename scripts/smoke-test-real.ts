@@ -5,11 +5,11 @@ import {
   type ToolCall,
   type ToolResult,
 } from '../packages/backend/tool/tool-helpers.ts'
-import type { Provider } from '../packages/backend/provider/index.ts'
+import type { Provider } from '../packages/backend/provider/provider.ts'
 import {
   createAnthropicProvider,
   createDeepSeekProvider,
-} from '../packages/backend/provider/index.ts'
+} from '../packages/backend/provider/provider.ts'
 
 type CliJsonEvent =
   | { type: 'text_delta'; text: string }

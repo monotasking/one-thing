@@ -48,7 +48,7 @@
  *      成功那一刻说得出口,于是桌面自己的调用方在面起来之前被当成不可信的联网
  *      调用方(`search.query` 直接抛)。判据取 `isHostLocallyTrusted()` 与
  *      `hostLocalTrustOrigin()` 这两个**六个域真在读的**函数,不另造一个观察口。
- *      反证(实跑过):把 `host-ports.ts` 里 `applyHostPorts` 那句
+ *      反证(实跑过):把 `backend-host-ports.ts` 里 `applyHostPorts` 那句
  *      `configureHostLocalTrust(host.localTrust)` 摘掉 → 这一条第一段立刻红
  *      (`expected false to be true`)。**注意反证不是"改宿主的那张表"** ——
  *      这份文件交的是自己那张表;而 React 壳那张表改成 `null` 之后 smoke:core
@@ -64,7 +64,7 @@
  *      dispose → 不在场;第二份用 `voice: null` 装配 → 仍然不在场。B3 那版
  *      `applyHostPorts` 只还原 `localTrust` 一格,于是第二只 backend 会继承第一只
  *      注入的语音端口 —— 而"这台宿主有没有语音"正是 B 期把 voice 域十一条挂上去的
- *      那句话。反证(实跑过):把 `host-ports.ts` 里 `restores.push(resetVoiceHost)`
+ *      那句话。反证(实跑过):把 `backend-host-ports.ts` 里 `restores.push(resetVoiceHost)`
  *      摘掉 → 这一条最后一段红。
  *   ⑬ **MCP / ACP 的收尾"构造即登记",与起没起过无关**(C1,方案
  *      `backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。`mcpAcp: false`
@@ -80,7 +80,7 @@
  *      反证(实跑过):把 `backend.ts` 那两句 `own(..., 'mcp'/'acp')` 挪回
  *      `if (options.mcpAcp)` 里 → ⑬ 与这一条一起红。
  *      **「shutdown 必须排在在途 start 落地之后」那半条判在别处**
- *      (`mcp/__tests__/subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
+ *      (`mcp/__tests__/mcp-subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
  *      `await inFlight` → 红):在整只 backend 上判不了它 —— 要让"关到 mcp 那一格
  *      时 start 仍在途"确定地成立,就得由 dispose 链自己去放闸,而正确实现正好
  *      死等那个闸,判据会把自己判死锁。
@@ -377,7 +377,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 不必为这条断言另造一个探针 —— 与 ⑩ 取 `isHostLocallyTrusted()` 同一个理由。
    */
   it('⑫ 宿主端口随 dispose 还原:voice:{} → dispose → voice:null 仍是没有', { timeout: 180_000 }, async () => {
-    const { hasVoiceHost } = await import('@onething/backend/voice/host-ports')
+    const { hasVoiceHost } = await import('@onething/backend/voice/voice-host-ports')
 
     expect(hasVoiceHost()).toBe(false)
 

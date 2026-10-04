@@ -1,7 +1,7 @@
 import type { JsonObject } from "@shared/json";
 import { resolveOnethingModelCapabilities } from "./model-capability.js";
 import { getOnethingModelsDevProviderId } from "./models-dev-catalog.js";
-import { getProviderManifest, type ProviderModelsSource } from "./manifest.js";
+import { getProviderManifest, type ProviderModelsSource } from "./provider-manifest.js";
 import {
 	effectiveModelFactsOf,
 	onethingModelOverrideFactsOf,
@@ -17,7 +17,7 @@ import {
 	type GetModelsDevDataOptions,
 	type ModelsDevCache,
 } from "./models-dev-cache.js";
-import { ONETHING_MODEL_DISPLAY_NAMES } from "./model-families/index.js";
+import { ONETHING_MODEL_DISPLAY_NAMES } from "./model-families/provider-model-families.js";
 // Catalog-key rules live in models-dev-catalog.ts (the renderer imports that
 // file alone); re-exported here so existing callers keep their import path.
 export {

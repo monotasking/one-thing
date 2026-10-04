@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resetWechatSenderRateLimitForTests, sendText, sendTyping } from '../sender.js'
-import type { WechatAuthState } from '../auth.js'
+import type { WechatAuthState } from '../wechat-ilink-auth.js'
 
 const originalFetch = globalThis.fetch
 

@@ -15,12 +15,12 @@
  * *what to call them* are separate problems; mixing them makes a bad result
  * impossible to attribute.
  */
-import type { SessionGoal } from '../goal/types.js'
+import type { SessionGoal } from '../goal/goal-types.js'
 import type {
   SessionSegment,
   SessionSegmentFile,
   SessionSegmentOutcome,
-} from './types.js'
+} from './toc-types.js'
 
 /**
  * A user is "away" if this much wall-clock passed between the agent finishing

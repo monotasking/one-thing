@@ -14,7 +14,7 @@ import {
   clearAllPromptContextProviders,
   registerPromptContextProvider,
   type OnethingPluginPromptContext,
-} from '../index.js'
+} from '../prompt.js'
 import { buildOnethingSystemPrompt } from '../builder.js'
 
 const host = {

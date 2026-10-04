@@ -22,8 +22,8 @@ const mocks = vi.hoisted(() => ({
   notes: [] as Array<{ roomSessionId: string; entry: Record<string, unknown> }>,
 }))
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
 })
 

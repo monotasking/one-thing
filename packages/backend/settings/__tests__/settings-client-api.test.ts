@@ -53,7 +53,7 @@ vi.mock('@onething/backend/todo-plan/todo-plan-service', () => ({
   startTodoPlanWatcher: ports.startTodoPlanWatcher,
 }))
 
-vi.mock('@onething/backend/voice/service', () => ({
+vi.mock('@onething/backend/voice/voice-service', () => ({
   getVoiceServiceSafe: ports.getVoiceServiceSafe,
 }))
 
@@ -74,8 +74,8 @@ async function loadDomain() {
   const [registry, domain, hostPorts, events] = await Promise.all([
     import('../../http-server/http-server-dispatch-table.js'),
     import('../settings-client-api.js'),
-    import('@onething/backend/settings/host-ports'),
-    import('@onething/backend/settings/events'),
+    import('@onething/backend/settings/settings-host-ports'),
+    import('@onething/backend/settings/settings-events'),
   ])
   return { ...registry, ...domain, ...hostPorts, ...events }
 }
@@ -103,9 +103,9 @@ describe('settings RPC domain', () => {
     dispose = undefined
     const { resetRpcRegistryForTests } = await import('../../http-server/http-server-dispatch-table.js')
     resetRpcRegistryForTests()
-    const { configureSettingsHost } = await import('@onething/backend/settings/host-ports')
+    const { configureSettingsHost } = await import('@onething/backend/settings/settings-host-ports')
     configureSettingsHost({})
-    const { configureSettingsEventBroadcaster } = await import('@onething/backend/settings/events')
+    const { configureSettingsEventBroadcaster } = await import('@onething/backend/settings/settings-events')
     configureSettingsEventBroadcaster(null)
     vi.resetModules()
   })

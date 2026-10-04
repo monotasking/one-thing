@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { formatRefTag } from '@shared/references/ref-tag'
 import type { CorePromptFragment } from '@onething/backend/agent-loop'
-import { refTypes, renderReferenceGuide } from '../index.js'
-import type { RefTypeSpec } from '../spec.js'
+import { refTypes, renderReferenceGuide } from '../reference.js'
+import type { RefTypeSpec } from '../reference-spec.js'
 import { BUILTIN_PROMPT_FRAGMENTS } from '../../prompt/builder.js'
 
 /**

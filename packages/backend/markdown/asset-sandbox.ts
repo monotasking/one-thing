@@ -18,7 +18,7 @@ import {
 } from '@onething/backend/markdown'
 import { isPathInside, resolveInsideSandbox, type RpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { getSettings } from '@onething/backend/settings'
-import { getNotesSubsystemSafe, noteRootsNow } from '../note/notes-subsystem.js'
+import { getNotesSubsystemSafe, noteRootsNow } from '../note/note-subsystem.js'
 
 /**
  * **停留在全局层**(批 B2)。markdown 附件根服务的是笔记编辑器:它的请求坐标是

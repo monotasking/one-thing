@@ -17,7 +17,7 @@ import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEventBroadcaster,
-} from '../settings/events.js'
+} from '../settings/settings-events.js'
 
 const log = getLogger('pets')
 

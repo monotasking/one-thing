@@ -9,8 +9,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
-import type { CollabDayDigest } from './index.js'
-import { getLogger } from '../logging/index.js'
+import type { CollabDayDigest } from './collab.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('collab.digest')
 

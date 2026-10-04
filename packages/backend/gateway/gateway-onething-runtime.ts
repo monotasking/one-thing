@@ -11,11 +11,11 @@ import {
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,
-} from '../agent-loop/index.js'
+} from '../agent-loop/agent-loop.js'
 import {
   createOnethingStreamEngineRuntime,
   type OnethingStreamRuntimeOptions,
-} from '../engine/index.js'
+} from '../engine/engine.js'
 
 export interface OnethingRuntime<
   TEventBus extends CoreEventBusEmitterLike = CoreEventBusEmitterLike,

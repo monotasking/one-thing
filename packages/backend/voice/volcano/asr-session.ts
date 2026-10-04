@@ -6,7 +6,7 @@ import {
   encodeVolcanoFullClientRequest,
   getVolcanoErrorMessage,
   parseVolcanoJsonPayload,
-} from './protocol.js'
+} from './voice-volcano-protocol.js'
 
 export interface OnethingDoubaoSettingsLike {
   apiKey?: string

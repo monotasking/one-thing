@@ -1,7 +1,7 @@
 import { isCollabChainResetMessage } from './classify.js'
 import { isCollabPassMessage } from './pass.js'
 import { isCollabSayMessage, isCollabThinkingMessage } from './say.js'
-import { isCollabDriveMessage, isCollabHarvestMessage, type CollabMessageLike } from './types.js'
+import { isCollabDriveMessage, isCollabHarvestMessage, type CollabMessageLike } from './collab-types.js'
 
 /**
  * Chain accounting (§6.2):

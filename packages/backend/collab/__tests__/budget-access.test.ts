@@ -14,7 +14,7 @@ vi.mock('../board-store.js', () => ({ loadCollabBoard: () => ({ tasks: [{
 vi.mock('../room-runtime.js', () => ({ postSystemLine: vi.fn() }))
 
 it('does not disclose foreign or ownerless historical costs through a visible room board', async () => {
-  const { getCollabRoomSpend } = await import('../budget.js')
+  const { getCollabRoomSpend } = await import('../collab-budget.js')
   const result = await getCollabRoomSpend('alice-room', { canReadSession: id => id.startsWith('alice-') })
   expect(result).toMatchObject({ success: true, spentTodayUSD: 3 })
 })

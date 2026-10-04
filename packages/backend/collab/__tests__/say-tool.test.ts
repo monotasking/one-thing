@@ -69,8 +69,8 @@ vi.mock('../../session/reads.js', () => import('../../session/testing/facade-moc
 vi.mock('../../session/session-commands.js', () => import('../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
   }) }
@@ -107,7 +107,7 @@ vi.mock('@onething/backend/agent/agent-store-access', () => ({
 }))
 
 // 费用闸的读口(D6-b:协调器删除后 say 直接从 budget.ts 取,不再中转一次)。
-vi.mock('../budget.js', () => ({
+vi.mock('../collab-budget.js', () => ({
   isRoomOverBudget: async () => mocks.overBudget,
 }))
 

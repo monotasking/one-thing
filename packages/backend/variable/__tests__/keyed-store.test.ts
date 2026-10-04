@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { KeyedStoreProvider, type KeyedStoreGateway } from '../providers/keyed-store.js'
 import { GlobalStoreProvider } from '../providers/global-store.js'
-import { SessionStoreProvider } from '../providers/session-store.js'
-import { VariableRegistry } from '../registry.js'
-import { VariableError, type ContextVariable, type VariableContext } from '../types.js'
+import { SessionStoreProvider } from '../providers/variable-providers-session-store.js'
+import { VariableRegistry } from '../variable-registry.js'
+import { VariableError, type ContextVariable, type VariableContext } from '../variable-types.js'
 
 const ctx: VariableContext = { sessionId: 'sess-a' }
 

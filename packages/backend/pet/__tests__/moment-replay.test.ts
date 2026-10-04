@@ -19,11 +19,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ResourceKernel, ResourceRegistry, type ResourceEventHub, type ResourceProvider } from '@onething/backend/resource/resource-api'
 import type { ToolRunner } from '@onething/backend/toolkit/tool-protocol'
-import { musicResourceSpec } from '@onething/backend/music/resource-spec'
+import { musicResourceSpec } from '@onething/backend/music/music-resource-spec'
 import { EventBus } from '@onething/backend/event/session-event-bus'
 import { forwardResourceEventsToBus } from '@onething/backend/resource/event-bridge'
 import { PetResourceProvider } from '@onething/backend/resource/pet-provider'
-import { PetsSubsystem } from '../subsystem.js'
+import { PetsSubsystem } from '../pet-subsystem.js'
 
 class FakeMusic implements ResourceProvider {
   readonly spec = musicResourceSpec

@@ -11,12 +11,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { Embedder } from '../../kernel/index.js'
+import type { Embedder } from '../../kernel/search-kernel.js'
 
 import { probeEmbedderModel } from '../../embedding/model-store.js'
-import type { EmbedderFactory } from '../../embedding/registry.js'
+import type { EmbedderFactory } from '../../embedding/search-embedding-registry.js'
 import { ModelDownloader } from '../model-download.js'
-import { SearchIndexService } from '../service.js'
+import { SearchIndexService } from '../search-index-service.js'
 import { MODEL_UNAVAILABLE_ERROR } from '../worker-core.js'
 import { createSameThreadWorker, createTempStore } from './helpers.js'
 import type { SameThreadWorker, TempStore } from './helpers.js'

@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import type { ContextVariable, VariableContext, VariableProvider } from '../types.js'
+import type { ContextVariable, VariableContext, VariableProvider } from '../variable-types.js'
 
 const NAME = 'git_branch'
 

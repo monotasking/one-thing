@@ -14,7 +14,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { EventBus } from '@onething/backend/event/bus-primitives'
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 
 const { resetSessionEventLogCache } = await import('../event-log.js')
 const { writeSessionEvent } = await import('../event-writer.js')

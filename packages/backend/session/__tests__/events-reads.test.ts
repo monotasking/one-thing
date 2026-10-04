@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * S2a:读门面的两种模式(§11.1)。
  *

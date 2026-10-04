@@ -14,7 +14,7 @@ import { configureAppSkillsLoader } from '../skill-sources.js'
  * `...skillVaultRootsNow()` 去掉,下面那条用例当场红(笔记库里的技能不再加载)。
  */
 const noteVaults = vi.hoisted(() => ({ roots: [] as unknown[] }))
-vi.mock('../../note/notes-subsystem.js', () => ({ skillVaultRootsNow: () => noteVaults.roots }))
+vi.mock('../../note/note-subsystem.js', () => ({ skillVaultRootsNow: () => noteVaults.roots }))
 
 // Adapter wiring is an explicit assembly step now (no import-time config).
 configureAppSkillsLoader()

@@ -26,10 +26,10 @@ import type {
   SearchQuery,
   TextRange,
 } from '../candidate.js'
-import type { CapabilityManifest } from '../capability.js'
-import type { Embedder, IndexedDoc, VectorHit, VectorIndex } from '../index/types.js'
+import type { CapabilityManifest } from '../search-kernel-capability.js'
+import type { Embedder, IndexedDoc, VectorHit, VectorIndex } from '../index/search-kernel-index-types.js'
 import { applyRanking } from './lexical-retriever.js'
-import type { Retriever, RetrievedPage } from './indexed.js'
+import type { Retriever, RetrievedPage } from './search-kernel-bases-indexed.js'
 
 /** 这一路的召回器 id。`manifest.retrievers[id].when` 按它认路(§15.4)。 */
 export const VECTOR_RETRIEVER_ID = 'vector'

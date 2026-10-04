@@ -15,7 +15,7 @@ import { dirnamePath, ensureDirAsync, writeTextFileAsync } from '@onething/backe
 import { computeDiffHunks, trimDiffHunks } from '../../tool/diff-hunks.js'
 import { countLineChanges, type TextFileSnapshot } from '../../tool/file-snapshot.js'
 import { trimDiff } from '../../tool/replacers.js'
-import { defineInput, listZodIssues } from '../contract.js'
+import { defineInput, listZodIssues } from '../toolkit-contract.js'
 import {
   MAX_REVALIDATION_ATTEMPTS,
   MutatingFileTool,

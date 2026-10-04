@@ -30,10 +30,10 @@ import { processImageGenerationStream } from './image-stream.js'
 import {
   executeAgentLoopStreamGeneration,
   type AgentLoopStreamGenerationResult,
-} from './agent-loop-executor.js'
+} from './engine-stream-agent-loop-executor.js'
 import { type StreamContext, type StreamSender } from './stream-processor.js'
 import type { HistoryMessage } from './message-helpers.js'
-import type { ProviderAuthContext } from '@onething/backend/auth/ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import type { AgentOutputModality } from '@onething/backend/agent-loop/loop-primitives'
 import {
   executeCoreMessageStream,

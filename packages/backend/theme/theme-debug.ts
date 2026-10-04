@@ -1,6 +1,6 @@
 import { converter } from 'culori'
-import type { ResolvedUIStyle } from './resolver.js'
-import type { SemanticUIToken } from './types.js'
+import type { ResolvedUIStyle } from './theme-resolver.js'
+import type { SemanticUIToken } from './theme-types.js'
 
 const toOklch = converter('oklch')
 

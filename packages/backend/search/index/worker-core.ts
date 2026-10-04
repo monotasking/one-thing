@@ -38,19 +38,19 @@ import type {
   VectorHit,
   VectorIndex,
   VectorSearchScope,
-} from '../kernel/index.js'
+} from '../kernel/search-kernel.js'
 import {
   buildLexicalQuery,
   composeDocumentFilters,
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
-} from '../kernel/index.js'
-import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '../kernel/index.js'
+} from '../kernel/search-kernel.js'
+import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '../kernel/search-kernel.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import type { ModelDownloader, ModelState, ModelStatus } from './model-download.js'
-import { DEFAULT_INDEX_MAINTENANCE_POLICY, shouldOptimizeFullText, shouldVacuum } from './storage.js'
-import type { IndexMaintenancePolicy } from './storage.js'
+import { DEFAULT_INDEX_MAINTENANCE_POLICY, shouldOptimizeFullText, shouldVacuum } from './search-index-storage.js'
+import type { IndexMaintenancePolicy } from './search-index-storage.js'
 import type { SqliteIndex } from './sqlite-index.js'
 import { VectorWriter } from './vector-writer.js'
 import type { VectorState } from './vector-writer.js'

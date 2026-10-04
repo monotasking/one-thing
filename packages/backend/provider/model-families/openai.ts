@@ -13,7 +13,7 @@ import type {
   OnethingReasoningEffortOption,
   OnethingReasoningProfile,
 } from '../model-capability.js'
-import type { OnethingModelContextLengthHint } from './types.js'
+import type { OnethingModelContextLengthHint } from './provider-model-families-types.js'
 
 /**
  * OpenAI 的档位表**逐代不同**(拍板 #14,官方各模型页「Reasoning.effort
@@ -139,7 +139,7 @@ export function onethingOpenAIReasoningProfile(model: string): OnethingReasoning
 }
 
 // ---------------------------------------------------------------------------
-// 列表口没给说明 / 上下文长度时的型号常识(从 `vendors/github-copilot/models.ts` 的
+// 列表口没给说明 / 上下文长度时的型号常识(从 `vendors/github-copilot/github-copilot-models.ts` 的
 // `getCopilotModelDescription` 与 `detectCopilotModelCapabilities` 搬来,逐字;P2 第 4 批)
 // ---------------------------------------------------------------------------
 

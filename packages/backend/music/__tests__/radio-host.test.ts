@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   throwOnFact: false,
 }))
 
-vi.mock('@onething/backend/music/process-runner', () => ({
+vi.mock('@onething/backend/music/music-process-runner', () => ({
   createElectronMusicProcessRunner: () => ({
     run: async () => ({ code: 0, stdout: '{"success": true}', stderr: '' }),
     spawn: () => ({ done: Promise.resolve({ code: 0, stdout: '', stderr: '' }), kill: () => {} }),
@@ -39,14 +39,14 @@ vi.mock('../player-volume.js', async importOriginal => ({
   readProviderVolume: () => undefined,
 }))
 
-vi.mock('@onething/backend/voice/host-ports', () => ({
+vi.mock('@onething/backend/voice/voice-host-ports', () => ({
   broadcastVoiceHostMessage: vi.fn(),
   configureVoiceHost: vi.fn(),
   getVoiceHostPorts: () => ({}),
 }))
 
-vi.mock('../service.js', async () => {
-  const { ncmMusicProvider } = await import('@onething/backend/music/index')
+vi.mock('../music-service.js', async () => {
+  const { ncmMusicProvider } = await import('@onething/backend/music/music')
   return {
     getActiveMusicProvider: () => ncmMusicProvider,
     getMusicNowPlaying: () => null,
@@ -61,7 +61,7 @@ vi.mock('../service.js', async () => {
   }
 })
 
-vi.mock('@onething/backend/agent/store-bound', () => ({
+vi.mock('@onething/backend/agent/agent-store-bound', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
   findAgent: () => ({ systemPrompt: '', tools: ['bash'], kind: 'service' }),
@@ -77,15 +77,15 @@ vi.mock('../../session/session-store.js', () => ({
   onSessionsDeleted: () => () => {},
 }))
 
-vi.mock('@onething/backend/storage/index', () => ({ getOnethingStorePath: () => mocks.dir }))
+vi.mock('@onething/backend/storage/storage', () => ({ getOnethingStorePath: () => mocks.dir }))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => mocks.settings }))
 
 /*
  * 归属这一层给一份真的(与 `radio-authorization.test.ts` 同一种摆法):每条会话都归
  * 那个固定的本机主体,于是 `sessionAccess.resolve` 走的是真判据,而不是被整只换掉。
  */
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return {
     ...actual,
     sessionAccess: actual.createSessionAccess({
@@ -134,8 +134,8 @@ async function loadRadio() {
   activeRadio ??= radio.createRadioScope({
     storePath: mocks.dir,
     service: {
-      ...(await import('../service.js')),
-      runner: (await import('@onething/backend/music/process-runner')).createElectronMusicProcessRunner(),
+      ...(await import('../music-service.js')),
+      runner: (await import('@onething/backend/music/music-process-runner')).createElectronMusicProcessRunner(),
     },
     hostVoice: () => hostVoice,
     announceHostFact: (event: string, payload: Record<string, unknown>) => {

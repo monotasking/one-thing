@@ -22,7 +22,7 @@ import {
   compareCoreSemver,
   unscopedPluginIdFromPackageName,
   type CorePluginLoaderLogger,
-} from './loader.js'
+} from './plugin-loader.js'
 
 export const PLUGIN_LEDGER_FILE_NAME = 'package.json'
 export const PLUGIN_LOCK_FILE_NAME = 'package-lock.json'

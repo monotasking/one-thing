@@ -1,15 +1,15 @@
 import path from 'node:path'
-import { applyVisibility, type SearchContext } from './kernel/index.js'
+import { applyVisibility, type SearchContext } from './kernel/search-kernel.js'
 import { canonicalizeStorePath } from '@onething/backend/storage'
-import type { OnethingSearchProvidersAdapters } from './providers.js'
-import type { SearchServiceOptions } from './service.js'
+import type { OnethingSearchProvidersAdapters } from './search-providers.js'
+import type { SearchServiceOptions } from './search-service.js'
 import {
   createSessionAccess,
   DEFAULT_SESSION_OWNER,
   ownerMatchesContext,
   SessionAccessError,
 } from '@onething/backend/session'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import { getConnectedDirectories, getConnectedDirectoriesForSession } from '@onething/backend/file'
 
 /** Global notes, prompts and plugin catalogs are owned by the local operator. */

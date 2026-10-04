@@ -10,15 +10,15 @@
  * `OnethingReasoningWire` 值建表,方言不持有线型)。
  */
 import type { AgentProvider } from "@onething/backend/agent-loop/loop-primitives";
-import { ResolveAuth, thinkingWires } from "./base/index.js";
+import { ResolveAuth, thinkingWires } from "./base/provider-base.js";
 import {
 	createOpenAIChatProvider,
 	openAIChatDialect,
 	openAIChatTransportCapabilities,
 	type FetchFn,
-} from "./dialects/index.js";
-import { OpenAIChatPartCodec } from "./wires/index.js";
-import "./thinking/index.js";
+} from "./dialects/provider-dialects.js";
+import { OpenAIChatPartCodec } from "./wires/provider-wires.js";
+import "./thinking/provider-thinking.js";
 // 搬回家的服务商的思考参数线型由名册登记(`providers/vendors/runtimes.ts`)。
 import "./vendors/runtimes.js";
 import type { AgentProviderRequestDumper } from "./request-dumper.js";

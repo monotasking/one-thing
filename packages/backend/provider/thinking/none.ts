@@ -12,7 +12,7 @@
  * 同回合里被丢掉的 temperature 仍归 `setting-dropped`,两者不是一件事)。
  * **这是旁路元数据,请求体的字节一个不变**(快照零变化)。
  */
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { OpenAIChatThinkingWire } from "./openai-chat-thinking-wire.js";
 
 export class OpenAIChatNoThinkingWire extends OpenAIChatThinkingWire {

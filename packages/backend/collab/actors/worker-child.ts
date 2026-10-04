@@ -49,7 +49,7 @@ import {
   type CollabWorkerEvidenceRef,
   type CollabWorkerLimits,
   type CollabWorkerOutcome,
-} from './index.js'
+} from './collab-actors.js'
 
 import type { CollabMindSay } from './mind-port.js'
 

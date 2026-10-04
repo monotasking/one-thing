@@ -16,7 +16,7 @@
  * ## 为什么是独立模块而不是挂在 room-runtime 上
  *
  * `room-runtime.ts` 吃 `node:fs` 与当前引擎的槽(`@onething/backend/current.js`);而消费方之一是
- * `engine/prompt/system-prompt.ts` —— 挂在那边就得让引擎反向 import 房间运行时,
+ * `engine/prompt/engine-system-prompt.ts` —— 挂在那边就得让引擎反向 import 房间运行时,
  * 一条 `engine → room-runtime → engine` 的环。这里只吃 agents 名册与一个纯谓词,
  * 是一片叶子,谁都可以指向它。`room-runtime.roomMembers` 保留为它的转发口
  * (既有调用点不动)。

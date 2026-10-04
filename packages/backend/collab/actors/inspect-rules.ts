@@ -101,9 +101,9 @@ export interface CollabInspectAgentInput {
 
 /** 与 `room-runtime.ts` 的 `COLLAB_MAX_CONCURRENT_TURNS` 同值。见下面的注释。 */
 export const COLLAB_INSPECT_DEFAULT_MAX_CONCURRENT = 6
-/** 与 `collab/types.ts` 的 `COLLAB_DEFAULT_MAX_CHAIN` 同值。 */
+/** 与 `collab/collab-types.ts` 的 `COLLAB_DEFAULT_MAX_CHAIN` 同值。 */
 export const COLLAB_INSPECT_DEFAULT_MAX_CHAIN = 32
-/** 与 `collab/types.ts` 的 `COLLAB_DM_PAIR_MAX_CHAIN` 同值。 */
+/** 与 `collab/collab-types.ts` 的 `COLLAB_DM_PAIR_MAX_CHAIN` 同值。 */
 export const COLLAB_INSPECT_DM_PAIR_MAX_CHAIN = 6
 
 /**

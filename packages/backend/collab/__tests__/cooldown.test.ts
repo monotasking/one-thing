@@ -27,7 +27,7 @@ import {
   COLLAB_MESSAGE_SOURCE,
   type CollabAgentLike,
   type CollabMessageLike,
-} from '../types.js'
+} from '../collab-types.js'
 
 const MEMBERS: CollabAgentLike[] = [
   { id: 'pm', name: '阿明', title: '产品经理' },

@@ -10,7 +10,7 @@ import {
   COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
   COLLAB_SYSTEM_SOURCE_TASK,
 } from '../system-lines.js'
-import type { CollabAgentLike, CollabMessageLike } from '../types.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 
 const AGENTS: CollabAgentLike[] = [
   { id: 'pm', name: '阿明', title: '产品经理' },

@@ -38,7 +38,7 @@ import type { SearchOrigin, SearchRow } from './types'
  * ── 换来的可感知变化(如实记账,不是悄悄改掉)──────────────────────────────
  * | 从前 | 现在 | 为什么 |
  * | --- | --- | --- |
- * | 会话**预览文本**(首条用户消息的截断)能搜到 | 搜不到 | chats 的索引 schema 只有 `title` 一格(拍点乙 a,`capabilities/sessions.ts`);从前那一路是壳拿 `previewText` 本地 `includes` 出来的 |
+ * | 会话**预览文本**(首条用户消息的截断)能搜到 | 搜不到 | chats 的索引 schema 只有 `title` 一格(拍点乙 a,`capabilities/search-capabilities-sessions.ts`);从前那一路是壳拿 `previewText` 本地 `includes` 出来的 |
  * | 会话**章节**(标题 / 摘要)能搜到 | 搜不到 | 章节从来没有进过索引,它是 `sessions.getSegments` 按需拉的一份视图;要让它可搜是给 chats 补一条 feed,是后端的一批 |
  * | 命中是**子串**(`includes`) | 是**词与前缀** | 索引的语义(§2 拍定);「查询是某个词元的中段」从此不中,与 parity-B 的差集口径逐字同源 |
  * | 空间过滤靠「拿屏幕那张会话表筛」 | 靠 `filters.spaceId` 这一格结构地说 | 见 `./filters.ts` 的 `spaceFilterValue` |

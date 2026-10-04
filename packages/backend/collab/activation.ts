@@ -1,5 +1,5 @@
 import { resolveCollabMentionIds } from './mentions.js'
-import type { CollabAgentLike, CollabMentionLike } from './types.js'
+import type { CollabAgentLike, CollabMentionLike } from './collab-types.js'
 
 /** Why an agent is about to speak. 'self-elected' = it passed its own
  *  response-willingness judgement (docs/design/multi-agent-collab-im.md §2);

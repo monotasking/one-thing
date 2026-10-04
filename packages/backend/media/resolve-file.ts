@@ -26,7 +26,7 @@ import { basename, isAbsolute, relative } from 'node:path'
 import { canonicalizeStorePath } from '@onething/backend/storage'
 import type { OnethingMediaLibraryService } from '@onething/backend/media'
 import { SessionAccessError, type SessionAccess, type SessionAccessContext } from '@onething/backend/session'
-import { assertMediaAccess } from './access.js'
+import { assertMediaAccess } from './media-access.js'
 
 /** 一只纯函数只要库的三样读面;HTTP 那边的租户库与共享库都满足它。 */
 export type MediaFileLibrary = Pick<OnethingMediaLibraryService, 'listAssetAccess' | 'storagePaths' | 'getAsset'>

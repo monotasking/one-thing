@@ -12,7 +12,7 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { captureRuntimeLogs } from '../../logging/index.js'
+import { captureRuntimeLogs } from '../../logging/logging.js'
 import { writeSpaceCredentials, resetSpaceCredentialsCacheForTests } from '../../credentials/credentials-pool.js'
 import {
   notifySpaceDataChanged,
@@ -21,7 +21,7 @@ import {
   type SpaceDataChangedEvent,
 } from '../notifications.js'
 import { resetSpaceOverlayCacheForTests, writeSpaceOverlay } from '../overlay.js'
-import { setRootDirForTests } from '../persistence.js'
+import { setRootDirForTests } from '../space-persistence.js'
 
 let tmpDir: string
 

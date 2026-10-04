@@ -9,9 +9,9 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeOnethingReasoningProfileOverride } from '../model-capability.js'
 import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from '../thinking/protocol-wire-ids.js'
-import { getProviderManifestRegistry } from '../manifest.js'
-import { thinkingWires } from '../base/index.js'
-import '../thinking/index.js'
+import { getProviderManifestRegistry } from '../provider-manifest.js'
+import { thinkingWires } from '../base/provider-base.js'
+import '../thinking/provider-thinking.js'
 import '../vendors/runtimes.js'
 
 /** 搬家前 `REASONING_WIRES` 的全部取值,逐字。 */

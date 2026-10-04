@@ -12,7 +12,7 @@ import type {
   NoteProcessResult,
   NoteProcessRunOptions,
   NoteProcessRunner,
-} from '../types.js'
+} from '../note-types.js'
 
 export const CLI_FIXTURES = {
   vaultNotFound: 'Vault not found.\n',

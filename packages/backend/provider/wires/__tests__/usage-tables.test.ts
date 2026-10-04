@@ -14,8 +14,8 @@ import {
 	getDialect,
 	type UsageBuckets,
 	type UsageNormalizer,
-} from "../../base/index.js";
-import "../../dialects/index.js";
+} from "../../base/provider-base.js";
+import "../../dialects/provider-dialects.js";
 import { anthropicUsage } from "../anthropic-usage.js";
 import { geminiUsage } from "../gemini-wire.js";
 import { OPENAI_CHAT_USAGE_TABLE } from "../openai-chat-wire.js";

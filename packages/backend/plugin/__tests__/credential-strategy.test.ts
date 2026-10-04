@@ -19,8 +19,8 @@ import {
   pluginCredentialStrategySurface,
   toPluginCredentialEntryView,
 } from '../credential-strategy.js'
-import { describePluginPermission } from '../sessions.js'
-import { describePluginSurface, pluginScope, resolvePluginScopeSeverity } from '../policy.js'
+import { describePluginPermission } from '../plugin-sessions.js'
+import { describePluginSurface, pluginScope, resolvePluginScopeSeverity } from '../plugin-policy.js'
 
 describe('批 E 凭证策略 —— 命名空间', () => {
   it('namespaces the policy value under plugin:<id>:<name>', () => {

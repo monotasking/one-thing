@@ -13,8 +13,8 @@ import { type LogLevel } from '@shared/logging/types'
 import {
   ensureDir,
   getOnethingLogDir,
-} from '@onething/backend/storage/index'
-import { setRuntimeLoggerRoot } from '@onething/backend/logging/index'
+} from '@onething/backend/storage/storage'
+import { setRuntimeLoggerRoot } from '@onething/backend/logging/logging'
 import { JsonlFileSink } from '@onething/backend/logging/jsonl-file-sink'
 import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from '@onething/backend/logging/legacy-console-sink'
 import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from '@onething/backend/logging/crash-hooks'
@@ -31,8 +31,8 @@ export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from '@o
 // P3'a-3:`consolePort` 是纯适配器,已归位 `@onething/backend/logging`。装配层
 // 原样再导出 —— 34 个 `import { consolePort, getLogger } from './configure-logging.js'`
 // 调用点一行不改(`getLogger` 这半边仍是装配层自己的那一个,不能一起换源)。
-export { consolePort } from '@onething/backend/logging/index'
-export type { ConsoleLikePort } from '@onething/backend/logging/index'
+export { consolePort } from '@onething/backend/logging/logging'
+export type { ConsoleLikePort } from '@onething/backend/logging/logging'
 export type { LegacyDebugAliasSpec } from '@onething/backend/logging/legacy-debug-env'
 export type { AppLogLevel, AppLogRecord } from '@onething/backend/logging/rolling-file-logger'
 

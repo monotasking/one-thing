@@ -15,7 +15,7 @@ import {
   EDIT_TOOL_PROMPT,
   VARIABLE_TOOL_PROMPT,
   WRITE_TOOL_PROMPT,
-} from '../index.js'
+} from '../toolkit.js'
 import { toolkitPromptFragments, toolkitPromptSource } from '../prompt-source.js'
 
 class StubTool extends ToolkitTool<Record<string, never>, undefined> {

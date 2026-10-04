@@ -21,7 +21,7 @@ import type {
   ToolEvent,
 } from '@onething/backend/toolkit/tool-protocol'
 import { allowAuthorizer, RecordingObserver } from './fakes.js'
-import { ZodValidator } from '../contract.js'
+import { ZodValidator } from '../toolkit-contract.js'
 
 export interface RunOptions {
   /**

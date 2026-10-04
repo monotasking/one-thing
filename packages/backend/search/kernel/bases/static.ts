@@ -21,7 +21,7 @@ import type {
   SearchPage,
   SearchQuery,
 } from '../candidate.js'
-import type { CapabilityManifest, SearchCapability } from '../capability.js'
+import type { CapabilityManifest, SearchCapability } from '../search-kernel-capability.js'
 import type { CursorCodec } from '../cursor.js'
 import { createCursorCodec, hashQueryShape } from '../cursor.js'
 import { paginate, readOffsetCursor } from '../pipeline/page.js'

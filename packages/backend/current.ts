@@ -2,7 +2,7 @@
  * 进程当前实例槽(方案 `docs/design/backend-composition-root-2026-09.md` 的 A2,§2.2)。
  *
  * **整个 `packages/backend` 里唯一允许的模块级 `let`。** A2 之前有三个:
- * `event/index.ts` 的 `eventBus`/`streamChannel`、`session/session-layer.ts` 转给 core 的
+ * `event/event.ts` 的 `eventBus`/`streamChannel`、`session/session-layer.ts` 转给 core 的
  * 那一份、`engine/engine-layer.ts`(今包根 `assemble-engine.ts`)的 `streamEngine`/`onethingRuntime`。三份各自
  * "已存在 → warn → return",于是"装配 → 关机 → 再装配"这条路谁也说不清是谁的
  * 尸体还在。现在只有这一份,由 `OnethingBackend.assemble` 立、由 `dispose()` 清。
@@ -20,8 +20,8 @@
  *
  * ## 句柄不是类
  *
- * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`event/index.ts`
- * 要读它,而 `backend.ts` 要 import `event/index.ts`。窄接口住在这个叶子文件里,
+ * `BackendHandle` 是只含字段的窄接口,不是 `OnethingBackend` 本身:`event/event.ts`
+ * 要读它,而 `backend.ts` 要 import `event/event.ts`。窄接口住在这个叶子文件里,
  * 那条环就不存在。(下面对 `assemble-engine.js` 的 `import type` 是**纯类型**,
  * 编译期即被抹掉,不产生运行期边。)
  */
@@ -35,9 +35,9 @@ import type { SessionDeletionRecovery } from '@onething/backend/session'
 import type { MediaLibraryService } from '@onething/backend/media'
 import type { ToolExecutionRegistry } from '@onething/backend/toolkit/executions'
 import type { PracticeService } from '@onething/backend/practice/service-slot'
-import type { MusicSubsystem } from '@onething/backend/music/subsystem'
+import type { MusicSubsystem } from '@onething/backend/music/music-subsystem'
 import type { CollabDigestRunner } from '@onething/backend/collab/digest-runner'
-import type { NotesSubsystem } from '@onething/backend/note/notes-subsystem'
+import type { NotesSubsystem } from '@onething/backend/note/note-subsystem'
 import type { StreamEngine } from '@onething/backend/engine'
 import type { MainOnethingRuntime } from './assemble-engine.js'
 import type { OnethingBackend } from './backend.js'

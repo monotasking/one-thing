@@ -2,7 +2,7 @@
  * 宠物账本与「当前是哪一只」的落盘(宠物 P2,正本 `docs/design/pet-system-2026-09.md` §9.1)。
  *
  *   · `<store>/pets/<id>/ledger.jsonl` —— 追加写,一行一件事(行形在
- *     `@onething/backend/pet/ledger`)。启动与换宠物时读**尾部** N 行;
+ *     `@onething/backend/pet/pet-ledger`)。启动与换宠物时读**尾部** N 行;
  *   · `<store>/pets/current.json`     —— `{ "id": "<petId>" }`,记当前领养的那一只。
  *
  * ── 坏的就跳过,不抛 ────────────────────────────────────────────────────────

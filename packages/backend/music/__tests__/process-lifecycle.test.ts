@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
-import { createElectronMusicProcessRunner } from '../process-runner.js'
+import { createElectronMusicProcessRunner } from '../music-process-runner.js'
 
 it.skipIf(process.platform === 'win32')('quiesces an owned child and grandchild and drains their actual stdio closure', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'music-process-group-'))

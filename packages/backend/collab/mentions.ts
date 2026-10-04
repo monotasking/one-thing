@@ -1,4 +1,4 @@
-import type { CollabAgentLike, CollabMentionLike } from './types.js'
+import type { CollabAgentLike, CollabMentionLike } from './collab-types.js'
 
 /**
  * Parse @mentions of room members from a message text.

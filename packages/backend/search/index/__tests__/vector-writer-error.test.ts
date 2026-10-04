@@ -11,9 +11,9 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { Embedder, IndexedDoc, VectorHit, VectorIndex } from '../../kernel/index.js'
+import type { Embedder, IndexedDoc, VectorHit, VectorIndex } from '../../kernel/search-kernel.js'
 
-import { captureRuntimeLogs } from '../../../logging/index.js'
+import { captureRuntimeLogs } from '../../../logging/logging.js'
 import {
   VECTOR_ERROR_MAX_LENGTH,
   VectorWriter,

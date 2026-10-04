@@ -71,7 +71,7 @@ import {
   resolveProviderAuth,
 } from '@onething/backend/engine'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
-import { Permission } from '@onething/backend/permission/permission'
+import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { billTitleUsage } from '@onething/backend/usage/bill-side-line'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
@@ -79,9 +79,9 @@ import { requestSessionOwner, sessionAccess } from '@onething/backend/session'
 import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/backend/session'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/backend/session'
-import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/prompt/system-prompt-snapshot'
+import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '@onething/backend/prompt/prompt-system-prompt-snapshot'
 import type { AbortOnethingStreamsForIpcOptions, OnethingAbortToolCallLike, OnethingAbortStepLike, OnethingAbortMessageLike } from '@onething/backend/session'
-import type { OnethingAuthAccount } from '@onething/backend/auth/types'
+import type { OnethingAuthAccount } from '@onething/backend/auth/auth-types'
 import type { ProviderConfig, OAuthToken, ChatSession } from '@shared/ipc.js'
 
 const log = getLogger('rpc.chat')

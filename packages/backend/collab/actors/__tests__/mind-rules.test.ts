@@ -25,7 +25,7 @@ import {
   recordCollabAgentWorkerResult,
   takeCollabAgentFold,
 } from '../mind-rules.js'
-import { collabActorRef, collabRoomPosted } from '../protocol.js'
+import { collabActorRef, collabRoomPosted } from '../collab-actors-protocol.js'
 import type { CollabFoldEntry } from '../envelope-fold.js'
 
 const ROOM = 'room-1'

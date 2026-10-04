@@ -32,7 +32,7 @@ import {
   hasTerminalHost,
   type TerminalExitStatus,
   type TerminalService,
-} from '@onething/backend/terminal/service'
+} from '@onething/backend/terminal/terminal-service'
 import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent/spawn-env'
 import { authorizeAcpRequest } from './request-authorize.js'
 

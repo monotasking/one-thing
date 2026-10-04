@@ -162,7 +162,7 @@ export const IPC_CHANNELS = {
 	PLUGINS_NOTIFICATION: "plugins:notification",
 	// 统一请求通道(R2)的**中间态**。请求与取消本身已经是
 	// `plugins.request` / `plugins.requestAbort` 两条 router 方法;进度改走
-	// `@onething/backend/plugin/events` 的注入端口,桌面按
+	// `@onething/backend/plugin/plugin-events` 的注入端口,桌面按
 	// `RpcDispatchContext.callerId` **定向回发起窗** —— 设置窗是独立 BrowserWindow,
 	// 广播出去等于每扇窗都收一份别人的进度。
 	PLUGINS_REQUEST_PROGRESS: "plugins:request-progress",
@@ -201,7 +201,7 @@ export const IPC_CHANNELS = {
 	// RPC 通道(P4c 第十批,`@shared/ipc/evals.ts` 的 evalsRouter +
 	// `@shared/ipc/evals-workbench.ts` 的 evalsWorkbenchRouter)。
 	// 只剩这三条**推送** —— router 没有推送面;它们走
-	// `backend/eval/events.ts` 的 configureEvalsEventBroadcaster 注入端口。
+	// `backend/eval/eval-events.ts` 的 configureEvalsEventBroadcaster 注入端口。
 	EVALS_RUN_PROGRESS: "evals:run-progress",
 	EVALS_REPLAY_PROGRESS: "evals:replay-progress",
 	EVALS_DIAGNOSE_PROGRESS: "evals:diagnose-progress",

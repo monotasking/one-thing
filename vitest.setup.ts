@@ -6,7 +6,7 @@ import nodePath from 'node:path'
 //
 // ── 硬闸:测试进程结构上摸不到真机 store(§16.22)────────────────────────
 //
-// store 根解析成 `ONETHING_STORE_PATH || ~/.onething`(runtime `storage/paths.ts`),
+// store 根解析成 `ONETHING_STORE_PATH || ~/.onething`(runtime `storage/storage-paths.ts`),
 // 所以**任何**没显式指定 store 的测试默认写的都是用户的真机库。从前靠"每个测试
 // 自己换 HOME"来躲,那是纪律不是机制,而且躲不干净:落盘常常是排队异步的,回调
 // 跑到时 HOME 早已恢复,字节照样进真机库(事件账本那条已由 event-log.ts 钉死落点

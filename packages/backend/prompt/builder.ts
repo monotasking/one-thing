@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { getProviderManifest } from "../provider/index.js";
-import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "../provider/index.js";
+import { getProviderManifest } from "../provider/provider.js";
+import { routedProviderIdOf, type CoreSpaceCredentialMarker } from "../provider/provider.js";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -18,23 +18,23 @@ import {
 	StaticPromptSource,
 	type ComposedPrompt,
 	type PromptSource,
-} from "./composer.js";
-import { renderReferenceGuide } from "../reference/index.js";
+} from "./prompt-composer.js";
+import { renderReferenceGuide } from "../reference/reference.js";
 import { promptFragments } from "./fragments.js";
 import { PluginPromptContextSource } from "./plugin-context.js";
 import {
 	ONETHING_DEFAULT_SYSTEM_PROMPT,
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
-} from "./system-prompt.js";
+} from "./prompt-system-prompt.js";
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('engine.prompt')
 
 export {
 	PROMPT_BLOCK_TOOL_GUIDELINES,
 	PROMPT_BLOCK_TOOL_WORKSPACE_RULES,
-} from "./composer.js";
+} from "./prompt-composer.js";
 
 import voiceSpeakModeRaw from "./content/voice-speak-mode.md?raw";
 import osDarwinRaw from "./content/os-darwin.md?raw";

@@ -25,8 +25,8 @@ import { voiceRouter } from '@shared/ipc/voice.js'
 
 const sessionState = vi.hoisted(() => ({ currentId: undefined as string | undefined }))
 vi.mock('../../session/current-session.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
     id === 's1' ? {} : id === 'alice-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' } : undefined,
   }) }
@@ -51,7 +51,7 @@ const providers = vi.hoisted(() => ({
 
 const settings = vi.hoisted(() => ({ getSettings: vi.fn() }))
 
-vi.mock('@onething/backend/voice/service', () => ({
+vi.mock('@onething/backend/voice/voice-service', () => ({
   getVoiceService: () => service,
 }))
 
@@ -72,7 +72,7 @@ async function loadDomain() {
   const [registry, domain, hostPorts] = await Promise.all([
     import('../../http-server/http-server-dispatch-table.js'),
     import('../voice-client-api.js'),
-    import('@onething/backend/voice/host-ports'),
+    import('@onething/backend/voice/voice-host-ports'),
   ])
   return { ...registry, ...domain, ...hostPorts }
 }
@@ -106,7 +106,7 @@ describe('voice RPC domain', () => {
     dispose = undefined
     const { resetRpcRegistryForTests } = await import('../../http-server/http-server-dispatch-table.js')
     resetRpcRegistryForTests()
-    const { resetVoiceHostForTests } = await import('@onething/backend/voice/host-ports')
+    const { resetVoiceHostForTests } = await import('@onething/backend/voice/voice-host-ports')
     resetVoiceHostForTests()
     vi.resetModules()
   })

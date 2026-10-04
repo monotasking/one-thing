@@ -15,7 +15,7 @@
  * runs "understand the request → explore → conclude" and the middle is the
  * least useful part.
  */
-import type { SessionSegment } from './types.js'
+import type { SessionSegment } from './toc-types.js'
 
 /** Rough chars-per-token. Deliberately conservative — overshooting the budget costs money. */
 const CHARS_PER_TOKEN = 3.5

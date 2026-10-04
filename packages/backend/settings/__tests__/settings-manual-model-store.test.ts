@@ -19,7 +19,7 @@ vi.mock('../settings-store.js', () => ({
     state.settings = settings
   },
 }))
-vi.mock('@onething/backend/space/store', () => ({
+vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'work' }] }),
 }))
 vi.mock('@onething/backend/space/provider-settings', () => ({

@@ -6,11 +6,11 @@ import type {
   AgentMessageContent,
   AgentModelCapabilities,
   AgentToolResult,
-} from './types.js'
+} from './agent-loop-types.js'
 import {
   agentSupportsStructuredToolResults,
   agentSupportsToolResultModality,
-} from './capabilities.js'
+} from './agent-loop-capabilities.js'
 
 function isRecord(value: AgentJsonValue | undefined): value is AgentJsonObject {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))

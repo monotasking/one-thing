@@ -19,7 +19,7 @@
 import path from 'node:path'
 import { readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
 import { ncmIdSchema } from './providers/ncm/ids.js'
-import type { MusicIdSchema } from './providers/types.js'
+import type { MusicIdSchema } from './providers/music-providers-types.js'
 
 export interface OnethingRadioBrief {
   active: boolean

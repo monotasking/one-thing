@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NcmCliDriver, extractNcmCliJson, parseNcmCliConfigured } from '../ncm-cli-driver.js'
-import { OnethingMusicQuotaError, type OnethingMusicProcessRunner } from '../types.js'
+import { OnethingMusicQuotaError, type OnethingMusicProcessRunner } from '../music-types.js'
 
 function createRunner(
   respond: (args: string[]) => { code?: number; stdout?: string; stderr?: string },

@@ -23,7 +23,7 @@
  *
  * 表的寿命与进程一样长,条目的寿命与一轮回合一样长。`clear` 只给停机与测试用。
  */
-import type { HostToolTurnContext } from './types.js'
+import type { HostToolTurnContext } from './external-agent-host-mcp-types.js'
 
 const bindings = new Map<string, HostToolTurnContext>()
 

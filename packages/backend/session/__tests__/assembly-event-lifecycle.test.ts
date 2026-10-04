@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChatSession } from '@shared/ipc.js'
 import { materializeChatMessages } from '@shared/session/projection/chat-messages'
 import { flushSessionEventLog, readSessionLogEventsSync } from '../event-log.js'
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 import { writeSessionEvent } from '../event-writer.js'
 import { getLiveSessionProjection } from '../projection-cache.js'
 

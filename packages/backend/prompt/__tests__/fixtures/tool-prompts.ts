@@ -3,9 +3,9 @@ import {
 	EDIT_TOOL_PROMPT,
 	VARIABLE_TOOL_PROMPT,
 	WRITE_TOOL_PROMPT,
-} from "../../../toolkit/index.js";
+} from "../../../toolkit/toolkit.js";
 import { defaultOnethingPromptComposer } from "../../builder.js";
-import { PromptComposer, StaticPromptSource } from "../../composer.js";
+import { PromptComposer, StaticPromptSource } from "../../prompt-composer.js";
 
 /**
  * The prompt declarations of the builtin tools that carry one, keyed by tool

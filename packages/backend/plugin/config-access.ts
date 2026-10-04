@@ -9,9 +9,9 @@ import {
   describePluginConfig,
   getEffectivePluginConfig,
   setPluginConfig,
-} from './config.js'
-import { getLogger } from '../logging/index.js'
-import type { OnethingPluginConfigAccess } from './ipc-operations.js'
+} from './plugin-config.js'
+import { getLogger } from '../logging/logging.js'
+import type { OnethingPluginConfigAccess } from './plugin-ipc-operations.js'
 
 const log = getLogger('plugins')
 

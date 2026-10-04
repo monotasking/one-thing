@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createOnethingAgentStore } from '../store.js'
+import { createOnethingAgentStore } from '../agent-store.js'
 
 let directory: string
 beforeEach(() => { directory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-store-owner-')) })

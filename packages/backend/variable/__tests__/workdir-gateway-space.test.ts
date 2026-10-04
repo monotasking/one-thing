@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   variableBuckets: new Map<string, unknown[]>(),
 }))
 
-vi.mock('@onething/backend/variable/store-bound', () => ({
+vi.mock('@onething/backend/variable/variable-store-bound', () => ({
   getVariablesStore: () => ({
     initialize: () => undefined,
     getGlobalVariables: () => mocks.variableBuckets.get('global') ?? [],
@@ -66,13 +66,13 @@ vi.mock('../../session/session-store.js', () => ({
 const { workdirGateway, projectStoreGateway, agentStoreGateway, globalStoreGateway } =
   await import('../gateways.js')
 const { projectIdFromPath } = await import('@onething/backend/project-dir')
-const { getProjectsStore } = await import('@onething/backend/project-dir/store')
-const { buildProjectDirsPromptVars } = await import('../../project-dir/bootstrap.js')
-const { setRootDirForTests } = await import('@onething/backend/project-dir/persistence')
+const { getProjectsStore } = await import('@onething/backend/project-dir/project-dir-store')
+const { buildProjectDirsPromptVars } = await import('../../project-dir/project-dir-bootstrap.js')
+const { setRootDirForTests } = await import('@onething/backend/project-dir/project-dir-persistence')
 const { setRootDirForTests: setSpacesRootForTests } = await import(
-  '@onething/backend/space/persistence'
+  '@onething/backend/space/space-persistence'
 )
-const { resetProjectsStoreForTests } = await import('@onething/backend/project-dir/store')
+const { resetProjectsStoreForTests } = await import('@onething/backend/project-dir/project-dir-store')
 
 let legacyRoot: string
 let workspacesRoot: string

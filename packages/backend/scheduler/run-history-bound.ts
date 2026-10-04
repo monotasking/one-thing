@@ -12,9 +12,9 @@ import {
 } from './run-history.js'
 import {
   getOnethingSchedulerRunsDir,
-} from '../storage/index.js'
+} from '../storage/storage.js'
 import type { SchedulerRunDetailDTO } from '@shared/ipc.js'
-import { consolePort, getLogger } from '../logging/index.js'
+import { consolePort, getLogger } from '../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { SchedulerRunHistoryLogger } from '@onething/backend/scheduler/run-history'
 

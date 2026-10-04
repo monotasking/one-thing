@@ -3,7 +3,7 @@ import {
   buildOnethingPrompt,
   buildOnethingSystemPrompt,
 } from '../builder.js'
-import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '../system-prompt.js'
+import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '../prompt-system-prompt.js'
 import { testPromptComposer } from './fixtures/tool-prompts.js'
 
 const host = {

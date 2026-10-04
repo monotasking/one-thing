@@ -12,7 +12,7 @@
  * 而 `get user` 两个词在文档里也是 get@k / user@k+1,同一条判据一起答了。
  */
 
-import type { Analyzer, Token } from './types.js'
+import type { Analyzer, Token } from './search-kernel-analyzer-types.js'
 import { isCjkChar } from './cjk-bigram.js'
 
 const WORD_CHAR = /[\p{L}\p{N}_]/u

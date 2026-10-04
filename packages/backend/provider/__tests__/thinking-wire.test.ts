@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentMessage, AgentTurnRequest, AgentTurnStreamEvent } from '@onething/backend/agent-loop/loop-primitives'
-import { createClaudeAgentProvider } from '../vendors/claude/agent-provider.js'
-import { createGeminiAgentProvider } from '../vendors/gemini/agent-provider.js'
+import { createClaudeAgentProvider } from '../vendors/claude/claude-agent-provider.js'
+import { createGeminiAgentProvider } from '../vendors/gemini/gemini-agent-provider.js'
 import {
   createOpenAICompatibleAgentProvider,
   type OpenAICompatibleAgentProviderOptions,

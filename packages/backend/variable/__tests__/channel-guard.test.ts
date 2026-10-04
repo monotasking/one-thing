@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ContextVariable } from '../index.js'
+import type { ContextVariable } from '../variable.js'
 import { createChannelSessionGuard } from '../channel-guard.js'
 
 const guard = createChannelSessionGuard(sessionId =>

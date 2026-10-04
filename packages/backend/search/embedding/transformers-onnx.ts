@@ -56,9 +56,9 @@
  * **不重试到死**(§15.3)。词法路一个字不受影响。
  */
 
-import type { EmbedKind, Embedder } from '../kernel/index.js'
+import type { EmbedKind, Embedder } from '../kernel/search-kernel.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import { resolveHuggingFaceEndpoint } from '../index/worker-network.js'
 import { normalizeVector } from './embedder.js'
 import { hasEmbedderModelFiles, isEmbedderModelPresent } from './model-store.js'
@@ -68,7 +68,7 @@ import type {
   EmbedderFactory,
   EmbedderModelSpec,
   EmbedderVerifyOptions,
-} from './registry.js'
+} from './search-embedding-registry.js'
 
 const log = getLogger('search.embedding')
 
@@ -301,7 +301,7 @@ async function loadLocalPipeline(
  *
  * 会话当场还回去:这一路要的只是**那句判断**,不是一份能跑推理的管线。这条路只在
  * 「这条 Worker 没装嵌入器」(开关关着)时走 —— 开关开着时认领直接用嵌入器自己那一次
- * 装载,不装第二遍 118 MB(接线在 `search/index/worker.ts`)。
+ * 装载,不装第二遍 118 MB(接线在 `search/index/search-index-worker.ts`)。
  */
 export async function verifyE5SmallModel(options: EmbedderVerifyOptions): Promise<void> {
   const pipe = await loadLocalPipeline(options.modelDir)

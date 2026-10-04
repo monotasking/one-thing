@@ -18,7 +18,7 @@
  */
 
 import { buildMessageBodyShapePayload, type CoreChatLogMessageShape, type CoreChatLogValue } from '@onething/backend/agent-loop'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 export type ChatLogMessageShape = CoreChatLogMessageShape
 

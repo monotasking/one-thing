@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../session/testing/session-testing-layer.js'
 
 let storeDir: string
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>

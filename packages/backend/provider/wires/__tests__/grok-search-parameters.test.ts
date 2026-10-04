@@ -37,17 +37,17 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
-import "../../dialects/index.js";
-import { decodeGrokResponsesCitations } from "../../vendors/grok/dialect.js";
-import type { ResponsesDialect } from "../index.js";
+import { getLogger } from "../../../logging/logging.js";
+import "../../dialects/provider-dialects.js";
+import { decodeGrokResponsesCitations } from "../../vendors/grok/grok-dialect.js";
+import type { ResponsesDialect } from "../provider-wires.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
 	TurnContext,
 	listDialects,
 	type Dialect,
-} from "../../base/index.js";
+} from "../../base/provider-base.js";
 
 const GROK_MODEL = "grok-4.6";
 

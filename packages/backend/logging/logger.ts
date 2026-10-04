@@ -7,7 +7,7 @@ import {
   type LogFields,
   type LogSource,
   type Logger,
-} from './types.js'
+} from './logging-types.js'
 import { type LogLevel } from '@shared/logging/types.js'
 
 export interface LoggerRootOptions {

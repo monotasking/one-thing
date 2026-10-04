@@ -2,7 +2,7 @@
  * scheduler 域,端到端穿过 dispatcher(结构债 P4c)。
  *
  * 接的是被删掉的两处转发的测试位:`apps/electron/src/ipc/scheduler.ts` 那个手写
- * IPC 工厂(它的 `__tests__/scheduler.test.ts` 只证「九条通道各挂了一个 handle」,
+ * IPC 工厂(它的 `__tests__/scheduler-cron-runner.test.ts` 只证「九条通道各挂了一个 handle」,
  * 随工厂一起删)与 server 那九条 REST 路由。真正值得钉的是**搬家没搬丢形状** ——
  * 传输面只把端口接上去,判定与降级全在 `@onething/backend/scheduler` 的
  * `*ForIpc` 投影里。所以这里逐条盯的是:

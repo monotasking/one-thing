@@ -17,31 +17,31 @@ import { systemPrincipal } from '@shared/permission/principal'
 import * as store from '@onething/backend/session'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
 import { getEventBus } from '@onething/backend/event'
-import { getProjectsStore } from '../project-dir/bootstrap.js'
+import { getProjectsStore } from '../project-dir/project-dir-bootstrap.js'
 import { resolveSessionSpaceId } from '@onething/backend/session'
-import { expandPath } from '../tool/access-control/sandbox.js'
-import { getVariablesStore } from '@onething/backend/variable/store-bound'
+import { expandPath } from '../tool/access-control/tool-access-control-sandbox.js'
+import { getVariablesStore } from '@onething/backend/variable/variable-store-bound'
 import { DEFAULT_ONETHING_AGENT_ID } from '@onething/backend/agent'
 import { canonicalizeProjectRoot, projectIdFromPath } from '@onething/backend/project-dir'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import type { GlobalStoreGateway } from '@onething/backend/variable/providers/global-store'
-import type { GoalVariableGateway } from '@onething/backend/variable/providers/goal'
+import type { GoalVariableGateway } from '@onething/backend/variable/providers/variable-providers-goal'
 import type { KeyedStoreGateway } from '@onething/backend/variable/providers/keyed-store'
 import type { MusicRadioGateway } from '@onething/backend/variable/providers/music-radio'
 import type {
   ResourceStateFact,
   ResourceStateVariableGateway,
 } from '@onething/backend/variable/providers/resource-state'
-import type { SessionStoreGateway } from '@onething/backend/variable/providers/session-store'
-import type { WorkdirGateway } from '@onething/backend/variable/providers/core'
+import type { SessionStoreGateway } from '@onething/backend/variable/providers/variable-providers-session-store'
+import type { WorkdirGateway } from '@onething/backend/variable/providers/variable-providers-core'
 import type {
   NoteVaultsGateway,
   NoteVaultSummary,
 } from '@onething/backend/variable/providers/note-vaults'
 import { getGoal, goalLimits } from '../goal/goal-manager.js'
-import { getMusicNowPlaying } from '@onething/backend/music/service'
+import { getMusicNowPlaying } from '@onething/backend/music/music-service'
 import { getRadioStore } from '@onething/backend/music/radio'
-import { getNoteSystemRegistry } from '../note/notes-subsystem.js'
+import { getNoteSystemRegistry } from '../note/note-subsystem.js'
 import { computeAgentPresence } from '@onething/backend/agent'
 import { isAgentPairDmRoom } from '@onething/backend/collab'
 import type {
@@ -330,7 +330,7 @@ export const agentSelfGateway: AgentSelfStateGateway = {
 // 读法名、取址规则三样全从注册表上的自述现读。
 
 /**
- * 这一格状态该读哪个地址。规则由自述的 `scope` 说(`resource/spec.ts` 的
+ * 这一格状态该读哪个地址。规则由自述的 `scope` 说(`resource/resource-spec.ts` 的
  * `StateScope`),这里只是把那句话拼成地址:
  *
  *   · `turn-origin` → `<scheme>:<这一回合的 sessionId>`;

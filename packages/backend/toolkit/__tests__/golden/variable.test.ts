@@ -6,14 +6,14 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { defaultValidationMessage, zodToJsonSchema } from '../../contract.js'
+import { defaultValidationMessage, zodToJsonSchema } from '../../toolkit-contract.js'
 import {
   createVariableTool,
   VariableInputSchema,
   type RuntimeContextVariable,
   type RuntimeVariableRegistry,
   type RuntimeVariableSetInput,
-} from '../../builtin/variable.js'
+} from '../../builtin/toolkit-builtin-variable.js'
 import { Outcome } from '@onething/backend/toolkit/tool-protocol'
 import { annotationsOf, modelTextOf, partialsOf, runNewTool } from '../support.js'
 

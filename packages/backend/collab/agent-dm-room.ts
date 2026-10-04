@@ -20,7 +20,7 @@ import * as store from '@onething/backend/session'
 import { findAgent } from '@onething/backend/agent/agent-store-access'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { sessionAccess } from '@onething/backend/session'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import { ownedCollabSessionId } from './owned-session-id.js'
 
 /** 房名分隔符。「⇄」而不是「/」或「&」:一眼看出这是双向的一对一。 */

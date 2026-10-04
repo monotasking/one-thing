@@ -27,7 +27,7 @@ import {
 	type PartDelivery,
 	type TurnContext,
 	type UndeliverablePartLike,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import { OPENROUTER_REASONING_DETAILS_TYPE } from "../thinking/openrouter-reasoning.js";
 import { openAIChatImageDetail } from "./openai-chat-provider-options.js";
 

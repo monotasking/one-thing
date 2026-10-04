@@ -20,7 +20,7 @@
  * Pure logic: it is handed messages and returns ids. Which sessions to read,
  * and how far back, is the coordinator's call.
  */
-import { isCollabDriveMessage, type CollabMessageLike } from './types.js'
+import { isCollabDriveMessage, type CollabMessageLike } from './collab-types.js'
 
 /**
  * How many trailing messages of an execution session the slow path reads.

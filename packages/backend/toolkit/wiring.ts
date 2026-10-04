@@ -40,7 +40,7 @@ import { runPluginToolCallIntercept } from '@onething/backend/plugin/tool-call-i
 import { runPluginToolResultIntercept } from '@onething/backend/plugin/tool-result-intercept-bound'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 import { getCurrentBackend } from '@onething/backend/current.js'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import type { ToolExecutionControl } from './executions.js'
 
 const log = getLogger('toolkit')

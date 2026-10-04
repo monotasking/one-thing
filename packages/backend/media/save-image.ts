@@ -1,7 +1,7 @@
 import type {
   OnethingLegacyMediaItem,
   OnethingMediaIngestGeneratedImageInput,
-} from './index.js'
+} from './media.js'
 import { mediaLibraryService } from './library-service-bound.js'
 
 export type MediaItem = OnethingLegacyMediaItem

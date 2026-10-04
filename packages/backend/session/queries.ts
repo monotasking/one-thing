@@ -1,7 +1,7 @@
 import type { SessionsListRequest } from '@shared/ipc/sessions.js'
-import { listOnethingSessionsForIpc } from './ipc-operations.js'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
-import type { SessionAccess, SessionAccessContext } from './access.js'
+import { listOnethingSessionsForIpc } from './session-ipc-operations.js'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import type { SessionAccess, SessionAccessContext } from './session-access.js'
 
 /** Authorization and product-space filtering share one query boundary for every transport. */
 export function createSessionListQuery<T extends object & { workspaceId?: string }>(ports: {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 第二入口门(决策 D26,docs/design/backend-structure-decisions-2026-10.md)。零基线硬闸。
 //
-// 为什么:每个功能有两个对外的口。主入口 `<功能>/index.ts`(或 N3 的 `<功能>.ts`)给别的功能用;
+// 为什么:每个功能有两个对外的口。主入口 `<功能>/<功能>.ts`(N3)给别的功能用;
 // 第二个入口 `<功能>/<功能>-client-api*.ts` 给界面用 —— 它装的是这个功能开给 HTTP 服务器的东西
 // (名册里的域行、只有 HTTP 服务器用的投影与投递件),可以引任何功能的主入口,所以它天然是枢纽。
 // 如果别的功能、或者某个主入口去引它,有界面操作的功能就会重新变成枢纽,入口无环门(D19)的零环结论会翻掉
@@ -117,14 +117,14 @@ function selfTest() {
   expect('HTTP 服务器可以引', judge('packages/backend/http-server/http-server-client-api-roster.ts', api) === null)
   expect('同功能的 client-api 可以引', judge(api, aspect) === null)
   expect('测试可以引', judge('packages/backend/settings/__tests__/settings-client-api.test.ts', api) === null)
-  expect('包根别处的 feature 引 = 红(轨迹那条例外已删)', judge('packages/backend/backend.ts', 'packages/backend/session/sessions-client-api-events.ts') !== null)
-  expect('别的功能的 client-api 动态引也 = 红(ACP 那条例外已删)', judge('packages/backend/acp/acp-client-api.ts', 'packages/backend/session/sessions-client-api.ts') !== null)
-  expect('主入口引 = 红', judge('packages/backend/settings/index.ts', api) !== null)
+  expect('包根别处的 feature 引 = 红(轨迹那条例外已删)', judge('packages/backend/backend.ts', 'packages/backend/session/session-client-api-events.ts') !== null)
+  expect('别的功能的 client-api 动态引也 = 红(ACP 那条例外已删)', judge('packages/backend/acp/acp-client-api.ts', 'packages/backend/session/session-client-api.ts') !== null)
+  expect('主入口引 = 红', judge('packages/backend/settings/settings.ts', api) !== null)
   expect('功能内部文件引 = 红', judge('packages/backend/settings/settings-store.ts', api) !== null)
   expect('别的功能的 client-api 引 = 红', judge('packages/backend/mcp/mcp-client-api.ts', api) !== null)
   expect('包根别的文件引 = 红', judge('packages/backend/backend.ts', api) !== null)
   expect('宿主引 = 红', judge('apps/server/src/main.ts', api) !== null)
-  expect('不是 client-api 的目标不判', judge('packages/backend/mcp/index.ts', 'packages/backend/settings/index.ts') === null)
+  expect('不是 client-api 的目标不判', judge('packages/backend/mcp/mcp.ts', 'packages/backend/settings/settings.ts') === null)
   if (failures.length > 0) {
     console.error('[client-api-gate] self-test FAILED:')
     for (const label of failures) console.error('  ✗', label)

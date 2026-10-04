@@ -10,7 +10,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { InteractionAnswer } from '@shared/interaction/types'
 import { Outcome } from '@onething/backend/toolkit/tool-protocol'
-import { zodToJsonSchema } from '../../contract.js'
+import { zodToJsonSchema } from '../../toolkit-contract.js'
 import {
   ASK_USER_ABORTED_REASON,
   AskUserInputSchema,

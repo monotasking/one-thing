@@ -2,19 +2,19 @@
  * K3-b —— 音乐这一 scheme 的实现(`docs/design/atom-2026-09.md` §9 K3 的第一个
  * 样板:**纯 core 驱动**)。
  *
- * 自述在产品层(`@onething/backend/music/resource-spec`),实现在这里 —— 与会话那
+ * 自述在产品层(`@onething/backend/music/music-resource-spec`),实现在这里 —— 与会话那
  * 一对逐字同一个理由:只有装配层够得着脊柱(`backend.music`)。
  *
  * ── 一条端口都不重写 ───────────────────────────────────────────────────────
  * 与 K2c-1 给会话定的纪律逐字相同:**采用今天那一只端口**,不另写一份。
- *   · 电台四条 —— `radioAdapters()`(`toolkit/adapters.ts`)。它就是旧
+ *   · 电台四条 —— `radioAdapters()`(`toolkit/toolkit-adapters.ts`)。它就是旧
  *     `radio` 工具吃的那一份,连 `assertMusicOperator(fixedExecutionContext(…))`
  *     那道信任门都是同一行;这里**复用**它,不把那四条转发抄第二遍。
  *   · 播放器四条 —— `runMusicCommand`(`music/operations.ts`),也就是音乐条
  *     与 `music` RPC 域今天调的同一只。它自己带着那些只有它知道的分档(电台开着时
  *     `next` 走 `skipToNextRadioSong` 而不是播放器队列、`like` 按 onDeck 走服务端
  *     而不是 argv 表)—— 绕过它去拼 argv 就是当场丢掉那几条,而且不会有任何东西红。
- *   · `nowPlaying` —— `getMusicNowPlaying()`(`music/service.ts`)。
+ *   · `nowPlaying` —— `getMusicNowPlaying()`(`music/music-service.ts`)。
  *
  * ── 参数校验为什么在 `plan` 里,而且是抛 ────────────────────────────────────
  * 旧 `radio` 把「request 缺 song」「open/retune 的 intent 不足两个字」写成**成功的
@@ -95,7 +95,7 @@ import {
   MUSIC_RADIO_PATH,
   MUSIC_RESOURCE_SCHEME,
   musicResourceSpec,
-} from '@onething/backend/music/resource-spec'
+} from '@onething/backend/music/music-resource-spec'
 import type {
   MusicCommand,
   MusicLyrics,
@@ -105,10 +105,10 @@ import type {
 } from '@shared/ipc.js'
 import type { MusicHostLog } from '@shared/ipc/music.js'
 import { getCurrentBackendInstance } from '@onething/backend/current.js'
-import { assertMusicOperator } from '@onething/backend/music/access'
-import { fixedExecutionContext } from '../session/index.js'
+import { assertMusicOperator } from '@onething/backend/music/music-access'
+import { fixedExecutionContext } from '../session/session.js'
 import { setMusicProvider } from '@onething/backend/music/operations'
-import { radioAdapters } from '../toolkit/adapters.js'
+import { radioAdapters } from '../toolkit/toolkit-adapters.js'
 
 /** 播放器那一半的端口。电台那一半是既有的 `RadioToolAdapters`,不另立。 */
 export interface MusicPlayerAdapters {

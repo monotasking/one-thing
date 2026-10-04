@@ -19,7 +19,7 @@
  * `turn.warn('attachment-extract-failed', …)` 留痕(§2.4:不静默)。
  */
 import type { AgentContentPart } from "@onething/backend/agent-loop/loop-primitives";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface AttachmentChannel {
 	/**

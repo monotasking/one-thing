@@ -9,7 +9,7 @@ import { createSessionDeletionRecovery } from '../deletion-recovery.js'
 import { getTracesDir } from '@onething/backend/eval/trace-store'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import * as store from '../session-store.js'
-import type { SessionAccessContext } from '../access.js'
+import type { SessionAccessContext } from '../session-access.js'
 import path from 'node:path'
 import { ToolExecutionRegistry } from '@onething/backend/toolkit/executions'
 

@@ -31,7 +31,7 @@
  * MARKER, never a migration.
  */
 import { isCollabPassMessage } from './pass.js'
-import type { CollabMessageLike } from './types.js'
+import type { CollabMessageLike } from './collab-types.js'
 
 /** The system-internal message source stamped on coordinator drives. */
 export const COLLAB_MESSAGE_SOURCE = 'collab'

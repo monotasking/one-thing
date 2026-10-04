@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { createTwoFilesPatch } from 'diff'
 import { parse as parseYaml } from 'yaml'
-import type { SkillDefinition } from './types.js'
+import type { SkillDefinition } from './skill-types.js'
 
 const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/
 const MAX_SKILL_NAME_LENGTH = 64

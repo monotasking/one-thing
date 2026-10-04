@@ -3,9 +3,9 @@ import type { Dirent, PathLike } from 'node:fs'
 import * as os from 'os'
 import * as path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
-import { createDefaultVariablesFile } from '@onething/backend/variable/schema'
-import { resetVariablesStoreForTests } from '@onething/backend/variable/store-bound'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
+import { createDefaultVariablesFile } from '@onething/backend/variable/variable-schema'
+import { resetVariablesStoreForTests } from '@onething/backend/variable/variable-store-bound'
 import { getSettings, updateSettingsInMemory } from '@onething/backend/settings'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import type {
@@ -33,7 +33,7 @@ import type { NoteLinkKind, NoteVault } from '@onething/backend/note'
  * 都会退回项目语义(附件落工作区根、链接写标准 md),当场红。
  */
 const notes = vi.hoisted(() => ({ vaults: [] as NoteVault[], roots: [] as string[] }))
-vi.mock('../../note/notes-subsystem.js', () => ({
+vi.mock('../../note/note-subsystem.js', () => ({
   getNotesSubsystemSafe: () => ({
     registry: {
       vaultFor: (absolutePath: string) =>

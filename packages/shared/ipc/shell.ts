@@ -6,7 +6,7 @@
  * **不在 `IPC_CHANNELS` 表上的字面量通道**(`shell:open-path` / `shell:open-external`
  * / `app:get-data-path`)—— A1-a 的报告点名的那批遗留,transport 门连数都数不到。
  *
- * 与产品层的 `configureShellHost`(`@onething/backend/shell/host-ports`)是**两件事**,
+ * 与产品层的 `configureShellHost`(`@onething/backend/shell/shell-host-ports`)是**两件事**,
  * 不要合并:那个端口是「产品代码(技能域等)要打开一个目录」的注入口,方向是
  * 装配层 → 宿主;这里是「渲染层要打开一个路径」的传输面,方向是渲染层 → 宿主。
  * 同一批 `openElectronPath` / `openElectronExternal` 实现被两条路各自调用,一直如此。

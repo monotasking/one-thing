@@ -17,9 +17,9 @@
 
 import { extractNcmCliJson } from './ncm-cli-driver.js'
 import { parseNowPlaying, type OnethingMusicNowPlaying } from './now-playing.js'
-import type { OnethingMusicProcessRunner } from './types.js'
+import type { OnethingMusicProcessRunner } from './music-types.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('music')
 

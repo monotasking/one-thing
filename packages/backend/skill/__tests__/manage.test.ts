@@ -7,7 +7,7 @@ import {
   previewSkillManage,
   type OnethingSkillManageAdapters,
 } from '../manage.js'
-import type { SkillDefinition } from '../types.js'
+import type { SkillDefinition } from '../skill-types.js'
 
 let root = ''
 

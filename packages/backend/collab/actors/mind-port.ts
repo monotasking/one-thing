@@ -21,7 +21,7 @@
  * 负责把 `ChatMessage` 收敛成这三格。
  */
 import type { FloorLease } from '@onething/backend/collab/kernel'
-import type { CollabMentionLike } from '../index.js'
+import type { CollabMentionLike } from '../collab.js'
 
 /**
  * 一轮的结局。前四个与引擎的终端事件一一对应;`skipped` 是端口自己的判断

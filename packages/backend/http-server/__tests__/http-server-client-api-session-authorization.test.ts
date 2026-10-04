@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionAccess } from '@onething/backend/session'
-import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../session/testing/session-testing-layer.js'
 import { getEventBus } from '@onething/backend/event'
 
 // 授权判据直取子路径(工单 4 C2),替身跟着搬到同一条路上。
@@ -60,22 +60,22 @@ afterEach(async () => {
 
 type Case = [string, string, string, Record<string, unknown>]
 const loadDomains: Record<string, () => Promise<unknown>> = {
-  sessions: () => import('../../session/sessions-client-api.js'),
-  'session-command': () => import('../../session/sessions-client-api-commands.js'),
-  permission: () => import('../../permission/permissions-client-api.js'),
+  sessions: () => import('../../session/session-client-api.js'),
+  'session-command': () => import('../../session/session-client-api-commands.js'),
+  permission: () => import('../../permission/permission-client-api.js'),
   interaction: () => import('../../interaction/interaction-client-api.js'),
-  variables: () => import('../../variable/variables-client-api.js'),
+  variables: () => import('../../variable/variable-client-api.js'),
   scratchpad: () => import('../../scratchpad/scratchpad-client-api.js'),
-  goal: () => import('../../goal/goals-client-api.js'),
+  goal: () => import('../../goal/goal-client-api.js'),
   acp: () => import('../../acp/acp-client-api.js'),
-  'session-events': () => import('../../session/sessions-client-api-events.js'),
+  'session-events': () => import('../../session/session-client-api-events.js'),
   chat: () => import('../../engine/engine-client-api.js'),
-  files: () => import('../../file/files-client-api.js'),
-  plugins: () => import('../../plugin/plugins-client-api.js'),
-  tools: () => import('../../tool/tools-client-api.js'),
+  files: () => import('../../file/file-client-api.js'),
+  plugins: () => import('../../plugin/plugin-client-api.js'),
+  tools: () => import('../../tool/tool-client-api.js'),
   usage: () => import('../../usage/usage-client-api.js'),
-  evals: () => import('../../eval/evals-client-api.js'),
-  'evals-workbench': () => import('../../eval/evals-client-api-workbench.js'),
+  evals: () => import('../../eval/eval-client-api.js'),
+  'evals-workbench': () => import('../../eval/eval-client-api-workbench.js'),
 }
 
 /**

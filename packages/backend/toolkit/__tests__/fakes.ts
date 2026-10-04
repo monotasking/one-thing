@@ -7,16 +7,16 @@
 
 import { Decision, Intent } from '../intent.js'
 import type { EffectClass } from '@shared/toolkit/effects.js'
-import type { ObservedEvent, ToolLifecycleEvent } from '../events.js'
+import type { ObservedEvent, ToolLifecycleEvent } from '../toolkit-events.js'
 import type { Job, JobEvent, JobOwner, JobRegistry, JobSpec, JobStatus } from '../job.js'
 import type { Outcome } from '../outcome.js'
 import type { Authorizer, Interceptor, Observer, ValidationResult, Validator } from '../ports.js'
 import type { Result } from '../result.js'
 import { textResult } from '../result.js'
 import type { Invocation, PlanContext, RunContext } from '../run-context.js'
-import type { PrepareEnv, Scene, ToolBudgetHint, ToolSpec } from '../spec.js'
+import type { PrepareEnv, Scene, ToolBudgetHint, ToolSpec } from '../toolkit-spec.js'
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'
-import { Tool } from '../tool.js'
+import { Tool } from '../toolkit-tool.js'
 
 export function makeInvocation(overrides: Partial<Invocation> = {}): Invocation {
   return {

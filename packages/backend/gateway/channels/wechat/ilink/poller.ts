@@ -5,9 +5,9 @@ import {
   makeHeaders,
   readIlinkJson,
   saveGetUpdatesBuf,
-} from './auth.js'
-import { gatewayLogger } from '../../../hub/logging.js'
-import type { GetUpdatesResponse, WeixinMessage } from './types.js'
+} from './wechat-ilink-auth.js'
+import { gatewayLogger } from '../../../hub/gateway-hub-logging.js'
+import type { GetUpdatesResponse, WeixinMessage } from './wechat-ilink-types.js'
 
 const POLL_TIMEOUT_MS = 40_000
 const ERROR_RETRY_MS = 3_000

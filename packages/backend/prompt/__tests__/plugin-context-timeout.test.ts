@@ -10,7 +10,7 @@ import {
   clearAllPromptContextProviders,
   collectPluginPromptContext,
   registerPromptContextProvider,
-} from '../index.js'
+} from '../prompt.js'
 
 afterEach(() => {
   clearAllPromptContextProviders()

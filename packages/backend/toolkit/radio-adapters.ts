@@ -2,7 +2,7 @@
  * K3-b —— 电台那四条端口的形状。**纯类型,没有工具**。
  *
  * 它是旧 `toolkit/builtin/radio.ts` 里活下来的那一半:那只工具随 K3-b 退役
- * (音乐成了一个 scheme,自述在 `../music/resource-spec.ts`、实现在
+ * (音乐成了一个 scheme,自述在 `../music/music-resource-spec.ts`、实现在
  * `@onething/backend/resource/music-provider`),但**这份契约不该跟着死** ——
  * 它说的是「装配层与音乐子系统之间,开台 / 关台 / 状态 / 点歌这四件事长什么样」,
  * 而那四件事一件没少,只是换了一个出口。`radioAdapters()`(装配层那只既有工厂)与

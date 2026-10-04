@@ -4,7 +4,7 @@
  * Weekly Diagnosis Script (Phase 4)
  *
  * Reads ~/.onething/evals/online/records.jsonl via the shared
- * packages/backend/eval/records.ts module, clusters
+ * packages/backend/eval/eval-records.ts module, clusters
  * low-score turns, and outputs an evals/triage.md draft section.
  *
  * The amend-merging logic lives in records.ts and is shared with

@@ -157,7 +157,7 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   // `searchWindowRouter.executeAction` 打的就是它。
   if (method === 'POST' && pathname === '/api/search/actions') return handleSearchAction
   // plugins 的十九条数据面已迁到 `POST /api/rpc`(pluginsRouter,P4 终态批 C2)。
-  // 六条读/开关面在域里走 `plugin/plugins-client-api-catalog.ts` 那个单槽端口(装的就是从前
+  // 六条读/开关面在域里走 `plugin/plugin-client-api-catalog.ts` 那个单槽端口(装的就是从前
   // 这六条路由背后的同一批闭包),语义一字未改。本域在 server 上零推送 ——
   // `PLUGINS_NOTIFICATION` 是桌面 IPCBridge 的窗间扇出,浏览器从来收不到它。
   // oauth 的六条数据面已迁到 `POST /api/rpc`(oauthRouter,P4c 第七批)。

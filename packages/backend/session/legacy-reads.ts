@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { scanJsonlLog } from './storage/index.js'
+import { scanJsonlLog } from './storage/session-storage.js'
 import type { ChatMessage } from '@shared/ipc.js'
 
 /** Read-only compatibility until ensureWritable imports the historical source. */

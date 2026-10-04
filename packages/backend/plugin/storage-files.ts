@@ -48,8 +48,8 @@ import {
   PluginStorageError,
   type CorePluginMessageStateScoped,
   type CorePluginStorage,
-} from './storage.js'
-import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from './sessions.js'
+} from './plugin-storage.js'
+import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from './plugin-sessions.js'
 
 /* ── 受管常量 ─────────────────────────────────────────────────────────────── */
 
@@ -101,7 +101,7 @@ export const PLUGIN_FILES_MAX_FILE_BYTES = 8 * 1024 * 1024
 export {
   PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
   PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE,
-} from './sessions.js'
+} from './plugin-sessions.js'
 
 /* ── 形状 ─────────────────────────────────────────────────────────────────── */
 

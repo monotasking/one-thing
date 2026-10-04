@@ -29,7 +29,7 @@ import type {
   CollabFloorRevokeReason,
   CollabWorkerOutcome,
   CollabYieldReason,
-} from './protocol.js'
+} from './collab-actors-protocol.js'
 import type { CollabRaisedHand } from './floor-policy.js'
 import {
   resolveCollabRoomHandBlock,

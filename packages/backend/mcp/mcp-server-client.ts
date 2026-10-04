@@ -16,12 +16,12 @@ import {
   type MCPToolCallResult,
 } from '@shared/mcp/types'
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
-import { getMCPClientIdentity } from '@onething/backend/mcp/identity'
+import { getMCPClientIdentity } from '@onething/backend/mcp/mcp-identity'
 import {
   ONETHING_MCP_CLIENT_CAPABILITIES,
   OnethingMCPClient,
-} from '@onething/backend/mcp/client'
-import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/index'
+} from '@onething/backend/mcp/mcp-client'
+import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import { notifyMCPCapabilitiesChanged } from '@onething/backend/mcp/capabilities-changed'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'

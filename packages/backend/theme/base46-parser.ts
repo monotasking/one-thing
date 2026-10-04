@@ -11,7 +11,7 @@ import type {
   Theme,
   ThemeDefs,
   ThemeHighlights,
-} from './types.js'
+} from './theme-types.js'
 import type { ThemeColorScheme } from './role-mapping.js'
 import type { ThemeShellRoles } from './shell-roles.js'
 import {
@@ -23,9 +23,9 @@ import {
   readableColor,
   relativeLuminance,
 } from './role-mapping.js'
-import { selectPrimaryColorSemantics, selectStatusColorSemantics } from './resolver.js'
+import { selectPrimaryColorSemantics, selectStatusColorSemantics } from './theme-resolver.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('themes')
 

@@ -14,7 +14,7 @@
  * 种投影。从消息倒推轨迹会得到一棵看上去很像、但少了重试与错误的树。
  */
 
-import { assembleSessionTrace, materializeTraceResponseText, traceResponseTextFromProjection } from './trace/index.js'
+import { assembleSessionTrace, materializeTraceResponseText, traceResponseTextFromProjection } from './trace/session-trace.js'
 import { type SessionTrace, type SessionTraceResponseText } from '@shared/session/trace/types'
 import { readSessionLogEvents } from './event-log.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './projection-cache.js'
@@ -33,7 +33,7 @@ export interface ReadSessionTraceOptions {
  * 之外的任意 `events.jsonl`。会话 id 本来就是 uuid 形态,这里只放行"不含路径
  * 分隔符、不是 `.`/`..`"的名字 —— 与 `media://` 协议对文件名的处理同一条纪律。
  *
- * 它从 `session/sessions-client-api-events.ts` 搬到这里(S3):调用点从 2 个变成 4 个,
+ * 它从 `session/session-client-api-events.ts` 搬到这里(S3):调用点从 2 个变成 4 个,
  * 而一道安全门有两份拷贝,迟早只改其中一份。
  */
 export function isSafeSessionId(value: unknown): value is string {

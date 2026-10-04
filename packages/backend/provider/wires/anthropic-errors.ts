@@ -21,7 +21,7 @@
  * 一处这条线独有的现状:Anthropic 429 必带 `retry-after`(秒),另有
  * `anthropic-ratelimit-*-reset`(RFC 3339)。挂成绝对时间戳,冷却按它走(批 B8-2)。
  */
-import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper } from "../base/provider-base.js";
 
 /** 这条线抛出来的对象的形状 —— 换装后就是 `ProviderHttpError` 本身。 */
 export type AnthropicApiError = ProviderHttpError;

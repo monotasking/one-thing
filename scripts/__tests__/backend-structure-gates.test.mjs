@@ -8,7 +8,7 @@ import {
   shortestCycleThrough, stronglyConnected,
 } from '../lib/backend-structure.mjs'
 import { findEntryCycles } from '../feature-cycle-gate.mjs'
-import { duplicateNames } from '../file-name-gate.mjs'
+import { duplicateNames, nameViolations } from '../file-name-gate.mjs'
 
 // 功能目录的根:2026-10-04 去掉 `runtime/` 这一层以后就是包根。
 const RT = 'packages/backend'
@@ -34,18 +34,20 @@ it('finds strongly connected components and the shortest cycle through a node', 
 })
 
 it('reds a cycle only when it contains a feature entry', () => {
-  const entry = `${RT}/foo/index.ts`
+  const entry = `${RT}/foo/foo.ts`
   const { edges } = graphOf([
-    [entry, `${RT}/foo/a.ts`], [`${RT}/foo/a.ts`, `${RT}/bar/index.ts`], [`${RT}/bar/index.ts`, entry], // 经入口的环
+    [entry, `${RT}/foo/a.ts`], [`${RT}/foo/a.ts`, `${RT}/bar/bar.ts`], [`${RT}/bar/bar.ts`, entry], // 经入口的环
     [`${RT}/baz/x.ts`, `${RT}/baz/y.ts`], [`${RT}/baz/y.ts`, `${RT}/baz/x.ts`], // 功能内部的深层环
   ])
   const isEntry = (f) => entryFeatureOf(f) !== null
   const { offending, deep } = findEntryCycles(edges, isEntry)
   expect(offending).toHaveLength(1)
-  expect(offending[0].entries.map((e) => e.entry)).toEqual([`${RT}/bar/index.ts`, entry])
-  expect(offending[0].entries[1].cycle).toEqual([entry, `${RT}/foo/a.ts`, `${RT}/bar/index.ts`, entry])
+  expect(offending[0].entries.map((e) => e.entry)).toEqual([`${RT}/bar/bar.ts`, entry])
+  expect(offending[0].entries[1].cycle).toEqual([entry, `${RT}/foo/a.ts`, `${RT}/bar/bar.ts`, entry])
   expect(deep).toEqual([[`${RT}/baz/x.ts`, `${RT}/baz/y.ts`]])
-  expect(entryFeatureOf(`${RT}/foo/sub/index.ts`)).toBeNull()
+  expect(entryFeatureOf(`${RT}/foo/sub/sub.ts`)).toBeNull()
+  // 机械改名 6b 之后入口只认 `<功能>/<功能>.ts`(N3),`index.ts` 不再是入口
+  expect(entryFeatureOf(`${RT}/foo/index.ts`)).toBeNull()
 })
 
 it('counts duplicate file names and ratchets each name down only', () => {
@@ -56,6 +58,14 @@ it('counts duplicate file names and ratchets each name down only', () => {
   expect(compareCounts({ 'index.ts': 3 }, { 'index.ts': 1 }).improvements).toHaveLength(1)
   const text = formatCountBaseline(['header'], { 'index.ts': 98, 'providers → settings': 12 })
   expect(parseCountBaseline(text)).toEqual({ 'index.ts': 98, 'providers → settings': 12 })
+})
+
+it('name gate (zero baseline since 6b) flags duplicates, any index.ts and bare generic names', () => {
+  const v = nameViolations(['p/a/a.ts', 'p/a/sub/index.ts', 'p/b/types.ts', 'p/b/b-types.ts', 'p/c/c.ts', 'p/d/c.ts'])
+  expect([...v.duplicates.keys()]).toEqual(['c.ts'])
+  expect(v.indexFiles).toEqual(['p/a/sub/index.ts'])
+  expect(v.genericFiles).toEqual(['p/a/sub/index.ts', 'p/b/types.ts'])
+  expect(nameViolations(['p/a/a.ts', 'p/a/a-types.ts']).genericFiles).toEqual([])
 })
 
 function writeTable(table) {

@@ -11,7 +11,7 @@
  * 于是绕过引擎直接手搓 `toolChoice` 的调用方也炸不了端点。
  */
 import type { RequestBodyBuilder } from "./request-body-builder.js";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface ToolChoicePolicy {
 	apply(turn: TurnContext, builder: RequestBodyBuilder): void;

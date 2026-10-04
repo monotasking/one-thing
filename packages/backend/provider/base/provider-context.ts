@@ -8,7 +8,7 @@
  * 这里的每个字段都是**依赖**,不是状态:provider 实例本身没有可写字段,
  * 每回合的可变量一律活在 `TurnContext` 里(§3.1「实例无状态」)。
  */
-import type { getLogger } from "../../logging/index.js";
+import type { getLogger } from "../../logging/logging.js";
 import type { AgentProviderRequestDumper } from "../request-dumper.js";
 import type { ModelProfileResolver } from "./model-profile.js";
 

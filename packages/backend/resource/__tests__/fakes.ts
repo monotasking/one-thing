@@ -14,11 +14,11 @@
 import { Intent } from '../../toolkit/intent.js'
 import { textResult, type Result } from '../../toolkit/result.js'
 import type { PlanContext, RunContext } from '../../toolkit/run-context.js'
-import type { Scene } from '../../toolkit/spec.js'
-import type { ResourceProvider, ResourceReadContext } from '../provider.js'
-import type { ResourceEventHub } from '../events.js'
+import type { Scene } from '../../toolkit/toolkit-spec.js'
+import type { ResourceProvider, ResourceReadContext } from '../resource-provider.js'
+import type { ResourceEventHub } from '../resource-events.js'
 import type { ResourceRef } from '@shared/resource/ref.js'
-import type { ResourceSpec } from '../spec.js'
+import type { ResourceSpec } from '../resource-spec.js'
 
 /** 一个 core 从没听说过的命名空间。它只活在测试里。 */
 export const DEMO_SCHEME = 'demo'

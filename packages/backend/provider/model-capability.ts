@@ -37,7 +37,7 @@
  * This module must stay pure (no Node/Electron imports) — the renderer and the
  * web build import it directly.
  */
-import { getProviderManifest, getProviderManifestRegistry } from './manifest.js'
+import { getProviderManifest, getProviderManifestRegistry } from './provider-manifest.js'
 import { PROTOCOL_DECLARABLE_REASONING_WIRE_IDS } from './thinking/protocol-wire-ids.js'
 import {
   REASONING_EFFORT_LEVELS,

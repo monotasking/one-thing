@@ -1,17 +1,17 @@
 import type { ContentBlock, InitializeResponse, McpServer } from '@agentclientprotocol/sdk'
-import { findAgentExecutorDescriptor } from '../agent/executor/capabilities.js'
-import { ACPManager } from '../acp/manager.js'
+import { findAgentExecutorDescriptor } from '../agent/executor/agent-executor-capabilities.js'
+import { ACPManager } from '../acp/acp-manager.js'
 import { ACP_CONNECTOR_ID } from '../acp/session-links.js'
 import { translateACPPromptStream, type ACPWireStreamEvent } from '../acp/translate.js'
-import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from '../acp/types.js'
-import { getLogger } from '../logging/index.js'
+import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from '../acp/acp-types.js'
+import { getLogger } from '../logging/logging.js'
 import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
   ExternalAgentEvent,
   ExternalAgentImageInput,
   ExternalAgentTurnRequest,
-} from './types.js'
+} from './external-agent-types.js'
 
 export { ACP_CONNECTOR_ID }
 

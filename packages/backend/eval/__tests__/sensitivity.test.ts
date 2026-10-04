@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { runSensitivityAudit } from "../sensitivity.js";
-import type { runEvals, EvalRunOptions, EvalRunResultEntry } from "../runner.js";
+import type { runEvals, EvalRunOptions, EvalRunResultEntry } from "../eval-runner.js";
 
 function entryWith(scores: Record<string, number>): EvalRunResultEntry {
 	return {

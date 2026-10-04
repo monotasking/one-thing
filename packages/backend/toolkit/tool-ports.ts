@@ -63,7 +63,7 @@ export {
   taskPorts,
   webOpenAdapters,
   webSearchAdapters,
-} from './adapters.js'
+} from './toolkit-adapters.js'
 
 export { createFeatureInspectTool, FeatureInspectTool } from './builtin/feature-inspect.js'
 export { createFeatureMountTool, FeatureMountTool } from './builtin/feature-mount.js'

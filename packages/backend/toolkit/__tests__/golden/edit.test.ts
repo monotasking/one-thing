@@ -9,7 +9,7 @@ import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Decision, Outcome } from '@onething/backend/toolkit/tool-protocol'
 import type { Authorizer } from '@onething/backend/toolkit/tool-protocol'
-import { zodToJsonSchema } from '../../contract.js'
+import { zodToJsonSchema } from '../../toolkit-contract.js'
 import { createEditTool, EditInputSchema } from '../../builtin/edit.js'
 import {
   annotationsOf,

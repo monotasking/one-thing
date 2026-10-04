@@ -2,7 +2,7 @@
  * Goal subsystem IPC types.
  *
  * SessionGoal is a structural mirror of
- * `packages/backend/goal/types.ts` (same pattern as
+ * `packages/backend/goal/goal-types.ts` (same pattern as
  * ContextVariable, which is duplicated in chat.ts). The runtime package owns
  * the canonical definition and all state transitions; these types only cross
  * the IPC boundary.

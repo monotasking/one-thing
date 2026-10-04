@@ -7,7 +7,7 @@
  *
  *  ① 主体是谁;② 一次调用的预算;③ 熔断的四步套;④ 内核在不在这个进程里。
  *
- * 与 `sessions.ts`(N1)、`llm.ts`(N7-b)、`../deeplink/registry.ts`(H4)同一条
+ * 与 `sessions.ts`(N1)、`llm.ts`(N7-b)、`../deeplink/deeplink-registry.ts`(H4)同一条
  * 分工,连形状都抄的是它们:一个 `createXxxHostPorts` 工厂,吐出几只喂进
  * `CorePluginAPIHost` 的方法。
  *

@@ -165,7 +165,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
         speechOutput: null,
         dialog: null,
       },
-      // 音乐只在 `full` 档 mount(`resource/index.ts` 的 `tier` 那一格)。
+      // 音乐只在 `full` 档 mount(`resource/resource.ts` 的 `tier` 那一格)。
       toolRegistry: 'full',
       sender: new NoopSender() as never,
     })
@@ -318,7 +318,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
    */
   it('setProvider:模型要换后端会停在一张真权限卡上,本机那个人不会', async () => {
     const store = await import('@onething/backend/session')
-    const { Permission } = await import('@onething/backend/permission/permission')
+    const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
     const sessionId = store.createSession(`music-projection-${Date.now()}`, 'Music').id
 
     // 人这一侧:一张卡都不出,当场就完。
@@ -353,7 +353,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
   it('getNowPlaying:没退成投影,所以它照旧不经内核,而且答得出 `null`', async () => {
     const before = resourceAuditRows().length
 
-    // 它读的是 watcher 的缓存(`music/service.js` 的进程槽访问器,走的是
+    // 它读的是 watcher 的缓存(`music/music-service.js` 的进程槽访问器,走的是
     // `getCurrentBackend` 而不是被这组用例换掉的那一口)—— 这台机器上没有播放器
     // 在跑,所以答案是 `null`。**那正是它没退成投影的理由**:资源面那条
     // `nowPlaying` 读法刻意把 `null` 折成一份「停着」的读数,退过去就再也答不出

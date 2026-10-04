@@ -12,7 +12,7 @@
  * 抄形比接线便宜。
  *
  * A1(2026-09-02)之后这里不再自己调 `configure*Host`,而是**交出一张表**
- * (`OnethingHostPorts`,`packages/backend/host-ports.ts`):装配层第一步
+ * (`OnethingHostPorts`,`packages/backend/backend-host-ports.ts`):装配层第一步
  * `applyHostPorts` 逐项接线。每一项必填,没接的显式写 `null` —— 于是"这个壳
  * 缺什么能力"是可数的,而不是靠比对两个壳的调用清单才看得出来。
  *
@@ -24,7 +24,7 @@
  */
 import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session, shell } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/backend/auth'
-import type { OnethingHostPorts } from '@onething/backend/host-ports.js'
+import type { OnethingHostPorts } from '@onething/backend/backend-host-ports.js'
 import {
   clearAppDispatcherCache,
   createRequiredAppFetch,

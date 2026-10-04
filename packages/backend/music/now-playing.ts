@@ -19,7 +19,7 @@
  */
 
 import { extractFirstJsonObject } from './cli-json.js'
-import type { OnethingMusicProcessRunner } from './types.js'
+import type { OnethingMusicProcessRunner } from './music-types.js'
 
 export interface OnethingMusicNowPlaying {
   status: 'playing' | 'paused' | 'stopped'

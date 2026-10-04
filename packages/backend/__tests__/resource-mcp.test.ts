@@ -18,7 +18,7 @@
  *   ④ `backend.dispose()` 之后那个命名空间不在了(§10.2 的「已注销」)。
  *
  * 客户端这一侧是假的:真的那一份要拉起一个 stdio 子进程。注入口是现成的 ——
- * `host.mcp.clientFactory`(`host-ports.ts` 上写着:「只有 server 那种要把 stdio
+ * `host.mcp.clientFactory`(`backend-host-ports.ts` 上写着:「只有 server 那种要把 stdio
  * 关掉的宿主才会给一个自己的工厂」),所以这里连一处 `vi.mock` 都不需要。
  *
  * store 隔离与全动态 import 的写法照 `resource-kernel.test.ts` / `resource-music.test.ts`:
@@ -170,7 +170,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       // `resource-kernel.test.ts` 里 AI 删消息那条一样:先等卡出现,再答 `once`。
       const store = await import('@onething/backend/session')
       const sessionId = store.createSession(`resource-mcp-${Date.now()}`, 'MCP').id
-      const { Permission } = await import('@onething/backend/permission/permission')
+      const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
 
       const running = backend.resources.do(
         `${SCHEME}:server`,
@@ -194,7 +194,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       }
 
       // ③ 模型面上没有第二只工具 —— AI 走 `McpTool`。
-      const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
+      const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
       expect(getToolkitCatalog()?.has(SCHEME)).toBe(false)
       // 但它确实是一种资源:元工具的 list 里有它。
       const meta = getToolkitCatalog()?.get('resources')

@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ACPClient, authMethodsOf, isAcpAuthRequired, toAcpPromptError } from '../client.js'
+import { ACPClient, authMethodsOf, isAcpAuthRequired, toAcpPromptError } from '../acp-client.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
 import type {
   AcpAuthBridge,
   AcpElicitationBridge,
   AcpElicitationContext,
   AcpElicitationRequest,
-} from '../types.js'
+} from '../acp-types.js'
 import type { ACPAgentConfig, ACPAgentState } from '@shared/contracts/acp.js'
 
 /**

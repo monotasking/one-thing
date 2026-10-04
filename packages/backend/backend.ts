@@ -6,7 +6,7 @@
  * through this recipe instead of hand-sequencing the initialize* steps — the
  * ordering constraints (variables before tools, engine before Permission, …)
  * live here and nowhere else. Host-specific surfaces arrive as one object
- * (`options.host`, see `host-ports.ts`) and through the hooks below; importing
+ * (`options.host`, see `backend-host-ports.ts`) and through the hooks below; importing
  * this module (or any @onething/backend module) performs no configuration by
  * itself.
  *
@@ -19,7 +19,7 @@
 // 执行器注册表在模块加载时把「哪些 provider 是外部执行体、上下文归它自己管」登记进
 // core(A0-3 起 core 不再内置任何 provider 名字)。静态 import 在这里,是为了保证任何
 // 一个宿主装配、引擎做第一次压缩判定之前它已经跑过 —— 不靠别的模块碰巧 import 到它。
-import '@onething/backend/agent/executor/registry'
+import '@onething/backend/agent/executor/agent-executor-registry'
 import { flushAllPendingSaves, getSession, initializeSessionRepositoryIndex } from '@onething/backend/session'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from '@onething/backend/session'
 import { createStoreLease, ensureOnethingStoreDirs, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/storage'
@@ -45,11 +45,11 @@ import {
 import { TodoPlanRuntime } from '@onething/backend/todo-plan/todo-plan-service'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './backend-shutdown.js'
 import { PracticeService, configurePracticeService } from '@onething/backend/practice/service-slot'
-import { MusicSubsystem } from '@onething/backend/music/subsystem'
-import { PetsSubsystem } from '@onething/backend/pet/subsystem'
+import { MusicSubsystem } from '@onething/backend/music/music-subsystem'
+import { PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
 import { petChattinessOf, watchPetChattiness } from '@onething/backend/pet/chattiness-watch'
 import { ModelMomentComposer } from '@onething/backend/pet/model-composer'
-import { createVoiceService, configureVoiceService } from '@onething/backend/voice/service'
+import { createVoiceService, configureVoiceService } from '@onething/backend/voice/voice-service'
 import { createTaskDispatchLayer, type TaskDispatchLayer } from '@onething/backend/task/dispatch'
 import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/backend/session'
 import { getTracesDir } from '@onething/backend/eval/trace-store'
@@ -66,8 +66,8 @@ import {
 } from '@onething/backend/settings'
 import { applyDiagnosticsMode } from '@onething/backend/logging/diagnostics'
 import { initializeAgents } from '@onething/backend/agent/agent-store-access'
-import { configureAppToolSandbox } from '@onething/backend/tool/access-control/sandbox'
-import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
+import { configureAppToolSandbox } from '@onething/backend/tool/access-control/tool-access-control-sandbox'
+import { applyHostPorts, type OnethingHostPorts } from './backend-host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/backend/tool/background-jobs-bound'
 import {
   buildHistoryMessages,
@@ -83,7 +83,7 @@ import { configureAppSkillManage } from '@onething/backend/skill/manage-setup'
 import { configureAppSkillsLoader } from '@onething/backend/skill/skill-sources'
 import { configureAppPermissionGrants } from '@onething/backend/permission/grant-storage'
 import { createEventSystem } from '@onething/backend/event'
-import { createReplayBufferMemoryHolder } from '@onething/backend/event/memory'
+import { createReplayBufferMemoryHolder } from '@onething/backend/event/event-memory'
 import { createSessionMemoryHolders } from '@onething/backend/session'
 import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/memory'
 import { createQuotaService, type QuotaService } from '@onething/backend/quota'
@@ -100,18 +100,18 @@ import { createStreamEngineLayer, registerBuiltinTriggers, type MainOnethingRunt
 import type { OAuthToken, PermissionMode } from '@shared/ipc.js'
 import { createSessionTocTrigger } from './toc/toc-session-trigger.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from '@onething/backend/collab/rooms'
-import { Permission } from '@onething/backend/permission/permission'
+import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { Interaction } from '@onething/backend/interaction'
 import { bootstrapVariableSystem } from '@onething/backend/variable/variable-system'
 import { bootstrapGoalStreamBreakers } from '@onething/backend/goal/runtime-hooks'
 import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from '@onething/backend/goal/goal-manager'
-import { bootstrapProjectDirs } from '@onething/backend/project-dir/bootstrap'
+import { bootstrapProjectDirs } from '@onething/backend/project-dir/project-dir-bootstrap'
 import { configureProcessAuthTokenStore, getAuthService } from '@onething/backend/auth/process-auth-service'
 import { installOAuthBusBroadcaster } from '@onething/backend/auth/oauth-events'
-import { bootstrapNotes } from '@onething/backend/note/notes-subsystem'
+import { bootstrapNotes } from '@onething/backend/note/note-subsystem'
 import { bootstrapNoteVaultSkillRoots } from '@onething/backend/skill/note-vault-roots'
 import { migrateNotesSettings } from '@onething/backend/note/migration'
-import type { NotesSubsystem } from '@onething/backend/note/notes-subsystem'
+import type { NotesSubsystem } from '@onething/backend/note/note-subsystem'
 import { createAppSearchService } from '@onething/backend/search'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from '@onething/backend/toolkit/wiring'
@@ -135,15 +135,15 @@ import { initializeSessionSkills } from '@onething/backend/skill/session-skill-c
 import { MCPManager, registerMCPTools } from '@onething/backend/mcp/index-with-bridge'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import { ACPManager } from '@onething/backend/acp'
-import { McpSubsystem } from '@onething/backend/mcp/subsystem'
-import { AcpSubsystem } from '@onething/backend/acp/subsystem'
-import { onSessionsDeletedFromBus } from '@onething/backend/acp/events'
+import { McpSubsystem } from '@onething/backend/mcp/mcp-subsystem'
+import { AcpSubsystem } from '@onething/backend/acp/acp-subsystem'
+import { onSessionsDeletedFromBus } from '@onething/backend/acp/acp-events'
 import { createAcpSessionProjections } from '@onething/backend/acp/projections'
-import { AcpAgentRegistry, type AcpRegistryFetch } from '@onething/backend/acp/registry'
+import { AcpAgentRegistry, type AcpRegistryFetch } from '@onething/backend/acp/acp-registry'
 import { getAppBuiltinResourcePath } from '@onething/backend/skill/skill-sources'
 import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent/spawn-env'
 import { killTrackedDetachedChildren } from '@onething/backend/tool/bash-executor'
-import { killAllTerminals } from '@onething/backend/terminal/service'
+import { killAllTerminals } from '@onething/backend/terminal/terminal-service'
 import type { SessionHistoryBuilder } from '@onething/backend/session'
 import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/logging/configure-logging'
 import {
@@ -225,7 +225,7 @@ export interface OnethingBackendHooks {
 
 export interface OnethingBackendOptions {
   /**
-   * 这个宿主交出来的**全部**宿主独有能力(A1,`host-ports.ts`)。必填,且每一
+   * 这个宿主交出来的**全部**宿主独有能力(A1,`backend-host-ports.ts`)。必填,且每一
    * 项都要写 —— 没有那件能力就显式 `null`。漏写一项是 `tsc` 错误,不是运行期
    * 某个能力静默变成降级路。
    */
@@ -330,7 +330,7 @@ export class OnethingBackend implements BackendHandle {
   private resourceKernel: ResourceKernel | undefined
   private shellResourceRegistry: ShellMountRegistry | undefined
   /**
-   * 内存登记表与调度器(见 `memory/index.ts`)。各缓存模块在装配时注册,
+   * 内存登记表与调度器(见 `memory/memory.ts`)。各缓存模块在装配时注册,
    * 内存超过预算时统一释放;Electron 宿主另外注册一个报告其他进程的探针。
    */
   private memorySubsystem: MemorySubsystem | undefined
@@ -1152,7 +1152,7 @@ export class OnethingBackend implements BackendHandle {
 
     if (options.collab) {
       // Room prompts are assembled as persona-only system prompts inside the
-      // prompt build path (engine/prompt/system-prompt.ts collabRoomOverrides)
+      // prompt build path (engine/prompt/engine-system-prompt.ts collabRoomOverrides)
       // — no plugin prompt provider involved. Static import (top of file): a
       // dynamic import here left the collab modules bundled INSIDE the desktop
       // entry chunk (the ingress gate references them statically), and the CLI

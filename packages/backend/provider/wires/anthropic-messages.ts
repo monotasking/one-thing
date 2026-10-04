@@ -33,7 +33,7 @@ import {
 	type PartDelivery,
 	type TurnContext,
 	type UndeliverablePartLike,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 
 // ---------------------------------------------------------------------------
 // 线上形状

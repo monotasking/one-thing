@@ -8,7 +8,7 @@
  * 挨着写的短语照样能相邻命中。
  */
 
-import type { Analyzer, Token } from './types.js'
+import type { Analyzer, Token } from './search-kernel-analyzer-types.js'
 import { cjkBigramAnalyzer, isCjkChar } from './cjk-bigram.js'
 import { latinWordAnalyzer } from './latin-word.js'
 

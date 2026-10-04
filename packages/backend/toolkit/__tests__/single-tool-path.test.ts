@@ -8,7 +8,7 @@
  *
  *  · 跑一个工具 —— read / write / edit / bash / 一个插件工具 / task(参数错的那
  *    一路也要在新树里落成 invalid);
- *  · 有哪些工具 —— 设置页的工具列表(与 `backend/tool/tools-client-api.ts` 同
+ *  · 有哪些工具 —— 设置页的工具列表(与 `backend/tool/tool-client-api.ts` 同
  *    一条装配:`listOnethingSettingsTools` + 目录投影);
  *  · 工具的 schema / 描述 / guard —— 提示词快照那一支用的两个函数
  *    (`resolveToolkitSurface` + `toolDefinitionFromToolkitTool`)。
@@ -27,7 +27,7 @@ const harness = vi.hoisted(() => {
   return { root, enforce: vi.fn(async () => undefined) }
 })
 
-vi.mock('@onething/backend/tool/access-control/permission-policy', () => ({
+vi.mock('@onething/backend/tool/access-control/tool-access-control-permission-policy', () => ({
   enforcePermissionPolicy: harness.enforce,
 }))
 

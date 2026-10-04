@@ -9,7 +9,7 @@
 
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 import type { Decision, Intent } from './intent.js'
-import type { ObservedEvent } from './events.js'
+import type { ObservedEvent } from './toolkit-events.js'
 import type { Outcome } from './outcome.js'
 import type { AbortScope } from './abort-scope.js'
 import type { Invocation } from './run-context.js'

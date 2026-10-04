@@ -101,7 +101,7 @@ vi.mock('../stream/stream-executor.js', () => ({
   failAssistantRun: vi.fn(),
 }))
 
-vi.mock('../stream/agent-loop-executor.js', () => ({
+vi.mock('../stream/engine-stream-agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 
@@ -129,7 +129,7 @@ vi.mock('../stream-engine-runtime.js', async importOriginal => {
   }
 })
 
-vi.mock('../prompt/system-prompt.js', () => ({
+vi.mock('../prompt/engine-system-prompt.js', () => ({
   buildPrompt: mocks.buildPrompt,
 }))
 
@@ -149,7 +149,7 @@ vi.mock('../../settings/settings-model-registry-service.js', () => ({
 vi.mock('@onething/backend/variable/variable-system', () => ({
 }))
 
-vi.mock('@onething/backend/project-dir/bootstrap', () => ({
+vi.mock('@onething/backend/project-dir/project-dir-bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 

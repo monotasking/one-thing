@@ -4,7 +4,7 @@
  *
  * 为什么搬:它的两个调用方现在分处两侧 —— 👎 仍在 `@main/ipc/evals.ts`,而
  * 「重试 / 编辑重发是一次迟到的负信号」这条自动补写随命令总线一起进了
- * `backend/session/sessions-client-api-commands.ts`。函数体本来就一句 electron 也不碰
+ * `backend/session/session-client-api-commands.ts`。函数体本来就一句 electron 也不碰
  * (store / sessionReads / wiring 技能表 / 产品层(当时的 `runtime/`)的投影全在装配层
  * 够得着的地方),留在宿主里只会逼着装配层去 import `@main`。
  *
@@ -109,7 +109,7 @@ export async function createIncidentForTurn(options: {
 	if (!capture?.requestMessages?.length && anchorIdx >= 0) {
 		try {
 			const { buildHistoryMessages } = await import(
-				"../engine/index.js"
+				"../engine/engine.js"
 			);
 			// History up to and including the turn's user message — mirrors
 			// what the live request carried.

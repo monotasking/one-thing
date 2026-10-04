@@ -12,7 +12,7 @@ import type { EventBus } from '@onething/backend/event'
 import { getSession, renameSession } from '@onething/backend/session'
 import { getTodoPlanStore } from '@onething/backend/todo-plan/todo-plan-service'
 import { AcpPlanProjection } from './plan-projection.js'
-import type { AcpSessionStateProjection } from './subsystem.js'
+import type { AcpSessionStateProjection } from './acp-subsystem.js'
 import { AcpTitleProjection } from './title-projection.js'
 
 export type AcpProjectionBus = Pick<EventBus, 'emit'>

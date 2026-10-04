@@ -4,7 +4,7 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '@onething/backend/storage'
-import { registerBuiltinCapabilities } from './capabilities.js'
+import { registerBuiltinCapabilities } from './permission-capabilities.js'
 
 let permissionGrantsConfigured = false
 

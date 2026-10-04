@@ -3,8 +3,8 @@
  * `json-message-page.ts` 拆出来的那一格。
  *
  * 拆的理由只有一条:它是那个文件里**唯一**碰 `node:fs` 的东西(两行:
- * `existsSync` + `readFileSync`),而它所在的文件挂在 `session/storage/index.ts`
- * 的再导出面上、`session/index.ts` 那个桶再导出 storage —— 于是**整个桶**
+ * `existsSync` + `readFileSync`),而它所在的文件挂在 `session/storage/session-storage.ts`
+ * 的再导出面上、`session/session.ts` 那个桶再导出 storage —— 于是**整个桶**
  * 在浏览器里 import 不动。分页算法本身(`getMessagesPageFromJson`,吃的是
  * 一段 JSON 文本)是纯的,留在原处。
  *
@@ -17,8 +17,8 @@ import type {
   GetSessionMessagesPageRequest,
   GetSessionMessagesPageResponse,
   StoredChatMessage,
-} from './types.js'
-import { getMessagesPageFromJson } from './json-message-page.js'
+} from './session-storage-types.js'
+import { getMessagesPageFromJson } from './session-storage-json-message-page.js'
 
 export function getMessagesPageFromJsonFilePath<TMessage extends StoredChatMessage = StoredChatMessage>(
   request: GetSessionMessagesPageRequest,

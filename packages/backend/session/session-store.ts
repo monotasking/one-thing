@@ -31,7 +31,7 @@ import { sessionCommandEvents } from "./command-events.js";
 import { assertSessionEventLogIdle, resetSessionEventLogCache } from "./event-log.js";
 import { sessionDeletion } from './deletion.js'
 import { withSessionRemovalOwner } from './removal-event.js'
-import type { SessionOwnershipRecord } from './access.js'
+import type { SessionOwnershipRecord } from './session-access.js'
 import { resetSessionSurfaceCache } from "./event-surface.js";
 import { resetSessionRuns } from "./runs.js";
 import { hydrateSessionMessagesFromProjection } from "./hydrate.js";
@@ -46,16 +46,16 @@ import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/backend/col
 import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
 	isValidSpaceId,
-} from "@onething/backend/space/types";
+} from "@onething/backend/space/space-types";
 import {
 	guardFrozenMessages,
 	guardFrozenSessionMessages,
-} from "./freeze.js";
+} from "./session-freeze.js";
 import { SESSION_EVENT_TYPES } from "@shared/events/session-event-types";
 import { getEventBus, isEventSystemInitialized } from "@onething/backend/event";
 import { CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID, collectSessionCascadeDeleteIds, getSessionTokenUsageSnapshot } from './store-helpers.js'
 import { deriveRetainedContextSize, repairSessionTimelineMetadata } from './timeline.js'
-import { sanitizeSessionOnStartup } from './commands.js'
+import { sanitizeSessionOnStartup } from './session-message-shapes.js'
 import { assertContentPartIsCarriable } from './content-part-guard.js'
 import { assertPortFactIsFolded } from './port-fact-assert.js'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'

@@ -20,7 +20,7 @@ import type { CorePromptCapture } from "@onething/backend/agent-loop";
 import {
 	getOnethingEvalsDir,
 	type OnethingStorePathOptions,
-} from "../storage/paths.js";
+} from "../storage/storage-paths.js";
 
 const DEFAULT_MAX_ENTRIES = 200;
 /**

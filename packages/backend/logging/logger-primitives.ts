@@ -1,4 +1,4 @@
-export * from './types.js'
+export * from './logging-types.js'
 export * from './level.js'
 export * from './error.js'
 export * from './compat.js'

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { SessionStoreProvider } from '../providers/session-store.js'
-import { VariableRegistry } from '../registry.js'
+import { SessionStoreProvider } from '../providers/variable-providers-session-store.js'
+import { VariableRegistry } from '../variable-registry.js'
 import {
   appendTypedValue,
   normalizeTypedValue,
   removeTypedValue,
   typedValueForAppend,
 } from '../typed-values.js'
-import { type ContextVariable, type VariableContext } from '../types.js'
+import { type ContextVariable, type VariableContext } from '../variable-types.js'
 
 describe('normalizeTypedValue', () => {
   it('string passes through unchanged', () => {

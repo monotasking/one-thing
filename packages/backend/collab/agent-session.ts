@@ -49,7 +49,7 @@ import {
   execSessionId,
   execSessionIdsForScan,
   isAgentExecSessionId,
-} from '../agent/identity.js'
+} from '../agent/agent-identity.js'
 
 /** Prefix of every agent execution session id. Stable — it is persisted. */
 export const COLLAB_AGENT_SESSION_PREFIX = AGENT_EXEC_SESSION_PREFIX

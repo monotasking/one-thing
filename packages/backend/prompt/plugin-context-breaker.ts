@@ -30,7 +30,7 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from '../plugin/health.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('engine.prompt')
 

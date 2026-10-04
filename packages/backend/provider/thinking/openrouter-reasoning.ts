@@ -22,7 +22,7 @@ import type {
 	AgentJsonObject,
 	AgentJsonValue,
 } from "@onething/backend/agent-loop/loop-primitives";
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { OpenAIChatThinkingWire } from "./openai-chat-thinking-wire.js";
 
 /** 这条 `provider-data` 的 `type` —— 落点与回传两侧共用同一个字面量。 */

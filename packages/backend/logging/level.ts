@@ -1,4 +1,4 @@
-import { isLogLevel, LOG_LEVEL_VALUE } from './types.js'
+import { isLogLevel, LOG_LEVEL_VALUE } from './logging-types.js'
 import { type LogLevel } from '@shared/logging/types.js'
 
 /**

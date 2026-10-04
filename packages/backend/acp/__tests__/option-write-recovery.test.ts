@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { RequestError } from '@agentclientprotocol/sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ACPClient, toAcpPromptError } from '../client.js'
+import { ACPClient, toAcpPromptError } from '../acp-client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
 import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 

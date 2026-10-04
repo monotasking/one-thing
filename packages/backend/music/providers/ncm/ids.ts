@@ -7,7 +7,7 @@
  */
 
 import type { OnethingRadioProgrammeEntry } from '../../radio-store.js'
-import type { MusicIdSchema } from '../types.js'
+import type { MusicIdSchema } from '../music-providers-types.js'
 
 const ENCRYPTED_ID = /^[0-9a-fA-F]{32}$/
 

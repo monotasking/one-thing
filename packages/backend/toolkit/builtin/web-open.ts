@@ -14,8 +14,8 @@ import {
   type FetchedSearchPage,
   type FetchFn,
 } from '../../tool/builtin/web-search/page-fetch.js'
-import { defineInput } from '../contract.js'
-import { NetworkTool } from '../families/network.js'
+import { defineInput } from '../toolkit-contract.js'
+import { NetworkTool } from '../families/toolkit-families-network.js'
 import { wrapUntrustedText } from '../untrusted-text.js'
 
 export interface WebOpenToolAdapters {

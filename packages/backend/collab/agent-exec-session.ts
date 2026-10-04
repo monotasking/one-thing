@@ -29,7 +29,7 @@ import { sessionAccess, sessionReads } from '@onething/backend/session'
 import { findAgent } from '@onething/backend/agent/agent-store-access'
 import { ensureCollabRoomFolder } from './room-folder.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import { ownedCollabSessionId } from './owned-session-id.js'
 
 /**

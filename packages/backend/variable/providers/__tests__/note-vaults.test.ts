@@ -1,7 +1,7 @@
 import * as path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createFakeRunner, createProbe } from '../../../note/__tests__/fixtures.js'
-import { MemorySnapshotStore, ObsidianCli, ObsidianVault } from '../../../note/index.js'
+import { MemorySnapshotStore, ObsidianCli, ObsidianVault } from '../../../note/note.js'
 import { NoteVaultsProvider, type NoteVaultSummary } from '../note-vaults.js'
 
 describe('note_vaults:值的形状', () => {

@@ -27,14 +27,14 @@ import {
   parseSearchTime,
   renderPreview,
   searchDescription,
-} from '../builtin/search.js'
+} from '../builtin/toolkit-builtin-search.js'
 import type {
   SearchToolAdapters,
   SearchToolPage,
   SearchToolPrincipal,
   SearchToolQuery,
-} from '../builtin/search.js'
-import { ZodValidator } from '../contract.js'
+} from '../builtin/toolkit-builtin-search.js'
+import { ZodValidator } from '../toolkit-contract.js'
 
 /** 一次调用记下的东西 —— 用例问的是「工具递给适配器什么」。 */
 interface Recorder {

@@ -11,7 +11,7 @@ import {
   validateOnethingAppProxyUrl,
   type OnethingAppFetchNetworkInit,
 } from '../managed-fetch.js'
-import type { OnethingProxySettings } from '../proxy.js'
+import type { OnethingProxySettings } from '../network-proxy.js'
 
 beforeEach(() => {
   clearOnethingAppDispatcherCache()

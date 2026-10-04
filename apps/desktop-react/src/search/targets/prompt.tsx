@@ -1,7 +1,7 @@
 import { registerTargetRenderer } from './registry'
 
 /**
- * `kind: 'prompt'` —— 一条提示词(`search/capabilities/prompts.ts` 的
+ * `kind: 'prompt'` —— 一条提示词(`search/capabilities/search-capabilities-prompts.ts` 的
  * `PromptTarget`)。
  *
  * **落点走动作口**:提示词命中的意思是「把它填进输入框」,那是一件宿主动作,

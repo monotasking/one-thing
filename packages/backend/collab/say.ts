@@ -32,7 +32,7 @@ import { parseCollabHandleMentions, type CollabAddressable } from './handles.js'
 import { buildCollabMentions, mergeCollabMentions, normalizeCollabMentions } from './mentions.js'
 import { truncateAtCodePoint } from './truncate.js'
 import { resolveCollabVenue } from './tool-surface.js'
-import type { CollabAgentLike, CollabMentionLike } from './types.js'
+import type { CollabAgentLike, CollabMentionLike } from './collab-types.js'
 
 /**
  * The say/thinking markers and their predicates live in `classify.ts` since R3

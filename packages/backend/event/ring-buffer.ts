@@ -13,7 +13,7 @@
  * - O(1) push, O(n) replay where n = number of events replayed
  */
 
-import type { EventBase, SessionEventEnvelope } from './types.js'
+import type { EventBase, SessionEventEnvelope } from './event-types.js'
 
 export class RingBuffer<TEvent extends EventBase = EventBase> {
   private buffer: (SessionEventEnvelope<TEvent> | undefined)[]

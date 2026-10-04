@@ -2,7 +2,7 @@
  * K1 —— 会话这一 scheme 的实现(`docs/design/atom-2026-09.md` §3 那张表的
  * `session:` 三行)。
  *
- * 自述在产品层(`@onething/backend/session/resource-spec`),实现在这里 —— 因为
+ * 自述在产品层(`@onething/backend/session/session-resource-spec`),实现在这里 —— 因为
  * 只有装配层够得着脊柱:读走 `sessionReads`(返回 readonly 的唯一读面),做走
  * 会话写面那几扇既有的门。
  *
@@ -75,7 +75,7 @@
  *
  * 本单还搬进来两件从前住在域里的东西,理由都是「AI 走这条路也要有」:
  *   · **删的那一串副作用** —— 级联名单、三相位删除、AI todo 跟着走、把这条会话在这个
- *     进程里的活收干净(`releaseServedSession`)。它们从前住在 `session/sessions-client-api.ts`
+ *     进程里的活收干净(`releaseServedSession`)。它们从前住在 `session/session-client-api.ts`
  *     的 `delete` 处理器里,于是「删会话」在仓库里只有界面那一条路。
  *   · **一张自述自己的表**:哪几种权限档位合法(`SESSION_PERMISSION_MODES`)。域从前
  *     把那三个字面量抄在自己的处理器里。
@@ -124,7 +124,7 @@ import {
 } from '@onething/backend/session'
 import { updateOnethingSessionWorkingDirectory } from '@onething/backend/session'
 import { expandOnethingToolSandboxPath } from '@onething/backend/tool/sandbox-runtime'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import type { ChatMessage, GetSessionMessagesPageRequest } from '@shared/ipc.js'
 import { isAppOwnedSession } from '@shared/ipc/chat.js'
 import * as store from '@onething/backend/session'
@@ -139,7 +139,7 @@ import {
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
 import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/agent/agent-store-access'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
-import { Permission } from '@onething/backend/permission/permission'
+import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { deleteSessionAiTodo } from '@onething/backend/todo-plan/todo-plan-service'
 import { workdirGateway } from '@onething/backend/variable/gateways'
 import { readSessionSegments } from '@onething/backend/toc/toc-recorder'
@@ -353,7 +353,7 @@ function settle(result: { success: boolean; error?: string }, fallback: string):
 
 /**
  * 删会话时,把这条会话在**这个进程里**的「活」收干净 —— 清权限询问、拆掉它的事件
- * 与流通道。K2c-3 从 `session/sessions-client-api.ts` 逐字搬上来(那三步连同它的判据都没改)。
+ * 与流通道。K2c-3 从 `session/session-client-api.ts` 逐字搬上来(那三步连同它的判据都没改)。
  *
  * 它必须住在这里的理由与 `rename` 那一发广播逐字相同:AI / CLI / 调度删一条会话与
  * 界面删是同一件事,而从前只有界面那一条路会收尾 —— 留下的是一条对着已删会话还在
@@ -374,7 +374,7 @@ function releaseServedSession(sessionId: string): void {
  *
  * 具名的常量而不是一个匿名 `() => {}`:它是一处**留账**,不是一句省略。归属是调用方
  * 身份(`ownerUid` / `workspaceId`),而资源面的 `Invocation` 上只有 `Principal`;
- * 归属校验因此由 RPC 边界**前置**做掉(`session/sessions-client-api.ts` 的 `delete`)。
+ * 归属校验因此由 RPC 边界**前置**做掉(`session/session-client-api.ts` 的 `delete`)。
  * 删除层自己那一半 —— 「目标集合中途变过没有」—— 一个字没动,它不依赖调用方。
  * per-caller 的归属进 `Invocation` 之后,这一格换成真的那一句。
  */

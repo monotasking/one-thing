@@ -16,7 +16,7 @@ export { EventBus } from './event-bus.js'
 export {
   emitCoreSessionEventSafely,
   emitCoreSessionCommandForIpc,
-} from './ipc-operations.js'
+} from './event-ipc-operations.js'
 export { RingBuffer } from './ring-buffer.js'
 export { StreamChannel } from './stream-channel.js'
 export type {
@@ -26,7 +26,7 @@ export type {
   EmitCoreSessionCommandForIpcOptions,
   EmitCoreSessionEventSafelyOptions,
   SessionCommandLike,
-} from './ipc-operations.js'
+} from './event-ipc-operations.js'
 export type {
   EmitResult,
   EventDeliveryOptions,
@@ -40,4 +40,4 @@ export type {
   StreamChunkHandler,
   TypedObserveHandler,
   Unsubscribe,
-} from './types.js'
+} from './event-types.js'

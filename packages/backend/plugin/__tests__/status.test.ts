@@ -39,7 +39,8 @@ function listBuiltinPluginIds(): string[] {
   const dir = path.dirname(loaderPath)
   return fs.readdirSync(dir)
     .filter(name => name.endsWith('.ts') && name !== 'index.ts')
-    .map(name => name.replace(/\.ts$/, ''))
+    // 机械改名 6b:门面叫 `plugin-builtin-<id>.ts`,id 是去掉前缀以后的部分。
+    .map(name => name.replace(/\.ts$/, '').replace(/^plugin-builtin-/, ''))
 }
 
 describe('R6 status registry — 格子语义与清扫', () => {

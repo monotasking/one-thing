@@ -12,7 +12,7 @@ import {
   generatePKCE,
   getAuthProviderDefinition,
   normalizeGenericOAuthToken,
-} from './registry.js'
+} from './auth-registry.js'
 import type { OnethingSpaceAuthTokenStore } from '@onething/backend/credentials'
 import type {
   OnethingAuthAccount,
@@ -28,7 +28,7 @@ import type {
   OnethingOAuthStatusResponse,
   OnethingOAuthToken,
   OnethingProviderAuthContext,
-} from './types.js'
+} from './auth-types.js'
 
 const FLOW_TIMEOUT_MS = 5 * 60 * 1000
 const REFRESH_BUFFER_MS = 5 * 60 * 1000

@@ -17,7 +17,7 @@
  * 交给 `buildHistoryMessages` 自己切。这不是兜底,是**事实所在处不同**。
  */
 
-import type { CoreBuildHistoryMessagesOptions, CoreHistoryChatMessage, CoreHistoryMessage } from '../../agent-loop/index.js'
+import type { CoreBuildHistoryMessagesOptions, CoreHistoryChatMessage, CoreHistoryMessage } from '../../agent-loop/agent-loop.js'
 import {
   buildHistoryMessages,
   canSplitHistoryTurnGroups,
@@ -25,7 +25,7 @@ import {
   completedHistoryToolCalls,
   historyContentPartsCoverContent,
 } from '../../agent-loop/agent-loop-history.js'
-import { TurnContextLedger } from '../../agent-loop/index.js'
+import { TurnContextLedger } from '../../agent-loop/agent-loop.js'
 import type { BlobRef, SessionLogEventRecord } from '@shared/session/events/types.js'
 import { foldSessionProjection, materializeNode } from '@shared/session/projection/chat-messages.js'
 import { resolveHistoryBlobRefs, type ProjectionIssue, type ProjectionMaterializeOptions } from '@shared/session/projection/blobs.js'

@@ -16,10 +16,10 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { ToolRunner } from '../../toolkit/runner.js'
+import { ToolRunner } from '../../toolkit/toolkit-runner.js'
 import { allowAuthorizer, makeInvocation, passthroughValidator, RecordingObserver } from '../../toolkit/__tests__/fakes.js'
 import { RESOURCE_META_TOOL_ID, ResourceMetaCallShapeError, ResourceMetaTool } from '../meta-tool.js'
-import { ResourceRegistry } from '../registry.js'
+import { ResourceRegistry } from '../resource-registry.js'
 import { DEMO_SCHEME, demoSpec } from './fakes.js'
 
 function runner(): ToolRunner {

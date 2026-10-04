@@ -7,7 +7,7 @@ import type {
   AgentToolPartialResultUpdate,
   AgentToolResult,
   AgentUsage,
-} from './types.js'
+} from './agent-loop-types.js'
 
 export type AgentLoopStreamChunk =
   | { type: 'turn-start'; turn: number }

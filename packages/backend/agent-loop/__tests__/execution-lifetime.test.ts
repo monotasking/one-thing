@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAgentExecutionLifetime } from '../execution-lifetime.js'
-import { runAgentLoop } from '../runner.js'
-import { AgentExecutionCheckpointError } from '../errors.js'
-import type { AgentLoopOptions, AgentProvider, AgentTurnStreamEvent } from '../types.js'
+import { runAgentLoop } from '../agent-loop-runner.js'
+import { AgentExecutionCheckpointError } from '../agent-loop-errors.js'
+import type { AgentLoopOptions, AgentProvider, AgentTurnStreamEvent } from '../agent-loop-types.js'
 
 function barrier() {
   let resolve!: () => void

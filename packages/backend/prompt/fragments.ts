@@ -22,7 +22,7 @@
  * Module state is one Map; importing this file registers nothing.
  */
 import type { CorePromptFragment } from '@onething/backend/agent-loop'
-import type { PromptSource } from './composer.js'
+import type { PromptSource } from './prompt-composer.js'
 
 export class PromptFragmentRegistry implements PromptSource {
   readonly name = 'registry'

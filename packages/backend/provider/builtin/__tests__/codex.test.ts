@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { toJsonObject, type JsonObject, type JsonValue } from '@shared/json.js'
 // 服务商自述试点 P2 第 4 批:这几个函数原是 `../codex.js` 对 runtime 的薄转手(生产零调用者),转手层删除,
-// 断言改指 runtime 那一家的模块本身(`vendors/codex/models.ts`)。`prepareCodexCallOptions` 随
+// 断言改指 runtime 那一家的模块本身(`vendors/codex/codex-models.ts`)。`prepareCodexCallOptions` 随
 // 它唯一的去处(没有读者的 `prepareCallOptions` 一格)一起删除,只测它的那一条测试一并删。
 import {
   buildOnethingCodexHeaders as buildCodexHeaders,
@@ -11,7 +11,7 @@ import {
   ONETHING_CODEX_CLIENT_VERSION as CODEX_CLIENT_VERSION,
   getOnethingCodexFallbackModel as getCodexFallbackModel,
   getOnethingCodexFallbackModels as getCodexFallbackModels,
-} from '../../vendors/codex/models.js'
+} from '../../vendors/codex/codex-models.js'
 
 function codexMetadata(model: { providerMetadata?: object | null } | null | undefined): JsonObject {
   return toJsonObject(toJsonObject(model?.providerMetadata).codex)

@@ -171,7 +171,7 @@ export function isRoom(sessionId: string): boolean {
  *
  * v2 的 per-room 运行时表已经不存在了,所以这里没有东西可删 —— 房间的每一格
  * 状态都在 RoomActor 的账里,由 actor 自己的 `stop()` 收。留一个显式的空操作,
- * 好过让删房那条路(`actors/runtime.ts` 的 `disposeRoom`)自己记住"这一步现在
+ * 好过让删房那条路(`actors/collab-actors-runtime.ts` 的 `disposeRoom`)自己记住"这一步现在
  * 不需要了":删房是「内存 + 磁盘」两步,少写一步的下一个人会以为它被忘了。
  */
 export function deleteRoomRuntime(_roomSessionId: string): void {

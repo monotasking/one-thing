@@ -21,15 +21,15 @@ import {
 	type ProviderContext,
 	type ProviderMediaReader,
 	type TurnContext,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import type { AgentProviderRequestDumper } from "../request-dumper.js";
-import { GEMINI_THINKING_WIRES } from "../thinking/index.js";
+import { GEMINI_THINKING_WIRES } from "../thinking/provider-thinking.js";
 import {
 	GeminiWire,
 	geminiLogger,
 	type GeminiDialect,
 	type GeminiWireValue,
-} from "../wires/index.js";
+} from "../wires/provider-wires.js";
 
 export type FetchFn = typeof globalThis.fetch;
 

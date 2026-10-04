@@ -39,7 +39,7 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from './health.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('plugins')
 
@@ -74,7 +74,7 @@ const pluginToolCallInterceptRegistryOptions: CorePluginToolCallInterceptRegistr
    * runner 每次调用走的那一个,连"认不出的 schema 放行"这条默认都是同一份)。
    */
   async validateInput(toolName, input) {
-    const { getToolkitCatalog, ZodValidator } = await import('../toolkit/index.js')
+    const { getToolkitCatalog, ZodValidator } = await import('../toolkit/toolkit.js')
     const tool = getToolkitCatalog()?.get(toolName)
     if (!tool) return { ok: true as const }
     const parsed = new ZodValidator().parse(tool.spec.input, input as JsonObject)

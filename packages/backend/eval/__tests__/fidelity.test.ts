@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { measureReplayFidelity, fidelityVerdict } from "../fidelity.js";
-import type { ReplayScene } from "../replay.js";
+import type { ReplayScene } from "../eval-replay.js";
 import type { EvalModelCaller } from "../model-call.js";
 
 function makeScene(): ReplayScene {

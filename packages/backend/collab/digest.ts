@@ -12,7 +12,7 @@
 import { agentTombstoneLabel } from '../agent/model.js'
 import { escapeCollabPromptText } from './inline-tags.js'
 import { COLLAB_SYSTEM_SPEAKER_LABEL, isCollabProjectedSystemLine } from './system-lines.js'
-import type { CollabAgentLike, CollabMessageLike } from './types.js'
+import type { CollabAgentLike, CollabMessageLike } from './collab-types.js'
 
 /** 一天的摘要,落在 `<store>/collab/<roomId>/digests.json`。 */
 export interface CollabDayDigest {

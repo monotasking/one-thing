@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { pickOnethingProviderOptions } from '../provider-options.js'
-import { readOnethingQwenOptions } from '../vendors/qwen/endpoint.js'
+import { readOnethingQwenOptions } from '../vendors/qwen/qwen-endpoint.js'
 import { getEffectiveProviderConfig, withResolvedProviderBaseUrl } from '../provider-config.js'
 import type { CoreProviderConfigLike, ProviderConfigWithDials } from '../provider-config.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,
   normalizeOnethingZhipuApiMode,
-} from '../vendors/zhipu/endpoint.js'
+} from '../vendors/zhipu/zhipu-endpoint.js'
 
 /**
  * These knobs used to travel as named fields through nine files, including

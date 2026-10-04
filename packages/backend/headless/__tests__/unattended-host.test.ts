@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('HeadlessBackend 的无人值守声明', () => {
   it('start 声明、shutdown 收回', async () => {
-    const { HeadlessBackend } = await import('../backend.js')
+    const { HeadlessBackend } = await import('../headless-backend.js')
     const backend = new HeadlessBackend()
 
     expect(isHostUnattended()).toBe(false)
@@ -54,7 +54,7 @@ describe('HeadlessBackend 的无人值守声明', () => {
   })
 
   it('装配失败就地收回,不在进程里留下一句「无人值守」', async () => {
-    const { HeadlessBackend } = await import('../backend.js')
+    const { HeadlessBackend } = await import('../headless-backend.js')
     const backend = new HeadlessBackend()
     assembleFails = true
 
@@ -65,7 +65,7 @@ describe('HeadlessBackend 的无人值守声明', () => {
 
   it('A3-b:守护进程挂 ACP 的审批 / 文件 / 终端三只桥,关机时一并摘掉', async () => {
     const { ACPManager } = await import('@onething/backend/acp')
-    const { HeadlessBackend } = await import('../backend.js')
+    const { HeadlessBackend } = await import('../headless-backend.js')
     const backend = new HeadlessBackend()
     await backend.start({ storePath: '/tmp/onething-unattended-host-test' })
     expect(disposers.map(entry => entry.label)).toContain('acpPermissionBridge')

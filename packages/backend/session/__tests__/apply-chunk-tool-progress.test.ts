@@ -11,7 +11,7 @@
  * `packages/backend/engine/stream/__tests__/tool-progress-not-in-ledger.test.ts`。
  */
 import { describe, expect, it } from 'vitest'
-import { Session } from '../session.js'
+import { Session } from '../session-subscriber.js'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 
 function sessionWithChunks(chunks: StreamChunkBase[]): Session {

@@ -15,7 +15,7 @@ import {
   collabIdentityFromAgent,
   collabUserIdentity,
   type CollabIdentity,
-} from '../identity.js'
+} from '../collab-identity.js'
 import {
   formatCollabAgentHandle,
   parseCollabHandleMentions,

@@ -23,7 +23,7 @@ const calls: Array<{ method: string; args: unknown[] }> = []
  * `ownedBackend` 要给出 `own` / `storeLease` / `runTask` 三样 —— `DaemonServer.start`
  * 与 `dispatch` 各自要一样,少一样就起不来。
  */
-vi.mock('@onething/backend/headless/backend', () => ({
+vi.mock('@onething/backend/headless/headless-backend', () => ({
   HeadlessBackend: class {
     ownedBackend = {
       own: () => {},

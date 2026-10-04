@@ -380,7 +380,7 @@ async function assertLiveSearchReads(openVaults) {
   let domain
   try {
     domain = await import(pathToFileURL(
-      path.join(import.meta.dirname, '..', 'packages', 'backend', 'note', 'index.ts'),
+      path.join(import.meta.dirname, '..', 'packages', 'backend', 'note', 'note.ts'),
     ).href)
   } catch (error) {
     record('⑧b aborted liveSearch spawns nothing', 'skipped',
@@ -433,7 +433,7 @@ async function assertClosedVaultsStayQuiet(registry) {
   let domain
   try {
     domain = await import(pathToFileURL(
-      path.join(import.meta.dirname, '..', 'packages', 'backend', 'note', 'index.ts'),
+      path.join(import.meta.dirname, '..', 'packages', 'backend', 'note', 'note.ts'),
     ).href)
   } catch (error) {
     // 门跑在裸 node 上,没有 TS 加载器时这一步无从执行 —— 说清楚,不假装通过。

@@ -13,7 +13,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import type { MCPOAuthClientInformation, MCPOAuthTokens } from './types.js'
+import type { MCPOAuthClientInformation, MCPOAuthTokens } from './mcp-oauth-types.js'
 
 export interface MCPOAuthCredentialEntry {
   tokens?: MCPOAuthTokens

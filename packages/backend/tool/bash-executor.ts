@@ -8,7 +8,7 @@ import {
   getProcessGroupPids,
   registerBackgroundJob,
   type BackgroundJob,
-} from './background-jobs.js'
+} from './tool-background-jobs.js'
 
 export interface ShellConfig {
   shell: string

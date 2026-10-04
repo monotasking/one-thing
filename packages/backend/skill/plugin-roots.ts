@@ -1,5 +1,5 @@
 import type { SkillSource } from '@shared/ipc.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('skills')
 

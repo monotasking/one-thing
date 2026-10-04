@@ -30,7 +30,7 @@ import {
   type BuildCollabRoomContextOptions,
 } from './roster.js'
 import { formatCollabProjectedSystemLine, isCollabProjectedSystemLine } from './system-lines.js'
-import type { CollabAgentLike, CollabMessageLike, CollabSelfTaskFact } from './types.js'
+import type { CollabAgentLike, CollabMessageLike, CollabSelfTaskFact } from './collab-types.js'
 
 /** How many recent messages the judgement window carries. */
 export const COLLAB_WILLINGNESS_RECENT_LIMIT = 8

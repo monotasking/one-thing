@@ -16,7 +16,7 @@
  * engine used to attach.
  */
 import type { CoreBuildPromptContextOptions, CorePromptFragment } from "@onething/backend/agent-loop";
-import type { PromptSource } from "./composer.js";
+import type { PromptSource } from "./prompt-composer.js";
 
 /** The one thing this source needs: text for a session's board. */
 export interface VariableBoardRenderer {

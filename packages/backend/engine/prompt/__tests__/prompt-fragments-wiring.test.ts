@@ -50,7 +50,7 @@ vi.mock('@onething/backend/agent/agent-store-access', () => ({
   DEFAULT_AGENT_ID: 'default',
 }))
 
-const { buildSystemPrompt } = await import('../system-prompt.js')
+const { buildSystemPrompt } = await import('../engine-system-prompt.js')
 
 function build(toolNames: string[]) {
   return buildSystemPrompt({

@@ -1,0 +1,1241 @@
+import * as store from "@onething/backend/session";
+import { sessionCommands } from "@onething/backend/session";
+import { sessionReads } from "@onething/backend/session";
+import { ensureSessionWritable } from "@onething/backend/session";
+import { synthesizeCoreToolAnchors } from "@shared/session/render-anchors";
+import {
+	endSessionRun,
+	ensureSessionRun,
+	markSessionRunOutcome,
+	rotateSessionRun,
+} from "@onething/backend/session";
+import {
+	IPC_CHANNELS,
+	type ContentPart,
+	type Step,
+	type ToolCall,
+	type ToolResult,
+} from "@shared/ipc.js";
+import { getEventBus } from "@onething/backend/event";
+import { createEventOnlyEmitter } from "@onething/backend/event/event-only-emitter";
+import { clearDeltaStamps, offerDeltaStamp } from "@onething/backend/event/delta-stamp";
+import {
+	isUiEventStreamEnabled,
+	pushSessionUiStreamEvent,
+} from "@onething/backend/event/ui-stream";
+import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from "@shared/events/stream-chunks";
+import {
+	streamAgentLoopProviderChunks,
+	isAgentExecutionCheckpointError,
+	createAgentExecutionLifetime,
+	type AgentProviderStreamChunk,
+} from "@onething/backend/agent-loop/loop-primitives";
+import type { HistoryMessage } from "./message-helpers.js";
+import type { StreamContext, StreamProcessor } from "./stream-processor.js";
+import { createStreamProcessor, resolveToolIdentity } from "./stream-processor.js";
+import type { IPCEmitter } from "../../agent-loop/agent-loop.js";
+import {
+	buildAgentLoopRuntimeFromStreamContext,
+	type BuildAgentLoopStreamRuntimeResult,
+} from "./engine-stream-agent-loop-runtime.js";
+import { createSessionCredentialRotator } from "@onething/backend/credentials";
+import {
+	applyOnethingAgentLoopProviderData,
+	routedProviderIdOf,
+	type ApplyOnethingAgentLoopProviderDataOptions,
+	type CoreSpaceCredentialMarker,
+} from "@onething/backend/provider";
+import { observeQuotaProviderData } from "@onething/backend/quota/engine-hooks";
+import { resolveAgentProfileForSession } from "@onething/backend/agent/profile-for-session";
+import { saveMediaImage } from "@onething/backend/media/save-image";
+import { updateSessionUsage } from "@onething/backend/session";
+import { recordUsage, usageAttributionOf } from "@onething/backend/usage/usage-recorder";
+import {
+	completeAgentLoopStreamWithAdapters,
+	applyAgentLoopStreamChunkWithAdapters as coreApplyAgentLoopStreamChunkWithAdapters,
+	createAgentLoopExecutorTurnState,
+	createAgentLoopNextAssistantWriterPlan,
+	createCoreId,
+	emitAgentLoopFinalMessageUpdateWithAdapters,
+	executeAgentLoopStreamLifecycleWithAdapters,
+	lastUserMessageText,
+	persistAgentLoopTurnContentPartsWithAdapters,
+	runAgentLoopPostResponseHooksWithAdapters,
+	triggerManager,
+	type ApplyAgentLoopStreamChunkWithAdaptersOptions,
+	type CompleteAgentLoopStreamWithAdaptersOptions,
+	type CoreAgentLoopContentPartStore,
+	type CoreAgentLoopToolExecutionStore,
+	type CoreEvalRawRequest,
+	type CoreEvalRawResponse,
+	type CorePromptCapture,
+	type CoreRequestMessage,
+	type EmitAgentLoopFinalMessageUpdateWithAdaptersOptions,
+	type ExecuteAgentLoopStreamLifecycleWithAdaptersOptions,
+	type RunAgentLoopPostResponseHooksWithAdaptersOptions,
+} from "@onething/backend/agent-loop";
+import { runAfterAssistantResponseHooks } from "@onething/backend/plugin/lifecycle-hooks";
+import type { ChatMessage, ChatSession } from "@shared/ipc.js";
+import type { AgentJsonObject } from "@onething/backend/agent-loop/loop-primitives";
+import { hashSections } from "../../eval/eval.js";
+import {
+	attachSessionEventRecorder,
+	type SessionCancelledToolResult,
+	type SessionEventRecorder,
+} from "./session-event-recorder.js";
+
+import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { consolePort, getLogger } from '../../logging/configure-logging.js'
+import type { JsonObject } from '@shared/json'
+import type { AppSettings } from '@shared/ipc.js'
+import type { StreamProviderConfig } from './stream-processor.js'
+
+const log = getLogger('engine.stream')
+/** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
+const consoleLog = consolePort(log)
+
+
+/** Strip non-serializable values via JSON round-trip. Survives circular refs. */
+function safeClone<T>(value: T): T {
+	try {
+		return JSON.parse(JSON.stringify(value)) as T;
+	} catch {
+		return value;
+	}
+}
+
+/** Collab (room/work/agent) sessions skip builtin post-response lanes — see
+ *  call site. 'agent' is where a room turn runs since W18: same turn, same
+ *  exemption (a group-chat reply must not trigger memory/TOC side lanes). */
+function isCollabSession(sessionId: string): boolean {
+	const kind = store.getSession(sessionId)?.kind;
+	return kind === "room" || kind === "work" || kind === "agent";
+}
+
+
+export interface AgentLoopExecutorTurnState {
+	toolCalls: ToolCall[];
+	content: { value: string };
+	reasoning: { value: string };
+	orderedParts: ContentPart[];
+	hasSentToolParts: boolean;
+}
+
+/**
+ * 批 6 提示行:这一发**此刻**发给了谁,以及要不要在账本上说一句「切了家」。
+ *
+ * 标记带 `route` = 被接力给了另一家(`routedProviderIdOf` 同一条判据);只有
+ * `'sibling-api'`(订阅额度用完 → 同家 API)要让用户知道,其余理由说的都是
+ * 「就是用户选的那一家」。没有标记(没有池 / 默认空间单条)时退回造 provider 时
+ * 的那一家。
+ */
+function requestRouteOf(
+	requested: string,
+	marker: CoreSpaceCredentialMarker | undefined,
+	fallbackProvider: string,
+): { provider: string; route?: { requested: string; reason: "sibling-api" } } {
+	if (!marker) return { provider: fallbackProvider };
+	const provider = routedProviderIdOf(requested, { spaceCredential: marker });
+	return provider !== requested && marker.route?.reason === "sibling-api"
+		? { provider, route: { requested, reason: "sibling-api" } }
+		: { provider };
+}
+
+/** 账本 / 配额回调读的那份标记:换过手就是换手后的那一条,没换过就是首次解析那一条。 */
+function activeCredentialConfigOf(state: AgentLoopExecutorState): { spaceCredential?: CoreSpaceCredentialMarker } {
+	return state.activeCredential
+		? { spaceCredential: state.activeCredential }
+		: (state.ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker });
+}
+
+export interface AgentLoopExecutorState {
+	ctx: StreamContext;
+	/**
+	 * 这一发**此刻**用着的凭证标记(批 6)。首次解析那份在 `ctx.providerConfig.spaceCredential`;
+	 * 轮换器换过手(同家下一把 / 接力到同家另一半)之后改记在这里 —— 账本与配额回调要的是
+	 * 「这一发真用了谁」,首次解析那份在换手之后就过期了。缺席 = 没换过手。
+	 */
+	activeCredential?: CoreSpaceCredentialMarker;
+	processor: StreamProcessor;
+	emitter: IPCEmitter;
+	turnIndex: number;
+	turn: AgentLoopExecutorTurnState;
+	stepIdsByToolCallId: Map<string, string>;
+	accumulatedUsage?: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+		durationMs?: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
+	};
+	/**
+	 * **已经计进会话总账的那一截**(§17.7 #15)。
+	 *
+	 * `accumulatedUsage` 是**这次执行到此刻的累计**,而 `updateUsage` 每跑完一次
+	 * **流生成**就调一次 —— 一次带工具的回合有两次生成(初始 + 工具结果之后的
+	 * 续跑),于是同一截用量被加进会话总账两遍。真机 battery 上这一格稳定读出
+	 * 「容器 = 账本 × 2」(265 次对拍里 8 次不等,全是多次生成的那几条)。
+	 *
+	 * 记下"已经写进去多少",每次只写**增量**:会话总账从此与账本
+	 * (`request/response.usage` 累加)逐格相等。
+	 */
+	usageWrittenToSession?: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+	};
+	lastTurnUsage?: {
+		inputTokens: number;
+		outputTokens: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
+	};
+	toolIterations: number;
+	skillManageCalled: boolean;
+	latestUserPrompt?: string;
+	createNewAssistantOnNextTurnStart?: boolean;
+	/**
+	 * S1a:本次执行的事件记录器。挂在 state 上而不是闭包里,因为**错误与收尾**
+	 * 两条路(`updateMessageError` / `sendStreamError` / abort)不经过
+	 * `onEvent`,而"请求最终失败"与"最后一批 delta"正是要在那两条路上落账的。
+	 */
+	eventRecorder?: SessionEventRecorder;
+	/**
+	 * U0(§10.15):采集点当前盖的**助手消息号**。
+	 *
+	 * 与 `ctx.assistantMessageId` 分开是这条修复的全部内容:身份在 agent-loop 发
+	 * boundary 的同步点就换掉(这一格),而处理器 / 发射器那一套要等上一条消息
+	 * `finalize()` 之后才换(那一格)。缺省不设 = 两者同一个值。
+	 */
+	recordingAssistantMessageId?: string;
+	/** U0:同步点已经定好、消费侧还没接手的那次换锚点。 */
+	pendingAssistantRotation?: {
+		assistantMessageId: string;
+		plan: ReturnType<
+			typeof createAgentLoopNextAssistantWriterPlan<ToolCall, ContentPart>
+		>;
+		releaseShadow: () => void;
+		/**
+		 * §15.15:上一条助手消息的收尾(`finalize()` + `isStreaming:false`)是不是
+		 * **已经被压缩重建那条路提前跑掉了**。提前跑过就不再跑第二遍 —— 换身份
+		 * 那一半仍然留在消费侧,时序与语义一字不动。
+		 */
+		finished?: boolean;
+	};
+}
+
+export interface AgentLoopStreamGenerationResult {
+	pausedForConfirmation: boolean;
+}
+
+export interface ExecuteAgentLoopStreamGenerationOptions {
+	initialContent?: {
+		content?: string;
+		reasoning?: string;
+	};
+	/**
+	 * 轮转器换过手之后报一声新的凭证标记(批 6 留账)。执行器自己的账本 / 配额回调读
+	 * `state.activeCredential`;这一口是给**执行器外面**的收尾用的 —— run 结束时的配额刷新
+	 * (`stream-executor.ts` 的 `noteQuotaRunEnd`)要按这一发真用着的那条凭证,不是首次解析那条。
+	 */
+	onCredentialRotated?: (marker: CoreSpaceCredentialMarker) => void;
+}
+
+function createTurnState(): AgentLoopExecutorTurnState {
+	return createAgentLoopExecutorTurnState<ToolCall, ContentPart>();
+}
+
+function persistTurnContentParts(state: AgentLoopExecutorState): void {
+	const storePort: CoreAgentLoopContentPartStore<ContentPart> = {
+		addMessageContentPart: store.addMessageContentPart,
+	};
+	persistAgentLoopTurnContentPartsWithAdapters({
+		sessionId: state.ctx.sessionId,
+		assistantMessageId: state.ctx.assistantMessageId,
+		turn: state.turn,
+		turnIndex: state.turnIndex,
+		store: storePort,
+		emitter: state.emitter,
+	});
+}
+
+async function finishCurrentAssistantWriter(
+	state: AgentLoopExecutorState,
+): Promise<void> {
+	await state.processor.finalize();
+	try {
+		await getEventBus().emit(state.ctx.sessionId, {
+			type: SESSION_EVENT_TYPES.MESSAGE_UPDATED,
+			messageId: state.ctx.assistantMessageId,
+			updates: { isStreaming: false },
+		});
+	} catch {
+		// Event system may not be initialized in tests.
+	}
+}
+
+/**
+ * U0(§10.15 的根治):**换锚点的同步那一半**。
+ *
+ * 从前整件事都发生在 `createNextAssistantWriter` 里 —— 而那是 chunk 消费侧,
+ * 隔着 agent-loop 的异步事件队列。采集点挂在 `onEvent` 上是同步的,于是
+ * boundary 之后的 `turn-start` / 第一批 delta 常常在换锚点之前就落了账:
+ * 新响应的开头被记在**上一条**助手消息、上一条 run 上(电池 1/5 复现)。
+ *
+ * 事实(boundary)生在 agent-loop,身份就该在那一刻定。这个函数只做"定身份"
+ * 那一半,并且**全同步**:建消息、换 run、把 runId 盖回消息。
+ * 换处理器 / 换发射器 / 换 turn state 那一半仍然留在消费侧 —— 它必须排在上一条
+ * 消息 `finalize()` 之后,而那是个 await。
+ */
+function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
+	if (state.pendingAssistantRotation) return;
+
+	const assistantMessageId = createCoreId();
+	const now = Date.now();
+	const plan = createAgentLoopNextAssistantWriterPlan<ToolCall, ContentPart>({
+		id: assistantMessageId,
+		model: state.ctx.providerConfig.model,
+		provider: state.ctx.providerId,
+		timestamp: now,
+		thinkingStartTime: now,
+	});
+	const assistantMessage: ChatMessage = plan.assistantMessage;
+
+	// S1a:steering 的 response-boundary = **两次执行**。旧的按 completed 收尾,
+	// 新的以 kind:'steer' 开张 —— 一条 assistant 消息一个 run 是投影的前提
+	// (`run/start` 就是那条消息在 surface 上的那一格)。
+	//
+	// **F4-a(§16.12):入库那一条由 `addMessage` 直接交回来。** 这处是
+	// `stream-executor.ts` 那处取材点在 steer 那条路上的**孪生**,两处一起摘掉了
+	// 回读:这次要写的 `run/start` 就是这条占位消息的产地,而"入库的它长什么样"
+	// 现在是写入那扇门自己的返回值 —— 盖章(`stampCollabAgentId`,COW)已经在
+	// 那一刻发生过,所以 `plan` 里那条与这一条不是同一个对象,要用的是这一条。
+	const storedAssistantMessage = sessionCommands.appendMessage(state.ctx.sessionId, {
+		message: assistantMessage, stampCollab: true,
+	});
+	// 收尾门的闸:旧 run 现在收得比引擎写完上一条消息**早**,所以对账要等一下
+	// (见 `EndSessionRunInput.shadowGate`)。开闸的两处 = 消费侧接手完成、
+	// 以及执行收尾的 finally(闸永远不开就等于这条 run 不比)。
+	// F4-c c4 之后闸下面只剩 refold 那一道门(恒等门已退役),闸本身照旧:
+	// 采样撞上"上一条消息还没写完"仍然只会比出假红。
+	let releaseShadow: () => void = () => {};
+	const shadowGate = new Promise<void>((resolve) => {
+		releaseShadow = resolve;
+	});
+	const rotated = rotateSessionRun(
+		state.ctx.sessionId,
+		{
+			kind: "steer",
+			assistantMessageId,
+			provider: state.ctx.providerId,
+			model: state.ctx.providerConfig.model,
+			timestamp: now,
+			// §17.7.1 批 2 裁定 1:换锚点这一路与 `openAssistantRun` 是**同一件事**
+			// —— 上面那行 `store.addMessage` 与这条 `run/start` 在同一个同步段里,
+			// 而那次追加是命令面唯一不写事件的一档(流式 assistant 占位)。所以它
+			// 同样要说清"这次开张创建了占位消息",否则会话账在每一次 steering 上
+			// 都少盖一次章(批 2 影子实测:`updatedAt` B 侧领先)。
+			createdAssistantMessage: true,
+			...(storedAssistantMessage?.agentId
+				? { agentId: storedAssistantMessage.agentId }
+				: {}),
+			// §13.9:与 agentId 同一刻盖的那格 `source`(collab 回合思考记录标记)。
+			...(storedAssistantMessage?.source
+				? { messageSource: storedAssistantMessage.source }
+				: {}),
+		},
+		{ shadowGate },
+	);
+	sessionCommands.patchMessage(state.ctx.sessionId, {
+		messageId: assistantMessageId,
+		patch: { runId: rotated.runId },
+		hint: "settle",
+	});
+	// 采集点从这一刻起盖新号(`getMessageId()` 读的就是这一格)。
+	state.recordingAssistantMessageId = assistantMessageId;
+	state.pendingAssistantRotation = {
+		assistantMessageId,
+		plan,
+		releaseShadow,
+	};
+}
+
+/**
+ * §15.15:**压缩重建必须看到收尾之后的 store。**
+ *
+ * 换锚点的同步那一半(`rotateAssistantWriterIdentity`)在 agent-loop 发 boundary
+ * 的那一刻就跑完,而收尾那一半要等消费侧的下一个 `turn-start`
+ * (`createNewAssistantOnNextTurnStart` → `createNextAssistantWriter`)。麻烦在于
+ * afterTurn 发的 boundary 之后,**下一轮的 `beforeTurn` 排在那个 turn-start 之前**:
+ * 若这一轮恰好判成 `finalPlan.kind === 'rebuild'`,`rebuildAgentMessagesFromSession`
+ * 就会在上一条 assistant 还挂着 `isStreaming: true` 的时候去读 store,而
+ * `buildHistoryMessages` 见 `isStreaming` 整条跳过(`agent-loop/agent-loop-history.ts`
+ * :753/:812)—— 重建出来的历史**真的少一整轮**,模型看不见上一条回复。
+ * 这不是账记歪,是发出去的请求少了东西。
+ *
+ * 所以在读 store 之前把收尾这一半提前跑掉。**只提前收尾,不提前换身份**:
+ * `pendingAssistantRotation` 原样留着,于是"两次 boundary 挤在一个 turn-start 前面
+ * 会折叠成一条新消息"这条既有语义(`rotateAssistantWriterIdentity` 的早退)一字未动,
+ * 消费侧仍然在原来的那一格接手。此刻队列里不会有还没消费的正文 chunk:boundary 是
+ * 同步推进队列的,而 `beforeTurn` 的第一个 await 就已经把消费侧放过去了 ——
+ * 提前的只是"什么时候写 `isStreaming:false`",不是"写进去的是什么"。
+ */
+async function settlePendingAssistantWriterBeforeStoreRead(
+	state: AgentLoopExecutorState,
+): Promise<void> {
+	const pending = state.pendingAssistantRotation;
+	if (!pending || pending.finished) return;
+	pending.finished = true;
+	await finishCurrentAssistantWriter(state);
+	// 上一条消息写完了 —— 它的影子这才有得比(与消费侧那一处同一条理由)。
+	pending.releaseShadow();
+}
+
+async function createNextAssistantWriter(
+	state: AgentLoopExecutorState,
+): Promise<void> {
+	// 没人在同步点换过(采集点没挂上 / 单测直喂 chunk)= 这里补一次,行为与
+	// U0 之前逐字相同。
+	rotateAssistantWriterIdentity(state);
+	const pending = state.pendingAssistantRotation;
+	state.pendingAssistantRotation = undefined;
+	if (!pending) return;
+
+	// §15.15:压缩重建那条路可能已经把收尾跑掉了(只跑一次:`finalize()` 幂等,
+	// 但那条 `isStreaming:false` 广播不该发两遍)。
+	if (!pending.finished) {
+		await finishCurrentAssistantWriter(state);
+		// 上一条消息写完了 —— 它的影子这才有得比。
+		pending.releaseShadow();
+	}
+
+	state.ctx.assistantMessageId = pending.assistantMessageId;
+	state.processor = createStreamProcessor(state.ctx);
+	state.emitter = createEventOnlyEmitter(state.ctx);
+	state.turn = createTurnState();
+	state.stepIdsByToolCallId.clear();
+
+	try {
+		const eventBus = getEventBus();
+		for (const event of pending.plan.events) {
+			await eventBus.emit(state.ctx.sessionId, event);
+		}
+	} catch {
+		// Event system may not be initialized in tests.
+	}
+}
+
+export function runAgentLoopPostResponseHooks(options: {
+	state: AgentLoopExecutorState;
+	prepared: Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>;
+	historyMessages: HistoryMessage[];
+}): void {
+	// Build promptCapture from prepared data for eval snapshot/attribution
+	const sections = options.prepared.sections ?? [];
+
+	// Serialize request messages (capability-transformed view) for .context.jsonl
+	const requestMessages: CoreRequestMessage[] | undefined =
+		options.prepared.runtime?.messages
+			?.filter((m): m is NonNullable<typeof m> => m != null)
+			.map((m) => ({
+				role: m.role,
+				content: m.content,
+				reasoningContent: m.reasoningContent,
+				toolCalls: m.toolCalls?.map((tc) => ({
+					toolCallId: tc.id,
+					toolName: tc.name,
+					args: tc.arguments,
+				})),
+				toolCallId: m.toolCallId,
+			}));
+
+	const promptCapture: CorePromptCapture | undefined =
+		sections.length > 0
+			? {
+					systemPrompt: options.prepared.systemPrompt,
+					sections,
+					sectionHashes: hashSections(sections).sectionHashes,
+					...(requestMessages ? { requestMessages } : {}),
+					// Capture API-level request body for .request.json
+					// Safe-serialize via JSON round-trip to strip non-cloneable values
+					...(options.prepared.runtime?.messages
+						? {
+								rawRequest: safeClone({
+									model: options.state.ctx.providerConfig.model,
+									systemPrompt: options.prepared.systemPrompt,
+									messages: requestMessages ?? [],
+									...(options.prepared.runtime.tools?.length
+										? {
+												tools: options.prepared.runtime.tools.map((t) => ({
+													type: "function" as const,
+													function: {
+														name: t.name,
+														description: t.description ?? "",
+														parameters: t.parameters,
+													},
+												})),
+											}
+										: {}),
+									...(options.prepared.runtime.toolChoice
+										? {
+												toolChoice: String(options.prepared.runtime.toolChoice),
+											}
+										: {}),
+									...(options.prepared.runtime.temperature !== undefined
+										? { temperature: options.prepared.runtime.temperature }
+										: {}),
+									...(options.prepared.runtime.maxTokens !== undefined
+										? { maxTokens: options.prepared.runtime.maxTokens }
+										: {}),
+									...(options.prepared.runtime.thinking
+										? { thinking: options.prepared.runtime.thinking }
+										: {}),
+									...(options.prepared.runtime.reasoningEffort
+										? { reasoningEffort: options.prepared.runtime.reasoningEffort }
+										: {}),
+								} satisfies CoreEvalRawRequest) as CoreEvalRawRequest,
+							}
+						: {}),
+					// Capture API-level response body for .response.json
+					// Safe-serialize via JSON round-trip to strip non-cloneable values
+					rawResponse: safeClone({
+						content: options.state.processor.accumulatedContent,
+						toolCalls: options.state.turn.toolCalls.map((tc) => ({
+							id: tc.id,
+							name: tc.toolName,
+							args: tc.arguments,
+						})),
+						finishReason:
+							options.state.turn.toolCalls.length > 0 ? "tool_calls" : "stop",
+						usage: options.state.accumulatedUsage
+							? {
+									inputTokens: options.state.accumulatedUsage.inputTokens,
+									outputTokens: options.state.accumulatedUsage.outputTokens,
+									totalTokens: options.state.accumulatedUsage.totalTokens,
+								}
+							: undefined,
+					}) as CoreEvalRawResponse,
+				}
+			: undefined;
+
+	const runAgentLoopPostResponseHooksWithAdaptersOptions: RunAgentLoopPostResponseHooksWithAdaptersOptions<ChatSession, ChatMessage, StreamProviderConfig, AppSettings> = {
+		sessionId: options.state.ctx.sessionId,
+		assistantMessageId: options.state.ctx.assistantMessageId,
+		lastAssistantMessage: options.state.processor.accumulatedContent,
+		historyMessages: options.historyMessages,
+		// 批 6:这一格与下一格(config)必须是同一家 —— 接力到同家 API 时 config 里是那一家的
+		// 钥匙与端点,钩子里再发的辅助请求要按那一家发。
+		providerId: routedProviderIdOf(options.state.ctx.providerId, options.state.ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker }),
+		providerConfig: options.state.ctx.providerConfig,
+		settings: options.state.ctx.settings,
+		toolIterations: options.state.toolIterations,
+		skillManageCalled: options.state.skillManageCalled,
+		prepared: options.prepared,
+		promptCapture,
+		getSession: (sessionId) => store.getSession(sessionId),
+		// Collab sessions (room/work) skip the builtin post-response lanes
+		// (docs/design/multi-agent-collab.md P0 门控三件套): goal-continuation
+		// would re-drive the room outside the coordinator. Any plugin lane that
+		// resolves session.agentId at hook time has the same hazard — the
+		// coordinator flips it per activation, so X's turn could be attributed
+		// to Y. The coordinator owns collab post-turn behavior by observing
+		// stream:complete on the bus.
+		runTriggerContext: (context) => {
+			if (isCollabSession(options.state.ctx.sessionId)) return Promise.resolve();
+			return triggerManager.runPostResponse(
+				context as Parameters<typeof triggerManager.runPostResponse>[0],
+			);
+		},
+		runAfterAssistantResponse: (context) => {
+			if (isCollabSession(options.state.ctx.sessionId)) return Promise.resolve();
+			return runAfterAssistantResponseHooks(context);
+		},
+		onError(source, error) {
+			if (source === "trigger") {
+				log.error("trigger execution failed", { sessionId: options.state.ctx.sessionId }, error);
+				return;
+			}
+			log.error(
+				"plugin after-response hook failed",
+				{ sessionId: options.state.ctx.sessionId, source },
+				error,
+			);
+		},
+	};
+	runAgentLoopPostResponseHooksWithAdapters<
+		ChatSession,
+		ChatMessage,
+		typeof options.state.ctx.providerConfig,
+		typeof options.state.ctx.settings
+	>(runAgentLoopPostResponseHooksWithAdaptersOptions);
+}
+
+/**
+ * **收尾链的唯一取材口**(F4-c c4-b,§16.25 钥匙①)—— 折叠产物 + 现算渲染锚点。
+ *
+ * ## 它取代了什么
+ *
+ * F4-b2(§16.17)在这里立过「活 run 写手视图」:窗口内那条 assistant 消息由
+ * **引擎写手对象**持有并唯一可信,而"写手对象"今天就是内存 store 上的那一条。
+ * 那条口径把 18 个热写端口整体钉死 —— 它们一空转,写手对象就空,settle 快照
+ * 就空(§16.24 第五节证据一)。
+ *
+ * ## 为什么现在可以换
+ *
+ * 当时非读写手不可的理由只有两条,今天两条都各有出路:
+ *
+ * 1. **渲染锚点**(`data-steps`)。它按 canonical G4 **故意不进事件、不进投影**
+ *    —— 这是裁定,不是缺口。但"不进账本"不等于"必须由写手保管":锚点是
+ *    steps 的 `turnIndex` 的**纯函数**,从折叠产物**现算**即可,而且必须与
+ *    renderer 加载路径逐字同算(单实现:`@shared/session/render-anchors`)。
+ *    于是流式那一刻看到的分界,与刷新之后看到的分界,是同一个函数算出来的。
+ * 2. **收场结局的自引用**(`captureCancelledToolResults` 读的正是它自己待写的
+ *    `tool/result{cancelled}`)。这一条**不是靠"改读投影"解决的,那条路走不通**
+ *    ——`steps` / `toolCalls` 在 `message/patched` 的 `DERIVED_KEYS` 里,收尾
+ *    修复的补丁**根本进不了账本**(投影只认 `tool/*` 折出来的那一份)。施工时
+ *    先按"读投影"做过一版,探针当场量到 48/330 条:投影侧那几个 step 仍停在
+ *    `running`,采集点一条 `tool/result{cancelled}` 都不写。
+ *    真正的解法是**不回读** —— 收尾修复把产物经 `onSettled` 直接递给采集点
+ *    (见 `captureCancelledToolResults`)。零时序窗口,也没有自引用可谈。
+ *
+ * 锚点只加在**推送**这一路上:落账的那一侧一格都没多(账本零变化)。
+ */
+function readSettleMessage(
+	sessionId: string,
+	messageId: string,
+	/**
+	 * 正常收尾那一路才填 usage(见下)。中止 / 出错那两路**必须不填** ——
+	 * 账本口径是"用量只在一次执行正常收尾时写一次",被打断的那条消息本来就没有
+	 * 用量(`chat-messages.ts` 的那段注释与真机 `17b342a2…`)。探针实测:不加这个
+	 * 条件,中止路上会凭空多出 16/330 条带用量的快照。
+	 */
+	completedUsage?: AgentLoopExecutorState["accumulatedUsage"],
+): ChatMessage | undefined {
+	const message = sessionReads.getMessage(sessionId, messageId) as
+		| ChatMessage
+		| undefined;
+	if (!message) return undefined;
+	let out = message;
+	// **`?? []` 是承重的,不是防御性写法**(c4-b 探针实测:少了它 16/330 条快照丢锚点)。
+	// 一次"只调了工具、一个字都没说"的收场(中止在途工具是常见形态)在折叠侧
+	// **整格没有 contentParts** —— `materializeAssistantNode` 只在 `length > 0` 时才
+	// 带这一格。而写手那一份有一个纯锚点数组 `[{data-steps}]`。照抄"整格没有"就是把
+	// 渲染层那条消息的 contentParts 整体覆盖成 `undefined` = 工具行当场消失,
+	// §15.16 的同一根引信。空数组进去,锚点照样合成得出来。
+	const parts = message.contentParts ?? [];
+	const withAnchors = synthesizeCoreToolAnchors(parts, message);
+	if (withAnchors) out = { ...out, contentParts: withAnchors };
+	// **`usage` 是"时刻",不是"分岔"**(§16.23 第五节同型,c4-b 探针实测 266/266)。
+	//
+	// 折叠侧只在 `node.outcome === 'completed'` 时才交出 `node.usage`
+	// (`chat-messages.ts` 那一段:被打断 / 出错的那条消息**没有**用量,这是裁定),
+	// 而 `run/end` 排在收尾链**之后** —— settle 读的这一刻 run 还开着,于是投影恒为
+	// "还没有用量"。快照是**整体覆盖**广播的,照抄这一格就等于把渲染层那条消息的
+	// token 读数抹掉一直到下次重载。
+	//
+	// 补的不是"另一份事实":`state.accumulatedUsage` 正是 `updateMessageUsage`
+	// 写进去的同一个对象(`agent-loop-executor` 的用量收尾那一处),端口事实断言
+	// 每次都拿它与 `node.usage` 比过。只在折叠侧**还没到时候**时补,折叠侧一旦
+	// 有值就以折叠侧为准。
+	if (out.usage === undefined && completedUsage) {
+		out = { ...out, usage: completedUsage };
+	}
+	return out;
+}
+
+/**
+ * §13.8 第一类:收场之后,把引擎写在**未结调用**上的东西记进账本。
+ *
+ * 中止 / 请求最终出错这两条收场路上,已经派工出去的工具永远等不到那条
+ * `tool-result` 流事件 —— 账本上只剩 `tool/call`。而消息上引擎是有话说的:
+ * 收尾修复判死了调用与 step(`cancelled` + 收场那句话),step 上还留着执行
+ * 途中已经写下的结局(工具的 `annotate{metadata}` / 最后一次 partial)与
+ * 自报标题。这里读**收场之后**的那份消息(修复已经落盘),把它交给记录器 ——
+ * 不在这里第二次派生任何一格(§10.10)。
+ *
+ * 判据是 `status === 'cancelled'`:那正是收尾修复的口径。等确认的那些 step
+ * 停在 `awaiting-confirmation`(引擎明确放过它们,恢复流还要用),因此天然
+ * 不在这张表里。
+ */
+function captureCancelledToolResults(
+	state: AgentLoopExecutorState,
+	settled: ChatMessage | undefined,
+): void {
+	const recorder = state.eventRecorder;
+	if (!recorder) return;
+	try {
+		// **F4-c c4-b:不再回读,直接用收尾修复刚刚决定好的那一份**(`onSettled`)。
+		//
+		// 从前这里重读一次消息,读的是内存 store —— 而那次回读只在 store 上成立:
+		// 修复的落盘走命令面 `patchMessage{steps,toolCalls}`,可 `steps`/`toolCalls`
+		// 都在 `message/patched` 的 `DERIVED_KEYS` 里(投影只认 `tool/*` 折出来的
+		// 那一份,不认补丁)。所以"改读投影"在这一处是**读不到修复结果**的:探针
+		// 实测 48/330 条,投影侧那几个 step 仍停在 `running`,采集点于是一条
+		// `tool/result{cancelled:true}` 都不写 —— 被取消工具的结局整批丢账。
+		//
+		// 递一份进来就同时解决了三件事:拿到的是这次修复的**产物本身**(零时序
+		// 窗口)、不再依赖任何一侧的缓存形状、也不再有"产地读自己的产物"那条自引用。
+		const message = settled;
+		if (!message) return;
+		const calls: SessionCancelledToolResult[] = [];
+		for (const step of message.steps ?? []) {
+			if (step.status !== "cancelled") continue;
+			if (!step.toolCallId) continue;
+			calls.push({
+				callId: step.toolCallId,
+				...(typeof step.result === "string" && step.result
+					? { result: step.result }
+					: {}),
+			});
+		}
+		if (calls.length > 0) recorder.recordCancelledToolResults(calls);
+	} catch (error) {
+		log.warn(
+			"cancelled tool result capture failed",
+			{ sessionId: state.ctx.sessionId },
+			error,
+		);
+	}
+}
+
+async function emitFinalAssistantMessageUpdate(
+	state: AgentLoopExecutorState,
+	errorMessage?: string,
+): Promise<void> {
+	// 收尾修复的产物 —— 下面的采集点要的就是它(见 `captureCancelledToolResults`)。
+	let settled: ChatMessage | undefined;
+	try {
+		const emitAgentLoopFinalMessageUpdateWithAdaptersOptions: EmitAgentLoopFinalMessageUpdateWithAdaptersOptions<ChatMessage, ChatSession> = {
+			sessionId: state.ctx.sessionId,
+			assistantMessageId: state.ctx.assistantMessageId,
+			getSession: (sessionId) => store.getSession(sessionId),
+			// 收尾修复是 COW 的,必须显式落盘;这是对**消息**的 read-modify-write ——
+			// 读到的消息经 `finalizeLingering…` 折成 patch 再写回(自报标题等字段随
+			// steps 数组回落)。
+			//
+			// **F4-c c4-b:改读折叠产物 + 现算渲染锚点**(全文见 `readSettleMessage`)。
+			// 要回落的是 `steps[]`,而自报标题 / 自报结局在 F2-c 的 `tool/annotate`
+			// 之后事件侧都有产地了 —— 从前"读投影会拿到占位标题"的那条理由已经不准。
+			getMessage: (sessionId, messageId) => readSettleMessage(sessionId, messageId),
+			patchMessage: (sessionId, messageId, patch) => {
+				sessionCommands.patchMessage(sessionId, {
+					messageId,
+					patch: patch as Partial<ChatMessage>,
+					hint: "settle",
+				});
+			},
+			emitMessageUpdated: async (event) => {
+				await getEventBus().emit(state.ctx.sessionId, event);
+			},
+			errorMessage,
+			onSettled: (message) => {
+				settled = message;
+			},
+		};
+		await emitAgentLoopFinalMessageUpdateWithAdapters<ChatMessage, ChatSession>(
+			emitAgentLoopFinalMessageUpdateWithAdaptersOptions,
+		);
+	} catch {
+		// Event system may not be initialized in tests.
+	}
+	// 采集点排在这里,不在上面那个 try 里(事件系统没起来不该让账本少一笔)。
+	captureCancelledToolResults(state, settled);
+}
+
+export async function completeAgentLoopStream(
+	state: AgentLoopExecutorState,
+	sessionName?: string,
+): Promise<void> {
+	const completeAgentLoopStreamWithAdaptersOptions: CompleteAgentLoopStreamWithAdaptersOptions<ChatMessage, ChatSession> = {
+		sessionId: state.ctx.sessionId,
+		assistantMessageId: state.ctx.assistantMessageId,
+		sessionName,
+		accumulatedUsage: state.accumulatedUsage,
+		lastTurnUsage: state.lastTurnUsage,
+		finalize: () => state.processor.finalize(),
+		getSession: (sessionId) => store.getSession(sessionId),
+		// C1(P0.2):读走门面。收尾修复是 COW 的,必须显式落盘 —— 正常收尾这次读
+		// **又是**一次 read-emit:读到的消息经 `finalizeLingering…` 折成 patch 落盘,
+		// 并原样作为 settled 快照(`updates.contentParts`)广播给 renderer。
+		//
+		// **F4-c c4-b:三处里最硬的这一处也翻了。** settle 快照是**整体覆盖**广播给
+		// renderer 的,而它的 contentParts 必须带 `data-steps` 渲染锚点 —— 少了锚点,
+		// renderer 的 `updateSessionMessage` 覆盖之后 work group 与整段工具渲染当场
+		// 消失(§15.16「正文看不见」那一课的同一根引信)。
+		//
+		// 从前锚点由活 run 的写手对象保管,于是快照非读写手不可。今天锚点由
+		// **同一个共享纯件**从折叠产物现算(`readSettleMessage` →
+		// `@shared/session/render-anchors`),renderer 加载路径用的正是它 ——
+		// 于是"流式收尾看到的分界"与"刷新之后看到的分界"逐字同源,而写手对象不再是
+		// 锚点的必经保管人。锚点仍然**只走推送路**:账本一格没多(G4 裁定不变)。
+		getMessage: (sessionId, messageId) =>
+			readSettleMessage(sessionId, messageId, state.accumulatedUsage),
+		patchMessage: (sessionId, messageId, patch) => {
+			sessionCommands.patchMessage(sessionId, {
+				messageId,
+				patch: patch as Partial<ChatMessage>,
+				hint: "settle",
+			});
+		},
+		emitMessageUpdated: async (event) => {
+			try {
+				await getEventBus().emit(state.ctx.sessionId, event);
+			} catch {
+				// Event system may not be initialized in tests.
+			}
+		},
+		sendStreamComplete: (data) => state.emitter.sendStreamComplete(data),
+	};
+	await completeAgentLoopStreamWithAdapters<ChatMessage, ChatSession>(completeAgentLoopStreamWithAdaptersOptions);
+}
+
+export async function applyAgentLoopStreamChunk(
+	state: AgentLoopExecutorState,
+	chunk: AgentProviderStreamChunk,
+): Promise<void> {
+	const storePort2: CoreAgentLoopToolExecutionStore<ToolCall> = {
+		updateMessageToolCalls: store.updateMessageToolCalls,
+	};
+	const applyAgentLoopStreamChunkWithAdaptersOptions: ApplyAgentLoopStreamChunkWithAdaptersOptions<ContentPart, ToolCall, Partial<Step>, ToolResult<JsonObject | undefined>> = {
+		state,
+		chunk,
+		sessionId: state.ctx.sessionId,
+		assistantMessageId: state.ctx.assistantMessageId,
+		model: state.ctx.providerConfig.model,
+		accumulatedContent: state.processor.accumulatedContent,
+		processor: state.processor,
+		store: storePort2,
+		emitter: state.emitter,
+		createNextAssistantWriter: () => createNextAssistantWriter(state),
+		handleTextChunk: (text, content, turnIndex) =>
+			state.processor.handleTextChunk(text, content, turnIndex),
+		handleReasoningChunk: (reasoning, accumulator, turnIndex, placement) =>
+			state.processor.handleReasoningChunk(
+				reasoning,
+				accumulator,
+				turnIndex,
+				placement,
+			),
+		applyProviderData: (options) => {
+			// 批 5 被动源:响应头带回来的配额只进配额缓存,不落消息。
+			if (
+				observeQuotaProviderData({
+					sessionId: state.ctx.sessionId,
+					// 被接力给同家另一半的那一发,配额算在真正在用的那一家那一条上(批 6)。
+					...usageAttributionOf(state.ctx.providerId, activeCredentialConfigOf(state)),
+					providerData: options.providerData,
+				})
+			) {
+				return Promise.resolve(false);
+			}
+			const providerDataOptions: ApplyOnethingAgentLoopProviderDataOptions<ContentPart> = {
+				...options,
+				saveMediaImage,
+				// A14(§13.1):内联生图那段 markdown 是**引擎合成的**(codex 的
+				// 原生 image_generation、OpenRouter 的 images[] 都走这里),
+				// provider 流里没有对应的 text-delta —— 采集点只能由这里告知,
+				// 否则那段正文在会话事件账本上不存在。
+				onSynthesizedText: (text) =>
+					state.eventRecorder?.recordSynthesizedText(text),
+				notifyImageGenerated: (notification) => {
+					if (!state.ctx.sender.isDestroyed()) {
+						state.ctx.sender.send(IPC_CHANNELS.IMAGE_GENERATED, notification);
+					}
+				},
+			}
+			return applyOnethingAgentLoopProviderData(providerDataOptions)
+		},
+		persistTurnContentParts: () => persistTurnContentParts(state),
+		createTurnState,
+		syncAccumulatedUsage: (usage) => {
+			state.accumulatedUsage = usage;
+			state.ctx.accumulatedUsage = usage;
+		},
+		syncLastTurnUsage: (usage) => {
+			state.lastTurnUsage = usage;
+			state.ctx.lastTurnUsage = usage;
+			// Live readout (composer status): exact per-turn numbers at every
+			// turn boundary. Fire-and-forget; must never block the stream.
+			void getEventBus()
+				.emit(state.ctx.sessionId, {
+					type: SESSION_EVENT_TYPES.STREAM_USAGE,
+					messageId: state.ctx.assistantMessageId,
+					turnIndex: state.turnIndex,
+					usage: {
+						inputTokens: usage.inputTokens,
+						outputTokens: usage.outputTokens,
+						totalTokens: usage.totalTokens,
+						...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+					},
+					accumulated: {
+						inputTokens: state.accumulatedUsage?.inputTokens ?? usage.inputTokens,
+						outputTokens: state.accumulatedUsage?.outputTokens ?? usage.outputTokens,
+						totalTokens: state.accumulatedUsage?.totalTokens ?? usage.totalTokens,
+					},
+				})
+				.catch(() => {});
+			// Billing must never break the chat stream: isolate failures here.
+			try {
+				recordUsage({
+					sessionId: state.ctx.sessionId,
+					assistantMessageId: state.ctx.assistantMessageId,
+					// 批 6:账记在**真正发请求的那一家**与那一条凭证上(接力到同家 API 的那一发是 API 钱)。
+					...usageAttributionOf(state.ctx.providerId, activeCredentialConfigOf(state)),
+					modelId: state.ctx.providerConfig.model,
+					// W13.3: the drive that started this stream may have labelled
+					// itself ('collab-room' / 'collab-work'); everything else is chat.
+					// 宿主贴的类目优先;其次 provider 自述的(ACP agent = 'acp');都没有才是 chat。
+					source: state.ctx.usageSource || usage.usageSource || "chat",
+					usage,
+				});
+			} catch (error) {
+				log.error("record usage failed", { sessionId: state.ctx.sessionId }, error);
+			}
+		},
+		updateStepsUsageByTurn: (turnIndex, usage) => {
+			store.updateStepsUsageByTurn(
+				state.ctx.sessionId,
+				state.ctx.assistantMessageId,
+				turnIndex,
+				usage,
+			);
+		},
+		now: Date.now,
+	};
+	await coreApplyAgentLoopStreamChunkWithAdapters<
+		ContentPart,
+		ToolCall,
+		Partial<Step>,
+		ToolResult
+	>(applyAgentLoopStreamChunkWithAdaptersOptions);
+}
+
+export async function executeAgentLoopStreamGeneration(
+	ctx: StreamContext,
+	historyMessages: HistoryMessage[],
+	sessionName?: string,
+	options: ExecuteAgentLoopStreamGenerationOptions = {},
+): Promise<AgentLoopStreamGenerationResult> {
+	const executionLifetime = createAgentExecutionLifetime();
+	await ensureSessionWritable(ctx.sessionId);
+	// One resolution per turn, at the only door every run comes through (the
+	// ordinary send path AND the resume-after-confirmation path). Everything
+	// downstream reads this snapshot instead of re-deriving its own answer, so
+	// an agent edited mid-turn cannot produce a half-new combination.
+	ctx.agentProfile = resolveAgentProfileForSession(ctx.sessionId);
+	// S1a:确认后恢复(`handleResumeAfterConfirm`)**绕过** `executeMessageStream`
+	// 直接调这里,所以 run 在这里也要有一条兜底的入口。`ensureSessionRun` 按
+	// assistantMessageId 判同一次执行:普通发送走到这里时 run 已经开好了,
+	// 这一句是 no-op(`started:false`),也就不会收尾。
+	const resumeAssistantPlaceholder = sessionReads.getMessage(
+		ctx.sessionId,
+		ctx.assistantMessageId,
+	);
+	const resumeAssistantTimestamp = resumeAssistantPlaceholder?.timestamp;
+	const resumeRun = ensureSessionRun(ctx.sessionId, {
+		kind: "resume",
+		assistantMessageId: ctx.assistantMessageId,
+		provider: ctx.providerId,
+		model: ctx.providerConfig.model,
+		...(resumeAssistantTimestamp !== undefined
+			? { timestamp: resumeAssistantTimestamp }
+			: {}),
+		// A4(§13.1):与 timestamp / origin 同一条路数 —— 占位消息上盖过的那一格。
+		...(resumeAssistantPlaceholder?.agentId
+			? { agentId: resumeAssistantPlaceholder.agentId }
+			: {}),
+		// §13.9:与 agentId 同一刻盖的那格 `source`。
+		...(resumeAssistantPlaceholder?.source
+			? { messageSource: resumeAssistantPlaceholder.source }
+			: {}),
+		...(resumeAssistantPlaceholder?.origin
+			? {
+					origin: resumeAssistantPlaceholder.origin as unknown as Record<
+						string,
+						unknown
+					>,
+				}
+			: {}),
+	});
+	// 只有真的在这里开张(恢复路径)才盖 runId —— 普通发送那条已经被
+	// `executeMessageStream` 盖过了,再盖一次是同值重写。
+	if (resumeRun.started) {
+		sessionCommands.patchMessage(ctx.sessionId, {
+			messageId: ctx.assistantMessageId,
+			patch: { runId: resumeRun.run.runId },
+			hint: "settle",
+		});
+	}
+	const processor = createStreamProcessor(ctx, options.initialContent);
+	const emitter = createEventOnlyEmitter(ctx);
+	const state: AgentLoopExecutorState = {
+		ctx,
+		processor,
+		emitter,
+		turnIndex: 1,
+		turn: createTurnState(),
+		stepIdsByToolCallId: new Map(),
+		toolIterations: 0,
+		skillManageCalled: false,
+		latestUserPrompt: lastUserMessageText(historyMessages),
+	};
+
+	try {
+		const lifecycleOptions: ExecuteAgentLoopStreamLifecycleWithAdaptersOptions<
+			BuildAgentLoopStreamRuntimeResult,
+			Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
+		> = {
+		prepareRuntime: () =>
+			buildAgentLoopRuntimeFromStreamContext(ctx, historyMessages, {
+				emitter,
+				// §15.15:压缩重建读 store 之前,先把还挂着的那次换锚点收尾掉。
+				beforeRebuildMessages: () =>
+					settlePendingAssistantWriterBeforeStoreRead(state),
+			}),
+		isRuntimeSupported: (
+			prepared,
+		): prepared is Extract<
+			BuildAgentLoopStreamRuntimeResult,
+			{ supported: true }
+		> => prepared.supported,
+		unsupportedReason: (prepared) =>
+			prepared.supported ? "Unsupported agent loop runtime" : prepared.reason,
+		async emitStreamStart() {
+			try {
+				await getEventBus().emit(ctx.sessionId, {
+					type: SESSION_EVENT_TYPES.STREAM_START,
+					messageId: ctx.assistantMessageId,
+					assistantMessageId: ctx.assistantMessageId,
+					model: ctx.providerConfig.model,
+				});
+			} catch {
+				// Event system not initialized.
+			}
+		},
+		// E0 采集点:事件日志挂在 runtime 的 onEvent 上(理由见
+		// session-event-recorder.ts 头注释 —— 挂这里才能保证 tool/call 在工具
+		// 执行**之前**落账)。这里除了装配没有任何逻辑。
+		streamChunks: (prepared) => {
+			const recorded = attachSessionEventRecorder(prepared.runtime, {
+				sessionId: ctx.sessionId,
+				// 请求信封(`request/header.provider`)记的是**这一次请求发给了谁**(批 6)。
+				providerId: prepared.routedProviderId ?? ctx.providerId,
+				// 批 6 提示行:此刻发给了谁 + 是不是切了家。轮换器换过手就读换手后那一条
+				// (`state.activeCredential`,`onRotated` 当场写),否则读首次解析那一条。
+				currentRoute: () =>
+					requestRouteOf(
+						ctx.providerId,
+						state.activeCredential
+							? state.activeCredential
+							: (ctx.providerConfig as { spaceCredential?: CoreSpaceCredentialMarker }).spaceCredential,
+						prepared.routedProviderId ?? ctx.providerId,
+					),
+				model: ctx.providerConfig.model,
+				systemPrompt: prepared.systemPrompt,
+				// U0:采集点读的是**同步点**那一格 —— 换锚点之后它立刻是新号,而
+				// `ctx.assistantMessageId` 要等消费侧接手(见 state 上的注释)。
+				getMessageId: () =>
+					state.recordingAssistantMessageId ?? state.ctx.assistantMessageId,
+				// U0(§10.15):身份在**事实这一侧**分配 —— boundary 一到就换锚点。
+				onResponseBoundary: () => rotateAssistantWriterIdentity(state),
+				// R1:账本身份章的交接台(`events/delta-stamp.ts`)。记录器铸章、
+				// 裸 delta 认领,中间没有第二个编号器 —— 审查条 2。
+				offerDeltaStamp: (slot) => offerDeltaStamp(ctx.sessionId, slot),
+				// U0:UI 事件流的旁路。**档位在装配时读一次**而不是每条 delta 读一次
+				// —— 口不接上时 `ctx.emitUiEvent?.(…)` 连那个事件对象都不构造
+				// (可选调用短路掉实参求值),legacy 档因此是真的零开销。
+				...(isUiEventStreamEnabled()
+					? {
+							emitUiEvent: (event: UiAssistantDeltaChunk | UiAssistantPartEndChunk) =>
+								pushSessionUiStreamEvent(ctx.sessionId, event),
+						}
+					: {}),
+				// G10:recipe 记的是 history builder 的**输入**(带 id 的那一份),
+				// 不是 provider 收到的 AgentMessage[](那一份没有消息 id)。
+				getHistoryInput: () =>
+					sessionReads.listMessages(ctx.sessionId).messages.map((message) => ({
+						id: message.id,
+						role: message.role,
+						content: message.content,
+					})),
+				// (S1b 的历史恒等门曾挂在 `onRequestRecipe` 上,F4-c c4 随恒等门
+				// 一起退役 —— 见 `session/shadow.ts` 的文件头。回调口本身留着:
+				// 它是"配方写下去的那一刻"这个缝的通用旁听口,不是那道门的私产。)
+				// A6+A7(§13.1):工具身份归一交给**引擎那一个函数**。记录器不再
+				// 自己实现一遍别名表 / MCP 折叠 —— 一个判定点,两处落点。
+				resolveToolIdentity: (toolName, args) =>
+					resolveToolIdentity(toolName, args as AgentJsonObject),
+				// A11(§13.1):可见性也只有引擎那一个判定点(处理器的
+				// `rememberVisibility`)。记录器问它,不自己判第二遍。
+				isToolCallHidden: (toolCallId) =>
+					state.processor.isToolCallHidden(toolCallId),
+				// S1b 缺口 4:请求参数快照。取的是**定稿后**的 runtime(档位、
+				// 能力门控、per-model 覆盖都已经算完),不是设置里的原始值 ——
+				// recipe 要能回答"这次真的按什么参数发出去的"。
+				getRequestParams: () => {
+					const runtime = prepared.runtime;
+					const params = {
+						...(runtime.temperature !== undefined
+							? { temperature: runtime.temperature }
+							: {}),
+						...(runtime.maxTokens !== undefined
+							? { maxTokens: runtime.maxTokens }
+							: {}),
+						...(runtime.thinking ? { thinking: runtime.thinking } : {}),
+						...(runtime.reasoningEffort
+							? { reasoningEffort: runtime.reasoningEffort }
+							: {}),
+						...(runtime.toolChoice
+							? { toolChoice: String(runtime.toolChoice) }
+							: {}),
+					};
+					return Object.keys(params).length > 0 ? params : undefined;
+				},
+			});
+			// 错误与收尾两条路不经过 onEvent,所以执行器要拿到 recorder 本体。
+			state.eventRecorder = recorded.recorder;
+			return streamAgentLoopProviderChunks({
+				...recorded.runtime,
+				executionLifetime,
+				// per-space 凭证轮换(批 D)。挂在 core 的 turn 级重试边界上,
+				// **不另起重试链**;没有池(默认空间 / 单条)时这里是 undefined,
+				// core 的行为一行不变。
+				rotateCredential: prepared.reprovision
+					? createSessionCredentialRotator({
+							sessionId: ctx.sessionId,
+							providerId: ctx.providerId,
+							currentEntryId: ctx.providerConfig.spaceCredential?.entryId,
+							// 轮转 v2(批 6):发送前就被接力给同家另一半时,实例是按那一家造的。
+							currentProviderId: prepared.routedProviderId,
+							providerConfig: ctx.providerConfig,
+							onRotated: (marker) => {
+								state.activeCredential = marker;
+								options.onCredentialRotated?.(marker);
+							},
+							reprovision: prepared.reprovision,
+							logger: consoleLog,
+						})
+					: undefined,
+			});
+		},
+		applyChunk: (chunk) => applyAgentLoopStreamChunk(state, chunk),
+		finalize: () => state.processor.finalize(),
+		updateUsage(durationMs) {
+			if (!state.accumulatedUsage) return;
+			state.accumulatedUsage.durationMs = durationMs;
+			store.updateMessageUsage(
+				ctx.sessionId,
+				ctx.assistantMessageId,
+				state.accumulatedUsage,
+			);
+			// **只写增量**(§17.7 #15):消息上那一格要的是"这次执行到此刻的累计"
+			// (上面那一行),而会话总账是个**加法器** —— 把累计值再加一遍就是把
+			// 前面几次生成的用量重复计进去。一次带工具的回合有两次生成,从前正是
+			// 这样把总账翻了倍(battery 实测「容器 = 账本 × 2」)。
+			const written = state.usageWrittenToSession ?? {
+				inputTokens: 0,
+				outputTokens: 0,
+				totalTokens: 0,
+			};
+			const delta = {
+				inputTokens: Math.max(0, state.accumulatedUsage.inputTokens - written.inputTokens),
+				outputTokens: Math.max(0, state.accumulatedUsage.outputTokens - written.outputTokens),
+				totalTokens: Math.max(0, state.accumulatedUsage.totalTokens - written.totalTokens),
+			};
+			state.usageWrittenToSession = {
+				inputTokens: state.accumulatedUsage.inputTokens,
+				outputTokens: state.accumulatedUsage.outputTokens,
+				totalTokens: state.accumulatedUsage.totalTokens,
+			};
+			if (delta.inputTokens === 0 && delta.outputTokens === 0 && delta.totalTokens === 0) {
+				return;
+			}
+			updateSessionUsage(ctx.sessionId, delta, state.lastTurnUsage);
+		},
+		completeStream: (prepared) => {
+			void prepared;
+			return completeAgentLoopStream(state, sessionName);
+		},
+		runPostResponseHooks: (prepared) =>
+			runAgentLoopPostResponseHooks({
+				state,
+				prepared,
+				historyMessages,
+			}),
+		isAbortError: (error) => {
+			// 收尾闸:攒着的最后一批 delta 必须落账(abort 也是一种收场)。
+			state.eventRecorder?.flush();
+			return !isAgentExecutionCheckpointError(error) && (error.name === "AbortError" || ctx.abortSignal.aborted);
+		},
+		sendStreamAborted: (reason) => {
+			// 中断在这里被接住,不再往上抛 —— 不留这一句,`run/end` 会把一次
+			// 中断记成 completed(S1a)。
+			markSessionRunOutcome(ctx.sessionId, "aborted");
+			return state.emitter.sendStreamAborted(reason);
+		},
+		updateMessageError: (errorContent) => {
+			state.eventRecorder?.recordRequestError(new Error(errorContent));
+			markSessionRunOutcome(ctx.sessionId, "error", new Error(errorContent));
+			store.updateMessageError(
+				state.ctx.sessionId,
+				state.ctx.assistantMessageId,
+				errorContent,
+			);
+		},
+		emitFinalAssistantMessageUpdate: (errorMessage) =>
+			emitFinalAssistantMessageUpdate(state, errorMessage),
+		sendStreamError: (data) => state.emitter.sendStreamError(data),
+		sendStreamComplete: (data) => state.emitter.sendStreamComplete(data),
+		getSessionName: () => store.getSession(state.ctx.sessionId)?.name,
+		now: Date.now,
+		};
+		return await executeAgentLoopStreamLifecycleWithAdapters<
+			BuildAgentLoopStreamRuntimeResult,
+			Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
+		>(lifecycleOptions);
+	} catch (error) {
+		await executionLifetime.drain();
+		if (resumeRun.started) {
+			// §15.12(c):等那一次 fsync —— 收账时「已落盘」必须是真的。
+			await endSessionRun(ctx.sessionId, resumeRun.run.runId, {
+				outcome: ctx.abortSignal.aborted ? "aborted" : "error",
+				error,
+			});
+		}
+		throw error;
+	} finally {
+		let saveFailure: unknown;
+		try { await executionLifetime.drain(); } catch (error) { saveFailure = error; }
+		try {
+			state.eventRecorder?.flush();
+		} catch (error) { saveFailure ??= error; }
+		/*
+		 * **散场收台面**(R1 交接台,09-02 补)。
+		 *
+		 * 台子上那一格是「刚刚铸好、等下一条裸 delta 来取」的一枚章。正常一来一取
+		 * 之间没有空隙,但**这一轮的最后一条**可能没人来取(中断 / 出错 / 旁路直接
+		 * 发的正文认领不到),于是一枚**上一轮的**章留在台上过夜。
+		 *
+		 * 它不是内存问题(一个会话一格),是**盖错章的风险**:台子按 `(kind, 原文)`
+		 * 认领,而下一轮开头完全可能又是同一句短话("好"、"嗯"、一个换行)——
+		 * 那时新 delta 会认领到旧 run 的章,水位表把这一段正文写进**上一轮的段号**里。
+		 * 交接台的头注写着「宁可缺一枚章,不肯盖一枚错的」,这一句就是那句话在
+		 * 生命周期上的落点。
+		 */
+		clearDeltaStamps(ctx.sessionId);
+		// U0:同步点换过锚点但消费侧没来得及接手(中断 / 出错 / 循环到头)——
+		// 那道影子闸必须开,否则被接手的那条 run 永远不比(门看的是 run 数)。
+		state.pendingAssistantRotation?.releaseShadow();
+		state.pendingAssistantRotation = undefined;
+		// 幂等(见 `endSessionRun`);`started:false` 时收尾归 `executeMessageStream`。
+		if (resumeRun.started) {
+			try { await endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: saveFailure ? "error" : "completed", error: saveFailure }); }
+			catch (error) { saveFailure ??= error; }
+		}
+		// eslint-disable-next-line no-unsafe-finally -- 落盘失败必须抵达调用方(事件账本第二定律);这里抛的就是本轮唯一在手的错误,没有可被顶掉的对象
+		if (saveFailure) throw saveFailure;
+	}
+}

@@ -98,7 +98,7 @@ export function buildCollabCommonRules(
  *    废话,或者去调一个必然被拒的 `start`(卡已经是 `doing`,reducer 直接早退)。
  *    它们是**房间回合**的规则,所以留在 `buildCollabCommonRules` 里一字不动 ——
  *    在那个语境里两条都真:那时卡还没开,而 start 正是开它的动作。
- *  - `<where_you_are>` 整块移进了 system prompt(engine/prompt/system-prompt.ts
+ *  - `<where_you_are>` 整块移进了 system prompt(engine/prompt/engine-system-prompt.ts
  *    的 work 分支)。此前它必须自己带,因为这份文本拼进的是 worker.ts 那条
  *    briefing user 消息,前面没有场子说明可以依赖;现在工作身份常驻 system,
  *    再念一遍就是这个仓库一直在裁的那种念经。

@@ -5,7 +5,7 @@ import {
   getMusicProvider,
   listMusicProviderDescriptors,
   ncmMusicProvider,
-} from '../providers/index.js'
+} from '../providers/music-providers.js'
 
 describe('music provider registry', () => {
   it('unknown or absent ids fall back to ncm (matches the settings normalizer)', () => {

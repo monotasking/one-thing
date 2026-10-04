@@ -8,7 +8,7 @@ import type {
   AgentToolResult,
   AgentUsage,
   AgentJsonObject,
-} from './types.js'
+} from './agent-loop-types.js'
 
 export type AgentProviderStreamFinishReason =
   | 'stop'

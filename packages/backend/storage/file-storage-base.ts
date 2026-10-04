@@ -1,5 +1,5 @@
 import { ensureDir } from './json-file.js'
-import type { CoreStorageProvider } from './provider.js'
+import type { CoreStorageProvider } from './storage-provider.js'
 
 export type CoreStorageDirectorySource = string[] | (() => string[])
 

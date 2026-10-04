@@ -2,18 +2,18 @@ import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { ContextManager, type AgentMessage } from '../context/context-manager.js'
 import { EventBus } from '../event/event-bus.js'
 import { StreamChannel } from '../event/stream-channel.js'
-import type { EventBase } from '../event/types.js'
+import type { EventBase } from '../event/event-types.js'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 import { ToolExecutor } from '../tool/executor.js'
-import { DenyAllPolicy, type PermissionPolicy } from '../tool/policy.js'
+import { DenyAllPolicy, type PermissionPolicy } from '../tool/tool-policy.js'
 import { ToolRegistry } from '../tool/engine-tool-registry.js'
-import type { ToolCall, ToolResult } from '../tool/types.js'
+import type { ToolCall, ToolResult } from '../tool/tool-types.js'
 import type {
   Provider,
   ProviderRequest,
   ProviderStreamEvent,
   ProviderUsage,
-} from '../provider/index.js'
+} from '../provider/provider.js'
 
 export type AgentEngineSessionEvent =
   | (EventBase & { type: typeof SESSION_EVENT_TYPES.MESSAGE_USER_CREATED; message: AgentMessage & { id: string } })

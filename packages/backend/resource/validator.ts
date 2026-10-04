@@ -10,7 +10,7 @@
  * 做法是给这份生成 schema 配一个认得它的 `Validator`,而不是在内核里给 plan 开一个
  * 能返回 `Outcome` 的后门。」这只文件就是那位 Validator。
  *
- * 为什么原来认不出:`ZodValidator`(`toolkit/contract.ts`)靠一张
+ * 为什么原来认不出:`ZodValidator`(`toolkit/toolkit-contract.ts`)靠一张
  * **以 schema 对象本身为键**的 WeakMap 反查回 zod,而资源工具的 `spec.input` 是
  * `toolInputSchemaOf()` 现造的一坨 JSON Schema —— 它从来没进过那张表,于是反查失败、
  * 走 `passthrough`(那对插件 / MCP 是对的:替远端把关不是本地校验者的事)。
@@ -46,8 +46,8 @@
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 import type { PartialValidator, ValidationResult } from '../toolkit/ports.js'
 import { parseRef } from '@shared/resource/ref.js'
-import { RESOURCE_OP_KEY, RESOURCE_READ_KEY, RESOURCE_REF_KEY } from './schema.js'
-import type { ResourceSpec } from './spec.js'
+import { RESOURCE_OP_KEY, RESOURCE_READ_KEY, RESOURCE_REF_KEY } from './resource-schema.js'
+import type { ResourceSpec } from './resource-spec.js'
 
 function own(table: Readonly<Record<string, unknown>>, name: string): boolean {
   // 与 `tool.ts` / `registry.ts` 同一句:名字直接来自模型参数与 deeplink,裸下标会

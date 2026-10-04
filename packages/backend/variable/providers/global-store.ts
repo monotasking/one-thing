@@ -10,8 +10,8 @@ import {
   type SetInput,
   type VariableContext,
   type VariableProvider,
-} from '../types.js'
-import { assertNotReserved, isReservedName } from '../validation.js'
+} from '../variable-types.js'
+import { assertNotReserved, isReservedName } from '../variable-validation.js'
 
 export interface GlobalStoreGateway {
   read(): ContextVariable[]

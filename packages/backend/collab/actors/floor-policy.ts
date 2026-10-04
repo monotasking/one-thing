@@ -41,9 +41,9 @@ import {
   pickCollabRelayStarter,
   type CollabRelayRoomLike,
 } from '../speaking-order.js'
-import type { CollabAgentLike } from '../types.js'
+import type { CollabAgentLike } from '../collab-types.js'
 import type { CollabRoomJudgment } from './referee-rules.js'
-import type { CollabFloorPolicyName, CollabFloorPolicyParams, CollabHandUrgency } from './protocol.js'
+import type { CollabFloorPolicyName, CollabFloorPolicyParams, CollabHandUrgency } from './collab-actors-protocol.js'
 
 /**
  * 一只举着的手。

@@ -12,7 +12,7 @@
  * mutilated prompt).
  */
 
-import { runEvals, type EvalRunResultEntry } from "./runner.js";
+import { runEvals, type EvalRunResultEntry } from "./eval-runner.js";
 import type { EvalModelCaller } from "./model-call.js";
 import { STABLE_PASS, STABLE_FAIL } from "./compare.js";
 

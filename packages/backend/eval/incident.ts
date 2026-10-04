@@ -25,11 +25,11 @@ import type { CorePromptCapture } from "@onething/backend/agent-loop";
 import {
 	getOnethingEvalsIncidentsDir,
 	type OnethingStorePathOptions,
-} from "../storage/paths.js";
+} from "../storage/storage-paths.js";
 import {
 	buildPromptSnapshotObject,
 	buildContextSnapshotContent,
-} from "./snapshot.js";
+} from "./eval-snapshot.js";
 import { getTurnTraceDir } from "./trace-store.js";
 import { hashSections } from "./section-hash.js";
 import type { EvalFixtureContext } from "./fixture.js";

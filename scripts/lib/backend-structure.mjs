@@ -1,7 +1,7 @@
 // 后端结构门共用的几样东西:运行期值引用图、强连通分量、最短环、功能归属、「次数 名字」基线的读写与比较。
 //
 // 使用者:`scripts/feature-cycle-gate.mjs`(入口无环,D19)、`scripts/feature-layer-gate.mjs`(层次,D23)、
-// `scripts/feature-map.mjs`(功能地图,R4)、`scripts/file-name-gate.mjs`(文件名重复,N1,只用基线那几只)。
+// `scripts/feature-map.mjs`(功能地图,R4)、`scripts/file-name-gate.mjs`(文件名门,N1 / N3 / N4,只用 `byCodeUnit`)。
 // 决策正本:`docs/design/backend-structure-decisions-2026-10.md`。
 //
 // 值引用图的口径与 Fable 的模拟器(s15 `sim.mjs --real`)逐条一致,三批数据已经和真代码对上,所以这里照搬,不另起口径:
@@ -35,16 +35,14 @@ export const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 export const isTestPath = (relative) => /__tests__|\.test\.|__fixtures__|\/testing\//.test(relative)
 
 /**
- * 功能入口:过渡期的老形状 `<功能>/index.ts`,或命名规范 N3 的形状 `<功能>/<功能>.ts`
- * (2026-10-04 凭证功能起用;路线第 6 项入口改名(6b)之后只剩后一种)。目录里有 `index.ts` 时入口就是它 ——
- * 今天 `scheduler/scheduler.ts` 是 scheduler 的一只内部文件,入口仍是 `scheduler/index.ts`。
+ * 功能入口 = 命名规范 N3 的形状 `<功能>/<功能>.ts`。2026-10-04 机械改名 6b 把每个功能的 `index.ts` 改成了这个名字,
+ * 过渡期「目录里有 `index.ts` 就认它」的判法(D31)随之删掉:今天 `packages/backend` 的非测试文件里没有 `index.ts`,
+ * `name:gate` 会把新长出来的一只拦下。
  */
-export function entryFeatureOf(relative, root = repoRoot) {
+export function entryFeatureOf(relative) {
   const match = /^packages\/backend\/([^/]+)\/([^/]+)\.ts$/.exec(relative)
   if (!match || NON_FEATURE_DIRS.has(match[1])) return null
-  if (match[2] === 'index') return match[1]
-  if (match[2] !== match[1]) return null
-  return fs.existsSync(path.join(root, FEATURE_ROOT, match[1], 'index.ts')) ? null : match[1]
+  return match[2] === match[1] ? match[1] : null
 }
 
 /**
@@ -57,26 +55,12 @@ export const CLIENT_API_PATTERN = /^packages\/backend\/([^/]+)\/([^/]+)-client-a
 export function clientApiFeatureOf(relative) {
   const match = CLIENT_API_PATTERN.exec(relative)
   if (!match || NON_FEATURE_DIRS.has(match[1])) return null
-  return match[1] === match[2] || LEGACY_FILE_PREFIX[match[1]] === match[2] ? match[1] : null
+  return match[1] === match[2] ? match[1] : null
 }
 
-/**
- * 过渡表(机械改名 6a,2026-10-04):这一笔只把复数名的功能目录改成单数(命名规范 N5),**文件名不动**,
- * 所以单数目录里的文件仍以旧的复数名打头(`session/sessions-client-api.ts`)。「以自己的功能名打头」这条判据在过渡期
- * 认两种前缀:目录名本身,或这张表里它的旧名。下一笔 6b 给文件名加功能前缀时这些文件改成单数前缀,这张表随之删掉。
- */
-export const LEGACY_FILE_PREFIX = Object.freeze({
-  agent: 'agents', eval: 'evals', event: 'events', 'external-agent': 'external-agents', file: 'files', goal: 'goals',
-  note: 'notes', permission: 'permissions', pet: 'pets', plugin: 'plugins', 'project-dir': 'project-dirs',
-  prompt: 'prompts', provider: 'providers', reference: 'references', session: 'sessions', skill: 'skills',
-  space: 'spaces', task: 'tasks', theme: 'themes', tool: 'tools', trigger: 'triggers', variable: 'variables',
-})
-
-/** 某个功能的入口文件(仓库相对路径):有 `<功能>/index.ts` 就是它;没有、但有 `<功能>/<功能>.ts`,就是后者。 */
-export function entryFileOf(feature, root = repoRoot) {
-  const index = `${FEATURE_ROOT}/${feature}/index.ts`
-  const named = `${FEATURE_ROOT}/${feature}/${feature}.ts`
-  return !fs.existsSync(path.join(root, index)) && fs.existsSync(path.join(root, named)) ? named : index
+/** 某个功能的入口文件(仓库相对路径):`<功能>/<功能>.ts`(N3)。 */
+export function entryFileOf(feature) {
+  return `${FEATURE_ROOT}/${feature}/${feature}.ts`
 }
 /** 功能名:`packages/backend/<功能>/…` → `<功能>`;其余(包根散文件、非功能目录、shared)→ null。(总桶 2026-10-04 删掉。) */
 export function runtimeFeatureOf(relative) {

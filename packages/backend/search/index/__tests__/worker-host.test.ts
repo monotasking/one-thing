@@ -8,10 +8,10 @@
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { DocPayload, DocumentFeed, QueryNode } from '../../kernel/index.js'
+import type { DocPayload, DocumentFeed, QueryNode } from '../../kernel/search-kernel.js'
 
 import { LedgerFeed } from '../ledger-feed.js'
-import { SearchIndexService } from '../service.js'
+import { SearchIndexService } from '../search-index-service.js'
 import { IndexWorkerHost, IndexWorkerUnavailableError } from '../worker-host.js'
 import {
   INDEX_SCHEMAS,

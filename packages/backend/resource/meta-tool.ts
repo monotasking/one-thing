@@ -31,10 +31,10 @@
 
 import { Intent } from '../toolkit/intent.js'
 import { textResult, type Result } from '../toolkit/result.js'
-import { Tool } from '../toolkit/tool.js'
-import type { ToolSpec } from '../toolkit/spec.js'
-import type { ResourceRegistry } from './registry.js'
-import type { OpSpec, ReadSpec, ResourceSpec } from './spec.js'
+import { Tool } from '../toolkit/toolkit-tool.js'
+import type { ToolSpec } from '../toolkit/toolkit-spec.js'
+import type { ResourceRegistry } from './resource-registry.js'
+import type { OpSpec, ReadSpec, ResourceSpec } from './resource-spec.js'
 import type { JsonSchema } from '@shared/toolkit/json-schema.js'
 import { isJsonObject } from '@shared/json.js'
 

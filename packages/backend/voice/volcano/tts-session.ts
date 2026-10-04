@@ -5,7 +5,7 @@ import {
   decodeVolcanoFrame,
   encodeVolcanoFullClientRequest,
   getVolcanoErrorMessage,
-} from './protocol.js'
+} from './voice-volcano-protocol.js'
 import {
   buildOnethingDoubaoHeaders,
   getOnethingDoubaoConfigurationError,

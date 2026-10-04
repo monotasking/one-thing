@@ -16,7 +16,7 @@ import {
   encodeSessionLogEventLine,
   isSessionLogEventType,
   parseSessionLogEventLog,
-} from '../events/index.js'
+} from '../events/session-event-vocabulary.js'
 import {
   isBlobRef,
   isSessionSurfaceNodeType,

@@ -5,7 +5,7 @@ import {
   type SessionAccess,
   type SessionOwnershipRecord,
 } from '@onething/backend/session'
-import { fixedExecutionContext } from '../../session/index.js'
+import { fixedExecutionContext } from '../../session/session.js'
 
 export interface CollabActorAuthorization {
   /** Internal actor activation only; this is not a request authorization API. */

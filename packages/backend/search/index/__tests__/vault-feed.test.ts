@@ -18,15 +18,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { compositeAnalyzer } from '../../kernel/index.js'
+import { compositeAnalyzer } from '../../kernel/search-kernel.js'
 
-import { FolderVault } from '../../../note/folder/vault.js'
+import { FolderVault } from '../../../note/folder/note-folder-vault.js'
 
-import { createNotesSearchCapability } from '../../capabilities/index.js'
-import type { OnethingSearchProvidersAdapters } from '../../providers.js'
-import { OnethingSearchService } from '../../service.js'
+import { createNotesSearchCapability } from '../../capabilities/search-capabilities.js'
+import type { OnethingSearchProvidersAdapters } from '../../search-providers.js'
+import { OnethingSearchService } from '../../search-service.js'
 import { VaultFeed } from '../vault-feed.js'
-import { SearchIndexService } from '../service.js'
+import { SearchIndexService } from '../search-index-service.js'
 import { createSameThreadWorker, createTempStore } from './helpers.js'
 import type { SameThreadWorker, TempStore } from './helpers.js'
 

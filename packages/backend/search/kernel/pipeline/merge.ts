@@ -9,8 +9,8 @@
  */
 
 import type { GroupResult } from '../candidate.js'
-import type { CapabilityManifest } from '../capability.js'
-import { capabilityOrder } from '../capability.js'
+import type { CapabilityManifest } from '../search-kernel-capability.js'
+import { capabilityOrder } from '../search-kernel-capability.js'
 
 export type Merge = (groups: readonly GroupResult[]) => GroupResult[]
 

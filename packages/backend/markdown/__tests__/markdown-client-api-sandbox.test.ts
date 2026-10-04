@@ -16,10 +16,10 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
-import { createDefaultVariablesFile } from '@onething/backend/variable/schema'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
+import { createDefaultVariablesFile } from '@onething/backend/variable/variable-schema'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { resetVariablesStoreForTests } from '@onething/backend/variable/store-bound'
+import { resetVariablesStoreForTests } from '@onething/backend/variable/variable-store-bound'
 import { updateSettingsInMemory } from '@onething/backend/settings'
 import { markdownRpcHandlers } from '../markdown-client-api.js'
 import { configureHostLocalTrust } from '../../http-server/http-server-host-trust.js'
@@ -33,7 +33,7 @@ import type { NoteVault } from '@onething/backend/note'
  * (改成照样问注册表),「附件目录指向沙箱外」那条在夹紧侧就会放行。
  */
 const notes = vi.hoisted(() => ({ vaults: [] as NoteVault[] }))
-vi.mock('@onething/backend/note/notes-subsystem', () => ({
+vi.mock('@onething/backend/note/note-subsystem', () => ({
   getNotesSubsystemSafe: () => ({
     registry: {
       vaultFor: (absolutePath: string) =>

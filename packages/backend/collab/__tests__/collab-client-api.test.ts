@@ -26,8 +26,8 @@ import type {
 } from '@shared/ipc/collab.js'
 import { collabRouter } from '@shared/ipc/collab.js'
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => id === 'alice-room' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }
       : ['room-1', 'chat-1'].includes(id) ? {} : undefined,

@@ -15,9 +15,9 @@ import {
   resolveExternalAgentSessionLink,
 } from '@onething/backend/external-agent/connector-registry'
 import { getAuthService } from '@onething/backend/auth/process-auth-service'
-import type { ProviderAuthContext } from '@onething/backend/auth/ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { createRequiredAppFetch } from '@onething/backend/settings'
-import { dumpProviderRequest } from '../provider/index.js'
+import { dumpProviderRequest } from '../provider/provider.js'
 import { providerMediaReader } from './engine-media-reader.js'
 import type { AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
 

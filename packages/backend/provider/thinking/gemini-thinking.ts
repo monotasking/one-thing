@@ -25,7 +25,7 @@ import type {
 	RequestBodyBuilder,
 	ThinkingWire,
 	TurnContext,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 
 export type GeminiThinkingLevel = "minimal" | "low" | "medium" | "high";
 

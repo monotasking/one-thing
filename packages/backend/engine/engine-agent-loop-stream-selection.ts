@@ -8,7 +8,7 @@ import {
 import {
   getSupportedAgentProviderRuntimeIds,
   isAgentProviderRuntimeSupported,
-} from '../provider/index.js'
+} from '../provider/provider.js'
 
 export const ONETHING_AGENT_LOOP_STREAM_ENV = 'ONETHING_AGENT_LOOP_STREAM'
 

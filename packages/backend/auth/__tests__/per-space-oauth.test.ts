@@ -24,7 +24,7 @@ import { oauthTokenIdentity, parseSpaceOAuthToken, pickDefaultOAuthEntryId } fro
 import type {
   OnethingAuthProviderDefinition,
   OnethingOAuthToken,
-} from '../types.js'
+} from '../auth-types.js'
 import { MemoryPoolTokenStore } from './memory-pool-store.js'
 
 const DEFINITION: OnethingAuthProviderDefinition = {

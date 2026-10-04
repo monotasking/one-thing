@@ -4,7 +4,7 @@
  * S5(2026-09-05)之前它问的是 `search/install-providers` 的 `executeSearch`(旧扫描
  * 路的门面);旧路退役之后同一件事的入口是「这一类的能力 + 装配层的取材面」——
  * 断言一字未改,因为匹配器本来就是同一份代码(S5 只是把它从 `providers.ts` 搬进
- * `capabilities/prompts.ts`)。
+ * `capabilities/search-capabilities-prompts.ts`)。
  *
  * 这一条留在**装配层**而不是产品层,是因为它要证的正是装配那一半:
  * `createAppSearchProvidersAdapters().listPrompts` 真的接到了 `prompts/store-bound`
@@ -18,10 +18,10 @@ import { createSearchContext } from '@onething/backend/search'
 import {
   createPromptsSearchCapability,
   searchResultOf,
-} from '../capabilities/index.js'
-import type { SearchQuery } from '../kernel/index.js'
-import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/backend/prompt/store-bound'
-import { createAppSearchProvidersAdapters } from '../adapters.js'
+} from '../capabilities/search-capabilities.js'
+import type { SearchQuery } from '../kernel/search-kernel.js'
+import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/backend/prompt/prompt-store-bound'
+import { createAppSearchProvidersAdapters } from '../search-adapters.js'
 
 let tmpDir: string
 

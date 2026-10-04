@@ -18,7 +18,7 @@
  * `responses-reasoning`):`HttpAgentProvider.thinkingFor()` 拿
  * `ModelProfile.reasoningWire` 去 `find`,两边得对得上。
  */
-import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/provider-base.js";
 
 export type CodexReasoningEffort =
 	| "minimal"

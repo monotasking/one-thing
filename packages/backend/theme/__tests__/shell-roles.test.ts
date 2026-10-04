@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Base46Theme } from '../types.js'
+import type { Base46Theme } from '../theme-types.js'
 import { convertBase46ToTheme } from '../base46-parser.js'
 import { generateShellRoleVariables } from '../shell-roles.js'
 

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
     id === 'session-1' ? {} : id === 'foreign-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' } : undefined,
   }) }
@@ -70,7 +70,7 @@ vi.mock('../../session/session-store.js', () => ({
 
 // The service reaches the runtime window/tray through late-bound host ports —
 // configure the real port module with test doubles instead of module mocks.
-import { configureVoiceHost } from '@onething/backend/voice/host-ports'
+import { configureVoiceHost } from '@onething/backend/voice/voice-host-ports'
 
 configureVoiceHost({
   broadcastMessage: ({ channel, payload, exceptWebContentsId }) => {
@@ -119,7 +119,7 @@ describe('voice service TTS', () => {
       await handlers.onChunk?.(new Uint8Array([1, 2, 3]))
       return { mimeType: 'audio/mpeg' }
     })
-    const { getVoiceServiceSafe, createVoiceService, configureVoiceService } = await import('../service.js')
+    const { getVoiceServiceSafe, createVoiceService, configureVoiceService } = await import('../voice-service.js')
     await getVoiceServiceSafe()?.shutdown()
     configureVoiceService(createVoiceService())
     mocks.commands = []
@@ -132,7 +132,7 @@ describe('voice service TTS', () => {
   })
 
   it('rejects a native transcript or wake callback targeting another owner before playback or publication', async () => {
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
     const service = getVoiceService()
     const before = service.getState()
     await expect(service.submitTranscript({ sessionId: 'foreign-session', text: 'secret', asrProvider: 'openrouter-transcribe', asrModel: 'whisper' }))
@@ -145,7 +145,7 @@ describe('voice service TTS', () => {
   })
 
   it('sends system TTS text to the voice runtime', async () => {
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     const result = await getVoiceService().synthesize({ text: 'Hello TTS.' })
 
@@ -164,7 +164,7 @@ describe('voice service TTS', () => {
   it('falls back to system TTS when selected cloud TTS has no API key', async () => {
     mocks.settings.voice.tts.provider = 'openai-tts'
     mocks.streamSynthesizeSpeech.mockRejectedValueOnce(new Error('OpenAI API key is required for voice TTS.'))
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     const result = await getVoiceService().synthesize({ text: 'Fallback voice.' })
 
@@ -183,7 +183,7 @@ describe('voice service TTS', () => {
   it('falls back to system TTS when selected OpenRouter TTS has no key', async () => {
     mocks.settings.voice.tts.provider = 'openrouter-tts'
     mocks.streamSynthesizeSpeech.mockRejectedValueOnce(new Error('OpenRouter API key is required for voice TTS.'))
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     const result = await getVoiceService().synthesize({ text: 'OpenRouter fallback voice.' })
 
@@ -198,7 +198,7 @@ describe('voice service TTS', () => {
   it('returns TTS errors that are not configuration fallbacks', async () => {
     mocks.settings.voice.tts.provider = 'openai-tts'
     mocks.streamSynthesizeSpeech.mockRejectedValueOnce(new Error('OpenAI TTS failed (500): unavailable'))
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     const result = await getVoiceService().synthesize({ text: 'Cloud voice.' })
 
@@ -214,7 +214,7 @@ describe('voice service TTS', () => {
       await handlers.onChunk?.(new Uint8Array([3]))
       return { mimeType: 'audio/mpeg' }
     })
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     const result = await getVoiceService().synthesize({ text: 'Cloud voice.' })
 
@@ -255,7 +255,7 @@ describe('voice service TTS', () => {
       })
       return { mimeType: 'audio/mpeg' }
     })
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     const resultPromise = getVoiceService().synthesize({ text: 'Cloud voice.' })
     await Promise.resolve()
@@ -302,7 +302,7 @@ describe('voice service TTS', () => {
   })
 
   it('speaks assistant stream text for a voice-originated turn', async () => {
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     await getVoiceService().submitUtterance({
       sessionId: 'session-1',
@@ -334,7 +334,7 @@ describe('voice service TTS', () => {
   })
 
   it('starts speaking a completed streamed sentence before the assistant turn completes', async () => {
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     await getVoiceService().submitUtterance({
       sessionId: 'session-1',
@@ -355,7 +355,7 @@ describe('voice service TTS', () => {
 
   it('flushes buffered assistant text after a short streaming pause', async () => {
     vi.useFakeTimers()
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     await getVoiceService().submitUtterance({
       sessionId: 'session-1',
@@ -383,7 +383,7 @@ describe('voice service TTS', () => {
   })
 
   it('speaks visible assistant text even if a legacy speak protocol field is present', async () => {
-    const { getVoiceService } = await import('../service.js')
+    const { getVoiceService } = await import('../voice-service.js')
 
     await getVoiceService().submitUtterance({
       sessionId: 'session-1',

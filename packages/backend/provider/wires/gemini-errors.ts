@@ -12,7 +12,7 @@
  * 解析必须**同时**喂头和体,否则整个家族拿不到任何恢复时刻(批 B8-2)。
  * `ProviderHttpError` 的构造器本来就是这么调 `withProviderRetryAfter` 的。
  */
-import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper } from "../base/provider-base.js";
 
 /** 这条线抛出来的对象的形状 —— 换装后就是 `ProviderHttpError` 本身。 */
 export type GeminiApiError = ProviderHttpError;

@@ -298,7 +298,7 @@ export interface SessionGoalUpdatedEvent {
   /**
    * The session's full goal history, oldest first. Sent with every update so
    * the renderer never has to derive "which one is current" itself — that rule
-   * lives in exactly one place (packages/backend/goal/records.ts)
+   * lives in exactly one place (packages/backend/goal/goal-records.ts)
    * and a second copy on this side would be one more thing to keep in sync.
    */
   goals?: SessionGoal[]

@@ -142,8 +142,8 @@ vi.mock('@onething/backend/event', () => ({
   }),
 }))
 
-vi.mock('../../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+vi.mock('../../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
   }) }
@@ -222,12 +222,12 @@ const {
   shutdownCollabV3Runtime,
   stopCollabV3RoomFloor,
   warmCollabV3Agents,
-} = await import('../runtime.js')
+} = await import('../collab-actors-runtime.js')
 const { handleCollabRoomSendMessage } = await import('../../ingress.js')
 const { createCollabScriptedMindPort } = await import('@onething/backend/collab/actors/mind-port')
 const { createCollabScriptedRefereeJudgePort } = await import('@onething/backend/collab/actors/referee-actor')
 const { collabV3MigrationMarkerPath, readCollabV3MigrationMarker } = await import('../migrate.js')
-const { beginCollabV3Turn, endCollabV3Turn, findCollabV3Turn } = await import('@onething/backend/collab/actors/turn-context')
+const { beginCollabV3Turn, endCollabV3Turn, findCollabV3Turn } = await import('@onething/backend/collab/actors/collab-actors-turn-context')
 const { getCollabAgentActivity } = await import('../../agent-activity.js')
 const { readCollabSchedulerLogTail } = await import('@onething/backend/collab/actors/scheduler-log')
 const { speakIntoCollabRoom } = await import('../../say-tool.js')

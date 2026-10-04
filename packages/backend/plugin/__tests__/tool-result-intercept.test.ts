@@ -20,8 +20,8 @@ import {
   type PluginToolResultInterceptHandler,
   type PluginToolResultView,
 } from '../tool-result-intercept.js'
-import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '../policy.js'
-import { describePluginPermission } from '../sessions.js'
+import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '../plugin-policy.js'
+import { describePluginPermission } from '../plugin-sessions.js'
 
 function createRegistry(options: {
   timeoutMs?: number

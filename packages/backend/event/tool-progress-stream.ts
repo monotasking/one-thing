@@ -16,7 +16,7 @@
  * 读数**。重开会话时该看见的是结局(这次调用发生了、参数是什么、结局如何),
  * 不是「当时跑到第 7 行」。三定律因此一格不动。
  *
- * 纪律写成了代码而不是注释:`packages/backend/session/session.ts` 的 `applyChunk`
+ * 纪律写成了代码而不是注释:`packages/backend/session/session-subscriber.ts` 的 `applyChunk`
  * 里有一条什么都不做的 `case 'tool-progress'`,`__tests__/tool-progress-stream.test.ts`
  * 里有一条 spy 住 recorder 的用例。
  *
@@ -31,7 +31,7 @@
  */
 
 import type { ToolProgressChunk } from '@shared/events/stream-chunks'
-import { getStreamChannel } from './index.js'
+import { getStreamChannel } from './event.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 
 const log = getLogger('toolkit.progress')

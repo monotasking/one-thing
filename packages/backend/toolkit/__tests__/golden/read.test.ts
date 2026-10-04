@@ -11,7 +11,7 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultValidationMessage, zodToJsonSchema } from '../../contract.js'
+import { defaultValidationMessage, zodToJsonSchema } from '../../toolkit-contract.js'
 import { ReadInputSchema, ReadTool } from '../../builtin/read.js'
 import { Outcome } from '@onething/backend/toolkit/tool-protocol'
 import {

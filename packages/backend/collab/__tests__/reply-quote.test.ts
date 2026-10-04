@@ -15,7 +15,7 @@ import {
   isCollabVisibleRoomMessage,
   shouldAttachCollabReplyTo,
   type CollabMessageLike,
-} from '../index.js'
+} from '../collab.js'
 
 type Row = CollabMessageLike & { id: string }
 

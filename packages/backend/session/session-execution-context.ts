@@ -1,5 +1,5 @@
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
-import { DEFAULT_SESSION_OWNER, SessionAccessError } from './access.js'
+import { DEFAULT_SESSION_OWNER, SessionAccessError } from './session-access.js'
 
 /** Only accepts the separate host option. Never inspect command/tool arguments for identity. */
 export function fixedExecutionContext(value?: unknown): Readonly<RuntimeRequestContext> {

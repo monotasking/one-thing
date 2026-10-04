@@ -10,14 +10,14 @@ import { IPC_CHANNELS } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { saveMediaImage } from '@onething/backend/media/save-image'
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
-import { generateImage } from './image-generation.js'
+import { generateImage } from './engine-stream-image-generation.js'
 import type { StreamSender } from './stream-processor.js'
 import {
   executeOnethingImageGenerationStream,
 } from '@onething/backend/media'
 import { recordSynthesizedAssistantText } from '@onething/backend/session'
 import { consolePort, getLogger } from '../../logging/configure-logging.js'
-import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/backend/media/image-generation'
+import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/backend/media/media-image-generation'
 
 const log = getLogger('engine.stream.image')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

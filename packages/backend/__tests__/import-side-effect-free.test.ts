@@ -15,14 +15,14 @@ vi.mock('@onething/backend/tool/sandbox-runtime', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingToolSandboxRuntime: () => { spy.calls.push('sandbox') },
 }))
-vi.mock('@onething/backend/tool/background-jobs', async (importOriginal) => ({
+vi.mock('@onething/backend/tool/tool-background-jobs', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureCoreBackgroundJobs: () => { spy.calls.push('background-jobs') },
 }))
 // P3'a-3:绑定件归位后从 `./scheduler.js` 直取(runtime 源码不自引用包名),所以
 // 打在 barrel 上的桩够不着了 —— 换成打在**具体模块**上。barrel 的 `export *` 同样
 // 解析到这一个 id,走 barrel 的调用方照旧拿到桩。
-vi.mock('@onething/backend/scheduler/scheduler', async (importOriginal) => ({
+vi.mock('@onething/backend/scheduler/scheduler-cron-runner', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingScheduler: () => { spy.calls.push('scheduler') },
 }))
@@ -61,7 +61,7 @@ vi.mock('../credentials/credentials-pool.js', async (importOriginal) => ({
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
   configureSpaceCredentialPluginStrategyHost: () => { spy.calls.push('credential-strategy-host') },
 }))
-vi.mock('@onething/backend/permission/capabilities', async (importOriginal) => ({
+vi.mock('@onething/backend/permission/permission-capabilities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
 }))
@@ -118,12 +118,12 @@ vi.mock('@onething/backend/storage', async (importOriginal) => {
 
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
-    await import('@onething/backend/tool/access-control/sandbox')
+    await import('@onething/backend/tool/access-control/tool-access-control-sandbox')
     await import('@onething/backend/tool/background-jobs-bound')
     await import('@onething/backend/tool/bash-executor')
     await import('../engine/engine-chat-facade.js')
     await import('@onething/backend/scheduler/scheduler-bound')
-    await import('../file/files-ripgrep-app-fetch.js')
+    await import('../file/file-ripgrep-app-fetch.js')
     await import('@onething/backend/search')
     await import('@onething/backend/skill/manage-setup')
     await import('@onething/backend/skill/skill-sources')

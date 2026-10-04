@@ -20,7 +20,7 @@ import {
   TimeTool,
   VariableTool,
   WriteTool,
-} from '../index.js'
+} from '../toolkit.js'
 import { EFFECT_POLICY } from '@shared/toolkit/effects'
 import { deriveLegacyPermissionGuard } from '../guard-projection.js'
 

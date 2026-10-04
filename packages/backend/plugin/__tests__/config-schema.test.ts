@@ -18,7 +18,7 @@ import {
 import {
   ONETHING_LOG_MONITOR_MANIFEST,
   resolveOnethingLogMonitorConfig,
-} from '../log-monitor.js'
+} from '../plugin-log-monitor.js'
 
 const DEMO_SCHEMA = {
   type: 'object',

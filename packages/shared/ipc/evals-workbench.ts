@@ -8,7 +8,7 @@
  * 请求/响应形状一字未改;变的只是通道。
  *
  * **两条推送留在原地**(`EVALS_REPLAY_PROGRESS` / `EVALS_DIAGNOSE_PROGRESS`)——
- * router 今天没有推送面,它们改走 `backend/eval/events.ts` 的
+ * router 今天没有推送面,它们改走 `backend/eval/eval-events.ts` 的
  * `configureEvalsEventBroadcaster` 注入端口(与 evals 域那条 run 进度同一个端口)。
  *
  * **为什么另立一个域而不是并进 `evals`**:两者是两张不同的账 —— evals 域算的是

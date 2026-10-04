@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { OnethingAuthProviderDefinition } from '../types.js'
+import type { OnethingAuthProviderDefinition } from '../auth-types.js'
 import {
   createOnethingAuthService,
   createOnethingAuthServiceOptions,

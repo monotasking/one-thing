@@ -12,7 +12,7 @@ import { Intent } from '../intent.js'
 import { jobSnapshot } from '../job.js'
 import { Outcome } from '../outcome.js'
 import { textResult } from '../result.js'
-import { ToolRunner } from '../runner.js'
+import { ToolRunner } from '../toolkit-runner.js'
 import {
   allowAuthorizer,
   InMemoryJobRegistry,

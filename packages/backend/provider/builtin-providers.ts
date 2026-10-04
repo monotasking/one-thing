@@ -8,7 +8,7 @@ import {
 	builtinProviderFamilyInfoOf,
 } from "./builtin-manifests.js";
 import { dialDescriptorOf } from "./dials.js";
-import { EXTERNAL_AGENT_DIALECT_ID, type ProviderManifest } from "./manifest.js";
+import { EXTERNAL_AGENT_DIALECT_ID, type ProviderManifest } from "./provider-manifest.js";
 
 /**
  * 内置服务商的 `OnethingProviderInfo` —— 批 M 起**从 manifest 派生**

@@ -31,15 +31,15 @@
 import { createActorEvent, FLOOR_LEASE_INITIAL_EPOCH, type ActorEvent } from '@onething/backend/collab/kernel'
 
 import { COLLAB_DEFAULT_UNREAD_MAX } from '../history-window.js'
-import type { CollabMessageLike } from '../types.js'
+import type { CollabMessageLike } from '../collab-types.js'
 import {
   collabActorRef,
   collabRoomPosted,
   type CollabActorVerb,
   type CollabRoomPostedVerb,
-} from './protocol.js'
+} from './collab-actors-protocol.js'
 import type { CollabAgentRoomAccount } from './mind-rules.js'
-import { orderTranscriptMessages, replayMessageAuthor } from './replay.js'
+import { orderTranscriptMessages, replayMessageAuthor } from './collab-actors-replay.js'
 import {
   collabRoomEventId,
   createCollabRoomAccount,

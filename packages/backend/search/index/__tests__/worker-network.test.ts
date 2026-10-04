@@ -14,7 +14,7 @@ import net from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { captureRuntimeLogs } from '../../../logging/index.js'
+import { captureRuntimeLogs } from '../../../logging/logging.js'
 import {
   installWorkerProxyFetch,
   resolveHuggingFaceEndpoint,

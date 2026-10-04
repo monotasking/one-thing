@@ -82,7 +82,7 @@ export function notifyOAuthTokenExpired(providerId: string, error?: string): voi
  * 所以这里把 `authService` 的两条事件接成两种全局事件 `oauth:flow` / `oauth:token-expired`
  * (`GLOBAL_EVENT_LEAVES_PROCESS` 里登记为出网),壳零通道代码。
  *
- * 写法照 `acp/events.ts`:**发送时才取总线**;装配还没造出总线就 warn 一行丢掉 ——
+ * 写法照 `acp/acp-events.ts`:**发送时才取总线**;装配还没造出总线就 warn 一行丢掉 ——
  * 装配完成之前不会有人起登录流,真到了那一步,壳的 `oauth.status` 重问会补齐。
  *
  * 装配层在事件系统之后调它一次,返回的退订函数 `backend.own()` 掉 —— 于是两次 assemble

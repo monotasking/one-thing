@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
 import {
   COLLAB_USAGE_SOURCE_ROOM,
   COLLAB_USAGE_SOURCE_WORK,
-} from '../index.js'
+} from '../collab.js'
 import { buildTextStreamContext, executeCoreMessageStream } from '@onething/backend/agent-loop'
 
 async function runWith(usageSource?: string): Promise<Record<string, unknown>> {

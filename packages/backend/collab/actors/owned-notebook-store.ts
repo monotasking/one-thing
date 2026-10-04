@@ -5,7 +5,7 @@ import { getOnethingStorePath } from '@onething/backend/storage'
 import { collabAgentNotebookPath } from '@onething/backend/collab/actors/agent-mailbox'
 import { createCollabNotebookFileStore, type CollabNotebookStore } from '@onething/backend/collab/actors/notebook-store'
 import { DEFAULT_SESSION_OWNER, SessionAccessError } from '@onething/backend/session'
-import { fixedExecutionContext } from '../../session/index.js'
+import { fixedExecutionContext } from '../../session/session.js'
 import type { CollabActorAuthorization } from './execution-authorization.js'
 
 /** The default owner's existing files stay at agents-v3/<agentId>/notebook.md. */

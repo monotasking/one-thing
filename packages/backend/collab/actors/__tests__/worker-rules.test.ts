@@ -32,7 +32,7 @@ import {
   truncateCollabWorkerSummary,
   upsertCollabWorkerRecord,
   type CollabAgentWorkerRecord,
-} from '../index.js'
+} from '../collab-actors.js'
 
 function record(overrides: Partial<CollabAgentWorkerRecord> = {}): CollabAgentWorkerRecord {
   return {

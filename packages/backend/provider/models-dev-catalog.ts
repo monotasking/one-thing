@@ -8,7 +8,7 @@
  */
 import type { CoreProviderConfigLike, ProviderConfigWithDials } from "./provider-config.js";
 import { BUILTIN_PROVIDER_MANIFESTS } from "./builtin-manifests.js";
-import { getProviderManifest } from "./manifest.js";
+import { getProviderManifest } from "./provider-manifest.js";
 
 /**
  * **不是内置服务商**的几本 models.dev 目录(Mistral / Meta 的 Llama / Cohere):它们的型号经别家

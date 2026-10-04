@@ -32,7 +32,7 @@ vi.mock('@onething/backend/provider', async (importOriginal) => ({
 }))
 
 vi.mock('../../session/session-store.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/space-types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -41,7 +41,7 @@ vi.mock('../../session/session-store.js', async () => {
   }
 })
 
-vi.mock('@onething/backend/space/store', () => ({
+vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
@@ -59,7 +59,7 @@ import {
   upsertSpaceProviderOAuthToken,
   writeSpaceCredentials,
 } from '../credentials-pool.js'
-import { setRootDirForTests } from '@onething/backend/space/persistence'
+import { setRootDirForTests } from '@onething/backend/space/space-persistence'
 import {
   applySessionSpaceCredentials,
   credentialTargetFromMarker,

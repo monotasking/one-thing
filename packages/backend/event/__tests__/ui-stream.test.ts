@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { UiAssistantDeltaChunk } from '@shared/events/stream-chunks'
-import { createEventSystem, getStreamChannel } from '../index.js'
+import { createEventSystem, getStreamChannel } from '../event.js'
 import { createBackendHandle, setCurrentBackend } from '@onething/backend/current.js'
 import { isUiEventStreamEnabled, onethingUiStreamMode, pushSessionUiStreamEvent } from '../ui-stream.js'
 

@@ -32,7 +32,7 @@ import {
   type ActorEvent,
   type ActorMailboxSource,
 } from '@onething/backend/collab/kernel'
-import { COLLAB_DEFAULT_DAILY_COST_USD, type CollabAddressable, type CollabAgentLike } from '../index.js'
+import { COLLAB_DEFAULT_DAILY_COST_USD, type CollabAddressable, type CollabAgentLike } from '../collab.js'
 import {
   applyCollabRoomPassthrough,
   applyCollabRoomPhaseChange,
@@ -66,12 +66,12 @@ import {
   type CollabRoomTranscriptMessage,
   type CollabSchedulerBlockLatch,
   type CollabSchedulerLogSink,
-} from './index.js'
+} from './collab-actors.js'
 import type { CollabCoordinatorJudgment, CollabCoordinatorState } from '@shared/ipc.js'
 
 import { createCollabRoomAccountFileStore, type CollabRoomAccountStore } from './room-account.js'
-import { collabV3TurnsInRoom } from './turn-context.js'
-import { getLogger } from '../../logging/index.js'
+import { collabV3TurnsInRoom } from './collab-actors-turn-context.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('collab.actors.room')
 

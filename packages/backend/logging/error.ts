@@ -1,4 +1,4 @@
-import type { NormalizedLogError } from './types.js'
+import type { NormalizedLogError } from './logging-types.js'
 
 /**
  * 错误归一(§2.1):`err` 是自己的字段,不靠 `util.inspect` 拼进 message。

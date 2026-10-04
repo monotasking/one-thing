@@ -13,9 +13,9 @@
  *     而不是任何一张系统名单。
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { SearchQuery } from '../kernel/index.js'
-import { FolderVault } from '../../note/folder/vault.js'
-import { NoteVaultUnavailable, type NoteHit, type NoteVault } from '../../note/types.js'
+import type { SearchQuery } from '../kernel/search-kernel.js'
+import { FolderVault } from '../../note/folder/note-folder-vault.js'
+import { NoteVaultUnavailable, type NoteHit, type NoteVault } from '../../note/note-types.js'
 import { vaultRelativeKey } from '../index/vault-feed.js'
 import {
   LIVE_FILTER_KEY,
@@ -26,10 +26,10 @@ import {
   notesManifestOf,
   openInAppActionIdOf,
   wantsLiveSearch,
-} from '../capabilities/index.js'
-import type { NoteTarget } from '../capabilities/index.js'
-import type { OnethingSearchProvidersAdapters } from '../providers.js'
-import { createSearchContext } from '../service.js'
+} from '../capabilities/search-capabilities.js'
+import type { NoteTarget } from '../capabilities/search-capabilities.js'
+import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
+import { createSearchContext } from '../search-service.js'
 import { fakeIndexFace } from './fake-index.js'
 
 /** 一个会答活检索的假库。**只实现真库有的那几个方法**,别的按 `FolderVault` 走。 */

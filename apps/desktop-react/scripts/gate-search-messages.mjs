@@ -24,7 +24,7 @@
  * ── 为什么必须真机 ───────────────────────────────────────────────────────
  * 单测里那条链的两头都是替身:消息由 `patch` 种进 query 缓存、锚点由一只手写的
  * 宿主渲染。这条门跑的是**真后端**(`search.query` 的 `category:'messages'` →
- * `search/providers.ts` 的 `searchMessages` → 逐会话读 messages)、
+ * `search/search-providers.ts` 的 `searchMessages` → 逐会话读 messages)、
  * 真会话账本(假 provider 跑出来的真流)、真聊天区(真折叠 + 真渲染)。
  *
  * 跑法:`node scripts/gate-search-messages.mjs`

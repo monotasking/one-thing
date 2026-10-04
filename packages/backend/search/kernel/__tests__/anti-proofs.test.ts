@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { LexicalQuery } from '../index/types.js'
+import type { LexicalQuery } from '../index/search-kernel-index-types.js'
 import { compositeAnalyzer } from '../analyzer/composite.js'
 import {
   DEFAULT_NORMALIZERS,
@@ -18,7 +18,7 @@ import {
   stripZeroWidthNormalizer,
 } from '../analyzer/normalize.js'
 import { MemoryIndex } from '../index/memory-index.js'
-import { createDefaultAnalyzerRegistry } from '../analyzer/registry.js'
+import { createDefaultAnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
 import { PREFIX_EXPANSION_LIMIT, createPrefixExpander, expandTerm } from '../pipeline/expand.js'
 import { createCursorCodec, hashQueryShape } from '../cursor.js'
 import { OFFSET_CURSOR_KIND, readOffsetCursor } from '../pipeline/page.js'

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import { FLOOR_LEASE_INITIAL_EPOCH } from '@onething/backend/collab/kernel'
 
-import type { CollabMessageLike } from '../../types.js'
+import type { CollabMessageLike } from '../../collab-types.js'
 import {
   COLLAB_MIGRATION_BACKFILL_MAX,
   COLLAB_V3_MIGRATION_VERSION,
@@ -20,7 +20,7 @@ import {
   type CollabRoomMigrationEntry,
   type CollabV3MigrationReport,
 } from '../migrate-rules.js'
-import type { CollabActorVerb } from '../protocol.js'
+import type { CollabActorVerb } from '../collab-actors-protocol.js'
 
 const ROOM = 'room-1'
 const AGENT = 'iris'

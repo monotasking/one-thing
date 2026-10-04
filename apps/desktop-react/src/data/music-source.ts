@@ -66,7 +66,7 @@ import type { MusicResourceEvent } from './music-port'
  *  · HMR     —— `resetMusicSource()`(复用同一口拆卸,不写第二套)。
  */
 
-/* ── 地址:三个恒在的单例(自述 `music/resource-spec.ts`)────── */
+/* ── 地址:三个恒在的单例(自述 `music/music-resource-spec.ts`)────── */
 
 export const MUSIC_SCHEME_PREFIX = 'music:'
 export const MUSIC_RADIO_REF = 'music:radio'

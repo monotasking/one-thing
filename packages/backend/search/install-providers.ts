@@ -12,8 +12,8 @@
  * 现造一份给六个能力),因为 server 那侧的取材面是 per-owner 的,组不出进程单例。
  * 退役这个单槽要动 `configureAppRuntimeAdapters` 那张表,不在本单 —— 见报告留账。
  */
-import { configureOnethingSearchProviders } from './providers.js'
-import { createAppSearchProvidersAdapters } from './adapters.js'
+import { configureOnethingSearchProviders } from './search-providers.js'
+import { createAppSearchProvidersAdapters } from './search-adapters.js'
 
 let searchProvidersConfigured = false
 

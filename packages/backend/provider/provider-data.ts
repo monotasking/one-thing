@@ -9,7 +9,7 @@ import { ONETHING_QUOTA_PROVIDER_DATA_TYPE, providerDataTagPolicy } from './prov
 
 export { ONETHING_QUOTA_PROVIDER_DATA_TYPE }
 // 方言在加载时登记各自的 provider-data 落法(`provider-data-policy.ts`);这里只保证它们加载过。
-import './dialects/index.js'
+import './dialects/provider-dialects.js'
 
 type MaybePromise<T> = T | Promise<T>
 

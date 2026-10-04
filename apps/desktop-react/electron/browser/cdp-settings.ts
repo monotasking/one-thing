@@ -39,7 +39,7 @@ import type { HttpDiscoveryExtras } from '@shared/backend/http-discovery.js'
 import type {
   SettingsEvent,
   SettingsEventBroadcaster,
-} from '@onething/backend/settings/events'
+} from '@onething/backend/settings/settings-events'
 import { writeCdpLaunchFlag, type CdpLaunchFlag } from './cdp-flag.js'
 
 /** Chromium 那个开关的名字。三处(append / 探活 / 发现文件)共用一个串。 */

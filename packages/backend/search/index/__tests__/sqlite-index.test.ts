@@ -13,8 +13,8 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { describeIndexContract, DEFAULT_SCHEMA } from '../../kernel/__tests__/index-contract.js'
 import type { ContractIndexOptions } from '../../kernel/__tests__/index-contract.js'
 import { corpusDocuments, CAP_A } from '../../kernel/__tests__/unit-fixtures/corpus.js'
-import type { LexicalQuery } from '../../kernel/index.js'
-import { compositeAnalyzer } from '../../kernel/index.js'
+import type { LexicalQuery } from '../../kernel/search-kernel.js'
+import { compositeAnalyzer } from '../../kernel/search-kernel.js'
 
 import { SqliteIndex } from '../sqlite-index.js'
 

@@ -1,0 +1,21 @@
+import { BearerApiKeyAuth } from "../../base/provider-base.js";
+import { createOpenAIChatProvider } from "../../dialects/recipe.js";
+import type { VendorRuntime } from "../runtimes.js";
+import { ACME_DIALECT } from "./acme-dialect.js";
+import { resolveAcmeBaseUrl } from "./acme-endpoint.js";
+import { acmeQuotaSource } from "./acme-quota.js";
+import { acmeThinkingWire } from "./acme-thinking.js";
+
+export const ACME_RUNTIME: VendorRuntime = {
+	id: "acme",
+	thinkingWires: [acmeThinkingWire],
+	quotaSources: [acmeQuotaSource],
+	createProvider: (config, options, kit) =>
+		createOpenAIChatProvider(ACME_DIALECT, {
+			baseUrl: resolveAcmeBaseUrl({ baseUrl: config.baseUrl, ...config.providerOptions }),
+			auth: new BearerApiKeyAuth(config.apiKey),
+			fetchImpl: options.fetchImpl,
+			requestDumper: options.requestDumper,
+			profiles: kit.profiles(config),
+		}),
+};

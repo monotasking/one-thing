@@ -5,7 +5,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import type { CustomAdapterSpec } from "@shared/contracts/adapter-spec";
 import { registerCustomProvidersForTest } from "../custom-manifest-fixture.js";
-import { registerDialect } from "../../base/dialect.js";
+import { registerDialect } from "../../base/provider-base-dialect.js";
 import {
 	dialectFromSpec,
 	unsupportedAdapterSpecFields,

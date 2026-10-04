@@ -1,4 +1,4 @@
-import type { PetManifest } from '../manifest.js'
+import type { PetManifest } from '../pet-manifest.js'
 import { ALU_RIG } from '@shared/pets/builtin/alu.rig.js'
 
 /**

@@ -13,7 +13,7 @@
  * - No persistence, no replay — chunks are ephemeral
  */
 
-import type { StreamChunkHandler, Unsubscribe } from './types.js'
+import type { StreamChunkHandler, Unsubscribe } from './event-types.js'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 import { getCoreLogger } from '../logging/logger-primitives.js'
 

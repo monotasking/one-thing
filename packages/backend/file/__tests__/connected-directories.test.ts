@@ -14,7 +14,7 @@ vi.mock('../../settings/settings-store.js', () => ({
 // 概念)。这里连它一起替掉 —— 真会话仓库太重,而这两行判据本身在
 // spaces/__tests__ 里有真实覆盖。
 vi.mock('../../session/session-store.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/space-types')
   return {
     getSession: (id: string) => mocks.sessions.get(id),
     resolveSessionSpaceId: (id: string | undefined | null) => {

@@ -16,12 +16,12 @@ import {
 	isSubscriptionProvider,
 	registerProviderManifest,
 	type ProviderManifest,
-} from "../manifest.js";
+} from "../provider-manifest.js";
 import { getOnethingModelsDevProviderId } from "../models-dev-catalog.js";
 import { providerReadsModelsDevCatalog } from "../model-registry.js";
 import { resolveOnethingProviderKind } from "../model-capability.js";
 import type { AgentProviderRequestDumper } from "../request-dumper.js";
-import { BearerApiKeyAuth, HeaderApiKeyAuth, expandHeaderTemplates } from "../base/index.js";
+import { BearerApiKeyAuth, HeaderApiKeyAuth, expandHeaderTemplates } from "../base/provider-base.js";
 import { registerCustomProvidersForTest } from "./custom-manifest-fixture.js";
 import { drain, sseResponse, USER_MESSAGE } from "./wire-snapshots/snapshot-harness.js";
 

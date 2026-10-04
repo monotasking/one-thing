@@ -18,7 +18,7 @@ import {
   OnethingAuthService,
   type OnethingOAuthToken,
 } from '@onething/backend/auth'
-import { resolveKimiOAuthHost } from '../oauth.js'
+import { resolveKimiOAuthHost } from '../kimi-code-oauth.js'
 import { MemoryPoolTokenStore as MemoryTokenStore } from '../../../../auth/__tests__/memory-pool-store.js'
 
 function jsonResponse(data: unknown): Response {

@@ -40,7 +40,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { BackendNotAssembledError, getCurrentBackendSafe } from '@onething/backend/current.js'
-import { decodeSessionLogEventLine, encodeSessionLogEventLine, parseSessionLogEventLog } from './events/index.js'
+import { decodeSessionLogEventLine, encodeSessionLogEventLine, parseSessionLogEventLog } from './events/session-event-vocabulary.js'
 import {
   collectSessionBlobRefHashes,
   type SessionLogEventDataFor,

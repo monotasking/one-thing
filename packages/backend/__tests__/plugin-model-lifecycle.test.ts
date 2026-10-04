@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { OnethingBackend } from '../backend.js'
-import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition } from '@onething/backend/plugin/types'
+import type { PluginAPI, PluginEntry, PluginCommandDefinition, PluginDefinition } from '@onething/backend/plugin/plugin-types'
 import type { PluginState } from '@onething/backend/plugin/api'
 
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), manager: null as { shutdown(): Promise<void> } | null }))

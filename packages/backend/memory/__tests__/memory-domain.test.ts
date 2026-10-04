@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import { resolveMemoryBudget } from '../index.js'
+import { resolveMemoryBudget } from '../memory.js'
 
 const previousStorePath = process.env.ONETHING_STORE_PATH
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-memory-domain-'))

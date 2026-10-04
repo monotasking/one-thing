@@ -8,7 +8,7 @@ import {
   createOnethingPermissionRuntime,
   listWorkspaceGrants,
   resetPermissionGrantsForTests,
-} from '../index.js'
+} from '../permission.js'
 
 const tempDirs: string[] = []
 

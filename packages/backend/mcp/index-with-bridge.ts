@@ -1,7 +1,7 @@
 /**
  * MCP 领域的**完整**门面:产品面 + 说跨进程词汇的工具桥。
  *
- * P3'b-A:`packages/backend/mcp/index.ts` 的原样接续 —— 老调用点(装配层脊柱、
+ * P3'b-A:`packages/backend/mcp/mcp.ts` 的原样接续 —— 老调用点(装配层脊柱、
  * apps/electron 的 IPC handler、apps/server 的 runtime)拿到的符号集合与迁移前
  * 逐个相同,只是说明符从 `@onething/backend/mcp/index.js` 变成
  * `@onething/backend/mcp/index-with-bridge`。
@@ -12,7 +12,7 @@
  * 那条规则随第③步拍平撤了,2026-10-03 后缀也去掉了;两只桶没有合,本文件按内容改名为「目录桶 + 工具桥」。
  */
 
-export * from './index.js'
+export * from './mcp.js'
 
 export {
   mcpToolToToolDefinition,
@@ -26,4 +26,4 @@ export {
   executeMCPTool,
   resolveMCPServerIdForToolRef,
   findMCPToolIdByShortName,
-} from './bridge.js'
+} from './mcp-bridge.js'

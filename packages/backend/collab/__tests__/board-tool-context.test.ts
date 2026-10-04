@@ -28,8 +28,8 @@ const mocks = vi.hoisted(() => ({
   applied: [] as Array<{ roomSessionId: string; actor: { type: string; agentId?: string } }>,
 }))
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
   }) }
@@ -64,7 +64,7 @@ vi.mock('../board-store.js', () => ({
   },
 }))
 
-const { boardAdapters } = await import('@onething/backend/toolkit/adapters')
+const { boardAdapters } = await import('@onething/backend/toolkit/toolkit-adapters')
 const { createBoardTool } = await import('@onething/backend/toolkit')
 const { Decision, ToolRunner } = await import('@onething/backend/toolkit/tool-protocol')
 const { ZodValidator } = await import('@onething/backend/toolkit')

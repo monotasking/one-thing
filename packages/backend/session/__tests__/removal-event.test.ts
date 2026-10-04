@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EventBus } from '@onething/backend/event/session-event-bus'
-import { createSessionAccess } from '../access.js'
+import { createSessionAccess } from '../session-access.js'
 import { canReceiveSessionRemoval, withSessionRemovalOwner } from '../removal-event.js'
 
 describe('trusted removal notifications', () => {

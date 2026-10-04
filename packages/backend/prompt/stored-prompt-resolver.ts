@@ -6,8 +6,8 @@ import type {
 import {
   displayOnethingContentForMessage,
   resolveOnethingPromptReferences,
-} from './index.js'
-import { getPrompt } from './store-bound.js'
+} from './prompt.js'
+import { getPrompt } from './prompt-store-bound.js'
 
 export interface ResolvePromptReferencesOptions {
   skills?: SkillDefinition[]

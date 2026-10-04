@@ -18,7 +18,7 @@ import {
   isCollabAgentSessionId,
   resolveCollabSayRoomSessionId,
   stripCollabAgentSessionName,
-} from '../index.js'
+} from '../collab.js'
 // 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表,
 // 「这一回合能用哪些工具」由 resolveAgentToolSurface 一处作答。
 import { resolveAgentToolSurface } from '../../agent/profile.js'

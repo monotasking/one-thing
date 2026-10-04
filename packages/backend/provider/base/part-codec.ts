@@ -16,7 +16,7 @@ import type {
 	AgentMessage,
 	AgentTurnStreamEvent,
 } from "@onething/backend/agent-loop/loop-primitives";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 /** 这个 part 为什么进不了请求体。P0a 只有一条 —— 线协议没有这种块。 */
 export type UndeliverableReason =

@@ -17,7 +17,7 @@
 import fs from "node:fs";
 import { KNOWN_EXPECT_KEYS } from "./evaluator.js";
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('evals')
 

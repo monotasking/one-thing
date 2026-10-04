@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { isValidTimezone, parseCronExpression } from './cron.js'
-import type { SchedulerSchedule } from './types.js'
+import type { SchedulerSchedule } from './scheduler-types.js'
 
 export interface OnethingSchedulerUserTaskLogger {
   error?: (...args: unknown[]) => void

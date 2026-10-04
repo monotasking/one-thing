@@ -24,8 +24,8 @@ vi.mock('../../session/reads.js', () => import('../../session/testing/facade-moc
 vi.mock('../../session/session-commands.js', () => import('../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => { mocks.bodyReads.push(id); return mocks.sessions.get(id) })
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.metas.find(meta => meta.id === id) ?? mocks.sessions.get(id),
   }) }
@@ -135,7 +135,7 @@ describe('授权（多给一条就是事故）', () => {
     stampFixtureRoomsForeign()
     ownedBy('exec-iris', 'alice', 'tenant-a')
     ownedBy('cumo', 'alice', 'tenant-a')
-    const { historyAdapters } = await import('@onething/backend/toolkit/adapters')
+    const { historyAdapters } = await import('@onething/backend/toolkit/toolkit-adapters')
     const { createHistoryTool, ZodValidator } = await import('@onething/backend/toolkit')
     const { ToolRunner, Decision } = await import('@onething/backend/toolkit/tool-protocol')
     const runner = new ToolRunner({

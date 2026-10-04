@@ -24,7 +24,7 @@ describe('D6-a 三宿主装配冒烟', () => {
   })
 
   it('CLI daemon 的 HeadlessBackend 同样求得动值', { timeout: 60_000 }, async () => {
-    const headless = await import('@onething/backend/headless/backend')
+    const headless = await import('@onething/backend/headless/headless-backend')
     expect(typeof headless.HeadlessBackend).toBe('function')
   })
 

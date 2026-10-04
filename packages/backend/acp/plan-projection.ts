@@ -2,7 +2,7 @@
  * ACP 计划 → 待办域的投影(A2-b,方案 `docs/design/acp-integration-2026-09.md` §3.3 / §11.6)。
  *
  * agent 推的 `plan` / `plan_update` / `plan_removed` 已由 reducer 折进 `AcpSessionState.plan`
- * (`acp/session-state.ts`)。这里订会话状态,把那一格**写进待办域**的 `session-ai-todo`
+ * (`acp/acp-session-state.ts`)。这里订会话状态,把那一格**写进待办域**的 `session-ai-todo`
  * 作用域 —— 与本地引擎的 AI 待办同一个 store、同一个接口(`updateDocument({ scope:
  * 'session-ai-todo', sessionId, content })`,即 `todo:` 资源的 `edit` / `createPlan` 写的那一口),
  * 于是待办面板、`todo:` 资源事件、文件监听器全都照旧,壳不新建计划面板。
@@ -28,7 +28,7 @@ import fs from 'node:fs/promises'
 import type { AcpSessionState } from '@shared/contracts/acp'
 import type { OnethingTodoPlanStore } from '@onething/backend/todo-plan'
 import { getLogger } from '@onething/backend/logging/configure-logging'
-import type { AcpSessionStateProjection } from './subsystem.js'
+import type { AcpSessionStateProjection } from './acp-subsystem.js'
 
 const log = getLogger('app.acp.plan')
 

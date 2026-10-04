@@ -1,5 +1,5 @@
 # feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)
-# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/<功能>/ 里入口(`index.ts`,或 N3 形状的 `<功能>.ts`)以外文件的 import 处数。
+# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。
 # 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
 294 session

@@ -283,7 +283,7 @@ export interface BrowserProfileTableView {
  * 一串 emoji),而 id 直接拼进分区名 `persist:browser-<id>` —— 按名字派生会让
  * 「改个名」变成「换一个分区」,那等于把登录态删了。
  *
- * 字符集与归一那一层的 `[A-Za-z0-9_-]` 对齐(`packages/backend/settings/defaults/settings.ts`)。
+ * 字符集与归一那一层的 `[A-Za-z0-9_-]` 对齐(`packages/backend/settings/defaults/settings-factory-defaults.ts`)。
  */
 export function nextBrowserProfileId(existing: readonly BrowserProfile[]): string {
   const taken = new Set(existing.map((row) => row.id))

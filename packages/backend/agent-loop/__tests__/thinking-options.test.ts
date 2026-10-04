@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getOnethingAgentLoopThinkingOptions } from '../../provider/index.js'
+import { getOnethingAgentLoopThinkingOptions } from '../../provider/provider.js'
 
 function options(providerId: string, model: string, thinkingByModel?: Record<string, boolean | undefined>, thinkingEffortByModel?: Record<string, unknown>) {
   return getOnethingAgentLoopThinkingOptions({

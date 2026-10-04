@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { getOnethingDebugDir } from '../storage/paths.js'
+import { getOnethingDebugDir } from '../storage/storage-paths.js'
 import type {
   ApplyThemeResponse,
   GetThemeResponse,
@@ -8,7 +8,7 @@ import type {
   OpenThemesFolderResponse,
   RefreshThemesResponse,
   ThemeFolderOpener,
-} from './types.js'
+} from './theme-types.js'
 import {
   applyTheme,
   getTheme,
@@ -17,7 +17,7 @@ import {
   initializeThemes,
   loadCustomThemes,
   refreshThemes,
-} from './index.js'
+} from './theme.js'
 import { buildThemeDebugReport, type ThemeDebugData } from './theme-debug.js'
 
 function errorMessage(error: unknown): string {

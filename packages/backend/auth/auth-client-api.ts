@@ -57,7 +57,7 @@ import { getAuthService } from '@onething/backend/auth/process-auth-service'
 import { notifyOAuthTokenExpired } from '@onething/backend/auth/oauth-events'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
-import type { RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/backend/auth/ipc-operations'
+import type { RefreshOnethingOAuthForIpcOptions, OnethingOAuthIpcLogger } from '@onething/backend/auth/auth-ipc-operations'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 
 const log = getLogger('rpc.oauth')

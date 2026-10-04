@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildCollabDriveRoomContext } from '../projection.js'
 import { planCollabHistoryWindow } from '../history-window.js'
-import type { CollabAgentLike, CollabMessageLike } from '../types.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 
 const AT = new Date(2026, 7, 2, 12, 0, 0).getTime()
 const DAY = 86_400_000

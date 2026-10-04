@@ -34,11 +34,11 @@
  * 解析入口也是分开的(board 的 taskId 参数 vs 这里的 mention 扫描),不共用
  * 一个匹配器。**加第三种 `#` 之前先回来读这一段。**
  */
-import type { CollabAgentLike, CollabMentionLike } from './types.js'
+import type { CollabAgentLike, CollabMentionLike } from './collab-types.js'
 import {
   collabIdentitiesFromAgents,
   type CollabIdentity,
-} from './identity.js'
+} from './collab-identity.js'
 
 export {
   COLLAB_AGENT_HANDLE_CHARS,

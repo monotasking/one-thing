@@ -41,13 +41,13 @@
  * 一次 110MB 的下载上就是「必超时」。
  */
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import {
   createOnethingAppFetch,
   validateOnethingProxyUrl,
   type OnethingFetchFn,
   type OnethingProxySettings,
-} from '../../network/index.js'
+} from '../../network/network.js'
 
 const log = getLogger('search.index.worker')
 

@@ -15,14 +15,14 @@
  * every ask — permissions go strict-and-fresh, never snapshot-stale.
  */
 
-import type { OnethingAgentDefinition, OnethingAgentModelBinding } from './store.js'
+import type { OnethingAgentDefinition, OnethingAgentModelBinding } from './agent-store.js'
 import {
   COLLAB_NOTEBOOK_TOOLS,
   COLLAB_ROOM_TOOLS,
   COLLAB_WORK_REQUIRED_TOOLS,
 } from '../collab/tool-surface.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('agents')
 

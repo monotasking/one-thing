@@ -23,7 +23,7 @@
  *      而 `deleted` 事件从**内核那条真总线**上到达。这一条同时证明写面与读面共用
  *      同一台 runner —— 卡不是这只测试造的,是管线出的。
  *
- * **反证②(缺席不是放行)**:把 `resource/index.ts` 里
+ * **反证②(缺席不是放行)**:把 `resource/resource.ts` 里
  * `createResourceKernel` 的 `sandbox: createSandboxPolicy()` 那一行拆掉,②当场红 ——
  * provider 拿不到沙箱就一律拒(`DirOutsideSandboxError`,reason `no-sandbox`),
  * 而不是「没人拦就放过去」。
@@ -109,7 +109,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     expect(backend.resources.registry.list().map(spec => spec.scheme)).toContain('dir')
     expect(backend.resources.tools().map(tool => tool.spec.id)).toContain('dir')
 
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
     expect(getToolkitCatalog()?.has('dir')).toBe(true)
   })
 
@@ -199,7 +199,7 @@ describe('目录资源在真装配里(K3-c)', () => {
 
   it('⑦ 发起会话绑的工作目录就是读根 —— 资源读根 = 工具读根,同一张表(反证③)', async () => {
     /*
-     * 病根:工具那条路(`toolkit/families/file.ts` 的 `sandboxRoots`)一直把
+     * 病根:工具那条路(`toolkit/families/toolkit-families-file.ts` 的 `sandboxRoots`)一直把
      * `scope.workingDirectory` 算进根里,而资源那条路的 `createSandboxPolicy()`
      * 没传这一格 —— 于是**同一条会话、同一个仓**,`read` 工具读得到、`dir:` / `git:`
      * 资源答「outside the sandbox root」。这一例证的是那一格补上了,而且它是
@@ -272,7 +272,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     const { getSettings, updateSettingsInMemory } = await import('@onething/backend/settings')
     const before = getSettings()
     const store = await import('@onething/backend/session')
-    const { Permission } = await import('@onething/backend/permission/permission')
+    const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
     const sessionId = store.createSession(`resource-dir-${Date.now()}`, 'Dir').id
     const target = path.join(workRoot, 'notes')
 

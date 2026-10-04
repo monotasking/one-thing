@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * S2a:冷加载收尾合成(§11.1 的 `prepare`)。
  *

@@ -135,7 +135,7 @@ describe('资源内核在真装配里(K1)', () => {
     // 直接问产品层那台目录端口(回合面 `Surface.resolve` 与设置页工具清单读的都是
     // 它),而不是 backend 私有的 `getOrBuildToolkitCatalog`:这样断言的是**用户与
     // 模型真正看见的那一份**,不是装配的内部账。
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
     const { toolkitCatalogToolDefinitions } = await import('@onething/backend/toolkit/catalog-projection')
     const catalog = getToolkitCatalog()
     expect(catalog).toBeTruthy()
@@ -153,7 +153,7 @@ describe('资源内核在真装配里(K1)', () => {
   })
 
   it('K3-a:元工具 resources 列的是注册表当下的样子(它自己不认识任何命名空间)', async () => {
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
     const meta = getToolkitCatalog()?.get('resources')
     expect(meta).toBeTruthy()
     const intent = await meta!.plan({ list: true }, { invocation: { sessionId } } as never)
@@ -458,7 +458,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 红的也是同一句。
    */
   it("K3-a':removeMessage 按主体分档 —— 用户删不弹卡,AI 删停在真权限卡上", async () => {
-    const { Permission } = await import('@onething/backend/permission/permission')
+    const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
     const { sessionCommands } = await import('@onething/backend/session')
     const { sessionReads } = await import('@onething/backend/session')
 
@@ -570,7 +570,7 @@ describe('资源内核在真装配里(K1)', () => {
       // `setPermissionMode` / `appendSystemMessage`)—— 域剩下那批退成投影时长出来的。
       // 哪几条没进来、为什么(`create` / `createBranch` 卡在归属印上,`activate` /
       // `switch` 是视图状态,缓存那两条是进程内务),写在
-      // `session/resource-spec.ts` 的文件头。
+      // `session/session-resource-spec.ts` 的文件头。
       expect(Object.keys(spec.ops as object).sort()).toEqual([
         'appendSystemMessage',
         'delete',

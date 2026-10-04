@@ -1,4 +1,4 @@
-import type { ContextVariable, VariableProvider } from '../types.js'
+import type { ContextVariable, VariableProvider } from '../variable-types.js'
 
 const NAME = 'music'
 

@@ -3,8 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ALU_RIG } from '@shared/pets/builtin/alu.rig.js'
-import { petManifestProblems, type PetManifest } from '../manifest.js'
-import { BUILTIN_PETS, PetRegistry, PetRigInvalidError } from '../registry.js'
+import { petManifestProblems, type PetManifest } from '../pet-manifest.js'
+import { BUILTIN_PETS, PetRegistry, PetRigInvalidError } from '../pet-registry.js'
 import {
   isRigColor,
   RIG_MAX_PARTS,

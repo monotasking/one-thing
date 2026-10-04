@@ -3,7 +3,7 @@ import { runAgentLoop } from '@onething/backend/agent-loop/loop-primitives'
 import { PendingMessageQueue } from '@onething/backend/agent-loop'
 import {
   createDefaultSettings,
-} from '../../../settings/defaults/settings.js'
+} from '../../../settings/defaults/settings-factory-defaults.js'
 import type { AppSettings, SkillDefinition, ToolDefinition, ToolSettings } from '@shared/ipc.js'
 import type {
   AgentMessage,
@@ -14,7 +14,7 @@ import type {
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/backend/agent-loop/loop-primitives'
-import type { BuildPromptOptions } from '../../prompt/system-prompt.js'
+import type { BuildPromptOptions } from '../../prompt/engine-system-prompt.js'
 import type { HistoryMessage } from '../message-helpers.js'
 import type { IPCEmitter } from '../../../agent-loop/agent-loop-session-stream-emitter.js'
 import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
@@ -186,7 +186,7 @@ vi.mock('../../../settings/settings-model-registry-service.js', () => ({
   getModelCapabilityEntry: vi.fn(() => undefined),
 }))
 
-vi.mock('../../prompt/system-prompt.js', () => ({
+vi.mock('../../prompt/engine-system-prompt.js', () => ({
   buildPrompt: vi.fn(async (input) => {
     mocks.promptInputs.push(input)
     return {
@@ -202,7 +202,7 @@ vi.mock('../../prompt/system-prompt.js', () => ({
 vi.mock('@onething/backend/variable/variable-system', () => ({
 }))
 
-vi.mock('@onething/backend/project-dir/bootstrap', () => ({
+vi.mock('@onething/backend/project-dir/project-dir-bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
@@ -240,7 +240,7 @@ vi.mock('@onething/backend/prompt/stored-prompt-resolver', () => ({
   })),
 }))
 
-const { buildAgentLoopRuntimeFromStreamContext } = await import('../agent-loop-runtime.js')
+const { buildAgentLoopRuntimeFromStreamContext } = await import('../engine-stream-agent-loop-runtime.js')
 const { createAgentProviderFromRuntime } = await import('../../engine-agent-runtime.js')
 
 function ctx(): StreamContext {

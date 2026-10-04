@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { recordTurn, recordExplicitDown } from "../turn-evaluator.js";
-import { loadMergedRecords, recordHasNegative } from "../records.js";
+import { loadMergedRecords, recordHasNegative } from "../eval-records.js";
 
 let tmpDir: string;
 let storeOptions: { storePath: string };

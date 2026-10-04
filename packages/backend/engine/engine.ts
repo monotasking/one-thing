@@ -1,0 +1,114 @@
+/**
+ * 引擎(engine):把各功能接成一台跑对话的机器(层次 L3「编排」)。
+ *
+ * 它做的事:收到「发一条消息 / 重试 / 改了重发 / 确认后继续」这类命令时,解析这一轮用哪家服务商、
+ * 哪个模型、什么凭证,拼出这一轮的历史与系统提示词,把请求交给 agent-loop 的内核跑完,沿途把流式
+ * 片段、工具步骤、用量与收场原因写进会话账本;另外是几样「拿服务商干一件小事」的门面(起标题、
+ * 后台杂活回合、按本进程宿主能力造这一轮的 AgentProvider)。
+ *
+ * 它不做的事:一轮怎么跑(循环、工具调度、历史重建、上下文压缩的内核)在 `agent-loop/`;
+ * 把引擎装起来、接好端口、登记内置触发器在包根 `assemble-engine.ts`;「现在这只引擎是哪只」读
+ * 包根 `current.ts` 的槽。
+ *
+ * 交出五类名字(下面按类分组,只交外面真在用的):
+ *  1. 引擎本体与它的类型名;
+ *  2. 装配要用的拆件(引擎的 runtime、回合评估触发器、历史投影);
+ *  3. 拿服务商干活的门面(对话、标题、杂活回合、AgentProvider、生效配置、系统提示词快照);
+ *  4. 引擎 runtime 的工厂(gateway 与总桶用);
+ *  5. agent-loop 流运行时的几个钩子类型(目标续推、草稿纸、日志)。
+ *
+ * 依赖:agent-loop(内核)、providers、credentials、sessions、settings、prompts、toolkit、tools、
+ * collab、plugins、agents、usage、media、search、events、logging 等功能的入口与部分内部文件。
+ */
+
+// ── 1. 引擎本体
+export {
+  ProductStreamEngine,
+} from './stream-engine.js'
+export type {
+  BindableStreamSender,
+  StreamEngine,
+  StreamSender,
+  StreamSenderPayload,
+} from './stream-engine.js'
+
+// ── 2. 装配要用的拆件(包根 `assemble-engine.ts` / `backend.ts`)
+export {
+  createMainStreamEngineRuntime,
+} from './stream-engine-runtime.js'
+export type {
+  MainStreamEngineRuntime,
+} from './stream-engine-runtime.js'
+export {
+  createTurnEvaluationTrigger,
+} from './triggers/turn-evaluation.js'
+export {
+  buildHistoryMessages,
+  historyProjectionRecipe,
+} from './stream/message-helpers.js'
+
+// ── 3. 拿服务商干活的门面(providers 归位 D24 从 `providers/` 搬来的几只,外加生效配置与提示词快照)
+export {
+  configureAppProviderRegistry,
+  generateChatResponse,
+  generateChatTitle,
+  getAvailableProviders,
+  isProviderSupported,
+} from './engine-chat-facade.js'
+export {
+  createAgentProviderFromRuntime,
+} from './engine-provider-factory.js'
+export {
+  createUtilityProvider,
+} from './engine-utility-provider.js'
+export type {
+  UtilityProviderRef,
+} from './engine-utility-provider.js'
+export {
+  beginAuxiliaryModelRequest,
+} from './auxiliary-model-checkpoint.js'
+export {
+  getEffectiveProviderConfig,
+  getProviderApiType,
+  resolveProviderAuth,
+} from './stream/provider-helpers.js'
+export type {
+  ProviderConfigWithKey,
+} from './stream/stream-executor.js'
+export {
+  buildSystemPromptSnapshot,
+} from './prompt/engine-system-prompt-snapshot.js'
+
+// ── 4. 引擎 runtime 的工厂(gateway 的 `gateway-onething-runtime.ts` 与总桶用)
+export {
+  createOnethingStreamEngineRuntime,
+} from './stream-runtime-factory.js'
+export type {
+  OnethingStreamRuntime,
+  OnethingStreamRuntimeOptions,
+} from './stream-runtime-factory.js'
+export {
+  createOnethingStreamProcessor,
+} from './stream-processor-factory.js'
+export type {
+  CreateOnethingStreamProcessorOptions,
+} from './stream-processor-factory.js'
+export {
+  createOnethingProductStreamRuntime,
+  createOnethingProductStreamRuntimeFromHostAdapters,
+} from './product-stream-runtime.js'
+export type {
+  OnethingProductStreamRuntime,
+  OnethingProductStreamRuntimeHostAdapters,
+  OnethingProductStreamRuntimeOptions,
+} from './product-stream-runtime.js'
+
+// ── 5. agent-loop 流运行时的钩子类型与流处理上下文
+export type {
+  OnethingAgentLoopGoalHooks,
+  OnethingAgentLoopLogger,
+  OnethingAgentLoopScratchpadHooks,
+} from './engine-agent-loop-stream-runtime.js'
+export type {
+  StreamContext,
+} from './stream/stream-processor.js'

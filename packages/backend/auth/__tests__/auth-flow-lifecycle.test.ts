@@ -7,7 +7,7 @@ import {
 import type {
   OnethingAuthFlowEvent,
   OnethingAuthProviderDefinition,
-} from '../types.js'
+} from '../auth-types.js'
 import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
 
 /**

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OnethingTodoPlanStore, type TodoPlanChangedPayload } from '@onething/backend/todo-plan'
-import { applySessionUpdate, createAcpSessionState } from '@onething/backend/acp/session-state'
+import { applySessionUpdate, createAcpSessionState } from '@onething/backend/acp/acp-session-state'
 import type { AcpSessionState } from '@shared/contracts/acp'
 import { AcpPlanProjection, renderAcpPlanItems } from '../plan-projection.js'
 

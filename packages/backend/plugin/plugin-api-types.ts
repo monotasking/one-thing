@@ -1,9 +1,9 @@
 import type { PluginInputInterceptHandler } from './input-intercept.js'
-import type { CoreToolPromptContribution } from '../agent-loop/index.js'
+import type { CoreToolPromptContribution } from '../agent-loop/agent-loop.js'
 import type { PluginToolCallInterceptHandler } from './tool-call-intercept.js'
 import type { PluginToolResultInterceptHandler } from './tool-result-intercept.js'
 import type { CorePluginRequestHandler } from './request-channel.js'
-import type { CorePluginStorage } from './storage.js'
+import type { CorePluginStorage } from './plugin-storage.js'
 import type { PluginNotifyOptions } from '@shared/plugins/notify-sound.js'
 import type { CorePluginToolExecutionMode } from './tool-execution-mode.js'
 import type { CorePluginPanelRegistration } from './panel.js'
@@ -16,7 +16,7 @@ import type {
   PluginSendMessageResult,
   PluginSessionPeek,
   PluginSessionPeekLite,
-} from './sessions.js'
+} from './plugin-sessions.js'
 import type { PluginLlmCompleteOptions, PluginLlmCompleteResult } from './llm.js'
 import type { PluginResourcesApi } from './resources.js'
 

@@ -19,7 +19,7 @@ export type { PermissionGrant }
  * 账页上的一条 grant,外加一格**投影**:它属于哪个应用。
  *
  * `app` 不在核的 grant 形状里 —— 它是从 `pattern` 上读出来的,由
- * `permission/permissions-client-api-grants.ts` 在返回前算一次。设置页「每个应用一格,能撤销」
+ * `permission/permission-client-api-grants.ts` 在返回前算一次。设置页「每个应用一格,能撤销」
  * 就是按这一格分组;缺席 = 这条 grant 不是应用级许可(一条具体路径、一个工具名、
  * 一串命令),照旧按原来的样子逐条列。
  */

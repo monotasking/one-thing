@@ -16,7 +16,7 @@
  * 三条规则:
  *   A `session.messages` 的属性访问 —— 只许白名单文件;
  *   B 对 ChatMessage / Step / ToolCall 的属性赋值、`delete`、`Object.assign(x,…)`、
- *     `x.steps|contentParts|toolCalls.push/splice` —— 只许 `session/commands.ts`;
+ *     `x.steps|contentParts|toolCalls.push/splice` —— 只许 `session/session-message-shapes.ts`;
  *   C `<session>.messages = …` 整体赋值 —— 白名单内也不许(命令面 COW 返回新数组)。
  *
  * 输出:每行 `[session] failed: <file>:<line> <rule>`,末尾一行 `[session] complete:`。
@@ -35,7 +35,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const RULE_A_ALLOWED = new Set([
   // 冷加载修复(§17.7.1 批 3:老 reducer 删了,这里只剩两个具名入口 ——
   // 修复要摸整份消息数组)
-  'packages/backend/session/commands.ts',
+  'packages/backend/session/session-message-shapes.ts',
   // 装配层写面 / 读面:设计文档 §1 的两扇门
   'packages/backend/session/session-commands.ts',
   'packages/backend/session/reads.ts',
@@ -66,7 +66,7 @@ const RULE_A_ALLOWED = new Set([
  * (`session/account.ts`),批 3 让写门直接读折叠块 —— 于是那个算法没有了
  * 第二处实现。
  *
- * 名单上仍然是 `session/commands.ts`,但它今天装的是**另一件东西**:
+ * 名单上仍然是 `session/session-message-shapes.ts`,但它今天装的是**另一件东西**:
  * 冷加载修复的两个具名入口(`sanitizeSessionOnStartup` / `sanitizeLoadedSession`)
  * —— 修复要改 step / toolCall 的字段(把中断的改成 cancelled),而且它是**可再生
  * 的派生**,住在读路(`session-repository.repairOnFirstTouch`)。
@@ -78,7 +78,7 @@ const RULE_A_ALLOWED = new Set([
  * 规则 B 本来就够不着它 —— 名单里不需要有它。)
  */
 const RULE_B_ALLOWED = new Set([
-  'packages/backend/session/commands.ts',
+  'packages/backend/session/session-message-shapes.ts',
 ])
 
 /**

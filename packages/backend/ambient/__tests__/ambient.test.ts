@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { describeResourceSpecProblem } from '@onething/backend/resource/resource-api'
 import { ClockSource, dayPartAt } from '../clock-source.js'
-import { ambientResourceSpecFor, DuplicateAmbientEventError } from '../resource-spec.js'
-import type { AmbientSource, AmbientTimers } from '../source.js'
+import { ambientResourceSpecFor, DuplicateAmbientEventError } from '../ambient-resource-spec.js'
+import type { AmbientSource, AmbientTimers } from '../ambient-source.js'
 import { parseWttrReply, weatherKindOfCode, WeatherSource, type WeatherReading } from '../weather-source.js'
 
 /** 手摇的时钟与计时器:`advance(ms)` 按到点顺序跑。 */

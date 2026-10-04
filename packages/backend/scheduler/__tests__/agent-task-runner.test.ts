@@ -8,7 +8,7 @@ import {
   type OnethingSchedulerAgentTaskStreamHost,
 } from '../agent-task-runner.js'
 import type { OnethingSchedulerRunDetail } from '../run-detail.js'
-import type { SchedulerTaskContext } from '../types.js'
+import type { SchedulerTaskContext } from '../scheduler-types.js'
 import type { OnethingSchedulerUserTask } from '../user-tasks.js'
 
 function createContext(signal = new AbortController().signal): SchedulerTaskContext {

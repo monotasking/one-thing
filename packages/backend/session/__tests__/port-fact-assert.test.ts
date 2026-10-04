@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * **端口事实断言**(F4-c c4,§16.24)—— 恒等门退役之后"A 类端口的事实已经在流上"
  * 那句话的逐格证人。

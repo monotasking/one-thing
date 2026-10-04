@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { Decision, Intent } from '../intent.js'
-import { ToolRunner } from '../runner.js'
+import { ToolRunner } from '../toolkit-runner.js'
 import { textResult } from '../result.js'
 import {
   allowAuthorizer,

@@ -20,7 +20,7 @@ import type {
   UserMessageMarker,
 } from '@onething/backend/session'
 import { createOnethingSessionRepository } from '../session-repository.js'
-import { DEFAULT_SPACE_ID, resolveSpaceId } from '../../space/types.js'
+import { DEFAULT_SPACE_ID, resolveSpaceId } from '../../space/space-types.js'
 
 interface TestMessage
   extends StoredChatMessage,

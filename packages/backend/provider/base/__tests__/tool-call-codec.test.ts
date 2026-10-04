@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentTurnRequest, AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
+import { getLogger } from "../../../logging/logging.js";
 import { readJsonSseData } from "../../sse.js";
 import {
 	finishReasonMapperFor,
@@ -20,7 +20,7 @@ import {
 	ToolCallAccumulator,
 	TurnContext,
 	type ToolCallCodec,
-} from "../index.js";
+} from "../provider-base.js";
 
 const REQUEST: AgentTurnRequest = { turn: 3, model: "gpt-4o", messages: [] };
 

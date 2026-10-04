@@ -62,13 +62,13 @@ import { foldOutcomeToEnvelope } from '@onething/backend/http-server/http-server
 import type { Outcome } from '@onething/backend/toolkit/tool-protocol'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { OnethingACPIpcLogger } from '@onething/backend/acp/ipc-operations'
-import type { OnethingACPIpcAdapters } from '@onething/backend/acp/ipc-operations'
+import type { OnethingACPIpcLogger } from '@onething/backend/acp/acp-ipc-operations'
+import type { OnethingACPIpcAdapters } from '@onething/backend/acp/acp-ipc-operations'
 import type { ChatMessage } from '@shared/ipc/chat.js'
 import type { ACPAdoptSessionResponse } from '@shared/ipc/acp.js'
 import { sessionCommands } from '@onething/backend/session'
 import { flushSessionEventLog } from '@onething/backend/session'
-import { AcpSessionLifecycle, type AcpSessionLifecyclePorts } from '@onething/backend/acp/session-lifecycle'
+import { AcpSessionLifecycle, type AcpSessionLifecyclePorts } from '@onething/backend/acp/acp-session-lifecycle'
 import { acpRouter } from '@shared/ipc/acp.js'
 
 const log = getLogger('rpc.acp')

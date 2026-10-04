@@ -34,8 +34,8 @@ import {
   resetSpaceCredentialsCacheForTests,
   writeSpaceCredentials,
 } from '../../credentials/credentials-pool.js'
-import { setRootDirForTests } from '@onething/backend/space/persistence'
-import { resolveQuotaCredential } from '../index.js'
+import { setRootDirForTests } from '@onething/backend/space/space-persistence'
+import { resolveQuotaCredential } from '../quota.js'
 
 let tmpDir: string
 

@@ -11,7 +11,7 @@
 import type { TextRange } from '../candidate.js'
 import type { NormalizedText } from '../analyzer/normalize.js'
 import { mapRangeToSource } from '../analyzer/normalize.js'
-import type { Token } from '../analyzer/types.js'
+import type { Token } from '../analyzer/search-kernel-analyzer-types.js'
 
 export const DEFAULT_SNIPPET_WIDTH = 120
 

@@ -9,8 +9,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
     id === 'alice-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }
       : id === 'bob-session' ? { ownerUserId: 'bob', ownerWorkspaceId: 'tenant' } : undefined,

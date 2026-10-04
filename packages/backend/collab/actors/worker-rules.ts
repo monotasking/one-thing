@@ -41,7 +41,7 @@
 import { escapeCollabPromptText } from '../inline-tags.js'
 import { buildCollabWorkRules } from '../agent-rules.js'
 import type { CollabFoldWorkerEntry } from './envelope-fold.js'
-import type { CollabWorkerEvidenceRef, CollabWorkerOutcome } from './protocol.js'
+import type { CollabWorkerEvidenceRef, CollabWorkerOutcome } from './collab-actors-protocol.js'
 
 /* ── 限额与上限 ─────────────────────────────────────────────────────────── */
 

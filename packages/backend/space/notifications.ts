@@ -32,7 +32,7 @@
  * overlay / credentials / providers 是三份文件、三条缓存,通知里分得清才不会
  * 互相牵动。`providers` 是 C2 加的那一格(`workspaces/<id>/providers.json`)。
  */
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('spaces')
 

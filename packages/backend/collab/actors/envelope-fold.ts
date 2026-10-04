@@ -39,7 +39,7 @@ import {
   COLLAB_ELSEWHERE_MAX_PER_ROOM,
   COLLAB_ELSEWHERE_TAG,
 } from '../turn-log.js'
-import type { CollabCardEventKind } from './protocol.js'
+import type { CollabCardEventKind } from './collab-actors-protocol.js'
 
 /** 每条折叠条目都有的三格:什么时候、哪间房、这条事件的身份键。 */
 interface CollabFoldEntryBase {

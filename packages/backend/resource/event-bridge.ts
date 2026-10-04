@@ -5,7 +5,7 @@
  * ## 方向是单向的,而且方向是 K1 定的
  *
  * K1 留账写死了这一条:**装配层单向订阅 hub + `own()` 退订,hub 不反向认识
- * EventBus**。`ResourceEventHub`(`resource/events.ts`)是一张纯内存的监听表,
+ * EventBus**。`ResourceEventHub`(`resource/resource-events.ts`)是一张纯内存的监听表,
  * 它连"落盘"这个概念都不该有,更不该知道有一条总线存在。所以这只文件住在装配层:
  * 它是唯一同时认识两头的地方。
  *

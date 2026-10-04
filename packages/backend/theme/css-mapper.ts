@@ -4,16 +4,16 @@
  * Ensures backward compatibility with existing components
  */
 
-import type { SemanticHighlightToken, SemanticUIToken } from './types.js'
+import type { SemanticHighlightToken, SemanticUIToken } from './theme-types.js'
 import {
   SEMANTIC_HIGHLIGHT_TOKENS,
   SEMANTIC_UI_TOKENS,
   THEME_NEUTRAL_COLOR_TOKENS,
-} from './resolver.js'
-import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './resolver.js'
+} from './theme-resolver.js'
+import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './theme-resolver.js'
 import { deriveRegionOverlay, guaranteeMinMixOpacity } from './role-mapping.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('themes')
 

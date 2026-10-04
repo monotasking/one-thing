@@ -24,8 +24,8 @@ export type {
   ToolEffectMetadataValue,
   ToolPreview,
 } from './tool-effect.js'
-export { AllowAllPolicy, DenyAllPolicy } from './policy.js'
-export type { PermissionPolicy } from './policy.js'
+export { AllowAllPolicy, DenyAllPolicy } from './tool-policy.js'
+export type { PermissionPolicy } from './tool-policy.js'
 /**
  * R4b —— `*WithAdapters` 那一族(旧注册表的注入式壳)与围绕 `ToolInfo` 的那批
  * 帮手随旧树删除。留下来的只有**新树还在用**的三个纯投影函数,外加 `AgentEngine`
@@ -74,4 +74,4 @@ export type {
   ToolDefinition,
   ToolExecutionContext,
   ToolResult,
-} from './types.js'
+} from './tool-types.js'

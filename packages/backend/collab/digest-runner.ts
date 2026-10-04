@@ -36,7 +36,7 @@ import type { CollabDigestStore } from '@onething/backend/collab/digest-store'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import type { captureUsageRecorder } from '@onething/backend/usage/usage-recorder'
 import { ONETHING_USAGE_SOURCES } from '@onething/backend/usage'
 import { getCurrentBackend } from '@onething/backend/current.js'

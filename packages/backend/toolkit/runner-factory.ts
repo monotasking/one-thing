@@ -34,7 +34,7 @@ import {
   getSandboxBoundary,
   isPathContained,
   resolveToolPath,
-} from '@onething/backend/tool/access-control/sandbox'
+} from '@onething/backend/tool/access-control/tool-access-control-sandbox'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'
 import { createPermissionAuthorizer } from './authorizer.js'
 import { AuditProjector, combineObservers, type ToolAuditSink } from '@onething/backend/toolkit/audit-observer'
@@ -96,7 +96,7 @@ export function createSandboxPolicy(
      *
      * `workingDirectoryRoots` 这一格由 `options.workingDirectoryRootsFor` 填
      * (2026-09-13):它原本恒 `undefined`,而工具那条路
-     * (`toolkit/families/file.ts` 的 `sandboxRoots`)一直把 `scope.workingDirectory`
+     * (`toolkit/families/toolkit-families-file.ts` 的 `sandboxRoots`)一直把 `scope.workingDirectory`
      * 当读根 —— 于是**同一条会话、同一个仓**,`read` 工具读得到、`dir:` / `git:`
      * 资源答「outside the sandbox root」。那不是两种严格程度,那是两把尺子,而两把
      * 尺子里松的那把迟早会被当成规矩。缺席仍然退回原样(更紧,不更松)。
@@ -173,10 +173,10 @@ export interface AppToolRunnerOptions {
    * 契约解释权(K2a)。缺省是 `ZodValidator` —— 产品层的工具用 zod 写契约,那张
    * WeakMap 反查得回来。
    *
-   * 资源那台 runner 传的是一位**组合**校验者(`resource/index.ts`):生成的
+   * 资源那台 runner 传的是一位**组合**校验者(`resource/resource.ts`):生成的
    * 资源契约不在 zod 那张表里,反查失败就 passthrough,于是未知 op 只能等到 plan
    * 期抛、判成 `failed`。给它配一位认得生成 schema 的校验者,是 K1 在
-   * `resource/errors.ts` 头注释里写明的正路(而不是在内核里给 plan 开一个能
+   * `resource/resource-errors.ts` 头注释里写明的正路(而不是在内核里给 plan 开一个能
    * 返回 `Outcome` 的后门)。
    */
   readonly validator?: Validator

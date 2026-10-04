@@ -30,7 +30,7 @@ import {
   type OnethingMusicProcessHandle,
   type OnethingMusicProcessRunner,
   type OnethingMusicToolStatus,
-} from './types.js'
+} from './music-types.js'
 import { extractFirstJsonObject } from './cli-json.js'
 
 const NCM_CLI_BIN = 'ncm-cli'

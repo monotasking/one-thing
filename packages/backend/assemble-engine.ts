@@ -53,7 +53,7 @@ import {
 	getSessionManager,
 	sessionAccess,
 } from '@onething/backend/session'
-import { fixedExecutionContext } from './session/index.js'
+import { fixedExecutionContext } from './session/session.js'
 import * as store from '@onething/backend/session'
 // 渠道的会话路由、出站回复与给模型的渠道上下文住 gateway(包根归位 B,2026-10-04 从包根 `channel/` 搬来)。
 // 这里直取那三只文件,不走 gateway 的 `index.ts`:那只入口同时是独立网关进程的启动文件(被当成主模块执行时就起网关),
@@ -77,7 +77,7 @@ import {
 } from '@onething/backend/plugin/session-messenger'
 import { resolveAgentProfileForSession } from '@onething/backend/agent/profile-for-session'
 import { takeExternalAgentSteering } from '@onething/backend/external-agent/connector-registry'
-import { defaultAgent, findAgent } from '@onething/backend/agent/store-bound'
+import { defaultAgent, findAgent } from '@onething/backend/agent/agent-store-bound'
 import { createGoalContinuationTrigger } from './goal/goal-continuation-trigger.js'
 import { getCurrentBackend } from '@onething/backend/current.js'
 import { getLogger } from './logging/configure-logging.js'

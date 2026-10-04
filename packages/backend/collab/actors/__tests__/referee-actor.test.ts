@@ -11,7 +11,7 @@
  *  - **相位挂起**:非活跃相位的房不发牌,举手一只不丢,换相后当场兑现。
  */
 import { InMemoryMailbox, type ActorEvent } from '@onething/backend/collab/kernel'
-import type { CollabAgentLike } from '../../index.js'
+import type { CollabAgentLike } from '../../collab.js'
 import {
   collabAgentRaiseHand,
   collabRoomPosted,
@@ -19,7 +19,7 @@ import {
   type CollabActorVerb,
   type CollabRoomJudgmentRequest,
   type CollabRoomTranscriptMessage,
-} from '../index.js'
+} from '../collab-actors.js'
 import { describe, expect, it, vi } from 'vitest'
 
 import {

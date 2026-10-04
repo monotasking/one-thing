@@ -31,7 +31,7 @@
  *
  * ---
  * 2026-09-07 之后:域改成 `createMediaRpcHandlers(ports)` 的工厂,十一条口在库本体
- * 之前先过一道归属闸(`media/access.ts`:资产按它挂的会话判、路径按沙箱判)。
+ * 之前先过一道归属闸(`media/media-access.ts`:资产按它挂的会话判、路径按沙箱判)。
  * 上面那些判例一条没作废 —— 换的是「谁看得见」,不是「货从哪来」。
  */
 import {
@@ -44,7 +44,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 import { mediaRouter, type MediaRoutes } from '@shared/ipc/media.js'
 import { getSession, getSessionsList } from '@onething/backend/session'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '@onething/backend/session'
-import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '@onething/backend/media/access'
+import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '@onething/backend/media/media-access'
 import { resolveMediaFileByName } from '@onething/backend/media/resolve-file'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'

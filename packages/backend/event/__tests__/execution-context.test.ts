@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EventBus } from '../event-bus.js'
-import { emitCoreSessionCommandForIpc } from '../ipc-operations.js'
+import { emitCoreSessionCommandForIpc } from '../event-ipc-operations.js'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-command-types.js'
 import { CoreStreamEngine, type CoreExecutionOptions, type CoreStreamEngineRuntime } from '../../agent-loop/agent-loop-stream-engine.js'
 

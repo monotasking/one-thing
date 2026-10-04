@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 
-vi.mock('@onething/backend/storage/index', () => ({
+vi.mock('@onething/backend/storage/storage', () => ({
   ensureDir: mocks.ensureDir,
   getOnethingLogDir: () => mocks.logDir,
 }))

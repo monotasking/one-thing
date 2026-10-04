@@ -16,7 +16,7 @@ vi.mock('@onething/backend/storage', () => ({
   getOnethingStorePath: () => root,
 }))
 
-const { buildScratchpadTail, updateScratchpad } = await import('../service-bound.js')
+const { buildScratchpadTail, updateScratchpad } = await import('../scratchpad-service-bound.js')
 
 describe('buildScratchpadTail', () => {
   beforeEach(async () => {

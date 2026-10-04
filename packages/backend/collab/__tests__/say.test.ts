@@ -33,7 +33,7 @@ import {
 	computeCollabChainCount,
 } from "../chain.js";
 import { collabChainGateAllows } from "../activation.js";
-import { COLLAB_MESSAGE_SOURCE, isCollabDriveMessage } from "../types.js";
+import { COLLAB_MESSAGE_SOURCE, isCollabDriveMessage } from "../collab-types.js";
 import { projectRoomHistory } from "../projection.js";
 import { buildWillingnessWindow } from "../willingness.js";
 import {
@@ -48,7 +48,7 @@ import {
 } from "../tool-surface.js";
 // 「这一回合能用哪些工具」只有一处实现(C2「工具面单点」),collab 这边只留地板表。
 import { resolveAgentToolSurface } from "../../agent/profile.js";
-import type { CollabAgentLike, CollabMessageLike } from "../types.js";
+import type { CollabAgentLike, CollabMessageLike } from "../collab-types.js";
 
 const MEMBERS: CollabAgentLike[] = [
 	{ id: "pm", name: "阿明", title: "产品" },
@@ -614,7 +614,7 @@ describe("worker 交付兜底行(不冒名)", () => {
 /**
  * 旧名 `say` 的静默别名(collab-turn-protocol-and-identity.md A.3)。
  *
- * 别名的**路由**由 core 的退役名表负责(packages/backend/agent-loop/runner.test.ts
+ * 别名的**路由**由 core 的退役名表负责(packages/backend/agent-loop/agent-loop-runner.test.ts
  * 守着"旧名被执行、且不进请求 tools 参数"),这里守的是另一半:它绝不能从任何
  * 一条"模型看得见"的通道漏出去 —— 一进工具面就成了两个同义工具。
  */

@@ -31,7 +31,7 @@ import { consolePort, getLogger } from '../../logging/configure-logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging/logger-primitives'
 import type { ToolMetadataUpdate } from '@onething/backend/toolkit/execution-types'
-import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '../../agent-loop/index.js'
+import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '../../agent-loop/agent-loop.js'
 
 const log = getLogger('toolkit.runner')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

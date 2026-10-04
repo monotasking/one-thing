@@ -11,8 +11,8 @@
  */
 
 import type { FacetFilter } from '../candidate.js'
-import type { IndexedDoc, VectorHit, VectorIndex, VectorSearchScope } from './types.js'
-import { matchesFacetFilters } from './types.js'
+import type { IndexedDoc, VectorHit, VectorIndex, VectorSearchScope } from './search-kernel-index-types.js'
+import { matchesFacetFilters } from './search-kernel-index-types.js'
 
 export interface MemoryVectorIndexOptions {
   dims: number

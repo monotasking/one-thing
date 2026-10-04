@@ -7,13 +7,13 @@ import {
   registerQuotaSource,
   resetQuotaSourcesForTests,
   type QuotaFetchContext,
-} from '../index.js'
+} from '../provider-quota.js'
 import {
   classifyQuotaWindowSeconds,
   quotaEpochMsOf,
   quotaWindowDaysOf,
 } from '@shared/quota-windows.js'
-import { codexQuotaFromHeaders } from '../../vendors/codex/quota.js'
+import { codexQuotaFromHeaders } from '../../vendors/codex/codex-quota.js'
 import { BUILTIN_PROVIDER_MANIFESTS } from '../../builtin-manifests.js'
 
 // P4 删了产品代码里的 `getBuiltinProviderManifest`(唯一读者是壳,已改读下发名册);用例里就地查表。

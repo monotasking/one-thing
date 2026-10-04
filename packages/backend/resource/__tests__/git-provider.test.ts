@@ -58,7 +58,7 @@ import type { PlanContext, RunContext, SandboxPolicy } from '@onething/backend/t
 import { assertResourceSpec } from '@onething/backend/resource/resource-api'
 import type { ResourceReadContext } from '@onething/backend/resource/resource-api'
 import { ResourceEventHub } from '@onething/backend/resource/resource-api'
-import { isCorePathContained, resolveCoreToolPath } from '@onething/backend/tool/sandbox'
+import { isCorePathContained, resolveCoreToolPath } from '@onething/backend/tool/tool-sandbox'
 import { classifySensitiveFile } from '@onething/backend/tool/sensitive-files'
 import { gitResourceSpec } from '@onething/backend/file/git-resource-spec'
 import {

@@ -14,7 +14,7 @@
  * 一切流式块的最小形状:只认 `type`。
  *
  * 它从前住在 core 的事件总线类型里;块的协议搬进 shared 以后,基形状跟着协议走,
- * 总线(`packages/backend/event/types.ts`)反过来从这里取。
+ * 总线(`packages/backend/event/event-types.ts`)反过来从这里取。
  */
 export interface StreamChunkBase {
   type: string

@@ -26,7 +26,7 @@ import {
   refreshBackgroundJob,
   stopBackgroundJob,
   type BackgroundJob,
-} from '@onething/backend/tool/background-jobs'
+} from '@onething/backend/tool/tool-background-jobs'
 import type { BashOperations } from '@onething/backend/tool/bash-executor'
 import { createLocalBashOperations } from '@onething/backend/tool/bash-executor'
 import { getSettings } from '@onething/backend/settings'

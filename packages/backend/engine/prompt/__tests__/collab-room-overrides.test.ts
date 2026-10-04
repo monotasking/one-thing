@@ -40,7 +40,7 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
   getSettings: () => mocks.settings,
 }))
 
-const { buildSystemPrompt } = await import('../system-prompt.js')
+const { buildSystemPrompt } = await import('../engine-system-prompt.js')
 
 const ROOM = 'room-1'
 const AGENT_SESSION = 'agent-exec-fe'

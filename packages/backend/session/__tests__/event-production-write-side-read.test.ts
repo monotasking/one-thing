@@ -1,5 +1,5 @@
 import * as testSessionStore from '../session-store.js'
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * **写侧取材:store 侧的那几口与产品读面必须是两口井。**
  *

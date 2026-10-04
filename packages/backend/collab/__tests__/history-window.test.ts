@@ -13,7 +13,7 @@ import {
   resolveCollabUnreadRelation,
 } from '../history-window.js'
 import { projectRoomHistory } from '../projection.js'
-import type { CollabMessageLike } from '../types.js'
+import type { CollabMessageLike } from '../collab-types.js'
 
 const DAY = 86_400_000
 /** 2026-08-01 12:00 本地时间 —— 切点算的是本地零点,所以基准也用本地构造。 */

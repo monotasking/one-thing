@@ -32,9 +32,9 @@
  * 合同断言在 `__tests__/refold-slices.test.ts`。
  */
 
-import { canonicalChatMessage } from './projection/index.js'
+import { canonicalChatMessage } from './projection/session-projection.js'
 import { createSessionAccountState, reduceSessionAccount, type SessionAccountState } from './account.js'
-import { decodeSessionLogEventLine } from './events/index.js'
+import { decodeSessionLogEventLine } from './events/session-event-vocabulary.js'
 import type { CoreTimelineMessage } from './timeline.js'
 import {
   createSessionProjectionState,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { captureRuntimeLogs } from '../../logging/index.js'
+import { captureRuntimeLogs } from '../../logging/logging.js'
 import {
   DEFAULT_AGENT_MAX_TURNS,
   composeAgentPermissionMode,
@@ -7,7 +7,7 @@ import {
   resolveAgentProfile,
   resolveAgentToolSurface,
 } from '../profile.js'
-import type { OnethingAgentDefinition } from '../store.js'
+import type { OnethingAgentDefinition } from '../agent-store.js'
 
 function agent(overrides: Partial<OnethingAgentDefinition> = {}): OnethingAgentDefinition {
   return {

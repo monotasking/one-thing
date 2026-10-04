@@ -131,7 +131,7 @@ export {
   pluginDeliveryStartsTurn,
   pluginPeekPreview,
   resolvePluginDelivery,
-} from './sessions.js'
+} from './plugin-sessions.js'
 export type {
   PluginDeliverAs,
   PluginMessageDelivery,
@@ -143,7 +143,7 @@ export type {
   PluginSessionPeekLite,
   PluginSessionPermission,
   PluginSessionState,
-} from './sessions.js'
+} from './plugin-sessions.js'
 export {
   PLUGIN_PERMISSION_RESOURCES_DO,
   PLUGIN_PERMISSION_RESOURCES_READ,
@@ -318,7 +318,7 @@ export {
   describePluginAmbientProblem,
   pluginAmbientEntryUrl,
   resolvePluginAmbients,
-} from './ambient.js'
+} from './plugin-ambient.js'
 export type {
   PluginAmbientDeclarationLike,
   PluginAmbientDescriptor,
@@ -327,9 +327,9 @@ export type {
   PluginAmbientMessageType,
   PluginAmbientResolution,
   PluginAmbientStatus,
-} from './ambient.js'
-export { CorePluginStore } from './store.js'
-export type { PluginStoreOptions } from './store.js'
+} from './plugin-ambient.js'
+export { CorePluginStore } from './plugin-store.js'
+export type { PluginStoreOptions } from './plugin-store.js'
 export {
   DEFAULT_PLUGIN_ENTRY,
   buildPluginEntryImportSpecifier,
@@ -362,7 +362,7 @@ export {
   setPluginEnabledWithAdapters,
   unscopedPluginIdFromPackageName,
   writePluginSettingsFile,
-} from './loader.js'
+} from './plugin-loader.js'
 export {
   PLUGIN_LEDGER_FILE_NAME,
   PLUGIN_LOCK_FILE_NAME,
@@ -395,21 +395,21 @@ export type {
   CorePluginLoaderLogger,
   CorePluginSettingsStorageAdapters,
   LoadCorePluginEntryAdapters,
-} from './loader.js'
+} from './plugin-loader.js'
 export {
   CorePluginLifecycleRegistry,
-} from './lifecycle.js'
+} from './plugin-lifecycle.js'
 export {
   CorePluginBootstrapper,
   CorePluginManager,
-} from './manager.js'
+} from './plugin-manager-base.js'
 export type {
   CorePluginInstallRequest,
   CorePluginInstallResult,
   CorePluginUninstallResult,
   CorePluginUpdateOffer,
   CorePluginUpdateResult,
-} from './manager.js'
+} from './plugin-manager-base.js'
 export {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_FAILURE_THRESHOLD,
@@ -430,7 +430,7 @@ export type {
 export {
   disposeCorePluginState,
 } from './api-state.js'
-export { deepFreezeCorePluginValue } from './freeze.js'
+export { deepFreezeCorePluginValue } from './plugin-freeze.js'
 export {
   PLUGIN_DEFERRED_REGISTRIES,
   PLUGIN_DEFERRED_REGISTRY_IDS,
@@ -445,7 +445,7 @@ export {
   pluginResourceSurface,
   pluginScope,
   resolvePluginScopeSeverity,
-} from './policy.js'
+} from './plugin-policy.js'
 export type {
   PluginDeferredRegistry,
   PluginDeferredRegistryId,
@@ -457,7 +457,7 @@ export type {
   PluginScopeFamily,
   PluginSeverityRule,
   ResolvedPluginSeverity,
-} from './policy.js'
+} from './plugin-policy.js'
 export {
   CORE_PLUGIN_STATUS_MAX_ID,
   CORE_PLUGIN_STATUS_MAX_LABEL,
@@ -589,7 +589,7 @@ export {
   getCorePluginMessageStateDir,
   getCorePluginScratchDir,
   restoreCorePluginDataArchive,
-} from './storage.js'
+} from './plugin-storage.js'
 export type {
   ArchiveCorePluginDataResult,
   CorePluginDataFootprint,
@@ -601,7 +601,7 @@ export type {
   CreateCorePluginStorageOptions,
   PluginOrphanArchiveDecision,
   PluginStorageErrorCode,
-} from './storage.js'
+} from './plugin-storage.js'
 export {
   PLUGIN_FILES_DEFAULT_QUOTA_BYTES,
   PLUGIN_FILES_MAX_FILE_BYTES,
@@ -654,14 +654,14 @@ export {
   scopePluginTaskId,
   unscopePluginTaskId,
   unscopePluginTaskSnapshot,
-} from './scheduler.js'
+} from './plugin-scheduler.js'
 export type {
   CorePluginScheduledTaskLike,
   CorePluginSchedulerHandleLike,
   CorePluginSchedulerHost,
   CreateScopedPluginSchedulerOptions,
   PluginTaskSnapshotLike,
-} from './scheduler.js'
+} from './plugin-scheduler.js'
 export {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
@@ -728,8 +728,8 @@ export type {
   CoreBeforeContextCompactOutcome,
   CorePluginLifecycleLogger,
   CorePluginLifecycleRegistryOptions,
-} from './lifecycle.js'
-export { CORE_PLUGIN_COMPACT_SUMMARY_MAX_CHARS } from './lifecycle.js'
+} from './plugin-lifecycle.js'
+export { CORE_PLUGIN_COMPACT_SUMMARY_MAX_CHARS } from './plugin-lifecycle.js'
 export type {
   CorePluginBootstrapperOptions,
   CorePluginInfo,
@@ -737,4 +737,4 @@ export type {
   CorePluginManagerLogger,
   CorePluginManagerOptions,
   CorePluginStateLike,
-} from './manager.js'
+} from './plugin-manager-base.js'

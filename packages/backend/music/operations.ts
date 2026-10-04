@@ -21,7 +21,7 @@ import type {
 } from '@shared/ipc/music.js'
 import type { OnethingMusicNowPlaying } from '@onething/backend/music'
 import { recentSpins } from './recent-spins.js'
-import type { MusicServiceScope } from './service.js'
+import type { MusicServiceScope } from './music-service.js'
 import type { RadioScope } from './radio.js'
 
 import { MusicWorkOwner } from './lifetime.js'

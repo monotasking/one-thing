@@ -12,7 +12,7 @@
  * caption.
  */
 
-import type { MusicSearchRecord } from './providers/types.js'
+import type { MusicSearchRecord } from './providers/music-providers-types.js'
 
 export interface OnethingMusicIdentifiedSong {
   encryptedId: string

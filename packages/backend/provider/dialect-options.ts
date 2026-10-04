@@ -5,8 +5,8 @@
  * 绑着某一家登录方式的那几份(Codex / Claude Code / Copilot / Kimi Code / grok 订阅)
  * 不自述名字,拿它去接一个转发站没有意义。加一份新方言 = 那一份自己写 `label`,别处零改。
  */
-import "./dialects/index.js";
-import { listDialects } from "./base/dialect.js";
+import "./dialects/provider-dialects.js";
+import { listDialects } from "./base/provider-base-dialect.js";
 
 export interface DialectOptionFacts {
 	id: string;

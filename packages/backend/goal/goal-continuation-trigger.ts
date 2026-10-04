@@ -19,7 +19,7 @@
  *   is owned by emitGoalDrive in src/main/goals/kick.ts — shared with the
  *   idle kick so the two drive paths cannot drift.
  */
-import { canAutoContinueGoal } from "./state.js";
+import { canAutoContinueGoal } from "./goal-state.js";
 import {
 	getGoal,
 	goalLimits,

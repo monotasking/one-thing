@@ -61,11 +61,11 @@ import {
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
 } from '@onething/backend/scheduler/user-task-service'
-import type { DeleteOnethingUserSchedulerTaskOptions, OnethingSchedulerIpcLogger } from '@onething/backend/scheduler/ipc-operations'
+import type { DeleteOnethingUserSchedulerTaskOptions, OnethingSchedulerIpcLogger } from '@onething/backend/scheduler/scheduler-ipc-operations'
 import type { OnethingSchedulerUserTaskLogger } from '@onething/backend/scheduler/user-tasks'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { SchedulerUpdateTaskRequest } from '@shared/ipc.js'
-import type { ListOnethingSchedulerTasksOptions, RunOnethingSchedulerTaskNowOptions, SetOnethingSchedulerTaskEnabledOptions, UpdateOnethingUserSchedulerTaskOptions, ListOnethingSchedulerRunsOptions, GetOnethingSchedulerRunOptions } from '@onething/backend/scheduler/ipc-operations'
+import type { ListOnethingSchedulerTasksOptions, RunOnethingSchedulerTaskNowOptions, SetOnethingSchedulerTaskEnabledOptions, UpdateOnethingUserSchedulerTaskOptions, ListOnethingSchedulerRunsOptions, GetOnethingSchedulerRunOptions } from '@onething/backend/scheduler/scheduler-ipc-operations'
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
 
 const log = getLogger('rpc.scheduler')

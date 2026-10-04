@@ -1,13 +1,13 @@
 /**
  * K3-c —— 目录这一 scheme 的实现(`docs/design/atom-2026-09.md` §9 K3 三样板)。
  *
- * 自述在产品层(`@onething/backend/file/resource-spec`),实现在这里 —— 与会话那
+ * 自述在产品层(`@onething/backend/file/file-resource-spec`),实现在这里 —— 与会话那
  * 一对同一个形状,理由也逐字相同:只有装配层够得着脊柱(这里够的是宿主外壳口与
  * 沙箱端口)。
  *
  * ── 列目录 / stat 的代码从哪来:一行都没有新写的 ──────────────────────────────
  * `listOnethingDirectory` / `statOnethingPath` / `revealOnethingPath` 是
- * `@onething/backend/file` 里的**纯函数**(fs 由调用方注入),`file/files-client-api.ts`
+ * `@onething/backend/file` 里的**纯函数**(fs 由调用方注入),`file/file-client-api.ts`
  * 的 `listDirectory` / `stat` / `reveal` 调的就是它们。所以这只 provider 递的是同一
  * 组函数、同一份注入(`fs.readdir(withFileTypes)` / `fs.stat().catch(()=>null)` /
  * `getShellHost().revealPath`),不是第二份写法:`node_modules` / `.git` 跳过、目录
@@ -23,7 +23,7 @@
  * 界内」这个问题没有答案,而把没有答案当成「在界内」是一次静默的授权洞。
  *
  * 尺子是**工具 runner 那一把**(`toolkit/runner-factory.ts` 的 `createSandboxPolicy`,
- * 由 `resource/index.ts` 注进内核)。所以模型经 `read` 工具读一个路径与经
+ * 由 `resource/resource.ts` 注进内核)。所以模型经 `read` 工具读一个路径与经
  * `dir` 资源列它的父目录,判的是同一条边界 —— 两把尺子是「一个洞会在两处之一悄悄
  * 张开」的标准形状。
  *
@@ -77,8 +77,8 @@ import {
   statOnethingPath,
   type OnethingDirectoryEntry,
 } from '@onething/backend/file'
-import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell/host-ports'
-import { dirResourceSpec } from '@onething/backend/file/resource-spec'
+import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell/shell-host-ports'
+import { dirResourceSpec } from '@onething/backend/file/file-resource-spec'
 import { planFromSpec } from '@onething/backend/resource/resource-api'
 import { formatRef } from '@shared/resource/ref'
 import type {
@@ -231,7 +231,7 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
       case 'reveal': {
         // 沙箱与读那一条同一句话、同一把尺子(**读根** —— 列得出的目录指得出来):
         // **先夹后降级** —— 越界的答案是越界,不是「这台宿主没有外壳能力」
-        // (与 `file/files-client-api.ts` 的 `reveal` 逐字同序)。
+        // (与 `file/file-client-api.ts` 的 `reveal` 逐字同序)。
         const target = resolveReadable(requireDirPath(ref, op), ctx.sandbox, scope)
         // 宿主口缺席在 **plan** 期就判,与 `ResourceTool` 对 `home: 'shell'` 的那一句
         // 同一个理由:一次注定跑不了的做法不该先去弹一张权限卡问人。
@@ -289,7 +289,7 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
     const payload = intent.payload
     switch (payload.op) {
       case 'reveal': {
-        // 投影函数与注入**逐字抄自 `file/files-client-api.ts` 的 `reveal`**:先 stat(路径
+        // 投影函数与注入**逐字抄自 `file/file-client-api.ts` 的 `reveal`**:先 stat(路径
         // 不在就是失败,不是一次静默的无操作),再经宿主口定位;未注入 = 抛,投影自己
         // catch 成 `{ success:false, error }`。
         const response = await revealOnethingPath({

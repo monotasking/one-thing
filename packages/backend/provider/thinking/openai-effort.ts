@@ -25,7 +25,7 @@
  * `'none'` 不是一个可选的思考强度,它是思考的缺席 —— 所以它只回答 `disabled`
  * 那一问,`enabled` 一路的钳位永远钳不到它。
  */
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { OpenAIChatThinkingWire } from "./openai-chat-thinking-wire.js";
 
 /** 官方那七个值里去掉 `'none'` 之后的**强度阶梯**,从弱到强。 */

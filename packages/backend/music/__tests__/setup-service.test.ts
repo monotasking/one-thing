@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { MusicSetupService } from '../setup-service.js'
-import { OnethingMusicQuotaError } from '../types.js'
+import { OnethingMusicQuotaError } from '../music-types.js'
 import type {
   OnethingMusicBackend,
   OnethingMusicEnvStatus,
   OnethingMusicEvent,
   OnethingMusicPlayerBackend,
-} from '../types.js'
+} from '../music-types.js'
 
 function createHarness() {
   const backend: {

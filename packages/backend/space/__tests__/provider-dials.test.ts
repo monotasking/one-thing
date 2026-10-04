@@ -26,18 +26,18 @@ import {
   resetSpaceCredentialsCacheForTests,
   upsertSpaceProviderApiKey,
 } from '../../credentials/credentials-pool.js'
-import { setRootDirForTests } from '../persistence.js'
+import { setRootDirForTests } from '../space-persistence.js'
 import {
   applySpaceProviderCredential,
   resolveSpaceProviderCredential,
 } from '../../credentials/credentials-provider-rules.js'
 import type { CoreProviderConfigLike, ProviderConfigWithDials } from '../../provider/provider-config.js'
-import { withResolvedProviderBaseUrl } from '../../provider/index.js'
+import { withResolvedProviderBaseUrl } from '../../provider/provider.js'
 import {
   ONETHING_ZHIPU_CODING_PLAN_BASE_URL,
   ONETHING_ZHIPU_STANDARD_BASE_URL,
-} from '../../provider/vendors/zhipu/endpoint.js'
-import { ONETHING_KIMI_STANDARD_INTL_BASE_URL } from '../../provider/vendors/kimi/endpoint.js'
+} from '../../provider/vendors/zhipu/zhipu-endpoint.js'
+import { ONETHING_KIMI_STANDARD_INTL_BASE_URL } from '../../provider/vendors/kimi/kimi-endpoint.js'
 
 let tmpDir: string
 

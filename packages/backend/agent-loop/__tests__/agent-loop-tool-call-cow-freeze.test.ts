@@ -19,7 +19,7 @@ import {
   settleAgentLoopToolResultWithAdapters,
   startAgentLoopToolExecution,
 } from '../agent-loop-executor.js'
-import { sanitizeSessionOnStartup } from '../../session/index.js'
+import { sanitizeSessionOnStartup } from '../../session/session.js'
 
 /** 与生产同口径:交出去的消息/工具调用一律深冻结。 */
 function freezingToolCallStore() {

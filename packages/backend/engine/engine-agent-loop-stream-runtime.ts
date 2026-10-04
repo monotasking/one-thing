@@ -64,12 +64,12 @@ import {
 	isAgentProviderRuntimeSupported,
 	type AgentProviderRuntimeConfig,
 	type CreateAgentProviderFromRuntimeOptions,
-} from "../provider/index.js";
-import { buildOnethingRequestProviderOptionsBag } from "../provider/index.js";
+} from "../provider/provider.js";
+import { buildOnethingRequestProviderOptionsBag } from "../provider/provider.js";
 import {
 	routedProviderIdOf,
 	type CoreSpaceCredentialMarker,
-} from "../provider/index.js";
+} from "../provider/provider.js";
 
 /**
  * 换家时(批 6 轮转 v2)首次解析那份里**必须清掉**的端点一族与凭证一族。模型本身、
@@ -97,7 +97,7 @@ import {
 import {
 	resolveToolkitSurface,
 	toolkitAgentSourceTools,
-} from "../toolkit/host.js";
+} from "../toolkit/toolkit-host.js";
 import type { SceneSessionLike as ToolkitSceneSessionLike } from "../toolkit/scene.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";

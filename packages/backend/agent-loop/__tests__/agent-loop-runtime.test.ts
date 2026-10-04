@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 // A0-3 起 core 不内置「acp 的上下文归它自己管」这条事实;生产里它由 backend.ts 静态 import
 // 执行器注册表登记进来,这里照同一条路登记,压缩门才认得 acp。
-import '@onething/backend/agent/executor/registry'
+import '@onething/backend/agent/executor/agent-executor-registry'
 import {
   agentLoopInitSkills,
   agentLoopSkillContexts,

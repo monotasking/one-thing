@@ -36,7 +36,7 @@
  * `onDropped` 只有 `extraBody` 那一次传 —— 它拿着这一家**完整**的支持面,
  * 所以只有它的裁定是完整的。同一个被丢的键不会出现两条 warning。
  */
-import type { TurnContext } from "../base/index.js";
+import type { TurnContext } from "../base/provider-base.js";
 
 /**
  * `input_image.detail` 的标准值域(auto / low / high)。xAI 的两条通路用这一份

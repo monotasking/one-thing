@@ -619,7 +619,7 @@ export const en: Record<MessageKey, string> = {
   'search.partialScan': '{shown} scanned · not finished',
   /* ── Bottom status lines (§9). Four readouts; none of them merge. ── */
   'search.totalCount': '{total} in total',
-  /* Three sentences, one per ladder rung (search/kernel/pipeline/plan.ts):
+  /* Three sentences, one per ladder rung (search/kernel/pipeline/search-kernel-pipeline-plan.ts):
    * ① strict, ② adjacency dropped, ③ at least half the words, ④ any word.
    * One sentence for all three used to say "any word" even when only adjacency
    * had been dropped — a lie about how far we went. */

@@ -533,8 +533,8 @@ vi.mock('../../session/session-caller-ops.js', async importOriginal => ({
   runSessionOpAs: vi.fn(async () => ({ kind: 'ok', result: { content: [] } })),
 }))
 // Adapter fixtures explicitly belong to the local operator on both transports.
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })
 // `setSessionMode` 读会话的工作目录(开会话要 cwd);不装 backend 的单测给一张最小的会话表。

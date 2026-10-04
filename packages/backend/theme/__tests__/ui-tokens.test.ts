@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Theme } from '../types.js'
+import type { Theme } from '../theme-types.js'
 import { generateCSSVariables } from '../css-mapper.js'
 import {
   colorMeetsContrast,
@@ -11,7 +11,7 @@ import {
   nudgeDangerColorTowardRed,
   parseCssColor,
 } from '../role-mapping.js'
-import { resolveTheme, resolveThemeColorSemantics, resolveThemeUI } from '../resolver.js'
+import { resolveTheme, resolveThemeColorSemantics, resolveThemeUI } from '../theme-resolver.js'
 
 function expectSolidContrast(
   style: { fg?: string; bg?: string },

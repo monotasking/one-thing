@@ -44,14 +44,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, DocPayload, LexicalQuery } from '../kernel/index.js'
+import type { CapabilityManifest, DocPayload, LexicalQuery } from '../kernel/search-kernel.js'
 import {
   buildLexicalQuery,
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
   parse,
   plan,
-} from '../kernel/index.js'
+} from '../kernel/search-kernel.js'
 
 import { SqliteIndex } from '../index/sqlite-index.js'
 

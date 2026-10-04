@@ -41,7 +41,7 @@ import {
   planCollabHistoryWindow,
   type CollabAgentLike,
   type CollabMessageLike,
-} from '../index.js'
+} from '../collab.js'
 import {
   formatCollabActorVerb,
   type CollabActorReplayTranscript,
@@ -49,7 +49,7 @@ import {
   type CollabAgentAccount,
   type CollabRoomEffects,
   type CollabRoomTranscriptMessage,
-} from './index.js'
+} from './collab-actors.js'
 
 import {
   createCollabAgentAccountMemoryStore,

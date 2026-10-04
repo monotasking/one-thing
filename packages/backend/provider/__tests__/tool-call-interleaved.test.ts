@@ -28,9 +28,9 @@ import type {
 	AgentTurnRequest,
 	AgentTurnStreamEvent,
 } from "@onething/backend/agent-loop/loop-primitives";
-import { OPENROUTER_DIALECT } from "../vendors/openrouter/dialect.js";
-import { LedgerModelProfileResolver, type TurnContext } from "../base/index.js";
-import { OpenAIChatWire, openAIChatLogger } from "../wires/index.js";
+import { OPENROUTER_DIALECT } from "../vendors/openrouter/openrouter-dialect.js";
+import { LedgerModelProfileResolver, type TurnContext } from "../base/provider-base.js";
+import { OpenAIChatWire, openAIChatLogger } from "../wires/provider-wires.js";
 import { drain, sseResponse } from "./wire-snapshots/snapshot-harness.js";
 
 // 取样用 openrouter —— 这条门守的是 **openai-chat wire** 的 index 判据,与哪家

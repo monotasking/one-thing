@@ -4,9 +4,9 @@ import {
   makeHeaders,
   readIlinkJson,
   type WechatAuthState,
-} from './auth.js'
+} from './wechat-ilink-auth.js'
 import { splitMarkdownText, WECHAT_MAX_TEXT_LENGTH } from '../../../hub/markdown-safe-outbound-buffer.js'
-import { gatewayLogger } from '../../../hub/logging.js'
+import { gatewayLogger } from '../../../hub/gateway-hub-logging.js'
 
 const RATE_LIMIT_RET = -2
 const ILINK_SEND_MIN_INTERVAL_MS = 1_000

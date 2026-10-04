@@ -9,7 +9,7 @@
  *
  * 每家不同的只有 `encode()` —— 一家一个子类,一个文件。
  */
-import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/provider-base.js";
 
 /** `delta` 这一小块的读法 —— 线级形状,不是某一家的。 */
 export interface OpenAIChatReasoningDelta {

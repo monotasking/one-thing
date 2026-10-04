@@ -252,7 +252,7 @@ export interface RuntimeScratchpadAdapter<TChangedPayload = unknown> {
 /**
  * P4 终态批 C2:`RuntimePluginsAdapter` 整只没了 —— 六条读/开关面随
  * `pluginsRouter` 走通用 RPC,server 那本只读镜像目录改由
- * `packages/backend/plugin/plugins-client-api-catalog.ts` 的单槽端口交给域
+ * `packages/backend/plugin/plugin-client-api-catalog.ts` 的单槽端口交给域
  * (它只有一个实现者、一个读者,放在 core 的 facade 上是多余的一格)。
  */
 

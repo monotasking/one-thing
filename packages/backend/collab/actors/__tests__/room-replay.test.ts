@@ -16,7 +16,7 @@ import {
   parseRoomTranscriptJsonl,
   replayRoomTranscript,
   type CollabActorReplayTranscript,
-} from '../index.js'
+} from '../collab-actors.js'
 
 import {
   collabRoomMembersFromTranscript,

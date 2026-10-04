@@ -34,7 +34,7 @@ import {
   isCollabHarvestMessage,
   type CollabAgentLike,
   type CollabMessageLike,
-} from '../types.js'
+} from '../collab-types.js'
 
 const AGENTS: CollabAgentLike[] = [
   { id: 'pm', name: '阿明', title: '产品经理', description: '拆解目标、分派任务' },

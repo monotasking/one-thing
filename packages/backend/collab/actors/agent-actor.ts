@@ -51,7 +51,7 @@ import {
   isCollabRoomFact,
   type CollabAgentLike,
   type CollabMessageLike,
-} from '../index.js'
+} from '../collab.js'
 import {
   adoptCollabAgentWorkerOrphans,
   advanceCollabAgentDelivered,
@@ -99,7 +99,7 @@ import {
   type CollabRoomPostedVerb,
   type CollabSchedulerLogRow,
   type CollabSchedulerLogSink,
-} from './index.js'
+} from './collab-actors.js'
 
 import {
   createCollabAgentAccountFileStore,
@@ -115,7 +115,7 @@ import {
   type CollabWorkerMindPort,
   type CollabWorkerSlotLedger,
 } from './worker-child.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('collab.actors.agent')
 

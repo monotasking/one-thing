@@ -1,4 +1,4 @@
-import type { RefTypeSpec } from '../spec.js'
+import type { RefTypeSpec } from '../reference-spec.js'
 
 export const dirRefType: RefTypeSpec = {
   type: 'dir',

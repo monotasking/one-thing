@@ -71,8 +71,8 @@ vi.mock('../../session/reads.js', () => import('../../session/testing/facade-moc
 vi.mock('../../session/session-commands.js', () => import('../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
-vi.mock('../../session/access.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
   }) }
@@ -127,7 +127,7 @@ vi.mock('../../agent/profile-for-session.js', () => ({
   }),
 }))
 
-vi.mock('@onething/backend/collab/budget', () => ({
+vi.mock('@onething/backend/collab/collab-budget', () => ({
   isRoomOverBudget: async () => false,
 }))
 
@@ -215,7 +215,7 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   configureCollabV3SpeakPort,
-} = await import('@onething/backend/collab/actors/turn-context')
+} = await import('@onething/backend/collab/actors/collab-actors-turn-context')
 
 const ROOM = 'room-1'
 const EXEC = 'agent-exec-fe-room-1'

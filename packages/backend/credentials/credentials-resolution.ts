@@ -11,7 +11,7 @@
  * 多一份会分家的判据。
  */
 
-import { getAuthHostPorts } from '@onething/backend/auth/host-ports'
+import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
 import { isProviderEnabledIn } from '@shared/provider-families'
 import {
   builtinProviderFamilyLookup,
@@ -74,9 +74,9 @@ import type {
   SpacesClearCredentialRequest,
   SpacesSetCredentialPoolRequest,
   SpacesSetCredentialRequest,
-} from '@onething/backend/space/ipc-operations'
+} from '@onething/backend/space/space-ipc-operations'
 import { isExternalAgentExecutorProvider } from '@onething/backend/agent'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import {
   createEmptySpaceProviderSettings,
   hasSpaceProviderSettings,
@@ -85,9 +85,9 @@ import {
   type SpaceProviderSettings,
 } from '@onething/backend/space/provider-settings'
 import { providerSeedOf } from '@onething/backend/settings'
-import { getSpacesStore } from '@onething/backend/space/store'
+import { getSpacesStore } from '@onething/backend/space/space-store'
 import { getAuthService } from '@onething/backend/auth/process-auth-service'
-import type { ProviderAuthContext } from '@onething/backend/auth/ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { resolveSessionSpaceId, getSessionSettings, getSpaceSettings } from '@onething/backend/session'
 
 function providerLabel(providerId: string): string {

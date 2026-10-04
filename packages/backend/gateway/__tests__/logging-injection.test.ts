@@ -1,14 +1,14 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { LoggerRoot, type LogRecord, type LogSink, type Logger } from '@onething/backend/logging/logger-primitives'
-import { Gateway } from '../hub/gateway.js'
-import { GatewayBridge } from '../hub/bridge.js'
-import { WechatChannel } from '../channels/wechat/index.js'
-import { TelegramChannel } from '../channels/telegram/index.js'
+import { Gateway } from '../hub/gateway-hub-gateway.js'
+import { GatewayBridge } from '../hub/gateway-hub-bridge.js'
+import { WechatChannel } from '../channels/wechat/wechat.js'
+import { TelegramChannel } from '../channels/telegram/telegram.js'
 import {
   configureGatewayLogging,
   gatewayLogger,
   resetGatewayLoggingForTests,
-} from '../hub/logging.js'
+} from '../hub/gateway-hub-logging.js'
 
 class CaptureSink implements LogSink {
   readonly records: LogRecord[] = []

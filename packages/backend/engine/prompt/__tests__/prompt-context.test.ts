@@ -4,11 +4,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { captureRuntimeLogs } from '@onething/backend/logging'
 import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '@onething/backend/prompt'
-import type { BuildPromptContextOptions } from '../system-prompt.js'
+import type { BuildPromptContextOptions } from '../engine-system-prompt.js'
 import {
   buildPrompt,
   loadAgentsMdInstructions,
-} from '../system-prompt.js'
+} from '../engine-system-prompt.js'
 import { registerPromptContextProvider } from '@onething/backend/prompt/plugin-context-breaker'
 
 const agentStoreMock = vi.hoisted(() => ({

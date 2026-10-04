@@ -11,7 +11,7 @@ import {
   encodeVolcanoFullClientRequest,
   getVolcanoErrorMessage,
   parseVolcanoJsonPayload,
-} from '../volcano/protocol'
+} from '../volcano/voice-volcano-protocol'
 
 describe('volcano protocol', () => {
   it('round-trips a gzipped full client request with positive sequence', () => {

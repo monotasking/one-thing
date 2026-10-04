@@ -17,7 +17,7 @@ import {
   NoteVaultUnavailable,
   type NoteLivenessProbe,
   type NoteProcessRunner,
-} from '../types.js'
+} from '../note-types.js'
 
 /** 可执行名。`ONETHING_OBSIDIAN_CLI` 覆盖(开发机 / 非常规安装位置)。 */
 export function resolveObsidianExecutable(

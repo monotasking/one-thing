@@ -29,13 +29,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { DocPayload, DocumentFeed, FeedPolicy } from '../kernel/index.js'
+import type { DocPayload, DocumentFeed, FeedPolicy } from '../kernel/search-kernel.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
 // 这一处故意不走会话入口:本文件跑在索引 Worker 里,会话入口的闭包(仓储、存储驱动、历史重建连着 provider 树)
 // 会让 Worker bundle 大三成;这里只要账本解码这一只纯函数,所以直取定义它的文件(功能入口棘轮里记一处)。
-import { parseSessionLogEventLog } from '../../session/events/codec.js'
+import { parseSessionLogEventLog } from '../../session/events/session-events-codec.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import type { SessionMetaSnapshot } from './projector.js'
 import { IndexProjector, affectsIndexedDocuments } from './projector.js'
 

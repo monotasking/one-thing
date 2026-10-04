@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * E2:会话列表投影的**存量回填**(`session/list-projection-backfill.ts`)。
  *

@@ -14,8 +14,8 @@ import type {
   PreviewPayload,
   SearchCapability,
   SearchContext,
-} from '../kernel/index.js'
-import type { OnethingSearchProvidersAdapters } from '../providers.js'
+} from '../kernel/search-kernel.js'
+import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
 import { scanBackedCapability, type ScanRunOutcome, type SearchServiceResult } from './scan-adapter.js'
 import { expandPath, matchRangesOf, normalizeSearchQuery } from './text-match.js'
 import {

@@ -25,7 +25,7 @@
  * (codec 只知道 detail 那半边),所以只有它的裁定是完整的。codec 那次不留痕,
  * 于是同一个被丢的键不会出现两条 warning。
  */
-import type { TurnContext } from "../base/index.js";
+import type { TurnContext } from "../base/provider-base.js";
 
 /** OpenAI 的输出长度旋钮。 */
 export const OPENAI_CHAT_VERBOSITY_VALUES = ["low", "medium", "high"] as const;

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JsonObject } from '@shared/json.js'
-import { Permission } from '@onething/backend/permission/permission'
-import { enforcePermissionPolicy } from '@onething/backend/tool/access-control/permission-policy'
+import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
+import { enforcePermissionPolicy } from '@onething/backend/tool/access-control/tool-access-control-permission-policy'
 import type { ToolEffect } from '@onething/backend/tool/tool-helpers'
 // This policy component fixture is a non-collaborative session; it owns no store.
 vi.mock('../../session/session-store.js', () => ({ getSession: () => undefined }))
@@ -10,7 +10,7 @@ vi.mock('../../session/reads.js', () => ({ sessionReads: {
   lastMessageOfRole: () => undefined,
 } }))
 
-vi.mock('@onething/backend/permission/permission', () => {
+vi.mock('@onething/backend/permission/permission-with-grant-storage', () => {
   class RejectedError extends Error {
     constructor(
       public readonly sessionId: string,

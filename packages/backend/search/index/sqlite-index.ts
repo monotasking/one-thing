@@ -56,7 +56,7 @@ import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '../kernel/index.js'
+import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '../kernel/search-kernel.js'
 import type {
   DocPayload,
   DocTable,
@@ -69,19 +69,19 @@ import type {
   LexicalSearcher,
   Posting,
   Vocabulary,
-} from '../kernel/index.js'
+} from '../kernel/search-kernel.js'
 import {
   DEFAULT_NORMALIZERS,
   composeNormalizers,
   createDefaultAnalyzerRegistry,
-} from '../kernel/index.js'
-import type { AnalyzerRegistry } from '../kernel/index.js'
+} from '../kernel/search-kernel.js'
+import type { AnalyzerRegistry } from '../kernel/search-kernel.js'
 
 import { SqliteVectorIndex, attachVectorIndex, probeSqliteVecExtension } from './sqlite-vec.js'
-import { vectorTableFamily } from './storage.js'
-import type { IndexMaintenanceStats, IndexStorageBreakdown } from './storage.js'
+import { vectorTableFamily } from './search-index-storage.js'
+import type { IndexMaintenanceStats, IndexStorageBreakdown } from './search-index-storage.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('search.index.sqlite')
 

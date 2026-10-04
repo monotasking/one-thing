@@ -120,7 +120,7 @@ type HttpDiscoveryRecord = {
 const appRoot = path.resolve(__dirname, '..')
 
 /**
- * store 根。与 `packages/backend/storage/paths.ts` 的
+ * store 根。与 `packages/backend/storage/storage-paths.ts` 的
  * `getOnethingStorePath()` **同语义**(env 优先,否则 `~/.onething`)。这一段发生在
  * `configureLogging` 之前(要先知道 store 才知道日志落哪),所以自己 resolve 一次。
  */
@@ -583,7 +583,7 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
  *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)——
  *    `webContents.send`,一条单向推送,没有后端那一侧。
  *  · `installTerminalReloadDetach` —— 它缺省调的那只 detach 住在
- *    `@onething/backend/terminal/service`,读的是**那只包自己的模块级
+ *    `@onething/backend/terminal/terminal-service`,读的是**那只包自己的模块级
  *    单例**(`serviceInstance?.markAllDetached()`),不是 backend 访问器;没开过
  *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
  *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。

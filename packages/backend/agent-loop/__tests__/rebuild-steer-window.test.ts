@@ -20,8 +20,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AgentProvider } from '@onething/backend/agent-loop/loop-primitives'
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/backend/toolkit/tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
-import { configureToolkitCatalog } from '../../toolkit/host.js'
-import { buildOnethingHistoryMessages } from '../../session/index.js'
+import { configureToolkitCatalog } from '../../toolkit/toolkit-host.js'
+import { buildOnethingHistoryMessages } from '../../session/session.js'
 import { buildOnethingAgentLoopStreamRuntime } from '../../engine/engine-agent-loop-stream-runtime.js'
 
 class NoopTool extends ToolkitTool<Record<string, never>, undefined> {

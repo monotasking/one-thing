@@ -17,7 +17,7 @@ import {
 	buildCollabRoomSystemPrompt,
 } from "../roster.js";
 import { resolveAgentToolSurface } from "../../agent/profile.js";
-import type { CollabAgentLike } from "../types.js";
+import type { CollabAgentLike } from "../collab-types.js";
 
 const FE: CollabAgentLike = { id: "fe", name: "小李", title: "工程师" };
 const PM: CollabAgentLike = { id: "pm", name: "阿明", title: "产品" };

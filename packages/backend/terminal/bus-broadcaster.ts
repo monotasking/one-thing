@@ -34,7 +34,7 @@
  * 算了」是同一条判例(它用的也是 `isEventSystemInitialized()`)。
  */
 
-import type { TerminalBroadcaster } from '@onething/backend/terminal/service'
+import type { TerminalBroadcaster } from '@onething/backend/terminal/terminal-service'
 import type { TerminalDataEvent, TerminalExitEvent } from '@shared/ipc.js'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/event'
 import { getLogger } from '@onething/backend/logging/configure-logging'

@@ -1,6 +1,6 @@
 import { isJsonObject } from '@shared/json.js'
-import type { PermissionPolicy } from './policy.js'
-import type { ToolCall, ToolExecutionContext, ToolResult } from './types.js'
+import type { PermissionPolicy } from './tool-policy.js'
+import type { ToolCall, ToolExecutionContext, ToolResult } from './tool-types.js'
 import type { ToolRegistry } from './engine-tool-registry.js'
 
 export interface ToolExecutorOptions {

@@ -55,12 +55,12 @@
 
 import { sortByPluginCanonicalOrder } from './canonical-order.js'
 import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging/logger-primitives'
-import { PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from './policy.js'
+import { PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from './plugin-policy.js'
 import { runWithPluginTimeout } from './runtime-guard.js'
 import {
   PLUGIN_PERMISSION_TOOLCALL_INTERCEPT,
   PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,
-} from './sessions.js'
+} from './plugin-sessions.js'
 
 /* ── 声明门 ───────────────────────────────────────────────────────────────── */
 

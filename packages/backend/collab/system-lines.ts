@@ -15,9 +15,9 @@
  * 判定收在 isCollabProjectedSystemLine 一个函数里(投影/意愿窗口/未来的
  * 成员变更行同源同规则),新增一类只需往 PROJECTED_SOURCES 里加一个来源。
  */
-import type { CollabTaskEvidence } from './board.js'
+import type { CollabTaskEvidence } from './collab-board.js'
 import { truncateAtCodePoint } from './truncate.js'
-import type { CollabAgentLike } from './types.js'
+import type { CollabAgentLike } from './collab-types.js'
 
 /**
  * The system-line markers and the "does the model read this?" predicate live in

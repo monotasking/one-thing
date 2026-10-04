@@ -7,7 +7,7 @@ import {
 } from '../digest.js'
 import { planCollabHistoryWindow } from '../history-window.js'
 import { projectRoomHistory } from '../projection.js'
-import type { CollabMessageLike } from '../types.js'
+import type { CollabMessageLike } from '../collab-types.js'
 
 const AGENTS = [
   { id: 'a', name: 'Atlas' },

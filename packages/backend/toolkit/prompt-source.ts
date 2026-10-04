@@ -21,8 +21,8 @@
 
 import { resolveAIToolName } from '@onething/backend/agent-loop/loop-primitives'
 import { promptFragmentsFromToolContribution, type CoreBuildPromptContextOptions, type CorePromptFragment } from '@onething/backend/agent-loop'
-import type { PromptSource } from '../prompt/index.js'
-import { getToolkitCatalog } from './index.js'
+import type { PromptSource } from '../prompt/prompt.js'
+import { getToolkitCatalog } from './toolkit.js'
 
 /** 目录里这几只工具带的提示词片段,按给定次序、每个 id 只算一次。 */
 export function toolkitPromptFragments(toolIds: Iterable<string>): CorePromptFragment[] {

@@ -134,8 +134,8 @@ vi.mock('@onething/backend/event', () => ({
   }),
 }))
 
-vi.mock('../../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+vi.mock('../../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
   }) }
@@ -215,7 +215,7 @@ const {
   shutdownCollabV3Runtime,
   stopCollabV3TaskWork,
   warmCollabV3Agents,
-} = await import('../runtime.js')
+} = await import('../collab-actors-runtime.js')
 const {
   clearCollabRoomHistory,
   setCollabRoomBudgets,
@@ -455,7 +455,7 @@ describe('卡级停止:账在子清单里(D6-b 缺口①)', () => {
     const cardId = created.task!.id
     // 总闸抬起那条路 = 「把搁浅的卡重新派出去」,它与 `task-started` 走同一个
     // 派生口,所以用它起手最接近真机。
-    const { resumeCollabV3RoomWork } = await import('../runtime.js')
+    const { resumeCollabV3RoomWork } = await import('../collab-actors-runtime.js')
     await resumeCollabV3RoomWork(ROOM)
     await new Promise(resolve => setTimeout(resolve, 0))
     return { cardId, worker }

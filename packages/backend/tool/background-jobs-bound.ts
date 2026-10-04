@@ -1,7 +1,7 @@
-import { configureCoreBackgroundJobs } from './background-jobs.js'
+import { configureCoreBackgroundJobs } from './tool-background-jobs.js'
 import {
   getOnethingToolOutputsDir,
-} from '../storage/index.js'
+} from '../storage/storage.js'
 let backgroundJobsConfigured = false
 
 /** Explicit assembly step: point background-job logs at the tool outputs dir. */
@@ -11,4 +11,4 @@ export function configureAppBackgroundJobs(): void {
   configureCoreBackgroundJobs({ getLogRootDir: getOnethingToolOutputsDir })
 }
 
-export * from './background-jobs.js'
+export * from './tool-background-jobs.js'

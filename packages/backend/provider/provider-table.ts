@@ -5,9 +5,9 @@
  * lookup, and instantiation of providers.
  */
 
-import { builtinProviders } from './builtin/index.js'
-import { createProviderRegistry } from './registry.js'
-import type { ProviderDefinition, ProviderInfo } from './ipc-types.js'
+import { builtinProviders } from './builtin/provider-builtin.js'
+import { createProviderRegistry } from './provider-registry.js'
+import type { ProviderDefinition, ProviderInfo } from './provider-ipc-types.js'
 
 const registry = createProviderRegistry<ProviderDefinition>(builtinProviders)
 
@@ -84,4 +84,4 @@ export function getProviderDefinition(providerId: string): ProviderDefinition | 
 }
 
 // Export types for convenience
-export type { ProviderDefinition, ProviderInfo, ProviderConfig } from './ipc-types.js'
+export type { ProviderDefinition, ProviderInfo, ProviderConfig } from './provider-ipc-types.js'

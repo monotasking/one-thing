@@ -12,7 +12,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { setRootDirForTests } from '../persistence.js'
+import { setRootDirForTests } from '../space-persistence.js'
 import {
   resetSpaceDataListenersForTests,
   subscribeSpaceDataChanged,

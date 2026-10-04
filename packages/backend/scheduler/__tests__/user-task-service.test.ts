@@ -102,7 +102,7 @@ describe('user scheduler tasks', () => {
    *
    * 判据是**表空了链就断**:`Scheduler.unregister` 摘掉最后一只时会
    * `rescheduleTimer`,而那一句里的 `clearTimeout` 才是这条链真正的收尾。
-   * 反证(实跑过):把 `packages/backend/scheduler/scheduler.ts`
+   * 反证(实跑过):把 `packages/backend/scheduler/scheduler-cron-runner.ts`
    * `rescheduleTimer` 开头那句 `clearTimeout(this.timer)` 摘掉 → 最后一句红。
    */
   it('C0 R3:stop 之后调度器不留定时器(unref 的也算)', () => {

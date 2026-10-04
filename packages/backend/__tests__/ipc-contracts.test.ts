@@ -22,7 +22,7 @@ import type {
   OnethingPracticeSummaryResult,
 } from '@shared/contracts/practice.js'
 import type { OnethingUsageSummaryResult } from '@shared/contracts/usage.js'
-import type { SessionEventRecord } from '../session/index.js'
+import type { SessionEventRecord } from '../session/session.js'
 import type { SessionToolCallInspection } from '@shared/session/tool-call-inspection.js'
 
 describe('runtime and wire contract compatibility', () => {

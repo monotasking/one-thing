@@ -12,11 +12,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentProvider, AgentTurnRequest } from '@onething/backend/agent-loop/loop-primitives'
-import { createClaudeAgentProvider } from '../vendors/claude/agent-provider.js'
-import { createDeepSeekAgentProvider } from '../vendors/deepseek/agent-provider.js'
-import { createGeminiAgentProvider } from '../vendors/gemini/agent-provider.js'
+import { createClaudeAgentProvider } from '../vendors/claude/claude-agent-provider.js'
+import { createDeepSeekAgentProvider } from '../vendors/deepseek/deepseek-agent-provider.js'
+import { createGeminiAgentProvider } from '../vendors/gemini/gemini-agent-provider.js'
 import { createOpenAICompatibleAgentProvider } from '../openai-compatible.js'
-import { createCodexAgentProvider } from '../vendors/codex/agent-provider.js'
+import { createCodexAgentProvider } from '../vendors/codex/codex-agent-provider.js'
 import {
   classifyProviderError,
   parseProviderRetryAfter,

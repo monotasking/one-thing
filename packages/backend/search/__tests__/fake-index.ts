@@ -7,8 +7,8 @@
  * 分数取严格递减的逆序名次(与 `scan-adapter.ts` 里那条同一个手法:排序恒等)。
  */
 
-import type { IndexedDoc } from '../kernel/index.js'
-import type { SearchIndexQueryFace } from '../capabilities/indexed.js'
+import type { IndexedDoc } from '../kernel/search-kernel.js'
+import type { SearchIndexQueryFace } from '../capabilities/search-capabilities-indexed.js'
 
 export interface FakeIndexOptions {
   /** 命中了哪些词(`LexicalHit.matched`);摘要开窗读它。 */

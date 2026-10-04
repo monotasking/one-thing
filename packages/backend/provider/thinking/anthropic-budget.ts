@@ -11,7 +11,7 @@
  * 家族要)。
  */
 import { ONETHING_CLAUDE_THINKING_BUDGETS } from "../model-families/claude.js";
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { AnthropicThinkingWire } from "./anthropic-effort.js";
 
 export class AnthropicBudgetThinkingWire extends AnthropicThinkingWire {

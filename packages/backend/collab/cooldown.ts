@@ -19,7 +19,7 @@
 import { isCollabPassMessage } from './pass.js'
 import { isCollabThinkingMessage } from './say.js'
 import { isCollabProjectedSystemLine } from './system-lines.js'
-import { isCollabDriveMessage, type CollabMessageLike } from './types.js'
+import { isCollabDriveMessage, type CollabMessageLike } from './collab-types.js'
 
 /**
  * How many recent VISIBLE messages the cooldown looks back over. 2 = "you just

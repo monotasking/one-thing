@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { snippetOf, queryRangesOf } from '../capabilities/indexed.js'
+import { snippetOf, queryRangesOf } from '../capabilities/search-capabilities-indexed.js'
 import { mapDisplayRangeToSource, plainTextOf, toDisplayText } from '../text/plain.js'
 
 describe('toDisplayText:剥记号 + 回原文的路', () => {

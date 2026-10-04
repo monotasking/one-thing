@@ -8,7 +8,7 @@ vi.mock('../../settings/proxy-fetch.js', () => ({
   createRequiredAppFetch: () => testFetch,
 }))
 
-import { builtinProviders } from '../../provider/builtin/index.js'
+import { builtinProviders } from '../../provider/builtin/provider-builtin.js'
 import { resolveProviderRuntimeRoute } from '../engine-agent-runtime.js'
 
 describe('provider agent runtime route', () => {

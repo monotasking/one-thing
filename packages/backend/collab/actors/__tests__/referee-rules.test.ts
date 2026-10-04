@@ -15,7 +15,7 @@ import {
   isCollabRoomJudgmentShape,
   parseCollabRefereeVerdict,
   type CollabRaisedHand,
-} from '../index.js'
+} from '../collab-actors.js'
 import { formatCollabAgentHandle } from '../../handles.js'
 
 const MEMBERS = [

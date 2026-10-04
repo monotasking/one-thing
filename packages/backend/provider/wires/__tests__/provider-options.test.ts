@@ -20,8 +20,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
-import "../../dialects/index.js";
+import { getLogger } from "../../../logging/logging.js";
+import "../../dialects/provider-dialects.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
@@ -29,7 +29,7 @@ import {
 	listDialects,
 	type PartCodec,
 	type PartDelivery,
-} from "../../base/index.js";
+} from "../../base/provider-base.js";
 import {
 	captureWireRequest,
 	sseResponse,

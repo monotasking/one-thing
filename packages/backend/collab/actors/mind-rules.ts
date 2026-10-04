@@ -25,14 +25,14 @@
 import type { CollabActivationReason } from '../activation.js'
 import { isCollabRoomFact } from '../classify.js'
 import { resolveCollabMentionIds } from '../mentions.js'
-import type { CollabAgentLike, CollabMessageLike } from '../types.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 import type { CollabFoldEntry } from './envelope-fold.js'
 import type {
   CollabActorRef,
   CollabHandUrgency,
   CollabRoomPostedVerb,
   CollabWorkerOutcome,
-} from './protocol.js'
+} from './collab-actors-protocol.js'
 import {
   adoptCollabWorkerOrphans,
   normalizeCollabAgentWorkerRecords,

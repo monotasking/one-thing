@@ -5,7 +5,7 @@ import type {
 } from '@onething/backend/agent-loop/loop-primitives'
 import { createOnethingProviderFacade } from '../provider-facade.js'
 import type { OnethingProviderRequestDumpContext } from '../agent-turn.js'
-import { createDeepSeekAgentProvider } from '../vendors/deepseek/agent-provider.js'
+import { createDeepSeekAgentProvider } from '../vendors/deepseek/deepseek-agent-provider.js'
 
 function fakeProvider(onRequest?: (request: AgentTurnRequest) => void): AgentProvider {
   return {

@@ -8,7 +8,7 @@
  * **expander 只看词典不看文档**,所以是纯函数、可单测。
  */
 
-import type { Vocabulary } from '../index/types.js'
+import type { Vocabulary } from '../index/search-kernel-index-types.js'
 
 /** 前缀展开的上限(§6.2b)。`a` 展开成半个词典是这条守的。 */
 export const PREFIX_EXPANSION_LIMIT = 64

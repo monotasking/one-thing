@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings, ModelCapabilityEntry } from '@shared/ipc.js'
-import { createDefaultSettings } from '../defaults/settings.js'
+import { createDefaultSettings } from '../defaults/settings-factory-defaults.js'
 
 const state = vi.hoisted(() => ({
   settings: {} as AppSettings,

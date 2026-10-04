@@ -11,12 +11,12 @@ import {
   getOnethingVariablesPath,
   readJsonFile,
   writeJsonFile,
-} from '../storage/index.js'
+} from '../storage/storage.js'
 import {
   createDefaultVariablesFile,
   parseVariablesFile,
   type VariablesFile,
-} from './schema.js'
+} from './variable-schema.js'
 
 export function loadFromDisk(): VariablesFile {
   const fallback = createDefaultVariablesFile()

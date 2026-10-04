@@ -25,12 +25,12 @@ import {
   VariableTool,
   WriteTool,
   ZodValidator,
-} from '../index.js'
+} from '../toolkit.js'
 import type {
   RuntimeContextVariable,
   RuntimeVariableRegistry,
   RuntimeVariableSetInput,
-} from '../index.js'
+} from '../toolkit.js'
 import type { BashOperations } from '../../tool/bash-executor.js'
 import { IpcProjector, splitResultContent, stepFromEvent, toolProgressFromEvent } from '../ipc-observer.js'
 

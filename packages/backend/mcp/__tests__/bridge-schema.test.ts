@@ -9,7 +9,7 @@ const mockMCPManager = vi.hoisted(() => ({
   settings: { enabled: true, servers: [], flatToolThreshold: 20 as number | undefined },
 }))
 
-vi.mock('../manager.js', () => ({
+vi.mock('../mcp-manager.js', () => ({
   MCPManager: {
     get isEnabled() {
       return mockMCPManager.enabled
@@ -23,7 +23,7 @@ vi.mock('../manager.js', () => ({
   },
 }))
 
-import { executeMCPTool, getMCPToolsForAI, mcpToolToToolDefinition, parseMCPToolId } from '../bridge.js'
+import { executeMCPTool, getMCPToolsForAI, mcpToolToToolDefinition, parseMCPToolId } from '../mcp-bridge.js'
 
 function addMockServer(serverId: string, name: string, tools: Array<Pick<MCPToolInfo, 'name' | 'inputSchema' | 'description'>>): void {
   const mcpTools = tools.map(tool => ({

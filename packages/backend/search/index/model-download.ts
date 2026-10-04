@@ -55,14 +55,14 @@
  *    宿主换 Worker。
  */
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import {
   captureModelManifest,
   hasEmbedderModelFiles,
   probeEmbedderModel,
   removeEmbedderModel,
 } from '../embedding/model-store.js'
-import type { EmbedderFactory } from '../embedding/registry.js'
+import type { EmbedderFactory } from '../embedding/search-embedding-registry.js'
 import { describeEmbedderFailure, type VectorErrorKind } from './vector-writer.js'
 
 const log = getLogger('search.index.model')

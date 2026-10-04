@@ -13,10 +13,10 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import type { Embedder } from '../../kernel/index.js'
+import type { Embedder } from '../../kernel/search-kernel.js'
 
 import { probeEmbedderModel } from '../../embedding/model-store.js'
-import type { EmbedderDownloadOptions, EmbedderFactory } from '../../embedding/registry.js'
+import type { EmbedderDownloadOptions, EmbedderFactory } from '../../embedding/search-embedding-registry.js'
 import { MODEL_IN_USE_ERROR, MODEL_NOT_DOWNLOADABLE_ERROR, ModelDownloader } from '../model-download.js'
 import type { ModelStatus } from '../model-download.js'
 

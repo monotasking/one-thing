@@ -18,7 +18,7 @@ import type {
 	RequestBodyBuilder,
 	ThinkingWire,
 	TurnContext,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 
 export type ClaudeEffort = "low" | "medium" | "high" | "xhigh" | "max";
 

@@ -23,51 +23,51 @@ import { mountFeature, type FeatureDefinition, type FeatureUnmount } from '@onet
 import type { ClientApiRow } from './http-server-dispatch-table.js'
 import { ACP_CLIENT_API } from '../acp/acp-client-api.js'
 import { HOST_MCP_CLIENT_API } from '../acp/acp-client-api-host-mcp.js'
-import { AGENTS_CLIENT_API } from '../agent/agents-client-api.js'
-import { APP_STATE_CLIENT_API } from '../session/sessions-client-api-app-state.js'
+import { AGENTS_CLIENT_API } from '../agent/agent-client-api.js'
+import { APP_STATE_CLIENT_API } from '../session/session-client-api-app-state.js'
 import { CHANNEL_IDENTITY_CLIENT_API } from '../gateway/gateway-client-api-channel-identity.js'
 import { CHAT_CLIENT_API } from '../engine/engine-client-api.js'
 import { COLLAB_CLIENT_API } from '../collab/collab-client-api.js'
-import { EVALS_CLIENT_API } from '../eval/evals-client-api.js'
-import { EVALS_WORKBENCH_CLIENT_API } from '../eval/evals-client-api-workbench.js'
-import { FILES_CLIENT_API } from '../file/files-client-api.js'
+import { EVALS_CLIENT_API } from '../eval/eval-client-api.js'
+import { EVALS_WORKBENCH_CLIENT_API } from '../eval/eval-client-api-workbench.js'
+import { FILES_CLIENT_API } from '../file/file-client-api.js'
 import { GATEWAY_CLIENT_API } from '../gateway/gateway-client-api.js'
-import { GOAL_CLIENT_API } from '../goal/goals-client-api.js'
+import { GOAL_CLIENT_API } from '../goal/goal-client-api.js'
 import { INTERACTION_CLIENT_API } from '../interaction/interaction-client-api.js'
 import { MUSIC_CLIENT_API } from '../music/music-client-api.js'
-import { TOOLS_CLIENT_API } from '../tool/tools-client-api.js'
+import { TOOLS_CLIENT_API } from '../tool/tool-client-api.js'
 import { LOGS_CLIENT_API } from '../logging/logging-client-api.js'
 import { MEMORY_CLIENT_API } from '../memory/memory-client-api.js'
 import { MARKDOWN_CLIENT_API } from '../markdown/markdown-client-api.js'
 import { MCP_CLIENT_API } from '../mcp/mcp-client-api.js'
 import { MEDIA_CLIENT_API } from '../media/media-client-api.js'
-import { MODELS_CLIENT_API } from '../provider/providers-client-api-models.js'
+import { MODELS_CLIENT_API } from '../provider/provider-client-api-models.js'
 import { OAUTH_CLIENT_API } from '../auth/auth-client-api.js'
-import { PERMISSION_GRANTS_CLIENT_API } from '../permission/permissions-client-api-grants.js'
-import { PERMISSION_CLIENT_API } from '../permission/permissions-client-api.js'
-import { PLUGINS_CLIENT_API } from '../plugin/plugins-client-api.js'
+import { PERMISSION_GRANTS_CLIENT_API } from '../permission/permission-client-api-grants.js'
+import { PERMISSION_CLIENT_API } from '../permission/permission-client-api.js'
+import { PLUGINS_CLIENT_API } from '../plugin/plugin-client-api.js'
 import { PRACTICE_CLIENT_API } from '../practice/practice-client-api.js'
-import { PROJECT_DIRS_CLIENT_API } from '../project-dir/project-dirs-client-api.js'
-import { PROMPTS_CLIENT_API } from '../prompt/prompts-client-api.js'
+import { PROJECT_DIRS_CLIENT_API } from '../project-dir/project-dir-client-api.js'
+import { PROMPTS_CLIENT_API } from '../prompt/prompt-client-api.js'
 import { RESOURCES_CLIENT_API } from '../resource/resource-client-api.js'
-import { PROVIDERS_CLIENT_API } from '../provider/providers-client-api.js'
+import { PROVIDERS_CLIENT_API } from '../provider/provider-client-api.js'
 import { SCHEDULER_CLIENT_API } from '../scheduler/scheduler-client-api.js'
 import { SEARCH_CLIENT_API } from '../search/search-client-api.js'
-import { NOTES_CLIENT_API } from '../note/notes-client-api.js'
+import { NOTES_CLIENT_API } from '../note/note-client-api.js'
 import { SCRATCHPAD_CLIENT_API } from '../scratchpad/scratchpad-client-api.js'
-import { SESSION_EVENTS_CLIENT_API } from '../session/sessions-client-api-events.js'
-import { SESSION_COMMAND_CLIENT_API } from '../session/sessions-client-api-commands.js'
-import { SESSIONS_CLIENT_API } from '../session/sessions-client-api.js'
-import { SKILLS_CLIENT_API } from '../skill/skills-client-api.js'
+import { SESSION_EVENTS_CLIENT_API } from '../session/session-client-api-events.js'
+import { SESSION_COMMAND_CLIENT_API } from '../session/session-client-api-commands.js'
+import { SESSIONS_CLIENT_API } from '../session/session-client-api.js'
+import { SKILLS_CLIENT_API } from '../skill/skill-client-api.js'
 import { DIALOG_CLIENT_API } from '../dialog/dialog-client-api.js'
 import { SHELL_CLIENT_API } from '../shell/shell-client-api.js'
 import { SETTINGS_CLIENT_API } from '../settings/settings-client-api.js'
-import { SPACES_CLIENT_API } from '../space/spaces-client-api.js'
+import { SPACES_CLIENT_API } from '../space/space-client-api.js'
 import { TERMINAL_CLIENT_API } from '../terminal/terminal-client-api.js'
-import { THEMES_CLIENT_API } from '../theme/themes-client-api.js'
+import { THEMES_CLIENT_API } from '../theme/theme-client-api.js'
 import { TODO_PLAN_CLIENT_API } from '../todo-plan/todo-plan-client-api.js'
 import { USAGE_CLIENT_API } from '../usage/usage-client-api.js'
-import { VARIABLES_CLIENT_API } from '../variable/variables-client-api.js'
+import { VARIABLES_CLIENT_API } from '../variable/variable-client-api.js'
 import { VOICE_CLIENT_API } from '../voice/voice-client-api.js'
 
 /**
@@ -247,9 +247,9 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   MUSIC_CLIENT_API,
   // P4c 第十批第一个域(evals)—— 十四条:👎 记录 / 记录表 / 夹具 / 快照 / 用例 /
   // 跑批起停 / 晋升 / 退役 / 分诊报告 / 跑批明细。它是全仓第一个把 `app.isPackaged`
-  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `eval/host-ports.ts`,
+  // 从宿主里摘出来的域:「evals 仓在哪」的判定搬进 `eval/eval-host-ports.ts`,
   // 宿主只注入 `isPackaged` 这一位事实(未注入 = 非打包 = `process.cwd()`)。
-  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `eval/events.ts`
+  // **一条推送留在原地**(`EVALS_RUN_PROGRESS`),改走 `eval/eval-events.ts`
   // 的 `configureEvalsEventBroadcaster` 端口 —— 顺带从单窗定向改成全窗广播,
   // 与工作台那两条一致。四条按 wire 路径读盘的方法在 http 上直接拒绝(见域文件头)。
   EVALS_CLIENT_API,
@@ -275,7 +275,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // **两条留宿主**(C):`OPEN_SETTINGS_WINDOW`(BrowserWindow)与
   // `SHOW_OPEN_DIALOG`(原生对话框,渲染侧 21 个调用点)。
   // **一条推送留在原地**(`SETTINGS_CHANGED`),改走
-  // `settings/events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
+  // `settings/settings-events.ts` 的 `configureSettingsEventBroadcaster` —— 顺带
   // 从「跳过发起窗」改成全窗广播(信封里没有「谁在问」这一格,同 evals 判例)。
   // 三件要宿主的事(套代理 / 重注册全局快捷键 / 系统深浅色)走新立的
   // `configureSettingsHost`;网关设置的套用复用第八批的 `configureGatewayHost`,
@@ -312,14 +312,14 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // web 的六条 REST + 十三条硬桩)连同 server 的 `/api/plugins*` 六条路由与那条
   // 501 一起消失。
   // **两条推送留在原地**:`PLUGINS_NOTIFICATION`(总线全局事件,IPCBridge 扇全窗)
-  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `plugin/events.ts` 的
+  // 与 `PLUGINS_REQUEST_PROGRESS`(改走 `plugin/plugin-events.ts` 的
   // `configurePluginRequestProgressBroadcaster`,按 `context.callerId` **定向回发起窗**
   // —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份别人的进度)。
-  // 两件要宿主本体的事走 `plugin/host-ports.ts` 的 `configurePluginsHost`:
+  // 两件要宿主本体的事走 `plugin/plugin-host-ports.ts` 的 `configurePluginsHost`:
   // 原生文件对话框(`pickFile`)与插件命令的子进程执行器(`execCommand`,execa 是
   // 桌面的依赖,不该被拖进 server 的单文件包)。未注入即结构化降级。
   // http 分叉逐字保留 server 今天的语义:六条读/开关面走
-  // `plugin/plugins-client-api-catalog.ts` 那个单槽端口(装的就是从前六条 REST 背后的同一批
+  // `plugin/plugin-client-api-catalog.ts` 那个单槽端口(装的就是从前六条 REST 背后的同一批
   // 闭包),`configGet` 从那份清单就地派生只读值,其余写面按「插件管理器在不在场」
   // 回迁移前 `platform/web.ts` 逐字相同的文案。渲染侧另有能力位 `pluginsManage`
   // (web 默认关)让写面根本不发请求。

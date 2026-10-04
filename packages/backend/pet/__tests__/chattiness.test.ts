@@ -3,13 +3,13 @@
  * 串在宿主那条推送后面,不掐掉它;退订还原槽。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '../../settings/events.js'
+} from '../../settings/settings-events.js'
 import { petChattinessOf, watchPetChattiness } from '../chattiness-watch.js'
 
 function settingsWith(chattiness: unknown): AppSettings {

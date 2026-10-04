@@ -37,4 +37,4 @@ export type {
   PluginEventHandler,
   PluginStore,
   MinimalPluginUI,
-} from './types.js'
+} from './plugin-types.js'

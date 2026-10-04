@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LogRecord } from '@onething/backend/logging/logger-primitives'
 
-import { captureRuntimeLogs, getLogger } from '../../../logging/index.js'
+import { captureRuntimeLogs, getLogger } from '../../../logging/logging.js'
 import type { IndexEndpoint } from '../worker-core.js'
 import { IndexWorkerHost, type IndexWorkerHandle } from '../worker-host.js'
 import {

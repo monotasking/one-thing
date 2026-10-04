@@ -40,7 +40,7 @@ import type {
   AcpElicitationRequest,
   AcpElicitationResponse,
 } from '@onething/backend/acp'
-import { getShellHost, hasShellHost } from '@onething/backend/shell/host-ports'
+import { getShellHost, hasShellHost } from '@onething/backend/shell/shell-host-ports'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/no-human'
 import { resolvePermissionMessageAnchor } from '@onething/backend/permission/message-anchor'
 import { getLogger } from '@onething/backend/logging/configure-logging'

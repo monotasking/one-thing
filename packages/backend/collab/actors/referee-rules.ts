@@ -30,15 +30,15 @@
  */
 import { escapeCollabXmlAttribute } from '../projection.js'
 import { formatCollabAgentHandle, resolveCollabAgentHandle } from '../handles.js'
-import { buildCollabPlanStateLines, type CollabPlanMemberState } from '../plan.js'
+import { buildCollabPlanStateLines, type CollabPlanMemberState } from '../collab-plan.js'
 import { truncateAtCodePoint } from '../truncate.js'
-import type { CollabAgentLike, CollabMessageLike } from '../types.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 import { buildWillingnessWindow } from '../willingness.js'
 import type { CollabRaisedHand } from './floor-policy.js'
 import {
   collabRefereeSetFloorPolicy,
   type CollabRefereeSetFloorPolicyVerb,
-} from './protocol.js'
+} from './collab-actors-protocol.js'
 
 /** 裁决窗口里最多带几条历史。与判定那一路同一个数(它证明过够用)。 */
 export const COLLAB_REFEREE_RECENT_LIMIT = 10

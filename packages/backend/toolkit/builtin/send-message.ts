@@ -33,9 +33,9 @@ import {
   formatCollabDmReceipt,
   formatCollabSayReceipt,
   resolveCollabSendChannel,
-} from '../../collab/index.js'
-import { defineInput, listZodIssues } from '../contract.js'
-import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/collab.js'
+} from '../../collab/collab.js'
+import { defineInput, listZodIssues } from '../toolkit-contract.js'
+import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/toolkit-families-collab.js'
 
 export interface SayToolResult {
   ok: boolean

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * `HeadlessBackend` 被替身掉:本测试问的是"守护进程起来之后写不写
  * `daemon.jsonl`",而不是"后端能不能装配"—— 真把后端拉进来会顺带跑整棵工具树。
  */
-vi.mock('@onething/backend/headless/backend', () => ({
+vi.mock('@onething/backend/headless/headless-backend', () => ({
   HeadlessBackend: class {
     async start(): Promise<void> {}
     async shutdown(): Promise<void> {}

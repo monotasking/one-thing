@@ -16,7 +16,7 @@
  * - `undefined` → `noopLogger`(**不再默认 `console`**)。
  */
 
-import { LOG_LEVEL_VALUE, type LogFields, type Logger } from './types.js'
+import { LOG_LEVEL_VALUE, type LogFields, type Logger } from './logging-types.js'
 import { type LogLevel } from '@shared/logging/types.js'
 
 /** 迁移期的老形状:`console` 本身就结构满足它。 */

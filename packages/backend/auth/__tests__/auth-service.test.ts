@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { OnethingAuthService } from '../auth-service.js'
 import type {
   OnethingAuthProviderDefinition,
-} from '../types.js'
+} from '../auth-types.js'
 import { MemoryPoolTokenStore as MemoryTokenStore } from './memory-pool-store.js'
 
 function jsonResponse(data: unknown, init: ResponseInit = {}): Response {

@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '@onething/backend/logging/configure-logging'
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 let previousStorePath: string | undefined

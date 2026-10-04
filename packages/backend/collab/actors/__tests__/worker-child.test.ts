@@ -21,10 +21,10 @@ import {
   startCollabAgentWorker,
   type CollabActorVerb,
   type CollabAgentAccount,
-} from '../index.js'
+} from '../collab-actors.js'
 import type { FloorLease } from '@onething/backend/collab/kernel'
 
-vi.mock('../../../storage/index.js', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-child-test' }))
+vi.mock('../../../storage/storage.js', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-child-test' }))
 
 const { CollabAgentActor } = await import('../agent-actor.js')
 const { createCollabAgentAccountMemoryStore } = await import('../agent-mailbox.js')

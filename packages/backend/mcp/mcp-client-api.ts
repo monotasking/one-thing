@@ -70,7 +70,7 @@ import {
   probeMCPServerConfig,
   registerMCPTools,
 } from '@onething/backend/mcp/index-with-bridge'
-import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/index'
+import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
@@ -84,8 +84,8 @@ import { getSettings, saveSettings } from '@onething/backend/settings'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { OnethingMCPIpcLogger } from '@onething/backend/mcp/ipc-operations'
-import type { OnethingMCPServerIpcAdapters } from '@onething/backend/mcp/ipc-operations'
+import type { OnethingMCPIpcLogger } from '@onething/backend/mcp/mcp-ipc-operations'
+import type { OnethingMCPServerIpcAdapters } from '@onething/backend/mcp/mcp-ipc-operations'
 import { mcpRouter } from '@shared/ipc/mcp.js'
 
 const log = getLogger('rpc.mcp')

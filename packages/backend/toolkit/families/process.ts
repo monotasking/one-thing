@@ -25,17 +25,17 @@ import type { Effect } from '@shared/toolkit/effects'
 import type { ToolEffect, ToolPreview } from '@onething/backend/tool/tool-helpers'
 import { toJsonObject } from '@shared/json'
 import type { BashOperations } from '../../tool/bash-executor.js'
-import { analyzeBashPermission } from '../../tool/permission-effects.js'
+import { analyzeBashPermission } from '../../tool/tool-permission-effects.js'
 import { classifyBashCommand, parseCommand } from '../../tool/bash-classifier.js'
 import {
   DEFAULT_OUTPUT_MAX_BYTES,
   OutputAccumulator,
   type OutputSnapshot,
 } from '../../tool/output-accumulator.js'
-import { getCoreSandboxBoundary, getCoreSandboxRoots } from '../../tool/sandbox.js'
-import { fileScopeOf, type FileToolContextLike } from './file.js'
+import { getCoreSandboxBoundary, getCoreSandboxRoots } from '../../tool/tool-sandbox.js'
+import { fileScopeOf, type FileToolContextLike } from './toolkit-families-file.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('toolkit.process')
 

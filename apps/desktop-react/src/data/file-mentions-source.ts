@@ -17,7 +17,7 @@ import { filesPort } from './files-port'
  * 拿不到时(没选会话 / 这条会话没有工作目录)**把这一格留空**,而不是在渲染层
  * 拼一个 `~`:后端 `files.list` 的 `cwd` 缺席就是「按宿主自己的搜索根找」——
  * 桌面那侧正是 `os.homedir()` + 下载目录 + 笔记根 + 按会话解析的接入目录
- * (`backend/file/files-client-api.ts` 文件头第 1 条)。文件树那侧要展开 `~` 是因为
+ * (`backend/file/file-client-api.ts` 文件头第 1 条)。文件树那侧要展开 `~` 是因为
  * `listDirectory` 直接 `readdir` 不认识它;这条口不需要,所以不该多解析一次 ——
  * 同一条判据两处各解析一遍就会漂。
  *

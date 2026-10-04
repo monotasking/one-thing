@@ -13,8 +13,8 @@
 
 import type { Catalog } from './catalog.js'
 import type { ToolUserSetting } from './ports.js'
-import type { Scene } from './spec.js'
-import type { Tool } from './tool.js'
+import type { Scene } from './toolkit-spec.js'
+import type { Tool } from './toolkit-tool.js'
 
 /**
  * R2a 决定⑤ —— 空数组的两种读法,一处归一。

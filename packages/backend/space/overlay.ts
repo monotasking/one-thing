@@ -20,10 +20,10 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { notifySpaceDataChanged } from './notifications.js'
-import { ensureSpaceDir, spaceDir } from './persistence.js'
-import { DEFAULT_SPACE_ID, isValidSpaceId } from './types.js'
+import { ensureSpaceDir, spaceDir } from './space-persistence.js'
+import { DEFAULT_SPACE_ID, isValidSpaceId } from './space-types.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('spaces')
 

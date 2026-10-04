@@ -24,8 +24,8 @@ interface FakeSession {
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notebook-tool-'))
 const mocks = vi.hoisted(() => ({ sessions: new Map<string, unknown>() }))
 
-vi.mock('../../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+vi.mock('../../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({
     findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
   }) }

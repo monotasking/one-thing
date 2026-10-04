@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { captureRuntimeLogs } from '../../logging/index.js'
-import type { Theme } from '../types.js'
+import { captureRuntimeLogs } from '../../logging/logging.js'
+import type { Theme } from '../theme-types.js'
 import { generateCSSVariables } from '../css-mapper.js'
 import { colorMeetsContrast } from '../role-mapping.js'
-import { resolveTheme, resolveThemeHighlights } from '../resolver.js'
+import { resolveTheme, resolveThemeHighlights } from '../theme-resolver.js'
 
 function makeTheme(overrides: Partial<Theme> = {}): Theme {
   return {

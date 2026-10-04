@@ -32,7 +32,7 @@ const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCach
   '@onething/backend/session'
 )
 const { resetSessionSurfaceCache } = await import('@onething/backend/session')
-const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
+const { installSessionLayerForTest } = await import('../../../session/testing/session-testing-layer.js')
 let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, endSessionRun, resetSessionRuns, rotateSessionRun } = await import(
   '@onething/backend/session'

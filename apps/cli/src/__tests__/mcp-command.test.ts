@@ -83,7 +83,7 @@ function sessionIdOf(ref: string): string {
   return ref.slice(ref.indexOf(':') + 1)
 }
 
-vi.mock('@onething/backend/headless/backend', () => ({
+vi.mock('@onething/backend/headless/headless-backend', () => ({
   HeadlessBackend: class {
     ownedBackend = {
       own: () => {},

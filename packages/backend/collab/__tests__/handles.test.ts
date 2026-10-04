@@ -8,7 +8,7 @@ import {
   resolveCollabAgentHandle,
   stripCollabAgentHandles,
 } from '../handles.js'
-import type { CollabAgentLike } from '../types.js'
+import type { CollabAgentLike } from '../collab-types.js'
 
 const LI = { id: 'agent-3f9c1e2a-7b41-4c8d-9e21-000000000001', name: '小李', title: '后端' }
 const MING = { id: 'agent-7b41c8d9-1111-2222-3333-000000000002', name: '阿明', title: '测试' }

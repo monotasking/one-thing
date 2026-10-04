@@ -13,12 +13,12 @@ import {
   uniqueCorePaths,
   type CoreFileAccessContext,
   type CoreFileAccessTargetType,
-} from './sandbox.js'
+} from './tool-sandbox.js'
 
 export type {
   CoreFileAccessContext,
   CoreFileAccessTargetType,
-} from './sandbox.js'
+} from './tool-sandbox.js'
 
 export interface OnethingToolSandboxRuntimeAdapters {
   getDefaultWorkingDirectory?: () => string | undefined

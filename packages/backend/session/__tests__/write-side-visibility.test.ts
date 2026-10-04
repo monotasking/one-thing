@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * **F1 合同:写侧同步可见**(`docs/design/session-event-sourcing-2026-08.md` §16.6)。
  *

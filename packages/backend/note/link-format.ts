@@ -10,7 +10,7 @@
  */
 
 import * as path from 'node:path'
-import type { NoteLinkKind } from './types.js'
+import type { NoteLinkKind } from './note-types.js'
 
 /** `newLinkFormat` 的三档。不认识的值按 `shortest`。 */
 export type NoteLinkPathStyle = 'shortest' | 'relative' | 'absolute'

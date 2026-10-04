@@ -3,7 +3,7 @@ import {
   sanitizeLoadedSession,
   sanitizeSessionOnStartup,
   type CoreSessionCommandSession,
-} from './commands.js'
+} from './session-message-shapes.js'
 
 export const CORE_DEFAULT_AGENT_ID = 'default'
 

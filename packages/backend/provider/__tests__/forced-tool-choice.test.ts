@@ -19,10 +19,10 @@
 import { describe, expect, it } from "vitest";
 import { runAgentLoop } from "@onething/backend/agent-loop/loop-primitives";
 import type { AgentProvider, AgentTool } from "@onething/backend/agent-loop/loop-primitives";
-import { createClaudeAgentProvider } from "../vendors/claude/agent-provider.js";
-import { toCodexToolChoice } from "../vendors/codex/agent-provider.js";
-import { createDeepSeekAgentProvider } from "../vendors/deepseek/agent-provider.js";
-import { createGeminiAgentProvider } from "../vendors/gemini/agent-provider.js";
+import { createClaudeAgentProvider } from "../vendors/claude/claude-agent-provider.js";
+import { toCodexToolChoice } from "../vendors/codex/codex-agent-provider.js";
+import { createDeepSeekAgentProvider } from "../vendors/deepseek/deepseek-agent-provider.js";
+import { createGeminiAgentProvider } from "../vendors/gemini/gemini-agent-provider.js";
 
 function sseResponse(dataLines: string[]): Response {
 	return new Response(

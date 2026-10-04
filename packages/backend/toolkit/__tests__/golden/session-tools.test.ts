@@ -8,10 +8,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Outcome } from '@onething/backend/toolkit/tool-protocol'
 import { EFFECT_POLICY } from '@shared/toolkit/effects'
-import { zodToJsonSchema } from '../../contract.js'
-import type { SessionGoal } from '../../../goal/types.js'
-import { createGoalTool, GoalInputSchema, type GoalToolAdapters } from '../../builtin/goal.js'
-import { createTaskTool, TaskInputSchema, type TaskToolPorts } from '../../builtin/task.js'
+import { zodToJsonSchema } from '../../toolkit-contract.js'
+import type { SessionGoal } from '../../../goal/goal-types.js'
+import { createGoalTool, GoalInputSchema, type GoalToolAdapters } from '../../builtin/toolkit-builtin-goal.js'
+import { createTaskTool, TaskInputSchema, type TaskToolPorts } from '../../builtin/toolkit-builtin-task.js'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 
 function activeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {

@@ -10,7 +10,7 @@ import {
   decodeVolcanoFrame,
   encodeVolcanoFullClientRequest,
   parseVolcanoJsonPayload,
-} from '../volcano/protocol'
+} from '../volcano/voice-volcano-protocol'
 
 class FakeSocket implements OnethingDoubaoWebSocketLike {
   readyState = 0

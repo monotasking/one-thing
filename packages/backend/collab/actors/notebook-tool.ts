@@ -29,7 +29,7 @@ import * as store from '@onething/backend/session'
 import { collabVenueOf } from '../venue.js'
 import { createOwnedCollabNotebookStore } from './owned-notebook-store.js'
 import { sessionAccess } from '@onething/backend/session'
-import { fixedExecutionContext } from '../../session/index.js'
+import { fixedExecutionContext } from '../../session/session.js'
 
 /** 场子不对时那句话。说出这个工具**在哪儿**能用,而不是它在这儿不能用。 */
 export const COLLAB_NOTEBOOK_WRONG_VENUE =

@@ -17,14 +17,14 @@ import type {
   SearchQuery,
   TextRange,
 } from '../candidate.js'
-import type { CapabilityManifest, RankingDeclaration } from '../capability.js'
-import type { AnalyzerRegistry } from '../analyzer/registry.js'
-import type { Analyzer } from '../analyzer/types.js'
-import type { DocTable, IndexedDoc, LexicalHit, LexicalPhrase, LexicalQuery, LexicalSearcher, Vocabulary } from '../index/types.js'
+import type { CapabilityManifest, RankingDeclaration } from '../search-kernel-capability.js'
+import type { AnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
+import type { Analyzer } from '../analyzer/search-kernel-analyzer-types.js'
+import type { DocTable, IndexedDoc, LexicalHit, LexicalPhrase, LexicalQuery, LexicalSearcher, Vocabulary } from '../index/search-kernel-index-types.js'
 import { collectQueryTerms } from '../pipeline/parse.js'
 import type { ExpanderRegistry } from '../pipeline/expand.js'
 import { expandTerm } from '../pipeline/expand.js'
-import type { Retriever, RetrievedPage } from './indexed.js'
+import type { Retriever, RetrievedPage } from './search-kernel-bases-indexed.js'
 
 /**
  * 「某字段命中就置顶」的实现:加一个足够大的常数,而不是乘一个系数。

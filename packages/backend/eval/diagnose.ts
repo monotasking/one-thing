@@ -25,7 +25,7 @@ import {
 	loadSceneFromIncident,
 	runReplay,
 	type ReplayScene,
-} from "./replay.js";
+} from "./eval-replay.js";
 import { writeTranscript } from "./transcript.js";
 import type { EvalModelCaller } from "./model-call.js";
 import type { ToolSimulator } from "./mock-tools.js";
@@ -36,7 +36,7 @@ import {
 	type AnalysisModel,
 	type DiagnosisConclusion,
 } from "./analysis.js";
-import type { OnethingStorePathOptions } from "../storage/paths.js";
+import type { OnethingStorePathOptions } from "../storage/storage-paths.js";
 
 export interface DiagnoseProgress {
 	type: "step" | "ablation" | "done" | "error";

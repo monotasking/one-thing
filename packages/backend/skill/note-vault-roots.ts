@@ -16,7 +16,7 @@
  * (判词在 `note/skill-roots.ts` 文件头)。
  */
 
-import { getNotesSubsystemSafe } from '../note/notes-subsystem.js'
+import { getNotesSubsystemSafe } from '../note/note-subsystem.js'
 import { invalidateSessionSkillsCache } from './session-skill-cache.js'
 
 /**

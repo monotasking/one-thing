@@ -28,7 +28,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { decodeSessionLogEventLine, encodeSessionLogEventLine } from './events/index.js'
+import { decodeSessionLogEventLine, encodeSessionLogEventLine } from './events/session-event-vocabulary.js'
 import { SESSION_LEGACY_EVENT_TYPES } from '@shared/session/events/types'
 import type {
   SessionAssistantFirstTokenEvent,

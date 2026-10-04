@@ -10,7 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { projectOnethingPluginsForRenderer } from '@onething/backend/plugin/plugin-list'
-import { listOnethingPluginsForIpc } from '@onething/backend/plugin/ipc-operations'
+import { listOnethingPluginsForIpc } from '@onething/backend/plugin/plugin-ipc-operations'
 
 /** 装配层只从插件管理器的内存清单读声明 —— 换成假的就能走完整条宿主链路。 */
 const managedPlugins: Array<{

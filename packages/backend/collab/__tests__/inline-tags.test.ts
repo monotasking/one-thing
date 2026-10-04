@@ -183,7 +183,7 @@ describe('通用规则注入(§8)', () => {
    * 工作台版本只剩**跨场子恒真**的书写约定(架构收敛 C3-5)。
    *
    * 场子事实此前必须自己带(briefing 前面没有 `<where_you_are>` 可以依赖),
-   * 现在它常驻 system prompt(engine/prompt/system-prompt.ts 的 work 分支),
+   * 现在它常驻 system prompt(engine/prompt/engine-system-prompt.ts 的 work 分支),
    * 这里再念一遍就是念经 —— 所以这条断言反过来了。
    */
   it('工作台版本只留书写约定,场子事实交给 system prompt', () => {

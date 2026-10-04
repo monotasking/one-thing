@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createDefaultSettings, mergeWithDefaults } from '../settings'
+import { createDefaultSettings, mergeWithDefaults } from '../settings-factory-defaults'
 
 describe('voice settings defaults', () => {
   it('creates voice settings disabled by default', () => {

@@ -19,13 +19,13 @@
 
 import path from "node:path";
 import { getEventBus } from "@onething/backend/event";
-import { getProjectsStore } from "../project-dir/bootstrap.js";
+import { getProjectsStore } from "../project-dir/project-dir-bootstrap.js";
 import { resolveSessionSpaceId } from "@onething/backend/session";
 import * as appStore from "@onething/backend/session";
-import { enforcePermissionPolicy } from "../tool/access-control/permission-policy.js";
-import { getVariableRegistry } from "@onething/backend/variable/registry";
-import { registerStandardVariableProviders } from "@onething/backend/variable/bootstrap";
-import { getVariablesStore } from "@onething/backend/variable/store-bound";
+import { enforcePermissionPolicy } from "../tool/access-control/tool-access-control-permission-policy.js";
+import { getVariableRegistry } from "@onething/backend/variable/variable-registry";
+import { registerStandardVariableProviders } from "@onething/backend/variable/variable-bootstrap";
+import { getVariablesStore } from "@onething/backend/variable/variable-store-bound";
 import type { SetInput, VariableProvider } from "@onething/backend/variable";
 import { createChannelSessionGuard } from "@onething/backend/variable/channel-guard";
 import {
@@ -48,7 +48,7 @@ import type { ContextVariable } from "@onething/backend/variable";
 
 import { createVariableSnapshotBridge } from './snapshot-bridge.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
-import type { CoreProviderAdapters } from '@onething/backend/variable/providers/core'
+import type { CoreProviderAdapters } from '@onething/backend/variable/providers/variable-providers-core'
 
 const log = getLogger('variables')
 
@@ -263,7 +263,7 @@ export function registerVariableProvider(provider: VariableProvider): void {
 }
 
 // Re-exports for ergonomic imports at call sites.
-export { getVariableRegistry } from "@onething/backend/variable/registry";
+export { getVariableRegistry } from "@onething/backend/variable/variable-registry";
 export {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
@@ -279,4 +279,4 @@ export {
 	notifySessionVariablesChanged,
 	notifyWorkdirChanged,
 } from "./gateways.js";
-export { getVariablesStore } from "@onething/backend/variable/store-bound";
+export { getVariablesStore } from "@onething/backend/variable/variable-store-bound";

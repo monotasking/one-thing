@@ -14,12 +14,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { DocPayload, DocumentFeed, QueryNode } from '../../kernel/index.js'
+import type { DocPayload, DocumentFeed, QueryNode } from '../../kernel/search-kernel.js'
 
 import { DIRECTORY_WATCH_DEBOUNCE_MS, LedgerFeed } from '../ledger-feed.js'
 import { IndexProjector } from '../projector.js'
 import { defaultDocumentFilters } from '../filters.js'
-import { SearchIndexService } from '../service.js'
+import { SearchIndexService } from '../search-index-service.js'
 import type { IndexSearchResult } from '../worker-core.js'
 import {
   BASE_TIME,

@@ -4,7 +4,7 @@
  * P3'a-2 之前这些函数与整整 38 条 `getX() { return getOnethingX() }` 的转发住在
  * `app/stores/paths.ts` 里,于是「store 根在哪」这件事在仓库里有三个名字:
  * `storage/store-layout.ts` 的通用 `getStorePath`(吃显式 options)、
- * `storage/paths.ts` 的 `getOnethingStorePath`(产品实现)、以及那层同名转发。
+ * `storage/storage-paths.ts` 的 `getOnethingStorePath`(产品实现)、以及那层同名转发。
  * 转发层已删,调用点直指 `@onething/backend/storage`。
  *
  * 这只文件只做一件真事:**docs 目录要看宿主打没打包**。(包根归位 2,2026-10-03 从包根 `stores/` 搬进 storage,
@@ -15,7 +15,7 @@ import {
   getOnethingDocsDir,
   getOnethingMacOSAutomationDocsPath,
   getOnethingToolUsageDocsPath,
-} from './paths.js'
+} from './storage-paths.js'
 
 export interface StorePathHost {
   isPackaged?: boolean

@@ -13,7 +13,7 @@ import {
 } from '@onething/backend/provider'
 // 下面这几个名字服务商入口不交出(外面的生产代码没人要),演练测试按相对路径直取。
 import { getOnethingProviderApiKeyEnvCandidates } from '../provider/env.js'
-import { resolveOnethingProviderBaseUrl } from '../provider/endpoint.js'
+import { resolveOnethingProviderBaseUrl } from '../provider/provider-endpoint.js'
 import { normalizeOnethingReasoningProfileOverride } from '../provider/model-capability.js'
 import { MODEL_VENDOR_ALIASES } from '../provider/model-identity.js'
 import { getOnethingModelsDevProviderId } from '../provider/models-dev-catalog.js'

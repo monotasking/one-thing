@@ -30,14 +30,14 @@ import {
 } from '@onething/backend/provider'
 import type { CustomAdapterSpec } from '@shared/contracts/adapter-spec'
 import { readSpaceProviderSettings } from '@onething/backend/space/provider-settings'
-import { getSpacesStore } from '@onething/backend/space/store'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
+import { getSpacesStore } from '@onething/backend/space/space-store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { getSettings } from './settings-store.js'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEventBroadcaster,
-} from '@onething/backend/settings/events'
+} from '@onething/backend/settings/settings-events'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 
 const log = getLogger('providers.manifests')

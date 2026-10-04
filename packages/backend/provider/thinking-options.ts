@@ -4,12 +4,12 @@
  * P2-a 起这里**只剩通用规则**:各家的家规(Kimi 的三族模型)住在自己的方言
  * 配方里(`Dialect.thinkingIntent`),这个函数问注册表,问不到才走通用。
  *
- * `./dialects/index.js` 是**副作用 import**:它一加载就把 16 份配方登记进
+ * `./dialects/provider-dialects.js` 是**副作用 import**:它一加载就把 16 份配方登记进
  * `registerDialect` 的注册表。少了这一句,单独 import 本文件的调用方(测试就是
  * 这么用的)会问到一张空表,家规静默失效。
  */
-import "./dialects/index.js";
-import { getDialect } from "./base/index.js";
+import "./dialects/provider-dialects.js";
+import { getDialect } from "./base/provider-base.js";
 
 export interface OnethingAgentLoopThinkingProviderConfig {
   model: string

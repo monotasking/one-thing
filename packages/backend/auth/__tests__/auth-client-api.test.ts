@@ -61,7 +61,7 @@ vi.mock('@onething/backend/auth/process-auth-service', () => ({ getAuthService: 
 vi.mock('@onething/backend/auth/oauth-events', () => events)
 let shellHostPresent = true
 
-vi.mock('@onething/backend/shell/host-ports', () => ({
+vi.mock('@onething/backend/shell/shell-host-ports', () => ({
   getShellHost: () => shell,
   hasShellHost: () => shellHostPresent,
 }))

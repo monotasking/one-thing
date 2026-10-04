@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { SchedulerRunReason } from './types.js'
+import type { SchedulerRunReason } from './scheduler-types.js'
 
 export type OnethingSchedulerRunStatus = 'running' | 'succeeded' | 'failed' | 'blocked' | 'skipped' | 'cancelled'
 

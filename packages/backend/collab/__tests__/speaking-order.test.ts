@@ -5,8 +5,8 @@ import {
   pickCollabRelayStarter,
   synthesizeCollabSerialPlan,
 } from '../speaking-order.js'
-import { advanceCollabPlan } from '../plan.js'
-import type { CollabAgentLike } from '../types.js'
+import { advanceCollabPlan } from '../collab-plan.js'
+import type { CollabAgentLike } from '../collab-types.js'
 
 const agent = (id: string): CollabAgentLike => ({ id, name: id.toUpperCase() })
 const members = (...ids: string[]): CollabAgentLike[] => ids.map(agent)

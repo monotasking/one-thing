@@ -35,7 +35,7 @@ import type {
 	AgentModelCapabilities,
 	AgentTurnStreamEvent,
 } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../logging/index.js";
+import { getLogger } from "../../logging/logging.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import {
 	HttpAgentProvider,
@@ -51,7 +51,7 @@ import {
 	type ToolChoicePolicy,
 	type TurnContext,
 	type UsageNormalizer,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import type { AgentProviderRequestDumpValue } from "../request-dumper.js";
 import { CodexResponsesErrorMapper } from "./openai-responses-errors.js";
 import {

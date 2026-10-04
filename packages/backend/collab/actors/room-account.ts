@@ -22,11 +22,11 @@ import {
   createCollabRoomAccount,
   normalizeCollabRoomAccount,
   type CollabRoomAccount,
-} from './index.js'
+} from './collab-actors.js'
 
 import {
   getOnethingStorePath,
-} from '../../storage/index.js'
+} from '../../storage/storage.js'
 /** v3 的一切都落在房间目录的这个子目录下。 */
 export const COLLAB_ACTORS_DIR = 'actors'
 /** 房间账文件名。 */

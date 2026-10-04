@@ -38,11 +38,11 @@ import {
   normalizeCollabAgentAccount,
   type CollabActorVerb,
   type CollabAgentAccount,
-} from './index.js'
+} from './collab-actors.js'
 
 import {
   getOnethingStorePath,
-} from '../../storage/index.js'
+} from '../../storage/storage.js'
 /** v3 的 agent 家当都落在 store 根的这个目录下。 */
 export const COLLAB_AGENTS_V3_DIR = 'agents-v3'
 /** 账文件名。 */

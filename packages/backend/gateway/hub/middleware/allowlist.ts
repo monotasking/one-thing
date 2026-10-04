@@ -2,7 +2,7 @@ import {
   getGatewayDataPath,
   readGatewayJsonFile,
   writeGatewayJsonFile,
-} from '../storage.js'
+} from '../gateway-hub-storage.js'
 
 export interface AllowlistConfig {
   mode: 'open' | 'strict'

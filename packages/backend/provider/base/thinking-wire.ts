@@ -9,7 +9,7 @@
 import type { AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
 import type { OnethingReasoningWire } from "../model-capability.js";
 import type { RequestBodyBuilder } from "./request-body-builder.js";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface ThinkingWire {
 	readonly id: OnethingReasoningWire | string;

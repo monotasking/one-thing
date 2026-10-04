@@ -28,7 +28,7 @@
  * `__tests__/fixtures/paraphrase.json` 的 `synonyms` 段就是它)。一份数据,几个读者。
  */
 
-import type { EmbedKind, Embedder } from './types.js'
+import type { EmbedKind, Embedder } from './search-kernel-index-types.js'
 
 /** 与 `multilingual-e5-small` 同维 —— 换模型的反证不该被维度差掩盖。 */
 export const FAKE_EMBEDDER_DIMS = 384

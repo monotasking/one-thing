@@ -10,7 +10,7 @@
  * `openai-compatible.ts` 就是把它和 Authorization 拼在同一个对象里的,
  * 键序(以及「`headers` 能覆盖 Content-Type」这件事)是既有行为,不去动。
  */
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface AuthStrategy {
 	headers(turn: TurnContext): Promise<Record<string, string>>;

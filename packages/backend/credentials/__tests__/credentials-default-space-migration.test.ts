@@ -10,7 +10,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 
 const mocks = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -37,11 +37,11 @@ vi.mock('@onething/backend/provider', async (importOriginal) => ({
   getProviderInfo: (id: string) => ({ id, name: id.toUpperCase() }),
 }))
 
-vi.mock('@onething/backend/auth/host-ports', () => ({
+vi.mock('@onething/backend/auth/auth-host-ports', () => ({
   getAuthHostPorts: () => ({}),
 }))
 
-vi.mock('@onething/backend/space/store', () => ({
+vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
@@ -61,7 +61,7 @@ import {
   readSpaceProviderSettings,
   resetSpaceProviderSettingsCacheForTests,
 } from '@onething/backend/space/provider-settings'
-import { setRootDirForTests } from '@onething/backend/space/persistence'
+import { setRootDirForTests } from '@onething/backend/space/space-persistence'
 import {
   buildMigratedCredentialEntries,
   buildSpaceProviderSettings,

@@ -107,7 +107,7 @@ const service = vi.hoisted(() => ({
  */
 const kernelSlot = vi.hoisted(() => ({ current: undefined as unknown }))
 
-vi.mock('@onething/backend/music/process-runner', () => ({
+vi.mock('@onething/backend/music/music-process-runner', () => ({
   createElectronMusicProcessRunner: () => runner,
 }))
 vi.mock('../../current.js', async importOriginal => ({
@@ -121,7 +121,7 @@ vi.mock('../../http-server/http-server-principal.js', () => ({
 }))
 vi.mock('../../settings/settings-store.js', () => settings)
 vi.mock('@onething/backend/music/radio', () => radio)
-vi.mock('@onething/backend/music/service', () => service)
+vi.mock('@onething/backend/music/music-service', () => service)
 vi.mock('@onething/backend/music/dj-voice', () => ({ resolveDjSpeakDone: vi.fn() }))
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
@@ -140,7 +140,7 @@ describe('music RPC domain', () => {
     const { setCurrentBackend, createBackendHandle } = await import('../../current.js')
     operations = createMusicOperationsScope({ service: { ...service, runner }, radio } as unknown as Parameters<typeof createMusicOperationsScope>[0])
     const music = { operations, radio, service, onNowPlayingChanged: () => () => {}, onPlayerFact: () => () => {}, onSetupEvent: () => () => {}, onRadioFact: () => () => {} }
-    setCurrentBackend(createBackendHandle({ music: music as unknown as import('@onething/backend/music/subsystem').MusicSubsystem }))
+    setCurrentBackend(createBackendHandle({ music: music as unknown as import('@onething/backend/music/music-subsystem').MusicSubsystem }))
 
     /*
      * 一台真内核 + 真管线 + 真 provider。**先摆句柄再造 provider**:那几只成品适配器

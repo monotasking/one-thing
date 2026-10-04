@@ -18,7 +18,7 @@
  */
 import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
 import { getPath } from "./path.js";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 /** 一个 chunk 里某一个工具调用的一片。 */
 export interface ToolCallFragment {

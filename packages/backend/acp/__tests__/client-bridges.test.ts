@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ACPClient, clientCapabilitiesFor } from '../client.js'
+import { ACPClient, clientCapabilitiesFor } from '../acp-client.js'
 import { MemoryACPSessionLinkStore } from '../session-links.js'
-import type { AcpClientRequestContext, AcpFsBridge, AcpTerminalBridge } from '../types.js'
+import type { AcpClientRequestContext, AcpFsBridge, AcpTerminalBridge } from '../acp-types.js'
 import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { registerBackgroundJob } from '../../tool/background-jobs.js'
-import { BackgroundJobsProvider } from '../providers/background-jobs.js'
+import { registerBackgroundJob } from '../../tool/tool-background-jobs.js'
+import { BackgroundJobsProvider } from '../providers/variable-providers-background-jobs.js'
 
 /**
  * The state board only works if BackgroundJobsProvider's DEFAULT deps read

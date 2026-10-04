@@ -9,7 +9,7 @@
  * `normalizeOnethingReasoningProfileOverride` 读两半的并集。
  *
  * 零 import 的纯数据:`model-capability.ts` 要读它,而壳与 web 构建直接 import 那个模块 ——
- * 这里一旦拉起线型注册表(`./index.ts`),整条 agent-loop 就跟进了壳。所以是名单而不是
+ * 这里一旦拉起线型注册表(`./provider-thinking.ts`),整条 agent-loop 就跟进了壳。所以是名单而不是
  * 「已登记的线型」:登记表在壳里不存在,而且登记表里还有用户不许点名的线型
  * (DeepSeek 的推断线型)。名单与登记表对得上由 `providers/__tests__/reasoning-wire-ids.test.ts` 钉着。
  */

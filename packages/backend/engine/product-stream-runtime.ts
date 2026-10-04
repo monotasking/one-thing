@@ -15,13 +15,13 @@ import type {
 import {
   createOnethingStreamProviderAdapter,
   type OnethingStreamProviderAdapterOptions,
-} from '../provider/index.js'
+} from '../provider/provider.js'
 import type {
   CoreAppSettingsWithAI,
   CoreProviderAuthLike,
   CoreProviderConfigLike,
   CoreSessionProviderSelection,
-} from '../provider/index.js'
+} from '../provider/provider.js'
 import {
   createOnethingStreamEngineRuntime,
 } from './stream-runtime-factory.js'

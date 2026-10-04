@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ACPClient, acpPersonaBlock } from '../client.js'
+import { ACPClient, acpPersonaBlock } from '../acp-client.js'
 import { FileACPSessionLinkStore, type ACPSessionLinkStore } from '../session-links.js'
-import { effectiveAgentConfig, parseAcpAgentManifest } from '../manifest.js'
+import { effectiveAgentConfig, parseAcpAgentManifest } from '../acp-manifest.js'
 import type { ACPAgentConfig } from '@shared/contracts/acp.js'
 
 /**

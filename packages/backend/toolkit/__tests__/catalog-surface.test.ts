@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { Catalog } from '../catalog.js'
 import { Intent } from '../intent.js'
 import type { Result } from '../result.js'
-import type { Scene, ToolSpec } from '../spec.js'
+import type { Scene, ToolSpec } from '../toolkit-spec.js'
 import { normalizeLegacyAllowlist, Surface } from '../surface.js'
-import { Tool } from '../tool.js'
+import { Tool } from '../toolkit-tool.js'
 import { ScriptedTool } from './fakes.js'
 
 describe('Catalog', () => {

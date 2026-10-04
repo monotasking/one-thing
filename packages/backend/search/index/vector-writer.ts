@@ -20,10 +20,10 @@
  * (§5.4)。**词法路一行不动** —— 那是同一个库里两套派生数据,各自重建。
  */
 
-import type { Embedder, IndexedDoc, VectorIndex } from '../kernel/index.js'
+import type { Embedder, IndexedDoc, VectorIndex } from '../kernel/search-kernel.js'
 import { normalizeError, type NormalizedLogError } from '@onething/backend/logging/logger-primitives'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import { chunkForEmbedding } from '../embedding/embedder.js'
 
 const log = getLogger('search.index.vector')

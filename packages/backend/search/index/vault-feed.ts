@@ -27,9 +27,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { DocPayload, DocumentFeed, FeedPolicy } from '../kernel/index.js'
+import type { DocPayload, DocumentFeed, FeedPolicy } from '../kernel/search-kernel.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import {
   DIRECTORY_POLL_INTERVAL_MS,
   DIRECTORY_WATCH_DEBOUNCE_MS,

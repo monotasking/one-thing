@@ -98,9 +98,9 @@ try {
   }
   // ② 名册各一行
   edit(path.join(worktree, VENDORS, 'manifests.ts'), (s) =>
-    appendToList(s.replace(/(import \{ \w+_MANIFEST \} from '\.\/[\w-]+\/manifest\.js'\n)(?!import \{ \w+_MANIFEST)/, `$1import { ACME_MANIFEST } from './acme/manifest.js'\n`), 'VENDOR_MANIFESTS', '  ACME_MANIFEST,'))
+    appendToList(s.replace(/(import \{ \w+_MANIFEST \} from '\.\/[\w-]+\/[\w-]+-manifest\.js'\n)(?!import \{ \w+_MANIFEST)/, `$1import { ACME_MANIFEST } from './acme/acme-manifest.js'\n`), 'VENDOR_MANIFESTS', '  ACME_MANIFEST,'))
   edit(path.join(worktree, VENDORS, 'runtimes.ts'), (s) =>
-    appendToList(s.replace(/(import \{ \w+_RUNTIME \} from "\.\/[\w-]+\/runtime\.js";\n)(?!import \{ \w+_RUNTIME)/, `$1import { ACME_RUNTIME } from "./acme/runtime.js";\n`), 'VENDOR_RUNTIMES', '\tACME_RUNTIME,'))
+    appendToList(s.replace(/(import \{ \w+_RUNTIME \} from "\.\/[\w-]+\/[\w-]+-runtime\.js";\n)(?!import \{ \w+_RUNTIME)/, `$1import { ACME_RUNTIME } from "./acme/acme-runtime.js";\n`), 'VENDOR_RUNTIMES', '\tACME_RUNTIME,'))
   // ③ 壳的文案
   for (const [lang, text] of [['zh', 'Acme 官方接口'], ['en', 'Official Acme API']]) {
     edit(path.join(worktree, `apps/desktop-react/src/i18n/${lang}.ts`), (s) =>

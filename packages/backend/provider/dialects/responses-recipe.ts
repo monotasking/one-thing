@@ -33,7 +33,7 @@ import type {
 	AgentModelCapabilities,
 	AgentProvider,
 } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../logging/index.js";
+import { getLogger } from "../../logging/logging.js";
 import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop/loop-primitives";
 import {
 	LedgerModelProfileResolver,
@@ -48,9 +48,9 @@ import {
 	type ToolChoicePolicy,
 	type TurnContext,
 	type UsageNormalizer,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import type { AgentProviderRequestDumper } from "../request-dumper.js";
-import { RESPONSES_THINKING_WIRES } from "../thinking/index.js";
+import { RESPONSES_THINKING_WIRES } from "../thinking/provider-thinking.js";
 import {
 	CodexResponsesErrorMapper,
 	OpenAIResponsesWire,
@@ -62,7 +62,7 @@ import {
 	type OpenAIResponsesProviderOptionSupport,
 	type ResponsesDialect,
 	type ResponsesWireValue,
-} from "../wires/index.js";
+} from "../wires/provider-wires.js";
 
 export type FetchFn = typeof globalThis.fetch;
 

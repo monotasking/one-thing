@@ -1,5 +1,5 @@
 /**
- * 待办这一 scheme 的实现(自述在 `@onething/backend/todo-plan/resource-spec`)。
+ * 待办这一 scheme 的实现(自述在 `@onething/backend/todo-plan/todo-plan-resource-spec`)。
  *
  * 与 `dir` / `music` 同形:自述在产品层,实现在装配层 —— 它要够得着这台后端的
  * `TodoPlanRuntime`(同一个 store 的自写缓存与同一个文件监听器)。
@@ -35,7 +35,7 @@ import type {
 import type { ResourceRef } from '@shared/resource/ref'
 import { Intent, textResult, type PlanContext, type Result, type RunContext } from '@onething/backend/toolkit/tool-protocol'
 import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from '@onething/backend/todo-plan'
-import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/backend/todo-plan/resource-spec'
+import { todoResourceSpec, TODO_RESOURCE_SCHEME } from '@onething/backend/todo-plan/todo-plan-resource-spec'
 import { getTodoPlanStore, onTodoPlanChanged, type TodoPlanChangeListener, type TodoPlanChangeOrigin } from '@onething/backend/todo-plan/todo-plan-service'
 
 /**

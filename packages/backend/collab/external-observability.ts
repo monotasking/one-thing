@@ -50,7 +50,7 @@ import {
 
 import { getEventBus } from '@onething/backend/event'
 import { broadcastCollabAgentActivity } from './agent-activity.js'
-import { findCollabV3Turn } from '@onething/backend/collab/actors/turn-context'
+import { findCollabV3Turn } from '@onething/backend/collab/actors/collab-actors-turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
@@ -204,7 +204,7 @@ function recordInteraction(
   if (!turn) return
   // 注:房间转录里那一行「XX 正在等你回答」**不在这里** —— 记账与说话是两件事,
   // 而说话要的名册会把半个主进程拖进这个模块的图里(观测面刻意只认三样东西:
-  // 总线、时间轴写入口、v3 登记簿)。那一行装在 `actors/runtime.ts`,与其他
+  // 总线、时间轴写入口、v3 登记簿)。那一行装在 `actors/collab-actors-runtime.ts`,与其他
   // 系统行同一处出口。
   append(turn.roomSessionId, collabSchedulerInteraction({
     at: Date.now(),

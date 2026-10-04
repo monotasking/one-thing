@@ -9,7 +9,7 @@ import { OnethingAuthService, type OnethingAuthCallbackServerAdapter, type Oneth
 import { createOnethingAuthServiceOptions } from './service-factory.js'
 import type { OAuthToken } from '@shared/ipc.js'
 import { createRequiredAppFetch } from '@onething/backend/settings'
-import { getAuthHostPorts } from '@onething/backend/auth/host-ports'
+import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
 
 export interface MainAuthServiceOptions extends Partial<OnethingAuthServiceOptions<OAuthToken>> {
   tokenStore: OnethingAuthServiceOptions<OAuthToken>['tokenStore']

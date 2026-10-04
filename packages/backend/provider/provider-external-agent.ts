@@ -8,8 +8,8 @@ import type {
   AgentTurnStreamEvent,
 } from '@onething/backend/agent-loop/loop-primitives'
 import { BaseAgentProvider } from './base/base-agent-provider.js'
-import { getLogger } from '../logging/index.js'
-import { findAgentExecutorDescriptor } from '../agent/executor/capabilities.js'
+import { getLogger } from '../logging/logging.js'
+import { findAgentExecutorDescriptor } from '../agent/executor/agent-executor-capabilities.js'
 import type {
   ExternalAgentConnector,
   ExternalAgentImageInput,
@@ -125,7 +125,7 @@ function latestUserTurn(request: AgentTurnRequest): { text: string; images: Exte
  * (`app/engine/prompt/system-prompt.ts:151` 注释:persona already IS the system
  * prompt),丢了它就只剩一台通用的 Claude Code。
  *
- * 引擎把 system prompt 放在 `messages` 的 system 位(`agent-loop/prompts.ts`),
+ * 引擎把 system prompt 放在 `messages` 的 system 位(`agent-loop/agent-loop-prompts.ts`),
  * 与 claude/gemini provider 的取法逐字一致;多条按顺序拼(压缩摘要也走这一位)。
  */
 function systemPrompt(request: AgentTurnRequest): string {

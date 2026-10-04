@@ -38,7 +38,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createCoreId } from '../../agent-loop/agent-loop-ids.js'
 import { createCoreStreamProcessor } from '../../agent-loop/agent-loop-stream-processor.js'
-import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
+import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../session-message-shapes.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 import { projectChatMessages } from '@shared/session/projection/chat-messages.js'
 

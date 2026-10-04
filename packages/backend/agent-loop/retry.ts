@@ -1,5 +1,5 @@
 import { createAgentAbortError } from './stream.js'
-import { isAgentLoopPauseForConfirmationError } from './errors.js'
+import { isAgentLoopPauseForConfirmationError } from './agent-loop-errors.js'
 
 /**
  * Turn-level auto-retry policy for transient provider/stream failures.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { matchSongFromSearch, songPlayFlagFromSearch } from '../identify.js'
-import { ncmMusicProvider } from '../providers/ncm/index.js'
+import { ncmMusicProvider } from '../providers/ncm/ncm.js'
 
 const HEX = 'D71F6E90EA704F1C44183933E7E0F197'
 

@@ -8,7 +8,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { defaultValidationMessage } from '../../contract.js'
+import { defaultValidationMessage } from '../../toolkit-contract.js'
 import { TimeInputSchema, TimeTool } from '../../builtin/time.js'
 import { Outcome } from '@onething/backend/toolkit/tool-protocol'
 import { annotationsOf, modelTextOf, partialsOf, runNewTool } from '../support.js'

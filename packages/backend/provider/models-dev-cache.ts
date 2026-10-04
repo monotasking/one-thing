@@ -17,7 +17,7 @@
  * 纯产品层:文件系统、路径、fetch、时钟全部注入,Electron-free。缓存文件不是日志,
  * 不住 `log/`,`LogDirJanitor` 不管它(删了只是下一次多打一发网络)。
  */
-import { getLogger } from "../logging/index.js";
+import { getLogger } from "../logging/logging.js";
 import type { OnethingModelsDevResponse } from "./model-registry.js";
 
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { CorePluginMarketIndex } from '@onething/backend/plugin/plugin-contract'
-import { getOnethingPluginMarketForIpc, type OnethingPluginMarketSnapshot } from '../ipc-operations.js'
+import { getOnethingPluginMarketForIpc, type OnethingPluginMarketSnapshot } from '../plugin-ipc-operations.js'
 
 const INDEX: CorePluginMarketIndex = {
   version: 1,

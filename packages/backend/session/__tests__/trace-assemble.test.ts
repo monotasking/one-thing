@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assembleSessionTrace,
   materializeTraceResponseText,
-} from '../trace/index.js'
+} from '../trace/session-trace.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types.js'
 
 // ============ 事件小工厂 ============

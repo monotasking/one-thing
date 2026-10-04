@@ -11,8 +11,8 @@ import {
   type VariableContext,
   type VariableProvider,
   type VariableScope,
-} from '../types.js'
-import { assertNotReserved, isReservedName } from '../validation.js'
+} from '../variable-types.js'
+import { assertNotReserved, isReservedName } from '../variable-validation.js'
 
 /**
  * Storage gateway for a scope whose variables are shared by every session

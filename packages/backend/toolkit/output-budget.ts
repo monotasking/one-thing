@@ -11,7 +11,7 @@
  */
 
 import type { Result, ResultPart } from './result.js'
-import type { ToolSpec } from './spec.js'
+import type { ToolSpec } from './toolkit-spec.js'
 
 export interface OutputBudgetLimits {
   readonly maxLines: number

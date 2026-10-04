@@ -42,7 +42,7 @@
  */
 
 import fs from 'node:fs'
-import { canonicalChatMessage } from './projection/index.js'
+import { canonicalChatMessage } from './projection/session-projection.js'
 import {
   materializeNode,
 } from '@shared/session/projection/chat-messages'
@@ -70,7 +70,7 @@ import {
 } from './projection-cache.js'
 import { sessionProjectionOptions } from './projection-blobs.js'
 import { appendSessionShadowLine, deepEqual, summarizeShadowDiff } from './shadow.js'
-import { recordRefoldedProjectionCheckpoint } from './checkpoint.js'
+import { recordRefoldedProjectionCheckpoint } from './session-checkpoint.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 
 const log = getLogger('sessions.refold')

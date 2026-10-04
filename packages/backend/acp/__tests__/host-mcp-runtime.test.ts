@@ -13,8 +13,8 @@ import type { ACPAgentState, ACPSettings, AcpSessionState } from '@shared/contra
 import type { MCPServerConfig } from '@shared/mcp/types'
 import { HostMcpBridge, type HostMcpBridgeDeps } from '../host-mcp-bridge.js'
 import { createAcpHostMcpPort, type AcpHostMcpAgentSwitches } from '../host-mcp-port.js'
-import { AcpSubsystem } from '../subsystem.js'
-import { onSessionsDeletedFromBus, type SessionDeletionBus } from '../events.js'
+import { AcpSubsystem } from '../acp-subsystem.js'
+import { onSessionsDeletedFromBus, type SessionDeletionBus } from '../acp-events.js'
 
 const USER_SERVER: MCPServerConfig = {
   id: 'fs', name: 'fs', enabled: true, transport: 'stdio', command: 'mcp-fs', args: ['--root', '/'], env: {},

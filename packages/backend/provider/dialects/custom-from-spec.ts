@@ -45,17 +45,17 @@ import {
 	type UsageField,
 	type UsageNormalizer,
 	type UsagePathTable,
-} from "../base/index.js";
-import { referenceDialectFor } from "../base/dialect.js";
+} from "../base/provider-base.js";
+import { referenceDialectFor } from "../base/provider-base-dialect.js";
 import { encodeCustomReasoning } from "../thinking/custom-reasoning.js";
-import { openAIEffortWire } from "../thinking/index.js";
-import { openAIChatUsage } from "../wires/index.js";
+import { openAIEffortWire } from "../thinking/provider-thinking.js";
+import { openAIChatUsage } from "../wires/provider-wires.js";
 import { CUSTOM_ANTHROPIC_DIALECT } from "./custom-anthropic.js";
 import { openAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
-import { customAdapterDialectId } from "../manifest.js";
+import { customAdapterDialectId } from "../provider-manifest.js";
 
 /** 适配表编译出来的方言 id —— 约定住在 manifest(那一侧也要认它),这里转一手。 */
-export { customAdapterDialectId, isCustomAdapterDialectOf } from "../manifest.js";
+export { customAdapterDialectId, isCustomAdapterDialectOf } from "../provider-manifest.js";
 
 /**
  * 这条线编译时以哪份配方为底(也是「应用」时写进表单的「接口类型」)。openai-chat 与 anthropic-messages 有协议层的

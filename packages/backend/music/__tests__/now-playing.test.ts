@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createNowPlayingWatcher, parseNowPlaying, type OnethingMusicNowPlaying } from '../now-playing.js'
-import type { OnethingMusicProcessRunner } from '../types.js'
+import type { OnethingMusicProcessRunner } from '../music-types.js'
 
 /** A real `ncm-cli state` reply, captured 2026-07-16 while 可惜没如果 played. */
 const PLAYING = JSON.stringify({

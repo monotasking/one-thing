@@ -13,7 +13,7 @@
  *
  * ## 它解决的是什么
  *
- * `file/files-client-api.ts` 按 `context.transport` 分两种语义:桌面 IPC 不夹路径,
+ * `file/file-client-api.ts` 按 `context.transport` 分两种语义:桌面 IPC 不夹路径,
  * 联网 HTTP 每条路径都夹进 `context.sandboxRoot`。这条判据在「联网宿主 = 别人的
  * 机器」的前提下是对的,但它把**本机自己那只 HTTP 面**也一起夹了:桌面内嵌的
  * HTTP/SSE 面(`embed.ts`)与本机回环上的 `server:start` 服务的都是同一个用户、

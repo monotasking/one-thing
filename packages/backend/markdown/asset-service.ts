@@ -2,8 +2,8 @@ import type { Stats } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expandHome } from '../note/paths.js'
-import type { NoteVault } from '../note/types.js'
+import { expandHome } from '../note/note-paths.js'
+import type { NoteVault } from '../note/note-types.js'
 
 export type MarkdownAssetKind = 'external' | 'missing' | 'file' | 'image'
 

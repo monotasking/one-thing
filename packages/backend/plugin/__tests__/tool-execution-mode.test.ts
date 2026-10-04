@@ -1,7 +1,7 @@
 /**
  * N3 —— 工具级并发声明 `executionMode`(pi 采纳线第三期)。
  *
- * 这一期是**纯声明式**的:调度器早就在了(`agent-loop/runner.ts` 的
+ * 这一期是**纯声明式**的:调度器早就在了(`agent-loop/agent-loop-runner.ts` 的
  * `executionMode !== 'parallel'` → `ToolExecutionScheduler` 屏障),内置工具
  * 也早就带着声明;缺的只是插件工具的协议里没有这个字段,于是插件工具永远
  * 落在缺省(屏障)那一侧,作者无从表达"我这个只读工具可以并发"。

@@ -99,7 +99,7 @@ export function syncResourceToolsIntoCatalog(
     /*
      * 目录里已经有同名的别人(内置工具、插件工具),是**装配错误**,不是可以静默
      * 吞掉的情况:那意味着一个命名空间的名字与一只工具撞了,而地址的左半边与工具名
-     * 是同一个字符串(`resource/tool.ts` 的 id 那一格)。`Catalog.register` 自己
+     * 是同一个字符串(`resource/resource-tool.ts` 的 id 那一格)。`Catalog.register` 自己
      * 会抛 —— 这里不加 `if (catalog.has(id)) return` 把它变成一次静默的少一只工具。
      */
     catalog.register(tool)

@@ -11,10 +11,10 @@
  */
 
 import type { DocPayload } from '../feed.js'
-import type { AnalyzerRegistry } from '../analyzer/registry.js'
-import { createDefaultAnalyzerRegistry } from '../analyzer/registry.js'
+import type { AnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
+import { createDefaultAnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
 import { DEFAULT_NORMALIZERS, composeNormalizers } from '../analyzer/normalize.js'
-import type { FieldSchema } from '../capability.js'
+import type { FieldSchema } from '../search-kernel-capability.js'
 import type {
   DocTable,
   IndexWriter,
@@ -26,8 +26,8 @@ import type {
   LexicalResult,
   LexicalSearcher,
   Posting,
-} from './types.js'
-import { BM25_B, BM25_K1, matchesFacetFilters } from './types.js'
+} from './search-kernel-index-types.js'
+import { BM25_B, BM25_K1, matchesFacetFilters } from './search-kernel-index-types.js'
 
 /** §5.5:单文档字段上限,超出只索引前这么多字,文档标 truncated。 */
 export const DEFAULT_MAX_FIELD_CHARS = 200_000

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createDefaultSettings,
   DEFAULT_CHAT_SETTINGS,
-} from '../../../settings/defaults/settings.js'
+} from '../../../settings/defaults/settings-factory-defaults.js'
 import type { StreamContext, StreamSender } from '../stream-processor.js'
 
 const emit = vi.fn(() => Promise.resolve())
@@ -37,7 +37,7 @@ vi.mock('../../compact-session.js', () => ({
   shouldSkipAutoCompactForProviderUsageMismatch,
 }))
 
-const { maybeCompactAgentLoopContext } = await import('../agent-loop-runtime.js')
+const { maybeCompactAgentLoopContext } = await import('../engine-stream-agent-loop-runtime.js')
 
 function mockSender(): StreamSender {
   return {

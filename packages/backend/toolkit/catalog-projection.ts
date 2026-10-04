@@ -23,7 +23,7 @@ import { coreToolDefinitionFromJsonSchema } from '@onething/backend/tool/tool-he
 import type { Catalog, Tool } from '@onething/backend/toolkit/tool-protocol'
 import type { JsonSchemaObject } from '@shared/json.js'
 import type { ToolDefinition } from '@shared/ipc.js'
-import { getToolkitCatalog } from './index.js'
+import { getToolkitCatalog } from './toolkit.js'
 import { deriveLegacyPermissionGuard } from './guard-projection.js'
 
 /**

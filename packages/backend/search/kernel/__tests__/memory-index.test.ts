@@ -7,7 +7,7 @@
  * 这就是 §5.1 那句「换实现不改上层」从「一句话」变成「一份活证据」的地方。
  */
 import { MemoryIndex } from '../index/memory-index.js'
-import { createDefaultAnalyzerRegistry } from '../analyzer/registry.js'
+import { createDefaultAnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
 import { corpusDocuments } from './unit-fixtures/corpus.js'
 import { DEFAULT_SCHEMA } from './unit-fixtures/harness.js'
 import { describeIndexContract } from './index-contract.js'

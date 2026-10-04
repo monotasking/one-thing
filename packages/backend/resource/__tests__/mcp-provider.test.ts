@@ -13,7 +13,7 @@ import type { Outcome } from '@onething/backend/toolkit/tool-protocol'
 import { ResourceTool } from '@onething/backend/resource/resource-api'
 import type { MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types'
 import { ZodValidator } from '@onething/backend/toolkit'
-import { projectMcpResource } from '@onething/backend/mcp/resource-spec'
+import { projectMcpResource } from '@onething/backend/mcp/mcp-resource-spec'
 import { allowAuthorizer, RecordingObserver } from '../../toolkit/__tests__/fakes.js'
 import { McpResourceProvider, type McpResourceCallPort } from '../mcp-provider.js'
 

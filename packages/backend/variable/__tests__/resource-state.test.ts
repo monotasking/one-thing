@@ -14,8 +14,8 @@ import {
   type ResourceStateFact,
   type ResourceStateVariableGateway,
 } from '../providers/resource-state.js'
-import { RESOURCE_STATE_VARIABLE_PREFIX } from '../types.js'
-import { isReservedName } from '../validation.js'
+import { RESOURCE_STATE_VARIABLE_PREFIX } from '../variable-types.js'
+import { isReservedName } from '../variable-validation.js'
 
 function gatewayOf(
   facts: ResourceStateFact[],

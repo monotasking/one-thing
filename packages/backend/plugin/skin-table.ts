@@ -3,7 +3,7 @@
  *
  * 与 L2 的 `theme-overrides.ts` 逐条同构:
  *  - core 给全局规范顺序;
- *  - 产品层 `@onething/backend/plugin/skin` 给纯裁决(旋钮/档位白名单 =
+ *  - 产品层 `@onething/backend/plugin/plugin-skin` 给纯裁决(旋钮/档位白名单 =
  *    `SKIN_TIER_VALUES`、后者胜、档位 → CSS 变量展开);
  *  - **这里**只做一件事:把"当前活着的插件清单"喂给裁决,给宿主一张可以直接
  *    递进 `applyTheme` 的档位表。
@@ -16,7 +16,7 @@ import {
   resolvePluginSkins,
   type PluginSkinEntry,
   type PluginSkinInput,
-} from '@onething/backend/plugin/skin'
+} from '@onething/backend/plugin/plugin-skin'
 
 export interface PluginSkinTable {
   /** 递给主题计算的那一份:旋钮 → 档位名(已裁决完冲突)。 */

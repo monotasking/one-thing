@@ -9,9 +9,9 @@ import {
   type OnethingSchedulerRunDetail,
   type OnethingSchedulerToolCallLike, type OnethingSchedulerRunDetailOptions,
 } from './run-detail.js'
-import type { SchedulerTaskContext } from './types.js'
+import type { SchedulerTaskContext } from './scheduler-types.js'
 import type { OnethingSchedulerUserTask } from './user-tasks.js'
-import type { SessionInitialOwner } from '../session/index.js'
+import type { SessionInitialOwner } from '../session/session.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

@@ -3,8 +3,8 @@ import fsSync from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { OnethingTodoPlanStore } from '../store.js'
-import { OnethingTodoPlanWatcher } from '../watcher.js'
+import { OnethingTodoPlanStore } from '../todo-plan-store.js'
+import { OnethingTodoPlanWatcher } from '../todo-plan-watcher.js'
 
 let root: string
 let selected: string

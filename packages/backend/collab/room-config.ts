@@ -35,7 +35,7 @@ import {
 } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { sessionAccess, sessionCommands } from '@onething/backend/session'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { ownedCollabSessionId } from './owned-session-id.js'
 import { getEventBus } from '@onething/backend/event'
@@ -50,7 +50,7 @@ import {
 import { forgetCollabDigests } from '@onething/backend/collab/digest-store'
 import { resetCollabSeenCursor } from './agent-exec-session.js'
 import { emitCollabRoomUpdated, postSystemLine } from './room-runtime.js'
-import { forgetCollabRoomBudgetCache } from './budget.js'
+import { forgetCollabRoomBudgetCache } from './collab-budget.js'
 import { abortCollabRoomTurnForStop } from './actors/stop-door.js'
 import {
   forgetCollabV3RoomBudget,
@@ -59,8 +59,8 @@ import {
   postCollabV3MembershipChanged,
   resumeCollabV3RoomWork,
   syncCollabV3RoomFloorPolicy,
-} from './actors/runtime.js'
-import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/collab/actors/turn-context'
+} from './actors/collab-actors-runtime.js'
+import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/collab/actors/collab-actors-turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
@@ -73,7 +73,7 @@ export {
   getCollabRoomSpend,
   isRoomOverBudget,
   readCollabRoomSpentTodayUSD,
-} from './budget.js'
+} from './collab-budget.js'
 
 /**
  * 协调器状态条的冷启动读取(docs/design/collab-coordinator-inspector.md §5)。

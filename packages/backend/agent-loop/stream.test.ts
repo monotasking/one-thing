@@ -5,7 +5,7 @@ import type {
   AgentTurn,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from './types.js'
+} from './agent-loop-types.js'
 
 /**
  * `streamAgentProviderTurnEvents` has two branches: a provider that implements

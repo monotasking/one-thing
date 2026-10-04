@@ -109,7 +109,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
  * import 路径加载过(包导出 vs 相对源码),`instanceof` 会当场说谎;而这两个字段
  * 一起出现,在这个仓里只有 `ProviderHttpError` 一家。
  *
- * 也不 import `base/errors.ts` —— 那份文件反过来 import 本模块的
+ * 也不 import `base/provider-base-errors.ts` —— 那份文件反过来 import 本模块的
  * `withProviderRetryAfter`,认形状避开了一圈循环依赖。
  */
 interface ProviderHttpErrorShape {

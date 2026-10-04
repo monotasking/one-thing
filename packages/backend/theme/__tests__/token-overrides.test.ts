@@ -14,7 +14,7 @@
  * 以及反向:不给覆盖时整张表逐字不变(合成点前移不得改变无插件时的产出)。
  */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { applyTheme, initializeThemes, sanitizeThemeTokenOverrides } from '../index.js'
+import { applyTheme, initializeThemes, sanitizeThemeTokenOverrides } from '../theme.js'
 
 const BRAND = '#ff4d00'
 const BRAND_ACCENT = '#ff8800'

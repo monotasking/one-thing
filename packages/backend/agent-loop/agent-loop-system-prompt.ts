@@ -1,4 +1,4 @@
-import type { AgentProviderData } from "./types.js";
+import type { AgentProviderData } from "./agent-loop-types.js";
 import type { JsonObject, JsonObjectProperty } from "@shared/json.js";
 import type { TurnBlock } from "./agent-loop-turn-context.js";
 import type {

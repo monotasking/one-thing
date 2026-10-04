@@ -16,8 +16,8 @@
  * settings UI, and this service is what that UI talks to.
  */
 
-import type { MusicProviderToolSpec } from './providers/types.js'
-import { OnethingMusicQuotaError } from './types.js'
+import type { MusicProviderToolSpec } from './providers/music-providers-types.js'
+import { OnethingMusicQuotaError } from './music-types.js'
 import type {
   OnethingMusicBackend,
   OnethingMusicEnvStatus,
@@ -27,7 +27,7 @@ import type {
   OnethingMusicRadioSource,
   OnethingMusicRuntimeState,
   OnethingMusicSetupStage,
-} from './types.js'
+} from './music-types.js'
 
 export interface MusicSetupServiceOptions {
   backend: OnethingMusicBackend

@@ -421,7 +421,7 @@ export const sessionCommandEvents: SessionCommandEvents = {
 
 /**
  * `truncateFrom{inclusive:false}` 改写出来的那条消息 —— **逐字镜像**
- * `packages/backend/session/commands.ts` 的 `applyTruncate`:
+ * `packages/backend/session/session-message-shapes.ts` 的 `applyTruncate`:
  *
  * ```
  * target.content = command.newContent

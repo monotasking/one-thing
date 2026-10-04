@@ -73,11 +73,11 @@
  * 分开。加新一行的人请先看着这个数涨。
  */
 
-import { canonicalChatMessage } from './projection/index.js'
+import { canonicalChatMessage } from './projection/session-projection.js'
 import { deepEqual, summarizeShadowDiff, appendSessionShadowLine } from './shadow.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { hasLiveSessionProjection, peekSessionProjection } from './projection-cache.js'
-import { isSessionFreezeEnabled } from './freeze.js'
+import { isSessionFreezeEnabled } from './session-freeze.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 
 const log = getLogger('sessions.events')

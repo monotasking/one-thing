@@ -1,6 +1,6 @@
 import type { JsonObject } from '../json.js'
 import { toJsonObject } from '../json.js'
-// §17.8 U1-a:走**叶子路径**,不走 `permission/index.js` 那个桶 —— 桶带
+// §17.8 U1-a:走**叶子路径**,不走 `permission/permission.js` 那个桶 —— 桶带
 // `node:crypto`(它自己)与 `node:os|path`(`permission-grants` / `capability-registry`),
 // 而这个文件在 `session/projection/reducer.ts` 的浏览器闭包里。
 import {

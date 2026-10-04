@@ -31,7 +31,7 @@ import type {
   SessionEventEnvelope,
   GlobalEventEnvelope,
   EventDeliveryOptions,
-} from './types.js'
+} from './event-types.js'
 import { RingBuffer } from './ring-buffer.js'
 import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/logger-primitives.js'
 

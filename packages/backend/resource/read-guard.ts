@@ -4,7 +4,7 @@
  *
  * ## 它补的是一格**授权诚实账**,而且是过渡的
  *
- * `file/files-client-api.ts` 的 `listDirectory` / `stat` 对非本机可信的调用方还有一层
+ * `file/file-client-api.ts` 的 `listDirectory` / `stat` 对非本机可信的调用方还有一层
  * per-caller 夹持:每条路径先夹进 `context.sandboxRoot`(那是这个调用方自己的
  * `<workspaceRoot>/<uid>/<wid>` 子树)。资源那条路上**没有这一格** —— `Invocation`
  * 里只有 `principal`,没有「这个调用方的根在哪」(K2c-1 / K2c-2 的留账)。于是同一个
@@ -37,7 +37,7 @@
  * 「内核不认识任何 scheme」那条法(§2 不变量 3)管的是资源内核(从前住 core,今天是 `resource/` 里 `resource-api.ts` 那一批),这只文件在
  * 装配层、名字里就写着它是一条策略。但同一条法的**形状**在这里照样成立:守卫认的
  * 是「谁被列进了本机限定」,而那份名单由 mount 那一处给
- * (`./index.ts`,加一种资源只改那一只文件)。守卫自己不认识任何一个命名空间 ——
+ * (`./resource.ts`,加一种资源只改那一只文件)。守卫自己不认识任何一个命名空间 ——
  * 明天音乐或别的什么也要这条待遇,改的是名单不是这只文件。
  */
 

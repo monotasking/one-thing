@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionAccess } from '@onething/backend/session'
-import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../session/testing/session-testing-layer.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 
 const store = vi.hoisted(() => ({

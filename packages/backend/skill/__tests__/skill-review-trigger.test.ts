@@ -14,7 +14,7 @@ import { configureAppSkillManage } from '@onething/backend/skill/manage-setup'
 configureAppSkillsLoader()
 configureAppSkillManage()
 
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
 import {
   resetSpaceCredentialsCacheForTests,

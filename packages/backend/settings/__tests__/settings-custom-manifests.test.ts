@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
 vi.mock('../settings-store.js', () => ({
   getSettings: () => ({ ai: { customProviders: state.global } }),
 }))
-vi.mock('@onething/backend/space/store', () => ({
+vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => Object.keys(state.spaces).filter((id) => id !== 'default').map((id) => ({ id })) }),
 }))
 vi.mock('@onething/backend/space/provider-settings', () => ({
@@ -23,12 +23,12 @@ vi.mock('@onething/backend/space/provider-settings', () => ({
 
 import { getProviderManifest, resetProviderManifestRegistryForTests } from '@onething/backend/provider'
 import { CustomProviderManifestSync } from '../settings-custom-manifests.js'
-import { getDialect } from '../../provider/base/dialect.js'
+import { getDialect } from '../../provider/base/provider-base-dialect.js'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '@onething/backend/settings/events'
+} from '@onething/backend/settings/settings-events'
 
 afterEach(() => {
   state.global = []

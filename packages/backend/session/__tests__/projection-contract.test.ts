@@ -11,7 +11,7 @@
  *
  * ## A 线为什么不再说"命令"(§17.7 #8a,2026-08-28)
  *
- * 从前 A 线的词汇是**命令序列**,由 `session/commands.ts` 的老 reducer 逐条
+ * 从前 A 线的词汇是**命令序列**,由 `session/session-message-shapes.ts` 的老 reducer 逐条
  * 折成 `ChatMessage[]`。那让全仓多出一份"改一条消息意味着什么"的双语:改命令要
  * 看两处。#8a 把它换成 `ExpectedLine` —— 同一套引擎写法,直接落在普通对象数组上,
  * 于是那 5 条**生产零流量**的 reducer 分支(`appendContentPart` / `upsertStep` /
@@ -68,11 +68,11 @@ import {
   computeSessionRepairOnLoad,
   computeSessionTimelineMetadataRepair,
 } from '../timeline.js'
-import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../commands.js'
-import { encodeSessionLogEventLine } from '../events/index.js'
+import type { CoreSessionCommandMessage, CoreSessionCommandStep } from '../session-message-shapes.js'
+import { encodeSessionLogEventLine } from '../events/session-event-vocabulary.js'
 import type { SessionLogEventRecord, SessionRunKind } from '@shared/session/events/types.js'
-import { foldEventPageBackward } from '../storage/events/index.js'
-import type { SessionEventByteReader } from '../storage/events/index.js'
+import { foldEventPageBackward } from '../storage/events/session-storage-events.js'
+import type { SessionEventByteReader } from '../storage/events/session-storage-events.js'
 import {
   canonicalChatMessages,
   canonicalHistoryMessages,
@@ -80,7 +80,7 @@ import {
   defaultHistoryMessageContent,
   encodeSessionProjectionCheckpoint,
   projectModelHistory,
-} from '../projection/index.js'
+} from '../projection/session-projection.js'
 import {
   createSessionProjectionState,
   reduceSessionProjection,

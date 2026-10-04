@@ -1,4 +1,4 @@
-import { isAgentExecutionCheckpointError } from './errors.js'
+import { isAgentExecutionCheckpointError } from './agent-loop-errors.js'
 
 export interface AgentExecutionLifetime {
   track<T>(operation: () => T | Promise<T>): Promise<T>

@@ -10,7 +10,7 @@ import {
 	withLedgerModelCapabilities,
 	type Dialect,
 	type ModelProfileResolver,
-} from "./base/index.js";
+} from "./base/provider-base.js";
 import {
 	CUSTOM_ANTHROPIC_DIALECT,
 	CUSTOM_OPENAI_DIALECT,
@@ -24,22 +24,22 @@ import {
 	createOpenAIChatProvider,
 	openAIChatTransportCapabilities,
 	runtimeCapabilityFlags,
-} from "./dialects/index.js";
-import type { ProviderMediaReader } from "./base/index.js";
-import { OpenAIChatPartCodec } from "./wires/index.js";
-import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/index.js";
+} from "./dialects/provider-dialects.js";
+import type { ProviderMediaReader } from "./base/provider-base.js";
+import { OpenAIChatPartCodec } from "./wires/provider-wires.js";
+import type { AnthropicDialect, GeminiDialect, OpenAIChatDialect, ResponsesDialect } from "./wires/provider-wires.js";
 import type { AgentProviderRequestDumper } from "./request-dumper.js";
 import { createExternalAgentProvider } from "./provider-external-agent.js";
 import { VENDOR_RUNTIMES, type VendorRuntimeKit } from "./vendors/runtimes.js";
 import type {
 	ExternalAgentConnector,
 	ExternalAgentSessionLink,
-} from "../external-agent/types.js";
+} from "../external-agent/external-agent-types.js";
 import {
 	EXTERNAL_AGENT_DIALECT_ID,
 	getProviderManifest,
 	isCustomAdapterDialectOf,
-} from "./manifest.js";
+} from "./provider-manifest.js";
 import type { OnethingProviderOptions } from "./provider-options.js";
 
 export interface AgentProviderRuntimeOAuthToken {

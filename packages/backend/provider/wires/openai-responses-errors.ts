@@ -21,7 +21,7 @@
  * 与 `response.failed` 今天压根没有这个字段,给它们补一个 `false` 会把
  * 「Codex stream error: overloaded」从可重试变成不可重试。
  */
-import { ProviderHttpError, type ErrorMapper, type ProviderHttpErrorInit } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper, type ProviderHttpErrorInit } from "../base/provider-base.js";
 
 /** `codex.ts` 退役前那个对象的形状 —— 换装后是 `ProviderHttpError` 的子类。 */
 export type CodexApiError = CodexHttpError;

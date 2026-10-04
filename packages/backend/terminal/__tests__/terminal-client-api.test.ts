@@ -42,7 +42,7 @@ const getTerminalService = vi.fn(() => service)
 
 let terminalHostPresent = true
 
-vi.mock('@onething/backend/terminal/service', () => ({
+vi.mock('@onething/backend/terminal/terminal-service', () => ({
   getTerminalService: () => getTerminalService(),
   hasTerminalHost: () => terminalHostPresent,
 }))

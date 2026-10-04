@@ -14,7 +14,7 @@
  * 行为变了,而那是一次用户可感知的改动。
  *
  * **步⑧接上了线**:占位名归空(检索面终稿 §6「无标题会话」)—— 判据函数
- * `sessionTitleOf` 就在 `capabilities/sessions.ts`,而壳这一侧已经把
+ * `sessionTitleOf` 就在 `capabilities/search-capabilities-sessions.ts`,而壳这一侧已经把
  * 兜底(首条用户消息 / 「未命名会话」)补上才接线,否则旧壳会画出一行空白。
  *
  * ## 为什么四种查询串都录
@@ -27,10 +27,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { SearchQuery } from '../kernel/index.js'
-import { createChatsSearchCapability, searchResultOf } from '../capabilities/index.js'
-import type { OnethingSearchProvidersAdapters, OnethingSearchSessionMeta } from '../providers.js'
-import { createSearchContext } from '../service.js'
+import type { SearchQuery } from '../kernel/search-kernel.js'
+import { createChatsSearchCapability, searchResultOf } from '../capabilities/search-capabilities.js'
+import type { OnethingSearchProvidersAdapters, OnethingSearchSessionMeta } from '../search-providers.js'
+import { createSearchContext } from '../search-service.js'
 import { fakeIndexFace } from './fake-index.js'
 
 interface Fixture {

@@ -13,7 +13,7 @@ import type { JobEvent } from '@onething/backend/toolkit/tool-protocol'
 import {
   clearBackgroundJobsForTests,
   configureCoreBackgroundJobs,
-} from '@onething/backend/tool/background-jobs'
+} from '@onething/backend/tool/tool-background-jobs'
 import { createLocalBashOperations } from '@onething/backend/tool/bash-executor'
 import { BackgroundJobRegistry } from '../jobs.js'
 

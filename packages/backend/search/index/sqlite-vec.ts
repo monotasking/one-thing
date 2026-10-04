@@ -44,9 +44,9 @@
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import type { VectorHit, VectorIndex, VectorSearchScope } from '../kernel/index.js'
+import type { VectorHit, VectorIndex, VectorSearchScope } from '../kernel/search-kernel.js'
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('search.index.vector')
 

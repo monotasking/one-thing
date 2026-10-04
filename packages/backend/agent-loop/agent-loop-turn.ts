@@ -11,7 +11,7 @@
  * (Claude Code SDK 连接器)把一整段多轮会话装进一次 `streamTurn`,每当"工具结果
  * 到齐、新一轮正文开始"就发一条 `finish(tool_calls)` 当轮分界
  * (`external-agents/claude-code-connector.ts` 的 `withRoundBoundary`,由
- * `agent-loop/runner.ts` 当场转发)。于是**一次请求里有两个回合** —— 而账本上
+ * `agent-loop/agent-loop-runner.ts` 当场转发)。于是**一次请求里有两个回合** —— 而账本上
  * 只有一个 `requestIndex`。
  *
  * 这个文件单独存在,是为了让**采集点**也能读这条规则而不必把

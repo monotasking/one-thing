@@ -1,7 +1,7 @@
 /**
  * **投影检查点的落盘面**(工单 4 B)—— 写在哪、什么时候作数、什么时候扔掉。
  *
- * 编解码在 core(`session/projection/checkpoint.ts`,它连"文件"两个字都不
+ * 编解码在 core(`session/projection/session-projection-checkpoint.ts`,它连"文件"两个字都不
  * 认识);**判据在这里**,因为判据问的全是账本这个文件此刻长什么样。
  *
  * ## 一句话
@@ -52,13 +52,13 @@
 
 import crypto from 'node:crypto'
 import fs from 'node:fs'
-import { decodeSessionLogEventLine } from './events/index.js'
+import { decodeSessionLogEventLine } from './events/session-event-vocabulary.js'
 import {
   decodeSessionProjectionCheckpoint,
   encodeSessionProjectionCheckpoint,
   SESSION_PROJECTION_CHECKPOINT_VERSION,
   type SessionProjectionCheckpointPayload,
-} from './projection/index.js'
+} from './projection/session-projection.js'
 import type { SessionAccountState } from './account.js'
 import {
   type SessionProjectionState,

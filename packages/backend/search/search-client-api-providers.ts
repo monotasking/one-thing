@@ -13,7 +13,7 @@
  * `search/search-client-api.ts` 在**不可信**那一支上(`isHostLocallyTrusted()` 为假;
  * B2 之前问的是 `transport === 'http'`)原样调用。
  * **实现一行没搬、语义一字未改** —— 换的只是入口(判例逐字同 C2 的
- * `plugin/plugins-client-api-catalog.ts`)。
+ * `plugin/plugin-client-api-catalog.ts`)。
  *
  * 未注入 = 这台进程没有 server 运行时(桌面、CLI、单元测试)。那一支上域走的是
  * 本机那条真路(进程单槽里的 `SearchService`),永远不会问到这里。

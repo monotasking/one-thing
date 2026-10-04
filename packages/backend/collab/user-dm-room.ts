@@ -18,7 +18,7 @@ import { findAgent } from '@onething/backend/agent/agent-store-access'
 import { emitCollabRoomUpdated } from './room-runtime.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { sessionAccess } from '@onething/backend/session'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import { ownedCollabSessionId } from './owned-session-id.js'
 
 /**

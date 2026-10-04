@@ -10,10 +10,10 @@
  * builder 的字节与「没有 warning 时」一致 —— 快照零变化的根据就在这里。
  */
 import { describe, expect, it } from "vitest";
-import "../../dialects/index.js";
-import { GITHUB_COPILOT_DIALECT } from "../../vendors/github-copilot/dialect.js";
-import { DEEPSEEK_DIALECT } from "../../vendors/deepseek/dialect.js";
-import { OpenAIChatPartCodec } from "../../wires/index.js";
+import "../../dialects/provider-dialects.js";
+import { GITHUB_COPILOT_DIALECT } from "../../vendors/github-copilot/github-copilot-dialect.js";
+import { DEEPSEEK_DIALECT } from "../../vendors/deepseek/deepseek-dialect.js";
+import { OpenAIChatPartCodec } from "../../wires/provider-wires.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
@@ -22,8 +22,8 @@ import {
 	openAISamplingPolicy,
 	openAIToolChoicePolicy,
 	type Dialect,
-} from "../index.js";
-import { getLogger } from "../../../logging/index.js";
+} from "../provider-base.js";
+import { getLogger } from "../../../logging/logging.js";
 import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
 
 function turnFor(providerId: string, request: AgentTurnRequest): TurnContext {

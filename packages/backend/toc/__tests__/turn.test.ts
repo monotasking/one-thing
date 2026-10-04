@@ -7,7 +7,7 @@ import {
 } from '../input.js'
 import { isTrivialTurn, parseTocDecision } from '../decide.js'
 import { applyTurnDecision, openSegmentOf } from '../apply.js'
-import type { SessionSegment } from '../types.js'
+import type { SessionSegment } from '../toc-types.js'
 
 function segment(overrides: Partial<SessionSegment> & { id: string }): SessionSegment {
   return {

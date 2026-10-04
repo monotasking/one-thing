@@ -27,7 +27,7 @@ vi.mock('@onething/backend/auth/process-auth-service', () => ({
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}), getSpaceSettings: () => mocks.spaceSettings }))
 
 vi.mock('../../session/session-store.js', async () => {
-  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/types')
+  const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/backend/space/space-types')
   return {
     resolveSessionSpaceId: (id: string | undefined | null) => {
       const workspaceId = id ? mocks.sessions.get(id)?.workspaceId : undefined
@@ -43,7 +43,7 @@ vi.mock('@onething/backend/provider', async (importOriginal) => ({
   getProviderInfo: (id: string) => ({ id, name: id.toUpperCase() }),
 }))
 
-vi.mock('@onething/backend/space/store', () => ({
+vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
@@ -55,7 +55,7 @@ import {
   writeSpaceCredentials,
   type SpaceCredentialEntry,
 } from '../credentials-pool.js'
-import { setRootDirForTests } from '@onething/backend/space/persistence'
+import { setRootDirForTests } from '@onething/backend/space/space-persistence'
 import { createSessionCredentialRotator } from '../credentials-rotation.js'
 
 let tmpDir: string

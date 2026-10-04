@@ -1,4 +1,4 @@
-export { runAgentLoop } from './runner.js'
+export { runAgentLoop } from './agent-loop-runner.js'
 export { createAgentExecutionLifetime, type AgentExecutionLifetime } from './execution-lifetime.js'
 export {
   isRetryableAgentError,
@@ -13,7 +13,7 @@ export {
   awaitAgentExecutionCheckpoint,
   AgentLoopPauseForConfirmationError,
   isAgentLoopPauseForConfirmationError,
-} from './errors.js'
+} from './agent-loop-errors.js'
 export {
   abortableAgentEvents,
   AgentEventQueue,
@@ -39,13 +39,13 @@ export {
   agentMessagesFromHistory,
   agentToolCallsFromHistory,
   undeliverableAttachmentText,
-} from './messages.js'
+} from './agent-loop-messages.js'
 export {
   applyPromptInjectors,
   buildSkillPrompt,
   createSkillPromptInjector,
   createSystemPromptInjector,
-} from './prompts.js'
+} from './agent-loop-prompts.js'
 export {
   TEXT_ONLY_AGENT_CAPABILITIES,
   agentProviderCanRunTurn,
@@ -67,7 +67,7 @@ export {
   providerSupportsOutputModality,
   providerSupportsToolResultModality,
   resolveAgentModelCapabilities,
-} from './capabilities.js'
+} from './agent-loop-capabilities.js'
 export {
   agentEventToChunk,
 } from './chunks.js'
@@ -79,7 +79,7 @@ export {
 } from './provider-stream.js'
 export {
   buildAgentLoopRuntime,
-} from './runtime.js'
+} from './agent-loop-runtime-builder.js'
 export {
   OrderedSideEffectQueue,
   needsOrderedSideEffectGate,
@@ -89,12 +89,12 @@ export {
 } from './tool-execution-scheduler.js'
 export {
   streamAgentLoopProviderChunks,
-} from './bridge.js'
+} from './agent-loop-bridge.js'
 export {
   agentModelToolsFromDefinitions,
   agentToolDefinitionsFromSourceTools,
   agentToolsFromToolDefinitions,
-} from './tools.js'
+} from './agent-loop-tools.js'
 export {
   clearRetiredAgentToolNames,
   createAIToolName,
@@ -152,17 +152,17 @@ export type {
   AgentTurnStreamEvent,
   AgentUsage,
   AgentVideoContentPart,
-} from './types.js'
+} from './agent-loop-types.js'
 export type {
   AgentHistoryContent,
   AgentHistoryMessage,
-} from './messages.js'
+} from './agent-loop-messages.js'
 export type {
   AgentModelToolDefinition,
   AgentSourceToolDefinition,
   AgentToolExecutionAdapter,
   AgentToolExecutionAdapterResult,
-} from './tools.js'
+} from './agent-loop-tools.js'
 export type {
   AgentLoopStreamChunk,
 } from './chunks.js'
@@ -176,7 +176,7 @@ export type {
   AgentRuntimePromptOptions,
   AgentRuntimeToolOptions,
   BuildAgentLoopRuntimeOptions,
-} from './runtime.js'
+} from './agent-loop-runtime-builder.js'
 export type {
 } from './tool-execution-order.js'
 export type {

@@ -1,0 +1,12 @@
+import type { RequestBodyBuilder, TurnContext } from "../../base/provider-base.js";
+import { OpenAIChatThinkingWire } from "../../thinking/openai-chat-thinking-wire.js";
+
+export class AcmeThinkingWire extends OpenAIChatThinkingWire {
+	readonly id = "acme-thinking";
+
+	encode(turn: TurnContext, builder: RequestBodyBuilder): void {
+		if (turn.request.thinking) builder.set("acme_think", turn.request.thinking === "enabled");
+	}
+}
+
+export const acmeThinkingWire = new AcmeThinkingWire();

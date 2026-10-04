@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { getOnethingStorePath } from './paths.js'
+import { getOnethingStorePath } from './storage-paths.js'
 
 export type StoreLockOwner = 'desktop' | 'daemon' | 'server' | 'maintenance'
 export const STORE_LOCK_PROTOCOL_VERSION = 1

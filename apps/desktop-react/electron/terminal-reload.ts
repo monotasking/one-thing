@@ -1,4 +1,4 @@
-import { markAllTerminalsDetached } from '@onething/backend/terminal/service'
+import { markAllTerminalsDetached } from '@onething/backend/terminal/terminal-service'
 
 /**
  * **窗口页面重载 = 终端消费者走了**(T2,方案 §2.1 与 T1 留账那一行)。

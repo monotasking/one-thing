@@ -26,7 +26,7 @@ import {
 import {
   resolvePluginSkins,
   type PluginSkinEntry,
-} from './skin.js'
+} from './plugin-skin.js'
 
 export interface OnethingPluginListManifestLike {
   name: string

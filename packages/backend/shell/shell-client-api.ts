@@ -5,7 +5,7 @@
  * 退役后它一直**没有处理者**。批 1(`docs/design/provider-settings-rework-2026-09.md` §3.1)
  * 让 React 壳注入 `shell` 宿主口,于是这件能力改走通用 RPC —— 同 `dialog` 域的判例:
  * 处理者住装配层,真正的那一下由宿主经 `configureShellHost` 递进来
- * (`@onething/backend/shell/host-ports`);没注入的宿主拿到结构化失败。
+ * (`@onething/backend/shell/shell-host-ports`);没注入的宿主拿到结构化失败。
  *
  * 两道闸,理由各一句:
  *  - **只有本机可信的宿主面才替调用方动这台机器**(`isHostLocallyTrusted()`)。
@@ -15,8 +15,8 @@
  *    那是 `openPath` 的事,不该借 `openExternal` 这扇门进来。宿主口自己也拒一遍
  *    (`apps/desktop-react/electron/host-ports.ts`),两层各守各的。
  */
-import { getOnethingStorePath } from '@onething/backend/storage/paths'
-import { getShellHost } from '@onething/backend/shell/host-ports'
+import { getOnethingStorePath } from '@onething/backend/storage/storage-paths'
+import { getShellHost } from '@onething/backend/shell/shell-host-ports'
 import { shellRouter, type ShellRoutes } from '@shared/ipc/shell.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'

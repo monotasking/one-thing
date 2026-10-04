@@ -5,9 +5,9 @@
  * 据它把同号的几截从累计值里摘掉,于是 dev 下 `sessions.validation` 不再报「内容不一致」。
  */
 import { describe, expect, it } from 'vitest'
-import { Session } from '../session.js'
+import { Session } from '../session-subscriber.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import type { SessionEventEnvelope } from '@onething/backend/event/types'
+import type { SessionEventEnvelope } from '@onething/backend/event/event-types'
 import type { StreamChunkBase } from '@shared/events/stream-chunks.js'
 
 const stamp = (runId: string, partIndex: number, charOffset = 0) => ({

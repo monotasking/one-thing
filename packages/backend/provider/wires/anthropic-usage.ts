@@ -14,7 +14,7 @@
  * `external-agents/claude-code-connector`(继承树外,但读的是同一份 Anthropic
  * usage —— 设计稿 §7 表末那一行「不在继承树,但必须同表修」)。
  */
-import { UsageBuckets, type UsageNormalizer } from "../base/usage.js";
+import { UsageBuckets, type UsageNormalizer } from "../base/provider-base-usage.js";
 
 export interface AnthropicUsage {
 	input_tokens?: number;

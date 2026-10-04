@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { applyAgentLoopProviderDataWithAdapters, getHistoryProviderData } from '@onething/backend/agent-loop'
 import type { AgentMessage, AgentTurnRequest } from '@onething/backend/agent-loop/loop-primitives'
 import { applyOnethingAgentLoopProviderData } from '../../../provider-data.js'
-import { createClaudeAgentProvider } from '../agent-provider.js'
+import { createClaudeAgentProvider } from '../claude-agent-provider.js'
 
 const CLAUDE_THINKING_DATA = {
   provider: 'claude',

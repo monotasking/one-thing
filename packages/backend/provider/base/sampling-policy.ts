@@ -9,7 +9,7 @@
  * 「Kimi 固定值不发」「Anthropic 新模型不发」按 `profile.allows()` 判是 P0b。
  */
 import type { RequestBodyBuilder } from "./request-body-builder.js";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface SamplingPolicy {
 	apply(turn: TurnContext, builder: RequestBodyBuilder): void;

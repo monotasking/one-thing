@@ -31,7 +31,7 @@ import {
  * ── 没有「写笔记设置」这一口 ─────────────────────────────────────────────
  * 这一页的每一次改动都落在 `settings.notes` 里,所以写路只有 `saveSettings`
  * 一条。notes 域是**只读的 + 一个前台动作**(判词在
- * `packages/backend/note/notes-client-api.ts` 文件头)。
+ * `packages/backend/note/note-client-api.ts` 文件头)。
  */
 export interface NotesPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */

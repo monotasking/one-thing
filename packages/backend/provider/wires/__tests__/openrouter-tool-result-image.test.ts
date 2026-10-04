@@ -28,14 +28,14 @@ import {
 	agentSupportsToolResultModality,
 	agentToolMessageContentForCapabilities,
 } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
+import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
 	TurnContext,
 	listDialects,
 	type PartCodec,
-} from "../../base/index.js";
+} from "../../base/provider-base.js";
 import { createAgentProviderFromRuntime } from "../../factory.js";
 import type {
 	OpenAIChatCodec,

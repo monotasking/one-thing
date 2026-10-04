@@ -18,7 +18,7 @@ import {
 import {
   listConnectedSkillRoots,
 } from '@onething/backend/file'
-import { skillVaultRootsNow } from '../note/notes-subsystem.js'
+import { skillVaultRootsNow } from '../note/note-subsystem.js'
 
 /** Every provider's CLI skill dir; only the active provider's is exposed. */
 const musicSkillDirs = new Set(

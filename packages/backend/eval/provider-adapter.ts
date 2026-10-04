@@ -16,7 +16,7 @@
  *
  * 结构债 P4c 第十批从 `apps/electron/src/main/ipc/evals-provider-adapter.ts`
  * 整只搬到装配层,一行逻辑没改(它本来就一句 electron 也不碰)—— 两个调用方
- * (`eval/evals-client-api.ts` 与 `eval/evals-client-api-workbench.ts`)都在这一侧,
+ * (`eval/eval-client-api.ts` 与 `eval/eval-client-api-workbench.ts`)都在这一侧,
  * 留在宿主里只会逼着装配层去 import `@main`。日志命名空间从 `ipc.evals` 改成
  * `evals.provider`(它不再在 IPC 那一层)。
  */
@@ -24,7 +24,7 @@
 import { getSettings } from '@onething/backend/settings'
 import type { EvalModelCaller } from "./model-call.js";
 import { onethingBaseBuiltinProviders, resolveProviderApiKey } from "@onething/backend/provider";
-import { DEFAULT_SPACE_ID } from "@onething/backend/space/types";
+import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
 import { resolveSpaceProviderCredentialForSpace } from "@onething/backend/credentials";
 import { captureUsageRecorder } from "../usage/usage-recorder.js";
 import { getLogger } from "@onething/backend/logging/configure-logging";

@@ -87,9 +87,9 @@ describe('应用级许可在真装配里(2026-09-10)', () => {
     const backend = await assemble()
     try {
       const store = await import('@onething/backend/session')
-      const { Permission } = await import('@onething/backend/permission/permission')
+      const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
       const { sessionCommands } = await import('@onething/backend/session')
-      const { permissionGrantsRpcHandlers } = await import('../permission/permissions-client-api-grants.js')
+      const { permissionGrantsRpcHandlers } = await import('../permission/permission-client-api-grants.js')
       const { DESKTOP_RPC_CONTEXT } = await import('@shared/ipc/rpc.js')
 
       const sessionId = store.createSession(`always-${Date.now()}`, 'Always').id

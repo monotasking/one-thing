@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import type { SearchContext } from '../kernel/index.js'
+import type { SearchContext } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/search'
 import { FolderVault, type NoteVault } from '@onething/backend/note'
 import { createAppSearchAuthorization } from '../authorization.js'

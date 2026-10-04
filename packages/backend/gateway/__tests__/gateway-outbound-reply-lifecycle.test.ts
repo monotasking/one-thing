@@ -6,7 +6,7 @@ import { EventBus } from '@onething/backend/event/session-event-bus'
 import { inspectStoreLock, StoreLock } from '@onething/backend/storage'
 import type { ChatMessage } from '@shared/ipc.js'
 import { BackendResources } from '../../backend-shutdown.js'
-import { configureIMConnectorHooks, registerIMConnector } from '../../plugin/plugins-im-connector-registry.js'
+import { configureIMConnectorHooks, registerIMConnector } from '../../plugin/plugin-im-connector-registry.js'
 import { createChannelReplyDeliveryStore } from '../gateway-channel-identity-store.js'
 import { OutboundReplyDispatcher } from '../gateway-outbound-reply-dispatcher.js'
 

@@ -15,8 +15,8 @@ import { encodeJsonlHeaderLine, encodeJsonlMessageLine } from '@onething/backend
 import { createOnethingSessionRepository } from '../session-repository.js'
 import { createHybridSessionStorageDriver } from '../storage-driver.js'
 import { rewriteRetiredSessionProvider } from '../retired-providers.js'
-import { createAgentProviderFromRuntime } from '../../provider/index.js'
-import type { ExternalAgentConnector, ExternalAgentTurnRequest } from '../../external-agent/types.js'
+import { createAgentProviderFromRuntime } from '../../provider/provider.js'
+import type { ExternalAgentConnector, ExternalAgentTurnRequest } from '../../external-agent/external-agent-types.js'
 
 interface TestMessage extends StoredChatMessage {
   content: string

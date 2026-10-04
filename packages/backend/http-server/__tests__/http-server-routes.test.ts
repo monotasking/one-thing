@@ -8,15 +8,15 @@ import { createOnethingRuntimeFacade } from '@onething/backend/http-server/http-
 import { defineRouter } from '@shared/ipc/router'
 import type { CorePluginCommandContext } from '@onething/backend/plugin/plugin-contract'
 import { registerRouterHandlers, resetRpcRegistryForTests } from '../http-server-dispatch-table.js'
-import { pluginsRpcHandlers } from '../../plugin/plugins-client-api.js'
+import { pluginsRpcHandlers } from '../../plugin/plugin-client-api.js'
 import { pluginsRouter } from '@shared/ipc/plugins.js'
 import { searchRpcHandlers } from '../../search/search-client-api.js'
 import { searchRouter } from '@shared/ipc/search.js'
 import { configureServerSearchPort } from '../../search/search-client-api-providers.js'
-import { filesRpcHandlers } from '../../file/files-client-api.js'
-import { toolsRpcHandlers } from '../../tool/tools-client-api.js'
+import { filesRpcHandlers } from '../../file/file-client-api.js'
+import { toolsRpcHandlers } from '../../tool/tool-client-api.js'
 import { markdownRpcHandlers } from '../../markdown/markdown-client-api.js'
-import { permissionGrantsRpcHandlers } from '../../permission/permissions-client-api-grants.js'
+import { permissionGrantsRpcHandlers } from '../../permission/permission-client-api-grants.js'
 import { filesRouter } from '@shared/ipc/files.js'
 import { toolsRouter } from '@shared/ipc/tools.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
@@ -193,7 +193,7 @@ describe('createOnethingHttpServer', () => {
 
   // P4c 第十一批:`POST /api/network/test-proxy` 与 `network` facade adapter 一起
   // 没了 —— 代理自检随 `settingsRouter.testProxy` 走通用 RPC,实现收敛成
-  // `backend/settings/proxy.ts` 一份(旧 server 里那份是逐字抄件)。
+  // `backend/settings/settings-proxy.ts` 一份(旧 server 里那份是逐字抄件)。
 
   /**
    * P4 终态批 A1-b:`query` 改走 `POST /api/rpc` 的 `search` 域(域在 http 那一支上
@@ -306,7 +306,7 @@ describe('createOnethingHttpServer', () => {
     expect(sessionId).toBeTruthy()
 
     // P4 终态批 C2:两条走 `POST /api/rpc` 的 `plugins` 域,而不是从前那两条 REST。
-    // **断言一条没减** —— 域在 http 上调的就是 `plugin/plugins-client-api-catalog.ts` 那个单槽
+    // **断言一条没减** —— 域在 http 上调的就是 `plugin/plugin-client-api-catalog.ts` 那个单槽
     // 端口里的同一批闭包,包括「bob 看不见 alice 的会话」这道归属护栏。
     {
       await expect(rpcData(baseUrlValue, aliceHeaders, 'commands', {})).resolves.toEqual({
@@ -394,7 +394,7 @@ describe('createOnethingHttpServer', () => {
     const bobHeaders = contextHeaders('bob', 'plugin-workspace')
 
     // P4 终态批 C2:六条读/开关面走 `POST /api/rpc` 的 `plugins` 域。**断言一条没减**
-    // —— 域在 http 上调的就是 `plugin/plugins-client-api-catalog.ts` 那个单槽端口里的同一批闭包,
+    // —— 域在 http 上调的就是 `plugin/plugin-client-api-catalog.ts` 那个单槽端口里的同一批闭包,
     // per-owner 的 enable 标志因此仍然分表落盘。
     const dispose = registerRouterHandlers(pluginsRouter, pluginsRpcHandlers)
     try {
@@ -918,7 +918,7 @@ describe('createOnethingHttpServer', () => {
     process.env.ONETHING_STORE_PATH = storeRoot
     const serverRuntime = await createTestServerRuntime({ workspaceRoot, dataRoot })
     runtimes.push(serverRuntime)
-    const { projectDirsRpcHandlers } = await import('../../project-dir/project-dirs-client-api.js')
+    const { projectDirsRpcHandlers } = await import('../../project-dir/project-dir-client-api.js')
     const disposeDomain = registerRouterHandlers(projectDirsRouter, projectDirsRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -1172,7 +1172,7 @@ describe('createOnethingHttpServer', () => {
 
   // P4c 第七批:「主题 REST 走 facade」这条用例整只删掉 —— 三条路由、
   // `/api/themes/<id>[/apply]` 正则块与 `themes` adapter 一起没了。
-  // 五条方法改由 `packages/backend/theme/__tests__/themes-client-api.test.ts` 钉。
+  // 五条方法改由 `packages/backend/theme/__tests__/theme-client-api.test.ts` 钉。
 
   /**
    * P4c 第九批:tools 的七条数据面迁到 `POST /api/rpc`(`toolsRouter`),六条
@@ -1182,7 +1182,7 @@ describe('createOnethingHttpServer', () => {
    * 身份头 → dispatch context → `transport:'http'` 分叉。四条拒绝路径与两条
    * 恒定答案在这里逐条钉;需要真装配(目录 + runner + app 会话仓)的那两条
    * ——「工具清单」与「read 成功读到沙箱内文件」——由
-   * `packages/backend/tool/__tests__/tools-client-api.test.ts` 钉,因为 echo backend
+   * `packages/backend/tool/__tests__/tool-client-api.test.ts` 钉,因为 echo backend
    * 的会话仓与装配层那只单例不是同一只(旧 adapter 读的是 server 自己那份,
    * 迁移后读的是 app store —— 真 server 上两者本来就是同一只)。
    *
@@ -1567,7 +1567,7 @@ describe('createOnethingHttpServer', () => {
     expect(bobSessionEvents.status).toBe(200)
 
     // 命令的 per-owner 前置检查随被删掉的 adapter 一起没了(域取的是桌面的形状,
-    // 见 `backend/session/sessions-client-api-commands.ts` 文件头);这条用例守的是**事件
+    // 见 `backend/session/session-client-api-commands.ts` 文件头);这条用例守的是**事件
     // 扇出**的隔离 —— 别人的会话里发生的事不许漏进 bob 的两条 SSE。
     await sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:send-message',
@@ -1593,7 +1593,7 @@ describe('createOnethingHttpServer', () => {
 	   *
 	   * 原测试断言的是 alice/bob 各自一份片段库——那条隔离随路由一起没了(信封不带
 	   * request context,单用户前提下三宿主共用 `<store>/prompts.json`)。域本身的
-	   * 行为改由 `packages/backend/prompt/__tests__/prompts-client-api.test.ts` 守。
+	   * 行为改由 `packages/backend/prompt/__tests__/prompt-client-api.test.ts` 守。
 	   */
 	  it('no longer serves the retired /api/prompts REST surface', async () => {
 	    const dataRoot = await createTempDir('onething-prompts-')
@@ -2118,7 +2118,7 @@ async function createSession(
  * 这些用例要证的本来也不是「那条路由存在」,而是「命令进了总线之后
  * server 的会话/事件/SSE 一路对得上」—— 于是这里直接往该 runtime 的总线上发,
  * 与被删掉的 adapter 里 `forwardSessionCommand` 逐字同义。传输面那一半由
- * `packages/backend/session/__tests__/sessions-client-api-commands.test.ts` 守。
+ * `packages/backend/session/__tests__/session-client-api-commands.test.ts` 守。
  */
 async function sendSessionCommand(
   serverRuntime: OnethingServerRuntime,
@@ -2240,7 +2240,7 @@ async function readFor(response: Response, durationMs: number): Promise<string> 
 
 /**
  * 一次 `plugins` 域的 RPC(P4 终态批 C2)。域在 http 上调的是
- * `plugin/plugins-client-api-catalog.ts` 那个单槽端口 —— 也就是从前 `/api/plugins*` 六条
+ * `plugin/plugin-client-api-catalog.ts` 那个单槽端口 —— 也就是从前 `/api/plugins*` 六条
  * REST 背后的同一批闭包。
  */
 function rpc(

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 
 // Retain real settings composition and credential storage; unrelated session
 // stores and usage lifecycle are covered by the Backend lifecycle regression.
@@ -12,7 +12,7 @@ vi.mock('@onething/backend/settings', async importOriginal => {
 })
 vi.mock('../../usage/usage-recorder.js', () => ({ captureUsageRecorder: () => vi.fn() }))
 vi.mock('../../auth/process-auth-service.js', () => ({ getAuthService: () => ({}) }))
-vi.mock('@onething/backend/space/store', () => ({
+vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => [{ id: 'default', name: 'Default' }] }),
 }))
 
@@ -25,7 +25,7 @@ import {
   spaceCredentialsFilePath,
   upsertSpaceProviderOAuthToken,
 } from '../../credentials/credentials-pool.js'
-import { setRootDirForTests } from '@onething/backend/space/persistence'
+import { setRootDirForTests } from '@onething/backend/space/space-persistence'
 import {
   resetSpaceProviderSettingsCacheForTests,
   spaceProviderSettingsPath,

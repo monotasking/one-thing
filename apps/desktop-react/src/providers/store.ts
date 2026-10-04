@@ -1490,7 +1490,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
      * 删一条。**最后一条也删得动**(09-02 批 11,用户报障「单个 key 无法删除」)。
      *
      * ── 为什么删最后一条要换一口,而不是改后端 ──────────────────────────
-     * `spaces.setCredentialPool` 拒空列表(`space/ipc-operations.ts:378`,
+     * `spaces.setCredentialPool` 拒空列表(`space/space-ipc-operations.ts:378`,
      * 错误话是「凭证列表不能为空(要清空整段请用『清除』)」)。那道闸拒的是
      * **一次"排序"请求顺手清空一个 provider**,不是「这一家不许回到未配置」——
      * 持久层自己就把空池当合法终态:`credentials.ts:741` 删空即摘掉整段,
@@ -1877,7 +1877,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
        * 它的 API key 会以孤儿的身份留在盘上:界面上再也看不到它,而它还在。
        *
        * 更要紧的是那不只是「不整洁」:`isProviderSupported` 对任何 `custom-*`
-       * 一律放行(`provider/registry.ts`),所以「这一家还在不在」全靠
+       * 一律放行(`provider/provider-registry.ts`),所以「这一家还在不在」全靠
        * `providers[id]` 与凭证两处都真的没了。少清一处,一条还绑着它的老会话
        * 就可能**照样发得出去** —— 用户以为删掉的东西还在花钱。
        *

@@ -16,7 +16,7 @@
  * id 的地方是把 `userDmRoomId(agentId)` 算出来与会话 id **相等比对** —— 那是
  * 把派生 id 当幂等键用,不是从 id 里抠 agentId。
  */
-import { userDmRoomId } from './identity.js'
+import { userDmRoomId } from './agent-identity.js'
 
 /**
  * presence 推导要读的会话字段 —— 一个 `SessionMeta`(shared 包的 chat 契约文件)

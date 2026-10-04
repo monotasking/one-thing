@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import { VoiceAudioRouter } from '../audio-router.js'
 
 const state = vi.hoisted(() => ({ connect: vi.fn(), close: vi.fn() }))

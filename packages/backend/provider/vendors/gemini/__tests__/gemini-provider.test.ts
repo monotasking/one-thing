@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGeminiAgentProvider } from '../agent-provider.js'
+import { createGeminiAgentProvider } from '../gemini-agent-provider.js'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

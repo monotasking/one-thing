@@ -1217,7 +1217,7 @@ async function runLoopDelayPhase() {
     // ── ⑤d 结构判据(见文件头「反证」)──────────────────────────────
     const sqliteHits = spawnSync('grep', ['-rln', "node:sqlite",
       path.join(repoRoot, 'packages/backend'),
-      path.join(repoRoot, 'packages/backend/search/service.ts'),
+      path.join(repoRoot, 'packages/backend/search/search-service.ts'),
       path.join(repoRoot, 'packages/backend/search/capabilities'),
     ], { encoding: 'utf-8' })
     // grep 没命中时退出码是 1;命中了才有 stdout。
@@ -1236,7 +1236,7 @@ async function runLoopDelayPhase() {
      */
     const wasmHits = spawnSync('grep', ['-rln', '@huggingface/transformers',
       path.join(repoRoot, 'packages/backend'),
-      path.join(repoRoot, 'packages/backend/search/service.ts'),
+      path.join(repoRoot, 'packages/backend/search/search-service.ts'),
       path.join(repoRoot, 'packages/backend/search/capabilities'),
       path.join(repoRoot, 'apps/desktop-react/electron'),
     ], { encoding: 'utf-8' })
@@ -1476,7 +1476,7 @@ async function runSemanticPhase() {
      * 下限**。`k = 5` 答的永远是最近的五条,哪怕全都不相关 —— 一间只有两条消息的
      * store 上,任何一句话都能把那两条召回来,所以「不相关的查询不该命中」在这个
      * 现场根本不成立(机制层面留了 `manifest.retrievers.vector.maxDistance` 这一格,
-     * 但今天故意没有定值,理由见 `search/kernel/capability.ts` 那格注释与 §13)。
+     * 但今天故意没有定值,理由见 `search/kernel/search-kernel-capability.ts` 那格注释与 §13)。
      * **能判的是区分度**:两条各自的改写句要各把自己那条排在第一。
      */
     const sourceOf = item => {

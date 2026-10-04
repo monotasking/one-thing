@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { compositeAnalyzer } from '../analyzer/composite.js'
-import type { LexicalQuery } from '../index/types.js'
+import type { LexicalQuery } from '../index/search-kernel-index-types.js'
 import { CAP_A, CORPUS_NOW, corpusDocuments } from './unit-fixtures/corpus.js'
 import { buildIndex } from './unit-fixtures/harness.js'
 

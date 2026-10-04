@@ -7,7 +7,7 @@
  * ## 病:Worker 里的日志从来没有落过地
  *
  * `setRuntimeLoggerRoot()` 是**主线程**上 `configureLogging()` 调的那一句;Worker 是
- * 另一条线程、另一份模块实例,那一句从来没有在它里面跑过。于是 `logging/index.ts` 的
+ * 另一条线程、另一份模块实例,那一句从来没有在它里面跑过。于是 `logging/logging.ts` 的
  * 兜底 root 生效 —— 它只挂一只 `MemoryRingSink`(200 条),线程一死就没了。
  * 09-17 用户真机事故里 `VectorWriter.markOff` 那句 `semantic recall turned itself off`
  * 就死在这里:设置页写着「原因在日志里」,而日志里一行都没有 —— 那句话是假的。
@@ -40,7 +40,7 @@ import {
 } from '@onething/backend/logging/logger-primitives'
 import { type LogLevel } from '@shared/logging/types'
 
-import { setRuntimeLoggerRoot } from '../../logging/index.js'
+import { setRuntimeLoggerRoot } from '../../logging/logging.js'
 
 /** Worker → 宿主的日志帧类型标记。请求 / 应答帧都带 `id`,这一帧**不带** —— 它不是往返。 */
 export const WORKER_LOG_MESSAGE_TYPE = 'log'

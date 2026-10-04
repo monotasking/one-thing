@@ -42,13 +42,13 @@ import {
   type CollabSchedulerLogRow,
   type CollabSchedulerLogSink,
   type CollabSchedulerLogType,
-} from './index.js'
+} from './collab-actors.js'
 
 import {
   getOnethingStorePath,
-} from '../../storage/index.js'
+} from '../../storage/storage.js'
 import { collabRoomActorsDir } from './room-account.js'
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('collab.scheduler')
 

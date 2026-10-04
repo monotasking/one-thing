@@ -44,12 +44,12 @@ import {
   LedgerFeed,
   SqliteIndex,
   defaultDocumentFilters,
-} from '../index/index.js'
-import type { IndexEndpoint } from '../index/index.js'
+} from '../index/search-index.js'
+import type { IndexEndpoint } from '../index/search-index.js'
 import type { IndexWorkerData } from '../index/worker-data.js'
 import type { IndexWorkerHandle } from '../index/worker-host.js'
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/search'
-import { configureSearchVisibilityPort } from '../capabilities/index.js'
+import { configureSearchVisibilityPort } from '../capabilities/search-capabilities.js'
 import type { ToolAuditRecord } from '@onething/backend/toolkit/audit-observer'
 import { EventBus } from '@onething/backend/event/session-event-bus'
 
@@ -146,10 +146,10 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
   listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
   listPrompts: () => [],
 }
-vi.mock('../adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
+vi.mock('../search-adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
 
 const { createAppSearchService } = await import('../service-setup.js')
-const { visibleSessionIdsFor } = await import('../visibility.js')
+const { visibleSessionIdsFor } = await import('../search-visibility.js')
 const { createDesktopCatalog } = await import('@onething/backend/toolkit/tier-catalogs')
 const { createAppToolRunner } = await import('@onething/backend/toolkit/runner-factory')
 

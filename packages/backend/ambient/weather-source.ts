@@ -1,6 +1,6 @@
 import type { EventSpec } from '@onething/backend/resource/resource-api'
-import type { AmbientSource, AmbientTimers } from './source.js'
-import { SYSTEM_TIMERS } from './source.js'
+import type { AmbientSource, AmbientTimers } from './ambient-source.js'
+import { SYSTEM_TIMERS } from './ambient-source.js'
 
 /** 天气归成几类:宠物只关心「变了没有」,不关心 113 种天气代码。 */
 export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'snow' | 'fog' | 'storm'

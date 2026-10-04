@@ -1,5 +1,5 @@
 import * as testSessionStore from '../session-store.js'
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * 读门面的取数 —— **S3w-3 批 6b 之后只有一条路**(§13.14-C / §15.22)。
  *

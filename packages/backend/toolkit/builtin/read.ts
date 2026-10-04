@@ -13,8 +13,8 @@ import { Intent } from '@onething/backend/toolkit/tool-protocol'
 import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
 import { basenamePath, readBinaryFile, statPath } from '@onething/backend/storage/storage-primitives'
 import { withFileReadAccess } from '../../tool/file-mutation-queue.js'
-import { defineInput, listZodIssues } from '../contract.js'
-import { FileTool, type FileToolAdapters, type ResolvedFilePath } from '../families/file.js'
+import { defineInput, listZodIssues } from '../toolkit-contract.js'
+import { FileTool, type FileToolAdapters, type ResolvedFilePath } from '../families/toolkit-families-file.js'
 import {
   composeTextRead,
   DEFAULT_LIMIT,

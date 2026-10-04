@@ -7,7 +7,7 @@ import {
   type CorePromptProviderConfig,
   type CorePromptProviderConfigValue,
 } from '@onething/backend/agent-loop'
-import type { PromptSource } from './composer.js'
+import type { PromptSource } from './prompt-composer.js'
 import {
   CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,
   isCorePluginTimeoutError,

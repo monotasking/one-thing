@@ -1,19 +1,19 @@
 import type { CorePluginAPIState } from './api-state.js'
 import { toLogger, type CompatLogger } from '@onething/backend/logging/logger-primitives'
-import { describeToolPromptContributionProblem } from '../agent-loop/index.js'
+import { describeToolPromptContributionProblem } from '../agent-loop/agent-loop.js'
 import {
   clampPluginBackgroundParamsPatch,
   describePluginRuntimeBackgroundImageProblem,
   type PluginBackgroundParamsPatch,
 } from './background.js'
-import { deepFreezeCorePluginValue } from './freeze.js'
+import { deepFreezeCorePluginValue } from './plugin-freeze.js'
 import {
   PLUGIN_NOTIFY_SOUNDS,
   normalizePluginNotifySound,
   type PluginNotifyOptions,
   type PluginNotifySound,
 } from '@shared/plugins/notify-sound.js'
-import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './storage.js'
+import { PluginStorageError, type CorePluginMessageStateStore, type CorePluginStorage } from './plugin-storage.js'
 import { getPluginFilesFaultLane } from './storage-files.js'
 import type {
   CorePluginFileEntry,
@@ -68,7 +68,7 @@ import {
   type PluginSendMessageResult,
   type PluginSessionPeek,
   type PluginSessionPeekLite,
-} from './sessions.js'
+} from './plugin-sessions.js'
 import {
   PLUGIN_PERMISSION_LLM_COMPLETE,
   PluginLlmError,
@@ -77,7 +77,7 @@ import {
   type PluginLlmCompleteResult,
 } from './llm.js'
 import type { CorePluginStatusPart, CorePluginStatusRegistry } from './status.js'
-import { pluginScope, type PluginFailureScope } from './policy.js'
+import { pluginScope, type PluginFailureScope } from './plugin-policy.js'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
@@ -112,7 +112,7 @@ import {
   PLUGIN_PERMISSION_RESOURCES_WATCH,
   type PluginResourcesApi,
 } from './resources.js'
-import type { ResourceEvent } from '@onething/backend/resource/events'
+import type { ResourceEvent } from '@onething/backend/resource/resource-events'
 import { ReadOutcome } from '@onething/backend/resource/read-outcome'
 import type { ReadOutcome as ReadOutcomeValue } from '@onething/backend/resource/read-outcome'
 import { Outcome } from '@onething/backend/toolkit/outcome'

@@ -57,9 +57,9 @@ import {
   writeSpaceProviderSettings,
   type SpaceProviderSettings,
 } from '@onething/backend/space/provider-settings'
-import { getSpacesStore } from '@onething/backend/space/store'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
-import { getAuthHostPorts } from '@onething/backend/auth/host-ports'
+import { getSpacesStore } from '@onething/backend/space/space-store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
+import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
 import {
   getOnethingSettingsPath,
   getOnethingStorePath,

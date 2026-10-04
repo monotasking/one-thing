@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { installSessionLayerForTest } from '../../../session/testing/session-layer.js';
+import { installSessionLayerForTest } from '../../../session/testing/session-testing-layer.js';
 import { resetSessionRuns } from '@onething/backend/session';
 
 let storeDir: string;
@@ -26,7 +26,7 @@ afterEach(async () => {
 import {
 	createDefaultSettings,
 	DEFAULT_CHAT_SETTINGS,
-} from "../../../settings/defaults/settings.js";
+} from "../../../settings/defaults/settings-factory-defaults.js";
 import type {
 	AppSettings,
 	SkillDefinition,
@@ -44,7 +44,7 @@ import { Catalog, Intent, Tool as ToolkitTool } from "@onething/backend/toolkit/
 import type { Result, ToolSpec } from "@onething/backend/toolkit/tool-protocol";
 import { configureToolkitCatalog } from "@onething/backend/toolkit";
 import type { HistoryMessage } from "../message-helpers.js";
-import type { BuildPromptOptions } from "../../prompt/system-prompt.js";
+import type { BuildPromptOptions } from "../../prompt/engine-system-prompt.js";
 import type { StreamSender } from "../stream-processor.js";
 import type {
 	ProviderConfigWithKey,
@@ -267,11 +267,11 @@ vi.mock("../tool-execution.js", () => ({
 	executeToolDirectly: mocks.executeToolDirectly,
 }));
 
-vi.mock("../../prompt/system-prompt.js", () => ({
+vi.mock("../../prompt/engine-system-prompt.js", () => ({
 	buildPrompt: mocks.buildPrompt,
 }));
 
-vi.mock("../../../session/usage.js", () => ({
+vi.mock("../../../session/session-usage-updates.js", () => ({
 	updateSessionUsage: mocks.updateSessionUsage,
 	// §17.7 #15:上下文两格由**账**落格(`event-only-emitter` 的 provider-finish
 	// 落点调它)。替身给 `false` = "这条会话没有账",于是走回落 —— 这一组用例钉的
@@ -307,7 +307,7 @@ vi.mock("@onething/backend/mcp/index-with-bridge", () => ({
 vi.mock("@onething/backend/variable/variable-system", () => ({
 }));
 
-vi.mock("@onething/backend/project-dir/bootstrap", () => ({
+vi.mock("@onething/backend/project-dir/project-dir-bootstrap", () => ({
 	buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }));
 
@@ -326,9 +326,9 @@ vi.mock("@onething/backend/prompt/stored-prompt-resolver", () => ({
 	})),
 }));
 
-// A0-3:ACP 走外部 agent 连接器,连接器在 runtime 里相对引用 `acp/manager.ts`,
+// A0-3:ACP 走外部 agent 连接器,连接器在 runtime 里相对引用 `acp/acp-manager.ts`,
 // 所以桩打在具体模块上(barrel 的再导出同样落到这一只)。
-vi.mock("@onething/backend/acp/manager", async () => {
+vi.mock("@onething/backend/acp/acp-manager", async () => {
 	const { MemoryACPSessionLinkStore } = await import("@onething/backend/acp/session-links");
 	const links = new MemoryACPSessionLinkStore();
 	return {

@@ -9,13 +9,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { zodToJsonSchema } from '../../contract.js'
+import { zodToJsonSchema } from '../../toolkit-contract.js'
 import type {
   OnethingPracticeBucket,
   OnethingPracticeSummaryResult,
 } from '@shared/contracts/practice.js'
 import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
-import { createPracticeTool, PracticeInputSchema, type PracticeToolAdapters } from '../../builtin/practice.js'
+import { createPracticeTool, PracticeInputSchema, type PracticeToolAdapters } from '../../builtin/toolkit-builtin-practice.js'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 
 const RECORD: OnethingPracticeLedgerRecord = {

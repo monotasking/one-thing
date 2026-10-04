@@ -17,7 +17,7 @@ import type {
   OnethingAgentKind,
   OnethingAgentModelBinding,
   OnethingAgentStatus,
-} from './store.js'
+} from './agent-store.js'
 import { resolveAgentExecutorSelection } from './executor/selection.js'
 
 /**

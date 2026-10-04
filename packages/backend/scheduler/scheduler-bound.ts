@@ -3,22 +3,22 @@
  * 并给出一个自保证的取用口。
  *
  * P3'a-3 从 `src/app/scheduler/index.ts` 归位 —— 它读的是本包的 store 路径、配的是
- * `./scheduler.js`,唯一一条装配层的边是 `consolePort`,而那个已经归位到
- * `../logging/` 了。文件名带 `-bound`:barrel(`./index.js`)只出纯模块,这里出的是
+ * `./scheduler-cron-runner.js`,唯一一条装配层的边是 `consolePort`,而那个已经归位到
+ * `../logging/` 了。文件名带 `-bound`:barrel(`./scheduler.js`)只出纯模块,这里出的是
  * **单例**,所以不进 barrel(进了会和 barrel 的 `export *` 撞名)。
  */
 import path from 'node:path'
-import type { Scheduler } from './scheduler.js'
+import type { Scheduler } from './scheduler-cron-runner.js'
 import {
   configureOnethingScheduler,
   getOnethingScheduler,
-} from './scheduler.js'
+} from './scheduler-cron-runner.js'
 import {
   getOnethingStorePath,
-} from '../storage/index.js'
-import { consolePort, getLogger } from '../logging/index.js'
+} from '../storage/storage.js'
+import { consolePort, getLogger } from '../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { SchedulerLogger } from '@onething/backend/scheduler/scheduler'
+import type { SchedulerLogger } from '@onething/backend/scheduler/scheduler-cron-runner'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(logging/console-port.ts,area ① 统一后删)。 */
@@ -47,7 +47,7 @@ export {
   configureOnethingScheduler,
   getOnethingScheduler,
   Scheduler,
-} from './scheduler.js'
+} from './scheduler-cron-runner.js'
 export type {
   SchedulerOptions,
   SchedulerRunOptions,
@@ -58,7 +58,7 @@ export type {
   SchedulerTaskHandle,
   SchedulerTaskRegistration,
   SchedulerTaskSnapshot,
-} from './index.js'
+} from './scheduler.js'
 export {
   cronRunKey,
   currentCronRunAt,

@@ -13,21 +13,21 @@ export type {
   StateScope,
   StateSpec,
   StateVolatility,
-} from './spec.js'
+} from './resource-spec.js'
 
 export {
   assertResourceSpec,
   describeResourceSpecProblem,
   formatResourceSpecProblem,
   ResourceSpecError,
-} from './contract.js'
-export type { ResourceSpecMember, ResourceSpecProblem } from './contract.js'
+} from './resource-contract.js'
+export type { ResourceSpecMember, ResourceSpecProblem } from './resource-contract.js'
 
-export { ResourceRegistry, ResourceSchemeTakenError } from './registry.js'
-export type { ResolvedRef } from './registry.js'
+export { ResourceRegistry, ResourceSchemeTakenError } from './resource-registry.js'
+export type { ResolvedRef } from './resource-registry.js'
 
-export { planFromSpec } from './provider.js'
-export type { ResourceProvider, ResourceReadContext } from './provider.js'
+export { planFromSpec } from './resource-provider.js'
+export type { ResourceProvider, ResourceReadContext } from './resource-provider.js'
 
 export {
   RESOURCE_OP_KEY,
@@ -36,10 +36,10 @@ export {
   toolDescriptionOf,
   toolEffectsOf,
   toolInputSchemaOf,
-} from './schema.js'
+} from './resource-schema.js'
 
-export { assertWithinOpEffects, ResourceTool } from './tool.js'
-export type { ResourceCall, ResourceToolOptions, ShellDispatch } from './tool.js'
+export { assertWithinOpEffects, ResourceTool } from './resource-tool.js'
+export type { ResourceCall, ResourceToolOptions, ShellDispatch } from './resource-tool.js'
 
 export {
   RESOURCE_META_TOOL_ID,
@@ -48,8 +48,8 @@ export {
 } from './meta-tool.js'
 export type { ResourceMetaCall } from './meta-tool.js'
 
-export { ResourceEventHub } from './events.js'
-export type { ResourceEvent, ResourceEventListener } from './events.js'
+export { ResourceEventHub } from './resource-events.js'
+export type { ResourceEvent, ResourceEventListener } from './resource-events.js'
 
 export { NO_ORIGIN_SESSION, ResourceKernel } from './kernel.js'
 export type { ReadGuard, ReadVerdict, ResourceCallOptions, ResourceKernelOptions } from './kernel.js'
@@ -72,4 +72,4 @@ export {
   ResourceRefError,
   ResourceSchemeUnknownError,
   ResourceWatchPrefixError,
-} from './errors.js'
+} from './resource-errors.js'

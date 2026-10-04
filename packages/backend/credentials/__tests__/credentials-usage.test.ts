@@ -1,5 +1,5 @@
 /**
- * 按凭证归因的用量(批 E)。2026-10-04 随 `computeOnethingCredentialUsage` 从 `usage/__tests__/summary.test.ts`
+ * 按凭证归因的用量(批 E)。2026-10-04 随 `computeOnethingCredentialUsage` 从 `usage/__tests__/usage-summary.test.ts`
  * 搬来(D24);断言一字未改,记录助手 `record()` 照抄那边的同一份。
  */
 import { describe, expect, it } from 'vitest'

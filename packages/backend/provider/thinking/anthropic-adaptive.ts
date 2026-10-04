@@ -5,7 +5,7 @@
  *
  * 逐字复刻 `claude.ts` 退役前 `streamTurn` 里 `family.adaptive` 的两条分支。
  */
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { AnthropicThinkingWire } from "./anthropic-effort.js";
 
 export class AnthropicAdaptiveThinkingWire extends AnthropicThinkingWire {

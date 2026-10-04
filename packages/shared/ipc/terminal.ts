@@ -152,7 +152,7 @@ export interface TerminalExitEvent {
  * ## 两条推送不在这条路上
  *
  * 输出走**注入广播器端口**(`configureTerminalBroadcaster`,
- * `@onething/backend/terminal/service`),而 router 今天只有请求/响应面。
+ * `@onething/backend/terminal/terminal-service`),而 router 今天只有请求/响应面。
  *
  * P4-D2 当时把 `TERMINAL_DATA` / `TERMINAL_EXIT` 两条通道常量留在了手写 IPC 上
  * (同 practice / scratchpad / oauth 判例);**T0(2026-09-12)把它们删了** ——

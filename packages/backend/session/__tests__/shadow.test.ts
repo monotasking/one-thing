@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * 记录面(`session/shadow.ts`)—— **恒等门退役之后剩下的那半边**(F4-c c4,§16.24)。
  *

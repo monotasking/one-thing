@@ -18,11 +18,11 @@ import {
   agentToolsFromToolDefinitions,
   type AgentModelToolDefinition,
   type AgentSourceToolDefinition,
-} from './tools.js'
+} from './agent-loop-tools.js'
 import { resolveAIToolName } from './tool-names.js'
 import type { Principal } from '@shared/permission/principal.js'
 import { coreProviderOwnsItsContextWindow } from './agent-loop-external-agent-providers.js'
-import type { AgentTool } from './types.js'
+import type { AgentTool } from './agent-loop-types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '@shared/json.js'
 import { toLogger, type CompatLogger } from '@onething/backend/logging/logger-primitives'
 

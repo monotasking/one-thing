@@ -13,7 +13,7 @@
  */
 
 import type { EvalModelCaller } from "./model-call.js";
-import { runReplay, type ReplayScene, type ReplayResult } from "./replay.js";
+import { runReplay, type ReplayScene, type ReplayResult } from "./eval-replay.js";
 
 export interface FidelityReport {
 	attempts: number;

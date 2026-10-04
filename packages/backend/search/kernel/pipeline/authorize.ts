@@ -16,8 +16,8 @@
  */
 
 import type { Candidate, FacetFilter, SearchPage, SearchPrincipal, SearchQuery } from '../candidate.js'
-import type { CapabilityManifest, VisibilityScope } from '../capability.js'
-import { matchesFacetFilter } from '../index/types.js'
+import type { CapabilityManifest, VisibilityScope } from '../search-kernel-capability.js'
+import { matchesFacetFilter } from '../index/search-kernel-index-types.js'
 
 export type AuthorizationWarn = (message: string, detail: Record<string, unknown>) => void
 

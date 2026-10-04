@@ -1,7 +1,7 @@
 import http from 'node:http'
 import type { OnethingAuthCallbackRegistration } from './auth-service.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('auth')
 

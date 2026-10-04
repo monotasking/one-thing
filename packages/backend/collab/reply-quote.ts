@@ -16,7 +16,7 @@
 import { isCollabPassMessage } from './pass.js'
 import { truncateAtCodePoint } from './truncate.js'
 import { isCollabThinkingMessage } from './say.js'
-import { isCollabDriveMessage, type CollabMessageLike, type CollabReplyToLike } from './types.js'
+import { isCollabDriveMessage, type CollabMessageLike, type CollabReplyToLike } from './collab-types.js'
 
 /** §3.5 A: the excerpt is the first 120 chars of the quoted message. */
 export const COLLAB_REPLY_EXCERPT_MAX_CHARS = 120

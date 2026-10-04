@@ -35,7 +35,7 @@ import path from 'node:path'
 
 import { DurableMailbox, readActorMailboxLog, type ActorEvent } from '@onething/backend/collab/kernel'
 import { ensureDir, pathExists, readJsonFile, writeJsonFile } from '@onething/backend/storage/storage-primitives'
-import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/agent/identity'
+import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/agent/agent-identity'
 import type { CollabMessageLike } from '@onething/backend/collab'
 import {
   COLLAB_V2_BACKUP_DIR_PREFIX,

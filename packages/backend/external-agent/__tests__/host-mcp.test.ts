@@ -14,7 +14,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import type { HostMcpHostTool } from '../host-mcp/tools.js'
+import type { HostMcpHostTool } from '../host-mcp/external-agent-host-mcp-tools.js'
 import {
   activeHostToolContextCount,
   bindHostToolContext,
@@ -28,13 +28,13 @@ import {
   resolveHostToolSurface,
   stripHostMcpToolPrefix,
   toHostMcpToolDefinition,
-} from '../host-mcp/index.js'
+} from '../host-mcp/external-agent-host-mcp.js'
 
 /**
  * 一个只记账的工具替身:它把收到的 `ctx.sessionId` 原样吐回来。
  *
  * R4b:形状从旧 `ToolInfo` 换成 `HostMcpHostTool`(这个文件本来就只填那三格,
- * 见 `host-mcp/tools.ts` 的头注释)。
+ * 见 `host-mcp/external-agent-host-mcp-tools.ts` 的头注释)。
  */
 function echoTool(id: string): HostMcpHostTool {
   return {

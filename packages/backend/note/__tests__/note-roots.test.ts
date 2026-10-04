@@ -22,7 +22,7 @@ vi.mock('@onething/backend/current.js', () => ({
   },
 }))
 
-const { noteRootsNow, skillVaultRootsNow } = await import('../notes-subsystem.js')
+const { noteRootsNow, skillVaultRootsNow } = await import('../note-subsystem.js')
 
 function vault(root: string, id: string): NoteVault {
   return { id, name: id, root, system: 'fake' } as unknown as NoteVault

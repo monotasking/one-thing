@@ -63,13 +63,13 @@ import type { EventBus } from '@onething/backend/event/session-event-bus'
 import type { StreamEngine } from '@onething/backend/engine'
 import { getCurrentBackend } from '@onething/backend/current.js'
 import type { Quiescible } from '@onething/backend/lifecycle'
-import { taskMessageSource } from '../agent-loop/index.js'
+import { taskMessageSource } from '../agent-loop/agent-loop.js'
 import { deliverInternalMessage } from '@onething/backend/plugin/session-messenger'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 
 const log = getLogger('tasks')
 

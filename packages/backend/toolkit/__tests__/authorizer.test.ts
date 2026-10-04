@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AbortScope, Intent } from '@onething/backend/toolkit/tool-protocol'
 import { makeEffect } from '@shared/toolkit/effects'
 import type { Invocation } from '@onething/backend/toolkit/tool-protocol'
-import type { EnforcePermissionPolicyInput } from '@onething/backend/tool/access-control/permission-policy'
+import type { EnforcePermissionPolicyInput } from '@onething/backend/tool/access-control/tool-access-control-permission-policy'
 import { PermissionAuthorizer } from '../authorizer.js'
 
 function invocationFor(overrides: Partial<Invocation> = {}): Invocation {

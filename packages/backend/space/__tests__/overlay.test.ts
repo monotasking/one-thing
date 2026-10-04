@@ -3,7 +3,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import * as fsSync from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { captureRuntimeLogs } from '../../logging/index.js'
+import { captureRuntimeLogs } from '../../logging/logging.js'
 import {
   canonicalizeSpaceDirectory,
   getSpaceOverlayConnectedDirectories,
@@ -21,8 +21,8 @@ import {
   spaceFilePath,
   writeSpaceOverlay,
 } from '../overlay.js'
-import { setRootDirForTests } from '../persistence.js'
-import { DEFAULT_SPACE_ID } from '../types.js'
+import { setRootDirForTests } from '../space-persistence.js'
+import { DEFAULT_SPACE_ID } from '../space-types.js'
 
 let tmpDir: string
 

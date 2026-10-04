@@ -54,7 +54,7 @@ it('owns real ASR/TTS completion through Backend shutdown and fences retained ca
   createSession('voice-session', 'Voice')
   const settings = getSettings()
   saveSettings({ ...settings, voice: { ...settings.voice!, enabled: true, tts: { ...settings.voice!.tts, autoSpeak: true, provider: 'openrouter-tts' } } })
-  const { getVoiceService } = await import('@onething/backend/voice/service')
+  const { getVoiceService } = await import('@onething/backend/voice/voice-service')
   const first = getVoiceService()
   const tts = barrier()
   const asr = barrier()

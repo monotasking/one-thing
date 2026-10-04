@@ -32,9 +32,9 @@ import {
   collabRoomPosted,
   formatCollabActorVerb,
   type CollabActorVerb,
-} from '../index.js'
+} from '../collab-actors.js'
 
-vi.mock('../../../storage/index.js', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-golden-test' }))
+vi.mock('../../../storage/storage.js', () => ({ getOnethingStorePath: () => '/tmp/onething-worker-golden-test' }))
 
 const { CollabAgentActor } = await import('../agent-actor.js')
 const { createCollabAgentAccountMemoryStore } = await import('../agent-mailbox.js')

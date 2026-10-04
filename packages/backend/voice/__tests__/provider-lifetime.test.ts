@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
-import { streamSynthesizeOnethingSpeech } from '../providers.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
+import { streamSynthesizeOnethingSpeech } from '../voice-providers.js'
 
 const sockets = vi.hoisted(() => ({ created: [] as Array<{ closed: boolean }> }))
 vi.mock('../volcano/tts-session.js', () => ({

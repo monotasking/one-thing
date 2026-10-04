@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
-import type { Theme } from '../types.js'
+import type { Theme } from '../theme-types.js'
 import {
   extractPreviewColors,
   resolveTheme,
@@ -10,7 +10,7 @@ import {
   resolveThemeUI,
   SURFACE_GUARD_MIN_DELTA_L,
   THEME_STATUS_COLOR_TOKENS,
-} from '../resolver.js'
+} from '../theme-resolver.js'
 import { CSS_VAR_MAP, generateCSSVariables } from '../css-mapper.js'
 import { guaranteeMinAbsDeltaL, guaranteeMinDeltaL } from '../role-mapping.js'
 

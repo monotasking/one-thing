@@ -31,7 +31,7 @@ import {
   type CollabAgentLike,
 } from '@onething/backend/collab'
 import { isTrustedCollabDrive } from '@onething/backend/collab/drive-guard'
-import { collabV3RoomPostPort } from '@onething/backend/collab/actors/turn-context'
+import { collabV3RoomPostPort } from '@onething/backend/collab/actors/collab-actors-turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

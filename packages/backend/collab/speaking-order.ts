@@ -12,7 +12,7 @@
  * 这个文件里没有 I/O、没有模型调用、也不认识 `CollabActivationRecord`(那是装配
  * 层的类型,产品层不能反向依赖)。装配层喂事实进来,拿决定回去。
  */
-import type { CollabAgentLike } from './types.js'
+import type { CollabAgentLike } from './collab-types.js'
 
 /** 判定要读的房间配置字段 —— 最小结构类型,与 `dm.ts` 同一条纪律。 */
 export interface CollabRelayRoomLike {

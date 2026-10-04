@@ -1,9 +1,0 @@
-import { QuotaFetchError, quotaNow, type QuotaSource } from '../../quota/source.js'
-
-export const acmeQuotaSource: QuotaSource = {
-  id: 'acme',
-  async fetch(ctx) {
-    if (!ctx.apiKey) throw new QuotaFetchError('auth', 'Acme balance requires an API key')
-    return { kind: 'balance', currency: 'USD', available: 42, fetchedAt: quotaNow(ctx) }
-  },
-}

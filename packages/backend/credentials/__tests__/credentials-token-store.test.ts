@@ -19,7 +19,7 @@ import {
   resetSpaceCredentialsCacheForTests,
   writeSpaceCredentials,
 } from '../credentials-pool.js'
-import { setRootDirForTests } from '../../space/persistence.js'
+import { setRootDirForTests } from '../../space/space-persistence.js'
 import { createOnethingSpaceTokenStore } from '../credentials-token-store.js'
 import type { OnethingOAuthToken } from '@onething/backend/auth'
 

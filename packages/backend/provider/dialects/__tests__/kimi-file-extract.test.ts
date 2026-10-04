@@ -15,13 +15,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { AgentContentPart, AgentMessage } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
+import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
 	TurnContext,
 	type TurnTransport,
-} from "../../base/index.js";
+} from "../../base/provider-base.js";
 import { kimiFileExtractChannel } from "../../vendors/kimi/attachments.js";
 
 const BASE_URL = "https://api.moonshot.cn/v1";

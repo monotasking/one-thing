@@ -39,7 +39,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   },
 }))
 
-vi.mock('../index.js', () => ({
+vi.mock('../event.js', () => ({
   getEventBus: () => ({ emit: async () => {} }),
   getStreamChannel: () => ({ push: () => {} }),
 }))
@@ -47,7 +47,7 @@ vi.mock('../index.js', () => ({
 const { flushSessionEventLog, readSessionLogEvents } = await import(
   '@onething/backend/session'
 )
-const { installSessionLayerForTest } = await import('../../session/testing/session-layer.js')
+const { installSessionLayerForTest } = await import('../../session/testing/session-testing-layer.js')
 const { beginSessionRun, endSessionRun } = await import('@onething/backend/session')
 const { createEventOnlyEmitter } = await import('../event-only-emitter.js')
 

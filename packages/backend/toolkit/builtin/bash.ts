@@ -15,8 +15,8 @@ import {
   DEFAULT_OUTPUT_MAX_BYTES,
   DEFAULT_OUTPUT_MAX_LINES,
 } from '../../tool/output-accumulator.js'
-import { readBackgroundJobOutput } from '../../tool/background-jobs.js'
-import { defineInput, listZodIssues } from '../contract.js'
+import { readBackgroundJobOutput } from '../../tool/tool-background-jobs.js'
+import { defineInput, listZodIssues } from '../toolkit-contract.js'
 import {
   formatProcessOutput,
   ProcessTool,

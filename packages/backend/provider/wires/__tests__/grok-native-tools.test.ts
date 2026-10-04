@@ -18,15 +18,15 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentTool, AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
-import "../../dialects/index.js";
+import { getLogger } from "../../../logging/logging.js";
+import "../../dialects/provider-dialects.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
 	TurnContext,
 	listDialects,
-} from "../../base/index.js";
-import { toCodexTools, type ResponsesDialect } from "../index.js";
+} from "../../base/provider-base.js";
+import { toCodexTools, type ResponsesDialect } from "../provider-wires.js";
 
 function fnTool(name: string): AgentTool {
 	return {

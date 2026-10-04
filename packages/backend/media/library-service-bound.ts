@@ -1,12 +1,12 @@
 import {
   MediaLibraryService as RuntimeMediaLibraryService,
   type OnethingMediaLibraryPaths,
-} from './index.js'
+} from './media.js'
 import {
   getOnethingMediaFilesDir,
   getOnethingMediaImagesDir,
   getOnethingMediaIndexPath,
-} from '../storage/index.js'
+} from '../storage/storage.js'
 function defaultPaths(): OnethingMediaLibraryPaths {
   return {
     indexPath: getOnethingMediaIndexPath(),

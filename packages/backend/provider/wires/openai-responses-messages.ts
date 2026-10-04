@@ -53,7 +53,7 @@ import {
 	type PartCodec,
 	type PartDelivery,
 	type TurnContext,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 
 // ---------------------------------------------------------------------------
 // 线上形状

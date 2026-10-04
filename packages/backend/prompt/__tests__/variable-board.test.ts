@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CoreBuildPromptContextOptions } from '@onething/backend/agent-loop'
 import { VariableBoardSource } from '../variable-board.js'
-import { PromptComposer, StaticPromptSource } from '../composer.js'
+import { PromptComposer, StaticPromptSource } from '../prompt-composer.js'
 
 const ctx = (over: Partial<CoreBuildPromptContextOptions> = {}): CoreBuildPromptContextOptions => ({
   hasTools: false,

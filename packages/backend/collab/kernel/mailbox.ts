@@ -14,7 +14,7 @@
  * 未 ack 的事件会被自己的去重窗口挡住 —— 重投语义当场作废。两个性质靠这一条
  * 边界同时成立:未 ack 的重投得来,已 ack 的重投进不来。
  *
- * 行编解码直接复用会话 jsonl 的编解码器(`session/storage/jsonl/codec.ts`),
+ * 行编解码直接复用会话 jsonl 的编解码器(`session/storage/jsonl/session-storage-jsonl-codec.ts`),
  * 连同它已经测过的崩溃恢复语义:尾部截断行静默丢弃、seq 断序视为损坏点并丢弃
  * 其后全部。代价是 header 里那个字段叫 `sessionId` —— 在邮箱语境里它装的是
  * **邮箱主人 id**。为一个字段名再造一套恢复扫描不划算,这里记一笔就够。

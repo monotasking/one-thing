@@ -4,7 +4,7 @@
  * Evals Runner (CLI Shell)
  *
  * Thin CLI shell that delegates to the shared runner core in
- * packages/backend/eval/runner.ts.
+ * packages/backend/eval/eval-runner.ts.
  *
  * CLI uses an OpenAI-compatible fetch as the model caller;
  * the desktop app injects its own provider-stack caller via IPC.

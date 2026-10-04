@@ -10,7 +10,7 @@ import {
 	findBaselineEntry,
 	isComparableEntry,
 } from "../compare.js";
-import type { EvalRunResultEntry } from "../runner.js";
+import type { EvalRunResultEntry } from "../eval-runner.js";
 
 function entry(over: Partial<EvalRunResultEntry>): EvalRunResultEntry {
 	return {

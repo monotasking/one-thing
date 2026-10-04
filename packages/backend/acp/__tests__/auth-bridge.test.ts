@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { TerminalCreateRequest } from '@shared/ipc.js'
-import type { TerminalExitStatus } from '@onething/backend/terminal/service'
+import type { TerminalExitStatus } from '@onething/backend/terminal/terminal-service'
 
 vi.mock('@onething/backend/external-agent/spawn-env', () => ({
   resolveExternalAgentSpawnEnv: () => ({ PATH: '/bin', HTTPS_PROXY: 'http://proxy:1' }),

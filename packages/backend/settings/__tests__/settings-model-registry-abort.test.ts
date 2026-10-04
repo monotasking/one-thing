@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../defaults/settings.js'
+import { createDefaultSettings } from '../defaults/settings-factory-defaults.js'
 
 const ports = vi.hoisted(() => ({ settings: {} as ReturnType<typeof createDefaultSettings>, save: vi.fn(), fetch: vi.fn() }))
 vi.mock('../settings-store.js', () => ({ getSettings: () => ports.settings, saveSettings: ports.save }))

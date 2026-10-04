@@ -4,7 +4,7 @@ import { browserPort } from './browser-port'
  * **在文件管理器里定位一条路径**(B3-a 第一个消费者:下载落地那一行)。
  *
  * ── 它走的是 `dir:` 那条**已有**的做法,不是一条新的壳通道 ─────────────────
- * `dir` 那份自述里早就有 `reveal`(`packages/backend/file/resource-spec.ts`:
+ * `dir` 那份自述里早就有 `reveal`(`packages/backend/file/file-resource-spec.ts`:
  * 零效果、`home: 'core'`、走主进程的 `shell.showItemInFolder`)。AI 要定位一条路径
  * 走的就是它 —— 壳再开一条 RPC 等于同一件事两条路(音乐面板判例)。
  *

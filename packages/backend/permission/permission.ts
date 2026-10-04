@@ -1,17 +1,90 @@
-/**
- * `Permission`(询问、回应、通道亲和)的出口,并顺带装上授权的落盘(`grant-storage.js` 的副作用 import)。
- * 它从前是 `runtime/permission/index.ts`;收尾整理 2(2026-10-03)把 `runtime/permission/` 并进 `permission/`,
- * 目录桶 `index.ts` 留给 permissions 原有的那只,这只按内容改名。
- */
-import './grant-storage.js'
-
-export { Permission } from '@onething/backend/permission/permission-asks'
 export {
-  DEFAULT_PERMISSION_REJECTED_MESSAGE,
-  formatPermissionRejectedMessage,
-} from '@shared/permission/rejection-message'
+  OnethingPermissionRuntime,
+  configureOnethingPermissionGrantStorage,
+  configurePermissionGrantFileStorage,
+  createPermissionGrantFileStorage,
+  createOnethingPermissionRuntime,
+  decideOnethingPermission,
+  enforceOnethingPermissionPolicy,
+  getPermissionWorkspaceGrantsPath,
+} from './permission-runtime.js'
+export {
+  clearOnethingSessionPermissionGrants,
+  clearOnethingSessionPermissionGrantsForIpc,
+  clearOnethingWorkspacePermissionGrants,
+  clearOnethingWorkspacePermissionGrantsForIpc,
+  listOnethingPermissionGrants,
+  listOnethingPermissionGrantsForIpc,
+  revokeOnethingPermissionGrant,
+  revokeOnethingPermissionGrantForIpc,
+} from './permission-grants-presentation.js'
+export {
+  clearOnethingPermissionSession,
+  clearOnethingPermissionSessionForIpc,
+  getOnethingPendingPermissions,
+  getOnethingPendingPermissionsForIpc,
+} from './permission-session-presentation.js'
 export type {
-  PermissionCommandEnvelope,
-  PermissionEventBusLike,
-  PermissionRespondCommandLike,
+  OnethingPermissionGrantStorageAdapters,
+  OnethingPermissionRuntimeOptions,
+  PermissionGrantFileStorageAdapters,
+  PermissionGrantWorkspaceFile,
+} from './permission-runtime.js'
+export type {
+  ClearOnethingPermissionGrantsResult,
+  ClearOnethingSessionPermissionGrantsOptions,
+  ClearOnethingWorkspacePermissionGrantsOptions,
+  ListOnethingPermissionGrantsOptions,
+  ListOnethingPermissionGrantsResult,
+  OnethingPermissionIpcLogger,
+  RevokeOnethingPermissionGrantOptions,
+  RevokeOnethingPermissionGrantResult,
+} from './permission-grants-presentation.js'
+export type {
+  ClearOnethingPermissionSessionOptions,
+  ClearOnethingPermissionSessionResult,
+  GetOnethingPendingPermissionsOptions,
+  GetOnethingPendingPermissionsResult,
+  OnethingPermissionSessionIpcLogger,
+} from './permission-session-presentation.js'
+export {
+  addGrant,
+  clearSessionGrants,
+  clearWorkspaceGrants,
+  coversAll,
+  isGrantableType,
+  listCapabilities,
+  registerCapability,
+  resetCapabilitiesForTests,
+  resolveCapability,
+  rejectionFor,
+  unregisterCapability,
+  configurePermissionGrantStorage,
+  listSessionGrants,
+  findWorkspaceGrant,
+  listWorkspaceGrants,
+  matchGrant,
+  resetPermissionGrantsForTests,
+  revokeGrant,
+} from '@onething/backend/permission/permission-asks'
+export type {
+  Capability,
+  CapabilityAction,
+  CapabilityAuthority,
+  CapabilityRejection,
+  CapabilityResolution,
+  EnforcePermissionPolicyInput,
+  PermissionBridge,
+  PermissionEffect,
+  PermissionGrantInput,
+  PermissionGrantMatchInput,
+  PermissionGrantOwner,
+  PermissionGrantMatcher,
+  PermissionGrantStorage,
+  PermissionMetadata,
+  PermissionPolicyDecision,
+  PermissionPolicyInput,
+  PermissionPolicyMode,
+  PermissionPolicyResult,
+  PermissionPreview,
 } from '@onething/backend/permission/permission-asks'

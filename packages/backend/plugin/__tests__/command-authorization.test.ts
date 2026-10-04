@@ -2,8 +2,8 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { CorePluginCommandContext } from '@onething/backend/plugin/plugin-contract'
 
 const state = vi.hoisted(() => ({ owner: 'alice', retarget: false, handler: vi.fn(), emit: vi.fn(async (_id: string, _event: unknown, _options?: unknown) => {}), read: vi.fn() }))
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => id === 'session'
     ? { ownerUserId: state.owner, ownerWorkspaceId: 'tenant' } : undefined }) }
 })
@@ -12,7 +12,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   getSession: state.read,
 }))
 vi.mock('@onething/backend/event', () => ({ getEventBus: () => ({ emit: state.emit, emitGlobal: vi.fn() }) }))
-vi.mock('../host-ports.js', () => ({ execPluginCommandOnHost: vi.fn() }))
+vi.mock('../plugin-host-ports.js', () => ({ execPluginCommandOnHost: vi.fn() }))
 vi.mock('../plugin-manager.js', () => ({ getPluginManager: () => ({ getCommandHandler: () => ({
   handler: async (_args: string, context: CorePluginCommandContext) => {
     state.handler()
@@ -29,7 +29,7 @@ beforeEach(() => {
 })
 
 it('retains the authorized non-default owner outside the plugin payload', async () => {
-  const { executePluginCommandOnHost } = await import('../commands.js')
+  const { executePluginCommandOnHost } = await import('../plugin-commands.js')
   await expect(executePluginCommandOnHost({ sessionId: 'session', commandName: '/demo' }, {
     executionContext: { userId: 'alice', workspaceId: 'tenant' },
   })).resolves.toMatchObject({ success: true })
@@ -40,7 +40,7 @@ it('retains the authorized non-default owner outside the plugin payload', async 
 })
 
 it('rejects another owner before reading or executing the plugin', async () => {
-  const { executePluginCommandOnHost } = await import('../commands.js')
+  const { executePluginCommandOnHost } = await import('../plugin-commands.js')
   expect(() => executePluginCommandOnHost({ sessionId: 'session', commandName: '/demo' }, {
     executionContext: { userId: 'bob', workspaceId: 'tenant' },
   })).toThrow('Session not found')
@@ -50,7 +50,7 @@ it('rejects another owner before reading or executing the plugin', async () => {
 })
 
 it('rechecks the actual session at the delayed command emission', async () => {
-  const { executePluginCommandOnHost } = await import('../commands.js')
+  const { executePluginCommandOnHost } = await import('../plugin-commands.js')
   state.retarget = true
   await executePluginCommandOnHost({ sessionId: 'session', commandName: '/demo' }, {
     executionContext: { userId: 'alice', workspaceId: 'tenant' },

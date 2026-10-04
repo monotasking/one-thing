@@ -36,7 +36,7 @@ import {
   sessionOwnerOf,
   type SessionAccessContext,
 } from '@onething/backend/session'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

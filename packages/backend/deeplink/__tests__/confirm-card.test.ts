@@ -14,7 +14,7 @@ const getPluginManager = vi.hoisted(() => vi.fn())
 
 vi.mock('../../agent/agent-store-access.js', () => ({ findAgent, defaultAgent }))
 vi.mock('@onething/backend/plugin/plugin-manager', () => ({ getPluginManager }))
-vi.mock('../registry.js', () => ({ describePluginDeepLinkAction }))
+vi.mock('../deeplink-registry.js', () => ({ describePluginDeepLinkAction }))
 
 import { buildDeepLinkCard } from '../confirm-card.js'
 

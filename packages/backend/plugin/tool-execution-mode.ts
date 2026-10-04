@@ -2,7 +2,7 @@
  * 工具级并发声明(N3)—— 插件工具的 `executionMode`。
  *
  * **这里只有声明与校验,没有调度。** 调度早就存在,而且只有一处:
- * `packages/backend/agent-loop/runner.ts` 里 `tool-call-done` 的分支按
+ * `packages/backend/agent-loop/agent-loop-runner.ts` 里 `tool-call-done` 的分支按
  * `toolsByName.get(name)?.executionMode !== 'parallel'` 决定这次执行是不是
  * 屏障,交给 `ToolExecutionScheduler`。本文件做的事只是让**插件**也能把这个
  * 判据填进去 —— 内置工具从 `Tool.define` 起就一路带着它,插件工具此前在
@@ -17,7 +17,7 @@
  *
  * 为什么非法值要拒注册而不是静默降级:降级是安全的,但作者把 `'parallel'`
  * 拼成 `'paralell'` 之后永远不会知道 —— 他只会看到"我的工具比别人慢",
- * 而这条线索不在任何日志里。宿主自己解析模型定义时(`agent-loop/tools.ts`)
+ * 而这条线索不在任何日志里。宿主自己解析模型定义时(`agent-loop/agent-loop-tools.ts`)
  * 仍然对未知值安全降级:那条路上的值来自我们自己的注册表,已经过了这道闸。
  */
 

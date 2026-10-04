@@ -34,8 +34,8 @@ import {
   createEmptySpaceProviderSettings,
   readSpaceProviderSettings,
 } from '@onething/backend/space/provider-settings'
-import { getSpacesStore } from '@onething/backend/space/store'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
+import { getSpacesStore } from '@onething/backend/space/space-store'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { getSettings, getSpaceSettings, saveSettings } from './settings-store.js'
 
 type ConfigLike = { selectedModels?: unknown; model?: unknown } | undefined

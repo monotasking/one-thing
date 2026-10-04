@@ -22,7 +22,7 @@ import { writeSessionEvent } from './event-writer.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRefold } from './refold.js'
-import { scheduleSessionProjectionCheckpoint } from './checkpoint.js'
+import { scheduleSessionProjectionCheckpoint } from './session-checkpoint.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 

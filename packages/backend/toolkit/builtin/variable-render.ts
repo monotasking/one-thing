@@ -7,7 +7,7 @@
  */
 
 import type { JsonObject } from '@shared/json'
-import type { VariableScope, VariableType } from '../../variable/types.js'
+import type { VariableScope, VariableType } from '../../variable/variable-types.js'
 
 export type VariableAction = 'list' | 'get' | 'keys' | 'set' | 'append' | 'remove' | 'delete'
 

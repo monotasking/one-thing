@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { collectCollabFoldedFacts, planCollabHistoryWindow } from '../history-window.js'
 import { projectRoomHistory } from '../projection.js'
-import type { CollabAgentLike, CollabMessageLike } from '../types.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 
 const DAY = 86_400_000
 const NOW = new Date(2026, 7, 1, 12, 0, 0).getTime()

@@ -20,7 +20,7 @@
  *     esbuild 不认。这里补一个 12 行插件把它读成字符串。
  *
  *  ② `import.meta.url` 的 CJS 替身 —— `terminal/pty-backend.ts:46` 与
- *     `voice/kws/engine.ts` 顶层就是 `createRequire(import.meta.url)`。
+ *     `voice/kws/voice-kws-engine.ts` 顶层就是 `createRequire(import.meta.url)`。
  *     CJS 产物里 `import.meta` 不存在,esbuild 会把它降成 `{}`,于是
  *     `createRequire(undefined)` 抛 ERR_INVALID_ARG_VALUE —— 而且是**模块求值期**
  *     抛,整只 bundle 一起死。banner 里现算一个 `file://` 的 __filename 顶上。
@@ -117,13 +117,13 @@ const invokedDirectly = process.argv[1]
  *
  * 三个宿主(React 主进程 / CLI / server)各出一份 `search-worker.cjs`,**都与自己
  * 的宿主入口同目录** —— 装配层就是靠这条纪律按 `import.meta.url` 往旁边找的
- * (`packages/backend/search/worker.ts`)。所以这个常量在这里、被三份配方
+ * (`packages/backend/search/search-worker.ts`)。所以这个常量在这里、被三份配方
  * 共用,而不是三处各写一个字符串。
  *
  * 它与 main 同一份 `shellEsbuildOptions`:node 平台、CJS、原生模块 external。
  * `node:sqlite` 是内建模块,esbuild 的 node 平台自动 external,不必列。
  */
-export const SEARCH_WORKER_ENTRY = 'packages/backend/search/index/worker.ts'
+export const SEARCH_WORKER_ENTRY = 'packages/backend/search/index/search-index-worker.ts'
 export const SEARCH_WORKER_NAME = 'search-worker'
 
 export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {

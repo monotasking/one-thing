@@ -17,10 +17,10 @@ import type {
 	AgentTurnStreamEvent,
 } from "@onething/backend/agent-loop/loop-primitives";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
-import { createDeepSeekAgentProvider } from "../vendors/deepseek/agent-provider.js";
+import { createDeepSeekAgentProvider } from "../vendors/deepseek/deepseek-agent-provider.js";
 import { createOpenAICompatibleAgentProvider } from "../openai-compatible.js";
-import { createClaudeAgentProvider } from "../vendors/claude/agent-provider.js";
-import { createCodexAgentProvider } from "../vendors/codex/agent-provider.js";
+import { createClaudeAgentProvider } from "../vendors/claude/claude-agent-provider.js";
+import { createCodexAgentProvider } from "../vendors/codex/codex-agent-provider.js";
 
 const COMPACT_SUMMARY_USER =
 	"The conversation history before this point was compacted into the following summary:\n\n<summary>\nEarlier work\n</summary>";

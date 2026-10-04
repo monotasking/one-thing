@@ -15,7 +15,7 @@ import type {
   SearchPage,
   SearchQuery,
 } from '../candidate.js'
-import type { CapabilityManifest, SearchCapability } from '../capability.js'
+import type { CapabilityManifest, SearchCapability } from '../search-kernel-capability.js'
 import type { CursorCodec, PositionCursor } from '../cursor.js'
 import { createCursorCodec } from '../cursor.js'
 

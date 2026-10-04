@@ -6,7 +6,7 @@ import {
 import type {
   OnethingMusicProcessResult,
   OnethingMusicProcessRunner,
-} from '../types.js'
+} from '../music-types.js'
 
 const ok = (stdout: string): OnethingMusicProcessResult => ({ code: 0, stdout, stderr: '' })
 

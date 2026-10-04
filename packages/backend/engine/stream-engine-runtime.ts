@@ -5,12 +5,12 @@ import type {
 	ChatSession,
 	ProviderConfig,
 } from "@shared/ipc.js";
-import type { ProviderAuthContext } from "@onething/backend/auth/ipc-types";
+import type { ProviderAuthContext } from "@onething/backend/auth/auth-ipc-types";
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
 } from "./product-stream-runtime.js";
-import { Permission } from "@onething/backend/permission/permission";
+import { Permission } from "@onething/backend/permission/permission-with-grant-storage";
 import { Interaction } from '@onething/backend/interaction';
 import * as store from "@onething/backend/session";
 import {
@@ -36,7 +36,7 @@ import { resolvePromptReferences } from "@onething/backend/prompt/stored-prompt-
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream, failAssistantRun, openAssistantRun } from "./stream/stream-executor.js";
-import { executeAgentLoopStreamGeneration } from "./stream/agent-loop-executor.js";
+import { executeAgentLoopStreamGeneration } from "./stream/engine-stream-agent-loop-executor.js";
 import { billTitleUsage } from "@onething/backend/usage/bill-side-line";
 import {
 	compactSessionContext,

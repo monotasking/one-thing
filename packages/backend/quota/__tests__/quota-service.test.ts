@@ -7,7 +7,7 @@ import {
   QuotaService,
   quotaCooldownUntil,
   type QuotaServiceDeps,
-} from '../service.js'
+} from '../quota-service.js'
 
 const T0 = 1_770_000_000_000
 

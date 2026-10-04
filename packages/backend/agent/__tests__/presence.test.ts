@@ -12,7 +12,7 @@ import {
   isEmptyAgentPresence,
   type AgentPresenceSessionLike,
 } from '../presence.js'
-import { userDmRoomId } from '../identity.js'
+import { userDmRoomId } from '../agent-identity.js'
 
 function room(id: string, memberAgentIds: string[], extra: { dm?: boolean } = {}): AgentPresenceSessionLike {
   return { id, kind: 'room', room: { memberAgentIds, ...extra } }

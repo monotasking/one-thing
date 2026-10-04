@@ -13,7 +13,7 @@ import type { PlanContext, Result, RunContext, ToolSpec } from '@onething/backen
 import { writeTextFileAsync } from '@onething/backend/storage/storage-primitives'
 import type { TextFileSnapshot } from '../../tool/file-snapshot.js'
 import { editFailureError, type ExactEdit } from '../../tool/edit-engine.js'
-import { defineInput, listZodIssues } from '../contract.js'
+import { defineInput, listZodIssues } from '../toolkit-contract.js'
 import { computeEdit, type EditComputation, type EditRisk } from './edit-plan.js'
 import {
   MAX_REVALIDATION_ATTEMPTS,

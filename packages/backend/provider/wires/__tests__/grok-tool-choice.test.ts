@@ -18,16 +18,16 @@
  *     (`baseline.request.json` 钉着没有工具也发 `'auto'`)。
  */
 import { describe, expect, it } from "vitest";
-import { getLogger } from "../../../logging/index.js";
-import "../../dialects/index.js";
+import { getLogger } from "../../../logging/logging.js";
+import "../../dialects/provider-dialects.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
 	TurnContext,
 	listDialects,
 	type Dialect,
-} from "../../base/index.js";
-import { responsesToolChoicePolicy } from "../index.js";
+} from "../../base/provider-base.js";
+import { responsesToolChoicePolicy } from "../provider-wires.js";
 import type { AgentTurnRequest } from "@onething/backend/agent-loop/loop-primitives";
 
 const GROK_MODEL = "grok-4.6";

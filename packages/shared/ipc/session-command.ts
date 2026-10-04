@@ -14,8 +14,8 @@
  *
  *   `sessionCommands.emit`(renderer/platform/session-command-client.ts)
  *     → `sessionCommandRouter`(本文件)
- *     → `sessionCommandRpcHandlers.emit`(backend/session/sessions-client-api-commands.ts)
- *     → `emitCoreSessionCommandForIpc`(event/ipc-operations.ts)
+ *     → `sessionCommandRpcHandlers.emit`(backend/session/session-client-api-commands.ts)
+ *     → `emitCoreSessionCommandForIpc`(event/event-ipc-operations.ts)
  *     → `CoreStreamEngine` 的命令派发表(agent-loop/agent-loop-stream-engine.ts)
  *     → `handleSendMessage`
  *

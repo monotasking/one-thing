@@ -24,7 +24,7 @@
  * carries". See docs/design/provider-abstraction.md §7.1.
  */
 
-import { getProviderManifest } from './manifest.js'
+import { getProviderManifest } from './provider-manifest.js'
 import { normalizeOnethingReasoningProfileOverride } from './model-capability.js'
 
 /** Opaque to everything between the settings store and the owning factory. */

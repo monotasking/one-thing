@@ -1,4 +1,4 @@
-import { builtinMusicProviders } from '../music/providers/index.js'
+import { builtinMusicProviders } from '../music/providers/music-providers.js'
 
 export type BashPermissionDecision = 'allow' | 'ask' | 'deny'
 

@@ -5,7 +5,7 @@
  * API docs: https://brave.com/search/api/
  */
 
-import type { SearchProvider, SearchOptions, SearchResponse, SearchResult } from './types.js'
+import type { SearchProvider, SearchOptions, SearchResponse, SearchResult } from './tool-builtin-web-search-providers-types.js'
 import { toJsonObject, type JsonObject, type JsonObjectProperty } from '@shared/json'
 import type { FetchFn } from '../page-fetch.js'
 

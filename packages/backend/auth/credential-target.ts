@@ -31,7 +31,7 @@
  * **别人的 token**。所以 key = providerId × target,见 `credentialRefreshKey`。
  */
 
-import { DEFAULT_SPACE_ID, isValidSpaceId } from '../space/types.js'
+import { DEFAULT_SPACE_ID, isValidSpaceId } from '../space/space-types.js'
 
 export interface OnethingSpaceCredentialTarget {
   kind: 'space'

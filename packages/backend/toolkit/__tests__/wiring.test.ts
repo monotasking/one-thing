@@ -50,7 +50,7 @@ const harness = vi.hoisted(() => {
   }
 })
 
-vi.mock('@onething/backend/tool/access-control/permission-policy', () => ({
+vi.mock('@onething/backend/tool/access-control/tool-access-control-permission-policy', () => ({
   enforcePermissionPolicy: harness.enforce,
 }))
 

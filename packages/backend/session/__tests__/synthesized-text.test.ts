@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * R-b(§13.6)采集点 + 翻译器守卫(§13.6 第 9 条)。
  *
@@ -43,7 +43,7 @@ const { inlineDataUrlsToBlobs, recordSynthesizedAssistantText } = await import('
 const { sessionProjectionOptions, resetSessionProjectionIssueCache } = await import('../projection-blobs.js')
 const { assertContentPartIsCarriable, describeUncarriableContentPart, resetContentPartGuardWarnings } =
   await import('../content-part-guard.js')
-const { setSessionFreezeEnabled } = await import('../freeze.js')
+const { setSessionFreezeEnabled } = await import('../session-freeze.js')
 
 const SESSION = 'imaged'
 

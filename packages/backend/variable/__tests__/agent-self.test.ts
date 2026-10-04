@@ -4,7 +4,7 @@ import {
   formatCoarseAge,
   type AgentSelfStateFacts,
 } from '../providers/agent-self.js'
-import { RESERVED_NAMES } from '../types.js'
+import { RESERVED_NAMES } from '../variable-types.js'
 
 const DAY = 24 * 60 * 60 * 1000
 /** 2026-08-01 10:00 本地时间 —— 天粒度断言要一个明确的"今天"。 */

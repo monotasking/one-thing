@@ -1,4 +1,4 @@
-import { ownsSessionRecord, sessionOwnerOf, type SessionAccessContext, type SessionOwnershipRecord } from './access.js'
+import { ownsSessionRecord, sessionOwnerOf, type SessionAccessContext, type SessionOwnershipRecord } from './session-access.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 
 // Internal provenance only. JSON/RPC cannot mint this key and serialization omits it.

@@ -8,7 +8,7 @@ import {
 	renderGoalBudgetLimitPrompt,
 	renderGoalContinuationNudge,
 } from "@onething/backend/goal";
-import type { OnethingAgentLoopGoalHooks } from "../engine/index.js";
+import type { OnethingAgentLoopGoalHooks } from "../engine/engine.js";
 import { getEventBus } from "@onething/backend/event";
 import {
 	goalLimits,

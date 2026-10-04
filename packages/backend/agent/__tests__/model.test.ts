@@ -16,7 +16,7 @@ import {
   isActiveAgent,
   isColleague,
 } from '../model.js'
-import type { OnethingAgentDefinition } from '../store.js'
+import type { OnethingAgentDefinition } from '../agent-store.js'
 import {
   isActiveAgent as sharedIsActiveAgent,
   isColleague as sharedIsColleague,

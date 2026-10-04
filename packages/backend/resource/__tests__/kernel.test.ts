@@ -10,14 +10,14 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { ToolRunner } from '../../toolkit/runner.js'
-import type { ObservedEvent } from '../../toolkit/events.js'
+import { ToolRunner } from '../../toolkit/toolkit-runner.js'
+import type { ObservedEvent } from '../../toolkit/toolkit-events.js'
 import type { Invocation } from '../../toolkit/run-context.js'
 import type { Observer } from '../../toolkit/ports.js'
 import { combineValidators } from '../../toolkit/ports.js'
 import { allowAuthorizer, passthroughValidator } from '../../toolkit/__tests__/fakes.js'
 import { NO_ORIGIN_SESSION, ResourceKernel } from '../kernel.js'
-import { ResourceRegistry } from '../registry.js'
+import { ResourceRegistry } from '../resource-registry.js'
 import { ResourceInputValidator } from '../validator.js'
 import { textResult } from '../../toolkit/result.js'
 import { DEMO_SCHEME, DemoProvider, demoSpec } from './fakes.js'
@@ -37,7 +37,7 @@ class Trace implements Observer {
 /**
  * K2a —— 与装配层同形:同一个 `ResourceInputValidator` 实例既串进 runner 的
  * `Validator`,又交给内核去认领每个 mount 的入参契约。生产里这两半由
- * `backend/resource/index.ts` 的 `createResourceKernel` 一处扣上。
+ * `backend/resource/resource.ts` 的 `createResourceKernel` 一处扣上。
  */
 function makeKernel(observer: Observer, provider = new DemoProvider()) {
   const resourceValidator = new ResourceInputValidator()

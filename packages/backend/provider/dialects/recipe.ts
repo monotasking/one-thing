@@ -25,7 +25,7 @@ import {
 	type SamplingPolicy,
 	type ThinkingWire,
 	type UsageNormalizer,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import type { AgentProviderRequestDumper } from "../request-dumper.js";
 import {
 	OpenAIChatPartCodec,
@@ -37,7 +37,7 @@ import {
 	type OpenAIChatPartCodecOptions,
 	type OpenAIChatProviderOptionSupport,
 	type OpenAIChatWireValue,
-} from "../wires/index.js";
+} from "../wires/provider-wires.js";
 
 export type FetchFn = typeof globalThis.fetch;
 

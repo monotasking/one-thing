@@ -7,7 +7,7 @@
  *
  * 一份配方服务任意多个 provider id:`providerId` 必须在构造时给。
  */
-import { openAIEffortWire } from "../thinking/index.js";
+import { openAIEffortWire } from "../thinking/provider-thinking.js";
 import { defineOpenAIChatDialect, openAIChatTransportCapabilities } from "./recipe.js";
 
 export const CUSTOM_OPENAI_DIALECT = defineOpenAIChatDialect({

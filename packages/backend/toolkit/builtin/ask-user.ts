@@ -24,7 +24,7 @@ import type {
   InteractionQuestion,
 } from '@shared/interaction/types'
 import type { Preview, Result, RunContext, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
-import { defineInput } from '../contract.js'
+import { defineInput } from '../toolkit-contract.js'
 import { InteractiveTool, type InteractiveRequest } from '../families/interactive.js'
 
 /**

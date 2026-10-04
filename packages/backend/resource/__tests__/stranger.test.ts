@@ -21,7 +21,7 @@
  *    那句注释一样:一个扫了零个文件的门永远是绿的,而一个「扫到什么算什么」的门在
  *    有人把违规代码放进一个新文件时同样是绿的。
  * ② 第二个陌生 scheme:**`session`**。K1 里第一个真 scheme 就是它,而它的自述与
- *    实现分别住在产品层(`session/resource-spec.ts`)与装配层
+ *    实现分别住在产品层(`session/session-resource-spec.ts`)与装配层
  *    (`backend/resource/session-provider.ts`)—— core 里一个字都不该有。
  *    这一条是「§8 演练的答案是能力自己的模块 + 一行注册」在**真**能力上的复核。
  *
@@ -37,9 +37,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ResourceRegistry } from '../registry.js'
-import { describeResourceSpecProblem } from '../contract.js'
-import type { ResourceSpec } from '../spec.js'
+import { ResourceRegistry } from '../resource-registry.js'
+import { describeResourceSpecProblem } from '../resource-contract.js'
+import type { ResourceSpec } from '../resource-spec.js'
 
 /** 一个 core 从没听说过的命名空间。它只活在这只文件里。 */
 const STRANGER_SCHEME = 'mail'
@@ -52,18 +52,18 @@ const FORBIDDEN_SCHEMES = [STRANGER_SCHEME, 'session'] as const
 
 /** 本目录里属于资源内核的那些非测试文件。写死,理由见文件头②。 */
 const KERNEL_FILES = [
-  'contract.ts',
-  'errors.ts',
-  'events.ts',
+  'resource-contract.ts',
+  'resource-errors.ts',
+  'resource-events.ts',
   'kernel.ts',
   'meta-tool.ts',
-  'provider.ts',
+  'resource-provider.ts',
   'read-outcome.ts',
-  'registry.ts',
+  'resource-registry.ts',
   'resource-api.ts',
-  'schema.ts',
-  'spec.ts',
-  'tool.ts',
+  'resource-schema.ts',
+  'resource-spec.ts',
+  'resource-tool.ts',
   'validator.ts',
 ]
 

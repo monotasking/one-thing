@@ -17,8 +17,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Candidate } from '../kernel/index.js'
-import type { OnethingSearchProvidersAdapters, OnethingSearchMessage } from '../providers.js'
+import type { Candidate } from '../kernel/search-kernel.js'
+import type { OnethingSearchProvidersAdapters, OnethingSearchMessage } from '../search-providers.js'
 import {
   createChatsSearchCapability,
   createNotesSearchCapability,
@@ -28,8 +28,8 @@ import {
   type MessageContextPreview,
   type NoteExcerptPreview,
   type SessionOverviewPreview,
-} from '../capabilities/index.js'
-import { createSearchContext, OnethingSearchService } from '../service.js'
+} from '../capabilities/search-capabilities.js'
+import { createSearchContext, OnethingSearchService } from '../search-service.js'
 import { fakeIndexFace } from './fake-index.js'
 
 /** 一间会话四条消息 —— 够 `MESSAGE_CONTEXT_RADIUS = 2` 两头都取满。 */

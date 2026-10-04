@@ -52,8 +52,8 @@
  * 引号 —— 那是买这两条性质的价钱,不是疏忽。
  */
 
-import { RESOURCE_STATE_VARIABLE_PREFIX } from '../types.js'
-import type { ContextVariable, VariableContext, VariableProvider } from '../types.js'
+import { RESOURCE_STATE_VARIABLE_PREFIX } from '../variable-types.js'
+import type { ContextVariable, VariableContext, VariableProvider } from '../variable-types.js'
 
 /**
  * 一份 JSON Schema,**在这只文件里只有一格有意义**:`properties`。
@@ -111,7 +111,7 @@ export interface ResourceStateVariableGateway {
  * 三处妥协各有理由:
  *   · 前缀 —— 见 `RESOURCE_STATE_VARIABLE_PREFIX`(保留名规则的落点);
  *   · 分隔符是 `_` 不是 `.` —— 变量名的语法是 `/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/`
- *     (`../validation.ts`),点号根本进不来。为一格提示词好看去改全仓变量名语法,
+ *     (`../variable-validation.ts`),点号根本进不来。为一格提示词好看去改全仓变量名语法,
  *     换来的是 `variable` 工具的参数、存量 `variables.json` 的键、四种 scope 的
  *     store 全都要跟着重新定义合法性 —— 不成比例。
  *   · scheme 里的连字符折成下划线 —— scheme 语法(`[a-z][a-z0-9-]*`)允许连字符,

@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * **读侧唯一真相**(F4-c c4 改判,§16.24;原 F11 §13.2/§13.4)。
  *

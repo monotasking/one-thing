@@ -13,8 +13,8 @@ import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
 import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/tool-protocol'
 import type { CollabVenueTool } from '../../collab/tool-surface.js'
-import { defineInput } from '../contract.js'
-import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/collab.js'
+import { defineInput } from '../toolkit-contract.js'
+import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/toolkit-families-collab.js'
 
 export interface HistoryEntry {
   /** `<message>` 信封原样,与房间投影同一种形状。 */

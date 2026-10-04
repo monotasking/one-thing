@@ -9,7 +9,7 @@ import {
   getProviderManifestRegistry,
   manifestOfCustomProvider,
   type CustomProviderManifestSource,
-} from '../manifest.js'
+} from '../provider-manifest.js'
 
 export function registerCustomProvidersForTest(
   sources: ReadonlyArray<string | CustomProviderManifestSource>,

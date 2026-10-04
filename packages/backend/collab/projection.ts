@@ -15,7 +15,7 @@ import {
   type CollabAgentLike,
   type CollabMessageLike,
   type CollabReplyToLike,
-} from './types.js'
+} from './collab-types.js'
 
 export interface ProjectedRoomMessage {
   role: 'user' | 'assistant'

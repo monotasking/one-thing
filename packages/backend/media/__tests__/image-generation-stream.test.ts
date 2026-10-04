@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   executeOnethingImageGenerationStream,
-} from '../image-generation.js'
+} from '../media-image-generation.js'
 
 describe('executeOnethingImageGenerationStream', () => {
   it('runs image stream orchestration through the onething runtime entry point', async () => {

@@ -44,7 +44,7 @@ vi.mock('@onething/backend/variable/variable-system', () => ({
   buildStateVariablesPromptText: async () => mocks.board.text,
 }))
 
-const { buildPrompt } = await import('../system-prompt.js')
+const { buildPrompt } = await import('../engine-system-prompt.js')
 const { SessionTurnContext } = await import('../../session-turn-context.js')
 const { buildMessageContent } = await import('../../stream/message-helpers.js')
 

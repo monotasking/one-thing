@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import { getOpenRouterTTSModels, getVoiceInputConfigurationError, streamSynthesizeSpeech, synthesizeSpeech, transcribeUtterance } from '../provider-calls.js'
 
 vi.mock('../../settings/settings-store.js', () => ({

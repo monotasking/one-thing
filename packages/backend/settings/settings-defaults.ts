@@ -16,7 +16,7 @@ import {
   mergeWithDefaults as mergeWithDefaultsWithSeeds,
   NON_VENDOR_PROVIDER_SEEDS,
   type ProviderSeedTable,
-} from './defaults/settings.js'
+} from './defaults/settings-factory-defaults.js'
 import { VENDOR_SEED_ORDER } from '@onething/backend/provider'
 
 function buildProviderSeedTable(): ProviderSeedTable {

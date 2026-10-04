@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * **按节点缓存的物化视图 ≡ 每次重算**(§17.7.1 批 1)。
  *

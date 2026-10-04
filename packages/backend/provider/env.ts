@@ -1,4 +1,4 @@
-import { getProviderManifest } from './manifest.js'
+import { getProviderManifest } from './provider-manifest.js'
 
 export interface OnethingProviderApiKeyConfig {
   apiKey?: string

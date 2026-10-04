@@ -12,7 +12,7 @@ import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
 import type { StreamContext } from '@onething/backend/engine'
 import type { StreamCompleteData, StreamErrorData } from '@shared/events/session-events.js'
-import type { IPCEmitter } from '../agent-loop/index.js'
+import type { IPCEmitter } from '../agent-loop/agent-loop.js'
 import {
   createCoreEventOnlyEmitter,
   type CoreEventOnlyEventBusLike,
@@ -22,7 +22,7 @@ import {
   type CoreEventOnlyStreamChunk,
   type CreateCoreEventOnlyEmitterOptions,
 } from '@onething/backend/agent-loop'
-import { getEventBus, getStreamChannel } from './index.js'
+import { getEventBus, getStreamChannel } from './event.js'
 import { claimDeltaStamp } from './delta-stamp.js'
 import { writeSessionEvent } from '@onething/backend/session'
 import { currentSessionRunId } from '@onething/backend/session'

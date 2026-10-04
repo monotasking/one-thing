@@ -11,7 +11,7 @@ import {
   COLLAB_SAY_REFUSED_NOT_MEMBER,
 } from '../../say.js'
 import { buildCollabChainHoldLine } from '../../system-lines.js'
-import type { CollabAgentLike, CollabMessageLike } from '../../types.js'
+import type { CollabAgentLike, CollabMessageLike } from '../../collab-types.js'
 import { collabFloorSeats, createCollabFreeFloorPolicy, orderCollabHands } from '../floor-policy.js'
 import { collabRefereeVerdictVerb } from '../referee-rules.js'
 import {
@@ -21,7 +21,7 @@ import {
   collabActorRef,
   collabRoomPosted,
   type CollabActorVerb,
-} from '../protocol.js'
+} from '../collab-actors-protocol.js'
 import {
   applyCollabRoomPhaseChange,
   applyCollabRoomPosted,

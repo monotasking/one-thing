@@ -26,9 +26,9 @@
  * core reducer,而 core 是零依赖层,拿不到这个开关。
  */
 
-import { isEphemeralContentPart } from './events/index.js'
+import { isEphemeralContentPart } from './events/session-event-vocabulary.js'
 
-import { isSessionFreezeEnabled } from './freeze.js'
+import { isSessionFreezeEnabled } from './session-freeze.js'
 import { getLogger } from '@onething/backend/logging/configure-logging'
 
 const log = getLogger('sessions.events')

@@ -30,7 +30,7 @@
  * 部,前缀单调增长,缓存照旧命中。
  */
 import { isCollabRoomFact } from './classify.js'
-import { isCollabDriveMessage, type CollabMessageLike } from './types.js'
+import { isCollabDriveMessage, type CollabMessageLike } from './collab-types.js'
 
 /** 一条未读消息与「我」的关系 —— 判定层的结构化抓手,不让模型纯靠语义猜。 */
 export type CollabUnreadRelation = 'mentions-you' | 'quotes-you' | 'bystander'

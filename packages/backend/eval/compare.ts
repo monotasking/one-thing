@@ -9,7 +9,7 @@
  */
 
 import fs from "node:fs";
-import type { EvalRunResultEntry } from "./runner.js";
+import type { EvalRunResultEntry } from "./eval-runner.js";
 
 /** Score at or above which a case counts as stably passing (4/5 with k=5). */
 export const STABLE_PASS = 0.8;

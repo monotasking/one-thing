@@ -39,7 +39,7 @@ const run = (input: unknown, toolName = TOOL) =>
  * 理由。替身覆盖的正是这里要证的东西:**校验口确实被接上了、失败确实转成 block**;
  * "真 zod 会怎么判"由产品层那份契约测试负责。
  */
-vi.mock('../../toolkit/index.js', () => ({
+vi.mock('../../toolkit/toolkit.js', () => ({
   getToolkitCatalog: () => ({
     get: (id: string) => (id === TOOL ? { spec: { input: { type: 'object' } } } : undefined),
   }),

@@ -6,7 +6,7 @@
  * 不是基类里的一段 if。P0a 只落一个「什么都不打」,它是今天的行为。
  */
 import type { RequestBodyBuilder } from "./request-body-builder.js";
-import type { TurnContext } from "./turn-context.js";
+import type { TurnContext } from "./provider-base-turn-context.js";
 
 export interface CachePolicy {
 	annotate(turn: TurnContext, builder: RequestBodyBuilder): void;

@@ -40,7 +40,7 @@
  */
 
 import fs from 'node:fs'
-import { scanEventsBackward, type SessionEventByteReader } from './storage/index.js'
+import { scanEventsBackward, type SessionEventByteReader } from './storage/session-storage.js'
 import { CORE_INTERRUPTED_TOOL_ERROR } from '@shared/session/interrupted'
 import { type SessionLogEventRecord } from '@shared/session/events/types'
 import type { SessionEventWriter } from './event-writer.js'

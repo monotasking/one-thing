@@ -40,7 +40,7 @@ import {
   isCollabSchedulerLogType,
   parseCollabSchedulerLogLine,
   type CollabSchedulerLogRow,
-} from '../index.js'
+} from '../collab-actors.js'
 
 /** 每一类各造一行 —— 表的长度与它相等,少一类就红。 */
 const SAMPLES: CollabSchedulerLogRow[] = [

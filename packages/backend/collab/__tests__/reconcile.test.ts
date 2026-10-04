@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { COLLAB_CONSUMED_SCAN_TAIL, collectConsumedSourceIds } from '../reconcile.js'
-import { COLLAB_MESSAGE_SOURCE, type CollabMessageLike } from '../types.js'
+import { COLLAB_MESSAGE_SOURCE, type CollabMessageLike } from '../collab-types.js'
 
 function drive(sourceId?: string, overrides: Partial<CollabMessageLike> = {}): CollabMessageLike {
   return {

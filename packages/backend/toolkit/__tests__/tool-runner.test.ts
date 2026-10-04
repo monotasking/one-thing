@@ -5,7 +5,7 @@ import { Decision, Intent } from '../intent.js'
 import { Outcome } from '../outcome.js'
 import { withUserToolSettings } from '../ports.js'
 import { textResult } from '../result.js'
-import { assertWithinDeclaredEffects, EffectViolationError, ToolRunner } from '../runner.js'
+import { assertWithinDeclaredEffects, EffectViolationError, ToolRunner } from '../toolkit-runner.js'
 import {
   allowAuthorizer,
   askAwareAuthorizer,

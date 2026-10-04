@@ -29,7 +29,7 @@ import {
   userMarkersFromProjected,
   type SessionEventByteReader,
   type SessionEventJumpIndex,
-} from './storage/index.js'
+} from './storage/session-storage.js'
 import {
   materializeNode,
   materializeChatMessages,

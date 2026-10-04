@@ -14,7 +14,7 @@ import {
   executeCoreTimeTool,
   type CoreTimeArgs,
 } from '../../tool/builtin/time-runtime.js'
-import { defineInput } from '../contract.js'
+import { defineInput } from '../toolkit-contract.js'
 import { ReadOnlyTool } from '../families/read-only.js'
 
 export const TimeInputSchema = z.object({

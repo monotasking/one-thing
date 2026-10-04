@@ -66,7 +66,7 @@
  * 值是 `'openai-effort'` —— 两边得对得上。与 `grok-responses-reasoning.ts` 用
  * `id = 'grok-effort'` 是同一个理由(文件名说线协议,id 说账本)。
  */
-import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, ThinkingWire, TurnContext } from "../base/provider-base.js";
 import {
 	clampOpenAIReasoningEffort,
 	openAIAcceptsNoneEffort,

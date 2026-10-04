@@ -20,13 +20,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { escapeCollabPromptText } from '../index.js'
+import { escapeCollabPromptText } from '../collab.js'
 import {
   buildCollabNotebookBlock,
   COLLAB_NOTEBOOK_ENTRY_MAX_CHARS,
   COLLAB_NOTEBOOK_INJECT_MAX_CHARS,
   formatCollabNotebookEntry,
-} from './index.js'
+} from './collab-actors.js'
 
 import { collabAgentNotebookPath } from './agent-mailbox.js'
 

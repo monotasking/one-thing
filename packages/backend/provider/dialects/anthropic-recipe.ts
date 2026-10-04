@@ -19,7 +19,7 @@ import {
 	type ModelProfileResolver,
 	type PartCodec,
 	type ProviderContext,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import type { AgentProviderRequestDumper } from "../request-dumper.js";
 import {
 	ANTHROPIC_THINKING_WIRES,
@@ -28,8 +28,8 @@ import {
 	anthropicLogger,
 	type AnthropicDialect,
 	type AnthropicWireValue,
-} from "../wires/index.js";
-import type { DialectEndpoint } from '../base/dialect.js'
+} from "../wires/provider-wires.js";
+import type { DialectEndpoint } from '../base/provider-base-dialect.js'
 
 export type FetchFn = typeof globalThis.fetch;
 

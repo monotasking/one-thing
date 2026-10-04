@@ -204,7 +204,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
   })
 
   it('ui_change 不弹卡:同一条 do 经真 PermissionAuthorizer 走完,没有一张待答的权限卡', async () => {
-    const { Permission } = await import('@onething/backend/permission/permission')
+    const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
     const { seen, stop } = watchCommands(backend)
 
     // 兜底的掐:`ui_change` 万一进了 ask 那一支,`Permission.ask` 会一直等人回答,
@@ -306,7 +306,7 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
    * `catalog.unregister`,第二句断言红 —— 目录里会留着一只调不动的 `workbench`。
    */
   it('K3-a 露面:mountShell 之后 workbench 在工具目录里,unmountShell 之后不在', async () => {
-    const { getToolkitCatalog } = await import('@onething/backend/toolkit/host')
+    const { getToolkitCatalog } = await import('@onething/backend/toolkit/toolkit-host')
     const catalog = getToolkitCatalog()!
     // 上一条用例把这扇壳摘掉了 —— 所以此刻它本来就不该在目录里。
     expect(catalog.has('workbench')).toBe(false)

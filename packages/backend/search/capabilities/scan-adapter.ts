@@ -43,7 +43,7 @@ import {
   type SearchContext,
   type SearchPage,
   type SearchQuery,
-} from '../kernel/index.js'
+} from '../kernel/search-kernel.js'
 
 /**
  * 服务层流动的那条结果 —— 今天的 `OnethingSearchResult` 加上 §8 新添的两格。

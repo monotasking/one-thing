@@ -1,6 +1,6 @@
 import type { EventSpec } from '@onething/backend/resource/resource-api'
-import type { AmbientSource, AmbientTimers } from './source.js'
-import { SYSTEM_TIMERS } from './source.js'
+import type { AmbientSource, AmbientTimers } from './ambient-source.js'
+import { SYSTEM_TIMERS } from './ambient-source.js'
 
 /** 一天分几段。边界是本地时间的整点。 */
 export type DayPart = 'morning' | 'noon' | 'afternoon' | 'evening' | 'lateNight'

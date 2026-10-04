@@ -7,7 +7,7 @@
  * conclusion, not the first impression (docs/design/session-toc.md §4).
  */
 import type { TocDecision } from './decide.js'
-import type { SessionSegment, SessionSegmentFile } from './types.js'
+import type { SessionSegment, SessionSegmentFile } from './toc-types.js'
 
 export interface ApplyTurnInput {
   decision: TocDecision

@@ -4,7 +4,7 @@
  *
  * 逐字复刻 `openai-compatible.ts` `applyReasoningParams` 的 `'thinking-type'` 分支。
  */
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { OpenAIChatThinkingWire } from "./openai-chat-thinking-wire.js";
 
 export class ThinkingTypeWire extends OpenAIChatThinkingWire {

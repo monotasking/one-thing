@@ -19,7 +19,7 @@
  *
  * ### 老 reducer 去哪儿了(§17.5 #2 / §17.7.1 批 3)
  *
- * `session/commands.ts` 的 `applySessionCommand` 与它的 7 条分支、
+ * `session/session-message-shapes.ts` 的 `applySessionCommand` 与它的 7 条分支、
  * `SessionCommand` 联合、`adoptSessionCommandResult`、`withSessionCommandPin`、
  * 三口 `get/has/findMessageFromStore`、`OnethingSessionMessageRuntime` 的 9 个
  * 命令口 —— **全部删除**。它最后的身份("会话级派生的算法")随批 2 的折叠器上线
@@ -60,7 +60,7 @@ import type { sessionReads } from './reads.js'
 import { getCurrentBackend } from '@onething/backend/current.js'
 
 /**
- * `patchMessage` 的落盘档提示(从 `session/commands.ts` 搬过来 —— 批 3 之后
+ * `patchMessage` 的落盘档提示(从 `session/session-message-shapes.ts` 搬过来 —— 批 3 之后
  * 写档是**写门**的事,不再是归约器的返回值)。
  *
  * `'stream'` = 逐 token 的高频路径,走 5s 的 lazy 档;`'settle'` = 收尾/元数据,
@@ -71,7 +71,7 @@ export type SessionCommandWriteHint = 'stream' | 'settle'
 /**
  * 不给 hint 时按 patch 的键推断:键集合完全落在这四格里就算 stream 档。
  *
- * **逐字复刻**归约器退役前的 `resolveLazy`(`session/commands.ts`)——
+ * **逐字复刻**归约器退役前的 `resolveLazy`(`session/session-message-shapes.ts`)——
  * 这一格是可感知的(写盘节流窗口 5s vs 300ms),搬家不许顺手改口径。
  */
 const LEGACY_LAZY_PATCH_KEYS = new Set(['content', 'reasoning', 'contentParts', 'thinkingTime'])

@@ -29,7 +29,7 @@
  * (声明门、熔断、超时、主体)分别在 `api-builder.ts` 与装配层 —— 这里只有词汇。
  */
 
-import type { ResourceEvent } from '@onething/backend/resource/events'
+import type { ResourceEvent } from '@onething/backend/resource/resource-events'
 import type { ReadOutcome } from '@onething/backend/resource/read-outcome'
 import type { Outcome } from '@onething/backend/toolkit/outcome'
 

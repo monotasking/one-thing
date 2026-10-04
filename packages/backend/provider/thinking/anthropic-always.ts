@@ -7,7 +7,7 @@
  * `onethingClaudeModelFamily(model).alwaysThinking`),基类按 id 找。
  * wire 层那份重复的家族分支随之删除。
  */
-import type { RequestBodyBuilder, TurnContext } from "../base/index.js";
+import type { RequestBodyBuilder, TurnContext } from "../base/provider-base.js";
 import { AnthropicThinkingWire } from "./anthropic-effort.js";
 
 export const ANTHROPIC_ALWAYS_THINKING_WIRE_ID = "anthropic-always";

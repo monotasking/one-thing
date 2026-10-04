@@ -18,7 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { MessageChannel } from 'node:worker_threads'
 
-import type { DocumentFeed, DocumentFilter } from '../../kernel/index.js'
+import type { DocumentFeed, DocumentFilter } from '../../kernel/search-kernel.js'
 import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types'
 import { encodeSessionLogEventLine } from '@onething/backend/session'
 

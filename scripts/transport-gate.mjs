@@ -424,7 +424,7 @@ export const OTHER = { NOT_COUNTED: 'x:y' }
     { 'forks:packages/backend/voice/voice-client-api.ts': 1 },
     {
       'forks:packages/backend/voice/voice-client-api.ts': 1,
-      'forks:packages/backend/agent/agents-client-api.ts': 1,
+      'forks:packages/backend/agent/agent-client-api.ts': 1,
     },
   )
   expect('基线外域文件应算 regression',

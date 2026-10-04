@@ -47,18 +47,18 @@ import {
   type SearchContext,
   type SearchPage,
   type SearchQuery,
-} from '../kernel/index.js'
-import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../note/types.js'
-import { createSqliteLexicalRetriever } from '../index/service.js'
+} from '../kernel/search-kernel.js'
+import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../note/note-types.js'
+import { createSqliteLexicalRetriever } from '../index/search-index-service.js'
 import { vaultRelativeKey } from '../index/vault-feed.js'
-import type { OnethingSearchProvidersAdapters } from '../providers.js'
+import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
 import {
   queryRangesOf,
   snippetOf,
   snippetWindowOf,
   trackIndexGeneration,
   type SearchIndexQueryFace,
-} from './indexed.js'
+} from './search-capabilities-indexed.js'
 import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
 import { normalizeSearchQuery } from './text-match.js'
 import {

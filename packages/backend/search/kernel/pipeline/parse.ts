@@ -14,7 +14,7 @@
 
 import type { FacetFilter, QueryNode, SearchQuery, TextRange } from '../candidate.js'
 import { ALL_CAPABILITIES, DEFAULT_INTENT } from '../candidate.js'
-import type { CapabilityManifest } from '../capability.js'
+import type { CapabilityManifest } from '../search-kernel-capability.js'
 import type { Normalizer } from '../analyzer/normalize.js'
 import { DEFAULT_NORMALIZERS, composeNormalizers, mapRangeToSource } from '../analyzer/normalize.js'
 

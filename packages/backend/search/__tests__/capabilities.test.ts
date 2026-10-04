@@ -14,10 +14,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ALL_CAPABILITIES, createCapabilityRegistry } from '../kernel/index.js'
-import type { IndexedDoc, SearchCapability, SearchQuery } from '../kernel/index.js'
-import type { OnethingSearchProvidersAdapters } from '../providers.js'
-import { FolderVault } from '../../note/folder/vault.js'
+import { ALL_CAPABILITIES, createCapabilityRegistry } from '../kernel/search-kernel.js'
+import type { IndexedDoc, SearchCapability, SearchQuery } from '../kernel/search-kernel.js'
+import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
+import { FolderVault } from '../../note/folder/note-folder-vault.js'
 import {
   chatsSearchManifest,
   createBuiltinSearchCapabilities,
@@ -35,8 +35,8 @@ import {
   messagesSearchManifest,
   scanBackedCapability,
   searchResultOf,
-} from '../capabilities/index.js'
-import { createSearchContext, OnethingSearchService } from '../service.js'
+} from '../capabilities/search-capabilities.js'
+import { createSearchContext, OnethingSearchService } from '../search-service.js'
 import { fakeIndexFace } from './fake-index.js'
 
 function makeAdapters(): OnethingSearchProvidersAdapters {

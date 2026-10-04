@@ -37,8 +37,8 @@ import { EventBus } from '@onething/backend/event/session-event-bus'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import { encodeSessionLogEventLine } from '@onething/backend/session'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
-import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '../index/index.js'
-import type { IndexEndpoint } from '../index/index.js'
+import { VaultFeed, vaultFeedIdOf, LedgerFeed, LEDGER_FEED_ID, IndexProjector, IndexWorkerCore, SqliteIndex, defaultDocumentFilters } from '../index/search-index.js'
+import type { IndexEndpoint } from '../index/search-index.js'
 import type { IndexWorkerData } from '../index/worker-data.js'
 import type { IndexWorkerHandle } from '../index/worker-host.js'
 import type { OnethingSearchProvidersAdapters } from '@onething/backend/search'
@@ -48,7 +48,7 @@ import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '@onething/backend/settings/events'
+} from '@onething/backend/settings/settings-events'
 import { DEFAULT_SEMANTIC_MODEL_ID, type AppSettings } from '@shared/ipc/settings'
 
 /** 总线:装配从 `getEventBus()` 拿,用例给一只真的 `EventBus`。 */
@@ -108,7 +108,7 @@ const stubAdapters: OnethingSearchProvidersAdapters = {
   getNoteVaults: () => [primaryVault, noSnapshotVault],
   getPrimaryNoteVault: () => primaryVault,
 }
-vi.mock('../adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
+vi.mock('../search-adapters.js', () => ({ createAppSearchProvidersAdapters: () => stubAdapters }))
 
 const { createAppSearchService } = await import('../service-setup.js')
 

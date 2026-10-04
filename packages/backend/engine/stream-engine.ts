@@ -23,19 +23,19 @@ import type {
 	BindableOnethingStreamSender,
 	OnethingStreamSender,
 	OnethingStreamSenderPayload,
-} from "../agent-loop/index.js";
-import { isSystemInternalSource } from "../agent-loop/index.js";
+} from "../agent-loop/agent-loop.js";
+import { isSystemInternalSource } from "../agent-loop/agent-loop.js";
 import { isTrustedCollabDrive } from "../collab/drive-guard.js";
 import { runPluginInputIntercept } from "../plugin/input-intercept-bound.js";
-import { mintTurnPrincipal } from "../agent-loop/index.js";
-import { composeAgentPermissionMode } from "../agent/index.js";
-import { getLogger } from "../logging/index.js";
+import { mintTurnPrincipal } from "../agent-loop/agent-loop.js";
+import { composeAgentPermissionMode } from "../agent/agent.js";
+import { getLogger } from "../logging/logging.js";
 import type {
 	EngineMessageOrigin,
 	EngineOriginTransport,
 	EngineRoutedSession,
 	ProductStreamEnginePorts,
-} from "../agent-loop/index.js";
+} from "../agent-loop/agent-loop.js";
 
 import type { EventBus } from "../event/session-event-bus.js";
 

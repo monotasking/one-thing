@@ -1,4 +1,4 @@
-import { VariableError, type VariableType } from './types.js'
+import { VariableError, type VariableType } from './variable-types.js'
 
 /**
  * Typed value handling for the custom-variable stores.

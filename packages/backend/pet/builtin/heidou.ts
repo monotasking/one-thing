@@ -1,4 +1,4 @@
-import type { PetManifest } from '../manifest.js'
+import type { PetManifest } from '../pet-manifest.js'
 
 /**
  * **黑豆** —— 第一只宠物(样例「黑豆电台」,2026-09-17;正本 §2.1 那一行)。

@@ -40,7 +40,7 @@
  * `saveSettings` 的副作用链里有两件只有 Electron 桌面做得到(给 session 与内嵌
  * 浏览器分区套代理、重注册全局快捷键),`getSystemTheme` 要的
  * 「系统当前是不是深色」是第三件。三件都走
- * `settings/host-ports.ts` 的 `configureSettingsHost`,未注入即安静跳过 ——
+ * `settings/settings-host-ports.ts` 的 `configureSettingsHost`,未注入即安静跳过 ——
  * 于是 server / CLI 上这条链自然退化成「存盘 + 刷 provider 缓存 + 更新 MCP/ACP」,
  * 与迁移前它们根本没有这条通道等价。
  *
@@ -51,7 +51,7 @@
  * ## 一条推送走注入端口
  *
  * `SETTINGS_CHANGED` 留在原地(router 没有推送面),改走
- * `settings/events.ts` 的 `configureSettingsEventBroadcaster`;**排除发起窗
+ * `settings/settings-events.ts` 的 `configureSettingsEventBroadcaster`;**排除发起窗
  * 这件事一字未丢** —— 它现在靠 `RpcDispatchContext.callerId`(宿主从
  * `event.sender.id` 铸进来的那一格)。
  * `SYSTEM_THEME_CHANGED` 连端口都不用:它的事件源是系统主题的 updated 事件,
@@ -77,18 +77,18 @@ import { invalidateProviderCache } from '@onething/backend/provider'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { getGatewayHost } from '@onething/backend/gateway/lifecycle-port'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
-import { broadcastSettingsChanged } from '@onething/backend/settings/events'
+import { broadcastSettingsChanged } from '@onething/backend/settings/settings-events'
 import {
   applyHostNetworkProxySettings,
   hostShouldUseDarkColors,
   registerHostGlobalWindowShortcuts,
-} from '@onething/backend/settings/host-ports'
-import { testOnethingProxy } from '@onething/backend/settings/proxy'
-import { getVoiceServiceSafe } from '@onething/backend/voice/service'
+} from '@onething/backend/settings/settings-host-ports'
+import { testOnethingProxy } from '@onething/backend/settings/settings-proxy'
+import { getVoiceServiceSafe } from '@onething/backend/voice/voice-service'
 import { startTodoPlanWatcher } from '@onething/backend/todo-plan/todo-plan-service'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { OnethingSettingsIpcLogger } from '@onething/backend/settings/ipc-operations'
+import type { OnethingSettingsIpcLogger } from '@onething/backend/settings/settings-ipc-operations'
 import type { SaveOnethingSettingsWithRuntimeEffectsOptions } from '@onething/backend/settings/settings-save'
 import { settingsRouter } from '@shared/ipc/settings.js'
 

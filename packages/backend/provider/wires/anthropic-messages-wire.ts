@@ -24,7 +24,7 @@ import type {
 	AgentJsonValue,
 	AgentProviderData,
 } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../logging/index.js";
+import { getLogger } from "../../logging/logging.js";
 import { onethingClaudeModelFamily } from "../model-families/claude.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";
@@ -32,7 +32,7 @@ import {
 	anthropicAdaptiveThinkingWire,
 	anthropicAlwaysThinkingWire,
 	anthropicBudgetThinkingWire,
-} from "../thinking/index.js";
+} from "../thinking/provider-thinking.js";
 import {
 	HttpAgentProvider,
 	type CachePolicy,
@@ -47,7 +47,7 @@ import {
 	type ToolChoicePolicy,
 	type TurnContext,
 	type UsageNormalizer,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import { anthropicUsage, type AnthropicUsage } from "./anthropic-usage.js";
 import { AnthropicErrorMapper } from "./anthropic-errors.js";
 import {

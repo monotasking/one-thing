@@ -14,12 +14,12 @@ import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
 	TurnContext,
-} from "../../base/index.js";
+} from "../../base/provider-base.js";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
 } from "../../factory.js";
-import { getLogger } from "../../../logging/index.js";
+import { getLogger } from "../../../logging/logging.js";
 import type { AgentProviderRequestDumper } from "../../request-dumper.js";
 import {
 	drain,
@@ -27,7 +27,7 @@ import {
 	SYSTEM_MESSAGE,
 	USER_MESSAGE,
 } from "../../__tests__/wire-snapshots/snapshot-harness.js";
-import { kimiSamplingPolicy } from "../../vendors/kimi/dialect.js";
+import { kimiSamplingPolicy } from "../../vendors/kimi/kimi-dialect.js";
 
 const SSE = [
 	'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',

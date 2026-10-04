@@ -18,13 +18,13 @@ import {
   getSupportedAgentProviderRuntimeIds,
   isAgentProviderRuntimeSupported,
 } from '../factory.js'
-import { listDialects } from '../base/dialect.js'
+import { listDialects } from '../base/provider-base-dialect.js'
 import { thinkingWires } from '../base/thinking-wire.js'
-import '../thinking/index.js'
+import '../thinking/provider-thinking.js'
 import { providerDialFieldsOf } from '../../credentials/credentials-provider-rules.js'
 import { providerInfoOfManifest } from '../builtin-providers.js'
 import { getOnethingProviderApiKeyEnvCandidates } from '../env.js'
-import { getProviderManifestRegistry } from '../manifest.js'
+import { getProviderManifestRegistry } from '../provider-manifest.js'
 import {
   resolveOnethingModelCapabilities,
   resolveOnethingProviderKind,
@@ -36,8 +36,8 @@ import {
   buildOnethingRequestProviderOptionsBag,
   pickOnethingProviderOptions,
 } from '../provider-options.js'
-import { listQuotaSourceIds } from '../quota/registry.js'
-import { resolveOnethingProviderBaseUrl } from '../endpoint.js'
+import { listQuotaSourceIds } from '../quota/provider-quota-registry.js'
+import { resolveOnethingProviderBaseUrl } from '../provider-endpoint.js'
 
 function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep)

@@ -8,9 +8,9 @@ export type {
   ToolPresentationKind,
   ToolPromptContribution,
   ToolSpec,
-} from './spec.js'
+} from './toolkit-spec.js'
 
-export { Tool } from './tool.js'
+export { Tool } from './toolkit-tool.js'
 
 export { Decision, Intent } from './intent.js'
 export type { IntentInit, Preview } from './intent.js'
@@ -25,7 +25,7 @@ export {
 export { emptyResult, resultToText, textResult } from './result.js'
 export type { Result, ResultPart } from './result.js'
 
-export { isLifecycleEvent, LIFECYCLE_EVENT_TYPE } from './events.js'
+export { isLifecycleEvent, LIFECYCLE_EVENT_TYPE } from './toolkit-events.js'
 export type {
   Emit,
   ObservedEvent,
@@ -33,7 +33,7 @@ export type {
   ToolEvent,
   ToolEventType,
   ToolLifecycleEvent,
-} from './events.js'
+} from './toolkit-events.js'
 
 export {
   AbortScope,
@@ -80,5 +80,5 @@ export type {
   Validator,
 } from './ports.js'
 
-export { assertWithinDeclaredEffects, EffectViolationError, ToolRunner } from './runner.js'
-export type { ToolRunnerPorts } from './runner.js'
+export { assertWithinDeclaredEffects, EffectViolationError, ToolRunner } from './toolkit-runner.js'
+export type { ToolRunnerPorts } from './toolkit-runner.js'

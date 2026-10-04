@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * **F4-c c3-a 合同:逻辑 delta 盖章即折**
  * (`docs/design/session-event-sourcing-2026-08.md` §16.23)。

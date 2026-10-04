@@ -9,7 +9,7 @@
  * ones that DO get the assistant's thinking sent along. The two thresholds are
  * a matched pair — moving one without the other reopens the gap.
  */
-import type { SessionSegmentKind } from './types.js'
+import type { SessionSegmentKind } from './toc-types.js'
 
 export const DEFAULT_TRIVIAL_USER_CHARS = 24
 

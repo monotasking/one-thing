@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CLI_FIXTURES, createFakeRunner, createProbe } from '../../__tests__/fixtures.js'
 import { ObsidianCli, ObsidianCliError, parseEvalJson, parseEvalText, resolveObsidianExecutable } from '../cli.js'
-import { NoteVaultUnavailable } from '../../types.js'
+import { NoteVaultUnavailable } from '../../note-types.js'
 import { vaultConfigScript } from '../scripts.js'
 
 function cli(options: { alive?: boolean | null; outputs?: string[]; timeoutOnCall?: number } = {}) {

@@ -23,11 +23,11 @@ import type {
   SearchQuery,
 } from '../candidate.js'
 import { ALL_CAPABILITIES } from '../candidate.js'
-import type { CapabilityRegistry, SearchCapability } from '../capability.js'
-import { capabilityServesSurface } from '../capability.js'
-import type { Budget, BudgetPolicy } from './budget.js'
-import { budgetPolicy as defaultBudgetPolicy } from './budget.js'
-import { plan } from './plan.js'
+import type { CapabilityRegistry, SearchCapability } from '../search-kernel-capability.js'
+import { capabilityServesSurface } from '../search-kernel-capability.js'
+import type { Budget, BudgetPolicy } from './search-kernel-pipeline-budget.js'
+import { budgetPolicy as defaultBudgetPolicy } from './search-kernel-pipeline-budget.js'
+import { plan } from './search-kernel-pipeline-plan.js'
 import type { AuthorizationWarn } from './authorize.js'
 import { applyVisibility, assertAuthorized, visibilityScopeOf } from './authorize.js'
 

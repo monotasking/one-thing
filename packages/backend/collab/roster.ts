@@ -1,7 +1,7 @@
 import { agentTombstoneLabel } from "../agent/model.js";
 import { buildCollabCommonRules } from "./agent-rules.js";
 import { formatCollabAgentHandle } from "./handles.js";
-import type { CollabAgentLike } from "./types.js";
+import type { CollabAgentLike } from "./collab-types.js";
 
 /**
  * 变量板的一句事实(agent-self-state-variables.md §4.3)。

@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { OnethingUsageLedger } from '../ledger.js'
-import { getOnethingSessionUsageTotal } from '../summary.js'
+import { OnethingUsageLedger } from '../usage-ledger.js'
+import { getOnethingSessionUsageTotal } from '../usage-summary.js'
 
 describe('getOnethingSessionUsageTotal', () => {
   let dir: string

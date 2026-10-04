@@ -60,7 +60,7 @@ vi.mock('@onething/backend/toc', async (importOriginal) => {
 })
 
 const { recordTocTurn } = await import('../toc-recorder.js')
-const { installSessionLayerForTest } = await import('../../session/testing/session-layer.js')
+const { installSessionLayerForTest } = await import('../../session/testing/session-testing-layer.js')
 const { readSessionLogEventsSync } = await import('@onething/backend/session')
 const realAgentLoop = await vi.importActual<typeof import('@onething/backend/agent-loop/loop-primitives')>('@onething/backend/agent-loop/loop-primitives')
 let fixture: ReturnType<typeof installSessionLayerForTest>

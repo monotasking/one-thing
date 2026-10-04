@@ -13,9 +13,9 @@ import {
   formatCollabActorReplay,
   parseRoomTranscriptJsonl,
   type CollabActorReplayTranscript,
-} from '../index.js'
+} from '../collab-actors.js'
 
-vi.mock('../../../storage/index.js', () => ({ getOnethingStorePath: () => '/tmp/onething-agent-duet-test' }))
+vi.mock('../../../storage/storage.js', () => ({ getOnethingStorePath: () => '/tmp/onething-agent-duet-test' }))
 
 const { replayCollabDuet } = await import('../agent-replay.js')
 type CollabDuetReplayResult = import('../agent-replay.js').CollabDuetReplayResult

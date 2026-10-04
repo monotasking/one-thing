@@ -41,14 +41,14 @@ export {
 } from '@onething/backend/collab/actors/scheduler-log'
 /** 停止按钮那扇门(D6-b 起只有 v3 一条实现)—— 见 `actors/stop-door.ts`。 */
 export { abortCollabRoomTurnForStop } from './actors/stop-door.js'
-export { preflightCollabRoomStop } from './actors/runtime.js'
+export { preflightCollabRoomStop } from './actors/collab-actors-runtime.js'
 /** Collab v3 运行时(D6-a):`createOnethingBackend` 的协作装配点。 */
 export {
   initializeCollabV3Runtime,
   isCollabV3RuntimeRunning,
   shutdownCollabV3Runtime,
   type CollabV3RuntimeOptions,
-} from './actors/runtime.js'
+} from './actors/collab-actors-runtime.js'
 /** 建群房的唯一入口(架构收敛 C3):校验 + 落库,壳层不留业务规则。 */
 export {
   ensureCollabGroupRoom,
@@ -75,7 +75,7 @@ export { ensureAgentDmRoom } from './agent-dm-room.js'
 export {
   hasActiveCollabV3Work as hasActiveCollabWork,
   stopCollabV3TaskWork as stopCollabTaskWork,
-} from './actors/runtime.js'
+} from './actors/collab-actors-runtime.js'
 /**
  * 人级停止(E5)—— 三级停止的第三级,collab 域的 `roomRevokeLease` 吃这个名字。
  *
@@ -83,7 +83,7 @@ export {
  * 这一条直接对外:它没有"不是 v3 房就回落 v2"的第二条路可走 —— v2 从来没有过
  * 人级停止,回落的目的地是空的。
  */
-export { revokeCollabV3RoomLease as revokeCollabRoomLease } from './actors/runtime.js'
+export { revokeCollabV3RoomLease as revokeCollabRoomLease } from './actors/collab-actors-runtime.js'
 export { attachCollabMentions } from './mention-stamping.js'
 export { attachCollabReplyTo } from './reply-quote-attach.js'
 export {

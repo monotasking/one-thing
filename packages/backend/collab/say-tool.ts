@@ -45,11 +45,11 @@ import { registerRetiredAgentToolName } from '@onething/backend/agent-loop/loop-
 import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { sessionAccess, sessionCommands, sessionReads } from '@onething/backend/session'
-import { fixedExecutionContext } from '../session/index.js'
+import { fixedExecutionContext } from '../session/session.js'
 import { getEventBus } from '@onething/backend/event'
 import { findAgent } from '@onething/backend/agent/agent-store-access'
 import { collabRoomMembers } from './members.js'
-import { isRoomOverBudget } from './budget.js'
+import { isRoomOverBudget } from './collab-budget.js'
 import { buildCollabIdentityDirectory } from './identity-directory.js'
 import { resolveUserIdentity } from './user-identity.js'
 import { collabLinkedRoomSessionId } from './venue.js'
@@ -57,7 +57,7 @@ import {
   collabV3RoomPostPort,
   resolveCollabV3SpeakRoute,
   type CollabV3SpeakPort,
-} from '@onething/backend/collab/actors/turn-context'
+} from '@onething/backend/collab/actors/collab-actors-turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

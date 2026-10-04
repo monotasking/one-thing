@@ -10,12 +10,12 @@ import type {
   SearchContext,
   SearchPrincipal,
 } from '../../candidate.js'
-import type { CapabilityManifest, SearchCapability } from '../../capability.js'
-import { createCapabilityRegistry } from '../../capability.js'
-import { createDefaultAnalyzerRegistry } from '../../analyzer/registry.js'
+import type { CapabilityManifest, SearchCapability } from '../../search-kernel-capability.js'
+import { createCapabilityRegistry } from '../../search-kernel-capability.js'
+import { createDefaultAnalyzerRegistry } from '../../analyzer/search-kernel-analyzer-registry.js'
 import { MemoryIndex } from '../../index/memory-index.js'
 import type { DocPayload } from '../../feed.js'
-import { indexedCapability } from '../../bases/indexed.js'
+import { indexedCapability } from '../../bases/search-kernel-bases-indexed.js'
 import { createLexicalRetriever } from '../../bases/lexical-retriever.js'
 import type { ExpanderRegistry } from '../../pipeline/expand.js'
 import { compose } from '../../pipeline/compose.js'

@@ -1,4 +1,4 @@
-import type { ToolCall, ToolExecutionContext, ToolResult } from './types.js'
+import type { ToolCall, ToolExecutionContext, ToolResult } from './tool-types.js'
 import type { ToolExecutor } from './executor.js'
 
 export async function executeToolCalls(

@@ -13,7 +13,7 @@
  *
  * `VOICE_EVENT` 与 `VOICE_RUNTIME_COMMAND` 早就是端口形状 ——
  * `configureVoiceHost` 的 `broadcastMessage` / `runtimeWindow.sendCommand`
- * (`voice/host-ports.ts`),事件源是装配层那台 VoiceService。
+ * (`voice/voice-host-ports.ts`),事件源是装配层那台 VoiceService。
  * 所以本批不需要像 oauth / evals 那样新立广播端口;server 那侧的
  * `/api/voice/events` 与 `/api/voice/runtime-commands` 两条 SSE 也原样保留。
  *
@@ -57,12 +57,12 @@ import {
   testOnethingVoiceASRForIpc,
   testOnethingVoiceTTSForIpc,
 } from '@onething/backend/voice'
-import { getVoiceHostPorts, hasVoiceHost } from '@onething/backend/voice/host-ports'
+import { getVoiceHostPorts, hasVoiceHost } from '@onething/backend/voice/voice-host-ports'
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
 import type { VoiceRoutes } from '@shared/ipc/voice.js'
 import { getSettings } from '@onething/backend/settings'
 import { getOpenRouterTTSModels, transcribeUtterance } from '@onething/backend/voice/provider-calls'
-import { getVoiceService } from '@onething/backend/voice/service'
+import { getVoiceService } from '@onething/backend/voice/voice-service'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { isHistoricalLocalOperator, sessionAccess, SessionAccessError } from '@onething/backend/session'

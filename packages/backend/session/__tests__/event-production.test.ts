@@ -1,4 +1,4 @@
-import { installSessionLayerForTest } from '../testing/session-layer.js'
+import { installSessionLayerForTest } from '../testing/session-testing-layer.js'
 /**
  * 命令 / 采集点 → 事件的**产出表**(§9.3 / §10.6 第 2 条)。
  *

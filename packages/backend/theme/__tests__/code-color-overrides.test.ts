@@ -16,7 +16,7 @@
  *  4. **零回归** —— 不给覆盖、或只给非代码色覆盖时,代码色变量一个不动。
  */
 import { beforeAll, describe, expect, it } from 'vitest'
-import { applyTheme, initializeThemes } from '../index.js'
+import { applyTheme, initializeThemes } from '../theme.js'
 import { canonicalHighlightToken, pickHighlightTokenOverrides } from '../css-mapper.js'
 
 const MAGENTA = '#ff00ff'

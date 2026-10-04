@@ -17,8 +17,8 @@ import {
   COLLAB_NOTEBOOK_ENTRY_MAX_CHARS,
   COLLAB_NOTEBOOK_INJECT_MAX_CHARS,
 } from '../../collab/actors/notebook-rules.js'
-import { defineInput } from '../contract.js'
-import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/collab.js'
+import { defineInput } from '../toolkit-contract.js'
+import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/toolkit-families-collab.js'
 
 export interface NotebookToolResult {
   ok: boolean

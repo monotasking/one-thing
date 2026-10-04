@@ -24,7 +24,7 @@ import type { JsonObject, JsonValue } from '@shared/json'
 import type { PlanContext, Preview, Result, RunContext } from '@onething/backend/toolkit/tool-protocol'
 import type { Effect, EffectClass } from '@shared/toolkit/effects'
 import { basenamePath } from '@onething/backend/storage/storage-primitives'
-import { filePermissionPattern } from '../../tool/permission-effects.js'
+import { filePermissionPattern } from '../../tool/tool-permission-effects.js'
 import { withFileMutationQueue } from '../../tool/file-mutation-queue.js'
 import { truncateDiffHunksForDisplay } from '../../tool/diff-hunks.js'
 import { truncateDiffForDisplay } from '../../tool/replacers.js'
@@ -34,7 +34,7 @@ import {
   type FileMutationOperation,
   type RecordFileMutationAuditResult,
 } from '../../tool/file-mutation-audit.js'
-import { FileTool, type FileToolAdapters, type ResolvedFilePath } from './file.js'
+import { FileTool, type FileToolAdapters, type ResolvedFilePath } from './toolkit-families-file.js'
 
 /** 旧 edit/write 各抄了一份的同一个常量。 */
 export const MAX_REVALIDATION_ATTEMPTS = 5

@@ -8,7 +8,7 @@
  * ——只在**成段**时补,这是设计的原话,代价见 index.ts 的留账。
  */
 
-import type { Analyzer, Token } from './types.js'
+import type { Analyzer, Token } from './search-kernel-analyzer-types.js'
 
 /**
  * CJK 字符区间,写成码点数字而不是字面量正则 —— 区间端点用汉字写出来没人审得动。

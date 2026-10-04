@@ -27,7 +27,7 @@ import {
 // 类型-only:`auth/` 反过来 import 本模块(space-token-store),值 import 会成环。
 import type { OnethingTokenCryptoAdapter } from '../auth/token-store.js'
 
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('spaces')
 

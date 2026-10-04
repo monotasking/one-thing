@@ -26,7 +26,7 @@ import {
 } from '@onething/backend/plugin/plugin-contract'
 import { defaultAgent, findAgent } from '../agent/agent-store-access.js'
 import { getPluginManager } from '@onething/backend/plugin/plugin-manager'
-import { describePluginDeepLinkAction } from './registry.js'
+import { describePluginDeepLinkAction } from './deeplink-registry.js'
 
 /** 卡上的来源标注。用户要一眼看出"这不是我在应用里点的"。 */
 export const DEEPLINK_CARD_SOURCE_LABEL = 'external link request'

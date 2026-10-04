@@ -49,7 +49,7 @@ import {
   resolveCollabSayMentions,
 } from '../say.js'
 import { buildCollabChainHoldLine } from '../system-lines.js'
-import type { CollabAgentLike, CollabMentionLike } from '../types.js'
+import type { CollabAgentLike, CollabMentionLike } from '../collab-types.js'
 import {
   createCollabFreeFloorPolicy,
   resolveCollabFloorPolicy,
@@ -77,7 +77,7 @@ import {
   type CollabFloorRevokeReason,
   type CollabRefereeSetFloorPolicyVerb,
   type CollabRoomPostedVerb,
-} from './protocol.js'
+} from './collab-actors-protocol.js'
 
 /**
  * v3 房间账的版本号。

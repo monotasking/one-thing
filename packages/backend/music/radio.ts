@@ -34,21 +34,21 @@ import {
   type OnethingRadioConductor,
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
-} from '@onething/backend/music/index'
-import { broadcastVoiceHostMessage } from '@onething/backend/voice/host-ports'
+} from '@onething/backend/music/music'
+import { broadcastVoiceHostMessage } from '@onething/backend/voice/voice-host-ports'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { describeHostDoing, projectHostLog } from '@onething/backend/music/host-log'
 import { addGrant } from '@onething/backend/permission/permission-asks'
 import { writeJsonFile } from '@onething/backend/storage/storage-primitives'
-import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/agent/store-bound'
+import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/agent/agent-store-bound'
 import { markSessionUnattended } from '@onething/backend/permission/unattended'
 import { resolveCollabVenue } from '@onething/backend/collab'
 import { getSettings } from '@onething/backend/settings'
 import * as sessions from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '@onething/backend/session'
-import type { MusicServiceScope } from './service.js'
+import type { MusicServiceScope } from './music-service.js'
 import type { HostVoice } from './host-voice.js'
 import type { MusicMoments } from './moments.js'
 // 类型口 —— 编译期擦除,不给这只模块添一条到事件系统的**运行时**边(见 `wakeRadioDj`
@@ -427,7 +427,7 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
     // Dynamic import mirrors the engine imports below: radio.ts is reachable
     // from the variable gateways, and static graph edges here have bitten
     // unrelated test module graphs before.
-    const { getVariableRegistry } = await import('@onething/backend/variable/registry')
+    const { getVariableRegistry } = await import('@onething/backend/variable/variable-registry')
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const variables = await getVariableRegistry().list({ sessionId })
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')

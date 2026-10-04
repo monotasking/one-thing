@@ -53,20 +53,20 @@ import {
   type GetSessionMessagesPageResponse,
   type StoredChatMessage,
   type UserMessageMarker,
-} from './storage/index.js'
-import { sanitizeSessionOnStartup } from './commands.js'
+} from './storage/session-storage.js'
+import { sanitizeSessionOnStartup } from './session-message-shapes.js'
 import type { CoreTimelineSession } from './timeline.js'
-// §17.8 U1-a 起按路径读盘的那一口住在叶子文件里(不进 `storage/index.ts` 那个纯的桶);目录内按相对路径直取。
+// §17.8 U1-a 起按路径读盘的那一口住在叶子文件里(不进 `storage/storage.ts` 那个纯的桶);目录内按相对路径直取。
 import { getMessagesPageFromJsonFilePath } from './storage/json-message-page-file.js'
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/backend/storage/storage-primitives'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { rewriteRetiredSessionProvider, type RetiredProviderRewrite } from './retired-providers.js'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { writeDurableJson } from '../storage/durable-json.js'
-import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from './storage/index.js'
+import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from './storage/session-storage.js'
 
 export interface OnethingSessionRepositoryLogger {
   log?(...args: unknown[]): void

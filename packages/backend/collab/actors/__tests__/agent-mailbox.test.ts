@@ -17,10 +17,10 @@ import {
   createCollabAgentAccount,
   recordCollabAgentLease,
   type CollabActorVerb,
-} from '../index.js'
+} from '../collab-actors.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agent-mailbox-'))
-vi.mock('../../../storage/index.js', () => ({ getOnethingStorePath: () => storeRootRef.value }))
+vi.mock('../../../storage/storage.js', () => ({ getOnethingStorePath: () => storeRootRef.value }))
 const storeRootRef = { value: storeRoot }
 
 const {

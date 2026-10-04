@@ -3,19 +3,19 @@
  *
  * 这一层只问「**形**对不对」:三个主体各走哪一支、端口没装时是关还是开、范围怎么
  * 变成 `FacetFilter`。「谁是成员 / 哪个空间」的判据在装配层,由
- * `backend/search/__tests__/visibility.test.ts` 考。
+ * `backend/search/__tests__/search-visibility.test.ts` 考。
  */
 
 import { describe, expect, it } from 'vitest'
-import { matchesFacetFilter } from '../kernel/index/types.js'
-import type { SearchPrincipal } from '../kernel/index.js'
+import { matchesFacetFilter } from '../kernel/index/search-kernel-index-types.js'
+import type { SearchPrincipal } from '../kernel/search-kernel.js'
 import {
   configureSearchVisibilityPort,
   getSearchVisibilityPort,
   sessionScopeVisibility,
-} from '../capabilities/visibility.js'
-import { chatsSearchManifest } from '../capabilities/sessions.js'
-import { messagesSearchManifest } from '../capabilities/messages.js'
+} from '../capabilities/search-capabilities-visibility.js'
+import { chatsSearchManifest } from '../capabilities/search-capabilities-sessions.js'
+import { messagesSearchManifest } from '../capabilities/search-capabilities-messages.js'
 
 const user: SearchPrincipal = { kind: 'user', id: 'local' }
 const agent: SearchPrincipal = { kind: 'agent', id: 'a1', sessionId: 's-here' }

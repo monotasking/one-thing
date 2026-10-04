@@ -10,7 +10,7 @@
  * 租约换一代」)。中间这一层还负责把「这不是一间 v3 房」翻译成 `false` —— 一间
  * 从没被驱动过的房按下停止,答案是"没停下任何东西",而不是一个 null 漏到界面上。
  */
-import { stopCollabV3RoomFloor } from './runtime.js'
+import { stopCollabV3RoomFloor } from './collab-actors-runtime.js'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 
 /**

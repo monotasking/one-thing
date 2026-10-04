@@ -1,5 +1,5 @@
 /**
- * `pet:` 这一 scheme 的实现(自述在 `@onething/backend/pet/resource-spec`,正本
+ * `pet:` 这一 scheme 的实现(自述在 `@onething/backend/pet/pet-resource-spec`,正本
  * `docs/design/pet-system-2026-09.md` §9.3)。
  *
  * 读 / 做都转给 `PetsSubsystem`,这里只管三件事:地址对不对、参数对不对、结果怎么交。
@@ -30,8 +30,8 @@ import type {
 } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
 import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/toolkit/tool-protocol'
-import { PET_CURRENT_PATH, petResourceSpec } from '@onething/backend/pet/resource-spec'
-import { UnknownPetError, type PetsSubsystem } from '@onething/backend/pet/subsystem'
+import { PET_CURRENT_PATH, petResourceSpec } from '@onething/backend/pet/pet-resource-spec'
+import { UnknownPetError, type PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
 
 export type PetOpPayload =
   | { readonly op: 'adopt'; readonly id: string }

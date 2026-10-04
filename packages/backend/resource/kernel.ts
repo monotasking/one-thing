@@ -50,17 +50,17 @@ import type { Outcome } from '../toolkit/outcome.js'
 import { Outcome as OutcomeOps } from '../toolkit/outcome.js'
 import type { Clock, SandboxPolicy } from '../toolkit/ports.js'
 import type { Invocation } from '../toolkit/run-context.js'
-import type { ToolRunner } from '../toolkit/runner.js'
+import type { ToolRunner } from '../toolkit/toolkit-runner.js'
 import type { Principal } from '@shared/permission/principal.js'
-import { ResourceSchemeUnknownError } from './errors.js'
-import { ResourceEventHub } from './events.js'
-import type { ResourceProvider } from './provider.js'
+import { ResourceSchemeUnknownError } from './resource-errors.js'
+import { ResourceEventHub } from './resource-events.js'
+import type { ResourceProvider } from './resource-provider.js'
 import { ReadOutcome } from './read-outcome.js'
 import type { ReadOutcome as ReadOutcomeValue } from './read-outcome.js'
 import { parseRef, type ResourceRef } from '@shared/resource/ref.js'
-import type { ResourceRegistry } from './registry.js'
-import { RESOURCE_OP_KEY, RESOURCE_REF_KEY } from './schema.js'
-import { ResourceTool, type ShellDispatch } from './tool.js'
+import type { ResourceRegistry } from './resource-registry.js'
+import { RESOURCE_OP_KEY, RESOURCE_REF_KEY } from './resource-schema.js'
+import { ResourceTool, type ShellDispatch } from './resource-tool.js'
 import {
   describeResourceRefProblem,
   describeUnknownResourceReadProblem,
@@ -78,7 +78,7 @@ export interface ResourceKernelOptions {
    *
    * 它在**这里**而不是在 runner 的构造参数里,是因为只有 `mount` 同时知道两件事:
    * 这坨 schema 是刚造出来的哪一份、它属于哪份自述。装配层把同一个实例既交给这里
-   * 又串进 runner 的 `Validator`(`backend/resource/index.ts`)。
+   * 又串进 runner 的 `Validator`(`backend/resource/resource.ts`)。
    *
    * 缺席 = 这台宿主没配那位校验者,plan 期那几只具名错原样兜底(K1 的行为)。
    */

@@ -1,7 +1,7 @@
 import * as os from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { formatStateVariablesForPrompt } from '../format.js'
-import type { ContextVariable } from '../types.js'
+import type { ContextVariable } from '../variable-types.js'
 
 function v(partial: Partial<ContextVariable> & { name: string; value: string }): ContextVariable {
   return { state: true, ...partial }

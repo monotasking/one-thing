@@ -1,5 +1,5 @@
 import type { OAuthToken, ToolSettings } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '@onething/backend/auth/ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { modelRegistry } from '@onething/backend/settings'
 import { resolveProviderNativeTools } from '@onething/backend/provider'
 

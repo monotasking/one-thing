@@ -34,8 +34,8 @@ async function loadModules() {
     import('@onething/backend/plugin/tool-result-intercept-bound'),
     import('@onething/backend/scheduler/scheduler-bound'),
     import('@onething/backend/variable/variable-system'),
-    import('../plugins-im-connector-registry.js'),
-    import('@onething/backend/deeplink/registry'),
+    import('../plugin-im-connector-registry.js'),
+    import('@onething/backend/deeplink/deeplink-registry'),
     import('../../credentials/credentials-strategy.js'),
   ])
   return { loader, api, tools, promptContext, skillRoots, lifecycle, inputIntercept, toolCallIntercept, toolResultIntercept, scheduler, variables, connectors, deepLinks, credentialStrategies }

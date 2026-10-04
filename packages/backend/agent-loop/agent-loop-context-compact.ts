@@ -1,5 +1,5 @@
 import type { JsonObject } from "@shared/json.js";
-import { isAgentExecutionCheckpointError } from './errors.js';
+import { isAgentExecutionCheckpointError } from './agent-loop-errors.js';
 import {
 	buildContextCompactContent,
 	type CoreContextCompactMessage,

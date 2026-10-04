@@ -274,7 +274,7 @@ export interface BackgroundJobsListRequest {
 export interface BackgroundJobsListResponse {
   success: boolean
   /**
-   * 后台任务的形状住在产品层(`tool/background-jobs.ts` 的
+   * 后台任务的形状住在产品层(`tool/tool-background-jobs.ts` 的
    * `BackgroundJob`),契约层不抄第二份 —— 两个消费者都是就地 `as` 成自己的视图
    * 类型,与迁移前 `jobs?: Array<Record<string, any>>` 那一格同义。
    */

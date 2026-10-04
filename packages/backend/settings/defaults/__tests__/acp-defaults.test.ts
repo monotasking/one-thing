@@ -2,7 +2,7 @@
  * ACP 设置归一的性质(A1-a 起)。
  *
  * 内置 agent 不再写在 defaults 里 —— 它们是种子文件 `resources/acp-agents/*.json`,由装配层的
- * 名册合并(`backend/acp/registry.ts`)。这里只剩「形状」:出厂名册为空、用户条目按 id
+ * 名册合并(`backend/acp/acp-registry.ts`)。这里只剩「形状」:出厂名册为空、用户条目按 id
  * 去重、只归一带着的格(稀疏覆盖原样往返)、新加的两格按规矩收。
  */
 import { describe, expect, it } from 'vitest'
@@ -11,7 +11,7 @@ import {
   DEFAULT_ACP_SETTINGS,
   NON_VENDOR_PROVIDER_SEEDS as DEFAULT_PROVIDER_CONFIGS,
   normalizeACPSettings,
-} from '../settings.js'
+} from '../settings-factory-defaults.js'
 
 describe('ACP 设置归一', () => {
   it('出厂名册是空的 —— 内置条目来自种子文件,不是 TS 字面量', () => {

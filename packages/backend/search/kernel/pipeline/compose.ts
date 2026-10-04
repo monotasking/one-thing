@@ -18,10 +18,10 @@ import type {
   SearchQuery,
 } from '../candidate.js'
 import { ALL_CAPABILITIES } from '../candidate.js'
-import type { CapabilityRegistry } from '../capability.js'
+import type { CapabilityRegistry } from '../search-kernel-capability.js'
 import type { Normalizer } from '../analyzer/normalize.js'
-import type { BudgetPolicy } from './budget.js'
-import { budgetPolicy as defaultBudgetPolicy } from './budget.js'
+import type { BudgetPolicy } from './search-kernel-pipeline-budget.js'
+import { budgetPolicy as defaultBudgetPolicy } from './search-kernel-pipeline-budget.js'
 import type { QueryExtractor } from './extract.js'
 import { DEFAULT_EXTRACTORS, extract } from './extract.js'
 import type { AuthorizationWarn } from './authorize.js'

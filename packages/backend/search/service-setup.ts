@@ -11,9 +11,9 @@
  *  ② 把**三条订阅**接上:进程内 append 观察者(毫秒级)、总线的 `session:renamed`
  *     与 `session:deleted`。三条都只喊一声 sessionId,不带内容(§5.2 / §5.3);
  *  ③ 用宿主的适配器造一份带六个内置能力的 `SearchService`(能力清单来自
- *     `./capabilities/index.ts` 的那张表,这里不点名任何一类);
+ *     `./capabilities/search-capabilities.ts` 的那张表,这里不点名任何一类);
  *  ④ 把已在册的插件供给方接成 `remote` 能力(§4.2 第四行);
- *  ⑤ 把服务装进进程单槽(`./service-bound.ts`)——
+ *  ⑤ 把服务装进进程单槽(`./search-service-bound.ts`)——
  *     `search/search-client-api.ts` 从那里读;
  *  ⑥ 返回**一个** disposer,装配层 `own()` 它。
  *
@@ -41,22 +41,22 @@
  */
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
-import type { CapabilityManifest } from './kernel/index.js'
-import type { OnethingSearchProvidersAdapters } from './providers.js'
-import { createOnethingSearchService, type OnethingSearchService } from './service.js'
+import type { CapabilityManifest } from './kernel/search-kernel.js'
+import type { OnethingSearchProvidersAdapters } from './search-providers.js'
+import { createOnethingSearchService, type OnethingSearchService } from './search-service.js'
 import {
   chatsSearchManifest,
   messagesSearchManifest,
   notesSearchManifest,
   type SearchIndexQueryFace,
-} from './capabilities/index.js'
-import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from './index/index.js'
+} from './capabilities/search-capabilities.js'
+import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from './index/search-index.js'
 import type { IndexWorkerData } from './index/worker-data.js'
 import type { IndexWorkerHandle } from './index/worker-host.js'
-import { configureSearchVisibilityPort } from './capabilities/index.js'
-import { configureOnethingSearchService } from './service-bound.js'
+import { configureSearchVisibilityPort } from './capabilities/search-capabilities.js'
+import { configureOnethingSearchService } from './search-service-bound.js'
 import { configureSearchToolAdapters } from '@onething/backend/toolkit'
-import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/backend/storage/paths'
+import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/backend/storage/storage-paths'
 import { DEFAULT_SEMANTIC_MODEL_ID } from '@shared/ipc/settings.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
@@ -69,22 +69,22 @@ import {
   getSettingsEventBroadcaster,
   type SettingsEvent,
   type SettingsEventBroadcaster,
-} from '@onething/backend/settings/events'
+} from '@onething/backend/settings/settings-events'
 import { getLogger } from '@onething/backend/logging/configure-logging'
-import { getNotesSubsystemSafe } from '@onething/backend/note/notes-subsystem'
+import { getNotesSubsystemSafe } from '@onething/backend/note/note-subsystem'
 import type { NoteVault } from '@onething/backend/note'
-import { createAppSearchProvidersAdapters } from './adapters.js'
+import { createAppSearchProvidersAdapters } from './search-adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
 import { createAppSearchToolAdapters } from './tool-adapters.js'
-import { createAppSearchVisibilityPort } from './visibility.js'
+import { createAppSearchVisibilityPort } from './search-visibility.js'
 import { createAppSearchAuthorization } from './authorization.js'
-import { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
+import { createSearchWorkerFactory, resolveSearchWorkerPath } from './search-worker.js'
 
 export { AGENT_TOOL_SURFACE, createAppSearchToolAdapters } from './tool-adapters.js'
-export { createAppSearchVisibilityPort, visibleSessionIdsFor, VISIBLE_SESSIONS_CAP } from './visibility.js'
+export { createAppSearchVisibilityPort, visibleSessionIdsFor, VISIBLE_SESSIONS_CAP } from './search-visibility.js'
 export { configureAppSearchProviders } from './install-providers.js'
 export { invokePluginSearchAction, PLUGIN_SEARCH_ACTION_PREFIX } from './plugin-search-registry.js'
-export { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
+export { createSearchWorkerFactory, resolveSearchWorkerPath } from './search-worker.js'
 
 const log = getLogger('search')
 
@@ -604,7 +604,7 @@ function subscribeLedger(index: SearchIndexService): Array<() => void> {
     registerSessionLogEventAppendObserver((sessionId, record) => {
       if (affectsIndexedDocuments(record)) touch(sessionId)
     }),
-    // ② 改名:会话事件,发在被改名的那条会话上(`session/sessions-client-api.ts`)。
+    // ② 改名:会话事件,发在被改名的那条会话上(`session/session-client-api.ts`)。
     //    账本一个字节都没变,变的是 `meta.json` 的 mtime —— 指纹的后半格。
     bus.onAnySession(SESSION_EVENT_TYPES.SESSION_RENAMED, envelope => touch(envelope.sessionId)),
     // ③ 删除:全局事件(`shared/events/global-events.ts`)。会话目录已经没了,

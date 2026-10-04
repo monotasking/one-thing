@@ -12,7 +12,7 @@
  * `name` 今天是字面(不走字典);`description` 是字典键 `providers.desc.<id>`,
  * 壳按键查 zh / en 字典显示。
  */
-import type { ProviderManifest } from './manifest.js'
+import type { ProviderManifest } from './provider-manifest.js'
 import { VENDOR_FAMILIES, VENDOR_MANIFESTS } from './vendors/manifests.js'
 import {
   providerFamilyLookupOf,

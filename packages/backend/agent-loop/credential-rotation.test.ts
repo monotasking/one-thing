@@ -2,13 +2,13 @@
    在第一次 fetch 就拿到非 2xx,一个 chunk 都没产出。为它加一句永远到不了的 yield
    会把测试要钉的东西改掉。 */
 import { describe, expect, it, vi } from 'vitest'
-import { runAgentLoop } from './runner.js'
+import { runAgentLoop } from './agent-loop-runner.js'
 import type {
   AgentCredentialRotation,
   AgentProvider,
   AgentStreamEvent,
   AgentTool,
-} from './types.js'
+} from './agent-loop-types.js'
 
 /**
  * 凭证轮换挂在 turn 级重试边界上(`AgentLoopOptions.rotateCredential`)。

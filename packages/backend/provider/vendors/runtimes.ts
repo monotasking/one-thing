@@ -10,18 +10,18 @@
  *    这里只交名册,免得两边互相 import;
  *  - 配额源(余额 / 用量)由 `providers/quota/registry.ts` 第一次被问到时**惰性**读名册
  *    (它若在加载时就读,会经本文件把整个 agent-loop 拉进来、与 manifest 注册表成环);
- *  - OAuth 登录定义由 `auth/registry.ts` 同样**惰性**读名册(P2 第 4 批);
+ *  - OAuth 登录定义由 `auth/auth-registry.ts` 同样**惰性**读名册(P2 第 4 批);
  *  - 列表口(manifest `models.kind === 'endpoint'` 的那几家)与目录兜底行由宿主按名册建表
- *    (`backend/provider/providers-client-api-models.ts`、`backend/settings/settings-model-registry-service.ts`),宿主把
+ *    (`backend/provider/provider-client-api-models.ts`、`backend/settings/settings-model-registry-service.ts`),宿主把
  *    自己才有的东西(auth 服务、app fetch、设置、落盘)经一份**不点名**的 `VendorModelsFetcherDeps` 交进来。
  */
 import type { AgentProvider } from "@onething/backend/agent-loop/loop-primitives";
-import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../base/index.js";
+import { thinkingWires, type ModelProfileResolver, type ThinkingWire } from "../base/provider-base.js";
 import type {
 	AgentProviderRuntimeConfig,
 	CreateAgentProviderFromRuntimeOptions,
 } from "../factory.js";
-import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/types.js";
+import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/auth-types.js";
 import type { OnethingHttpPolicyName } from "@onething/backend/network";
 import type {
 	OnethingAccessTokenLike,
@@ -30,21 +30,21 @@ import type {
 	OnethingModelRegistryRefreshLogger,
 	OnethingOpenRouterModel,
 } from "../model-registry.js";
-import type { QuotaSource } from "../quota/source.js";
-import { CLAUDE_RUNTIME } from "./claude/runtime.js";
-import { CLAUDE_CODE_RUNTIME } from "./claude-code/runtime.js";
-import { CODEX_RUNTIME } from "./codex/runtime.js";
-import { DEEPSEEK_RUNTIME } from "./deepseek/runtime.js";
-import { GEMINI_RUNTIME } from "./gemini/runtime.js";
-import { GITHUB_COPILOT_RUNTIME } from "./github-copilot/runtime.js";
-import { GROK_RUNTIME } from "./grok/runtime.js";
-import { GROK_OAUTH_RUNTIME } from "./grok-oauth/runtime.js";
-import { KIMI_RUNTIME } from "./kimi/runtime.js";
-import { KIMI_CODE_RUNTIME } from "./kimi-code/runtime.js";
-import { OPENAI_RUNTIME } from "./openai/runtime.js";
-import { OPENROUTER_RUNTIME } from "./openrouter/runtime.js";
-import { QWEN_RUNTIME } from "./qwen/runtime.js";
-import { ZHIPU_RUNTIME } from "./zhipu/runtime.js";
+import type { QuotaSource } from "../quota/provider-quota-source.js";
+import { CLAUDE_RUNTIME } from "./claude/claude-runtime.js";
+import { CLAUDE_CODE_RUNTIME } from "./claude-code/claude-code-runtime.js";
+import { CODEX_RUNTIME } from "./codex/codex-runtime.js";
+import { DEEPSEEK_RUNTIME } from "./deepseek/deepseek-runtime.js";
+import { GEMINI_RUNTIME } from "./gemini/gemini-runtime.js";
+import { GITHUB_COPILOT_RUNTIME } from "./github-copilot/github-copilot-runtime.js";
+import { GROK_RUNTIME } from "./grok/grok-runtime.js";
+import { GROK_OAUTH_RUNTIME } from "./grok-oauth/grok-oauth-runtime.js";
+import { KIMI_RUNTIME } from "./kimi/kimi-runtime.js";
+import { KIMI_CODE_RUNTIME } from "./kimi-code/kimi-code-runtime.js";
+import { OPENAI_RUNTIME } from "./openai/openai-runtime.js";
+import { OPENROUTER_RUNTIME } from "./openrouter/openrouter-runtime.js";
+import { QWEN_RUNTIME } from "./qwen/qwen-runtime.js";
+import { ZHIPU_RUNTIME } from "./zhipu/zhipu-runtime.js";
 
 /** 工厂交给各家的几件公共工具(各家不必 import 工厂)。 */
 export interface VendorRuntimeKit {
@@ -113,7 +113,7 @@ export interface VendorRuntime {
 	thinkingWires?: readonly ThinkingWire[];
 	/** 这家的配额源(`providers/quota/registry.ts` 惰性读;manifest 的 `quotaSource` 指向其 id)。 */
 	quotaSources?: readonly QuotaSource[];
-	/** 这家的 OAuth 登录定义(`auth/registry.ts` 惰性读;manifest `auth.kind === 'oauth'` 的家才有)。 */
+	/** 这家的 OAuth 登录定义(`auth/auth-registry.ts` 惰性读;manifest `auth.kind === 'oauth'` 的家才有)。 */
 	oauth?: OnethingAuthProviderDefinition;
 	/**
 	 * 这家自己的列表口(manifest `models.kind === 'endpoint'`,且通用直连拿不到它要的东西 ——

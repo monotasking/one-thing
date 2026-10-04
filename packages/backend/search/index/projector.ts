@@ -45,7 +45,7 @@
  * 读 `meta.json` 给进来(见 `SessionMetaSnapshot`),不是这里的事件。
  */
 
-import type { DocPayload } from '../kernel/index.js'
+import type { DocPayload } from '../kernel/search-kernel.js'
 // 事件词表与投影的类型都从 `@shared/session/…` 取(下面几行),本文件不引会话功能的任何文件。
 import type {
   ProjectedChatMessage,

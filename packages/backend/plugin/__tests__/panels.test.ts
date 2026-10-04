@@ -476,14 +476,14 @@ describe('R7 degradation gate — 降级必须有牙齿', () => {
 
 describe('R5 declarative panels — the log-monitor demo', () => {
   it('declares its panel in the manifest — the entry needs no plugin code', async () => {
-    const { ONETHING_LOG_MONITOR_MANIFEST } = await import('../index.js')
+    const { ONETHING_LOG_MONITOR_MANIFEST } = await import('../plugin.js')
     expect(ONETHING_LOG_MONITOR_MANIFEST.contributes.panels).toEqual([
       { id: 'logs', label: 'Agent logs' },
     ])
   })
 
   it('builds a real tree and round-trips its actions using only plugin APIs', async () => {
-    const { registerOnethingLogMonitorPanel } = await import('../index.js')
+    const { registerOnethingLogMonitorPanel } = await import('../plugin.js')
 
     const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-panel-'))
     fs.writeFileSync(path.join(logDir, 'agent-2026-08-07.log'), 'line one\nline two\n')

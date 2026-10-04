@@ -11,14 +11,14 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppSettings } from '@shared/ipc.js'
-import { createDefaultSettings } from '../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../settings/defaults/settings-factory-defaults.js'
 import {
   broadcastSettingsChanged,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
-} from '../../settings/events.js'
+} from '../../settings/settings-events.js'
 import type { NoteSystemDriver, NoteSystemState } from '@onething/backend/note'
-import { createNotesSubsystem, obsidianSocketPath, toNotesConfig } from '../notes-subsystem.js'
+import { createNotesSubsystem, obsidianSocketPath, toNotesConfig } from '../note-subsystem.js'
 import { updateSettingsInMemory } from '@onething/backend/settings'
 
 let tmpDir: string

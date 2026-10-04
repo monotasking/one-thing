@@ -35,7 +35,7 @@ import {
 } from '@onething/backend/agent-loop'
 import { buildContextCompactContent } from '@shared/engine/context-compact-content'
 import { buildHistoryMessages } from './stream/message-helpers.js'
-import { collectCompactFileOperations } from '../agent-loop/index.js'
+import { collectCompactFileOperations } from '../agent-loop/agent-loop.js'
 import { modelRegistry } from '@onething/backend/settings'
 import { getLogger } from '../logging/configure-logging.js'
 

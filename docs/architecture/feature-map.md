@@ -7,7 +7,7 @@
 
 - 从上往下是从高层到低层;规矩是**只许高层引低层**(决策 D23),同层之间经入口且不成环(D19)。
 - 「依赖的功能」是运行期值引用(只引类型的不算),数字是从这个功能的文件指向那个功能的文件的引用条数(同一对文件只算一条);标「越层」的是低层引高层,即 `bun run layer:gate` 记账的违例。
-- 「入口交出」是入口 `<功能>/index.ts` 交出的名字数(含再导出),越少越好(R6)。
+- 「入口交出」是入口 `<功能>/<功能>.ts` 交出的名字数(含再导出),越少越好(R6)。
 - 「文件」是这个功能的非测试源文件数。括号里的行不是功能,是包根与 shared 按路径分的槽位。
 
 ## L4 对外接口
@@ -16,7 +16,7 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| (包根) | 包根其余文件:装配配方 backend.ts / assemble-engine.ts、宿主端口表 host-ports.ts、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 current.ts / types.d.ts)。 | collab 6 · acp 5 · gateway 5 · mcp 5 · skill 5 · toolkit 5 · agent 4 · logging 4 · tool 4 · (包根槽位) 3 · auth 3 · eval 3 · goal 3 · pet 3 · plugin 3 · voice 3 · engine 2 · event 2 · external-agent 2 · media 2 · note 2 · permission 2 · session 2 · settings 2 · storage 2 · terminal 2 · todo-plan 2 · usage 2 · (shared) 1 · agent-loop 1 · credentials 1 · dialog 1 · file 1 · http-server 1 · interaction 1 · memory 1 · music 1 · practice 1 · project-dir 1 · quota 1 · resource 1 · scheduler 1 · scratchpad 1 · search 1 · shell 1 · task 1 · toc 1 · variable 1 | — | 4 |
+| (包根) | 包根其余文件:装配配方 backend.ts / assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 current.ts / backend-types.d.ts)。 | collab 6 · acp 5 · gateway 5 · mcp 5 · skill 5 · toolkit 5 · agent 4 · logging 4 · tool 4 · (包根槽位) 3 · auth 3 · eval 3 · goal 3 · pet 3 · plugin 3 · voice 3 · engine 2 · event 2 · external-agent 2 · media 2 · note 2 · permission 2 · session 2 · settings 2 · storage 2 · terminal 2 · todo-plan 2 · usage 2 · (shared) 1 · agent-loop 1 · credentials 1 · dialog 1 · file 1 · http-server 1 · interaction 1 · memory 1 · music 1 · practice 1 · project-dir 1 · quota 1 · resource 1 · scheduler 1 · scratchpad 1 · search 1 · shell 1 · task 1 · toc 1 · variable 1 | — | 4 |
 | (开给界面的操作) | 各功能的第二个入口 <功能>/<功能>-client-api*.ts(决策 D26):名册里的域行、只有 HTTP 服务器用的投影与投递件。按「它被谁引、它引谁」判:只有 http-server 与同功能的 client-api 引它(client-api:gate 保证),它引任何功能的入口 —— 所以它与 http-server 同站 L4,不与它所属的功能同层;它引自己功能的文件算 L4 → 低层,不是违例。 | (shared) 84 · http-server 52 · (包根槽位) 29 · session 28 · logging 25 · settings 15 · plugin 14 · eval 10 · mcp 7 · media 7 · permission 6 · space 6 · acp 5 · voice 5 · auth 4 · collab 4 · event 4 · gateway 4 · music 4 · provider 4 · scheduler 4 · shell 4 · skill 4 · todo-plan 4 · tool 4 · agent-loop 3 · engine 3 · file 3 · goal 3 · note 3 · prompt 3 · storage 3 · toolkit 3 · agent 2 · interaction 2 · markdown 2 · project-dir 2 · usage 2 · variable 2 · credentials 1 · dialog 1 · practice 1 · resource 1 · scratchpad 1 · search 1 · terminal 1 · theme 1 | — | 56 |
 | http-server | 界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。 | (开给界面的操作) 54 · (包根槽位) 9 · (shared) 7 · mcp 4 · plugin 3 · session 3 · agent 2 · event 2 · file 2 · logging 2 · permission 2 · project-dir 2 · settings 2 · storage 2 · terminal 2 · tool 2 · (包根) 1 · acp 1 · auth 1 · collab 1 · feature-registry 1 · markdown 1 · network 1 · note 1 · prompt 1 · scratchpad 1 · search 1 · shell 1 · todo-plan 1 · toolkit 1 · variable 1 | — | 15 |
 

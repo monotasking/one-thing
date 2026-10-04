@@ -18,7 +18,7 @@ import {
   PROMPT_BLOCK_TOOL_WORKSPACE_RULES,
   PromptComposer,
   StaticPromptSource,
-} from '../composer.js'
+} from '../prompt-composer.js'
 import { PromptFragmentRegistry, promptFragments, registerPromptFragment } from '../fragments.js'
 import { clearAllPromptContextProviders, registerPromptContextProvider } from '../plugin-context.js'
 import { builtinToolPromptSource, testPromptComposer } from './fixtures/tool-prompts.js'

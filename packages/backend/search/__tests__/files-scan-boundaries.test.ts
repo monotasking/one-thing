@@ -14,12 +14,12 @@
  * 第四条(壳查询带 signal)是壳与 HTTP 面的事,由 `gate:search-scan` 在真机上证。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ALL_CAPABILITIES } from '../kernel/index.js'
-import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../providers.js'
-import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/index.js'
+import { ALL_CAPABILITIES } from '../kernel/search-kernel.js'
+import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../search-providers.js'
+import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/search-capabilities.js'
 import { searchFiles } from '../capabilities/files.js'
-import { FolderVault } from '../../note/folder/vault.js'
-import { OnethingSearchService } from '../service.js'
+import { FolderVault } from '../../note/folder/note-folder-vault.js'
+import { OnethingSearchService } from '../search-service.js'
 
 /** 一台**真库规模**的宿主:492 条会话,每条都有自己的工作目录。 */
 const SESSION_COUNT = 492

@@ -29,7 +29,7 @@ import {
   type CollabRoomEffects,
   type CollabRoomJudgmentRequest,
   type CollabRoomTranscriptMessage,
-} from '../index.js'
+} from '../collab-actors.js'
 import { describe, expect, it } from 'vitest'
 
 import {

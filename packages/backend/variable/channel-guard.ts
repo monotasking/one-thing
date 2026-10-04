@@ -3,7 +3,7 @@ import {
 	isReservedName,
 	type ContextVariable,
 	type VariableScope,
-} from "./index.js";
+} from "./variable.js";
 
 /**
  * Trust guard for variable access from externally-routed sessions.

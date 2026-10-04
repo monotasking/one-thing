@@ -25,7 +25,7 @@ import type {
 	AgentTurnStreamEvent,
 	AgentJsonObject,
 } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../logging/index.js";
+import { getLogger } from "../../logging/logging.js";
 import { mergeAdjacentSameRoleMessages } from "../message-merge.js";
 import { readJsonSseData } from "../sse.js";
 import {
@@ -41,7 +41,7 @@ import {
 	type ToolChoicePolicy,
 	type TurnContext,
 	type UsageNormalizer,
-} from "../base/index.js";
+} from "../base/provider-base.js";
 import { GeminiErrorMapper } from "./gemini-errors.js";
 import {
 	geminiParts,

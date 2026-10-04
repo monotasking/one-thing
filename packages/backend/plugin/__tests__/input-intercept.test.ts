@@ -17,8 +17,8 @@ import {
   normalizePluginInputInterceptResult,
   type PluginInputInterceptHandler,
 } from '../input-intercept.js'
-import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '../policy.js'
-import { describePluginPermission } from '../sessions.js'
+import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '../plugin-policy.js'
+import { describePluginPermission } from '../plugin-sessions.js'
 
 function createRegistry(options: {
   timeoutMs?: number

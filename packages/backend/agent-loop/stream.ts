@@ -6,12 +6,12 @@ import type {
   AgentTurn,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from './types.js'
+} from './agent-loop-types.js'
 import type { AgentExecutionLifetime } from './execution-lifetime.js'
 import {
   isAgentRunnableProvider,
   isAgentStreamingProvider,
-} from './capabilities.js'
+} from './agent-loop-capabilities.js'
 
 function errorFromThrown(error: Error | string | number | boolean | null | undefined): Error {
   if (error instanceof Error) return error

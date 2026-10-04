@@ -48,7 +48,7 @@ import { Interaction } from '@onething/backend/interaction'
 import {
   getPendingInteractionsForIpc,
   respondInteractionForIpc,
-} from '@onething/backend/interaction/ipc-operations'
+} from '@onething/backend/interaction/interaction-ipc-operations'
 import { interactionRouter, type InteractionRoutes } from '@shared/ipc/interaction.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'

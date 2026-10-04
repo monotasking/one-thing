@@ -18,15 +18,15 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { CapabilityManifest, FieldSchema } from '../capability.js'
+import type { CapabilityManifest, FieldSchema } from '../search-kernel-capability.js'
 import type { DocPayload } from '../feed.js'
-import type { IndexedDoc, LexicalQuery, LexicalResult } from '../index/types.js'
-import { matchesFacetFilter } from '../index/types.js'
+import type { IndexedDoc, LexicalQuery, LexicalResult } from '../index/search-kernel-index-types.js'
+import { matchesFacetFilter } from '../index/search-kernel-index-types.js'
 import { compositeAnalyzer } from '../analyzer/composite.js'
-import { createDefaultAnalyzerRegistry } from '../analyzer/registry.js'
+import { createDefaultAnalyzerRegistry } from '../analyzer/search-kernel-analyzer-registry.js'
 import { buildLexicalQuery } from '../bases/lexical-retriever.js'
 import { parse } from '../pipeline/parse.js'
-import { plan } from '../pipeline/plan.js'
+import { plan } from '../pipeline/search-kernel-pipeline-plan.js'
 import { CAP_A, CORPUS_SIZE, corpusDocuments } from './unit-fixtures/corpus.js'
 import { DEFAULT_SCHEMA } from './unit-fixtures/harness.js'
 

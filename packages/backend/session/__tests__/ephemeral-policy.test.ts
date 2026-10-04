@@ -34,7 +34,7 @@ import {
   findSessionEphemeralFactPolicy,
 } from '../events/ephemeral-policy.js'
 import type { SessionLogEventRecord } from '@shared/session/events/types.js'
-import { canonicalChatMessage } from '../projection/index.js'
+import { canonicalChatMessage } from '../projection/session-projection.js'
 import { projectChatMessages } from '@shared/session/projection/chat-messages.js'
 import { toolResultToStructured } from '@shared/tools/tool-result.js'
 

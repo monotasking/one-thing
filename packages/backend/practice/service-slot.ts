@@ -1,17 +1,17 @@
 /**
  * 练习域的单槽绑定 + 宿主口(工单 5 §5)。
  *
- * `PracticeService` 本体已归位到 `./service.ts`(纯产品层);这里原样再导出它,
- * 于是既有 import 一个字不用改,而产品层的新调用方可以直接吃 `./service.js`。
+ * `PracticeService` 本体已归位到 `./practice-service.ts`(纯产品层);这里原样再导出它,
+ * 于是既有 import 一个字不用改,而产品层的新调用方可以直接吃 `./practice-service.js`。
  */
-import type { OnethingPracticeLedger } from './index.js'
+import type { OnethingPracticeLedger } from './practice.js'
 import type {
   OnethingPracticeConfig,
   OnethingPracticeEngineSnapshot,
   OnethingPracticeLedgerRecord,
   OnethingPracticeSummaryResult,
 } from '@shared/contracts/practice.js'
-import { PracticeService, PracticeServiceClosedError, type PracticeEventBroadcaster } from './service.js'
+import { PracticeService, PracticeServiceClosedError, type PracticeEventBroadcaster } from './practice-service.js'
 import type {
   PracticeLogRequest, PracticeSetConfigRequest,
   PracticeStartRequest, PracticeSummaryRequest,

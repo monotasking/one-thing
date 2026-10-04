@@ -28,9 +28,9 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { IndexedDoc, VectorIndex } from '../../kernel/index.js'
+import type { IndexedDoc, VectorIndex } from '../../kernel/search-kernel.js'
 
-import { captureRuntimeLogs } from '../../../logging/index.js'
+import { captureRuntimeLogs } from '../../../logging/logging.js'
 import { VectorWriter } from '../../index/vector-writer.js'
 import { describeEmbedderFailure } from '../../index/vector-writer.js'
 import { captureModelManifest } from '../model-store.js'

@@ -72,7 +72,7 @@ import {
   taskPorts,
   webOpenAdapters,
   webSearchAdapters,
-} from './adapters.js'
+} from './toolkit-adapters.js'
 import { createFeatureInspectTool } from './builtin/feature-inspect.js'
 import { createFeatureMountTool } from './builtin/feature-mount.js'
 import { createFeatureUnmountTool } from './builtin/feature-unmount.js'

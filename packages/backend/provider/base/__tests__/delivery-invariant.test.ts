@@ -35,7 +35,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AgentContentPart, AgentInputModality } from "@onething/backend/agent-loop/loop-primitives";
-import { getLogger } from "../../../logging/index.js";
+import { getLogger } from "../../../logging/logging.js";
 import {
 	LedgerModelProfileResolver,
 	RequestBodyBuilder,
@@ -44,7 +44,7 @@ import {
 	type Dialect,
 	type PartCodec,
 	type WireId,
-} from "../index.js";
+} from "../provider-base.js";
 import {
 	createAgentProviderFromRuntime,
 	type AgentProviderRuntimeConfig,
@@ -54,7 +54,7 @@ import {
 	anthropicParts,
 	geminiParts,
 	responsesParts,
-} from "../../wires/index.js";
+} from "../../wires/provider-wires.js";
 import { registerCustomProvidersForTest } from '../../__tests__/custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-delivery-anthropic", "custom-delivery-openai", "custom-anthropic", "custom-openai"])

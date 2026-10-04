@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   OnethingTokenStore,
   type OnethingTokenCryptoAdapter,
-} from '../index.js'
-import type { OnethingOAuthToken } from '../types.js'
+} from '../auth.js'
+import type { OnethingOAuthToken } from '../auth-types.js'
 
 const dirs: string[] = []
 

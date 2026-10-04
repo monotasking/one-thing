@@ -17,7 +17,7 @@
  * 而不是让它们永远挂着。
  */
 
-import { getLogger } from '../../logging/index.js'
+import { getLogger } from '../../logging/logging.js'
 import {
   WORKER_LOG_THREAD_FIELD,
   isWorkerLogMessage,

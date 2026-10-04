@@ -18,7 +18,7 @@ import {
   type CollabFloorDecisionInput,
   type CollabFloorPolicyName,
   type CollabRaisedHand,
-} from '../index.js'
+} from '../collab-actors.js'
 
 const MEMBER_IDS = ['ana', 'bo', 'cy', 'dan']
 const ROSTER = MEMBER_IDS.map(id => ({ id, name: id }))

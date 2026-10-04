@@ -1,5 +1,5 @@
 import * as os from 'node:os'
-import type { ContextVariable } from './types.js'
+import type { ContextVariable } from './variable-types.js'
 
 export interface FormatOptions {
   collapseHome?: boolean

@@ -38,13 +38,13 @@ import {
   setPluginEnabled,
   writePluginConfig,
 } from './disk-loader.js'
-import { configurePluginConfigHost, invalidatePluginConfigCache } from '@onething/backend/plugin/config'
+import { configurePluginConfigHost, invalidatePluginConfigCache } from '@onething/backend/plugin/plugin-config'
 import {
   configurePluginStatusHost,
   detachPluginStatusHost,
   subscribePluginStatusSweep,
 } from '@onething/backend/plugin/status-bound'
-import { configureIMConnectorHooks } from './plugins-im-connector-registry.js'
+import { configureIMConnectorHooks } from './plugin-im-connector-registry.js'
 import {
   fetchPluginMarketIndex,
   installPluginPackage,
@@ -65,7 +65,7 @@ import {
   reportPluginRuntimeSuccess,
   restorePluginRuntimeHealth,
 } from '@onething/backend/plugin/health'
-import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './types.js'
+import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './plugin-types.js'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging/logger-primitives'

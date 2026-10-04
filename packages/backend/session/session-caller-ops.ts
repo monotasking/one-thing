@@ -23,15 +23,15 @@ import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-
 import { resolveInsideSandbox, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
 import { consolePort, getLogger } from '@onething/backend/logging/configure-logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import { isValidSpaceId } from '@onething/backend/space/types'
-import { requestSessionOwner, sessionAccess, type SessionOwnershipRecord } from './access.js'
+import { isValidSpaceId } from '@onething/backend/space/space-types'
+import { requestSessionOwner, sessionAccess, type SessionOwnershipRecord } from './session-access.js'
 import {
   createOnethingSessionForIpc,
   describeInvalidOnethingCreateSessionRequestForIpc,
   ONETHING_SESSION_NOT_FOUND,
   type OnethingSessionsIpcLogger,
-} from './ipc-operations.js'
-import { SESSION_RESOURCE_SCHEME } from './resource-spec.js'
+} from './session-ipc-operations.js'
+import { SESSION_RESOURCE_SCHEME } from './session-resource-spec.js'
 import * as sessionStore from './session-store.js'
 import { collectSessionCascadeDeleteIds } from './store-helpers.js'
 

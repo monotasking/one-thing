@@ -40,7 +40,7 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   endCollabV3Turn,
-} = await import('@onething/backend/collab/actors/turn-context')
+} = await import('@onething/backend/collab/actors/collab-actors-turn-context')
 
 /* ── 假数据源 ─────────────────────────────────────────────────────────────── */
 

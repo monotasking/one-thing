@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { installSessionLayerForTest } from '../../../session/testing/session-layer.js'
+import { installSessionLayerForTest } from '../../../session/testing/session-testing-layer.js'
 import { resetSessionRuns } from '@onething/backend/session'
 
 let storeDir: string
@@ -26,7 +26,7 @@ vi.mock('../../../session/session-commands.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../../session/session-commands.js')>(),
   sessionCommands: { patchMessage: vi.fn(() => true) },
 }))
-import { createDefaultSettings } from '../../../settings/defaults/settings.js'
+import { createDefaultSettings } from '../../../settings/defaults/settings-factory-defaults.js'
 import type { ToolSettings } from '@shared/ipc.js'
 import type { StreamSender } from '../stream-processor.js'
 import type { ProviderConfigWithKey, StreamExecutionParams } from '../stream-executor.js'
@@ -62,7 +62,7 @@ vi.mock('../image-stream.js', () => ({
   processImageGenerationStream: mocks.processImageGenerationStream,
 }))
 
-vi.mock('../agent-loop-executor.js', () => ({
+vi.mock('../engine-stream-agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 

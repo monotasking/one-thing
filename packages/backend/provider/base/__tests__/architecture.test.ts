@@ -26,7 +26,7 @@ import {
 	Undeliverable,
 	UsageBuckets,
 	type LedgerModelProfileConfig,
-} from "../index.js";
+} from "../provider-base.js";
 
 const BASE_DIR = dirname(fileURLToPath(import.meta.url)).replace(/\/__tests__$/, "");
 const PROVIDERS_DIR = dirname(BASE_DIR);

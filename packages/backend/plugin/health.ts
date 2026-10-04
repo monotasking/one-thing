@@ -15,7 +15,7 @@ import {
   type CorePluginRuntimeHealth,
   type PersistedPluginHealth,
 } from '@onething/backend/plugin/plugin-contract'
-import { getLogger } from '../logging/index.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('plugins.health')
 

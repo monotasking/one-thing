@@ -26,8 +26,8 @@ import { capturePluginLlmScope, type PluginLlmScope } from './llm-service.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background-table.js'
 import { pluginStorageImageExists } from './file-import.js'
-import { registerIMConnector } from './plugins-im-connector-registry.js'
-import { registerPluginDeepLinkAction } from '@onething/backend/deeplink/registry'
+import { registerIMConnector } from './plugin-im-connector-registry.js'
+import { registerPluginDeepLinkAction } from '@onething/backend/deeplink/deeplink-registry'
 import { registerPluginSearchProvider } from '@onething/backend/search'
 import {
   registerPluginCredentialStrategy,
@@ -56,7 +56,7 @@ import {
   getEffectivePluginConfig,
   getPluginExternalRoot,
   subscribePluginConfigChange,
-} from '@onething/backend/plugin/config'
+} from '@onething/backend/plugin/plugin-config'
 import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
@@ -79,8 +79,8 @@ import type {
   PluginPromptContextProvider,
   PluginSchedulerAPI,
   PluginToolDefinition,
-} from './types.js'
-import { LOCAL_PLUGIN_API_KEYS } from './types.js'
+} from './plugin-types.js'
+import { LOCAL_PLUGIN_API_KEYS } from './plugin-types.js'
 import {
   createCorePluginAPI,
   type CreateCorePluginAPIOptions,

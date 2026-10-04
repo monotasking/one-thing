@@ -20,7 +20,7 @@ const scratchpad = vi.hoisted(() => ({
   adoptScratchpad: vi.fn(),
 }))
 
-vi.mock('@onething/backend/scratchpad/service-bound', () => scratchpad)
+vi.mock('@onething/backend/scratchpad/scratchpad-service-bound', () => scratchpad)
 
 const DOC = {
   sessionId: 's1',
@@ -109,7 +109,7 @@ describe('scratchpad RPC domain', () => {
   })
 })
 // Adapter fixtures explicitly belong to the local operator on both transports.
-vi.mock('../../session/access.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../session/access.js')>()
+vi.mock('../../session/session-access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

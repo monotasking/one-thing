@@ -1,7 +1,7 @@
 import { clampOnethingReasoningEffort, type OnethingCustomReasoningConfig } from '../model-capability.js'
 import type { RequestBodyBuilder } from '../base/request-body-builder.js'
 import type { ThinkingWire } from '../base/thinking-wire.js'
-import type { TurnContext } from '../base/turn-context.js'
+import type { TurnContext } from '../base/provider-base-turn-context.js'
 
 /**
  * The declarative custom mapping itself — shared by the per-model override

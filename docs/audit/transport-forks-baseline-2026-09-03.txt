@@ -58,6 +58,6 @@
 forks:packages/backend/interaction/interaction-client-api.ts 1
 forks:packages/backend/logging/logging-client-api.ts 1
 forks:packages/backend/mcp/mcp-client-api.ts 1
-forks:packages/backend/session/sessions-client-api-commands.ts 1
+forks:packages/backend/session/session-client-api-commands.ts 1
 forks:packages/backend/settings/settings-client-api.ts 1
 ipcMain:apps/desktop-react/electron 2

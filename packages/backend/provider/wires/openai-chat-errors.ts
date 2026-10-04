@@ -17,7 +17,7 @@
  * `providerId` 同时是 SSE 读取器的 `sourceName`(`invalidMessage` 前缀)——
  * 同一个名字只有一处 owner。
  */
-import { ProviderHttpError, type ErrorMapper } from "../base/index.js";
+import { ProviderHttpError, type ErrorMapper } from "../base/provider-base.js";
 
 /** 这条线抛出来的对象的形状 —— 换装后就是 `ProviderHttpError` 本身。 */
 export type OpenAIChatApiError = ProviderHttpError;

@@ -15,7 +15,7 @@
  *    也隐去了。
  */
 
-import type { DocPayload, DocumentFilter, DocumentFilterContext } from '../kernel/index.js'
+import type { DocPayload, DocumentFilter, DocumentFilterContext } from '../kernel/search-kernel.js'
 import { redactText } from '../kernel/redact.js'
 import { plainTextOf } from '../text/plain.js'
 

@@ -8,7 +8,7 @@
  *
  * 所以这里是唯一的读点,下面五个接线点全部从这里取:
  *   1. `files/file-search.ts`            @ / 文件选择器根
- *   2. `search/providers.ts`             搜索根
+ *   2. `search/search-providers.ts`             搜索根
  *   3. `tools/sandbox.ts`                沙箱可写根(权限面)
  *   4. `app/skills/loader.ts`            技能发现根
  *   5. `app/markdown/asset-service.ts`   markdown 附件根

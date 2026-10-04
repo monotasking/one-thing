@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { decideCollabActivations } from "../activation.js";
-import { COLLAB_DM_PAIR_MAX_CHAIN } from "../types.js";
+import { COLLAB_DM_PAIR_MAX_CHAIN } from "../collab-types.js";
 import { COLLAB_ROOM_TOOLS } from "../tool-surface.js";
 // 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表。
 import { resolveAgentToolSurface } from "../../agent/profile.js";
@@ -20,7 +20,7 @@ import {
 	buildCollabRoomContext,
 	buildCollabRoomSystemPrompt,
 } from "../roster.js";
-import type { CollabAgentLike } from "../types.js";
+import type { CollabAgentLike } from "../collab-types.js";
 
 const FE: CollabAgentLike = { id: "fe", name: "小李", title: "工程师" };
 const PM: CollabAgentLike = { id: "pm", name: "阿明", title: "产品" };

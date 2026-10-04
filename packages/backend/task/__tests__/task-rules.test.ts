@@ -9,7 +9,7 @@ import {
   TaskInputSchema,
   ZodValidator,
   type TaskDispatchOutcome,
-} from '../../toolkit/index.js'
+} from '../../toolkit/toolkit.js'
 import {
   TASK_MAX_CONCURRENT_PER_SESSION,
   TASK_TOOL_ID,
@@ -17,7 +17,7 @@ import {
   renderTaskReport,
   sessionHiddenToolIds,
   taskSessionName,
-} from '../index.js'
+} from '../task.js'
 
 describe('task session marker', () => {
   it('recognises a dispatched work session by its metadata stamp', () => {
@@ -57,7 +57,7 @@ describe('task report', () => {
 
 /**
  * R4b:旧 `tools/builtin/task.ts` 随旧树删除,同一只工具在
- * `toolkit/builtin/task.ts`;调用从 `info.execute(args, ctx)` 换成
+ * `toolkit/builtin/toolkit-builtin-task.ts`;调用从 `info.execute(args, ctx)` 换成
  * `ToolRunner.run`(生产路径上那一台)。
  */
 describe('task tool', () => {

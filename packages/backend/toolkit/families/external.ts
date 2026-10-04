@@ -31,7 +31,7 @@ import type { JsonSchema } from '@shared/toolkit/json-schema'
 import { toJsonObject, type JsonObject } from '@shared/json'
 import type { CoreToolPromptContribution } from '@onething/backend/agent-loop'
 import type { z } from 'zod'
-import { defineInput } from '../contract.js'
+import { defineInput } from '../toolkit-contract.js'
 
 /** 失败隔离的上报口。形状与 `app/plugins/health.ts` 的两个回调同构。 */
 export interface ExternalToolReporter {

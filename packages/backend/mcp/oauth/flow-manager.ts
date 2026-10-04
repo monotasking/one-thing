@@ -17,8 +17,8 @@
 import { randomUUID } from 'node:crypto'
 import { callbackServerManager } from '../../auth/callback-server.js'
 import { MCPOAuthCredentialStore } from './credential-store.js'
-import { MCPOAuthProvider } from './provider.js'
-import type { MCPOAuthFlowState, MCPServerOAuthSurface } from './types.js'
+import { MCPOAuthProvider } from './mcp-oauth-provider.js'
+import type { MCPOAuthFlowState, MCPServerOAuthSurface } from './mcp-oauth-types.js'
 
 /** Loopback ports for MCP OAuth callbacks (provider OAuth uses 1455/1457/54545). */
 export const MCP_OAUTH_CALLBACK_PORTS = [51823, 51824, 51825]

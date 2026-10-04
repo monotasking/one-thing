@@ -2,7 +2,7 @@
  * 身份目录的接线 —— 句柄解码的**识别面**
  * (docs/design/collab-handle-codec.md §2.1)。
  *
- * 纯规则在 `collab/identity.ts`,这里只负责把两个来源接上:全体 agent
+ * 纯规则在 `collab/collab-identity.ts`,这里只负责把两个来源接上:全体 agent
  * (`listAgents`)与用户本人(`resolveUserIdentity`)。
  *
  * ## 为什么是"全体",不是"本房成员"

@@ -25,8 +25,8 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 
 const killCalls: Array<{ hostStillInjected: boolean }> = []
 
-vi.mock('@onething/backend/terminal/service', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/terminal/service')>()
+vi.mock('@onething/backend/terminal/terminal-service', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/terminal/terminal-service')>()
   return {
     ...actual,
     killAllTerminals: async () => {
@@ -35,8 +35,8 @@ vi.mock('@onething/backend/terminal/service', async importOriginal => {
   }
 })
 
-import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/terminal/service'
-import { applyHostPorts, type OnethingHostPorts } from '../host-ports.js'
+import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/terminal/terminal-service'
+import { applyHostPorts, type OnethingHostPorts } from '../backend-host-ports.js'
 
 const BASE: OnethingHostPorts = {
   storePath: {},

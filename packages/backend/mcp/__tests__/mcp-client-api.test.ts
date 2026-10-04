@@ -57,7 +57,7 @@ vi.mock('@onething/backend/mcp/index-with-bridge', () => ({
   registerMCPTools: wiring.registerMCPTools,
   probeMCPServerConfig: wiring.probeMCPServerConfig,
 }))
-vi.mock('@onething/backend/mcp/oauth/index', async importOriginal => ({
+vi.mock('@onething/backend/mcp/oauth/mcp-oauth', async importOriginal => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getMCPOAuthFlowManager: () => ({ logout: vi.fn(async () => {}) }),
 }))

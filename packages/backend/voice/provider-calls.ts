@@ -9,7 +9,7 @@ import {
   type OnethingVoiceSpeechStreamResult,
   type OnethingVoiceSpeechResult,
   type OnethingVoiceTranscriptionResult,
-} from '@onething/backend/voice/providers'
+} from '@onething/backend/voice/voice-providers'
 import { createRequiredAppFetch, getSettings } from '@onething/backend/settings'
 import type { VoiceSettings, VoiceSubmitUtteranceRequest, VoiceTTSModel } from '@shared/ipc.js'
 

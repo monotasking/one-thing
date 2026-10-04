@@ -5,7 +5,7 @@ import {
   readSpaceProviderSettings,
   writeSpaceProviderSettings,
 } from '@onething/backend/space/provider-settings'
-import { DEFAULT_SPACE_ID } from '@onething/backend/space/types'
+import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { splitEffectiveAISettings } from './defaults/ai-settings.js'
 import {
   hasSpaceProviderSettingsMigrated,

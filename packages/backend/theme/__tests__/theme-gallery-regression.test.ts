@@ -2,9 +2,9 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
-import type { Theme } from '../types.js'
+import type { Theme } from '../theme-types.js'
 import { generateCSSVariables } from '../css-mapper.js'
-import { resolveTheme, resolveThemeHighlights, resolveThemeUI } from '../resolver.js'
+import { resolveTheme, resolveThemeHighlights, resolveThemeUI } from '../theme-resolver.js'
 import {
   colorDistance,
   contrastRatio,
