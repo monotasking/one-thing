@@ -20,7 +20,7 @@ import type {
   ProviderConfig,
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
-import { createAgentProviderFromRuntime } from '@onething/backend/engine'
+import { createAgentProviderFromRuntime } from '@onething/backend/provider-call'
 import {
   catalogFactsOf,
   createOnethingManualModelEntry,

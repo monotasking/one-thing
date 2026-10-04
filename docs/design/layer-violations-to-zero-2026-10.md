@@ -160,3 +160,20 @@ collab 今天是三种东西挤在一个目录:协作的四只工具(住在 tool
 ### 三单合起来的验收(改前 `s26-before` = 19ccea32c + 别的会话的未提交改动 / 改后 `s26-after`)
 
 三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(`node:` 命中 0)成功;全量 vitest 失败集合**逐行相同**(仓根 21 条、壳侧 1 条,都是改前就有的;搬家的五只测试按路径映射后用例名与结果逐条相同,新增一只 3 条全绿);vitest 快照文件 sha 改前改后与跑前跑后都不变;golden 命中集 sha 不变;persistence 19 文件 176 条全绿;shadow-battery 场景表逐行相同(改前就红在 `compact-half-run-log` 与 appendFailures 8,未变),refold 217 次 0 不一致;hydration 夹具店与新店各 217 会话 0 失败;`gate:acp` 109 条 ok 不变;`gate:search-index` ok / FAIL 结构逐行相同(改前就红的两条 ⑤d 未变,只有毫秒数不同);`gate:web-shell` 全绿;`gate:client` 两个运行时都绿;name / client-api / boundary(132 ok)/ transport / provider(105 对)/ log / session / native 不变,feature-map 66 → 65 行;`provider:drill` 改前改后同一处假红(脚本的 worktree 链接表还写着 D120 之前的 `client`,`@onething/backend-client` 解析不到),本地重放(链接表改成 `backend-client`、铺上工作区改动)全绿;CLI 与 server 能起。
+
+### 单 3:C7 + C8 + C5 + C3 的钩子半边(2026-10-04,未提交)
+
+- C7:`tool/access-control/` 两只 → `permission/permission-enforcement.ts`(方案写的 `permission-policy.ts` 已被内核那只占了,按内容叫执行面)与 `permission/permission-sandbox-roots.ts`(D135);permission 入口具名交出它们;九个读者改引 permission 入口;三只测试跟进 `permission/__tests__/`;exports 两把键换址,assembly 基线 sandbox 那一行换址,边界检查器两处换址,CLAUDE.md 宿主端口表 `sandbox` 一行改路径。第 2 节模拟器点名的环:`permission-capabilities.ts` / `permission-grant-storage.ts` 改引兄弟文件(D136),入口环 0。
+- C8:分类器开 `registerBashPolicy`,音乐开 `registerMusicBashPolicies()`,在 `configureAppRuntimeAdapters()` 里调(D137);ncm 分类测试跟进 `music/__tests__/music-bash-policies.test.ts`。
+- C5:`configureFeatureRegistryRpc({ registerRouterHandlers })` 闩,const 持有器,同样在 `configureAppRuntimeAdapters()` 里交;未配置即抛(D138)。三只直接挂 feature 的测试自己交。
+- C3 钩子:`onSpaceRemoved` 模块级登记表,`bootstrapProjectDirs()` 订、disposer 退订(D139)。单 1 把 space 改成 L2 之后 `space → project-dir` 已不计数,所以这一半不改读数(施工清单的脚注说过)。
+- 读数:**`layer:check` 29 条 / 13 对**(消失:`tool → permission` 4、`tool → file / music / note / session / settings` 各 1、`feature-registry → http-server` 1,共 10),基线收紧;cycle 0;entry 2279 → 2260(tool 111 → 97、permission 65 → 62、project-dir 16 → 15、music 15 → 14);name 0;boundary 0 失败;assembly ok;node tsc 零错。
+
+### 单 4:1B 新功能 `provider-call/`(2026-10-04,未提交)
+
+- 九只照方案搬:`provider-call/provider-call-{utility,chat,process-providers,factory,openai-compatible-fetch,agent-runtime,media-reader,auth}.ts` + 入口 `provider-call.ts`(具名导出 14 个名字,R3 文件头);`engine-auxiliary-model-checkpoint.ts` → `session/session-auxiliary-model-checkpoint.ts`,改引兄弟文件,由 session 入口交出(D140)。engine 入口不再交出这些名字;engine 内部 6 个读者与外面 10 个读者改引 provider-call / session 入口;exports 加 `./provider-call`;层次表加 `provider-call` L2 行(D142);三只测试跟进 `provider-call/__tests__/`,其余 20 只测试只改桩 / import 的路径;边界检查器的门面判据、`provider-vendor` 基线里 openai 那一对、CLAUDE.md 的服务商段与 engine 目录行换址。
+- 读数:**`layer:check` 25 条 / 9 对**(消失:`pet / plugin / skill / toc → engine` 各 1),基线收紧;cycle 0(59 个入口);entry 2260 → 2275 —— `provider-call` 新行 34(全是测试对它内部文件的桩与引用)、`engine` 26 → 7(D141);name 0;boundary 0 失败;assembly ok(chat 门面那一个 `let` 换址);node tsc 零错。
+
+### 单 3–4 合起来的验收(改前 `s26b-before` = 8c4b9413b + 别的会话的未提交改动 / 改后 `s26b-after`)
+
+三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(`node:` 命中 0)成功;全量 vitest 仓根失败集合与改前相比**只多一条** `file-workspace-watch-driver` 的「watches a real read-only directory…」—— 那是真文件系统监听的时序用例(改前就有同文件的另一条在红),单跑三次 18/18 全绿,判为抖动;壳侧逐行相同;搬家的七只测试按路径映射后用例名与结果逐条相同;快照与 golden sha 不变;persistence 176 条、side-effect + lifecycle 24 条全绿;shadow-battery 场景表逐行相同(refold 217 / 0,appendFailures 8 与改前相同);hydration 两店各 217 / 0;`gate:acp` 109 条 ok;`gate:search-index` ok / FAIL 结构相同;`gate:web-shell` / `gate:client` 绿;name / client-api / boundary(132 ok)/ transport / log / session / native 不变。`provider:gate` 在验收那一轮红过一次(openai 那一对随 `provider-helpers` 换了文件路径),基线换址后 105 对绿;`provider:drill` 本地重放(铺上工作区改动)全绿;CLI 与 server 能起。

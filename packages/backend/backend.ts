@@ -46,6 +46,7 @@ import { TodoPlanRuntime } from '@onething/backend/todo-plan/todo-plan-service'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './backend-shutdown.js'
 import { PracticeService, configurePracticeService } from '@onething/backend/practice/practice-service-slot'
 import { MusicSubsystem } from '@onething/backend/music/music-subsystem'
+import { registerMusicBashPolicies } from '@onething/backend/music'
 import { PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
 import { petChattinessOf, watchPetChattiness } from '@onething/backend/pet/pet-chattiness-watch'
 import { ModelMomentComposer } from '@onething/backend/pet/pet-model-composer'
@@ -66,16 +67,16 @@ import {
 } from '@onething/backend/settings'
 import { applyDiagnosticsMode } from '@onething/backend/logging/logging-diagnostics'
 import { initializeAgents } from '@onething/backend/agent/agent-store-access'
-import { configureAppToolSandbox } from '@onething/backend/tool/access-control/tool-access-control-sandbox'
+import { configureAppToolSandbox } from '@onething/backend/permission'
 import { applyHostPorts, type OnethingHostPorts } from './backend-host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/backend/tool/tool-background-jobs-bound'
 import {
   buildHistoryMessages,
-  configureAppProviderRegistry,
   historyProjectionRecipe,
   type BindableStreamSender,
   type StreamEngine,
 } from '@onething/backend/engine'
+import { configureAppProviderRegistry } from '@onething/backend/provider-call'
 import { configureAppScheduler } from '@onething/backend/scheduler/scheduler-bound'
 import { configureAppRipgrep } from '@onething/backend/file'
 import { configureAppSearchProviders } from '@onething/backend/search'
@@ -131,6 +132,8 @@ import type { ResourceKernel } from '@onething/backend/resource/resource-api'
 import { ToolExecutionRegistry } from '@onething/backend/toolkit/toolkit-executions'
 import { configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 import { registerAppRpcDomains } from './http-server/http-server-client-api-roster.js'
+import { registerRouterHandlers } from './http-server/http-server-dispatch-table.js'
+import { configureFeatureRegistryRpc } from '@onething/backend/feature-registry'
 import { initializeSessionSkills } from '@onething/backend/skill/skill-session-cache'
 import { MCPManager, registerMCPTools } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
@@ -179,6 +182,12 @@ export function configureAppRuntimeAdapters(): void {
   configureAppSkillManage()
   configureAppSkillsLoader()
   configureAppPermissionGrants()
+  // 音乐 CLI 的 bash 分类策略(越层清零 C8):从前工具的分类器加载时直接读音乐服务商名册,
+  // 现在由音乐自己登记;放在这里是因为它和上面这些一样是幂等的装配期接线,先于任何一次工具执行。
+  registerMusicBashPolicies()
+  // 功能挂载基座 `registerRpcDomain` 落到的 RPC 分发表(越层清零 C5):从前基座直接 import http-server,
+  // 现在由装配交进去;同样幂等,先于任何一次 `mountFeature`。
+  configureFeatureRegistryRpc({ registerRouterHandlers })
   // 凭证功能交给别人的两样东西(D24 断边 ② ③,2026-10-04):从前设置的模型目录服务与 auth 各自直接
   // import 凭证功能里的文件,凭证那一侧又要读设置、要 auth 刷新令牌,三个功能互相引用成环;现在只在这里接一次。
   // ① 进程那台登录服务的令牌存放面 = 空间凭证池(第一次交的为准;它是每次现读当前 store 的无状态薄壳)。

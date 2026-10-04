@@ -64,7 +64,7 @@ export interface ProviderMediaImage {
  * 多轮改图要求把上一条 model 回复里的**生成图**原样放回 `contents`,而消息上
  * 留下的只有一段 markdown(`![Generated Image|mediaId:<id>](media://<id>.png)`)
  * —— 字节在媒体库里。runtime 的 provider 只声明这个接口,实现由装配层注入
- * (`packages/backend/engine/engine-media-reader.ts`),于是
+ * (`packages/backend/provider-call/provider-call-media-reader.ts`),于是
  * provider 不必认识媒体库的路径解析、也不会顺着它拖进任何宿主依赖。
  *
  * 只读、只按 id 取、找不到就 `undefined`(**不抛**):回放不到一张历史图是

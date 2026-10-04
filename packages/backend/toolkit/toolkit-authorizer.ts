@@ -33,7 +33,7 @@ import {
   type EnforcePermissionPolicyInput,
   type PermissionEffect,
   type PermissionPreview,
-} from '@onething/backend/tool/access-control/tool-access-control-permission-policy'
+} from '@onething/backend/permission'
 import { getSettings } from '@onething/backend/settings'
 
 /**

@@ -1,4 +1,5 @@
-import { configureOnethingPermissionGrantStorage, type OnethingPermissionGrantStorageAdapters } from '@onething/backend/permission'
+// 功能内部只引兄弟文件、不引自家入口(D126;越层清零单 3 收口时从 `@onething/backend/permission` 改过来)。
+import { configureOnethingPermissionGrantStorage, type OnethingPermissionGrantStorageAdapters } from './permission-runtime.js'
 import {
   getOnethingPermissionsDir,
   readJsonFile,
@@ -22,27 +23,31 @@ export function configureAppPermissionGrants(): void {
 }
 
 export {
+  configureOnethingPermissionGrantStorage,
+  configurePermissionGrantFileStorage,
+  createPermissionGrantFileStorage,
+  getPermissionWorkspaceGrantsPath,
+} from './permission-runtime.js'
+export {
   addGrant,
   clearSessionGrants,
   clearWorkspaceGrants,
-  configureOnethingPermissionGrantStorage,
-  configurePermissionGrantFileStorage,
   configurePermissionGrantStorage,
-  createPermissionGrantFileStorage,
-  getPermissionWorkspaceGrantsPath,
   listSessionGrants,
   findWorkspaceGrant,
   listWorkspaceGrants,
   matchGrant,
   resetPermissionGrantsForTests,
   revokeGrant,
-} from '@onething/backend/permission'
+} from './permission-asks.js'
 export type {
   OnethingPermissionGrantStorageAdapters,
   PermissionGrantFileStorageAdapters,
+  PermissionGrantWorkspaceFile,
+} from './permission-runtime.js'
+export type {
   PermissionGrantInput,
   PermissionGrantMatchInput,
   PermissionGrantStorage,
-  PermissionGrantWorkspaceFile,
-} from '@onething/backend/permission'
+} from './permission-asks.js'
 export type { PermissionGrant, PermissionGrantScope } from '@shared/permission/grant'

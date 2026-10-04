@@ -20,7 +20,7 @@ vi.mock('@onething/backend/provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@onething/backend/provider')>()),
   resolveProviderApiKey: (_id: string, config: { apiKey?: string }) => config?.apiKey ?? 'resolved-key',
 }))
-vi.mock('../../engine/engine-chat-facade.js', () => ({
+vi.mock('../../provider-call/provider-call-chat.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 vi.mock('@onething/backend/usage/usage-recorder', () => ({

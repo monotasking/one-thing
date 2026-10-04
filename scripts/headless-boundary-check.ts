@@ -572,7 +572,9 @@ const MAIN_CORE_SYSTEM_DIRS = [
   'packages/backend/permission/permission-grant-storage.ts',
   'packages/backend/permission/permission-with-grant-storage.ts',
   'packages/backend/permission/permission-message-anchor.ts',
-  'packages/backend/tool/access-control',
+  // 越层清零 C7(2026-10-04):`tool/access-control/` 那两只搬进了 permission,尺子跟着这两只文件走,量的东西不变。
+  'packages/backend/permission/permission-enforcement.ts',
+  'packages/backend/permission/permission-sandbox-roots.ts',
 ]
 
 /** 有真实文件 IO 职责的装配目录:只禁宿主与原生 SDK,不禁 fs/path。 */
@@ -3704,7 +3706,7 @@ function checkRuntimeOwnsAgentLoopSelection(): void {
 }
 
 function checkCoreOwnsAgentLoopPureFacades(): void {
-  const mainIndexFile = path.join(root, 'packages/backend/engine/engine-process-providers.ts')
+  const mainIndexFile = path.join(root, 'packages/backend/provider-call/provider-call-process-providers.ts')
   const mainIndexContent = fs.existsSync(mainIndexFile) ? fs.readFileSync(mainIndexFile, 'utf-8') : ''
   // ③-收尾 B(2026-10-02)撤:原来这里还点名装配层 agent-loop 目录下 13 只已删的转发壳(bridge / runner / types /
   // providers/sse …)回来即红。那个目录整只平铺进了 `agent-loop`,照搬过来 `providers/sse.ts` 正是产品本体,
@@ -3806,7 +3808,7 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
 
 function checkRuntimeOwnsProviderOauthConfigResolution(): void {
   const runtimeFile = path.join(root, 'packages/backend/provider/provider-oauth-config.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/engine-chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-call/provider-call-chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingOAuthProviderConfig',
@@ -3819,7 +3821,7 @@ function checkRuntimeOwnsProviderOauthConfigResolution(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider OAuth config resolution ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_OAUTH_CONFIG_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/engine-chat-facade.ts: missing provider facade']),
+      : ['packages/backend/provider-call/provider-call-chat.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend owns provider OAuth config resolution', lines)
@@ -3829,7 +3831,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/provider/provider-facade.ts')
   const runtimeTestFile = path.join(root, 'packages/backend/provider/__tests__/provider-facade.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/provider/provider.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/engine-chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-call/provider-call-chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -3861,7 +3863,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_FACADE_LOW_LEVEL_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/engine-chat-facade.ts: missing provider facade']),
+      : ['packages/backend/provider-call/provider-call-chat.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend owns provider facade orchestration', lines)
@@ -3869,7 +3871,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
 
 function checkRuntimeOwnsProviderTitleOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/provider/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/engine-chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-call/provider-call-chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingProviderChatTitle',
@@ -3882,7 +3884,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider title orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TITLE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/engine-chat-facade.ts: missing provider facade']),
+      : ['packages/backend/provider-call/provider-call-chat.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend owns provider title orchestration', lines)
@@ -3890,7 +3892,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
 
 function checkRuntimeOwnsProviderTextResponseProjection(): void {
   const runtimeFile = path.join(root, 'packages/backend/provider/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/engine-chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-call/provider-call-chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   // streamOnethingTextChatResponse was deleted in P0 (zero callers); the
   // generate-side projection is still the live one.
@@ -3903,7 +3905,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider text response projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TEXT_RESPONSE_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/engine-chat-facade.ts: missing provider facade']),
+      : ['packages/backend/provider-call/provider-call-chat.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend owns provider text response projection', lines)
@@ -3911,7 +3913,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
 
 function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/backend/provider/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/engine-chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-call/provider-call-chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingChatResponseWithReasoning',
@@ -3925,7 +3927,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider generate-with-reasoning orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/engine-chat-facade.ts: missing provider facade']),
+      : ['packages/backend/provider-call/provider-call-chat.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend owns provider generate-with-reasoning orchestration', lines)
@@ -3933,7 +3935,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
 
 function checkRuntimeOwnsProviderAcpStreamProjection(): void {
   const runtimeFile = path.join(root, 'packages/backend/provider/provider-routing.ts')
-  const mainFile = path.join(root, 'packages/backend/engine/engine-chat-facade.ts')
+  const mainFile = path.join(root, 'packages/backend/provider-call/provider-call-chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'streamOnethingACPChatResponseWithTools',
@@ -3947,7 +3949,7 @@ function checkRuntimeOwnsProviderAcpStreamProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP stream projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/engine/engine-chat-facade.ts: missing provider facade']),
+      : ['packages/backend/provider-call/provider-call-chat.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/backend owns provider ACP stream projection', lines)
@@ -6597,7 +6599,7 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
   const runtimeFile = path.join(root, 'packages/backend/tool/tool-sandbox-runtime.ts')
   const runtimeIndexFile = path.join(root, 'packages/backend/tool/tool.ts')
   const runtimeTestFile = path.join(root, 'packages/backend/tool/__tests__/tool-sandbox-runtime.test.ts')
-  const mainFile = path.join(root, 'packages/backend/tool/access-control/tool-access-control-sandbox.ts')
+  const mainFile = path.join(root, 'packages/backend/permission/permission-sandbox-roots.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''

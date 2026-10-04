@@ -3,22 +3,11 @@
 # 只许降:任一对高于这里的数、或出现这里没有的对,`bun run layer:gate` 红。
 # 降了之后跑 `node scripts/feature-layer-gate.mjs --write-baseline` 收紧。
 12 toolkit → collab
-4 tool → permission
 3 external-agent → collab
 3 variable → collab
 2 agent → collab
-1 feature-registry → http-server
 1 interaction → collab
 1 music → collab
-1 pet → engine
 1 plugin → collab
-1 plugin → engine
 1 search → collab
 1 session → collab
-1 skill → engine
-1 toc → engine
-1 tool → file
-1 tool → music
-1 tool → note
-1 tool → session
-1 tool → settings

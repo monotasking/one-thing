@@ -67,8 +67,8 @@ vi.mock('@onething/backend/event', () => ({ getEventBus: () => eventBus }))
 vi.mock('../../session/session-runs.js', () => runs)
 vi.mock('../../session/session-reads.js', () => reads)
 vi.mock('../prompt/engine-system-prompt-snapshot.js', () => prompt)
-vi.mock('../engine-chat-facade.js', () => providers)
-vi.mock('../stream/engine-stream-provider-helpers.js', () => ({
+vi.mock('../../provider-call/provider-call-chat.js', () => providers)
+vi.mock('../../provider-call/provider-call-auth.js', () => ({
   resolveProviderAuth: vi.fn(),
   getProviderApiType: vi.fn(),
 }))

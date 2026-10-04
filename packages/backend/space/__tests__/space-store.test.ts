@@ -2,9 +2,10 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { resetSpacesStoreForTests } from '../space-store.js'
+import { onSpaceRemoved, resetSpacesStoreForTests } from '../space-store.js'
 import { setRootDirForTests } from '../space-persistence.js'
 import {
+  forgetProjectsStore,
   getProjectsStore,
   resetProjectsStoreForTests,
 } from '../../project-dir/project-dir-store.js'
@@ -81,6 +82,9 @@ describe('Onething spaces store', () => {
 
   it('deleting a space takes its whole directory — roster included (批 B4)', async () => {
     const store = resetSpacesStoreForTests()
+    // 越层清零 C3:丢名册内存实例这一步由名册在 `bootstrapProjectDirs()` 里订删空间钩子完成,
+    // 这里不走装配,直接订同一只钩子。
+    const stopForgetting = onSpaceRemoved(forgetProjectsStore)
     const scratch = store.create({ id: 'scratch', name: 'Scratch' })
 
     // 该空间的名册(批 B4 起住在 workspaces/<id>/project-dirs/)。
@@ -95,6 +99,7 @@ describe('Onething spaces store', () => {
     await expect(fs.stat(path.join(tmpDir, scratch.id))).rejects.toThrow()
     expect(getProjectsStore(scratch.id)).not.toBe(roster)
     expect(getProjectsStore(scratch.id).list()).toEqual([])
+    stopForgetting()
   })
 
   it('notifies subscribers on every mutation and stops after unsubscribe', () => {

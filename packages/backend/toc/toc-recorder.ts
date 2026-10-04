@@ -10,7 +10,8 @@
  */
 import { randomUUID } from "node:crypto";
 import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/agent-loop/agent-loop-primitives";
-import { beginAuxiliaryModelRequest, createUtilityProvider } from '@onething/backend/engine';
+import { createUtilityProvider } from '@onething/backend/provider-call';
+import { beginAuxiliaryModelRequest } from '@onething/backend/session';
 import {
 	applyTurnDecision,
 	buildTocPrompt,

@@ -13,7 +13,8 @@
  * explicit import — see src/main/variables/gateways.ts.
  */
 
-import { getProjectsStore } from '@onething/backend/project-dir/project-dir-store'
+import { forgetProjectsStore, getProjectsStore } from '@onething/backend/project-dir/project-dir-store'
+import { onSpaceRemoved } from '@onething/backend/space'
 import {
   buildProjectDirsPromptVars as buildProjectDirsPromptVarsForSpace,
   type ProjectDirsPromptVars,
@@ -29,16 +30,20 @@ let bootstrapped = false
 /**
  * A3(方案 §2.5,(b) 类闩):返回 disposer,由 `assembleSteps` 的 `own()` 接住。
  *
- * 这一件本身只是**暖缓存**(`getProjectsStore().initialize()` 读一次盘),没有
- * 订阅、没有定时器,所以 disposer 只把闩放回去 —— 让第二份装配真的再暖一次,
+ * 这一件是**暖缓存**(`getProjectsStore().initialize()` 读一次盘)外加一只删空间钩子的订阅,
+ * 没有定时器,所以 disposer 退订钩子、把闩放回去 —— 让第二份装配真的再暖一次、再订一次,
  * 而不是靠"上一份进程里读过了"这个偶然。store 自己是进程级单例,不在这里关。
  */
 export function bootstrapProjectDirs(): () => void {
   if (bootstrapped) return () => {}
   bootstrapped = true
   getProjectsStore().initialize()
+  // 删空间时丢掉该空间的名册内存实例(留着它会把索引写回刚删掉的目录)。越层清零 C3(2026-10-04)
+  // 之前是空间那一侧直接调 `forgetProjectsStore`;现在名册自己订空间的删房钩子,退订跟着这个 disposer 走。
+  const stopForgetting = onSpaceRemoved(forgetProjectsStore)
   log.info('project-dirs subsystem bootstrapped')
   return () => {
+    stopForgetting()
     bootstrapped = false
   }
 }

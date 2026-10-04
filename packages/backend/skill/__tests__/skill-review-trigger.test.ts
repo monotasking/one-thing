@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/backend/agent-loop/agent-loop-primitives'
-import { createAgentProviderFromRuntime } from '../../engine/engine-process-providers.js'
+import { createAgentProviderFromRuntime } from '../../provider-call/provider-call-process-providers.js'
 import { getUserSkillsPath } from '@onething/backend/skill/skill-operations'
 import { executeSkillManage } from '@onething/backend/skill/skill-manage-setup'
 import { invalidateSessionSkillsCache as invalidateSkillsCache } from '@onething/backend/skill/skill-session-cache'
@@ -39,8 +39,8 @@ vi.mock('electron', () => ({
   shell: { openPath: vi.fn() },
 }))
 
-vi.mock('../../engine/engine-process-providers.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../engine/engine-process-providers.js')>()
+vi.mock('../../provider-call/provider-call-process-providers.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../provider-call/provider-call-process-providers.js')>()
   return {
     ...actual,
     createAgentProviderFromRuntime: vi.fn(() => ({

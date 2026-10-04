@@ -20,7 +20,7 @@ import {
   type PendingMessageQueue,
 } from '@onething/backend/agent-loop'
 import type { AgentJsonObject, AgentOutputModality } from '@onething/backend/agent-loop/agent-loop-primitives'
-import type { AgentRuntimeProviderConfig } from '../engine-agent-runtime.js'
+import type { AgentRuntimeProviderConfig } from '@onething/backend/provider-call'
 import type { EffectiveAgentProfile } from '@onething/backend/agent'
 import type { CoreSpaceCredentialMarker } from '@onething/backend/provider'
 import {

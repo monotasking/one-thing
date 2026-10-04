@@ -99,7 +99,7 @@ packages/backend/permission/permission-grant-storage.ts 1
 packages/backend/project-dir/project-dir-bootstrap.ts 1
 packages/backend/provider/builtin/github-copilot.ts 1
 packages/backend/credentials/credentials-strategy.ts 1
-packages/backend/engine/engine-chat-facade.ts 1
+packages/backend/provider-call/provider-call-chat.ts 1
 packages/backend/credentials/credentials-resolution.ts 1
 packages/backend/scheduler/scheduler-user-task-service.ts 1
 packages/backend/settings/settings-events.ts 1
@@ -109,7 +109,7 @@ packages/backend/skill/skill-manage-setup.ts 1
 packages/backend/skill/skill-session-cache.ts 1
 packages/backend/todo-plan/todo-plan-service.ts 1
 packages/backend/toolkit/toolkit-wiring.ts 2
-packages/backend/tool/access-control/tool-access-control-sandbox.ts 2
+packages/backend/permission/permission-sandbox-roots.ts 2
 packages/backend/usage/usage-recorder.ts 1
 packages/backend/variable/variable-system.ts 2
 packages/backend/voice/voice-service.ts 1

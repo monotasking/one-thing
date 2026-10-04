@@ -22,7 +22,7 @@ import { resolveAgentProfileForSessionObject } from '@onething/backend/agent/age
 import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
 import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { modelRegistry } from '@onething/backend/settings'
-import { createAgentProviderFromRuntime } from '../engine-agent-runtime.js'
+import { createAgentProviderFromRuntime } from '@onething/backend/provider-call'
 import type { ChatMessage, ChatSession, SkillDefinition } from '@shared/ipc.js'
 import { toJsonObject } from '@shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './engine-stream-message-helpers.js'

@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from '@onething/backend/agent-loop/agent-loop-primitives'
-import { ensureSessionWritable } from '@onething/backend/session'
-import { writeSessionEvent } from '@onething/backend/session'
-import { flushSessionEventLog } from '@onething/backend/session'
-import { textOrBlobForEvent } from '@onething/backend/session'
+import { ensureSessionWritable } from './session-layer.js'
+import { writeSessionEvent } from './session-event-writer.js'
+import { flushSessionEventLog } from './session-event-log.js'
+import { textOrBlobForEvent } from './session-blob-store.js'
 
 /** One intent and one outcome per utility call; never replay an unknown external outcome. */
 export interface AuxiliaryModelInput {

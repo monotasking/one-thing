@@ -13,8 +13,8 @@ const control = vi.hoisted(() => ({
   auth: async () => {},
   onUsage: undefined as ((usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void) | undefined,
 }))
-vi.mock('../engine/stream/engine-stream-provider-helpers.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../engine/stream/engine-stream-provider-helpers.js')>()
+vi.mock('../provider-call/provider-call-auth.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../provider-call/provider-call-auth.js')>()
   return { ...actual,
     getEffectiveProviderConfig: () => ({ providerId: 'custom-digest', model: 'digest-local', providerConfig: {
       model: 'digest-local', selectedModels: ['digest-local'], apiKey: 'local-test-only', apiType: 'openai', baseUrl: control.url,
@@ -25,8 +25,8 @@ vi.mock('../engine/stream/engine-stream-provider-helpers.js', async importOrigin
     },
   }
 })
-vi.mock('../engine/engine-chat-facade.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../engine/engine-chat-facade.js')>()
+vi.mock('../provider-call/provider-call-chat.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../provider-call/provider-call-chat.js')>()
   return { ...actual,
     generateChatResponse: (...args: Parameters<typeof actual.generateChatResponse>) => {
       control.onUsage = args[3]?.onUsage

@@ -79,14 +79,14 @@ vi.mock('../../session/session-reads.js', () => ({
   },
 }))
 
-vi.mock('../stream/engine-stream-provider-helpers.js', () => ({
+vi.mock('../../provider-call/provider-call-auth.js', () => ({
   getEffectiveProviderConfig: mocks.getEffectiveProviderConfig,
   resolveProviderAuth: mocks.resolveProviderAuth,
   extractErrorDetails: vi.fn((error: { message?: string }) => error.message),
   getProviderApiType: vi.fn(() => 'chat'),
 }))
 
-vi.mock('../engine-chat-facade.js', () => ({
+vi.mock('../../provider-call/provider-call-chat.js', () => ({
   isProviderSupported: vi.fn(() => true),
   requiresOAuth: vi.fn(() => false),
   convertToolDefinitionsForProvider: vi.fn(() => ({})),

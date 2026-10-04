@@ -36,7 +36,27 @@
  */
 import type { Context as CordisContext } from '@deepseek-ai/cordis'
 import type { DomainRoutes, Router } from '@shared/ipc/router'
-import { registerRouterHandlers, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
+import type { RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
+
+/**
+ * `registerRpcDomain` 落到哪张 RPC 分发表上 —— 装配时交进来的闩(越层清零 C5,2026-10-04)。
+ *
+ * 从前这里直接 import `http-server` 的 `registerRouterHandlers`:功能挂载基座(L2)去引对外接口
+ * 那一层(L4)。挂载表本身是模块级的(`feature-registry-table.ts` 的 `mounted`),`FeatureContextImpl`
+ * 在 `mount` 时现造,没有一个「建表」的调用点能把分发表当构造参数传进来,所以用一个 configure 闩:
+ * `backend.ts` 的 `configureAppRuntimeAdapters()` 在装配一开始交一次(幂等,同一个函数后写覆盖前写),
+ * 先于任何一次 `mountFeature`。没交过就调 `registerRpcDomain` 是装配顺序错了,直接抛,不静默吞。
+ * 持有器是一只 const 对象,不新增模块级 `let`。
+ */
+export interface FeatureRegistryRpcPort {
+  registerRouterHandlers<T extends DomainRoutes>(router: Router<T>, handlers: RpcRouteHandlers<T>): () => void
+}
+
+const rpcPort: { current: FeatureRegistryRpcPort | null } = { current: null }
+
+export function configureFeatureRegistryRpc(port: FeatureRegistryRpcPort): void {
+  rpcPort.current = port
+}
 
 /** 解绕一项注册。允许异步：未来的注册面（面板、连接）可能要等 I/O。 */
 export type FeatureDisposer = () => void | Promise<void>
@@ -108,7 +128,9 @@ export class FeatureContextImpl implements FeatureContext {
     router: Router<T>,
     handlers: RpcRouteHandlers<T>,
   ): FeatureDisposer {
-    const unregister = registerRouterHandlers(router, handlers)
+    const port = rpcPort.current
+    if (!port) throw new Error('feature registry 未接 RPC:装配时先调 configureFeatureRegistryRpc(见 backend.ts 的 configureAppRuntimeAdapters)')
+    const unregister = port.registerRouterHandlers(router, handlers)
     return this.track({ kind: 'rpcDomain', label: router.domain, dispose: unregister })
   }
 

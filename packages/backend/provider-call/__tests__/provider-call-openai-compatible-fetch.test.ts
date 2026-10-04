@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createOpenAICompatibleAgentProvider } from '../engine-openai-compatible-fetch.js'
+import { createOpenAICompatibleAgentProvider } from '../provider-call-openai-compatible-fetch.js'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

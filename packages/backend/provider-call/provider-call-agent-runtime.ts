@@ -1,5 +1,5 @@
-import type { AgentProviderRuntimeConfig } from './engine-provider-factory.js'
-import { createAgentProviderFromRuntime } from './engine-provider-factory.js'
+import type { AgentProviderRuntimeConfig } from './provider-call-factory.js'
+import { createAgentProviderFromRuntime } from './provider-call-factory.js'
 import type {
   AgentProvider,
 } from '@onething/backend/agent-loop/agent-loop-primitives'

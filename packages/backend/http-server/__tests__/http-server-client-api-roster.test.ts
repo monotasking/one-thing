@@ -12,9 +12,9 @@
  * 任何 I/O。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
-import { dumpFeatures, resetFeaturesForTests } from '../../feature-registry/feature-registry.js'
+import { configureFeatureRegistryRpc, dumpFeatures, resetFeaturesForTests } from '../../feature-registry/feature-registry.js'
 import { registerAppRpcDomains } from '../http-server-client-api-roster.js'
-import { hasRpcDomain, resetRpcRegistryForTests } from '../http-server-dispatch-table.js'
+import { hasRpcDomain, registerRouterHandlers, resetRpcRegistryForTests } from '../http-server-dispatch-table.js'
 
 /**
  * 名册的现状快照。顺序 = 装配顺序（包装不重排）。
@@ -149,6 +149,8 @@ const EXPECTED_FEATURES = [
 
 describe('builtin RPC domains as features', () => {
   beforeEach(() => {
+    // 越层清零 C5:挂载基座的 RPC 分发表由 backend.ts 的 configureAppRuntimeAdapters() 交进去;不经装配的这里自己交。
+    configureFeatureRegistryRpc({ registerRouterHandlers })
     resetFeaturesForTests()
     resetRpcRegistryForTests()
   })

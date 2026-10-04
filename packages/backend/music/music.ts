@@ -10,3 +10,5 @@ export * from './music-radio-render.js'
 export * from './music-lyrics.js'
 export * from './music-identify.js'
 export * from './providers/music-providers.js'
+// 音乐 CLI 的 bash 分类策略登记(越层清零 C8):装配时调一次。
+export { registerMusicBashPolicies } from './music-bash-policies.js'

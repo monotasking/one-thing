@@ -34,7 +34,7 @@ import {
   getSandboxBoundary,
   isPathContained,
   resolveToolPath,
-} from '@onething/backend/tool/access-control/tool-access-control-sandbox'
+} from '@onething/backend/permission'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'
 import { createPermissionAuthorizer } from './toolkit-authorizer.js'
 import { AuditProjector, combineObservers, type ToolAuditSink } from '@onething/backend/toolkit/toolkit-audit-observer'

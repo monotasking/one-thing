@@ -1856,3 +1856,14 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 5. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动(sha 改前改后相同)。
 
 **读数**:`layer:check` 48 / 26 → 45 / 23(单 1)→ 39 / 20(单 2);`entry:gate` 2296 → 2292 → 2279;`cycle:gate` 0;`name:gate` 0;`assembly:gate` 红 → 绿。验收全文见 `layer-violations-to-zero-2026-10.md` 第 6 节。
+
+### 越层清零单 3–4 落地记录:access-control 进 permission、两处登记 + 一个闩 + 一只钩子、新功能 `provider-call/`(2026-10-04,未提交)
+
+**做了什么**(方案 `layer-violations-to-zero-2026-10.md` 第 5 节施工单的单 3、单 4;决策 D135–D142;生产行为零变化):
+
+1. 单 3:`tool/access-control/` 两只进 permission(`permission-enforcement.ts` / `permission-sandbox-roots.ts`),permission 里两只引自家入口的文件改引兄弟;bash 分类器的音乐策略改成音乐自己登记;feature-registry 的 RPC 分发表改成装配时交进去的闩;删空间清名册改成名册订空间的删房钩子。新加的两处接线都在 `configureAppRuntimeAdapters()` 里(幂等,装配第一步)。
+2. 单 4:新建 L2 功能 `provider-call/`(九只从 engine 搬来 + 入口),辅助模型的意图 / 结果账下沉 session;engine 入口不再交出「拿服务商干活」的名字。
+3. 测试:7 只搬家(permission 3、music 1、provider-call 3),约 28 只只改桩或 import 路径,4 只在 setup 里补一行登记 / 闩。
+4. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动。
+
+**读数**:`layer:check` 39 / 20 → 29 / 13(单 3)→ 25 / 9(单 4);`entry:gate` 2279 → 2260 → 2275(新功能一行 34,全是测试);`cycle:gate` 0;`name:gate` 0;`assembly:gate` 绿。验收全文见 `layer-violations-to-zero-2026-10.md` 第 6 节。

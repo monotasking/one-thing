@@ -5,6 +5,8 @@
  */
 export {
   FeatureContextImpl,
+  configureFeatureRegistryRpc,
+  type FeatureRegistryRpcPort,
   type FeatureContext,
   type FeatureDisposer,
   type FeatureDump,

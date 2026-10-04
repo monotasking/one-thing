@@ -22,7 +22,7 @@ vi.mock('@onething/backend/plugin/plugin-tool-call-intercept-bound', () => ({
 vi.mock('@onething/backend/plugin/plugin-tool-result-intercept-bound', () => ({
   runPluginToolResultIntercept: vi.fn(async (context: { result: unknown }) => ({ action: 'keep', result: context.result, rewrittenBy: [], ran: 0 })),
 }))
-vi.mock('@onething/backend/tool/access-control/tool-access-control-permission-policy', () => ({ enforcePermissionPolicy: async () => undefined }))
+vi.mock('@onething/backend/permission/permission-enforcement', () => ({ enforcePermissionPolicy: async () => undefined }))
 
 function barrier() {
   let release!: () => void

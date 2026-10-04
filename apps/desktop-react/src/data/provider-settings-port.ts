@@ -81,7 +81,7 @@ import type {
  *
  *  - 写偏了:用户站在工作区 B 里填的 key 与勾的模型,落进了 `default` 的文件;
  *  - 读不着:引擎起流时读的是**会话归属那个空间**的设置
- *    (`backend/engine/stream/engine-stream-provider-helpers.ts:110` 的
+ *    (`backend/provider-call/provider-call-auth.ts` 的
  *     `getSessionSettings(sessionId).ai` = `getSpaceSettings(会话的 workspaceId)`,
  *     凭证同理走 `resolveSessionProviderCredential(sessionId, providerId)`)。
  *    于是 B 里配得再全,B 的会话照样起不了流 —— 而设置页显示一切正常。

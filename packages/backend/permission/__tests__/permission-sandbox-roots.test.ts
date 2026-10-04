@@ -3,7 +3,7 @@ import path from 'path'
 import os from 'os'
 
 // Mock settings store
-vi.mock('../../../settings/settings-store.js', () => ({
+vi.mock('../../settings/settings-store.js', () => ({
   getSettings: vi.fn(() => ({})),
 }))
 
@@ -14,7 +14,7 @@ vi.mock('../../../settings/settings-store.js', () => ({
  * `sandbox.ts` 的 `getNoteDirectories` 改回读变量仓,下面两条读根用例当场红。
  */
 const noteRoots = vi.hoisted(() => ({ current: [] as string[] }))
-vi.mock('../../../note/note-subsystem.js', () => ({
+vi.mock('../../note/note-subsystem.js', () => ({
   noteRootsNow: () => noteRoots.current,
 }))
 
@@ -29,9 +29,9 @@ import {
   findReadSandboxRootForPath,
   resolveToolPath,
   checkFileAccess,
-} from '../tool-access-control-sandbox'
+} from '../permission-sandbox-roots.js'
 import { getSettings } from '@onething/backend/settings'
-import { configureAppToolSandbox } from '../tool-access-control-sandbox'
+import { configureAppToolSandbox } from '../permission-sandbox-roots.js'
 
 // Adapter wiring is an explicit assembly step now (no import-time config).
 configureAppToolSandbox()

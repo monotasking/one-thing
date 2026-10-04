@@ -44,8 +44,8 @@ vi.mock('../../settings/settings-proxy-fetch.js', () => ({
   createRequiredAppFetch: () => fetchHolder.current,
 }))
 
-import { generateChatResponse } from '../engine-chat-facade.js'
-import { registerAgentProviderRuntime } from '../engine-process-providers.js'
+import { generateChatResponse } from '../../provider-call/provider-call-chat.js'
+import { registerAgentProviderRuntime } from '../../provider-call/provider-call-process-providers.js'
 import type { AgentTurn, AgentTurnRequest } from '@onething/backend/agent-loop/agent-loop-primitives'
 import { registerCustomProvidersForTest } from '../../provider/__tests__/custom-manifest-fixture.js'
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。

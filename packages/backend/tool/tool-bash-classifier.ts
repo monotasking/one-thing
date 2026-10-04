@@ -1,4 +1,3 @@
-import { builtinMusicProviders } from '../music/providers/music-providers.js'
 
 export type BashPermissionDecision = 'allow' | 'ask' | 'deny'
 
@@ -48,17 +47,30 @@ const NPM_READ_ONLY = new Set([
 ])
 
 /**
- * Music CLI security policies come from the provider registry: the model
- * plays music by driving the CLI through bash, and prompting for every
- * "下一首" would make the feature unusable — but the same CLI can rewrite the
- * user's account, so each provider ships its own allow-list and write
- * classification. ALL builtin policies are registered (keyed by binary): only
- * the active provider's CLI is installed, so whitelisting an absent binary is
- * inert, and the classifier needs no active-provider state.
+ * 某个 CLI 自带的 bash 分类策略:哪些子命令直接放行、其余为什么要问。
+ *
+ * 今天唯一的登记者是音乐:模型靠 bash 驱动音乐 CLI 放歌,每次「下一首」都弹审批就没法用,
+ * 但同一个 CLI 也能改写用户的账号,所以每家音乐服务商自带白名单与写操作分类。
+ * 越层清零 C8(2026-10-04)之前这张表在分类器加载时直接读音乐服务商名册建出来(工具这一层
+ * 认识音乐);现在由拥有 CLI 的能力自己登记(`music/music-bash-policies.ts` 的
+ * `registerMusicBashPolicies()`,装配时调一次,全部内置策略都登记、不看当前用哪一家),
+ * 分类器只读表。没登记的命令头照旧走下面的通用规则。
  */
-const MUSIC_BASH_POLICIES = new Map(
-  builtinMusicProviders.map(provider => [provider.bashPolicy.binary, provider.bashPolicy]),
-)
+export interface BashCommandPolicy {
+  /** '<group>' or '<group> <sub>' keys; longest match wins. */
+  autoAllow: ReadonlySet<string>
+  /** Extra read-only probes outside the subcommand table (--version, config get …). */
+  extraAllow?(args: string[]): boolean
+  /** Why a non-whitelisted subcommand asks — shown in the permission prompt. */
+  askReason(groupOrPair: string): string
+}
+
+const REGISTERED_BASH_POLICIES = new Map<string, BashCommandPolicy>()
+
+/** 登记一个 CLI 的分类策略(按命令头的可执行文件名)。幂等:同名后写覆盖前写。 */
+export function registerBashPolicy(binary: string, policy: BashCommandPolicy): void {
+  REGISTERED_BASH_POLICIES.set(binary, policy)
+}
 
 // Dangerous commands - require permission (ask)
 const DANGEROUS_COMMANDS = new Set([
@@ -358,14 +370,14 @@ function classifySimpleCommand(command: string): ClassifiedBashCommand {
     }
   }
 
-  const musicPolicy = MUSIC_BASH_POLICIES.get(head)
-  if (musicPolicy && args.length > 0) {
+  const cliPolicy = REGISTERED_BASH_POLICIES.get(head)
+  if (cliPolicy && args.length > 0) {
     const group = args[0]
     const pair = args.length > 1 ? `${group} ${args[1]}` : ''
 
     if (
-      musicPolicy.autoAllow.has(pair) || musicPolicy.autoAllow.has(group)
-      || musicPolicy.extraAllow?.(args) === true
+      cliPolicy.autoAllow.has(pair) || cliPolicy.autoAllow.has(group)
+      || cliPolicy.extraAllow?.(args) === true
     ) {
       return { text: command, head, args, decision: 'allow' }
     }
@@ -375,7 +387,7 @@ function classifySimpleCommand(command: string): ClassifiedBashCommand {
       args,
       decision: 'ask',
       pattern: getCommandPattern(command),
-      reason: musicPolicy.askReason(pair || group),
+      reason: cliPolicy.askReason(pair || group),
     }
   }
 

@@ -43,7 +43,7 @@ import {
   type ProviderDirectModelsFetch,
 } from '@onething/backend/provider'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
-import { createUtilityProvider, getAvailableProviders, type UtilityProviderRef } from '@onething/backend/engine'
+import { createUtilityProvider, getAvailableProviders, type UtilityProviderRef } from '@onething/backend/provider-call'
 import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'

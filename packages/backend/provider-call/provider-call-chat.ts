@@ -41,7 +41,7 @@ import {
   type AgentRuntimeProviderConfig,
   type ProviderToolDefinitionMap,
   type ProviderToolSourceDefinition,
-} from './engine-agent-runtime.js'
+} from './provider-call-agent-runtime.js'
 import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('providers')
@@ -59,7 +59,7 @@ export type {
   ProviderToolDefinitionMap,
   ProviderToolParameter,
   ProviderToolSourceDefinition,
-} from './engine-agent-runtime.js'
+} from './provider-call-agent-runtime.js'
 
 export type {
   ProviderInfo,

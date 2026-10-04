@@ -88,3 +88,29 @@ export type {
   PermissionPolicyResult,
   PermissionPreview,
 } from '@onething/backend/permission/permission-asks'
+// 授权的执行面(授权记录 + 无人值守 + 会话读面)与「工具可读可写哪些根」。越层清零 C7(2026-10-04)
+// 从 `tool/access-control/` 搬来:前者就是 `decidePermission` / `enforcePermissionPolicy`,后者是同一个
+// 问题的另一半;`configureSandboxHost` 宿主端口随它住在这里。
+export {
+  decidePermission,
+  enforcePermissionPolicy,
+  enforcePermissionPolicyRejectingUnanswered,
+} from './permission-enforcement.js'
+export {
+  checkFileAccess,
+  configureAppToolSandbox,
+  configureSandboxHost,
+  expandPath,
+  findReadSandboxRootForPath,
+  findSandboxRootForPath,
+  getDefaultReadRoots,
+  getDownloadsDirectory,
+  getReadSandboxRoots,
+  getSandboxBoundary,
+  getSandboxRoots,
+  isPathContained,
+  resetSandboxHost,
+  resolveToolPath,
+  type CoreFileAccessTargetType,
+  type SandboxHost,
+} from './permission-sandbox-roots.js'

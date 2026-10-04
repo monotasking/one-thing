@@ -5,7 +5,7 @@
 
 import * as store from '@onething/backend/session'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
-import { requiresOAuth } from '../engine-chat-facade.js'
+import { requiresOAuth } from './provider-call-chat.js'
 import { oauthManager } from '@onething/backend/auth'
 import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import {
@@ -28,7 +28,7 @@ import {
   resolveSessionSpaceOAuthAuth,
 } from '@onething/backend/credentials'
 import { resolveSessionSpaceDefaultSelection, getSessionSettings } from '@onething/backend/session'
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../logging/logging-configure.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 
 const log = getLogger('engine.stream')

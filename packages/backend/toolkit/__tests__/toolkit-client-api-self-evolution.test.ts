@@ -25,8 +25,8 @@ import type { JsonObject } from '@shared/json.js'
 import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import { configureToolkitCatalog, ZodValidator } from '@onething/backend/toolkit'
-import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
-import { dumpFeatures, hasFeature, mountFeature, resetFeaturesForTests } from '../../feature-registry/feature-registry.js'
+import { dispatchRpc, hasRpcDomain, registerRouterHandlers, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
+import { configureFeatureRegistryRpc, dumpFeatures, hasFeature, mountFeature, resetFeaturesForTests } from '../../feature-registry/feature-registry.js'
 import { selfEvolutionFeature } from '../toolkit-client-api-self-evolution.js'
 
 /**
@@ -118,6 +118,8 @@ async function runTool(toolId: string, args: JsonObject = {}): Promise<string> {
 }
 
 beforeAll(() => {
+  // 越层清零 C5:真装配由 backend.ts 把 RPC 分发表交给挂载基座;不经 backend.ts 的这里自己交。
+  configureFeatureRegistryRpc({ registerRouterHandlers })
   previousStorePath = process.env.ONETHING_STORE_PATH
   storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-self-evolution-'))
   process.env.ONETHING_STORE_PATH = storeRoot

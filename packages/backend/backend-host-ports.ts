@@ -33,7 +33,7 @@ import {
   configureSandboxHost,
   resetSandboxHost,
   type SandboxHost,
-} from '@onething/backend/tool/access-control/tool-access-control-sandbox'
+} from '@onething/backend/permission'
 import {
   configureAppLoggingHost,
   resetAppLoggingHost,

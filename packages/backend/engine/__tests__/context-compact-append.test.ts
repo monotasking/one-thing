@@ -41,7 +41,7 @@ const contentWrites: Array<{ messageId: string; content: string }> = []
 vi.mock('@onething/backend/plugin/plugin-lifecycle-hooks', () => ({
   runBeforeContextCompactHooks: (...args: unknown[]) => runBeforeContextCompactHooks(...args),
 }))
-vi.mock('../engine-chat-facade.js', () => ({
+vi.mock('../../provider-call/provider-call-chat.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 // 块大小随模型窗口走(2026-08-21):窗口大 → 单块;想逼出多块就把窗口调小。

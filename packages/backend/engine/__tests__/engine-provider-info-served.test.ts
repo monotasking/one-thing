@@ -7,7 +7,7 @@
  * 注册表装配一次,直接问后端会交出去的那一份。
  */
 import { describe, expect, it } from 'vitest'
-import { getAvailableProviders } from '../engine-chat-facade.js'
+import { getAvailableProviders } from '../../provider-call/provider-call-chat.js'
 
 describe('getAvailableProviders carries the P4 provider facts', () => {
   it('档位 / 余额源 / 家族三格都在下发的名册上', () => {

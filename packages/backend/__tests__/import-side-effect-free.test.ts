@@ -45,11 +45,13 @@ vi.mock('@onething/backend/skill', async (importOriginal) => ({
   configureOnethingSkillManageRuntime: () => { spy.calls.push('skill-manage') },
   configureOnethingSkillsLoaderRuntime: () => { spy.calls.push('skills-loader') },
 }))
-vi.mock('@onething/backend/permission', async (importOriginal) => ({
+// 越层清零单 3(2026-10-04):`permission-grant-storage.ts` 改引兄弟文件(D126),不再经入口拿
+// `configureOnethingPermissionGrantStorage`,所以桩打在具体模块上;入口的 re-export 同样解析到这一个 id。
+vi.mock('../permission/permission-runtime.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingPermissionGrantStorage: () => { spy.calls.push('permission-grants') },
 }))
-// providers 收口第二部分:装配处(`engine-chat-facade` 的 `configureAppProviderRegistry`)经服务商入口拿
+// providers 收口第二部分:装配处(`provider-call-chat` 的 `configureAppProviderRegistry`)经服务商入口拿
 // `initializeRegistry`,所以桩打在入口上,不再打在入口背后的 `provider-table.ts`。
 vi.mock('@onething/backend/provider', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -118,10 +120,10 @@ vi.mock('@onething/backend/storage', async (importOriginal) => {
 
 describe('@onething/backend import purity', () => {
   it('importing the formerly side-effectful modules configures nothing', { timeout: 60_000 }, async () => {
-    await import('@onething/backend/tool/access-control/tool-access-control-sandbox')
+    await import('@onething/backend/permission/permission-sandbox-roots')
     await import('@onething/backend/tool/tool-background-jobs-bound')
     await import('@onething/backend/tool/tool-bash-executor')
-    await import('../engine/engine-chat-facade.js')
+    await import('../provider-call/provider-call-chat.js')
     await import('@onething/backend/scheduler/scheduler-bound')
     await import('../file/file-ripgrep-app-fetch.js')
     await import('@onething/backend/search')

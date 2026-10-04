@@ -7,7 +7,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineRouter } from '@shared/ipc/router'
-import { dispatchRpc, hasRpcDomain, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
+import { dispatchRpc, hasRpcDomain, registerRouterHandlers, resetRpcRegistryForTests } from '../../http-server/http-server-dispatch-table.js'
+import { configureFeatureRegistryRpc } from '../feature-registry-context.js'
 import {
   dumpFeatures,
   hasFeature,
@@ -30,6 +31,8 @@ describe('feature registry', () => {
   beforeEach(() => {
     resetFeaturesForTests()
     resetRpcRegistryForTests()
+    // 越层清零 C5:基座不再直接 import http-server,真装配由 backend.ts 交进分发表;直接测基座的这里自己交。
+    configureFeatureRegistryRpc({ registerRouterHandlers })
   })
 
   it('mounts a feature and unmounts every registration it made', async () => {

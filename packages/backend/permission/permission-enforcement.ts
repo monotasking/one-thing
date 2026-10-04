@@ -1,10 +1,10 @@
-import * as PermissionGrants from '../../permission/permission-grant-storage.js'
-import type { PermissionBridge } from '@onething/backend/permission/permission-asks'
-import { Permission } from '../../permission/permission-with-grant-storage.js'
-import { isHostUnattended, isSessionUnattended } from '@onething/backend/permission/permission-unattended'
+import * as PermissionGrants from './permission-grant-storage.js'
+import type { PermissionBridge } from './permission-asks.js'
+import { Permission } from './permission-with-grant-storage.js'
+import { isHostUnattended, isSessionUnattended } from './permission-unattended.js'
 import {
   createOnethingPermissionRuntime,
-} from '@onething/backend/permission'
+} from './permission-runtime.js'
 import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { isSystemInternalOrigin, latestRealOrigin } from '@onething/backend/agent-loop'
@@ -12,7 +12,7 @@ import { writeAppLog } from '@onething/backend/logging/logging-configure'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
-} from '@onething/backend/permission'
+} from './permission-asks.js'
 import type { MessageOrigin } from '@shared/ipc.js'
 import { getLogger } from '@onething/backend/logging/logging-configure'
 
@@ -345,4 +345,4 @@ export type {
   PermissionPolicyMode,
   PermissionPolicyResult,
   PermissionPreview,
-} from '@onething/backend/permission'
+} from './permission-asks.js'

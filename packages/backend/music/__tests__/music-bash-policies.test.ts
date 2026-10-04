@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { classifyBashCommand } from '../tool-bash-classifier.js'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { classifyBashCommand } from '@onething/backend/tool'
+import { registerMusicBashPolicies } from '../music-bash-policies.js'
+
+// 越层清零 C8(2026-10-04):音乐 CLI 的策略由音乐自己登记进工具的 bash 分类器(装配时那一行),
+// 这只测试从 `tool/__tests__/bash-classifier-ncm.test.ts` 跟着登记处搬来,先登记再判。
+beforeAll(() => {
+  registerMusicBashPolicies()
+})
 
 /**
  * The model plays music by driving ncm-cli through bash, so these commands run

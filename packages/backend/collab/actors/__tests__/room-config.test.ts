@@ -103,11 +103,11 @@ vi.mock('@onething/backend/usage/usage-bill-side-line', () => ({
   billCollabPlanUsage: () => () => {},
 }))
 
-vi.mock('../../../engine/engine-chat-facade.js', () => ({
+vi.mock('../../../provider-call/provider-call-chat.js', () => ({
   generateChatResponse: async () => '',
 }))
 
-vi.mock('../../../engine/stream/engine-stream-provider-helpers.js', () => ({
+vi.mock('../../../provider-call/provider-call-auth.js', () => ({
   getEffectiveProviderConfig: () => ({ providerId: '', providerConfig: null, model: '' }),
   resolveProviderAuth: async () => null,
 }))

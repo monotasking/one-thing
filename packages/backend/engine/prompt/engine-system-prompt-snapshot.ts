@@ -10,7 +10,7 @@ import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import * as store from '@onething/backend/session'
 import {
   createAgentProviderFromRuntime,
-} from '../engine-agent-runtime.js'
+} from '@onething/backend/provider-call'
 import { defaultAgent, findAgent } from '@onething/backend/agent/agent-store-access'
 import { resolveAgentProfileForSession } from '@onething/backend/agent/agent-profile-for-session'
 import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
@@ -18,12 +18,12 @@ import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-w
 import { buildProjectDirsPromptVars } from '@onething/backend/project-dir/project-dir-bootstrap'
 import {
   isProviderSupported,
-} from '../engine-chat-facade.js'
+} from '@onething/backend/provider-call'
 import { modelRegistry, getSettings } from '@onething/backend/settings'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
-} from '../stream/engine-stream-provider-helpers.js'
+} from '@onething/backend/provider-call'
 import { getNativeProviderToolsForConfig } from '../stream/engine-native-tools.js'
 import { resolveToolkitSurface } from '@onething/backend/toolkit'
 import { toolDefinitionFromToolkitTool } from '@onething/backend/toolkit/toolkit-catalog-projection'

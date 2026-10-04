@@ -344,7 +344,7 @@ vi.mock("@onething/backend/acp/acp-manager", async () => {
 });
 
 const { registerAgentProviderRuntime } = await import(
-	"../../engine-process-providers.js"
+	"../../../provider-call/provider-call-process-providers.js"
 );
 const { executeMessageStream } = await import("../engine-stream-executor.js");
 

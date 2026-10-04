@@ -111,12 +111,12 @@ vi.mock('@onething/backend/agent/agent-store-access', () => ({
   defaultAgent: () => mocks.findAgent(),
 }))
 
-vi.mock('../../stream/engine-stream-provider-helpers.js', () => ({
+vi.mock('../../../provider-call/provider-call-auth.js', () => ({
   getEffectiveProviderConfig: mocks.getEffectiveProviderConfig,
   resolveProviderAuth: mocks.resolveProviderAuth,
 }))
 
-vi.mock('../../engine-chat-facade.js', () => ({
+vi.mock('../../../provider-call/provider-call-chat.js', () => ({
   isProviderSupported: mocks.isProviderSupported,
 }))
 
@@ -133,7 +133,7 @@ vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
 
-vi.mock('../../engine-agent-runtime.js', () => ({
+vi.mock('../../../provider-call/provider-call-agent-runtime.js', () => ({
   createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
 }))
 

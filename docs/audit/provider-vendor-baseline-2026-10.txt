@@ -65,7 +65,7 @@ openai packages/backend/credentials/credentials-default-space-migration.ts
 openai packages/backend/engine/prompt/engine-system-prompt-snapshot.ts
 openai packages/backend/engine/stream/engine-image-generation.ts
 openai packages/backend/engine/stream/engine-image-stream.ts
-openai packages/backend/engine/stream/engine-stream-provider-helpers.ts
+openai packages/backend/provider-call/provider-call-auth.ts
 openai packages/backend/media/media-image-generation.ts
 openai packages/backend/provider/base/provider-base-finish-reason.ts
 openai packages/backend/provider/base/provider-base-http-agent.ts

@@ -22,7 +22,7 @@ import { getEventBus } from "@onething/backend/event";
 import { getProjectsStore } from "../project-dir/project-dir-bootstrap.js";
 import { resolveSessionSpaceId } from "@onething/backend/session";
 import * as appStore from "@onething/backend/session";
-import { enforcePermissionPolicy } from "../tool/access-control/tool-access-control-permission-policy.js";
+import { enforcePermissionPolicy } from "@onething/backend/permission";
 import { getVariableRegistry } from "@onething/backend/variable/variable-registry";
 import { registerStandardVariableProviders } from "@onething/backend/variable/variable-bootstrap";
 import { getVariablesStore } from "@onething/backend/variable/variable-store-bound";

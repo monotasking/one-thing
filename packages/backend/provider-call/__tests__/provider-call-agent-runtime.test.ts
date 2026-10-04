@@ -9,7 +9,7 @@ vi.mock('../../settings/settings-proxy-fetch.js', () => ({
 }))
 
 import { builtinProviders } from '../../provider/builtin/provider-builtin.js'
-import { resolveProviderRuntimeRoute } from '../engine-agent-runtime.js'
+import { resolveProviderRuntimeRoute } from '../provider-call-agent-runtime.js'
 
 describe('provider agent runtime route', () => {
   it('routes every built-in provider through a native AgentProvider runtime', () => {

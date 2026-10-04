@@ -1,4 +1,3 @@
-import { forgetProjectsStore } from '../project-dir/project-dir-store.js'
 import {
   ensureSpaceDir,
   loadIndex,
@@ -18,6 +17,22 @@ import {
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('spaces')
+
+/**
+ * 删空间时要一起丢掉自己那份东西的,在这里登记(越层清零 C3,2026-10-04)。
+ *
+ * 从前 `remove()` 里直接调 `project-dir` 的 `forgetProjectsStore(spaceId)`:空间去认识项目目录名册。
+ * 现在名册自己在 `bootstrapProjectDirs()` 里登记一只钩子(退订交给它返回的 disposer)。
+ * 钩子同步跑、位置与从前那一行相同:索引已写盘、目录已删,`notify()` 之前。
+ * 登记表放在模块级 const 上而不是实例上:`resetSpacesStoreForTests()` 换实例不该把别人的登记丢掉。
+ */
+const spaceRemovedListeners = new Set<(spaceId: string) => void>()
+
+/** 订阅「某个空间被删了」。返回退订函数(与 `subscribe` 同形)。 */
+export function onSpaceRemoved(cb: (spaceId: string) => void): () => void {
+  spaceRemovedListeners.add(cb)
+  return () => spaceRemovedListeners.delete(cb)
+}
 
 export class SpacesStore {
   private index: SpaceIndex = { spaces: [] }
@@ -113,7 +128,7 @@ export class SpacesStore {
     this.index = { spaces: this.index.spaces.filter(space => space.id !== spaceId) }
     this.persist()
     removeSpaceDir(spaceId)
-    forgetProjectsStore(spaceId)
+    for (const cb of spaceRemovedListeners) cb(spaceId)
     this.notify()
     return { removed: true }
   }

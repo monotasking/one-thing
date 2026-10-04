@@ -12,13 +12,13 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { systemPrincipal, localUserPrincipal } from '@shared/permission/principal'
-import { Permission } from '../../../permission/permission-with-grant-storage.js'
+import { Permission } from '../permission-with-grant-storage.js'
 import { markHostUnattended } from '@onething/backend/permission/permission-unattended'
-import { enforcePermissionPolicy } from '../tool-access-control-permission-policy.js'
-import type { PermissionEffect } from '../tool-access-control-permission-policy.js'
+import { enforcePermissionPolicy } from '../permission-enforcement.js'
+import type { PermissionEffect } from '../permission-enforcement.js'
 
-vi.mock('../../../session/session-store.js', () => ({ getSession: () => undefined }))
-vi.mock('../../../session/session-reads.js', () => ({ sessionReads: {
+vi.mock('../../session/session-store.js', () => ({ getSession: () => undefined }))
+vi.mock('../../session/session-reads.js', () => ({ sessionReads: {
   listMessages: () => ({ messages: [], changed: false }),
   lastMessageOfRole: () => undefined,
 } }))

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ToolEffect } from '@onething/backend/tool/tool-helpers'
-import { decidePermission } from '../tool-access-control-permission-policy'
+import { decidePermission } from '../permission-enforcement.js'
 
-vi.mock('../../../permission/permission-grant-storage.js', () => ({
+vi.mock('../permission-grant-storage.js', () => ({
   matchGrant: vi.fn(),
 }))
 
@@ -11,7 +11,7 @@ const editEffect: ToolEffect = { kind: 'file_edit', resources: ['/repo/a.ts'], b
 const bashEffect: ToolEffect = { kind: 'bash', resources: ['rm *'], barrier: true }
 
 beforeEach(async () => {
-  const grants = await import('../../../permission/permission-grant-storage.js')
+  const grants = await import('../permission-grant-storage.js')
   ;(grants.matchGrant as any).mockReset()
 })
 
@@ -83,7 +83,7 @@ describe('permission-policy', () => {
     })
 
     it('an existing grant for that path still allows it without a card', async () => {
-      const grants = await import('../../../permission/permission-grant-storage.js')
+      const grants = await import('../permission-grant-storage.js')
       ;(grants.matchGrant as any).mockReturnValue({ id: 'g-ssh' } as any)
       expect(decidePermission({ sessionId: 's1', mode: 'auto-accept-edits', effects: [externalWrite] }))
         .toMatchObject({ decision: 'allow', grantId: 'g-ssh' })
@@ -91,7 +91,7 @@ describe('permission-policy', () => {
   })
 
   it('allows by scoped grant', async () => {
-    const grants = await import('../../../permission/permission-grant-storage.js')
+    const grants = await import('../permission-grant-storage.js')
     ;(grants.matchGrant as any).mockReturnValue({ id: 'g1' } as any)
 
     expect(decidePermission({

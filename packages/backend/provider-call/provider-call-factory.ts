@@ -18,7 +18,7 @@ import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { dumpProviderRequest } from '../provider/provider.js'
-import { providerMediaReader } from './engine-media-reader.js'
+import { providerMediaReader } from './provider-call-media-reader.js'
 import type { AgentProvider } from '@onething/backend/agent-loop/agent-loop-primitives'
 
 export {

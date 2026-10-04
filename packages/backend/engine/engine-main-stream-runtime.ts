@@ -25,7 +25,7 @@ import {
 	generateChatTitle,
 	isProviderSupported,
 	requiresOAuth,
-} from "./engine-chat-facade.js";
+} from "@onething/backend/provider-call";
 import { buildOnethingChatTitleGenerationRequest, resolveProviderApiKey, type OnethingStreamProviderAdapterOptions } from "@onething/backend/provider";
 import {
 	applySessionProviderGates,
@@ -44,7 +44,7 @@ import {
 	shouldSkipAutoCompactForProviderUsageMismatch,
 } from "./engine-compact-session.js";
 import type { StreamEngineModelRegistryAdapter, StreamEngineStoreAdapter } from '@onething/backend/agent-loop'
-import { runAuxiliaryModelRequest } from './engine-auxiliary-model-checkpoint.js'
+import { runAuxiliaryModelRequest } from '@onething/backend/session'
 
 export type MainStreamEngineRuntime = OnethingProductStreamRuntime<
 	AppSettings,

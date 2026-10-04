@@ -63,13 +63,8 @@ import { currentSessionRun } from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '@onething/backend/collab/collab-rooms'
 import { getStreamEngine } from '@onething/backend/backend-current.js'
-import {
-  buildSystemPromptSnapshot,
-  generateChatTitle,
-  getProviderApiType,
-  isProviderSupported,
-  resolveProviderAuth,
-} from '@onething/backend/engine'
+import { buildSystemPromptSnapshot } from '@onething/backend/engine'
+import { generateChatTitle, getProviderApiType, isProviderSupported, resolveProviderAuth } from '@onething/backend/provider-call'
 import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { billTitleUsage } from '@onething/backend/usage/usage-bill-side-line'

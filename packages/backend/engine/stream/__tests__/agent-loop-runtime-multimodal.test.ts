@@ -206,7 +206,7 @@ vi.mock('@onething/backend/project-dir/project-dir-bootstrap', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('../../engine-agent-runtime.js', () => {
+vi.mock('../../../provider-call/provider-call-agent-runtime.js', () => {
   const createAgentProviderFromRuntime = vi.fn(
     (_providerId?: string, _config?: unknown) => mocks.visionProvider,
   )
@@ -241,7 +241,7 @@ vi.mock('@onething/backend/prompt/prompt-stored-resolver', () => ({
 }))
 
 const { buildAgentLoopRuntimeFromStreamContext } = await import('../engine-agent-loop-stream-context.js')
-const { createAgentProviderFromRuntime } = await import('../../engine-agent-runtime.js')
+const { createAgentProviderFromRuntime } = await import('../../../provider-call/provider-call-agent-runtime.js')
 
 function ctx(): StreamContext {
   return {

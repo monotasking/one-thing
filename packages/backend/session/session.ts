@@ -448,3 +448,9 @@ export {
 export {
   resolveSessionSpaceDefaultSelection,
 } from './session-space-defaults.js'
+// 辅助模型(标题 / 压缩 / 目录)调用的意图与结果账:记进会话账本(越层清零 1B,2026-10-04 从 engine 下沉)。
+export {
+  beginAuxiliaryModelRequest,
+  runAuxiliaryModelRequest,
+  type AuxiliaryModelInput,
+} from './session-auxiliary-model-checkpoint.js'
