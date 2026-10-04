@@ -53,10 +53,10 @@
  * 构造出模型自己构造不出来的调用。**入口严、内部宽**,与 N3 同一条规矩。
  */
 
-import { sortByPluginCanonicalOrder } from './plugin-canonical-order.js'
+import { sortByPluginCanonicalOrder } from '@onething/backend/plugin-contract'
 import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
-import { PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from './plugin-policy.js'
-import { runWithPluginTimeout } from './plugin-runtime-guard.js'
+import { PLUGIN_TOOL_CALL_INTERCEPT_SURFACE } from '@onething/backend/plugin-contract'
+import { runWithPluginTimeout } from '@onething/backend/plugin-contract'
 import {
   PLUGIN_PERMISSION_TOOLCALL_INTERCEPT,
   PLUGIN_TOOLCALL_INTERCEPT_PERMISSION_NOTE,

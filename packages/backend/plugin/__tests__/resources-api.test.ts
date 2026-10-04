@@ -129,7 +129,7 @@ describe('插件的三个动词(K4-b)', () => {
 
   it('② 没声明就是结构化拒绝,而且熔断账一动不动', async () => {
     const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } =
-      await import('@onething/backend/plugin/plugin-health')
+      await import('../../plugin-contract/plugin-contract-health.js')
     resetPluginRuntimeHealthForTests()
 
     // 三条权限一条都不声明。
@@ -202,7 +202,7 @@ describe('插件的三个动词(K4-b)', () => {
 
   it('⑤ 连败到阈值:这一个命名空间被降级,插件本身不被禁用', async () => {
     const { getPluginRuntimeHealth, isPluginSurfaceDegraded, resetPluginRuntimeHealthForTests } =
-      await import('@onething/backend/plugin/plugin-health')
+      await import('../../plugin-contract/plugin-contract-health.js')
     resetPluginRuntimeHealthForTests()
 
     // 一台**会抛**的内核:内核自己从不抛,所以这是这条罚则在真机上唯一的产地

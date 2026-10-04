@@ -1,5 +1,3 @@
-import { ACPManager, createAcpHostMcpPort } from '@onething/backend/acp'
-import { ACP_CONNECTOR_ID, createAcpConnector } from './external-agent-acp-connector.js'
 import { describeExternalToolPermission } from './external-agent-permission-effects.js'
 import type {
   ExternalAgentConnector,
@@ -7,6 +5,7 @@ import type {
   ExternalAgentPermissionAsk,
   ExternalAgentPermissionDecision,
   ExternalAgentSessionLink,
+  ExternalAgentSessionLinkStore,
 } from './external-agent-types.js'
 import { findAgentExecutorDescriptor } from '@onething/backend/agent'
 import { Interaction } from '@onething/backend/interaction'
@@ -22,8 +21,6 @@ import { getLogger } from '@onething/backend/logging'
 const log = getLogger('external-agents')
 
 
-export { resolveHostToolSurface, type HostToolSurface } from './external-agent-host-tools.js'
-
 // ---------------------------------------------------------------------------
 // Session link persistence (survives app restarts)
 // ---------------------------------------------------------------------------
@@ -33,16 +30,28 @@ export { resolveHostToolSurface, type HostToolSurface } from './external-agent-h
  * 手上**同一只**表对象 —— 文件那只读一次进内存,各 new 一只就会互相覆盖。旧的
  * `<store>/external-agents/session-links.json` 在表第一次读时并进来,不删;退役的
  * `claude-code-agent` 记录在同一刻并成 ACP `claude-code` 的链接(A6-b,`acp/acp-session-links.ts`)。
+ *
+ * D202:那只表归驱动(ACP),由装配以惰性 getter `sessionLinks` 递进 `bindExternalAgentConnectors`;
+ * 本文件不再写驱动的名字。没有装配绑过(没有表)= 查不到、记不下,与「这个进程没有外部 agent 驱动」一致。
  */
 export function resolveExternalAgentSessionLink(
   connectorId: string,
   localSessionId: string,
 ): ExternalAgentSessionLink | undefined {
-  return ACPManager.getSessionLinkStore().getExternalLink(connectorId, localSessionId)
+  return currentSessionLinks()?.getExternalLink(connectorId, localSessionId)
 }
 
 export function persistExternalAgentSessionLink(link: ExternalAgentSessionLink): void {
-  ACPManager.getSessionLinkStore().putExternalLink(link)
+  const links = currentSessionLinks()
+  if (!links) {
+    log.warn('external agent session link dropped: no session link table is bound', { connectorId: link.connectorId })
+    return
+  }
+  links.putExternalLink(link)
+}
+
+function currentSessionLinks(): ExternalAgentSessionLinkStore | undefined {
+  return connectorRegistry?.sessionLinks()
 }
 
 // ---------------------------------------------------------------------------
@@ -220,10 +229,17 @@ export { resolveExternalAgentSpawnEnv }
 // Connector registry
 // ---------------------------------------------------------------------------
 
-type ConnectorMap = Record<string, ExternalAgentConnector | undefined>
+export type ConnectorMap = Record<string, ExternalAgentConnector | undefined>
 
-interface ExternalAgentConnectorRegistryOptions {
+export interface ExternalAgentConnectorRegistryOptions {
   isAccepting?: () => boolean
+  /**
+   * 连接器表(D202:装配组表,登记表只读表)。惰性:这一代登记表第一次被要连接器时才调一次,
+   * 与从前「第一次 get 才建连接器」的时刻相同;缺席 = 没有任何连接器。
+   */
+  connectors?: () => ConnectorMap
+  /** 会话链接表(惰性 getter,表归驱动;缺席 = 这个进程没有链接表)。 */
+  sessionLinks?: () => ExternalAgentSessionLinkStore
 }
 
 class ExternalAgentConnectorRegistry {
@@ -254,7 +270,11 @@ class ExternalAgentConnectorRegistry {
 
   get(): ConnectorMap {
     if (!this.isAccepting) throw new Error('External agent connectors are initializing or shutting down')
-    return this.connectors ??= createExternalAgentConnectors()
+    return this.connectors ??= this.options.connectors?.() ?? {}
+  }
+
+  sessionLinks(): ExternalAgentSessionLinkStore | undefined {
+    return this.options.sessionLinks?.()
   }
 
   quiesce = (): void => { this.accepting = false }
@@ -298,20 +318,21 @@ export function bindExternalAgentConnectors(options: ExternalAgentConnectorRegis
   return { ready: registry.ready, quiesce: registry.quiesce, dispose: registry.dispose }
 }
 
+/**
+ * 测试钩子(D202):开一份带连接器表的**无主**登记表。生产里每个宿主都经 `bindExternalAgentConnectors`
+ * 绑一份;无主那一档只剩「绑定之前就有人来要」的旧读法,而契约不认识任何驱动,无主时连接器表为空。
+ * 要验证无主那一档生命周期(懒建、关掉后懒重建、下一份绑定等它关完)的测试用这只钩子递表。
+ */
+export function installUnownedExternalAgentConnectorsForTests(options: ExternalAgentConnectorRegistryOptions): void {
+  if (connectorRegistry?.managed && !connectorRegistry.disposed) {
+    throw new Error('External agent connectors already belong to a Backend that has not finished shutting down')
+  }
+  connectorRegistry = new ExternalAgentConnectorRegistry(false, options)
+}
+
 export function getExternalAgentConnectors(): ConnectorMap {
   connectorRegistry ??= new ExternalAgentConnectorRegistry(false)
   return connectorRegistry.get()
-}
-
-function createExternalAgentConnectors(): ConnectorMap {
-  return {
-    // ACP 的连接与会话归 `backend.acp` 子系统(ACPManager);连接器只是一层薄转接,
-    // 权限桥也已由 `registerACPPermissionBridge` 装在 ACPManager 上。
-    // A4-b:宿主工具面经端口递进去(桥与凭据表在 `backend.acp`,调用时现取)。
-    // A6-b(2026-09-26):Claude SDK 连接器(`claude-code-agent`)退役,Claude Code 是
-    // ACP 名册里的一台。
-    [ACP_CONNECTOR_ID]: createAcpConnector({ hostMcp: createAcpHostMcpPort() }),
-  }
 }
 
 /**

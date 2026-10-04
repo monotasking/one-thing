@@ -5,10 +5,7 @@
  * 能校验但渲染不出来 = 用户改不了;能渲染但校验不了 = 脏值进盘。
  */
 import { describe, expect, it } from 'vitest'
-import {
-  PLUGIN_FILE_PICK_EXTENSIONS,
-  PLUGIN_FILE_PICK_MAX_BYTES,
-} from '@onething/backend/plugin/plugin-contract'
+import { PLUGIN_FILE_PICK_EXTENSIONS, PLUGIN_FILE_PICK_MAX_BYTES } from '@onething/backend/plugin-contract'
 import {
   coercePluginConfig,
   deepFreezePluginConfig,

@@ -30,7 +30,7 @@ import {
   clampPluginLlmMaxTokens,
   type PluginLlmCompleteOptions,
   type PluginLlmCompleteResult,
-} from '@onething/backend/plugin/plugin-contract'
+} from './plugin-llm.js'
 
 import { QuiescibleScopes } from '@onething/backend/lifecycle'
 import { getSettings } from '@onething/backend/settings'

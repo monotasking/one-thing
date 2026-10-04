@@ -22,18 +22,14 @@
  */
 import {
   CorePluginToolResultInterceptRegistry,
-  PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE,
   emptyPluginToolResultInterceptOutcome,
-  pluginScope,
   type PluginToolResultInterceptContext,
   type PluginToolResultInterceptHandler,
-  type PluginToolResultInterceptOutcome, type CorePluginToolResultInterceptRegistryOptions,
-} from '@onething/backend/plugin/plugin-contract'
-import {
-  probePluginSurface,
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from './plugin-health.js'
+  type PluginToolResultInterceptOutcome,
+  type CorePluginToolResultInterceptRegistryOptions,
+} from './plugin-tool-result-intercept.js'
+import { PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE, pluginScope } from '@onething/backend/plugin-contract'
+import { probePluginSurface, reportPluginRuntimeFailure, reportPluginRuntimeSuccess } from '@onething/backend/plugin-contract'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('plugins')

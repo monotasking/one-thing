@@ -20,16 +20,15 @@ import path from 'node:path'
 import {
   PLUGIN_IMPORTS_DIR_NAME,
   PLUGIN_STORAGE_IMAGE_PREFIX,
-  assertNotInNodeModules,
   clampPluginFilePickMaxBytes,
   describePluginFileImportProblem,
-  getCorePluginScratchDir,
   nextAvailablePluginImportFileName,
   parsePluginStorageImageRef,
   resolvePluginFilePickAccept,
   sanitizePluginImportFileName,
   type PluginFilePickResult,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import { assertNotInNodeModules, getCorePluginScratchDir } from './plugin-storage.js'
 import { getPluginsDir } from './plugin-disk-loader.js'
 
 export interface PluginFileImportRequest {

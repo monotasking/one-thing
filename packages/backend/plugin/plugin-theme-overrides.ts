@@ -35,11 +35,8 @@
  *  - 冲突裁决与 token 共用同一张 `winners` 表(同一套规范顺序后者胜),因为地址
  *    空间不相交,共用一张表不会误判,却省掉一套并行的裁决状态。
  */
-import {
-  comparePluginCanonicalOrder,
-  isPluginThemeColorValue,
-  normalizePluginThemeColorValue,
-} from '@onething/backend/plugin/plugin-contract'
+import { comparePluginCanonicalOrder } from '@onething/backend/plugin-contract'
+import { isPluginThemeColorValue, normalizePluginThemeColorValue } from './plugin-theme-contribution.js'
 import {
   canonicalHighlightToken,
   isHighlightAliasToken,

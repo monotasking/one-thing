@@ -31,3 +31,8 @@ export type {
 
 // 装配。`getProjectsStore` 经 `project-dir-bootstrap` 转交:测试在那只文件上打桩。
 export { bootstrapProjectDirs, getProjectsStore } from './project-dir-bootstrap.js'
+
+// 提示词里的名册变量(D202 改名说清差别):按空间算的那只是底,按会话算的先把会话解析成空间再调它。
+// 引擎拿的是按会话那只;它经 `project-dir-bootstrap` 转交,测试在那只文件上打桩。
+export { buildProjectDirsPromptVarsForSpace } from './project-dir-prompt.js'
+export { buildProjectDirsPromptVarsForSession } from './project-dir-bootstrap.js'

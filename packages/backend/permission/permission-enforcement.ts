@@ -9,6 +9,7 @@ import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { isSystemInternalOrigin, latestRealOrigin } from '@onething/backend/agent-loop'
 import { writeAppLog, getLogger } from '@onething/backend/logging'
+import { getEventBus } from '@onething/backend/event'
 import type {
   EnforcePermissionPolicyInput,
   PermissionPolicyInput,
@@ -201,24 +202,18 @@ const collabReminderBridge: PermissionBridge = {
   getMode: (sessionId: string) => Permission.getMode(sessionId),
   ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<Permission.Response | undefined> => {
     const timer = setTimeout(() => {
-      void (async () => {
-        try {
-          const session = store.getSession(request.sessionId) as
-            | { id: string; kind?: string; collab?: { roomSessionId?: string } }
-            | undefined
-          const roomSessionId = session?.kind === 'room' ? session.id : session?.collab?.roomSessionId
-          if (!roomSessionId) return
-          // Dynamic import: tools/core must not statically depend on the room
-          // config door (which reaches the engine through the v3 runtime).
-          const { postCollabSystemLine } = await import('@onething/backend/collab/collab-room-config')
-          postCollabSystemLine(
-            roomSessionId,
-            `有一个权限请求已等待 30 分钟未处理:${request.title}(从看板任务卡打开工作会话审批)`,
-          )
-        } catch (error) {
-          log.error('collab permission reminder failed', { sessionId: request.sessionId }, error)
-        }
-      })()
+      try {
+        // D202:只发一条全局事实,往协作房间喊话是 collab 自己装的监听器的事
+        // (从前这里动态 import 协作的房间配置 —— 授权层够协作层,动态 import 只是把越层藏了起来)。
+        getEventBus().emitGlobal({
+          type: 'permission:ask-stale',
+          sessionId: request.sessionId,
+          title: request.title,
+          elapsedMs: COLLAB_ASK_REMINDER_MS,
+        })
+      } catch (error) {
+        log.error('collab permission reminder failed', { sessionId: request.sessionId }, error)
+      }
     }, COLLAB_ASK_REMINDER_MS)
     try {
       return await Permission.ask(request)

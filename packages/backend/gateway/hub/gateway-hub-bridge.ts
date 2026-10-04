@@ -1,7 +1,7 @@
 import {
   isCoreTextStreamChunk,
   type CoreConversationRuntime,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from '../gateway-conversation-runtime.js'
 import {
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,

@@ -19,17 +19,14 @@ import { describe, expect, it } from 'vitest'
 import {
   PLUGIN_FILES_DEFAULT_QUOTA_BYTES,
   PLUGIN_FILES_MAX_FILE_BYTES,
-  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
-  PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE,
-  PluginStorageError,
   createCorePluginFiles,
   describePluginFilesPathProblem,
-  describePluginPermission,
-  getCorePluginScratchDir,
   getPluginFilesRefusalKind,
   type CorePluginFilesUsage,
   type CreateCorePluginFilesOptions,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-storage-files.js'
+import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT, PLUGIN_STORAGE_EXTERNAL_ROOT_PERMISSION_NOTE, describePluginPermission } from '../plugin-sessions.js'
+import { PluginStorageError, getCorePluginScratchDir } from '../plugin-storage.js'
 
 const PLUGIN_ID = 'memory'
 

@@ -5,8 +5,8 @@
  * `@main/ipc/mcp.ts` 的壳适配,以及 server 的九条 REST 路由 + 两个正则块 +
  * `mcp` facade adapter 背后那套 per-owner 的第二台 `HeadlessMCPManager`。
  *
- * 只桩**管家**(`@onething/backend/mcp/mcp-index-with-bridge` 的 `MCPManager` 单例、
- * `registerMCPTools`、`probeMCPServerConfig`)与设置缓存,**投影不桩** ——
+ * 只桩**管家**(`mcp-manager` 的 `MCPManager` 单例、`mcp-bridge` 的
+ * `registerMCPTools`、`mcp-client` 的 `probeMCPServerConfig`)与设置缓存,**投影不桩** ——
  * `*OnethingMCP*ForIpc` 是真跑的。
  *
  * 除了「域把端口接对了」,这里主要钉的是**四道护栏**(拍板 #20 的纪律:server 侧
@@ -52,9 +52,18 @@ const settings = vi.hoisted(() => ({
   saveSettings: vi.fn(async (_settings: Record<string, unknown>) => {}),
 }))
 
-vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
+// D202:旧桶 `mcp-index-with-bridge` 删了,域文件改引声明这三个名字的兄弟文件;替身随之打在那三只文件上
+// (展开真模块,只换这三个名字 —— D180 的同一套替身法)。
+vi.mock('../mcp-manager.js', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   MCPManager: manager,
+}))
+vi.mock('../mcp-bridge.js', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   registerMCPTools: wiring.registerMCPTools,
+}))
+vi.mock('../mcp-client.js', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   probeMCPServerConfig: wiring.probeMCPServerConfig,
 }))
 vi.mock('@onething/backend/mcp/oauth/mcp-oauth', async importOriginal => ({

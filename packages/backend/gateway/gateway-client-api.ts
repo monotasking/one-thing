@@ -36,7 +36,7 @@
  * 整只删掉(不像 oauth 还要留一层广播注入)。状态刷新靠调用方轮询 `getStatus`。
  */
 import { gatewayRouter, type GatewayRoutes } from '@shared/ipc/gateway.js'
-import { getGatewayHost } from '@onething/backend/gateway/gateway-lifecycle-port'
+import { getGatewayHost } from './gateway-lifecycle-port.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 export const gatewayRpcHandlers: RpcRouteHandlers<GatewayRoutes> = {

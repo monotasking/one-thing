@@ -50,8 +50,8 @@ vi.mock('@onething/backend/event', async (importOriginal) => ({
 }))
 vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngine: () => engine }))
 vi.mock('@onething/backend/permission/permission-with-grant-storage', () => ({ Permission: permission }))
-vi.mock('@onething/backend/eval/eval-turn-incident', () => incident)
-vi.mock('@onething/backend/eval', () => runtimeAmend)
+// D202:事故单的工厂经 eval 入口交出,两只裸工厂并成一只打在入口上。
+vi.mock('@onething/backend/eval', () => ({ ...runtimeAmend, ...incident }))
 vi.mock('../session-access.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../session-access.js')>()
   return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }

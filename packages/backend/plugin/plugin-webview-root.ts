@@ -11,14 +11,14 @@
  * `webview`)。
  */
 import path from 'path'
+import { describePluginAmbientProblem } from './plugin-ambient.js'
 import {
-  describePluginAmbientProblem,
   describePluginBackgroundProblem,
   describePluginWebviewPanelProblem,
-  getCorePluginScratchDir,
   isPluginWebviewPanel,
   resolvePluginWebviewRoot,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import { getCorePluginScratchDir } from './plugin-storage.js'
 import { getPluginsDir } from './plugin-disk-loader.js'
 import { getPluginManager } from './plugin-manager.js'
 

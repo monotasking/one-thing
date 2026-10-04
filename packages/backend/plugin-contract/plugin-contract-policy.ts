@@ -17,9 +17,9 @@ import {
   PLUGIN_PANEL_INIT_ACTION,
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_RENDER_ACTION,
-} from './plugin-panel.js'
-import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './plugin-ui-anchor.js'
-import { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-runtime-guard-constants.js'
+} from './plugin-contract-panel.js'
+import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './plugin-contract-ui-anchor.js'
+import { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-contract-runtime-guard-constants.js'
 
 // ── scope 的类型化构造 ──────────────────────────
 

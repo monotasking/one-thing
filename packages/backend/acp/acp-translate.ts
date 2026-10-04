@@ -8,7 +8,7 @@ import type {
   AgentTurnStreamEvent,
   AgentUsage,
 } from '@onething/backend/agent-loop'
-import { buildTextDiffChange, type TextDiffChange } from '../external-agent/external-agent-diff-changes.js'
+import { buildTextDiffChange, type TextDiffChange } from '@onething/backend/external-agent'
 
 /**
  * ACP 流事件 → 引擎回合事件的翻译(A0-3 从 `agent-loop/providers/acp.ts` 搬来)。

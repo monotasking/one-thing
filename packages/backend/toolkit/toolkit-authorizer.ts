@@ -17,7 +17,7 @@
  * 迟早在两种会话里长成两张不同的卡。
  */
 
-import { Permission, decidePermission as decideCorePermission } from '@onething/backend/permission/permission-asks'
+import { Permission, evaluatePermissionPolicy } from '@onething/backend/permission'
 import { formatPermissionRejectedMessage } from '@shared/permission/rejection-message'
 import { Decision, withUserToolSettings } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type {
@@ -39,7 +39,7 @@ import { getSettings } from '@onething/backend/settings'
 /**
  * 一条**不可静默**的效果。`Intent.alwaysAsk` 靠它落地。
  *
- * core `Permission` 没有"强制询问"的入口:`decidePermission` 的放行判据是
+ * core `Permission` 没有"强制询问"的入口:`evaluatePermissionPolicy` 的放行判据是
  * 「kind 是 read / 被 capability 覆盖 / 命中 grant」,没有一个能被外部一票否决。所以
  * 这里合成一条效果 —— 但**资源用 `<toolId>#<callId>`,每次调用都不一样**,于是它
  * 永远匹配不到任何一条已存的 grant,必然落进 `ask`。副作用是:用户在这张卡上选
@@ -162,7 +162,7 @@ export class PermissionAuthorizer implements Authorizer {
   }
 
   /**
-   * 「这一组效果会不会弹卡」。纯读:同一个 `decidePermission`、同一组输入,只是
+   * 「这一组效果会不会弹卡」。纯读:同一个 `evaluatePermissionPolicy`、同一组输入,只是
    * 提前问一次答案。它不替代 `enforce` —— 真正的判定与 ask 仍然发生在那边。
    */
   private wouldAsk(
@@ -173,7 +173,7 @@ export class PermissionAuthorizer implements Authorizer {
     if (effects.length === 0) return false
     try {
       const getMode = this.options.getMode ?? ((id: string) => Permission.getMode(id))
-      const result = decideCorePermission({
+      const result = evaluatePermissionPolicy({
         sessionId: invocation.sessionId,
         mode: getMode(invocation.sessionId),
         effects,

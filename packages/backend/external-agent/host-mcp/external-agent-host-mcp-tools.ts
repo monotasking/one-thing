@@ -122,12 +122,14 @@ export function filterHostToolSurface(input: {
 }
 
 /**
- * 这一轮该注入哪几个宿主工具。空数组 = 一个都不注(普通对话就该是这个答案)。
+ * 这一轮该注入哪几个宿主工具的 **id**。空数组 = 一个都不注(普通对话就该是这个答案)。
+ * (D202 改名 `resolveHostToolIds`:名字跟返回值走 —— 按会话 id 给整张工具面的那只异步版
+ * 是 `external-agent-host-tools.ts` 的 `resolveHostToolSurface`。)
  *
  * 给**手上只有原始字段**的调用方(测试、未来的其它 connector):它替你调那两个
  * 单点。已经解析过 profile 的调用方走 `filterHostToolSurface`,别解析第二遍。
  */
-export function resolveHostToolSurface(input: HostToolSurfaceInput): string[] {
+export function resolveHostToolIds(input: HostToolSurfaceInput): string[] {
   return filterHostToolSurface({
     venue: resolveCollabVenue(input.sessionKind),
     allowlist: resolveAgentToolSurface({

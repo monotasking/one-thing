@@ -2,15 +2,15 @@ import type { PluginInputInterceptHandler } from './plugin-input-intercept.js'
 import type { CoreToolPromptContribution } from '../agent-loop/agent-loop.js'
 import type { PluginToolCallInterceptHandler } from './plugin-tool-call-intercept.js'
 import type { PluginToolResultInterceptHandler } from './plugin-tool-result-intercept.js'
-import type { CorePluginRequestHandler } from './plugin-request-channel.js'
+import type { CorePluginRequestHandler } from '@onething/backend/plugin-contract'
 import type { CorePluginStorage } from './plugin-storage.js'
 import type { PluginNotifyOptions } from '@shared/plugins/notify-sound.js'
 import type { CorePluginToolExecutionMode } from './plugin-tool-execution-mode.js'
-import type { CorePluginPanelRegistration } from './plugin-panel.js'
-import type { CorePluginUiSlotRegistration, PluginLayoutResult } from './plugin-ui-anchor.js'
-import type { CorePluginSearchProviderRegistration } from './plugin-search-provider.js'
-import type { CorePluginCredentialStrategyRegistration } from './plugin-credential-strategy.js'
-import type { CorePluginDeepLinkActionRegistration } from './plugin-deep-link.js'
+import type { CorePluginPanelRegistration } from '@onething/backend/plugin-contract'
+import type { CorePluginUiSlotRegistration, PluginLayoutResult } from '@onething/backend/plugin-contract'
+import type { CorePluginSearchProviderRegistration } from '@onething/backend/plugin-contract'
+import type { CorePluginCredentialStrategyRegistration } from '@onething/backend/plugin-contract'
+import type { CorePluginDeepLinkActionRegistration } from '@onething/backend/deeplink'
 import type {
   PluginSendMessageOptions,
   PluginSendMessageResult,
@@ -19,6 +19,7 @@ import type {
 } from './plugin-sessions.js'
 import type { PluginLlmCompleteOptions, PluginLlmCompleteResult } from './plugin-llm.js'
 import type { PluginResourcesApi } from './plugin-resources.js'
+import type { PersistedPluginHealth } from '@onething/backend/plugin-contract'
 
 /**
  * 声明先于代码(设计文档 §4.2 宪法第 3 条)。
@@ -268,13 +269,7 @@ export interface CorePluginDefinition<TEntry = unknown> {
  * 插件就变成了"无因禁用"——用户看到一个自己没关过的开关是关的,没有任何解释。
  * 连败计数不落盘:它是本次进程的观察,跨重启累加没有意义。
  */
-export interface PersistedPluginHealth {
-  status: 'degraded' | 'disabled'
-  lastError?: string
-  lastErrorScope?: string
-  lastErrorAt?: number
-  disabledReason?: string
-}
+// 落盘的健康账形状住在插件契约(`plugin-contract-health.ts`,D202);这里设置文件的形状引它。
 
 export interface PluginSettings {
   enabled?: Record<string, boolean>

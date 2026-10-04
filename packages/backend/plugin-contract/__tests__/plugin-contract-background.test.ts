@@ -16,14 +16,14 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   PLUGIN_BACKGROUND_MAX_BLUR,
   clampPluginBackgroundParamsPatch,
-  createCorePluginAPI,
   describePluginBackgroundProblem,
   isPluginBackgroundFit,
   mergePluginBackgroundParams,
   pluginBackgroundImageUrl,
   resolvePluginBackgrounds,
-  validatePluginContributes,
-} from '../plugin-contract.js'
+} from '../plugin-contract-background.js'
+import { createCorePluginAPI } from '@onething/backend/plugin/plugin-api-builder'
+import { validatePluginContributes } from '@onething/backend/plugin/plugin-loader'
 
 // ── 1. 声明校验:正反例 ───────────────────────────
 

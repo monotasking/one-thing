@@ -20,22 +20,30 @@ import {
   normalizePluginDeepLinkResult,
   pluginDeepLinkAddress,
   pluginDeepLinkSurface,
-  pluginScope,
   type CorePluginDeepLinkActionRegistration,
   type CorePluginDeepLinkResult,
-} from '@onething/backend/plugin/plugin-contract'
+} from './deeplink-contract.js'
+import { pluginScope } from '@onething/backend/plugin-contract'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/plugin-health'
+} from '@onething/backend/plugin-contract'
 
 interface PluginDeepLinkEntry {
   pluginId: string
   name: string
   title: string
   registration: CorePluginDeepLinkActionRegistration
+  /** 插件的显示名(惰性,随登记携带;D203)。 */
+  displayName?: () => string | undefined
+}
+
+/** 登记时随附的东西(D203)。 */
+export interface PluginDeepLinkRegistrationMeta {
+  /** 插件的显示名(manifest.name),惰性 —— 确认卡要显示时现问一次。缺席 = 卡片退回插件 id。 */
+  displayName?: () => string | undefined
 }
 
 /** key = 全局地址 `plugin:<pluginId>:<name>`。 */
@@ -50,6 +58,7 @@ const actions = new Map<string, PluginDeepLinkEntry>()
 export function registerPluginDeepLinkAction(
   pluginId: string,
   registration: CorePluginDeepLinkActionRegistration,
+  meta: PluginDeepLinkRegistrationMeta = {},
 ): () => void {
   const name = String(registration?.name ?? '').trim()
   if (!name || typeof registration?.handler !== 'function') return () => {}
@@ -59,6 +68,7 @@ export function registerPluginDeepLinkAction(
     name,
     title: String(registration.title ?? '').trim() || name,
     registration,
+    ...(meta.displayName ? { displayName: meta.displayName } : {}),
   })
   let released = false
   return () => {
@@ -85,6 +95,24 @@ export interface PluginDeepLinkActionInfo {
  * 查不到回 null —— 宿主据此给出一条**看得见的**拒绝("这个动作不在了"),
  * 而不是让用户确认一个不会发生的动作。
  */
+/**
+ * 插件的显示名(确认卡上用):从这个插件**还登记着的**任何一个深链动作上读(D203)。
+ * 查不到(插件已卸载 —— 卸载即撤销登记 —— 或从没登记过、或没带显示名)就退回插件 id,
+ * 与从前「问插件管理器,查不到退回 id」逐字相同。
+ */
+export function resolvePluginDisplayName(pluginId: string): string {
+  for (const entry of actions.values()) {
+    if (entry.pluginId !== pluginId || !entry.displayName) continue
+    try {
+      const name = entry.displayName()
+      if (typeof name === 'string' && name.trim()) return name.trim()
+    } catch {
+      // 显示名问不出来就不说,退回 id(与从前 try/catch 的口径相同)。
+    }
+  }
+  return pluginId
+}
+
 export function describePluginDeepLinkAction(
   pluginId: string,
   name: string,

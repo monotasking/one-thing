@@ -40,7 +40,7 @@
  * (从 EOF 倒读)永远是准的;app 层在活投影在内存里时也不走这条路。
  */
 
-import { decodeSessionLogEventLine } from '../../events/session-events-codec.js'
+import { decodeSessionLogEventLine } from '@shared/session/events/codec.js'
 import type { SessionLogEventRecord, SessionLogEventType } from '@shared/session/events/types.js'
 import { foldSessionProjection, materializeChatMessages } from '@shared/session/projection/chat-messages.js'
 import type { ProjectionMaterializeOptions } from '@shared/session/projection/blobs.js'

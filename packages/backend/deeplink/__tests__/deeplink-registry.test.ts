@@ -8,11 +8,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  CORE_PLUGIN_FAILURE_THRESHOLD,
-  PLUGIN_PERMISSION_DEEPLINK_HANDLE,
-  PLUGIN_REGISTRY_POLICY,
-} from '@onething/backend/plugin/plugin-contract'
+import { CORE_PLUGIN_FAILURE_THRESHOLD, PLUGIN_REGISTRY_POLICY } from '@onething/backend/plugin-contract'
+import { PLUGIN_PERMISSION_DEEPLINK_HANDLE } from '../deeplink-contract.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-deeplink-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
@@ -32,7 +29,7 @@ async function load() {
   const [api, registry, health, logging] = await Promise.all([
     import('@onething/backend/plugin/plugin-api'),
     import('../deeplink-registry.js'),
-    import('@onething/backend/plugin/plugin-health'),
+    import('../../plugin-contract/plugin-contract-health.js'),
     // `vi.resetModules()` 之后每次 load 都是一份新的 logging 单例 —— 捕获必须从
     // **同一份**里拿,否则收的是别的 root(L4)。
     import('@onething/backend/logging/logging-configure'),
@@ -205,6 +202,24 @@ describe('H4 deep link actions — 拆除', () => {
     expect(PLUGIN_REGISTRY_POLICY['deep-link-action'].teardown).toBe('fail-open')
     const afterTeardown = await mods.registry.invokePluginDeepLinkAction('trans', 'a', { text: '', params: {} })
     expect(afterTeardown).toMatchObject({ ok: false, reason: 'not-registered' })
+  })
+
+  // D203:确认卡上的插件显示名改成随登记携带、从登记表读(从前问插件管理器)。两者显示相同的前提是
+  // 「插件卸载即撤销登记」—— 这一条钉的就是这个前提:登记在就读到显示名,拆除之后退回插件 id。
+  it('carries the display name with the registration and falls back to the id once the plugin is torn down', async () => {
+    const mods = await load()
+    const { api, state } = mods.api.createPluginAPI('trans', bus as never, {} as never, {
+      declaredPermissions: [PLUGIN_PERMISSION_DEEPLINK_HANDLE],
+      displayName: () => 'Translator',
+    })
+    expect(mods.registry.resolvePluginDisplayName('trans')).toBe('trans')
+
+    api.registerDeepLinkAction({ name: 'a', title: 'A', handler: () => {} })
+    expect(mods.registry.resolvePluginDisplayName('trans')).toBe('Translator')
+
+    mods.api.disposePlugin(state)
+    expect(mods.registry.listPluginDeepLinkActions()).toEqual([])
+    expect(mods.registry.resolvePluginDisplayName('trans')).toBe('trans')
   })
 
   it('states honestly that the pilot carries no production traffic yet', async () => {

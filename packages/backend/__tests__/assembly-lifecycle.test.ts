@@ -413,7 +413,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 直接钉在它的两个方法上。
    */
   it('⑭ 在途 start 上来一发 dispose:MCPManager.shutdown 仍被调到', { timeout: 180_000 }, async () => {
-    const { MCPManager } = await import('@onething/backend/mcp/mcp-index-with-bridge')
+    const { MCPManager } = await import('@onething/backend/mcp')
     const order: string[] = []
     let openGate = (): void => {}
     const gate = new Promise<void>(resolve => {
@@ -479,9 +479,9 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
-    // 连接器登记表改引兄弟文件(D126,深层引用收口第四批)之后,`createAcpConnector` 要在声明它的模块上监视。
-    const runtime = await import('../external-agent/external-agent-acp-connector.js')
-    const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
+    // D202:连接器表由装配组(`backend.ts` 从 acp 入口拿 `createAcpConnector`),所以监视打在 acp 入口上。
+    const runtime = await import('@onething/backend/acp')
+    const registry = await import('@onething/backend/external-agent')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     try {
@@ -514,7 +514,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('drains a connector created by a failing early hook before allowing the next Backend', { timeout: 180_000 }, async () => {
-    const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
+    const registry = await import('@onething/backend/external-agent')
     const { getCurrentBackendSafe } = await import('../backend-current.js')
     const boom = new Error('afterSettings failed after creating a connector')
     let release!: () => void
@@ -560,11 +560,11 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('cleans an unused early connector binding when afterSettings fails before any getter', { timeout: 180_000 }, async () => {
-    // 连接器登记表改引兄弟文件(D126,深层引用收口第四批)之后,`createAcpConnector` 要在声明它的模块上监视。
-    const runtime = await import('../external-agent/external-agent-acp-connector.js')
+    // D202:连接器表由装配组(`backend.ts` 从 acp 入口拿 `createAcpConnector`),所以监视打在 acp 入口上。
+    const runtime = await import('@onething/backend/acp')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
-    const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
+    const registry = await import('@onething/backend/external-agent')
     const boom = new Error('afterSettings failed without creating a connector')
     try {
       await expect(assemble({ afterSettings: () => { throw boom } }))

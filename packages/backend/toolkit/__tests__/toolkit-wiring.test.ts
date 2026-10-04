@@ -62,7 +62,9 @@ vi.mock('@onething/backend/plugin/plugin-tool-result-intercept-bound', () => ({
   runPluginToolResultIntercept: harness.resultIntercept,
 }))
 
-vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
+// D202:旧桶并进 mcp 入口,替身改打入口并展开真模块(只换下面这几个名字)。
+vi.mock('@onething/backend/mcp', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
   isMCPTool: (id: string) => id.startsWith('mcp:'),
   executeMCPTool: harness.mcpExecute,
   resolveMCPServerIdForToolRef: () => 'server-1',

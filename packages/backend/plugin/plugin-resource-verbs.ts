@@ -60,12 +60,9 @@
  * `resource-call` 一格)写的就是这句话。
  */
 
-import {
-  PLUGIN_RESOURCE_CALL_TIMEOUT_MS,
-  pluginResourceSurface,
-  pluginScope,
-} from '@onething/backend/plugin/plugin-contract'
-import { ReadOutcome } from '@onething/backend/resource/resource-api'
+import { PLUGIN_RESOURCE_CALL_TIMEOUT_MS } from './plugin-resources.js'
+import { pluginResourceSurface, pluginScope } from '@onething/backend/plugin-contract'
+import { ReadOutcome } from '@onething/backend/resource'
 import { parseRef } from '@shared/resource/ref'
 import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/resource'
 import { systemPrincipal } from '@shared/permission/principal'
@@ -77,7 +74,7 @@ import {
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/plugin-health'
+} from '@onething/backend/plugin-contract'
 
 /**
  * 内核里插件用得到的那三格。

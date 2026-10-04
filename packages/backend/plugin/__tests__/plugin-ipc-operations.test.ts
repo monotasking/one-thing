@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CorePluginCommandContext } from '@onething/backend/plugin/plugin-contract'
+import type { CorePluginCommandContext } from '../plugin-api-types.js'
 import {
   disableOnethingPluginForIpc,
   enableOnethingPluginForIpc,

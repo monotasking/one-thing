@@ -122,27 +122,27 @@ const delivered: Array<{
   origin: unknown
 }> = []
 
-vi.mock('@onething/backend/plugin/plugin-session-messenger', () => ({
-  deliverInternalMessage: async (
-    _deps: unknown,
-    request: {
-      actorKey: string
-      sessionId: string
-      content: string
-      options: Record<string, unknown>
-      origin: (hop: number, now: number) => unknown
-    },
-  ) => {
-    delivered.push({
-      actorKey: request.actorKey,
-      sessionId: request.sessionId,
-      content: request.content,
-      options: request.options,
-      origin: request.origin(1, 1000),
-    })
-    return { ok: true, delivered: 'triggered', hop: 1 }
+// D202:投递函数由装配递进派工层(从前派工层静态引插件入口,这里在插件的信使模块上打桩)。
+// 替身原样不动,改成直接递进 `createTaskDispatchLayer` 的 deps。
+const fakeDeliverInternalMessage = (async (
+  _deps: unknown,
+  request: {
+    actorKey: string
+    sessionId: string
+    content: string
+    options: Record<string, unknown>
+    origin: (hop: number, now: number) => unknown
   },
-}))
+) => {
+  delivered.push({
+    actorKey: request.actorKey,
+    sessionId: request.sessionId,
+    content: request.content,
+    options: request.options,
+    origin: request.origin(1, 1000),
+  })
+  return { ok: true, delivered: 'triggered', hop: 1 }
+}) as unknown as Parameters<typeof import('../task-dispatch.js').createTaskDispatchLayer>[0]['deliverInternalMessage']
 
 async function load() {
   return { dispatchTask: taskLayer.dispatch, runningTaskCount: taskLayer.runningCount }
@@ -177,7 +177,10 @@ async function newTaskLayer(overrides: Partial<Parameters<typeof import('../task
     import('../task-dispatch.js'), import('@onething/backend/event'), import('@onething/backend/backend-current.js'),
     import('@onething/backend/session'), import('@onething/backend/session'),
   ])
-  return createTaskDispatchLayer({ eventBus: getEventBus(), engine: getStreamEngineSafe()!, access: sessionAccess, reads: sessionReads, ...overrides })
+  return createTaskDispatchLayer({
+    eventBus: getEventBus(), engine: getStreamEngineSafe()!, access: sessionAccess, reads: sessionReads,
+    deliverInternalMessage: fakeDeliverInternalMessage, ...overrides,
+  })
 }
 
 function seedCaller(id: string, overrides: Partial<FakeSession> = {}): void {

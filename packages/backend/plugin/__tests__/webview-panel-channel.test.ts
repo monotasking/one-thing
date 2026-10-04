@@ -14,11 +14,11 @@ import {
   PLUGIN_PANEL_PROTOCOL_VERSION,
   PLUGIN_PANEL_RENDER_ACTION,
   classifyPluginScope,
-  createCorePluginAPI,
   describePluginPanelResultProblem,
   describePluginSurface,
-  validatePluginContributes,
-} from '../plugin-contract.js'
+} from '@onething/backend/plugin-contract'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
+import { validatePluginContributes } from '../plugin-loader.js'
 
 function createApi(options: { declaredPanelIds: string[]; declaredWebviewPanelIds?: string[] }) {
   const created = (createCorePluginAPI as any)({

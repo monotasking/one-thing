@@ -17,7 +17,7 @@ import {
   PluginStorageError,
   createCorePluginMessageStateStore,
   getCorePluginMessageStateDir,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-storage.js'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-msg-state-'))

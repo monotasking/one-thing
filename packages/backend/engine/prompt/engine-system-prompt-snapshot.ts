@@ -13,8 +13,8 @@ import {
 } from '@onething/backend/provider-call'
 import { defaultAgent, findAgent, resolveAgentProfileForSession } from '@onething/backend/agent'
 import { getSkillsForSession } from '@onething/backend/skill'
-import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-with-bridge'
-import { buildProjectDirsPromptVars } from '@onething/backend/project-dir/project-dir-bootstrap'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp'
+import { buildProjectDirsPromptVarsForSession } from '@onething/backend/project-dir'
 import {
   isProviderSupported,
 } from '@onething/backend/provider-call'
@@ -162,7 +162,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     sourceToolsToModelDefinitions: tools => agentToolDefinitionsFromSourceTools(tools),
     resolveModelSupportsTools: resolveModelSupportsToolsForSnapshot,
     getNativeProviderTools: getNativeProviderToolsForConfig,
-    buildProjectDirsPromptVars,
+    buildProjectDirsPromptVars: buildProjectDirsPromptVarsForSession,
     // persona 功能兜底(域模型 §3.3),与 system-prompt.ts 的 host 同一条规则。
     getAgent: (agentId?: string) => findAgent(agentId) ?? defaultAgent(),
     // 走真回合那条解析(C2 工具面单点):agent 自带白名单 + 会话 kind 隐含的

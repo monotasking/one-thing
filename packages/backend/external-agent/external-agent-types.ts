@@ -58,6 +58,15 @@ export interface ExternalAgentSessionLink {
 }
 
 /**
+ * 会话链接表的那一面(D202):登记表只读写外部 agent 契约这一面的链接。表本身归驱动(ACP 的
+ * `ACPManager` 手上那一只),由装配以惰性 getter 递进 `bindExternalAgentConnectors` —— 契约不写驱动的名字。
+ */
+export interface ExternalAgentSessionLinkStore {
+  getExternalLink(connectorId: string, localSessionId: string): ExternalAgentSessionLink | undefined
+  putExternalLink(link: ExternalAgentSessionLink): void
+}
+
+/**
  * 一张随本轮用户消息进去的图片(2026-08-12,审计「图片静默丢弃」)。
  *
  * 形状与 `AgentImageContentPart.image` **逐字相同**(data URL / 裸 base64 /

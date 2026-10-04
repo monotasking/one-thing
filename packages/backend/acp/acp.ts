@@ -5,7 +5,8 @@
  * 对外交出四类东西:
  * - 装配:ACP 子系统 `AcpSubsystem`、agent 名册与它的拉取口、会话投影、会话删除时的清理、
  *   权限桥的登记、给外部 agent 主机工具开的 MCP 口;
- * - 管理器与流:`ACPManager`、把 ACP 的流翻译成本应用的流事件、连接器 id;
+ * - 管理器与流:`ACPManager`、把 ACP 的流翻译成本应用的流事件、连接器 id 与连接器本身(外部 agent 契约的
+ *   ACP 驱动,D202 从 external-agent 搬来;装配把它填进外部 agent 的连接器登记表);
  * - 桥与会话的形状(权限、提问、客户端请求上下文、开会话与发提示的选项、线格式事件);
  * - 调试日志口的形状。
  * 依赖 external-agent、toolkit、terminal、permission、interaction、session、settings、shell、tool、todo-plan、event、storage、logging 与包根的当前实例槽。
@@ -25,6 +26,7 @@ export { ACPManager } from './acp-manager.js'
 export { translateACPPromptStream } from './acp-translate.js'
 export type { ACPWireStreamEvent } from './acp-translate.js'
 export { ACP_CONNECTOR_ID } from './acp-session-links.js'
+export { capabilitiesFromHandshake, createAcpConnector } from './acp-connector.js'
 
 // 桥与会话的形状。
 export type {

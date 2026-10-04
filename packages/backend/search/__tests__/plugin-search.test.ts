@@ -10,9 +10,9 @@ const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CorePluginSearchProviderRegistration } from '@onething/backend/plugin'
+import type { CorePluginSearchProviderRegistration } from '@onething/backend/plugin-contract'
 import { createPluginAPI } from '@onething/backend/plugin/plugin-api'
-import { resetPluginRuntimeHealthForTests } from '@onething/backend/plugin/plugin-health'
+import { resetPluginRuntimeHealthForTests } from '@onething/backend/plugin-contract'
 import {
   decodePluginSearchAction,
   invokePluginSearchAction,

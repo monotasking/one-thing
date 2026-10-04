@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLUGIN_REGISTRY_POLICY } from '@onething/backend/plugin/plugin-contract'
+import { PLUGIN_REGISTRY_POLICY } from '@onething/backend/plugin-contract'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-connector-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH

@@ -28,12 +28,12 @@
  * 判据在 core、IO 在宿主:这里一行 fs / electron 都不吃,真正的读文件仍住在
  * `apps/electron/src/plugins/protocol.ts`(与 webview 同一条协议、同一批闸)。
  */
-import { comparePluginCanonicalOrder } from './plugin-canonical-order.js'
+import { comparePluginCanonicalOrder } from './plugin-contract-canonical-order.js'
 import {
   describePluginRelativeAssetPathProblem,
   pluginStorageAssetUrl,
   pluginWebviewEntryUrl,
-} from './plugin-webview.js'
+} from './plugin-contract-webview.js'
 
 /**
  * 背景图允许的扩展名。

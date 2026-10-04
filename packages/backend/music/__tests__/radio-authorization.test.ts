@@ -52,7 +52,6 @@ vi.mock('@onething/backend/permission/permission-asks', async importOriginal => 
   addGrant: (...args: unknown[]) => fixture.grant(...args),
 }))
 vi.mock('@onething/backend/permission/permission-unattended', () => ({ markSessionUnattended: (...args: unknown[]) => fixture.unattended(...args) }))
-vi.mock('@onething/backend/variable/variable-registry', () => ({ getVariableRegistry: () => ({ list: fixture.variables }) }))
 vi.mock('@onething/backend/backend-current.js', async importOriginal => ({ ...(await importOriginal<typeof import('@onething/backend/backend-current.js')>()), getStreamEngineSafe: () => ({ getController: () => undefined }) }))
 vi.mock('@onething/backend/event', () => ({ getEventBus: () => ({ emit: fixture.emit, on: () => () => {} }) }))
 vi.mock('../music-service.js', async () => {
@@ -73,6 +72,8 @@ async function loadRadio() {
     storePath: fixture.dir,
     service: { ...await import('../music-service.js'), runner: { run: vi.fn(), spawn: vi.fn() } },
     hostVoice: () => ({ prefetch: vi.fn(), speak: vi.fn(async () => {}) }),
+    // D202:变量表经端口递进来(从前在 `variable-registry` 模块上打桩)。
+    variables: { listForSession: (sessionId: string) => fixture.variables({ sessionId }) },
   } as unknown as Parameters<typeof createRadioScope>[0])
   return activeRadio
 }

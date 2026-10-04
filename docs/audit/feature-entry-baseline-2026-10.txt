@@ -1,52 +1,53 @@
 # feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)
-# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。
-# 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
+# 每行 `<次数> <功能>`:**测试文件**从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。
+# 非测试部分不进这张表 —— 它是零基线硬闸(D202 第 15 条,2026-10-04):一处非测试深层引用就红。
+# 测试部分只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
-296 session
-16 toolkit
-11 tool
-40 agent
+# 2026-10-04 D202 起改成只记测试:从前一行记「测试 + 非测试」的合计;非测试那一半收口到 0 之后改成零基线硬闸,这张表只剩测试的处数(847 → 838)。
+# 唯一的新行 plugin-contract 11:那 11 处测试从前引 `plugin/plugin-health.ts`(记在 plugin 行),文件随插件词汇下沉搬进 plugin-contract,是同一批引用换了行(D14 口径)。
+294 session
 78 settings
-56 plugin
-4 storage
-11 event
-30 space
-33 permission
-27 collab
-9 resource
-8 auth
-20 mcp
-30 provider-call
-16 variable
-7 note
-10 usage
+49 plugin
 41 agent-loop
-12 voice
+40 agent
+31 permission
+30 provider-call
+30 space
 22 credentials
-5 prompt
-8 skill
-7 acp
-14 external-agent
-3 goal
-10 project-dir
+20 collab
+16 toolkit
 15 provider
-4 terminal
-2 todo-plan
-7 eval
-1 music
-5 shell
-12 gateway
-4 media
-3 scheduler
-2 file
+14 variable
+12 voice
+11 event
+11 plugin-contract
+11 tool
+10 usage
+8 auth
+8 project-dir
+8 skill
 7 engine
-2 theme
+7 note
+7 resource
+5 eval
+5 prompt
+5 shell
+4 external-agent
 4 headless
+4 media
+4 storage
+4 terminal
+3 goal
+3 scheduler
+2 acp
+2 file
+2 mcp
+2 theme
+2 todo-plan
+1 deeplink
 1 interaction
+1 music
+1 perf
 1 practice
 1 quota
-2 task
 1 toc
-2 deeplink
-2 search
-1 perf

@@ -8,8 +8,8 @@
  * 这里只放机制(零依赖纯 TS,四个宿主共享),接线在 app 层。
  */
 
-import { describePluginSurface, resolvePluginScopeSeverity, type PluginFailureScope } from './plugin-policy.js'
-import { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-runtime-guard-constants.js'
+import { describePluginSurface, resolvePluginScopeSeverity, type PluginFailureScope } from './plugin-contract-policy.js'
+import { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-contract-runtime-guard-constants.js'
 
 /** 提示词装配是每次发消息的热路径,预算必须小。 */
 export const CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS = 5_000
@@ -33,7 +33,7 @@ export const CORE_PLUGIN_ENTRY_TIMEOUT_MS = 10_000
  */
 export const CORE_PLUGIN_REQUEST_TIMEOUT_MS = 30_000
 /** 连续失败到这个数就触发罚则(罚则由 policy.ts 的严重度表决定)。 */
-export { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-runtime-guard-constants.js'
+export { CORE_PLUGIN_FAILURE_THRESHOLD } from './plugin-contract-runtime-guard-constants.js'
 
 export class CorePluginTimeoutError extends Error {
   constructor(

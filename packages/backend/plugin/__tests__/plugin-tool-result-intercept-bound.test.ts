@@ -7,12 +7,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CORE_PLUGIN_FAILURE_THRESHOLD, PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from '@onething/backend/plugin/plugin-contract'
+import { CORE_PLUGIN_FAILURE_THRESHOLD, PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from '@onething/backend/plugin-contract'
 
-import {
-  clearPluginRuntimeHealth,
-  getPluginRuntimeHealth,
-} from '../plugin-health.js'
+import { clearPluginRuntimeHealth, getPluginRuntimeHealth } from '@onething/backend/plugin-contract'
 import {
   getToolResultInterceptHookCount,
   registerPluginToolResultInterceptHook,

@@ -20,7 +20,7 @@ import { goalRuntimeHooks } from '@onething/backend/goal'
 import { scratchpadRuntimeHooks } from '@onething/backend/scratchpad'
 import { resolveAgentProfileForSessionObject } from '@onething/backend/agent'
 import { getSkillsForSession } from '@onething/backend/skill'
-import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-with-bridge'
+import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp'
 import { modelRegistry } from '@onething/backend/settings'
 import { createAgentProviderFromRuntime } from '@onething/backend/provider-call'
 import type { ChatMessage, ChatSession, SkillDefinition } from '@shared/ipc.js'
@@ -29,7 +29,7 @@ import { buildHistoryMessages, type HistoryMessage } from './engine-stream-messa
 import type { StreamContext } from './engine-stream-processor.js'
 import { buildPrompt } from '../prompt/engine-system-prompt.js'
 import { SessionTurnContext, type SessionTurnContextStore } from '../engine-session-turn-context.js'
-import { buildProjectDirsPromptVars } from '@onething/backend/project-dir/project-dir-bootstrap'
+import { buildProjectDirsPromptVarsForSession } from '@onething/backend/project-dir'
 import { executeToolDirectly } from './engine-stream-tool-execution.js'
 import { compactSessionContext } from '../engine-compact-session.js'
 import * as contextCompact from '../engine-compact-session.js'
@@ -178,7 +178,7 @@ function createAgentLoopRuntimeAdapters(
         agentId,
       ).tools
     },
-    buildProjectPromptVars: buildProjectDirsPromptVars,
+    buildProjectPromptVars: buildProjectDirsPromptVarsForSession,
     /**
      * The turn channel is attached here, on the real turn path only (a prompt
      * snapshot or an eval must never write to a session). The composer decided

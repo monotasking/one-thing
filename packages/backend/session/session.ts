@@ -65,7 +65,6 @@ export { writeSessionEvent } from './session-event-writer.js'
 export { sessionLifecycleEvents } from './session-lifecycle-events.js'
 export { extractSessionPageResults } from './session-page-results.js'
 export type { SessionPageResultSlot } from './session-page-results.js'
-export { installSessionPermissionEventRecorders, uninstallSessionPermissionEventRecorders } from './session-permission-events.js'
 export {
   deliverPresentation,
   presentationHandlerCount,

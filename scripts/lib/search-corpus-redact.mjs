@@ -12,7 +12,8 @@
  * `packages/backend/search/kernel/__tests__/fixtures.test.ts`,以及那份手写的
  * `search-corpus-redact.d.mts` 类型面。它们的 import 路径一个字不用改。
  *
- * 再导出的是 `.ts` 源文件:仓里跑脚本用 bun(直接吃 TS),跑测试用 vitest(同样
- * 直接吃 TS),两条路都解析得开。
+ * 2026-10-04(D202)起它从检索功能的入口再导出那三个名字,不再按文件路径指功能内部的规则文件
+ * (功能入口的规矩:功能目录之外只引入口)。入口的说明符指向 `.ts` 源文件:仓里跑脚本用 bun
+ * (直接吃 TS),跑测试用 vitest(同样直接吃 TS),两条路都解析得开。
  */
-export * from '../../packages/backend/search/kernel/search-kernel-redact.ts'
+export { REDACT_RULE_IDS, findRedactionHits, redactText } from '@onething/backend/search'

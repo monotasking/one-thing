@@ -6,27 +6,26 @@
  *   2. 一个挂起的 promptContextProvider 不阻塞消息发送路径(提示词装配超时后返回);
  *   3. 连续失败的插件被自动禁用,且状态可查。
  */
-import { pluginScope } from '@onething/backend/plugin/plugin-contract'
+import { pluginScope } from '@onething/backend/plugin-contract'
 import { describe, expect, it, vi } from 'vitest'
 import {
   CORE_PLUGIN_FAILURE_THRESHOLD,
   CorePluginHealthTracker,
-  CorePluginLifecycleRegistry,
-  CorePluginManager,
   CorePluginTimeoutError,
-  createCorePluginAPI,
-  disposeCorePluginState,
-  getPluginEnabledFromSettings,
   isCorePluginTimeoutError,
-  listPluginHealthFromSettings,
   runWithPluginTimeout,
+} from '@onething/backend/plugin-contract'
+import { CorePluginLifecycleRegistry } from '../plugin-lifecycle.js'
+import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '../plugin-manager-base.js'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
+import { disposeCorePluginState } from '../plugin-api-state.js'
+import {
+  getPluginEnabledFromSettings,
+  listPluginHealthFromSettings,
   setPluginEnabledInSettings,
   setPluginHealthInSettings,
-  type CorePluginDefinition,
-  type CorePluginManagerHost,
-  type CorePluginStateLike,
-  type PluginSettings,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-loader.js'
+import { type CorePluginDefinition, type PluginSettings } from '../plugin-api-types.js'
 
 interface TestAPI {
   registerCommand(name: string): void
@@ -434,7 +433,7 @@ describe('R1 soft isolation — failure counting circuit breaker', () => {
 
 describe('R1 soft isolation — app wiring', () => {
   it('auto-disables the plugin through the host port and notifies the user', async () => {
-    const health = await import('../plugin-health.js')
+    const health = await import('../../plugin-contract/plugin-contract-health.js')
     health.resetPluginRuntimeHealthForTests()
 
     const disabled: string[] = []
@@ -468,7 +467,7 @@ describe('R1 soft isolation — app wiring', () => {
    * 与原因 → 重启回灌后设置页仍能说明为什么关着。
    */
   it('runs the whole breaker chain: failures → disable → settings persisted → restored after restart', async () => {
-    const health = await import('../plugin-health.js')
+    const health = await import('../../plugin-contract/plugin-contract-health.js')
     health.resetPluginRuntimeHealthForTests()
 
     // plugin-settings 的替身(真实实现是 <store>/plugin-settings.json)。

@@ -1,9 +1,9 @@
 /**
- * 审批链与提问链的**记账接线**(S1a,§10.6 第 4 条)。
+ * 审批链的**记账接线**(S1a,§10.6 第 4 条):把每一次权限问答的时刻与决定记进会话事件日志。
  *
- * `Permission` / `Interaction` 住在 core(零依赖),所以它们只开了一个回调口子
- * (`setRecorder`);把回调接到会话事件日志上是装配层的事,发生在 `backend.ts`
- * 调完 `initialize` 之后。
+ * `Permission` 只开了一个回调口子(`setRecorder`);把回调接到会话事件日志上发生在 `backend.ts`
+ * 调完 `initialize` 之后。D202 前它与提问链那一半合住在 session(`session-permission-events.ts`),
+ * 可它属于记账的一方:按依赖方向拆开,审批这一半回 permission,提问那一半回 interaction。
  *
  * 为什么不是"听 EventBus 的 permission:settled":那条总线事件只带
  * allowed/rejected,**拒绝的理由**只活在 `RejectedError.reason` 里,而投影正是
@@ -15,17 +15,15 @@
  * 被合并的那几次调用就查不到自己的判决。
  */
 
-import { Permission } from '@onething/backend/permission/permission-asks'
-import { Interaction } from '@onething/backend/interaction'
-import { writeSessionEvent } from './session-event-writer.js'
-import { currentSessionRunId } from './session-runs.js'
+import { currentSessionRunId, writeSessionEvent } from '@onething/backend/session'
+import { Permission } from './permission-asks.js'
 
 function runIdOf(sessionId: string): { runId?: string } {
   const runId = currentSessionRunId(sessionId)
   return runId ? { runId } : {}
 }
 
-export function installSessionPermissionEventRecorders(): void {
+export function installPermissionSessionLedger(): void {
   Permission.setRecorder({
     onAsked(info) {
       writeSessionEvent(info.sessionId, 'permission/asked', {
@@ -55,32 +53,9 @@ export function installSessionPermissionEventRecorders(): void {
       }
     },
   })
-
-  Interaction.setRecorder({
-    onAsked(request) {
-      writeSessionEvent(request.sessionId, 'interaction/asked', {
-        requestId: request.id,
-        ...runIdOf(request.sessionId),
-        ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
-        kind: request.origin,
-      })
-    },
-    onAnswered(request, answer) {
-      writeSessionEvent(request.sessionId, 'interaction/answered', {
-        requestId: request.id,
-        ...runIdOf(request.sessionId),
-        ...(request.toolCallId ? { toolCallId: request.toolCallId } : {}),
-        // 记的是**决定**,不是正文:选了哪些项而已(自由文本可能很长,而且
-        // 它属于那次工具调用的结果,不属于这条时刻账)。
-        answer: answer.outcome,
-        ...(answer.outcome !== 'answered' ? { cancelled: true } : {}),
-      })
-    },
-  })
 }
 
 /** 摘下(关停 / 测试)。 */
-export function uninstallSessionPermissionEventRecorders(): void {
+export function uninstallPermissionSessionLedger(): void {
   Permission.setRecorder(null)
-  Interaction.setRecorder(null)
 }

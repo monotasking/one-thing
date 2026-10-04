@@ -12,8 +12,8 @@
  *     不是二期补丁。
  */
 import { describe, expect, it } from 'vitest'
+import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '../plugin-manager-base.js'
 import {
-  CorePluginManager,
   PLUGIN_PANEL_PROTOCOL_VERSION,
   PLUGIN_UI_INVOKE_ACTION,
   PLUGIN_UI_RENDER_ACTION,
@@ -22,9 +22,7 @@ import {
   UI_SLOT_DEFAULT_SIDE,
   assertUiAnchorRegistryConsistency,
   classifyPluginScope,
-  createCorePluginAPI,
   describePluginSurface,
-  disposeCorePluginState,
   isEffectiveUiDrawerSlot,
   isIgnoredUiDrawerDeclaration,
   isIgnoredUiSlotSideDeclaration,
@@ -39,16 +37,16 @@ import {
   uiAnchorKind,
   uiSlotMaxWidth,
   uiSlotSurfaceId,
-  validatePluginContributes,
-  type CorePluginDefinition,
-  type CorePluginManagerHost,
   type CorePluginRequestHandler,
-  type CorePluginStateLike,
   type CorePluginUiSlotRegistration,
   type CorePluginUiSlotContext,
   type PluginPanelTree,
   type UiAnchor,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
+import { disposeCorePluginState } from '../plugin-api-state.js'
+import { validatePluginContributes } from '../plugin-loader.js'
+import { type CorePluginDefinition } from '../plugin-api-types.js'
 import { projectOnethingPluginsForRenderer } from '../plugin-list.js'
 
 interface TestAPI {

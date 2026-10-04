@@ -104,6 +104,11 @@ export function pickReusableRadioDjSession(
   return candidates[0]?.id ?? null
 }
 
+/** 电台开场读变量表的端口(D202):只要「这条会话此刻看得见哪些变量」这一问。 */
+export interface RadioVariablesPort {
+  listForSession(sessionId: string): Promise<ReadonlyArray<{ name: string; value?: string | null }>>
+}
+
 export function createRadioScope(options: {
   storePath: string; assertOwned?: () => void; service: MusicServiceScope
   /**
@@ -124,6 +129,12 @@ export function createRadioScope(options: {
    * 缺席 = 不报(测试)。
    */
   announceHostFact?: (event: 'hostActivity' | 'hostLogChanged', payload: Record<string, unknown>) => void
+  /**
+   * 开场白里「听众此刻的生活」读的变量表(D202 起由组合根递进来:从前这里动态 import 变量注册表,
+   * 可变量入口静态引 music,music 就不能反过来引变量)。惰性:每次开场现问一次,构造时不取值 ——
+   * 组合根建音乐子系统那一刻变量注册表还没建。缺席 = 没有生活上下文,开场白照常(测试)。
+   */
+  variables?: RadioVariablesPort
 }) {
   const owner = new MusicWorkOwner(options.assertOwned)
   const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
@@ -421,12 +432,11 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
   return owner.track((async () => {
   sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
   try {
-    // Dynamic import mirrors the engine imports below: radio.ts is reachable
-    // from the variable gateways, and static graph edges here have bitten
-    // unrelated test module graphs before.
-    const { getVariableRegistry } = await import('@onething/backend/variable/variable-registry')
+    // 变量表经组合根递进来的端口读(D202):变量入口静态引 music,这里不能反过来引变量。
+    const port = options.variables
+    if (!port) return ''
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
-    const variables = await getVariableRegistry().list({ sessionId })
+    const variables = await port.listForSession(sessionId)
     sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const lines: string[] = []
     let total = 0

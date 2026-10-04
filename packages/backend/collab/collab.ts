@@ -474,3 +474,31 @@ export {
 export type { CollabGroupRoomInput } from './collab-rooms.js'
 export { loadCollabBoard } from './collab-board-store.js'
 export { collabUserPromptFields, resolveUserIdentity } from './collab-user-identity.js'
+
+// ── D202:运维脚本(`scripts/collab-v3-inspect.mjs` / `collab-v3-migrate.mjs`)要的纯规则,从前它们按文件路径直取;
+// 以及授权层那条 30 分钟提醒的监听器(授权层只发 `permission:ask-stale`,往房间里喊话归这里)。
+export { normalizeCollabRoomAccount } from './actors/collab-actors-room-rules.js'
+export { normalizeCollabAgentAccount } from './actors/collab-actors-mind-rules.js'
+export {
+  COLLAB_SCHEDULER_LOG_TYPES,
+  collabSchedulerLogFileDayKey,
+  isCollabSchedulerLogType,
+  parseCollabSchedulerLogLine,
+} from './actors/collab-actors-scheduler-log-rules.js'
+export {
+  COLLAB_INSPECT_EXECUTING_NOTE,
+  formatCollabInspectAgentDetail,
+  formatCollabInspectAgentLine,
+  formatCollabInspectCaveats,
+  formatCollabInspectDeadLetters,
+  formatCollabInspectRoomDetail,
+  formatCollabInspectRoomLine,
+  formatCollabInspectRow,
+  groupCollabInspectDeadLetters,
+  matchCollabInspectTargets,
+  summarizeCollabInspectAgent,
+  summarizeCollabInspectRoom,
+} from './actors/collab-actors-inspect-rules.js'
+export { migrateCollabToV3 } from './actors/collab-actors-migrate.js'
+export { formatCollabMigrationReport } from './actors/collab-actors-migrate-rules.js'
+export { installPermissionStaleReminder } from './collab-permission-stale-reminder.js'

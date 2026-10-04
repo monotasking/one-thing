@@ -13,7 +13,7 @@ import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
   resolveExternalAgentSessionLink,
-} from '@onething/backend/external-agent/external-agent-connector-registry'
+} from '@onething/backend/external-agent'
 import type { ProviderAuthContext } from '@onething/backend/auth'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { dumpProviderRequest } from '../provider/provider.js'

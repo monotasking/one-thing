@@ -29,13 +29,13 @@ import {
   sanitizePluginSearchResults,
   type CorePluginSearchActionContext,
   type CorePluginSearchProviderRegistration,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
 import {
   isPluginSurfaceDegraded,
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/plugin-health'
+} from '@onething/backend/plugin-contract'
 
 /** 一次聚合里,全体插件结果的总预算 —— 再多也不让插件淹没内置结果。 */
 export const PLUGIN_SEARCH_TOTAL_BUDGET = 12

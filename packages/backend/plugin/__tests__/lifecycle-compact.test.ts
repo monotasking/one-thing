@@ -6,10 +6,7 @@
  * 真实"跳过宿主自压"的消费在装配层(context-compact-plugin.test.ts)。
  */
 import { describe, expect, it, vi } from 'vitest'
-import {
-  CORE_PLUGIN_COMPACT_SUMMARY_MAX_CHARS,
-  CorePluginLifecycleRegistry,
-} from '../plugin-contract.js'
+import { CORE_PLUGIN_COMPACT_SUMMARY_MAX_CHARS, CorePluginLifecycleRegistry } from '../plugin-lifecycle.js'
 
 function registry() {
   const failures: Array<{ pluginId: string; hookId: string; scope: string }> = []

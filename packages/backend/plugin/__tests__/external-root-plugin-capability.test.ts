@@ -23,12 +23,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import {
-  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT,
-  createCorePluginAPI,
-  createCorePluginFiles,
-  executeCorePluginTool,
-} from '@onething/backend/plugin/plugin-contract'
+import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from '../plugin-sessions.js'
+import { createCorePluginAPI, executeCorePluginTool } from '../plugin-api-builder.js'
+import { createCorePluginFiles } from '../plugin-storage-files.js'
 
 const tempRoots: string[] = []
 

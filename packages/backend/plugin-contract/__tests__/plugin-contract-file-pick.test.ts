@@ -21,14 +21,14 @@ import {
   nextAvailablePluginImportFileName,
   resolvePluginFilePickAccept,
   sanitizePluginImportFileName,
-} from '../plugin-file-pick.js'
+} from '../plugin-contract-file-pick.js'
 import {
   PLUGIN_STORAGE_IMAGE_PREFIX,
   describePluginRuntimeBackgroundImageProblem,
   parsePluginStorageImageRef,
   pluginBackgroundImageUrl,
-} from '../plugin-background.js'
-import { validatePluginPanelTree } from '../plugin-panel.js'
+} from '../plugin-contract-background.js'
+import { validatePluginPanelTree } from '../plugin-contract-panel.js'
 
 function tree(body: unknown): unknown {
   return { version: 2, body }

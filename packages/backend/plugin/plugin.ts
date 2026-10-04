@@ -1,15 +1,14 @@
 /**
  * plugin —— 插件系统:从 npm 账本装载插件、注入的 `api` 对象、各种登记(提示词源、深链接、检索供给方、
  * 凭证策略、IM 连接器……)、健康与断路器、插件主题覆盖与皮肤,以及插件市场的安装 / 卸载。
+ * 插件与宿主约定的词汇(作用域、表面、策略、健康账、三张登记契约)住 `plugin-contract`(D202),本入口不转交。
  *
- * 对外交出十类东西(按段分组):
+ * 对外交出八类东西(按段分组):
  * - 装配:插件管理器的取用口、宿主注入口、插件自带的小模型服务、内置插件(log-monitor);
  * - 插件 API 与定义的形状、插件信息;
  * - 磁盘与账本:插件目录、设置文件的读写、启用开关、扫描与内置定义、市场索引与 npm 安装;
- * - 健康:断路器的判据与上报、作用域键;
  * - 回合里的钩子:输入拦截、工具调用 / 结果拦截、回复后与压缩前的生命周期钩子、会话间投递;
  * - 提示词源:带断路器的登记与源、不带健康回调的源类;
- * - 深链接、检索供给方、凭证策略这三张登记的契约与小工具;
  * - 主题覆盖与皮肤;
  * - IM 连接器的出站回复;
  * - 开给设置页的列 / 开 / 关 / 刷新 / 执行命令与调试日志口。
@@ -60,14 +59,8 @@ export {
   uninstallPluginPackage,
 } from './plugin-npm-process.js'
 
-// 健康与作用域。
-export {
-  isPluginSurfaceDegraded,
-  probePluginSurface,
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from './plugin-health.js'
-export { pluginScope } from './plugin-policy.js'
+// 健康与作用域、深链 / 检索供给方 / 凭证策略三张登记的契约:D202 起住插件词汇 `@onething/backend/plugin-contract`
+// (深链那一份住 `@onething/backend/deeplink`),本入口不再转交别的功能的名字。
 
 // 回合里的钩子。
 export { runPluginInputIntercept } from './plugin-input-intercept-bound.js'
@@ -89,41 +82,6 @@ export {
   type PromptProviderConfig,
 } from './plugin-prompt-context-breaker.js'
 export { PluginPromptContextSource } from './plugin-prompt-context.js'
-
-// 深链接、检索供给方、凭证策略三张登记的契约。
-export {
-  DEEPLINK_TEXT_MAX_BYTES,
-  normalizePluginDeepLinkResult,
-  PLUGIN_DEEPLINK_HANDLER_TIMEOUT_MS,
-  pluginDeepLinkAddress,
-  pluginDeepLinkSurface,
-} from './plugin-deep-link.js'
-export type {
-  CorePluginDeepLinkActionRegistration,
-  CorePluginDeepLinkResult,
-  DeepLinkIntent,
-  DeepLinkParseResult,
-} from './plugin-deep-link.js'
-export {
-  PLUGIN_SEARCH_PROVIDER_RESULT_CAP,
-  PLUGIN_SEARCH_PROVIDER_TIMEOUT_MS,
-  pluginSearchProviderSurface,
-  sanitizePluginSearchResults,
-} from './plugin-search-provider.js'
-export type { CorePluginSearchActionContext, CorePluginSearchProviderRegistration } from './plugin-search-provider.js'
-export {
-  isPluginCredentialChoiceValid,
-  PLUGIN_CREDENTIAL_STRATEGY_TIMEOUT_MS,
-  pluginCredentialStrategySurface,
-  toPluginCredentialEntryView,
-} from './plugin-credential-strategy.js'
-export type {
-  CorePluginCredentialStrategyContext,
-  CorePluginCredentialStrategyRegistration,
-  PluginCredentialEntryView,
-  PluginCredentialFailureKind,
-  PluginCredentialUsage,
-} from './plugin-credential-strategy.js'
 
 // 主题覆盖与皮肤。
 export { getPluginThemeKnobVariables, getPluginThemeOverrideTokenValues } from './plugin-theme-override-table.js'

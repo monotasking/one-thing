@@ -19,13 +19,13 @@
 
 import {
   clampPluginFilePickMaxBytes,
-  deepFreezeCorePluginValue,
   describePluginDirectoryPickDeclarationProblem,
   describePluginFileImportDeclarationProblem,
   resolvePluginFilePickAccept,
   PLUGIN_SETTINGS_DIRECTORY_PICK_FORMAT,
   PLUGIN_SETTINGS_FILE_IMPORT_FORMAT,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import { deepFreezeCorePluginValue } from './plugin-freeze.js'
 
 /** 控件集 —— 与 PluginsSettingsTab 的渲染分支一一对应。 */
 export const PLUGIN_CONFIG_CONTROLS = [

@@ -1,14 +1,13 @@
+import type { CorePluginCommandContext, CorePluginCommandDefinition } from './plugin-api-types.js'
+import type { CorePluginMarketIndex } from './plugin-install.js'
 import type {
-  CorePluginCommandContext,
-  CorePluginCommandDefinition,
-  CorePluginMarketIndex,
   CorePluginRequestInput,
   CorePluginRequestResult,
-  PluginAmbientDescriptor,
   PluginBackgroundDescriptor,
   PluginBackgroundParamsPatch,
-} from '@onething/backend/plugin/plugin-contract'
-import { compareCoreSemver, unscopedPluginIdFromPackageName } from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import type { PluginAmbientDescriptor } from './plugin-ambient.js'
+import { compareCoreSemver, unscopedPluginIdFromPackageName } from './plugin-loader.js'
 import {
   executeOnethingPluginCommand,
   type ExecuteOnethingPluginCommandOptions,

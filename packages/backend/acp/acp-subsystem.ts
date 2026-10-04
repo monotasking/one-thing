@@ -21,7 +21,7 @@ import type {
 import { getLogger } from '@onething/backend/logging'
 import { installAcpStateBroadcaster, type AcpStateSource } from './acp-events.js'
 import type { AcpAgentRosterEntry, AcpRegistryRefreshOptions } from './acp-registry.js'
-import { HostMcpBridge } from './acp-host-mcp-bridge.js'
+import { HostMcpBridge, type HostMcpBridgeDeps } from './acp-host-mcp-bridge.js'
 
 const log = getLogger('app.acp.subsystem')
 
@@ -82,6 +82,11 @@ export interface AcpSubsystemDeps {
   /** 宿主工具面的桥(A4-a)。缺席 = 用真依赖造一只;单测可以递一只假的。 */
   hostMcpBridge?: HostMcpBridge
   /**
+   * 协作四件那一半的工具面(D202):装配递外部 agent 入口的 `resolveHostToolSurface`,原样交给
+   * 自己造的那只桥。函数值,只在请求来时调用。缺席 = 没有协作工具面(只在单测里)。
+   */
+  hostToolSurface?: HostMcpBridgeDeps['resolveSurface']
+  /**
    * 「这几条会话删了」的来源(A4-b):订上它,删会话就作废那条会话名下的桥凭据。答退订函数。
    * 装配层接总线(`resource:event` 的 `session:<id>` / `deleted`,连同级联删掉的子会话);
    * 缺席 = 不订(只在单测里)。
@@ -138,7 +143,7 @@ export class AcpSubsystem {
 
   constructor(deps: AcpSubsystemDeps) {
     this.deps = deps
-    this.hostMcpBridge = deps.hostMcpBridge ?? new HostMcpBridge()
+    this.hostMcpBridge = deps.hostMcpBridge ?? new HostMcpBridge(deps.hostToolSurface ? { resolveSurface: deps.hostToolSurface } : {})
     if (isStateSource(deps.manager)) {
       this.stopStateBroadcast = installAcpStateBroadcaster(this.decoratedSource(deps.manager))
       this.stopCredentialWatch.push(deps.manager.onAgentStateChanged(state => this.noteAgentState(state)))

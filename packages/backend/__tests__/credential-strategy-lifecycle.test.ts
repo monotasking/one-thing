@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { CorePluginCredentialStrategyContext } from '@onething/backend/plugin'
+import type { CorePluginCredentialStrategyContext } from '@onething/backend/plugin-contract'
 import type { OnethingBackend } from '../backend.js'
 
 let directory: string
@@ -76,7 +76,7 @@ async function seedUsage(tokens: number) {
 async function bindings() {
   const registry = await import('../credentials/credentials-strategy.js')
   const credentials = await import('../credentials/credentials-pool.js')
-  const health = await import('@onething/backend/plugin/plugin-health')
+  const health = await import('../plugin-contract/plugin-contract-health.js')
   const { inspectStoreLock } = await import('@onething/backend/storage')
   registry.configureAppPluginCredentialStrategyHost()
   const choose = () => credentials.selectSpaceCredentialEntryDetailed(

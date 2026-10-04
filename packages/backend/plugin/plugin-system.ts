@@ -6,10 +6,7 @@
  *   await bootstrapPluginSystem(eventBus, streamEngine)
  */
 
-export type {
-  CorePluginInfo,
-  CorePluginManagerHost,
-} from '@onething/backend/plugin/plugin-contract'
+export type { CorePluginInfo, CorePluginManagerHost } from './plugin-manager-base.js'
 
 export { bootstrapPluginSystem, getPluginManager, PluginManager } from './plugin-manager.js'
 export {

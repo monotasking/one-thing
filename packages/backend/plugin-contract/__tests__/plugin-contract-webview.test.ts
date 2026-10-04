@@ -9,8 +9,8 @@ import {
   pluginWebviewMimeType,
   resolvePluginWebviewRequestSegments,
   resolvePluginWebviewRoot,
-} from '../plugin-webview.js'
-import { PLUGIN_IMAGE_URL_PATTERN, PLUGIN_LINK_URL_PATTERN } from '../plugin-panel.js'
+} from '../plugin-contract-webview.js'
+import { PLUGIN_IMAGE_URL_PATTERN, PLUGIN_LINK_URL_PATTERN } from '../plugin-contract-panel.js'
 
 describe('webview panel declaration', () => {
   it('缺省是描述树面板 —— 老 manifest 一个字不用改', () => {

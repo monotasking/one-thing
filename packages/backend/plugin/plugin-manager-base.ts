@@ -1,7 +1,7 @@
 import path from 'path'
 import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
 import type { CorePluginDefinition } from './plugin-api-types.js'
-import { describePluginPanelResultProblem } from './plugin-panel.js'
+import { describePluginPanelResultProblem } from '@onething/backend/plugin-contract'
 import {
   findPluginUpdate,
   type CorePluginMarketIndex,
@@ -9,13 +9,13 @@ import {
   type InstallCorePluginPackageResult,
 } from './plugin-install.js'
 import { unscopedPluginIdFromPackageName } from './plugin-loader.js'
-import { describePluginSurface, pluginScope, type PluginFailureScope } from './plugin-policy.js'
+import { describePluginSurface, pluginScope, type PluginFailureScope } from '@onething/backend/plugin-contract'
 import {
   CORE_PLUGIN_ENTRY_TIMEOUT_MS,
   CORE_PLUGIN_REQUEST_TIMEOUT_MS,
   runWithPluginTimeout,
   type CorePluginRuntimeHealth,
-} from './plugin-runtime-guard.js'
+} from '@onething/backend/plugin-contract'
 import {
   CorePluginRequestRegistry,
   PLUGIN_REQUEST_ABORTED_ERROR,
@@ -26,7 +26,7 @@ import {
   type CorePluginRequestHandler,
   type CorePluginRequestInput,
   type CorePluginRequestResult,
-} from './plugin-request-channel.js'
+} from '@onething/backend/plugin-contract'
 
 export interface CorePluginInfo<
   TEntry = unknown,

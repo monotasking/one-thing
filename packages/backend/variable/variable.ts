@@ -22,7 +22,7 @@ export { registerStandardVariableProviders } from './variable-bootstrap.js'
 export { registerAgentPresenceSource } from './variable-agent-presence.js'
 
 // 登记表与仓库。
-export { VariableRegistry } from './variable-registry.js'
+export { VariableRegistry, getVariableRegistry } from './variable-registry.js'
 export { VariablesStore } from './variable-store.js'
 export type { VariablesStorePersistence } from './variable-store.js'
 export { createDefaultVariablesFile, parseVariablesFile } from './variable-schema.js'

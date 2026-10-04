@@ -5,9 +5,12 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CorePluginBootstrapper,
   CorePluginManager,
+  type CorePluginManagerHost,
+  type CorePluginStateLike,
+} from '../plugin-manager-base.js'
+import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
-  executeCorePluginTool,
   getCorePluginSettingsPath,
   getCorePluginStorePath,
   getCorePluginsDir,
@@ -17,14 +20,12 @@ import {
   loadCorePluginEntry,
   scanCorePlugins,
   setPluginEnabledWithAdapters,
-  type CorePluginToolContext,
-  type CorePluginToolResult,
-  type CorePluginManagerHost,
   type CorePluginLoaderLogger,
-  type CorePluginStateLike,
-} from '@onething/backend/plugin/plugin-contract'
-import type { CorePluginDefinition } from '@onething/backend/plugin/plugin-contract'
-import type { PluginSettings } from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-loader.js'
+import { executeCorePluginTool } from '../plugin-api-builder.js'
+import { type CorePluginToolContext, type CorePluginToolResult } from '../plugin-api-types.js'
+import type { CorePluginDefinition } from '../plugin-api-types.js'
+import type { PluginSettings } from '../plugin-api-types.js'
 
 interface TestAPI {
   registerCommand(name: string): void

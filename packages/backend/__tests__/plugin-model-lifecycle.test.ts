@@ -64,7 +64,7 @@ async function assemble(name: string) {
 }
 
 async function createManager(instance: OnethingBackend, options: { entry?: (api: PluginAPI) => void | Promise<void>; waitForInitialize?: boolean } = {}) {
-  const { CorePluginManager } = await import('@onething/backend/plugin/plugin-contract')
+  const { CorePluginManager } = await import('@onething/backend/plugin/plugin-manager-base')
   const apiModule = await import('@onething/backend/plugin/plugin-api')
   const instances: PluginAPI[] = []
   const definition: PluginDefinition = {

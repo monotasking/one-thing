@@ -18,7 +18,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { GenericEventBus, GenericStreamChannel } from '@onething/backend/event/event-bus-primitives'
-import { MCPManager as appMCPManager } from '@onething/backend/mcp/mcp-index-with-bridge'
+import { MCPManager as appMCPManager } from '@onething/backend/mcp'
 import {
   createMCPServerState,
   markMCPServerConnected,

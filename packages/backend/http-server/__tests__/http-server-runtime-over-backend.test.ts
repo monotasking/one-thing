@@ -24,7 +24,7 @@ import {
   createOnethingServerRuntimeOverBackend,
   toOnethingServerBackend,
 } from '../http-server-runtime.js'
-import { MCPManager as appMCPManager } from '@onething/backend/mcp/mcp-index-with-bridge'
+import { MCPManager as appMCPManager } from '@onething/backend/mcp'
 import { createTestServerRuntime } from './http-server-test-helpers.js'
 
 /**

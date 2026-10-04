@@ -9,12 +9,9 @@
 
 import type { z } from 'zod'
 import type { IMConnector } from '@shared/ipc.js'
+import type { CorePluginPanelRegistration, CorePluginRequestHandler } from '@onething/backend/plugin-contract'
 import type {
-  CorePluginPanelRegistration,
-  CorePluginRequestHandler,
   CorePluginStatusAPI,
-  CorePluginStorage,
-  CorePluginStorageWithFiles,
   CorePluginAPI,
   CorePluginCommandContext,
   CorePluginCommandDefinition,
@@ -22,17 +19,19 @@ import type {
   CorePluginEntry,
   CorePluginEventHandler,
   CorePluginSchedulerAPI,
-  CorePluginStoreShape,
+  CorePluginStore as CorePluginStoreShape,
   CorePluginStoreData,
   CorePluginToolContext,
   CorePluginToolDefinition,
-  CorePluginToolExecutionMode,
   CorePluginToolResult,
   MinimalCorePluginUI,
   PluginManifest,
   PluginSettings,
   PluginSource,
-} from '@onething/backend/plugin/plugin-contract'
+} from './plugin-api-types.js'
+import type { CorePluginStorage } from './plugin-storage.js'
+import type { CorePluginStorageWithFiles } from './plugin-storage-files.js'
+import type { CorePluginToolExecutionMode } from './plugin-tool-execution-mode.js'
 /**
  * R4b:旧 `Tool.Metadata` 就是 `object`(旧 `tools/tool.ts` 的第 20 行)。旧树
  * 删掉之后这个别名原样留在这里 —— 它是插件对外契约的一部分(`registerTool` 的

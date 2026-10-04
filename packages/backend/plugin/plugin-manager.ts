@@ -10,18 +10,18 @@ import {
   type CorePluginInstallResult,
   type CorePluginManagerHost,
   type CorePluginUninstallResult,
-  type CorePluginUpdateResult, type CorePluginBootstrapperOptions,
-} from '@onething/backend/plugin/plugin-contract'
+  type CorePluginUpdateResult,
+  type CorePluginBootstrapperOptions,
+} from './plugin-manager-base.js'
 import { createPluginAPI, disposePlugin, drainPlugin, type PluginState } from './plugin-api.js'
 import {
   archiveCorePluginData,
   decidePluginOrphanArchive,
   findCorePluginDataOrphans,
   findCorePluginHomeOrphans,
-  readPluginLedger,
   restoreCorePluginDataArchive,
-  scanPluginSourceEntries,
-} from '@onething/backend/plugin/plugin-contract'
+} from './plugin-storage.js'
+import { readPluginLedger, scanPluginSourceEntries } from './plugin-loader.js'
 import {
   scanPlugins,
   loadPluginEntry,
@@ -52,7 +52,7 @@ import {
   readInstalledPluginSpec,
   uninstallPluginPackage,
 } from './plugin-npm-process.js'
-import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/backend/plugin/plugin-contract'
+import { pluginScope, assertUiAnchorRegistryConsistency } from '@onething/backend/plugin-contract'
 import { configurePluginConfigBroadcast } from '@onething/backend/plugin/plugin-config-access'
 import {
   clearPluginRuntimeHealth,
@@ -64,7 +64,7 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
   restorePluginRuntimeHealth,
-} from '@onething/backend/plugin/plugin-health'
+} from '@onething/backend/plugin-contract'
 import type { PluginAPI, PluginDefinition, PluginEntry, PluginCommandDefinition } from './plugin-types.js'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
@@ -96,7 +96,16 @@ function createHost(): CorePluginManagerHost<
     loadPluginEntry: (definition, reloadToken) => loadPluginEntry(definition, reloadToken),
     // 面板声明由 createPluginAPI 自己现查清单 —— 这里不再中转一遍。
     createPluginAPI(pluginId, context) {
-      return createPluginAPI(pluginId, context.eventBus, context.streamEngine)
+      return createPluginAPI(pluginId, context.eventBus, context.streamEngine, {
+        // manifest.name 是显示名(深链确认卡上用);惰性:卡片要显示时现问管理器,与从前卡片自己问的时刻相同。
+        displayName: () => {
+          const name = getPluginManager()
+            ?.getPlugins()
+            .find(info => info.definition.id === pluginId)
+            ?.definition.manifest?.name
+          return typeof name === 'string' && name.trim() ? name.trim() : undefined
+        },
+      })
     },
     disposePlugin,
     drainPlugin,

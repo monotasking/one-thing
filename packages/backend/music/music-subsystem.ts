@@ -4,7 +4,7 @@ import type { OnethingMusicNowPlaying } from './music-now-playing.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/settings'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { createMusicServiceScope } from './music-service.js'
-import { createRadioScope } from './music-radio.js'
+import { createRadioScope, type RadioVariablesPort } from './music-radio.js'
 import { createDjVoiceScope } from './music-dj-voice.js'
 import { createMusicOperationsScope } from './music-operations.js'
 import { MusicWorkOwner } from './music-lifetime.js'
@@ -82,7 +82,13 @@ export class MusicSubsystem {
   /** `speech:activity` 的发送口(§11.3)。`attachSpeechActivity` 接上总线之前 = 不报。 */
   private announceSpeech: SpeechActivityAnnouncer | undefined
 
-  constructor(private readonly options: { storePath: string; assertOwned: () => void; clock?: { now(): number } }) {
+  constructor(private readonly options: {
+    storePath: string
+    assertOwned: () => void
+    clock?: { now(): number }
+    /** 电台开场读变量表的端口(D202,组合根递;惰性,原样透传给每一代电台作用域)。 */
+    variables?: RadioVariablesPort
+  }) {
     this.owner = new MusicWorkOwner(options.assertOwned)
     this.moments = new MusicMoments({
       emit: (event, payload) => this.emitPlayerFact(event, payload),

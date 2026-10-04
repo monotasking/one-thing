@@ -1,5 +1,5 @@
 import type { AppSettings, ChatMessage, ChatSession, ProviderConfig } from '@shared/ipc.js'
-import { pluginScope } from '@onething/backend/plugin/plugin-contract'
+import { pluginScope } from '@onething/backend/plugin-contract'
 import {
   CorePluginLifecycleRegistry,
   type CoreAfterAssistantResponseContext,
@@ -7,11 +7,8 @@ import {
   type CoreBeforeContextCompactContext,
   type CoreBeforeContextCompactHook,
   type CoreBeforeContextCompactOutcome,
-} from '@onething/backend/plugin/plugin-contract'
-import {
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from './plugin-health.js'
+} from './plugin-lifecycle.js'
+import { reportPluginRuntimeFailure, reportPluginRuntimeSuccess } from '@onething/backend/plugin-contract'
 
 export interface BeforeContextCompactContext extends CoreBeforeContextCompactContext<
   AppSettings,

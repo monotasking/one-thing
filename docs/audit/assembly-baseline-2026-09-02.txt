@@ -7,6 +7,7 @@
 # 2026-10-03 去 core 批 1:core 的 14 个小目录并进 runtime/<d>/,从此在尺子上;新进尺子的 3 个文件按当时的值记入(合计 5 个模块级 let,文件末尾)。
 # 2026-10-03 去 core 批 2:core 的 plugins / session / engine / agent-loop 并进 runtime/<d>/,新进尺子的 2 个文件按当时的值记入(合计 2 个模块级 let,文件末尾)。
 # 2026-10-03 去 core 批 3:尺子不再跳过 core / gateway / runtime/<d>/kernel(都已并进 runtime);kernel 里零个模块级 let,gateway 的 3 个文件按当时的值记入(合计 5 个,文件末尾;其中 lifecycle-port.ts 是 ③-收尾 C 离开尺子的那一行,回到尺子)。
+# 2026-10-04 D202:`plugin/plugin-health.ts` 随插件词汇下沉搬成 `plugin-contract/plugin-contract-health.ts`,同一个模块级 let,老行删、新行加在末尾(8c4b9413b 先例)。
 packages/backend/plugin/plugin-im-connector-registry.ts 1
 packages/backend/gateway/gateway-channel-identity-service.ts 1
 packages/backend/gateway/gateway-channel-identity-store.ts 1
@@ -38,7 +39,6 @@ packages/backend/plugin/plugin-config-access.ts 1
 packages/backend/plugin/plugin-config.ts 1
 packages/backend/plugin/plugin-disk-loader.ts 2
 packages/backend/plugin/plugin-events.ts 1
-packages/backend/plugin/plugin-health.ts 1
 packages/backend/plugin/plugin-host-ports.ts 1
 packages/backend/plugin/plugin-npm-process.ts 4
 packages/backend/plugin/plugin-status-bound.ts 1
@@ -122,3 +122,4 @@ packages/backend/session/session-lifecycle.ts 1
 packages/backend/gateway/channels/wechat/ilink/wechat-ilink-sender.ts 2
 packages/backend/gateway/hub/gateway-hub-logging.ts 2
 packages/backend/gateway/gateway-lifecycle-port.ts 1
+packages/backend/plugin-contract/plugin-contract-health.ts 1

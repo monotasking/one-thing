@@ -4,7 +4,7 @@ import type {
   CoreConversationRuntime,
   CoreSessionRuntime,
   CoreStreamChannelLike,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from './gateway-conversation-runtime.js'
 import {
   createOnethingConversationRuntimeFromStreamEngine,
 } from './gateway-engine-conversation-runtime.js'

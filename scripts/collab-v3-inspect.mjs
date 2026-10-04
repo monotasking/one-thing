@@ -78,19 +78,14 @@ if (tailArg !== undefined && (!Number.isFinite(Number(tailArg)) || Number(tailAr
 
 /* ── 纯层(唯一的真值口径:UI 与 CLI 用的是同一批函数)────────────────────── */
 
-const { normalizeCollabRoomAccount } = await import(
-  '../packages/backend/collab/actors/collab-actors-room-rules.ts'
-)
-const { normalizeCollabAgentAccount } = await import(
-  '../packages/backend/collab/actors/collab-actors-mind-rules.ts'
-)
+// 都从协作功能的入口拿(D202:从前按文件路径直取四只规则文件;入口实测 bun 装 242 ms)。
 const {
+  normalizeCollabRoomAccount,
+  normalizeCollabAgentAccount,
   collabSchedulerLogFileDayKey,
   isCollabSchedulerLogType,
   parseCollabSchedulerLogLine,
   COLLAB_SCHEDULER_LOG_TYPES,
-} = await import('../packages/backend/collab/actors/collab-actors-scheduler-log-rules.ts')
-const {
   formatCollabInspectAgentDetail,
   formatCollabInspectAgentLine,
   formatCollabInspectCaveats,
@@ -103,7 +98,7 @@ const {
   summarizeCollabInspectAgent,
   summarizeCollabInspectRoom,
   COLLAB_INSPECT_EXECUTING_NOTE,
-} = await import('../packages/backend/collab/actors/collab-actors-inspect-rules.ts')
+} = await import('../packages/backend/collab/collab.ts')
 
 const types = typeArg
   ? typeArg.split(',').map(part => part.trim()).filter(Boolean)

@@ -33,6 +33,7 @@
 		"gate:web-shell": "node scripts/gate-web-shell.mjs",
 		"server:build": "node scripts/build-server.mjs",
 		"server:start": "node dist/server/main.js",
+		"gateway:start": "bun packages/backend/gateway/gateway-standalone-main.ts",
 		"sign:dev:mac": "node scripts/sign-dev-binaries.mjs",
 		"typecheck": "npm run typecheck:node && npm run typecheck:desktop",
 		"typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

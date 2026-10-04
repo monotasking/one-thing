@@ -175,7 +175,9 @@ vi.mock('../../../session/session-commands.js', () => ({ sessionCommands: {
   appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
 } }))
 
-vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
+// D202:旧桶并进 mcp 入口,替身改打入口并展开真模块(只换下面这几个名字)。
+vi.mock('@onething/backend/mcp', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
   getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 }))
@@ -203,7 +205,7 @@ vi.mock('@onething/backend/variable/variable-system', () => ({
 }))
 
 vi.mock('@onething/backend/project-dir/project-dir-bootstrap', () => ({
-  buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
+  buildProjectDirsPromptVarsForSession: mocks.buildProjectDirsPromptVars,
 }))
 
 vi.mock('../../../provider-call/provider-call-agent-runtime.js', () => {

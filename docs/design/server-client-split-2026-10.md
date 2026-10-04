@@ -102,6 +102,17 @@ rig-spec 一起或留给 server 侧的宠物数据,按依赖定)。server 侧对
 棘轮 `bun run entry:gate`(`scripts/feature-entry-gate.mjs`,基线 `docs/audit/feature-entry-baseline-2026-10.txt`,只许降);
 总桶 `runtime/index.ts`(再导出 2337 个名字)最终要拆掉,它在棘轮里单记一行 `(总桶)`。逐功能收口,search 是第一个(见 §6)。
 
+**非测试零基线硬闸 + 进程入口不经功能入口(D202,2026-10-04)**:深层引用收口四批与两份收口决定(D191、D202)做完之后,
+`entry:gate` 的非测试部分改成**零基线硬闸** —— 引用方不是测试(`isTestPath` 为假)、也不在 `scripts/gate-*/` 下,却引了某个功能
+入口以外的文件,一处就红,红的那行打印 `目标 ← 引用方:行`;测试部分仍是逐功能棘轮(只许降,基线只记测试的处数)。不计的目标照旧:
+功能入口、第二入口 `<功能>-client-api*.ts`、层次表登记了 `configureEntry` 的装配入口。
+永久规则一条:**进程入口不经功能入口。** 被构建配方或真机门当作独立进程 / 线程起的文件 —— 构建配方点名的入口常量(今天是检索
+Worker `search/index/search-index-worker.ts` 与 ACP 宿主工具桥 `acp/mcp-bridge/acp-mcp-bridge-entry.ts`,门直接读
+`apps/desktop-react/scripts/build-electron.mjs` 的 `*_ENTRY`)、名字是 `*-standalone-main.ts` 的文件(今天只有独立网关的
+`gateway/gateway-standalone-main.ts`)、`scripts/gate-*/` 下的被测产物入口 —— 按文件路径指它要的模块,因为它的定义就是「不装那个功能
+的入口闭包」;反过来,**这类文件不许被任何文件 import**(门里有一处就红),于是单文件包里永远不会出现它们的主模块守卫。这是规则,
+不是豁免表:`entry:gate` 按目录类不计 `scripts/gate-*/` 这一类引用方,与 `__tests__` / client-api 同一种按类不计。
+
 **撤掉的规则**(理由都是同一句:core / gateway 不再是层):
 
 1. core 的专属禁令(`@shared/ipc`、better-sqlite3、MCP / ACP SDK、zod / diff / uuid,以及只许 `@anthropic-ai/sdk` 的第三方包批准表):
@@ -1951,3 +1962,37 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 **读数**:`entry:gate` 949 → 903(非测试 91 → 56;toolkit / event / logging / interaction 非测试归零);`cycle:gate` 0;layer / name / client-api / boundary / assembly / provider 全绿;检索 Worker 三份各 +13 字节(只差一行路径注释),`acp-mcp-bridge` 不变。
 
 **验收**:见施工单 §7 末段(三套 tsc 零错、bundle 全成、全量 vitest 失败集合除 `http-server-workspace-watch-ownership` 一条负载抖动外相同、快照 / golden / persistence / side-effect + lifecycle / hydration / `gate:acp` / `gate:web-shell` / `gate:client` / `provider:drill` 与改前同、shadow-battery 与 `gate:search-index` 与改前同一组红、CLI 与 server 能起)。别的会话的五只 `chat-*.ts` 零改动(sha 相同)。
+
+### 第四批停下处收口落地记录:四种病分别治 + `entry:gate` 非测试零基线(2026-10-04,未提交)
+
+施工单:`docs/design/entry-stopped-sites-2026-10.md`(Fable 的决定 D202,用户拍 D203 / D204;落地 D205–D218,实施结果在那份文档 §11)。
+动手前按今天的图重跑了 Fable 的模拟(D205):非测试深层引用 56 处(文档 57),修正场景里两处没按实施写的边之后 0 环、0 层次违例。
+
+1. **gateway + session**(#8 / #14):启动面搬进 `gateway/gateway-standalone.ts`,进程入口 `gateway/gateway-standalone-main.ts`(谁都不许 import;
+   `bun run gateway:start` 跑它),网关入口只交名字(补了此前不存在的 `./gateway` 键);三把深键删掉,网关内部 8 只文件的自引改相对路径;
+   检查器两条断言改指 standalone 文件;渠道会话路由改引会话入口。会话事件行编解码搬进 `packages/shared/session/events/codec.ts`(D207)。
+2. **mcp / eval / project-dir / permission / search**(#7 / #12 / #13 / #3b / #9):工具桥 11 个名字并进 mcp 入口、旧桶删;eval 入口交出
+   `createIncidentForTurn`;两对同名不同物改名(`buildProjectDirsPromptVarsForSpace` / `…ForSession`、`evaluatePermissionPolicy`);
+   脱敏三名字经 search 入口交出(D208 / D209)。
+3. **task / permission·interaction 记账器 / variable**(#1 / #3a / #11):task 口径搬进 `task-rules.ts`,投递函数改成装配递进派工层的端口,
+   派工层与 `taskToolPorts` 经 task 入口交出;记账接线拆成 `permission/permission-session-ledger.ts` + `interaction/interaction-session-ledger.ts`;
+   电台读变量表改成 `MusicSubsystem` 的惰性端口(D210–D212)。#6 resource 挪到第 5 单(D206)。
+4. **acp / external-agent**(#4):ACP 连接器搬进 `acp/acp-connector.ts`;连接器登记表改只读表 `bindExternalAgentConnectors({ connectors, sessionLinks })`
+   由 `backend.ts` 组表;入口交出登记表与异步 `resolveHostToolSurface`,同步那只改名 `resolveHostToolIds`;ACP 宿主 MCP 桥的工具面经
+   `AcpSubsystem` 的 `hostToolSurface` 递进来(D213)。
+5. **plugin-contract + deeplink + resource**(#5 / #6):新功能 `plugin-contract/`(L2,13 只文件,入口 137 个名字);深链词汇回 deeplink;
+   确认卡显示名随登记携带(D203 / D215);740 行桶拆掉,codemod 改写 95 只文件 154 处 import;resource 两处改引入口(D214)。
+6. **collab**(#10):运维脚本走 collab 入口(入口补 20 个纯规则名);授权层的 30 分钟提醒改发全局事件 `permission:ask-stale`,collab 的
+   `installPermissionStaleReminder` 在装配里无条件装并 own()(D216)。
+7. **门**(#15):`entry:gate` 非测试部分改零基线硬闸、进程入口名册读构建配方、测试部分只许降,自检 17 → 29(D217);exports 324 → 318(D218)。
+
+**读数**:`entry:gate` 非测试 56 → **0**(硬闸),测试 847 → 838(合计 903 → 838);`cycle:gate` 0;layer / name / client-api / boundary /
+assembly / provider / feature-map 全绿;检索 Worker 三份各 −16 字节,diff 只有一行路径注释(编解码换了目录)。
+
+**验收**(改前 `$S/s34-before/`、改后 `$S/s34-after/`;`$S` = 本会话 scratchpad,同一份脚本):三套 tsc 零错;四个 bundle 全成(server 主包 +4,261 字节、CLI +38,775、
+桌面主进程 +33,324 —— 入口转交的胶水,D190 口径;三份检索 Worker 各 −16、ACP 桥不变);全量 vitest 根 11,428 → 11,431 条(新增 3 条)、失败集合
+除 `http-server-workspace-watch-ownership` 的「A stop」一条负载抖动外相同(单跑 6/6 绿;同文件的「A shutdown」那条改前就红),壳 7,344 条失败集合相同;
+快照与 golden 的 sha 不变;persistence / import-side-effect-free + assembly-lifecycle 绿;hydration(夹具与 battery 自留 store)0 失败;
+shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);`gate:acp` / `gate:web-shell` /
+`gate:client` / `provider:drill` 绿;全部结构门绿(`session:check` 与改前同 4 条);CLI 与 server 能起;`bun run gateway:start` 起来后因缺
+`ONETHING_GATEWAY_RUNTIME_MODULE` 打一行 fatal、exit 1、临时 store 零写入。别的会话的五只 `chat-*.ts` 零改动(sha 相同)。

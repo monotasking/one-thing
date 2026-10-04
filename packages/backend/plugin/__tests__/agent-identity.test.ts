@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildAgentLoopDirectToolsWithAdapters } from '@onething/backend/agent-loop'
 import { buildAgentLoopPostResponseContexts } from '../../agent-loop/agent-loop-executor.js'
-import { executeCorePluginTool } from '@onething/backend/plugin/plugin-contract'
+import { executeCorePluginTool } from '../plugin-api-builder.js'
 import { systemPrincipal } from '@shared/permission/principal'
 
 describe('F4 — the plugin tool ctx carries the turn agentId', () => {

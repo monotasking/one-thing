@@ -35,7 +35,7 @@ const { createDesktopCatalog } = await import('../toolkit-tier-catalogs.js')
 const { getOrBuildToolkitCatalog, resetToolkitCatalogForTests } = await import('../toolkit-wiring.js')
 const { registerPluginToolInCatalog, unregisterPluginToolFromCatalog } = await import('@onething/backend/toolkit/toolkit-plugin-tools')
 const { executeToolDirectly } = await import('../../engine/stream/engine-stream-tool-execution.js')
-const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('@onething/backend/plugin/plugin-health')
+const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('../../plugin-contract/plugin-contract-health.js')
 const { z } = await import('zod')
 
 const { installStoreSessionLayerForTest } = await import('../../session/testing/session-testing-store-layer.js')

@@ -10,7 +10,7 @@ import {
   pluginSearchProviderSurface,
   pluginSearchResultHasForbiddenKey,
   sanitizePluginSearchResults,
-} from '../plugin-search-provider.js'
+} from '../plugin-contract-search-provider.js'
 
 describe('M2 search provider — 结果形状是宿主枚举的受控子集', () => {
   it('exposes the declaration permission and surface helper', () => {

@@ -27,20 +27,20 @@ import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './plu
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './plugin-background-table.js'
 import { pluginStorageImageExists } from './plugin-file-import.js'
 import { registerIMConnector } from './plugin-im-connector-registry.js'
-import { registerPluginDeepLinkAction } from '@onething/backend/deeplink/deeplink-registry'
+import { registerPluginDeepLinkAction } from '@onething/backend/deeplink'
 import { registerPluginSearchProvider } from '@onething/backend/search'
 import {
   registerPluginCredentialStrategy,
   captureCredentialStrategyScope,
   type CredentialStrategyScope,
 } from '@onething/backend/credentials'
-import {
-  forgetUiActionGestures,
-  PLUGIN_FILES_QUOTA_WARNING_EVENT,
-  PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT, type DisposeCorePluginStateOptions,
-  PluginLlmError,
-} from '@onething/backend/plugin/plugin-contract'
-import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/backend/plugin/plugin-contract'
+import { forgetUiActionGestures } from '@onething/backend/plugin-contract'
+import { PLUGIN_FILES_QUOTA_WARNING_EVENT } from './plugin-storage-files.js'
+import { PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT } from './plugin-sessions.js'
+import { type DisposeCorePluginStateOptions } from './plugin-api-state.js'
+import { PluginLlmError } from './plugin-llm.js'
+import type { PluginContributionUiSlot } from './plugin-api-types.js'
+import type { PluginFailureScope } from '@onething/backend/plugin-contract'
 import type { IMConnector } from '@shared/ipc.js'
 import {
   emitPluginStatusPart,
@@ -48,10 +48,7 @@ import {
   notePluginStatusPending,
   sweepPluginStatusForPlugin,
 } from '@onething/backend/plugin/plugin-status-bound'
-import {
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/plugin-health'
+import { reportPluginRuntimeFailure, reportPluginRuntimeSuccess } from '@onething/backend/plugin-contract'
 import {
   getEffectivePluginConfig,
   getPluginExternalRoot,
@@ -85,11 +82,10 @@ import {
   createCorePluginAPI,
   type CreateCorePluginAPIOptions,
   type CorePluginAPIHost,
-  createScopedPluginScheduler,
-  disposeCorePluginState,
   executeCorePluginTool,
-  type CorePluginAPIState,
-} from '@onething/backend/plugin/plugin-contract'
+} from './plugin-api-builder.js'
+import { createScopedPluginScheduler } from './plugin-scheduler.js'
+import { disposeCorePluginState, type CorePluginAPIState } from './plugin-api-state.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import type { CompatLogger } from '@onething/backend/logging'
@@ -134,6 +130,9 @@ export const GLOBAL_PLUGIN_EVENT_TYPES = new Set([
   // 那一格终端的 attach 代次就没有意义。
   'terminal:data',
   'terminal:exit',
+  // D202:授权层「这张审批卡等太久了」的进程内事实。名单与联合一一对应是这张表的整条命;
+  // 它对插件同样没有用(往房间里喊话的是 collab 的监听器)。
+  'permission:ask-stale',
 ])
 
 /** 插件自定义事件:`plugin:<pluginId>:<name>`,三段以上。 */
@@ -231,6 +230,12 @@ export interface CreatePluginAPIOptions {
    * 不传就是 `plugins` 命名空间下按 pluginId 绑好的子 logger;参数只为注入/测试留着。
    */
   logger?: CompatLogger
+  /**
+   * 插件的显示名(manifest.name),**惰性**:用到时现问一次(D202 / D203)。深链确认卡从前自己去问插件管理器;
+   * 现在显示名随深链动作的登记一起携带,卡片从登记表读,深链功能不再引插件。插件管理器造 API 时递;
+   * 不传 = 没有显示名(卡片退回插件 id)。
+   */
+  displayName?: () => string | undefined
 }
 
 /**
@@ -475,7 +480,7 @@ export function createPluginAPI(
      * 用户看着全文按下的确认。
      */
     registerDeepLinkAction(id, registration) {
-      return registerPluginDeepLinkAction(id, registration)
+      return registerPluginDeepLinkAction(id, registration, { displayName: options?.displayName })
     },
     /**
      * 凭证轮换策略(批 E)—— 第四个既有宿主动词面。转发到装配层的注册表;

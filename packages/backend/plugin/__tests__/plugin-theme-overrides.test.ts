@@ -17,14 +17,9 @@
  *     曾经是拿到响应再往 cssVariables 上 spread,只盖得住原始变量。
  */
 import { describe, expect, it, vi } from 'vitest'
-import {
-  PLUGIN_THEME_COLOR_MAX_LENGTH,
-  PLUGIN_THEME_OVERRIDE_MAX_ENTRIES,
-  comparePluginCanonicalOrder,
-  isPluginThemeColorValue,
-  sortByPluginCanonicalOrder,
-  validatePluginContributes,
-} from '@onething/backend/plugin/plugin-contract'
+import { PLUGIN_THEME_COLOR_MAX_LENGTH, PLUGIN_THEME_OVERRIDE_MAX_ENTRIES, isPluginThemeColorValue } from '../plugin-theme-contribution.js'
+import { comparePluginCanonicalOrder, sortByPluginCanonicalOrder } from '@onething/backend/plugin-contract'
+import { validatePluginContributes } from '../plugin-loader.js'
 import {
   isPluginThemeOverrideToken,
   resolvePluginThemeOverrides,

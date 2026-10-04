@@ -18,7 +18,7 @@ import type {
   CorePluginPanelContext,
   PluginPanelActionResult,
   PluginPanelTree,
-} from './plugin-panel.js'
+} from './plugin-contract-panel.js'
 
 // ── 锚点清单(单一事实源) ───────────────────────
 

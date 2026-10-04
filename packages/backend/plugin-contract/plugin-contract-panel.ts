@@ -12,9 +12,9 @@
  * 宪法第 2 条在这里是硬约束:**描述树禁函数成员**。按钮回调用 actionId 寻址,
  * 不是塞一个闭包 —— 闭包过不了 IPC,更过不了 H 线的进程边界。
  */
-import { describePluginFilePickNodeProblem } from './plugin-file-pick.js'
-import { describeNonSerializable } from './plugin-request-channel.js'
-import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './plugin-ui-anchor.js'
+import { describePluginFilePickNodeProblem } from './plugin-contract-file-pick.js'
+import { describeNonSerializable } from './plugin-contract-request-channel.js'
+import { PLUGIN_UI_INVOKE_ACTION, PLUGIN_UI_RENDER_ACTION } from './plugin-contract-ui-anchor.js'
 
 /**
  * 协议版本。

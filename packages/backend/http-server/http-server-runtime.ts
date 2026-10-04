@@ -113,7 +113,7 @@ import {
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
-} from "@onething/backend/mcp/mcp-index-with-bridge";
+} from "@onething/backend/mcp";
 import {
 	configureMCPClientIdentity,
 	createMCPServerState,

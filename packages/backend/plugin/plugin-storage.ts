@@ -19,7 +19,7 @@ import {
   pathExists,
   writeJsonFile,
 } from '@onething/backend/storage'
-import { describeNonSerializable } from './plugin-request-channel.js'
+import { describeNonSerializable } from '@onething/backend/plugin-contract'
 import { getCoreLogger } from '@onething/backend/logging'
 
 const log = getCoreLogger('core.plugins')

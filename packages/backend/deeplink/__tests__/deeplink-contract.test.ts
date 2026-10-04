@@ -18,8 +18,8 @@ import {
   parseDeepLink,
   pluginDeepLinkAddress,
   pluginDeepLinkSurface,
-} from '../plugin-deep-link.js'
-import { describePluginPermission } from '../plugin-sessions.js'
+} from '../deeplink-contract.js'
+import { describePluginPermission } from '../../plugin/plugin-sessions.js'
 
 describe('H4 deep link — 宿主动词', () => {
   it('exposes the scheme and the v1 verb table', () => {

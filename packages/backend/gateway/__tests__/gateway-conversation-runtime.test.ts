@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   isCoreConversationRuntime,
   isCoreTextStreamChunk,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from '../gateway-conversation-runtime.js'
 
 describe('gateway runtime protocol', () => {
   it('recognizes text stream chunks in core', () => {

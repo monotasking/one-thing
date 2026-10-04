@@ -179,3 +179,30 @@ task 1 · permission 1 · acp/external-agent 4(连接器测试搬家;`connector-
 另要你拍一件小事:`scripts/collab-v3-migrate.mjs` 是 8 月初那次协作 v3 迁移的工具,之后只被改名碰过 —— 删掉它比往 collab 入口加两个名字更小,但旧 store 还有没有要迁的只有你知道;不删就走入口。
 
 做完这些,`entry:gate` 的非测试部分可以改成零基线硬闸(预计读数 0,等 logging 最后两处按上一份决定落地后翻硬);测试部分继续只减不增。
+
+## 11. 实施结果(s34,2026-10-04,未提交)
+
+按本文施工,用户拍 D203 选 (a)、D204 保留迁移脚本;落地记录 D205–D218(`docs/design/backend-structure-decisions-2026-10.md`),
+正本 `docs/design/server-client-split-2026-10.md` §6「第四批停下处收口落地记录」。
+
+**动手前按今天的图重跑**(HEAD `45e4304a1`,图 1596 文件 / 4746 边;D205):非测试深层引用 56 处(本文按 653a433b7 数 57,
+resource 的 `toolkit-audit-sink` 那处已随 D191 落地)。`s33.json` 在今天的图上算出 2 个两只文件的入口环 —— 场景没写
+`task-dispatch` 改引 `task-rules`(仍挂着引自家入口的边),确认卡那条加边指向 deeplink 入口而不是兄弟登记表;按实施修正后叠不叠 `sIP`
+都是 0 环、0 层次违例。
+
+**每单读数**(非测试深层引用 / 合计,门全绿,检索 Worker 三份各 −16 字节只差路径注释):
+1. gateway + session:56 → 44 / 903 → 889。
+2. mcp / eval / project-dir / permission / search:→ 31 / 865。
+3. task / 记账器 / variable:→ 27 / 859(#6 resource 当场成环,挪到第 5 单,D206)。
+4. acp / external-agent:→ 17 / 844。
+5. plugin-contract + deeplink + resource:→ 8(合计因 plugin-contract 成新行而在第 7 单前红 —— 那 11 处测试从 plugin 行换到新行)。
+6. collab:→ 1(只剩 `scripts/gate-embed-runtime/entry.ts`,按进程入口规则不计)。
+7. 门:非测试零基线硬闸,**非测试 0,测试 838**(改前测试 847);进程入口名册 4 只,零 import。
+
+**与本文的出入**(都已登记):gateway 内部 8 只文件原用三把深键自引、`./gateway` 键此前不存在(D207);mcp 第二入口的替身打声明文件(D208);
+project-dir-bootstrap 等 5 把深键仍有读者、保留(D209 / D218);连接器表做成惰性工厂、无主登记表为空并加测试钩子、
+`resolveSurface` 保持可选(D213);`PersistedPluginHealth` 随健康账下沉、检查器的插件文件表要改、插件入口不再转交词汇(D214);
+显示名做成惰性 getter 由插件管理器递(D215);`entry:gate` 的进程入口名册读构建配方而不按 `*-worker.ts` 文件名判(D217)。
+
+**可感知行为**:零。深链确认卡的显示名改从登记表读,`deeplink-registry.test` 新钉「登记在读到显示名、拆除后退回 id」;
+协作房间那条 30 分钟提醒措辞逐字相同,监听器无条件装。验收全量见正本 §6。

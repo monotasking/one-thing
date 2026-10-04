@@ -18,7 +18,7 @@
  * steering 通路。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ExternalAgentSteerOutcome } from '@onething/backend/external-agent'
+import type { ExternalAgentConnector, ExternalAgentSteerOutcome } from '@onething/backend/external-agent'
 
 const mocks = vi.hoisted(() => ({
   /** E0 能力表里 acp 的 `steer`。 */
@@ -30,27 +30,21 @@ const mocks = vi.hoisted(() => ({
   calls: [] as { sessionId: string; text: string }[],
 }))
 
-// 深层引用收口第四批(2026-10-04):连接器登记表改引兄弟文件(D126),不再经入口拿 `createAcpConnector`,
-// 所以桩打在声明它的 `external-agent-acp-connector.ts` 上。
-vi.mock('../external-agent-acp-connector.js', async importOriginal => {
-  const actual = await importOriginal<Record<string, unknown>>()
-  return {
-    ...actual,
-    createAcpConnector: () => ({
-      id: 'acp',
-      get capabilities() {
-        return { steer: mocks.connectorSteer, interrupt: true }
-      },
-      steer(sessionId: string, text: string) {
-        mocks.calls.push({ sessionId, text })
-        if (mocks.outcome instanceof Error) throw mocks.outcome
-        return mocks.outcome
-      },
-      async *streamTurn() { /* 本文件不跑回合 */ },
-      async interrupt() {},
-      async dispose() {},
-    }),
-  }
+// D202:连接器登记表是只读表,连接器由装配递进来;替身的身体一字未改,改成作为那张表递进登记表
+// (从前在连接器模块上打桩)。本文件只测追话的投递,用无主那一档的测试钩子递表。
+const fakeAcpConnector = () => ({
+  id: 'acp',
+  get capabilities() {
+    return { steer: mocks.connectorSteer, interrupt: true }
+  },
+  steer(sessionId: string, text: string) {
+    mocks.calls.push({ sessionId, text })
+    if (mocks.outcome instanceof Error) throw mocks.outcome
+    return mocks.outcome
+  },
+  async *streamTurn() { /* 本文件不跑回合 */ },
+  async interrupt() {},
+  async dispose() {},
 })
 
 vi.mock('@onething/backend/agent', () => ({
@@ -89,9 +83,9 @@ vi.mock('@onething/backend/logging', async importOriginal => ({
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))
 vi.mock('../external-agent-host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
-vi.mock('@onething/backend/acp/acp-host-mcp-port', () => ({ createAcpHostMcpPort: () => ({}) }))
 
-const { getExternalAgentConnectors, takeExternalAgentSteering } = await import('../external-agent-connector-registry.js')
+const { getExternalAgentConnectors, installUnownedExternalAgentConnectorsForTests, takeExternalAgentSteering } = await import('../external-agent-connector-registry.js')
+installUnownedExternalAgentConnectorsForTests({ connectors: () => ({ acp: fakeAcpConnector() as unknown as ExternalAgentConnector }) })
 
 describe('takeExternalAgentSteering', () => {
   beforeEach(() => {

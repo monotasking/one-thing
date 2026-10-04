@@ -5,16 +5,17 @@
  * 默认),一类是让用户确认一个不会发生的动作(插件已停用 / 动作被熔断)。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseDeepLink } from '@onething/backend/plugin/plugin-contract'
+import { parseDeepLink } from '../deeplink-contract.js'
 
 const findAgent = vi.hoisted(() => vi.fn())
 const defaultAgent = vi.hoisted(() => vi.fn())
 const describePluginDeepLinkAction = vi.hoisted(() => vi.fn())
-const getPluginManager = vi.hoisted(() => vi.fn())
+const resolvePluginDisplayName = vi.hoisted(() => vi.fn())
 
 vi.mock('../../agent/agent-store-access.js', () => ({ findAgent, defaultAgent }))
-vi.mock('@onething/backend/plugin/plugin-manager', () => ({ getPluginManager }))
-vi.mock('../deeplink-registry.js', () => ({ describePluginDeepLinkAction }))
+// D203:插件显示名从深链动作的登记表读(从前问插件管理器),替身随之打在登记表的 `resolvePluginDisplayName` 上;
+// 它在登记表里的真实行为(登记在读显示名、拆除后退回 id)由 `deeplink-registry.test` 钉。
+vi.mock('../deeplink-registry.js', () => ({ describePluginDeepLinkAction, resolvePluginDisplayName }))
 
 import { buildDeepLinkCard } from '../deeplink-confirm-card.js'
 
@@ -23,7 +24,7 @@ beforeEach(() => {
   findAgent.mockReturnValue(null)
   defaultAgent.mockReturnValue({ id: 'default', name: 'onething' })
   describePluginDeepLinkAction.mockReturnValue(null)
-  getPluginManager.mockReturnValue(null)
+  resolvePluginDisplayName.mockImplementation((pluginId: string) => pluginId)
 })
 
 describe('H4 confirm card — ask', () => {
@@ -66,9 +67,7 @@ describe('H4 confirm card — 插件动作', () => {
       pluginId: 'trans', name: 'translate', address: 'plugin:trans:translate',
       title: 'Translate the selection', degraded: false,
     })
-    getPluginManager.mockReturnValue({
-      getPlugins: () => [{ definition: { id: 'trans', manifest: { name: '划词翻译' } } }],
-    })
+    resolvePluginDisplayName.mockReturnValue('划词翻译')
 
     const card = buildDeepLinkCard(parseDeepLink('onething://x/trans/translate?text=bonjour&to=zh'))
     expect(card).toMatchObject({

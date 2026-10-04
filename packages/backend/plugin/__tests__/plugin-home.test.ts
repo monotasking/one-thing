@@ -12,8 +12,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { CorePluginStore } from '../plugin-store.js'
 import {
-  CorePluginStore,
   PLUGIN_CONFIG_FILE_NAME,
   PLUGIN_SCRATCH_DIR_NAME,
   PluginStorageError,
@@ -23,7 +23,7 @@ import {
   getCorePluginConfigPath,
   getCorePluginHomeDir,
   getCorePluginScratchDir,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-storage.js'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-home-'))

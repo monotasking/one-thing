@@ -13,10 +13,7 @@
  * 是渲染层的兜底逻辑。所以这里用 EventBus 的 **interceptor**(commit 与 fan-out
  * 之前的相位),而不是事后观察者。
  */
-import {
-  CorePluginStatusRegistry,
-  type CorePluginStatusPart, type CorePluginStatusRegistryOptions,
-} from '@onething/backend/plugin/plugin-contract'
+import { CorePluginStatusRegistry, type CorePluginStatusPart, type CorePluginStatusRegistryOptions } from './plugin-status.js'
 import { SESSION_STREAM_TERMINAL_EVENTS } from '@shared/events/session-events.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'

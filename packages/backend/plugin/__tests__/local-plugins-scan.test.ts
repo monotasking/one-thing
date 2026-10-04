@@ -10,10 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  getCoreLocalPluginsDir,
-  scanLocalPluginFiles,
-} from '@onething/backend/plugin/plugin-contract'
+import { getCoreLocalPluginsDir, scanLocalPluginFiles } from '../plugin-loader.js'
 
 function tempStore(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-local-plugin-'))

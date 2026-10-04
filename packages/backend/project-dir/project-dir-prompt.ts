@@ -29,7 +29,7 @@ const DEFAULT_KNOWN_LIMIT = 12
  * `spaceId` 是**会话归属的空间**(批 B4)。缺省 = default 空间的名册,与旧行为
  * 一致;传了就只看那个空间的名册 —— 提示词里绝不能出现别的空间的项目。
  */
-export function buildProjectDirsPromptVars(
+export function buildProjectDirsPromptVarsForSpace(
   workingDirectory: string | undefined,
   options: { knownLimit?: number; collapseHome?: boolean; spaceId?: string } = {},
 ): ProjectDirsPromptVars {

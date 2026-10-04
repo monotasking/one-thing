@@ -12,16 +12,13 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   CorePluginManager,
-  createBuiltinPluginDefinitions,
-  installCorePluginPackage,
-  readPluginLedgerSpec,
-  scanCorePlugins,
   type CorePluginManagerLogger,
-  type CorePluginMarketIndex,
   type CorePluginManagerHost,
   type CorePluginStateLike,
-  type CorePluginDefinition,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-manager-base.js'
+import { createBuiltinPluginDefinitions, scanCorePlugins } from '../plugin-loader.js'
+import { installCorePluginPackage, readPluginLedgerSpec, type CorePluginMarketIndex } from '../plugin-install.js'
+import { type CorePluginDefinition } from '../plugin-api-types.js'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-install-'))

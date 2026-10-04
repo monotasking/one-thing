@@ -45,7 +45,7 @@ import {
   type PluginSessionPeek,
   type PluginSessionPeekLite,
   type PluginSessionState,
-} from '@onething/backend/plugin/plugin-contract'
+} from './plugin-sessions.js'
 
 import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'

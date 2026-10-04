@@ -10,7 +10,7 @@ import {
   type Capability,
   type CapabilityAction,
 } from '../permission-capability-registry.js'
-import { decidePermission } from '../permission-policy.js'
+import { evaluatePermissionPolicy } from '../permission-policy.js'
 
 const HOME = os.homedir()
 const TODO_DIR = path.join(HOME, '.onething/todo-plan/sessions')
@@ -40,7 +40,7 @@ function writeEffect(filePath: string) {
 }
 
 function decide(effects: ReturnType<typeof writeEffect>[]) {
-  return decidePermission({
+  return evaluatePermissionPolicy({
     sessionId: 'session-a',
     mode: 'normal',
     effects,
@@ -95,7 +95,7 @@ describe('capability registry', () => {
   it('never overrides a hard deny', () => {
     own(TODO_DIR)
 
-    expect(decidePermission({
+    expect(evaluatePermissionPolicy({
       sessionId: 'session-a',
       mode: 'normal',
       effects: [{
@@ -109,7 +109,7 @@ describe('capability registry', () => {
   it('does not cover non-file effects such as bash', () => {
     own(TODO_DIR)
 
-    expect(decidePermission({
+    expect(evaluatePermissionPolicy({
       sessionId: 'session-a',
       mode: 'normal',
       effects: [{ kind: 'bash', resources: [path.join(TODO_DIR, '*')] }],

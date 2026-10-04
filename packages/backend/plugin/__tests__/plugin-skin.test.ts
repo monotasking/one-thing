@@ -16,10 +16,8 @@
  *     皮肤不得改动主题算出来的**任何一个**变量。
  */
 import { describe, expect, it, vi } from 'vitest'
-import {
-  PLUGIN_SKIN_MAX_ENTRIES,
-  validatePluginContributes,
-} from '@onething/backend/plugin/plugin-contract'
+import { PLUGIN_SKIN_MAX_ENTRIES } from '../plugin-theme-contribution.js'
+import { validatePluginContributes } from '../plugin-loader.js'
 import {
   isPluginSkinKnob,
   isPluginSkinTier,

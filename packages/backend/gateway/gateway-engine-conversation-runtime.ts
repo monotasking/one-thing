@@ -12,11 +12,11 @@ import type {
   CorePermissionRequestEvent,
   CorePermissionSurface,
   CoreSessionRuntime,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from './gateway-conversation-runtime.js'
 export {
   isCoreConversationRuntime as isOnethingConversationRuntime,
   isCoreTextStreamChunk as isOnethingTextStreamChunk,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from './gateway-conversation-runtime.js'
 export type {
   CoreConversationRuntime as OnethingConversationRuntime,
   CorePermissionDecision as OnethingPermissionDecision,
@@ -27,7 +27,7 @@ export type {
   CoreSessionRuntime as OnethingSessionRuntime,
   CoreStreamChannelLike as OnethingStreamChannelLike,
   CoreTextStreamChunk as OnethingTextStreamChunk,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from './gateway-conversation-runtime.js'
 import {
   NoopOnethingStreamSender,
   type OnethingStreamSender,

@@ -59,7 +59,7 @@
  */
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import { ACPManager } from '@onething/backend/acp'
-import { MCPManager, registerMCPTools } from '@onething/backend/mcp/mcp-index-with-bridge'
+import { MCPManager, registerMCPTools } from '@onething/backend/mcp'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import {
   getOnethingSettingsForIpc,
@@ -75,7 +75,7 @@ import {
 } from './settings-client-api-projection.js'
 import { invalidateProviderCache } from '@onething/backend/provider'
 import { getSettings, saveSettings } from './settings-store.js'
-import { getGatewayHost } from '@onething/backend/gateway/gateway-lifecycle-port'
+import { getGatewayHost } from '@onething/backend/gateway'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { broadcastSettingsChanged } from '@onething/backend/settings/settings-events'
 import {

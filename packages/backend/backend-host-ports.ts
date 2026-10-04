@@ -58,7 +58,7 @@ import {
   configureGatewayHost,
   resetGatewayHost,
   type GatewayHostPorts,
-} from '@onething/backend/gateway/gateway-lifecycle-port'
+} from '@onething/backend/gateway'
 import {
   configureSettingsHost,
   resetSettingsHost,

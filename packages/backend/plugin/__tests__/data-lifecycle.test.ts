@@ -11,29 +11,26 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '../plugin-manager-base.js'
 import {
-  CorePluginManager,
   PLUGIN_DATA_LEGACY_BACKUP_DIR,
-  PLUGIN_FILES_MAX_FILE_BYTES,
   PLUGIN_KV_FILE_NAME,
   PLUGIN_LEGACY_KV_FILE_NAME,
   PluginStorageError,
   archiveCorePluginData,
   assertSafePluginFileName,
-  createCorePluginAPI,
-  createCorePluginFiles,
   createCorePluginStorage,
   decidePluginOrphanArchive,
   getCorePluginScratchDir,
-  disposeCorePluginState,
   findCorePluginDataOrphans,
   getCorePluginDataFootprint,
   restoreCorePluginDataArchive,
-  scanPluginSourceEntries,
-  type CorePluginDefinition,
-  type CorePluginManagerHost,
-  type CorePluginStateLike,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-storage.js'
+import { PLUGIN_FILES_MAX_FILE_BYTES, createCorePluginFiles } from '../plugin-storage-files.js'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
+import { disposeCorePluginState } from '../plugin-api-state.js'
+import { scanPluginSourceEntries } from '../plugin-loader.js'
+import { type CorePluginDefinition } from '../plugin-api-types.js'
 
 function tempRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-data-'))

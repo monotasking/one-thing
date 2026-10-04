@@ -18,18 +18,14 @@
  */
 import {
   CorePluginInputInterceptRegistry,
-  PLUGIN_INPUT_INTERCEPT_SURFACE,
   emptyPluginInputInterceptOutcome,
-  pluginScope,
   type PluginInputInterceptContext,
   type PluginInputInterceptHandler,
-  type PluginInputInterceptOutcome, type CorePluginInputInterceptRegistryOptions,
-} from '@onething/backend/plugin/plugin-contract'
-import {
-  probePluginSurface,
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from './plugin-health.js'
+  type PluginInputInterceptOutcome,
+  type CorePluginInputInterceptRegistryOptions,
+} from './plugin-input-intercept.js'
+import { PLUGIN_INPUT_INTERCEPT_SURFACE, pluginScope } from '@onething/backend/plugin-contract'
+import { probePluginSurface, reportPluginRuntimeFailure, reportPluginRuntimeSuccess } from '@onething/backend/plugin-contract'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('plugins')

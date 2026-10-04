@@ -9,24 +9,24 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '@onething/backend/plugin/plugin-manager-base'
 import {
-  CorePluginManager,
   PLUGIN_REQUEST_ABORTED_ERROR,
+  describeNonSerializable,
+  type CorePluginRequestContext,
+  type CorePluginRequestHandler,
+} from '../plugin-contract-request-channel.js'
+import {
   buildPluginEntryImportSpecifier,
   checkPluginMinAppVersion,
   compareCoreSemver,
-  createCorePluginAPI,
-  createScopedPluginScheduler,
-  describeNonSerializable,
-  disposeCorePluginState,
   parsePluginDirectory,
   validatePluginContributes,
-  type CorePluginDefinition,
-  type CorePluginManagerHost,
-  type CorePluginRequestContext,
-  type CorePluginRequestHandler,
-  type CorePluginStateLike,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin/plugin-loader'
+import { createCorePluginAPI } from '@onething/backend/plugin/plugin-api-builder'
+import { createScopedPluginScheduler } from '@onething/backend/plugin/plugin-scheduler'
+import { disposeCorePluginState } from '@onething/backend/plugin/plugin-api-state'
+import { type CorePluginDefinition } from '@onething/backend/plugin/plugin-api-types'
 
 interface TestAPI {
   registerRequestHandler(action: string, handler: CorePluginRequestHandler): void

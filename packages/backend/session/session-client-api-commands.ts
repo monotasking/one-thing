@@ -134,12 +134,9 @@ function amendTurnSignal(input: {
   turnId: string
   kind: 'retry' | 'edit-resend'
 }): void {
-  Promise.all([
-    import('@onething/backend/eval'),
-    import('@onething/backend/eval/eval-turn-incident'),
-  ])
-    .then(async ([runtime, { createIncidentForTurn }]) => {
-      const incident = await createIncidentForTurn({
+  import('@onething/backend/eval')
+    .then(async (runtime) => {
+      const incident = await runtime.createIncidentForTurn({
         sessionId: input.sessionId,
         turnId: input.turnId,
         origin: 'auto',

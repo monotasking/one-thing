@@ -1,4 +1,4 @@
-import type { CoreSessionRuntime } from '@onething/backend/gateway/gateway-conversation-runtime'
+import type { CoreSessionRuntime } from '../gateway-conversation-runtime.js'
 
 export interface GatewaySession {
   coreSessionId: string

@@ -65,7 +65,7 @@ import {
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { sessionReads } from '@onething/backend/session'
 import * as store from '@onething/backend/session'
-import { createIncidentForTurn } from '@onething/backend/eval/eval-turn-incident'
+import { createIncidentForTurn } from './eval-turn-incident.js'
 import { broadcastEvalsRunProgress } from '@onething/backend/eval/eval-events'
 import { resolveEvalsRepoDir } from '@onething/backend/eval/eval-host-ports'
 import {

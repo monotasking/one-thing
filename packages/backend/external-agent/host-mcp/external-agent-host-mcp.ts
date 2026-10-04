@@ -17,7 +17,7 @@ export {
   registerHostInjectableTools,
   HOST_MCP_TURN_GONE,
   hostMcpToolDefinitionWith,
-  resolveHostToolSurface,
+  resolveHostToolIds,
   toHostMcpToolDefinition,
   type HostMcpCallResult,
   type HostMcpHostTool,

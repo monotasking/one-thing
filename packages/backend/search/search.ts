@@ -4,8 +4,9 @@
  * 功能目录之外(包根、别的功能、apps、scripts、evals)只许从这里拿名字;目录里其余文件都是内部实现,
  * 外面不许直接引用(`bun run entry:gate` 量这件事,规矩见 docs/design/server-client-split-2026-10.md §4「功能入口」)。
  *
- * 这里交出的东西分两类:
+ * 这里交出的东西分三类:
  * - 查询面与取材面:进程单槽的检索服务、取材适配器的形状、内置能力表与它们的端口、纯文本工具;
+ * - 检索语料的脱敏规则三个名字(纯函数与规则 id 表);
  * - 宿主装配与插件 API 要用的四个名字:`configureAppSearchProviders`(装取材面)、`createAppSearchService` /
  *   `unavailableIndexFace`(起服务 + 索引 Worker,或在没有索引时给一张答零结果的面)、插件 API 登记
  *   检索供给方的 `registerPluginSearchProvider`;外加 RPC 域要的两个内核类型 `CapabilityManifest` / `PreviewPayload`。
@@ -23,3 +24,5 @@ export { configureAppSearchProviders } from './search-install-providers.js'
 export { createAppSearchService, unavailableIndexFace } from './search-service-setup.js'
 export { registerPluginSearchProvider } from './search-plugin-registry.js'
 export type { CapabilityManifest, PreviewPayload } from './kernel/search-kernel.js'
+// 检索语料的脱敏规则(索引写路与语料抽取脚本共用同一张表;`scripts/lib/search-corpus-redact.mjs` 从这里再导出)。
+export { REDACT_RULE_IDS, findRedactionHits, redactText } from './kernel/search-kernel-redact.js'

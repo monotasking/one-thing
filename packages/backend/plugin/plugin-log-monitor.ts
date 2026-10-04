@@ -12,8 +12,9 @@ import {
   registerCoreLogMonitorPlugin,
   type CoreLogMonitorPluginOptions,
   type CoreLogMonitorPluginApi,
-  type CoreLogMonitorPluginRuntime, type CoreLogMonitorDiskWriterOptions,
-} from '@onething/backend/plugin/plugin-contract'
+  type CoreLogMonitorPluginRuntime,
+  type CoreLogMonitorDiskWriterOptions,
+} from '@onething/backend/plugin/plugin-log-monitor-primitives'
 
 // Manifests are product data: the plugin's id/描述/作者只有产品层认识,
 // 插件内核只提供无名的日志监控原语(`plugin-log-monitor-primitives.ts`;守卫:runtime dirs and files merged

@@ -25,7 +25,7 @@ import {
   hostMcpToolName,
   isHostMcpToolName,
   resolveHostToolContext,
-  resolveHostToolSurface,
+  resolveHostToolIds,
   stripHostMcpToolPrefix,
   toHostMcpToolDefinition,
 } from '../host-mcp/external-agent-host-mcp.js'
@@ -83,24 +83,24 @@ describe('MCP 全名:两类工具的分界线', () => {
 describe('工具集由 venue 门决定', () => {
   it('群房回合:发言 + 看板 + 历史 + 笔记', () => {
     // kind='agent' = W18 之后房回合真正跑的那条会话。
-    expect(resolveHostToolSurface({ sessionKind: 'agent', sessionDm: false }))
+    expect(resolveHostToolIds({ sessionKind: 'agent', sessionDm: false }))
       .toEqual(['send_message', 'board', 'history', 'notebook'])
   })
 
   it('pair 房(两位同事的房)与群房同一份工具面 —— dm 说的是「单成员托管私聊」', () => {
-    expect(resolveHostToolSurface({ sessionKind: 'agent', sessionDm: false }))
-      .toEqual(resolveHostToolSurface({ sessionKind: 'agent' }))
+    expect(resolveHostToolIds({ sessionKind: 'agent', sessionDm: false }))
+      .toEqual(resolveHostToolIds({ sessionKind: 'agent' }))
   })
 
   it('单成员 dm 房(用户 ↔ agent 托管私聊):同样四个,走的是 collab-dm 那一格', () => {
-    expect(resolveHostToolSurface({ sessionKind: 'agent', sessionDm: true }))
+    expect(resolveHostToolIds({ sessionKind: 'agent', sessionDm: true }))
       .toEqual(['send_message', 'board', 'history', 'notebook'])
   })
 
   it('工作台会话:notebook 在,而它并不在工作台的工具地板里', () => {
     // 实证「地板 ≠ 门」:`COLLAB_WORK_REQUIRED_TOOLS` 只有 board/send_message,
     // 而 history/notebook 在 work 场子里是成立的(tool-surface.ts 的论证)。
-    expect(resolveHostToolSurface({ sessionKind: 'work' }))
+    expect(resolveHostToolIds({ sessionKind: 'work' }))
       .toEqual(['send_message', 'board', 'history', 'notebook'])
   })
 
@@ -108,17 +108,17 @@ describe('工具集由 venue 门决定', () => {
     // 没配白名单的 agent 在这里 `resolveAgentToolSurface` 返回 null(不限制),
     // 只过白名单那一道的话四个协作工具会全注进去 —— 那正是 history 泄露用户
     // 私聊的那条路径的形状。
-    expect(resolveHostToolSurface({})).toEqual([])
-    expect(resolveHostToolSurface({ sessionKind: 'chat' })).toEqual([])
+    expect(resolveHostToolIds({})).toEqual([])
+    expect(resolveHostToolIds({ sessionKind: 'chat' })).toEqual([])
     // 网关按远端身份建出来的会话 kind 为空 —— 归一化把它算成 chat。
-    expect(resolveHostToolSurface({ sessionKind: undefined, ownTools: null })).toEqual([])
+    expect(resolveHostToolIds({ sessionKind: undefined, ownTools: null })).toEqual([])
   })
 
   it('agent 自己收窄过的白名单说了算(地板并集之外的不注)', () => {
     // 白名单里没有 notebook,而 union 地板会把 send_message/board/history 叠回来;
     // notebook 那一格靠 `collab-notebook` grant 也会被叠回来 —— 所以这里验的是
     // 「白名单存在时结果仍由那个函数说了算」,而不是我们绕过它。
-    const surface = resolveHostToolSurface({
+    const surface = resolveHostToolIds({
       sessionKind: 'agent',
       ownTools: ['read'],
     })

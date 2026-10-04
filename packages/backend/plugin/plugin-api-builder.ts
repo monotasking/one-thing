@@ -1,11 +1,7 @@
 import type { CorePluginAPIState } from './plugin-api-state.js'
 import { toLogger, type CompatLogger } from '@onething/backend/logging'
 import { describeToolPromptContributionProblem } from '../agent-loop/agent-loop.js'
-import {
-  clampPluginBackgroundParamsPatch,
-  describePluginRuntimeBackgroundImageProblem,
-  type PluginBackgroundParamsPatch,
-} from './plugin-background.js'
+import { clampPluginBackgroundParamsPatch, describePluginRuntimeBackgroundImageProblem, type PluginBackgroundParamsPatch } from '@onething/backend/plugin-contract'
 import { deepFreezeCorePluginValue } from './plugin-freeze.js'
 import {
   PLUGIN_NOTIFY_SOUNDS,
@@ -29,7 +25,7 @@ import {
   isReservedPluginPanelAction,
   type CorePluginPanelContext,
   type CorePluginPanelRegistration,
-} from './plugin-panel.js'
+} from '@onething/backend/plugin-contract'
 import {
   PLUGIN_LAYOUT_GESTURE_WINDOW_MS,
   PLUGIN_UI_INVOKE_ACTION,
@@ -45,7 +41,7 @@ import {
   type CorePluginUiSlotRegistration,
   type PluginLayoutResult,
   type PluginLayoutVerb,
-} from './plugin-ui-anchor.js'
+} from '@onething/backend/plugin-contract'
 import {
   PLUGIN_PERMISSION_INPUT_INTERCEPT,
   type PluginInputInterceptHandler,
@@ -77,30 +73,27 @@ import {
   type PluginLlmCompleteResult,
 } from './plugin-llm.js'
 import type { CorePluginStatusPart, CorePluginStatusRegistry } from './plugin-status.js'
-import { pluginScope, type PluginFailureScope } from './plugin-policy.js'
+import { pluginScope, type PluginFailureScope } from '@onething/backend/plugin-contract'
 import {
   assertPluginPayloadSerializable,
   normalizePluginRequestAction,
   type CorePluginRequestContext,
   type CorePluginRequestHandler,
-} from './plugin-request-channel.js'
+} from '@onething/backend/plugin-contract'
 import { assertCorePluginToolExecutionMode } from './plugin-tool-execution-mode.js'
-import {
-  PLUGIN_PERMISSION_SEARCH_PROVIDE,
-  type CorePluginSearchProviderRegistration,
-} from './plugin-search-provider.js'
+import { PLUGIN_PERMISSION_SEARCH_PROVIDE, type CorePluginSearchProviderRegistration } from '@onething/backend/plugin-contract'
 import {
   PLUGIN_DEEPLINK_ACTION_NAME_PATTERN,
   PLUGIN_PERMISSION_DEEPLINK_HANDLE,
   pluginDeepLinkAddress,
   type CorePluginDeepLinkActionRegistration,
-} from './plugin-deep-link.js'
+} from '@onething/backend/deeplink'
 import {
   PLUGIN_CREDENTIAL_STRATEGY_NAME_PATTERN,
   PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
   pluginCredentialStrategyPolicy,
   type CorePluginCredentialStrategyRegistration,
-} from './plugin-credential-strategy.js'
+} from '@onething/backend/plugin-contract'
 import type {
   CorePluginToolContext,
   CorePluginToolDefinition,
@@ -113,7 +106,7 @@ import {
   type PluginResourcesApi,
 } from './plugin-resources.js'
 import type { ResourceEvent, ReadOutcome as ReadOutcomeValue } from '@onething/backend/resource'
-import { ReadOutcome } from '@onething/backend/resource/resource-read-outcome'
+import { ReadOutcome } from '@onething/backend/resource'
 import { Outcome } from '@onething/backend/toolkit'
 import type { Outcome as OutcomeValue } from '@onething/backend/toolkit'
 

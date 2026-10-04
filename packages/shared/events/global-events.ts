@@ -313,10 +313,27 @@ export interface ProviderQuotaGlobalEvent extends ProviderQuotaPushPayload {
   type: 'provider:quota'
 }
 
+// ── 权限(D202)────────────────────────────────
+
+/**
+ * 一次权限请求已经等了很久还没人答(协作回合的那条 30 分钟提醒)。授权层只发这条事实;
+ * 往协作房间里喊一声是 collab 自己装的监听器(`installPermissionStaleReminder`)的事 ——
+ * 从前授权层动态 import 协作的房间配置去发那句话,是低层够高层。
+ */
+export interface PermissionAskStaleEvent {
+  type: 'permission:ask-stale'
+  sessionId: string
+  /** 那张审批卡的标题(提醒原样引用)。 */
+  title: string
+  /** 已经等了多久,毫秒。 */
+  elapsedMs: number
+}
+
 // ── Union ───────────────────────────────────────
 
 export type GlobalEvent =
   | AppInitializedEvent
+  | PermissionAskStaleEvent
   | AppQuittingEvent
   | SettingsChangedEvent
   | SessionCreatedEvent
@@ -403,6 +420,11 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
   'terminal:data': true,
   /** **出网 —— 同上**。载荷只有 `{terminalId, exitCode}`。 */
   'terminal:exit': true,
+  /**
+   * **不出网 —— 它是进程内的协调信号**(D202):授权层告诉协作「这张卡等太久了」,协作往房间里
+   * 写一行系统消息,那一行才是给人看的(它走会话事件出去)。这条本身对客户端没有用。
+   */
+  'permission:ask-stale': false,
   /**
    * **不出网 —— 它是进程内的协调信号**(宠物 P4,§11.3「仅进程内,不出 SSE」)。壳要知道
    * 「在说话」读的是 `pet:` 的 `utterance` / `hushed`;这一条只给同进程里正在出声的应用

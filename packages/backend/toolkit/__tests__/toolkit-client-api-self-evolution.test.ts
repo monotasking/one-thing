@@ -12,7 +12,7 @@
  *   本期的安全线，mock 掉它等于把要守的东西关在门外；
  * - **工具执行器**：走 `ToolRunner`(生产路径上那一台)而不是直接调 `apply` ——
  *   参数校验、错误包装、取消都在它里面，绕过去测的就不是生产路径；
- * - **权限判定**：用 core 的 `decidePermission` / `isGrantableType` 真判一次，
+ * - **权限判定**：用 core 的 `evaluatePermissionPolicy` / `isGrantableType` 真判一次，
  *   而不是断言「我们写了 permissionGuard 这个字段」。字段写对了但判定链接不上，
  *   正是这类接线最常见的失败形态。
  */
@@ -20,7 +20,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { decidePermission, isGrantableType } from '@onething/backend/permission/permission-asks'
+import { evaluatePermissionPolicy, isGrantableType } from '@onething/backend/permission/permission-asks'
 import type { JsonObject } from '@shared/json.js'
 import { Catalog, Decision, Intent, Outcome, Tool as ToolkitTool, ToolRunner } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import type { Result, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
@@ -206,12 +206,12 @@ describe('self-evolution feature', () => {
     expect(analysis.preview?.title).toContain('demo-echo')
 
     // 判定链真的接上了：默认模式下这条 effect 要问，而且永远不能变成常驻授权。
-    expect(decidePermission({ sessionId: 'x', mode: 'normal', effects: [effect as never] }).decision).toBe('ask')
+    expect(evaluatePermissionPolicy({ sessionId: 'x', mode: 'normal', effects: [effect as never] }).decision).toBe('ask')
     expect(isGrantableType(effect.kind)).toBe(false)
 
     // 反例：读类工具的 effect 在同一条判定里是直通的 —— 证明上面那个 'ask'
     // 是这条 effect 挣来的，不是判定函数对什么都说 ask。
-    expect(decidePermission({
+    expect(evaluatePermissionPolicy({
       sessionId: 'x',
       mode: 'normal',
       effects: [{ kind: 'read', resources: ['/tmp/x'], barrier: false }],

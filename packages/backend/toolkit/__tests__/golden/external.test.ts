@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import { executeCorePluginTool } from '@onething/backend/plugin/plugin-contract'
+import { executeCorePluginTool } from '@onething/backend/plugin/plugin-api-builder'
 import { buildMCPPermissionPlan, isReadOnlyMCPRouterCall } from '../../../agent-loop/agent-loop-tool-orchestration.js'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
 import {

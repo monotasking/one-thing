@@ -7,18 +7,16 @@ import {
   isUiAnchor,
   resolveUiSlotSide,
   isPluginWebviewPanel,
-  resolvePluginAmbients,
   resolvePluginBackgrounds,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import { resolvePluginAmbients } from './plugin-ambient.js'
+import type { PluginAmbientDescriptor, PluginAmbientEntry, PluginAmbientInput } from './plugin-ambient.js'
 import type {
-  PluginAmbientDescriptor,
-  PluginAmbientEntry,
-  PluginAmbientInput,
   PluginBackgroundDescriptor,
   PluginBackgroundEntry,
   PluginBackgroundInput,
   PluginBackgroundParamsPatch,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
 import {
   resolvePluginThemeOverrides,
   type PluginThemeOverrideEntry,

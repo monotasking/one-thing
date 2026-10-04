@@ -7,7 +7,15 @@
 // 先看它的入口就知道它对外给了什么。
 //
 // 度量的是:**从功能目录之外,引用这个功能内部文件(入口 `<功能>.ts` 以外的任何文件)的 import 处数。**
-// 逐功能计数,规矩一条:**只许减**。某功能高于基线、或出现基线里没有的功能 → 红;低于基线 → 提示可收紧。
+// 两半判法(D202 第 15 条,2026-10-04 起):
+//   - **非测试部分是零基线硬闸**:引用方不是测试(`isTestPath` 为假)、也不在 `scripts/gate-*/` 下,而它深层引用了某个功能
+//     的内部文件 —— 一处就红,红的那行打印 `目标 ← 引用方:行`。
+//   - **测试部分仍是逐功能棘轮**:只许减。某功能高于基线、或出现基线里没有的功能 → 红;低于基线 → 提示可收紧。
+//     基线只记测试的处数(非测试那一半没有基线,它就是 0)。
+// 永久规则一条:**进程入口不经功能入口**(`docs/design/server-client-split-2026-10.md` §4)。被构建配方或真机门当作独立进程 /
+// 线程起的文件(构建配方点名的 Worker / 桥入口、`*-standalone-main.ts`、`scripts/gate-*/` 下的被测产物入口)按文件路径指它要的
+// 模块 —— 它们的定义就是「不装那个功能的入口闭包」,所以 `scripts/gate-*/` 作为引用方按目录类不计(与 `__tests__` /
+// client-api 同一种按类不计);反过来,**这类文件不许被任何文件 import**,有一处就红。
 //
 // 口径:
 //   - 「引用」= 一处模块说明符:`import … from` / `import '…'` / `export … from` / `import x = require('…')` /
@@ -32,13 +40,14 @@
 //   node scripts/feature-entry-gate.mjs --list           打全表(package.json: entry:check)
 //   node scripts/feature-entry-gate.mjs --list --verbose 另打每一处引用(功能 / 内部目标 / 引用方:行)
 //   node scripts/feature-entry-gate.mjs --list <功能…>   只打这几个功能的逐处引用
-//   node scripts/feature-entry-gate.mjs --write-baseline 收紧基线(只在真降之后)
+//   node scripts/feature-entry-gate.mjs --write-baseline 收紧测试部分的基线(只在真降之后;非测试部分不进基线)
 //   node scripts/feature-entry-gate.mjs --self-test      判据自检
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { NON_FEATURE_DIRS, clientApiFeatureOf, configureEntryFeatureOf } from './lib/backend-structure.mjs'
+import { pathToFileURL } from 'node:url'
+import { NON_FEATURE_DIRS, clientApiFeatureOf, configureEntryFeatureOf, isTestPath } from './lib/backend-structure.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/feature-entry-baseline-2026-10.txt')
@@ -152,8 +161,38 @@ export function classify(resolvedAbsolute, importerAbsolute, features) {
   return { feature, target: inner }
 }
 
-/** @returns {{ counts: Record<string, number>, sites: Array<{feature,target,importer,line,specifier}>, scanned: number }} */
-export function measure() {
+/** 真机门的被测产物入口目录类:`scripts/gate-<名字>/` 下的文件(由门用 esbuild 打成独立进程,与构建配方同类)。 */
+export function isGateProbePath(relative) {
+  return /^scripts\/gate-[^/]+\//.test(relative)
+}
+
+/**
+ * 进程入口的名册(相对仓根的路径):构建配方点名的入口常量(`*_ENTRY`,读配方本身,不在这里抄一份)、
+ * 名字是 `*-standalone-main.ts` 的文件、`scripts/gate-<名字>/` 下的文件。它们一律不许被 import。
+ */
+export async function loadProcessEntries() {
+  const entries = new Set()
+  const recipe = await import(pathToFileURL(path.join(root, 'apps/desktop-react/scripts/build-electron.mjs')).href)
+  for (const [name, value] of Object.entries(recipe)) {
+    if (/_ENTRY$/.test(name) && typeof value === 'string' && value.startsWith('packages/')) entries.add(value)
+  }
+  if (entries.size === 0) throw new Error('构建配方里一个 *_ENTRY 常量都没读到 —— 名册失效,不认这次结果')
+  const scan = (dir) => {
+    const out = []
+    if (existsSync(path.join(root, dir))) walk(path.join(root, dir), out)
+    return out.map((file) => path.relative(root, file))
+  }
+  for (const file of scan('packages')) if (/-standalone-main\.ts$/.test(file)) entries.add(file)
+  for (const file of scan('scripts')) if (isGateProbePath(file)) entries.add(file)
+  return entries
+}
+
+/**
+ * @param {Set<string>} [processEntries] 进程入口名册(给了就顺带查「谁 import 了进程入口」)
+ * @returns {{ counts: Record<string, number>, testCounts: Record<string, number>, sites: Array<{feature,target,importer,line,specifier,test}>,
+ *   nonTestSites: Array<object>, processEntryImports: Array<{target,importer,line,specifier}>, scanned: number }}
+ */
+export function measure(processEntries = new Set()) {
   const runtimeAbsolute = path.join(root, FEATURE_ROOT)
   if (!existsSync(path.join(runtimeAbsolute, SENTINEL_FEATURE))) {
     // 目录不存在 ≠ 指标归零。真搬家了就该显式改这个脚本,而不是让 gate 替你庆祝。
@@ -168,24 +207,36 @@ export function measure() {
     if (existsSync(absolute)) walk(absolute, files)
   }
   const counts = {}
+  const testCounts = {}
   const sites = []
+  const processEntryImports = []
   for (const absolute of files.sort()) {
+    const importer = path.relative(root, absolute)
     const source = readFileSync(absolute, 'utf8')
     for (const { specifier, line } of collectSpecifiers(absolute, source)) {
-      const hit = classify(resolveSpecifier(specifier, absolute, exportsMap), absolute, features)
+      const resolved = resolveSpecifier(specifier, absolute, exportsMap)
+      if (resolved && processEntries.has(path.relative(root, resolved)) && path.relative(root, resolved) !== importer) {
+        processEntryImports.push({ target: path.relative(root, resolved), importer, line, specifier })
+      }
+      // 真机门的被测产物入口(`scripts/gate-*/`)按目录类不计:它是进程入口,按文件路径指模块是它的定义。
+      if (isGateProbePath(importer)) continue
+      const hit = classify(resolved, absolute, features)
       if (!hit) continue
+      const test = isTestPath(importer)
       counts[hit.feature] = (counts[hit.feature] ?? 0) + 1
-      sites.push({ ...hit, importer: path.relative(root, absolute), line, specifier })
+      if (test) testCounts[hit.feature] = (testCounts[hit.feature] ?? 0) + 1
+      sites.push({ ...hit, importer, line, specifier, test })
     }
   }
-  return { counts, sites, scanned: files.length }
+  return { counts, testCounts, sites, nonTestSites: sites.filter((site) => !site.test), processEntryImports, scanned: files.length }
 }
 
 export function formatBaseline(counts) {
   const lines = [
     '# feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)',
-    '# 每行 `<次数> <功能>`:从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。',
-    '# 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。',
+    '# 每行 `<次数> <功能>`:**测试文件**从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。',
+    '# 非测试部分不进这张表 —— 它是零基线硬闸(D202 第 15 条,2026-10-04):一处非测试深层引用就红。',
+    '# 测试部分只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。',
     '# 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。',
   ]
   const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
@@ -275,20 +326,56 @@ function selfTest() {
   const round = parseBaseline(formatBaseline({ search: 4, mcp: 1 }))
   expect('基线往返应无损', round.search === 4 && round.mcp === 1)
 
+  // 4) 非测试零基线与两类按类不计(D202 第 15 条)。
+  expect('真机门的被测产物入口按目录类不计', isGateProbePath('scripts/gate-embed-runtime/entry.ts'))
+  expect('门脚本本身(scripts/gate-x.mjs)不是被测产物入口', !isGateProbePath('scripts/gate-search-index.mjs'))
+  expect('别的 scripts 不按类不计', !isGateProbePath('scripts/lib/search-corpus-redact.mjs'))
+  expect('__tests__ 算测试', isTestPath('packages/backend/mcp/__tests__/x.test.ts'))
+  expect('scripts/__tests__ 也算测试', isTestPath('scripts/__tests__/x.test.mjs'))
+  expect('普通源文件不算测试', !isTestPath('packages/backend/backend.ts'))
+  const verdict = judge({ nonTestSites: [], processEntryImports: [], testCounts: { search: 1 } }, { search: 2 })
+  expect('非测试 0 处、测试降了 → 绿', verdict.failures.length === 0 && verdict.improvements.length === 1)
+  const red = judge({ nonTestSites: [{ feature: 'mcp', target: 'x.ts', importer: 'packages/backend/backend.ts', line: 1 }], processEntryImports: [], testCounts: {} }, {})
+  expect('非测试一处就红(没有基线可言)', red.failures.some((f) => f.kind === 'non-test'))
+  const imported = judge({ nonTestSites: [], processEntryImports: [{ target: 'packages/backend/gateway/gateway-standalone-main.ts', importer: 'packages/backend/x.ts', line: 3 }], testCounts: {} }, {})
+  expect('进程入口被 import 就红', imported.failures.some((f) => f.kind === 'process-entry'))
+  const testUp = judge({ nonTestSites: [], processEntryImports: [], testCounts: { search: 3 } }, { search: 2 })
+  expect('测试部分上升照旧红', testUp.failures.some((f) => f.kind === 'test-ratchet'))
+  // 判一处真实的说明符:被测产物入口里的深层引用不进 sites,普通脚本的照算。
+  const features2 = new Set(['search'])
+  expect('被测产物入口之外的脚本深层引用照算',
+    classify(R('search/kernel/search-kernel-redact.ts'), path.join(root, 'scripts/lib/x.mjs'), features2)?.feature === 'search')
+
   if (failures.length > 0) {
     console.error('[feature-entry-gate] self-test FAILED:')
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log('[feature-entry-gate] self-test ok — 17 checks passed')
+  console.log('[feature-entry-gate] self-test ok — 29 checks passed')
 }
 
-function main() {
+/**
+ * 纯判决:非测试一处就红、进程入口被 import 就红、测试部分按基线只许降。只回报,不打印、不退出。
+ * @returns {{ failures: Array<{kind: 'non-test'|'process-entry'|'test-ratchet', item: object}>, improvements: Array<object> }}
+ */
+export function judge(measured, testBaseline) {
+  const failures = []
+  for (const site of measured.nonTestSites) failures.push({ kind: 'non-test', item: site })
+  for (const item of measured.processEntryImports) failures.push({ kind: 'process-entry', item })
+  const { regressions, improvements } = compare(testBaseline, measured.testCounts)
+  for (const item of regressions) failures.push({ kind: 'test-ratchet', item })
+  return { failures, improvements }
+}
+
+async function main() {
   const args = process.argv.slice(2)
   if (args.includes('--self-test')) return selfTest()
 
-  const { counts, sites, scanned } = measure()
+  const processEntries = await loadProcessEntries()
+  const measured = measure(processEntries)
+  const { counts, testCounts, sites, scanned } = measured
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0)
+  const testTotal = Object.values(testCounts).reduce((sum, n) => sum + n, 0)
 
   if (scanned < MIN_SCANNED_FILES) {
     console.error(`[feature-entry-gate] 只扫到 ${scanned} 个文件(下限 ${MIN_SCANNED_FILES})—— 遍历坏了,不认这次结果。`)
@@ -299,24 +386,25 @@ function main() {
     const only = args.filter((a) => !a.startsWith('--'))
     const verbose = args.includes('--verbose') || only.length > 0
     const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
-    console.log(`[entry] ${total} deep import site(s) into ${keys.length} feature(s), ${scanned} file(s) scanned:`)
-    for (const key of keys) console.log(`  ${counts[key]}\t${key}`)
+    console.log(`[entry] ${total} deep import site(s) into ${keys.length} feature(s) — non-test ${total - testTotal}, test ${testTotal} — ${scanned} file(s) scanned:`)
+    for (const key of keys) console.log(`  ${counts[key]}\t${key}\t(test ${testCounts[key] ?? 0})`)
     if (verbose) {
       for (const key of keys) {
         if (only.length > 0 && !only.includes(key)) continue
         console.log(`\n# ${key}`)
         for (const site of sites.filter((s) => s.feature === key)) {
-          console.log(`  ${site.target}\t${site.importer}:${site.line}\t${site.specifier}`)
+          console.log(`  ${site.target}\t${site.importer}:${site.line}\t${site.specifier}${site.test ? '' : '\t[non-test]'}`)
         }
       }
     }
+    console.log(`[entry] process entries (must not be imported): ${processEntries.size}`)
     console.log(`[entry] complete: ${scanned} file(s) scanned`)
     return
   }
 
   if (args.includes('--write-baseline')) {
-    writeFileSync(baselinePath, formatBaseline(counts), 'utf8')
-    console.log(`[feature-entry-gate] baseline written → ${path.relative(root, baselinePath)} (${total} site(s))`)
+    writeFileSync(baselinePath, formatBaseline(testCounts), 'utf8')
+    console.log(`[feature-entry-gate] baseline written → ${path.relative(root, baselinePath)} (${testTotal} test site(s))`)
     return
   }
 
@@ -331,21 +419,34 @@ function main() {
     process.exit(1)
   }
 
-  const { regressions, improvements } = compare(baseline, counts)
+  const { failures, improvements } = judge(measured, baseline)
 
   if (improvements.length > 0) {
     const n = improvements.reduce((sum, item) => sum + (item.baseline - item.current), 0)
-    console.log(`[feature-entry-gate] ${n} 处深层引用消失了 —— 可以收紧基线(--write-baseline):`)
+    console.log(`[feature-entry-gate] 测试部分 ${n} 处深层引用消失了 —— 可以收紧基线(--write-baseline):`)
     for (const item of improvements) console.log(`  - ${item.key}: ${item.baseline} → ${item.current}`)
   }
 
-  if (regressions.length > 0) {
-    console.error(`[feature-entry-gate] failed: ${regressions.length} 个功能的深层引用上升 —— 有人绕过入口直接引用了功能内部文件:`)
-    for (const item of regressions) {
-      const note = item.isNew ? '(基线里没有这个功能)' : ''
-      console.error(`  + ${item.key}: ${item.baseline} → ${item.current} ${note}`)
-      for (const site of sites.filter((s) => s.feature === item.key).slice(0, 20)) {
-        console.error(`      ${site.target}  ← ${site.importer}:${site.line}`)
+  if (failures.length > 0) {
+    const nonTest = failures.filter((f) => f.kind === 'non-test').map((f) => f.item)
+    const imported = failures.filter((f) => f.kind === 'process-entry').map((f) => f.item)
+    const ratchet = failures.filter((f) => f.kind === 'test-ratchet').map((f) => f.item)
+    if (nonTest.length > 0) {
+      console.error(`[feature-entry-gate] failed: 非测试深层引用 ${nonTest.length} 处(零基线硬闸,一处都不许有):`)
+      for (const site of nonTest) console.error(`  ${site.feature}/${site.target}  ← ${site.importer}:${site.line}`)
+    }
+    if (imported.length > 0) {
+      console.error(`[feature-entry-gate] failed: 进程入口被 import 了 ${imported.length} 处(进程入口不经功能入口,反过来也谁都不许引它):`)
+      for (const item of imported) console.error(`  ${item.target}  ← ${item.importer}:${item.line}`)
+    }
+    if (ratchet.length > 0) {
+      console.error(`[feature-entry-gate] failed: ${ratchet.length} 个功能的测试深层引用上升:`)
+      for (const item of ratchet) {
+        const note = item.isNew ? '(基线里没有这个功能)' : ''
+        console.error(`  + ${item.key}: ${item.baseline} → ${item.current} ${note}`)
+        for (const site of sites.filter((s) => s.feature === item.key && s.test).slice(0, 20)) {
+          console.error(`      ${site.target}  ← ${site.importer}:${site.line}`)
+        }
       }
     }
     console.error('  规矩见 docs/design/server-client-split-2026-10.md §4「功能入口」:')
@@ -354,9 +455,9 @@ function main() {
   }
 
   console.log(
-    `[feature-entry-gate] ok — ${total} known deep import site(s) across ${Object.keys(counts).length} feature row(s),`
-    + ` ${scanned} file(s) scanned, none new`,
+    `[feature-entry-gate] ok — non-test 0 (hard gate), ${testTotal} known test deep import site(s) across ${Object.keys(testCounts).length} feature row(s),`
+    + ` ${processEntries.size} process entr(ies) imported by nobody, ${scanned} file(s) scanned, none new`,
   )
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main()

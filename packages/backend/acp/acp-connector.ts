@@ -1,17 +1,18 @@
 import type { ContentBlock, InitializeResponse, McpServer } from '@agentclientprotocol/sdk'
 import { findAgentExecutorDescriptor } from '@onething/backend/agent-loop'
-import { ACPManager } from '../acp/acp-manager.js'
-import { ACP_CONNECTOR_ID } from '../acp/acp-session-links.js'
-import { translateACPPromptStream, type ACPWireStreamEvent } from '../acp/acp-translate.js'
-import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from '../acp/acp.js'
-import { getLogger } from '../logging/logging.js'
+// ACP 连接器:把 ACP 当成外部 agent 契约的一种驱动(D202 从 external-agent 搬来 —— 驱动引契约,契约不写驱动的名字)。
+import { ACPManager } from './acp-manager.js'
+import { ACP_CONNECTOR_ID } from './acp-session-links.js'
+import { translateACPPromptStream, type ACPWireStreamEvent } from './acp-translate.js'
+import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from './acp-types.js'
+import { getLogger } from '@onething/backend/logging'
 import type {
   ExternalAgentCapabilities,
   ExternalAgentConnector,
   ExternalAgentEvent,
   ExternalAgentImageInput,
   ExternalAgentTurnRequest,
-} from './external-agent-types.js'
+} from '@onething/backend/external-agent'
 
 export { ACP_CONNECTOR_ID }
 

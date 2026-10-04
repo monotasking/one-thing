@@ -5,11 +5,8 @@
  * 默认值填充、变更推送全由宿主做,**不执行一行插件代码**。直接的红利:
  * 未启用(甚至从没加载过)的插件也能在设置页配置。
  */
-import { pluginScope } from '@onething/backend/plugin/plugin-contract'
-import {
-  CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS,
-  runWithPluginTimeout,
-} from '@onething/backend/plugin/plugin-contract'
+import { pluginScope } from '@onething/backend/plugin-contract'
+import { CORE_PLUGIN_SETTINGS_HOOK_TIMEOUT_MS, runWithPluginTimeout } from '@onething/backend/plugin-contract'
 import {
   coercePluginConfig,
   deepFreezePluginConfig,
@@ -19,10 +16,7 @@ import {
   type PluginConfigField,
   type PluginConfigSchemaDescription,
 } from './plugin-config-schema.js'
-import {
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from './plugin-health.js'
+import { reportPluginRuntimeFailure, reportPluginRuntimeSuccess } from '@onething/backend/plugin-contract'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('plugins')

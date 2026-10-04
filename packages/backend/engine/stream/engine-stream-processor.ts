@@ -8,7 +8,7 @@ import type { AppSettings, ProviderConfig, ToolSettings, Step } from '@shared/ip
 import type { Principal } from '@shared/permission/principal'
 import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
-import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/mcp/mcp-index-with-bridge'
+import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/mcp'
 import { resolveAIToolName } from '@onething/backend/agent-loop'
 import { createEventOnlyEmitter } from '../engine-event-only-emitter.js'
 import {

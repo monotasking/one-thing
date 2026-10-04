@@ -26,11 +26,7 @@ import {
   subscribePluginConfigChange,
 } from '../plugin-config.js'
 import { createPluginConfigAccess } from '../plugin-config-access.js'
-import {
-  configurePluginHealthHost,
-  getPluginRuntimeHealth,
-  resetPluginRuntimeHealthForTests,
-} from '../plugin-health.js'
+import { configurePluginHealthHost, getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } from '@onething/backend/plugin-contract'
 
 const DEMO_SCHEMA = {
   type: 'object',

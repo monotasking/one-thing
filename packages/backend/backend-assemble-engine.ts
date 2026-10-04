@@ -40,11 +40,17 @@ import {
 	type StreamEngineSteeringDeliveryPort,
 	type Trigger,
 } from '@onething/backend/agent-loop'
+// 渠道的会话路由、出站回复、给模型的渠道上下文与对话 runtime 的工厂住 gateway,经它的入口拿(D202:
+// 入口从前兼作独立网关的启动脚本,所以这里直取内部文件;启动面搬出入口之后改走入口)。
 import {
   createOnethingRuntimeFromStreamRuntime,
+  getChannelSessionRouter,
+  OutboundReplyDispatcher,
+  registerChannelPromptContextProvider,
+  unregisterChannelPromptContextProvider,
+  type CoreConversationRuntime,
   type OnethingRuntime,
-} from './gateway/gateway-onething-runtime.js'
-import type { CoreConversationRuntime } from '@onething/backend/gateway/gateway-conversation-runtime'
+} from '@onething/backend/gateway'
 import type { EventBus, StreamChannel } from '@onething/backend/event'
 import {
 	DEFAULT_SESSION_OWNER,
@@ -54,15 +60,6 @@ import {
 } from '@onething/backend/session'
 import { fixedExecutionContext } from './session/session.js'
 import * as store from '@onething/backend/session'
-// 渠道的会话路由、出站回复与给模型的渠道上下文住 gateway(包根归位 B,2026-10-04 从包根 `channel/` 搬来)。
-// 这里直取那三只文件,不走 gateway 的 `index.ts`:那只入口同时是独立网关进程的启动文件(被当成主模块执行时就起网关),
-// 打进单文件包以后 `import.meta.url` 与进程入口相同,装配一 import 它就会起一台网关。拆出网关的功能入口是留账。
-import { getChannelSessionRouter } from './gateway/gateway-channel-session-router.js'
-import { OutboundReplyDispatcher } from './gateway/gateway-outbound-reply-dispatcher.js'
-import {
-  registerChannelPromptContextProvider,
-  unregisterChannelPromptContextProvider,
-} from './gateway/gateway-channel-prompt-context.js'
 import {
   handleCollabRoomSendMessage,
   isCollabRoomSession,
@@ -73,13 +70,12 @@ import {
 import {
   isCollabCoordinatorDrivenSession,
 } from '@onething/backend/session'
-import { configureExternalAgentTurnLookup } from '@onething/backend/external-agent'
+import { configureExternalAgentTurnLookup, takeExternalAgentSteering } from '@onething/backend/external-agent'
 import {
   pluginPostInterceptReply,
   type PluginInterceptSteerPort,
 } from '@onething/backend/plugin'
 import { resolveAgentProfileForSession, defaultAgent, findAgent } from '@onething/backend/agent'
-import { takeExternalAgentSteering } from '@onething/backend/external-agent/external-agent-connector-registry'
 import { createGoalContinuationTrigger } from './goal/goal.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { getLogger } from './logging/logging.js'

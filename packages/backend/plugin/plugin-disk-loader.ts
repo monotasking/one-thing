@@ -9,22 +9,17 @@
 
 import fs from 'fs'
 import path from 'path'
-import {
-  describePluginBackgroundProblem,
-  describePluginWebviewPanelProblem,
-  isPluginWebviewPanel,
-  type PluginContributionUiSlot, type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters,
-} from '@onething/backend/plugin/plugin-contract'
+import { describePluginBackgroundProblem, describePluginWebviewPanelProblem, isPluginWebviewPanel } from '@onething/backend/plugin-contract'
+import { type PluginContributionUiSlot } from './plugin-api-types.js'
+import { type CorePluginSettingsStorageAdapters, type LoadCorePluginEntryAdapters } from './plugin-loader.js'
 import { getOnethingPluginDataDir, getOnethingStorePath, writeJsonFile } from '@onething/backend/storage'
 import {
   createBuiltinPluginDefinitions,
   ensureCorePluginsDir,
   getCorePluginSettingsPath,
-  getCorePluginDataFootprint,
   getCorePluginsDir,
   getCoreLocalPluginsDir,
   getPluginConfigFromSettings,
-  PLUGIN_SETTINGS_KEYS,
   getPluginEnabledWithAdapters,
   buildPluginEntryImportSpecifier,
   listPluginHealthFromSettings,
@@ -32,16 +27,21 @@ import {
   readPluginSettingsFile,
   scanCorePlugins,
   scanLocalPluginFiles,
-  getCorePluginConfigPath,
-  assertNotInNodeModules,
   setPluginConfigInSettings,
   setPluginEnabledWithAdapters,
   setPluginHealthInSettings,
   writePluginSettingsFile,
-} from '@onething/backend/plugin/plugin-contract'
-import type { CorePluginDataFootprint, PersistedPluginHealth } from '@onething/backend/plugin/plugin-contract'
+} from './plugin-loader.js'
+import {
+  getCorePluginDataFootprint,
+  PLUGIN_SETTINGS_KEYS,
+  getCorePluginConfigPath,
+  assertNotInNodeModules,
+} from './plugin-storage.js'
+import type { CorePluginDataFootprint } from './plugin-storage.js'
+import type { PersistedPluginHealth } from '@onething/backend/plugin-contract'
 import { getPluginAppVersion } from '@onething/backend/plugin/plugin-app-version'
-import { clearPluginRuntimeHealth } from '@onething/backend/plugin/plugin-health'
+import { clearPluginRuntimeHealth } from '@onething/backend/plugin-contract'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './plugin-types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/plugin-builtin-log-monitor.js'
 import { consolePort, getLogger } from '@onething/backend/logging'

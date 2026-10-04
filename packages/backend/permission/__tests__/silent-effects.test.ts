@@ -9,7 +9,7 @@
  * 了」当场红 —— 那条用例是一把**锁**,不是一条判据。
  *
  * 拍板落下之后锁该开:判定核改读策略表,这只文件也跟着换成**一致性**的量法 ——
- * 遍历 `EFFECT_CLASSES`,把 `decidePermission` 实际不问的那一集,与策略表里写
+ * 遍历 `EFFECT_CLASSES`,把 `evaluatePermissionPolicy` 实际不问的那一集,与策略表里写
  * `silent` 的那一集整体对比。这条用例量的是「两处口径一致」,不是某一类的取值:
  * 把表里 `net_fetch` 改回 `ask`,它照样绿(红的是下面那条按行为写的用例);而在
  * 判定核里偷偷加回任何一份名单,它立刻红。这就是防第二张表再长出来的门。
@@ -17,10 +17,10 @@
 import * as fs from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { EFFECT_CLASSES, EFFECT_POLICY } from '@shared/toolkit/effects.js'
-import { decidePermission } from '../permission-policy.js'
+import { evaluatePermissionPolicy } from '../permission-policy.js'
 
 function decide(kind: string) {
-  return decidePermission({
+  return evaluatePermissionPolicy({
     sessionId: 'session-a',
     mode: 'normal',
     effects: [{ kind, resources: [] }],

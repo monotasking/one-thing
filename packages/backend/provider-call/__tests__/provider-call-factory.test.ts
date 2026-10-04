@@ -9,8 +9,15 @@ import { builtinProviders } from "../../provider/builtin/provider-builtin.js";
 import type { AgentTurnStreamEvent } from "@onething/backend/agent-loop";
 import { resolveAgentModelCapabilities } from "@onething/backend/agent-loop";
 import { registerCustomProvidersForTest } from '../../provider/__tests__/custom-manifest-fixture.js'
+import { ACP_CONNECTOR_ID, ACPManager, createAcpConnector, createAcpHostMcpPort } from "@onething/backend/acp";
+import { installUnownedExternalAgentConnectorsForTests } from "../../external-agent/external-agent-connector-registry.js";
 // 批 M:自定义服务商按 manifest 注册表认(不再看 id 前缀),单测不装配,这里直接登记。
 registerCustomProvidersForTest(["custom-local-openai", "custom-local-anthropic"])
+// D202:外部 agent 的连接器表由装配组好递进登记表;单测不装配,这里照装配的样子递(无主那一档的测试钩子)。
+installUnownedExternalAgentConnectorsForTests({
+	connectors: () => ({ [ACP_CONNECTOR_ID]: createAcpConnector({ hostMcp: createAcpHostMcpPort() }) }),
+	sessionLinks: () => ACPManager.getSessionLinkStore(),
+});
 
 
 describe("agent provider runtime factory", () => {

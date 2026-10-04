@@ -14,12 +14,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import {
-  createCorePluginStorage,
-  findCorePluginHomeOrphans,
-  getCorePluginSettingsPath,
-  writePluginSettingsFile,
-} from '@onething/backend/plugin/plugin-contract'
+import { createCorePluginStorage, findCorePluginHomeOrphans } from '../plugin-storage.js'
+import { getCorePluginSettingsPath, writePluginSettingsFile } from '../plugin-loader.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-config-home-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH

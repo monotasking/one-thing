@@ -77,7 +77,9 @@ vi.mock('../../settings/settings-store.js', () => ({
   getSettings: () => ({ tools: { tools: {} } }),
 }))
 
-const noopLogger = () => {
+// `vi.hoisted`:顶上静态引的 interaction 入口(D202 起它带着提问链的记账接线,经会话入口)在模块加载时就要
+// `getLogger`,替身工厂因此在这一行之前就会被调用 —— 普通的 `const` 那时还在暂时性死区里。
+const noopLogger = vi.hoisted(() => () => {
   const logger: Record<string, unknown> = {
     ns: 'test',
     trace: () => {}, debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, fatal: () => {},
@@ -85,7 +87,7 @@ const noopLogger = () => {
   }
   logger.child = () => logger
   return logger
-}
+})
 // D191:读者改从 logging 入口拿 `writeAppLog`,替身随之打在入口上(从前打在 `logging-configure`)。
 vi.mock('@onething/backend/logging', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/logging')>(),
@@ -525,6 +527,9 @@ describe('提问的落点(§4)', () => {
 describe('停止链上的外部中断(G10)', () => {
   it('能力表说有 interrupt 才调它', async () => {
     const module = await import('../external-agent-connector-registry.js')
+    // D202:登记表只读表,连接器由装配递;这里照装配的样子递真的 ACP 连接器(无主那一档的测试钩子)。
+    const { createAcpConnector, createAcpHostMcpPort } = await import('@onething/backend/acp')
+    module.installUnownedExternalAgentConnectorsForTests({ connectors: () => ({ acp: createAcpConnector({ hostMcp: createAcpHostMcpPort() }) }) })
     const connector = module.getExternalAgentConnectors()['acp']!
     const spy = vi.spyOn(connector, 'interrupt').mockResolvedValue(undefined)
 

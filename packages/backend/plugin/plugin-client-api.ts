@@ -76,7 +76,7 @@ import {
   updateOnethingPluginForIpc,
 } from './plugin-ipc-operations.js'
 import { getPluginAppVersion } from '@onething/backend/plugin/plugin-app-version'
-import { clearPluginRuntimeHealth } from '@onething/backend/plugin/plugin-health'
+import { clearPluginRuntimeHealth } from '@onething/backend/plugin-contract'
 import { readPluginTarballSummary } from '@onething/backend/plugin/plugin-tarball'
 import { getServerPluginCatalogPort } from './plugin-client-api-catalog.js'
 import { getPluginBackgroundParams } from '@onething/backend/plugin/plugin-background-table'

@@ -1,4 +1,4 @@
-import type { CorePluginRequestHandler } from './plugin-request-channel.js'
+import type { CorePluginRequestHandler } from '@onething/backend/plugin-contract'
 
 export interface CorePluginAPIState<TApi = unknown, TCommand = unknown> {
   api: TApi

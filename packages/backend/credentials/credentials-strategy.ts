@@ -51,7 +51,7 @@ import {
   type PluginCredentialEntryView,
   type PluginCredentialFailureKind,
   type PluginCredentialUsage,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
 import {
   configureSpaceCredentialPluginStrategyHost,
   type SpaceCredentialEntry,
@@ -63,7 +63,7 @@ import {
   probePluginSurface,
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '@onething/backend/plugin/plugin-health'
+} from '@onething/backend/plugin-contract'
 import { captureCredentialStrategyScope, type CredentialStrategyScope } from './credentials-strategy-lifetime.js'
 
 /**

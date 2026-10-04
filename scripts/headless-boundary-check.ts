@@ -2611,7 +2611,8 @@ function checkGatewayHostBoundary(): void {
 }
 
 function checkGatewayLoadsRuntimeFromHostBoundary(): void {
-  const gatewayFile = path.join(root, 'packages/backend/gateway/gateway.ts')
+  // D202:启动面(读运行时模块、按配置登记渠道)从网关入口搬进了 `gateway-standalone.ts`,两条断言跟着它走。
+  const gatewayFile = path.join(root, 'packages/backend/gateway/gateway-standalone.ts')
   const content = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
   const requiredSymbols = [
     'ONETHING_GATEWAY_RUNTIME_MODULE',
@@ -2624,7 +2625,7 @@ function checkGatewayLoadsRuntimeFromHostBoundary(): void {
       .map(symbol => `${rel(gatewayFile)}: missing gateway runtime loader symbol ${symbol}`),
     ...(fs.existsSync(gatewayFile)
       ? matchingLines(gatewayFile, GATEWAY_STANDALONE_AGENT_FORBIDDEN_PATTERNS)
-      : ['packages/backend/gateway/gateway.ts: missing gateway package entrypoint']),
+      : ['packages/backend/gateway/gateway-standalone.ts: missing standalone gateway start surface']),
   ]
 
   assertNoMatches('packages/backend/gateway loads onething runtime from host instead of creating an agent', lines)
@@ -2651,7 +2652,8 @@ function checkGatewayUsesExplicitTypingSignal(): void {
 }
 
 function checkGatewayRegistersConfiguredChannels(): void {
-  const gatewayFile = path.join(root, 'packages/backend/gateway/gateway.ts')
+  // D202:启动面(读运行时模块、按配置登记渠道)从网关入口搬进了 `gateway-standalone.ts`,两条断言跟着它走。
+  const gatewayFile = path.join(root, 'packages/backend/gateway/gateway-standalone.ts')
   const gatewayConfigFile = path.join(root, 'packages/backend/gateway/gateway-config.ts')
   const content = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
   const configContent = fs.existsSync(gatewayConfigFile) ? fs.readFileSync(gatewayConfigFile, 'utf-8') : ''
@@ -2674,7 +2676,7 @@ function checkGatewayRegistersConfiguredChannels(): void {
       .map(symbol => `${rel(gatewayConfigFile)}: missing configured gateway channel config symbol ${symbol}`),
     ...(fs.existsSync(gatewayFile)
       ? matchingLines(gatewayFile, GATEWAY_CHANNEL_SELECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/gateway/gateway.ts: missing gateway entrypoint']),
+      : ['packages/backend/gateway/gateway-standalone.ts: missing standalone gateway start surface']),
   ]
 
   assertNoMatches('packages/backend/gateway registers configured IM channels', lines)
@@ -5132,6 +5134,9 @@ const CORE_MERGED_RUNTIME_DIRS = [
   'packages/backend/session',
   'packages/backend/engine',
   'packages/backend/agent-loop',
+  // D202(2026-10-04):插件与宿主约定的词汇从 `plugin/` 下沉成功能 `plugin-contract/`(整目录都是契约,
+  // 所以整目录量;从下面那张逐文件表里撤掉了搬走的那 13 只与它们的测试,深链那一只搬回 `deeplink/`)。
+  'packages/backend/plugin-contract',
 ]
 
 /**
@@ -5141,33 +5146,22 @@ const CORE_MERGED_RUNTIME_DIRS = [
 const CORE_MERGED_PLUGIN_FILES = [
   '__tests__/agent-identity.test.ts',
   '__tests__/plugin-ambient.test.ts',
-  '__tests__/plugin-background.test.ts',
-  '__tests__/plugin-credential-strategy.test.ts',
-  '__tests__/plugin-deep-link.test.ts',
   '__tests__/external-root-plugin-capability.test.ts',
-  '__tests__/plugin-file-pick.test.ts',
   '__tests__/plugin-input-intercept.test.ts',
   '__tests__/layout-verbs.test.ts',
   '__tests__/lifecycle-compact.test.ts',
   '__tests__/llm-protocol.test.ts',
   '__tests__/local-plugins-scan.test.ts',
   '__tests__/notify-sound-enum.test.ts',
-  '__tests__/plugin-search-provider.test.ts',
   '__tests__/plugin-sessions.test.ts',
   '__tests__/plugin-storage-files.test.ts',
   '__tests__/plugin-tool-call-intercept.test.ts',
   '__tests__/plugin-tool-execution-mode.test.ts',
   '__tests__/plugin-tool-result-intercept.test.ts',
   '__tests__/webview-panel-channel.test.ts',
-  '__tests__/plugin-webview.test.ts',
   'plugin-ambient.ts',
   'plugin-api-builder.ts',
   'plugin-api-state.ts',
-  'plugin-background.ts',
-  'plugin-canonical-order.ts',
-  'plugin-credential-strategy.ts',
-  'plugin-deep-link.ts',
-  'plugin-file-pick.ts',
   'plugin-freeze.ts',
   'plugin-input-intercept.ts',
   'plugin-install.ts',
@@ -5176,16 +5170,9 @@ const CORE_MERGED_PLUGIN_FILES = [
   'plugin-loader.ts',
   'plugin-log-monitor-primitives.ts',
   'plugin-manager-base.ts',
-  'plugin-panel.ts',
   'plugin-api-types.ts',
-  'plugin-contract.ts',
-  'plugin-policy.ts',
-  'plugin-request-channel.ts',
   'plugin-resources.ts',
-  'plugin-runtime-guard-constants.ts',
-  'plugin-runtime-guard.ts',
   'plugin-scheduler.ts',
-  'plugin-search-provider.ts',
   'plugin-sessions.ts',
   'plugin-status.ts',
   'plugin-storage-files.ts',
@@ -5195,8 +5182,6 @@ const CORE_MERGED_PLUGIN_FILES = [
   'plugin-tool-call-intercept.ts',
   'plugin-tool-execution-mode.ts',
   'plugin-tool-result-intercept.ts',
-  'plugin-ui-anchor.ts',
-  'plugin-webview.ts',
 ].map(name => `packages/backend/plugin/${name}`)
 
 /** 去 core 批 3(2026-10-03):core 根上那三只文件的新家。 */
@@ -5204,6 +5189,9 @@ const CORE_MERGED_ROOT_FILES = [
   'packages/backend/gateway/gateway-conversation-runtime.ts',
   'packages/backend/http-server/http-server-runtime-facade.ts',
   'packages/backend/session/session-deep-freeze.ts',
+  // D202:深链词汇(URL 语法、插件深链动作的登记契约)从 `plugin/plugin-deep-link.ts` 搬回深链功能,内容断言跟着它走。
+  'packages/backend/deeplink/deeplink-contract.ts',
+  'packages/backend/deeplink/__tests__/deeplink-contract.test.ts',
 ]
 
 function checkCoreKnowsNoConcreteFeatures(): void {

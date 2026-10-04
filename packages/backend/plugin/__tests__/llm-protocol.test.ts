@@ -12,10 +12,10 @@ import {
   PLUGIN_PERMISSION_LLM_COMPLETE,
   PluginLlmError,
   clampPluginLlmMaxTokens,
-  describePluginPermission,
   normalizePluginLlmMessages,
   type PluginLlmCompleteOptions,
-} from '../plugin-contract.js'
+} from '../plugin-llm.js'
+import { describePluginPermission } from '../plugin-sessions.js'
 
 function build(options: { permissions?: string[]; withLlmPort?: boolean } = {}) {
   const calls: PluginLlmCompleteOptions[] = []

@@ -4,7 +4,7 @@ import type {
   CorePermissionRequestEvent,
   CorePermissionSurface,
   CoreTextStreamChunk,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from '../../gateway-conversation-runtime.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../gateway-hub-channel.js'
 import { LoggerRoot, type LogRecord, type LogSink } from '@onething/backend/logging'

@@ -4,10 +4,10 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { InitializeResponse } from '@agentclientprotocol/sdk'
 import type { AgentTurnStreamEvent } from '@onething/backend/agent-loop'
-import { capabilitiesFromHandshake, createAcpConnector, type AcpConnectorDeps } from '../external-agent-acp-connector.js'
+import { capabilitiesFromHandshake, createAcpConnector, type AcpConnectorDeps } from '../acp-connector.js'
 import { createExternalAgentProvider } from '../../provider/provider-external-agent.js'
-import type { ACPWireStreamEvent, ACPPromptStreamOptions } from '../../acp/acp.js'
-import type { ExternalAgentEvent, ExternalAgentSessionLink } from '../external-agent-types.js'
+import type { ACPWireStreamEvent, ACPPromptStreamOptions } from '../acp.js'
+import type { ExternalAgentEvent, ExternalAgentSessionLink } from '@onething/backend/external-agent'
 
 async function* replay(events: ACPWireStreamEvent[]): AsyncGenerator<ACPWireStreamEvent, void, void> {
   for (const event of events) yield event

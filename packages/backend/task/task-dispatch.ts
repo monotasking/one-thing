@@ -51,7 +51,7 @@ import {
   renderTaskReport,
   taskSessionName,
   type TaskOutcome,
-} from '@onething/backend/task'
+} from './task-rules.js'
 import type {
   TaskDispatchOutcome,
   TaskDispatchRequest,
@@ -64,7 +64,9 @@ import type { StreamEngine } from '@onething/backend/engine'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import type { Quiescible } from '@onething/backend/lifecycle'
 import { taskMessageSource } from '../agent-loop/agent-loop.js'
-import { deliverInternalMessage } from '@onething/backend/plugin'
+// 回投唤醒用插件的跨会话信使(N1 的三态矩阵 + 链长闸 + 频率闸,一本账)。它由装配递进来(D202):
+// 派工层若静态引插件入口,task 入口一交出派工层就经插件绕回工具目录成环。这里只引它的类型。
+import type { deliverInternalMessage } from '@onething/backend/plugin'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/logging'
@@ -102,6 +104,8 @@ export function createTaskDispatchLayer(deps: {
   engine: StreamEngine
   access: SessionAccess
   reads: Pick<typeof sessionReads, 'findMessage'>
+  /** 回投唤醒的投递函数(插件入口的 `deliverInternalMessage`,装配递进来;只在回投那一刻调用)。 */
+  deliverInternalMessage: typeof deliverInternalMessage
 }): TaskDispatchLayer {
   const activeTasks = new Map<string, ActiveTask>()
   const cancelWaiters = new Map<string, () => void>()
@@ -213,7 +217,7 @@ export function createTaskDispatchLayer(deps: {
       outcome,
       ...(body ? { body } : {}),
     })
-    const result = await deliverInternalMessage(
+    const result = await deps.deliverInternalMessage(
       { eventBus: deps.eventBus, streamEngine: engine },
       {
         actorKey: taskMessageSource(taskSessionId),

@@ -48,10 +48,10 @@
  * 没改成结果,无害,不该被它自己的笔误连累进熔断账)。半开靠时间。
  */
 
-import { sortByPluginCanonicalOrder } from './plugin-canonical-order.js'
+import { sortByPluginCanonicalOrder } from '@onething/backend/plugin-contract'
 import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
-import { PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from './plugin-policy.js'
-import { runWithPluginTimeout } from './plugin-runtime-guard.js'
+import { PLUGIN_TOOL_RESULT_INTERCEPT_SURFACE } from '@onething/backend/plugin-contract'
+import { runWithPluginTimeout } from '@onething/backend/plugin-contract'
 import {
   PLUGIN_PERMISSION_TOOLRESULT_INTERCEPT,
   PLUGIN_TOOLRESULT_INTERCEPT_PERMISSION_NOTE,

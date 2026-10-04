@@ -368,7 +368,7 @@ describe('批 E:轮换边界上的插件策略', () => {
     registry.resetPluginCredentialStrategiesForTests()
     registry.resetAppPluginCredentialStrategyHostForTests()
     registry.configureAppPluginCredentialStrategyHost()
-    const health = await import('@onething/backend/plugin/plugin-health')
+    const health = await import('../../plugin-contract/plugin-contract-health.js')
     health.resetPluginRuntimeHealthForTests()
   })
 
@@ -432,7 +432,7 @@ describe('批 E:轮换边界上的插件策略', () => {
 
   it('策略抛错 = 回落 + 记熔断,起流一点不受影响', async () => {
     const registry = await import('../credentials-strategy.js')
-    const health = await import('@onething/backend/plugin/plugin-health')
+    const health = await import('../../plugin-contract/plugin-contract-health.js')
     seedPool('plugin:flaky:boom', [entry('a'), entry('b')])
     registry.registerPluginCredentialStrategy('flaky', {
       name: 'boom',

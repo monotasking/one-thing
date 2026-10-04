@@ -58,7 +58,7 @@ export interface EnforcePermissionPolicyInput {
   workspaceId?: string
   /**
    * Who is running this tool. Carried from the engine boundary, never derived
-   * here. Nothing in `decidePermission` reads it yet — P0 only makes the actor
+   * here. Nothing in `evaluatePermissionPolicy` reads it yet — P0 only makes the actor
    * visible (permission card, audit ledger); the judgment gains its subject
    * dimension in P3.
    */
@@ -161,7 +161,11 @@ function alwaysScopeOf(effect: PermissionEffect): { scheme: string } | undefined
   return scheme === undefined ? undefined : { scheme }
 }
 
-export function decidePermission(input: PermissionPolicyInput): PermissionPolicyResult {
+/**
+ * 评估一条策略(D202 改名):纯函数,不读进程状态、同输入同输出。绑定进程的那只「决定一次权限」
+ * 是 `permission-enforcement.ts` 的 `decidePermission`(会用上装配好的授权记录)。
+ */
+export function evaluatePermissionPolicy(input: PermissionPolicyInput): PermissionPolicyResult {
   for (const effect of input.effects) {
     if (isHardDeny(effect)) {
       return { decision: 'deny', effect, reason: String(effect.metadata?.reason || 'Hard-denied tool effect') }
@@ -256,7 +260,7 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
   const permission = input.permissionBridge ?? Permission
   const mode = permission.getMode(input.sessionId)
   for (const effect of input.effects) {
-    const result = decidePermission({
+    const result = evaluatePermissionPolicy({
       sessionId: input.sessionId,
       mode,
       effects: [effect],

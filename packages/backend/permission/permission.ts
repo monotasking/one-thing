@@ -99,6 +99,8 @@ export type {
 // 授权的执行面(授权记录 + 无人值守 + 会话读面)与「工具可读可写哪些根」。越层清零 C7(2026-10-04)
 // 从 `tool/access-control/` 搬来:前者就是 `decidePermission` / `enforcePermissionPolicy`,后者是同一个
 // 问题的另一半;`configureSandboxHost` 宿主端口随它住在这里。
+// 「评估一条策略」(纯)与「决定一次权限」(绑定进程)是两件事,D202 起名字不同、入口两只都交。
+export { evaluatePermissionPolicy } from './permission-policy.js'
 export {
   decidePermission,
   enforcePermissionPolicy,
@@ -128,3 +130,6 @@ export { Permission } from './permission-with-grant-storage.js'
 export { configureAppPermissionGrants } from './permission-grant-storage.js'
 export { markHostUnattended, markSessionUnattended } from './permission-unattended.js'
 export { resolvePermissionMessageAnchor } from './permission-message-anchor.js'
+
+// 审批链的记账接线:把权限问答的时刻与决定记进会话事件日志(装配在 `initialize` 之后装一次,D202 从 session 搬来)。
+export { installPermissionSessionLedger, uninstallPermissionSessionLedger } from './permission-session-ledger.js'

@@ -14,25 +14,23 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
+import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '../plugin-manager-base.js'
 import {
-  CorePluginManager,
   PLUGIN_PANEL_INVOKE_ACTION,
   PLUGIN_PANEL_PROTOCOL_VERSION,
   PLUGIN_PANEL_RENDER_ACTION,
   MAX_PANEL_DEPTH,
-  createCorePluginAPI,
   describeNonSerializable,
   describePluginSurface,
-  disposeCorePluginState,
   validatePluginPanelTree,
-  type CorePluginDefinition,
-  type CorePluginManagerHost,
   type CorePluginPanelContext,
   type CorePluginPanelRegistration,
   type CorePluginRequestHandler,
-  type CorePluginStateLike,
   type PluginPanelTree,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
+import { disposeCorePluginState } from '../plugin-api-state.js'
+import { type CorePluginDefinition } from '../plugin-api-types.js'
 
 interface TestAPI {
   registerWorkspacePanel(registration: CorePluginPanelRegistration): void

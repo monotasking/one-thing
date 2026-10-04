@@ -53,11 +53,9 @@ if (storeArg) process.env.ONETHING_STORE_PATH = storeArg.replace(/^~(?=\/)/, hom
 
 const dryRun = !flags.has('--execute')
 
-const { migrateCollabToV3 } = await import(
-  '@onething/backend/collab/actors/collab-actors-migrate'
-)
-const { formatCollabMigrationReport } = await import(
-  '../packages/backend/collab/actors/collab-actors-migrate-rules.ts'
+// 都从协作功能的入口拿(D202 / D204:脚本保留,改走入口)。
+const { migrateCollabToV3, formatCollabMigrationReport } = await import(
+  '../packages/backend/collab/collab.ts'
 )
 
 const report = await migrateCollabToV3({ dryRun })

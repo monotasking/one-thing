@@ -67,7 +67,7 @@ const { workdirGateway, projectStoreGateway, agentStoreGateway, globalStoreGatew
   await import('../variable-gateways.js')
 const { projectIdFromPath } = await import('@onething/backend/project-dir')
 const { getProjectsStore } = await import('@onething/backend/project-dir')
-const { buildProjectDirsPromptVars } = await import('../../project-dir/project-dir-bootstrap.js')
+const { buildProjectDirsPromptVarsForSession } = await import('../../project-dir/project-dir-bootstrap.js')
 const { setRootDirForTests } = await import('@onething/backend/project-dir/project-dir-persistence')
 const { setRootDirForTests: setSpacesRootForTests } = await import(
   '@onething/backend/space'
@@ -218,19 +218,19 @@ describe('workdir gateway × space', () => {
     getProjectsStore().add({ path: workdirA, description: '家里的' })
     getProjectsStore('work').add({ path: workdirB, description: '公司的' })
 
-    const home = buildProjectDirsPromptVars(workdirA, { sessionId: 's-home' })
+    const home = buildProjectDirsPromptVarsForSession(workdirA, { sessionId: 's-home' })
     expect(home.active).toMatchObject({ hasActive: true, description: '家里的' })
     expect(home.known.entries).toEqual([])
 
-    const work = buildProjectDirsPromptVars(workdirB, { sessionId: 's-work' })
+    const work = buildProjectDirsPromptVarsForSession(workdirB, { sessionId: 's-work' })
     expect(work.active).toMatchObject({ hasActive: true, description: '公司的' })
     expect(work.known.entries).toEqual([])
 
     // 同一条 cwd 换个空间问,名册里没有它 —— 提示词不该谎称有个活跃项目。
-    expect(buildProjectDirsPromptVars(workdirA, { sessionId: 's-work' }).active).toEqual({
+    expect(buildProjectDirsPromptVarsForSession(workdirA, { sessionId: 's-work' }).active).toEqual({
       hasActive: false,
     })
     // 没有 sessionId 就是 default 空间(与所有读取端同一句缺省)。
-    expect(buildProjectDirsPromptVars(workdirA).active).toMatchObject({ hasActive: true })
+    expect(buildProjectDirsPromptVarsForSession(workdirA).active).toMatchObject({ hasActive: true })
   })
 })

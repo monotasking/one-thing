@@ -137,7 +137,9 @@ vi.mock('@onething/backend/skill/skill-session-cache', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
 }))
 
-vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
+// D202:旧桶并进 mcp 入口,替身改打入口并展开真模块(只换下面这几个名字)。
+vi.mock('@onething/backend/mcp', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
   getMCPToolsForAI: mocks.getMCPToolsForAI,
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
@@ -150,7 +152,7 @@ vi.mock('@onething/backend/variable/variable-system', () => ({
 }))
 
 vi.mock('@onething/backend/project-dir/project-dir-bootstrap', () => ({
-  buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
+  buildProjectDirsPromptVarsForSession: mocks.buildProjectDirsPromptVars,
 }))
 
 vi.mock('@onething/backend/media/media-library-service-bound', () => ({

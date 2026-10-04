@@ -134,6 +134,8 @@ export {
 	type CreateIncidentOptions,
 	type CreateIncidentResult,
 } from "./eval-incident.js";
+// 给一个回合补建事故单(会话命令面在迟到的负信号上调,D202:从前它直取内部文件)。
+export { createIncidentForTurn } from "./eval-turn-incident.js";
 
 export {
 	createMockToolResolver,

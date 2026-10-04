@@ -204,7 +204,11 @@ export interface HostMcpBridgeDeps {
   execPath?: string
   /** 用户自己的 MCP 名册(`settings.mcp.servers`)。 */
   userMcpServers?: () => readonly MCPServerConfig[]
-  /** 协作四件那一半的工具面。缺省 = `external-agent/external-agent-host-tools.ts` 的 `resolveHostToolSurface`。 */
+  /**
+   * 协作四件那一半的工具面(外部 agent 入口的 `resolveHostToolSurface`),由装配经 `AcpSubsystem` 的 deps
+   * 递进来(D202:从前这里缺省动态深取 external-agent 的内部文件)。缺席 = 没有协作那一半(单测),
+   * `send_notification` 照常。
+   */
   resolveSurface?: (request: { localSessionId: string; executionContext?: unknown }) => Promise<HostToolSurface | undefined>
   /** `send_notification` 的出口。缺省 = 全局事件 `agent:notification`。 */
   notify?: (notification: HostNotification) => void
@@ -465,7 +469,7 @@ export class HostMcpBridge {
   }
 
   private async surfaceOf(entry: CredentialEntry): Promise<HostToolSurface | undefined> {
-    const resolve = this.deps.resolveSurface ?? defaultResolveSurface
+    const resolve = this.deps.resolveSurface ?? noCollabSurface
     try {
       return await resolve({
         localSessionId: entry.localSessionId,
@@ -516,13 +520,9 @@ function defaultMintToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
-/**
- * 工具面走动态 import:它那棵树(会话仓库、工具目录、v3 登记簿)只有真有调用进来时才需要,
- * 不该因为子系统被构造就进每一份单测的模块图。
- */
-async function defaultResolveSurface(request: { localSessionId: string; executionContext?: unknown }): Promise<HostToolSurface | undefined> {
-  const { resolveHostToolSurface } = await import('@onething/backend/external-agent/external-agent-host-tools')
-  return resolveHostToolSurface(request)
+/** 装配没递协作工具面(单测):这一半为空。 */
+async function noCollabSurface(): Promise<HostToolSurface | undefined> {
+  return undefined
 }
 
 function defaultNotify(notification: HostNotification): void {

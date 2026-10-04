@@ -17,7 +17,7 @@
  * 真正的对话框住 Electron 宿主的插件 IPC 面,真正的拷贝住装配层的
  * `app/plugins/file-import.ts`。
  */
-import { PLUGIN_BACKGROUND_IMAGE_EXTENSIONS } from './plugin-background.js'
+import { PLUGIN_BACKGROUND_IMAGE_EXTENSIONS } from './plugin-contract-background.js'
 
 /**
  * 可导入的扩展名白名单 —— **就是背景图那一份**,不是第二份表。

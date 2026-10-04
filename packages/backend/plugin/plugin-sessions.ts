@@ -20,14 +20,8 @@ import {
   PLUGIN_LLM_COMPLETE_PERMISSION_NOTE,
   PLUGIN_PERMISSION_LLM_COMPLETE,
 } from './plugin-llm.js'
-import {
-  PLUGIN_DEEPLINK_HANDLE_PERMISSION_NOTE,
-  PLUGIN_PERMISSION_DEEPLINK_HANDLE,
-} from './plugin-deep-link.js'
-import {
-  PLUGIN_CREDENTIAL_STRATEGY_PERMISSION_NOTE,
-  PLUGIN_PERMISSION_CREDENTIAL_STRATEGY,
-} from './plugin-credential-strategy.js'
+import { PLUGIN_DEEPLINK_HANDLE_PERMISSION_NOTE, PLUGIN_PERMISSION_DEEPLINK_HANDLE } from '@onething/backend/deeplink'
+import { PLUGIN_CREDENTIAL_STRATEGY_PERMISSION_NOTE, PLUGIN_PERMISSION_CREDENTIAL_STRATEGY } from '@onething/backend/plugin-contract'
 import { PLUGIN_RESOURCE_PERMISSION_NOTES } from './plugin-resources.js'
 
 /* ── 声明门(manifest contributes.permissions)───────────────────────────── */

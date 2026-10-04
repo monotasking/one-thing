@@ -1,7 +1,7 @@
 import path from 'node:path'
 import {
   configurePermissionGrantStorage,
-  decidePermission as decideCorePermission,
+  evaluatePermissionPolicy,
   enforcePermissionPolicy as enforceCorePermissionPolicy,
   matchGrant,
   type EnforcePermissionPolicyInput,
@@ -70,7 +70,7 @@ export class OnethingPermissionRuntime {
   constructor(private readonly options: OnethingPermissionRuntimeOptions = {}) {}
 
   decide(input: PermissionPolicyInput): PermissionPolicyResult {
-    return decideCorePermission({
+    return evaluatePermissionPolicy({
       ...input,
       grantMatcher: input.grantMatcher ?? this.options.grantMatcher ?? matchGrant,
     })

@@ -48,7 +48,9 @@ vi.mock('@onething/backend/toolkit', async importOriginal => ({
   ...toolkit,
 }))
 vi.mock('@onething/backend/tool/tool-background-jobs-bound', () => jobs)
-vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
+// D202:旧桶并进 mcp 入口,替身改打入口并展开真模块(只换下面这几个名字)。
+vi.mock('@onething/backend/mcp', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
   getMCPToolDefinitionsForModel: () => [],
 }))
 

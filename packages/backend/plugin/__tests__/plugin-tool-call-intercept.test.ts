@@ -19,7 +19,7 @@ import {
   type PluginToolCallInputValidation,
   type PluginToolCallInterceptHandler,
 } from '../plugin-tool-call-intercept.js'
-import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '../plugin-policy.js'
+import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '@onething/backend/plugin-contract'
 import { describePluginPermission } from '../plugin-sessions.js'
 
 function createRegistry(options: {

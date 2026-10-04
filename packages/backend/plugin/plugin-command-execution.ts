@@ -1,7 +1,4 @@
-import type {
-  CorePluginCommandContext,
-  CorePluginCommandDefinition,
-} from '@onething/backend/plugin/plugin-contract'
+import type { CorePluginCommandContext, CorePluginCommandDefinition } from './plugin-api-types.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 

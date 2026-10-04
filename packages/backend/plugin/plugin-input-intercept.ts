@@ -34,10 +34,10 @@
  * 是"执行一个可能带副作用的工具"。默认动作不同,失败语义就必须不同。)
  */
 
-import { sortByPluginCanonicalOrder } from './plugin-canonical-order.js'
+import { sortByPluginCanonicalOrder } from '@onething/backend/plugin-contract'
 import { toLogger, type CompatLogger, type Logger } from '@onething/backend/logging'
-import { PLUGIN_INPUT_INTERCEPT_SURFACE } from './plugin-policy.js'
-import { runWithPluginTimeout } from './plugin-runtime-guard.js'
+import { PLUGIN_INPUT_INTERCEPT_SURFACE } from '@onething/backend/plugin-contract'
+import { runWithPluginTimeout } from '@onething/backend/plugin-contract'
 import {
   PLUGIN_INPUT_INTERCEPT_PERMISSION_NOTE,
   PLUGIN_PERMISSION_INPUT_INTERCEPT,

@@ -65,11 +65,9 @@ import {
   removeOnethingMCPServerForIpc,
   updateOnethingMCPServerForIpc,
 } from './mcp-ipc-operations.js'
-import {
-  MCPManager,
-  probeMCPServerConfig,
-  registerMCPTools,
-} from '@onething/backend/mcp/mcp-index-with-bridge'
+import { MCPManager } from './mcp-manager.js'
+import { probeMCPServerConfig } from './mcp-client.js'
+import { registerMCPTools } from './mcp-bridge.js'
 import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'

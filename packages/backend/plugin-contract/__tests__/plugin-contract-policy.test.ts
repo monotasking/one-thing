@@ -14,8 +14,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { CorePluginHealthTracker } from '../plugin-contract-runtime-guard.js'
 import {
-  CorePluginHealthTracker,
   PLUGIN_DEFERRED_REGISTRIES,
   PLUGIN_DEFERRED_REGISTRY_IDS,
   PLUGIN_OPEN_REGISTRIES,
@@ -27,7 +27,7 @@ import {
   pluginLoadLabel,
   pluginScope,
   resolvePluginScopeSeverity,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-contract-policy.js'
 
 const REPO_ROOT = fileURLToPath(new URL('../../../..', import.meta.url))
 
@@ -375,7 +375,7 @@ describe('R7 registry teardown table — 每个开放的注册表都要回答"�
      * 实现是 throw,当时的测试只断言"理由字符串长度 > 20" —— 标签与实现完全没有
      * 绑定,第一条数据就是错的。
      */
-    const registry = await import('../plugin-im-connector-registry.js')
+    const registry = await import('../../plugin/plugin-im-connector-registry.js')
     const teardown = PLUGIN_REGISTRY_POLICY['im-connector'].teardown
 
     const unregister = registry.registerIMConnector({

@@ -23,7 +23,7 @@ import {
   type PluginBackgroundEntry,
   type PluginBackgroundInput,
   type PluginBackgroundParamsPatch,
-} from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin-contract'
 
 /**
  * pluginId → 最近一次 `api.theme.updateBackground` 的结果。

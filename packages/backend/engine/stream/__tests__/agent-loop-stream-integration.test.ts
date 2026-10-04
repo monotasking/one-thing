@@ -293,7 +293,9 @@ vi.mock("@onething/backend/skill/skill-session-cache", () => ({
 	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
-vi.mock("@onething/backend/mcp/mcp-index-with-bridge", () => ({
+// D202:旧桶并进 mcp 入口,替身改打入口并展开真模块(只换下面这几个名字)。
+vi.mock("@onething/backend/mcp", async importOriginal => ({
+	...await importOriginal<Record<string, unknown>>(),
 	getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 	getMCPToolDefinitionsForModel: mocks.getMCPToolDefinitionsForModel,
 	isMCPTool: vi.fn(() => false),
@@ -308,7 +310,7 @@ vi.mock("@onething/backend/variable/variable-system", () => ({
 }));
 
 vi.mock("@onething/backend/project-dir/project-dir-bootstrap", () => ({
-	buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
+	buildProjectDirsPromptVarsForSession: mocks.buildProjectDirsPromptVars,
 }));
 
 vi.mock("../../engine-compact-session.js", () => ({
@@ -346,6 +348,17 @@ vi.mock("@onething/backend/acp/acp-manager", async () => {
 const { registerAgentProviderRuntime } = await import(
 	"../../../provider-call/provider-call.js"
 );
+// D202:外部 agent 的连接器表由装配组好递进登记表;单测不装配,这里照装配的样子递(无主那一档的测试钩子)。
+{
+	const { ACP_CONNECTOR_ID, ACPManager, createAcpConnector, createAcpHostMcpPort } = await import("@onething/backend/acp");
+	const { installUnownedExternalAgentConnectorsForTests } = await import(
+		"../../../external-agent/external-agent-connector-registry.js"
+	);
+	installUnownedExternalAgentConnectorsForTests({
+		connectors: () => ({ [ACP_CONNECTOR_ID]: createAcpConnector({ hostMcp: createAcpHostMcpPort() }) }),
+		sessionLinks: () => ACPManager.getSessionLinkStore(),
+	});
+}
 const { executeMessageStream } = await import("../engine-stream-executor.js");
 
 function params(

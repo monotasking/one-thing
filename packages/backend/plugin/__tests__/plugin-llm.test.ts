@@ -6,7 +6,7 @@
  * 未配置时的 unsupported。声明门与输入校验在 core 那一份(plugin llm.test.ts)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '@onething/backend/plugin/plugin-contract'
+import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '../plugin-llm.js'
 
 const settingsRef: { current: any } = { current: null }
 const generateChatResponse = vi.fn()

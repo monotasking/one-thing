@@ -15,13 +15,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   PLUGIN_LAYOUT_GESTURE_WINDOW_MS,
   PLUGIN_UI_INVOKE_ACTION,
-  createCorePluginAPI,
   forgetUiActionGestures,
   hasFreshUiActionGesture,
   noteUiActionGesture,
   type PluginLayoutResult,
   type PluginLayoutVerb,
-} from '../plugin-contract.js'
+} from '@onething/backend/plugin-contract'
+import { createCorePluginAPI } from '../plugin-api-builder.js'
 
 interface LayoutCall { pluginId: string; verb: PluginLayoutVerb; panelId?: string }
 

@@ -17,7 +17,7 @@ import {
   CORE_PLUGIN_STATUS_THROTTLE_MS,
   CorePluginStatusRegistry,
   PLUGIN_STATUS_PART_TYPE,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-status.js'
 import { SESSION_STREAM_TERMINAL_EVENTS, isSessionStreamTerminalEvent } from '@shared/events/session-events'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-status-'))

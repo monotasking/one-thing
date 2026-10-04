@@ -2,7 +2,7 @@ import type {
   CorePermissionMode,
   CorePermissionRequestEvent,
   CorePermissionSurface,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
+} from '../../gateway-conversation-runtime.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GatewayPermissionCoordinator } from '../gateway-hub-permission-coordinator.js'
 

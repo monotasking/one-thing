@@ -17,7 +17,7 @@ import {
   normalizePluginInputInterceptResult,
   type PluginInputInterceptHandler,
 } from '../plugin-input-intercept.js'
-import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '../plugin-policy.js'
+import { classifyPluginScope, pluginScope, resolvePluginScopeSeverity } from '@onething/backend/plugin-contract'
 import { describePluginPermission } from '../plugin-sessions.js'
 
 function createRegistry(options: {

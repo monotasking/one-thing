@@ -5,12 +5,8 @@
  * 抓到,而战役里已经栽过一次同族的(refresh 在飞时被 disable)。
  */
 import { describe, expect, it, vi } from 'vitest'
-import {
-  CorePluginManager,
-  type CorePluginDefinition,
-  type CorePluginManagerHost,
-  type CorePluginStateLike,
-} from '@onething/backend/plugin/plugin-contract'
+import { CorePluginManager, type CorePluginManagerHost, type CorePluginStateLike } from '../plugin-manager-base.js'
+import { type CorePluginDefinition } from '../plugin-api-types.js'
 
 interface TestAPI { id: string }
 type TestEntry = (api: TestAPI) => void | Promise<void>

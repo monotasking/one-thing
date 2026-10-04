@@ -9,7 +9,7 @@
  * 健康表是本分;留在 prompt(L1)就是提示词拼装去引插件(L2)。插件入口 `plugin.ts` 交出的
  * 同名函数(`registerPromptContextProvider` 等)是这一半带断路器的版本。
  */
-import { pluginScope } from './plugin-contract.js'
+import { pluginScope } from '@onething/backend/plugin-contract'
 import {
   PluginPromptContextSource,
   clearPromptContextProvidersForPlugin as clearRuntimePromptContextProvidersForPlugin,
@@ -30,10 +30,7 @@ import type {
   SkillDefinition,
 } from '@shared/ipc.js'
 import type { CorePromptActiveProject as PromptActiveProject, CorePromptKnownProjects as PromptKnownProjects } from '@onething/backend/agent-loop'
-import {
-  reportPluginRuntimeFailure,
-  reportPluginRuntimeSuccess,
-} from './plugin-health.js'
+import { reportPluginRuntimeFailure, reportPluginRuntimeSuccess } from '@onething/backend/plugin-contract'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('engine.prompt')

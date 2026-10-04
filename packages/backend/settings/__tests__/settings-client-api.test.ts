@@ -57,7 +57,9 @@ vi.mock('@onething/backend/voice/voice-service', () => ({
   getVoiceServiceSafe: ports.getVoiceServiceSafe,
 }))
 
-vi.mock('@onething/backend/mcp/mcp-index-with-bridge', () => ({
+// D202:旧桶并进 mcp 入口,替身改打入口并展开真模块(只换下面这几个名字)。
+vi.mock('@onething/backend/mcp', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
   MCPManager: { updateSettings: ports.updateMCPSettings },
   registerMCPTools: ports.registerMCPTools,
 }))
@@ -66,7 +68,9 @@ vi.mock('@onething/backend/acp', () => ({
   ACPManager: { updateSettings: ports.updateACPSettings },
 }))
 
-vi.mock('@onething/backend/gateway/gateway-lifecycle-port', () => ({
+// D202:读者改从网关入口拿 `getGatewayHost`,替身随之打在入口上。仍是裸工厂(与从前打在 `gateway-lifecycle-port` 上
+// 的那只逐字相同):本测试装载的模块里只有设置域引网关入口、只要这一个名字,展开真模块反而要装网关入口的整个闭包。
+vi.mock('@onething/backend/gateway', () => ({
   getGatewayHost: () => ({ applySettings: ports.applyGatewaySettings }),
 }))
 

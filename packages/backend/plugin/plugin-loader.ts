@@ -8,9 +8,9 @@ import { getCoreLogger } from '@onething/backend/logging'
 
 const log = getCoreLogger('core.plugins')
 
+import type { PersistedPluginHealth } from '@onething/backend/plugin-contract'
 import type {
   CorePluginDefinition,
-  PersistedPluginHealth,
   PluginManifest,
   PluginSettings,
   PluginSource,

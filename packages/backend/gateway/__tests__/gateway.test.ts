@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CoreConversationRuntime } from '@onething/backend/gateway/gateway-conversation-runtime'
+import type { CoreConversationRuntime } from '../gateway-conversation-runtime.js'
 import type { Channel, InboundMessage, OutboundMessage } from '../hub/gateway-hub.js'
+import { isGatewayEnabledFromEnv, readGatewayChannelIdsFromEnv } from '../gateway.js'
+// 启动函数住在启动面(D202);测试直取兄弟文件,与入口转交的是同一批函数。
 import {
   createGatewayChannelsFromEnv,
-  isGatewayEnabledFromEnv,
-  readGatewayChannelIdsFromEnv,
   startGateway,
   startGatewayFromEnv,
   type GatewayRuntime,
-} from '../gateway.js'
+} from '../gateway-standalone.js'
 
 function createRuntime(): CoreConversationRuntime {
   return {

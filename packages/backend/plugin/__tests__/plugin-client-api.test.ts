@@ -96,7 +96,7 @@ vi.mock('@onething/backend/plugin/plugin-tarball', () => ({
 vi.mock('@onething/backend/plugin/plugin-app-version', () => ({
   getPluginAppVersion: () => '1.0.0',
 }))
-vi.mock('@onething/backend/plugin/plugin-health', () => ({
+vi.mock('../../plugin-contract/plugin-contract-health.js', () => ({
   clearPluginRuntimeHealth: vi.fn(),
 }))
 

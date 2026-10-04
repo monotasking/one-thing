@@ -10,7 +10,7 @@
  * 凭据要签在活着的那一台上 —— 第一台 dispose 时已经全部作废。
  */
 import { ACPManager } from './acp-manager.js'
-import type { AcpHostMcpPort } from '@onething/backend/external-agent'
+import type { AcpHostMcpPort } from './acp-connector.js'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { getLogger } from '@onething/backend/logging'
 import type { HostMcpBridge } from './acp-host-mcp-bridge.js'

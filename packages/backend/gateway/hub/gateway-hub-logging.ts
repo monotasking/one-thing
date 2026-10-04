@@ -23,9 +23,9 @@
  * 边界:`packages/backend/gateway` 只依赖 `packages/backend/core`,而 `logging` 是零依赖、
  * 零 node import 的 —— 这条 import 不动任何红线。
  */
-import { ConsoleSink, LoggerRoot, type Logger } from '@onething/backend/gateway/gateway-conversation-runtime'
+import { ConsoleSink, LoggerRoot, type Logger } from '../gateway-conversation-runtime.js'
 
-export type { Logger } from '@onething/backend/gateway/gateway-conversation-runtime'
+export type { Logger } from '../gateway-conversation-runtime.js'
 
 /** 宿主注入的形状 —— 与 `@onething/backend/logging` 的 `getLogger` 同签名。 */
 export type GatewayLoggerFactory = (ns: string) => Logger

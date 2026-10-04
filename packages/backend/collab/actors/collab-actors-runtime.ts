@@ -1123,7 +1123,7 @@ export function stopCollabV3RoomFloor(
    * 里 `digest-runner` 那条同一个理由。
    */
   if (turns.length > 0) {
-    void import('@onething/backend/external-agent/external-agent-connector-registry')
+    void import('@onething/backend/external-agent')
       .then(async module => {
         runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {
@@ -1221,7 +1221,7 @@ export async function revokeCollabV3RoomLease(
   // 动态 import 与房级喊停同一个理由 —— 静态引会把连接器注册表拖进每一个 import
   // 这个文件的协作测试的收集阶段。
   if (turns.length > 0) {
-    void import('@onething/backend/external-agent/external-agent-connector-registry')
+    void import('@onething/backend/external-agent')
       .then(async module => {
         runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {

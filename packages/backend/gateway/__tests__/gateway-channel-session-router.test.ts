@@ -39,7 +39,10 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   setCurrentSessionId: mocks.setCurrentSessionId,
 }))
 
-vi.mock('../../session/session-layer.js', () => ({
+// 路由改从会话入口拿 `getSessionManager`(D202);替身仍打在声明它的 `session-layer`,展开真模块只换这一个名字,
+// 入口转交的就是被换掉的那一只。
+vi.mock('../../session/session-layer.js', async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(),
   getSessionManager: () => ({
     getOrCreate: mocks.getOrCreate,
   }),

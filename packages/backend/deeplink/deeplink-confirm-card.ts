@@ -23,10 +23,9 @@ import {
   DEEPLINK_TEXT_MAX_BYTES,
   type DeepLinkIntent,
   type DeepLinkParseResult,
-  getPluginManager,
-} from '@onething/backend/plugin'
+} from './deeplink-contract.js'
 import { defaultAgent, findAgent } from '../agent/agent.js'
-import { describePluginDeepLinkAction } from './deeplink-registry.js'
+import { describePluginDeepLinkAction, resolvePluginDisplayName } from './deeplink-registry.js'
 
 /** 卡上的来源标注。用户要一眼看出"这不是我在应用里点的"。 */
 export const DEEPLINK_CARD_SOURCE_LABEL = 'external link request'
@@ -118,15 +117,6 @@ function buildPluginCard(
   }
 }
 
-/** manifest.name 是显示名;查不到(插件已卸载 / 系统未装配)才退回 id。 */
-export function resolvePluginDisplayName(pluginId: string): string {
-  try {
-    const found = getPluginManager()
-      ?.getPlugins()
-      .find(info => info.definition.id === pluginId)
-    const name = found?.definition.manifest?.name
-    return typeof name === 'string' && name.trim() ? name.trim() : pluginId
-  } catch {
-    return pluginId
-  }
-}
+// 插件显示名从深链动作的登记表读(D203,`deeplink-registry.ts` 的 `resolvePluginDisplayName`):
+// 深链功能不再引插件。这里原样转交,读者不改说明符。
+export { resolvePluginDisplayName }

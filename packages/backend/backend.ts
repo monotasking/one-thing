@@ -38,8 +38,9 @@ import {
   registerCollabAgentPresence,
   registerCollabAgentToolGrants,
   registerCollabTools,
+  installPermissionStaleReminder,
 } from '@onething/backend/collab'
-import { PluginLlmService, pluginToolInterceptor } from '@onething/backend/plugin'
+import { deliverInternalMessage, PluginLlmService, pluginToolInterceptor } from '@onething/backend/plugin'
 import {
   CredentialStrategyService,
   disposeCredentialStrategyState,
@@ -57,7 +58,7 @@ import { PracticeService, configurePracticeService, practiceToolAdapters } from 
 import { MusicSubsystem, registerMusicBashPolicies } from '@onething/backend/music'
 import { PetsSubsystem, petChattinessOf, watchPetChattiness, ModelMomentComposer } from '@onething/backend/pet'
 import { createVoiceService, configureVoiceService } from '@onething/backend/voice'
-import { createTaskDispatchLayer, type TaskDispatchLayer } from '@onething/backend/task/task-dispatch'
+import { createTaskDispatchLayer, taskToolPorts, type TaskDispatchLayer } from '@onething/backend/task'
 import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/backend/session'
 import { getTracesDir, configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/eval'
 import path from 'node:path'
@@ -73,7 +74,13 @@ import {
 } from '@onething/backend/settings'
 import { applyDiagnosticsMode } from '@onething/backend/logging'
 import { initializeAgents } from '@onething/backend/agent'
-import { configureAppToolSandbox, configureAppPermissionGrants, Permission } from '@onething/backend/permission'
+import {
+  configureAppToolSandbox,
+  configureAppPermissionGrants,
+  installPermissionSessionLedger,
+  Permission,
+  uninstallPermissionSessionLedger,
+} from '@onething/backend/permission'
 import { applyHostPorts, type OnethingHostPorts } from './backend-host-ports.js'
 import { configureAppBackgroundJobs, killTrackedDetachedChildren } from '@onething/backend/tool'
 import {
@@ -99,25 +106,21 @@ import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/m
 import { createQuotaService, type QuotaService } from '@onething/backend/quota'
 import { createSessionLayer, type SessionLayer } from '@onething/backend/session'
 import {
-  installSessionPermissionEventRecorders,
-  uninstallSessionPermissionEventRecorders,
-} from '@onething/backend/session'
-import {
   installSessionLedgerEventBroadcaster,
   uninstallSessionLedgerEventBroadcaster,
 } from '@onething/backend/session'
 import { createStreamEngineLayer, registerBuiltinTriggers, type MainOnethingRuntime } from './backend-assemble-engine.js'
 import type { OAuthToken, PermissionMode } from '@shared/ipc.js'
 import { createSessionTocTrigger } from './toc/toc.js'
-import { Interaction } from '@onething/backend/interaction'
-import { bootstrapVariableSystem } from '@onething/backend/variable'
+import { installInteractionSessionLedger, Interaction, uninstallInteractionSessionLedger } from '@onething/backend/interaction'
+import { bootstrapVariableSystem, getVariableRegistry } from '@onething/backend/variable'
 import { bootstrapGoalStreamBreakers, flushGoalRuntimeUsage, disposeGoalRuntimeState, goalToolAdapters } from '@onething/backend/goal'
 import { bootstrapProjectDirs } from '@onething/backend/project-dir'
 import { configureProcessAuthTokenStore, getAuthService, installOAuthBusBroadcaster } from '@onething/backend/auth'
 import { bootstrapNotes, migrateNotesSettings } from '@onething/backend/note'
 import type { NotesSubsystem } from '@onething/backend/note'
 import { createAppSearchService } from '@onething/backend/search'
-import { configureToolkitMCPCapabilitiesChangedHandler, McpSubsystem } from '@onething/backend/mcp'
+import { configureToolkitMCPCapabilitiesChangedHandler, McpSubsystem, MCPManager, registerMCPTools } from '@onething/backend/mcp'
 import {
   buildToolkitCatalog,
   createAppToolRunner,
@@ -127,8 +130,6 @@ import {
   toolkitAuditSink,
   ToolExecutionRegistry,
 } from '@onething/backend/toolkit'
-// `task` 工具的端口工厂不经 task 入口(D191):task 入口一交出派工层就成环,所以装配处直接引它。
-import { taskToolPorts } from '@onething/backend/task/task-tool-adapters'
 import {
   createResourceKernel,
   forwardResourceEventsToBus,
@@ -142,17 +143,23 @@ import type { ResourceKernel } from '@onething/backend/resource'
 import { registerAppRpcDomains } from './http-server/http-server-client-api-roster.js'
 import { registerRouterHandlers } from './http-server/http-server-dispatch-table.js'
 import { configureFeatureRegistryRpc } from '@onething/backend/feature-registry'
-import { MCPManager, registerMCPTools } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
 import {
+  ACP_CONNECTOR_ID,
   ACPManager,
   AcpSubsystem,
+  createAcpConnector,
+  createAcpHostMcpPort,
   onSessionsDeletedFromBus,
   createAcpSessionProjections,
   AcpAgentRegistry,
   type AcpRegistryFetch,
 } from '@onething/backend/acp'
-import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent'
+import {
+  bindExternalAgentConnectors,
+  resolveExternalAgentSpawnEnv,
+  resolveHostToolSurface,
+} from '@onething/backend/external-agent'
 import { killAllTerminals } from '@onething/backend/terminal'
 import type { SessionHistoryBuilder } from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging'
@@ -648,9 +655,16 @@ export class OnethingBackend implements BackendHandle {
     // 插件 / 沙箱端口。
     this.own(applyHostPorts(options.host), 'hostPorts', 'restore')
 
-    const { bindExternalAgentConnectors } = await import('@onething/backend/external-agent/external-agent-connector-registry')
+    // 外部 agent 的连接器登记表是只读表(D202):连接器与会话链接表在这里组好递进去,契约不写驱动的名字。
+    // 两格都是惰性的 —— 连接器在这一代登记表第一次被要时才建(与从前同一时刻),链接表是 `ACPManager`
+    // 的静态访问器;`AcpSubsystem` 要到后面才构造,所以「装配顺序不动」靠的是惰性,不是子系统已先建。
     const externalAgents = bindExternalAgentConnectors({
       isAccepting: () => !this.isShuttingDown,
+      // ACP 的连接与会话归 `backend.acp` 子系统(ACPManager);连接器只是一层薄转接,权限桥也已由
+      // `registerACPPermissionBridge` 装在 ACPManager 上。宿主工具面经端口递进去(桥与凭据表在 `backend.acp`,
+      // 调用时现取)。Claude Code 是 ACP 名册里的一台(A6-b 起 Claude SDK 连接器退役)。
+      connectors: () => ({ [ACP_CONNECTOR_ID]: createAcpConnector({ hostMcp: createAcpHostMcpPort() }) }),
+      sessionLinks: () => ACPManager.getSessionLinkStore(),
     })
     // afterSettings can already invoke the lazy provider factory, then throw.
     // Own that generation immediately; the later registration preserves the
@@ -697,7 +711,12 @@ export class OnethingBackend implements BackendHandle {
     this.parts.practice = practice
     this.own(configurePracticeService(practice), 'practiceBinding', 'resources')
     this.adopt('practice', practice)
-    const music = new MusicSubsystem({ storePath: lease.storePath, assertOwned: () => lease.assertHeld() })
+    const music = new MusicSubsystem({
+      storePath: lease.storePath,
+      assertOwned: () => lease.assertHeld(),
+      // 电台开场读变量表(D202):惰性函数,开场那一刻现问一次 —— 这一行运行时变量注册表还没建。
+      variables: { listForSession: sessionId => getVariableRegistry().list({ sessionId }) },
+    })
     this.parts.music = music
     this.adopt('music', music)
     const voice = createVoiceService()
@@ -915,6 +934,8 @@ export class OnethingBackend implements BackendHandle {
       engine: engineLayer.engine,
       access: sessionLayer.access,
       reads: sessionLayer.reads,
+      // 回投唤醒用插件的跨会话信使;递函数值,只在回投那一刻调用(D202:派工层不再静态引插件入口)。
+      deliverInternalMessage,
     })
     this.parts.taskDispatchLayer = taskDispatchLayer
     this.adopt('taskDispatch', taskDispatchLayer)
@@ -947,6 +968,10 @@ export class OnethingBackend implements BackendHandle {
       }
     }
 
+    // 协作回合的审批等 30 分钟没人答 → 往房间里写一行(D202:授权层只发 `permission:ask-stale`,
+    // 喊话归 collab)。**无条件**装:今天任何宿主只要有会话就有这条提醒,不看 `collab` 选项。
+    this.own(installPermissionStaleReminder(eventBus), 'permissionStaleReminder')
+
     await options.hooks?.afterEngine?.(this)
 
     Permission.initialize(
@@ -967,13 +992,16 @@ export class OnethingBackend implements BackendHandle {
 
     // S1a(session-event-sourcing §10.2 的"权限/交互层"):两条等待链的时刻与
     // 决定进会话事件日志。必须在两个 initialize 之后 —— 它接的是同一对单例。
-    installSessionPermissionEventRecorders()
+    // D202:两条链的记账接线按依赖方向各回各家(审批回 permission、提问回 interaction),各装一次、各 own 一次。
+    installPermissionSessionLedger()
+    installInteractionSessionLedger()
     // A3:`uninstall*` 自 S1a 起就存在却零调用者 —— 它把 core 那两个 recorder
     // 槽置回 null。不摘的后果:dispose 之后 `Permission`/`Interaction`(core 的
     // 进程级单例,不随 backend 走)手里还攥着指向**已关掉的**事件账本的回调,
     // 而第二份装配会用自己的那对把它们盖掉,于是这条只在"关了但还没再装"的
     // 窗口里咬人 —— 正是最难查的那种。
-    this.own(() => uninstallSessionPermissionEventRecorders(), 'sessionPermissionRecorders')
+    this.own(() => uninstallPermissionSessionLedger(), 'permissionSessionLedger')
+    this.own(() => uninstallInteractionSessionLedger(), 'interactionSessionLedger')
 
     /*
      * 三件的登记**放在一处并显式反序**,而不是各自"起的那一行紧接着 own()"。
@@ -1238,6 +1266,8 @@ export class OnethingBackend implements BackendHandle {
       onSessionsDeleted: onSessionsDeletedFromBus(eventBus),
       // A2-b:计划 → 待办(`session-ai-todo`)、agent 起的标题 → 会话名(人改过的不动)。
       projections: createAcpSessionProjections({ eventBus }),
+      // 宿主 MCP 桥的协作工具面(D202:从前桥里动态深取 external-agent 的内部文件;函数值,请求来时才调)。
+      hostToolSurface: resolveHostToolSurface,
     })
     this.acpSubsystem = acp
     /*

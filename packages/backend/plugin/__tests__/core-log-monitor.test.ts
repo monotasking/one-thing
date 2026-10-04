@@ -29,7 +29,7 @@ import {
   shouldNotifyLogEntry,
   summarizeLogEvent,
   type CoreLogMonitorDiskStreamLike,
-} from '@onething/backend/plugin/plugin-contract'
+} from '../plugin-log-monitor-primitives.js'
 
 function barrier<T = void>() {
   let resolve!: (value: T) => void

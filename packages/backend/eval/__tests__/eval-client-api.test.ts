@@ -50,7 +50,7 @@ vi.mock('@onething/backend/settings', async importOriginal => ({
   getSettings: settings.getSettings,
 }))
 vi.mock('@onething/backend/skill/skill-session-cache', () => ({ getSkillsForSession: vi.fn(() => []) }))
-vi.mock('@onething/backend/eval/eval-turn-incident', () => ({ createIncidentForTurn: vi.fn(async () => null) }))
+vi.mock('../eval-turn-incident.js', () => ({ createIncidentForTurn: vi.fn(async () => null) }))
 vi.mock('@onething/backend/eval/eval-provider-adapter', () => ({
   resolveEvalsCredentials: vi.fn(() => ({ ok: true, apiKey: 'k', baseUrl: 'https://x' })),
   createEvalsModelCaller: vi.fn(() => async () => ({ content: '', toolCalls: [], finishReason: 'stop' })),

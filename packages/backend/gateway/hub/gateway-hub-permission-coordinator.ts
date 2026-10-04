@@ -2,8 +2,8 @@ import type {
   CorePermissionDecision,
   CorePermissionRequestEvent,
   CorePermissionSurface,
-} from '@onething/backend/gateway/gateway-conversation-runtime'
-import type { Unsubscribe } from '@onething/backend/gateway/gateway-conversation-runtime'
+} from '../gateway-conversation-runtime.js'
+import type { Unsubscribe } from '../gateway-conversation-runtime.js'
 import { gatewayLogger, resolveGatewayLogger, type Logger } from './gateway-hub-logging.js'
 
 export interface GatewayPermissionCoordinatorOptions {

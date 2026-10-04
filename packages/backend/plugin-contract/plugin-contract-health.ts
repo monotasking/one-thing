@@ -8,14 +8,23 @@
  * 为什么要熔断:加载期错误会写进 CorePluginInfo.error,**运行期**错误在此之前
  * 不进任何用户可见状态 —— 一个每回合都抛错的插件会一直显示 Active。
  */
-import type { PluginFailureScope, CorePluginHealthTrackerOptions } from '@onething/backend/plugin/plugin-contract'
-import { PLUGIN_SURFACE_PROBE_INTERVAL_MS } from '@onething/backend/plugin/plugin-contract'
+import type { PluginFailureScope } from './plugin-contract-policy.js'
+import { PLUGIN_SURFACE_PROBE_INTERVAL_MS } from './plugin-contract-policy.js'
 import {
   CorePluginHealthTracker,
+  type CorePluginHealthTrackerOptions,
   type CorePluginRuntimeHealth,
-  type PersistedPluginHealth,
-} from '@onething/backend/plugin/plugin-contract'
-import { getLogger } from '../logging/logging.js'
+} from './plugin-contract-runtime-guard.js'
+import { getLogger } from '@onething/backend/logging'
+
+/** 落盘的健康账(设置文件 `health` 那一格的每一行;D202 从 `plugin/plugin-api-types.ts` 搬来,它属于健康账)。 */
+export interface PersistedPluginHealth {
+  status: 'degraded' | 'disabled'
+  lastError?: string
+  lastErrorScope?: string
+  lastErrorAt?: number
+  disabledReason?: string
+}
 
 const log = getLogger('plugins.health')
 
@@ -171,4 +180,4 @@ export function resetPluginRuntimeHealthForTests(): void {
   tracker.clearAll()
 }
 
-export type { CorePluginRuntimeHealth, PersistedPluginHealth }
+export type { CorePluginRuntimeHealth }
