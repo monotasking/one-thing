@@ -328,3 +328,52 @@
 7. 包名、应用名(N7)。**10-04 已落地**(`packages/client` → `packages/backend-client`、`apps/server` → `apps/backend-server`,决策 D120;落地记录见 `server-client-split-2026-10.md` §6「包名与应用名」)。
 8. **server 门面按功能拆、网关入口拆**(10-04 包根归位 B 时登记,D77 / D88):`http-server/http-server-runtime.ts`(4229 行)今天仍点名约 30 个功能(会话、设置、权限、插件、MCP、文件……的 server 门面都写在这一只里),拆成各功能自己的门面、http-server 读表,与 client-api 名册同一个做法;gateway 的 `index.ts` 同时是独立网关进程的启动文件,拆出一只不带 `main()` 的功能入口,装配就能经入口拿渠道的三样(今天直取三只文件)。
    **网关那一半随 D202 已落地**(`gateway-standalone.ts` + `gateway-standalone-main.ts`);**server 门面那一半 10-04 已落地**(各功能的 server 门面进 `<功能>-client-api-<方面>.ts`、`http-server-runtime-roster.ts` 按顺序装与拆、`http-server-runtime.ts` 4208 → 190 行,决策 D219–D223;落地记录见 `server-client-split-2026-10.md` §6「server 门面按功能拆」)。
+
+## 收尾(10-04)
+
+### 怎么读一个功能(以服务商为例)
+想看服务商:打开 `packages/backend/provider/provider.ts`,文件头写着它做什么、交出哪几类名字、依赖哪些功能;每家服务商住
+`provider/vendors/<id>/`(一家一目录,加一家只动它自己的目录 + 两份名册各一行,`provider:drill` 实证);界面能对服务商做什么,看
+`provider-client-api*.ts`;谁依赖它、它在哪一层,看 `docs/architecture/feature-map.md`。「去调用服务商」(起标题、跑一次对话)在
+`provider-call/`,凭证在 `credentials/` —— 三个目录名回答三个问题。
+
+### 前后对照
+| | 重整前(10-01) | 现在 |
+| --- | --- | --- |
+| 后端的包 | core / runtime / gateway / backend 四个 + client / shared | `packages/backend` 一个 + `backend-client` + `shared` |
+| 一个功能住几处 | 常见 3–5 处(core/<d>、runtime/<d>、wiring/<d>、rpc/domains/<d>、stores/、server/ 里的门面) | 一处:`packages/backend/<功能>/`(62 个功能目录;包根只剩 6 只组装文件 + `http-server/`) |
+| 层 | 按技术分层(core / runtime / wiring),无判据 | 按依赖分层 L0–L4(标签表),只许朝下;越层 139 → **0**(硬闸) |
+| 功能之间怎么引 | 任意深层引用 | 只经 `<功能>.ts` 入口;非测试深层引用约 1100 → **0**(硬闸),测试 838(只减) |
+| 入口之间的环 | 未测 | **0**(硬闸) |
+| 文件名 | 132 个重名(`index.ts` 98 只、`types.ts` 36 只……) | 重名 / `index.ts` / 泛名 / 不带功能前缀 **全 0**(硬闸) |
+| 大文件 | 4208 / 2738 / 2480 / 2198 / 2072 行 …… | `http-server-runtime` 190、`agent-loop-executor` 拆 6、`theme-resolver` 拆 6、引擎类 1358、collab 1665 …;「一只文件两件事」0 新增(1 只在名单) |
+| 加一个功能要改几处 | 散改 | 自己的目录 + 契约 + 层次表一行 + 名册一行 + exports 一键(`feature:drill` 实证) |
+| CLAUDE.md | 1198 行,规则淹在历史里 | 450 行现行指南 + 存档 + `backend-structure.md` |
+
+结构门(全部在 CI):`name` / `cycle` / `layer` / `entry` / `client-api` / `cohesion` / `feature-map` / `boundary` / `assembly` / `provider` / `transport` / `log` / `session`,外加 `provider:drill`、`feature:drill`。
+
+### 你应当知道的行为决策
+- D154:CLI 守护进程(headless 档)发给模型的工具数组里,三只协作工具排到了末尾(桌面 / server 不变)。
+- D165:`onething mcp` 的 stderr 多出原先被静默丢掉的那半模块日志(stdout 协议不变)。
+- D190:桌面主进程包约 +15 万字节(入口转交的打包胶水,模块集合不变;检索 Worker 逐字节不变)。
+- D203:深链确认卡上的插件显示名改为随插件登记携带(卸载即撤销,有测试钉住)。
+- D204:`scripts/collab-v3-migrate.mjs` 保留未删(旧 store 是否还有待迁数据只有你知道)。
+
+### 没验证到的(需要你择时)
+- **打包后的桌面应用整个重整期间一次都没起过**(按不抢机器的约定)。需要你择时跑一次 `bun run gate:packaged`,并手动启动一次桌面。
+- **你正在用的桌面 `dist-electron` 是旧代码构建的**,重新 `bun run electron:dev` / `bun run build` 后才是新结构。
+- **CI 还没在远端真跑过**:本地已核对工作流里的路径与脚本都存在、三处 `--frozen-lockfile` 安装都过;两道演练第一次在 ubuntu runner 上跑。
+
+### 留账(没做完的、有意留下的)
+1. `cohesion` 名单 1 只:`plugin/plugin-contract-panel.ts`(节点类型与校验器靠字符串字面量相连,判据看不见)。
+2. 测试里的深层引用 838 处(只减不增)。
+3. 两个不经入口的深层环(3 / 2,门只打不判)。
+4. 「同一件事的两半」清单(collab 的 mentions / mention-stamping 等,见正本 §6 各批)—— 要改文件内容,逐对评审。
+5. `Core*` 前缀的标识符未去(D89)。
+6. `AgentEngine` 疑为死码(无生产构造点)。
+7. agent-loop 入口仍交出 311 个名字(R6「越少越好」)。
+8. `http-server-runtime-roster.ts` 点名 14 个功能(D220:装 / 拆顺序是规格)。
+9. 三只三行的小助手(`cloneJson` / `isRecord` / `isPathInside`)在几处各留一份。
+10. D253:装配期状态没有登记表(只能手写进 `backend.ts`)、store 路径每目录一个 getter。
+11. ACP 发消息给 Claude Code 报 `Internal error`(10-04 你说先不查;已知:适配器本身正常,问题在我们发过去的参数)。
+12. 第④步「两个进程」(Electron 管后台后端、凭证导出迁移、CLI 走 HTTP)尚未开始 —— 这是另一个项目。
