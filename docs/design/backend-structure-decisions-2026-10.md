@@ -234,6 +234,10 @@
 | D223 | 10-04 | 拆分的连带 | ① 默认租户三件(`defaultRequestContext` / `isDefaultServerRequestContext` / `ownerKey`)并进 `http-server-tenant-paths.ts`、`workspaceSandboxRoot` 并进 `http-server-sandbox.ts`(两只都是已有深键的 L0 槽位,各功能经它们拿,不加键);两处原来各写一份的「是不是默认租户」合成一只(同一个判据)。② `http-server-echo-message-events.ts` 只被回声会话仓用,随它搬进会话,改名 `session/session-echo-message-events.ts`;`session:gate` 基线里那三行只改路径(内容与行号不变)。③ runtime 不再转交 `SERVER_REDACTED_SECRET`,两只测试改从 mcp 入口拿;会话仓、RPC context 的测试只改 import 路径;`http-server.ts` 入口照旧交出 `createFileServerSettingsStore` 等三个名字(改从设置那只文件转交)。④ 每只新文件的日志命名空间沿用 `server.runtime`(`server.jsonl` 逐字不变);三只三行的小助手(`cloneJson`、`isRecord`、`isPathInside`)在用到的文件里各留一份,不为它们开公共件 | 行为与日志逐字不变;不新开深键 | 我 |
 
 | D224 | 10-04 | 根 CLAUDE.md 1198 行,现行规则淹没在历史叙述里(违反 R3 的精神,也是可维护性问题) | 重写成 450 行的现行指南(立法逐字保留、每条规则写明哪道门在守、命令按 package.json 核对、路径全部核实存在);原文逐字存档 `docs/architecture/claude-md-archive-2026-10-04.md`;新增给人读的 `docs/architecture/backend-structure.md`;规则 → 新位置对照表见提交说明 | 读文档的人(和 AI)要先看到现在怎么做,来历去存档查 | 我 |
+| D225 | 10-04 | 大文件该不该拆、按什么判 | 判据分两层(`docs/design/oversized-files-2026-10.md`):**形状 A**「两件不相干的事住一起」可写成门(顶层声明为点、引用为边、叶子常量不连边;≥ 2 块且第二块 ≥ 150 行即红);**形状 B / C**(长函数里几组嵌套函数各管各的 `let`、一只类里几组方法各管各的字段)只出报表、靠评审。**不用行数上限**:reducer、顺序即规格的装配、数据表再长也是一件事(`backend.ts`、房账 reducer、`fallbackUIStyle` 表等不拆) | 可读性看的是「读一处要不要先懂另一处」,不是行数 | Fable |
+| D226 | 10-04 | 批 1 拆哪些 | 纯搬家五只:`agent-loop-executor`(6 只)、`session-store-helpers`(5 只,按内容起名)、`agent-loop-runtime`(4 只)、`theme-resolver`(6 只,表原样留)与 `theme-role-mapping`(拆出颜色数学)、`engine-agent-loop-stream-runtime`(只拆适配器那半);零变化用 `split:prove` 证明(拆前后每个顶层声明的源文本多重集相等) | 风险最小、最影响可读性 | Fable |
+| D227 | 10-04 | 批 2 / 3 的条件 | 批 2:`plugin-api-builder` 按面拆、`session-store` 只拆消息更新;批 3:`agent-loop-stream-engine` 拆三个协作件(五个命令留类里)、`acp-client` 只拆回调面、`collab-actors-runtime` 先把读单例改成参数再搬、`music-radio` 只拆歌词与反向识别(可不做)。批 2 / 3 过不了 `split:prove`,靠测试与真机门 | 闭包变参数、方法变协作件不是纯搬家 | Fable |
+| D228 | 10-04 | 写进规范却没有门的两条(N3 入口只用具名导出、D126 功能内不引自家入口) | 补门:`entry:gate` 加判据「功能主入口不许 `export *`」与「功能内非测试文件不许引自家入口」,零基线(先把 session / search / markdown 入口里剩下的 `export *` 收掉) | 没有门的规矩迟早被违反 | 我 |
 ## 可读性判据(D20)
 
 - **R1 找得到**:问「X 在哪」,看 `packages/backend/` 的目录列表就能答出一个目录;一个功能不散在两个以上的目录。
