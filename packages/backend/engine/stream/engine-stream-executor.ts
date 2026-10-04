@@ -42,7 +42,7 @@ import {
   type ExecuteCoreMessageStreamOptions,
   type PendingMessageQueue,
 } from '@onething/backend/agent-loop'
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../../logging/logging.js'
 import { noteQuotaRunEnd } from '@onething/backend/quota/quota-engine-hooks'
 
 const log = getLogger('engine.stream')

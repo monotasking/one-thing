@@ -65,7 +65,7 @@ import {
 import { collabV3TurnsInRoom, resetCollabV3RoomAccount } from '@onething/backend/collab/actors/collab-actors-turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('collab.room')
 

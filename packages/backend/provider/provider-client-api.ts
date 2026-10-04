@@ -44,7 +44,7 @@ import {
 } from '@onething/backend/provider'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { createUtilityProvider, getAvailableProviders, type UtilityProviderRef } from '@onething/backend/provider-call'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'

@@ -56,7 +56,8 @@ import {
   toolInputSchemaOf,
 } from '@onething/backend/resource/resource-api'
 import { resourceSpecFromShell } from '@onething/backend/resource'
-import { getLogger, getRootLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger, setRuntimeLoggerRoot } from '@onething/backend/logging'
+import { getRootLogger } from '@onething/backend/logging/logging-configure'
 import type {
   ListResourcesResponse,
   ResourceOutcomeView,
@@ -416,6 +417,10 @@ export function createResourceMcpServer(
  * 落 stdout —— 在这条命令里那是协议信道。见文件头。
  */
 function installStderrLogSink(): void {
+  // 两只同名 `getLogger` 合成一只之后(D161),模块的 logger 跟着入口的当前 root 走;这条命令不调
+  // `configureLogging`,所以要自己把当前 root 指到挂着 stderr sink 的这只 root —— 否则什么都到不了 stderr。
+  // 合并之前,只有从 configure 拿 logger 的模块写得进这里;现在全部模块都写得进(D162)。
+  setRuntimeLoggerRoot(getRootLogger())
   getRootLogger().addSink({
     write: record => {
       try {

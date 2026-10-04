@@ -20,7 +20,7 @@
 
 import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@shared/events/stream-chunks'
 import { getStreamChannel } from './event.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('engine.stream.ui')
 

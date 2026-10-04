@@ -48,7 +48,7 @@ import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
 } from '@onething/backend/eval/eval-provider-adapter'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { getEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 

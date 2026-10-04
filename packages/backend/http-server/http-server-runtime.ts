@@ -341,7 +341,7 @@ export { SERVER_REDACTED_SECRET } from "@onething/backend/mcp";
 import { sanitizeSettingsForClient } from "../settings/settings-client-api-projection.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { VariablesStorePersistence } from '@onething/backend/variable/variable-store'
 import type { OnethingPromptStoreAdapters } from '@onething/backend/prompt/prompt-store'
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from './http-server-runtime-facade.js'

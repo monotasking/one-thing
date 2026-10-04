@@ -47,7 +47,7 @@ import {
 import type { ContextVariable } from "@onething/backend/variable";
 
 import { createVariableSnapshotBridge } from './variable-snapshot-bridge.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { CoreProviderAdapters } from '@onething/backend/variable/providers/variable-providers-core'
 
 const log = getLogger('variables')

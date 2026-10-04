@@ -14,7 +14,7 @@ import type {
   PermissionPolicyInput,
 } from './permission-asks.js'
 import type { MessageOrigin } from '@shared/ipc.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('permission')
 

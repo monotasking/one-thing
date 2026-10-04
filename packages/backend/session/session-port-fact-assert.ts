@@ -78,7 +78,7 @@ import { deepEqual, summarizeShadowDiff, appendSessionShadowLine } from './sessi
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './session-event-stats.js'
 import { hasLiveSessionProjection, peekSessionProjection } from './session-projection-cache.js'
 import { isSessionFreezeEnabled } from './session-freeze.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

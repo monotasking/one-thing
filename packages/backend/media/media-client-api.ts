@@ -46,7 +46,7 @@ import { getSession, getSessionsList } from '@onething/backend/session'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '@onething/backend/session'
 import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '@onething/backend/media/media-access'
 import { resolveMediaFileByName } from '@onething/backend/media/media-resolve-file'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 const log = getLogger('rpc.media')

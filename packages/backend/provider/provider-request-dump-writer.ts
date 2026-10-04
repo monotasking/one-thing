@@ -7,7 +7,7 @@ import type { OnethingProviderRequestDumpMode } from './provider-agent-turn.js'
 import {
   getOnethingLogDir,
 } from '@onething/backend/storage'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 
 const log = getLogger('providers.dump')

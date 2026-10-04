@@ -29,7 +29,7 @@
 import { isEphemeralContentPart } from './events/session-event-vocabulary.js'
 
 import { isSessionFreezeEnabled } from './session-freeze.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

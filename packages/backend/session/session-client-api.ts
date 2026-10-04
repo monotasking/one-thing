@@ -75,7 +75,7 @@ import {
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
 } from '@onething/backend/collab/collab-rooms'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/todo-plan/todo-plan-service'
 import {
   foldOutcomeToDetailedEnvelope,

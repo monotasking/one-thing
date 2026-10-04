@@ -28,7 +28,7 @@ import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/event'
 import { getAuthService } from '../auth/auth-process-service.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { QuotaService, type QuotaCredentialResolution, type QuotaServiceDeps } from './quota-service.js'
 
 export * from './quota-service.js'

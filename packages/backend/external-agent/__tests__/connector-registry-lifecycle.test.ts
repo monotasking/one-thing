@@ -34,12 +34,14 @@ vi.mock('@onething/backend/storage', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   getOnethingStorePath: () => '/tmp/onething-connector-registry-test',
 }))
-vi.mock('@onething/backend/logging/logging-configure', () => {
+vi.mock('@onething/backend/logging/logging-configure', () => ({ writeAppLog: vi.fn() }))
+vi.mock('@onething/backend/logging', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/logging')>()
   const logger = {
     ns: 'test', trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
     isLevelEnabled: () => false, child: () => logger,
   }
-  return { writeAppLog: vi.fn(), getLogger: () => logger, consolePort: () => logger }
+  return { ...actual, getLogger: () => logger, consolePort: () => logger }
 })
 vi.mock('../external-agent-host-tools.js', () => ({ resolveHostToolSurface: vi.fn() }))
 vi.mock('@onething/backend/acp/acp-host-mcp-port', () => ({ createAcpHostMcpPort: () => ({ port: 'host-mcp' }) }))

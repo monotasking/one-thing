@@ -7,7 +7,7 @@ import {
   loadAllSkills,
   loadProjectSkillsForDirectory,
 } from './skill-operations.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { OnethingSessionSkillsRuntimeAdapters } from '@onething/backend/skill/skill-session-runtime'
 
 const log = getLogger('skills')

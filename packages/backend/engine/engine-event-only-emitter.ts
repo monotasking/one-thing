@@ -30,7 +30,7 @@ import { getEventBus, getStreamChannel } from '@onething/backend/event'
 import { claimDeltaStamp } from '@onething/backend/event/event-delta-stamp'
 import { writeSessionEvent } from '@onething/backend/session'
 import { currentSessionRunId } from '@onething/backend/session'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { JsonObject } from '@shared/json'
 
 /**

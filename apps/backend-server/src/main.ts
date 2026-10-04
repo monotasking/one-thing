@@ -15,7 +15,8 @@ import {
   writeHttpDiscovery,
 } from '@onething/backend/http-server'
 import { configureHostLocalTrust } from '@onething/backend/http-server'
-import { getAppLogPath, getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
+import { getAppLogPath } from '@onething/backend/logging/logging-configure'
 import { warnOnForeignCoreForEventsRead } from '@onething/backend/session'
 import { randomBytes } from 'node:crypto'
 

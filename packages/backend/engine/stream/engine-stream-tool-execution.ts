@@ -27,7 +27,7 @@ import {
 import { toJsonValue, type JsonValue } from '@shared/json'
 import { runToolkitToolDirectly } from '@onething/backend/toolkit/toolkit-wiring'
 import { pushSessionToolProgress } from '@onething/backend/event/event-tool-progress-stream'
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging'
 import type { ToolMetadataUpdate } from '@onething/backend/toolkit/toolkit-execution-types'

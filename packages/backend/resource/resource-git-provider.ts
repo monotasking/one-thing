@@ -84,7 +84,7 @@ import type {
 } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
 import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { DirOutsideSandboxError, resolveReadable } from './resource-path-guard.js'
 
 const log = getLogger('resource.git')

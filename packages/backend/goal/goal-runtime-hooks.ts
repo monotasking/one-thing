@@ -22,7 +22,7 @@ import { kickGoalRunIfIdle } from "./goal-kick.js";
 import { GoalRetryScheduler } from './goal-retry-scheduler.js'
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('goals')
 

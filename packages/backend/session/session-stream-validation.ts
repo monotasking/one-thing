@@ -20,7 +20,7 @@ import { formatSessionValidationResult, validateSessionStateConsistency } from '
 import type { SessionManager } from './session-manager.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.validation')
 

@@ -30,7 +30,7 @@ import * as store from "@onething/backend/session";
 import { getGoal, goalLimits } from "./goal-manager.js";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('goals')
 

@@ -65,7 +65,7 @@ import {
   isSessionShadowEnabled,
 } from './session-event-stats.js'
 
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

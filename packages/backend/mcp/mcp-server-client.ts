@@ -23,7 +23,7 @@ import {
 } from '@onething/backend/mcp/mcp-client'
 import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import { notifyMCPCapabilitiesChanged } from '@onething/backend/mcp/mcp-capabilities-changed'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging'
 

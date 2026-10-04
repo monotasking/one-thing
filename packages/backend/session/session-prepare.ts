@@ -52,7 +52,7 @@ export interface SessionPreparePorts {
   isEnabled(sessionId: string): boolean
 }
 
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

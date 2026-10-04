@@ -18,7 +18,7 @@ import type {
   ACPSettings,
   AcpSessionState,
 } from '@shared/contracts/acp'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { installAcpStateBroadcaster, type AcpStateSource } from './acp-events.js'
 import type { AcpAgentRosterEntry, AcpRegistryRefreshOptions } from './acp-registry.js'
 import { HostMcpBridge } from './acp-host-mcp-bridge.js'

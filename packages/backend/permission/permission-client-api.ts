@@ -33,7 +33,7 @@ import {
   getOnethingPendingPermissionsForIpc,
 } from '@onething/backend/permission'
 import type { PermissionRoutes } from '@shared/ipc/permissions.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingPermissionSessionIpcLogger } from '@onething/backend/permission/permission-session-presentation'

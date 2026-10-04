@@ -37,7 +37,7 @@
 
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types'
 import type { SessionLogEventRecord } from '@shared/session/events/types'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { getEventBus } from '@onething/backend/event'
 import { registerSessionEventObserver } from './session-event-writer.js'
 

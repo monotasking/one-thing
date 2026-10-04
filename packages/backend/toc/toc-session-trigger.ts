@@ -13,7 +13,7 @@ import { collectGoalFileChanges } from "@onething/backend/goal/goal-file-change-
 import { recordTocTurn } from "./toc-recorder.js";
 import { sessionReads } from "@onething/backend/session";
 import type { Trigger, TriggerContext } from "@onething/backend/agent-loop";
-import { getLogger } from '../logging/logging-configure.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('engine.triggers')
 

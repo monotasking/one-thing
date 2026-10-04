@@ -60,7 +60,7 @@ import {
 } from '@onething/backend/collab/actors/collab-actors-turn-context'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { getCurrentBackendInstance, getStreamEngineSafe } from '@onething/backend/backend-current.js'
 
 const log = getLogger('collab.actors.mind')

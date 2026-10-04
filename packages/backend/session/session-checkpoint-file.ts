@@ -67,7 +67,7 @@ import {
   getSessionEventsLogPath,
   getSessionProjectionCheckpointPath,
 } from './session-event-log.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.checkpoint')
 

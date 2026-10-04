@@ -28,7 +28,7 @@ import {
   resolveSessionSpaceOAuthAuth,
 } from '@onething/backend/credentials'
 import { resolveSessionSpaceDefaultSelection, getSessionSettings } from '@onething/backend/session'
-import { consolePort, getLogger } from '../logging/logging-configure.js'
+import { consolePort, getLogger } from '../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 
 const log = getLogger('engine.stream')

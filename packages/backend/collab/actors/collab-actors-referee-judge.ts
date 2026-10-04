@@ -41,7 +41,7 @@ import * as store from '@onething/backend/session'
 import { billCollabPlanUsage } from '@onething/backend/usage/usage-bill-side-line'
 import { collabUserPromptFields } from '../collab-user-identity.js'
 import type { CollabRefereeJudgePort, CollabRefereeJudgeRequest } from '@onething/backend/collab/actors/collab-referee-actor'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { BuildCollabRefereeJudgePromptOptions } from '@onething/backend/collab/actors/collab-actors-referee-rules'
 
 const log = getLogger('collab.referee')

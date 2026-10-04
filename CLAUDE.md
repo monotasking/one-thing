@@ -307,14 +307,16 @@ Notes:
     is Electron-free and sits in the same directory next to the `getLogger` facade
     (`logging.ts`); `logging-configure.ts` assembles it: **`configureLogging()` is the single wiring point** (idempotent — the
     desktop's embedded HTTP face never double-configures), and product code only ever
-    calls `getLogger('engine.stream')`. The entry `@onething/backend/logging` hands out the deferred
-    `getLogger`, the kernel names (`Logger` / `LogRecord` / `LoggerRoot` / sinks / `toLogger` / `getCoreLogger` / …),
-    `consolePort` and the provider request dump (深层引用收口 2026-10-04, D155–D156); **the wiring
-    functions and configure's own `getLogger` still come from the deep key `@onething/backend/logging/logging-configure`**
-    — re-exporting them from the entry would drag configure and the storage layer into the search Worker, and
-    configure's `getLogger` is a *different function* from the entry's (bound to configure's root, captured by
-    `collectLogRecordsForTests`, vs. following the swappable current root, captured by `captureRuntimeLogs`).
-    Whether to merge the two is an open behaviour ruling. `msg` is a fixed short sentence; variables go in
+    calls `getLogger('engine.stream')` — from the entry `@onething/backend/logging`, which hands out the one
+    deferred `getLogger` (it follows the swappable current root; `configureLogging()` points that root at configure's),
+    the kernel names (`Logger` / `LogRecord` / `LoggerRoot` / sinks / `toLogger` / `getCoreLogger` / …), `consolePort`
+    and the provider request dump. Until 2026-10-04 configure had a *second, different* `getLogger` bound to its own
+    root; the two were merged (D160–D163 — records written before `configureLogging` still never reach the jsonl,
+    exactly as before, pinned in `logging-configure.test.ts`). **Only the wiring API still comes from the deep key
+    `@onething/backend/logging/logging-configure`** (`configureLogging` / `shutdownAppLogging` / `configureAppLoggingHost` /
+    `getAppLogPath` / `getRootLogger` / `writeAppLog` / `collectLogRecordsForTests`) plus `logging-diagnostics`'s
+    `applyDiagnosticsMode`: re-exporting them from the entry drags configure and the storage layer into the search
+    Worker (D164). `msg` is a fixed short sentence; variables go in
     `fields` (`log.info('stream finished', { sessionId, ms })`), errors go in `err`.
   - **Files are JSONL**: `<store>/log/app.jsonl` (desktop + CLI) / `server.jsonl`
     (standalone server), one `LogRecord` per line, rotated + gzipped by `JsonlFileSink`

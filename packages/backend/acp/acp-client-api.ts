@@ -45,7 +45,7 @@ import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp
 import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionAccess } from '@onething/backend/session'

@@ -62,7 +62,7 @@ import {
 } from '@shared/session/projection/reducer'
 import type { SessionMeta } from '@shared/ipc.js'
 import { getSessionsList, updateSessionsIndexMetaForCommands } from './session-store.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { getSessionEventsLogPath } from './session-event-log.js'
 import { sessionProjectionOptions } from './session-projection-blobs.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './session-projection-cache.js'

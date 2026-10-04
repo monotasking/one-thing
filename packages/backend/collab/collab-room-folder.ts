@@ -22,7 +22,7 @@ import * as store from '@onething/backend/session'
 import {
   getOnethingStorePath,
 } from '@onething/backend/storage'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('collab.room')
 

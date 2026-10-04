@@ -72,7 +72,7 @@ import {
   createEvalsModelCaller,
   resolveEvalsCredentials,
 } from '@onething/backend/eval/eval-provider-adapter'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
 import { analyzeIncidentInBackground } from './eval-client-api-workbench.js'
 import { getEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'

@@ -56,7 +56,7 @@ import type { MusicMoments } from './music-moments.js'
 import type { EventBus } from '@onething/backend/event/event-session-bus'
 
 import { SESSION_COMMAND_TYPES, SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { OnethingRadioConductorOptions } from '@onething/backend/music/music-radio-conductor'
 
 const log = getLogger('music.radio')

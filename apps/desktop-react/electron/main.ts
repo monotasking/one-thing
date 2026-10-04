@@ -52,7 +52,7 @@ import {
 import { removeHttpDiscovery } from '@onething/backend/http-server'
 import { initializeUserSchedulerTasks } from '@onething/backend/scheduler/scheduler-user-task-service'
 import { registerACPPermissionBridge } from '@onething/backend/acp/acp-permission-bridge'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { installAppMenu } from './app-menu-install.js'
 import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
@@ -588,11 +588,12 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
  *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
  *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。
  *  · `loadDevServer` 的 `session.clearCache()` —— 窗口自己的 session,与后端无关;
- *    它失败时那句 `getLogger('shell.boot').warn` 也安全:根 logger 在模块求值时
- *    就存在(只挂内存环),`configureLogging` 之前的记录留在环里
- *    (`backend/logging/logging-configure.ts` 的判词)。**代价**:落在装配之前的那几条
+ *    它失败时那句 `getLogger('shell.boot').warn` 也安全:入口的 logger 在模块求值时
+ *    就能用(当前 root 是只挂内存环的兜底 root),`configureLogging` 之前的记录留在环里
+ *    (`backend/logging/logging.ts` 的判词)。**代价**:落在装配之前的那几条
  *    只进环、不进 `shell.jsonl`(文件 sink 是 `configureLogging` 才挂上的)——
- *    崩溃现场 `dumpRecentLogRecords()` 仍然捞得到,见文件末留账③。
+ *    `dumpRuntimeLogRecords()` 仍然捞得到(两只 getLogger 合并之前是 configure 的
+ *    `dumpRecentLogRecords()`,D161),见文件末留账③。
  *  · `installAppMenu` / `FRAMELESS_ON_MAC` —— 本来就在装配之前(前者是
  *    `whenReady` 第一句,后者是模块级常量),这一批没有改变它们的处境。
  *

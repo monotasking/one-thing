@@ -69,7 +69,7 @@ import {
   getSpaceSettings,
 } from '@onething/backend/settings'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import { modelsRouter } from '@shared/ipc/providers.js'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'

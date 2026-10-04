@@ -149,7 +149,8 @@ import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent/e
 import { killTrackedDetachedChildren } from '@onething/backend/tool/tool-bash-executor'
 import { killAllTerminals } from '@onething/backend/terminal/terminal-service'
 import type { SessionHistoryBuilder } from '@onething/backend/session'
-import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
+import { configureLogging, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/logging/logging-configure'
 import {
   BackendAlreadyAssembledError,
   BackendNotAssembledError,

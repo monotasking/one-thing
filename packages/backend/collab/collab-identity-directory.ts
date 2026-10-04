@@ -25,7 +25,7 @@
 import { collabIdentityFromAgent, collabUserIdentity, type CollabIdentity } from './collab-identity.js'
 import { listAgents } from '@onething/backend/agent/agent-store-access'
 import { resolveUserIdentity } from './collab-user-identity.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('collab.identity')
 

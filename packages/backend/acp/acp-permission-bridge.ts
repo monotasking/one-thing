@@ -10,7 +10,7 @@ import type {
   ACPPermissionRequestContext,
 } from '@onething/backend/acp'
 import type { Authorizer } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { createAcpAuthBridge, type AcpAuthBridgeDeps } from './acp-auth-bridge.js'
 import { createAcpElicitationBridge, type AcpElicitationBridgeDeps } from './acp-elicitation-bridge.js'
 import { createAcpFsBridge } from './acp-fs-bridge.js'

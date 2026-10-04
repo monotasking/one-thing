@@ -89,7 +89,7 @@ import {
   probePluginNpmAvailability,
 } from '@onething/backend/plugin/plugin-npm-process'
 import { getPluginFootprint } from '@onething/backend/plugin/plugin-disk-loader'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { requestSessionOwner, sessionAccess } from '@onething/backend/session'
 import type { ConsoleLikePort } from '@onething/backend/logging'

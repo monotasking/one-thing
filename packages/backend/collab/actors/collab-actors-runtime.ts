@@ -185,7 +185,7 @@ import { createCollabEngineWorkerPort } from './collab-actors-worker-mind-port.j
 import { migrateCollabToV3 } from './collab-actors-migrate.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('collab.runtime')
 

@@ -76,7 +76,7 @@ import {
 import { invalidateProviderCache } from '@onething/backend/provider'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { getGatewayHost } from '@onething/backend/gateway/gateway-lifecycle-port'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { broadcastSettingsChanged } from '@onething/backend/settings/settings-events'
 import {
   applyHostNetworkProxySettings,

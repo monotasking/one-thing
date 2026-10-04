@@ -67,7 +67,7 @@ import {
 import { getPersistedSettings, savePersistedSettings } from '@onething/backend/settings'
 import { getProviderInfo } from '@onething/backend/provider'
 import { providerDialFieldsOf } from './credentials-provider-rules.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('providers')
 

@@ -74,7 +74,7 @@ import type {
 } from '@onething/backend/collab/actors/collab-actors-worker-child'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { CollabActorAuthorization } from './collab-actors-execution-authorization.js'
 
 const log = getLogger('collab.actors.mind')

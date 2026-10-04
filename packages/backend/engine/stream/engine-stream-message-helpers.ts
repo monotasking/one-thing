@@ -43,7 +43,7 @@ import {
 import { findAgent } from "@onething/backend/agent/agent-store-access";
 import { resolveUserIdentity } from "@onething/backend/collab/collab-user-identity";
 import * as store from "@onething/backend/session";
-import { getLogger } from '../../logging/logging-configure.js'
+import { getLogger } from '../../logging/logging.js'
 import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/session'
 
 const log = getLogger('engine.history')

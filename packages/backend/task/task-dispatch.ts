@@ -67,7 +67,7 @@ import { taskMessageSource } from '../agent-loop/agent-loop.js'
 import { deliverInternalMessage } from '@onething/backend/plugin/plugin-session-messenger'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { fixedExecutionContext } from '../session/session.js'
 

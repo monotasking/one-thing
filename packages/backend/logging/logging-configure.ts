@@ -1,6 +1,5 @@
 import {
   ConsoleSink,
-  createLogger,
   LoggerRoot,
   MemoryRingSink,
   type LogRecord,
@@ -14,8 +13,8 @@ import {
   ensureDir,
   getOnethingLogDir,
 } from '@onething/backend/storage/storage'
-// 唯一一处引自家入口(D126 的例外,D156):`setRuntimeLoggerRoot` 的实现留在入口里,搬进兄弟文件会让检索 Worker 变大。
-import { setRuntimeLoggerRoot } from './logging.js'
+// 唯一一处引自家入口(D126 的例外,D156):取 logger 的实现留在入口里,搬进兄弟文件会让检索 Worker 变大。
+import { getLogger, getRuntimeLoggerRoot, setRuntimeLoggerRoot } from './logging.js'
 import { JsonlFileSink } from './logging-jsonl-file-sink.js'
 import { LEGACY_CONSOLE_NS, LegacyConsoleSink } from './logging-legacy-console-sink.js'
 import { installProcessCrashHooks, type ProcessCrashHooks, type UncaughtExceptionMode, type ProcessCrashHooksOptions } from './logging-crash-hooks.js'
@@ -29,9 +28,7 @@ export { installProcessCrashHooks } from './logging-crash-hooks.js'
 export { LogDirJanitor, LOG_DIR_POLICY, LOG_JANITOR_INTERVAL_MS } from './logging-janitor.js'
 export { RollingFileLogger } from './logging-rolling-file-logger.js'
 export { composeLevelSpecWithLegacyAliases, resolveLegacyDebugAliases } from './logging-legacy-debug-env.js'
-// P3'a-3:`consolePort` 是纯适配器(`logging-console-port.ts`,也经入口交出)。这里原样再导出,
-// 好让 `import { consolePort, getLogger } from '…/logging-configure'` 的调用点一处拿齐 ——
-// 那里的 `getLogger` 是本文件自己那一只,与入口的同名函数不是同一个(入口文件头、决策记录 D155)。
+// P3'a-3:`consolePort` 是纯适配器(`logging-console-port.ts`,也经入口交出)。
 export { consolePort } from './logging-console-port.js'
 export type { ConsoleLikePort } from './logging-console-port.js'
 export type { LegacyDebugAliasSpec } from './logging-legacy-debug-env.js'
@@ -104,8 +101,9 @@ export function resolveLevelSpec(explicit?: string): string {
 const memoryRing = new MemoryRingSink(MEMORY_RING_SIZE)
 
 /**
- * 根 logger 在模块求值时就存在(只挂内存环),所以**任何时刻** `getLogger()`
- * 都能用 —— configure 之前的记录留在环里,不会丢也不会打到别处。
+ * 本文件装的那只 root。模块求值时就存在(只挂内存环);`configureLogging()` 第一句把入口的当前 root 指到它,
+ * 从此入口的 `getLogger()` 写进这里的 sink(文件、回显、宿主额外给的)。接线之前,入口的 logger 写进入口自己的
+ * 兜底环,不进这里 —— 两边在接线之前的记录今天(2026-10-04 实测)都不落文件,合并之后照旧(D161)。
  * 导入本模块**不产生任何副作用**(不建目录、不劫持 console),那是 configure 的事。
  */
 const loggerRootOptions: LoggerRootOptions = {
@@ -128,12 +126,12 @@ export function getRootLogger(): LoggerRoot {
   return root
 }
 
-/** 产品代码唯一需要的东西。 */
-export function getLogger(ns: string): Logger {
-  return createLogger(root, ns)
-}
+// 两只同名 `getLogger` 合成一只(D160 / D161):本文件不再有自己的实现。这里转交的就是入口那**同一个函数**,
+// 只留给动态 import 本模块再取 `getLogger` 的几只测试;产品代码一律从入口拿。本文件里的
+// `getLogger('process')` / `getLogger('logging')` 与句柄的 `getLogger` 用的也是它。
+export { getLogger }
 
-/** 崩溃现场:最近 400 条结构化记录。 */
+/** 崩溃现场:最近 400 条结构化记录(接线之后经入口 logger 写的;接线之前的在入口的兜底环里)。 */
 export function dumpRecentLogRecords(): LogRecord[] {
   return memoryRing.dump()
 }
@@ -390,6 +388,10 @@ export function collectLogRecordsForTests(spec = 'trace'): {
 } {
   const records: LogRecord[] = []
   const previousSpec = root.levelSpec
+  // 合并之后(D161)模块的 logger 跟着入口的当前 root 走;没接线的测试里当前 root 是兜底那只,
+  // 所以收集期间把它指到本文件的 root,`stop()` 放回原样 —— 收到的记录与合并之前逐条相同。
+  const previousRuntimeRoot = getRuntimeLoggerRoot()
+  setRuntimeLoggerRoot(root)
   root.setLevelSpec(spec)
   const remove = root.addSink({ write: record => { records.push(record) } })
   return {
@@ -398,6 +400,7 @@ export function collectLogRecordsForTests(spec = 'trace'): {
     stop: () => {
       remove()
       root.setLevelSpec(previousSpec)
+      setRuntimeLoggerRoot(previousRuntimeRoot)
     },
   }
 }

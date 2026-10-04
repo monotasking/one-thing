@@ -1892,3 +1892,17 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 **读数**:`entry:gate` 2250 → **2019**(logging 254 → 203,非测试 219 → 175 全是停下的那 175 处;agent-loop 207 → 27,非测试 0),其余各行不变;`cycle:gate` 0(值边 4723 → 4722);`layer:gate` 0;`name:gate` 0;检索 Worker 1275007 字节不变。
 
 **验收**(改前 `s27-before` = 6b0de2f97 + 别的会话的未提交改动 / 改后 `s27-after`):三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build` 成功,三份 `search-worker.cjs` 字节逐字不变(桌面 1275007、server / CLI 1276543),`acp-mcp-bridge` 不变,主进程包略小(桌面 11311439 → 11310810、CLI 11366660 → 11366032);全量 vitest 失败集合**逐行相同**(仓根 21 条、壳侧 1 条,都是改前就有的);快照与 golden sha 不变;persistence 176 条、side-effect + lifecycle 24 条全绿;shadow-battery 场景表逐行相同(appendFailures 8 与改前同);hydration 两店各 217 / 0;`gate:acp` 109 条 ok;`gate:search-index` 72 ok / 3 FAIL 与改前同一组(⑤c / ⑤d);`gate:web-shell` / `gate:client` 绿;cycle / layer / name / entry / client-api / feature-map / boundary / transport / provider(105 对)/ log / assembly / session / native 全绿;`provider:drill` 直接跑绿;CLI 与 server 能起。
+
+### 深层引用收口第二批落地记录:两只同名 `getLogger` 合成一只,logging 收口(2026-10-04,未提交)
+
+**做了什么**(协调者 D160 选 (a);决策 D161–D164):
+
+1. **先实测今天**(临时 store,`configureLogging` 前后各写几条):接线之前经两只 `getLogger` 写的记录**都不落文件**,接线之后两只写出的记录形状相同。所以合并不改落文件的结果。
+2. **合并**:入口那只(延迟绑定当前 root)是唯一实现;`logging-configure.ts` 删掉自己的实现,转交入口的同一个函数;`collectLogRecordsForTests` 收集期间把当前 root 指到 configure 的 root。`logging-configure.test.ts` 新增一条钉子:接线前写的 info / warn 不在文件里,接线后那条逐字为 `{level, ns, msg, fields, src}`。
+3. **读者**:175 处里 163 处改走入口(165 条整条换说明符、4 条拆成两条 import);7 只测试替身改打入口(`importOriginal` 展开,只换 `getLogger` / `consolePort`),2 只只换 `writeAppLog` 的留在 configure;`http-server-request-log.test.ts` setup 补两行(当前 root 指到挂 sink 的 root)。`onething mcp` 自己把当前 root 指到挂 stderr sink 的 root —— 从前走入口那半模块的记录现在也写得进 stderr(D162,一处可见变化,待确认)。
+4. **停下的**:12 处非测试仍引 `logging-configure`(10)/ `logging-diagnostics`(2),全是接线 API,经入口转交会把存储层拖进检索 Worker(+4218 字节;标 pure 之后仍 +2001),两把深键不删(D164)。
+5. 别的会话的五只 `chat-*.ts`:零改动。
+
+**读数**:`entry:gate` 2019 → **1850**(logging 203 → 34:非测试 175 → 12,测试 28 → 22);`cycle:gate` 0(值边 4722 → 4725);layer / name 0;检索 Worker 1275007 字节不变。
+
+**验收**(改前 = `s27-after`,与提交 5c2ee482f 同一份代码 / 改后 `s28-after`):三套 tsc 零错;四份 bundle 与 `server:build` / `build:cli` / `web:build` 成功,三份 `search-worker.cjs` 字节逐字不变(1275007 / 1276543 / 1276543),主进程包略小;全量 vitest 失败集合逐行相同(仓根 21、壳侧 1,仓根多一条新钉子且绿);快照与 golden sha 不变;persistence 176、side-effect + lifecycle 24 全绿;shadow-battery 场景表相同(appendFailures 8 与改前同);hydration 两店各 217 / 0;`gate:acp` 109 ok;`gate:search-index` 72 ok / 3 FAIL 同一组;`gate:web-shell` / `gate:client` 绿;全部结构门绿;`provider:drill` 绿;CLI 与 server 能起。

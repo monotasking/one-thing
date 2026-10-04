@@ -33,7 +33,7 @@ import { collabSessionRoomMembers } from './collab-members.js'
 import { generateChatResponse, getEffectiveProviderConfig, resolveProviderAuth } from '@onething/backend/provider-call'
 import { collabUserPromptFields } from './collab-user-identity.js'
 import type { CollabDigestStore } from '@onething/backend/collab/collab-digest-store'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { fixedExecutionContext } from '../session/session.js'

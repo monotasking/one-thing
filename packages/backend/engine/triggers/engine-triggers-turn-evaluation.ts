@@ -1,7 +1,7 @@
 import { getSettings } from '@onething/backend/settings'
 import type { Trigger, TriggerContext } from "@onething/backend/agent-loop";
 import { getSkillsForSession } from "@onething/backend/skill/skill-session-cache";
-import { getLogger } from '../../logging/logging-configure.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('engine.triggers')
 

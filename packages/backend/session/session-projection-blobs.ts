@@ -19,7 +19,7 @@ import type { ProjectionIssue, ProjectionMaterializeOptions } from '@shared/sess
 import type { BlobRef } from '@shared/session/events/types'
 import { readSessionBlob } from './session-blob-store.js'
 import { bumpSessionShadowStats } from './session-event-stats.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

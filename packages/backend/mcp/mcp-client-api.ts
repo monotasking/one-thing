@@ -81,7 +81,7 @@ import {
   sanitizeMCPServerStatesForClient,
 } from './mcp-secrets.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingMCPIpcLogger } from '@onething/backend/mcp/mcp-ipc-operations'

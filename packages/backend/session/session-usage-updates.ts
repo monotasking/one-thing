@@ -5,7 +5,7 @@ import { deepEqual } from './session-shadow.js'
 import { appendSessionShadowLine, summarizeShadowDiff } from './session-shadow.js'
 import { bumpSessionShadowStats } from './session-event-stats.js'
 import { peekSessionAccount } from './session-projection-cache.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.usage')
 

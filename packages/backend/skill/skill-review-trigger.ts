@@ -20,7 +20,7 @@ import { Outcome as OutcomeOps } from '@onething/backend/toolkit/toolkit-tool-pr
 import { toJsonObject, type JsonObject } from '@shared/json.js'
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'
 import { createAppToolRunner } from '@onething/backend/toolkit/toolkit-runner-factory'
-import { consolePort, getLogger } from '../logging/logging-configure.js'
+import { consolePort, getLogger } from '../logging/logging.js'
 import type { CoreSkillReviewVisibleSkill } from './skill-review-core.js'
 import type { OnethingSkillReviewAdapters } from './skill-review-runner.js'
 

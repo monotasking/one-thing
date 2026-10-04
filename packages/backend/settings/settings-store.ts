@@ -13,7 +13,7 @@ import {
 } from './settings-ai-compose.js'
 import { getOnethingSettingsPath } from '@onething/backend/storage'
 import { applyDiagnosticsMode } from '@onething/backend/logging/logging-diagnostics'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type {
   OnethingSettingsRepository,

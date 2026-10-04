@@ -32,7 +32,7 @@ import {
   listPrompts,
   updatePrompt,
 } from '@onething/backend/prompt/prompt-store-bound'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingPromptIpcLogger } from '@onething/backend/prompt/prompt-ipc-operations'
 import { defineClientApi } from '@onething/backend/http-server/http-server-dispatch-table.js'

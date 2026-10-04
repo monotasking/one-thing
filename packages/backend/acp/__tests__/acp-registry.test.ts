@@ -13,13 +13,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ACPSettings, AcpAgentDetect, AcpAgentManifest } from '@shared/contracts/acp'
 
 const warns = vi.hoisted(() => [] as Array<{ msg: string; fields?: unknown }>)
-vi.mock('@onething/backend/logging/logging-configure', () => {
+vi.mock('@onething/backend/logging', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/logging')>()
   const logger = {
     ns: 'test', trace() {}, debug() {}, info() {}, error() {}, fatal() {},
     warn(msg: string, fields?: unknown) { warns.push({ msg, fields }) },
     isLevelEnabled: () => false, child: () => logger,
   }
-  return { getLogger: () => logger, consolePort: () => logger }
+  return { ...actual, getLogger: () => logger, consolePort: () => logger }
 })
 
 const { AcpAgentRegistry } = await import('../acp-registry.js')

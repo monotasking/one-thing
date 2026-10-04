@@ -27,7 +27,7 @@ import { onethingBaseBuiltinProviders, resolveProviderApiKey } from "@onething/b
 import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
 import { resolveSpaceProviderCredentialForSpace } from "@onething/backend/credentials";
 import { captureUsageRecorder } from "../usage/usage-recorder.js";
-import { getLogger } from "@onething/backend/logging/logging-configure";
+import { getLogger } from "@onething/backend/logging";
 
 const log = getLogger("evals.provider");
 

@@ -3,7 +3,6 @@
 # 只许降:任一功能高于这里的数、或出现这里没有的功能,`bun run entry:gate` 红。
 # 降了之后跑 `node scripts/feature-entry-gate.mjs --write-baseline` 收紧。
 294 session
-203 logging
 188 toolkit
 97 tool
 93 agent
@@ -18,6 +17,7 @@
 40 auth
 35 mcp
 34 provider-call
+34 logging
 32 variable
 31 note
 28 usage

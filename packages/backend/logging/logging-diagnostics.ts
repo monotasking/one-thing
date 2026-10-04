@@ -1,5 +1,6 @@
 import { setOnethingProviderRequestDumpEnabled } from './logging-provider-request-dump.js'
-import { getLogger, resolveLevelSpec, setLogLevelSpec } from './logging-configure.js'
+import { getLogger } from './logging.js'
+import { resolveLevelSpec, setLogLevelSpec } from './logging-configure.js'
 
 /**
  * 「诊断模式」(拍板 E②):设置页**一个**开关 = 全域 debug + provider 请求正文

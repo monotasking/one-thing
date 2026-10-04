@@ -84,7 +84,7 @@ import { takeExternalAgentSteering } from '@onething/backend/external-agent/exte
 import { defaultAgent, findAgent } from '@onething/backend/agent/agent-store-bound'
 import { createGoalContinuationTrigger } from './goal/goal-continuation-trigger.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
-import { getLogger } from './logging/logging-configure.js'
+import { getLogger } from './logging/logging.js'
 
 export type { BindableStreamSender, StreamEngine, StreamSender, StreamSenderPayload }
 

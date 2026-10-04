@@ -48,7 +48,7 @@
  * 未声明 = 这台进程没有本机可信的 HTTP 面(单元测试、CLI daemon、非回环 server),
  * files 域走的就是迁移前那条夹紧的路。
  */
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('server.host-trust')
 

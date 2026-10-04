@@ -58,7 +58,7 @@ import { deriveRetainedContextSize, repairSessionTimelineMetadata } from './sess
 import { sanitizeSessionOnStartup } from './session-message-shapes.js'
 import { assertContentPartIsCarriable } from './session-content-part-guard.js'
 import { assertPortFactIsFolded } from './session-port-fact-assert.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { HybridSessionStorageDriverOptions } from './session-storage-driver.js'
 import type {
   OnethingSessionRepository,

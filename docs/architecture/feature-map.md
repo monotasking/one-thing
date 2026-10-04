@@ -17,7 +17,7 @@
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
 | headless | 不带界面的后端(CLI 守护进程用的那一份装配配方;它引 backend.ts 是装配方引装配配方,没有功能引它)。 | (shared) 3 · (包根) 1 · (包根槽位) 1 · acp 1 · collab 1 · event 1 · permission 1 · resource 1 · session 1 · settings 1 · toolkit 1 | 21(值 11 / 类型 10) | 3 |
-| (包根) | 包根其余文件:装配配方 backend.ts / backend-assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 backend-current.ts / backend-types.d.ts)。 | collab 8 · acp 5 · gateway 5 · mcp 5 · skill 5 · toolkit 5 · agent 4 · logging 4 · permission 4 · (包根槽位) 3 · auth 3 · eval 3 · external-agent 3 · goal 3 · pet 3 · plugin 3 · voice 3 · engine 2 · event 2 · http-server 2 · media 2 · music 2 · note 2 · session 2 · settings 2 · storage 2 · terminal 2 · todo-plan 2 · tool 2 · usage 2 · (shared) 1 · agent-loop 1 · credentials 1 · dialog 1 · feature-registry 1 · file 1 · interaction 1 · memory 1 · practice 1 · project-dir 1 · provider-call 1 · quota 1 · resource 1 · scheduler 1 · scratchpad 1 · search 1 · shell 1 · task 1 · toc 1 · variable 1 | — | 4 |
+| (包根) | 包根其余文件:装配配方 backend.ts / backend-assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 backend-current.ts / backend-types.d.ts)。 | collab 8 · acp 5 · gateway 5 · logging 5 · mcp 5 · skill 5 · toolkit 5 · agent 4 · permission 4 · (包根槽位) 3 · auth 3 · eval 3 · external-agent 3 · goal 3 · pet 3 · plugin 3 · voice 3 · engine 2 · event 2 · http-server 2 · media 2 · music 2 · note 2 · session 2 · settings 2 · storage 2 · terminal 2 · todo-plan 2 · tool 2 · usage 2 · (shared) 1 · agent-loop 1 · credentials 1 · dialog 1 · feature-registry 1 · file 1 · interaction 1 · memory 1 · practice 1 · project-dir 1 · provider-call 1 · quota 1 · resource 1 · scheduler 1 · scratchpad 1 · search 1 · shell 1 · task 1 · toc 1 · variable 1 | — | 4 |
 | (开给界面的操作) | 各功能的第二个入口 <功能>/<功能>-client-api*.ts(决策 D26):名册里的域行、只有 HTTP 服务器用的投影与投递件。按「它被谁引、它引谁」判:只有 http-server 与同功能的 client-api 引它(client-api:gate 保证),它引任何功能的入口 —— 所以它与 http-server 同站 L4,不与它所属的功能同层;它引自己功能的文件算 L4 → 低层,不是违例。 | (shared) 84 · http-server 52 · (包根槽位) 29 · session 28 · logging 25 · settings 15 · plugin 14 · eval 10 · mcp 7 · media 7 · permission 7 · space 6 · acp 5 · voice 5 · auth 4 · collab 4 · event 4 · gateway 4 · music 4 · provider 4 · scheduler 4 · shell 4 · skill 4 · todo-plan 4 · agent-loop 3 · file 3 · goal 3 · note 3 · prompt 3 · provider-call 3 · storage 3 · tool 3 · toolkit 3 · agent 2 · interaction 2 · markdown 2 · project-dir 2 · usage 2 · variable 2 · credentials 1 · dialog 1 · engine 1 · practice 1 · resource 1 · scratchpad 1 · search 1 · terminal 1 · theme 1 | — | 56 |
 | http-server | 界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。 | (开给界面的操作) 54 · (包根槽位) 9 · (shared) 7 · mcp 4 · plugin 3 · session 3 · agent 2 · event 2 · file 2 · logging 2 · permission 2 · project-dir 2 · settings 2 · storage 2 · terminal 2 · tool 2 · (包根) 1 · acp 1 · auth 1 · collab 1 · feature-registry 1 · markdown 1 · network 1 · note 1 · prompt 1 · scratchpad 1 · search 1 · shell 1 · todo-plan 1 · toolkit 1 · variable 1 | — | 15 |
 
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- | --- |
 | collab | 多 agent 协作:房间、成员、发言调度与裁判。 | session 33 · (shared) 30 · agent 28 · logging 20 · event 15 · storage 15 · (包根槽位) 6 · toolkit 5 · agent-loop 3 · settings 3 · usage 3 · provider-call 2 · external-agent 1 · interaction 1 · permission 1 · variable 1 | 368(值 270 / 类型 98) | 115 |
 | engine | 对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。 | agent-loop 18 · session 15 · logging 14 · (shared) 13 · event 9 · provider 9 · agent 8 · settings 8 · collab 6 · media 5 · toolkit 5 · plugin 4 · prompt 4 · provider-call 4 · skill 4 · mcp 3 · usage 3 · credentials 2 · eval 2 · project-dir 2 · quota 2 · goal 1 · interaction 1 · permission 1 · scratchpad 1 · storage 1 · todo-plan 1 · variable 1 | 26(值 10 / 类型 16) | 27 |
-| gateway | 微信 / Telegram 渠道网关:收发消息与远程审批。 | (shared) 6 · agent-loop 6 · logging 4 · session 3 · plugin 2 · storage 2 · engine 1 | 38(值 16 / 类型 22) | 29 |
+| gateway | 微信 / Telegram 渠道网关:收发消息与远程审批。 | (shared) 6 · agent-loop 6 · logging 5 · session 3 · plugin 2 · storage 2 · engine 1 | 38(值 16 / 类型 22) | 29 |
 
 ## L2 能力
 
@@ -54,7 +54,7 @@
 | media | 媒体库:图片与文件的入库、导出与生图结果。 | storage 4 · session 2 · (shared) 1 · (包根槽位) 1 · logging 1 | 92(值 34 / 类型 58) | 11 |
 | music | 音乐与电台。 | (shared) 5 · logging 5 · settings 5 · voice 5 · (包根槽位) 4 · permission 2 · session 2 · storage 2 · agent 1 · lifecycle 1 · tool 1 | 90(值 39 / 类型 51) | 33 |
 | note | 笔记领域:笔记库、Obsidian 与普通目录两种驱动、笔记根目录。 | settings 3 · (包根槽位) 2 · logging 2 · storage 2 | 70(值 37 / 类型 33) | 20 |
-| permission | 权限:询问、授权记录与策略,以及策略的执行面(授权记录 + 无人值守 + 会话读面)与工具可读可写的沙箱根(2026-10-04 从 tool/access-control/ 并入)。 | (shared) 9 · logging 2 · session 2 · storage 2 · agent-loop 1 · file 1 · note 1 · settings 1 · todo-plan 1 · tool 1 | 93(值 55 / 类型 38) | 15 |
+| permission | 权限:询问、授权记录与策略,以及策略的执行面(授权记录 + 无人值守 + 会话读面)与工具可读可写的沙箱根(2026-10-04 从 tool/access-control/ 并入)。 | (shared) 9 · logging 3 · session 2 · storage 2 · agent-loop 1 · file 1 · note 1 · settings 1 · todo-plan 1 · tool 1 | 93(值 55 / 类型 38) | 15 |
 | pet | 宠物系统:自述、名册、时刻与账本。 | logging 4 · (shared) 2 · settings 2 · agent-loop 1 · music 1 · provider-call 1 · usage 1 · voice 1 | 57(值 30 / 类型 27) | 17 |
 | plugin | 插件系统:契约、加载、管理器、注入给插件的 api 与安装分发。 | logging 28 · (shared) 11 · storage 7 · agent-loop 3 · session 3 · settings 3 · theme 3 · toolkit 3 · (包根槽位) 2 · resource 2 · credentials 1 · deeplink 1 · event 1 · lifecycle 1 · permission 1 · provider 1 · provider-call 1 · scheduler 1 · search 1 · skill 1 · usage 1 | 103(值 48 / 类型 55) | 78 |
 | project-dir | 项目目录的名册、持久化与提示词片段。 | space 4 · logging 3 · session 1 · storage 1 | 41(值 24 / 类型 17) | 8 |
@@ -87,7 +87,7 @@
 | event | 事件总线与流通道的工厂,以及读当前实例的访问器。 | logging 5 · (shared) 1 · (包根槽位) 1 | 7(值 7 / 类型 0) | 16 |
 | practice | 练习系统的题目、账本与汇总。 | — | 32(值 8 / 类型 24) | 7 |
 | prompt | 系统提示词的拼装:片段、来源与「目录在上、正文在下」的生成器。 | agent-loop 3 · logging 2 · (shared) 1 · provider 1 · reference 1 · storage 1 | 86(值 40 / 类型 46) | 13 |
-| provider | 各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。 | agent-loop 13 · (shared) 12 · logging 11 · network 5 · storage 1 | 189(值 118 / 类型 71) | 192 |
+| provider | 各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。 | agent-loop 13 · (shared) 12 · logging 10 · network 5 · storage 1 | 189(值 118 / 类型 71) | 192 |
 | theme | 主题的加载、解析与生成 CSS 变量。 | logging 4 · storage 2 | 27(值 12 / 类型 15) | 13 |
 | tool | 工具用到的纯逻辑模块:沙箱、bash 执行、编辑引擎、差异块、输出截断等。 | (shared) 3 · storage 3 | 217(值 134 / 类型 83) | 35 |
 

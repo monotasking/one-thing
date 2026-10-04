@@ -138,7 +138,7 @@ import {
 } from '@onething/backend/session'
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
 import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/agent/agent-store-access'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { deleteSessionAiTodo } from '@onething/backend/todo-plan/todo-plan-service'
 import { workdirGateway } from '@onething/backend/variable/variable-gateways'

@@ -56,7 +56,7 @@ import { pluginMessageSource } from '../agent-loop/agent-loop.js'
 import { modelRegistry } from '@onething/backend/settings'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('plugins.sessions')
 

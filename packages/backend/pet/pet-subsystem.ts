@@ -72,7 +72,7 @@ import {
 import type { EventBus } from '@onething/backend/event/event-session-bus'
 import { audioDurationMs } from '@onething/backend/voice/voice-audio-duration'
 import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/music/music-host-voice'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { PetLedgerStore } from './pet-ledger-store.js'
 import { petVoiceStyle } from './pet-voice.js'
 

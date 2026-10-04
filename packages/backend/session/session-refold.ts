@@ -71,7 +71,7 @@ import {
 import { sessionProjectionOptions } from './session-projection-blobs.js'
 import { appendSessionShadowLine, deepEqual, summarizeShadowDiff } from './session-shadow.js'
 import { recordRefoldedProjectionCheckpoint } from './session-checkpoint.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.refold')
 

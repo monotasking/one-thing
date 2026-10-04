@@ -43,7 +43,7 @@ import type {
 import { getShellHost, hasShellHost } from '@onething/backend/shell/shell-host-ports'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/interaction-no-human'
 import { resolvePermissionMessageAnchor } from '@onething/backend/permission/permission-message-anchor'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('acp.elicitation')
 

@@ -60,7 +60,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 import { sanitizeRendererOrigin } from '@onething/backend/agent-loop'
 import { getEventBus } from '@onething/backend/event'
 import { getStreamEngine } from '@onething/backend/backend-current.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/session'

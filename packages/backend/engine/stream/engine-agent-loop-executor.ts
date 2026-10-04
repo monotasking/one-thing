@@ -85,7 +85,7 @@ import {
 } from "./engine-stream-session-event-recorder.js";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../../logging/logging.js'
 import type { JsonObject } from '@shared/json'
 import type { AppSettings } from '@shared/ipc.js'
 import type { StreamProviderConfig } from './engine-stream-processor.js'

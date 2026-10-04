@@ -200,3 +200,46 @@ describe('diagnostics mode', () => {
     vi.doUnmock('@onething/backend/provider')
   })
 })
+
+/**
+ * D161 钉子:两只同名 `getLogger` 合成一只之后,落进文件的结果与合并之前逐字一样。
+ *
+ * 合并之前(2026-10-04 实测,临时 store 跑一遍):接线(`configureLogging`)之前,无论经 configure 那只
+ * 还是经入口那只写的记录,**都不落文件** —— 前者留在 configure 的 400 条内存环里,后者留在入口的 200 条兜底环里;
+ * 文件里第一条永远是 `logging configured`。接线之后两只写的记录形状相同:`{ time, level, ns, msg, fields, src }`。
+ * 合并之后这两点都不许变:接线前写的 info / warn 不能出现在文件里,接线后写的那条字段与从前相同。
+ */
+describe('records written before configureLogging (D161)', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    mocks.logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-logging-pre-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(mocks.logDir, { recursive: true, force: true })
+  })
+
+  it('keeps pre-wiring records out of the jsonl and writes post-wiring records unchanged', async () => {
+    const entry = await import('../logging.js')
+    const logging = await import('../logging-configure.js')
+    // 只剩一只:configure 转交的就是入口那个函数。
+    expect(logging.getLogger).toBe(entry.getLogger)
+    entry.getLogger('probe.pre').info('pre-configure info', { k: 1 })
+    entry.getLogger('probe.pre').warn('pre-configure warn', { k: 2 })
+    expect(entry.dumpRuntimeLogRecords().map(record => record.msg)).toEqual(['pre-configure info', 'pre-configure warn'])
+
+    const handle = logging.configureLogging({ janitor: false, legacyConsole: false, crashHooks: false, src: 'server' })
+    entry.getLogger('probe.post').info('post-configure info', { k: 3 })
+    handle.flushSync()
+
+    const records = readRecords().map(({ time, ...rest }) => {
+      expect(typeof time).toBe('number')
+      return rest
+    })
+    expect(records.map(record => record.msg)).toEqual(['logging configured', 'post-configure info'])
+    expect(records[1]).toEqual({ level: 'info', ns: 'probe.post', msg: 'post-configure info', fields: { k: 3 }, src: 'server' })
+
+    await logging.shutdownAppLogging()
+    logging.resetLoggingForTests()
+  })
+})

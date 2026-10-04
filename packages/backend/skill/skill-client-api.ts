@@ -43,7 +43,7 @@ import {
 import { getShellHost } from '@onething/backend/shell/shell-host-ports'
 import { skillsRouter, type SkillsRoutes } from '@shared/ipc/skills.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import {
   createSkill,
   deleteSkill,

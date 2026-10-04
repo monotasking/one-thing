@@ -70,7 +70,7 @@ import {
 import { rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { sessionProjectionOptions } from './session-projection-blobs.js'
 import { getLiveSessionProjection, hasLiveSessionProjection } from './session-projection-cache.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions')
 

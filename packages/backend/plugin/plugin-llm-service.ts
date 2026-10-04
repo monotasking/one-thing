@@ -38,7 +38,7 @@ import { resolveProviderApiKey, resolveUtilityModel } from '@onething/backend/pr
 import { type ProviderConfigWithKey } from '@onething/backend/engine'
 import { generateChatResponse } from '@onething/backend/provider-call'
 import { captureUsageRecorder } from '@onething/backend/usage/usage-recorder'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 
 const log = getLogger('plugins')

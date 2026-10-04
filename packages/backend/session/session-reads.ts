@@ -30,7 +30,7 @@ import type { SessionProjectionCache } from './session-projection-cache.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { isSessionFreezeEnabled } from './session-freeze.js'
 import type { sessionProjectionOptions } from './session-projection-blobs.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { readLegacySessionMessages } from './session-legacy-reads.js'
 
 const log = getLogger('sessions')

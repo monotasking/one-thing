@@ -1,5 +1,5 @@
 import type { PresentedResource } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 /**
  * **呈现的入口**(09-18,正本 `apps/desktop-react/docs/composer-open-dir-mentions-2026-09.md` §2.5.0)。

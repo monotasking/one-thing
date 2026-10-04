@@ -21,7 +21,7 @@ import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/b
 import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import { isValidSpaceId } from '@onething/backend/space/space-types'
 import { requestSessionOwner, sessionAccess, type SessionOwnershipRecord } from './session-access.js'

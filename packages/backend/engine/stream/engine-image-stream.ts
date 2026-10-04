@@ -16,7 +16,7 @@ import {
   executeOnethingImageGenerationStream,
 } from '@onething/backend/media'
 import { recordSynthesizedAssistantText } from '@onething/backend/session'
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../../logging/logging.js'
 import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/backend/media/media-image-generation'
 
 const log = getLogger('engine.stream.image')

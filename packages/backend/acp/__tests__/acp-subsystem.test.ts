@@ -9,7 +9,7 @@
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ACPSettings, AcpSessionState } from '@shared/contracts/acp'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { AcpAgentRegistry } from '../acp-registry.js'
 import { AcpSubsystem, type AcpSubsystemDeps } from '../acp-subsystem.js'
 

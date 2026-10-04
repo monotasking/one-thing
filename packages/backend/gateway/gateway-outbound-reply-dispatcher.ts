@@ -6,7 +6,7 @@ import { sendIMReply } from '@onething/backend/plugin'
 import { writeAppLog } from '@onething/backend/logging/logging-configure'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('channel.outbound')
 

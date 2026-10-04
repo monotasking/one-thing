@@ -52,7 +52,8 @@ const oauthLog = vi.hoisted(() => ({
   log: vi.fn(),
 }))
 
-vi.mock('@onething/backend/logging/logging-configure', () => ({
+vi.mock('@onething/backend/logging', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/logging')>(),
   getLogger: () => oauthLog,
   consolePort: () => oauthLog,
 }))

@@ -24,7 +24,7 @@ import { getOnethingStorePath } from '@onething/backend/storage'
 import { safely } from './session-command-events.js'
 import { isSessionTranslationEnabled, sessionSurface } from './session-event-surface.js'
 import { writeSessionEvent } from './session-event-writer.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

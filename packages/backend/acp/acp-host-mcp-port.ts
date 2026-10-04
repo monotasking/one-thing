@@ -12,7 +12,7 @@
 import { ACPManager } from '@onething/backend/acp'
 import type { AcpHostMcpPort } from '@onething/backend/external-agent'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { HostMcpBridge } from './acp-host-mcp-bridge.js'
 
 const log = getLogger('app.acp.host-mcp')

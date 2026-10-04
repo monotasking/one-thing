@@ -45,7 +45,7 @@ import { getPluginAppVersion } from '@onething/backend/plugin/plugin-app-version
 import { clearPluginRuntimeHealth } from '@onething/backend/plugin/plugin-health'
 import type { PluginDefinition, PluginEntry, PluginSettings } from './plugin-types.js'
 import logMonitorPlugin, { logMonitorManifest } from './builtin/plugin-builtin-log-monitor.js'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging'
 

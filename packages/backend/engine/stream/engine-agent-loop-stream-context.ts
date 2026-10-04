@@ -38,7 +38,7 @@ import { resolvePromptReferences } from '@onething/backend/prompt/prompt-stored-
 import type { IPCEmitter } from '../../agent-loop/agent-loop.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingAgentLoopLogger } from '../engine-agent-loop-stream-runtime.js'
 import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/toolkit/toolkit-execution-types'

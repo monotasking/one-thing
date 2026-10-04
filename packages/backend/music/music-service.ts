@@ -19,7 +19,7 @@ import { broadcastVoiceHostMessage } from '@onething/backend/voice/voice-host-po
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/settings'
 import { getSettings, saveSettings } from '@onething/backend/settings'
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { MusicSetupServiceOptions } from '@onething/backend/music/music-setup-service'
 import type { NowPlayingWatcherOptions } from '@onething/backend/music/music-now-playing'
 

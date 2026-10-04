@@ -18,7 +18,7 @@ import { dispatchRpc } from './http-server-dispatch-table.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './http-server-runtime.js'
 import type { RpcDispatchPorts } from './http-server-dispatch-table.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { PRE_IDENTITY_ROWS } from './http-server-client-api-roster.js'
 
 /**

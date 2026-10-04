@@ -16,12 +16,14 @@
  *
  * 依赖:只依赖 `@shared/logging` 与 node 内建;`logging-console-port.ts` 对各功能的引用全是类型。
  *
- * 没有交出的:`logging-configure.ts` 的接线函数(`configureLogging` / `writeAppLog` / `getAppLogPath` / …)与它自己那只
- * `getLogger`、`logging-diagnostics.ts` 的诊断模式开关,今天仍经深层键给宿主与使用者 —— 经入口交出会把 configure
- * 连同存储层一起拖进检索 Worker;而且 configure 的 `getLogger` 与本文件这只同名不同物:那一只直接绑在 configure
- * 自己的 root 上(接线之前写进它的 400 条内存环,测试用 `collectLogRecordsForTests` 收),这一只跟着当前 root 走
- * (接线之前写进下面的 200 条兜底环,测试用 `captureRuntimeLogs` 收)。两只合不合并是一条行为裁定,
- * 2026-10-04 列给用户,没有动(决策记录 D155)。
+ * 全进程只有这一只 `getLogger`:2026-10-04 之前 `logging-configure.ts` 另有一只同名不同物的(直接绑在 configure
+ * 自己的 root 上),D160 / D161 合成了这一只 —— configure 转交的就是这个函数。接线之前写的记录留在下面的
+ * 200 条兜底环里、不落文件(合并之前两只都不落,`logging-configure.test.ts` 钉着)。
+ *
+ * 没有交出的:`logging-configure.ts` 的接线 API(`configureLogging` / `shutdownAppLogging` / `writeAppLog` /
+ * `getAppLogPath` / `getRootLogger` / `configureAppLoggingHost` / `collectLogRecordsForTests` / …)与
+ * `logging-diagnostics.ts` 的诊断模式开关,仍经深层键给宿主与装配配方 —— 经入口交出会把 configure 连同存储层
+ * 一起拖进检索 Worker(D155 / D164)。
  *
  * 取 logger 那一段的实现留在入口里而没有搬进兄弟文件:搬出去会让检索 Worker 的产物多 13 个字节
  * (打包器给每只贡献代码的文件留一行路径注释),而 Worker 字节不许变大(D156)。

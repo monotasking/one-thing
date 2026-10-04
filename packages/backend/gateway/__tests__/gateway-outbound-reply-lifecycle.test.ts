@@ -14,6 +14,9 @@ import { OutboundReplyDispatcher } from '../gateway-outbound-reply-dispatcher.js
 vi.mock('@onething/backend/logging/logging-configure', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/logging/logging-configure')>(),
   writeAppLog: vi.fn(),
+}))
+vi.mock('@onething/backend/logging', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/logging')>(),
   getLogger: () => ({ error: vi.fn() }),
 }))
 

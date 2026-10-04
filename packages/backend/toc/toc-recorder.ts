@@ -28,7 +28,7 @@ import {
 } from '@onething/backend/storage'
 import { billTocUsage } from "../usage/usage-bill-side-line.js";
 import { getSettings } from "@onething/backend/settings";
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 
 const tocLog = getLogger('sessions.toc')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

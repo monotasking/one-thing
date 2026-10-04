@@ -12,7 +12,7 @@
  */
 import type { AcpSessionState } from '@shared/contracts/acp'
 import type { SessionTitleSource } from '@shared/ipc/chat.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import type { AcpSessionStateProjection } from './acp-subsystem.js'
 
 const log = getLogger('app.acp.title')

@@ -98,7 +98,7 @@ import {
   nextSessionRunPartIndex,
   setSessionRunRequestIndex,
 } from '@onething/backend/session'
-import { getLogger } from '../../logging/logging-configure.js'
+import { getLogger } from '../../logging/logging.js'
 
 const log = getLogger('sessions.events')
 

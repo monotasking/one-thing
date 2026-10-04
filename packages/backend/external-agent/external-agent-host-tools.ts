@@ -40,7 +40,7 @@ import { resolveAgentProfileForSession } from '../agent/agent-profile-for-sessio
 import { collabVenueOf } from '@onething/backend/session'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { findExternalAgentTurn } from './external-agent-turn-lookup.js'
 
 const log = getLogger('external-agents')

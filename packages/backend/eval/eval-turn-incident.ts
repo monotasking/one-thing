@@ -15,7 +15,7 @@
 import { getSkillsForSession } from '../skill/skill-session-cache.js'
 import { sessionReads } from '@onething/backend/session'
 import * as store from '@onething/backend/session'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('evals.incident')
 

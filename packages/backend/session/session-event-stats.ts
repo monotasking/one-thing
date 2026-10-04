@@ -18,7 +18,7 @@ import path from 'node:path'
 import {
   getOnethingLogDir,
 } from '@onething/backend/storage'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('sessions.events')
 

@@ -55,8 +55,8 @@ vi.mock('../../settings/settings-store.js', () => settings)
 
 /** `rpc.acp` 那一只 logger 的 warn:选项失败那一行要带 agent 的原话与错误码。 */
 const acpLogWarn = vi.hoisted(() => vi.fn())
-vi.mock('@onething/backend/logging/logging-configure', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/backend/logging/logging-configure')>()
+vi.mock('@onething/backend/logging', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend/logging')>()
   return {
     ...actual,
     getLogger: (ns: string) => {

@@ -70,7 +70,7 @@ import {
   type SettingsEvent,
   type SettingsEventBroadcaster,
 } from '@onething/backend/settings/settings-events'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 import { getNotesSubsystemSafe } from '@onething/backend/note/note-subsystem'
 import type { NoteVault } from '@onething/backend/note'
 import { createAppSearchProvidersAdapters } from './search-adapters.js'

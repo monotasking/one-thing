@@ -37,7 +37,7 @@ import { buildContextCompactContent } from '@shared/engine/context-compact-conte
 import { buildHistoryMessages } from './stream/engine-stream-message-helpers.js'
 import { collectCompactFileOperations } from '../agent-loop/agent-loop.js'
 import { modelRegistry } from '@onething/backend/settings'
-import { getLogger } from '../logging/logging-configure.js'
+import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('engine.compact')
 

@@ -47,7 +47,7 @@ import { getOnethingCachePath } from "@onething/backend/storage/storage-paths";
 import { getSettings, getSpaceSettings, saveSettings } from "./settings-store.js";
 import { createRequiredAppFetch } from "./settings-proxy-fetch.js";
 import { DEFAULT_SPACE_ID } from "@onething/backend/space/space-types";
-import { consolePort, getLogger } from '@onething/backend/logging/logging-configure'
+import { consolePort, getLogger } from '@onething/backend/logging'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { AppSettings } from '@shared/ipc.js'
 

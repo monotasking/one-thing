@@ -8,13 +8,14 @@
 import { once } from 'node:events'
 import type { Server } from 'node:http'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { LogRecord } from '@onething/backend/logging'
+import { getRuntimeLoggerRoot, setRuntimeLoggerRoot, type LogRecord } from '@onething/backend/logging'
 import { getRootLogger } from '@onething/backend/logging/logging-configure'
 import { createOnethingHttpServer, sessionIdFromPath } from '../http-server-routes.js'
 
 const servers: Server[] = []
 let records: LogRecord[] = []
 let removeSink: (() => void) | undefined
+let previousRuntimeRoot: ReturnType<typeof getRuntimeLoggerRoot> | undefined
 
 function stubRuntime(): never {
   return {
@@ -41,6 +42,10 @@ async function listen(): Promise<string> {
 
 beforeEach(() => {
   records = []
+  // 两只同名 getLogger 合并之后(D161),模块的 logger 跟着入口的当前 root 走;这只测试不调 configureLogging,
+  // 所以把当前 root 指到挂 sink 的 configure root(合并之前 http 面拿的 configure 那只 logger 本来就写在这里)。
+  previousRuntimeRoot = getRuntimeLoggerRoot()
+  setRuntimeLoggerRoot(getRootLogger())
   removeSink = getRootLogger().addSink({
     write: (record) => {
       if (record.ns === 'server.http') records.push(record)
@@ -51,6 +56,7 @@ beforeEach(() => {
 afterEach(async () => {
   removeSink?.()
   removeSink = undefined
+  setRuntimeLoggerRoot(previousRuntimeRoot)
   await Promise.all(servers.map(server => new Promise<void>((resolve) => { server.close(() => resolve()) })))
   servers.length = 0
 })

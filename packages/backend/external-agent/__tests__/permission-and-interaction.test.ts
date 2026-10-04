@@ -81,6 +81,9 @@ const noopLogger = () => {
 }
 vi.mock('@onething/backend/logging/logging-configure', () => ({
   writeAppLog: vi.fn(),
+}))
+vi.mock('@onething/backend/logging', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/logging')>(),
   getLogger: () => noopLogger(),
   consolePort: () => ({ log: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn() }),
 }))

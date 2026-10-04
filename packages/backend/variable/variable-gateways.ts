@@ -44,7 +44,7 @@ import { getRadioStore } from '@onething/backend/music/music-radio'
 import { getNoteSystemRegistry } from '../note/note-subsystem.js'
 import type { AgentSelfStateGateway } from '@onething/backend/variable/providers/variable-providers-agent-self'
 import { agentPresenceSource } from './variable-agent-presence.js'
-import { getLogger } from '@onething/backend/logging/logging-configure'
+import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('variables')
 

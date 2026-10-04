@@ -9,7 +9,7 @@ import { coreToolCallSnapshot, CoreToolOrchestrator, planToolCallArtifactRemoval
 import { sessionReads } from '@onething/backend/session'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
-import { consolePort, getLogger } from '../../logging/logging-configure.js'
+import { consolePort, getLogger } from '../../logging/logging.js'
 
 const log = getLogger('toolkit.runner')
 
