@@ -129,6 +129,12 @@
 | D119 | 10-04 | `name:gate` 加第四条 | 新增判据 N2「文件名以 `fileNameOwners` 里的词打头」,与 N1 / N3 / N4 同为零基线硬闸、没有豁免表;改完读数 0(1464 只文件)。门的自检加一条(功能名、子目录、包根、条目名、条目下一层、只认「词」或「词-」各一例) | 做得到 0,所以直接硬闸 | 我 |
 | D120 | 10-04 | 包名与应用名(N7) | `packages/client`(`@onething/client`)→ `packages/backend-client`(`@onething/backend-client`):「连后端用的 SDK」;`apps/server`(`@onething/server-host`)→ `apps/backend-server`(`@onething/backend-server`):「不带界面、单独跑的后端进程」;`packages/shared`(`@shared`)保持 —— 「后端与界面共用的契约」在 monorepo 里约定俗成,且别名遍布全仓,改名收益小于成本;`apps/cli` 保持(第④步改走 HTTP、后台进程退役后它就是名副其实的命令行)。**10-04 已落地**:两个目录与包名照此改,全仓说明符、workspaces、`tsconfig.node.json`、eslint、构建脚本、边界检查器(判据改叫 `checkClientImportsOnlySharedAndBackendClient`)与现行文档同步,两份锁文件只有这两个 workspace 条目变;产物 `dist/server/` 与 `server:*` 脚本名不改(对外约定),带日期的历史文档不改(落地记录见 `server-client-split-2026-10.md` §6「包名与应用名」) | R2:名字要回答「这是什么」;`client` 回答不了「谁的客户端」,`server` 回答的是技术 | 我 |
 
+| D121 | 10-04 | 越层引用(48 条 / 26 对)怎么清零 | 按三种病分别治:**低层按能力枚举** → 能力自己登记、低层读表(CLAUDE.md 09-02 立法);**叶子住错层** → 搬到它依赖的那一层;**层次表判错** → 改表。六单施工,违例 48 → 0,然后 `layer:gate` 改零基线硬闸;生产行为零变化 | 模拟器与真门同一份值引用图,逐数对上 | Fable |
+| D122 | 10-04 | 辅助模型调用(造服务商实例、跑一次对话、鉴权解析)放哪 | 新建 L2 功能 `provider-call/`(「去调用服务商」,与 `provider/`「服务商是谁、怎么说」并排);撤回 F4「留 5 条例外」 | 它的依赖全是 L2(settings / credentials / auth / acp / external-agent / media);放 engine(L3)会让 toc / skill / pet / plugin 四个 L2 功能越层;读 `backend-current` 槽是藏依赖 | Fable |
+| D123 | 10-04 | 会话种类的小判据(venue / dm / visibility 与 7 个 `COLLAB_*_SOURCE`)住哪 | 下沉 `session/`;场子门表留 collab | 7 个 L2 功能拿它们当叶子用;它们说的是「这条会话是什么种类」 | Fable |
+| D124 | 10-04 | 协作四只工具住哪 | 搬进 `collab/tools/`,`registerCollabTools(catalog, tier)` 由 `backend.ts` 在建工具目录后调用;三档工具 id 集合逐字不变 | toolkit(L2)按能力枚举协作工具是 09-02 立法禁止的枚举点 | Fable |
+| D125 | 10-04 | 层次表三处改判 | `headless` L3 → L4(它是装配配方);`space` L1 → L2(读写用户 store);`trigger` 删除(六只并进 skill) | 层次表判错比改代码更该先改 | Fable |
+| D126 | 10-04 | 功能内文件引自家入口(全仓 127 只) | 施工规矩加一条:**功能内部只引兄弟文件,不引自家入口** | 模拟器抓出一个由此造成的真环(permission 入口交出 policy 后与两只兄弟成 5 只环) | Fable |
 ## 可读性判据(D20)
 
 - **R1 找得到**:问「X 在哪」,看 `packages/backend/` 的目录列表就能答出一个目录;一个功能不散在两个以上的目录。
@@ -174,7 +180,7 @@
 <https://feature-sliced.design/docs/reference/public-api>、<https://feature-sliced.design/docs/guides/issues/cross-imports>、
 <https://github.com/sverweij/dependency-cruiser/blob/main/doc/rules-reference.md>。
 
-由此产生决策 D23(层次)与 D24–D27,详见 `docs/design/feature-layers-and-provider-placement-2026-10.md`(Fable 的决策全文、放法表、模拟结果与层次表)。
+由此产生决策 D23(层次)与 D24–D27(之后 D121–D126 清零越层,见 `docs/design/layer-violations-to-zero-2026-10.md`),详见 `docs/design/feature-layers-and-provider-placement-2026-10.md`(Fable 的决策全文、放法表、模拟结果与层次表)。
 
 ## 剩下的路线(10-04 按 D20–D28 重排)
 
