@@ -7,7 +7,7 @@
  * ("this session has no room board"), which no pure test of the tool would show.
  *
  * R4b:旧 `app/collab/board-tool.ts`(一个 `Tool.define` 出来的 `BoardTool`)随
- * 旧树删除;同一条接线现在是 `app/toolkit/adapters.ts` 的 `boardAdapters()` +
+ * 旧树删除;同一条接线现在是 `collab/tools/collab-tool-adapters.ts` 的 `boardAdapters()` +
  * 目录里那只 `BoardTool`。钉的语义一格没变。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -64,8 +64,8 @@ vi.mock('../collab-board-store.js', () => ({
   },
 }))
 
-const { boardAdapters } = await import('@onething/backend/toolkit/toolkit-adapters')
-const { createBoardTool } = await import('@onething/backend/toolkit')
+const { boardAdapters } = await import('../tools/collab-tool-adapters.js')
+const { createBoardTool } = await import('../tools/collab-tool-board.js')
 const { Decision, ToolRunner } = await import('@onething/backend/toolkit/toolkit-tool-protocol')
 const { ZodValidator } = await import('@onething/backend/toolkit')
 

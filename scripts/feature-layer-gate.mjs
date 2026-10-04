@@ -11,22 +11,22 @@
 //   - 层次表 `docs/audit/feature-layers-2026-10.json`:每个功能一行 `{feature, layer, why}`;包根与 shared 按路径分进槽位行。
 //   - 在运行期值引用图上(口径见 `scripts/lib/backend-structure.mjs` 文件头,与 Fable 的模拟器一致)取跨行的边,
 //     来源行的层次低于目标行的层次 = 一条违例。同层的边不在这里判(入口无环门管)。
-//   - 基线 `docs/audit/layer-violation-baseline-2026-10.txt` 按「从 → 到」成对计数,每对**只许减**:
-//     某对高于基线、或出现基线里没有的对 → 红;低于基线 → 提示可收紧。
+//   - **零基线硬闸**(2026-10-04 越层清零第 6 单之后):违例 0 条 / 0 对,所以不再有基线文件 ——
+//     从前的 `docs/audit/layer-violation-baseline-2026-10.txt`(只减不增的成对计数)随之删掉。
+//     任何一条低层引高层的值边都直接红,没有「已知的越层边」可以容忍。
 //   - **层次表里没登记的功能 = 红**:新功能必须先定层次,再写代码。表里登记了但目录还不存在的(如 D25 的 credentials)只提示。
 //
 // 用法:
-//   node scripts/feature-layer-gate.mjs                  棘轮比对(package.json: layer:gate)
+//   node scripts/feature-layer-gate.mjs                  零基线硬闸(package.json: layer:gate)
 //   node scripts/feature-layer-gate.mjs --list           打每一对违例与其中的边(package.json: layer:check)
-//   node scripts/feature-layer-gate.mjs --write-baseline 收紧基线(只在真降之后)
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+//
+// 两条防假绿:跨功能值边少于下限(解析坏了)= 红;层次表里没登记的功能 = 红。
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  LAYER_TABLE, buildValueGraph, byCodeUnit, compareCounts, formatCountBaseline, layerViolations, loadLayerTable, parseCountBaseline, repoRoot,
+  LAYER_TABLE, buildValueGraph, byCodeUnit, layerViolations, loadLayerTable,
 } from './lib/backend-structure.mjs'
 
-const baselinePath = path.join(repoRoot, 'docs/audit/layer-violation-baseline-2026-10.txt')
 const MIN_CROSS_EDGES = 1000
 
 function main() {
@@ -61,40 +61,19 @@ function main() {
   if (registeredButAbsent.length > 0) console.log(`[layer-gate] 层次表里登记了、目录还不存在:${registeredButAbsent.join('、')}(只提示)`)
 
   if (args.includes('--write-baseline')) {
-    writeFileSync(baselinePath, formatCountBaseline([
-      'layer-violation ratchet baseline(决策 D23,docs/design/backend-structure-decisions-2026-10.md)',
-      `每行 \`<条数> <从> → <到>\`:运行期值引用图上,从低层功能引高层功能的边数(层次表 ${LAYER_TABLE})。`,
-      '只许降:任一对高于这里的数、或出现这里没有的对,`bun run layer:gate` 红。',
-      '降了之后跑 `node scripts/feature-layer-gate.mjs --write-baseline` 收紧。',
-    ], counts), 'utf8')
-    console.log(`[layer-gate] baseline written → ${path.relative(repoRoot, baselinePath)} (${total} edge(s) / ${violations.size} pair(s))`)
-    return
-  }
-  if (!existsSync(baselinePath)) {
-    console.error(`[layer-gate] 基线文件缺失:${path.relative(repoRoot, baselinePath)}`)
+    console.error('[layer-gate] 这道门是零基线硬闸,没有基线可写 —— 违例只能改代码消掉(搬家或装配时注入)。')
     process.exit(1)
   }
-  const baseline = parseCountBaseline(readFileSync(baselinePath, 'utf8'))
-  if (Object.keys(baseline).length === 0) {
-    console.error('[layer-gate] 基线解析为空 —— 格式坏了,不认这次结果')
-    process.exit(1)
-  }
-  const { regressions, improvements } = compareCounts(baseline, counts)
-  if (improvements.length > 0) {
-    const n = improvements.reduce((sum, item) => sum + (item.baseline - item.current), 0)
-    console.log(`[layer-gate] ${n} 条越层边消失了 —— 可以收紧基线(--write-baseline):`)
-    for (const item of improvements) console.log(`  - ${tag(item.key)}: ${item.baseline} → ${item.current}`)
-  }
-  if (regressions.length > 0) {
-    console.error(`[layer-gate] failed: ${regressions.length} 对功能的越层引用上升 —— 低层功能引了高层功能:`)
-    for (const item of regressions) {
-      console.error(`  + ${tag(item.key)}: ${item.baseline} → ${item.current}${item.isNew ? '(基线里没有这一对)' : ''}`)
-      for (const edge of violations.get(item.key).slice(0, 20)) console.error(`      ${edge}`)
+  if (total > 0) {
+    console.error(`[layer-gate] failed: ${total} 条越层引用 / ${violations.size} 对 —— 低层功能引了高层功能(零基线,一条都不许有):`)
+    for (const pair of Object.keys(counts).sort(byCodeUnit)) {
+      console.error(`  + ${tag(pair)}: ${counts[pair]}`)
+      for (const edge of violations.get(pair).slice(0, 20)) console.error(`      ${edge}`)
     }
-    console.error('  规矩:只许高层引低层。要么把这只文件搬到它依赖的层次去,要么把值引用改成装配时注入。')
+    console.error('  规矩:只许高层引低层。要么把这只文件搬到它依赖的层次去,要么把值引用改成装配时注入(能力自己登记、低层读表)。')
     process.exit(1)
   }
-  console.log(`[layer-gate] ok — ${total} known upward edge(s) in ${violations.size} pair(s) out of ${crossEdges} cross-feature value edges, ${table.rows.length} row(s) in the layer table, none new`)
+  console.log(`[layer-gate] ok — zero-baseline: 0 upward edges out of ${crossEdges} cross-feature value edges, ${table.rows.length} row(s) in the layer table`)
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()

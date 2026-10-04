@@ -12,7 +12,7 @@ import {
   resolveAgentProfile,
   type EffectiveAgentProfile,
 } from '@onething/backend/agent'
-import { isUserDmRoom } from '@onething/backend/collab'
+import { isUserDmRoom } from '@onething/backend/session'
 import type { ChatSession } from '@shared/ipc.js'
 import { getSession } from '@onething/backend/session'
 import { getSettings } from '@onething/backend/settings'

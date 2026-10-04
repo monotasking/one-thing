@@ -14,10 +14,7 @@
  * 正是这类 bug 的出处。
  */
 import { getSettings } from '@onething/backend/settings'
-import {
-  COLLAB_USER_DEFAULT_LABEL,
-  normalizeCollabUserHandle,
-} from '@onething/backend/collab'
+import { COLLAB_USER_DEFAULT_LABEL, normalizeCollabUserHandle } from './collab-user-handle.js'
 
 export interface CollabUserIdentity {
   /** 模型面与 UI 署名用的显示名。 */

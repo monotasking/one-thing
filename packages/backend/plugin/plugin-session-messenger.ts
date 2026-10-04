@@ -51,7 +51,7 @@ import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import type { EventBus } from '@onething/backend/event/event-session-bus'
 import type { StreamEngine } from '@onething/backend/engine'
-import { isCollabCoordinatorDrivenSession } from '@onething/backend/collab/collab-ingress'
+import { isCollabCoordinatorDrivenSession } from '@onething/backend/session'
 import { pluginMessageSource } from '../agent-loop/agent-loop.js'
 import { modelRegistry } from '@onething/backend/settings'
 

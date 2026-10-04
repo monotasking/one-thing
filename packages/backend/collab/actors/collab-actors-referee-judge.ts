@@ -27,7 +27,7 @@
  *    它只会让「为什么这次是他先说」变成一个答不出的问题。
  */
 import { getSettings } from '@onething/backend/settings'
-import { isAgentPairDmRoom, isUserDmRoom } from '@onething/backend/collab'
+import { isAgentPairDmRoom, isUserDmRoom } from '@onething/backend/session'
 import {
   buildCollabRefereeJudgePrompt,
   parseCollabRefereeVerdict,

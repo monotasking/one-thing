@@ -23,9 +23,9 @@
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
 import { makeEffect } from '@shared/toolkit/effects'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import type { CollabVenueTool } from '../../collab/collab-tool-surface.js'
+import type { CollabVenueTool } from './collab-tool-surface.js'
 import {
   COLLAB_SAY_REFUSED_EMPTY,
   COLLAB_SEND_MESSAGE_TOOL_NAME,
@@ -33,9 +33,9 @@ import {
   formatCollabDmReceipt,
   formatCollabSayReceipt,
   resolveCollabSendChannel,
-} from '../../collab/collab.js'
-import { defineInput, listZodIssues } from '../toolkit-contract.js'
-import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/toolkit-families-collab.js'
+} from '../collab-say.js'
+import { defineInput, listZodIssues } from '@onething/backend/toolkit'
+import { CollabTool, type CollabToolAdapters, type CollabScope } from './collab-tool-family.js'
 
 export interface SayToolResult {
   ok: boolean

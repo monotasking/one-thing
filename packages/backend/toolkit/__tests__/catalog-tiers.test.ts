@@ -18,6 +18,15 @@ import {
   FeatureToolRuntime,
   registerFeatureTools,
 } from '../toolkit-tier-catalogs.js'
+import { registerCollabTools } from '@onething/backend/collab'
+
+/**
+ * 越层清零 A1:协作四只由 collab 自己的 `registerCollabTools(catalog, tier)` 登记,装配里紧跟在
+ * `buildToolkitCatalog` 之后。三个 id 集合**一字不改**,改的只是「先登记再比」。
+ */
+const fullCatalog = () => { const c = createDesktopCatalog(); registerCollabTools(c, 'full'); return c }
+const headlessCatalog = () => { const c = createHeadlessCatalog(); registerCollabTools(c, 'headless'); return c }
+const readonlyCatalog = () => { const c = createReadonlyCatalog(); registerCollabTools(c, 'readonly'); return c }
 
 /**
  * 桌面档(full)。S6 起多一只 `search`(检索重建 §14.3:三档都给);
@@ -47,23 +56,44 @@ const READONLY_IDS = ['read', 'search', 'time', 'web_open', 'web_search'].sort()
 
 describe('三档目录的清单', () => {
   it('full', () => {
-    expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort()).toEqual(FULL_IDS)
+    expect(fullCatalog().all().map(tool => tool.spec.id).sort()).toEqual(FULL_IDS)
   })
 
   it('headless', () => {
-    expect(createHeadlessCatalog().all().map(tool => tool.spec.id).sort()).toEqual(HEADLESS_IDS)
+    expect(headlessCatalog().all().map(tool => tool.spec.id).sort()).toEqual(HEADLESS_IDS)
   })
 
   it('readonly', () => {
-    expect(createReadonlyCatalog().all().map(tool => tool.spec.id).sort()).toEqual(READONLY_IDS)
+    expect(readonlyCatalog().all().map(tool => tool.spec.id).sort()).toEqual(READONLY_IDS)
   })
 
   it('三档之间的包含关系与旧路一致(readonly ⊂ headless ⊂ full)', () => {
-    const full = new Set(createDesktopCatalog().all().map(tool => tool.spec.id))
-    const headless = createHeadlessCatalog().all().map(tool => tool.spec.id)
-    const readonly = createReadonlyCatalog().all().map(tool => tool.spec.id)
+    const full = new Set(fullCatalog().all().map(tool => tool.spec.id))
+    const headless = headlessCatalog().all().map(tool => tool.spec.id)
+    const readonly = readonlyCatalog().all().map(tool => tool.spec.id)
     for (const id of headless) expect(full.has(id)).toBe(true)
     for (const id of readonly) expect(headless).toContain(id)
+  })
+
+  /*
+   * 目录的插入顺序就是请求里 `tools[]` 的顺序。full 档协作四只本来就排在最后,逐字不变;
+   * headless 档的三只从 variable 与 time 之间移到了末尾(决策 D143)。这里把两档的顺序写死。
+   */
+  it('插入顺序:full 与从前逐字相同,headless 的协作三只排在末尾', () => {
+    expect(fullCatalog().all().map(tool => tool.spec.id)).toEqual([
+      'bash', 'edit', 'read', 'write', 'variable', 'practice', 'task', 'ask_user', 'time', 'search',
+      'web_search', 'web_open', 'goal', 'board', 'history', 'notebook', 'send_message',
+    ])
+    expect(headlessCatalog().all().map(tool => tool.spec.id)).toEqual([
+      'bash', 'edit', 'read', 'write', 'variable', 'time', 'search', 'web_search', 'web_open',
+      'board', 'history', 'send_message',
+    ])
+  })
+
+  it('registerCollabTools 幂等:同一本目录第二次登记什么都不加', () => {
+    const catalog = fullCatalog()
+    expect(registerCollabTools(catalog, 'full')).toEqual([])
+    expect(catalog.size).toBe(17)
   })
 })
 

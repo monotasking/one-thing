@@ -33,14 +33,14 @@ import {
   COLLAB_SAY_SOURCE,
   COLLAB_SEND_MESSAGE_LEGACY_TOOL_NAME,
   COLLAB_SEND_MESSAGE_TOOL_NAME,
-  buildCollabReplyToSnapshot,
   normalizeCollabSayContent,
   resolveCollabSayMentions,
   resolveCollabSayRoomSessionId,
-  stripCollabAgentHandles,
-  type CollabAgentLike,
-} from '@onething/backend/collab'
-import type { SayToolResult } from '@onething/backend/toolkit'
+} from './collab-say.js'
+import { buildCollabReplyToSnapshot } from './collab-reply-quote.js'
+import { stripCollabAgentHandles } from './collab-handles.js'
+import { type CollabAgentLike } from './collab-types.js'
+import type { SayToolResult } from './tools/collab-tool-send-message.js'
 import { registerRetiredAgentToolName } from '@onething/backend/agent-loop/agent-loop-primitives'
 import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
@@ -52,7 +52,7 @@ import { collabRoomMembers } from './collab-members.js'
 import { isRoomOverBudget } from './collab-budget.js'
 import { buildCollabIdentityDirectory } from './collab-identity-directory.js'
 import { resolveUserIdentity } from './collab-user-identity.js'
-import { collabLinkedRoomSessionId } from './collab-venue.js'
+import { collabLinkedRoomSessionId } from '@onething/backend/session'
 import {
   collabV3RoomPostPort,
   resolveCollabV3SpeakRoute,

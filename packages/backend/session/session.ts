@@ -454,3 +454,36 @@ export {
   runAuxiliaryModelRequest,
   type AuxiliaryModelInput,
 } from './session-auxiliary-model-checkpoint.js'
+
+// 会话种类的事实(越层清零 A2,2026-10-04 从 collab 下沉):这条会话是什么场子、这间房是不是私聊、
+// 我在这间房能看到什么时候为止、消息上的协作来源标记。它们问的全是会话记录上 `kind` / `room` /
+// `collab` / `source` 字段的含义,七个功能都要问;「哪个协作工具在哪个场子成立」不在这里,留在协作。
+export {
+  collabLinkedRoomSessionId,
+  collabVenueLinksRoom,
+  collabVenueOf,
+  collabVenueOfSession,
+  isCollabCoordinatorDrivenSession,
+  resolveCollabVenue,
+  type CollabVenue,
+  type CollabVenueSession,
+} from './session-venue.js'
+export {
+  isAgentPairDmRoom,
+  isUserDmRoom,
+  type CollabDmRoomLike,
+} from './session-dm-room.js'
+export {
+  collabRoomVisibleUntil,
+  isCollabMessageVisible,
+  type CollabRoomVisibilityLike,
+} from './session-room-visibility.js'
+export {
+  COLLAB_HARVEST_SOURCE,
+  COLLAB_MESSAGE_SOURCE,
+  COLLAB_PROJECTED_SYSTEM_SOURCES,
+  COLLAB_SAY_SOURCE,
+  COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
+  COLLAB_SYSTEM_SOURCE_TASK,
+  COLLAB_TURN_SOURCE,
+} from './session-message-source.js'

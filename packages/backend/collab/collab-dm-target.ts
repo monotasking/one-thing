@@ -11,14 +11,9 @@
  * agent 时,两个答案都成立,而 dm 发错人是不可撤销的。与既有的 agent 重名
  * 拒绝同款措辞——列出候选,让模型用精确写法再说一次(A1「绝不 default 冒充」)。
  */
-import {
-  collabIdentityAnswersTo,
-  collabUserIdentity,
-  formatCollabAgentHandle,
-  resolveCollabAgentHandle,
-  splitCollabHandleQuery,
-  type CollabAgentLike,
-} from '@onething/backend/collab'
+import { collabIdentityAnswersTo, collabUserIdentity } from './collab-identity.js'
+import { formatCollabAgentHandle, resolveCollabAgentHandle, splitCollabHandleQuery } from './collab-handles.js'
+import { type CollabAgentLike } from './collab-types.js'
 import { resolveUserIdentity } from './collab-user-identity.js'
 
 export type CollabDmTarget =

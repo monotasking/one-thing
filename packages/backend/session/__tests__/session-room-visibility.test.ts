@@ -8,7 +8,7 @@
  * 少给 = 它读不到自己当时在场时读过的话（让它记错自己的过去）。所以两边都钉。
  */
 import { describe, expect, it } from 'vitest'
-import { collabRoomVisibleUntil, isCollabMessageVisible } from '../collab-visibility.js'
+import { collabRoomVisibleUntil, isCollabMessageVisible } from '../session-room-visibility.js'
 
 const T = new Date(2026, 7, 1, 12, 0, 0).getTime()
 

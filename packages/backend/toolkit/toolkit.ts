@@ -20,6 +20,13 @@ export {
 } from './toolkit-contract.js'
 export type { ToolContract, ZodValidatorOptions } from './toolkit-contract.js'
 
+/*
+ * 写一只工具要的那几样协议件(越层清零 A1,2026-10-04):协作的四只工具搬回 collab 自己注册以后,
+ * 别的功能里的工具从入口拿基类、意图与目录,而不是钻进 `toolkit-tool-protocol` 这只内部文件。
+ */
+export { Catalog, Intent, Tool } from './toolkit-tool-protocol.js'
+export type { PlanContext, Preview, Result, RunContext, Scene, ToolSpec } from './toolkit-tool-protocol.js'
+
 export { ReadOnlyTool } from './families/toolkit-families-read-only.js'
 export {
   FileTool,
@@ -47,8 +54,6 @@ export type {
 } from './families/toolkit-families-process.js'
 
 export { NetworkTool } from './families/toolkit-families-network.js'
-export { CollabTool, collabActorAgentId, sceneVenue } from './families/toolkit-families-collab.js'
-export type { CollabScope, CollabToolAdapters } from './families/toolkit-families-collab.js'
 export { InteractiveTool } from './families/toolkit-families-interactive.js'
 export type { InteractiveRequest } from './families/toolkit-families-interactive.js'
 export { SessionTool } from './families/toolkit-families-session.js'
@@ -144,31 +149,8 @@ export {
   AskUserTool,
 } from './builtin/toolkit-builtin-ask-user.js'
 export type { AskUserAbortInput, AskUserAnswerRecord, AskUserAskInput, AskUserInput, AskUserToolAdapters } from './builtin/toolkit-builtin-ask-user.js'
-export {
-  BOARD_DESCRIPTION,
-  BoardInputSchema,
-  BoardTool,
-  createBoardTool,
-} from './builtin/toolkit-builtin-board.js'
-export type { BoardInput, BoardToolAdapters, BoardToolContext } from './builtin/toolkit-builtin-board.js'
 export { createGoalTool, GOAL_DESCRIPTION, GOAL_TOOL_ID, GoalInputSchema, GoalTool } from './builtin/toolkit-builtin-goal.js'
 export type { GoalInput, GoalToolAdapters } from './builtin/toolkit-builtin-goal.js'
-export {
-  createHistoryTool,
-  HISTORY_DESCRIPTION,
-  HISTORY_MAX_LIMIT,
-  HistoryInputSchema,
-  HistoryTool,
-} from './builtin/toolkit-builtin-history.js'
-export type { HistoryEntry, HistoryInput, HistoryToolAdapters, HistoryToolResult } from './builtin/toolkit-builtin-history.js'
-export {
-  createNotebookTool,
-  NOTEBOOK_DESCRIPTION,
-  NOTEBOOK_NOTE_MAX_CHARS,
-  NotebookInputSchema,
-  NotebookTool,
-} from './builtin/toolkit-builtin-notebook.js'
-export type { NotebookInput, NotebookToolAdapters, NotebookToolResult } from './builtin/toolkit-builtin-notebook.js'
 export {
   createPracticeTool,
   PRACTICE_DESCRIPTION,
@@ -183,18 +165,6 @@ export type { PracticeInput, PracticeToolAdapters } from './builtin/toolkit-buil
  * 吃的都是它。类型搬到 `./toolkit-radio-adapters.js`(纯类型,没有工具了)。
  */
 export type { RadioToolAdapters, RadioToolStatus } from './toolkit-radio-adapters.js'
-export {
-  createSendMessageTool,
-  SEND_MESSAGE_DESCRIPTION,
-  SendMessageInputSchema,
-  SendMessageTool,
-} from './builtin/toolkit-builtin-send-message.js'
-export type {
-  CollabDmSendResult,
-  SayToolResult,
-  SendMessageInput,
-  SendMessageToolAdapters,
-} from './builtin/toolkit-builtin-send-message.js'
 export { createTaskTool, TASK_DESCRIPTION, TaskInputSchema, TaskTool } from './builtin/toolkit-builtin-task.js'
 export type { TaskDispatchOutcome, TaskDispatchRequest, TaskInput, TaskToolPorts } from './builtin/toolkit-builtin-task.js'
 export {

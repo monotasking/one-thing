@@ -16,7 +16,7 @@
  */
 
 import type { Scene } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import { resolveCollabVenue } from '../collab/collab-tool-surface.js'
+import { resolveCollabVenue } from '@onething/backend/session'
 import { isTaskSession, type TaskSessionLike } from '../task/task.js'
 
 /** 场景解析读的那一小片会话形状(结构类型 —— 产品层不认 IPC 契约包)。 */

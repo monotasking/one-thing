@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { decideCollabActivations } from "../collab-activation.js";
 import { COLLAB_DM_PAIR_MAX_CHAIN } from "../collab-types.js";
-import { COLLAB_ROOM_TOOLS } from "../collab-tool-surface.js";
+import { COLLAB_ROOM_TOOLS } from "../tools/collab-tool-surface.js";
 // 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表。
 import { resolveAgentToolSurface } from "../../agent/agent-profile.js";
 import {
@@ -21,6 +21,9 @@ import {
 	buildCollabRoomSystemPrompt,
 } from "../collab-roster.js";
 import type { CollabAgentLike } from "../collab-types.js";
+// 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
+import { registerCollabAgentToolGrants } from '../tools/collab-agent-tool-grants.js'
+registerCollabAgentToolGrants()
 
 const FE: CollabAgentLike = { id: "fe", name: "小李", title: "工程师" };
 const PM: CollabAgentLike = { id: "pm", name: "阿明", title: "产品" };

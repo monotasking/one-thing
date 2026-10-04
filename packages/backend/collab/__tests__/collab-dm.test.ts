@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { decideCollabActivations } from "../collab-activation.js";
-import { isAgentPairDmRoom, isUserDmRoom } from "../collab-dm.js";
+import { isAgentPairDmRoom, isUserDmRoom } from "@onething/backend/session";
 import { buildCollabCommonRules } from "../collab-agent-rules.js";
 import {
 	buildCollabRoomContext,
@@ -18,6 +18,9 @@ import {
 } from "../collab-roster.js";
 import { resolveAgentToolSurface } from "../../agent/agent-profile.js";
 import type { CollabAgentLike } from "../collab-types.js";
+// 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
+import { registerCollabAgentToolGrants } from '../tools/collab-agent-tool-grants.js'
+registerCollabAgentToolGrants()
 
 const FE: CollabAgentLike = { id: "fe", name: "小李", title: "工程师" };
 const PM: CollabAgentLike = { id: "pm", name: "阿明", title: "产品" };

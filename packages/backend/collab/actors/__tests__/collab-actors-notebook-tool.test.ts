@@ -44,7 +44,7 @@ const {
   appendNote,
 } = await import('../collab-actors-notebook-tool.js')
 const { collabAgentNotebookPath } = await import('@onething/backend/collab/actors/collab-actors-agent-mailbox')
-const { createNotebookTool, NotebookInputSchema } = await import('@onething/backend/toolkit')
+const { createNotebookTool, NotebookInputSchema } = await import('../../tools/collab-tool-notebook.js')
 const { createCollabActorNotebookStore } = await import('../collab-actors-owned-notebook-store.js')
 const { createCollabActorAuthorization } = await import('../collab-actors-execution-authorization.js')
 const { createSessionAccess } = await import('@onething/backend/session')

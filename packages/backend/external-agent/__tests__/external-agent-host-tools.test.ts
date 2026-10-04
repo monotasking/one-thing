@@ -163,9 +163,9 @@ const { Catalog, Decision, ToolRunner } = await import('@onething/backend/toolki
 const {
   configureToolkitCatalog,
   contractForSchema,
-  createSendMessageTool,
   ZodValidator,
 } = await import('@onething/backend/toolkit')
+const { createSendMessageTool } = await import('@onething/backend/collab')
 
 /**
  * R4b:宿主工具面从旧注册表(`getTool`)换成**目录**。这里装一份只有
@@ -215,7 +215,17 @@ const {
   beginCollabV3Turn,
   clearCollabV3Turns,
   configureCollabV3SpeakPort,
+  findCollabV3Turn,
 } = await import('@onething/backend/collab/actors/collab-actors-turn-context')
+
+/*
+ * 越层清零 A5:候选集由协作登记、牌位查询是装配填的端口。这里不经装配,自己接一次 —— 与
+ * `registerCollabTools` / `backend-assemble-engine.ts` 接的是同一份表、同一个函数。
+ */
+const { COLLAB_HOST_INJECTABLE_TOOLS } = await import('@onething/backend/collab')
+const { configureExternalAgentTurnLookup, registerHostInjectableTools } = await import('@onething/backend/external-agent')
+registerHostInjectableTools(COLLAB_HOST_INJECTABLE_TOOLS)
+configureExternalAgentTurnLookup(findCollabV3Turn)
 
 const ROOM = 'room-1'
 const EXEC = 'agent-exec-fe-room-1'

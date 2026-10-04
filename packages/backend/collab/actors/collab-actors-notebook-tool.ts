@@ -23,10 +23,10 @@
  * 模型不知道能做什么(与 board/history/send_message 同一条纪律)。
  */
 import { COLLAB_NOTEBOOK_INJECT_MAX_CHARS } from '@onething/backend/collab/actors'
-import type { NotebookToolResult } from '@onething/backend/toolkit'
+import type { NotebookToolResult } from '../tools/collab-tool-notebook.js'
 
 import * as store from '@onething/backend/session'
-import { collabVenueOf } from '../collab-venue.js'
+import { collabVenueOf } from '@onething/backend/session'
 import { createOwnedCollabNotebookStore } from './collab-actors-owned-notebook-store.js'
 import { sessionAccess } from '@onething/backend/session'
 import { fixedExecutionContext } from '../../session/session.js'

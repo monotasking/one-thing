@@ -11,7 +11,7 @@
  * 的装配直接引用,而不必把整棵 external-agents 图(spawn / 权限策略 / 后台状态)
  * 拖进工具 barrel。
  */
-import { isAgentPairDmRoom } from '@onething/backend/collab'
+import { isAgentPairDmRoom } from '@onething/backend/session'
 
 import { getSession } from '@onething/backend/session'
 

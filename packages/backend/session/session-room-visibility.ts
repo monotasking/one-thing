@@ -23,6 +23,9 @@
  *    而拉回之后它是当前成员,第一条分支已经先答了 +∞。
  *
  * 纯函数,零 I/O。调用方(app 层)负责把 `SessionMeta.room` 喂进来。
+ *
+ * 越层清零 A2(2026-10-04):房间历史的可见窗口问的是会话记录上 `room` 字段的含义,七个功能都要问,
+ * 所以从 `collab/collab-visibility.ts` 逐字搬进 session;函数体一字未改。
  */
 
 export interface CollabRoomVisibilityLike {

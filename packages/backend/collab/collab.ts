@@ -25,12 +25,6 @@ export {
   isCollabRoomFact,
   type CollabRoomMessageKind,
 } from './collab-classify.js'
-/** 历史检索的授权判据(docs/design/collab-history-search.md §3)。 */
-export {
-  collabRoomVisibleUntil,
-  isCollabMessageVisible,
-  type CollabRoomVisibilityLike,
-} from './collab-visibility.js'
 export { COLLAB_PASS_SENTINEL, isCollabPassMessage } from './collab-pass.js'
 export { COLLAB_CONSUMED_SCAN_TAIL, collectConsumedSourceIds } from './collab-reconcile.js'
 export {
@@ -342,17 +336,16 @@ export {
   type CollabWillingnessOutcomeKind,
   type CollabWillingnessVerdict,
 } from './collab-willingness.js'
+// 场子类型与判据(`resolveCollabVenue` / `collabVenueLinksRoom` / `CollabVenue`)、私聊房判据、历史可见窗口
+// 越层清零 A2 起住在 session 入口,这里不再转交。
 export {
   COLLAB_NOTEBOOK_TOOLS,
   COLLAB_ROOM_TOOLS,
   COLLAB_WORK_REQUIRED_TOOLS,
   COLLAB_TOOL_VENUES,
-  collabVenueLinksRoom,
   isCollabToolAllowedInVenue,
-  resolveCollabVenue,
-  type CollabVenue,
   type CollabVenueTool,
-} from './collab-tool-surface.js'
+} from './tools/collab-tool-surface.js'
 export {
   COLLAB_PLAN_MAX_WAVES,
   COLLAB_PLAN_MAX_WAVE_SIZE,
@@ -383,12 +376,64 @@ export {
   type CollabRelayRoomLike,
 } from './collab-speaking-order.js'
 export {
-  isAgentPairDmRoom,
-  isUserDmRoom,
-  type CollabDmRoomLike,
-} from './collab-dm.js'
-export {
   collabMessageCountsTowardChain,
   collabMessageResetsChain,
   computeCollabChainCount,
 } from './collab-chain.js'
+/*
+ * 协作的四只工具(越层清零 A1,2026-10-04 从 toolkit 搬回协作):工具本身、它们的家族基类、适配器,
+ * 以及装配时把它们登记进工具目录的那一句 `registerCollabTools(catalog, tier)`。
+ */
+export {
+  COLLAB_HOST_INJECTABLE_TOOLS,
+  COLLAB_TOOLS_BY_TIER,
+  registerCollabTools,
+  type CollabToolTier,
+} from './tools/collab-tool-registration.js'
+export { registerCollabAgentToolGrants } from './tools/collab-agent-tool-grants.js'
+export { collabAgentPresenceFacts, registerCollabAgentPresence } from './collab-variable-presence.js'
+export { CollabTool, collabActorAgentId, sceneVenue } from './tools/collab-tool-family.js'
+export type { CollabScope, CollabToolAdapters } from './tools/collab-tool-family.js'
+export {
+  boardAdapters,
+  collabAdapters,
+  historyAdapters,
+  notebookAdapters,
+  sendMessageAdapters,
+} from './tools/collab-tool-adapters.js'
+export {
+  BOARD_DESCRIPTION,
+  BoardInputSchema,
+  BoardTool,
+  createBoardTool,
+} from './tools/collab-tool-board.js'
+export type { BoardInput, BoardToolAdapters, BoardToolContext } from './tools/collab-tool-board.js'
+export {
+  createHistoryTool,
+  HISTORY_DESCRIPTION,
+  HISTORY_MAX_LIMIT,
+  HistoryInputSchema,
+  HistoryTool,
+} from './tools/collab-tool-history.js'
+export type { HistoryEntry, HistoryInput, HistoryToolAdapters, HistoryToolResult } from './tools/collab-tool-history.js'
+export {
+  createNotebookTool,
+  NOTEBOOK_DESCRIPTION,
+  NOTEBOOK_NOTE_MAX_CHARS,
+  NotebookInputSchema,
+  NotebookTool,
+} from './tools/collab-tool-notebook.js'
+export type { NotebookInput, NotebookToolAdapters, NotebookToolResult } from './tools/collab-tool-notebook.js'
+export {
+  createSendMessageTool,
+  SEND_MESSAGE_DESCRIPTION,
+  SendMessageInputSchema,
+  SendMessageTool,
+} from './tools/collab-tool-send-message.js'
+export type {
+  CollabDmSendResult,
+  SayToolResult,
+  SendMessageInput,
+  SendMessageToolAdapters,
+} from './tools/collab-tool-send-message.js'
+export { collabToolAllowedInSession } from './tools/collab-tool-surface.js'

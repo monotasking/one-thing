@@ -81,7 +81,6 @@
     "./collab/collab-room-create": "./collab/collab-room-create.ts",
     "./collab/collab-say-tool": "./collab/collab-say-tool.ts",
     "./collab/collab-user-identity": "./collab/collab-user-identity.ts",
-    "./collab/collab-venue": "./collab/collab-venue.ts",
     "./credentials": "./credentials/credentials.ts",
     "./deeplink": "./deeplink/deeplink.ts",
     "./deeplink/deeplink-registry": "./deeplink/deeplink-registry.ts",

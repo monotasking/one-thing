@@ -35,6 +35,8 @@ vi.mock('@onething/backend/permission/permission-asks', () => ({
 
 vi.mock('@onething/backend/session', async importOriginal => ({
   ...await importOriginal<typeof import('@onething/backend/session')>(),
+  // 越层清零 A2:「协调器驱动的会话」判据下沉到 session 入口,替身随之挪到这里。
+  isCollabCoordinatorDrivenSession: (sessionId: string) => coordinatorDriven.has(sessionId),
   getSessionDetails: (sessionId: string) => {
     const session = sessions.get(sessionId)
     return session
@@ -58,10 +60,6 @@ vi.mock('@onething/backend/session', async importOriginal => ({
     const messages = sessions.get(sessionId)?.messages ?? []
     return { success: true, messages: messages.slice(-1) }
   },
-}))
-
-vi.mock('@onething/backend/collab/collab-ingress', () => ({
-  isCollabCoordinatorDrivenSession: (sessionId: string) => coordinatorDriven.has(sessionId),
 }))
 
 vi.mock('../../settings/settings-model-registry-service.js', () => ({

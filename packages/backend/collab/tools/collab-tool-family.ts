@@ -28,16 +28,18 @@
  * 知道下一步能做什么。基类只提供 `allowed` 这一位。
  */
 
-import { Intent, Tool } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/toolkit/toolkit-tool-protocol'
+import { Intent, Tool } from '@onething/backend/toolkit'
+import type { PlanContext, Preview, Result, RunContext, Scene } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import type { Principal } from '@shared/permission/principal'
 import {
   isCollabToolAllowedInVenue,
+  type CollabVenueTool,
+} from './collab-tool-surface.js'
+import {
   resolveCollabVenue,
   type CollabVenue,
-  type CollabVenueTool,
-} from '../../collab/collab-tool-surface.js'
+} from '@onething/backend/session'
 
 /** 场子门与身份回退要用到的宿主面。两项都可缺席(测试里就常常缺席)。 */
 export interface CollabToolAdapters {

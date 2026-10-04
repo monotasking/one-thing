@@ -20,7 +20,7 @@ import {
   bindHostToolContext,
   clearHostToolContexts,
   filterHostToolSurface,
-  HOST_MCP_TOOL_CANDIDATES,
+  hostMcpToolCandidates,
   HOST_MCP_TURN_GONE,
   hostMcpToolName,
   isHostMcpToolName,
@@ -46,6 +46,15 @@ function echoTool(id: string): HostMcpHostTool {
     },
   }
 }
+
+/*
+ * 越层清零 A3 / A5②:候选集(连同各自的场子门)与工具地板都由协作在装配时登记。这里不经装配,
+ * 自己登记一次 —— 判定逐格与从前相同。
+ */
+const { COLLAB_HOST_INJECTABLE_TOOLS, registerCollabAgentToolGrants } = await import('@onething/backend/collab')
+const { registerHostInjectableTools } = await import('../host-mcp/external-agent-host-mcp.js')
+registerHostInjectableTools(COLLAB_HOST_INJECTABLE_TOOLS)
+registerCollabAgentToolGrants()
 
 beforeEach(() => {
   clearHostToolContexts()
@@ -116,8 +125,8 @@ describe('工具集由 venue 门决定', () => {
     expect(surface).toEqual(['send_message', 'board', 'history', 'notebook'])
   })
 
-  it('候选集从场子一览表推,不是手抄的第二份名单', () => {
-    expect([...HOST_MCP_TOOL_CANDIDATES])
+  it('候选集由协作登记(场子一览表的键序),不是这里手抄的第二份名单', () => {
+    expect([...hostMcpToolCandidates()])
       .toEqual(['send_message', 'board', 'history', 'notebook'])
   })
 

@@ -177,3 +177,21 @@ collab 今天是三种东西挤在一个目录:协作的四只工具(住在 tool
 ### 单 3–4 合起来的验收(改前 `s26b-before` = 8c4b9413b + 别的会话的未提交改动 / 改后 `s26b-after`)
 
 三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(`node:` 命中 0)成功;全量 vitest 仓根失败集合与改前相比**只多一条** `file-workspace-watch-driver` 的「watches a real read-only directory…」—— 那是真文件系统监听的时序用例(改前就有同文件的另一条在红),单跑三次 18/18 全绿,判为抖动;壳侧逐行相同;搬家的七只测试按路径映射后用例名与结果逐条相同;快照与 golden sha 不变;persistence 176 条、side-effect + lifecycle 24 条全绿;shadow-battery 场景表逐行相同(refold 217 / 0,appendFailures 8 与改前相同);hydration 两店各 217 / 0;`gate:acp` 109 条 ok;`gate:search-index` ok / FAIL 结构相同;`gate:web-shell` / `gate:client` 绿;name / client-api / boundary(132 ok)/ transport / log / session / native 不变。`provider:gate` 在验收那一轮红过一次(openai 那一对随 `provider-helpers` 换了文件路径),基线换址后 105 对绿;`provider:drill` 本地重放(铺上工作区改动)全绿;CLI 与 server 能起。
+
+### 单 5:1A A1 + A2(2026-10-04,未提交)
+
+- A2:会话种类的判据下沉 session —— `session/session-venue.ts`(场子类型与归一化、按会话取场子、挂不挂房、`isCollabCoordinatorDrivenSession`)、`session-dm-room.ts`、`session-room-visibility.ts`、`session-message-source.ts`(七个 `COLLAB_*_SOURCE`),四只只引兄弟文件,由 session 入口交出;`collab-venue.ts` / `collab-dm.ts` / `collab-visibility.ts` 删,`collab-tool-surface.ts` 搬进 `collab/tools/` 并收下 `collabToolAllowedInSession`,`collab-classify.ts` 从 session 入口转交七个常量;七个读者改引 session 入口;exports 删 `./collab/collab-venue`(D144)。
+- A1:四只协作工具 + 协作族 + 适配器一段 → `collab/tools/collab-tool-{board,history,notebook,send-message,family,adapters}.ts`,新 `collab-tool-registration.ts` 的 `registerCollabTools(catalog, tier)` 在 `backend.ts` 里紧跟 `buildToolkitCatalog` 调用,无条件、幂等(D148);toolkit 入口不再交出协作的任何名字,改交 `Catalog` / `Intent` / `Tool` 与六个协议类型(D147)。collab 入口交出登记引出的入口环由 13 只内部文件改引兄弟文件断开(D146)。
+- **三档 id 集合逐字不变;full / readonly 的插入顺序逐字不变;headless(CLI 守护进程)的协作三只从 variable 与 time 之间移到末尾**(D143,`catalog-tiers.test.ts` 钉住两档顺序)。
+- 读数:**`layer:check` 5 条 / 3 对**(方案写 6:A5① 那一条随 A2 的改 import 一起消失,D145),基线收紧;cycle 0、深层环 3 / 2;entry 2275 → 2254(collab 73 → 54、toolkit 190 → 188);name 0;boundary 0 失败;assembly ok;node tsc 零错。
+
+### 单 6:1A A3 + A4 + A5,`layer:gate` 改零基线(2026-10-04,未提交)
+
+- A3:agent 开 `registerAgentToolGrant` / `agentToolGrants()`(插入序 `Map`,同 id 替换不挪位),`AGENT_TOOL_GRANTS` 常量退役;四行地板逐字搬进 `collab/tools/collab-agent-tool-grants.ts`。A4:变量系统开 `variable/variable-agent-presence.ts` 的 `registerAgentPresenceSource`,`agentSelfGateway` 只留「没绑 agent → null」,在场块逐字搬进 `collab/collab-variable-presence.ts`。两处登记都放在 `configureAppRuntimeAdapters()`(D149)。
+- A5:① 已在单 5 完成;② 候选集由协作在 `registerCollabTools` 里登记,每一项自带与 `CollabTool.visibleIn` 同一句的 `visibleIn`,保住「目录里取不到工具对象」时那一行诊断(D150);③ `external-agent/external-agent-turn-lookup.ts` 端口,`createBoundStreamEngine` 填 `findCollabV3Turn`(D151)。
+- `layer:gate` 改零基线硬闸,删 `docs/audit/layer-violation-baseline-2026-10.txt`,`--write-baseline` 拒绝;手工探针验过一条 `agent → collab` 当场红(D152)。
+- 读数:**`layer:check` 0 条 / 0 对**;cycle 0;entry 2254 → 2250(collab 54 → 50);name 0;boundary 0 失败;assembly ok;node tsc 零错。测试可见变化列在 D153。
+
+### 单 5–6 合起来的验收(改前 `s26c-before` = 0a50f6bfd + 别的会话的未提交改动 / 改后 `s26c-after`)
+
+三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(`node:` 命中 0)成功;全量 vitest 仓根 22 条失败、壳侧 1 条,集合只差一对抖动 —— 改后多一条 `http-server-workspace-watch-ownership` 的真监听时序用例、少一条 `http-server-runtime-over-backend` 的 MCP 启动用例,两只文件单跑三次 13 / 13 全绿;其余改前就红的用例失败信息逐条相同;快照与 golden sha 不变;persistence 176 条、side-effect + lifecycle 24 条全绿;shadow-battery 场景表逐行相同(appendFailures 8 与改前同,refold 217 次 0 不一致);hydration 两店各 217 / 0;`gate:acp` 109 条 ok;`gate:search-index` 72 ok / 3 FAIL 与改前同一组(⑤c / ⑤d);`gate:web-shell` / `gate:client` 绿;name / client-api / boundary(132 ok)/ transport / provider(105 对)/ log / session / native / feature-map 绿;`provider:drill` 直接跑全绿;CLI 与 server 能起。

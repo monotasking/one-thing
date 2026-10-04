@@ -22,6 +22,9 @@ import {
 // 工具面的唯一实现在 agents 层(C2「工具面单点」):collab 只出地板表,
 // 「这一回合能用哪些工具」由 resolveAgentToolSurface 一处作答。
 import { resolveAgentToolSurface } from '../../agent/agent-profile.js'
+// 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
+import { registerCollabAgentToolGrants } from '../tools/collab-agent-tool-grants.js'
+registerCollabAgentToolGrants()
 
 describe('执行会话 id 派生', () => {
   it('derives a stable id from the agent id (ensure is idempotent by construction)', () => {

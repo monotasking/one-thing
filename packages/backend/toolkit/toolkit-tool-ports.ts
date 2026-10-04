@@ -52,14 +52,9 @@ export type { CatalogAdapters, ToolCatalogTier } from './toolkit-tier-catalogs.j
 
 export {
   askUserAdapters,
-  boardAdapters,
-  collabAdapters,
   goalAdapters,
-  historyAdapters,
-  notebookAdapters,
   practiceAdapters,
   radioAdapters,
-  sendMessageAdapters,
   taskPorts,
   webOpenAdapters,
   webSearchAdapters,

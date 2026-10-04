@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolveAgentToolSurface } from '@onething/backend/agent'
 import type { AgentDefinition, ChatSession } from '@shared/ipc.js'
+// 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
+const { registerCollabAgentToolGrants } = await import('@onething/backend/collab')
+registerCollabAgentToolGrants()
 
 /* Mock paths are resolved from THIS file, not from the module under test. */
 const state = vi.hoisted(() => ({

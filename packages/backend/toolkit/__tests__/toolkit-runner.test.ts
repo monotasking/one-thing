@@ -69,13 +69,13 @@ describe('三档目录', () => {
   it('桌面 / headless / readonly 各装得起来(R3a 二十只 + S6 的 search − K3-b 的 radio)', () => {
     expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort())
       .toEqual([
-        'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
-        'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
+        'ask_user', 'bash', 'edit', 'goal', 'practice',
+        'read', 'search', 'task', 'time', 'variable', 'web_open',
         'web_search', 'write',
       ])
     expect(createHeadlessCatalog().all().map(tool => tool.spec.id).sort())
       .toEqual([
-        'bash', 'board', 'edit', 'history', 'read', 'search', 'send_message', 'time',
+        'bash', 'edit', 'read', 'search', 'time',
         'variable', 'web_open', 'web_search', 'write',
       ])
     // 降级档:对本机零副作用。没有 bash / write / edit,也没有能重指工作目录的 variable。
@@ -84,8 +84,9 @@ describe('三档目录', () => {
   })
 
   it('createCatalogForTier 三个档位都对得上,未知档位退回 headless', () => {
-    expect(createCatalogForTier('full').size).toBe(17)
-    expect(createCatalogForTier('headless').size).toBe(12)
+    // 越层清零 A1:协作四只(full)/ 三只(headless)由 collab 在装配时登记,不在三档里。
+    expect(createCatalogForTier('full').size).toBe(13)
+    expect(createCatalogForTier('headless').size).toBe(9)
     expect(createCatalogForTier('readonly').size).toBe(5)
   })
 

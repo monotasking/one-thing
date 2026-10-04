@@ -40,7 +40,7 @@
 import {
   collabRoomVisibleUntil,
   resolveCollabVenue,
-} from '@onething/backend/collab'
+} from '@onething/backend/session'
 import type {
   SearchVisibilityPort,
 } from './capabilities/search-capabilities.js'

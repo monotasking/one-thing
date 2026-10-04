@@ -31,7 +31,7 @@ import { sanitizeCollabInlineMarkup } from './collab-inline-tags.js'
 import { parseCollabHandleMentions, type CollabAddressable } from './collab-handles.js'
 import { buildCollabMentions, mergeCollabMentions, normalizeCollabMentions } from './collab-mentions.js'
 import { truncateAtCodePoint } from './collab-truncate.js'
-import { resolveCollabVenue } from './collab-tool-surface.js'
+import { resolveCollabVenue } from '@onething/backend/session'
 import type { CollabAgentLike, CollabMentionLike } from './collab-types.js'
 
 /**

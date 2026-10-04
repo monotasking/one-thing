@@ -16,11 +16,6 @@
  */
 
 import type { OnethingAgentDefinition, OnethingAgentModelBinding } from './agent-store.js'
-import {
-  COLLAB_NOTEBOOK_TOOLS,
-  COLLAB_ROOM_TOOLS,
-  COLLAB_WORK_REQUIRED_TOOLS,
-} from '../collab/collab-tool-surface.js'
 
 import { getLogger } from '../logging/logging.js'
 
@@ -31,8 +26,8 @@ const log = getLogger('agents')
  * pack IS the surface) or is UNIONed into it (the pack is a floor layered on
  * the agent's real tools).
  *
- * 分工:工具**表**(房面地板 / 工作台面地板)是 collab 的产品口径,来自
- * collab/collab-tool-surface.ts;**规则**(哪个 kind 拿哪一格、怎么叠)只在这里实现。
+ * 分工:工具**表**(房面地板 / 工作台面地板)是 collab 的产品口径,由 collab 登记进来
+ * (`collab/tools/collab-agent-tool-grants.ts`);**规则**(哪个 kind 拿哪一格、怎么叠)只在这里实现。
  * C2「工具面单点」(2026-08-03):collab 那边曾有一份同义的
  * `resolveCollabToolAllowlist`,两处互相在注释里要求对方保持一致,而对齐真的
  * 漂过一次 —— 那份已删,这里是唯一的答案,不再有人肉对齐的义务。
@@ -50,22 +45,27 @@ export interface AgentToolGrant {
   mode: 'replace' | 'union'
 }
 
-export const AGENT_TOOL_GRANTS: readonly AgentToolGrant[] = [
-  { id: 'collab-room', tools: COLLAB_ROOM_TOOLS, mode: 'union' },
-  // agent-im-dm.md D7:单成员 dm 房(用户 ↔ agent 托管私聊)的回合。同样的两个
-  // 工具、**恒为 union**,与 `collab-room` 分开登记的唯一目的是隔离:群房那一格
-  // 将来若再次收紧成 replace,私聊不会被连带收窄(托管私聊的本义就是替你干活)。
-  { id: 'collab-dm', tools: COLLAB_ROOM_TOOLS, mode: 'union' },
-  { id: 'collab-work', tools: COLLAB_WORK_REQUIRED_TOOLS, mode: 'union' },
-  /**
-   * Collab v3 的跨房笔记(docs/design/collab-actor-v3.md §1.2)。
-   *
-   * D2 登记时刻意不由任何 kind 隐含(v2 回合带一个没人读的工具是纯损耗);
-   * **D6-a 接线后由 `NOTEBOOK_SESSION_KINDS` 隐含** —— v3 的心智循环在每一条
-   * drive 的尾部注入笔记,写下的东西从此有读者。
-   */
-  { id: 'collab-notebook', tools: COLLAB_NOTEBOOK_TOOLS, mode: 'union' },
-]
+/**
+ * 能力包的登记表(越层清零 A3,2026-10-04)。
+ *
+ * 从前这里是一张写死的四行表,四行全是协作的地板(`collab-room` / `collab-dm` / `collab-work` /
+ * `collab-notebook`),于是 agent 档案要 import 协作的工具表 —— 低层按能力枚举。现在能力自己登记
+ * (协作那四行在 `collab/tools/collab-agent-tool-grants.ts`,装配期 `configureAppRuntimeAdapters()`
+ * 登记一次),这里只读表。表按登记顺序迭代(`Map` 的插入序),并集叠加的顺序因此与从前逐字相同;
+ * 同一个 id 再登记一次是替换那一行、位置不动,所以重复装配是幂等的。
+ *
+ * 没有内置行:今天的四行都是协作的。表空的时候 `resolveAgentToolSurface` 只剩 agent 自己的白名单。
+ */
+const registeredToolGrants = new Map<string, AgentToolGrant>()
+
+export function registerAgentToolGrant(grant: AgentToolGrant): void {
+  registeredToolGrants.set(grant.id, grant)
+}
+
+/** 当下登记着的全部能力包,按登记顺序。 */
+export function agentToolGrants(): readonly AgentToolGrant[] {
+  return [...registeredToolGrants.values()]
+}
 
 /**
  * Which grant a session kind implies. W18 moved the room RESPONSE turn into the
@@ -272,7 +272,7 @@ export function resolveAgentToolSurface(input: {
     grantIds.add('collab-notebook')
   }
 
-  const grants = AGENT_TOOL_GRANTS.filter(grant => grantIds.has(grant.id))
+  const grants = agentToolGrants().filter(grant => grantIds.has(grant.id))
   const replacement = grants.find(grant => grant.mode === 'replace')
   if (replacement) return [...replacement.tools]
 

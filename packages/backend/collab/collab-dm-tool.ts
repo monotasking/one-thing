@@ -23,7 +23,7 @@
  * **不搬运上下文**(§3.4 防滥用):这里一个字的群历史都不转运。发起方要交代
  * 背景就自己写进 message —— 工具描述里也是这么说的,两处必须一致。
  */
-import type { CollabDmSendResult } from '@onething/backend/toolkit'
+import type { CollabDmSendResult } from './tools/collab-tool-send-message.js'
 import { isColleague } from '@onething/backend/agent'
 import {
   COLLAB_SAY_REFUSED_EMPTY,
@@ -44,7 +44,8 @@ import { ensureUserDmRoom } from './collab-user-dm-room.js'
 import { resolveDmTarget } from './collab-dm-target.js'
 import { resolveUserIdentity } from './collab-user-identity.js'
 import { speakIntoCollabRoom } from './collab-say-tool.js'
-import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './collab-venue.js'
+import { collabLinkedRoomSessionId } from '@onething/backend/session'
+import { collabToolAllowedInSession } from './tools/collab-tool-surface.js'
 import { registerCollabWakeFollowup } from './collab-wake-followup.js'
 import { sessionAccess } from '@onething/backend/session'
 import { fixedExecutionContext } from '../session/session.js'

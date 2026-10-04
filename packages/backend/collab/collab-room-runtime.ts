@@ -21,14 +21,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { COLLAB_DEFAULT_MAX_CHAIN, COLLAB_DM_PAIR_MAX_CHAIN, COLLAB_MESSAGE_SOURCE } from './collab-types.js'
+import { COLLAB_SYSTEM_SOURCE_TASK } from './collab-system-lines.js'
+import { isCollabForcedSerialRoom } from './collab-speaking-order.js'
 import {
-  COLLAB_DEFAULT_MAX_CHAIN,
-  COLLAB_DM_PAIR_MAX_CHAIN,
-  COLLAB_MESSAGE_SOURCE,
-  COLLAB_SYSTEM_SOURCE_TASK,
   isAgentPairDmRoom,
-  isCollabForcedSerialRoom,
-} from '@onething/backend/collab'
+} from '@onething/backend/session'
 import { type ChatMessage, type ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { sessionCommands } from '@onething/backend/session'

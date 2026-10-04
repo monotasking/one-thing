@@ -18,7 +18,8 @@ import {
   COLLAB_SEND_MESSAGE_TOOL_NAME,
 } from '@onething/backend/collab'
 import { clearRetiredAgentToolNames, resolveRetiredAgentToolName } from '@onething/backend/agent-loop/agent-loop-primitives'
-import { createSendMessageTool, ZodValidator } from '@onething/backend/toolkit'
+import { ZodValidator } from '@onething/backend/toolkit'
+import { createSendMessageTool } from '../tools/collab-tool-send-message.js'
 
 const noop = () => { throw new Error('adapter not used in this case') }
 
@@ -517,7 +518,7 @@ describe('legacy `dm`:退役名 + 降级', () => {
     // 就是旧那一套参数名。
     const legacyArgs = { to: '阿明#pm', message: '接口这块想跟你对一下' }
     // R4b:契约从旧 `SayTool.parameters` / `formatValidationError` 换成新树那一份
-    // (`toolkit/builtin/toolkit-builtin-send-message.ts` 的 `SendMessageContract`),同一条判据。
+    // (`collab/tools/collab-tool-send-message.ts` 的 `SendMessageContract`),同一条判据。
     const validated = new ZodValidator().parse(
       createSendMessageTool({ speak: noop as never, sendDm: noop as never }).spec.input,
       legacyArgs,

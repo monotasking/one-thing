@@ -11,10 +11,10 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { CollabVenueTool } from '../../collab/collab-tool-surface.js'
-import { defineInput } from '../toolkit-contract.js'
-import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/toolkit-families-collab.js'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit'
+import type { CollabVenueTool } from './collab-tool-surface.js'
+import { defineInput } from '@onething/backend/toolkit'
+import { CollabTool, type CollabToolAdapters, type CollabScope } from './collab-tool-family.js'
 
 export interface HistoryEntry {
   /** `<message>` 信封原样,与房间投影同一种形状。 */

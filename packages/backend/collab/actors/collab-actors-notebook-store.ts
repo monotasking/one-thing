@@ -20,7 +20,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { escapeCollabPromptText } from '../collab.js'
+import { escapeCollabPromptText } from '../collab-inline-tags.js'
 import {
   buildCollabNotebookBlock,
   COLLAB_NOTEBOOK_ENTRY_MAX_CHARS,

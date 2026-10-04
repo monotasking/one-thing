@@ -23,15 +23,11 @@ import { Catalog } from '@onething/backend/toolkit/toolkit-tool-protocol'
 import {
   createAskUserTool,
   createBashTool,
-  createBoardTool,
   createEditTool,
   createGoalTool,
-  createHistoryTool,
-  createNotebookTool,
   createPracticeTool,
   createReadTool,
   createSearchTool,
-  createSendMessageTool,
   createTaskTool,
   createTimeTool,
   createVariableTool,
@@ -40,15 +36,11 @@ import {
   createWriteTool,
   type AskUserToolAdapters,
   type BashToolAdapters,
-  type BoardToolAdapters,
   type GoalToolAdapters,
-  type HistoryToolAdapters,
   type MutatingFileToolAdapters,
-  type NotebookToolAdapters,
   type PracticeToolAdapters,
   type RadioToolAdapters,
   type ReadToolAdapters,
-  type SendMessageToolAdapters,
   type TaskToolPorts,
   type VariableToolAdapters,
   type WebOpenToolAdapters,
@@ -62,13 +54,9 @@ import { createLocalBashOperations } from '@onething/backend/tool/tool-bash-exec
 import { getGuardedVariableRegistryForTools, VariableError } from '@onething/backend/variable/variable-system'
 import {
   askUserAdapters,
-  boardAdapters,
   goalAdapters,
-  historyAdapters,
-  notebookAdapters,
   practiceAdapters,
   radioAdapters,
-  sendMessageAdapters,
   taskPorts,
   webOpenAdapters,
   webSearchAdapters,
@@ -132,10 +120,6 @@ export interface CatalogAdapters {
    * 一行是那份契约唯一的产地。
    */
   readonly radio?: RadioToolAdapters
-  readonly sendMessage?: SendMessageToolAdapters
-  readonly board?: BoardToolAdapters
-  readonly history?: HistoryToolAdapters
-  readonly notebook?: NotebookToolAdapters
 }
 
 function resolve(adapters: CatalogAdapters): Required<CatalogAdapters> {
@@ -151,10 +135,6 @@ function resolve(adapters: CatalogAdapters): Required<CatalogAdapters> {
     askUser: adapters.askUser ?? askUserAdapters(),
     practice: adapters.practice ?? practiceAdapters(),
     radio: adapters.radio ?? radioAdapters(),
-    sendMessage: adapters.sendMessage ?? sendMessageAdapters(),
-    board: adapters.board ?? boardAdapters(),
-    history: adapters.history ?? historyAdapters(),
-    notebook: adapters.notebook ?? notebookAdapters(),
   }
 }
 
@@ -162,7 +142,7 @@ function resolve(adapters: CatalogAdapters): Required<CatalogAdapters> {
  * 桌面全量档(`toolRegistry: 'full'`)—— 与旧 `builtin/index.ts` 同集(17 只)。
  *
  * 注册 ≠ 呈现:这里永远是全量的,「这一回合看得见谁」由 `Surface.resolve` 用
- * 每只工具自己的 `visibleIn(scene)` 算(协作四件套的场子、goal 的 active、
+ * 每只工具自己的 `visibleIn(scene)` 算(协作四件套的场子 —— 它们由 collab 自己登记、goal 的 active、
  * task 的套娃闸)。
  */
 export function createDesktopCatalog(adapters: CatalogAdapters = {}): Catalog {
@@ -189,13 +169,14 @@ export function createDesktopCatalog(adapters: CatalogAdapters = {}): Catalog {
     .register(createWebSearchTool(resolved.webSearch))
     .register(createWebOpenTool(resolved.webOpen))
     .register(createGoalTool(resolved.goal))
-    .register(createBoardTool(resolved.board))
-    .register(createHistoryTool(resolved.history))
-    .register(createNotebookTool(resolved.notebook))
-    .register(createSendMessageTool(resolved.sendMessage))
+  // 协作四只(board / history / notebook / send_message)不在这里:越层清零 A1 起由协作自己的
+  // `registerCollabTools(catalog, tier)` 在装配时紧接着登记,排在这一档的最后 —— 与从前的位置逐字相同。
 }
 
-/** CLI daemon 档 —— 与旧 `builtin/headless.ts` 同集(11 只)。 */
+/**
+ * CLI daemon 档 —— 与旧 `builtin/headless.ts` 同集(12 只,其中协作三只 board / history / send_message
+ * 由 collab 的 `registerCollabTools` 登记;越层清零 A1 之后它们排在这一档的末尾,而不是 variable 与 time 之间)。
+ */
 export function createHeadlessCatalog(adapters: CatalogAdapters = {}): Catalog {
   const resolved = resolve(adapters)
   return new Catalog()
@@ -204,9 +185,6 @@ export function createHeadlessCatalog(adapters: CatalogAdapters = {}): Catalog {
     .register(createReadTool(resolved.read))
     .register(createWriteTool(resolved.mutatingFile))
     .register(createVariableTool(resolved.variable))
-    .register(createBoardTool(resolved.board))
-    .register(createHistoryTool(resolved.history))
-    .register(createSendMessageTool(resolved.sendMessage))
     .register(createTimeTool())
     .register(createSearchTool())
     .register(createWebSearchTool(resolved.webSearch))

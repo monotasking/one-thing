@@ -15,7 +15,8 @@ export {
   clearHostToolContexts,
   filterHostToolSurface,
   HOST_MCP_SERVER_NAME,
-  HOST_MCP_TOOL_CANDIDATES,
+  hostMcpToolCandidates,
+  registerHostInjectableTools,
   HOST_MCP_TOOL_PREFIX,
   HOST_MCP_TURN_GONE,
   hostMcpToolDefinitionWith,
@@ -30,6 +31,7 @@ export type {
   HostMcpCallResult,
   HostMcpHostTool,
   HostMcpToolDefinition,
+  HostInjectableTool,
   HostToolSurfaceInput,
   HostToolTurnContext,
 } from './host-mcp/external-agent-host-mcp.js'
@@ -54,3 +56,10 @@ export type {
 export type {
   ExternalAgentImageInput,
 } from './external-agent-types.js'
+// 牌位查询端口(越层清零 A5③):装配在造引擎时填 `findCollabV3Turn`,外部 agent 的宿主工具面只读这一格。
+export {
+  configureExternalAgentTurnLookup,
+  findExternalAgentTurn,
+  type ExternalAgentTurnLookup,
+  type ExternalAgentTurnLookupResult,
+} from './external-agent-turn-lookup.js'

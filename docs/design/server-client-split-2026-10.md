@@ -1867,3 +1867,15 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 4. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动。
 
 **读数**:`layer:check` 39 / 20 → 29 / 13(单 3)→ 25 / 9(单 4);`entry:gate` 2279 → 2260 → 2275(新功能一行 34,全是测试);`cycle:gate` 0;`name:gate` 0;`assembly:gate` 绿。验收全文见 `layer-violations-to-zero-2026-10.md` 第 6 节。
+
+### 越层清零单 5–6 落地记录:协作工具自注册、会话种类下沉 session、三处登记 + 一个端口、`layer:gate` 零基线(2026-10-04,未提交)
+
+**做了什么**(方案 `layer-violations-to-zero-2026-10.md` 第 5 节施工单的单 5、单 6;决策 D143–D153):
+
+1. 单 5:会话种类的判据(场子、私聊房、历史可见窗口、协作来源标记)从 collab 下沉 `session/` 四只新文件;协作的四只工具连同家族与适配器搬回 `collab/tools/`,`backend.ts` 在建好三档目录后调 `registerCollabTools(catalog, tier)`,toolkit 不再出现协作的名字。
+2. 单 6:agent 的工具地板、变量的在场块、外部 agent 的宿主工具候选都改成协作登记,牌位查询改成装配填的端口;`layer:gate` 改零基线硬闸,删基线文件。
+3. **唯一的生产差别**:CLI 守护进程(headless 档)发给模型的工具数组里,协作三只从中间移到末尾(D143,待用户确认);full / readonly 档逐字不变。
+4. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动。
+
+**读数**:`layer:check` 25 / 9 → 5 / 3(单 5)→ **0 / 0**(单 6);`entry:gate` 2275 → 2254 → 2250;`cycle:gate` 0;`name:gate` 0;`assembly:gate` 绿。验收全文见 `layer-violations-to-zero-2026-10.md` 第 6 节。
+

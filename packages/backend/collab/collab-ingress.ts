@@ -91,18 +91,6 @@ export function isCollabRoomSession(sessionId: string): boolean {
 }
 
 /**
- * The sessions only the coordinator may stream: the room itself (pre-W18 shape,
- * and still where a legacy drive would land) and an agent's execution session,
- * which is where every room turn has run since W18. Both are surfaces the
- * coordinator owns end to end — anyone else driving one produces a turn with
- * the wrong persona, no mention resolution, and none of the three gates.
- */
-export function isCollabCoordinatorDrivenSession(sessionId: string): boolean {
-  const kind = store.getSession(sessionId)?.kind
-  return kind === 'room' || kind === 'agent'
-}
-
-/**
  * Consume a send-message command aimed at a room session. Returns false when
  * the session is not a room (caller proceeds with the normal engine path).
  */

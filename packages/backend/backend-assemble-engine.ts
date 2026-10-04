@@ -66,11 +66,15 @@ import {
 } from './gateway/gateway-channel-prompt-context.js'
 import {
   handleCollabRoomSendMessage,
-  isCollabCoordinatorDrivenSession,
   isCollabRoomSession,
   type CollabRoomInboundCommand,
 } from '@onething/backend/collab/collab-ingress'
+import {
+  isCollabCoordinatorDrivenSession,
+} from '@onething/backend/session'
 import { isTrustedCollabDrive } from '@onething/backend/collab/collab-drive-guard'
+import { findCollabV3Turn } from '@onething/backend/collab/actors/collab-actors-turn-context'
+import { configureExternalAgentTurnLookup } from '@onething/backend/external-agent'
 import {
   pluginPostInterceptReply,
   type PluginInterceptSteerPort,
@@ -262,6 +266,10 @@ export function createBoundStreamEngine(
 	const collabDrive: StreamEngineCollabDrivePort = {
 		isTrusted: isTrustedCollabDrive,
 	};
+	// 外部 agent 宿主工具面的牌位查询(越层清零 A5③):从前 external-agent 直接 import 协作 v3 的回合
+	// 登记簿,现在在这里与上面几只协作端口一起填。幂等 —— 每次造引擎填的都是同一个函数;它只在外部
+	// agent 的回合里被读,而那一定在引擎造好之后。
+	configureExternalAgentTurnLookup(findCollabV3Turn);
 
 	const ports: ProductStreamEnginePorts = {
 		assertAccepting,

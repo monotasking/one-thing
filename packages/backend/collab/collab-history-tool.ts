@@ -21,21 +21,17 @@
  *    会返回一个空页，而空页读起来就是"这个范围里没有任何消息"——一个带确定性的
  *    否定，可消息明明还在。
  */
+import { COLLAB_ENVELOPE_TAG, formatCollabUserLabel, wrapCollabMessageEnvelope } from './collab-projection.js'
+import { COLLAB_SYSTEM_SPEAKER_LABEL, isCollabProjectedSystemLine } from './collab-system-lines.js'
+import { COLLAB_USER_CONSTANT_WORDS } from './collab-identity.js'
+import { isCollabRoomFact } from './collab-classify.js'
+import { resolveCollabSpeakerLabel } from './collab-roster.js'
+import { splitCollabHandleQuery, type CollabHandleQuery } from './collab-handles.js'
 import {
-  COLLAB_ENVELOPE_TAG,
-  COLLAB_SYSTEM_SPEAKER_LABEL,
-  COLLAB_USER_CONSTANT_WORDS,
   collabRoomVisibleUntil,
-  formatCollabUserLabel,
   isCollabMessageVisible,
-  isCollabProjectedSystemLine,
-  isCollabRoomFact,
-  resolveCollabSpeakerLabel,
-  splitCollabHandleQuery,
-  wrapCollabMessageEnvelope,
-  type CollabHandleQuery,
-} from '@onething/backend/collab'
-import type { HistoryToolResult } from '@onething/backend/toolkit'
+} from '@onething/backend/session'
+import type { HistoryToolResult } from './tools/collab-tool-history.js'
 import { scanJsonlLog, sessionAccess, sessionReads } from '@onething/backend/session'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
@@ -44,7 +40,7 @@ import type { RuntimeRequestContext } from '@onething/backend/http-server/http-s
 import { findAgent, listAgents } from '@onething/backend/agent/agent-store-access'
 import { resolveDmTarget } from './collab-dm-target.js'
 import { resolveUserIdentity } from './collab-user-identity.js'
-import { collabToolAllowedInSession } from './collab-venue.js'
+import { collabToolAllowedInSession } from './tools/collab-tool-surface.js'
 
 /** 一次最多读几间房。超出的计入 `skippedRooms` 并说出来。 */
 const HISTORY_MAX_ROOMS = 10

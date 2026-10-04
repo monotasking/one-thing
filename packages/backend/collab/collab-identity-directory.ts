@@ -22,11 +22,7 @@
  * 失效,而那个"有人"正是这类 bug 的出处。规模是 agent 总数(几十),做的事是
  * 字符串切片与 Map 装填,相对一次工具调用可忽略。
  */
-import {
-  collabIdentityFromAgent,
-  collabUserIdentity,
-  type CollabIdentity,
-} from '@onething/backend/collab'
+import { collabIdentityFromAgent, collabUserIdentity, type CollabIdentity } from './collab-identity.js'
 import { listAgents } from '@onething/backend/agent/agent-store-access'
 import { resolveUserIdentity } from './collab-user-identity.js'
 import { getLogger } from '@onething/backend/logging/logging-configure'

@@ -18,8 +18,8 @@
 
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
-import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { CollabVenueTool } from '../../collab/collab-tool-surface.js'
+import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit'
+import type { CollabVenueTool } from './collab-tool-surface.js'
 import {
   COLLAB_BOARD_START_RECEIPT_NOTE,
   COLLAB_TASK_STATUSES,
@@ -28,9 +28,9 @@ import {
   type CollabBoardAction,
   type CollabTask,
   type CollabTaskStatus,
-} from '../../collab/collab.js'
-import { defineInput } from '../toolkit-contract.js'
-import { CollabTool, type CollabToolAdapters, type CollabScope } from '../families/toolkit-families-collab.js'
+} from '../collab-board.js'
+import { defineInput } from '@onething/backend/toolkit'
+import { CollabTool, type CollabToolAdapters, type CollabScope } from './collab-tool-family.js'
 
 export interface BoardToolContext {
   roomSessionId: string

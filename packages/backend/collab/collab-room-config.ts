@@ -22,11 +22,13 @@ import {
   COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
   buildCollabMembershipLines,
   collabAgentSessionId,
-  isAgentPairDmRoom,
-  isUserDmRoom,
   type CollabBoard,
   type CollabBoardAction,
 } from '@onething/backend/collab'
+import {
+  isAgentPairDmRoom,
+  isUserDmRoom,
+} from '@onething/backend/session'
 import {
   isActiveAgent,
   type CollabRoomBudgetsPatch,

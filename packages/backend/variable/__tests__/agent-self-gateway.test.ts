@@ -41,6 +41,9 @@ vi.mock('@onething/backend/collab/collab-board-store', () => ({
 }))
 
 const { agentSelfGateway } = await import('../variable-gateways.js')
+// 越层清零 A4:在场块由协作登记的来源现算;这里不经装配,自己登记一次(看板读那一格照旧被上面替身接住)。
+const { registerCollabAgentPresence } = await import('@onething/backend/collab')
+registerCollabAgentPresence()
 
 const NOW = Date.now()
 

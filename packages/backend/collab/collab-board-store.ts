@@ -21,9 +21,9 @@ import {
   type CollabBoardAction,
   type CollabBoardActor,
   type CollabBoardEvent,
-  type CollabSelfTaskFact,
   type CollabTask,
-} from '@onething/backend/collab'
+} from './collab-board.js'
+import { type CollabSelfTaskFact } from './collab-types.js'
 import { getEventBus } from '@onething/backend/event'
 import {
   getOnethingStorePath,

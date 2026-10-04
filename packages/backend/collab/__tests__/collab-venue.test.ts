@@ -10,11 +10,13 @@ import { describe, expect, it } from 'vitest'
 import {
   COLLAB_TOOL_VENUES,
   COLLAB_WORK_REQUIRED_TOOLS,
-  collabVenueLinksRoom,
   isCollabToolAllowedInVenue,
-  resolveCollabVenue,
   type CollabVenueTool,
-} from '../collab-tool-surface.js'
+} from '../tools/collab-tool-surface.js'
+import {
+  collabVenueLinksRoom,
+  resolveCollabVenue,
+} from '@onething/backend/session'
 
 describe('resolveCollabVenue —— 归一化只有一个方向', () => {
   it('三个协作 kind 原样通过', () => {

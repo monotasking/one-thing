@@ -7,10 +7,8 @@
  * the set already covers turns that predate the labels and turns nobody
  * labelled (retries, compaction, titles).
  */
-import {
-  COLLAB_DEFAULT_DAILY_COST_USD,
-  collabAgentSessionIdsForScan,
-} from '@onething/backend/collab'
+import { COLLAB_DEFAULT_DAILY_COST_USD } from './collab-types.js'
+import { collabAgentSessionIdsForScan } from './collab-agent-session.js'
 import * as store from '@onething/backend/session'
 import { getUsageLedger } from '@onething/backend/usage/usage-recorder'
 import { loadCollabBoard } from './collab-board-store.js'
@@ -25,7 +23,7 @@ const log = getLogger('collab.budget')
  *
  *  默认值本身搬去了纯层(`collab/collab-types.ts`,理由见那儿),这里原样再导出一次 ——
  *  已有的导入点不必跟着搬家,而"闸的默认额度"读起来仍然在闸这个文件里。 */
-export { COLLAB_DEFAULT_DAILY_COST_USD } from '@onething/backend/collab'
+export { COLLAB_DEFAULT_DAILY_COST_USD } from './collab-types.js'
 const BUDGET_CACHE_MS = 60_000
 
 /**

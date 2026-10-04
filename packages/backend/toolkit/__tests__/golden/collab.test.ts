@@ -11,12 +11,26 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { zodToJsonSchema } from '../../toolkit-contract.js'
-import { COLLAB_TOOL_VENUES, type CollabVenue } from '../../../collab/collab-tool-surface.js'
-import type { CollabBoard, CollabTask } from '../../../collab/collab-board.js'
-import { BoardInputSchema, createBoardTool, type BoardToolAdapters } from '../../builtin/toolkit-builtin-board.js'
-import { createHistoryTool, HistoryInputSchema, type HistoryToolAdapters, type HistoryToolResult } from '../../builtin/toolkit-builtin-history.js'
-import { createNotebookTool, NotebookInputSchema, type NotebookToolAdapters } from '../../builtin/toolkit-builtin-notebook.js'
-import { createSendMessageTool, SendMessageInputSchema, type SendMessageToolAdapters } from '../../builtin/toolkit-builtin-send-message.js'
+// 越层清零 A1:四只协作工具搬回 collab,这里经 collab 入口拿(金标仍住在 toolkit,它用的是 toolkit 的跑法支架)。
+import {
+  BoardInputSchema,
+  COLLAB_TOOL_VENUES,
+  createBoardTool,
+  createHistoryTool,
+  createNotebookTool,
+  createSendMessageTool,
+  HistoryInputSchema,
+  NotebookInputSchema,
+  SendMessageInputSchema,
+  type BoardToolAdapters,
+  type CollabBoard,
+  type CollabTask,
+  type HistoryToolAdapters,
+  type HistoryToolResult,
+  type NotebookToolAdapters,
+  type SendMessageToolAdapters,
+} from '@onething/backend/collab'
+import { type CollabVenue } from '@onething/backend/session'
 import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../support.js'
 
 const ROOM_SESSION = 'room-1'

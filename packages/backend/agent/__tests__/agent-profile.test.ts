@@ -8,6 +8,9 @@ import {
   resolveAgentToolSurface,
 } from '../agent-profile.js'
 import type { OnethingAgentDefinition } from '../agent-store.js'
+// 越层清零 A3:协作那四格工具地板由协作在装配时登记(`configureAppRuntimeAdapters()`);这里不经装配,自己登记一次。
+const { registerCollabAgentToolGrants } = await import('@onething/backend/collab')
+registerCollabAgentToolGrants()
 
 function agent(overrides: Partial<OnethingAgentDefinition> = {}): OnethingAgentDefinition {
   return {

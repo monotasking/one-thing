@@ -37,13 +37,14 @@ import type { HostMcpHostTool } from '@onething/backend/external-agent'
 import { getSession, sessionAccess } from '@onething/backend/session'
 import { fixedExecutionContext } from '../session/session.js'
 import { resolveAgentProfileForSession } from '../agent/agent-profile-for-session.js'
-import { collabVenueOf } from '@onething/backend/collab/collab-venue'
-import { findCollabV3Turn } from '@onething/backend/collab/actors/collab-actors-turn-context'
+import { collabVenueOf } from '@onething/backend/session'
 // 宿主工具面由目录 + runner 回答(设计文档 §10.2-④)。
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'
 import { getLogger } from '@onething/backend/logging/logging-configure'
+import { findExternalAgentTurn } from './external-agent-turn-lookup.js'
 
 const log = getLogger('external-agents')
+
 
 
 /**
@@ -158,7 +159,7 @@ export async function resolveHostToolSurface(request: {
    * 该有宿主工具,它们走的是 `speakIntoCollabRoom` 的 v2 落库分支。牌只是这里
    * 记下来的事实,验票在房间那侧。
    */
-  const turn = findCollabV3Turn(execSessionId)
+  const turn = findExternalAgentTurn(execSessionId)
   return {
     agentId,
     execSessionId,

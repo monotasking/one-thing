@@ -388,6 +388,9 @@ describe('协作房里 search 与 history 并存,不越权(§14.2「场景」那
   it('房里两只工具都在面上 —— `search` 不靠场景门躲开协作房', async () => {
     const { resolveScene } = await import('@onething/backend/toolkit')
     const catalog = createDesktopCatalog()
+    // 越层清零 A1:协作工具由 collab 在装配时登记;这里不经 backend.ts,自己登记一次。
+    const { registerCollabTools } = await import('@onething/backend/collab')
+    registerCollabTools(catalog, 'full')
     const scene = resolveScene({ session: { id: 'r-mine', kind: 'room' } })
 
     const onSurface = catalog.all().filter(tool => tool.visibleIn(scene)).map(tool => tool.spec.id)

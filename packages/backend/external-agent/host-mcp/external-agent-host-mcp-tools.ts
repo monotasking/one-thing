@@ -3,8 +3,9 @@
  *
  * 这个文件**不写业务**。它做两件事:
  *
- *  1. **决定注入哪几个** —— 走 `resolveAgentToolSurface` 与 `isCollabToolAllowedInVenue`
- *     这两个既有单点,不是平行实现(见下);
+ *  1. **决定注入哪几个** —— 走 `resolveAgentToolSurface` 与候选登记时带来的 `visibleIn`
+ *     (工具自己的那句判据)这两个既有单点,不是平行实现(见下;越层清零 A5② 之前第二道门直接
+ *     调协作的场子表 `isCollabToolAllowedInVenue`);
  *  2. **把既有的工具对象包成 MCP 工具** —— handler 里那一行就是 `tool.execute(...)`,
  *     也就是本地回合调的**同一个函数对象**。持牌校验、防冒名、幂等窗、句柄出栈、
  *     打字灯、场子门、`permissionGuard` 全部原封不动地在那条路上,因为那条路根本
@@ -34,13 +35,7 @@
  * agent 真正生效」的具体落点。
  */
 import { z } from 'zod'
-import {
-  COLLAB_TOOL_VENUES,
-  isCollabToolAllowedInVenue,
-  resolveCollabVenue,
-  type CollabVenue,
-  type CollabVenueTool,
-} from '../../collab/collab-tool-surface.js'
+import { resolveCollabVenue, type CollabVenue } from '@onething/backend/session'
 import { resolveAgentToolSurface } from '../../agent/agent-profile.js'
 
 /**
@@ -62,11 +57,38 @@ import { resolveHostToolContext } from './external-agent-host-mcp-context.js'
 import type { HostToolTurnContext } from './external-agent-host-mcp-types.js'
 
 /**
- * 可以注入的宿主工具全集。**从场子表的键推**,不是手抄一份:一览表加一行,这里
- * 自动跟上;而手抄的那一份漏了不会报错,只会让那个工具对外部 agent 静静地不存在。
+ * 可以注入的宿主工具全集 —— **由工具的主人登记**,不是这里手抄一份(越层清零 A5②,2026-10-04)。
+ *
+ * 从前这一格是 `Object.keys(COLLAB_TOOL_VENUES)`,第二道门是 `isCollabToolAllowedInVenue`:外部 agent
+ * 的宿主工具面直接 import 协作的场子表,低层按能力枚举。现在协作在 `registerCollabTools` 里登记
+ * 「这几只可以注进外部 agent、按这个顺序、各自在哪些场子露面」:顺序是场子表的键序
+ * `send_message, board, history, notebook`(与从前逐字相同,也是外部 agent 在 MCP `tools/list` 里
+ * 看见的顺序);`visibleIn` 就是那只工具自己的 `visibleIn(scene)` 用的同一句判据。
+ *
+ * 为什么候选自带 `visibleIn`,而不是现取目录里那只工具对象去问:门要在「目录里取不到工具对象」时
+ * 照样答话 —— 那种情形(readonly 档、内建工具还没装)从前是「过了门、取不到工具、记一行 warn 再不注」,
+ * 现取对象的话门先关,那一行诊断就再也不会出现。
+ *
+ * 同一个 id 再登记一次不重复(幂等);没有任何登记 = 一只都不注(普通对话就该是这个答案)。
  */
-export const HOST_MCP_TOOL_CANDIDATES: readonly CollabVenueTool[] =
-  Object.keys(COLLAB_TOOL_VENUES) as CollabVenueTool[]
+export interface HostInjectableTool {
+  readonly id: string
+  /** 这只工具在这个场子露不露面 —— 与它自己的 `Tool.visibleIn(scene)` 同一句判据。 */
+  visibleIn(scene: { venue: CollabVenue }): boolean
+}
+
+const hostInjectable: { tools: HostInjectableTool[] } = { tools: [] }
+
+export function registerHostInjectableTools(tools: readonly HostInjectableTool[]): void {
+  for (const tool of tools) {
+    if (!hostInjectable.tools.some(known => known.id === tool.id)) hostInjectable.tools.push(tool)
+  }
+}
+
+/** 当下登记着的候选 id,按登记顺序。 */
+export function hostMcpToolCandidates(): readonly string[] {
+  return hostInjectable.tools.map(tool => tool.id)
+}
 
 export interface HostToolSurfaceInput {
   /** 执行会话的 kind。缺席 = 普通对话(归一化见 `resolveCollabVenue`)。 */
@@ -91,11 +113,12 @@ export interface HostToolSurfaceInput {
 export function filterHostToolSurface(input: {
   allowlist: readonly string[] | null
   venue: CollabVenue
-}): CollabVenueTool[] {
-  return HOST_MCP_TOOL_CANDIDATES.filter(tool =>
-    isCollabToolAllowedInVenue(tool, input.venue)
-    && (input.allowlist === null || input.allowlist.includes(tool)),
-  )
+}): string[] {
+  // 第二道门问候选自己登记的 `visibleIn`(越层清零 A5②;判据与工具对象的 `visibleIn` 逐格同一张表)。
+  const scene = { venue: input.venue }
+  return hostInjectable.tools
+    .filter(tool => tool.visibleIn(scene) && (input.allowlist === null || input.allowlist.includes(tool.id)))
+    .map(tool => tool.id)
 }
 
 /**
@@ -104,7 +127,7 @@ export function filterHostToolSurface(input: {
  * 给**手上只有原始字段**的调用方(测试、未来的其它 connector):它替你调那两个
  * 单点。已经解析过 profile 的调用方走 `filterHostToolSurface`,别解析第二遍。
  */
-export function resolveHostToolSurface(input: HostToolSurfaceInput): CollabVenueTool[] {
+export function resolveHostToolSurface(input: HostToolSurfaceInput): string[] {
   return filterHostToolSurface({
     venue: resolveCollabVenue(input.sessionKind),
     allowlist: resolveAgentToolSurface({

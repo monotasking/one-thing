@@ -116,6 +116,7 @@ import type { NotesSubsystem } from '@onething/backend/note/note-subsystem'
 import { createAppSearchService } from '@onething/backend/search'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/mcp-capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from '@onething/backend/toolkit/toolkit-wiring'
+import { registerCollabAgentPresence, registerCollabAgentToolGrants, registerCollabTools } from '@onething/backend/collab'
 import { createAppToolRunner, sessionWorkspaceRootFor } from '@onething/backend/toolkit/toolkit-runner-factory'
 import { createPermissionAuthorizer } from '@onething/backend/toolkit/toolkit-authorizer'
 import { toolkitAuditSink } from '@onething/backend/toolkit/toolkit-audit-sink'
@@ -188,6 +189,11 @@ export function configureAppRuntimeAdapters(): void {
   // 功能挂载基座 `registerRpcDomain` 落到的 RPC 分发表(越层清零 C5):从前基座直接 import http-server,
   // 现在由装配交进去;同样幂等,先于任何一次 `mountFeature`。
   configureFeatureRegistryRpc({ registerRouterHandlers })
+  // 协作给两张低层表登记自己那几行(越层清零 A3 / A4):agent 档案的工具地板(四格能力包)与变量系统的
+  // agent 在场块(卡 / 房 / 私聊)。从前这两处写死在 agent / variable 里;放在这里是因为它们和上面一样是
+  // 幂等的装配期接线,先于任何一次 `resolveAgentProfileForSession` 与任何一次变量面求值。
+  registerCollabAgentToolGrants()
+  registerCollabAgentPresence()
   // 凭证功能交给别人的两样东西(D24 断边 ② ③,2026-10-04):从前设置的模型目录服务与 auth 各自直接
   // import 凭证功能里的文件,凭证那一侧又要读设置、要 auth 刷新令牌,三个功能互相引用成环;现在只在这里接一次。
   // ① 进程那台登录服务的令牌存放面 = 空间凭证池(第一次交的为准;它是每次现读当前 store 的无状态薄壳)。
@@ -1008,6 +1014,10 @@ export class OnethingBackend implements BackendHandle {
     // 自己装进目录,后者由 `api.registerTool` 装 —— 两者的寿命都不是"一档目录"的寿命。
     const toolRegistryTier = options.toolRegistry ?? 'headless'
     const toolkitCatalog = buildToolkitCatalog(toolRegistryTier)
+    // 协作的四只工具由协作自己登记(越层清零 A1):紧跟在三档目录之后、先于任何别的东西碰目录,
+    // 所以 full 档的插入顺序与从前逐字相同。登记无条件 —— 不挂在 `collab: true` 上,server 不开协调器,
+    // 四只工具照样在它的目录里。
+    registerCollabTools(toolkitCatalog, toolRegistryTier)
     // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
     // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
     configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())

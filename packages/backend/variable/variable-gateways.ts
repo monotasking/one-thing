@@ -42,16 +42,8 @@ import { getGoal, goalLimits } from '../goal/goal-manager.js'
 import { getMusicNowPlaying } from '@onething/backend/music/music-service'
 import { getRadioStore } from '@onething/backend/music/music-radio'
 import { getNoteSystemRegistry } from '../note/note-subsystem.js'
-import { computeAgentPresence } from '@onething/backend/agent'
-import { isAgentPairDmRoom } from '@onething/backend/collab'
-import type {
-  AgentSelfCardFact,
-  AgentSelfChatFact,
-  AgentSelfStateGateway,
-} from '@onething/backend/variable/providers/variable-providers-agent-self'
-import { findAgent } from '../agent/agent-store-access.js'
-import { getCollabSelfTaskFacts } from '@onething/backend/collab/collab-board-store'
-import { resolveUserIdentity } from '@onething/backend/collab/collab-user-identity'
+import type { AgentSelfStateGateway } from '@onething/backend/variable/providers/variable-providers-agent-self'
+import { agentPresenceSource } from './variable-agent-presence.js'
 import { getLogger } from '@onething/backend/logging/logging-configure'
 
 const log = getLogger('variables')
@@ -278,50 +270,11 @@ export const goalVariableGateway: GoalVariableGateway = {
 
 export const agentSelfGateway: AgentSelfStateGateway = {
   read(sessionId) {
-    const session = store.getSession(sessionId)
-    const agentId = session?.agentId
+    const agentId = store.getSession(sessionId)?.agentId
     // 没绑 agent = 没有"我"可谈,三个变量一个都不产出。
     if (!agentId) return null
-
-    // 会话索引只取一次:presence 与房名/时间/形态判定共用同一份快照,免得
-    // 一个变量组遍历三遍索引。
-    const sessions = store.getSessionsList()
-    const presence = computeAgentPresence(agentId, sessions)
-    const byId = new Map(sessions.map(meta => [meta.id, meta]))
-
-    const cards: AgentSelfCardFact[] = []
-    const rooms: AgentSelfChatFact[] = []
-    const dms: AgentSelfChatFact[] = []
-
-    if (presence.dmRoomId) {
-      const meta = byId.get(presence.dmRoomId)
-      dms.push({ name: resolveUserIdentity().label, lastActiveAt: meta?.updatedAt })
-    }
-
-    // 一个房一次 board.json 读取(小文件,同步)。此前 `<your_cards>` 是一次;
-    // 现在是"这个 agent 在的房"的条数 —— 在场面本来就是它的活动半径,而卡只
-    // 可能挂在这些房的板上。
-    for (const roomId of [...(presence.dmRoomId ? [presence.dmRoomId] : []), ...presence.roomSessionIds]) {
-      for (const fact of getCollabSelfTaskFacts(roomId, agentId)) {
-        cards.push({ id: fact.id, title: fact.title, status: fact.status })
-      }
-    }
-
-    for (const roomId of presence.roomSessionIds) {
-      const meta = byId.get(roomId)
-      if (!meta) continue
-      // 双成员 dm 房在 presence 里算"房"(它确实是 kind='room'),但对 agent
-      // 而言那是私聊 —— 归到 my_dms,并且写对面那个人而不是房名。
-      if (isAgentPairDmRoom(meta.room)) {
-        const peerId = meta.room?.memberAgentIds?.find(id => id !== agentId)
-        const peerName = peerId ? findAgent(peerId)?.name : undefined
-        dms.push({ name: peerName || '另一位同事', lastActiveAt: meta.updatedAt })
-        continue
-      }
-      rooms.push({ name: meta.name, lastActiveAt: meta.updatedAt })
-    }
-
-    return { cards, rooms, dms }
+    // 在场面(卡 / 房 / 私聊)由协作登记的来源现算(越层清零 A4,`variable-agent-presence.ts`)。
+    return agentPresenceSource()?.(sessionId, agentId) ?? null
   },
 }
 

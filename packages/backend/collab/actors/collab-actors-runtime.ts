@@ -45,15 +45,17 @@ import {
   collectCollabFoldedFacts,
   formatCollabAdoptedEcho,
   formatCollabUserLabel,
-  isAgentPairDmRoom,
   isCollabRoomFact,
-  isUserDmRoom,
   planCollabHistoryWindow,
   renderCollabBoardDigest,
   wrapCollabMessageEnvelope,
   type CollabAgentLike,
   type CollabMessageLike,
 } from '@onething/backend/collab'
+import {
+  isAgentPairDmRoom,
+  isUserDmRoom,
+} from '@onething/backend/session'
 import {
   collabActorRef,
   collabAgentSpawnWorker,

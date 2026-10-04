@@ -33,9 +33,11 @@ import * as store from '@onething/backend/session'
 import {
   buildCollabRoomSystemPrompt,
   buildCollabWorkContext,
+} from '@onething/backend/collab'
+import {
   isAgentPairDmRoom,
   isUserDmRoom,
-} from '@onething/backend/collab'
+} from '@onething/backend/session'
 import { collabRoomMembers } from '@onething/backend/collab/collab-members'
 import { collabUserPromptFields } from '@onething/backend/collab/collab-user-identity'
 import type { PromptProviderConfig } from '@onething/backend/plugin'

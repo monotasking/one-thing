@@ -42,7 +42,7 @@ import { getSettings } from "@onething/backend/settings";
 import { expandOnethingToolSandboxPath as expandPath } from '@onething/backend/tool/tool-sandbox-runtime';
 import { createHybridSessionStorageDriver } from './session-storage-driver.js'
 import { createOnethingSessionRepository } from './session-repository.js'
-import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/backend/collab";
+import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "./session-message-source.js";
 import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
 	isValidSpaceId,

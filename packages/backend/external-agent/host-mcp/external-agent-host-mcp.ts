@@ -13,7 +13,8 @@ export {
 } from './external-agent-host-mcp-context.js'
 export {
   filterHostToolSurface,
-  HOST_MCP_TOOL_CANDIDATES,
+  hostMcpToolCandidates,
+  registerHostInjectableTools,
   HOST_MCP_TURN_GONE,
   hostMcpToolDefinitionWith,
   resolveHostToolSurface,
@@ -21,6 +22,7 @@ export {
   type HostMcpCallResult,
   type HostMcpHostTool,
   type HostMcpToolDefinition,
+  type HostInjectableTool,
   type HostToolSurfaceInput,
 } from './external-agent-host-mcp-tools.js'
 export {
