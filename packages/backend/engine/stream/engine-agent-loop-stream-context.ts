@@ -246,7 +246,7 @@ function createAgentLoopRuntimeAdapters(
 
 /**
  * C6:回合中(mid-turn)那条压缩路的进度接线。核心引擎的手动/自动两路在
- * `runContextCompact` 里统一接,这条不经过那里 —— 它从 agent-loop 的 adapters
+ * `runContextCompact`(压缩闸 `agent-loop-compaction-gate.ts`)里统一接,这条不经过那里 —— 它从 agent-loop 的 adapters
  * 直接调 `compactSessionContext`,所以进度也在这里往 eventBus 转发一次。
  */
 function withCompactProgressEmit(

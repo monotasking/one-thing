@@ -1,6 +1,7 @@
 // 带适配器的上下文压缩驱动(从 `agent-loop-runtime.ts` 拆出,拆分批 1,D226):什么时候该压、一轮压缩怎么计划、
 // 压完的结果怎么落回状态、发哪些事件。它是压缩的三个面之一 —— 压缩**算法**(怎么切块、怎么摘要)住在
-// `agent-loop-context-compact.ts`,「同一会话不并发压缩、发送前等闸」的调度状态是引擎里的压缩闸;这里只做驱动。
+// `agent-loop-context-compact{,-sizing,-summary,-file-tags}.ts` 四只(选段 / 定块 / 摘要 / 文件清单),「同一会话不并发压缩、
+// 发送前等闸」的调度状态是引擎的压缩闸 `agent-loop-compaction-gate.ts`;这里只做驱动。
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
 import { getContextCompactReason, type CoreCompactSession } from './agent-loop-context-compact.js'
 import {

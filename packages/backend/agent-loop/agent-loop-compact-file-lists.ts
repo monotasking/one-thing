@@ -1,4 +1,5 @@
-import type { CoreCompactFileOperations, CoreCompactMessage } from './agent-loop-context-compact.js'
+import type { CoreCompactMessage } from './agent-loop-context-compact.js'
+import type { CoreCompactFileOperations } from './agent-loop-context-compact-file-tags.js'
 
 /**
  * C5-1(2026-08-14):确定性文件清单。

@@ -2077,3 +2077,25 @@ Worker 与 ACP 桥逐字节不变(每一步都比过);主包 server 5,766,771 �
 (refold mismatch 0);hydration 0 失败;`sessions:verify` GATE GREEN、`events-selfcheck` 0 NEW;`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);
 `gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(`session:check` 与改前同 4 条);CLI 与 server 能起;
 `gateway:start` 与改前一样 exit 1。别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。
+
+### 大文件拆分批 3 落地记录(D227 / D242–D246,2026-10-04,未提交)
+
+1. **`agent-loop-context-compact` 拆四只**(D242,纯搬家,`split:prove` 68 条):选段 / 定块(`-sizing`)/ 分块摘要(`-summary`)/ 文件清单标签(`-file-tags`);cohesion 名单 2 → 1。
+2. **`CoreStreamEngine` 拆三个协作件 + 类型外移**(D243):起标题并进 `agent-loop-title.ts`、服务商解析 `agent-loop-provider-resolution.ts`、压缩闸
+   `agent-loop-compaction-gate.ts`,形状进 `agent-loop-stream-engine-types.ts`;五个命令与子类合同不动;端口是回引擎取的闭包。
+3. **`ACPClient` 拆回调面与错误分类**(D244):`acp-client-app.ts` / `acp-client-errors.ts`;状态机不拆;boundary 检查器的符号表改读两只文件。
+4. **`collab-actors-runtime` 停下**(D245):按参数拿 runtime 会改变「收摊 → 再起」窗口里迟到投递的去向;端口方案写在 D245 待批。
+5. **`music-radio` 拆歌词与反向识别两段**(D246):两只工厂,正文原样;`assembly:gate` 基线 `music-radio.ts 7 → 3`。
+6. CLAUDE.md 门表里 cohesion 名单「2 只」→「1 只」;`feature-map` 重生成;代码注释里指向搬走方法的 6 处改成新住处。
+
+**验收**(改前 `$S/s40-before/`、改后 `$S/s40-after/`,同一份脚本 `$S/s40-checks.sh`,沿用 s39 那套,另加 collab 目录 + `__tests__/collab-*`、music 目录、
+acp 目录、agent-loop + engine 目录逐条对照):三套 tsc 零错;四个 bundle 全成,三份检索 Worker 与 ACP 桥逐字节不变(每一步都比过);主包 server
+5,767,871 → 5,773,209、CLI 11,472,322 → 11,480,671(新文件的文件头与端口接线);collab 1573 条、music 284 条(+15 跳过、1 条改前就红)、acp 294 条、
+agent-loop + engine 751 条(+5 条改前就红的 system-prompt baseline)逐条相同;插件 971 条逐条相同;会话目录那一轮改后多红 5 条(`legacy-writable` ×2、
+`session-collab-turn`、`session-delete-cascade`、`session-removed-event`),同一批文件随后单跑(连同插件 event-routing)874 条全绿 —— 判为负载抖动;
+全量 vitest 根 11,431 条、壳 7,344 条:壳失败集合相同;根比改前多 `plugin/event-routing` 5 条、少两条文件监视的 —— 与 s38 记的是同一组负载抖动,
+event-routing 单跑只剩改前就红的「allowlist」一条;快照与 golden sha 不变;`http-server/__tests__` + `apps/backend-server` 逐条相同;theme 两只金样逐条相同;
+persistence / import-side-effect-free + assembly-lifecycle 绿;shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydration 0 失败;
+`sessions:verify` GATE GREEN、`events-selfcheck` 0 NEW(夹具店与 battery 自留店);`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);`gate:acp` 全绿(㉒ opt-in 跳过);
+`gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(`session:check` 与改前同 4 条);CLI 与 server 能起;
+`gateway:start` 与改前一样 exit 1。别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。

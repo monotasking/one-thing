@@ -231,3 +231,28 @@ shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydrati
 `cycle:gate` 0 环、深层环 3 / 2 不变;其余结构门全绿。三份检索 Worker 与 ACP 桥每一步都逐字节不变。
 
 验收与读数见 `server-client-split-2026-10.md` §6「大文件拆分批 2 + 批 1 留下的几处」。
+
+## 实施结果(s40,2026-10-04,未提交):批 3
+
+决策 D242–D246(`backend-structure-decisions-2026-10.md`),落地记录同见 `server-client-split-2026-10.md` §6。
+
+1. **`agent-loop-context-compact`**(D242):s39 判「暂留」的四块按 s39 汇报的结论拆开 —— 原名(选段 + 状态消息,414 行)、`-sizing`(247)、`-summary`(256)、
+   `-file-tags`(84);`split:prove` 68 条逐字相同,入口 311 个名字逐个相同,cohesion 名单 2 → 1(只剩 `plugin-contract-panel`)。
+2. **`agent-loop-stream-engine`**(D243):接口 22 个外移到 `-types.ts`(303 行);三个协作件 —— `SessionTitleGenerator` 并进 `agent-loop-title.ts`(65 → 228 行)、
+   `ProviderResolution`(`agent-loop-provider-resolution.ts`,263)、`CompactionGate`(`agent-loop-compaction-gate.ts`,349);五个命令留在类里,类 1771 → 1263 行。
+   端口每一格是回引擎取的闭包,子类合同(含受保护的 `waitForCompactionIdle`)一格不动。证明不是 `split:prove`(类变了),是成员级对照脚本:
+   留下 62 个成员 55 个逐字、7 个只差改调;搬走 13 个按端口替换表逐字出现。
+3. **`acp-client`**(D244):回调面 `acp-client-app.ts`(377 行,18 个成员 + 三只顶层件)与错误分类 `acp-client-errors.ts`(120 行,11 条原样);状态机不拆,
+   类 1548 → 1302 行。`requestContext` 留在客户端经端口给回调面(否则是值环);boundary 检查器的 ACP 客户端符号表改读两只文件。成员级对照:
+   留下 89 个里 88 个逐字、1 个只差两处改调,搬走 18 个逐字。
+4. **`collab-actors-runtime`**(D245):**停下,零改动**。按参数拿 runtime 在「收摊 → 再起」的窗口里会改变迟到投递的去向(未登记的裁决、agent 回合收尾、
+   `memberMailbox` 开信箱,今天投进新运行时、改后被丢掉),写不出「改前改后同一实例」。另一条路(把这几只函数本身做成端口递给适配器,单例读者不出运行时文件)
+   写在 D245,待批。
+5. **`music-radio`**(D246,可选,做了):歌词段 `music-radio-lyrics.ts`(129 行)与反向识别段 `music-radio-identify-watch.ts`(118 行)各成一只工厂,正文原样、
+   闭包里的依赖解构成同名局部量;跨段只剩三处只读口。文件名与 30 个导出不动。`assembly:gate` 基线 `music-radio.ts 7 → 3`(门按行首 `let` 数,
+   闭包正文从前不缩进,被记成模块级;工厂正文缩进后不再计入)。
+
+**读数**:`cohesion:gate` 已知名单 2 → 1;`entry:gate` 测试深层引用 838 不变、三条硬闸 0;`cycle:gate` 0 环、深层环 3 / 2 不变;`assembly:gate` 绿(基线收紧一行);
+其余结构门全绿。三份检索 Worker 与 ACP 桥每一步都逐字节不变。
+
+验收与读数见 `server-client-split-2026-10.md` §6「大文件拆分批 3」。

@@ -254,7 +254,7 @@ export interface ContextSizeUpdatedEvent {
 /**
  * P1(2026-08-14):压缩开始的**唯一**正路通知。从前 renderer 只能靠嗅探
  * 「一条内容长得像 context-compact/compacting 的消息」来猜,而专用 IPC 通道
- * 主进程从来没发过。现在手动/自动两条路统一在引擎的 runContextCompact 里发这
+ * 主进程从来没发过。现在手动/自动两条路统一在引擎压缩闸的 runContextCompact 里发这
  * 一条,手动路径带 requestId。
  */
 export interface ContextCompactStartedEvent {

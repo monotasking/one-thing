@@ -25,16 +25,16 @@ import {
 } from './music-radio-render.js'
 import { createOnethingMusicReliableRunner } from './music-reliable-runner.js'
 import { createOnethingRadioConductor, type OnethingRadioConductor } from './music-radio-conductor.js'
+import { createRadioLyrics } from './music-radio-lyrics.js'
+import { createRadioIdentifyWatch } from './music-radio-identify-watch.js'
 import {
   createOnethingRadioStore,
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
 } from './music-radio-store.js'
 import { estimateSpeechSeconds, firstVocalStartAt } from './music-lyrics.js'
-import { matchSongFromSearch, songPlayFlagFromSearch, type OnethingMusicIdentifiedSong } from './music-identify.js'
+import { songPlayFlagFromSearch } from './music-identify.js'
 import type { OnethingMusicNowPlaying } from './music-now-playing.js'
-import { broadcastVoiceHostMessage } from '@onething/backend/voice'
-import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { describeHostDoing, projectHostLog } from '@onething/backend/music/music-host-log'
 import { addGrant, markSessionUnattended } from '@onething/backend/permission'
@@ -1590,6 +1590,7 @@ async function likeCurrentSong(): Promise<{ success: boolean; error?: string }> 
   // reverse-identified from the player's title (a same-source compare, which
   // is safe — the cross-source title comparison is what got banned).
   const playingTitle = getMusicNowPlaying()?.title
+  const identifiedCurrent = readIdentifiedCurrent()
   const identified =
     identifiedCurrent && playingTitle === identifiedCurrent.title ? identifiedCurrent : null
   const candidate = identified ?? store.readBrief().onDeck
@@ -1619,160 +1620,18 @@ async function likeCurrentSong(): Promise<{ success: boolean; error?: string }> 
 // Lyrics (the composer's placeholder)
 // ----------------------------------------------------------------------------
 
-const lyricCache = new Map<string, MusicLyricLine[]>()
-/** In-flight lyric fetches, so a prefetch and the start flow share one call. */
-const lyricInflight = new Map<string, Promise<MusicLyricLine[]>>()
-let currentLyrics: MusicLyrics | null = null
-
-/** 换手上那份歌词并告诉读者(推送一条给旧宿主,再报一条事实给资源订阅方)。 */
-function setCurrentLyrics(next: MusicLyrics): void {
-  currentLyrics = next
-  broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: next })
-  try {
-    options.announceLyrics?.(next)
-  } catch (error) {
-    log.warn('announce lyrics failed', {}, error)
-  }
-}
-
-function getMusicLyrics(): MusicLyrics | null {
-  owner.assertActive()
-  if (currentLyrics === null) fetchLastPlaybackLyrics()
-  return currentLyrics
-}
-
-/**
- * 重新打开应用时,播放器还没起、这台进程手上没有任何歌词 —— 而面板画的是「上次放到哪」那首、停在那一秒
- * (09-19)。歌词也该是那一首的(09-25「重新打开的时候,歌词、进度等是否正常」):只要上次那首是电台起的
- * (手上有它的 id),就照起播时同一条路去取、取到了照样推一声,读者据那一声重读。
- * 播放器此刻在放别的歌就不取 —— 那时该有歌词的是正在放的那首,由它自己的起播 / 采样去推。
- * 只取一次不靠额外的记号:取到(或确认取不到)之后手上就有了一份歌词,不再是 `null`;取的路上再问,
- * `getLyricLines` 按 id 合并成同一发。
- */
-function fetchLastPlaybackLyrics(): void {
-  if (getMusicNowPlaying()?.title) return
-  const last = getRadioStore().readBrief().lastPlayback
-  if (!last?.encryptedId) return
-  void pushLyricsFor({ encryptedId: last.encryptedId, originalId: '', title: last.title }, last.title)
-}
-
-/**
- * Fetch (once per song, cached) and push the timed lyrics for a song the radio
- * just started. Best-effort: no lyrics is ambience missing, never an error the
- * user sees. One server call per new song — the cache keeps replays free.
- */
-/** Fetch (cached) the timed lyric lines for a song — shared by the lyric push
- * and the talk-over-the-intro timing decision. */
-async function getLyricLines(entry: OnethingRadioProgrammeEntry): Promise<MusicLyricLine[]> {
-  owner.assertActive()
-  return owner.track((async () => {
-  const cached = lyricCache.get(entry.encryptedId)
-  if (cached) return cached
-  let inflight = lyricInflight.get(entry.encryptedId)
-  if (!inflight) {
-    inflight = (async () => {
-      try {
-        const provider = getActiveMusicProvider()
-        const stdout = await getReliableRunner().run('server', provider.cli.build.lyric(entry))
-        // The provider's parser degrades garbage to "no lyrics", never a throw.
-        const lines = provider.cli.parse.lyric(stdout)
-        // Evict the oldest entry, not the whole cache — clear-all used to wipe
-        // the CURRENT song's lines too, forcing a refetch mid-play.
-        if (lyricCache.size > 20) {
-          const oldest = lyricCache.keys().next().value
-          if (oldest !== undefined) lyricCache.delete(oldest)
-        }
-        lyricCache.set(entry.encryptedId, lines)
-        return lines
-      } finally {
-        // Failures are not cached: the next caller retries the fetch.
-        lyricInflight.delete(entry.encryptedId)
-      }
-    })()
-    lyricInflight.set(entry.encryptedId, inflight)
-  }
-  return inflight
-
-  })())
-}
-
-async function pushLyricsFor(entry: OnethingRadioProgrammeEntry, playerTitle: string): Promise<void> {
-  owner.assertActive()
-  return owner.track((async () => {
-  try {
-    const lines = await getLyricLines(entry)
-    // The PLAYER's title, not the DJ's: the renderer guards lyrics against the
-    // bar's now-playing title, and only the player agrees with itself.
-    if (owner.signal.aborted) return
-    setCurrentLyrics({ title: playerTitle, lines })
-  } catch (error) {
-    log.warn('fetch lyrics failed', { title: entry.title }, error)
-    // 说出来:没取到。不说的话面板会一直等下去(「正在取歌词」永远不结束)。
-    if (!owner.signal.aborted) setCurrentLyrics({ title: playerTitle, lines: [], failed: true })
-  }
-
-  })())
-}
+// 这一段的正文住在 `music-radio-lyrics.ts`(2026-10-04 拆出);闭包里别的段按同名局部量用它。
+const { lyricCache, lyricInflight, setCurrentLyrics, getMusicLyrics, getLyricLines, pushLyricsFor, readCurrentLyrics } =
+  createRadioLyrics({ owner, options, getActiveMusicProvider, getMusicNowPlaying, getRadioStore, getReliableRunner })
 
 // ----------------------------------------------------------------------------
 // Reverse identification (songs someone else started)
 // ----------------------------------------------------------------------------
 
-let lastObservedTitle: string | undefined
-/** Titles we already failed to identify — do not burn a search per poll. */
-const identifyMisses = new Set<string>()
-/** The identified currently-playing song; title is the PLAYER's own string. */
-let identifiedCurrent: (OnethingMusicIdentifiedSong & { title: string }) | null = null
-
-/**
- * Ceremonies follow the song, not the code path: when a song WE did not start
- * shows up (the model's manual `play`), recover its id by exact-title search
- * and push its lyrics too. Exact or nothing — captioning the wrong song is
- * worse than no caption.
- */
-async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promise<void> {
-  owner.assertActive()
-  return owner.track((async () => {
-  if (sample?.status !== 'playing' || !sample.title) return
-  if (sample.title === lastObservedTitle) return
-  lastObservedTitle = sample.title
-  identifiedCurrent = null
-  // Radio-started songs already had their ceremonies at start (the lyrics
-  // push carries the player's title, so this same-source compare is safe).
-  if (currentLyrics?.title === sample.title) return
-  if (identifyMisses.has(sample.title)) {
-    setCurrentLyrics({ title: sample.title, lines: [], failed: true })
-    return
-  }
-  try {
-    const provider = getActiveMusicProvider()
-    const stdout = await getReliableRunner().run('server', provider.cli.build.search(sample.title, 10))
-    const match = matchSongFromSearch(provider.cli.parse.searchRecords(stdout), sample.title)
-    if (!match) {
-      // Bounded: a long-running station observing many unidentifiable titles
-      // must not leak; dropping the oldest only means one extra search someday.
-      if (identifyMisses.size >= 200) {
-        const oldest = identifyMisses.values().next().value
-        if (oldest !== undefined) identifyMisses.delete(oldest)
-      }
-      identifyMisses.add(sample.title)
-      // 认不出这首是谁 = 歌词没处取。说一句,别让面板一直等。
-      setCurrentLyrics({ title: sample.title, lines: [], failed: true })
-      return
-    }
-    if (owner.signal.aborted) return
-    identifiedCurrent = { ...match, title: sample.title }
-    void pushLyricsFor(
-      { encryptedId: match.encryptedId, originalId: match.originalId, title: sample.title },
-      sample.title,
-    )
-  } catch (error) {
-    log.warn('identify current track failed', { title: sample.title }, error)
-    if (!owner.signal.aborted) setCurrentLyrics({ title: sample.title, lines: [], failed: true })
-  }
-
-  })())
-}
+// 这一段的正文住在 `music-radio-identify-watch.ts`(2026-10-04 拆出)。
+const { observeUnknownSong, logSampleTransition, readIdentifiedCurrent } = createRadioIdentifyWatch({
+  owner, getActiveMusicProvider, getReliableRunner, setCurrentLyrics, pushLyricsFor, readCurrentLyrics,
+})
 
 /**
  * Hook the conductor into the now-playing watcher. Idempotent; called at IPC
@@ -1780,33 +1639,6 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
  * every sample begins with a brief read that says "inactive".
  */
 /** The master switch, live-readable so a settings toggle needs no restart. */
-/**
- * Evidence log for the premature-stop investigation (2026-07-19: 「与光」
- * audibly died ~40s into a 3m40s song after a pause→seek 0→resume hold; the
- * conductor then honestly advanced). One line per player state transition,
- * stamped with WHERE in the song it happened — a stop at 40s/220s is a stream
- * death, a stop at 218s/220s is a song ending. Remove with the other probes.
- */
-let lastWatchedSample: OnethingMusicNowPlaying | null = null
-
-function describeSample(sample: OnethingMusicNowPlaying | null): string {
-  if (!sample) return 'null'
-  const pos = Math.round(sample.position)
-  const dur = sample.duration !== undefined ? `/${Math.round(sample.duration)}s` : ''
-  return `${sample.status}「${sample.title ?? '?'}」${pos}s${dur}`
-}
-
-function logSampleTransition(sample: OnethingMusicNowPlaying | null): void {
-  const prev = lastWatchedSample
-  const changed =
-    (prev?.status ?? 'null') !== (sample?.status ?? 'null') ||
-    (prev?.title ?? '') !== (sample?.title ?? '')
-  // Keep the freshest position even between logged transitions, so the
-  // "playing → stopped" line carries where playback actually was.
-  lastWatchedSample = sample
-  if (!changed) return
-  log.debug('player state changed', { from: describeSample(prev), to: describeSample(sample) })
-}
 
 function startRadioConductor(): void {
   owner.assertActive()
@@ -1846,7 +1678,7 @@ function startRadioConductor(): void {
     conductor?.onSample(sample)
     lastPlayback.observe(sample)
     // 间奏检测吃的是同一拍采样 + 此刻推着的歌词(对不上这首歌就不发,判据在 moments.ts)。
-    reportMoment(moments => moments.observeSample(sample, currentLyrics))
+    reportMoment(moments => moments.observeSample(sample, readCurrentLyrics()))
     void observeUnknownSong(sample)
   })
   // 简报里那条 DJ 会话被删了(09-26 真机:简报指着一条已不存在的会话,音乐面上「看他在

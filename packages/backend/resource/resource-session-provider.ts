@@ -553,8 +553,8 @@ export class SessionResourceProvider implements ResourceProvider<SessionOpPayloa
          * 不是域里:AI 经资源面改名与界面改名是同一件事,而从前只有界面那一路推,
          * 于是模型改完标题,别的客户端对着旧名字。
          *
-         * 载荷与自动起题那一发逐字同形(`agent-loop/agent-loop-stream-engine.ts` 的
-         * `generateAndApplySessionTitle`:`{ type, name }` 两格),走的也是同一条
+         * 载荷与自动起题那一发逐字同形(`agent-loop/agent-loop-title.ts` 里
+         * `SessionTitleGenerator.generateAndApplySessionTitle`:`{ type, name }` 两格),走的也是同一条
          * 总线;`name` 原样带出参数里那个字符串(仓的改名不归一化)。
          * **失败不发** —— `settle` 已经在上面抛掉了那一支。
          */

@@ -112,7 +112,7 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 				{
 					...titleOptions,
 					// debugSessionId carries the session here (see
-					// core-stream-engine's generateSessionTitle), which is the
+					// SessionTitleGenerator.generateSessionTitle in agent-loop-title.ts), which is the
 					// only handle this adapter has on which session to bill.
 					onUsage: billTitleUsage(
 						providerId,

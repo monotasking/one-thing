@@ -188,7 +188,7 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 | `bun run cycle:gate` | 运行期值引用图里含功能入口的强连通分量(只引类型、动态 `import()`、测试不成边);红时打出最短环 | 零基线硬闸 |
 | `bun run layer:gate` | 低层引高层的值边;层次表里没登记的功能 | 零基线硬闸 |
 | `bun run name:gate` | N1 重名、N2 功能名打头、N3 `index.ts`、N4 泛名 | 零基线硬闸 |
-| `bun run cohesion:gate` | 文件内聚(D225 / D229,判据 `docs/design/oversized-files-2026-10.md` §1):顶层声明为点、引用为边(≤ 3 行的叶子常量不连边),至少两块且第二块 ≥ 150 行 = 一只文件里住着两件不相干的事。不设行数上限。`cohesion:check` 打块表,`cohesion:report` 另打形状 B / C(长函数里几组嵌套函数各管各的 `let`、一只类里几组方法各管各的字段)的报表,只报不判。拆分时用 `bun run split:prove <拆前文件> <拆后文件…>` 证明纯搬家(每条顶层声明的源文本拆前拆后多重集相等) | 新文件零基线硬闸 / 立门时命中的文件记在已知名单里只许减(今天 2 只,理由写在名单文件头,`docs/audit/cohesion-baseline-2026-10.txt`) |
+| `bun run cohesion:gate` | 文件内聚(D225 / D229,判据 `docs/design/oversized-files-2026-10.md` §1):顶层声明为点、引用为边(≤ 3 行的叶子常量不连边),至少两块且第二块 ≥ 150 行 = 一只文件里住着两件不相干的事。不设行数上限。`cohesion:check` 打块表,`cohesion:report` 另打形状 B / C(长函数里几组嵌套函数各管各的 `let`、一只类里几组方法各管各的字段)的报表,只报不判。拆分时用 `bun run split:prove <拆前文件> <拆后文件…>` 证明纯搬家(每条顶层声明的源文本拆前拆后多重集相等) | 新文件零基线硬闸 / 立门时命中的文件记在已知名单里只许减(今天 1 只,理由写在名单文件头,`docs/audit/cohesion-baseline-2026-10.txt`) |
 | `bun run client-api:gate` | 第二入口与装配入口只被允许的人引;名字带 `-client-api` 却不合形状;少于 40 只 client-api 算红(防假绿) | 零基线硬闸 |
 | `bun run feature-map:check` | `docs/architecture/feature-map.md` 与代码一致 | 一致性 |
 | `bun run assembly:gate` | 每只非测试文件的模块级 `let` 个数(`backend-current.ts` 豁免);新状态挂在 `OnethingBackend` 实例上并 `own()` | 棘轮(`docs/audit/assembly-baseline-2026-09-02.txt`) |

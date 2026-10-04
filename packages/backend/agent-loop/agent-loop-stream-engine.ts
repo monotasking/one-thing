@@ -6,145 +6,46 @@ import { PendingMessageQueue } from './agent-loop-message-queue.js'
 import { isAgentExecutionCheckpointError } from './agent-loop-errors.js'
 import type { PendingMessage } from './agent-loop-message-queue.js'
 import { getCoreLogger } from '@onething/backend/logging'
-import type { CoreInitialToolChoice } from './agent-loop-stream-executor.js'
-import { coreProviderOwnsItsContextWindow } from './agent-loop-external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './agent-loop-file-mentions.js'
 import { isClientMintedId } from './agent-loop-ids.js'
 import { parsePrincipal } from '@shared/permission/principal.js'
 import type {
-  StreamEngineCompactionAdapter,
-  StreamEngineClockAdapter,
-  StreamEngineHistoryAdapter,
-  StreamEngineIdAdapter,
-  StreamEngineMediaAdapter,
-  StreamEngineModelRegistryAdapter,
-  StreamEnginePermissionAdapter,
   StreamEnginePromptAdapter,
-  StreamEngineProviderAdapter,
-  StreamEngineSkillsAdapter,
   StreamEngineStoreAdapter,
-  StreamEngineStreamsAdapter,
 } from './agent-loop-engine-adapters.js'
-import {
-  canApplyGeneratedSessionTitle,
-  generateTitleFromMessage,
-  normalizeSessionTitle,
-  resolveToolCallModel,
-  type StreamEngineSettingsWithProviders,
-} from './agent-loop-title.js'
+import type {
+  AbortLikeCommand,
+  CompactContextCommandLike,
+  CoreCommandEnvelope,
+  CoreContextCompactResultLike,
+  CoreEventBusEmitterLike,
+  CoreExecutionOptions,
+  CoreProviderConfigWithKeyLike,
+  CoreStreamEngineOptions,
+  CoreStreamEngineRuntime,
+  CoreStreamErrorInfo,
+  CoreStreamMessage,
+  CoreStreamPermissionModeSession,
+  CoreStreamPermissionModeSettings,
+  CoreStreamResultLike,
+  CoreStreamSession,
+  CoreStreamSettings,
+  EditAndResendCommandLike,
+  InjectMessageCommand,
+  ResumeAfterConfirmCommandLike,
+  RetractSteeringLikeCommand,
+  RetryMessageCommandLike,
+  SendMessageCommandLike,
+} from './agent-loop-stream-engine-types.js'
+import { SessionTitleGenerator } from './agent-loop-title.js'
+import { ProviderResolution, isCoreProviderResolutionFailure } from './agent-loop-provider-resolution.js'
+import { CompactionGate } from './agent-loop-compaction-gate.js'
 import {
   extractErrorDetails,
   type CoreErrorDetails,
 } from './agent-loop-error-details.js'
-import {
-  buildContextUsageSnapshot,
-} from './agent-loop-context-usage.js'
-import { resolveContextCompactTotalBudgetMs } from './agent-loop-context-compact.js'
 
 const log = getCoreLogger('core.engine')
-
-export interface CoreCommandEnvelope<TCommand = unknown> {
-  sessionId: string
-  event: TCommand
-  readonly executionContext?: unknown
-}
-
-export interface CoreExecutionOptions {
-  readonly executionContext?: unknown
-}
-
-export interface AbortLikeCommand {
-  type?: string
-  reason?: string
-}
-
-export interface InjectMessageCommand {
-  type?: string
-  content: string
-  source?: string
-  origin?: unknown
-}
-
-export interface RetractSteeringLikeCommand {
-  type?: string
-  messageId: string
-}
-
-export interface CoreEventBusEmitterLike {
-  onAnySession(
-    eventType: string,
-    handler: (envelope: CoreCommandEnvelope) => void,
-    label?: string
-  ): Unsubscribe
-  emit(sessionId: string, event: any): Promise<unknown>
-}
-
-export interface CoreStreamMessage {
-  id: string
-  role: string
-  content?: string
-  timestamp: number
-  attachments?: unknown[]
-  contentParts?: unknown[]
-  source?: string
-  voice?: unknown
-  model?: string
-  provider?: string
-  isStreaming?: boolean
-  thinkingStartTime?: number
-  toolCalls?: unknown[]
-  reasoning?: string
-  errorDetails?: string
-  [key: string]: unknown
-}
-
-export interface CoreStreamSession<TMessage extends CoreStreamMessage = CoreStreamMessage> {
-  messages: TMessage[]
-  name?: string
-  workingDirectory?: string
-  agentId?: string
-  parentSessionId?: string
-  createdAt: number
-  contextSize?: number
-  lastInputTokens?: number
-  permissionMode?: string
-  [key: string]: unknown
-}
-
-export interface CoreStreamSettings {
-  tools?: {
-    permissionMode?: string
-    toolCallModel?: {
-      thinking?: boolean
-      thinkingEffort?: unknown
-      [key: string]: unknown
-    }
-    [key: string]: unknown
-  }
-  skills?: {
-    enableSkills?: boolean
-    [key: string]: unknown
-  }
-  chat?: {
-    contextCompactKeepRecentTurns?: number
-    contextCompactChunkTimeoutSeconds?: number
-    contextCompactEnabled?: boolean
-    maxTokens?: number
-    contextCompactThreshold?: number
-    [key: string]: unknown
-  }
-  [key: string]: unknown
-}
-
-export interface CoreStreamPermissionModeSession {
-  permissionMode?: string
-}
-
-export interface CoreStreamPermissionModeSettings {
-  tools?: {
-    permissionMode?: string
-  }
-}
 
 export function resolveStreamPermissionMode(
   session: CoreStreamPermissionModeSession | null | undefined,
@@ -152,239 +53,6 @@ export function resolveStreamPermissionMode(
   fallback = 'normal',
 ): string {
   return session?.permissionMode ?? settings?.tools?.permissionMode ?? fallback
-}
-
-export interface CoreProviderConfigWithKeyLike {
-  model: string
-  selectedModels?: string[]
-  apiKey: string
-  authContext?: unknown
-  oauthToken?: unknown
-  baseUrl?: unknown
-  maxOutputByModel?: Record<string, number | undefined>
-  [key: string]: unknown
-}
-
-export interface CoreStreamResultLike {
-  pausedForConfirmation?: boolean
-  [key: string]: unknown
-}
-
-export interface CoreContextCompactResultLike {
-  success: boolean
-  skipped?: boolean
-  summary?: string
-  error?: string
-  retainedContextSize?: number
-  [key: string]: unknown
-}
-
-export interface CoreStreamEngineRuntime<
-  TSettings extends CoreStreamSettings = CoreStreamSettings,
-  TMessage extends CoreStreamMessage = CoreStreamMessage,
-  TSession extends CoreStreamSession<TMessage> = CoreStreamSession<TMessage>,
-  TProviderConfig = unknown,
-  TProviderConfigWithKey extends CoreProviderConfigWithKeyLike = CoreProviderConfigWithKeyLike,
-  TAuthContext = unknown,
-  TSkill = unknown,
-  TContentPart = unknown,
-  TAttachment = unknown,
-  THistoryMessage = unknown,
-  TStreamResult extends CoreStreamResultLike = CoreStreamResultLike,
-  TCompactResult extends CoreContextCompactResultLike = CoreContextCompactResultLike,
-> {
-  store: StreamEngineStoreAdapter<TSettings, TSession, TMessage>
-  ids: StreamEngineIdAdapter
-  clock: StreamEngineClockAdapter
-  permission: StreamEnginePermissionAdapter
-  skills: StreamEngineSkillsAdapter<TSkill>
-  prompts: StreamEnginePromptAdapter<TSkill, TContentPart>
-  media: StreamEngineMediaAdapter<TAttachment>
-  provider: StreamEngineProviderAdapter<TSettings, TProviderConfig, TAuthContext>
-  models: StreamEngineModelRegistryAdapter
-  history: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>
-  streams: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>
-  compaction: StreamEngineCompactionAdapter<unknown, TCompactResult>
-}
-
-export interface CoreStreamErrorInfo {
-  error: Error
-  message: string
-  details?: string
-  isAbortError: boolean
-}
-
-export interface CoreStreamEngineOptions {
-  authorizeExecution?: (sessionId: string, executionContext: unknown) => void
-  normalizeStreamError?: (error: Error) => CoreStreamErrorInfo
-  assertAccepting?: (sessionId?: string) => void
-  prepareSession?: (sessionId: string) => Promise<void>
-}
-
-/**
- * provider 解析**没解出来**的那一格(2026-08-31)。
- *
- * 从前解析失败只发一条 `stream:error` 浮窗就 `return` —— 账本上只剩一条
- * `user/message`,没有 `run/start` 也没有 `run/end`。翻账本的人(和只认账本的新壳)
- * 因此对"发了没反应"一个字都说不出来;而同一条会话里 provider 真的**答**了个 402,
- * 账本却是完整的 `run/start → request/error → run/end outcome=error`。
- * 同一件事(这一轮没有回答)在账本上有两种形状,其中一种是沉默。
- *
- * 这个描述符让"解不出来"走成与请求错误同一种形状:开 run,立刻 `run/end
- * outcome='error'`,`error.name` / `error.message` 是结构化原因。
- */
-export interface CoreProviderResolutionFailure {
-  failed: true
-  /** `ProviderNotConfigured`(没凭证 / 没登录)| `ProviderUnsupported`。 */
-  name: string
-  /** 人话,**必须自带 providerId** —— 账本的读者手上没有别的上下文。 */
-  message: string
-  providerId: string
-  /** 解析到失败那一刻手上的模型名(`getEffectiveConfig` 先于鉴权算出来)。 */
-  model: string
-}
-
-export function isCoreProviderResolutionFailure(
-  value: unknown,
-): value is CoreProviderResolutionFailure {
-  return !!value && (value as CoreProviderResolutionFailure).failed === true
-}
-
-interface SendMessageCommandLike {
-  type?: string
-  /**
-   * 客户端预铸的用户消息 id(契约上的说明在
-   * `@shared/events/session-commands.ts` 的 `SendMessageCommand.messageId`)。
-   *
-   * 它**不是**一格透传:引擎会读它,而且是这条命令里唯一一格由发送方决定的
-   * 「事实地址」。所以它两道判 —— 形(`isClientMintedId`)与会话内唯一 ——
-   * 由 `resolveUserMessageId` 一处做完,不合格就当作没给。
-   */
-  messageId?: string
-  content: string
-  attachments?: unknown[]
-  channel?: string
-  source?: string
-  voice?: unknown
-  origin?: unknown
-  /**
-   * Who is behind this turn. NOT a passthrough the engine trusts: hosts mint
-   * it at their boundary (app/engine/stream-engine.ts) after proving the
-   * sender may name an actor, and overwrite anything that arrived on the wire.
-   * The engine only carries it down to the tool executor.
-   *
-   * A forwarded command CAN spell this field — apps/backend-server forwards commands
-   * whole — which is exactly why the mint site, not the engine, is the
-   * authority. Same lesson as collabDriveToken (app/collab/drive-guard.ts).
-   */
-  principal?: unknown
-  /**
-   * IM quote-reply snapshot ({messageId, authorLabel, excerpt}). Persisted
-   * verbatim onto the user message — the engine never reads inside it. This is
-   * a NAMED passthrough, not a generic one: nothing else on the command may
-   * ride into storage without its own line here.
-   */
-  replyTo?: unknown
-  /**
-   * The room message a collab coordinator drive answers. Another NAMED
-   * passthrough persisted verbatim onto the user message — the engine never
-   * reads it. It exists so the durable transcript itself records which room
-   * message was already consumed, which is what makes a restart idempotent
-   * without consulting the coordinator's own state file (W23).
-   */
-  collabSourceMessageId?: string
-  /**
-   * Billing attribution label for this turn's usage records ('chat' when
-   * absent). A plain passthrough: the engine never reads it, it only rides
-   * down to whoever writes the usage ledger, so a collab room turn shows up
-   * as room spend instead of anonymous chat spend.
-   */
-  usageSource?: string
-  /**
-   * Force the FIRST model call of this turn into a tool call. Another named
-   * passthrough — the engine never reads it, it only rides down to the agent
-   * loop, which applies it to iteration 1 and nothing else.
-   *
-   * Set by system-internal drives whose entire output space is the tool surface
-   * (the collab room drive forces `say` by name). Ordinary chat never sets it.
-   */
-  initialToolChoice?: CoreInitialToolChoice
-  providerId?: string
-  model?: string
-  /**
-   * Pin the think mode for this turn (system-internal drives with their own
-   * configured model, e.g. the radio DJ). Only honored alongside providerId.
-   */
-  thinking?: boolean
-  thinkingEffort?: string
-  /** System-internal drives set this: their prompt text is not a title. */
-  suppressTitleGeneration?: boolean
-  /**
-   * Persist and display the user message, then STOP — no provider resolution,
-   * no compaction check, no assistant message, no stream (N2 `handled`).
-   *
-   * The engine had no word for "the user said this, and nothing is going to
-   * answer it". `steerMessage` is the closest existing shape but it is a
-   * QUEUE: the text also gets consumed by whatever turn runs next, which is
-   * wrong here — a plugin that answered `=1+2` locally must not have `=1+2`
-   * re-injected into the next real turn as steering.
-   *
-   * The early return sits AFTER `message:user-created` so every consumer
-   * (renderer, coordinator, session store) sees an ordinary user message. It
-   * is deliberately BEFORE title generation: a message nothing answered is
-   * not what a session should be named after, and the whole point of the
-   * `handled` branch is that this send costs zero model calls.
-   */
-  persistOnly?: boolean
-}
-
-interface EditAndResendCommandLike {
-  type?: string
-  messageId: string
-  newContent: string
-  channel?: string
-  origin?: unknown
-  providerId?: string
-  model?: string
-}
-
-interface RetryMessageCommandLike {
-  type?: string
-  messageId: string
-  providerId?: string
-  model?: string
-}
-
-interface ResumeAfterConfirmCommandLike {
-  type?: string
-  messageId: string
-}
-
-interface CompactContextCommandLike {
-  type?: string
-  requestId?: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {}
-}
-
-function authKind(authContext: unknown): string | undefined {
-  const record = asRecord(authContext)
-  return typeof record.kind === 'string' ? record.kind : undefined
-}
-
-function authApiKey(authContext: unknown): string {
-  const record = asRecord(authContext)
-  return typeof record.apiKey === 'string' ? record.apiKey : ''
-}
-
-function authToken(authContext: unknown): unknown {
-  return asRecord(authContext).token
 }
 
 export function normalizeCoreStreamError(
@@ -694,16 +362,45 @@ export class CoreStreamEngine<
     log.error(message, undefined, error)
   }
 
-  private activeCompactions = new Set<string>()
   /**
-   * P2(2026-08-14):per-session 压缩闸。压缩开跑时放进一个 promise,收尾时
-   * **无条件** resolve 并清除。四个命令入口在持久化任何消息之前 await 它 ——
-   * 语义是**等待而不是拒绝**:压缩通常几十秒,用户消息不该丢、也不该要求手动
-   * 重试。这是本方案唯一新增的阻塞点,所以 finally 的 resolve 不能有条件。
+   * 三个协作件(2026-10-04 从本类拆出,拆分批 3,D227):起标题、服务商解析、压缩闸。它们各管各的状态,
+   * 向引擎要的东西写成端口;端口的每一格都在调用那一刻回本类取(`this.eventBus` 随 `setEventBus` 换,
+   * `log` / `logError` / `emitStreamError` / `createMessageId` / `now` 可被子类覆写),所以行为与拆前相同。
    */
-  private compactionGates = new Map<string, { promise: Promise<void>; release: () => void }>()
-  private sessionTitleGenerations = new Map<string, number>()
-  private titleGenerationSeq = 0
+  private readonly titles = new SessionTitleGenerator<TSettings, TMessage, TSession, TProviderConfig, TAuthContext>({
+    store: () => this.store,
+    provider: () => this.runtime.provider,
+    eventBus: () => this.eventBus,
+    logError: (message, error) => this.logError(message, error),
+  })
+
+  private readonly providerResolution = new ProviderResolution<
+    TSettings, TMessage, TSession, TProviderConfig, TProviderConfigWithKey, TAuthContext, THistoryMessage, TStreamResult
+  >({
+    store: () => this.store,
+    provider: () => this.runtime.provider,
+    streams: () => this.runtime.streams,
+    eventBus: () => this.eventBus,
+    createMessageId: () => this.createMessageId(),
+    now: () => this.now(),
+    emitStreamError: (sessionId, error) => this.emitStreamError(sessionId, error),
+  })
+
+  private readonly compactionGate = new CompactionGate<
+    TSettings, TMessage, TSession, TProviderConfigWithKey, THistoryMessage, TCompactResult
+  >({
+    store: () => this.store,
+    models: () => this.runtime.models,
+    history: () => this.runtime.history,
+    compaction: () => this.runtime.compaction,
+    eventBus: () => this.eventBus,
+    log: message => this.log(message),
+    logError: (message, error) => this.logError(message, error),
+    emitStreamError: (sessionId, error) => this.emitStreamError(sessionId, error),
+    emitContextSizeUpdated: (sessionId, contextSize) => this.emitContextSizeUpdated(sessionId, contextSize),
+    emitMessageCreated: (sessionId, message) => this.emitMessageCreated(sessionId, message),
+    emitMessageUpdated: (sessionId, messageId, updates) => this.emitMessageUpdated(sessionId, messageId, updates),
+  })
 
   constructor(
     protected readonly runtime: CoreStreamEngineRuntime<
@@ -843,12 +540,12 @@ export class CoreStreamEngine<
   }
 
   protected onSessionCleared(sessionId: string): void {
-    this.sessionTitleGenerations.delete(sessionId)
+    this.titles.forgetSession(sessionId)
     this.runtime.permission.clearSession(sessionId)
   }
 
   protected onShutdown(): void {
-    this.sessionTitleGenerations.clear()
+    this.titles.clear()
   }
 
   /**
@@ -1022,14 +719,14 @@ export class CoreStreamEngine<
         // 标题是**发后不管**的旁路(工单 4 A1,回 HEAD 形状):它自己是一次模型
         // 调用,`await` 它等于让新会话第一条消息在标题模型跑完之前一个字都不出。
         // 失败只记日志,不进主路的错误面。
-        this.generateAndApplySessionTitle(
+        this.titles.generateAndApplySessionTitle(
           sessionId,
           resolvedPromptRefs.displayContent,
           session?.name || '',
         ).catch(err => this.logError('chat title generation failed:', err))
       }
 
-      const resolved = await this.resolveProviderOrFailure(
+      const resolved = await this.providerResolution.resolveProviderOrFailure(
         sessionId,
         cmd.providerId
           ? {
@@ -1044,12 +741,12 @@ export class CoreStreamEngine<
       if (isCoreProviderResolutionFailure(resolved)) {
         // 解不出 provider **不是**沉默的理由(见 `CoreProviderResolutionFailure`)。
         // 走与请求错误同一种形状:占位入库 → 开 run → 立刻收成 error。
-        await this.failRunWithProviderError(sessionId, userMessage, resolved)
+        await this.providerResolution.failRunWithProviderError(sessionId, userMessage, resolved)
         return
       }
       const { configWithApiKey, providerId, settings } = resolved
 
-      if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
+      if (!await this.compactionGate.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
       const assistantMessageId = this.createMessageId()
       const assistantMessage = {
@@ -1130,80 +827,6 @@ export class CoreStreamEngine<
     }
   }
 
-  /**
-   * 「这一轮没有回答,因为 provider 解不出来」——**在账本上说出来**(2026-08-31)。
-   *
-   * 形状与请求错误那条路逐格相同:占位入库 → `run/start` → 立刻
-   * `run/end outcome='error'`。于是 `events.jsonl` 上不再是一条孤零零的
-   * `user/message`,投影物化出的那条助手消息带着 `errorDetails`
-   * (`materializeAssistantNode`),壳的错误卡路径因此有话可说。
-   *
-   * 三处纪律,少一条就是一个新 bug:
-   *
-   * 1. **`isStreaming: true` 必须盖**。命令面按它分流:流式 assistant 占位一条
-   *    事件都不写(`run/start` 才是它那一格),不盖就会多写一条 `system/message`,
-   *    账本上同一条消息出现两次(`command-events.ts` 的 `appendMessage`)。
-   * 2. **入库与开账同一同步段**(c4-d):`addMessage` 与 `openAssistantRun` 之间
-   *    不许有 `await`。
-   * 3. **开了就得收**:预开的 run 是 `claimed:false`,而这条路根本不进
-   *    `executeMessageStream`,没有 finally 会收它 —— `failAssistantRun` 就是那个
-   *    收尾人。宿主没接这一口(没有账本)时整条路降级成本修之前的行为。
-   */
-  private async failRunWithProviderError(
-    sessionId: string,
-    userMessage: TMessage,
-    failure: CoreProviderResolutionFailure,
-  ): Promise<void> {
-    // **两口一起才成立**:开了没人收,账本上就留一条永远"在生成中"的 run;
-    // 收得了却开不出,那条占位是流式的(纪律 1),命令面一条事件都不写 ——
-    // 它在账本上根本不存在。缺一口就整条路退回本修之前的行为(浮窗已经发了)。
-    if (!this.runtime.streams.openAssistantRun || !this.runtime.streams.failAssistantRun) return
-
-    const trigger = userMessage as unknown as { id: string; origin?: unknown }
-    const assistantMessageId = this.createMessageId()
-    const assistantMessage = {
-      id: assistantMessageId,
-      role: 'assistant',
-      model: failure.model,
-      provider: failure.providerId,
-      content: '',
-      timestamp: this.now(),
-      // 纪律 1 —— 见上。`run/end` 一落账,投影里这一格就是 `ended`,
-      // 物化出去的那条消息上 `isStreaming` 整格不出现。
-      isStreaming: true,
-      toolCalls: [],
-      errorDetails: failure.message,
-      ...(trigger.origin !== undefined ? { origin: trigger.origin } : {}),
-    } as unknown as TMessage
-
-    // F4-a(§16.12):往下递的是**入库的那一条**,不是手里这条。
-    const storedAssistantMessage = this.store.addMessage(sessionId, assistantMessage)
-    // 纪律 2 —— 这一行与上一行之间不许有 await。
-    this.runtime.streams.openAssistantRun({
-      sessionId,
-      assistantMessageId,
-      assistantMessage: storedAssistantMessage,
-      runKind: 'send',
-      triggerMessageId: trigger.id,
-      providerId: failure.providerId,
-      model: failure.model,
-    })
-
-    await this.eventBus?.emit(sessionId, {
-      type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED,
-      message: assistantMessage,
-    })
-
-    const error = new Error(failure.message)
-    error.name = failure.name
-    // 纪律 3 —— 见上。
-    await this.runtime.streams.failAssistantRun({
-      sessionId,
-      assistantMessageId,
-      error,
-    })
-  }
-
   handleCompactContext(sessionId: string, cmd: CompactContextCommandLike, options: CoreExecutionOptions = {}): Promise<void> {
     // 授权在入口判一次(工单 5 §4);这两条入口产品层没有覆写,所以它归这里。
     this.authorizeExecution(sessionId, options.executionContext)
@@ -1225,7 +848,7 @@ export class CoreStreamEngine<
       })
       return
     }
-    if (this.activeCompactions.has(sessionId)) {
+    if (this.compactionGate.activeCompactions.has(sessionId)) {
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
         requestId: cmd.requestId,
@@ -1237,12 +860,12 @@ export class CoreStreamEngine<
 
     // P2:登记必须在**第一个 await 之前**同步完成。从前 activeStreams 检查之后
     // 还有 resolveProvider 的 await 窗口,两条 /compact 能双双穿过(TOCTOU)。
-    this.activeCompactions.add(sessionId)
-    const release = this.openCompactionGate(sessionId)
+    this.compactionGate.activeCompactions.add(sessionId)
+    const release = this.compactionGate.openCompactionGate(sessionId)
 
     try {
       await this.prepareSessionExecution(sessionId)
-      const resolved = await this.resolveProvider(sessionId)
+      const resolved = await this.providerResolution.resolveProvider(sessionId)
       if (!resolved) {
         await this.eventBus?.emit(sessionId, {
           type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
@@ -1253,7 +876,7 @@ export class CoreStreamEngine<
         return
       }
 
-      const result = await this.runContextCompact(
+      const result = await this.compactionGate.runContextCompact(
         {
           sessionId,
           providerId: resolved.providerId,
@@ -1279,7 +902,7 @@ export class CoreStreamEngine<
         this.emitContextSizeUpdated(sessionId, result.retainedContextSize ?? 0)
       }
     } finally {
-      this.activeCompactions.delete(sessionId)
+      this.compactionGate.activeCompactions.delete(sessionId)
       release()
     }
   }
@@ -1324,14 +947,14 @@ export class CoreStreamEngine<
         messages: this.store.listMessages(sessionId) as TMessage[],
       })
 
-      const resolved = await this.resolveProvider(
+      const resolved = await this.providerResolution.resolveProvider(
         sessionId,
         cmd.providerId ? { providerId: cmd.providerId, model: cmd.model } : undefined,
       )
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
-      if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
+      if (!await this.compactionGate.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
       // 现取:上面 await 过压缩,捏在手里的会话/数组都可能过期。
       const assistantOrigin = cmd.origin ?? this.store.getMessage(sessionId, messageId)?.origin
@@ -1435,14 +1058,14 @@ export class CoreStreamEngine<
         messages: this.store.listMessages(sessionId) as TMessage[],
       })
 
-      const resolved = await this.resolveProvider(
+      const resolved = await this.providerResolution.resolveProvider(
         sessionId,
         cmd.providerId ? { providerId: cmd.providerId, model: cmd.model } : undefined,
       )
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
-      if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
+      if (!await this.compactionGate.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
       const assistantOrigin = targetMessage.origin
       const assistantMessageId = this.createMessageId()
@@ -1591,7 +1214,7 @@ export class CoreStreamEngine<
       // created under, not whatever session/global resolves to right now —
       // the global default may have changed while the tool-permission
       // confirm dialog was pending.
-      const resolved = await this.resolveProvider(
+      const resolved = await this.providerResolution.resolveProvider(
         sessionId,
         assistantMessage.provider ? { providerId: assistantMessage.provider, model: assistantMessage.model } : undefined,
       )
@@ -1685,475 +1308,12 @@ export class CoreStreamEngine<
     }
   }
 
-  private async generateAndApplySessionTitle(
-    sessionId: string,
-    displayContent: string,
-    expectedSessionName: string,
-  ): Promise<void> {
-    const requestId = ++this.titleGenerationSeq
-    this.sessionTitleGenerations.set(sessionId, requestId)
-
-    try {
-      const generatedTitle = await this.generateSessionTitle(sessionId, displayContent)
-      const title = normalizeSessionTitle(generatedTitle) || generateTitleFromMessage(displayContent)
-      if (!title) return
-
-      if (this.sessionTitleGenerations.get(sessionId) !== requestId) return
-
-      const session = this.store.getSession(sessionId)
-      if (!session) return
-      if (!canApplyGeneratedSessionTitle(session.name, expectedSessionName)) {
-        return
-      }
-      if (session.name === title) return
-
-      this.store.renameSession(sessionId, title)
-      await this.eventBus?.emit(sessionId, {
-        type: SESSION_EVENT_TYPES.SESSION_RENAMED,
-        name: title,
-      })
-    } catch (error) {
-      if (isAgentExecutionCheckpointError(error)) throw error
-      const fallbackTitle = generateTitleFromMessage(displayContent)
-      const session = this.store.getSession(sessionId)
-      if (
-        session &&
-        fallbackTitle &&
-        this.sessionTitleGenerations.get(sessionId) === requestId &&
-        canApplyGeneratedSessionTitle(session.name, expectedSessionName)
-      ) {
-        this.store.renameSession(sessionId, fallbackTitle)
-        await this.eventBus?.emit(sessionId, {
-          type: SESSION_EVENT_TYPES.SESSION_RENAMED,
-          name: fallbackTitle,
-        })
-      }
-      this.logError('Falling back to local chat title:', error)
-    } finally {
-      if (this.sessionTitleGenerations.get(sessionId) === requestId) {
-        this.sessionTitleGenerations.delete(sessionId)
-      }
-    }
-  }
-
-  private async generateSessionTitle(sessionId: string, displayContent: string): Promise<string> {
-    // Title generation resolves off settings directly, so it needs the same
-    // session-scoped view the send path gets — otherwise a session in another
-    // workspace titles itself with a model that workspace never selected.
-    const settings = this.store.getSettingsForSession?.(sessionId) ?? this.store.getSettings()
-    const { providerId, providerConfig: rawProviderConfig, model } = resolveToolCallModel(
-      settings as unknown as StreamEngineSettingsWithProviders<{ model?: string; selectedModels?: string[] }>,
-    )
-    if (!providerId || !rawProviderConfig || !model) {
-      return generateTitleFromMessage(displayContent)
-    }
-
-    if (!this.runtime.provider.isSupported(providerId)) {
-      return generateTitleFromMessage(displayContent)
-    }
-
-    // Title generation resolves its provider straight off settings rather than
-    // through getEffectiveConfig, so the host's per-session credential scoping
-    // has to be applied here too — otherwise a session whose workspace has its
-    // own keys would still bill its title to the global ones.
-    const providerConfig = this.runtime.provider.applySpaceCredentials?.(
-      sessionId,
-      providerId,
-      rawProviderConfig as TProviderConfig,
-    ) ?? (rawProviderConfig as TProviderConfig)
-
-    const authContext = await this.runtime.provider.resolveAuth(providerId, providerConfig)
-    if (!authContext) {
-      return generateTitleFromMessage(displayContent)
-    }
-
-    const apiType = this.runtime.provider.getApiType(settings, providerId)
-    const providerConfigRecord = asRecord(providerConfig)
-    return this.runtime.provider.generateTitle(
-      providerId,
-      {
-        ...providerConfigRecord,
-        apiKey: authKind(authContext) === 'api-key' ? authApiKey(authContext) : '',
-        authContext,
-        oauthToken: authKind(authContext) === 'oauth' ? authToken(authContext) : providerConfigRecord.oauthToken,
-        baseUrl: providerConfigRecord.baseUrl,
-        model,
-        apiType,
-      },
-      displayContent,
-      {
-        thinking: settings.tools?.toolCallModel?.thinking === true,
-        thinkingEffort: settings.tools?.toolCallModel?.thinkingEffort,
-        debugSessionId: sessionId,
-      },
-    )
-  }
-
   /**
-   * 解析这条会话该用哪个 provider,**解不出来时把原因交出去**。
-   *
-   * 本体在 `resolveProviderOrFailure`;这一层保留 `| null` 的老形状,给那三个
-   * 今天只需要"停下来"的入口(compact / edit-resend / retry / resume)用 ——
-   * 它们的行为一字未改。
+   * P2 入口闸:等这条会话的压缩收尾(本体在压缩闸 `agent-loop-compaction-gate.ts`)。留成本类的受保护方法,
+   * 是为了子类合同一格不动。
    */
-  private async resolveProvider(
-    sessionId: string,
-    override?: { providerId?: string; model?: string; thinking?: boolean; thinkingEffort?: string } | null,
-  ): Promise<{
-    configWithApiKey: TProviderConfigWithKey
-    providerId: string
-    settings: TSettings
-  } | null> {
-    const resolved = await this.resolveProviderOrFailure(sessionId, override)
-    return isCoreProviderResolutionFailure(resolved) ? null : resolved
-  }
-
-  private async resolveProviderOrFailure(
-    sessionId: string,
-    override?: { providerId?: string; model?: string; thinking?: boolean; thinkingEffort?: string } | null,
-  ): Promise<{
-    configWithApiKey: TProviderConfigWithKey
-    providerId: string
-    settings: TSettings
-  } | CoreProviderResolutionFailure> {
-    const settings = this.store.getSettings()
-    const { providerId, providerConfig, model: effectiveModel } = this.runtime.provider.getEffectiveConfig(settings, sessionId, override)
-
-    const authContext = await this.runtime.provider.resolveAuth(providerId, providerConfig)
-    if (!authContext) {
-      // The host may know a more specific reason than "no key" — e.g. this
-      // session's workspace has its own credential pool and this provider is
-      // not in it. Falling back keeps the message identical when it doesn't.
-      const described = this.runtime.provider.describeMissingCredentials?.(
-        providerId,
-        providerConfig,
-        sessionId,
-      )
-      const isOAuth = this.runtime.provider.requiresOAuth(providerId)
-      this.emitStreamError(sessionId, described || (isOAuth
-        ? `Not logged in to ${providerId}. Please login in settings.`
-        : 'API Key not configured. Please configure your AI settings.'))
-      return {
-        failed: true,
-        name: 'ProviderNotConfigured',
-        // 账本上那一格与 `stream:error` 那一句**故意不是同一个字符串**:浮窗那句
-        // 保持逐字不变(改它是一次没经裁定的可感知变化),而账本这句必须自己说清
-        // 是哪个 provider —— 事后翻 events.jsonl 的人手上没有别的上下文。
-        message: described || (isOAuth
-          ? `Not logged in to ${providerId}. Please login in settings.`
-          : `API key not configured for ${providerId}. Please configure your AI settings.`),
-        providerId,
-        model: effectiveModel,
-      }
-    }
-
-    if (!this.runtime.provider.isSupported(providerId)) {
-      this.emitStreamError(sessionId, `Unsupported provider: ${providerId}`)
-      return {
-        failed: true,
-        name: 'ProviderUnsupported',
-        message: `Unsupported provider: ${providerId}`,
-        providerId,
-        model: effectiveModel,
-      }
-    }
-
-    const providerConfigRecord = asRecord(providerConfig)
-    const selectedModels = Array.isArray(providerConfigRecord.selectedModels)
-      ? providerConfigRecord.selectedModels.filter((model): model is string => typeof model === 'string')
-      : [effectiveModel]
-
-    const configWithApiKey = {
-      ...providerConfigRecord,
-      model: effectiveModel,
-      selectedModels,
-      apiKey: authKind(authContext) === 'api-key' ? authApiKey(authContext) : '',
-      authContext,
-      oauthToken: authKind(authContext) === 'oauth' ? authToken(authContext) : providerConfigRecord.oauthToken,
-    } as TProviderConfigWithKey
-
-    return { configWithApiKey, providerId, settings }
-  }
-
-  private async maybeCompactBeforeSend(
-    sessionId: string,
-    providerId: string,
-    configWithApiKey: TProviderConfigWithKey,
-    settings: TSettings,
-  ): Promise<boolean> {
-    // 发送前压缩同理走能力查询(E0):别人的窗口,别人自己管。
-    if (coreProviderOwnsItsContextWindow(providerId)) return true
-
-    const compactSettings = settings.chat
-    if (compactSettings?.contextCompactEnabled === false) return true
-    // P2 兜底断言:理论上到不了 —— 命令入口的 waitForCompactionIdle 已经把
-    // 「压缩进行中」等成了「压缩已结束」。留着是因为 core 不该假设每个宿主的
-    // 每条路都过了那道闸(例如未来新增的命令入口忘了 await)。
-    if (this.activeCompactions.has(sessionId)) {
-      this.emitStreamError(sessionId, 'Context compact is already running. Please wait for it to finish before sending another message.')
-      return false
-    }
-
-    // 2026-08-23:预留输出量不再参与触发判定(hard-limit 已删),这里只需要窗口长度。
-    let modelContextLength = 128000
-    try {
-      modelContextLength = await this.runtime.models.getModelContextLength(configWithApiKey.model, providerId)
-    } catch (error) {
-      this.logError('Failed to resolve model context length for compact:', error)
-    }
-
-    const configuredKeepTurns = compactSettings?.contextCompactKeepRecentTurns ?? 6
-    let keepRecentTurns = configuredKeepTurns
-
-    for (let pass = 1; pass <= configuredKeepTurns; pass++) {
-      const latestSession = this.store.getSession(sessionId)
-      if (!latestSession) return true
-      const historyMessages = this.runtime.history.buildMessages(
-        this.store.listMessages(sessionId) as TMessage[],
-        latestSession,
-      )
-      const usage = buildContextUsageSnapshot({
-        session: latestSession,
-        historyMessages: historyMessages as unknown[],
-        modelContextLength,
-        thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-        providerId,
-        model: configWithApiKey.model,
-      })
-      if (
-        latestSession.contextSize !== usage.visibleInputTokens ||
-        latestSession.lastInputTokens !== usage.visibleInputTokens
-      ) {
-        this.emitContextSizeUpdated(sessionId, usage.visibleInputTokens)
-      }
-
-      if (this.runtime.compaction.shouldSkipAutoCompactForProviderUsageMismatch({
-        providerId,
-        // 宿主据这份 config 判「这一发真正发给谁」(core 只转交,不读)。
-        providerConfig: configWithApiKey,
-        session: latestSession,
-        modelContextLength,
-        inputTokens: usage.visibleInputTokens,
-      })) {
-        this.logError('Skipping auto compact because provider usage exceeds registered model context length:', {
-          sessionId,
-          providerId,
-          model: configWithApiKey.model,
-          contextSize: usage.visibleInputTokens,
-          modelContextLength,
-          source: usage.source,
-        })
-        return true
-      }
-
-      const reason = this.runtime.compaction.getContextCompactReason({
-        session: latestSession,
-        modelContextLength,
-        thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-        inputTokens: usage.visibleInputTokens,
-      })
-      if (!reason) return true
-
-      this.log(`[ContextUsage] decision ${JSON.stringify({
-        sessionId,
-        providerId,
-        model: configWithApiKey.model,
-        visibleInputTokens: usage.visibleInputTokens,
-        effectiveInputTokens: usage.effectiveInputTokens,
-        providerInputTokens: usage.providerInputTokens,
-        requestEstimatedInputTokens: usage.requestEstimatedInputTokens,
-        modelContextLength: usage.modelContextLength,
-        thresholdPercent: usage.thresholdPercent,
-        reason,
-        source: usage.source,
-        historyMessageCount: usage.details.historyMessageCount,
-        summaryUsed: usage.details.summaryUsed,
-      })}`)
-      this.log(`Auto compact triggered before send session=${sessionId} model=${configWithApiKey.model} reason=${reason}`)
-
-      const result = await this.runContextCompact(
-        {
-          sessionId,
-          providerId,
-          configWithApiKey,
-          settings,
-          keepRecentTurns,
-          onMessageCreated: (message: TMessage) => this.emitMessageCreated(sessionId, message),
-          onMessageUpdated: (messageId: string, updates: Partial<TMessage>) => this.emitMessageUpdated(sessionId, messageId, updates),
-        },
-        { auto: true },
-      )
-
-      await this.eventBus?.emit(sessionId, {
-        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
-        success: result.success,
-        skipped: result.skipped,
-        summary: result.summary,
-        error: result.error,
-      })
-
-      if (result.success && !result.skipped) {
-        this.emitContextSizeUpdated(sessionId, result.retainedContextSize ?? 0)
-      }
-
-      if (!result.success) {
-        if (result.error === 'Context compact is already running.') {
-          this.emitStreamError(sessionId, 'Context compact is already running. Please wait for it to finish before sending another message.')
-          return false
-        }
-        this.logError('Auto compact failed; continuing send:', result.error)
-        return true
-      }
-
-      if (result.skipped) {
-        keepRecentTurns--
-        if (keepRecentTurns <= 0) break
-      } else {
-        return true
-      }
-    }
-
-    // 压缩轮次跑完就放行:2026-08-23 起唯一的触发器是用户设的百分比,压不下去
-    // 也不再拦截发送 —— provider 若真的超窗,报它自己的原始错误。
-    const latestSession = this.store.getSession(sessionId)
-    if (!latestSession) return true
-    const finalHistoryMessages = this.runtime.history.buildMessages(
-      this.store.listMessages(sessionId) as TMessage[],
-      latestSession,
-    )
-    const finalUsage = buildContextUsageSnapshot({
-      session: latestSession,
-      historyMessages: finalHistoryMessages as unknown[],
-      modelContextLength,
-      thresholdPercent: compactSettings?.contextCompactThreshold ?? 85,
-      providerId,
-      model: configWithApiKey.model,
-    })
-    if (
-      latestSession.contextSize !== finalUsage.visibleInputTokens ||
-      latestSession.lastInputTokens !== finalUsage.visibleInputTokens
-    ) {
-      this.emitContextSizeUpdated(sessionId, finalUsage.visibleInputTokens)
-    }
-
-    return true
-  }
-
-  /**
-   * P2:同步开闸。**必须**在调用点的第一个 await 之前调用 —— 闸是在 await
-   * 窗口里挡住并发发送的东西,晚一步就等于没有。返回的 release 必须在 finally
-   * 里无条件调用。
-   */
-  private openCompactionGate(sessionId: string): () => void {
-    let release: () => void = () => {}
-    const promise = new Promise<void>(resolve => {
-      release = resolve
-    })
-    const gate = { promise, release }
-    this.compactionGates.set(sessionId, gate)
-    let released = false
-    return () => {
-      if (released) return
-      released = true
-      if (this.compactionGates.get(sessionId) === gate) {
-        this.compactionGates.delete(sessionId)
-      }
-      gate.release()
-    }
-  }
-
-  /**
-   * P2 入口闸。**无条件执行** —— 不看 `contextCompactEnabled`、不看
-   * `coreProviderOwnsItsContextWindow`:那些开关只管「要不要自动压」,不管
-   * 「压缩进行中能不能并发改会话」。
-   *
-   * 上限用压缩总预算兜底并**放行**(而不是拒绝):传输/宿主意外死掉时,一次
-   * 忘记 resolve 的闸不该让整个会话永久卡死。
-   */
-  protected async waitForCompactionIdle(sessionId: string): Promise<void> {
-    const gate = this.compactionGates.get(sessionId)
-    if (!gate) return
-
-    // 预算随设置里的单块超时走(默认 300s × 5);设置读不到就用默认。
-    let budgetMs = resolveContextCompactTotalBudgetMs(undefined)
-    try {
-      budgetMs = resolveContextCompactTotalBudgetMs(
-        this.store.getSettings()?.chat?.contextCompactChunkTimeoutSeconds,
-      )
-    } catch {
-      /* settings unavailable — keep the default budget */
-    }
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timedOut = new Promise<'timeout'>(resolve => {
-      timer = setTimeout(() => resolve('timeout'), budgetMs)
-      ;(timer as unknown as { unref?: () => void }).unref?.()
-    })
-
-    try {
-      const outcome = await Promise.race([
-        gate.promise.then(() => 'idle' as const),
-        timedOut,
-      ])
-      if (outcome === 'timeout') {
-        this.logError('waitForCompactionIdle exceeded the compaction budget; proceeding anyway:', { sessionId })
-      }
-    } finally {
-      if (timer !== undefined) clearTimeout(timer)
-    }
-  }
-
-  private async runContextCompact(
-    options: unknown,
-    registration: { alreadyRegistered?: boolean; requestId?: string; auto?: boolean } = {},
-  ): Promise<TCompactResult> {
-    const sessionId = asRecord(options).sessionId
-    if (typeof sessionId !== 'string') {
-      return {
-        success: false,
-        error: 'Session id is required.',
-      } as TCompactResult
-    }
-
-    // 手动路径已经在 handleCompactContext 的入口同步登记过(消除
-    // resolveProvider await 窗口的 TOCTOU),这里不再重复登记。
-    let release: () => void = () => {}
-    if (!registration.alreadyRegistered) {
-      if (this.activeCompactions.has(sessionId)) {
-        return {
-          success: false,
-          error: 'Context compact is already running.',
-        } as TCompactResult
-      }
-      this.activeCompactions.add(sessionId)
-      release = this.openCompactionGate(sessionId)
-    }
-
-    try {
-      // P1:压缩开始的唯一 emit 点 —— 手动与自动都从这里出去。
-      await this.eventBus?.emit(sessionId, {
-        type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_STARTED,
-        ...(registration.requestId !== undefined ? { requestId: registration.requestId } : {}),
-        ...(registration.auto ? { auto: true } : {}),
-      }).catch(err => this.logError('context:compact-started emit error:', err))
-
-      // C6:分块进度。手动路(handleCompactContext)与发送前自动路
-      // (maybeCompactBeforeSend)都经过这里,所以接线只此一处 —— 回合中那条
-      // (agent-loop 的 adapters)不走本函数,在 app 层各自接。
-      return await this.runtime.compaction.compactSessionContext({
-        ...asRecord(options),
-        onProgress: (progress: { chunk: number; totalChunks: number }) =>
-          this.eventBus?.emit(sessionId, {
-            type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_PROGRESS,
-            chunk: progress.chunk,
-            totalChunks: progress.totalChunks,
-          }).catch(err => this.logError('context:compact-progress emit error:', err)),
-      })
-    } finally {
-      if (!registration.alreadyRegistered) {
-        this.activeCompactions.delete(sessionId)
-      }
-      release()
-    }
+  protected waitForCompactionIdle(sessionId: string): Promise<void> {
+    return this.compactionGate.waitForCompactionIdle(sessionId)
   }
 
   protected emitStreamError(sessionId: string, error: string): void {

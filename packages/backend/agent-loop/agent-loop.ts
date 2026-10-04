@@ -124,7 +124,7 @@ export type {
 	CoreStreamResultLike,
 	CoreStreamSession,
 	CoreStreamSettings,
-} from "./agent-loop-stream-engine.js";
+} from "./agent-loop-stream-engine-types.js";
 
 export { PendingMessageQueue } from "./agent-loop-message-queue.js";
 
@@ -283,26 +283,30 @@ export type {
 export {
 	buildContextCompactCompletedContent,
 	buildContextCompactFailedContent,
-	buildContextCompactSummaryMessages,
-	CompactTokenBudget,
-	resolveContextCompactChunkTimeoutMs,
 	createContextCompactMessage,
 	DEFAULT_KEEP_RECENT_TURNS,
 	estimateCurrentInputTokens,
 	estimateSessionInputTokens,
-	extractCompactFileOperations,
-	formatCompactFileOperations,
 	formatMessagesForSummary,
-	mergeCompactFileOperations,
-	stripCompactFileOperations,
 	getContextCompactReason,
 	normalizeContextCompactError,
-	normalizeContextSummaryOutput,
 	selectCompactPlan,
 	shouldAutoCompactBeforeSend,
 	shouldSkipAutoCompactForProviderUsageMismatch,
-	summarizeContextInChunks,
 } from "./agent-loop-context-compact.js";
+export { CompactTokenBudget } from "./agent-loop-context-compact-sizing.js";
+export {
+	buildContextCompactSummaryMessages,
+	normalizeContextSummaryOutput,
+	resolveContextCompactChunkTimeoutMs,
+	summarizeContextInChunks,
+} from "./agent-loop-context-compact-summary.js";
+export {
+	extractCompactFileOperations,
+	formatCompactFileOperations,
+	mergeCompactFileOperations,
+	stripCompactFileOperations,
+} from "./agent-loop-context-compact-file-tags.js";
 export {
 	buildContextUsageSnapshot,
 	estimateTextTokens,
@@ -319,7 +323,7 @@ export type {
 } from "./agent-loop-turn-context.js";
 export type {
 	SummarizeContextInChunksOptions,
-} from "./agent-loop-context-compact.js";
+} from "./agent-loop-context-compact-summary.js";
 
 export {
 	buildHistoryMessages,

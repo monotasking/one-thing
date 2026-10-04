@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { buildContextCompactCompletedContent, buildContextCompactFailedContent, buildContextCompactSummaryMessages, buildContextUsageSnapshot, createContextCompactMessage, estimateSessionInputTokens, estimateTextTokens, formatMessagesForSummary, normalizeContextCompactError, normalizeContextSummaryOutput, CompactTokenBudget, selectCompactPlan, shouldAutoCompactBeforeSend, summarizeContextInChunks } from '@onething/backend/agent-loop'
-import { COMPACT_PROMPT_OVERHEAD_TOKENS, resolveCompactCharsPerToken, resolveCompactChunkChars, resolveCompactOutputTokens } from '../agent-loop-context-compact.js'
-import type { CoreCompactMessage, CoreCompactSession, CoreContextSummaryRequest } from '../agent-loop-context-compact.js'
+import { COMPACT_PROMPT_OVERHEAD_TOKENS, resolveCompactCharsPerToken, resolveCompactChunkChars, resolveCompactOutputTokens } from '../agent-loop-context-compact-sizing.js'
+import type { CoreCompactMessage, CoreCompactSession } from '../agent-loop-context-compact.js'
+import type { CoreContextSummaryRequest } from '../agent-loop-context-compact-summary.js'
 
 function message(index: number, role: 'user' | 'assistant'): CoreCompactMessage {
   return {

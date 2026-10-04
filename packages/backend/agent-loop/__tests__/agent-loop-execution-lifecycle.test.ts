@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CoreStreamEngine, type CoreStreamEngineOptions, type CoreStreamEngineRuntime } from '../agent-loop-stream-engine.js'
+import { CoreStreamEngine } from '../agent-loop-stream-engine.js'
+import type { CoreStreamEngineOptions, CoreStreamEngineRuntime } from '../agent-loop-stream-engine-types.js'
 import { AgentExecutionCheckpointError } from '../agent-loop-errors.js'
 
 function deferred() {

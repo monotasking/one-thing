@@ -3997,7 +3997,12 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
   // 装配那一半不存在了,这张表随之清空(留着变量,免得下面的判据形状跟着动)。原来它点名的是
   // 当时装配层 acp 目录下的 `{client,manager,types,index}.ts` —— 拍平后同名路径正是产品本体,不能再判「存在即红」。
   const mainFiles: string[] = []
-  const runtimeClientContent = fs.existsSync(runtimeClientFile) ? fs.readFileSync(runtimeClientFile, 'utf-8') : ''
+  // 客户端本体与它给 SDK 的回调面(`acp-client-app.ts`,2026-10-04 拆出,D243)合起来读:符号表一格不减,
+  // 只是 `acp.client(` / `createTerminal` / `requestPermission` 那几格搬进了回调面那只文件。
+  const runtimeClientAppFile = path.join(root, 'packages/backend/acp/acp-client-app.ts')
+  const runtimeClientContent = [runtimeClientFile, runtimeClientAppFile]
+    .map(file => (fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : ''))
+    .join('\n')
   const runtimeManagerContent = fs.existsSync(runtimeManagerFile) ? fs.readFileSync(runtimeManagerFile, 'utf-8') : ''
   const runtimeTypesContent = fs.existsSync(runtimeTypesFile) ? fs.readFileSync(runtimeTypesFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''

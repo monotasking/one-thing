@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ACPClient, describeConnectFailure, toAcpPromptError } from '../acp-client.js'
+import { ACPClient } from '../acp-client.js'
+import { describeConnectFailure, toAcpPromptError } from '../acp-client-errors.js'
 
 /**
  * 连不上 agent 时交给会话的那句话(2026-09-24,ACP「发了没反应」报障)。

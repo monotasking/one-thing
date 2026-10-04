@@ -28,7 +28,7 @@
  *  所以没有需要补回的分叉。
  */
 import { ACPManager } from './acp-manager.js'
-import { acpRpcErrorCode } from './acp-client.js'
+import { acpRpcErrorCode } from './acp-client-errors.js'
 import {
   addOnethingACPAgentForIpc,
   cancelOnethingACPSessionForIpc,

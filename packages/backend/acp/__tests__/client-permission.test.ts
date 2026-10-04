@@ -25,9 +25,10 @@ const params = {
 } as never
 
 function requestPermission(client: ACPClient, request: unknown = params) {
+  // 审批回调住在客户端的回调面上(`acp-client-app.ts`,2026-10-04 拆出)。
   return (client as unknown as {
-    requestPermission(input: unknown): Promise<{ outcome: { outcome: string; optionId?: string } }>
-  }).requestPermission(request)
+    app: { requestPermission(input: unknown): Promise<{ outcome: { outcome: string; optionId?: string } }> }
+  }).app.requestPermission(request)
 }
 
 describe('ACPClient permission bridge', () => {

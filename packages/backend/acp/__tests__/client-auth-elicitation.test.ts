@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ACPClient, authMethodsOf, isAcpAuthRequired, toAcpPromptError } from '../acp-client.js'
+import { ACPClient, authMethodsOf } from '../acp-client.js'
+import { isAcpAuthRequired, toAcpPromptError } from '../acp-client-errors.js'
 import { MemoryACPSessionLinkStore } from '../acp-session-links.js'
 import type {
   AcpAuthBridge,

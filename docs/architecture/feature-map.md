@@ -38,7 +38,7 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| acp | ACP 外部 agent 的客户端、名册、桥接与权限。 | logging 17 · external-agent 6 · (shared) 3 · (包根槽位) 2 · agent-loop 2 · permission 2 · session 2 · terminal 2 · toolkit 2 · event 1 · interaction 1 · settings 1 · shell 1 · storage 1 · todo-plan 1 · tool 1 | 22(值 11 / 类型 11) | 31 |
+| acp | ACP 外部 agent 的客户端、名册、桥接与权限。 | logging 18 · external-agent 6 · (shared) 3 · (包根槽位) 2 · agent-loop 2 · permission 2 · session 2 · terminal 2 · toolkit 2 · event 1 · interaction 1 · settings 1 · shell 1 · storage 1 · todo-plan 1 · tool 1 | 22(值 11 / 类型 11) | 33 |
 | agent | agent 档案:身份、模型、执行器与在场状态。 | agent-loop 3 · logging 2 · session 2 · storage 2 · (shared) 1 · context 1 · event 1 · settings 1 · tool 1 | 34(值 29 / 类型 5) | 16 |
 | ambient | 环境信息来源:时钟、天气等。 | settings 1 | 5(值 4 / 类型 1) | 6 |
 | auth | 登录流程:OAuth 授权、刷新 token 与登录状态。 | logging 2 · agent-loop 1 · event 1 · network 1 · provider 1 · settings 1 · space 1 · storage 1 | 28(值 16 / 类型 12) | 14 |
@@ -53,7 +53,7 @@
 | markdown | Markdown 附件资源的沙箱与服务。 | note 2 · (包根槽位) 1 · settings 1 | 0(值 0 / 类型 0) | 4 |
 | mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 8 · (shared) 5 · storage 2 · agent-loop 1 · auth 1 | 33(值 29 / 类型 4) | 30 |
 | media | 媒体库:图片与文件的入库、导出与生图结果。 | storage 4 · session 2 · (shared) 1 · (包根槽位) 1 · logging 1 | 30(值 22 / 类型 8) | 11 |
-| music | 音乐与电台。 | (shared) 5 · (包根槽位) 5 · logging 5 · settings 5 · session 3 · voice 3 · storage 2 · agent 1 · lifecycle 1 · permission 1 · tool 1 | 27(值 18 / 类型 9) | 34 |
+| music | 音乐与电台。 | logging 7 · (shared) 5 · (包根槽位) 5 · settings 5 · session 3 · voice 3 · storage 2 · agent 1 · lifecycle 1 · permission 1 · tool 1 | 27(值 18 / 类型 9) | 36 |
 | note | 笔记领域:笔记库、Obsidian 与普通目录两种驱动、笔记根目录。 | (包根槽位) 2 · logging 2 · settings 2 · storage 2 | 21(值 15 / 类型 6) | 20 |
 | permission | 权限:询问、授权记录与策略,以及策略的执行面(授权记录 + 无人值守 + 会话读面)与工具可读可写的沙箱根(2026-10-04 从 tool/access-control/ 并入)。 | (shared) 9 · session 3 · logging 2 · storage 2 · agent-loop 1 · event 1 · file 1 · note 1 · settings 1 · todo-plan 1 · tool 1 | 101(值 63 / 类型 38) | 16 |
 | pet | 宠物系统:自述、名册、时刻与账本。 | logging 4 · (shared) 2 · settings 2 · agent-loop 1 · music 1 · provider-call 1 · usage 1 · voice 1 | 62(值 35 / 类型 27) | 17 |
@@ -85,7 +85,7 @@
 
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
-| agent-loop | 一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),以及执行器表(本地 / 外部执行体的能力面,2026-10-04 从 agent 并入),不认识具体服务商。 | (shared) 18 · logging 8 · tool 3 | 311(值 150 / 类型 161) | 71 |
+| agent-loop | 一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),以及执行器表(本地 / 外部执行体的能力面,2026-10-04 从 agent 并入),不认识具体服务商。 | (shared) 21 · logging 8 · tool 3 | 311(值 150 / 类型 161) | 77 |
 | event | 事件总线与流通道的工厂,以及读当前实例的访问器。 | logging 5 · (shared) 1 · (包根槽位) 1 | 29(值 22 / 类型 7) | 17 |
 | practice | 练习系统的题目、账本与汇总。 | — | 6(值 5 / 类型 1) | 8 |
 | prompt | 系统提示词的拼装:片段、来源与「目录在上、正文在下」的生成器。 | agent-loop 3 · logging 2 · (shared) 1 · provider 1 · reference 1 · storage 1 | 36(值 26 / 类型 10) | 13 |

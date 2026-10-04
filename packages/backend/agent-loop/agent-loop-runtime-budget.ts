@@ -1,6 +1,7 @@
 // 上下文预算(从 `agent-loop-runtime.ts` 拆出,拆分批 1,D226):按模型窗口与服务商报回来的用量,
 // 算这一回合能用多少输入 token、请求的 max_tokens 夹到多少。
-import { resolveCompactOutputTokens, type CoreCompactSession } from './agent-loop-context-compact.js'
+import type { CoreCompactSession } from './agent-loop-context-compact.js'
+import { resolveCompactOutputTokens } from './agent-loop-context-compact-sizing.js'
 import type { CoreAgentLoopProviderConfig } from './agent-loop-runtime-preparation.js'
 
 export interface CoreAgentLoopContextBudget {
