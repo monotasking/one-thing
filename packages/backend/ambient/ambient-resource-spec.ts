@@ -1,4 +1,4 @@
-import type { EventSpec, ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { EventSpec, ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 import type { AmbientSource } from './ambient-source.js'
 

@@ -9,7 +9,9 @@ const mocks = vi.hoisted(() => ({
   steer: vi.fn(() => 'steered'),
 }))
 
-vi.mock('@onething/backend/external-agent', async importOriginal => ({
+// 深层引用收口第四批(2026-10-04):连接器登记表改引兄弟文件(D126),不再经入口拿 `createAcpConnector`,
+// 所以桩打在声明它的 `external-agent-acp-connector.ts` 上。
+vi.mock('../external-agent-acp-connector.js', async importOriginal => ({
   ...await importOriginal<Record<string, unknown>>(),
   createAcpConnector: (options: AcpConnectorOptions) => {
     mocks.options.push(options)

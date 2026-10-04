@@ -87,14 +87,14 @@ import {
   type OnethingMusicNowPlaying,
   type OnethingMusicRuntimeState,
   type OnethingMusicSetupRequest,
-} from '@onething/backend/music'
-import {
   MUSIC_PLAYER_PATH,
   MUSIC_PROVIDER_PATH,
   MUSIC_RADIO_PATH,
   MUSIC_RESOURCE_SCHEME,
   musicResourceSpec,
-} from '@onething/backend/music/music-resource-spec'
+  assertMusicOperator,
+  setMusicProvider,
+} from '@onething/backend/music'
 import type {
   MusicCommand,
   MusicLyrics,
@@ -104,9 +104,7 @@ import type {
 } from '@shared/ipc.js'
 import type { MusicHostLog } from '@shared/ipc/music.js'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
-import { assertMusicOperator } from '@onething/backend/music/music-access'
 import { fixedExecutionContext } from '../session/session.js'
-import { setMusicProvider } from '@onething/backend/music/music-operations'
 import { radioAdapters } from '../toolkit/toolkit-adapters.js'
 
 /** 播放器那一半的端口。电台那一半是既有的 `RadioToolAdapters`,不另立。 */

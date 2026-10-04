@@ -40,9 +40,14 @@ vi.mock('@onething/backend/search', async (importOriginal) => {
     configureAppSearchProviders: () => actual.configureAppSearchProviders(() => { spy.calls.push('search') }),
   }
 })
-vi.mock('@onething/backend/skill', async (importOriginal) => ({
+// 深层引用收口第四批(2026-10-04):`skill-manage-setup.ts` / `skill-sources.ts` 改引兄弟文件(D126),
+// 不再经入口拿这两个 configure,所以桩打在声明它们的具体模块上(与上面 permission 那条同理)。
+vi.mock('../skill/skill-manage.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   configureOnethingSkillManageRuntime: () => { spy.calls.push('skill-manage') },
+}))
+vi.mock('../skill/skill-loader.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   configureOnethingSkillsLoaderRuntime: () => { spy.calls.push('skills-loader') },
 }))
 // 越层清零单 3(2026-10-04):`permission-grant-storage.ts` 改引兄弟文件(D126),不再经入口拿
@@ -94,7 +99,7 @@ vi.mock('../session/session-storage-driver.js', async (importOriginal) => {
 })
 // 包根归位 2:设置缓存搬进 `settings/` 以后按相对路径取构造口,桩因此打在定义它的那只模块上。
 vi.mock('../settings/settings-repository.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@onething/backend/settings')>()
+  const actual = await importOriginal<typeof import('../settings/settings-repository.js')>()
   return {
     ...actual,
     createOnethingSettingsRepository: ((options: never) => {

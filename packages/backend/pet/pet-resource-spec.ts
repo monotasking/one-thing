@@ -21,7 +21,7 @@
  * 带声音多长)同理不带 —— 它只给壳对字用(2026-09-27:气泡的字跟着声音走)。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const PET_RESOURCE_SCHEME = 'pet'

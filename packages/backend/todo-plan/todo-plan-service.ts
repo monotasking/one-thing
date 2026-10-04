@@ -1,13 +1,13 @@
 import {
   OnethingTodoPlanStore,
-  OnethingTodoPlanWatcher,
   resolveOnethingTodoPlanDirectory,
   type TodoPlanChangedPayload,
   type TodoPlanContext,
   type TodoPlanDocument,
   type TodoPlanSnapshot,
   type TodoPlanUpdateRequest,
-} from '@onething/backend/todo-plan'
+} from './todo-plan-store.js'
+import { OnethingTodoPlanWatcher } from './todo-plan-watcher.js'
 import { getSettings } from '@onething/backend/settings'
 import { getOnethingStorePath } from '@onething/backend/storage'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'

@@ -67,20 +67,20 @@ import {
   handleCollabRoomSendMessage,
   isCollabRoomSession,
   type CollabRoomInboundCommand,
-} from '@onething/backend/collab/collab-ingress'
+  isTrustedCollabDrive,
+  findCollabV3Turn,
+} from '@onething/backend/collab'
 import {
   isCollabCoordinatorDrivenSession,
 } from '@onething/backend/session'
-import { isTrustedCollabDrive } from '@onething/backend/collab/collab-drive-guard'
-import { findCollabV3Turn } from '@onething/backend/collab/actors/collab-actors-turn-context'
 import { configureExternalAgentTurnLookup } from '@onething/backend/external-agent'
 import {
   pluginPostInterceptReply,
   type PluginInterceptSteerPort,
-} from '@onething/backend/plugin/plugin-session-messenger'
+} from '@onething/backend/plugin'
 import { resolveAgentProfileForSession, defaultAgent, findAgent } from '@onething/backend/agent'
 import { takeExternalAgentSteering } from '@onething/backend/external-agent/external-agent-connector-registry'
-import { createGoalContinuationTrigger } from './goal/goal-continuation-trigger.js'
+import { createGoalContinuationTrigger } from './goal/goal.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { getLogger } from './logging/logging.js'
 

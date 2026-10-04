@@ -7,7 +7,7 @@
  */
 import type { AgentUsage } from "@onething/backend/agent-loop";
 import { computeOnethingUsageCostUSD } from "../provider-pricing.js";
-import type { OnethingUsageUnitPrice } from "../../usage/usage-types.js";
+import type { OnethingUsageUnitPrice } from "../../usage/usage.js";
 
 function assertNonNegative(name: string, value: number | undefined): void {
 	if (value === undefined) return;

@@ -18,7 +18,7 @@
  * RPC、CLI、插件的 `api.resources` 照常能用。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const TODO_RESOURCE_SCHEME = 'todo'

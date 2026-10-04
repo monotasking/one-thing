@@ -39,8 +39,8 @@ import {
   setOnethingSkillAgentForIpc,
   toggleOnethingSkillEnabledForIpc,
   updateOnethingSkillDirectoryForIpc,
-} from '@onething/backend/skill'
-import { getShellHost } from '@onething/backend/shell/shell-host-ports'
+} from './skill-ipc-operations.js'
+import { getShellHost } from '@onething/backend/shell'
 import { skillsRouter, type SkillsRoutes } from '@shared/ipc/skills.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { consolePort, getLogger } from '@onething/backend/logging'

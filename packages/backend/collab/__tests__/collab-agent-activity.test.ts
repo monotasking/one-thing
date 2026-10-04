@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CollabAgentAccount, CollabRoomAccount } from '@onething/backend/collab/actors'
 import { Interaction } from '@onething/backend/interaction'
-import { Permission } from '@onething/backend/permission/permission-asks'
+import { Permission } from '@onething/backend/permission'
 
 const mocks = vi.hoisted(() => ({
   emitted: [] as Array<{ sessionId: string; event: Record<string, unknown> }>,

@@ -44,11 +44,11 @@ import {
 	type ApplyOnethingAgentLoopProviderDataOptions,
 	type CoreSpaceCredentialMarker,
 } from "@onething/backend/provider";
-import { observeQuotaProviderData } from "@onething/backend/quota/quota-engine-hooks";
+import { observeQuotaProviderData } from "@onething/backend/quota";
 import { resolveAgentProfileForSession } from "@onething/backend/agent";
-import { saveMediaImage } from "@onething/backend/media/media-save-image";
+import { saveMediaImage } from "@onething/backend/media";
 import { updateSessionUsage } from "@onething/backend/session";
-import { recordUsage, usageAttributionOf } from "@onething/backend/usage/usage-recorder";
+import { recordUsage, usageAttributionOf } from "@onething/backend/usage";
 import {
 	completeAgentLoopStreamWithAdapters,
 	applyAgentLoopStreamChunkWithAdapters as coreApplyAgentLoopStreamChunkWithAdapters,
@@ -73,7 +73,7 @@ import {
 	type ExecuteAgentLoopStreamLifecycleWithAdaptersOptions,
 	type RunAgentLoopPostResponseHooksWithAdaptersOptions,
 } from "@onething/backend/agent-loop";
-import { runAfterAssistantResponseHooks } from "@onething/backend/plugin/plugin-lifecycle-hooks";
+import { runAfterAssistantResponseHooks } from "@onething/backend/plugin";
 import type { ChatMessage, ChatSession } from "@shared/ipc.js";
 import type { AgentJsonObject } from "@onething/backend/agent-loop";
 import { hashSections } from "../../eval/eval.js";

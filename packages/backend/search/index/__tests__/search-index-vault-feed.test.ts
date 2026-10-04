@@ -20,7 +20,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { compositeAnalyzer } from '../../kernel/search-kernel.js'
 
-import { FolderVault } from '../../../note/folder/note-folder-vault.js'
+import { FolderVault } from '../../../note/note.js'
 
 import { createNotesSearchCapability } from '../../capabilities/search-capabilities.js'
 import type { OnethingSearchProvidersAdapters } from '../../search-providers.js'

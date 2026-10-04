@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { Outcome, TOOL_CANCELLED_MESSAGE, textResult } from '@onething/backend/toolkit'
-import { ReadOutcome } from '@onething/backend/resource/resource-api'
+import { ReadOutcome } from '@onething/backend/resource'
 import { foldOutcomeToEnvelope, foldReadOutcomeToEnvelope } from '../http-server-resource-envelope.js'
 
 class DomainSpecificError extends Error {

@@ -12,12 +12,12 @@
  */
 
 import type { ContextVariable } from '@shared/ipc.js'
-import type { ResourceKernel, StateScope } from '@onething/backend/resource/resource-api'
+import type { ResourceKernel, StateScope } from '@onething/backend/resource'
 import { systemPrincipal } from '@shared/permission/principal'
 import * as store from '@onething/backend/session'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { getEventBus } from '@onething/backend/event'
-import { getProjectsStore } from '../project-dir/project-dir-bootstrap.js'
+import { getProjectsStore } from '../project-dir/project-dir.js'
 import { resolveSessionSpaceId } from '@onething/backend/session'
 import { expandPath } from '@onething/backend/permission'
 import { getVariablesStore } from '@onething/backend/variable/variable-store-bound'
@@ -38,10 +38,9 @@ import type {
   NoteVaultsGateway,
   NoteVaultSummary,
 } from '@onething/backend/variable/providers/variable-providers-note-vaults'
-import { getGoal, goalLimits } from '../goal/goal-manager.js'
-import { getMusicNowPlaying } from '@onething/backend/music/music-service'
-import { getRadioStore } from '@onething/backend/music/music-radio'
-import { getNoteSystemRegistry } from '../note/note-subsystem.js'
+import { getGoal, goalLimits } from '../goal/goal.js'
+import { getMusicNowPlaying, getRadioStore } from '@onething/backend/music'
+import { getNoteSystemRegistry } from '../note/note.js'
 import type { AgentSelfStateGateway } from '@onething/backend/variable/providers/variable-providers-agent-self'
 import { agentPresenceSource } from './variable-agent-presence.js'
 import { getLogger } from '@onething/backend/logging'

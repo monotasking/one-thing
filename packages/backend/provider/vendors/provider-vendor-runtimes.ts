@@ -21,7 +21,7 @@ import type {
 	AgentProviderRuntimeConfig,
 	CreateAgentProviderFromRuntimeOptions,
 } from "../provider-factory.js";
-import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/auth-types.js";
+import type { OnethingAuthProviderDefinition, OnethingOAuthToken } from "../../auth/auth.js";
 import type { OnethingHttpPolicyName } from "@onething/backend/network";
 import type {
 	OnethingAccessTokenLike,

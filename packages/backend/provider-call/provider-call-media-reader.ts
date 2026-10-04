@@ -18,8 +18,7 @@
  * 而「怎么把一个图片文件读成 base64」本来也是媒体库的事,不是接线的事。
  */
 import type { ProviderMediaImage, ProviderMediaReader } from '@onething/backend/provider'
-import { readOnethingImageFileDataUrl } from '@onething/backend/media'
-import { mediaLibraryService } from '@onething/backend/media/media-library-service-bound'
+import { readOnethingImageFileDataUrl, mediaLibraryService } from '@onething/backend/media'
 import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('providers.media')

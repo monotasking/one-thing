@@ -18,7 +18,7 @@ import { getConnectedDirectories } from '@onething/backend/file'
 import {
   getOnethingToolOutputsDir,
 } from '@onething/backend/storage'
-import { noteRootsNow } from '../note/note-subsystem.js'
+import { noteRootsNow } from '../note/note.js'
 
 export interface SandboxHost {
   getPath?: (name: string) => string

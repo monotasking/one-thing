@@ -18,13 +18,9 @@
  * 从 v2 的 `activeTurns` / `activeByTask` 两张进程内表,换成 v3 的租约换代与
  * 各位同事账里的子清单。语义一格没变,账本换了住处。
  */
-import {
-  COLLAB_SYSTEM_SOURCE_MEMBERSHIP,
-  buildCollabMembershipLines,
-  collabAgentSessionId,
-  type CollabBoard,
-  type CollabBoardAction,
-} from '@onething/backend/collab'
+import { COLLAB_SYSTEM_SOURCE_MEMBERSHIP, buildCollabMembershipLines } from './collab-system-lines.js'
+import { collabAgentSessionId } from './collab-agent-session.js'
+import type { CollabBoard, CollabBoardAction } from './collab-board.js'
 import {
   isAgentPairDmRoom,
   isUserDmRoom,

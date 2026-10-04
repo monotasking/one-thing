@@ -48,30 +48,17 @@
  * `hushed` 之前算「正在说」(`PetHost.markVoicing`),于是这段时间里电台来认领会等它说完。
  */
 
-import type { ResourceEventHub, ResourceRegistry } from '@onething/backend/resource/resource-api'
-import {
-  PET_CURRENT_PATH,
-  PET_RESOURCE_SCHEME,
-  estimateSpeechMs,
-  PetHost,
-  PetRegistry,
-  rosterEntryOf,
-  SayOrElseComposer,
-  SayPassthroughComposer,
-  summarizePet,
-  type Moment,
-  type MomentComposer,
-  type PetChattiness,
-  type PetClock,
-  type PetCurrentView,
-  type PetHostOutcome,
-  type PetRosterEntry,
-  type PetSummary,
-  type Utterance,
-} from '@onething/backend/pet'
+import type { ResourceEventHub, ResourceRegistry } from '@onething/backend/resource'
+import { PET_CURRENT_PATH, PET_RESOURCE_SCHEME } from './pet-resource-spec.js'
+import { estimateSpeechMs, PetHost, type PetClock, type PetCurrentView, type PetHostOutcome } from './pet-host.js'
+import { PetRegistry } from './pet-registry.js'
+import { rosterEntryOf, summarizePet, type PetRosterEntry, type PetSummary } from './pet-manifest.js'
+import { SayOrElseComposer, SayPassthroughComposer, type MomentComposer } from './pet-composer.js'
+import type { Moment, Utterance } from './pet-types.js'
+import type { PetChattiness } from './pet-chattiness.js'
 import type { EventBus } from '@onething/backend/event'
-import { audioDurationMs } from '@onething/backend/voice/voice-audio-duration'
-import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/music/music-host-voice'
+import { audioDurationMs } from '@onething/backend/voice'
+import type { HostVoice, HostVoiceKit, HostVoiceSpeakOptions, PatterSpeech } from '@onething/backend/music'
 import { getLogger } from '@onething/backend/logging'
 import { PetLedgerStore } from './pet-ledger-store.js'
 import { petVoiceStyle } from './pet-voice.js'

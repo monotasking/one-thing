@@ -6,7 +6,7 @@
  * 不该为了一个类型互相 import(账本不该认识宿主)。
  */
 
-import type { MomentWeight } from '@onething/backend/resource/resource-api'
+import type { MomentWeight } from '@onething/backend/resource'
 
 export type { MomentWeight }
 

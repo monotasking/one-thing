@@ -4,8 +4,8 @@
  *
  * P3'a-3 从 `src/app/scheduler/index.ts` 归位 —— 它读的是本包的 store 路径、配的是
  * `./scheduler-cron-runner.js`,唯一一条装配层的边是 `consolePort`,而那个已经归位到
- * `../logging/` 了。文件名带 `-bound`:barrel(`./scheduler.js`)只出纯模块,这里出的是
- * **单例**,所以不进 barrel(进了会和 barrel 的 `export *` 撞名)。
+ * `../logging/` 了。文件名带 `-bound`:这里出的是**单例**。入口 `./scheduler.ts` 改成具名导出之后
+ * (深层引用收口第四批)不再有 `export *` 撞名的问题,取用口与装配函数由入口具名转交。
  */
 import path from 'node:path'
 import type { Scheduler } from './scheduler-cron-runner.js'
@@ -58,7 +58,7 @@ export type {
   SchedulerTaskHandle,
   SchedulerTaskRegistration,
   SchedulerTaskSnapshot,
-} from './scheduler.js'
+} from './scheduler-cron-runner.js'
 export {
   cronRunKey,
   currentCronRunAt,

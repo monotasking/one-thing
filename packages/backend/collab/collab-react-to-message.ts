@@ -11,7 +11,7 @@
  * the design: reactions are METADATA, and the coordinator listens only to
  * `message:user-created`, so a reaction can never open a willingness round.
  */
-import { applyCollabReaction, normalizeCollabReactionEmoji } from '@onething/backend/collab'
+import { applyCollabReaction, normalizeCollabReactionEmoji } from './collab-reactions.js'
 import type { ChatMessageReaction, ChatMessageReactionActor } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { getEventBus } from '@onething/backend/event'

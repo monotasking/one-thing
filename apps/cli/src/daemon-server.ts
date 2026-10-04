@@ -12,7 +12,7 @@ import type {
 } from '@shared/cli/protocol.js'
 import { getCliRuntimePaths, ensureRuntimeDirs, assertSupportedPlatform } from './paths.js'
 import { NdjsonReader, encodeFrame } from './ndjson.js'
-import { HeadlessBackend } from '@onething/backend/headless/headless-backend'
+import { HeadlessBackend } from '@onething/backend/headless'
 import { getLogger } from '@onething/backend/logging'
 import { configureLogging } from '@onething/backend/logging/logging-configure'
 

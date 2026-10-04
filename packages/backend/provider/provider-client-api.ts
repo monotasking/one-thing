@@ -25,23 +25,25 @@ import {
   type ProbeCustomProviderRequest,
   type ProbeCustomProviderResponse,
 } from '@shared/ipc/providers.js'
+import { getProviderEnvStatus } from './provider-ipc-env.js'
 import {
-  getProviderEnvStatus,
   inspectOnethingProviderEnvStatusForIpc,
-  listLabeledDialectsForIpc,
   listOnethingProvidersForIpc,
   type ListOnethingProvidersOptions,
   type OnethingProviderPresentationIpcLogger,
+} from './provider-presentation.js'
+import { listLabeledDialectsForIpc } from './provider-dialect-options.js'
+import {
   adapterReasoningPath,
-  customAdapterBaseDialectId,
-  EXTERNAL_AGENT_DIALECT_ID,
-  getProviderManifest,
   parseAdapterSpecAnswer,
   probeCustomEndpoint,
   renderCustomAdapterProbePrompt,
   verifyAdapterSpec,
-  type ProviderDirectModelsFetch,
-} from '@onething/backend/provider'
+} from './provider-custom-probe.js'
+import { customAdapterBaseDialectId } from './dialects/provider-dialects-custom-from-spec.js'
+import { EXTERNAL_AGENT_DIALECT_ID } from './provider-builtin-manifests.js'
+import { getProviderManifest } from './provider-manifest.js'
+import type { ProviderDirectModelsFetch } from './provider-models-endpoint.js'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space'
 import { createUtilityProvider, getAvailableProviders, type UtilityProviderRef } from '@onething/backend/provider-call'
 import { consolePort, getLogger } from '@onething/backend/logging'

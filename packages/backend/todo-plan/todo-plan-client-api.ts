@@ -20,7 +20,7 @@ import {
   renameOnethingTodoNoteForIpc,
   revealOnethingTodoPlanDirectoryForIpc,
   updateOnethingTodoPlanDocumentForIpc,
-} from '@onething/backend/todo-plan'
+} from './todo-plan-ipc-operations.js'
 import {
   canRevealTodoPlanDirectory,
   createUserTodoNote,

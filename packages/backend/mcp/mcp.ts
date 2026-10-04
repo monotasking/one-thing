@@ -1,43 +1,40 @@
-export * from './mcp-capability-operations.js'
-export * from './mcp-ipc-operations.js'
-export * from './mcp-server-orchestration.js'
-
-/*
- * P3'b-A(§2 P3'):`packages/backend/mcp/` 的目录级门面并到这里 —— I1「一个领域
- * 一个家」。MCP 的客户端 / 管理器 / OAuth / 身份 / 能力变更都不依赖后端脊柱(它们
- * 只认 core 契约 + `@onething/backend/storage`),所以它们是产品层。
+/**
+ * mcp —— MCP:连外部 MCP 服务器的客户端与管理器、OAuth 登录、客户端身份、能力变更通知,
+ * 以及 `mcp:` 资源与装配用的子系统。
  *
- * 唯一留在外面的是 `bridge.ts` —— 它说跨进程契约的 `ToolDefinition` 词汇。当年它叫
- * `bridge.wiring.ts`,而这条 barrel 不许 import `*.wiring`;那条规则已撤,桥照旧不从这里出去。
- * 要连桥一起拿的调用方走 `./mcp-index-with-bridge.js`。
+ * 对外交出五类东西:
+ * - 管理器与客户端:`MCPManager`、装上客户端工厂、探测一个服务器配置、不带界面的那台管理器、
+ *   独立 server 自己的客户端,客户端工厂与客户端的形状;
+ * - 装配:MCP 子系统 `McpSubsystem`、客户端身份的装上 / 复位、能力变更的处理口与工具表变更订阅;
+ * - `mcp:` 资源的规格与投影;
+ * - 服务器配置里私密字段的脱敏判据;
+ * - 结果文本与服务器状态的两只小工具、调试日志口的形状。
+ *
+ * 说跨进程契约 `ToolDefinition` 词汇的工具桥不从这里出去:要连桥一起拿的调用方走
+ * `./mcp-index-with-bridge.js`(它是「本入口 + 工具桥」,八只测试在它上面打桩,所以那八处读者仍引它)。
+ * 依赖 auth、storage、logging。
  */
 
-export type {
-  MCPClientFactory,
-  MCPClientLike,
-} from '@onething/backend/mcp/kernel'
-
-export { MCPClient, probeMCPServerConfig } from './mcp-client.js'
-
+// 管理器与客户端。
 export { MCPManager, configureMCPClientHost } from './mcp-manager.js'
+export { probeMCPServerConfig } from './mcp-client.js'
+export { HeadlessMCPManager } from './kernel/mcp-kernel-manager.js'
+export { ServerMCPClient } from './mcp-server-client.js'
+export type { MCPClientFactory, MCPClientLike } from '@onething/backend/mcp/kernel'
 
-export { getMCPOAuthFlowManager } from './oauth/mcp-oauth.js'
+// 装配。
+export { McpSubsystem } from './mcp-subsystem.js'
+export { configureMCPClientIdentity, resetMCPClientIdentity } from './mcp-identity.js'
+export { configureToolkitMCPCapabilitiesChangedHandler, onMCPToolTableChanged } from './mcp-capabilities-changed.js'
 
-export { configureMCPClientIdentity, getMCPClientIdentity } from './mcp-identity.js'
+// `mcp:` 资源。
+export { MCP_RESOURCE_SINGLETON_PATH, mcpResourceScheme, projectMcpResource } from './mcp-resource-spec.js'
+export type { McpResourceProjection } from './mcp-resource-spec.js'
 
-export { configureMCPCapabilitiesChangedHandler, notifyMCPCapabilitiesChanged } from './mcp-capabilities-changed.js'
+// 私密字段的脱敏判据。
+export { MCP_SERVER_PRIVATE_KEYS, SERVER_REDACTED_SECRET, shouldRedactMcpPrivateValue } from './mcp-secrets.js'
 
-// 不带界面单独跑的 server 自己那台 MCP 客户端(server runtime 装进 `configureMCPClientHost`;包根归位 2026-10-04 从 `server/mcp-client.ts` 搬来)。
-export { ServerMCPClient, probeServerMCPConfig, type ServerMCPClientOptions } from './mcp-server-client.js'
-
-// MCP 服务器配置里的私密字段:出网前脱敏、写回时合并(从 `server/mcp-secrets.ts` 搬来;设置面的出界投影也用它)。
-export {
-  MCP_SERVER_PRIVATE_KEYS,
-  SERVER_REDACTED_SECRET,
-  mergeRedactedMCPServerConfig,
-  sanitizeMCPMutationResultForClient,
-  sanitizeMCPServerConfigForClient,
-  sanitizeMCPServerStateForClient,
-  sanitizeMCPServerStatesForClient,
-  shouldRedactMcpPrivateValue,
-} from './mcp-secrets.js'
+// 小工具与调试日志口。
+export { createMCPServerState } from './kernel/mcp-kernel-client-state.js'
+export { withMCPResultOutputText } from './kernel/mcp-kernel-router.js'
+export type { OnethingMCPIpcLogger } from './mcp-ipc-operations.js'

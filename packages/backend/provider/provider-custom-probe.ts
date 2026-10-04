@@ -33,7 +33,7 @@ import type {
 	OpenAIChatDialect,
 	ResponsesDialect,
 } from "./wires/provider-wires.js";
-import customAdapterProbePromptRaw from "../prompt/content/custom-adapter-probe.md?raw";
+import customAdapterProbePromptRaw from "./content/custom-adapter-probe.md?raw";
 import {
 	directModelsRequestHeaders,
 	parseProviderDirectModels,

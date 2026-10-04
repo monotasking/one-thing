@@ -35,12 +35,11 @@ import {
   applyOnethingVoiceRuntimeStatus,
   applyOnethingVoiceWakeFailureFallback,
   createOnethingVoiceLatencyMilestone,
-  getOnethingSpeakableTextFromDelta,
   getOnethingTTSModelName,
   isOnethingMissingCloudTTSConfiguration,
   normalizeOnethingVoiceError,
-  splitOnethingSpeakableSentences,
-} from '@onething/backend/voice/voice'
+} from './voice-service-runtime.js'
+import { getOnethingSpeakableTextFromDelta, splitOnethingSpeakableSentences } from './voice-text.js'
 import {
   getVoiceHostPorts,
   sendVoiceHostMessageToWindow,

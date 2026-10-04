@@ -11,6 +11,10 @@
  * 自述,加一份 provider。§8 演练要的「能力自己的模块 + 一行注册」就是这一行 ——
  * `backend.ts` 里不出现任何资源的名字,`core` 里更不出现。
  *
+ * 入口另外交出两类东西:资源事件转发到总线与读权限守卫这些装配件;各功能写自己的 provider 与自述时要的
+ * 内核零件与契约(文件末尾一段)。依赖 toolkit、session、file、ambient、pet、music、todo-plan、toc 等
+ * (内置 provider 各自带进来)。
+ *
  * ── 住处 ────────────────────────────────────────────────────────────────────
  * 这个目录原来在装配层(只为把一个领域插进脊柱而存在的那一档),③-收尾 B(2026-10-02)按「server 包内部
  * 不区分接线与产品逻辑」平铺进 `resource/`。自述仍各住各的领域(会话那份在 `sessions/`),内核仍在
@@ -18,13 +22,12 @@
  */
 
 import type { AmbientSource } from '@onething/backend/ambient'
-import { defaultAmbientSources } from '@onething/backend/ambient/ambient-sources'
+import { defaultAmbientSources } from '@onething/backend/ambient'
 import { AmbientResourceProvider } from './resource-ambient-provider.js'
 import { NO_ORIGIN_SESSION, ResourceInputValidator, ResourceKernel, ResourceRegistry } from '@onething/backend/resource/resource-api'
 import type { ResourceKernelOptions } from '@onething/backend/resource/resource-api'
 import { combineValidators, type ToolRunner, type Validator, ZodValidator } from '@onething/backend/toolkit'
-import { DIR_RESOURCE_SCHEME } from '@onething/backend/file/file-resource-spec'
-import { GIT_RESOURCE_SCHEME } from '@onething/backend/file/file-git-resource-spec'
+import { DIR_RESOURCE_SCHEME, GIT_RESOURCE_SCHEME } from '@onething/backend/file'
 import * as store from '@onething/backend/session'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { createSandboxPolicy } from '../toolkit/toolkit.js'
@@ -32,7 +35,7 @@ import { DirResourceProvider } from './resource-dir-provider.js'
 import { GitResourceProvider } from './resource-git-provider.js'
 import { createMusicResourceProvider } from './resource-music-provider.js'
 import { PetResourceProvider } from './resource-pet-provider.js'
-import type { PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
+import type { PetsSubsystem } from '@onething/backend/pet'
 import { createLocalOnlyReadGuard } from './resource-read-guard.js'
 import { SessionResourceProvider } from './resource-session-provider.js'
 import { TodoResourceProvider } from './resource-todo-provider.js'
@@ -281,3 +284,22 @@ export function mountBuiltinResources(
     for (const dispose of [...disposers].reverse()) await dispose()
   }
 }
+
+// ── 资源内核的零件与契约(深层引用收口第四批补进入口):各功能写自己的 provider 与自述时要的形状与小工具,
+// 以及把资源投成工具的那只元工具。
+export { NO_ORIGIN_SESSION, ResourceKernel } from './resource-kernel.js'
+export { ResourceRegistry } from './resource-registry.js'
+export { planFromSpec } from './resource-provider.js'
+export type { ResourceProvider, ResourceReadContext } from './resource-provider.js'
+export type { EventSpec, MomentWeight, ResourceSpec, StateScope } from './resource-spec.js'
+export { ReadOutcome } from './resource-read-outcome.js'
+export { ResourceEventHub } from './resource-events.js'
+export type { ResourceEvent } from './resource-events.js'
+export {
+  RESOURCE_OP_KEY,
+  RESOURCE_READ_KEY,
+  RESOURCE_REF_KEY,
+  toolDescriptionOf,
+  toolInputSchemaOf,
+} from './resource-schema.js'
+export { RESOURCE_META_TOOL_ID, ResourceMetaTool } from './resource-meta-tool.js'

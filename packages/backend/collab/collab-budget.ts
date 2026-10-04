@@ -10,7 +10,7 @@
 import { COLLAB_DEFAULT_DAILY_COST_USD } from './collab-types.js'
 import { collabAgentSessionIdsForScan } from './collab-agent-session.js'
 import * as store from '@onething/backend/session'
-import { getUsageLedger } from '@onething/backend/usage/usage-recorder'
+import { getUsageLedger } from '@onething/backend/usage'
 import { loadCollabBoard } from './collab-board-store.js'
 import { postSystemLine } from './collab-room-runtime.js'
 import { getLogger } from '@onething/backend/logging'

@@ -1,4 +1,4 @@
-import type { OnethingMusicNowPlaying } from '@onething/backend/music'
+import type { OnethingMusicNowPlaying } from './music-now-playing.js'
 import type { OnethingRadioBrief, OnethingRadioLastPlayback } from '@onething/backend/music/music-radio-store'
 
 /**

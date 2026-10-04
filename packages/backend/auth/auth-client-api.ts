@@ -47,11 +47,11 @@ import {
   completeOnethingOAuthCallbackForIpc,
   getOnethingOAuthStatusForIpc,
   logoutOnethingOAuthForIpc,
-  normalizeCredentialTarget,
   pollOnethingOAuthDeviceFlowForIpc,
   refreshOnethingOAuthForIpc,
   startOnethingOAuthForIpc,
-} from '@onething/backend/auth'
+} from './auth-ipc-operations.js'
+import { normalizeCredentialTarget } from './auth-credential-target.js'
 import { oauthRouter, type OAuthRoutes } from '@shared/ipc/oauth.js'
 import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import { notifyOAuthTokenExpired } from '@onething/backend/auth/auth-oauth-events'

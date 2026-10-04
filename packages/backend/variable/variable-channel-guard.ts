@@ -1,9 +1,5 @@
-import {
-	VariableError,
-	isReservedName,
-	type ContextVariable,
-	type VariableScope,
-} from "./variable.js";
+import { VariableError, type ContextVariable, type VariableScope } from "./variable-types.js";
+import { isReservedName } from "./variable-validation.js";
 
 /**
  * Trust guard for variable access from externally-routed sessions.

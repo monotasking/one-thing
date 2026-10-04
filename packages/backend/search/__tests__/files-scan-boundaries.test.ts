@@ -18,7 +18,7 @@ import { ALL_CAPABILITIES } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters, OnethingSearchListFilesOptions } from '../search-providers.js'
 import { createFilesSearchCapability, filesSearchManifest } from '../capabilities/search-capabilities.js'
 import { searchFiles } from '../capabilities/search-capabilities-files.js'
-import { FolderVault } from '../../note/folder/note-folder-vault.js'
+import { FolderVault } from '../../note/note.js'
 import { OnethingSearchService } from '../search-service.js'
 
 /** 一台**真库规模**的宿主:492 条会话,每条都有自己的工作目录。 */

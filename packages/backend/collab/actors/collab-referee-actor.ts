@@ -35,7 +35,8 @@
  * **本期不接引擎、不接宿主**(接线在 D6):模型调用经 `CollabRefereeJudgePort` 注入,
  * 生产适配器在 `collab-actors-referee-judge.ts`(写好,零调用点)—— 与 MindPort 同款纪律。
  */
-import type { CollabAgentLike, CollabMessageLike, CollabPlanMemberState } from '../collab.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
+import type { CollabPlanMemberState } from '../collab-plan.js'
 import {
   collabRefereeSetFloorPolicy,
   collabRefereeVerdictVerb,

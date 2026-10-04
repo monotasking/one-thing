@@ -1,4 +1,4 @@
-import type { OnethingOAuthFlowType, OnethingOAuthToken, OnethingProviderAuthContext } from '../auth/auth-types.js'
+import type { OnethingOAuthFlowType, OnethingOAuthToken, OnethingProviderAuthContext } from '../auth/auth.js'
 import type { CoreProviderConfigLike } from './provider-config.js'
 import type { OnethingProviderRegistryDefinition, OnethingProviderRegistryInfo } from './provider-registry.js'
 import type { ProviderDialDescriptor } from '@shared/provider-dials.js'

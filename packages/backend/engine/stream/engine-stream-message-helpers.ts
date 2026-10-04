@@ -39,9 +39,9 @@ import {
 	renderCollabModelMention,
 	resolveCollabSpeakerLabel,
 	type CollabAgentLike,
+	resolveUserIdentity,
 } from "@onething/backend/collab";
 import { findAgent } from "@onething/backend/agent";
-import { resolveUserIdentity } from "@onething/backend/collab/collab-user-identity";
 import * as store from "@onething/backend/session";
 import { getLogger } from '../../logging/logging.js'
 import type { BuildOnethingHistoryMessagesOptions } from '@onething/backend/session'

@@ -166,3 +166,10 @@ export function taskSessionName(description: string | undefined, prompt: string)
   const label = (description?.trim() || prompt.trim().split('\n')[0] || '').slice(0, 40)
   return label ? `[派工] ${label}` : '[派工]'
 }
+
+/**
+ * 派工的装配层(建工作会话、驱动、等终端事件、回投)住在 `./task-dispatch.ts`。这里只交出它的**类型**:
+ * 交出值会让入口经派工层引到插件与工具系统,而工具系统的 `task` 工具又引这只入口,成环。
+ * 要 `createTaskDispatchLayer` / `dispatchTask` 的两处装配读者仍直接引 `task-dispatch`。
+ */
+export type { TaskDispatchLayer } from './task-dispatch.js'

@@ -13,7 +13,7 @@ import type { MCPServerConfig } from '@shared/mcp/types'
 import { HOST_MCP_TURN_GONE, type HostMcpHostTool } from '@onething/backend/external-agent'
 import { HOST_MCP_UNAUTHORIZED } from '@shared/ipc/host-mcp.js'
 import { HostMcpBridge, SEND_NOTIFICATION_TOOL_ID, type HostMcpBridgeDeps, type HostNotification } from '../acp-host-mcp-bridge.js'
-import type { HostToolSurface } from '@onething/backend/external-agent/external-agent-host-tools'
+import type { HostToolSurface } from '@onething/backend/external-agent'
 
 const FACE = 'http://127.0.0.1:43210'
 const BRIDGE = '/opt/onething/acp-mcp-bridge.cjs'

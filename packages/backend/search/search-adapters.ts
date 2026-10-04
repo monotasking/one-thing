@@ -10,13 +10,13 @@
  * 进程单槽。
  */
 import type { OnethingSearchProvidersAdapters } from './search-providers.js'
-import { createPrompt, listPrompts } from '@onething/backend/prompt/prompt-store-bound'
+import { createPrompt, listPrompts } from '@onething/backend/prompt'
 import { getCurrentSessionId } from '@onething/backend/session'
 import { getConnectedDirectoriesForSession } from '@onething/backend/file'
 import { getSession, getSessionsList } from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { listFiles } from '@onething/backend/file'
-import { noteVaultsNow, primaryNoteVaultNow } from '@onething/backend/note/note-subsystem'
+import { noteVaultsNow, primaryNoteVaultNow } from '@onething/backend/note'
 
 export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapters {
   return {

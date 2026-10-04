@@ -47,8 +47,10 @@ const settings = vi.hoisted(() => ({
   saveSettings: vi.fn(),
 }))
 
-vi.mock('@onething/backend/acp', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@onething/backend/acp')
+// 深层引用收口第四批(2026-10-04):`acp-client-api.ts` 改引兄弟文件(D126),不再经入口拿 `ACPManager`,
+// 所以桩打在声明它的 `acp-manager.ts` 上;入口的转交同样解析到这一个模块。
+vi.mock('../acp-manager.js', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../acp-manager.js')
   return { ...actual, ACPManager: manager }
 })
 vi.mock('../../settings/settings-store.js', () => settings)

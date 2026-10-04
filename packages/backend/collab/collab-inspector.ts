@@ -17,10 +17,8 @@
  *  3. **不为计时广播**。「跑了多久」这种连续量由渲染层自己走秒;这里按秒节流,
  *     只在**状态真的变了**的时候推。
  */
-import {
-  COLLAB_DEFAULT_DAILY_COST_USD,
-  isCollabPlanRoom,
-} from '@onething/backend/collab'
+import { COLLAB_DEFAULT_DAILY_COST_USD } from './collab-types.js'
+import { isCollabPlanRoom } from './collab-speaking-order.js'
 import type {
   CollabCoordinatorLogEntry,
   CollabCoordinatorState,

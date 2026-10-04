@@ -36,7 +36,7 @@
  * 这份投影只回答一句话:**这台 server 能做什么**。补读法与状态的口在文件末尾。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 import { normalizeSchemeSegment, isRefScheme, uniqueName } from '@shared/resource/ref'
 import type { MCPToolInfo } from '@shared/mcp/types'

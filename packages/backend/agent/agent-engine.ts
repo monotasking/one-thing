@@ -1,5 +1,5 @@
 import { SESSION_EVENT_TYPES } from '@shared/events/session-event-types.js'
-import { ContextManager, type AgentMessage } from '../context/context-manager.js'
+import { ContextManager, type AgentMessage } from '../context/context.js'
 import { EventBus } from '../event/event-bus.js'
 import { StreamChannel } from '../event/event-stream-channel.js'
 import type { EventBase } from '../event/event.js'

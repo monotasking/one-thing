@@ -60,7 +60,7 @@ import {
 import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
-} from '@onething/backend/skill/skill-plugin-roots'
+} from '@onething/backend/skill'
 import { registerPromptContextProvider } from './plugin-prompt-context-breaker.js'
 import {
   registerAfterAssistantResponseHook,
@@ -69,7 +69,7 @@ import {
 import { registerPluginInputInterceptHook } from '@onething/backend/plugin/plugin-input-intercept-bound'
 import { registerPluginToolCallInterceptHook } from '@onething/backend/plugin/plugin-tool-call-intercept-bound'
 import { registerPluginToolResultInterceptHook } from '@onething/backend/plugin/plugin-tool-result-intercept-bound'
-import { getScheduler } from '@onething/backend/scheduler/scheduler-bound'
+import { getScheduler } from '@onething/backend/scheduler'
 import type {
   AfterAssistantResponseHook,
   BeforeContextCompactHook,
@@ -615,7 +615,7 @@ export function createPluginAPI(
     registerToolResultInterceptHook: registerPluginToolResultInterceptHook,
     registerSkillRoot: registerPluginSkillRootProvider,
     invalidateSkillsCache() {
-      return import('@onething/backend/skill/skill-session-cache')
+      return import('@onething/backend/skill')
         .then(({ invalidateSessionSkillsCache }) => invalidateSessionSkillsCache())
         .catch(() => undefined)
     },

@@ -40,12 +40,8 @@ import { planFromSpec } from '@onething/backend/resource/resource-api'
 import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit'
 import type { JsonObject } from '@shared/json'
 import type { MCPToolCallResult } from '@shared/mcp/types'
-import { withMCPResultOutputText } from '@onething/backend/mcp/kernel'
+import { withMCPResultOutputText, MCP_RESOURCE_SINGLETON_PATH, type McpResourceProjection } from '@onething/backend/mcp'
 import { mcpResultText } from '@onething/backend/toolkit'
-import {
-  MCP_RESOURCE_SINGLETON_PATH,
-  type McpResourceProjection,
-} from '@onething/backend/mcp/mcp-resource-spec'
 
 /**
  * 这只 provider 看得见的客户端面 —— **一件事**,不是整只 `MCPManager`。

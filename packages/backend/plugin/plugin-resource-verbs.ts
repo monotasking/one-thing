@@ -67,7 +67,7 @@ import {
 } from '@onething/backend/plugin/plugin-contract'
 import { ReadOutcome } from '@onething/backend/resource/resource-api'
 import { parseRef } from '@shared/resource/ref'
-import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/resource/resource-api'
+import type { ReadOutcome as ReadOutcomeValue, ResourceEvent } from '@onething/backend/resource'
 import { systemPrincipal } from '@shared/permission/principal'
 import type { Principal } from '@shared/permission/principal'
 import { Outcome } from '@onething/backend/toolkit'

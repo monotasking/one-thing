@@ -65,7 +65,7 @@
  * 改动面是常事(主目录、下载目录),而一次异常会让调用方以为自己问错了。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const GIT_RESOURCE_SCHEME = 'git'

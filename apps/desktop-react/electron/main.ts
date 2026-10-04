@@ -50,8 +50,8 @@ import {
   getEmbeddedOnethingHttpServer,
 } from '@onething/backend/http-server'
 import { removeHttpDiscovery } from '@onething/backend/http-server'
-import { initializeUserSchedulerTasks } from '@onething/backend/scheduler/scheduler-user-task-service'
-import { registerACPPermissionBridge } from '@onething/backend/acp/acp-permission-bridge'
+import { initializeUserSchedulerTasks } from '@onething/backend/scheduler'
+import { registerACPPermissionBridge } from '@onething/backend/acp'
 import { getLogger } from '@onething/backend/logging'
 import { installAppMenu } from './app-menu-install.js'
 import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'

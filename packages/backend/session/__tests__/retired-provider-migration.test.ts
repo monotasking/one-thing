@@ -16,7 +16,7 @@ import { createOnethingSessionRepository } from '../session-repository.js'
 import { createHybridSessionStorageDriver } from '../session-storage-driver.js'
 import { rewriteRetiredSessionProvider } from '../session-retired-providers.js'
 import { createAgentProviderFromRuntime } from '../../provider/provider.js'
-import type { ExternalAgentConnector, ExternalAgentTurnRequest } from '../../external-agent/external-agent-types.js'
+import type { ExternalAgentConnector, ExternalAgentTurnRequest } from '../../external-agent/external-agent.js'
 
 interface TestMessage extends StoredChatMessage {
   content: string

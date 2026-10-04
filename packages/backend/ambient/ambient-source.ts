@@ -1,4 +1,4 @@
-import type { EventSpec } from '@onething/backend/resource/resource-api'
+import type { EventSpec } from '@onething/backend/resource'
 
 /**
  * **外界的一件事**(09-19 用户:「宠物输出状态,偶尔蹦几句话(有 trigger,比如时间,外界因素、如天气、

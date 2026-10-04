@@ -10,12 +10,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createTwoFilesPatch } from "diff";
 import {
-	collectGoalFileSpans,
-	countSpanLines,
-	summarizeGoalFileChanges,
-	type GoalFileChange,
-	type GoalFileMutationRecordLike,
-} from "@onething/backend/goal";
+  collectGoalFileSpans,
+  countSpanLines,
+  summarizeGoalFileChanges,
+  type GoalFileChange,
+  type GoalFileMutationRecordLike,
+} from "./goal-file-changes.js";
 import type { GoalFileDiff } from "@shared/ipc.js";
 import {
   getOnethingFileMutationsDir,

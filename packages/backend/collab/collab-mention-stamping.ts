@@ -18,11 +18,8 @@
  * W14b will let the `say` tool pass mentions explicitly; this resolution stays
  * as the fallback for whatever it writes in prose.
  */
-import {
-  buildCollabMentions,
-  type CollabAgentLike,
-  type CollabMentionLike,
-} from '@onething/backend/collab'
+import { buildCollabMentions } from './collab-mentions.js'
+import type { CollabAgentLike, CollabMentionLike } from './collab-types.js'
 import * as store from '@onething/backend/session'
 import { getEventBus } from '@onething/backend/event'
 import { sessionCommands } from '@onething/backend/session'

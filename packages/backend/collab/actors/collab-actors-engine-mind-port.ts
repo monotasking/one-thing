@@ -26,11 +26,7 @@
  * 它占住 —— 等待的判断属于**房间**(要不要现在发这张牌),不属于拿到牌之后的
  * 这一步。
  */
-import {
-  COLLAB_MESSAGE_SOURCE,
-  COLLAB_USAGE_SOURCE_ROOM,
-  type CollabMentionLike,
-} from '@onething/backend/collab'
+import { COLLAB_MESSAGE_SOURCE, COLLAB_USAGE_SOURCE_ROOM, type CollabMentionLike } from '../collab-types.js'
 import type { ChatMessage } from '@shared/ipc.js'
 
 import { findAgent } from '@onething/backend/agent'

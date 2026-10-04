@@ -1,7 +1,7 @@
 import { basename, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { canonicalizeStorePath } from '@onething/backend/storage'
-import type { OnethingMediaAssetAccess, OnethingMediaLibraryService } from '@onething/backend/media'
+import type { OnethingMediaAssetAccess, OnethingMediaLibraryService } from './media-library-service.js'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, ownsSessionRecord, type SessionAccess, type SessionAccessContext, type SessionAccessOperation } from '@onething/backend/session'
 import { isPathInside, resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'

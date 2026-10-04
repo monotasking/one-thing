@@ -14,7 +14,7 @@ import {
 	initPromptVersion,
 	getPromptVersion,
 	computeStaticPromptVersion,
-} from "../../eval/eval-fixture.js";
+} from "../../eval/eval.js";
 
 const GOLDEN_DIR = path.resolve(__dirname, "golden");
 const BUDGET_PATH = path.join(GOLDEN_DIR, "_budget.json");
@@ -251,7 +251,7 @@ describe("prompt golden snapshots", () => {
 		}
 
 		// Verify sections produce stable hashes
-		const { hashSections } = await import("../../eval/eval-section-hash.js");
+		const { hashSections } = await import("../../eval/eval.js");
 		const hashes1 = hashSections(result.sections!);
 		const hashes2 = hashSections(result.sections!);
 		expect(hashes1.promptVersion).toBe(hashes2.promptVersion);

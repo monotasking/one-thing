@@ -1,7 +1,7 @@
 /**
  * 宠物系统的产品层(正本 `docs/design/pet-system-2026-09.md`)。纯数据与纯类:
- * 自述、名册、主持人、账本行、作曲端口、`pet:` 自述。读写文件与接总线在装配层
- * `@onething/backend/pet/`。
+ * 自述、名册、主持人、账本行、作曲端口、`pet:` 自述。读写文件与接总线在同目录的装配件里;
+ * 末尾一组(宠物子系统、模型作曲、话多话少的监视)是外面装配要的那几只。
  */
 
 export { ALU } from './builtin/pet-builtin-alu.js'
@@ -41,3 +41,8 @@ export {
   petResourceSpec,
 } from './pet-resource-spec.js'
 export type { Moment, MomentWeight, Utterance, UtteranceDropReason } from './pet-types.js'
+
+// 装配:宠物子系统、按模型作曲、话多话少的读与监视(深层引用收口第四批补进入口)。
+export { PetsSubsystem, UnknownPetError } from './pet-subsystem.js'
+export { ModelMomentComposer } from './pet-model-composer.js'
+export { petChattinessOf, watchPetChattiness } from './pet-chattiness-watch.js'

@@ -12,7 +12,7 @@
  * (LRU 抓包 → 磁盘环 → 按生产管线重建 send view → 最后才手搓存储视图)
  * 因此只有一份。
  */
-import { getSkillsForSession } from '../skill/skill-session-cache.js'
+import { getSkillsForSession } from '../skill/skill.js'
 import { sessionReads } from '@onething/backend/session'
 import * as store from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging'

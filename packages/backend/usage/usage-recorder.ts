@@ -10,14 +10,13 @@
  * `source` is the only thing that makes that spend visible in the usage panel.
  */
 import { isSubscriptionProvider, routedProviderIdOf, type CoreSpaceCredentialMarker } from '@onething/backend/provider';
+import { OnethingUsageLedger } from "./usage-ledger.js";
 import {
-	OnethingUsageLedger,
-	getOnethingSessionUsageTotal,
-	getOnethingUsageSummary,
-	type OnethingUsageBillingMode,
-	type OnethingUsageLedgerRecord,
-	type OnethingUsageSummaryRequest,
-} from "@onething/backend/usage";
+  getOnethingSessionUsageTotal,
+  getOnethingUsageSummary,
+  type OnethingUsageSummaryRequest,
+} from "./usage-summary.js";
+import type { OnethingUsageBillingMode, OnethingUsageLedgerRecord } from "./usage-types.js";
 import { type OnethingUsageSummaryResult } from "@shared/contracts/usage";
 import { DEFAULT_SPACE_ID } from "@onething/backend/space";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";

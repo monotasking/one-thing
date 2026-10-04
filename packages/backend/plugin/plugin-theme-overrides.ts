@@ -45,8 +45,10 @@ import {
   isHighlightAliasToken,
   isThemeTokenOverridable,
   themeTokenCssVariables,
-} from '../theme/theme-css-mapper.js'
-import { isThemeKnobVar, resolveThemeKnobValue, themeKnobType } from '../theme/theme-knobs.js'
+  isThemeKnobVar,
+  resolveThemeKnobValue,
+  themeKnobType,
+} from '../theme/theme.js'
 
 /** 一条覆盖声明在裁决后的状态。 */
 export type PluginThemeOverrideStatus =

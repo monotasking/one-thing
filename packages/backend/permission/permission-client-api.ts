@@ -31,7 +31,7 @@ import { sessionAccess } from '@onething/backend/session'
 import {
   clearOnethingPermissionSessionForIpc,
   getOnethingPendingPermissionsForIpc,
-} from '@onething/backend/permission'
+} from './permission-session-presentation.js'
 import type { PermissionRoutes } from '@shared/ipc/permissions.js'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission/permission-with-grant-storage'

@@ -10,7 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppSettings } from '@shared/ipc/settings'
-import type { SettingsEvent, SettingsEventBroadcaster } from '@onething/backend/settings/settings-events'
+import type { SettingsEvent, SettingsEventBroadcaster } from '@onething/backend/settings'
 
 import { getCdpFlagPath, readCdpLaunchFlag } from '../cdp-flag.js'
 import {

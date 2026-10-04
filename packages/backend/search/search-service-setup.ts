@@ -62,16 +62,16 @@ import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getEventBus } from '@onething/backend/event'
-import { getSettings } from '@onething/backend/settings'
-import { registerSessionLogEventAppendObserver } from '@onething/backend/session'
 import {
+  getSettings,
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEvent,
   type SettingsEventBroadcaster,
-} from '@onething/backend/settings/settings-events'
+} from '@onething/backend/settings'
+import { registerSessionLogEventAppendObserver } from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging'
-import { getNotesSubsystemSafe } from '@onething/backend/note/note-subsystem'
+import { getNotesSubsystemSafe } from '@onething/backend/note'
 import type { NoteVault } from '@onething/backend/note'
 import { createAppSearchProvidersAdapters } from './search-adapters.js'
 import { syncPluginSearchCapabilities } from './search-plugin-registry.js'

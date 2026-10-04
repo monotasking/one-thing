@@ -25,8 +25,8 @@ import type {
 	OnethingStreamSenderPayload,
 } from "../agent-loop/agent-loop.js";
 import { isSystemInternalSource } from "../agent-loop/agent-loop.js";
-import { isTrustedCollabDrive } from "../collab/collab-drive-guard.js";
-import { runPluginInputIntercept } from "../plugin/plugin-input-intercept-bound.js";
+import { isTrustedCollabDrive } from "../collab/collab.js";
+import { runPluginInputIntercept } from "../plugin/plugin.js";
 import { mintTurnPrincipal } from "../agent-loop/agent-loop.js";
 import { composeAgentPermissionMode } from "../agent/agent.js";
 import { getLogger } from "../logging/logging.js";

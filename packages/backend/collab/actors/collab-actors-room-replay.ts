@@ -24,7 +24,8 @@
  * 数据纪律沿用 D0:fixture 全部合成,真实用户转录只用同目录外的只读脚本手工对照。
  */
 import { InMemoryMailbox, type ActorEvent } from '@onething/backend/collab/kernel'
-import type { CollabAgentLike, CollabRelayRoomLike } from '../collab.js'
+import type { CollabAgentLike } from '../collab-types.js'
+import type { CollabRelayRoomLike } from '../collab-speaking-order.js'
 import {
   collabAgentRaiseHand,
   collabAgentSpeak,

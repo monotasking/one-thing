@@ -24,10 +24,8 @@
  * **进程内存活即可**(§3.2):不做跨重启持久化。wake 是秒级跟手的事,重启丢一
  * 个 pending 的代价是"上帝再 @ 一声",不值得一张持久化表。
  */
-import {
-  formatCollabAgentHandle,
-  formatCollabWakePoke,
-} from '@onething/backend/collab'
+import { formatCollabAgentHandle } from './collab-handles.js'
+import { formatCollabWakePoke } from './collab-say.js'
 import { getEventBus } from '@onething/backend/event'
 import { findAgent } from '@onething/backend/agent'
 import { speakIntoCollabRoom } from './collab-say-tool.js'

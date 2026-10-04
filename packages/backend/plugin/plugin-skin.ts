@@ -20,7 +20,7 @@ import {
   isSkinKnob,
   isSkinTier,
   type SkinKnob,
-} from '../theme/theme-skin.js'
+} from '../theme/theme.js'
 
 /** 一条皮肤声明在裁决后的状态(与 `PluginThemeOverrideStatus` 同一套词)。 */
 export type PluginSkinStatus =

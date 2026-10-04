@@ -4,7 +4,7 @@
  * `PracticeService` 本体已归位到 `./practice-service.ts`(纯产品层);这里原样再导出它,
  * 于是既有 import 一个字不用改,而产品层的新调用方可以直接吃 `./practice-service.js`。
  */
-import type { OnethingPracticeLedger } from './practice.js'
+import type { OnethingPracticeLedger } from './practice-ledger.js'
 import type {
   OnethingPracticeConfig,
   OnethingPracticeEngineSnapshot,

@@ -76,9 +76,9 @@ import {
   revealOnethingPath,
   statOnethingPath,
   type OnethingDirectoryEntry,
+  dirResourceSpec,
 } from '@onething/backend/file'
-import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell/shell-host-ports'
-import { dirResourceSpec } from '@onething/backend/file/file-resource-spec'
+import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell'
 import { planFromSpec } from '@onething/backend/resource/resource-api'
 import { formatRef } from '@shared/resource/ref'
 import type {

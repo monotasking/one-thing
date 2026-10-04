@@ -17,7 +17,7 @@ import type { AppSettings } from '@shared/ipc/settings'
 import type {
   SettingsEvent,
   SettingsEventBroadcaster,
-} from '@onething/backend/settings/settings-events'
+} from '@onething/backend/settings'
 
 import {
   BrowserSessionPolicy,

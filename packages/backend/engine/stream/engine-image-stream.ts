@@ -8,16 +8,13 @@
 
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
-import { saveMediaImage } from '@onething/backend/media/media-save-image'
+import { saveMediaImage, executeOnethingImageGenerationStream } from '@onething/backend/media'
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
 import { generateImage } from './engine-image-generation.js'
 import type { StreamSender } from './engine-stream-processor.js'
-import {
-  executeOnethingImageGenerationStream,
-} from '@onething/backend/media'
 import { recordSynthesizedAssistantText } from '@onething/backend/session'
 import { consolePort, getLogger } from '../../logging/logging.js'
-import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/backend/media/media-image-generation'
+import type { CoreImageStreamStoreAdapter, ExecuteCoreImageGenerationStreamOptions } from '@onething/backend/media'
 
 const log = getLogger('engine.stream.image')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

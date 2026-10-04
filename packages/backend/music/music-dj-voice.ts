@@ -9,10 +9,8 @@
  * what unblocks a 停止电台 pressed mid-sentence).
  */
 import { randomUUID } from 'node:crypto'
-import { broadcastVoiceHostMessage, hasVoiceHost } from '@onething/backend/voice/voice-host-ports'
-import { getSpeechOutput } from '@onething/backend/voice/voice-speech-output'
+import { broadcastVoiceHostMessage, hasVoiceHost, getSpeechOutput, synthesizeSpeech } from '@onething/backend/voice'
 import type { PatterSpeech, PatterVoiceStyle } from './music-host-voice.js'
-import { synthesizeSpeech } from '@onething/backend/voice/voice-provider-calls'
 import { getSettings } from '@onething/backend/settings'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
 import { getLogger } from '@onething/backend/logging'

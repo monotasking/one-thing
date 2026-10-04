@@ -24,7 +24,7 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { parsePetLedgerLine, PET_MEMORY_LINES, type PetLedgerLine } from '@onething/backend/pet'
+import { parsePetLedgerLine, PET_MEMORY_LINES, type PetLedgerLine } from './pet-ledger.js'
 import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('pets.ledger')

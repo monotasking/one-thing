@@ -64,7 +64,7 @@ import {
   refreshOnethingMCPServerForIpc,
   removeOnethingMCPServerForIpc,
   updateOnethingMCPServerForIpc,
-} from '@onething/backend/mcp'
+} from './mcp-ipc-operations.js'
 import {
   MCPManager,
   probeMCPServerConfig,

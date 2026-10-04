@@ -40,7 +40,7 @@ import {
   getOnethingToolOutputsDir,
 } from '@onething/backend/storage'
 import { resetVariablesStoreForTests } from '@onething/backend/variable/variable-store-bound'
-import { createDefaultVariablesFile } from '@onething/backend/variable/variable-schema'
+import { createDefaultVariablesFile } from '@onething/backend/variable'
 
 describe('sandbox', () => {
   beforeEach(() => {

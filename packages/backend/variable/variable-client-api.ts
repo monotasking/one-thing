@@ -30,7 +30,7 @@ import {
   deleteOnethingVariableForIpc,
   listOnethingVariablesForIpc,
   setOnethingVariableForIpc,
-} from '@onething/backend/variable'
+} from './variable-ipc-operations.js'
 import { getVariableRegistry } from '@onething/backend/variable/variable-registry'
 import { variablesRouter, type VariablesRoutes } from '@shared/ipc/variables.js'
 

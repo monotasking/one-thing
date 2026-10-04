@@ -105,7 +105,7 @@
  *     LRU 的内务。理由逐条写在域的处理器上。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 /**

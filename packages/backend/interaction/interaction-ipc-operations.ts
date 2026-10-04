@@ -12,7 +12,7 @@
  * `Interaction.initialize` 那一刻(`import-side-effect-free.test.ts` 守着这条)。
  */
 
-import { Interaction } from '@onething/backend/interaction'
+import { Interaction } from './interaction-registry.js'
 
 import type {
   InteractionGetPendingResponse,

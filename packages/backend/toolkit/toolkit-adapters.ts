@@ -16,7 +16,7 @@ import {
   createBraveSearchProvider,
   type SearchProvider,
 } from '@onething/backend/tool'
-import { remainingGoalTokens } from '@onething/backend/goal'
+import { remainingGoalTokens, getGoal, goalLimits, updateGoalFromModel } from '@onething/backend/goal'
 import type { AskUserToolAdapters } from './builtin/toolkit-builtin-ask-user.js'
 import type { GoalToolAdapters } from './builtin/toolkit-builtin-goal.js'
 import type { PracticeToolAdapters } from './builtin/toolkit-builtin-practice.js'
@@ -26,10 +26,9 @@ import type { WebOpenToolAdapters } from './builtin/toolkit-builtin-web-open.js'
 import type { WebSearchToolAdapters } from './builtin/toolkit-builtin-web-search.js'
 
 import { createRequiredAppFetch, getSettings } from '@onething/backend/settings'
-import { getGoal, goalLimits, updateGoalFromModel } from '@onething/backend/goal/goal-manager'
-import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/practice/practice-service-slot'
+import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/backend/practice'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
-import { assertMusicOperator } from '@onething/backend/music/music-access'
+import { assertMusicOperator } from '@onething/backend/music'
 import { dispatchTask } from '@onething/backend/task/task-dispatch'
 import { Interaction } from '@onething/backend/interaction'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/interaction/interaction-no-human'

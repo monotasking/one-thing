@@ -1,49 +1,83 @@
-export {
-  ONETHING_LOG_MONITOR_DEFAULT_CONFIG,
-  ONETHING_LOG_MONITOR_MANIFEST,
-  createOnethingLogMonitorSearchToolParameters,
-  registerOnethingLogMonitorPanel,
-  registerOnethingLogMonitorPlugin,
-  registerOnethingLogMonitorStatusDemo,
-  resolveOnethingLogMonitorConfig,
-} from './plugin-log-monitor.js'
-/*
- * memory-wiki 曾经在这里导出一整屏。2026-08-12 它退出内置搬进市场仓
- * (`monotasking/plugin` 的 `packages/memory-wiki`,包名
- * `@onething-plugins/memory-wiki`)—— 判据是"离了宿主活不了"才留在内置,而它
- * 只用注入 api 上的四样东西。同 id、同家目录,用户数据零迁移。
+/**
+ * plugin —— 插件系统:从 npm 账本装载插件、注入的 `api` 对象、各种登记(提示词源、深链接、检索供给方、
+ * 凭证策略、IM 连接器……)、健康与断路器、插件主题覆盖与皮肤,以及插件市场的安装 / 卸载。
  *
- * 这里不留转发桩:一个没有实现的导出面只会让下一个人以为宿主还认识它。
- *
- * `note-skills` 于 2026-09-18 走了同一条路的另一头 —— 它不是搬去市场,是**退役**:
- * 「笔记库里的技能」今天由技能加载器直接吃(`listCustomSkillRoots` 那条 `custom:`
- * 链路),不再需要一个插件来当中间人(正本 `docs/design/notes-obsidian-cli-2026-09.md`
- * §4.4)。同样不留转发桩。
+ * 对外交出十类东西(按段分组):
+ * - 装配:插件管理器的取用口、宿主注入口、插件自带的小模型服务、内置插件(log-monitor);
+ * - 插件 API 与定义的形状、插件信息;
+ * - 磁盘与账本:插件目录、设置文件的读写、启用开关、扫描与内置定义、市场索引与 npm 安装;
+ * - 健康:断路器的判据与上报、作用域键;
+ * - 回合里的钩子:输入拦截、工具调用 / 结果拦截、回复后与压缩前的生命周期钩子、会话间投递;
+ * - 提示词源:带断路器的登记与源、不带健康回调的源类;
+ * - 深链接、检索供给方、凭证策略这三张登记的契约与小工具;
+ * - 主题覆盖与皮肤;
+ * - IM 连接器的出站回复;
+ * - 开给设置页的列 / 开 / 关 / 刷新 / 执行命令与调试日志口。
+ * 依赖 provider-call、provider、credentials、resource、toolkit、session、theme、scheduler、search、storage、logging 等。
  */
-// IM 连接器登记表(`api.registerIMConnector` 那一张,渠道网关的出站回复也读它)。包根归位 B(2026-10-04)
-// 从包根 `channel/connector-registry.ts` 搬来:它零依赖,写它的是插件、读它的是网关(L3),放在插件这一层两边都顺。
+
+// 装配。
+export { getPluginManager } from './plugin-system.js'
+export { configurePluginsHost, resetPluginsHost } from './plugin-host-ports.js'
+export type { PluginsHostPorts } from './plugin-host-ports.js'
+export { PluginLlmService } from './plugin-llm-service.js'
 export {
-  configureIMConnectorHooks,
-  getIMConnector,
-  getIMConnectorOwner,
-  listIMConnectorIds,
-  registerIMConnector,
-  sendIMReply,
-  type RegisterIMConnectorOptions,
-} from './plugin-im-connector-registry.js'
-export * from './plugin-command-execution.js'
-export * from './plugin-ipc-operations.js'
-export * from './plugin-list.js'
-export * from './plugin-theme-overrides.js'
-export * from './plugin-config-schema.js'
-export type {
-  OnethingLogMonitorConfig,
-  OnethingLogMonitorPanelApi,
-  OnethingLogMonitorPluginApi,
-  OnethingLogMonitorStatusApi,
-  OnethingLogMonitorSearchToolParameters,
-  RegisterOnethingLogMonitorPluginOptions,
+  ONETHING_LOG_MONITOR_MANIFEST,
+  registerOnethingLogMonitorPanel,
+  registerOnethingLogMonitorStatusDemo,
 } from './plugin-log-monitor.js'
+
+// 插件 API 与定义的形状。
+export type { CorePluginCommandDefinition, CorePluginDefinition, PluginSettings } from './plugin-api-types.js'
+export type { CorePluginInfo } from './plugin-manager-base.js'
+export type { CorePluginSchedulerHost } from './plugin-scheduler.js'
+
+// 磁盘与账本、市场。
+export {
+  createBuiltinPluginDefinitions,
+  ensureCorePluginsDir,
+  getCorePluginSettingsPath,
+  getCorePluginsDir,
+  getPluginEnabledWithAdapters,
+  readPluginLedger,
+  readPluginSettingsFile,
+  scanCorePlugins,
+  setPluginEnabledWithAdapters,
+  unscopedPluginIdFromPackageName,
+  writePluginSettingsFile,
+} from './plugin-loader.js'
+export type { CorePluginSettingsStorageAdapters } from './plugin-loader.js'
+export { getPluginsDir } from './plugin-disk-loader.js'
+export { CorePluginStore } from './plugin-store.js'
+export { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from './plugin-tarball.js'
+export { findMarketIndexEntry } from './plugin-install.js'
+export type { CorePluginMarketIndex } from './plugin-install.js'
+export {
+  configurePluginMarketIndex,
+  getPluginMarketIndexSnapshot,
+  installPluginPackage,
+  probePluginNpmAvailability,
+  uninstallPluginPackage,
+} from './plugin-npm-process.js'
+
+// 健康与作用域。
+export {
+  isPluginSurfaceDegraded,
+  probePluginSurface,
+  reportPluginRuntimeFailure,
+  reportPluginRuntimeSuccess,
+} from './plugin-health.js'
+export { pluginScope } from './plugin-policy.js'
+
+// 回合里的钩子。
+export { runPluginInputIntercept } from './plugin-input-intercept-bound.js'
+export { runPluginToolCallIntercept } from './plugin-tool-call-intercept-bound.js'
+export { runPluginToolResultIntercept } from './plugin-tool-result-intercept-bound.js'
+export { runAfterAssistantResponseHooks, runBeforeContextCompactHooks } from './plugin-lifecycle-hooks.js'
+export type { BeforeContextCompactContext } from './plugin-lifecycle-hooks.js'
+export { deliverInternalMessage, pluginPostInterceptReply } from './plugin-session-messenger.js'
+export type { PluginInterceptSteerPort } from './plugin-session-messenger.js'
+
 // 插件的提示词源(越层清零 C1,2026-10-04 从 prompt/ 搬来)。同名的 `registerPromptContextProvider`
 // 交出的是带断路器的那一半(`plugin-prompt-context-breaker.ts`);不带健康回调的泛型那一半
 // (`plugin-prompt-context.ts`)只交出它的源类,给要自己拼 composer 的调用方。
@@ -53,3 +87,57 @@ export {
   type PromptProviderConfig,
 } from './plugin-prompt-context-breaker.js'
 export { PluginPromptContextSource } from './plugin-prompt-context.js'
+
+// 深链接、检索供给方、凭证策略三张登记的契约。
+export {
+  DEEPLINK_TEXT_MAX_BYTES,
+  normalizePluginDeepLinkResult,
+  PLUGIN_DEEPLINK_HANDLER_TIMEOUT_MS,
+  pluginDeepLinkAddress,
+  pluginDeepLinkSurface,
+} from './plugin-deep-link.js'
+export type {
+  CorePluginDeepLinkActionRegistration,
+  CorePluginDeepLinkResult,
+  DeepLinkIntent,
+  DeepLinkParseResult,
+} from './plugin-deep-link.js'
+export {
+  PLUGIN_SEARCH_PROVIDER_RESULT_CAP,
+  PLUGIN_SEARCH_PROVIDER_TIMEOUT_MS,
+  pluginSearchProviderSurface,
+  sanitizePluginSearchResults,
+} from './plugin-search-provider.js'
+export type { CorePluginSearchActionContext, CorePluginSearchProviderRegistration } from './plugin-search-provider.js'
+export {
+  isPluginCredentialChoiceValid,
+  PLUGIN_CREDENTIAL_STRATEGY_TIMEOUT_MS,
+  pluginCredentialStrategySurface,
+  toPluginCredentialEntryView,
+} from './plugin-credential-strategy.js'
+export type {
+  CorePluginCredentialStrategyContext,
+  CorePluginCredentialStrategyRegistration,
+  PluginCredentialEntryView,
+  PluginCredentialFailureKind,
+  PluginCredentialUsage,
+} from './plugin-credential-strategy.js'
+
+// 主题覆盖与皮肤。
+export { getPluginThemeKnobVariables, getPluginThemeOverrideTokenValues } from './plugin-theme-override-table.js'
+export { getPluginSkinTiers } from './plugin-skin-table.js'
+
+// IM 连接器(`api.registerIMConnector` 那一张)的出站回复,渠道网关读它。包根归位 B(2026-10-04)
+// 从包根 `channel/connector-registry.ts` 搬来。
+export { sendIMReply } from './plugin-im-connector-registry.js'
+
+// 开给设置页的操作与调试日志口。
+export {
+  disableOnethingPluginForIpc,
+  enableOnethingPluginForIpc,
+  executeOnethingPluginCommandForIpc,
+  listOnethingPluginCommandsForIpc,
+  listOnethingPluginsForIpc,
+  refreshOnethingPluginsForIpc,
+} from './plugin-ipc-operations.js'
+export type { OnethingPluginIpcLogger } from './plugin-ipc-operations.js'

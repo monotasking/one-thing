@@ -55,7 +55,7 @@ import {
   type CoreSpaceCredentialMarker,
 } from '@onething/backend/provider'
 import { ROUTE_FALLBACK_API_REASON, type RouteCandidate } from './credentials-candidate-route.js'
-import { getAuthService } from '@onething/backend/auth/auth-process-service'
+import { getAuthService } from '@onething/backend/auth'
 import { resolveSessionSpaceId, getSpaceSettings } from '@onething/backend/session'
 import {
   buildRoutedProviderConfig,

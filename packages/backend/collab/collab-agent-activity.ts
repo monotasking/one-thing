@@ -52,7 +52,7 @@ import {
 // 这个文件会被 IPC 层直接调用,一条通往门面的边会把「读一份快照」重新变成
 // 「把半个主进程拉起来」—— 与文件头那条端口纪律同一个理由。
 import { Interaction } from '@onething/backend/interaction'
-import { Permission } from '@onething/backend/permission/permission-asks'
+import { Permission } from '@onething/backend/permission'
 
 import { getEventBus } from '@onething/backend/event'
 import { collabV3TurnsOfAgent } from '@onething/backend/collab/actors/collab-actors-turn-context'

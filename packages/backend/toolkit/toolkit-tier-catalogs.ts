@@ -40,7 +40,7 @@ import { getConnectedDirectoriesForSession } from '@onething/backend/file'
 import { getOnethingToolOutputsDir } from '@onething/backend/storage'
 import { defaultToolWorkingDirectory, mutatingFileAdapters, readAdapters } from './toolkit-file-adapters.js'
 import { createLocalBashOperations } from '@onething/backend/tool'
-import { getGuardedVariableRegistryForTools, VariableError } from '@onething/backend/variable/variable-system'
+import { getGuardedVariableRegistryForTools, VariableError } from '@onething/backend/variable'
 import {
   askUserAdapters,
   goalAdapters,

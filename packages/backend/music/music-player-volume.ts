@@ -14,7 +14,8 @@
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { MusicProvider, OnethingMusicProcessRunner } from '@onething/backend/music/music'
+import type { MusicProvider } from './providers/music-providers.js'
+import type { OnethingMusicProcessRunner } from './music-types.js'
 
 type VolumeProvider = Pick<MusicProvider, 'reliability'>
 

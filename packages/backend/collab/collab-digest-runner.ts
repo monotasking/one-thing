@@ -17,14 +17,9 @@
  *    折叠段是同一份。
  */
 import { getSettings } from '@onething/backend/settings'
-import {
-  buildCollabDigestPrompt,
-  collectCollabFoldedFacts,
-  parseCollabDigestReply,
-  planCollabHistoryWindow,
-  type CollabAgentLike,
-  type CollabDayDigest,
-} from '@onething/backend/collab'
+import { buildCollabDigestPrompt, parseCollabDigestReply, type CollabDayDigest } from './collab-digest.js'
+import { collectCollabFoldedFacts, planCollabHistoryWindow } from './collab-history-window.js'
+import type { CollabAgentLike } from './collab-types.js'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { sessionReads, type SessionAccess } from '@onething/backend/session'
@@ -37,7 +32,7 @@ import { getLogger } from '@onething/backend/logging'
 
 import type { RuntimeRequestContext } from '@onething/backend/http-server/http-server-runtime-facade.js'
 import { fixedExecutionContext } from '../session/session.js'
-import type { captureUsageRecorder } from '@onething/backend/usage/usage-recorder'
+import type { captureUsageRecorder } from '@onething/backend/usage'
 import { ONETHING_USAGE_SOURCES } from '@onething/backend/usage'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 

@@ -1,4 +1,4 @@
-import type { AgentMessage } from '../context/context-manager.js'
+import type { AgentMessage } from '../context/context.js'
 import type { ToolCall, ToolDefinition } from '../tool/tool.js'
 
 export interface ProviderRequest {

@@ -1,3 +1,11 @@
+/**
+ * collab —— 协作:群聊房间里多个 agent 按 Actor v3 模型轮流发言、看板、工作会话、私聊房、预算与熔断、
+ * 房间转录与回放,以及给协作工具与引擎的那几道门。
+ *
+ * 对外交出的名字很多,按来源文件成段:协作消息与房间的形状、房间配置与成员、看板、工作会话与派工、
+ * 运行时(起停、驱动、牌位)、转录与回放、协作工具、摘要、检查器与用户身份。末尾一段是深层引用收口第四批补进来的。
+ * 依赖 session、agent、toolkit、settings、usage、variable、external-agent、agent-loop、event、storage、logging。
+ */
 export {
   COLLAB_DEFAULT_DAILY_COST_USD,
   COLLAB_DEFAULT_MAX_CHAIN,
@@ -437,3 +445,32 @@ export type {
   SendMessageToolAdapters,
 } from './tools/collab-tool-send-message.js'
 export { collabToolAllowedInSession } from './tools/collab-tool-surface.js'
+
+// ── 深层引用收口第四批补进入口:运行时起停与房间停止、入站消息、回放、牌位、摘要、检查器、用户身份、成员。
+export {
+  createCollabActorPassthroughPipeline,
+  parseRoomTranscriptJsonl,
+  replayRoomTranscript,
+} from './actors/collab-actors-replay.js'
+export { findCollabV3Turn } from './actors/collab-actors-turn-context.js'
+export { createCollabDigestRunner } from './collab-digest-runner.js'
+export type { CollabDigestRunner } from './collab-digest-runner.js'
+export { configureCollabDigestStore, createCollabDigestStore } from './collab-digest-store.js'
+export { isTrustedCollabDrive } from './collab-drive-guard.js'
+export { handleCollabRoomSendMessage, isCollabRoomSession } from './collab-ingress.js'
+export type { CollabRoomInboundCommand } from './collab-ingress.js'
+export { configureCollabInspector, createCollabInspector } from './collab-inspector.js'
+export { collabRoomMembers } from './collab-members.js'
+export {
+  abortCollabRoomTurnForStop,
+  ensureCollabGroupRoom,
+  initializeCollabV3Runtime,
+  isCollabV3RuntimeRunning,
+  preflightCollabRoomStop,
+  setCollabRoomBudgets,
+  setCollabRoomConfig,
+  shutdownCollabV3Runtime,
+} from './collab-rooms.js'
+export type { CollabGroupRoomInput } from './collab-rooms.js'
+export { loadCollabBoard } from './collab-board-store.js'
+export { collabUserPromptFields, resolveUserIdentity } from './collab-user-identity.js'

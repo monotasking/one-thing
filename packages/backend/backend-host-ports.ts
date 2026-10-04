@@ -43,17 +43,17 @@ import {
   configureSkillsEnvironmentHost,
   resetSkillsEnvironmentHost,
   type SkillsEnvironmentHostPorts,
-} from '@onething/backend/skill/skill-sources'
+} from '@onething/backend/skill'
 import {
   configureTodoPlanHost,
   resetTodoPlanHost,
   type TodoPlanHostPorts,
-} from '@onething/backend/todo-plan/todo-plan-service'
+} from '@onething/backend/todo-plan'
 import {
   configurePluginsHost,
   resetPluginsHost,
   type PluginsHostPorts,
-} from '@onething/backend/plugin/plugin-host-ports'
+} from '@onething/backend/plugin'
 import {
   configureGatewayHost,
   resetGatewayHost,
@@ -63,12 +63,12 @@ import {
   configureSettingsHost,
   resetSettingsHost,
   type SettingsHostPorts,
-} from '@onething/backend/settings/settings-host-ports'
+} from '@onething/backend/settings'
 import {
   configureEvalsHost,
   resetEvalsHost,
   type EvalsHostPorts,
-} from '@onething/backend/eval/eval-host-ports'
+} from '@onething/backend/eval'
 import {
   configureHostLocalTrust,
   type HostLocalTrustDeclaration,
@@ -77,43 +77,37 @@ import {
   configureAuthHost,
   resetAuthHost,
   type AuthHostPorts,
-} from '@onething/backend/auth/auth-host-ports'
+} from '@onething/backend/auth'
 import {
   configureShellHost,
   resetShellHost,
   type ShellHostPorts,
-} from '@onething/backend/shell/shell-host-ports'
+} from '@onething/backend/shell'
 import {
   configureVoiceHost,
   resetVoiceHost,
   type VoiceHostPorts,
-} from '@onething/backend/voice/voice-host-ports'
+  configureSpeechOutputHost,
+  resetSpeechOutputHost,
+  type SpeechOutputPort,
+} from '@onething/backend/voice'
 import {
   configureTerminalBroadcaster,
   killAllTerminals,
   type TerminalHostPorts,
-} from '@onething/backend/terminal/terminal-service'
+} from '@onething/backend/terminal'
 import {
   configureScratchpadHost,
   resetScratchpadHost,
   type ScratchpadHostPorts,
-} from '@onething/backend/scratchpad/scratchpad-service-bound'
-import {
-  configureSpeechOutputHost,
-  resetSpeechOutputHost,
-  type SpeechOutputPort,
-} from '@onething/backend/voice/voice-speech-output'
+} from '@onething/backend/scratchpad'
 import {
   configureDialogHost,
   resetDialogHost,
   type DialogHostPorts,
-} from '@onething/backend/dialog/dialog-host-ports'
-import { configureMCPClientHost } from '@onething/backend/mcp/mcp-manager'
-import {
-  configureMCPClientIdentity,
-  resetMCPClientIdentity,
-} from '@onething/backend/mcp/mcp-identity'
-import type { MCPClientFactory, MCPClientLike } from '@onething/backend/mcp/kernel'
+} from '@onething/backend/dialog'
+import { configureMCPClientHost, configureMCPClientIdentity, resetMCPClientIdentity } from '@onething/backend/mcp'
+import type { MCPClientFactory, MCPClientLike } from '@onething/backend/mcp'
 
 /**
  * 两件不可 `null` 的端口形状顺手再导出一次:宿主要声明"我记下来的那份是什么"

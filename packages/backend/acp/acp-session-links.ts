@@ -3,7 +3,7 @@ import { dirname, join } from 'path'
 import { getOnethingStorePath } from '../storage/storage.js'
 import { getLogger } from '../logging/logging.js'
 import type { ACPSessionOption } from '@shared/contracts/acp.js'
-import type { ExternalAgentSessionLink } from '../external-agent/external-agent-types.js'
+import type { ExternalAgentSessionLink } from '../external-agent/external-agent.js'
 
 const log = getLogger('acp')
 

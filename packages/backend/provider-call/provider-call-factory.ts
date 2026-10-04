@@ -8,14 +8,13 @@ import {
   type RegisterAgentProviderRuntimeOptions,
 } from '@onething/backend/provider'
 import type { OAuthToken } from '@shared/ipc.js'
-import { credentialTargetFromSpaceMarker } from '@onething/backend/auth'
+import { credentialTargetFromSpaceMarker, getAuthService } from '@onething/backend/auth'
 import {
   getExternalAgentConnectors,
   persistExternalAgentSessionLink,
   resolveExternalAgentSessionLink,
 } from '@onething/backend/external-agent/external-agent-connector-registry'
-import { getAuthService } from '@onething/backend/auth/auth-process-service'
-import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { dumpProviderRequest } from '../provider/provider.js'
 import { providerMediaReader } from './provider-call-media-reader.js'

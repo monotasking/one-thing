@@ -18,7 +18,7 @@
  *    开着的技能顺手关掉)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureShellHost } from '@onething/backend/shell/shell-host-ports'
+import { configureShellHost } from '@onething/backend/shell'
 import { skillsRouter } from '@shared/ipc/skills.js'
 
 const settings = vi.hoisted(() => ({

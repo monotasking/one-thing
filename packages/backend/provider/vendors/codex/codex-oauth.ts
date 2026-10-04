@@ -8,7 +8,7 @@ import { parseJwtExpiration, parseJwtPayload, normalizeGenericOAuthToken } from 
 import type {
 	OnethingAuthProviderDefinition,
 	OnethingOAuthToken,
-} from "../../../auth/auth-types.js";
+} from "../../../auth/auth.js";
 
 function normalizeCodexToken(
 	data: any,

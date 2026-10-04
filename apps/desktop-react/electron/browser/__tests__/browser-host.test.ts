@@ -15,7 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertResourceSpec } from '@onething/backend/resource/resource-api'
 import { EFFECT_POLICY, effectPolicyFor, requiresAuthorization } from '@shared/toolkit/effects'
-import { ResourceEventHub } from '@onething/backend/resource/resource-api'
+import { ResourceEventHub } from '@onething/backend/resource'
 
 import { createTabState, parseTabTable, persistTab, reduceTabState } from '../tab-state.js'
 import { applyChromiumFlags, resetChromiumFlagsForTests, userAgentPolicy } from '../user-agent.js'

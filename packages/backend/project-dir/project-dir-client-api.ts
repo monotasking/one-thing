@@ -31,7 +31,7 @@ import {
   listOnethingProjectDirsForIpc,
   removeOnethingProjectDirForIpc,
   updateOnethingProjectDirForIpc,
-} from '@onething/backend/project-dir'
+} from './project-dir-ipc-operations.js'
 import { getProjectsStore } from '@onething/backend/project-dir/project-dir-store'
 import { projectDirsRouter, type ProjectDirsRoutes } from '@shared/ipc/project-dirs.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'

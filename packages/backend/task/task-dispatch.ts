@@ -64,7 +64,7 @@ import type { StreamEngine } from '@onething/backend/engine'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import type { Quiescible } from '@onething/backend/lifecycle'
 import { taskMessageSource } from '../agent-loop/agent-loop.js'
-import { deliverInternalMessage } from '@onething/backend/plugin/plugin-session-messenger'
+import { deliverInternalMessage } from '@onething/backend/plugin'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '@onething/backend/logging'

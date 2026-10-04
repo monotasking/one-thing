@@ -21,7 +21,7 @@ import { dirname } from 'node:path'
 import type { Principal } from '@shared/permission/principal'
 import type { Authorizer, Decision, ToolAuditRecord } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import type { AcpClientRequestContext, AcpFsBridge } from '@onething/backend/acp'
+import type { AcpClientRequestContext, AcpFsBridge } from './acp-types.js'
 import { buildTextDiffChange } from '@onething/backend/external-agent'
 import {
   fileMutationEffect,

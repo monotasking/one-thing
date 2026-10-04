@@ -1,9 +1,5 @@
-import {
-  OnethingScratchpadStore,
-  OnethingScratchpadWatcher,
-  type ScratchpadChangedPayload,
-  type ScratchpadDocument,
-} from './scratchpad.js'
+import { OnethingScratchpadStore, type ScratchpadChangedPayload, type ScratchpadDocument } from './scratchpad-store.js'
+import { OnethingScratchpadWatcher } from './scratchpad-watcher.js'
 import {
   getOnethingStorePath,
 } from '../storage/storage.js'

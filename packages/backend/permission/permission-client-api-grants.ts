@@ -23,7 +23,7 @@ import {
   clearOnethingWorkspacePermissionGrantsForIpc,
   listOnethingPermissionGrantsForIpc,
   revokeOnethingPermissionGrantForIpc,
-} from '@onething/backend/permission'
+} from './permission-grants-presentation.js'
 import type { PermissionGrantsRoutes } from '@shared/ipc/permission-grants.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import * as PermissionGrants from '@onething/backend/permission/permission-grant-storage'

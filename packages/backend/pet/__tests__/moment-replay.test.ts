@@ -17,12 +17,17 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ResourceKernel, ResourceRegistry, type ResourceEventHub, type ResourceProvider } from '@onething/backend/resource/resource-api'
+import {
+  ResourceKernel,
+  ResourceRegistry,
+  type ResourceEventHub,
+  type ResourceProvider,
+  forwardResourceEventsToBus,
+  PetResourceProvider,
+} from '@onething/backend/resource'
 import type { ToolRunner } from '@onething/backend/toolkit'
-import { musicResourceSpec } from '@onething/backend/music/music-resource-spec'
+import { musicResourceSpec } from '@onething/backend/music'
 import { EventBus } from '@onething/backend/event'
-import { forwardResourceEventsToBus } from '@onething/backend/resource/resource-event-bridge'
-import { PetResourceProvider } from '@onething/backend/resource/resource-pet-provider'
 import { PetsSubsystem } from '../pet-subsystem.js'
 
 class FakeMusic implements ResourceProvider {

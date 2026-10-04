@@ -35,13 +35,10 @@
 import { InMemoryMailbox, createActorEvent, type ActorEvent } from '@onething/backend/collab/kernel'
 import type { CollabRoomMemberMailbox } from './collab-room-actor.js'
 import type { CollabAgentOutbox } from './collab-agent-actor.js'
-import {
-  buildCollabDriveRoomContext,
-  collabAgentSessionId,
-  planCollabHistoryWindow,
-  type CollabAgentLike,
-  type CollabMessageLike,
-} from '../collab.js'
+import { buildCollabDriveRoomContext } from '../collab-projection.js'
+import { collabAgentSessionId } from '../collab-agent-session.js'
+import { planCollabHistoryWindow } from '../collab-history-window.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 import {
   formatCollabActorVerb,
   type CollabActorReplayTranscript,

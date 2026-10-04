@@ -74,7 +74,7 @@ import {
   setOnethingPluginConfigForIpc,
   uninstallOnethingPluginForIpc,
   updateOnethingPluginForIpc,
-} from '@onething/backend/plugin'
+} from './plugin-ipc-operations.js'
 import { getPluginAppVersion } from '@onething/backend/plugin/plugin-app-version'
 import { clearPluginRuntimeHealth } from '@onething/backend/plugin/plugin-health'
 import { readPluginTarballSummary } from '@onething/backend/plugin/plugin-tarball'

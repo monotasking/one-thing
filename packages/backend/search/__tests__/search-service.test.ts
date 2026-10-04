@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import type { IndexedDoc } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
-import { FolderVault } from '../../note/folder/note-folder-vault.js'
+import { FolderVault } from '../../note/note.js'
 import { OnethingSearchService, createOnethingSearchService } from '../search-service.js'
 import { actionsSearchManifest, createBuiltinSearchCapabilities } from '../capabilities/search-capabilities.js'
 import { fakeIndexFace } from './fake-index.js'

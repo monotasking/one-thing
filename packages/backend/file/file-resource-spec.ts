@@ -58,7 +58,7 @@
  * 真的目录订阅者来定义「它想要什么粒度」——今天没有,先不猜。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource/resource-api'
+import type { ResourceSpec } from '@onething/backend/resource'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const DIR_RESOURCE_SCHEME = 'dir'

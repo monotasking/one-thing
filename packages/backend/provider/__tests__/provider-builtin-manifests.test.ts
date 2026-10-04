@@ -10,7 +10,7 @@ import {
   resetProviderManifestRegistryForTests,
 } from '../provider-manifest.js'
 import { ONETHING_CODEX_BASE_URL, ONETHING_CODEX_DEFAULT_MODEL, ONETHING_CODEX_PROVIDER_ID } from '../vendors/codex/codex-models.js'
-import { getAuthProviderDefinition } from '../../auth/auth-registry.js'
+import { getAuthProviderDefinition } from '../../auth/auth.js'
 import { getDialect } from '../base/provider-base.js'
 import '../dialects/provider-dialects.js'
 import { getOnethingModelsDevProviderId } from '../provider-models-dev-catalog.js'

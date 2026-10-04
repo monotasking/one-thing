@@ -1,5 +1,5 @@
 import { registerCapability } from './permission-capability-registry.js'
-import { getTodoPlanStore } from '../todo-plan/todo-plan-service.js'
+import { getTodoPlanStore } from '../todo-plan/todo-plan.js'
 
 /**
  * The capabilities this app ships with — see docs/design/capability-registry.md.

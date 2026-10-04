@@ -20,10 +20,7 @@
  *  - the `say` executor, to know where an utterance lands when the tool call
  *    carries no explicit `room`.
  */
-import {
-  collabAgentSessionId,
-  collabAgentSessionName,
-} from '@onething/backend/collab'
+import { collabAgentSessionId, collabAgentSessionName } from './collab-agent-session.js'
 import * as store from '@onething/backend/session'
 import { sessionAccess, sessionReads } from '@onething/backend/session'
 import { findAgent } from '@onething/backend/agent'

@@ -2,10 +2,10 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   OnethingSchedulerUserTaskStore,
   previewOnethingSchedulerPrompt,
-  runOnethingSchedulerAgentTask,
-  type OnethingSchedulerRunDetail,
   type OnethingSchedulerUserTask,
-} from '@onething/backend/scheduler'
+} from './scheduler-user-tasks.js'
+import { runOnethingSchedulerAgentTask } from './scheduler-agent-task-runner.js'
+import type { OnethingSchedulerRunDetail } from './scheduler-run-detail.js'
 import type {
   SchedulerCreateTaskRequest,
   SchedulerRunDetailDTO,
@@ -18,7 +18,7 @@ import { getEventBus } from '@onething/backend/event'
 import { getStreamEngineSafe } from '@onething/backend/backend-current.js'
 import * as store from '@onething/backend/session'
 import { getScheduler } from '@onething/backend/scheduler/scheduler-bound'
-import type { SchedulerTaskContext, SchedulerTaskHandle } from '@onething/backend/scheduler'
+import type { SchedulerTaskContext, SchedulerTaskHandle } from './scheduler-cron-runner.js'
 import {
   getOnethingSchedulerTasksPath,
 } from '@onething/backend/storage'

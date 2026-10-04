@@ -27,9 +27,9 @@
  *  `getOrCreateClient` 抛的「找不到这个 agent」与旧 server 那一句逐字相同,
  *  所以没有需要补回的分叉。
  */
+import { ACPManager } from './acp-manager.js'
+import { acpRpcErrorCode } from './acp-client.js'
 import {
-  ACPManager,
-  acpRpcErrorCode,
   addOnethingACPAgentForIpc,
   cancelOnethingACPSessionForIpc,
   connectOnethingACPAgentForIpc,
@@ -40,7 +40,7 @@ import {
   runOnethingACPRosterOperationForIpc,
   setOnethingACPSessionModeForIpc,
   updateOnethingACPAgentForIpc,
-} from '@onething/backend/acp'
+} from './acp-ipc-operations.js'
 import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp.js'
 import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'

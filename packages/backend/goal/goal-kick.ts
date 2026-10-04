@@ -22,8 +22,8 @@
  * Drives are not recorded as automatic continuations — they are user- or
  * system-initiated turns the continuation allowance counts from.
  */
-import { renderGoalContinuationPrompt } from "@onething/backend/goal";
-import type { SessionGoal } from "@onething/backend/goal";
+import { renderGoalContinuationPrompt } from "./goal-render.js";
+import type { SessionGoal } from "./goal-types.js";
 import { getStreamEngineSafe } from "@onething/backend/backend-current.js";
 import { getEventBus } from "@onething/backend/event";
 import * as store from "@onething/backend/session";

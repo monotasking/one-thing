@@ -12,13 +12,10 @@
  */
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import {
-  ONETHING_PRACTICE_DEFAULT_CONFIG,
-  OnethingPracticeEngine,
-  OnethingPracticeLedger,
-  getOnethingPracticeSummary,
-  normalizeOnethingPracticeConfig,
-} from './practice.js'
+import { ONETHING_PRACTICE_DEFAULT_CONFIG, normalizeOnethingPracticeConfig } from './practice-types.js'
+import { OnethingPracticeEngine } from './practice-engine.js'
+import { OnethingPracticeLedger } from './practice-ledger.js'
+import { getOnethingPracticeSummary } from './practice-summary.js'
 import {
   type OnethingPracticeConfig,
   type OnethingPracticeEngineSnapshot,

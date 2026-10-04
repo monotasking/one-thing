@@ -1,7 +1,4 @@
-import {
-  ONETHING_LOG_MONITOR_MANIFEST,
-  registerOnethingLogMonitorPlugin,
-} from '@onething/backend/plugin'
+import { ONETHING_LOG_MONITOR_MANIFEST, registerOnethingLogMonitorPlugin } from '../plugin-log-monitor.js'
 import type { PluginAPI } from '../plugin-types.js'
 import {
   getOnethingLogDir,

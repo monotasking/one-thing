@@ -377,7 +377,7 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
    * 不必为这条断言另造一个探针 —— 与 ⑩ 取 `isHostLocallyTrusted()` 同一个理由。
    */
   it('⑫ 宿主端口随 dispose 还原:voice:{} → dispose → voice:null 仍是没有', { timeout: 180_000 }, async () => {
-    const { hasVoiceHost } = await import('@onething/backend/voice/voice-host-ports')
+    const { hasVoiceHost } = await import('@onething/backend/voice')
 
     expect(hasVoiceHost()).toBe(false)
 
@@ -479,7 +479,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
-    const runtime = await import('@onething/backend/external-agent')
+    // 连接器登记表改引兄弟文件(D126,深层引用收口第四批)之后,`createAcpConnector` 要在声明它的模块上监视。
+    const runtime = await import('../external-agent/external-agent-acp-connector.js')
     const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
@@ -559,7 +560,8 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
   })
 
   it('cleans an unused early connector binding when afterSettings fails before any getter', { timeout: 180_000 }, async () => {
-    const runtime = await import('@onething/backend/external-agent')
+    // 连接器登记表改引兄弟文件(D126,深层引用收口第四批)之后,`createAcpConnector` 要在声明它的模块上监视。
+    const runtime = await import('../external-agent/external-agent-acp-connector.js')
     const original = runtime.createAcpConnector
     const created = vi.spyOn(runtime, 'createAcpConnector').mockImplementation(options => original(options))
     const registry = await import('@onething/backend/external-agent/external-agent-connector-registry')

@@ -48,7 +48,7 @@ export interface SensitivityProgressEvent {
  * "system" — the directory skeleton is not a disableable section.
  */
 export async function listPromptSectionNames(): Promise<string[]> {
-	const { buildOnethingPrompt } = await import("../prompt/prompt-builder.js");
+	const { buildOnethingPrompt } = await import("../prompt/prompt.js");
 	const built = await buildOnethingPrompt({
 		providerId: "eval",
 		model: "audit",

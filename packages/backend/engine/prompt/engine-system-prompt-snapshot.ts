@@ -6,13 +6,13 @@ import type {
   SystemPromptSnapshot,
   ToolDefinition,
 } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth'
 import * as store from '@onething/backend/session'
 import {
   createAgentProviderFromRuntime,
 } from '@onething/backend/provider-call'
 import { defaultAgent, findAgent, resolveAgentProfileForSession } from '@onething/backend/agent'
-import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
+import { getSkillsForSession } from '@onething/backend/skill'
 import { getMCPToolDefinitionsForModel } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { buildProjectDirsPromptVars } from '@onething/backend/project-dir/project-dir-bootstrap'
 import {
@@ -35,7 +35,7 @@ import {
 import {
   buildSystemPromptSnapshotWithAdapters,
 } from '@onething/backend/prompt'
-import type { BuildSystemPromptSnapshotWithAdaptersOptions } from '@onething/backend/prompt/prompt-system-snapshot'
+import type { BuildSystemPromptSnapshotWithAdaptersOptions } from '@onething/backend/prompt'
 import type { CreateAgentProviderFromRuntimeOptions } from '@onething/backend/provider'
 
 type ProviderConfigWithAuth = ProviderConfig & {

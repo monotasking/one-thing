@@ -19,7 +19,7 @@ import type {
   MusicCommandResponse,
   MusicRadioState,
 } from '@shared/ipc/music.js'
-import type { OnethingMusicNowPlaying } from '@onething/backend/music'
+import type { OnethingMusicNowPlaying } from './music-now-playing.js'
 import { recentSpins } from './music-recent-spins.js'
 import type { MusicServiceScope } from './music-service.js'
 import type { RadioScope } from './music-radio.js'
@@ -27,7 +27,7 @@ import type { RadioScope } from './music-radio.js'
 import { MusicWorkOwner } from './music-lifetime.js'
 import { readProviderVolume, volumeArgs } from './music-player-volume.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
-import { listMusicProviderDescriptors } from '@onething/backend/music'
+import { listMusicProviderDescriptors } from './providers/music-providers.js'
 import { getSettings } from '@onething/backend/settings'
 
 export function createMusicOperationsScope(options: { service: MusicServiceScope; radio: RadioScope; assertOwned?: () => void }) {

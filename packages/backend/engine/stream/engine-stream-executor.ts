@@ -33,7 +33,7 @@ import {
 } from './engine-agent-loop-executor.js'
 import { type StreamContext, type StreamSender } from './engine-stream-processor.js'
 import type { HistoryMessage } from './engine-stream-message-helpers.js'
-import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth'
 import type { AgentOutputModality } from '@onething/backend/agent-loop'
 import {
   executeCoreMessageStream,
@@ -43,7 +43,7 @@ import {
   type PendingMessageQueue,
 } from '@onething/backend/agent-loop'
 import { consolePort, getLogger } from '../../logging/logging.js'
-import { noteQuotaRunEnd } from '@onething/backend/quota/quota-engine-hooks'
+import { noteQuotaRunEnd } from '@onething/backend/quota'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

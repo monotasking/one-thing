@@ -4,6 +4,9 @@
  * 预算取自环境变量 `ONETHING_MEMORY_SOFT_MB` / `ONETHING_MEMORY_HARD_MB`,
  * 默认 1024 / 1536 MB。Electron 宿主会另外注册一个探针,报告其他 Chromium 进程。
  * 各缓存模块通过 `backend.memory.registry.registerHolder(...)` 注册自己。
+ *
+ * 对外交出两类东西:装配用的子系统(`createMemorySubsystem` 与预算、本进程探针),以及
+ * 缓存模块与宿主探针要实现的两个形状(`MemoryHolder` / `MemoryProcessProbe`)。依赖 logging。
  */
 import {
   MemoryGovernor,
@@ -12,6 +15,8 @@ import {
   type MemoryProcessProbe,
 } from '@onething/backend/memory/memory-registry'
 import { getLogger } from '@onething/backend/logging'
+
+export type { MemoryHolder, MemoryProcessProbe } from './memory-registry.js'
 
 const log = getLogger('app.memory')
 

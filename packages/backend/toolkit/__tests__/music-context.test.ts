@@ -47,7 +47,7 @@ const OPS: Array<readonly [string, Record<string, unknown>]> = [
 describe('music resource trusted execution context', () => {
   it.each(OPS)('carries the host context through %s before touching the player', async (_name, input) => {
     vi.clearAllMocks()
-    const { createMusicResourceProvider } = await import('../../resource/resource-music-provider.js')
+    const { createMusicResourceProvider } = await import('../../resource/resource.js')
     const tool = new ResourceTool(createMusicResourceProvider())
     const runner = new ToolRunner({
       authorizer: allowAuthorizer,

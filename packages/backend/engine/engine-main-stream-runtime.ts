@@ -5,12 +5,12 @@ import type {
 	ChatSession,
 	ProviderConfig,
 } from "@shared/ipc.js";
-import type { ProviderAuthContext } from "@onething/backend/auth/auth-ipc-types";
+import type { ProviderAuthContext } from "@onething/backend/auth";
 import {
 	createOnethingProductStreamRuntimeFromHostAdapters,
 	type OnethingProductStreamRuntime,
 } from "./engine-product-stream-runtime.js";
-import { Permission } from "@onething/backend/permission/permission-with-grant-storage";
+import { Permission } from "@onething/backend/permission";
 import { Interaction } from '@onething/backend/interaction';
 import * as store from "@onething/backend/session";
 import {
@@ -19,8 +19,8 @@ import {
   resolveSessionSpaceDefaultSelection,
   getSessionSettings,
 } from "@onething/backend/session";
-import { getSkillsForSession } from "@onething/backend/skill/skill-session-cache";
-import { mediaLibraryService } from "@onething/backend/media/media-library-service-bound";
+import { getSkillsForSession } from "@onething/backend/skill";
+import { mediaLibraryService } from "@onething/backend/media";
 import {
 	generateChatTitle,
 	isProviderSupported,
@@ -32,12 +32,12 @@ import {
 	resolveSessionSpaceOAuthAuth,
 } from "@onething/backend/credentials";
 import { modelRegistry } from "@onething/backend/settings";
-import { resolvePromptReferences } from "@onething/backend/prompt/prompt-stored-resolver";
+import { resolvePromptReferences } from "@onething/backend/prompt";
 import { buildHistoryMessages } from "./stream/engine-stream-message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/engine-stream-resume-history.js";
 import { executeMessageStream, failAssistantRun, openAssistantRun } from "./stream/engine-stream-executor.js";
 import { executeAgentLoopStreamGeneration } from "./stream/engine-agent-loop-executor.js";
-import { billTitleUsage } from "@onething/backend/usage/usage-bill-side-line";
+import { billTitleUsage } from "@onething/backend/usage";
 import {
 	compactSessionContext,
 	getContextCompactReason,

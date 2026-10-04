@@ -43,7 +43,7 @@ import {
   getOnethingStorePath,
 } from '@onething/backend/storage'
 import { AGENT_EXEC_SESSION_PREFIX } from '@onething/backend/agent'
-import type { CollabMessageLike } from '@onething/backend/collab'
+import type { CollabMessageLike } from '../collab-types.js'
 import {
   COLLAB_V2_BACKUP_DIR_PREFIX,
   COLLAB_V3_MIGRATION_MARKER_FILE,

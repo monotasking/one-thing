@@ -46,12 +46,9 @@ import {
   type ActorMailboxSource,
   type FloorLease,
 } from '@onething/backend/collab/kernel'
-import {
-  formatCollabNotificationBlock,
-  isCollabRoomFact,
-  type CollabAgentLike,
-  type CollabMessageLike,
-} from '../collab.js'
+import { formatCollabNotificationBlock } from '../collab-projection.js'
+import { isCollabRoomFact } from '../collab-classify.js'
+import type { CollabAgentLike, CollabMessageLike } from '../collab-types.js'
 import {
   adoptCollabAgentWorkerOrphans,
   advanceCollabAgentDelivered,

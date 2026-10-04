@@ -28,15 +28,14 @@ import {
   installPluginPackage,
   probePluginNpmAvailability,
   uninstallPluginPackage,
-} from '@onething/backend/plugin/plugin-npm-process'
-import { PLUGIN_PACKAGE_SCOPE, readPluginTarballSummary } from '@onething/backend/plugin/plugin-tarball'
-import { getPluginsDir } from '@onething/backend/plugin/plugin-disk-loader'
-import {
+  PLUGIN_PACKAGE_SCOPE,
+  readPluginTarballSummary,
+  getPluginsDir,
   findMarketIndexEntry,
   readPluginLedger,
   unscopedPluginIdFromPackageName,
-} from '@onething/backend/plugin/plugin-contract'
-import type { CorePluginMarketIndex } from '@onething/backend/plugin/plugin-contract'
+} from '@onething/backend/plugin'
+import type { CorePluginMarketIndex } from '@onething/backend/plugin'
 import { stdout, stderr } from './stdout.js'
 
 /** 装完/卸完的提示 —— CLI 不加载插件,桌面那边要自己刷新。 */

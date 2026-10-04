@@ -80,24 +80,23 @@ import {
   createOnethingDirectory,
   createOnethingFile,
   deleteOnethingPath,
-  listOnethingDirectoriesForCompletionForIpc,
   listOnethingDirectory,
-  listOnethingFileSearchEntriesForIpc,
   readOnethingFileContent,
   renameOnethingPath,
   revealOnethingPath,
-  rollbackOnethingFile,
   saveOnethingFileContent,
-  startOnethingFileWatchForIpc,
   statOnethingPath,
-  stopOnethingFileWatchForIpc,
-} from '@onething/backend/file'
-import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell/shell-host-ports'
+} from './file-operations.js'
+import { listOnethingDirectoriesForCompletionForIpc } from './file-directory-listing.js'
+import { listOnethingFileSearchEntriesForIpc } from './file-search.js'
+import { rollbackOnethingFile } from './file-rollback.js'
+import { startOnethingFileWatchForIpc, stopOnethingFileWatchForIpc } from './file-watch.js'
+import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell'
 import { applyFileMutationUndo } from '@onething/backend/tool'
-import { noteRootsNow } from '@onething/backend/note/note-subsystem'
+import { noteRootsNow } from '@onething/backend/note'
 import { filesRouter, type FilesRoutes } from '@shared/ipc/files.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { getConnectedDirectoriesForSession } from '@onething/backend/file'
+import { getConnectedDirectoriesForSession } from './file-connected-directories.js'
 import { listFiles as ripgrepListFiles } from './file-ripgrep.js'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { getDownloadsDirectory } from '@onething/backend/permission'

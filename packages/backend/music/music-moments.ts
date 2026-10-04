@@ -28,7 +28,8 @@
  * 「这首已经发过」清掉。位置落在空档里才发(用户拖过了就不补发 —— 那一刻已经过去了)。
  */
 
-import { findInterludes, type OnethingMusicInterlude, type OnethingMusicLyricLine, type OnethingMusicNowPlaying } from '@onething/backend/music/music'
+import { findInterludes, type OnethingMusicInterlude, type OnethingMusicLyricLine } from './music-lyrics.js'
+import type { OnethingMusicNowPlaying } from './music-now-playing.js'
 
 /** 连跳窗口(§11.1:90 秒内第 3 次)。 */
 export const SKIP_STREAK_WINDOW_MS = 90_000

@@ -25,7 +25,7 @@ import {
   createCollabActorPassthroughPipeline,
   parseRoomTranscriptJsonl,
   replayRoomTranscript,
-} from '../packages/backend/collab/actors/collab-actors-replay.ts'
+} from '../packages/backend/collab/collab.ts'
 
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(arg => arg.startsWith('--')))

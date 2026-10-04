@@ -29,14 +29,14 @@ import {
   updateOnethingHeadlessToolSetting,
   upsertOnethingHeadlessProviderConfig,
   useOnethingHeadlessProvider,
-} from '@onething/backend/headless/headless'
+} from './headless-cli-projections.js'
 import { createOnethingBackend, type OnethingBackend, type OnethingBackendOptions } from '@onething/backend/backend.js'
 import { createSession, getCurrentSessionId, getSession, getSessionsList, renameSession, setCurrentSessionId, updateSessionArchived, updateSessionModel, updateSessionPermissionMode, updateSessionPin, updateSessionWorkingDirectory } from '@onething/backend/session'
 import { saveSettings } from '@onething/backend/settings'
 // 建房走 app 层那一本规则书。直接指到 room-create 而不是 collab 桶:这条口是
 // 同步的,而桶会把协调器整棵树一起拉起来 —— 邻居们的 `await import` 就是为了
 // 避开那件事。room-create 只依赖 store 与 agents,两者本来就已经在了。
-import { ensureCollabGroupRoom } from '@onething/backend/collab/collab-room-create'
+import { ensureCollabGroupRoom } from '@onething/backend/collab'
 import { getSettings } from '@onething/backend/settings'
 import { toolkitCatalogToolDefinitions } from '@onething/backend/toolkit'
 import { getEventBus, getStreamChannel } from '@onething/backend/event'
@@ -46,8 +46,8 @@ import { sessionReads } from '@onething/backend/session'
 import { getStreamEngine } from '@onething/backend/backend-current.js'
 import { createDefaultSettings } from '@onething/backend/settings'
 import { localUserPrincipal } from '@shared/permission/principal'
-import { markHostUnattended } from '@onething/backend/permission/permission-unattended'
-import { registerACPPermissionBridge } from '@onething/backend/acp/acp-permission-bridge'
+import { markHostUnattended } from '@onething/backend/permission'
+import { registerACPPermissionBridge } from '@onething/backend/acp'
 import type { Principal } from '@shared/permission/principal'
 import {
   serializeOutcome,
@@ -571,7 +571,7 @@ export class HeadlessBackend {
   }
 
   async collabBoard(roomSessionId: string): Promise<unknown> {
-    const { loadCollabBoard } = await import('@onething/backend/collab/collab-board-store')
+    const { loadCollabBoard } = await import('@onething/backend/collab')
     return loadCollabBoard(roomSessionId)
   }
 
@@ -580,7 +580,7 @@ export class HeadlessBackend {
     roomSessionId: string,
     budgets: CollabRoomBudgetsPatch,
   ): Promise<{ ok: boolean }> {
-    const { setCollabRoomBudgets } = await import('@onething/backend/collab/collab-rooms')
+    const { setCollabRoomBudgets } = await import('@onething/backend/collab')
     return { ok: setCollabRoomBudgets(roomSessionId, budgets) }
   }
 
@@ -593,7 +593,7 @@ export class HeadlessBackend {
   async collabRoomUpdate(
     input: CollabRoomUpdatePatch & { roomSessionId: string },
   ): Promise<{ ok: boolean; error?: string }> {
-    const { setCollabRoomConfig } = await import('@onething/backend/collab/collab-rooms')
+    const { setCollabRoomConfig } = await import('@onething/backend/collab')
     const { roomSessionId, ...patch } = input
     const result = setCollabRoomConfig(roomSessionId, patch)
     if (!result.success) throw new Error(result.error || 'Failed to update room')

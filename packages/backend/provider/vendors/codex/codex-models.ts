@@ -14,7 +14,7 @@
  */
 import { toJsonObject } from '@shared/json'
 import type { OnethingOpenRouterModel } from '../../provider-model-registry.js'
-import type { OnethingOAuthToken } from '../../../auth/auth-types.js'
+import type { OnethingOAuthToken } from '../../../auth/auth.js'
 
 export const ONETHING_CODEX_PROVIDER_ID = 'codex'
 export const ONETHING_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'

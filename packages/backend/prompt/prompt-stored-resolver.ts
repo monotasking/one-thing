@@ -3,10 +3,7 @@ import type {
   ContentPart,
   SkillDefinition,
 } from '@shared/ipc.js'
-import {
-  displayOnethingContentForMessage,
-  resolveOnethingPromptReferences,
-} from './prompt.js'
+import { displayOnethingContentForMessage, resolveOnethingPromptReferences } from './prompt-resolver.js'
 import { getPrompt } from './prompt-store-bound.js'
 
 export interface ResolvePromptReferencesOptions {

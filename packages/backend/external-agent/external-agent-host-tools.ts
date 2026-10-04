@@ -31,9 +31,9 @@
  * 工具,目录里有一份、这里有一份,而两份名单漂了不会报错。按名字问目录,答案只有
  * 一处 —— 而且拿到的就是本地回合调的那只工具。
  */
-import { filterHostToolSurface } from '@onething/backend/external-agent'
+import { filterHostToolSurface } from './host-mcp/external-agent-host-mcp.js'
 import type { JsonObject } from '@shared/json.js'
-import type { HostMcpHostTool } from '@onething/backend/external-agent'
+import type { HostMcpHostTool } from './host-mcp/external-agent-host-mcp.js'
 import { getSession, sessionAccess } from '@onething/backend/session'
 import { fixedExecutionContext } from '../session/session.js'
 import { resolveAgentProfileForSession } from '../agent/agent.js'

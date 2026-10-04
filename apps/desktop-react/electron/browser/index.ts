@@ -63,11 +63,7 @@ import nodePath from 'node:path'
 import { Menu, WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
 import type { OnethingBackend } from '@onething/backend'
 import { getLogger } from '@onething/backend/logging'
-import {
-  configureSettingsEventBroadcaster,
-  getSettingsEventBroadcaster,
-} from '@onething/backend/settings/settings-events'
-import { getSettings } from '@onething/backend/settings'
+import { configureSettingsEventBroadcaster, getSettingsEventBroadcaster, getSettings } from '@onething/backend/settings'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
 import { shellProxyPolicy } from '../host-ports.js'
 import type { ElectronProxySessionLike } from '../network-proxy.js'

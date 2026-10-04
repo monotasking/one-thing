@@ -1,14 +1,14 @@
 import type { Decision, Authorizer } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
-import type { Permission } from '@onething/backend/permission/permission-asks'
-import { ACPManager } from '@onething/backend/acp'
+import type { Permission } from '@onething/backend/permission'
+import { ACPManager } from './acp-manager.js'
 import { describeAcpToolPermission } from '@onething/backend/external-agent'
 import type {
   ACPPermissionBridge,
   ACPPermissionDecision,
   ACPPermissionOptionInfo,
   ACPPermissionRequestContext,
-} from '@onething/backend/acp'
+} from './acp-types.js'
 import { getLogger } from '@onething/backend/logging'
 import { createAcpAuthBridge, type AcpAuthBridgeDeps } from './acp-auth-bridge.js'
 import { createAcpElicitationBridge, type AcpElicitationBridgeDeps } from './acp-elicitation-bridge.js'

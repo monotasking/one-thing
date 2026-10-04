@@ -24,7 +24,7 @@ import {
   getOnethingPromptForIpc,
   listOnethingPromptsForIpc,
   updateOnethingPromptForIpc,
-} from '@onething/backend/prompt'
+} from './prompt-ipc-operations.js'
 import {
   createPrompt,
   deletePrompt,

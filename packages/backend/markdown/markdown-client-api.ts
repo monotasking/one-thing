@@ -15,12 +15,8 @@
  * `saveAttachments` 额外带 `code:'WORKSPACE_PATH'` —— 迁移前 server 就是这么答的，
  * 渲染层的分支不用改。
  */
-import {
-  resolveOnethingMarkdownAsset,
-  resolveOnethingMarkdownAssetForIpc,
-  saveOnethingMarkdownAttachments,
-  saveOnethingMarkdownAttachmentsForIpc,
-} from '@onething/backend/markdown'
+import { resolveOnethingMarkdownAsset, saveOnethingMarkdownAttachments } from './markdown-asset-service.js'
+import { resolveOnethingMarkdownAssetForIpc, saveOnethingMarkdownAttachmentsForIpc } from './markdown-ipc-operations.js'
 import { markdownRouter, type MarkdownRoutes } from '@shared/ipc/markdown.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import {

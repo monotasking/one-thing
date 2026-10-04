@@ -30,8 +30,7 @@ import type {
 } from '@onething/backend/resource/resource-api'
 import type { ResourceRef } from '@shared/resource/ref'
 import { textResult, type Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/toolkit'
-import { PET_CURRENT_PATH, petResourceSpec } from '@onething/backend/pet/pet-resource-spec'
-import { UnknownPetError, type PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
+import { PET_CURRENT_PATH, petResourceSpec, UnknownPetError, type PetsSubsystem } from '@onething/backend/pet'
 
 export type PetOpPayload =
   | { readonly op: 'adopt'; readonly id: string }

@@ -19,14 +19,14 @@
 
 import path from "node:path";
 import { getEventBus } from "@onething/backend/event";
-import { getProjectsStore } from "../project-dir/project-dir-bootstrap.js";
+import { getProjectsStore } from "../project-dir/project-dir.js";
 import { resolveSessionSpaceId } from "@onething/backend/session";
 import * as appStore from "@onething/backend/session";
 import { enforcePermissionPolicy } from "@onething/backend/permission";
 import { getVariableRegistry } from "@onething/backend/variable/variable-registry";
 import { registerStandardVariableProviders } from "@onething/backend/variable/variable-bootstrap";
 import { getVariablesStore } from "@onething/backend/variable/variable-store-bound";
-import type { SetInput, VariableProvider } from "@onething/backend/variable";
+import type { SetInput, VariableProvider } from "./variable-types.js";
 import { createChannelSessionGuard } from "@onething/backend/variable/variable-channel-guard";
 import {
 	noteVaultsGateway,
@@ -44,7 +44,7 @@ import {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
 } from "@onething/backend/variable/variable-format";
-import type { ContextVariable } from "@onething/backend/variable";
+import type { ContextVariable } from "./variable-types.js";
 
 import { createVariableSnapshotBridge } from './variable-snapshot-bridge.js'
 import { getLogger } from '@onething/backend/logging'
@@ -268,13 +268,8 @@ export {
 	formatStateVariablesForPrompt,
 	type FormatOptions,
 } from "@onething/backend/variable/variable-format";
-export { VariableError } from "@onething/backend/variable";
-export type {
-	ContextVariable,
-	SetInput,
-	VariableContext,
-	VariableProvider,
-} from "@onething/backend/variable";
+export { VariableError } from "./variable-types.js";
+export type { ContextVariable, SetInput, VariableContext, VariableProvider } from "./variable-types.js";
 export {
 	notifySessionVariablesChanged,
 	notifyWorkdirChanged,

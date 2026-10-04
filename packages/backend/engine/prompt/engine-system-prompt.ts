@@ -22,27 +22,26 @@ import {
   type ComposedPrompt,
 } from '@onething/backend/prompt'
 import { toolkitPromptSource } from '@onething/backend/toolkit'
-import { buildStateVariablesPromptText } from '@onething/backend/variable/variable-system'
+import { buildStateVariablesPromptText } from '@onething/backend/variable'
 import { pluginPromptSource } from '@onething/backend/plugin'
 import {
   getMacOSAutomationDocsPath,
 } from '@onething/backend/storage'
-import { getTodoPlanDirectory } from '@onething/backend/todo-plan/todo-plan-service'
+import { getTodoPlanDirectory } from '@onething/backend/todo-plan'
 import { defaultAgent, findAgent } from '@onething/backend/agent'
 import * as store from '@onething/backend/session'
 import {
   buildCollabRoomSystemPrompt,
   buildCollabWorkContext,
+  collabRoomMembers,
+  collabUserPromptFields,
 } from '@onething/backend/collab'
 import {
   isAgentPairDmRoom,
   isUserDmRoom,
 } from '@onething/backend/session'
-import { collabRoomMembers } from '@onething/backend/collab/collab-members'
-import { collabUserPromptFields } from '@onething/backend/collab/collab-user-identity'
 import type { PromptProviderConfig } from '@onething/backend/plugin'
-import type { VariableBoardRenderer } from '@onething/backend/prompt/prompt-variable-board'
-import type { OnethingPromptHostAdapters } from '@onething/backend/prompt/prompt-builder'
+import type { VariableBoardRenderer, OnethingPromptHostAdapters } from '@onething/backend/prompt'
 
 export interface BuildPromptContextOptions extends Omit<CoreBuildPromptContextOptions, 'settings' | 'skills' | 'activeProject' | 'knownProjects'> {
   settings?: AppSettings

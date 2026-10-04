@@ -19,7 +19,10 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn((_sessionId: string) => undefined as { lastConnector?: string } | undefined),
 }))
 
-vi.mock('@onething/backend/goal', () => ({
+// 深层引用收口第四批(2026-10-04):`goal-kick.ts` 改引兄弟文件(D126),不再经入口拿
+// `renderGoalContinuationPrompt`,所以桩打在声明它的 `goal-render.ts` 上。
+vi.mock('../goal-render.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   renderGoalContinuationPrompt: () => 'continue',
 }))
 

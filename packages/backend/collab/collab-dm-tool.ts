@@ -35,7 +35,7 @@ import {
   formatCollabWakeRefusedTargetNotMember,
   normalizeCollabSayContent,
   resolveCollabSayRoomSessionId,
-} from '@onething/backend/collab'
+} from './collab-say.js'
 import { isActiveAgent } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { ensureAgentDmRoom } from './collab-agent-dm-room.js'

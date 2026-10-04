@@ -4,7 +4,7 @@
  * 服务商自述试点 P2 第 4 批从 `auth/auth-registry.ts` 的手列五份配置里搬回家,逐字。
  */
 import { normalizeGenericOAuthToken } from "@onething/backend/network";
-import type { OnethingAuthProviderDefinition } from "../../../auth/auth-types.js";
+import type { OnethingAuthProviderDefinition } from "../../../auth/auth.js";
 
 export const GROK_OAUTH_CONFIG: OnethingAuthProviderDefinition = {
 	providerId: "grok-oauth",

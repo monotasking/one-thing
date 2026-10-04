@@ -27,8 +27,13 @@ import {
   resolvePluginSkins,
 } from '@onething/backend/plugin/plugin-skin'
 import { projectOnethingPluginsForRenderer } from '@onething/backend/plugin/plugin-list'
-import { SKIN_TIER_VALUES, SKIN_VAR_MAP, generateSkinVariables } from '@onething/backend/theme/theme-skin'
-import { applyTheme, initializeThemes } from '@onething/backend/theme'
+import {
+  SKIN_TIER_VALUES,
+  SKIN_VAR_MAP,
+  generateSkinVariables,
+  applyTheme,
+  initializeThemes,
+} from '@onething/backend/theme'
 
 /** 装配层只从插件管理器的**内存清单**读声明 —— 换成假的就能验完整条宿主链路。 */
 const managedPlugins: Array<{ definition: { id: string; enabled: boolean; manifest: unknown } }> = []

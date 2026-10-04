@@ -9,7 +9,7 @@
  * 在装配途中就造好了,那时 ACP 子系统也许还没构造;同一个进程里换过一台 backend(测试、宿主重启),
  * 凭据要签在活着的那一台上 —— 第一台 dispose 时已经全部作废。
  */
-import { ACPManager } from '@onething/backend/acp'
+import { ACPManager } from './acp-manager.js'
 import type { AcpHostMcpPort } from '@onething/backend/external-agent'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { getLogger } from '@onething/backend/logging'

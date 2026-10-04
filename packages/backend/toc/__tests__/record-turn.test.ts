@@ -45,7 +45,9 @@ vi.mock('../../provider-call/provider-call-utility.js', () => ({
 }))
 vi.mock('../../settings/settings-store.js', () => ({ getSettings: () => ({}) }))
 vi.mock('../../usage/usage-bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
-vi.mock('@onething/backend/toc', async (importOriginal) => {
+// 深层引用收口第四批(2026-10-04):`toc-recorder.ts` 改引兄弟文件(D126),不再经入口拿
+// `createSessionSegmentStore`,所以桩打在声明它的 `toc-store.ts` 上;入口的转交同样解析到这一个模块。
+vi.mock('../toc-store.js', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   return {
     ...actual,

@@ -66,7 +66,7 @@ vi.mock('../../session/session-store.js', () => ({
 const { workdirGateway, projectStoreGateway, agentStoreGateway, globalStoreGateway } =
   await import('../variable-gateways.js')
 const { projectIdFromPath } = await import('@onething/backend/project-dir')
-const { getProjectsStore } = await import('@onething/backend/project-dir/project-dir-store')
+const { getProjectsStore } = await import('@onething/backend/project-dir')
 const { buildProjectDirsPromptVars } = await import('../../project-dir/project-dir-bootstrap.js')
 const { setRootDirForTests } = await import('@onething/backend/project-dir/project-dir-persistence')
 const { setRootDirForTests: setSpacesRootForTests } = await import(

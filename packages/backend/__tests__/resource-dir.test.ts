@@ -272,7 +272,7 @@ describe('目录资源在真装配里(K3-c)', () => {
     const { getSettings, updateSettingsInMemory } = await import('@onething/backend/settings')
     const before = getSettings()
     const store = await import('@onething/backend/session')
-    const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
+    const { Permission } = await import('@onething/backend/permission')
     const sessionId = store.createSession(`resource-dir-${Date.now()}`, 'Dir').id
     const target = path.join(workRoot, 'notes')
 

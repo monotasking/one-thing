@@ -76,7 +76,7 @@ import {
   GIT_FILE_MAX_BYTES,
   GIT_UNTRACKED_COUNT_BUDGET_BYTES,
   gitResourceSpec,
-} from '@onething/backend/file/file-git-resource-spec'
+} from '@onething/backend/file'
 import type {
   ResourceEventHub,
   ResourceProvider,

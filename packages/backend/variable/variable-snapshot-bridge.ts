@@ -1,5 +1,5 @@
 import type { EventBus } from '@onething/backend/event'
-import type { ContextVariable } from '@onething/backend/variable'
+import type { ContextVariable } from './variable-types.js'
 import type { getVariableRegistry } from '@onething/backend/variable/variable-registry'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 

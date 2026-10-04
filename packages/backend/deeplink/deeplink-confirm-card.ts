@@ -23,9 +23,9 @@ import {
   DEEPLINK_TEXT_MAX_BYTES,
   type DeepLinkIntent,
   type DeepLinkParseResult,
-} from '@onething/backend/plugin/plugin-contract'
+  getPluginManager,
+} from '@onething/backend/plugin'
 import { defaultAgent, findAgent } from '../agent/agent.js'
-import { getPluginManager } from '@onething/backend/plugin/plugin-manager'
 import { describePluginDeepLinkAction } from './deeplink-registry.js'
 
 /** 卡上的来源标注。用户要一眼看出"这不是我在应用里点的"。 */

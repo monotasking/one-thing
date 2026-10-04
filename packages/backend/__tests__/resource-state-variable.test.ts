@@ -86,7 +86,7 @@ describe('资源 state 进提示词(K4-a)', () => {
   }, 180_000)
 
   it('变量板上有 resource_session_current,值是这条真会话的摘要', async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable')
     const board = await buildStateVariablesPromptText(sessionId)
 
     // ② 它进的是状态半边(`state="true"`),不是只报名字的名录半边。
@@ -104,7 +104,7 @@ describe('资源 state 进提示词(K4-a)', () => {
   })
 
   it('④ 什么都不动的两回合,板子逐字相同(尾块按块去重的前提)', async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable')
     // 时间变量是小时粒度的,但为了不让这一条在整点翻页时偶红,只比资源那一行。
     const rowOf = (text: string) =>
       text.split('\n').find(row => row.includes('resource_session_current'))
@@ -126,7 +126,7 @@ describe('资源 state 进提示词(K4-a)', () => {
    * 这一例在定法之前是红的:值里带 `"messageCount":N`,追一条消息就变一次。
    */
   it("K4-a':追一条消息之后,板上那一行逐字不变(计数不进提示词)", async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable')
     const { sessionCommands } = await import('@onething/backend/session')
     const rowOf = (text: string) =>
       text.split('\n').find(row => row.includes('resource_session_current'))
@@ -166,14 +166,14 @@ describe('资源 state 进提示词(K4-a)', () => {
 
     expect(seen).toContain(sessionId)
 
-    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable')
     expect(await buildStateVariablesPromptText(sessionId)).toContain(
       '"title":"Renamed board session"',
     )
   })
 
   it('只投 turn 档:注册表上非 turn 的状态一格都不在板上', async () => {
-    const { buildStateVariablesPromptText } = await import('@onething/backend/variable/variable-system')
+    const { buildStateVariablesPromptText } = await import('@onething/backend/variable')
     const board = await buildStateVariablesPromptText(sessionId)
     // 名单从注册表现读,不写死 —— 第二种带 state 的资源落地时这一条不该跟着红。
     const notTurn: string[] = []

@@ -21,19 +21,14 @@
 import { randomUUID } from 'node:crypto'
 import { constants as osConstants } from 'node:os'
 import type { Authorizer } from '@onething/backend/toolkit'
-import type {
-  AcpClientRequestContext,
-  AcpTerminalBridge,
-  AcpTerminalExitStatus,
-} from '@onething/backend/acp'
-import { describeAcpToolPermission } from '@onething/backend/external-agent'
+import type { AcpClientRequestContext, AcpTerminalBridge, AcpTerminalExitStatus } from './acp-types.js'
+import { describeAcpToolPermission, resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent'
 import {
   getTerminalService,
   hasTerminalHost,
   type TerminalExitStatus,
   type TerminalService,
-} from '@onething/backend/terminal/terminal-service'
-import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent/external-agent-spawn-env'
+} from '@onething/backend/terminal'
 import { authorizeAcpRequest } from './acp-request-authorize.js'
 
 /** 每台 agent 同时持有的终端上限(从前是每台 agent 配置里的 `maxTerminals`,A3-b 变常量)。 */

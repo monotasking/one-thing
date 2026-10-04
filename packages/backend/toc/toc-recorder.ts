@@ -12,21 +12,16 @@ import { randomUUID } from "node:crypto";
 import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/backend/agent-loop";
 import { createUtilityProvider } from '@onething/backend/provider-call';
 import { beginAuxiliaryModelRequest } from '@onething/backend/session';
-import {
-	applyTurnDecision,
-	buildTocPrompt,
-	createSessionSegmentStore,
-	isTrivialTurn,
-	openSegmentOf,
-	parseTocDecision,
-	renderTocTurnSystemPrompt,
-	type SessionSegment,
-	type SessionSegmentFile,
-} from "@onething/backend/toc";
+import { applyTurnDecision, openSegmentOf } from "./toc-apply.js";
+import { buildTocPrompt } from "./toc-input.js";
+import { createSessionSegmentStore } from "./toc-store.js";
+import { isTrivialTurn, parseTocDecision } from "./toc-decide.js";
+import { renderTocTurnSystemPrompt } from "./toc-render.js";
+import type { SessionSegment, SessionSegmentFile } from "./toc-types.js";
 import {
   getOnethingSessionsDir,
 } from '@onething/backend/storage'
-import { billTocUsage } from "../usage/usage-bill-side-line.js";
+import { billTocUsage } from "../usage/usage.js";
 import { getSettings } from "@onething/backend/settings";
 import { consolePort, getLogger } from '@onething/backend/logging'
 

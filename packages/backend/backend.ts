@@ -19,14 +19,27 @@
 import { flushAllPendingSaves, getSession, initializeSessionRepositoryIndex } from '@onething/backend/session'
 import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from '@onething/backend/session'
 import { createStoreLease, ensureOnethingStoreDirs, getOnethingAcpRegistryCachePath, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, getOnethingPetsDir, type StoreLease, type StoreLockOwner } from '@onething/backend/storage'
-import { MediaLibraryService } from '@onething/backend/media'
-import { configureMediaLibraryService } from '@onething/backend/media/media-library-service-bound'
-import { OnethingUsageLedger } from '@onething/backend/usage'
-import { configureUsageLedger, captureUsageRecorder, getUsageLedger } from '@onething/backend/usage/usage-recorder'
-import { createCollabDigestStore, configureCollabDigestStore } from '@onething/backend/collab/collab-digest-store'
-import { createCollabDigestRunner, type CollabDigestRunner } from '@onething/backend/collab/collab-digest-runner'
-import { createCollabInspector, configureCollabInspector } from '@onething/backend/collab/collab-inspector'
-import { PluginLlmService } from '@onething/backend/plugin/plugin-llm-service'
+import { MediaLibraryService, configureMediaLibraryService } from '@onething/backend/media'
+import {
+  OnethingUsageLedger,
+  configureUsageLedger,
+  captureUsageRecorder,
+  getUsageLedger,
+} from '@onething/backend/usage'
+import {
+  createCollabDigestStore,
+  configureCollabDigestStore,
+  createCollabDigestRunner,
+  type CollabDigestRunner,
+  createCollabInspector,
+  configureCollabInspector,
+  initializeCollabV3Runtime,
+  shutdownCollabV3Runtime,
+  registerCollabAgentPresence,
+  registerCollabAgentToolGrants,
+  registerCollabTools,
+} from '@onething/backend/collab'
+import { PluginLlmService } from '@onething/backend/plugin'
 import {
   CredentialStrategyService,
   disposeCredentialStrategyState,
@@ -38,18 +51,15 @@ import {
   upgradeSpaceCredentialsEncryptionAtRest,
   configureAppPluginCredentialStrategyHost,
 } from '@onething/backend/credentials'
-import { TodoPlanRuntime } from '@onething/backend/todo-plan/todo-plan-service'
+import { TodoPlanRuntime } from '@onething/backend/todo-plan'
 import { BackendResources, type BackendShutdownPhase, type Quiescible } from './backend-shutdown.js'
-import { PracticeService, configurePracticeService } from '@onething/backend/practice/practice-service-slot'
-import { MusicSubsystem } from '@onething/backend/music/music-subsystem'
-import { registerMusicBashPolicies } from '@onething/backend/music'
-import { PetsSubsystem } from '@onething/backend/pet/pet-subsystem'
-import { petChattinessOf, watchPetChattiness } from '@onething/backend/pet/pet-chattiness-watch'
-import { ModelMomentComposer } from '@onething/backend/pet/pet-model-composer'
-import { createVoiceService, configureVoiceService } from '@onething/backend/voice/voice-service'
+import { PracticeService, configurePracticeService } from '@onething/backend/practice'
+import { MusicSubsystem, registerMusicBashPolicies } from '@onething/backend/music'
+import { PetsSubsystem, petChattinessOf, watchPetChattiness, ModelMomentComposer } from '@onething/backend/pet'
+import { createVoiceService, configureVoiceService } from '@onething/backend/voice'
 import { createTaskDispatchLayer, type TaskDispatchLayer } from '@onething/backend/task/task-dispatch'
 import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/backend/session'
-import { getTracesDir } from '@onething/backend/eval/eval-trace-store'
+import { getTracesDir, configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/eval'
 import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from '@onething/backend/session'
 import { scheduleSessionListProjectionBackfillOnStartup } from '@onething/backend/session'
@@ -63,7 +73,7 @@ import {
 } from '@onething/backend/settings'
 import { applyDiagnosticsMode } from '@onething/backend/logging/logging-diagnostics'
 import { initializeAgents } from '@onething/backend/agent'
-import { configureAppToolSandbox } from '@onething/backend/permission'
+import { configureAppToolSandbox, configureAppPermissionGrants, Permission } from '@onething/backend/permission'
 import { applyHostPorts, type OnethingHostPorts } from './backend-host-ports.js'
 import { configureAppBackgroundJobs, killTrackedDetachedChildren } from '@onething/backend/tool'
 import {
@@ -73,12 +83,16 @@ import {
   type StreamEngine,
 } from '@onething/backend/engine'
 import { configureAppProviderRegistry } from '@onething/backend/provider-call'
-import { configureAppScheduler } from '@onething/backend/scheduler/scheduler-bound'
+import { configureAppScheduler } from '@onething/backend/scheduler'
 import { configureAppRipgrep } from '@onething/backend/file'
 import { configureAppSearchProviders } from '@onething/backend/search'
-import { configureAppSkillManage } from '@onething/backend/skill/skill-manage-setup'
-import { configureAppSkillsLoader } from '@onething/backend/skill/skill-sources'
-import { configureAppPermissionGrants } from '@onething/backend/permission/permission-grant-storage'
+import {
+  configureAppSkillManage,
+  configureAppSkillsLoader,
+  bootstrapNoteVaultSkillRoots,
+  initializeSessionSkills,
+  getAppBuiltinResourcePath,
+} from '@onething/backend/skill'
 import { createEventSystem, createReplayBufferMemoryHolder } from '@onething/backend/event'
 import { createSessionMemoryHolders } from '@onething/backend/session'
 import { createMemorySubsystem, type MemorySubsystem } from '@onething/backend/memory'
@@ -94,24 +108,17 @@ import {
 } from '@onething/backend/session'
 import { createStreamEngineLayer, registerBuiltinTriggers, type MainOnethingRuntime } from './backend-assemble-engine.js'
 import type { OAuthToken, PermissionMode } from '@shared/ipc.js'
-import { createSessionTocTrigger } from './toc/toc-session-trigger.js'
-import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from '@onething/backend/collab/collab-rooms'
-import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
+import { createSessionTocTrigger } from './toc/toc.js'
 import { Interaction } from '@onething/backend/interaction'
-import { bootstrapVariableSystem } from '@onething/backend/variable/variable-system'
-import { bootstrapGoalStreamBreakers } from '@onething/backend/goal/goal-runtime-hooks'
-import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from '@onething/backend/goal/goal-manager'
-import { bootstrapProjectDirs } from '@onething/backend/project-dir/project-dir-bootstrap'
-import { configureProcessAuthTokenStore, getAuthService } from '@onething/backend/auth/auth-process-service'
-import { installOAuthBusBroadcaster } from '@onething/backend/auth/auth-oauth-events'
-import { bootstrapNotes } from '@onething/backend/note/note-subsystem'
-import { bootstrapNoteVaultSkillRoots } from '@onething/backend/skill/skill-note-vault-roots'
-import { migrateNotesSettings } from '@onething/backend/note/note-migration'
-import type { NotesSubsystem } from '@onething/backend/note/note-subsystem'
+import { bootstrapVariableSystem } from '@onething/backend/variable'
+import { bootstrapGoalStreamBreakers, flushGoalRuntimeUsage, disposeGoalRuntimeState } from '@onething/backend/goal'
+import { bootstrapProjectDirs } from '@onething/backend/project-dir'
+import { configureProcessAuthTokenStore, getAuthService, installOAuthBusBroadcaster } from '@onething/backend/auth'
+import { bootstrapNotes, migrateNotesSettings } from '@onething/backend/note'
+import type { NotesSubsystem } from '@onething/backend/note'
 import { createAppSearchService } from '@onething/backend/search'
-import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/backend/mcp/mcp-capabilities-changed'
+import { configureToolkitMCPCapabilitiesChangedHandler, McpSubsystem } from '@onething/backend/mcp'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from '@onething/backend/toolkit/toolkit-wiring'
-import { registerCollabAgentPresence, registerCollabAgentToolGrants, registerCollabTools } from '@onething/backend/collab'
 import {
   createAppToolRunner,
   sessionWorkspaceRootFor,
@@ -128,23 +135,22 @@ import {
   ShellCommandDispatch,
   ShellMountRegistry,
 } from '@onething/backend/resource'
-import type { ResourceKernel } from '@onething/backend/resource/resource-api'
-import { configureEvalsTaskOwner, EvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
+import type { ResourceKernel } from '@onething/backend/resource'
 import { registerAppRpcDomains } from './http-server/http-server-client-api-roster.js'
 import { registerRouterHandlers } from './http-server/http-server-dispatch-table.js'
 import { configureFeatureRegistryRpc } from '@onething/backend/feature-registry'
-import { initializeSessionSkills } from '@onething/backend/skill/skill-session-cache'
 import { MCPManager, registerMCPTools } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
-import { ACPManager } from '@onething/backend/acp'
-import { McpSubsystem } from '@onething/backend/mcp/mcp-subsystem'
-import { AcpSubsystem } from '@onething/backend/acp/acp-subsystem'
-import { onSessionsDeletedFromBus } from '@onething/backend/acp/acp-events'
-import { createAcpSessionProjections } from '@onething/backend/acp/acp-projections'
-import { AcpAgentRegistry, type AcpRegistryFetch } from '@onething/backend/acp/acp-registry'
-import { getAppBuiltinResourcePath } from '@onething/backend/skill/skill-sources'
-import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent/external-agent-spawn-env'
-import { killAllTerminals } from '@onething/backend/terminal/terminal-service'
+import {
+  ACPManager,
+  AcpSubsystem,
+  onSessionsDeletedFromBus,
+  createAcpSessionProjections,
+  AcpAgentRegistry,
+  type AcpRegistryFetch,
+} from '@onething/backend/acp'
+import { resolveExternalAgentSpawnEnv } from '@onething/backend/external-agent'
+import { killAllTerminals } from '@onething/backend/terminal'
 import type { SessionHistoryBuilder } from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging'
 import { configureLogging, shutdownAppLogging, type ConfigureLoggingOptions } from '@onething/backend/logging/logging-configure'
@@ -927,7 +933,7 @@ export class OnethingBackend implements BackendHandle {
         const { buildOnethingSystemPrompt, defaultOnethingPromptComposer } = await import('@onething/backend/prompt')
         // 缺省 composer 不再内置插件提示词源(越层清零 C1,2026-10-04);这里显式补上同一份
         // 不带健康回调的源,版本戳拼出来的字节与从前逐字相同。
-        const { PluginPromptContextSource } = await import('@onething/backend/plugin/plugin-prompt-context')
+        const { PluginPromptContextSource } = await import('@onething/backend/plugin')
         const { system, developer } = await buildOnethingSystemPrompt(
           { hasTools: false, skills: [] },
           defaultOnethingPromptComposer.with(new PluginPromptContextSource()),
@@ -1256,7 +1262,7 @@ export class OnethingBackend implements BackendHandle {
        * 动态 import:装配层的静态图里不该多一条只在收摊时才用得上的边
        * (`import-side-effect-free` 那条纪律)。
        */
-      const plugins = await import('@onething/backend/plugin/plugin-manager')
+      const plugins = await import('@onething/backend/plugin')
       await plugins.getPluginManager()?.shutdown()
     }, 'pluginManager')
     /*

@@ -36,7 +36,7 @@ vi.mock('@onething/backend/plugin/plugin-system', async importOriginal => {
 })
 
 import type { TerminalBroadcaster } from '@onething/backend/terminal/terminal-service'
-import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/terminal/terminal-service'
+import { configureTerminalBroadcaster, hasTerminalHost } from '@onething/backend/terminal'
 import { getPluginManager } from '@onething/backend/plugin/plugin-system'
 import {
   configureHostLocalTrust,

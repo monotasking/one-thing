@@ -48,7 +48,7 @@ import {
   type SearchPage,
   type SearchQuery,
 } from '../kernel/search-kernel.js'
-import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../note/note-types.js'
+import { NoteVaultUnavailable, type NoteVault, type NoteVaultUnavailableReason } from '../../note/note.js'
 import { createSqliteLexicalRetriever } from '../index/search-index-service.js'
 import { vaultRelativeKey } from '../index/search-index-vault-feed.js'
 import type { OnethingSearchProvidersAdapters } from '../search-providers.js'

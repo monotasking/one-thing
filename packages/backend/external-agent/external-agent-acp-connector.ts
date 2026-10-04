@@ -3,7 +3,7 @@ import { findAgentExecutorDescriptor } from '@onething/backend/agent-loop'
 import { ACPManager } from '../acp/acp-manager.js'
 import { ACP_CONNECTOR_ID } from '../acp/acp-session-links.js'
 import { translateACPPromptStream, type ACPWireStreamEvent } from '../acp/acp-translate.js'
-import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from '../acp/acp-types.js'
+import type { ACPOpenSessionOptions, ACPPromptStreamOptions } from '../acp/acp.js'
 import { getLogger } from '../logging/logging.js'
 import type {
   ExternalAgentCapabilities,

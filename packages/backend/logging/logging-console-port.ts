@@ -5,36 +5,33 @@ import type { LogLevel } from '@shared/logging/types'
 // 这里把那条边写出来:每一条 `extends` 都是一句"这道口由本文件供货"的事实陈述,
 // 签名一个字节没改(它们的成员全是 `ConsoleLikePort` 已有方法的可选子集)。
 // 本文件按注释所述是过渡件,`Core*Logger` 统一成 `Logger` 之后连同这张表一起删。
-import type { OnethingACPIpcLogger } from '../acp/acp-ipc-operations.js'
+import type { OnethingACPIpcLogger } from '../acp/acp.js'
 import type { OnethingAgentLoopLogger } from '../engine/engine.js'
 import type { OnethingAgentsIpcLogger } from '../agent/agent.js'
-import type { OnethingOAuthIpcLogger } from '../auth/auth-ipc-operations.js'
-import type { OnethingDirectoryIpcLogger } from '../file/file-directory-listing.js'
-import type { OnethingFilesIpcLogger } from '../file/file-search.js'
-import type { OnethingMCPIpcLogger } from '../mcp/mcp-ipc-operations.js'
-import type { OnethingImageFileDataUrlIpcLogger } from '../media/media-image-file-data-url.js'
-import type { OnethingMediaIpcLogger } from '../media/media-library-presentation.js'
-import type { OnethingPermissionIpcLogger } from '../permission/permission-grants-presentation.js'
-import type { OnethingPermissionSessionIpcLogger } from '../permission/permission-session-presentation.js'
-import type { OnethingPluginIpcLogger } from '../plugin/plugin-ipc-operations.js'
-import type { OnethingPromptIpcLogger } from '../prompt/prompt-ipc-operations.js'
-import type { BuildOnethingSystemPromptSnapshotForIpcLogger } from '../prompt/prompt-system-snapshot.js'
+import type { OnethingOAuthIpcLogger } from '../auth/auth.js'
+import type { OnethingDirectoryIpcLogger, OnethingFilesIpcLogger } from '../file/file.js'
+import type { OnethingMCPIpcLogger } from '../mcp/mcp.js'
+import type { OnethingImageFileDataUrlIpcLogger, OnethingMediaIpcLogger } from '../media/media.js'
+import type { OnethingPermissionIpcLogger, OnethingPermissionSessionIpcLogger } from '../permission/permission.js'
+import type { OnethingPluginIpcLogger } from '../plugin/plugin.js'
+import type { OnethingPromptIpcLogger, BuildOnethingSystemPromptSnapshotForIpcLogger } from '../prompt/prompt.js'
 import type { OnethingModelQueryIpcLogger } from '../provider/provider.js'
 import type { OnethingModelRegistryRefreshLogger } from '../provider/provider.js'
 import type { CoreProviderAuthLogger } from '../provider/provider.js'
 import type { OnethingProviderPresentationIpcLogger } from '../provider/provider.js'
 import type { OnethingProviderRequestDumpLogger } from './logging-provider-request-dump.js'
-import type { OnethingSchedulerAgentTaskLogger } from '../scheduler/scheduler-agent-task-runner.js'
-import type { OnethingSchedulerIpcLogger } from '../scheduler/scheduler-ipc-operations.js'
-import type { SchedulerRunHistoryLogger } from '../scheduler/scheduler-run-history.js'
-import type { SchedulerLogger } from '../scheduler/scheduler-cron-runner.js'
-import type { OnethingSchedulerUserTaskLogger } from '../scheduler/scheduler-user-tasks.js'
+import type {
+  OnethingSchedulerAgentTaskLogger,
+  OnethingSchedulerIpcLogger,
+  SchedulerRunHistoryLogger,
+  SchedulerLogger,
+  OnethingSchedulerUserTaskLogger,
+} from '../scheduler/scheduler.js'
 import type { OnethingSessionsIpcLogger } from '../session/session.js'
 import type { OnethingSessionRepositoryLogger } from '../session/session.js'
 import type { AbortOnethingStreamsForIpcLogger } from '../session/session.js'
-import type { OnethingSettingsIpcLogger } from '../settings/settings-ipc-operations.js'
-import type { OnethingSettingsRepositoryLogger } from '../settings/settings-repository.js'
-import type { OnethingSkillsIpcLogger } from '../skill/skill-ipc-operations.js'
+import type { OnethingSettingsIpcLogger, OnethingSettingsRepositoryLogger } from '../settings/settings.js'
+import type { OnethingSkillsIpcLogger } from '../skill/skill.js'
 import type {
   OnethingToolsIpcLogger,
   OnethingToolCallStateIpcLogger,

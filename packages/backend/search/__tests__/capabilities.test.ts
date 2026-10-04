@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ALL_CAPABILITIES, createCapabilityRegistry } from '../kernel/search-kernel.js'
 import type { IndexedDoc, SearchCapability, SearchQuery } from '../kernel/search-kernel.js'
 import type { OnethingSearchProvidersAdapters } from '../search-providers.js'
-import { FolderVault } from '../../note/folder/note-folder-vault.js'
+import { FolderVault } from '../../note/note.js'
 import {
   chatsSearchManifest,
   createBuiltinSearchCapabilities,

@@ -5,7 +5,7 @@
  * 授权服务器的 host 解析(`resolveKimiOAuthHost`,跟随官方 CLI 的两个环境变量)一起搬来。
  */
 import { normalizeGenericOAuthToken } from "@onething/backend/network";
-import type { OnethingAuthProviderDefinition } from "../../../auth/auth-types.js";
+import type { OnethingAuthProviderDefinition } from "../../../auth/auth.js";
 
 /** Kimi Code 授权服务器。两个环境变量与官方 CLI 同名,自建/灰度环境靠它切。 */
 export const ONETHING_KIMI_CODE_DEFAULT_OAUTH_HOST = "https://auth.kimi.com";

@@ -138,10 +138,10 @@ import {
 } from '@onething/backend/session'
 import { DEFAULT_AGENT_ID, agentExists } from '@onething/backend/agent'
 import { consolePort, getLogger } from '@onething/backend/logging'
-import { Permission } from '@onething/backend/permission/permission-with-grant-storage'
-import { deleteSessionAiTodo } from '@onething/backend/todo-plan/todo-plan-service'
-import { workdirGateway } from '@onething/backend/variable/variable-gateways'
-import { readSessionSegments } from '@onething/backend/toc/toc-recorder'
+import { Permission } from '@onething/backend/permission'
+import { deleteSessionAiTodo } from '@onething/backend/todo-plan'
+import { workdirGateway } from '@onething/backend/variable'
+import { readSessionSegments } from '@onething/backend/toc'
 
 const log = getLogger('resource.session')
 /** 投影层收的是鸭子 logger —— 与域里那一只同一个位置、同一个形状。 */

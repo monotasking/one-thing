@@ -34,10 +34,10 @@
  * 之前先过一道归属闸(`media/media-access.ts`:资产按它挂的会话判、路径按沙箱判)。
  * 上面那些判例一条没作废 —— 换的是「谁看得见」,不是「货从哪来」。
  */
-import {
-  ingestOnethingMediaFilesForIpc, readOnethingImageFileDataUrl, readOnethingImageFileDataUrlForIpc,
-  type OnethingMediaLibraryService, type OnethingMediaSession, type OnethingImagePreviewRegistry,
-} from '@onething/backend/media'
+import { ingestOnethingMediaFilesForIpc } from './media-library-presentation.js'
+import { readOnethingImageFileDataUrl, readOnethingImageFileDataUrlForIpc } from './media-image-file-data-url.js'
+import type { OnethingMediaLibraryService, OnethingMediaSession } from './media-library-service.js'
+import type { OnethingImagePreviewRegistry } from './media-image-preview-registry.js'
 import { imagePreviewRegistry } from '@onething/backend/media/media-image-preview-registry-bound'
 import { mediaLibraryService } from '@onething/backend/media/media-library-service-bound'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'

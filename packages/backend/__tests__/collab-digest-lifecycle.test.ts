@@ -251,7 +251,7 @@ it('preserves folded-day selection, request deduplication, parsing, usage and th
   expect(local.requests).toHaveLength(1)
   local.respond('  The migration will ship tomorrow.  ')
   await work
-  const { getUsageLedger } = await import('@onething/backend/usage/usage-recorder')
+  const { getUsageLedger } = await import('@onething/backend/usage')
   await getUsageLedger().flush()
   expect(await usage(path.join(directory, 'a'))).toEqual([expect.objectContaining({ source: 'collab-digest', sessionId: 'room' })])
   const digests = await import('@onething/backend/collab/collab-digest-store')
@@ -269,9 +269,9 @@ it('does not release or repeat a timed-out model while the underlying provider r
   const local = await provider()
   backend = await assemble(path.join(directory, 'a'))
   const day = await room()
-  const { createCollabDigestRunner } = await import('@onething/backend/collab/collab-digest-runner')
-  const { createCollabDigestStore } = await import('@onething/backend/collab/collab-digest-store')
-  const { captureUsageRecorder } = await import('@onething/backend/usage/usage-recorder')
+  const { createCollabDigestRunner } = await import('@onething/backend/collab')
+  const { createCollabDigestStore } = await import('@onething/backend/collab')
+  const { captureUsageRecorder } = await import('@onething/backend/usage')
   const runner = createCollabDigestRunner({
     store: createCollabDigestStore({ storePath: path.join(directory, 'a') }),
     access: backend.sessionLayer.access, assertOwned: () => {}, recordUsage: captureUsageRecorder(), timeoutMs: 30,

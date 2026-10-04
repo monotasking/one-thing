@@ -6,8 +6,7 @@ import type { InitializeResponse } from '@agentclientprotocol/sdk'
 import type { AgentTurnStreamEvent } from '@onething/backend/agent-loop'
 import { capabilitiesFromHandshake, createAcpConnector, type AcpConnectorDeps } from '../external-agent-acp-connector.js'
 import { createExternalAgentProvider } from '../../provider/provider-external-agent.js'
-import type { ACPWireStreamEvent } from '../../acp/acp-translate.js'
-import type { ACPPromptStreamOptions } from '../../acp/acp-types.js'
+import type { ACPWireStreamEvent, ACPPromptStreamOptions } from '../../acp/acp.js'
 import type { ExternalAgentEvent, ExternalAgentSessionLink } from '../external-agent-types.js'
 
 async function* replay(events: ACPWireStreamEvent[]): AsyncGenerator<ACPWireStreamEvent, void, void> {

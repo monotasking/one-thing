@@ -65,7 +65,7 @@ import {
   getOnethingSettingsForIpc,
   getOnethingSystemThemeForIpc,
   saveOnethingSettingsWithRuntimeEffectsForIpc,
-} from '@onething/backend/settings'
+} from './settings-ipc-operations.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { AppSettings, SaveSettingsRequest } from '@shared/ipc/settings.js'
 import type { SettingsRoutes } from '@shared/ipc/settings.js'
@@ -74,7 +74,7 @@ import {
   sanitizeSettingsForClient,
 } from './settings-client-api-projection.js'
 import { invalidateProviderCache } from '@onething/backend/provider'
-import { getSettings, saveSettings } from '@onething/backend/settings'
+import { getSettings, saveSettings } from './settings-store.js'
 import { getGatewayHost } from '@onething/backend/gateway/gateway-lifecycle-port'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { broadcastSettingsChanged } from '@onething/backend/settings/settings-events'
@@ -84,8 +84,8 @@ import {
   registerHostGlobalWindowShortcuts,
 } from '@onething/backend/settings/settings-host-ports'
 import { testOnethingProxy } from '@onething/backend/settings/settings-proxy'
-import { getVoiceServiceSafe } from '@onething/backend/voice/voice-service'
-import { startTodoPlanWatcher } from '@onething/backend/todo-plan/todo-plan-service'
+import { getVoiceServiceSafe } from '@onething/backend/voice'
+import { startTodoPlanWatcher } from '@onething/backend/todo-plan'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingSettingsIpcLogger } from '@onething/backend/settings/settings-ipc-operations'

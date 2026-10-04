@@ -112,9 +112,8 @@ import {
   PLUGIN_PERMISSION_RESOURCES_WATCH,
   type PluginResourcesApi,
 } from './plugin-resources.js'
-import type { ResourceEvent } from '@onething/backend/resource/resource-events'
+import type { ResourceEvent, ReadOutcome as ReadOutcomeValue } from '@onething/backend/resource'
 import { ReadOutcome } from '@onething/backend/resource/resource-read-outcome'
-import type { ReadOutcome as ReadOutcomeValue } from '@onething/backend/resource/resource-read-outcome'
 import { Outcome } from '@onething/backend/toolkit'
 import type { Outcome as OutcomeValue } from '@onething/backend/toolkit'
 

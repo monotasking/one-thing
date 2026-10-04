@@ -1,5 +1,5 @@
-import { renderGoalTurnVariableValue } from '../../goal/goal-render.js'
-import type { SessionGoal, SessionGoalLimits } from '../../goal/goal-types.js'
+import { renderGoalTurnVariableValue } from '../../goal/goal.js'
+import type { SessionGoal, SessionGoalLimits } from '../../goal/goal.js'
 import type { ContextVariable, VariableContext, VariableProvider } from '../variable-types.js'
 
 const NAME = 'goal'

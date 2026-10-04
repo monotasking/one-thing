@@ -102,6 +102,7 @@ collab 今天是三种东西挤在一个目录:协作的四只工具(住在 tool
 5. **storage(54)** —— 基础件,深层引用是 `storage-primitives`,与 logging 同治(入口交出 + codemod),排后是因为无害。
 6. 其余(space 34、plugin 33、auth 31、resource 30、permission 25、prompt 23)各自一批,随各功能的收口单走。
    **(2026-10-04 第三批落地:3–5 与 6 里的 space 一起做了。** tool、storage、agent、space 外面的非测试深层引用归零;toolkit 88 → 7(引上层的四只文件不经入口交出,否则成环,D170)、event 49 → 12(两对同名不同物的类与两只引入口声明的兄弟,D172);决策 D166–D175,落地记录见 `server-client-split-2026-10.md` §6「深层引用收口第三批」。)
+   **(2026-10-04 第四批落地:6 里其余各家一起做了。** toolkit / event / logging / session 以外的功能,外面的非测试深层引用 411 → 58,26 家归零;停下的 58 处是环、同名不同物、gateway 入口兼作启动脚本、mcp 的旧桶与几处刻意动态的 import,决策 D176–D189,落地记录见 `server-client-split-2026-10.md` §6「深层引用收口第四批」。)
 
 ## 4. 决策与理由(给用户)
 

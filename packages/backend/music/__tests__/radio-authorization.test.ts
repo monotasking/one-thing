@@ -15,8 +15,10 @@ vi.mock('@onething/backend/storage/storage', async (importOriginal) => ({
   ...await importOriginal<typeof import('@onething/backend/storage/storage')>(),
   getOnethingStorePath: () => fixture.dir,
 }))
-vi.mock('@onething/backend/music/music', async importOriginal => ({
-  ...await importOriginal<typeof import('@onething/backend/music/music')>(),
+// 深层引用收口第四批(2026-10-04):`music-radio.ts` 改引兄弟文件(D126),不再经入口拿
+// `createOnethingRadioConductor`,所以桩打在声明它的 `music-radio-conductor.ts` 上。
+vi.mock('../music-radio-conductor.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../music-radio-conductor.js')>(),
   createOnethingRadioConductor: (options: OnethingRadioConductorOptions) => {
     fixture.conductor = options
     return { onSample: vi.fn(), quiesce: vi.fn(), idle: async () => {} }

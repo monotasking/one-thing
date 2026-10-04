@@ -15,7 +15,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { callbackServerManager } from '../../auth/auth-callback-server.js'
+import { callbackServerManager } from '../../auth/auth.js'
 import { MCPOAuthCredentialStore } from './mcp-oauth-credential-store.js'
 import { MCPOAuthProvider } from './mcp-oauth-provider.js'
 import type { MCPOAuthFlowState, MCPServerOAuthSurface } from './mcp-oauth-types.js'

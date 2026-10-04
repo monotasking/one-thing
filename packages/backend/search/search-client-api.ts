@@ -30,14 +30,13 @@
  */
 import {
   NoPreviewError,
-  PreviewUnavailableError,
-  getOnethingSearchServiceSafe,
-  type CapabilityManifest,
   type OnethingSearchService,
-  type PreviewPayload,
   type SearchPreviewItem,
   type SearchServiceRequest,
-} from '@onething/backend/search'
+} from './search-service.js'
+import { PreviewUnavailableError } from './capabilities/search-capabilities.js'
+import { getOnethingSearchServiceSafe } from './search-service-bound.js'
+import type { CapabilityManifest, PreviewPayload } from './kernel/search-kernel.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import {

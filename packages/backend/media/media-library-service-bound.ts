@@ -1,7 +1,7 @@
 import {
   MediaLibraryService as RuntimeMediaLibraryService,
   type OnethingMediaLibraryPaths,
-} from './media.js'
+} from './media-library-service.js'
 import {
   getOnethingMediaFilesDir,
   getOnethingMediaImagesDir,

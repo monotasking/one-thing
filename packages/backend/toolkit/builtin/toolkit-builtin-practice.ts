@@ -11,7 +11,7 @@
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
 import type { Result, RunContext, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { OnethingPracticeRecordInput } from '../../practice/practice-types.js'
+import type { OnethingPracticeRecordInput } from '../../practice/practice.js'
 import type { OnethingPracticeLedgerRecord } from '@shared/contracts/practice.js'
 import type {
   OnethingPracticeBucket,

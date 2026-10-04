@@ -47,7 +47,7 @@ import {
 import type { ResourceKernel } from './resource-api.js'
 import { BackendNotAssembledError, getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { principalOf } from '@onething/backend/http-server/http-server-principal.js'
-import type { ShellMountRegistry } from '@onething/backend/resource'
+import type { ShellMountRegistry } from './resource-shell-registry.js'
 import { serializeOutcome, serializeReadOutcome, serializeSpec } from './resource-wire-views.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 

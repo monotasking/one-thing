@@ -17,32 +17,29 @@ import {
   RADIO_DJ_AGENT_NAME,
   RADIO_DJ_FACTORY_VERSION,
   RADIO_DJ_TOOL_ALLOWLIST,
-  createOnethingMusicReliableRunner,
-  createOnethingRadioConductor,
-  createOnethingRadioStore,
-  estimateSpeechSeconds,
-  firstVocalStartAt,
-  matchSongFromSearch,
-  songPlayFlagFromSearch,
   radioDjFactoryPromptVersion,
   renderRadioCurationPrompt,
   renderRadioDjAgentPrompt,
   renderRadioOpenPrompt,
   renderRadioTalkPrompt,
-  type OnethingMusicIdentifiedSong,
-  type OnethingMusicNowPlaying,
-  type OnethingRadioConductor,
+} from './music-radio-render.js'
+import { createOnethingMusicReliableRunner } from './music-reliable-runner.js'
+import { createOnethingRadioConductor, type OnethingRadioConductor } from './music-radio-conductor.js'
+import {
+  createOnethingRadioStore,
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
-} from '@onething/backend/music/music'
-import { broadcastVoiceHostMessage } from '@onething/backend/voice/voice-host-ports'
+} from './music-radio-store.js'
+import { estimateSpeechSeconds, firstVocalStartAt } from './music-lyrics.js'
+import { matchSongFromSearch, songPlayFlagFromSearch, type OnethingMusicIdentifiedSong } from './music-identify.js'
+import type { OnethingMusicNowPlaying } from './music-now-playing.js'
+import { broadcastVoiceHostMessage } from '@onething/backend/voice'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicHostDoing, MusicHostLog, MusicHostState, MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { describeHostDoing, projectHostLog } from '@onething/backend/music/music-host-log'
-import { addGrant } from '@onething/backend/permission/permission-asks'
+import { addGrant, markSessionUnattended } from '@onething/backend/permission'
 import { writeJsonFile } from '@onething/backend/storage'
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/backend/agent'
-import { markSessionUnattended } from '@onething/backend/permission/permission-unattended'
 import { resolveCollabVenue } from '@onething/backend/session'
 import { getSettings } from '@onething/backend/settings'
 import * as sessions from '@onething/backend/session'

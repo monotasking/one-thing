@@ -1,4 +1,6 @@
-import { ClockSource, parseWttrReply, WeatherSource, type AmbientSource, type WeatherFetcher } from '@onething/backend/ambient'
+import { ClockSource } from './ambient-clock-source.js'
+import { parseWttrReply, WeatherSource, type WeatherFetcher } from './ambient-weather-source.js'
+import type { AmbientSource } from './ambient-source.js'
 import { createAppFetch } from '@onething/backend/settings'
 
 /**

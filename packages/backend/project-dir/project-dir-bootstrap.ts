@@ -72,4 +72,4 @@ export type {
   ActiveProjectVars,
   KnownProjectsVars,
 } from '@onething/backend/project-dir/project-dir-prompt'
-export type { Project, ProjectIndexEntry, ProjectId } from '@onething/backend/project-dir'
+export type { Project, ProjectIndexEntry, ProjectId } from './project-dir-types.js'

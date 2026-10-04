@@ -5,7 +5,7 @@
  * 此前只在删除会话时释放。释放条件见 `EventBus.releaseIdleBuffers`:没有订阅者且
  * 一段时间内没有新事件。
  */
-import type { MemoryHolder } from '@onething/backend/memory/memory-registry'
+import type { MemoryHolder } from '@onething/backend/memory'
 import type { EventBus } from './event-session-bus.js'
 
 /** 缓冲闲置多久后可以释放:soft 10 分钟,hard 1 分钟。 */

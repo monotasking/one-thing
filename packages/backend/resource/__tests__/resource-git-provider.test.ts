@@ -60,7 +60,7 @@ import type { ResourceReadContext } from '@onething/backend/resource/resource-ap
 import { ResourceEventHub } from '@onething/backend/resource/resource-api'
 import { isCorePathContained, resolveCoreToolPath } from '@onething/backend/tool/tool-sandbox'
 import { classifySensitiveFile } from '@onething/backend/tool'
-import { gitResourceSpec } from '@onething/backend/file/file-git-resource-spec'
+import { gitResourceSpec } from '@onething/backend/file'
 import {
   createUntrackedLineCounter,
   GitOperationFailedError,

@@ -32,7 +32,8 @@ import {
   type ActorEvent,
   type ActorMailboxSource,
 } from '@onething/backend/collab/kernel'
-import { COLLAB_DEFAULT_DAILY_COST_USD, type CollabAddressable, type CollabAgentLike } from '../collab.js'
+import { COLLAB_DEFAULT_DAILY_COST_USD, type CollabAgentLike } from '../collab-types.js'
+import type { CollabAddressable } from '../collab-handles.js'
 import {
   applyCollabRoomPassthrough,
   applyCollabRoomPhaseChange,

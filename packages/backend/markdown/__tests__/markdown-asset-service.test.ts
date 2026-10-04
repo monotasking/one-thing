@@ -10,8 +10,8 @@ import {
   type MarkdownSaveAttachmentsRequest,
   type OnethingMarkdownEditorSettings,
 } from '../markdown-asset-service.js'
-import { FolderVault } from '../../note/folder/note-folder-vault.js'
-import type { NoteLinkKind, NoteVault } from '../../note/note-types.js'
+import { FolderVault } from '../../note/note.js'
+import type { NoteLinkKind, NoteVault } from '../../note/note.js'
 
 const tempRoots: string[] = []
 let editorSettings: OnethingMarkdownEditorSettings = {}

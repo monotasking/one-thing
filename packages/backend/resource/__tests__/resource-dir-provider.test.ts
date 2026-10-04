@@ -40,7 +40,7 @@ import { ResourceEventHub } from '@onething/backend/resource/resource-api'
 import type { ResourceEvent, ResourceReadContext } from '@onething/backend/resource/resource-api'
 import { isCorePathContained, resolveCoreToolPath } from '@onething/backend/tool/tool-sandbox'
 import { classifySensitiveFile } from '@onething/backend/tool'
-import { configureShellHost, resetShellHost } from '@onething/backend/shell/shell-host-ports'
+import { configureShellHost, resetShellHost } from '@onething/backend/shell'
 import {
   DirOperationFailedError,
   DirOutsideSandboxError,

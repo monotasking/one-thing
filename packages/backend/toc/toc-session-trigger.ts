@@ -9,7 +9,7 @@
  * assistant message it was armed for is still the newest one. The second check
  * is what makes it safe if a clearTimeout is ever missed.
  */
-import { collectGoalFileChanges } from "@onething/backend/goal/goal-file-change-collector";
+import { collectGoalFileChanges } from "@onething/backend/goal";
 import { recordTocTurn } from "./toc-recorder.js";
 import { sessionReads } from "@onething/backend/session";
 import type { Trigger, TriggerContext } from "@onething/backend/agent-loop";

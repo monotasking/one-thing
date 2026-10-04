@@ -15,9 +15,9 @@
 import {
   executeOnethingPluginCommandForIpc,
   listOnethingPluginCommandsForIpcAllowingUninitialized,
-  type ExecuteOnethingPluginCommandResult,
   type ListOnethingPluginCommandsForIpcResult,
-} from '@onething/backend/plugin'
+} from './plugin-ipc-operations.js'
+import type { ExecuteOnethingPluginCommandResult } from './plugin-command-execution.js'
 import { getEventBus } from '@onething/backend/event'
 import * as store from '@onething/backend/session'
 import { consolePort, getLogger } from '@onething/backend/logging'

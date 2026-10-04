@@ -26,11 +26,14 @@ import {
 import { readSpaceProviderSettings, DEFAULT_SPACE_ID } from '@onething/backend/space'
 import { createRequiredAppFetch } from '@onething/backend/settings'
 import { getEventBus, isEventSystemInitialized } from '@onething/backend/event'
-import { getAuthService } from '../auth/auth-process-service.js'
+import { getAuthService } from '../auth/auth.js'
 import { getLogger } from '@onething/backend/logging'
 import { QuotaService, type QuotaCredentialResolution, type QuotaServiceDeps } from './quota-service.js'
 
-export * from './quota-service.js'
+// 对外交出:配额服务类(逻辑在 `quota-service.ts`)、本文件的装配两只(`createQuotaService`、按 id 解析池里那条凭证),
+// 以及引擎回合钩子里的两只观察口(收到服务商回包时顺手记额度、回合结束时记一笔)。
+export { QuotaService } from './quota-service.js'
+export { noteQuotaRunEnd, observeQuotaProviderData } from './quota-engine-hooks.js'
 
 const log = getLogger('app.quota')
 

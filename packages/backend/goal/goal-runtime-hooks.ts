@@ -4,10 +4,7 @@
  * abort → paused, complete → flush) wired through the EventBus so the stream
  * executor needs no goal knowledge.
  */
-import {
-	renderGoalBudgetLimitPrompt,
-	renderGoalContinuationNudge,
-} from "@onething/backend/goal";
+import { renderGoalBudgetLimitPrompt, renderGoalContinuationNudge } from "./goal-render.js";
 import type { OnethingAgentLoopGoalHooks } from "../engine/engine.js";
 import { getEventBus } from "@onething/backend/event";
 import {

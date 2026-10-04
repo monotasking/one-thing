@@ -30,7 +30,7 @@
  */
 
 
-import type { NoteVault } from '../note/note-types.js'
+import type { NoteVault } from '../note/note.js'
 
 export interface OnethingSearchSessionMeta {
   ownerUserId?: string

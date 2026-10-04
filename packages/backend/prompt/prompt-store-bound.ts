@@ -3,7 +3,7 @@ import {
   type PromptCreateRequest,
   type PromptUpdateRequest,
   type UserPrompt,
-} from './prompt.js'
+} from './prompt-store.js'
 import {
   getOnethingPromptsPath,
   readJsonFile,

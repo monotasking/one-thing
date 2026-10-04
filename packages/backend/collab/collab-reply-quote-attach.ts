@@ -13,11 +13,8 @@
  * the room grew after the fact, which is also why a `message:updated` cannot
  * open a new willingness round (the coordinator does not listen to it).
  */
-import {
-  buildCollabReplyToSnapshot,
-  shouldAttachCollabReplyTo,
-  type CollabMessageLike,
-} from '@onething/backend/collab'
+import { buildCollabReplyToSnapshot, shouldAttachCollabReplyTo } from './collab-reply-quote.js'
+import type { CollabMessageLike } from './collab-types.js'
 import type { ChatMessage, ChatMessageReplyTo } from '@shared/ipc.js'
 import * as store from '@onething/backend/session'
 import { getEventBus } from '@onething/backend/event'

@@ -3556,9 +3556,8 @@ function checkRuntimeOwnsAuthServiceFlow(): void {
     ...requiredRuntimeFactorySymbols
       .filter(symbol => !runtimeFactoryContent.includes(symbol))
       .map(symbol => `${rel(runtimeFactoryFile)}: missing runtime auth service factory symbol ${symbol}`),
-    ...(!runtimeIndexContent.includes('createOnethingAuthServiceOptions')
-      ? [`${rel(runtimeIndexFile)}: missing auth service factory public export`]
-      : []),
+    // 深层引用收口第四批(2026-10-04):入口改成只交外面真在用的名字(R6),登录服务工厂(`auth-service-factory.ts`)外面没人经入口拿,
+    // 入口不再交出它;「归 packages/backend 所有」已由上面几条判了,这一条不再要求入口提到它。
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
       : ['packages/backend/auth/auth-process-service.ts: missing Electron auth adapter facade']),
@@ -4053,7 +4052,9 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
     ...requiredTypeSymbols
       .filter(symbol => !runtimeTypesContent.includes(symbol))
       .map(symbol => `${rel(runtimeTypesFile)}: missing runtime ACP type symbol ${symbol}`),
-    ...(!runtimeIndexContent.includes('ACPClient') || !runtimeIndexContent.includes('ACPManager')
+    // 深层引用收口第四批(2026-10-04):入口改成只交外面真在用的名字(R6),`ACPClient` 外面没人经入口拿,
+    // 入口只交 `ACPManager`;「客户端归 packages/backend 所有」已由上面几条判了。
+    ...(!runtimeIndexContent.includes('ACPManager')
       ? [`${rel(runtimeIndexFile)}: missing ACP runtime public exports`]
       : []),
     ...mainFacadeLines,
@@ -5637,9 +5638,8 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice provider symbol ${symbol}`),
-    ...(!runtimeIndexContent.includes('./voice-providers.js')
-      ? [`${rel(runtimeIndexFile)}: missing voice provider runtime public export`]
-      : []),
+    // 深层引用收口第四批(2026-10-04):入口改成只交外面真在用的名字(R6),`voice-providers.ts` 的名字外面没人经入口拿,
+    // 入口不再交出它;「归 packages/backend 所有」已由上面几条判了,这一条不再要求入口提到它。
     ...(!runtimePackageContent.includes('"./voice/voice-providers"')
       ? [`${rel(runtimePackage)}: missing @onething/backend/voice/voice-providers package export`]
       : []),
@@ -5701,9 +5701,8 @@ function checkRuntimeOwnsVoiceServicePolicy(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeTestContent.includes(symbol))
       .map(symbol => `${rel(runtimeTestFile)}: missing voice service policy test coverage for ${symbol}`),
-    ...(!runtimeIndexContent.includes('./voice-service-runtime.js')
-      ? [`${rel(runtimeIndexFile)}: missing voice service runtime public export`]
-      : []),
+    // 深层引用收口第四批(2026-10-04):入口改成只交外面真在用的名字(R6),`voice-service-runtime.ts` 的名字外面没人用,
+    // 入口不再整只转交它;「归 packages/backend 所有」已由上面几条判了,这一条不再要求入口提到它。
     ...requiredMainDelegations
       .filter(symbol => !mainContent.includes(symbol))
       .map(symbol => `${rel(mainFile)}: main voice service must delegate ${symbol} to runtime voice service policy`),
@@ -5752,9 +5751,8 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeTestContent.includes(symbol))
       .map(symbol => `${rel(runtimeTestFile)}: missing voice text test coverage for ${symbol}`),
-    ...(!runtimeIndexContent.includes('./voice-text.js')
-      ? [`${rel(runtimeIndexFile)}: missing voice text public export`]
-      : []),
+    // 深层引用收口第四批(2026-10-04):入口改成只交外面真在用的名字(R6),`voice-text.ts` 的名字外面没人用,
+    // 入口不再整只转交它;「归 packages/backend 所有」已由上面几条判了,这一条不再要求入口提到它。
     ...requiredMainDelegations
       .filter(symbol => !mainContent.includes(symbol))
       .map(symbol => `${rel(mainFile)}: main voice service must delegate voice text processing ${symbol} to runtime`),
@@ -6215,7 +6213,8 @@ function checkRuntimeOwnsSchedulerCore(): void {
   const requiredRuntimeIndexExports = [
     './scheduler-cron.js',
     './scheduler-cron-runner.js',
-    './scheduler-types.js',
+    // `./scheduler-types.js`:深层引用收口第四批(2026-10-04)起入口只交外面真在用的名字(R6),
+    // 调度器的类型外面没人经入口拿,入口不再整只转交它;类型的归属由下面 requiredRuntimeTypeSymbols 判。
   ]
   const lines = [
     ...requiredRuntimeSchedulerSymbols
@@ -6352,9 +6351,8 @@ function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
     ...requiredRuntimeSymbols
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned scheduler run-detail symbol ${symbol}`),
-    ...(!runtimeIndexContent.includes('./scheduler-run-detail.js')
-      ? [`${rel(runtimeIndexFile)}: missing scheduler run-detail public export`]
-      : []),
+    // 深层引用收口第四批(2026-10-04):入口改成只交外面真在用的名字(R6),`scheduler-run-detail.ts` 的名字外面没人用,
+    // 入口不再整只转交它;「归 packages/backend 所有」已由上面几条判了,这一条不再要求入口提到它。
     ...(
       runtimeRunnerContent.includes('createOnethingSchedulerTimelineEntry')
         && runtimeRunnerContent.includes('toOnethingSchedulerRunStep')

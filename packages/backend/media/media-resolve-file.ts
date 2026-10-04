@@ -24,7 +24,7 @@
  */
 import { basename, isAbsolute, relative } from 'node:path'
 import { canonicalizeStorePath } from '@onething/backend/storage'
-import type { OnethingMediaLibraryService } from '@onething/backend/media'
+import type { OnethingMediaLibraryService } from './media-library-service.js'
 import { SessionAccessError, type SessionAccess, type SessionAccessContext } from '@onething/backend/session'
 import { assertMediaAccess } from './media-access.js'
 

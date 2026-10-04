@@ -74,9 +74,9 @@ import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
-} from '@onething/backend/collab/collab-rooms'
+} from '@onething/backend/collab'
 import { consolePort, getLogger } from '@onething/backend/logging'
-import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/todo-plan/todo-plan-service'
+import { notifyTodoPlanActiveSessionChanged } from '@onething/backend/todo-plan'
 import {
   foldOutcomeToDetailedEnvelope,
   foldOutcomeToEnvelope,
@@ -97,7 +97,7 @@ import {
 } from './session-caller-ops.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/session'
-import type { ReadOutcome } from '@onething/backend/resource/resource-api'
+import type { ReadOutcome } from '@onething/backend/resource'
 import type { JsonObject } from '@shared/json'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/backend/session'

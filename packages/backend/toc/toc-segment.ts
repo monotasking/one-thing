@@ -15,7 +15,7 @@
  * *what to call them* are separate problems; mixing them makes a bad result
  * impossible to attribute.
  */
-import type { SessionGoal } from '../goal/goal-types.js'
+import type { SessionGoal } from '../goal/goal.js'
 import type {
   SessionSegment,
   SessionSegmentFile,

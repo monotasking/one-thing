@@ -1,21 +1,15 @@
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  MusicSetupService,
-  createNowPlayingWatcher,
-  getMusicProvider,
-  type MusicProvider,
-  type OnethingMusicEvent,
-  type OnethingMusicNowPlaying,
-  type OnethingMusicRadioSource,
-  type NowPlayingWatcher,
-} from '@onething/backend/music/music'
+import { MusicSetupService } from './music-setup-service.js'
+import { createNowPlayingWatcher, type OnethingMusicNowPlaying, type NowPlayingWatcher } from './music-now-playing.js'
+import { getMusicProvider, type MusicProvider } from './providers/music-providers.js'
+import type { OnethingMusicEvent, OnethingMusicRadioSource } from './music-types.js'
 import {
   createElectronMusicProcessRunner,
   writeElectronMusicSecretFile,
 } from '@onething/backend/music/music-process-runner'
-import { broadcastVoiceHostMessage } from '@onething/backend/voice/voice-host-ports'
+import { broadcastVoiceHostMessage } from '@onething/backend/voice'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@onething/backend/settings'
 import { getSettings, saveSettings } from '@onething/backend/settings'

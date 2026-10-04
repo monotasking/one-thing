@@ -37,21 +37,18 @@ import {
   createActorEvent,
   type ActorEvent,
 } from '@onething/backend/collab/kernel'
+import { COLLAB_DEFAULT_DAILY_COST_USD, type CollabAgentLike, type CollabMessageLike } from '../collab-types.js'
 import {
-  COLLAB_DEFAULT_DAILY_COST_USD,
   buildCollabDriveRoomContext,
-  buildCollabReplyToSnapshot,
-  buildCollabTaskInterruptedLine,
-  collectCollabFoldedFacts,
   formatCollabAdoptedEcho,
   formatCollabUserLabel,
-  isCollabRoomFact,
-  planCollabHistoryWindow,
-  renderCollabBoardDigest,
   wrapCollabMessageEnvelope,
-  type CollabAgentLike,
-  type CollabMessageLike,
-} from '@onething/backend/collab'
+} from '../collab-projection.js'
+import { buildCollabReplyToSnapshot } from '../collab-reply-quote.js'
+import { buildCollabTaskInterruptedLine } from '../collab-system-lines.js'
+import { collectCollabFoldedFacts, planCollabHistoryWindow } from '../collab-history-window.js'
+import { isCollabRoomFact } from '../collab-classify.js'
+import { renderCollabBoardDigest } from '../collab-board.js'
 import {
   isAgentPairDmRoom,
   isUserDmRoom,

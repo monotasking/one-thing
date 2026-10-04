@@ -19,15 +19,15 @@ import {
   type ResourceEventHub,
   type ResourceProvider,
   type ResourceSpec,
-} from '@onething/backend/resource/resource-api'
+  forwardResourceEventsToBus,
+  PetResourceProvider,
+} from '@onething/backend/resource'
 import type { PlanContext, RunContext, ToolRunner } from '@onething/backend/toolkit'
 import type { Utterance } from '@onething/backend/pet'
 import { EventBus } from '@onething/backend/event'
-import { forwardResourceEventsToBus } from '@onething/backend/resource/resource-event-bridge'
-import { PetResourceProvider } from '@onething/backend/resource/resource-pet-provider'
 import { AmbientResourceProvider } from '@onething/backend/resource/resource-ambient-provider'
 import type { AmbientSource } from '@onething/backend/ambient'
-import type { HostVoiceKit, PatterSpeech } from '@onething/backend/music/music-host-voice'
+import type { HostVoiceKit, PatterSpeech } from '@onething/backend/music'
 import { PetsSubsystem, UnknownPetError } from '../pet-subsystem.js'
 
 const EMPTY = { type: 'object', properties: {}, required: [] }

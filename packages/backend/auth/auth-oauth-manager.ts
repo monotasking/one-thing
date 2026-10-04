@@ -7,7 +7,7 @@
  */
 
 import type { OAuthToken } from '@shared/ipc.js'
-import type { OnethingCredentialTarget } from '@onething/backend/auth'
+import type { OnethingCredentialTarget } from './auth-credential-target.js'
 import { getAuthService } from '@onething/backend/auth/auth-process-service'
 import { generatePKCE } from './auth-registry.js'
 import type { AuthProviderDefinition } from '@onething/backend/auth/auth-ipc-types'

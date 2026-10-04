@@ -87,7 +87,7 @@ const CLEARED_ON_PROVIDER_SWITCH = {
 	authContext: undefined,
 	spaceCredential: undefined,
 } as const;
-import { createTurnTraceRecorder } from "../eval/eval-trace-store.js";
+import { createTurnTraceRecorder } from "../eval/eval.js";
 import {
 	DEFAULT_AGENT_MAX_TURNS,
 	type EffectiveAgentProfile,

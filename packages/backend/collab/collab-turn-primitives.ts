@@ -17,12 +17,8 @@
  * (房回合记 ROOM、任务回合记 WORK),那是计费归属的真实差别,不是漂移。
  */
 import type { AgentDefinition, ChatMessage } from "@shared/ipc.js";
-import {
-	COLLAB_MESSAGE_SOURCE,
-	isCollabHarvestMessage,
-	isCollabSayMessage,
-	isCollabThinkingMessage,
-} from "@onething/backend/collab";
+import { COLLAB_MESSAGE_SOURCE, isCollabHarvestMessage } from "./collab-types.js";
+import { isCollabSayMessage, isCollabThinkingMessage } from "./collab-say.js";
 import { getStreamEngineSafe } from "@onething/backend/backend-current.js";
 
 import { SESSION_COMMAND_TYPES } from "@shared/events/index.js";

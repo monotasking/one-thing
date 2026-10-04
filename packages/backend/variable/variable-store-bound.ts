@@ -1,4 +1,4 @@
-import { VariablesStore } from './variable.js'
+import { VariablesStore } from './variable-store.js'
 import { loadFromDisk, saveToDisk } from './variable-store-persistence.js'
 import type { VariablesStorePersistence } from './variable-store.js'
 

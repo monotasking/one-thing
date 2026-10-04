@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { CorePluginCredentialStrategyContext } from '@onething/backend/plugin/plugin-contract'
+import type { CorePluginCredentialStrategyContext } from '@onething/backend/plugin'
 import type { OnethingBackend } from '../backend.js'
 
 let directory: string
@@ -63,7 +63,7 @@ async function assemble(name: string) {
 }
 
 async function seedUsage(tokens: number) {
-  const { getUsageLedger } = await import('@onething/backend/usage/usage-recorder')
+  const { getUsageLedger } = await import('@onething/backend/usage')
   const ledger = getUsageLedger()
   ledger.record({
     workspaceId: 'work', credentialId: 'a', providerId: 'openai', modelId: 'test-model',

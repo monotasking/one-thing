@@ -9,7 +9,7 @@ import {
   userWasAway,
   type SegmentSourceTurn,
 } from '../toc-segment.js'
-import type { SessionGoal } from '../../goal/goal-types.js'
+import type { SessionGoal } from '../../goal/goal.js'
 
 const MINUTE = 60 * 1000
 

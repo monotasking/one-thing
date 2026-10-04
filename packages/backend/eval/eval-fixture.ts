@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { CoreTemplateSkill } from "@onething/backend/agent-loop";
-import type { CoreSystemPromptSnapshot } from "../prompt/prompt-system-snapshot.js";
+import type { CoreSystemPromptSnapshot } from "../prompt/prompt.js";
 import {
 	getOnethingEvalsFixturesAutoDir,
 	type OnethingStorePathOptions,
@@ -10,7 +10,7 @@ import {
 import {
 	ONETHING_DEFAULT_SYSTEM_PROMPT,
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
-} from "../prompt/prompt-default-texts.js";
+} from "../prompt/prompt.js";
 import { hashSections } from "./eval-section-hash.js";
 
 /**

@@ -397,7 +397,7 @@ describe('资源内核在真装配里(K1)', () => {
   it('转发的订阅名单来自注册表,不是写死的 scheme 名(K2a)', async () => {
     // 装一个 core 从没听说过的命名空间,不碰装配一行代码 —— 它的事件照样上总线。
     // 这是 §8 陌生能力演练在**事件**这一侧的那半句。
-    const { planFromSpec } = await import('@onething/backend/resource/resource-api')
+    const { planFromSpec } = await import('@onething/backend/resource')
     const { textResult } = await import('@onething/backend/toolkit')
     const spec = {
       scheme: 'drill',
@@ -458,7 +458,7 @@ describe('资源内核在真装配里(K1)', () => {
    * 红的也是同一句。
    */
   it("K3-a':removeMessage 按主体分档 —— 用户删不弹卡,AI 删停在真权限卡上", async () => {
-    const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
+    const { Permission } = await import('@onething/backend/permission')
     const { sessionCommands } = await import('@onething/backend/session')
     const { sessionReads } = await import('@onething/backend/session')
 
@@ -647,7 +647,7 @@ describe('资源内核在真装配里(K1)', () => {
    * `resource/__tests__/resource-kernel.test.ts` 钉,这里钉的是 `own()` 那一格真的登记了。
    */
   it('backend.dispose():内核里在飞的做被掐成 aborted,关机不悬着(K2a\')', async () => {
-    const { planFromSpec } = await import('@onething/backend/resource/resource-api')
+    const { planFromSpec } = await import('@onething/backend/resource')
     const spec = {
       scheme: 'drill',
       title: 'Drill things',

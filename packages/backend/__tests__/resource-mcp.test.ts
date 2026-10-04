@@ -29,7 +29,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
-import type { MCPClientLike } from '@onething/backend/mcp/kernel'
+import type { MCPClientLike } from '@onething/backend/mcp'
 import type { MCPServerConfig, MCPServerState, MCPToolCallResult } from '@shared/mcp/types'
 import type { JsonObject } from '@shared/json'
 
@@ -170,7 +170,7 @@ describe('MCP 投影驱动在真装配里(K5-a)', () => {
       // `resource-kernel.test.ts` 里 AI 删消息那条一样:先等卡出现,再答 `once`。
       const store = await import('@onething/backend/session')
       const sessionId = store.createSession(`resource-mcp-${Date.now()}`, 'MCP').id
-      const { Permission } = await import('@onething/backend/permission/permission-with-grant-storage')
+      const { Permission } = await import('@onething/backend/permission')
 
       const running = backend.resources.do(
         `${SCHEME}:server`,

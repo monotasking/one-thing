@@ -4,13 +4,13 @@ import type { ProviderConfigWithKey } from './stream/engine-stream-executor.js'
 import { generateChatResponse } from '@onething/backend/provider-call'
 import { runAuxiliaryModelRequest } from '@onething/backend/session'
 import { isAgentExecutionCheckpointError } from '@onething/backend/agent-loop'
-import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/backend/plugin/plugin-lifecycle-hooks'
+import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/backend/plugin'
 import * as store from '@onething/backend/session'
 import { sessionReads } from '@onething/backend/session'
 import { sessionCommands } from '@onething/backend/session'
 import { landSessionAccountUsageFromAccount } from '@onething/backend/session'
 import { sessionLifecycleEvents } from '@onething/backend/session'
-import { billCompactUsage } from '@onething/backend/usage/usage-bill-side-line'
+import { billCompactUsage } from '@onething/backend/usage'
 import {
   buildContextCompactCompletedContent,
   buildContextCompactFailedContent,

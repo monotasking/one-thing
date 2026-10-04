@@ -34,7 +34,7 @@ import { VENDOR_RUNTIMES, type VendorRuntimeKit } from "./vendors/provider-vendo
 import type {
 	ExternalAgentConnector,
 	ExternalAgentSessionLink,
-} from "../external-agent/external-agent-types.js";
+} from "../external-agent/external-agent.js";
 import {
 	EXTERNAL_AGENT_DIALECT_ID,
 	getProviderManifest,

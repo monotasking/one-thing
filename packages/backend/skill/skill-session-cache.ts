@@ -1,6 +1,6 @@
 import type { SkillDefinition } from '@shared/ipc.js'
 import { DEFAULT_ONETHING_AGENT_ID } from '@onething/backend/agent'
-import { createOnethingSessionSkillsRuntime } from '@onething/backend/skill'
+import { createOnethingSessionSkillsRuntime } from './skill-session-runtime.js'
 import { getSettings } from '@onething/backend/settings'
 import {
   ensureSkillsDirectories,

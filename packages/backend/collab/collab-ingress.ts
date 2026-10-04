@@ -22,14 +22,13 @@ import * as store from '@onething/backend/session'
 import { sessionCommands } from '@onething/backend/session'
 import { getEventBus } from '@onething/backend/event'
 import { collabSessionRoomMembers } from './collab-members.js'
+import { COLLAB_MESSAGE_SOURCE, type CollabAgentLike } from './collab-types.js'
 import {
-  COLLAB_MESSAGE_SOURCE,
   buildCollabMentions,
   expandCollabAllMentions,
   mergeCollabMentions,
   normalizeCollabMentions,
-  type CollabAgentLike,
-} from '@onething/backend/collab'
+} from './collab-mentions.js'
 import { isTrustedCollabDrive } from '@onething/backend/collab/collab-drive-guard'
 import { collabV3RoomPostPort } from '@onething/backend/collab/actors/collab-actors-turn-context'
 

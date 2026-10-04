@@ -28,10 +28,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { AppSettings, OAuthToken, ProviderConfig } from '@shared/ipc.js'
-import {
-  OnethingTokenStore,
-  type OnethingOAuthToken,
-} from '@onething/backend/auth'
+import { OnethingTokenStore, type OnethingOAuthToken, getAuthHostPorts } from '@onething/backend/auth'
 import { oauthTokenIdentity, parseSpaceOAuthToken } from './credentials-token-store.js'
 import {
   readSpaceCredentials,
@@ -57,7 +54,6 @@ import {
   getSpacesStore,
   DEFAULT_SPACE_ID,
 } from '@onething/backend/space'
-import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
 import {
   getOnethingSettingsPath,
   getOnethingStorePath,

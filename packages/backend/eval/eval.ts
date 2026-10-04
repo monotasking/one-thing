@@ -1,3 +1,11 @@
+/**
+ * eval —— 评估:回合级的提示词抓取与快照、事故单(从一个出问题的回合建可复现的夹具)、
+ * 回放 / 重跑 / 敏感度审计、诊断报告,以及评估任务的宿主注入口。
+ *
+ * 对外交出的东西按来源文件分组:夹具与提示词版本、段落哈希、快照、抓取缓存与落盘、回合记录、
+ * 事故单、回放与运行、比较与分析、诊断;末尾一组是装配用的宿主注入口与评估任务属主。
+ * 依赖 prompt、skill、session、settings、storage、lifecycle、logging。
+ */
 export {
 	createFixture,
 	exportFixture,
@@ -224,3 +232,8 @@ export {
 	type DiagnoseResult,
 	type DiagnoseProgress,
 } from "./eval-diagnose.js";
+
+// 装配(深层引用收口第四批补进入口):宿主注入口与评估任务的属主。
+export { configureEvalsHost, resetEvalsHost } from "./eval-host-ports.js";
+export type { EvalsHostPorts } from "./eval-host-ports.js";
+export { configureEvalsTaskOwner, EvalsTaskOwner } from "./eval-task-owner.js";

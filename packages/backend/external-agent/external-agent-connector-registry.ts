@@ -1,26 +1,22 @@
-import { ACPManager } from '@onething/backend/acp'
-import {
-  ACP_CONNECTOR_ID,
-  createAcpConnector,
-  describeExternalToolPermission,
-} from '@onething/backend/external-agent'
+import { ACPManager, createAcpHostMcpPort } from '@onething/backend/acp'
+import { ACP_CONNECTOR_ID, createAcpConnector } from './external-agent-acp-connector.js'
+import { describeExternalToolPermission } from './external-agent-permission-effects.js'
 import type {
   ExternalAgentConnector,
   ExternalAgentInteractionAsk,
   ExternalAgentPermissionAsk,
   ExternalAgentPermissionDecision,
   ExternalAgentSessionLink,
-} from '@onething/backend/external-agent'
+} from './external-agent-types.js'
 import { findAgentExecutorDescriptor } from '@onething/backend/agent'
 import { Interaction } from '@onething/backend/interaction'
 import type { InteractionAnswer } from '@shared/interaction/types'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/interaction-no-human.js'
-import { resolvePermissionMessageAnchor } from '../permission/permission-message-anchor.js'
+import { resolvePermissionMessageAnchor } from '../permission/permission.js'
 import { AbortScope, Intent, createPermissionAuthorizer } from '@onething/backend/toolkit'
 import type { Invocation } from '@onething/backend/toolkit'
 import type { Effect } from '@shared/toolkit/effects'
 import { resolveExternalAgentSpawnEnv } from './external-agent-spawn-env.js'
-import { createAcpHostMcpPort } from '@onething/backend/acp/acp-host-mcp-port'
 import { getLogger } from '@onething/backend/logging'
 
 const log = getLogger('external-agents')

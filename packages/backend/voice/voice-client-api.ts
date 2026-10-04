@@ -56,7 +56,7 @@ import {
   listOnethingVoiceTTSModelsForIpc,
   testOnethingVoiceASRForIpc,
   testOnethingVoiceTTSForIpc,
-} from '@onething/backend/voice'
+} from './voice-ipc-operations.js'
 import { getVoiceHostPorts, hasVoiceHost } from '@onething/backend/voice/voice-host-ports'
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
 import type { VoiceRoutes } from '@shared/ipc/voice.js'

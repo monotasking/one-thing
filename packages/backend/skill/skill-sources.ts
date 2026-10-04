@@ -1,6 +1,4 @@
-import {
-  configureOnethingSkillsLoaderRuntime,
-} from '@onething/backend/skill'
+import { configureOnethingSkillsLoaderRuntime } from './skill-loader.js'
 import {
   builtinMusicProviders,
   getMusicProvider,
@@ -18,7 +16,7 @@ import {
 import {
   listConnectedSkillRoots,
 } from '@onething/backend/file'
-import { skillVaultRootsNow } from '../note/note-subsystem.js'
+import { skillVaultRootsNow } from '../note/note.js'
 
 /** Every provider's CLI skill dir; only the active provider's is exposed. */
 const musicSkillDirs = new Set(
@@ -112,7 +110,5 @@ export {
   loadAllSkills,
   loadProjectSkillsForDirectory,
   readSkillFile,
-} from '@onething/backend/skill'
-export type {
-  OnethingSkillsLoaderAdapters,
-} from '@onething/backend/skill'
+} from './skill-loader.js'
+export type { OnethingSkillsLoaderAdapters } from './skill-loader.js'

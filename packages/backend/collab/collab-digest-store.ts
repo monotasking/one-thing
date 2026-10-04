@@ -9,7 +9,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { readJsonFile, writeJsonFile } from '@onething/backend/storage'
-import type { CollabDayDigest } from './collab.js'
+import type { CollabDayDigest } from './collab-digest.js'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('collab.digest')

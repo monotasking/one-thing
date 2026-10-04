@@ -19,7 +19,7 @@ import {
   isAgentInfraSessionId,
   userDmRoomId,
 } from '../agent-identity.js'
-import { collabAgentSessionId, collabAgentSessionIdsForScan } from '../../collab/collab-agent-session.js'
+import { collabAgentSessionId, collabAgentSessionIdsForScan } from '../../collab/collab.js'
 
 describe('execSessionId', () => {
   it('每群每 agent 一条:带房间的形态', () => {

@@ -22,7 +22,7 @@
  * stops lighting it the moment its arguments are readable
  * (collab-send-channel-and-wake.md §4).
  */
-import { createCollabTypingTracker, type CollabTypingSignal } from '@onething/backend/collab'
+import { createCollabTypingTracker, type CollabTypingSignal } from './collab-typing.js'
 import { getEventBus } from '@onething/backend/event'
 import { broadcastCollabCoordinator, setCollabTypingState } from './collab-inspector.js'
 

@@ -29,8 +29,7 @@
  * (声明门、熔断、超时、主体)分别在 `plugin-api-builder.ts` 与装配层 —— 这里只有词汇。
  */
 
-import type { ResourceEvent } from '@onething/backend/resource/resource-events'
-import type { ReadOutcome } from '@onething/backend/resource/resource-read-outcome'
+import type { ResourceEvent, ReadOutcome } from '@onething/backend/resource'
 import type { Outcome } from '@onething/backend/toolkit'
 
 /* ── 声明门(manifest contributes.permissions)───────────────────────────── */

@@ -30,7 +30,7 @@
  * 消灭的东西。要收口就该收成另一个显式命名的函数。
  */
 import { isActiveAgent, type ChatSession } from '@shared/ipc.js'
-import type { CollabAgentLike } from '@onething/backend/collab'
+import type { CollabAgentLike } from './collab-types.js'
 import { findAgent } from '@onething/backend/agent'
 
 export interface CollabRoomMemberOptions {

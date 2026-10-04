@@ -30,14 +30,14 @@
  * "Opening the local themes folder is not available in the web server runtime."
  * 的同义降级,区别是它不再需要第二份实现。
  */
-import { getShellHost } from '@onething/backend/shell/shell-host-ports'
+import { getShellHost } from '@onething/backend/shell'
 import { defaultOnethingThemeRuntime } from '@onething/backend/theme/theme-runtime'
 import { themesRouter, type ThemesRoutes } from '@shared/ipc/themes.js'
-import { getPluginSkinTiers } from '@onething/backend/plugin/plugin-skin-table'
 import {
+  getPluginSkinTiers,
   getPluginThemeKnobVariables,
   getPluginThemeOverrideTokenValues,
-} from '@onething/backend/plugin/plugin-theme-override-table'
+} from '@onething/backend/plugin'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
 export const themesRpcHandlers: RpcRouteHandlers<ThemesRoutes> = {

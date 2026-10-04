@@ -26,8 +26,8 @@
  */
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { createOnethingSchedulerRunDetailFromRecord } from './scheduler-run-detail.js'
 import {
-  createOnethingSchedulerRunDetailFromRecord,
   createOnethingUserSchedulerTaskForIpc,
   deleteOnethingUserSchedulerTaskForIpc,
   getOnethingSchedulerRunForIpc,
@@ -37,7 +37,7 @@ import {
   runOnethingSchedulerTaskNowForIpc,
   setOnethingSchedulerTaskEnabledForIpc,
   updateOnethingUserSchedulerTaskForIpc,
-} from '@onething/backend/scheduler'
+} from './scheduler-ipc-operations.js'
 import type { SchedulerRoutes } from '@shared/ipc/scheduler.js'
 import type {
   SchedulerRunDetailDTO,
@@ -52,7 +52,7 @@ import {
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
 } from '@onething/backend/scheduler/scheduler-run-history-bound'
-import type { SchedulerRunRecord } from '@onething/backend/scheduler'
+import type { SchedulerRunRecord } from './scheduler-cron-runner.js'
 import {
   createUserSchedulerTask,
   canAccessSchedulerTask,

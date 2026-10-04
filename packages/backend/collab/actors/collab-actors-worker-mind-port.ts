@@ -39,10 +39,7 @@
  */
 import { randomUUID } from 'node:crypto'
 
-import {
-  COLLAB_USAGE_SOURCE_WORK,
-  type CollabMentionLike,
-} from '@onething/backend/collab'
+import { COLLAB_USAGE_SOURCE_WORK, type CollabMentionLike } from '../collab-types.js'
 import {
   COLLAB_WORKER_START_TIMEOUT_MS,
   COLLAB_WORKER_WALL_CLOCK_MS,

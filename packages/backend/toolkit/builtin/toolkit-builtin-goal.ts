@@ -13,7 +13,7 @@
 import { z } from 'zod'
 import type { JsonObject } from '@shared/json'
 import type { Result, RunContext, Scene, ToolSpec } from '@onething/backend/toolkit/toolkit-tool-protocol'
-import type { SessionGoal } from '../../goal/goal-types.js'
+import type { SessionGoal } from '../../goal/goal.js'
 import { defineInput } from '../toolkit-contract.js'
 import { SessionTool } from '../families/toolkit-families-session.js'
 

@@ -1,7 +1,4 @@
-import type {
-  OnethingLegacyMediaItem,
-  OnethingMediaIngestGeneratedImageInput,
-} from './media.js'
+import type { OnethingLegacyMediaItem, OnethingMediaIngestGeneratedImageInput } from './media-library-service.js'
 import { mediaLibraryService } from './media-library-service-bound.js'
 
 export type MediaItem = OnethingLegacyMediaItem

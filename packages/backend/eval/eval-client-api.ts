@@ -73,7 +73,7 @@ import {
   resolveEvalsCredentials,
 } from '@onething/backend/eval/eval-provider-adapter'
 import { getLogger } from '@onething/backend/logging'
-import { getSkillsForSession } from '@onething/backend/skill/skill-session-cache'
+import { getSkillsForSession } from '@onething/backend/skill'
 import { analyzeIncidentInBackground } from './eval-client-api-workbench.js'
 import { getEvalsTaskOwner } from '@onething/backend/eval/eval-task-owner'
 import { isPathInside, resolveRpcSandbox } from '@onething/backend/http-server/http-server-sandbox.js'

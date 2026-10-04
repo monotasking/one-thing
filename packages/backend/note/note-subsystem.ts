@@ -31,20 +31,14 @@
  * 状态,所以没人需要认识第二种。
  */
 
-import {
-  FolderDriver,
-  NoteSystemRegistry,
-  ObsidianCli,
-  ObsidianDriver,
-  ObsidianRegistry,
-  FileSnapshotStore,
-  createNodeProcessRunner,
-  createSocketLivenessProbe,
-  type NoteSystemDriver,
-  type NoteSystemState,
-  type NoteVault,
-  type NotesConfig,
-} from '@onething/backend/note'
+import { FolderDriver } from './folder/note-folder-driver.js'
+import { NoteSystemRegistry } from './note-registry.js'
+import { ObsidianCli } from './obsidian/note-obsidian-cli.js'
+import { ObsidianDriver } from './obsidian/note-obsidian-driver.js'
+import { ObsidianRegistry } from './obsidian/note-obsidian-registry.js'
+import { FileSnapshotStore } from './obsidian/note-obsidian-snapshot.js'
+import { createNodeProcessRunner, createSocketLivenessProbe } from './note-process-runner.js'
+import type { NoteSystemDriver, NoteSystemState, NoteVault, NotesConfig } from './note-types.js'
 import type { AppSettings } from '@shared/ipc.js'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -54,7 +48,7 @@ import {
   getSettingsEventBroadcaster,
   type SettingsEvent,
   type SettingsEventBroadcaster,
-} from '../settings/settings-events.js'
+} from '../settings/settings.js'
 import { getSettings } from '@onething/backend/settings'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '@onething/backend/backend-current.js'
@@ -444,6 +438,6 @@ function watchSettingsChanged(listener: (event: SettingsEvent) => void): () => v
   }
 }
 
-export { NoteSystemRegistry } from '@onething/backend/note'
-export type { NoteVault, NotesConfig } from '@onething/backend/note'
+export { NoteSystemRegistry } from './note-registry.js'
+export type { NoteVault, NotesConfig } from './note-types.js'
 export { NoteSkillRoots, type NoteSkillRoot } from './note-skill-roots.js'

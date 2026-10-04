@@ -16,7 +16,10 @@ import path from 'node:path'
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-cli-plugin-'))
 const pluginsDir = path.join(tmpRoot, 'plugins')
 
-vi.mock('@onething/backend/plugin/plugin-disk-loader', () => ({
+// 深层引用收口第四批(2026-10-04):`plugin-command.ts` 改经插件入口取名字,入口一并装载插件目录里别的
+// 模块,它们要这两只文件里桩没给的名字;所以展开真模块、只换原来那几项(D173 先例),断言不动。
+vi.mock('@onething/backend/plugin/plugin-disk-loader', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   getPluginsDir: () => pluginsDir,
 }))
 
@@ -29,7 +32,8 @@ vi.mock('../stdout.js', () => ({
   stdoutRaw: (text: string) => { stdoutLines.push(String(text)) },
 }))
 
-vi.mock('@onething/backend/plugin/plugin-npm-process', () => ({
+vi.mock('@onething/backend/plugin/plugin-npm-process', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   probePluginNpmAvailability: vi.fn(async () => true),
   installPluginPackage: vi.fn(async () => ({ ok: true, pluginId: 'stub' })),
   uninstallPluginPackage: vi.fn(async () => ({ removed: true })),

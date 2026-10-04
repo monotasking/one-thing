@@ -43,9 +43,9 @@ import type {
   ResourceEventHub,
   ResourceProvider,
   ResourceReadContext,
-} from '@onething/backend/resource/resource-api'
+} from '@onething/backend/resource'
 import type { ResourceRef } from '@shared/resource/ref'
-import { planFromSpec } from '@onething/backend/resource/resource-api'
+import { planFromSpec } from '@onething/backend/resource'
 import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit'
 import { Intent, wrapUntrustedText } from '@onething/backend/toolkit'
 import type { BrowserTabState, BrowserZoomDirection } from './tab-state.js'

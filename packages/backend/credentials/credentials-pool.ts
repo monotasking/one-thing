@@ -25,7 +25,7 @@ import {
   isValidSpaceId,
 } from '@onething/backend/space'
 // 类型-only:`auth/` 反过来 import 本模块(space-token-store),值 import 会成环。
-import type { OnethingTokenCryptoAdapter } from '../auth/auth-token-store.js'
+import type { OnethingTokenCryptoAdapter } from '../auth/auth.js'
 
 import { getLogger } from '../logging/logging.js'
 

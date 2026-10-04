@@ -21,44 +21,43 @@ import type {
   ReasoningProfileOverride,
 } from '@shared/ipc/providers.js'
 import { createAgentProviderFromRuntime } from '@onething/backend/provider-call'
+import { catalogFactsOf, createOnethingManualModelEntry, isOnethingManualModelEntry } from './provider-manual-models.js'
+import { effectiveModelFactsOf, onethingModelOverrideFactsOf } from './provider-effective-model.js'
 import {
-  catalogFactsOf,
-  createOnethingManualModelEntry,
-  effectiveModelFactsOf,
   getAllOnethingModelRegistryModelsForIpc,
   getOnethingModelCapabilitiesForIpc,
   getOnethingModelRegistryDisplayNameForIpc,
   getOnethingModelRegistryNameAliasesForIpc,
-  getOnethingModelsWithCapabilities,
-  isOnethingManualModelEntry,
-  MODEL_SUGGESTION_CAPABILITY_KEYS,
-  modelIdentityIndexOf,
-  modelParameterSuggestionOf,
-  modelsDevModelToOnethingCapabilityEntry,
-  ONETHING_PROVIDER_MAPPING,
-  onethingCapabilityEntryToOpenRouterModel,
-  onethingModelOverrideFactsOf,
-  openRouterModelToOnethingCapabilityEntry,
-  projectOnethingThinkingLevels,
   refreshOnethingModelRegistryForIpc,
-  resolveOnethingModelCapabilities,
   searchOnethingModelRegistryForIpc,
-  VENDOR_RUNTIMES,
   type GetAllOnethingModelRegistryModelsOptions,
   type GetOnethingModelRegistryNameAliasesOptions,
+  type OnethingModelQueryIpcLogger,
+  type RefreshOnethingModelRegistryOptions,
+} from './provider-model-query-presentation.js'
+import {
+  getOnethingModelsWithCapabilities,
+  modelsDevModelToOnethingCapabilityEntry,
+  onethingCapabilityEntryToOpenRouterModel,
+  openRouterModelToOnethingCapabilityEntry,
   type GetOnethingModelsWithCapabilitiesAdapters,
-  type ModelIdentityIndex,
   type OnethingCatalogModelEntry,
   type OnethingConfiguredModelSelection,
   type OnethingEndpointModelsFetcher,
-  type OnethingModelQueryIpcLogger,
   type OnethingModelRegistryRefreshLogger,
   type OnethingOpenRouterModel,
-  type OnethingProviderOptions,
-  type RefreshOnethingModelRegistryOptions,
-  type VendorModelsFetcherDeps,
-} from '@onething/backend/provider'
-import { getAuthService } from '@onething/backend/auth/auth-process-service'
+} from './provider-model-registry.js'
+import {
+  MODEL_SUGGESTION_CAPABILITY_KEYS,
+  modelIdentityIndexOf,
+  modelParameterSuggestionOf,
+  type ModelIdentityIndex,
+} from './provider-model-identity.js'
+import { ONETHING_PROVIDER_MAPPING } from './provider-models-dev-catalog.js'
+import { projectOnethingThinkingLevels, resolveOnethingModelCapabilities } from './provider-model-capability.js'
+import { VENDOR_RUNTIMES, type VendorModelsFetcherDeps } from './vendors/provider-vendor-runtimes.js'
+import type { OnethingProviderOptions } from './provider-options.js'
+import { getAuthService } from '@onething/backend/auth'
 import {
   modelRegistry,
   addManualModel,

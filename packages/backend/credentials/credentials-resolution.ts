@@ -11,7 +11,12 @@
  * 多一份会分家的判据。
  */
 
-import { getAuthHostPorts } from '@onething/backend/auth/auth-host-ports'
+import {
+  getAuthHostPorts,
+  credentialTargetFromSpaceMarker,
+  type OnethingCredentialTarget,
+  getAuthService,
+} from '@onething/backend/auth'
 import { isProviderEnabledIn } from '@shared/provider-families'
 import {
   builtinProviderFamilyLookup,
@@ -63,10 +68,6 @@ import {
   classifyOAuthRefreshError,
   providerErrorCooldownUntil,
 } from '@onething/backend/agent-loop'
-import {
-  credentialTargetFromSpaceMarker,
-  type OnethingCredentialTarget,
-} from '@onething/backend/auth'
 import { parseSpaceOAuthToken } from './credentials-token-store.js'
 import type {
   SpaceCredentialImportSkip,
@@ -86,8 +87,7 @@ import {
   getSpacesStore,
 } from '@onething/backend/space'
 import { providerSeedOf } from '@onething/backend/settings'
-import { getAuthService } from '@onething/backend/auth/auth-process-service'
-import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth'
 import { resolveSessionSpaceId, getSessionSettings, getSpaceSettings } from '@onething/backend/session'
 
 function providerLabel(providerId: string): string {

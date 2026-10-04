@@ -21,18 +21,15 @@ import {
 	canAutoContinueGoal,
 	clearGoalErrorStreak,
 	createSessionGoal,
-	currentGoalOf,
 	GoalStateError,
 	isGoalUnfinished,
-	mergeGoalRecord,
-	normalizeGoalRecords,
 	pauseGoalAfterAbort,
 	pauseGoalAtContinuationLimit,
-	pruneGoalHistory,
 	recordGoalContinuation,
 	recordGoalRunError,
-} from "@onething/backend/goal";
-import type { SessionGoal, SessionGoalLimits } from "@onething/backend/goal";
+} from "./goal-state.js";
+import { currentGoalOf, mergeGoalRecord, normalizeGoalRecords, pruneGoalHistory } from "./goal-records.js";
+import type { SessionGoal, SessionGoalLimits } from "./goal-types.js";
 import { getEventBus } from "@onething/backend/event";
 import * as store from "@onething/backend/session";
 import { sessionReads } from "@onething/backend/session";

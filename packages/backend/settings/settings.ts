@@ -1,6 +1,11 @@
-export * from './settings-ipc-operations.js'
-export * from './settings-repository.js'
-export * from './settings-save.js'
+/**
+ * settings —— 设置:应用设置的读写缓存(按空间叠服务商设置)、出厂默认值、设置变更的广播、
+ * 按用户代理去请求的受管 fetch,以及模型目录服务(目录缓存、手填模型、自定义服务商)。
+ *
+ * 对外交出六类东西(各段注释说明来历):设置缓存的读写;出厂设置与默认值;受管 fetch;模型目录服务;
+ * 宿主注入口与设置变更广播;两只调试日志口的形状。
+ * 依赖 provider、space、network、storage、logging。
+ */
 
 // ── 包根归位 2(2026-10-03)从包根 `stores/` 并进来的设置缓存、出厂设置与默认值表。外面真在用的名字逐个列出。
 // 设置缓存(`settings-store.ts`)的仓储在第一次用到时才建(包根归位 B),所以 import 入口不读盘、不读设置。
@@ -45,3 +50,13 @@ export {
 export {
   getModelCapabilityEntry,
 } from './settings-model-registry-service.js'
+
+// ── 宿主注入口与设置变更的广播(深层引用收口第四批补进入口)。
+export { configureSettingsHost, resetSettingsHost } from './settings-host-ports.js'
+export type { SettingsHostPorts } from './settings-host-ports.js'
+export { configureSettingsEventBroadcaster, getSettingsEventBroadcaster } from './settings-events.js'
+export type { SettingsEvent, SettingsEventBroadcaster } from './settings-events.js'
+
+// ── 调试日志口的形状。
+export type { OnethingSettingsIpcLogger } from './settings-ipc-operations.js'
+export type { OnethingSettingsRepositoryLogger } from './settings-repository.js'

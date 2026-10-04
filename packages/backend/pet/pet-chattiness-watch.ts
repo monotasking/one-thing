@@ -10,14 +10,14 @@
  * 还原带身份守卫,后来又有人串了一层时不抹掉它。**settings 域一个字都不知道有宠物。**
  */
 
-import { normalizePetChattiness, type PetChattiness } from '@onething/backend/pet'
+import { normalizePetChattiness, type PetChattiness } from './pet-chattiness.js'
 import type { AppSettings } from '@shared/ipc/settings.js'
 import { getLogger } from '@onething/backend/logging'
 import {
   configureSettingsEventBroadcaster,
   getSettingsEventBroadcaster,
   type SettingsEventBroadcaster,
-} from '../settings/settings-events.js'
+} from '../settings/settings.js'
 
 const log = getLogger('pets')
 

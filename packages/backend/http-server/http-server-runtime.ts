@@ -46,7 +46,20 @@ import {
 } from "@onething/backend/event/event-bus-primitives";
 import {
 	Permission,
-} from "@onething/backend/permission/permission-asks";
+	addGrant,
+	clearOnethingPermissionSessionForIpc,
+	clearOnethingSessionPermissionGrantsForIpc,
+	clearOnethingWorkspacePermissionGrantsForIpc,
+	clearSessionGrants,
+	clearWorkspaceGrants,
+	configureOnethingPermissionGrantStorage,
+	getOnethingPendingPermissionsForIpc,
+	listOnethingPermissionGrantsForIpc,
+	listSessionGrants,
+	listWorkspaceGrants,
+	revokeGrant,
+	revokeOnethingPermissionGrantForIpc,
+} from "@onething/backend/permission";
 import {
 	createOnethingRuntimeFacade,
 	type OnethingRuntimeFacade,
@@ -62,7 +75,7 @@ import type {
 import { type JsonObject } from "@shared/json";
 import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabilities";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import type { McpSubsystem } from "@onething/backend/mcp/mcp-subsystem";
+import type { McpSubsystem } from "@onething/backend/mcp";
 import type { ConfigureLoggingOptions } from "@onething/backend/logging/logging-configure";
 import {
 	createTenantAudienceFactory,
@@ -74,18 +87,40 @@ import {
 	type SessionIndexPort,
 	type SessionOwner as ServerSessionOwner,
 } from "./http-server-audience.js";
-import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/settings";
+import { invalidateSettingsCache as invalidateAppSettingsCache, mergeWithDefaults } from "@onething/backend/settings";
 import {
 	invalidateAgentsCache as invalidateAppAgentsCache,
 	createOnethingAgentStore,
 	DEFAULT_ONETHING_AGENT_ID,
 } from "@onething/backend/agent";
-import { getProjectsStore as getAppProjectsStore } from "@onething/backend/project-dir/project-dir-bootstrap";
+import {
+	getProjectsStore as getAppProjectsStore,
+	addOnethingProjectDirForIpc,
+	getOnethingProjectDirForIpc,
+	listOnethingProjectDirsForIpc,
+	normalizeProjectRoots,
+	projectIdFromPath,
+	projectRootsInclude,
+	removeOnethingProjectDirForIpc,
+	updateOnethingProjectDirForIpc,
+	type Project,
+	type ProjectDirsAddRequest,
+	type ProjectDirsGetRequest,
+	type ProjectDirsRemoveRequest,
+	type ProjectDirsUpdateRequest,
+	type ProjectIndexEntry,
+} from "@onething/backend/project-dir";
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
 } from "@onething/backend/mcp/mcp-index-with-bridge";
-import { configureMCPClientIdentity } from "@onething/backend/mcp/mcp-identity";
+import {
+	configureMCPClientIdentity,
+	createMCPServerState,
+	HeadlessMCPManager,
+	type MCPClientLike,
+	ServerMCPClient,
+} from "@onething/backend/mcp";
 import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getCurrentSessionId as getAppStoreCurrentSessionId, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList, setCurrentSessionId as setAppStoreCurrentSessionId, updateSessionWorkingDirectory as updateAppSessionWorkingDirectory, updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots } from "@onething/backend/session";
 import {
 	createSessionCommands,
@@ -119,47 +154,8 @@ import {
 	type CorePluginCommandDefinition,
 	type CorePluginDefinition,
 	type CorePluginInfo,
-	type PluginSettings, type CorePluginSettingsStorageAdapters,
-} from "@onething/backend/plugin/plugin-contract";
-import {
-	createMCPServerState,
-	HeadlessMCPManager,
-	type MCPClientLike,
-} from "@onething/backend/mcp/kernel";
-// P4c 第七批:oauth 的六条数据面(与它们背后那台 per-owner 的第二台 authService)
-// 已随 `oauthRouter` 迁走;server 这侧只剩令牌事件的广播端口。
-import {
-	configureOAuthEventBroadcaster,
-	getOAuthEventBroadcaster,
-	type OAuthTokenEvent,
-} from "@onething/backend/auth/auth-oauth-events";
-// E 批:设置变更的推送端口。数据面(读 / 存 / 系统深浅色 / 代理自检)仍然只走
-// `settingsRouter`,这里只串一条广播 —— 见下面 `settingsChangedHandlers`。
-import {
-	configureSettingsEventBroadcaster,
-	getSettingsEventBroadcaster,
-	type SettingsEvent,
-} from "@onething/backend/settings/settings-events";
-// `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
-// 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
-import { isCollabV3RuntimeRunning } from "@onething/backend/collab/collab-rooms";
-// B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
-// 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
-import { getPluginManager } from "@onething/backend/plugin/plugin-system";
-import { isHostLocallyTrusted } from "./http-server-host-trust.js";
-import { hasShellHost } from "@onething/backend/shell/shell-host-ports";
-import { hasTerminalHost } from "@onething/backend/terminal/terminal-service";
-import { registerACPPermissionBridge } from "@onething/backend/acp/acp-permission-bridge";
-import { createEventBusTerminalBroadcaster } from "@onething/backend/terminal";
-import {
-	createOnethingSearchService,
-	type OnethingSearchProvidersAdapters,
-	type SearchServiceRequest,
-	unavailableIndexFace,
-} from "@onething/backend/search";
-import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/note/note-subsystem";
-import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/media";
-import {
+	type PluginSettings,
+	type CorePluginSettingsStorageAdapters,
 	ONETHING_LOG_MONITOR_MANIFEST,
 	executeOnethingPluginCommandForIpc,
 	disableOnethingPluginForIpc,
@@ -168,27 +164,43 @@ import {
 	listOnethingPluginsForIpc,
 	refreshOnethingPluginsForIpc,
 } from "@onething/backend/plugin";
+// P4c 第七批:oauth 的六条数据面(与它们背后那台 per-owner 的第二台 authService)
+// 已随 `oauthRouter` 迁走;server 这侧只剩令牌事件的广播端口。
+import {
+	configureOAuthEventBroadcaster,
+	getOAuthEventBroadcaster,
+	type OAuthTokenEvent,
+} from "@onething/backend/auth";
+// E 批:设置变更的推送端口。数据面(读 / 存 / 系统深浅色 / 代理自检)仍然只走
+// `settingsRouter`,这里只串一条广播 —— 见下面 `settingsChangedHandlers`。
+import {
+	configureSettingsEventBroadcaster,
+	getSettingsEventBroadcaster,
+	type SettingsEvent,
+} from "@onething/backend/settings";
+// `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
+// 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
+import { isCollabV3RuntimeRunning } from "@onething/backend/collab";
+// B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
+// 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
+import { getPluginManager } from "@onething/backend/plugin";
+import { isHostLocallyTrusted } from "./http-server-host-trust.js";
+import { hasShellHost } from "@onething/backend/shell";
+import { hasTerminalHost, createEventBusTerminalBroadcaster } from "@onething/backend/terminal";
+import { registerACPPermissionBridge } from "@onething/backend/acp";
+import {
+	createOnethingSearchService,
+	type OnethingSearchProvidersAdapters,
+	type SearchServiceRequest,
+	unavailableIndexFace,
+} from "@onething/backend/search";
+import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/note";
+import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/backend/media";
 import {
 	createRequiredOnethingAppFetch,
 } from "@onething/backend/network";
 // 片段的 ipc-operations 已随 CRUD 一起迁到 RPC 域;这里只剩搜索面还要读 store。
 import { OnethingPromptStore } from "@onething/backend/prompt";
-import {
-	addOnethingProjectDirForIpc,
-	getOnethingProjectDirForIpc,
-	listOnethingProjectDirsForIpc,
-	normalizeProjectRoots,
-	projectIdFromPath,
-	projectRootsInclude,
-	removeOnethingProjectDirForIpc,
-	updateOnethingProjectDirForIpc,
-	type Project,
-	type ProjectDirsAddRequest,
-	type ProjectDirsGetRequest,
-	type ProjectDirsRemoveRequest,
-	type ProjectDirsUpdateRequest,
-	type ProjectIndexEntry,
-} from "@onething/backend/project-dir";
 import {
 	createOnethingDirectory,
 	createOnethingFile,
@@ -215,28 +227,13 @@ import {
 	type OnethingMarkdownAssetServiceAdapters,
 	type OnethingMarkdownEditorSettings,
 } from "@onething/backend/markdown";
-import {
-	addGrant,
-	clearOnethingPermissionSessionForIpc,
-	clearOnethingSessionPermissionGrantsForIpc,
-	clearOnethingWorkspacePermissionGrantsForIpc,
-	clearSessionGrants,
-	clearWorkspaceGrants,
-	configureOnethingPermissionGrantStorage,
-	getOnethingPendingPermissionsForIpc,
-	listOnethingPermissionGrantsForIpc,
-	listSessionGrants,
-	listWorkspaceGrants,
-	revokeGrant,
-	revokeOnethingPermissionGrantForIpc,
-} from "@onething/backend/permission";
 import { type PermissionGrant } from "@shared/permission/grant";
 // todo/plan 的数据面已整体迁走(含 per-owner 分库);server 这侧只剩变更广播的载荷类型。
 import type { TodoPlanChangedPayload } from "@onething/backend/todo-plan";
 import {
 	configureTodoPlanHost,
 	getTodoPlanHostPorts,
-} from "@onething/backend/todo-plan/todo-plan-service";
+} from "@onething/backend/todo-plan";
 import {
 	VariableRegistry,
 	VariablesStore,
@@ -276,7 +273,6 @@ import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
 } from "@onething/backend/session";
-import { mergeWithDefaults } from "@onething/backend/settings";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "./http-server-sandbox.js";
@@ -289,7 +285,7 @@ import type { RpcDispatchPorts } from "./http-server-dispatch-table.js";
 import {
 	createWorkspaceWatchService,
 	type WorkspaceFileChangedHandler,
-} from "@onething/backend/file/file-workspace-watch";
+} from "@onething/backend/file";
 import type {
 	VoiceEvent,
 	VoiceRuntimeCommand,
@@ -303,7 +299,7 @@ import {
 	startScratchpadWatcher,
 	stopScratchpadWatcher,
 	updateScratchpad as updateAppScratchpad,
-} from "@onething/backend/scratchpad/scratchpad-service-bound";
+} from "@onething/backend/scratchpad";
 import type {
 	ScratchpadAdoptRequest,
 	ScratchpadChangedPayload,
@@ -330,7 +326,6 @@ import type {
 	PermissionInfo,
 	PermissionResponse,
 } from "@shared/ipc/permissions.js";
-import { ServerMCPClient } from "@onething/backend/mcp";
 // P4c 第六批:MCP 私密字段的脱敏 / 合并规则搬到 mcp(今天是 `mcp/mcp-secrets.ts`,经 mcp 入口交出);P4c 第十一批
 // 起设置面那半也搬到了 `settings/settings-client-api-projection.ts`,两处都由域处理者的 http 分叉调用。
 // 这里只剩一条再导出 —— 测试与旧调用点从 `http-server/http-server-runtime.js` 取那个哨兵常量。
@@ -339,11 +334,11 @@ import { sanitizeSettingsForClient } from "../settings/settings-client-api-proje
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 import { consolePort, getLogger } from '@onething/backend/logging'
-import type { VariablesStorePersistence } from '@onething/backend/variable/variable-store'
-import type { OnethingPromptStoreAdapters } from '@onething/backend/prompt/prompt-store'
+import type { VariablesStorePersistence } from '@onething/backend/variable'
+import type { OnethingPromptStoreAdapters } from '@onething/backend/prompt'
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from './http-server-runtime-facade.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { OnethingPluginIpcLogger } from '@onething/backend/plugin/plugin-ipc-operations'
+import type { OnethingPluginIpcLogger } from '@onething/backend/plugin'
 import type { RuntimeGlobalEventsAdapter, RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from './http-server-runtime-facade.js'
 import { GLOBAL_EVENT_LEAVES_PROCESS } from '@shared/events/index.js'
 

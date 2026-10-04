@@ -3,7 +3,7 @@ import { accessSync, constants as fsConstants } from 'node:fs'
 import { unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/voice/voice-speech-output'
+import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/voice'
 import { getLogger } from '@onething/backend/logging'
 
 /**

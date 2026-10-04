@@ -7,7 +7,7 @@ import * as store from '@onething/backend/session'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '@shared/ipc.js'
 import { requiresOAuth } from './provider-call-chat.js'
 import { oauthManager } from '@onething/backend/auth'
-import type { ProviderAuthContext } from '@onething/backend/auth/auth-ipc-types'
+import type { ProviderAuthContext } from '@onething/backend/auth'
 import {
   extractOnethingProviderErrorDetails,
   getEffectiveOnethingProviderConfig,

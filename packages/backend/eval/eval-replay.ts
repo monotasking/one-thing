@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { CoreRequestMessage, TurnBlock } from "@onething/backend/agent-loop";
-import { attachTurnBlocksToLastUserMessage } from "../prompt/prompt-turn-delivery.js";
+import { attachTurnBlocksToLastUserMessage } from "../prompt/prompt.js";
 import {
 	getIncidentDir,
 	readIncident,
@@ -314,7 +314,7 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 	) {
 		systemPrompt = scene.capturedSystemPrompt;
 	} else {
-		const { buildOnethingPrompt } = await import("../prompt/prompt-builder.js");
+		const { buildOnethingPrompt } = await import("../prompt/prompt.js");
 		const ctx = (scene.fixtureContext ?? {}) as Record<string, unknown>;
 		const built = await buildOnethingPrompt({
 			providerId: scene.params.provider || "eval",

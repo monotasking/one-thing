@@ -3,7 +3,7 @@ import type {
   OpenRouterModel,
   ProviderInfo as IpcProviderInfo,
 } from '@shared/ipc.js'
-import type { ProviderAuthContext } from '../auth/auth-ipc-types.js'
+import type { ProviderAuthContext } from '../auth/auth.js'
 import type {
   OnethingProviderCallMode,
   OnethingProviderCallOptions,

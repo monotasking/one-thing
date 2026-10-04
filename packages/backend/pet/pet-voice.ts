@@ -17,9 +17,9 @@
  *
  * 没配语音(`settings.voice` 缺席)→ 合成那一步答 `null` → 不出声,但气泡照出(§10.2)。
  */
-import type { PetVoice } from '@onething/backend/pet'
+import type { PetVoice } from './pet-manifest.js'
 import type { VoiceSettings } from '@shared/ipc.js'
-import type { PatterVoiceStyle } from '@onething/backend/music/music-host-voice'
+import type { PatterVoiceStyle } from '@onething/backend/music'
 
 const RATE: Record<PetVoice['rate'], number> = {
   slow: 0.85,

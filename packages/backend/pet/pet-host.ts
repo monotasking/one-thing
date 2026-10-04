@@ -29,7 +29,7 @@
  * 电台眼里说完了、在宠物眼里还在说。
  */
 
-import { estimateSpeechSeconds } from '../music/music-lyrics.js'
+import { estimateSpeechSeconds } from '../music/music.js'
 import { PET_CHATTINESS, PET_DEFAULT_CHATTINESS, type PetChattiness } from './pet-chattiness.js'
 import type { MomentComposer } from './pet-composer.js'
 import {
