@@ -1,0 +1,68 @@
+/**
+ * 秒表的读数怎么算、怎么落盘。
+ *
+ * 状态只有一份,住在 store 里 `<store>/stopwatch/stopwatch.json`(路径经 storage 入口问 store 根,不自己拼家目录);
+ * 内存里不留任何东西 —— 每次操作读文件、算、写回,所以没有模块级状态,也不需要装配期建什么。
+ * 时钟由调用方递进来(缺省 `Date.now`),测试因此不用假计时器。
+ */
+import { getOnethingStorePath, joinPaths, readJsonFile, writeJsonFile } from '@onething/backend/storage'
+import type { StopwatchSnapshot } from '@shared/ipc/stopwatch.js'
+
+/** 落盘的形状:比读数少一格 `elapsedMs`(那一格现算),多一格停下时已走的毫秒数。 */
+interface StopwatchRecord {
+  startedAt: number | null
+  /** 停下时定格的毫秒数;正在走时为 `null`。 */
+  frozenMs: number | null
+  laps: number[]
+}
+
+const EMPTY_RECORD: StopwatchRecord = { startedAt: null, frozenMs: null, laps: [] }
+
+export type StopwatchClock = () => number
+
+function stopwatchFilePath(): string {
+  return joinPaths(getOnethingStorePath(), 'stopwatch', 'stopwatch.json')
+}
+
+function readRecord(): StopwatchRecord {
+  return readJsonFile<StopwatchRecord>(stopwatchFilePath(), EMPTY_RECORD)
+}
+
+function snapshotOf(record: StopwatchRecord, now: number): StopwatchSnapshot {
+  const running = record.startedAt !== null && record.frozenMs === null
+  const elapsedMs = record.frozenMs ?? (record.startedAt === null ? 0 : now - record.startedAt)
+  return { running, startedAt: record.startedAt, elapsedMs, laps: [...record.laps] }
+}
+
+function update(clock: StopwatchClock, change: (record: StopwatchRecord, now: number) => StopwatchRecord): StopwatchSnapshot {
+  const now = clock()
+  const next = change(readRecord(), now)
+  writeJsonFile(stopwatchFilePath(), next)
+  return snapshotOf(next, now)
+}
+
+/** 从零开始走(已在走就从头再来)。 */
+export function startStopwatch(clock: StopwatchClock = Date.now): StopwatchSnapshot {
+  return update(clock, (_record, now) => ({ startedAt: now, frozenMs: null, laps: [] }))
+}
+
+/** 记一圈:正在走才记,没在走原样返回。 */
+export function lapStopwatch(clock: StopwatchClock = Date.now): StopwatchSnapshot {
+  return update(clock, (record, now) => {
+    if (record.startedAt === null || record.frozenMs !== null) return record
+    return { ...record, laps: [...record.laps, now - record.startedAt] }
+  })
+}
+
+/** 停下并定格读数;没在走原样返回。 */
+export function stopStopwatch(clock: StopwatchClock = Date.now): StopwatchSnapshot {
+  return update(clock, (record, now) => {
+    if (record.startedAt === null || record.frozenMs !== null) return record
+    return { ...record, frozenMs: now - record.startedAt }
+  })
+}
+
+/** 读当前读数,不写盘。 */
+export function readStopwatch(clock: StopwatchClock = Date.now): StopwatchSnapshot {
+  return snapshotOf(readRecord(), clock())
+}

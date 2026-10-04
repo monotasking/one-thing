@@ -1,0 +1,27 @@
+/**
+ * `stopwatch` 域 —— 秒表开给界面的四条操作(契约 `@shared/ipc/stopwatch.ts`)。
+ *
+ * 处理者只是把每条转给同目录的 `stopwatch-state.ts`;没有宿主能力、不读 `context.transport`。
+ * 名册 `http-server/http-server-client-api-roster.ts` 里的一行就是下面的 `STOPWATCH_CLIENT_API`。
+ */
+import { stopwatchRouter, type StopwatchRoutes } from '@shared/ipc/stopwatch.js'
+import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
+import { lapStopwatch, readStopwatch, startStopwatch, stopStopwatch } from './stopwatch-state.js'
+
+export const stopwatchRpcHandlers: RpcRouteHandlers<StopwatchRoutes> = {
+  async start() {
+    return startStopwatch()
+  },
+  async lap() {
+    return lapStopwatch()
+  },
+  async stop() {
+    return stopStopwatch()
+  },
+  async read() {
+    return readStopwatch()
+  },
+}
+
+/** 名册 `http-server/http-server-client-api-roster.ts` 里的一行:域 `stopwatch` 的契约与处理者。 */
+export const STOPWATCH_CLIENT_API = defineClientApi({ id: 'rpc:stopwatch', router: stopwatchRouter, handlers: stopwatchRpcHandlers })

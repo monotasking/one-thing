@@ -68,6 +68,7 @@
 		"provider:check": "node scripts/provider-vendor-gate.mjs --list --verbose",
 		"provider:gate": "node scripts/provider-vendor-gate.mjs",
 		"provider:drill": "node scripts/provider-vendor-drill.mjs",
+		"feature:drill": "node scripts/feature-drill.mjs",
 		"entry:check": "node scripts/feature-entry-gate.mjs --list",
 		"entry:gate": "node scripts/feature-entry-gate.mjs",
 		"name:check": "node scripts/file-name-gate.mjs --list",

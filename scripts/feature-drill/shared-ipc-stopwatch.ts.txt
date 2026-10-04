@@ -1,0 +1,27 @@
+/**
+ * `stopwatch` 域的契约 —— 陌生能力演练(`scripts/feature-drill.mjs`)放进来的虚构功能「秒表」。
+ *
+ * 四条:开始、记一圈、停下、读当前读数。全部作用在这个 store 唯一的一只秒表上,不带会话,
+ * 所以不声明会话授权。真仓库里没有这个域;它只活在演练的临时 worktree 里。
+ */
+import { defineRouter } from "./router.js";
+
+export interface StopwatchSnapshot {
+	/** 正在走。 */
+	running: boolean;
+	/** 这一轮开始的时刻(毫秒时间戳);从没开始过为 `null`。 */
+	startedAt: number | null;
+	/** 已走过的毫秒数:正在走时算到此刻,停下后定格。 */
+	elapsedMs: number;
+	/** 每一圈记下时距开始的毫秒数,按先后排。 */
+	laps: number[];
+}
+
+export type StopwatchRoutes = {
+	start: { input: void; output: StopwatchSnapshot };
+	lap: { input: void; output: StopwatchSnapshot };
+	stop: { input: void; output: StopwatchSnapshot };
+	read: { input: void; output: StopwatchSnapshot };
+};
+
+export const stopwatchRouter = defineRouter<StopwatchRoutes>("stopwatch", ["start", "lap", "stop", "read"]);

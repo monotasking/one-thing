@@ -176,7 +176,7 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 
 ## 5. 门
 
-下表除 `provider:drill` 外都在 CI(`.github/workflows/test.yml`)里跑;CI 另外还跑根与壳的单测和壳的 `ui:consume`。「零基线硬闸」= 一处命中就红;「棘轮」= 按基线计数,只许降(降了用 `--write-baseline`
+下表全部在 CI(`.github/workflows/test.yml` 的 gates job)里跑;CI 另外还跑根与壳的单测和壳的 `ui:consume`。「零基线硬闸」= 一处命中就红;「棘轮」= 按基线计数,只许降(降了用 `--write-baseline`
 收紧)。
 
 **结构门**(后端):
@@ -195,6 +195,7 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 | `bun run transport:gate` | 手写通道常量个数与壳文件行数;`http-server/` 与全部 client-api 里读 `context.transport` 的处数;React 壳的 `ipcMain` 注册 ≤ 2 | 棘轮(`docs/audit/transport-forks-baseline-2026-09-03.txt` 等) |
 | `bun run provider:gate` | 某家服务商的 id 出现在它自己的 `provider/vendors/<id>/` 之外(按 TypeScript 解析,注释不算;名册、壳的 i18n 与图标、`provider/model-families/`、协议名等豁免) | 棘轮(`docs/audit/provider-vendor-baseline-2026-10.txt`) |
 | `bun run provider:drill` | 在临时 worktree 里加一家虚构服务商,断言目录外只动了两份名册与壳的两份 i18n | 演练 |
+| `bun run feature:drill` | 在临时 worktree 里加一个虚构功能「秒表」(主入口、内部文件、经 storage 入口落盘、`@shared/ipc` 契约 + client-api 一行、一份测试),断言功能目录外恰好只动了契约、层次表一行、名册一行、exports 一把键与生成的功能地图;node typecheck 与十三道结构门全绿;演练测试经名册与 RPC 分发表调到它,名册测试多了一行照旧绿(D250–D254) | 演练 |
 | `bun run log:gate` | 非测试源码里 `console.*` 的处数(`scripts/` 与 `apps/cli/src/stdout.ts` 除外);新代码用 `getLogger` | 棘轮(`docs/audit/log-gate-baseline-2026-08-20.txt`) |
 | `bun run session:gate` | `session.messages` 只出现在白名单文件、消息字段只在 reducer 里赋值(`session:check` 打全表) | 零基线硬闸 |
 
@@ -268,20 +269,29 @@ server runtime 自己填的 `configureServer*Port`。
 
 ## 7. 怎么加一个东西
 
-**加一个后端功能**(先做「陌生能力演练」,答案应当是「能力自己的模块 + 壳渲染模块 + 各一行注册」):
+**加一个后端功能**(`bun run feature:drill` 实测过的步骤,D250–D251;答案是「能力自己的模块 + 壳渲染模块 + 各一行注册」):
 
-1. 先在 `docs/audit/feature-layers-2026-10.json` 登记一行 `{feature, layer, why}`(没登记 = `layer:gate` 红);`why` 写一句人话。
-   拿不准层次,按「它引谁、谁引它」判,低层不许引高层。
+1. 在 `docs/audit/feature-layers-2026-10.json` 登记**一行** `{feature, layer, why}`(没登记 = `layer:gate` 红);`why` 写一句人话。
+   拿不准层次,按「它引谁、谁引它」判,低层不许引高层(有自己的存储或服务 = L2)。
 2. 建 `packages/backend/<功能>/`(单数名词),入口 `<功能>/<功能>.ts`:文件头写 R3 说明书,只用具名导出、按类分组,
-   只交外面真在用的名字。
-3. 在 `packages/backend/package.json` 的 exports 里加**一把**键 `"./<功能>": "./<功能>/<功能>.ts"`(exports 只认精确键,
-   缺键在 typecheck 就红;不要为外面的读者开深层键 —— 外面要的名字进入口)。
-4. 文件叫 `<功能>-<做什么>.ts`,测试叫 `<被测文件名>.test.ts` 放 `__tests__/`;功能内部引兄弟文件,不引自家入口。
-5. 要被别的功能用到时,做成在它们的注册表里**登记一行**,不去改它们的代码;装配期的状态挂在实例上并 `own()`,或者
-   放首次用到才建的 `const` 持有器。
-6. 要开给界面:加第二入口(见下「加一个 RPC 域」)。要宿主能力:加宿主端口(见下)。
+   只交外面真在用的名字。内部文件叫 `<功能>-<做什么>.ts`,互相按相对路径引兄弟,不引自家入口。
+3. 用下层功能只经它的入口(`@onething/backend/storage` 这类);状态落在 store 里时用 `getOnethingStorePath()` 拼自己的
+   子目录,不必去 storage 加 getter。状态在首次用到时读 / 建(`const` 持有器),不写模块级 `let` —— 这样**不用碰
+   `backend.ts`**。真要在装配时建、要 `own()` 拆的东西,今天只能写进 `backend.ts` 的装配顺序(D253 ①,没有登记表)。
+4. 在 `packages/backend/package.json` 的 exports 里加**一把**键 `"./<功能>": "./<功能>/<功能>.ts"`(按字母序;exports 只认
+   精确键,缺键在 typecheck 就红;不要为外面的读者开深层键 —— 外面要的名字进入口)。
+5. 要开给界面:按下面「加一个 RPC 域」写 `@shared/ipc/<域>.ts` 契约、第二入口 `<功能>-client-api.ts` 与名册一行
+   (`@shared/ipc/index.ts` 那只桶不用加)。要宿主能力:加宿主端口(见下)。要被别的功能用到时,在它们的注册表里
+   **登记一行**,不去改它们的代码。
+6. 测试叫 `<被测文件名>.test.ts` 放 `<功能>/__tests__/`;经界面调的,装上真名册(`registerAppRpcDomains`)再经
+   `dispatchRpc` 发信封,store 指临时目录(样例:`scripts/feature-drill/stopwatch/__tests__/`)。
 7. `bun run feature-map` 重生成功能地图,然后跑 `name:gate`、`entry:gate`、`cycle:gate`、`layer:gate`、`client-api:gate`、
-   `feature-map:check`、`assembly:gate`、`boundary:gate`。
+   `feature-map:check`、`assembly:gate`、`boundary:gate`。名册测试
+   `http-server/__tests__/http-server-client-api-roster.test.ts` 从名册本身读期望,加一行不用改它;它只断言名册注释里写明的
+   顺序约束(logs 第一、host-mcp 紧跟 acp、notes 紧跟 search、resources 是最后一个域、self-evolution 最后,D252)。
+
+以上就是全部改动:功能目录之外只有契约文件、层次表一行、名册一行、exports 一把键与生成的功能地图;`backend.ts`、
+`http-server/` 其余文件、门的名单、壳的文件、名册测试都不用改。
 
 **加一家服务商**:建 `packages/backend/provider/vendors/<id>/`,放 `<id>-manifest.ts`(纯数据:名字、方言、鉴权、模型来源、
 档位、环境变量、模型规则表……)与行为文件(方言、思考线型、`<id>-runtime.ts` 里的 `createProvider` / `quotaSources` /

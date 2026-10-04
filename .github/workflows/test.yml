@@ -109,6 +109,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 两道陌生能力演练(provider:drill / feature:drill)在临时 worktree 里跑 tsc 与 vitest,
+      # 要与 test job 同一个 Node 大版本(engines.node >= 22.13);别的门只用到 node 的基本面。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -148,6 +154,14 @@ jobs:
 
       - name: feature-map:check
         run: bun run feature-map:check
+
+      # 陌生能力演练(CLAUDE.md 顶上「加功能不许改骨架」):在 HEAD 的临时 worktree 里各加一个虚构的
+      # 服务商 / 功能,断言目录外只动了名册那几行、typecheck 与结构门全绿、演练测试经通用代码调得到它。
+      - name: provider:drill
+        run: bun run provider:drill
+
+      - name: feature:drill
+        run: bun run feature:drill
 
       - name: Renderer UI boundary gate
         run: npm --prefix apps/desktop-react run ui:consume

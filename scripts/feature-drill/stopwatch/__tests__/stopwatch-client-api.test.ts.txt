@@ -1,0 +1,79 @@
+/**
+ * 陌生能力演练(`scripts/feature-drill.mjs`):新功能 stopwatch 加进来之后,不碰装配配方、不碰 HTTP 服务器的
+ * 其余代码,只靠名册里那一行,就能经 RPC 分发表(`POST /api/rpc` 背后的同一张表)被调到。
+ *
+ * 不起窗口、不起端口:装上真名册(`registerAppRpcDomains`,与 HTTP 服务器挂载时同一个函数),再经 `dispatchRpc`
+ * 发信封。store 指到临时目录,不碰真 `~/.onething`。
+ */
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { configureFeatureRegistryRpc, dumpFeatures, resetFeaturesForTests } from '@onething/backend/feature-registry'
+import {
+  dispatchRpc,
+  hasRpcDomain,
+  registerRouterHandlers,
+  resetRpcRegistryForTests,
+} from '@onething/backend/http-server/http-server-dispatch-table.js'
+import { registerAppRpcDomains } from '../../http-server/http-server-client-api-roster.js'
+import { readStopwatch } from '../stopwatch.js'
+
+describe('stopwatch drill: one roster row is the whole wiring', () => {
+  let store: string
+  let previousStore: string | undefined
+  let now = 1_000
+
+  beforeEach(() => {
+    previousStore = process.env.ONETHING_STORE_PATH
+    store = mkdtempSync(path.join(tmpdir(), 'onething-stopwatch-drill-'))
+    process.env.ONETHING_STORE_PATH = store
+    now = 1_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    configureFeatureRegistryRpc({ registerRouterHandlers })
+    resetFeaturesForTests()
+    resetRpcRegistryForTests()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    if (previousStore === undefined) delete process.env.ONETHING_STORE_PATH
+    else process.env.ONETHING_STORE_PATH = previousStore
+    rmSync(store, { recursive: true, force: true })
+  })
+
+  it('mounts from the roster and answers start / lap / stop / read through the dispatch table', { timeout: 60_000 }, async () => {
+    const dispose = await registerAppRpcDomains()
+    try {
+      expect(hasRpcDomain('stopwatch')).toBe(true)
+      expect(dumpFeatures().map((feature) => feature.id)).toContain('rpc:stopwatch')
+
+      const started = await dispatchRpc({ domain: 'stopwatch', method: 'start', payload: undefined })
+      expect(started).toEqual({ ok: true, data: { running: true, startedAt: 1_000, elapsedMs: 0, laps: [] } })
+
+      now = 1_250
+      const lapped = await dispatchRpc({ domain: 'stopwatch', method: 'lap', payload: undefined })
+      expect(lapped).toEqual({ ok: true, data: { running: true, startedAt: 1_000, elapsedMs: 250, laps: [250] } })
+
+      now = 1_400
+      const stopped = await dispatchRpc({ domain: 'stopwatch', method: 'stop', payload: undefined })
+      expect(stopped).toEqual({ ok: true, data: { running: false, startedAt: 1_000, elapsedMs: 400, laps: [250] } })
+
+      now = 9_999
+      const read = await dispatchRpc({ domain: 'stopwatch', method: 'read', payload: undefined })
+      expect(read).toEqual({ ok: true, data: { running: false, startedAt: 1_000, elapsedMs: 400, laps: [250] } })
+
+      // 契约之外的方法进不来:方法白名单直接取自 router。
+      const rogue = await dispatchRpc({ domain: 'stopwatch', method: 'reset', payload: undefined })
+      expect(rogue.ok).toBe(false)
+
+      // 状态落在临时 store 里,别的功能经入口读到的是同一份。
+      const onDisk = JSON.parse(readFileSync(path.join(store, 'stopwatch', 'stopwatch.json'), 'utf8'))
+      expect(onDisk).toEqual({ startedAt: 1_000, frozenMs: 400, laps: [250] })
+      expect(readStopwatch(() => 5_000).elapsedMs).toBe(400)
+    } finally {
+      await dispose()
+    }
+    expect(hasRpcDomain('stopwatch')).toBe(false)
+  })
+})

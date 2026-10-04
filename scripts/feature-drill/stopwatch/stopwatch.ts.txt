@@ -1,0 +1,13 @@
+/**
+ * stopwatch —— 一只秒表:开始、记圈、停下、读数(陌生能力演练 `scripts/feature-drill.mjs` 放进来的虚构功能)。
+ *
+ * 对外交出两类东西:读数(给别的功能读这只秒表走了多久)与读数的形状。
+ * 开给界面调用的操作在第二个入口 `stopwatch-client-api.ts`(D26),不经这里。
+ * 依赖:storage(状态落在 store 里的一只 JSON 文件)。
+ */
+
+// 1. 读数
+export { readStopwatch } from './stopwatch-state.js'
+
+// 2. 形状
+export type { StopwatchClock } from './stopwatch-state.js'
