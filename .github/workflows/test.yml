@@ -134,6 +134,9 @@ jobs:
       - name: name:gate
         run: bun run name:gate
 
+      - name: cohesion:gate
+        run: bun run cohesion:gate && node scripts/file-cohesion-gate.mjs --self-test && node scripts/split-prove.mjs --self-test
+
       - name: cycle:gate
         run: bun run cycle:gate
 

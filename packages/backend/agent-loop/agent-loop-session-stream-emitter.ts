@@ -8,8 +8,10 @@ import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart } from 
 import type { StreamCompleteData, StreamErrorData } from '@shared/events/session-events.js'
 import type {
   CoreAgentLoopContentPartEmitter,
+} from './agent-loop-executor-turn-state.js'
+import type {
   CoreAgentLoopToolExecutionEmitter,
-} from './agent-loop-executor.js'
+} from './agent-loop-executor-tool-steps.js'
 import type { CoreIPCEmitter } from './agent-loop-ipc-emitter.js'
 
 // S2(I4-缝收口):interface 而不是 type alias —— tsserver 的 Go to Implementation

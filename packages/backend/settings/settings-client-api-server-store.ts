@@ -13,7 +13,8 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { invalidateSettingsCache as invalidateAppSettingsCache, mergeWithDefaults } from "@onething/backend/settings";
+import { invalidateSettingsCache as invalidateAppSettingsCache } from "./settings-store.js";
+import { mergeWithDefaults } from "./settings-defaults.js";
 import { getOnethingSettingsPath } from "@onething/backend/storage";
 import { defaultRequestContext, isDefaultServerRequestContext } from "@onething/backend/http-server/http-server-tenant-paths.js";
 import type { RuntimeRequestContext } from "@onething/backend/http-server/http-server-runtime-facade.js";

@@ -143,7 +143,8 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
   包根散文件 `backend-*.ts`,`http-server/` 里 `http-server-*.ts`,集合目录的条目里以条目名打头,如
   `provider/vendors/claude/claude-dialect.ts`)。点号只用于固定后缀 `.test.ts`、`.d.ts`。
 - **N3** 入口叫 `<功能>.ts`,不用 `index.ts`(功能子目录的入口叫 `<功能>-<子目录>.ts`);**只用具名导出、按类分组,
-  不用 `export *`**(N3 的这一半今天没有门:session / search / markdown 的入口还有 `export *`,碰到时顺手收)。
+  不用 `export *`**,只交外面真在用的名字。门:`entry:gate`(D228 / D235,主入口里的 `export * from` 按功能计数只许减;
+  今天只剩 media 一处,收它要先给四个带服务商名的名字改名;`export * as <名字>` 是具名的命名空间导出,不算)。
 - **N4** 泛名不单独作文件名:index / types / utils / helpers / service / manager / runtime / registry / store / core /
   common / misc 只能跟在功能名后面(`provider-types.ts`)。
 - **N5** 目录用单数名词;**N6** 测试叫 `<被测文件名>.test.ts`,放在功能目录下的 `__tests__/`;**N7** 包名、应用名
@@ -153,7 +154,8 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
 
 - **只经入口**:功能目录之外(包根、别的功能、apps、scripts、evals)只许引 `<功能>/<功能>.ts`,第二入口与装配入口按
   上一节的规则。门:`entry:gate` —— 非测试的深层引用**一处就红**;测试的深层引用按功能计数,只许降。
-- **功能内只引兄弟**:功能内部文件按相对路径引同目录的兄弟文件,**不引自家入口**(D126)。这是施工规矩,没有门。
+- **功能内只引兄弟**:功能内部文件按相对路径引同目录的兄弟文件,**不引自家入口**(D126)。门:`entry:gate`(D228 / D236,
+  功能内非测试文件引自家主入口按功能计数,只许减;今天剩 eval 23、session 1、theme 1,原因写在基线文件里)。
 - **入口不成环**:入口之间的运行期值引用必须是有向无环图(D19)。门:`cycle:gate`。起因是一个入口卷进加载期的环
   之后,`class extends` 在加载期读到 `undefined`,继承没法惰性化。
 - **进程入口不经功能入口**:进程入口按文件路径指它要的模块,并且不许被任何文件 import。门:`entry:gate`
@@ -182,10 +184,11 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 | 命令 | 判什么 | 类型 |
 | --- | --- | --- |
 | `bun run boundary:gate` | `scripts/headless-boundary-check.ts` 的全部断言(`bun run boundary` 打全量):后端不引 electron / `@main` / `@preload` / 渲染层别名,功能目录不引 cordis(`feature-registry/` 除外),shared 只引自己,界面一侧只引 shared 与 backend-client,Vue 宿主不许复活,检索只有一条查询路径。没打出完成标记或一行 ok 都没有也算红 | 零基线硬闸 |
-| `bun run entry:gate` | 从功能外引入口以外的文件;进程入口被 import(`entry:check` 打全表) | 非测试硬闸 / 测试棘轮(`docs/audit/feature-entry-baseline-2026-10.txt`) |
+| `bun run entry:gate` | 从功能外引入口以外的文件;进程入口被 import;功能主入口里的 `export * from`;功能内非测试文件引自家主入口(`entry:check` 打全表) | 非测试深层引用与进程入口硬闸 / 测试深层引用、`export *`(`star:` 行)、自引入口(`self:` 行)棘轮(`docs/audit/feature-entry-baseline-2026-10.txt`) |
 | `bun run cycle:gate` | 运行期值引用图里含功能入口的强连通分量(只引类型、动态 `import()`、测试不成边);红时打出最短环 | 零基线硬闸 |
 | `bun run layer:gate` | 低层引高层的值边;层次表里没登记的功能 | 零基线硬闸 |
 | `bun run name:gate` | N1 重名、N2 功能名打头、N3 `index.ts`、N4 泛名 | 零基线硬闸 |
+| `bun run cohesion:gate` | 文件内聚(D225 / D229,判据 `docs/design/oversized-files-2026-10.md` §1):顶层声明为点、引用为边(≤ 3 行的叶子常量不连边),至少两块且第二块 ≥ 150 行 = 一只文件里住着两件不相干的事。不设行数上限。`cohesion:check` 打块表,`cohesion:report` 另打形状 B / C(长函数里几组嵌套函数各管各的 `let`、一只类里几组方法各管各的字段)的报表,只报不判。拆分时用 `bun run split:prove <拆前文件> <拆后文件…>` 证明纯搬家(每条顶层声明的源文本拆前拆后多重集相等) | 新文件零基线硬闸 / 立门时的 4 只记在已知名单里只许减(`docs/audit/cohesion-baseline-2026-10.txt`) |
 | `bun run client-api:gate` | 第二入口与装配入口只被允许的人引;名字带 `-client-api` 却不合形状;少于 40 只 client-api 算红(防假绿) | 零基线硬闸 |
 | `bun run feature-map:check` | `docs/architecture/feature-map.md` 与代码一致 | 一致性 |
 | `bun run assembly:gate` | 每只非测试文件的模块级 `let` 个数(`backend-current.ts` 豁免);新状态挂在 `OnethingBackend` 实例上并 `own()` | 棘轮(`docs/audit/assembly-baseline-2026-09-02.txt`) |

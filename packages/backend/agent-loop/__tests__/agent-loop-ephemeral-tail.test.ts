@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   CORE_EPHEMERAL_TAIL_SENTINEL,
   applyAgentLoopEphemeralTail,
-} from '../agent-loop-runtime.js'
+} from '../agent-loop-runtime-turn.js'
 
 interface TestMessage {
   role: string

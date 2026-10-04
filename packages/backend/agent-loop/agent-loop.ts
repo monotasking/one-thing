@@ -145,66 +145,94 @@ export type {
 
 export {
 	appendOrderedPart,
+	persistAgentLoopTurnContentPartsWithAdapters,
+} from "./agent-loop-executor-content-parts.js";
+export {
 	applyAgentLoopStreamChunkWithAdapters,
+	executeAgentLoopStreamLifecycleWithAdapters,
+} from "./agent-loop-executor-stream-chunks.js";
+export {
 	buildAgentLoopFinalMessageUpdate,
 	completeAgentLoopStreamWithAdapters,
 	createAgentLoopNextAssistantWriterPlan,
-	createAgentLoopExecutorTurnState,
 	emitAgentLoopFinalMessageUpdateWithAdapters,
-	executeAgentLoopStreamLifecycleWithAdapters,
+} from "./agent-loop-executor-finish.js";
+export {
+	createAgentLoopExecutorTurnState,
+} from "./agent-loop-executor-turn-state.js";
+export {
 	lastUserMessageText,
-	persistAgentLoopTurnContentPartsWithAdapters,
 	runAgentLoopPostResponseHooksWithAdapters,
-} from "./agent-loop-executor.js";
+} from "./agent-loop-executor-post-response.js";
 export type {
 	ApplyAgentLoopProviderDataRuntimeOptions,
 	ApplyAgentLoopStreamChunkWithAdaptersOptions,
+	ExecuteAgentLoopStreamLifecycleWithAdaptersOptions,
+} from "./agent-loop-executor-stream-chunks.js";
+export type {
 	CompleteAgentLoopStreamWithAdaptersOptions,
+	EmitAgentLoopFinalMessageUpdateWithAdaptersOptions,
+} from "./agent-loop-executor-finish.js";
+export type {
 	CoreAgentLoopContentPartStore,
-	CoreAgentLoopToolExecutionStore,
 	CoreAgentLoopToolInputProcessor,
 	CoreOrderedPartLike,
-	EmitAgentLoopFinalMessageUpdateWithAdaptersOptions,
-	ExecuteAgentLoopStreamLifecycleWithAdaptersOptions,
+} from "./agent-loop-executor-turn-state.js";
+export type {
+	CoreAgentLoopToolExecutionStore,
+} from "./agent-loop-executor-tool-steps.js";
+export type {
 	RunAgentLoopPostResponseHooksWithAdaptersOptions,
-} from "./agent-loop-executor.js";
+} from "./agent-loop-executor-post-response.js";
 
 export {
 	agentLoopInitSkills,
 	agentLoopSkillContexts,
 	buildAgentLoopDirectToolsWithAdapters,
-	getAgentLoopTransientTail,
-	injectPendingAgentLoopMessagesWithAdapters,
-	maybeCompactAgentLoopContextWithAdapters,
 	planAgentLoopPromptBuildOptions,
 	planAgentLoopRuntimePreparation,
 	planAgentLoopTools,
+} from "./agent-loop-runtime-preparation.js";
+export {
+	getAgentLoopTransientTail,
+	injectPendingAgentLoopMessagesWithAdapters,
+	runAgentLoopAfterTurnWithAdapters,
+	runAgentLoopBeforeTurnWithAdapters,
+} from "./agent-loop-runtime-turn.js";
+export {
+	maybeCompactAgentLoopContextWithAdapters,
+} from "./agent-loop-runtime-compaction.js";
+export {
 	clampAgentLoopRequestMaxTokens,
 	providerReportedInputTokens,
 	resolveAgentLoopContextBudgetWithRegistry,
-	runAgentLoopAfterTurnWithAdapters,
-	runAgentLoopBeforeTurnWithAdapters,
-} from "./agent-loop-runtime.js";
+} from "./agent-loop-runtime-budget.js";
 export type {
 	CoreAgentLoopCompactSessionLike,
 	CoreAgentLoopCompactResultLike,
+} from "./agent-loop-runtime-compaction.js";
+export type {
 	CoreAgentLoopContextBudget,
+	ResolveAgentLoopContextBudgetOptions,
+} from "./agent-loop-runtime-budget.js";
+export type {
 	CoreAgentLoopDirectToolMetadataUpdate,
 	CoreAgentLoopDirectToolResultLike,
 	CoreAgentLoopInitSkillSnapshot,
-	CoreAgentLoopPendingMessageAdapters,
 	CoreAgentLoopProviderHostContext,
 	CoreAgentLoopProviderRuntimeConfigLike,
 	CoreAgentLoopRuntimeSessionLike,
 	CoreAgentLoopRuntimeSettingsLike,
 	CoreAgentLoopRuntimeToolSettingsLike,
+	CoreAgentLoopSkillLike,
+} from "./agent-loop-runtime-preparation.js";
+export type {
+	CoreAgentLoopPendingMessageAdapters,
 	CoreAgentLoopEphemeralTailAdapters,
 	CoreAgentLoopTurnQueueAdapters,
 	CorePendingAgentLoopInputMessage,
 	CorePendingAgentLoopChatMessage,
-	CoreAgentLoopSkillLike,
-	ResolveAgentLoopContextBudgetOptions,
-} from "./agent-loop-runtime.js";
+} from "./agent-loop-runtime-turn.js";
 
 export {
 	buildMessageContent,

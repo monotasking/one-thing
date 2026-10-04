@@ -7,11 +7,11 @@
  *
  * 2026-10-04 从 `http-server/http-server-runtime.ts` 原样搬来(决策 D219),代码一行没改。
  */
-import type { TodoPlanChangedPayload } from "@onething/backend/todo-plan";
+import type { TodoPlanChangedPayload } from "./todo-plan-store.js";
 import {
 	configureTodoPlanHost,
 	getTodoPlanHostPorts,
-} from "@onething/backend/todo-plan";
+} from "./todo-plan-service.js";
 import { getLogger } from '@onething/backend/logging'
 import type { RuntimeTodoPlanAdapter, RuntimeUnsubscribe } from "@onething/backend/http-server/http-server-runtime-facade.js";
 

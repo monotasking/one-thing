@@ -14,7 +14,7 @@ import {
 	getScratchpadHostPorts,
 	startScratchpadWatcher,
 	stopScratchpadWatcher,
-} from "@onething/backend/scratchpad";
+} from "./scratchpad-service-bound.js";
 import { getLogger } from '@onething/backend/logging'
 import type { RuntimeScratchpadAdapter, RuntimeUnsubscribe } from "@onething/backend/http-server/http-server-runtime-facade.js";
 import type { ScratchpadChangedPayload } from "@shared/ipc/scratchpad.js";

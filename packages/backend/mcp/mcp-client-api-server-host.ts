@@ -16,15 +16,23 @@ import { readFileSync } from "node:fs";
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
-} from "@onething/backend/mcp";
+} from "./mcp-manager.js";
 import {
 	configureMCPClientIdentity,
+} from "./mcp-identity.js";
+import {
 	createMCPServerState,
+} from "./kernel/mcp-kernel-client-state.js";
+import {
 	HeadlessMCPManager,
+} from "./kernel/mcp-kernel-manager.js";
+import {
 	type MCPClientLike,
+} from "./kernel/mcp-kernel.js";
+import {
 	ServerMCPClient,
-} from "@onething/backend/mcp";
-import type { McpSubsystem } from "@onething/backend/mcp";
+} from "./mcp-server-client.js";
+import type { McpSubsystem } from "./mcp-subsystem.js";
 import { getLogger } from '@onething/backend/logging'
 import { defaultRequestContext, ownerKey } from "@onething/backend/http-server/http-server-tenant-paths.js";
 import type { MCPServerConfig, MCPServerState } from "@shared/ipc/mcp.js";

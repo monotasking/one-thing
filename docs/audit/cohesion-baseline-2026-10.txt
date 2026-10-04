@@ -1,0 +1,9 @@
+# cohesion gate known list (docs/design/oversized-files-2026-10.md §1.1 形状 A;决策 D225 / D229)
+# 每行 `<第二大块的行数> <文件>`:立门那天(2026-10-04)就命中形状 A、尚待 Fable 裁定的文件。
+# Fable 的分析只量过 1000 行以上的文件,这 4 只在 1000 行以下,没进拆分批次;它们是该拆、还是判据该细化(例如
+# `agent-loop-context-compact` Fable 判过是「一件事:压缩算法」),由 Fable 定。
+# 只许减:名单外的文件命中形状 A 就红;名单里的文件拆开了,`bun run cohesion:gate` 会提示删行。名单不收新行。
+185 packages/backend/agent-loop/agent-loop-context-compact.ts
+211 packages/backend/mcp/kernel/mcp-kernel-router.ts
+205 packages/backend/plugin-contract/plugin-contract-panel.ts
+167 packages/backend/plugin/plugin-api-types.ts

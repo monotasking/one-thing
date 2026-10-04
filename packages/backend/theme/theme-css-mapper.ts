@@ -9,9 +9,10 @@ import {
   SEMANTIC_HIGHLIGHT_TOKENS,
   SEMANTIC_UI_TOKENS,
   THEME_NEUTRAL_COLOR_TOKENS,
-} from './theme-resolver.js'
-import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './theme-resolver.js'
-import { deriveRegionOverlay, guaranteeMinMixOpacity } from './theme-role-mapping.js'
+} from './theme-semantic-tokens.js'
+import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './theme-semantic-tokens.js'
+import { deriveRegionOverlay } from './theme-role-mapping.js'
+import { guaranteeMinMixOpacity } from './theme-color-math.js'
 
 import { getLogger } from '../logging/logging.js'
 

@@ -15,7 +15,8 @@
  * 2026-10-04 从 `http-server/http-server-runtime.ts` 原样搬来(决策 D219),代码一行没改。
  */
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { sessionPreviewText, deriveSessionLastMessagePreview, findLastPreviewableMessage } from "@onething/backend/session";
+import { sessionPreviewText } from "./session-reads.js";
+import { deriveSessionLastMessagePreview, findLastPreviewableMessage } from "./session-meta.js";
 import type { AgentEngineSessionEvent } from "@onething/backend/agent";
 import type { ContextVariable } from "@onething/backend/variable";
 import { ownsSessionRecord, sessionOwnerOf as sessionOwner } from "@onething/backend/http-server/http-server-audience.js";

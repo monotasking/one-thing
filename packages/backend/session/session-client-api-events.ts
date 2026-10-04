@@ -10,14 +10,14 @@
  */
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
-import { sessionAccess } from '@onething/backend/session'
+import { sessionAccess } from './session-access.js'
 import { sessionEventsRouter, type SessionEventsRoutes } from '@shared/ipc/session-events.js'
-import { resolveToolCallInspection } from '@onething/backend/session'
-import { readSessionEvents, readSessionLogEvents } from '@onething/backend/session'
-import { readSessionBlob } from '@onething/backend/session'
+import { resolveToolCallInspection } from './session-events.js'
+import { readSessionEvents, readSessionLogEvents } from './session-event-log.js'
+import { readSessionBlob } from './session-blob-store.js'
 // 路径消毒的那道门与轨迹读实现同住一处:S3 之前它是本文件的私有函数,而 S3 把
 // 调用点从 2 个变成 4 个 —— 一道安全门有两份拷贝,迟早只改其中一份。
-import { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from '@onething/backend/session'
+import { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from './session-trace-reads.js'
 
 export const sessionEventsRpcHandlers: RpcRouteHandlers<SessionEventsRoutes> = {
   async list(request, context = DESKTOP_RPC_CONTEXT) {

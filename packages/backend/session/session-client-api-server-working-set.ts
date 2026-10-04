@@ -20,9 +20,9 @@ import { mkdirSync } from "node:fs";
 import {
 	updateSessionWorkingDirectory as updateAppSessionWorkingDirectory,
 	updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots,
-} from "@onething/backend/session";
-import { sessionCommandEvents } from "@onething/backend/session";
-import { onSessionIndexChanged } from "@onething/backend/session";
+} from "./session-store.js";
+import { sessionCommandEvents } from "./session-command-events.js";
+import { onSessionIndexChanged } from "./session-store.js";
 import type { GenericEventBus } from "@onething/backend/event";
 import type { AgentEngineSessionEvent } from "@onething/backend/agent";
 import { getLogger } from '@onething/backend/logging'

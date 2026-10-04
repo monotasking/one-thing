@@ -28,7 +28,7 @@
  *    **读路**(`session-repository.repairOnFirstTouch`),不是写路。
  */
 
-import type { CoreSessionTokenUsage } from './session-store-helpers.js'
+import type { CoreSessionTokenUsage } from './session-usage-fold.js'
 import type {
   CoreTimelineMessage,
   CoreTimelineStep,

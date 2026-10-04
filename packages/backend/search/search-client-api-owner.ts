@@ -17,10 +17,14 @@ import { stat, readdir } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import {
 	createOnethingSearchService,
-	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
+} from "./search-service.js";
+import {
+	type OnethingSearchProvidersAdapters,
+} from "./search-providers.js";
+import {
 	unavailableIndexFace,
-} from "@onething/backend/search";
+} from "./search-service-setup.js";
 import { noteVaultsNow, primaryNoteVaultNow } from "@onething/backend/note";
 import { OnethingPromptStore } from "@onething/backend/prompt";
 import type { OnethingPromptStoreAdapters } from '@onething/backend/prompt'

@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createCoreToolInputStartArtifacts } from '../agent-loop-stream-processor.js'
-import { startAgentLoopToolExecution } from '../agent-loop-executor.js'
+import { startAgentLoopToolExecution } from '../agent-loop-executor-tool-steps.js'
 import type { CoreStreamToolCallLike } from '@onething/backend/agent-loop'
 
 /** 就用引擎自己那份形状 —— 占位工厂产出的就是它,免得测试里再手抄一份。 */

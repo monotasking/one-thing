@@ -23,20 +23,28 @@ import {
 	scanCorePlugins,
 	setPluginEnabledWithAdapters,
 	writePluginSettingsFile,
+	type CorePluginSettingsStorageAdapters,
+} from "./plugin-loader.js";
+import {
 	type CorePluginCommandDefinition,
 	type CorePluginDefinition,
-	type CorePluginInfo,
 	type PluginSettings,
-	type CorePluginSettingsStorageAdapters,
+} from "./plugin-api-types.js";
+import {
+	type CorePluginInfo,
+} from "./plugin-manager-base.js";
+import {
 	ONETHING_LOG_MONITOR_MANIFEST,
+} from "./plugin-log-monitor.js";
+import {
 	executeOnethingPluginCommandForIpc,
 	disableOnethingPluginForIpc,
 	enableOnethingPluginForIpc,
 	listOnethingPluginCommandsForIpc,
 	listOnethingPluginsForIpc,
 	refreshOnethingPluginsForIpc,
-} from "@onething/backend/plugin";
-import type { OnethingPluginIpcLogger } from '@onething/backend/plugin'
+} from "./plugin-ipc-operations.js";
+import type { OnethingPluginIpcLogger } from './plugin-ipc-operations.js'
 import type { AgentEngineSessionEvent } from "@onething/backend/agent";
 import type { GenericEventBus } from "@onething/backend/event";
 import { consolePort, getLogger } from '@onething/backend/logging'

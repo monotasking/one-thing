@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planAgentLoopTools } from '../agent-loop-runtime.js'
+import { planAgentLoopTools } from '../agent-loop-runtime-preparation.js'
 
 const TOOLS = [
   { id: 'bash', description: 'run commands' },

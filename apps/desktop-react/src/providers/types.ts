@@ -296,7 +296,7 @@ export const CATALOG_CONTEXT_FALLBACK = 128_000
  * 没有覆盖时,**今天这一发请求实际会要多长**。**只给目录有上限的那一档用** ——
  * 目录没填时无数可半,那一档根本不带 `max_tokens`,没有数可画。
  *
- * 引擎 `packages/backend/agent-loop/agent-loop-runtime.ts` 的
+ * 引擎 `packages/backend/agent-loop/agent-loop-runtime-budget.ts` 的
  * `resolveAgentLoopContextBudgetValues`:`perModelOverride ?? halfDefault`
  * (**只有这两个来源**)。注册上限在场时 `halfDefault = max(1, floor(注册上限 / 2))`,
  * 而 `maxOutputByModel[m]` 一旦填了就**直接当请求的 max_tokens**

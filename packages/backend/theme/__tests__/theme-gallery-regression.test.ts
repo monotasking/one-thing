@@ -4,14 +4,16 @@ import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../theme-types.js'
 import { generateCSSVariables } from '../theme-css-mapper.js'
-import { resolveTheme, resolveThemeHighlights, resolveThemeUI } from '../theme-resolver.js'
+import { resolveTheme } from '../theme-resolver.js'
+import { resolveThemeHighlights } from '../theme-highlight-styles.js'
+import { resolveThemeUI } from '../theme-ui-styles.js'
 import {
   colorDistance,
   contrastRatio,
   parseCssColor,
   relativeLuminance,
   resolveColorOverBackground,
-} from '../theme-role-mapping.js'
+} from '../theme-color-math.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const builtinThemeDir = path.resolve(dirname, '../builtin')

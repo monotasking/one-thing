@@ -33,7 +33,7 @@ import {
 } from './session-ipc-operations.js'
 import { SESSION_RESOURCE_SCHEME } from './session-resource-spec.js'
 import * as sessionStore from './session-store.js'
-import { collectSessionCascadeDeleteIds } from './session-store-helpers.js'
+import { collectSessionCascadeDeleteIds } from './session-create-delete.js'
 
 /** 与从前界面那条域同一个命名空间:建会话失败的那一行日志,换了住处仍落在 `rpc.sessions` 下。 */
 const log = getLogger('rpc.sessions')

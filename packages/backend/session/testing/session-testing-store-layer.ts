@@ -2,7 +2,7 @@ import { createBackendHandle, getCurrentBackendSafe, setCurrentBackend } from '@
 import { EventBus, StreamChannel } from '@onething/backend/event'
 import { acquireSessionEventLogStore } from '../session-event-log.js'
 import { createSessionLayer, type SessionLayer } from '../session-layer.js'
-import { collectSessionCascadeDeleteIds } from '../session-store-helpers.js'
+import { collectSessionCascadeDeleteIds } from '../session-create-delete.js'
 import { getOnethingSessionsDir } from '@onething/backend/storage'
 import { createSessionDeletionRecovery } from '../session-deletion-recovery.js'
 import { getTracesDir } from '@onething/backend/eval'

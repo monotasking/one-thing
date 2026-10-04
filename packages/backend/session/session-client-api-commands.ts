@@ -62,8 +62,8 @@ import { getStreamEngine } from '@onething/backend/backend-current.js'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { Permission } from '@onething/backend/permission'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
-import { requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/session'
-import { deliverPresentation, takePresented } from '@onething/backend/session'
+import { requestSessionOwner, sessionAccess, SessionAccessError } from './session-access.js'
+import { deliverPresentation, takePresented } from './session-presentation.js'
 import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 
 const log = getLogger('rpc.session-command')

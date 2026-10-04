@@ -51,3 +51,16 @@
 1 practice
 1 quota
 1 toc
+# 以下 `self:<功能>` 行:功能内非测试文件引自家主入口的处数(规则②,D236),施工时停下的违例,只许减。
+# eval 23:`eval-client-api-workbench.ts` 把整个入口命名空间当参数递(`typeof import` / `await import` 整只),`eval-client-api.ts`
+# 与 `eval-turn-incident.ts` 动态取的名字被测试在入口上的替身(`vi.mock('@onething/backend/eval', () => runtime)`)截住,
+# 改引兄弟文件就绕开替身;session 1:`session-client-api.ts` 的 `import * as store`,`session-client-api.test.ts` 在入口上
+# 替身了它取的那几个名字;theme 1:`theme-runtime.ts` 引的 `applyTheme` 等定义在入口自己身上,没有兄弟文件可改引。
+23 self:eval
+1 self:session
+1 self:theme
+# 以下 `star:<功能>` 行:功能主入口里 `export *` 的条数(规则①,D235),施工时停下的,只许减。
+# media 1:`media-image-generation.js` 那一组里有四个名字带服务商名(`buildOpenAIImageGenerationRequest` 等,引擎的
+# `engine-image-generation.ts` 经入口拿 `generateCoreOpenAIImage`),具名写进入口会让 `provider:gate` 多一对 (openai, media/media.ts);
+# 先改名再收口,改名是另一笔(拆分批不改标识符,D89)。
+1 star:media

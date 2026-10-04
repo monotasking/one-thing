@@ -1,11 +1,13 @@
 import {
   buildOnethingAgentLoopStreamRuntime,
-  createOnethingAgentLoopRuntimeAdapters,
   maybeCompactOnethingAgentLoopContext,
   streamOnethingAgentLoopChunks,
   type BuildOnethingAgentLoopStreamRuntimeResult,
   type OnethingAgentLoopContextBudget,
 } from '../engine-agent-loop-stream-runtime.js'
+import {
+  createOnethingAgentLoopRuntimeAdapters,
+} from '../engine-agent-loop-runtime-adapters.js'
 import type {
   AgentLoopOptions,
   AgentLoopResult,
@@ -40,13 +42,13 @@ import type { IPCEmitter } from '../../agent-loop/agent-loop.js'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { OnethingAgentLoopLogger } from '../engine-agent-loop-stream-runtime.js'
+import type { OnethingAgentLoopLogger } from '../engine-agent-loop-runtime-adapters.js'
 import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/toolkit'
 import type { ContextCompactResult } from '../engine-compact-session.js'
 import type { PromptRequestMessage } from '../prompt/engine-system-prompt.js'
 import type { ProviderConfigWithKey } from './engine-stream-executor.js'
 import type { AppSettings, ContentPart, ToolDefinition } from '@shared/ipc.js'
-import type { OnethingAgentLoopRuntimeHostAdapters } from '../engine-agent-loop-stream-runtime.js'
+import type { OnethingAgentLoopRuntimeHostAdapters } from '../engine-agent-loop-runtime-adapters.js'
 
 const log = getLogger('engine.stream')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

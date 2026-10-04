@@ -639,7 +639,7 @@ export interface SessionResponseUsage {
    * 就是"store 有、投影缺",每个带成本读数的 run 记一条影子失配。
    *
    * 只落 **step** 那一格:消息级 `usage` 是引擎累加器的产物
-   * (`agent-loop-executor.ts` 的 `accumulatedUsage`,两个分支都逐字段列名),
+   * (`agent-loop-executor-finish.ts` 的 `accumulatedUsage`,两个分支都逐字段列名),
    * 它从来不带成本 —— 投影侧的 `addUsage` 照抄这一条。
    */
   providerCostUSD?: number

@@ -15,9 +15,11 @@
  */
 import {
 	addGrant,
+} from "./permission-asks.js";
+import {
 	configureOnethingPermissionGrantStorage,
-} from "@onething/backend/permission";
-import type { OnethingPermissionGrantStorageAdapters } from "@onething/backend/permission";
+} from "./permission-runtime.js";
+import type { OnethingPermissionGrantStorageAdapters } from "./permission-runtime.js";
 import type { AgentEngineSessionEvent } from "@onething/backend/agent";
 import { type JsonObject } from "@shared/json";
 import { sessionOwnerOf as sessionOwner } from "@onething/backend/http-server/http-server-audience.js";

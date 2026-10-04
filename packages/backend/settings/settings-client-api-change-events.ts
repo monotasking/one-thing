@@ -10,7 +10,7 @@ import {
 	configureSettingsEventBroadcaster,
 	getSettingsEventBroadcaster,
 	type SettingsEvent,
-} from "@onething/backend/settings";
+} from "./settings-events.js";
 import { getLogger } from '@onething/backend/logging'
 import type { RuntimeSettingsAdapter } from "@onething/backend/http-server/http-server-runtime-facade.js";
 import type { AppSettings } from "@shared/ipc/settings.js";

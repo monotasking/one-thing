@@ -17,6 +17,15 @@
 // 模块 —— 它们的定义就是「不装那个功能的入口闭包」,所以 `scripts/gate-*/` 作为引用方按目录类不计(与 `__tests__` /
 // client-api 同一种按类不计);反过来,**这类文件不许被任何文件 import**,有一处就红。
 //
+// 另两条判据(D228,2026-10-04 拆分批 1 一起落地,决策 D235 / D236):
+//   - **功能主入口不许 `export *`**(命名规范 N3「只用具名导出、按类分组」):`<功能>/<功能>.ts` 里的
+//     `export * from '…'` 按功能计数,只许减:基线里 `<次数> star:<功能>` 那几行是施工时停下的(今天只有 media 一处:
+//     具名写出来会让 `provider:gate` 多一对 (openai, media/media.ts),要先给四个带服务商名的名字改名,那是另一笔,D235),
+//     其余功能一处就红。`export * as <名字> from '…'` 是一个具名的命名空间导出,不算(`settings` 入口的 `modelRegistry`)。
+//   - **功能内的非测试文件不许引自家主入口**(D126「功能内部引兄弟文件,不经入口」):`packages/backend/<功能>/` 下非测试文件的
+//     说明符解析到 `<功能>/<功能>.ts` 就算一处(入口自己不算)。只许减:基线里 `<次数> self:<功能>` 那几行是施工时停下的
+//     违例(改引兄弟会绕开测试替身或要改代码形状,D236 逐处列了原因),高于基线、或出现基线里没有的功能 → 红。
+//
 // 口径:
 //   - 「引用」= 一处模块说明符:`import … from` / `import '…'` / `export … from` / `import x = require('…')` /
 //     动态 `import('…')` / 类型位置的 `import('…')`(`typeof import('…')`)/ `require('…')` /
@@ -228,10 +237,86 @@ export function measure(processEntries = new Set()) {
       sites.push({ ...hit, importer, line, specifier, test })
     }
   }
-  return { counts, testCounts, sites, nonTestSites: sites.filter((site) => !site.test), processEntryImports, scanned: files.length }
+  const { selfCounts, selfSites } = measureSelfEntryImports(files, features, exportsMap)
+  const starExports = measureEntryStarExports(features)
+  return { counts, testCounts, sites, nonTestSites: sites.filter((site) => !site.test), processEntryImports, selfCounts, selfSites, starExports, scanned: files.length }
 }
 
-export function formatBaseline(counts) {
+/** 一只文件在哪个功能里、是不是那个功能的主入口(功能目录之外 / 非功能目录返回 null)。 */
+export function featureOfFile(absolute, features) {
+  const rel = path.relative(path.join(root, FEATURE_ROOT), absolute)
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null
+  const parts = rel.split(path.sep)
+  if (parts.length < 2 || !features.has(parts[0])) return null
+  return { feature: parts[0], isEntry: parts.length === 2 && parts[1] === `${parts[0]}.ts` }
+}
+
+/** 规则②:功能内非测试文件引自家主入口的处数(按功能)与逐处清单。 */
+export function measureSelfEntryImports(files, features, exportsMap) {
+  const selfCounts = {}
+  const selfSites = []
+  for (const absolute of files) {
+    const importer = path.relative(root, absolute)
+    if (isTestPath(importer)) continue
+    const home = featureOfFile(absolute, features)
+    if (!home || home.isEntry) continue
+    const entry = path.join(root, FEATURE_ROOT, home.feature, `${home.feature}.ts`)
+    for (const { specifier, line } of collectSpecifiers(absolute, readFileSync(absolute, 'utf8'))) {
+      if (resolveSpecifier(specifier, absolute, exportsMap) !== entry) continue
+      selfCounts[home.feature] = (selfCounts[home.feature] ?? 0) + 1
+      selfSites.push({ feature: home.feature, importer, line, specifier })
+    }
+  }
+  return { selfCounts, selfSites }
+}
+
+/** 一只入口文件里的 `export * from '…'`(不含 `export * as x from`):`[{ line, specifier }]`。 */
+export function starExportsOf(fileName, source) {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS)
+  const out = []
+  for (const statement of file.statements) {
+    if (ts.isExportDeclaration(statement) && !statement.exportClause && statement.moduleSpecifier) {
+      out.push({ line: file.getLineAndCharacterOfPosition(statement.getStart(file)).line + 1, specifier: statement.moduleSpecifier.text })
+    }
+  }
+  return out
+}
+
+/** 规则①:每个功能主入口里的 `export *`。 */
+export function measureEntryStarExports(features) {
+  const out = []
+  for (const feature of [...features].sort()) {
+    const entry = path.join(root, FEATURE_ROOT, feature, `${feature}.ts`)
+    if (!existsSync(entry)) continue
+    for (const hit of starExportsOf(entry, readFileSync(entry, 'utf8'))) out.push({ feature, entry: path.relative(root, entry), ...hit })
+  }
+  return out
+}
+
+/** 基线里的 `self:<功能>` 行是规则②的只减名单,其余行是测试深层引用。 */
+export const SELF_PREFIX = 'self:'
+/** 基线里的 `star:<功能>` 行是规则①的只减名单。 */
+export const STAR_PREFIX = 'star:'
+export function splitBaseline(baseline) {
+  const test = {}
+  const self = {}
+  const star = {}
+  for (const [key, n] of Object.entries(baseline)) {
+    if (key.startsWith(SELF_PREFIX)) self[key.slice(SELF_PREFIX.length)] = n
+    else if (key.startsWith(STAR_PREFIX)) star[key.slice(STAR_PREFIX.length)] = n
+    else test[key] = n
+  }
+  return { test, self, star }
+}
+
+/** 规则①的计数:每个功能主入口里 `export *` 的条数。 */
+export function starCountsOf(starExports) {
+  const counts = {}
+  for (const item of starExports) counts[item.feature] = (counts[item.feature] ?? 0) + 1
+  return counts
+}
+
+export function formatBaseline(counts, selfCounts = {}, starCounts = {}) {
   const lines = [
     '# feature-entry ratchet baseline (docs/design/server-client-split-2026-10.md §4「功能入口」)',
     '# 每行 `<次数> <功能>`:**测试文件**从功能目录之外引用 packages/backend/<功能>/ 里入口(N3 形状的 `<功能>/<功能>.ts`)以外文件的 import 处数。',
@@ -241,6 +326,16 @@ export function formatBaseline(counts) {
   ]
   const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
   for (const key of keys) lines.push(`${counts[key]} ${key}`)
+  const selfKeys = Object.keys(selfCounts).sort((a, b) => selfCounts[b] - selfCounts[a] || a.localeCompare(b))
+  if (selfKeys.length > 0) {
+    lines.push('# 以下 `self:<功能>` 行:功能内非测试文件引自家主入口的处数(规则②,D236),施工时停下的违例,只许减。')
+    for (const key of selfKeys) lines.push(`${selfCounts[key]} ${SELF_PREFIX}${key}`)
+  }
+  const starKeys = Object.keys(starCounts).sort()
+  if (starKeys.length > 0) {
+    lines.push('# 以下 `star:<功能>` 行:功能主入口里 `export *` 的条数(规则①,D235),施工时停下的,只许减。')
+    for (const key of starKeys) lines.push(`${starCounts[key]} ${STAR_PREFIX}${key}`)
+  }
   return `${lines.join('\n')}\n`
 }
 
@@ -346,24 +441,57 @@ function selfTest() {
   expect('被测产物入口之外的脚本深层引用照算',
     classify(R('search/kernel/search-kernel-redact.ts'), path.join(root, 'scripts/lib/x.mjs'), features2)?.feature === 'search')
 
+  // 5) 规则①:入口里的 `export *` 一条就红;`export * as x` 不算;具名转交不算。
+  const stars = starExportsOf('entry.ts', "export * from './a.js'\nexport * as ns from './b.js'\nexport { c } from './c.js'\nexport type * from './d.js'\n")
+  expect('export * from 算一条(export type * 也算)', stars.length === 2 && stars[0].specifier === './a.js' && stars[1].specifier === './d.js')
+  expect('export * as x 不算', !stars.some((x) => x.specifier === './b.js'))
+  const starSite = { feature: 'session', entry: 'packages/backend/session/session.ts', line: 1, specifier: './a.js' }
+  const starRed = judge({ nonTestSites: [], processEntryImports: [], starExports: [starSite], testCounts: {}, selfCounts: {} }, {})
+  expect('基线外的入口 export * 一条就红', starRed.failures.some((f) => f.kind === 'entry-star' && f.item.isNew))
+  const starKnown = judge({ nonTestSites: [], processEntryImports: [], starExports: [starSite], testCounts: {}, selfCounts: {} }, { 'star:session': 1 })
+  expect('基线里记着的 export * 不红', starKnown.failures.length === 0)
+  const starGone = judge({ nonTestSites: [], processEntryImports: [], starExports: [], testCounts: {}, selfCounts: {} }, { 'star:session': 1 })
+  expect('export * 收掉了 → 提示收紧', starGone.improvements.some((i) => i.key === 'star:session'))
+  // 6) 规则②:功能内非测试文件引自家主入口 → 只许减;入口自己与测试不算。
+  const feats3 = new Set(['session', 'search'])
+  expect('功能内文件归到自己的功能', featureOfFile(R('session/session-store.ts'), feats3)?.feature === 'session')
+  expect('主入口自己标成入口', featureOfFile(R('session/session.ts'), feats3)?.isEntry === true)
+  expect('子目录里的同名文件不是入口', featureOfFile(R('session/x/session.ts'), feats3)?.isEntry === false)
+  expect('包根文件不属于功能', featureOfFile(path.join(root, BACKEND, 'backend.ts'), feats3) === null)
+  const selfUp = judge({ nonTestSites: [], processEntryImports: [], starExports: [], testCounts: {}, selfCounts: { eval: 3 } }, { 'self:eval': 2 })
+  expect('自引入口上升 → 红', selfUp.failures.some((f) => f.kind === 'self-entry'))
+  const selfNew = judge({ nonTestSites: [], processEntryImports: [], starExports: [], testCounts: {}, selfCounts: { theme: 1 } }, {})
+  expect('基线里没有的功能自引入口 → 红', selfNew.failures.some((f) => f.kind === 'self-entry' && f.item.isNew))
+  const selfDown = judge({ nonTestSites: [], processEntryImports: [], starExports: [], testCounts: {}, selfCounts: {} }, { 'self:eval': 2 })
+  expect('自引入口清零 → 提示收紧', selfDown.failures.length === 0 && selfDown.improvements.some((i) => i.key === 'self:eval'))
+  const split = splitBaseline(parseBaseline(formatBaseline({ search: 2 }, { eval: 5 }, { media: 1 })))
+  expect('基线往返:测试行、self 行、star 行分开', split.test.search === 2 && split.self.eval === 5 && split.star.media === 1 && !('self:eval' in split.test) && !('star:media' in split.test))
+
   if (failures.length > 0) {
     console.error('[feature-entry-gate] self-test FAILED:')
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log('[feature-entry-gate] self-test ok — 29 checks passed')
+  console.log('[feature-entry-gate] self-test ok — 43 checks passed')
 }
 
 /**
  * 纯判决:非测试一处就红、进程入口被 import 就红、测试部分按基线只许降。只回报,不打印、不退出。
  * @returns {{ failures: Array<{kind: 'non-test'|'process-entry'|'test-ratchet', item: object}>, improvements: Array<object> }}
  */
-export function judge(measured, testBaseline) {
+export function judge(measured, baseline) {
   const failures = []
+  const { test: testBaseline, self: selfBaseline, star: starBaseline } = splitBaseline(baseline)
   for (const site of measured.nonTestSites) failures.push({ kind: 'non-test', item: site })
   for (const item of measured.processEntryImports) failures.push({ kind: 'process-entry', item })
+  const star = compare(starBaseline, starCountsOf(measured.starExports ?? []))
+  for (const item of star.regressions) failures.push({ kind: 'entry-star', item: { ...item, sites: (measured.starExports ?? []).filter((x) => x.feature === item.key) } })
   const { regressions, improvements } = compare(testBaseline, measured.testCounts)
   for (const item of regressions) failures.push({ kind: 'test-ratchet', item })
+  const self = compare(selfBaseline, measured.selfCounts ?? {})
+  for (const item of self.regressions) failures.push({ kind: 'self-entry', item })
+  for (const item of self.improvements) improvements.push({ ...item, key: `${SELF_PREFIX}${item.key}` })
+  for (const item of star.improvements) improvements.push({ ...item, key: `${STAR_PREFIX}${item.key}` })
   return { failures, improvements }
 }
 
@@ -397,13 +525,16 @@ async function main() {
         }
       }
     }
+    const selfTotal = Object.values(measured.selfCounts).reduce((sum, n) => sum + n, 0)
+    console.log(`[entry] entry \`export *\`: ${measured.starExports.length}; feature-internal non-test imports of the own entry: ${selfTotal}`)
+    if (verbose) for (const site of measured.selfSites) console.log(`  self\t${site.feature}\t${site.importer}:${site.line}\t${site.specifier}`)
     console.log(`[entry] process entries (must not be imported): ${processEntries.size}`)
     console.log(`[entry] complete: ${scanned} file(s) scanned`)
     return
   }
 
   if (args.includes('--write-baseline')) {
-    writeFileSync(baselinePath, formatBaseline(testCounts), 'utf8')
+    writeFileSync(baselinePath, formatBaseline(testCounts, measured.selfCounts, starCountsOf(measured.starExports)), 'utf8')
     console.log(`[feature-entry-gate] baseline written → ${path.relative(root, baselinePath)} (${testTotal} test site(s))`)
     return
   }
@@ -439,6 +570,22 @@ async function main() {
       console.error(`[feature-entry-gate] failed: 进程入口被 import 了 ${imported.length} 处(进程入口不经功能入口,反过来也谁都不许引它):`)
       for (const item of imported) console.error(`  ${item.target}  ← ${item.importer}:${item.line}`)
     }
+    const stars = failures.filter((f) => f.kind === 'entry-star').map((f) => f.item)
+    const selfUp = failures.filter((f) => f.kind === 'self-entry').map((f) => f.item)
+    if (stars.length > 0) {
+      console.error(`[feature-entry-gate] failed: ${stars.length} 个功能主入口里的 \`export *\` 多于基线(入口只用具名导出、按类分组,只交外面真用的,N3;只许减):`)
+      for (const item of stars) {
+        console.error(`  + ${item.key}: ${item.baseline} → ${item.current}${item.isNew ? '(基线里没有这个功能)' : ''}`)
+        for (const site of item.sites) console.error(`      ${site.entry}:${site.line}  export * from '${site.specifier}'`)
+      }
+    }
+    if (selfUp.length > 0) {
+      console.error(`[feature-entry-gate] failed: ${selfUp.length} 个功能里的非测试文件引了自家主入口(D126:功能内部引兄弟文件,不经入口;只许减):`)
+      for (const item of selfUp) {
+        console.error(`  + ${item.key}: ${item.baseline} → ${item.current}${item.isNew ? '(基线里没有这个功能)' : ''}`)
+        for (const site of (measured.selfSites ?? []).filter((s) => s.feature === item.key)) console.error(`      ${site.importer}:${site.line}  ${site.specifier}`)
+      }
+    }
     if (ratchet.length > 0) {
       console.error(`[feature-entry-gate] failed: ${ratchet.length} 个功能的测试深层引用上升:`)
       for (const item of ratchet) {
@@ -454,8 +601,10 @@ async function main() {
     process.exit(1)
   }
 
+  const selfKnown = Object.values(measured.selfCounts).reduce((sum, n) => sum + n, 0)
   console.log(
-    `[feature-entry-gate] ok — non-test 0 (hard gate), ${testTotal} known test deep import site(s) across ${Object.keys(testCounts).length} feature row(s),`
+    `[feature-entry-gate] ok — non-test 0 (hard gate), ${measured.starExports.length} known entry \`export *\` (decrease-only), ${selfKnown} known own-entry import site(s) inside features (decrease-only),`
+    + ` ${testTotal} known test deep import site(s) across ${Object.keys(testCounts).length} feature row(s),`
     + ` ${processEntries.size} process entr(ies) imported by nobody, ${scanned} file(s) scanned, none new`,
   )
 }

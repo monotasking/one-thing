@@ -11,7 +11,7 @@ import {
 	configureOAuthEventBroadcaster,
 	getOAuthEventBroadcaster,
 	type OAuthTokenEvent,
-} from "@onething/backend/auth";
+} from "./auth-oauth-events.js";
 import { getLogger } from '@onething/backend/logging'
 import type { RuntimeOAuthAdapter, RuntimeUnsubscribe } from "@onething/backend/http-server/http-server-runtime-facade.js";
 

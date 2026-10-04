@@ -55,8 +55,8 @@ import {
   activateOnethingSessionForIpc,
   createOnethingBranchSessionForIpc,
   switchOnethingSessionForIpc,
-} from '@onething/backend/session'
-import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from '@onething/backend/session'
+} from './session-ipc-operations.js'
+import { SESSION_COLLECTION_PATH, SESSION_RESOURCE_SCHEME } from './session-resource-spec.js'
 import type {
   ChatMessage,
   ChatSession,
@@ -69,7 +69,7 @@ import type { SessionTokenUsageReadout } from '@shared/ipc/sessions.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionMutationResponse, SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '@onething/backend/session'
-import { requestSessionOwner, sessionAccess, SessionAccessError } from '@onething/backend/session'
+import { requestSessionOwner, sessionAccess, SessionAccessError } from './session-access.js'
 import {
   ensureCollabGroupRoom,
   isCollabV3RuntimeRunning,
@@ -96,11 +96,11 @@ import {
   WORKDIR_SANDBOX_ERROR,
 } from './session-caller-ops.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
-import type { CreateOnethingBranchSessionAdapters } from '@onething/backend/session'
+import type { CreateOnethingBranchSessionAdapters } from './session-branching.js'
 import type { ReadOutcome } from '@onething/backend/resource'
 import type { JsonObject } from '@shared/json'
 import type { ConsoleLikePort } from '@onething/backend/logging'
-import type { OnethingSessionsIpcLogger } from '@onething/backend/session'
+import type { OnethingSessionsIpcLogger } from './session-ipc-operations.js'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 
 const log = getLogger('rpc.sessions')

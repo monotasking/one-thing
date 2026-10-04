@@ -13,29 +13,30 @@
  * 只有 HTTP 服务器引它(`client-api:gate`)。
  */
 import { resolve } from "node:path";
-import { sessionDeletion } from '@onething/backend/session'
-import { sessionAccess } from '@onething/backend/session'
-import { collectSessionCascadeDeleteIds } from '@onething/backend/session'
+import { sessionDeletion } from './session-deletion.js'
+import { sessionAccess } from './session-access.js'
+import { collectSessionCascadeDeleteIds } from './session-create-delete.js'
 import { mergeWithDefaults } from "@onething/backend/settings";
 import { DEFAULT_ONETHING_AGENT_ID } from "@onething/backend/agent";
-import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getCurrentSessionId as getAppStoreCurrentSessionId, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList, setCurrentSessionId as setAppStoreCurrentSessionId } from "@onething/backend/session";
+import { createBranchSession as createAppStoreBranchSession, createSession as createAppStoreSession, flushAllPendingSaves as flushAllAppStorePendingSaves, flushSessionSave as flushAppStoreSessionSave, getSession as getAppStoreSession, getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers, getSessions as getAppStoreSessions, getSessionsList as getAppStoreSessionsList } from "./session-store.js";
+import { getCurrentSessionId as getAppStoreCurrentSessionId, setCurrentSessionId as setAppStoreCurrentSessionId } from "./session-current.js";
 import {
 	createSessionCommands,
 	sessionCommands as appSessionCommands,
 	type SessionCommands,
-} from "@onething/backend/session";
+} from "./session-commands.js";
 import { createEchoMessageEvents } from './session-echo-message-events.js';
 import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
-} from "@onething/backend/session";
-import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/session";
-import { findSessionIndexMeta as findAppStoreSessionIndexMeta } from "@onething/backend/session";
-import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/backend/session";
+} from "./session-reads.js";
+import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "./session-store.js";
+import { findSessionIndexMeta as findAppStoreSessionIndexMeta } from "./session-store.js";
+import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "./session-repository.js";
 import {
 	deriveSessionLastMessagePreview,
 	findLastPreviewableMessage,
-} from "@onething/backend/session";
+} from "./session-meta.js";
 import { expandOnethingToolSandboxPath } from "@onething/backend/tool";
 import {
 	getOnethingAppStatePath,

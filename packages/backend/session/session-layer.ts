@@ -8,7 +8,7 @@ import type { Unsubscribe, EventBus, StreamChannel } from '@onething/backend/eve
 import { Session } from './session-subscriber.js'
 import { SessionManager } from './session-manager.js'
 import { createEmptySessionState, type SessionState } from './session-state.js'
-import { collectSessionCascadeDeleteIds } from './session-store-helpers.js'
+import { collectSessionCascadeDeleteIds } from './session-create-delete.js'
 import { getCurrentBackend } from '@onething/backend/backend-current.js'
 import { createSessionEventLayer } from './session-event-layer.js'
 import { createSessionCommands } from './session-commands.js'

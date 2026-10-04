@@ -1267,7 +1267,7 @@ function normalizeUsage(usage: SessionResponseUsage): ProjectedStepUsage {
  * 累加成**消息级** usage。
  *
  * 批 P-a:`providerCostUSD` 在这里被**丢掉**,不是漏了 —— 引擎的累加器
- * (`agent-loop/agent-loop-executor.ts` 的 `accumulatedUsage`)两个分支都逐字段
+ * (`agent-loop/agent-loop-executor-finish.ts` 的 `accumulatedUsage`)两个分支都逐字段
  * 列名,里面没有成本那一格,所以 store 的 `message.usage` 从不带它。这里跟着丢,
  * 两边才逐字段相等;成本只活在 `usageByTurn` → `steps[].usage` 那一格。
  */
@@ -1368,7 +1368,7 @@ function stepStatus(status: ProjectedToolCallStatus): ProjectedStepStatus {
 
 /**
  * `ToolCall` 上的结局两格,与引擎逐字同规则
- * (`agent-loop-executor.ts` 的 `settleAgentLoopToolResult`):
+ * (`agent-loop-executor-tool-steps.ts` 的 `settleAgentLoopToolResult`):
  *
  * ```
  * result: toJsonValue(result.data ?? result.content)   // 成功失败都写
@@ -1855,7 +1855,7 @@ export function materializeStop(run: AssistantNode): ProjectedMessageStop | unde
 }
 
 /**
- * 推理段的**两个落点**(引擎侧的判据是 `agent-loop/agent-loop-executor.ts` 的
+ * 推理段的**两个落点**(引擎侧的判据是 `agent-loop/agent-loop-executor-content-parts.ts` 的
  * `getAgentLoopReasoningPlacement`,这里是它在事件上的复刻):
  *
  *  - `'top'` —— 第 1 轮请求**开头**那一段(此前这次执行还没产出过任何正文 /

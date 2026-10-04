@@ -450,7 +450,7 @@ export async function buildSystemPromptSnapshotWithAdapters<
   const allEnabledTools = enableToolCalls
     ? await options.getEnabledTools(settings.tools?.tools)
     : []
-  // Mirror planAgentLoopTools (agent-loop/agent-loop-runtime.ts): a real turn
+  // Mirror planAgentLoopTools (agent-loop/agent-loop-runtime-preparation.ts): a real turn
   // drops `mcp:` singles unconditionally and then keeps only what the agent's
   // allowlist permits. The snapshot used to skip the second half, so it
   // reported tools this agent can never call.

@@ -461,7 +461,7 @@ export function createSessionEventRecorder(
     if (recordingFailure) throw recordingFailure
   }
   const state: RecorderState = {
-    // 引擎那边同一格的初值也是 1(`agent-loop-executor.ts` 的 `turnIndex: 1`)。
+    // 引擎那边同一格的初值也是 1(`agent-loop-executor-turn-state.ts` 的 `turnIndex: 1`)。
     turnIndex: 1,
     firstTokenWritten: false,
     lastHeaderLoaded: false,

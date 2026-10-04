@@ -218,7 +218,7 @@ export function reduceSessionAccount(
   }
 
   // 用户**手动挑模型**那一路(§17.7.1 批 2 影子实测):容器上这两格由
-  // `applySessionModel` 写(`session-store-helpers.ts`,不经归约器),而它的事件产地是
+  // `applySessionModel` 写(`session-meta.ts`,不经归约器),而它的事件产地是
   // 现成的 —— `patchSession` 的 `session/model-changed`(三个产地共用一份构造)。
   // 裁定 4 的口径是"对拍容器上此刻的值,无论谁写",所以折叠也得认这一格,
   // 否则一条"只挑了模型还没开跑"的会话上两侧必然不等。

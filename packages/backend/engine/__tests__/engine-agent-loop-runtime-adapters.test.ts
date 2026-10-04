@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createOnethingAgentLoopRuntimeAdapters } from '../engine-agent-loop-stream-runtime.js'
+import { createOnethingAgentLoopRuntimeAdapters } from '../engine-agent-loop-runtime-adapters.js'
 
 describe('createOnethingAgentLoopRuntimeAdapters', () => {
   it('owns onething adapter wiring for skills, prompt refs, and injected message events', async () => {

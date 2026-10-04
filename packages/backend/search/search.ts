@@ -15,11 +15,12 @@
  * 嵌入运行时 `embedding/search-embedding-transformers-onnx.ts`(它动态 import 嵌入库,只许在 Worker 里被装载 —— 进了这里
  * 就会进主进程 bundle;`gate:search-index` ⑤d 按文本 grep 那个包名,所以这段说明故意不写出包名)。
  */
-export * from './search-providers.js'
-export * from './search-service.js'
-export * from './search-service-bound.js'
-export * from './capabilities/search-capabilities.js'
-export * from './text/search-text-plain.js'
+export type { OnethingSearchProvidersAdapters } from './search-providers.js'
+export { OnethingSearchService, createOnethingSearchService, createSearchContext } from './search-service.js'
+export type { SearchServiceGroup, SearchServiceRequest, SearchServiceResponse } from './search-service.js'
+export { configureOnethingSearchService } from './search-service-bound.js'
+export type { SearchIndexQueryFace } from './capabilities/search-capabilities.js'
+// ./text/search-text-plain.js 交出的名字外面没人经入口拿,不再转交(D235)。
 export { configureAppSearchProviders } from './search-install-providers.js'
 export { createAppSearchService, unavailableIndexFace } from './search-service-setup.js'
 export { registerPluginSearchProvider } from './search-plugin-registry.js'

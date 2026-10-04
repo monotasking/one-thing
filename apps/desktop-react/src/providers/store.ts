@@ -319,7 +319,7 @@ export interface ProviderSettingsState {
    * `contextLengthByModel[m]`、最大输出 `maxOutputByModel[m]` 与
    * `modelCapabilitiesByModel[m]` 的五个能力键(vision / tools / reasoning /
    * imageOutput / fileInput)。后端早有这三张表(引擎读法
-   * `model-registry.ts:895` / `agent-loop-runtime.ts:819` /
+   * `model-registry.ts:895` / `agent-loop-runtime-budget.ts` /
    * `provider/provider-model-capability.ts` 的 `resolveOnethingModelCapabilities`,
    * 覆盖一律优先于目录条目),缺的只是壳上的写面。
    *
@@ -620,7 +620,7 @@ export function overrideDeltaOf(
   /*
    * 最大输出走**与上一格同一手**:同一种「按模型的数字表」,删键删干净、
    * 空表删整表。引擎读它的地方是
-   * `packages/backend/agent-loop/agent-loop-runtime.ts:819` —— 填了就直接当请求的
+   * `packages/backend/agent-loop/agent-loop-runtime-budget.ts` —— 填了就直接当请求的
    * max_tokens,所以这张表写错的后果与上一张一样是**发出去的请求变形**,
    * 不是屏幕上一个读数变形。
    */

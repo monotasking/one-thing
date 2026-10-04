@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { coreProviderOwnsItsContextWindow, getCoreProviderExecution, registerCoreProviderExecution } from '../../agent-loop/agent-loop-external-agent-providers.js'
-import { shouldStartAgentLoopContextCompact } from '../../agent-loop/agent-loop-runtime.js'
+import { shouldStartAgentLoopContextCompact } from '../../agent-loop/agent-loop-runtime-compaction.js'
 import {
   agentExecutorOwnsContextWindow,
   createExternalAgentExecutor,

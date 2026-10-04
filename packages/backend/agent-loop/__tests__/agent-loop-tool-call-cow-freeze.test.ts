@@ -16,9 +16,11 @@ import { createCoreStreamProcessor } from '../agent-loop-stream-processor.js'
 import { executeCoreToolAndUpdate } from '../agent-loop-tool-orchestration.js'
 import {
   finalizeLingeringAgentLoopToolWork,
+} from '../agent-loop-executor-finish.js'
+import {
   settleAgentLoopToolResultWithAdapters,
   startAgentLoopToolExecution,
-} from '../agent-loop-executor.js'
+} from '../agent-loop-executor-tool-steps.js'
 import { sanitizeSessionOnStartup } from '../../session/session.js'
 
 /** 与生产同口径:交出去的消息/工具调用一律深冻结。 */

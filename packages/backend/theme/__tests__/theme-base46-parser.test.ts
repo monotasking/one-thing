@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Base46Theme } from '../theme-types.js'
 import { convertBase46ToTheme } from '../theme-base46-parser.js'
 import { deriveStateOverlays } from '../theme-role-mapping.js'
-import { resolveTheme, resolveThemeUI } from '../theme-resolver.js'
+import { resolveTheme } from '../theme-resolver.js'
+import { resolveThemeUI } from '../theme-ui-styles.js'
 
 function parseHexColor(value: string): [number, number, number] {
   const match = /^#([0-9a-f]{6})$/i.exec(value)

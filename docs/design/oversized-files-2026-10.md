@@ -171,3 +171,38 @@
 - `s37-fable/analyze.mjs <文件…>`:顶层声明表、连通块(叶子常量不连边)、类成员按共享字段分组。
 - `s37-fable/inner.mjs <文件> <函数|类>`:类方法表(含 `this.x()` 调用)、函数体一级语句与嵌套函数。
 - `s37-fable/uses.mjs importers <文件>` / `nested <文件> <函数>` / `objkeys …`:谁引、引了什么名字、`vi.mock` 在哪;闭包内嵌套函数读写了哪些 `let`。
+
+## 实施结果(s38,2026-10-04,未提交)
+
+决策 D229–D236(`backend-structure-decisions-2026-10.md`),落地记录同见 `server-client-split-2026-10.md` §6。
+
+1. **工具**:`split:prove`(`scripts/split-prove.mjs`,拆前从 git 取、拆后从工作树取,逐条顶层声明的源文本多重集相等)与形状 A 门 `cohesion:gate`
+   (`scripts/file-cohesion-gate.mjs`,判据与 s37 `analyze.mjs` 逐条一致;`cohesion:check` 块表、`cohesion:report` 形状 B / C 报表只报不判),进 CI。
+   立门读数 6 不是 2:另 4 只 1000 行以下的文件同样命中,记进只减名单 `docs/audit/cohesion-baseline-2026-10.txt`,待裁(D229)。
+2. **批 1 五只纯搬家**(每只 `split:prove` 逐字相同,入口交出的名字 agent-loop 311 / theme 32 / engine 26 与改前逐个相同,标识符一个没改):
+   `agent-loop-executor` → 六只(135 条,D230);`agent-loop-runtime` → 四只(84 条,D231);`session-store-helpers` → `session-meta` / `-load` / `-details` /
+   `-usage-fold` / `-create-delete`(96 条,D232);`theme-resolver` → 六只(77 条)与 `theme-role-mapping` → 拆出 `theme-color-math`(80 条,D233);
+   `engine-agent-loop-stream-runtime` → 拆出 `engine-agent-loop-runtime-adapters`(24 条,D234)。两只测试按 N6 随函数拆(executor 六只 26 条、runtime 四只 24 条,
+   用例原文与 `describe` 标题不动)。`agent-loop-stream-engine` 的类型外移(文档写「批 1 可顺手做」)不在 D226 名单里,没做。
+3. **两道缺门**(D228):`entry:gate` 加「主入口 `export *`」与「功能内非测试文件引自家主入口」两条。`export *`:session 20 / search 5 / markdown 2 条改具名、只交外面真用的
+   (session 583 → 451、search 112 → 18、markdown 19 → 0),media 一条停下(与 `provider:gate` 冲突,要先改名),基线 `1 star:media` 只许减(D235)。
+   自引入口:70 处里 45 处改引兄弟,25 处停下(eval 23 / session 1 / theme 1,会绕开测试替身或要改代码形状),基线 `self:` 三行只许减(D236)。自检 29 → 43 条。
+4. CLAUDE.md §4 / §5 改掉「没有门」的两处、门表加 `cohesion:gate`;`feature-map` 重生成;代码注释里指向旧文件名的 29 处改成新住处。
+
+**读数**:`cohesion:gate` 红 6 → 绿(0 只新命中,4 只在已知名单);`entry:gate` 非测试 0、测试 838 不变、`star:` 1、`self:` 25;`cycle:gate` 0 环,深层环仍是那 2 个;
+layer / name / client-api / boundary / assembly / transport / provider / log / session 全绿。
+
+**与本文不一致、要你看的地方**:① 1.3 节「今天只红两只」是只量了 1000 行以上文件的读数,扫全包是 6 只(D229);② `-tool-steps` 收下了工具执行的两只端口、
+`session-meta` 收下了 `findLastPreviewableMessage` / `getDisplayContent`、theme 的真实依赖方向与 2.1 节的 DAG 相反的那一段(D230 / D232 / D233);
+③ 形状 B / C 报表按「共用 `let` / 字段」机械分组,报不出 2.3 节点名的 `music-radio` 与 `CoreStreamEngine`(D229)。
+
+**验收**(改前 `$S/s38-before/`、改后 `$S/s38-after/`,同一份脚本 `$S/s38-checks.sh`,沿用 s35 那套另加 theme 两只金样逐条与新门):三套 tsc 零错;
+四个 bundle 全成,三份检索 Worker 与 ACP 桥字节数逐字节不变(server / CLI `search-worker.cjs` 1,276,540、桌面 1,275,004、`acp-mcp-bridge.cjs` 748,877),
+主包变小(server 5,778,249 → 5,766,771、CLI 11,472,453 → 11,461,336,入口不再转交的名字);全量 vitest 根 11,431 条、壳 7,344 条:壳失败集合相同;根第一轮比改前多
+6 条(`plugin/event-routing` 5 条 + `http-server-workspace-watch-ownership`「A shutdown」),单跑两遍 5 条全绿、只剩改前就红的「allowlist」一条,第二轮全量
+失败集合 = 改前少一条(「A stop」那条负载抖动这次没红)—— 判为负载抖动;拆出来的十只测试零失败;`http-server/__tests__` + `apps/backend-server` 231 条逐条相同;
+快照与 golden 的 sha 不变;`theme-gallery-regression` / `builtin-theme-contrast` 17 条逐条相同;persistence / import-side-effect-free + assembly-lifecycle 绿;
+shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydration(夹具与 battery 自留 store)0 失败;`gate:search-index` 与改前同三条红(⑤d ×2、⑤c);
+`gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` / `log:smoke` / `provider:drill` 绿;全部结构门绿(含新门 `cohesion:gate`,改前它是红的;
+`session:check` 与改前同 4 条);CLI 与 server 能起;`gateway:start` 与改前一样因缺 `ONETHING_GATEWAY_RUNTIME_MODULE` exit 1、零写入。
+别的会话的五只 `chat-*.ts` 零改动(改前、改后、跑期间 sha 都相同)。

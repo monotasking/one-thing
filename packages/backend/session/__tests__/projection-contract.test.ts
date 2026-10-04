@@ -51,7 +51,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { finalizeLingeringAgentLoopToolWork } from '../../agent-loop/agent-loop-executor.js'
+import { finalizeLingeringAgentLoopToolWork } from '../../agent-loop/agent-loop-executor-finish.js'
 import { CORE_ABORTED_TOOL_ERROR } from '@shared/engine/tool-call-errors.js'
 import { createCoreToolInputStartArtifacts } from '../../agent-loop/agent-loop-stream-processor.js'
 import { coreToolInputStartStepTitle } from '@shared/engine/tool-step.js'
@@ -665,7 +665,7 @@ function writeTurnToExpected(
     const slot = timeline.requests[index]
 
     if (request.reasoning !== undefined) {
-      // 引擎的落点规则(`agent-loop/agent-loop-executor.ts` 的
+      // 引擎的落点规则(`agent-loop/agent-loop-executor-content-parts.ts` 的
       // `getAgentLoopReasoningPlacement`):第 1 轮请求开头、此前没产出过正文/
       // 工具调用的那一段是 `'top'` —— `updateMessageReasoning` 写**字段**,不进
       // contentParts;其余一律 `'inline'` —— `appendOrderedPart` 写 contentParts,

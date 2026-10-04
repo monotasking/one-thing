@@ -16,11 +16,19 @@ import os from 'os'
 import type { Theme, ThemeMeta, Base46Theme } from './theme-types.js'
 import {
   extractPreviewColors,
+} from './theme-preview-colors.js'
+import {
   resolveTheme,
-  resolveThemeColorScaleDiagnostics,
-  resolveThemeHighlights,
-  resolveThemeUI,
 } from './theme-resolver.js'
+import {
+  resolveThemeColorScaleDiagnostics,
+} from './theme-color-semantics.js'
+import {
+  resolveThemeHighlights,
+} from './theme-highlight-styles.js'
+import {
+  resolveThemeUI,
+} from './theme-ui-styles.js'
 import {
   generateCSSVariables,
   isThemeTokenOverridable,

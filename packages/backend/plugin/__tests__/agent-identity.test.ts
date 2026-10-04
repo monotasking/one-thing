@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { buildAgentLoopDirectToolsWithAdapters } from '@onething/backend/agent-loop'
-import { buildAgentLoopPostResponseContexts } from '../../agent-loop/agent-loop-executor.js'
+import { buildAgentLoopPostResponseContexts } from '../../agent-loop/agent-loop-executor-post-response.js'
 import { executeCorePluginTool } from '../plugin-api-builder.js'
 import { systemPrincipal } from '@shared/permission/principal'
 

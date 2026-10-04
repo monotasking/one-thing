@@ -4,14 +4,18 @@ import { generateCSSVariables } from '../theme-css-mapper.js'
 import {
   colorMeetsContrast,
   contrastRatio,
+  parseCssColor,
+} from '../theme-color-math.js'
+import {
   deriveCategoryColors,
   deriveNeutralTextRamp,
   deriveStateOverlays,
   deriveStatusSurfaceRamp,
   nudgeDangerColorTowardRed,
-  parseCssColor,
 } from '../theme-role-mapping.js'
-import { resolveTheme, resolveThemeColorSemantics, resolveThemeUI } from '../theme-resolver.js'
+import { resolveTheme } from '../theme-resolver.js'
+import { resolveThemeColorSemantics } from '../theme-color-semantics.js'
+import { resolveThemeUI } from '../theme-ui-styles.js'
 
 function expectSolidContrast(
   style: { fg?: string; bg?: string },

@@ -9,7 +9,7 @@
  * 代码一行没改。
  */
 import { join } from "node:path";
-import type { OnethingMediaLibraryPaths } from "@onething/backend/media";
+import type { OnethingMediaLibraryPaths } from "./media-library-service.js";
 import {
 	getOnethingMediaFilesDir,
 	getOnethingMediaImagesDir,

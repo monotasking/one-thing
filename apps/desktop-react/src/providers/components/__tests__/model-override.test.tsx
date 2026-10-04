@@ -343,7 +343,7 @@ describe('最大输出那一格', () => {
   it('占位符与提示行说的是「今天实际会发多少、为什么是这个数」', async () => {
     renderCatalog([row('a')])
     await openOverride('a')
-    // 目录上限 32,768 → 今天实际发它的一半(agent-loop-runtime.ts:821)。
+    // 目录上限 32,768 → 今天实际发它的一半(agent-loop-runtime-budget.ts 的 resolveAgentLoopContextBudgetValues)。
     expect(outBox().getAttribute('placeholder')).toBe(
       `${(16_384).toLocaleString()}(目录 ${(32_768).toLocaleString()} 的一半)`,
     )

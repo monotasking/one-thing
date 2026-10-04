@@ -11,7 +11,7 @@
 import {
 	createWorkspaceWatchService,
 	type WorkspaceFileChangedHandler,
-} from "@onething/backend/file";
+} from "./file-workspace-watch.js";
 import { defaultRequestContext } from "@onething/backend/http-server/http-server-tenant-paths.js";
 import { workspaceSandboxRoot } from "@onething/backend/http-server/http-server-sandbox.js";
 import type { RuntimeFilesAdapter } from "@onething/backend/http-server/http-server-runtime-facade.js";

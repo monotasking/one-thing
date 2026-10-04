@@ -53,7 +53,7 @@
  */
 
 import fs from 'node:fs'
-import { applySessionListProjectionToMeta, deriveSessionLastMessagePreview, type CoreSessionPreviewMessageSource } from './session-store-helpers.js'
+import { applySessionListProjectionToMeta, deriveSessionLastMessagePreview, type CoreSessionPreviewMessageSource } from './session-meta.js'
 import {
   materializeNode,
 } from '@shared/session/projection/chat-messages'

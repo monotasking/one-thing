@@ -53,7 +53,7 @@ import {
   applySessionMessageAppendToMeta,
   applySessionUpdatedAtToMeta,
   findLastPreviewableMessage,
-} from './session-store-helpers.js'
+} from './session-meta.js'
 import type { SessionAccountState, SessionAccountTruncationEffect } from './session-account.js'
 import type { sessionCommandEvents } from './session-command-events.js'
 import type { sessionReads } from './session-reads.js'

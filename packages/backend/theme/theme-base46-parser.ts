@@ -17,13 +17,15 @@ import type { ThemeShellRoles } from './theme-shell-roles.js'
 import {
   deriveStateOverlays,
   deriveSurfaceRoles,
+} from './theme-role-mapping.js'
+import {
   firstDefinedColor,
   mixCssColors,
   parseCssColor,
   readableColor,
   relativeLuminance,
-} from './theme-role-mapping.js'
-import { selectPrimaryColorSemantics, selectStatusColorSemantics } from './theme-resolver.js'
+} from './theme-color-math.js'
+import { selectPrimaryColorSemantics, selectStatusColorSemantics } from './theme-color-semantics.js'
 
 import { getLogger } from '../logging/logging.js'
 

@@ -5,12 +5,20 @@ import { describe, expect, it } from 'vitest'
 import type { Theme } from '../theme-types.js'
 import {
   extractPreviewColors,
+} from '../theme-preview-colors.js'
+import {
   resolveTheme,
+} from '../theme-resolver.js'
+import {
   resolveThemeHighlights,
+} from '../theme-highlight-styles.js'
+import {
   resolveThemeUI,
   SURFACE_GUARD_MIN_DELTA_L,
+} from '../theme-ui-styles.js'
+import {
   THEME_STATUS_COLOR_TOKENS,
-} from '../theme-resolver.js'
+} from '../theme-semantic-tokens.js'
 import { CSS_VAR_MAP, generateCSSVariables } from '../theme-css-mapper.js'
 import { guaranteeMinAbsDeltaL, guaranteeMinDeltaL } from '../theme-role-mapping.js'
 

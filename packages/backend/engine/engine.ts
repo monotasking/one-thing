@@ -86,7 +86,7 @@ export type {
   OnethingAgentLoopGoalHooks,
   OnethingAgentLoopLogger,
   OnethingAgentLoopScratchpadHooks,
-} from './engine-agent-loop-stream-runtime.js'
+} from './engine-agent-loop-runtime-adapters.js'
 export type {
   StreamContext,
 } from './stream/engine-stream-processor.js'

@@ -9,32 +9,86 @@
  * 下半截后删除。上半截是产品侧(仓储、存储驱动、分支、补水 / 脱水、IPC 形状……),下半截是会话内核
  * (`Session` / `SessionManager`、事件词表与编解码、投影、轨迹、分页与 jsonl 编解码、store helpers)。
  */
-export * from './session-branching.js'
-export * from './session-history-messages.js'
-export * from './session-ipc-operations.js'
-export * from './session-renderer-sanitizer.js'
-export * from './session-dehydrate.js'
+// ./session-branching.js 交出的名字外面没人经入口拿,不再转交(D235)。
+export {
+  buildOnethingHistoryMessages,
+  buildOnethingMessageContent,
+  buildOnethingResumeHistoryAfterToolConfirmation,
+  filterOnethingHistoryForNonToolAPI,
+  onethingHistoryBuildRecipe,
+} from './session-history-messages.js'
+export type { BuildOnethingHistoryMessagesOptions } from './session-history-messages.js'
+export {
+  addOnethingSystemMessageForIpc,
+  deleteOnethingSessionForIpc,
+  getOnethingChatHistoryForIpc,
+  removeOnethingMessageForIpc,
+  removeOnethingSystemMarkerMessageForIpc,
+  renameOnethingSessionForIpc,
+  updateOnethingMessageThinkingTimeForIpc,
+  updateOnethingSessionArchivedForIpc,
+  updateOnethingSessionPinForIpc,
+} from './session-ipc-operations.js'
+export type { OnethingSessionsIpcLogger } from './session-ipc-operations.js'
+export { sanitizeOnethingMessagesForRenderer, sanitizeOnethingSessionForRenderer } from './session-renderer-sanitizer.js'
+export { dehydrateProjectedMessages, dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 /*
  * `session-message-runtime` —— **整件删除**(§17.7.1 批 3)。
  * 命令面的执行体随老 reducer 退役;用量快照那一口落在 `backend/session/session-store.ts`。
  */
-export * from './session-repository.js'
-export * from './session-storage-driver.js'
-export * from './session-deletion-recovery.js'
-export * from './session-usage.js'
-export * from './session-stream-abort.js'
-export * from './session-updates.js'
-export * from './session-system-messages.js'
-export * from './session-working-directory.js'
-export * from './session-events.js'
-export * from './session-resource-spec.js'
+export { createOnethingSessionRepository } from './session-repository.js'
+export type { OnethingSessionRepositoryLogger, SessionInitialOwner } from './session-repository.js'
+export { createHybridSessionStorageDriver } from './session-storage-driver.js'
+export { createSessionDeletionRecovery } from './session-deletion-recovery.js'
+export type { SessionDeletionRecovery } from './session-deletion-recovery.js'
+export { normalizeOnethingSessionTokenUsage } from './session-usage.js'
+export { abortOnethingStreamsForIpc, listOnethingActiveStreamsForIpc } from './session-stream-abort.js'
+export type {
+  AbortOnethingStreamsForIpcLogger,
+  AbortOnethingStreamsForIpcOptions,
+  ListOnethingActiveStreamsForIpcOptions,
+  OnethingAbortMessageLike,
+  OnethingAbortStepLike,
+  OnethingAbortToolCallLike,
+} from './session-stream-abort.js'
+export { updateOnethingSessionAgent, updateOnethingSessionModel, updateOnethingSessionPermissionMode } from './session-updates.js'
+// ./session-system-messages.js 交出的名字外面没人经入口拿,不再转交(D235)。
+export { updateOnethingSessionWorkingDirectory } from './session-working-directory.js'
+export {
+  encodeSessionEventLine,
+  hashSessionEventContent,
+  hashSessionEventSystemPrompt,
+  hashSessionEventTools,
+  isSameRequestHeaderEnvelope,
+  truncateSessionEventPreview,
+} from './session-events.js'
+export type { SessionEventRecord } from './session-events.js'
+export { SESSION_COLLECTION_PATH, SESSION_PERMISSION_MODES, sessionResourceSpec } from './session-resource-spec.js'
 // 按路径读盘的 legacy 整份 JSON 分页。从前它不进 `storage/storage.ts` 那个桶,是为了让会话内核的出口在浏览器里也
 // import 得动;界面今天碰不到后端包,那条理由没了,所以外面要用就从入口拿。
 export { getMessagesPageFromJsonFilePath } from './storage/session-storage-json-message-page-file.js'
 
 // ── 以下原是包根 `session/`(会话的命令面 / 读门面 / 事件账本),2026-10-03 并进本目录。外面真在用的名字逐个
-// 列在这里;访问判定与读门面两只是外面整只拿去用的(命名空间 import、`typeof import`),所以整只再导出。
-export * from './session-access.js'
+// 列在这里。访问判定与读门面两只从前整只再导出(外面有命名空间 import、`typeof import`),D235 起也逐个列:
+// 列的是外面真用到的名字(命名空间 import 取的属性也算),入口不再有 `export *`(`entry:gate` 判)。
+export {
+  DEFAULT_SESSION_OWNER,
+  SessionAccessError,
+  createSessionAccess,
+  isHistoricalLocalOperator,
+  ownerMatchesContext,
+  ownsSessionRecord,
+  requestSessionOwner,
+  sessionAccess,
+  sessionOwnerOf,
+} from './session-access.js'
+export type {
+  SessionAccess,
+  SessionAccessContext,
+  SessionAccessOperation,
+  SessionOwner,
+  SessionOwnershipRecord,
+} from './session-access.js'
 export { recordSynthesizedAssistantText } from './session-assistant-parts.js'
 // 2026-10 engine 归位:「这次执行属于谁」的固定执行上下文从 `engine/execution-context.ts` 搬来(它只吃访问判定那两个名字)。
 export { fixedExecutionContext } from './session-execution-context.js'
@@ -73,7 +127,8 @@ export {
 } from './session-presentation.js'
 export { foldLiveSessionLogicalDelta } from './session-projection-cache.js'
 export { warnOnForeignCoreForEventsRead } from './session-read-mode.js'
-export * from './session-reads.js'
+export { sessionReads } from './session-reads.js'
+export type { SessionHistoryBuilder, SessionReadPorts } from './session-reads.js'
 export { canReceiveSessionRemoval } from './session-removal-event.js'
 export {
   beginSessionRun,
@@ -99,7 +154,7 @@ export { getCurrentSessionId, setCurrentSessionId } from './session-current.js'
 // 读存储 / 应用状态 / 设置的导出,所以这五只一度不进入口;改成首次用到时才建以后(见 `session-store.ts` 那段说明),
 // import 入口不再读设置、不再建仓储。外面真在用的名字逐个列出。
 //
-// `landSessionAccountUsage` 在本目录有三份,签名各不相同:入口用这个名字交出的是 `session-store-helpers.ts` 那份(就地改一个
+// `landSessionAccountUsage` 在本目录有三份,签名各不相同:入口用这个名字交出的是 `session-usage-fold.ts` 那份(就地改一个
 // 会话对象);会话表那份(按 id 把一份用量快照落进会话表)以 `landSessionAccountUsageInStore` 交出,`usage.ts` 那份
 // (按 id 从会话账折叠取快照、再落进会话表)以 `landSessionAccountUsageFromAccount` 交出。
 export {
@@ -215,31 +270,46 @@ export type {
 
 // 事件溯源 S0(docs/design/session-event-sourcing-2026-08.md §9):
 // 事件词表 + 编解码 + 两个纯投影。core 拥有类型,runtime 与 renderer 都从这里读。
-export * from './events/session-event-vocabulary.js'
-export * from './projection/session-projection.js'
+export { encodeSessionLogEventLine, parseSessionLogEventLog } from './events/session-event-vocabulary.js'
+export {
+  PROJECTION_CHECKPOINT_FIELDS,
+  SESSION_PROJECTION_CHECKPOINT_VERSION,
+  canonicalChatMessage,
+  canonicalChatMessages,
+  canonicalHistoryMessages,
+  decodeSessionProjectionCheckpoint,
+  defaultHistoryMessageContent,
+  encodeSessionProjectionCheckpoint,
+  materializeModelHistory,
+  projectModelHistory,
+} from './projection/session-projection.js'
 // U0(ui-event-stream-2026-08 §1 规则 1):part 边界只判一次 —— 落盘打包器与
 // UI 小批发器共用这一台状态机。F4-c 定律二(§16.19)把它请进了编码器,
 // 与打包/解包同住 `events/chunk-codec.ts`(经上面的 `events/index.js` 出口)。
 // S3 只读查询面(§12):事件 → 轨迹树的纯装配器。CLI / HTTP / 轨迹面板同源。
-export * from './trace/session-trace.js'
+// ./trace/session-trace.js 交出的名字外面没人经入口拿,不再转交(D235)。
 export {
   applySessionContextSize,
+  applySessionTokenUsage,
+  landSessionAccountUsage,
+  getSessionTokenUsageSnapshot,
+  hasSessionUsageDetails,
+  subtractSessionMessageUsage,
+  sumSessionMessageUsage,
+} from './session-usage-fold.js'
+export {
   applyInheritedSessionWorkingDirectory,
   applySessionAgent,
   applySessionArchiveState,
   applySessionListProjectionToMeta,
   applySessionMessageAppendToMeta,
   applySessionIndexMetaMutationWithAdapters,
-  applySessionMetadataMutationWithAdapters,
   applySessionModel,
   applySessionName,
   applySessionPermissionMode,
   applySessionPin,
   applySessionPromptContext,
-  applySessionSideEffectMutationWithAdapters,
   applySessionSummary,
-  applySessionTokenUsage,
-  landSessionAccountUsage,
   applySessionUpdatedAtToMeta,
   applySessionVariables,
   applySessionWorkingDirectory,
@@ -247,6 +317,22 @@ export {
   applyDefaultAgentIdToSessionMetas,
   CORE_DEFAULT_AGENT_ID,
   SESSION_LAST_MESSAGE_PREVIEW_LENGTH,
+  deriveSessionLastMessagePreview,
+  extractSessionMeta,
+  findLastPreviewableMessage,
+  findSessionMeta,
+  normalizeSessionVariables,
+  prependSessionMeta,
+  updateSessionIndexMeta,
+} from './session-meta.js'
+export {
+  applySessionMetadataMutationWithAdapters,
+  applySessionSideEffectMutationWithAdapters,
+  loadSessionWithAdapters,
+  normalizeWorkingDirectoryRoots,
+  syncSessionSideEffectWithReadyAdapters,
+} from './session-load.js'
+export {
   collectChildSessionIds,
   collectSessionCascadeDeleteIds,
   createBranchSessionWithAdapters,
@@ -254,24 +340,12 @@ export {
   createCoreSessionRecord,
   createSessionWithAdapters,
   deleteSessionWithAdapters,
-  deriveSessionLastMessagePreview,
-  extractSessionMeta,
-  findLastPreviewableMessage,
-  findSessionMeta,
-  getSessionTokenUsageSnapshot,
-  hasSessionUsageDetails,
-  loadSessionWithAdapters,
-  mergeSessionDetails,
-  normalizeSessionVariables,
-  normalizeWorkingDirectoryRoots,
   planSessionCascadeDelete,
-  prependSessionMeta,
+} from './session-create-delete.js'
+export {
+  mergeSessionDetails,
   resolveSessionDetailsSnapshot,
-  subtractSessionMessageUsage,
-  sumSessionMessageUsage,
-  syncSessionSideEffectWithReadyAdapters,
-  updateSessionIndexMeta,
-} from './session-store-helpers.js'
+} from './session-details.js'
 export type {
   CoreTimelineMessage,
   CoreTimelineSession,
@@ -282,51 +356,59 @@ export type {
 } from './session-timeline.js'
 export type {
   CoreSession,
+  CoreSessionDetails,
+  CoreSessionDetailsWithMessages,
+  CoreSessionMessageWithId,
+  CoreSessionMessageWithSteps,
+  CoreSessionMessageWithModelInfo,
+  CoreSessionStepWithId,
+  CoreSessionWithMessageList,
+  CoreSessionWithMessages,
+  ResolveSessionDetailsSnapshotOptions,
+  SessionDetailsMergeOptions,
+} from './session-details.js'
+export type {
   ApplySessionSideEffectMutationWithAdaptersOptions,
+  CoreSessionMetadataMutationResult,
+  CoreSessionCacheAdapter,
+  LoadSessionWithAdaptersOptions,
+  LoadSessionWithAdaptersResult,
+  NormalizeWorkingDirectoryRootsOptions,
+  SyncSessionSideEffectWithReadyAdaptersOptions,
+  SyncSessionSideEffectWithReadyAdaptersResult,
+  ApplySessionMetadataMutationWithAdaptersOptions,
+} from './session-load.js'
+export type {
   ApplySessionIndexMetaMutationWithAdaptersOptions,
   CoreContextVariableInput,
   CoreContextVariableScope,
   CoreContextVariableType,
   CoreNormalizedContextVariable,
-  CoreSessionDetails,
-  CoreSessionDetailsWithMessages,
-  CoreSessionDeletePlan,
-  CoreSessionLastTurnUsage,
-  CoreSessionMetadataMutationResult,
-  CoreSessionEditableMessage,
   CoreSessionIndexMessageSource,
   CoreSessionIndexTimestampSource,
   CoreSessionMessage,
-  CoreSessionMessageWithId,
-  CoreSessionMessageWithSteps,
-  CoreSessionMessageWithUsage,
-  CoreSessionMessageWithModelInfo,
   CoreSessionMeta,
-  CoreSessionStepWithId,
-  CoreSessionTokenUsage,
-  CoreSessionWithMessageList,
-  CoreSessionWithMessages,
-  CoreSessionUsageFields,
-  CoreSessionUsageSnapshot,
-  CoreSessionCacheAdapter,
+  SessionMetaExtractOptions,
+  CoreSessionListProjectionUpdate,
+  CoreSessionPreviewMessageSource,
+} from './session-meta.js'
+export type {
+  CoreSessionDeletePlan,
+  CoreSessionEditableMessage,
   CreateCoreBranchSessionRecordOptions,
   CreateCoreSessionRecordOptions,
   CreateBranchSessionWithAdaptersOptions,
   CreateSessionWithAdaptersOptions,
   DeleteSessionWithAdaptersOptions,
   DeleteSessionWithAdaptersResult,
-  LoadSessionWithAdaptersOptions,
-  LoadSessionWithAdaptersResult,
-  NormalizeWorkingDirectoryRootsOptions,
-  ResolveSessionDetailsSnapshotOptions,
-  SessionDetailsMergeOptions,
-  SyncSessionSideEffectWithReadyAdaptersOptions,
-  SyncSessionSideEffectWithReadyAdaptersResult,
-  SessionMetaExtractOptions,
-  ApplySessionMetadataMutationWithAdaptersOptions,
-  CoreSessionListProjectionUpdate,
-  CoreSessionPreviewMessageSource,
-} from './session-store-helpers.js'
+} from './session-create-delete.js'
+export type {
+  CoreSessionLastTurnUsage,
+  CoreSessionMessageWithUsage,
+  CoreSessionTokenUsage,
+  CoreSessionUsageFields,
+  CoreSessionUsageSnapshot,
+} from './session-usage-fold.js'
 export {
   buildSessionEventJumpIndex,
   buildSessionMessagesPageResponse,

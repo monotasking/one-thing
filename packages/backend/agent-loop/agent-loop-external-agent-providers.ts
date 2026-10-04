@@ -2,7 +2,7 @@
  * 执行器表与 provider 执行事实(claude-code-integration-v2 §3 / E0;2026-10-04 两张表并成一张)。
  *
  * 从前这里是一个写死的 `Set(['acp','claude-code-agent'])`,被三处消费:压缩
- * 门(agent-loop-runtime / core-stream-engine)与鉴权豁免(provider-config)。三处问的其实是
+ * 门(agent-loop-runtime-compaction / core-stream-engine)与鉴权豁免(provider-config)。三处问的其实是
  * 两个**不同**的问题 ——「这个 provider 的上下文窗口归谁管」和「它是不是外部执行体
  * (所以没有 API key)」—— 却共用一份 id 名单,于是每加一个外部执行体都要回来改这里。
  *
