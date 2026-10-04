@@ -183,7 +183,7 @@ describe('McpSubsystem', () => {
    * 收尾批(2026-09-03,用户裁定 b):**等待有界**。
    *
    * C1 的"dispose 等在途 start 落地"在一台握手挂死的 stdio 服务器上会把
-   * `apps/server` 那 5s SIGTERM 预算吃干净(实测 5.06s +
+   * `apps/backend-server` 那 5s SIGTERM 预算吃干净(实测 5.06s +
    * `shutdown did not finish in time; pending session writes may be lost`)。
    * 上限压在 5s 底下,超时记 warn 并照常返回,把剩下的时间留给排在 dispose 链
    * 后面的会话账本 flush。反证:去掉 `raceDisposeTimeout` 里那只 deadline(或直接

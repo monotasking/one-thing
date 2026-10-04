@@ -10,7 +10,7 @@
 flowchart TB
   subgraph clients[用户入口]
     UI[桌面 / Web / 移动端界面]
-    Client[packages/client\n统一调用与事件订阅]
+    Client[packages/backend-client\n统一调用与事件订阅]
     UI --> Client
   end
 
@@ -118,9 +118,9 @@ flowchart TD
 ## 核对依据
 
 - `packages/backend/backend.ts`：后端装配、宿主能力、会话与引擎生命周期。
-- `packages/backend/server/embed.ts`、`apps/server/src/main.ts`：桌面内嵌服务与独立服务入口。
+- `packages/backend/server/embed.ts`、`apps/backend-server/src/main.ts`：桌面内嵌服务与独立服务入口。
 - `packages/backend/server/runtime.ts`：RPC 运行时与后端服务适配。
-- `packages/client/client.ts`：统一调用、事件订阅和能力查询。
+- `packages/backend-client/client.ts`：统一调用、事件订阅和能力查询。
 - `packages/backend/wiring/engine/index.ts`：核心引擎与运行时绑定。
 - `packages/core/engine/`：流式处理、Agent 循环、上下文与工具编排。
 - `packages/backend/session/event-writer.ts`：会话事件写入与观察者通路。

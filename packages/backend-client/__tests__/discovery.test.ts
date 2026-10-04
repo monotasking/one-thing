@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * `@onething/client/node` 的 `readCoreDiscovery` —— 三态。
+ * `@onething/backend-client/node` 的 `readCoreDiscovery` —— 三态。
  *
  * 每一格都用真文件系统 + 真端口(临时目录 / `listen(0)`),因为被测的正是"文件在不在、
  * pid 活没活、端口通不通"这三件真事;把 `node:fs` / `node:net` mock 掉就等于把要证的

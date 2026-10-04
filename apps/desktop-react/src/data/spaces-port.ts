@@ -9,7 +9,7 @@ import type {
 } from '@shared/ipc/spaces'
 
 /**
- * 工作区(space)取数与 core 的客户端(`@onething/client`)之间的那一层**端口** —— 与
+ * 工作区(space)取数与 core 的客户端(`@onething/backend-client`)之间的那一层**端口** —— 与
  * `data/files-port.ts` / `data/sessions-port.ts` 同一形状、同一理由:
  * 切换器的全部判据(排序、字标、色标、序号键、过滤)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用 `configureSpacesPort`

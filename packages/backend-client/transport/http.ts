@@ -98,7 +98,7 @@ class HttpTransport implements Transport {
     const injected = options.fetch
     if (!injected && typeof globalThis.fetch !== 'function') {
       throw new Error(
-        '@onething/client: no global fetch in this runtime; pass options.fetch',
+        '@onething/backend-client: no global fetch in this runtime; pass options.fetch',
       )
     }
     this.fetchImpl = injected ?? ((input, init) => globalThis.fetch(input, init))

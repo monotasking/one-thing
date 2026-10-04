@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createMemoryTransport, createOnethingClient } from '@onething/client'
+import { createMemoryTransport, createOnethingClient } from '@onething/backend-client'
 import { Interaction } from '@onething/backend/interaction'
 import { getPendingInteractionsForIpc, respondInteractionForIpc } from '@onething/backend/interaction/interaction-ipc-operations'
 import type { InteractionRespondRequest } from '@shared/ipc/interaction'

@@ -23,7 +23,7 @@ const CORDIS_FORBIDDEN_PATTERNS: RegExp[] = [
 
 // 「core 专属禁令」那张表(`@shared/ipc`、better-sqlite3、MCP / ACP SDK、zod / diff / uuid)随去 core 批 1
 // (2026-10-03)撤掉:core 的「零依赖骨架」是为了让界面那侧复用,第①步以后界面只许 import `@shared` 与
-// `@onething/client`,碰不到 core 了,这张表守的东西没有对象。core 剩下的文件与 runtime 吃同一套宿主禁令
+// `@onething/backend-client`,碰不到 core 了,这张表守的东西没有对象。core 剩下的文件与 runtime 吃同一套宿主禁令
 // (electron / `@main` / `@preload` / 渲染层别名 + cordis),见 `checkRuntimeHostBoundary`。
 
 const HOST_BOUNDARY_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -2412,7 +2412,7 @@ function assertNoMatches(label: string, lines: string[]): void {
  *
  * - `checkCoreForbiddenImports`(core 与 `runtime/*\/kernel` 不许 import electron / `@shared/ipc` / 原生依赖 /
  *   MCP、ACP SDK / zod / diff / uuid):「零依赖骨架」是为了让界面那侧复用;第①步以后界面只许 import `@shared` 与
- *   `@onething/client`,碰不到 core 了。宿主那一半(electron / `@main` / `@preload` / 渲染层别名 + cordis)并进了
+ *   `@onething/backend-client`,碰不到 core 了。宿主那一半(electron / `@main` / `@preload` / 渲染层别名 + cordis)并进了
  *   `checkRuntimeHostBoundary`,core 剩下的文件照旧被它管着。
  * - `checkRuntimeDomainKernelImportClosure`(`runtime/<d>/kernel/` 只许 import 自己、core、`@shared` 与 node 内建):
  *   它的源头是「kernel 当 core 判」,core 不再是一层,kernel 也就只是领域里一个普通子目录。
@@ -2854,7 +2854,7 @@ function checkMarkdownDomainRidesTheRpcChannel(): void {
     'resolveOnethingMarkdownAssetForIpc',
     'saveOnethingMarkdownAttachmentsForIpc',
   ]
-  // 沙箱护栏必须留在 app 层的**调用路径**上：这几条是从 apps/server 搬过来的,
+  // 沙箱护栏必须留在 app 层的**调用路径**上：这几条是从 apps/backend-server 搬过来的,
   // 搬丢了就等于迁移把安全护栏一起迁没了 —— 批 1 退回这个域正是为了避免这件事。
   // 注:笔记库判定的**实现**已按 "owns Markdown asset service" 规则归位 runtime
   // (卫生批 7739c230;P3 起它问的是 `NoteVault` 而不是磁盘上的 `.obsidian`),
@@ -6750,16 +6750,16 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   assertNoMatches('packages/backend owns concrete builtin tool implementations', lines)
 }
 
-// ── C0(`docs/design/client-sdk-2026-09.md` §3):`packages/client` 的两条边界 ──
+// ── C0(`docs/design/client-sdk-2026-09.md` §3):`packages/backend-client` 的两条边界 ──
 
 /**
- * `packages/client`(`@onething/client`)禁 import 的东西。
+ * `packages/backend-client`(`@onething/backend-client`)禁 import 的东西。
  *
  * 判据一句话:**它是 core 的客户端底座,不是任何一个壳的一部分**。所以既不认识
  * 前端框架(react / vue),也不认识宿主(electron / `@main` / `@preload`),也不
  * 反向依赖上层(`@onething/backend` 与它的任何子路径 —— 依赖是单向的:
  * 产品 ← 装配 ← 宿主,而客户端在这条链之外,只吃 `@shared` 契约)。2026-10 ①d 起
- * 连 core 的纯类型也不许了(core 已于 2026-10-03 整个并进 runtime),那一条由 `checkClientImportsOnlySharedAndClient`
+ * 连 core 的纯类型也不许了(core 已于 2026-10-03 整个并进 runtime),那一条由 `checkClientImportsOnlySharedAndBackendClient`
  * 统一守(它覆盖 client 侧三棵树)。`@renderer` / `@/` 是 Vue 渲染层的两个别名 —— 搬家的**目的**就是
  * 把这一层从那棵树里摘出来,搬完再引回去等于白搬。
  */
@@ -6779,7 +6779,7 @@ const CLIENT_PACKAGE_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
 ]
 
 /**
- * 浏览器独有的全局,`packages/client` 一个都不许**裸用** —— 连
+ * 浏览器独有的全局,`packages/backend-client` 一个都不许**裸用** —— 连
  * `typeof window === 'undefined'` 这种守卫也不许。
  *
  * 守卫看着无害,其实是这层"双环境"承诺的漏点:一旦允许问,下一步就是
@@ -6806,7 +6806,7 @@ const CLIENT_PACKAGE_FORBIDDEN_GLOBAL_PATTERNS: RegExp[] = [
 const CLIENT_TEST_ENVIRONMENT_PRAGMA = /@vitest-environment\s+node/
 
 function checkClientPackageBoundary(): void {
-  const clientRoot = path.join(root, 'packages/client')
+  const clientRoot = path.join(root, 'packages/backend-client')
   const files = walkFiles(clientRoot, [], { includeTests: true })
   const sourceFiles = files.filter(file => !isClientTestFile(file))
 
@@ -6823,7 +6823,7 @@ function checkClientPackageBoundary(): void {
   ]
 
   assertNoMatches(
-    'packages/client stays framework-free, host-free and browser-global-free',
+    'packages/backend-client stays framework-free, host-free and browser-global-free',
     lines,
   )
 }
@@ -6964,7 +6964,7 @@ function checkShellsDoNotImportOtherShells(): void {
 }
 
 /**
- * **shared 只 import shared;client 侧只 import shared、`@onething/client` 与自己**
+ * **shared 只 import shared;client 侧只 import shared、`@onething/backend-client` 与自己**
  * (server / client 拆分第①步 ①d,`docs/design/server-client-split-2026-10.md` §0 / §2)。
  * 零基线硬闸。
  *
@@ -6974,8 +6974,8 @@ function checkShellsDoNotImportOtherShells(): void {
  *   不许 `@onething/*`、不许 `node:` / node 内建、不许 electron、不许第三方包 —— shared 要同时进
  *   浏览器包、Metro(手机)与 node,带一个 node 依赖就有一边会坏。测试另放行 `vitest` 与 node
  *   内建(用例跑在 node 里),其余同样禁。
- * - **client 侧**(`apps/desktop-react/src`、`apps/mobile/{app,src}`、`packages/client`):非测试代码
- *   只许 import `@shared/*`、`@onething/client` 与自己(第三方 npm 包不在本条射程内)。类型导入
+ * - **client 侧**(`apps/desktop-react/src`、`apps/mobile/{app,src}`、`packages/backend-client`):非测试代码
+ *   只许 import `@shared/*`、`@onething/backend-client` 与自己(第三方 npm 包不在本条射程内)。类型导入
  *   一样算 —— 类型也是对 server 包的依赖,合包以后它会让 client 依赖 server。
  *
  * 放行写在这里,不写在注释里:
@@ -6985,7 +6985,7 @@ function checkShellsDoNotImportOtherShells(): void {
  *   最诚实的做法是跑后端那一个投影,在测试里手抄一份才是会漂的第二产地。
  * - (从前还有一条:`packages/shared/backend/http-discovery.ts` 的四个 `node:` 内建。第②步把它碰 node 的
  *   那一半拆成 server / client 各一份最小实现 —— `packages/backend/http-server/http-server-discovery-io.ts` 与
- *   `packages/client/http-discovery-io.ts`,对拍测试钉住两份同答 —— shared 里只剩记录形状,放行随之删除。)
+ *   `packages/backend-client/http-discovery-io.ts`,对拍测试钉住两份同答 —— shared 里只剩记录形状,放行随之删除。)
  *
  * 服务商自述试点 P4 的 `checkReactShellReadsProvidersOverRpc`(壳不许 import
  * `@onething/backend/provider|agent-loop`)是本条的子集,已并入这里。
@@ -7044,7 +7044,7 @@ function checkSharedImportsOnlyShared(): void {
 const CLIENT_SIDE_ROOTS: Array<{ root: string; scan: string[] }> = [
   { root: 'apps/desktop-react/src', scan: ['apps/desktop-react/src'] },
   { root: 'apps/mobile', scan: ['apps/mobile/app', 'apps/mobile/src'] },
-  { root: 'packages/client', scan: ['packages/client'] },
+  { root: 'packages/backend-client', scan: ['packages/backend-client'] },
 ]
 
 const CLIENT_SIDE_ALLOWED_ESCAPES: Array<{ from: string; to: string }> = [
@@ -7052,7 +7052,7 @@ const CLIENT_SIDE_ALLOWED_ESCAPES: Array<{ from: string; to: string }> = [
   { from: 'apps/desktop-react/src', to: 'apps/desktop-react/electron/native-view-protocol' },
 ]
 
-function checkClientImportsOnlySharedAndClient(): void {
+function checkClientImportsOnlySharedAndBackendClient(): void {
   const lines: string[] = []
   for (const side of CLIENT_SIDE_ROOTS) {
     const sideRoot = path.join(root, side.root)
@@ -7071,13 +7071,13 @@ function checkClientImportsOnlySharedAndClient(): void {
           if (isInside(sideRoot, target)) return false
           return !escapes.some(allowed => target.replace(/\.(ts|js)$/, '') === allowed)
         }
-        if (/^@onething\//.test(specifier)) return !/^@onething\/client(?:\/|$)/.test(specifier)
+        if (/^@onething\//.test(specifier)) return !/^@onething\/backend-client(?:\/|$)/.test(specifier)
         return false
       }))
     }
   }
   assertNoMatches(
-    'client side (apps/desktop-react/src, apps/mobile, packages/client) imports only @shared/*, @onething/client and itself',
+    'client side (apps/desktop-react/src, apps/mobile, packages/backend-client) imports only @shared/*, @onething/backend-client and itself',
     lines,
   )
 }
@@ -7119,7 +7119,7 @@ checkClientPackageBoundary()
 checkCoreSearchNamesNoCapability()
 checkShellsDoNotImportOtherShells()
 checkSharedImportsOnlyShared()
-checkClientImportsOnlySharedAndClient()
+checkClientImportsOnlySharedAndBackendClient()
 checkSessionVocabularyUsesTheRegistry()
 checkGatewayHostBoundary()
 checkGatewayLoadsRuntimeFromHostBoundary()

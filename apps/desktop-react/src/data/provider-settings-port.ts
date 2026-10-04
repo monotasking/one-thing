@@ -48,7 +48,7 @@ import type {
 } from '@shared/ipc/spaces'
 
 /**
- * 「模型服务」设置面与 core 的客户端(`@onething/client`)之间的那一层**端口** ——
+ * 「模型服务」设置面与 core 的客户端(`@onething/backend-client`)之间的那一层**端口** ——
  * 与 `files-port` / `sessions-port` / `models-port` 同一形状、同一理由:这块面的
  * 全部判据(哪一家算一家、模式怎么分、副行说什么、写回怎么合并)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用

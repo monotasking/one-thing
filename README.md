@@ -117,7 +117,7 @@ packages/core/              # Engine, sessions, permissions, tools, storage prim
 packages/onething-runtime/  # App runtime: prompts, themes, memory, media, agents
 packages/gateway/           # WeChat/Telegram channel gateway (remote approval)
 apps/electron/              # Electron-host-specific IPC/preload pieces
-apps/server/                # Headless server (HTTP, default port 8787)
+apps/backend-server/                # Headless server (HTTP, default port 8787)
 apps/web/                   # Browser build of the renderer
 src/main, src/renderer      # The Electron app itself
 site/                       # Marketing/download website (static)

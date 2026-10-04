@@ -20,7 +20,7 @@ import { materializeFileAttachments } from './file-attachments'
 import type { PageResultSlot, SessionTailPage } from './page-results'
 
 /**
- * 聊天数据源与 core 的客户端(`@onething/client`)之间的那一层**端口**(D3,路线 A)。
+ * 聊天数据源与 core 的客户端(`@onething/backend-client`)之间的那一层**端口**(D3,路线 A)。
  *
  * 与 `sessions-port.ts` 逐条同判例:形状是**平台调用面的子集**,不是新契约,
  * 存在的唯一理由是可测 —— chat-source 的全部判据(增量折 / 缺号重折 / 活尾巴 /

@@ -25,7 +25,7 @@ import {
 } from '../session-park'
 import { startSessionProjection, stopSessionProjection } from '../session-projection'
 import { sessionRefOf } from '../session-ref'
-import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/backend-client/events/session-lifecycle'
 import type { SessionMeta } from '@shared/ipc/chat'
 
 /**

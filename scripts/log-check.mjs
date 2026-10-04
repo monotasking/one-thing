@@ -23,7 +23,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const ROOTS = [
   'packages/backend',
   'packages/shared',
-  'apps/server/src',
+  'apps/backend-server/src',
   'apps/cli/src',
 ]
 

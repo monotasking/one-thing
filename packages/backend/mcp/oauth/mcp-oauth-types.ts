@@ -2,7 +2,7 @@
  * MCP OAuth — local mirrors of the v2 SDK auth shapes.
  *
  * The boundary rule: `@modelcontextprotocol/*` may only be imported by the
- * designated SDK call sites (`app/mcp/client.ts`, `apps/server/src/mcp-client.ts`).
+ * designated SDK call sites (`app/mcp/client.ts`, `apps/backend-server/src/mcp-client.ts`).
  * The OAuth provider is consumed BY those call sites structurally — the SDK's
  * `OAuthClientProvider` is an interface, so matching these shapes is enough and
  * the compiler validates the fit at the call site.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * gate:client —— **`@onething/client` 在系统 Node 与 Electron 下都真的跑得起来,
+ * gate:client —— **`@onething/backend-client` 在系统 Node 与 Electron 下都真的跑得起来,
  * 不靠注释证明**(C0,`docs/design/client-sdk-2026-09.md` §7;与 `gate:native` 同一条法)。
  *
  * ## 这道门判什么
@@ -56,7 +56,7 @@ function electronBinaryPath() {
  */
 const DRIVER_SOURCE = String.raw`
 import { createServer } from 'node:http'
-import { createHttpTransport } from '@onething/client'
+import { createHttpTransport } from '@onething/backend-client'
 
 const seen = []
 let connections = 0
@@ -175,7 +175,7 @@ function buildBundle(outDir) {
     cwd: repoRoot,
     encoding: 'utf8',
     // 驱动住在临时目录里,向上找不到仓的 node_modules。喂 `NODE_PATH`(esbuild CLI
-    // 认这个环境变量,`nodePaths` 只在 JS API 上有)而不是给 `@onething/client`
+    // 认这个环境变量,`nodePaths` 只在 JS API 上有)而不是给 `@onething/backend-client`
     // 也来一条 alias:走 node_modules 那条路,包的 `package.json` "exports" 才真的
     // 被用上 —— exports 写错(比如漏了 `.`)这道门当场红,而 alias 会把它盖过去。
     env: { ...process.env, NODE_PATH: join(repoRoot, 'node_modules') },
@@ -266,7 +266,7 @@ if (asJson) {
     }
   }
   console.log(exitCode === 0
-    ? '[gate:client] complete: @onething/client runs under BOTH system Node and Electron'
+    ? '[gate:client] complete: @onething/backend-client runs under BOTH system Node and Electron'
     : '[gate:client] complete: FAILED')
 }
 

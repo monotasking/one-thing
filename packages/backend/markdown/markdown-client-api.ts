@@ -2,7 +2,7 @@
  * `markdown` 域 —— 主线 T 批 3 的第一个「带 context 的安全域」。
  *
  * 迁移前它横穿五处：`channels.ts` 两个常量、`@main/ipc/markdown.ts`、
- * `preload/bridge.ts`、`platform/web.ts`、`apps/server` 的两条 HTTP 路由 + 一整
+ * `preload/bridge.ts`、`platform/web.ts`、`apps/backend-server` 的两条 HTTP 路由 + 一整
  * 套 `*ServerMarkdown*` 沙箱 helper。批 1 因为「通用信封不带 request context」
  * 把它退了回去；批 3 的 `RpcDispatchContext` 补上输入，护栏搬进
  * `app/markdown/asset-service.ts`，桌面与 server 从此共用同一份实现：

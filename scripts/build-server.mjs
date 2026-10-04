@@ -2,13 +2,13 @@
 /**
  * `npm run server:build` —— headless server 的两段产物。
  *
- *   ① `dist/server/main.js`   vite SSR 单文件包(`apps/server/vite.config.ts`)
+ *   ① `dist/server/main.js`   vite SSR 单文件包(`apps/backend-server/vite.config.ts`)
  *   ② `dist/server/search-worker.cjs`  检索索引 Worker(检索重建 S3b,§3 末行)
  *   ③ `dist/server/acp-mcp-bridge.cjs` ACP 宿主工具面的 stdio 桥(ACP A4-a,与 ② 同一条规矩)
  *
  * ## 为什么 ② 是**第二次构建**而不是 vite 的第二个入口
  *
- * `apps/server/vite.config.ts` 钉着 `inlineDynamicImports: true`,而 rollup 明文
+ * `apps/backend-server/vite.config.ts` 钉着 `inlineDynamicImports: true`,而 rollup 明文
  * 不允许「多入口 + inline」(`Invalid value for option
  * output.inlineDynamicImports - multiple inputs are not supported`)。那条 inline
  * 不是可有可无的:server 的模块图里有顶层 await,拆出去的动态 chunk 会回过头 import
@@ -39,7 +39,7 @@ const outdir = path.resolve(repoRoot, args[1] ?? 'dist/server')
 const vite = path.join(repoRoot, 'node_modules/.bin/vite')
 
 process.stdout.write(`[server:build] ① vite SSR → ${path.join(outdir, 'main.js')}\n`)
-const ssr = spawnSync(process.execPath, [vite, 'build', '--config', 'apps/server/vite.config.ts', '--outDir', outdir], {
+const ssr = spawnSync(process.execPath, [vite, 'build', '--config', 'apps/backend-server/vite.config.ts', '--outDir', outdir], {
   cwd: repoRoot,
   stdio: 'inherit',
   env: process.env,

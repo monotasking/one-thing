@@ -426,7 +426,7 @@ Vue DevTools 可视。
 - "**ipc-hub 谁初始化的?**" → 3.3 第 2 步 `renderer/main.ts:105`。
 - "**契约和处理者是在哪配对的?**" → `backend.ts:221 registerAppRpcDomains()` 按 `rpc/index.ts` 域表逐条挂载。
 - "**web 的 /api/rpc 谁收?**" → `backend/server/http.ts` 路由 → 同一个 `dispatchRpc`。
-- 换 server 形态:同一条链的无窗版本——`apps/server/src/main.ts` → `createRealServerBackend`,
+- 换 server 形态:同一条链的无窗版本——`apps/backend-server/src/main.ts` → `createRealServerBackend`,
   没有 3.2 第 4、5 步,SSE 直接订总线。
 
 

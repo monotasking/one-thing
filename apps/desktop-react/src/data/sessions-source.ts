@@ -2,7 +2,7 @@ import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/backend-client/events/session-lifecycle'
 import {
   buildProjects,
   toPreviewMessage,

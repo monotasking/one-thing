@@ -115,7 +115,7 @@ function entryOfEnvelope(model: OpenRouterModel): CatalogEntry {
  * (`effectiveModelFactsOf`,`models.getWithCapabilities` 与引擎读的同一个),覆盖从
  * 这一家的设置里取。用例据此验「壳只读后端折好的结果」,而不是在壳里再折一遍。
  * 这也是这份夹具 import runtime 的理由:它演的是后端,抄一份折法就会漂 —— 边界门
- * (`checkClientImportsOnlySharedAndClient`,并入了 P4 那条)只放过测试与 `__fixtures__`。
+ * (`checkClientImportsOnlySharedAndBackendClient`,并入了 P4 那条)只放过测试与 `__fixtures__`。
  */
 export function servedByBackend(
   models: readonly OpenRouterModel[],

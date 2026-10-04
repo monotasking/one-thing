@@ -8,7 +8,7 @@
  * 声明的一格(`family`),
  * runtime 由名册算出两半的对应,经 `providers.getProviders` 的 `ProviderInfo.family` 下发;
  * 后端从 runtime 名册直接取。这里只剩**形状**与**拿家族信息作参数**的纯函数 ——
- * `@shared` 与 `@onething/client` 不点任何服务商的名字。
+ * `@shared` 与 `@onething/backend-client` 不点任何服务商的名字。
  */
 
 /** 家族里的哪一半。 */

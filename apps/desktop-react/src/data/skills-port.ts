@@ -2,7 +2,7 @@ import { skillsRouter } from '@shared/ipc/skills'
 import type { GetSkillsResponse, OpenSkillDirectoryResponse } from '@shared/ipc/skills'
 
 /**
- * 技能读面与 core 的客户端(`@onething/client`)之间的那一层端口(09-12)——
+ * 技能读面与 core 的客户端(`@onething/backend-client`)之间的那一层端口(09-12)——
  * 与 `data/commands-port.ts` / `data/models-port.ts` 同一形状、同一理由。
  *
  * **读面那一条是主角**:`skillsRouter.getAll`。壳里技能出现在 `/` 抽屉里

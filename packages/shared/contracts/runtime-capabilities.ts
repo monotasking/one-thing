@@ -1,7 +1,7 @@
 /**
  * `GET /api/capabilities` 的答复形状:这个宿主能做什么。
  *
- * 客户端(`@onething/client` 的传输层)读它决定开哪些功能;后端的运行时门面
+ * 客户端(`@onething/backend-client` 的传输层)读它决定开哪些功能;后端的运行时门面
  * (`packages/backend/http-server/http-server-runtime-facade.ts`)从这里取形状并负责算出答案。
  */
 export interface RuntimeHostCapabilities {

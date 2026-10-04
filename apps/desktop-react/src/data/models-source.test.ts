@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/backend-client/model/provider-model'
 import type {
   OpenRouterModel,
   ProviderInfo,

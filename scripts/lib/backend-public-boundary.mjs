@@ -114,7 +114,7 @@ export function checkBackendPublicBoundaries({ root, files, compilerOptions }) {
       }
       const resolved = ts.resolveModuleName(specifier, file, compilerOptions, ts.sys, cache).resolvedModule?.resolvedFileName
       const target = resolved && fs.realpathSync(resolved)
-      if (within(file, shared) && (specifier.startsWith('@onething/backend')
+      if (within(file, shared) && (specifier === '@onething/backend' || specifier.startsWith('@onething/backend/')
         || (target && within(target, backend)))) {
         violations.push(`${label}: shared contracts depend on a product/backend implementation`)
       }

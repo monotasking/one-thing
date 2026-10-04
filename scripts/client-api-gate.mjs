@@ -123,7 +123,7 @@ function selfTest() {
   expect('功能内部文件引 = 红', judge('packages/backend/settings/settings-store.ts', api) !== null)
   expect('别的功能的 client-api 引 = 红', judge('packages/backend/mcp/mcp-client-api.ts', api) !== null)
   expect('包根别的文件引 = 红', judge('packages/backend/backend.ts', api) !== null)
-  expect('宿主引 = 红', judge('apps/server/src/main.ts', api) !== null)
+  expect('宿主引 = 红', judge('apps/backend-server/src/main.ts', api) !== null)
   expect('不是 client-api 的目标不判', judge('packages/backend/mcp/mcp.ts', 'packages/backend/settings/settings.ts') === null)
   if (failures.length > 0) {
     console.error('[client-api-gate] self-test FAILED:')

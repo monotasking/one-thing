@@ -1,4 +1,4 @@
-import type { OnethingClient } from '@onething/client'
+import type { OnethingClient } from '@onething/backend-client'
 import type { RouteAPI } from '@shared/ipc/router'
 import type { ResourcesRoutes, ShellCommandResult } from '@shared/ipc/resources'
 import { resourcesRouter } from '@shared/ipc/resources'
@@ -168,9 +168,9 @@ export class ShellResourceHost {
 
     /*
      * ── 为什么是 `onAny` 而不是 `on('resource:shell-command')` ────────────────
-     * `EventHub.on` 的键收窄在 `TransportEvents` 那三条上(`@onething/client`),
+     * `EventHub.on` 的键收窄在 `TransportEvents` 那三条上(`@onething/backend-client`),
      * 而 `resource:shell-command` 是一条**全局事件**,不在那张表里。给那张表加一行
-     * 要改 `packages/client` —— 本单不动那个包(它的头注释写着「加一条推送 =
+     * 要改 `packages/backend-client` —— 本单不动那个包(它的头注释写着「加一条推送 =
      * `@shared` 加一条 + 这张表加一行」,那是它自己的一次改动,不是这一单顺手带的)。
      * `onAny` 正是为这一档留的口:「含表里没登记的名字」是它自己的判词。
      */

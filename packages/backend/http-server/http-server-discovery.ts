@@ -10,7 +10,7 @@
  * **契约与判活已经不在本文件**(C0,`docs/design/client-sdk-2026-09.md` §4.4):
  * 记录形状 / 校验 / `httpDiscoveryUrl` 在 `@shared/backend/http-discovery.ts`(契约);
  * 读文件与两段判活在旁边的 `http-discovery-io.ts`(server / client 拆分第②步:shared 不许碰 node,
- * 这一半两边各一份最小实现,`@onething/client` 的 Node 子路径有逐字同形的另一份,对拍测试钉住)。
+ * 这一半两边各一份最小实现,`@onething/backend-client` 的 Node 子路径有逐字同形的另一份,对拍测试钉住)。
  * 本文件保留的是「需要知道 store 在哪」的那一半 —— 路径解析走
  * `getOnethingRunDir()`(CLAUDE.md:所有 app 层路径必须经它),以及写 / 删。
  * 下面的 `export` 面一字未变,所有调用点原样。

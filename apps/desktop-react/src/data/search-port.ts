@@ -10,7 +10,7 @@ import {
 } from '@shared/ipc/search'
 
 /**
- * 跨会话**正文检索**与 core 的客户端(`@onething/client`)之间的那一层端口 —— 与
+ * 跨会话**正文检索**与 core 的客户端(`@onething/backend-client`)之间的那一层端口 —— 与
  * `data/files-port.ts` / `data/sessions-port.ts` 同一形状、同一理由:
  * 「哪些命中画得出来、怎么去重、怎么翻页」全是纯逻辑,不该为了测它去起一台 core。
  * 真实现是下面那一个,测试用 `configureSearchPort` 换成假的。
@@ -69,7 +69,7 @@ export interface SearchPort {
     cursor?: string,
     /**
      * **撤回这一发**(09-07 事故第四条修)。换词 / 清词时数据层拉它,
-     * `@onething/client` 交给 `fetch`,HTTP 面据此铸出 `RpcDispatchContext.signal`,
+     * `@onething/backend-client` 交给 `fetch`,HTTP 面据此铸出 `RpcDispatchContext.signal`,
      * 一路传到扫盘那一路手里 —— 那正是「清了输入框,`rg` 还在 462% CPU 上跑」
      * 缺的那条线。缺席 = 这一发送出去就等到底(与从前逐字相同)。
      */

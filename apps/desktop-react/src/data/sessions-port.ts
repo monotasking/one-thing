@@ -10,12 +10,12 @@ import type {
 import type { SessionMutationResponse, SessionsCreateRequest } from '@shared/ipc/sessions'
 import type { GetSessionSegmentsResponse } from '@shared/ipc/toc'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/backend-client/events/session-lifecycle'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
 import { sessionsRouter } from '@shared/ipc/sessions'
 
 /**
- * 数据源与 core 的客户端(`@onething/client`)之间的那一层**端口**。
+ * 数据源与 core 的客户端(`@onething/backend-client`)之间的那一层**端口**。
  *
  * 它存在的唯一理由是可测:sessions-source 的全部判据(节流、增量 vs 重拉、缓存
  * 失效)都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,
@@ -24,7 +24,7 @@ import { sessionsRouter } from '@shared/ipc/sessions'
  * 形状是**契约的子集**,不是新契约:十一个方法逐条对应 `sessionsRouter` 的
  * `listMeta / getSegments / getMessagesPage / getUserMarkers / create /
  * updateWorkingDirectory / updatePin / rename / delete`、推送面上的
- * `session:event`,与 `@onething/client` 的 `onSessionLifecycle`,
+ * `session:event`,与 `@onething/backend-client` 的 `onSessionLifecycle`,
  * 一个字段都没有多。
  */
 export interface SessionsPort {
@@ -119,7 +119,7 @@ export function configureSessionsPort(next: SessionsPort | undefined): void {
 async function realPort(): Promise<SessionsPort> {
   const [{ onethingClient, whenConnected }, { onSessionLifecycle }] = await Promise.all([
     import('../platform/connection'),
-    import('@onething/client/events/session-lifecycle'),
+    import('@onething/backend-client/events/session-lifecycle'),
   ])
   const client = await onethingClient()
   const sessionsApi = client.api(sessionsRouter)

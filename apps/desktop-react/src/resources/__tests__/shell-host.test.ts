@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createMemoryTransport, createOnethingClient } from '@onething/client'
-import type { MemoryTransport } from '@onething/client'
+import { createMemoryTransport, createOnethingClient } from '@onething/backend-client'
+import type { MemoryTransport } from '@onething/backend-client'
 import type { RpcRequest } from '@shared/ipc/rpc'
 import { ShellResourceHost } from '../shell-host'
 import { WORKBENCH_SCHEME } from '../workbench-spec'
@@ -13,7 +13,7 @@ import type { ContentRef } from '../../workbench/kinds'
 /**
  * **壳侧提供者**(原子 K2b-2b,正本 `docs/design/atom-2026-09.md` §5 / §10.2 / §10.3)。
  *
- * 跑的是**真的** `@onething/client`(内存传输),不是一只手写的假客户端:那样
+ * 跑的是**真的** `@onething/backend-client`(内存传输),不是一只手写的假客户端:那样
  * `mountShell` 的信封、`onAny` 的名字过滤、回执的编码三处都是真路 —— 一只手写的
  * 假客户端会把它们统统绕过去,于是这一组用例守的就只剩自己写的那几行。
  *

@@ -90,7 +90,7 @@ describe('workspace watcher runtime packaging', () => {
       expect(output.imports).toContainEqual(expect.objectContaining({ path: 'fsevents', external: true }))
       expect(Object.keys(result.metafile.inputs).some(name => name.includes('node_modules/fsevents/'))).toBe(false)
     }
-    const result = await viteBuild({ configFile: path.join(root, 'apps/server/vite.config.ts'),
+    const result = await viteBuild({ configFile: path.join(root, 'apps/backend-server/vite.config.ts'),
       logLevel: 'silent', build: { ssr: driverEntry, outDir: path.join(directory, 'server'), write: false } })
     const chunk = result.output.find(item => item.type === 'chunk')
     expect(chunk.dynamicImports).toContain('fsevents')

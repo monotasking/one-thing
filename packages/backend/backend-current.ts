@@ -101,7 +101,7 @@ export interface BackendHandle {
   readonly collabDigests: CollabDigestRunner
   /**
    * 笔记子系统(P1)。**是子系统不是注册表** —— 宿主要能在「我刚刚才声明
-   * 可信」之后喊一句 `refresh()`(`apps/server/src/main.ts`),那是形状照
+   * 可信」之后喊一句 `refresh()`(`apps/backend-server/src/main.ts`),那是形状照
    * `backend.mcp` / `backend.acp` 的理由。夹紧宿主上它的库表是空的,不是缺席。
    */
   readonly notes: NotesSubsystem

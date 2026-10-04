@@ -1,7 +1,7 @@
 /**
  * server 侧搜索的**单槽端口** —— 结构债 P4 终态批 A1-b(2026-08-23)。
  *
- * apps/server 的搜索和桌面的搜索是**同一件事的两个口径**:桌面查的是整台机器上
+ * apps/backend-server 的搜索和桌面的搜索是**同一件事的两个口径**:桌面查的是整台机器上
  * 那一份会话 / 文件 / 提示词表(进程单槽里那份 `SearchService` + store 级索引),
  * server 查的是 per-owner 沙箱里的那一份 —— 归属判定、工作区根、变量仓、提示词仓
  * 全都按请求上下文取。后者连同它要的 `workspaceRoot` / `getSessionForContext` /

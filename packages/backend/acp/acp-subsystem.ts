@@ -94,7 +94,7 @@ export interface AcpSubsystemDeps {
 /**
  * 与 `McpSubsystem` 同型同数的收尾上限 —— 理由逐字相同,见
  * `mcp/mcp-subsystem.ts` 的 `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`:
- * 卡在 `apps/server/src/main.ts` 那条 5s 死线底下,给排在 dispose 链后面的
+ * 卡在 `apps/backend-server/src/main.ts` 那条 5s 死线底下,给排在 dispose 链后面的
  * 会话账本 flush 留出余量。**超时可能留下孤儿子进程,这是有意的取舍:
  * 会话数据比 ACP 子进程重要。**
  *

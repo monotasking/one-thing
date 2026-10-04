@@ -1,5 +1,5 @@
-[log] failed: apps/server/src/main.ts:45 console.error
-[log] failed: apps/server/src/main.ts:55 console.warn
-[log] failed: apps/server/src/main.ts:74 console.error
-[log] failed: apps/server/src/main.ts:92 console.error
+[log] failed: apps/backend-server/src/main.ts:45 console.error
+[log] failed: apps/backend-server/src/main.ts:55 console.warn
+[log] failed: apps/backend-server/src/main.ts:74 console.error
+[log] failed: apps/backend-server/src/main.ts:92 console.error
 [log] 4 console call site(s) in non-test source

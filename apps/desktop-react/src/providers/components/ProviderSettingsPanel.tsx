@@ -32,7 +32,7 @@ import { catalogKey, catalogQuery, invalidateCatalogProvider } from '../catalog-
 import { useCurrentSpaceId } from '../../workspace/current'
 import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
-import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/backend-client/model/provider-model'
 import s from './ProviderSettingsPanel.module.css'
 
 /** 订阅未登录时目录区的行:没有目录就没有行(手填的也不画 —— 锁着的表不列内容)。 */

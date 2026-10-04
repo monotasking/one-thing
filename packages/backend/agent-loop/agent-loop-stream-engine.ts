@@ -273,7 +273,7 @@ interface SendMessageCommandLike {
    * sender may name an actor, and overwrite anything that arrived on the wire.
    * The engine only carries it down to the tool executor.
    *
-   * A forwarded command CAN spell this field — apps/server forwards commands
+   * A forwarded command CAN spell this field — apps/backend-server forwards commands
    * whole — which is exactly why the mint site, not the engine, is the
    * authority. Same lesson as collabDriveToken (app/collab/drive-guard.ts).
    */

@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
       //
       // C1 起 `@shared` 也是这里**唯一**的一条:指向 packages/renderer 的那两条
       // (它的包别名与它内部的自指别名)随「React 壳对 packages/renderer 零 import」
-      // 一起删了 —— 壳的传输 / 域客户端 / 纯判据现在全部取自 `@onething/client`。
+      // 一起删了 —— 壳的传输 / 域客户端 / 纯判据现在全部取自 `@onething/backend-client`。
       alias: [
         { find: '@shared', replacement: resolve(repoRoot, 'packages/shared') },
       ],

@@ -122,7 +122,7 @@ const FALLBACK_PROVIDER_SEED_TABLE: ProviderSeedTable = {
  * (`createDefaultSettings()` 的 `ai`)。空白空间加第一把 key 时的模型种子表
  * (`seedSpaceSelectedModels`)读的是同一张 provider 种子表。
  *
- * 每次深拷一份:种子表里的对象是模块常量,共享出去就是 apps/server 多租户树上的
+ * 每次深拷一份:种子表里的对象是模块常量,共享出去就是 apps/backend-server 多租户树上的
  * 跨用户串改(见 `normalizeAISection`)。
  */
 function createDefaultAISettings(seeds: ProviderSeedTable): EffectiveAISettings {
@@ -373,7 +373,7 @@ export const DEFAULT_MUSIC_SETTINGS: MusicSettings = {
  * - **其余情况**:仍然并进默认表。两个理由,缺一不可 ——
  *   ① 迁移**之前**盘上还躺着 `provider` / `providers` / `customProviders`,
  *      一次性迁移正要读它们(展开 `settings.ai` 放在最前面是故意的);
- *   ② apps/server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内**,它直接
+ *   ② apps/backend-server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内**,它直接
  *      拿这个函数的结果当生效设置用,少了默认 provider 表就会让新用户第一次
  *      打开设置页时拿到一个空的 provider 列表。
  */
@@ -381,7 +381,7 @@ function normalizeAISection(
   settings: Partial<AppSettings>,
   // **必须是 `createDefaultSettings()` 深拷出来的那一份**,不能直接用模块常量:
   // 展开只复制一层,`providers[*]` 仍然是同一批对象 —— 一个 owner 改了 openai
-  // 的 key,所有 owner(以及下一次 merge)都跟着变。apps/server 的多租户树上
+  // 的 key,所有 owner(以及下一次 merge)都跟着变。apps/backend-server 的多租户树上
   // 这就是一次跨用户的密钥泄漏。
   defaults: EffectiveAISettings,
 ): EffectiveAISettings {
@@ -550,7 +550,7 @@ export function mergeWithDefaults(
     // 这里仍然把出厂 provider 种子表并进来,有两个理由:
     //  1. 迁移**之前**的 settings.json 里还躺着 `provider` / `providers` /
     //     `customProviders`,一次性迁移正要读它们(展开放在最前面是故意的);
-    //  2. apps/server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内** ——
+    //  2. apps/backend-server 的多租户树(`owners/<uid>/<wid>`)**不在本次改造内** ——
     //     它直接拿这个函数的结果当生效设置用,少了默认 provider 表就会在
     //     「新用户第一次打开设置页」时拿到一个空的 provider 列表。
     ai: normalizeAISection(settings, defaults.ai),

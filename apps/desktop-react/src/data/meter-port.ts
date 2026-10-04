@@ -5,7 +5,7 @@ import type { ProviderQuotaPushPayload } from '@shared/contracts/quota'
 import { quotaPushOfFrame } from './provider-settings-port'
 
 /**
- * 读数(context / tokens / 费用 / 缓存)与 core 的客户端(`@onething/client`)
+ * 读数(context / tokens / 费用 / 缓存)与 core 的客户端(`@onething/backend-client`)
  * 之间的那一层**端口** —— 与 `data/models-port.ts` 同一形状、同一理由。
  *
  * 两口,恰好是这四行读数的**两个真产地**:

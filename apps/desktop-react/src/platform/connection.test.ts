@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMemoryTransport, type MemoryTransport } from '@onething/client'
+import { createMemoryTransport, type MemoryTransport } from '@onething/backend-client'
 
 /**
- * 连通面(C1 起底座是 `@onething/client`)。
+ * 连通面(C1 起底座是 `@onething/backend-client`)。
  *
  * 换掉的**只有传输**:`createHttpTransport` 换成包自带的内存替身,
  * `createOnethingClient` / 事件枢纽 / 域客户端全是真的 —— 于是这份用例验的是
@@ -18,8 +18,8 @@ const hoisted = vi.hoisted(() => {
   return state
 })
 
-vi.mock('@onething/client', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/client')>()
+vi.mock('@onething/backend-client', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/backend-client')>()
   return {
     ...actual,
     createHttpTransport: (options: unknown) => {

@@ -38,7 +38,7 @@
 
 - [MDN：Property accessors](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Property_accessors#bracket_notation)
   2026-09-11 阅读。第 5 课首选：解释 api[method] 如何按变量值找到对象属性，与 api.method 的区别；方法是可调用的对象属性。
-- [OneThing：通用客户端方法生成](packages/client/rpc/router-client.ts)
+- [OneThing：通用客户端方法生成](packages/backend-client/rpc/router-client.ts)
   2026-09-11 核对。createRouterClient 循环 router.methods，创建 api[method]，调用 invoke 并解除 RPC 响应包装。用于说明客户端 emit 为何不是单独手写的函数。
 - [OneThing：后端注册与分发](packages/backend/rpc/registry.ts)
   2026-09-11 核对。registerRouterHandlers 保存处理函数；dispatchRpc 按 domain 与 method 找到函数，再传入 request.payload。与客户端生成机制配对阅读。

@@ -9,7 +9,7 @@ import {
 } from '@shared/ipc/session-command'
 
 /**
- * 斜杠命令里**插件那一半**与 core 的客户端(`@onething/client`)之间的那一层端口
+ * 斜杠命令里**插件那一半**与 core 的客户端(`@onething/backend-client`)之间的那一层端口
  * (D4 波二)—— 与 `data/models-port.ts` / `data/files-port.ts` 同一形状、同一理由。
  *
  * 形状是契约的子集,不是新契约:三条逐条对应 `pluginsRouter` 的

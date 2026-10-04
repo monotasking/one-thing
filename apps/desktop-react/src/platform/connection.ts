@@ -1,5 +1,5 @@
 /**
- * 壳与 core 之间那一条线(D0 的连通面;C1 起底座换成 `@onething/client`)。
+ * 壳与 core 之间那一条线(D0 的连通面;C1 起底座换成 `@onething/backend-client`)。
  *
  * 三步,一次性:
  *  1. 宿主在场(Electron 壳)→ 问它要 `{ baseUrl, token }`;浏览器直开
@@ -14,7 +14,7 @@
  *
  * ## C1:为什么这里有一个模块级 `client`,而包里没有单例
  *
- * `@onething/client` 刻意不留模块级单例(它要能同时连本机与远端两台 core)。
+ * `@onething/backend-client` 刻意不留模块级单例(它要能同时连本机与远端两台 core)。
  * 「这台壳只连一台 core」是**壳**的事实,不是包的事实 —— 所以那一份缺省实例
  * 住在这里,由 `onethingClient()` 交出去。方案 §5.1 原话。
  *
@@ -44,8 +44,8 @@
  * (那一格)。没有「重连」按钮 —— 重连是传输自动做的,给一颗按不出新结果的
  * 按钮是假控件;没有「断开」按钮 —— 壳不提供离线模式。
  */
-import { createHttpTransport, createOnethingClient } from '@onething/client'
-import type { EventHubStatus, OnethingClient } from '@onething/client'
+import { createHttpTransport, createOnethingClient } from '@onething/backend-client'
+import type { EventHubStatus, OnethingClient } from '@onething/backend-client'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
 import { sessionsRouter } from '@shared/ipc/sessions'
 import { notify } from '../services/notify'
@@ -94,7 +94,7 @@ const statusListeners = new Set<(status: EventHubStatus) => void>()
  * 空串 = 同源相对路径,`fetch('/api/rpc')` 确实照打 —— 但推送那一条打不出去:
  * `createHttpTransport` 的 SSE 分支要挂 `?after=`,所以走 `new URL(...)`,而
  * **`new URL('/api/events')` 没有 base 会当场抛 `TypeError: Invalid URL`**
- * (`packages/client/transport/http.ts` 的 `eventLoop`)。那一抛落在它自己的
+ * (`packages/backend-client/transport/http.ts` 的 `eventLoop`)。那一抛落在它自己的
  * try 里,被记成一次「流断了」然后无限退避重连 —— 表现是浏览器里 RPC 全通、
  * 推送**永远**收不到,而且日志上只有一串看不出根因的 `event stream dropped`。
  *

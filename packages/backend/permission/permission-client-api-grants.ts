@@ -2,7 +2,7 @@
  * `permissionGrants` 域 —— 主线 T 批 3 的第二个「带 context 的安全域」。
  *
  * 迁移前横穿五处：`channels.ts` 四个常量、`@main/ipc/permission.ts` 四个
- * handler、`preload/bridge.ts`、`platform/web.ts`、`apps/server` 的四条 HTTP 路由
+ * handler、`preload/bridge.ts`、`platform/web.ts`、`apps/backend-server` 的四条 HTTP 路由
  * + `canRevokePermissionGrant` / `resolveServerWorkspaceGrantRoot` 两个归属校验。
  *
  * 护栏的实质是**归属**而不是路径：一条 grant 要么挂在某个会话上，要么挂在某个
@@ -68,7 +68,7 @@ function clearWorkspaceGrantsForOwner(root: string, owner: { userId?: string; wo
 
 /**
  * 会话索引里的所有权字段。共享的 `SessionMeta` 不声明它们 —— 它们是
- * `apps/server` 的 `saveSessionImmediately` 往 index.json 上盖的章，桌面上根本
+ * `apps/backend-server` 的 `saveSessionImmediately` 往 index.json 上盖的章，桌面上根本
  * 不存在。所以这里按「可能缺席的额外字段」读，而不是改 `SessionMeta`：让一个
  * 单用户桌面产品的核心类型长出多租户字段，比在这里多写一行 cast 更贵。
  */

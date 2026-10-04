@@ -970,7 +970,7 @@ async function syncSessionLogDirectories(logPath: string, sessionsDir: string): 
  *
  * 排空要有上限,是因为退出这条路上没有人等得起一次卡住的 fsync:Electron 的
  * `before-quit` 不被 await(第一个 await 之后就在和进程消失赛跑),
- * `apps/server` 的 SIGTERM 之后编排器很快就是 SIGKILL。2s 是"磁盘正常时绰绰
+ * `apps/backend-server` 的 SIGTERM 之后编排器很快就是 SIGKILL。2s 是"磁盘正常时绰绰
  * 有余、磁盘不正常时不把退出钉死"的那一档 —— 而超时**记账不阻退出**,
  * 因为"没刷干净"必须说出来,不能假装干净。
  */
@@ -1015,7 +1015,7 @@ export async function flushAllSessionEventLogs(
  * 排在它之后落盘,否则门读到的是少一截的账。
  *
  * 三条关停链(Electron `before-quit` / `createOnethingBackend.shutdown` /
- * `HeadlessBackend.shutdown`)各调一次;`apps/server` 的 SIGTERM 经
+ * `HeadlessBackend.shutdown`)各调一次;`apps/backend-server` 的 SIGTERM 经
  * `serverRuntime.shutdown()` 落到同一处,因此同在那 5s 预算里。
  */
 export async function flushSessionEventLedger(

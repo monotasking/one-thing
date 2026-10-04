@@ -115,7 +115,7 @@ export function useSearchIndexStatus(): SearchStatusResponse | undefined {
  * §4.5 ① 的原话是「↑↓ 换行即 abort 上一条」。这里做到的是**语义上的 abort**:
  * 上一条那一发仍然会跑完,但它落在**它自己那一格**上,而预览窗只订当前这一格 ——
  * 于是屏幕上永远不会闪出上一行的预览。真正把在飞的那一发**掐断**要 transport
- * 支持 `AbortSignal`(`@onething/client` 的 http Transport 今天不收),那是一次
+ * 支持 `AbortSignal`(`@onething/backend-client` 的 http Transport 今天不收),那是一次
  * 跨包的改动,自成一批。代价如实记在这里:快速连按 ↑↓ 十下会发出十次请求,
  * 而不是一次。缓存那一格挡住了「按回去」的重发,键面封顶挡住了内存。
  */

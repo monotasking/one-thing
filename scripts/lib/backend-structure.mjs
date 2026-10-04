@@ -129,7 +129,7 @@ export function buildValueGraph(root = repoRoot) {
       const target = exportsMap[`.${specifier.slice('@onething/backend'.length)}`]
       return target ? path.resolve(root, BACKEND, target) : null
     }
-    if (specifier.startsWith('@onething/client')) return null
+    if (specifier.startsWith('@onething/backend-client')) return null
     if (specifier.startsWith('@shared/')) return toFile(path.resolve(root, SHARED, specifier.slice('@shared/'.length)))
     return undefined
   }

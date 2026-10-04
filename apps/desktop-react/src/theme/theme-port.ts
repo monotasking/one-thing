@@ -9,7 +9,7 @@ import { IPC_CHANNELS } from '@shared/ipc/channels'
  * 测试用 `configureThemePort` 换成假的。
  *
  * 形状是**契约的子集**,不是新契约。五个方法,两个产地:
- *  - 经 core(`@onething/client`):`settingsRouter.getSettings`、
+ *  - 经 core(`@onething/backend-client`):`settingsRouter.getSettings`、
  *    `themesRouter.apply`、推送面上的 `settings:changed`;
  *  - **不经 core**(`platform/host.ts`,方案 §4.3):`systemTheme()` 与
  *    `onSystemThemeChanged()` —— 系统明暗是一条 `prefers-color-scheme` 的
@@ -48,7 +48,7 @@ export function configureThemePort(next: ThemePort | undefined): void {
  * ## 推送面的实情(勘察结论,D2)
  *
  * 新壳从来只走 HTTP/SSE 那一面(它的 preload 只暴露 `onethingHost`),
- * C1 起那一面就是 `@onething/client` 本身。于是:
+ * C1 起那一面就是 `@onething/backend-client` 本身。于是:
  *
  *  - `onSystemThemeChanged` —— 一条 `prefers-color-scheme` 的 matchMedia 监听,
  *    住在壳自己的 `platform/host.ts`。系统换明暗即时重 apply。

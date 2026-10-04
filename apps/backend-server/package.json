@@ -1,5 +1,5 @@
 {
-  "name": "@onething/server-host",
+  "name": "@onething/backend-server",
   "version": "0.0.0",
   "type": "module",
   "private": true,

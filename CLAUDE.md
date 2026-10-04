@@ -103,14 +103,14 @@ Dev ports: React desktop renderer dev server **5175** (`app:dev`), browser shell
 
 ## Architecture Overview
 
-This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The product lives in packages; the apps are thin sockets. **One server package, one contract tree, one client SDK** since the server / client split (`docs/design/server-client-split-2026-10.md`): `@onething/backend` (`packages/backend`) is the **one server package**; `packages/shared` (`@shared`) holds only the server ↔ client contract plus the pure logic both sides must compute identically, and imports nothing but itself (no node, no `@onething/*`); `packages/client` (`@onething/client`) is the client SDK. Client code (`apps/desktop-react/src`, `apps/mobile`, `packages/client`) imports only `@shared/*` and `@onething/client` — both enforced by zero-baseline boundary gates.
+This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The product lives in packages; the apps are thin sockets. **One server package, one contract tree, one client SDK** since the server / client split (`docs/design/server-client-split-2026-10.md`): `@onething/backend` (`packages/backend`) is the **one server package**; `packages/shared` (`@shared`) holds only the server ↔ client contract plus the pure logic both sides must compute identically, and imports nothing but itself (no node, no `@onething/*`); `packages/backend-client` (`@onething/backend-client`) is the client SDK, the one way a UI talks to the backend; the headless process shell is `apps/backend-server` (`@onething/backend-server`) — both renamed on 2026-10-04 from `packages/client` (`@onething/client`) and `apps/server` (`@onething/server-host`), decision D120 (N7: a name says what the thing is; the build output `dist/server/` and the `server:*` script names did not change). Client code (`apps/desktop-react/src`, `apps/mobile`, `packages/backend-client`) imports only `@shared/*` and `@onething/backend-client` — both enforced by zero-baseline boundary gates.
 
 **Inside the server package there are no layers** (user rulings 2026-10-02/03, `docs/design/server-client-split-2026-10.md` §4). `packages/backend` is two things:
 
 - **the package root** — the backend's entry points and faces: `backend.ts` (`createOnethingBackend`, the single assembly recipe) / `backend-assemble-engine.ts` / `backend-current.ts` / `backend-host-ports.ts` / `backend-shutdown.ts` (the shutdown phases and resource registry; `lifecycle.ts` until 6a, renamed so it no longer sits beside the feature directory `lifecycle/`) / `backend-types.d.ts` + `http-server/` (the HTTP server the UI connects to — routes, SSE, discovery file, caller identity and local trust, request abort, lifecycle, desktop embedding, the server runtime and `http-server-runtime-facade.ts` (the `OnethingRuntimeFacade` contract every host face serves), and the **client-api roster** `http-server-client-api-roster.ts` + dispatch table `http-server-dispatch-table.ts`; entry `http-server/http-server.ts`, exports key `./http-server`; 包根归位 A 2026-10-04, decisions D63–D75) / `__tests__/` (cross-cutting tests, including `architecture-boundaries.test.ts`) — **and nothing else** since 包根归位 B (2026-10-04, decisions D76–D88): `channel/` went to gateway (`gateway/gateway-channel-*.ts`, `gateway-outbound-reply-dispatcher.ts`; the message-origin helpers to agent-loop's entry, the IM connector registry to plugins' entry), `features/` became the feature `feature-registry/` (the mount base, L2) with self-evolution as `toolkit/toolkit-client-api-self-evolution.ts` and trajectory folded into the sessions-events roster row (id still `trajectory`), `utils/` went to its users (`deep-freeze` → sessions, the ripgrep app-fetch step → files, `fuzzy` / `wildcard` deleted — zero callers), and the compatibility barrel `store.ts` is deleted: code imports the sessions / settings entries, and the 59 whole-block `vi.mock('…/store.js')` doubles now target those entries with `importOriginal` spread.
 - **`<feature>/`** — **one feature, one directory, flat**, directly under `packages/backend/` (the `runtime/` layer was removed by 6a, 2026-10-04; directory names are singular nouns, N5): prompt, session, tool, provider, plugin, engine, agent-loop, gateway, … — every top-level directory except `__tests__/` and `http-server/` is a feature (`NON_FEATURE_DIRS` in `scripts/lib/backend-structure.mjs`). Everything a feature has — what used to be its engine skeleton (`core/`), its product logic and its assembly wiring (`wiring/`) — sits side by side; same-name files were renamed by what they do (tables in the design doc §6), and a fake for a test is a function parameter, not a separate layer. A domain-only kernel may sit in `<d>/kernel/`, an ordinary subdirectory. There are no `*.wiring.ts` files any more: the suffix stopped granting anything with the flatten and was dropped from all 31 files on 2026-10-03 (colliding names renamed by content, e.g. `practice/practice-service-slot.ts`, `mcp/mcp-index-with-bridge.ts`; table in the design doc §6).
 
-How it got here: step ② (2026-10-02) merged the former `@onething/core`, `@onething/runtime` and `@onething/gateway` packages verbatim as subtrees `core/`, `runtime/`, `gateway/`; step ③ folded every domain into one `runtime/<d>/` and deleted `wiring/`; 去 core 批 1–3 (2026-10-03) dissolved `core/` into `runtime/<d>/` (events → `runtime/event-bus`, which 收尾整理 2 then merged with the package root's `events/` into `runtime/events/`; agent → `runtime/agents`, session → `runtime/sessions`, the rest same-name; its big barrel `core/index.ts` was deleted, every import now names the feature directory) and moved `gateway/` to `runtime/gateway/`; 机械改名 6a (2026-10-04, route item 6) then removed the `runtime/` layer itself — every feature directory now sits directly under `packages/backend/` — and renamed the plural feature directories to the singular (N5: `sessions` → `session`, `providers` → `provider`, `plugins` → `plugin`, …; table in `docs/design/server-client-split-2026-10.md` §6). Why: the "zero-dependency skeleton" existed so the UI side could reuse it, and since step ① the UI may only import `@shared` and `@onething/client`; the "wiring" layer existed to put one product into several hosts, and the hosts converged.
+How it got here: step ② (2026-10-02) merged the former `@onething/core`, `@onething/runtime` and `@onething/gateway` packages verbatim as subtrees `core/`, `runtime/`, `gateway/`; step ③ folded every domain into one `runtime/<d>/` and deleted `wiring/`; 去 core 批 1–3 (2026-10-03) dissolved `core/` into `runtime/<d>/` (events → `runtime/event-bus`, which 收尾整理 2 then merged with the package root's `events/` into `runtime/events/`; agent → `runtime/agents`, session → `runtime/sessions`, the rest same-name; its big barrel `core/index.ts` was deleted, every import now names the feature directory) and moved `gateway/` to `runtime/gateway/`; 机械改名 6a (2026-10-04, route item 6) then removed the `runtime/` layer itself — every feature directory now sits directly under `packages/backend/` — and renamed the plural feature directories to the singular (N5: `sessions` → `session`, `providers` → `provider`, `plugins` → `plugin`, …; table in `docs/design/server-client-split-2026-10.md` §6). Why: the "zero-dependency skeleton" existed so the UI side could reuse it, and since step ① the UI may only import `@shared` and `@onething/backend-client`; the "wiring" layer existed to put one product into several hosts, and the hosts converged.
 
 What is still enforced: the client → shared ← server boundary; no backend file imports electron / `@main` / `@preload` / renderer aliases (and the feature directories no cordis, except `feature-registry/`); the non-test relative imports of the feature directories stay inside the feature directories (point at the package root's files and `http-server/` with a package specifier); the internal session modules (`scripts/lib/backend-public-boundary.mjs` `privateSessionFiles`: the command door, the read door, the ledger write door and the caches behind them) have no exports key and may be imported only by non-test files inside `session/` — everyone else goes through the sessions entry; I1 — no package-root file or non-feature directory shares a feature's name (6a renamed `lifecycle.ts` → `backend-shutdown.ts` for this); and content rules (kernels name no concrete feature or capability, provider-agnostic code names no vendor). What was withdrawn, with reasons, is listed in the design doc §4.
 
@@ -119,7 +119,7 @@ What is still enforced: the client → shared ← server boundary; no backend fi
 ```
 apps/*  (thin sockets)
 ┌───────────────┬────────────────┬──────────────┬─────────────────────┐
-│ desktop-react │ apps/server    │ desktop-react│ CLI daemon apps/cli │
+│ desktop-react │ backend-server │ desktop-react│ CLI daemon apps/cli │
 │ (React shell) │ HTTP + SSE     │ --mode web   │ bin/onething.mjs →  │
 │ own core+HTTP │ dynamic port   │ browser shell│ dist/cli/main.cjs   │
 │ (Electron)    │                │ (dist/web)   │                     │
@@ -160,7 +160,7 @@ packages/shared/             # The server ↔ client contract ('@shared'): IPC/R
                              # logic both sides must agree on (session projection, references,
                              # resource refs, effect table, text edit, slash commands, …).
                              # Imports nothing but itself — no node, no @onething/*.
-packages/client/             # core 的客户端 SDK ('@onething/client'): Transport (http = fetch +
+packages/backend-client/     # core 的客户端 SDK ('@onething/backend-client'): Transport (http = fetch +
                              # fetch-stream SSE, Bearer header) + client.api(router) + events hub +
                              # pure model helpers. Node & browser; zero React/Vue/Electron.
 apps/desktop-react/          # THE desktop (React) AND the browser shell (`--mode web` → dist/web,
@@ -176,7 +176,7 @@ apps/cli/                    # THE CLI daemon (src/ = index/daemon-{client,serve
                              # stdout/plugin-command/trace-command + __tests__). Eats only
                              # @onething/backend + @shared — zero Vue-host edges, which is why it
                              # survives step ④b. Built by scripts/build-cli.mjs → dist/cli/main.cjs.
-apps/server/                 # Process shell only (main.ts + index.ts). The HTTP/SSE surface
+apps/backend-server/         # Process shell only (main.ts + index.ts). The HTTP/SSE surface
                              # and the server runtime live in the server package
                              # (packages/backend/http-server/), so the Electron
                              # desktop mounts the SAME code over its own backend.
@@ -241,7 +241,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 
 ### Guardrails
 
-- `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: the feature directories `packages/backend/<feature>/` ban electron / `@main` / `@preload` / renderer aliases / cordis (`feature-registry/` may use cordis), the package root (its files, `http-server/`, `__tests__/`) the same minus cordis (hosts inject via configure*Host ports); `@shared/ipc` is allowed everywhere in the backend. Retired, with reasons in the design doc §4: the runtime `@shared/ipc` ban and the `*.wiring.ts` exception (2026-10-02 flatten; the suffix itself was dropped from all 31 files on 2026-10-03, colliding names renamed by content — table in the design doc §6); everything that treated core or gateway as a layer — core's own bans (`shared/ipc` / better-sqlite3 / mcp+acp SDKs / zod / diff / uuid), the `runtime/*/kernel` import closure, core's third-party allowlist, "core's barrel must export X", "gateway depends on core + `@shared` only", the "no `packages/backend/{core,gateway}` in a specifier" rules (去 core 批 1–3, 2026-10-03). `packages/shared` imports only itself (`checkSharedImportsOnlyShared`, no exemptions) and the client side imports only `@shared/*` / `@onething/client` / itself (`checkClientImportsOnlySharedAndClient`).
+- `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: the feature directories `packages/backend/<feature>/` ban electron / `@main` / `@preload` / renderer aliases / cordis (`feature-registry/` may use cordis), the package root (its files, `http-server/`, `__tests__/`) the same minus cordis (hosts inject via configure*Host ports); `@shared/ipc` is allowed everywhere in the backend. Retired, with reasons in the design doc §4: the runtime `@shared/ipc` ban and the `*.wiring.ts` exception (2026-10-02 flatten; the suffix itself was dropped from all 31 files on 2026-10-03, colliding names renamed by content — table in the design doc §6); everything that treated core or gateway as a layer — core's own bans (`shared/ipc` / better-sqlite3 / mcp+acp SDKs / zod / diff / uuid), the `runtime/*/kernel` import closure, core's third-party allowlist, "core's barrel must export X", "gateway depends on core + `@shared` only", the "no `packages/backend/{core,gateway}` in a specifier" rules (去 core 批 1–3, 2026-10-03). `packages/shared` imports only itself (`checkSharedImportsOnlyShared`, no exemptions) and the client side imports only `@shared/*` / `@onething/backend-client` / itself (`checkClientImportsOnlySharedAndBackendClient`).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs`, a **zero-baseline hard gate**: any `[boundary] failed:` line exits 1. The ratchet and `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds) were retired 2026-08-21 by 结构债方案 P2 — 4 reds were fixed in source, the other 9 were stale/false-positive assertions and were fixed in the checker. Two anti-footgun guards survive: no `[boundary] complete:` marker (checker crashed mid-run) or no `[boundary] ok:` line at all (output shape changed) is red, not green.
 - UI 组件与样式规则:通则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),**React 壳自己的施工规范与判例在 `apps/desktop-react/CLAUDE.md`** —— 那是今天唯一的壳。`bun run ui:gate` / `ui:check` 与它们背后的 `scripts/ui-gate.mjs` / `scripts/ui-style-check.mjs` 及基线 `docs/audit/ui-baseline-2026-08-13.txt` **已随 Vue 宿主一起退役**(2026-09-04,`50ff9cbd`;根 `package.json` 里 `ui*` 脚本为零)——那 12 条规则扫的是 `.vue` 文件。今天的 UI 执法全部在 `apps/desktop-react` 下:静态棘轮 `npm run ui:consume`(基础件消费门,`scripts/ui-consume-gate.mjs` over `ui-consume-check.mjs`,基线 `docs/audit/ui-consume-baseline-2026-09-01.txt`;响应链三条 `keydown-outside-focus` / `focus-outside-focus` / `active-element-read` 是**零基线硬闸**)、`npm run squeeze-gate`(基线 `docs/audit/squeeze-baseline-2026-08-30.txt`)与 `npm run motion-gate`(基线 `docs/audit/motion-baseline-2026-08-31.txt`);真机门 `npm run gate:squeeze` / `gate:a11y` / `gate:motion` / `gate:focus`,四条都已进 `npm run verify`。**同名的门有两半就跑两半**——真机量重叠,棘轮抓源码违例。
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
@@ -290,7 +290,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
   multilingual-e5-small`(`ONETHING_GATE_EMBED_MODEL_DIR` 可覆盖),不下载、不联网、不写盘;目录
   不在或 `node_modules/electron` 不可用就 **skipped + exit 0**,口径同 `gate:native` 跳过静态半边
   与 `gate:search-index` ⑫ 的 opt-in,跳过那一行打得很显眼。
-- `packages/backend/__tests__/architecture-boundaries.test.ts`: the feature directories are Electron/host-free; **the feature directories' non-test relative imports stay inside the feature directories** (the directory form of the old package boundary; the one carve-out is → the internal session modules, which by rule have no exports key); **I1 — no package-root file or non-feature directory shares a feature directory's name** (before 6a, 2026-10-04: no root directory shadowed a `runtime/` domain; the thick-twin allowlist has been **empty** since P3'c, and the assertion stays as a ratchet); the provider-agnostic layers (`{agent-loop,engine}/`) name no vendor; apps/server is Electron-free. Retired (design doc §4): "core free of hosts" / "core at the bottom" / "kernel at the bottom" / I2 (core vs runtime same-name files) / "gateway depends on core + `@shared` only" / "runtime does not import gateway" (去 core 批 1–3, 2026-10-03) and "runtime must not import the spine" (2026-10-02 flatten); (the Vue renderer / apps/web rules died with them on 2026-09-04).
+- `packages/backend/__tests__/architecture-boundaries.test.ts`: the feature directories are Electron/host-free; **the feature directories' non-test relative imports stay inside the feature directories** (the directory form of the old package boundary; the one carve-out is → the internal session modules, which by rule have no exports key); **I1 — no package-root file or non-feature directory shares a feature directory's name** (before 6a, 2026-10-04: no root directory shadowed a `runtime/` domain; the thick-twin allowlist has been **empty** since P3'c, and the assertion stays as a ratchet); the provider-agnostic layers (`{agent-loop,engine}/`) name no vendor; apps/backend-server is Electron-free. Retired (design doc §4): "core free of hosts" / "core at the bottom" / "kernel at the bottom" / I2 (core vs runtime same-name files) / "gateway depends on core + `@shared` only" / "runtime does not import gateway" (去 core 批 1–3, 2026-10-03) and "runtime must not import the spine" (2026-10-02 flatten); (the Vue renderer / apps/web rules died with them on 2026-09-04).
 
 Notes:
 
@@ -338,7 +338,7 @@ Notes:
     (memory ring 200, dev-only pretty echo, batched transport every 16ms / 50 records,
     `beforeunload` + `fatal` flush immediately). The Vue original reused the main process's own logging
     kernel; the React shell's hub is a small zero-dependency module of its own (client code may only
-    import `@shared` / `@onething/client`), not the kernel files in `packages/backend/logging/`. Transport is the generic
+    import `@shared` / `@onething/backend-client`), not the kernel files in `packages/backend/logging/`. Transport is the generic
     RPC envelope, **not** a hand-written channel: `logs` is a router domain
     (`@shared/ipc/logs.ts` + `backend/logging/logging-client-api.ts` + `platform/logs-client.ts`), so
     desktop rides `rpc:invoke` and web rides `POST /api/rpc` behind the same Bearer gate,
@@ -385,7 +385,7 @@ Notes:
   `docs/design/session-storage-jsonl.md`.
 - **Cross-session search runs off a derived index, in a Worker** (检索重建 S3,
   `docs/design/search-index-2026-09.md`; the old line here said indexing belongs in
-  apps/server and that the Electron main process must not add a database — that ruling
+  apps/backend-server and that the Electron main process must not add a database — that ruling
   was replaced on 2026-09-05, and the reason it stood was the ABI hazard, not the idea).
   The index is a **projection of the ledger**, never a source of truth: `<store>/index/
   search.v1.sqlite`, built by folding `sessions/<id>/events.jsonl` through
@@ -541,7 +541,7 @@ Notes:
   does **not** yet guarantee (audit 2026-09-02, `docs/audit/backend-architecture-review-2026-09-02.md`
   §2.4): `events.jsonl` and `meta.json` ride two independent write queues with no shared
   failure handling, and two `server:start` processes on one store do not refuse each other
-  (`apps/server/src/main.ts` only refuses `owner !== 'server'`) — the foreign-writer guard
+  (`apps/backend-server/src/main.ts` only refuses `owner !== 'server'`) — the foreign-writer guard
   catches that after the fact.
 - **Trace = the read-only query surface over `events.jsonl`** (S3, §12 of the same doc).
   One pure assembler (`packages/backend/session/trace/session-trace-assemble.ts` → `Session → Run →
@@ -753,7 +753,7 @@ Notes:
     distribution design: `docs/design/plugin-distribution-npm-2026-08.md`;
     retirement record: `docs/design/plugin-legacy-retirement-plan-2026-08.md`.
   - **Plugins execute on the Electron desktop host only** (plan A). Two caveats the
-    earlier wording got wrong: apps/server is *not* a read-only mirror — `plugins.enable`
+    earlier wording got wrong: apps/backend-server is *not* a read-only mirror — `plugins.enable`
     / `.disable` / `.refresh` do write enable-flags to disk, and it scans a different tree
     (`owners/<uid>/<wid>/plugin-store/plugins`, not `<store>/plugins`), so toggling there
     changes a catalog the desktop never reads. The CLI daemon does not assemble the plugin
@@ -794,7 +794,7 @@ Notes:
   list → **never**.
 - **One core per store** (A 期, `docs/design/one-core-2026-08.md`). The HTTP/SSE surface is
   server-package code (`packages/backend/http-server/http-server-{routes,runtime,discovery,embed}.ts`);
-  `apps/server/src/main.ts` is a process shell around it and the Electron desktop mounts the
+  `apps/backend-server/src/main.ts` is a process shell around it and the Electron desktop mounts the
   **same** code over its own backend, so a browser at :5174 subscribes to the desktop's event
   stream rather than a second engine's. The seam is
   `createOnethingServerRuntimeOverBackend(backend, { ownsBackend, processPorts })`:
@@ -811,7 +811,7 @@ Notes:
   **refuses to start** when a live record says `owner !== 'server'` (`--force` bypasses); alive
   means pid alive **and** the port connects. Token = `ONETHING_SERVER_TOKEN` or a fresh
   `randomBytes(24).base64url` per launch.
-- apps/server is single-user: one server process assembles one backend and pins
+- apps/backend-server is single-user: one server process assembles one backend and pins
   `ONETHING_STORE_PATH` before boot. Bearer auth via `ONETHING_SERVER_TOKEN` (warns when
   binding non-loopback without it; loopback launches mint their own token into the discovery
   file). Tools ship with desktop parity by default;
@@ -822,7 +822,7 @@ Notes:
   (`packages/backend/storage/storage-paths.ts`). All app-layer paths must resolve
   through `getOnethingStorePath()` / its `getOnething*Path` helpers — never hardcode.
   Single-instance safety via `StoreLock` (`acquire('desktop')` / `'daemon'`). The
-  `'server'` owner exists in the type but `apps/server` deliberately does **not** take the
+  `'server'` owner exists in the type but `apps/backend-server` deliberately does **not** take the
   lock (2026-08-19 ruling: desktop + dev server share `~/.onething` in `bun run dev`; the
   two-writer risk — two LRUs + two throttled write queues over the same files — is accepted
   for now and must be revisited before the session event log becomes the single source of
@@ -832,7 +832,7 @@ Notes:
   respond whose channel doesn't match. When answering from another transport, adopt the
   ask's targetChannel (the server HTTP respond does this — owner is already authenticated
   at the HTTP boundary; affinity guards against cross-channel spoofing on the bus).
-- Renderer code talks to core only through `@onething/client` (`createOnethingClient` over an http `Transport`); the React shell's data plane has no IPC at all — its two IPC channels are `host:connection` (the `{ baseUrl, token }` handshake) and, since B1-a (`72c998f8`, 2026-09-12), `host:native-view` (the window-system pipe for native views). `window.electronAPI` no longer exists anywhere.
+- Renderer code talks to core only through `@onething/backend-client` (`createOnethingClient` over an http `Transport`); the React shell's data plane has no IPC at all — its two IPC channels are `host:connection` (the `{ baseUrl, token }` handshake) and, since B1-a (`72c998f8`, 2026-09-12), `host:native-view` (the window-system pipe for native views). `window.electronAPI` no longer exists anywhere.
 - System prompt assembly is a single "directory at top, copy below" builder in
   `packages/backend/prompt/prompt-builder.ts`, composed by a **`PromptComposer`
   over `PromptSource`s** (2026-08-18, `docs/design/prompt-composition-2026-08.md`).
@@ -961,7 +961,7 @@ AI tool_call → tool executor → core Permission.ask
 | Handler lives in | the feature's own second entry `packages/backend/<feature>/<feature>-client-api[-<aspect>].ts` (electron banned) — it exports one roster row via `defineClientApi({ id: 'rpc:<domain>', router, handlers })` |
 | Roster | `packages/backend/http-server/http-server-client-api-roster.ts` — one row per domain, order = mount order; the only http-server file that names features |
 | Dispatch table | `packages/backend/http-server/http-server-dispatch-table.ts` |
-| Client | `@onething/client` — `client.api(router)` over a `Transport` (generic: no per-domain client files) |
+| Client | `@onething/backend-client` — `client.api(router)` over a `Transport` (generic: no per-domain client files) |
 | Context | `RpcDispatchContext` (`transport` / `ownerUid` / `workspaceId` / `callerId` / `sandboxRoot`) |
 
 (The Vue host's second channel `shell:invoke` — window-system handlers that had to touch Electron itself — died with it on 2026-09-04; the React shell keeps **two** IPC channels and neither is a data plane: `host:connection` hands the renderer `{ baseUrl, token }`, and `host:native-view` (B1-a `72c998f8`, 2026-09-12) is the window-system pipe for native views — five verbs, frames carry a `viewId` so a second kind of native view reuses the same channel, and `electron/native-view-protocol.ts` deliberately lives outside `electron/browser/` for that reason.) The envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), the contract style (`defineRouter`), the client factory (`createRouterClient`) and one rule about identity: **the host mints the context after its own auth ran; it is never read off the envelope.** A second rule since route B: **a handler may read `context.transport` only to pick the reply channel or to decide redaction for a payload that leaves the process** — "does this host have X" is a host-port question (`OnethingHostPorts`), "may this caller do X" is a local-trust question (`isHostLocallyTrusted()`), and `transport:gate` counts the reads per domain file, decrease-only.
@@ -970,13 +970,13 @@ AI tool_call → tool executor → core Permission.ask
 
 **`packages/shared/ipc/channels.ts` is now the push side plus one residue**: `session:event` / `session:stream` / per-domain broadcasts, plus the one-way high-frequency `voice:audio-chunk`. **Terminal and browser no longer have any constant in this table** (2026-09-12): T0 (`dce6c15e`) deleted the two zero-import `TERMINAL_DATA` / `TERMINAL_EXIT` constants — terminal output rides the `terminal:data` / `terminal:exit` **global events** out over `GET /api/events`, and replay belongs to `attach`'s ring + seq + generation, not to SSE; B1-a (`72c998f8`) deleted `BROWSER_TABS_CHANGED` together with the whole orphaned `shared/ipc/browser.ts` (A1-b's 19-verb `browserRouter`, whose only host was the retired Vue shell, with zero imports left in the repo), and browser state today is a `browser:` resource whose reads/writes go through the generic `resources` RPC. Since A1-b (2026-08-23) the whole window system rode `shell:invoke` — browser's 19 request verbs (now deleted with that contract), and the four channels that were never in this table at all (`shell:open-path` / `shell:open-external` / `app:get-data-path` → the new `shellRouter`; `window:set-button-visibility` → `windowRouter`, because it acts on the **caller's own window**). `search:query` became the backend `search` RPC domain, forked on **local trust** (`isHostLocallyTrusted()`; it asked `context.transport` until B2). Locally trusted hosts get this process's own `SearchService`; an untrusted one goes through the `backend/search/search-client-api-providers.ts` single-slot port — the same closure the old `POST /api/search/query` route called, and the port exists for exactly that one branch. `bun run transport:gate` is a **numeric ratchet** over its constant count and the shell files (`http-server/http-server-routes.ts`, `shared/ipc/channels.ts`) — a new hand-written channel turns it red.
 
-Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/command types** `packages/shared/events/*.ts`; **client** `packages/client/`.
+Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/command types** `packages/shared/events/*.ts`; **client** `packages/backend-client/`.
 
 ### Alias Registry
 
 Two mechanisms, and which one a package uses is a fact about that package, not a style choice.
 
-**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/backend", "packages/client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{backend,client}`. `@onething/backend` resolves through **its own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` honours exports pointing straight at `.ts` sources): **exact keys only, no wildcard fallback** — one key per import specifier that actually appears in the repo (406 keys after 6a, 2026-10-04: the package root's own `./x.js` keys plus one or more per feature, e.g. `"./provider"` → `./provider/index.ts`, `"./eval"` → `./eval/index.ts`; until 6a every feature key carried a `./runtime/` prefix). `@onething/client` uses the family wildcard (`"./*.js"` / `"./*"` → `./*.ts`) plus an explicit `./node`. Files inside `packages/backend` import other features by package specifier too (`@onething/backend/<feature>/…` — the package's self-reference resolves through the root `node_modules/@onething/backend` link). There is no alias entry and no tsconfig `paths` entry for them, and a missing key fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
+**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/backend", "packages/backend-client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{backend,client}`. `@onething/backend` resolves through **its own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` honours exports pointing straight at `.ts` sources): **exact keys only, no wildcard fallback** — one key per import specifier that actually appears in the repo (406 keys after 6a, 2026-10-04: the package root's own `./x.js` keys plus one or more per feature, e.g. `"./provider"` → `./provider/index.ts`, `"./eval"` → `./eval/index.ts`; until 6a every feature key carried a `./runtime/` prefix). `@onething/backend-client` uses the family wildcard (`"./*.js"` / `"./*"` → `./*.ts`) plus an explicit `./node`. Files inside `packages/backend` import other features by package specifier too (`@onething/backend/<feature>/…` — the package's self-reference resolves through the root `node_modules/@onething/backend` link). There is no alias entry and no tsconfig `paths` entry for them, and a missing key fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
 
 **Alias table.** There is none any more: `onething.aliases.ts` (the `@onething/electron-host/*` family) died with the Vue host on 2026-09-04. The only non-package alias left is `@shared` (= `packages/shared`), declared per-config (root `tsconfig.json` paths, `vitest.config.ts`, the React shell's vite/esbuild configs).
 
@@ -1056,9 +1056,9 @@ packages/backend/              # THE server package ('@onething/backend'); the p
 apps/cli/src/                  # CLI daemon + commands: index.ts (arg parsing) daemon-client.ts
 │                              # daemon-server.ts (HeadlessBackend) ndjson.ts paths.ts stdout.ts
 │                              # (the product-output口) plugin-command.ts trace-command.ts + __tests__/
-apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,
+apps/backend-server/src/       # process shell only: main.ts (env, discovery-file refusal,
 │                              # listen, SIGTERM flush) + index.ts (re-exports @onething/backend/http-server)
-packages/client/               # '@onething/client' — transport/ (types, http, sse, memory) rpc/ events/ model/ client.ts node.ts
+packages/backend-client/       # '@onething/backend-client' — transport/ (types, http, sse, memory) rpc/ events/ model/ client.ts node.ts
 │
 apps/desktop-react/            # THE desktop + browser shell (React). Has its own CLAUDE.md.
 │   ├── electron/              # main.ts (own core + embedded HTTP face) / preload.ts / host-ports.ts
@@ -1117,7 +1117,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 
 - **Backend**: the session table in `packages/backend/session/session-store.ts` (repository with LRU + 300ms throttled async saves); settings cache with sync hot path in `packages/backend/settings/settings-store.ts` (factory defaults in `settings-defaults.ts` + `defaults/`); the current-session pointer in `session/session-current.ts`; connected directories in `file/file-connected-directories.ts` (包根归位 2, 2026-10-03: the package-root `stores/` directory is gone)
 - **Renderer**: zustand stores + query kernel in `apps/desktop-react/src/data/` (see its CLAUDE.md)
-- **Cross-process sync**: EventBus → SSE events (`@onething/client` events hub) + RPC calls
+- **Cross-process sync**: EventBus → SSE events (`@onething/backend-client` events hub) + RPC calls
 
 ### Build Output
 
@@ -1130,7 +1130,7 @@ apps/desktop-react/    # THE desktop (packaged by electron-builder → release/;
 dist/
 ├── cli/main.cjs       # CLI daemon entry (bin/onething.mjs imports this; scripts/build-cli.mjs)
 ├── cli/search-worker.cjs
-├── server/main.js     # apps/server single-file SSR bundle (inlineDynamicImports —
+├── server/main.js     # apps/backend-server single-file SSR bundle (inlineDynamicImports —
 │                      # chunk-split + top-level await deadlocks module evaluation)
 ├── server/search-worker.cjs
 └── web/               # React shell browser build (`web:build`, `--mode web`)
@@ -1144,7 +1144,7 @@ resolves `search-worker.cjs` next to `import.meta.url`; no host passes a path, s
 fourth host means adding a build entry, not a wiring line). React desktop:
 `apps/desktop-react/scripts/build-electron.mjs`, third esbuild call. CLI:
 `scripts/build-cli.mjs`, second call. Server: `scripts/build-server.mjs` runs the vite SSR
-build **and then a second esbuild** — `apps/server/vite.config.ts` pins
+build **and then a second esbuild** — `apps/backend-server/vite.config.ts` pins
 `inlineDynamicImports`, and rollup rejects multiple inputs with it. It is `asarUnpack`'d
 because `worker_threads` loads through Node's own module resolution, not Electron's asar
 patch; `gate:packaged` proves that (`search.status.mode === 'owner'` on the packaged .app).
@@ -1157,6 +1157,6 @@ patch; `gate:packaged` proves that (`search.status.mode === 'owner'` on the pack
 | Frontend | React + TypeScript (zustand) — `apps/desktop-react`, desktop and browser |
 | AI SDK | Hand-rolled fetch/SSE per provider (`packages/backend/provider/`) |
 | Storage | File-based (JSON + per-session JSONL) |
-| Build | Vite (renderer) + esbuild (main / preload / CLI, `apps/desktop-react/scripts/build-electron.mjs` recipe); vite SSR for apps/server |
+| Build | Vite (renderer) + esbuild (main / preload / CLI, `apps/desktop-react/scripts/build-electron.mjs` recipe); vite SSR for apps/backend-server |
 | Test | Vitest |
 | Virtual Scroll | None — the React message list is a plain list with block-level memo (R 线, `apps/desktop-react/docs/stream-render-2026-09.md`). |

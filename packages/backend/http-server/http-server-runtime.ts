@@ -857,8 +857,8 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 			reason: "ONETHING_SERVER_TOOLS=readonly",
 		});
 	}
-	// No `owner`: 2026-08-24 ruling — apps/server takes no store lock. It defers
-	// through `<store>/run/http.json` (see apps/server/src/main.ts) instead.
+	// No `owner`: 2026-08-24 ruling — apps/backend-server takes no store lock. It defers
+	// through `<store>/run/http.json` (see apps/backend-server/src/main.ts) instead.
 	const backend = await createOnethingBackend({
 		storePath,
 		logging,
@@ -909,7 +909,7 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
 			/**
 			 * 本机可信在这里必须是 `null`(B3):独立 server 到底可不可信取决于它
 			 * **绑到哪个地址**,而装配的时候还没 listen。声明点在
-			 * `apps/server/src/main.ts` —— 回环才声明 `loopback-server`,非回环
+			 * `apps/backend-server/src/main.ts` —— 回环才声明 `loopback-server`,非回环
 			 * 一个字不说。桌面把自己那只 backend 交给这段代码时(`embed.ts`)走的
 			 * 是另一张表,那张表里 `localTrust` 是 `desktop-embedded`。
 			 */
@@ -950,7 +950,7 @@ async function createRealServerBackend(storePath: string, logging?: ConfigureLog
  *
  * 桌面主进程装配完 backend 之后调这个:HTTP/SSE 面因此和 renderer 的 IPC 面
  * 共享同一条事件流、同一份内存真相、同一个 seq 分配器 —— 而不是像从前那样
- * 由 apps/server 再装配一只引擎。
+ * 由 apps/backend-server 再装配一只引擎。
  *
  * 借来的 backend 必须传 `processPorts: 'host'`:MCP 客户端宿主、授权账页存储、
  * todo/scratchpad 广播这三组是**进程级单槽端口**,宿主已经配好了,server runtime
@@ -1409,7 +1409,7 @@ async function createServerRuntimeOverServerBackend(
 			 * 那一圈 fire-and-forget 的 `mcpManagersByOwner`"挪进了 `backend.dispose()`
 			 * (`own('mcp')` 那一格),而子系统的 `dispose()` 按 C1 的设计**要等在途的
 			 * `start()` 落地**。于是一台在初次握手上挂死的 stdio 服务器会拖住收尾 ——
-			 * 初版实测把 `apps/server` 那 5s 预算吃干净(5.06s + `shutdown did not
+			 * 初版实测把 `apps/backend-server` 那 5s 预算吃干净(5.06s + `shutdown did not
 			 * finish in time; pending session writes may be lost`),从前是 0.05s。
 			 * **用户裁定不接受无界等待**,于是 `McpSubsystem.dispose()` 现在自带
 			 * 3000ms 上限(见 `mcp/mcp-subsystem.ts` 的
@@ -1426,7 +1426,7 @@ async function createServerRuntimeOverServerBackend(
 						 * 缺口:core 自己那两句(`mcp initializing` /
 						 * `mcp connecting to servers`)在独立 server 上从此进不了
 						 * `server.jsonl` 了。原因不是行为变了,是**时序**:
-						 * `apps/server/src/main.ts` 要等 runtime 装配完才
+						 * `apps/backend-server/src/main.ts` 要等 runtime 装配完才
 						 * `configureLogging`(store 根由装配钉死,提前接线会写进另一个
 						 * store 的 log/),而从前那句 `await getMCPSettingsForContext()`
 						 * 带一次真实的文件读,把 `initialize` 顶到了 `configureLogging`

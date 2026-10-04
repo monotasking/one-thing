@@ -1,7 +1,7 @@
 /**
  * 发现文件的读与判活有两份实现(server / client 拆分第②步,2026-10-02):
- * `packages/backend/http-server/http-server-discovery-io.ts`(后端)与 `packages/client/http-discovery-io.ts`
- * (`@onething/client/node`)。shared 不许碰 node,server 与 client 互不 import,所以只能各放一份;
+ * `packages/backend/http-server/http-server-discovery-io.ts`(后端)与 `packages/backend-client/http-discovery-io.ts`
+ * (`@onething/backend-client/node`)。shared 不许碰 node,server 与 client 互不 import,所以只能各放一份;
  * 「两份不许分叉」由这里钉住 —— 同一组样例喂两边,答案必须逐个相等。
  *
  * 测试不受包方向约束,所以这里可以同时 import 两边。
@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import * as server from '../http-server-discovery-io.js'
-import * as client from '@onething/client/http-discovery-io.js'
+import * as client from '@onething/backend-client/http-discovery-io.js'
 import type { HttpDiscoveryRecord } from '@shared/backend/http-discovery.js'
 
 let dir: string

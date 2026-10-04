@@ -3,7 +3,7 @@
  *
  * 记录形状与白名单式解析在 `@shared/backend/http-discovery.ts`(那是契约,两边共用);shared 不许碰 node,
  * 所以碰 node 的这一半「两边各一份最小实现」:这一份给后端(`discovery.ts` 的读侧、`server:start` 的拒启判据),
- * 另一份在 `packages/client/http-discovery-io.ts` 给 `@onething/client/node`。server 不能 import client、client
+ * 另一份在 `packages/backend-client/http-discovery-io.ts` 给 `@onething/backend-client/node`。server 不能 import client、client
  * 不能 import server,所以没法只留一份;**两份逐字同形,对同一组样例给同一个答案**,由
  * `__tests__/http-discovery-io-parity.test.ts` 钉住。改这里的任何一行,就要同样改那一份。
  *

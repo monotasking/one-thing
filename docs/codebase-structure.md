@@ -11,7 +11,7 @@ packages/core            → 最底层：引擎/会话/权限/工具/存储的�
 packages/onething-runtime → 应用运行时：在 core 之上组装 prompts/themes/memory/media/scheduler/agents/agent-loop 等，Electron-free
 packages/gateway          → 微信/Telegram 等 IM 渠道网关，只依赖 core
 apps/electron             → Electron 宿主专属的 IPC/窗口/preload 代码（从 src/main 逐步搬迁中）
-apps/server                → 无 Electron 的 headless HTTP 服务（端口 8787），给 web 端/网关等场景用
+apps/backend-server                → 无 Electron 的 headless HTTP 服务（端口 8787），给 web 端/网关等场景用
 apps/web                   → 浏览器构建，复用 src/renderer 同一套 Vue 代码
 src/main, src/renderer, src/preload, src/shared → Electron 应用本体（正在被逐步"瘦身"迁移进上面的 packages/apps）
 ```
@@ -120,13 +120,13 @@ src/main, src/renderer, src/preload, src/shared → Electron 应用本体（正�
 
 它不是独立可跑的 app——`apps/electron/src/main.ts` 只是薄封装，真正打包用的入口仍是 `src/main/index.ts`（见根目录 `electron.vite.config.ts`），大量 import `@onething/electron-host/*`（别名到 `apps/electron/src`）以及仍在 `src/main/` 下的 `@main/*` 模块。`apps/electron/src/app/main-process.ts` 是把 `@main` 的 stores/engine/events/IPC bridge 与抽取出来的 window/gateway/voice/shortcuts/bootstrap 拼在一起的编排器——印证了 CLAUDE.md 描述的"src/main 正在逐步瘦身迁入 packages/apps"。
 
-### `apps/server/` — Headless 核心服务（`@onething/server-host`）
+### `apps/backend-server/` — Headless 核心服务（`@onething/backend-server`）
 
 只有 4 个文件：`index.ts`（桶导出）、`http.ts`（原生 Node `http`，无框架，CORS + Bearer token 鉴权（`timingSafeEqual`），基于 `OnethingRuntimeFacade` 的 REST 式路由，暴露 `/api/memory/*`、channel-identity、session 等端点）、`runtime.ts`（`createDevelopmentOnethingServerRuntime` 用文件存储组装出 AgentEngine/EventBus/StreamChannel 支撑的 facade）、`main.ts`（进程入口：读 `ONETHING_SERVER_PORT`（默认 8787）、`ONETHING_SERVER_HOST`（默认 127.0.0.1）、`ONETHING_CORS_ORIGIN`（默认 `http://127.0.0.1:5174`）、`ONETHING_SERVER_TOKEN`，非回环地址且无 token 时会警告）。只依赖 core 和 runtime，无 Electron。这是让会话/记忆等能力脱离 Electron 独立运行的 headless 对应体，供 `apps/web` 的 dev 代理目标使用。
 
 ### `apps/web/` — 浏览器构建（`@onething/web`）
 
-只有 `dev`/`build` 脚本（裸 Vite + Vue 插件）。`vite.config.ts` 把 `root` 设为仓库根目录，`@`/`@renderer` 别名指向 `src/renderer/`，`@shared` 指向 `src/shared/`，并代理 `/api` 到 `apps/server`（默认 8787，可用 `ONETHING_API_URL` 覆盖）。也就是说它构建的是**跟 Electron 完全同一套** `src/renderer` Vue 代码，只是没有 Electron 的 preload 桥。dev 端口 5174 与 server 的默认 CORS origin 对应。没有自己的 `src/` 目录，纯粹是构建配置。
+只有 `dev`/`build` 脚本（裸 Vite + Vue 插件）。`vite.config.ts` 把 `root` 设为仓库根目录，`@`/`@renderer` 别名指向 `src/renderer/`，`@shared` 指向 `src/shared/`，并代理 `/api` 到 `apps/backend-server`（默认 8787，可用 `ONETHING_API_URL` 覆盖）。也就是说它构建的是**跟 Electron 完全同一套** `src/renderer` Vue 代码，只是没有 Electron 的 preload 桥。dev 端口 5174 与 server 的默认 CORS origin 对应。没有自己的 `src/` 目录，纯粹是构建配置。
 
 ---
 

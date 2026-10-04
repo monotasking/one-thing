@@ -62,8 +62,8 @@
         "zod": "^4.2.0",
       },
     },
-    "packages/client": {
-      "name": "@onething/client",
+    "packages/backend-client": {
+      "name": "@onething/backend-client",
       "version": "0.0.0",
     },
   },
@@ -261,7 +261,7 @@
 
     "@onething/backend": ["@onething/backend@workspace:packages/backend"],
 
-    "@onething/client": ["@onething/client@workspace:packages/client"],
+    "@onething/backend-client": ["@onething/backend-client@workspace:packages/backend-client"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, ""],
 

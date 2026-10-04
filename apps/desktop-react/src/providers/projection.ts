@@ -1,4 +1,4 @@
-import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/backend-client/model/provider-model'
 import { frozenFlagOf } from '../ui/list-placement'
 import type { ModelParameterSuggestion, OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
 import type {

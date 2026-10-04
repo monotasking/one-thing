@@ -2,7 +2,7 @@
  * Generic RPC envelope — one channel for every domain (主线 T0,
  * docs/design/dsh-architecture-adoption-2026-08.md §3).
  *
- * The shells (Electron `@main`, preload, apps/server, renderer platform) each
+ * The shells (Electron `@main`, preload, apps/backend-server, renderer platform) each
  * carry ONE adapter over this envelope. Adding a domain is a router file plus a
  * backend handler registration — no shell file changes, no new channel
  * constant, no new HTTP route.
@@ -31,7 +31,7 @@ export interface RpcRequest {
  * crosses the wire and is therefore attacker-controlled on a networked host;
  * the context never does. It is minted by the shell adapter *after* that
  * shell's own authentication ran — `@main` mints `{ transport: 'ipc' }`
- * unconditionally (desktop is the user's own machine), `apps/server` mints it
+ * unconditionally (desktop is the user's own machine), `apps/backend-server` mints it
  * from the already-authenticated `RuntimeRequestContext`. A client that puts a
  * `context` key in its JSON body is simply ignored: there is no such field to
  * put it in.

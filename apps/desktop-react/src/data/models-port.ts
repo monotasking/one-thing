@@ -4,7 +4,7 @@ import { settingsRouter, type GetSettingsResponse } from '@shared/ipc/settings'
 import { sessionsRouter, type SessionMutationResponse } from '@shared/ipc/sessions'
 
 /**
- * 模型目录与模型切换,和 core 的客户端(`@onething/client`)之间的那一层**端口** ——
+ * 模型目录与模型切换,和 core 的客户端(`@onething/backend-client`)之间的那一层**端口** ——
  * 与 `data/files-port.ts` / `data/sessions-port.ts` 同一形状、同一理由:
  * models-source 的全部判据(哪一家可见、目录怎么懒加载、当前模型怎么解析)
  * 都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,测试用

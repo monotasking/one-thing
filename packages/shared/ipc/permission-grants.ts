@@ -8,7 +8,7 @@
  * 契约本身与迁移前逐字一致（渲染层拿到的字段一个没变），只有一处**收紧**：
  * 夹紧宿主上 `list` / `clearWorkspace` 的 `userId` / `workspaceId` 以 context 为准，
  * 请求体里带的同名字段被忽略 —— 迁移前 server 也是这么做的（它压根不读请求体里
- * 的 owner 字段），只是那时这条规则写在 `apps/server/src/runtime.ts` 里。
+ * 的 owner 字段），只是那时这条规则写在 `apps/backend-server/src/runtime.ts` 里。
  */
 import type { PermissionGrant } from '../permission/grant.js'
 import { defineRouter } from './router.js'

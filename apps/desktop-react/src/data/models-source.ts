@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
-import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/client/model/provider-model'
+import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/backend-client/model/provider-model'
 import { resolveReasoningEffort } from '@shared/reasoning-effort'
 import type {
   OpenRouterModel,

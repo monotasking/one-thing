@@ -2,7 +2,7 @@
  * MCP 领域的**完整**门面:产品面 + 说跨进程词汇的工具桥。
  *
  * P3'b-A:`packages/backend/mcp/mcp.ts` 的原样接续 —— 老调用点(装配层脊柱、
- * apps/electron 的 IPC handler、apps/server 的 runtime)拿到的符号集合与迁移前
+ * apps/electron 的 IPC handler、apps/backend-server 的 runtime)拿到的符号集合与迁移前
  * 逐个相同,只是说明符从 `@onething/backend/mcp/index.js` 变成
  * `@onething/backend/mcp/mcp-index-with-bridge`。
  *

@@ -105,7 +105,7 @@ describe('夹紧宿主', () => {
    * **review ③ 的病:信任在装配时算一次,server 上就永远是空表。**
    *
    * `server:start` 装配时 host 表的 `localTrust` 是 null,它要到
-   * `apps/server/src/main.ts` 决定绑回环之后才 `configureHostLocalTrust(...)`。
+   * `apps/backend-server/src/main.ts` 决定绑回环之后才 `configureHostLocalTrust(...)`。
    *
    * **反证**:把 `refresh` 里的 `if (!trusted())` 那一段挖掉 → 第一次就不空,
    * 这条红;把它改回构造期算一次 → 第二次仍然空,这条也红。

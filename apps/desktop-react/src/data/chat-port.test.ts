@@ -3,7 +3,7 @@ import { createFileToken } from '@shared/prompts/prompt-references'
 import { buildMessageContent } from '../../../../packages/backend/agent-loop/agent-loop-message-content'
 import type { MessageAttachment } from '@shared/ipc/chat'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'
-import { createMemoryTransport, createOnethingClient } from '@onething/client'
+import { createMemoryTransport, createOnethingClient } from '@onething/backend-client'
 import type { RpcRequest } from '@shared/ipc/rpc'
 
 /**
@@ -15,7 +15,7 @@ import type { RpcRequest } from '@shared/ipc/rpc'
  * 必须是同一串字节」,判词整段在 `chat-port.ts` 的 `sendMessage` 上。
  *
  * 所以这里换掉的是**传输**(而不是端口本身)—— 端口用的是**真实现**,不然验的
- * 就是假货。C1 起换传输就是 `@onething/client` 的内存替身:同一个
+ * 就是假货。C1 起换传输就是 `@onething/backend-client` 的内存替身:同一个
  * `createOnethingClient`、同一条 `client.api(router)`,只是底下没有网 ——
  * 于是这份用例顺带成了「换传输不改上层」的一个活证据。
  */

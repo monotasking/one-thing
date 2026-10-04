@@ -37,7 +37,7 @@
  * 谁声明:
  *  - **桌面内嵌 HTTP 面**(`startEmbeddedOnethingHttpServer`)无条件可信 ——
  *    它只服务本机同一个用户,token 写在 0600 的发现文件里。
- *  - **独立 server**(`apps/server/src/main.ts`)**仅当绑定为回环**时可信;
+ *  - **独立 server**(`apps/backend-server/src/main.ts`)**仅当绑定为回环**时可信;
  *    非回环绑定一律不声明,护栏原样。
  *
  * ## 反悔口

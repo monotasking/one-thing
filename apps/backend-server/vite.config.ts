@@ -17,7 +17,7 @@ export default defineConfig({
   // relative .node file) instead of bundling a detached JavaScript wrapper.
   ssr: { external: ['fsevents'] },
   build: {
-    ssr: resolve(projectRoot, 'apps/server/src/main.ts'),
+    ssr: resolve(projectRoot, 'apps/backend-server/src/main.ts'),
     target: 'node20',
     outDir: resolve(projectRoot, 'dist/server'),
     emptyOutDir: true,

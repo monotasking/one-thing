@@ -7,13 +7,13 @@
  *
  * | 谁 | 拿它干什么 |
  * |---|---|
- * | `apps/server/src/main.ts` | 拒启:`owner !== 'server'` 且活着 → 让位(`--force` 绕过) |
- * | `@onething/client/node` 的 `readCoreDiscovery()` | CLI / 脚本当 core 的客户端:活着就连上去 |
+ * | `apps/backend-server/src/main.ts` | 拒启:`owner !== 'server'` 且活着 → 让位(`--force` 绕过) |
+ * | `@onething/backend-client/node` 的 `readCoreDiscovery()` | CLI / 脚本当 core 的客户端:活着就连上去 |
  *
  * server / client 拆分第②步(2026-10-02,`docs/design/server-client-split-2026-10.md` §6)起,shared
  * 不许碰 node,所以这里只留**纯的一半**:记录形状、白名单式校验与解析(`parseHttpDiscoveryRecord`)、
  * `httpDiscoveryUrl`。碰 node 的那一半(读文件、两段判活、store 根目录的三段解析)按「两边各一份最小实现」
- * 分给 `packages/backend/http-server/http-server-discovery-io.ts` 与 `packages/client/http-discovery-io.ts`
+ * 分给 `packages/backend/http-server/http-server-discovery-io.ts` 与 `packages/backend-client/http-discovery-io.ts`
  * (server 不能 import client,client 不能 import server);两份对同一组样例给同一个答案,由
  * `packages/backend/http-server/__tests__/http-server-discovery-io-parity.test.ts` 钉住,不由注释保证。
  *

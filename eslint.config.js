@@ -64,18 +64,18 @@ export default [
   },
 
   // 区 ② 装配层 + server 壳。产品代码只见 `@onething/app/logging` 的 `getLogger(ns)`;
-  // 白名单只有 `apps/server/src/main.ts` 的四条**启动期**行(`configureLogging()`
+  // 白名单只有 `apps/backend-server/src/main.ts` 的四条**启动期**行(`configureLogging()`
   // 在 runtime 装配之后才接线,那之前必须直写 stderr),它们逐条带
   // `eslint-disable-next-line no-console` + 理由;测试里的 console 不算。
   // (从前这里还列着 `runtime/app/**` 的两条 glob,那个目录早已不存在、一只文件都匹配不到;
   // 2026-10-04 去掉 `runtime/` 这一层时一并删去。)
   {
     files: [
-      'apps/server/src/**/*.ts',
+      'apps/backend-server/src/**/*.ts',
     ],
     ignores: [
-      'apps/server/src/**/__tests__/**',
-      'apps/server/src/**/*.test.ts',
+      'apps/backend-server/src/**/__tests__/**',
+      'apps/backend-server/src/**/*.test.ts',
     ],
     rules: {
       'no-console': 'error',

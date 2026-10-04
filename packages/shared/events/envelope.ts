@@ -44,7 +44,7 @@ export interface GlobalEventEnvelope {
  *
  * 它住在这里而不是某个壳的 `types/` 里,理由和隔壁 `SessionEventEnvelope` 一样:
  * IPCBridge 与 `GET /api/events` 的 SSE 送出去的是**同一个**对象,而现在有不止
- * 一个客户端要认它(`@onething/client` 的 `TransportEvents` 表、React 壳、Vue
+ * 一个客户端要认它(`@onething/backend-client` 的 `TransportEvents` 表、React 壳、Vue
  * renderer)。C2 之前 `packages/renderer/types/index.ts` 里那份同形声明还在,
  * 退役时改成从这里再导出(方案 §5.2 / §9 留账)。
  */

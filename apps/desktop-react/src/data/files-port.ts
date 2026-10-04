@@ -10,7 +10,7 @@ import type {
 } from '@shared/ipc/files'
 
 /**
- * 文件面取数与 core 的客户端(`@onething/client`)之间的那一层**端口** —— 与
+ * 文件面取数与 core 的客户端(`@onething/backend-client`)之间的那一层**端口** —— 与
  * `data/sessions-port.ts` / `theme/theme-port.ts` 同一形状、同一理由:
  * files-source 的全部判据(根怎么定、懒展开、每目录一次、失败怎么归类)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用 `configureFilesPort`

@@ -19,7 +19,7 @@ describe('architecture boundaries', () => {
   //
   // 「core 在最底层」(core 不许 import runtime / gateway)与「`runtime/*/kernel` 在最底层」(kernel 只许 import 自己、core、
   // `@shared` 与 node 内建)两条随去 core 批 1(2026-10-03)撤掉(正本 `docs/design/server-client-split-2026-10.md` §4):
-  // core 的「零依赖骨架」是为了让界面那侧复用,第①步以后界面只许 import `@shared` 与 `@onething/client`,碰不到 core 了;
+  // core 的「零依赖骨架」是为了让界面那侧复用,第①步以后界面只许 import `@shared` 与 `@onething/backend-client`,碰不到 core 了;
   // kernel 那条的源头就是「kernel 当 core 判」。
 
   // 「runtime 不许 import gateway」那一半随去 core 批 3(2026-10-03)撤掉:gateway 搬进了 `gateway/`(用户拍板:
@@ -91,13 +91,13 @@ describe('architecture boundaries', () => {
 
   it('keeps the server host independent from Electron host code', () => {
     // apps/web(Vue 浏览器构建)于 2026-09-04 随 Vue 宿主退役;浏览器壳现在是 apps/desktop-react 的 web 模式。
-    expect(findForbiddenReferences('apps/server', hostOnlyPatterns)).toEqual([])
+    expect(findForbiddenReferences('apps/backend-server', hostOnlyPatterns)).toEqual([])
   })
 
-  it('keeps apps/server off Electron app source (packages/shared stays allowed)', () => {
+  it('keeps apps/backend-server off Electron app source (packages/shared stays allowed)', () => {
     // apps/web intentionally builds packages/renderer via vite aliases, so this
     // rule applies to the server host only.
-    expect(findForbiddenReferences('apps/server', [
+    expect(findForbiddenReferences('apps/backend-server', [
       appSourceImportPattern,
     ])).toEqual([])
   })
@@ -148,9 +148,9 @@ describe('architecture boundaries', () => {
 
     for (const directory of [
       'packages/shared',
-      'packages/client',
+      'packages/backend-client',
       'apps/desktop-react/src',
-      'apps/server/src',
+      'apps/backend-server/src',
     ]) {
       expect(findForbiddenReferencesInCode(directory, [deadNames])).toEqual([])
     }

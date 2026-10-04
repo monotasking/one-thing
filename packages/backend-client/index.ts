@@ -1,5 +1,5 @@
 /**
- * `@onething/client` —— core 的客户端底座(`docs/design/client-sdk-2026-09.md`)。
+ * `@onething/backend-client` —— core 的客户端底座(`docs/design/client-sdk-2026-09.md`)。
  *
  * 三段自下而上:**transport**(唯一的可换点)→ **rpc**(泛型域客户端)→
  * **events / model**(事件枢纽与纯判据)。零 React / 零 Vue / 零 Electron,
@@ -10,7 +10,7 @@
  * (`matchMedia`)、剪贴板、打开外链、文件对话框 —— 那些是宿主能力,住在各壳
  * 自己的 `platform/host.ts`。
  *
- * Node 专用面(读 `<store>/run/http.json`)在子路径 `@onething/client/node`,
+ * Node 专用面(读 `<store>/run/http.json`)在子路径 `@onething/backend-client/node`,
  * 浏览器构建永远不引它。
  */
 export { createOnethingClient } from './client.js'

@@ -45,7 +45,7 @@ function checkRequestAuthorization(
 ): string | undefined {
   if (options.authToken) {
     // 2026-09-04 起只认 Bearer 头:从前 `GET /api/events` 额外认 `?token=`,是给浏览器 `EventSource`
-    // (带不了 header)留的口;@onething/client 用 fetch 流解析 SSE 后全仓无人再构造它,Vue 壳退役时删。
+    // (带不了 header)留的口;@onething/backend-client 用 fetch 流解析 SSE 后全仓无人再构造它,Vue 壳退役时删。
     const bearer = readBearerToken(request)
     if (!bearer || !tokenMatches(bearer, options.authToken)) {
       return 'Unauthorized: this server requires a Bearer token (ONETHING_SERVER_TOKEN).'

@@ -2,9 +2,9 @@
   "extends": "./tsconfig.json",
   "include": [
     "packages/backend/**/*",
-    "packages/client/**/*",
+    "packages/backend-client/**/*",
     "apps/cli/**/*",
-    "apps/server/**/*",
+    "apps/backend-server/**/*",
     "scripts/gateway-smoke-test.ts",
     "scripts/gate-embed-runtime/entry.ts",
     "packages/shared/**/*"

@@ -246,9 +246,9 @@ describe('http discovery file', () => {
  * **一把尺子**(C0,`docs/design/client-sdk-2026-09.md` §9 留账那条)。
  *
  * 记录形状在 `@shared/backend/http-discovery.ts`;读与判活在 server / client 各一份
- * (server / client 拆分第②步:shared 不许碰 node),好让 `@onething/client/node`
+ * (server / client 拆分第②步:shared 不许碰 node),好让 `@onething/backend-client/node`
  * (禁 import backend)问同一个「core 活没活」。代价是 client 那份必须自己解析 store
- * 根目录(`packages/client/http-discovery-io.ts`)—— 于是有了两处三段解析。
+ * 根目录(`packages/backend-client/http-discovery-io.ts`)—— 于是有了两处三段解析。
  * **它们不许分叉,而这件事由这一格钉住,不由注释保证**:上面那句注释一旦成了
  * 谎话(比如 client 那边忘了认 `ONETHING_STORE_PATH`),这里当场红。
  */
@@ -270,7 +270,7 @@ describe('discovery 的 store 解析与 @shared 那份同形', () => {
 
   it('显式 storePath / 环境变量 / 缺省家目录 三段都对得上', async () => {
     const { resolveOnethingStoreRoot, httpDiscoveryPathIn } =
-      await import('@onething/client/http-discovery-io.js')
+      await import('@onething/backend-client/http-discovery-io.js')
     const { getOnethingStorePath } = await import('@onething/backend/storage')
 
     // ① 环境变量那一段

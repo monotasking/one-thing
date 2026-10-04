@@ -8,7 +8,7 @@ import { BUILTIN_PROVIDER_MANIFESTS, providerInfoOfManifest } from '@onething/ba
  * 家族(`family`)都随 `providers.getProviders` 的 `ProviderInfo` 下发。用例要演「后端交下来
  * 什么」,最诚实的做法是跑**产品层那一个**投影(`providerInfoOfManifest`,RPC 发出去的就是它),
  * 而不是在测试里手抄一份档位地址表或家族表 —— 手抄的会漂。所以这里是全壳唯一 import
- * runtime 服务商代码的地方之一,边界门(`checkClientImportsOnlySharedAndClient`,并入了 P4 那条)只放过
+ * runtime 服务商代码的地方之一,边界门(`checkClientImportsOnlySharedAndBackendClient`,并入了 P4 那条)只放过
  * 测试与 `__fixtures__`,理由同此。
  */
 

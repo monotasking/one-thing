@@ -7,7 +7,7 @@ import {
 } from '../../data/__fixtures__/sessions'
 import { configureSessionsPort } from '../../data/sessions-port'
 import { useSessionsSource } from '../../data/sessions-source'
-import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/backend-client/events/session-lifecycle'
 import { useExposeStore } from '../../expose/store'
 import { initialExposeState } from '../../expose/transitions'
 import { CENTER_REGION } from '../../workbench/regions'

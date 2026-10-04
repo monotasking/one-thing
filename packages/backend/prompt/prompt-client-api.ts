@@ -9,7 +9,7 @@
  * （`<dataRoot>/owners/<uid>/<wid>/prompts.json`，`getPromptStoreForContext`），
  * 通用 RPC 信封不带 request context，所以迁移后 server 读的是与 desktop 同一份
  * `<store>/prompts.json`。这正是「一份实现、两个宿主」的意思——单用户前提下
- * （apps/server 本就单用户，见 CLAUDE.md）这是收敛而不是退化，但**旧的
+ * （apps/backend-server 本就单用户，见 CLAUDE.md）这是收敛而不是退化，但**旧的
  * owners 目录里已有的片段不会自动搬家**。同类口径变化 T0 在 usage ledger 上
  * 已有先例。
  *
