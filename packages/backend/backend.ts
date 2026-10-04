@@ -912,8 +912,14 @@ export class OnethingBackend implements BackendHandle {
       // recorded incidents replay against the prompt that actually shipped.
       try {
         const { initPromptVersion } = await import('@onething/backend/eval')
-        const { buildOnethingSystemPrompt } = await import('@onething/backend/prompt')
-        const { system, developer } = await buildOnethingSystemPrompt({ hasTools: false, skills: [] })
+        const { buildOnethingSystemPrompt, defaultOnethingPromptComposer } = await import('@onething/backend/prompt')
+        // 缺省 composer 不再内置插件提示词源(越层清零 C1,2026-10-04);这里显式补上同一份
+        // 不带健康回调的源,版本戳拼出来的字节与从前逐字相同。
+        const { PluginPromptContextSource } = await import('@onething/backend/plugin/plugin-prompt-context')
+        const { system, developer } = await buildOnethingSystemPrompt(
+          { hasTools: false, skills: [] },
+          defaultOnethingPromptComposer.with(new PluginPromptContextSource()),
+        )
         initPromptVersion([system, ...developer].filter(Boolean).join('\n\n'))
       } catch (error) {
         log.warn('prompt version init failed', {}, error)

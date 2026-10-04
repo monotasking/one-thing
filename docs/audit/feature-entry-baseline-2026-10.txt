@@ -7,11 +7,11 @@
 207 agent-loop
 190 toolkit
 111 tool
-96 agent
+93 agent
 89 settings
 83 plugin
-79 event
 79 storage
+77 event
 73 collab
 72 space
 65 permission
@@ -20,11 +20,11 @@
 35 mcp
 32 variable
 31 note
-31 prompt
 28 usage
 26 engine
 25 voice
 23 credentials
+23 prompt
 22 skill
 20 acp
 20 external-agent
@@ -46,7 +46,6 @@
 5 interaction
 5 practice
 4 memory
-4 trigger
 3 quota
 3 scratchpad
 3 task

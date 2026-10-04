@@ -21,7 +21,6 @@ import {
 } from "./prompt-composer.js";
 import { renderReferenceGuide } from "../reference/reference.js";
 import { promptFragments } from "./prompt-fragments.js";
-import { PluginPromptContextSource } from "./prompt-plugin-context.js";
 import {
 	ONETHING_DEFAULT_SYSTEM_PROMPT,
 	ONETHING_KNOWN_PROJECTS_INSTRUCTIONS,
@@ -343,16 +342,18 @@ export const builtinPromptSource: PromptSource = new StaticPromptSource(
 );
 
 /**
- * The default composer: builtin sections + runtime-registered fragments +
- * plugin providers (without host health callbacks). It has **no tool source**
- * — hosts with a tool registry build their own (`app/engine/prompt/`), and
- * tests add a `StaticPromptSource`. Kept for callers that only need the
- * product prompt (`backend.ts` prompt version, evals, unit tests).
+ * The default composer: builtin sections + runtime-registered fragments. It has
+ * **no tool source** — hosts with a tool registry build their own
+ * (`engine/prompt/engine-system-prompt.ts`), and tests add a `StaticPromptSource`.
+ *
+ * 2026-10-04 起它也不再内置插件提示词源(越层清零 C1):插件的提示词源住在插件里
+ * (`plugin/plugin-prompt-context.ts`),提示词(L1)不认识插件(L2)。要插件那一段的
+ * 调用方自己 `.with(new PluginPromptContextSource())` —— 桌面 composer 本来就另装了
+ * 带断路器的那一份,`backend.ts` 的提示词版本戳照旧带一份不带健康回调的。
  */
 export const defaultOnethingPromptComposer: PromptComposer = new PromptComposer([
 	builtinPromptSource,
 	promptFragments,
-	new PluginPromptContextSource(),
 ]);
 
 function agentPrompt(name: string, systemPrompt: string): string {

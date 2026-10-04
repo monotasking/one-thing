@@ -10,7 +10,7 @@ import type { JsonObject } from '@shared/json.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/backend/toolkit/toolkit-execution-types'
 import type { Principal } from '@shared/permission/principal'
 import type { StreamContext } from './engine-stream-processor.js'
-import { createEventOnlyEmitter } from '@onething/backend/event/event-only-emitter'
+import { createEventOnlyEmitter } from '../engine-event-only-emitter.js'
 import { executeCoreToolAndUpdate } from '@onething/backend/agent-loop'
 import {
   createToolExecutionStepWithFactory,

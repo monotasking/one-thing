@@ -6,16 +6,25 @@
  * memory 的 agent scope 公式("自己的 scope + global")就会在群房里读到另一个
  * agent 的记忆,而且没有任何东西会红。
  *
- * 住产品层(不是 app/plugins/__tests__):collectPluginPromptContext 是 prompts
- * 的注册表,装配层的测试不该伸手进产品层(与 plugin-context-timeout.test.ts 同址同理)。
+ * 2026-10-04 随被测的 `plugin-prompt-context.ts` 从 `prompt/__tests__/plugin-context-agent-id.test.ts`
+ * 搬到这里(越层清零 C1;与 `plugin-prompt-context-timeout.test.ts` 同址同理)。
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  PluginPromptContextSource,
   clearAllPromptContextProviders,
   registerPromptContextProvider,
   type OnethingPluginPromptContext,
-} from '../prompt.js'
-import { buildOnethingSystemPrompt } from '../prompt-builder.js'
+} from '../plugin-prompt-context.js'
+import { buildOnethingSystemPrompt as buildWithComposer, defaultOnethingPromptComposer } from '@onething/backend/prompt'
+
+/**
+ * 缺省 composer 2026-10-04 起不再内置插件提示词源(越层清零 C1),
+ * 这里显式补上同一份源,验收的仍是「拼提示词时交给插件的 agentId」。
+ */
+const pluginComposer = defaultOnethingPromptComposer.with(new PluginPromptContextSource())
+const buildOnethingSystemPrompt = (options: Parameters<typeof buildWithComposer>[0]) =>
+  buildWithComposer(options, pluginComposer)
 
 const host = {
   getAgent: (agentId: string | undefined) =>

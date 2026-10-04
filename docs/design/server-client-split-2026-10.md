@@ -1844,3 +1844,15 @@ ACP 的轻替身从「sessions 域文件」改打在 `session-caller-ops.ts`。
 5. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动(不引这两个包)。
 
 **验收(改前 `s25-before` = 9814e9cce + 别的会话的未提交改动 / 改后 `s25-after`)**:typecheck 三套零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(无 `node:`)成功;全量 vitest 失败集合按路径映射后相同(仓根 21 条、壳侧 1 条,`packages/backend-client/__tests__` 五只照常被收进来);`gate:web-shell` 全绿;`gate:client` 两个运行时都绿;`gate:acp` 109 条 ok 不变;name / cycle / layer / entry / client-api / feature-map / boundary(132 ok)/ transport / provider / log / session / native 输出按路径映射后逐字相同;assembly 同红(改前就红);CLI 与 server 能起;仓内代码与配置里旧包名、旧目录名为零(剩下的只有带日期的历史文档、`corpus.json` 与 `index.ts` 那句有意写旧名的注释)。
+
+### 越层清零单 0–2 落地记录:`assembly:gate` 转绿 + trigger 并进 skill + 发射器 / 插件提示词源 / 执行器表各归其层(2026-10-04,未提交)
+
+**做了什么**(方案 `layer-violations-to-zero-2026-10.md` 第 5 节施工单的单 1、单 2,外加单 0;决策 D127–D134;生产行为零变化):
+
+1. 单 0:`music/music-radio.ts` 的三格起播状态收进一只 const 持有器,`assembly:gate` 转绿(根因:09-27 那一笔加了第十个顶格 `let`;这些 `let` 本来就是作用域工厂的局部状态,函数体没缩进才被门算成模块级)。
+2. 单 1:`trigger/` 五只并进 `skill/`(`skill-review-runner` / `-core` / `-state` / `-state-core` / `-ipc-state`),入口与目录删;层次表 `headless` L3 → L4、`space` L1 → L2、删 `trigger`。
+3. 单 2:事件发射器进 `engine/`;插件提示词源两半进 `plugin/`(缺省 composer 不再带插件源,`backend.ts` 的版本戳显式补上);执行器表并进 `agent-loop/`,删一处加载期副作用。
+4. 测试跟着被测文件走:5 只搬家(进 `skill` 2、`engine` 1、`plugin` 2),新增 1 只;改测试期望的只有一处(`prompt-fragments` 里缺省 composer 的源名,见 D131)。
+5. 别的会话的五只 `apps/desktop-react/src/data/chat-*.ts`:零改动(sha 改前改后相同)。
+
+**读数**:`layer:check` 48 / 26 → 45 / 23(单 1)→ 39 / 20(单 2);`entry:gate` 2296 → 2292 → 2279;`cycle:gate` 0;`name:gate` 0;`assembly:gate` 红 → 绿。验收全文见 `layer-violations-to-zero-2026-10.md` 第 6 节。

@@ -31,7 +31,7 @@ packages/backend/mcp/mcp-capabilities-changed.ts 2
 packages/backend/mcp/mcp-identity.ts 1
 packages/backend/mcp/mcp-manager.ts 1
 packages/backend/mcp/oauth/mcp-oauth.ts 2
-packages/backend/music/music-radio.ts 9
+packages/backend/music/music-radio.ts 7
 packages/backend/music/music-service.ts 3
 packages/backend/plugin/plugin-app-version.ts 1
 packages/backend/plugin/plugin-config-access.ts 1

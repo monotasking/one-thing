@@ -28,7 +28,7 @@ import {
   createWriteTool,
 } from '@onething/backend/toolkit'
 import { createSkillReviewTrigger } from '../skill-review-trigger.js'
-import { clearSkillReviewState } from '@onething/backend/trigger/trigger-ipc-skill-review-state'
+import { clearSkillReviewState } from '../skill-review-ipc-state.js'
 import type { TriggerContext } from '../../agent-loop/agent-loop-trigger-manager.js'
 import { installStoreSessionLayerForTest } from '../../session/testing/session-testing-store-layer.js'
 import { clearAllSessionCache } from '../../session/session-store.js'

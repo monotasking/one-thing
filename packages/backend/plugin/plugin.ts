@@ -44,3 +44,12 @@ export type {
   OnethingLogMonitorSearchToolParameters,
   RegisterOnethingLogMonitorPluginOptions,
 } from './plugin-log-monitor.js'
+// 插件的提示词源(越层清零 C1,2026-10-04 从 prompt/ 搬来)。同名的 `registerPromptContextProvider`
+// 交出的是带断路器的那一半(`plugin-prompt-context-breaker.ts`);不带健康回调的泛型那一半
+// (`plugin-prompt-context.ts`)只交出它的源类,给要自己拼 composer 的调用方。
+export {
+  pluginPromptSource,
+  registerPromptContextProvider,
+  type PromptProviderConfig,
+} from './plugin-prompt-context-breaker.js'
+export { PluginPromptContextSource } from './plugin-prompt-context.js'

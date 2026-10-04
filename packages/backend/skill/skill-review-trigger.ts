@@ -2,8 +2,8 @@ import type { AgentToolExecutionContext } from '@onething/backend/agent-loop/age
 import type {
   CoreSkillReviewFileToolAdapter,
   CoreSkillReviewManageArgs,
-} from '@onething/backend/trigger'
-import { createOnethingSkillReviewTrigger } from '@onething/backend/trigger'
+} from './skill-review-core.js'
+import { createOnethingSkillReviewTrigger } from './skill-review-runner.js'
 import { getUserSkillsPath } from './skill-operations.js'
 import { executeSkillManage, type SkillManageArgs } from './skill-manage-setup.js'
 import {
@@ -21,8 +21,8 @@ import { toJsonObject, type JsonObject } from '@shared/json.js'
 import { contractForSchema, getToolkitCatalog } from '@onething/backend/toolkit'
 import { createAppToolRunner } from '@onething/backend/toolkit/toolkit-runner-factory'
 import { consolePort, getLogger } from '../logging/logging-configure.js'
-import type { CoreSkillReviewVisibleSkill } from '@onething/backend/trigger/trigger-skill-review-core'
-import type { OnethingSkillReviewAdapters } from '@onething/backend/trigger/trigger-skill-review'
+import type { CoreSkillReviewVisibleSkill } from './skill-review-core.js'
+import type { OnethingSkillReviewAdapters } from './skill-review-runner.js'
 
 const log = getLogger('engine.triggers')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */

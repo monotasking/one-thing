@@ -4,13 +4,17 @@
  * Main-process wrapper around the core event-only emitter. The core factory
  * owns IPCEmitter-to-EventBus/StreamChannel mapping; this file only injects
  * main singletons and store side effects.
+ *
+ * 2026-10-04 从 `event/event-only-emitter.ts` 搬到这里(越层清零 C4):它写会话事件、记用量、
+ * 收引擎的 `StreamContext`,唯一的读者是 `engine/stream/` 的三只文件,所以住在引擎里;
+ * 留在 event(L1)就是事件原语去引会话(L2)。
  */
 
 import * as store from '@onething/backend/session'
 import { landSessionAccountUsageFromAccount } from '@onething/backend/session'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
-import type { StreamContext } from '@onething/backend/engine'
+import type { StreamContext } from './stream/engine-stream-processor.js'
 import type { StreamCompleteData, StreamErrorData } from '@shared/events/session-events.js'
 import type { IPCEmitter } from '../agent-loop/agent-loop.js'
 import {
@@ -22,8 +26,8 @@ import {
   type CoreEventOnlyStreamChunk,
   type CreateCoreEventOnlyEmitterOptions,
 } from '@onething/backend/agent-loop'
-import { getEventBus, getStreamChannel } from './event.js'
-import { claimDeltaStamp } from './event-delta-stamp.js'
+import { getEventBus, getStreamChannel } from '@onething/backend/event'
+import { claimDeltaStamp } from '@onething/backend/event/event-delta-stamp'
 import { writeSessionEvent } from '@onething/backend/session'
 import { currentSessionRunId } from '@onething/backend/session'
 import { getLogger } from '@onething/backend/logging/logging-configure'

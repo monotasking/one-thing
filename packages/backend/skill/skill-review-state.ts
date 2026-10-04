@@ -9,7 +9,7 @@ import {
   resetSkillReviewCounter,
   type CoreSkillReviewCounterInput,
   type CoreSkillReviewSettings,
-} from './trigger-skill-review-state-core.js'
+} from './skill-review-state-core.js'
 
 export {
   DEFAULT_SKILL_REVIEW_INTERVAL,

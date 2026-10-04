@@ -10,7 +10,6 @@ import {
   buildSkillReviewTargetMessages,
   collectAgentReviewedSkillDirectories,
   collectSkillReviewMutableRoots,
-  clearSkillReviewState,
   defaultAgentSupportFileContent,
   ensureContentReferences,
   ensureAgentReviewedSkillsCompleteWithAdapters,
@@ -20,8 +19,6 @@ import {
   formatSkillReviewVisibleSkillSummary,
   findSkillDirectoryForReviewedPath,
   getSkillReviewAgentThinkingOptions,
-  getSkillReviewCounter,
-  getSkillReviewInterval,
   hasSkillReviewAgentMutation,
   isDeepSeekThinkingModel,
   isMutableSkillReviewSource,
@@ -37,13 +34,18 @@ import {
   parseSkillReviewTargetDecision,
   planAgentReviewedSkillCompletion,
   resolveSkillReviewToolPath,
-  recordSkillReviewCounter,
   skillReviewMessageText,
   skillReviewTranscriptFromMessages,
   supportFileActions,
   uniqueSkillSupportFileActions,
   uniqueSkillSupportFilePath,
-} from '@onething/backend/trigger'
+} from '../skill-review-core.js'
+import {
+  clearSkillReviewState,
+  getSkillReviewCounter,
+  getSkillReviewInterval,
+  recordSkillReviewCounter,
+} from '../skill-review-state-core.js'
 
 describe('onething runtime skill-review helpers', () => {
   afterEach(() => {

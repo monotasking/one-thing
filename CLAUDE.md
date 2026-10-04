@@ -846,10 +846,12 @@ Notes:
   `tool-workspace-rules.md` / `context-variables-intro.md` text), `PromptFragmentRegistry`
   (`promptFragments` / `registerPromptFragment` with a disposer, for runtime features /
   hosts) and `PluginPromptContextSource` (`api.registerPromptContextProvider`; plugin
-  tools carry `prompt` like builtins). Hosts assemble their own composer:
+  tools carry `prompt` like builtins; it lives in the plugin feature,
+  `plugin/plugin-prompt-context{,-breaker}.ts`, since 越层清零 C1 2026-10-04). Hosts assemble their own composer:
   `desktopPromptComposer` (`backend/engine/prompt/engine-system-prompt.ts`) = builtin + tools +
-  registry + plugins-with-breaker; `defaultOnethingPromptComposer` has no tool source
-  (evals / prompt version / tests add a `StaticPromptSource`). The composer only
+  registry + plugins-with-breaker; `defaultOnethingPromptComposer` = builtin + registry only — no tool source
+  and, since C1, no plugin source (the prompt-version stamp in `backend.ts` adds
+  `.with(new PluginPromptContextSource())` itself; tests add a `StaticPromptSource`). The composer only
   filters → sorts → renders; `disabledSections` matches fragment ids plus the composite
   blocks `tool-guidelines` / `tool-workspace-rules`. Nothing in the composer or the
   builtin table names a tool except through `requires*`.
@@ -1022,13 +1024,16 @@ packages/backend/<feature>/    # one feature, one flat directory, directly under
 │   │                          # + since the engine batch (2026-10, D27/D51) the former core/engine kernel, all named
 │   │                          # agent-loop-*.ts: CoreStreamEngine (agent-loop-stream-engine), executor/runtime/selection,
 │   │                          # tool orchestration, context compact, history, turn context, prompt fragments, ids,
-│   │                          # message sources, turn principal, stream sender, the engine ports and the trigger table.
+│   │                          # message sources, turn principal, stream sender, the engine ports and the trigger table,
+│   │                          # plus the executor table (agent-loop-external-agent-providers.ts: local / acp descriptors +
+│   │                          # registered execution facts; merged in from agent/executor/ by 越层清零 C2, 2026-10-04).
 │   │                          # Its entry agent-loop.ts IS the old engine-primitives barrel (D52). Depends on shared/logging/tools only.
 │   ├── engine/                # orchestration (L3): ProductStreamEngine(路由/房间闸/插件旁路/agent 绑定), the 12-slot
 │   │                          # runtime (stream-engine-runtime), stream/ (executors, recorder, provider helpers), prompt/,
 │   │                          # triggers/turn-evaluation, the "use a provider" facades (chat / title / utility turn /
 │   │                          # AgentProvider factory), product-stream-runtime / stream-runtime-factory /
-│   │                          # stream-processor-factory, engine-agent-loop-stream-{runtime,selection}.
+│   │                          # stream-processor-factory, engine-agent-loop-stream-{runtime,selection},
+│   │                          # engine-event-only-emitter.ts (moved in from event/ by 越层清零 C4, 2026-10-04).
 │   │                          # One entry, named exports only (engine.ts, D60); no deep exports keys.
 │   └── mcp/  acp/  external-agent/  file/  search/  usage/  eval/  headless/  …
 │                              # (the big barrel runtime/index.ts was deleted by 6a: its last users — the evals
@@ -1098,7 +1103,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 端口实现走命令面。**一个反复踩的坑**:命令是 COW 的 —— 先捕获 `session.messages`、再
 `await`、再读那个变量会拿到旧数组;await 之后重读。
 
-**MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/backend/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `mcp-bridge.ts` reachable through `mcp-index-with-bridge.ts`; since 2026-10-02 the engine-side kernel — `CoreMcp*` connection ledger, router, tool ids — is `mcp/kernel/` and `McpSubsystem` sits flat next to them in `mcp/`); ACP is flat in `packages/backend/acp/` (since 2026-10-02), skills in `packages/backend/skill/`; themes are product-only now (`packages/backend/theme/`), as is the rest of the product logic.
+**MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/backend/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `mcp-bridge.ts` reachable through `mcp-index-with-bridge.ts`; since 2026-10-02 the engine-side kernel — `CoreMcp*` connection ledger, router, tool ids — is `mcp/kernel/` and `McpSubsystem` sits flat next to them in `mcp/`); ACP is flat in `packages/backend/acp/` (since 2026-10-02), skills in `packages/backend/skill/` (including the post-chat skill-review trigger `skill-review-*.ts`, merged in from the deleted `trigger/` by 越层清零 C9, 2026-10-04); themes are product-only now (`packages/backend/theme/`), as is the rest of the product logic.
 
 **CLI daemon**: `bin/onething.mjs` → `dist/cli/main.cjs` (`scripts/build-cli.mjs`, esbuild with the React main process's recipe; source at `apps/cli/src/index.ts` since step ④a, 2026-09-03). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 

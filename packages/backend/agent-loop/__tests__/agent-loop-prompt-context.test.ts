@@ -13,13 +13,25 @@ import {
 } from '@onething/backend/prompt'
 import {
   buildOnethingPrompt as buildPrompt,
-  buildOnethingSystemPrompt as buildSystemPrompt,
+  buildOnethingSystemPrompt,
+  defaultOnethingPromptComposer,
+} from '@onething/backend/prompt'
+import {
+  PluginPromptContextSource,
   clearAllPromptContextProviders,
   collectPluginPromptContext,
   getPromptContextProviderCount,
   normalizePromptContextProviderId,
   registerPromptContextProvider,
-} from '@onething/backend/prompt'
+} from '@onething/backend/plugin/plugin-prompt-context'
+
+/**
+ * 缺省 composer 2026-10-04 起不再内置插件提示词源(越层清零 C1:插件的提示词源住在插件里),
+ * 这里显式补上同一份源,下面拼系统提示词的用例拼的仍是同一组源。
+ */
+const pluginComposer = defaultOnethingPromptComposer.with(new PluginPromptContextSource())
+const buildSystemPrompt = (options: Parameters<typeof buildOnethingSystemPrompt>[0]) =>
+  buildOnethingSystemPrompt(options, pluginComposer)
 
 describe('core prompt context helpers', () => {
   afterEach(() => {

@@ -7,12 +7,12 @@ import {
   type CorePromptProviderConfig,
   type CorePromptProviderConfigValue,
 } from '@onething/backend/agent-loop'
-import type { PromptSource } from './prompt-composer.js'
+import type { PromptSource } from '@onething/backend/prompt'
 import {
   CORE_PLUGIN_PROMPT_CONTEXT_TIMEOUT_MS,
   isCorePluginTimeoutError,
   runWithPluginTimeout,
-} from '@onething/backend/plugin/plugin-contract'
+} from './plugin-contract.js'
 
 export type OnethingPromptContextRole = 'system' | 'developer' | 'user'
 export type OnethingPromptProviderConfigValue = CorePromptProviderConfigValue

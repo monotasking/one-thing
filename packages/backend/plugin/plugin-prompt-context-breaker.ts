@@ -1,11 +1,15 @@
 /**
- * 与同目录的 `prompt-plugin-context.ts` 是同概念两半 —— 那半是泛型实现(注册表 + 超时 + 收集),
+ * 与同目录的 `plugin-prompt-context.ts` 是同概念两半 —— 那半是泛型实现(注册表 + 超时 + 收集),
  * 这半把它钉成 `@shared/ipc` 的具体形状(`AppSettings` / `SkillDefinition` / `PromptContextRole`)
  * 并接上**断路器记账**(每次超时/异常记一次 `promptContext` 失败,成功即清零)。
- * `prompts/index.ts` 刻意不导出它。(这只文件从前叫 `plugin-context.wiring.ts`;
- * 2026-10-03 去掉后缀时与泛型那一半撞名,按它多做的那件事 —— 断路器 —— 改名。)
+ * (这只文件从前叫 `plugin-context.wiring.ts`;2026-10-03 去掉后缀时与泛型那一半撞名,
+ * 按它多做的那件事 —— 断路器 —— 改名。)
+ *
+ * 2026-10-04 两半一起从 `prompt/` 搬进插件(越层清零 C1):它们是插件的提示词源,引插件契约与
+ * 健康表是本分;留在 prompt(L1)就是提示词拼装去引插件(L2)。插件入口 `plugin.ts` 交出的
+ * 同名函数(`registerPromptContextProvider` 等)是这一半带断路器的版本。
  */
-import { pluginScope } from '@onething/backend/plugin/plugin-contract'
+import { pluginScope } from './plugin-contract.js'
 import {
   PluginPromptContextSource,
   clearPromptContextProvidersForPlugin as clearRuntimePromptContextProvidersForPlugin,
@@ -18,7 +22,7 @@ import {
   type OnethingPluginPromptContextProvider,
   type OnethingPromptProviderConfig,
   type OnethingPromptProviderConfigValue,
-} from './prompt-plugin-context.js'
+} from './plugin-prompt-context.js'
 import type {
   AppSettings,
   PromptContextFragment,
@@ -29,7 +33,7 @@ import type { CorePromptActiveProject as PromptActiveProject, CorePromptKnownPro
 import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
-} from '../plugin/plugin-health.js'
+} from './plugin-health.js'
 import { getLogger } from '../logging/logging.js'
 
 const log = getLogger('engine.prompt')

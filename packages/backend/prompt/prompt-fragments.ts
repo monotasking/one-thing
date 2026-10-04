@@ -8,7 +8,7 @@
  *    fragments from the turn's tool surface (`getToolPromptFragments`). Nothing
  *    to register here.
  * 2. **Plugins** keep `api.registerPromptContextProvider` (per-turn function,
- *    timeout + breaker) — see `prompt-plugin-context.ts`. Plugin *tools* go through 1.
+ *    timeout + breaker) — see `plugin/plugin-prompt-context.ts`. Plugin *tools* go through 1.
  * 3. **Everything else** — a runtime feature, a host, a subsystem that has a
  *    standing paragraph to say — registers a fragment here and keeps the
  *    disposer. Unregister = the paragraph is gone next turn. This is the

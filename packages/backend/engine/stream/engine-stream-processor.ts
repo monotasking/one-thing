@@ -10,7 +10,7 @@ import type { ToolCall } from '@shared/ipc.js'
 import type { ReasoningPlacement } from '@shared/events/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '@onething/backend/mcp/mcp-index-with-bridge'
 import { resolveAIToolName } from '@onething/backend/agent-loop/agent-loop-primitives'
-import { createEventOnlyEmitter } from '@onething/backend/event/event-only-emitter'
+import { createEventOnlyEmitter } from '../engine-event-only-emitter.js'
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
   type CoreAgentLoopToolInputProcessor,

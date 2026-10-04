@@ -8,15 +8,13 @@
  * 让**能力查询这一面**立刻可用——压缩门与鉴权豁免今天就能改问能力,不必
  * 等驱动搬完。
  */
-import { registerCoreProviderExecution } from '@onething/backend/agent-loop'
 import {
   findAgentExecutorDescriptor,
   isExternalAgentExecutorId,
-  listAgentExecutorDescriptors,
   localAgentExecutorDescriptor,
   unknownExternalExecutorDescriptor,
   type AgentExecutorDescriptor,
-} from './agent-executor-capabilities.js'
+} from '@onething/backend/agent-loop'
 import {
   agentExecutorIdFromSelection,
   resolveAgentExecutorSelection,
@@ -43,7 +41,8 @@ export function createLocalAgentExecutor(): AgentExecutor {
 
 /**
  * 外部执行器骨架:包住一个 connector(E4 接驱动)。未登记的 connectorId
- * 仍返回一个执行器——它确实是外部的——但能力全保守,详见 capabilities.ts。
+ * 仍返回一个执行器——它确实是外部的——但能力全保守,详见执行器表
+ * (`agent-loop/agent-loop-external-agent-providers.ts` 的 `unknownExternalExecutorDescriptor`)。
  */
 export function createExternalAgentExecutor(connectorId: string): AgentExecutor {
   const descriptor = findAgentExecutorDescriptor(connectorId)
@@ -84,25 +83,8 @@ export function agentExecutorOwnsContextWindow(providerId: string): boolean {
   return resolveAgentExecutor(providerId).capabilities.contextWindow === 'theirs'
 }
 
-/**
- * 把执行器表里 core 需要的两条事实下沉到 core 的登记表。
- *
- * 为什么要下沉:压缩门在 core(`agent-loop-runtime` / `core-stream-engine`),
- * 而 core 不许 import runtime(架构铁律,依赖单向)。core 内置了两条已知条目
- * 作兜底,这里把 runtime 的表补登进去——于是将来加 Codex executor 只改
- * capabilities.ts 一处,core 不用动。
- *
- * 模块加载时执行一次:纯数据登记、幂等、无 I/O。做成必须显式调用的
- * configure 端口在本期只会得到一个没有调用者的死函数,以及一个「忘了调
- * 就静默判错」的开机顺序地雷。
+/*
+ * 从前这里末尾有一句加载期副作用 `syncAgentExecutorsToCore()`:把执行器表里压缩门要的两条事实
+ * 抄进 agent-loop 的登记表。2026-10-04(越层清零 C2)两张表并成一张、住进 agent-loop
+ * (`agent-loop/agent-loop-external-agent-providers.ts`),没有东西要抄了,那句与那个函数一起删掉。
  */
-export function syncAgentExecutorsToCore(): void {
-  for (const descriptor of listAgentExecutorDescriptors()) {
-    registerCoreProviderExecution(descriptor.id, {
-      kind: descriptor.kind,
-      contextWindow: descriptor.capabilities.contextWindow,
-    })
-  }
-}
-
-syncAgentExecutorsToCore()

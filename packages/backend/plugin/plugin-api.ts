@@ -61,7 +61,7 @@ import {
   registerPluginSkillRootProvider,
   type PluginSkillRootProvider,
 } from '@onething/backend/skill/skill-plugin-roots'
-import { registerPromptContextProvider } from '@onething/backend/prompt/prompt-plugin-context-breaker'
+import { registerPromptContextProvider } from './plugin-prompt-context-breaker.js'
 import {
   registerAfterAssistantResponseHook,
   registerBeforeContextCompactHook,

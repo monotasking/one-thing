@@ -17,12 +17,11 @@
     { "feature": "dialog", "layer": "L0", "why": "原生「选目录 / 选文件」对话框的宿主注入口。" },
     { "feature": "context", "layer": "L0", "why": "按条数与长度裁剪对话消息列表的上下文管理器。" },
     { "feature": "memory", "layer": "L0", "why": "进程内存的登记表、探针与按预算释放缓存的调度器。" },
-    { "feature": "trigger", "layer": "L0", "why": "技能复盘这个对话后触发器的判定与状态。" },
     { "feature": "http", "layer": "L0", "why": "发 HTTP 请求时共用的小工具:检查应答、逐条读 SSE 事件。" },
     { "feature": "perf", "layer": "L0", "why": "启动耗时的打点记录。" },
-    { "feature": "space", "layer": "L1", "why": "空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层。" },
+    { "feature": "space", "layer": "L2", "why": "空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层;名册与设置读写用户 store,所以是能力(L2)而不是纯事实。" },
     { "feature": "provider", "layer": "L1", "why": "各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。" },
-    { "feature": "agent-loop", "layer": "L1", "why": "一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),不认识具体服务商。" },
+    { "feature": "agent-loop", "layer": "L1", "why": "一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),以及执行器表(本地 / 外部执行体的能力面,2026-10-04 从 agent 并入),不认识具体服务商。" },
     { "feature": "tool", "layer": "L1", "why": "工具用到的纯逻辑模块:沙箱、bash 执行、编辑引擎、差异块、输出截断等。" },
     { "feature": "prompt", "layer": "L1", "why": "系统提示词的拼装:片段、来源与「目录在上、正文在下」的生成器。" },
     { "feature": "theme", "layer": "L1", "why": "主题的加载、解析与生成 CSS 变量。" },
@@ -36,7 +35,7 @@
     { "feature": "quota", "layer": "L2", "why": "各家订阅额度的查询服务。" },
     { "feature": "file", "layer": "L2", "why": "文件:接入目录、目录列表、读写与回滚、文件搜索与工作区监听。" },
     { "feature": "note", "layer": "L2", "why": "笔记领域:笔记库、Obsidian 与普通目录两种驱动、笔记根目录。" },
-    { "feature": "skill", "layer": "L2", "why": "技能的发现、加载与启用。" },
+    { "feature": "skill", "layer": "L2", "why": "技能的发现、加载与启用,以及对话后的技能复盘(复盘触发器的判定、状态与实现,2026-10-04 从 trigger/ 并入)。" },
     { "feature": "media", "layer": "L2", "why": "媒体库:图片与文件的入库、导出与生图结果。" },
     { "feature": "music", "layer": "L2", "why": "音乐与电台。" },
     { "feature": "voice", "layer": "L2", "why": "语音识别、语音合成与唤醒词。" },
@@ -68,7 +67,7 @@
     { "feature": "engine", "layer": "L3", "why": "对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。" },
     { "feature": "collab", "layer": "L3", "why": "多 agent 协作:房间、成员、发言调度与裁判。" },
     { "feature": "gateway", "layer": "L3", "why": "微信 / Telegram 渠道网关:收发消息与远程审批。" },
-    { "feature": "headless", "layer": "L3", "why": "不带界面的后端(CLI 守护进程用的那一份装配)。" }
+    { "feature": "headless", "layer": "L4", "why": "不带界面的后端(CLI 守护进程用的那一份装配配方;它引 backend.ts 是装配方引装配配方,没有功能引它)。" }
   ],
   "slots": [
     { "slot": "(shared)", "layer": "L0", "match": ["packages/shared/"], "why": "server 与 client 之间的契约,以及两边必须算得一样的纯逻辑。" },

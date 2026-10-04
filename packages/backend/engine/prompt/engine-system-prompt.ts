@@ -23,7 +23,7 @@ import {
 } from '@onething/backend/prompt'
 import { toolkitPromptSource } from '@onething/backend/toolkit/toolkit-prompt-source'
 import { buildStateVariablesPromptText } from '@onething/backend/variable/variable-system'
-import { pluginPromptSource } from '@onething/backend/prompt/prompt-plugin-context-breaker'
+import { pluginPromptSource } from '@onething/backend/plugin'
 import {
   getMacOSAutomationDocsPath,
 } from '@onething/backend/storage'
@@ -38,7 +38,7 @@ import {
 } from '@onething/backend/collab'
 import { collabRoomMembers } from '@onething/backend/collab/collab-members'
 import { collabUserPromptFields } from '@onething/backend/collab/collab-user-identity'
-import type { PromptProviderConfig } from '@onething/backend/prompt/prompt-plugin-context-breaker'
+import type { PromptProviderConfig } from '@onething/backend/plugin'
 import type { VariableBoardRenderer } from '@onething/backend/prompt/prompt-variable-board'
 import type { OnethingPromptHostAdapters } from '@onething/backend/prompt/prompt-builder'
 

@@ -13,7 +13,7 @@
  * 结论:只配了 providerId 的老 agent,解析结果与改造前逐字节一致。
  */
 import type { OnethingAgentExecutor } from '../agent-store.js'
-import { isExternalAgentExecutorId } from './agent-executor-capabilities.js'
+import { isExternalAgentExecutorId } from '@onething/backend/agent-loop'
 
 /**
  * 选择所需的最小输入面。刻意不收 `OnethingAgentDefinition` 全形:调用方

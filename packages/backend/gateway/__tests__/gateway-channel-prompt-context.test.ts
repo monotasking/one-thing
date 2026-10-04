@@ -8,7 +8,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, MessageOrigin } from '@shared/ipc.js'
 
-vi.mock('@onething/backend/prompt/prompt-plugin-context-breaker', () => ({
+vi.mock('@onething/backend/plugin', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/backend/plugin')>(),
   registerPromptContextProvider: vi.fn(() => vi.fn()),
 }))
 

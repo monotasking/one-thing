@@ -14,48 +14,13 @@
  * 落点,把散在三处的 Set 判定收进来。
  */
 import type { AgentTurnRequest, AgentTurnStreamEvent } from '@onething/backend/agent-loop/agent-loop-primitives'
-
 /**
- * 执行器 id。与 providerId 同名不是巧合——今天外部 agent 就是靠 providerId
- * 被认出来的,E0 保持这个映射不变以维持向后兼容;真正的选择权在 E4 之后
- * 交给 agent 配置里的 `executor` 字段。
+ * 执行器 id / 种类 / 能力面三个类型 2026-10-04 随执行器表搬进 agent-loop
+ * (`agent-loop/agent-loop-external-agent-providers.ts`,越层清零 C2):provider(L1)也要问
+ * 「是不是外部执行体」,表住在 agent(L2)里它就只能越层。这里转交出去,agent 的读者不必改。
  */
-export type AgentExecutorId = 'local' | 'acp' | (string & {})
-
-/** 思考在哪里发生。这是 local/external 唯一的本质差别。 */
-export type AgentExecutorKind = 'local' | 'external'
-
-/**
- * 声明式能力面。每一条都对应一个真实的分流点,不是装饰:
- * 加一条能力之前先问「谁会 if 它」,没有消费者就不加。
- */
-export interface AgentExecutorCapabilities {
-  /**
-   * 能不能接宿主工具面(以 MCP 形式注入协作工具:send_message/board/…)。
-   * 消费者:E3 宿主工具面。声明 true 不等于 E0 就接上了——E0 阶段这一位是
-   * 「架构上可注入」的声明,真注入在 E3。
-   */
-  hostTools: boolean
-  /** 能不能中途注入用户输入(steer)。消费者:steering 链路。 */
-  steer: boolean
-  /**
-   * 有没有比 abort 更强的中断(能让对面进程真正停下,而不只是我们不再读)。
-   * 消费者:E5 停止三级的人级撤牌。
-   */
-  interrupt: boolean
-  /**
-   * 上下文窗口归谁管。`theirs` = 执行体自己管,我们的压缩/阻断一律不介入。
-   * 消费者:core 的压缩门(经 registerCoreProviderExecution 下沉到 core)。
-   */
-  contextWindow: 'ours' | 'theirs'
-  /**
-   * persona 怎么进:`system` = 作为 system prompt 原文送进去(不可包装,
-   * 协作 P0 的既有纪律);`prepend` = 只能拼在用户消息前面。
-   * 消费者:E4 的 persona 装配。
-   */
-  persona: 'system' | 'prepend'
-}
-
+import type { AgentExecutorCapabilities, AgentExecutorId, AgentExecutorKind } from '@onething/backend/agent-loop'
+export type { AgentExecutorCapabilities, AgentExecutorId, AgentExecutorKind }
 /**
  * 一个回合的执行请求。E0 直接复用引擎既有的 `AgentTurnRequest` 词汇表,
  * 避免再造一套平行类型——executor 是**同构层**,不是新协议层。

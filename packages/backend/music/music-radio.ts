@@ -927,17 +927,24 @@ function createRadioStartTimer(title: string) {
   }
 }
 
-/** Serializes song starts; see playProgrammeEntry. */
-let playStarting: Promise<void> | null = null
-/** The entry the in-flight start is for; meaningful only while playStarting is set. */
-let playStartingEntry: OnethingRadioProgrammeEntry | null = null
 /**
- * The in-flight start's song is already audible (verify confirmed it) and the
- * start is only waiting for the host to finish talking over it. From here the
- * bar must say 在放, not 换歌中 (2026-09-27 真机: the song sounded for the whole
- * patter while the panel still said 正在切换, with no lyrics).
+ * 正在进行的那一次起播(一台小状态机的三格,收在一只 const 持有器里)。
+ * 这三格从前是三个顶格的 `let`;它们一直是 `createRadioScope` 这一代作用域的局部状态,
+ * 只是函数体没有缩进,`assembly:gate` 按「顶格 let」把它们算成了模块级。
  */
-let playStartSounding = false
+const playStart: {
+  /** Serializes song starts; see playProgrammeEntry. */
+  inFlight: Promise<void> | null
+  /** The entry the in-flight start is for; meaningful only while `inFlight` is set. */
+  entry: OnethingRadioProgrammeEntry | null
+  /**
+   * The in-flight start's song is already audible (verify confirmed it) and the
+   * start is only waiting for the host to finish talking over it. From here the
+   * bar must say 在放, not 换歌中 (2026-09-27 真机: the song sounded for the whole
+   * patter while the panel still said 正在切换, with no lyrics).
+   */
+  sounding: boolean
+} = { inFlight: null, entry: null, sounding: false }
 
 /**
  * The bar's "换歌中" signal: the title being started, undefined when no start
@@ -947,7 +954,7 @@ let playStartSounding = false
  */
 function getRadioStartingTitle(): string | undefined {
   owner.assertActive()
-  return playStarting && !playStartSounding ? (playStartingEntry?.title ?? undefined) : undefined
+  return playStart.inFlight && !playStart.sounding ? (playStart.entry?.title ?? undefined) : undefined
 }
 
 /**
@@ -967,8 +974,8 @@ function getRadioStartingTitle(): string | undefined {
 async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<void> {
   owner.assertActive()
   return owner.track((async () => {
-  if (playStarting) {
-    await playStarting.catch(() => {})
+  if (playStart.inFlight) {
+    await playStart.inFlight.catch(() => {})
     throw new RadioStartNotSongsFaultError(`另一次起播正在进行,放弃「${entry.title}」`)
   }
 
@@ -1112,7 +1119,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     // prefetch — still waits for the start to be final (the station can be
     // stopped mid-patter, and that song must not count as played).
     const playerTitle = confirmedState.title ?? entry.title
-    playStartSounding = true
+    playStart.sounding = true
     beginMusicCommand()
     assumeMusicNowPlaying(() => confirmedState)
     void pushLyricsFor(entry, playerTitle)
@@ -1160,9 +1167,9 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     onSongStarted(entry, playerTitle, { lyricsPushed: true })
   })()
 
-  playStartingEntry = entry
-  playStartSounding = false
-  playStarting = start.then(
+  playStart.entry = entry
+  playStart.sounding = false
+  playStart.inFlight = start.then(
     () => undefined,
     () => undefined,
   )
@@ -1173,8 +1180,8 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
   try {
     await start
   } finally {
-    playStarting = null
-    playStartSounding = false
+    playStart.inFlight = null
+    playStart.sounding = false
     nudgeMusicClients()
   }
 
@@ -1814,7 +1821,7 @@ function startRadioConductor(): void {
     // A start's patter speaks into deliberate silence; without this the
     // conductor reads that silence as "song over" and pops entries into the
     // mutex (one song burned per long patter).
-    startInFlight: () => playStarting !== null,
+    startInFlight: () => playStart.inFlight !== null,
     onLateStart: () => {
       // A start we misjudged is audibly playing: onDeck knows which song —
       // fire the ceremonies it missed.

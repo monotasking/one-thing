@@ -20,12 +20,22 @@ export type { ContextCompactPromptPart } from "./agent-loop-compact-prompt.js";
 export { createCoreId, isClientMintedId } from "./agent-loop-ids.js";
 
 export {
+	LOCAL_AGENT_EXECUTOR_ID,
 	coreProviderOwnsItsContextWindow,
+	findAgentExecutorDescriptor,
 	getCoreProviderExecution,
 	isCoreExternalAgentProvider,
+	isExternalAgentExecutorId,
+	listAgentExecutorDescriptors,
+	localAgentExecutorDescriptor,
 	registerCoreProviderExecution,
+	unknownExternalExecutorDescriptor,
 } from "./agent-loop-external-agent-providers.js";
 export type {
+	AgentExecutorCapabilities,
+	AgentExecutorDescriptor,
+	AgentExecutorId,
+	AgentExecutorKind,
 	CoreProviderContextWindowOwner,
 	CoreProviderExecutionFacts,
 	CoreProviderExecutionKind,

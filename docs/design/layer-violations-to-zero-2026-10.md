@@ -135,3 +135,28 @@ collab 今天是三种东西挤在一个目录:协作的四只工具(住在 tool
 每单交卷标准:`bun run layer:check` 的数字与上表一致、`cycle:gate` 0、`entry:gate` 不红(基线按 D50 收紧)、`typecheck` 绿(缺 exports 键在这里红)、`vitest` 绿、`boundary:gate` 绿、`assembly:gate` 绿(单 3 的闩不许新增模块级 `let`)。
 
 模拟器看不见的两样东西,每单自己查:`apps/`、`scripts/` 与根 `__tests__` 对搬家文件的直接 import(本次 29 只里只有一处:根测试 `import-side-effect-free.test.ts` 引 `tool-access-control-sandbox`),以及 `packages/backend/package.json` 的 exports 键(精确键、无通配,缺键在 typecheck 就红;本次涉及 8 把旧键 + `./trigger` 总桶键)。
+
+## 6. 实施结果(逐单记录)
+
+### 单 0:`assembly:gate` 转绿(2026-10-04,未提交)
+
+- 红在 `music/music-radio.ts` 9 → 10。多出的那一个是 `playStartSounding`,b353c9fdd(09-27「电台开台后什么都不发生 + 开播时界面空白」)加的,那一笔没跑这道门。更深一层:这个文件的十个顶格 `let` 全是 `createRadioScope` 这一代作用域的**局部状态**(09-07 把模块包进作用域工厂时函数体没缩进),门按「顶格 let」把它们算成了模块级。
+- 改法:同一台起播状态机的三格(`playStarting` / `playStartingEntry` / `playStartSounding`)收进一只 `const playStart = { inFlight, entry, sounding }`,四处写、两处读逐个改;行为逐字不变。顶格 `let` 10 → 7,基线那一行手改 9 → 7(没跑 `--write-baseline`:它会把 `github-copilot.ts` 1 → 0 等别处的真降一起扫进来)。决策 D127。
+- 读数:`assembly:gate` ok(169 / 113 文件);layer 48 / 26、cycle 0、entry 2296、name 0、boundary 0 失败、node tsc 零错,与改前相同。
+
+### 单 1:C6 + C9 + space 改 L2(2026-10-04,未提交)
+
+- C9:`trigger/` 五只并进 skill —— `trigger-skill-review.ts` → `skill/skill-review-runner.ts`、`-core` / `-state` / `-state-core` → `skill/skill-review-{core,state,state-core}.ts`、`trigger-ipc-skill-review-state.ts` → `skill/skill-review-ipc-state.ts`(D128);入口 `trigger.ts` 删、目录删;`skill-review-trigger.ts` 的四处 `@onething/backend/trigger*` 改引兄弟文件(D126)。测它们的两只测试跟进 `skill/__tests__/`(`skill-review-core.test.ts`、`skill-review-ipc-state.test.ts`),`skill-review-trigger.test.ts` 的一处改相对路径。exports 删 `./trigger` 与三把 `./trigger/*`,不加键(D129)。`provider-vendor-baseline` 里 deepseek 那一对的路径随文件改(数不变);`probe-go-to-implementation.mjs` 一行路径。
+- C6 / space:层次表 `headless` L3 → L4、`space` L1 → L2、删 `trigger` 行,why 跟着改(D134);`feature-map` 重生成。
+- 读数:**`layer:check` 45 条 / 23 对**(与施工清单一致;消失的三对正是 `trigger → agent-loop`、`headless → (包根)`、`space → project-dir`),基线收紧;cycle 0(58 个入口);entry 2296 → 2292(`trigger` 一行 4 → 0,基线收紧);name 0;boundary 0 失败;assembly ok;node tsc 零错。
+
+### 单 2:C4 + C1 + C2(2026-10-04,未提交)
+
+- C4:`event/event-only-emitter.ts` → `engine/engine-event-only-emitter.ts`;engine 三个读者改引兄弟文件;发射器自己对引擎入口的类型引用改引兄弟、对 event 的两处改走 event 入口与已有的 `event-delta-stamp` 键(D130);测试 `skill-activation-landing.test.ts` 跟进 `engine/__tests__/`;删 `./event/event-only-emitter` 键。
+- C1:`prompt/prompt-plugin-context{,-breaker}.ts` → `plugin/plugin-prompt-context{,-breaker}.ts`;prompt 入口不再转交;缺省 composer 去掉插件源。**第 1C 节「生产调用方是零」不对**:`backend.ts` 的提示词版本戳用的就是缺省 composer,所以它显式补 `.with(new PluginPromptContextSource())`,版本戳逐字不变(D131)。插件入口具名交出带断路器的那一版与源类,泛型那一半只经新键 `./plugin/plugin-prompt-context`(D132);两只只测泛型那一半的测试跟进 `plugin/__tests__/`,依赖缺省 composer 插件源的三处测试显式补源,网关测试改 mock 插件入口。
+- C2:执行器表(local / acp + 未知外部执行器的保守缺省)与三个类型并进 `agent-loop/agent-loop-external-agent-providers.ts`,作内置行;`registerCoreProviderExecution` 签名不变、写登记行;`syncAgentExecutorsToCore()` 这句加载期副作用连同函数删除;`provider-config` 改问 agent-loop 的 `isExternalAgentExecutorId`、`provider-external-agent` 与 `external-agent-acp-connector` 改引 agent-loop(D133);删 `agent/executor/agent-executor-capabilities.ts`。补测试 `agent-loop/__tests__/agent-loop-external-agent-providers.test.ts`(只引 agent-loop:不加载 agent 也认得 acp)。
+- 读数:**`layer:check` 39 条 / 20 对**(消失的三对:`event → session`、`prompt → plugin` 3 条、`provider → agent` 2 条),基线收紧;cycle 0;entry 2292 → 2279(agent 96 → 93、event 79 → 77、prompt 31 → 23,plugin 不涨,基线收紧);name 0;boundary 0 失败;assembly ok;`import-side-effect-free` + `assembly-lifecycle` 24 条全绿;node tsc 零错。
+
+### 三单合起来的验收(改前 `s26-before` = 19ccea32c + 别的会话的未提交改动 / 改后 `s26-after`)
+
+三套 tsc 零错;`server:build` / `build:cli` / 桌面四份 bundle / `web:build`(`node:` 命中 0)成功;全量 vitest 失败集合**逐行相同**(仓根 21 条、壳侧 1 条,都是改前就有的;搬家的五只测试按路径映射后用例名与结果逐条相同,新增一只 3 条全绿);vitest 快照文件 sha 改前改后与跑前跑后都不变;golden 命中集 sha 不变;persistence 19 文件 176 条全绿;shadow-battery 场景表逐行相同(改前就红在 `compact-half-run-log` 与 appendFailures 8,未变),refold 217 次 0 不一致;hydration 夹具店与新店各 217 会话 0 失败;`gate:acp` 109 条 ok 不变;`gate:search-index` ok / FAIL 结构逐行相同(改前就红的两条 ⑤d 未变,只有毫秒数不同);`gate:web-shell` 全绿;`gate:client` 两个运行时都绿;name / client-api / boundary(132 ok)/ transport / provider(105 对)/ log / session / native 不变,feature-map 66 → 65 行;`provider:drill` 改前改后同一处假红(脚本的 worktree 链接表还写着 D120 之前的 `client`,`@onething/backend-client` 解析不到),本地重放(链接表改成 `backend-client`、铺上工作区改动)全绿;CLI 与 server 能起。

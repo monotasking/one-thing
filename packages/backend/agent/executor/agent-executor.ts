@@ -18,7 +18,7 @@ export {
   localAgentExecutorDescriptor,
   unknownExternalExecutorDescriptor,
   type AgentExecutorDescriptor,
-} from './agent-executor-capabilities.js'
+} from '@onething/backend/agent-loop'
 export {
   agentExecutorIdFromSelection,
   agentExecutorSelectionFromProviderId,
@@ -32,5 +32,4 @@ export {
   isExternalAgentExecutorProvider,
   resolveAgentExecutor,
   resolveAgentExecutorId,
-  syncAgentExecutorsToCore,
 } from './agent-executor-registry.js'

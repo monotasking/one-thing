@@ -9,7 +9,7 @@ import type {
 } from '@onething/backend/agent-loop/agent-loop-primitives'
 import { BaseAgentProvider } from './base/provider-base-agent.js'
 import { getLogger } from '../logging/logging.js'
-import { findAgentExecutorDescriptor } from '../agent/executor/agent-executor-capabilities.js'
+import { findAgentExecutorDescriptor } from '../agent-loop/agent-loop.js'
 import type {
   ExternalAgentConnector,
   ExternalAgentImageInput,

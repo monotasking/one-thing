@@ -1,5 +1,5 @@
 import type { ContentBlock, InitializeResponse, McpServer } from '@agentclientprotocol/sdk'
-import { findAgentExecutorDescriptor } from '../agent/executor/agent-executor-capabilities.js'
+import { findAgentExecutorDescriptor } from '@onething/backend/agent-loop'
 import { ACPManager } from '../acp/acp-manager.js'
 import { ACP_CONNECTOR_ID } from '../acp/acp-session-links.js'
 import { translateACPPromptStream, type ACPWireStreamEvent } from '../acp/acp-translate.js'

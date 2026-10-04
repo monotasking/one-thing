@@ -77,7 +77,7 @@ function linkNodeModules(worktree) {
   }
   mkdirSync(path.join(target, '@onething'))
   // 合包(server / client 拆分第②步)以后只剩两个 workspace 包:core / runtime / gateway 都在 backend 里。
-  const packages = { backend: 'backend', client: 'client' }
+  const packages = { backend: 'backend', 'backend-client': 'backend-client' }
   for (const [name, dir] of Object.entries(packages)) {
     symlinkSync(path.join(worktree, 'packages', dir), path.join(target, '@onething', name))
   }

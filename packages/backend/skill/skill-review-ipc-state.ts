@@ -1,5 +1,5 @@
 /**
- * 同目录 `trigger-skill-review-state.ts` 的 `@shared/ipc` 版本 —— 把泛型的 `TSettings` 钉成 `AppSettings`,
+ * 同目录 `skill-review-state.ts` 的 `@shared/ipc` 版本 —— 把泛型的 `TSettings` 钉成 `AppSettings`,
  * 别的什么都不做。(从前叫 `skill-review-state.wiring.ts`,2026-10-03 去后缀时撞名,改成现在的名字。)
  */
 import {
@@ -12,7 +12,7 @@ import {
   recordOnethingSkillReviewCounter,
   resetSkillReviewCounter,
   type OnethingSkillReviewCounterInput,
-} from './trigger-skill-review-state.js'
+} from './skill-review-state.js'
 import type { AppSettings } from '@shared/ipc.js'
 
 export {

@@ -319,8 +319,8 @@ describe('R7 severity table — 罚则来自表,不在上报点上判', () => {
       // 三棵树一起扫才还是同一条判据。
       path.join(REPO_ROOT, 'packages/backend/plugin'),
       // P3'e-A2b:`prompt-context` 家族的判决路径(插件提示词 provider 的
-      // 超时/异常记一次失败)随 `prompt/prompt-plugin-context.ts` 进了产品层的
-      // `prompts/plugin-context-breaker.ts`,不加这一棵它会被误报成死规则。
+      // 超时/异常记一次失败)曾住在 prompt 目录;2026-10-04 越层清零 C1 把它搬进了
+      // `plugin/plugin-prompt-context-breaker.ts`(上面 plugin 那一棵已经扫到),这一棵留着无害。
       path.join(REPO_ROOT, 'packages/backend/prompt'),
     ])
 

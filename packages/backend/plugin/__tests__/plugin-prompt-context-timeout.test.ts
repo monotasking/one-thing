@@ -1,16 +1,15 @@
 /**
  * R1 软隔离验收之二:一个挂起的 promptContextProvider 不阻塞消息发送路径。
  *
- * 这条测试住在产品层(而不是装配层的 app/plugins/__tests__)—— collectPluginPromptContext
- * 是 prompts 的注册表,守卫 "plugin logic stays out of the host assembly tree"
- * 要求装配层的测试不伸手进产品层。
+ * 2026-10-04 随被测的 `plugin-prompt-context.ts` 从 `prompt/__tests__/plugin-context-timeout.test.ts`
+ * 搬到这里(越层清零 C1:插件的提示词源住在插件里)。
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   clearAllPromptContextProviders,
   collectPluginPromptContext,
   registerPromptContextProvider,
-} from '../prompt.js'
+} from '../plugin-prompt-context.js'
 
 afterEach(() => {
   clearAllPromptContextProviders()

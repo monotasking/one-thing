@@ -27,8 +27,8 @@ import {
   type CoreSkillReviewMessage,
   type CoreSkillReviewPromptMessage,
   type CoreSkillReviewVisibleSkill,
-} from './trigger-skill-review-core.js'
-import type { CoreSkillReviewSettings } from './trigger-skill-review-state-core.js'
+} from './skill-review-core.js'
+import type { CoreSkillReviewSettings } from './skill-review-state-core.js'
 import type { CoreTrigger, CoreTriggerContext } from '@onething/backend/agent-loop'
 import {
   isFile,
@@ -42,7 +42,7 @@ import {
   isSkillReviewRunning,
   markSkillReviewRunning,
   recordOnethingSkillReviewCounter,
-} from './trigger-skill-review-state.js'
+} from './skill-review-state.js'
 
 export interface OnethingSkillReviewSessionLike {
   workingDirectory?: string

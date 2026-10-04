@@ -232,7 +232,7 @@ describe('R1 soft isolation — one bad plugin does not stall the queue', () => 
 })
 
 // promptContextProvider 的超时验收住在产品层:
-// packages/backend/prompt/__tests__/plugin-context-timeout.test.ts
+// packages/backend/plugin/__tests__/plugin-prompt-context-timeout.test.ts
 
 describe('R1 soft isolation — late registrations are latched out', () => {
   /**

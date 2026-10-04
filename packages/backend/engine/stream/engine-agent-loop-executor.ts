@@ -17,7 +17,7 @@ import {
 	type ToolResult,
 } from "@shared/ipc.js";
 import { getEventBus } from "@onething/backend/event";
-import { createEventOnlyEmitter } from "@onething/backend/event/event-only-emitter";
+import { createEventOnlyEmitter } from "../engine-event-only-emitter.js";
 import { clearDeltaStamps, offerDeltaStamp } from "@onething/backend/event/event-delta-stamp";
 import {
 	isUiEventStreamEnabled,

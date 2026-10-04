@@ -1,6 +1,6 @@
 /**
  * M0 / F4 —— 身份透传的另外两处灌入点(第一处 promptContext 的验收在
- * `prompt/__tests__/plugin-context-agent-id.test.ts`)。
+ * `plugin/__tests__/plugin-prompt-context-agent-id.test.ts`)。
  *
  *  - **插件工具 ctx**:agent-loop 的直调工具面 → `executeCorePluginTool` → 插件;
  *  - **afterAssistantResponse ctx**:回合收尾时由会话本体摊到 ctx 的一等字段。

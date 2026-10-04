@@ -14,8 +14,9 @@
  *   the turn's surface** declared next to their definitions;
  * - `PromptFragmentRegistry` (`fragments.ts`) — what runtime features / hosts
  *   registered, with disposers;
- * - `PluginPromptContextSource` (`prompt-plugin-context.ts`) — plugin providers,
- *   with timeout + breaker callbacks the host injects.
+ * - `PluginPromptContextSource` (`plugin/plugin-prompt-context.ts`, lives in the
+ *   plugin feature since 2026-10-04) — plugin providers, with timeout + breaker
+ *   callbacks the host injects.
  *
  * Which sources a host wires is the host's decision (`app/engine/prompt/`
  * builds the desktop composer; `builder.ts` exports a default one without

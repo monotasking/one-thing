@@ -1,13 +1,15 @@
 import {
   extractErrorDetails,
   extractResponseBodyDetails,
+  isExternalAgentExecutorId,
   type CoreErrorDetails,
 } from '../agent-loop/agent-loop.js'
 import { pickOnethingProviderOptions, type OnethingProviderOptions } from './provider-options.js'
 import { resolveOnethingProviderBaseUrl } from './provider-endpoint.js'
 // 鉴权豁免改问执行器能力面(E0):判据是「它是不是外部执行体」,
-// 不是「它的 id 在不在某张名单里」。表在 agents/executor/capabilities.ts。
-import { isExternalAgentExecutorProvider } from '../agent/executor/agent-executor-registry.js'
+// 不是「它的 id 在不在某张名单里」。表在 agent-loop 的执行器表
+// (`agent-loop/agent-loop-external-agent-providers.ts`,2026-10-04 越层清零 C2 从 agent 并过去);
+// 问的是表的内置行(`isExternalAgentExecutorId`),与从前 agent 的 `isExternalAgentExecutorProvider` 同一个判据。
 
 /**
  * 错误详情的提取只有一份,在 core(`packages/backend/agent-loop/agent-loop` 的 `extractErrorDetails`)。
@@ -216,7 +218,7 @@ export async function getProviderApiKeyWithAdapters<TProvider extends CoreProvid
   // the engine-side credential is deliberately empty.
   if (
     providerId === (options.acpProviderId ?? 'acp')
-    || isExternalAgentExecutorProvider(providerId)
+    || isExternalAgentExecutorId(providerId)
   ) {
     return ''
   }
@@ -267,7 +269,7 @@ export async function resolveProviderAuthWithAdapters<
 
   if (
     providerId === (options.acpProviderId ?? 'acp')
-    || isExternalAgentExecutorProvider(providerId)
+    || isExternalAgentExecutorId(providerId)
   ) {
     return createApiKeyAuth('')
   }

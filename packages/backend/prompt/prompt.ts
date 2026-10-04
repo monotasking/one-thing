@@ -1,7 +1,6 @@
 export * from './prompt-builder.js'
 export * from './prompt-composer.js'
 export * from './prompt-ipc-operations.js'
-export * from './prompt-plugin-context.js'
 export * from './prompt-resolver.js'
 export * from './prompt-store.js'
 export * from './prompt-default-texts.js'

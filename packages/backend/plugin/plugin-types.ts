@@ -43,7 +43,7 @@ import type { PluginSkillRootProvider } from '@onething/backend/skill/skill-plug
 import type {
   PluginPromptContext,
   PluginPromptContextProvider,
-} from '@onething/backend/prompt/prompt-plugin-context-breaker'
+} from './plugin-prompt-context-breaker.js'
 import type {
   BeforeContextCompactContext,
   BeforeContextCompactHook,

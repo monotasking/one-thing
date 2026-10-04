@@ -20,7 +20,11 @@ import {
   StaticPromptSource,
 } from '../prompt-composer.js'
 import { PromptFragmentRegistry, promptFragments, registerPromptFragment } from '../prompt-fragments.js'
-import { clearAllPromptContextProviders, registerPromptContextProvider } from '../prompt-plugin-context.js'
+import {
+  PluginPromptContextSource,
+  clearAllPromptContextProviders,
+  registerPromptContextProvider,
+} from '@onething/backend/plugin/plugin-prompt-context'
 import { builtinToolPromptSource, testPromptComposer } from './fixtures/tool-prompts.js'
 
 const host = { getHomeDir: () => '/Users/tester', getPlatform: () => 'linux' }
@@ -33,11 +37,17 @@ const section = (id: string, content: string, over: Partial<CorePromptFragment> 
   ...over,
 })
 
+/**
+ * 缺省 composer 加上插件提示词源 —— 2026-10-04 之前缺省 composer 自带这一源(越层清零 C1 之后
+ * 插件的提示词源住在插件里,要它的调用方自己补),这里补上,下面的用例拼的仍是同一组源。
+ */
+const pluginComposer = defaultOnethingPromptComposer.with(new PluginPromptContextSource())
+
 /** Build with the given extra fragments as one more source (after builtin + registry + plugins). */
 async function build(over: Record<string, unknown> = {}, ...extra: CorePromptFragment[]) {
   const composer = extra.length
-    ? defaultOnethingPromptComposer.with(new StaticPromptSource('test', extra))
-    : defaultOnethingPromptComposer
+    ? pluginComposer.with(new StaticPromptSource('test', extra))
+    : pluginComposer
   return buildOnethingSystemPrompt({
     hasTools: true,
     skills: [],
@@ -185,7 +195,9 @@ describe('PromptComposer', () => {
     const more = base.with(new StaticPromptSource('extra', []))
     expect(base.sourceNames).toEqual(['tools'])
     expect(more.sourceNames).toEqual(['tools', 'extra'])
-    expect(defaultOnethingPromptComposer.sourceNames).toEqual(['builtin', 'registry', 'plugins'])
+    // 缺省 composer 不再带插件源(越层清零 C1);补上之后源的顺序与从前相同。
+    expect(defaultOnethingPromptComposer.sourceNames).toEqual(['builtin', 'registry'])
+    expect(pluginComposer.sourceNames).toEqual(['builtin', 'registry', 'plugins'])
   })
 
   it('asks every source per build and honours source order on ties', async () => {

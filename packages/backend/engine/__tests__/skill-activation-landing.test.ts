@@ -39,7 +39,7 @@ vi.mock('@onething/backend/session', async importOriginal => ({
   },
 }))
 
-vi.mock('../event.js', () => ({
+vi.mock('../../event/event.js', () => ({
   getEventBus: () => ({ emit: async () => {} }),
   getStreamChannel: () => ({ push: () => {} }),
 }))
@@ -49,7 +49,7 @@ const { flushSessionEventLog, readSessionLogEvents } = await import(
 )
 const { installSessionLayerForTest } = await import('../../session/testing/session-testing-layer.js')
 const { beginSessionRun, endSessionRun } = await import('@onething/backend/session')
-const { createEventOnlyEmitter } = await import('../event-only-emitter.js')
+const { createEventOnlyEmitter } = await import('../engine-event-only-emitter.js')
 
 const SESSION = 'skill-landing'
 let fixture: ReturnType<typeof installSessionLayerForTest>

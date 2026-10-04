@@ -26,7 +26,7 @@ async function loadModules() {
     import('../plugin-disk-loader.js'),
     import('../plugin-api.js'),
     import('@onething/backend/toolkit'),
-    import('@onething/backend/prompt/prompt-plugin-context-breaker'),
+    import('../plugin-prompt-context-breaker.js'),
     import('@onething/backend/skill/skill-plugin-roots'),
     import('@onething/backend/plugin/plugin-lifecycle-hooks'),
     import('@onething/backend/plugin/plugin-input-intercept-bound'),

@@ -44,7 +44,7 @@ deepseek packages/backend/eval/eval-client-api-workbench.ts
 deepseek packages/backend/credentials/credentials-default-space-migration.ts
 deepseek packages/backend/logging/logging-legacy-debug-env.ts
 deepseek packages/backend/session/session-resource-spec.ts
-deepseek packages/backend/trigger/trigger-skill-review-core.ts
+deepseek packages/backend/skill/skill-review-core.ts
 gemini packages/backend/provider/provider-custom-probe.ts
 gemini packages/backend/provider/dialects/provider-dialects-gemini-recipe.ts
 gemini packages/backend/provider/dialects/provider-dialects.ts
