@@ -78,7 +78,7 @@ export function toOnethingServerBackend(
  *
  * 桌面主进程装配完 backend 之后调这个:HTTP/SSE 面因此和 renderer 的 IPC 面
  * 共享同一条事件流、同一份内存真相、同一个 seq 分配器 —— 而不是像从前那样
- * 由 apps/backend-server 再装配一只引擎。
+ * 由不带界面的后端进程(`backend-standalone-main.ts`)再装配一只引擎。
  *
  * 借来的 backend 必须传 `processPorts: 'host'`:MCP 客户端宿主、授权账页存储、
  * todo/scratchpad 广播这三组是**进程级单槽端口**,宿主已经配好了,server runtime

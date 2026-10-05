@@ -1,7 +1,7 @@
 /**
  * server 侧插件目录的**单槽端口** —— 结构债 P4 终态批 C2。
  *
- * apps/backend-server 的插件目录是**另一棵树**的只读镜像:
+ * 不带界面的后端进程(`backend-standalone-main.ts`)的插件目录是**另一棵树**的只读镜像:
  * `owners/<uid>/<wid>/plugin-store/plugins`(不是 `<store>/plugins`),entry 全是
  * noop,插件代码在 server 上从不执行;唯一真会落盘的是 enable 标志。这套语义连同
  * `ServerPluginCatalogManager` 一起住在 `http-server/http-server-runtime.ts` 的装配闭包里(它要

@@ -2,8 +2,8 @@
 // 日志迁移棘轮的检查器:数**非测试源码**里的 `console.*` 调用点。
 //
 // 口径(docs/design/logging-system-2026-08.md §2.6):
-//   - 扫 packages/{backend(含 core / runtime / gateway 子树),renderer,shared} 与
-//     apps/{server,cli}/src;
+//   - 扫 packages/{backend(含不带界面的后端进程入口 backend-standalone-main.ts),shared} 与
+//     apps/cli/src;
 //   - 跳过测试(`__tests__/`、`*.test.*`、`*.spec.*`)、类型声明、构建产物;
 //   - 白名单:`scripts/`(本来就是给人看的终端输出)与
 //     `apps/cli/src/stdout.ts`(CLI 的产品输出口);
@@ -23,7 +23,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const ROOTS = [
   'packages/backend',
   'packages/shared',
-  'apps/backend-server/src',
   'apps/cli/src',
 ]
 

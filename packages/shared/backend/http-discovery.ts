@@ -7,7 +7,7 @@
  *
  * | 谁 | 拿它干什么 |
  * |---|---|
- * | `apps/backend-server/src/main.ts` | 拒启:`owner !== 'server'` 且活着 → 让位(`--force` 绕过) |
+ * | `packages/backend/backend-standalone-main.ts` | 拒启:`owner !== 'server'` 且活着 → 让位(`--force` 绕过) |
  * | `@onething/backend-client/node` 的 `readCoreDiscovery()` | CLI / 脚本当 core 的客户端:活着就连上去 |
  *
  * server / client 拆分第②步(2026-10-02,`docs/design/server-client-split-2026-10.md` §6)起,shared

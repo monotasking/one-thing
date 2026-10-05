@@ -4,7 +4,7 @@
  *
  * 批 1 把 `markdown` / `permission-grants` / `files` / `project-dirs` /
  * `spaces` 记进「不可迁清单」第 2 类 ——「迁了会掉安全护栏」。护栏本身没什么
- * 神秘的：`apps/backend-server` 每个 owner 有一个沙箱根 `<workspaceRoot>/<uid>/<wid>`，
+ * 神秘的：不带界面的后端进程(`backend-standalone-main.ts`)每个 owner 有一个沙箱根 `<workspaceRoot>/<uid>/<wid>`，
  * 请求里的每条路径都要夹进去。真正缺的是**输入**：通用信封不带 context，
  * handler 无从知道自己该不该夹。`RpcDispatchContext` 补上输入之后，护栏就可以
  * 从 server 搬进 app 层，两个宿主共用同一份实现 —— 这个文件就是那份实现。
@@ -56,7 +56,7 @@ export type RpcSandbox = UnconfinedRpcSandbox | ConfinedRpcSandbox
 /**
  * 一个路径落在沙箱内吗。
  *
- * 与 `apps/backend-server` 里那份同名 helper 逐字同义（迁移的等价性就压在这上面）：
+ * 与当年 server 进程壳里那份同名 helper 逐字同义（迁移的等价性就压在这上面）：
  * 用 `relative()` 而不是字符串前缀，避免 `/a/bc` 被判进 `/a/b`。
  */
 export function isPathInside(candidate: string, root: string): boolean {
@@ -141,7 +141,7 @@ export function isAllowedBySandbox(sandbox: RpcSandbox, absolutePath: string): b
 /**
  * 宿主拼沙箱根用的路径分段消毒。
  *
- * 与 `apps/backend-server/src/runtime.ts` 的 `safePathSegment` 逐字同义 —— 导出到这里
+ * 与当年 server 进程壳 `src/runtime.ts`(早已删除)的 `safePathSegment` 逐字同义 —— 导出到这里
  * 是为了让「沙箱根长什么样」只有一份定义，宿主适配器直接引用，而不是各抄一遍
  * 正则。
  */

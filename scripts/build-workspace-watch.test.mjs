@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { build as esbuild } from 'esbuild'
-import { build as viteBuild } from 'vite'
+import { build as viteBuild, mergeConfig } from 'vite'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { mkdir, mkdtemp, readFile, readdir, copyFile, rm, writeFile, lstat } from 'node:fs/promises'
@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { createPackageWithOptions, statFile, extractFile, getRawHeader } from '@electron/asar'
 import { parse } from 'yaml'
 import { shellEsbuildOptions } from '../apps/desktop-react/scripts/build-electron.mjs'
+import { serverViteConfig } from './build-server.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -90,8 +91,8 @@ describe('workspace watcher runtime packaging', () => {
       expect(output.imports).toContainEqual(expect.objectContaining({ path: 'fsevents', external: true }))
       expect(Object.keys(result.metafile.inputs).some(name => name.includes('node_modules/fsevents/'))).toBe(false)
     }
-    const result = await viteBuild({ configFile: path.join(root, 'apps/backend-server/vite.config.ts'),
-      logLevel: 'silent', build: { ssr: driverEntry, outDir: path.join(directory, 'server'), write: false } })
+    const result = await viteBuild(mergeConfig(serverViteConfig({ outDir: path.join(directory, 'server') }),
+      { logLevel: 'silent', build: { ssr: driverEntry, write: false } }))
     const chunk = result.output.find(item => item.type === 'chunk')
     expect(chunk.dynamicImports).toContain('fsevents')
     expect(Object.keys(chunk.modules).some(name => name.includes('node_modules/fsevents/'))).toBe(false)

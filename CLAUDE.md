@@ -68,15 +68,14 @@ bun run evals              # bun evals/run.mjs;evals:diagnose = scripts/diagnose
 
 ## 3. 结构
 
-onething 是一个多服务商、带工具调用、事件驱动流式引擎的 AI 聊天应用。产品在 packages 里,apps 都是薄壳。
+onething 是一个多服务商、带工具调用、事件驱动流式引擎的 AI 聊天应用。产品在 packages 里,apps 都是薄壳,只放客户端(桌面、CLI、手机);不带界面的后端进程也住在后端包里。
 
 | 位置 | 是什么 |
 | --- | --- |
-| `packages/backend`(`@onething/backend`) | **唯一的后端包**:装配配方 + 一个功能一个目录 + 界面连进来的 HTTP 服务器 |
+| `packages/backend`(`@onething/backend`) | **唯一的后端包**:装配配方 + 一个功能一个目录 + 界面连进来的 HTTP 服务器 + 不带界面的后端进程入口(`backend-standalone-main.ts`) |
 | `packages/shared`(`@shared`) | 后端与界面之间的契约(RPC 路由契约、事件词汇、发现文件形状),加上两边必须算得一样的纯逻辑(会话投影、引用、效果表……)。**只引自己**,不引 node、不引 `@onething/*` |
 | `packages/backend-client`(`@onething/backend-client`) | 连后端用的 SDK:`Transport`(fetch + fetch 流式 SSE + Bearer)、`client.api(router)`、事件中心。Node 与浏览器同一份代码 |
 | `apps/desktop-react` | **唯一的桌面**(Electron + React),`--mode web` 时也是浏览器壳。主进程自己装配一份后端并挂上 HTTP 面;渲染层只走 HTTP/SSE |
-| `apps/backend-server` | 不带界面单独跑的后端的进程壳(`main.ts` + `index.ts`);HTTP 面本身在 `packages/backend/http-server/` |
 | `apps/cli` | CLI 守护进程与命令(`bin/onething.mjs` → `dist/cli/main.cjs`) |
 | `apps/mobile` | Expo 客户端,不是 workspace 成员 |
 
@@ -88,7 +87,7 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
 - **包根只有组装配方**:`backend.ts`(`createOnethingBackend` / `OnethingBackend.assemble`,唯一的装配配方)、
   `backend-assemble-engine.ts`(装引擎:引擎层、端口接线、内置触发器)、`backend-current.ts`(唯一的进程槽:当前实例,
   以及 `getStreamEngine()`)、`backend-host-ports.ts`(宿主端口表)、`backend-shutdown.ts`(关机阶段表)、
-  `backend-types.d.ts`,加 `http-server/` 与 `__tests__/`。
+  `backend-types.d.ts`、`backend-standalone-main.ts`(不带界面的后端进程入口,见下面「进程入口」),加 `http-server/` 与 `__tests__/`。
 - **`packages/backend/<功能>/`:一个功能一个目录,平铺**。目录名是单数名词(`session`、`provider`;`settings` 这类
   习惯复数的保持原样)。`http-server/`、`__tests__/` 以外的每个目录都是功能(`scripts/lib/backend-structure.mjs` 的
   `NON_FEATURE_DIRS`)。功能里的逻辑、内核、接线放在一起,不再按层分子目录;只给一个功能用的内核可以放
@@ -103,8 +102,10 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
   `packages/backend/logging/logging-configure.ts`(`configureLogging()`、文件 sink、目录管家、崩溃钩子);只许包根、
   `http-server/`、两种第二入口、L4 功能与 apps 引(D191)。
 - **进程入口**:被构建配方或真机门当作独立进程 / 线程起的文件 —— 检索 Worker
-  (`packages/backend/search/index/search-index-worker.ts`)、ACP 宿主工具桥、独立网关
-  `packages/backend/gateway/gateway-standalone-main.ts`、`scripts/gate-*/` 下的被测产物入口。它们按路径直接指要的模块,
+  (`packages/backend/search/index/search-index-worker.ts`)、ACP 宿主工具桥、不带界面的后端进程
+  `packages/backend/backend-standalone-main.ts`(`server:build` 打成 `dist/server/main.js`,`server:start` 与真机门跑它;
+  vite 配置内联在 `scripts/build-server.mjs`)、独立网关 `packages/backend/gateway/gateway-standalone-main.ts`、
+  `scripts/gate-*/` 下的被测产物入口。它们按路径直接指要的模块,
   而且**不许被任何文件 import**。
 - **`http-server/`**:界面连进来的那台 HTTP 服务器(收请求、SSE 事件流、发现文件、来访者身份与本机信任、按名册分发),
   入口 `packages/backend/http-server/http-server.ts`。它不认识具体功能,只读两张名册:
@@ -148,7 +149,7 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
 - **N4** 泛名不单独作文件名:index / types / utils / helpers / service / manager / runtime / registry / store / core /
   common / misc 只能跟在功能名后面(`provider-types.ts`)。
 - **N5** 目录用单数名词;**N6** 测试叫 `<被测文件名>.test.ts`,放在功能目录下的 `__tests__/`;**N7** 包名、应用名
-  也要说清是什么(`backend-client`、`backend-server`)。
+  也要说清是什么(`backend-client`、`desktop-react`)。
 
 **入口规矩**:
 
@@ -264,7 +265,7 @@ server runtime 自己填的 `configureServer*Port`。
 | 宿主 | 装配处 | 要点 |
 | --- | --- | --- |
 | React 桌面 | `apps/desktop-react/electron/main.ts` | `host: createShellHostPorts()`(`apps/desktop-react/electron/host-ports.ts`;没有的能力逐格写 `null`,那张列表就是壳的能力缺口);`toolRegistry: 'full'`;窗口起来后 `own()` 内嵌 HTTP 面与发现文件、定时任务、MCP、ACP、`installBrowserHost()`;起这些服务前先等 `electron/login-shell-env.ts` 拿登录 shell 的 PATH;`run/http.json` 已指向一个活着的后端时直接连它,不再装配 |
-| 不带界面的 server | `packages/backend/http-server/http-server-standalone-backend.ts`(`createRealServerBackend`)→ `createOnethingServerRuntimeOverBackend` | 只有 sandbox 与 storePath 是真的;`ONETHING_SERVER_TOOLS=readonly` 时 `'readonly'`,否则 `'full'` |
+| 不带界面的 server | 进程入口 `packages/backend/backend-standalone-main.ts` → `packages/backend/http-server/http-server-standalone-backend.ts`(`createRealServerBackend`)→ `createOnethingServerRuntimeOverBackend` | 只有 sandbox 与 storePath 是真的;`ONETHING_SERVER_TOOLS=readonly` 时 `'readonly'`,否则 `'full'` |
 | CLI 守护 | `packages/backend/headless/headless-backend.ts`(`HeadlessBackend`,`apps/cli/src/daemon-server.ts` 用) | `toolRegistry: 'headless'`、`mcpAcp: true`、`collab: true`;退出 = `backend.dispose()` |
 
 ## 7. 怎么加一个东西
@@ -425,7 +426,7 @@ chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可�
 ## 9. 进程与数据流
 
 **一个 store 只有一个后端**(正本 `docs/design/one-core-2026-08.md`):HTTP/SSE 面是 `packages/backend/http-server/` 的代码,
-`apps/backend-server/src/main.ts` 是它外面的进程壳,桌面主进程把**同一份**代码挂在自己的后端上,所以浏览器壳订阅的是桌面的
+`packages/backend/backend-standalone-main.ts` 是它外面的进程入口,桌面主进程把**同一份**代码挂在自己的后端上,所以浏览器壳订阅的是桌面的
 事件流。谁服务这个 store,谁写 `<store>/run/http.json = {port, host, token, pid, startedAt, owner}`(0600),退出时只删
 `pid` 是自己的那份;端口动态,除非 `ONETHING_SERVER_PORT` 钉死(钉死且被占 = 明确报错,不静默换端口);`server:start` 遇到
 活着的、`owner` 不是 server 的记录就拒绝启动。token = `ONETHING_SERVER_TOKEN` 或每次启动新铸。server 单用户,绑非回环地址
@@ -443,7 +444,7 @@ chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可�
 `targetChannel`)→ 界面 → `command:permission-respond`(通道必须一致)→ 工具执行。
 
 **store**:根目录按 `ONETHING_STORE_PATH` → `~/.onething` 解析(`packages/backend/storage/storage-paths.ts`),所有路径都经
-`getOnethingStorePath()` 与它的 `getOnething*Path` 系列,不许写死。单实例靠 `StoreLock`(`desktop` / `daemon`);`apps/backend-server`
+`getOnethingStorePath()` 与它的 `getOnething*Path` 系列,不许写死。单实例靠 `StoreLock`(`desktop` / `daemon`);不带界面的后端进程(`backend-standalone-main.ts`)
 **有意不拿锁**(`bun run dev` 里桌面与 dev server 共用 `~/.onething`,两个写者的风险是接受了的)。server 的 HTTP 会话面用的是引擎
 同一份进程内会话表 —— 在同一批文件上再开一个仓库会把内存里的真相分叉。
 

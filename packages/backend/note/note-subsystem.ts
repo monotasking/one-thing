@@ -21,7 +21,7 @@
  *
  * **这个问题在每次 `refresh` 时问,不在装配时问一次**(2026-09-18 review 打回
  * 的第三条)。理由是时序:`server:start` 装配时 host 表的 `localTrust` 是
- * `null`,它要到 `apps/backend-server/src/main.ts` 决定绑回环之后才
+ * `null`,它要到 `packages/backend/backend-standalone-main.ts` 决定绑回环之后才
  * `configureHostLocalTrust({origin:'loopback-server'})` —— 装配期算一次的话,
  * server 与 CLI daemon 上**永远**是空表,而且是静默的,与正本「server / CLI
  * 同码」直接相悖。
@@ -112,7 +112,7 @@ export interface NotesSubsystem {
   /**
    * 重新问一遍所有驱动。设置改了、或者宿主的信任状态刚变了,都走这一条。
    *
-   * `settings` 缺席 = 读当前设置缓存。宿主那一侧(`apps/backend-server/src/main.ts`)
+   * `settings` 缺席 = 读当前设置缓存。宿主那一侧(`packages/backend/backend-standalone-main.ts`)
    * 因此不用为了喊一声而多 import 一个 store。
    */
   refresh(settings?: AppSettings): Promise<void>

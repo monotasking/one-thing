@@ -142,7 +142,7 @@ export function createServerMcpHost(ports: ServerMcpHostPorts) {
 			 * 那一圈 fire-and-forget 的 `mcpManagersByOwner`"挪进了 `backend.dispose()`
 			 * (`own('mcp')` 那一格),而子系统的 `dispose()` 按 C1 的设计**要等在途的
 			 * `start()` 落地**。于是一台在初次握手上挂死的 stdio 服务器会拖住收尾 ——
-			 * 初版实测把 `apps/backend-server` 那 5s 预算吃干净(5.06s + `shutdown did not
+			 * 初版实测把不带界面的后端进程(`backend-standalone-main.ts`)那 5s 预算吃干净(5.06s + `shutdown did not
 			 * finish in time; pending session writes may be lost`),从前是 0.05s。
 			 * **用户裁定不接受无界等待**,于是 `McpSubsystem.dispose()` 现在自带
 			 * 3000ms 上限(见 `mcp/mcp-subsystem.ts` 的
@@ -159,7 +159,7 @@ export function createServerMcpHost(ports: ServerMcpHostPorts) {
 						 * 缺口:core 自己那两句(`mcp initializing` /
 						 * `mcp connecting to servers`)在独立 server 上从此进不了
 						 * `server.jsonl` 了。原因不是行为变了,是**时序**:
-						 * `apps/backend-server/src/main.ts` 要等 runtime 装配完才
+						 * `packages/backend/backend-standalone-main.ts` 要等 runtime 装配完才
 						 * `configureLogging`(store 根由装配钉死,提前接线会写进另一个
 						 * store 的 log/),而从前那句 `await getMCPSettingsForContext()`
 						 * 带一次真实的文件读,把 `initialize` 顶到了 `configureLogging`

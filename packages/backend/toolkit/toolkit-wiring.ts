@@ -8,7 +8,7 @@
  *     `engine/engine-agent-loop-stream-runtime.ts`,那里不许 import `@onething/backend`)。
  *  2. `runToolkitToolDirectly(...)` —— 缝 2:`executeToolDirectly` 的新路。签名与
  *     返回形状**与旧路逐字相同**(`OnethingToolExecutionResult`),所以
- *     `ipc-bridge.ts` / `apps/backend-server/src/http.ts` / 渲染器一个字都不动。
+ *     `ipc-bridge.ts` / `packages/backend/http-server/` / 渲染器一个字都不动。
  *  3. 缝 3 的两半:四个回调 → `IpcProjector`(一个 Observer),两条插件拦截链 →
  *     一个 `Interceptor`。两条链本身由装配时递进来的端口 `ToolkitInterceptor` 给出
  *     (D191:本文件不再认识 plugin;端口缺席 = 不拦截),插件那边的实现是

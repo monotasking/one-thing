@@ -48,7 +48,7 @@
  * ## 一处口径变化:`getTools` 不再有「第二份只读目录」
  *
  * 旧 adapter 的 `getTools` 在**假路**(echo/test backend)或**非默认 owner** 上报的是
- * server 自己那份 `createReadonlyCatalog()`;真引擎 + 默认 owner(单用户 apps/backend-server
+ * server 自己那份 `createReadonlyCatalog()`;真引擎 + 默认 owner(单用户的不带界面的后端进程(`backend-standalone-main.ts`)
  * 的唯一形态)报的就是 `toolkitCatalogToolDefinitions()` —— 与桌面同一份。搬家取的是
  * 后者,于是那份 per-owner 的第二本目录消失(同 skills / oauth 判例:一个 store 一份
  * 真相)。生产形态下这是**零变化**;变的只有测试夹具里的假后端。

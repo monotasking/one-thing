@@ -28,7 +28,7 @@ export type SessionEventPayload =
  * (packages/renderer/stores/chat.ts handleStreamChunk) with M2 scope:
  * text streaming only; tool calls / steps land in M3.
  *
- * Wire facts (apps/backend-server http.ts handleEvents):
+ * Wire facts (packages/backend/http-server/http-server-routes.ts handleEvents):
  * - `session:event` frames carry { sessionId, sequence, timestamp, event }.
  * - `session:stream` frames carry { sessionId, chunk } with the messageId
  *   stamped by the server coalescer; chunks are NOT replayed on reconnect —

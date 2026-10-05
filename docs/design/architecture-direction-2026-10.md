@@ -19,7 +19,7 @@
   - 缺省:后端随 Electron 同起同停;可在设置里改成"Electron 退出后后端继续运行"。
   - 关窗口不是退出 Electron,只有 Quit 才退出(macOS 惯例)。**现状不符**:`apps/desktop-react/electron/main.ts:789` 是 `window-all-closed → app.quit()`,要改。
   - CLI 缺省同样依附于 Electron 拉起的后端;可配置为由 CLI 自己拉起后端。CLI 改走 HTTP,现在那套 unix socket + 38 个自有方法(`apps/cli/src/daemon-server.ts`)退役。
-- **待定**:独立的 `apps/server` 是否保留为"开发与门测试用的无界面后端"(我提的建议,用户未答)。
+- **待定**:独立的 `apps/server` 是否保留为"开发与门测试用的无界面后端"(我提的建议,用户未答)。10-05 用户已定:保留,作为唯一的不带界面后端进程入口,住在后端包里 —— `apps/backend-server`(就是这里说的 `apps/server`,后来改名为 `apps/backend-server`)删掉,进程入口并进 `packages/backend/backend-standalone-main.ts`(`docs/design/backend-structure-decisions-2026-10.md` D255–D258)。
 
 ### 1.2 什么归后端,什么归客户端
 

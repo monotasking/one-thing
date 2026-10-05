@@ -2114,3 +2114,29 @@ persistence / import-side-effect-free + assembly-lifecycle 绿;shadow-battery �
 theme 金样逐条相同;persistence / import-side-effect-free + assembly-lifecycle 绿;shadow-battery 与改前同一组红(appendFailures 8,refold mismatch 0);hydration 0 失败;
 `sessions:verify` GATE GREEN、`events-selfcheck` 0 NEW;`gate:search-index` 与改前同三条红;`gate:acp` / `gate:web-shell` / `gate:client` / `gate:native` /
 `log:smoke` / `provider:drill` 绿;全部结构门绿;CLI 与 server 能起;`gateway:start` 与改前一样 exit 1。别的会话的五只 `chat-*.ts` 零改动。
+
+### `apps/backend-server` 并进后端包落地记录(D255–D258,2026-10-05,未提交)
+
+用户 10-05 拍板:后端只有一个家,不带界面的后端进程入口也住进后端包,`apps/` 只留真正的客户端;独立 server 保留为唯一的
+不带界面后端进程(同时回答了 `architecture-direction-2026-10.md` §1.1 那条「待定」)。
+
+1. **进程入口搬家**(D256):`apps/backend-server/src/main.ts` → `packages/backend/backend-standalone-main.ts`。正文逐字不变(import 原本
+   就是包说明符),只把文件头换成 R3 说明书;`entry:gate` 按 `*-standalone-main.ts` 认它为进程入口(进程入口数 4 → 5,无人 import)。
+   它的模块级 `let shuttingDown` 随文件进了 `assembly:gate` 的尺子,基线末尾记入 1 行。`index.ts`(全仓零引用)与 `package.json` 删掉。
+2. **vite 配置内联**(D257):`apps/backend-server/vite.config.ts` 的每一项搬进 `scripts/build-server.mjs` 的 `serverViteConfig({ outDir })`,
+   用 vite JS API(`configFile: false`)构建,`--outDir` 照旧;脚本只有被直接跑时才构建。`scripts/build-workspace-watch.test.mjs` 改读这个函数。
+   整个 `apps/backend-server/` 删掉。
+3. **判据跟着文件走**(D258):`architecture-boundaries.test.ts` 两条目录断言合成一条只判这只文件、退役 IPC 名字那条改判这只文件;eslint 区 ②
+   改点名它;`log:check` 去掉 `apps/backend-server/src` 扫描根、基线 4 行改路径(计数不变);`client-api:gate` 自检 26 → 28 条;
+   `tsconfig.node.json` 去掉一行;层次表包根槽位的说明补一句、`feature-map` 重生成;后端与 shared / backend-client / 壳 / mobile 注释里
+   指向旧路径的全部改掉(带日期的历史文档不动)。
+4. **文档**:根 `CLAUDE.md` §3 / §4 / §6 / §9、`docs/architecture/backend-structure.md`、`README.md`、`docs/codebase-structure.md`、
+   `docs/system-diagrams.md`、`docs/guides/code-reading-and-tracing.md`。
+
+**验收**(改前 `$S/s43-before/`,改后 `$S/s43-after/`):`server:build` 前后各一次,`dist/server/main.js` 只差两行被打进产物的注释
+(就是本批改的两处注释),`search-worker.cjs` / `acp-mcp-bridge.cjs` 与 `.map`、`favicon.svg`、`voice/` 逐字节相同;`gate:acp`(假 agent、
+临时 store:新入口起得来、绑端口、写 `run/http.json`、干净退出)/ `gate:web-shell` / `gate:client` 绿;`gate:search-index` 改前改后同两条红
+(⑤d 两条结构判据,存量);三套 tsc(node / desktop / mobile)零错;name / cycle / layer / entry / client-api / cohesion / feature-map:check /
+boundary / assembly / transport / provider / log / session 全绿;`provider:drill` / `feature:drill` 绿(两道演练开在 HEAD 的临时 worktree 上,
+证的是 HEAD,不是这批未提交的改动);全量 vitest 11,432 条,失败 22 条,是改前 28 条的子集(少掉的 6 条是 plugin event-routing 与
+workspace-watch 的时序红);两份锁文件零 diff、`bun install --frozen-lockfile` 照旧过。别的会话的五只 `chat-*.ts` 零改动。

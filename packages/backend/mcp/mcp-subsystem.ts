@@ -51,7 +51,7 @@ export interface McpSubsystemDeps {
 /**
  * `dispose()` 里"等在途 start + `manager.shutdown()`"这两段**合起来**的上限。
  *
- * 3000ms 这个数不是拍的,是**卡在 `apps/backend-server/src/main.ts` 那条 5s 死线底下**:
+ * 3000ms 这个数不是拍的,是**卡在 `packages/backend/backend-standalone-main.ts` 那条 5s 死线底下**:
  * `SHUTDOWN_FLUSH_TIMEOUT_MS` 到点之后 server 会打一行
  * `shutdown did not finish in time; pending session writes may be lost` 然后硬退,
  * 会话账本的 flush 就没跑完。MCP 的收尾排在 dispose 链的中段(`engineAbortAll` 之后、

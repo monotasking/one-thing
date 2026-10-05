@@ -24,7 +24,7 @@ function gatewayOrigin(userId: string, workspaceId?: string): EngineMessageOrigi
 describe('mintTurnPrincipal', () => {
   describe('a claim on the command is not a credential', () => {
     it('discards a forged user principal from an ordinary command', () => {
-      // apps/backend-server forwards commands whole, so this field is reachable from
+      // the standalone backend process (`backend-standalone-main.ts`) forwards commands whole, so this field is reachable from
       // the network. Honouring it would hand any caller a chosen identity.
       const minted = mintTurnPrincipal({
         source: 'ipc',

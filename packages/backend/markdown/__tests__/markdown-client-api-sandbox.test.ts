@@ -2,7 +2,7 @@
  * 工作区沙箱守卫（主线 T 批 3）。
  *
  * 批 1 因为「通用信封不带 request context」把 markdown 退回「不可迁清单」第 2 类，
- * 理由是迁过去会掉 `apps/backend-server` 那套沙箱护栏。这份测试就是那句话的验收门：
+ * 理由是迁过去会掉不带界面的后端进程(`backend-standalone-main.ts`)那套沙箱护栏。这份测试就是那句话的验收门：
  * **同一个 handler**，喂 desktop context 与 http context 两种 dispatch context，
  * 越界路径在夹紧那侧全部被拦，在桌面那侧全部照旧放行。
  *

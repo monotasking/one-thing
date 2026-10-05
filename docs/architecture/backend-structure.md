@@ -70,15 +70,17 @@ HTTP 服务器同站 L4,不与所属功能同层。
 
 功能目录以外,包根只有组装文件:`backend.ts`(唯一的装配配方)、`backend-assemble-engine.ts`(装引擎)、
 `backend-current.ts`(进程里「当前那份后端」的槽)、`backend-host-ports.ts`(宿主端口表)、`backend-shutdown.ts`(关机阶段表),
-加上 `http-server/` 和放跨功能测试的 `__tests__/`。
+`backend-standalone-main.ts`(不带界面的后端进程入口,见下面「进程入口」),加上 `http-server/` 和放跨功能测试的 `__tests__/`。
 
 还有两种特殊的门:
 
 - **装配入口** `<功能>-configure.ts`:装配时才建的状态与接线 API。今天只有日志一家(`packages/backend/logging/logging-configure.ts`):
   它会建日志文件、目录管家、崩溃钩子,还要存储层。如果从日志的主入口交出,检索 Worker 为了拿一个 `getLogger` 就会把这些全带进
   自己的产物里,所以单开一扇门,只给装配方用(D191)。
-- **进程入口**:被构建配方当作独立进程或线程起的文件,例如检索 Worker `packages/backend/search/index/search-index-worker.ts` 和
-  独立网关 `packages/backend/gateway/gateway-standalone-main.ts`。它们按路径直接指要的模块(这样产物里只有真正需要的东西),
+- **进程入口**:被构建配方当作独立进程或线程起的文件,例如检索 Worker `packages/backend/search/index/search-index-worker.ts`、
+  不带界面的后端进程 `packages/backend/backend-standalone-main.ts`(`server:build` 把它打成 `dist/server/main.js`,`server:start`
+  与真机门跑的就是它;2026-10-05 从 `apps/backend-server` 并进来,D255–D258)和独立网关
+  `packages/backend/gateway/gateway-standalone-main.ts`。它们按路径直接指要的模块(这样产物里只有真正需要的东西),
   反过来**不许被任何文件 import** —— 否则 import 它就等于启动了一个进程。
 
 ## 4. 读一个功能该怎么读

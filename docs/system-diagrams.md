@@ -118,7 +118,7 @@ flowchart TD
 ## 核对依据
 
 - `packages/backend/backend.ts`：后端装配、宿主能力、会话与引擎生命周期。
-- `packages/backend/server/embed.ts`、`apps/backend-server/src/main.ts`：桌面内嵌服务与独立服务入口。
+- `packages/backend/server/embed.ts`、`packages/backend/backend-standalone-main.ts`：桌面内嵌服务与独立服务入口。
 - `packages/backend/server/runtime.ts`：RPC 运行时与后端服务适配。
 - `packages/backend-client/client.ts`：统一调用、事件订阅和能力查询。
 - `packages/backend/wiring/engine/index.ts`：核心引擎与运行时绑定。

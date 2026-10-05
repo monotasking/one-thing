@@ -183,7 +183,7 @@ export interface OnethingHostPorts {
    * 修法是把它挪到**装配时**:「我这台宿主服务的是本机同一个用户」是宿主自己知道
    * 的事实,和有没有 HTTP 面无关。桌面(两个壳)写
    * `{ origin: 'desktop-embedded' }`;独立 server 写 `null` —— 它在
-   * `apps/backend-server/src/main.ts` 监听时按绑定地址回不回环自己声明,那条判据不能提前到
+   * `packages/backend/backend-standalone-main.ts` 监听时按绑定地址回不回环自己声明,那条判据不能提前到
    * 装配(装配时还不知道会绑到哪);CLI daemon 写 `null`(它不分发 RPC)。
    *
    * `ONETHING_SERVER_FILES_SANDBOX=1` 照旧压得住这条声明(端口每次现读)。

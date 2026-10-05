@@ -5,7 +5,7 @@
  * 什么?」。CLI(下一批 C3)拿到就 `createHttpTransport` 当 core 的客户端,拿不到
  * 再走今天的自装配路。
  *
- * **判活与 `apps/backend-server/src/main.ts` 的拒启判据是同一把尺子**:pid 活着**且**端口连得上。
+ * **判活与 `packages/backend/backend-standalone-main.ts` 的拒启判据是同一把尺子**:pid 活着**且**端口连得上。
  * 记录形状在 `@shared/backend/http-discovery.ts`(C0 抽出来的;§9 留账那条);读与判活这一半
  * 碰 node,shared 放不下,server / client 拆分第②步起两边各一份(本包 `http-discovery-io.ts` 与
  * `packages/backend/http-server/http-server-discovery-io.ts`),逐字同形,对拍测试钉住两份给同一个答案 ——

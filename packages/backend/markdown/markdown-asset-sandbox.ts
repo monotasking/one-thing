@@ -2,7 +2,7 @@
  * Markdown 附件服务的装配层半边 —— 适配器装配 + 工作区沙箱守卫。
  *
  * 主线 T 批 3：本模块唯一的消费者是 `app/rpc/domains/markdown.ts`。批 3 之前
- * 它只装配适配器（桌面无沙箱概念），沙箱守卫住在 `apps/backend-server/src/runtime.ts`
+ * 它只装配适配器（桌面无沙箱概念），沙箱守卫住在当年 server 进程壳的 `src/runtime.ts`(早已删除)
  * 里那一串 `*ServerMarkdown*` helper 上；`RpcDispatchContext` 把 request context
  * 补进通用信封之后，守卫搬到这里，两个宿主共用同一份实现。
  */
@@ -102,7 +102,7 @@ function cleanMarkdownTarget(rawTarget: string): string {
 /**
  * 链接目标指向沙箱外了吗。
  *
- * 与 `apps/backend-server` 的 `isServerMarkdownTargetSafe` 逐字同义：锚点与非 `file:`
+ * 与当年 server 进程壳的 `isServerMarkdownTargetSafe` 逐字同义：锚点与非 `file:`
  * 的 URL scheme 直接放行（那不是文件系统访问），`file:` 与绝对路径按解析后的
  * 路径判，相对路径先拒掉 `..` / `~` 段再按文档目录解析。
  */

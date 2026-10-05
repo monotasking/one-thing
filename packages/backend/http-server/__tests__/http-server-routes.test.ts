@@ -796,7 +796,7 @@ describe('createOnethingHttpServer', () => {
 
   /**
    * 主线 T 批 3：markdown 迁到通用 RPC 通道，这条端到端断言跟着改走
-   * `POST /api/rpc` —— **断言本身一条没减**。它证的是护栏从 `apps/backend-server`
+   * `POST /api/rpc` —— **断言本身一条没减**。它证的是护栏从当年的 server 进程壳
    * 搬进 `@onething/backend` 之后，经过真实 HTTP 层（含身份头 → dispatch context）
    * 的行为一字未变，含跨 owner 隔离。
    */

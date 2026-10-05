@@ -156,7 +156,7 @@ export function hasRpcDomain(domain: string): boolean {
  * is never read off the wire — see `RpcDispatchContext`. It defaults to the
  * desktop/in-process context because that is what an in-process caller (tests,
  * a future host that runs the backend directly) truthfully is; the one host
- * where the default would be a lie — `apps/backend-server`, whose callers are on a
+ * where the default would be a lie — the standalone backend process (`backend-standalone-main.ts`), whose callers are on a
  * network — passes its own, and the app-layer sandbox guard refuses an
  * `'http'` context that arrives without a sandbox root rather than silently
  * running unconfined.

@@ -3,7 +3,7 @@
  *
  * Before the createOnethingBackend factory existed, eleven modules wired
  * runtime adapters at import time. In a process that assembles its own
- * runtime (apps/backend-server), merely importing those modules clobbered the host's
+ * runtime (the standalone backend process (`backend-standalone-main.ts`)), merely importing those modules clobbered the host's
  * configuration (last-writer-wins). All wiring now happens exclusively
  * through configureAppRuntimeAdapters() / createOnethingBackend().
  */
@@ -147,7 +147,7 @@ describe('@onething/backend import purity', () => {
    *
    * 它比上面那批更容易在未来出事:`feature-registry/feature-registry-table` 与 `http-server/http-server-client-api-roster` 都在模块
    * 级持有表,而「顺手在模块级挂一个 feature」是个只要写一次就再也发现不了的
-   * 错 —— 症状会是 apps/backend-server 里 import 一下就把域注册了,与宿主自己的装配
+   * 错 —— 症状会是不带界面的后端进程(`backend-standalone-main.ts`)里 import 一下就把域注册了,与宿主自己的装配
    * 撞重复守卫。所以这里断言的是**表在 import 后是空的**。
    */
   it('importing the K0 feature base mounts nothing', { timeout: 60_000 }, async () => {

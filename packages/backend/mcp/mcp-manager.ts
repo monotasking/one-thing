@@ -8,7 +8,7 @@ import { configureMCPOAuthAuthorizedHandler, getMCPOAuthFlowManager } from './oa
  * Host-injected MCP client factory.
  *
  * The engine's MCP bridge (mcp/mcp-bridge.ts) is bound to this single manager, so a
- * host that needs a different client (apps/backend-server gates stdio behind
+ * host that needs a different client (the standalone backend process (`backend-standalone-main.ts`) gates stdio behind
  * ONETHING_SERVER_MCP_STDIO and disables connections entirely by default) must
  * contribute its factory here rather than standing up a second manager — a
  * second manager would connect servers the engine cannot see.

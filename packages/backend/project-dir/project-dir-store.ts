@@ -205,7 +205,7 @@ export class ProjectsStore {
 /**
  * per-space 实例表(批 B4)。进程单例从「一个」变成「一个 space 一个」——
  * 缺省 / `'default'` / 非法 id 一律映到 default 那份(= 老的 `<store>/project-dirs/`,
- * 零迁移)。仿 apps/backend-server 的 `*ByOwner` 模式:实例常驻,不做过期回收
+ * 零迁移)。仿不带界面的后端进程(`backend-standalone-main.ts`)那一侧的 `*ByOwner` 模式:实例常驻,不做过期回收
  * (一个空间一份索引,体量与 space 数同阶)。
  */
 const stores = new Map<string, ProjectsStore>()

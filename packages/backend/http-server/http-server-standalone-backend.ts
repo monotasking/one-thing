@@ -42,8 +42,8 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			reason: "ONETHING_SERVER_TOOLS=readonly",
 		});
 	}
-	// No `owner`: 2026-08-24 ruling — apps/backend-server takes no store lock. It defers
-	// through `<store>/run/http.json` (see apps/backend-server/src/main.ts) instead.
+	// No `owner`: 2026-08-24 ruling — the standalone backend process (`backend-standalone-main.ts`) takes no store lock. It defers
+	// through `<store>/run/http.json` (see packages/backend/backend-standalone-main.ts) instead.
 	const backend = await createOnethingBackend({
 		storePath,
 		logging,
@@ -94,7 +94,7 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			/**
 			 * 本机可信在这里必须是 `null`(B3):独立 server 到底可不可信取决于它
 			 * **绑到哪个地址**,而装配的时候还没 listen。声明点在
-			 * `apps/backend-server/src/main.ts` —— 回环才声明 `loopback-server`,非回环
+			 * `packages/backend/backend-standalone-main.ts` —— 回环才声明 `loopback-server`,非回环
 			 * 一个字不说。桌面把自己那只 backend 交给这段代码时(`embed.ts`)走的
 			 * 是另一张表,那张表里 `localTrust` 是 `desktop-embedded`。
 			 */

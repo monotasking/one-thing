@@ -7,7 +7,7 @@
  *     make one. Today the single prover is the collab drive token
  *     (collab/collab-drive-guard.ts, handed in by the caller as `proveCollabDrive`), because the coordinator is the only thing
  *     entitled to say "this turn runs as agent X". Everything else gets its
- *     principal computed here and any claim it carried is discarded — apps/backend-server
+ *     principal computed here and any claim it carried is discarded — the standalone backend process (`backend-standalone-main.ts`)
  *     forwards commands whole (`no field is destructured away`), so a trusted
  *     `principal` field would be a chosen identity for anyone who can POST.
  *

@@ -2,7 +2,7 @@
  * Incremental Server-Sent Events parser (spec: html.spec.whatwg.org/multipage/server-sent-events.html).
  * Pure TypeScript, no RN/DOM dependencies — unit-testable in plain node.
  *
- * Server side (apps/backend-server http.ts writeSse) emits:
+ * Server side (packages/backend/http-server/http-server-sse.ts writeSse) emits:
  *   id: <sequence>\n        (session:event frames only, when envelope.sequence is set)
  *   event: <name>\n
  *   data: <single-line JSON>\n\n

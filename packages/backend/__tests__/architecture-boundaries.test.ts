@@ -89,15 +89,18 @@ describe('architecture boundaries', () => {
   // 两条随去 core 批 3(2026-10-03)撤掉:core 目录不存在了,没有跨层同名可守(白名单批 1 就已清空);gateway 搬进了
   // `gateway/`,宿主禁令由上面 runtime 那一条管,「只依赖 core」的前提随 core 一起没了。
 
-  it('keeps the server host independent from Electron host code', () => {
+  /**
+   * 不带界面的后端进程入口不认识 Electron。
+   *
+   * 从前这是两条判 `apps/backend-server` 目录的断言(宿主专属 import 一条、Electron 应用源码一条)。2026-10-05 那只进程壳
+   * 并进后端包根成了 `backend-standalone-main.ts`(D255 起),两条合成这一条、只判这一只文件,判据逐条照旧。
+   * 包根散文件另外还被 `boundary:gate` 的 `checkRuntimeHostBoundary` 按同一套宿主禁令管着;这一条留下,是因为它多判
+   * `ipcMain` / `ipcRenderer` 与 `src/main|renderer|preload` 的相对引用,并且在单测里就红。
+   */
+  it('keeps the standalone backend process entry free of Electron and host code', () => {
     // apps/web(Vue 浏览器构建)于 2026-09-04 随 Vue 宿主退役;浏览器壳现在是 apps/desktop-react 的 web 模式。
-    expect(findForbiddenReferences('apps/backend-server', hostOnlyPatterns)).toEqual([])
-  })
-
-  it('keeps apps/backend-server off Electron app source (packages/shared stays allowed)', () => {
-    // apps/web intentionally builds packages/renderer via vite aliases, so this
-    // rule applies to the server host only.
-    expect(findForbiddenReferences('apps/backend-server', [
+    expect(findForbiddenReferencesInFile('packages/backend/backend-standalone-main.ts', [
+      ...hostOnlyPatterns,
       appSourceImportPattern,
     ])).toEqual([])
   })
@@ -150,10 +153,11 @@ describe('architecture boundaries', () => {
       'packages/shared',
       'packages/backend-client',
       'apps/desktop-react/src',
-      'apps/backend-server/src',
     ]) {
       expect(findForbiddenReferencesInCode(directory, [deadNames])).toEqual([])
     }
+    // 不带界面的后端进程入口(从前的 `apps/backend-server/src`,2026-10-05 并进后端包根)。
+    expect(findForbiddenReferencesInFile('packages/backend/backend-standalone-main.ts', [deadNames], { stripComments: true })).toEqual([])
   })
 
 })
@@ -213,6 +217,19 @@ function findForbiddenReferences(
         .filter(pattern => pattern.test(content))
         .map(pattern => `${filePath} matched ${pattern}`)
     })
+}
+
+/** 只判一只文件(不是目录)。`stripComments` 为真时先剥注释,与 `findForbiddenReferencesInCode` 同口径。 */
+function findForbiddenReferencesInFile(
+  filePath: string,
+  patterns: RegExp[],
+  options: { stripComments?: boolean } = {},
+): string[] {
+  const content = readFileSync(join(projectRoot, filePath), 'utf8')
+  const text = options.stripComments ? stripComments(content) : content
+  return patterns
+    .filter(pattern => pattern.test(text))
+    .map(pattern => `${filePath} matched ${pattern}`)
 }
 
 function stripComments(content: string): string {

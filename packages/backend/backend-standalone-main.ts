@@ -1,9 +1,19 @@
 /**
- * `server:start` 的进程壳。
+ * 不带界面的后端进程入口:整个仓库里唯一一个「只有后端、没有窗口」的进程从这里起。
  *
- * A 期(docs/design/one-core-2026-08.md §3)之后 HTTP/SSE 面与 server runtime 的
- * **实现**都在 `@onething/backend/http-server`,这个文件只剩三件事:读环境、决定要不要
- * 让位给桌面 core 服务、以及进程生命周期(监听 / 发现文件 / 退出刷盘)。
+ * 它做什么:读环境变量(端口、绑定地址、token、几个根目录),判断这个 store 是不是已经被桌面服务着
+ * (是就让位,`--force` 越过),装配一份后端并把 `@onething/backend/http-server` 的 HTTP/SSE 面挂上去,
+ * 监听端口、写 `<store>/run/http.json` 发现文件,收到 SIGINT / SIGTERM 时等后端拆除跑完(会话落盘)再退出。
+ * HTTP 面与 server runtime 的实现都不在这里,这个文件只管进程的生命周期。
+ *
+ * 谁用它:`bun run server:build` 把它打成 `dist/server/main.js`(构建配方在 `scripts/build-server.mjs`),
+ * `bun run server:start`、`bun run dev:web` 的 server 泳道与 `gate:acp` / `gate:search-index` / `gate:web-shell`
+ * 这些真机门跑的都是那份产物。
+ *
+ * 依赖:`http-server`(HTTP 面、server runtime、发现文件、本机信任)、`logging` 与它的装配入口、`session`
+ * (外来写者告警)。
+ *
+ * 它是进程入口,不许被任何文件 import(`entry:gate` 按 `*-standalone-main.ts` 的名字认它)。
  */
 import { createOnethingHttpServer } from '@onething/backend/http-server'
 import { createDevelopmentOnethingServerRuntime } from '@onething/backend/http-server'

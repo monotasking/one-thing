@@ -71,7 +71,7 @@ export interface ProductSendMessageCommand {
 	/**
 	 * The actor the sender CLAIMS. Honoured only when the drive token
 	 * proves the claim (see mintTurnPrincipal); otherwise overwritten.
-	 * apps/backend-server forwards commands whole, so this field is reachable
+	 * the standalone backend process (`backend-standalone-main.ts`) forwards commands whole, so this field is reachable
 	 * from the network — treating it as trusted would hand any caller a
 	 * chosen identity.
 	 */
@@ -236,7 +236,7 @@ export class ProductStreamEngine<
 		// and only here, for four reasons:
 		//
 		//  1. Every real user send funnels through this one method — desktop IPC,
-		//     the floating panel, voice, the search window, apps/backend-server's HTTP
+		//     the floating panel, voice, the search window, the standalone backend process's HTTP
 		//     command forward. One hook point covers them all; a per-entry hook
 		//     would have to be re-added at every future entry.
 		//  2. It is AFTER the system-internal early return, so goal / radio /

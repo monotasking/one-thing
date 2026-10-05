@@ -138,7 +138,8 @@ function selfTest() {
   expect('功能内部文件引 = 红', judge('packages/backend/settings/settings-store.ts', api) !== null)
   expect('别的功能的 client-api 引 = 红', judge('packages/backend/mcp/mcp-client-api.ts', api) !== null)
   expect('包根别的文件引 = 红', judge('packages/backend/backend.ts', api) !== null)
-  expect('宿主引 = 红', judge('apps/backend-server/src/main.ts', api) !== null)
+  expect('宿主引 = 红', judge('apps/cli/src/daemon-server.ts', api) !== null)
+  expect('不带界面的后端进程入口引 = 红', judge('packages/backend/backend-standalone-main.ts', api) !== null)
   expect('不是 client-api 的目标不判', judge('packages/backend/mcp/mcp.ts', 'packages/backend/settings/settings.ts') === null)
   const configure = 'packages/backend/logging/logging-configure.ts'
   expect('装配入口:形状认得出', configureEntryFeatureOf(configure) === 'logging')
@@ -147,6 +148,7 @@ function selfTest() {
   expect('装配入口:http-server 可以引', judge('packages/backend/http-server/http-server-runtime.ts', configure) === null)
   expect('装配入口:client-api 可以引', judge('packages/backend/logging/logging-client-api.ts', configure) === null)
   expect('装配入口:宿主可以引', judge('apps/cli/src/daemon-server.ts', configure) === null)
+  expect('装配入口:包根的进程入口可以引', judge('packages/backend/backend-standalone-main.ts', configure) === null)
   expect('装配入口:测试可以引', judge('packages/backend/toc/__tests__/record-turn.test.ts', configure) === null)
   expect('装配入口:L2 的功能文件引 = 红', judge('packages/backend/permission/permission-enforcement.ts', configure) !== null)
   expect('装配入口:同功能的普通文件引 = 红', judge('packages/backend/logging/logging-diagnostics.ts', configure) !== null)
@@ -155,7 +157,7 @@ function selfTest() {
     for (const label of failures) console.error('  ✗', label)
     process.exit(1)
   }
-  console.log('[client-api-gate] self-test ok — 26 checks passed')
+  console.log('[client-api-gate] self-test ok — 28 checks passed')
 }
 
 function main() {
