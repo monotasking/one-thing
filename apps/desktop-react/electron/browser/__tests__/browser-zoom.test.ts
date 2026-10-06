@@ -203,18 +203,6 @@ function fakeOps(): BrowserOps & { log: string[] } {
   }
 }
 
-const planCtx = (kind: 'user' | 'agent') => ({
-  principal: kind === 'user'
-    ? { kind: 'user' as const, id: 'local' }
-    : { kind: 'agent' as const, id: 'a1' },
-  invocation: {} as never,
-  abort: {} as never,
-  now: () => 0,
-}) as never
-
-const runCtx = () => ({ emit: () => {}, invocation: {} } as never)
-const REF = { scheme: 'browser', path: 't1' }
-
 describe('browser 自述:`zoom` 那一条', () => {
   /**
    * **`ui_change`,与 `activate` 同一档**,而判据在自述文件头那一句上:
@@ -247,29 +235,22 @@ describe('browser 自述:`zoom` 那一条', () => {
     expect(item.required).toContain('zoomLevel')
   })
 
-  it('三个方向各有一句给人看的话', () => {
-    const describe_ = browserResourceSpec.ops.zoom.describe!
-    expect(describe_({ level: 'in' })).toContain('in')
-    expect(describe_({ level: 'out' })).toContain('out')
-    expect(describe_({ level: 'reset' })).toContain('100%')
+  it('卡上那句人话是模板(过得了进程边界),由 core 按这一次的 level 渲染', () => {
+    // 渲染在 core(`renderDescribeTemplate`,用例在后端 `resource-shell-userOnly.test.ts`);这里只钉自述里有这一格。
+    expect(browserResourceSpec.ops.zoom.describeTemplate).toContain('{level}')
   })
 })
 
 describe('BrowserResourceProvider —— zoom', () => {
-  it('plan 按主体分档:人零效果,模型 `ui_change`', async () => {
-    const provider = new BrowserResourceProvider(fakeOps())
-    const byUser = await provider.plan('zoom', REF, { level: 'in' }, planCtx('user'))
-    expect(byUser.effects).toEqual([])
-    const byAgent = await provider.plan('zoom', REF, { level: 'in' }, planCtx('agent'))
-    expect(byAgent.effects.map(e => e.kind)).toEqual(['ui_change'])
+  it('自述的效果上界是 `ui_change`(人零效果、模型顶格那一档由 core 判)', () => {
+    expect(browserResourceSpec.ops.zoom.effects).toEqual(['ui_change'])
   })
 
-  it('apply 真的打了电话,三个方向逐字带下去', async () => {
+  it('run 真的打了电话,三个方向逐字带下去', async () => {
     const ops = fakeOps()
     const provider = new BrowserResourceProvider(ops)
     for (const level of ['in', 'out', 'reset'] as const) {
-      const intent = await provider.plan('zoom', REF, { level }, planCtx('user'))
-      await provider.apply('zoom', intent, runCtx())
+      await provider.run('zoom', 't1', { level })
     }
     expect(ops.log).toEqual(['zoom:t1:in', 'zoom:t1:out', 'zoom:t1:reset'])
   })
@@ -280,17 +261,17 @@ describe('BrowserResourceProvider —— zoom', () => {
    */
   it('缺 level / 认不出的 level 都是说得出口的拒绝', async () => {
     const provider = new BrowserResourceProvider(fakeOps())
-    await expect(provider.plan('zoom', REF, {}, planCtx('user')))
+    await expect(provider.run('zoom', 't1', {}))
       .rejects.toThrow(BrowserZoomLevelError)
-    await expect(provider.plan('zoom', REF, { level: 'bigger' }, planCtx('user')))
+    await expect(provider.run('zoom', 't1', { level: 'bigger' }))
       .rejects.toThrow(/'in' \| 'out' \| 'reset'/)
   })
 
   it('要一格地址;指着一格不存在的 tab 也是说得出口的拒绝', async () => {
     const provider = new BrowserResourceProvider(fakeOps())
-    await expect(provider.plan('zoom', null, { level: 'in' }, planCtx('user')))
+    await expect(provider.run('zoom', '', { level: 'in' }))
       .rejects.toThrow(/browser:<tabId>/)
-    await expect(provider.plan('zoom', { scheme: 'browser', path: 'gone' }, { level: 'in' }, planCtx('user')))
+    await expect(provider.run('zoom', 'gone', { level: 'in' }))
       .rejects.toThrow(/not an open tab/)
   })
 })

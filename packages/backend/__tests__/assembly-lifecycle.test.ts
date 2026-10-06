@@ -154,7 +154,6 @@ async function assemble(
       storePath: {},
       sandbox: {},
       auth: null,
-      legacySafeStorageForMigration: null,
       logging: null,
       voice,
       terminal: null,

@@ -8,7 +8,7 @@ process.env.ONETHING_STORE_PATH = storePath
 const { createOnethingBackend } = await import('../../../backend.js')
 class Sender extends EventEmitter { isDestroyed() { return false } send() {} }
 const backend = await createOnethingBackend({
-  host: { storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
+  host: { storePath: {}, sandbox: {}, auth: null, logging: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
     gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null },
   sender: new Sender() as never, toolRegistry: 'headless',

@@ -6,7 +6,7 @@
  *
  * ①**壳自己装配 core**(与 `gate:terminal` 同一条):`browser:` 是主进程 in-process
  *   挂的资源(§2.2-3),独立 `dist/server/main.js` 里根本没有它 —— 连上去量的会是
- *   「server 没有浏览器」这件废话。所以走 `gate-connect` 路径一,发现文件 owner=`shell`。
+ *   「server 没有浏览器」这件废话。所以走 `gate-connect` 路径一(第④步批 2b 起:桌面拉起后端子进程,`browser:` 由主进程以壳的身份认领,发现文件 owner=`backend`)。
  *
  * ②**窗子走 `ONETHING_GATE_OFFSCREEN` 而不是 `ONETHING_GATE_HEADLESS`**。B0-④ 实测:
  *   `show:false` 的窗整扇被 Chromium 当隐藏,合成器按 **1Hz** 节流(藏后心跳中位
@@ -541,7 +541,7 @@ async function main() {
 
     const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = readJson(path.join(store, 'run', 'http.json'))
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     })
     assert(await portConnects(record.host, record.port), `core 端口 ${record.port} 可连`)
 
@@ -2349,7 +2349,7 @@ async function main() {
       '第二趟的 core 写出发现文件,而且带着 cdp 口',
       () => {
         const found = readJson(path.join(store, 'run', 'http.json'))
-        return found && found.owner === 'shell' && found.pid !== record.pid ? found : undefined
+        return found && found.owner === 'backend' && found.pid !== record.pid ? found : undefined
       },
       40_000,
     )
@@ -2427,7 +2427,7 @@ async function main() {
       '⑱ 那一趟的 core 写出发现文件',
       () => {
         const found = readJson(path.join(proxyStore, 'run', 'http.json'))
-        return found && found.owner === 'shell' ? found : undefined
+        return found && found.owner === 'backend' ? found : undefined
       },
       40_000,
     )

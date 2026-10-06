@@ -11,10 +11,18 @@
  *   ② 起 `release/<platform>/onething.app/Contents/MacOS/onething`
  *        env ONETHING_STORE_PATH = 临时目录(**禁碰 ~/.onething**),
  *        `--user-data-dir=<临时>`,`--remote-debugging-port=<随机>`
- *   ③ 等 `<store>/run/http.json`(core 起来 + 内嵌 HTTP 面挂上的唯一凭证)
+ *   ③ 等 `<store>/run/http.json`(后端起来的唯一凭证)。第④步批 2b 起:`owner === 'backend'` 且
+ *      `pid !== app pid` —— 写它的是 app 用自己的二进制 + `ELECTRON_RUN_AS_NODE` 拉起的后端子进程
+ *      (这一条同时证了打包态 `RunAsNode` 保险丝开着、`backend.cjs` 被 asarUnpack 出来)
  *   ④ 用它的 token 打 `GET /api/capabilities` 与 `POST /api/rpc`(sessions.list)
  *   ⑤ CDP `GET /json` 断言至少一个 page 且 url 指向 asar 里的 index.html
- *   ⑥ SIGTERM → 等退出 → 断言 `run/http.json` 已删、没有残留进程
+ *   ⑥ SIGTERM app → 等退出 → 断言后端子进程也退了、`run/http.json` 已删、没有残留进程(缺省档:随 app 同停)
+ *   ⑦「退出后继续运行」档(第④步批 2b,`--no-keep-running` 跳过):经 `settings` 域把
+ *      `general.backendKeepRunningAfterQuit` 打开 → 起 app、退 app → 断言后端还活着、发现文件还在 → 再起 app →
+ *      断言它**没有**再拉一个(发现文件 pid 不变、同一只二进制的后端进程只有一个)→ 退 app → 直接 SIGTERM 后端收尾
+ *
+ * 离屏:子进程带 `ONETHING_GATE_HEADLESS=1`(窗不 `show()`、不进 Dock,页面照样加载,CDP 照样看得见 page)——
+ * 这道门开的是真 app,但不抢用户的前台。
  *
  * ── 钥匙串那一格(必读)────────────────────────────────────────────────────
  * 打包出来的 app 是一个**新的代码签名身份**;`safeStorage` 是绑身份的 Keychain 门面,
@@ -23,7 +31,7 @@
  * 所有失败路径都先等待隔离子进程退出，再删除测试目录；不以 process.exit 跳过清理。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -48,6 +56,98 @@ function packagedBinary() {
   return found
 }
 
+/** 起一次包(⑦ 用):与 ② 同一份环境,交回进程与「退了没有」。 */
+function launchApp(binary, store, userData) {
+  const app = spawn(binary, [`--user-data-dir=${userData}`], {
+    env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ELECTRON_ENABLE_LOGGING: '0', ONETHING_GATE_HEADLESS: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const state = { exited: null }
+  app.stdout.on('data', () => {})
+  app.stderr.on('data', () => {})
+  const exitedPromise = new Promise(resolve => app.once('exit', (code, signal) => { state.exited = { code, signal }; resolve() }))
+  return { app, state, exitedPromise }
+}
+
+async function waitDiscovery(store, ms, predicate = () => true) {
+  const file = path.join(store, 'run', 'http.json')
+  const deadline = Date.now() + ms
+  while (Date.now() < deadline) {
+    try {
+      const record = JSON.parse(readFileSync(file, 'utf8'))
+      if (record?.port && record?.token && predicate(record)) return record
+    } catch {}
+    await sleep(250)
+  }
+  return null
+}
+
+/**
+ * ⑦「退出后继续运行」档。起两次 app、一台后端:第一次起 app → 打开开关 → 退 app → 后端留着;第二次起 app →
+ * 借那一台(pid 不变、后端进程只有一个)→ 退 app → 门自己 SIGTERM 后端收尾。全在 ② 那间临时 store 上。
+ */
+async function keepRunningLeg({ binary, store, userData, headers }) {
+  const pidAliveHere = pid => { try { process.kill(pid, 0); return true } catch (error) { return error?.code === 'EPERM' } }
+  const first = launchApp(binary, store, userData)
+  let backendPid
+  try {
+    const record = await waitDiscovery(store, 25_000, r => r.owner === 'backend')
+    if (!record) fail('⑦ 第一次起 app:25s 内没见后端的发现文件')
+    backendPid = record.pid
+    const base = `http://${record.host}:${record.port}`
+    const call = async (domain, method, payload) => {
+      const response = await fetch(`${base}/api/rpc`, { method: 'POST', headers: headers(record.token), body: JSON.stringify({ domain, method, payload }) })
+      const body = await response.json()
+      if (!body?.ok) fail(`⑦ ${domain}.${method} 未 ok:${JSON.stringify(body).slice(0, 200)}`)
+      return body.data
+    }
+    const current = await call('settings', 'getSettings', {})
+    const saved = await call('settings', 'saveSettings', { ...current.settings, general: { ...current.settings.general, backendKeepRunningAfterQuit: true } })
+    if (saved?.settings?.general?.backendKeepRunningAfterQuit !== true) fail('⑦ 开关没存上')
+    // 主进程那台客户端经 settings:changed 重读设置;给它一拍再退。
+    await sleep(1500)
+    first.app.kill('SIGTERM')
+    await Promise.race([first.exitedPromise, sleep(10_000)])
+    if (!first.state.exited) fail('⑦ 第一次 app SIGTERM 10s 未退出')
+    await sleep(1000)
+    if (!pidAliveHere(backendPid)) fail(`⑦ 开着「继续运行」退 app 之后后端 ${backendPid} 不在了`)
+    if (!existsSync(path.join(store, 'run', 'http.json'))) fail('⑦ 开着「继续运行」退 app 之后发现文件没了')
+    log(`⑦ 退 app 之后后端还活着(pid ${backendPid}),发现文件还在 ✓`)
+  } finally {
+    if (!first.state.exited) try { first.app.kill('SIGKILL') } catch {}
+  }
+
+  // 「有没有再拉一个」的两条读数:每次拉起都会截断重写 `run/backend-stdio.log`(看它的 mtime),
+  // 主进程的 `shell.jsonl` 里借到一台会记一行 `adopted a live backend`。不数进程:后端改了进程名,
+  // 而且用户自己开着的桌面也是同一只二进制。
+  const stdioLog = path.join(store, 'run', 'backend-stdio.log')
+  const stdioBefore = existsSync(stdioLog) ? statSync(stdioLog).mtimeMs : 0
+  const second = launchApp(binary, store, userData)
+  try {
+    // 给第二次起的 app 足够的时间去「借」或者(错误地)拉第二台。
+    await sleep(8_000)
+    const record = await waitDiscovery(store, 5_000)
+    if (!record || record.pid !== backendPid) fail(`⑦ 第二次起 app 后发现文件 pid 变了:${record?.pid} ≠ ${backendPid}`)
+    if ((existsSync(stdioLog) ? statSync(stdioLog).mtimeMs : 0) !== stdioBefore) fail('⑦ 第二次起 app 又拉了一台后端(backend-stdio.log 被重写了)')
+    second.app.kill('SIGTERM')
+    await Promise.race([second.exitedPromise, sleep(10_000)])
+    if (!second.state.exited) fail('⑦ 第二次 app SIGTERM 10s 未退出')
+    const shellLog = path.join(store, 'log', 'shell.jsonl')
+    const adopted = existsSync(shellLog) && readFileSync(shellLog, 'utf8').includes('adopted a live backend')
+    if (!adopted) fail('⑦ shell.jsonl 里没有「adopted a live backend」那一行')
+    log('⑦ 第二次起 app:借了那一台(pid 不变、没有重写 stdio 文件、shell.jsonl 记着借),没有再拉一个 ✓')
+  } finally {
+    if (!second.state.exited) try { second.app.kill('SIGKILL') } catch {}
+    if (backendPid && pidAliveHere(backendPid)) {
+      try { process.kill(backendPid, 'SIGTERM') } catch {}
+      for (let i = 0; i < 80 && pidAliveHere(backendPid); i++) await sleep(100)
+      if (pidAliveHere(backendPid)) try { process.kill(backendPid, 'SIGKILL') } catch {}
+    }
+  }
+  if (existsSync(path.join(store, 'run', 'http.json'))) fail('⑦ SIGTERM 后端之后发现文件仍在')
+  log('⑦ 门 SIGTERM 后端收尾,发现文件已删 ✓')
+}
+
 async function main() {
 // ① 打包
 if (!noBuild) {
@@ -63,7 +163,7 @@ const store = mkdtempSync(path.join(tmpdir(), 'onething-gate-packaged-store-'))
 const userData = mkdtempSync(path.join(tmpdir(), 'onething-gate-packaged-udd-'))
 const cdpPort = 20000 + Math.floor(Math.random() * 20000)
 const child = spawn(binary, [`--user-data-dir=${userData}`, `--remote-debugging-port=${cdpPort}`], {
-  env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ELECTRON_ENABLE_LOGGING: '0' },
+  env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ELECTRON_ENABLE_LOGGING: '0', ONETHING_GATE_HEADLESS: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 let exited = null
@@ -81,7 +181,17 @@ const startupDiagnostics = () => `stdout:\n${stdoutTail}\nstderr:\n${stderrTail}
 
 const discoveryPath = path.join(store, 'run', 'http.json')
 
+/** 这间临时 store 里的后端子进程(③ 记下;收尸时只收它 —— 发现文件里、这间 store 的那一台)。 */
+const backendPids = new Set()
+const pidAlive = pid => { try { process.kill(pid, 0); return true } catch (error) { return error?.code === 'EPERM' } }
+
 async function cleanup() {
+  for (const pid of backendPids) {
+    if (!pidAlive(pid)) continue
+    try { process.kill(pid, 'SIGTERM') } catch {}
+    for (let i = 0; i < 80 && pidAlive(pid); i++) await sleep(100)
+    if (pidAlive(pid)) try { process.kill(pid, 'SIGKILL') } catch {}
+  }
   if (!exited && child.pid) {
     try { child.kill('SIGTERM') } catch {}
     for (let i = 0; i < 100 && !exited; i++) await sleep(100)
@@ -117,8 +227,10 @@ try {
     fail(`25s 内没见 ${discoveryPath}\n${startupDiagnostics()}`)
   }
   log(`core 起来了:http://${record.host}:${record.port} owner=${record.owner} pid=${record.pid}`)
-  if (record.owner !== 'shell') fail(`owner 应为 shell(React 壳),读到 ${record.owner} —— 起的不是 React 壳`)
-  if (record.pid !== child.pid) fail(`发现文件 pid ${record.pid} ≠ 起的进程 ${child.pid}`)
+  if (record.owner !== 'backend') fail(`owner 应为 backend(app 拉起的后端子进程),读到 ${record.owner}`)
+  if (record.pid === child.pid) fail(`发现文件 pid ${record.pid} 就是 app 自己 —— 后端应在另一个进程里`)
+  backendPids.add(record.pid)
+  log(`③ 后端是另一个进程 ✓(app pid ${child.pid},后端 pid ${record.pid})`)
 
   // ④ 打 API
   const base = `http://${record.host}:${record.port}`
@@ -256,10 +368,14 @@ try {
   child.kill('SIGTERM')
   for (let i = 0; i < 100 && !exited; i++) await sleep(100)
   if (!exited) fail('SIGTERM 10s 未退出')
+  for (let i = 0; i < 80 && pidAlive(record.pid); i++) await sleep(100)
+  if (pidAlive(record.pid)) fail(`app 退了,后端子进程 ${record.pid} 8s 内没跟着退(缺省档应随 app 同停)`)
   if (existsSync(discoveryPath)) fail('退出后 run/http.json 仍在')
   const leftovers = spawnSync('pgrep', ['-f', binary], { encoding: 'utf8' })
   if (leftovers.status === 0 && leftovers.stdout.trim()) fail(`残留进程:${leftovers.stdout.trim()}`)
-  log(`⑥ 退出干净(code=${exited.code} signal=${exited.signal}),发现文件已删,零残留`)
+  log(`⑥ 退出干净(code=${exited.code} signal=${exited.signal}),后端子进程跟着退了,发现文件已删,零残留`)
+
+  if (!process.argv.includes('--no-keep-running')) await keepRunningLeg({ binary, store, userData, headers: (token) => ({ authorization: `Bearer ${token}`, 'content-type': 'application/json' }) })
   log('complete: GREEN')
 } finally {
   await cleanup()

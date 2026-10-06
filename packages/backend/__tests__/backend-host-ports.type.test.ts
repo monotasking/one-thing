@@ -14,12 +14,11 @@ import { describe, expect, it } from 'vitest'
 import { getSpeechOutput } from '@onething/backend/voice'
 import { applyHostPorts, type OnethingHostPorts } from '../backend-host-ports.js'
 
-/** 十六项写全 = 合法(P3 加了 `speechOutput`,第④步批 0 加了 `legacySafeStorageForMigration`;第④步批 1 退役了 `shell` / `dialog` / `settings` 三格)。这也是三个宿主(与冒烟探针)交出来的那张表的形状。 */
+/** 十五项写全 = 合法(P3 加了 `speechOutput`,第④步批 0 加了 `legacySafeStorageForMigration`;第④步批 1 退役了 `shell` / `dialog` / `settings` 三格;第④步批 2b 退役了 `legacySafeStorageForMigration`,旧密文改由 Electron 先读后交)。这也是三个宿主(与冒烟探针)交出来的那张表的形状。 */
 const complete: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
   auth: null,
-  legacySafeStorageForMigration: null,
   logging: null,
   voice: null,
   terminal: null,
@@ -41,7 +40,6 @@ const missingVoice: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
   auth: null,
-  legacySafeStorageForMigration: null,
   logging: null,
   skillsEnvironment: null,
   todoPlan: null,

@@ -17,11 +17,16 @@
  * (`dialog` / `shell` 两个 RPC 域);现在桌面经 preload 的 `host:client-action` 交给主进程,
  * 浏览器壳(以及将来的手机)没有那条口。
  *
+ * 第④步批 2b 起多了**第三格:后端进程的事**(后端是桌面拉起的子进程:它此刻的样子、重启它、定位它的日志),
+ * 判据是 preload 上 `clientAction` 与 `onBackendState` 两格都在(`canSeeBackendProcess()`)。
+ *
  * **「这台客户端做不做得到」只有一个判据:preload 上有没有 `clientAction`**(`canRunClientActions()`)。
  * 按钮画不画、一次调用答不答「这台客户端做不了」,都从它推,不另立第二个 flag;后端的
  * `GET /api/capabilities` 不管这件事(它答不出「问的是哪台客户端」)。
  */
 import type {
+  BackendHostState,
+  BackendStateBridge,
   ClientActionBridge,
   ClientActionDone,
   ShowOpenDialogRequest,
@@ -122,4 +127,46 @@ export async function openExternalViaHost(url: string): Promise<ClientActionDone
   const bridge = clientActionBridge()
   if (!bridge) return undefined
   return bridge({ kind: 'openExternal', url })
+}
+
+/* ── 第三格:拉起后端的那个宿主才答得出的事(第④步批 2b)──────────────────────── */
+
+function backendStateBridge(): BackendStateBridge | undefined {
+  if (typeof window === 'undefined') return undefined
+  const host = (window as unknown as { onethingHost?: { onBackendState?: unknown } }).onethingHost
+  return typeof host?.onBackendState === 'function' ? (host.onBackendState as BackendStateBridge) : undefined
+}
+
+/**
+ * 这台客户端看不看得见后端进程(桌面:后端是它拉起的子进程)。**唯一判据**:preload 上两格都在。
+ * 浏览器壳答 `false`:设置页的后端三行不画,横幅也不会有。
+ */
+export function canSeeBackendProcess(): boolean {
+  return clientActionBridge() !== undefined && backendStateBridge() !== undefined
+}
+
+/** 问一次后端此刻的样子。没有这条口 = `undefined`。 */
+export async function readBackendHostState(): Promise<BackendHostState | undefined> {
+  const bridge = clientActionBridge()
+  if (!bridge || !backendStateBridge()) return undefined
+  return bridge({ kind: 'backendStatus' })
+}
+
+/** 订主进程推的后端状态。没有这条口交一个 noop 退订(订不上就是订不上,不假装)。 */
+export function onBackendHostStateChange(listener: (state: BackendHostState) => void): () => void {
+  return backendStateBridge()?.(listener) ?? (() => {})
+}
+
+/** 「重启后端」。没有这条口答 `ok: false`(调用方本来就不画那颗钮)。 */
+export async function restartBackendViaHost(): Promise<ClientActionDone> {
+  const bridge = clientActionBridge()
+  if (!bridge) return { ok: false, error: 'this client does not run the backend' }
+  return bridge({ kind: 'restartBackend' })
+}
+
+/** 「查看日志」:在文件管理器里定位后端的 `app.jsonl`(路径由主进程自己算)。 */
+export async function revealBackendLogViaHost(): Promise<ClientActionDone> {
+  const bridge = clientActionBridge()
+  if (!bridge) return { ok: false, error: 'this client does not run the backend' }
+  return bridge({ kind: 'revealBackendLog' })
 }

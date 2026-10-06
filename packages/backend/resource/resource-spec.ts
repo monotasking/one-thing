@@ -106,6 +106,12 @@ export interface OpSpec {
    * 一种资源里有哪几类实体,是那种资源自己的事。
    */
   readonly entity?: string
+  /**
+   * **只许人调**:非用户主体(模型 / 插件 / 系统)发起时在 plan 期当场拒。今天只有壳交上来的做法会带它
+   * (内置浏览器的 `respondPermission`,第④步批 2b);core 自己的 provider 在自己的 `plan` 里判,用不着这一格。
+   * 内核不解释它,`ShellResourceProvider.plan` 读它;`describe` 时透传。
+   */
+  readonly userOnly?: boolean
 }
 
 /**

@@ -6,7 +6,6 @@
  * session、DownloadItem、计时器、文件系统),这里喂的是记调用的替身。
  */
 import { describe, expect, it, vi } from 'vitest'
-import { assertResourceSpec } from '@onething/backend/resource/resource-api'
 
 import { beginsNewFindSession, foldFoundInPage } from '../find.js'
 import {
@@ -29,7 +28,6 @@ import {
 import { parseNativeViewRequest } from '../native-view-ipc.js'
 import { browserResourceSpec } from '../resource-spec.js'
 import {
-  BrowserPermissionNotUserError,
   BrowserPermissionParamsError,
   BrowserPermissionRequestUnknownError,
   BrowserResourceProvider,
@@ -446,92 +444,45 @@ function opsWithPermissions(answered: string[] = []) {
   return ops
 }
 
-const planCtx = (kind: 'user' | 'agent' | 'system') => ({
-  principal: kind === 'user'
-    ? { kind: 'user' as const, id: 'local' }
-    : kind === 'agent'
-      ? { kind: 'agent' as const, id: 'a1' }
-      : { kind: 'system' as const, id: 's1' },
-  invocation: {} as never,
-  abort: {} as never,
-  sandbox: undefined,
-  now: () => 0,
-}) as never
-
-describe('自述:B3-a 新加的那几行', () => {
-  it('契约照样过;做法九条(K3 加 `zoom`)、事实九条(2026-09-12 加 `spawned` / `spawnBlocked`)', () => {
-    expect(assertResourceSpec(browserResourceSpec)).toBeUndefined()
-    expect(Object.keys(browserResourceSpec.ops).sort()).toEqual([
-      'activate', 'back', 'close', 'forward', 'navigate', 'open', 'reload', 'respondPermission',
-      'zoom',
-    ])
-    expect(Object.keys(browserResourceSpec.events).sort()).toEqual([
-      'closed', 'download', 'loading', 'navigated', 'opened',
-      'permissionRequested', 'permissionResolved', 'spawnBlocked', 'spawned',
-    ])
-  })
-
-  it('**查找一个字都没进自述**(它是视图状态,判词在 resource-spec 文件头)', () => {
-    const words = JSON.stringify(browserResourceSpec)
-    expect(Object.keys(browserResourceSpec.ops)).not.toContain('find')
-    expect(Object.keys(browserResourceSpec.reads)).not.toContain('find')
-    expect(Object.keys(browserResourceSpec.events)).not.toContain('find')
-    expect(words.includes('findInPage')).toBe(false)
-  })
-})
-
 describe('respondPermission', () => {
-  it('**非用户主体一律拒,而且在 plan 期就拒**(AI 替网页放权限是越权)', async () => {
-    const provider = new BrowserResourceProvider(opsWithPermissions())
-    for (const kind of ['agent', 'system'] as const) {
-      await expect(
-        provider.plan('respondPermission', { scheme: 'browser', path: 't1' }, { requestId: 'p1', allow: true }, planCtx(kind)),
-      ).rejects.toBeInstanceOf(BrowserPermissionNotUserError)
+  it('**只许人答**这一句写成自述里的数据(`userOnly`),由 core 在 plan 期拒 —— 壳这一侧不再判主体', () => {
+    // 判据搬进了 core(`ShellResourceProvider.plan` 读 `userOnly`,用例在 `resource-shell-userOnly.test.ts`)。
+    expect(browserResourceSpec.ops.respondPermission?.userOnly).toBe(true)
+    for (const [op, spec] of Object.entries(browserResourceSpec.ops)) {
+      if (op !== 'respondPermission') expect(spec.userOnly, op).toBeUndefined()
     }
   })
 
-  it('用户主体:零效果的 Intent,apply 打到 ops 上', async () => {
+  it('命令到了说明 core 已经放行:run 打到 ops 上,答一句结果文本', async () => {
     const answered: string[] = []
     const provider = new BrowserResourceProvider(opsWithPermissions(answered))
-    const intent = await provider.plan(
-      'respondPermission', { scheme: 'browser', path: 't1' }, { requestId: 'p1', allow: true }, planCtx('user'),
-    )
-    expect(intent.effects).toEqual([])
-    const result = await provider.apply('respondPermission', intent, {
-      emit: () => {},
-    } as never)
+    const text = await provider.run('respondPermission', 't1', { requestId: 'p1', allow: true })
     expect(answered).toEqual(['p1:true'])
-    expect(result.content[0]).toMatchObject({ type: 'text' })
+    expect(text).toContain('allowed p1')
   })
 
   it('参数缺一格 = 一句说得出口的拒绝;`allow` 必须是真布尔', async () => {
     const provider = new BrowserResourceProvider(opsWithPermissions())
-    const ref = { scheme: 'browser', path: 't1' }
-    await expect(provider.plan('respondPermission', ref, { allow: true }, planCtx('user')))
+    await expect(provider.run('respondPermission', 't1', { allow: true }))
       .rejects.toBeInstanceOf(BrowserPermissionParamsError)
-    await expect(provider.plan('respondPermission', ref, { requestId: 'p1' }, planCtx('user')))
+    await expect(provider.run('respondPermission', 't1', { requestId: 'p1' }))
       .rejects.toBeInstanceOf(BrowserPermissionParamsError)
   })
 
   it('答一问早就没了的 → 抛一句实话,不静默', async () => {
     const provider = new BrowserResourceProvider(opsWithPermissions())
-    const intent = await provider.plan(
-      'respondPermission', { scheme: 'browser', path: 't1' }, { requestId: 'gone', allow: false }, planCtx('user'),
-    )
-    await expect(provider.apply('respondPermission', intent, { emit: () => {} } as never))
+    await expect(provider.run('respondPermission', 't1', { requestId: 'gone', allow: false }))
       .rejects.toBeInstanceOf(BrowserPermissionRequestUnknownError)
   })
 
   it('三条新事实各发一次,地址是那一格 tab', () => {
     const provider = new BrowserResourceProvider(opsWithPermissions())
-    const seen: { ref: unknown; event: string; payload: unknown }[] = []
-    provider.attach({
-      emit: (ref: unknown, event: string, payload: unknown) => seen.push({ ref, event, payload }),
-    } as never)
+    const seen: { path: string; event: string; payload: unknown }[] = []
+    provider.attach((path, event, payload) => { seen.push({ path, event, payload }) })
     provider.emitPermissionRequested({ tabId: 't1', requestId: 'p1', permission: 'geolocation', origin: 'https://a.test' })
     provider.emitPermissionResolved({ tabId: 't1', requestId: 'p1', allow: false, reason: 'timeout' })
     provider.emitDownload({ tabId: 't1', filename: 'a.zip', state: 'done', path: '/d/a.zip' })
     expect(seen.map((row) => row.event)).toEqual(['permissionRequested', 'permissionResolved', 'download'])
-    expect(seen.every((row) => (row.ref as { path: string }).path === 't1')).toBe(true)
+    expect(seen.every((row) => row.path === 't1')).toBe(true)
   })
 })

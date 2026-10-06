@@ -85,6 +85,8 @@ const toastOfRecord = new Map<string, number>()
  */
 export interface NotifyOptions {
   action?: { label: string; onClick: () => void }
+  /** 第二道门(第④步批 2b「后端已停止」横幅的「查看日志」)。同样不进存档。 */
+  secondaryAction?: { label: string; onClick: () => void }
 }
 
 export function notify(draft: NotifyDraft, options: NotifyOptions = {}): string {
@@ -105,6 +107,7 @@ export function notify(draft: NotifyDraft, options: NotifyOptions = {}): string 
       // 有详情才画门。没详情的那些(「消息没发出去」之类)点过去也无话可说。
       action: options.action
         ?? (draft.detail ? { label: t('notify.viewDetails'), onClick: openNotificationCenter } : undefined),
+      ...(options.secondaryAction ? { secondaryAction: options.secondaryAction } : {}),
     })
     toastOfRecord.set(id, toastId)
     // 存档自己是个环,被挤出去的那些记录再也不会来合并了 —— 它们在这张表里的位置

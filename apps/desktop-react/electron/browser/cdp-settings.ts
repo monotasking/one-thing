@@ -17,15 +17,19 @@
  * ## 读一次 + 订一条,不是「每次要用时去读」
  *
  * 旗文件是**写出去给下一次启动看的**,没有第二个读者在运行期问它。所以这里的活
- * 只有两下:装配完读一次(把盘上那份与设置对齐 —— 有人手改过 `settings.json`、
+ * 只有两下:连上后端后读一次(把盘上那份与设置对齐 —— 有人手改过 `settings.json`、
  * 或者上一次退出时没写成),之后每次 `settings:changed` 再折一次。
  *
- * ## 单槽端口要**串联**,不是覆盖
+ * ## 订阅源是主进程那台客户端(第④步批 2b)
  *
- * `configureSettingsEventBroadcaster` 是一个单槽端口,而内嵌 HTTP 面已经占着它
- * (它要把设置变更扇成 SSE)。所以这里照 `http-server/http-server-runtime.ts:1473` 那条判例:
- * 先取走前一个,装一个「先叫前一个、再干自己的」,拆的时候原样装回去。
- * 覆盖 = 壳的设置页从此收不到 `settings:changed` 的回声。
+ * 从前这里串在后端进程内那只 `settings:changed` 单槽广播器上(「先叫前一个、再干自己的」);
+ * 后端出了这个进程,那只广播器就不在这里了。订阅源换成 `core-client.ts` 的设置 feed
+ * (订 `GET /api/events` 上同名的全局事件、再取整份设置),处理函数一个字不变。
+ *
+ * ## `run/http.json` 里不再写 `cdp` 那一格(第④步批 2b)
+ *
+ * 发现文件归后端进程写,而 CDP 口开在 Electron 这个进程上;AI 用浏览器那一半(chrome-devtools-mcp
+ * 连 CDP)用户已定不做,所以从前那只 `cdpDiscoveryExtras` 与它在发现文件里补的那一格一起退役。
  *
  * ## 零 electron import
  *
@@ -35,11 +39,6 @@
  */
 
 import type { AppSettings } from '@shared/ipc/settings.js'
-import type { HttpDiscoveryExtras } from '@shared/backend/http-discovery.js'
-import type {
-  SettingsEvent,
-  SettingsEventBroadcaster,
-} from '@onething/backend/settings'
 import { writeCdpLaunchFlag, type CdpLaunchFlag } from './cdp-flag.js'
 
 /** Chromium 那个开关的名字。三处(append / 探活 / 发现文件)共用一个串。 */
@@ -61,82 +60,37 @@ export function cdpFlagFromSettings(settings: Pick<AppSettings, 'browser'>): Cdp
   return { port }
 }
 
-/** `app.commandLine` 里本模块要问的那两句。真 `app` 直接喂得进来(结构相容)。 */
-export interface CdpCommandLineProbe {
-  hasSwitch(name: string): boolean
-  getSwitchValue(name: string): string
-}
-
-/**
- * 这个进程**此刻真的**开着 CDP 口吗 —— 开着就交出发现文件要补的那一格。
- *
- * 判据是命令行,**不是设置**:设置改了要重启才生效,按设置写发现文件等于说谎
- * (别的客户端会照着那个口去连,然后收一句「连接被拒绝」)。
- *
- * 命令行上没有、或者值不是一个合法端口(空串 / `0` / 非数字)→ `undefined`,
- * 于是那个键根本不出现在 `run/http.json` 里。
- */
-export function cdpDiscoveryExtras(commandLine: CdpCommandLineProbe): HttpDiscoveryExtras | undefined {
-  if (!commandLine.hasSwitch(CDP_SWITCH_NAME)) return undefined
-  const port = Number.parseInt(commandLine.getSwitchValue(CDP_SWITCH_NAME), 10)
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined
-  return { cdp: { port } }
-}
-
 export interface CdpSettingsWatcherOptions {
   /** 旗文件落在 `<storePath>/run/cdp.json`。缺席 = 按当前 store 解析。 */
   readonly storePath?: string
-  /** 当下的设置。装配完调一次。 */
-  readSettings(): Pick<AppSettings, 'browser'>
-  /** 单槽端口的读口(串联用)。 */
-  getBroadcaster(): SettingsEventBroadcaster | null
-  /** 单槽端口的写口。 */
-  setBroadcaster(next: SettingsEventBroadcaster | null): void
+  /**
+   * 订设置(生产里是 `core-client.ts` 的设置 feed):订上去之后先交一次当下那一份,之后每次保存再交。
+   * 返回退订。
+   */
+  subscribe(listener: (settings: Pick<AppSettings, 'browser'>) => void): () => void
   /**
    * 写旗文件砸了怎么说。缺席 = 咽掉 —— 这一格的全部后果是「下次启动 CDP 口
-   * 状态没跟上」,不该让它把装配或者一次保存设置炸掉。
+   * 状态没跟上」,不该让它把一次保存设置炸掉。
    */
   onError?(error: unknown): void
 }
 
 /**
  * 装上「设置 → 旗文件」这条路。返回摘掉它的那一手(**幂等**)。
- *
- * 摘掉时把单槽端口**原样装回去** —— 装回去的是「装我的时候那里放着的那一个」,
- * 不是 `null`:内嵌 HTTP 面的扇出还在它上面挂着(与 `http-server/http-server-runtime.ts` 的
- * `restoreSettingsEventBroadcaster` 同一条纪律)。
  */
 export function installCdpSettingsWatcher(options: CdpSettingsWatcherOptions): () => void {
-  const apply = (settings: Pick<AppSettings, 'browser'>): void => {
+  let disposed = false
+  const off = options.subscribe(settings => {
+    if (disposed) return
     try {
       writeCdpLaunchFlag(options.storePath, cdpFlagFromSettings(settings))
     } catch (error) {
       options.onError?.(error)
     }
-  }
-
-  // ① 开场对齐一次:盘上那份未必等于设置那一格(有人手改过 settings.json、
-  //    或者上一次退出时旗文件没写成)。
-  try {
-    apply(options.readSettings())
-  } catch (error) {
-    options.onError?.(error)
-  }
-
-  // ② 串联进单槽端口:先叫前一个,再折自己这一格。
-  const previous = options.getBroadcaster()
-  const mine: SettingsEventBroadcaster = (event: SettingsEvent) => {
-    previous?.(event)
-    apply(event.settings)
-  }
-  options.setBroadcaster(mine)
-
-  let disposed = false
+  })
   return () => {
     if (disposed) return
     disposed = true
-    // 只在还是**我**占着那一格时才还原 —— 中间有人又串了一层的话,把它的那一层
-    // 一起抹掉比不还原更坏。
-    if (options.getBroadcaster() === mine) options.setBroadcaster(previous)
+    off()
   }
 }

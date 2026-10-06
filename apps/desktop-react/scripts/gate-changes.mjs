@@ -580,7 +580,7 @@ async function main() {
 
     const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     })
     assert(await portConnects(record.host, record.port), `core 端口 ${record.port} 可连`)
 

@@ -20,6 +20,7 @@ import type {
   MemoryReport,
   MemoryTrimReport,
 } from '@shared/memory/types.js'
+import type { MemoryBudget } from '@shared/memory/budget'
 
 export interface MemoryHolder {
   /** 唯一标识,点分形式,如 `events.replay-buffers`。 */
@@ -131,12 +132,7 @@ export class MemoryRegistry {
   }
 }
 
-export interface MemoryBudget {
-  /** 超过此值按 `soft` 力度释放。 */
-  softBytes: number
-  /** 超过此值按 `hard` 力度释放。 */
-  hardBytes: number
-}
+export type { MemoryBudget } from '@shared/memory/budget'
 
 export interface MemoryGovernorOptions {
   registry: MemoryRegistry

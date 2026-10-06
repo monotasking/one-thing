@@ -287,7 +287,7 @@ async function runShellLane(source, oauthCandidates) {
 
     const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = discoveryOf(store)
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     })
     await waitFor('壳的 core 端口可连', () => portConnects(record.host, record.port))
     // 迁移是装配序列里的一步,而装配在开窗之前就跑完了;这里等的是那次写盘落地。

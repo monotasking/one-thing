@@ -46,6 +46,22 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * 运行了多久 → 一句短读数(设置页「后端:运行中 · … · 已运行 {duration}」那一格,第④步批 2b)。
+ * 与 `formatBytes` 同一条判据:单位符号(s / m / h / d)是数据不是文案。只报最大的两档,
+ * 不到一分钟报秒(「45s」),跨天报「3d 4h」;负数 / 非数当 0。
+ */
+export function formatUptime(ms: number): string {
+  const total = Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : 0
+  const days = Math.floor(total / 86_400)
+  const hours = Math.floor((total % 86_400) / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`
+  if (minutes > 0) return `${minutes}m`
+  return `${total}s`
+}
+
+/**
  * 字节数 → 一句人话。单位符号(B / KB / MB / GB)是**数据**不是文案:
  * 换一门语言它不该变,所以它不进字典(判据见 i18n/index.ts 顶部)。
  *

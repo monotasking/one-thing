@@ -85,7 +85,6 @@ describe('目录资源在真装配里(K3-c)', () => {
         storePath: {},
         sandbox: {},
         auth: null,
-        legacySafeStorageForMigration: null,
         logging: null,
         voice: null,
         terminal: null,

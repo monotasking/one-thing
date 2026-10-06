@@ -57,7 +57,6 @@ describe("readonly 档不给资源工具(K3-a')", () => {
         storePath: {},
         sandbox: {},
         auth: null,
-        legacySafeStorageForMigration: null,
         logging: null,
         voice: null,
         terminal: null,

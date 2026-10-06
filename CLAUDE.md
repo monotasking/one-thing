@@ -26,15 +26,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   永不抛 —— 钥匙串弹框没人点时装配最多在凭证那一步多等 3 秒,然后进「凭证已锁定」(顶部横幅 + 重试),不再像从前
   `safeStorage.isEncryptionAvailable()` 那样挂死在 `migrateProviderConfigToDefaultSpace()`。**测试与门绝不碰真钥匙串**:
   vitest 全局 setup 强制 `none`,钥匙串门面在 vitest 里拒起真 `security`;起 server / Electron 的门脚本一律显式设
-  `ONETHING_CREDENTIALS_KEYRING: 'file'` 并指临时 store。Electron 的 `safeStorage` 从此只当**迁移用的旧解密器**(宿主端口
-  `legacySafeStorageForMigration`):存量 `encryption: 'safeStorage'` 文件在桌面装配时迁进主密钥信封,旧文件改名
-  `.safestorage-backup` 留底。换过 Electron 二进制之后,那次迁移(以及旧单槽的读)仍要 Electron 的 app 身份,第一次起桌面
-  照旧人手起、在授权框上点「始终允许」(`sign:dev:mac` 的 ad-hoc 签名每换一次二进制就换一次身份)。
+  `ONETHING_CREDENTIALS_KEYRING: 'file'` 并指临时 store。Electron 的 `safeStorage` 从此只用在**先读后交**(第④步批 2b):
+  还有 `encryption: 'safeStorage'` 的旧文件时,Electron 在拉起后端之前用它解开(`apps/desktop-react/electron/legacy-credentials.ts`),
+  后端就绪后经 `spaces.handOverLegacyCredentials`(只给本机信任的来访者)交进去,后端封进主密钥信封、旧文件改名
+  `.safestorage-backup` 留底;没有旧文件就一次都不问 `safeStorage`。换过 Electron 二进制之后,那次读仍要 Electron 的 app 身份,
+  第一次起桌面照旧人手起、在授权框上点「始终允许」(`sign:dev:mac` 的 ad-hoc 签名每换一次二进制就换一次身份;后端的 `security`
+  条目信任的也是这只二进制,同一个机制)。
 - **端口**:React 桌面的渲染层 dev server 是 5175(`electron:dev`),浏览器壳是 5174(`web:dev`)。后端 HTTP/SSE 端口是
   **动态的**:谁在服务这个 store,谁写 `<store>/run/http.json`;浏览器壳的 dev `/api` 代理
   (`apps/desktop-react/vite/dev-api-proxy.ts`,做成插件是因为 vite 自带代理在创建时就钉死目标)**每个请求重读**这份
   文件并注入 Bearer token,读不到才回落 `ONETHING_API_URL` || `http://127.0.0.1:8787`。`bun run dev` 带桌面泳道时
-  **不起第二个 server 进程** —— 桌面自己就是后端。
+  **不起第二个 server 进程** —— 桌面拉起的后端子进程(Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 跑 `dist-electron/backend.cjs`,
+  `apps/desktop-react/electron/backend-process.ts`)就是这个 store 的后端。改了 `packages/backend` 要重跑 `electron:build`
+  (或整条泳道)再在设置 → 通用里点「重启后端」。
 
 ## 2. 命令
 
@@ -81,7 +85,7 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
 | `packages/backend`(`@onething/backend`) | **唯一的后端包**:装配配方 + 一个功能一个目录 + 界面连进来的 HTTP 服务器 + 不带界面的后端进程入口(`backend-standalone-main.ts`) |
 | `packages/shared`(`@shared`) | 后端与界面之间的契约(RPC 路由契约、事件词汇、发现文件形状),加上两边必须算得一样的纯逻辑(会话投影、引用、效果表……)。**只引自己**,不引 node、不引 `@onething/*` |
 | `packages/backend-client`(`@onething/backend-client`) | 连后端用的 SDK:`Transport`(fetch + fetch 流式 SSE + Bearer)、`client.api(router)`、事件中心。Node 与浏览器同一份代码 |
-| `apps/desktop-react` | **唯一的桌面**(Electron + React),`--mode web` 时也是浏览器壳。主进程自己装配一份后端并挂上 HTTP 面;渲染层只走 HTTP/SSE |
+| `apps/desktop-react` | **唯一的桌面**(Electron + React),`--mode web` 时也是浏览器壳。主进程**不装配后端**:它拉起、发现、监督、停止一个后端子进程(`electron/backend-process.ts`),自己是那台后端的 HTTP 客户端(内置浏览器以壳的身份认领 `browser:`);渲染层只走 HTTP/SSE。`electron/**` 对 `@onething/backend` 只许 `import type`(日志一族除外,`boundary:gate`) |
 | `apps/cli` | CLI 守护进程与命令(`bin/onething.mjs` → `dist/cli/main.cjs`) |
 | `apps/mobile` | Expo 客户端,不是 workspace 成员 |
 
@@ -112,8 +116,8 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
 - **进程入口**:被构建配方或真机门当作独立进程 / 线程起的文件 —— 检索 Worker
   (`packages/backend/search/index/search-index-worker.ts`)、ACP 宿主工具桥、不带界面的后端进程
   `packages/backend/backend-standalone-main.ts`(`server:build` 打成 `dist/server/main.js`,`server:start` 与真机门跑它;
-  vite 配置内联在 `scripts/build-server.mjs`;桌面构建 `build-electron.mjs` 另打一份 `dist-electron/backend.cjs`,今天只有
-  `gate:backend-process` 跑它,批 2b 起由桌面用 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起)、独立网关 `packages/backend/gateway/gateway-standalone-main.ts`、
+  vite 配置内联在 `scripts/build-server.mjs`;桌面构建 `build-electron.mjs` 另打一份 `dist-electron/backend.cjs`,桌面用
+  Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起它,`gate:backend-process` 也跑它)、独立网关 `packages/backend/gateway/gateway-standalone-main.ts`、
   `scripts/gate-*/` 下的被测产物入口。它们按路径直接指要的模块,
   而且**不许被任何文件 import**。
 - **`http-server/`**:界面连进来的那台 HTTP 服务器(收请求、SSE 事件流、发现文件、来访者身份与本机信任、按名册分发),
@@ -220,7 +224,10 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
   `ONETHING_CREDENTIALS_KEYRING=file`):发现文件 `owner === 'backend'`、capabilities 的 terminal / localFileSystem 为真、
   一份假的 stdio MCP 真连上、预置的定时任务进了调度器、日志进 `app.jsonl` 且 stdout 不回显、进程名 `onething-backend`、
   再起一台缺省档会让位、SIGTERM 后 5 秒内退出且发现文件删掉;外加缺省档对照(owner `server`、MCP 不连、任务不进、两台缺省档
-  互相让位)。`--timing=N` 报「spawn 到发现文件活着」的中位数。CI 只跑系统 Node 那一半(见上表)。
+  互相让位)。第④步批 2b 加**监督那一半**(`--no-supervisor` 跳过):同一个运行时起一只驱动
+  (`scripts/gate-backend-process/supervisor-entry.ts`),由它驱动桌面真用的那只 `BackendProcess` 拉起真 `backend.cjs` ——
+  `kill -9` 后 D11 重拉且端口 / token 不变、60 秒内第 4 次封顶、「重启」、`leave()` 后驱动退出而后端留着、再起一程借它、`stop()`
+  宽限内收掉。`--timing=N` 报「spawn 到发现文件活着」的中位数。CI 只跑系统 Node 那一半(见上表)。
 
 - `bun run gate:native` —— N-API 法的「跑出来」那一半:逐个原生二进制(`fsevents`、`node-pty`、`sherpa-onnx-node` 与平台包、
   `sqlite-vec` 的 `vec0.dylib`、`onnxruntime-node`、`@img/sharp-*`)在系统 Node 与 `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各
@@ -236,8 +243,10 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
   文件、开关开着但模型不在时零网络请求。真模型那一步要 `ONETHING_GATE_REAL_EMBEDDER=1`。只能用 node 跑(bun 没有 `node:sqlite`)。
 - `bun run gate:acp` —— 真 `dist/server` + 假 ACP agent:握手、`session/new`、未绑定目录拒绝、流式、`-32601`;
   `ONETHING_GATE_REAL_ACP=1` 时跑真 claude-agent-acp。
-- `bun run gate:packaged` —— `build:unpack` 后在临时 store 上起打包的 .app:`run/http.json` → `/api` → 窗口 → 干净退出;
-  并断言 `search.status` 的 `mode === 'owner'`、`vector: 'off'`、`vectorExtension: 'loadable'`(证明 `asarUnpack` 还在)。
+- `bun run gate:packaged` —— `build:unpack` 后在临时 store 上起打包的 .app(离屏):`run/http.json` 的 owner `backend` 且 pid 不是
+  app 自己(证 `RunAsNode` 保险丝开着、`backend.cjs` 解包了)→ `/api` → 窗口 → SIGTERM 后 app 与后端都退;并断言 `search.status` 的
+  `mode === 'owner'`、`vector: 'off'`、`vectorExtension: 'loadable'`(证明 `asarUnpack` 还在);⑦「退出后继续运行」档(打开开关 → 退 app
+  后端留着 → 再起 app 借它、不拉第二台 → 门收尾;`--no-keep-running` 跳过)。
 - `bun run gate:web-shell` —— React 浏览器壳:真 server 产物 + `/api` 代理 + 无头 Chromium,流式回复上屏,且 token 不进 URL。
 - `bun run gate:notes`(只读、只碰开着的库,Obsidian 没跑就 skipped)、`bun run gate:store-backup`(先 `build:cli`,只在隔离
   目录里跑 CLI 的 store 备份)、`bun run log:smoke`(断言 `server.jsonl`)。
@@ -279,19 +288,19 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 `reset*`,`applyHostPorts` 返回的还原函数逆序撤销这次真写过的格,`dispose()` 之后进程回到「没有宿主注入过任何东西」。
 表外的 `configure*`:`configureLogging`(宿主在装配**之前**调,日志文件与目录管家比后端活得久)、窗口系统的几只端口、
 server runtime 自己填的 `configureServer*Port`。
-凭证那两格(第④步批 0):`auth` 只剩 `{ authFetch }`(OAuth 取数走 Electron `net.fetch`);落盘加密不在任何一格里 ——
-主密钥归后端自己。`legacySafeStorageForMigration` 是桌面递进来的旧 `safeStorage` 解密器(只有解密两个方法),只为把存量
-`safeStorage` 密文迁进主密钥信封;server 与 CLI 写 `null`,遇到旧密文就答「已锁定 · 旧密文待迁移」。
+凭证那一格(第④步批 0):`auth` 只剩 `{ authFetch }`;落盘加密不在任何一格里 —— 主密钥归后端自己。旧 `safeStorage`
+密文不再经宿主端口(批 2b 删了 `legacySafeStorageForMigration` 那一格):由 Electron 先读后交(见 §1);没人交时遇到旧密文就答
+「已锁定 · 旧密文待迁移」。
 **表里没有「只在用户屏幕上发生」的事**(第④步批 1):对话框、打开外链、打开路径、在访达中显示由客户端自己做
-(桌面经 preload 的 `host:client-action`,见 §9),深浅色由客户端自己读,改设置后重套代理由 Electron 订
-`settings:changed` 自己做;后端非测试源码零出现 `dialog.showOpenDialog` / `shell.openExternal` / `shell.openPath` /
+(桌面经 preload 的 `host:client-action`,见 §9),深浅色由客户端自己读,改设置后重套代理由 Electron 主进程那台客户端订
+SSE 上的 `settings:changed` 自己做(`electron/core-client.ts` 的 `createSettingsFeed`);后端非测试源码零出现 `dialog.showOpenDialog` / `shell.openExternal` / `shell.openPath` /
 `shell.showItemInFolder`(`boundary:gate`)。后端要请客户端做一件事,走 `home: 'shell'` 的资源做法(shell dispatch,见 §9),
 不加宿主端口。
 
 | 宿主 | 装配处 | 要点 |
 | --- | --- | --- |
-| React 桌面 | `apps/desktop-react/electron/main.ts` | `host: createShellHostPorts()`(`apps/desktop-react/electron/host-ports.ts`;没有的能力逐格写 `null`,那张列表就是壳的能力缺口);`toolRegistry: 'full'`;窗口起来后 `own()` 内嵌 HTTP 面与发现文件、定时任务、MCP、ACP、`installBrowserHost()`;起这些服务前先等 `@onething/backend/process-env` 拿登录 shell 的 PATH;装配开关摊开 `electron/own-core-options.ts`;`run/http.json` 已指向一个活着的后端时直接连它,不再装配 |
-| 不带界面的 server | 进程入口 `packages/backend/backend-standalone-main.ts` → `packages/backend/http-server/http-server-standalone-backend.ts`(`createRealServerBackend`)→ `createOnethingServerRuntimeOverBackend` | 档位由 `ONETHING_BACKEND_LAUNCHER` 定(`packages/backend/backend-launcher.ts`)。**缺省档**(不设 / `none`;`cli` 今天等同它,批 3 再定义):只有 sandbox 与 storePath 是真的,`ONETHING_SERVER_TOOLS=readonly` 时 `'readonly'` 否则 `'full'`,MCP 客户端缺省是不联网的那一种,日志 `server.jsonl`。**桌面档**(`desktop`,今天只有 `gate:backend-process` 用,批 2b 起桌面拉起它):装配开关与桌面进程内那份逐格相同(D14,`electron/own-core-options.ts` 与测试对比),`speechOutput` 由后端自己交,`ONETHING_RESOURCES_PATH` 设了 = 打包资源目录;建 runtime 之前补好登录 shell 的 PATH,MCP 用桌面那种客户端,装配后 `own()` 定时任务 / 电台 / 首启模型拉取;日志 `app.jsonl` 不回显,发现文件 owner `backend`,进程名 `onething-backend`。两档的终端都照旧看 `ONETHING_SERVER_TERMINAL=1` |
+| React 桌面 | **不装配**:`apps/desktop-react/electron/main.ts` 拉起「不带界面的 server」那一行的**桌面档** | 开窗 → 发现文件活着就连它(上一次「继续运行」留下的、或别人的 `server:start`)→ 否则 `BackendProcess.start()` 拉起子进程(`ONETHING_BACKEND_LAUNCHER=desktop`,token 由 Electron 铸,打包态递 `ONETHING_RESOURCES_PATH`)→ 连。崩了删 pid 对得上的发现文件、重拉(端口与 token 不变),60 秒内最多 3 次,再崩亮「后端已停止。」横幅(D11)。Quit 缺省 SIGTERM 后端、等 5 + 2 秒再 SIGKILL;设置 `general.backendKeepRunningAfterQuit` 开着就不发信号。macOS 关最后一扇窗不退。主进程自己的日志是 `shell.jsonl` |
+| 不带界面的 server | 进程入口 `packages/backend/backend-standalone-main.ts` → `packages/backend/http-server/http-server-standalone-backend.ts`(`createRealServerBackend`)→ `createOnethingServerRuntimeOverBackend` | 档位由 `ONETHING_BACKEND_LAUNCHER` 定(`packages/backend/backend-launcher.ts`)。**缺省档**(不设 / `none`;`cli` 今天等同它,批 3 再定义):只有 sandbox 与 storePath 是真的,`ONETHING_SERVER_TOOLS=readonly` 时 `'readonly'` 否则 `'full'`,MCP 客户端缺省是不联网的那一种,日志 `server.jsonl`。**桌面档**(`desktop`,桌面拉起的就是它,`gate:backend-process` 也跑它):装配开关逐格是 `electron/own-core-options.ts` 那五格(D14,测试对比),`speechOutput` 由后端自己交,`ONETHING_RESOURCES_PATH` 设了 = 打包资源目录;建 runtime 之前补好登录 shell 的 PATH,MCP 用桌面那种客户端,装配后 `own()` 定时任务 / 电台 / 首启模型拉取;日志 `app.jsonl` 不回显,发现文件 owner `backend`,进程名 `onething-backend`。两档的终端都照旧看 `ONETHING_SERVER_TERMINAL=1` |
 | CLI 守护 | `packages/backend/headless/headless-backend.ts`(`HeadlessBackend`,`apps/cli/src/daemon-server.ts` 用) | `toolRegistry: 'headless'`、`mcpAcp: true`、`collab: true`;退出 = `backend.dispose()` |
 
 ## 7. 怎么加一个东西
@@ -446,6 +455,9 @@ embedder 只能跑 `device: 'cpu'`;后端回答原因码(`vectorErrorKind`),不�
 的流控在 `packages/backend/terminal/`,输出经全局事件 `terminal:data` / `terminal:exit` 走 SSE,不开手写推送通道。内置浏览器
 是主进程模块 `apps/desktop-react/electron/browser/`:每个标签一个 `WebContentsView`、用到才建;网页权限缺省拒绝,只有少数几项
 可问;**调试端口缺省关**,`run/http.json` 里的 `cdp` 字段以命令行是否真开了端口为准;只有 `index.ts` import electron。
+第④步批 2b 起 `browser:` 是**壳侧命名空间**(每条做法 `home: 'shell'`):主进程经 `electron/shell-resources.ts` 以一扇壳的身份
+`resources.mountShell` 认领、收 `resource:shell-command`、回执、报事实(后端重拉后立刻重登记);「人零效果、模型顶格」与
+`respondPermission` 只许人答(自述 `userOnly`)在 core 的 `ShellResourceProvider.plan` 判;标签页内存由 Electron 自己按预算释放。
 AI 经 `browser:` 资源读写它,导航算 `browser_navigate` 效果(带着用户自己的 cookie,与匿名 fetch 不是一回事);进程外可以让
 chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可用(`Target.createTarget: Not supported`),开标签要走内置浏览器。
 渲染层里只有 `apps/desktop-react/src/content/terminal/screen.ts` 在运行期 import `@xterm/*`。用官方 Electron,
@@ -454,19 +466,23 @@ chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可�
 ## 9. 进程与数据流
 
 **一个 store 只有一个后端**(正本 `docs/design/one-core-2026-08.md`):HTTP/SSE 面是 `packages/backend/http-server/` 的代码,
-`packages/backend/backend-standalone-main.ts` 是它外面的进程入口,桌面主进程把**同一份**代码挂在自己的后端上,所以浏览器壳订阅的是桌面的
-事件流。谁服务这个 store,谁写 `<store>/run/http.json = {port, host, token, pid, startedAt, owner}`(0600),退出时只删
+`packages/backend/backend-standalone-main.ts` 是它外面的进程入口;桌面拉起的后端、`server:start`、真机门跑的都是这只入口(档位不同),
+所以浏览器壳与桌面订阅的是同一台后端的事件流。谁服务这个 store,谁写 `<store>/run/http.json = {port, host, token, pid, startedAt, owner}`(0600),退出时只删
 `pid` 是自己的那份;端口动态,除非 `ONETHING_SERVER_PORT` 钉死(钉死且被占 = 明确报错,不静默换端口);`server:start` 遇到
-**活着的**记录就拒绝启动,不看 owner(第④步批 2a,D6;`--force` 越过)。owner 有四种:`shell`(今天的桌面,进程内装配)、
-`server`(`server:start`)、`backend`(被拉起的后端进程的桌面档;今天还没有人拉起它,批 2b 起是桌面)、`desktop`(旧名)。token = `ONETHING_SERVER_TOKEN` 或每次启动新铸。server 单用户,绑非回环地址
+**活着的**记录就拒绝启动,不看 owner(第④步批 2a,D6;`--force` 越过)。owner 有四种:`backend`(桌面拉起的后端,桌面档)、
+`server`(`server:start`)、`shell`(批 2b 之前桌面进程内装配时写的,今天只有冒烟探针还写)、`desktop`(旧名)。桌面只停 owner
+`backend` 的那台(它自己拉起的,或上一次「继续运行」留下的),别人的 `server:start` 它只借、不停、不重启。token = `ONETHING_SERVER_TOKEN` 或每次启动新铸。server 单用户,绑非回环地址
 又没设 token 会警告。
 
-**React 桌面是它自己后端的 HTTP 客户端**:渲染层只走 `POST /api/rpc` 与 `GET /api/events`;它只有三条 IPC 通道,都不是数据
-通道 —— `host:connection` 交 `{ baseUrl, token }`(发现文件是 0600,渲染层不读盘),`host:native-view` 是窗口系统给原生视图
+**React 桌面是它拉起的那台后端的 HTTP 客户端**:渲染层只走 `POST /api/rpc` 与 `GET /api/events`,主进程也是(`electron/core-client.ts`:
+终端 `detachAll`、`browser:` 的壳侧登记、设置订阅、先读后交);它只有三条 IPC 通道,都不是数据
+通道 —— `host:connection` 交 `{ baseUrl, token }`(发现文件是 0600,渲染层不读盘;后端重拉时地址与 token 不变,这个承诺只答一次),`host:native-view` 是窗口系统给原生视图
 用的管道,`host:client-action`(第④步批 1,D5 用户 10-06 拍定)是**只在用户屏幕上发生的事**:原生打开对话框、把网址交给
-系统浏览器、用默认程序打开路径、在访达中定位(四个动词在载荷里,契约 `@shared/contracts/client-action`,主进程逐格校验在
+系统浏览器、用默认程序打开路径、在访达中定位,以及第④步批 2b 加的三个只有拉起后端的宿主答得出的动词(后端状态 / 重启后端 /
+定位后端日志)(七个动词在载荷里,契约 `@shared/contracts/client-action`,主进程逐格校验在
 `electron/client-action.ts`)。它不是数据通道:它答的是只有宿主答得出的事,请求 / 应答的数据照旧只走 `POST /api/rpc`;
-`transport:gate` 的 `ipcMain` 钉在 3。浏览器壳没有这条口,判「这台客户端做不做得到」只看它在不在(壳的
+`transport:gate` 的 `ipcMain` 钉在 3。主进程往渲染层另有两条单向推送(`webContents.send`,不是 `ipcMain` 口):全屏态
+`host:fullscreen` 与后端状态 `host:backend-state`(设置页状态行、「正在重新连接后端。」、「后端已停止。」横幅读它)。浏览器壳没有这条口,判「这台客户端做不做得到」只看它在不在(壳的
 `platform/host.ts` 的 `canRunClientActions()`),按钮不画或答一句结构化的「这台客户端做不了」。
 
 **后端请客户端执行**(shell dispatch,`packages/backend/resource/resource-shell-*.ts`):客户端经 `resources.mountShell`
@@ -474,8 +490,8 @@ chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可�
 core 照旧 plan、授权、审计,执行那一步经全局事件 `resource:shell-command` 发给一扇认领者(命令带 core 那份 plan 的载荷,
 所以壳拿到的是夹过沙箱的路径)。好几扇壳可以认领同一份自述;**发给谁**(D8):用户在某扇壳里点出来的发回那一扇
 (客户端每条请求带 `X-Onething-Shell-Id`,HTTP 边界铸进 `callerId`,永不从信封里读),AI 发起的发给最近一次有活动的那一扇
-(登记、报事实、亲手发起资源调用算活动,心跳不算);没有认领者 = 当场 `ResourceHomeUnavailableError`。因为桌面也走 HTTP,判「这个来访者是不是本机」不能看 `context.transport`,看本机信任声明(桌面是
-`desktop-embedded`,回环 server 是 `loopback-server`;起本机进程那道闸(mcp 的 stdio probe)从第④步批 2a 起与别的闸同判据
+(登记、报事实、亲手发起资源调用算活动,心跳不算);没有认领者 = 当场 `ResourceHomeUnavailableError`。因为桌面也走 HTTP,判「这个来访者是不是本机」不能看 `context.transport`,看本机信任声明(回环后端 —— 桌面拉起的那台与 `server:start` 同样 —— 是 `loopback-server`;`desktop-embedded` 只剩进程内嵌入
+的冒烟探针在写;起本机进程那道闸(mcp 的 stdio probe)从第④步批 2a 起与别的闸同判据
 `isHostLocallyTrusted()`,两种可信不再分档,D9);`GET /api/capabilities` 从同样的判据推导,界面的能力位与后端的守卫
 不会不一致。
 
@@ -485,15 +501,15 @@ core 照旧 plan、授权、审计,执行那一步经全局事件 `resource:shel
 `targetChannel`)→ 界面 → `command:permission-respond`(通道必须一致)→ 工具执行。
 
 **store**:根目录按 `ONETHING_STORE_PATH` → `~/.onething` 解析(`packages/backend/storage/storage-paths.ts`),所有路径都经
-`getOnethingStorePath()` 与它的 `getOnething*Path` 系列,不许写死。单实例靠 `StoreLock`(`desktop` / `daemon`);不带界面的后端进程(`backend-standalone-main.ts`)
-**有意不拿锁**(`bun run dev` 里桌面与 dev server 共用 `~/.onething`,两个写者的风险是接受了的)。server 的 HTTP 会话面用的是引擎
+`getOnethingStorePath()` 与它的 `getOnething*Path` 系列,不许写死。单实例靠 `StoreLock`(`daemon`;桌面主进程不取锁);不带界面的后端进程(`backend-standalone-main.ts`,桌面拉起的那台也是它)
+**有意不拿锁**,单写者靠发现文件让位(`bun run dev` 里桌面与 dev server 共用 `~/.onething`,两个写者的风险是接受了的)。server 的 HTTP 会话面用的是引擎
 同一份进程内会话表 —— 在同一批文件上再开一个仓库会把内存里的真相分叉。
 
 **别名**:每个 `@onething/*` 都是真 workspace 包(根 `package.json` 的 `workspaces` 逐个列出,不用 `packages/*` 通配,否则会把
 `apps/mobile` 的 expo 拖进来);`@onething/backend` 按自己 `package.json` 的 exports **精确键**解析(没有通配),缺键在
 typecheck 就红;`@onething/*` 永远不进根 `package.json` 的 dependencies。唯一的非包别名是 `@shared`。
 
-**构建产物**:`apps/desktop-react/dist` 与 `dist-electron/`(`main.cjs` / `preload.cjs` / `search-worker.cjs`)、`dist/cli/`、`dist/web/`、
+**构建产物**:`apps/desktop-react/dist` 与 `dist-electron/`(`main.cjs` / `preload.cjs` / `backend.cjs`(桌面拉起的后端进程,asarUnpack)/ `search-worker.cjs` / `acp-mcp-bridge.cjs`)、`dist/cli/`、`dist/web/`、
 `dist/server/`(单文件 SSR 包,钉 `inlineDynamicImports` —— 拆块加顶层 await 会让模块求值死锁)。
 
 ## 10. 已退役

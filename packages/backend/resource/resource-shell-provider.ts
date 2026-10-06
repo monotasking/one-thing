@@ -36,7 +36,7 @@ import {
   type ResourceSpec,
 } from '@onething/backend/resource/resource-api'
 import { type ResourceRef } from '@shared/resource/ref'
-import type { Intent, PlanContext, Result, RunContext } from '@onething/backend/toolkit'
+import { Intent, type PlanContext, type Result, type RunContext } from '@onething/backend/toolkit'
 import type { EffectClass } from '@shared/toolkit/effects'
 import type {
   SerializedEventSpec,
@@ -73,6 +73,10 @@ export function resourceSpecFromShell(serialized: SerializedResourceSpec): Resou
       home: 'shell',
       ...(op.entity !== undefined ? { entity: op.entity } : {}),
       ...(op.keymap !== undefined ? { keymap: op.keymap } : {}),
+      ...(op.userOnly ? { userOnly: true } : {}),
+      ...(typeof op.describeTemplate === 'string' && op.describeTemplate
+        ? { describe: (params: unknown) => renderDescribeTemplate(op.describeTemplate as string, params) }
+        : {}),
     }
   }
 
@@ -84,6 +88,16 @@ export function resourceSpecFromShell(serialized: SerializedResourceSpec): Resou
   const spec: ResourceSpec = { scheme: serialized.scheme, title: serialized.title, reads, ops, events }
   if (!serialized.state) return spec
   return { ...spec, state: { ...serialized.state } }
+}
+
+/** 一条只许人调的壳侧做法被模型 / 插件 / 系统主体调了(自述里 `userOnly`)。plan 期抛。 */
+export class ShellOpUserOnlyError extends Error {
+  constructor(scheme: string, op: string, principalKind: string) {
+    super(
+      `${scheme}: ${op} is answered by the person at this machine only — this call is on behalf of ${principalKind}.`,
+    )
+    this.name = 'ShellOpUserOnlyError'
+  }
 }
 
 export class ShellResourceProvider implements ResourceProvider<null> {
@@ -122,12 +136,29 @@ export class ShellResourceProvider implements ResourceProvider<null> {
     return parseShellPayload(text)
   }
 
-  async plan(op: string, ref: ResourceRef | null, _params: unknown, _ctx: PlanContext): Promise<Intent<null>> {
-    // 效果按自述的**静态上界**造:壳侧的做法没有「按参数分档」的判据(那种判据只有
+  async plan(op: string, ref: ResourceRef | null, params: unknown, ctx: PlanContext): Promise<Intent<null>> {
+    const declared = Object.prototype.hasOwnProperty.call(this.spec.ops, op) ? this.spec.ops[op] : undefined
+    /*
+     * **只许人调的做法**(自述里 `userOnly`,第④步批 2b):非用户主体当场拒,排在一切之前 ——
+     * 一次注定不许跑的做法不该先弹一张权限卡去问人。判据在 core(授权一律在 core),壳只自述。
+     */
+    if (declared?.userOnly && ctx.principal.kind !== 'user') throw new ShellOpUserOnlyError(this.spec.scheme, op, ctx.principal.kind)
+    /*
+     * **人亲手按的不问**(第④步批 2b,与 core 侧 `browser` / `music` / `todo` / `session` 几只 provider 的
+     * `plan` 同一条判例,08-18):用户主体零效果 —— 地址栏上那颗「前进」是人自己按的,再弹一张卡问
+     * 「准不准你按你刚按的那颗钮」是噪音不是保护。零效果不等于不留痕迹:照样落审计、照样发事件。
+     * 内置浏览器搬出 core 进程之前,这一条住在它自己的 provider 里;搬成壳交的命名空间之后,壳那一侧
+     * 已经不在授权路上,所以这句话落在这里,对所有壳交的命名空间一视同仁。
+     */
+    // 卡上那句人话:壳交了模板就按这一次的参数渲染(「Send the browser to https://…」),没交就是标题。
+    const title = declared ? (declared.describe?.(params) || declared.title) : undefined
+    if (declared && ctx.principal.kind === 'user') {
+      return Intent.of<null>({ effects: [], payload: null, preview: { title: title ?? declared.title } })
+    }
+    // 其余主体:效果按自述的**静态上界**造。壳侧的做法没有「按参数分档」的判据(那种判据只有
     // 实现知道,而实现在另一个进程里),所以上界就是它的具体效果。`planFromSpec`
     // 自己会对不在自述里的 op 抛 —— 那一句是硬错,不是一条零效果的免检计划。
-    const declared = Object.prototype.hasOwnProperty.call(this.spec.ops, op) ? this.spec.ops[op] : undefined
-    return planFromSpec<null>(this.spec, op, ref, null, declared ? { title: declared.title } : undefined)
+    return planFromSpec<null>(this.spec, op, ref, null, title ? { title } : undefined)
   }
 
   async apply(op: string, _intent: Intent<null>, _ctx: RunContext): Promise<Result> {
@@ -139,6 +170,25 @@ export class ShellResourceProvider implements ResourceProvider<null> {
       `Resource ${this.spec.scheme}: op ${JSON.stringify(op)} runs in the shell; it never applies in this process`,
     )
   }
+}
+
+/**
+ * `describeTemplate` 的渲染(见 `@shared/ipc/resources` 那一格的说明):`{name}` → 参数里那一格的字符串
+ * (数字 / 布尔照 `String()`,别的形状当没有);`[...]` 那一段里只要有一个 `{name}` 没值,整段不出现。
+ * 渲染出来是空串就答空串,调用方退回标题。
+ */
+export function renderDescribeTemplate(template: string, params: unknown): string {
+  const fields = params && typeof params === 'object' ? params as Record<string, unknown> : {}
+  const valueOf = (name: string): string => {
+    const value = fields[name]
+    return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value).trim() : ''
+  }
+  const fill = (text: string): string => text.replace(/\{(\w+)\}/g, (_, name: string) => valueOf(name))
+  const optional = template.replace(/\[([^\]]*)\]/g, (_, inner: string) => {
+    const names = [...inner.matchAll(/\{(\w+)\}/g)].map(match => match[1]!)
+    return names.every(name => valueOf(name) !== '') ? fill(inner) : ''
+  })
+  return fill(optional).trim()
 }
 
 /**

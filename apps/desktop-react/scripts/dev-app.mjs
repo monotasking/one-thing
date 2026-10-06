@@ -12,10 +12,10 @@
  * 一件事:尽早 `listen()`,把 warmup 的头拉长。
  *
  * 头有两段,都是 vite 本来就在闲着的时间:①下面这次 `build-electron`(~0.42s;第④步批 2a 起
- * 多打一份不带界面的后端进程 `dist-electron/backend.cjs`,≈0.25s,合计 ≈0.7s —— 这条泳道今天还不拉起它,
- * 批 2b 起桌面照生产那条路拉起它(决策 D13),所以 dev 与打包态吃同一份配方;
+ * 多打一份不带界面的后端进程 `dist-electron/backend.cjs`,≈0.25s,合计 ≈0.7s —— 第④步批 2b 起桌面照生产
+ * 那条路拉起它(`electron/backend-process.ts`,决策 D13),所以 dev 与打包态吃同一份配方、同一条启动路;
  * 纯 esbuild 子进程,与 vite 无关,所以不 `await` 就先开工);②Electron 从
- * spawn 到 `loadURL` 的 ~0.8s 再加后端装配的 ~1.7s。两段加起来 ≈2.9s,而实测
+ * spawn 到 `loadURL` 的 ~0.8s 再加后端子进程起步与装配的 ~1.7s。两段加起来 ≈2.9s,而实测
  * warmup 转完整张图用 3.0s —— 页面到的时候基本已经全在缓存里了。
  *
  * 实测(隔离 vite,同一棵树、同一份 deps 缓存,取两次的小值):页面**立刻**来
@@ -24,11 +24,11 @@
  * 「打包」与「起壳」。停机顺序一个字没动:先停 Electron,再 `server.close()`。
  * ──────────────────────────────────────────────────────────────────────
  *
- * ── A1 之后多了一条要记住的 ────────────────────────────────────────────
- * main 侧现在**把整棵 core/runtime/backend inline 进 bundle**(壳自己装配 backend)。
- * 于是 `packages/backend`(含合包进来的 core / runtime / gateway 子树) 里的任何改动,在这条泳道上都要
- * **重跑一次 `npm run app:dev`**(或单跑 `npm run electron:build`)才会生效 ——
- * 那些包不在 vite 的依赖图里,HMR 管不到它们。改了 core 却看不到变化,先想这一条。
+ * ── 改了后端要重跑这条泳道(A1 立,第④步批 2b 改写)────────────────────
+ * 后端是 Electron 拉起的子进程 `dist-electron/backend.cjs`(整棵 `packages/backend` inline 在里面),主进程
+ * `main.cjs` 只剩窗口与内置浏览器。`packages/backend` 里的任何改动,在这条泳道上都要**重跑一次
+ * `npm run app:dev`**(或单跑 `npm run electron:build` 再在设置页点「重启后端」)才会生效 —— 那些包不在
+ * vite 的依赖图里,HMR 管不到它们。改了后端却看不到变化,先想这一条。
  * ──────────────────────────────────────────────────────────────────────
  */
 import { spawn } from 'node:child_process'

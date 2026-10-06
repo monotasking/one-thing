@@ -1,53 +1,34 @@
 /**
- * `browser:` 的实现(原子 K1 的 `ResourceProvider`)。
+ * `browser:` 的实现(原子 K1 立;第④步批 2b 起是 Electron 主进程交给后端的**壳侧**命名空间)。
  *
- * ## 为什么它是 in-process 资源,而不是壳侧 mount(方案 §2.2-3)
+ * ## 为什么它从 in-process 资源变成了壳侧 mount(决策 D4 (A),用户 10-06 拍定)
  *
- * 主进程**就是** core 进程(React 壳自己装配 backend)。所以:
+ * 从前主进程**就是** core 进程(React 壳自己装配 backend),这只 provider 经
+ * `backend.resources.mount(provider)` 进程内挂上,文件头那句反对 `home: 'shell'` 的理由是「这一档的寿命是
+ * 一次连接,而内嵌浏览器与 app 同寿」。批 2b 起后端是 Electron 拉起的子进程,主进程对后端来说**正是**一扇
+ * 连着的壳 —— 那条理由自己消失了。所以现在:自述(`resource-spec.ts`,每条做法 `home: 'shell'`)由
+ * `../shell-resources.ts` 经 `resources.mountShell` 交给后端;后端那一侧照旧是同一条管线(授权、效果上界、
+ * 审计、取消),命令经 SSE 的 `resource:shell-command` 发到这里,这只类跑完回执;事件经 `resources.emit`
+ * 报回去,壳与 AI 看到的仍然是同一条 `resource:event` 路。**渲染层一行不改**(仍走 `resources` RPC)。
  *
- *   · `home: 'shell'` 是错的 —— 那一档的寿命是「一次连接」,而内嵌浏览器与 app
- *     同寿(关掉那扇窗浏览器才死,刷新渲染页它一格 tab 都不会掉);
- *   · 经 SSE 绕自己一圈也是错的 —— provider 与内核在同一个进程里,中间那一圈
- *     只会加一次序列化和一次时序。
+ * ## 授权不在这里
  *
- * 所以 `main.ts` 装配完之后经 `backend.resources.mount(provider)` 挂上(与
- * `mcp-mount.ts` 同族),`own()` 摘。挂上那一刻起,AI 自动得到一只 `browser` 工具、
- * `resources.read` / `resources.do` 两条 RPC、事件走 `resource:event` → SSE
- * ——**壳与 AI 走的是同一条路**,壳里不存第二份真相(音乐面板判例)。
- *
- * ## 效果按主体分档
- *
- * `plan` 里:`ctx.principal.kind === 'user'` → `effects: []`;其余(agent / system,
- * 含经它们进来的插件)→ 自述里那条上界。理由与 `music-provider.ts` 的
- * `capabilityPlan` 逐字相同 —— 地址栏上那颗「前进」是人自己按的,再弹一张卡问
- * 「准不准你按你刚按的那颗钮」是噪音不是保护(08-18 判例);而模型让一个**登着
- * 账号**的浏览器去一个地址,是带 cookie 以用户身份发请求,那一下值一次同意。
- *
- * 分档在这里而不在权限核:`decidePermission` 至今不读主体,让它开始读主体是凭证级
- * 主体那一片地(09-03 用户搁置)。
+ * 「人零效果、模型顶格」与「`respondPermission` 只许人答」两条判据从前写在这只类的 `plan` 里;搬成壳侧
+ * 命名空间之后它们落在 core(`ShellResourceProvider.plan` 读自述里的 `userOnly`,用户主体一律零效果)。
+ * 这里只剩**参数校验**与**执行**:命令到了说明 core 已经放行,校验失败答一句说得出口的错。
  *
  * ## 页面正文经 `untrusted-text` 包一层(方案 §9-3)
  *
- * `page` 读的是**登着账号的页面**,注入面比匿名 fetch 更大。包法与 `web_open`
- * 同一只函数(toolkit 入口交出的 `wrapUntrustedText`)—— 模型要认的标记只许有
- * 一种。
+ * `page` 读的是**登着账号的页面**,注入面比匿名 fetch 更大。包法与 `web_open` 同一只函数
+ * (`@shared/toolkit/untrusted-text`,第④步批 2b 从后端搬到 `@shared`,两个进程包的是同一对标记)。
  *
  * ## 零 electron import
  *
- * 它只认识一个窄端口 `BrowserOps`(service 实现它)。于是这只文件在 vitest 里
- * 跑得起来:`spec` 过契约校验、`plan` 按主体分档、`read page` 带定界、事件真的发
- * ——全部量得到,一个 Electron 运行时都不用起。
+ * 它只认识一个窄端口 `BrowserOps`(service 实现它)与一只事件出口。于是这只文件在 vitest 里
+ * 跑得起来:参数校验、`read page` 带定界、事件真的发 —— 全部量得到,一个 Electron 运行时都不用起。
  */
 
-import type {
-  ResourceEventHub,
-  ResourceProvider,
-  ResourceReadContext,
-} from '@onething/backend/resource'
-import type { ResourceRef } from '@shared/resource/ref'
-import { planFromSpec } from '@onething/backend/resource'
-import type { PlanContext, Result, RunContext } from '@onething/backend/toolkit'
-import { Intent, wrapUntrustedText } from '@onething/backend/toolkit'
+import { wrapUntrustedText } from '@shared/toolkit/untrusted-text'
 import type { BrowserTabState, BrowserZoomDirection } from './tab-state.js'
 import { BROWSER_RESOURCE_SCHEME, browserResourceSpec } from './resource-spec.js'
 
@@ -108,26 +89,6 @@ export class BrowserUrlRequiredError extends Error {
   }
 }
 
-/**
- * **模型 / 插件不许替网页放权限**(B3-a)。
- *
- * 判词整段在 `resource-spec.ts` 的 `respondPermission` 上;一句话:这一问是给
- * 坐在机器前面那个人的,而把它交给一个能被网页正文说服的东西,正是 `page` 读法
- * 反复提醒「那是数据不是指令」所要防的那件事。
- *
- * 它在 **plan** 期抛,不在 apply 期:一次注定不许跑的做法不该先去弹一张权限卡
- * 问人(与 `dir-provider` 对缺席宿主口的那一句同序)。
- */
-export class BrowserPermissionNotUserError extends Error {
-  constructor(kind: string) {
-    super(
-      'respondPermission is answered by the person at this machine only — '
-      + `this call is on behalf of ${kind}. A page's permission question is not something a model may answer.`,
-    )
-    this.name = 'BrowserPermissionNotUserError'
-  }
-}
-
 export class BrowserPermissionRequestUnknownError extends Error {
   constructor(requestId: string) {
     super(`No permission question is waiting under id ${requestId} — it was answered, timed out, or its tab closed`)
@@ -175,23 +136,27 @@ function numberParam(params: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayload> {
+/** 事件出口:`../shell-resources.ts` 把它接到 `resources.emit`。`path` = tab id(命名空间级的事实是空串)。 */
+export type BrowserEventSink = (path: string, event: string, payload: unknown) => void
+
+export class BrowserResourceProvider {
   readonly spec = browserResourceSpec
 
   private readonly ops: BrowserOps
-  private hub: ResourceEventHub | undefined
+  private sink: BrowserEventSink | undefined
 
   constructor(ops: BrowserOps) {
     this.ops = ops
   }
 
-  attach(hub: ResourceEventHub): void {
-    this.hub = hub
+  /** 接上事件出口(登记上了之后)。 */
+  attach(sink: BrowserEventSink): void {
+    this.sink = sink
   }
 
-  /** 登记方在 unmount **之后**调。幂等。 */
+  /** 摘掉事件出口。幂等;之后的事实一条都不发。 */
   dispose(): void {
-    this.hub = undefined
+    this.sink = undefined
   }
 
   // ── 事件(由 service 的 observer 转手过来;发的是**事实**)────────────────
@@ -268,13 +233,14 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
 
   // ── 读 ───────────────────────────────────────────────────────────────────
 
-  async read(name: string, ref: ResourceRef | null, query: unknown, _ctx: ResourceReadContext): Promise<unknown> {
+  /** 一条读法。`path` = tab id(`tabs` 是命名空间级的,`path` 为空串)。 */
+  async read(name: string, path: string, query: unknown): Promise<unknown> {
     if (name === 'tabs') {
       const activeId = this.ops.activeId()
       return activeId === null ? { tabs: this.ops.list() } : { tabs: this.ops.list(), activeId }
     }
 
-    const tabId = this.tabIdOf(name, ref)
+    const tabId = this.tabIdOf(name, path)
     const tab = this.ops.get(tabId)
     if (!tab) throw new BrowserTabUnknownError(tabId)
 
@@ -302,27 +268,17 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
       return dataUrl ? { dataUrl } : {}
     }
 
-    // 走不到:两条读路都先查过读法名在不在自述里。留一句诚实的错。
     throw new TypeError(`Browser resource has no read named ${JSON.stringify(name)}`)
   }
 
   // ── 做 ───────────────────────────────────────────────────────────────────
 
-  async plan(op: string, ref: ResourceRef | null, params: unknown, ctx: PlanContext): Promise<Intent<BrowserOpPayload>> {
-    /*
-     * **主体闸在最前面**(B3-a)。它排在 `payloadOf` 之前是有意的:一次不许跑的
-     * 做法,连「参数写对了没有」都不该去替它检查 —— 那会让一句「你的 requestId
-     * 少了一格」看起来像是「参数补齐就能调」。
-     */
-    if (op === 'respondPermission' && ctx.principal.kind !== 'user') {
-      throw new BrowserPermissionNotUserError(ctx.principal.kind)
-    }
-    const payload = this.payloadOf(op, ref, params)
-    return this.planned(op, ref, payload, this.previewOf(payload), ctx)
-  }
-
-  async apply(_op: string, intent: Intent<BrowserOpPayload>, ctx: RunContext): Promise<Result> {
-    const payload = intent.payload
+  /**
+   * 一条做法(core 已经放行之后)。先校验参数(写错了的调用答一句说得出口的错,不是一次崩溃),
+   * 再打电话;答一句给模型 / 审计看的结果文本。
+   */
+  async run(op: string, path: string, params: unknown): Promise<string> {
+    const payload = this.payloadOf(op, path, params)
     switch (payload.op) {
       case 'open': {
         const tab = this.ops.open({
@@ -330,47 +286,42 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
           background: payload.background,
           ...(payload.profile !== undefined ? { profile: payload.profile } : {}),
         })
-        return this.done(ctx, 'Tab opened', `browser:${tab.id}${tab.url ? ` → ${tab.url}` : ' (start page)'} [${tab.profile}]`, payload.op, { tab })
+        return `browser:${tab.id}${tab.url ? ` → ${tab.url}` : ' (start page)'} [${tab.profile}]`
       }
       case 'navigate':
         this.ops.navigate(payload.tabId, payload.url)
-        return this.done(ctx, 'Navigating', `browser:${payload.tabId} → ${payload.url}`, payload.op)
+        return `browser:${payload.tabId} → ${payload.url}`
       case 'back':
         this.ops.back(payload.tabId)
-        return this.done(ctx, 'Went back', `browser:${payload.tabId} back`, payload.op)
+        return `browser:${payload.tabId} back`
       case 'forward':
         this.ops.forward(payload.tabId)
-        return this.done(ctx, 'Went forward', `browser:${payload.tabId} forward`, payload.op)
+        return `browser:${payload.tabId} forward`
       case 'reload':
         this.ops.reload(payload.tabId)
-        return this.done(ctx, 'Reloading', `browser:${payload.tabId} reload`, payload.op)
+        return `browser:${payload.tabId} reload`
       case 'activate':
         this.ops.activate(payload.tabId)
-        return this.done(ctx, 'Tab activated', `browser:${payload.tabId} is now in front`, payload.op)
+        return `browser:${payload.tabId} is now in front`
       case 'close':
         this.ops.close(payload.tabId)
-        return this.done(ctx, 'Tab closed', `browser:${payload.tabId} closed`, payload.op)
+        return `browser:${payload.tabId} closed`
       case 'zoom':
         this.ops.zoom(payload.tabId, payload.level)
-        return this.done(ctx, 'Zoom changed', `browser:${payload.tabId} zoom ${payload.level}`, payload.op)
+        return `browser:${payload.tabId} zoom ${payload.level}`
       case 'respondPermission': {
         // 答不上的那一问**抛**,不静默 —— 见 `BrowserOps.respondPermission` 的判词。
         if (!this.ops.respondPermission(payload.requestId, payload.allow)) {
           throw new BrowserPermissionRequestUnknownError(payload.requestId)
         }
-        return this.done(
-          ctx,
-          payload.allow ? 'Allowed once' : 'Refused',
-          `browser:${payload.tabId} ${payload.allow ? 'allowed' : 'refused'} ${payload.requestId}`,
-          payload.op,
-        )
+        return `browser:${payload.tabId} ${payload.allow ? 'allowed' : 'refused'} ${payload.requestId}`
       }
     }
   }
 
   // ── 内部 ─────────────────────────────────────────────────────────────────
 
-  private payloadOf(op: string, ref: ResourceRef | null, params: unknown): BrowserOpPayload {
+  private payloadOf(op: string, path: string, params: unknown): BrowserOpPayload {
     if (op === 'open') {
       const url = stringParam(params, 'url')
       const background = (params as { background?: unknown } | undefined)?.background === true
@@ -387,7 +338,7 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
         ...(profile ? { profile } : {}),
       }
     }
-    const tabId = this.tabIdOf(op, ref)
+    const tabId = this.tabIdOf(op, path)
     if (!this.ops.has(tabId)) throw new BrowserTabUnknownError(tabId)
     if (op === 'navigate') {
       const url = stringParam(params, 'url')
@@ -413,66 +364,13 @@ export class BrowserResourceProvider implements ResourceProvider<BrowserOpPayloa
     throw new TypeError(`Browser resource has no op named ${JSON.stringify(op)}`)
   }
 
-  /**
-   * 效果按主体分档(见文件头)。
-   *
-   * 人 = 零效果的 `Intent`。**零效果不等于不留痕迹**:照样落 `tool/audit`、照样发
-   * 事件、照样在轨迹里看得见。
-   */
-  private planned(
-    op: string,
-    ref: ResourceRef | null,
-    payload: BrowserOpPayload,
-    title: string,
-    ctx: PlanContext,
-  ): Intent<BrowserOpPayload> {
-    if (ctx.principal.kind === 'user') return Intent.of({ effects: [], payload, preview: { title } })
-    return planFromSpec<BrowserOpPayload>(this.spec, op, ref, payload, { title })
-  }
-
-  /** 权限卡上那一句人话。地址栏上的 URL 本来就是给人看的,原样带出来。 */
-  private previewOf(payload: BrowserOpPayload): string {
-    switch (payload.op) {
-      case 'open': {
-        // 身份出现在人话里 —— 「以哪个身份开」正是这一下值得让人看见的那一格。
-        const as = payload.profile ? ` as ${payload.profile}` : ''
-        return payload.url ? `Open a browser tab at ${payload.url}${as}` : `Open an empty browser tab${as}`
-      }
-      case 'navigate': return `Send the browser to ${payload.url}`
-      case 'back': return 'Go back in the browser'
-      case 'forward': return 'Go forward in the browser'
-      case 'reload': return 'Reload the browser tab'
-      case 'activate': return 'Bring this browser tab to the front'
-      case 'close': return 'Close this browser tab'
-      case 'zoom':
-        if (payload.level === 'in') return 'Zoom this page in one notch'
-        if (payload.level === 'out') return 'Zoom this page out one notch'
-        return 'Reset this page to its actual size'
-      case 'respondPermission':
-        return payload.allow
-          ? 'Allow what the page asked for, once'
-          : 'Refuse what the page asked for'
-    }
-  }
-
-  private tabIdOf(member: string, ref: ResourceRef | null): string {
+  private tabIdOf(member: string, path: string): string {
     if (NAMESPACE_MEMBERS.has(member)) return ''
-    if (!ref || !ref.path) throw new BrowserRefRequiredError(member)
-    return ref.path
+    if (!path) throw new BrowserRefRequiredError(member)
+    return path
   }
 
   private emit(tabId: string, event: string, payload: unknown): void {
-    this.hub?.emit({ scheme: this.spec.scheme, path: tabId }, event, payload)
-  }
-
-  private done(
-    ctx: RunContext,
-    title: string,
-    output: string,
-    op: string,
-    extra: Record<string, unknown> = {},
-  ): Result {
-    ctx.emit({ type: 'annotate', title, details: { op } })
-    return { content: [{ type: 'text', text: output }], details: { op, ...extra } as never }
+    this.sink?.(tabId, event, payload)
   }
 }

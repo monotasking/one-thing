@@ -39,10 +39,6 @@
 
 import type { AppSettings, BrowserProfile } from '@shared/ipc/settings.js'
 import { DEFAULT_BROWSER_PROFILE_ID } from '@shared/ipc/settings.js'
-import type {
-  SettingsEvent,
-  SettingsEventBroadcaster,
-} from '@onething/backend/settings'
 
 /** 名册在主进程这一侧要的全部:有哪几格,新 tab 缺省用哪一格。 */
 export interface BrowserProfileTable {
@@ -119,46 +115,39 @@ export class BrowserProfileReconciler {
 }
 
 export interface BrowserProfilesWatcherOptions extends BrowserProfileReconcilerOptions {
-  /** 当下的设置。装配完读一次。 */
-  readSettings(): Pick<AppSettings, 'browser'>
-  /** 单槽端口的读口(串联用)。 */
-  getBroadcaster(): SettingsEventBroadcaster | null
-  /** 单槽端口的写口。 */
-  setBroadcaster(next: SettingsEventBroadcaster | null): void
-  /** 缺省身份变了就叫一声(service 每次 `open` 现问,所以这一口只为测试与日志)。 */
+  /**
+   * 订设置(生产里是 `core-client.ts` 的设置 feed,第④步批 2b 起订的是 `GET /api/events` 上的
+   * `settings:changed`,不再是后端进程内那只单槽广播器):订上去之后先交一次当下那一份,之后每次保存再交。
+   * 返回退订。
+   */
+  subscribe(listener: (settings: Pick<AppSettings, 'browser'>) => void): () => void
+  /** 名册变了就叫一声(service 每次 `open` 现问缺省身份,所以 `index.ts` 靠它刷新那一格投影)。 */
   onTable?(table: BrowserProfileTable): void
 }
 
 /**
  * 装上「名册变更 → 关 tab + 清分区」这条路。返回摘掉它的那一手(**幂等**)。
  *
- * 串联进单槽端口的写法与 `installCdpSettingsWatcher` 逐字相同(先叫前一个、
- * 再干自己的;摘的时候只在还是**我**占着那一格时才还原)—— 两处各写一遍是
- * 两处会漂,但把它抽成一只「串联器」要动 B2′ 那只已经入库的文件,
- * 而那条边此刻只有两个消费者。**留账**:第三个消费者出现时抽。
- *
- * **开场不 reconcile**:装配那一刻手上只有一份名册,没有「上一份」可比 ——
- * 拿它与空集比会把每一格身份都当成新增(无后果),拿它与全集比会把没列在
- * 名册里的分区全清掉(有后果,而且是删数据)。所以开场只记账。
+ * **第一份不 reconcile**:订上去交来的第一份名册没有「上一份」可比 —— 拿它与空集比会把每一格身份
+ * 都当成新增(无后果),拿它与全集比会把没列在名册里的分区全清掉(有后果,而且是删数据)。
+ * 所以第一份只记账,之后每一份与上一份比。后端重拉之后 feed 会再交一份,那是「又一份」,照常比。
  */
 export function installBrowserProfilesWatcher(options: BrowserProfilesWatcherOptions): () => void {
-  const initial = profileTableFromSettings(options.readSettings())
-  options.onTable?.(initial)
-  const reconciler = new BrowserProfileReconciler(initial, options)
-
-  const previous = options.getBroadcaster()
-  const mine: SettingsEventBroadcaster = (event: SettingsEvent) => {
-    previous?.(event)
-    const table = profileTableFromSettings(event.settings)
-    options.onTable?.(table)
-    void reconciler.apply(table)
-  }
-  options.setBroadcaster(mine)
-
+  let reconciler: BrowserProfileReconciler | undefined
   let disposed = false
+  const off = options.subscribe(settings => {
+    if (disposed) return
+    const table = profileTableFromSettings(settings)
+    options.onTable?.(table)
+    if (!reconciler) {
+      reconciler = new BrowserProfileReconciler(table, options)
+      return
+    }
+    void reconciler.apply(table)
+  })
   return () => {
     if (disposed) return
     disposed = true
-    if (options.getBroadcaster() === mine) options.setBroadcaster(previous)
+    off()
   }
 }

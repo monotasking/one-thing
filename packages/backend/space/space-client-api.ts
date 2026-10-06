@@ -49,6 +49,7 @@ import {
 import { getSpacesStore } from '@onething/backend/space/space-store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import {
+  acceptLegacyCredentialsHandOver,
   clearSpaceProviderCredential,
   credentialsReady,
   credentialsStatus,
@@ -259,6 +260,16 @@ export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
       const code = exportFailureCode(error)
       return code ? { success: false, error: code, code } : lockedResult(error)
     }
+  },
+  /**
+   * 旧 `safeStorage` 密文「Electron 先读后交」(第④步批 2b)。交进来的是凭证明文,所以只给本机信任的来访者
+   * (Electron 拿着 0600 发现文件里的 token 经回环进来);判据与迁移都在凭证功能里,这里只递不判。
+   */
+  async handOverLegacyCredentials(request) {
+    if (!isHostLocallyTrusted()) return { success: false, error: 'not available on this host', code: 'NOT_TRUSTED' }
+    const entries = Array.isArray(request?.entries) ? request.entries : []
+    const result = await acceptLegacyCredentialsHandOver(entries)
+    return { success: true, accepted: result.accepted, migratedSpaces: result.migratedSpaces, status: result.status }
   },
 }
 

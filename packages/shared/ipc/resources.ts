@@ -71,6 +71,19 @@ export interface SerializedOpSpec {
 	whenGated?: boolean;
 	entity?: string;
 	keymap?: boolean;
+	/**
+	 * **只许坐在机器前的那个人调**(第④步批 2b,内置浏览器的 `respondPermission` 是第一个用者):
+	 * 模型 / 插件 / 系统主体发起的这条做法在 core 的 plan 期当场被拒,壳那一侧连命令都收不到。
+	 * 判据在 core 判(授权一律在 core),壳只自述「这一条是给人的」。
+	 */
+	userOnly?: boolean;
+	/**
+	 * 把一次具体调用说成一句人话的**模板**(权限卡标题、审计行),`OpSpec.describe` 那只函数过不了进程边界,
+	 * 壳交的是它的数据形(第④步批 2b,内置浏览器搬出 core 进程时立的):`{name}` 换成参数里那一格的字符串;
+	 * `[...]` 里的一段只在其中每个 `{name}` 都有值时才出现(`"Open a browser tab[ at {url}]"`)。
+	 * 缺席 = 卡上写 `title`。core 渲染(`resource-shell-provider.ts`),壳不渲染。
+	 */
+	describeTemplate?: string;
 }
 
 export interface SerializedEventSpec {

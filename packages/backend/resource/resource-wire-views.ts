@@ -48,6 +48,7 @@ export function serializeSpec(spec: ResourceSpec): SerializedResourceSpec {
       ...(op.when ? { whenGated: true } : {}),
       ...(op.entity !== undefined ? { entity: op.entity } : {}),
       ...(op.keymap !== undefined ? { keymap: op.keymap } : {}),
+      ...(op.userOnly ? { userOnly: true } : {}),
     }
   }
 

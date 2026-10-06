@@ -223,9 +223,6 @@ export type {
 } from './toolkit-execution-types.js'
 export type { ToolAuditRecord } from './toolkit-audit-observer.js'
 
-// 外部文本(网页正文、搜索结果)的界定:标成数据,不是指令
-export { wrapUntrustedText } from './toolkit-untrusted-text.js'
-
 // 装配用的接线(D191):建目录与刷 MCP 工具面、直调一只工具、审计落盘口、插件拦截端口的形状、
 // 留在 toolkit 的三只缺省适配器(提问、网页检索、网页打开)。goal / practice / task 的适配器在各自功能里。
 export {

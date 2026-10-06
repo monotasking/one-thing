@@ -5,9 +5,9 @@
  * 两条路径各验一次,全绿才算过:
  *
  *  路径一(没有 core 在跑,A1 换心之后):临时 store → 拉起应用 → 断言
- *    ① 应用**自己就是** core:发现文件 owner=`shell`,而且 pid **就是壳主进程自己的**
- *       —— 这一条是 A1 的分水岭。D0 那版这里断言的是「spawn 了一个子进程」;
- *       现在断言的是「没有第二个进程」。pid 从 playwright 的 `app.evaluate`
+ *    ① 应用**拉起**一台后端子进程(第④步批 2b):发现文件 owner=`backend`,而且 pid **不是**壳主进程
+ *       自己的 —— A1 那版这里断言的是「没有第二个进程」(壳自己装配),批 2b 又回到「有一个子进程」,
+ *       只是这次它是同一只二进制 + `ELECTRON_RUN_AS_NODE`。主进程 pid 从 playwright 的 `app.evaluate`
  *       (跑在主进程里)现问,不靠猜。
  *    ② `window.__d0.rpcOk === true`(一次真 `POST /api/rpc` 往返)
  *    ③ 脚本侧拿发现文件里的 token 造一个事件(`sessions.create`)→
@@ -194,14 +194,14 @@ async function runPathOne() {
     // 不是从发现文件反推的 —— 断言 ① 要的正是这两个数相等。
     const shellPid = await app.evaluate(() => process.pid)
 
-    const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
+    const record = await waitFor('壳拉起的后端写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     })
-    assert(record.owner === 'shell', `发现文件 owner === 'shell'(壳在当家)`)
+    assert(record.owner === 'backend', `发现文件 owner === 'backend'(壳拉起的后端在当家)`)
     assert(
-      record.pid === shellPid,
-      `发现文件 pid ${record.pid} === 壳主进程 pid ${shellPid} —— core 就在壳进程里,没有第二个进程`,
+      record.pid !== shellPid,
+      `发现文件 pid ${record.pid} ≠ 壳主进程 pid ${shellPid} —— 后端在另一个进程里`,
     )
     assert(await portConnects(record.host, record.port), `core 端口 ${record.port} 可连`)
 
@@ -227,7 +227,10 @@ async function runPathOne() {
     await app.close()
     app = undefined
     await waitFor('壳主进程退出', () => !pidAlive(shellPid), 15_000)
-    assert(!pidAlive(shellPid), `退出后壳主进程(pid ${shellPid})已不在 —— 没有遗留 core 进程`)
+    assert(!pidAlive(shellPid), `退出后壳主进程(pid ${shellPid})已不在`)
+    // 缺省档(没开「退出后继续运行」):后端随壳同停,SIGTERM 之后最多 7 秒。
+    await waitFor('壳拉起的后端退出', () => !pidAlive(record.pid), 10_000)
+    assert(!pidAlive(record.pid), `退出后后端子进程(pid ${record.pid})也不在 —— 没有遗留 core 进程`)
     // 发现文件是「这个 store 由我在服务」的宣告。留着它下一次启动就得靠探活才敢无视。
     assert(readDiscovery(store) === undefined, '退出后发现文件被删')
     assert(!(await portConnects(record.host, record.port)), `core 端口 ${record.port} 已不通`)

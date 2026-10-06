@@ -1,33 +1,12 @@
+import { validateOnethingProxyUrl } from '@shared/network/proxy-url'
+
+export { validateOnethingProxyUrl }
+export type { OnethingProxyUrlValidationResult } from '@shared/network/proxy-url'
+
 export interface OnethingProxySettings {
   enabled: boolean
   url: string
   bypassRules?: string
-}
-
-export type OnethingProxyUrlValidationResult =
-  | { valid: true; normalizedUrl: string }
-  | { valid: false; error: string }
-
-export function validateOnethingProxyUrl(url: string): OnethingProxyUrlValidationResult {
-  const trimmed = url.trim()
-  if (!trimmed) return { valid: false, error: 'Proxy URL is required when proxy is enabled.' }
-
-  let parsed: URL
-  try {
-    parsed = new URL(trimmed)
-  } catch {
-    return { valid: false, error: 'Proxy URL is not a valid URL.' }
-  }
-
-  const protocol = parsed.protocol.toLowerCase()
-  if (!['http:', 'https:', 'socks5:'].includes(protocol)) {
-    return { valid: false, error: 'Proxy URL must use http://, https://, or socks5://.' }
-  }
-  if (!parsed.hostname) {
-    return { valid: false, error: 'Proxy URL must include a host.' }
-  }
-
-  return { valid: true, normalizedUrl: parsed.toString() }
 }
 
 export function normalizeOnethingProxySettings<T extends OnethingProxySettings>(

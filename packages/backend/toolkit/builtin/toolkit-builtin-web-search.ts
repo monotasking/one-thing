@@ -24,7 +24,7 @@ import {
 } from '../../tool/tool.js'
 import { defineInput } from '../toolkit-contract.js'
 import { NetworkTool } from '../families/toolkit-families-network.js'
-import { wrapUntrustedText } from '../toolkit-untrusted-text.js'
+import { wrapUntrustedText } from '@shared/toolkit/untrusted-text'
 
 export interface WebSearchToolAdapters {
   providers?: Record<string, SearchProvider>

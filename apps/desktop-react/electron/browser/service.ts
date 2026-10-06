@@ -28,7 +28,8 @@
 
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { readJsonFile, writeJsonFile, getOnethingStorePath } from '@onething/backend/storage'
+import fs from 'node:fs'
+import { resolveStoreRoot } from '../discovery.js'
 import type { BrowserTabPatch, BrowserTabState, PersistedTabTable } from './tab-state.js'
 import { EMPTY_TAB_TABLE, parseTabTable, persistTab } from './tab-state.js'
 import type { BrowserViewFactory } from './tab.js'
@@ -62,7 +63,7 @@ export const SPAWN_WINDOW_MS = 2_000
 export const SPAWN_BURST = 3
 
 export function getBrowserTabsPath(storePath?: string): string {
-  return path.join(getOnethingStorePath(storePath ? { storePath } : {}), 'browser', 'tabs.json')
+  return path.join(storePath ?? resolveStoreRoot(), 'browser', 'tabs.json')
 }
 
 /** service 向外说的四句话。`index.ts` 把它们转手给 provider 发成资源事件。 */
@@ -154,7 +155,7 @@ export class BrowserService {
    * 读坏了 = 空账本,不是一次崩溃(`parseTabTable` 的判据)。
    */
   restore(): void {
-    const table = parseTabTable(readJsonFile<unknown>(this.tabsPath, EMPTY_TAB_TABLE))
+    const table = parseTabTable(readJsonFile(this.tabsPath, EMPTY_TAB_TABLE))
     for (const row of table.tabs) {
       const tab = this.construct({ id: row.id, profile: row.profile, url: row.url, title: row.title })
       this.tabs.set(tab.id, tab)
@@ -361,5 +362,32 @@ export class BrowserService {
       // 写不下去(盘满 / 只读)不该让浏览器停摆:这是一份可以重建的派生数据。
       // 代价是下次启动少几格 tab,而那远好过一次关不掉的错误。
     }
+  }
+}
+
+/*
+ * ── tab 表的读写(第④步批 2b 起自己写这两只,不再运行期 import 后端的 storage)──────────────
+ * 形与 `packages/backend/storage/storage-json-file.ts` 的同名两只逐条相同:读 —— 不在 / 空 / 坏了都答缺省值;
+ * 写 —— 先写旁边的 `.tmp` 再 rename(半截文件不会留在正本的位置上),失败清掉 `.tmp` 再抛。
+ */
+function readJsonFile(filePath: string, defaultValue: unknown): unknown {
+  try {
+    if (!fs.existsSync(filePath)) return defaultValue
+    const content = fs.readFileSync(filePath, 'utf-8').trim()
+    return content ? JSON.parse(content) as unknown : defaultValue
+  } catch {
+    return defaultValue
+  }
+}
+
+function writeJsonFile(filePath: string, data: unknown): void {
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+    fs.renameSync(tmpPath, filePath)
+  } catch (error) {
+    try { fs.unlinkSync(tmpPath) } catch { /* 已不存在 */ }
+    throw error
   }
 }

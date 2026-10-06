@@ -58,8 +58,9 @@ const serverOutDir = laneServerOutDir(devSelf)
 /**
  * A 期(docs/design/one-core-2026-08.md §3):一个 store 只有一个 core 进程。
  *
- * Electron 泳道在跑时,**桌面就是那个进程** —— 它自己挂 HTTP/SSE 面并把地址写进
- * `<store>/run/http.json`,所以这里不再拉第二个 server。web 泳道单独跑时才需要
+ * Electron 泳道在跑时,**桌面拉起那个进程**(第④步批 2b:Electron 用自己的二进制 + `ELECTRON_RUN_AS_NODE=1`
+ * 拉起 `dist-electron/backend.cjs`,后端挂 HTTP/SSE 面并把地址写进 `<store>/run/http.json`),所以这里不再拉
+ * 第二个 server。web 泳道单独跑时才需要
  * 一个 core:先读发现文件,活着就直接连,否则自己拉 `server:start`。
  */
 function laneStorePath() {
@@ -486,9 +487,9 @@ function shutdown(code = 0, signal = 'SIGTERM') {
 }
 
 async function startBackendLane() {
-  // 桌面在同一次 run 里 → 它就是这个 store 的 core,不起第二个引擎进程。
+  // 桌面在同一次 run 里 → 它拉起的后端就是这个 store 的 core,不起第二个引擎进程。
   if (managesElectron) {
-    log('dev', 'electron lane owns the core — web will connect to the desktop HTTP surface')
+    log('dev', 'electron lane launches the core — web will connect to the backend the desktop starts')
     return
   }
   // web 单独跑:已经有活着的 core(桌面或别人起的 server)就直接连。

@@ -380,6 +380,29 @@ export interface SpacesImportExportedCredentialsRequest {
 	/** 导出文件的全文。 */
 	data: string;
 }
+/**
+ * **旧 `safeStorage` 密文「Electron 先读后交」**(第④步批 2b,`docs/design/two-process-2026-10.md` §2.3 第 12 条)。
+ *
+ * 后端是 Electron 拉起的另一个进程,解不开 Electron `safeStorage` 封的旧凭证文件;Electron 在拉起它之前
+ * 把这些密文读出、解开,后端就绪后经这一条交进来(方向是**进**,不是出:任何接口都不把凭证原文交回客户端)。
+ * 后端按批 0 同一套判据封进主密钥信封、逐条校验、旧文件改名备份。只给本机信任的来访者。
+ */
+export interface SpacesHandOverLegacyCredentialsRequest {
+	/** 一条 = 落盘时那段 base64 密文原样 + 它解开后的明文。 */
+	entries: Array<{ ciphertext: string; plaintext: string }>;
+}
+export interface SpacesHandOverLegacyCredentialsResponse {
+	success: boolean;
+	/** 收下了几条。 */
+	accepted?: number;
+	/** 这一次迁好的空间数。 */
+	migratedSpaces?: number;
+	status?: CredentialsStatusPayload;
+	error?: string;
+	/** `NOT_TRUSTED`。 */
+	code?: string;
+}
+
 export interface SpacesImportExportedCredentialsResponse {
 	success: boolean;
 	imported?: number;
@@ -477,6 +500,10 @@ export type SpacesRoutes = {
 		input: SpacesImportExportedCredentialsRequest;
 		output: SpacesImportExportedCredentialsResponse;
 	};
+	handOverLegacyCredentials: {
+		input: SpacesHandOverLegacyCredentialsRequest;
+		output: SpacesHandOverLegacyCredentialsResponse;
+	};
 };
 
 export const spacesRouter = defineRouter<SpacesRoutes>("spaces", [
@@ -497,4 +524,5 @@ export const spacesRouter = defineRouter<SpacesRoutes>("spaces", [
 	"unlockCredentials",
 	"exportCredentials",
 	"importExportedCredentials",
+	"handOverLegacyCredentials",
 ]);

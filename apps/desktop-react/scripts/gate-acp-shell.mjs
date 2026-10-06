@@ -6,7 +6,7 @@
  * 名册的探测跑在**装配它的那台 core** 上(`acp.detect` 在 PATH 上找可执行、取版本号),
  * 而 React 壳的主进程在装配前先灌了登录 shell 的 PATH(`packages/backend/process-env/process-env-login-shell.ts`)——
  * 拿独立 server 来量的话,量到的是另一台进程眼里的 PATH。所以不起 server,让壳自己装配
- * (`assembleOwnCore`,发现文件 owner = `shell`)。
+ * (第④步批 2b 起:桌面拉起的后端子进程,登录 shell 的 PATH 由后端进程自己灌;发现文件 owner = `backend`)。
  *
  * ── 两步 ────────────────────────────────────────────────────────────────
  *  ① 设置页「Agent」那一页列出种子 agent 与探测结果:至少 `claude-code` / `gemini` / `codex`
@@ -367,7 +367,7 @@ async function main() {
 
     record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     })
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)

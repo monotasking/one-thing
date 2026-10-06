@@ -43,7 +43,6 @@ async function assemble(pets: boolean): Promise<Backend> {
       storePath: {},
       sandbox: {},
       auth: null,
-      legacySafeStorageForMigration: null,
       logging: null,
       voice: null,
       terminal: null,

@@ -2,7 +2,7 @@
  * `browser:` 的**自述**(原子 K0,`docs/design/atom-2026-09.md` §2)——
  * 这台 app 的内嵌浏览器有哪些读法、哪些做法、会发哪些事件。
  *
- * 纯数据、零行为、零 electron。实现在 `resource-provider.ts`。
+ * 纯数据、零行为、零 electron。实现在 `resource-provider.ts`,登记在 `../shell-resources.ts`。
  *
  * ## 地址
  *
@@ -25,13 +25,16 @@
  *
  * ## 上界与真发给授权者的那一份是两回事
  *
- * 这里写的是**静态上界**。真按主体分档在 provider 的 `plan` 里:**用户主体一律
- * 零效果**(设置页 / 地址栏上那颗钮是人自己按的,再弹一张卡问「准不准你按你刚按
- * 的那颗钮」是噪音不是保护,08-18 判例),其余主体顶格。判据与
- * `music-provider.ts` 的 `capabilityPlan` 逐字同形。
+ * 这里写的是**静态上界**。第④步批 2b 起这份自述是 Electron 主进程经 `resources.mountShell` 交给后端的
+ * (`home: 'shell'`,决策 D4 (A)),授权在 core 判:core 那只 `ShellResourceProvider.plan` 对**用户主体一律
+ * 零效果**(设置页 / 地址栏上那颗钮是人自己按的,再弹一张卡问「准不准你按你刚按的那颗钮」是噪音不是
+ * 保护,08-18 判例),其余主体顶格。从前这条判据写在本目录那只 provider 的 `plan` 里,搬成壳交的命名空间
+ * 之后壳这一侧不在授权路上了,所以它落到 core,对所有壳交的命名空间一视同仁。
  *
- * **`respondPermission` 是这条规律唯一的例外,而它例外的方向是反的**:非用户主体
- * 不是「顶格」,是**根本不许**(`plan` 当场抛)。判词写在那条做法上。
+ * **`respondPermission` 是这条规律唯一的例外,而它例外的方向是反的**:非用户主体不是「顶格」,是
+ * **根本不许**。这一句写成数据 `userOnly: true`,由 core 在 plan 期当场拒,壳连命令都收不到。
+ *
+ * 权限卡上那句人话(从前是 `describe(params)` 函数,过不了进程边界)写成 `describeTemplate`,由 core 渲染。
  *
  * ## 哪些东西**不进**这份自述
  *
@@ -45,7 +48,7 @@
  * 它有没有结局、要不要授权、别的进程该不该知道。** 三个都否 = 视图状态。
  */
 
-import type { ResourceSpec } from '@onething/backend/resource'
+import type { SerializedResourceSpec } from '@shared/ipc/resources'
 import type { JsonSchema } from '@shared/toolkit/json-schema'
 
 export const BROWSER_RESOURCE_SCHEME = 'browser'
@@ -174,11 +177,7 @@ const RESPOND_PERMISSION_PARAMS: JsonSchema = {
   required: ['requestId', 'allow'],
 }
 
-function urlOf(params: unknown): string {
-  return String((params as { url?: unknown } | undefined)?.url ?? '')
-}
-
-export const browserResourceSpec: ResourceSpec = {
+export const browserResourceSpec: SerializedResourceSpec = {
   scheme: BROWSER_RESOURCE_SCHEME,
   title: 'Browser — the built-in web browser',
   reads: {
@@ -204,63 +203,58 @@ export const browserResourceSpec: ResourceSpec = {
         'Open a new browser tab, optionally at a URL. This is the app\'s own browser — it carries the user\'s logged-in sessions, so a page it loads sees the user, not an anonymous visitor.',
       params: OPEN_PARAMS,
       effects: ['browser_navigate'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
       keymap: true,
-      describe: params => {
-        const url = urlOf(params)
-        const profile = String((params as { profile?: unknown } | undefined)?.profile ?? '')
-        const where = profile ? ` as ${profile}` : ''
-        return url ? `open a browser tab at ${url}${where}` : `open an empty browser tab${where}`
-      },
+      describeTemplate: 'Open a browser tab[ at {url}][ as {profile}]',
     },
     navigate: {
       title: 'Send a tab to a URL.',
       params: NAVIGATE_PARAMS,
       effects: ['browser_navigate'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: params => `navigate the browser to ${urlOf(params)}`,
+      describeTemplate: 'Send the browser to {url}',
     },
     back: {
       title: 'Go back one entry in a tab\'s history.',
       params: NO_PARAMS,
       effects: ['browser_navigate'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: () => 'go back in the browser',
+      describeTemplate: 'Go back in the browser',
     },
     forward: {
       title: 'Go forward one entry in a tab\'s history.',
       params: NO_PARAMS,
       effects: ['browser_navigate'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: () => 'go forward in the browser',
+      describeTemplate: 'Go forward in the browser',
     },
     reload: {
       title: 'Reload a tab.',
       params: NO_PARAMS,
       effects: ['browser_navigate'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: () => 'reload the browser tab',
+      describeTemplate: 'Reload the browser tab',
     },
     activate: {
       title: 'Bring a tab to the front.',
       params: NO_PARAMS,
       effects: ['ui_change'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: () => 'switch to this browser tab',
+      describeTemplate: 'Bring this browser tab to the front',
     },
     close: {
       title: 'Close a tab.',
       params: NO_PARAMS,
       effects: ['ui_change'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: () => 'close the browser tab',
+      describeTemplate: 'Close this browser tab',
     },
     /**
      * 页面缩放(K3)。
@@ -276,21 +270,16 @@ export const browserResourceSpec: ResourceSpec = {
       title: 'Zoom a tab\'s page in, out, or back to its actual size.',
       params: ZOOM_PARAMS,
       effects: ['ui_change'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: params => {
-        const level = String((params as { level?: unknown } | undefined)?.level ?? '')
-        if (level === 'in') return 'zoom the page in one notch'
-        if (level === 'out') return 'zoom the page out one notch'
-        return 'reset the page zoom to 100%'
-      },
+      describeTemplate: 'Zoom this page: {level}',
     },
     /**
      * 答一次网页权限询问(B3-a)。
      *
      * ## 它在自述里,但**模型永远调不动它**
      *
-     * `plan` 对非用户主体当场抛(`BrowserPermissionNotUserError`)。理由不是保守,
+     * 下面那一格 `userOnly: true` 让 core 对非用户主体在 plan 期当场抛(`ShellOpUserOnlyError`,第④步批 2b 起;从前是这只壳自己的 `BrowserPermissionNotUserError`)。理由不是保守,
      * 是**越权**:这一问的内容是「这个网页能不能拿你的位置 / 麦克风 / 通知」,
      * 而那句话只有坐在这台机器前面的人答得出。让模型替网页放权限,等于把一道给人
      * 的闸交给了一个能被网页正文说服的东西 —— 而那一页正文正是 `page` 读法反复
@@ -319,12 +308,9 @@ export const browserResourceSpec: ResourceSpec = {
         + 'Only the person at this machine may answer — a model or a plugin calling this is refused.',
       params: RESPOND_PERMISSION_PARAMS,
       effects: ['ui_change'],
-      home: 'core',
+      home: 'shell',
       entity: 'tab',
-      describe: params => {
-        const allow = (params as { allow?: unknown } | undefined)?.allow === true
-        return allow ? 'allow what the page asked for, once' : 'refuse what the page asked for'
-      },
+      userOnly: true,
     },
   },
   /**

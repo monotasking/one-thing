@@ -68,6 +68,11 @@ export interface ToastSpec {
    * 通知中心是哪块瓦。
    */
   action?: { label: ReactNode; onClick: () => void }
+  /**
+   * 第二道门(第④步批 2b「后端已停止」那条横幅:「重启」之外还要一道「查看日志」)。排在 `action` 之后、
+   * 同一种画法;只给它不给 `action` 也照画。仍然不是关闭钮。
+   */
+  secondaryAction?: { label: ReactNode; onClick: () => void }
   /** null = **不自动消失**(error 档),要点 ✕ 才走。 */
   lifeMs: number | null
 }
@@ -217,11 +222,11 @@ function ToastRow({ spec, closeLabel }: { spec: ToastSpec; closeLabel?: string }
           {spec.note ? <span className={s.note}>{spec.note}</span> : null}
         </span>
         {spec.body ? <span className={s.body}>{spec.body}</span> : null}
-        {spec.action ? (
-          <button type="button" className={s.action} onClick={spec.action.onClick}>
-            {spec.action.label}
+        {[spec.action, spec.secondaryAction].map((door, index) => door ? (
+          <button key={index} type="button" className={s.action} onClick={door.onClick}>
+            {door.label}
           </button>
-        ) : null}
+        ) : null)}
       </span>
       {spec.lifeMs === null ? (
         <IconButton

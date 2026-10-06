@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
- * `gate:backend-process` —— 第④步批 2a「后端进程能独当一面」的门(`docs/design/two-process-2026-10.md` §2.3 验收,
- * 不开窗的那一半;批 2b 再加「起 Electron 离屏 → 杀后端子进程 → 断言 D11」那一半)。
+ * `gate:backend-process` —— 第④步批 2a「后端进程能独当一面」+ 批 2b「桌面拉起它、监督它」的门
+ * (`docs/design/two-process-2026-10.md` §2.3 验收,不开窗的那一半;起 Electron 离屏开窗的那一半见 §10 的择时清单)。
+ *
+ * 批 2b 加的**监督那一半**(`runSupervisor`,`--no-supervisor` 跳过):把桌面真正用的那只 `BackendProcess`
+ * (`apps/desktop-react/electron/backend-process.ts`)经 `scripts/gate-backend-process/supervisor-entry.ts` 打成 cjs,
+ * 用同一个运行时起它(Electron 那一半 = `process.execPath` 就是桌面那只二进制),驱动真 `backend.cjs`:拉起、`kill -9`
+ * 看 D11 重拉(端口 / token 不变)、60 秒内第 4 次封顶、「重启」、`leave()` 后驱动退出而后端留着、再起一程借它、
+ * `stop()` 在 7 秒内收掉。
  *
  * 跑的是**产物**:`apps/desktop-react/dist-electron/backend.cjs`(`electron:build` 或
  * `node apps/desktop-react/scripts/build-electron.mjs` 打出来的那一份,批 2b 起桌面拉起的就是它)。
@@ -52,6 +58,7 @@ import {
   acpMcpBridgeEsbuildOptions,
   backendEsbuildOptions,
   searchWorkerEsbuildOptions,
+  shellEsbuildOptions,
 } from '../apps/desktop-react/scripts/build-electron.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -380,6 +387,76 @@ async function runTiming(n) {
   }
 }
 
+/**
+ * **监督那一半**(第④步批 2b):`scripts/gate-backend-process/supervisor-entry.ts` 打成 cjs,用同一个运行时起它,
+ * 由它驱动桌面真正用的那只 `BackendProcess` 拉起真 `backend.cjs`。两程:`supervise`(拉起 / 崩了重拉 / 三次封顶 /
+ * 重启 / `leave()` 后自己退出)→ 门断言那台后端**还活着**、发现文件还在 →`adopt`(借它、`stop()` 收掉)→ 门断言
+ * 它真退了。断言逐项写在那只文件头。
+ */
+const SUPERVISOR_MARKER = '__GATE_SUPERVISOR_RESULT__'
+const supervisorBundle = join(cacheDir, 'supervisor.cjs')
+
+function runSupervisorOnce(runtime, store, mode, extraEnv = {}) {
+  const command = runtime === 'electron' ? electronBinaryPath() : process.execPath
+  const child = spawn(command, [supervisorBundle], {
+    cwd: repoRoot,
+    env: { ...childEnv(store, { launcher: undefined, electron: runtime === 'electron' }), GATE_BACKEND_ENTRY: backendEntry, GATE_SUPERVISOR_MODE: mode, ...extraEnv },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const out = { stdout: '', stderr: '' }
+  child.stdout.on('data', chunk => { out.stdout += chunk })
+  child.stderr.on('data', chunk => { out.stderr += chunk })
+  return new Promise(resolvePromise => {
+    const timer = setTimeout(() => { child.kill('SIGKILL') }, 180_000)
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer)
+      const at = out.stdout.indexOf(SUPERVISOR_MARKER)
+      const parsed = at < 0 ? undefined : JSON.parse(out.stdout.slice(at + SUPERVISOR_MARKER.length).split('\n')[0])
+      resolvePromise({ code, signal, parsed, out })
+    })
+  })
+}
+
+async function runSupervisor(runtime) {
+  const label = runtime === 'electron' ? '[监督 · Electron + ELECTRON_RUN_AS_NODE=1]' : '[监督 · 系统 Node]'
+  process.stdout.write(`\n${label} BackendProcess 驱动真 backend.cjs\n`)
+  const store = mkdtempSync(join(tmpdir(), 'onething-gate-backend-process-supervisor-'))
+  let leftPid
+  try {
+    seedStore(store)
+    const first = await runSupervisorOnce(runtime, store, 'supervise')
+    if (!first.parsed) {
+      check(false, `${label} supervise 交回了结果`, `${first.out.stderr.slice(-1500)}\n${first.out.stdout.slice(-800)}`)
+      return
+    }
+    for (const row of first.parsed.checks) check(row.ok, `${label} ${row.label}`, row.detail)
+    leftPid = first.parsed.leftPid
+    const record = readDiscovery(store)
+    let alive = false
+    try { process.kill(leftPid, 0); alive = true } catch { alive = false }
+    check(alive && record?.pid === leftPid && first.code === 0,
+      `${label} 「退出后继续运行」:驱动退出(${first.code})之后后端还活着、发现文件还在`, `leftPid=${leftPid} record=${JSON.stringify(record)}`)
+    if (!alive) return
+    const second = await runSupervisorOnce(runtime, store, 'adopt', { GATE_EXPECTED_PID: String(leftPid) })
+    if (!second.parsed) {
+      check(false, `${label} adopt 交回了结果`, `${second.out.stderr.slice(-1500)}\n${second.out.stdout.slice(-800)}`)
+      return
+    }
+    for (const row of second.parsed.checks) check(row.ok, `${label} ${row.label}`, row.detail)
+  } catch (error) {
+    check(false, `${label} 跑完`, error instanceof Error ? error.stack ?? error.message : String(error))
+  } finally {
+    // 收尸:这一程起的那台后端若还在(断言红了的半路上),按 pid 收掉 —— 只收发现文件里、这间临时 store 的那一台。
+    // 等一拍再读:后端可能还在装配、发现文件还没写(10-07 真踩过:驱动半路退出,那台起到一半的后端成了孤儿)。
+    await sleep(3000)
+    const record = readDiscovery(store)
+    for (const pid of new Set([leftPid, record?.pid].filter(Boolean))) {
+      try { process.kill(pid, 'SIGKILL') } catch { /* 已经没了 */ }
+    }
+    rmSync(store, { recursive: true, force: true })
+  }
+}
+
 async function main() {
   if (args.has('build')) {
     for (const options of [backendEsbuildOptions, searchWorkerEsbuildOptions, acpMcpBridgeEsbuildOptions]) {
@@ -395,9 +472,14 @@ async function main() {
     process.exit(1)
   }
   writeFakeMcpServer()
+  await build({
+    ...shellEsbuildOptions({ entryPoints: { supervisor: join(repoRoot, 'scripts/gate-backend-process/supervisor-entry.ts') }, outdir: cacheDir }),
+    logLevel: 'warning',
+  })
   try {
     for (const runtime of runtimes) await runDesktop(runtime)
     await runDefaultContrast()
+    if (!args.has('no-supervisor')) for (const runtime of runtimes) await runSupervisor(runtime)
     if (timingRuns > 0) await runTiming(timingRuns)
   } finally {
     rmSync(cacheDir, { recursive: true, force: true })

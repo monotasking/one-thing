@@ -15,6 +15,7 @@ import {
   type MemoryProcessProbe,
 } from '@onething/backend/memory/memory-registry'
 import { getLogger } from '@onething/backend/logging'
+import { DEFAULT_MEMORY_BUDGET, resolveMemoryBudgetFrom } from '@shared/memory/budget'
 
 export type { MemoryHolder, MemoryProcessProbe } from './memory-registry.js'
 
@@ -22,22 +23,11 @@ const log = getLogger('app.memory')
 
 const MB = 1024 * 1024
 
-export const DEFAULT_MEMORY_BUDGET: MemoryBudget = {
-  softBytes: 1024 * MB,
-  hardBytes: 1536 * MB,
-}
+export { DEFAULT_MEMORY_BUDGET }
 
-function readMb(raw: string | undefined): number | undefined {
-  if (!raw) return undefined
-  const value = Number(raw)
-  return Number.isFinite(value) && value > 0 ? Math.round(value * MB) : undefined
-}
-
-/** 读取预算:优先环境变量,否则用默认值。硬上限低于软上限时取软上限。 */
+/** 读取预算:优先环境变量,否则用默认值(判据在 `@shared/memory/budget`,这里只补「缺省读本进程的环境」)。 */
 export function resolveMemoryBudget(env: NodeJS.ProcessEnv = process.env): MemoryBudget {
-  const softBytes = readMb(env.ONETHING_MEMORY_SOFT_MB) ?? DEFAULT_MEMORY_BUDGET.softBytes
-  const hardBytes = readMb(env.ONETHING_MEMORY_HARD_MB) ?? Math.max(DEFAULT_MEMORY_BUDGET.hardBytes, softBytes)
-  return { softBytes, hardBytes: Math.max(hardBytes, softBytes) }
+  return resolveMemoryBudgetFrom(env)
 }
 
 /** 本进程探针。RSS 包含 Worker 线程,不包含子进程。 */

@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type {
+  BackendHostState,
   ClientAction,
   ClientActionDone,
   ClientActionResults,
@@ -32,13 +33,17 @@ import type {
 const EXTERNAL_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
 const DIALOG_PROPERTIES = new Set<ShowOpenDialogProperty>(['openFile', 'openDirectory', 'multiSelections', 'createDirectory'])
 
-/** 主进程递进来的四下真动作。 */
+/** 主进程递进来的真动作(四下屏幕上的事 + 三下后端进程的事,后三下第④步批 2b 加)。 */
 export interface ClientActionPorts {
   showOpenDialog(request: ShowOpenDialogRequest): Promise<ShowOpenDialogResponse>
   openExternal(url: string): Promise<void>
   /** Electron `shell.openPath` 的约定:resolve 空串 = 成功,非空串 = 失败原因。 */
   openPath(filePath: string): Promise<string>
   revealPath(filePath: string): void
+  backendStatus(): BackendHostState
+  /** 失败答一句为什么(别人起的 `server:start` 不归这台桌面重启)。 */
+  restartBackend(): Promise<ClientActionDone>
+  revealBackendLog(): void
 }
 
 /** 收件侧对载荷的判词:合规矩就是一个 `ClientAction`,不合就是一句为什么。 */
@@ -67,6 +72,11 @@ export function parseClientAction(raw: unknown): ClientAction | { error: string 
       const request = parseDialogRequest(value.request)
       return 'error' in request ? request : { kind: 'showOpenDialog', request }
     }
+    // 后端那三下不收参数:地址、日志路径、要停的是哪一台,全由主进程自己知道,渲染层说不了也不该说。
+    case 'backendStatus':
+    case 'restartBackend':
+    case 'revealBackendLog':
+      return { kind: value.kind }
     default:
       return { error: `unknown client action ${JSON.stringify(value.kind)}` }
   }
@@ -139,8 +149,17 @@ export async function runClientAction(
       case 'revealPath':
         ports.revealPath(action.path)
         return { ok: true }
+      case 'backendStatus':
+        return ports.backendStatus()
+      case 'restartBackend':
+        return await ports.restartBackend()
+      case 'revealBackendLog':
+        ports.revealBackendLog()
+        return { ok: true }
     }
   } catch (error) {
-    return action.kind === 'showOpenDialog' ? { canceled: true, filePaths: [] } : { ok: false, error: errorText(error) }
+    if (action.kind === 'showOpenDialog') return { canceled: true, filePaths: [] }
+    if (action.kind === 'backendStatus') return { phase: 'idle', error: errorText(error) }
+    return { ok: false, error: errorText(error) }
   }
 }

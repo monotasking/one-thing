@@ -54,7 +54,8 @@ export async function runDesktopLifecycleLanes({ appRoot, outDir, assert }) {
         }
         throw new Error(`Electron exited before HTTP ready: ${child.exitCode}`)
       })(), 20000, 'Desktop HTTP startup')
-      assert(discovery.pid === child.pid && discovery.owner === 'shell', '当前Electron进程持有自己的HTTP发现记录')
+      // 第④步批 2b 起:发现记录归 Electron 拉起的后端子进程(owner backend,pid 不是 Electron 自己的)。
+      assert(discovery.pid !== child.pid && discovery.owner === 'backend', '发现记录归 Electron 拉起的后端子进程')
       const base = `http://${discovery.host}:${discovery.port}`
       const headers = { authorization: `Bearer ${discovery.token}`, 'content-type': 'application/json' }
       const created = await (await fetch(`${base}/api/sessions`, { method: 'POST', headers, body: JSON.stringify({ name: `exit-${route}` }) })).json()

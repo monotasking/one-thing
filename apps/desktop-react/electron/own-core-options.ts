@@ -1,14 +1,14 @@
 /**
- * 桌面自己当 core 时那五个装配开关(`main.ts` 的 `assembleOwnCore` 原样摊开它们)。
+ * 桌面拉起的后端必须带着的那五个装配开关(决策 D14 的钉子)。
  *
- * 为什么单独一只文件(第④步批 2a,决策 D14):不带界面的后端进程有一档「桌面档」
- * (`ONETHING_BACKEND_LAUNCHER=desktop`,`packages/backend/backend-launcher.ts`),批 2b 起由桌面拉起它、
- * 顶替今天进程内装配的这一份。两边的开关必须逐格相同,而 `main.ts` 一 import 就要 electron、测试里加载
- * 不了 —— 所以把这几格挪到一只不碰 electron 的文件里,由 `__tests__/own-core-options.test.ts` 与后端的
- * 桌面档逐格对比。值一格没改,只是从 `main.ts` 的字面量里搬出来。
+ * 来历:第④步批 2a 之前桌面在 `main.ts` 的 `assembleOwnCore` 里进程内装配,用的就是这五格;批 2a 给不带界面的
+ * 后端进程立了「桌面档」(`ONETHING_BACKEND_LAUNCHER=desktop`,`packages/backend/backend-launcher.ts`),批 2b 起
+ * 桌面不再装配、改为拉起那一档的子进程(`./backend-process.ts`)。所以这五格今天**没有运行期读者**:它是
+ * 「桌面那一档少一格就是一项能力悄悄没了」这句话的数据形,由 `__tests__/own-core-options.test.ts` 与后端的
+ * 桌面档逐格对比(不开 `collab` 协作会话发不出话,不开 `pets` 栖位读不到 `pet:`)。改桌面档的开关 = 两边一起改,
+ * 并说清为什么。
  *
- * 不在这里的:`host`(宿主表,Electron 独有)、`logging`(两边各写各的日志文件)、`sender`、`hooks`
- * (`afterSettings` 里套 Electron session 的代理,后端进程没有那件事)。
+ * 不在这里的:`host`(宿主表,后端进程自己填)、`logging`(两个进程各写各的日志文件)、`sender`、`hooks`。
  */
 import type { OnethingBackendOptions } from '@onething/backend/backend.js'
 

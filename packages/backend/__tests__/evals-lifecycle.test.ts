@@ -36,7 +36,7 @@ it('aborts the real eval HTTP request and holds the Backend lease until its file
     const { setSpaceProviderCredential } = await import('../credentials/credentials.js')
     const { inspectStoreLock } = await import('@onething/backend/storage')
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
-      storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
+      storePath: {}, sandbox: {}, auth: null, logging: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
       gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null, 
     } })

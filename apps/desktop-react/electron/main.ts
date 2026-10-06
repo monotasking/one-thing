@@ -1,93 +1,88 @@
 /**
  * React 壳的 main 进程。
  *
- * ── A1(2026-08-31):从「薄壳 + 子进程 core」换成「壳自己就是 core」 ────────
- * D0 那版是薄壳:没有活的 core 就 spawn `dist/server/main.js`。那条路有一个**结构性
- * 的**缺陷,不是配置问题 —— 子进程是另一个 app 身份,safeStorage 的密文它解不开,
- * 于是用户明明登录过的 provider 在新壳里一个都读不出来。凭证解密只有一个口
- * (`configureAuthHost`),而那个口必须由**拿着 Electron app 身份的进程**注入。
- * 所以壳自己装配 backend:与旧 Vue 桌面同一份 `createOnethingBackend` 配方。
+ * ── 第④步批 2b(2026-10-07):从「壳自己就是 core」换成「壳拉起后端子进程」 ──────────
+ * A1(2026-08-31)那一版让壳自己装配后端,理由是一条结构性的缺陷:子进程是另一个 app 身份,`safeStorage`
+ * 的密文它解不开。第④步批 0 把凭证换成后端自己的主密钥(不靠 Electron),批 2a 把后端进程入口补齐到
+ * 「桌面明天拉起它就能完全顶上」(MCP / 定时任务 / 电台 / 首启模型拉取 / 登录 shell 的 PATH),那条理由
+ * 于是不在了。现在这个进程**不装配后端**:它用同一只 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起
+ * `dist-electron/backend.cjs`(`./backend-process.ts`),自己只剩窗口、内置浏览器和几件只在用户屏幕上
+ * 发生的事。对后端的一切都走 HTTP:`./core-client.ts` 那台客户端,与渲染层同一条 `POST /api/rpc` +
+ * `GET /api/events`。`apps/desktop-react/electron/**` 对 `@onething/backend` 只许 `import type`
+ * (日志那一族除外,判词在 `boundary:gate` 那条断言上)。
  *
- * ── 启动次序(2026-09-15 改过一次,这里写的是**今天**的真话)──────────────
- * 顺序就是下面这个顺序,而它的要点是**开窗排在装配之前**:
+ * ── 启动次序(这里写的是**今天**的真话)────────────────────────────────────
+ *  1. `app.whenReady()` → 开日志(`shell.jsonl`,只记窗口的事;后端自己写 `app.jsonl`)→ 装应用菜单
+ *     (必须在第一扇窗之前)。
+ *  2. **开窗**。页面从这一刻开始加载,与后端起步并行 —— 渲染层 `await host.getConnection()` 等的是答案,
+ *     不是开窗的次序。
+ *  3. **先读后交**的前一半:还有 `encryption: 'safeStorage'` 的旧凭证就在拉起后端**之前**读出、用
+ *     `safeStorage` 解开(`./legacy-credentials.ts`;大多数机器上什么都找不到)。
+ *  4. **发现文件活着就连它**(上一次「退出后继续运行」留下的、或者别人起的 `server:start`);否则拉起
+ *     子进程,轮询发现文件直到活着(`./backend-process.ts`)。
+ *  5. 一条 IPC:`host:connection` → `{ baseUrl, token }`。发现文件是 0600 的秘密,渲染层不许自己读盘。
+ *     **它是一个承诺,不是一个值**(`./host-connection.ts`)。后端崩了重拉时地址与 token 不变,所以这个
+ *     承诺只答一次就够。反过来,首启就没起来(承诺已经答了 `ok: false`)之后用户点「重启」,原地重拉救不回
+ *     渲染层 —— 那一下改成整个 app 重开(`restartBackend` 那一口)。
+ *  6. 连上之后:主进程那台客户端订设置(代理重套、CDP 旗文件、浏览器身份名册三处),把第 3 步解开的旧凭证
+ *     交给 `spaces.handOverLegacyCredentials`,装内置浏览器并以一扇壳的身份认领 `browser:`。
  *
- *  1. `app.whenReady()` → 装应用菜单(必须在第一扇窗之前)。
- *  2. **开窗**。页面从这一刻开始加载(dev 下 873 个模块过 vite,冷 2.4–5s)。
- *  3. **发现**这个 store 正在跑的 core(`<store>/run/http.json`,探活最多 500ms)。
- *     有活的就挂它 —— 别人起的 `server:start`(owner `server`)、另一个壳
- *     (owner `shell`)都一样。这正是 A 期「一个 core 任何 UI」的目标:两个 UI 订
- *     同一条事件流,而不是两台引擎各写各的。
- *  4. 没有活的 core 时**自己当 core**:`createOnethingBackend`(真店 ≈1.7s:498 会话、
- *     72 skills、3 个 MCP)→ 非阻塞挂 HTTP/SSE 面(发现文件 owner=`shell`)+ 调度器
- *     + MCP + 内嵌浏览器。**这一段与第 2 步的页面加载是并行的** —— 它们本来就互不
- *     依赖(见下一条),从前排成一条队纯粹是代码次序造成的。
- *  5. 一条 IPC:`host:connection` → `{ baseUrl, token }`。发现文件是 0600 的秘密,
- *     渲染层不许自己读盘 —— 挂别人的面和挂自己的面,渲染层看到的形状逐字相同。
- *     **它是一个承诺,不是一个值**:窗比答案先出现,所以这条口在模块求值那一刻就
- *     持有一个待定的 promise(`./host-connection.ts`),渲染层
- *     `await host.getConnection()` 等的是答案、不是开窗的次序。
- *  6. 退出由 Backend 的资源阶段协调:停止接入 → 排空 → 保存 → 摘发现文件。
- *     装配途中被 Cmd+Q 截住时,收尾先等 `ownCoreAssembly` 落地再 dispose。
+ * ── 窗口与后端分家 ──────────────────────────────────────────────────────────
+ *  · 关掉最后一扇窗:macOS 上 app 留在 Dock、后端照跑,点 Dock 重开窗(连的还是同一台);别的平台照旧退出。
+ *  · Quit(⌘Q / SIGTERM):缺省 SIGTERM 后端、等它把会话落完盘(5 秒期限 + 2 秒)再退;设置里开了
+ *    「退出 onething 后让后端继续运行」就不发信号,后端留着,命令行与浏览器壳照样连得上,下次启动走第 4 步。
+ *  · 后端非预期退出:删掉 pid 对得上的发现文件、自动重拉(60 秒内最多 3 次,决策 D11),再崩就推「后端已停止」
+ *    给渲染层亮横幅;重拉期间渲染层自己按连接状态显示「正在重新连接后端。」。
  *
- * 它**仍然不**做的事(边界,别越):不取 StoreLock、不注册第二张 IPC 表。
- * 不取锁是 08-24 的拍板(「store 不要锁」),与不带界面的后端进程(`backend-standalone-main.ts`)同口径:单写者靠发现
- * 文件让位,不靠互斥量。
+ * 它**仍然不**做的事(边界,别越):不取 StoreLock(08-24「store 不要锁」,单写者靠发现文件让位)、
+ * 不注册第四条 IPC 表(`host:connection` / `host:native-view` / `host:client-action` 三条)。
  * ──────────────────────────────────────────────────────────────────────
  */
-import { app, BrowserWindow, dialog, ipcMain, shell, webContents } from 'electron'
-import { EventEmitter } from 'node:events'
-import { readFileSync } from 'node:fs'
-import { connect } from 'node:net'
-import os from 'node:os'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import path from 'node:path'
-import {
-  createOnethingBackend,
-  type OnethingBackend,
-} from '@onething/backend/backend.js'
-import {
-  startEmbeddedOnethingHttpServer,
-  stopEmbeddedOnethingHttpServer,
-  getEmbeddedOnethingHttpServer,
-} from '@onething/backend/http-server'
-import { removeHttpDiscovery } from '@onething/backend/http-server'
-import { initializeUserSchedulerTasks } from '@onething/backend/scheduler'
-import { registerACPPermissionBridge } from '@onething/backend/acp'
+import { existsSync } from 'node:fs'
+import { performance } from 'node:perf_hooks'
 import { getLogger } from '@onething/backend/logging'
-import { installAppMenu } from './app-menu-install.js'
-import { hydrateProcessEnvFromLoginShell } from '@onething/backend/process-env'
-import { OWN_CORE_ASSEMBLY_SWITCHES } from './own-core-options.js'
-import { applyShellNetworkProxySettings, createShellHostPorts, installProxySettingsWatcher } from './host-ports.js'
-import { CLIENT_ACTION_CHANNEL } from '@shared/contracts/client-action'
+import { configureLogging } from '@onething/backend/logging/logging-configure'
+import { spacesRouter } from '@shared/ipc/spaces'
 import { terminalRouter } from '@shared/ipc/terminal'
+import {
+  BACKEND_STATE_CHANNEL,
+  CLIENT_ACTION_CHANNEL,
+  type BackendHostState,
+} from '@shared/contracts/client-action'
+import { installAppMenu } from './app-menu-install.js'
+import { BackendProcess, type BackendProcessSnapshot } from './backend-process.js'
+import { resolveStoreRoot } from './discovery.js'
+import { installProxySettingsWatcher } from './proxy-settings.js'
 import { runClientAction } from './client-action.js'
-import { createCoreClientGetter } from './core-client.js'
+import { createCoreClientGetter, createSettingsFeed } from './core-client.js'
+import { readLegacySafeStorageForHandOver, type LegacyHandOverEntry } from './legacy-credentials.js'
+import { MainShellResources } from './shell-resources.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
 // 「连接」是开窗之前就存在的承诺(整段判词在那只文件的文件头)。
 import { HostConnectionGate, type HostConnectionResult } from './host-connection.js'
 // T2:页面重载时把「消费者走了」当场说给终端服务听(判词在那只文件的文件头)。
 import { installTerminalReloadDetach } from './terminal-reload.js'
 /*
- * ── 内嵌浏览器(B2 接线;整块的判词在 `electron/browser/index.ts` 的文件头)──
- * 三段,次序是硬的:①两句旗子必须在 app `ready` 之前(`appendSwitch` 之后
- * Chromium 才读命令行);①′ 挂 HTTP 面那一行把真开着的 CDP 口补进发现文件;
- * ②窗口 + 装配之后才装得起 `installBrowserHost`(要 `window` 挂视图、要装配完
- * 的 `backend.resources`)。
+ * ── 内嵌浏览器(整块的判词在 `electron/browser/index.ts` 的文件头)──
+ * 两段,次序是硬的:①两句旗子必须在 app `ready` 之前(`appendSwitch` 之后 Chromium 才读命令行);
+ * ②窗口建成、后端连上之后才装得起 `installBrowserHost`(要 `window` 挂视图、要那台客户端认领 `browser:`)。
  */
 import { installBrowserHost } from './browser/index.js'
-import { createShellMemoryProbe } from './memory-probe.js'
 import { applyChromiumFlags } from './browser/user-agent.js'
 import { applyCdpFlag, readCdpLaunchFlag } from './browser/cdp-flag.js'
-import { cdpDiscoveryExtras } from './browser/cdp-settings.js'
+
+/** 进程起来那一刻(量「从进程起到 `host:connection` 落定」用,对照批 2a 的 416ms 基线)。 */
+const processStartedAt = performance.now()
 
 /**
  * ── 同店同钥:app 名字就是 safeStorage 的钥匙名 ─────────────────────────────
- * macOS 上 safeStorage 的 Keychain 条目叫「<app 名> Safe Storage」。凭证文件
- * (`workspaces/<id>/credentials.json`)是旧桌面以「onething Safe Storage」加密的;
- * 壳的包名 `@onething/desktop-react` 生不出有效条目,Chromium 退到
- * 「Electron Safe Storage」—— 另一把钥匙,解出来永远是垃圾 → 被当空表 →
- * 引擎静默不开 run(08-31 真机:user/message 后无 run/start,正是这一格)。
- * 文件头说的「子进程是另一个 app 身份」对壳本体同样成立:装配进壳里只补了
- * 「谁来解」,名字不同则「用哪把钥匙」仍是错的。必须在 ready 之前设,
+ * macOS 上 safeStorage 的 Keychain 条目叫「<app 名> Safe Storage」。旧凭证文件
+ * (`workspaces/<id>/credentials.json` 还是 `encryption: 'safeStorage'` 的那些)是以
+ * 「onething Safe Storage」加密的;壳的包名 `@onething/desktop-react` 生不出有效条目,Chromium 退到
+ * 「Electron Safe Storage」—— 另一把钥匙,解出来永远是垃圾。第④步批 0 起凭证用后端自己的主密钥,
+ * safeStorage 只剩「先读后交」那一步(还没迁完的机器)要它,所以这一句**保留**。必须在 ready 之前设,
  * safeStorage 的 OSCrypt 服务名在浏览器进程初始化时定死。
  *
  * 名字还决定默认 `userData`(appData/<名>)—— 那一半**不能**跟着改:改了就与
@@ -100,7 +95,7 @@ app.setName('onething')
 app.setPath('userData', shellUserData)
 
 /*
- * **内嵌浏览器的两句启动旗**(B2 ①,`electron/browser/index.ts` 文件头逐字照做)。
+ * **内嵌浏览器的两句启动旗**(`electron/browser/index.ts` 文件头逐字照做)。
  *
  * 它们必须在 app `ready` **之前** —— `appendSwitch` 之后 Chromium 才读命令行。
  * `applyChromiumFlags` 关掉 FedCm(登谷歌那条配方的四件之一);`applyCdpFlag` 按
@@ -109,368 +104,76 @@ app.setPath('userData', shellUserData)
  * argv 里已经带着口时不再 append,否则真机门的口会被产品旗子顶掉,判词在
  * `browser/cdp-flag.ts` 的文件头)。
  */
+const storeRoot = resolveStoreRoot()
 applyChromiumFlags(app)
-applyCdpFlag(app, readCdpLaunchFlag(resolveStoreRoot()))
-
-type HttpDiscoveryRecord = {
-  port: number
-  host: string
-  token?: string
-  pid: number
-  startedAt?: number
-  owner: 'desktop' | 'server' | 'shell' | 'backend'
-}
+applyCdpFlag(app, readCdpLaunchFlag(storeRoot))
 
 /** 打包后是 `.../dist-electron/main.cjs`,dev 时同路径 —— 两跳到 apps/。 */
 const appRoot = path.resolve(__dirname, '..')
 
 /**
- * store 根。与 `packages/backend/storage/storage-paths.ts` 的
- * `getOnethingStorePath()` **同语义**(env 优先,否则 `~/.onething`)。这一段发生在
- * `configureLogging` 之前(要先知道 store 才知道日志落哪),所以自己 resolve 一次。
+ * 后端进程入口的真路径。打包态 `__dirname` 在 `app.asar` 里,而子进程入口、它旁边的检索 Worker 与原生模块都要
+ * 真路径,所以 `backend.cjs` 在 `asarUnpack` 里(`electron-builder.yml`),这里把路径换到 `app.asar.unpacked`。
+ * 能不能这样起由 `gate:packaged` 跑出来,不写在注释里。
  */
-function resolveStoreRoot(): string {
-  return process.env.ONETHING_STORE_PATH || path.join(os.homedir(), '.onething')
+function backendEntryPath(): string {
+  const entry = path.join(__dirname, 'backend.cjs')
+  return app.isPackaged ? entry.replace(`${path.sep}app.asar${path.sep}`, `${path.sep}app.asar.unpacked${path.sep}`) : entry
 }
 
-function discoveryPath(): string {
-  return path.join(resolveStoreRoot(), 'run', 'http.json')
-}
-
-/** 读发现文件。不存在 / 坏了 / 形状不对 → undefined(永不抛)。 */
-function readDiscovery(): HttpDiscoveryRecord | undefined {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(discoveryPath(), 'utf-8'))
-    if (!parsed || typeof parsed !== 'object') return undefined
-    const record = parsed as Partial<HttpDiscoveryRecord>
-    if (typeof record.port !== 'number' || !Number.isFinite(record.port) || record.port <= 0) return undefined
-    if (typeof record.host !== 'string' || !record.host) return undefined
-    if (typeof record.pid !== 'number' || !Number.isFinite(record.pid)) return undefined
-    // `backend` = 被拉起的后端进程(第④步批 2a 起,`ONETHING_BACKEND_LAUNCHER` 设了档时写它;决策 D6)。
-    if (record.owner !== 'desktop' && record.owner !== 'server' && record.owner !== 'shell' && record.owner !== 'backend') return undefined
-    return {
-      port: record.port,
-      host: record.host,
-      token: typeof record.token === 'string' && record.token ? record.token : undefined,
-      pid: record.pid,
-      startedAt: typeof record.startedAt === 'number' ? record.startedAt : 0,
-      owner: record.owner,
-    }
-  } catch {
-    return undefined
-  }
-}
-
-function portConnects(host: string, port: number, timeoutMs = 500): Promise<boolean> {
-  return new Promise(resolve => {
-    const socket = connect({ host, port })
-    const settle = (value: boolean) => {
-      socket.destroy()
-      resolve(value)
-    }
-    socket.setTimeout(timeoutMs)
-    socket.once('connect', () => settle(true))
-    socket.once('timeout', () => settle(false))
-    socket.once('error', () => settle(false))
-  })
-}
-
-/**
- * 「文件存在 ≠ 活着」。判定两段:pid 还在 **且** 端口真能连上 —— 只看 pid 会被
- * pid 复用骗,只看端口会被别的程序占用同一端口骗。与 `backend/http-server/http-server-discovery.ts`
- * 的 `isHttpDiscoveryAlive` 同一条口径。
- */
-async function isAlive(record: HttpDiscoveryRecord): Promise<boolean> {
-  try {
-    process.kill(record.pid, 0)
-  } catch {
-    return false
-  }
-  return portConnects(record.host, record.port)
-}
-
-/**
- * SSE / 命令的投递目标。EventBus 观察者(HTTP 面)自己盯总线,所以这里是个空壳 ——
- * 但**必须有**:引擎没有 commandTarget 时 `SEND_MESSAGE` 等四条命令直接 return
- * (core-stream-engine.ts:540-566),表现是「发消息毫无反应、也不报错」。
- * 形状照 `backend/http-server/http-server-runtime.ts` 的 `ServerNoopSender` 抄:EventEmitter +
- * `isDestroyed()` + `send()`,少一件 `engine.bind()` 就抛。
- */
-class ShellNoopSender extends EventEmitter {
-  isDestroyed(): boolean {
-    return false
-  }
-  send(): void {
-    /* HTTP/SSE 订阅方直接观察总线与 stream channel。 */
-  }
-}
-
-let backend: OnethingBackend | undefined
-let ownCoreAssembly: Promise<OnethingBackend> | undefined
-/**
- * 这扇窗(B2 ②)。**内嵌浏览器的视图要挂进它的 `contentView`**,推送也发给它的
- * `webContents` —— 而 `startPostWindowServices()` 今天不收参数(它跑在
- * `createWindow()` 之后),所以窗子由 `createWindow` 记在这一格上。
- *
- * 单窗:`window-all-closed` 就退,`activate` 重开时会重新写它。多窗是 P4 窗口系
- * 那一批的事(`NativeViewLayout` 按窗 id 分账的口子已经留着,方案 §8 留账)。
- */
-let shellWindow: BrowserWindow | undefined
-let quitting = false
 /**
  * `host:connection` 的答案。**模块级 `const`,不是 `let`** —— 一个进程只服务一个
- * store、只连一台 core,那是这个宿主的结构性事实(与 `installAppMenu` 那张进程级
- * 单槽同一条判据),不是一格会被重新赋值的状态;而且 `ipcMain.handle` 在模块求值
- * 那一刻就注册了,handler 闭包必须现在就抓得到它。
- *
- * 为什么非得是一个**先于窗口存在**的承诺:启动次序(2026-09-15)把开窗提到了装配
- * 之前,于是渲染层会赶在装配落地之前问这条。整段判词在 `./host-connection.ts`。
+ * store、只连一台后端,那是这个宿主的结构性事实;而且 `ipcMain.handle` 在模块求值
+ * 那一刻就注册了,handler 闭包必须现在就抓得到它。整段判词在 `./host-connection.ts`。
  */
 const connection = new HostConnectionGate()
 
-function connectionOf(record: { host: string; port: number; token?: string }): HostConnectionResult {
-  return { ok: true, baseUrl: `http://${record.host}:${record.port}`, token: record.token }
-}
+/** 主进程自己那台客户端(决策 D284):与渲染层同一份 `{ baseUrl, token }`、同一条 `POST /api/rpc`。 */
+const coreClient = createCoreClientGetter(connection.promise)
 
-/**
- * 自己当 core。顺序不是随手排的:
- *   createOnethingBackend —— 唯一的装配配方,顺序约束都在它里面。宿主能力经
- *                        `host:` 一次交清(A1),由它的第一步 `applyHostPorts`
- *                        接线 —— 壳这边不再有"记得在装配前调"这件事。
- *                        **不给 `owner`** = 这个宿主不取 store 锁(见文件头)。
- */
-async function assembleOwnCore(): Promise<OnethingBackend> {
-  // 日志单开一本 `shell.jsonl`:过渡期两个壳可能先后服务同一个 store,混进 app.jsonl
-  // 会让那本账在「谁在当家」这件事上说谎。代价见文件末尾的留账①。
-  return createOnethingBackend({
-    logging: { fileBaseName: 'shell', src: 'main' },
-    host: createShellHostPorts(),
-    // `toolRegistry` / `promptVersion` / `collab` / `sessionSkills` / `pets` 五个开关(每一格为什么这样取,
-    // 写在那只文件里)。拆成一只文件是为了让后端进程的桌面档能被一条测试逐格对比(决策 D14)。
-    ...OWN_CORE_ASSEMBLY_SWITCHES,
-    sender: new ShellNoopSender() as never,
-    hooks: {
-      afterSettings: async () => {
-        await applyShellNetworkProxySettings()
-      },
-    },
-  })
-}
+/** 设置订阅源:代理重套、CDP 旗文件、浏览器身份名册三处订它(判词在 `./core-client.ts`)。 */
+const settingsFeed = createSettingsFeed(coreClient, getLogger('shell.settings'))
 
-/**
- * 开窗之后才跑的几件事,全部**非阻塞**:任何一件失败都不该让壳起不来。
- * 与 `apps/electron/src/app/main-process.ts:294-329` 同一张单子,减去这个壳还没有的
- * 那几件(插件 / 网关 / 语音托盘)。skills 由 `sessionSkills: true` 顶掉。
- */
-function startPostWindowServices(): void {
-  const log = getLogger('shell.boot')
+const backendLog = getLogger('shell.backend')
 
-  const b = backend
-  if (b) {
-    // HTTP/SSE 面:owner=`shell` 写进发现文件(A1 拍板)。挂不上不阻塞壳 ——
-    // 但渲染层的数据面就是这条,所以失败要如实反映到 `host:connection`。
-    // 受众:壳是**单用户宿主**,自装的这只 core 只服务本机这一个人 —— 归属判定
-    // 恒真,所以把那句话说出口(批 A §3.1),而不是让过滤代码每条分片重新问一遍。
-    const mounting = startEmbeddedOnethingHttpServer(b, {
-      owner: 'shell',
-      /*
-       * B2′:把这个进程**真的开着**的 CDP 口补进 `run/http.json`,别的客户端
-       * (chrome-devtools-mcp 的配置、门脚本)就不必猜口。判据是**命令行**不是
-       * 设置;没开 → `undefined` → `cdp` 那个键根本不出现在文件里。
-       */
-      discoveryExtras: cdpDiscoveryExtras(app.commandLine),
-    })
-    /*
-     * 挂面的结局有两种,**两种都要落到 gate 上**:listen 成功给基址,listen 抛了
-     * 给那句原话。少了后者渲染层就永远停在 `await getConnection()` 上 —— 一扇画着
-     * 空白的窗、日志里一条错、没有任何人把这两件事连起来。
-     *
-     * 为什么保留这一格 `mounted` 而不让收尾直接等 gate:下面那两条收尾等的是
-     * **「listen 这件事有结果了没有」**(判词在它们自己那一段),而 gate 等的是
-     * 「连接答案有没有」—— 今天这条路上两者同源,但 gate 是可以被别的分支先答掉的
-     * (借用活 core / 装配失败),那时收尾就会提前放行。等哪一件,写哪一件。
-     */
-    const mounted: Promise<HostConnectionResult> = mounting
-      .then(embedded => {
-        log.info('embedded core http surface listening', { url: embedded.url })
-        return connectionOf(embedded)
-      })
-      .catch((error: unknown) => {
-        log.error('embedded HTTP surface mount failed', { subsystem: 'core-http' }, error)
-        return {
-          ok: false as const,
-          error: error instanceof Error ? error.message : String(error),
-        }
-      })
-    void mounted.then(result => connection.resolve(result))
-
-    /*
-     * A3(方案 §2.4「谁起的,谁 `own()`」):这三件从前散在 `shutdownOwnCore`
-     * 的 finally 里(HTTP 面)或者根本没有收尾(调度器、MCP)。
-     *
-     * 登记是**同步的**(就在 listen 那一行之后),而收尾里第一件事是
-     * `await mounted` —— 挂面是非阻塞起的,dispose 可能比 listen 还早
-     * 到(壳起来两秒内 Cmd+Q)。不等它起完就 stop,`stopEmbeddedOnethingHttpServer`
-     * 看到的 `current` 还是 null,于是它一句 no-op 就返回,而随后 listen 成功
-     * 的那台面留在进程里,连带一份指向它的发现文件。等一下就没这条竞速。
-     * `mounted` 自带 catch,永不 reject,所以这一等不会翻车。
-     */
-    b.own(async () => {
-      await mounted
-      getEmbeddedOnethingHttpServer()?.stopAccepting()
-    }, 'embeddedHttpIngress', 'quiesce')
-    b.own(async () => {
-      await mounted
-      await stopEmbeddedOnethingHttpServer()
-    }, 'embeddedHttpSurface')
-    b.own(() => removeHttpDiscovery({ lease: b.storeLease }), 'httpDiscovery', 'endpoints')
-
-    /*
-     * C0 R1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
-     * 从动态 import 的 `.then()` 里挪出来,改成**同步登记**。
-     *
-     * `initializeUserSchedulerTasks()` 本来就是同步的(它读一次盘、往调度器里注册,
-     * 返回 stop);包在动态 import 里没有任何理由 —— 这个文件顶上已经静态 import 了
-     * `@onething/backend/backend.js`,整棵装配层早就在包里了,晚一拍加载省不下东西,
-     * 只多出一段"起完了但还没登记收尾"的窗口。壳起来两秒内 Cmd+Q 正好落在里面。
-     *
-     * `own()` 的守卫(同批)兜的是**兜不干净的那些**(MCP 那处是真异步);能同步的
-     * 就别靠守卫兜 —— 守卫让漏登记变得安全,不代表漏登记本身该留着。
-     */
-    b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks', 'quiesce')
-
-    /*
-     * C1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
-     * 壳这边只剩"**何时** start"这一句。
-     *
-     * 从前这里是 `initializeShellMCP()`(自己 initialize manager、自己再配一遍
-     * `configureMCPCapabilitiesChangedHandler`、自己 `registerMCPTools`),收尾登记排在
-     * 它的 `.then()` 里 —— C0 的 `own()` 守卫让那条路不再丢 disposer,但"起完了才登记"
-     * 这个形状本身还在。现在收尾在装配时就登记好了(`backend.mcp` 构造即 `own`),
-     * 早退时 `dispose()` 会等这趟 start 落地再关,所以这里不再 `.then(own)`。
-     *
-     * 失败仍然不阻塞壳:MCP 起不来不该让窗口起不来。
-     */
-    void b.mcp.start().catch((error: unknown) => {
-      log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
-    })
-
-    /*
-     * **ACP**(外部 agent:Claude Code / Codex / Kimi / Pi 的 ACP 适配器)。与 MCP 同一句
-     * "何时 start"—— 从前这里没有它(文件头那张「这个壳还没有的」单子里写着 ACP),
-     * 后果是 `ACPManager` 永远停在构造时的空 agent 表上:选了 ACP 模型发消息,
-     * 在 spawn 之前就抛 `ACP agent "…" not found`,日志里连一行 acp 都没有。
-     * `start()` 只是把设置里的 agent 表读进来,不起任何子进程(适配器在第一次
-     * prompt 时才 spawn),所以放在这里零成本。收尾在装配时已经 `own()` 了。
-     *
-     * 权限桥:agent 的工具许可走 `Authorizer.decide` → 壳的权限卡(与本地工具、
-     * Claude Code SDK 通路同一个授权者),Vue 宿主当年也挂着它;不挂就回落到每个
-     * agent 配置里的 `permissionMode`(默认 `allow`,不问就放)。
-     */
-    b.own(registerACPPermissionBridge(), 'acpPermissionBridge')
-
-    /*
-     * 改设置之后重套代理(第④步批 1,决策 D282):从前后端的保存链经宿主端口回调过来,现在 Electron
-     * 自己听 `settings:changed`(判词在 `./host-ports.ts` 的 `installProxySettingsWatcher` 上)。
-     */
-    b.own(installProxySettingsWatcher(), 'proxySettingsWatcher')
-    void b.acp.start().catch((error: unknown) => {
-      log.error('subsystem startup failed', { subsystem: 'acp', blocking: false }, error)
-    })
-
-    /*
-     * **电台**(2026-09-27 真机:DJ 把 9 首歌写进了收件箱,节目单半小时纹丝不动,「都排完了但
-     * nothing happened」)。指挥(`radio-conductor`)是节目单唯一的消费者 —— 它把收件箱并进
-     * 节目单、起播、叫醒 DJ,而它的拍子来自 now-playing 观察者的每一次采样。Vue 宿主当年在
-     * 注册音乐 IPC 时把两样都起了;那只文件 09-04 随宿主一起删掉之后,这个壳里从没有人再起过,
-     * 于是只有换音乐 CLI(`switchProvider`)那一条路会顺手起一次。与 MCP / ACP 同一句「何时
-     * start」:窗口之后、装配之后;收尾归子系统自己的 `drain()`(装配时已 `own`)。
-     */
-    try {
-      b.music.start()
-    } catch (error) {
-      log.error('subsystem startup failed', { subsystem: 'music', blocking: false }, error)
-    }
-
-    /*
-     * **内嵌浏览器**(B2 ②;整块的判词在 `electron/browser/index.ts` 的文件头)。
-     *
-     * 次序是硬的:要 `window`(视图得挂进 `win.contentView`)、要**装配完**的
-     * backend(`backend.resources` 在装配之前抛 `BackendNotAssembledError`)——
-     * 所以它在这里,不在 `hooks.afterTools`(那一拍窗口还没有)。
-     *
-     * `installBrowserHost` 自己**不** `own()`:它交回一个 disposer,由起它的这一行
-     * `own()`(「谁起的谁 own」那条纪律的落点是起它的那一行,与上面
-     * `embeddedHttpSurface` / `userSchedulerTasks` 同形)。
-     *
-     * 装不起来不阻塞壳:没有内嵌浏览器不该让窗口起不来 —— `browser:` 不 mount,
-     * 于是壳与 AI 两侧都诚实地答「这台上没有它」(§3.2「未挂」那一行)。
-     */
-    if (shellWindow) {
-      try {
-        const browserHost = installBrowserHost({
-          window: shellWindow,
-          backend: b,
-          storePath: resolveStoreRoot(),
-        })
-        b.own(() => browserHost.dispose(), 'browserHost')
-      } catch (error: unknown) {
-        log.error('subsystem startup failed', { subsystem: 'browser', blocking: false }, error)
-      }
-    }
-    /*
-     * 注册 Electron 进程探针,使内存报告包含渲染进程、GPU 与内置浏览器进程。
-     * 属于某个 `BrowserWindow` 的 webContents 是应用界面,其余是内置浏览器标签页
-     * (`getType()` 对两者都返回 'window',不能用来区分)。跨站 iframe 运行在独立进程中,
-     * 按每个 frame 的 `osProcessId` 归到所属标签页。
-     */
-    try {
-      b.own(b.memory.registry.registerProbe(createShellMemoryProbe({
-        getAppMetrics: () => app.getAppMetrics(),
-        listWebContents: () => {
-          const shellContents = new Set(BrowserWindow.getAllWindows().map(win => win.webContents))
-          return webContents.getAllWebContents().filter(wc => !wc.isDestroyed()).flatMap(wc => {
-            const role = shellContents.has(wc) ? 'shell' as const : 'browser' as const
-            const title = wc.getTitle()
-            const main = { pid: wc.getOSProcessId(), role, title }
-            let frames: { pid: number; role: typeof role; title: string; subframe: true }[] = []
-            try {
-              frames = wc.mainFrame.framesInSubtree
-                .map(frame => ({ pid: frame.osProcessId, role, title, subframe: true as const }))
-            } catch { /* 页面正在换 —— 这一轮只报主进程 */ }
-            return [main, ...frames]
-          })
-        },
-        selfPid: process.pid,
-      })), 'memoryProbe:electron')
-    } catch (error: unknown) {
-      log.error('subsystem startup failed', { subsystem: 'memory-probe', blocking: false }, error)
-    }
-    const refreshController = new AbortController()
-    b.own(() => refreshController.abort(), 'modelRegistryRefresh', 'quiesce')
-    void b.runTask('desktop:model-registry', () => refreshModelsOnFirstStartup(refreshController.signal)).catch((error: unknown) => {
-      if (refreshController.signal.aborted && (error === refreshController.signal.reason || (error as Error)?.name === 'AbortError')) {
-        log.debug('model registry refresh cancelled during shutdown')
-      } else log.error('subsystem startup failed', { subsystem: 'model-registry', blocking: false }, error)
-    })
+/** 推给每一扇窗(设置页的状态行、横幅、重拉提示读它)。 */
+function hostStateOf(snapshot: BackendProcessSnapshot): BackendHostState {
+  return {
+    phase: snapshot.phase,
+    ...(snapshot.pid !== undefined ? { pid: snapshot.pid } : {}),
+    ...(snapshot.port !== undefined ? { port: snapshot.port } : {}),
+    ...(snapshot.startedAt !== undefined ? { startedAt: snapshot.startedAt } : {}),
+    ...(snapshot.launchedHere !== undefined ? { launchedHere: snapshot.launchedHere } : {}),
+    ownedByDesktop: backendProcess.ownsBackend,
+    ...(snapshot.error !== undefined ? { error: snapshot.error } : {}),
   }
 }
 
-/** 首次启动从 models.dev 拉一次模型目录(已有目录就跳过)。 */
-async function refreshModelsOnFirstStartup(signal: AbortSignal): Promise<void> {
-  signal.throwIfAborted()
-  const { getSettings } = await import('@onething/backend/settings')
-  signal.throwIfAborted()
-  const providers = getSettings()?.ai?.providers
-  if (!providers) return
-  const hasModels = Object.values(providers).some(
-    config => Object.keys((config as { models?: object })?.models ?? {}).length > 0,
-  )
-  if (hasModels) return
-  const { modelRegistry: { refreshAllProviders } } = await import('@onething/backend/settings')
-  signal.throwIfAborted()
-  await refreshAllProviders({ signal })
-}
+/**
+ * 这一程的后端子进程。token 由它铸(或沿用借来那台的),重拉时端口与 token 不变 —— 判词在那只文件头。
+ * `ONETHING_RESOURCES_PATH` 只在打包态递(dev 下递了反而让后端去错的地方找内建 skills)。
+ */
+const backendProcess: BackendProcess = new BackendProcess({
+  execPath: process.execPath,
+  entry: backendEntryPath(),
+  storeRoot,
+  env: process.env,
+  ...(app.isPackaged ? { resourcesPath: process.resourcesPath } : {}),
+  log: {
+    info: (msg, fields) => backendLog.info(msg, fields),
+    warn: (msg, fields, error) => backendLog.warn(msg, fields, error),
+    error: (msg, fields, error) => backendLog.error(msg, fields, error),
+  },
+  onChange: snapshot => {
+    const state = hostStateOf(snapshot)
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(BACKEND_STATE_CHANNEL, state)
+    }
+  },
+})
+
+let shellWindow: BrowserWindow | undefined
+let quitting = false
 
 /**
  * 无系统标题栏(09-01 用户拍板:「我们不要 macOS 自己的刘海,我们自己设计刘海,
@@ -578,37 +281,21 @@ async function loadDevServer(window: BrowserWindow, devServerUrl: string): Promi
   await window.loadURL(devServerUrl)
 }
 
+
 /**
- * ── 这扇窗现在**开在装配之前**(2026-09-15 启动次序)────────────────────────
- * 于是这个函数里每一件事都可能在「后端还不存在」时被触发,而装配层那 121 个
- * `getXxx()` 访问器在那之前一律抛 `BackendNotAssembledError`。逐件过了一遍,
- * 一件都不碰访问器 —— 结论写在这里,不靠 try/catch 兜:
+ * ── 这扇窗**开在后端连上之前**(2026-09-15 启动次序,第④步批 2b 照旧)──────────────────
+ * 这个函数里每一件事都可能在「后端还没起来」时被触发。逐件过了一遍,一件都不需要后端:
  *
  *  · `new BrowserWindow` / `preload.cjs` / `loadFile` / `loadURL` —— 纯 Electron。
  *    preload 只有 `contextBridge` + `ipcRenderer`,连 `@onething/*` 都不 import。
  *  · `ready-to-show` → `show()` / `showInactive()` —— 纯窗口。
- *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)——
- *    `webContents.send`,一条单向推送,没有后端那一侧。
- *  · `installTerminalReloadDetach` —— 它缺省调的那只 detach 住在
- *    `@onething/backend/terminal/terminal-service`,读的是**那只包自己的模块级
- *    单例**(`serviceInstance?.markAllDetached()`),不是 backend 访问器;没开过
- *    终端时是一句安全的空话。而且它只在**第二次**主框架导航才响(第一次是开窗
- *    那一发,判词在 `./terminal-reload.ts`),装配窗口期内根本不会被调到。
- *  · `loadDevServer` 的 `session.clearCache()` —— 窗口自己的 session,与后端无关;
- *    它失败时那句 `getLogger('shell.boot').warn` 也安全:入口的 logger 在模块求值时
- *    就能用(当前 root 是只挂内存环的兜底 root),`configureLogging` 之前的记录留在环里
- *    (`backend/logging/logging.ts` 的判词)。**代价**:落在装配之前的那几条
- *    只进环、不进 `shell.jsonl`(文件 sink 是 `configureLogging` 才挂上的)——
- *    `dumpRuntimeLogRecords()` 仍然捞得到(两只 getLogger 合并之前是 configure 的
- *    `dumpRecentLogRecords()`,D161),见文件末留账③。
- *  · `installAppMenu` / `FRAMELESS_ON_MAC` —— 本来就在装配之前(前者是
- *    `whenReady` 第一句,后者是模块级常量),这一批没有改变它们的处境。
+ *  · `pushFullScreen`(`enter/leave-full-screen` + `did-finish-load`)—— 一条单向推送。
+ *  · `installTerminalReloadDetach` —— 只在**第二次**主框架导航才响,而且发的是一条 RPC
+ *    (`terminal.detachAll`,经主进程那台客户端;后端没连上时那台客户端答 `undefined`,这一句做不成就算了)。
+ *  · `loadDevServer` 的 `session.clearCache()` —— 窗口自己的 session,与后端无关。
  *
- * 唯一真的晚了一拍的是 `host:native-view` 那条 `ipcMain.on`(它在
- * `installBrowserHost` 里,属后窗服务)。它**接不漏**:渲染层是
- * `whenConnected().finally(() => createRoot(...))`,React 根挂载在连接落定之后,
- * 而连接落定要等 HTTP 面 listen —— `installBrowserHost` 与那次 listen 在同一拍
- * 同步跑完,必定更早。`AppShell` 的 `startKeymapDownlink()` 那一推因此仍有人收。
+ * 内置浏览器那一块(要这扇窗挂视图、要后端连上才认领得了 `browser:`)由 `startWindowServices` 在连上之后装,
+ * 窗关掉时一起拆:macOS 上关窗不退出,点 Dock 重开窗会再装一份新的(新窗、新的壳坐标)。
  */
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -664,39 +351,98 @@ function createWindow(): BrowserWindow {
 
   /*
    * 页面重载 = 终端那几份订阅证明性地没了(T2)。判据(主框架 / 非同文档 /
-   * 非首次)与整段病历在 `electron/terminal-reload.ts` 上;**关窗那条不接** ——
-   * 那条路上 `backend.dispose()` 会真的把 PTY 杀掉。
+   * 非首次)与整段病历在 `electron/terminal-reload.ts` 上;**关窗那条不接**。
    */
   installTerminalReloadDetach(window.webContents, detachTerminalsOverRpc)
+
+  // 后端状态:页面每次加载完都对齐一次(推送可能早于页面订上)。
+  window.webContents.on('did-finish-load', () => {
+    if (!window.isDestroyed()) window.webContents.send(BACKEND_STATE_CHANNEL, hostStateOf(backendProcess.state))
+  })
 
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
   if (devServerUrl) void loadDevServer(window, devServerUrl)
   else void window.loadFile(path.resolve(appRoot, GATE_DIST, 'index.html'))
-  // B2 ②:内嵌浏览器那一块要这扇窗(判词在 `shellWindow` 上)。
   shellWindow = window
+  let stopServices: (() => Promise<void>) | undefined
+  let closed = false
+  // 连上之后才装内置浏览器那一块;窗先关了就不装。
+  void connection.promise.then(result => {
+    if (!result.ok || closed || quitting || window.isDestroyed()) return
+    const stop = startWindowServices(window)
+    stopServices = stop
+    windowServiceStops.add(stop)
+  })
   window.on('closed', () => {
+    closed = true
     if (shellWindow === window) shellWindow = undefined
+    if (stopServices) {
+      windowServiceStops.delete(stopServices)
+      void stopServices()
+    }
   })
   return window
 }
 
+/**
+ * 一扇窗连上后端之后要的那几件:内置浏览器(挂这扇窗的 `contentView`),以及主进程以一扇壳的身份认领
+ * `browser:`(`./shell-resources.ts`)。返回拆掉它们的那一手(把 tab 表写下来、注销、摘 IPC)。
+ * 装不起来不阻塞窗口:没有内嵌浏览器不该让窗口起不来 —— `browser:` 没人认领,壳与 AI 两侧都诚实地答「不在」。
+ */
+function startWindowServices(window: BrowserWindow): () => Promise<void> {
+  const log = getLogger('shell.boot')
+  let browserHost: ReturnType<typeof installBrowserHost> | undefined
+  let shellResources: MainShellResources | undefined
+  try {
+    browserHost = installBrowserHost({ window, storePath: storeRoot, settings: settingsFeed })
+    const provider = browserHost.provider
+    const resources = new MainShellResources([{
+      scheme: provider.spec.scheme,
+      spec: provider.spec,
+      read: (name, refPath, params) => provider.read(name, refPath, params),
+      run: (op, refPath, params) => provider.run(op, refPath, params),
+    }], {
+      info: (msg, fields) => log.info(msg, fields),
+      warn: (msg, fields, error) => log.warn(msg, fields, error),
+    })
+    shellResources = resources
+    provider.attach((refPath, event, payload) => { resources.emit(provider.spec.scheme, refPath, event, payload) })
+    void coreClient().then(client => client ? resources.start(client) : undefined).catch((error: unknown) => {
+      log.error('subsystem startup failed', { subsystem: 'browser-shell', blocking: false }, error)
+    })
+  } catch (error: unknown) {
+    log.error('subsystem startup failed', { subsystem: 'browser', blocking: false }, error)
+  }
+  let stopped = false
+  return async () => {
+    if (stopped) return
+    stopped = true
+    await shellResources?.stop().catch(() => undefined)
+    await browserHost?.dispose().catch((error: unknown) => { log.warn('browser host dispose failed', undefined, error) })
+  }
+}
+
+/** 窗口那几件的收尾(退出时用;关窗时由各自那扇窗的 `closed` 收)。 */
+const windowServiceStops = new Set<() => Promise<void>>()
+
 /*
  * 渲染层唯一的宿主口。发现文件是 0600 的秘密,渲染层不许自己读盘。
  *
- * **永远交回同一个承诺**,不做「有就给、没有就编一句」的三元。那句现编的
- * 「还没连上」曾经是一条走不到的路(旧次序里装配跑完才开窗),启动次序一改它
- * 就成了主路,而渲染层的 `whenConnected()` 是一次性的、不重试 —— 一次竞速会
- * 变成永久故障。判词整段在 `./host-connection.ts` 的文件头,反证钉在
- * `__tests__/host-connection.test.ts`(那句假话一回来就红)。
+ * **永远交回同一个承诺**,不做「有就给、没有就编一句」的三元(判词在 `./host-connection.ts` 文件头,
+ * 反证钉在 `__tests__/host-connection.test.ts`)。
  */
 ipcMain.handle('host:connection', (): Promise<HostConnectionResult> => connection.promise)
 
+/** `<store>/log/app.jsonl`:后端子进程的日志(桌面档写它)。 */
+function backendLogPath(): string {
+  return path.join(storeRoot, 'log', 'app.jsonl')
+}
+
 /*
  * 渲染层的第三条口:**只在用户屏幕上发生的事**(第④步批 1,决策 D5 / D278;契约
- * `@shared/contracts/client-action`)。开原生对话框、把网址交给系统浏览器、用默认程序打开路径、
- * 在访达里定位 —— 从前经后端的 `dialog` / `shell` 两个 RPC 域绕一圈,后端要搬出这个进程,所以
- * 改成渲染层直接交给这里。它与 `host:connection` 同性质,不是数据通道;载荷来自渲染进程,逐格校验
- * 在 `./client-action.ts`(不信发件人)。对话框挂在发起的那扇窗上(`event.sender`)。
+ * `@shared/contracts/client-action`),第④步批 2b 起再加三个只有拉起后端的宿主答得出的动词
+ * (后端状态 / 重启后端 / 在访达中显示后端日志)。它与 `host:connection` 同性质,不是数据通道;
+ * 载荷来自渲染进程,逐格校验在 `./client-action.ts`(不信发件人)。对话框挂在发起的那扇窗上(`event.sender`)。
  */
 ipcMain.handle(CLIENT_ACTION_CHANNEL, (event, action: unknown) => runClientAction(action, {
   async showOpenDialog(request) {
@@ -713,13 +459,31 @@ ipcMain.handle(CLIENT_ACTION_CHANNEL, (event, action: unknown) => runClientActio
   openExternal: url => shell.openExternal(url),
   openPath: filePath => shell.openPath(filePath),
   revealPath: filePath => shell.showItemInFolder(filePath),
+  backendStatus: () => hostStateOf(backendProcess.state),
+  async restartBackend() {
+    /*
+     * 首启就没连上(三次都没起来、`host:connection` 已经答了 `ok: false`):那是一个**一次性的承诺**,渲染层不会
+     * 再问第二次,主进程那台客户端也永远是 `undefined` —— 这时只重拉后端,横幅收掉了而会话列表永远空着。
+     * 诚实的修法是换一个进程:整个 app 重开一次(`app.relaunch()` + 照常收尾)。连上过的那一程才走原地重拉
+     * (地址与 token 不变,渲染层只是 SSE 重连)。
+     */
+    const prior = connection.settled ? await connection.promise : undefined
+    if (prior && !prior.ok) {
+      backendLog.info('restart requested after a failed first start; relaunching the app')
+      app.relaunch()
+      void requestShutdown('relaunch-after-failed-start')
+      return { ok: true }
+    }
+    const result = await backendProcess.restart()
+    return result.ok ? { ok: true } : { ok: false, error: result.error }
+  },
+  revealBackendLog() {
+    // 文件在就在访达里选中它;还没有(后端一行都没写过)就打开它所在的目录。
+    const file = backendLogPath()
+    if (existsSync(file)) shell.showItemInFolder(file)
+    else void shell.openPath(path.dirname(file))
+  },
 }))
-
-/**
- * 主进程自己那台客户端(决策 D284):与渲染层同一份 `{ baseUrl, token }`、同一条 `POST /api/rpc`。
- * 今天只有页面重载那一句要它(下面)。
- */
-const coreClient = createCoreClientGetter(connection.promise)
 
 /** 页面整个重载了:让每格终端勾销欠着的流控账。发出去不等回执(判词在 `./terminal-reload.ts`)。 */
 function detachTerminalsOverRpc(): void {
@@ -730,100 +494,93 @@ function detachTerminalsOverRpc(): void {
     })
 }
 
+/**
+ * **先读后交**的后一半:把拉起后端之前解开的旧凭证交给 `spaces.handOverLegacyCredentials`(只给本机信任的
+ * 来访者;后端按批 0 同一套判据封进主密钥信封、逐条校验、旧文件改名备份)。交不进去只记一行:旧文件原样
+ * 在盘上,下次启动再读再交。
+ */
+async function handOverLegacyCredentials(entries: readonly LegacyHandOverEntry[]): Promise<void> {
+  const log = getLogger('shell.credentials')
+  try {
+    const client = await coreClient()
+    if (!client) return
+    const answer = await client.api(spacesRouter).handOverLegacyCredentials({ entries: [...entries] })
+    if (answer.success) log.info('legacy safeStorage credentials handed over', { accepted: answer.accepted, migratedSpaces: answer.migratedSpaces, state: answer.status?.state })
+    else log.warn('legacy safeStorage credentials were not accepted', { code: answer.code })
+  } catch (error) {
+    log.warn('handing over legacy safeStorage credentials failed', undefined, error)
+  }
+}
+
 void app.whenReady().then(async () => {
+  /*
+   * 日志第一句(结 2026-09-15 留账③):从前 `configureLogging` 住在装配第一步里,开窗提前之后落在装配之前的
+   * 那几条只进内存环。现在这个进程不装配了,由它自己在 ready 第一句开 `shell.jsonl`。管家(`LogDirJanitor`)
+   * 不在这里起:`log/` 只有一个管家,它住在后端进程里。
+   */
+  configureLogging({ fileBaseName: 'shell', src: 'main', janitor: false })
+  const log = getLogger('shell.boot')
   // 离屏档连 Dock 图标都不冒(macOS 上 `app.dock` 才有;别的平台是 undefined)。
   if (GATE_HEADLESS) app.dock?.hide()
   // K1:壳自己设菜单,把 Electron 默认那张没人审过的键表拿掉(判词在 `app-menu.ts`
   // 的文件头)。**必须在第一扇窗之前**,否则窗已经在那张默认表底下站了一会儿。
   installAppMenu()
 
-  /*
-   * ── 开窗在**一切之前**(2026-09-15 启动次序)────────────────────────────
-   * 从前这一段是「探发现文件(最多 500ms)→ 没有活 core 就 `await
-   * assembleOwnCore()`(真店 ≈1.7s)→ 才 `createWindow()`」。页面加载(dev 下
-   * 873 个模块过 vite,冷 2.4–5s)只能从装配完那一刻才开始数 —— 两段本来互不相干
-   * 的等待被排成了一条队。
-   *
-   * 它们互不相干是有依据的,不是猜的:渲染层拿连接走的就是
-   * `await host.getConnection()`(`src/platform/connection.ts`),它等的是**答案**,
-   * 不是开窗的次序。所以窗先开、页面先加载,装配在旁边跑,答案到了再喂进去。
-   *
-   * 代价与它的落点:这扇窗在装配完成之前就已经在加载页面了,于是
-   * `createWindow()` 里那几件(重载 detach / 全屏推送 / 清缓存)都可能在后端
-   * 还不存在时被触发 —— 逐件确认过它们一件都不碰 `getXxx()` 访问器,判词写在
-   * 各自那一行上。
-   */
   if (quitting) return
   createWindow()
-
-  const existing = readDiscovery()
-  if (existing && (await isAlive(existing))) {
-    // 借用活的core只建立窗口连接;自有写者始终由Backend的store lease排他。
-    connection.resolve(connectionOf(existing))
-  } else {
-    /*
-     * 登录 shell 环境与装配**并行**跑(判词在 `packages/backend/process-env/process-env-login-shell.ts` 文件头):命中缓存是
-     * 同步的 0ms,不命中最多 3.5s。它只需要赶在**第一次 spawn** 之前 —— ACP 适配器、
-     * MCP stdio、bash 工具都是 `startPostWindowServices()` 之后(连接答案交出去之后)
-     * 才可能起子进程,所以在那一行前面等它,而不是挡在装配前面。并行还有一个好处:
-     * 等它落定时 `configureLogging` 已经挂上,那行「PATH 补了什么」能进 `shell.jsonl`。
-     */
-    const envHydrated = hydrateProcessEnvFromLoginShell({ logger: getLogger('shell.env') })
-      .catch(() => [])
-    try {
-      ownCoreAssembly = assembleOwnCore()
-      backend = await ownCoreAssembly
-    } catch (error) {
-      // 装配失败:窗已经在那儿了,错误交给渲染层显示,比静默白屏强(启发式⑨)。
-      getLogger('shell.boot').error('embedded backend assembly failed', { stage: 'backend-assembly' }, error)
-      connection.resolve({
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-    await envHydrated
-    /*
-     * 装配途中被 Cmd+Q / SIGTERM 截住(`ownCoreAssembly` 那一格已经让收尾等到了
-     * 实例)。从前这一句挡的是「别开窗了」,今天窗早就开了,它挡的是**别再起那
-     * 一堆后窗服务**:HTTP 面 / 调度器 / MCP / 内嵌浏览器起到一半又被 dispose,
-     * 是白费功夫,也是孤儿进程的产地。
-     *
-     * 连接照样要落定,而且落的是真话:这台壳不会再连 core 了。不落 = 渲染层
-     * 永远停在 `await getConnection()` 上 —— 退出这条路上那是一扇画不出东西也
-     * 说不出原因的窗,而永久待定正是 gate 这只文件要根治的病。
-     */
-    if (quitting) {
-      connection.resolve({ ok: false, error: '壳正在退出,不再连接 core' })
-      return
-    }
-    if (backend) startPostWindowServices()
-  }
-
+  // 关掉最后一扇窗之后点 Dock 重开窗。注册在拉起后端**之前**:后端起不来时窗也得能重开(横幅在窗里)。
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+
+  // 先读后交的前一半:拉起后端之前读(此刻没有写者)。大多数机器上什么都找不到。
+  const legacy = readLegacySafeStorageForHandOver(storeRoot, safeStorage)
+  if (legacy.found > 0) log.info('legacy safeStorage credentials found before starting the backend', { found: legacy.found, undecryptable: legacy.undecryptable })
+
+  const started = await backendProcess.start()
+  if (started.ok) {
+    connection.resolve({ ok: true, baseUrl: started.connection.baseUrl, ...(started.connection.token ? { token: started.connection.token } : {}) })
+    log.info('host connection settled', {
+      ms: Math.round(performance.now() - processStartedAt),
+      adopted: started.adopted,
+    })
+  } else {
+    // 起不来:窗已经在那儿了,错误交给渲染层显示,比静默白屏强(启发式⑨)。尾巴带上,看得出为什么。
+    const tail = started.tail.slice(-8).join('\n')
+    connection.resolve({ ok: false, error: tail ? `${started.error}\n${tail}` : started.error })
+    // 退出途中那一趟被收掉不是「没起来」,不记错误。
+    if (!quitting) log.error('backend did not start', { error: started.error })
+    return
+  }
+  if (quitting) return
+
+  installProxySettingsWatcher(settingsFeed)
+  if (legacy.entries.length > 0) void handOverLegacyCredentials(legacy.entries)
 })
 
 /**
- * 收尾 = **一行**。
- *
- * A3:HTTP 面与发现文件从这里的 `finally` 搬进了 `startPostWindowServices` 的
- * `b.own(...)`(方案 §2.4)。于是清单只有一份,住在起的那一行旁边;这里再也
- * 没有"壳自己记得关什么"这件事 —— 顺序(宿主起的三件 → 引擎 → 落盘)由登记
- * 逆序给出,不再由这个函数复述。
+ * 收尾。缺省档:SIGTERM 后端、等它落完盘(`backendProcess.stop()`,最多 5 + 2 秒,超时 SIGKILL 并记日志)。
+ * 「退出 onething 后让后端继续运行」开着:不发信号(`leave()`),后端留着,下次启动走「发现文件活着就连」。
+ * 设置值读主进程那台客户端最近一次拿到的那一份 —— 从没读到过(后端压根没起来)就当关着。
  */
-async function shutdownOwnCore(reason = 'window closed'): Promise<void> {
-  const b = backend ?? await ownCoreAssembly
-  if (!b) return
-  await b.requestShutdown(reason)
-  backend = undefined
+async function shutdownBackend(reason: string): Promise<void> {
+  const keepRunning = settingsFeed.current()?.general?.backendKeepRunningAfterQuit === true
+  for (const stop of [...windowServiceStops]) await stop().catch(() => undefined)
+  settingsFeed.dispose()
+  if (keepRunning) {
+    backendProcess.leave()
+    backendLog.info('quit: backend keeps running', { reason })
+    return
+  }
+  await backendProcess.stop()
+  backendLog.info('quit: backend stopped', { reason })
 }
 
 const shutdownRequest = createDesktopShutdownRequest({
-  shutdown: shutdownOwnCore,
+  shutdown: shutdownBackend,
   exit: code => app.exit(code),
   onFailure: (reason, error) => {
-    getLogger('shell.shutdown').error('shutdown failed; store lease retained', { reason }, error)
+    getLogger('shell.shutdown').error('shutdown failed', { reason }, error)
   },
 })
 
@@ -832,48 +589,23 @@ function requestShutdown(reason: string): Promise<void> {
   return shutdownRequest(reason)
 }
 
-// D0 是单窗薄壳:窗关了就退(mac 上的常驻托盘行为留给 P4 的窗口系批)。
-app.on('window-all-closed', () => app.quit())
-
 /*
- * 启动次序改了之后这条路**更容易走到**:窗子开在装配之前,所以「装配还在跑就被
- * Cmd+Q / 关窗」不再是两秒钟的窄缝,而是整整 1.7s 的常态。它仍然接得住 ——
- * `ownCoreAssembly` 那一格在 `assembleOwnCore()` 调用那一行**同步**就写上了
- * (不是等它 resolve 才写),于是这里的 `!backend && !ownCoreAssembly` 判不成真,
- * `shutdownOwnCore` 里那句 `backend ?? await ownCoreAssembly` 会等装配落地再
- * `requestShutdown` → dispose,窗随进程一起走,不留孤儿。
- *
- * 另一半在 `whenReady` 里:那边 `await` 醒来时先看 `quitting`,看见了就**不起**
- * 后窗服务(HTTP 面 / 调度器 / MCP / 内嵌浏览器)—— 起一半再 dispose 才是孤儿的产地。
+ * 关掉最后一扇窗:macOS 上 app 留在 Dock(后端照跑,点 Dock 由 `activate` 重开窗),别的平台照旧退出
+ * (那两个平台上「没有窗的 app」没有 Dock 可留)。
  */
-app.on('will-quit', event => {
-  if (!backend && !ownCoreAssembly) return
-  // `will-quit` 不等 Promise,所以先拦一次、收完尾再真退。
-  event.preventDefault()
-  void requestShutdown('window closed')
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
 })
 
-/* OS信号和窗口退出走同一条保存链;装配仍在途时先等到实例可收尾。 */
+/* `will-quit` 不等 Promise,所以先拦一次、收完尾(停后端或放它走)再真退。 */
+app.on('will-quit', event => {
+  event.preventDefault()
+  void requestShutdown('quit')
+})
+
+/* OS 信号和窗口退出走同一条收尾链。 */
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     void requestShutdown(signal)
   })
 }
-
-/*
- * ── 本批留账 ────────────────────────────────────────────────────────────
- * ① `shell.jsonl` 不在 `LOG_DIR_POLICY.families` 里(那张表在
- *    packages/backend/logging,本批边界外)。后果:归档只被 janitor 报成
- *    `unknown`,永不删。活账本本身照常轮转。加一行即可,留给下一批。
- * ② 内建 skills 目录按 cwd 解析成 `apps/desktop-react/resources/skills`(不存在),
- *    于是自演化那颗默认关闭的 builtin skill 在这个壳里加载不到。旧壳靠
- *    `configureSkillsEnvironmentHost` 指路;这个壳还没注入那个端口。
- * ③(2026-09-15)开窗提前之后,落在装配之前的那几条日志(今天只有 `loadDevServer`
- *    清缓存失败那一句 warn)只进内存环、不进 `shell.jsonl` —— 文件 sink 是
- *    `configureLogging` 挂的,而它住在装配第一步里。要让它们也落盘,得把
- *    `configureLogging()` 从 `createOnethingBackend` 的 `logging:` 选项里提出来、
- *    由壳在 `whenReady` 第一句自己调(装配层允许:它是幂等的,而且宿主本来就该
- *    在装配**之前**调 —— CLAUDE.md 把 `configureLogging` 明写在宿主端口表之外)。
- *    本批不动,因为那会改掉 `shell.jsonl` 这本账的开账时刻,是另一单。
- * ──────────────────────────────────────────────────────────────────────
- */

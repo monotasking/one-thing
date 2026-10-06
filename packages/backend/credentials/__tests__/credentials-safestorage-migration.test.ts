@@ -4,11 +4,14 @@
  *  ① 迁好:新信封是主密钥封的、条目逐条相等,旧文件改名 `.safestorage-backup` 且**字节未变**;
  *  ② 解不开:旧文件原样不动、新信封不写,这个空间记作「待迁」,状态答「已锁定 · 旧密文待迁移」;
  *  ③ 另一个活着的后端在服务这个 store:拒绝迁移,一个字节都不动;
- *  ④ 宿主没递旧解密器(独立 server):不迁,记作待迁;读侧答空但不缓存,写侧拒绝覆盖;
+ *  ④ 还没人交过旧密文(独立 server,或桌面还没交):不迁,记作待迁;读侧答空但不缓存,写侧拒绝覆盖;
+ *     桌面交进来之后(`acceptLegacyCredentialsHandOver`,第④步批 2b「Electron 先读后交」)迁完、横幅撤下;
  *  ⑤ 上一次断在两次改名之间:下次启动补完;
  *  ⑥ 没有旧密文:什么都不做,也不去要钥匙。
  *
- * 旧解密器是一只假的 `safeStorage`(可逆的假变换,验的是链路);主密钥走 `file` 档。
+ * 旧解密器是一只假的 `safeStorage`(可逆的假变换,验的是链路)。批 2b 起后端不再拿到解密器本身,而是收
+ * Electron 交进来的「密文 → 明文」:`handOver()` 扮演 Electron —— 读盘上的旧信封、用假 `safeStorage` 解开、
+ * 把那一对交进来。主密钥走 `file` 档。
  */
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -24,15 +27,15 @@ import {
 } from '../credentials-pool.js'
 import { masterKeyFilePath, resetCredentialsMasterKeyForTests } from '../credentials-master-key.js'
 import {
-  configureCredentialsLegacyDecryptorHost,
-  resetCredentialsLegacyDecryptorHost,
+  acceptHandedOverLegacyPlaintexts,
+  resetHandedOverLegacyPlaintextsForTests,
 } from '../credentials-legacy-decryptor.js'
 import {
   migrateSafeStorageCredentials,
   resetSafeStorageMigrationStateForTests,
   SAFESTORAGE_BACKUP_SUFFIX,
 } from '../credentials-safestorage-migration.js'
-import { credentialsStatus, unlockCredentials } from '../credentials-locked-state.js'
+import { acceptLegacyCredentialsHandOver, credentialsStatus } from '../credentials-locked-state.js'
 import { setRootDirForTests } from '@onething/backend/space'
 
 let root: string
@@ -72,6 +75,22 @@ function writeLegacyFile(spaceId: string, payload: unknown = pool): string {
   return fs.readFileSync(filePath, 'utf-8')
 }
 
+/** 扮演 Electron:读出这几个空间盘上的旧信封,用假 `safeStorage` 解开,交「密文 → 明文」。解不开的不交。 */
+function handOverPairs(spaceIds: readonly string[]): Array<{ ciphertext: string; plaintext: string }> {
+  const pairs: Array<{ ciphertext: string; plaintext: string }> = []
+  for (const spaceId of spaceIds) {
+    const envelope = JSON.parse(fs.readFileSync(spaceCredentialsFilePath(spaceId), 'utf-8')) as { data: string }
+    try {
+      pairs.push({ ciphertext: envelope.data, plaintext: fakeSafeStorage.decryptString(Buffer.from(envelope.data, 'base64')) })
+    } catch { /* Electron 解不开的那一条不交 */ }
+  }
+  return pairs
+}
+
+function handOver(...spaceIds: string[]): void {
+  acceptHandedOverLegacyPlaintexts(handOverPairs(spaceIds))
+}
+
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ss-migration-ws-'))
   store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ss-migration-store-'))
@@ -84,7 +103,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  resetCredentialsLegacyDecryptorHost()
+  resetHandedOverLegacyPlaintextsForTests()
   resetSafeStorageMigrationStateForTests()
   setRootDirForTests(null)
   vi.unstubAllEnvs()
@@ -97,7 +116,7 @@ afterEach(() => {
 describe('safeStorage → 主密钥', () => {
   it('① 迁好:主密钥信封、逐条相等、旧文件改名留底且字节未变', async () => {
     const before = writeLegacyFile('default')
-    configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+    handOver('default')
 
     const report = await migrateSafeStorageCredentials()
     expect(report).toMatchObject({ migrated: ['default'], entries: 2, pending: [] })
@@ -107,8 +126,8 @@ describe('safeStorage → 主密钥', () => {
     expect(onDisk).not.toContain('at-legacy')
     expect(fs.readFileSync(`${spaceCredentialsFilePath('default')}${SAFESTORAGE_BACKUP_SUFFIX}`, 'utf-8')).toBe(before)
 
-    // 旧解密器撤掉之后照样读得开:新信封只认主密钥。
-    resetCredentialsLegacyDecryptorHost()
+    // 交进来的对照表清掉之后照样读得开:新信封只认主密钥。
+    resetHandedOverLegacyPlaintextsForTests()
     resetSpaceCredentialsCacheForTests()
     expect(readSpaceCredentials('default')).toEqual(pool)
     expect(credentialsStatus()).toMatchObject({ tier: 'file', state: 'ready', encryption: 'master-key' })
@@ -119,9 +138,11 @@ describe('safeStorage → 主密钥', () => {
   it('② 解不开:旧文件原样、新信封不写、记作待迁,状态答已锁定', async () => {
     const filePath = spaceCredentialsFilePath('work')
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    const before = JSON.stringify({ version: 2, encryption: 'safeStorage', data: Buffer.from('garbage').toString('base64') })
+    const data = Buffer.from('garbage').toString('base64')
+    const before = JSON.stringify({ version: 2, encryption: 'safeStorage', data })
     fs.writeFileSync(filePath, before, 'utf-8')
-    configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+    // Electron 解出来的是一段读不成凭证池的东西(真机上:钥匙对、内容坏)。
+    acceptHandedOverLegacyPlaintexts([{ ciphertext: data, plaintext: 'not a credentials pool' }])
 
     const report = await migrateSafeStorageCredentials()
     expect(report).toMatchObject({ migrated: [], pending: ['work'], blockedBy: 'verify-failed' })
@@ -133,7 +154,7 @@ describe('safeStorage → 主密钥', () => {
 
   it('③ 另一个活着的后端在服务这个 store:拒绝迁移,一个字节都不动', async () => {
     const before = writeLegacyFile('default')
-    configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+    handOver('default')
 
     const report = await migrateSafeStorageCredentials({ otherLiveBackend: async () => true })
     expect(report).toMatchObject({ migrated: [], pending: ['default'], blockedBy: 'other-backend-running' })
@@ -141,7 +162,7 @@ describe('safeStorage → 主密钥', () => {
     expect(fs.existsSync(masterKeyFilePath(store))).toBe(false)
   })
 
-  it('④ 宿主没递旧解密器:不迁、待迁;读答空但不缓存,写拒绝覆盖', async () => {
+  it('④ 还没人交过旧密文:不迁、待迁;读答空但不缓存,写拒绝覆盖;桌面交进来之后迁完', async () => {
     const before = writeLegacyFile('default')
     const report = await migrateSafeStorageCredentials()
     expect(report).toMatchObject({ pending: ['default'], blockedBy: 'no-legacy-decryptor' })
@@ -149,16 +170,17 @@ describe('safeStorage → 主密钥', () => {
     expect(() => writeSpaceCredentials('default', { providers: {} })).toThrow(CredentialsLockedError)
     expect(fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')).toBe(before)
 
-    // 桌面来了(递了旧解密器),「重试」把它迁完,读缓存跟着换。
-    configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
-    const status = await unlockCredentials()
-    expect(status.state).toBe('ready')
+    // 桌面来了(先读后交):交进来那一刻就迁完,读缓存跟着换,状态翻回 ready。
+    const result = await acceptLegacyCredentialsHandOver(handOverPairs(['default']))
+    expect(result).toMatchObject({ accepted: 1, migratedSpaces: 1 })
+    expect(result.status.state).toBe('ready')
     expect(readSpaceCredentials('default')).toEqual(pool)
+    expect(fs.readFileSync(`${spaceCredentialsFilePath('default')}${SAFESTORAGE_BACKUP_SUFFIX}`, 'utf-8')).toBe(before)
   })
 
   it('⑤ 上一次断在两次改名之间:补完那一次改名', async () => {
     writeLegacyFile('default')
-    configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+    handOver('default')
     await migrateSafeStorageCredentials()
     const filePath = spaceCredentialsFilePath('default')
     // 造现场:正本挪回 `.migrating`(备份还在)= 第二次改名之前进程没了。
@@ -171,7 +193,7 @@ describe('safeStorage → 主密钥', () => {
   })
 
   it('⑥ 没有旧密文:什么都不做,也不去要钥匙', async () => {
-    configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+    acceptHandedOverLegacyPlaintexts([{ ciphertext: 'dW5yZWxhdGVk', plaintext: '{}' }])
     expect(await migrateSafeStorageCredentials()).toEqual({ migrated: [], entries: 0, pending: [] })
     expect(fs.existsSync(masterKeyFilePath(store))).toBe(false)
   })

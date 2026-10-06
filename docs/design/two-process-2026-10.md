@@ -299,7 +299,7 @@ Electron 目录里 import `@onething/backend` 的文件有 15 只(`main.ts` 10 �
 | 段 | 做什么 | 下面哪几条 | 状态 |
 | --- | --- | --- | --- |
 | **2a · 后端进程能独当一面** | **不改 Electron 的装配方式**(桌面照旧进程内装配);只把后端进程入口做成「桌面明天拉起它就能完全顶上」,每一条都能不开窗地证明 | 第 4 条的「产出 `backend.cjs`」那一半;第 6、7、8、9、10 条;「风险」里子进程 stdout 管道那一条;「行为变化」表里 `process.title` 那一行 | **已实施**,结果见 §9 |
-| **2b · Electron 拉起它** | `main.ts` 改拉起子进程、`window-all-closed`、「退出后继续运行」设置与设置页的后端状态行、D11 崩溃重拉、凭证「先读后交」、内置浏览器当 shell 客户端、订阅源换 SSE | 第 1、2、3、5、11、12、13、14、15 条;第 4 条里「有人拉起它」那一半;下面「验收」整节里要开窗的那几条(`gate:packaged` 扩、`gate:backend-process` 开窗那一半、`boundary:gate` 新断言、`gate:chat-layout` 一个数) | 待做 |
+| **2b · Electron 拉起它** | `main.ts` 改拉起子进程、`window-all-closed`、「退出后继续运行」设置与设置页的后端状态行、D11 崩溃重拉、凭证「先读后交」、内置浏览器当 shell 客户端、订阅源换 SSE | 第 1、2、3、5、11、12、13、14、15 条;第 4 条里「有人拉起它」那一半;下面「验收」整节里要开窗的那几条(`gate:packaged` 扩、`gate:backend-process` 开窗那一半、`boundary:gate` 新断言、`gate:chat-layout` 一个数) | **已实施**(要开窗的门写好未跑),结果见 §10 |
 
 **改动清单(Electron 侧)**
 
@@ -653,3 +653,76 @@ CI 的 gates job 跑 `--build --runtimes=node`(系统 Node 那一半);Electron �
 2b 删掉这两个函数时那一条随之删(前两条「桌面档 = 这五格」留着,或改成对比桌面拉起子进程时递的档位)。`gate:backend-process` 不断言
 ACP 的「装没装」探测:登录 shell 的 PATH 赶在 `acp.start()` 之前落定,靠的是 `createRealServerBackend` 里那一行的次序(D291),
 不是门。
+
+## 10. 批 2b 实施结果(2026-10-07)
+
+> 从这一批起 Electron **不装配后端**:它用同一只 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起
+> `dist-electron/backend.cjs`(批 2a 的桌面档),自己只剩窗口、内置浏览器和只在用户屏幕上发生的几件事;对后端的
+> 一切都走 HTTP。逐条决策见 `docs/design/backend-structure-decisions-2026-10.md` D303–D320。
+
+**启动 / 退出 / 崩溃**(`apps/desktop-react/electron/main.ts` 文件头是正本):
+
+1. `whenReady` → `configureLogging` 开 `shell.jsonl`(`janitor: false`,`log/` 的管家住在后端)→ 应用菜单 → **开窗**
+   (页面加载与后端起步并行)。
+2. 先读后交的前一半:`legacy-credentials.ts` 读仍为 `encryption: 'safeStorage'` 的凭证文件与旧单槽密文,用 `safeStorage` 解开
+   (此刻没有写者;已迁完的机器上什么都找不到)。
+3. `BackendProcess.start()`(`electron/backend-process.ts`):**先借后拉** —— 发现文件活着就连它(上一次「继续运行」留下的、
+   或者别人的 `server:start`),否则拉起子进程、每 50ms 轮询发现文件直到 pid 对得上且端口连得上(上限 30s)。
+4. `host:connection` 落定(`{ baseUrl, token }`);日志记一行 `host connection settled { ms, adopted }`。
+5. 连上之后:主进程那台客户端订设置(代理重套、CDP 旗文件、浏览器身份名册)、把第 2 步解开的旧凭证交给
+   `spaces.handOverLegacyCredentials`、每扇窗装内置浏览器并以壳的身份 `resources.mountShell` 认领 `browser:`。
+6. 关最后一扇窗:macOS 不退(后端照跑,点 Dock 由 `activate` 重开窗并重装那扇窗的内置浏览器);别的平台退。
+7. Quit / SIGTERM:缺省档 SIGTERM 后端一次 → 等 7s(后端自己的 5s 刷盘期限 + 2s)→ 没退就 SIGKILL 并记日志;
+   「退出 onething 后让后端继续运行」开着就 `leave()`,不发信号。设置值读主进程那台客户端最近一次拿到的那一份。
+8. 后端非预期退出(自己拉的看 `exit`,借来的每 2s 看 pid):删掉 pid 对得上的发现文件 → 重拉(端口钉住、token 不变,
+   渲染层手里那份地址照旧有效、SSE 只是 `reconnecting → live`)→ 60 秒内第 4 次就停在 `stopped`,推给渲染层亮横幅。
+   重拉进行中 Quit:`stop()` 先等那条重拉链收场、它不再 spawn(D320)。
+9. 首启就没起来(`host:connection` 已答 `ok: false`)之后点「重启」:整个 app 重开一次(`app.relaunch()`),因为那个一次性承诺
+   救不回来(D319);连上过之后的「重启」才是原地重拉。
+
+**落了什么**
+
+| 件 | 位置 | 一句话 |
+| --- | --- | --- |
+| 拉起与监督 | `electron/backend-process.ts`(新)+ `electron/discovery.ts`(从 `main.ts` 抽出) | 零 electron import;状态机 `idle / starting / running / restarting / stopped / stopping`;stdout / stderr 接到 `<store>/run/backend-stdio.log`(每次拉起截断,起不来时交 40 行尾巴);永远 `detached`;只停自己的(拉起的,或借来的 owner `backend`) |
+| 主进程 | `electron/main.ts`(重写) | 零装配(`main.cjs` 11,529,454 → 234,719 字节,`createOnethingBackend` / `OnethingBackend.assemble` 0 处);`host-ports.ts` 整只删,代理那一半拆成 `electron/proxy-settings.ts` |
+| 订阅源 | `electron/core-client.ts` 的 `createSettingsFeed` | 订 SSE 上的 `settings:changed`,收到就 `settings.getSettings` 取整份(不读那条脱敏载荷),重连后再读一次;代理 / `browser/cdp-settings.ts` / `browser/profiles.ts` 三处处理函数不变 |
+| 内置浏览器 | `electron/browser/*`、`electron/shell-resources.ts`(新) | `browser:` 每条做法 `home: 'shell'`;provider 只剩 `read(name, path, params)` / `run(op, path, params)` 与事件出口;「人零效果、模型顶格」与 `respondPermission` 只许人答搬进 core 的 `ShellResourceProvider.plan`(自述新两格 `userOnly` / `describeTemplate`);主进程照 `src/resources/shell-host.ts` 的体例登记 / 续命 / 回执 / 报事实,后端重拉后回到 `live` 立刻重登记;标签页内存改由 Electron 自己判(`startBrowserMemoryGovernor`,`app.getAppMetrics()` 对 `@shared/memory/budget` 那把尺子) |
+| 先读后交 | `electron/legacy-credentials.ts`(新)、`credentials/credentials-legacy-decryptor.ts`、`space/space-client-api.ts`、`@shared/ipc/spaces.ts` | `spaces.handOverLegacyCredentials` 只给本机信任的来访者;后端把交来的「密文 → 明文」装成只认这几条的解密器,走批 0 同一套迁移判据;宿主端口 `legacySafeStorageForMigration` 一格删掉(三处宿主表 + 冒烟探针同步,端口表 15 格) |
+| 搬进 `@shared` | `@shared/toolkit/untrusted-text.ts`、`@shared/network/proxy-url.ts`、`@shared/memory/budget.ts` | 主进程要用、又不许运行期引后端的三只纯函数;后端原处改引 |
+| 设置 | `@shared/ipc/settings.ts` 的 `general.backendKeepRunningAfterQuit`(缺省 false) | 读它的是主进程(退出那一刻) |
+| 宿主口 | `@shared/contracts/client-action.ts`、`electron/client-action.ts`、`electron/preload.ts`、`src/platform/host.ts` | 三个新动词 `backendStatus` / `restartBackend` / `revealBackendLog`(不收参数)+ 一条单向推送 `host:backend-state`(`webContents.send`,与 `host:fullscreen` 同形,`ipcMain` 仍是三条) |
+| 壳 | `src/data/backend-host-{port,source}.ts`(新)、`content/settings/GeneralPage.tsx`、`ui/Toast.tsx`(`secondaryAction`)、`services/notify.ts`、`i18n/{zh,en}.ts`、`main.tsx` | 设置 → 通用:开关 + 状态行 + 「重启后端」;重拉提示走 `notify` warn(与「没连上 core」同一种呈现);停止横幅 = 不自动消失的 error + 两道门;浏览器壳(`canSeeBackendProcess()` 为假)不画 |
+| 门 | `scripts/headless-boundary-check.ts`、`scripts/gate-backend-process.mjs` + `scripts/gate-backend-process/supervisor-entry.ts`、`scripts/gate-packaged.mjs`、`scripts/gate-credentials*` | 见下 |
+
+**门**
+
+- `boundary:gate` 新断言 `checkElectronMainImportsBackendTypesOnly`:`apps/desktop-react/electron/**` 非测试文件对 `@onething/backend`
+  只许 `import type` / `export type`;唯一的运行期例外是日志一族(`@onething/backend/logging`、`logging/logging-configure`,理由写在
+  断言上);测试文件不在内。反证跑过:往 `discovery.ts` 里加四种运行期写法(具名、多行混 `type`、裸 `import '…'`、动态 `import()`)四处全红,
+  `import type` 与全是 `type` 的花括号不红。
+- `gate:backend-process` 扩「监督那一半」:同一个运行时起一只驱动,由它驱动桌面真用的那只 `BackendProcess` 拉起真 `backend.cjs` ——
+  拉起 / `kill -9` 后 D11 重拉(端口与 token 不变、新 pid)/ 第 2、3 次照拉 / 60 秒内第 4 次 `stopped` 且发现文件删掉 / 「重启」/ `leave()` 后
+  驱动退出而后端留着 / 再起一程借它 / `stop()` 在宽限内收掉。Electron(`ELECTRON_RUN_AS_NODE`)与系统 Node 各一遍,全门 61/61。
+- `gate:credentials` ⑧⑨:先读后交走通、不可信来访者答 `NOT_TRUSTED`。
+- 单测:`electron/__tests__/backend-process.test.ts`(14 条,假 `spawn`;含「重拉进行中 Quit 不留孤儿」两条,第一条反证跑过)、`client-action.test.ts`(三个新动词)、
+  `src/data/__tests__/backend-host-source.test.ts`(9 条)、`packages/backend/resource/__tests__/resource-shell-provider.test.ts`(`userOnly` /
+  人零效果 / 模板渲染)、`host-connection.test.ts` 第二条改成「开窗排在拉起后端之前」并断言 `main.ts` 不再装配。
+
+**要开窗的门(写好未跑,用户择时)**
+
+| 门 | 怎么跑 | 多久 | 碰不碰真数据 |
+| --- | --- | --- | --- |
+| `gate:packaged` 扩 | `bun run gate:packaged`(先 `build:unpack`;已打过包加 `--no-build`;不跑 ⑦ 加 `--no-keep-running`) | 打包 2–4 分钟 + 门 ≈1 分钟 | 临时 store + 临时 user-data-dir、`ONETHING_CREDENTIALS_KEYRING=file`;子进程带 `ONETHING_GATE_HEADLESS=1`(不 show、不进 Dock)。新签名的包第一次起可能要点一次钥匙串授权(门以 3 退出并提示) |
+| `gate:backend-process` 开窗那一半 | 未写成脚本:离屏起 `dist-electron/main.cjs`(`ONETHING_GATE_HEADLESS=1`、临时 store)→ 杀它拉起的后端 → 看渲染层「正在重新连接后端。」→ 三次之后的横幅 | — | 应在临时 store 上 |
+| `gate:browser` / `gate:resources` | `npm --prefix apps/desktop-react run gate:browser` / `gate:resources` | 各 1–3 分钟 | 门自带临时 store;**本批改了 `browser:` 的家**(壳侧登记),这两道门是它唯一的真机证明 |
+| 启动时长 | `npm --prefix apps/desktop-react run gate:chat-layout -- --report`(报表新一行「⑬ 起到连上」,读主进程记在 `shell.jsonl` 的 `host connection settled.ms`;这道门先起了自己的 core,所以量的是借来那条路)| 3–5 分钟 | 临时 store、离屏 |
+| 拉起那条路的数 | `bun run gate:backend-process --runtimes=electron --no-supervisor --timing=5`(不开窗,已跑:10-07 02:11 负载 4.5–8 下 spawn → 发现文件活着中位数 2138ms,1613 / 2027 / 2138 / 3594 / 4428;与批 2a 负载 4–6 时的 1511 / 3328 同档,闲时的 416ms 基线要在闲时重量) | ≈1 分钟 | 临时 store |
+
+**没做 / 留账**
+
+- 施工单第 8 条 `transport: 'ipc'` **没删**:`DESKTOP_RPC_CONTEXT` 仍有生产用者(CLI 守护 `headless/headless-backend.ts` 的批量删会话,
+  以及 245 处 client-api 的缺省参数),批 3 CLI 走 HTTP 时一起删。
+- 第 7 条内存探针按推荐不做:`electron/memory-probe.ts` 与它的测试现在无人引用(死码,留给批 3 一起删或改成 `reportProcesses`)。
+- `http-server/http-server-embed.ts` 与 `localTrust: 'desktop-embedded'` 那一档今天只剩冒烟探针用,随批 3 定。
+- 交进来的旧凭证明文留在后端进程内存里直到进程退出(迁移成功后没有清表)。

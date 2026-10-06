@@ -1,5 +1,5 @@
 /**
- * React 壳的 preload —— 三条 `invoke` / `send` 口:`host:connection`(连哪台后端)、`host:native-view`
+ * React 壳的 preload —— 三条 `invoke` / `send` 口(另有两条主进程推过来的单向推送:全屏态与后端状态):`host:connection`(连哪台后端)、`host:native-view`
  * (窗口系统给原生视图的管道)、`host:client-action`(第④步批 1:只在用户屏幕上发生的事 —— 原生对话框、
  * 打开外链、打开路径、在访达中显示;契约 `@shared/contracts/client-action`)。三条都不是数据通道,
  * 数据只走 HTTP/SSE。
@@ -10,7 +10,13 @@
  */
 import { contextBridge, ipcRenderer } from 'electron'
 import { NATIVE_VIEW_CHANNEL } from './native-view-protocol.js'
-import { CLIENT_ACTION_CHANNEL, type ClientActionBridge } from '@shared/contracts/client-action'
+import {
+  BACKEND_STATE_CHANNEL,
+  CLIENT_ACTION_CHANNEL,
+  type BackendHostState,
+  type BackendStateBridge,
+  type ClientActionBridge,
+} from '@shared/contracts/client-action'
 import type { NativeViewBridge, NativeViewPush, NativeViewRequest } from './native-view-protocol.js'
 
 export type { NativeViewBridge, NativeViewPush, NativeViewRequest }
@@ -21,6 +27,12 @@ export type HostConnectionResult =
 
 const clientAction: ClientActionBridge = action => ipcRenderer.invoke(CLIENT_ACTION_CHANNEL, action)
 
+const onBackendState: BackendStateBridge = handler => {
+  const listener = (_event: unknown, state: BackendHostState) => handler(state)
+  ipcRenderer.on(BACKEND_STATE_CHANNEL, listener)
+  return () => { ipcRenderer.removeListener(BACKEND_STATE_CHANNEL, listener) }
+}
+
 contextBridge.exposeInMainWorld('onethingHost', {
   getConnection: (): Promise<HostConnectionResult> => ipcRenderer.invoke('host:connection'),
   /**
@@ -28,6 +40,12 @@ contextBridge.exposeInMainWorld('onethingHost', {
    * 渲染层只经 `src/platform/host.ts` 那几只函数用它 —— 浏览器壳没有这一格,判据就是它在不在。
    */
   clientAction,
+  /**
+   * **后端子进程此刻的样子**(第④步批 2b):主进程每次状态变了就推一次、页面每次加载完再对齐一次
+   * (`BACKEND_STATE_CHANNEL`,单向 `webContents.send`,与 `onFullScreenChange` 同形,不是新的 `ipcMain` 口)。
+   * 设置页的状态行、「正在重新连接后端。」、「后端已停止。」横幅读它(`src/data/backend-host-source.ts`)。
+   */
+  onBackendState,
   /**
    * 这扇窗跑在哪个平台上。**一个事实,不是一个结论**(W1-b)。
    *

@@ -63,3 +63,49 @@ export function createBrowserMemoryHolder(deps: BrowserMemoryDeps): MemoryHolder
     },
   }
 }
+
+export interface BrowserMemoryGovernorOptions {
+  /** 预算(`@shared/memory/budget` 那把尺子,与后端判自己进程用的是同一把)。 */
+  readonly budget: { readonly softBytes: number; readonly hardBytes: number }
+  /** Electron 这几个进程此刻一共占多少字节(生产里是 `app.getAppMetrics()` 的工作集之和)。 */
+  sampleBytes(): number
+  /** 采样周期。缺省 30s,与后端的调度器同一个拍子。 */
+  readonly intervalMs?: number
+  /** 真的释放了几格就说一声(只为日志)。 */
+  onTrim?(pressure: MemoryPressure, releasedEntries: number): void
+  onError?(error: unknown): void
+}
+
+/**
+ * **这几格标签页的内存由 Electron 自己判**(第④步批 2b)。
+ *
+ * 从前这只持有者登记进后端的内存登记表,压力由后端的调度器判 —— 那时后端与这些标签页在同一个进程树里,
+ * 而且 Electron 另外报一份进程探针,后端看得见渲染 / GPU / 浏览器进程。批 2b 起后端是另一个进程,
+ * 它量的是它自己;这几格标签页的渲染进程在 Electron 这边。所以压力在这里判:每 `intervalMs` 采一次
+ * Electron 全部进程的工作集,过了软线按 `soft` 释放、过了硬线按 `hard` 释放(释放条件在持有者里)。
+ * 返回停掉采样的那一手(幂等)。
+ */
+export function startBrowserMemoryGovernor(holder: MemoryHolder, options: BrowserMemoryGovernorOptions): () => void {
+  const tick = (): void => {
+    try {
+      const bytes = options.sampleBytes()
+      const pressure: MemoryPressure | undefined = bytes >= options.budget.hardBytes
+        ? 'hard'
+        : bytes >= options.budget.softBytes ? 'soft' : undefined
+      if (!pressure || !holder.trim) return
+      void Promise.resolve(holder.trim(pressure)).then(result => {
+        if (result.releasedEntries > 0) options.onTrim?.(pressure, result.releasedEntries)
+      }, error => { options.onError?.(error) })
+    } catch (error) {
+      options.onError?.(error)
+    }
+  }
+  const timer = setInterval(tick, options.intervalMs ?? 30_000)
+  timer.unref?.()
+  let stopped = false
+  return () => {
+    if (stopped) return
+    stopped = true
+    clearInterval(timer)
+  }
+}

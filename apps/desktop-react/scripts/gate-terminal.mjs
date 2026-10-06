@@ -9,7 +9,7 @@
  * `createEventBusTerminalBroadcaster()`)。独立 server 的宿主表里它仍旧是 `null`
  * —— 连上去的话七条 RPC 恒拒,这道门量的就成了「server 没有终端」这件废话。
  * 所以这里走的是 `gate-connect` 的**路径一**:不起 server,让壳自己装配 core
- * (`assembleOwnCore`),发现文件的 owner 是 `shell`。①就是这条。
+ * (第④步批 2b 起是桌面拉起的后端子进程,桌面档自带终端宿主),发现文件的 owner 是 `backend`。①就是这条。
  *
  * ── 八条断言 ────────────────────────────────────────────────────────────
  *  ① `/api/capabilities.terminal === true`(壳自当 core,宿主表那一行真的注进去了);
@@ -346,7 +346,7 @@ async function main() {
 
     const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     })
     assert(await portConnects(record.host, record.port), `core 端口 ${record.port} 可连`)
 

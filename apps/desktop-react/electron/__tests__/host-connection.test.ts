@@ -16,7 +16,7 @@ import { HostConnectionGate } from '../host-connection'
  * 就会让「装配途中问进来」拿到一句永久的假话,而 `main.ts` 在 import 那一刻就
  * `app.whenReady()`、注册 IPC、开窗,拿不进 vitest。所以这里读它的**源文本**,
  * 问三句:handler 交的是不是 `connection.promise`、那句假话还在不在、开窗有没有
- * 排在装配之前。源文本断言是下策,用在这里是有意的:它只钉「有没有接上」,
+ * 排在拉起后端之前。源文本断言是下策,用在这里是有意的:它只钉「有没有接上」,
  * 行为由上面四条钉。
  */
 
@@ -76,11 +76,13 @@ describe('main.ts 的接线', () => {
     expect(mainSource).not.toContain('core 尚未连接')
   })
 
-  it('开窗排在装配之前(两者并行跑,这一批的全部意义)', () => {
-    const openedAt = mainSource.indexOf('  createWindow()\n\n  const existing = readDiscovery()')
-    const assembledAt = mainSource.indexOf('ownCoreAssembly = assembleOwnCore()')
+  it('开窗排在拉起后端之前(两者并行跑:页面加载与后端起步同时进行)', () => {
+    const openedAt = mainSource.indexOf('  createWindow()\n')
+    const startedAt = mainSource.indexOf('await backendProcess.start()')
     expect(openedAt).toBeGreaterThan(-1)
-    expect(assembledAt).toBeGreaterThan(-1)
-    expect(openedAt).toBeLessThan(assembledAt)
+    expect(startedAt).toBeGreaterThan(-1)
+    expect(openedAt).toBeLessThan(startedAt)
+    // 第④步批 2b 起主进程不装配:装配那一句回来 = 又成了一个进程。
+    expect(mainSource).not.toMatch(/OnethingBackend\.assemble|createOnethingBackend|assembleOwnCore/)
   })
 })

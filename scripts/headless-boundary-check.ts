@@ -7132,6 +7132,55 @@ const BACKEND_CLIENT_ACTION_FORBIDDEN_PATTERNS: RegExp[] = [
   /\bshell\.showItemInFolder\b/,
 ]
 
+/**
+ * **Electron 主进程不装配后端**(第④步批 2b,`docs/design/two-process-2026-10.md` §2.3 验收):后端是主进程拉起的
+ * 子进程(`apps/desktop-react/electron/backend-process.ts`),主进程对它的一切都走 HTTP(`@onething/backend-client`)。
+ * 所以 `apps/desktop-react/electron/**` 的非测试文件对 `@onething/backend` 只许 `import type` / `export type`。
+ *
+ * 唯一的运行期例外是**日志那一族**:`@onething/backend/logging`(`getLogger`)与它的装配入口
+ * `@onething/backend/logging/logging-configure`(`configureLogging`)。理由:主进程自己写一本 `shell.jsonl`(只记窗口的事),
+ * 用的是同一套 JSONL 格式与级别规矩 —— 那是一只纯库,不起后端、不读设置、不碰会话;另写一套 logger 才是两种格式。
+ * 测试文件(`__tests__/`、`*.test.ts`)不在这条断言里:它们对着后端的契约验东西,本来就要引后端。
+ */
+const ELECTRON_MAIN_BACKEND_RUNTIME_ALLOWED = new Set([
+  '@onething/backend/logging',
+  '@onething/backend/logging/logging-configure',
+])
+
+function electronMainBackendRuntimeImports(filePath: string): string[] {
+  const content = fs.readFileSync(filePath, 'utf-8')
+  const out: string[] = []
+  const lineOf = (index: number) => content.slice(0, index).split('\n').length + (content[index] === '\n' ? 1 : 0)
+  // 子句只认三种形(`{…}`、`* as x`、`x` 或 `x, {…}`),不让它跨过别的语句一路吞到下一个 `from`。
+  const statement = /(^|\n)[ \t]*(import|export)\s+(type\s+)?(\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?|[\w$]+(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+[\w$]+))?)\s*from\s*['"](@onething\/backend(?:\/[^'"]*)?)['"]/g
+  for (const match of content.matchAll(statement)) {
+    const [, , , typeOnly, clause = '', specifier = ''] = match
+    if (typeOnly) continue
+    const braces = /^\{([\s\S]*)\}$/.exec(clause.trim())
+    const allTypes = braces !== null
+      && braces[1]!.split(',').map(part => part.trim()).filter(Boolean).every(part => part.startsWith('type '))
+    if (allTypes) continue
+    if (ELECTRON_MAIN_BACKEND_RUNTIME_ALLOWED.has(specifier.replace(/\.js$/, ''))) continue
+    out.push(`${rel(filePath)}:${lineOf(match.index ?? 0)}: runtime import of ${specifier}`)
+  }
+  const bare = /(?:\bimport\s*\(|\brequire\s*\(|(^|\n)[ \t]*import\s+)['"](@onething\/backend(?:\/[^'"]*)?)['"]/g
+  for (const match of content.matchAll(bare)) {
+    const specifier = match[2] ?? ''
+    if (ELECTRON_MAIN_BACKEND_RUNTIME_ALLOWED.has(specifier.replace(/\.js$/, ''))) continue
+    out.push(`${rel(filePath)}:${lineOf(match.index ?? 0)}: runtime import of ${specifier}`)
+  }
+  return out
+}
+
+function checkElectronMainImportsBackendTypesOnly(): void {
+  const dir = path.join(root, 'apps/desktop-react/electron')
+  const files = walkFiles(dir, [], { extensions: /\.(ts|tsx|mts|cts)$/ })
+    .filter(file => !/\.test\.tsx?$/.test(file) && !file.split(path.sep).includes('fixtures'))
+  const lines = files.flatMap(electronMainBackendRuntimeImports)
+  if (files.length === 0) lines.push('apps/desktop-react/electron: no files found (the assertion would pass vacuously)')
+  assertNoMatches('apps/desktop-react/electron imports @onething/backend for types only (logging family excepted)', lines)
+}
+
 function checkBackendRunsNoClientActions(): void {
   const backendRoot = path.join(root, 'packages/backend')
   const lines = walkFiles(backendRoot, [], { extensions: /\.(ts|tsx|js|mjs|cjs)$/ })
@@ -7141,6 +7190,7 @@ function checkBackendRunsNoClientActions(): void {
 
 checkVueHostStaysRetired()
 checkBackendRunsNoClientActions()
+checkElectronMainImportsBackendTypesOnly()
 checkRuntimeHostBoundary()
 checkClientPackageBoundary()
 checkCoreSearchNamesNoCapability()

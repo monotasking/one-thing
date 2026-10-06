@@ -11,7 +11,9 @@
  * `__dirname` 因此直接可用,不必再补 ESM 的 `fileURLToPath` 仪式。
  *
  * ── A1-a(2026-08-31):main 侧从「薄壳」变成「装了 backend 的壳」 ──────────
- * `electron/main.ts` 现在 import `@onething/backend`,于是整棵 core/runtime/backend
+ * (第④步批 2b 起 main 侧不再装配后端、只对 `@onething/backend` 引日志一族;整棵后端 inline 进的是
+ * 第五次 `build()` 产出的 `backend.cjs`。下面四件对两份产物同样成立,所以留在同一份配方里。)
+ * 当年 `electron/main.ts` import `@onething/backend`,于是整棵 core/runtime/backend
  * 被 inline 进这一个 bundle(~10MB)。这条链因此多出四件事,每一件都是**不做就
  * 运行时炸**的那种,不是优化:
  *
@@ -163,7 +165,7 @@ export function acpMcpBridgeEsbuildOptions({ outdir, repoRoot: root }) {
  * —— 批 2b 起桌面用 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起它(决策 D1),所以它要与 `main.cjs`
  * 同一套 external、同一个 `import.meta.url` 替身。它落在 `dist-electron/`,于是「Worker 与 ACP 桥落在宿主入口
  * 旁边」那条纪律不用动:`search-worker.cjs` / `acp-mcp-bridge.cjs` 正好就在它旁边。打包时 asarUnpack
- * (子进程入口要真路径)。今天还没人拉起它,`gate:backend-process` 跑它。
+ * (子进程入口要真路径)。批 2b 起桌面拉起它(`electron/backend-process.ts`),`gate:backend-process` 也跑它。
  */
 export const BACKEND_ENTRY = 'packages/backend/backend-standalone-main.ts'
 export const BACKEND_NAME = 'backend'

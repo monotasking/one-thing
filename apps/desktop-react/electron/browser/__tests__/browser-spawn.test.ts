@@ -17,7 +17,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ResourceEventHub } from '@onething/backend/resource'
 import { BrowserSessionPolicy } from '../session-policy.js'
 import { BrowserService, SPAWN_BURST, SPAWN_WINDOW_MS } from '../service.js'
 import { BrowserResourceProvider, type BrowserOps, type BrowserTabView } from '../resource-provider.js'
@@ -107,12 +106,10 @@ describe('页面开出来的 tab:出生那一刻就说得出「谁开的」', ()
   })
 
   it('provider 发的载荷逐格对着自述(`background` 由 `active` 推出来)', () => {
-    const hub = new ResourceEventHub()
     const seen: { event: string; payload: unknown }[] = []
-    hub.watch('browser:', (fact) => { seen.push({ event: fact.event, payload: fact.payload }) })
     const ops = { list: () => [], activeId: () => null, has: () => true } as unknown as BrowserOps
     const provider = new BrowserResourceProvider(ops)
-    provider.attach(hub)
+    provider.attach((_tabId, event, payload) => { seen.push({ event, payload }) })
 
     const tab = { id: 't2', url: 'https://video.test/watch', title: '', loading: false, canGoBack: false, canGoForward: false, profile: 'default', active: true } as BrowserTabView
     provider.emitSpawned(tab, 't1')

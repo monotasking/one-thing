@@ -30,6 +30,8 @@ import {
   invalidateSpaceCredentialsCache,
   type CredentialsLockReason,
 } from './credentials-pool.js'
+import { acceptHandedOverLegacyPlaintexts, type LegacyCiphertextPlaintext } from './credentials-legacy-decryptor.js'
+import { migrateOAuthSlotToDefaultSpace, migrateProviderConfigToDefaultSpace } from './credentials-default-space-migration.js'
 import {
   migrateSafeStorageCredentials,
   pendingSafeStorageSpaces,
@@ -93,6 +95,52 @@ export async function unlockCredentials(): Promise<CredentialsStatus> {
   invalidateSpaceCredentialsCache()
   notifyStatusListeners()
   return credentialsStatus()
+}
+
+/**
+ * **旧 `safeStorage` 密文「Electron 先读后交」**(第④步批 2b,`docs/design/two-process-2026-10.md` §2.3 第 12 条)。
+ *
+ * Electron 在拉起后端之前读出仍为 `encryption: 'safeStorage'` 的凭证文件与旧单槽 `oauth-tokens.json` 的密文条目、
+ * 用 `safeStorage` 解开,后端就绪后经 `spaces.handOverLegacyCredentials` 交进来。这里先把「密文 → 明文」收进
+ * 旧解密器(`credentials-legacy-decryptor.ts`),再按批 0 **同一套判据**把三步迁移重跑一遍 —— 它们都幂等、
+ * 都靠标记与文件形态判「还要不要做」:
+ *
+ *  1. 凭证池的旧信封 → 主密钥信封(`migrateSafeStorageCredentials`:解开 → `.migrating` → 逐条校验 → 改名备份);
+ *  2. `settings.ai` 里的存量 provider 配置迁进默认空间(装配时可能因为旧单槽的令牌解不开而推迟);
+ *  3. 旧单槽 `oauth-tokens.json` 归位进默认空间的凭证池(同上)。
+ *
+ * 之后丢掉读缓存、按新状态发一次 `credentials:locked`(解开了就是 `locked: false`,横幅撤下)。
+ * 一步失败只记日志,不挡后面的;答此刻的状态。
+ */
+export async function acceptLegacyCredentialsHandOver(entries: readonly LegacyCiphertextPlaintext[]): Promise<{
+  accepted: number
+  migratedSpaces: number
+  status: CredentialsStatus
+}> {
+  const accepted = acceptHandedOverLegacyPlaintexts(entries)
+  let migratedSpaces = 0
+  if (accepted > 0) {
+    await awaitMasterKey(credentialsKeyContext)
+    try {
+      migratedSpaces = (await migrateSafeStorageCredentials(migrationWiring.options)).migrated.length
+    } catch (error) {
+      log.error('handed-over credentials migration failed', {}, error)
+    }
+    try {
+      await migrateProviderConfigToDefaultSpace()
+    } catch (error) {
+      log.error('provider config migration after hand-over failed, will retry next boot', {}, error)
+    }
+    try {
+      await migrateOAuthSlotToDefaultSpace()
+    } catch (error) {
+      log.error('oauth slot migration after hand-over failed, will retry next boot', {}, error)
+    }
+    log.info('legacy safeStorage credentials handed over by the desktop app', { entries: accepted, migratedSpaces })
+  }
+  invalidateSpaceCredentialsCache()
+  notifyStatusListeners()
+  return { accepted, migratedSpaces, status: credentialsStatus() }
 }
 
 /** 异步读之前等钥匙读完(钥匙串那一档的子进程还在跑时)。不抛。 */

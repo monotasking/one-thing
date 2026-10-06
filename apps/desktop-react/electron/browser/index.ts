@@ -8,74 +8,44 @@
  * 靠 mock 电梯,而那份 mock 会慢慢长成第二个 Electron。
  *
  * ────────────────────────────────────────────────────────────────────────────
- * ## 接线的那一行不在本单里
+ * ## 接线(第④步批 2b 起;`main.ts` 那一侧)
  *
- * `electron/main.ts` 是别批的脏文件,B1-a 一个字都不碰。**接线留给后续那一单**,
- * 它要做的事逐条写在这里:
- *
- *   ① **app `ready` 之前**(`main.ts` 顶层,与 `resolveStoreRoot()` 同一段):
- *
- *          import { applyChromiumFlags } from './browser/user-agent.js'
- *          import { applyCdpFlag, readCdpLaunchFlag } from './browser/cdp-flag.js'
- *          applyChromiumFlags(app)
- *          applyCdpFlag(app, readCdpLaunchFlag(resolveStoreRoot()))
- *
- *      两句都**必须**在 ready 之前 —— `appendSwitch` 之后 Chromium 才读命令行
- *      (`cdp-flag.ts` 的文件头写着为什么 CDP 那一格是旗文件而不是读设置)。
- *
- *   ①′ **挂内嵌 HTTP 面那一行**(B2′):把这个进程真的开着的 CDP 口补进
- *      `run/http.json`,别的客户端(chrome-devtools-mcp 的配置、脚本)就不必猜口:
- *
- *          import { cdpDiscoveryExtras } from './browser/cdp-settings.js'
- *          startEmbeddedOnethingHttpServer(b, {
- *            owner: 'shell',
- *            discoveryExtras: cdpDiscoveryExtras(app.commandLine),
- *          })
- *
- *      判据是**命令行**不是设置:设置改了要重启才生效,按设置写等于说谎。
- *      没开 → `undefined` → `cdp` 那个键根本不出现在文件里。
- *
- *   ② **窗口建成 + 装配完成之后**(`startPostWindowServices()` 里,与
- *      `b.mcp.start()` 同一段):
- *
- *          const browserHost = installBrowserHost({ window, backend: b, storePath: resolveStoreRoot() })
- *          b.own(() => browserHost.dispose(), 'browserHost')
- *
- *      次序是硬的:要 `window`(视图得挂进 `win.contentView`)、要装配完的 backend
- *      (`backend.resources` 在装配之前抛 `BackendNotAssembledError`)。
- *      **不要**放进 `hooks.afterTools` —— 那一拍窗口还没有。
- *
- *   ③ `installBrowserHost` 自己**不** `own()`:它返回一个 disposer,由调用方
- *      `own()`。「谁起的谁 own」那条纪律的落点是起它的那一行,不是被起的那只模块
- *      (方案 §2.4;`main.ts` 里 `embeddedHttpSurface` / `userSchedulerTasks`
- *      都是这个形)。
- *
- *   ④ `--mode web` 没有主进程,这一整块根本不加载;`browser:` 不 mount,于是网页壳
- *      那一侧 `do(browser:…)` 诚实答 `ResourceSchemeUnknownError`(§3.2 的「未挂」
- *      那一行)。**唯一的例外**是网页壳连着**桌面** core 的时候:那是同一台 core 的
- *      另一扇窗,`describe` 列得出、AI 在网页壳里说「开个页」会开在桌面窗里(§9-12)。
- *      那是「一个 core」的形,不是 bug。
+ *   ① **app `ready` 之前**:`applyChromiumFlags(app)` 与 `applyCdpFlag(app, readCdpLaunchFlag(store))`
+ *      (`appendSwitch` 之后 Chromium 才读命令行;CDP 那一格是旗文件而不是读设置,判词在 `cdp-flag.ts`)。
+ *   ② **窗口建成、后端连上之后**:`installBrowserHost({ window, storePath, settings })`。后端是 Electron
+ *      拉起的子进程(`../backend-process.ts`),`browser:` 不再进程内 `backend.resources.mount(provider)`,
+ *      而是由 `main.ts` 把这里交回的 `provider` 登记进主进程那一扇壳(`../shell-resources.ts`,
+ *      `resources.mountShell`;决策 D4 (A))。渲染层一行不改。
+ *   ③ 设置从主进程那台客户端的设置 feed 来(`../core-client.ts` 的 `createSettingsFeed`):身份名册、CDP
+ *      旗文件两只 watcher 订它;连上之前名册按出厂那一格算。
+ *   ④ 内存:内置浏览器的标签页住在 Electron 这几个进程里,后端量不到它们的内存,所以休眠判据由这里自己
+ *      每 30 秒采一次 Electron 全部进程的工作集、对着同一把预算尺子(`@shared/memory/budget`)判
+ *      (`memory-holder.ts` 的 `startBrowserMemoryGovernor`),不再登记进后端的内存登记表。
+ *   ⑤ `installBrowserHost` 自己**不**收尾:它交回一个 disposer,由 `main.ts` 在退出时调。
+ *   ⑥ `--mode web` 没有主进程,这一整块根本不加载;`browser:` 没人认领,网页壳那一侧 `do(browser:…)`
+ *      诚实答「没人认领」。网页壳连着**桌面拉起的后端**时,AI 在网页壳里说「开个页」会开在桌面窗里 ——
+ *      那是「一个后端」的形,不是 bug。
  * ────────────────────────────────────────────────────────────────────────────
  */
 
 import fs from 'node:fs'
 import nodePath from 'node:path'
 import { Menu, WebContentsView, app, ipcMain, session, type BrowserWindow } from 'electron'
-import type { OnethingBackend } from '@onething/backend'
 import { getLogger } from '@onething/backend/logging'
-import { configureSettingsEventBroadcaster, getSettingsEventBroadcaster, getSettings } from '@onething/backend/settings'
+import { resolveMemoryBudgetFrom } from '@shared/memory/budget'
+import { DEFAULT_BROWSER_PROFILE_ID } from '@shared/ipc/settings.js'
 import { NATIVE_VIEW_CHANNEL, type NativeViewPush } from '../native-view-protocol.js'
-import { shellProxyPolicy } from '../host-ports.js'
+import { shellProxyPolicy } from '../proxy-settings.js'
+import type { SettingsFeed } from '../core-client.js'
 import type { ElectronProxySessionLike } from '../network-proxy.js'
 import { KeymapBridge } from './keymap-bridge.js'
 import { installCdpSettingsWatcher } from './cdp-settings.js'
 import {
   installBrowserProfilesWatcher,
-  profileTableFromSettings,
   type BrowserProfileTable,
 } from './profiles.js'
 import { NativeViewLayout, type NativeViewHost } from './layout.js'
-import { createBrowserMemoryHolder } from './memory-holder.js'
+import { createBrowserMemoryHolder, startBrowserMemoryGovernor } from './memory-holder.js'
 import { installNativeViewIpc } from './native-view-ipc.js'
 import { NativeFocus } from './native-focus.js'
 import { NativePopup } from './native-popup.js'
@@ -92,19 +62,21 @@ const log = getLogger('shell.browser')
 export interface InstallBrowserHostOptions {
   /** 视图挂进它的 `contentView`,推送也发给它的 `webContents`。 */
   readonly window: BrowserWindow
-  /** 已经装配完的 backend —— `resources` 在装配之前会抛。 */
-  readonly backend: OnethingBackend
+  /** 设置订阅源(主进程那台客户端的设置 feed)。 */
+  readonly settings: SettingsFeed
   /** tab 表落在 `<storePath>/browser/tabs.json`。缺席 = 按当前 store 解析。 */
   readonly storePath?: string
 }
 
 export interface BrowserHost {
-  /** 摘掉 IPC、摘掉全部视图、摘掉 provider、把 tab 表写下来。幂等。 */
+  /** `browser:` 的实现:`main.ts` 把它登记进主进程那一扇壳(`../shell-resources.ts`),再 `attach` 事件出口。 */
+  readonly provider: BrowserResourceProvider
+  /** 摘掉 IPC、摘掉全部视图、摘掉事件出口、把 tab 表写下来。幂等。 */
   dispose(): Promise<void>
 }
 
 export function installBrowserHost(options: InstallBrowserHostOptions): BrowserHost {
-  const { window, backend } = options
+  const { window } = options
 
   const push = (message: NativeViewPush): void => {
     if (window.isDestroyed()) return
@@ -250,8 +222,9 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
    * 名册的真源是**设置**;这一格是它在主进程这一侧的**投影**,由下面那只
    * watcher 每次 `settings:changed` 刷新。service 每开一格 tab 现问缺省身份,
    * 所以「在设置页把缺省改成工作号」下一格新 tab 就跟着变,不必重启。
+   * 设置 feed 还没交第一份时(刚连上那一拍)按出厂那一格算。
    */
-  let profiles: BrowserProfileTable = profileTableFromSettings(getSettings())
+  let profiles: BrowserProfileTable = { ids: [DEFAULT_BROWSER_PROFILE_ID], defaultProfile: DEFAULT_BROWSER_PROFILE_ID }
 
   const service = new BrowserService({
     sessionPolicy,
@@ -335,8 +308,8 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
     respondPermission: (requestId, allow) => permissions.respond(requestId, allow),
   }
 
-  provider = new BrowserResourceProvider(ops)
-  const unmount = backend.resources.mount(provider)
+  const created = new BrowserResourceProvider(ops)
+  provider = created
 
   const offIpc = installNativeViewIpc(ipcMain, {
     frame: frame => {
@@ -383,9 +356,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
    * 与 CDP 那一格同一条判例:设置域只管存,「会让数据消失」这件事是宿主的活。
    */
   const offProfiles = installBrowserProfilesWatcher({
-    readSettings: () => getSettings(),
-    getBroadcaster: () => getSettingsEventBroadcaster(),
-    setBroadcaster: next => { configureSettingsEventBroadcaster(next) },
+    subscribe: listener => options.settings.subscribe(listener),
     onTable: table => { profiles = table },
     closeTabs: profile => service.closeProfileTabs(profile),
     clearPartition: profile => sessionPolicy.clear(profile),
@@ -394,17 +365,16 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
 
   const offCdpSettings = installCdpSettingsWatcher({
     ...(options.storePath ? { storePath: options.storePath } : {}),
-    readSettings: () => getSettings(),
-    getBroadcaster: () => getSettingsEventBroadcaster(),
-    setBroadcaster: next => { configureSettingsEventBroadcaster(next) },
+    subscribe: listener => options.settings.subscribe(listener),
     onError: error => { log.error('cdp launch flag write failed', undefined, error) },
   })
 
   /*
-   * 注册内置浏览器的内存持有者:长时间在后台且未播放声音的标签页会被释放渲染进程,
-   * 切回时重新加载。释放条件见 `memory-holder.ts`。
+   * 内置浏览器的内存持有者:长时间在后台且未播放声音的标签页会被释放渲染进程,切回时重新加载。
+   * 释放条件见 `memory-holder.ts`。第④步批 2b 起由这里自己的采样器判压力(见文件头 ④),
+   * 不再登记进后端的内存登记表 —— 后端量的是它自己的进程,这些标签页不在里面。
    */
-  const offMemory = options.backend.memory.registry.registerHolder(createBrowserMemoryHolder({
+  const offMemory = startBrowserMemoryGovernor(createBrowserMemoryHolder({
     tabs: () => service.list().flatMap(state => {
       const tab = service.get(state.id)
       return tab ? [tab] : []
@@ -415,7 +385,12 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       if (released) log.info('browser tab hibernated', { tabId })
       return released
     },
-  }))
+  }), {
+    budget: resolveMemoryBudgetFrom(process.env),
+    sampleBytes: () => app.getAppMetrics().reduce((sum, metric) => sum + (metric.memory?.workingSetSize ?? 0) * 1024, 0),
+    onTrim: (pressure, released) => { log.info('browser tabs hibernated under memory pressure', { pressure, released }) },
+    onError: error => { log.warn('browser memory sample failed', undefined, error) },
+  })
 
   log.info('browser host installed', {
     tabs: service.list().length,
@@ -425,6 +400,7 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
 
   let disposed = false
   return {
+    provider: created,
     async dispose(): Promise<void> {
       if (disposed) return
       disposed = true
@@ -453,9 +429,8 @@ export function installBrowserHost(options: InstallBrowserHostOptions): BrowserH
       // 的登记表里只会让下一次 `apply` 对着一批没人用的面空套。
       for (const off of proxyOff) off()
       proxyOff.length = 0
-      // 先摘 provider(内核那只注销会先掐在飞、等它们收场),再拆视图 —— 反过来的话
-      // 一次在飞的 `read page` 会打在一片已经销毁的 webContents 上。
-      await unmount()
+      // 先摘事件出口(登记由 `main.ts` 那一扇壳注销),再拆视图 —— 反过来的话
+      // 视图销毁时那几条 `closed` 会往一条已经在拆的连接上写。
       provider?.dispose()
       provider = undefined
       for (const off of keymapOff.values()) off()

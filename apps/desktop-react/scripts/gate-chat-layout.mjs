@@ -856,6 +856,18 @@ async function main() {
     )
   } finally {
     if (app) await app.close().catch(() => undefined)
+    /*
+     * 启动时长(第④步批 2b):「从主进程起到 `host:connection` 落定」由主进程自己量、记进 `shell.jsonl`
+     * (`host connection settled { ms, adopted }`)。读在 app 关掉之后:日志 sink 攒批写,关时才冲盘。
+     * 这道门先起了一台 core 再拉起 app,所以这里量到的是**借来那台**的那条路(`adopted: true`);
+     * 自己拉起后端那条路的数看 `gate:backend-process --timing=N`(spawn 到发现文件活着),对照批 2a 的 416ms。
+     */
+    try {
+      const shellLog = readFileSync(path.join(store, 'log', 'shell.jsonl'), 'utf8')
+      const row = shellLog.split('\n').filter(Boolean).map((line) => { try { return JSON.parse(line) } catch { return null } })
+        .find((entry) => entry?.msg === 'host connection settled')
+      if (row) readings.hostConnection = { ms: row.fields?.ms, adopted: row.fields?.adopted }
+    } catch { /* 没有日志 = 这一格不报 */ }
     if (vite) await vite.close().catch(() => undefined)
     await stopCore(server)
     if (mockProvider) {
@@ -929,6 +941,7 @@ function renderTable(r) {
     ['⑪ 流完离底', r.stream ? `${r.stream.gap} px` : '—'],
     ['⑫ 停靠棵数', r.dom ? `${r.dom.parkedStreams ?? 0} 棵(视图停靠池)` : '—'],
     ['⑧ 冷开 RPC', coldNet(r)],
+    ['⑬ 起到连上', r.hostConnection ? `${r.hostConnection.ms} ms(${r.hostConnection.adopted ? '借来的后端' : '自己拉起'};批 2a 基线 416ms 是拉起那条路)` : '—'],
     ['⑫ JS 堆(GC 后)', r.heap?.usedMB !== undefined ? `${r.heap.usedMB} MB / 总 ${r.heap.totalMB} MB` : (r.heap?.error ?? '—')],
   ]
   const width = Math.max(...rows.map(([k]) => k.length))

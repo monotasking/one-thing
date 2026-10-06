@@ -14,10 +14,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { AppSettings } from '@shared/ipc/settings'
-import type {
-  SettingsEvent,
-  SettingsEventBroadcaster,
-} from '@onething/backend/settings'
 
 import {
   BrowserSessionPolicy,
@@ -177,9 +173,7 @@ describe('open 的缺省身份', () => {
       respondPermission: () => true,
     } as unknown as BrowserOps
     const provider = new BrowserResourceProvider(ops)
-    const ctx = { principal: { kind: 'user' } } as never
-    const intent = await provider.plan('open', null, { url: 'https://a.test/', profile: 'work' }, ctx)
-    await provider.apply('open', intent, { emit: () => {} } as never)
+    await provider.run('open', '', { url: 'https://a.test/', profile: 'work' })
     expect(opened).toEqual([{ url: 'https://a.test/', background: false, profile: 'work' }])
   })
 
@@ -203,9 +197,7 @@ describe('open 的缺省身份', () => {
       respondPermission: () => true,
     } as unknown as BrowserOps
     const provider = new BrowserResourceProvider(ops)
-    const ctx = { principal: { kind: 'user' } } as never
-    const intent = await provider.plan('open', null, {}, ctx)
-    await provider.apply('open', intent, { emit: () => {} } as never)
+    await provider.run('open', '', {})
     expect('profile' in opened[0]!).toBe(false)
   })
 })
@@ -280,33 +272,36 @@ describe('profileTableFromSettings', () => {
 })
 
 describe('installBrowserProfilesWatcher', () => {
-  function slot() {
-    let held: SettingsEventBroadcaster | null = null
+  /** 设置 feed 的替身(第④步批 2b 起订阅源是 `core-client.ts` 的 feed):订上去先交当下那一份。 */
+  function feed(initial: Pick<AppSettings, 'browser'>) {
+    const listeners = new Set<(settings: Pick<AppSettings, 'browser'>) => void>()
     return {
-      get: () => held,
-      set: (next: SettingsEventBroadcaster | null) => { held = next },
-      emit: (settings: Pick<AppSettings, 'browser'>) => {
-        held?.({ type: 'settings:changed', settings: settings as AppSettings } satisfies SettingsEvent)
+      subscribe: (listener: (settings: Pick<AppSettings, 'browser'>) => void) => {
+        listeners.add(listener)
+        listener(initial)
+        return () => { listeners.delete(listener) }
       },
+      emit: (settings: Pick<AppSettings, 'browser'>) => {
+        for (const listener of [...listeners]) listener(settings)
+      },
+      get size() { return listeners.size },
     }
   }
 
-  it('开场只记账**不 reconcile**(没有「上一份」可比);之后每次变更折一次', async () => {
-    const s = slot()
+  it('第一份只记账**不 reconcile**(没有「上一份」可比);之后每次变更折一次', async () => {
+    const s = feed(settingsWith({
+      profiles: [{ id: 'default', name: '' }, { id: 'work', name: '' }],
+      defaultProfile: 'work',
+    }))
     const calls: string[] = []
     const tables: string[] = []
     const off = installBrowserProfilesWatcher({
-      readSettings: () => settingsWith({
-        profiles: [{ id: 'default', name: '' }, { id: 'work', name: '' }],
-        defaultProfile: 'work',
-      }),
-      getBroadcaster: s.get,
-      setBroadcaster: s.set,
+      subscribe: s.subscribe,
       onTable: (table) => tables.push(table.defaultProfile),
       closeTabs: (profile) => { calls.push(`close:${profile}`); return 1 },
       clearPartition: async (profile) => { calls.push(`clear:${profile}`) },
     })
-    // 开场:记了账,一格都没清。
+    // 第一份:记了账,一格都没清。
     expect(tables).toEqual(['work'])
     expect(calls).toEqual([])
 
@@ -317,24 +312,23 @@ describe('installBrowserProfilesWatcher', () => {
     expect(tables).toEqual(['work', 'default'])
 
     off()
-    expect(s.get()).toBeNull()
+    expect(s.size).toBe(0)
   })
 
-  it('单槽端口**串联**不覆盖:前一个照样被叫到,摘掉时原样装回去', () => {
-    const s = slot()
-    const before = vi.fn()
-    s.set(before)
+  it('摘掉之后不再跟着设置走;退订幂等', async () => {
+    const s = feed(settingsWith({ profiles: [{ id: 'default', name: '' }, { id: 'work', name: '' }] }))
+    const calls: string[] = []
     const off = installBrowserProfilesWatcher({
-      readSettings: () => settingsWith({}),
-      getBroadcaster: s.get,
-      setBroadcaster: s.set,
-      closeTabs: () => 0,
+      subscribe: s.subscribe,
+      closeTabs: (profile) => { calls.push(`close:${profile}`); return 0 },
       clearPartition: async () => {},
     })
-    s.emit(settingsWith({}))
-    expect(before).toHaveBeenCalledTimes(1)
     off()
-    expect(s.get()).toBe(before)
+    off()
+    s.emit(settingsWith({ profiles: [{ id: 'default', name: '' }] }))
+    await Promise.resolve()
+    expect(calls).toEqual([])
+    expect(s.size).toBe(0)
   })
 })
 

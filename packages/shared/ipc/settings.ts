@@ -125,6 +125,12 @@ export interface GeneralSettings {
 	 * 静音面只做这一个开关:按 agent 静音已经有冻结房了,粒度更细的开关是重复造。
 	 */
 	dmNotifications?: boolean;
+	/**
+	 * 退出 onething(桌面)之后让后端继续运行(第④步批 2b,`docs/design/two-process-2026-10.md` §2.3 第 3 条)。
+	 * 缺省关:退出桌面时后端一起收尾。开着时后端以 detached 起、桌面退出不发信号,命令行与浏览器壳照样连得上;
+	 * 下次起桌面走「发现文件活着就连」。读它的是 Electron 主进程(退出那一刻),后端自己不读。
+	 */
+	backendKeepRunningAfterQuit?: boolean;
 	maxTabs?: number; // Maximum open tabs per panel, 3-30, default 15
 	maxFilePreviewKB?: number; // Maximum file preview size in KB, 64-1024, default 256
 	// `userNoteDir` 随 `user_note_dir` 变量一起删(P3):它是 2026 年初迁进

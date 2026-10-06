@@ -16,6 +16,9 @@ function ports(): ClientActionPorts & { calls: string[] } {
     openExternal: vi.fn(async url => { calls.push(`external:${url}`) }),
     openPath: vi.fn(async filePath => { calls.push(`open:${filePath}`); return '' }),
     revealPath: vi.fn(filePath => { calls.push(`reveal:${filePath}`) }),
+    backendStatus: vi.fn(() => { calls.push('backend:status'); return { phase: 'running' as const, pid: 42, port: 8787, ownedByDesktop: true } }),
+    restartBackend: vi.fn(async () => { calls.push('backend:restart'); return { ok: true as const } }),
+    revealBackendLog: vi.fn(() => { calls.push('backend:log') }),
   }
 }
 
@@ -66,5 +69,29 @@ describe('runClientAction', () => {
     await expect(runClientAction({ kind: 'openPath', path: '/a' }, p)).resolves.toEqual({ ok: false, error: 'No application knows how to open this' })
     p.openExternal = vi.fn(async () => { throw new Error('boom') })
     await expect(runClientAction({ kind: 'openExternal', url: 'https://x.test' }, p)).resolves.toEqual({ ok: false, error: 'boom' })
+  })
+})
+
+describe('后端那三个动词(第④步批 2b)', () => {
+  it('不收参数:渲染层多塞的格子一律丢掉,地址与日志路径只由主进程自己知道', () => {
+    expect(parseClientAction({ kind: 'backendStatus', pid: 1 })).toEqual({ kind: 'backendStatus' })
+    expect(parseClientAction({ kind: 'restartBackend', path: '/etc' })).toEqual({ kind: 'restartBackend' })
+    expect(parseClientAction({ kind: 'revealBackendLog', path: '/etc/passwd' })).toEqual({ kind: 'revealBackendLog' })
+  })
+
+  it('三下各打到自己那一口', async () => {
+    const p = ports()
+    await expect(runClientAction({ kind: 'backendStatus' }, p)).resolves.toMatchObject({ phase: 'running', port: 8787 })
+    await expect(runClientAction({ kind: 'restartBackend' }, p)).resolves.toEqual({ ok: true })
+    await expect(runClientAction({ kind: 'revealBackendLog' }, p)).resolves.toEqual({ ok: true })
+    expect(p.calls).toEqual(['backend:status', 'backend:restart', 'backend:log'])
+  })
+
+  it('那一口抛了也永不抛:状态答 idle + 原因,别的答 ok:false', async () => {
+    const p = ports()
+    p.backendStatus = () => { throw new Error('boom') }
+    p.restartBackend = async () => { throw new Error('nope') }
+    await expect(runClientAction({ kind: 'backendStatus' }, p)).resolves.toEqual({ phase: 'idle', error: 'boom' })
+    await expect(runClientAction({ kind: 'restartBackend' }, p)).resolves.toEqual({ ok: false, error: 'nope' })
   })
 })

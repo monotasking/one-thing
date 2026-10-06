@@ -42,6 +42,7 @@ import { startWorkbench, useWorkbenchStore } from './workbench/store'
 import { sessionShownIn } from './content/session-ref'
 import { startAgentNotices } from './data/agent-notices-source'
 import { startCredentialsLock } from './data/credentials-lock-source'
+import { startBackendHost } from './data/backend-host-source'
 import { startStage } from './stage/store'
 import { startSessionProjection } from './content/session-projection'
 import { installCrashHandlers } from './services/crash'
@@ -103,6 +104,13 @@ startSessionProjection()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')
+
+/*
+ * 后端进程的样子(第④步批 2b):后端是桌面拉起的子进程,它在不在、崩没崩只有主进程答得出,经 preload 推过来。
+ * 排在连通**之前**:后端起不来时连接那条路要等它把三次重拉试完,而「后端已停止。」横幅不该跟着等。
+ * 浏览器壳没有那条口,这一句什么都不起。
+ */
+void startBackendHost()
 
 // D0:挂载前先把宿主给的 `{baseUrl, token}` 灌进传输面(浏览器直开时整步跳过)。
 // 连不通也照常挂载 —— 外壳不依赖数据面,错误留在 `window.__d0.error` 上,

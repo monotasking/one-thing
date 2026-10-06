@@ -37,7 +37,7 @@ async function assembleBackend(): Promise<OnethingBackend> {
   return createOnethingBackend({
     toolRegistry: 'headless',
     host: {
-      storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, 
+      storePath: {}, sandbox: {}, auth: null, logging: null,
       voice: null, terminal: null, skillsEnvironment: null, todoPlan: null,
       scratchpad: null, plugins: null, gateway: null, 
       evals: null, mcp: null, localTrust: null, speechOutput: null, 

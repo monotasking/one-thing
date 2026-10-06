@@ -4,7 +4,7 @@
  *
  * 把 `scripts/gate-credentials/entry.ts` 用主进程同一份 esbuild 配方(`shellEsbuildOptions`)打成单文件 cjs,
  * 在**系统 Node** 下跑一遍;探针只 import 产品自己的凭证模块,一项一项在临时 store 上跑,最后交回一行
- * `__GATE_CREDENTIALS_RESULT__` + JSON,这里逐项判。七项是什么写在探针文件头。
+ * `__GATE_CREDENTIALS_RESULT__` + JSON,这里逐项判。九项是什么写在探针文件头。
  *
  * 三条纪律:
  *  - **只用 node、`file` 档、临时 store**:子进程环境显式设 `ONETHING_CREDENTIALS_KEYRING=file` 与一间
@@ -28,16 +28,18 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const bundleDir = join(repoRoot, 'node_modules', '.cache', 'onething-gate-credentials')
 const bundleFile = join(bundleDir, 'probe.cjs')
 const MARKER = '__GATE_CREDENTIALS_RESULT__'
-const EXPECTED = ['①', '②', '③', '④', '⑤', '⑥', '⑦']
+const EXPECTED = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨']
 
 const LABELS = {
-  '①': 'safeStorage 旧密文 → 迁移 → 主密钥信封,条目逐条相等',
+  '①': 'safeStorage 旧密文 → Electron 读出并交给后端 → 迁移 → 主密钥信封,条目逐条相等',
   '②': '口令导出 → 换 store 导入 → 条目相等;口令不对被拒',
   '③': 'ONETHING_CREDENTIALS_KEYRING=none 下 credentialsStatus 答 none',
   '④': '钥匙串超时 → credentials:locked → unlockCredentials 重试成功',
   '⑤': '迁移后旧文件变成 .safestorage-backup,字节未变',
   '⑥': '另一个活着的后端在服务这个 store → 拒绝迁移',
   '⑦': 'security 挂住(假的慢命令)→ 有界时间内答 locked,不挂',
+  '⑧': '先读后交:开机待迁已锁定 → Electron 读出凭证文件与旧单槽密文 → handOverLegacyCredentials → 迁完、解锁事件、旧文件留底',
+  '⑨': 'handOverLegacyCredentials 只给本机信任的来访者:不可信答 NOT_TRUSTED,一个字节不动',
 }
 
 async function main() {
@@ -97,7 +99,7 @@ async function main() {
     console.log('[gate:credentials] RED')
     process.exitCode = 1
   } else {
-    console.log('[gate:credentials] ok —— ① 迁移 / ② 导出导入 / ③ none 档 / ④ 锁定与重试 / ⑤ 备份字节 / ⑥ 拒绝动别人的文件 / ⑦ 钥匙串超时不挂 全绿')
+    console.log('[gate:credentials] ok —— ① 迁移 / ② 导出导入 / ③ none 档 / ④ 锁定与重试 / ⑤ 备份字节 / ⑥ 拒绝动别人的文件 / ⑦ 钥匙串超时不挂 / ⑧ 先读后交 / ⑨ 只给本机信任 全绿')
   }
 }
 

@@ -209,7 +209,7 @@ async function main() {
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.owner === 'shell' ? found : undefined
+      return found && found.owner === 'backend' ? found : undefined
     }, 60_000)
     await waitFor('渲染层完成一次 RPC 往返', () => page.evaluate(() => window.__d0?.rpcOk === true), 60_000)
     await waitFor('Dock 就位', () => page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-todo"]'))), 60_000)

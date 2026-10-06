@@ -2071,14 +2071,16 @@ async function runCase(kind, owner = 'server') {
       })
       server.stderr.on('data', chunk => ownerErr.push(chunk.toString()))
     }
+    // 第④步批 2b 起桌面不自己当 core:它拉起一台后端子进程(owner `backend`,pid 不是桌面自己的)。
     const ownerPid = owner === 'desktop' ? desktopProcess.pid : server.pid
     const record = await waitFor('core 写出发现文件', () => {
       const found = readDiscovery(store)
+      if (owner === 'desktop') return found && found.owner === 'backend' && found.pid !== ownerPid ? found : undefined
       return found && found.pid === ownerPid ? found : undefined
     }).catch(error => {
       throw new Error(`${error.message}\n${owner} stderr:\n${ownerErr.join('')}`)
     })
-    if (owner === 'desktop') assert(record.owner === 'shell', `[${kind}] discovery owner=shell, PID=${ownerPid}`)
+    if (owner === 'desktop') assert(record.owner === 'backend' && record.pid !== ownerPid, `[${kind}] discovery owner=backend, backend PID=${record.pid} ≠ desktop PID=${ownerPid}`)
     assert(await portConnects(record.host, record.port), `[${kind}] core 端口 ${record.port} 可连`)
 
     // Default mode borrows the standalone server; desktop mode already owns

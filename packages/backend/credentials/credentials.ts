@@ -102,7 +102,7 @@ export {
 } from './credentials-default-space-migration.js'
 
 // ── 落盘加密的钥匙与「已锁定」状态(第④步批 0)──────────────────────────────────────────
-// 装配:开机那一步(等钥匙、迁旧 safeStorage 密文)与锁定广播器;宿主端口:旧 safeStorage 解密器那一格;
+// 装配:开机那一步(等钥匙、迁旧 safeStorage 密文)与锁定广播器;
 // 开给界面:状态 / 重试,以及写入口与读入口前面的两只 await。
 export {
   credentialsReady,
@@ -113,11 +113,9 @@ export {
   unlockCredentials,
 } from './credentials-locked-state.js'
 export type { CredentialsStatus } from './credentials-locked-state.js'
-export {
-  configureCredentialsLegacyDecryptorHost,
-  resetCredentialsLegacyDecryptorHost,
-} from './credentials-legacy-decryptor.js'
-export type { LegacySafeStorageDecryptor, LegacySafeStorageProvider } from './credentials-legacy-decryptor.js'
+// 旧 safeStorage 密文「Electron 先读后交」(第④步批 2b):开给界面的那一条 RPC 调它。
+export { acceptLegacyCredentialsHandOver } from './credentials-locked-state.js'
+export type { LegacyCiphertextPlaintext } from './credentials-legacy-decryptor.js'
 
 // ── 口令导出 / 导入(第④步批 0)────────────────────────────────────────────────────────
 export {

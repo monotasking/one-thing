@@ -80,11 +80,6 @@ import {
   type AuthHostPorts,
 } from '@onething/backend/auth'
 import {
-  configureCredentialsLegacyDecryptorHost,
-  resetCredentialsLegacyDecryptorHost,
-  type LegacySafeStorageProvider,
-} from '@onething/backend/credentials'
-import {
   configureVoiceHost,
   resetVoiceHost,
   type VoiceHostPorts,
@@ -139,14 +134,6 @@ export interface OnethingHostPorts {
   sandbox: SandboxHost
   /** OAuth 取数(Electron 的 `net.fetch`)。`null` = 用应用自己的 fetch。 */
   auth: AuthHostPorts | null
-  /**
-   * **旧 `safeStorage` 密文的解密器**,只当迁移用(第④步批 0,`credentials/credentials-legacy-decryptor.ts`)。
-   * 凭证的落盘加密从此是后端自己的主密钥,与宿主无关;这一格只为把存量的 `encryption: 'safeStorage'`
-   * 文件(与旧单槽 `oauth-tokens.json`)解开、搬进新信封。类型上只有解密两个方法,写侧拿不到它。
-   * React 壳注入 Electron 的 `safeStorage`;独立 server 与 CLI 守护进程写 `null` —— 遇到旧密文就答
-   * 「已锁定 · 旧密文待迁移」,等桌面来迁。批 2 拆进程时改成 Electron 先读后交(施工单 §2.3 待办)。
-   */
-  legacySafeStorageForMigration: LegacySafeStorageProvider | null
   /** 日志的两件宿主采集能力(日志目录 / renderer console 兜底)。`null` = 都没有。 */
   logging: AppLoggingHostPorts | null
   /** 语音的窗口与托盘。`null` = 这个宿主没有语音。 */
@@ -214,7 +201,7 @@ export interface OnethingHostPorts {
  * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
  *
  * B3 那版只还原 `localTrust` 一格,因为当时只有它带 restore;其余十五格是没有
- * 回头路的单槽覆盖(表一共十六格)。后果是 `backend.dispose()` **不干净**:一个进程里先后装配
+ * 回头路的单槽覆盖(表一共十五格)。后果是 `backend.dispose()` **不干净**:一个进程里先后装配
  * 两只 backend(测试、`server:start` 接管一台桌面),第二只会继承第一只注入的
  * 语音 / 插件 / 沙箱端口 —— 而"这台宿主有没有语音"正是 B 期把六个域的判据挂上去
  * 的那句话,继承过来就是说谎。
@@ -248,10 +235,6 @@ export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<vo
   if (host.auth) {
     configureAuthHost(host.auth)
     restores.push(resetAuthHost)
-  }
-  if (host.legacySafeStorageForMigration) {
-    configureCredentialsLegacyDecryptorHost(host.legacySafeStorageForMigration)
-    restores.push(resetCredentialsLegacyDecryptorHost)
   }
   if (host.logging) {
     configureAppLoggingHost(host.logging)

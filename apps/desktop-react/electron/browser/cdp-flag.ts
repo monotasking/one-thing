@@ -29,7 +29,7 @@
 
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { getOnethingRunDir } from '@onething/backend/storage'
+import { resolveStoreRoot } from '../discovery.js'
 import type { ChromiumApp } from './user-agent.js'
 
 export const CDP_FLAG_FILENAME = 'cdp.json'
@@ -42,7 +42,8 @@ export interface CdpLaunchFlag {
 }
 
 export function getCdpFlagPath(storePath?: string): string {
-  return path.join(getOnethingRunDir(storePath ? { storePath } : {}), CDP_FLAG_FILENAME)
+  // `<store>/run/`:与后端 `getOnethingRunDir()` 同一个目录(store 根的判据见 `../discovery.ts`)。
+  return path.join(storePath ?? resolveStoreRoot(), 'run', CDP_FLAG_FILENAME)
 }
 
 /**

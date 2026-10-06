@@ -6,14 +6,19 @@
  * 临时 store 上跑,主密钥是 `file` 档(门脚本在环境里显式设了);要测钥匙串那一档的两项(④ ⑦)
  * 用一只假的 `security` 脚本 —— **绝不碰真钥匙串**:切到钥匙串档之前先断言命令已经换成假的。
  *
- * 七项:
- *  ① 种一份 `encryption: 'safeStorage'` 密文(假的旧解密器)→ 跑迁移 → 新信封、条目逐条相等;
+ * 九项:
+ *  ① 种一份 `encryption: 'safeStorage'` 密文 → Electron 那一半(`apps/desktop-react/electron/legacy-credentials.ts`,
+ *     递一只假的 `safeStorage`)读出并解开 → 交给后端 → 跑迁移 → 新信封、条目逐条相等;
  *  ② 口令导出 → 换一间 store(换一把主密钥)导入 → 条目相等;
  *  ③ `ONETHING_CREDENTIALS_KEYRING=none` 下 `credentialsStatus` 答 `'none'`;
  *  ④ 钥匙串超时 → `credentials:locked`(locked: true)→ `unlockCredentials` 重试成功 → locked: false;
  *  ⑤ 迁移后旧文件变成 `.safestorage-backup`,字节与迁移前逐字节相同;
  *  ⑥ 另一个活着的后端在服务这个 store(真起一个进程占端口、写发现文件)→ 拒绝迁移,一个字节不动;
- *  ⑦ `security` 挂住(假的慢命令)→ 有界时间内答「已锁定 · keychain-timeout」,不挂。
+ *  ⑦ `security` 挂住(假的慢命令)→ 有界时间内答「已锁定 · keychain-timeout」,不挂;
+ *  ⑧ **先读后交**(第④步批 2b):装配那一步没人交 → 「已锁定 · 旧密文待迁移」;Electron 那一半读出凭证文件与
+ *     旧单槽 `oauth-tokens.json` 的密文条目 → 经 `spaces.handOverLegacyCredentials` 的处理函数交进来 → 迁完、
+ *     状态翻回 ready、发一条 `credentials:locked`(locked: false)、旧文件改名留底、新信封里没有明文;
+ *  ⑨ 那条处理函数只给本机信任的来访者:不可信时答 `NOT_TRUSTED`,一条都不收、一个字节都不动。
  *
  * 最后打一行 `__GATE_CREDENTIALS_RESULT__` + JSON,由门去判。
  */
@@ -34,9 +39,14 @@ import {
   resetCredentialsMasterKeyForTests,
 } from '../../packages/backend/credentials/credentials-master-key.js'
 import {
-  configureCredentialsLegacyDecryptorHost,
-  resetCredentialsLegacyDecryptorHost,
+  acceptHandedOverLegacyPlaintexts,
+  resetHandedOverLegacyPlaintextsForTests,
 } from '../../packages/backend/credentials/credentials-legacy-decryptor.js'
+import { readLegacySafeStorageForHandOver } from '../../apps/desktop-react/electron/legacy-credentials.js'
+// 经 HTTP 服务器读的那张名册取 `spaces` 那一行(第二入口只许 http-server 引,client-api 门守着;门走名册,与真分发同一份处理函数)。
+import { CLIENT_API_ROSTER } from '../../packages/backend/http-server/http-server-client-api-roster.js'
+import { configureHostLocalTrust } from '../../packages/backend/http-server/http-server-host-trust.js'
+import { DESKTOP_RPC_CONTEXT } from '../../packages/shared/ipc/rpc.js'
 import {
   migrateSafeStorageCredentials,
   resetSafeStorageMigrationStateForTests,
@@ -78,8 +88,14 @@ function freshStore(name: string): string {
   resetCredentialsMasterKeyForTests()
   resetSpaceCredentialsCacheForTests()
   resetSafeStorageMigrationStateForTests()
-  resetCredentialsLegacyDecryptorHost()
+  resetHandedOverLegacyPlaintextsForTests()
   return store
+}
+
+/** 扮演 Electron 的那一半:用产品的读法扫这个 store、用假 `safeStorage` 解开,交给后端的旧解密器。 */
+function handOverFromStore(store: string): number {
+  const scan = readLegacySafeStorageForHandOver(store, fakeSafeStorage)
+  return acceptHandedOverLegacyPlaintexts(scan.entries)
 }
 
 const POOL = {
@@ -131,11 +147,11 @@ function useFakeKeychain(command: string, timeoutMs: number): void {
 }
 
 async function checkMigration(): Promise<void> {
-  freshStore('migrate')
+  const store = freshStore('migrate')
   const before = seedLegacy('default')
-  configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+  handOverFromStore(store)
   const report = await migrateSafeStorageCredentials()
-  resetCredentialsLegacyDecryptorHost()
+  resetHandedOverLegacyPlaintextsForTests()
   resetSpaceCredentialsCacheForTests()
   const atRest = readSpaceCredentialsAtRest('default')
   const onDisk = fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')
@@ -198,7 +214,7 @@ async function checkKeychainTimeoutAndRetry(): Promise<void> {
 async function checkOtherBackendRefusal(): Promise<void> {
   const store = freshStore('other-backend')
   const before = seedLegacy('default')
-  configureCredentialsLegacyDecryptorHost(() => fakeSafeStorage)
+  handOverFromStore(store)
   // 真起一个「别的后端」:另一个进程占一个回环端口,发现文件指向它。
   const child = spawn(process.execPath, ['-e',
     "const s=require('node:net').createServer(()=>{});s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port)+'\\n')})"],
@@ -220,7 +236,82 @@ async function checkOtherBackendRefusal(): Promise<void> {
       `otherBackendSeen=${seen} blockedBy=${report.blockedBy} legacyFileUntouched=${untouched} status=${JSON.stringify(credentialsStatus())}`)
   } finally {
     child.kill('SIGKILL')
-    resetCredentialsLegacyDecryptorHost()
+    resetHandedOverLegacyPlaintextsForTests()
+  }
+}
+
+type HandOverHandler = (request: { entries: Array<{ ciphertext: string; plaintext: string }> }, context: unknown) => Promise<{
+  success: boolean
+  accepted?: number
+  migratedSpaces?: number
+  status?: { state: string; reason?: string }
+  code?: string
+}>
+
+/** 旧单槽:一条密文(假 safeStorage 封的)+ 一条明文(后端自己读得开,不该被交)。 */
+function seedOAuthSlot(store: string): void {
+  const token = { accessToken: 'at-slot', refreshToken: 'rt-slot', expiresAt: 4_000_000_000_000, tokenType: 'Bearer' }
+  const sealed = { ...token, accessToken: 'at-slot-sealed' }
+  fs.writeFileSync(path.join(store, 'oauth-tokens.json'), JSON.stringify({
+    gemini: Buffer.from(`enc:${JSON.stringify(sealed)}`, 'utf-8').toString('base64'),
+    claude: JSON.stringify(token),
+  }), 'utf-8')
+}
+
+async function checkHandOver(): Promise<void> {
+  const spacesRow = CLIENT_API_ROSTER.find(row => (row as { id?: string }).id === 'rpc:spaces') as { handlers?: unknown } | undefined
+  if (!spacesRow?.handlers) throw new Error('rpc:spaces is not on the client-api roster')
+  const handler = (spacesRow.handlers as { handOverLegacyCredentials: HandOverHandler }).handOverLegacyCredentials
+
+  // ⑨ 不可信的来访者:一条都不收。
+  {
+    const store = freshStore('hand-over-untrusted')
+    const before = seedLegacy('default')
+    const restore = configureHostLocalTrust(null)
+    try {
+      const scan = readLegacySafeStorageForHandOver(store, fakeSafeStorage)
+      const answer = await handler({ entries: scan.entries }, DESKTOP_RPC_CONTEXT)
+      const untouched = fs.readFileSync(spaceCredentialsFilePath('default')).equals(before)
+      record('⑨', answer.success === false && answer.code === 'NOT_TRUSTED' && untouched,
+        `answer=${JSON.stringify(answer)} legacyFileUntouched=${untouched}`)
+    } finally {
+      restore()
+    }
+  }
+
+  // ⑧ 先读后交全流程。
+  const store = freshStore('hand-over')
+  const before = seedLegacy('default')
+  seedOAuthSlot(store)
+  const events: CredentialsLockedGlobalEvent[] = []
+  const off = installCredentialsLockBroadcaster({ emitGlobal: event => { events.push(event) } })
+  const restore = configureHostLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
+  try {
+    // 装配那一步:没人交过 → 待迁、已锁定(与真后端开机时同一个顺序)。
+    const atBoot = await prepareCredentialsAtAssembly()
+    const scan = readLegacySafeStorageForHandOver(store, fakeSafeStorage)
+    const answer = await handler({ entries: scan.entries }, DESKTOP_RPC_CONTEXT)
+    resetSpaceCredentialsCacheForTests()
+    const pool = readSpaceCredentials('default') as { providers: Record<string, { entries: Array<{ oauthToken?: { accessToken?: string } }> }> }
+    // 凭证文件里那两家逐条相等;旧单槽里**封着的**那一条(只有交进来才解得开)也进了池子。
+    const equal = isDeepStrictEqual(pool.providers.deepseek, POOL.providers.deepseek)
+      && isDeepStrictEqual(pool.providers.codex, POOL.providers.codex)
+    const sealedSlotMigrated = pool.providers.gemini?.entries.some(entry => entry.oauthToken?.accessToken === 'at-slot-sealed') === true
+    const onDisk = fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')
+    const backup = `${spaceCredentialsFilePath('default')}.safestorage-backup`
+    const backupEqual = fs.existsSync(backup) && fs.readFileSync(backup).equals(before)
+    const unlockedEvent = events.at(-1)
+    record('⑧',
+      atBoot.state === 'locked' && atBoot.reason === 'legacy-safestorage'
+        && scan.found === 2 && scan.entries.length === 2
+        && answer.success === true && answer.accepted === 2 && answer.migratedSpaces === 1 && answer.status?.state === 'ready'
+        && equal && sealedSlotMigrated && !onDisk.includes('sk-gate') && backupEqual && unlockedEvent?.locked === false,
+      `boot=${atBoot.state}/${atBoot.reason} found=${scan.found} handed=${scan.entries.length} answer=${JSON.stringify(answer)} `
+        + `entriesEqual=${equal} sealedSlotMigrated=${sealedSlotMigrated} plaintextOnDisk=${onDisk.includes('sk-gate')} backupBytesEqual=${backupEqual} lastEvent=${JSON.stringify(unlockedEvent)}`)
+  } finally {
+    restore()
+    off()
+    resetHandedOverLegacyPlaintextsForTests()
   }
 }
 
@@ -231,6 +322,7 @@ async function main(): Promise<void> {
     await checkNoneTier()
     await checkKeychainTimeoutAndRetry()
     await checkOtherBackendRefusal()
+    await checkHandOver()
   } catch (error) {
     record('crash', false, error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error))
   } finally {

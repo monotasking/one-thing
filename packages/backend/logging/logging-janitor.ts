@@ -44,6 +44,8 @@ export const LOG_DIR_POLICY: LogDirPolicy = {
     app: { maxArchives: 30, retentionDays: 14 },
     server: { maxArchives: 30, retentionDays: 14 },
     daemon: { maxArchives: 10, retentionDays: 7 },
+    // 桌面主进程自己那一本(第④步批 2b 起只记窗口的事;后端子进程写 `app`)。
+    shell: { maxArchives: 30, retentionDays: 14 },
     dev: { maxArchives: 20, retentionDays: 7 },
     start: { maxArchives: 20, retentionDays: 7 },
   },
@@ -51,7 +53,7 @@ export const LOG_DIR_POLICY: LogDirPolicy = {
     'dumps/provider-requests': { retentionDays: 7, maxTotalMiB: 100 },
   },
   totalCapMiB: 512,
-  knownPrefixes: ['app', 'server', 'daemon', 'dev', 'start', 'agent-'],
+  knownPrefixes: ['app', 'server', 'daemon', 'shell', 'dev', 'start', 'agent-'],
 }
 
 const LOG_EXTENSIONS = ['.log', '.log.gz', '.jsonl', '.jsonl.gz']

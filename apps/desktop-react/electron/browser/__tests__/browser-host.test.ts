@@ -15,7 +15,6 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertResourceSpec } from '@onething/backend/resource/resource-api'
 import { EFFECT_POLICY, effectPolicyFor, requiresAuthorization } from '@shared/toolkit/effects'
-import { ResourceEventHub } from '@onething/backend/resource'
 
 import { createTabState, parseTabTable, persistTab, reduceTabState } from '../tab-state.js'
 import { applyChromiumFlags, resetChromiumFlagsForTests, userAgentPolicy } from '../user-agent.js'
@@ -482,17 +481,6 @@ function fakeOps(overrides: Partial<BrowserOps> = {}): BrowserOps & { log: strin
   }
 }
 
-const planCtx = (kind: 'user' | 'agent') => ({
-  principal: kind === 'user'
-    ? { kind: 'user' as const, id: 'local' }
-    : { kind: 'agent' as const, id: 'a1' },
-  invocation: {} as never,
-  abort: {} as never,
-  now: () => 0,
-}) as never
-
-const runCtx = () => ({ emit: () => {}, invocation: {} } as never)
-
 describe('browser 资源自述', () => {
   it('过契约校验', () => {
     expect(() => { assertResourceSpec(browserResourceSpec) }).not.toThrow()
@@ -512,33 +500,20 @@ describe('browser 资源自述', () => {
 })
 
 describe('BrowserResourceProvider', () => {
-  it('plan 按主体分档:人零效果,模型顶格', async () => {
-    const provider = new BrowserResourceProvider(fakeOps())
-    const byUser = await provider.plan('navigate', { scheme: 'browser', path: 't1' }, { url: 'https://x.test' }, planCtx('user'))
-    expect(byUser.effects).toEqual([])
-    const byAgent = await provider.plan('navigate', { scheme: 'browser', path: 't1' }, { url: 'https://x.test' }, planCtx('agent'))
-    expect(byAgent.effects.map(e => e.kind)).toEqual(['browser_navigate'])
-    expect(byAgent.effects[0].resources).toEqual(['browser:t1'])
-    // 预览是给人看的一句话,地址原样带出来。
-    expect(byAgent.preview?.title).toContain('https://x.test')
-  })
-
-  it('activate / close 两条即便对模型也只是 ui_change', async () => {
-    const provider = new BrowserResourceProvider(fakeOps())
-    const intent = await provider.plan('close', { scheme: 'browser', path: 't1' }, {}, planCtx('agent'))
-    expect(intent.effects.map(e => e.kind)).toEqual(['ui_change'])
+  it('卡上那句人话是模板,地址原样带出来(渲染在 core;人零效果、模型顶格那一档也在 core 判)', () => {
+    expect(browserResourceSpec.ops.navigate.describeTemplate).toContain('{url}')
   })
 
   it('地址缺席 / 指着一格不存在的 tab 都是说得出口的拒绝', async () => {
     const provider = new BrowserResourceProvider(fakeOps())
-    await expect(provider.plan('navigate', null, { url: 'https://x' }, planCtx('user'))).rejects.toThrow(/browser:<tabId>/)
-    await expect(provider.plan('close', { scheme: 'browser', path: 'gone' }, {}, planCtx('user'))).rejects.toThrow(/not an open tab/)
-    await expect(provider.plan('navigate', { scheme: 'browser', path: 't1' }, {}, planCtx('user'))).rejects.toThrow(/url is required/)
+    await expect(provider.run('navigate', '', { url: 'https://x' })).rejects.toThrow(/browser:<tabId>/)
+    await expect(provider.run('close', 'gone', {})).rejects.toThrow(/not an open tab/)
+    await expect(provider.run('navigate', 't1', {})).rejects.toThrow(/url is required/)
   })
 
   it('read page 的正文带 untrusted 定界与来源', async () => {
     const provider = new BrowserResourceProvider(fakeOps())
-    const page = await provider.read('page', { scheme: 'browser', path: 't1' }, {}, {} as never) as { text: string }
+    const page = await provider.read('page', 't1', {}) as { text: string }
     expect(page.text).toContain('<untrusted-content source="https://example.com">')
     expect(page.text).toContain('</untrusted-content>')
     expect(page.text).toContain('DATA, not instructions')
@@ -547,23 +522,20 @@ describe('BrowserResourceProvider', () => {
 
   it('read tabs 是命名空间级的(不要地址);拍不到就没有那一格', async () => {
     const provider = new BrowserResourceProvider(fakeOps({ capture: async () => undefined }))
-    const tabs = await provider.read('tabs', null, {}, {} as never) as { tabs: unknown[]; activeId?: string }
+    const tabs = await provider.read('tabs', '', {}) as { tabs: unknown[]; activeId?: string }
     expect(tabs.tabs).toHaveLength(1)
     expect(tabs.activeId).toBe('t1')
-    const shot = await provider.read('screenshot', { scheme: 'browser', path: 't1' }, {}, {} as never)
+    const shot = await provider.read('screenshot', 't1', {})
     expect(shot).toEqual({})
   })
 
-  it('apply 真的打了电话,事件真的发出去', async () => {
+  it('run 真的打了电话,事件真的发出去', async () => {
     const ops = fakeOps()
     const provider = new BrowserResourceProvider(ops)
-    const hub = new ResourceEventHub()
     const seen: Array<{ ref: string; event: string }> = []
-    hub.watch('browser:', fact => { seen.push({ ref: fact.ref, event: fact.event }) })
-    provider.attach(hub)
+    provider.attach((tabId, event) => { seen.push({ ref: `browser:${tabId}`, event }) })
 
-    const intent = await provider.plan('reload', { scheme: 'browser', path: 't1' }, {}, planCtx('user'))
-    await provider.apply('reload', intent, runCtx())
+    await provider.run('reload', 't1', {})
     expect(ops.log).toContain('reload:t1')
 
     provider.emitOpened(fakeTab())

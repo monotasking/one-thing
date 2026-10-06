@@ -30,7 +30,7 @@ async function assemble(localTrust: { origin: 'desktop-embedded' } | null) {
   const { createOnethingBackend } = await import('@onething/backend/backend.js')
   return createOnethingBackend({
     host: {
-      storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null, terminal: null,
+      storePath: {}, sandbox: {}, auth: null, logging: null, voice: null, terminal: null,
       skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null, gateway: null,
       evals: null, mcp: null, localTrust, speechOutput: null, 
     },
