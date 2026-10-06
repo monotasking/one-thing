@@ -11,6 +11,7 @@
 
 export type {
   InteractionAnswer,
+  InteractionLink,
   InteractionOption,
   InteractionOrigin,
   InteractionOutcome,

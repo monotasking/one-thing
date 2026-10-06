@@ -52,8 +52,6 @@ export {
 } from './settings-model-registry-service.js'
 
 // ── 宿主注入口与设置变更的广播(深层引用收口第四批补进入口)。
-export { configureSettingsHost, resetSettingsHost } from './settings-host-ports.js'
-export type { SettingsHostPorts } from './settings-host-ports.js'
 export { configureSettingsEventBroadcaster, getSettingsEventBroadcaster } from './settings-events.js'
 export type { SettingsEvent, SettingsEventBroadcaster } from './settings-events.js'
 

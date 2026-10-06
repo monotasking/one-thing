@@ -190,8 +190,8 @@ export function installServerSurfaces(context: ServerSurfaceContext): ServerSurf
 		search: search.adapter,
 		// P4c 第七批:`themes` adapter 整只没了 —— 五条随 `themesRouter` 走通用 RPC,
 		// 两个宿主读同一台 `defaultOnethingThemeRuntime`,连插件主题覆盖的合成都同一份。
-		// 从前那句「web server runtime 不支持打开本地主题目录」如今是
-		// `configureShellHost` 未注入时的结构化降级。
+		// 从前那句「web server runtime 不支持打开本地主题目录」第④步批 1 起不必再说:后端只答
+		// 主题目录的路径,打开是客户端自己的事。
 		// P4c 第五批:`prompts` adapter 整只没了 —— 系统提示词快照随 `chatRouter`
 		// 走,两个宿主读的是同一条 `buildSystemPromptSnapshot`。
 		/**

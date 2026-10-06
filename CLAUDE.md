@@ -122,7 +122,7 @@ onething 是一个多服务商、带工具调用、事件驱动流式引擎的 A
 
 | 层 | 名字 | 含义 | 例子 |
 | --- | --- | --- | --- |
-| L0 | 基础件 | 不认识任何产品概念 | storage、logging、network、lifecycle、memory、shell、dialog |
+| L0 | 基础件 | 不认识任何产品概念 | storage、logging、network、lifecycle、memory |
 | L1 | 领域事实 | 纯事实与纯逻辑,不读用户存储、不起服务 | provider、agent-loop、tool、prompt、theme、event |
 | L2 | 能力 | 有自己的存储或服务 | session、settings、credentials、provider-call、toolkit、search、plugin、mcp、acp …… |
 | L3 | 编排 | 把多个能力接成一台机器 | engine、collab、gateway |
@@ -190,7 +190,7 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 
 | 命令 | 判什么 | 类型 |
 | --- | --- | --- |
-| `bun run boundary:gate` | `scripts/headless-boundary-check.ts` 的全部断言(`bun run boundary` 打全量):后端不引 electron / `@main` / `@preload` / 渲染层别名,功能目录不引 cordis(`feature-registry/` 除外),shared 只引自己,界面一侧只引 shared 与 backend-client,Vue 宿主不许复活,检索只有一条查询路径。没打出完成标记或一行 ok 都没有也算红 | 零基线硬闸 |
+| `bun run boundary:gate` | `scripts/headless-boundary-check.ts` 的全部断言(`bun run boundary` 打全量):后端不引 electron / `@main` / `@preload` / 渲染层别名、非测试源码零出现 `dialog.showOpenDialog` / `shell.openExternal` / `shell.openPath` / `shell.showItemInFolder`(剥注释后判),功能目录不引 cordis(`feature-registry/` 除外),shared 只引自己,界面一侧只引 shared 与 backend-client,Vue 宿主不许复活,检索只有一条查询路径。没打出完成标记或一行 ok 都没有也算红 | 零基线硬闸 |
 | `bun run entry:gate` | 从功能外引入口以外的文件;进程入口被 import;功能主入口里的 `export * from`;功能内非测试文件引自家主入口(`entry:check` 打全表) | 非测试深层引用、进程入口、主入口 `export *`、自引入口四条硬闸 / 测试深层引用棘轮(`docs/audit/feature-entry-baseline-2026-10.txt`) |
 | `bun run cycle:gate` | 运行期值引用图里含功能入口的强连通分量(只引类型、动态 `import()`、测试不成边);红时打出最短环 | 零基线硬闸 |
 | `bun run layer:gate` | 低层引高层的值边;层次表里没登记的功能 | 零基线硬闸 |
@@ -199,7 +199,7 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 | `bun run client-api:gate` | 第二入口与装配入口只被允许的人引;名字带 `-client-api` 却不合形状;少于 40 只 client-api 算红(防假绿) | 零基线硬闸 |
 | `bun run feature-map:check` | `docs/architecture/feature-map.md` 与代码一致 | 一致性 |
 | `bun run assembly:gate` | 每只非测试文件的模块级 `let` 个数(`backend-current.ts` 豁免);新状态挂在 `OnethingBackend` 实例上并 `own()` | 棘轮(`docs/audit/assembly-baseline-2026-09-02.txt`) |
-| `bun run transport:gate` | 手写通道常量个数与壳文件行数;`http-server/` 与全部 client-api 里读 `context.transport` 的处数;React 壳的 `ipcMain` 注册 ≤ 2 | 棘轮(`docs/audit/transport-forks-baseline-2026-09-03.txt` 等) |
+| `bun run transport:gate` | 手写通道常量个数与壳文件行数;`http-server/` 与全部 client-api 里读 `context.transport` 的处数;React 壳的 `ipcMain` 注册 ≤ 3(第三条 `host:client-action` 是第④步批 1 用户拍定的一次放宽,理由在基线文件头) | 棘轮(`docs/audit/transport-forks-baseline-2026-09-03.txt` 等) |
 | `bun run provider:gate` | 某家服务商的 id 出现在它自己的 `provider/vendors/<id>/` 之外(按 TypeScript 解析,注释不算;名册、壳的 i18n 与图标、`provider/model-families/`、协议名等豁免) | 棘轮(`docs/audit/provider-vendor-baseline-2026-10.txt`) |
 | `bun run provider:drill` | 在临时 worktree 里加一家虚构服务商,断言目录外只动了两份名册与壳的两份 i18n | 演练 |
 | `bun run feature:drill` | 在临时 worktree 里加一个虚构功能「秒表」(主入口、内部文件、经 storage 入口落盘、`@shared/ipc` 契约 + client-api 一行、一份测试),断言功能目录外恰好只动了契约、层次表一行、名册一行、exports 一把键与生成的功能地图;node typecheck 与十三道结构门全绿;演练测试经名册与 RPC 分发表调到它,名册测试多了一行照旧绿(D250–D254) | 演练 |
@@ -271,6 +271,11 @@ server runtime 自己填的 `configureServer*Port`。
 凭证那两格(第④步批 0):`auth` 只剩 `{ authFetch }`(OAuth 取数走 Electron `net.fetch`);落盘加密不在任何一格里 ——
 主密钥归后端自己。`legacySafeStorageForMigration` 是桌面递进来的旧 `safeStorage` 解密器(只有解密两个方法),只为把存量
 `safeStorage` 密文迁进主密钥信封;server 与 CLI 写 `null`,遇到旧密文就答「已锁定 · 旧密文待迁移」。
+**表里没有「只在用户屏幕上发生」的事**(第④步批 1):对话框、打开外链、打开路径、在访达中显示由客户端自己做
+(桌面经 preload 的 `host:client-action`,见 §9),深浅色由客户端自己读,改设置后重套代理由 Electron 订
+`settings:changed` 自己做;后端非测试源码零出现 `dialog.showOpenDialog` / `shell.openExternal` / `shell.openPath` /
+`shell.showItemInFolder`(`boundary:gate`)。后端要请客户端做一件事,走 `home: 'shell'` 的资源做法(shell dispatch,见 §9),
+不加宿主端口。
 
 | 宿主 | 装配处 | 要点 |
 | --- | --- | --- |
@@ -444,9 +449,20 @@ chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可�
 活着的、`owner` 不是 server 的记录就拒绝启动。token = `ONETHING_SERVER_TOKEN` 或每次启动新铸。server 单用户,绑非回环地址
 又没设 token 会警告。
 
-**React 桌面是它自己后端的 HTTP 客户端**:渲染层只走 `POST /api/rpc` 与 `GET /api/events`;它只有两条 IPC 通道,都不是数据
+**React 桌面是它自己后端的 HTTP 客户端**:渲染层只走 `POST /api/rpc` 与 `GET /api/events`;它只有三条 IPC 通道,都不是数据
 通道 —— `host:connection` 交 `{ baseUrl, token }`(发现文件是 0600,渲染层不读盘),`host:native-view` 是窗口系统给原生视图
-用的管道。因为桌面也走 HTTP,判「这个来访者是不是本机」不能看 `context.transport`,看本机信任声明(桌面是
+用的管道,`host:client-action`(第④步批 1,D5 用户 10-06 拍定)是**只在用户屏幕上发生的事**:原生打开对话框、把网址交给
+系统浏览器、用默认程序打开路径、在访达中定位(四个动词在载荷里,契约 `@shared/contracts/client-action`,主进程逐格校验在
+`electron/client-action.ts`)。它不是数据通道:它答的是只有宿主答得出的事,请求 / 应答的数据照旧只走 `POST /api/rpc`;
+`transport:gate` 的 `ipcMain` 钉在 3。浏览器壳没有这条口,判「这台客户端做不做得到」只看它在不在(壳的
+`platform/host.ts` 的 `canRunClientActions()`),按钮不画或答一句结构化的「这台客户端做不了」。
+
+**后端请客户端执行**(shell dispatch,`packages/backend/resource/resource-shell-*.ts`):客户端经 `resources.mountShell`
+认领命名空间 —— 整个住在壳里的(`workbench:`),或 core 命名空间里 `home: 'shell'` 的那几条做法(`dir:` 的 `reveal`);
+core 照旧 plan、授权、审计,执行那一步经全局事件 `resource:shell-command` 发给一扇认领者(命令带 core 那份 plan 的载荷,
+所以壳拿到的是夹过沙箱的路径)。好几扇壳可以认领同一份自述;**发给谁**(D8):用户在某扇壳里点出来的发回那一扇
+(客户端每条请求带 `X-Onething-Shell-Id`,HTTP 边界铸进 `callerId`,永不从信封里读),AI 发起的发给最近一次有活动的那一扇
+(登记、报事实、亲手发起资源调用算活动,心跳不算);没有认领者 = 当场 `ResourceHomeUnavailableError`。因为桌面也走 HTTP,判「这个来访者是不是本机」不能看 `context.transport`,看本机信任声明(桌面是
 `desktop-embedded`,回环 server 是 `loopback-server`);`GET /api/capabilities` 从同样的判据推导,界面的能力位与后端的守卫
 不会不一致。
 

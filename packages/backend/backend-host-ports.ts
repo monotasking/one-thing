@@ -23,6 +23,12 @@
  *  · `configureGlobalWindowShortcuts` / `configureBrowserWindowProvider` /
  *    `configureDeepLinkService` / `configureVoiceTray` / `configurePluginAppVersion`
  *    —— 窗口系统与壳自己的东西,归壳。
+ *
+ * **第④步批 1 退役的三格**:`shell`(打开外链 / 打开路径 / 在访达中显示)、`dialog`(原生对话框)、
+ * `settings`(系统深浅色 + 改设置后重套代理 + 一格没人注入的全局快捷键重注册)。前两格是客户端的事,
+ * 客户端自己做(桌面经 preload 的 `host:client-action`);深浅色由看屏幕的那台客户端自己读;代理重套
+ * 改由 Electron 订 `settings:changed` 自己做(决策 D278 / D282)。后端里从此没有「只在用户屏幕上
+ * 发生」的事。
  */
 import {
   configureStorePathHost,
@@ -60,11 +66,6 @@ import {
   type GatewayHostPorts,
 } from '@onething/backend/gateway'
 import {
-  configureSettingsHost,
-  resetSettingsHost,
-  type SettingsHostPorts,
-} from '@onething/backend/settings'
-import {
   configureEvalsHost,
   resetEvalsHost,
   type EvalsHostPorts,
@@ -84,11 +85,6 @@ import {
   type LegacySafeStorageProvider,
 } from '@onething/backend/credentials'
 import {
-  configureShellHost,
-  resetShellHost,
-  type ShellHostPorts,
-} from '@onething/backend/shell'
-import {
   configureVoiceHost,
   resetVoiceHost,
   type VoiceHostPorts,
@@ -106,11 +102,6 @@ import {
   resetScratchpadHost,
   type ScratchpadHostPorts,
 } from '@onething/backend/scratchpad'
-import {
-  configureDialogHost,
-  resetDialogHost,
-  type DialogHostPorts,
-} from '@onething/backend/dialog'
 import { configureMCPClientHost, configureMCPClientIdentity, resetMCPClientIdentity } from '@onething/backend/mcp'
 import type { MCPClientFactory, MCPClientLike } from '@onething/backend/mcp'
 
@@ -158,8 +149,6 @@ export interface OnethingHostPorts {
   legacySafeStorageForMigration: LegacySafeStorageProvider | null
   /** 日志的两件宿主采集能力(日志目录 / renderer console 兜底)。`null` = 都没有。 */
   logging: AppLoggingHostPorts | null
-  /** 「用系统的方式打开一个东西」。`null` = 结构化降级。 */
-  shell: ShellHostPorts | null
   /** 语音的窗口与托盘。`null` = 这个宿主没有语音。 */
   voice: VoiceHostPorts | null
   /**
@@ -178,8 +167,6 @@ export interface OnethingHostPorts {
   plugins: PluginsHostPorts | null
   /** IM 网关的八件生命周期能力。`null` = 结构化降级。 */
   gateway: GatewayHostPorts | null
-  /** 设置保存链上的三件宿主能力。`null` = 保存链自然退化。 */
-  settings: SettingsHostPorts | null
   /** 评估仓的打包态判定。`null` = 视为非打包。 */
   evals: EvalsHostPorts | null
   /** MCP 客户端工厂与 clientInfo。`null` = 两件都走缺省。 */
@@ -213,12 +200,6 @@ export interface OnethingHostPorts {
    * `null` —— 它们跑在没有扬声器可言的地方,也没有人在那台机器前听。
    */
   speechOutput: SpeechOutputPort | null
-  /**
-   * **原生打开对话框**(第十八格):选目录 / 选文件,`dialog` RPC 域的处理者。
-   * `null` = 结构化降级(`unavailable: true`),客户端退到路径输入框。
-   * React 壳注入;独立 server 与 CLI 守护进程写 `null` —— 那台机器前没有窗口。
-   */
-  dialog: DialogHostPorts | null
 }
 
 /**
@@ -229,7 +210,7 @@ export interface OnethingHostPorts {
  * 等于把宿主早先注入的东西擦掉(桌面的 sandbox 就是在装配前由 ready 钩子注入的),
  * 所以"没有"必须是**不调**,不是"调一个空的"。
  *
- * **返回一个还原函数,十七格全部可还原**(P3 加了 `speechOutput`)(C0 R6,方案
+ * **返回一个还原函数,每一格都可还原**(P3 加了 `speechOutput`)(C0 R6,方案
  * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
  *
  * B3 那版只还原 `localTrust` 一格,因为当时只有它带 restore;其余十五格是没有
@@ -276,10 +257,6 @@ export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<vo
     configureAppLoggingHost(host.logging)
     restores.push(resetAppLoggingHost)
   }
-  if (host.shell) {
-    configureShellHost(host.shell)
-    restores.push(resetShellHost)
-  }
   if (host.voice) {
     configureVoiceHost(host.voice)
     restores.push(resetVoiceHost)
@@ -320,10 +297,6 @@ export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<vo
     configureGatewayHost(host.gateway)
     restores.push(resetGatewayHost)
   }
-  if (host.settings) {
-    configureSettingsHost(host.settings)
-    restores.push(resetSettingsHost)
-  }
   if (host.evals) {
     configureEvalsHost(host.evals)
     restores.push(resetEvalsHost)
@@ -345,10 +318,6 @@ export function applyHostPorts(host: OnethingHostPorts): () => void | Promise<vo
   if (host.speechOutput) {
     configureSpeechOutputHost(host.speechOutput)
     restores.push(resetSpeechOutputHost)
-  }
-  if (host.dialog) {
-    configureDialogHost(host.dialog)
-    restores.push(resetDialogHost)
   }
   // `null` 与其它端口同义:不调 —— 独立 server 要自己按绑定地址声明,替它调一次
   // `configureHostLocalTrust(null)` 会把它待会儿的声明之前的状态搅乱(那个函数的

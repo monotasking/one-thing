@@ -136,16 +136,17 @@ export const dirResourceSpec: ResourceSpec = {
      * `effects: []` —— 它不改这台机器上的任何东西,也不读出任何内容:它把一扇已经
      * 属于这个用户的窗口挪到前面。空效果**不等于不留痕迹**:照样落 `tool/audit`。
      *
-     * `home: 'core'` 而不是 `'shell'`:`home` 说的是「这一步由哪个进程执行」,而
-     * 定位走的是主进程的 `shell.showItemInFolder`(`configureShellHost` 那只宿主口,
-     * `files.reveal` 走的也是它)—— 它在 core 这一侧,不必绕一趟渲染进程。没有那只
-     * 宿主口的进程(server / CLI)结构化降级,与 `files.reveal` 逐字同一句话。
+     * `home: 'shell'`(第④步批 1,决策 D275):`home` 说的是「这一步由哪个进程执行」,而
+     * 定位只在用户的屏幕上发生 —— 后端里不再有文件管理器那一下。core 照旧 plan(夹读根、
+     * 查路径在不在),apply 经 shell dispatch 发给认领了 `dir:` 这条做法的那台客户端
+     * (桌面的渲染层经 preload 调 `shell.showItemInFolder`);没有客户端在线时 AI 当场拿到
+     * `ResourceHomeUnavailableError`,不是超时。
      */
     reveal: {
       title: 'Show this path in the file manager',
       params: { type: 'object', properties: {}, required: [] },
       effects: [],
-      home: 'core',
+      home: 'shell',
       entity: 'path',
       describe: () => 'show it in the file manager',
     },

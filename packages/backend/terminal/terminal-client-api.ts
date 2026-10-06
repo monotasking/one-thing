@@ -39,7 +39,9 @@
 import {
   getTerminalService,
   hasTerminalHost,
+  markAllTerminalsDetached,
 } from '@onething/backend/terminal/terminal-service'
+import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { terminalRouter, type TerminalRoutes } from '@shared/ipc/terminal.js'
 import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-server/http-server-dispatch-table.js'
 
@@ -108,6 +110,20 @@ export const terminalRpcHandlers: RpcRouteHandlers<TerminalRoutes> = {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     getTerminalService().ack(payload.terminalId, payload.bytes, payload.generation)
+    return { success: true }
+  },
+  /**
+   * 客户端页面整个重载了:每格终端欠着的流控账当场勾销(决策 D284)。只给本机信任的来访者 —— 它会让
+   * 别的客户端那几格终端也回到「没人在看」,一个联网的陌生来访者不该做得成。
+   */
+  async detachAll() {
+    if (!hasTerminalHost()) {
+      return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
+    }
+    if (!isHostLocallyTrusted()) {
+      return { success: false, error: 'terminal.detachAll is only available to locally trusted callers' }
+    }
+    markAllTerminalsDetached()
     return { success: true }
   },
 }

@@ -1,12 +1,12 @@
-import { dialogRouter } from '@shared/ipc/dialog'
-import type { ShowOpenDialogRequest, ShowOpenDialogResponse } from '@shared/ipc/dialog'
+import type { ShowOpenDialogRequest, ShowOpenDialogResponse } from '@shared/contracts/client-action'
+import { showNativeOpenDialog } from '../platform/host'
 
 /**
- * 原生打开对话框的端口(`dialog` RPC 域)。
+ * 原生打开对话框的端口。
  *
- * 对话框是**宿主**拉起的:桌面壳在主进程注入 `dialog` 端口,独立 server / 浏览器壳连上的
- * 那台 core 没有窗口,答 `unavailable: true` —— 调用方据它退到路径输入框
- * (`content/files/open-dir-hub.ts` 的 `requestDirectory`),不当作取消。
+ * 对话框是**客户端自己**开的(第④步批 1,决策 D278):桌面经 preload 的 `host:client-action`
+ * 交给主进程,不再绕后端的 `dialog` 域;浏览器壳没有那条口,答 `unavailable: true` —— 调用方据它
+ * 退到路径输入框(`content/files/open-dir-hub.ts` 的 `requestDirectory`),不当作取消。
  */
 export interface DialogPort {
   showOpen(request: ShowOpenDialogRequest): Promise<ShowOpenDialogResponse>
@@ -20,12 +20,9 @@ export function configureDialogPort(next: DialogPort | undefined): void {
   pending = undefined
 }
 
-/** 惰性建:它要的是连通之后才存在的客户端(与 skills-port 同一判词)。 */
+/** 真实现:直接交给这台客户端的宿主(不经后端,所以也不等连通)。 */
 async function realPort(): Promise<DialogPort> {
-  const { onethingClient } = await import('../platform/connection')
-  const client = await onethingClient()
-  const api = client.api(dialogRouter)
-  return { showOpen: (request) => api.showOpen(request) }
+  return { showOpen: (request) => showNativeOpenDialog(request) }
 }
 
 let pending: Promise<DialogPort> | undefined
@@ -54,7 +51,7 @@ export async function pickDirectoryNative(
       defaultPath: options.defaultPath,
     })
   } catch {
-    // 连不上 / 老 core 没有这个域:与「没有对话框」同一条退路。
+    // 宿主那一侧抛了:与「没有对话框」同一条退路。
     return { kind: 'unavailable' }
   }
   if (response.unavailable) return { kind: 'unavailable' }

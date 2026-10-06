@@ -84,6 +84,11 @@ export interface AskOption {
 
 export interface AskQuestion {
   allowFreeText?: boolean
+  /**
+   * 这道题要人先去开一个链接(第④步批 1)。`host` 是从 `url` 解出来的域名,卡上与按钮并排写出来 ——
+   * 点之前看得见要去哪。
+   */
+  link?: { url: string; host: string }
   /** 提交进流里时挂在答案前的短标 */
   tag: string
   q: string

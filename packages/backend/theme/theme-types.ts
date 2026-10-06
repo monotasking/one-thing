@@ -650,11 +650,9 @@ export interface RefreshThemesResponse {
   error?: string
 }
 
-export interface OpenThemesFolderResponse {
+/** 主题文件夹在哪(第④步批 1:后端只答路径,打开是客户端自己的事)。 */
+export interface ThemesFolderPathResponse {
   success: boolean
+  path?: string
   error?: string
 }
-
-export type ThemeFolderOpener = (
-  themesPath: string
-) => Promise<string | void | null | undefined> | string | void | null | undefined

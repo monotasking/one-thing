@@ -527,34 +527,30 @@ export interface TestProxyResponse {
  * `@main/ipc/settings.ts` 的壳适配 —— 这一域从来没有 `apps/electron/src/ipc/*`
  * 那层可移植工厂)。请求/响应形状一字未改;变的只是通道。
  *
- * **两条要 Electron 本体的事**(开设置窗 / 原生对话框)不在这个 router 上,但它们
- * 也不再是手写通道了 —— 2026-08-23(P4 终态批 A1-a)起走**宿主壳路由**
- * (`shell:invoke`):开设置窗是本文件下方的 `settingsWindowRouter`,原生对话框
- * 是 `@shared/ipc/dialog.ts` 的 `dialogRouter`。
+ * **两条要 Electron 本体的事**(开设置窗 / 原生对话框)不在这个 router 上:开设置窗是本文件
+ * 下方的 `settingsWindowRouter`;原生对话框第④步批 1 起由客户端自己开(`@shared/contracts/client-action`)。
+ *
+ * **`getSystemTheme` 第④步批 1 退役**:「系统此刻是不是深色」是看屏幕的那台客户端的事,
+ * React 壳与浏览器壳都自己读 `prefers-color-scheme`(壳的 `platform/host.ts`),手机读自己的系统。
  *
  * **三条推送留在原地**(router 今天没有推送面):`SETTINGS_CHANGED` /
  * `SYSTEM_THEME_CHANGED` 改走 `backend/settings/settings-events.ts` 的
  * `configureSettingsEventBroadcaster` 注入端口;`SETTINGS_NAVIGATE` 本来就是
  * 主进程→设置窗的单向通知,与本域无关。
  *
- * 无参的两条(`getSettings` / `getSystemTheme`)按本仓惯例递 `{}`。
+ * 无参的 `getSettings` 按本仓惯例递 `{}`。
  */
 import { defineRouter } from "./router.js";
 
 export type SettingsRoutes = {
     getSettings: { input: Record<string, never>; output: GetSettingsResponse };
     saveSettings: { input: SaveSettingsRequest; output: SaveSettingsResponse };
-    getSystemTheme: {
-        input: Record<string, never>;
-        output: { success: boolean; theme?: "light" | "dark"; error?: string };
-    };
     testProxy: { input: TestProxyRequest; output: TestProxyResponse };
 };
 
 export const settingsRouter = defineRouter<SettingsRoutes>("settings", [
     "getSettings",
     "saveSettings",
-    "getSystemTheme",
     "testProxy",
 ]);
 

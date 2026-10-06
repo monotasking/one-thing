@@ -1,5 +1,6 @@
 import { skillsRouter } from '@shared/ipc/skills'
-import type { GetSkillsResponse, OpenSkillDirectoryResponse } from '@shared/ipc/skills'
+import type { GetSkillsResponse } from '@shared/ipc/skills'
+import { openLocalPath } from '../platform/host'
 
 /**
  * 技能读面与 core 的客户端(`@onething/backend-client`)之间的那一层端口(09-12)——
@@ -30,14 +31,15 @@ export interface SkillsPort {
   /** 这条会话看得见的技能。拉不到 = 抽屉里没有技能那一组(静默降级,见 source)。 */
   getAll(workingDirectory: string | null): Promise<GetSkillsResponse>
   /**
-   * 在**文件管理器**里打开这条技能的目录。回落路,见文件头。
+   * 在**文件管理器**里打开这条技能的目录。回落路,见文件头。第④步批 1 起两步:后端只答目录在哪
+   * (`skills.directoryPath`),打开由这台客户端自己做(`platform/host.ts` 的 `openLocalPath`)。
    *
    * **可选**:壳里的端口替身(`src/test/setup.ts` 那份缺省、各面自己换上的那些)
    * 装的都只是读那一口;缺席 = 这台没有这条回落能力,`openSkillDirectory` 当场
    * 答「打不开」并 notify 一条 warn —— 与「没有这块能力就结构化降级」逐字同一条,
    * 不是给替身开的后门:真实现里它永远在场。
    */
-  openDirectory?(skillId: string): Promise<OpenSkillDirectoryResponse>
+  openDirectory?(skillId: string): Promise<{ success: boolean; error?: string }>
 }
 
 let port: SkillsPort | undefined
@@ -59,7 +61,13 @@ async function realPort(): Promise<SkillsPort> {
     ready: () => whenConnected(),
     getAll: (workingDirectory) =>
       skillsApi.getAll(workingDirectory ? { workingDirectory } : {}),
-    openDirectory: (skillId) => skillsApi.openDirectory({ skillId }),
+    openDirectory: async (skillId) => {
+      const answer = await skillsApi.directoryPath({ skillId })
+      if (!answer.success || !answer.path) return { success: false, ...(answer.error ? { error: answer.error } : {}) }
+      const outcome = await openLocalPath(answer.path)
+      if (outcome.ok) return { success: true }
+      return { success: false, error: outcome.reason === 'failed' ? outcome.error : 'this client cannot open local folders' }
+    },
   }
 }
 

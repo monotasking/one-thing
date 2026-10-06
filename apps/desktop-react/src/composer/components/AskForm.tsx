@@ -1,8 +1,11 @@
 import { useLayoutEffect, type KeyboardEvent, type RefObject } from 'react'
 import { useFocusScope } from '../../focus/useFocusScope'
 import { useT } from '../../i18n'
+import { openExternal } from '../../platform/open-external'
+import { notify } from '../../services/notify'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { Tooltip } from '../../ui/Tooltip'
 import { useComposerStoreOf } from '../store'
 import { useComposerSessionId } from '../session-context'
 import {
@@ -124,6 +127,33 @@ export function AskForm({
           {t('ask.reject')}
         </Button>
       </div>
+
+      {question.link && (
+        /* agent 要人去开的链接(第④步批 1):后端不替人开,人点了才由这台客户端交给浏览器。
+         * 域名与按钮并排 —— 点之前看得见要去哪;悬停 / 聚焦按钮时 Tooltip 给完整链接。
+         * 文字动作钮 → `ui/Button`。 */
+        <div className={s.askLink}>
+          <Tooltip content={question.link.url}>
+            <Button
+              onClick={() => {
+                const url = question.link?.url
+                if (!url) return
+                void openExternal(url).catch((error: unknown) => {
+                  notify({
+                    level: 'warn',
+                    source: 'chat.interaction',
+                    title: t('chat.ref.openLinkFailed'),
+                    ...(error instanceof Error && error.message ? { body: error.message } : {}),
+                  })
+                })
+              }}
+            >
+              {t('ask.openLink')}
+            </Button>
+          </Tooltip>
+          <span className={s.askLinkHost}>{question.link.host}</span>
+        </div>
+      )}
 
       <div
         className={s.askBars}

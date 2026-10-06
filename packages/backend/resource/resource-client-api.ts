@@ -83,11 +83,22 @@ function shells(): ShellMountRegistry {
  * `<store>/audit/resource.jsonl`,见 `toolkit/toolkit-audit-sink.ts`)。
  */
 function callOptions(context: RpcDispatchContext, sessionId?: string) {
+  const callerId = callerShellIdOf(context)
   return {
     principal: principalOf(context),
     ...(sessionId ? { sessionId } : {}),
     ...(context.signal ? { signal: context.signal } : {}),
+    ...(callerId !== undefined ? { callerId } : {}),
   }
+}
+
+/**
+ * 发起这次调用的那扇壳(第④步批 1,决策 D8)。HTTP 边界从请求头 `X-Onething-Shell-Id` 铸进
+ * `context.callerId`,**永不从信封里读**;只有字符串才算(进程内调用方没有这一格)。
+ * 它是坐标不是身份 —— 用来把「请客户端执行」的命令发回点它的那一扇,也记一笔这扇壳有活动。
+ */
+function callerShellIdOf(context: RpcDispatchContext): string | undefined {
+  return typeof context.callerId === 'string' && context.callerId ? context.callerId : undefined
 }
 
 export const resourcesRpcHandlers: RpcRouteHandlers<ResourcesRoutes> = {
@@ -127,6 +138,7 @@ export const resourcesRpcHandlers: RpcRouteHandlers<ResourcesRoutes> = {
     request: ReadResourceRequest,
     context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
   ): Promise<ResourceReadView> {
+    shells().noteCaller(callerShellIdOf(context))
     const outcome = await kernel().read(
       request?.ref ?? '',
       request?.name ?? '',
@@ -140,6 +152,7 @@ export const resourcesRpcHandlers: RpcRouteHandlers<ResourcesRoutes> = {
     request: DoResourceRequest,
     context: RpcDispatchContext = DESKTOP_RPC_CONTEXT,
   ): Promise<ResourceOutcomeView> {
+    shells().noteCaller(callerShellIdOf(context))
     const outcome = await kernel().do(
       request?.ref ?? '',
       request?.op ?? '',

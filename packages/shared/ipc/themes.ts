@@ -646,8 +646,10 @@ export interface RefreshThemesResponse {
   error?: string
 }
 
-export interface OpenThemesFolderResponse {
+/** 主题文件夹在哪(第④步批 1,决策 D279:后端只答路径,打开是客户端自己的事)。 */
+export interface ThemesFolderPathResponse {
   success: boolean
+  path?: string
   error?: string
 }
 
@@ -667,10 +669,10 @@ export interface OpenThemesFolderResponse {
  *  - `apply` 从前在 `@main` 那一层**现拼插件主题覆盖**(token 覆盖 / 皮肤档位 /
  *    表面旋钮三样)。搬进域处理者之后 server 顺带获得了同一份合成 —— 拍板 #20
  *    接受的口径变化(旧 server adapter 只透传声明,不做合成)。
- *  - `openFolder` 要宿主能力,走 `@onething/backend/shell` 的 `configureShellHost`
- *    端口:未注入即结构化降级,不再需要 server 那句写死的英文。
+ *  - `folderPath`(从前叫 `openFolder`、由后端替人打开)第④步批 1 起只答路径:打开是
+ *    客户端自己的事。
  *
- * 无参的三条(`getAll` / `refresh` / `openFolder`)按本仓惯例递 `{}`;
+ * 无参的三条(`getAll` / `refresh` / `folderPath`)按本仓惯例递 `{}`;
  * 单 id 的两条包成对象(`{ themeId }` / `{ themeId, mode }`)。
  */
 import { defineRouter } from './router.js'
@@ -680,7 +682,7 @@ export type ThemesRoutes = {
   get: { input: { themeId: string }; output: GetThemeResponse }
   apply: { input: { themeId: string; mode: 'dark' | 'light' }; output: ApplyThemeResponse }
   refresh: { input: { projectPath?: string }; output: RefreshThemesResponse }
-  openFolder: { input: Record<string, never>; output: OpenThemesFolderResponse }
+  folderPath: { input: Record<string, never>; output: ThemesFolderPathResponse }
 }
 
 export const themesRouter = defineRouter<ThemesRoutes>('themes', [
@@ -688,5 +690,5 @@ export const themesRouter = defineRouter<ThemesRoutes>('themes', [
   'get',
   'apply',
   'refresh',
-  'openFolder',
+  'folderPath',
 ])

@@ -56,10 +56,21 @@ describe('凭证锁定横幅', () => {
     expect(toasts().at(-1)?.body).toBe('钥匙串拒绝了访问。')
     receiveCredentialsStatus({ ...LOCKED_TIMEOUT, reason: 'key-missing' })
     expect(toasts().at(-1)?.body).toBe('找不到加密凭证用的密钥,可以导入之前导出的凭证,或重新登录。')
+    // 第④步批 1 补齐的两句(编排者定的文案)。
+    receiveCredentialsStatus({ ...LOCKED_TIMEOUT, reason: 'keychain-failed' })
+    expect(toasts().at(-1)?.body).toBe('读取钥匙串时出错。')
     receiveCredentialsStatus({ ...LOCKED_TIMEOUT, reason: 'legacy-safestorage' })
-    expect(toasts().at(-1)?.body).toBeUndefined()
+    expect(toasts().at(-1)?.body).toBe('原来的凭证还没迁移完,点「重试」再试一次。')
     // 换原因 = 换掉那一条,屏上始终只有一条横幅。
     expect(toasts()).toHaveLength(1)
+  })
+
+  it('钥匙还在读(loading)不弹横幅 —— 只在设置页那一行说', () => {
+    receiveCredentialsStatus({ ...LOCKED_TIMEOUT, state: 'loading', reason: undefined })
+    expect(toasts()).toHaveLength(0)
+    receiveCredentialsStatus({ ...LOCKED_TIMEOUT, reason: 'loading' })
+    expect(toasts()).toHaveLength(0)
+    expect(useCredentialsLock.getState().status?.reason).toBe('loading')
   })
 
   it('同一个原因不重复弹;解开就收掉', () => {

@@ -12,8 +12,8 @@
  *
  * 它整只住在装配层而不是宿主:`createRequiredAppFetch` 与 `validateProxyUrl`
  * 都是同目录 `settings-proxy-fetch.ts` 的东西(从前住在包根 `provider-binding/bound-fetch.ts`),没有一处 Electron 触点。
- * 真正要宿主的是**套用**代理(Electron session + 内嵌浏览器分区),那一半留在
- * `configureSettingsHost` 的 `applyNetworkProxySettings` 端口上。
+ * 真正要宿主的是**套用**代理(Electron session + 内嵌浏览器分区):第④步批 1 起那一半由 Electron
+ * 自己订 `settings:changed` 重套(`apps/desktop-react/electron/network-proxy.ts`),后端里没有它。
  */
 import type { ProxySettings, TestProxyResponse } from '@shared/ipc/settings.js'
 import { createRequiredAppFetch, validateProxyUrl } from './settings-proxy-fetch.js'

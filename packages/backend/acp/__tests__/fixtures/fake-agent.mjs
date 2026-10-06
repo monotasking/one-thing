@@ -37,6 +37,8 @@
 //   再起一次本脚本:打印一行、写下 credentials、退出码 0;agent 型 = `authenticate` 直接写下 credentials。
 // FAKE_AGENT_ELICIT=1 + 正文 `@elicit`:发一张 `elicitation/create` 表单(一道单选 + 一道自由输入),
 //   把客户端的答复(或错误码)记进 calls.log,然后照常说完这一轮。
+// FAKE_AGENT_ELICIT=1 + 正文 `@elicit-url`(第④步批 1,gate:acp ⑮b):发一张 url 型的 `elicitation/create`
+//   (要人去开 `https://example.test/acp-login`),答复记进 calls.log(method `elicit-url`)。
 //
 // A2-a 三条(gate:acp ⑥⑦ / 单测):
 // FAKE_AGENT_RICH_TOOLS=1 + 正文 `@rich`:一次带 `name: 'edit_file'`、`kind: 'edit'`、`locations` 的工具
@@ -247,6 +249,21 @@ async function elicitScript(conn, s) {
     logCall({ method: 'elicit', response })
   } catch (error) {
     logCall({ method: 'elicit', code: error?.code ?? null, message: String(error?.message ?? error) })
+  }
+}
+
+async function elicitUrlScript(conn, s) {
+  try {
+    const response = await conn.createElicitation({
+      sessionId: s.id,
+      mode: 'url',
+      elicitationId: `fake-url-${randomUUID()}`,
+      url: 'https://example.test/acp-login',
+      message: 'Fake agent needs you to sign in',
+    })
+    logCall({ method: 'elicit-url', response })
+  } catch (error) {
+    logCall({ method: 'elicit-url', code: error?.code ?? null, message: String(error?.message ?? error) })
   }
 }
 
@@ -526,7 +543,8 @@ new AgentSideConnection(conn => ({
     if (process.env.FAKE_AGENT_PERMISSION === '1' && text.startsWith('@perm')) await permissionScript(conn, s, text.startsWith('@perm1') ? 1 : 2)
     if (process.env.FAKE_AGENT_FS === '1' && text.startsWith('@fs')) await fsScript(conn, s)
     if (process.env.FAKE_AGENT_TERMINAL === '1' && text.startsWith('@term')) await terminalScript(conn, s)
-    if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit')) await elicitScript(conn, s)
+    if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit-url')) await elicitUrlScript(conn, s)
+    else if (process.env.FAKE_AGENT_ELICIT === '1' && text.startsWith('@elicit')) await elicitScript(conn, s)
     if (process.env.FAKE_AGENT_RICH_TOOLS === '1' && text.startsWith('@rich')) await richToolsScript(conn, s)
     if (process.env.FAKE_AGENT_USE_HOST_MCP === '1' && text.startsWith('@mcp')) await hostMcpScript(s)
     if (process.env.FAKE_AGENT_PLAN === '1' && text.startsWith('@plan-clear')) await planClearScript(conn, s)

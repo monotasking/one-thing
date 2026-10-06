@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery } from '../../data/kernel'
 import { useHomeDir } from '../../data/home-dir'
 import { revealPath } from '../../data/reveal-path'
+import { canRunClientActions } from '../../platform/host'
 import { deleteTodoNote, todoDocumentFamily, todoNoteRef, type TodoNoteSummary } from '../../data/todo-source'
 import { useT } from '../../i18n'
 import { useConfirm } from '../../ui/Dialog'
@@ -89,7 +90,9 @@ function NoteFileItems({ note, withOpen, act }: {
   act: (action: () => void) => () => void
 }) {
   const t = useT()
-  const canReveal = useHomeDir() !== null
+  // 定位要两件事都在:后端肯告诉这台客户端本机路径(`homeDir` 那一位,本机信任),而且这台客户端自己
+  // 开得了文件管理器(第④步批 1:浏览器壳开不了,这一项画灰)。
+  const canReveal = useHomeDir() !== null && canRunClientActions()
   const query = todoDocumentFamily.get(todoNoteRef(note.id))
   const view = useQuery(query).data
   useEffect(() => { void query.ensure() }, [query])

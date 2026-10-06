@@ -27,8 +27,8 @@ export function isSessionUnattended(sessionId: string): boolean {
  * 接在 `chat.ask` 的流上),于是一张卡在那里永远是 pending。
  *
  * 为什么是**宿主自己声明**,而不是从别的宿主事实里推:
- *  - `hasShellHost()` 在今天的 React 桌面上是 `false`(那个壳 `shell: null`),拿它
- *    当判据会把桌面也判成无人值守 —— 而桌面恰恰是能弹卡给人答的那一台;
+ *  - 「宿主有没有外壳能力」(当年的 `hasShellHost()`,第④步批 1 随 `shell` 端口退役)在 React 桌面上
+ *    曾经是 `false`,拿它当判据会把桌面也判成无人值守 —— 而桌面恰恰是能弹卡给人答的那一台;
  *  - `isHostLocallyTrusted()` 回答的是「这个调用方可不可以做」,不是「有没有人在」,
  *    两句话今天答案碰巧一致,碰巧不是判据。
  * 所以照 `localTrust` 那条判例办:**宿主装配时自己说一句**,谁说谁负责收回。

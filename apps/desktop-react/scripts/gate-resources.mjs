@@ -18,6 +18,12 @@
  * 判、apply 在壳里跑、结局回到调用方手上**。少了 ③ 只证了壳自己能改自己;少了 ④
  * 只证了屏幕变了而 core 问不出来。
  *
+ *  ⑤(第④步批 1,决策 D274 / D275)`dir:` 的 `reveal` 也走这条路:命名空间在 core,只有这一条做法
+ *     `home: 'shell'`。一个 curl(不带壳坐标 = AI 那一档,发给最近活动的那扇壳)打
+ *     `resources.do('dir:<工作区>', 'reveal')` → core 夹读根、查路径在不在 → 命令带着夹过的路径经 SSE 到壳 →
+ *     壳经 preload 的 `host:client-action` 交给主进程。门先在主进程里把 `shell.showItemInFolder` 换成一只
+ *     记账的替身(`app.evaluate`)—— **不真的弹访达**(真机门不许抢用户的机器),断言替身收到的正是那条路径。
+ *
  * ── 跑法(仓根先 `bun run server:build`,本目录先 `npm run app:build`)────────
  *   node scripts/gate-resources.mjs
  *
@@ -124,7 +130,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/4] 起一台 core(隔离 store),建一条会话')
+    console.log('\n[1/5] 起一台 core(隔离 store),建一条会话')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -149,7 +155,7 @@ async function main() {
     const sessionId = created?.session?.id
     if (!sessionId) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(created)}`)
 
-    console.log('\n[2/4] 离屏拉起桌面壳,等它把自己交给 core')
+    console.log('\n[2/5] 离屏拉起桌面壳,等它把自己交给 core')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -186,7 +192,7 @@ async function main() {
       `describe 里每条做法的 home 都是 shell(${homes.join(' ')})`,
     )
 
-    console.log('\n[3/4] 一个 curl 打 do(workbench:center, open) —— 命令绕到壳里跑')
+    console.log('\n[3/5] 一个 curl 打 do(workbench:center, open) —— 命令绕到壳里跑')
     const target = `session:${sessionId}`
     const outcome = await rpc(record, 'resources', 'do', {
       ref: 'workbench:center',
@@ -211,7 +217,7 @@ async function main() {
     )
     assert(onScreen, `CDP 在屏幕上看到 ${target}`)
 
-    console.log('\n[4/4] read(workbench:center, layout) —— core 问得出这件事')
+    console.log('\n[4/5] read(workbench:center, layout) —— core 问得出这件事')
     const read = await rpc(record, 'resources', 'read', {
       ref: 'workbench:center',
       name: 'layout',
@@ -222,6 +228,29 @@ async function main() {
     const layout = read.value
     const tabs = (layout.regions ?? []).flatMap((region) => region.leaves.flatMap((leaf) => leaf.tabs))
     assert(tabs.includes(target), `layout 读数里含 ${target}(共 ${tabs.length} 格)`)
+
+    console.log('\n[5/5] do(dir:<工作区>, reveal) —— core 只 plan,定位在客户端(第④步批 1)')
+    // 不真的弹访达:把主进程的 `shell.showItemInFolder` 换成记账的替身(`main.ts` 的 client-action 端口
+    // 每次调用现查 `shell.showItemInFolder`,所以替换在这里生效)。
+    await app.evaluate(({ shell }) => {
+      globalThis.__gateRevealed = []
+      shell.showItemInFolder = (target) => { globalThis.__gateRevealed.push(target) }
+    })
+    const dirDescribed = await waitFor('core 的 dir 自述里 reveal 住在客户端', async () => {
+      const answer = await rpc(record, 'resources', 'describe', { scheme: 'dir' })
+      return answer?.ops?.reveal?.home === 'shell' ? answer : undefined
+    })
+    assert(dirDescribed.ops.reveal.home === 'shell', 'describe(dir) 里 reveal 的 home 是 shell')
+    const revealOutcome = await rpc(record, 'resources', 'do', { ref: `dir:${workspaceRoot}`, op: 'reveal', params: {} })
+    assert(
+      revealOutcome.kind === 'ok',
+      `dir:reveal 的结局是 ok(${revealOutcome.kind}${revealOutcome.kind === 'ok' ? `:${revealOutcome.text}` : `:${JSON.stringify(revealOutcome)}`})`,
+    )
+    const revealed = await waitFor('主进程的替身收到那条路径', async () => {
+      const seen = await app.evaluate(() => globalThis.__gateRevealed ?? [])
+      return seen.length > 0 ? seen : undefined
+    })
+    assert(revealed.includes(workspaceRoot), `替身收到的是 core 夹过的那条路径(${JSON.stringify(revealed)})`)
 
     await app.close()
     app = undefined

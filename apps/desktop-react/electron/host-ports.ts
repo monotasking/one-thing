@@ -16,19 +16,25 @@
  * `applyHostPorts` 逐项接线。每一项必填,没接的显式写 `null` —— 于是"这个壳
  * 缺什么能力"是可数的,而不是靠比对两个壳的调用清单才看得出来。
  *
- * 这个壳真的交出来的:auth(凭证解密的唯一口)、sandbox(下载目录)、
- * storePath(打包资源目录)、terminal(T0:PTY 输出的出网口)、settings
- * (深浅色 + **代理重套**,2026-09-12)、localTrust(`desktop-embedded`,B3)、
- * speechOutput(宠物 P3:主进程起子进程出声)、dialog(原生打开对话框)与 shell
- * (批 1:系统浏览器 / 默认程序打开 / 在访达里定位);其余九项是 `null`。
+ * 这个壳真的交出来的:auth(OAuth 取数)、legacySafeStorageForMigration(旧密文的解密器)、
+ * sandbox(下载目录)、storePath(打包资源目录)、terminal(T0:PTY 输出的出网口)、
+ * localTrust(`desktop-embedded`,B3)、speechOutput(宠物 P3:主进程起子进程出声);其余是 `null`。
+ *
+ * 第④步批 1 起这张表里**没有客户端的事**了:`shell`(打开外链 / 打开路径 / 在访达里定位)、`dialog`
+ * (原生对话框)、`settings`(深浅色 + 改设置后重套代理)三格退役。前两样渲染层经 preload 的
+ * `host:client-action` 交给主进程自己做(`./client-action.ts`);深浅色渲染层自己读;代理重套由
+ * 下面的 `installProxySettingsWatcher` 订 `settings:changed` 自己做。
  */
-import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session, shell } from 'electron'
+import { app, net, safeStorage, session } from 'electron'
 import type { LegacySafeStorageDecryptor } from '@onething/backend/credentials'
 import type { OnethingHostPorts } from '@onething/backend/backend-host-ports.js'
 import {
   clearAppDispatcherCache,
+  configureSettingsEventBroadcaster,
   createRequiredAppFetch,
   getSettings,
+  getSettingsEventBroadcaster,
+  type SettingsEventBroadcaster,
 } from '@onething/backend/settings'
 import { createEventBusTerminalBroadcaster } from '@onething/backend/terminal'
 import { getLogger } from '@onething/backend/logging'
@@ -74,35 +80,6 @@ function createShellAuthFetch(): typeof fetch {
 }
 
 /**
- * `shell.openExternal` 只放行 http(s) 与 mailto。`file:` 与自定义 scheme 会拉起本机程序 ——
- * 那是 `openPath` 的事,不该借这扇门进来。`shell` 域处理者也拒一遍(两层各守各的)。
- */
-const EXTERNAL_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
-
-function createShellHostShellPorts(): NonNullable<OnethingHostPorts['shell']> {
-  return {
-    async openExternal(url) {
-      let protocol: string
-      try {
-        protocol = new URL(url).protocol
-      } catch {
-        return { success: false, error: 'url is not a valid absolute URL' }
-      }
-      if (!EXTERNAL_SCHEMES.has(protocol)) return { success: false, error: `scheme ${protocol} is not allowed` }
-      try {
-        await shell.openExternal(url)
-        return { success: true }
-      } catch (error) {
-        log.warn('shell.openExternal failed', { protocol }, error)
-        return { success: false, error: error instanceof Error ? error.message : String(error) }
-      }
-    },
-    openPath: filePath => shell.openPath(filePath),
-    revealPath: filePath => shell.showItemInFolder(filePath),
-  }
-}
-
-/**
  * 这个进程的**代理策略**(2026-09-12)。一个对象,不是散在各处的 `if` —— 判词整段
  * 在 `network-proxy.ts` 的文件头上,一句话的版本:**谁要出网谁来登记,配置变了策略
  * 挨个重套**。从前这里只对 `session.defaultSession` 一个人 `setProxy`,而内嵌浏览器
@@ -127,9 +104,8 @@ export const shellProxyPolicy = new ShellProxyPolicy({
  *
  * 两个调用点,一件事:①`main.ts` 的 `hooks.afterSettings`(启动那一次;那一刻
  * 浏览器宿主还没装,所以分区靠建出来时的**回放**拿到代理,不靠这一发);
- * ②宿主表的 `settings.applyNetworkProxySettings`(**改设置那一次** —— 从前这一格
- * 是 `null`,于是「在设置页改代理」只改了 provider 那半边,Electron 这半边要重启
- * 才生效)。
+ * ②`installProxySettingsWatcher`(**改设置那一次**,第④步批 1 起;从前是宿主表的
+ * `settings.applyNetworkProxySettings` 那一格由后端保存链回调过来)。
  */
 export async function applyShellNetworkProxySettings(
   proxy: ProxySettings | undefined = getSettings().network?.proxy ?? { enabled: false, url: '' },
@@ -139,6 +115,35 @@ export async function applyShellNetworkProxySettings(
       log.warn('proxy settings invalid, Electron proxy not applied', { error })
     }),
   )
+}
+
+/**
+ * **改设置之后重套代理**(第④步批 1,决策 D282)。
+ *
+ * 从前后端的保存链经宿主端口 `settings.applyNetworkProxySettings` 回调过来;后端要搬出这个进程,
+ * 那一格就没了 —— 所以改成 Electron 自己听 `settings:changed`:每一次保存设置后端都会广播它,
+ * 载荷里就是归一过的整份设置,这里只取 `network.proxy` 交给同一个 `applyShellNetworkProxySettings`。
+ *
+ * 今天后端还在这个进程里,所以订的是进程内那只单槽广播器,写法与 `browser/cdp-settings.ts` /
+ * `browser/profiles.ts` 逐字同一条:**串联,不是覆盖**(先叫前一个、再干自己的;摘的时候只在还是
+ * 我占着那一格时才把前一个装回去)。批 2 拆进程之后换成订 `GET /api/events` 上同名的那条全局事件,
+ * 处理函数一个字不变。返回摘掉它的那一手(幂等)。
+ */
+export function installProxySettingsWatcher(): () => void {
+  const previous = getSettingsEventBroadcaster()
+  const mine: SettingsEventBroadcaster = (event) => {
+    previous?.(event)
+    void applyShellNetworkProxySettings(event.settings.network?.proxy ?? { enabled: false, url: '' }).catch(error => {
+      log.warn('re-applying proxy after a settings change failed', undefined, error)
+    })
+  }
+  configureSettingsEventBroadcaster(mine)
+  let disposed = false
+  return () => {
+    if (disposed) return
+    disposed = true
+    if (getSettingsEventBroadcaster() === mine) configureSettingsEventBroadcaster(previous)
+  }
 }
 
 /**
@@ -181,13 +186,6 @@ export function createShellHostPorts(): OnethingHostPorts {
      * IPC(`host:connection`),渲染层与 core 之间只有 HTTP/SSE。
      */
     terminal: { broadcaster: createEventBusTerminalBroadcaster() },
-    /**
-     * 系统浏览器 / 默认程序打开 / 在访达里定位(批 1,`docs/design/provider-settings-rework-2026-09.md`
-     * §3.1)。09-03 迁壳时这一格没接,于是订阅登录「已在浏览器里打开授权页」是一句假话、
-     * 聊天里的外链在桌面上点了没反应。注入之后 `hasShellHost()` / `capabilities.shellTools`
-     * 为真 —— AI 的工具从此能在桌面打开文件和网址(用户已拍,方案 §10)。
-     */
-    shell: createShellHostShellPorts(),
     // ── 以下是这个壳还没有的能力。每一行都是一笔待办,不是一次省略。 ──
     // 日志目录与 renderer console 兜底采集:壳走 `configureLogging` 自己开
     // `shell.jsonl`,那两件宿主采集能力还没接。
@@ -199,22 +197,6 @@ export function createShellHostPorts(): OnethingHostPorts {
     scratchpad: null,
     plugins: null,
     gateway: null,
-    /**
-     * 深浅色 + **代理重套**(2026-09-12)。
-     *
-     * 这一格从前是 `null`,而那是两个洞:①`getSystemTheme` 恒答浅色(端口缺席的
-     * 降级),于是壳里「跟随系统」这一档在深色系统上是错的;②`applyNetworkProxySettings`
-     * 没接 → **改设置里的代理不会重套**,只有启动那一次算数。第二个洞与内嵌浏览器
-     * 那条直连出网的报障是同一件事的两半:一半是「新分区没代理」(由
-     * `ShellProxyPolicy.register` 的回放治),一半是「改了也不生效」(由这一行治)。
-     *
-     * `registerGlobalWindowShortcuts` **不写** —— 这个壳没有全局快捷键注册这件事
-     * (端口是可选的,不写 = 那一句 `?.()` 什么都不做,与从前逐字相同)。
-     */
-    settings: {
-      shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
-      applyNetworkProxySettings: proxy => applyShellNetworkProxySettings(proxy),
-    },
     evals: null,
     mcp: null,
     /**
@@ -231,24 +213,5 @@ export function createShellHostPorts(): OnethingHostPorts {
      * 30 秒回执、一个字都不出声。出声不需要窗口:mpv / afplay 子进程就能放。
      */
     speechOutput: createShellSpeechOutput(),
-    /**
-     * 原生打开对话框(选目录 / 选文件)—— `dialog` RPC 域的处理者。渲染层走 HTTP,
-     * 拿不到 `event.sender`,所以挂在**当前聚焦的窗**上;没有聚焦窗就不挂(自由浮动)。
-     */
-    dialog: {
-      async showOpen(request) {
-        const options = {
-          properties: request.properties ?? ['openFile'],
-          title: request.title,
-          defaultPath: request.defaultPath,
-          filters: request.filters,
-        }
-        const parent = BrowserWindow.getFocusedWindow()
-        const result = parent
-          ? await dialog.showOpenDialog(parent, options)
-          : await dialog.showOpenDialog(options)
-        return { canceled: result.canceled, filePaths: result.filePaths }
-      },
-    },
   }
 }

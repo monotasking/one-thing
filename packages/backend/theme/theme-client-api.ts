@@ -22,15 +22,11 @@
  * **server 顺带获得了同一份合成**:一个 store 一份插件清单,两个宿主看到的主题
  * 从此逐字相同。这是 #20 接受的那类收敛(同 app-state / skills 判例),不是零变化。
  *
- * **2. `openFolder` 走宿主端口。**
- * 「在文件管理器里打开主题目录」只有 Electron 桌面做得到。它现在走
- * `@onething/backend/shell` 的 `configureShellHost`(P4c 第二批立的端口):桌面注入
- * Electron 的目录打开原语,server / CLI 不注入 —— 于是拿到结构化的
- * 「宿主没有外壳能力」。这正是旧 server adapter 那句
- * "Opening the local themes folder is not available in the web server runtime."
- * 的同义降级,区别是它不再需要第二份实现。
+ * **2. `folderPath` 只答路径(第④步批 1,决策 D279)。**
+ * 从前叫 `openFolder`,由后端经宿主端口替人在文件管理器里打开主题目录 —— 那件事只在用户的
+ * 屏幕上发生,是客户端的事。现在后端只答路径,桌面经 preload 的 `host:client-action` 自己开;
+ * 浏览器壳与手机没有文件管理器,那颗按钮不画。
  */
-import { getShellHost } from '@onething/backend/shell'
 import { defaultOnethingThemeRuntime } from '@onething/backend/theme/theme-runtime'
 import { themesRouter, type ThemesRoutes } from '@shared/ipc/themes.js'
 import {
@@ -86,15 +82,10 @@ export const themesRpcHandlers: RpcRouteHandlers<ThemesRoutes> = {
   async refresh(request) {
     return defaultOnethingThemeRuntime.refreshThemes(request?.projectPath)
   },
-  async openFolder() {
-    // 未注入宿主 = 拿到一句非空的失败原因,投影据此把它折成失败结果
-    // (Electron 打开原语的约定:空串才算成功)。
-    return defaultOnethingThemeRuntime.openThemesFolder(targetPath =>
-      getShellHost().openPath(targetPath),
-    )
+  async folderPath() {
+    return defaultOnethingThemeRuntime.themesFolderPath()
   },
 }
-
 
 /** 名册 `http-server/http-server-client-api-roster.ts` 里的一行:域 `themes` 的契约与处理者。 */
 export const THEMES_CLIENT_API = defineClientApi({ id: 'rpc:themes', router: themesRouter, handlers: themesRpcHandlers })

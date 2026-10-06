@@ -11,14 +11,12 @@
  *
  * 值得钉的三件:
  *  - 十二条方法都在 router 的白名单上,一条不多一条不少;
- *  - `openDirectory` 在**没有宿主外壳能力**时结构化降级(server / CLI 的现实),
- *    注入之后才真的去打开目录 —— 这是本批新立的 `configureShellHost` 端口的
- *    唯一消费者,也是它降级语义的判据;
+ *  - `directoryPath`(从前的 `openDirectory`)第④步批 1 起只答路径,打开是客户端自己的事 ——
+ *    不带 skillId 答用户技能根;
  *  - `setAgent` 会先读一遍当前可见状态再写(不带 currentEnabled 就会把一条
  *    开着的技能顺手关掉)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureShellHost } from '@onething/backend/shell'
 import { skillsRouter } from '@shared/ipc/skills.js'
 
 const settings = vi.hoisted(() => ({
@@ -75,8 +73,6 @@ describe('skills RPC domain', () => {
     sessionSkills.invalidateSkillsCache.mockReset()
     skillsWiring.readSkillFile.mockReset().mockResolvedValue('# demo')
     skillsWiring.getUserSkillsPath.mockReset().mockReturnValue('/store/skills')
-    // 每个用例从「没有宿主」起步 —— server / CLI 的现实。
-    configureShellHost({})
 
     const { resetRpcRegistryForTests, registerRouterHandlers, skillsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
@@ -86,14 +82,13 @@ describe('skills RPC domain', () => {
   afterEach(() => {
     dispose?.()
     dispose = undefined
-    configureShellHost({})
   })
 
   it('binds exactly the twelve methods the old channels carried', async () => {
     const { dispatchRpc } = await loadDomain()
 
     const methods = [
-      'getAll', 'refresh', 'readFile', 'openDirectory', 'create', 'delete',
+      'getAll', 'refresh', 'readFile', 'directoryPath', 'create', 'delete',
       'toggleEnabled', 'listDirectories', 'addDirectory', 'updateDirectory',
       'removeDirectory', 'setAgent',
     ]
@@ -125,41 +120,19 @@ describe('skills RPC domain', () => {
     expect(response.ok && response.data).toEqual({ success: true, skills: [SKILL] })
   })
 
-  it('openDirectory degrades structurally when no shell host is wired', async () => {
+  it('directoryPath answers the skill directory instead of opening it (第④步批 1)', async () => {
     const { dispatchRpc } = await loadDomain()
 
     const response = await dispatchRpc({
       domain: 'skills',
-      method: 'openDirectory',
+      method: 'directoryPath',
       payload: { skillId: 'user:demo' },
     })
+    expect(response.ok && response.data).toEqual({ success: true, path: '/store/skills/demo' })
 
-    // dispatcher 仍然 ok —— 失败是**业务结果**,不是通道错误(渲染侧那套
-    // `response.success` 判断照旧成立)。
-    expect(response.ok).toBe(true)
-    expect(response.ok && response.data).toEqual({
-      success: false,
-      error: 'shell host not available',
-    })
-  })
-
-  it('openDirectory opens the skill directory once the host wires the port', async () => {
-    const openPath = vi.fn(async () => '')
-    configureShellHost({ openPath })
-    const { dispatchRpc } = await loadDomain()
-
-    const response = await dispatchRpc({
-      domain: 'skills',
-      method: 'openDirectory',
-      payload: { skillId: 'user:demo' },
-    })
-
-    expect(openPath).toHaveBeenCalledWith('/store/skills/demo')
-    expect(response.ok && response.data).toEqual({ success: true })
-
-    // 不带 skillId = 打开用户技能根,与旧通道一致。
-    await dispatchRpc({ domain: 'skills', method: 'openDirectory', payload: {} })
-    expect(openPath).toHaveBeenLastCalledWith('/store/skills')
+    // 不带 skillId = 用户技能根,与旧通道一致。
+    const root = await dispatchRpc({ domain: 'skills', method: 'directoryPath', payload: {} })
+    expect(root.ok && root.data).toEqual({ success: true, path: '/store/skills' })
   })
 
   it('toggleEnabled and setAgent write through the settings cache', async () => {

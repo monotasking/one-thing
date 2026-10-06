@@ -9,8 +9,8 @@ import type { NavigationDetails } from '../terminal-reload'
  * **重载 detach 那一段接线**(T2)。
  *
  * 三条判据各一例(主框架 / 非同文档 / 非首次),外加**接线还在**那一条 ——
- * 最后那一条是本单反证的落点:派工单要的是「`markAllTerminalsDetached` 调用
- * 拆掉 → 断言红」,而那次调用住在 `main.ts` 里。`main.ts` 在 import 的那一刻
+ * 最后那一条是本单反证的落点:派工单要的是「detach 那一行接线拆掉 → 断言红」,
+ * 而那次接线住在 `main.ts` 里。`main.ts` 在 import 的那一刻
  * 就 `app.whenReady()`、注册 IPC、开窗,拿不进 vitest;所以这里读它的**源文本**
  * 问一句「那一行还在不在」。
  *
@@ -89,10 +89,14 @@ describe('installTerminalReloadDetach', () => {
 describe('main.ts 上那一行接线', () => {
   it('窗口的 webContents 上真的装了它(拆掉这一行 → 本例红)', () => {
     expect(mainSource).toContain("import { installTerminalReloadDetach } from './terminal-reload.js'")
-    expect(mainSource).toContain('installTerminalReloadDetach(window.webContents)')
+    expect(mainSource).toContain('installTerminalReloadDetach(window.webContents, detachTerminalsOverRpc)')
   })
 
-  it('关窗那条**没有**接(那条路上 PTY 是被真的杀掉的)', () => {
+  it('关窗那条**没有**接(那条路上 PTY 是被真的杀掉的),主进程也不再直调后端的模块函数', () => {
     expect(mainSource).not.toContain('markAllTerminalsDetached')
+  })
+
+  it('detach 走 `terminal.detachAll` RPC(第④步批 1:后端搬出这个进程之后模块单例在错的进程里)', () => {
+    expect(mainSource).toContain('api(terminalRouter).detachAll({})')
   })
 })

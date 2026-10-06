@@ -93,3 +93,44 @@ describe('platform/host:系统明暗', () => {
     expect(() => off()).not.toThrow()
   })
 })
+
+/*
+ * 第二格(第④步批 1,决策 D278 / D280):只在用户屏幕上发生的事。判据只有一句 —— preload 上有没有
+ * `clientAction`;没有它的客户端(浏览器壳)答结构化的「做不了」,不抛、不静默。
+ */
+describe('client actions', () => {
+  const win = window as unknown as { onethingHost?: unknown }
+  afterEach(() => {
+    delete win.onethingHost
+  })
+
+  it('浏览器壳(没有 clientAction):canRunClientActions 答 false,打开 / 定位答 unsupported,对话框答 unavailable', async () => {
+    const { canRunClientActions, openLocalPath, revealLocalPath, showNativeOpenDialog } = await import('./host')
+    expect(canRunClientActions()).toBe(false)
+    await expect(openLocalPath('/a')).resolves.toEqual({ ok: false, reason: 'unsupported' })
+    await expect(revealLocalPath('/a')).resolves.toEqual({ ok: false, reason: 'unsupported' })
+    await expect(showNativeOpenDialog({ properties: ['openDirectory'] })).resolves.toEqual({ canceled: true, filePaths: [], unavailable: true })
+  })
+
+  it('桌面(有 clientAction):动作原样交给宿主,结局照答', async () => {
+    const seen: unknown[] = []
+    win.onethingHost = {
+      clientAction: async (action: { kind: string }) => {
+        seen.push(action)
+        if (action.kind === 'showOpenDialog') return { canceled: false, filePaths: ['/picked'] }
+        if (action.kind === 'openPath') return { ok: false, error: 'no app' }
+        return { ok: true }
+      },
+    }
+    const { canRunClientActions, openLocalPath, revealLocalPath, showNativeOpenDialog } = await import('./host')
+    expect(canRunClientActions()).toBe(true)
+    await expect(revealLocalPath('/a')).resolves.toEqual({ ok: true })
+    await expect(openLocalPath('/b')).resolves.toEqual({ ok: false, reason: 'failed', error: 'no app' })
+    await expect(showNativeOpenDialog({ title: 't' })).resolves.toEqual({ canceled: false, filePaths: ['/picked'] })
+    expect(seen).toEqual([
+      { kind: 'revealPath', path: '/a' },
+      { kind: 'openPath', path: '/b' },
+      { kind: 'showOpenDialog', request: { title: 't' } },
+    ])
+  })
+})

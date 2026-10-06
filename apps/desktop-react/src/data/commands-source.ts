@@ -326,9 +326,8 @@ export async function executeCommand(
       }
     }
     case 'cd': {
-      // 没带路径:说一句用法就完了。**不开原生目录对话框** —— 新壳没有 dialog
-      // 桥(`shell:invoke` 的 dialogRouter 只在 Electron 宿主那棵树上),
-      // 而假装弹一个再什么都不发生比直说更坏。留账见文件头。
+      // 没带路径:说一句用法就完了。**不开原生目录对话框** —— 斜杠命令在浏览器壳里也跑,
+      // 那里没有对话框,而假装弹一个再什么都不发生比直说更坏。留账见文件头。
       if (!args) return usage()
       if (!ctx.sessionId) return needsSession()
       try {

@@ -218,6 +218,7 @@ export const zh = {
   'ask.prev': '上一题',
   'ask.next': '下一题',
   'ask.joiner': '、',
+  'ask.openLink': '打开链接',
 
   /* ── Dock 与右键菜单 ──────────────────────────────────────────────── */
   /** 整条 Dock 的地标名(`<nav aria-label>`)。Dock 挂在 `<main>` 外面,没有地标
@@ -1361,6 +1362,7 @@ export const zh = {
   'files.rootFallback': '这条会话没有工作目录,显示的是主目录',
   'files.reveal': '在文件管理器中显示',
   'files.revealFailed': '没能在文件管理器中定位',
+  'host.clientCannotOpenLocal': '这台客户端打不开本机的文件和文件夹。',
   /* 目录的四态。空 / 没权限 / 不在了 / 别的失败,各说各的 —— 不合并成一句
    * 「读不到」:能不能改、要不要改,取决于是哪一种。 */
   'files.dirLoading': '正在读取…',
@@ -2103,6 +2105,13 @@ export const zh = {
   'credentials.tierFile': '这台电脑上凭证密钥存在本地文件里。',
   'credentials.tierNone': '凭证没有加密。',
   'credentials.lockedTooltip': '凭证已锁定',
+  'credentials.reasonKeychainFailed': '读取钥匙串时出错。',
+  'credentials.reasonLegacySafeStorage': '原来的凭证还没迁移完,点「重试」再试一次。',
+  'credentials.loading': '正在读取钥匙串。',
+  'credentials.wrongPassphrase': '口令不对。',
+  'credentials.exported': '凭证已导出。',
+  'credentials.importedOne': '已导入 {n} 个凭证。',
+  'credentials.importedMany': '已导入 {n} 个凭证。',
   'workspace.paletteLabel': '切换工作区',
   'workspace.paletteSearch': '找一个工作区…',
   'workspace.paletteHint': '切换工作区',

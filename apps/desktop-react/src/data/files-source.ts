@@ -6,6 +6,7 @@ import type { SessionSummary } from '../expose/types'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { filesPort } from './files-port'
+import { canRunClientActions } from '../platform/host'
 import { createMutation, createQueryFamily } from './kernel'
 import type { Mutation, QuerySnapshot } from './kernel'
 import { swapSpace, type PerSpaceSpec } from '../workspace/per-space'
@@ -659,14 +660,29 @@ export function revealKey(path: string): string {
  * 没有 `optimistic`,也没有 `settle`:reveal 不改这台壳里的任何一格数据,
  * 它的全部效果在另一个进程里(拿 `invalidate` 去「对账」一次目录是无中生有)。
  */
+/** 这台客户端没有文件管理器可言(浏览器壳)。 */
+class ClientCannotRevealError extends Error {
+  constructor() {
+    super('this client cannot reveal files')
+    this.name = 'ClientCannotRevealError'
+  }
+}
+
 export const revealMutation: Mutation<string, void> = createMutation<string, void>('files.reveal', {
   key: revealKey,
   run: async (path) => {
+    // 浏览器壳没有文件管理器(第④步批 1:定位是客户端自己的事)—— 答一句结构化的「这台客户端做不了」,
+    // 不发请求、不静默。
+    if (!canRunClientActions()) throw new ClientCannotRevealError()
     const port = await filesPort()
     const response = await port.reveal(path)
     if (!response.success) throw new Error(response.error || '')
   },
   onError: (error, path) => {
+    if (error instanceof ClientCannotRevealError) {
+      notify({ level: 'warn', source: 'files.reveal', title: t('host.clientCannotOpenLocal'), body: path })
+      return
+    }
     notify({
       level: 'error',
       source: 'files.reveal',

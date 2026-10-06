@@ -26,34 +26,12 @@ describe('OnethingThemeRuntime', () => {
     }))
   })
 
-  it('opens the themes folder through a host adapter', async () => {
+  it('answers the themes folder path (第④步批 1:打开是客户端自己的事)', () => {
     const runtime = new OnethingThemeRuntime()
-    const openedPaths: string[] = []
-
-    await expect(runtime.openThemesFolder(async themesPath => {
-      openedPaths.push(themesPath)
-      return ''
-    })).resolves.toEqual({ success: true })
 
     // §16.22 改判:从前这里断言路径含 `.onething` —— 那是在给"直拼 home"背书
     // (而且顺手在真机库里 mkdir 了一个 themes/)。落点收编进 store 口之后,
     // 该断言的是"它在**当前 store** 底下、名字叫 themes",而不是 store 叫什么。
-    expect(openedPaths[0]).toBe(path.join(getOnethingStorePath(), 'themes'))
-  })
-
-  it('normalizes themes folder open failures', async () => {
-    const runtime = new OnethingThemeRuntime()
-
-    await expect(runtime.openThemesFolder(() => 'Native open failed')).resolves.toEqual({
-      success: false,
-      error: 'Native open failed',
-    })
-
-    await expect(runtime.openThemesFolder(() => {
-      throw new Error('Adapter crashed')
-    })).resolves.toEqual({
-      success: false,
-      error: 'Adapter crashed',
-    })
+    expect(runtime.themesFolderPath()).toEqual({ success: true, path: path.join(getOnethingStorePath(), 'themes') })
   })
 })

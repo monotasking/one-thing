@@ -6,7 +6,7 @@
  * 「evals 仓在哪」这件事在开发态等于 `process.cwd()`(app 就是从仓库 checkout
  * 里跑起来的),打包态则没有任何有意义的 cwd,必须由用户在设置里显式配。
  *
- * 判据同 `configureShellHost` / `configureSkillsEnvironmentHost`:
+ * 判据同 `configureSkillsEnvironmentHost`:
  *  - **判定本身在域里**(下面的 `resolveEvalsRepoDir`),不在宿主里;
  *  - 宿主只回答它独有的那一位事实(`isPackaged`),桌面在 `main-process.ts` 注入;
  *  - **未注入 = 视为非打包**,于是 server / CLI / 测试拿到的是 `process.cwd()` ——

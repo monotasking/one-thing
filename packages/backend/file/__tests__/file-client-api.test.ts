@@ -10,7 +10,7 @@
  *  - `transport:'ipc'`(桌面)**不夹**,与迁移前 `@main` handler 逐字同义;
  *  - `transport:'http'`(server)每条带路径的方法都夹进 `sandboxRoot`,越界回
  *    结构化失败(文案逐字沿用旧 server 路由);
- *  - `reveal` 走 `configureShellHost`,未注入即结构化降级,而且**先夹后降级**;
+ *  - `revealTarget` 只答路径(第④步批 1:定位是客户端的事),而且**先夹后查在不在**;
  *  - `list` 带 `sessionId` 时按会话归属解析接入目录(批 B2)。
  */
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -25,7 +25,6 @@ import {
 } from '../../http-server/http-server-host-trust.js'
 
 const ripgrep = vi.hoisted(() => ({ listFiles: vi.fn() }))
-const shell = vi.hoisted(() => ({ revealPath: vi.fn() }))
 const connected = vi.hoisted(() => ({
   getConnectedDirectoriesForSession: vi.fn((): string[] => []),
 }))
@@ -39,12 +38,6 @@ vi.mock('../file-ripgrep.js', () => ({ listFiles: ripgrep.listFiles }))
  */
 const notes = vi.hoisted(() => ({ roots: [] as string[] }))
 vi.mock('@onething/backend/note/note-subsystem', () => ({ noteRootsNow: () => notes.roots }))
-vi.mock('@onething/backend/shell/shell-host-ports', async () => {
-  const actual = await vi.importActual<typeof import('@onething/backend/shell/shell-host-ports')>(
-    '@onething/backend/shell/shell-host-ports',
-  )
-  return { ...actual, getShellHost: () => shell }
-})
 vi.mock('../file-connected-directories.js', () => ({
   getConnectedDirectoriesForSession: connected.getConnectedDirectoriesForSession,
 }))
@@ -84,7 +77,6 @@ describe('files RPC domain', () => {
     resetVariablesStoreForTests().hydrateForTests(createDefaultVariablesFile())
     notes.roots = []
     ripgrep.listFiles.mockReset().mockReturnValue(emit([]))
-    shell.revealPath.mockReset().mockResolvedValue({ success: true })
     connected.getConnectedDirectoriesForSession.mockReset().mockReturnValue([])
 
     sandboxRoot = await mkdtemp(join(tmpdir(), 'onething-files-domain-'))
@@ -133,7 +125,7 @@ describe('files RPC domain', () => {
       ['createDirectory', { path: outside }, 'Directory path must stay inside the workspace sandbox root.'],
       ['rename', { oldPath: outside, newPath: outside }, 'Rename paths must stay inside the workspace sandbox root.'],
       ['delete', { path: outside }, 'Path must stay inside the workspace sandbox root.'],
-      ['reveal', { path: outside }, 'Path must stay inside the workspace sandbox root.'],
+      ['revealTarget', { path: outside }, 'Path must stay inside the workspace sandbox root.'],
       ['watchStart', { root: outside }, 'Workspace watch root must stay inside the workspace sandbox root.'],
       ['watchStop', { root: outside }, 'Workspace watch root must stay inside the workspace sandbox root.'],
       ['rollback', { filePath: outside }, 'Rollback file path must stay inside the workspace sandbox root.'],
@@ -275,20 +267,16 @@ describe('files RPC domain', () => {
     expect(unwrap(await call('watchStop', { root: '/anywhere' }, IPC))).toEqual({ success: true })
   })
 
-  // ── reveal:宿主端口 ────────────────────────────────────────────
+  // ── revealTarget:只答路径(第④步批 1)────────────────────────────
 
-  it('degrades reveal structurally when no shell host is injected', async () => {
+  it('answers the reveal target instead of revealing it; a missing path is a failure', async () => {
     declareDesktopHost()
     const target = join(sandboxRoot, 'shown.txt')
     await writeFile(target, 'x', 'utf-8')
-    shell.revealPath.mockResolvedValue({ success: false, error: 'shell host not available' })
 
-    expect(unwrap(await call('reveal', { path: target }, IPC)))
-      .toEqual({ success: false, error: 'shell host not available' })
-
-    shell.revealPath.mockResolvedValue({ success: true })
-    expect(unwrap(await call('reveal', { path: target }, IPC))).toEqual({ success: true })
-    expect(shell.revealPath).toHaveBeenLastCalledWith(target)
+    expect(unwrap(await call('revealTarget', { path: target }, IPC))).toEqual({ success: true, path: target })
+    expect(unwrap(await call('revealTarget', { path: join(sandboxRoot, 'missing.txt') }, IPC)))
+      .toMatchObject({ success: false })
   })
 
   // ── list:两侧的搜索根 ──────────────────────────────────────────

@@ -34,7 +34,7 @@
  * 文件让位,不靠互斥量。
  * ──────────────────────────────────────────────────────────────────────
  */
-import { app, BrowserWindow, ipcMain, webContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, webContents } from 'electron'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { connect } from 'node:net'
@@ -55,7 +55,11 @@ import { registerACPPermissionBridge } from '@onething/backend/acp'
 import { getLogger } from '@onething/backend/logging'
 import { installAppMenu } from './app-menu-install.js'
 import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'
-import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
+import { applyShellNetworkProxySettings, createShellHostPorts, installProxySettingsWatcher } from './host-ports.js'
+import { CLIENT_ACTION_CHANNEL } from '@shared/contracts/client-action'
+import { terminalRouter } from '@shared/ipc/terminal'
+import { runClientAction } from './client-action.js'
+import { createCoreClientGetter } from './core-client.js'
 import { createDesktopShutdownRequest } from './shutdown.js'
 // 「连接」是开窗之前就存在的承诺(整段判词在那只文件的文件头)。
 import { HostConnectionGate, type HostConnectionResult } from './host-connection.js'
@@ -367,6 +371,12 @@ function startPostWindowServices(): void {
      * agent 配置里的 `permissionMode`(默认 `allow`,不问就放)。
      */
     b.own(registerACPPermissionBridge(), 'acpPermissionBridge')
+
+    /*
+     * 改设置之后重套代理(第④步批 1,决策 D282):从前后端的保存链经宿主端口回调过来,现在 Electron
+     * 自己听 `settings:changed`(判词在 `./host-ports.ts` 的 `installProxySettingsWatcher` 上)。
+     */
+    b.own(installProxySettingsWatcher(), 'proxySettingsWatcher')
     void b.acp.start().catch((error: unknown) => {
       log.error('subsystem startup failed', { subsystem: 'acp', blocking: false }, error)
     })
@@ -660,7 +670,7 @@ function createWindow(): BrowserWindow {
    * 非首次)与整段病历在 `electron/terminal-reload.ts` 上;**关窗那条不接** ——
    * 那条路上 `backend.dispose()` 会真的把 PTY 杀掉。
    */
-  installTerminalReloadDetach(window.webContents)
+  installTerminalReloadDetach(window.webContents, detachTerminalsOverRpc)
 
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
   if (devServerUrl) void loadDevServer(window, devServerUrl)
@@ -683,6 +693,45 @@ function createWindow(): BrowserWindow {
  * `__tests__/host-connection.test.ts`(那句假话一回来就红)。
  */
 ipcMain.handle('host:connection', (): Promise<HostConnectionResult> => connection.promise)
+
+/*
+ * 渲染层的第三条口:**只在用户屏幕上发生的事**(第④步批 1,决策 D5 / D278;契约
+ * `@shared/contracts/client-action`)。开原生对话框、把网址交给系统浏览器、用默认程序打开路径、
+ * 在访达里定位 —— 从前经后端的 `dialog` / `shell` 两个 RPC 域绕一圈,后端要搬出这个进程,所以
+ * 改成渲染层直接交给这里。它与 `host:connection` 同性质,不是数据通道;载荷来自渲染进程,逐格校验
+ * 在 `./client-action.ts`(不信发件人)。对话框挂在发起的那扇窗上(`event.sender`)。
+ */
+ipcMain.handle(CLIENT_ACTION_CHANNEL, (event, action: unknown) => runClientAction(action, {
+  async showOpenDialog(request) {
+    const options = {
+      properties: request.properties ?? ['openFile' as const],
+      ...(request.title !== undefined ? { title: request.title } : {}),
+      ...(request.defaultPath !== undefined ? { defaultPath: request.defaultPath } : {}),
+      ...(request.filters !== undefined ? { filters: request.filters } : {}),
+    }
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
+    return { canceled: result.canceled, filePaths: result.filePaths }
+  },
+  openExternal: url => shell.openExternal(url),
+  openPath: filePath => shell.openPath(filePath),
+  revealPath: filePath => shell.showItemInFolder(filePath),
+}))
+
+/**
+ * 主进程自己那台客户端(决策 D284):与渲染层同一份 `{ baseUrl, token }`、同一条 `POST /api/rpc`。
+ * 今天只有页面重载那一句要它(下面)。
+ */
+const coreClient = createCoreClientGetter(connection.promise)
+
+/** 页面整个重载了:让每格终端勾销欠着的流控账。发出去不等回执(判词在 `./terminal-reload.ts`)。 */
+function detachTerminalsOverRpc(): void {
+  void coreClient()
+    .then(client => client?.api(terminalRouter).detachAll({}))
+    .catch((error: unknown) => {
+      getLogger('shell.terminal-reload').warn('terminal.detachAll failed', undefined, error)
+    })
+}
 
 void app.whenReady().then(async () => {
   // 离屏档连 Dock 图标都不冒(macOS 上 `app.dock` 才有;别的平台是 undefined)。

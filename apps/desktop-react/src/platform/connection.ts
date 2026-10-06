@@ -47,6 +47,8 @@
 import { createHttpTransport, createOnethingClient } from '@onething/backend-client'
 import type { EventHubStatus, OnethingClient } from '@onething/backend-client'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
+import { SHELL_ID_HEADER } from '@shared/ipc/rpc'
+import { clientShellId } from './shell-identity'
 import { sessionsRouter } from '@shared/ipc/sessions'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -80,6 +82,7 @@ if (typeof window !== 'undefined') window.__d0 = probe
 
 let client: OnethingClient | undefined
 let pending: Promise<D0Probe> | undefined
+
 
 /**
  * 状态订阅者住在这里、不直接挂到枢纽上,因为**客户端是连通之后才造出来的**:
@@ -134,7 +137,11 @@ async function connect(): Promise<D0Probe> {
   // 与从前 `configureWebTransport` 没被调到时的形逐字相同:各端口照旧拿得到
   // 一个客户端,只是它打出去的请求会失败。没有客户端会让它们卡在 await 上。
   client = createOnethingClient({
-    transport: createHttpTransport({ baseUrl, ...(token ? { token } : {}) }),
+    transport: createHttpTransport({
+      baseUrl,
+      ...(token ? { token } : {}),
+      headers: { [SHELL_ID_HEADER]: clientShellId() },
+    }),
   })
   const hub = client.events
   probe.status = hub.status()

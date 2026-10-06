@@ -10,8 +10,8 @@
  *  - 凭证写回目标(批 B6 的 spaceId / entryId / label)真的传到 authService 了
  *    —— 从前 web 壳把它收下即丢;
  *  - **后端从不开浏览器**(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1):
- *    `start` 只交回 `authUrl` / `verificationUri`,壳拿到后自己开 —— 宿主有外壳也不开
- *    (React 壳注入 `shell` 之后,后端再开一次就是两扇窗);
+ *    `start` 只交回 `authUrl` / `verificationUri`,壳拿到后自己开(第④步批 1 起后端里干脆没有
+ *    「替人开浏览器」那一格宿主端口了);
  *  - `cancel` 把 flowId 交给 authService,答它说的「真取消了没有」;
  *  - `refresh` 失败时把「令牌过期」经**事件源**通知出去(而不是像从前桌面那样
  *    直接调 Electron 广播),于是桌面窗口与 web 的 SSE 收到的是同一次事件。
@@ -27,10 +27,6 @@ const authService = vi.hoisted(() => ({
   getStatus: vi.fn(),
   deleteToken: vi.fn(),
   cancel: vi.fn(),
-}))
-
-const shell = vi.hoisted(() => ({
-  openExternal: vi.fn(),
 }))
 
 const events = vi.hoisted(() => ({
@@ -60,12 +56,6 @@ vi.mock('@onething/backend/logging', async importOriginal => ({
 
 vi.mock('@onething/backend/auth/auth-process-service', () => ({ getAuthService: () => authService }))
 vi.mock('@onething/backend/auth/auth-oauth-events', () => events)
-let shellHostPresent = true
-
-vi.mock('@onething/backend/shell/shell-host-ports', () => ({
-  getShellHost: () => shell,
-  hasShellHost: () => shellHostPresent,
-}))
 
 const HTTP_CONTEXT = {
   transport: 'http' as const,
@@ -99,8 +89,6 @@ describe('oauth RPC domain', () => {
     })
     authService.deleteToken.mockReset().mockResolvedValue({ success: true })
     authService.cancel.mockReset().mockReturnValue(true)
-    shellHostPresent = true
-    shell.openExternal.mockReset().mockResolvedValue({ success: true })
     events.notifyOAuthTokenExpired.mockReset()
     for (const fn of Object.values(oauthLog)) fn.mockReset()
 
@@ -132,21 +120,17 @@ describe('oauth RPC domain', () => {
     }
   })
 
-  it('start never opens the browser — shell or not, either transport: authUrl goes back to the caller (批 1)', async () => {
+  it('start never opens the browser — either transport: authUrl goes back to the caller (批 1)', async () => {
     const { dispatchRpc } = await loadDomain()
 
-    for (const present of [true, false]) {
-      shellHostPresent = present
-      for (const context of [undefined, HTTP_CONTEXT]) {
-        const answer = await dispatchRpc(
-          { domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } },
-          context,
-        )
-        await Promise.resolve()
-        expect(answer).toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
-      }
+    for (const context of [undefined, HTTP_CONTEXT]) {
+      const answer = await dispatchRpc(
+        { domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } },
+        context,
+      )
+      await Promise.resolve()
+      expect(answer).toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
     }
-    expect(shell.openExternal).not.toHaveBeenCalled()
   })
 
   it('cancel hands the flowId to authService and reports whether a live flow was cancelled', async () => {

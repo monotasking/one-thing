@@ -137,8 +137,8 @@ export interface TerminalExitEvent {
  * terminal(真 PTY 终端)域 —— 结构债 P4 终态批 D2(用户拍板:「D2 terminal 迁 +
  * 能力位默认关」)。
  *
- * 七条请求面(`create` / `list` / `write` / `resize` / `kill` / `attach` / `ack`)
- * 整只从手写 IPC 通道搬到通用 `rpc:invoke` / `POST /api/rpc`。
+ * 七条请求面(`create` / `list` / `write` / `resize` / `kill` / `attach` / `ack`;第④步批 1 加了
+ * 第八条 `detachAll`)整只从手写 IPC 通道搬到通用 `rpc:invoke` / `POST /api/rpc`。
  *
  * ## `ack` 从单向 send 变成有应答的 invoke
  *
@@ -170,6 +170,12 @@ export type TerminalRoutes = {
 	kill: { input: TerminalKillRequest; output: TerminalSimpleResponse };
 	attach: { input: TerminalAttachRequest; output: TerminalAttachResponse };
 	ack: { input: TerminalAckPayload; output: TerminalSimpleResponse };
+	/**
+	 * 「这台客户端的页面整个重载了,它欠着的流控账一笔勾销」(第④步批 1,决策 D284)。从前 Electron
+	 * 主进程直接调后端的 `markAllTerminalsDetached()` —— 那是同一进程里的模块单例,后端搬出 Electron
+	 * 之后那一句会落在错的进程里。只给本机信任的来访者。
+	 */
+	detachAll: { input: Record<string, never>; output: TerminalSimpleResponse };
 };
 
 export const terminalRouter = defineRouter<TerminalRoutes>("terminal", [
@@ -180,4 +186,5 @@ export const terminalRouter = defineRouter<TerminalRoutes>("terminal", [
 	"kill",
 	"attach",
 	"ack",
+	"detachAll",
 ]);

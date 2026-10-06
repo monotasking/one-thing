@@ -40,14 +40,6 @@ export async function saveOnethingSettingsWithRuntimeEffectsForIpc<
   }
 }
 
-export function getOnethingSystemThemeForIpc(
-  shouldUseDarkColors: boolean,
-): OnethingSettingsIpcResult<{ theme: 'dark' | 'light' }> {
-  return {
-    success: true,
-    theme: shouldUseDarkColors ? 'dark' : 'light',
-  }
-}
 
 function settingsIpcError(
   logger: OnethingSettingsIpcLogger | undefined,

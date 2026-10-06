@@ -15,10 +15,6 @@ export type OnethingSkillsIpcResult<TPayload extends object = {}> =
   | ({ success: true } & TPayload)
   | { success: false; error: string }
 
-export interface OnethingSkillDirectoryOpener {
-  (path: string): MaybePromise<string | void | null | undefined>
-}
-
 export interface OnethingSkillListOptions {
   workingDirectory?: string
   enabledOnly?: boolean
@@ -89,28 +85,27 @@ export async function readOnethingSkillFileForIpc(
   }
 }
 
-export interface OpenOnethingSkillDirectoryForIpcOptions<TSkill extends SkillDefinition = SkillDefinition> {
+export interface ResolveOnethingSkillDirectoryForIpcOptions<TSkill extends SkillDefinition = SkillDefinition> {
   skillId?: string
   listSkills(options: OnethingSkillListOptions): MaybePromise<TSkill[]>
   getUserSkillsPath(): string
-  openPath: OnethingSkillDirectoryOpener
   logger?: OnethingSkillsIpcLogger
 }
 
-export async function openOnethingSkillDirectoryForIpc<TSkill extends SkillDefinition>(
-  options: OpenOnethingSkillDirectoryForIpcOptions<TSkill>,
-): Promise<OnethingSkillsIpcResult> {
+/**
+ * 一个技能的目录在哪(没给 id / 找不到这个技能 = 用户技能根)。第④步批 1 起后端只答路径,
+ * 打开是客户端自己的事。
+ */
+export async function resolveOnethingSkillDirectoryForIpc<TSkill extends SkillDefinition>(
+  options: ResolveOnethingSkillDirectoryForIpcOptions<TSkill>,
+): Promise<OnethingSkillsIpcResult<{ path: string }>> {
   try {
     const skill = options.skillId
       ? (await options.listSkills({ enabledOnly: false })).find(item => item.id === options.skillId)
       : undefined
-    const openResult = await options.openPath(skill?.directoryPath || options.getUserSkillsPath())
-    if (typeof openResult === 'string' && openResult.trim().length > 0) {
-      return { success: false, error: openResult }
-    }
-    return { success: true }
+    return { success: true, path: skill?.directoryPath || options.getUserSkillsPath() }
   } catch (error) {
-    return skillsIpcError(options.logger, 'opening skill directory', error, 'Failed to open skill directory')
+    return skillsIpcError(options.logger, 'resolving skill directory', error, 'Failed to resolve skill directory')
   }
 }
 

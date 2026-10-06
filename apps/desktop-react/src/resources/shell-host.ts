@@ -1,14 +1,16 @@
 import type { OnethingClient } from '@onething/backend-client'
 import type { RouteAPI } from '@shared/ipc/router'
-import type { ResourcesRoutes, ShellCommandResult } from '@shared/ipc/resources'
+import type { ResourcesRoutes, SerializedResourceSpec, ShellCommandResult } from '@shared/ipc/resources'
 import { resourcesRouter } from '@shared/ipc/resources'
 import { getLogger } from '../services/log'
+import { clientShellId } from '../platform/shell-identity'
 import { useWorkbenchStore } from '../workbench/store'
 import { flattenContent, refId } from '../workbench/kinds'
 import { leavesOf } from '../workbench/tree'
 import { regionReadRank } from '../workbench/regions'
 import { WORKBENCH_SCHEME, workbenchResourceSpec } from './workbench-spec'
 import { readWorkbench, runWorkbenchOp } from './shell-ops'
+import { DIR_SCHEME, dirShellAvailable, dirShellResourceSpec, runDirShellOp } from './dir-shell-spec'
 
 const log = getLogger('resources.shell')
 
@@ -60,14 +62,50 @@ export const SHELL_HEARTBEAT_MS = 30_000
  */
 const HANDLED_CALLS_CAP = 256
 
+/**
+ * **这扇壳认领的命名空间**(第④步批 1:从「只有 `workbench:`」长成一张表 —— 能力自述、别人读表)。
+ * 一行 = 一份自述 + 交不交(`available`)+ 落点。加一个住在壳里的能力 = 这里多一行,别处零改动。
+ *
+ *  · `workbench:` —— 整个命名空间住在壳里(拼贴台的开格 / 切换 / 搬动 + 三条读法);
+ *  · `dir:` 的 `reveal` —— 命名空间在 core,只有「在访达中显示」这一下在客户端(`dir-shell-spec.ts`);
+ *    没有 preload 的客户端(浏览器壳)不交它。
+ */
+interface ShellResourceEntry {
+  readonly scheme: string
+  spec(): SerializedResourceSpec
+  available(): boolean
+  read?(name: string, path: string, params: Record<string, unknown>): unknown
+  run(op: string, path: string, params: Record<string, unknown>, planned: unknown): Promise<string>
+}
+
+const SHELL_RESOURCES: readonly ShellResourceEntry[] = [
+  {
+    scheme: WORKBENCH_SCHEME,
+    spec: workbenchResourceSpec,
+    available: () => true,
+    read: (name, path, params) => readWorkbench(name, path, params),
+    run: (op, path, params) => runWorkbenchOp(op, path, params),
+  },
+  {
+    scheme: DIR_SCHEME,
+    spec: dirShellResourceSpec,
+    available: dirShellAvailable,
+    run: (op, _path, _params, planned) => runDirShellOp(op, planned),
+  },
+]
+
 /** 事件载荷 → 这扇壳该不该管。名字与形都对得上才算数(SSE 是广播)。 */
 interface ShellCommandFrame {
   shellId: string
   callId: string
   kind: 'op' | 'read'
+  /** 哪个命名空间。老一点的 core 不带这一格时从 `ref` 的前缀推;都没有就当 `workbench`。 */
+  scheme: string
   ref: string | null
   op: string
   params: Record<string, unknown>
+  /** core 那份 plan 的载荷(只有「实现在 core、执行在壳」的做法带它)。 */
+  planned: unknown
 }
 
 function asCommand(data: unknown): ShellCommandFrame | null {
@@ -76,13 +114,17 @@ function asCommand(data: unknown): ShellCommandFrame | null {
   if (typeof row.shellId !== 'string' || typeof row.callId !== 'string') return null
   if (row.kind !== 'op' && row.kind !== 'read') return null
   if (typeof row.op !== 'string') return null
+  const ref = typeof row.ref === 'string' ? row.ref : null
+  const fromRef = ref && ref.includes(':') ? ref.slice(0, ref.indexOf(':')) : undefined
   return {
     shellId: row.shellId,
     callId: row.callId,
     kind: row.kind,
-    ref: typeof row.ref === 'string' ? row.ref : null,
+    scheme: typeof row.scheme === 'string' && row.scheme ? row.scheme : fromRef ?? WORKBENCH_SCHEME,
+    ref,
     op: row.op,
     params: row.params && typeof row.params === 'object' ? (row.params as Record<string, unknown>) : {},
+    planned: row.planned,
   }
 }
 
@@ -126,22 +168,24 @@ function openPlaces(): Map<string, string> {
   return places
 }
 
-function newShellId(): string {
-  const uuid = globalThis.crypto?.randomUUID?.()
-  if (uuid) return uuid
-  // jsdom / 老 WebView 没有 `randomUUID`。坐标只要在这台 core 上唯一即可。
-  return `shell-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-
 export class ShellResourceHost {
-  /** 这次运行的坐标。见文件头「不跨重连复用」。 */
-  readonly shellId = newShellId()
+  /**
+   * 这次运行的坐标。见文件头「不跨重连复用」。**与传输层请求头里那一格是同一个值**(第④步批 1,
+   * `platform/shell-identity.ts`):用户在这扇壳里点出来、要请客户端执行的那一次,core 按它发回这一扇。
+   */
+  readonly shellId: string
+
+  constructor(shellId: string = clientShellId()) {
+    this.shellId = shellId
+  }
 
   /** `client.api(resourcesRouter)` —— 泛型取用,壳里没有按域的客户端文件。 */
   private resources: RouteAPI<ResourcesRoutes> | undefined
 
   private stopping = false
   private started = false
+  /** 这一程真的登记上了的命名空间(scheme → 那一行)。 */
+  private readonly mounted = new Map<string, ShellResourceEntry>()
   private readonly teardown: Array<() => void> = []
   private heartbeat: ReturnType<typeof setInterval> | undefined
   /** 已经跑过的 `callId`,插入序。见 `HANDLED_CALLS_CAP`。 */
@@ -185,10 +229,13 @@ export class ShellResourceHost {
     )
 
     // 树变了就对一次差。zustand 的 `subscribe` 每次 `set` 都叫,所以真正的活
-    // (算两张表的差)排在微任务里合批,见 `scheduleDiff`。
-    this.places = openPlaces()
-    this.own(useWorkbenchStore.subscribe(() => this.scheduleDiff()))
-    for (const [id, region] of this.places) void this.emitFact('opened', id, region)
+    // (算两张表的差)排在微任务里合批,见 `scheduleDiff`。只有 `workbench:` 登记上了才报 ——
+    // 事实的地址是那个命名空间。
+    if (this.mounted.has(WORKBENCH_SCHEME)) {
+      this.places = openPlaces()
+      this.own(useWorkbenchStore.subscribe(() => this.scheduleDiff()))
+      for (const [id, region] of this.places) void this.emitFact('opened', id, region)
+    }
 
     // 关窗:**尽力**说一声再见。这一条不保证送达(卸载期的请求可能来不及发出去),
     // 保证由后端那条心跳兜底(90s 没续命即注销)—— 所以这里不做重试,也不 await。
@@ -231,27 +278,29 @@ export class ShellResourceHost {
   }
 
   /**
-   * 交一次自述。**幂等续命走的是同一句**(后端按自述的字面判「变没变」,没变就
-   * 只盖一个时刻)—— 所以这里不必分「第一次」与「续命」两条路。
+   * 交一遍自述(表里每一行交得出的那几份)。**幂等续命走的是同一句**(后端按自述的字面判「变没变」,
+   * 没变就只盖一个时刻)—— 所以这里不必分「第一次」与「续命」两条路。至少登记上一份就答 `true`。
    *
-   * 登记被拒(`scheme-taken`:另一扇壳先到,或者 core 自己就有一份同名自述)
-   * **不重试**:那不是一次网络抖动,重试一百次答案还是同一个。记一条 warn,
-   * 这扇壳这一程就没有 `workbench` 这个命名空间 —— 别的一切照常。
+   * 某一份被拒(`scheme-taken`:另一扇壳交了不一样的自述,或者 core 自己那份不许这样认领)
+   * **不重试**:那不是一次网络抖动,重试一百次答案还是同一个。记一条 warn,这扇壳这一程就没有
+   * 那个命名空间 —— 别的一切照常。
    */
   private async mount(): Promise<boolean> {
     if (this.stopping || !this.resources) return false
-    try {
-      const answer = await this.resources.mountShell({
-        shellId: this.shellId,
-        spec: workbenchResourceSpec(),
-      })
-      if (answer.ok) return true
-      log.warn('shell resources were refused', answer.reason)
-      return false
-    } catch (error) {
-      log.warn('mounting shell resources failed', error instanceof Error ? error.message : String(error))
-      return false
+    for (const entry of SHELL_RESOURCES) {
+      if (!entry.available()) continue
+      try {
+        const answer = await this.resources.mountShell({ shellId: this.shellId, spec: entry.spec() })
+        if (answer.ok) this.mounted.set(entry.scheme, entry)
+        else {
+          this.mounted.delete(entry.scheme)
+          log.warn('shell resources were refused', entry.scheme, answer.reason)
+        }
+      } catch (error) {
+        log.warn('mounting shell resources failed', entry.scheme, error instanceof Error ? error.message : String(error))
+      }
     }
+    return this.mounted.size > 0
   }
 
   /**
@@ -276,12 +325,15 @@ export class ShellResourceHost {
     let result: ShellCommandResult
     try {
       const path = pathOf(command.ref)
+      const entry = this.mounted.get(command.scheme)
+      if (!entry) throw new Error(`this client does not run ${command.scheme}:`)
       if (command.kind === 'read') {
+        if (!entry.read) throw new Error(`${command.scheme}: has no reads in this client`)
         // 读法的答案 `JSON.stringify` 进那一格文本 —— 回执契约只有一格文本,
         // 后端那边 `parseShellPayload` 解回来。
-        result = { kind: 'ok', text: JSON.stringify(readWorkbench(command.op, path, command.params)) }
+        result = { kind: 'ok', text: JSON.stringify(entry.read(command.op, path, command.params)) }
       } else {
-        result = { kind: 'ok', text: await runWorkbenchOp(command.op, path, command.params) }
+        result = { kind: 'ok', text: await entry.run(command.op, path, command.params, command.planned) }
       }
     } catch (error) {
       // **只有两支**:授权、取消、参数校验都在 core 里发生完了(§5),壳能说的

@@ -217,9 +217,9 @@ export function NotificationsPanel() {
       </div>
 
       {/*
-       * 完整日志的门。**今天它是禁用的,这是诚实缺口不是占位装饰**:
-       * 壳里还没有「打开一个本地路径」这件能力(platform 面上没有 openPath,
-       * 主进程侧那条 configureShellHost 也还没接到新壳这一侧)。
+       * 完整日志的门。**今天它是禁用的,这是诚实缺口不是占位装饰**。第④步批 1 起
+       * 「打开一个本地路径」这件能力已经在(`platform/host.ts` 的 `openLocalPath`),缺的是
+       * 「日志在哪」那一句(后端还没有答日志目录的读法)—— 那是另一单,没顺手接。
        * 接上之后换掉的就是这一个节点 —— 面板结构、分组、详情一格不动。
        */}
       <div className={s.foot}>

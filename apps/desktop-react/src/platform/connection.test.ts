@@ -58,7 +58,12 @@ describe('D0 connection', () => {
     const probe = await whenConnected()
 
     // token 交给**传输**(它进 Authorization 头),壳这一层不拼 URL、不带 query。
-    expect(hoisted.httpOptions).toEqual([{ baseUrl: 'http://127.0.0.1:9', token: 'tok' }])
+    // 第④步批 1(D277):每一条请求都带这一程的壳坐标,后端据它把「请客户端执行」发回这一扇。
+    expect(hoisted.httpOptions).toEqual([{
+      baseUrl: 'http://127.0.0.1:9',
+      token: 'tok',
+      headers: { 'x-onething-shell-id': expect.any(String) },
+    }])
     expect(probe.hosted).toBe(true)
     expect(probe.rpcOk).toBe(true)
     expect(probe.baseUrl).toBe('http://127.0.0.1:9')
@@ -75,7 +80,10 @@ describe('D0 connection', () => {
 
     // 宿主缺席 = 浏览器壳(`web:dev:react`)。基址取**本页 origin**,token 一个字不给
     // —— 补 Bearer 的是 dev 代理,壳不知道 token(见 vite/dev-api-proxy.ts)。
-    expect(hoisted.httpOptions).toEqual([{ baseUrl: window.location.origin }])
+    expect(hoisted.httpOptions).toEqual([{
+      baseUrl: window.location.origin,
+      headers: { 'x-onething-shell-id': expect.any(String) },
+    }])
     expect(probe.hosted).toBe(false)
     expect(probe.rpcOk).toBe(true)
   })

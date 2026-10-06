@@ -13,8 +13,6 @@
     { "feature": "network", "layer": "L0", "why": "代理设置的校验与绕行规则,以及按代理选通道、带超时重试中止的受管 fetch。" },
     { "feature": "lifecycle", "layer": "L0", "why": "关机流程里反复要用的入场闸这类小状态机。" },
     { "feature": "reference", "layer": "L0", "why": "消息里「引用」的类型登记表(文件、链接等各种引用怎么认、怎么写进提示词)。" },
-    { "feature": "shell", "layer": "L0", "why": "打开路径、打开外链、在文件管理器里定位:能力由宿主注入,这里只有注入口。" },
-    { "feature": "dialog", "layer": "L0", "why": "原生「选目录 / 选文件」对话框的宿主注入口。" },
     { "feature": "context", "layer": "L0", "why": "按条数与长度裁剪对话消息列表的上下文管理器。" },
     { "feature": "memory", "layer": "L0", "why": "进程内存的登记表、探针与按预算释放缓存的调度器。" },
     { "feature": "http", "layer": "L0", "why": "发 HTTP 请求时共用的小工具:检查应答、逐条读 SSE 事件。" },

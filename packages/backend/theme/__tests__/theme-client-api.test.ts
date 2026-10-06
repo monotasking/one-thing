@@ -9,8 +9,7 @@
  *  - `apply` 现在在**域处理者**里拼插件主题覆盖:token 覆盖与皮肤档位是
  *    `applyTheme` 的**参数**(必须前移,派生层从它算),表面旋钮是**叠加**在
  *    成品 cssVariables 上;失败响应原样返回,不叠旋钮;
- *  - `openFolder` 走 `configureShellHost` 端口 —— 未注入宿主时拿到结构化失败
- *    (Electron 打开原语的约定:空串才算成功,非空串 = 失败原因)。
+ *  - `folderPath`(从前的 `openFolder`)第④步批 1 起只答路径,打开是客户端自己的事。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { themesRouter } from '@shared/ipc/themes.js'
@@ -20,11 +19,7 @@ const themeRuntime = vi.hoisted(() => ({
   getTheme: vi.fn(),
   applyTheme: vi.fn(),
   refreshThemes: vi.fn(),
-  openThemesFolder: vi.fn(),
-}))
-
-const shell = vi.hoisted(() => ({
-  openPath: vi.fn(),
+  themesFolderPath: vi.fn(),
 }))
 
 const plugins = vi.hoisted(() => ({
@@ -35,10 +30,6 @@ const plugins = vi.hoisted(() => ({
 
 vi.mock('@onething/backend/theme/theme-runtime', () => ({
   defaultOnethingThemeRuntime: themeRuntime,
-}))
-
-vi.mock('@onething/backend/shell/shell-host-ports', () => ({
-  getShellHost: () => shell,
 }))
 
 vi.mock('@onething/backend/plugin/plugin-theme-override-table', () => ({
@@ -64,14 +55,7 @@ describe('themes RPC domain', () => {
     themeRuntime.getTheme.mockReset().mockResolvedValue({ success: true, theme: { id: 'flexoki' } })
     themeRuntime.applyTheme.mockReset().mockResolvedValue({ success: true, cssVariables: { '--bg': '#fff' } })
     themeRuntime.refreshThemes.mockReset().mockResolvedValue({ success: true, themes: [] })
-    // 真投影会把「非空串」折成失败;这里直接用真行为的两种结果做替身。
-    themeRuntime.openThemesFolder.mockReset().mockImplementation(async (open: (p: string) => Promise<string>) => {
-      const result = await open('/store/themes')
-      return typeof result === 'string' && result.trim().length > 0
-        ? { success: false, error: result }
-        : { success: true }
-    })
-    shell.openPath.mockReset().mockResolvedValue('')
+    themeRuntime.themesFolderPath.mockReset().mockReturnValue({ success: true, path: '/store/themes' })
     plugins.getPluginThemeOverrideTokenValues.mockReset().mockReturnValue({})
     plugins.getPluginThemeKnobVariables.mockReset().mockReturnValue({})
     plugins.getPluginSkinTiers.mockReset().mockReturnValue({})
@@ -89,7 +73,7 @@ describe('themes RPC domain', () => {
   it('binds the five methods and nothing else — the domain has no push face', async () => {
     const { dispatchRpc } = await loadDomain()
 
-    for (const method of ['getAll', 'get', 'apply', 'refresh', 'openFolder']) {
+    for (const method of ['getAll', 'get', 'apply', 'refresh', 'folderPath']) {
       const response = await dispatchRpc({
         domain: 'themes',
         method,
@@ -151,17 +135,10 @@ describe('themes RPC domain', () => {
     })).resolves.toEqual({ ok: true, data: { success: false, error: 'Theme not found: nope' } })
   })
 
-  it('openFolder goes through the shell host port and degrades structurally when it is not wired', async () => {
+  it('folderPath answers the themes folder instead of opening it (第④步批 1)', async () => {
     const { dispatchRpc } = await loadDomain()
-
-    await expect(dispatchRpc({ domain: 'themes', method: 'openFolder', payload: {} }))
-      .resolves.toEqual({ ok: true, data: { success: true } })
-    expect(shell.openPath).toHaveBeenCalledWith('/store/themes')
-
-    // 未注入宿主 = 门面回那句统一原因串,投影据此折成失败结果。
-    shell.openPath.mockResolvedValue('shell host not available')
-    await expect(dispatchRpc({ domain: 'themes', method: 'openFolder', payload: {} }))
-      .resolves.toEqual({ ok: true, data: { success: false, error: 'shell host not available' } })
+    await expect(dispatchRpc({ domain: 'themes', method: 'folderPath', payload: {} }))
+      .resolves.toEqual({ ok: true, data: { success: true, path: '/store/themes' } })
   })
 
   it('refresh forwards the optional project path', async () => {

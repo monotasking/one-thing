@@ -334,6 +334,18 @@ Electron 目录里 import `@onething/backend` 的文件有 15 只(`main.ts` 10 �
     或被「另一个活后端」挡下、一直没再起桌面)要改成:Electron 在拉起后端**之前**读出 `encryption: 'safeStorage'` 的文件、用
     `safeStorage` 解开,后端就绪后经一条只给本机信任来访者的 RPC 交进去,后端用主密钥封好、逐条校验、旧文件改名 `.safestorage-backup`
     (与批 0 同一套判据)。到那时 `legacySafeStorageForMigration` 一格删掉,三处宿主表同步。
+13. **(批 1 挪过来的)内置浏览器的用户数据面**(D4,用户 10-06 已拍 (A)「Electron 主进程当 shell 客户端」)。批 1 落在拆进程之前,
+    `browser:` 今天照旧由 Electron 主进程进程内 `backend.resources.mount(provider)`(`electron/browser/index.ts`)、照常工作,所以批 1 没动它。
+    拆进程那一天改成:`browser:` 的做法改 `home: 'shell'`,Electron 主进程用 `@onething/backend-client` 订 `GET /api/events`、
+    `resources.mountShell` 认领 `browser:`(壳侧那套登记 / 续命 / 回执 / 报事实的体例照 `apps/desktop-react/src/resources/shell-host.ts`,
+    批 1 已把它做成一张「能力自述」表,主进程那一份照抄一只);渲染层**一行不改**(仍走 `resources` RPC)。`installBrowserHost` 里
+    `backend.memory.registry.registerHolder` 那一处进程内调用同批改走 RPC 或搬进后端。主进程当客户端的那条线批 1 已经有了
+    (`electron/core-client.ts`,`terminal.detachAll` 走它)。
+14. **(批 1 留账)内存探针**:`main.ts` 的 `registerProbe(createShellMemoryProbe(...))` 是进程内调用,拆进程后要改成 `memory` 域一条
+    `reportProcesses` 上报(只给本机信任的来访者),或先不做(`memory:report` 少几行渲染 / GPU 进程)。推荐仍是先不做、留账。
+15. **(批 1 顺带)几处 Electron 进程内订后端事件的地方拆后要换订阅源**:`electron/host-ports.ts` 的 `installProxySettingsWatcher`
+    (改设置后重套代理)、`electron/browser/cdp-settings.ts`、`electron/browser/profiles.ts` 三处都串在进程内那只 `settings:changed`
+    单槽广播器上;拆后改订 `GET /api/events` 上同名的全局事件(经 `core-client.ts` 那台客户端),处理函数不变。
 
 **行为变化**
 
@@ -533,3 +545,53 @@ provider 全在、钥匙串里多出 `onething-credentials` 那一条;macOS `sec
 (Electron 取证门)的断言 ② 还在等 `encryption === 'safeStorage'`,批 0 之后它该等 `'master-key'` 与 `.safestorage-backup`,
 没改也没跑(它拷生产 store 的文件,按约定不碰)。
 
+## 8. 批 1 实施结果(2026-10-06)
+
+> 批 1 也落在拆进程**之前**:后端今天还在 Electron 主进程里。所以 §2.2 第 6 条(内置浏览器的用户数据面,D4)与第 8 条(内存探针)
+> 挪进 §2.3 批 2(第 13、14 条);其余第 1–5、7 条照做。逐条决策见 `docs/design/backend-structure-decisions-2026-10.md` D273–D288。
+
+**一句话**:后端里不再有「只在用户屏幕上发生」的事。原生对话框、打开外链、打开路径、在访达中显示由客户端自己做(桌面经 preload 的
+`host:client-action`,浏览器壳没有那条口、按钮不画或答一句「这台客户端做不了」);后端要请客户端做一件事(AI 的「在访达中显示」)走
+`home: 'shell'` 的资源做法,发给哪一扇按 D8。
+
+**后端不再做、谁来做**
+
+| 件 | 改前(谁做) | 改后(谁做) |
+| --- | --- | --- |
+| 原生打开对话框 | 渲染层 → `dialog.showOpen` RPC → 后端 → 宿主端口 `dialog` → Electron | 渲染层 → preload `host:client-action`(`showOpenDialog`)→ 主进程 `dialog.showOpenDialog`(挂发起那扇窗);浏览器壳答 `unavailable`,退到路径输入框 |
+| 打开外链(聊天里的链接、登录卡) | 渲染层 → `shell.openExternal` RPC → 后端 → 宿主端口 `shell` → Electron | 渲染层 → preload(`openExternal`,主进程只放行 http(s)/mailto);浏览器壳 `window.open` |
+| 文件面「在访达中显示」 | 渲染层 → `files.reveal` → 后端经宿主端口定位 | 渲染层 → `files.revealTarget`(后端只夹沙箱、查在不在、答路径)→ preload(`revealPath`);浏览器壳一条 warn「这台客户端打不开本机的文件和文件夹。」,不发请求 |
+| 技能目录「在 Finder 里打开」(回落路) | `skills.openDirectory` → 后端经宿主端口打开 | `skills.directoryPath`(答路径)→ preload(`openPath`);浏览器壳答「打不开」 |
+| 主题文件夹 | `themes.openFolder` → 后端经宿主端口打开 | `themes.folderPath`(答路径);渲染层今天零消费者 |
+| AI / 待办菜单 / 下载行的「在访达中显示」(`dir:` 的 `reveal`) | `home: 'core'`,后端经宿主端口 `shell.showItemInFolder` | `home: 'shell'`:core 照旧 plan(夹读根、查在不在、授权、审计),命令带着夹过的路径经 SSE 发给认领了这条做法的客户端(桌面的渲染层 → preload → 主进程);没有客户端在线 → 当场 `ResourceHomeUnavailableError` |
+| ACP agent 要人去开链接(`createUrl`) | 有外壳就替人开,卡上写「已在浏览器里打开」 | 不替人开;题上带 `link`,卡上「打开链接」+ 域名,人点了客户端自己开 |
+| 跟随系统深浅色 | `settings.getSystemTheme` 读宿主端口(React 壳早已不用) | 退役;客户端自己读 `prefers-color-scheme` |
+| 改设置后重套代理(Electron session + 浏览器分区) | 后端保存链回调宿主端口 `settings.applyNetworkProxySettings` | Electron 自己听 `settings:changed` 重套(今天订进程内广播器,批 2 改订 SSE) |
+| 页面重载时终端流控勾账 | 主进程直调后端模块函数 `markAllTerminalsDetached()` | 主进程经 `@onething/backend-client` 打 `terminal.detachAll`(本机信任才给) |
+| `capabilities.shellTools` | 后端答「宿主有没有外壳」 | 退役;客户端自己知道(`platform/host.ts` 的 `canRunClientActions()`) |
+
+**D8 的改法**(决策 D276 / D277):摸到的现状与 §1.5 写的不一致 —— 不是「后登记者顶掉先登记者」,而是第二扇壳交同一个 scheme 直接
+`scheme-taken`,今天没有多客户端共存。改成:一个 scheme 多个认领者(交同一份自述的都算;不同的自述照旧拒);发起者坐标优先(客户端
+每条请求带 `X-Onething-Shell-Id`,HTTP 边界铸进 `callerId`);没有坐标(AI)发给最近有活动的那一扇(登记、报事实、亲手发起资源调用
+算活动,心跳不算)。core 自己的命名空间里 `home: 'shell'` 的做法也能被认领(D275),内核里那份自述不动。
+
+**删掉的**:`packages/backend/dialog/`、`packages/backend/shell/`(连同测试)、`packages/backend/settings/settings-host-ports.ts`、
+`packages/shared/ipc/dialog.ts` / `shell.ts`;`OnethingHostPorts` 的 `shell` / `dialog` / `settings` 三格(19 → 16 格);RPC 名册两行
+(`dialog` / `shell`,client-api 文件 72 → 70,下限 40 仍满足);package.json exports 三把键;层次表两行;`markAllTerminalsDetached`
+不再从 `terminal` 入口交出。
+
+**新增的**:`@shared/contracts/client-action.ts`(契约)、`electron/client-action.ts`(主进程逐格校验)、`electron/core-client.ts`
+(主进程当客户端)、`src/platform/host.ts` 第二格(`canRunClientActions` / `openLocalPath` / `revealLocalPath` / `showNativeOpenDialog` /
+`openExternalViaHost`)、`src/platform/shell-identity.ts`(这一程的壳坐标)、`src/resources/dir-shell-spec.ts`(`dir:` 的 reveal 落点),
+`resources/shell-host.ts` 从「只有 workbench」改成一张能力表;`boundary:gate` 新断言「后端非测试源码零出现 `dialog.showOpenDialog` /
+`shell.openExternal` / `shell.openPath` / `shell.showItemInFolder`」(剥注释后判,反证跑过:写一行代码即红、写在注释里不红);
+`transport:gate` 的 `ipcMain` 基线 2 → 3(理由在基线文件头);`gate:acp` 加 ⑮b(url 型提问:题上带 link、题面不说「已在浏览器里打开」、
+答「已完成」→ agent 收到 accept);`gate:resources` 加第 ⑤ 步(`dir:reveal` 走 shell dispatch,主进程定位换成记账替身);
+批 0 文案补齐(D287)。
+
+**验收**:见本批汇报(三套 tsc、全部结构门、`gate:acp` / `gate:credentials` / `gate:web-shell` / `gate:client`、`import-side-effect-free` +
+`assembly-lifecycle`、壳单测与 `ui:consume`、全量 vitest 失败集合与改前对照)。
+
+**没验证到的(用户择时)**:要开 Electron 窗口的门本批一律没跑 —— `gate:resources`(新加的第 ⑤ 步在里面)、`gate:a11y`(卡片上那颗
+「打开链接」该扫一屏)、`gate:files` / `gate:browser` / `gate:todo`(各自有「在访达中显示」或对话框的路);桌面真机上点一次「在访达中
+显示」、选一次目录、在设置页改一次代理看浏览器分区跟上,本批都没点过。

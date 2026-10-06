@@ -31,7 +31,7 @@
  *      这一条红)—— 用户接入一个目录是让助手看见它,不是把它交出去随便改。
  */
 
-import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest'
+import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -40,12 +40,10 @@ import { ResourceEventHub } from '@onething/backend/resource/resource-api'
 import type { ResourceEvent, ResourceReadContext } from '@onething/backend/resource/resource-api'
 import { isCorePathContained, resolveCoreToolPath } from '@onething/backend/tool/tool-sandbox'
 import { classifySensitiveFile } from '@onething/backend/tool'
-import { configureShellHost, resetShellHost } from '@onething/backend/shell'
 import {
   DirOperationFailedError,
   DirOutsideSandboxError,
   DirResourceProvider,
-  DirShellUnavailableError,
 } from '../resource-dir-provider.js'
 import { createLocalOnlyReadGuard } from '../resource-read-guard.js'
 
@@ -64,10 +62,6 @@ beforeAll(() => {
 
 afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
-})
-
-afterEach(() => {
-  resetShellHost()
 })
 
 /**
@@ -159,26 +153,25 @@ describe('dir provider(K3-c)', () => {
       .rejects.toMatchObject({ name: 'DirOutsideSandboxError', reason: 'no-sandbox' })
   })
 
-  it('⑥ reveal:没有外壳宿主时 plan 期就降级,有宿主时 apply 真的调它', async () => {
+  it('⑥ reveal:core 只 plan(夹读根、查路径在不在),执行在客户端 —— apply 在这一侧走不到', async () => {
     const target = path.join(root, 'project')
     const ref = { scheme: 'dir', path: target }
 
-    await expect(provider.plan('reveal', ref, {}, planContext(sandboxAt(root))))
-      .rejects.toThrowError(DirShellUnavailableError)
-
-    const revealed: string[] = []
-    configureShellHost({ revealPath: targetPath => { revealed.push(targetPath) } })
+    // 自述里这条做法住在客户端(第④步批 1):`ResourceTool` 把 plan 的载荷随命令发给认领它的那台客户端。
+    expect(provider.spec.ops.reveal?.home).toBe('shell')
 
     const intent = await provider.plan('reveal', ref, {}, planContext(sandboxAt(root)))
     // 效果表里一格都没有:定位不改这台机器上的任何东西。
     expect(intent.effects).toEqual([])
     expect(intent.payload).toEqual({ op: 'reveal', path: target })
 
-    const result = await provider.apply('reveal', intent, {} as RunContext)
-    expect(revealed).toEqual([target])
-    expect(result.content[0]).toMatchObject({ type: 'text' })
+    await expect(provider.apply('reveal', intent, {} as RunContext)).rejects.toThrowError(TypeError)
 
-    // 越界的 reveal 仍然是越界文案,不是「这台宿主没有外壳能力」(先夹后降级)。
+    // 路径不在就是失败,不是一次静默的无操作。
+    await expect(provider.plan('reveal', { scheme: 'dir', path: path.join(root, 'project', 'missing') }, {}, planContext(sandboxAt(root))))
+      .rejects.toThrowError(DirOperationFailedError)
+
+    // 越界的 reveal 仍然是越界文案(先夹)。
     await expect(provider.plan('reveal', ref, {}, planContext(sandboxAt(path.join(root, 'project', 'src')))))
       .rejects.toThrowError(DirOutsideSandboxError)
   })
@@ -196,7 +189,6 @@ describe('dir provider(K3-c)', () => {
     expect((value as { entries: DirEntryView[] }).entries.map(entry => entry.name)).toEqual(['notes.md'])
 
     // 定位同一把尺子:列得出的目录在访达里指得出来。
-    configureShellHost({ revealPath: () => {} })
     const intent = await provider.plan('reveal', { scheme: 'dir', path: connected }, {}, planContext(sandbox))
     expect(intent.payload).toEqual({ op: 'reveal', path: connected })
   })

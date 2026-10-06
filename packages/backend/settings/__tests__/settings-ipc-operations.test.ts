@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   getOnethingSettingsForIpc,
-  getOnethingSystemThemeForIpc,
   saveOnethingSettingsWithRuntimeEffectsForIpc,
 } from '../settings-ipc-operations.js'
 import { preserveOnethingRegistryOwnedProviderFields } from '../settings-save.js'
@@ -53,8 +52,6 @@ describe('settings IPC operations', () => {
       saveSettings,
       getSettings: () => normalizedSettings,
       invalidateProviderCache: vi.fn(),
-      applyNetworkProxySettings: vi.fn(),
-      registerGlobalWindowShortcuts: vi.fn(),
       updateMCPSettings: vi.fn(),
       registerMCPTools: vi.fn(),
       updateACPSettings: vi.fn(),
@@ -77,8 +74,6 @@ describe('settings IPC operations', () => {
       },
       getSettings: () => ({}),
       invalidateProviderCache: vi.fn(),
-      applyNetworkProxySettings: vi.fn(),
-      registerGlobalWindowShortcuts: vi.fn(),
       updateMCPSettings: vi.fn(),
       registerMCPTools: vi.fn(),
       updateACPSettings: vi.fn(),
@@ -98,6 +93,8 @@ describe('settings IPC operations', () => {
     const staleModels = { 'kimi-k2.6': { id: 'kimi-k2.6' } }
     const current = {
       network: {} as { proxy?: unknown },
+      // 保存链只读 `mcp` / `acp` 两格;写一格 `undefined` 让这份夹具说得出「我是一份设置」。
+      mcp: undefined as unknown,
       ai: {
         providers: {
           kimi: { apiKey: 'old-key', model: 'kimi-k2.6', models: freshModels, modelsLastFetched: 2000 },
@@ -118,8 +115,6 @@ describe('settings IPC operations', () => {
       saveSettings,
       getSettings: () => current,
       invalidateProviderCache: vi.fn(),
-      applyNetworkProxySettings: vi.fn(),
-      registerGlobalWindowShortcuts: vi.fn(),
       updateMCPSettings: vi.fn(),
       registerMCPTools: vi.fn(),
       updateACPSettings: vi.fn(),
@@ -133,17 +128,6 @@ describe('settings IPC operations', () => {
           kimi: { apiKey: 'new-key', model: 'kimi-k3', models: freshModels, modelsLastFetched: 2000 },
         },
       },
-    })
-  })
-
-  it('formats system theme for IPC callers', () => {
-    expect(getOnethingSystemThemeForIpc(true)).toEqual({
-      success: true,
-      theme: 'dark',
-    })
-    expect(getOnethingSystemThemeForIpc(false)).toEqual({
-      success: true,
-      theme: 'light',
     })
   })
 })

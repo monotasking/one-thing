@@ -31,9 +31,9 @@ afterEach(async () => {
 async function assemble() {
   const { createOnethingBackend } = await import('../backend.js')
   backend = await createOnethingBackend({ storePath: directory, owner: 'daemon', collab: true, toolRegistry: 'headless', host: {
-    storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null, voice: null,
+    storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
+    gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null, 
   } })
   const agents = await import('@onething/backend/agent/agent-store-access')
   const runtime = await import('@onething/backend/collab/actors/collab-actors-runtime')

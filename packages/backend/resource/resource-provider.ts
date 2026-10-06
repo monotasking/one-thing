@@ -56,6 +56,11 @@ export interface ResourceReadContext {
    * (`toolkit/toolkit-ports.ts` 的 `SandboxPolicy` 那句话)。
    */
   readonly sandbox?: SandboxPolicy
+  /**
+   * 发起这次读的那台客户端的坐标(决策 D8,与 `Invocation.callerId` 同义)。只有住在壳里的
+   * 命名空间用得着它:读要发回问的那一台,而不是随便哪一台。
+   */
+  readonly callerId?: string
   /** 现在几点。与 `PlanContext.now()` 同名同义 —— 实现不自己读 `Date.now()`。 */
   now(): number
 }

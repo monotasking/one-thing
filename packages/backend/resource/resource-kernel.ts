@@ -166,6 +166,8 @@ export interface ResourceCallOptions {
   readonly sessionId?: string
   readonly signal?: AbortSignal
   readonly messageId?: string
+  /** 发起这次调用的客户端坐标(决策 D8)。界面经 RPC 来时由资源域从调用上下文转手;AI 没有。 */
+  readonly callerId?: string
 }
 
 export class ResourceKernel {
@@ -362,6 +364,7 @@ export class ResourceKernel {
           sessionId: options.sessionId ?? NO_ORIGIN_SESSION,
           signal,
           ...(this.options.sandbox ? { sandbox: this.options.sandbox } : {}),
+          ...(options.callerId !== undefined ? { callerId: options.callerId } : {}),
           now: () => this.now(),
         })
         return ReadOutcome.ok(value)
@@ -397,6 +400,7 @@ export class ResourceKernel {
       sessionId: options.sessionId ?? NO_ORIGIN_SESSION,
       principal: options.principal,
       ...(options.messageId !== undefined ? { messageId: options.messageId } : {}),
+      ...(options.callerId !== undefined ? { callerId: options.callerId } : {}),
     }
 
     // 取消源的合成与 `read` 共用一处(`abortSignalFor`)。

@@ -64,9 +64,9 @@ function subscriptions() { return handles.filter(handle => handle.recursive) }
 async function assemble(name: string) {
   const { createOnethingBackend } = await import('../backend.js')
   backend = await createOnethingBackend({ storePath: path.join(directory, name), owner: 'daemon', toolRegistry: 'headless', host: {
-    storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null, voice: null,
+    storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
     terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-    gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
+    gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null, 
   } })
   return backend
 }

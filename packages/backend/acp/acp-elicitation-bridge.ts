@@ -22,10 +22,10 @@
  *
  * 收场:answered → `accept` + content;用户点「不回答」(declined)→ `decline`;超时 / 回合中止 → `cancel`。
  *
- * url 型:一道两选「已完成 / 取消」。宿主有外壳能力(`hasShellHost()`)就先替人打开那个链接;
- * 没有(今天的 React 壳、server、daemon 都注的是 null)就把链接写进题面,让人自己去开 —— 题面
- * 里恒带链接,开没开成都说得清。只开 http(s)。agent 那边先走完(`elicitation/complete`)就收掉卡、
- * 答 `accept`。
+ * url 型:一道两选「已完成 / 取消」,题上带 `link`(第④步批 1,决策 D285)。后端**不替人开**那个链接
+ * —— 打开链接只在用户的屏幕上发生,是客户端的事:卡上画一颗「打开链接」按钮并写出域名(防钓鱼,点之前
+ * 看得见要去哪),人点了才由客户端自己开。题面里照旧写出完整链接。只收 http(s)。agent 那边先走完
+ * (`elicitation/complete`)就收掉卡、答 `accept`。
  */
 import { randomUUID } from 'node:crypto'
 import { Interaction } from '@onething/backend/interaction'
@@ -40,7 +40,6 @@ import type {
   AcpElicitationRequest,
   AcpElicitationResponse,
 } from './acp-types.js'
-import { getShellHost, hasShellHost } from '@onething/backend/shell'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '@onething/backend/session'
 import { resolvePermissionMessageAnchor } from '@onething/backend/permission'
 import { getLogger } from '@onething/backend/logging'
@@ -243,8 +242,6 @@ export interface AcpElicitationBridgeDeps {
   abort?: (input: { sessionId: string; toolCallId?: string; reason?: string }) => boolean
   noHuman?: (sessionId: string) => boolean
   anchor?: (sessionId: string, messageId?: string) => string | undefined
-  /** 能不能替人打开链接、怎么开。缺省 = 外壳宿主端口。 */
-  openExternal?: () => ((url: string) => Promise<{ success: boolean; error?: string }>) | undefined
 }
 
 function isWebUrl(url: string): boolean {
@@ -261,7 +258,6 @@ export function createAcpElicitationBridge(deps: AcpElicitationBridgeDeps = {}):
   const abort = deps.abort ?? (input => Interaction.abort(input))
   const noHuman = deps.noHuman ?? noHumanInTheRoom
   const anchor = deps.anchor ?? resolvePermissionMessageAnchor
-  const openExternal = deps.openExternal ?? (() => (hasShellHost() ? (url: string) => getShellHost().openExternal(url) : undefined))
   /** url 型等 agent 那边走完的那几格:`agentId\0elicitationId` → 收卡。 */
   const awaitingCompletion = new Map<string, () => void>()
 
@@ -312,19 +308,8 @@ export function createAcpElicitationBridge(deps: AcpElicitationBridgeDeps = {}):
       log.info('elicitation url refused (not http/https)', { agentId: context.agentId })
       return { action: 'decline' }
     }
-    const open = openExternal()
-    let opened = false
-    if (open) {
-      try {
-        opened = (await open(url)).success
-      } catch (error) {
-        log.warn('opening elicitation url failed', { agentId: context.agentId }, error)
-      }
-    }
     const lead = request.message?.trim() ? `${request.message.trim()}\n\n` : ''
-    const question = opened
-      ? `${lead}已在浏览器里打开 ${url} 。在那边完成之后点「${ELICITATION_URL_DONE}」。`
-      : `${lead}请在浏览器里打开 ${url} ,在那边完成之后点「${ELICITATION_URL_DONE}」。`
+    const question = `${lead}请在浏览器里打开 ${url} ,在那边完成之后点「${ELICITATION_URL_DONE}」。`
     const key = typeof elicitationId === 'string' ? `${context.agentId}\0${elicitationId}` : undefined
     const completed = key
       ? new Promise<'completed'>(resolve => { awaitingCompletion.set(key, () => resolve('completed')) })
@@ -336,6 +321,7 @@ export function createAcpElicitationBridge(deps: AcpElicitationBridgeDeps = {}):
         question,
         options: [{ label: ELICITATION_URL_DONE }, { label: ELICITATION_URL_CANCEL }],
         multiSelect: false,
+        link: { url },
       }], completed)
       if (answer === 'completed') return { action: 'accept' }
       if (answer.outcome === 'declined') return { action: 'decline' }

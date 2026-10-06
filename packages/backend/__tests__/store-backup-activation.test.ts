@@ -20,9 +20,9 @@ it('serves restored media after offline original-path activation', { timeout: 60
     const assemble = (storePath: string, afterSettings = () => {}) => createOnethingBackend({
       storePath, toolRegistry: 'headless', hooks: { afterSettings },
       host: {
-        storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null, voice: null,
+        storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
         terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-        gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
+        gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null, 
       },
     })
     backend = await assemble(original)

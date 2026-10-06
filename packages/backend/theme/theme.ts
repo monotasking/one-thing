@@ -15,11 +15,10 @@ export type {
   Base46Theme,
   GetThemeResponse,
   GetThemesResponse,
-  OpenThemesFolderResponse,
   RefreshThemesResponse,
   Theme,
-  ThemeFolderOpener,
   ThemeMeta,
+  ThemesFolderPathResponse,
 } from './theme-types.js'
 
 // 插件主题覆盖与皮肤用到的令牌判据、调节旋钮、皮肤档位。

@@ -950,6 +950,26 @@ describe('ask 形态:本体的另一副样子', () => {
    * jsdom 不解析 CSS Modules 的真值 —— 「哪一档挂上了」是 JS 侧唯一测得到的那一面
    *(真机 hover 转红的对照另见交卷报告)。
    */
+  /*
+   * 第④步批 1(决策 D285):agent 要人去开一个链接。卡上一颗「打开链接」与域名(点之前看得见去哪),
+   * 点了由这台客户端自己开(浏览器壳 = `window.open` 那一支);后端不替人开。
+   */
+  it('题上带链接:一颗「打开链接」+ 域名;点了交给客户端自己开', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderComposer()
+    act(() => state().openAsk({
+      questions: [{
+        tag: 'agent', q: '请在浏览器里打开 https://login.example.test/x ,在那边完成之后点「已完成」。', multi: false,
+        opts: [{ l: '已完成', d: '' }, { l: '取消', d: '' }],
+        link: { url: 'https://login.example.test/x', host: 'login.example.test' },
+      }],
+    }))
+    expect(screen.getByText('login.example.test')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '打开链接' }))
+    expect(open).toHaveBeenCalledWith('https://login.example.test/x', '_blank', 'noopener')
+    open.mockRestore()
+  })
+
   it('「拒绝」挂 ui/Button 的 danger 档(危险语义回填,不是 ghost)', () => {
     renderComposer()
     openDemo()

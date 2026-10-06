@@ -15,7 +15,6 @@ export {
   getTerminalService,
   hasTerminalHost,
   killAllTerminals,
-  markAllTerminalsDetached,
   TerminalService,
 } from './terminal-service.js'
 export type { TerminalExitStatus, TerminalHostPorts } from './terminal-service.js'

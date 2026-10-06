@@ -62,7 +62,12 @@ import type { OpSpec } from './resource-spec.js'
  * 而不是一个等实现来了再想的问题。
  */
 export interface ShellDispatch {
-  run(op: string, ref: ResourceRef | null, params: unknown, ctx: RunContext): Promise<Result>
+  /**
+   * `planned` 是 provider 自己那份 `plan` 交出的载荷(第④步批 1,决策 D274):core 里有实现、只把
+   * 执行交给壳的做法(`dir:` 的 `reveal`)在 plan 期夹过沙箱、算好了目标,壳该拿到的是**夹过的**
+   * 那一份,不是调用方原样给的 ref 与参数。整个住在壳里的命名空间 plan 出来是 `null`,不带。
+   */
+  run(op: string, ref: ResourceRef | null, params: unknown, ctx: RunContext, planned?: unknown): Promise<Result>
 }
 
 export interface ResourceToolOptions {
@@ -221,7 +226,10 @@ export class ResourceTool<Payload = unknown> extends Tool<unknown, ResourceCall<
       // 一次审批(人可能等了很久),而且 `apply` 是公开方法 —— 手搓一个 Intent 直接
       // 调它的调用方绕不过这一句。
       if (!shell) throw new ResourceHomeUnavailableError(this.provider.spec.scheme, call.op, call.home)
-      return shell.run(call.op, call.ref, call.params, ctx)
+      const planned = call.intent.payload
+      return planned === null || planned === undefined
+        ? shell.run(call.op, call.ref, call.params, ctx)
+        : shell.run(call.op, call.ref, call.params, ctx, planned)
     }
 
     // 把授权结论贴回 provider 自己那份计划:provider 的 `apply` 看到的

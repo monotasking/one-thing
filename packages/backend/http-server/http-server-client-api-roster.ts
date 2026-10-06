@@ -59,8 +59,6 @@ import { SESSION_EVENTS_CLIENT_API } from '../session/session-client-api-events.
 import { SESSION_COMMAND_CLIENT_API } from '../session/session-client-api-commands.js'
 import { SESSIONS_CLIENT_API } from '../session/session-client-api.js'
 import { SKILLS_CLIENT_API } from '../skill/skill-client-api.js'
-import { DIALOG_CLIENT_API } from '../dialog/dialog-client-api.js'
-import { SHELL_CLIENT_API } from '../shell/shell-client-api.js'
 import { SETTINGS_CLIENT_API } from '../settings/settings-client-api.js'
 import { SPACES_CLIENT_API } from '../space/space-client-api.js'
 import { TERMINAL_CLIENT_API } from '../terminal/terminal-client-api.js'
@@ -136,17 +134,13 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // `getProjectsStore(workspaceId)` 了。
   PROJECT_DIRS_CLIENT_API,
   // P4c 第二批唯一的域(skills)。它是本仓第一个**要宿主能力**的迁移域 ——
-  // `openDirectory` 走新立的 `configureShellHost` 端口(`@onething/backend/shell`),
-  // 未注入即结构化降级,所以 server / CLI 不再需要那份「不支持」的空实现。
+  // 从前 `openDirectory` 走宿主外壳端口;第④步批 1 起改名 `directoryPath`、只答路径,
+  // 打开是客户端自己的事,所以 server / CLI 不需要任何「不支持」的空实现。
   // 顺带删掉了 server 侧那套 per-owner 的第二份技能实现(十三个 `*ServerSkill*` 助手):
   // 一个 store 一份技能表,web 与桌面从此读同一份。
   SKILLS_CLIENT_API,
-  // 原生打开对话框(选目录 / 选文件)。拉起对话框的那一下是宿主的 `dialog` 端口,
-  // 未注入即答 `unavailable: true`,客户端退到路径输入框。
-  DIALOG_CLIENT_API,
-  // 系统浏览器 / 默认程序打开 / store 根(批 1)。契约 A1-b 就立着,Vue 宿主退役后没有处理者;
-  // 真正的那一下是宿主的 `shell` 端口,只对本机可信的宿主面开。
-  SHELL_CLIENT_API,
+  // (第④步批 1 起这里少了 `dialog` / `shell` 两行:对话框、打开外链、打开路径、在访达中显示
+  // 只在用户的屏幕上发生,客户端自己做 —— 桌面经 preload 的 `host:client-action`,决策 D278。)
   // P4c 第三批唯一的域(media)。旧线上除了六条契约通道,还挂着**五条写死的字面量
   // 通道**(`media:save-image` / `media:load-all` / `media:delete` / `media:clear-all` /
   // `media:read-image-base64`)—— 不在 `IPC_CHANNELS` 里,transport 门连数都数不到。
@@ -198,7 +192,7 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // 不是这个域的通道),所以 `apps/electron/src/ipc/themes.ts` 与
   // `@main/ipc/themes.ts` 整只删掉(同 acp / collab 判例)。
   // 两处口径变化写在域文件头:插件主题覆盖的合成从 `@main` 搬进了处理者(server
-  // 顺带获得,拍板 #20),`openFolder` 改走 `configureShellHost` 端口。
+  // 顺带获得,拍板 #20),`folderPath`(从前的 `openFolder`)第④步批 1 起只答路径。
   // 位置在 mcp 之后、自进化之前:它只要主题运行时的进程内单例与插件清单,
   // 两者在装配到这一步时都早已就位;硬约束仍只有一条 —— 必须在自进化之前。
   THEMES_CLIENT_API,
@@ -268,7 +262,8 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   // 恰好是「三档工具注册 → registerAppRpcDomains」。放在末尾还有第二重意义:
   // 卸载时它第一个被解绕,模型现场挂进来的那批动态 feature 因此在内置域拆掉
   // **之前**就已经收干净(动态 feature 可能骑在这些域上)。
-  // P4c 第十一批第一个域(settings)—— 四条:读 / 存 / 系统深浅色 / 代理自检。
+  // P4c 第十一批第一个域(settings)—— 今天三条:读 / 存 / 代理自检(系统深浅色那一条
+  // 第④步批 1 退役:界面自己读系统)。
   // 它是本仓最后两个「无工厂的漏网 handler」之一:旧线就是
   // `apps/electron/src/settings/ipc-host.ts` 那只裸 `ipcMain.handle` 工厂 + 主进程
   // 壳适配,没有 `apps/electron/src/ipc/*` 那层可移植工厂。

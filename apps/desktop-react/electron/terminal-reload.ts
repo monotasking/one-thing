@@ -1,5 +1,3 @@
-import { markAllTerminalsDetached } from '@onething/backend/terminal'
-
 /**
  * **窗口页面重载 = 终端消费者走了**(T2,方案 §2.1 与 T1 留账那一行)。
  *
@@ -12,8 +10,10 @@ import { markAllTerminalsDetached } from '@onething/backend/terminal'
  *
  * 服务本来就有那条自动兜底(`TerminalService` 的 stall timer),所以这一段治的
  * 不是「会不会恢复」,是**那五秒**:重载之后新的 attach 立刻就到,而它撞上的是
- * 一台还在暂停里的 PTY。`markAllTerminalsDetached()` 把「消费者已经证明不在了」
- * 这句话**当场**说给服务听 —— 它是宿主才知道的事实,服务猜不出来。
+ * 一台还在暂停里的 PTY。`terminal.detachAll` 把「消费者已经证明不在了」
+ * 这句话**当场**说给服务听 —— 它是宿主才知道的事实,服务猜不出来。第④步批 1 起这一句
+ * 走 RPC(`main.ts` 递进来的 `detach`,经 `core-client.ts`),不再直接调后端的模块函数:
+ * 后端搬进子进程之后,那个模块单例在错的进程里。
  *
  * ── 判据三条,每一条都是有意的 ──────────────────────────────────────────
  *  · **主框架**:子框架(未来的内嵌页、devtools)导航与终端的消费者无关;
@@ -47,12 +47,12 @@ export interface NavigationDetails {
 /**
  * 挂上去,交回摘钩子那一口。
  *
- * `detach` 可注入只为测试 —— 生产里它恒等于 `markAllTerminalsDetached`,
- * 而那只函数在没有终端的宿主上是一句安全的空话(它自己的注释:`No-op safe`)。
+ * `detach` 由 `main.ts` 递(生产里是一条 `terminal.detachAll` RPC,发出去不等回执);没有终端的
+ * 宿主上那条 RPC 答一句结构化的拒绝,同样无害。
  */
 export function installTerminalReloadDetach(
   contents: NavigationEmitter,
-  detach: () => void = markAllTerminalsDetached,
+  detach: () => void,
 ): () => void {
   let navigated = false
   const onNavigation = (details: NavigationDetails) => {

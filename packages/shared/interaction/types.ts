@@ -47,6 +47,18 @@ export interface InteractionQuestion {
   options: InteractionOption[]
   /** 允许「其他」自由输入。 */
   allowFreeText?: boolean
+  /**
+   * 这道题要人先去开一个链接(第④步批 1,决策 D285):agent 的 url 型提问(ACP `elicitation` 的
+   * `mode: 'url'`)。后端**不替人开** —— 卡上画一颗「打开链接」按钮并写出要去的域名,人点了才由
+   * 客户端自己开(桌面交给系统浏览器,网页壳开新标签)。只会是 http(s)。
+   */
+  link?: InteractionLink
+}
+
+/** 一道题附带的链接。`label` 缺席 = 卡上用通用的「打开链接」。 */
+export interface InteractionLink {
+  url: string
+  label?: string
 }
 
 export interface InteractionRequest {

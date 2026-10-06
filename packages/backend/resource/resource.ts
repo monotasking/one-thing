@@ -63,7 +63,6 @@ export {
   DirOutsideSandboxError,
   DirRefRequiredError,
   DirResourceProvider,
-  DirShellUnavailableError,
 } from './resource-dir-provider.js'
 export type { DirEntryKind, DirOpPayload, DirRefusalReason } from './resource-dir-provider.js'
 export { resolveReadable, resolveWritable } from './resource-path-guard.js'

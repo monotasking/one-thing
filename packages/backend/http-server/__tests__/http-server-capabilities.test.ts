@@ -88,7 +88,6 @@ describe('/api/capabilities 的能力位从后端事实推导(B3)', () => {
     const snapshot = await capabilities()
     expect(snapshot).toMatchObject({
       localFileSystem: false,
-      shellTools: false,
       terminal: false,
       pluginsManage: false,
       // 纯客户端形态那几位仍是常量,B3 不动。

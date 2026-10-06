@@ -514,8 +514,8 @@ export type {
 	RefreshSkillsResponse,
 	ReadSkillFileRequest,
 	ReadSkillFileResponse,
-	OpenSkillDirectoryRequest,
-	OpenSkillDirectoryResponse,
+	SkillDirectoryPathRequest,
+	SkillDirectoryPathResponse,
 	CreateSkillRequest,
 	CreateSkillResponse,
 	DeleteSkillRequest,
@@ -639,14 +639,8 @@ export type {
 } from "./settings.js";
 export { settingsWindowRouter } from "./settings.js";
 
-// 宿主壳路由(结构债 P4 终态批 A1-a):原生对话框与「关掉发起窗」。
-export type {
-	DialogRoutes,
-	ShowOpenDialogProperty,
-	ShowOpenDialogRequest,
-	ShowOpenDialogResponse,
-} from "./dialog.js";
-export { dialogRouter } from "./dialog.js";
+// 宿主壳路由(结构债 P4 终态批 A1-a):「关掉发起窗」。原生对话框与外壳三条(打开路径 /
+// 打开外链 / 数据目录)第④步批 1 退役:客户端自己做,契约在 `@shared/contracts/client-action`。
 export type {
 	CloseWindowResponse,
 	SetWindowButtonVisibilityRequest,
@@ -654,15 +648,6 @@ export type {
 	WindowRoutes,
 } from "./window.js";
 export { windowRouter } from "./window.js";
-
-// 宿主壳路由(结构债 P4 终态批 A1-b):外壳三条 —— 打开路径 / 打开外链 / 数据目录。
-export type {
-	ShellOpenExternalRequest,
-	ShellOpenExternalResponse,
-	ShellOpenPathRequest,
-	ShellRoutes,
-} from "./shell.js";
-export { shellRouter } from "./shell.js";
 
 export type {
 	GatewayChannelId,

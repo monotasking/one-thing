@@ -22,7 +22,6 @@ export interface Capabilities {
   localFileSystem: boolean
   workspaceFileSystem: boolean
   nativeWindowControls: boolean
-  shellTools: boolean
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean

@@ -11,8 +11,10 @@
  *   ④ §10.2「在飞」那一行:注销撞上在飞 → `ResourceHomeUnavailableError`,
  *      **不是** `aborted`、**不是**一个泛泛的超时错;超时同理;
  *   ⑤ §10.2「已注销」那一行:摘掉之后再调,回到「未登记」(`ResourceSchemeUnknownError`);
- *   ⑥ 一个 scheme 只能有一个主人 —— 另一扇壳、以及 core 自己那份同名自述,都是
- *      `scheme-taken`;
+ *   ⑥ 好几扇壳可以认领**同一份**自述(第④步批 1,决策 D276);交一份**不同的**自述是
+ *      `scheme-taken`;core 自己的命名空间只许认领它自述里 `home: 'shell'` 的那几条(D275);
+ *   ⑥b 命令发给谁(D8):带着发起者坐标的发回发起者,AI 发起的(没有坐标)发给最近有活动的那一扇;
+ *      `dir:` 的 `reveal` 命令带着 core 夹过的路径(`planned`,D274);
  *   ⑦ `ui_change` 不弹卡(经真 `PermissionAuthorizer`,不是一次对策略表的断言);
  *   ⑧ (K2b-2b)§10.3 那三条通用事件名的入口 `emit`:壳报的事实骑 K2a 那条既有的路
  *      上总线,而「谁能替谁说话」在 core 判 —— 一扇壳发不出别人命名空间的事实。
@@ -58,7 +60,6 @@ async function assemble(): Promise<Backend> {
       auth: null,
       legacySafeStorageForMigration: null,
       logging: null,
-      shell: null,
       voice: null,
       terminal: null,
       skillsEnvironment: null,
@@ -66,12 +67,10 @@ async function assemble(): Promise<Backend> {
       scratchpad: null,
       plugins: null,
       gateway: null,
-      settings: null,
       evals: null,
       mcp: null,
       localTrust: null,
       speechOutput: null,
-      dialog: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,
@@ -338,15 +337,111 @@ describe('壳侧资源提供者在真装配里(K2b-2)', () => {
     }
   })
 
-  it('一个 scheme 一个主人:另一扇壳是 scheme-taken,core 自己那份同名自述也是', async () => {
-    expect(await backend.shellResources.mountShell(OTHER_SHELL, WORKBENCH_SPEC))
-      .toEqual({ ok: false, reason: 'scheme-taken' })
-    // 抢不到,也就一格都没留下 —— 一次失败的登记不该长出半张表。
-    expect(backend.shellResources.has(OTHER_SHELL)).toBe(false)
+  it('⑥ 同一份自述好几扇壳都能认领;不同的自述是 scheme-taken;core 的命名空间只许认领 home:shell 的那几条', async () => {
+    // 第二扇壳交**同一份**自述:加一个认领者,内核里那份自述一字不动(D276)。
+    const before = backend.resources.registry.get('workbench')
+    expect(await backend.shellResources.mountShell(OTHER_SHELL, WORKBENCH_SPEC)).toEqual({ ok: true })
+    expect(backend.resources.registry.get('workbench')).toBe(before)
+    expect(backend.shellResources.dispatch.claimantsOf('workbench')).toEqual([SHELL, OTHER_SHELL])
 
-    expect(await backend.shellResources.mountShell(OTHER_SHELL, { ...WORKBENCH_SPEC, scheme: 'session' }))
+    // 交一份**不同的**自述:两份自述只能有一份在内核里说话。
+    const different = { ...WORKBENCH_SPEC, title: 'Another workbench' }
+    expect(await backend.shellResources.mountShell('shell-c', different)).toEqual({ ok: false, reason: 'scheme-taken' })
+    // 抢不到,也就一格都没留下 —— 一次失败的登记不该长出半张表。
+    expect(backend.shellResources.has('shell-c')).toBe(false)
+
+    // core 自己的 `session:` 没有一条 home:'shell' 的做法,认领不了。
+    expect(await backend.shellResources.mountShell('shell-c', { ...WORKBENCH_SPEC, scheme: 'session' }))
       .toEqual({ ok: false, reason: 'scheme-taken' })
     expect(backend.resources.registry.get('session')?.title).not.toBe('Workbench')
+
+    // 第二扇走了:第一扇照旧认领,内核里那份不摘。
+    await backend.shellResources.unmountShell(OTHER_SHELL)
+    expect(backend.shellResources.dispatch.claimantsOf('workbench')).toEqual([SHELL])
+    expect(backend.resources.registry.get('workbench')).toBe(before)
+  })
+
+  it('⑥b 命令发给谁(D8):发起者的坐标优先,没有坐标发给最近有活动的那一扇', async () => {
+    expect(await backend.shellResources.mountShell(OTHER_SHELL, WORKBENCH_SPEC)).toEqual({ ok: true })
+    const { seen, stop } = watchCommands(backend)
+    try {
+      // 用户在 SHELL 里点出来的(带着它的坐标):发回 SHELL,哪怕 OTHER_SHELL 是后登记的。
+      const fromCaller = backend.resources.do('workbench:center', 'open', { target: 'session:x' }, { ...callOptions(sessionId), callerId: SHELL })
+      await vi.waitFor(() => expect(seen).toHaveLength(1))
+      expect(seen[0]).toMatchObject({ shellId: SHELL, scheme: 'workbench' })
+      backend.shellResources.settleResult(SHELL, seen[0].callId, { kind: 'ok', text: 'ok' })
+      expect((await fromCaller).kind).toBe('ok')
+
+      // AI 发起的(没有坐标):发给最近有活动的那一扇 —— OTHER_SHELL 刚报过一条事实。
+      backend.shellResources.emitEvent(OTHER_SHELL, 'workbench:center', 'opened', { ref: 'session:x' })
+      const fromAi = backend.resources.do('workbench:center', 'open', { target: 'session:y' }, callOptions(sessionId))
+      await vi.waitFor(() => expect(seen).toHaveLength(2))
+      expect(seen[1]).toMatchObject({ shellId: OTHER_SHELL })
+      backend.shellResources.settleResult(OTHER_SHELL, seen[1].callId, { kind: 'ok', text: 'ok' })
+      expect((await fromAi).kind).toBe('ok')
+
+      // SHELL 亲手发起一次调用 = 它又有活动了:下一条 AI 的命令换回它。
+      backend.shellResources.noteCaller(SHELL)
+      const again = backend.resources.do('workbench:center', 'open', { target: 'session:z' }, callOptions(sessionId))
+      await vi.waitFor(() => expect(seen).toHaveLength(3))
+      expect(seen[2]).toMatchObject({ shellId: SHELL })
+      backend.shellResources.settleResult(SHELL, seen[2].callId, { kind: 'ok', text: 'ok' })
+      expect((await again).kind).toBe('ok')
+
+      // 一个不认领这个 scheme 的坐标当没带:照「最近活动」挑。
+      const stranger = backend.resources.do('workbench:center', 'open', { target: 'session:w' }, { ...callOptions(sessionId), callerId: 'nobody' })
+      await vi.waitFor(() => expect(seen).toHaveLength(4))
+      expect(seen[3]).toMatchObject({ shellId: SHELL })
+      backend.shellResources.settleResult(SHELL, seen[3].callId, { kind: 'ok', text: 'ok' })
+      expect((await stranger).kind).toBe('ok')
+    } finally {
+      stop()
+      await backend.shellResources.unmountShell(OTHER_SHELL)
+    }
+  })
+
+  it('⑥c dir:reveal 住在客户端(D275):壳认领那一条,命令带着 core 夹过的路径;没人认领时当场「家不在」', async () => {
+    const DIR_SPEC: SerializedResourceSpec = {
+      scheme: 'dir',
+      title: 'Directories (client part)',
+      reads: {},
+      ops: { reveal: { title: 'Show this path in the file manager', params: { type: 'object', properties: {}, required: [] }, effects: [], home: 'shell' } },
+      events: {},
+    }
+    // 认领 core 自述里 home:'core' 的做法不行(`list` 是读法、`createDirectory` 是 core 跑的)。
+    expect(await backend.shellResources.mountShell(SHELL, { ...DIR_SPEC, ops: { createDirectory: DIR_SPEC.ops.reveal } }))
+      .toEqual({ ok: false, reason: 'scheme-taken' })
+
+    // 读根里的一个真目录(这台临时 store 的沙箱写根是 `process.cwd()`,同 `resource-dir.test.ts` 的取法)。
+    const target = path.join(process.cwd(), 'packages', 'backend', 'resource')
+    try {
+      // 没人认领:管线 plan 完,发不出去 —— 当场 ResourceHomeUnavailableError,不是超时。
+      const lonely = await backend.resources.do(`dir:${target}`, 'reveal', {}, callOptions(sessionId))
+      expect(lonely.kind === 'failed' && lonely.error.name).toBe('ResourceHomeUnavailableError')
+
+      expect(await backend.shellResources.mountShell(SHELL, DIR_SPEC)).toEqual({ ok: true })
+      // 内核里那份 `dir` 自述还是 core 的(列目录、建目录照旧在 core 跑)。
+      expect(Object.keys(backend.resources.registry.get('dir')?.ops ?? {})).toContain('createDirectory')
+
+      const { seen, stop } = watchCommands(backend)
+      try {
+        const pending = backend.resources.do(`dir:${target}`, 'reveal', {}, { ...callOptions(sessionId), callerId: SHELL })
+        await vi.waitFor(() => expect(seen).toHaveLength(1))
+        expect(seen[0]).toMatchObject({
+          shellId: SHELL,
+          scheme: 'dir',
+          op: 'reveal',
+          planned: { op: 'reveal', path: target },
+        })
+        backend.shellResources.settleResult(SHELL, seen[0].callId, { kind: 'ok', text: 'revealed' })
+        expect((await pending).kind).toBe('ok')
+      } finally {
+        stop()
+      }
+    } finally {
+      await backend.shellResources.unmountShell(SHELL)
+      expect(await backend.shellResources.mountShell(SHELL, WORKBENCH_SPEC)).toEqual({ ok: true })
+    }
   })
 
   it('续命是幂等的:同一份自述再交一次,注册表不重建(引用恒等)', async () => {

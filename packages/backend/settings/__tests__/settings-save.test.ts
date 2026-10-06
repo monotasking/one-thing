@@ -19,8 +19,6 @@ describe('saveOnethingSettingsWithRuntimeEffects', () => {
       saveSettings: persist,
       getSettings: () => ({}),
       invalidateProviderCache: invalidate,
-      applyNetworkProxySettings: vi.fn(),
-      registerGlobalWindowShortcuts: vi.fn(),
       updateMCPSettings: vi.fn(),
       registerMCPTools: vi.fn(),
       updateACPSettings: vi.fn(),
@@ -52,12 +50,6 @@ describe('saveOnethingSettingsWithRuntimeEffects', () => {
       invalidateProviderCache: () => {
         calls.push('provider')
       },
-      applyNetworkProxySettings: proxy => {
-        calls.push(`network:${proxy?.host}`)
-      },
-      registerGlobalWindowShortcuts: () => {
-        calls.push('shortcuts')
-      },
       applyVoiceSettings: settings => {
         calls.push(`voice:${settings.voice?.enabled}`)
       },
@@ -84,8 +76,7 @@ describe('saveOnethingSettingsWithRuntimeEffects', () => {
       'save:false',
       'get',
       'provider',
-      'network:127.0.0.1',
-      'shortcuts',
+      // 第④步批 1:套代理 / 重注册全局快捷键两步不在保存链上了(代理由 Electron 订 settings:changed 自己重套)。
       'voice:true',
       'mcp:mcp-1',
       'mcp-tools',
@@ -102,8 +93,6 @@ describe('saveOnethingSettingsWithRuntimeEffects', () => {
       saveSettings: vi.fn(),
       getSettings: () => ({}),
       invalidateProviderCache: vi.fn(),
-      applyNetworkProxySettings: vi.fn(),
-      registerGlobalWindowShortcuts: vi.fn(),
       updateMCPSettings,
       registerMCPTools: vi.fn(),
       updateACPSettings,

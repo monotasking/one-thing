@@ -44,7 +44,6 @@ const BASE: OnethingHostPorts = {
   auth: null,
   legacySafeStorageForMigration: null,
   logging: null,
-  shell: null,
   voice: null,
   terminal: null,
   skillsEnvironment: null,
@@ -52,12 +51,10 @@ const BASE: OnethingHostPorts = {
   scratchpad: null,
   plugins: null,
   gateway: null,
-  settings: null,
   evals: null,
   mcp: null,
   localTrust: null,
   speechOutput: null,
-  dialog: null,
 }
 
 describe('宿主表 terminal 那一格的收尾(T0)', () => {

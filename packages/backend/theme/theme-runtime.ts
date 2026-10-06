@@ -5,9 +5,8 @@ import type {
   ApplyThemeResponse,
   GetThemeResponse,
   GetThemesResponse,
-  OpenThemesFolderResponse,
   RefreshThemesResponse,
-  ThemeFolderOpener,
+  ThemesFolderPathResponse,
 } from './theme-types.js'
 import {
   applyTheme,
@@ -107,13 +106,10 @@ export class OnethingThemeRuntime {
     return getThemesFolderPath()
   }
 
-  async openThemesFolder(openThemesPath: ThemeFolderOpener): Promise<OpenThemesFolderResponse> {
+  /** 主题文件夹在哪。打开它是客户端自己的事(第④步批 1)。 */
+  themesFolderPath(): ThemesFolderPathResponse {
     try {
-      const result = await openThemesPath(this.getThemesFolderPath())
-      if (typeof result === 'string' && result.trim().length > 0) {
-        return { success: false, error: result }
-      }
-      return { success: true }
+      return { success: true, path: this.getThemesFolderPath() }
     } catch (error) {
       return { success: false, error: errorMessage(error) }
     }

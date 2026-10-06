@@ -137,9 +137,9 @@ it('own() 登记表逐字快照', { timeout: 180_000 }, async () => {
   const { createOnethingBackend } = await import('../backend.js')
   const backend = await createOnethingBackend({
     host: {
-      storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null, voice: null,
+      storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null,
-      plugins: null, gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
+      plugins: null, gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null, 
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,

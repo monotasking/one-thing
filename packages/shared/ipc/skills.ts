@@ -117,13 +117,18 @@ export interface ReadSkillFileResponse {
 }
 
 // Open skill directory in file manager
-export interface OpenSkillDirectoryRequest {
-  /** 缺省 = 打开用户技能根目录(旧 `skills:open-directory` 通道一直允许不带 id)。 */
+export interface SkillDirectoryPathRequest {
+  /** 缺省 = 用户技能根目录(旧 `skills:open-directory` 通道一直允许不带 id)。 */
   skillId?: string
 }
 
-export interface OpenSkillDirectoryResponse {
+/**
+ * 一个技能的目录在哪(第④步批 1,决策 D279:从前叫 `openDirectory`、由后端替人打开;
+ * 打开是客户端自己的事,后端只答路径)。
+ */
+export interface SkillDirectoryPathResponse {
   success: boolean
+  path?: string
   error?: string
 }
 
@@ -223,11 +228,9 @@ export interface SetSkillAgentResponse {
  * agent 四条在 server 侧**根本没有路由**,是打了就 404 的死镜像)、以及 server
  * 那套 per-owner 的第二实现,一起消失。
  *
- * 只有 `openDirectory` 需要宿主能力(在文件管理器里打开一个目录)。它现在走
- * `@onething/backend/shell` 的 `configureShellHost` 端口 —— 桌面注入 Electron
- * `shell.openPath`,server / CLI 不注入,于是拿到结构化的
- * `{ success:false, error:'shell host not available' }`,与从前 server adapter
- * 那句「web server runtime 不支持打开本地技能目录」同义而不再需要第二份实现。
+ * 从前 `openDirectory` 要宿主能力(在文件管理器里打开一个目录)。第④步批 1 起它改名
+ * `directoryPath`、只答路径:打开是客户端自己的事(桌面经 preload 的 `host:client-action`,
+ * 浏览器壳与手机没有文件管理器,不画那颗按钮)。
  */
 import { defineRouter } from './router.js'
 
@@ -235,7 +238,7 @@ export type SkillsRoutes = {
   getAll: { input: GetSkillsRequest; output: GetSkillsResponse }
   refresh: { input: Record<string, never>; output: RefreshSkillsResponse }
   readFile: { input: ReadSkillFileRequest; output: ReadSkillFileResponse }
-  openDirectory: { input: OpenSkillDirectoryRequest; output: OpenSkillDirectoryResponse }
+  directoryPath: { input: SkillDirectoryPathRequest; output: SkillDirectoryPathResponse }
   create: { input: CreateSkillRequest; output: CreateSkillResponse }
   delete: { input: DeleteSkillRequest; output: DeleteSkillResponse }
   toggleEnabled: { input: ToggleSkillEnabledRequest; output: ToggleSkillEnabledResponse }
@@ -250,7 +253,7 @@ export const skillsRouter = defineRouter<SkillsRoutes>('skills', [
   'getAll',
   'refresh',
   'readFile',
-  'openDirectory',
+  'directoryPath',
   'create',
   'delete',
   'toggleEnabled',

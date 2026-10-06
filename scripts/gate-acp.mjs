@@ -58,6 +58,9 @@
  *      SSE 上见到 `interaction:requested`,两道题的形状对;门经 `command:interaction-respond` 答
  *      Blue + 一句话 → agent 收到 `accept`,content 里是值 `b`(不是 label)与那句话。握手声明了
  *      `elicitation.form`。
+ *   ⑮b 链接(第④步批 1):`@elicit-url` 发一张 url 型提问 → SSE 上那张卡的题带 `link.url`
+ *      (`https://example.test/acp-login`),题面不说「已在浏览器里打开」(后端不再替人开 ——
+ *      打开链接只在用户屏幕上发生,是客户端的事);门答「已完成」→ agent 收到 `accept`。
  *   ⑯b 登录:第三台假 agent `fake-auth` 自报终端型登录;没登录时开会话被 `auth_required` 拒 →
  *      `acp.getAgents` 那一行 `auth.required === true`(SSE 上也有那一帧 `acp:agent-state`)→
  *      `acp.authenticate` 立刻答 terminalId,那一格终端(owner = 这台 agent)跑「起法 + `--login`」、
@@ -782,6 +785,32 @@ try {
   const a3CapsNow = fs.existsSync(capsFile) ? JSON.parse(fs.readFileSync(capsFile, 'utf-8')) : null
   check(sameJson(a3CapsNow?.elicitation, { form: {}, url: {} }) && a3CapsNow?.auth?.terminal === true,
     `⑮ 握手声明了 elicitation { form, url } 与 auth.terminal(读到 ${JSON.stringify({ elicitation: a3CapsNow?.elicitation, auth: a3CapsNow?.auth })})`)
+
+  // ⑮b 链接(第④步批 1):url 型提问 → 题上带 link、后端不替人开;答「已完成」→ accept。
+  const urlCardsBefore = interactionRequests(a3Id).length
+  await sendMessage(rpc, a3Id, '@elicit-url 去开一个链接')
+  const urlCard = await waitFor(() => interactionRequests(a3Id)[urlCardsBefore], 15_000, 50)
+  const urlQuestion = urlCard?.questions?.[0]
+  check(urlQuestion?.link?.url === 'https://example.test/acp-login'
+    && typeof urlQuestion.question === 'string'
+    && urlQuestion.question.includes('https://example.test/acp-login')
+    && !urlQuestion.question.includes('已在浏览器里打开'),
+    `⑮b url 型提问:题上带 link、题面带链接、不说「已在浏览器里打开」(createUrl 不再替人开;读到 ${JSON.stringify(urlQuestion ?? null)})`)
+  if (urlCard && urlQuestion) {
+    await rpc('session-command', 'emit', {
+      sessionId: a3Id,
+      command: {
+        type: 'command:interaction-respond',
+        interactionId: urlCard.id,
+        ...(urlCard.targetChannel ? { channel: urlCard.targetChannel } : {}),
+        answers: { [urlQuestion.id]: { selected: ['已完成'] } },
+      },
+    })
+  }
+  check(Boolean(await turnDone(a3Id, 6)), '⑮b @elicit-url 这一轮收场了')
+  const urlCall = readA3Calls().find(call => call.method === 'elicit-url')
+  check(sameJson(urlCall?.response, { action: 'accept' }),
+    `⑮b agent 收到 accept(读到 ${JSON.stringify(urlCall ?? null)})`)
 
   // ⑯ 无人应答:这一张门不答 → 超时按拒绝收场,agent 收到 reject_once。换一个目录开新会话:
   // ⑫ 在 workDir 上落的 grant 会把同一条命令直接放行,那就证不到「没人答」这一支了。

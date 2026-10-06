@@ -1389,6 +1389,26 @@
   gap: var(--sp-2);
 }
 
+/*
+ * 第④步批 1:agent 要人先去开一个链接(ACP 的 url 型提问)。后端不替人开 —— 这一行是一颗
+ * 「打开链接」与要去的域名(防钓鱼:点之前看得见去哪)。它不进 `.askBars`,那一格的高度按选项数钉死。
+ */
+.askLink {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.askLinkHost {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
 .askArrow {
   display: inline-flex;
   align-items: center;

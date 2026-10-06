@@ -58,7 +58,6 @@ async function assemble(): Promise<Backend> {
       auth: null,
       legacySafeStorageForMigration: null,
       logging: null,
-      shell: null,
       voice: null,
       terminal: null,
       skillsEnvironment: null,
@@ -66,14 +65,12 @@ async function assemble(): Promise<Backend> {
       scratchpad: null,
       plugins: null,
       gateway: null,
-      settings: null,
       evals: null,
       mcp: null,
       // 账页那个域要一台**本机可信**的宿主才不夹沙箱(`http-server/http-server-sandbox.ts` 的不变量 2)。
       // 桌面壳声明的就是这一句。
       localTrust: { origin: 'desktop-embedded' },
       speechOutput: null,
-      dialog: null,
     },
     toolRegistry: 'headless',
     sender: new NoopSender() as never,

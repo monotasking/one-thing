@@ -1,11 +1,12 @@
-import { shellRouter } from '@shared/ipc/shell'
+import { openExternalViaHost } from './host'
 
 /**
  * 「点了要出去」的**唯一**帮手(批 1,`docs/design/provider-settings-rework-2026-09.md` §3.1)。
  *
- * - **桌面**(有 `window.onethingHost`):走 core 的 `shell.openExternal` → 主进程的
- *   `shell.openExternal`,开的是系统默认浏览器。**不许退到 `window.open`**:在 Electron
- *   里那一句开出来的是一扇壳自己的窗(没有导航策略、没有会话隔离),比什么都不做坏。
+ * - **桌面**(有 `window.onethingHost`):经 preload 的 `host:client-action` 交给主进程的
+ *   `shell.openExternal`,开的是系统默认浏览器(第④步批 1 起不再绕后端)。**不许退到
+ *   `window.open`**:在 Electron 里那一句开出来的是一扇壳自己的窗(没有导航策略、没有会话隔离),
+ *   比什么都不做坏。
  * - **网页壳**:`window.open(url, '_blank', 'noopener')`。注意带 `noopener` 时规范要求
  *   它**恒回 `null`**(新页拿不到 opener,调用方也拿不到新页),所以回值不能拿来判成败 ——
  *   从前 `references/kinds/link.ts` 正是拿它判,于是网页壳里点外链永远被读成「没开成」。
@@ -19,10 +20,9 @@ export async function openExternal(url: string): Promise<void> {
     window.open(url, '_blank', 'noopener')
     return
   }
-  const { onethingClient } = await import('./connection')
-  const client = await onethingClient()
-  const result = await client.api(shellRouter).openExternal({ url })
-  if (!result?.success) throw new Error(result?.error || 'could not open the link')
+  const result = await openExternalViaHost(url)
+  if (!result) throw new Error('this client cannot open links')
+  if (!result.ok) throw new Error(result.error || 'could not open the link')
 }
 
 /** 这台壳是不是桌面(有 Electron 宿主)。判据与 `platform/connection` 同源。 */

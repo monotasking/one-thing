@@ -17,12 +17,8 @@
  * (`*OnethingSkill*ForIpc`),端口照旧从 `@onething/backend/skill/skill-operations` 与
  * 设置缓存取 —— 与迁移前 `@main` 那份适配逐字同义。
  *
- * **唯一需要宿主的那条是 `openDirectory`**:它要「在文件管理器里打开一个目录」,
- * 而这件事只有 Electron 桌面做得到。它现在走 `@onething/backend/shell` 的
- * `configureShellHost` 端口(P4c 第二批新立):桌面注入 Electron 的打开原语,
- * server / CLI 不注入 —— 于是拿到一句结构化的「宿主没有外壳能力」。这正是从前
- * server adapter 里那句「web server runtime 不支持打开本地技能目录」的同义降级,
- * 区别是它不再需要第二份实现,也不再是一句写死的英文。
+ * **`directoryPath`**(从前叫 `openDirectory`、经宿主端口替人在文件管理器里打开)第④步批 1
+ * 起只答路径:打开那一下只在用户的屏幕上发生,是客户端的事(决策 D279)。
  */
 import fs from 'fs'
 import path from 'path'
@@ -32,15 +28,14 @@ import {
   deleteOnethingSkillForIpc,
   listOnethingSkillDirectoriesForIpc,
   listOnethingSkillsForIpc,
-  openOnethingSkillDirectoryForIpc,
   readOnethingSkillFileForIpc,
   refreshOnethingSkillsForIpc,
   removeOnethingSkillDirectoryForIpc,
+  resolveOnethingSkillDirectoryForIpc,
   setOnethingSkillAgentForIpc,
   toggleOnethingSkillEnabledForIpc,
   updateOnethingSkillDirectoryForIpc,
 } from './skill-ipc-operations.js'
-import { getShellHost } from '@onething/backend/shell'
 import { skillsRouter, type SkillsRoutes } from '@shared/ipc/skills.js'
 import { getSettings, saveSettings } from '@onething/backend/settings'
 import { consolePort, getLogger } from '@onething/backend/logging'
@@ -59,7 +54,7 @@ import { defineClientApi, type RpcRouteHandlers } from '@onething/backend/http-s
 import type { DeleteOnethingSkillForIpcOptions, OnethingSkillsIpcLogger } from '@onething/backend/skill/skill-ipc-operations'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { SkillDefinition, AppSettings } from '@shared/ipc.js'
-import type { ListOnethingSkillsForIpcOptions, RefreshOnethingSkillsForIpcOptions, OpenOnethingSkillDirectoryForIpcOptions, CreateOnethingSkillForIpcOptions, ToggleOnethingSkillEnabledForIpcOptions, AddOnethingSkillDirectoryForIpcOptions, UpdateOnethingSkillDirectoryForIpcOptions, RemoveOnethingSkillDirectoryForIpcOptions, SetOnethingSkillAgentForIpcOptions } from '@onething/backend/skill/skill-ipc-operations'
+import type { ListOnethingSkillsForIpcOptions, RefreshOnethingSkillsForIpcOptions, CreateOnethingSkillForIpcOptions, ToggleOnethingSkillEnabledForIpcOptions, AddOnethingSkillDirectoryForIpcOptions, UpdateOnethingSkillDirectoryForIpcOptions, RemoveOnethingSkillDirectoryForIpcOptions, SetOnethingSkillAgentForIpcOptions } from '@onething/backend/skill/skill-ipc-operations'
 
 const log = getLogger('rpc.skills')
 /** 投影层收的是鸭子 logger;过渡替身与 `skill` 用的是同一个(area ① 统一后删)。 */
@@ -110,17 +105,13 @@ export const skillsRpcHandlers: RpcRouteHandlers<SkillsRoutes> = {
       logger: consoleLog,
     })
   },
-  async openDirectory(request) {
-    const openOnethingSkillDirectoryForIpcOptions: OpenOnethingSkillDirectoryForIpcOptions<SkillDefinition> = {
+  async directoryPath(request) {
+    return resolveOnethingSkillDirectoryForIpc({
       skillId: request?.skillId,
       listSkills: options => getAllSkillsForDisplay(options),
       getUserSkillsPath,
-      // 未注入宿主 = 拿到一句非空的失败原因,投影据此把它折成失败结果
-      // (Electron 打开原语的约定:空串才算成功)。
-      openPath: targetPath => getShellHost().openPath(targetPath),
       logger: consoleLog,
-    };
-    return openOnethingSkillDirectoryForIpc(openOnethingSkillDirectoryForIpcOptions)
+    })
   },
   async create(request) {
     const createOnethingSkillForIpcOptions: CreateOnethingSkillForIpcOptions<SkillDefinition> = {

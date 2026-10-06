@@ -58,12 +58,10 @@
  *    无 glob 分支(跳过 `.git`,产出 posix 相对路径)。不改成 ripgrep,是因为
  *    「联网宿主上有没有 rg 二进制」不是这一批该赌的事。
  *
- * 2. **`reveal` 要宿主外壳**。「在文件管理器里定位」只有 Electron 桌面做得到,
- *    走 `@onething/backend/shell` 的 `configureShellHost`(P4c 第二批立的端口,
- *    那个文件头写着 files 留给后批 —— 就是这一批)。未注入即结构化降级,
- *    与旧 server 那句写死的 "Revealing local files is not available in the web
- *    server runtime." 同义,区别是不再需要第二份实现。**注意先夹后降级**:
- *    路径越界的答案仍然是越界文案,而不是「宿主没有外壳能力」。
+ * 2. **`revealTarget` 只答路径**(第④步批 1,决策 D279;从前叫 `reveal`,经宿主外壳端口替人
+ *    在文件管理器里定位)。定位只在用户的屏幕上发生,是客户端的事:后端照旧**先夹后查在不在**
+ *    —— 越界的答案仍然是越界文案 —— 然后答那条绝对路径,桌面经 preload 的
+ *    `host:client-action` 自己定位,浏览器壳与手机没有文件管理器,那颗按钮不画。
  *
  * 3. **`watchStart` / `watchStop` 的真假**。桌面这两条从来是**投影桩**
  *    (`startOnethingFileWatchForIpc`:校验 root 之后回 `{success:true}`)——
@@ -83,7 +81,7 @@ import {
   listOnethingDirectory,
   readOnethingFileContent,
   renameOnethingPath,
-  revealOnethingPath,
+  resolveOnethingRevealTarget,
   saveOnethingFileContent,
   statOnethingPath,
 } from './file-operations.js'
@@ -91,7 +89,6 @@ import { listOnethingDirectoriesForCompletionForIpc } from './file-directory-lis
 import { listOnethingFileSearchEntriesForIpc } from './file-search.js'
 import { rollbackOnethingFile } from './file-rollback.js'
 import { startOnethingFileWatchForIpc, stopOnethingFileWatchForIpc } from './file-watch.js'
-import { getShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell'
 import { applyFileMutationUndo } from '@onething/backend/tool'
 import { noteRootsNow } from '@onething/backend/note'
 import { filesRouter, type FilesRoutes } from '@shared/ipc/files.js'
@@ -112,7 +109,7 @@ import { defineClientApi, type RpcDispatchPorts, type RpcRouteHandlersWithPorts 
 import { sessionAccess } from '@onething/backend/session'
 import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/backend/file/file-search'
 import type { RollbackOnethingFileOptions } from '@onething/backend/file/file-rollback'
-import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/backend/file/file-operations'
+import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions } from '@onething/backend/file/file-operations'
 import type { ListOnethingDirectoriesForCompletionOptions } from '@onething/backend/file/file-directory-listing'
 import type { OnethingDirectoryIpcLogger } from '@onething/backend/file/file-directory-listing'
 import type { ConsoleLikePort } from '@onething/backend/logging'
@@ -431,23 +428,13 @@ export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
     })
   },
 
-  async reveal(request, context = DESKTOP_RPC_CONTEXT) {
-    // 先夹后降级:越界的答案是越界文案,不是「宿主没有外壳能力」。
+  async revealTarget(request, context = DESKTOP_RPC_CONTEXT) {
+    // 先夹后查在不在:越界的答案是越界文案。
     const path = clamp(context, request?.path)
     if (path === null) {
       return pathError('Path must stay inside the workspace sandbox root.')
     }
-    const revealOnethingPathOptions: RevealOnethingPathOptions = {
-      path,
-      stat: target => fs.stat(target),
-      // 未注入宿主 = 抛;投影自己 catch 成 `{ success:false, error }`,
-      // 于是「宿主没有外壳能力」与「路径不存在」走的是同一条失败路。
-      revealPath: async target => {
-        const outcome = await getShellHost().revealPath(target)
-        if (!outcome.success) throw new Error(outcome.error ?? SHELL_HOST_UNAVAILABLE)
-      },
-    };
-    return revealOnethingPath(revealOnethingPathOptions)
+    return resolveOnethingRevealTarget({ path, stat: target => fs.stat(target) })
   },
 
   async watchStart(request, context = DESKTOP_RPC_CONTEXT, ports?: RpcDispatchPorts) {

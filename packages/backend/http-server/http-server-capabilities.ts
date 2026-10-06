@@ -1,8 +1,11 @@
 /**
  * `GET /api/capabilities` 的答案:这台 HTTP 面上的客户端能做什么。
  *
- * 一位能力 = 一个判据函数,而且是对应那个域自己在读的那一个 —— 所以这只文件按设计要问五个
- * 功能的判据(本机信任、shell 宿主、终端宿主、插件管理器、collab 运行时),每次现取、不缓存。
+ * 一位能力 = 一个判据函数,而且是对应那个域自己在读的那一个 —— 所以这只文件按设计要问四个
+ * 功能的判据(本机信任、终端宿主、插件管理器、collab 运行时),每次现取、不缓存。
+ *
+ * 第④步批 1 起少了 `shellTools` 一位:打开外链 / 打开路径 / 在访达中显示 / 原生对话框都是客户端
+ * 自己的事,「这台客户端做不做得到」客户端自己知道(壳的 `platform/host.ts`),不该问后端。
  *
  * 2026-10-04 从 `http-server-runtime.ts` 原样搬来(决策 D219),代码一行没改。
  */
@@ -11,7 +14,6 @@ import { type RuntimeHostCapabilities } from "@shared/contracts/runtime-capabili
 import { isCollabV3RuntimeRunning } from "@onething/backend/collab";
 import { getPluginManager } from "@onething/backend/plugin";
 import { isHostLocallyTrusted } from "./http-server-host-trust.js";
-import { hasShellHost } from "@onething/backend/shell";
 import { hasTerminalHost } from "@onething/backend/terminal";
 import type { RuntimeCapabilitiesAdapter } from "./http-server-runtime-facade.js";
 
@@ -19,13 +21,12 @@ import type { RuntimeCapabilitiesAdapter } from "./http-server-runtime-facade.js
  * 只剩**纯客户端形态**的那几位:它们问的是"拿着这个 HTTP 面的那个客户端是不是
  * 一只 Electron 窗口",与这个进程的宿主装了什么无关,所以常量就够。
  *
- * B3 之前这里还摊着 `localFileSystem` / `shellTools` 两个 `false` —— 那是两份
- * 真相(后端护栏各自另有判据),已经删掉,见 `currentServerCapabilities()`。
+ * B3 之前这里还摊着 `localFileSystem` 与(第④步批 1 退役的)`shellTools` 两个 `false` —— 那是
+ * 两份真相(后端护栏各自另有判据),已经删掉,见 `currentServerCapabilities()`。
  */
 const webServerCapabilities: Omit<
 	RuntimeHostCapabilities,
 	| "localFileSystem"
-	| "shellTools"
 	| "terminal"
 	| "pluginsManage"
 	| "collabRooms"
@@ -51,7 +52,7 @@ const webServerCapabilities: Omit<
  * 不是配置。
  *
  * 同一份 `server/` 代码既被独立 `server:start` 用,也被桌面内嵌 HTTP 面挂在自己
- * 那只 backend 上 —— 所以这五位在两种宿主上如实分岔,不需要两份代码。
+ * 那只 backend 上 —— 所以这几位在两种宿主上如实分岔,不需要两份代码。
  *
  * 不加 `voice` 一位:渲染侧 `PlatformCapabilities` 今天没有这一位,加就是新造一个
  * wire 键,不在 B 的范围里。
@@ -62,8 +63,6 @@ function currentServerCapabilities(): RuntimeHostCapabilities {
 		// 与 files / tools / search / evals / mcp / sessions 六个域同判据
 		// (`isHostLocallyTrusted()`):可信 = 路径不夹,也就是"这台机器的文件系统"。
 		localFileSystem: isHostLocallyTrusted(),
-		// 与 oauth 域同判据(`hasShellHost()`):宿主注没注入"用系统的方式打开一个东西"。
-		shellTools: hasShellHost(),
 		// 与 terminal 域同判据(`hasTerminalHost()`):宿主注没注入 PTY 输出广播器。
 		terminal: hasTerminalHost(),
 		// 与 plugins 域同判据(`getPluginManager()`):这个进程装没装插件管理器。

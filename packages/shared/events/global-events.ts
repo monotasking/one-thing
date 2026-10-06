@@ -155,8 +155,9 @@ export interface ResourceEventOccurredEvent {
  *
  * **SSE 是广播。** `/api/events` 上的每一帧发给每一个连着的客户端,而这条命令只该
  * 由一扇壳执行 —— 两扇壳同时跑一次「把面板挪到右边」就是挪了两次。所以坐标写在
- * 载荷里,收到的一方自己对 `shellId`,不匹配就当没看见。这是 K2a' 留账的第一个坑:
- * HTTP 侧今天不填 `RpcDispatchContext.callerId`,所以定向投递这条路走不了。
+ * 载荷里,收到的一方自己对 `shellId`,不匹配就当没看见。第④步批 1 起 HTTP 侧填了
+ * `RpcDispatchContext.callerId`(请求头 `X-Onething-Shell-Id`),它决定**挑哪一扇**(决策 D8);
+ * 投递本身照旧是广播,所以这一格仍是唯一的归属判定。
  *
  * ## 断线窗口里的命令就是丢了
  *
@@ -180,9 +181,19 @@ export interface ResourceShellCommandEvent {
   kind: 'op' | 'read'
   /** `<scheme>:<path>`,整个命名空间时为 `null`。 */
   ref: string | null
+  /**
+   * 哪个命名空间(第④步批 1)。`ref` 为 `null` 时壳靠它知道该交给哪一张落点表 —— 一扇壳今天
+   * 认领的不止一个 scheme(`workbench:` 与 `dir:` 的 `reveal`)。
+   */
+  scheme: string
   /** `kind: 'op'` 时是做法名,`kind: 'read'` 时是读法名。 */
   op: string
   params: Record<string, unknown>
+  /**
+   * core 里那份 `plan` 交出的载荷(决策 D274)。只有「实现在 core、执行在壳」的做法带它
+   * (`dir:` 的 `reveal` 交的是夹过沙箱的绝对路径);整个住在壳里的命名空间不带。
+   */
+  planned?: unknown
   /** epoch ms,装配层盖(同 `resource:event`)。 */
   at: number
 }

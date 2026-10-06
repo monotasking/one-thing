@@ -71,7 +71,6 @@ async function startHarness(): Promise<Harness> {
         localFileSystem: true,
         workspaceFileSystem: true,
         nativeWindowControls: false,
-        shellTools: true,
         clipboardWrite: false,
         desktopWindows: false,
         globalMenuEvents: false,
@@ -174,7 +173,6 @@ describe('createHttpTransport.capabilities', () => {
     const transport = createHttpTransport({ baseUrl: harness.baseUrl, token: 'cap-token' })
     await expect(transport.capabilities()).resolves.toMatchObject({
       localFileSystem: true,
-      shellTools: true,
       terminal: true,
     })
     expect(harness.seen.at(-1)).toMatchObject({

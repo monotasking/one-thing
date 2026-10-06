@@ -56,8 +56,8 @@ export const IPC_CHANNELS = {
 	// Settings related
 	// P4c 第十一批:`settings:get` / `settings:save` / `settings:get-system-theme` /
 	// `network:test-proxy` 四条随 `settingsRouter` 走通用 RPC,常量随之消失。
-	// 只剩三条推送:开设置窗 / 原生对话框于 A1-a 走宿主壳路由
-	// (`settingsWindowRouter.open` / `dialogRouter.showOpen`)。
+	// 只剩三条推送:开设置窗于 A1-a 走宿主壳路由(`settingsWindowRouter.open`);
+	// 原生对话框第④步批 1 起由客户端自己开(`@shared/contracts/client-action`)。
 	SETTINGS_NAVIGATE: "settings:navigate", // main → settings window: jump to a tab
 	SETTINGS_CHANGED: "settings:changed",
 	SYSTEM_THEME_CHANGED: "settings:system-theme-changed",

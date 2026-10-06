@@ -175,9 +175,20 @@ export interface FilesWatchRequest {
   root: string
 }
 
-/** 增删改 / reveal / watch 共用的结果形状。 */
+/** 增删改 / watch 共用的结果形状。 */
 export interface FilesActionResponse {
   success: boolean
+  error?: string
+}
+
+/**
+ * 「在访达中显示」要定位到哪(第④步批 1,决策 D279)。后端只做夹沙箱与「路径在不在」两件事,
+ * 答一条绝对路径;**定位是客户端自己的事**(桌面经 preload 的 `host:client-action`,
+ * 浏览器壳与手机没有文件管理器,那颗按钮不画)。
+ */
+export interface FilesRevealTargetResponse {
+  success: boolean
+  path?: string
   error?: string
 }
 
@@ -215,7 +226,7 @@ export type FilesRoutes = {
   createDirectory: { input: FilesCreateDirectoryRequest; output: FilesActionResponse }
   rename: { input: FilesRenameRequest; output: FilesActionResponse }
   delete: { input: FilesDeleteRequest; output: FilesActionResponse }
-  reveal: { input: FilesRevealRequest; output: FilesActionResponse }
+  revealTarget: { input: FilesRevealRequest; output: FilesRevealTargetResponse }
   watchStart: { input: FilesWatchRequest; output: FilesActionResponse }
   watchStop: { input: FilesWatchRequest; output: FilesActionResponse }
 }
@@ -232,7 +243,7 @@ export const filesRouter = defineRouter<FilesRoutes>('files', [
   'createDirectory',
   'rename',
   'delete',
-  'reveal',
+  'revealTarget',
   'watchStart',
   'watchStop',
 ])

@@ -2,17 +2,10 @@ import { validateOnethingProviderReasoningSettings } from '../provider/provider.
 
 type MaybePromise<T> = T | Promise<T>
 
-export interface OnethingSettingsWithRuntimeEffects<
-> {
-  network?: {
-    proxy?: unknown
-  }
+export interface OnethingSettingsWithRuntimeEffects {
   mcp?: unknown
   acp?: unknown
 }
-
-type OnethingSettingsProxy<TSettings> =
-  TSettings extends { network?: { proxy?: infer TProxy } } ? TProxy : unknown
 
 type OnethingSettingsMCP<TSettings> =
   TSettings extends { mcp?: infer TMCPSettings } ? NonNullable<TMCPSettings> : unknown
@@ -28,8 +21,6 @@ export interface SaveOnethingSettingsWithRuntimeEffectsOptions<
   saveSettings(settings: TInputSettings): MaybePromise<unknown>
   getSettings(): TSettings
   invalidateProviderCache(): MaybePromise<unknown>
-  applyNetworkProxySettings(proxy: OnethingSettingsProxy<TSettings> | undefined): MaybePromise<unknown>
-  registerGlobalWindowShortcuts(): MaybePromise<unknown>
   applyVoiceSettings?(settings: TSettings): MaybePromise<unknown>
   updateMCPSettings(settings: OnethingSettingsMCP<TSettings>): MaybePromise<unknown>
   registerMCPTools(): MaybePromise<unknown>
@@ -115,10 +106,6 @@ export async function saveOnethingSettingsWithRuntimeEffects<
   const normalizedSettings = options.getSettings()
 
   await options.invalidateProviderCache()
-  await options.applyNetworkProxySettings(
-    normalizedSettings.network?.proxy as OnethingSettingsProxy<TSettings> | undefined,
-  )
-  await options.registerGlobalWindowShortcuts()
   await options.applyVoiceSettings?.(normalizedSettings)
   await options.updateMCPSettings(
     (normalizedSettings.mcp ?? options.defaultMCPSettings) as OnethingSettingsMCP<TSettings>,

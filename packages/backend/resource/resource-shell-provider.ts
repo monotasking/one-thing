@@ -88,14 +88,16 @@ export function resourceSpecFromShell(serialized: SerializedResourceSpec): Resou
 
 export class ShellResourceProvider implements ResourceProvider<null> {
   readonly spec: ResourceSpec
-  /** 哪扇壳交的。登记表按它成批注销,派发器按它路由。 */
-  readonly shellId: string
 
+  /*
+   * 它不记「哪扇壳交的」(第④步批 1,决策 D276):一个住在壳里的命名空间可以有好几扇壳同时
+   * 认领(桌面窗口 + 浏览器壳交的是同一份自述),这只 provider 在第一扇登记时装上、最后一扇
+   * 走时摘下。命令发给哪一扇是派发器的事(`ShellCommandDispatch.pick`)。
+   */
   private readonly dispatch: ShellCommandDispatch
   private hub: ResourceEventHub | undefined
 
-  constructor(shellId: string, spec: ResourceSpec, dispatch: ShellCommandDispatch) {
-    this.shellId = shellId
+  constructor(spec: ResourceSpec, dispatch: ShellCommandDispatch) {
     this.spec = spec
     this.dispatch = dispatch
   }
@@ -116,7 +118,7 @@ export class ShellResourceProvider implements ResourceProvider<null> {
   }
 
   async read(name: string, ref: ResourceRef | null, query: unknown, ctx: ResourceReadContext): Promise<unknown> {
-    const text = await this.dispatch.read(this.spec.scheme, name, ref, query, ctx.signal)
+    const text = await this.dispatch.read(this.spec.scheme, name, ref, query, ctx.signal, ctx.callerId)
     return parseShellPayload(text)
   }
 

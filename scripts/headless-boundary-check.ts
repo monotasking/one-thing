@@ -4943,7 +4943,8 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
   const requiredRuntimeIpcSymbols = [
     'getOnethingSettingsForIpc',
     'saveOnethingSettingsWithRuntimeEffectsForIpc',
-    'getOnethingSystemThemeForIpc',
+    // `getOnethingSystemThemeForIpc` 第④步批 1 随 `settings.getSystemTheme` 退役(系统深浅色由看屏幕的
+    // 那台客户端自己读)—— 断言删除。
     // `listOnethingNetworkInterfacesForIpc` 于 603582d9 随网卡枚举一起退役 —— 断言删除。
   ]
   const lines = [
@@ -5377,7 +5378,7 @@ function checkRuntimeOwnsSkillsIpcOperations(): void {
     'listOnethingSkillsForIpc',
     'refreshOnethingSkillsForIpc',
     'readOnethingSkillFileForIpc',
-    'openOnethingSkillDirectoryForIpc',
+    'resolveOnethingSkillDirectoryForIpc',
     'createOnethingSkillForIpc',
     'deleteOnethingSkillForIpc',
     'toggleOnethingSkillEnabledForIpc',
@@ -6493,7 +6494,7 @@ function checkRuntimeOwnsFileMutationOperations(): void {
     'createOnethingDirectory',
     'renameOnethingPath',
     'deleteOnethingPath',
-    'revealOnethingPath',
+    'resolveOnethingRevealTarget',
   ]
   const lines = [
     ...requiredRuntimeSymbols
@@ -7115,7 +7116,31 @@ function checkVueHostStaysRetired(): void {
   assertNoMatches('Vue host stays retired (no apps/electron, packages/renderer, apps/web, .vue files, or vue deps)', failures)
 }
 
+/**
+ * **后端里没有「只在用户屏幕上发生」的事**(第④步批 1,`docs/design/two-process-2026-10.md` §2.2)。
+ *
+ * 原生对话框、打开外链、用默认程序打开路径、在文件管理器里定位 —— 这四件是客户端的事:桌面的渲染层经
+ * preload 的 `host:client-action` 交给 Electron 主进程,浏览器壳与手机没有那条口。后端从前经 `shell` /
+ * `dialog` 两格宿主端口做它们,第④步要把后端搬出 Electron 进程,这两格就随批 1 退役了。这条断言守它们
+ * 不长回来:`packages/backend` 的非测试源码里(剥掉注释后)零出现 `dialog.showOpenDialog` /
+ * `shell.openExternal` / `shell.openPath` / `shell.showItemInFolder`。
+ */
+const BACKEND_CLIENT_ACTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /\bdialog\.showOpenDialog\b/,
+  /\bshell\.openExternal\b/,
+  /\bshell\.openPath\b/,
+  /\bshell\.showItemInFolder\b/,
+]
+
+function checkBackendRunsNoClientActions(): void {
+  const backendRoot = path.join(root, 'packages/backend')
+  const lines = walkFiles(backendRoot, [], { extensions: /\.(ts|tsx|js|mjs|cjs)$/ })
+    .flatMap(file => matchingCodeLines(file, BACKEND_CLIENT_ACTION_FORBIDDEN_PATTERNS))
+  assertNoMatches('packages/backend runs no client actions (no dialog.showOpenDialog / shell.openExternal / shell.openPath / shell.showItemInFolder)', lines)
+}
+
 checkVueHostStaysRetired()
+checkBackendRunsNoClientActions()
 checkRuntimeHostBoundary()
 checkClientPackageBoundary()
 checkCoreSearchNamesNoCapability()

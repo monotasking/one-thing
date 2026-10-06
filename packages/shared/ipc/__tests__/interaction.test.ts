@@ -55,6 +55,8 @@ const QUESTION_FIELDS = [
   'multiSelect',
   'options',
   'allowFreeText',
+  // 第④步批 1:agent 要人去开一个链接 —— 后端不替人开,卡上一颗「打开链接」按钮,人点了客户端自己开。
+  'link',
 ] as const satisfies readonly (keyof InteractionQuestion)[]
 type QuestionMissing = Exclude<keyof InteractionQuestion, (typeof QUESTION_FIELDS)[number]>
 type QuestionStray = Exclude<(typeof QUESTION_FIELDS)[number], keyof InteractionQuestion>

@@ -12,6 +12,9 @@ import { workspaceSandboxRoot } from "./http-server-sandbox.js";
 import type { RpcDispatchPorts } from "./http-server-dispatch-table.js";
 import type { RuntimeFilesAdapter, RuntimeRequestContext } from "./http-server-runtime-facade.js";
 
+/** 壳坐标的形状:客户端现铸的 uuid(或测试替身里的短名)。 */
+const SHELL_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
 /**
  * 已认证身份 → 通用 RPC 通道的 dispatch context（主线 T 批 3）。
  *
@@ -32,11 +35,19 @@ export function createServerRpcDispatchContext(
 	 * **身份与处境由宿主一次铸齐**,处理者只读,不自己去看连接。
 	 */
 	response?: ServerResponse,
+	/**
+	 * 请求头 `X-Onething-Shell-Id` 的原值(决策 D277)。合规矩(1–128 个字母、数字、`-`、`_`)
+	 * 才铸进 `callerId`;不合就当没带 —— 它只是一个坐标,答错了的后果是命令发给了「最近活动的
+	 * 那一扇」,不是越权。
+	 */
+	shellIdHeader?: string,
 ): RpcDispatchContext {
+	const callerId = shellIdHeader && SHELL_ID_PATTERN.test(shellIdHeader) ? shellIdHeader : undefined;
 	return {
 		transport: "http",
 		ownerUid: context.userId,
 		workspaceId: context.workspaceId,
+		...(callerId ? { callerId } : {}),
 		sandboxRoot: workspaceRoot
 			? workspaceSandboxRoot(workspaceRoot, context)
 			: undefined,

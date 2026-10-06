@@ -16,6 +16,21 @@ export function interactionAnswers(request: InteractionRequest, answers: readonl
   }))
 }
 
+/**
+ * 题上带的链接 → 卡上那一行(第④步批 1)。只认 http(s):别的 scheme 不画按钮(后端也只发 http(s),
+ * 这里再判一次是因为按钮按下去就是「交给系统浏览器」)。域名用 `URL.hostname`,不自己切字符串。
+ */
+export function askLinkOf(url: string | undefined): { url: string; host: string } | undefined {
+  if (!url) return undefined
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+    return { url, host: parsed.hostname }
+  } catch {
+    return undefined
+  }
+}
+
 /** One mounted session composer owns one queue. Subscribe before fetching so a
  * late snapshot cannot resurrect settled requests or erase newly arrived ones. */
 export function bindComposerInteractions(sessionId: string, store: ComposerStoreApi, port: InteractionPort): () => void {
@@ -50,10 +65,14 @@ export function bindComposerInteractions(sessionId: string, store: ComposerStore
       if (!disposed) remove(request.id)
     }
     return {
-      questions: request.questions.map(q => ({ tag: q.header ?? q.id, q: q.question,
-        multi: q.multiSelect ?? false, allowFreeText: q.allowFreeText,
-        opts: q.options.map(option => ({ l: option.label, d: option.description ?? '' })),
-      })),
+      questions: request.questions.map(q => {
+        const link = askLinkOf(q.link?.url)
+        return { tag: q.header ?? q.id, q: q.question,
+          multi: q.multiSelect ?? false, allowFreeText: q.allowFreeText,
+          opts: q.options.map(option => ({ l: option.label, d: option.description ?? '' })),
+          ...(link ? { link } : {}),
+        }
+      }),
       interaction: { id: request.id, submit: answers => respond(answers), decline: () => respond() },
     }
   }

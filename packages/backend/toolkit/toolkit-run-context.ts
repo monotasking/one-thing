@@ -30,6 +30,12 @@ export interface Invocation {
   readonly principal: Principal
   /** Opaque trusted host context; never reconstructed from the tool input or target session. */
   readonly executionContext?: unknown
+  /**
+   * 发起这次调用的那台客户端的坐标(第④步批 1,决策 D8)。HTTP 边界从请求头
+   * `X-Onething-Shell-Id` 铸进 `RpcDispatchContext.callerId`,资源域原样转手到这里;
+   * 它是**坐标不是身份**,只决定「请客户端执行」的命令发给哪一台。AI 发起的调用没有这一格。
+   */
+  readonly callerId?: string
   readonly cwd?: string
   readonly workspaceRoot?: string
   /**

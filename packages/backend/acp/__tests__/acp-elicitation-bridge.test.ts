@@ -121,7 +121,7 @@ describe('planElicitationForm:schema → 题目', () => {
 })
 
 describe('createAcpElicitationBridge', () => {
-  function harness(answer: InteractionAnswer | (() => Promise<InteractionAnswer>), openExternal?: (url: string) => Promise<{ success: boolean }>) {
+  function harness(answer: InteractionAnswer | (() => Promise<InteractionAnswer>)) {
     const asks: InteractionAskInput[] = []
     const aborts: Array<{ sessionId: string; toolCallId?: string }> = []
     let settleAbort: ((value: InteractionAnswer) => void) | undefined
@@ -138,7 +138,6 @@ describe('createAcpElicitationBridge', () => {
         settleAbort?.({ id: 'i', outcome: 'aborted', answers: {} })
         return true
       },
-      openExternal: () => openExternal,
     })
     return { bridge, asks, aborts }
   }
@@ -169,19 +168,22 @@ describe('createAcpElicitationBridge', () => {
     expect(aborts).toHaveLength(1)
   })
 
-  it('url:有外壳 → 替人打开,题面带链接;「已完成」→ accept', async () => {
-    const opened: string[] = []
-    const { bridge, asks } = harness(answered({ url: { selected: ['已完成'] } }), async url => { opened.push(url); return { success: true } })
+  it('url:后端不替人开(第④步批 1)—— 题上带 link,题面带链接;「已完成」→ accept', async () => {
+    const { bridge, asks } = harness(answered({ url: { selected: ['已完成'] } }))
     const response = await bridge.create(CONTEXT, {
       mode: 'url', sessionId: 'acp-1', elicitationId: 'e-1', url: 'https://example.com/login', message: 'Sign in',
     } as AcpElicitationRequest)
     expect(response).toEqual({ action: 'accept' })
-    expect(opened).toEqual(['https://example.com/login'])
-    expect(asks[0].questions[0]).toMatchObject({ id: 'url', options: [{ label: '已完成' }, { label: '取消' }] })
-    expect(asks[0].questions[0].question).toContain('已在浏览器里打开 https://example.com/login')
+    expect(asks[0].questions[0]).toMatchObject({
+      id: 'url',
+      options: [{ label: '已完成' }, { label: '取消' }],
+      link: { url: 'https://example.com/login' },
+    })
+    expect(asks[0].questions[0].question).toContain('请在浏览器里打开 https://example.com/login')
+    expect(asks[0].questions[0].question).not.toContain('已在浏览器里打开')
   })
 
-  it('url:没有外壳 → 不开,链接写进题面让人自己开;「取消」→ decline', async () => {
+  it('url:「取消」→ decline,链接写进题面', async () => {
     const { bridge, asks } = harness(answered({ url: { selected: ['取消'] } }))
     const response = await bridge.create(CONTEXT, {
       mode: 'url', sessionId: 'acp-1', elicitationId: 'e-2', url: 'https://example.com/x', message: '',

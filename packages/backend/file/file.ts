@@ -20,7 +20,7 @@ export {
   listOnethingDirectory,
   readOnethingFileContent,
   renameOnethingPath,
-  revealOnethingPath,
+  resolveOnethingRevealTarget,
   saveOnethingFileContent,
   statOnethingPath,
 } from './file-operations.js'

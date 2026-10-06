@@ -123,10 +123,9 @@ export interface DeleteOnethingPathOptions {
   deletePath(path: string): MaybePromise<void>
 }
 
-export interface RevealOnethingPathOptions {
+export interface ResolveOnethingRevealTargetOptions {
   path: string
   stat(path: string): MaybePromise<unknown>
-  revealPath(path: string): MaybePromise<void>
 }
 
 export function onethingBufferLooksBinary(buffer: Uint8Array): boolean {
@@ -321,16 +320,19 @@ export async function deleteOnethingPath(
   }
 }
 
-export async function revealOnethingPath(
-  options: RevealOnethingPathOptions,
-): Promise<OnethingFileActionResponse> {
+/**
+ * 「在访达中显示」要定位到哪:路径非空、而且此刻在 —— 不在就是失败,不是一次静默的无操作。
+ * 第④步批 1 起后端只答这条路径,定位是客户端自己的事。
+ */
+export async function resolveOnethingRevealTarget(
+  options: ResolveOnethingRevealTargetOptions,
+): Promise<{ success: true; path: string } | { success: false; error: string }> {
   const targetPath = options.path
   if (!targetPath) return { success: false, error: 'Path is required' }
 
   try {
     await options.stat(targetPath)
-    await options.revealPath(targetPath)
-    return { success: true }
+    return { success: true, path: targetPath }
   } catch (error) {
     return { success: false, error: errorMessage(error, 'Failed to reveal path') }
   }

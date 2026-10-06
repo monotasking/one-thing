@@ -20,8 +20,15 @@
  *
  * 1. **SSE 是广播,所以命令要带「谁该执行」。** `/api/events` 的每一帧发给每一个
  *    连着的客户端;两扇壳同时执行一次「把面板挪到右边」就是挪了两次。所以载荷里
- *    有 `shellId`,壳自己对,不匹配当没看见。(定向投递今天走不了:HTTP 侧不填
- *    `RpcDispatchContext.callerId` —— K2a' 留账的第一个坑。)
+ *    有 `shellId`,壳自己对,不匹配当没看见。
+ *
+ *    **发给哪一扇**(第④步批 1,决策 D8 / D276):一个 scheme 可以有好几扇壳同时认领
+ *    (桌面窗口 + 浏览器壳)。用户自己点出来的那一次发回**点它的那一扇**(调用带着
+ *    `callerId`,HTTP 边界从 `X-Onething-Shell-Id` 请求头铸的,永不从信封里读);
+  *    AI 发起的(没有 `callerId`)发给**最近一次有活动的那一扇** —— 「活动」是那扇壳
+ *    第一次登记、报一条事实(开格 / 关格)、或者亲手发起一次资源调用(`touch`,登记簿与
+ *    资源域记);一样新时后认领的赢。心跳续命**不算**活动:每扇活着的壳每 30 秒都续一次,
+ *    拿它判等于抓阄。
  * 2. **回执跨连接,所以必须挂超时。** 壳崩了、窗关了、断网了,回执永远不来。没有
  *    超时的话这次调用会永远悬着,连带内核的 `dispose()` 也等不到它收场(§10.1
  *    要求在飞的必须收场,不许悬着)。
@@ -101,36 +108,81 @@ export class ShellCommandDispatch implements ShellDispatch {
   timeoutMs: number
 
   /**
-   * 路由表:scheme → 哪扇壳。
+   * 路由表:scheme → 认领它的那几扇壳(值是认领的先后序号,越大越新)。
    *
    * 它住在派发器里而不是登记表里,因为**路由是它的工作**:`ShellDispatch.run` 手里
-   * 只有 op / ref / ctx,没有 shellId,它必须自己查。登记簿(shellId → 有哪几个
+   * 只有 op / ref / ctx,没有 shellId,它必须自己挑。登记簿(shellId → 有哪几个
    * scheme、怎么摘)住在 `ShellMountRegistry` 里。两张表是一个事实的两个索引,
    * 但只有一个写者(登记表),所以不会漂。
    */
-  private readonly routes = new Map<string, string>()
+  private readonly routes = new Map<string, Map<string, number>>()
   private readonly pending = new Map<string, PendingCommand>()
   private readonly options: ShellCommandDispatchOptions
+  /** shellId → 它最近一次有活动的序号(越大越新)。见文件头「发给哪一扇」。 */
+  private readonly activity = new Map<string, number>()
   private seq = 0
+  private claimSeq = 0
+  private activitySeq = 0
 
   constructor(options: ShellCommandDispatchOptions) {
     this.options = options
     this.timeoutMs = options.timeoutMs ?? DEFAULT_SHELL_COMMAND_TIMEOUT_MS
   }
 
-  /** 这个 scheme 归这扇壳。由 `ShellMountRegistry` 在登记那一刻调。 */
+  /** 这扇壳认领这个 scheme。由 `ShellMountRegistry` 在登记那一刻调;已经认领过的不改先后。 */
   claim(scheme: string, shellId: string): void {
-    this.routes.set(scheme, shellId)
+    let claimants = this.routes.get(scheme)
+    if (!claimants) {
+      claimants = new Map()
+      this.routes.set(scheme, claimants)
+    }
+    if (!claimants.has(shellId)) {
+      this.claimSeq += 1
+      claimants.set(shellId, this.claimSeq)
+    }
   }
 
-  /** 身份判等地释放:另一扇壳已经接手的 scheme,旧闭包不该把它摘掉(同 `registry.ts`)。 */
+  /** 这扇壳不再认领这个 scheme。别的认领者不受影响;一个都不认领了就忘掉它的活动读数。 */
   release(scheme: string, shellId: string): void {
-    if (this.routes.get(scheme) !== shellId) return
-    this.routes.delete(scheme)
+    const claimants = this.routes.get(scheme)
+    if (!claimants) return
+    claimants.delete(shellId)
+    if (claimants.size === 0) this.routes.delete(scheme)
+    if (![...this.routes.values()].some(rest => rest.has(shellId))) this.activity.delete(shellId)
   }
 
-  ownerOf(scheme: string): string | undefined {
-    return this.routes.get(scheme)
+  /** 这扇壳此刻有活动(见文件头「发给哪一扇」)。没认领任何 scheme 的壳记了也白记,不记。 */
+  touch(shellId: string): void {
+    if (![...this.routes.values()].some(claimants => claimants.has(shellId))) return
+    this.activitySeq += 1
+    this.activity.set(shellId, this.activitySeq)
+  }
+
+  /** 认领这个 scheme 的那几扇壳,认领先后序。只给登记簿、测试与诊断用。 */
+  claimantsOf(scheme: string): readonly string[] {
+    return [...(this.routes.get(scheme)?.keys() ?? [])]
+  }
+
+  /**
+   * 这一次发给哪一扇(决策 D276)。发起者认领了这个 scheme → 就是它;否则挑最近一次有活动的
+   * 那一扇,活动读数一样(或都读不到)时后认领的赢。没人认领 → `undefined`。
+   */
+  pick(scheme: string, callerId?: string): string | undefined {
+    const claimants = this.routes.get(scheme)
+    if (!claimants || claimants.size === 0) return undefined
+    if (callerId !== undefined && claimants.has(callerId)) return callerId
+    let best: string | undefined
+    let bestActivity = -Infinity
+    let bestClaim = -Infinity
+    for (const [shellId, claimedAt] of claimants) {
+      const activity = this.activity.get(shellId) ?? -Infinity
+      if (activity > bestActivity || (activity === bestActivity && claimedAt > bestClaim)) {
+        best = shellId
+        bestActivity = activity
+        bestClaim = claimedAt
+      }
+    }
+    return best
   }
 
   /** 还在等回执的条数。只给测试与诊断用。 */
@@ -148,7 +200,7 @@ export class ShellCommandDispatch implements ShellDispatch {
    * `callId` **直接用 `invocation.callId`**:审计账本上那一行与壳上跑的那一次因此
    * 是同一个坐标。
    */
-  async run(op: string, ref: ResourceRef | null, params: unknown, ctx: RunContext): Promise<Result> {
+  async run(op: string, ref: ResourceRef | null, params: unknown, ctx: RunContext, planned?: unknown): Promise<Result> {
     const scheme = ref?.scheme ?? ctx.invocation.toolId
     const answer = await this.send({
       kind: 'op',
@@ -156,7 +208,9 @@ export class ShellCommandDispatch implements ShellDispatch {
       op,
       ref,
       params,
+      ...(planned !== undefined ? { planned } : {}),
       callId: ctx.invocation.callId,
+      ...(ctx.invocation.callerId !== undefined ? { callerId: ctx.invocation.callerId } : {}),
       signal: ctx.abort.signal,
     })
     return textResult(answer)
@@ -176,6 +230,7 @@ export class ShellCommandDispatch implements ShellDispatch {
     ref: ResourceRef | null,
     query: unknown,
     signal: AbortSignal,
+    callerId?: string,
   ): Promise<string> {
     return this.send({
       kind: 'read',
@@ -184,6 +239,7 @@ export class ShellCommandDispatch implements ShellDispatch {
       ref,
       params: query,
       callId: this.mintReadCallId(scheme),
+      ...(callerId !== undefined ? { callerId } : {}),
       signal,
     })
   }
@@ -236,6 +292,7 @@ export class ShellCommandDispatch implements ShellDispatch {
       await this.failShell(shellId)
     }
     this.routes.clear()
+    this.activity.clear()
   }
 
   private send(command: {
@@ -244,10 +301,12 @@ export class ShellCommandDispatch implements ShellDispatch {
     op: string
     ref: ResourceRef | null
     params: unknown
+    planned?: unknown
     callId: string
+    callerId?: string
     signal: AbortSignal
   }): Promise<string> {
-    const shellId = this.routes.get(command.scheme)
+    const shellId = this.pick(command.scheme, command.callerId)
     // 没人认领这个 scheme = 家不在了。与「这台宿主根本没有壳」是同一句话,所以是
     // 同一个错 —— 调用方要判的是「还能不能做」,不是「为什么不能」。
     if (!shellId) throw new ResourceHomeUnavailableError(command.scheme, command.op, 'shell')
@@ -302,8 +361,10 @@ export class ShellCommandDispatch implements ShellDispatch {
         callId: command.callId,
         kind: command.kind,
         ref: command.ref ? formatRef(command.ref) : null,
+        scheme: command.scheme,
         op: command.op,
         params: asRecord(command.params),
+        ...(command.planned !== undefined ? { planned: command.planned } : {}),
         at: (this.options.now ?? Date.now)(),
       })
     })

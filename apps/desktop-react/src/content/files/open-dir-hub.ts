@@ -10,12 +10,9 @@ import { openDirectoryPanel } from '../dir-open'
  * —— 菜单一关就卸载的东西里挂不住一扇要收字的窗。
  *
  * ── 系统对话框优先,输入框是退路(2026-09-24)──────────────────────────────
- * 挑目录一律走 `requestDirectory`:先问宿主的原生对话框(`dialog` RPC 域,桌面主进程
- * 注入 `dialog` 端口);宿主答「没有对话框」(独立 server / 浏览器壳连的 core)才开
- * 这扇路径输入窗。用户在系统对话框里点了取消就是取消,不再追一扇输入窗。
- *
- * 它没有走 `shell` 那一格:`configureShellHost` 是一格闩,声明了会顺手翻动
- * `capabilities.shellTools` 与 oauth 的 `openExternal` —— 挑目录不该改那三处判据。
+ * 挑目录一律走 `requestDirectory`:先问这台客户端的原生对话框(第④步批 1 起不经后端:桌面经
+ * preload 的 `host:client-action` 交给主进程,`data/dialog-port.ts`);客户端答「没有对话框」
+ * (浏览器壳)才开这扇路径输入窗。用户在系统对话框里点了取消就是取消,不再追一扇输入窗。
  */
 
 /**

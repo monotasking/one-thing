@@ -32,7 +32,6 @@ const DEFAULT_CAPABILITIES: HostCapabilities = {
   localFileSystem: false,
   workspaceFileSystem: true,
   nativeWindowControls: false,
-  shellTools: false,
   clipboardWrite: false,
   desktopWindows: false,
   globalMenuEvents: false,

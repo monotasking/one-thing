@@ -318,3 +318,76 @@ describe('§10.2 已注销', () => {
     expect(callsTo('unmountShell')).toHaveLength(1)
   })
 })
+
+/*
+ * ⑧ 第④步批 1(决策 D275):`dir:` 的 `reveal` 住在客户端。有 preload 那条 `clientAction` 的客户端
+ * 多交一份只含这一条做法的自述;命令到了,落点拿 core 夹过的路径(`planned`)交给宿主,不自己从 ref 解。
+ * 浏览器壳(没有那条口)不交 —— 上面那组用例全跑在这一档,所以 ① 那句「mountShell 一次」照旧成立。
+ */
+describe('dir:reveal(第④步批 1)', () => {
+  const win = window as unknown as { onethingHost?: unknown }
+  let actions: unknown[]
+
+  beforeEach(async () => {
+    host.stop()
+    await tick()
+    actions = []
+    win.onethingHost = {
+      clientAction: async (action: unknown) => {
+        actions.push(action)
+        return { ok: true }
+      },
+    }
+    mounted = []
+    results = []
+    host = new ShellResourceHost()
+    await host.start(createOnethingClient({ transport }))
+    await tick()
+  })
+
+  afterEach(() => {
+    delete win.onethingHost
+  })
+
+  it('有 clientAction 的客户端多交一份 dir 自述,里面只有 reveal、home 是 shell', () => {
+    expect(mounted.map((row) => (row.spec as { scheme: string }).scheme)).toEqual(['workbench', 'dir'])
+    const dirSpec = mounted[1].spec as { ops: Record<string, { home: string }>; reads: Record<string, unknown> }
+    expect(Object.keys(dirSpec.ops)).toEqual(['reveal'])
+    expect(dirSpec.ops.reveal.home).toBe('shell')
+    expect(dirSpec.reads).toEqual({})
+  })
+
+  it('reveal 命令 → 用 core 夹过的路径交给宿主,回执 ok', async () => {
+    transport.emit({
+      name: 'resource:shell-command',
+      data: {
+        type: 'resource:shell-command',
+        shellId: host.shellId,
+        callId: 'r1',
+        kind: 'op',
+        scheme: 'dir',
+        ref: 'dir:/raw/../path',
+        op: 'reveal',
+        params: {},
+        planned: { op: 'reveal', path: '/clamped/path' },
+        at: Date.now(),
+      },
+    })
+    await tick()
+    expect(actions).toEqual([{ kind: 'revealPath', path: '/clamped/path' }])
+    expect(results.at(-1)).toMatchObject({ callId: 'r1', result: { kind: 'ok' } })
+  })
+
+  it('没有 planned 的 reveal 不猜路径 → 回执 failed', async () => {
+    transport.emit({
+      name: 'resource:shell-command',
+      data: {
+        type: 'resource:shell-command', shellId: host.shellId, callId: 'r2', kind: 'op', scheme: 'dir',
+        ref: 'dir:/x', op: 'reveal', params: {}, at: Date.now(),
+      },
+    })
+    await tick()
+    expect(actions).toEqual([])
+    expect(results.at(-1)).toMatchObject({ callId: 'r2', result: { kind: 'failed' } })
+  })
+})

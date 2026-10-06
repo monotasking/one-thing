@@ -27,8 +27,9 @@ import type { SkillEntry } from '../data/skills-source'
  *  ② 表里没有(抽屉从没开过 / 换了 cwd)→ 先 `ensureSkills(sessionDirOf())` 再查。
  *    cwd 的判据与 `usePickDrawer` 逐字同一条 —— 那边是 `useSessionCwd()`,
  *    这里是它的非 hook 孪生 `sessionDirOf()`(同一个 `envSessionId` + `sessionCwdOf`)。
- *  ③ 还是没有(这条技能已经不在这台机器的表里了)→ RPC 回落
- *    `skills.openDirectory({skillId})`,宿主那头是 `shell.openPath` = 在 Finder 里打开。
+ *  ③ 还是没有(这条技能已经不在这台机器的表里了)→ 回落:问后端目录在哪
+ *    (`skills.directoryPath({skillId})`),再由这台客户端自己 `openPath` = 在 Finder 里打开
+ *    (第④步批 1:打开是客户端的事;浏览器壳没有这一手,这一路答「打不开」)。
  *    它是**另一种打开法**,所以排在最后而不是并列。
  *
  * ── 返回值是「开成了没有」,不是 void ──────────────────────────────────────

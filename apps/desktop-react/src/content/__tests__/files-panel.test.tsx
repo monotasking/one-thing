@@ -92,6 +92,17 @@ const REAL_SESSION_ACTIONS = {
   setWorkingDirectory: useSessionsSource.getState().setWorkingDirectory,
 }
 
+/*
+ * 第④步批 1:「在文件管理器中显示」是客户端自己的事 —— 这台客户端得有 preload 那条 `clientAction`。
+ * 这一组跑的是桌面档,所以每例装一只替身(浏览器壳那一支在 `data/files-source.test.ts` 钉着)。
+ */
+beforeEach(() => {
+  ;(window as unknown as { onethingHost?: unknown }).onethingHost = { clientAction: async () => ({ ok: true }) }
+})
+afterEach(() => {
+  delete (window as unknown as { onethingHost?: unknown }).onethingHost
+})
+
 beforeEach(() => {
   /* T1-fix:这一组拿 mac 的词写(⌘…),而 jsdom 的 UA 不是 mac ——
    * 判词整段在 `src/test/mac-ua.ts` 上。 */

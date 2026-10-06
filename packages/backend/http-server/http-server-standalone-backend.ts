@@ -72,7 +72,6 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			// 旧 safeStorage 密文解不开:遇到就答「已锁定 · 旧密文待迁移」,等桌面来迁(第④步批 0)。
 			legacySafeStorageForMigration: null,
 			logging: null,
-			shell: null,
 			voice: null,
 			/*
 			 * 终端缺省没有(`terminal` 域结构化拒,不 load node-pty)。
@@ -90,7 +89,6 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			scratchpad: null,
 			plugins: null,
 			gateway: null,
-			settings: null,
 			evals: null,
 			mcp: null,
 			/**
@@ -102,7 +100,6 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			 */
 			localTrust: null,
 			speechOutput: null,
-			dialog: null,
 		},
 		toolRegistry: serverToolRegistry,
 		sessionSkills: true,

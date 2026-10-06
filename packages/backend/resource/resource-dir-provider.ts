@@ -2,15 +2,16 @@
  * K3-c —— 目录这一 scheme 的实现(`docs/design/atom-2026-09.md` §9 K3 三样板)。
  *
  * 自述在产品层(`@onething/backend/file/file-resource-spec`),实现在这里 —— 与会话那
- * 一对同一个形状,理由也逐字相同:只有装配层够得着脊柱(这里够的是宿主外壳口与
- * 沙箱端口)。
+ * 一对同一个形状,理由也逐字相同:只有装配层够得着脊柱(这里够的是沙箱端口)。
+ * 「在访达中显示」那一下第④步批 1 起在客户端(自述里 `reveal` 是 `home: 'shell'`),
+ * 这里只 plan。
  *
  * ── 列目录 / stat 的代码从哪来:一行都没有新写的 ──────────────────────────────
- * `listOnethingDirectory` / `statOnethingPath` / `revealOnethingPath` 是
+ * `listOnethingDirectory` / `statOnethingPath` 是
  * `@onething/backend/file` 里的**纯函数**(fs 由调用方注入),`file/file-client-api.ts`
- * 的 `listDirectory` / `stat` / `reveal` 调的就是它们。所以这只 provider 递的是同一
- * 组函数、同一份注入(`fs.readdir(withFileTypes)` / `fs.stat().catch(()=>null)` /
- * `getShellHost().revealPath`),不是第二份写法:`node_modules` / `.git` 跳过、目录
+ * 的 `listDirectory` / `stat` 调的就是它们。所以这只 provider 递的是同一
+ * 组函数、同一份注入(`fs.readdir(withFileTypes)` / `fs.stat().catch(()=>null)`),
+ * 不是第二份写法:`node_modules` / `.git` 跳过、目录
  * 在前同类按名排、失败的措辞,三样自动与 `files` 域一致,而不是靠某天有人回来对表。
  *
  * 这一层自己只做两件事:**判沙箱**,和把出参投影成自述说的那个形状
@@ -73,12 +74,10 @@ import {
   deleteOnethingPath,
   listOnethingDirectory,
   renameOnethingPath,
-  revealOnethingPath,
   statOnethingPath,
   type OnethingDirectoryEntry,
   dirResourceSpec,
 } from '@onething/backend/file'
-import { getShellHost, hasShellHost, SHELL_HOST_UNAVAILABLE } from '@onething/backend/shell'
 import { planFromSpec } from '@onething/backend/resource/resource-api'
 import { formatRef } from '@shared/resource/ref'
 import type {
@@ -109,14 +108,6 @@ export class DirOperationFailedError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'DirOperationFailedError'
-  }
-}
-
-/** 这台宿主没有外壳能力(server / CLI:没有文件管理器可以定位)。 */
-export class DirShellUnavailableError extends Error {
-  constructor(reason: string = SHELL_HOST_UNAVAILABLE) {
-    super(`Cannot show a path in the file manager: ${reason}`)
-    this.name = 'DirShellUnavailableError'
   }
 }
 
@@ -233,9 +224,12 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
         // **先夹后降级** —— 越界的答案是越界,不是「这台宿主没有外壳能力」
         // (与 `file/file-client-api.ts` 的 `reveal` 逐字同序)。
         const target = resolveReadable(requireDirPath(ref, op), ctx.sandbox, scope)
-        // 宿主口缺席在 **plan** 期就判,与 `ResourceTool` 对 `home: 'shell'` 的那一句
-        // 同一个理由:一次注定跑不了的做法不该先去弹一张权限卡问人。
-        if (!hasShellHost()) throw new DirShellUnavailableError()
+        // 路径不在就是失败,不是一次静默的无操作(与 `files.revealTarget` 同一句)。定位那一下
+        // 第④步批 1 起在客户端:自述里这条做法是 `home: 'shell'`,`ResourceTool` 把这份载荷
+        // (夹过的绝对路径)随命令发给认领了它的那台客户端(决策 D274 / D275)。
+        await fs.stat(target).catch(error => {
+          throw new DirOperationFailedError(error instanceof Error ? error.message : String(error))
+        })
         return planFromSpec<DirOpPayload>(this.spec, op, ref, { op, path: target }, {
           title: `Show ${target} in the file manager`,
         })
@@ -288,21 +282,10 @@ export class DirResourceProvider implements ResourceProvider<DirOpPayload> {
   async apply(op: string, intent: Intent<DirOpPayload>, _ctx: RunContext): Promise<Result> {
     const payload = intent.payload
     switch (payload.op) {
-      case 'reveal': {
-        // 投影函数与注入**逐字抄自 `file/file-client-api.ts` 的 `reveal`**:先 stat(路径
-        // 不在就是失败,不是一次静默的无操作),再经宿主口定位;未注入 = 抛,投影自己
-        // catch 成 `{ success:false, error }`。
-        const response = await revealOnethingPath({
-          path: payload.path,
-          stat: target => fs.stat(target),
-          revealPath: async target => {
-            const outcome = await getShellHost().revealPath(target)
-            if (!outcome.success) throw new Error(outcome.error ?? SHELL_HOST_UNAVAILABLE)
-          },
-        })
-        settle(response, 'Failed to reveal path')
-        return textResult(`Showed ${payload.path} in the file manager`)
-      }
+      case 'reveal':
+        // 到不了:自述里 `reveal` 是 `home: 'shell'`,`ResourceTool.apply` 对它走 shell dispatch。
+        // 留一句诚实的错 —— `apply` 是公开方法,手搓一个 Intent 直接调它的人该当场听见。
+        throw new TypeError('Dir resource: reveal runs in the client; it never applies in this process')
       case 'createDirectory': {
         // `recursive: false` 与 `files.createDirectory` 逐字相同:缺父目录是失败,
         // 不是顺手把整条路径造出来(那会让一次拼错的地址安静地长出一棵树)。

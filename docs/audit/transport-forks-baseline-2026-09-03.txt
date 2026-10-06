@@ -54,10 +54,21 @@
 # 2026-10-04 包根归位(决策 D21 / D26):`rpc/` 与 `server/` 拆成 `http-server/` 与各功能的第二个入口
 #   `runtime/<功能>/<功能>-client-api*.ts`。`forks:` 的扫描范围改成「`http-server/` 整棵 + 全部 client-api 文件」,
 #   五行的键随文件改了路径,数字一个没变(5 处 / 5 文件)。
+# 2026-10-06 第④步批 1(docs/design/two-process-2026-10.md §2.2,决策 D5 由用户 10-06 拍定):
+#   **`ipcMain:apps/desktop-react/electron` 2 → 3,这是一次放宽,不是收紧,是用户拍定的。**
+#   第三条是 `host:client-action`(`electron/main.ts`,`ipcMain.handle`;契约 `@shared/contracts/client-action`):
+#   **只在用户屏幕上发生的事** —— 原生打开对话框、把网址交给系统浏览器、用默认程序打开路径、在访达中定位。
+#   这四件从前经后端的 `dialog` / `shell` 两个 RPC 域绕一圈(渲染层 → `POST /api/rpc` → 后端 → Electron 注入的
+#   宿主端口),第④步要把后端搬出 Electron 进程,那条路在拆的那一天就断了;而它们没有一件需要后端。
+#   它与 `host:connection` 同性质:**只有宿主答得出的事,不是数据通道** —— 请求 / 应答的数据仍然只走
+#   `POST /api/rpc`,两个 RPC 域同批删掉(名册少两行)。四个动词住在同一条通道的载荷里,不是四条;
+#   载荷来自渲染进程,主进程逐格校验(`electron/client-action.ts`)。**钉数不再涨**:再有一件只在用户屏幕上
+#   发生的事,是这条通道载荷里多一个动词,不是第四条通道。
+#   反证:把 main.ts 那一行 `ipcMain.handle(CLIENT_ACTION_CHANNEL, …)` 删掉 → 3 → 2,门提示可收紧。
 # 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
 forks:packages/backend/interaction/interaction-client-api.ts 1
 forks:packages/backend/logging/logging-client-api.ts 1
 forks:packages/backend/mcp/mcp-client-api.ts 1
 forks:packages/backend/session/session-client-api-commands.ts 1
 forks:packages/backend/settings/settings-client-api.ts 1
-ipcMain:apps/desktop-react/electron 2
+ipcMain:apps/desktop-react/electron 3

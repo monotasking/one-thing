@@ -126,9 +126,9 @@ export async function createAppServerRuntime(options: Omit<OnethingServerRuntime
   const { createOnethingServerRuntimeOverBackend } = await import('../http-server-runtime.js')
   class Sender extends EventEmitter { isDestroyed() { return false } send() {} }
   const backend = await createOnethingBackend({
-    host: { storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null, voice: null,
+    host: { storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
-      gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null },
+      gateway: null, evals: null, mcp: null, localTrust: null, speechOutput: null },
     sender: new Sender() as never, toolRegistry: 'headless',
   })
   return createOnethingServerRuntimeOverBackend(backend, { ...options, processPorts: 'host', ownsBackend: true })

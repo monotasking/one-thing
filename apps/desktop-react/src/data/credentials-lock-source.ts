@@ -37,6 +37,14 @@ export function useCredentialsLocked(): boolean {
   return useCredentialsLock((state) => state.status?.state === 'locked')
 }
 
+/**
+ * 钥匙还在读(第④步批 1 补的文案:**只在设置页那一行**说「正在读取钥匙串。」,不弹横幅 —— 它是一个
+ * 正常的过渡态,通常几百毫秒就过去了,弹一条错误横幅会把「慢」说成「坏」)。
+ */
+export function useCredentialsLoading(): boolean {
+  return useCredentialsLock((state) => state.status?.state === 'loading' || state.status?.reason === 'loading')
+}
+
 /** 后端答的档位(设置页那一行说明读它);还没问到是 null。 */
 export function useCredentialsTier(): CredentialsStatusPayload['tier'] | null {
   return useCredentialsLock((state) => state.status?.tier ?? null)
@@ -47,6 +55,9 @@ const REASON_LINES: Partial<Record<CredentialsLockReason, MessageKey>> = {
   'keychain-timeout': 'credentials.reasonTimeout',
   'keychain-denied': 'credentials.reasonDenied',
   'key-missing': 'credentials.reasonKeyMissing',
+  // 第④步批 1 补齐(D269 留的口,句子由编排者定)。`loading` 不在这里:它不弹横幅,见 `useCredentialsLoading`。
+  'keychain-failed': 'credentials.reasonKeychainFailed',
+  'legacy-safestorage': 'credentials.reasonLegacySafeStorage',
 }
 
 export function credentialsLockReasonLine(reason: CredentialsLockReason | undefined): string | undefined {
@@ -82,7 +93,8 @@ function hideBanner(): void {
 /** 收下一份状态:落表,锁着就亮横幅、解开就收。导出给测试。 */
 export function receiveCredentialsStatus(status: CredentialsStatusPayload): void {
   useCredentialsLock.setState({ status })
-  if (status.state === 'locked') showBanner(status)
+  // 「还在读」不是锁定:不弹横幅,只在设置页那一行说(见 `useCredentialsLoading`)。
+  if (status.state === 'locked' && status.reason !== 'loading') showBanner(status)
   else hideBanner()
 }
 

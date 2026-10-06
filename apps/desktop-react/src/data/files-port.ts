@@ -1,4 +1,5 @@
 import { filesRouter } from '@shared/ipc/files'
+import { revealLocalPath } from '../platform/host'
 import type {
   FilesActionResponse,
   FilesListDirectoryResponse,
@@ -71,7 +72,11 @@ export interface FilesPort {
     content: string,
     expectedMtimeMs?: number,
   ): Promise<FilesSaveContentResponse>
-  /** 在文件管理器里定位。只有 Electron 桌面做得到,别处结构化降级。 */
+  /**
+   * 在文件管理器里定位。第④步批 1 起两步:后端只答「定位到哪」(`files.revealTarget`:夹沙箱、查在不在),
+   * 定位那一下由这台客户端自己做(`platform/host.ts` 的 `revealLocalPath`)。浏览器壳做不了 ——
+   * 调用方先问 `canRunClientActions()`。
+   */
   reveal(path: string): Promise<FilesActionResponse>
   /** 按名字找文件(**不是按内容**,见 search/data.ts 顶部)。 */
   list(request: FilesListRequest): Promise<FilesListResponse>
@@ -100,7 +105,13 @@ async function realPort(): Promise<FilesPort> {
     readContent: (path, maxSize) => filesApi.readContent({ path, maxSize }),
     saveContent: (path, content, expectedMtimeMs) =>
       filesApi.saveContent({ path, content, ...(expectedMtimeMs ? { expectedMtimeMs } : {}) }),
-    reveal: (path) => filesApi.reveal({ path }),
+    reveal: async (path) => {
+      const target = await filesApi.revealTarget({ path })
+      if (!target.success || !target.path) return { success: false, ...(target.error ? { error: target.error } : {}) }
+      const outcome = await revealLocalPath(target.path)
+      if (outcome.ok) return { success: true }
+      return { success: false, error: outcome.reason === 'failed' ? outcome.error : 'this client cannot reveal files' }
+    },
     list: (request) => filesApi.list(request),
   }
 }

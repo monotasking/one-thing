@@ -4,9 +4,10 @@ import { Dialog } from '../../ui/Dialog'
 import { Field } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import { Spinner } from '../../ui/Spinner'
-import { useT } from '../../i18n'
+import { plural, useT } from '../../i18n'
 import { credentialsPort } from '../../data/credentials-port'
-import { useCredentialsLocked, useCredentialsTier } from '../../data/credentials-lock-source'
+import { useCredentialsLoading, useCredentialsLocked, useCredentialsTier } from '../../data/credentials-lock-source'
+import { notify } from '../../services/notify'
 import { downloadJsonFile } from '../../keymap/profile-file'
 import s from './Settings.module.css'
 
@@ -26,7 +27,10 @@ import s from './Settings.module.css'
  * 不需要提醒)。锁定时「导出」不可用(锁着读到的是空池,导出一份空文件只会让人以为备份过了),
  * 「导入」照旧可用(钥匙丢了时导入就是恢复的那条路)。
  * UI 交互状态:钮 rest / hover / focus 随 `ui/Button`;对话框里口令为空 → 确认钮 disabled;
- * 提交中 → 确认钮 disabled + aria-busy + 钮内 Spinner;失败 → 口令框 `invalid`(红边),对话框不关。
+ * 提交中 → 确认钮 disabled + aria-busy + 钮内 Spinner;失败 → 口令框 `invalid`(红边),对话框不关;
+ * 口令不对(后端答 `WRONG_PASSPHRASE`,按错误码判,不认英文报错串)→ 红边之外框下再一行「口令不对。」。
+ * 成功(第④步批 1 补的文案)→ 对话框关掉,现有的轻提示(`notify` success 档,自己飘走)说一句
+ * 「凭证已导出。」/「已导入 n 个凭证。」。钥匙还在读 → 档位那一行说「正在读取钥匙串。」(不弹横幅)。
  */
 type Mode = { kind: 'export' } | { kind: 'import'; data: string }
 
@@ -34,16 +38,19 @@ export function CredentialsSettings() {
   const t = useT()
   const tier = useCredentialsTier()
   const locked = useCredentialsLocked()
+  const loading = useCredentialsLoading()
   const fileRef = useRef<HTMLInputElement>(null)
   const [mode, setMode] = useState<Mode | null>(null)
   const [passphrase, setPassphrase] = useState('')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [wrongPassphrase, setWrongPassphrase] = useState(false)
 
   function close(): void {
     setMode(null)
     setPassphrase('')
     setFailed(false)
+    setWrongPassphrase(false)
     setBusy(false)
   }
 
@@ -60,20 +67,29 @@ export function CredentialsSettings() {
     if (!mode || !passphrase || busy) return
     setBusy(true)
     setFailed(false)
+    setWrongPassphrase(false)
     try {
       const port = await credentialsPort()
       if (mode.kind === 'export') {
         const response = await port.exportCredentials(passphrase)
         if (response.success && response.data && response.fileName && downloadJsonFile(response.fileName, response.data)) {
           close()
+          notify({ level: 'success', source: 'credentials', title: t('credentials.exported') })
           return
         }
       } else {
         const response = await port.importCredentials(passphrase, mode.data)
         if (response.success) {
+          const n = response.imported ?? 0
           close()
+          notify({
+            level: 'success',
+            source: 'credentials',
+            title: t(plural(n, 'credentials.importedOne', 'credentials.importedMany'), { n }),
+          })
           return
         }
+        if (response.code === 'WRONG_PASSPHRASE') setWrongPassphrase(true)
       }
       setFailed(true)
     } catch {
@@ -84,7 +100,9 @@ export function CredentialsSettings() {
   }
 
   const title = mode?.kind === 'import' ? t('credentials.import') : t('credentials.export')
-  const tierNote = tier === 'file' ? t('credentials.tierFile') : tier === 'none' ? t('credentials.tierNone') : null
+  const tierNote = loading
+    ? t('credentials.loading')
+    : tier === 'file' ? t('credentials.tierFile') : tier === 'none' ? t('credentials.tierNone') : null
 
   return (
     <>
@@ -137,7 +155,10 @@ export function CredentialsSettings() {
           </>
         }
       >
-        <Field label={t('credentials.passphraseNote')}>
+        <Field
+          label={t('credentials.passphraseNote')}
+          error={wrongPassphrase ? t('credentials.wrongPassphrase') : undefined}
+        >
           <Input
             type="password"
             autoComplete="new-password"
@@ -145,6 +166,7 @@ export function CredentialsSettings() {
             onValueChange={(value) => {
               setPassphrase(value)
               setFailed(false)
+              setWrongPassphrase(false)
             }}
             invalid={failed}
             data-testid="credentials-passphrase"

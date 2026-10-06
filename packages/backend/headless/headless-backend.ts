@@ -143,20 +143,17 @@ export class HeadlessBackend {
           // 旧 safeStorage 密文解不开:遇到就答「已锁定 · 旧密文待迁移」,等桌面来迁(第④步批 0)。
           legacySafeStorageForMigration: null,
           logging: null,
-          shell: null,
           voice: null,
           terminal: null,
           // CLI daemon 不分发 RPC(它走自己那套 NDJSON 命令),没有"可信的 HTTP
           // 调用方"这回事 —— 六个信任判据在它这里一条都到不了。
           localTrust: null,
           speechOutput: null,
-          dialog: null,
           skillsEnvironment: null,
           todoPlan: null,
           scratchpad: null,
           plugins: null,
           gateway: null,
-          settings: null,
           evals: null,
           mcp: null,
         },

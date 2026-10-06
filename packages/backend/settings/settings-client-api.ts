@@ -35,14 +35,14 @@
  *  2. **回来合并**:客户端交回来的设置若在敏感键上带着哨兵(或干脆没带这个键),
  *     用磁盘上那份真值补齐,于是「只改个主题」不会把凭证洗掉。
  *
- * ## 三件要宿主的事走端口
+ * ## 保存链上没有宿主的事
  *
- * `saveSettings` 的副作用链里有两件只有 Electron 桌面做得到(给 session 与内嵌
- * 浏览器分区套代理、重注册全局快捷键),`getSystemTheme` 要的
- * 「系统当前是不是深色」是第三件。三件都走
- * `settings/settings-host-ports.ts` 的 `configureSettingsHost`,未注入即安静跳过 ——
- * 于是 server / CLI 上这条链自然退化成「存盘 + 刷 provider 缓存 + 更新 MCP/ACP」,
- * 与迁移前它们根本没有这条通道等价。
+ * 从前 `saveSettings` 的副作用链里有两件经宿主端口做(给 Electron 的 session 与内嵌浏览器分区套代理、
+ * 重注册全局快捷键),`getSystemTheme` 要的「系统当前是不是深色」是第三件。第④步批 1 三件都退役:
+ * 代理重套改由 Electron 自己订 `settings:changed`(那条推送本来就在,判词在
+ * `apps/desktop-react/electron/network-proxy.ts`);全局快捷键那一格从来没有宿主注入过;深浅色由看
+ * 屏幕的那台客户端自己读。于是这条链在每一种宿主上都是同一句:「存盘 + 刷 provider 缓存 + 更新
+ * MCP/ACP + 广播」。
  *
  * 网关设置的套用(`applyGatewaySettings`)同样是宿主能力,它复用第八批已经立好的
  * `configureGatewayHost` —— 本批只在那张端口表上多一格 `applySettings`,桌面在
@@ -63,7 +63,6 @@ import { MCPManager, registerMCPTools } from '@onething/backend/mcp'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import {
   getOnethingSettingsForIpc,
-  getOnethingSystemThemeForIpc,
   saveOnethingSettingsWithRuntimeEffectsForIpc,
 } from './settings-ipc-operations.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
@@ -78,11 +77,6 @@ import { getSettings, saveSettings } from './settings-store.js'
 import { getGatewayHost } from '@onething/backend/gateway'
 import { consolePort, getLogger } from '@onething/backend/logging'
 import { broadcastSettingsChanged } from '@onething/backend/settings/settings-events'
-import {
-  applyHostNetworkProxySettings,
-  hostShouldUseDarkColors,
-  registerHostGlobalWindowShortcuts,
-} from '@onething/backend/settings/settings-host-ports'
 import { testOnethingProxy } from '@onething/backend/settings/settings-proxy'
 import { getVoiceServiceSafe } from '@onething/backend/voice'
 import { startTodoPlanWatcher } from '@onething/backend/todo-plan'
@@ -134,8 +128,6 @@ async function saveSettingsFromRpc(
     saveSettings: nextSettings => saveSettings(nextSettings),
     getSettings: () => getSettings(),
     invalidateProviderCache,
-    applyNetworkProxySettings: proxy => applyHostNetworkProxySettings(proxy),
-    registerGlobalWindowShortcuts: () => registerHostGlobalWindowShortcuts(),
     applyVoiceSettings: normalizedSettings =>
       getVoiceServiceSafe()?.applySettings(normalizedSettings),
     updateMCPSettings: nextSettings => mcp
@@ -188,9 +180,6 @@ export const settingsRpcHandlers: RpcRouteHandlers<SettingsRoutes> = {
   },
   async saveSettings(input, context = DESKTOP_RPC_CONTEXT) {
     return saveSettingsFromRpc(input, context)
-  },
-  async getSystemTheme() {
-    return getOnethingSystemThemeForIpc(hostShouldUseDarkColors())
   },
   async testProxy(input) {
     return testOnethingProxy(input.proxy)

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { InteractionGetPendingResponse, InteractionRequest } from '@shared/ipc/interaction'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import { composerStoreFor, resetComposerStore } from '../composer/store'
-import { bindComposerInteractions, interactionAnswers } from './composer-interactions'
+import { askLinkOf, bindComposerInteractions, interactionAnswers } from './composer-interactions'
 import type { InteractionPort } from './interaction-port'
 
 const cleanups: (() => void)[] = []
@@ -144,5 +144,26 @@ describe('ask_user 与真实交互协议连接', () => {
     await flush()
     h.requested(request('after-unmount'))
     expect(h.store.getState().askSpec).toBeNull()
+  })
+})
+
+/*
+ * 第④步批 1(决策 D285):agent 要人去开一个链接 —— 题上带 `link`,卡上一颗「打开链接」与域名。
+ * 只认 http(s);域名用 `URL.hostname`。
+ */
+describe('题上带的链接', () => {
+  it('askLinkOf:http(s) 才画,域名照 URL 解', () => {
+    expect(askLinkOf('https://login.example.test/acp?x=1')).toEqual({ url: 'https://login.example.test/acp?x=1', host: 'login.example.test' })
+    expect(askLinkOf('javascript:alert(1)')).toBeUndefined()
+    expect(askLinkOf('not a url')).toBeUndefined()
+    expect(askLinkOf(undefined)).toBeUndefined()
+  })
+
+  it('请求里的 link 穿进表单那一题', async () => {
+    const req = request('ask-link')
+    req.questions = [{ id: 'url', question: '请在浏览器里打开 https://example.test/x', options: [{ label: '已完成' }, { label: '取消' }], link: { url: 'https://example.test/x' } }]
+    const h = harness([req])
+    await flush()
+    expect(h.store.getState().askSpec?.questions[0]?.link).toEqual({ url: 'https://example.test/x', host: 'example.test' })
   })
 })

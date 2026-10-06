@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilesDirectoryEntry } from '@shared/ipc/files'
 import { configureFilesPort } from './files-port'
 import type { FilesPort } from './files-port'
@@ -426,6 +426,28 @@ describe('窗口化:只画看得见的那一段', () => {
  */
 
 describe('reveal:失败必须看得见', () => {
+  /*
+   * 第④步批 1:定位是客户端自己的事 —— 这台客户端得有 preload 那条 `clientAction`。jsdom 里没有,
+   * 所以下面两例先装一只替身;最后一例证「没有它」那一支答一句结构化的话、一个请求都不发。
+   */
+  const host = window as unknown as { onethingHost?: unknown }
+  beforeEach(() => {
+    host.onethingHost = { clientAction: vi.fn(async () => ({ ok: true })) }
+  })
+  afterEach(() => {
+    delete host.onethingHost
+  })
+
+  it('这台客户端没有文件管理器(浏览器壳)→ 一条 warn「这台客户端做不了」,不发请求', async () => {
+    delete host.onethingHost
+    const port = fakePort()
+    await revealMutation.run('/repo/a.ts')
+    expect(port.reveal).not.toHaveBeenCalled()
+    expect(
+      useNotifyStore.getState().items.map((x) => [x.level, x.source, x.title, x.body]),
+    ).toEqual([['warn', 'files.reveal', '这台客户端打不开本机的文件和文件夹。', '/repo/a.ts']])
+  })
+
   it('成功就什么都不说', async () => {
     fakePort()
     await revealMutation.run('/repo/a.ts')

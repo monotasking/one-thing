@@ -14,7 +14,7 @@
  *    —— 发起保存的那扇窗不收自己的回声(回灌整份 settings 会冲掉它的草稿);
  *  - **http 分叉的两道真护栏**:出门脱敏(`transport:'http'` 才脱)、
  *    回来把哨兵合并回真值(于是「只改主题」不会洗掉 apiKey);
- *  - `getSystemTheme` 读的是宿主端口(未注入 = 浅色)。
+ *  - `getSystemTheme` 第④步批 1 退役(系统深浅色由看屏幕的那台客户端自己读),这条路由不在了。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mergeWithDefaults } from '@onething/backend/settings'
@@ -75,13 +75,12 @@ vi.mock('@onething/backend/gateway', () => ({
 }))
 
 async function loadDomain() {
-  const [registry, domain, hostPorts, events] = await Promise.all([
+  const [registry, domain, events] = await Promise.all([
     import('../../http-server/http-server-dispatch-table.js'),
     import('../settings-client-api.js'),
-    import('@onething/backend/settings/settings-host-ports'),
     import('@onething/backend/settings/settings-events'),
   ])
-  return { ...registry, ...domain, ...hostPorts, ...events }
+  return { ...registry, ...domain, ...events }
 }
 
 function unwrap(response: { ok: boolean } & Record<string, unknown>) {
@@ -107,8 +106,6 @@ describe('settings RPC domain', () => {
     dispose = undefined
     const { resetRpcRegistryForTests } = await import('../../http-server/http-server-dispatch-table.js')
     resetRpcRegistryForTests()
-    const { configureSettingsHost } = await import('@onething/backend/settings/settings-host-ports')
-    configureSettingsHost({})
     const { configureSettingsEventBroadcaster } = await import('@onething/backend/settings/settings-events')
     configureSettingsEventBroadcaster(null)
     vi.resetModules()
@@ -135,12 +132,8 @@ describe('settings RPC domain', () => {
       dispatchRpc,
       registerRouterHandlers,
       settingsRpcHandlers,
-      configureSettingsHost,
       configureSettingsEventBroadcaster,
     } = await loadDomain()
-    const applyNetworkProxySettings = vi.fn()
-    const registerGlobalWindowShortcuts = vi.fn()
-    configureSettingsHost({ applyNetworkProxySettings, registerGlobalWindowShortcuts })
     const broadcast = vi.fn()
     configureSettingsEventBroadcaster(broadcast)
     dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
@@ -156,8 +149,6 @@ describe('settings RPC domain', () => {
     expect(result.settings.theme).toBe('light')
     expect(store.saveSettings).toHaveBeenCalledTimes(1)
     expect(ports.invalidateProviderCache).toHaveBeenCalledTimes(1)
-    expect(applyNetworkProxySettings).toHaveBeenCalledTimes(1)
-    expect(registerGlobalWindowShortcuts).toHaveBeenCalledTimes(1)
     expect(ports.updateMCPSettings).toHaveBeenCalledTimes(1)
     expect(ports.registerMCPTools).toHaveBeenCalledTimes(1)
     expect(ports.updateACPSettings).toHaveBeenCalledTimes(1)
@@ -223,16 +214,12 @@ describe('settings RPC domain', () => {
     expect(store.current.ai.providers.openai.apiKey).toBe('sk-real-openai')
   })
 
-  it('reads the system theme from the host port and falls back to light', async () => {
-    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers, configureSettingsHost } = await loadDomain()
+  it('no longer serves the system theme (第④步批 1:看屏幕的那台客户端自己读)', async () => {
+    const { dispatchRpc, registerRouterHandlers, settingsRpcHandlers } = await loadDomain()
     dispose = registerRouterHandlers(settingsRouter, settingsRpcHandlers)
 
-    expect(unwrap(await dispatchRpc({ domain: 'settings', method: 'getSystemTheme', payload: {} })))
-      .toEqual({ success: true, theme: 'light' })
-
-    configureSettingsHost({ shouldUseDarkColors: () => true })
-    expect(unwrap(await dispatchRpc({ domain: 'settings', method: 'getSystemTheme', payload: {} })))
-      .toEqual({ success: true, theme: 'dark' })
+    expect(await dispatchRpc({ domain: 'settings', method: 'getSystemTheme', payload: {} }))
+      .toMatchObject({ ok: false })
   })
 
   it('rejects a disabled proxy without reaching the network', async () => {

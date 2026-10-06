@@ -5,10 +5,10 @@ import {
   deleteOnethingSkillForIpc,
   listOnethingSkillDirectoriesForIpc,
   listOnethingSkillsForIpc,
-  openOnethingSkillDirectoryForIpc,
   readOnethingSkillFileForIpc,
   refreshOnethingSkillsForIpc,
   removeOnethingSkillDirectoryForIpc,
+  resolveOnethingSkillDirectoryForIpc,
   setOnethingSkillAgentForIpc,
   toggleOnethingSkillEnabledForIpc,
   updateOnethingSkillDirectoryForIpc,
@@ -78,34 +78,25 @@ describe('skills IPC operations', () => {
     })
   })
 
-  it('opens either a concrete skill directory or the user skills folder', async () => {
-    const openPath = vi.fn()
+  it('answers either a concrete skill directory or the user skills folder (第④步批 1:打开是客户端的事)', async () => {
     const listSkills = vi.fn(() => [skill()])
 
-    await expect(openOnethingSkillDirectoryForIpc({
+    await expect(resolveOnethingSkillDirectoryForIpc({
       skillId: 'user:demo',
       listSkills,
       getUserSkillsPath: () => '/skills/user',
-      openPath,
-    })).resolves.toEqual({ success: true })
-    expect(openPath).toHaveBeenCalledWith('/skills/demo')
+    })).resolves.toEqual({ success: true, path: '/skills/demo' })
 
-    await expect(openOnethingSkillDirectoryForIpc({
+    await expect(resolveOnethingSkillDirectoryForIpc({
       skillId: 'missing',
       listSkills,
       getUserSkillsPath: () => '/skills/user',
-      openPath,
-    })).resolves.toEqual({ success: true })
-    expect(openPath).toHaveBeenLastCalledWith('/skills/user')
+    })).resolves.toEqual({ success: true, path: '/skills/user' })
 
-    await expect(openOnethingSkillDirectoryForIpc({
+    await expect(resolveOnethingSkillDirectoryForIpc({
       listSkills,
       getUserSkillsPath: () => '/skills/user',
-      openPath: () => 'Native open failed',
-    })).resolves.toEqual({
-      success: false,
-      error: 'Native open failed',
-    })
+    })).resolves.toEqual({ success: true, path: '/skills/user' })
   })
 
   it('creates and deletes skills while invalidating caches', async () => {

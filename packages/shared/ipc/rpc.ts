@@ -67,8 +67,14 @@ export interface RpcDispatchContext {
 	 * cover that, which is why this field exists rather than the broadcast
 	 * simply going everywhere.
 	 *
-	 * Undefined on `'http'` (a network client has no window to exclude) and on
-	 * any in-process caller.
+	 * On `'http'` it is the client's **shell coordinate** (第④步批 1,决策 D8 / D277):
+	 * the HTTP surface mints it from the `X-Onething-Shell-Id` request header
+	 * (`SHELL_ID_HEADER`) after the bearer gate, and only that — never from the
+	 * envelope. It is a coordinate, not an identity: it decides which client a
+	 * "please run this on your screen" command goes back to (the `resources`
+	 * shell dispatch), nothing more. The settings echo suppression above does not
+	 * use it on HTTP (the SSE fan-out has no per-connection caller to exclude).
+	 * Undefined when the client sent no header, and on any in-process caller.
 	 */
 	callerId?: string | number;
 	/**
@@ -105,6 +111,12 @@ export interface RpcDispatchContext {
 	 */
 	bridgeCredential?: string;
 }
+
+/**
+ * 客户端把自己的壳坐标(每次运行现铸的 `shellId`)放在这个请求头里(第④步批 1,决策 D277)。
+ * HTTP 面在鉴权之后把它铸进 `RpcDispatchContext.callerId`;两边认的是这同一个字面量。
+ */
+export const SHELL_ID_HEADER = "x-onething-shell-id";
 
 /**
  * The desktop/in-process context. Exported as a constant so the one place that

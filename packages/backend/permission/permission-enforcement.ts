@@ -153,7 +153,7 @@ const timeoutAskBridge = createAutoDenyBridge(
  *    `readOptionalSystemPrincipal` 只放行 `system` 一支,所以桥进来的一律是它);
  *  - `isHostUnattended()` —— **宿主装配时自己声明**过这台进程上没人能答卡
  *    (今天只有 `HeadlessBackend` 说这句话)。桌面壳不说,所以它照旧弹卡给人答;
- *    为什么不拿 `hasShellHost()` / `isHostLocallyTrusted()` 反推,理由写在
+ *    为什么不拿宿主能力 / `isHostLocallyTrusted()` 反推,理由写在
  *    `permission/permission-unattended.ts` 那半的头注上。
  *
  * ## 它排在最后一位

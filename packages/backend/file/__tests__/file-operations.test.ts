@@ -7,7 +7,7 @@ import {
   onethingBufferLooksBinary,
   readOnethingFileContent,
   renameOnethingPath,
-  revealOnethingPath,
+  resolveOnethingRevealTarget,
   saveOnethingFileContent,
   statOnethingPath,
 } from '../file-operations.js'
@@ -209,19 +209,14 @@ describe('file operations runtime adapters', () => {
       },
     })).resolves.toEqual({ success: false, error: 'Failed to create directory' })
 
-    const revealPath = vi.fn()
-    await expect(revealOnethingPath({
+    await expect(resolveOnethingRevealTarget({
       path: '',
       stat: async () => stat(),
-      revealPath,
     })).resolves.toEqual({ success: false, error: 'Path is required' })
-    expect(revealPath).not.toHaveBeenCalled()
 
-    await expect(revealOnethingPath({
+    await expect(resolveOnethingRevealTarget({
       path: '/repo/a.txt',
       stat: async () => stat({ file: true }),
-      revealPath,
-    })).resolves.toEqual({ success: true })
-    expect(revealPath).toHaveBeenCalledWith('/repo/a.txt')
+    })).resolves.toEqual({ success: true, path: '/repo/a.txt' })
   })
 })

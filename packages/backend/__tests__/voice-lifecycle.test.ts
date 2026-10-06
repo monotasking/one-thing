@@ -37,10 +37,10 @@ afterEach(async () => {
 async function assemble(storePath: string, sendCommand: (command: import('@shared/ipc.js').VoiceRuntimeCommand) => void) {
   const { createOnethingBackend } = await import('../backend.js')
   return createOnethingBackend({ storePath, owner: 'daemon', toolRegistry: 'headless', host: {
-    storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null,
+    storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, 
     voice: { runtimeWindow: { sendCommand } }, terminal: null, skillsEnvironment: null,
-    todoPlan: null, scratchpad: null, plugins: null, gateway: null, settings: null,
-    evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
+    todoPlan: null, scratchpad: null, plugins: null, gateway: null, 
+    evals: null, mcp: null, localTrust: null, speechOutput: null, 
   } })
 }
 

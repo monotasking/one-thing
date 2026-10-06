@@ -1,5 +1,8 @@
 /**
- * React 壳的 preload —— 全部内容就是**一条**通道。
+ * React 壳的 preload —— 三条 `invoke` / `send` 口:`host:connection`(连哪台后端)、`host:native-view`
+ * (窗口系统给原生视图的管道)、`host:client-action`(第④步批 1:只在用户屏幕上发生的事 —— 原生对话框、
+ * 打开外链、打开路径、在访达中显示;契约 `@shared/contracts/client-action`)。三条都不是数据通道,
+ * 数据只走 HTTP/SSE。
  *
  * 刻意不叫 `electronAPI`:那个名字是旧 Vue 壳的桥,`packages/renderer/platform/index.ts`
  * 见到它就会切到 Electron 传输面(旧壳那张表)。新壳走的是 HTTP/SSE,所以这里挂的是
@@ -7,6 +10,7 @@
  */
 import { contextBridge, ipcRenderer } from 'electron'
 import { NATIVE_VIEW_CHANNEL } from './native-view-protocol.js'
+import { CLIENT_ACTION_CHANNEL, type ClientActionBridge } from '@shared/contracts/client-action'
 import type { NativeViewBridge, NativeViewPush, NativeViewRequest } from './native-view-protocol.js'
 
 export type { NativeViewBridge, NativeViewPush, NativeViewRequest }
@@ -15,8 +19,15 @@ export type HostConnectionResult =
   | { ok: true; baseUrl: string; token?: string }
   | { ok: false; error: string }
 
+const clientAction: ClientActionBridge = action => ipcRenderer.invoke(CLIENT_ACTION_CHANNEL, action)
+
 contextBridge.exposeInMainWorld('onethingHost', {
   getConnection: (): Promise<HostConnectionResult> => ipcRenderer.invoke('host:connection'),
+  /**
+   * **只在用户屏幕上发生的事**(第④步批 1,决策 D5 / D278)。主进程逐格校验(`./client-action.ts`),
+   * 渲染层只经 `src/platform/host.ts` 那几只函数用它 —— 浏览器壳没有这一格,判据就是它在不在。
+   */
+  clientAction,
   /**
    * 这扇窗跑在哪个平台上。**一个事实,不是一个结论**(W1-b)。
    *
