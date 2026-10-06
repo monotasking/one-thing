@@ -2,7 +2,8 @@
  * voice —— 语音:语音识别 / 合成服务(豆包等服务商)、唤醒词、朗读输出,以及宿主给的音频通道。
  *
  * 对外交出四类东西:
- * - 宿主注入口:语音宿主(把消息推给有麦克风的那一端)与朗读输出口,各自的装上 / 判有没有 / 复位与形状;
+ * - 宿主注入口:语音宿主(把消息推给有麦克风的那一端)与朗读输出口,各自的装上 / 判有没有 / 复位与形状,
+ *   以及朗读输出口的一只现成实现(起子进程放音);
  * - 语音服务的单槽:建、装上、安全地取;
  * - 合成一段语音(`synthesizeSpeech`,给朗读与音乐电台的主持词用);
  * - 估一段音频的时长。
@@ -14,6 +15,8 @@ export { broadcastVoiceHostMessage, configureVoiceHost, hasVoiceHost, resetVoice
 export type { VoiceHostPorts } from './voice-host-ports.js'
 export { configureSpeechOutputHost, getSpeechOutput, resetSpeechOutputHost } from './voice-speech-output.js'
 export type { SpeechAudio, SpeechOutputPort } from './voice-speech-output.js'
+// 出声端口的进程实现(起 mpv / afplay 子进程放音);桌面宿主表与后端进程的桌面档各交一只。
+export { createProcessSpeechOutput } from './voice-speech-output-process.js'
 
 // 语音服务的单槽。
 export { configureVoiceService, createVoiceService, getVoiceServiceSafe } from './voice-service.js'

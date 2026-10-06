@@ -39,12 +39,12 @@ interface DiscoveryRecord {
   host: string
   token?: string
   pid: number
-  /** `shell` = React 壳内嵌的那只 core(A1,2026-08-31);见 backend/http-server/http-server-discovery.ts。 */
-  owner: 'desktop' | 'server' | 'shell'
+  /** `shell` = React 壳内嵌的那只 core(A1,2026-08-31);`backend` = 被拉起的后端进程(第④步批 2a);见 `@shared/backend/http-discovery.ts`。 */
+  owner: 'desktop' | 'server' | 'shell' | 'backend'
 }
 
 /** 白名单归一。认不出的 owner 一律记 `server` —— 代理只按地址转发,owner 是给人看的。 */
-const KNOWN_OWNERS: readonly DiscoveryRecord['owner'][] = ['desktop', 'server', 'shell']
+const KNOWN_OWNERS: readonly DiscoveryRecord['owner'][] = ['desktop', 'server', 'shell', 'backend']
 
 function laneStorePath(): string {
   return process.env.ONETHING_STORE_PATH || path.join(os.homedir(), '.onething')

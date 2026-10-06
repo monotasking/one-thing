@@ -294,6 +294,13 @@ Electron 目录里 import `@onething/backend` 的文件有 15 只(`main.ts` 10 �
 
 **目标**:Electron 不装配后端;拉起、发现、监督、停止一个后端子进程;窗口生命周期与后端生命周期分家。
 
+**拆成两段(10-06 编排者定)**:用户在用桌面,一口气把装配搬出去风险太大,所以先做后端那一半、再做 Electron 那一半。
+
+| 段 | 做什么 | 下面哪几条 | 状态 |
+| --- | --- | --- | --- |
+| **2a · 后端进程能独当一面** | **不改 Electron 的装配方式**(桌面照旧进程内装配);只把后端进程入口做成「桌面明天拉起它就能完全顶上」,每一条都能不开窗地证明 | 第 4 条的「产出 `backend.cjs`」那一半;第 6、7、8、9、10 条;「风险」里子进程 stdout 管道那一条;「行为变化」表里 `process.title` 那一行 | **已实施**,结果见 §9 |
+| **2b · Electron 拉起它** | `main.ts` 改拉起子进程、`window-all-closed`、「退出后继续运行」设置与设置页的后端状态行、D11 崩溃重拉、凭证「先读后交」、内置浏览器当 shell 客户端、订阅源换 SSE | 第 1、2、3、5、11、12、13、14、15 条;第 4 条里「有人拉起它」那一半;下面「验收」整节里要开窗的那几条(`gate:packaged` 扩、`gate:backend-process` 开窗那一半、`boundary:gate` 新断言、`gate:chat-layout` 一个数) | 待做 |
+
 **改动清单(Electron 侧)**
 
 1. `apps/desktop-react/electron/backend-process.ts`(新,≈150 行):
@@ -595,3 +602,54 @@ provider 全在、钥匙串里多出 `onething-credentials` 那一条;macOS `sec
 **没验证到的(用户择时)**:要开 Electron 窗口的门本批一律没跑 —— `gate:resources`(新加的第 ⑤ 步在里面)、`gate:a11y`(卡片上那颗
 「打开链接」该扫一屏)、`gate:files` / `gate:browser` / `gate:todo`(各自有「在访达中显示」或对话框的路);桌面真机上点一次「在访达中
 显示」、选一次目录、在设置页改一次代理看浏览器分区跟上,本批都没点过。
+
+## 9. 批 2a 实施结果(2026-10-06)
+
+> 批 2a 落在桌面**照旧进程内装配**的那一天:Electron 一行装配都没改,用户今天跑的桌面行为不变。这一批只把不带界面的
+> 后端进程做成「桌面明天拉起它就能完全顶上」,每一条都用不开窗的门证。逐条决策见
+> `docs/design/backend-structure-decisions-2026-10.md` D289–D302。
+
+**档位**(`packages/backend/backend-launcher.ts`,读的是 `ONETHING_BACKEND_LAUNCHER`,读处只有这一个):
+
+| 档 | 谁用 | 装配开关 | 装配之外起什么 | 日志 / 发现文件 / 进程名 |
+| --- | --- | --- | --- | --- |
+| 不设 / `none` | `server:start`、`dev:web` 的 server 泳道、全部既有真机门 | `toolRegistry` 按 `ONETHING_SERVER_TOOLS`、`sessionSkills`、`pets` —— 与批 2a 之前逐字相同 | ACP(本来就起,无人答卡 `reject`);MCP 子系统本来就起,但客户端是不联网的 `DisabledServerMCPClient`(`ONETHING_SERVER_MCP_*` 照旧) | `server.jsonl` + 终端 pretty 回显 / owner `server` / 不改 |
+| `desktop` | 今天只有 `gate:backend-process`;批 2b 起桌面拉起它 | 与桌面 `assembleOwnCore` 逐格相同:`toolRegistry: 'full'`、`promptVersion`、`collab`、`sessionSkills`、`pets`(D14,测试对比) | 登录 shell PATH(建 runtime 之前等它);MCP 用桌面那种客户端;用户定时任务、电台、首启模型拉取(都在起点 `own()`);ACP 无人答卡 `wait`;宿主表 `speechOutput` 由后端自己交,`ONETHING_RESOURCES_PATH` 设了 = 打包资源目录 | `app.jsonl`、不回显 / owner `backend` / `onething-backend` |
+| `cli` | 批 3 | 今天等同 `none`(D7 归批 3) | 同 `none` | 同 `none` |
+| 认不出的值 | — | — | 直写 stderr 一行 FATAL,退出 1 | — |
+
+**落了什么**
+
+| 件 | 位置 | 一句话 |
+| --- | --- | --- |
+| 档位 | `packages/backend/backend-launcher.ts`(包根,exports `./backend-launcher.js`) | 读档位、档位 → 纯数据档案、宿主表两格、登录 shell、装配后起的三件 |
+| 进程入口 | `packages/backend/backend-standalone-main.ts` | 读档位;让位「活着就让,不看 owner」;发现文件 owner 随档;装配后 `startLaunchServices`;包进 `async main()`(CJS 没有顶层 await) |
+| 装配那一侧 | `http-server/http-server-standalone-backend.ts`、`http-server-runtime.ts`、`http-server-runtime-types.ts` | `createRealServerBackend` 收档案;`OnethingServerRuntimeOptions` 加 `launchProfile` / `beforeFirstSpawn`;MCP 客户端工厂缺省取档案那一只 |
+| 登录 shell | 新功能 `packages/backend/process-env/`(L0) | 从 `electron/login-shell-env.ts` 原样搬来,测试一起搬;`main.ts` 改引入口 |
+| 出声 | `packages/backend/voice/voice-speech-output-process.ts` | 从 `electron/speech-output.ts` 原样搬来,`voice` 入口交 `createProcessSpeechOutput`;桌面宿主表改引它 |
+| MCP 原生客户端 | `mcp/mcp-manager.ts` 的 `createNativeMCPClient` | `MCPManager` 没装工厂时用的就是它,一处产地 |
+| D9 | `mcp/mcp-client-api.ts` | `canSpawnLocalProcesses()` = `isHostLocallyTrusted()` |
+| D6 | `@shared/backend/http-discovery.ts`、`electron/main.ts` 的 `readDiscovery`、`vite/dev-api-proxy.ts` | owner 联合加 `'backend'`;按 owner 白名单校验的三处都认新值(其余读者逐个核过,只读 port / pid / token) |
+| D14 | `apps/desktop-react/electron/own-core-options.ts` + `__tests__/own-core-options.test.ts` | `assembleOwnCore` 摊开这五格;测试与桌面档逐格比、并读 `main.ts` 源文本防字面量抄回 |
+| 构建 | `build-electron.mjs`(`BACKEND_ENTRY` / `backendEsbuildOptions`,第五次 `build()`)、`electron-builder.yml`(`asarUnpack` 一行)、`dev-app.mjs`(文件头一句) | 多产一份 `dist-electron/backend.cjs`(≈11MB,打包 ≈0.25s);今天没人拉起它 |
+| 门 | `scripts/gate-backend-process.mjs`(`bun run gate:backend-process`) | 见下 |
+
+**`gate:backend-process`**(不开窗):Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 与系统 Node 各跑一遍 `backend.cjs` 的桌面档 ——
+① owner `backend`、pid 是子进程;② capabilities 的 terminal / localFileSystem 为真;③ 临时 store 里一份假的 stdio MCP 真连上、工具列得出;
+④ 预置的定时任务进了调度器;⑤ 日志进 `app.jsonl` 并记着三件、stdout 不回显日志、首启模型拉取跳过(门不出网);⑥ 进程名
+`onething-backend`;⑦ SIGTERM 后 5 秒内退出码 0、发现文件删掉;⑧ 再起一台缺省档对它让位。外加缺省档对照(owner `server`、MCP 读得到
+配置但不连、任务不进、两台缺省档互相让位、日志进 `server.jsonl`)。反证跑过:把桌面档的 MCP 工厂拿掉 ③ 红、把定时任务关掉 ④ ⑤ 红。
+CI 的 gates job 跑 `--build --runtimes=node`(系统 Node 那一半);Electron 那一半只在本机跑(Linux runner 上没证过)。
+
+**启动时长**(Electron + `ELECTRON_RUN_AS_NODE=1`、桌面档、同一个临时 store、登录 shell 缓存命中,「spawn 到发现文件活着」取 5 次中位数,
+给批 2b 做基线):机器较闲时(10-06 23:23)**416ms**(365 / 365 / 416 / 417 / 417);同一台机器负载 4–6(Books.app 占满一核)时
+1511ms 与 3328ms 两轮。登录 shell 缓存未命中的第一次另加 1–3s(取决于用户的 rc 文件)。批 2b 量「从进程起到 `host:connection` 落定」时
+应在同样的负载下对照这个数。
+
+**没做 / 留给批 2b 的**:见 §2.3 的拆段表。另外:`gate:packaged` 的 `owner` 断言今天仍等 `'shell'`(桌面还是进程内装配);
+`main.ts` 里那份 `refreshModelsOnFirstStartup` 与后端档案里那份暂时并存,2b 随 `startPostWindowServices` 一起删;MCP SDK 的几句
+`console.warn` 会经迁移期的 console 兜底写到子进程 stdout(门里量到 204 字节),批 2b 的 `backend-process.ts` 要持续读走 stdout / stderr。
+`electron/__tests__/own-core-options.test.ts` 的第三条用例按 `assembleOwnCore` / `startPostWindowServices` 两个函数名切 `main.ts` 的源文本,
+2b 删掉这两个函数时那一条随之删(前两条「桌面档 = 这五格」留着,或改成对比桌面拉起子进程时递的档位)。`gate:backend-process` 不断言
+ACP 的「装没装」探测:登录 shell 的 PATH 赶在 `acp.start()` 之前落定,靠的是 `createRealServerBackend` 里那一行的次序(D291),
+不是门。

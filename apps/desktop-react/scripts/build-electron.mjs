@@ -155,6 +155,26 @@ export function acpMcpBridgeEsbuildOptions({ outdir, repoRoot: root }) {
   })
 }
 
+/**
+ * 不带界面的后端进程(第④步批 2a,`docs/design/two-process-2026-10.md` §2.3 第 4 条)。
+ *
+ * 同一只进程入口 `backend-standalone-main.ts` 有两份产物:`server:build` 用 vite 打的 `dist/server/main.js`
+ * (系统 Node 跑,`server:start` 与真机门用),和这里用主进程同一份 esbuild 配方打的 `dist-electron/backend.cjs`
+ * —— 批 2b 起桌面用 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起它(决策 D1),所以它要与 `main.cjs`
+ * 同一套 external、同一个 `import.meta.url` 替身。它落在 `dist-electron/`,于是「Worker 与 ACP 桥落在宿主入口
+ * 旁边」那条纪律不用动:`search-worker.cjs` / `acp-mcp-bridge.cjs` 正好就在它旁边。打包时 asarUnpack
+ * (子进程入口要真路径)。今天还没人拉起它,`gate:backend-process` 跑它。
+ */
+export const BACKEND_ENTRY = 'packages/backend/backend-standalone-main.ts'
+export const BACKEND_NAME = 'backend'
+
+export function backendEsbuildOptions({ outdir, repoRoot: root }) {
+  return shellEsbuildOptions({
+    entryPoints: { [BACKEND_NAME]: path.join(root, BACKEND_ENTRY) },
+    outdir,
+  })
+}
+
 if (invokedDirectly) {
   // 三次调用而不是一个 entryPoints 表:main 与 preload 跑在**两种不同的运行时**里
   // (node 上下文 vs Electron sandbox),而 banner/define 是整份配置级的开关,
@@ -173,4 +193,6 @@ if (invokedDirectly) {
   await build(searchWorkerEsbuildOptions({ outdir, repoRoot }))
   // 第四个入口:ACP 宿主工具面的 stdio 桥(见上面那段注释)。
   await build(acpMcpBridgeEsbuildOptions({ outdir, repoRoot }))
+  // 第五个入口:不带界面的后端进程(见上面那段注释)。
+  await build(backendEsbuildOptions({ outdir, repoRoot }))
 }

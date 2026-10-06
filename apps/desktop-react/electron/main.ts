@@ -54,7 +54,8 @@ import { initializeUserSchedulerTasks } from '@onething/backend/scheduler'
 import { registerACPPermissionBridge } from '@onething/backend/acp'
 import { getLogger } from '@onething/backend/logging'
 import { installAppMenu } from './app-menu-install.js'
-import { hydrateProcessEnvFromLoginShell } from './login-shell-env.js'
+import { hydrateProcessEnvFromLoginShell } from '@onething/backend/process-env'
+import { OWN_CORE_ASSEMBLY_SWITCHES } from './own-core-options.js'
 import { applyShellNetworkProxySettings, createShellHostPorts, installProxySettingsWatcher } from './host-ports.js'
 import { CLIENT_ACTION_CHANNEL } from '@shared/contracts/client-action'
 import { terminalRouter } from '@shared/ipc/terminal'
@@ -117,7 +118,7 @@ type HttpDiscoveryRecord = {
   token?: string
   pid: number
   startedAt?: number
-  owner: 'desktop' | 'server' | 'shell'
+  owner: 'desktop' | 'server' | 'shell' | 'backend'
 }
 
 /** 打包后是 `.../dist-electron/main.cjs`,dev 时同路径 —— 两跳到 apps/。 */
@@ -145,7 +146,8 @@ function readDiscovery(): HttpDiscoveryRecord | undefined {
     if (typeof record.port !== 'number' || !Number.isFinite(record.port) || record.port <= 0) return undefined
     if (typeof record.host !== 'string' || !record.host) return undefined
     if (typeof record.pid !== 'number' || !Number.isFinite(record.pid)) return undefined
-    if (record.owner !== 'desktop' && record.owner !== 'server' && record.owner !== 'shell') return undefined
+    // `backend` = 被拉起的后端进程(第④步批 2a 起,`ONETHING_BACKEND_LAUNCHER` 设了档时写它;决策 D6)。
+    if (record.owner !== 'desktop' && record.owner !== 'server' && record.owner !== 'shell' && record.owner !== 'backend') return undefined
     return {
       port: record.port,
       host: record.host,
@@ -243,14 +245,9 @@ async function assembleOwnCore(): Promise<OnethingBackend> {
   return createOnethingBackend({
     logging: { fileBaseName: 'shell', src: 'main' },
     host: createShellHostPorts(),
-    toolRegistry: 'full',
-    promptVersion: true,
-    // 四颗必落件之二:agent-dm(协作房间)的开关。不开 = 房间入口闸拒流,
-    // 表现是协作会话发不出话。
-    collab: true,
-    sessionSkills: true,
-    // 宠物宿主(`docs/design/pet-system-2026-09.md` §9.1):登记 `pet:`、订资源事件里的时刻。
-    pets: true,
+    // `toolRegistry` / `promptVersion` / `collab` / `sessionSkills` / `pets` 五个开关(每一格为什么这样取,
+    // 写在那只文件里)。拆成一只文件是为了让后端进程的桌面档能被一条测试逐格对比(决策 D14)。
+    ...OWN_CORE_ASSEMBLY_SWITCHES,
     sender: new ShellNoopSender() as never,
     hooks: {
       afterSettings: async () => {
@@ -765,7 +762,7 @@ void app.whenReady().then(async () => {
     connection.resolve(connectionOf(existing))
   } else {
     /*
-     * 登录 shell 环境与装配**并行**跑(判词在 `login-shell-env.ts` 文件头):命中缓存是
+     * 登录 shell 环境与装配**并行**跑(判词在 `packages/backend/process-env/process-env-login-shell.ts` 文件头):命中缓存是
      * 同步的 0ms,不命中最多 3.5s。它只需要赶在**第一次 spawn** 之前 —— ACP 适配器、
      * MCP stdio、bash 工具都是 `startPostWindowServices()` 之后(连接答案交出去之后)
      * 才可能起子进程,所以在那一行前面等它,而不是挡在装配前面。并行还有一个好处:

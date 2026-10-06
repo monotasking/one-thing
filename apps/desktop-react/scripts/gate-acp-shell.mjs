@@ -4,7 +4,7 @@
  *
  * ── 起法照 `gate-terminal`:壳自当 core ───────────────────────────────────
  * 名册的探测跑在**装配它的那台 core** 上(`acp.detect` 在 PATH 上找可执行、取版本号),
- * 而 React 壳的主进程在装配前先灌了登录 shell 的 PATH(`electron/login-shell-env.ts`)——
+ * 而 React 壳的主进程在装配前先灌了登录 shell 的 PATH(`packages/backend/process-env/process-env-login-shell.ts`)——
  * 拿独立 server 来量的话,量到的是另一台进程眼里的 PATH。所以不起 server,让壳自己装配
  * (`assembleOwnCore`,发现文件 owner = `shell`)。
  *

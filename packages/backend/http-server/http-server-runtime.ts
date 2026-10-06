@@ -120,10 +120,14 @@ export async function createDevelopmentOnethingServerRuntime(
 			storePath,
 		});
 	}
-	return createOnethingServerRuntimeOverBackend(
-		await createRealServerBackend(storePath, options.logging),
-		{ ...options, storePath, ownsBackend: true },
-	);
+	// 桌面档的登录 shell PATH 在 `createRealServerBackend` 里等(装配之后、ACP 起名册之前;MCP stdio 更晚,在建 runtime 时)。
+	const backend = await createRealServerBackend(storePath, options.logging, options.launchProfile, options.beforeFirstSpawn);
+	return createOnethingServerRuntimeOverBackend(backend, {
+		...options,
+		mcpClientFactory: options.mcpClientFactory ?? options.launchProfile?.mcpClientFactory,
+		storePath,
+		ownsBackend: true,
+	});
 }
 
 async function createServerRuntimeOverServerBackend(

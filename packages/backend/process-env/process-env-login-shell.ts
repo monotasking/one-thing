@@ -11,7 +11,12 @@ import path from 'path'
  * Homebrew / nvm / bun 命令全都 ENOENT —— 终端里 `bun run dev` 起的却一切正常,
  * 两边行为分叉,排障时最难看出来的那种。
  *
- * 必须在装配**之前**跑:`ACPClient` / MCP / bash 都在 spawn 那一刻读 `process.env`。
+ * 必须赶在**第一次 spawn 之前**落定:`ACPClient` / MCP / bash 都在 spawn 那一刻读 `process.env`。
+ *
+ * 第④步批 2a(2026-10-06)从 `apps/desktop-react/electron/login-shell-env.ts` 原样搬进后端:ACP / MCP stdio /
+ * bash 都在后端 spawn,拆进程之后 PATH 必须补在后端进程里。今天有两个调用者 —— Electron 主进程
+ * (与装配并行跑、第一次 spawn 之前等它)与不带界面的后端进程的桌面档(`backend-launcher.ts`,装配前起、
+ * 建 server runtime 之前等它,因为 MCP stdio 在那一步里就会 spawn)。函数体一行没改。
  *
  * ── 09-26 事故:缓存把一台门的临时 store 灌进了用户的桌面 ─────────────────────
  * 从前这里起登录 shell 时把**本进程的整份环境**递给它当底,于是 shell 报回来的
@@ -27,8 +32,9 @@ import path from 'path'
  *    才真是 rc 文件立起来的环境,不是启动者递的;
  *  ② 「这个进程住哪、怎么起的」是启动者的话,shell 说了不算:`ONETHING_*` / `npm_*` /
  *    `ELECTRON_*` 永不从登录环境注入({@link isLauncherOwnedEnvKey});
- *  ③ 缓存跟 store 走(`ONETHING_STORE_PATH` 优先,与 `main.ts` 的 `resolveStoreRoot`
- *    同语义),门的隔离 store 于是也隔离了这份缓存;格式版本抬到 2,旧法抓的缓存作废。
+ *  ③ 缓存跟 store 走(`ONETHING_STORE_PATH` 优先,与 `storage` 的 `getOnethingStorePath()` 同语义;
+ *    这个功能在 L0,不引 storage,所以自己读这一个环境变量),门的隔离 store 于是也隔离了这份缓存;
+ *    格式版本抬到 2,旧法抓的缓存作废。
  */
 
 /** `getLogger(ns)` 的那一小截形状;本文件不直接 import 日志门面,测试可注入。 */

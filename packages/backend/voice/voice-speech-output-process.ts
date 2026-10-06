@@ -3,15 +3,21 @@ import { accessSync, constants as fsConstants } from 'node:fs'
 import { unlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { SpeechAudio, SpeechOutputPort } from '@onething/backend/voice'
+import type { SpeechAudio, SpeechOutputPort } from './voice-speech-output.js'
 import { getLogger } from '@onething/backend/logging'
 
 /**
- * **主进程出声**(宠物 P3,正本 `docs/design/pet-system-2026-09.md` §10.2「壳的实现」那一行)。
+ * **进程内出声**(宠物 P3,正本 `docs/design/pet-system-2026-09.md` §10.2「壳的实现」那一行)。
  *
- * 宿主表 `speechOutput` 那一格的 React 壳实现:一段合成好的音频 → 写进临时文件 → 起一个子进程
- * 放 → 放完删文件、resolve。电台口播(以及接管它的宠物)从此在这个壳上真的有声音,不再往一个
+ * 宿主表 `speechOutput` 那一格的实现:一段合成好的音频 → 写进临时文件 → 起一个子进程
+ * 放 → 放完删文件、resolve。电台口播(以及接管它的宠物)从此真的有声音,不再往一个
  * 没人听的渲染进程推送里空等 30 秒。
+ *
+ * 住在哪(第④步批 2a,决策见 `docs/design/backend-structure-decisions-2026-10.md`):从前是
+ * `apps/desktop-react/electron/speech-output.ts`,只有 Electron 主进程交它。它一行 electron 都不用,
+ * 只起子进程,而端口 `SpeechOutputPort` 就声明在旁边的 `voice-speech-output.ts`;后端要搬出 Electron
+ * 进程,所以实现搬到端口旁边,由两个宿主各自交出去:桌面的宿主表(`electron/host-ports.ts`)与
+ * 不带界面的后端进程的桌面档(`backend-launcher.ts`)。
  *
  * ── 播放器怎么选(`choosePlayer`,纯函数)────────────────────────────────────
  *   1. `PATH` 里有 `mpv` → `mpv --no-video --really-quiet <file>`(电台本来就要 mpv,多半在);
@@ -31,7 +37,7 @@ import { getLogger } from '@onething/backend/logging'
  * 播放器、从不出声。
  */
 
-const log = getLogger('shell.speech-output')
+const log = getLogger('voice.speech-output')
 
 /** 子进程这一侧要的全部。 */
 export interface SpeechChild {
@@ -170,7 +176,7 @@ export function whichOnPath(command: string, envPath: string | undefined = proce
 }
 
 /** 真依赖:宿主表里交出去的那一只。 */
-export function createShellSpeechOutput(): SpeechOutputPort {
+export function createProcessSpeechOutput(): SpeechOutputPort {
   return new ProcessSpeechOutput({
     which: command => whichOnPath(command),
     spawn: (command, args) => nodeSpawn(command, [...args], { stdio: 'ignore' }),

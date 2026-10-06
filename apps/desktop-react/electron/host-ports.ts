@@ -40,7 +40,7 @@ import { createEventBusTerminalBroadcaster } from '@onething/backend/terminal'
 import { getLogger } from '@onething/backend/logging'
 import type { ProxySettings } from '@shared/ipc.js'
 import { ShellProxyPolicy } from './network-proxy.js'
-import { createShellSpeechOutput } from './speech-output.js'
+import { createProcessSpeechOutput } from '@onething/backend/voice'
 
 const log = getLogger('shell.host-ports')
 
@@ -212,6 +212,6 @@ export function createShellHostPorts(): OnethingHostPorts {
      * 是 `null` —— 没有渲染进程在听 `MUSIC_DJ_SPEAK` 那条推送,电台口播从前合成成功也要空等
      * 30 秒回执、一个字都不出声。出声不需要窗口:mpv / afplay 子进程就能放。
      */
-    speechOutput: createShellSpeechOutput(),
+    speechOutput: createProcessSpeechOutput(),
   }
 }

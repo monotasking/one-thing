@@ -11,9 +11,9 @@
  *  3. **还原函数按栈让位**:桌面内嵌面与 `server:start` 在同一进程里先后起落时,
  *     后者的 shutdown 不许把前者的声明一起清掉。
  *
- * 外加 B2 自己的两件:`hostLocalTrustOrigin()`(mcp 的 stdio 闸要在两种可信之间
- * 再分一档)与那几个 `@deprecated` 旧名(必须与新名**是同一个函数**,否则"保留
- * 别名"就成了第二条实现)。
+ * 外加 B2 自己的两件:`hostLocalTrustOrigin()`(B2 起 mcp 的 stdio 闸靠它在两种可信之间
+ * 再分一档;第④步批 2a 起那道闸改认 `isHostLocallyTrusted()`(D9),它只剩给日志与这里读声明者)
+ * 与那几个 `@deprecated` 旧名(必须与新名**是同一个函数**,否则"保留别名"就成了第二条实现)。
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {

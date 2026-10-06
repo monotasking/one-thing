@@ -17,6 +17,7 @@ import type { ServerMCPClientFactory } from "../mcp/mcp-client-api-server-host.j
 import type { ServerPluginCommandDefinition } from "../plugin/plugin-client-api-catalog-mirror.js";
 import type { OnethingRuntimeFacade, RuntimeStreamPayload, RuntimeUnsubscribe } from "./http-server-runtime-facade.js";
 import type { SessionAudienceFactory } from "./http-server-audience.js";
+import type { BackendLaunchProfile } from "@onething/backend/backend-launcher.js";
 
 export interface OnethingServerRuntime {
 	/** Present for a production Backend; absent only for explicit test adapters. */
@@ -110,6 +111,18 @@ export interface OnethingServerRuntimeOptions {
 	 * 宿主只是这里多注一个实现。
 	 */
 	audienceFactory?: SessionAudienceFactory;
+	/**
+	 * 不带界面的后端进程的**档案**(第④步批 2a,`backend-launcher.ts`)。只有自己装配产品后端的那条路
+	 * (`createDevelopmentOnethingServerRuntime` 没递 `createBackend`)读它:装配开关、宿主表两格、ACP
+	 * 无人答卡的口径,以及 MCP 客户端工厂(`mcpClientFactory` 没显式给时用档案里那一只)。缺席 = 缺省档。
+	 */
+	launchProfile?: BackendLaunchProfile;
+	/**
+	 * 装配跑完之后、第一次按 PATH 找可执行或 spawn 之前要等的那件事(ACP 起名册之前;MCP stdio 更晚,在建
+	 * runtime 时)。今天只有桌面档的登录 shell PATH 用它:它与装配并行跑,赶在那一拍之前落定。永不 reject 的
+	 * 承诺才许递进来。只有自己装配产品后端的那条路读它。
+	 */
+	beforeFirstSpawn?: Promise<void>;
 }
 
 export interface OnethingServerRuntimeOverBackendOptions

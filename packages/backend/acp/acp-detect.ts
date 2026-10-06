@@ -3,7 +3,7 @@
  * 什么版本。只读 manifest 的 `detect` 一格,不猜。
  *
  * PATH 用的是**当下的** `process.env.PATH` —— 桌面在起后置服务之前已经把登录 shell 的 PATH
- * 灌进来了(`electron/login-shell-env.ts`),所以 Dock 起的应用也认得 Homebrew / npm 全局装的
+ * 灌进来了(`process-env/process-env-login-shell.ts`;后端进程的桌面档同样在第一次 spawn 之前补),所以 Dock 起的应用也认得 Homebrew / npm 全局装的
  * CLI。探测只在 `registry.refresh()` 与 RPC `acp.detect` 时跑,**从不挂定时器**。
  *
  * 分两半:`locateAgentBin` 是同步的(几十次 `access` 系统调用,毫秒级),名册冷启动时先用它

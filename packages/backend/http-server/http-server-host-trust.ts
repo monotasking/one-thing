@@ -55,8 +55,8 @@ const log = getLogger('server.host-trust')
 /**
  * 谁声明的。
  *
- * B2 之前只进日志、不参与判定;B2 起有**一个**判据读它:mcp 域的 stdio probe
- * (`canSpawnLocalProcesses`)只认 `desktop-embedded`。见 `mcp/mcp-client-api.ts`。
+ * 只进日志、不参与判定。B2 到第④步批 2a 之间有过**一个**判据读它(mcp 域的 stdio probe
+ * 只认 `desktop-embedded`);批 2a 起那道闸改认 `isHostLocallyTrusted()`(决策 D9),这里又回到只给人看。
  */
 export type HostLocalTrustOrigin = 'desktop-embedded' | 'loopback-server'
 
@@ -123,9 +123,8 @@ export function isHostLocallyTrusted(): boolean {
 /**
  * 可信是**谁**声明的(不可信时 `null`)。
  *
- * 只给需要在两种可信之间再分一档的判据用 —— 今天唯一一个是 mcp 域的 stdio
- * probe:替调用方**起本机进程**这件事只对桌面内嵌面开,回环 `server:start` 仍
- * 由 `ONETHING_SERVER_MCP_STDIO` 决定(方案 §4 那一行「请拍板」的保守取值)。
+ * 给需要在两种可信之间再分一档的判据用。今天没有这样的判据:mcp 域的 stdio probe 从前只对桌面内嵌面开,
+ * 第④步批 2a 起改认 `isHostLocallyTrusted()`(决策 D9)。留着它给日志与测试读声明者是谁。
  * 环境变量强制收紧时与 `isHostLocallyTrusted()` 同进同退,回 `null`。
  */
 export function hostLocalTrustOrigin(): HostLocalTrustOrigin | null {

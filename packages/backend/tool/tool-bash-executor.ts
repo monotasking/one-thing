@@ -126,7 +126,7 @@ function envKeyMatches(key: string, pattern: string): boolean {
  * The environment handed to bash.
  *
  * With no allowlist this inherits `process.env` wholesale — which on desktop
- * includes everything the user's login shell exported (see login-shell-env.ts),
+ * includes everything the user's login shell exported (see process-env/process-env-login-shell.ts),
  * API keys included. That is the historical behaviour and stays the default,
  * because a wrong allowlist breaks toolchains in ways that are hard to
  * diagnose (nvm/pyenv PATH shims, GH_TOKEN for `gh`, proxy vars).

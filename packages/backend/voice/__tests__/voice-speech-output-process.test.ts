@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
-import { choosePlayer, extensionForMime, ProcessSpeechOutput, whichOnPath } from '../speech-output'
-import type { SpeechChild, SpeechOutputDeps } from '../speech-output'
+import { choosePlayer, extensionForMime, ProcessSpeechOutput, whichOnPath } from '../voice-speech-output-process.js'
+import type { SpeechChild, SpeechOutputDeps } from '../voice-speech-output-process.js'
 
 /**
  * **主进程出声**(宠物 P3,正本 `docs/design/pet-system-2026-09.md` §10.2 / §10.7)。

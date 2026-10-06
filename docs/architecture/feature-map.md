@@ -17,10 +17,10 @@
 | 功能 | 做什么 | 依赖的功能 | 入口交出 | 文件 |
 | --- | --- | --- | --- | --- |
 | headless | 不带界面的后端(CLI 守护进程用的那一份装配配方;它引 backend.ts 是装配方引装配配方,没有功能引它)。 | (shared) 3 · (包根) 1 · (包根槽位) 1 · acp 1 · collab 1 · event 1 · permission 1 · resource 1 · session 1 · settings 1 · toolkit 1 | 1(值 1 / 类型 0) | 3 |
-| (包根) | 包根其余文件:装配配方 backend.ts / backend-assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 backend-current.ts / backend-types.d.ts;2026-10-05 起还有不带界面的后端进程入口 backend-standalone-main.ts,从 apps/backend-server 并进来,D255–D258)。 | (包根槽位) 4 · logging 4 · http-server 3 · plugin 3 · session 3 · (装配入口) 2 · agent 2 · auth 2 · collab 2 · credentials 2 · engine 2 · eval 2 · external-agent 2 · gateway 2 · goal 2 · mcp 2 · permission 2 · skill 2 · storage 2 · terminal 2 · todo-plan 2 · voice 2 · (shared) 1 · acp 1 · agent-loop 1 · event 1 · feature-registry 1 · file 1 · interaction 1 · media 1 · memory 1 · music 1 · note 1 · pet 1 · practice 1 · project-dir 1 · provider-call 1 · quota 1 · resource 1 · scheduler 1 · scratchpad 1 · search 1 · settings 1 · task 1 · toc 1 · tool 1 · toolkit 1 · usage 1 · variable 1 | — | 5 |
+| (包根) | 包根其余文件:装配配方 backend.ts / backend-assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 backend-current.ts / backend-types.d.ts;2026-10-05 起还有不带界面的后端进程入口 backend-standalone-main.ts,从 apps/backend-server 并进来,D255–D258;2026-10-06 起还有那个进程的档位 backend-launcher.ts,第④步批 2a)。 | logging 5 · (包根槽位) 4 · http-server 3 · mcp 3 · plugin 3 · session 3 · voice 3 · (装配入口) 2 · agent 2 · auth 2 · collab 2 · credentials 2 · engine 2 · eval 2 · external-agent 2 · gateway 2 · goal 2 · permission 2 · scheduler 2 · settings 2 · skill 2 · storage 2 · terminal 2 · todo-plan 2 · (shared) 1 · acp 1 · agent-loop 1 · event 1 · feature-registry 1 · file 1 · interaction 1 · media 1 · memory 1 · music 1 · note 1 · pet 1 · practice 1 · process-env 1 · project-dir 1 · provider-call 1 · quota 1 · resource 1 · scratchpad 1 · search 1 · task 1 · toc 1 · tool 1 · toolkit 1 · usage 1 · variable 1 | — | 6 |
 | (开给界面的操作) | 各功能的第二个入口 <功能>/<功能>-client-api*.ts(决策 D26):名册里的域行、只有 HTTP 服务器用的投影与投递件。按「它被谁引、它引谁」判:只有 http-server 与同功能的 client-api 引它(client-api:gate 保证),它引任何功能的入口 —— 所以它与 http-server 同站 L4,不与它所属的功能同层;它引自己功能的文件算 L4 → 低层,不是违例。 | (shared) 85 · http-server 54 · session 51 · (包根槽位) 43 · logging 34 · settings 20 · provider 17 · plugin 15 · mcp 14 · eval 10 · file 9 · permission 9 · media 8 · acp 7 · tool 7 · auth 6 · space 6 · scheduler 5 · search 5 · storage 5 · todo-plan 5 · voice 5 · collab 4 · gateway 4 · music 4 · note 4 · prompt 4 · skill 4 · agent 3 · agent-loop 3 · goal 3 · markdown 3 · provider-call 3 · toolkit 3 · event 2 · interaction 2 · project-dir 2 · scratchpad 2 · usage 2 · variable 2 · (装配入口) 1 · credentials 1 · engine 1 · plugin-contract 1 · practice 1 · resource 1 · terminal 1 · theme 1 | — | 69 |
 | (装配入口) | 功能里装配期才建的状态与接线 API(<功能>/<功能>-configure.ts,决策 D191;今天只有 logging-configure.ts):文件 sink、目录管家、崩溃钩子与 configureLogging()。它有模块级副作用、要存储层,经主入口交出会进检索 Worker,所以单开一扇门;只许包根、http-server、两种第二入口与 apps 引(client-api:gate 保证),它引 logging 的兄弟与 storage —— 所以站 L4。 | logging 11 · storage 1 | — | 1 |
-| http-server | 界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。 | (开给界面的操作) 64 · (包根槽位) 9 · (shared) 3 · logging 3 · session 3 · terminal 2 · (包根) 1 · acp 1 · collab 1 · event 1 · feature-registry 1 · plugin 1 · storage 1 · toolkit 1 | — | 19 |
+| http-server | 界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。 | (开给界面的操作) 64 · (包根槽位) 9 · (shared) 3 · logging 3 · session 3 · (包根) 2 · terminal 2 · acp 1 · collab 1 · event 1 · feature-registry 1 · plugin 1 · storage 1 · toolkit 1 | — | 19 |
 
 ## L3 编排
 
@@ -51,7 +51,7 @@
 | goal | 会话目标:状态、续推、记录与改动收集。 | (shared) 3 · event 3 · logging 3 · session 3 · (包根槽位) 2 · settings 1 · storage 1 | 56(值 49 / 类型 7) | 13 |
 | interaction | 向用户提问(ask_user 一类交互)的登记表。 | (shared) 2 · logging 2 · session 1 | 11(值 7 / 类型 4) | 4 |
 | markdown | Markdown 附件资源的沙箱与服务。 | note 2 · (包根槽位) 1 · settings 1 | 0(值 0 / 类型 0) | 4 |
-| mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 8 · (shared) 5 · storage 2 · agent-loop 1 · auth 1 | 33(值 29 / 类型 4) | 30 |
+| mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 8 · (shared) 5 · storage 2 · agent-loop 1 · auth 1 | 34(值 30 / 类型 4) | 30 |
 | media | 媒体库:图片与文件的入库、导出与生图结果。 | storage 4 · session 2 · (shared) 1 · (包根槽位) 1 · logging 1 | 30(值 22 / 类型 8) | 11 |
 | music | 音乐与电台。 | logging 7 · (shared) 5 · (包根槽位) 5 · settings 5 · session 3 · voice 3 · storage 2 · agent 1 · lifecycle 1 · permission 1 · tool 1 | 27(值 18 / 类型 9) | 36 |
 | note | 笔记领域:笔记库、Obsidian 与普通目录两种驱动、笔记根目录。 | (包根槽位) 2 · logging 2 · settings 2 · storage 2 | 21(值 15 / 类型 6) | 20 |
@@ -77,7 +77,7 @@
 | toolkit | 工具系统:契约、各族基类、内置工具、按场景决定每轮工具面与执行管线。 | (shared) 21 · tool 19 · storage 12 · session 6 · settings 5 · logging 4 · (包根槽位) 3 · feature-registry 3 · file 3 · permission 3 · variable 2 · agent-loop 1 · interaction 1 · lifecycle 1 · mcp 1 · task 1 | 229(值 134 / 类型 95) | 68 |
 | usage | token 用量的账本、汇总与记账。 | credentials 2 · provider 2 · logging 1 · session 1 · settings 1 · space 1 | 18(值 13 / 类型 5) | 6 |
 | variable | 变量系统:登记表、存储、格式化与给模型的变量板。 | logging 5 · (shared) 2 · event 2 · goal 2 · permission 2 · project-dir 2 · session 2 · (包根槽位) 1 · agent 1 · music 1 · note 1 · space 1 · storage 1 · tool 1 | 27(值 16 / 类型 11) | 30 |
-| voice | 语音识别、语音合成与唤醒词。 | (shared) 2 · settings 2 · (包根槽位) 1 · agent 1 · event 1 · session 1 | 15(值 12 / 类型 3) | 16 |
+| voice | 语音识别、语音合成与唤醒词。 | (shared) 2 · settings 2 · (包根槽位) 1 · agent 1 · event 1 · logging 1 · session 1 | 16(值 13 / 类型 3) | 17 |
 
 ## L1 领域事实
 
@@ -106,6 +106,7 @@
 | memory | 进程内存的登记表、探针与按预算释放缓存的调度器。 | logging 1 | 7(值 4 / 类型 3) | 2 |
 | network | 代理设置的校验与绕行规则,以及按代理选通道、带超时重试中止的受管 fetch。 | — | 13(值 9 / 类型 4) | 5 |
 | perf | 启动耗时的打点记录。 | — | 6(值 5 / 类型 1) | 2 |
+| process-env | 这个进程的环境变量:从用户的登录 shell 补上 PATH 与缺席的变量,结果缓存在 store 里。 | — | 1(值 1 / 类型 0) | 2 |
 | reference | 消息里「引用」的类型登记表(文件、链接等各种引用怎么认、怎么写进提示词)。 | (shared) 1 | 5(值 3 / 类型 2) | 10 |
 | storage | store 目录在哪、文件怎么原子地读写,以及打包资源目录的注入口。 | logging 1 | 102(值 93 / 类型 9) | 18 |
 | (shared) | server 与 client 之间的契约,以及两边必须算得一样的纯逻辑。 | — | — | 119 |

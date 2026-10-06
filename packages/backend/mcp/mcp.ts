@@ -3,8 +3,8 @@
  * 以及 `mcp:` 资源与装配用的子系统。
  *
  * 对外交出六类东西:
- * - 管理器与客户端:`MCPManager`、装上客户端工厂、探测一个服务器配置、不带界面的那台管理器、
- *   独立 server 自己的客户端,客户端工厂与客户端的形状;
+ * - 管理器与客户端:`MCPManager`、装上客户端工厂、没装工厂时那种原生客户端的工厂(后端进程桌面档要它)、
+ *   探测一个服务器配置、不带界面的那台管理器、独立 server 自己的客户端,客户端工厂与客户端的形状;
  * - 装配:MCP 子系统 `McpSubsystem`、客户端身份的装上 / 复位、能力变更的处理口与工具表变更订阅;
  * - `mcp:` 资源的规格与投影;
  * - 服务器配置里私密字段的脱敏判据;
@@ -17,7 +17,7 @@
  */
 
 // 管理器与客户端。
-export { MCPManager, configureMCPClientHost } from './mcp-manager.js'
+export { MCPManager, configureMCPClientHost, createNativeMCPClient } from './mcp-manager.js'
 export { probeMCPServerConfig } from './mcp-client.js'
 export { HeadlessMCPManager } from './kernel/mcp-kernel-manager.js'
 export { ServerMCPClient } from './mcp-server-client.js'

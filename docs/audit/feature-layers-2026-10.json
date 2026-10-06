@@ -17,6 +17,7 @@
     { "feature": "memory", "layer": "L0", "why": "进程内存的登记表、探针与按预算释放缓存的调度器。" },
     { "feature": "http", "layer": "L0", "why": "发 HTTP 请求时共用的小工具:检查应答、逐条读 SSE 事件。" },
     { "feature": "perf", "layer": "L0", "why": "启动耗时的打点记录。" },
+    { "feature": "process-env", "layer": "L0", "why": "这个进程的环境变量:从用户的登录 shell 补上 PATH 与缺席的变量,结果缓存在 store 里。" },
     { "feature": "space", "layer": "L2", "why": "空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层;名册与设置读写用户 store,所以是能力(L2)而不是纯事实。" },
     { "feature": "provider", "layer": "L1", "why": "各家服务商是谁、怎么说话:清单、名册、线协议与方言、模型目录的事实与纯逻辑、纯工厂。" },
     { "feature": "agent-loop", "layer": "L1", "why": "一轮对话怎么跑的内核:调服务商、跑工具、重试与调度、历史重建与上下文压缩(2026-10 起含前 core/engine 内核),以及执行器表(本地 / 外部执行体的能力面,2026-10-04 从 agent 并入),不认识具体服务商。" },
@@ -75,6 +76,6 @@
     { "slot": "http-server", "layer": "L4", "match": ["packages/backend/http-server/"], "why": "界面连进来的那台 HTTP 服务器:收请求、SSE 事件流、发现文件、来访者身份与信任、请求中止、生命周期、桌面内嵌、server runtime 与门面,以及按名册分发界面操作(决策 D21 / D26)。" },
     { "slot": "(开给界面的操作)", "layer": "L4", "secondEntry": true, "why": "各功能的第二个入口 <功能>/<功能>-client-api*.ts(决策 D26):名册里的域行、只有 HTTP 服务器用的投影与投递件。按「它被谁引、它引谁」判:只有 http-server 与同功能的 client-api 引它(client-api:gate 保证),它引任何功能的入口 —— 所以它与 http-server 同站 L4,不与它所属的功能同层;它引自己功能的文件算 L4 → 低层,不是违例。" },
     { "slot": "(装配入口)", "layer": "L4", "configureEntry": true, "why": "功能里装配期才建的状态与接线 API(<功能>/<功能>-configure.ts,决策 D191;今天只有 logging-configure.ts):文件 sink、目录管家、崩溃钩子与 configureLogging()。它有模块级副作用、要存储层,经主入口交出会进检索 Worker,所以单开一扇门;只许包根、http-server、两种第二入口与 apps 引(client-api:gate 保证),它引 logging 的兄弟与 storage —— 所以站 L4。" },
-    { "slot": "(包根)", "layer": "L4", "fallback": true, "why": "包根其余文件:装配配方 backend.ts / backend-assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 backend-current.ts / backend-types.d.ts;2026-10-05 起还有不带界面的后端进程入口 backend-standalone-main.ts,从 apps/backend-server 并进来,D255–D258)。" }
+    { "slot": "(包根)", "layer": "L4", "fallback": true, "why": "包根其余文件:装配配方 backend.ts / backend-assemble-engine.ts、宿主端口表 backend-host-ports.ts(6b 起带包名前缀)、关机骨架 backend-shutdown.ts(2026-10-04 机械改名 6a 从 lifecycle.ts 改名,免得与功能目录 lifecycle/ 并排撞名;包根归位 B 之后包根只剩这几只与 backend-current.ts / backend-types.d.ts;2026-10-05 起还有不带界面的后端进程入口 backend-standalone-main.ts,从 apps/backend-server 并进来,D255–D258;2026-10-06 起还有那个进程的档位 backend-launcher.ts,第④步批 2a)。" }
   ]
 }

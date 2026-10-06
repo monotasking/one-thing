@@ -16,9 +16,8 @@
  *  1. 私密字段(command/args/env/cwd/url/headers)出界脱敏、进程内原样;
  *  2. 更新时把哨兵合并回磁盘上的真值 —— 「只改个名字」不会洗掉凭证;
  *  3. `readConfigFile` 在**不可信**宿主上不读本机文件;
- *  4. stdio 探测**只对桌面内嵌面**免闸(方案 §4 的保守裁定);其余宿主 —— 包括
- *     声明了可信的回环 `server:start` —— 仍旧 `ONETHING_SERVER_MCP_STDIO === '1'`
- *     才放行。「起本机子进程」比「读本机文件」重,所以它比 3 多一档。
+ *  4. stdio 探测对**本机可信**的来访者免闸(第④步批 2a 决策 D9:桌面内嵌面与回环 `server:start` 同判据,
+ *     拆进程之后桌面连的就是一台回环后端);不可信的宿主仍旧 `ONETHING_SERVER_MCP_STDIO === '1'` 才放行。
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { SERVER_REDACTED_SECRET } from '../mcp-secrets.js'
@@ -283,9 +282,9 @@ describe('mcp RPC domain', () => {
   })
 
   /**
-   * 「替调用方起本机进程」的三态(方案 §4 的保守裁定:用户缺省 = 只给桌面内嵌面)。
+   * 「替调用方起本机进程」的三态(第④步批 2a 决策 D9:判据 = `isHostLocallyTrusted()`)。
    */
-  it('opens the stdio probe only for the desktop-embedded face; loopback still needs the env opt-in', async () => {
+  it('opens the stdio probe for any locally trusted host; untrusted hosts still need the env opt-in', async () => {
     const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers, configureHostLocalTrust, resetHostLocalTrustForTests } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
@@ -309,24 +308,24 @@ describe('mcp RPC domain', () => {
     }
     expect(wiring.probeMCPServerConfig).not.toHaveBeenCalled()
 
-    // ② 回环 server 声明了可信 —— 别的闸(读配置文件 / 文件树)对它开,这一道**仍然拒**。
-    const restoreLoopback = configureHostLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
-    expect((await probe(HTTP_CONTEXT) as { ok: true; data: unknown }).data).toEqual(REFUSED)
-    expect(wiring.probeMCPServerConfig).not.toHaveBeenCalled()
-
-    // ③ 回环 + 环境变量显式开:放行(旧口径一格没动)。
+    // ② 未声明可信 + 环境变量显式开:放行(不可信宿主的旧口径一格没动)。
     process.env.ONETHING_SERVER_MCP_STDIO = '1'
     await probe(HTTP_CONTEXT)
     expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(1)
     delete process.env.ONETHING_SERVER_MCP_STDIO
+
+    // ③ 回环 server 声明了可信:不看环境变量,直接放行(D9 —— 从前这一格拒)。
+    const restoreLoopback = configureHostLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
+    await probe(HTTP_CONTEXT)
+    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(2)
     restoreLoopback()
     resetHostLocalTrustForTests()
 
-    // ④ 桌面内嵌面:不看环境变量,直接放行,两种 transport 同权。
+    // ④ 桌面内嵌面:同一条判据,两种 transport 同权。
     configureHostLocalTrust({ origin: 'desktop-embedded' })
     await probe(HTTP_CONTEXT)
     await probe(IPC_CONTEXT)
-    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(3)
+    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(4)
   })
 
   it('routes capability reads at the live manager', async () => {

@@ -176,3 +176,9 @@ jobs:
       # `file` 档、临时 store;钥匙串那一档用假的 security 脚本,不碰任何真钥匙串。
       - name: gate:credentials
         run: bun run gate:credentials
+
+      # 第④步批 2a「后端进程能独当一面」:不带界面的后端进程的桌面档(定时任务 / 真 MCP / 电台 / 首启模型拉取 /
+      # 登录 shell PATH、owner `backend`、SIGTERM 收尾)与缺省档对照。CI 上只跑系统 Node 那一半(`--runtimes=node`):
+      # Linux 机器上 Electron 二进制 + ELECTRON_RUN_AS_NODE 起不起得来没人证过,那一半在本机跑。临时 store、`file` 档。
+      - name: gate:backend-process
+        run: node scripts/gate-backend-process.mjs --build --runtimes=node

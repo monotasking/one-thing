@@ -1,11 +1,13 @@
 /**
- * 独立 `server:start` 自己装配的那只产品后端(无头宿主的那张宿主能力表)。
+ * 不带界面的后端进程自己装配的那只产品后端(无头宿主的那张宿主能力表)。
  *
  * 桌面把自己那只 backend 借给 HTTP 面时不走这里(`http-server-embed.ts`);只有
  * `createDevelopmentOnethingServerRuntime` 在没有递 `createBackend` 时调它。装配完再挂 ACP 的
  * 审批 / 文件 / 终端桥,并在后台起 ACP 子系统。
  *
- * 2026-10-04 从 `http-server-runtime.ts` 原样搬来(决策 D219),代码一行没改。
+ * 2026-10-04 从 `http-server-runtime.ts` 原样搬来(决策 D219)。第④步批 2a 起它收一份**档案**
+ * (`backend-launcher.ts` 的 `BackendLaunchProfile`):装配开关、宿主表里的 `storePath` / `speechOutput`
+ * 两格、ACP 无人答卡时怎么办,都从档案里读。没递档案 = 缺省档,与批 2a 之前逐字相同。
  */
 import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
@@ -15,11 +17,21 @@ import type { ConfigureLoggingOptions } from "@onething/backend/logging/logging-
 import { createEventBusTerminalBroadcaster } from "@onething/backend/terminal";
 import { registerACPPermissionBridge } from "@onething/backend/acp";
 import { getLogger } from '@onething/backend/logging'
+import {
+	backendLaunchProfile,
+	launchHostPorts,
+	type BackendLaunchProfile,
+} from "@onething/backend/backend-launcher.js";
 
 // 日志命名空间沿用搬家前的 `server.runtime`:`degraded tool set` 那一行一个字不变。
 const log = getLogger('server.runtime')
 
-export async function createRealServerBackend(storePath: string, logging?: ConfigureLoggingOptions): Promise<OnethingBackend> {
+export async function createRealServerBackend(
+	storePath: string,
+	logging?: ConfigureLoggingOptions,
+	profile: BackendLaunchProfile = backendLaunchProfile(undefined),
+	beforeFirstSpawn?: Promise<void>,
+): Promise<OnethingBackend> {
 	// The engine drops commands silently when no sender is bound (the guard
 	// exists for the desktop's window lifecycle); the server observes the
 	// EventBus/StreamChannel directly, so bind a no-op sender like the CLI
@@ -32,11 +44,9 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			/* SSE subscribers observe the bus and stream channel directly. */
 		}
 	}
-	// User decision (2026-07-25): web/server tools ship with desktop parity by
-	// default; ONETHING_SERVER_TOOLS=readonly degrades to zero-side-effect
-	// tools (no bash/write/edit) for exposed deployments.
-	const serverToolRegistry =
-		process.env.ONETHING_SERVER_TOOLS === "readonly" ? "readonly" : "full";
+	// 工具档在档案里(缺省档:ONETHING_SERVER_TOOLS=readonly 降成零副作用的那一套;桌面档恒 'full')。
+	const serverToolRegistry = profile.assembly.toolRegistry;
+	const launchPorts = launchHostPorts(profile);
 	if (serverToolRegistry === "readonly") {
 		log.info("degraded tool set (read/time/web only)", {
 			reason: "ONETHING_SERVER_TOOLS=readonly",
@@ -61,7 +71,8 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 		 * 决定装不装(它要 stdio 闸门与借来/自有的判定),不归这张表。
 		 */
 		host: {
-			storePath: {},
+			// 档案决定:`ONETHING_RESOURCES_PATH` 设了 = 打包资源目录;没设 = `{}`(见上面那段注释)。
+			storePath: launchPorts.storePath,
 			sandbox: {
 				getPath(name) {
 					if (name === "downloads") return join(homedir(), "Downloads");
@@ -99,22 +110,28 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 			 * 是另一张表,那张表里 `localTrust` 是 `desktop-embedded`。
 			 */
 			localTrust: null,
-			speechOutput: null,
+			// 缺省档 `null`;桌面档由后端自己交一只进程出声器(起 mpv / afplay 子进程)。
+			speechOutput: launchPorts.speechOutput,
 		},
-		toolRegistry: serverToolRegistry,
-		sessionSkills: true,
-		// 宠物宿主(`docs/design/pet-system-2026-09.md` §9.1):与 React 壳同一格,
-		// 浏览器壳连 server 时栖位照样有 `pet:` 可读。CLI 守护进程不传。
-		pets: true,
+		// 工具档、`sessionSkills`、`pets`(缺省档两格都开:浏览器壳连 server 时栖位照样有 `pet:`),
+		// 桌面档另加 `promptVersion` / `collab`(与桌面进程内装配逐格相同,决策 D14)。
+		...profile.assembly,
 		sender: new ServerNoopSender() as never,
 	});
+	/*
+	 * 桌面档的登录 shell PATH 在这里等(第④步批 2a,D291):装配与它并行跑完了,而下面 `acp.start()` 一起名册
+	 * 就按 PATH 判「装没装」、在后台起 `<agent> --version`;再往后建 runtime 时 MCP stdio 也会 spawn。
+	 * 缺省档不递(或递一个已落定的承诺),这一行等于没有。
+	 */
+	if (beforeFirstSpawn) await beforeFirstSpawn;
 	/*
 	 * ACP 的审批 / 文件 / 终端桥(A3-b 裁定「桥在三个宿主上都注册」)。从前 server 不挂桥,
 	 * agent 的请求根本到不了许可系统,由客户端按 `unattended` 直接答。挂上之后卡照常上屏
 	 * (连着这台 server 的浏览器壳看得见、答得了);没人答就由许可系统的无人应答兜底按拒绝
 	 * 收场(`unanswered: 'reject'`,`UNATTENDED_ASK_TIMEOUT_MS`)—— 与「无桥缺省拒」同一个结论。
 	 */
-	backend.own(registerACPPermissionBridge({ unanswered: "reject" }), "acpPermissionBridge");
+	// 桌面档有窗口答卡(`wait`,与桌面进程内那句 `registerACPPermissionBridge()` 同口径);缺省档 `reject`。
+	backend.own(registerACPPermissionBridge({ unanswered: profile.acpUnanswered }), "acpPermissionBridge");
 	/*
 	 * A5(方案 §11.6;A1-a 留账):独立 server 也在装配后起 ACP 子系统,与 React 壳
 	 * (`electron/main.ts` 的 `void b.acp.start()`)、daemon(`mcpAcp: true`)同口径。

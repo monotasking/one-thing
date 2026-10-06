@@ -104,6 +104,7 @@
 		"gate:search-index": "node scripts/gate-search-index.mjs",
 		"gate:acp": "node scripts/gate-acp.mjs",
 		"gate:credentials": "node scripts/gate-credentials.mjs",
+		"gate:backend-process": "node scripts/gate-backend-process.mjs",
 		"sessions:verify:gate": "node scripts/session-verify-gate.mjs"
 	},
 	"dependencies": {

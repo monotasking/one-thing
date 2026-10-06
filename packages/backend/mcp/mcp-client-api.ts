@@ -72,7 +72,7 @@ import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
-import { hostLocalTrustOrigin, isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
+import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import {
   mergeRedactedMCPServerConfig,
   sanitizeMCPMutationResultForClient,
@@ -108,14 +108,14 @@ function payloadLeavesProcess(context: RpcDispatchContext): boolean {
 /**
  * 能不能替调用方在这台机器上**起一个进程**(mcp stdio probe 的闸)。
  *
- * B2 的保守裁定(方案 §4「请拍板」那一行的取值,施工者按缺省取保守):可信分两
- * 档,只有**桌面内嵌面**(`desktop-embedded`)免闸 —— 它跑在桌面主进程里,与用户
- * 自己点开设置面板去 probe 是同一件事;回环 `server:start` 虽然也算本机可信
- * (files / tools / search 那几道闸对它开),但"起本机子进程"比"读本机文件"更重,
- * 仍旧只由 `ONETHING_SERVER_MCP_STDIO=1` 决定。
+ * 第④步批 2a(决策 D9)起判据就是 `isHostLocallyTrusted()`:回环绑定 + 0600 发现文件里的 token =
+ * 本机同一个用户,与他自己点开设置面板去 probe 是同一件事。从前(B2 的保守裁定)只有桌面内嵌面
+ * (`desktop-embedded`)免闸,回环 `server:start` 要再看 `ONETHING_SERVER_MCP_STDIO=1`;拆进程之后桌面
+ * 连的就是一台回环后端(`loopback-server`),两种来访者对后端来说是同一种,于是一条判据、不加第二个 origin。
+ * 不可信的来访者(非回环绑定、`ONETHING_SERVER_FILES_SANDBOX=1` 强制收紧)仍旧只由那个环境变量放行。
  */
 function canSpawnLocalProcesses(): boolean {
-  return hostLocalTrustOrigin() === 'desktop-embedded'
+  return isHostLocallyTrusted()
 }
 
 function getMCPSettings(): MCPSettings {
@@ -219,7 +219,7 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
     return logoutOnethingMCPServerForIpc(mCPServerIpcAdapters6) as Promise<McpRoutes['logoutServer']['output']>
   },
   async probeServer(request) {
-    // 护栏 4:起本机进程这件事,默认只给桌面内嵌面(见 `canSpawnLocalProcesses`)。
+    // 护栏 4:起本机进程这件事,只给本机可信的来访者(见 `canSpawnLocalProcesses`)。
     if (
       !canSpawnLocalProcesses()
       && request.config?.transport === 'stdio'

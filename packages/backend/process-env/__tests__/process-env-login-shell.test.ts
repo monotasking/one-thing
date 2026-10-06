@@ -11,7 +11,7 @@ import {
   mergeMissingEnv,
   mergePathEnv,
   parseLoginShellEnvOutput,
-} from '../login-shell-env.js'
+} from '../process-env-login-shell.js'
 
 describe('login shell environment helpers', () => {
   it('parses env output after the marker and ignores shell startup noise', () => {

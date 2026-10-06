@@ -100,6 +100,10 @@ asarUnpack:
   # 那条路径它读不到入口文件。装配层先找 `app.asar.unpacked/` 那一份
   # (`packages/backend/acp/acp-mcp-bridge-path.ts`),与 search-worker 同一条规矩。
   - "apps/desktop-react/dist-electron/acp-mcp-bridge.cjs"
+  # 不带界面的后端进程(第④步批 2a)。批 2b 起桌面用 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 把它当子进程起,
+  # 起出来的 node 没有 asar 补丁,而它还要在自己旁边找 search-worker.cjs / acp-mcp-bridge.cjs(那两份已解包)。
+  # 能不能从解包目录起来由 `gate:packaged` 跑出来(批 2b 扩那道门),不靠这段注释成立。
+  - "apps/desktop-react/dist-electron/backend.cjs"
   # 语义召回的 SQLite 扩展(检索重建 S7)。两条理由都要解包:
   #  ① `loadExtension` 走的是系统的 dlopen,asar 里那条路径它打不开;
   #  ② macOS 硬化运行时下**未签名的 dylib 装载会失败**,而 electron-builder 只对

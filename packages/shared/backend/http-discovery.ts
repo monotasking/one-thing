@@ -7,7 +7,7 @@
  *
  * | 谁 | 拿它干什么 |
  * |---|---|
- * | `packages/backend/backend-standalone-main.ts` | 拒启:`owner !== 'server'` 且活着 → 让位(`--force` 绕过) |
+ * | `packages/backend/backend-standalone-main.ts` | 拒启:记录活着 → 让位,不看 owner(`--force` 绕过;第④步批 2a,D6) |
  * | `@onething/backend-client/node` 的 `readCoreDiscovery()` | CLI / 脚本当 core 的客户端:活着就连上去 |
  *
  * server / client 拆分第②步(2026-10-02,`docs/design/server-client-split-2026-10.md` §6)起,shared
@@ -37,13 +37,17 @@ export const ONETHING_STORE_DIR_NAME = '.onething'
  *
  * `shell` 是 React 壳自己内嵌的那只 core(A1,2026-08-31)。它与 `desktop` 是**同一
  * 类**东西 —— 一个带界面的宿主在自己的进程里装配 backend 并把 HTTP/SSE 面挂出来 ——
- * 只是宿主换了个人。之所以要一个自己的名字而不是复用 `desktop`:`server:start` 的
- * 让位判据是 `owner !== 'server'`,两个名字在那条判据下行为逐字相同(都让位),
- * 而运维读发现文件时能一眼看出是哪个壳在当家。
+ * 只是宿主换了个人。之所以要一个自己的名字而不是复用 `desktop`:运维读发现文件时能一眼看出
+ * 是哪个壳在当家。
+ *
+ * `backend` 是**被拉起的**不带界面的后端进程(第④步批 2a,决策 D6):`backend-standalone-main.ts`
+ * 在 `ONETHING_BACKEND_LAUNCHER` 设了档时写它,缺省档(`server:start`)照旧写 `server`。拉起它的人
+ * 据此分清「我拉的」与别人起的 `server:start`。`server:start` 的让位从这一批起**不看 owner**,
+ * 记录活着就让 —— 所以四个名字在让位上行为相同,owner 只是给读的人看的。
  */
-export type HttpDiscoveryOwner = 'desktop' | 'server' | 'shell'
+export type HttpDiscoveryOwner = 'desktop' | 'server' | 'shell' | 'backend'
 
-const HTTP_DISCOVERY_OWNERS: readonly HttpDiscoveryOwner[] = ['desktop', 'server', 'shell']
+const HTTP_DISCOVERY_OWNERS: readonly HttpDiscoveryOwner[] = ['desktop', 'server', 'shell', 'backend']
 
 export function isHttpDiscoveryOwner(value: unknown): value is HttpDiscoveryOwner {
   return HTTP_DISCOVERY_OWNERS.includes(value as HttpDiscoveryOwner)

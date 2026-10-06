@@ -23,11 +23,20 @@ export function configureMCPClientHost(
   clientHostFactory = factory
 }
 
+/**
+ * 没有注入客户端宿主时用的那种客户端(桌面一直用的就是它)。第④步批 2a 起,不带界面的后端进程的桌面档
+ * 把它当 `mcpClientFactory` 交给 server runtime(`backend-launcher.ts`),于是那台进程连的 MCP 与桌面
+ * 进程内那份是同一种客户端,而不是 server 缺省的 `DisabledServerMCPClient`。
+ */
+export function createNativeMCPClient(config: MCPServerConfig): MCPClientLike {
+  return new MCPClient(config) as MCPClientLike
+}
+
 class MCPManagerClass extends HeadlessMCPManager<MCPClientLike> {
   constructor() {
     super((config: MCPServerConfig) => clientHostFactory
       ? clientHostFactory(config)
-      : new MCPClient(config) as MCPClientLike)
+      : createNativeMCPClient(config))
   }
 
   /**
