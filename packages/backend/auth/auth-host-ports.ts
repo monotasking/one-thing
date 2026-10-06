@@ -1,17 +1,16 @@
-import type { OnethingTokenCryptoAdapter } from './auth-token-store.js'
-
 /**
- * Host injection points for OAuth. The Electron host supplies net.fetch (with
- * app-fetch fallback) and safeStorage encryption-at-rest; headless hosts leave
- * both unset and get plain app fetch + plaintext token files (the runtime
- * token store's documented fallback).
+ * Host injection point for OAuth. The Electron host supplies net.fetch (with
+ * app-fetch fallback); headless hosts leave it unset and get plain app fetch.
  *
- * Late-bound: both are consulted per call, so wiring at host startup takes
- * effect even though the auth singletons are constructed at module import.
+ * 凭证的落盘加密从前也挂在这一格(`tokenCryptoAdapter`,Electron 的 `safeStorage`)。第④步批 0 起
+ * 后端自己持有主密钥(`credentials/credentials-master-key.ts`),这一格删掉;旧 `safeStorage` 密文的
+ * 迁移用解密器另立一格 `OnethingHostPorts.legacySafeStorageForMigration`(归凭证功能)。
+ *
+ * Late-bound: consulted per call, so wiring at host startup takes effect even
+ * though the auth singletons are constructed at module import.
  */
 export interface AuthHostPorts {
   authFetch?: typeof fetch
-  tokenCryptoAdapter?: () => OnethingTokenCryptoAdapter | undefined
 }
 
 let hostPorts: AuthHostPorts = {}

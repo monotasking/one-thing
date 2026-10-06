@@ -190,7 +190,7 @@ async function runOnce({ label, shadow, tools, ports, probePath }) {
     cwd: REPO,
     env: {
       ...process.env,
-      ONETHING_STORE_PATH: store,
+      ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
       ONETHING_SERVER_PORT: String(ports.server),
       ONETHING_SERVER_TOOLS: 'full',
       ONETHING_SERVER_TOKEN: token,

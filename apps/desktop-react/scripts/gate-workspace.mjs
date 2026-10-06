@@ -618,7 +618,7 @@ async function main() {
       cwd: repoRoot,
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_WORKSPACE_ROOT: workspaceRoot,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -685,7 +685,7 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
     await waitFor('渲染层完成一次 RPC 往返', async () => {

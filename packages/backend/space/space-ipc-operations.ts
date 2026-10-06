@@ -443,6 +443,12 @@ function spacesNotFound(id: string): OnethingSpacesIpcError {
 }
 
 function spacesIpcError(error: unknown): OnethingSpacesIpcError {
+  // 凭证此刻写不了(第④步批 0 的 `CredentialsLockedError`):答成码 + 原因码,界面据此说人话。
+  // 按形状认,不 import 凭证功能(凭证功能反过来引空间,值引用会成环)。
+  const locked = error as { code?: unknown; reason?: unknown } | null
+  if (locked?.code === 'CREDENTIALS_LOCKED' && typeof locked.reason === 'string') {
+    return { success: false, error: locked.reason, code: 'CREDENTIALS_LOCKED' }
+  }
   return {
     success: false,
     error: error instanceof Error ? error.message : 'Unknown spaces error',

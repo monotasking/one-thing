@@ -171,3 +171,8 @@ jobs:
 
       - name: session:gate
         run: bun run session:gate
+
+      # 第④步批 0「凭证归后端」:主密钥、safeStorage 迁移、口令导出导入、锁定与重试。只用 node、
+      # `file` 档、临时 store;钥匙串那一档用假的 security 脚本,不碰任何真钥匙串。
+      - name: gate:credentials
+        run: bun run gate:credentials

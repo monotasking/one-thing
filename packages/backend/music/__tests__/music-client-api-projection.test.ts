@@ -149,6 +149,7 @@ describe('music 域 = 资源投影(音乐收尾)', () => {
         storePath: {},
         sandbox: {},
         auth: null,
+        legacySafeStorageForMigration: null,
         logging: null,
         shell: null,
         voice: null,

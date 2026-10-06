@@ -358,7 +358,7 @@ async function main() {
       cwd: repoRoot,
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         // 见上:headless 的钥匙走这一格。
         DEEPSEEK_API_KEY: 'sk-mono-gate',
       },
@@ -378,7 +378,7 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
     await waitFor('渲染层完成一次 RPC 往返', async () => {

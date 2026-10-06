@@ -2,10 +2,8 @@ import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  OnethingTokenStore,
-  type OnethingTokenCryptoAdapter,
-} from '../auth.js'
+import { OnethingTokenStore } from '../auth.js'
+import type { OnethingTokenCryptoAdapter } from '../auth-token-store.js'
 import type { OnethingOAuthToken } from '../auth-types.js'
 
 const dirs: string[] = []
@@ -58,7 +56,6 @@ describe('onething runtime token store(单槽旧文件,批 8 起只读)', () => 
     const tokenFilePath = await createTokenFilePath()
     const cryptoAdapter: OnethingTokenCryptoAdapter = {
       isEncryptionAvailable: () => true,
-      encryptString: text => Buffer.from(`encrypted:${text}`),
       decryptString: buffer => {
         const text = buffer.toString('utf-8')
         if (!text.startsWith('encrypted:')) {
@@ -111,7 +108,6 @@ describe('onething runtime token store(单槽旧文件,批 8 起只读)', () => 
       tokenFilePath,
       cryptoAdapter: {
         isEncryptionAvailable: () => true,
-        encryptString: text => Buffer.from(text),
         decryptString: () => 'not-json',
       },
       logger: { warn },

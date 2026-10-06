@@ -896,7 +896,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`, '--lang=en-US'],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         ONETHING_GATE_HEADLESS: '1',
       },

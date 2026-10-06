@@ -185,7 +185,7 @@ async function main() {
     mock = await startMockProvider(mockPort, state)
     writeFileSync(path.join(store, 'settings.json'), JSON.stringify(settingsFor(mockPort), null, 2), 'utf-8')
     server = spawn(process.execPath, [serverEntry], {
-      cwd: repoRoot, env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-probe' }, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: repoRoot, env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', DEEPSEEK_API_KEY: 'sk-probe' }, stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
     server.stderr.on('data', c => serverErr.push(c.toString()))
@@ -199,7 +199,7 @@ async function main() {
 
     app = await electron.launch({
       executablePath: electronBinary, args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '', ONETHING_GATE_OFFSCREEN: '1' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '', ONETHING_GATE_OFFSCREEN: '1' },
     })
     const page = await app.firstWindow()
     const appErr = []

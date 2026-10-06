@@ -15,11 +15,12 @@ import { getSpeechOutput } from '@onething/backend/voice'
 import { applyHostPorts, type OnethingHostPorts } from '../backend-host-ports.js'
 import { dialogRpcHandlers } from '../dialog/dialog-client-api.js'
 
-/** 十八项写全 = 合法(P3 加了第十七格 `speechOutput`,第十八格是 `dialog`)。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
+/** 十九项写全 = 合法(P3 加了第十七格 `speechOutput`,第十八格是 `dialog`,第十九格是第④步批 0 的 `legacySafeStorageForMigration`)。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
 const complete: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
   auth: null,
+  legacySafeStorageForMigration: null,
   logging: null,
   shell: null,
   voice: null,
@@ -44,6 +45,7 @@ const missingVoice: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
   auth: null,
+  legacySafeStorageForMigration: null,
   logging: null,
   shell: null,
   skillsEnvironment: null,

@@ -440,7 +440,7 @@ try {
     cwd: repoRoot,
     env: {
       ...process.env,
-      ONETHING_STORE_PATH: storePath,
+      ONETHING_STORE_PATH: storePath, ONETHING_CREDENTIALS_KEYRING: 'file',
       ONETHING_SERVER_DATA_ROOT: storePath,
       ONETHING_SERVER_HOST: '127.0.0.1',
       ONETHING_SERVER_PORT: '',
@@ -1094,7 +1094,7 @@ async function runRealClaudeParity() {
       cwd: repoRoot,
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: realStore,
+        ONETHING_STORE_PATH: realStore, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: realStore,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',

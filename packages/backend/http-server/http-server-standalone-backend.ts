@@ -69,6 +69,8 @@ export async function createRealServerBackend(storePath: string, logging?: Confi
 				},
 			},
 			auth: null,
+			// 旧 safeStorage 密文解不开:遇到就答「已锁定 · 旧密文待迁移」,等桌面来迁(第④步批 0)。
+			legacySafeStorageForMigration: null,
 			logging: null,
 			shell: null,
 			voice: null,

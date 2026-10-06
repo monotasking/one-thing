@@ -114,7 +114,7 @@ async function main() {
   const errors = []
   const startCore = async () => {
     core = spawn(process.execPath, [path.join(repoRoot,'dist/server/main.js')], {
-      cwd: repoRoot, env: { ...process.env, ONETHING_STORE_PATH: store }, stdio: ['ignore','pipe','pipe'],
+      cwd: repoRoot, env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' }, stdio: ['ignore','pipe','pipe'],
     })
     core.stdout.on('data', () => {})
     core.stderr.on('data', c => { errors.push(c.toString()); if (errors.length > 20) errors.shift() })
@@ -184,7 +184,7 @@ async function main() {
     await vite.listen()
     app = await electron.launch({ executablePath: electronBinary,
       args: [path.join(appRoot,'dist-electron/main.cjs'), `--user-data-dir=${udd}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: 'http://127.0.0.1:5198/', ONETHING_GATE_OFFSCREEN: '1' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: 'http://127.0.0.1:5198/', ONETHING_GATE_OFFSCREEN: '1' },
     })
     app.process().stdout?.on('data', () => {})
     app.process().stderr?.on('data', () => {})

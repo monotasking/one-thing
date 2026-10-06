@@ -19,7 +19,7 @@ import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { HTTP_DISCOVERY_FILENAME } from '@shared/backend/http-discovery.js'
 import type { HttpDiscoveryRecord } from '@shared/backend/http-discovery.js'
-import { readHttpDiscoveryAt } from './http-server-discovery-io.js'
+import { isHttpDiscoveryAlive, readHttpDiscoveryAt } from './http-server-discovery-io.js'
 import { canonicalizeStorePath, getOnethingRunDir, type OnethingStorePathOptions, type StoreLease } from '@onething/backend/storage'
 import { getCurrentBackendInstance } from '../backend-current.js'
 
@@ -97,4 +97,14 @@ export function removeHttpDiscovery(options: DiscoveryWriteOptions = {}): void {
   const record = readHttpDiscovery(resolved)
   if (record?.pid !== process.pid) return
   rmSync(getHttpDiscoveryPath(resolved), { force: true })
+}
+
+/**
+ * 发现文件指向**另一个**活着的后端吗(pid 不是本进程,且 pid 在、端口连得上)。第④步批 0 的凭证迁移
+ * 据它拒绝动别人正在写的文件(施工单修正 3「停旧后端」写成代码);装配层把它递进凭证功能。
+ */
+export async function isAnotherBackendServingStore(options: OnethingStorePathOptions = {}): Promise<boolean> {
+  const record = readHttpDiscovery(options)
+  if (!record || record.pid === process.pid) return false
+  return isHttpDiscoveryAlive(record)
 }

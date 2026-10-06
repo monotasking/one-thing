@@ -1754,7 +1754,7 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
   const env = {
     ...process.env,
     ...FAKE_PROVIDER_KEYS,
-    ONETHING_STORE_PATH: store,
+    ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
     ONETHING_SERVER_PORT: String(port),
     ONETHING_SERVER_TOKEN: token,
     ONETHING_SESSION_SHADOW: '1',
@@ -1923,7 +1923,7 @@ async function main() {
     const env = {
       ...process.env,
       ...FAKE_PROVIDER_KEYS,
-      ONETHING_STORE_PATH: store,
+      ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
       ONETHING_SERVER_PORT: String(serverPort),
       ONETHING_SERVER_TOKEN: token,
       ONETHING_SESSION_SHADOW: '1',

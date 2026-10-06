@@ -14,8 +14,9 @@
  *
  * ## 落盘加密(批 B8-1 起)
  *
- * **整份 `credentials.json` 都加密**(与旧 `oauth-tokens.json` 同一个 safeStorage 端口,见
- * `credentials/credentials-pool.ts` 的「落盘加密」段)。所以这一层什么都不用做 —— 它写进池里的 token
+ * **整份 `credentials.json` 都加密**(第④步批 0 起用后端自己的主密钥,见
+ * `credentials/credentials-pool.ts` 的「落盘加密」段)。所以这一层只做一件事:写之前
+ * `await prepareCredentialsWrite()`(新装时现造钥匙),读之前等钥匙读完 —— 它写进池里的 token
  * 会跟着整份文件一起落成密文。
  */
 
@@ -28,6 +29,7 @@ import {
   type SpaceCredentialEntry,
 } from './credentials-pool.js'
 import type { OnethingSpaceCredentialTarget, OnethingOAuthToken } from '@onething/backend/auth'
+import { credentialsReady, prepareCredentialsWrite } from './credentials-locked-state.js'
 
 /** 池里的一条 oauth entry,读成 auth 层要的样子(令牌坏了是 `null`,条目照样列出来)。 */
 export interface OnethingOAuthPoolEntry<TToken extends OnethingOAuthToken = OnethingOAuthToken> {
@@ -118,11 +120,15 @@ export function createOnethingSpaceTokenStore<
   const now = options.now ?? (() => Date.now())
   return {
     async getToken(providerId, target) {
+      // 钥匙串那一档的钥匙可能还在读;读完再查,免得把「还在读」当成「没登录」。
+      await credentialsReady()
       const entry = getSpaceCredentialEntry(target.spaceId, providerId, target.entryId)
       if (!entry || entry.authType !== 'oauth') return null
       return parseSpaceOAuthToken<TToken>(entry.oauthToken)
     },
     async saveToken(providerId, token, target) {
+      // 登录写回是用户亲手发起的写:新装时现造钥匙,钥匙丢了时换钥匙(第④步批 0)。
+      await prepareCredentialsWrite()
       let entryId = target.entryId
       if (!entryId) {
         // 同一身份再登一次 = 更新那一条(§8.2)。取不到身份的家一律追加。
@@ -144,10 +150,12 @@ export function createOnethingSpaceTokenStore<
       // 「登出某个账号」与「清空这个 provider」是两个动作(批 D 勘误 10 同一条理由)。
       // 服务在调到这里之前已经把「不指名」落成了具体的一条(`resolveEntryId`)。
       if (!target.entryId) return
+      await prepareCredentialsWrite()
       removeSpaceProviderCredentialEntry(target.spaceId, providerId, target.entryId)
     },
     async resolveEntryId(providerId, target) {
       if (target.entryId) return target.entryId
+      await credentialsReady()
       const entries = oauthEntriesOf(target.spaceId, providerId).map(entry => ({
         entryId: entry.id,
         token: parseSpaceOAuthToken(entry.oauthToken),
@@ -156,6 +164,7 @@ export function createOnethingSpaceTokenStore<
       return pickDefaultOAuthEntryId(entries, now())
     },
     async listEntries(providerId, spaceId) {
+      await credentialsReady()
       return oauthEntriesOf(spaceId, providerId).map(entry => ({
         entryId: entry.id,
         label: entry.label,

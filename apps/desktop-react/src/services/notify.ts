@@ -79,7 +79,15 @@ const toastOfRecord = new Map<string, number>()
  * 屏上那条还在的话,把合并次数写到它身上:**一个框,一个越涨越大的计数**,
  * 而不是五个一模一样的框(HMR 里一个渲染错连炸五次就是这一形)。
  */
-export function notify(draft: NotifyDraft): string {
+/**
+ * 屏上那条 toast 的一道**动作门**(第④步批 0「凭证已锁定」那条横幅的「重试」)。不进存档 ——
+ * 存档是可序列化的记录,一只函数在那里没有意义;它只跟着屏上那一条走。给了它就顶替「查看详情」那道门。
+ */
+export interface NotifyOptions {
+  action?: { label: string; onClick: () => void }
+}
+
+export function notify(draft: NotifyDraft, options: NotifyOptions = {}): string {
   const { id, merged } = useNotifyStore.getState().push(draft)
   const fate = NOTIFY_FATE[draft.level]
   const count = useNotifyStore.getState().items.find((x) => x.id === id)?.count ?? 1
@@ -95,9 +103,8 @@ export function notify(draft: NotifyDraft): string {
       body: draft.body,
       lifeMs: fate.lifeMs,
       // 有详情才画门。没详情的那些(「消息没发出去」之类)点过去也无话可说。
-      action: draft.detail
-        ? { label: t('notify.viewDetails'), onClick: openNotificationCenter }
-        : undefined,
+      action: options.action
+        ?? (draft.detail ? { label: t('notify.viewDetails'), onClick: openNotificationCenter } : undefined),
     })
     toastOfRecord.set(id, toastId)
     // 存档自己是个环,被挤出去的那些记录再也不会来合并了 —— 它们在这张表里的位置
@@ -109,4 +116,15 @@ export function notify(draft: NotifyDraft): string {
     }
   }
   return id
+}
+
+/**
+ * 把一条记录在屏上的那条 toast 收掉(存档里那条照旧在)。给「状态一解除就该消失」的那种通知用 ——
+ * 今天唯一的用处是「凭证已锁定」横幅:解锁之后它再挂着就是说错话。不在屏上就什么都不做。
+ */
+export function retractNotify(recordId: string): void {
+  const live = toastOfRecord.get(recordId)
+  if (live === undefined) return
+  useToastHub.getState().dismiss(live)
+  toastOfRecord.delete(recordId)
 }

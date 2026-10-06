@@ -63,7 +63,7 @@ const store = mkdtempSync(path.join(tmpdir(), 'onething-gate-packaged-store-'))
 const userData = mkdtempSync(path.join(tmpdir(), 'onething-gate-packaged-udd-'))
 const cdpPort = 20000 + Math.floor(Math.random() * 20000)
 const child = spawn(binary, [`--user-data-dir=${userData}`, `--remote-debugging-port=${cdpPort}`], {
-  env: { ...process.env, ONETHING_STORE_PATH: store, ELECTRON_ENABLE_LOGGING: '0' },
+  env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ELECTRON_ENABLE_LOGGING: '0' },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 let exited = null

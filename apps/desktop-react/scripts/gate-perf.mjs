@@ -1271,7 +1271,7 @@ async function main() {
     )
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-perf-gate' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', DEEPSEEK_API_KEY: 'sk-perf-gate' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -1418,7 +1418,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         /*
          * **窗子离屏起**(09-04 S4,纪律「真机门不许抢用户的机器」)。不 show()、

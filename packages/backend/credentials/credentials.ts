@@ -13,6 +13,11 @@
  * 反过来,auth 与设置的模型目录服务**不 import 这里**:令牌存放面与「取这个空间这一家的密钥」由装配
  * (`backend.ts` 的 `configureAppRuntimeAdapters`)交给它们(D24 断边)。
  *
+ * 第④步批 0(2026-10)起落盘加密用的是后端自己的主密钥(`credentials-master-key.ts`,三档:钥匙串 /
+ * 文件 / 不加密),不再借 Electron 的 `safeStorage`;旧的 `safeStorage` 密文在装配时自动迁进新信封
+ * (`credentials-safestorage-migration.ts`),钥匙读不到时状态是「已锁定」(`credentials-locked-state.ts`),
+ * 另有口令导出 / 导入(`credentials-export.ts`)。
+ *
  * 下面按类列出外面真在用的名字。`credentials-candidate-route.ts`(候选序列的纯函数)只在功能内部用,不交出去。
  */
 
@@ -42,10 +47,9 @@ export {
   resolveSpaceProviderCredentialForSpace,
 } from './credentials-resolution.js'
 
-// ── 设置页对凭证的读写,以及落盘加密端口的装配 ──────────────────────────────────────
+// ── 设置页对凭证的读写 ──────────────────────────────────────────────────────────────
 export {
   clearSpaceProviderCredential,
-  configureAppSpaceCredentialsCrypto,
   getSpaceCredentialsSummary,
   importDefaultSpaceCredentials,
   setSpaceProviderCredential,
@@ -96,3 +100,28 @@ export {
   migrateProviderConfigToDefaultSpace,
   upgradeSpaceCredentialsEncryptionAtRest,
 } from './credentials-default-space-migration.js'
+
+// ── 落盘加密的钥匙与「已锁定」状态(第④步批 0)──────────────────────────────────────────
+// 装配:开机那一步(等钥匙、迁旧 safeStorage 密文)与锁定广播器;宿主端口:旧 safeStorage 解密器那一格;
+// 开给界面:状态 / 重试,以及写入口与读入口前面的两只 await。
+export {
+  credentialsReady,
+  credentialsStatus,
+  installCredentialsLockBroadcaster,
+  prepareCredentialsAtAssembly,
+  prepareCredentialsWrite,
+  unlockCredentials,
+} from './credentials-locked-state.js'
+export type { CredentialsStatus } from './credentials-locked-state.js'
+export {
+  configureCredentialsLegacyDecryptorHost,
+  resetCredentialsLegacyDecryptorHost,
+} from './credentials-legacy-decryptor.js'
+export type { LegacySafeStorageDecryptor, LegacySafeStorageProvider } from './credentials-legacy-decryptor.js'
+
+// ── 口令导出 / 导入(第④步批 0)────────────────────────────────────────────────────────
+export {
+  CredentialsExportFailure,
+  exportCredentialsWithPassphrase,
+  importCredentialsWithPassphrase,
+} from './credentials-export.js'

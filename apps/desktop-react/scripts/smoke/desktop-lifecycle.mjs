@@ -33,7 +33,7 @@ export async function runDesktopLifecycleLanes({ appRoot, outDir, assert }) {
     await writeFile(path.join(renderer, 'index.html'), '<!doctype html><title>Isolated lifecycle check</title>')
     // Lifecycle does not need a provider network request or the user's model credentials.
     await writeFile(path.join(store, 'settings.json'), JSON.stringify({ ai: { providers: { openai: { models: { 'smoke-local': { id: 'smoke-local', name: 'Smoke', contextLength: 1024 } } } } } }))
-    const env = { ...process.env, ONETHING_STORE_PATH: store, ONETHING_GATE_HEADLESS: '1', ONETHING_GATE_DIST: renderer,
+    const env = { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_GATE_HEADLESS: '1', ONETHING_GATE_DIST: renderer,
       ONETHING_REACT_DEV_SERVER_URL: '', ONETHING_SERVER_WORKSPACE_ROOT: path.join(store, 'workspace'),
       ONETHING_SERVER_DATA_ROOT: path.join(store, 'server-data'), ONETHING_SERVER_SETTINGS_ROOT: path.join(store, 'server-settings') }
     delete env.ELECTRON_RUN_AS_NODE

@@ -199,7 +199,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_OFFSCREEN: '1',
       },

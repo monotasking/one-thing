@@ -500,7 +500,7 @@ async function launch(store, userDataDir) {
     args: [mainEntry, `--user-data-dir=${userDataDir}`],
     env: {
       ...process.env,
-      ONETHING_STORE_PATH: store,
+      ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
       ONETHING_REACT_DEV_SERVER_URL: '',
       ONETHING_GATE_HEADLESS: '1',
     },
@@ -1955,7 +1955,7 @@ async function main() {
   try {
     live.server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_SERVER_WORKSPACE_ROOT: ws },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_SERVER_WORKSPACE_ROOT: ws },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const stderr = []

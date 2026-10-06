@@ -37,16 +37,11 @@ vi.mock('@onething/backend/provider', async (importOriginal) => ({
   getProviderInfo: (id: string) => ({ id, name: id.toUpperCase() }),
 }))
 
-vi.mock('@onething/backend/auth/auth-host-ports', () => ({
-  getAuthHostPorts: () => ({}),
-}))
-
 vi.mock('@onething/backend/space/space-store', () => ({
   getSpacesStore: () => ({ list: () => mocks.spaces }),
 }))
 
 import {
-  configureSpaceCredentialsCrypto,
   writeSpaceCredentials,
   readSpaceCredentials,
   readSpaceCredentialsAtRest,
@@ -72,17 +67,22 @@ import {
   stripMigratedProviderFields,
   upgradeSpaceCredentialsEncryptionAtRest,
 } from '../credentials-default-space-migration.js'
+import { masterKeyFilePath, resetCredentialsMasterKeyForTests } from '../credentials-master-key.js'
+import { prepareCredentialsWrite } from '../credentials-locked-state.js'
 
 /**
- * 一台**有加密能力**的宿主(桌面注入的是 `safeStorage`)。
- *
- * base64 当"加密"够用:这几条测试要的判据是「写侧走了加密器那条路、读侧解得
- * 回来」,不是密码学强度。真正的加密器由宿主注入,产品层只认这三个方法。
+ * 一台**有加密能力**的宿主 = 主密钥的 `file` 档(第④步批 0 起加密不再靠宿主注入,钥匙落在这间
+ * 临时 store 里);**没有能力** = `none` 档。持有器按「档位 + store」分格,换档后要清。
  */
-const fakeCrypto = {
-  isEncryptionAvailable: () => true,
-  encryptString: (text: string) => Buffer.from(text, 'utf-8'),
-  decryptString: (buffer: Buffer) => buffer.toString('utf-8'),
+function useKeyringTier(tier: 'file' | 'none'): void {
+  vi.stubEnv('ONETHING_CREDENTIALS_KEYRING', tier)
+  resetCredentialsMasterKeyForTests()
+  resetSpaceCredentialsCacheForTests()
+}
+
+/** 主密钥造出来过没有(「空启动不该去要钥匙」那几条的判据)。 */
+function masterKeyCreated(): boolean {
+  return fs.existsSync(masterKeyFilePath(tmpDir))
 }
 
 let tmpDir: string
@@ -151,9 +151,9 @@ beforeEach(() => {
   mocks.spaces = [{ id: 'default', name: '默认空间', createdAt: 1 }]
   setRootDirForTests(path.join(tmpDir, 'workspaces'))
   // 2026-08-31:迁移**只在有加密能力时**才跑(不然钥匙会明文落盘)。这几条
-  // 老断言测的是"迁移做了什么",所以默认给它一台有能力的宿主;没能力那条路
-  // 由本文件末尾那组专测。
-  configureSpaceCredentialsCrypto(() => fakeCrypto)
+  // 老断言测的是"迁移做了什么",所以默认给它一台有能力的宿主(主密钥 `file` 档);
+  // 没能力那条路由本文件末尾那组专测。
+  useKeyringTier('file')
   resetSpaceCredentialsCacheForTests()
   resetSpaceOverlayCacheForTests()
   resetSpaceProviderSettingsCacheForTests()
@@ -167,7 +167,8 @@ beforeEach(() => {
 afterEach(() => {
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
-  configureSpaceCredentialsCrypto(undefined)
+  vi.unstubAllEnvs()
+  resetCredentialsMasterKeyForTests()
   setRootDirForTests(null)
   resetSpaceCredentialsCacheForTests()
   resetSpaceOverlayCacheForTests()
@@ -438,17 +439,13 @@ describe('备份 / 标记 / 清字段', () => {
  * **明文雷**(2026-08-31 真机定位)。
  *
  * 迁移是「谁先启动谁跑」,而写侧按**自己手上的加密能力**产出:一个纯 node 进程
- * (抢先首启的独立 server)注入不了 `tokenCryptoAdapter`,同一份源料就被写成
+ * (抢先首启的独立 server)从前注入不了加密器(第④步批 0 起换成「拿不到主密钥」),同一份源料就被写成
  * `encryption: 'none'` —— API key 与 OAuth 令牌明文躺在盘上。而且标记一旦写下,
  * 此后有能力的宿主也不会重迁。取证读数见 `apps/desktop-react/scripts/gate-credentials.mjs`。
  */
 describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
   it('全新默认配置完成迁移与升级检查,不访问安全存储或创建空凭据文件', async () => {
     mocks.settings = { ...createDefaultSettings() }
-    const cryptoProvider = vi.fn(() => {
-      throw new Error('empty startup must not access secure storage')
-    })
-    configureSpaceCredentialsCrypto(cryptoProvider)
 
     const report = await migrateProviderConfigToDefaultSpace()
     expect(report.migrated).toBe(true)
@@ -456,11 +453,12 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
     expect(report.credentials).toEqual([])
     expect(report.oauthTokens).toEqual([])
     expect(report.providerSettings).toEqual(['default'])
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
     expect((await migrateProviderConfigToDefaultSpace()).migrated).toBe(false)
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
     expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
-    expect(cryptoProvider).not.toHaveBeenCalled()
+    // 没有东西要封,就不去要一把钥匙。
+    expect(masterKeyCreated()).toBe(false)
   })
 
   it('空 OAuth 文件与仅有策略的空明文池不触发安全存储,原池保持不变', async () => {
@@ -475,16 +473,12 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
       providers: { deepseek: { entries: [], policy: 'single' } },
     })
     fs.writeFileSync(poolPath, emptyPool, 'utf-8')
-    const cryptoProvider = vi.fn(() => {
-      throw new Error('empty pool must not access secure storage')
-    })
-    configureSpaceCredentialsCrypto(cryptoProvider)
 
     expect((await migrateProviderConfigToDefaultSpace()).migrated).toBe(true)
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
     expect(fs.readFileSync(poolPath, 'utf-8')).toBe(emptyPool)
     expect(fs.readFileSync(tokenPath, 'utf-8')).toBe('{}')
-    expect(cryptoProvider).not.toHaveBeenCalled()
+    expect(masterKeyCreated()).toBe(false)
   })
 
   it('已完成凭据迁移只补配置,已有密文池的升级检查无需解密', async () => {
@@ -493,18 +487,14 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
     fs.mkdirSync(path.dirname(poolPath), { recursive: true })
     const encryptedPool = JSON.stringify({ version: 2, encryption: 'safeStorage', data: 'b3BhcXVl' })
     fs.writeFileSync(poolPath, encryptedPool, 'utf-8')
-    const cryptoProvider = vi.fn(() => {
-      throw new Error('config migration must not decrypt an existing pool')
-    })
-    configureSpaceCredentialsCrypto(cryptoProvider)
 
     const report = await migrateProviderConfigToDefaultSpace()
     expect(report.migrated).toBe(true)
     expect(report.secondStageOnly).toBe(true)
     expect(report.credentials).toEqual([])
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
     expect(fs.readFileSync(poolPath, 'utf-8')).toBe(encryptedPool)
-    expect(cryptoProvider).not.toHaveBeenCalled()
+    expect(masterKeyCreated()).toBe(false)
   })
 
   it('只有旧 OAuth 令牌时仍要求加密,无能力则不清令牌或落迁移标记', async () => {
@@ -514,27 +504,22 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
       codex: JSON.stringify({ accessToken: 'at', expiresAt: 4000000000000, tokenType: 'Bearer' }),
     })
     fs.writeFileSync(tokenPath, tokens, 'utf-8')
-    const isEncryptionAvailable = vi.fn(() => false)
-    const encryptString = vi.fn(fakeCrypto.encryptString)
-    configureSpaceCredentialsCrypto(() => ({ ...fakeCrypto, isEncryptionAvailable, encryptString }))
+    useKeyringTier('none')
 
     const report = await migrateProviderConfigToDefaultSpace()
     expect(report.deferredReason).toBe('no-credential-encryption')
-    expect(isEncryptionAvailable).toHaveBeenCalled()
-    expect(encryptString).not.toHaveBeenCalled()
     expect(fs.readFileSync(tokenPath, 'utf-8')).toBe(tokens)
     expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
     expect(fs.existsSync(path.join(tmpDir, 'backups'))).toBe(false)
     expect(mocks.saved).toEqual([])
   })
 
-  it('实际加密失败保留旧 API key 与未迁移标记,不回退写明文', async () => {
-    configureSpaceCredentialsCrypto(() => ({
-      ...fakeCrypto,
-      encryptString: () => { throw new Error('secure storage write failed') },
-    }))
+  it('主密钥造不出来时保留旧 API key 与未迁移标记,不回退写明文', async () => {
+    // 让钥匙文件写不进去:那个位置先放一个目录,改名必炸 —— 钥匙存不下 = 已锁定。
+    fs.mkdirSync(masterKeyFilePath(tmpDir), { recursive: true })
 
-    await expect(migrateProviderConfigToDefaultSpace()).rejects.toThrow('secure storage write failed')
+    const report = await migrateProviderConfigToDefaultSpace()
+    expect(report.deferredReason).toBe('no-credential-encryption')
     expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
     expect(mocks.settings.storage).toBeUndefined()
     expect(mocks.saved).toEqual([])
@@ -542,8 +527,8 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
     expect(ai.providers.deepseek.apiKey).toBe('sk-d')
   })
 
-  it('无加密适配器 → 一个字节都不写,标记不落,旧位置的钥匙原样在(功能不破)', async () => {
-    configureSpaceCredentialsCrypto(undefined)
+  it('拿不到主密钥(`none` 档)→ 一个字节都不写,标记不落,旧位置的钥匙原样在(功能不破)', async () => {
+    useKeyringTier('none')
 
     const report = await migrateProviderConfigToDefaultSpace()
     expect(report.migrated).toBe(false)
@@ -559,12 +544,13 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
     expect(ai.providers.deepseek.apiKey).toBe('sk-d')
   })
 
-  it('有加密适配器 → 首启完成迁移,池子落盘就是密文', async () => {
+  it('有主密钥 → 首启完成迁移(钥匙现造),池子落盘就是密文', async () => {
     const report = await migrateProviderConfigToDefaultSpace()
     expect(report.migrated).toBe(true)
     expect(report.deferredReason).toBeUndefined()
 
-    expect(readSpaceCredentialsAtRest('default')).toBe('safeStorage')
+    expect(masterKeyCreated()).toBe(true)
+    expect(readSpaceCredentialsAtRest('default')).toBe('master-key')
     // 盘上那份**不含明文钥匙**:整包都在信封里。
     const onDisk = fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')
     expect(onDisk).not.toContain('sk-d')
@@ -574,7 +560,7 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
 
   it("盘上遗留的 'none' 明文池 → 有能力的宿主启动时一次性升级成密文", async () => {
     // 造一台"雷已经炸过"的机器:没能力的宿主先迁了一次,写出明文池。
-    configureSpaceCredentialsCrypto(undefined)
+    useKeyringTier('none')
     fs.mkdirSync(path.dirname(spaceCredentialsFilePath('default')), { recursive: true })
     fs.writeFileSync(
       spaceCredentialsFilePath('default'),
@@ -595,18 +581,18 @@ describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
     resetSpaceCredentialsCacheForTests()
     expect(readSpaceCredentialsAtRest('default')).toBe('none')
     // 没能力的宿主**不会**顺手降级别人的密文,也升不了级。
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
 
-    // 有能力的宿主接手。
-    configureSpaceCredentialsCrypto(() => fakeCrypto)
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual(['default'])
-    expect(readSpaceCredentialsAtRest('default')).toBe('safeStorage')
+    // 有能力的宿主接手(钥匙现造)。
+    useKeyringTier('file')
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual(['default'])
+    expect(readSpaceCredentialsAtRest('default')).toBe('master-key')
     expect(fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')).not.toContain('sk-plain')
     // 钥匙没丢。
     expect(readSpaceCredentials('default').providers.deepseek.entries[0].apiKey).toBe('sk-plain')
 
     // 一次性:再跑一遍一格都不动。
-    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(await upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
   })
 })
 
@@ -645,8 +631,10 @@ describe('单槽 oauth-tokens.json 归位进默认空间池(批 8)', () => {
     (readSpaceCredentials(spaceId).providers[providerId]?.entries ?? []).filter(entry => entry.authType === 'oauth')
   const migratedFiles = () => fs.readdirSync(tmpDir).filter(name => name.startsWith('oauth-tokens.migrated-'))
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mocks.settings = { storage: { providerConfigMigratedAt: 1, spaceProviderSettingsMigratedAt: 1 } }
+    // 这一组先往池里写东西:钥匙要先在(用户在设置页填过一把那样)。
+    await prepareCredentialsWrite()
   })
 
   it('⑤ 同身份:池里那条换成单槽的新令牌(冷却抹掉),单槽改名留底,池文件先备份,标记落下', async () => {

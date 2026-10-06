@@ -303,6 +303,22 @@ export interface OAuthTokenExpiredGlobalEvent {
   error?: string
 }
 
+// ── 凭证锁定(第④步批 0,`docs/design/two-process-2026-10.md` §2.1)──────────
+
+/**
+ * 凭证的锁定状态变了:主密钥读不到(钥匙串超时 / 拒绝 / 钥匙丢了),或还有旧 `safeStorage` 密文没迁完;
+ * `locked: false` 的那一条说「又能用了」。壳据它亮 / 收顶部横幅与服务商列表上的锁图标。
+ * 载荷只有档位、状态与原因码,没有任何凭证。
+ */
+export interface CredentialsLockedGlobalEvent {
+  type: 'credentials:locked'
+  locked: boolean
+  tier: 'keychain' | 'file' | 'none'
+  state: 'ready' | 'loading' | 'locked'
+  /** 锁定原因码(`keychain-timeout` / `keychain-denied` / `key-missing` / `keychain-failed` / `legacy-safestorage` / `loading`)。 */
+  reason?: string
+}
+
 // ── 配额与余额(批 5,`docs/design/provider-settings-rework-2026-09.md` §8.3)──────────
 
 /**
@@ -356,6 +372,7 @@ export type GlobalEvent =
   | OAuthFlowGlobalEvent
   | OAuthTokenExpiredGlobalEvent
   | ProviderQuotaGlobalEvent
+  | CredentialsLockedGlobalEvent
 
 // ── 出网名单(原子 K2a')────────────────────────────
 
@@ -461,4 +478,9 @@ export const GLOBAL_EVENT_LEAVES_PROCESS: Readonly<Record<GlobalEvent['type'], b
    * 凭证的稳定 id(与 `spaces.getCredentials` 摘要里的 id 同一格),不是凭证本身。
    */
   'provider:quota': true,
+  /**
+   * **出网 —— 壳要画它**(第④步批 0)。载荷 `{locked, tier, state, reason?}`:档位与原因码,
+   * 同一道 Bearer 门后面 `spaces.credentialsStatus` 交出去的是同一组字段。没有密钥、没有路径。
+   */
+  'credentials:locked': true,
 })

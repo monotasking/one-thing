@@ -1796,6 +1796,18 @@ export const en: Record<MessageKey, string> = {
   'workspace.factCreated': 'Created workspace',
   'workspace.scopeNote':
     'Each workspace keeps its own sessions, model services and credentials. Switching affects this window only — other windows stay on the workspace they are already in.',
+  /* Credentials key and lock state (step 4, batch 0). Copy is verbatim from the work order. */
+  'credentials.lockedBanner': 'Credentials are locked. Providers that need sign-in are unavailable for now.',
+  'credentials.retry': 'Retry',
+  'credentials.reasonTimeout': 'The keychain did not respond.',
+  'credentials.reasonDenied': 'The keychain denied access.',
+  'credentials.reasonKeyMissing': 'The key for your credentials is missing. Import an exported copy or sign in again.',
+  'credentials.export': 'Export credentials',
+  'credentials.import': 'Import credentials',
+  'credentials.passphraseNote': "The export is encrypted with this passphrase. You'll need the same passphrase to import it.",
+  'credentials.tierFile': 'On this computer the credentials key is stored in a local file.',
+  'credentials.tierNone': 'Credentials are not encrypted.',
+  'credentials.lockedTooltip': 'Credentials locked',
   'workspace.paletteLabel': 'Switch workspace',
   'workspace.paletteSearch': 'Find a workspace…',
   'workspace.paletteHint': 'Switch workspace',

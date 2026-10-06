@@ -196,7 +196,7 @@ async function main() {
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       // headless 宿主的钥匙走环境变量(`<PROVIDER_ID 去掉 custom->_API_KEY`),不写盘。
-      env: { ...process.env, DEEPSEEK_API_KEY: 'sk-gate-analyst', GATE_RELAY_API_KEY: 'sk-relay-secret', ONETHING_STORE_PATH: store },
+      env: { ...process.env, DEEPSEEK_API_KEY: 'sk-gate-analyst', GATE_RELAY_API_KEY: 'sk-relay-secret', ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     server.stdout.on('data', (c) => serverOut.push(c.toString()))

@@ -32,6 +32,7 @@ import { catalogKey, catalogQuery, invalidateCatalogProvider } from '../catalog-
 import { useCurrentSpaceId } from '../../workspace/current'
 import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
+import { useCredentialsLocked } from '../../data/credentials-lock-source'
 import { isProviderEnabledIn, providerFamilyLookupOf } from '@onething/backend-client/model/provider-model'
 import s from './ProviderSettingsPanel.module.css'
 
@@ -153,6 +154,8 @@ export function ProviderSettingsPanel() {
   const rows = useMemo(() => buildRailRows(families, configs, credsOf), [families, configs, credsOf])
   const visibleRows = useMemo(() => filterRailRows(rows, families, query), [rows, families, query])
   const connected = useMemo(() => connectedCountOf(families, credsOf), [families, credsOf])
+  // 凭证锁着(第④步批 0):左栏要登录的那几家行尾换成锁图标,悬停说「凭证已锁定」。
+  const credentialsLocked = useCredentialsLocked()
 
   // 开面落在第一家上。这不是「拿第一家去顶」—— 右面画的是那一家的真事实,
   // 只是替用户省掉必然要点的第一下。families 到齐之前不选,免得选中一个空 id。
@@ -349,6 +352,7 @@ export function ProviderSettingsPanel() {
     <div className={s.panel} data-testid="providers-panel">
       <ProviderRail
         rows={visibleRows}
+        credentialsLocked={credentialsLocked}
         connectedCount={connected}
         selectedId={selectedFamilyId}
         query={query}

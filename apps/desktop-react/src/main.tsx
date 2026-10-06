@@ -41,6 +41,7 @@ import './content/diff-launcher'
 import { startWorkbench, useWorkbenchStore } from './workbench/store'
 import { sessionShownIn } from './content/session-ref'
 import { startAgentNotices } from './data/agent-notices-source'
+import { startCredentialsLock } from './data/credentials-lock-source'
 import { startStage } from './stage/store'
 import { startSessionProjection } from './content/session-projection'
 import { installCrashHandlers } from './services/crash'
@@ -136,6 +137,11 @@ void whenConnected().finally(() => {
     isSessionOnScreen: (sessionId) =>
       document.visibilityState === 'visible' && sessionShownIn(useWorkbenchStore.getState().regions, sessionId),
   })
+  /*
+   * 凭证锁定状态(第④步批 0):连通之后问一次、订 `credentials:locked`。锁着时顶部那一排通知里亮一条
+   * 不自动消失的横幅(带「重试」),服务商列表上画锁;连不上不挡任何事。
+   */
+  void startCredentialsLock()
   // 工作区列表同理:连通之后拉一次。拉不到不挡任何事 —— 瓦面退成兜底图标,
   // 总览上一句「读不到」加后端原话(与 agent 名册那条同一口径)。
   // **当前是哪个工作区**不在这一步:它读的是 localStorage,上面 startWorkspaceApply()

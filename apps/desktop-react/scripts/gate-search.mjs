@@ -352,7 +352,7 @@ async function main() {
       cwd: repoRoot,
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_WORKSPACE_ROOT: workspaceRoot,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -393,7 +393,7 @@ async function main() {
       args: [mainEntry],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         /*
          * **窗子离屏起**(与 gate-search-messages / gate-focus / gate-a11y / gate-perf

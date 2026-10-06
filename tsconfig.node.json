@@ -6,6 +6,7 @@
     "apps/cli/**/*",
     "scripts/gateway-smoke-test.ts",
     "scripts/gate-embed-runtime/entry.ts",
+    "scripts/gate-credentials/entry.ts",
     "packages/shared/**/*"
   ],
   "compilerOptions": {

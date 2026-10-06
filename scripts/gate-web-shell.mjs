@@ -216,7 +216,7 @@ async function main() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_PORT: String(SERVER_PORT),
         ONETHING_SERVER_TOKEN: SERVER_TOKEN,
       },
@@ -254,7 +254,7 @@ async function main() {
       '--strictPort',
     ], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     webDev.stderr.on('data', chunk => webErr.push(chunk.toString()))

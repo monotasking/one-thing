@@ -23,7 +23,7 @@
  * (批 1:系统浏览器 / 默认程序打开 / 在访达里定位);其余九项是 `null`。
  */
 import { app, BrowserWindow, dialog, nativeTheme, net, safeStorage, session, shell } from 'electron'
-import type { OnethingTokenCryptoAdapter } from '@onething/backend/auth'
+import type { LegacySafeStorageDecryptor } from '@onething/backend/credentials'
 import type { OnethingHostPorts } from '@onething/backend/backend-host-ports.js'
 import {
   clearAppDispatcherCache,
@@ -39,17 +39,19 @@ import { createShellSpeechOutput } from './speech-output.js'
 const log = getLogger('shell.host-ports')
 
 /**
- * safeStorage 是 Keychain(macOS)/ DPAPI(Windows)的门面,**绑 app 身份**:
- * 同一台机器上不同 app 加密出来的密文互相解不开。形状照
- * `apps/electron/src/auth/electron-auth.ts:43-49` 抄 —— 三个方法齐了才算数,
- * 缺一个就当没有(产品层的 token store 有明文回退,那是它记录在案的降级)。
+ * safeStorage 是 Keychain(macOS)/ DPAPI(Windows)的门面,**绑 app 身份**:同一台机器上不同 app
+ * 加密出来的密文互相解不开。第④步批 0 起凭证的落盘加密改用后端自己的主密钥,这里的 safeStorage
+ * **只当迁移用的旧解密器**:存量的 `encryption: 'safeStorage'` 凭证文件与旧单槽 `oauth-tokens.json`
+ * 要靠它解开、再由后端用主密钥封成新信封。只递解密的两个方法,写侧再也用不到它。
  */
-function getShellSafeStorage(): OnethingTokenCryptoAdapter | undefined {
+function legacySafeStorageForMigration(): LegacySafeStorageDecryptor | undefined {
   return safeStorage
     && typeof safeStorage.isEncryptionAvailable === 'function'
-    && typeof safeStorage.encryptString === 'function'
     && typeof safeStorage.decryptString === 'function'
-    ? (safeStorage as unknown as OnethingTokenCryptoAdapter)
+    ? {
+      isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+      decryptString: buffer => safeStorage.decryptString(buffer),
+    }
     : undefined
 }
 
@@ -160,14 +162,15 @@ export function createShellHostPorts(): OnethingHostPorts {
     sandbox: {
       getPath: name => app.getPath(name as Parameters<typeof app.getPath>[0]),
     },
-    /**
-     * 凭证解密的**唯一**口。不注入 = token 落盘是明文、而已有的 safeStorage
-     * 密文一律解不开 → provider 目录看上去是空的(旧 spawn server 路径的真实症状)。
-     */
+    /** OAuth 取数走 Electron 的 `net.fetch`(跟随 app 的代理 / 证书设置)。 */
     auth: {
       authFetch: createShellAuthFetch(),
-      tokenCryptoAdapter: getShellSafeStorage,
     },
+    /**
+     * 旧 safeStorage 密文的解密器,只当迁移用(第④步批 0)。装配时后端用它解开存量凭证,
+     * 封成主密钥信封;旧文件改名 `.safestorage-backup` 留底。
+     */
+    legacySafeStorageForMigration,
     /**
      * 终端输出的出网口(T0,方案 `apps/desktop-react/docs/terminal-browser-2026-09.md`
      * §2.1-1/2)。**注入这一格 = 这台宿主有终端** —— `hasTerminalHost()` 是

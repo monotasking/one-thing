@@ -23,9 +23,9 @@
 11 plugin-contract
 11 tool
 10 usage
-8 auth
 8 project-dir
 8 skill
+7 auth
 7 engine
 7 note
 7 resource

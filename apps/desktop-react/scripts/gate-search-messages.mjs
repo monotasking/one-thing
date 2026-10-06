@@ -556,7 +556,7 @@ async function main() {
     console.log('\n[2/6] 起一台 core,建两条会话,各跑一轮真流')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-gate' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', DEEPSEEK_API_KEY: 'sk-gate' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -636,7 +636,7 @@ async function main() {
       args: [mainEntry],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         /*
          * **窗子离屏起**(与 gate-focus / gate-a11y / gate-perf 同一手,09-04 判例:

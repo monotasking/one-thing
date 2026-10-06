@@ -1,0 +1,15 @@
+/*
+ * 左栏行尾那枚锁(第④步批 0「凭证已锁定」)。形照设置页 Agent 环境变量那枚锁
+ * (`content/settings/AgentsSettings.module.css` 的 `.lock` / `.lockIcon`):图标色走正文二档,
+ * 不上状态色的底 —— 状态色只上图标 / 点,而锁说的是「此刻拿不到」,不是「坏了」。
+ */
+.lock {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-2);
+}
+
+.lockIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}

@@ -13,7 +13,6 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  configureSpaceCredentialsCrypto,
   getSpaceProviderCredentials,
   markSpaceCredentialCooldown,
   resetSpaceCredentialsCacheForTests,
@@ -29,13 +28,11 @@ beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-space-token-store-'))
   setRootDirForTests(tmpDir)
   resetSpaceCredentialsCacheForTests()
-  configureSpaceCredentialsCrypto(undefined)
 })
 
 afterEach(async () => {
   setRootDirForTests(null)
   resetSpaceCredentialsCacheForTests()
-  configureSpaceCredentialsCrypto(undefined)
   await fs.rm(tmpDir, { recursive: true, force: true })
 })
 

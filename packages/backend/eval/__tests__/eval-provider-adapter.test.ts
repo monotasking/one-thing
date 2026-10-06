@@ -17,7 +17,6 @@ vi.mock('@onething/backend/space/space-store', () => ({
 }))
 
 import {
-  configureSpaceCredentialsCrypto,
   getSpaceProviderCredentials,
   markSpaceCredentialCooldown,
   resetSpaceCredentialsCacheForTests,
@@ -38,7 +37,7 @@ import {
   savePersistedSettings,
   updateSettingsInMemory,
 } from '@onething/backend/settings'
-import { setSpaceProviderCredential } from '@onething/backend/credentials'
+import { prepareCredentialsWrite, setSpaceProviderCredential } from '@onething/backend/credentials'
 import { initializeRegistry } from '@onething/backend/provider'
 import { createEvalsModelCaller, resolveEvalsCredentials } from '../eval-provider-adapter.js'
 
@@ -46,7 +45,7 @@ let directory: string
 
 beforeAll(() => initializeRegistry())
 
-beforeEach(() => {
+beforeEach(async () => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'evals-provider-credentials-'))
   vi.stubEnv('ONETHING_STORE_PATH', directory)
   for (const provider of ['openai', 'deepseek', 'codex', 'custom-fixture']) {
@@ -56,11 +55,10 @@ beforeEach(() => {
   invalidateSettingsCache()
   resetSpaceCredentialsCacheForTests()
   resetSpaceProviderSettingsCacheForTests()
-  configureSpaceCredentialsCrypto(() => ({
-    isEncryptionAvailable: () => true,
-    encryptString: text => Buffer.from(text, 'utf8'),
-    decryptString: data => data.toString('utf8'),
-  }))
+  // 凭证池用 `file` 档的主密钥加密落盘(钥匙在这间临时 store 里;vitest 缺省是 `none` 档)。
+  // 持有器按「档位 + store 路径」分格,每条用例一间新 store,所以不用清。
+  vi.stubEnv('ONETHING_CREDENTIALS_KEYRING', 'file')
+  await prepareCredentialsWrite()
   savePersistedSettings({
     ...createDefaultSettings(),
     storage: { providerConfigMigratedAt: 1, spaceProviderSettingsMigratedAt: 1 },
@@ -73,7 +71,6 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  configureSpaceCredentialsCrypto(undefined)
   setRootDirForTests(null)
   invalidateSettingsCache()
   resetSpaceCredentialsCacheForTests()

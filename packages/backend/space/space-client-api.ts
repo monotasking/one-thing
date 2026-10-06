@@ -50,11 +50,19 @@ import { getSpacesStore } from '@onething/backend/space/space-store'
 import { DEFAULT_SPACE_ID } from '@onething/backend/space/space-types'
 import {
   clearSpaceProviderCredential,
+  credentialsReady,
+  credentialsStatus,
+  CredentialsExportFailure,
+  exportCredentialsWithPassphrase,
   getSpaceCredentialsSummary,
+  importCredentialsWithPassphrase,
   importDefaultSpaceCredentials,
+  prepareCredentialsWrite,
   setSpaceProviderCredential,
   setSpaceProviderCredentialPoolForRequest,
+  unlockCredentials,
 } from '@onething/backend/credentials'
+import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { countSessionsInWorkspace } from '@onething/backend/session'
 import { persistManualOrphans } from '@onething/backend/settings'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
@@ -63,6 +71,42 @@ import { defineClientApi } from '@onething/backend/http-server/http-server-dispa
 /** 已登记判定。每个带 id 的方法都过这一关 —— 见文件头。 */
 function hasSpace(id: string): boolean {
   return getSpacesStore().list().some(space => space.id === id)
+}
+
+/** 默认空间 + 名录里的全部空间(导出按这份清单走)。 */
+function allSpaceIds(): string[] {
+  return [...new Set([DEFAULT_SPACE_ID, ...getSpacesStore().list().map(space => space.id)])]
+}
+
+/**
+ * 凭证写之前那一步(第④步批 0):新装时现造主密钥、钥匙丢了时换一把;此刻写不了就答
+ * `CREDENTIALS_LOCKED` + 原因码,不抛到传输面。
+ */
+async function withCredentialsWritable<T extends { success: boolean }>(
+  run: () => T | Promise<T>,
+): Promise<T | { success: false; error: string; code: string }> {
+  try {
+    await prepareCredentialsWrite()
+  } catch (error) {
+    return lockedResult(error)
+  }
+  return run()
+}
+
+function lockedResult(error: unknown): { success: false; error: string; code: string } {
+  const reason = (error as { reason?: unknown })?.reason
+  if ((error as { code?: unknown })?.code === 'CREDENTIALS_LOCKED' && typeof reason === 'string') {
+    return { success: false, error: reason, code: 'CREDENTIALS_LOCKED' }
+  }
+  return { success: false, error: error instanceof Error ? error.message : String(error), code: 'INTERNAL' }
+}
+
+/** 导出 / 导入的口令错、文件不对,答成码。 */
+function exportFailureCode(error: unknown): string | null {
+  if (!(error instanceof CredentialsExportFailure)) return null
+  if (error.reason === 'wrong-passphrase') return 'WRONG_PASSPHRASE'
+  if (error.reason === 'not-an-export') return 'NOT_AN_EXPORT'
+  return 'EMPTY_PASSPHRASE'
 }
 
 export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
@@ -138,6 +182,8 @@ export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
   // provider 凭证池(批 B3;C1 起 default 也走这条)。唯一还挡着默认空间的
   // 是「导入」—— 它就是导入的来源,导给自己是句废话。
   async getCredentials(request) {
+    // 钥匙串那一档的钥匙可能还在读;读完再答,免得把「还在读」答成「什么都没配」。
+    await credentialsReady()
     return getOnethingSpaceCredentialsForIpc({
       request,
       hasSpace,
@@ -145,34 +191,74 @@ export const spacesRpcHandlers: RouteHandlers<SpacesRoutes> = {
     })
   },
   async setCredential(request) {
-    return setOnethingSpaceCredentialForIpc({
+    return withCredentialsWritable(() => setOnethingSpaceCredentialForIpc({
       request,
       hasSpace,
       writeCredential: input => setSpaceProviderCredential(input),
-    })
+    }))
   },
   // 整池写(批 D):排序 + 删除 + 策略。密钥原文走上面那条 setCredential。
   async setCredentialPool(request) {
-    return setOnethingSpaceCredentialPoolForIpc({
+    return withCredentialsWritable(() => setOnethingSpaceCredentialPoolForIpc({
       request,
       hasSpace,
       writePool: input => setSpaceProviderCredentialPoolForRequest(input),
-    })
+    }))
   },
   async clearCredential(request) {
-    return clearOnethingSpaceCredentialForIpc({
+    return withCredentialsWritable(() => clearOnethingSpaceCredentialForIpc({
       request,
       hasSpace,
       clearCredential: input => clearSpaceProviderCredential(input),
-    })
+    }))
   },
   async importCredentials(request) {
-    return importOnethingSpaceCredentialsForIpc({
+    return withCredentialsWritable(() => importOnethingSpaceCredentialsForIpc({
       request,
       hasSpace,
       isDefaultSpace: id => id === DEFAULT_SPACE_ID,
       importCredentials: id => importDefaultSpaceCredentials(id),
-    })
+    }))
+  },
+  // ── 凭证的钥匙与锁定状态、口令导出 / 导入(第④步批 0)──────────────────────────
+  async credentialsStatus() {
+    return { success: true, status: credentialsStatus() }
+  },
+  async unlockCredentials() {
+    return { success: true, status: await unlockCredentials() }
+  },
+  /**
+   * 导出交出去的是密文,但口令是调用方自己定的 —— 拿到文件的人就拿到了全部凭证。所以只给本机信任的
+   * 来访者(桌面、回环 server),与「替调用方起本机进程」同一档判据。
+   */
+  async exportCredentials(request) {
+    if (!isHostLocallyTrusted()) return { success: false, error: 'not available on this host', code: 'NOT_TRUSTED' }
+    if (!request.passphrase) return { success: false, error: 'empty-passphrase', code: 'EMPTY_PASSPHRASE' }
+    await credentialsReady()
+    const status = credentialsStatus()
+    // 锁着时读到的是空池;导出一份空文件只会让人以为备份过了。
+    if (status.state !== 'ready') {
+      return { success: false, error: status.reason ?? status.state, code: 'CREDENTIALS_LOCKED' }
+    }
+    try {
+      const exported = await exportCredentialsWithPassphrase(request.passphrase, allSpaceIds())
+      return { success: true, fileName: exported.fileName, data: exported.data, entries: exported.entries }
+    } catch (error) {
+      const code = exportFailureCode(error)
+      return code ? { success: false, error: code, code } : lockedResult(error)
+    }
+  },
+  async importExportedCredentials(request) {
+    if (!isHostLocallyTrusted()) return { success: false, error: 'not available on this host', code: 'NOT_TRUSTED' }
+    if (!request.passphrase) return { success: false, error: 'empty-passphrase', code: 'EMPTY_PASSPHRASE' }
+    try {
+      await prepareCredentialsWrite()
+      const result = await importCredentialsWithPassphrase(request.passphrase, request.data, hasSpace)
+      return { success: true, imported: result.imported, skippedSpaces: result.skippedSpaces }
+    } catch (error) {
+      const code = exportFailureCode(error)
+      return code ? { success: false, error: code, code } : lockedResult(error)
+    }
   },
 }
 

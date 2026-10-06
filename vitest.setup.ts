@@ -44,6 +44,16 @@ if (process.env.ONETHING_VITEST_REAL_HOME !== '1') {
     }
   })
 }
+
+// ── 硬闸:测试进程结构上摸不到用户的钥匙串(第④步批 0)─────────────────────────
+//
+// 凭证主密钥的缺省档在 macOS 上是系统钥匙串(`credentials/credentials-master-key.ts`),那会让任何
+// 一条碰到凭证写入的测试去起 `security`、往用户的登录钥匙串里加条目。所以这里**强制**
+// `none` 档(不加密,如实写 `encryption: 'none'`),与「没有加密器」时的老行为同形。要测加密的
+// 用例自己把它换成 `file`(主密钥落在临时 store 里),用完 `vi.unstubAllEnvs()` 回到这里。
+// 不给逃生口:没有任何一条测试该碰真钥匙串。
+process.env.ONETHING_CREDENTIALS_KEYRING = 'none'
+
 //
 // happy-dom's default document origin is http://localhost:3000, so any
 // renderer code that fires platformApi web fallbacks (fetch('/api/…') or

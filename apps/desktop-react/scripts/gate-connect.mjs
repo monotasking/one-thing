@@ -142,7 +142,7 @@ async function launchApp(store) {
     args: [mainEntry],
     env: {
       ...process.env,
-      ONETHING_STORE_PATH: store,
+      ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
       // 渲染层从构建产物加载(不需要 dev server)。
       ONETHING_REACT_DEV_SERVER_URL: '',
     },
@@ -245,7 +245,7 @@ async function runPathTwo() {
   try {
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -316,7 +316,7 @@ async function runPathThree() {
     cwd: repoRoot,
     env: {
       ...process.env,
-      ONETHING_STORE_PATH: store,
+      ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
       ONETHING_SERVER_PORT: String(port),
       ONETHING_SERVER_TOKEN: token,
     },

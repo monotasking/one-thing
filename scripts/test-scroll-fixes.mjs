@@ -143,7 +143,7 @@ console.log("\n🚀 Starting dev server...");
 
 const server = spawn("bun", ["run", "dev:web"], {
 	cwd: process.cwd(),
-	env: { ...process.env, ONETHING_STORE_PATH: STORE_PATH },
+	env: { ...process.env, ONETHING_STORE_PATH: STORE_PATH, ONETHING_CREDENTIALS_KEYRING: 'file' },
 	stdio: ["ignore", "pipe", "pipe"],
 });
 

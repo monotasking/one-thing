@@ -28,7 +28,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import type { AppSettings, OAuthToken, ProviderConfig } from '@shared/ipc.js'
-import { OnethingTokenStore, type OnethingOAuthToken, getAuthHostPorts } from '@onething/backend/auth'
+import { OnethingTokenStore, type OnethingOAuthToken } from '@onething/backend/auth'
 import { oauthTokenIdentity, parseSpaceOAuthToken } from './credentials-token-store.js'
 import {
   readSpaceCredentials,
@@ -40,9 +40,12 @@ import {
   createSpaceCredentialEntryId,
   DEFAULT_SPACE_CREDENTIAL_POLICY,
   SPACE_CREDENTIAL_SOURCE_USER,
+  credentialsKeyContext,
   type SpaceCredentialEntry,
   type SpaceCredentialsFile,
 } from './credentials-pool.js'
+import { ensureMasterKeyForWrite } from './credentials-master-key.js'
+import { legacySafeStorageDecryptor } from './credentials-legacy-decryptor.js'
 import {
   readSpaceOverlay,
   writeSpaceOverlay,
@@ -358,7 +361,8 @@ async function migrateOAuthTokens(
   const backup = copyFileToBackup(tokenFilePath, 'oauth-tokens', now)
   const store = new OnethingTokenStore<OAuthToken>({
     tokenFilePath,
-    cryptoAdapter: () => getAuthHostPorts().tokenCryptoAdapter?.(),
+    // 旧单槽是 `safeStorage` 封的,只有宿主递进来的旧解密器解得开(第④步批 0)。
+    cryptoAdapter: legacySafeStorageDecryptor,
   })
 
   const providers = { ...file.providers }
@@ -430,20 +434,21 @@ function allSpaceIdsForCredentials(): Set<string> {
  * 判据只有一条:**这个进程有加密能力,而盘上那份不是密文**。读侧本来就认三种
  * 形态,所以"读出来再原样写回去"就是一次完整的升级 —— 写侧永远按当前能力产出。
  *
- * 一次性:升完就是 `safeStorage`,下次启动这个函数一格都不动。没有能力的宿主
- * 直接返回,绝不"顺手"把密文降级回明文。
+ * 一次性:升完就是主密钥信封,下次启动这个函数一格都不动。拿不到钥匙的进程(`none` 档、
+ * 已锁定)直接返回,绝不"顺手"把密文降级回明文。
  */
-export function upgradeSpaceCredentialsEncryptionAtRest(): string[] {
+export async function upgradeSpaceCredentialsEncryptionAtRest(): Promise<string[]> {
   const upgraded: string[] = []
   for (const spaceId of allSpaceIdsForCredentials()) {
     if (readSpaceCredentialsAtRest(spaceId) !== 'none') continue
     try {
       const credentials = readSpaceCredentials(spaceId)
       if (!hasSpaceCredentialEntries(credentials)) continue
-      // A fresh store (or an empty legacy pool) must not ask the operating
-      // system for a secret merely to discover there is nothing to encrypt.
-      if (spaceCredentialsEncryptionAtRest() !== 'safeStorage') return upgraded
-      // 读得出来(明文那条路读侧一直认),原样写回去 —— 写侧此刻是 safeStorage。
+      // 新 store(或空的老池)不该为了发现「没东西要封」就去要一把钥匙:到这里才是真有明文要封。
+      // 不换钥匙(`allowRekey` 不给):钥匙丢了时这一步留给用户亲手的那次写。
+      await ensureMasterKeyForWrite(credentialsKeyContext)
+      if (spaceCredentialsEncryptionAtRest() !== 'master-key') return upgraded
+      // 读得出来(明文那条路读侧一直认),原样写回去 —— 写侧此刻是主密钥。
       writeSpaceCredentials(spaceId, credentials)
       upgraded.push(spaceId)
       log.info('credentials pool re-encrypted at rest', { spaceId })
@@ -537,8 +542,17 @@ export async function migrateProviderConfigToDefaultSpace(
    * **不开明文开关**。真机 A/B 佐证见 `sessions:shadow-battery` —— 电池与
    * `gate:monotone` 因此改成用环境变量种假 key(它们从前靠 `settings.ai` 种,
    * 正是这条闸挡下的那种写法)。
+   *
+   * ## 第④步批 0 之后(2026-10)
+   *
+   * 「加密能力」不再是 Electron 的 `safeStorage`,而是后端自己的主密钥(`credentials-master-key.ts`):
+   * 独立 server、CLI 守护进程与桌面同一条加密路,上面那段「只有桌面能迁」的处境因此只剩两种情形
+   * 还会走到这道闸 —— 主密钥此刻锁着(钥匙串超时 / 拒绝 / 钥匙丢了),或进程选了 `none` 档
+   * (只给 vitest)。闸守的道理一字未变:拿不到钥匙就不迁,绝不写明文。
    */
-  if (hasLegacyCredentials && spaceCredentialsEncryptionAtRest() !== 'safeStorage') {
+  // 第④步批 0 起「加密能力」= 主密钥:新装时这里现造一把(不换钥匙 —— 钥匙丢了是另一件事)。
+  if (hasLegacyCredentials) await ensureMasterKeyForWrite(credentialsKeyContext)
+  if (hasLegacyCredentials && spaceCredentialsEncryptionAtRest() !== 'master-key') {
     // 日志是**给部署者看的**:它必须说清「这是有意为之」和「那我该怎么配」,
     // 否则读到它的人只会以为迁移坏了,然后去把这条闸拆掉。
     log.warn(
@@ -551,8 +565,8 @@ export async function migrateProviderConfigToDefaultSpace(
           + '(DEEPSEEK_API_KEY / OPENAI_API_KEY / … , or <PROVIDER_ID>_API_KEY) — that path '
           + 'needs no migration and writes nothing to disk',
         howToMigrate:
-          'to move the existing settings.ai credentials into the space pool, start the '
-          + 'desktop app once on this store: it has safeStorage and completes the migration encrypted',
+          'the credentials master key is not available on this host (locked, or ONETHING_CREDENTIALS_KEYRING=none); '
+          + 'unlock it (or use the keychain / file tier) and restart',
       },
     )
     return { ...empty, deferredReason: 'no-credential-encryption' }
@@ -640,7 +654,7 @@ export interface OAuthSlotMigrationReport {
    * 没做的理由。`'provider-config-not-migrated'` = C1/C2 还没跑完(它们自己会先处理单槽);
    * `'token-not-readable'` = 单槽里有一把密文,而这个进程没有加密器解不开 —— 留到有能力的宿主。
    */
-  deferredReason?: 'provider-config-not-migrated' | 'token-not-readable'
+  deferredReason?: 'provider-config-not-migrated' | 'token-not-readable' | 'no-credential-encryption'
 }
 
 /** 两把令牌是不是同一个账号:身份相同,或同一条令牌血统(access / refresh 原文相同)。 */
@@ -743,7 +757,8 @@ export async function migrateOAuthSlotToDefaultSpace(
 
   const store = new OnethingTokenStore<OAuthToken>({
     tokenFilePath,
-    cryptoAdapter: () => getAuthHostPorts().tokenCryptoAdapter?.(),
+    // 旧单槽是 `safeStorage` 封的,只有宿主递进来的旧解密器解得开(第④步批 0)。
+    cryptoAdapter: legacySafeStorageDecryptor,
     logger: { warn: (message: string, ...rest: unknown[]) => log.warn('legacy oauth slot read failed', { message }, rest[0]) },
   })
   const providerIds = await store.listProviderIds()
@@ -780,6 +795,12 @@ export async function migrateOAuthSlotToDefaultSpace(
 
   let backup: string | undefined
   if (updated.length > 0 || added.length > 0) {
+    // 写池要主密钥(第④步批 0)。拿不到就推迟:不写、不改名、不标记,下次启动重来。
+    await ensureMasterKeyForWrite(credentialsKeyContext)
+    if (spaceCredentialsEncryptionAtRest() === 'unavailable') {
+      log.warn('oauth slot migration deferred: the credentials master key is not available')
+      return { ...empty, deferredReason: 'no-credential-encryption' }
+    }
     backup = copyFileToBackup(spaceCredentialsFilePath(DEFAULT_SPACE_ID), 'credentials-default', now, 'pre-oauth-slot-migration')
     writeSpaceCredentials(DEFAULT_SPACE_ID, file)
   }

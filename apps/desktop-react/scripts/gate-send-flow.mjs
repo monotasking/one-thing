@@ -1477,7 +1477,7 @@ async function main() {
 
   const startCore = async () => {
     const child = spawn(process.execPath, [serverEntry], {
-      env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -1570,7 +1570,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         // 屏外而不是 headless:这道门每一条都与页面的时间有关(判词在文件头)。
         ONETHING_GATE_OFFSCREEN: '1',

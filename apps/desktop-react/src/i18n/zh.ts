@@ -2090,6 +2090,19 @@ export const zh = {
   /* 切换换的是什么。09-01「真切换」批之后这句话从留账变成了说明,机制见
      workspace/store.ts 文件头(A 屏幕、B 引擎,接缝是建会话时写下的归属)。 */
   'workspace.scopeNote': '每个工作区各有一套会话、模型服务与凭证。切换只影响这台窗口,别的窗口照旧停在它自己那个。',
+  /* 凭证的钥匙与锁定(第④步批 0,`docs/design/two-process-2026-10.md` §2.1)。文案逐字照派工单,不许改写。
+   * 横幅 = 顶部那一排通知里一条不自动消失的;第二行按原因码选一句(`data/credentials-lock-source.ts`)。 */
+  'credentials.lockedBanner': '凭证已锁定,需要登录的服务商暂时不能用。',
+  'credentials.retry': '重试',
+  'credentials.reasonTimeout': '钥匙串没有回应。',
+  'credentials.reasonDenied': '钥匙串拒绝了访问。',
+  'credentials.reasonKeyMissing': '找不到加密凭证用的密钥,可以导入之前导出的凭证,或重新登录。',
+  'credentials.export': '导出凭证',
+  'credentials.import': '导入凭证',
+  'credentials.passphraseNote': '导出文件用这个口令加密,导入时要输入同一个口令。',
+  'credentials.tierFile': '这台电脑上凭证密钥存在本地文件里。',
+  'credentials.tierNone': '凭证没有加密。',
+  'credentials.lockedTooltip': '凭证已锁定',
   'workspace.paletteLabel': '切换工作区',
   'workspace.paletteSearch': '找一个工作区…',
   'workspace.paletteHint': '切换工作区',

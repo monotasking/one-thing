@@ -517,7 +517,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         // 两个一起传:`HEADLESS` 管「别自己 show」,`OFFSCREEN` 管「摆到屏外、
         // 不抢焦点地 showInactive」。判词在 `electron/main.ts` 的 `GATE_OFFSCREEN` 上。
@@ -2336,7 +2336,7 @@ async function main() {
     child = spawn(electronBinary, [mainEntry, `--user-data-dir=${userDataDir}`], {
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         // 第二趟也跟着这一档走(dev 时那台 vite 还开着 —— 它服务两趟壳)。
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
@@ -2415,7 +2415,7 @@ async function main() {
     child = spawn(electronBinary, [mainEntry, `--user-data-dir=${userDataDir}`], {
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: proxyStore,
+        ONETHING_STORE_PATH: proxyStore, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
         ONETHING_GATE_OFFSCREEN: '1',
@@ -2528,7 +2528,7 @@ async function main() {
       child = spawn(electronBinary, [mainEntry, `--user-data-dir=${userDataDir}`], {
         env: {
           ...process.env,
-          ONETHING_STORE_PATH: menuStore,
+          ONETHING_STORE_PATH: menuStore, ONETHING_CREDENTIALS_KEYRING: 'file',
           // 这一格就是 dev / prod 的分档:prod 档它是空串 → `isDevShell` false。
           ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
           ONETHING_GATE_HEADLESS: '1',

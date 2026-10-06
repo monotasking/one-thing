@@ -128,7 +128,7 @@ async function main() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         ONETHING_GATE_HEADLESS: '1',
         ONETHING_GATE_OFFSCREEN: '1',

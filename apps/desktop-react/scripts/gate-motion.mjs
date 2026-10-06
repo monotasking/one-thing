@@ -135,7 +135,7 @@ async function launchWithTier(store, userDataDir, tier) {
   const app = await electron.launch({
     executablePath: electronBinary,
     args: [mainEntry, `--user-data-dir=${userDataDir}`],
-    env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+    env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '' },
   })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
@@ -387,7 +387,7 @@ async function main() {
     console.log('\n[0] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []

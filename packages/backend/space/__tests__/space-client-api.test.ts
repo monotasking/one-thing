@@ -101,6 +101,8 @@ describe('spaces RPC domain', () => {
       'getProviderSettings', 'setProviderSettings',
       'getCredentials', 'setCredential', 'setCredentialPool', 'clearCredential',
       'importCredentials',
+      // 第④步批 0 的四条:钥匙与锁定状态、口令导出 / 导入。
+      'credentialsStatus', 'unlockCredentials', 'exportCredentials', 'importExportedCredentials',
     ]
 
     for (const method of methods) {
@@ -110,6 +112,22 @@ describe('spaces RPC domain', () => {
 
     await expect(dispatchRpc({ domain: 'spaces', method: 'nope', payload: {} }))
       .resolves.toMatchObject({ ok: false })
+  })
+
+  it('credentialsStatus answers the tier and state only — the none tier says so out loud', async () => {
+    const { dispatchRpc } = await loadDomain()
+
+    await expect(dispatchRpc({ domain: 'spaces', method: 'credentialsStatus', payload: {} }))
+      .resolves.toEqual({ ok: true, data: { success: true, status: { tier: 'none', state: 'ready', encryption: 'none' } } })
+  })
+
+  it('export / import are refused to a caller the host does not trust locally', async () => {
+    const { dispatchRpc } = await loadDomain()
+
+    for (const method of ['exportCredentials', 'importExportedCredentials']) {
+      await expect(dispatchRpc({ domain: 'spaces', method, payload: { passphrase: 'pw', data: '{}' } }), method)
+        .resolves.toMatchObject({ ok: true, data: { success: false, code: 'NOT_TRUSTED' } })
+    }
   })
 
   it('list projects the spaces store', async () => {

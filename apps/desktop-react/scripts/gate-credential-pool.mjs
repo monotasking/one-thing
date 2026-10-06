@@ -227,7 +227,7 @@ async function main() {
       executablePath: electronBinary,
       // `--lang=en-US`:断言读的是英文那一份文案(locale 缺省跟 navigator.language 走)。
       args: [mainEntry, `--user-data-dir=${userDataDir}`, '--lang=en-US'],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
     await page.setViewportSize({ width: 1280, height: 860 })

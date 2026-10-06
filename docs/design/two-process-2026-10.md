@@ -328,6 +328,12 @@ Electron 目录里 import `@onething/backend` 的文件有 15 只(`main.ts` 10 �
    `--force` 的告警原话保留。
 10. `mcp-client-api.ts:112-118` 的 `canSpawnLocalProcesses` 改成 `isHostLocallyTrusted()`(D9)。
 11. `packages/shared/ipc/rpc.ts:45` 的 `transport: 'ipc' | 'http'` 删 `'ipc'`;`DESKTOP_RPC_CONTEXT` 只剩测试与 CLI 直连用(批 3 删)。
+12. **(批 0 留下的待办)旧 `safeStorage` 密文改成「Electron 先读后交」**。批 0 落在拆进程之前,自动迁移是进程内的:
+    后端装配时经宿主端口 `legacySafeStorageForMigration`(第十九格,`packages/backend/credentials/credentials-legacy-decryptor.ts`)
+    拿 Electron 的 `safeStorage` 当旧解密器。拆进程之后后端不在 Electron 里,这一格就没有了 —— 还没迁完的机器(批 0 迁移失败、
+    或被「另一个活后端」挡下、一直没再起桌面)要改成:Electron 在拉起后端**之前**读出 `encryption: 'safeStorage'` 的文件、用
+    `safeStorage` 解开,后端就绪后经一条只给本机信任来访者的 RPC 交进去,后端用主密钥封好、逐条校验、旧文件改名 `.safestorage-backup`
+    (与批 0 同一套判据)。到那时 `legacySafeStorageForMigration` 一格删掉,三处宿主表同步。
 
 **行为变化**
 
@@ -486,3 +492,44 @@ Electron 目录里 import `@onething/backend` 的文件有 15 只(`main.ts` 10 �
 - 拿不准的:①`ELECTRON_RUN_AS_NODE` 子进程能否直接从 `app.asar` 加载 `.cjs`(我按「进 `asarUnpack`」写,由 `gate:packaged` 证);②macOS `security` 命令行建的钥匙串条目在
   硬化运行时 + 公证之后的 ACL 行为(dev 的 ad-hoc 签名实测过的是 `safeStorage`,不是 `security`);③D3 自动迁移是否违背用户对「口令」那条的本意 —— 我读成「口令是导出文件的保护,
   不是迁移的前提」,但这是推论;④启动时长多出的 100–300ms 是估的,门量出来才算数。
+
+## 7. 批 0 实施结果(2026-10-06)
+
+> 批 0 落在拆进程**之前**(施工单修正 1):今天 Electron 主进程仍然装配后端,所以自动迁移是进程内的,
+> 不走回环、不走 RPC。逐条决策见 `docs/design/backend-structure-decisions-2026-10.md` D259–D272。
+
+**落了什么**
+
+| 件 | 位置 | 一句话 |
+| --- | --- | --- |
+| 主密钥 | `packages/backend/credentials/credentials-master-key.ts` | 32 字节,AES-256-GCM 封整份 `credentials.json`;三档 `keychain`(macOS 缺省)/ `file`(别的平台缺省,`<store>/credentials-master.key` 0600)/ `none`(只给 vitest);档位只看 `ONETHING_CREDENTIALS_KEYRING`,不设时永远不是 `none`;`const` 持有器按「档位 + store 路径」分格,首次用到时读 |
+| 钥匙串门面 | `credentials-keychain.ts` | `security find/add-generic-password`,3 秒硬超时到点 `SIGKILL`、stdin 不继承、永不抛,结局折成原因码;条目 service `onething-credentials`、account `store-<store 路径 sha256 前 16 位>`;vitest 进程里拒起真 `security`(第二道闸) |
+| 信封 | `credentials-pool.ts` | 新增 `encryption: 'master-key'`(带 `keyId`);读侧四形态都认,写侧永远 `master-key`(`none` 档如实写 `none`);钥匙此刻拿不到 = 读答空且**不缓存**、写抛 `CredentialsLockedError`;写前不许覆盖还没迁的旧密文与解不开的主密钥密文,换过钥匙之前封的那份改名 `.orphaned-<keyId>` 留底 |
+| 旧解密器 | `credentials-legacy-decryptor.ts` + `OnethingHostPorts.legacySafeStorageForMigration`(第十九格) | 只有 `isEncryptionAvailable` / `decryptString` 两个方法,写侧拿不到;桌面递 `safeStorage`,server / CLI 写 `null`。`auth` 那一格缩成 `{ authFetch }`,`tokenCryptoAdapter` 删掉 |
+| 自动迁移 | `credentials-safestorage-migration.ts` | 装配时(主密钥可用之后):解旧 → 写 `.migrating` → 重读拆开逐条比 → 旧文件改名 `.safestorage-backup` → 正本就位;两次改名之间断了下次补完;不迁三种情形(没有旧解密器 / 另一个活后端在服务这个 store / 拿不到主密钥)都记日志、旧文件原样、记作「待迁」 |
+| 锁定状态 | `credentials-locked-state.ts` | `credentialsStatus()`(档位 / 状态 / 原因码 / 写出去的形态)、`unlockCredentials()`(重读钥匙,读到了顺手迁完)、`credentials:locked` 广播器、写入口前的 `prepareCredentialsWrite()` 与读入口前的 `credentialsReady()` |
+| 导出 / 导入 | `credentials-export.ts` | 全部空间一份文件,scrypt(N=2^15)派生 + AES-256-GCM;导入是合并(同 id 换掉、其余追加、原有的不删),这台机器上没有的空间跳过并报出 |
+| 契约 | `packages/shared/ipc/spaces.ts` | 四条:`credentialsStatus` / `unlockCredentials` / `exportCredentials` / `importExportedCredentials`;导出 / 导入只给本机信任的来访者 |
+| 全局事件 | `packages/shared/events/global-events.ts` | `credentials:locked`,出进程 = `true` |
+| 装配 | `packages/backend/backend.ts` | 宿主端口落位之后起读主密钥;凭证那一步(读完设置、C1 之前)`await prepareCredentialsAtAssembly(...)`;C1 / C8 / 明文升级三步的「加密能力」判据换成主密钥;事件系统之后装锁定广播器 |
+| 壳 | `apps/desktop-react/src/data/credentials-{port,lock-source}.ts`、`content/settings/CredentialsSettings.tsx`、`providers/components/ProviderRail.tsx` | 锁定横幅(顶部通知那一排里一条不自动消失的,带「重试」;`notify` 加了动作门与 `retractNotify`)、服务商列表锁图标、设置 →「工作区」页的导出 / 导入与档位说明 |
+| 门 | `scripts/gate-credentials.mjs` + `scripts/gate-credentials/entry.ts` | 七项,只用 node、`file` 档、临时 store,钥匙串那一档用假 `security`;进 CI 的 gates job |
+
+**改前 / 改后读写哪些文件**
+
+| | 改前 | 改后 |
+| --- | --- | --- |
+| 凭证池 | `workspaces/<id>/credentials.json`,`encryption: 'safeStorage'`(Electron 加密)或 `'none'`(server / CLI 写的明文) | 同一个文件,`encryption: 'master-key'` + `keyId` |
+| 加密用的钥匙 | Electron `safeStorage` 自己在钥匙串里那一条(绑 app 签名身份) | macOS:登录钥匙串里 service `onething-credentials`、account `store-<哈希>` 那一条;别的平台:`<store>/credentials-master.key` |
+| 旧密文 | 正本 | 迁好后改名 `workspaces/<id>/credentials.json.safestorage-backup`(仍是 `safeStorage` 密文,字节不变,删不删待用户拍) |
+| 旧单槽 `oauth-tokens.json` | 经 `tokenCryptoAdapter` 解 | 经 `legacySafeStorageForMigration` 解(只读,归位逻辑不变) |
+
+**验收**:见本批汇报(`gate:credentials` 七项全绿;结构门全绿;三套 tsc 绿;凭证 / auth / 空间相关测试逐条绿;
+`gate:acp` / `gate:web-shell` 绿;`gate:search-index`(⑤d 两条)与 `sessions:shadow-battery`(appendFailures 8)的红与改前逐行相同;全量 vitest 只多出 `http-server-workspace-watch-ownership` 的一条 15 秒超时 —— 改前同文件另一条就在同一个超时上红,重跑时红绿交替,与凭证无关;全程没有往钥匙串写过一条,跑完 `security find-generic-password -s onething-credentials` 答找不到)。
+
+**没验证到的(用户择时)**:真 `~/.onething` 上起一次桌面 —— 看迁移日志 `credentials moved from safeStorage to the master key`、
+provider 全在、钥匙串里多出 `onething-credentials` 那一条;macOS `security` 建的条目在硬化运行时 + 公证之后的行为
+(本批没有任何一处碰过真钥匙串,`security` 那一档只用假命令测过);壳里那块真机门 `apps/desktop-react/scripts/gate-credentials.mjs`
+(Electron 取证门)的断言 ② 还在等 `encryption === 'safeStorage'`,批 0 之后它该等 `'master-key'` 与 `.safestorage-backup`,
+没改也没跑(它拷生产 store 的文件,按约定不碰)。
+

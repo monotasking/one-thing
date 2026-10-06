@@ -17,7 +17,7 @@ export { OnethingAuthService } from './auth-service.js'
 export { oauthManager } from './auth-oauth-manager.js'
 
 // 宿主注入口与登录事件。
-export { configureAuthHost, getAuthHostPorts, resetAuthHost } from './auth-host-ports.js'
+export { configureAuthHost, resetAuthHost } from './auth-host-ports.js'
 export type { AuthHostPorts } from './auth-host-ports.js'
 export {
   configureOAuthEventBroadcaster,
@@ -43,6 +43,5 @@ export type { OnethingCredentialTarget, OnethingSpaceCredentialTarget } from './
 
 // 令牌仓库、回调服务器、调试日志口。
 export { OnethingTokenStore } from './auth-token-store.js'
-export type { OnethingTokenCryptoAdapter } from './auth-token-store.js'
 export { callbackServerManager } from './auth-callback-server.js'
 export type { OnethingOAuthIpcLogger } from './auth-ipc-operations.js'

@@ -103,6 +103,7 @@
 		"evals:diagnose": "bun scripts/diagnose-weekly.mjs",
 		"gate:search-index": "node scripts/gate-search-index.mjs",
 		"gate:acp": "node scripts/gate-acp.mjs",
+		"gate:credentials": "node scripts/gate-credentials.mjs",
 		"sessions:verify:gate": "node scripts/session-verify-gate.mjs"
 	},
 	"dependencies": {

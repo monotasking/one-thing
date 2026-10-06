@@ -12,7 +12,6 @@
  */
 
 import {
-  getAuthHostPorts,
   credentialTargetFromSpaceMarker,
   type OnethingCredentialTarget,
   getAuthService,
@@ -40,7 +39,6 @@ import {
   advanceSpaceCredentialCursor,
   buildImportedSpaceCredentials,
   clearSpaceProviderCredentials,
-  configureSpaceCredentialsCrypto,
   getSpaceCredentialEntry,
   getSpaceCredentialPluginStrategyHost,
   getSpaceProviderCredentials,
@@ -635,25 +633,6 @@ export function setSpaceProviderCredentialPoolForRequest(
     policy: request.policy,
   })
   return getSpaceCredentialsSummary(request.id)
-}
-
-/**
- * 把凭证池的落盘加密接到**已有的**宿主端口上(批 B8-1)。
- *
- * `configureAuthHost({ tokenCryptoAdapter })` 是全仓唯一的加密器注入口
- * (Electron 给 `safeStorage`,headless 宿主不给)。这里没有新开端口,只是把
- * 同一个 adapter 转接给产品层的 `spaces/credentials` —— 它不认识装配层,更不
- * 认识 electron。取法与 `TokenStore` 逐字同构:传的是一个**每次现问**的函数,
- * 所以宿主在模块加载之后才 wire 也来得及。
- *
- * 由 `configureAppRuntimeAdapters()` 调用,幂等。
- */
-let spaceCredentialsCryptoConfigured = false
-
-export function configureAppSpaceCredentialsCrypto(): void {
-  if (spaceCredentialsCryptoConfigured) return
-  spaceCredentialsCryptoConfigured = true
-  configureSpaceCredentialsCrypto(() => getAuthHostPorts().tokenCryptoAdapter?.())
 }
 
 export function clearSpaceProviderCredential(

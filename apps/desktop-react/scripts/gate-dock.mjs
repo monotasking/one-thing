@@ -644,7 +644,7 @@ async function main() {
     console.log('\n[1/12] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -664,7 +664,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         /*
          * **屏外档,不是隐藏档**(09-13 补齐;判词在 `electron/main.ts` 的

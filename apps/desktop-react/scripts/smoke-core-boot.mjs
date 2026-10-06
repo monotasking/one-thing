@@ -63,7 +63,7 @@ function readingsOf(stdout) {
 
 function runProbe(executable, args, store, extraEnv = {}) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, ONETHING_STORE_PATH: store, ...extraEnv }
+    const env = { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ...extraEnv }
     delete env.ELECTRON_RUN_AS_NODE
     const child = spawn(executable, args, {
       cwd: appRoot,

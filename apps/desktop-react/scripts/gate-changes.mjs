@@ -564,7 +564,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         /*
          * **屏外档**(09-12 判例):headless 那一档下 Chromium 把整扇窗节流到 1Hz,

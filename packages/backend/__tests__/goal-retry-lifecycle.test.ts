@@ -17,7 +17,7 @@ it('cancels a real Backend goal retry on shutdown and flushes pending usage befo
     const kick = await import('@onething/backend/goal/goal-kick')
     const kicks = vi.spyOn(kick, 'kickGoalRunIfIdle')
     const assemble = () => createOnethingBackend({ storePath: directory, owner: 'daemon', toolRegistry: 'headless', host: {
-      storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
+      storePath: {}, sandbox: {}, auth: null, legacySafeStorageForMigration: null, logging: null, shell: null, voice: null,
       terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
       gateway: null, settings: null, evals: null, mcp: null, localTrust: null, speechOutput: null, dialog: null,
     } })

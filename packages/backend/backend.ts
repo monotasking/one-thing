@@ -44,8 +44,10 @@ import { deliverInternalMessage, PluginLlmService, pluginToolInterceptor } from 
 import {
   CredentialStrategyService,
   disposeCredentialStrategyState,
-  configureAppSpaceCredentialsCrypto,
   createOnethingSpaceTokenStore,
+  credentialsReady,
+  installCredentialsLockBroadcaster,
+  prepareCredentialsAtAssembly,
   resolveSpaceProviderCredentialForSpace,
   migrateOAuthSlotToDefaultSpace,
   migrateProviderConfigToDefaultSpace,
@@ -141,6 +143,7 @@ import {
 } from '@onething/backend/resource'
 import type { ResourceKernel } from '@onething/backend/resource'
 import { registerAppRpcDomains } from './http-server/http-server-client-api-roster.js'
+import { isAnotherBackendServingStore } from './http-server/http-server-discovery.js'
 import { registerRouterHandlers } from './http-server/http-server-dispatch-table.js'
 import { configureFeatureRegistryRpc } from '@onething/backend/feature-registry'
 import { DEFAULT_MCP_SETTINGS } from '@shared/mcp/types'
@@ -188,7 +191,6 @@ export function configureAppRuntimeAdapters(): void {
   configureAppToolSandbox()
   configureAppBackgroundJobs()
   configureAppProviderRegistry()
-  configureAppSpaceCredentialsCrypto()
   configureAppPluginCredentialStrategyHost()
   configureAppScheduler()
   configureAppRipgrep()
@@ -654,6 +656,9 @@ export class OnethingBackend implements BackendHandle {
     // 于是同一个进程里先后装配两只 backend 时,第二只不会继承第一只的语音 /
     // 插件 / 沙箱端口。
     this.own(applyHostPorts(options.host), 'hostPorts', 'restore')
+    // 凭证主密钥**在这里起读、在凭证那一步才等**(第④步批 0):钥匙串那一档要起一个 `security` 子进程,
+    // 让它与下面的租约、设置读取并行跑;子进程自带 3 秒硬超时,所以最坏在凭证那一步多等 3 秒就进「已锁定」。
+    void credentialsReady()
 
     // 外部 agent 的连接器登记表是只读表(D202):连接器与会话链接表在这里组好递进去,契约不写驱动的名字。
     // 两格都是惰性的 —— 连接器在这一代登记表第一次被要时才建(与从前同一时刻),链接表是 `ACPManager`
@@ -757,6 +762,10 @@ export class OnethingBackend implements BackendHandle {
     // provider 配了没有」之前** —— 引擎、工具、插件都会问,而迁移之前那个答案
     // 还在旧形状里。幂等:标记在就是一次同步返回。迁移失败不写标记、不清旧字段,
     // 下次启动重跑;把整次装配拖垮才是更坏的结果,所以这里只记不抛。
+    // 凭证那一步(第④步批 0):等主密钥读完,把存量 `safeStorage` 密文迁进主密钥信封(逐条校验、旧文件
+    // 改名 `.safestorage-backup` 留底)。排在 C1/C8 之前:它们读的池文件此后就是新信封。另一个活着的后端
+    // 正在服务这个 store 时拒绝迁移(别人正在写这些文件)。锁着也往下走,界面亮横幅,「重试」再来。
+    await prepareCredentialsAtAssembly({ otherLiveBackend: () => isAnotherBackendServingStore({ storePath: lease.storePath }) })
     try {
       await migrateProviderConfigToDefaultSpace()
     } catch (error) {
@@ -804,7 +813,7 @@ export class OnethingBackend implements BackendHandle {
     // ——「没有加密能力的进程抢先当了 core」留下的 `encryption: 'none'`,以及
     // B3~B7 时期的无信封老明文。没有加密能力的宿主整个跳过(不会反向降级)。
     try {
-      upgradeSpaceCredentialsEncryptionAtRest()
+      await upgradeSpaceCredentialsEncryptionAtRest()
     } catch (error) {
       log.error('credentials re-encryption failed, will retry next boot', {}, error)
     }
@@ -846,6 +855,8 @@ export class OnethingBackend implements BackendHandle {
      * 再解监听,残留的计时器一只都不留。
      */
     this.own(installOAuthBusBroadcaster(getAuthService()), 'oauthBusBroadcaster')
+    // 凭证锁定状态一变就发 `credentials:locked`(出进程),壳据它亮 / 收横幅。登记在事件系统之后。
+    this.own(installCredentialsLockBroadcaster(eventBus), 'credentialsLockBroadcaster')
     this.own(() => {
       const flows = getAuthService().dispose()
       log.info('oauth flows disposed', { flows, timers: getAuthService().pendingTimerCount() })

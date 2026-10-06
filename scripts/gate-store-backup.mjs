@@ -19,7 +19,7 @@ const unusedDefault = path.join(temporary, 'must-not-open-default')
 function run(args, status = 0) {
   const child = spawnSync(process.execPath, [cli, ...args], {
     cwd: repo, encoding: 'utf8', timeout: 30000,
-    env: { ...process.env, ONETHING_STORE_PATH: unusedDefault },
+    env: { ...process.env, ONETHING_STORE_PATH: unusedDefault, ONETHING_CREDENTIALS_KEYRING: 'file' },
   })
   assert.equal(child.status, status, `${args[0]} ${args[1]}: ${child.stderr || child.error || child.stdout}`)
   return child.stdout.trim()

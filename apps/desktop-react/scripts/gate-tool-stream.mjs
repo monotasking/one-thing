@@ -299,7 +299,7 @@ async function main() {
     console.log('[1/4] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-tool-stream-gate' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', DEEPSEEK_API_KEY: 'sk-tool-stream-gate' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -323,7 +323,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         // 离屏起窗:不 show()、不进 Dock,一根手指都不碰用户的前台。
         ONETHING_GATE_HEADLESS: '1',

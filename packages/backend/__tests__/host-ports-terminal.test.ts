@@ -42,6 +42,7 @@ const BASE: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
   auth: null,
+  legacySafeStorageForMigration: null,
   logging: null,
   shell: null,
   voice: null,

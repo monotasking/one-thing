@@ -10,6 +10,7 @@ import { NotesSettings } from './NotesSettings'
 import { PermissionGrants } from './PermissionGrants'
 import { PetSettings } from './PetSettings'
 import { AgentsSettings } from './AgentsSettings'
+import { CredentialsSettings } from './CredentialsSettings'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
 import { ProviderSettingsPanel } from '../../providers/components/ProviderSettingsPanel'
@@ -50,6 +51,7 @@ export type SettingsPageId =
   | 'browser'
   | 'network'
   | 'permissions'
+  | 'workspace'
   | 'keymap'
 
 export interface SettingsPageSpec {
@@ -63,7 +65,7 @@ export interface SettingsPageSpec {
 
 /**
  * 次序判据照旧是「**用户想改的是哪件事**」,从最常改的往最少改的排:
- * 通用 → 宠物 → 模型服务 → Agent → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 快捷键。
+ * 通用 → 宠物 → 模型服务 → Agent → 外观 → Dock → 打开方式 → 搜索 → 内置浏览器 → 网络代理 → 已授权 → 工作区 → 快捷键。
  *
  * 模型服务排第二而不是最后:它是这台产品里改得最勤的一页(换家、换模型、
  * 贴一把新密钥),而「已授权」与「快捷键」是**看一眼就走**的两页。
@@ -158,6 +160,21 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
     render: () => (
       <Section titleKey="settings.sectionPermissions">
         <PermissionGrants />
+      </Section>
+    ),
+  },
+  /*
+   * 工作区(第④步批 0):今天只有凭证一节 —— 导出 / 导入凭证两颗钮与一行档位说明。排在「已授权」
+   * 之后、「快捷键」之前:它与「已授权」同是「看一眼就走」的一页,而凭证是跟着工作区走的东西
+   * (`workspace.scopeNote`:每个工作区各有一套会话、模型服务与凭证)。
+   */
+  {
+    id: 'workspace',
+    titleKey: 'item.workspace',
+    layout: 'form',
+    render: () => (
+      <Section titleKey="item.workspace">
+        <CredentialsSettings />
       </Section>
     ),
   },

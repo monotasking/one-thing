@@ -79,7 +79,7 @@ async function rpc(record, domain, method, payload = {}) {
 async function startCore(store) {
   const child = spawn(process.execPath, [serverEntry], {
     cwd: repoRoot,
-    env: { ...process.env, ONETHING_STORE_PATH: store },
+    env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   const record = await waitFor('core 的发现文件', async () => {
@@ -186,7 +186,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${udd}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
       },

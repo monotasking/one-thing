@@ -2017,7 +2017,7 @@ async function runCase(kind, owner = 'server') {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         ONETHING_GATE_HEADLESS: '1',
         ...(owner === 'desktop' ? { DEEPSEEK_API_KEY: 'sk-structure-gate' } : {}),
@@ -2066,7 +2066,7 @@ async function runCase(kind, owner = 'server') {
     else {
       server = spawn(process.execPath, [serverEntry], {
         cwd: repoRoot,
-        env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-structure-gate' },
+        env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', DEEPSEEK_API_KEY: 'sk-structure-gate' },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
       server.stderr.on('data', chunk => ownerErr.push(chunk.toString()))

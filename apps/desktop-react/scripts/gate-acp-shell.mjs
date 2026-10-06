@@ -350,7 +350,7 @@ async function main() {
       cwd: repoRoot,
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: rendererUrl,
         ONETHING_GATE_HEADLESS: '1',
       },

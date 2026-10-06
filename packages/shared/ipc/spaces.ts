@@ -319,6 +319,77 @@ export interface SpacesImportCredentialsResponse {
 	code?: string;
 }
 
+/* ── 凭证的钥匙与锁定状态、口令导出 / 导入(第④步批 0)──────────────────────────────
+ * 后端自己持有加密凭证用的主密钥(`docs/design/two-process-2026-10.md` §2.1)。这几条**不带任何
+ * 凭证原文**:状态只答档位与原因码;导出交出去的是用口令封好的密文文件;导入只答条数。 */
+
+/** 主密钥放在哪:系统钥匙串 / 本地文件 / 不加密(只给测试)。 */
+export type CredentialsKeyringTier = "keychain" | "file" | "none";
+
+/**
+ * 锁定原因码。界面按码选一句话:
+ * `keychain-timeout` 钥匙串没有回应 · `keychain-denied` 钥匙串拒绝访问 · `key-missing` 找不到主密钥 ·
+ * `keychain-failed` 钥匙串出错(原因说不准) · `legacy-safestorage` 还有旧密文没迁完 · `loading` 钥匙还在读。
+ */
+export type CredentialsLockReason =
+	| "keychain-timeout"
+	| "keychain-denied"
+	| "key-missing"
+	| "keychain-failed"
+	| "legacy-safestorage"
+	| "loading";
+
+export interface CredentialsStatusPayload {
+	tier: CredentialsKeyringTier;
+	state: "ready" | "loading" | "locked";
+	reason?: CredentialsLockReason;
+	/** 此刻写出去的形态:`master-key` = 封好的;`none` = 没有加密(如实说出来)。 */
+	encryption: "master-key" | "none";
+}
+
+export interface SpacesCredentialsStatusResponse {
+	success: boolean;
+	status?: CredentialsStatusPayload;
+	error?: string;
+	code?: string;
+}
+
+/** 「重试」:重读主密钥;读到了顺手把待迁的旧密文迁完。答重试之后的状态。 */
+export type SpacesUnlockCredentialsResponse = SpacesCredentialsStatusResponse;
+
+/** 导出全部空间的凭证,用这个口令封。只给本机信任的来访者。 */
+export interface SpacesExportCredentialsRequest {
+	passphrase: string;
+}
+export interface SpacesExportCredentialsResponse {
+	success: boolean;
+	/** 建议的文件名(`onething-credentials-<日期>.json`)。 */
+	fileName?: string;
+	/** 导出文件的全文(JSON 文本,里面是密文)。 */
+	data?: string;
+	/** 导出了几条凭证。 */
+	entries?: number;
+	error?: string;
+	/** `EMPTY_PASSPHRASE` / `CREDENTIALS_LOCKED` / `NOT_TRUSTED` / `INTERNAL`。 */
+	code?: string;
+}
+
+/** 导入一份导出文件(合并:同 id 的条目换掉,其余追加,原有的不删)。只给本机信任的来访者。 */
+export interface SpacesImportExportedCredentialsRequest {
+	passphrase: string;
+	/** 导出文件的全文。 */
+	data: string;
+}
+export interface SpacesImportExportedCredentialsResponse {
+	success: boolean;
+	imported?: number;
+	/** 文件里有、这台机器上没有的空间(先建空间再导)。 */
+	skippedSpaces?: string[];
+	error?: string;
+	/** `WRONG_PASSPHRASE` / `NOT_AN_EXPORT` / `EMPTY_PASSPHRASE` / `CREDENTIALS_LOCKED` / `NOT_TRUSTED` / `INTERNAL`。 */
+	code?: string;
+}
+
 /**
  * 空间数据变更广播的载荷(批 B9-0,`IPC_CHANNELS.SPACES_CHANGED`)。
  *
@@ -335,7 +406,9 @@ export interface SpacesChangedEvent {
  * space(工作空间)域 —— 结构债 P0.3 的第一个模板域。
  *
  * 十三个方法全是**纯数据面**:spaces store / overlay / providers.json /
- * credentials.json 的读写,零窗口、零流式。判定(默认空间不许删、只删空的、
+ * credentials.json 的读写,零窗口、零流式。第④步批 0 又加了四个凭证的钥匙与导出 / 导入
+ * (`credentialsStatus` / `unlockCredentials` / `exportCredentials` / `importExportedCredentials`),
+ * 同样只递数据:口令框、选文件、存文件都在客户端。判定(默认空间不许删、只删空的、
  * 只对已登记的空间开放、默认空间不许导入)全在 runtime 的 `*ForIpc` 一族里,
  * 传输面只递不判 —— 这也是它能整只搬进 `app/rpc/domains/spaces.ts` 的原因。
  *
@@ -388,6 +461,22 @@ export type SpacesRoutes = {
 		input: SpacesImportCredentialsRequest;
 		output: SpacesImportCredentialsResponse;
 	};
+	credentialsStatus: {
+		input: Record<string, never>;
+		output: SpacesCredentialsStatusResponse;
+	};
+	unlockCredentials: {
+		input: Record<string, never>;
+		output: SpacesUnlockCredentialsResponse;
+	};
+	exportCredentials: {
+		input: SpacesExportCredentialsRequest;
+		output: SpacesExportCredentialsResponse;
+	};
+	importExportedCredentials: {
+		input: SpacesImportExportedCredentialsRequest;
+		output: SpacesImportExportedCredentialsResponse;
+	};
 };
 
 export const spacesRouter = defineRouter<SpacesRoutes>("spaces", [
@@ -404,4 +493,8 @@ export const spacesRouter = defineRouter<SpacesRoutes>("spaces", [
 	"setCredentialPool",
 	"clearCredential",
 	"importCredentials",
+	"credentialsStatus",
+	"unlockCredentials",
+	"exportCredentials",
+	"importExportedCredentials",
 ]);

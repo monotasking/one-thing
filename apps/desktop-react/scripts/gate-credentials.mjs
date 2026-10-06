@@ -224,7 +224,7 @@ async function runSpawnServerLane(source) {
   try {
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const errors = []
@@ -274,7 +274,7 @@ async function runShellLane(source, oauthCandidates) {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     await app.firstWindow()
 

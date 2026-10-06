@@ -2,10 +2,13 @@ import { useMemo } from 'react'
 import { Rail } from '../../ui/Rail'
 import type { RailSection } from '../../ui/Rail'
 import { StatusDot } from '../../ui/StatusDot'
+import { Tooltip } from '../../ui/Tooltip'
+import { Lock } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import type { Fact, RailGroup, RailRow } from '../types'
 import { ProviderGlyph } from './ProviderGlyph'
+import s from './ProviderRail.module.css'
 
 /**
  * 左栏 = 家名册。268px 定宽,三组(云服务 / 本地 / 自定义),
@@ -51,8 +54,15 @@ export function renderFacts(t: TFn, facts: readonly Fact[]): string {
   return facts.map((fact) => t(fact.key, fact.vars)).join(' · ')
 }
 
+/**
+ * 凭证锁着时哪几组的行尾换成锁:云服务与自定义都要钥匙才连得上;本地那一组(Ollama 一类)
+ * 不登录,锁不锁与它无关。
+ */
+const LOCKABLE_GROUPS: ReadonlySet<RailGroup> = new Set<RailGroup>(['cloud', 'custom'])
+
 export function ProviderRail({
   rows,
+  credentialsLocked = false,
   connectedCount,
   selectedId,
   query,
@@ -62,6 +72,11 @@ export function ProviderRail({
   onRowMenu,
 }: {
   rows: readonly RailRow[]
+  /**
+   * 凭证此刻锁着(第④步批 0,`data/credentials-lock-source.ts`)。锁着时要登录的那几家行尾画一枚锁,
+   * 悬停 / 聚焦说「凭证已锁定」;状态点不画 —— 锁着时它说的「接没接上」不是此刻的真话。
+   */
+  credentialsLocked?: boolean
   /** 「N 家已接入」的 N —— 已接入 ≠ 名册长度,判据在 projection 里。 */
   connectedCount: number
   selectedId: string | null
@@ -98,11 +113,20 @@ export function ProviderRail({
                 <ProviderGlyph className={className} familyId={row.familyId} label={row.label} custom={row.custom} />
               ),
               // 不给 label:同一行里名字与副行已经把状态说成了字,再给点一个名就是念两遍。
-              status: <StatusDot tone={row.tone} />,
+              // 锁着时换成锁:这一格要说的是「凭证已锁定」,名字说不出这句话,所以它带自己的读屏名。
+              status: credentialsLocked && LOCKABLE_GROUPS.has(row.group) ? (
+                <Tooltip content={t('credentials.lockedTooltip')}>
+                  <span className={s.lock} role="img" aria-label={t('credentials.lockedTooltip')} data-testid="provider-credentials-locked">
+                    <Lock className={s.lockIcon} aria-hidden="true" />
+                  </span>
+                </Tooltip>
+              ) : (
+                <StatusDot tone={row.tone} />
+              ),
             }
           }),
       })),
-    [rows, t],
+    [rows, t, credentialsLocked],
   )
 
   return (

@@ -30,7 +30,6 @@ vi.mock('../../credentials/credentials-resolution.js', async () => {
 })
 
 import {
-  configureSpaceCredentialsCrypto,
   resetSpaceCredentialsCacheForTests,
   writeSpaceCredentials,
 } from '../../credentials/credentials-pool.js'
@@ -43,7 +42,6 @@ beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-quota-cred-'))
   setRootDirForTests(tmpDir)
   resetSpaceCredentialsCacheForTests()
-  configureSpaceCredentialsCrypto(undefined)
   refreshed.length = 0
 })
 

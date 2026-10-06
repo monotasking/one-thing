@@ -190,3 +190,43 @@ describe('两种形里各画了什么、点下去发生什么(真 DOM)', () => {
     expect(icon.getAttribute('aria-label')).toBe('＋ 自定义服务商')
   })
 })
+
+/*
+ * 凭证锁着(第④步批 0,决策 D10 (b)):要登录的那几家(云服务 / 自定义)行尾换成锁,读屏名与悬停提示
+ * 都是「凭证已锁定」;本地那一组不登录,照旧画状态点。没锁时一枚锁都没有。
+ */
+describe('凭证已锁定:行尾的锁', () => {
+  const rows = [
+    row({ familyId: 'deepseek', label: 'DeepSeek', group: 'cloud' }),
+    row({ familyId: 'ollama', label: 'Ollama', group: 'local' }),
+    row({ familyId: 'my-relay', label: 'Relay', group: 'custom', custom: true }),
+  ]
+
+  function renderLocked(locked: boolean) {
+    return render(
+      <ProviderRail
+        rows={rows}
+        credentialsLocked={locked}
+        connectedCount={1}
+        selectedId={null}
+        query=""
+        onQuery={vi.fn()}
+        onSelect={vi.fn()}
+        onAddCustom={vi.fn()}
+        onRowMenu={vi.fn()}
+      />,
+    )
+  }
+
+  it('锁着:云服务与自定义各一枚锁,本地那一组没有', () => {
+    renderLocked(true)
+    const locks = screen.getAllByTestId('provider-credentials-locked')
+    expect(locks).toHaveLength(2)
+    for (const lock of locks) expect(lock.getAttribute('aria-label')).toBe('凭证已锁定')
+  })
+
+  it('没锁:一枚锁都没有', () => {
+    renderLocked(false)
+    expect(screen.queryByTestId('provider-credentials-locked')).toBeNull()
+  })
+})

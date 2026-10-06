@@ -14,9 +14,12 @@ import path from 'node:path'
 import { getOnethingStorePath } from '../storage/storage.js'
 import type { OnethingOAuthToken } from './auth-types.js'
 
+/**
+ * 解旧单槽密文的那一口。旧文件是 Electron `safeStorage` 封的,这个类只读不写,所以只要解密的两个
+ * 方法(第④步批 0 起由凭证功能的旧解密器递进来,`credentials/credentials-legacy-decryptor.ts`)。
+ */
 export interface OnethingTokenCryptoAdapter {
   isEncryptionAvailable(): boolean
-  encryptString(text: string): Buffer | Uint8Array | string
   decryptString(buffer: Buffer): string
 }
 

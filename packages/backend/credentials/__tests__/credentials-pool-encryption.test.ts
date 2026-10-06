@@ -1,14 +1,17 @@
 /**
- * `credentials.json` 的落盘加密(批 B8-1)—— 清掉批 B6 勘误 1 记档的那颗雷。
+ * `credentials.json` 的落盘加密(批 B8-1 立,第④步批 0 换成后端自己的主密钥)。
  *
- * 守四件事:
+ * 守六件事:
  *
- *  1. **老明文文件零迁移**:读得出,并且**下一次写入自动升级成密文**。
+ *  1. **老明文文件零迁移**:读得出,并且**下一次写入自动升级成主密钥密文**。
  *  2. **密文往返**:apiKey / oauthToken 都不该以明文出现在盘上。
- *  3. **加密器缺席时诚实降级**:写明文,并在文件里**如实标注** `encryption: "none"`
- *     —— 假装加密比不加密更坏。
- *  4. **掩码 preview 在加密态下照常正确**:掩码算在解密后的内存结构上,
- *     加密只是落盘形态。
+ *  3. **`none` 档诚实降级**:写明文,并在文件里**如实标注** `encryption: "none"`。
+ *  4. **掩码 preview 在加密态下照常正确**:掩码算在解密后的内存结构上。
+ *  5. **钥匙此刻不在 = 锁定,不是空池也不是明文**:读答空但不进缓存,写抛 `CredentialsLockedError`,
+ *     绝不拿一份空池覆盖解不开的那份。
+ *  6. **换过钥匙之后**:旧钥匙封的那份读不开,下一次写那个空间时改名留底。
+ *
+ * 加密那几条走 `file` 档(主密钥落在临时 store 里);vitest 全局 setup 强制的是 `none` 档。
  */
 
 import * as fs from 'node:fs/promises'
@@ -17,7 +20,7 @@ import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { captureRuntimeLogs } from '../../logging/logging.js'
 import {
-  configureSpaceCredentialsCrypto,
+  CredentialsLockedError,
   getSpaceProviderCredentials,
   previewSpaceCredentialApiKey,
   readSpaceCredentials,
@@ -29,44 +32,41 @@ import {
   upsertSpaceProviderOAuthToken,
   writeSpaceCredentials,
 } from '../credentials-pool.js'
+import { masterKeyFilePath, resetCredentialsMasterKeyForTests } from '../credentials-master-key.js'
+import { prepareCredentialsWrite } from '../credentials-locked-state.js'
 import { setRootDirForTests } from '@onething/backend/space'
 
 let tmpDir: string
-
-/**
- * safeStorage 的替身。真 `safeStorage` 是平台 keychain,测试里跑不了;形状与
- * `OnethingTokenCryptoAdapter` 逐字一致(这正是"沿用同一个端口"的意思),
- * 加密用一个可逆的假变换 —— 验的是**链路**,不是算法强度。
- */
-function fakeCrypto(available = true) {
-  return {
-    isEncryptionAvailable: () => available,
-    encryptString: (text: string) => Buffer.from(`enc:${text}`, 'utf-8'),
-    decryptString: (buffer: Buffer) => {
-      const raw = buffer.toString('utf-8')
-      if (!raw.startsWith('enc:')) throw new Error('not our ciphertext')
-      return raw.slice(4)
-    },
-  }
-}
+let storeDir: string
 
 async function readRawFile(spaceId: string): Promise<Record<string, unknown>> {
   return JSON.parse(await fs.readFile(spaceCredentialsFilePath(spaceId), 'utf-8'))
 }
 
+/** 换到 `file` 档:主密钥落在这间临时 store 里。 */
+async function useFileTier(): Promise<void> {
+  vi.stubEnv('ONETHING_CREDENTIALS_KEYRING', 'file')
+  resetCredentialsMasterKeyForTests()
+  await prepareCredentialsWrite()
+}
+
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-creds-enc-'))
+  storeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-creds-store-'))
+  vi.stubEnv('ONETHING_STORE_PATH', storeDir)
   setRootDirForTests(tmpDir)
   resetSpaceCredentialsCacheForTests()
-  configureSpaceCredentialsCrypto(undefined)
+  resetCredentialsMasterKeyForTests()
 })
 
 afterEach(async () => {
   setRootDirForTests(null)
   resetSpaceCredentialsCacheForTests()
-  // 端口是模块级全局 —— 不还原会污染同一进程里的其他测试文件。
-  configureSpaceCredentialsCrypto(undefined)
+  vi.unstubAllEnvs()
+  // 持有器按「档位 + store」分格,是模块级的 —— 不清会串到同一进程里的别的测试文件。
+  resetCredentialsMasterKeyForTests()
   await fs.rm(tmpDir, { recursive: true, force: true })
+  await fs.rm(storeDir, { recursive: true, force: true })
   vi.restoreAllMocks()
 })
 
@@ -87,12 +87,13 @@ const pool = {
 
 describe('encrypted round trip', () => {
   it('never leaves the api key in the file body', async () => {
-    configureSpaceCredentialsCrypto(() => fakeCrypto())
+    await useFileTier()
     writeSpaceCredentials('work', pool)
 
     const raw = await readRawFile('work')
-    expect(raw.encryption).toBe('safeStorage')
+    expect(raw.encryption).toBe('master-key')
     expect(raw.version).toBe(SPACE_CREDENTIALS_SCHEMA_VERSION)
+    expect(typeof raw.keyId).toBe('string')
     expect(raw.providers).toBeUndefined()
     expect(JSON.stringify(raw)).not.toContain('sk-abcdef0123456789')
 
@@ -102,8 +103,14 @@ describe('encrypted round trip', () => {
     )
   })
 
+  it('stores the file-tier key with 0600 permissions inside the store', async () => {
+    await useFileTier()
+    const stat = await fs.stat(masterKeyFilePath(storeDir))
+    expect(stat.mode & 0o777).toBe(0o600)
+  })
+
   it('covers oauth tokens too — the whole file is the secret zone', async () => {
-    configureSpaceCredentialsCrypto(() => fakeCrypto())
+    await useFileTier()
     upsertSpaceProviderOAuthToken('work', 'codex', {
       label: 'me@example.com',
       token: { accessToken: 'at-supersecret', refreshToken: 'rt-supersecret', expiresAt: 1 },
@@ -118,17 +125,15 @@ describe('encrypted round trip', () => {
     expect(entry.oauthToken).toMatchObject({ accessToken: 'at-supersecret' })
   })
 
-  it('an unreadable ciphertext degrades to an empty pool, never a half pool', async () => {
-    configureSpaceCredentialsCrypto(() => fakeCrypto())
+  it('a tampered ciphertext degrades to an empty pool, never a half pool', async () => {
+    await useFileTier()
     writeSpaceCredentials('work', pool)
     resetSpaceCredentialsCacheForTests()
+    const raw = await readRawFile('work')
+    const data = Buffer.from(String(raw.data), 'base64')
+    data[data.length - 1] ^= 0xff
+    await fs.writeFile(spaceCredentialsFilePath('work'), JSON.stringify({ ...raw, data: data.toString('base64') }), 'utf-8')
 
-    // 换了一把解不开的钥匙(换机器 / keychain 被重置)。
-    configureSpaceCredentialsCrypto(() => ({
-      isEncryptionAvailable: () => true,
-      encryptString: (text: string) => Buffer.from(text, 'utf-8'),
-      decryptString: () => { throw new Error('wrong key') },
-    }))
     const logs = captureRuntimeLogs()
     expect(readSpaceCredentials('work')).toEqual({ providers: {} })
     expect(logs.ofLevel('warn').length).toBeGreaterThan(0)
@@ -141,7 +146,7 @@ describe('lazy upgrade from the legacy plaintext file', () => {
     await fs.mkdir(path.join(tmpDir, 'work'), { recursive: true })
     await fs.writeFile(spaceCredentialsFilePath('work'), JSON.stringify(pool), 'utf-8')
 
-    configureSpaceCredentialsCrypto(() => fakeCrypto())
+    await useFileTier()
     expect(readSpaceCredentials('work').providers.deepseek.entries[0].apiKey).toBe(
       'sk-abcdef0123456789',
     )
@@ -150,13 +155,13 @@ describe('lazy upgrade from the legacy plaintext file', () => {
   it('upgrades it to ciphertext on the next write — no migration step', async () => {
     await fs.mkdir(path.join(tmpDir, 'work'), { recursive: true })
     await fs.writeFile(spaceCredentialsFilePath('work'), JSON.stringify(pool), 'utf-8')
-    configureSpaceCredentialsCrypto(() => fakeCrypto())
+    await useFileTier()
 
     // 任意一次正常写入(这里是换密钥)就完成升级。
     upsertSpaceProviderApiKey('work', 'deepseek', { apiKey: 'sk-newkey0123456789' })
 
     const raw = await readRawFile('work')
-    expect(raw.encryption).toBe('safeStorage')
+    expect(raw.encryption).toBe('master-key')
     expect(JSON.stringify(raw)).not.toContain('sk-newkey0123456789')
 
     resetSpaceCredentialsCacheForTests()
@@ -166,7 +171,7 @@ describe('lazy upgrade from the legacy plaintext file', () => {
   })
 })
 
-describe('honest degradation when no crypto adapter is available', () => {
+describe('honest plaintext under the none tier', () => {
   it('writes plaintext and says so in the file', async () => {
     expect(spaceCredentialsEncryptionAtRest()).toBe('none')
     writeSpaceCredentials('work', pool)
@@ -181,31 +186,51 @@ describe('honest degradation when no crypto adapter is available', () => {
       'sk-abcdef0123456789',
     )
   })
+})
 
-  it('an adapter that reports encryption unavailable counts as absent', async () => {
-    configureSpaceCredentialsCrypto(() => fakeCrypto(false))
-    expect(spaceCredentialsEncryptionAtRest()).toBe('none')
-    writeSpaceCredentials('work', pool)
-    expect((await readRawFile('work')).encryption).toBe('none')
+describe('locked: the key is not available right now', () => {
+  it('a file tier with no key yet refuses a synchronous write instead of writing plaintext', () => {
+    vi.stubEnv('ONETHING_CREDENTIALS_KEYRING', 'file')
+    resetCredentialsMasterKeyForTests()
+    expect(spaceCredentialsEncryptionAtRest()).toBe('unavailable')
+    expect(() => writeSpaceCredentials('work', pool)).toThrow(CredentialsLockedError)
   })
 
-  it('an adapter that throws is treated as absent, not as a crash', async () => {
-    configureSpaceCredentialsCrypto(() => ({
-      isEncryptionAvailable: () => { throw new Error('app not ready') },
-      encryptString: (text: string) => text,
-      decryptString: (buffer: Buffer) => buffer.toString('utf-8'),
-    }))
+  it('the key went missing: reads come back empty (not cached), writes are refused', async () => {
+    await useFileTier()
+    writeSpaceCredentials('work', pool)
+    await fs.rm(masterKeyFilePath(storeDir))
+    resetCredentialsMasterKeyForTests()
+    resetSpaceCredentialsCacheForTests()
+
     const logs = captureRuntimeLogs()
-    expect(spaceCredentialsEncryptionAtRest()).toBe('none')
-    expect(() => writeSpaceCredentials('work', pool)).not.toThrow()
-    expect((await readRawFile('work')).encryption).toBe('none')
+    expect(readSpaceCredentials('work')).toEqual({ providers: {} })
+    expect(() => writeSpaceCredentials('work', pool)).toThrow(CredentialsLockedError)
     logs.restore()
+    // 文件一个字节都没被动过:钥匙回来(或导入)之前它是唯一的那份。
+    expect((await readRawFile('work')).encryption).toBe('master-key')
+  })
+
+  it('a user-initiated write after the key went missing replaces the key and keeps the old file aside', async () => {
+    await useFileTier()
+    writeSpaceCredentials('work', pool)
+    const oldKeyId = (await readRawFile('work')).keyId
+    await fs.rm(masterKeyFilePath(storeDir))
+    resetCredentialsMasterKeyForTests()
+    resetSpaceCredentialsCacheForTests()
+
+    await prepareCredentialsWrite()
+    upsertSpaceProviderApiKey('work', 'deepseek', { apiKey: 'sk-afterrekey0123' })
+
+    const raw = await readRawFile('work')
+    expect(raw.keyId).not.toBe(oldKeyId)
+    await expect(fs.stat(`${spaceCredentialsFilePath('work')}.orphaned-${String(oldKeyId)}`)).resolves.toBeTruthy()
   })
 })
 
 describe('masked preview under encryption', () => {
-  it('still previews head-6 tail-4 off the decrypted pool', () => {
-    configureSpaceCredentialsCrypto(() => fakeCrypto())
+  it('still previews head-6 tail-4 off the decrypted pool', async () => {
+    await useFileTier()
     writeSpaceCredentials('work', pool)
     resetSpaceCredentialsCacheForTests()
 

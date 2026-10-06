@@ -306,6 +306,22 @@ configureSpacesPort({
 })
 
 /**
+ * 凭证锁定状态与导出 / 导入的端口(第④步批 0):同一条理由,同一手。默认这一份答「就绪、钥匙在
+ * 钥匙串里」—— 那是一台正常机器的样子(锁着会让每个渲染了外壳的用例都弹一条横幅);导出 / 导入
+ * 一律 `success:false`:没有哪个用例该因为默认端口而真的导出或改写凭证。要验锁定的用例自己换一个。
+ */
+import { configureCredentialsPort } from '../data/credentials-port'
+
+configureCredentialsPort({
+  ready: async () => undefined,
+  status: async () => ({ success: true, status: { tier: 'keychain', state: 'ready', encryption: 'master-key' } }),
+  unlock: async () => ({ success: true, status: { tier: 'keychain', state: 'ready', encryption: 'master-key' } }),
+  exportCredentials: async () => ({ success: false, error: 'no credentials port in tests' }),
+  importCredentials: async () => ({ success: false, error: 'no credentials port in tests' }),
+  onLockPush: () => () => undefined,
+})
+
+/**
  * 音乐面的端口:同一条理由,同一手 —— 默认是**一个什么都不回的假端口**。
  *
  * 不装的话,任何渲染了音乐面的用例都会经 `musicPort()` 动态 import 真的连通面,

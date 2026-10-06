@@ -211,7 +211,7 @@ async function main() {
     console.log('\n[1/7] 起一台 core,建一条空会话')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -234,7 +234,7 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file', ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
     const probe = await waitFor('渲染层完成一次 RPC 往返', async () => {

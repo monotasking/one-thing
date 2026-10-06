@@ -19,11 +19,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Node 版本**:`.nvmrc` = `24`(Electron 41 内嵌的就是 Node 24 / ABI 145,开发机与桌面运行时同一个大版本);
   `engines.node` = `>=22.13 <26`,22.13 是 `node:sqlite` 不用 `--experimental` 标志的第一个版本。
   `postinstall` 只做 `fix:node-pty-perms`,`test` 直接 `vitest run`(所有原生模块都是 N-API,不需要重编)。
-- **换过 Electron 二进制之后,第一次起桌面必须人手起,并在钥匙串弹框上点「始终允许」**。`safeStorage` 是 Keychain
-  的门面,绑 app 的代码签名身份;`sign:dev:mac` 打的是 ad-hoc 签名,换一份二进制就换了身份,钥匙串条目的 ACL 不再
-  匹配,macOS 弹授权框。脚本起的进程没人点那个框,`safeStorage.isEncryptionAvailable()` 永不返回:表现是装配停在
-  `migrateProviderConfigToDefaultSpace()`、进程 0% CPU、不报错、`<store>/log/*.jsonl` 一行没有、窗口不开。这不是回归,
-  是 macOS 的凭证隔离按设计工作(与 `apps/desktop-react/electron/main.ts` 文件头「子进程是另一个 app 身份」同一机制)。
+- **钥匙串:凭证主密钥归后端,`security` 带 3 秒硬超时**(第④步批 0)。凭证池用后端自己的主密钥加密
+  (`packages/backend/credentials/credentials-master-key.ts`),档位看 `ONETHING_CREDENTIALS_KEYRING`:不设时 macOS 是
+  `keychain`(登录钥匙串里 service `onething-credentials`、account `store-<store 路径哈希>` 一条,经 `/usr/bin/security`)、
+  别的平台是 `file`(`<store>/credentials-master.key`,0600),**永远不是 `none`**。`security` 子进程到点就杀、stdin 不继承、
+  永不抛 —— 钥匙串弹框没人点时装配最多在凭证那一步多等 3 秒,然后进「凭证已锁定」(顶部横幅 + 重试),不再像从前
+  `safeStorage.isEncryptionAvailable()` 那样挂死在 `migrateProviderConfigToDefaultSpace()`。**测试与门绝不碰真钥匙串**:
+  vitest 全局 setup 强制 `none`,钥匙串门面在 vitest 里拒起真 `security`;起 server / Electron 的门脚本一律显式设
+  `ONETHING_CREDENTIALS_KEYRING: 'file'` 并指临时 store。Electron 的 `safeStorage` 从此只当**迁移用的旧解密器**(宿主端口
+  `legacySafeStorageForMigration`):存量 `encryption: 'safeStorage'` 文件在桌面装配时迁进主密钥信封,旧文件改名
+  `.safestorage-backup` 留底。换过 Electron 二进制之后,那次迁移(以及旧单槽的读)仍要 Electron 的 app 身份,第一次起桌面
+  照旧人手起、在授权框上点「始终允许」(`sign:dev:mac` 的 ad-hoc 签名每换一次二进制就换一次身份)。
 - **端口**:React 桌面的渲染层 dev server 是 5175(`electron:dev`),浏览器壳是 5174(`web:dev`)。后端 HTTP/SSE 端口是
   **动态的**:谁在服务这个 store,谁写 `<store>/run/http.json`;浏览器壳的 dev `/api` 代理
   (`apps/desktop-react/vite/dev-api-proxy.ts`,做成插件是因为 vite 自带代理在创建时就钉死目标)**每个请求重读**这份
@@ -199,6 +205,7 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 | `bun run feature:drill` | 在临时 worktree 里加一个虚构功能「秒表」(主入口、内部文件、经 storage 入口落盘、`@shared/ipc` 契约 + client-api 一行、一份测试),断言功能目录外恰好只动了契约、层次表一行、名册一行、exports 一把键与生成的功能地图;node typecheck 与十三道结构门全绿;演练测试经名册与 RPC 分发表调到它,名册测试多了一行照旧绿(D250–D254) | 演练 |
 | `bun run log:gate` | 非测试源码里 `console.*` 的处数(`scripts/` 与 `apps/cli/src/stdout.ts` 除外);新代码用 `getLogger` | 棘轮(`docs/audit/log-gate-baseline-2026-08-20.txt`) |
 | `bun run session:gate` | `session.messages` 只出现在白名单文件、消息字段只在 reducer 里赋值(`session:check` 打全表) | 零基线硬闸 |
+| `bun run gate:credentials` | 凭证归后端(第④步批 0):只用 node、`file` 档、临时 store 跑七项 —— `safeStorage` 旧密文迁进主密钥信封且条目逐条相等、旧文件改名 `.safestorage-backup` 字节不变、口令导出→换 store 导入相等、`none` 档答 `none`、钥匙串超时→`credentials:locked`→重试成功、另一个活后端在时拒绝迁移、`security` 挂住不挂死(钥匙串那一档用假 `security` 脚本,不碰真钥匙串) | 行为门 |
 
 除 `boundary:gate`(全量用 `bun run boundary`)与 `transport:gate` 外,每道 `*:gate` 都有对应的 `*:check` 打出全部命中。
 
@@ -261,6 +268,9 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 `reset*`,`applyHostPorts` 返回的还原函数逆序撤销这次真写过的格,`dispose()` 之后进程回到「没有宿主注入过任何东西」。
 表外的 `configure*`:`configureLogging`(宿主在装配**之前**调,日志文件与目录管家比后端活得久)、窗口系统的几只端口、
 server runtime 自己填的 `configureServer*Port`。
+凭证那两格(第④步批 0):`auth` 只剩 `{ authFetch }`(OAuth 取数走 Electron `net.fetch`);落盘加密不在任何一格里 ——
+主密钥归后端自己。`legacySafeStorageForMigration` 是桌面递进来的旧 `safeStorage` 解密器(只有解密两个方法),只为把存量
+`safeStorage` 密文迁进主密钥信封;server 与 CLI 写 `null`,遇到旧密文就答「已锁定 · 旧密文待迁移」。
 
 | 宿主 | 装配处 | 要点 |
 | --- | --- | --- |
@@ -379,7 +389,9 @@ embedder 只能跑 `device: 'cpu'`;后端回答原因码(`vectorErrorKind`),不�
 按块去重并落在消息的 `turnContext` 上,重建时回放同样的字节。
 
 **服务商**(`packages/backend/provider/`,L1):一家一目录,只放事实与纯逻辑;**用服务商干活的**(造实例、跑一次对话、
-辅助模型、鉴权解析)在 `packages/backend/provider-call/`,凭证池与轮换在 `packages/backend/credentials/`,模型目录服务在
+辅助模型、鉴权解析)在 `packages/backend/provider-call/`,凭证池与轮换在 `packages/backend/credentials/`(整份用后端自己的
+主密钥加密落盘,钥匙读不到时是「已锁定」:读答空且不缓存、写拒绝,`spaces.credentialsStatus` 答档位与原因码、
+`credentials:locked` 出进程;口令导出 / 导入在 `spaces.exportCredentials` / `importExportedCredentials`),模型目录服务在
 `settings/settings-model-registry-service.ts`,受管 fetch 与代理规则在 `packages/backend/network/`。外面只经
 `@onething/backend/provider` 一个入口;通用代码不点名服务商,某家自己的特殊行为做成名册钩子。
 

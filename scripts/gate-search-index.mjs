@@ -196,7 +196,7 @@ try {
     env: {
       ...process.env,
       ...FAKE_PROVIDER_ENV,
-      ONETHING_STORE_PATH: storePath,
+      ONETHING_STORE_PATH: storePath, ONETHING_CREDENTIALS_KEYRING: 'file',
       ONETHING_SERVER_DATA_ROOT: storePath,
       ONETHING_SERVER_HOST: '127.0.0.1',
       ONETHING_SERVER_PORT: '',
@@ -505,7 +505,7 @@ async function runSemanticProxyPhase() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: storeE,
+        ONETHING_STORE_PATH: storeE, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: storeE,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',
@@ -750,7 +750,7 @@ async function runSemanticModelPhase() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: storeG,
+        ONETHING_STORE_PATH: storeG, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: storeG,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',
@@ -1058,7 +1058,7 @@ async function runRealEmbedderPhase() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: storeF,
+        ONETHING_STORE_PATH: storeF, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: storeF,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',
@@ -1266,7 +1266,7 @@ async function runLoopDelayPhase() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: storeB,
+        ONETHING_STORE_PATH: storeB, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: storeB,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',
@@ -1507,7 +1507,7 @@ async function runSemanticPhase() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: storeC,
+        ONETHING_STORE_PATH: storeC, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: storeC,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',
@@ -1655,7 +1655,7 @@ async function runSemanticHotApplyPhase() {
       env: {
         ...process.env,
         ...FAKE_PROVIDER_ENV,
-        ONETHING_STORE_PATH: storeD,
+        ONETHING_STORE_PATH: storeD, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_DATA_ROOT: storeD,
         ONETHING_SERVER_HOST: '127.0.0.1',
         ONETHING_SERVER_PORT: '',

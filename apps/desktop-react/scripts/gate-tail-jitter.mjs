@@ -1577,7 +1577,7 @@ async function main() {
     }, null, 2))
 
     const child = spawn(process.execPath, [serverEntry], {
-      env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -1610,7 +1610,7 @@ async function main() {
       seeded = seedLargeLedger(store, sessionId, {})
       console.log(`[tail-jitter] 超量夹具 ${(seeded.bytes / 1024 / 1024).toFixed(1)}MB / ${seeded.messages} 条`)
       const again = spawn(process.execPath, [serverEntry], {
-        env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store },
+        env: { ...process.env, ...FAKE_PROVIDER_ENV, ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file' },
         cwd: repoRoot,
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -1638,7 +1638,7 @@ async function main() {
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ...(rendererUrl ? { ONETHING_REACT_DEV_SERVER_URL: rendererUrl } : {}),
         ONETHING_GATE_OFFSCREEN: '1',
       },

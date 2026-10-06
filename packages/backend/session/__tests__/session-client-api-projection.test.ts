@@ -83,6 +83,7 @@ describe('sessions 域的写面 = 资源投影(K2c-1)', () => {
         storePath: {},
         sandbox: {},
         auth: null,
+        legacySafeStorageForMigration: null,
         logging: null,
         shell: null,
         voice: null,

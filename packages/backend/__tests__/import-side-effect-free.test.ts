@@ -64,10 +64,24 @@ vi.mock('@onething/backend/provider', async (importOriginal) => ({
 }))
 vi.mock('../credentials/credentials-pool.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  configureSpaceCredentialsCrypto: () => { spy.calls.push('space-credentials-crypto') },
   // 批 E:插件凭证策略的裁决口也是一个 configure*Host 端口,同归这道栅栏管。
   configureSpaceCredentialPluginStrategyHost: () => { spy.calls.push('credential-strategy-host') },
 }))
+// 第④步批 0:凭证主密钥**首次用到时**才读。import 凭证入口不许起 `security`(钥匙串档的挂死风险就在
+// 那一步)—— 计数桩打在子进程的出生口上,数「谁想起 security」。被数到的那一次**不起真的**
+// `security`,换成 `/usr/bin/false`:这条用例就算红了,也碰不到用户的钥匙串。别的命令照旧调真的。
+const keySpy = vi.hoisted(() => ({ calls: [] as string[] }))
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  const spawn = ((command: string, ...rest: unknown[]) => {
+    if (String(command).endsWith('security')) {
+      keySpy.calls.push(`spawn ${command}`)
+      return actual.spawn('/usr/bin/false', [], { stdio: 'ignore' })
+    }
+    return (actual.spawn as (...args: unknown[]) => unknown)(command, ...rest)
+  }) as typeof actual.spawn
+  return { ...actual, default: { ...actual, spawn }, spawn }
+})
 vi.mock('@onething/backend/permission/permission-capabilities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   registerBuiltinCapabilities: () => { spy.calls.push('capabilities') },
@@ -200,6 +214,24 @@ describe('@onething/backend import purity', () => {
     expect(loadSpy.calls).toEqual([])
   })
 
+  /**
+   * 凭证入口(第④步批 0)闭包里带着主密钥、钥匙串门面与旧 safeStorage 迁移。import 它不许读钥匙:
+   * 不起 `security`(钥匙串档的挂死风险就在那一步)、不碰钥匙文件 —— 钥匙在装配时才起读。
+   * 档位临时换成钥匙串、摘掉 vitest 那道「不起真 security」的第二道闸,好让「import 时偷偷读了」一定会
+   * 走到子进程那一步被数到(上面的桩保证数到的那一次起的是 `/usr/bin/false`)。
+   */
+  it('importing the credentials entry reads no master key', { timeout: 60_000 }, async () => {
+    vi.stubEnv('ONETHING_CREDENTIALS_KEYRING', 'keychain')
+    vi.stubEnv('VITEST', '')
+    try {
+      const credentials = await import('@onething/backend/credentials')
+      expect(typeof credentials.credentialsStatus).toBe('function')
+      expect(keySpy.calls).toEqual([])
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('configureAppRuntimeAdapters wires every adapter exactly once', { timeout: 60_000 }, async () => {
     const { configureAppRuntimeAdapters } = await import('../backend.js')
 
@@ -218,7 +250,6 @@ describe('@onething/backend import purity', () => {
       'search',
       'skill-manage',
       'skills-loader',
-      'space-credentials-crypto',
     ])
   })
 })

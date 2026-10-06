@@ -247,7 +247,7 @@ async function main() {
         // core 起的每一条 `rg` 都是那个壳脚本 —— 判据在 `getOnethingRipgrepPath`:
         // 它先 `which('rg')`,而 which 读的就是这条 PATH。
         PATH: `${binDir}:${process.env.PATH ?? ''}`,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_SERVER_WORKSPACE_ROOT: workspaceRoot,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -273,7 +273,7 @@ async function main() {
       args: [mainEntry],
       env: {
         ...process.env,
-        ONETHING_STORE_PATH: store,
+        ONETHING_STORE_PATH: store, ONETHING_CREDENTIALS_KEYRING: 'file',
         ONETHING_REACT_DEV_SERVER_URL: '',
         ONETHING_GATE_HEADLESS: '1',
       },

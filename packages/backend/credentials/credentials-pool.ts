@@ -24,8 +24,15 @@ import {
   DEFAULT_SPACE_ID,
   isValidSpaceId,
 } from '@onething/backend/space'
-// 类型-only:`auth/` 反过来 import 本模块(space-token-store),值 import 会成环。
-import type { OnethingTokenCryptoAdapter } from '../auth/auth.js'
+import {
+  masterKeyStateNow,
+  openWithMasterKey,
+  sealWithMasterKey,
+  type MasterKeyContext,
+  type MasterKeyLockReason,
+  type MasterKeyState,
+} from './credentials-master-key.js'
+import { legacySafeStorageDecryptor } from './credentials-legacy-decryptor.js'
 
 import { getLogger } from '../logging/logging.js'
 
@@ -253,83 +260,91 @@ export function spaceCredentialsFilePath(spaceId: string | undefined | null): st
 }
 
 /**
- * ## 落盘加密(批 B8-1)—— 清掉批 B6 勘误 1 记档的那颗雷
+ * ## 落盘加密(批 B8-1 立,第④步批 0 换钥匙)
  *
- * B6 记档的问题是「同一个文件一半明文一半密文」,当时选了**口径一致**:整份文件
- * 都明文。B8 把口径统一到另一头 —— **整份文件都密文**,理由是这份文件的定位本来
- * 就是秘密区(批 C:整空间导出默认剔除它),而 `oauth-tokens.json` 早就加密了,
- * 让同一台机器上的两份秘密文件一份加密一份不加密才是真正说不通的那一头。
+ * **整份文件都密文**:这份文件的定位本来就是秘密区(批 C:整空间导出默认剔除它)。批 B8 用的是
+ * Electron 的 `safeStorage`;批 0 起改用后端自己的主密钥(`credentials-master-key.ts`),理由是
+ * `safeStorage` 绑 Electron app 身份,后端一出 Electron 进程就解不开(08-31 事故)。
  *
- * ### 用的是同一个加密端口,没有新造
- *
- * `OnethingTokenStore` 的加密器来自 `configureAuthHost({ tokenCryptoAdapter })`
- * (Electron 宿主注入 `safeStorage`,headless 宿主不注入)。这里复用**同一个
- * adapter 实例**:装配层(`app/backend.ts` 的 `configureAppRuntimeAdapters`)
- * 把 `getAuthHostPorts().tokenCryptoAdapter` 转接进来。产品层不认识 electron,
- * 也不认识装配层,所以中间必须有这么一格 late-bound 的转接 —— 与
- * `TokenStore` 传 `cryptoAdapter: () => getAuthHostPorts().tokenCryptoAdapter?.()`
- * 是同一句话,只是这里的宿主是一组模块函数而不是一个类。
- *
- * ### 惰性升级:零迁移动作
- *
- * 盘上有三种形态,读侧全认:
+ * ### 盘上四种形态,读侧全认
  *
  * ```jsonc
- * { "providers": {…} }                                   // B3~B7 的老明文,无信封
- * { "version": 2, "encryption": "none", "providers": {…} } // 加密器缺席时的诚实明文
- * { "version": 2, "encryption": "safeStorage", "data": "<base64>" } // 密文
+ * { "providers": {…} }                                                  // B3~B7 的老明文,无信封
+ * { "version": 2, "encryption": "none", "providers": {…} }              // `none` 档的诚实明文
+ * { "version": 2, "encryption": "safeStorage", "data": "<base64>" }     // 批 0 之前的密文(只读,等迁移)
+ * { "version": 2, "encryption": "master-key", "keyId": "…", "data": "…" } // 批 0 起的密文
  * ```
  *
- * 读到老明文照样读得出;**下一次写入自动升级成密文**(写侧永远按当前能力产出,
- * 不存在"迁移脚本"这一步)。加密器不可用时**如实写 `encryption: "none"`** ——
- * 假装加密比不加密更坏:它会让人以为这份文件可以随便复制。
+ * **写侧永远是 `master-key`**(`none` 档如实写 `none`)。`safeStorage` 那一档只在宿主递了旧解密器时
+ * 读得开(`credentials-legacy-decryptor.ts`),从不写;装配时 `credentials-safestorage-migration.ts`
+ * 把它们搬进新信封。
+ *
+ * ### 解不开不等于空池
+ *
+ * 钥匙此刻拿不到(钥匙串超时 / 拒绝 / 钥匙丢了)时读侧答空池,但**不进读缓存**、并把「已锁定」记在
+ * 状态上(`credentials-locked-state.ts` 广播 `credentials:locked`)—— 界面亮横幅,重试成功后重读得到。
+ * 写侧在这时**拒绝**(抛 `CredentialsLockedError`),绝不拿一份空池覆盖解不开的那份。08-31 的病是
+ * 「静默明文 / 静默空池」,这两样都不许再出现。
  */
 export const SPACE_CREDENTIALS_SCHEMA_VERSION = 2
 
-export type SpaceCredentialsEncryption = 'safeStorage' | 'none'
+export type SpaceCredentialsEncryption = 'master-key' | 'safeStorage' | 'none'
 
-let credentialsCryptoProvider: (() => OnethingTokenCryptoAdapter | undefined) | undefined
+/** 锁定的原因码:主密钥那四种,加「还有旧密文没迁」与「钥匙还在读」。 */
+export type CredentialsLockReason = MasterKeyLockReason | 'legacy-safestorage' | 'loading'
 
-/**
- * 装配层调用(`configureAppRuntimeAdapters`)。**late-bound**:每次读写都问一遍,
- * 所以宿主在模块加载之后才 wire 也来得及 —— 与 `getAuthHostPorts()` 同一条纪律。
- */
-export function configureSpaceCredentialsCrypto(
-  provider: (() => OnethingTokenCryptoAdapter | undefined) | undefined,
-): void {
-  credentialsCryptoProvider = provider
-}
-
-function activeCredentialsCrypto(): OnethingTokenCryptoAdapter | undefined {
-  try {
-    const adapter = credentialsCryptoProvider?.()
-    return adapter?.isEncryptionAvailable() ? adapter : undefined
-  } catch (err) {
-    // 加密器自己炸了(safeStorage 在 app.ready 之前会抛)= 这一次没有加密能力。
-    log.warn('credentials crypto adapter unavailable', undefined, err)
-    return undefined
+/** 凭证此刻写不了。RPC 层按 `code` 认它,答 `CREDENTIALS_LOCKED` + 原因码。 */
+export class CredentialsLockedError extends Error {
+  readonly code = 'CREDENTIALS_LOCKED'
+  constructor(readonly reason: CredentialsLockReason) {
+    super(`credentials are locked (${reason})`)
+    this.name = 'CredentialsLockedError'
   }
 }
 
+/** 空间目录的父目录(`workspaces/`)下的全部空间目录名(盘上有什么就答什么,不问名录)。 */
+export function listSpaceDirIdsOnDisk(): string[] {
+  const root = path.dirname(spaceDir(DEFAULT_SPACE_ID))
+  try {
+    return fs.readdirSync(root, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && isValidSpaceId(entry.name))
+      .map(entry => entry.name)
+  } catch {
+    return []
+  }
+}
+
+/** 盘上有 `credentials.json` 的空间 id。 */
+export function listSpaceIdsWithCredentialsOnDisk(): string[] {
+  return listSpaceDirIdsOnDisk().filter(id => fs.existsSync(spaceCredentialsFilePath(id)))
+}
+
+/** 盘上有没有用主密钥封过的凭证。主密钥据它分「新装」与「钥匙丢了」。 */
+export function anySpaceCredentialsSealedOnDisk(): boolean {
+  return listSpaceIdsWithCredentialsOnDisk().some(id => readSpaceCredentialsAtRest(id) === 'master-key')
+}
+
+/** 凭证池交给主密钥的那一句话(见 `MasterKeyContext`)。 */
+export const credentialsKeyContext: MasterKeyContext = { sealedDataExists: anySpaceCredentialsSealedOnDisk }
+
 /**
- * **这个进程写出去的会是什么形态** —— UI/日志要能如实回答,不靠猜。
- *
- * 注意它问的是**能力**不是盘上现状:`'safeStorage'` = 此刻有可用的加密器。
+ * **这个进程此刻写出去的会是什么形态** —— UI 与日志要能如实回答,不靠猜。`'unavailable'` = 此刻
+ * 写不了(钥匙在读、已锁定,或还没造出来 —— 后者要先 `await prepareCredentialsWrite()`)。
  * 盘上那份现在长什么样,问 `readSpaceCredentialsAtRest(spaceId)`。
  */
-export function spaceCredentialsEncryptionAtRest(): SpaceCredentialsEncryption {
-  return activeCredentialsCrypto() ? 'safeStorage' : 'none'
+export function spaceCredentialsEncryptionAtRest(): 'master-key' | 'none' | 'unavailable' {
+  const state = masterKeyStateNow(credentialsKeyContext)
+  if (state.status === 'ready') return 'master-key'
+  if (state.status === 'none') return 'none'
+  return 'unavailable'
 }
 
 /** 盘上**现在**这一份是什么形态。'absent' = 没有文件 / 读不动。 */
 export type SpaceCredentialsAtRest = SpaceCredentialsEncryption | 'absent'
 
 /**
- * 盘上那份此刻的形态 —— **不解密、不判废**,只看信封。
- *
- * 两个消费者:一次性迁移的「有没有明文池要救」判据,与真机取证门的读数。
- * 无信封的老明文(B3~B7)与 `encryption:'none'` 的诚实明文归同一格 `'none'`:
- * 对「盘上躺着明文钥匙」这件事,它们是同一件事。
+ * 盘上那份此刻的形态 —— **不解密、不判废**,只看信封。无信封的老明文(B3~B7)与 `encryption:'none'`
+ * 的诚实明文归同一格 `'none'`:对「盘上躺着明文钥匙」这件事,它们是同一件事。
  */
 export function readSpaceCredentialsAtRest(
   spaceId: string | undefined | null,
@@ -339,6 +354,7 @@ export function readSpaceCredentialsAtRest(
     if (!fs.existsSync(filePath)) return 'absent'
     const raw: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
     if (!isRecord(raw)) return 'absent'
+    if (raw.encryption === 'master-key') return 'master-key'
     return raw.encryption === 'safeStorage' ? 'safeStorage' : 'none'
   } catch (err) {
     log.warn('credentials at-rest probe failed', { filePath }, err)
@@ -346,57 +362,91 @@ export function readSpaceCredentialsAtRest(
   }
 }
 
-function decodeCredentialsPayload(
-  raw: Record<string, unknown>,
-): { providers: unknown } | null {
+/** 解一份信封的结局:读出来了 / 此刻锁着 / 坏了。 */
+type DecodedCredentials =
+  | { kind: 'file'; file: SpaceCredentialsFile }
+  | { kind: 'locked'; reason: CredentialsLockReason }
+  | { kind: 'invalid' }
+
+function lockReasonOfKeyState(state: MasterKeyState): CredentialsLockReason {
+  if (state.status === 'locked') return state.reason
+  if (state.status === 'loading') return 'loading'
+  // `absent` / `none` 都意味着这里没有那把钥匙。
+  return 'key-missing'
+}
+
+function decodeSealedPayload(raw: Record<string, unknown>): DecodedCredentials {
   const data = raw.data
-  if (typeof data !== 'string' || !data) return null
-  const adapter = activeCredentialsCrypto()
-  if (!adapter) {
-    log.warn('credentials encrypted but no crypto adapter available')
-    return null
+  if (typeof data !== 'string' || !data) return { kind: 'invalid' }
+  const state = masterKeyStateNow(credentialsKeyContext)
+  if (state.status !== 'ready') return { kind: 'locked', reason: lockReasonOfKeyState(state) }
+  if (typeof raw.keyId === 'string' && raw.keyId !== state.key.keyId) {
+    // 换过钥匙之后,旧钥匙封的那份再也解不开;下一次写这个空间时改名留底(见 `writeSpaceCredentials`)。
+    log.warn('credentials sealed with a different master key', { keyId: raw.keyId })
+    return { kind: 'invalid' }
   }
   try {
-    const decrypted = adapter.decryptString(Buffer.from(data, 'base64'))
-    const parsed: unknown = JSON.parse(decrypted)
-    return isRecord(parsed) ? { providers: parsed.providers } : null
+    const parsed: unknown = JSON.parse(openWithMasterKey(state.key, { data }))
+    const file = isRecord(parsed) ? parseSpaceCredentialsFile({ providers: parsed.providers }) : null
+    return file ? { kind: 'file', file } : { kind: 'invalid' }
   } catch (err) {
     log.warn('credentials decrypt failed', undefined, err)
-    return null
+    return { kind: 'invalid' }
   }
+}
+
+function decodeLegacyPayload(raw: Record<string, unknown>): DecodedCredentials {
+  const data = raw.data
+  if (typeof data !== 'string' || !data) return { kind: 'invalid' }
+  const legacy = legacySafeStorageDecryptor()
+  if (!legacy) return { kind: 'locked', reason: 'legacy-safestorage' }
+  try {
+    const parsed: unknown = JSON.parse(legacy.decryptString(Buffer.from(data, 'base64')))
+    const file = isRecord(parsed) ? parseSpaceCredentialsFile({ providers: parsed.providers }) : null
+    return file ? { kind: 'file', file } : { kind: 'invalid' }
+  } catch (err) {
+    log.warn('legacy safeStorage credentials decrypt failed', undefined, err)
+    return { kind: 'invalid' }
+  }
+}
+
+function decodeSpaceCredentialsDocument(value: unknown): DecodedCredentials {
+  if (!isRecord(value)) return { kind: 'invalid' }
+  if (value.encryption === 'master-key') return decodeSealedPayload(value)
+  if (value.encryption === 'safeStorage') return decodeLegacyPayload(value)
+  // 无信封的老明文,以及 `encryption: 'none'` 的诚实明文,走同一条路。
+  const file = parseSpaceCredentialsFile(value)
+  return file ? { kind: 'file', file } : { kind: 'invalid' }
 }
 
 /**
- * 信封解析:三种盘上形态归一成 `{ providers }` 再交给既有的整份判废式解析。
- * 返回 null = 这份文件读不出来(坏文件 / 解不开),与既有口径一致 → 空池。
+ * 信封解析:四种盘上形态归一成 `SpaceCredentialsFile`。返回 null = 这份文件此刻读不出来
+ * (坏文件 / 解不开 / 锁着)。要分清「锁着」的读者用 `readSpaceCredentials`(它不缓存锁着的那次)。
  */
 export function parseSpaceCredentialsDocument(value: unknown): SpaceCredentialsFile | null {
-  if (!isRecord(value)) return null
-  if (value.encryption === 'safeStorage') {
-    const payload = decodeCredentialsPayload(value)
-    return payload ? parseSpaceCredentialsFile(payload) : null
-  }
-  // 无信封的老明文,以及 `encryption: 'none'` 的诚实明文,走同一条路。
-  return parseSpaceCredentialsFile(value)
+  const decoded = decodeSpaceCredentialsDocument(value)
+  return decoded.kind === 'file' ? decoded.file : null
 }
 
-/** 按此刻的加密能力产出盘上形态。**写侧永远是当前形态** —— 这就是惰性升级。 */
+/** 按此刻的钥匙产出盘上形态。钥匙此刻不在就抛 `CredentialsLockedError` —— 不写明文顶替。 */
 export function serializeSpaceCredentialsDocument(
   file: SpaceCredentialsFile,
 ): Record<string, unknown> {
-  const adapter = activeCredentialsCrypto()
-  if (!adapter) {
+  const state = masterKeyStateNow(credentialsKeyContext)
+  if (state.status === 'none') {
     return {
       version: SPACE_CREDENTIALS_SCHEMA_VERSION,
       encryption: 'none' satisfies SpaceCredentialsEncryption,
       providers: file.providers,
     }
   }
-  const encrypted = adapter.encryptString(JSON.stringify({ providers: file.providers }))
+  if (state.status !== 'ready') throw new CredentialsLockedError(lockReasonOfKeyState(state))
+  const sealed = sealWithMasterKey(state.key, JSON.stringify({ providers: file.providers }))
   return {
     version: SPACE_CREDENTIALS_SCHEMA_VERSION,
-    encryption: 'safeStorage' satisfies SpaceCredentialsEncryption,
-    data: typeof encrypted === 'string' ? encrypted : Buffer.from(encrypted).toString('base64'),
+    encryption: 'master-key' satisfies SpaceCredentialsEncryption,
+    keyId: sealed.keyId,
+    data: sealed.data,
   }
 }
 
@@ -410,7 +460,15 @@ export function resetSpaceCredentialsCacheForTests(): void {
   credentialsCache.clear()
 }
 
-/** 缺文件 / 坏文件 / 读不动 = 空池。空池 = 这个空间什么都没配(严格隔离下即「未配置」)。 */
+/** 钥匙换了状态(解锁、迁移完)之后丢掉读缓存,下一次读重新解。 */
+export function invalidateSpaceCredentialsCache(): void {
+  credentialsCache.clear()
+}
+
+/**
+ * 缺文件 / 坏文件 / 读不动 = 空池。空池 = 这个空间什么都没配(严格隔离下即「未配置」)。
+ * **锁着**也答空池,但不缓存:钥匙回来之后下一次读就是真的那份。
+ */
 export function readSpaceCredentials(spaceId: string | undefined | null): SpaceCredentialsFile {
   const filePath = spaceCredentialsFilePath(spaceId)
   const cached = credentialsCache.get(filePath)
@@ -418,8 +476,12 @@ export function readSpaceCredentials(spaceId: string | undefined | null): SpaceC
   let file: SpaceCredentialsFile = { providers: {} }
   try {
     if (fs.existsSync(filePath)) {
-      const parsed = parseSpaceCredentialsDocument(JSON.parse(fs.readFileSync(filePath, 'utf-8')))
-      if (parsed) file = parsed
+      const decoded = decodeSpaceCredentialsDocument(JSON.parse(fs.readFileSync(filePath, 'utf-8')))
+      if (decoded.kind === 'locked') {
+        log.warn('credentials locked, reading as empty for now', { filePath, reason: decoded.reason })
+        return file
+      }
+      if (decoded.kind === 'file') file = decoded.file
       else log.warn('credentials schema validation failed, treating as empty', { filePath })
     }
   } catch (err) {
@@ -429,20 +491,44 @@ export function readSpaceCredentials(spaceId: string | undefined | null): SpaceC
   return file
 }
 
-/** 整份写入(与 overlay 同一条纪律:入口就定成整写,由调用方显式先读后并)。 */
+/**
+ * 写之前看一眼盘上那份:还没迁的旧密文、此刻解不开的主密钥密文,都不许被一份新内容覆盖;
+ * 换钥匙之前封的那份(`keyId` 对不上)先改名留底再写。
+ */
+function guardOverwrite(filePath: string, sealingKeyId: string | undefined): void {
+  if (!fs.existsSync(filePath)) return
+  let raw: unknown
+  try {
+    raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch {
+    return
+  }
+  if (!isRecord(raw)) return
+  if (raw.encryption === 'safeStorage') throw new CredentialsLockedError('legacy-safestorage')
+  if (raw.encryption !== 'master-key') return
+  if (!sealingKeyId) throw new CredentialsLockedError('key-missing')
+  if (typeof raw.keyId === 'string' && raw.keyId !== sealingKeyId) {
+    const orphan = `${filePath}.orphaned-${raw.keyId}`
+    fs.renameSync(filePath, orphan)
+    log.warn('credentials sealed with a replaced master key kept aside', { orphan })
+  }
+}
+
+/**
+ * 整份写入(与 overlay 同一条纪律:入口就定成整写,由调用方显式先读后并)。钥匙此刻不在就抛
+ * `CredentialsLockedError`;用户亲手发起的写在调它之前先 `await prepareCredentialsWrite()`。
+ */
 export function writeSpaceCredentials(
   spaceId: string | undefined | null,
   file: SpaceCredentialsFile,
 ): SpaceCredentialsFile {
   const id = resolveCredentialsSpaceId(spaceId)
   const normalized = parseSpaceCredentialsFile(file) ?? { providers: {} }
+  const document = serializeSpaceCredentialsDocument(normalized)
   ensureSpaceDir(id)
   const filePath = spaceCredentialsFilePath(id)
-  fs.writeFileSync(
-    filePath,
-    JSON.stringify(serializeSpaceCredentialsDocument(normalized), null, 2),
-    'utf-8',
-  )
+  guardOverwrite(filePath, typeof document.keyId === 'string' ? document.keyId : undefined)
+  fs.writeFileSync(filePath, JSON.stringify(document, null, 2), 'utf-8')
   credentialsCache.set(filePath, normalized)
   // 跨窗口缓存过期(批 B9-0):这是凭证池的唯一落盘入口(OAuth 登录写 token 也
   // 经 `upsertSpaceProviderOAuthToken` 走到这里),所以通知挂这一处就够。
