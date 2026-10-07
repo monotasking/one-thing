@@ -330,6 +330,7 @@
 | D318 | 10-07 | 桌面真机门里等发现文件的判据 | `gate-connect`(路径一断言改成「owner `backend` 且 pid ≠ 壳主进程」,退出后再等后端也退)、`gate-browser` / `gate-terminal` / `gate-todo` / `gate-changes` / `gate-acp-shell` / 壳的 `gate-credentials` 的等待条件 `owner === 'shell'` → `'backend'`、`gate-stream-structure --owner=desktop`、`smoke/desktop-lifecycle.mjs` 同步;`gate:packaged` ③⑥ 改断言并新增 ⑦「继续运行」、子进程带 `ONETHING_GATE_HEADLESS=1`;`gate:chat-layout` 报表加「⑬ 起到连上」(读 `shell.jsonl`)。这些门都要开窗,**本批没跑** | 不改它们就只会超时 | 我 |
 | D319 | 10-07 | 首启就没起来之后点「重启」 | `host:connection` 是一次性承诺,首启失败时已经答了 `ok: false`,渲染层不会再问、主进程那台客户端也永远没有;原地重拉救不回来。所以 `restartBackend` 在「承诺已落定且是失败」时改成 `app.relaunch()` + 照常收尾(整个 app 重开一次),连上过的那一程才走原地重拉。`app.on('activate')` 挪到拉起后端之前注册(后端起不来时关了窗也得能从 Dock 重开);退出途中被收掉的那一趟不记「backend did not start」 | 承诺不改形,换进程 | 我 |
 | D320 | 10-07 | 崩溃重拉进行中 Quit | 重拉那条链挂在 `starting` 上(`stop()` 先等它收场),`launch` 与 `failStart` 开头看 `intentional` 就不再 spawn —— 修掉「退出途中重拉链再生一只没人管的 detached 子进程」那条路。单测两条(第一条拆掉修法即红,反证跑过) | 不留孤儿 | 我 |
+| D321 | 10-07 | 打包后 app 起不来(用户跑 `gate:packaged` 红在 ③:app 提前退出 code=1、输出全空) | `electron-builder.yml` 的 `asarUnpack` 从三条单文件规则改回整个 `apps/desktop-react/dist-electron/**`:electron-builder 26.4 流式归档的「单文件 unpack」坑第二次复现(asar header 把 `main.cjs` 记成已解包却没写出、`package.json` 的 offset 错位),加 `backend.cjs` 那条规则触发;复现步骤写进 yml 注释。改后 `gate:packaged` ①–⑦ 全绿(后端是另一个进程、退出零残留、「继续运行」借回不重拉) | 那条坑在 yml 注释里早有记载与退路;JS 文件出 asar 不改变 Mach-O 的签名覆盖 | 我 |
 
 ## 可读性判据(D20)
 

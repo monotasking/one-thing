@@ -84,26 +84,22 @@ asarUnpack:
   # macOS workspace watcher: keep its optional runtime package and relative
   # N-API addon together on disk. Other platforms do not install/load it.
   - "**/node_modules/fsevents/**"
-  # 检索索引 Worker(检索重建 S3b)。`new Worker(path)` 走的是 Node 的模块加载,
-  # 不是 Electron 的 asar 补丁过的那条 fs 路 —— 从 asar 里起一条 Worker 线程不可靠。
-  # 这一句由 `gate:packaged` 证(打包后经 /api/rpc 问 search.status,mode 必须是
-  # 'owner';worker 起不来那里会答 'error'),不靠这行注释成立。
+  # dist-electron 整个目录解包(第④步批 2b,2026-10-07 实测改回):
+  #  · 检索索引 Worker(检索重建 S3b):`new Worker(path)` 走 Node 的模块加载,不是 Electron 补丁过的 asar fs 路;
+  #  · ACP 宿主工具面的 stdio 桥(ACP A4-a)与不带界面的后端进程 `backend.cjs`(第④步批 2a / 2b):都被当成
+  #    `ELECTRON_RUN_AS_NODE=1` 的子进程起,那条 node 没有 asar 补丁,读不到 asar 里的入口;
+  #    装配层先找 `app.asar.unpacked/` 那一份(`packages/backend/acp/acp-mcp-bridge-path.ts`)。
   #
-  # 工单 4 B3:2026-09-06/07 那轮把它放宽成整个 `dist-electron/**`,理由是
-  # electron-builder 26.4 的流式归档在「单文件 unpack」上有个 header/写入流不一致的
-  # 坑。那个理由只证了「新的能跑」,没证「旧的坏了」—— 而放宽的代价是
-  # `main.cjs` / `preload.cjs` 一起出 asar,签名姿态跟着变。所以回单文件,
-  # 由 `gate:packaged` 定夺;真红了再按那条坑改回来,并把复现步骤写在这里。
-  - "apps/desktop-react/dist-electron/search-worker.cjs"
-  # ACP 宿主工具面的 stdio 桥(ACP A4-a)。agent 把它当子进程起:command 是 Electron 二进制、
-  # env 带 `ELECTRON_RUN_AS_NODE=1`,起出来的是一条没有 asar 补丁的 node —— 从 asar 里
-  # 那条路径它读不到入口文件。装配层先找 `app.asar.unpacked/` 那一份
-  # (`packages/backend/acp/acp-mcp-bridge-path.ts`),与 search-worker 同一条规矩。
-  - "apps/desktop-react/dist-electron/acp-mcp-bridge.cjs"
-  # 不带界面的后端进程(第④步批 2a)。批 2b 起桌面用 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 把它当子进程起,
-  # 起出来的 node 没有 asar 补丁,而它还要在自己旁边找 search-worker.cjs / acp-mcp-bridge.cjs(那两份已解包)。
-  # 能不能从解包目录起来由 `gate:packaged` 跑出来(批 2b 扩那道门),不靠这段注释成立。
-  - "apps/desktop-react/dist-electron/backend.cjs"
+  # 为什么不是逐个单文件:electron-builder 26.4 的流式归档在「单文件 unpack」上有 header / 写入流不一致的坑
+  # (09-06/07 那轮第一次撞到,工单 4 B3 当时改回单文件)。10-07 再次复现:单文件规则从两条加到三条
+  # (加 `backend.cjs`)之后,`bun run gate:packaged` 在 ③ 报「app 提前退出 code=1」、stdout / stderr 全空、
+  # 临时 store 一个文件都没写 —— asar header 把 `main.cjs` 记成 `unpacked: true`,`app.asar.unpacked/` 里却
+  # 没有它;header 里 `package.json` 的 offset 指到一段 TextMate 语法 JSON 上(内容与 integrity 对不上)。
+  # Electron 读不出入口就以 1 静默退出。复现:三条单文件规则 + `bun run build:unpack`,再用
+  # `@electron/asar` 的 `extractFile(app.asar, 'package.json')` 看内容。整目录解包没有这个问题;
+  # 代价是 `main.cjs` / `preload.cjs` 也在 asar 外(签名姿态:它们是 JS,不是 Mach-O,签名覆盖不变)。
+  # 能不能起来由 `gate:packaged` 跑出来,不靠这段注释成立。
+  - "apps/desktop-react/dist-electron/**"
   # 语义召回的 SQLite 扩展(检索重建 S7)。两条理由都要解包:
   #  ① `loadExtension` 走的是系统的 dlopen,asar 里那条路径它打不开;
   #  ② macOS 硬化运行时下**未签名的 dylib 装载会失败**,而 electron-builder 只对
