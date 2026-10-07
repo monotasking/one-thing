@@ -19,6 +19,7 @@ import { registerACPPermissionBridge } from "@onething/backend/acp";
 import { getLogger } from '@onething/backend/logging'
 import {
 	backendLaunchProfile,
+	declareLaunchAttendance,
 	launchHostPorts,
 	type BackendLaunchProfile,
 } from "@onething/backend/backend-launcher.js";
@@ -52,9 +53,16 @@ export async function createRealServerBackend(
 			reason: "ONETHING_SERVER_TOOLS=readonly",
 		});
 	}
+	/*
+	 * CLI 档(第④步批 3,决策 D7)在装配**之前**说「这台宿主上没人守着卡」:装配途中(MCP 真的会被拉起)万一有人问
+	 * 权限,那时也已经没人能答。装配失败就地收回;成功之后交给 `own()`。别的档这一行什么都不声明。
+	 */
+	const releaseAttendance = declareLaunchAttendance(profile);
 	// No `owner`: 2026-08-24 ruling — the standalone backend process (`backend-standalone-main.ts`) takes no store lock. It defers
 	// through `<store>/run/http.json` (see packages/backend/backend-standalone-main.ts) instead.
-	const backend = await createOnethingBackend({
+	let assembled: OnethingBackend;
+	try {
+		assembled = await createOnethingBackend({
 		storePath,
 		logging,
 		/*
@@ -116,6 +124,12 @@ export async function createRealServerBackend(
 		...profile.assembly,
 		sender: new ServerNoopSender() as never,
 	});
+	} catch (error) {
+		releaseAttendance();
+		throw error;
+	}
+	const backend = assembled;
+	backend.own(releaseAttendance, "hostAttendance");
 	/*
 	 * 桌面档的登录 shell PATH 在这里等(第④步批 2a,D291):装配与它并行跑完了,而下面 `acp.start()` 一起名册
 	 * 就按 PATH 判「装没装」、在后台起 `<agent> --version`;再往后建 runtime 时 MCP stdio 也会 spawn。

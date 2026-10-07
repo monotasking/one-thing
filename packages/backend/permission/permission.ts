@@ -128,7 +128,7 @@ export {
 // 进程里那一份 `Permission`(带授权落盘)、授权落盘的装配、无人值守的标记、权限卡挂在哪条消息上(深层引用收口第四批补进入口)。
 export { Permission } from './permission-with-grant-storage.js'
 export { configureAppPermissionGrants } from './permission-grant-storage.js'
-export { markHostUnattended, markSessionUnattended } from './permission-unattended.js'
+export { declareUnansweredAskDeadline, markHostUnattended, markSessionUnattended } from './permission-unattended.js'
 export { resolvePermissionMessageAnchor } from './permission-message-anchor.js'
 
 // 审批链的记账接线:把权限问答的时刻与决定记进会话事件日志(装配在 `initialize` 之后装一次,D202 从 session 搬来)。

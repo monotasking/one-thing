@@ -11,7 +11,7 @@
     { "feature": "storage", "layer": "L0", "why": "store 目录在哪、文件怎么原子地读写,以及打包资源目录的注入口。" },
     { "feature": "logging", "layer": "L0", "why": "日志门面 getLogger、JSONL 日志文件、日志目录管家与崩溃钩子。" },
     { "feature": "network", "layer": "L0", "why": "代理设置的校验与绕行规则,以及按代理选通道、带超时重试中止的受管 fetch。" },
-    { "feature": "lifecycle", "layer": "L0", "why": "关机流程里反复要用的入场闸这类小状态机。" },
+    { "feature": "lifecycle", "layer": "L0", "why": "关机流程里反复要用的入场闸这类小状态机,以及「请这个进程退出」的那一格(`backend.shutdown` 用)。" },
     { "feature": "reference", "layer": "L0", "why": "消息里「引用」的类型登记表(文件、链接等各种引用怎么认、怎么写进提示词)。" },
     { "feature": "context", "layer": "L0", "why": "按条数与长度裁剪对话消息列表的上下文管理器。" },
     { "feature": "memory", "layer": "L0", "why": "进程内存的登记表、探针与按预算释放缓存的调度器。" },
@@ -67,8 +67,7 @@
     { "feature": "variable", "layer": "L2", "why": "变量系统:登记表、存储、格式化与给模型的变量板。" },
     { "feature": "engine", "layer": "L3", "why": "对话引擎:收命令、跑一轮、持久化、发事件,是发对话的那台机器。" },
     { "feature": "collab", "layer": "L3", "why": "多 agent 协作:房间、成员、发言调度与裁判。" },
-    { "feature": "gateway", "layer": "L3", "why": "微信 / Telegram 渠道网关:收发消息与远程审批。" },
-    { "feature": "headless", "layer": "L4", "why": "不带界面的后端(CLI 守护进程用的那一份装配配方;它引 backend.ts 是装配方引装配配方,没有功能引它)。" }
+    { "feature": "gateway", "layer": "L3", "why": "微信 / Telegram 渠道网关:收发消息与远程审批。" }
   ],
   "slots": [
     { "slot": "(shared)", "layer": "L0", "match": ["packages/shared/"], "why": "server 与 client 之间的契约,以及两边必须算得一样的纯逻辑。" },

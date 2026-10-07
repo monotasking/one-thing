@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
-  listOnethingHeadlessProviderModels,
-  listOnethingHeadlessProviderSummaries,
-  listOnethingHeadlessSessionSummaries,
-  listOnethingHeadlessToolSummaries,
-  setOnethingHeadlessPermissionMode,
-  updateOnethingHeadlessToolSetting,
-  upsertOnethingHeadlessProviderConfig,
-  useOnethingHeadlessProvider,
-} from '../headless-cli-projections.js'
+  listCliProviderModels,
+  listCliProviderSummaries,
+  listCliSessionSummaries,
+  listCliToolSummaries,
+  setCliPermissionMode,
+  updateCliToolSetting,
+  upsertCliProviderConfig,
+  useCliProvider,
+} from '../cli-projections.js'
 import {
   composeEffectiveAISettings,
   createEmptySpaceProviderSettings,
   splitEffectiveAISettings,
 } from '@onething/backend/settings'
 
-describe('headless CLI projections', () => {
-  it('projects session summaries for daemon clients', () => {
-    expect(listOnethingHeadlessSessionSummaries([{
+describe('CLI projections', () => {
+  it('projects session summaries for CLI clients', () => {
+    expect(listCliSessionSummaries([{
       id: 's1',
       name: 'Chat',
       createdAt: 1,
@@ -61,7 +61,7 @@ describe('headless CLI projections', () => {
       tools: { permissionMode: 'normal', tools: {} },
     }
 
-    expect(listOnethingHeadlessProviderSummaries(settings)).toEqual([{
+    expect(listCliProviderSummaries(settings)).toEqual([{
       id: 'openai',
       model: 'gpt-4.1',
       enabled: true,
@@ -69,19 +69,19 @@ describe('headless CLI projections', () => {
       isDefault: true,
     }])
 
-    expect(listOnethingHeadlessProviderModels(settings, 'openai')).toEqual([
+    expect(listCliProviderModels(settings, 'openai')).toEqual([
       'gpt-4.1-mini',
       'gpt-4.1',
       'gpt-5',
     ])
 
-    expect(useOnethingHeadlessProvider(settings, 'openai', 'gpt-5')).toMatchObject({
+    expect(useCliProvider(settings, 'openai', 'gpt-5')).toMatchObject({
       id: 'openai',
       model: 'gpt-5',
       isDefault: true,
     })
 
-    expect(upsertOnethingHeadlessProviderConfig(
+    expect(upsertCliProviderConfig(
       settings,
       'custom',
       { enabled: true, model: 'local' },
@@ -114,7 +114,7 @@ describe('headless CLI projections', () => {
     expect(effectiveAi.providers['claude-code-agent']).toMatchObject({ enabled: false })
 
     const settings = { ai: effectiveAi, tools: { permissionMode: 'normal', tools: {} } }
-    expect(() => useOnethingHeadlessProvider(settings, 'claude-code-agent', 'claude-sonnet'))
+    expect(() => useCliProvider(settings, 'claude-code-agent', 'claude-sonnet'))
       .toThrow(/not enabled/)
 
     // ① 默认 provider 没被翻掉。
@@ -140,7 +140,7 @@ describe('headless CLI projections', () => {
       },
     }
 
-    expect(listOnethingHeadlessToolSummaries([{
+    expect(listCliToolSummaries([{
       id: 'bash',
       name: 'Bash',
       enabled: true,
@@ -154,9 +154,9 @@ describe('headless CLI projections', () => {
       category: 'builtin',
     }])
 
-    updateOnethingHeadlessToolSetting(settings, 'bash', { autoExecute: true })
+    updateCliToolSetting(settings, 'bash', { autoExecute: true })
     expect(settings.tools.tools.bash).toEqual({ enabled: true, autoExecute: true })
 
-    expect(setOnethingHeadlessPermissionMode(settings, 'auto').tools.permissionMode).toBe('auto')
+    expect(setCliPermissionMode(settings, 'auto').tools.permissionMode).toBe('auto')
   })
 })

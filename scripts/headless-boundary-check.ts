@@ -2046,17 +2046,6 @@ const SEARCH_CAPABILITY_MODULES = [
   'packages/backend/search/capabilities/search-capabilities-text-match.ts',
 ]
 
-const MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
-  /getSessionsList\(\)\.map\(session\s*=>\s*\(\{/,
-  /Object\.entries\(settings\.ai\.providers\s*\|\|\s*\{\}\)\.map/,
-  /settings\.ai\.providers\[providerId\]\s*=/,
-  /settings\.ai\.provider\s*=\s*providerId/,
-  /Object\.keys\(provider\.models\s*\|\|\s*\{\}\)/,
-  /tools\.map\(tool\s*=>\s*\(\{/,
-  /settings\.tools\.tools\[toolId\]\s*=/,
-  /settings\.tools\.permissionMode\s*=\s*mode/,
-]
-
 const MAIN_PROMPTS_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]zod['"]/,
   /PROMPT_SCHEMA/,
@@ -5861,33 +5850,35 @@ function checkSessionStateReachesClientsOnlyThroughTheLedger(): void {
   assertNoMatches('session state reaches clients only through the ledger', lines)
 }
 
-function checkRuntimeOwnsHeadlessCliProjections(): void {
-  const runtimeFile = path.join(root, 'packages/backend/headless/headless-cli-projections.ts')
-  const mainFile = path.join(root, 'packages/backend/headless/headless-backend.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const requiredRuntimeSymbols = [
-    'listOnethingHeadlessSessionSummaries',
-    'listOnethingHeadlessProviderSummaries',
-    'upsertOnethingHeadlessProviderConfig',
-    'useOnethingHeadlessProvider',
-    'listOnethingHeadlessProviderModels',
-    'listOnethingHeadlessToolSummaries',
-    'updateOnethingHeadlessToolSetting',
-    'setOnethingHeadlessPermissionMode',
-  ]
-  const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned headless CLI projection module`]
-      : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned headless CLI projection ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/headless/headless-backend.ts: missing headless backend adapter']),
-  ]
-
-  assertNoMatches('packages/backend owns headless CLI projections', lines)
+/**
+ * **CLI 守护进程不许复活**(第④步批 3,`docs/design/two-process-2026-10.md` §2.4)。
+ *
+ * CLI 改成后端的 HTTP 客户端之后,`HeadlessBackend`(`packages/backend/headless/`)、守护进程与它的 unix socket
+ * (`apps/cli/src/daemon-server.ts` / `daemon-client.ts` / `ndjson.ts`)、38 个方法名的协议表
+ * (`packages/shared/cli/protocol.ts`)整片退役;CLI 自己拉起后端时起的是同一只后端进程的 `cli` 档。
+ * 这条断言守它们不长回来:那几个路径不许存在,`apps/` 与 `packages/` 的非测试源码里不许再出现
+ * `@onething/backend/headless` / `@shared/cli/protocol` / `--daemon-child`。
+ * (从前这里守的是「CLI 投影归 runtime」—— 那几只投影随守护进程退役搬进了 `apps/cli/src/cli-projections.ts`。)
+ */
+function checkCliDaemonStaysRetired(): void {
+  const failures: string[] = []
+  for (const file of [
+    'packages/backend/headless',
+    'packages/shared/cli/protocol.ts',
+    'apps/cli/src/daemon-server.ts',
+    'apps/cli/src/daemon-client.ts',
+    'apps/cli/src/ndjson.ts',
+  ]) {
+    if (fs.existsSync(path.join(root, file))) failures.push(`${file}: must not exist (CLI daemon retired in step 4 batch 3)`)
+  }
+  const patterns = [/@onething\/backend\/headless/, /@shared\/cli\/protocol/, /--daemon-child/]
+  const lines = ['packages', 'apps']
+    .map(dir => path.join(root, dir))
+    .filter(dir => fs.existsSync(dir))
+    .flatMap(dir => walkFiles(dir, [], { extensions: /\.(m?[jt]sx?)$/, excludeDirs: ['dist', 'dist-electron', 'release', 'out', 'node_modules'] }))
+    .filter(file => !/\.(test|spec)\.tsx?$/.test(path.basename(file)))
+    .flatMap(file => matchingCodeLines(file, patterns))
+  assertNoMatches('CLI daemon stays retired (no HeadlessBackend, daemon socket or CLI protocol table)', [...failures, ...lines])
 }
 
 function checkRuntimeOwnsPromptsStore(): void {
@@ -7297,7 +7288,7 @@ checkRuntimeOwnsVoiceServicePolicy()
 checkRuntimeOwnsVoiceTextProcessing()
 checkSearchHasOneQueryPath()
 checkSessionStateReachesClientsOnlyThroughTheLedger()
-checkRuntimeOwnsHeadlessCliProjections()
+checkCliDaemonStaysRetired()
 checkRuntimeOwnsPromptsStore()
 checkRuntimeOwnsSystemPromptSnapshot()
 checkRuntimeOwnsProjectDirsStore()

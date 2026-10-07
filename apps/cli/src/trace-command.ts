@@ -1,9 +1,9 @@
 /**
  * CLI 的 `trace` 命令 —— S3 只读查询面的第三个出口(§12)。
  *
- * 与 `plugin` 同一条:**不经 daemon**。轨迹的事实全在
+ * 与 `plugin` 同一条:**不经后端**。轨迹的事实全在
  * `<store>/sessions/<id>/events.jsonl` 这个纯追加文件里,读它不需要引擎、不需要
- * 会话被激活,也不该要求用户先把 daemon 起起来 —— 排障的时候进程往往正是那个
+ * 会话被激活,也不该要求用户先把后端起起来 —— 排障的时候进程往往正是那个
  * 起不来的东西。`--store` 已经被 `main()` 写进 `ONETHING_STORE_PATH`,
  * `readSessionTrace` 自己经 `getOnethingStorePath()` 解析,这里不碰路径字面量。
  *

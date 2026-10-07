@@ -10,14 +10,15 @@
  * `bun run server:start`、`bun run dev:web` 的 server 泳道与 `gate:acp` / `gate:search-index` / `gate:web-shell`
  * 这些真机门跑的都是那份产物。第④步批 2a 起桌面构建(`apps/desktop-react/scripts/build-electron.mjs`)
  * 也把它打成 `dist-electron/backend.cjs`,批 2b 起由桌面用 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 拉起;
- * 今天还没人拉起那份,只有 `gate:backend-process` 跑它。
+ * 第④步批 3 起 CLI 自己拉起后端时也用它(`ONETHING_BACKEND_LAUNCHER=cli`)。
  *
  * **档位**:`ONETHING_BACKEND_LAUNCHER=desktop|cli|none` 说是谁拉起了它,决定多起哪几件(用户定时任务、
  * 真的 MCP 客户端、电台、首启模型拉取、登录 shell 的 PATH)、装配开关、日志与发现文件的 owner。
  * 不设 = 缺省档,与批 2a 之前逐字相同。档位表与每一格的取值在 `backend-launcher.ts`。
  *
  * 依赖:`http-server`(HTTP 面、server runtime、发现文件、本机信任)、`logging` 与它的装配入口、`session`
- * (外来写者告警)、包根的 `backend-launcher.ts`(档位)。
+ * (外来写者告警)、`lifecycle`(登记「请这个进程退出」的收尾函数,`backend.shutdown` 用)、包根的
+ * `backend-launcher.ts`(档位)。
  *
  * 它是进程入口,不许被任何文件 import(`entry:gate` 按 `*-standalone-main.ts` 的名字认它)。
  */
@@ -34,6 +35,7 @@ import { configureHostLocalTrust } from '@onething/backend/http-server'
 import { getLogger } from '@onething/backend/logging'
 import { getAppLogPath } from '@onething/backend/logging/logging-configure'
 import { warnOnForeignCoreForEventsRead } from '@onething/backend/session'
+import { configureProcessShutdownRequest } from '@onething/backend/lifecycle'
 import {
   backendLaunchProfile,
   prepareProcessEnv,
@@ -239,8 +241,10 @@ async function main(): Promise<void> {
         token: authToken,
         pid: process.pid,
         startedAt: Date.now(),
-        // 缺省档 `server`;桌面档 `backend`(决策 D6:拉起它的人要分得清「我拉的」与别人起的 `server:start`)。
+        // 缺省档 `server`;桌面档 / CLI 档 `backend`(决策 D6:拉起它的人要分得清「我拉的」与别人起的 `server:start`)。
         owner: profile.discoveryOwner,
+        // 第④步批 3:桌面档写 `desktop`、CLI 档写 `cli` —— 两边都只停自己拉起的那台。
+        ...(profile.discoveryLauncher ? { launcher: profile.discoveryLauncher } : {}),
       }, { lease: storeLease })
     } catch (error) {
       log.error('discovery publication failed', {}, error)
@@ -289,6 +293,11 @@ async function main(): Promise<void> {
 
   process.on('SIGINT', signal => void shutdown(signal))
   process.on('SIGTERM', signal => void shutdown(signal))
+  // `backend.shutdown` 这条 RPC(`onething backend stop`)走同一条收尾路:与收到一次 SIGTERM 逐字相同。
+  configureProcessShutdownRequest(reason => {
+    log.info('shutdown requested over rpc', { reason })
+    void shutdown('SIGTERM')
+  })
 }
 
 void main()

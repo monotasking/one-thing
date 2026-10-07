@@ -1,8 +1,8 @@
 /**
  * 资源的**线上形状**:一份自述、一次「做」的结局、一次「读」的结局 → 可序列化投影。
  *
- * 三个出口共用这一份(界面的 `resources` 域 `resource-client-api.ts`、CLI daemon 的 `resource.*`
- * 四支 `headless/headless-backend.ts`、以及将来的别的出口)。它们从前住在 RPC 域文件里、由 CLI 深层 import;
+ * 出口共用这一份(界面的 `resources` 域 `resource-client-api.ts` —— 第④步批 3 起 CLI 与 `onething mcp` 也经它走
+ * HTTP —— 以及将来的别的出口)。它们从前住在 RPC 域文件里、由 CLI 深层 import;
  * 包根归位(2026-10-04)把它们拆到这里、经资源入口交出 —— 开给界面的那只文件(第二入口,D26)
  * 只给 HTTP 服务器用,CLI 不该去引它。函数逐字未改。
  */

@@ -1,8 +1,8 @@
 /**
  * CLI 的 `plugin` 命令域 —— install / list / uninstall。
  *
- * 与其它 scope 的关键差别:**不经 daemon**。插件只在 Electron 桌面宿主执行
- * (plan A),CLI daemon 根本不装配插件系统,所以这里也不走 PluginManager,
+ * 与其它 scope 的关键差别:**不经后端**。插件只在 Electron 桌面宿主执行
+ * (plan A),CLI 拉起的后端不装配插件系统,所以这里也不走 PluginManager,
  * 直接调 `@onething/backend/plugin/plugin-npm-process` 那层宿主无关的安装机器 ——
  * 它只动账本(`<store>/plugins/package.json`)与 `node_modules/`,不加载任何
  * 插件代码。代价是装完不会热生效,每次成功后都得把这句话说给用户听。

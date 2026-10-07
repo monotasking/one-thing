@@ -182,3 +182,10 @@ jobs:
       # Linux 机器上 Electron 二进制 + ELECTRON_RUN_AS_NODE 起不起得来没人证过,那一半在本机跑。临时 store、`file` 档。
       - name: gate:backend-process
         run: node scripts/gate-backend-process.mjs --build --runtimes=node
+
+      # 第④步批 3「CLI 走 HTTP」:真 CLI 产物对真后端产物(`dist/server`,`build:cli` 一起出):依附一台活后端逐条跑
+      # session / ask(假服务商)/ resource / mcp(stdio 握手,审计账上主体是 system:mcp:*);没有后端时缺省档报错、
+      # `--spawn` 拉得起、`backend status|stop|start` 与旧名 `daemon`;别人的后端(server:start / 桌面档)`backend stop` 被拒。
+      # 只用 node、临时 store、`file` 档,不开窗。
+      - name: gate:cli-http
+        run: node scripts/gate-cli-http.mjs --build

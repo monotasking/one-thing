@@ -110,6 +110,17 @@ export interface RpcDispatchContext {
 	 * 永远没有这一格,所以用户 token 进不了 `host-mcp`。
 	 */
 	bridgeCredential?: string;
+	/**
+	 * **这一发是替一个不在这台机器前面的调用方做的**(第④步批 3,决策见
+	 * `docs/design/backend-structure-decisions-2026-10.md` 批 3 那几条)。
+	 *
+	 * `onething mcp` 那条桥替外面的 agent 说话:连进来的仍是本机的那个人(拿着 0600 发现文件里的 token),
+	 * 下指令的却是外面那个 agent。从前守护进程直连内核时,桥把主体报成 `system:mcp:<名字>`;走 HTTP 之后
+	 * 由请求头 {@link ACTING_SYSTEM_HEADER} 带过来,HTTP 面在鉴权之后铸进这一格,`principalOf` 据此把主体
+	 * **降**成 `system` —— 只能降、不能升:这一格只造得出 `system` 主体,而且只在本来就认得出身份的来访者
+	 * 身上生效(不可信又没认证的来访者照旧被拒)。信封上没有可以放它的地方。
+	 */
+	actingSystemComponent?: string;
 }
 
 /**
@@ -117,6 +128,12 @@ export interface RpcDispatchContext {
  * HTTP 面在鉴权之后把它铸进 `RpcDispatchContext.callerId`;两边认的是这同一个字面量。
  */
 export const SHELL_ID_HEADER = "x-onething-shell-id";
+
+/**
+ * 客户端替一个系统组件发起调用时把组件名(`encodeURIComponent` 过)放在这个请求头里(第④步批 3)。
+ * HTTP 面在鉴权之后把它铸进 `RpcDispatchContext.actingSystemComponent`,主体随之降成 `system:<组件名>`。
+ */
+export const ACTING_SYSTEM_HEADER = "x-onething-acting-system";
 
 /**
  * The desktop/in-process context. Exported as a constant so the one place that

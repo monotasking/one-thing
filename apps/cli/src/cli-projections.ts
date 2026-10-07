@@ -1,4 +1,11 @@
-export interface OnethingHeadlessSessionLike {
+/**
+ * CLI 给人看的几种投影:会话 / 服务商 / 工具的摘要行,以及「改哪一格设置」的三只纯函数。
+ *
+ * 第④步批 3 从 `packages/backend/headless/headless-cli-projections.ts` 原样搬来(CLI 守护进程退役,只有 CLI 用它们;
+ * 施工单 §1.3「三只投影函数搬到 CLI 侧」)。名字里的 `OnethingHeadless` 换成了 `Cli`,函数体一行没改。
+ * 设置那三只吃的是 `settings.getSettings` 拿回来的那一份,改完经 `settings.saveSettings` 交回去(见 `backend-requests.ts`)。
+ */
+export interface CliSessionLike {
   id: string
   name: string
   createdAt: number
@@ -11,7 +18,7 @@ export interface OnethingHeadlessSessionLike {
   lastModel?: string
 }
 
-export interface OnethingHeadlessSessionSummary {
+export interface CliSessionSummary {
   id: string
   name: string
   updatedAt: number
@@ -24,15 +31,15 @@ export interface OnethingHeadlessSessionSummary {
   lastModel?: string
 }
 
-export interface OnethingHeadlessProviderConfigLike {
+export interface CliProviderConfigLike {
   model?: string
   enabled?: boolean
   selectedModels?: string[]
   models?: Record<string, unknown>
 }
 
-export interface OnethingHeadlessSettingsLike<
-  TProviderConfig extends OnethingHeadlessProviderConfigLike = OnethingHeadlessProviderConfigLike,
+export interface CliSettingsLike<
+  TProviderConfig extends CliProviderConfigLike = CliProviderConfigLike,
   TPermissionMode extends string = string,
 > {
   ai: {
@@ -41,11 +48,11 @@ export interface OnethingHeadlessSettingsLike<
   }
   tools: {
     permissionMode?: TPermissionMode
-    tools: Record<string, OnethingHeadlessToolSetting>
+    tools: Record<string, CliToolSetting>
   }
 }
 
-export interface OnethingHeadlessProviderSummary {
+export interface CliProviderSummary {
   id: string
   model?: string
   enabled?: boolean
@@ -53,7 +60,7 @@ export interface OnethingHeadlessProviderSummary {
   isDefault: boolean
 }
 
-export interface OnethingHeadlessToolLike {
+export interface CliToolLike {
   id: string
   name: string
   enabled: boolean
@@ -61,7 +68,7 @@ export interface OnethingHeadlessToolLike {
   category: 'builtin' | 'custom'
 }
 
-export interface OnethingHeadlessToolSummary {
+export interface CliToolSummary {
   id: string
   name: string
   enabled: boolean
@@ -69,17 +76,17 @@ export interface OnethingHeadlessToolSummary {
   category: 'builtin' | 'custom'
 }
 
-export interface OnethingHeadlessToolSetting {
+export interface CliToolSetting {
   enabled: boolean
   autoExecute: boolean
 }
 
-export interface OnethingHeadlessToolUpdate {
+export interface CliToolUpdate {
   enabled?: boolean
   autoExecute?: boolean
 }
 
-export type OnethingHeadlessProviderUpdate<TProviderConfig extends OnethingHeadlessProviderConfigLike> =
+export type CliProviderUpdate<TProviderConfig extends CliProviderConfigLike> =
   Partial<TProviderConfig>
   & {
     enabled?: boolean
@@ -87,12 +94,12 @@ export type OnethingHeadlessProviderUpdate<TProviderConfig extends OnethingHeadl
     selectedModels?: string[]
   }
 
-type ProviderConfigOf<TSettings extends OnethingHeadlessSettingsLike> =
+type ProviderConfigOf<TSettings extends CliSettingsLike> =
   TSettings['ai']['providers'][string]
 
-export function projectOnethingHeadlessSessionSummary(
-  session: OnethingHeadlessSessionLike,
-): OnethingHeadlessSessionSummary {
+export function projectCliSessionSummary(
+  session: CliSessionLike,
+): CliSessionSummary {
   return {
     id: session.id,
     name: session.name,
@@ -107,17 +114,17 @@ export function projectOnethingHeadlessSessionSummary(
   }
 }
 
-export function listOnethingHeadlessSessionSummaries(
-  sessions: OnethingHeadlessSessionLike[],
-): OnethingHeadlessSessionSummary[] {
-  return sessions.map(projectOnethingHeadlessSessionSummary)
+export function listCliSessionSummaries(
+  sessions: CliSessionLike[],
+): CliSessionSummary[] {
+  return sessions.map(projectCliSessionSummary)
 }
 
-export function projectOnethingHeadlessProviderSummary(
+export function projectCliProviderSummary(
   id: string,
-  config: OnethingHeadlessProviderConfigLike | undefined,
+  config: CliProviderConfigLike | undefined,
   defaultProviderId?: string,
-): OnethingHeadlessProviderSummary {
+): CliProviderSummary {
   return {
     id,
     model: config?.model,
@@ -127,22 +134,22 @@ export function projectOnethingHeadlessProviderSummary(
   }
 }
 
-export function listOnethingHeadlessProviderSummaries(
-  settings: OnethingHeadlessSettingsLike,
-): OnethingHeadlessProviderSummary[] {
+export function listCliProviderSummaries(
+  settings: CliSettingsLike,
+): CliProviderSummary[] {
   return Object.entries(settings.ai.providers || {}).map(([id, config]) =>
-    projectOnethingHeadlessProviderSummary(id, config, settings.ai.provider)
+    projectCliProviderSummary(id, config, settings.ai.provider)
   )
 }
 
-export function upsertOnethingHeadlessProviderConfig<
-  TSettings extends OnethingHeadlessSettingsLike,
+export function upsertCliProviderConfig<
+  TSettings extends CliSettingsLike,
 >(
   settings: TSettings,
   providerId: string,
-  update: OnethingHeadlessProviderUpdate<ProviderConfigOf<TSettings>>,
+  update: CliProviderUpdate<ProviderConfigOf<TSettings>>,
   createDefaultProvider: () => ProviderConfigOf<TSettings>,
-): OnethingHeadlessProviderSummary {
+): CliProviderSummary {
   const existing = settings.ai.providers[providerId] ?? createDefaultProvider()
   const next = {
     ...existing,
@@ -150,16 +157,16 @@ export function upsertOnethingHeadlessProviderConfig<
     selectedModels: update.selectedModels ?? existing.selectedModels ?? [],
   } as ProviderConfigOf<TSettings>
   settings.ai.providers[providerId] = next
-  return projectOnethingHeadlessProviderSummary(providerId, next, settings.ai.provider)
+  return projectCliProviderSummary(providerId, next, settings.ai.provider)
 }
 
-export function useOnethingHeadlessProvider<
-  TSettings extends OnethingHeadlessSettingsLike,
+export function useCliProvider<
+  TSettings extends CliSettingsLike,
 >(
   settings: TSettings,
   providerId: string,
   model?: string,
-): OnethingHeadlessProviderSummary {
+): CliProviderSummary {
   const provider = settings.ai.providers[providerId]
   if (!provider) throw new Error(`Provider not found: ${providerId}`)
   // **目录里认识 ≠ 这个空间配过**。合成(`composeEffectiveAISettings`)会给每个
@@ -181,11 +188,11 @@ export function useOnethingHeadlessProvider<
   }
   settings.ai.provider = providerId
   if (model) provider.model = model
-  return projectOnethingHeadlessProviderSummary(providerId, provider, settings.ai.provider)
+  return projectCliProviderSummary(providerId, provider, settings.ai.provider)
 }
 
-export function listOnethingHeadlessProviderModels(
-  settings: OnethingHeadlessSettingsLike,
+export function listCliProviderModels(
+  settings: CliSettingsLike,
   providerId: string,
 ): string[] {
   const provider = settings.ai.providers[providerId]
@@ -198,9 +205,9 @@ export function listOnethingHeadlessProviderModels(
   ].filter(Boolean) as string[]))
 }
 
-export function projectOnethingHeadlessToolSummary(
-  tool: OnethingHeadlessToolLike,
-): OnethingHeadlessToolSummary {
+export function projectCliToolSummary(
+  tool: CliToolLike,
+): CliToolSummary {
   return {
     id: tool.id,
     name: tool.name,
@@ -210,16 +217,16 @@ export function projectOnethingHeadlessToolSummary(
   }
 }
 
-export function listOnethingHeadlessToolSummaries(
-  tools: OnethingHeadlessToolLike[],
-): OnethingHeadlessToolSummary[] {
-  return tools.map(projectOnethingHeadlessToolSummary)
+export function listCliToolSummaries(
+  tools: CliToolLike[],
+): CliToolSummary[] {
+  return tools.map(projectCliToolSummary)
 }
 
-export function updateOnethingHeadlessToolSetting(
-  settings: OnethingHeadlessSettingsLike,
+export function updateCliToolSetting(
+  settings: CliSettingsLike,
   toolId: string,
-  update: OnethingHeadlessToolUpdate,
+  update: CliToolUpdate,
 ): void {
   const current = settings.tools.tools[toolId] || { enabled: true, autoExecute: false }
   settings.tools.tools[toolId] = {
@@ -228,8 +235,8 @@ export function updateOnethingHeadlessToolSetting(
   }
 }
 
-export function setOnethingHeadlessPermissionMode<
-  TSettings extends OnethingHeadlessSettingsLike<OnethingHeadlessProviderConfigLike, string>,
+export function setCliPermissionMode<
+  TSettings extends CliSettingsLike<CliProviderConfigLike, string>,
 >(
   settings: TSettings,
   mode: string,

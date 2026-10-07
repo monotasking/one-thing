@@ -160,7 +160,7 @@ export function createDesktopCatalog(adapters: ToolkitBuiltinAdapters = {}): Cat
 }
 
 /**
- * CLI daemon 档 —— 与旧 `builtin/headless.ts` 同集(12 只,其中协作三只 board / history / send_message
+ * headless 档(从前 CLI 守护进程那一档,第④步批 3 起是 CLI 拉起的后端 `ONETHING_BACKEND_LAUNCHER=cli`)—— 与旧 `builtin/headless.ts` 同集(12 只,其中协作三只 board / history / send_message
  * 由 collab 的 `registerCollabTools` 登记;越层清零 A1 之后它们排在这一档的末尾,而不是 variable 与 time 之间)。
  */
 export function createHeadlessCatalog(adapters: ToolkitBuiltinAdapters = {}): Catalog {

@@ -197,7 +197,7 @@ export function createPermissionAuthorizer(options: PermissionAuthorizerOptions 
   return withUserToolSettings(
     new PermissionAuthorizer(options),
     // 设置页那张 per-tool 表:`settings.tools.tools[toolId] = { enabled, autoExecute }`
-    // —— 与旧 `canAutoExecute` 读的是同一张表(`headless/headless-cli-projections.ts` 也写它)。
+    // —— 与旧 `canAutoExecute` 读的是同一张表(CLI 的 `apps/cli/src/cli-projections.ts` 经 `settings.saveSettings` 也写它)。
     toolId => getSettings().tools?.tools?.[toolId] as ToolUserSetting | undefined,
   )
 }

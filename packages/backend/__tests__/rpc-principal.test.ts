@@ -52,4 +52,19 @@ describe('principalOf(context)', () => {
     expect(principalOf({ transport: 'http', ownerUid: 'u-1' }))
       .toEqual({ kind: 'user', userId: 'local' })
   })
+
+  /*
+   * 第④步批 3:`onething mcp` 的桥走 HTTP 之后,主体靠请求头 `X-Onething-Acting-System` 降成 `system`。
+   * 反证:把 `principalOf` 里那一行降级删掉,第一条红(桥替外面 agent 做的事会以本机用户的身份落账)。
+   */
+  it('替系统组件发起的调用 → 降成 system 主体;认不出身份的照旧抛', () => {
+    configureHostLocalTrust({ origin: 'loopback-server' })
+    expect(principalOf({ transport: 'http', actingSystemComponent: 'mcp:claude-code' }))
+      .toEqual({ kind: 'system', component: 'mcp:claude-code' })
+    resetHostLocalTrustForTests()
+    expect(principalOf({ transport: 'http', ownerUid: 'u-1', actingSystemComponent: 'mcp:x' }))
+      .toEqual({ kind: 'system', component: 'mcp:x' })
+    // 只能降不能升:不可信又没认证的来访者带了这一格也还是被拒。
+    expect(() => principalOf({ transport: 'http', actingSystemComponent: 'mcp:x' })).toThrow(RpcPrincipalUnavailableError)
+  })
 })

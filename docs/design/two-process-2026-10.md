@@ -726,3 +726,82 @@ ACP 的「装没装」探测:登录 shell 的 PATH 赶在 `acp.start()` 之前�
 - 第 7 条内存探针按推荐不做:`electron/memory-probe.ts` 与它的测试现在无人引用(死码,留给批 3 一起删或改成 `reportProcesses`)。
 - `http-server/http-server-embed.ts` 与 `localTrust: 'desktop-embedded'` 那一档今天只剩冒烟探针用,随批 3 定。
 - 交进来的旧凭证明文留在后端进程内存里直到进程退出(迁移成功后没有清表)。
+
+## 11. 批 3 实施结果(2026-10-07)
+
+> 从这一批起 CLI 是后端的 HTTP 客户端:守护进程、unix socket、NDJSON 帧与 38 个方法名的协议表整片退役,`HeadlessBackend`
+> 变成后端进程的 `cli` 档。逐条决策见 `docs/design/backend-structure-decisions-2026-10.md` D322–D336。
+
+**行为表**(用户可感知的,与 §2.4 那张对照):
+
+| 项 | 改前 | 改后 |
+| --- | --- | --- |
+| 桌面开着时 `onething ask` | 另起一台守护进程写同一个 store(两个写者) | 用桌面那台后端:`full` 工具、卡在**终端与桌面窗口里都能答**(谁先答算谁,答完终端那句提示自动撤掉)、CLI 建的会话出现在桌面列表里、CLI 的 `session use` 也会切桌面的「当前会话」(从前守护进程同一个 store 里本来就是同一格) |
+| 桌面没开时 `onething ask` | 自动拉守护进程 | 缺省报「The backend is not running. Open onething, or run `onething backend start`.」退出码 1;`--spawn` / `ONETHING_CLI_BACKEND=spawn` 才自己拉起一台 `cli` 档后端(先等 2 秒),拉起的那台 detached,命令结束后留着 |
+| CLI 拉起的那台 | 守护进程 | 同一只后端进程的 `cli` 档:工具 `headless` 档、真 MCP、卡 60 秒没人答就拒(任何主体)、`system` 主体的卡 60 秒自动拒;桌面后来打开时**借它、不停它**(Quit 不发信号) |
+| `onething daemon start\|stop\|status\|restart\|logs` | 有 | 改名 `onething backend …`;旧名打一行「`onething daemon` has been renamed to `onething backend`.」后照做(留一版)。`status` 打 pid / 端口 / 拉起者 / 已运行时长;`stop` 只停 CLI 拉起的那台,桌面的与 `server:start` 的拒并说该去哪儿停;`restart` = stop + start;`logs` 读 `app.jsonl`(没有时退回旧 `daemon.jsonl`) |
+| `active list` / `active abort <id>` | 守护进程铸的 streamId | id 是会话 id(后端按会话记活流),`promptPreview` 列空 |
+| `onething mcp` | 经守护进程直连内核,回执不脱敏 | 经 HTTP 的 `resources.*`,回执与浏览器壳一样过出门脱敏;主体照旧 `system:mcp:<名字>`(请求头降级);60 秒判据不变;依附桌面时那张卡在桌面窗口里等人答 |
+| Windows | `ERR_UNSUPPORTED_PLATFORM` | 代码路径不再拦(没有 Windows 机器,未证「已支持」) |
+| 交互卡措辞 | — | mcp 桥超时那句改成提到「app 开着时卡在它的窗口里」 |
+
+**方法 → RPC 的最终表**(`apps/cli/src/backend-requests.ts`):
+
+| 方法 | RPC |
+| --- | --- |
+| `daemon.health` / `daemon.status` | 退役:发现文件 + 判活(`readCoreDiscovery`),`onething backend status` 直接读它 |
+| `daemon.shutdown` | 新契约 `backend.shutdown`(`@shared/ipc/backend.ts`,本机信任 + 只在独立后端进程上答应) |
+| `daemon.prepareRestart` | 退役:`backend restart` = `backend.shutdown` 等退出 + 拉起 |
+| `chat.ask` | 接 `GET /api/events` → `sessionCommand.emit(command:send-message, channel 'cli', source 'cli')`;会话缺省 = `appState.get` 的当前会话,不在就新建 |
+| `chat.retryLast` | `sessions.getMessages` 找最后一条 assistant → 接流 → `sessionCommand.emit(command:retry-message)` |
+| `permission.respond` | `sessionCommand.emit(command:permission-respond, channel 'cli')` |
+| `active.list` / `active.abort` | `chat.getActiveStreams` / `chat.abortStream({ sessionId })` |
+| `session.list` / `new` / `use` / `show` | `sessions.list` / `sessions.create` + `sessions.switch` / `sessions.switch` / `sessions.get`(无 id 时同 `chat.ask` 的当前会话) |
+| `session.rename` / `pin` / `archive` / `delete` | `sessions.rename` / `updatePin` / `updateArchived` / `delete` |
+| `session.cwd` / `session.model` | `sessions.updateWorkingDirectory` + `sessions.get` / `sessions.updateModel` |
+| `provider.list` / `models` | `settings.getSettings` + `cli-projections.ts` 的投影 |
+| `provider.use` / `enable` / `configure` | `settings.getSettings` → 改一格 → `settings.saveSettings`(钥匙也走这条,D327) |
+| `tools.list` / `tools.set` | `tools.getTools` / 设置两步 |
+| `permission.mode.set` | 设置两步 |
+| `collab.roomNew` | `sessions.create(kind 'room')` + `updateWorkingDirectory` / `updatePermissionMode` + `sessions.get` |
+| `collab.roomList` / `send` / `transcript` | `sessions.list` 过滤 / `sessions.get` 校验 + `sessionCommand.emit(send-message)` / `sessions.getMessages` |
+| `collab.board` / `setBudgets` / `roomUpdate` | `collab.boardGet` / `roomSetBudgets` / `roomUpdate` |
+| `resource.list` / `describe` / `read` / `do` | `resources.*` 逐字;给了 `system` 主体时换带 `X-Onething-Acting-System` 的传输 |
+
+**`cli` 档**:见 D322;档位表(`backend-launcher.ts` 文件头)现在三档都有定义,日志 / 发现文件:缺省档 `server.jsonl` / owner `server`;
+桌面档 `app.jsonl` / owner `backend` + `launcher: 'desktop'`;CLI 档 `app.jsonl` / owner `backend` + `launcher: 'cli'`。
+
+**落了什么**
+
+| 件 | 位置 | 一句话 |
+| --- | --- | --- |
+| CLI 连接 | `apps/cli/src/backend-connect.ts`(新) | 档位、读发现文件判活、D12 两条产物、拉起与等活 |
+| 方法表 | `apps/cli/src/backend-requests.ts`、`backend-ask-stream.ts`(新) | 上表;一轮流式回答的折法 |
+| 后端命令 | `apps/cli/src/backend-command.ts`(新)、`index.ts` | `backend start\|stop\|status\|restart\|logs`、`daemon` 别名、`--spawn` |
+| CLI 自己的形状 | `apps/cli/src/cli-protocol.ts`、`cli-projections.ts`(搬来) | 原 `@shared/cli/protocol.ts` 里 CLI 还用的那几种;原 `headless-cli-projections.ts` |
+| 删 | `apps/cli/src/{daemon-server,daemon-client,ndjson,paths}.ts` 与三份测试、`packages/shared/cli/`、`packages/backend/headless/`、exports 两键、层次表一行 | — |
+| `cli` 档 | `packages/backend/backend-launcher.ts`、`http-server/http-server-standalone-backend.ts` | 档案 + `declareLaunchAttendance` |
+| 答卡期限 | `permission/permission-unattended.ts`、`permission-enforcement.ts` | `declareUnansweredAskDeadline`(D324) |
+| 主体降级 | `@shared/ipc/rpc.ts`、`http-server/http-server-rpc-context.ts`、`http-server-routes.ts`、`http-server-principal.ts` | `X-Onething-Acting-System`(D325) |
+| `backend.shutdown` | `@shared/ipc/backend.ts`、`lifecycle/lifecycle-process-shutdown.ts`、`lifecycle/lifecycle-client-api.ts`、名册一行、`backend-standalone-main.ts` | D326 |
+| `launcher` 一格 | `@shared/backend/http-discovery.ts`、`backend-standalone-main.ts`、`apps/desktop-react/electron/{discovery,backend-process}.ts` | D323 |
+| 构建 | `scripts/build-cli.mjs` | 不再出两份副产物,连带 `server:build` |
+| 门 | `scripts/gate-cli-http.mjs`(新,`gate:cli-http`,进 CI)、`gate-backend-process.mjs`(CLI 档对照)、`headless-boundary-check.ts`(`checkCliDaemonStaysRetired`) | D335 |
+
+**CLI 产物**:`dist/cli/main.cjs` 11,521,271 → 6,486,540 字节(−44%);`search-worker.cjs`(1,276,581)与 `acp-mcp-bridge.cjs`(748,877)不再出。剩下的大头是第三方库(undici、MCP server / client SDK、zod、yaml)与下面那几条离线命令拖进来的后端模块(provider / plugin / toolkit / session 各两三百 KB)。CLI 包仍带的后端代码:
+`store` 备份 / 校验 / 锁(`@onething/backend/storage`,`gate:store-backup` 守着,有意不经后端)、`trace`(会话账本的离线读)、
+`plugin`(npm 账本)、`onething mcp` 用的资源纯函数与日志门面 —— 所以 CLI **不是**纯客户端,它是「对后端是纯客户端、对盘上的
+离线维护命令仍直接读盘」。
+
+**没做 / 留账**
+
+- `transport: 'ipc'` / `DESKTOP_RPC_CONTEXT`(245 处缺省参数)与 `desktop-embedded` 档仍在(D333)。
+- 装好的 onething.app 那条拉起路(D12 (a)):本机 `/Applications` 里没有装好的 app。用 `ONETHING_CLI_APP_PATH` 指 `release/mac-arm64/onething.app`(10-07 跑 `gate:packaged` 时打的、本批之前的代码)在临时 store 上手跑过一次 `backend start` + `session list`:那份包的 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 起得来 `app.asar.unpacked` 里的 `backend.cjs`、CLI 连得上;因为那份包的后端还不认 `cli` 档,发现文件写的是 owner `server`(按本批代码重打包之后才会是 `backend` + `launcher: 'cli'`)。没写进门。
+- 仓里还有约四十处注释用「CLI daemon / CLI 守护进程」指一类宿主形状(无窗口、headless 工具档),本批只改了直接指向已删代码的那几处。
+- `onething chat` 的交互回路(REPL)没有门,只有方法表的单测与 `ask` 的真机门覆盖到它用的那几条方法。
+
+**验收**(改前 `s50-before/`、改后 `s50-after/`,同一台机器 10-07):三套 tsc 绿;十三道结构门绿(`entry:gate` 基线手改两行,见 D335);
+`gate:cli-http` 27/27;`gate:backend-process`(两个运行时 + 监督那一半 + CLI 档对照)绿;`gate:client`、`gate:store-backup`、`gate:acp`、
+`gate:web-shell`、`gate:credentials` 绿;`build:cli` 出产物;全量 vitest 失败集合不新增(根 32 → 30:没有新增,批前就红的两条这次过了 —— 都是真进程计时类;`host-process.test.ts`
+里起守护进程的两条用例改写成起 `cli` 档后端;壳 1 → 1)。反证:把 `principalOf` 的降级一行删掉,`gate:cli-http` 红在审计账那一条。
+

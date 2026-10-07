@@ -95,8 +95,6 @@
     "./goal/goal-file-change-collector": "./goal/goal-file-change-collector.ts",
     "./goal/goal-manager": "./goal/goal-manager.ts",
     "./goal/goal-kick": "./goal/goal-kick.ts",
-    "./headless": "./headless/headless.ts",
-    "./headless/headless-backend": "./headless/headless-backend.ts",
     "./http": "./http/http.ts",
     "./interaction/interaction-ipc-operations": "./interaction/interaction-ipc-operations.ts",
     "./interaction": "./interaction/interaction.ts",

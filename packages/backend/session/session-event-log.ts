@@ -1014,8 +1014,7 @@ export async function flushAllSessionEventLogs(
  * 记上几笔 `appendFailures`(队列尾巴上那几条正是最容易失败的),统计表必须
  * 排在它之后落盘,否则门读到的是少一截的账。
  *
- * 三条关停链(Electron `before-quit` / `createOnethingBackend.shutdown` /
- * `HeadlessBackend.shutdown`)各调一次;不带界面的后端进程(`backend-standalone-main.ts`)的 SIGTERM 经
+ * 关停链(`createOnethingBackend.shutdown`,第④步批 3 起 CLI 守护进程那一条退役)调一次;不带界面的后端进程(`backend-standalone-main.ts`)的 SIGTERM 经
  * `serverRuntime.shutdown()` 落到同一处,因此同在那 5s 预算里。
  */
 export async function flushSessionEventLedger(

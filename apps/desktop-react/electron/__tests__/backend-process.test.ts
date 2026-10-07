@@ -30,7 +30,7 @@ afterAll(async () => { await new Promise<void>(resolve => server.close(() => res
 beforeEach(() => { store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-backend-process-')) })
 afterEach(() => { fs.rmSync(store, { recursive: true, force: true }) })
 
-function writeDiscovery(record: { pid: number; port: number; token?: string; owner?: string }): void {
+function writeDiscovery(record: { pid: number; port: number; token?: string; owner?: string; launcher?: string }): void {
   fs.mkdirSync(path.dirname(discoveryPath(store)), { recursive: true })
   fs.writeFileSync(discoveryPath(store), JSON.stringify({ host: '127.0.0.1', startedAt: 1, owner: 'backend', ...record }))
 }
@@ -310,6 +310,20 @@ describe('BackendProcess', () => {
     await backend.stop()
     // 别人的那台原样留着(发现文件也没删)。
     expect(readDiscovery(store)?.owner).toBe('server')
+  })
+
+  // 第④步批 3:CLI 拉起的那台(owner `backend` + `launcher: 'cli'`)借来照用,但不归桌面停。反证:把 `ownsBackend`
+  // 里那一格 `launcher !== 'cli'` 删掉,这一条红(桌面 Quit 会把 CLI 拉起的后端一起 SIGTERM)。
+  it('先借后拉:CLI 拉起的那台照借,但不停、不许重启', async () => {
+    const h = harness()
+    writeDiscovery({ pid: process.pid, port, token: 'cli-token', owner: 'backend', launcher: 'cli' })
+    const backend = h.make()
+    const result = await backend.start()
+    expect(result).toMatchObject({ ok: true, adopted: true, connection: { token: 'cli-token' } })
+    expect(backend.ownsBackend).toBe(false)
+    expect((await backend.restart()).ok).toBe(false)
+    await backend.stop()
+    expect(readDiscovery(store)?.launcher).toBe('cli')
   })
 
   it('借来的那台死了:删它的文件,自己拉一台,沿用它的 token', async () => {

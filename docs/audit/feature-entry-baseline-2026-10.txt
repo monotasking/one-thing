@@ -28,12 +28,11 @@
 7 auth
 7 engine
 7 note
-7 resource
+6 resource
 5 eval
 5 prompt
 5 shell
 4 external-agent
-4 headless
 4 media
 4 storage
 4 terminal

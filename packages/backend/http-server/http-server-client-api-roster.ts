@@ -38,6 +38,7 @@ import { MUSIC_CLIENT_API } from '../music/music-client-api.js'
 import { TOOLS_CLIENT_API } from '../tool/tool-client-api.js'
 import { LOGS_CLIENT_API } from '../logging/logging-client-api.js'
 import { MEMORY_CLIENT_API } from '../memory/memory-client-api.js'
+import { BACKEND_CLIENT_API } from '../lifecycle/lifecycle-client-api.js'
 import { MARKDOWN_CLIENT_API } from '../markdown/markdown-client-api.js'
 import { MCP_CLIENT_API } from '../mcp/mcp-client-api.js'
 import { MEDIA_CLIENT_API } from '../media/media-client-api.js'
@@ -82,6 +83,9 @@ export const CLIENT_API_ROSTER: readonly (ClientApiRow | FeatureDefinition)[] = 
   LOGS_CLIENT_API,
   // 内存报告与手动释放缓存。
   MEMORY_CLIENT_API,
+  // 第④步批 3:后端进程自己的生命周期(`onething backend stop` 停 CLI 拉起的那台)。与内存那一行同性质 ——
+  // 进程内务、只给本机可信的来访者,不依赖任何别的域,所以紧跟在它后面。
+  BACKEND_CLIENT_API,
   USAGE_CLIENT_API,
   PROMPTS_CLIENT_API,
   GOAL_CLIENT_API,

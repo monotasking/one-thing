@@ -53,3 +53,34 @@ export function markHostUnattended(label = 'headless'): () => void {
 export function isHostUnattended(): boolean {
   return unattendedHosts.size > 0
 }
+
+/**
+ * 「卡没人答,多久按拒绝收场」—— 宿主自己声明的那一条(第④步批 3,决策 D7)。
+ *
+ * 它补的是 CLI 守护进程退役之后留下的那一格:从前 `HeadlessBackend` 在每一条 `chat.ask` 的活流上挂一只 60 秒
+ * 计时器,命令行里的人 60 秒没答,卡就按拒绝收场 —— 那是**进程级**的事实(这台进程上只有一个终端在答卡,而且
+ * 可能已经走开了),不是某一个主体的事。CLI 改走 HTTP 之后,CLI 自己拉起的那台后端(`ONETHING_BACKEND_LAUNCHER=cli`)
+ * 由档案声明这一句;桌面拉起的那台不声明(有窗口答卡,照旧一直等)。
+ *
+ * 与上面那半的分工:`markHostUnattended` 只管 `system` 主体(没有人能答那张卡,60 秒后自动拒),**本机用户的卡
+ * 照旧等**(`permission-enforcement-unattended-host.test.ts` 那一条是有意的);这一半管的是「有人可能答、但不保证
+ * 一直守着」—— 任何主体的卡,到点都按拒绝收场。两者都是宿主装配时自己说一句、谁说谁收回。
+ *
+ * 同一进程里声明过多次时取最短的那个期限(测试里可能先后有两台后端)。
+ */
+const unansweredAskDeadlines = new Map<symbol, number>()
+
+/** 这台宿主上的卡最多等 `timeoutMs` 毫秒,没人答就按拒绝收场。返回收回这次声明的函数。 */
+export function declareUnansweredAskDeadline(timeoutMs: number, label = 'host'): () => void {
+  const token = Symbol(label)
+  unansweredAskDeadlines.set(token, timeoutMs)
+  return () => {
+    unansweredAskDeadlines.delete(token)
+  }
+}
+
+/** 声明过的期限(毫秒);没有声明 = `undefined`(一直等)。 */
+export function unansweredAskDeadlineMs(): number | undefined {
+  if (unansweredAskDeadlines.size === 0) return undefined
+  return Math.min(...unansweredAskDeadlines.values())
+}

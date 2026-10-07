@@ -15,32 +15,34 @@
  * 反面写法是在这里按 scheme 写一张工具表(`session_rename` / `dir_reveal` …),
  * 那就是把「加功能不许改骨架」当场作废。
  *
- * ## 它只认识 daemon 的四支,不直连 backend
+ * ## 它只认识后端的四支资源方法,不直连内核
  *
- * 桥走的是 `<store>/run/daemon.sock` 上的 `resource.{list,describe,read,do}` ——
- * **外面的 agent 拿不到任何一件 daemon 自己没有的能力**。从 `@onething/*` 静态拉
+ * 桥走的是 HTTP 上的 `resources.{list,describe,read,do}`(第④步批 3 之前是守护进程的 unix socket;
+ * 方法表见 `backend-requests.ts`)—— **外面的 agent 拿不到任何一件那台后端开给客户端之外的能力**。从 `@onething/*` 静态拉
  * 进来的只有纯函数(`toolInputSchemaOf` / `toolDescriptionOf` / 还原函数 / 元工具
  * 自述)与日志门面,它们不碰引擎状态。
  *
  * ## 主体:`system:mcp:<clientName>`
  *
- * K4-b 把 daemon 的主体一律铸成 `localUserPrincipal()`,理由是「能连上 0600 的
- * socket 就已经是这台机器上的那个人」。**这条理由到 MCP 这里断了**:连 socket 的
- * 仍然是这台机器上的人,但**下指令的是外面那个 agent**。所以桥在 `initialize`
- * 之后拿 `clientInfo.name`,把每一次调用铸成 `{ kind:'system', component:
- * 'mcp:<name>' }` 递给 daemon;daemon 只收 `system` 这一支(见 `daemon-server.ts`
- * 的 `readOptionalSystemPrincipal`),`user` / `agent` 一律当场拒 —— 一个能自称
- * 「我是本机用户」的出口,等于把 K3-a' 那条「效果按主体定」的分档一次废掉。
+ * 本机信任的 HTTP 来访者缺省被铸成 `localUserPrincipal()`,理由是「拿得到 0600 发现文件里的 token 就已经是
+ * 这台机器上的那个人」。**这条理由到 MCP 这里断了**:连进来的仍然是这台机器上的人,但**下指令的是外面那个
+ * agent**。所以桥在 `initialize` 之后拿 `clientInfo.name`,把每一次调用铸成 `{ kind:'system', component:
+ * 'mcp:<name>' }`;走 HTTP 时它坐在请求头 `X-Onething-Acting-System` 上,由后端在鉴权之后铸成主体 ——
+ * **只能降成 `system`,造不出 `user` / `agent`**(`packages/backend/http-server/http-server-principal.ts`)。
+ * 一个能自称「我是本机用户」的出口,等于把 K3-a' 那条「效果按主体定」的分档一次废掉。
  *
- * 后果是诚实的:`session` 的 `removeMessage` 对非用户主体顶格 `session_destructive`
- * (policy `ask`),而这条桥后面**没有人能答那张卡**。见下面 `DO_TIMEOUT_MS`。
+ * 后果是诚实的:`session` 的 `removeMessage` 对非用户主体顶格 `session_destructive`(policy `ask`)。
+ * CLI 自己拉起的后端上没有人能答那张卡;依附桌面的后端时卡出现在桌面窗口里。见下面 `DO_TIMEOUT_MS`。
+ *
+ * 第④步批 3 起回执经过 HTTP 的出门脱敏(`payloadLeavesProcess`):从前守护进程直连内核时没有这一步,桥现在
+ * 看到的与浏览器壳看到的是同一份 —— 这是对的,外面的 agent 本来就不该拿到比界面更多的东西。
  *
  * ## stdout 是协议信道,一个字都不许多
  *
  * MCP stdio 的约定:stdout 只走 JSON-RPC 帧,排障一律 stderr。所以这只子命令里
  * **`stdout()` 是禁用的**(整个文件没有一处),日志走 `getLogger` + 一只把记录写到
- * stderr 的 sink。刻意**不调 `configureLogging`**:它会落盘(要么与 daemon 抢同一个
- * `daemon.jsonl`,要么在 `log/` 里长出一个 janitor 不认识的新家族)、会装 janitor,
+ * stderr 的 sink。刻意**不调 `configureLogging`**:它会落盘(要么与后端抢同一个
+ * `app.jsonl`,要么在 `log/` 里长出一个 janitor 不认识的新家族)、会装 janitor,
  * 而它默认打开的 `LegacyConsoleSink` patch 的正是 `process.stdout.write` —— 那会把
  * **每一帧协议字节**当成一条 `ns='console'` 记录抄一遍。
  */
@@ -64,7 +66,7 @@ import type {
   ResourceReadView,
   SerializedResourceSpec,
 } from '@shared/ipc/resources.js'
-import type { DaemonResourcePrincipal } from '@shared/cli/protocol.js'
+import type { ResourceCallPrincipal } from './cli-protocol.js'
 import {
   formatOutcomeView,
   formatReadView,
@@ -85,35 +87,34 @@ export const MCP_SERVER_VERSION = '1.1.7'
 /**
  * 一次 `do` 等多久才认输。
  *
- * 60 秒不是新拍的数,是 `HeadlessBackend.startPermissionTimeout` 那条既有降级的
- * 同一个数:守护进程里一张没人答的权限卡,60 秒之后自动拒。差别在于那条降级只
- * 装在 `chat.ask` 的活流上,资源调用没有流,于是这条桥自己数这 60 秒 —— 但它
+ * 60 秒不是新拍的数,是 CLI 拉起的后端答卡期限(`backend-launcher.ts` 的 `CLI_UNANSWERED_ASK_REJECT_MS`,
+ * 从前是守护进程 `startPermissionTimeout` 那条降级)的同一个数。这条桥自己数这 60 秒 —— 但它
  * **只能停止等待,答不了那张卡**(答卡是 `Permission.respond`,那是 core 的事,
- * 不是一条 CLI 桥该伸手的地方)。
+ * 不是一条 CLI 桥该伸手的地方)。第④步批 3 改走 HTTP 之后判据不变。
  *
- * **K4-d 之后这一格是双保险,不再是唯一的止损**(那条留账已还):守护进程装配时
- * 声明自己无人值守(`markHostUnattended`),于是 `system` 主体的 ask 由
- * `packages/backend/permission/permission-enforcement.ts` 的 `unattendedHostBridge`
+ * **这一格是双保险,不是唯一的止损**:CLI 拉起的那台后端装配时声明自己无人值守(`markHostUnattended`),
+ * 于是 `system` 主体的 ask 由 `packages/backend/permission/permission-enforcement.ts` 的 `unattendedHostBridge`
  * 在同样的 60 秒后经 `Permission.respond` **真的答掉**。两个 60 秒谁先跑赢由调度
  * 决定,而两种次序的结局都是对的:
- *  - 桥先超时 → 它回一句「需要审批,无人应答」,daemon 那边稍后把卡答掉,不留 pending;
+ *  - 桥先超时 → 它回一句「需要审批,无人应答」,后端那边稍后把卡答掉,不留 pending;
  *  - 那边先答掉 → 这条 `do` 收到的是一个正常的 `denied` 结局,桥的计时器空转后清掉。
  * 桥这一格因此只解决「不无限等」,而「卡不留下」归被调用的那一侧 —— 判据放在
- * 被调方的同一条纪律(见 `readOptionalSystemPrincipal`)。
+ * 被调方的同一条纪律(见 `http-server-principal.ts`)。依附桌面的后端时没有这层兜底:卡在桌面窗口里等人答,
+ * 桥照旧 60 秒后不再等。
  */
 export const DO_TIMEOUT_MS = 60_000
 
 /** 超时那一支给外面 agent 的话。说清「为什么」,而不只是「超时了」。 */
 const APPROVAL_UNAVAILABLE =
-  'This action needs approval and nothing on this bridge can answer the prompt '
-  + '(the daemon is headless — there is no window). Ask the person at the machine to run it, '
+  'This action needs approval and nothing on this bridge can answer the prompt. '
+  + 'If the onething app is open, the prompt is waiting in its window; otherwise ask the person at the machine to run it, '
   + 'or use an action that needs no approval.'
 
 /** 每只资源工具描述末尾那一句。带效果的自述才印 —— 没有效果就没有卡。 */
 const APPROVAL_NOTE = `Note: actions listed with effects may need approval. ${APPROVAL_UNAVAILABLE}`
 
-/** 这只文件用得到的那一格 daemon 客户端。窄到只剩 `request`,好让测试喂替身。 */
-export interface McpDaemonClient {
+/** 这只文件用得到的那一格后端客户端(`backend-requests.ts` 的方法表)。窄到只剩 `request`,好让测试喂替身。 */
+export interface McpBackendClient {
   request<TData = unknown>(method: never, params?: unknown): Promise<TData>
 }
 
@@ -121,10 +122,10 @@ export interface McpDaemonClient {
  * `clientInfo.name` → 主体。
  *
  * 客户端可以自称任何名字,所以这个字符串**不是身份证明**,它是审计上的一行落款
- * (`system:mcp:claude-code`)。真正的闸是「只能是 system 这一支」,那一条由 daemon
+ * (`system:mcp:claude-code`)。真正的闸是「只能是 system 这一支」,那一条由后端
  * 判、不由这里判 —— 判据放在被调用的那一侧,才挡得住一个改过的桥。
  */
-export function mcpPrincipalOf(clientName: string | undefined): DaemonResourcePrincipal {
+export function mcpPrincipalOf(clientName: string | undefined): ResourceCallPrincipal {
   const name = clientName?.trim()
   return { kind: 'system', component: `mcp:${name && name.length > 0 ? name : 'unknown'}` }
 }
@@ -198,13 +199,13 @@ export function resourceToolListing(serialized: SerializedResourceSpec): McpTool
  * 现算一次工具表。
  *
  * **每次 `tools/list` 都重算**,而不是启动时算一次再靠
- * `notifications/tools/list_changed` 通知变化 —— 因为 daemon 今天**没有资源事件的
- * 订阅口**:`DaemonClient.request` 的 `onEvent` 是绑在一次请求上的流事件
- * (`chat.ask` 用它推 token),方法表里没有 `resource.watch` 那样的长订阅。现算是
+ * `notifications/tools/list_changed` 通知变化 —— 因为方法表今天**没有资源事件的
+ * 订阅口**:`request` 的 `onEvent` 是绑在一轮对话上的流事件
+ * (`chat.ask` 用它推 token),没有 `resource.watch` 那样的长订阅。现算是
  * 诚实的次优解:会重新 list 的客户端总能看到最新的表,把表缓存住不再问的客户端
  * 看不到 —— 这一条写进了留账。
  */
-export async function listResourceTools(client: McpDaemonClient): Promise<McpToolListing[]> {
+export async function listResourceTools(client: McpBackendClient): Promise<McpToolListing[]> {
   const request = <T>(method: string, params?: unknown): Promise<T> =>
     client.request<T>(method as never, params)
   const listed = await request<ListResourcesResponse>('resource.list')
@@ -238,7 +239,7 @@ function restParams(input: Record<string, unknown>, discriminator: string): Reco
 
 /** `{list:true}` / `{describe:'<scheme>'}` —— 与本机元工具同一种调用形状。 */
 async function callMetaTool(
-  client: McpDaemonClient,
+  client: McpBackendClient,
   input: Record<string, unknown>,
 ): Promise<McpToolResult> {
   const request = <T>(method: string, params?: unknown): Promise<T> =>
@@ -256,7 +257,7 @@ async function callMetaTool(
 }
 
 /**
- * 一次 `do` 的等待上限。超时**不取消**那次调用(daemon 那边照旧在跑 / 照旧挂在卡上),
+ * 一次 `do` 的等待上限。超时**不取消**那次调用(后端那边照旧在跑 / 照旧挂在卡上),
  * 只是不再等它 —— 见 `DO_TIMEOUT_MS`。
  */
 const TIMED_OUT = Symbol('timed-out')
@@ -284,10 +285,10 @@ async function withDoTimeout<T>(pending: Promise<T>, timeoutMs: number): Promise
  * 这里只是把它们摆进 MCP 的那一格。
  */
 export async function callResourceTool(
-  client: McpDaemonClient,
+  client: McpBackendClient,
   toolName: string,
   rawInput: unknown,
-  principal: DaemonResourcePrincipal,
+  principal: ResourceCallPrincipal,
   timeoutMs: number = DO_TIMEOUT_MS,
 ): Promise<McpToolResult> {
   const input: Record<string, unknown> =
@@ -311,7 +312,7 @@ export async function callResourceTool(
 
     /*
      * `ref` 在这条路上是**必填**,尽管 schema 说它可以省(省掉 = 对命名空间本身
-     * 说话)。原因不在这里:daemon 的 `resource.read` / `resource.do` 收的是一个
+     * 说话)。原因不在这里:`resources.read` / `resources.do` 收的是一个
      * 字符串地址,而 `parseRef` 不接受空 path(`session:` 解析成 `null`)—— 也就是
      * 「对命名空间本身说话」今天只有 AI 工具那条路表达得出来。桥不发明一种地址,
      * 它把这件事说清楚。留账里有这一条。
@@ -386,7 +387,7 @@ export interface CreateResourceMcpServerOptions {
  * 发不出来的 `list_changed` 去补 —— 那是拿一个 API 的方便换一句谎。
  */
 export function createResourceMcpServer(
-  client: McpDaemonClient,
+  client: McpBackendClient,
   options: CreateResourceMcpServerOptions,
 ): McpServerLike {
   const { server } = options
@@ -447,7 +448,7 @@ export interface McpCommandOptions {
  * 都替这条命令买单。动态 import 在 esbuild 的单文件 cjs 里仍然内联在同一份产物中,
  * 推迟的是**求值**不是下载 —— 这正是我们要的那一半。
  */
-export async function mcpCommand(options: McpCommandOptions, client: McpDaemonClient): Promise<void> {
+export async function mcpCommand(options: McpCommandOptions, client: McpBackendClient): Promise<void> {
   installStderrLogSink()
   const log = getLogger('cli.mcp')
 

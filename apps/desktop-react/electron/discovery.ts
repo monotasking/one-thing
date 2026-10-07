@@ -24,6 +24,8 @@ export interface HttpDiscoveryRecord {
   pid: number
   startedAt: number
   owner: HttpDiscoveryOwner
+  /** 谁拉起了这台(第④步批 3;`desktop` / `cli`,缺席 = 没说)。桌面不停 CLI 拉起的那台。 */
+  launcher?: 'desktop' | 'cli'
 }
 
 /**
@@ -56,6 +58,7 @@ export function readDiscovery(storeRoot: string): HttpDiscoveryRecord | undefine
       pid: record.pid,
       startedAt: typeof record.startedAt === 'number' ? record.startedAt : 0,
       owner: record.owner,
+      ...(record.launcher === 'desktop' || record.launcher === 'cli' ? { launcher: record.launcher } : {}),
     }
   } catch {
     return undefined

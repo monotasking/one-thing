@@ -15,7 +15,7 @@ import type { JsonObject } from '@shared/json'
 import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/backend/event'
 import { dispatchRpc } from './http-server-dispatch-table.js'
-import { RPC_ERROR_CODES, SHELL_ID_HEADER, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
+import { ACTING_SYSTEM_HEADER, RPC_ERROR_CODES, SHELL_ID_HEADER, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
 import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './http-server-rpc-context.js'
 import type { RpcDispatchPorts } from './http-server-dispatch-table.js'
 import { getLogger } from '@onething/backend/logging'
@@ -118,7 +118,7 @@ export function createOnethingServerRequestHandler(
       runtime: options.runtime,
       corsOrigin,
       requestContext,
-      rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext, response, readHeader(request, SHELL_ID_HEADER)),
+      rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext, response, readHeader(request, SHELL_ID_HEADER), readHeader(request, ACTING_SYSTEM_HEADER)),
       rpcPorts: createServerRpcDispatchPorts(options.runtime.files),
     })
     void (options.runRequest ? options.runRequest(executeRequest) : executeRequest()).catch(error => {
@@ -726,6 +726,6 @@ function corsHeaders(origin?: string): Record<string, string> {
     // 源是按请求回显的,任何缓存层都不许拿一个源的回答喂另一个源。
     vary: 'origin',
     'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
-    'access-control-allow-headers': `authorization,content-type,x-onething-user-id,x-onething-workspace-id,${SHELL_ID_HEADER}`,
+    'access-control-allow-headers': `authorization,content-type,x-onething-user-id,x-onething-workspace-id,${SHELL_ID_HEADER},${ACTING_SYSTEM_HEADER}`,
   }
 }

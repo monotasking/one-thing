@@ -34,7 +34,8 @@
  *  · **停止 = SIGTERM 一次 → 等(后端自己的 5 秒刷盘期限 + 2 秒)→ 还没退就 SIGKILL 并记日志**。只发一次
  *    SIGTERM:后端对第二个信号是「立刻硬退」,那会把正在落盘的会话截断。
  *  · **只停自己的**。自己拉起的,以及借来的但 owner 是 `backend`(上一次桌面拉起、开着「继续运行」留下的)才停;
- *    owner 是 `server` 的是别人的 `server:start`,不归这里管 —— 不停、也不许「重启」。
+ *    owner 是 `server` 的是别人的 `server:start`,不归这里管 —— 不停、也不许「重启」。owner `backend` 但记录上写着
+ *    `launcher: 'cli'` 的是 CLI 自己拉起的那台(第④步批 3):同样只借不停,由 `onething backend stop` 去停。
  *  · **崩溃之后删发现文件只删 pid 对得上的那一份**(死人删不掉自己的文件;已经被新实例重写的不碰)。
  *
  * 零 electron import:二进制路径、入口路径(打包态由 `main.ts` 换成 `app.asar.unpacked` 下的真路径)、环境、
@@ -193,7 +194,8 @@ export class BackendProcess {
   /** 这一台归不归这里停 / 重启(见文件头「只停自己的」)。 */
   get ownsBackend(): boolean {
     if (this.child) return true
-    return this.record?.owner === 'backend'
+    // CLI 拉起的那台(`launcher: 'cli'`)借来照用,但不归桌面停 —— 它的拉起者是那条命令(第④步批 3)。
+    return this.record?.owner === 'backend' && this.record.launcher !== 'cli'
   }
 
   /**

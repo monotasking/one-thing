@@ -9,12 +9,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   backendLaunchProfile,
+  CLI_UNANSWERED_ASK_REJECT_MS,
+  declareLaunchAttendance,
   launchHostPorts,
   prepareProcessEnv,
   readBackendLauncher,
   startLaunchServices,
 } from '../backend-launcher.js'
 import type { OnethingBackend } from '../backend.js'
+import { isHostUnattended, unansweredAskDeadlineMs } from '../permission/permission-unattended.js'
 
 describe('readBackendLauncher', () => {
   it('reads unset and empty as the default launcher', () => {
@@ -50,9 +53,9 @@ describe('backendLaunchProfile', () => {
     expect(backendLaunchProfile(undefined, { ONETHING_SERVER_TOOLS: 'readonly' }).assembly.toolRegistry).toBe('readonly')
   })
 
-  it('treats none and (until batch 3) cli as the default launcher', () => {
+  it('treats none as the default launcher', () => {
     const { launcher: _unset, ...unset } = backendLaunchProfile(undefined, {})
-    for (const launcher of ['none', 'cli'] as const) {
+    for (const launcher of ['none'] as const) {
       const { launcher: named, ...rest } = backendLaunchProfile(launcher, {})
       expect(named).toBe(launcher)
       expect(rest).toEqual(unset)
@@ -68,6 +71,44 @@ describe('backendLaunchProfile', () => {
     expect(typeof profile.mcpClientFactory).toBe('function')
     expect([profile.loginShellEnv, profile.speechOutput, profile.userSchedulerTasks, profile.music, profile.modelRegistryRefresh])
       .toEqual([true, true, true, true, true])
+  })
+})
+
+/*
+ * 第④步批 3(决策 D7):`cli` 档 = 从前 CLI 守护进程(`HeadlessBackend`)那一份。三样它独有的东西成了这一档的参数:
+ * `headless` 工具档、宣告无人值守、交互卡 60 秒没人答就拒。反证:把档案里 `unattendedHost` 改成 false,
+ * 下面 `declareLaunchAttendance` 那一条红。
+ */
+describe('the cli launcher', () => {
+  it('assembles what the CLI daemon assembled and writes owner backend + launcher cli', () => {
+    const profile = backendLaunchProfile('cli', {})
+    expect(profile.assembly).toEqual({ toolRegistry: 'headless', collab: true, sessionSkills: true, pets: false })
+    expect(profile.discoveryOwner).toBe('backend')
+    expect(profile.discoveryLauncher).toBe('cli')
+    expect(profile.logging).toEqual({ fileBaseName: 'app', src: 'server', consoleEcho: false })
+    expect(profile.acpUnanswered).toBe('reject')
+    expect(typeof profile.mcpClientFactory).toBe('function')
+    expect([profile.unattendedHost, profile.unansweredAskRejectMs]).toEqual([true, CLI_UNANSWERED_ASK_REJECT_MS])
+    expect([profile.loginShellEnv, profile.speechOutput, profile.userSchedulerTasks, profile.music, profile.modelRegistryRefresh])
+      .toEqual([false, false, false, false, false])
+  })
+
+  it('declares an unattended host with a 60s answer deadline, and takes both back', () => {
+    expect([isHostUnattended(), unansweredAskDeadlineMs()]).toEqual([false, undefined])
+    const release = declareLaunchAttendance(backendLaunchProfile('cli', {}))
+    expect([isHostUnattended(), unansweredAskDeadlineMs()]).toEqual([true, 60_000])
+    release()
+    expect([isHostUnattended(), unansweredAskDeadlineMs()]).toEqual([false, undefined])
+  })
+
+  it('declares nothing on the desktop and default launchers (a window answers the cards)', () => {
+    for (const launcher of ['desktop', undefined] as const) {
+      const release = declareLaunchAttendance(backendLaunchProfile(launcher, {}))
+      expect([isHostUnattended(), unansweredAskDeadlineMs()]).toEqual([false, undefined])
+      release()
+    }
+    expect(backendLaunchProfile('desktop', {}).discoveryLauncher).toBe('desktop')
+    expect(backendLaunchProfile(undefined, {}).discoveryLauncher).toBeUndefined()
   })
 })
 

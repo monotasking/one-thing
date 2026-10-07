@@ -1,7 +1,7 @@
 import * as PermissionGrants from './permission-grant-storage.js'
 import type { PermissionBridge } from './permission-asks.js'
 import { Permission } from './permission-with-grant-storage.js'
-import { isHostUnattended, isSessionUnattended } from './permission-unattended.js'
+import { isHostUnattended, isSessionUnattended, unansweredAskDeadlineMs } from './permission-unattended.js'
 import {
   createOnethingPermissionRuntime,
 } from './permission-runtime.js'
@@ -142,17 +142,17 @@ const timeoutAskBridge = createAutoDenyBridge(
  *
  * ## 它补的是哪个洞
  *
- * `HeadlessBackend.startPermissionTimeout` 那条既有的 60 秒降级**接在 `chat.ask` 的
- * 活流上** —— 有流才有那只计时器。经 daemon / `onething mcp` 桥进来的资源 `do`
+ * (第④步批 3 之前)CLI 守护进程那条 60 秒降级**接在 `chat.ask` 的
+ * 活流上** —— 有流才有那只计时器。经 `onething mcp` 桥进来的资源 `do`
  * 没有流:它不是任何一条会话的回合,`isUnattendedTurn` / `isSystemDrivenTurn` 都
  * 判不到它(那两位读的是「最后一条用户消息的 origin」,而这里根本没有那条消息),
- * 于是一张需要审批的卡在守护进程里**永远** pending —— 这正是 K4-c 的留账 1。
+ * 于是一张需要审批的卡在无人值守的进程里**永远** pending —— 这正是 K4-c 的留账 1。
  *
  * 判据两条,都是既有事实,不新发明身份:
- *  - `principal.kind === 'system'` —— 发起的不是这台机器前面那个人(daemon 的
- *    `readOptionalSystemPrincipal` 只放行 `system` 一支,所以桥进来的一律是它);
+ *  - `principal.kind === 'system'` —— 发起的不是这台机器前面那个人(桥经请求头
+ *    `X-Onething-Acting-System` 把主体降成 `system`,见 `http-server/http-server-principal.ts`);
  *  - `isHostUnattended()` —— **宿主装配时自己声明**过这台进程上没人能答卡
- *    (今天只有 `HeadlessBackend` 说这句话)。桌面壳不说,所以它照旧弹卡给人答;
+ *    (今天只有 CLI 拉起的后端 —— `ONETHING_BACKEND_LAUNCHER=cli` 那一档 —— 说这句话)。桌面不说,所以它照旧弹卡给人答;
  *    为什么不拿宿主能力 / `isHostLocallyTrusted()` 反推,理由写在
  *    `permission/permission-unattended.ts` 那半的头注上。
  *
@@ -239,7 +239,20 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
   if (isUnattendedHostSystemCall(input.principal)) {
     return permissionRuntime().enforce({ ...enriched, permissionBridge: unattendedHostBridge })
   }
+  // 宿主声明过「卡最多等这么久」(第④步批 3:CLI 拉起的那台后端,60 秒):到点按拒绝收场,任何主体都一样。
+  const deadlineMs = unansweredAskDeadlineMs()
+  if (deadlineMs !== undefined) {
+    return permissionRuntime().enforce({ ...enriched, permissionBridge: hostDeadlineBridge(deadlineMs) })
+  }
   return permissionRuntime().enforce(enriched)
+}
+
+/** 宿主期限那一类桥:计时 / 找卡 / 答卡与另外两位同一只工厂,只差期限与措辞。 */
+function hostDeadlineBridge(timeoutMs: number): PermissionBridge {
+  return createAutoDenyBridge(
+    timeoutMs,
+    request => `nobody answered this permission prompt within ${timeoutMs / 1000}s, so "${request.title}" was auto-denied. Run the step again and answer the prompt, or use an action that needs no approval.`,
+  )
 }
 
 /**

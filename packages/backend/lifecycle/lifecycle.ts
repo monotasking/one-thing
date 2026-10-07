@@ -4,6 +4,9 @@
  * 阶段表、`own()` 登记与死线仍然住在装配层(`packages/backend/lifecycle.ts`)——
  * 那是**这个进程**的关机链。这里只放被反复手抄的那两类状态机(入场闸)与它们
  * 共用的那一个形状(`Quiescible`),于是 core / runtime / backend 三层说的是同一个词。
+ *
+ * 第④步批 3 起多一类:「请这个进程退出」的那一格(`lifecycle-process-shutdown.ts`)。独立后端进程的入口
+ * 登记自己的收尾函数,`backend.shutdown` 这条 RPC(第二入口 `lifecycle-client-api.ts`)只问这一格。
  */
 export {
   AdmissionGate,
@@ -11,6 +14,15 @@ export {
   type AdmissionRejection,
   type KeyedWork,
 } from './lifecycle-admission-gate.js'
+
+// ── 进程收尾的那一格 ──────────────────────────────────────────────────────
+export {
+  canRequestProcessShutdown,
+  configureProcessShutdownRequest,
+  requestProcessShutdown,
+  resetProcessShutdownRequest,
+  type ProcessShutdownRequester,
+} from './lifecycle-process-shutdown.js'
 
 /**
  * 一台「先停止接活,再等在途落定」的子系统。

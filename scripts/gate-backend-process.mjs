@@ -363,6 +363,51 @@ async function runDefaultContrast() {
   }
 }
 
+/**
+ * CLI 档对照(第④步批 3,决策 D7):`ONETHING_BACKEND_LAUNCHER=cli` 就是从前 CLI 守护进程那一份 —— 发现文件 owner
+ * `backend` 且 `launcher: 'cli'`(桌面借它不停它)、MCP 真连(守护进程从前就是真连的)、用户定时任务不进调度器、
+ * 日志进 `app.jsonl`;再证 `backend.shutdown` 这条 RPC(`onething backend stop` 用的就是它)与 SIGTERM 同一条收尾路:
+ * 应答之后进程在期限内退出、发现文件删掉。
+ */
+async function runCliContrast() {
+  const label = '[node CLI 档]'
+  process.stdout.write(`\n${label} 对照:ONETHING_BACKEND_LAUNCHER=cli\n`)
+  const store = mkdtempSync(join(tmpdir(), 'onething-gate-backend-process-cli-'))
+  let run
+  try {
+    seedStore(store)
+    run = startBackend('node', store, 'cli')
+    const { record } = await waitAlive(store, run)
+    if (!record) {
+      check(false, `${label} 起来了`, run.out.stderr.slice(-1500))
+      return
+    }
+    check(record.owner === 'backend' && record.launcher === 'cli' && record.pid === run.child.pid,
+      `${label} 发现文件 owner === 'backend'、launcher === 'cli'、pid 是这个子进程`, JSON.stringify({ owner: record.owner, launcher: record.launcher }))
+    const api = client(record)
+    const mcp = await fakeServerState(api, true)
+    check(mcp?.status === 'connected', `${label} 假的 stdio MCP 真连上(与从前守护进程同口径)`, `status=${mcp?.status} error=${mcp?.error ?? ''}`)
+    const tasks = await api.rpc('scheduler', 'list')
+    check(!(tasks?.tasks ?? []).some(task => task?.id === SEEDED_TASK_ID), `${label} 用户定时任务不进调度器(守护进程从前也不起)`)
+    await checkSecondServerYields(store, 'backend', label)
+    const answer = await api.rpc('backend', 'shutdown', {})
+    const shutdownAt = performance.now()
+    check(answer?.accepted === true && answer?.pid === run.child.pid, `${label} backend.shutdown 收下了`, JSON.stringify(answer))
+    const outcome = await Promise.race([run.exited, sleep(EXIT_BUDGET_MS).then(() => undefined)])
+    check(Boolean(outcome) && outcome.code === 0 && outcome.at - shutdownAt <= EXIT_BUDGET_MS,
+      `${label} 经 backend.shutdown 在 ${EXIT_BUDGET_MS / 1000} 秒内退出码 0`, outcome ? `code=${outcome.code}` : '没退')
+    check(!existsSync(join(store, 'run', 'http.json')), `${label} 退出后发现文件已删`)
+    const records = logRecords(store, 'app')
+    check(records.some(r => r.msg === 'runtime created' && r.fields?.launcher === 'cli') && !existsSync(join(store, 'log', 'server.jsonl')),
+      `${label} 日志进 app.jsonl,记着档位 cli`)
+  } catch (error) {
+    check(false, `${label} 跑完`, error instanceof Error ? error.stack ?? error.message : String(error))
+  } finally {
+    if (run && run.child.exitCode === null && run.child.signalCode === null) run.child.kill('SIGKILL')
+    rmSync(store, { recursive: true, force: true })
+  }
+}
+
 async function runTiming(n) {
   process.stdout.write(`\n[timing] Electron + ELECTRON_RUN_AS_NODE=1,桌面档,同一个 store 起 ${n + 1} 次(第一次热身,不计)\n`)
   const store = mkdtempSync(join(tmpdir(), 'onething-gate-backend-process-timing-'))
@@ -479,6 +524,7 @@ async function main() {
   try {
     for (const runtime of runtimes) await runDesktop(runtime)
     await runDefaultContrast()
+    await runCliContrast()
     if (!args.has('no-supervisor')) for (const runtime of runtimes) await runSupervisor(runtime)
     if (timingRuns > 0) await runTiming(timingRuns)
   } finally {

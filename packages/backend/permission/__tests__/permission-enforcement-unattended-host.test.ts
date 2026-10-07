@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { systemPrincipal, localUserPrincipal } from '@shared/permission/principal'
 import { Permission } from '../permission-with-grant-storage.js'
-import { markHostUnattended } from '@onething/backend/permission/permission-unattended'
+import { declareUnansweredAskDeadline, markHostUnattended } from '@onething/backend/permission/permission-unattended'
 import { enforcePermissionPolicy } from '../permission-enforcement.js'
 import type { PermissionEffect } from '../permission-enforcement.js'
 
@@ -133,6 +133,43 @@ describe('无人值守宿主 + system 主体', () => {
     await vi.advanceTimersByTimeAsync(10 * HOST_TIMEOUT_MS)
     expect(settledWith).toBe('still-pending')
 
+    const pending = Permission.getPendingPrompts(sessionId)[0]
+    Permission.respond({ sessionId, permissionId: pending.id, response: 'reject' })
+    await settled
+  })
+})
+
+/*
+ * 第④步批 3(决策 D7):CLI 拉起的那台后端声明「卡最多等 60 秒」—— 从前 `HeadlessBackend` 在每条 `chat.ask` 活流上
+ * 挂的那只计时器,换成宿主自己说的一句。反证:把 `enforcePermissionPolicy` 里那一支删掉,第一条红。
+ */
+describe('宿主声明了答卡期限(CLI 拉起的后端)', () => {
+  it('本机用户的卡到点也按拒绝收场,pending 归空', async () => {
+    const release = declareUnansweredAskDeadline(HOST_TIMEOUT_MS, 'test-cli')
+    try {
+      const sessionId = nextSessionId()
+      const settled = enforcePermissionPolicy({ ...input(undefined, sessionId), principal: localUserPrincipal() })
+        .then(() => undefined, (error: unknown) => error)
+      await vi.advanceTimersByTimeAsync(HOST_TIMEOUT_MS - 1_000)
+      expect(Permission.getPendingPrompts(sessionId)).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(2_000)
+      const error = await settled
+      expect((error as Error).name).toBe('PermissionRejectedError')
+      expect((error as Error).message).toContain('nobody answered this permission prompt')
+      expect(Permission.getPendingPrompts(sessionId)).toEqual([])
+    } finally {
+      release()
+    }
+  })
+
+  it('收回之后回到一直等', async () => {
+    declareUnansweredAskDeadline(HOST_TIMEOUT_MS, 'test-cli')()
+    const sessionId = nextSessionId()
+    let settledWith: unknown = 'still-pending'
+    const settled = enforcePermissionPolicy({ ...input(undefined, sessionId), principal: localUserPrincipal() })
+      .then(() => { settledWith = undefined }, (error: unknown) => { settledWith = error })
+    await vi.advanceTimersByTimeAsync(10 * HOST_TIMEOUT_MS)
+    expect(settledWith).toBe('still-pending')
     const pending = Permission.getPendingPrompts(sessionId)[0]
     Permission.respond({ sessionId, permissionId: pending.id, response: 'reject' })
     await settled

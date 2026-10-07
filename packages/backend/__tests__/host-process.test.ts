@@ -2,7 +2,6 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import net from 'node:net'
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +19,8 @@ const directories: string[] = []
 beforeAll(async () => {
   // Always build the actual entries from this checkout. A stale/missing bundle
   // must not turn a source regression into a skipped or falsely green test.
-  for (const script of ['scripts/build-server.mjs', 'scripts/build-cli.mjs']) {
+  // 第④步批 3:CLI 不再有守护进程,CLI 拉起的就是同一只后端进程的 `cli` 档,所以只构建 server 那份产物。
+  for (const script of ['scripts/build-server.mjs']) {
     await execute(process.execPath, [script], { cwd: root, timeout: 90_000, maxBuffer: 4 * 1024 * 1024 })
   }
 }, 180_000)
@@ -43,14 +43,13 @@ async function newStore(): Promise<string> {
   return store
 }
 
+/** `cli` = CLI 拉起的那一档(`ONETHING_BACKEND_LAUNCHER=cli`,从前的 CLI 守护进程);`server` = `server:start`。 */
 function start(kind: 'server' | 'cli', store: string): Host {
-  const args = kind === 'server'
-    ? ['dist/server/main.js']
-    : ['dist/cli/main.cjs', '--daemon-child', '--store-path', store]
-  const child = spawn(process.execPath, args, {
+  const child = spawn(process.execPath, ['dist/server/main.js'], {
     cwd: root,
     env: {
       ...process.env,
+      ...(kind === 'cli' ? { ONETHING_BACKEND_LAUNCHER: 'cli' } : {}),
       ONETHING_STORE_PATH: store,
       ONETHING_SERVER_HOST: '127.0.0.1',
       ONETHING_SERVER_PORT: '0',
@@ -120,26 +119,6 @@ async function assertSaved(store: string, sessionId: string): Promise<void> {
   expect(index.some(meta => meta.id === sessionId)).toBe(true)
 }
 
-async function cliRequest(store: string, method: string, params?: unknown): Promise<unknown> {
-  const socket = net.createConnection(path.join(store, 'run/daemon.sock'))
-  return new Promise((resolve, reject) => {
-    let buffered = ''
-    socket.setTimeout(8_000, () => socket.destroy(new Error('CLI request timed out')))
-    socket.on('error', reject)
-    socket.once('connect', () => socket.write(JSON.stringify({ id: 'host-test', method, params }) + '\n'))
-    socket.on('data', chunk => {
-      buffered += String(chunk)
-      let end: number
-      while ((end = buffered.indexOf('\n')) >= 0) {
-        const frame = JSON.parse(buffered.slice(0, end)); buffered = buffered.slice(end + 1)
-        if (frame.id !== 'host-test') continue
-        if (frame.type === 'error') { socket.destroy(); reject(new Error(JSON.stringify(frame.error))); return }
-        if (frame.type === 'result') { socket.end(); resolve(frame.data); return }
-      }
-    })
-  })
-}
-
 describe('actual host store ownership', () => {
   // 2026-08-24 ruling: only the CLI daemon takes a mutex. Every other host is
   // kept single-writer by `<store>/run/http.json` — it steps aside for a live
@@ -160,19 +139,18 @@ describe('actual host store ownership', () => {
     expect(first.exit).toBeUndefined()
   }, 45_000)
 
-  it.skipIf(process.platform === 'win32')('elects one CLI daemon per store, aliases included', async () => {
+  // 第④步批 3:从前这里证「每个 store 只选出一台 CLI 守护进程(连别名一起)」,靠的是守护进程那把锁;守护进程退役后
+  // CLI 拉起的是 `cli` 档后端,单写者靠发现文件让位(D6),别名指到同一个 store 的第二台照样让位。
+  it.skipIf(process.platform === 'win32')('a CLI-launched backend makes a second one on an alias of the same store defer', async () => {
     const store = await newStore()
-    const daemon = start('cli', store)
-    await waitFor(daemon, async () => {
-      try { return (await fs.stat(path.join(store, 'run/daemon.sock'))).isSocket() ? true : undefined }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
-    })
+    const first = start('cli', store)
+    const info = await discovery(first, store)
     const alias = path.join(path.dirname(store), 'alias')
     await fs.symlink(store, alias, 'dir')
     const competitor = start('cli', alias)
     expect((await competitor.done).code, competitor.output).not.toBe(0)
-    expect(daemon.exit).toBeUndefined()
-    expect((await fs.readdir(path.join(store, 'run'))).some(name => name.startsWith('lock-recovery-'))).toBe(false)
+    expect(first.exit).toBeUndefined()
+    expect(JSON.parse(await fs.readFile(path.join(store, 'run/http.json'), 'utf8'))).toMatchObject({ pid: info.pid, owner: 'backend', launcher: 'cli' })
   }, 45_000)
 
   it('allows independent stores to serve concurrently', async () => {
@@ -202,17 +180,18 @@ describe.skipIf(process.platform === 'win32')('actual POSIX host signals', () =>
     await expect(fs.stat(path.join(store, 'run/backend.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
   }, 40_000)
 
-  it('saves CLI state and removes its socket/PID before a Server takes over the same store', async () => {
+  // 第④步批 3:从前证的是守护进程收到 SIGTERM 时落盘并删掉 socket / pid / 锁;今天 CLI 拉起的那台是 `cli` 档后端,
+  // 证同一件事:会话落盘、发现文件删掉、不留锁,然后另一台后端接得上这个 store。
+  it('saves state from a CLI-launched backend and removes its discovery before a Server takes over the same store', async () => {
     const store = await newStore()
-    const daemon = start('cli', store)
-    await waitFor(daemon, async () => {
-      try { return (await fs.stat(path.join(store, 'run/daemon.sock'))).isSocket() ? true : undefined }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error }
-    })
-    const session = await cliRequest(store, 'session.new', { name: 'Saved by CLI' }) as { id: string }
-    await stop(daemon)
+    const cli = start('cli', store)
+    const info = await discovery(cli, store)
+    const response = await request(info, '/api/sessions', { name: 'Saved by CLI' })
+    expect(response.status).toBe(200)
+    const { session } = await response.json() as { session: { id: string } }
+    await stop(cli)
     await assertSaved(store, session.id)
-    for (const name of ['daemon.sock', 'daemon.pid', 'backend.lock']) {
+    for (const name of ['http.json', 'backend.lock']) {
       await expect(fs.stat(path.join(store, 'run', name))).rejects.toMatchObject({ code: 'ENOENT' })
     }
     const successor = start('server', store)

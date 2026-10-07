@@ -105,6 +105,7 @@
 		"gate:acp": "node scripts/gate-acp.mjs",
 		"gate:credentials": "node scripts/gate-credentials.mjs",
 		"gate:backend-process": "node scripts/gate-backend-process.mjs",
+		"gate:cli-http": "node scripts/gate-cli-http.mjs",
 		"sessions:verify:gate": "node scripts/session-verify-gate.mjs"
 	},
 	"dependencies": {

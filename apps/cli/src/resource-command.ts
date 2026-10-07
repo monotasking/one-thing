@@ -16,7 +16,7 @@
  *
  * `--json` 打的是**与 RPC 逐字相同**的那份投影(`@shared/ipc/resources.ts` 的
  * `SerializedResourceSpec` / `ResourceReadView` / `ResourceOutcomeView`),因为
- * daemon 那一侧调的就是 `resource/resource-client-api.ts` 导出的同三只 `serialize*`。
+ * 后端那一侧(`resources` 域)调的就是 `resource/resource-client-api.ts` 用的同三只 `serialize*`。
  * 缺省是给人看的表 —— 它是同一份投影的**排版**,不是第二份事实:凡是表里印出来
  * 的字,`--json` 里都找得到同一格。
  *
@@ -51,7 +51,7 @@ import type {
 } from '@shared/ipc/resources.js'
 import { stdout } from './stdout.js'
 
-/** 这个文件用得到的那一格 daemon 客户端。窄到只剩 `request`,好让测试喂替身。 */
+/** 这个文件用得到的那一格后端客户端(`backend-requests.ts` 的方法表)。窄到只剩 `request`,好让测试喂替身。 */
 export interface ResourceCommandClient {
   request<TData = unknown>(method: never, params?: unknown): Promise<TData>
 }
@@ -176,8 +176,8 @@ export const RESOURCE_COMMAND_USAGE =
 /**
  * 跑一条 `resource` 子命令。
  *
- * `client` 由调用方给(`index.ts` 传的是 `ensureDaemon` 的连接),所以这只函数
- * 自己不认识 daemon —— 它只认识四支方法与两种排版。
+ * `client` 由调用方给(`index.ts` 传的是 `connectCli` 拿到的方法表),所以这只函数
+ * 自己不认识后端怎么连 —— 它只认识四支方法与两种排版。
  *
  * 返回值是**退出码**:非 `ok` 的结局要让 `&&` 看得见(见文件头)。
  */

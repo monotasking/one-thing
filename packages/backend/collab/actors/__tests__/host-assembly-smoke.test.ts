@@ -23,9 +23,11 @@ describe('D6-a 三宿主装配冒烟', () => {
     expect(typeof backend.configureAppRuntimeAdapters).toBe('function')
   })
 
-  it('CLI daemon 的 HeadlessBackend 同样求得动值', { timeout: 60_000 }, async () => {
-    const headless = await import('@onething/backend/headless/headless-backend')
-    expect(typeof headless.HeadlessBackend).toBe('function')
+  // 第④步批 3:CLI 守护进程(`HeadlessBackend`)退役,CLI 走 HTTP、自己拉起时起的是同一只后端进程的 `cli` 档 ——
+  // 那一档的装配走的就是上面这条 `createOnethingBackend`,不再有第三张 import 图要冒烟。
+  it('CLI 档的档案求得动值(装配开关就是从前守护进程那一份)', { timeout: 60_000 }, async () => {
+    const launcher = await import('@onething/backend/backend-launcher.js')
+    expect(launcher.backendLaunchProfile('cli').assembly.toolRegistry).toBe('headless')
   })
 
   /**

@@ -68,6 +68,19 @@ export function isHttpDiscoveryOwner(value: unknown): value is HttpDiscoveryOwne
 export type HttpDiscoveryExtras = Pick<HttpDiscoveryRecord, 'cdp'>
 
 /**
+ * 谁拉起了这台 owner `backend` 的后端(第④步批 3)。`ONETHING_BACKEND_LAUNCHER` 设了档时进程入口照写;
+ * 缺席 = 没说(旧记录、`server:start`)。
+ *
+ * 为什么要这一格:桌面与 CLI 拉起的都是同一种进程、都写 owner `backend`,而两边的「只停自己的」要分得清 ——
+ * 桌面不停 CLI 拉起的那台(借它照用,Quit 时不发信号),`onething backend stop` 只停 `cli` 拉起的那台。
+ */
+export type HttpDiscoveryLauncher = 'desktop' | 'cli'
+
+export function isHttpDiscoveryLauncher(value: unknown): value is HttpDiscoveryLauncher {
+  return value === 'desktop' || value === 'cli'
+}
+
+/**
  * 这个 core 进程的 Chromium 调试口(B2′,方案
  * `apps/desktop-react/docs/terminal-browser-2026-09.md` §2.2-5)。
  *
@@ -89,6 +102,8 @@ export interface HttpDiscoveryRecord {
   /** 毫秒时间戳。 */
   startedAt: number
   owner: HttpDiscoveryOwner
+  /** 谁拉起了这台后端(只在 owner `backend` 时有意义;缺席 = 没说)。见 `HttpDiscoveryLauncher`。 */
+  launcher?: HttpDiscoveryLauncher
   /** 宿主补的一格:这个进程的 CDP 口(开着才有)。见 `HttpDiscoveryCdp`。 */
   cdp?: HttpDiscoveryCdp
 }
@@ -131,6 +146,7 @@ export function parseHttpDiscoveryRecord(text: string): HttpDiscoveryRecord | un
     pid: parsed.pid,
     startedAt: typeof parsed.startedAt === 'number' ? parsed.startedAt : 0,
     owner: parsed.owner,
+    ...(isHttpDiscoveryLauncher(parsed.launcher) ? { launcher: parsed.launcher } : {}),
     // 宿主补的那一格:形状不对就当没有 —— 发现文件是「线索」不是「契约」。
     ...(isHttpDiscoveryCdp(parsed.cdp) ? { cdp: { port: parsed.cdp.port } } : {}),
   }

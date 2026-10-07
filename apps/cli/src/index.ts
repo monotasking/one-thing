@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import readline from 'node:readline/promises'
 import { stdin as input } from 'node:process'
 import type { Interface as ReadlineInterface } from 'node:readline/promises'
-import type { AskOutputEvent, DaemonStreamEvent } from '@shared/cli/protocol.js'
-import { ensureDaemon, tryConnect, spawnDaemon } from './daemon-client.js'
-import { assertSupportedPlatform, ensureRuntimeDirs, getCliRuntimePaths } from './paths.js'
+import type { AskOutputEvent, AskStreamEvent } from './cli-protocol.js'
+import { backendModeOf, connectBackend } from './backend-connect.js'
+import { createBackendRequester, httpTransportFactory, type BackendRequester } from './backend-requests.js'
+import { backendCommand } from './backend-command.js'
 import { AssistantTextOut, stdout, stderr } from './stdout.js'
 // 静态 import,与 `trace-command` / `plugin-command` 的纪律同一条(见那两个文件的
 // 头注):cli 与 Electron 主进程在同一张 rollup 图里,动态 import 会把整个主进程包
@@ -25,16 +25,6 @@ async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2))
   if (parsed.storePath) process.env.ONETHING_STORE_PATH = parsed.storePath
 
-  if (parsed.args[0] === 'store' && parsed.flags['daemon-child']) {
-    throw new Error('Store commands are offline-only and cannot be combined with --daemon-child.')
-  }
-  if (parsed.flags['daemon-child']) {
-    process.env.ONETHING_HEADLESS = '1'
-    const { runDaemonServer } = await import('./daemon-server.js')
-    await runDaemonServer({ storePath: parsed.storePath })
-    return
-  }
-
   const [scope, command, ...rest] = parsed.args
   if (!scope || parsed.flags.help || parsed.flags.h) {
     printHelp()
@@ -45,8 +35,13 @@ async function main(): Promise<void> {
     case 'store':
       await (await import('./store-command.js')).storeCommand(command, rest, parsed.storePath, parsed.flags)
       break
+    case 'backend':
+      await runBackendCommand(command, parsed)
+      break
     case 'daemon':
-      await daemonCommand(command, rest, parsed)
+      // 旧名保留一版(第④步批 3):守护进程退役,这台后端进程现在叫 `onething backend`。
+      stderr('`onething daemon` has been renamed to `onething backend`.')
+      await runBackendCommand(command, parsed)
       break
     case 'ask':
       await askCommand([command, ...rest].filter(Boolean), parsed)
@@ -79,7 +74,7 @@ async function main(): Promise<void> {
       await runMcpCommand(parsed)
       break
     case 'trace': {
-      // 第二个不经 daemon 的 scope(理由见 trace-command.ts 的头注):轨迹的
+      // 第二个不经后端的 scope(理由见 trace-command.ts 的头注):轨迹的
       // 事实是一个纯追加文件,读它不该要求引擎活着 —— 排障时引擎往往正是
       // 那个起不来的东西。
       const lastFlag = parsed.flags.last
@@ -93,7 +88,7 @@ async function main(): Promise<void> {
       break
     }
     case 'plugin':
-      // 唯一不经 daemon 的 scope:插件只在桌面宿主执行,CLI daemon 不装配
+      // 又一个不经后端的 scope:插件只在桌面宿主执行,CLI 拉起的后端不装配
       // 插件系统。这里直接动账本,装完由用户去桌面刷新(命令自己会说)。
       await (await import('./plugin-command.js')).pluginCommand(command, rest)
       break
@@ -105,7 +100,7 @@ async function main(): Promise<void> {
 /**
  * 资源:读 / 做 / 看(原子 K4-b)。
  *
- * 走 daemon:资源内核是**装配产物**(`backend.resources`),不是一个能在进程外读的
+ * 走后端:资源内核是**装配产物**(`backend.resources`),不是一个能在进程外读的
  * 文件 —— 与 `trace` / `plugin` 那两个离线 scope 不同,这一条天然要求引擎活着
  * (读一条会话的摘要就是要那台内核)。
  *
@@ -121,7 +116,7 @@ async function main(): Promise<void> {
  * (还原函数)与 `logging`(日志门面),两者一求值就把装配层的脊柱拉起来
  * —— 静态引进来之后 `onething --help` 从 **0.13s 变成 1.3s**(五次取中位数,
  * 12MB 的单文件 cjs)。改成动态之后回到 0.13s,而 `onething mcp` 自己照付不误
- * (它本来就要连 daemon)。MCP server SDK(连着一份内嵌 ajv)在 `mcpCommand` 里
+ * (它本来就要连后端)。MCP server SDK(连着一份内嵌 ajv)在 `mcpCommand` 里
  * 还有第二层动态 import,同一条理由。
  *
  * 与其余 scope 的两处不同,都是 stdio 协议逼出来的:
@@ -131,7 +126,7 @@ async function main(): Promise<void> {
  *     那条管子是 JSON-RPC 信道,多一行就是一次协议解析失败。
  */
 async function runMcpCommand(parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   try {
     const { mcpCommand } = await import('./mcp-command.js')
     await mcpCommand({ ...(parsed.storePath ? { storePath: parsed.storePath } : {}) }, client)
@@ -141,7 +136,7 @@ async function runMcpCommand(parsed: ParsedArgs): Promise<void> {
 }
 
 async function runResourceCommand(command: string | undefined, rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   try {
     const code = await resourceCommand(command, rest, {
       ...(parsed.flags.json ? { json: true } : {}),
@@ -156,7 +151,7 @@ async function runResourceCommand(command: string | undefined, rest: string[], p
 }
 
 /**
- * Multi-agent rooms over the daemon:
+ * Multi-agent rooms over the backend:
  *   onething collab new <名字> --members a,b --pm a [--cwd DIR] [--mode dangerously-allow-all]
  *   onething collab list
  *   onething collab update <roomId> [--name N] [--members a,b] [--pm a|''] [--mode MODE]
@@ -165,7 +160,7 @@ async function runResourceCommand(command: string | undefined, rest: string[], p
  *   onething collab log <roomId> [--limit N]
  */
 async function collabCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   switch (command) {
     case 'new': {
       const members = (stringFlag(parsed, 'members') || '').split(',').map(item => item.trim()).filter(Boolean)
@@ -227,86 +222,42 @@ async function collabCommand(command = 'list', rest: string[], parsed: ParsedArg
   client.close()
 }
 
-async function daemonCommand(command = 'status', rest: string[], parsed: ParsedArgs): Promise<void> {
-  assertSupportedPlatform()
-  const paths = getCliRuntimePaths(parsed.storePath)
-  ensureRuntimeDirs(paths)
+/**
+ * 连上这个 store 的后端(第④步批 3):缺省只连发现文件里活着的那台(桌面开着时就是桌面那台);`--spawn` /
+ * `ONETHING_CLI_BACKEND=spawn` 时没有就自己拉起一台。见 `backend-connect.ts`。
+ */
+async function connectCli(parsed: ParsedArgs): Promise<BackendRequester> {
+  const backend = await connectBackend({
+    ...(parsed.storePath ? { storePath: parsed.storePath } : {}),
+    mode: backendModeOf(parsed.flags),
+  })
+  return createBackendRequester(httpTransportFactory(backend))
+}
 
-  switch (command) {
-    case 'start': {
-      const client = await ensureDaemon({ storePath: parsed.storePath })
-      const status = await client.request('daemon.status')
-      stdout(formatJson(status))
-      client.close()
-      break
-    }
-    case 'status': {
-      const client = await tryConnect({ storePath: parsed.storePath })
-      if (!client) {
-        stdout('daemon stopped')
-        return
-      }
-      stdout(formatJson(await client.request('daemon.status')))
-      client.close()
-      break
-    }
-    case 'stop': {
-      const client = await tryConnect({ storePath: parsed.storePath })
-      if (!client) {
-        stdout('daemon already stopped')
-        return
-      }
-      await client.request('daemon.shutdown')
-      client.close()
-      stdout('daemon stopping')
-      break
-    }
-    case 'restart': {
-      const client = await tryConnect({ storePath: parsed.storePath })
-      if (client) {
-        await client.request('daemon.prepareRestart', { force: Boolean(parsed.flags.force) })
-        client.close()
-        await sleep(500)
-      }
-      spawnDaemon(parsed.storePath, paths.bootLogPath)
-      const restarted = await ensureDaemon({ storePath: parsed.storePath })
-      stdout(formatJson(await restarted.request('daemon.status')))
-      restarted.close()
-      break
-    }
-    case 'logs': {
-      // L2 之后正主是结构化的 `daemon.jsonl`;`daemon.log` 只剩配置之前的 stderr,
-      // 前者不在就退回后者(升级过来的机器上它可能还有历史内容)。
-      const logFile = fs.existsSync(paths.logPath) ? paths.logPath : paths.bootLogPath
-      if (!fs.existsSync(logFile)) {
-        stdout(`No daemon log found at ${paths.logPath}`)
-        return
-      }
-      const text = fs.readFileSync(logFile, 'utf8')
-      const lines = text.split(/\r?\n/)
-      const count = Number(parsed.flags.n || parsed.flags.lines || 200)
-      stdout(lines.slice(Math.max(0, lines.length - count)).join('\n'))
-      break
-    }
-    default:
-      throw new Error(`Unknown daemon command: ${command}`)
-  }
+async function runBackendCommand(command: string | undefined, parsed: ParsedArgs): Promise<void> {
+  const lines = Number(parsed.flags.n || parsed.flags.lines || 200)
+  const code = await backendCommand(command ?? 'status', {
+    ...(parsed.storePath ? { storePath: parsed.storePath } : {}),
+    lines,
+  })
+  if (code !== 0) process.exitCode = code
 }
 
 async function askCommand(promptArgs: string[], parsed: ParsedArgs): Promise<void> {
   const prompt = promptArgs.join(' ').trim() || await readStdin()
   if (!prompt.trim()) throw new Error('Prompt is required')
 
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   const json = Boolean(parsed.flags.json)
   const yes = Boolean(parsed.flags.yes || parsed.flags.y)
   const sessionId = stringFlag(parsed, 'session') || stringFlag(parsed, 's')
   const pendingPermissions = new Set<string>()
   const text = new AssistantTextOut()
+  const prompts = new AbortController()
 
   await client.request('chat.ask', { prompt, sessionId, yes }, async streamEvent => {
-    await handleAskEvent(client, streamEvent, { json, yes, pendingPermissions, text })
-  })
+    await handleAskEvent(client, streamEvent, { json, yes, pendingPermissions, text, signal: prompts.signal })
+  }).finally(() => prompts.abort())
   if (!json) {
     text.end()
     process.stdout.write('\n')
@@ -315,7 +266,7 @@ async function askCommand(promptArgs: string[], parsed: ParsedArgs): Promise<voi
 }
 
 async function chatCommand(parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   const rl = readline.createInterface({ input, output: process.stderr })
   let session = await client.request<{ id: string; name: string }>('session.show').catch(() => client.request<{ id: string; name: string }>('session.new', { name: 'CLI Chat' }))
   let active = false
@@ -355,17 +306,20 @@ async function chatCommand(parsed: ParsedArgs): Promise<void> {
       active = true
       sawSigint = false
       const text = new AssistantTextOut()
+      const prompts = new AbortController()
       await client.request('chat.ask', { prompt: trimmed, sessionId: session.id }, async event => {
         await handleAskEvent(client, event, {
           json: false,
           yes: false,
           pendingPermissions: new Set(),
           text,
-          promptPermission: permission => promptPermission(permission, rl),
+          promptPermission: (permission, signal) => promptPermission(permission, rl, signal),
+          signal: prompts.signal,
         })
       }).catch(error => {
         if (!sawSigint) stderr(error.message)
       }).finally(() => {
+        prompts.abort()
         active = false
         text.end()
         process.stdout.write('\n')
@@ -377,7 +331,7 @@ async function chatCommand(parsed: ParsedArgs): Promise<void> {
 }
 
 async function sessionCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   switch (command) {
     case 'list':
       printRows(await client.request<any[]>('session.list'), ['id', 'name', 'updatedAt', 'messageCount'])
@@ -427,7 +381,7 @@ async function sessionCommand(command = 'list', rest: string[], parsed: ParsedAr
 }
 
 async function activeCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   if (command === 'list') printRows(await client.request<any[]>('active.list'), ['streamId', 'sessionId', 'status', 'promptPreview'])
   else if (command === 'abort') stdout(formatJson(await client.request('active.abort', { streamId: required(rest[0], 'streamId') })))
   else throw new Error(`Unknown active command: ${command}`)
@@ -435,7 +389,7 @@ async function activeCommand(command = 'list', rest: string[], parsed: ParsedArg
 }
 
 async function providerCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   switch (command) {
     case 'list':
       printRows(await client.request<any[]>('provider.list'), ['id', 'model', 'enabled', 'isDefault'])
@@ -469,7 +423,7 @@ async function providerCommand(command = 'list', rest: string[], parsed: ParsedA
 }
 
 async function toolsCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   if (command === 'list') {
     printRows(await client.request<any[]>('tools.list'), ['id', 'name', 'enabled', 'autoExecute'])
   } else if (command === 'enable' || command === 'disable') {
@@ -482,7 +436,7 @@ async function toolsCommand(command = 'list', rest: string[], parsed: ParsedArgs
 }
 
 async function permissionCommand(command: string | undefined, rest: string[], parsed: ParsedArgs): Promise<void> {
-  const client = await ensureDaemon({ storePath: parsed.storePath })
+  const client = await connectCli(parsed)
   if (command !== 'set') throw new Error('Usage: onething permission set <mode>')
   stdout(formatJson(await client.request('permission.mode.set', { mode: required(rest[0], 'mode') })))
   client.close()
@@ -490,14 +444,19 @@ async function permissionCommand(command: string | undefined, rest: string[], pa
 
 async function handleAskEvent(
   client: { request<T = unknown>(method: any, params?: unknown): Promise<T> },
-  streamEvent: DaemonStreamEvent,
+  streamEvent: AskStreamEvent,
   options: {
     json: boolean
     yes: boolean
     pendingPermissions: Set<string>
     /** 一个回合一只:助手正文要逐片投影,扣尾这件事有状态。 */
     text: AssistantTextOut
-    promptPermission?: (event: Extract<AskOutputEvent, { type: 'permission' }>) => Promise<'once' | 'session' | 'workdir' | 'reject'>
+    promptPermission?: (event: Extract<AskOutputEvent, { type: 'permission' }>, signal?: AbortSignal) => Promise<'once' | 'session' | 'workdir' | 'reject'>
+    /**
+     * 这一轮收场时撤掉还没答完的提示(第④步批 3):CLI 依附桌面的后端时,桌面窗口上那张卡也能答 ——
+     * 那边先答了、这一轮跑完了,终端里那句「Allow?」不该一直挂着让进程退不出去。
+     */
+    signal?: AbortSignal
   },
 ): Promise<void> {
   const { streamId, event } = streamEvent
@@ -509,7 +468,18 @@ async function handleAskEvent(
 
   if (event.type === 'permission' && streamEvent.sessionId && !options.pendingPermissions.has(event.id)) {
     options.pendingPermissions.add(event.id)
-    const decision = options.yes ? 'once' : await (options.promptPermission ?? promptPermission)(event)
+    let decision: 'once' | 'session' | 'workdir' | 'reject'
+    try {
+      decision = options.yes
+        ? 'once'
+        : options.promptPermission
+          ? await options.promptPermission(event, options.signal)
+          : await promptPermission(event, undefined, options.signal)
+    } catch (error) {
+      // 提示被撤了(这一轮已经收场,别处答过那张卡):不再替它答。
+      if (options.signal?.aborted) return
+      throw error
+    }
     await client.request('permission.respond', {
       sessionId: streamEvent.sessionId,
       requestId: event.id,
@@ -543,10 +513,11 @@ function writeHumanAskEvent(event: AskOutputEvent, text: AssistantTextOut): void
 async function promptPermission(
   event: Extract<AskOutputEvent, { type: 'permission' }>,
   existingRl?: ReadlineInterface,
+  signal?: AbortSignal,
 ): Promise<'once' | 'session' | 'workdir' | 'reject'> {
   const rl = existingRl ?? readline.createInterface({ input, output: process.stderr })
   try {
-    const answer = await rl.question('Allow? [o]nce/[s]ession/[w]orkdir/[r]eject: ')
+    const answer = await rl.question('Allow? [o]nce/[s]ession/[w]orkdir/[r]eject: ', signal ? { signal } : {})
     const normalized = answer.trim().toLowerCase()
     if (normalized.startsWith('s')) return 'session'
     if (normalized.startsWith('w')) return 'workdir'
@@ -593,7 +564,7 @@ async function handleChatSlash(
     }
     case 'retry': {
       const text = new AssistantTextOut()
-      await client.request('chat.retryLast', { sessionId: getSession().id }, async (event: DaemonStreamEvent) => {
+      await client.request('chat.retryLast', { sessionId: getSession().id }, async (event: AskStreamEvent) => {
         await handleAskEvent(client, event, {
           json: false,
           yes: false,
@@ -615,7 +586,7 @@ async function handleChatSlash(
 function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = []
   const flags: Record<string, string | boolean> = {}
-  const booleanFlags = new Set(['clear', 'daemon-child', 'force', 'h', 'help', 'json', 'last', 'y', 'yes',
+  const booleanFlags = new Set(['clear', 'force', 'spawn', 'h', 'help', 'json', 'last', 'y', 'yes',
     'all-hosts-stopped', 'automatic-restarts-disabled'])
   const valueShortFlags = new Set(['n', 's'])
   for (let i = 0; i < argv.length; i += 1) {
@@ -686,15 +657,11 @@ function required(value: string | undefined, label: string): string {
   return value
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
 function printHelp(): void {
   stdout(`onething CLI
 
 Usage:
-  onething daemon start|stop|restart|status|logs
+  onething backend start|stop|restart|status|logs
   onething ask [--json] [--yes] [--session <id>] <prompt>
   onething chat
   onething session list|new|use|show|rename|pin|unpin|archive|restore|delete|cwd|model
@@ -720,6 +687,14 @@ Usage:
 
 Global:
   --store <path>  Use a non-default store directory
+  --spawn         Start a backend when none is running (same as ONETHING_CLI_BACKEND=spawn)
+
+Backend:
+  Every command except store, trace and plugin talks to the backend serving the
+  store (the one the desktop app runs, when it is open). Without --spawn the CLI
+  only connects and fails when nothing is running. backend start always starts
+  one; backend stop only stops a backend the CLI started. daemon is the old name
+  of backend and still works for one release.
 
 Notes:
   store lock defaults to read-only JSON diagnosis. Recovery requires a reviewed
@@ -727,7 +702,7 @@ Notes:
   disabled. It preserves the old lock in a diagnostic archive; there is no force
   mode and no automatic recovery based only on a missing PID.
 
-  trace reads <store>/sessions/<id>/events.jsonl directly (no daemon needed) and
+  trace reads <store>/sessions/<id>/events.jsonl directly (no backend needed) and
   never writes. --response prints the assistant text of one request, folded from
   the recorded chunks.
 
@@ -744,11 +719,6 @@ Notes:
 }
 
 main().catch(error => {
-  const code = error instanceof Error ? error.name : ''
-  if (code === 'ERR_UNSUPPORTED_PLATFORM') {
-    stderr('ERR_UNSUPPORTED_PLATFORM: Windows daemon transport is not supported in v1.')
-  } else {
-    stderr(error instanceof Error ? error.message : String(error))
-  }
+  stderr(error instanceof Error ? error.message : String(error))
   process.exitCode = 1
 })

@@ -41,13 +41,20 @@ export function createServerRpcDispatchContext(
 	 * 那一扇」,不是越权。
 	 */
 	shellIdHeader?: string,
+	/**
+	 * 请求头 `X-Onething-Acting-System` 的原值(第④步批 3)。解得开、1–128 个字符、没有控制字符才铸进
+	 * `actingSystemComponent`;不合就当没带 —— 它只会把主体**降**成 `system`,答错的后果是这一发按本来的主体走。
+	 */
+	actingSystemHeader?: string,
 ): RpcDispatchContext {
 	const callerId = shellIdHeader && SHELL_ID_PATTERN.test(shellIdHeader) ? shellIdHeader : undefined;
+	const actingSystemComponent = actingSystemComponentOf(actingSystemHeader);
 	return {
 		transport: "http",
 		ownerUid: context.userId,
 		workspaceId: context.workspaceId,
 		...(callerId ? { callerId } : {}),
+		...(actingSystemComponent ? { actingSystemComponent } : {}),
 		sandboxRoot: workspaceRoot
 			? workspaceSandboxRoot(workspaceRoot, context)
 			: undefined,
@@ -55,6 +62,20 @@ export function createServerRpcDispatchContext(
 			? {}
 			: { signal: watchClientDisconnect(response) }),
 	};
+}
+
+/** 组件名的规矩:解得开、去掉首尾空白后 1–128 个字符、没有控制字符。 */
+function actingSystemComponentOf(header: string | undefined): string | undefined {
+	if (!header) return undefined;
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(header).trim();
+	} catch {
+		return undefined;
+	}
+	// eslint-disable-next-line no-control-regex
+	if (!decoded || decoded.length > 128 || /[\u0000-\u001f\u007f]/.test(decoded)) return undefined;
+	return decoded;
 }
 
 /**

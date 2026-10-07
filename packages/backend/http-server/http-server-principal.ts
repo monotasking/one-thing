@@ -38,7 +38,7 @@
  * 搁置。这只文件不碰它:它既没有新的身份来源,也没有新的权限维度,只是把两个
  * 既有判据按既有次序问一遍,并在都答不上来时诚实地说不。
  */
-import { localUserPrincipal, type Principal } from '@shared/permission/principal'
+import { localUserPrincipal, systemPrincipal, type Principal } from '@shared/permission/principal'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { isHostLocallyTrusted } from './http-server-host-trust.js'
 
@@ -64,6 +64,16 @@ export class RpcPrincipalUnavailableError extends Error {
  * 「这台宿主可不可信」,而那是装配时声明的常量,不是请求带来的东西)。
  */
 export function principalOf(context: RpcDispatchContext): Principal {
+  const base = basePrincipalOf(context)
+  /*
+   * 第④步批 3:替一个系统组件发起的调用(今天只有 `onething mcp` 那条桥,`system:mcp:<名字>`)。
+   * **只能降**:先照上面三条认出这个来访者是谁(认不出照旧抛),再把主体换成最小权限的 `system` ——
+   * 这一格造不出 `user` / `agent`,所以一个来访者靠它拿不到比自己本来更多的东西。
+   */
+  return context.actingSystemComponent ? systemPrincipal(context.actingSystemComponent) : base
+}
+
+function basePrincipalOf(context: RpcDispatchContext): Principal {
   if (isHostLocallyTrusted()) return localUserPrincipal()
 
   const userId = context.ownerUid
