@@ -7,6 +7,9 @@
  * 做得到(Electron 宿主的 gateway/lifecycle 那套原语)。server / CLI 守护进程
  * 没有这套东西。
  *
+ * 第④步批 4 起这台机器住在**后端进程自己**里(`./gateway-host.ts`):桌面档与 CLI 档由 `backend-launcher.ts`
+ * 把它填进宿主表这一格、后端起来时按设置自动连;缺省档(`server:start`)照旧不填,走下面的结构化降级。
+ *
  * 判例照 `shell/shell-host-ports.ts` 与 `auth/auth-host-ports.ts`:
  * **零依赖**(本文件只 import `@shared/ipc/gateway.js` 的类型)、**late-bound**
  * (每次调用现读,宿主接线晚于模块求值也照样生效)、**未注入即结构化降级**

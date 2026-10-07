@@ -1313,7 +1313,8 @@ export class OnethingBackend implements BackendHandle {
        * (`import-side-effect-free` 那条纪律)。
        */
       const plugins = await import('@onething/backend/plugin')
-      await plugins.getPluginManager()?.shutdown()
+      // 第④步批 4:有上限(3 秒,同 MCP / ACP);起插件的档位在启动点另登记了一格,两格等的是同一场。
+      await plugins.shutdownPluginSystemWithin()
     }, 'pluginManager')
     /*
      * C1:从前这里是一格 `'mcpAcp'`,里面手写 `ACPManager.shutdown()` 然后

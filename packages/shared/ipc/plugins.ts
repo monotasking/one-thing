@@ -438,7 +438,21 @@ export interface PickPluginFileRequest {
 	maxBytes?: number;
 	/** 对话框标题(节点的 label)。 */
 	label?: string;
+	/**
+	 * 客户端自己开过对话框、选好了的那个文件(第④步批 4:插件管理器住在后端进程里,后端没有窗口,
+	 * 对话框只能在客户端开)。两种形状:
+	 *  · `{ path }` —— 桌面壳经 preload 的原生对话框拿到的本机绝对路径;后端只在**本机可信**的来访者
+	 *    身上认它(回环 + token,与 `files` 域同判据),照旧 stat → 过闸 → 拷进插件数据目录;
+	 *  · `{ name, base64 }` —— 拿不到路径的客户端(浏览器壳的 `<input type=file>`)交字节,同一组闸。
+	 * 缺席 = 旧路:请宿主自己开对话框(只有注入了 `pickFile` 宿主端口的进程做得到)。
+	 * 插件照旧只拿到一个 `storage:` 地址,路径与原名都不过它的手。
+	 */
+	file?: PickedPluginFile;
 }
+
+export type PickedPluginFile =
+	| { path: string }
+	| { name: string; base64: string };
 
 export interface PickPluginFileResponse {
 	/** 用户按了取消 —— **不是失败**,调用方什么也不做(不发 action)。 */

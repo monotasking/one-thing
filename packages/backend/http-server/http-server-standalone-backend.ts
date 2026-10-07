@@ -104,8 +104,9 @@ export async function createRealServerBackend(
 			skillsEnvironment: null,
 			todoPlan: null,
 			scratchpad: null,
-			plugins: null,
-			gateway: null,
+			// 第④步批 4:桌面档 / CLI 档由后端自己填(插件命令的 `exec`、网关生命周期);缺省档 `null`。
+			plugins: launchPorts.plugins,
+			gateway: launchPorts.gateway,
 			evals: null,
 			mcp: null,
 			/**

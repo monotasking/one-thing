@@ -21,7 +21,8 @@ import s from './Settings.module.css'
 
 /**
  * 设置 ·「通用」页。语言 + 工作目录占位 + 后端那几行(第④步批 2b:「退出后继续运行」开关、后端状态行与
- * 「重启后端」;只在看得见后端进程的客户端上画,判据 `canSeeBackendProcess()` 一处 —— 浏览器壳不画)。
+ * 「重启后端」;批 4 加一行「网关跟着后端运行」的说明;只在看得见后端进程的客户端上画,判据 `canSeeBackendProcess()`
+ * 一处 —— 浏览器壳不画)。
  *
  * 从 `SettingsMock.tsx` 原样搬来的一节(2026-09-13 分页),**逻辑一行没改**。
  * 选项表只存 key,渲染时才翻译 —— 表是常量,文案是当下的语言,两件事分开。
@@ -95,6 +96,14 @@ function BackendRows() {
           disabled={keepRunning.data === undefined || saving.pending}
           onChange={(on) => { void saveKeepRunningMutation.run(on) }}
         />
+      </div>
+
+      {/* 网关跟着后端运行(第④步批 4):开关在不在这里,先把「退出时会一起断」这件事说清。 */}
+      <div className={s.settingRow} data-testid="gateway-runs-in-backend">
+        <div>
+          <div className={s.settingRowLabel}>{t('gateway.title')}</div>
+          <div className={s.settingRowHint}>{t('gateway.runsInBackend')}</div>
+        </div>
       </div>
 
       {line ? (

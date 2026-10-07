@@ -189,3 +189,14 @@ jobs:
       # 只用 node、临时 store、`file` 档,不开窗。
       - name: gate:cli-http
         run: node scripts/gate-cli-http.mjs --build
+
+      # 第④步批 4「插件与 gateway 挂后端」:真后端产物(`dist/server`)的桌面档 / CLI 档起插件管理器
+      # (`pluginsManage` 为真、没开关记录的插件不跑、装的那一次记 enabled、插件命令经 exec 跑通登录 shell PATH 里的探针、
+      # file-pick 交回文件),缺省档逐字不变。只用 node、临时 store、`file` 档,npm 离线装本地目录。
+      - name: gate:plugin
+        run: node scripts/gate-plugin.mjs --build
+
+      # 第④步批 4:网关跟着后端运行。假服务商 + 127.0.0.1 上的假 iLink(微信渠道的 HTTP 协议),不连任何真渠道:
+      # 设置开 → 后端起来自动连、一条消息进一条回复出、SIGTERM 收得干净;设置关 → 不起;缺省档不起。
+      - name: gate:gateway
+        run: node scripts/gate-gateway.mjs

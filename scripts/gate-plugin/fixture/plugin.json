@@ -1,0 +1,6 @@
+{
+  "name": "gate-exec",
+  "version": "1.0.0",
+  "description": "gate:plugin 的夹具:一条命令经宿主的 exec 跑一只只在登录 shell PATH 里的探针程序",
+  "author": "onething"
+}

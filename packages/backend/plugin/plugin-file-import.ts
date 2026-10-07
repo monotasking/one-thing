@@ -28,6 +28,7 @@ import {
   sanitizePluginImportFileName,
   type PluginFilePickResult,
 } from '@onething/backend/plugin-contract'
+import type { PickPluginFileRequest, PickPluginFileResponse, PickedPluginFile } from '@shared/ipc/plugins.js'
 import { assertNotInNodeModules, getCorePluginScratchDir } from './plugin-storage.js'
 import { getPluginsDir } from './plugin-disk-loader.js'
 
@@ -122,6 +123,94 @@ export function importPluginFile(request: PluginFileImportRequest): PluginFileIm
       size: stat.size,
     },
   }
+}
+
+export interface PluginFileBytesImportRequest {
+  pluginId: string
+  /** 客户端报上来的文件名(只取最后一段,照样清洗)。 */
+  name: string
+  bytes: Uint8Array
+  accept?: unknown
+  maxBytes?: unknown
+}
+
+/**
+ * 客户端把字节交回来的那一种导入(第④步批 4:对话框在客户端开,后端进程里没有窗口)。
+ *
+ * 闸与 `importPluginFile` 逐条相同(扩展名白名单、尺寸上限、清洗后的名字再核一次、不进 node_modules、
+ * 不覆盖已有文件),只是「源」从一条本机路径换成一段字节 —— 浏览器壳拿得到字节、拿不到路径。
+ */
+export function importPluginFileBytes(request: PluginFileBytesImportRequest): PluginFileImportOutcome {
+  const { pluginId, bytes } = request
+  const originalName = path.basename(String(request.name ?? '').replace(/\\/g, '/'))
+  if (!pluginId || !originalName || !(bytes instanceof Uint8Array)) {
+    return { ok: false, reason: 'That file could not be read.' }
+  }
+  const accept = resolvePluginFilePickAccept(request.accept)
+  const maxBytes = clampPluginFilePickMaxBytes(request.maxBytes)
+  for (const name of [originalName, sanitizePluginImportFileName(originalName)]) {
+    const problem = describePluginFileImportProblem({ name, size: bytes.byteLength, accept, maxBytes })
+    if (problem) return { ok: false, reason: problem }
+  }
+  const safeName = sanitizePluginImportFileName(originalName)
+  const targetDir = getPluginImportsDir(pluginId)
+  try {
+    assertNotInNodeModules(getPluginsDir(), targetDir)
+    fs.mkdirSync(targetDir, { recursive: true })
+  } catch {
+    return { ok: false, reason: 'That file could not be saved.' }
+  }
+  const fileName = nextAvailablePluginImportFileName(
+    safeName,
+    candidate => fs.existsSync(path.join(targetDir, candidate)),
+  )
+  if (!fileName) return { ok: false, reason: 'That file could not be saved.' }
+  try {
+    fs.writeFileSync(path.join(targetDir, fileName), bytes, { flag: 'wx' })
+  } catch {
+    return { ok: false, reason: 'That file could not be saved.' }
+  }
+  return {
+    ok: true,
+    result: {
+      path: `${PLUGIN_STORAGE_IMAGE_PREFIX}${PLUGIN_IMPORTS_DIR_NAME}/${fileName}`,
+      name: fileName,
+      size: bytes.byteLength,
+    },
+  }
+}
+
+/** 客户端交路径时,来访者不是本机可信的那一句(路径是**后端那台机器**上的路径,只有本机来访者说得出)。 */
+export const PLUGIN_FILE_PICK_PATH_NEEDS_LOCAL_CLIENT
+  = 'That file path can only be used by an app running on this computer.'
+
+/**
+ * `plugins.pickFile` 带着客户端选好的文件进来时的那一步(第④步批 4):路径形走 `importPluginFile`、
+ * 字节形走 `importPluginFileBytes`,答案折成契约的 `PickPluginFileResponse`。`allowLocalPath` 由 client-api
+ * 按本机信任判(这一层不认识来访者)。
+ */
+export function importClientPickedPluginFile(
+  request: PickPluginFileRequest & { file: PickedPluginFile },
+  options: { allowLocalPath: boolean },
+): PickPluginFileResponse {
+  const { file } = request
+  const outcome = 'path' in file
+    ? options.allowLocalPath
+      ? importPluginFile({ pluginId: request.pluginId, sourcePath: file.path, accept: request.accept, maxBytes: request.maxBytes })
+      : { ok: false as const, reason: PLUGIN_FILE_PICK_PATH_NEEDS_LOCAL_CLIENT }
+    : importPluginFileBytes({
+        pluginId: request.pluginId,
+        name: file.name,
+        bytes: decodeBase64(file.base64),
+        accept: request.accept,
+        maxBytes: request.maxBytes,
+      })
+  return outcome.ok ? { ...outcome.result } : { error: outcome.reason }
+}
+
+function decodeBase64(value: unknown): Uint8Array {
+  if (typeof value !== 'string') return new Uint8Array()
+  return new Uint8Array(Buffer.from(value, 'base64'))
 }
 
 /**

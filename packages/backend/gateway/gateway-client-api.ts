@@ -30,6 +30,9 @@
  * 降级响应不带 —— 没有网关就没有状态可报,不编一个出来;`ChannelsSettingsTab`
  * 的 `runGatewayAction` 在动作之后本来就会再 `getStatus()` 拉一次。
  *
+ * 第④步批 4 起注入者是后端进程自己(`./gateway-host.ts`,经 `backend-launcher.ts` 的桌面档 / CLI 档),
+ * 不再是桌面主进程;本文件一行不用改 —— 它只认端口。
+ *
  * ## 本域零推送
  *
  * 全仓没有 `GATEWAY_*_CHANGED` 一类的通道,所以 旧 Vue 宿主主进程的 `ipc/gateway.ts`

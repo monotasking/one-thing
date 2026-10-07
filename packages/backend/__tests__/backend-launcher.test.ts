@@ -47,6 +47,8 @@ describe('backendLaunchProfile', () => {
     expect(profile.mcpClientFactory).toBeUndefined()
     expect([profile.loginShellEnv, profile.speechOutput, profile.userSchedulerTasks, profile.music, profile.modelRegistryRefresh])
       .toEqual([false, false, false, false, false])
+    // 第④步批 4:缺省档不起插件、不起网关。
+    expect([profile.plugins, profile.gateway]).toEqual([false, false])
   })
 
   it('still degrades the default launcher with ONETHING_SERVER_TOOLS=readonly', () => {
@@ -71,6 +73,7 @@ describe('backendLaunchProfile', () => {
     expect(typeof profile.mcpClientFactory).toBe('function')
     expect([profile.loginShellEnv, profile.speechOutput, profile.userSchedulerTasks, profile.music, profile.modelRegistryRefresh])
       .toEqual([true, true, true, true, true])
+    expect([profile.plugins, profile.gateway]).toEqual([true, true])
   })
 })
 
@@ -85,6 +88,8 @@ describe('the cli launcher', () => {
     expect(profile.assembly).toEqual({ toolRegistry: 'headless', collab: true, sessionSkills: true, pets: false })
     expect(profile.discoveryOwner).toBe('backend')
     expect(profile.discoveryLauncher).toBe('cli')
+    // 第④步批 4:CLI 拉起的那台也起插件与网关。
+    expect([profile.plugins, profile.gateway]).toEqual([true, true])
     expect(profile.logging).toEqual({ fileBaseName: 'app', src: 'server', consoleEcho: false })
     expect(profile.acpUnanswered).toBe('reject')
     expect(typeof profile.mcpClientFactory).toBe('function')
@@ -114,7 +119,18 @@ describe('the cli launcher', () => {
 
 describe('launchHostPorts', () => {
   it('answers {} and no speech output on the default launcher, as before', () => {
-    expect(launchHostPorts(backendLaunchProfile(undefined, {}), {})).toEqual({ storePath: {}, speechOutput: null })
+    expect(launchHostPorts(backendLaunchProfile(undefined, {}), {})).toEqual({ storePath: {}, speechOutput: null, plugins: null, gateway: null })
+  })
+
+  it('fills the plugins and gateway cells on the desktop and CLI launchers (batch 4), one gateway host per profile', () => {
+    for (const launcher of ['desktop', 'cli'] as const) {
+      const profile = backendLaunchProfile(launcher, {})
+      const ports = launchHostPorts(profile, {})
+      expect(typeof ports.plugins?.execCommand).toBe('function')
+      expect(ports.plugins?.pickFile).toBeUndefined()
+      expect(typeof ports.gateway?.getStatus).toBe('function')
+      expect(launchHostPorts(profile, {}).gateway).toBe(ports.gateway)
+    }
   })
 
   it('reads the packaged resources directory from ONETHING_RESOURCES_PATH', () => {
@@ -156,13 +172,15 @@ describe('startLaunchServices', () => {
     expect(calls).toEqual([])
   })
 
-  it('starts the three desktop services and owns each where it starts', () => {
+  it('starts the desktop services (batch 4 adds plugins and the gateway) and owns each where it starts', () => {
     const { backend, owned, calls, dispose } = fakeBackend()
     try {
-      expect(startLaunchServices(backend, backendLaunchProfile('desktop', {})))
-        .toEqual(['userSchedulerTasks', 'music', 'modelRegistryRefresh'])
-      expect(owned).toEqual(['userSchedulerTasks', 'modelRegistryRefresh'])
-      expect(calls).toEqual(['music.start', 'runTask:backend:model-registry'])
+      const profile = backendLaunchProfile('desktop', {})
+      launchHostPorts(profile, {})
+      expect(startLaunchServices(backend, profile))
+        .toEqual(['userSchedulerTasks', 'music', 'modelRegistryRefresh', 'plugins', 'gateway'])
+      expect(owned).toEqual(['userSchedulerTasks', 'modelRegistryRefresh', 'pluginSystem', 'gateway'])
+      expect(calls).toEqual(['music.start', 'runTask:backend:model-registry', 'runTask:backend:plugins', 'runTask:backend:gateway'])
     } finally {
       dispose()
     }

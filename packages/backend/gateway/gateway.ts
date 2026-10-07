@@ -6,7 +6,8 @@
  * - 渠道与渠道配置:两种渠道、从环境变量读渠道 / 权限配置;
  * - 网关内核(hub):`Gateway`、`GatewayBridge`、白名单、限流、会话登记、日志口与它们的形状;
  * - 装配用的:从引擎 runtime 造对话 runtime、对话 runtime 的形状、渠道会话路由、出站回复派发、
- *   给模型的渠道上下文登记 / 撤销、宿主注入口(`configureGatewayHost` 一族);
+ *   给模型的渠道上下文登记 / 撤销、宿主注入口(`configureGatewayHost` 一族)与后端进程自己实现的那台生命周期机器
+ *   (`createBackendGatewayHost`,第④步批 4);
  * - 独立网关的启动函数 `startGateway` / `startGatewayFromEnv`(转交自 `gateway-standalone.ts`,给将来的进程壳用)。
  *
  * 本文件只交名字,不做事:从前它同时是独立网关进程的启动脚本(被当成主模块执行就起网关),
@@ -86,6 +87,9 @@ export {
   resetGatewayHost,
 } from './gateway-lifecycle-port.js'
 export type { GatewayHostPorts } from './gateway-lifecycle-port.js'
+// 后端进程自己那台网关生命周期机器(第④步批 4:网关跟着后端运行,`backend-launcher.ts` 接线)。
+export { createBackendGatewayHost } from './gateway-host.js'
+export type { BackendGatewayHost } from './gateway-host.js'
 
 // ── 独立网关的启动函数(转交自启动面;进程入口是 gateway-standalone-main.ts)────────
 export {

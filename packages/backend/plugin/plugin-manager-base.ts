@@ -598,7 +598,9 @@ export class CorePluginManager<
    *
    * 命令链:脚手架 → npm install(--ignore-scripts)→ 装后校验(零运行时
    * 依赖 / SRI)→ 全量刷新。失败时 npm 状态已在 installCorePluginPackage
-   * 里回滚,错误原样透传。新装插件默认 enabled(settings 无行 = 默认开)。
+   * 里回滚,错误原样透传。新装插件当场记一行 `enabled: true`:用户 10-07 拍定「没有开关记录的已装插件按关闭
+   * 处理」之后,「settings 无行」不再等于开着 —— 从设置里亲手装的那一次就是用户的开关,所以装完就跑,与从前
+   * 一样;重装(表里已有这个 id)不动它原来的开关。
    */
   async installPlugin(input: CorePluginInstallRequest): Promise<CorePluginInstallResult> {
     if (!this.host.installPluginPackage) {
@@ -626,6 +628,8 @@ export class CorePluginManager<
       if (!result.ok) {
         return { success: false, pluginId: result.pluginId, error: result.error }
       }
+      // 新装(表里还没有这个 id):记下用户这一次的开关,见上面的文档注释。
+      if (!existing) this.host.setPluginEnabled(result.pluginId ?? incomingId, true)
       // 磁盘上的代码刚被换掉 —— 必须换令牌,否则下面这次加载会命中模块缓存
       // 拿到旧模块(重装同 id 时尤其致命:uninstall 曾把令牌归零)。
       this.bumpReloadToken(result.pluginId ?? incomingId)

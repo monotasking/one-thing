@@ -217,6 +217,8 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 | `node scripts/gate-backend-process.mjs --build --runtimes=node` | 后端进程能独当一面(第④步批 2a)的系统 Node 那一半,全量见下面「运行时与真机门」的 `gate:backend-process` | 行为门 |
 | `bun run gate:cli-http` | CLI 走 HTTP(第④步批 3):真 CLI 产物对真 `dist/server`,不开窗、临时 store、`file` 档 —— 依附活后端时 `session new` / `ask`(假服务商,`--json` 与人读两种输出)/ `resource list|read` / `onething mcp`(stdio 握手、改名落地、审计账主体 `system:mcp:*`);空 store 缺省档报错且非零、`--spawn` 拉得起(owner `backend` + `launcher: 'cli'`)、`backend status|stop|start`、旧名 `daemon`;别人的后端(`server:start`、桌面档)`backend stop` 被拒且还活着。`--build` 先跑 `build:cli` | 行为门 |
 | `bun run gate:credentials` | 凭证归后端(第④步批 0):只用 node、`file` 档、临时 store 跑七项 —— `safeStorage` 旧密文迁进主密钥信封且条目逐条相等、旧文件改名 `.safestorage-backup` 字节不变、口令导出→换 store 导入相等、`none` 档答 `none`、钥匙串超时→`credentials:locked`→重试成功、另一个活后端在时拒绝迁移、`security` 挂住不挂死(钥匙串那一档用假 `security` 脚本,不碰真钥匙串) | 行为门 |
+| `bun run gate:plugin` | 插件挂后端(第④步批 4):真 `dist/server` 的桌面档 / CLI 档 —— `pluginsManage` 为真、没有开关记录与记成 `false` 的插件不跑、`plugins.install` 新装当场记 `enabled: true`、插件命令经 `exec` 跑通只在登录 shell PATH 里的探针(假登录 shell)、`file-pick` 字节形 / 路径形交回、SIGTERM 5 秒内退;CLI 档证 execa 在 vite 包里能用;缺省档逐字不变。只用 node、临时 store、npm 离线 | 行为门 |
+| `bun run gate:gateway` | 网关跟着后端(第④步批 4):假服务商 + 127.0.0.1 上的假 iLink(微信渠道的 HTTP 协议)—— 设置开 → 后端起来自动连、一条消息进一条回复出、SIGTERM 收得干净;设置关 → 零请求;缺省档不起。不连任何真渠道 | 行为门 |
 
 除 `boundary:gate`(全量用 `bun run boundary`)与 `transport:gate` 外,每道 `*:gate` 都有对应的 `*:check` 打出全部命中。
 
@@ -304,7 +306,7 @@ SSE 上的 `settings:changed` 自己做(`electron/core-client.ts` 的 `createSet
 | 宿主 | 装配处 | 要点 |
 | --- | --- | --- |
 | React 桌面 | **不装配**:`apps/desktop-react/electron/main.ts` 拉起「不带界面的 server」那一行的**桌面档** | 开窗 → 发现文件活着就连它(上一次「继续运行」留下的、或别人的 `server:start`)→ 否则 `BackendProcess.start()` 拉起子进程(`ONETHING_BACKEND_LAUNCHER=desktop`,token 由 Electron 铸,打包态递 `ONETHING_RESOURCES_PATH`)→ 连。崩了删 pid 对得上的发现文件、重拉(端口与 token 不变),60 秒内最多 3 次,再崩亮「后端已停止。」横幅(D11)。Quit 缺省 SIGTERM 后端、等 5 + 2 秒再 SIGKILL;设置 `general.backendKeepRunningAfterQuit` 开着就不发信号。macOS 关最后一扇窗不退。主进程自己的日志是 `shell.jsonl` |
-| 不带界面的 server | 进程入口 `packages/backend/backend-standalone-main.ts` → `packages/backend/http-server/http-server-standalone-backend.ts`(`createRealServerBackend`)→ `createOnethingServerRuntimeOverBackend` | 档位由 `ONETHING_BACKEND_LAUNCHER` 定(`packages/backend/backend-launcher.ts`)。**缺省档**(不设 / `none`):只有 sandbox 与 storePath 是真的,`ONETHING_SERVER_TOOLS=readonly` 时 `'readonly'` 否则 `'full'`,MCP 客户端缺省是不联网的那一种,日志 `server.jsonl`。**桌面档**(`desktop`,桌面拉起的就是它,`gate:backend-process` 也跑它):装配开关逐格是 `electron/own-core-options.ts` 那五格(D14,测试对比),`speechOutput` 由后端自己交,`ONETHING_RESOURCES_PATH` 设了 = 打包资源目录;建 runtime 之前补好登录 shell 的 PATH,MCP 用桌面那种客户端,装配后 `own()` 定时任务 / 电台 / 首启模型拉取;日志 `app.jsonl` 不回显,发现文件 owner `backend` + `launcher: 'desktop'`,进程名 `onething-backend`。**CLI 档**(`cli`,第④步批 3,D7:从前 CLI 守护进程那一份):`toolRegistry: 'headless'`、`collab`、`sessionSkills`,MCP 真连,装配之前声明无人值守(`system` 主体的卡 60 秒自动拒)与「卡最多等 60 秒」(任何主体),不起定时任务 / 电台 / 模型拉取;日志 `app.jsonl` 不回显,发现文件 owner `backend` + `launcher: 'cli'`,进程名 `onething-backend`。三档的终端都照旧看 `ONETHING_SERVER_TERMINAL=1`;`backend.shutdown` RPC 走与 SIGTERM 同一条收尾路(进程入口登记在 `lifecycle` 的那一格) |
+| 不带界面的 server | 进程入口 `packages/backend/backend-standalone-main.ts` → `packages/backend/http-server/http-server-standalone-backend.ts`(`createRealServerBackend`)→ `createOnethingServerRuntimeOverBackend` | 档位由 `ONETHING_BACKEND_LAUNCHER` 定(`packages/backend/backend-launcher.ts`)。**缺省档**(不设 / `none`):只有 sandbox 与 storePath 是真的,`ONETHING_SERVER_TOOLS=readonly` 时 `'readonly'` 否则 `'full'`,MCP 客户端缺省是不联网的那一种,日志 `server.jsonl`。**桌面档**(`desktop`,桌面拉起的就是它,`gate:backend-process` 也跑它):装配开关逐格是 `electron/own-core-options.ts` 那五格(D14,测试对比),`speechOutput` 由后端自己交,`ONETHING_RESOURCES_PATH` 设了 = 打包资源目录;建 runtime 之前补好登录 shell 的 PATH,MCP 用桌面那种客户端,装配后 `own()` 定时任务 / 电台 / 首启模型拉取;日志 `app.jsonl` 不回显,发现文件 owner `backend` + `launcher: 'desktop'`,进程名 `onething-backend`。**CLI 档**(`cli`,第④步批 3,D7:从前 CLI 守护进程那一份):`toolRegistry: 'headless'`、`collab`、`sessionSkills`,MCP 真连,装配之前声明无人值守(`system` 主体的卡 60 秒自动拒)与「卡最多等 60 秒」(任何主体),不起定时任务 / 电台 / 模型拉取;日志 `app.jsonl` 不回显,发现文件 owner `backend` + `launcher: 'cli'`,进程名 `onething-backend`。**桌面档与 CLI 档**另起插件管理器与 IM 网关(第④步批 4,档案两格 `plugins` / `gateway`;宿主表的 `plugins` / `gateway` 两格由后端自己填,缺省档照旧 `null`、不起):插件按 `plugin-settings.json` 的开关跑、没有记录的用户插件算关,网关按设置里的微信开关自动连,两者起点 `own()`、各 3 秒上限。三档的终端都照旧看 `ONETHING_SERVER_TERMINAL=1`;`backend.shutdown` RPC 走与 SIGTERM 同一条收尾路(进程入口登记在 `lifecycle` 的那一格) |
 | CLI | **不装配**:`apps/cli/src/backend-connect.ts` 读发现文件连活着的后端(桌面开着就是桌面那台);`--spawn` / `ONETHING_CLI_BACKEND=spawn` / `onething backend start` 时没有就拉起「不带界面的 server」那一行的 **CLI 档**(先找装好的 onething.app 用 Electron + `ELECTRON_RUN_AS_NODE=1` 跑它的 `backend.cjs`,找不到用当前 node 跑 CLI 包自带的 `dist/server/main.js`;D12) | 方法 → RPC 表在 `apps/cli/src/backend-requests.ts`,流式回答走 `GET /api/events`;`onething mcp` 的主体经请求头 `X-Onething-Acting-System` 降成 `system:mcp:*`;`backend stop` 只停 `launcher: 'cli'` 的那台 |
 
 ## 7. 怎么加一个东西
@@ -429,8 +431,19 @@ embedder 只能跑 `device: 'cpu'`;后端回答原因码(`vectorErrorKind`),不�
 对象。规矩:UI 只在宿主命名的锚点上放声明式描述树(**可以放在 composer 旁边,永远不进 composer**,也不接管消息列表);配置类
 交互进设置页,面板只放活内容;主题覆盖作为参数传进主题计算,不铺在算好的 CSS 变量上;安装只经 npm 账本
 (`--ignore-scripts`、SRI 校验、失败回滚);开放新的宿主登记表之前先读 `plugin-contract/plugin-contract-policy.ts` 的
-`PLUGIN_DEFERRED_REGISTRIES`。插件只在装了插件管理器的进程里执行;今天 React 壳与 CLI 都不装,插件域的写操作结构化地答
-「只在桌面宿主」。
+`PLUGIN_DEFERRED_REGISTRIES`;插件 API 不暴露凭证原文。插件只在装了插件管理器的进程里执行:第④步批 4 起是**后端进程**的
+桌面档与 CLI 档(`backend-launcher.ts` 装配后起,`plugin/plugin-backend-host.ts`),缺省档(`server:start`)不装,那里插件域的写操作
+照旧结构化地答「只在桌面宿主」(那几句只剩缺省档走得到,D342)。**开关**:`plugin-settings.json` 里 `enabled: true` 的跑、`false` 的
+不跑,**没有记录的用户插件算关**(用户 10-07 拍定;内置插件缺省开;从设置里新装的那一次当场记 `enabled: true`)。插件命令的 `exec`
+由后端进程自己起子进程(execa,PATH 是后端的,桌面档补过登录 shell);`file-pick` 的对话框在客户端开,选好的文件经
+`plugins.pickFile` 的 `file` 一格交回(本机路径只认本机可信的来访者,或字节),后端过闸、拷进插件数据目录、只答 `storage:` 地址。
+门 `gate:plugin`。React 壳今天还没有插件页,也不渲染插件描述树。
+
+**IM 网关**(`packages/backend/gateway/`,L3):渠道(微信 / Telegram)、白名单与限流、网关桥。两种跑法:**跟着后端**(第④步批 4,
+`gateway/gateway-host.ts` 的 `createBackendGatewayHost` 实现 `GatewayHostPorts`,对话 runtime 是进程内的引擎;桌面档与 CLI 档起,
+后端起来时 `settings.channels.wechat.enabled` 开着就自动连,设置一改跟着起停,**只认设置不认环境变量**;退出 onething 时没开
+「退出后让后端继续运行」网关就一起断),与独立网关进程 `gateway-standalone-main.ts`(按环境变量,要 `ONETHING_GATEWAY_RUNTIME_MODULE`)。
+门 `gate:gateway` 用 127.0.0.1 上的假 iLink,**绝不连真渠道**。React 壳今天没有网关设置页(「通用」页只有一行说明)。
 
 **MCP / ACP / 外部 agent**:MCP 客户端、管理器、OAuth 与跨进程工具桥在 `packages/backend/mcp/`;ACP 是外部 agent 的唯一通路
 (Claude Code 也走 ACP,正本 `docs/design/acp-integration-2026-09.md`),在 `packages/backend/acp/`;连接器登记在
@@ -478,6 +491,10 @@ chrome-devtools-mcp 连 CDP 端口,但它的 `new_page` 在 Electron 上不可�
 `backend` 的那台(它自己拉起的,或上一次「继续运行」留下的),别人的 `server:start` 它只借、不停、不重启;记录上 `launcher: 'cli'`
 的那台是 CLI 拉起的(第④步批 3),桌面同样只借不停,由 `onething backend stop` 去停。token = `ONETHING_SERVER_TOKEN` 或每次启动新铸。server 单用户,绑非回环地址
 又没设 token 会警告。
+
+**插件与网关住在后端里**(第④步批 4):插件管理器与 IM 网关是这个 store 那台后端(桌面档 / CLI 档)的子系统,不在任何客户端里;
+客户端只经 `plugins` / `gateway` 两个 RPC 域看它们、改它们。所以它们的寿命就是后端的寿命:桌面 Quit 时若没开
+`general.backendKeepRunningAfterQuit`,后端收 SIGTERM,插件与网关一起拆(各 3 秒上限);开着就留着,下次桌面借回同一台。
 
 **React 桌面是它拉起的那台后端的 HTTP 客户端**:渲染层只走 `POST /api/rpc` 与 `GET /api/events`,主进程也是(`electron/core-client.ts`:
 终端 `detachAll`、`browser:` 的壳侧登记、设置订阅、先读后交);它只有三条 IPC 通道,都不是数据

@@ -118,6 +118,8 @@ async function createManager(input: {
   builtin?: TestDefinition[]
   /** 每次加载拿到的热重载令牌 —— 宿主用它做 ESM cache-buster,复用即旧模块。 */
   loadTokens?: Array<{ id: string; token: unknown }>
+  /** 给了就是一份真开关表:没有记录 = 关(用户 10-07 拍定,同真宿主),`setPluginEnabled` 写进它。 */
+  enabled?: Map<string, boolean>
 }) {
   const logger = input.logger ?? { log: () => {}, warn: () => {}, error: () => {} }
   const host: CorePluginManagerHost<
@@ -127,7 +129,7 @@ async function createManager(input: {
     scanPlugins: () => scanCorePlugins<TestEntry>({
       builtinPlugins: input.builtin ?? [],
       pluginsDir: input.pluginsDir,
-      getEnabled: () => true,
+      getEnabled: id => (input.enabled ? (input.enabled.get(id) ?? false) : true),
       appVersion: HOST_APP_VERSION,
       scanMode: 'npm-ledger',
     }),
@@ -139,7 +141,7 @@ async function createManager(input: {
     },
     createPluginAPI: () => ({ api: {}, state: { disposed: false, commands: new Map() } }),
     disposePlugin: state => { state.disposed = true },
-    setPluginEnabled: () => {},
+    setPluginEnabled: (id, value) => { input.enabled?.set(id, value) },
     installPluginPackage: pkgInput =>
       installCorePluginPackage(input.pluginsDir, pkgInput, { runNpm: input.npm, logger }),
     readInstalledPluginSpec: pkg => readPluginLedgerSpec(input.pluginsDir, pkg),
@@ -156,6 +158,26 @@ const PLAN_V1_URL = 'https://releases.example/plan-status-1.0.0.tgz'
 const PLAN_V2_URL = 'https://releases.example/plan-status-2.0.0.tgz'
 
 describe('installPlugin —— 安装链', () => {
+  it('没有开关记录 = 关之后:新装当场记 enabled: true、装完就跑;重装不动用户关掉的开关(第④步批 4)', async () => {
+    const pluginsDir = tempRoot()
+    const catalog = new Map([[PLAN_V1_URL, { pkg: 'plan-status', version: '1.0.0' }]])
+    const npm = createFakeNpm(pluginsDir, catalog)
+    const enabled = new Map<string, boolean>()
+    const manager = await createManager({ pluginsDir, npm, enabled })
+
+    await manager.installPlugin({ pkg: 'plan-status', tarballUrl: PLAN_V1_URL })
+    expect(enabled.get('plan-status')).toBe(true)
+    const plugin = manager.getPlugins().find(p => p.definition.id === 'plan-status')!
+    expect(plugin.definition.enabled).toBe(true)
+    expect(plugin.loaded).toBe(true)
+
+    enabled.set('plan-status', false)
+    await manager.refreshPlugins()
+    await manager.installPlugin({ pkg: 'plan-status', tarballUrl: PLAN_V1_URL })
+    expect(enabled.get('plan-status')).toBe(false)
+    expect(manager.getPlugins().find(p => p.definition.id === 'plan-status')!.loaded).toBe(false)
+  })
+
   it('首装自动写脚手架;装完插件进表、默认启用;--ignore-scripts 在场', async () => {
     const pluginsDir = tempRoot()
     const catalog = new Map([[PLAN_V1_URL, { pkg: 'plan-status', version: '1.0.0' }]])

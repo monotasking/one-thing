@@ -98,6 +98,12 @@ function writePluginSettings(settings: PluginSettings): void {
   writePluginSettingsFile(getPluginSettingsPath(), settings)
 }
 
+/**
+ * 用户插件(npm 账本里的与 `plugins-dev/` 的单文件脚本)在 `plugin-settings.json` 里**没有开关记录**时算不算开着:
+ * 不算(用户 10-07 拍定,第④步批 4)。内置插件走 `getPluginEnabled` 的缺省 `true`,不读这一格。
+ */
+export const USER_PLUGIN_ENABLED_WHEN_UNRECORDED = false
+
 export function getPluginEnabled(pluginId: string, fallback = true): boolean {
   return getPluginEnabledWithAdapters(pluginId, fallback, {
     readSettings: readPluginSettings,
@@ -398,7 +404,10 @@ export function scanPlugins(): PluginDefinition[] {
   const definitions = scanCorePlugins<PluginEntry>({
     builtinPlugins: getBuiltinPlugins(),
     pluginsDir: getPluginsDir(),
-    getEnabled: pluginId => getPluginEnabled(pluginId),
+    // 用户 10-07 拍定:**没有开关记录的已装插件按关闭处理**(内置插件不受影响,它们照旧缺省开)。
+    // 第④步批 4 起插件真的在后端进程里跑,「装着但从没开过」的插件不该在升级后的第一次启动时自己跑起来;
+    // 从设置里装的那一次由 `CorePluginManager.installPlugin` 当场记一行 `enabled: true`。
+    getEnabled: pluginId => getPluginEnabled(pluginId, USER_PLUGIN_ENABLED_WHEN_UNRECORDED),
     appVersion: getPluginAppVersion(),
     scanMode: 'npm-ledger',
   }) as PluginDefinition[]
@@ -408,7 +417,8 @@ export function scanPlugins(): PluginDefinition[] {
   const localDefinitions = scanLocalPluginFiles<PluginEntry>({
     localPluginsDir: getLocalPluginsDir(),
     seenIds: new Set(definitions.map(def => def.id)),
-    getEnabled: pluginId => getPluginEnabled(pluginId),
+    // 同上:`plugins-dev/` 里放进去的单文件脚本也要用户在设置里打开一次才跑。
+    getEnabled: pluginId => getPluginEnabled(pluginId, USER_PLUGIN_ENABLED_WHEN_UNRECORDED),
   }) as PluginDefinition[]
   localPluginIds.clear()
   for (const def of localDefinitions) localPluginIds.add(def.id)

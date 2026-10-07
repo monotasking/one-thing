@@ -83,6 +83,8 @@ import { getPluginBackgroundParams } from '@onething/backend/plugin/plugin-backg
 import { executePluginCommandOnHost } from '@onething/backend/plugin/plugin-commands'
 import { broadcastPluginRequestProgress } from '@onething/backend/plugin/plugin-events'
 import { pickPluginFileOnHost } from '@onething/backend/plugin/plugin-host-ports'
+import { importClientPickedPluginFile } from './plugin-file-import.js'
+import { isHostLocallyTrusted } from '@onething/backend/http-server/http-server-host-trust.js'
 import { getPluginManager } from '@onething/backend/plugin/plugin-system'
 import {
   getPluginMarketIndexSnapshot,
@@ -103,6 +105,10 @@ const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger = consolePort(log)
 /**
  * 迁移前 `platform/web.ts` 那批硬桩里的原话,一个字都不改 —— 迁的是通道,
  * 不是可感知行为。
+ *
+ * 第④步批 4 之后,桌面拉起的后端(`desktop` 档)与 CLI 拉起的后端(`cli` 档)都装了插件管理器,这些话在那两档上
+ * **一句都走不到**;还走得到它们的只剩缺省档(`server:start` 与只读镜像那一档)—— 施工单定死缺省档「行为与今天
+ * 逐字相同」,所以措辞不动(决策见 `docs/design/backend-structure-decisions-2026-10.md` 批 4 那几行)。
  */
 const WEB_PLUGINS_READ_ONLY
   = 'Plugins are installed and uninstalled on the desktop host only; this server mirrors the plugin catalog read-only.'
@@ -463,7 +469,16 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
    * 手势锚定是天然的:原生对话框只能由用户那一次点击拉起来。这里不需要
    * (也无法伪造)一个 `userGesture` 布尔。
    */
+  /**
+   * `file-pick` 的一次导入。第④步批 4 起插件管理器住在后端进程里,后端没有窗口:客户端自己开对话框,
+   * 把选好的文件(本机路径或字节)放在 `request.file` 里交回来,这里过闸、拷进插件数据目录、答一个 `storage:` 地址。
+   * 路径形只认本机可信的来访者(与 `files` 域同判据 `isHostLocallyTrusted()`)。不带 `file` 的是旧路:请宿主
+   * 自己开对话框 —— 只有注入了 `pickFile` 端口的进程做得到,别的进程答那句结构化的「做不到」。
+   */
   async pickFile(request, context = DESKTOP_RPC_CONTEXT) {
+    if (request?.file && typeof request.pluginId === 'string' && request.pluginId) {
+      return importClientPickedPluginFile({ ...request, file: request.file }, { allowLocalPath: isHostLocallyTrusted() })
+    }
     return pickPluginFileOnHost(request, context.callerId)
   },
 }

@@ -16,7 +16,7 @@ vi.mock('../plugin-disk-loader.js', () => ({
   getPluginsDir: () => tmp,
 }))
 
-const { getPluginImportsDir, importPluginFile, pluginStorageImageExists } = await import('../plugin-file-import.js')
+const { getPluginImportsDir, importClientPickedPluginFile, importPluginFile, pluginStorageImageExists, PLUGIN_FILE_PICK_PATH_NEEDS_LOCAL_CLIENT } = await import('../plugin-file-import.js')
 
 let source = ''
 
@@ -127,5 +127,30 @@ describe('pluginStorageImageExists', () => {
     ]) {
       expect(pluginStorageImageExists('ink', bad), bad).toBe(false)
     }
+  })
+})
+
+describe('importClientPickedPluginFile(第④步批 4:客户端开对话框、把文件交回)', () => {
+  it('字节形:同一组闸、落进插件数据目录、只答地址', () => {
+    const answer = importClientPickedPluginFile(
+      { pluginId: 'ink', accept: ['png'], file: { name: '../../escape.png', base64: Buffer.alloc(8, 2).toString('base64') } },
+      { allowLocalPath: false },
+    )
+    expect(answer).toEqual({ path: 'storage:imports/escape.png', name: 'escape.png', size: 8 })
+    expect(fs.existsSync(path.join(tmp, 'ink', 'storage', 'imports', 'escape.png'))).toBe(true)
+    const rejected = importClientPickedPluginFile(
+      { pluginId: 'ink', accept: ['png'], file: { name: 'notes.txt', base64: 'aGk=' } },
+      { allowLocalPath: false },
+    )
+    expect(rejected.error).toBeTruthy()
+    expect(rejected.path).toBeUndefined()
+  })
+
+  it('路径形只认本机可信的来访者', () => {
+    const file = writeSource('paper.png', 4)
+    expect(importClientPickedPluginFile({ pluginId: 'ink', file: { path: file } }, { allowLocalPath: false }))
+      .toEqual({ error: PLUGIN_FILE_PICK_PATH_NEEDS_LOCAL_CLIENT })
+    expect(importClientPickedPluginFile({ pluginId: 'ink', file: { path: file } }, { allowLocalPath: true }).path)
+      .toBe('storage:imports/paper.png')
   })
 })

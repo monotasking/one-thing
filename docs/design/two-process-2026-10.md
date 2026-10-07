@@ -21,6 +21,10 @@
 > 的既有机制(`packages/backend/resource/resource-shell-dispatch.ts`):客户端登记一个命名空间,后端把命令经 SSE 发给它,
 > 它跑完回执。
 
+**五批的状态(10-07)**:批 0「凭证归后端」10-06 已落(§7);批 1「客户端的事移出后端」10-06 已落(§8);批 2a「后端进程能独当一面」
+10-06 已落(§9);批 2b「桌面拉起后端子进程」10-07 已落(§10);批 3「CLI 走 HTTP」10-07 已落(§11);批 4「插件与 gateway 挂后端」
+10-07 已落(§12)。**第④步五批全部落地**;没做完的都在各批「没做 / 留账」里,§4「以后」那几条照旧是以后。
+
 ### 0.1 总览表
 
 | 批 | 做什么 | 动哪些文件(file 级) | 依赖 | 单独回退 | 用户能感觉到什么 |
@@ -805,3 +809,57 @@ ACP 的「装没装」探测:登录 shell 的 PATH 赶在 `acp.start()` 之前�
 `gate:web-shell`、`gate:credentials` 绿;`build:cli` 出产物;全量 vitest 失败集合不新增(根 32 → 30:没有新增,批前就红的两条这次过了 —— 都是真进程计时类;`host-process.test.ts`
 里起守护进程的两条用例改写成起 `cli` 档后端;壳 1 → 1)。反证:把 `principalOf` 的降级一行删掉,`gate:cli-http` 红在审计账那一条。
 
+
+## 12. 批 4 实施结果(2026-10-07)
+
+> 从这一批起插件管理器与 IM 网关都住在后端进程里:桌面拉起的那台(`desktop` 档)与 CLI 拉起的那台(`cli` 档)
+> 起它们,`server:start`(缺省档)照旧不起。逐条决策见 `docs/design/backend-structure-decisions-2026-10.md` D337–D346。
+
+**用户 10-07 拍定的两条**
+
+1. **插件按已存的开关运行**:`plugin-settings.json` 里 `enabled: true` 的照常跑,`false` 的不跑,**没有开关记录的已装插件按关闭处理**
+   (从前缺省是开,改了,测试钉住;内置插件照旧缺省开)。从设置里新装的那一次当场记 `enabled: true`(D338,装完就跑与从前同,请用户确认)。
+2. **网关按设置自动连**:后端起来时 `channels.wechat.enabled` 开着就自动连,关着不起;设置一改跟着起停(设置存盘那条路本来就调
+   `gateway.applySettings`)。只认设置,不再认环境变量(D343 ①)。
+
+**行为表**
+
+| 项 | 改前 | 改后 |
+| --- | --- | --- |
+| `GET /api/capabilities` 的 `pluginsManage` | 恒假(全仓没有进程起插件管理器) | 桌面档 / CLI 档为真,缺省档照旧假 |
+| 插件 | 不跑 | 桌面档 / CLI 档后端起来后在后台扫描、加载;按开关跑(上面第 1 条) |
+| 插件命令的 `exec` | 没有宿主注入(答「Shell execution is unavailable in this runtime.」) | 后端自己起子进程(execa);桌面档的 PATH 补过登录 shell |
+| `file-pick` | 没有宿主注入(答「…desktop app only.」) | 客户端开对话框、把文件经 `plugins.pickFile` 的 `file` 一格交回(D341);不带 `file` 的旧调用照旧答那句 |
+| IM 网关 | 只有独立网关进程一种跑法;`gateway` 域答「Gateway connections are not available in this runtime.」 | 桌面档 / CLI 档里网关跟着后端运行,按设置自动连;缺省档照旧答那句 |
+| 退出 | — | 插件与网关在起点 `own()` 拆除,各 3 秒上限;「退出后让后端继续运行」关着时,Quit 会把网关一起断开 |
+| 设置页 | — | 「通用」页后端那几行下面多一行「网关」+ 说明(逐字):「网关跟着后端运行:退出 onething 时如果没开「退出后让后端继续运行」,网关会一起断开。」 |
+
+**落了什么**
+
+| 件 | 位置 | 一句话 |
+| --- | --- | --- |
+| 档位两格 | `packages/backend/backend-launcher.ts` | `plugins` / `gateway`(desktop、cli 真,缺省假);宿主表四格;装配后起插件管理器与网关、起点 `own()` |
+| 宿主表 | `packages/backend/http-server/http-server-standalone-backend.ts` | `plugins` / `gateway` 两格从 `null` 改成读档位 |
+| 插件起拆 | `packages/backend/plugin/plugin-backend-host.ts`(新)、`plugin-command-process.ts`(新)、`plugin.ts`、`backend.ts`(兜底拆除加上限) | `backendPluginsHostPorts`、`startPluginSystem`、`shutdownPluginSystemWithin`;exec 执行器 |
+| 开关缺省 | `packages/backend/plugin/plugin-disk-loader.ts`、`plugin-manager-base.ts` | `USER_PLUGIN_ENABLED_WHEN_UNRECORDED = false`;新装记 `enabled: true` |
+| file-pick | `packages/shared/ipc/plugins.ts`(`PickPluginFileRequest.file`)、`plugin/plugin-file-import.ts`、`plugin/plugin-client-api.ts` | 字节形 / 路径形两种,同一组闸 |
+| 网关 | `packages/backend/gateway/gateway-host.ts`(新)、`gateway.ts`、`gateway-lifecycle-port.ts` / `gateway-client-api.ts`(注释) | `createBackendGatewayHost` |
+| 设置页 | `apps/desktop-react/src/content/settings/GeneralPage.tsx`、`src/i18n/{zh,en}.ts` | 一行说明 |
+| 门 | `scripts/gate-plugin.mjs` + `scripts/gate-plugin/fixture/`(新)、`scripts/gate-gateway.mjs`(新)、`package.json`、`.github/workflows/test.yml` | 两道都进 CI 的 gates job |
+| 测试 | `plugin/__tests__/plugin-default-enabled.test.ts`(新)、`gateway/__tests__/gateway-host.test.ts`(新)、`install-lifecycle.test.ts`、`__tests__/backend-launcher.test.ts` | — |
+
+**没做 / 留账**
+
+- React 壳没有插件页、没有网关页,也不渲染插件描述树:`pluginsManage` 变真之后壳里还没有地方装 / 开 / 关插件,`file-pick` 的客户端那一半
+  (开对话框、把文件交回)也没有消费者。网关的开关、二维码登录、多账号管理同样没有界面(Vue 宿主的 `ChannelsSettingsTab` 随 Vue 退役)。
+- 插件域里那几句「只在桌面宿主」没删(D342:缺省档逐字不变)。
+- 插件 API 不暴露凭证原文:本批没开新的宿主登记表,`PLUGIN_DEFERRED_REGISTRIES` 一格没动;插件能拿到的凭证面与批 0 之后相同。
+- 两道新门跑的是 `dist/server/main.js`(系统 node)。桌面真拉起的是 `dist-electron/backend.cjs`(esbuild 包):`gate:plugin` 的①②
+  另在手边把入口换成 `backend.cjs` 跑过两遍 —— 系统 node 与 Electron 二进制 + `ELECTRON_RUN_AS_NODE=1` 各一遍,全绿(execa 在 esbuild 包里
+  同样能用);这条没写进门(门要再加一个运行时参数,CI 的 Linux 机器上 Electron-as-Node 那一半本来就不跑)。`gate:gateway` 没在 `backend.cjs` 上跑。
+
+**验收**(改前 `s51-before/`、改后 `s51-after/`,同一台机器 10-07):三套 tsc 绿;十三道结构门绿(`feature-map` 重生成);`gate:plugin` 18/18、
+`gate:gateway` 10/10(两道新门,进 CI);`gate:backend-process` 69/69(两个运行时 + 监督那一半)、`gate:cli-http`、`gate:acp`、`gate:web-shell`、
+`gate:credentials`、`gate:client`、`gate:store-backup` 绿;插件 / 网关 / plugin-contract 目录全部测试绿;全量 vitest 失败集合不新增
+(根 30 → 30,同一批批前就红的;壳 1 → 1)。反证:假登录 shell 换成 `/bin/sh` 时 `gate:plugin` 红在 exec 那一条;把缺省值改回开时
+`plugin-default-enabled.test.ts` 红。

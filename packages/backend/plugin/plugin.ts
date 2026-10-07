@@ -4,7 +4,8 @@
  * 插件与宿主约定的词汇(作用域、表面、策略、健康账、三张登记契约)住 `plugin-contract`(D202),本入口不转交。
  *
  * 对外交出八类东西(按段分组):
- * - 装配:插件管理器的取用口、宿主注入口、插件自带的小模型服务、内置插件(log-monitor);
+ * - 装配:插件管理器的取用口与后端进程起 / 拆它的三件、宿主注入口、网关用的插件命令两件、插件自带的小模型服务、
+ *   内置插件(log-monitor);
  * - 插件 API 与定义的形状、插件信息;
  * - 磁盘与账本:插件目录、设置文件的读写、启用开关、扫描与内置定义、市场索引与 npm 安装;
  * - 回合里的钩子:输入拦截、工具调用 / 结果拦截、回复后与压缩前的生命周期钩子、会话间投递;
@@ -19,6 +20,14 @@
 export { getPluginManager } from './plugin-system.js'
 export { configurePluginsHost, resetPluginsHost } from './plugin-host-ports.js'
 export type { PluginsHostPorts } from './plugin-host-ports.js'
+// 后端进程起 / 拆插件管理器(第④步批 4,`backend-launcher.ts` 与装配里的兜底拆除用)。
+export {
+  backendPluginsHostPorts,
+  shutdownPluginSystemWithin,
+  startPluginSystem,
+} from './plugin-backend-host.js'
+// 网关里的插件命令(`/命令`):列与执行,与插件域同一条路(`backend-launcher.ts` 把它们接成网关的命令提供者)。
+export { executePluginCommandOnHost, listPluginCommandsForGateway } from './plugin-commands.js'
 export { PluginLlmService } from './plugin-llm-service.js'
 export {
   ONETHING_LOG_MONITOR_MANIFEST,

@@ -1827,6 +1827,8 @@ export const en: Record<MessageKey, string> = {
   'backend.notOwnedHint': "This backend wasn't started by this desktop app. Restart it where it was started.",
   'backend.keepRunningLoadFailed': "Couldn't read this setting.",
   'backend.keepRunningSaveFailed': "This setting wasn't saved.",
+  'gateway.title': 'Gateway',
+  'gateway.runsInBackend': 'The gateway runs inside the backend. If “Keep the backend running after you quit onething” is off, quitting onething also disconnects the gateway.',
   'credentials.reasonKeychainFailed': 'Reading the keychain failed.',
   'credentials.reasonLegacySafeStorage': "Your existing credentials haven't been moved yet. Select Retry to try again.",
   'credentials.loading': 'Reading the keychain.',

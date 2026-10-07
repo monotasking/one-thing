@@ -35,9 +35,9 @@ export interface PluginCommandExecResult {
 }
 
 /**
- * 未注入执行器时的那三格。**今天没有任何宿主会走到它**:桌面注入 execa,
- * http 上的插件命令走 server 自己那本只读镜像(它带着自己的「shell 已禁用」)。
- * 留着是为了让 CLI / 单元测试拿到一条能读懂的答案,而不是一个抛出的异常。
+ * 未注入执行器时的那三格。起插件管理器的档位(桌面 / CLI)都注入后端自己的执行器;
+ * 缺省档没有管理器,http 上的插件命令走 server 自己那本只读镜像(它带着自己的「shell 已禁用」)。
+ * 留着是为了让单元测试拿到一条能读懂的答案,而不是一个抛出的异常。
  */
 export const PLUGIN_COMMAND_EXEC_UNAVAILABLE
   = 'Shell execution is unavailable in this runtime.'
@@ -54,10 +54,9 @@ export interface PluginsHostPorts {
   /**
    * 插件命令声明的 `exec`(一条 shell 命令 + 参数 + cwd)。
    *
-   * 为什么是端口而不是装配层自己 `import('execa')`:execa 是**宿主的**依赖,
-   * 而 `packages/backend` 同时被 `dist/server/main.js` 那个单文件包吃进去 ——
-   * 在这里动态 import 它等于把一个只有桌面用得上的子进程库塞进 server 的 bundle。
-   * 桌面在 `@main/ipc/plugins.ts` 注入三行转调,别的宿主不注入。
+   * 第④步批 4 起由**后端进程自己**实现(`./plugin-command-process.ts`,execa):插件管理器住在后端进程里,
+   * `backend-launcher.ts` 在桌面档 / CLI 档把它填进宿主表这一格;缺省档(`server:start`)不填,
+   * 那里不起插件管理器。仍是端口而不是直接调,是因为「这台进程许不许插件起子进程」是档位的事实,不是插件的。
    */
   execCommand?(
     command: string,

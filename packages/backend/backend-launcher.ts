@@ -12,20 +12,27 @@
  *   不设 / `none`               | `server:start`、真机门 | 与批 2a 之前**逐字相同**(只有决策 D6 / D9 两处改动)
  *   `desktop`                   | 批 2b 起的桌面 | 装配开关与桌面进程内那份逐格相同(D14);五件补齐;出声;
  *                               |        | 发现文件 owner `backend`;日志 `app.jsonl`、不回显到终端
+ *   (批 4 起桌面档另起插件管理器与 IM 网关,宿主表 `plugins` / `gateway` 两格由后端自己填,见下)
  *   `cli`                       | 批 3 起的 CLI(`onething backend start` / `--spawn`) | 从前 CLI 守护进程那一份(决策 D7):
  *                               |        | 工具 `headless` 档、`collab` 与 `sessionSkills` 开、真的 MCP 客户端;宣告「无人
  *                               |        | 值守」(system 主体的卡 60 秒自动拒)并声明「卡最多等 60 秒」(任何主体);
- *                               |        | 发现文件 owner `backend` + `launcher: 'cli'`(桌面借它、不停它);日志 `app.jsonl`、不回显
+ *                               |        | 发现文件 owner `backend` + `launcher: 'cli'`(桌面借它、不停它);日志 `app.jsonl`、不回显;
+ *                               |        | 批 4 起与桌面档一样起插件管理器与 IM 网关
+ *
+ * 插件与网关(第④步批 4,`docs/design/two-process-2026-10.md` §2.5):只有 `desktop` / `cli` 两档起,缺省档不起、
+ * 宿主表那两格照旧 `null`。插件按 `plugin-settings.json` 里存的开关跑(没有记录的用户插件算关,用户 10-07 拍定),
+ * 网关按设置里的微信开关自动连(用户 10-07 拍定);两者都在起点 `own()` 拆除,各有 3 秒上限。
  *
  * 交出三类东西:
  *   - 读档位:`readBackendLauncher(env)`(唯一读 `ONETHING_BACKEND_LAUNCHER` 的地方)与
  *     `backendLaunchProfile(launcher, env)`(档位 → 一张纯数据的档案);
- *   - 装配用的几格:`launchHostPorts(profile, env)`(宿主表里随档位变的两格)、`prepareProcessEnv(profile)`
+ *   - 装配用的几格:`launchHostPorts(profile, env)`(宿主表里随档位变的四格:存储路径、出声、插件、网关)、`prepareProcessEnv(profile)`
  *     (登录 shell 的 PATH,在第一次 spawn 之前等它)、`declareLaunchAttendance(profile)`(装配之前声明这台宿主
  *     有没有人答卡);
  *   - 装配之后起的服务:`startLaunchServices(backend, profile)`,每一件都在起它的那一行 `own()`。
  *
- * 依赖:scheduler、music(经实例)、settings、process-env、voice、mcp、permission 与 logging 的入口。被谁用:进程入口
+ * 依赖:scheduler、music(经实例)、settings、process-env、voice、mcp、permission、plugin、gateway 与 logging 的入口,
+ * 以及包根的当前实例槽。被谁用:进程入口
  * `backend-standalone-main.ts` 与 `http-server/http-server-standalone-backend.ts` / `http-server-runtime.ts`。
  */
 import type { OnethingBackend, OnethingBackendOptions } from '@onething/backend/backend.js'
@@ -35,7 +42,16 @@ import type { HttpDiscoveryLauncher, HttpDiscoveryOwner } from '@shared/backend/
 import type { MCPClientLike } from '@onething/backend/mcp'
 import type { MCPServerConfig } from '@shared/ipc/mcp.js'
 import { getLogger } from '@onething/backend/logging'
+import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
+import { createBackendGatewayHost, type BackendGatewayHost } from '@onething/backend/gateway'
 import { createNativeMCPClient } from '@onething/backend/mcp'
+import {
+  backendPluginsHostPorts,
+  executePluginCommandOnHost,
+  listPluginCommandsForGateway,
+  shutdownPluginSystemWithin,
+  startPluginSystem,
+} from '@onething/backend/plugin'
 import { declareUnansweredAskDeadline, markHostUnattended } from '@onething/backend/permission'
 import { hydrateProcessEnvFromLoginShell } from '@onething/backend/process-env'
 import { initializeUserSchedulerTasks } from '@onething/backend/scheduler'
@@ -95,6 +111,16 @@ export interface BackendLaunchProfile {
   readonly userSchedulerTasks: boolean
   readonly music: boolean
   readonly modelRegistryRefresh: boolean
+  /**
+   * 插件系统(第④步批 4):装配之后起插件管理器,宿主表 `plugins` 一格由后端自己填(插件命令的 `exec`)。
+   * 插件按 `plugin-settings.json` 里存的开关跑(用户 10-07 拍定;没有记录的用户插件算关)。
+   */
+  readonly plugins: boolean
+  /**
+   * IM 网关(第④步批 4):宿主表 `gateway` 一格由后端自己填(`gateway/gateway-host.ts`),后端起来时设置里
+   * 微信开着就自动连(用户 10-07 拍定「网关按设置自动连」),设置一改跟着起停。
+   */
+  readonly gateway: boolean
 }
 
 /**
@@ -132,6 +158,9 @@ export function backendLaunchProfile(
       userSchedulerTasks: true,
       music: true,
       modelRegistryRefresh: true,
+      // 第④步批 4:插件与网关挂在后端上(从前只有 Vue 桌面主进程起过它们)。
+      plugins: true,
+      gateway: true,
     }
   }
   if (launcher === 'cli') {
@@ -161,6 +190,9 @@ export function backendLaunchProfile(
       userSchedulerTasks: false,
       music: false,
       modelRegistryRefresh: false,
+      // 第④步批 4:CLI 拉起的那台也是「这个 store 的后端」,插件与网关跟着它(施工单定法:desktop 与 cli 两档起)。
+      plugins: true,
+      gateway: true,
     }
   }
   // `none` 与不设:`server:start` 那一档。
@@ -187,6 +219,9 @@ export function backendLaunchProfile(
     userSchedulerTasks: false,
     music: false,
     modelRegistryRefresh: false,
+    // 缺省档不起插件、不起网关:与批 4 之前逐字相同(两格宿主表照旧 `null`)。
+    plugins: false,
+    gateway: false,
   }
 }
 
@@ -206,12 +241,49 @@ export function backendLaunchProfile(
 export function launchHostPorts(
   profile: BackendLaunchProfile,
   env: NodeJS.ProcessEnv = process.env,
-): Pick<OnethingHostPorts, 'storePath' | 'speechOutput'> {
+): Pick<OnethingHostPorts, 'storePath' | 'speechOutput' | 'plugins' | 'gateway'> {
   const resourcesPath = env.ONETHING_RESOURCES_PATH
   return {
     storePath: resourcesPath ? { isPackaged: true, resourcesPath } : {},
     speechOutput: profile.speechOutput ? createProcessSpeechOutput() : null,
+    // 第④步批 4:插件命令的 `exec` 由后端自己起子进程(PATH 是这台进程的,桌面档补过登录 shell 的)。
+    plugins: profile.plugins ? backendPluginsHostPorts : null,
+    gateway: profile.gateway ? gatewayHostFor(profile) : null,
   }
+}
+
+/**
+ * 这个档位那台网关生命周期机器。宿主表那一格与装配之后的「按设置起」要的是**同一台**,所以按档案记一份
+ * (`const` 持有器,档案在进程里只造一次)。对话 runtime 与插件命令在用到时现取当前实例。
+ */
+const gatewayHosts = new WeakMap<BackendLaunchProfile, BackendGatewayHost>()
+
+function gatewayHostFor(profile: BackendLaunchProfile): BackendGatewayHost {
+  const existing = gatewayHosts.get(profile)
+  if (existing) return existing
+  const host = createBackendGatewayHost({
+    getConversationRuntime: () => {
+      const backend = getCurrentBackendInstance()
+      if (!backend) throw new Error('The backend is not assembled yet; the gateway cannot start.')
+      return backend.runtime.conversationRuntime
+    },
+    getSettings: () => getSettings(),
+    commandProvider: {
+      async listCommands() {
+        const result = await listPluginCommandsForGateway()
+        return result.success ? result.commands : []
+      },
+      executeCommand(request) {
+        return executePluginCommandOnHost({
+          commandName: request.command.name,
+          args: request.args,
+          sessionId: request.sessionId,
+        })
+      },
+    },
+  })
+  gatewayHosts.set(profile, host)
+  return host
 }
 
 /**
@@ -249,7 +321,7 @@ export function declareLaunchAttendance(profile: BackendLaunchProfile): () => vo
 // ── 装配之后起的服务 ──────────────────────────────────────────────────────
 
 /**
- * 起这个档位要的三件(登录 shell 在装配时并行、MCP 由 server runtime 起、ACP 由 `createRealServerBackend` 起,
+ * 起这个档位要的几件(定时任务、电台、首启模型拉取,批 4 起加插件管理器与网关;登录 shell 在装配时并行、MCP 由 server runtime 起、ACP 由 `createRealServerBackend` 起,
  * 都不在这里)。与桌面 `main.ts` 的 `startPostWindowServices` 同一张单子、同一个次序、同一个 `own()` 标签;
  * 任何一件失败都不挡进程起来,只记一行。返回起了哪几件,给进程入口记日志。
  */
@@ -283,6 +355,33 @@ export function startLaunchServices(backend: OnethingBackend, profile: BackendLa
       } else log.error('subsystem startup failed', { subsystem: 'model-registry', blocking: false }, error)
     })
     started.push('modelRegistryRefresh')
+  }
+  if (profile.plugins) {
+    /*
+     * 插件管理器(第④步批 4)。起点就登记拆除(有 3 秒上限,不拖住 SIGTERM 的 5 秒),再在后台起它 ——
+     * 扫描与加载插件不挡后端开始服务;起不来只记一行(管理器自己也只记一行,`pluginsManage` 照旧答真,
+     * 设置页列得出「加载失败」的那几个)。
+     */
+    backend.own(() => shutdownPluginSystemWithin().then(timedOut => {
+      if (timedOut) log.warn('plugin system shutdown timed out, moving on', {})
+    }), 'pluginSystem')
+    void backend.runTask('backend:plugins', () => startPluginSystem(backend.eventBus, backend.engine)).then(manager => {
+      log.info('plugin system started', {
+        running: manager.getPlugins().filter(info => info.loaded).map(info => info.definition.id),
+      })
+    }, (error: unknown) => {
+      log.error('subsystem startup failed', { subsystem: 'plugins', blocking: false }, error)
+    })
+    started.push('plugins')
+  }
+  const gateway = profile.gateway ? gatewayHosts.get(profile) : undefined
+  if (gateway) {
+    // 网关:起点登记拆除(3 秒上限),再按设置起(微信关着就什么都不做)。永不抛,起不来记进网关状态。
+    backend.own(() => gateway.shutdown().then(() => undefined), 'gateway', 'quiesce')
+    void backend.runTask('backend:gateway', () => gateway.startFromSettings()).catch((error: unknown) => {
+      log.error('subsystem startup failed', { subsystem: 'gateway', blocking: false }, error)
+    })
+    started.push('gateway')
   }
   return started
 }

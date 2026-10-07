@@ -2122,6 +2122,9 @@ export const zh = {
   'backend.notOwnedHint': '这台后端不是这个桌面启动的,要在启动它的地方重启。',
   'backend.keepRunningLoadFailed': '读不到这项设置。',
   'backend.keepRunningSaveFailed': '这项设置没存上。',
+  /* 网关跟着后端运行(第④步批 4)。说明那一句逐字照派工单,不许改写。 */
+  'gateway.title': '网关',
+  'gateway.runsInBackend': '网关跟着后端运行:退出 onething 时如果没开「退出后让后端继续运行」,网关会一起断开。',
   'credentials.reasonKeychainFailed': '读取钥匙串时出错。',
   'credentials.reasonLegacySafeStorage': '原来的凭证还没迁移完,点「重试」再试一次。',
   'credentials.loading': '正在读取钥匙串。',
