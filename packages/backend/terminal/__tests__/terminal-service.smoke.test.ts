@@ -21,6 +21,10 @@ const zdotdir = mkdtempSync(path.join(os.tmpdir(), 'onething-pty-smoke-'))
 writeFileSync(path.join(zdotdir, '.zshrc'), '')
 process.env.ZDOTDIR = zdotdir
 
+// 没有原生 pty 就整组跳过:CI 的 linux runner 上 node-pty 没有可用的 prebuild
+// (`Cannot find module './prebuilds/linux-x64//pty.node'`),这组用例要的就是**真** PTY,
+// 没有它既跑不出真话也证不了假话;跳过比一行永远红的 FAIL 诚实(mac 开发机照常跑)。
+const ptyAvailable = await import('node-pty').then(() => true, () => false)
 const native = createNodePtyBackend()
 const pids: number[] = []
 const exited = new Set<number>()
@@ -51,7 +55,7 @@ function snapshotText(terminalId: string): string {
   return (response.chunks ?? []).map(chunk => chunk.data).join('')
 }
 
-describe('TerminalService real-pty smoke', () => {
+describe.skipIf(!ptyAvailable)('TerminalService real-pty smoke', () => {
   it('spawns a real shell, echoes back, and survives attach replay', async () => {
     const info = service.create({ cwd: process.cwd() })
     expect(info.shell.length).toBeGreaterThan(0)

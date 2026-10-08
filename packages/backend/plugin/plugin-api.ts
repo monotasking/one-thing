@@ -133,6 +133,17 @@ export const GLOBAL_PLUGIN_EVENT_TYPES = new Set([
   // D202:授权层「这张审批卡等太久了」的进程内事实。名单与联合一一对应是这张表的整条命;
   // 它对插件同样没有用(往房间里喊话的是 collab 的监听器)。
   'permission:ask-stale',
+  // 2026-10-08 补齐:名单与 `@shared/events` 的 GlobalEvent 联合一一对应是这张表的整条命
+  // (看门狗 `plugin/__tests__/event-routing.test.ts`),下面八条是 ACP / 凭证 / OAuth /
+  // 配额 / 语音 / agent 通知陆续加进联合却没登进名单的。它们一律只是「事实」,不带凭证原文。
+  'acp:agent-state',
+  'acp:session-state',
+  'agent:notification',
+  'credentials:locked',
+  'oauth:flow',
+  'oauth:token-expired',
+  'provider:quota',
+  'speech:activity',
 ])
 
 /** 插件自定义事件:`plugin:<pluginId>:<name>`,三段以上。 */

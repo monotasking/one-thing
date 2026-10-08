@@ -157,15 +157,15 @@ async function archiveComplete(archive) {
     // 判据一:**打进包里的那些兄弟文件逐字节读得回来**。归档偏移一旦被
     // 「单文件 unpack」的 header 弄偏,这一趟就会读出别人的内容或读不出来。
     for (const [relative, text] of content) expect(extractFile(archive, relative).toString()).toBe(text)
-    // 判据二:解包的**只有 worker 那一个文件**(工单 4 B3 回单文件)。
-    // 2026-09-06/07 那轮把规则放宽成 `dist-electron/**` 并把这条断言改成
-    // 「凡 dist-electron 下的都解包」,理由是 electron-builder 26.4 的流式归档
-    // 在单文件 unpack 上有个 header/写入流不一致的坑。真跑下来判据一在单文件
-    // 规则下是绿的 —— 那个坑在这条管线上复现不出来,而放宽的代价是
-    // main.cjs / preload.cjs 一起出 asar、签名姿态跟着变。
-    const unpacked = 'apps/desktop-react/dist-electron/search-worker.cjs'
+    // 判据二:`dist-electron/` 下的**每一个条目都解包**(9a0dfcc5c,2026-10-07 实测改回整目录)。
+    // 工单 4 B3 曾把它收回单文件(只解 worker),理由是「单文件规则下判据一也绿」;10-07 单文件
+    // 规则加到三条(多了 `backend.cjs`)后打包 app 起不来 —— asar header 把 `main.cjs` 记成
+    // `unpacked: true` 而 `app.asar.unpacked/` 里没有它,`package.json` 的 offset 指到别的内容上。
+    // 所以规则回到 `apps/desktop-react/dist-electron/**`,这条断言钉的就是这一句;代价
+    // (`main.cjs` / `preload.cjs` 也在 asar 外)写在 electron-builder.yml 那段注释里。
     for (const relative of content.keys()) {
-      expect(statFile(archive, relative).unpacked === true).toBe(relative === unpacked)
+      const inDistElectron = relative.startsWith('apps/desktop-react/dist-electron/')
+      expect(statFile(archive, relative).unpacked === true).toBe(inDistElectron)
     }
   })
 

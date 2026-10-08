@@ -54,7 +54,13 @@ const music = vi.hoisted(() => {
   }
   const operations = { runMusicCommand: vi.fn(async () => ({ success: true })) }
   const service = { getMusicNowPlaying: vi.fn(() => null) }
-  return { radio, operations, service, onNowPlayingChanged: vi.fn(() => () => {}), onPlayerFact: vi.fn(() => () => {}) }
+  return {
+    radio, operations, service,
+    onNowPlayingChanged: vi.fn(() => () => {}),
+    onPlayerFact: vi.fn(() => () => {}),
+    onRadioFact: vi.fn(() => () => {}),
+    onSetupEvent: vi.fn(() => () => {}),
+  }
 })
 
 vi.mock('../backend-current.js', async importOriginal => {

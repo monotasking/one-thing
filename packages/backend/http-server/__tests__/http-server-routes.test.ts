@@ -781,11 +781,13 @@ describe('createOnethingHttpServer', () => {
       await expect(rpc(aliceHeaders, 'delete', { path: renamedPath }))
         .resolves.toEqual(ok({ success: true }))
 
-      // reveal:路径夹得住,但联网宿主没注入 shell 端口 —— 结构化降级。
-      await expect(rpc(aliceHeaders, 'reveal', { path: srcDir })).resolves.toEqual(ok({
-        success: false,
-        error: 'shell host not available',
-      }))
+      // reveal:第④步批 1 起「在访达中显示」是客户端自己的事(`dir:` 资源的 `reveal`
+      // 做法走 shell dispatch),files 域上**没有这个方法了** —— 答的是分发表的 UNKNOWN_METHOD,
+      // 不再是「shell host not available」那句结构化降级。
+      await expect(rpc(aliceHeaders, 'reveal', { path: srcDir })).resolves.toEqual({
+        ok: false,
+        error: { message: 'Unknown RPC method "files.reveal"', code: 'UNKNOWN_METHOD' },
+      })
     } finally {
       // SSE 连着的话 `server.close()` 会挂在 afterEach 上 —— 主动断掉。
       await fileEvents?.body?.cancel().catch(() => {})

@@ -91,7 +91,13 @@ const music = vi.hoisted(() => {
     getActiveMusicProvider: vi.fn(() => ({ descriptor: { id: 'ncm-cli' } })),
     stopMusicPlayerKeepalive: vi.fn(),
   }
-  return { radio, operations, service, onNowPlayingChanged: vi.fn(() => () => {}) }
+  return {
+    radio, operations, service,
+    onNowPlayingChanged: vi.fn(() => () => {}),
+    onPlayerFact: vi.fn(() => () => {}),
+    onRadioFact: vi.fn(() => () => {}),
+    onSetupEvent: vi.fn(() => () => {}),
+  }
 })
 
 vi.mock('../../backend-current.js', async importOriginal => {

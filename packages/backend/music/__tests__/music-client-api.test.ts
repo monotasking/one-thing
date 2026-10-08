@@ -60,13 +60,15 @@ const radio = vi.hoisted(() => {
   }),
   radioToolClose: vi.fn(async () => ({ ...status, active: false, programmeLength: 0 })),
   radioToolStatus: vi.fn(() => status),
+  isDjWorking: vi.fn(() => false),
+  hostState: vi.fn(() => ({ working: false })),
   requestSong: vi.fn(async () => ({ success: true, title: '可惜没如果 - 林俊杰' })),
   getProgrammeSnapshot: vi.fn(() => ({ entries: [{ encryptedId: '1', title: 'a' }], onDeck: 'a' })),
   applyProgrammeAction: vi.fn(() => ({ success: true })),
   getMusicLyrics: vi.fn(() => null),
   getRadioStartingTitle: vi.fn(() => undefined),
   getRadioStore: vi.fn(() => ({
-    readBrief: () => ({ active: true, intent: '深夜', onDeck: 'a' }),
+    readBrief: () => ({ active: true, intent: '深夜', onDeck: 'a', played: [] }),
     readProgramme: () => ({ entries: [{ title: 'a' }] }),
     writeBrief: vi.fn(),
     writeProgramme: vi.fn(),
@@ -226,6 +228,11 @@ describe('music RPC domain', () => {
       canResume: true,
       upNext: 'a',
       volume: undefined,
+      // 简报后来多出的四格(主持人状态牌 / 最近播过 / 本程起点 / DJ 在不在干活)。
+      djWorking: false,
+      host: { working: false },
+      recent: [],
+      startedAt: undefined,
     })
   })
 

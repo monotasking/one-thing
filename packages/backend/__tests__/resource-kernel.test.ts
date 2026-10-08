@@ -145,8 +145,11 @@ describe('资源内核在真装配里(K1)', () => {
     const listed = toolkitCatalogToolDefinitions() ?? []
     expect(listed.map(tool => tool.id)).not.toContain('session')
     expect(listed.map(tool => tool.id)).not.toContain('resources')
-    // 少掉的正好是「全部资源工具 + 一只元工具」,不写死几只。
-    expect(listed.length).toBe(catalog!.all().length - (backend.resources.tools().length + 1))
+    // 少掉的正好是「露面的资源工具 + 一只元工具」,不写死几只。自述 `exposure.aiTool: false`
+    // 的 scheme(今天是 todo)本来就不进目录(`resource-catalog-sync.ts`),它在注册表里却不在
+    // 目录里,是声明的结果不是漏掉。
+    const exposed = backend.resources.tools().filter(tool => tool.provider.spec.exposure?.aiTool !== false)
+    expect(listed.length).toBe(catalog!.all().length - (exposed.length + 1))
   })
 
   it('K3-a:元工具 resources 列的是注册表当下的样子(它自己不认识任何命名空间)', async () => {

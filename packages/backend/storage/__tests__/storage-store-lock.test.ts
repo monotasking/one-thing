@@ -271,7 +271,7 @@ describe('onething store lock runtime', () => {
     const storePath = path.join(makeStore(), 'missing')
     expect(inspectStoreLock({ storePath }).status).toBe('absent')
     expect(fs.existsSync(storePath)).toBe(false)
-    expect(canonicalizeStorePath(storePath)).toBe(path.join(fs.realpathSync(path.dirname(storePath)), 'missing'))
+    expect(canonicalizeStorePath(storePath)).toBe(path.join(fs.realpathSync.native(path.dirname(storePath)), 'missing'))
   })
 
   it.each(['..', '../other', 'sub/lock', 'sub\\lock'])('rejects non-local lock names: %s', (lockFileName) => {
@@ -284,7 +284,7 @@ describe('lease for a host that takes no lock', () => {
     const storePath = makeStore()
     const lease = new UnlockedStoreLease({ storePath })
     await lease.acquire()
-    expect([lease.storePath, lease.lockPath, lease.held]).toEqual([fs.realpathSync(storePath), '', true])
+    expect([lease.storePath, lease.lockPath, lease.held]).toEqual([fs.realpathSync.native(storePath), '', true])
     lease.assertHeld()
     lease.release()
     expect(fs.existsSync(path.join(storePath, 'run'))).toBe(false)
