@@ -259,24 +259,8 @@ describe('openai-compatible reasoning styles', () => {
     expect(off.thinking).toEqual({ type: 'disabled' })
   })
 
-  it('grok-effort clamps to the model-supported range', async () => {
-    const grok45 = await styleBody('grok-effort', {
-      model: 'grok-4.5',
-      thinking: 'enabled',
-      reasoningEffort: 'xhigh',
-    })
-    expect(grok45.reasoning_effort).toBe('high')
-
-    const multiAgent = await styleBody('grok-effort', {
-      model: 'grok-4.20-multi-agent',
-      thinking: 'enabled',
-      reasoningEffort: 'xhigh',
-    })
-    expect(multiAgent.reasoning_effort).toBe('xhigh')
-
-    const off = await styleBody('grok-effort', { model: 'grok-4.5', thinking: 'disabled' })
-    expect(off.reasoning_effort).toBeUndefined()
-  })
+  // grok-effort 的钳法搬去了 `vendors/grok/__tests__/grok-thinking.test.ts`:P4 之后档位表来自
+  // 各家账本,通用构造的 provider 查不到 grok 的账本,这里跑不出真话。
 
   it('openrouter-reasoning sends the unified reasoning object', async () => {
     const on = await styleBody('openrouter-reasoning', {
