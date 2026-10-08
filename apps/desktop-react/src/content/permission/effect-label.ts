@@ -8,7 +8,7 @@ import type { MessageKey, TFn } from '../../i18n'
  * 后端哪天加一档新效果类就在运行时炸(`format` 拿到 undefined)。列成表之后,
  * 认不出来的类**原样显示那个英文枚举**:那是事实,而编一句中文是猜。
  *
- * 表里这 18 行与 `packages/shared/toolkit/effects.ts` 的 `EffectClass` 今天一一对应。
+ * 表里这 19 行与 `packages/shared/toolkit/effects.ts` 的 `EffectClass` 今天一一对应。
  * 它不是那张表的第二个产地 —— 它是那张表的**读法**:核回答「有哪些类、各自怎么
  * 处理」,这里只回答「这一类在屏幕上念作什么」。加一类效果 = 核加一行 + 这里加一行,
  * 忘了加这里的后果是屏幕上出现那个英文枚举,不是屏幕出错。
@@ -37,6 +37,11 @@ const EFFECT_KEYS: Record<string, MessageKey> = {
    * 那种匿名 fetch(`net_fetch`,silent)不是一类,所以它自己一格、policy `ask`。
    */
   browser_navigate: 'permission.effect.browser_navigate',
+  /*
+   * 2026-10-08:一台 MCP 服务器在一次调用途中反过来要用户点头(`elicitation/create`,
+   * Codex 电脑操控的「允许用计算器?」)。卡的标题是服务器那句原话,这一格只说它是谁问的。
+   */
+  mcp_consent: 'permission.effect.mcp_consent',
 }
 
 export function effectLabel(t: TFn, type: string): string {

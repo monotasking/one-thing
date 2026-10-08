@@ -85,6 +85,7 @@ export {
   planMCPInputSchemaValidation,
 } from './mcp-kernel-tool-definition.js'
 export type {
+  MCPClientCallToolOptions,
   MCPClientFactory,
   MCPClientLike,
 } from './mcp-kernel-manager.js'
@@ -147,6 +148,8 @@ export type {
 export type {
   CoreMCPClientRuntimeAdapters,
   CoreMCPClientRuntimeOptions,
+  MCPInFlightToolCall,
+  MCPToolCallCaller,
 } from './mcp-kernel-client-runtime.js'
 export {
   MCP_TASK_DEFAULT_INTERVAL_MS,

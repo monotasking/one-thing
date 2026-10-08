@@ -48,6 +48,7 @@ export type EffectClass =
   | 'session_destructive'
   | 'plugin_exec'
   | 'external-agent'
+  | 'mcp_consent'
   | 'ui_change'
   | 'browser_navigate'
 
@@ -196,6 +197,17 @@ const ROWS: readonly EffectPolicyRow[] = [
    * 工具一样可能写盘/跑命令,认不出内容时按最强的那一档排队。
    */
   { kind: 'external-agent', policy: 'ask', prompt: 'Run an external agent tool', barrier: true },
+  /**
+   * 2026-10-08 —— 一台 **MCP 服务器**在跑一次调用的途中反过来要用户点头(`elicitation/create`,
+   * 例:Codex 电脑操控的「Allow ChatGPT to use Calculator?」)。
+   *
+   * 它不是工具的效果,是**服务器自己发起的一次询问**,所以不复用 `mcp`(那一行问的是
+   * 「准不准跑这只工具」,答过之后这一句才会来);也不是 `user_ask`(那是模型在问人,
+   * 答案给模型;这一句的答案给服务器,而且要能被记住)。`ask` 且可记:pattern 是
+   * 「哪台服务器 × 问的哪一句」,所以一次「本工作目录」只覆盖同一台服务器的同一句问话。
+   * `barrier: false`:它发生在一次已经在飞的调用里,没有别的调用可与它排队。
+   */
+  { kind: 'mcp_consent', policy: 'ask', prompt: 'MCP server asks for consent', barrier: false },
   /**
    * K2b-1 留账的拍点(`docs/design/atom-2026-09.md` §6):壳里开一格、激活一格、
    * 移动一格、把一格撕成浮窗 —— 这类做法的效果类。

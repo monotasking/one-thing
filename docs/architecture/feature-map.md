@@ -50,7 +50,7 @@
 | goal | 会话目标:状态、续推、记录与改动收集。 | (shared) 3 · event 3 · logging 3 · session 3 · (包根槽位) 2 · settings 1 · storage 1 | 56(值 49 / 类型 7) | 13 |
 | interaction | 向用户提问(ask_user 一类交互)的登记表。 | (shared) 2 · logging 2 · session 1 | 11(值 7 / 类型 4) | 4 |
 | markdown | Markdown 附件资源的沙箱与服务。 | note 2 · (包根槽位) 1 · settings 1 | 0(值 0 / 类型 0) | 4 |
-| mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 8 · (shared) 5 · storage 2 · agent-loop 1 · auth 1 | 34(值 30 / 类型 4) | 30 |
+| mcp | MCP 客户端、管理器、OAuth 与身份。 | logging 9 · (shared) 5 · storage 2 · agent-loop 1 · auth 1 · permission 1 | 35(值 30 / 类型 5) | 31 |
 | media | 媒体库:图片与文件的入库、导出与生图结果。 | storage 4 · session 2 · (shared) 1 · (包根槽位) 1 · logging 1 | 30(值 22 / 类型 8) | 11 |
 | music | 音乐与电台。 | logging 7 · (shared) 5 · (包根槽位) 5 · settings 5 · session 3 · voice 3 · storage 2 · agent 1 · lifecycle 1 · permission 1 · tool 1 | 27(值 18 / 类型 9) | 36 |
 | note | 笔记领域:笔记库、Obsidian 与普通目录两种驱动、笔记根目录。 | (包根槽位) 2 · logging 2 · settings 2 · storage 2 | 21(值 15 / 类型 6) | 20 |

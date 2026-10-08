@@ -20,6 +20,7 @@ import {
   planMCPInputSchemaValidation,
   type CoreMCPJsonSchemaValidationPlan,
   type MCPModelFacingToolDefinition as ModelFacingToolDefinition, type CoreMCPBridgeRuntimeHost, type WriteMCPToolsCatalogWithAdaptersOptions,
+  type MCPToolCallCaller,
 } from '@onething/backend/mcp/kernel'
 import { pathExists, writeTextFile } from '@onething/backend/storage'
 import { consolePort, getLogger } from '../logging/logging.js'
@@ -34,7 +35,7 @@ const mCPBridgeRuntimeHost: CoreMCPBridgeRuntimeHost = {
   getAllTools: () => MCPManager.getAllTools(),
   getServerState: serverId => MCPManager.getServerState(serverId),
   getServerStates: () => MCPManager.getServerStates(),
-  callTool: (serverId, toolName, args) => MCPManager.callTool(serverId, toolName, args),
+  callTool: (serverId, toolName, args, options) => MCPManager.callTool(serverId, toolName, args, options),
   // 决策点 #1: hybrid flat-mode threshold lives in MCP settings; 0 pins the
   // pre-hybrid router-only behavior.
   getFlatToolThreshold: () => MCPManager.getSettings().flatToolThreshold,
@@ -262,12 +263,15 @@ export function resolveMCPServerIdForToolRef(toolRef: string): string | undefine
 }
 
 /**
- * Execute an MCP tool by its full tool ID
+ * Execute an MCP tool by its full tool ID.
+ *
+ * `caller` 是发起这次调用的会话坐标:服务器在调用期间反向发来的 elicitation 要画到那个会话的
+ * 权限卡上(`mcp-elicitation.ts`),所以它从工具的 `RunContext` 一路递到客户端运行时。
  */
 export async function executeMCPTool(
   toolId: string,
   args: JsonObject,
-  options: { onPartialResult?: (text: string, phase: string) => void } = {},
+  options: { onPartialResult?: (text: string, phase: string) => void; caller?: MCPToolCallCaller } = {},
 ): Promise<MCPToolCallResult> {
   return coreMCPBridgeRuntime.executeMCPTool(toolId, args, options)
 }

@@ -42,6 +42,28 @@ export interface CoreMCPClientRuntimeAdapters<TClient extends CoreMCPClientOpera
 export const MCP_RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 15_000, 30_000, 60_000] as const
 export const MCP_RECONNECT_MAX_ATTEMPTS = 10
 
+/**
+ * 发起这次工具调用的那一头的坐标(会话、消息、调用 id、项目根、主体)。
+ *
+ * 它只为一件事存在:服务器在这次调用**期间**反过来向客户端要东西(`elicitation/create`
+ * 这类服务器发起的请求)时,客户端得知道该把问题画到哪个会话的哪张卡上。内核不解释这些
+ * 字段,只在调用在飞期间把它们原样挂在 `inFlightCall` 上;`principal` 对内核是不透明的。
+ */
+export interface MCPToolCallCaller {
+  readonly sessionId: string
+  readonly messageId?: string
+  readonly callId?: string
+  readonly workingDirectory?: string
+  readonly principal?: unknown
+}
+
+/** 正在这台服务器上跑的那一次调用。同一台服务器的调用串行,所以最多一条。 */
+export interface MCPInFlightToolCall {
+  readonly toolName: string
+  readonly args: JsonObject
+  readonly caller?: MCPToolCallCaller
+}
+
 export interface CoreMCPClientRuntimeOptions<TClient extends CoreMCPClientOperations, TTransport> {
   config: MCPServerConfig
   adapters: CoreMCPClientRuntimeAdapters<TClient, TTransport>
@@ -63,6 +85,8 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
   private readonly toolCallTimeoutMs: number
   /** Serializes tool calls against this server; see callTool. */
   private toolCallQueue: Promise<void> = Promise.resolve()
+  /** 当前在飞的那一次调用(串行队列保证最多一条);没有调用在飞时为 `null`。 */
+  private inFlight: MCPInFlightToolCall | null = null
   private readonly autoReconnect: boolean
   private readonly scheduleReconnect: (run: () => void, delayMs: number) => { cancel: () => void }
   private pendingReconnect: { cancel: () => void } | null = null
@@ -107,6 +131,14 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
 
   get currentTransport(): TTransport | null {
     return this.transport
+  }
+
+  /**
+   * 正在这台服务器上跑的那一次调用;服务器反向发来的请求(elicitation 一类)据此找到
+   * 发问该落的会话。调用结束(成功、失败、超时)即清空。
+   */
+  get inFlightCall(): MCPInFlightToolCall | null {
+    return this.inFlight
   }
 
   async connect(): Promise<void> {
@@ -218,7 +250,7 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
   async callTool(
     toolName: string,
     args: JsonObject,
-    options: { timeoutMs?: number } = {},
+    options: { timeoutMs?: number; caller?: MCPToolCallCaller } = {},
   ): Promise<MCPToolCallResult> {
     // Tool calls against the same server run one at a time: the agent loop
     // executes tools concurrently, and stdio transports / stateful servers may
@@ -232,6 +264,20 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
   }
 
   private async callToolNow(
+    toolName: string,
+    args: JsonObject,
+    options: { timeoutMs?: number; caller?: MCPToolCallCaller } = {},
+  ): Promise<MCPToolCallResult> {
+    // 串行队列保证这里最多一条在飞;服务器反向发来的 elicitation 据此落到发起它的会话。
+    this.inFlight = { toolName, args, ...(options.caller ? { caller: options.caller } : {}) }
+    try {
+      return await this.callToolOnClient(toolName, args, options)
+    } finally {
+      this.inFlight = null
+    }
+  }
+
+  private async callToolOnClient(
     toolName: string,
     args: JsonObject,
     options: { timeoutMs?: number } = {},

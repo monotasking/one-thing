@@ -205,13 +205,26 @@ export interface McpToolDescription {
   readonly parameterSchema?: JsonSchema
 }
 
+/**
+ * 发起这次 MCP 调用的会话坐标。服务器在调用途中反向发来的 elicitation(「允许用计算器?」)
+ * 要画到这个会话的权限卡上,所以 `apply` 把 `RunContext.invocation` 上的这几格原样递下去。
+ * 形状与 `@onething/backend/mcp` 的 `MCPToolCallCaller` 同构(那边 `principal` 是不透明的)。
+ */
+export interface McpToolCaller {
+  readonly sessionId: string
+  readonly messageId?: string
+  readonly callId?: string
+  readonly workingDirectory?: string
+  readonly principal?: unknown
+}
+
 export interface McpToolBridge {
   /** 懒初始化:连接 + 拉 schema。`prepare()` 唯一的调用点。 */
   describe(toolId: string): Promise<McpToolDescription | undefined> | McpToolDescription | undefined
   execute(
     toolId: string,
     args: JsonObject,
-    options: { onPartialResult?(text: string, phase: string): void },
+    options: { onPartialResult?(text: string, phase: string): void; caller?: McpToolCaller },
   ): Promise<unknown>
   /** grant 按服务器归属,不按裸工具名。 */
   resolveServerId?(toolRef: string): string | undefined
@@ -325,6 +338,13 @@ export class McpTool extends ExternalTool<JsonObject, JsonObject> {
     const args = intent.payload
     const data = await this.isolate(ctx, `mcp:${this.adapters.toolId}`, () =>
       this.adapters.bridge.execute(this.adapters.toolId, args, {
+        caller: {
+          sessionId: ctx.invocation.sessionId,
+          ...(ctx.invocation.messageId ? { messageId: ctx.invocation.messageId } : {}),
+          callId: ctx.invocation.callId,
+          ...(ctx.cwd ? { workingDirectory: ctx.cwd } : {}),
+          principal: ctx.invocation.principal,
+        },
         onPartialResult: (text, phase) => {
           // 旧 `buildMCPPartialResultUpdate` 的形状,逐字保留。
           ctx.emit({

@@ -54,3 +54,5 @@ export {
   registerMCPTools,
   resolveMCPServerIdForToolRef,
 } from './mcp-bridge.js'
+// 工具调用随身的会话坐标(toolkit 的 `McpTool` 填,客户端运行时在调用期间挂着,elicitation 据此找会话)。
+export type { MCPToolCallCaller } from './kernel/mcp-kernel-client-runtime.js'

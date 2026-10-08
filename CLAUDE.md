@@ -256,6 +256,10 @@ client-api 名册、资源 scheme 的提供者、协作四只工具由 `register
 - `bun run gate:web-shell` —— React 浏览器壳:真 server 产物 + `/api` 代理 + 无头 Chromium,流式回复上屏,且 token 不进 URL。
 - `bun run gate:notes`(只读、只碰开着的库,Obsidian 没跑就 skipped)、`bun run gate:store-backup`(先 `build:cli`,只在隔离
   目录里跑 CLI 的 store 备份)、`bun run log:smoke`(断言 `server.jsonl`)。
+- `bun run gate:codex-computer-use` —— 真 `dist/server`(CLI 档)对着 Codex 装在本机的那台闭源 Computer Use MCP:签名
+  `codex sandbox` 跳板连上、十只工具列得出、`list_apps` 真答(没有 -10000)、经 RPC 直接调 `get_app_state` 时服务器的
+  elicitation 被结构化拒绝(没有会话坐标 → 不出卡、不碰 app)、SIGTERM 5 秒内收掉整棵子进程树。ChatGPT.app 或
+  Computer Use 不在 → skipped。**绝不碰用户的「始终允许」名单**。
 - 会话账本:`sessions:shadow-report`(真 store 上重折不一致 = 0 且写失败 = 0)、`sessions:shadow-battery`(真 server + 假服务商
   跑场景矩阵)、`sessions:hydration-contract`、`sessions:verify` 与它的棘轮 `sessions:verify:gate`
   (`docs/audit/session-verify-baseline-2026-08-20.txt`)、`sessions:events-selfcheck`。
@@ -447,7 +451,13 @@ embedder 只能跑 `device: 'cpu'`;后端回答原因码(`vectorErrorKind`),不�
 
 **MCP / ACP / 外部 agent**:MCP 客户端、管理器、OAuth 与跨进程工具桥在 `packages/backend/mcp/`;ACP 是外部 agent 的唯一通路
 (Claude Code 也走 ACP,正本 `docs/design/acp-integration-2026-09.md`),在 `packages/backend/acp/`;连接器登记在
-`packages/backend/external-agent/`。
+`packages/backend/external-agent/`。**MCP 服务器反向问人**(`elicitation/create`,10-08,正本
+`docs/design/computer-use-2026-10.md`):客户端声明 `elicitation.form`,处理函数在 `mcp/mcp-elicitation.ts` —— 只答空表单,
+画成 `type: 'mcp_consent'` 的权限卡(卡的标题是服务器那句原话),「本会话 / 本工作目录」由 onething 自己记 grant
+(pattern = 服务器 id × 那句话),URL 模式、带字段的表单、没有在飞调用的自发询问一律结构化拒绝并记日志。发问落到哪个会话靠
+工具调用随身的坐标:`McpTool.apply` 从 `RunContext` 填 `caller`,一路递到客户端运行时,在调用期间挂在 `inFlightCall` 上
+(同一台服务器的调用串行,所以最多一条)。Codex 装在本机的 Computer Use MCP 就是这样接的(签名 `codex sandbox` 当跳板,
+配方在正本 §3.1,门 `gate:codex-computer-use`)。
 
 **日志**(`packages/backend/logging/`,正本 `docs/design/logging-system-2026-08.md`):产品代码只调 `getLogger(ns)`
 (经 `@onething/backend/logging`);`msg` 是固定短句,变量放 `fields`,错误放 `err`。`configureLogging()` 是唯一接线点

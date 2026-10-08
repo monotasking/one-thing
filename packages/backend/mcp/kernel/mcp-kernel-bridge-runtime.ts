@@ -21,13 +21,19 @@ import {
 import { isMCPToolId, CoreMCPToolIdRegistry } from './mcp-kernel-tool-id-registry.js'
 import { mcpRouterToCoreToolDefinition, mcpToolToCoreToolDefinition, type CoreMCPToolDefinition } from './mcp-kernel-tool-definition.js'
 import type { MCPServerState, MCPToolCallResult, MCPToolInfo } from '@shared/mcp/types.js'
+import type { MCPToolCallCaller } from './mcp-kernel-client-runtime.js'
 
 export interface CoreMCPBridgeRuntimeHost {
   isEnabled(): boolean
   getAllTools(): MCPToolInfo[]
   getServerState(serverId: string): Pick<MCPServerState, 'config'> | undefined
   getServerStates(): Array<Pick<MCPServerState, 'config' | 'tools'>>
-  callTool(serverId: string, toolName: string, args: JsonObject): Promise<MCPToolCallResult>
+  callTool(
+    serverId: string,
+    toolName: string,
+    args: JsonObject,
+    options?: { caller?: MCPToolCallCaller },
+  ): Promise<MCPToolCallResult>
   /**
    * Hybrid flat-mode threshold from settings (决策点 #1). Undefined = default
    * (20); 0 = always router.
@@ -239,13 +245,17 @@ export class CoreMCPBridgeRuntime {
   async executeMCPTool(
     toolId: string,
     args: JsonObject,
-    options: { onPartialResult?: (text: string, phase: string) => void } = {},
+    options: { onPartialResult?: (text: string, phase: string) => void; caller?: MCPToolCallCaller } = {},
   ): Promise<MCPToolCallResult> {
     return executeMCPBridgeTool(toolId, args, {
       refs: this.getMCPFunctionRefs(),
       parseToolId: id => this.parseMCPToolId(id),
-      callTool: (serverId, toolName, toolArgs) => this.host.callTool(serverId, toolName, toolArgs),
+      // 有坐标才多递一格;宿主替身按三参数写的断言照旧成立。
+      callTool: (serverId, toolName, toolArgs, callOptions) => callOptions
+        ? this.host.callTool(serverId, toolName, toolArgs, callOptions)
+        : this.host.callTool(serverId, toolName, toolArgs),
       onPartialResult: options.onPartialResult,
+      ...(options.caller ? { caller: options.caller } : {}),
     })
   }
 }

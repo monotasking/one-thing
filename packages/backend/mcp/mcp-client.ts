@@ -23,12 +23,15 @@ import {
   type CoreMCPTask,
   type CoreMCPClientRuntimeOptions,
   type CoreMCPProbeAdapters,
+  type MCPInFlightToolCall,
+  type MCPToolCallCaller,
 } from '@onething/backend/mcp/kernel'
 import { type CoreMCPProbeResult } from '@shared/mcp/types'
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
 import { getMCPOAuthFlowManager } from './oauth/mcp-oauth.js'
 import { getMCPClientIdentity } from './mcp-identity.js'
 import { notifyMCPCapabilitiesChanged } from './mcp-capabilities-changed.js'
+import { answerMCPElicitation, type MCPElicitationPorts } from './mcp-elicitation.js'
 import { consolePort, getLogger } from '../logging/logging.js'
 import type { ConsoleLikePort } from '@onething/backend/logging'
 import type { LegacyDuckLogger } from '@onething/backend/logging'
@@ -81,13 +84,80 @@ export class OnethingMCPClient extends Client {
  * Advertised at initialize: we can follow tools/call task handles and cancel
  * them. Legacy-era servers may then answer tools/call with a task handle;
  * 2026-era peers ignore unknown capability keys (and never create tasks).
+ *
+ * `elicitation.form`(2026-10-08):服务器在一次调用途中可以反过来问人(空表单 = 同意 / 拒绝),
+ * 由 `mcp-elicitation.ts` 画成权限卡。只有装了处理函数的客户端(`createOnethingMCPClient`)才
+ * 声明它 —— 探测用的一次性客户端用 `ONETHING_MCP_PROBE_CAPABILITIES`,声明了却不答会让服务器
+ * 收到一个 method-not-found。
  */
 export const ONETHING_MCP_CLIENT_CAPABILITIES = {
   tasks: {
     cancel: {},
     requests: { tools: { call: {} } },
   },
+  elicitation: { form: {} },
 } as const
+
+export const ONETHING_MCP_PROBE_CAPABILITIES = {
+  tasks: ONETHING_MCP_CLIENT_CAPABILITIES.tasks,
+} as const
+
+export interface CreateOnethingMCPClientInput {
+  readonly serverId: string
+  readonly serverName: string
+  /** P2-1:服务器推来 list-changed 时的回调(三张表共用一只)。 */
+  readonly onListChanged: () => void
+  /** 客户端运行时此刻在飞的调用;elicitation 据此找发问该落的会话。 */
+  readonly inFlightCall: () => MCPInFlightToolCall | null
+  /** 测试替身:权限卡与 grant 的两只口;缺省是进程里那一份 `Permission`。 */
+  readonly elicitationPorts?: MCPElicitationPorts
+}
+
+/**
+ * 装好 onething 这一侧全部约定的 SDK 客户端:能力表、版本协商、list-changed 回调,以及
+ * `elicitation/create` 的处理函数(→ `answerMCPElicitation`)。桌面 / 后端进程的 `MCPClient` 与
+ * server runtime 的 `ServerMCPClient` 都从这里造,两边对服务器的样子逐字相同。
+ */
+export function createOnethingMCPClient(input: CreateOnethingMCPClientInput): OnethingMCPClient {
+  const client = new OnethingMCPClient(
+    getMCPClientIdentity(),
+    {
+      capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
+      // `auto` probes server/discover first and falls back to the 2025
+      // initialize handshake. The default probe timeout is the standard
+      // 60s request timeout — far too long to sit on when the server is
+      // a legacy one that never answers unknown pre-initialize requests
+      // (stdio: timeout means "legacy, fall back"; HTTP: timeout means
+      // "outage, reject"). 10s is long enough for a healthy server to
+      // answer, short enough not to wreck connect UX.
+      versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
+      // P2-1: era-transparent list-changed tracking. Legacy era: the SDK
+      // registers unsolicited `notifications/*/list_changed` handlers
+      // (only when the server advertises the capability); modern era:
+      // it auto-opens `subscriptions/listen` on every connect — which is
+      // also the re-subscribe, since each (re)connect builds a fresh
+      // Client. autoRefresh stays false: our runtime owns the refresh
+      // (state merge + onStateChange) and the fan-out below regenerates
+      // the model-facing catalog.
+      listChanged: {
+        tools: { autoRefresh: false, onChanged: input.onListChanged },
+        prompts: { autoRefresh: false, onChanged: input.onListChanged },
+        resources: { autoRefresh: false, onChanged: input.onListChanged },
+      },
+    },
+  )
+  client.setRequestHandler('elicitation/create', request =>
+    answerMCPElicitation(
+      {
+        serverId: input.serverId,
+        serverName: input.serverName,
+        params: request.params,
+        inFlight: input.inFlightCall(),
+      },
+      input.elicitationPorts,
+    ))
+  return client
+}
 
 /**
  * MCP Client wrapper class
@@ -130,33 +200,12 @@ export class MCPClient {
           oauth.attachTransport(config.id, transport)
           return transport
         },
-        createClient: () => new OnethingMCPClient(
-          getMCPClientIdentity(),
-          {
-            capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
-            // `auto` probes server/discover first and falls back to the 2025
-            // initialize handshake. The default probe timeout is the standard
-            // 60s request timeout — far too long to sit on when the server is
-            // a legacy one that never answers unknown pre-initialize requests
-            // (stdio: timeout means "legacy, fall back"; HTTP: timeout means
-            // "outage, reject"). 10s is long enough for a healthy server to
-            // answer, short enough not to wreck connect UX.
-            versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
-            // P2-1: era-transparent list-changed tracking. Legacy era: the SDK
-            // registers unsolicited `notifications/*/list_changed` handlers
-            // (only when the server advertises the capability); modern era:
-            // it auto-opens `subscriptions/listen` on every connect — which is
-            // also the re-subscribe, since each (re)connect builds a fresh
-            // Client. autoRefresh stays false: our runtime owns the refresh
-            // (state merge + onStateChange) and the fan-out below regenerates
-            // the model-facing catalog.
-            listChanged: {
-              tools: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
-              prompts: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
-              resources: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
-            },
-          },
-        ),
+        createClient: () => createOnethingMCPClient({
+          serverId: config.id,
+          serverName: config.name,
+          onListChanged: () => { void this.handleCapabilitiesChanged() },
+          inFlightCall: () => this.runtime.inFlightCall,
+        }),
         connectClient: (client, transport) => client.connect(transport),
         refreshCapabilities: (serverId, client, logger) => refreshMCPClientCapabilities(serverId, client, logger),
         getNegotiatedProtocolVersion: client => client.getNegotiatedProtocolVersion(),
@@ -233,9 +282,13 @@ export class MCPClient {
   }
 
   /**
-   * Call a tool
+   * Call a tool. `caller` 是发起这次调用的会话坐标(见 `MCPToolCallCaller`)。
    */
-  async callTool(toolName: string, args: JsonObject, options?: { timeoutMs?: number }): Promise<MCPToolCallResult> {
+  async callTool(
+    toolName: string,
+    args: JsonObject,
+    options?: { timeoutMs?: number; caller?: MCPToolCallCaller },
+  ): Promise<MCPToolCallResult> {
     return this.runtime.callTool(toolName, args, options)
   }
 
@@ -309,7 +362,7 @@ export async function probeMCPServerConfig(config: MCPServerConfig): Promise<Cor
       createClient: () => new OnethingMCPClient(
         getMCPClientIdentity(),
         {
-          capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
+          capabilities: ONETHING_MCP_PROBE_CAPABILITIES,
           versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
         },
       ),

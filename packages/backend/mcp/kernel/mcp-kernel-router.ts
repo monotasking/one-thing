@@ -4,6 +4,7 @@ import {
   type MCPToolInfo,
 } from '@shared/mcp/types.js'
 import { isMCPRouterToolId, type MCPToolIdentity } from './mcp-kernel-tool-id-registry.js'
+import type { MCPToolCallCaller } from './mcp-kernel-client-runtime.js'
 // 平铺还是只露路由器(混合阈值)与注册计划在 `mcp-kernel-tool-exposure.ts`;这里是路由器工具本身。
 
 export type MCPModelFacingToolDefinition = {
@@ -533,9 +534,18 @@ export async function executeMCPBridgeTool(
   options: MCPRouterActionOptions & {
     refs: MCPFunctionRef[]
     parseToolId: (toolId: string) => MCPToolIdentity | null
-    callTool: (serverId: string, toolName: string, args: JsonObject) => Promise<MCPToolCallResult>
+    callTool: (
+      serverId: string,
+      toolName: string,
+      args: JsonObject,
+      options?: { caller?: MCPToolCallCaller },
+    ) => Promise<MCPToolCallResult>
+    /** 发起这次调用的会话坐标;一路原样递到客户端运行时(见 `MCPToolCallCaller`)。 */
+    caller?: MCPToolCallCaller
   },
 ): Promise<MCPToolCallResult> {
+  // 没有坐标就按从前的三参数调(宿主与测试替身都按那个形状写);有才多递一格。
+  const callOptions: [{ caller: MCPToolCallCaller }] | [] = options.caller ? [{ caller: options.caller }] : []
   if (isMCPRouterToolId(toolId)) {
     const resolvedAction = resolveMCPRouterAction(args, options.refs, options)
     if (resolvedAction.kind === 'handled') return resolvedAction.result
@@ -544,6 +554,7 @@ export async function executeMCPBridgeTool(
       resolvedAction.ref.serverId,
       resolvedAction.ref.toolName,
       resolvedAction.args,
+      ...callOptions,
     )
     if (!result.success) return result
 
@@ -564,5 +575,5 @@ export async function executeMCPBridgeTool(
     }
   }
 
-  return withMCPResultOutputText(await options.callTool(parsed.serverId, parsed.toolName, args))
+  return withMCPResultOutputText(await options.callTool(parsed.serverId, parsed.toolName, args, ...callOptions))
 }

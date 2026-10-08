@@ -1215,6 +1215,7 @@ export const zh = {
   'permission.effect.external-agent': '调用外部 agent',
   'permission.effect.ui_change': '改界面',
   'permission.effect.browser_navigate': '让内置浏览器去一个地址',
+  'permission.effect.mcp_consent': 'MCP 服务器请求许可',
   /* ── 搜索 · 语义召回(content/settings/SearchSettings.tsx;设计
    * docs/design/search-index-2026-09.md §15)────────────────────────────────
    * 判据在 `data/search-settings-source.ts` 的 `semanticPhaseOf` / `semanticModelPhaseOf`,

@@ -42,7 +42,10 @@ function describeFromLiveDefinitions(toolId: string): McpToolDescription | undef
 
 const bridge: McpToolBridge = {
   describe: toolId => describeFromLiveDefinitions(toolId),
-  execute: (toolId, args, options) => executeMCPTool(toolId, args, options),
+  execute: (toolId, args, options) => executeMCPTool(toolId, args, {
+    ...(options.onPartialResult ? { onPartialResult: options.onPartialResult } : {}),
+    ...(options.caller ? { caller: options.caller } : {}),
+  }),
   resolveServerId: toolRef => resolveMCPServerIdForToolRef(toolRef),
 }
 

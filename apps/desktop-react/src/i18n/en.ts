@@ -1038,6 +1038,7 @@ export const en: Record<MessageKey, string> = {
   'permission.effect.external-agent': 'Call an external agent',
   'permission.effect.ui_change': 'Change the interface',
   'permission.effect.browser_navigate': 'Send the built-in browser somewhere',
+  'permission.effect.mcp_consent': 'MCP server asks for consent',
   /* ── search · semantic recall (content/settings/SearchSettings.tsx) ─────── */
   'settings.sectionSearch': 'Search',
   'search.semanticLabel': 'Search by meaning',

@@ -108,6 +108,7 @@
 		"gate:cli-http": "node scripts/gate-cli-http.mjs",
 		"gate:plugin": "node scripts/gate-plugin.mjs",
 		"gate:gateway": "node scripts/gate-gateway.mjs",
+		"gate:codex-computer-use": "node scripts/gate-codex-computer-use.mjs",
 		"sessions:verify:gate": "node scripts/session-verify-gate.mjs"
 	},
 	"dependencies": {

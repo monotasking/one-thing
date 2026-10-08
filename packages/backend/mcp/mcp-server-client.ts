@@ -4,6 +4,7 @@ import {
   CoreMCPClientRuntime,
   probeMCPServerWithAdapters,
   refreshMCPClientCapabilities,
+  type MCPClientCallToolOptions,
   type MCPClientLike,
   type CoreMCPClientRuntimeOptions,
   type CoreMCPProbeAdapters,
@@ -18,8 +19,9 @@ import {
 import type { JsonArray, JsonObject, JsonValue } from '@shared/json'
 import { getMCPClientIdentity } from '@onething/backend/mcp/mcp-identity'
 import {
-  ONETHING_MCP_CLIENT_CAPABILITIES,
+  ONETHING_MCP_PROBE_CAPABILITIES,
   OnethingMCPClient,
+  createOnethingMCPClient,
 } from '@onething/backend/mcp/mcp-client'
 import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
 import { notifyMCPCapabilitiesChanged } from '@onething/backend/mcp/mcp-capabilities-changed'
@@ -83,23 +85,13 @@ export class ServerMCPClient implements MCPClientLike {
           oauth.attachTransport(config.id, transport)
           return transport
         },
-        createClient: () => new OnethingMCPClient(
-          getMCPClientIdentity(),
-          {
-            capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
-            // See app/mcp/client.ts: `auto` + a 10s probe cap so a silent
-            // legacy server cannot stall connect for the default 60s.
-            versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
-            // P2-1: same era-transparent list-changed wiring as
-            // app/mcp/client.ts (auto-opened subscriptions/listen on modern
-            // connections doubles as the re-subscribe on reconnect).
-            listChanged: {
-              tools: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
-              prompts: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
-              resources: { autoRefresh: false, onChanged: () => { void this.handleCapabilitiesChanged() } },
-            },
-          },
-        ),
+        // 与 `mcp-client.ts` 同一只工厂:能力表、版本协商、list-changed、elicitation 处理函数逐字相同。
+        createClient: () => createOnethingMCPClient({
+          serverId: config.id,
+          serverName: config.name,
+          onListChanged: () => { void this.handleCapabilitiesChanged() },
+          inFlightCall: () => this.runtime.inFlightCall,
+        }),
         connectClient: (client, transport) => client.connect(transport),
         refreshCapabilities: (serverId, client, logger) => refreshMCPClientCapabilities(serverId, client, logger),
         getNegotiatedProtocolVersion: client => client.getNegotiatedProtocolVersion(),
@@ -153,8 +145,8 @@ export class ServerMCPClient implements MCPClientLike {
     await this.runtime.updateConfig(config)
   }
 
-  async callTool(toolName: string, args: JsonObject): Promise<MCPToolCallResult> {
-    return this.runtime.callTool(toolName, args)
+  async callTool(toolName: string, args: JsonObject, options?: MCPClientCallToolOptions): Promise<MCPToolCallResult> {
+    return this.runtime.callTool(toolName, args, options)
   }
 
   async readResource(uri: string): Promise<{ success: boolean; content?: JsonValue; error?: string }> {
@@ -210,7 +202,7 @@ export async function probeServerMCPConfig(
       createClient: () => new OnethingMCPClient(
         getMCPClientIdentity(),
         {
-          capabilities: ONETHING_MCP_CLIENT_CAPABILITIES,
+          capabilities: ONETHING_MCP_PROBE_CAPABILITIES,
           versionNegotiation: { mode: 'auto', probe: { timeoutMs: 10_000 } },
         },
       ),

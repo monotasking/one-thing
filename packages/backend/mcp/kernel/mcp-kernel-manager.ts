@@ -10,9 +10,14 @@ import type {
   MCPToolInfo,
 } from '@shared/mcp/types.js'
 import { getCoreLogger } from '@onething/backend/logging'
+import type { MCPToolCallCaller } from './mcp-kernel-client-runtime.js'
 
 const log = getCoreLogger('core.mcp')
 
+/** 一次工具调用随身带的坐标(见 `MCPToolCallCaller`);没有就是「不知道谁发起的」。 */
+export interface MCPClientCallToolOptions {
+  readonly caller?: MCPToolCallCaller
+}
 
 export interface MCPClientLike {
   readonly state: MCPServerState
@@ -20,7 +25,7 @@ export interface MCPClientLike {
   connect(): Promise<void>
   disconnect(): Promise<void>
   updateConfig(config: MCPServerConfig): Promise<void>
-  callTool(toolName: string, args: JsonObject): Promise<MCPToolCallResult>
+  callTool(toolName: string, args: JsonObject, options?: MCPClientCallToolOptions): Promise<MCPToolCallResult>
   readResource(uri: string): Promise<{ success: boolean; content?: JsonValue; error?: string }>
   getPrompt(name: string, args?: Record<string, string>): Promise<{ success: boolean; messages?: JsonArray; error?: string }>
   refreshCapabilities(): Promise<void>
@@ -240,7 +245,12 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
     )
   }
 
-  async callTool(serverId: string, toolName: string, args: JsonObject): Promise<MCPToolCallResult> {
+  async callTool(
+    serverId: string,
+    toolName: string,
+    args: JsonObject,
+    options: MCPClientCallToolOptions = {},
+  ): Promise<MCPToolCallResult> {
     const client = this.clients.get(serverId)
     if (!client) {
       return {
@@ -256,7 +266,8 @@ export class HeadlessMCPManager<TClient extends MCPClientLike = MCPClientLike> {
       }
     }
 
-    return client.callTool(toolName, args)
+    // 有坐标才多递一格;客户端替身按两参数写的断言照旧成立。
+    return options.caller ? client.callTool(toolName, args, options) : client.callTool(toolName, args)
   }
 
   async callToolByName(toolName: string, args: JsonObject): Promise<MCPToolCallResult> {
