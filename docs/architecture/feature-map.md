@@ -65,7 +65,7 @@
 | scheduler | 定时任务:cron、用户任务与运行记录。 | logging 3 · storage 3 · (shared) 1 · (包根槽位) 1 · agent 1 · event 1 · session 1 | 18(值 8 / 类型 10) | 12 |
 | scratchpad | 草稿纸:存储、监听与 AI 的静默感知。 | logging 1 · storage 1 | 15(值 12 / 类型 3) | 4 |
 | search | 跨会话检索:派生索引、检索器、能力登记表与查询服务。 | logging 14 · (shared) 5 · session 4 · note 3 · file 2 · storage 2 · agent-loop 1 · event 1 · network 1 · plugin-contract 1 · prompt 1 · settings 1 · toolkit 1 | 18(值 11 / 类型 7) | 86 |
-| session | 会话:账本 events.jsonl、投影、仓储、命令面与读面、按会话取空间设置。 | (shared) 42 · logging 30 · (包根槽位) 17 · storage 13 · agent-loop 5 · space 4 · event 2 · settings 2 · provider 1 · tool 1 | 451(值 318 / 类型 133) | 110 |
+| session | 会话:账本 events.jsonl、投影、仓储、命令面与读面、按会话取空间设置。 | (shared) 43 · logging 30 · (包根槽位) 17 · storage 13 · agent-loop 5 · space 4 · event 2 · settings 2 · provider 1 · tool 1 | 451(值 318 / 类型 133) | 110 |
 | settings | 用户设置的读写缓存、出厂默认值与保存校验。 | provider 5 · (shared) 4 · logging 4 · space 4 · storage 3 · network 1 | 35(值 30 / 类型 5) | 15 |
 | skill | 技能的发现、加载与启用,以及对话后的技能复盘(复盘触发器的判定、状态与实现,2026-10-04 从 trigger/ 并入)。 | logging 4 · storage 3 · (shared) 2 · note 2 · settings 2 · agent 1 · agent-loop 1 · file 1 · music 1 · provider-call 1 · toolkit 1 · usage 1 | 13(值 10 / 类型 3) | 18 |
 | space | 空间是谁:空间身份、名册、每个空间的服务商设置与覆盖层;名册与设置读写用户 store,所以是能力(L2)而不是纯事实。 | logging 5 · storage 1 | 23(值 16 / 类型 7) | 8 |
