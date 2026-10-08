@@ -7,6 +7,7 @@ import {
   reduceSessionProjection,
 } from '@shared/session/projection/reducer'
 import { materializeChatMessagesCached } from './chat-materialize'
+import { blobRefWantsBase64 } from '@shared/session/projection/blobs'
 import { StreamWater } from './stream-water'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
@@ -48,6 +49,14 @@ import { markFirstScreenLanded, markFirstScreenPending } from './first-screen'
 import { notify } from '../services/notify'
 import { perfCount, perfSpan } from '../services/perf'
 import { t } from '../i18n'
+
+/** base64 → utf8 文本(浏览器与 Node 两边都有 `atob` / `TextDecoder`)。 */
+function decodeBase64Utf8(base64: string): string {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new TextDecoder().decode(bytes)
+}
 
 /**
  * 聊天区的**真数据源**(D3,路线 A;W5-a 起**一条会话一台**)。
@@ -722,7 +731,11 @@ export function createChatSource(sessionId: string): ChatSource {
           const { base64 } = await port.readBlob(sessionId, ref.hash)
           // 读不到就记下来,别每次物化都再问一遍(账本引用的正文可能真的没了)。
           if (!base64) blobsMissing.add(key)
-          else blobs.set(key, base64)
+          // 线上来的永远是 base64;投影要的是**落盘前的那一份**:二进制(图片)就是
+          // base64,文本(超 64KB 的工具结果,是一段 JSON)要先解回 utf8 —— 不解的话
+          // 折叠器拿 base64 去 `JSON.parse`,一个字都解不出,工具卡就永远停在纯文本。
+          // 判据与后端的读口同一条(`blobRefWantsBase64`)。
+          else blobs.set(key, blobRefWantsBase64(ref) ? base64 : decodeBase64Utf8(base64))
         } catch {
           blobsMissing.add(key)
         } finally {

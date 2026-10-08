@@ -2364,3 +2364,83 @@ describe('接缝闸:折不下去的那一条要重取,不许静默丢', () => {
     vi.useRealTimers()
   })
 })
+
+describe('账本 blob 回放:文本 blob 要先解回 utf8', () => {
+  const toolCall = (seq: number, runId: string, messageId: string, callId: string): Ledger => ({
+    seq,
+    time: T0,
+    type: 'tool/call',
+    data: { callId, name: 'read', argumentsRaw: '{"path":"/tmp/shot.png"}', messageId, runId },
+  })
+  const toolResult = (seq: number, runId: string, callId: string, blob: { hash: string; bytes: number; mime: string }): Ledger => ({
+    seq,
+    time: T0,
+    type: 'tool/result',
+    data: {
+      callId,
+      isError: false,
+      resultPreview: '[Image file: /tmp/shot.png]',
+      result: { text: '[Image file: /tmp/shot.png]' },
+      resultData: { blob },
+      reportedTitle: 'Image: shot.png',
+      sourceSeq: seq - 1,
+      runId,
+    },
+  })
+  const structured = {
+    title: 'Image: shot.png',
+    output: '[Image file: /tmp/shot.png]',
+    metadata: { path: '/tmp/shot.png', isBinary: true, mimeType: 'image/png' },
+    attachments: [{ type: 'image', path: '/tmp/shot.png', content: 'aGVsbG8=', mimeType: 'image/png' }],
+  }
+  const callOf = (messageId: string) =>
+    (state().messages.find(m => m.id === messageId)?.toolCalls ?? [])[0] as { result?: unknown } | undefined
+
+  /**
+   * 病历(10-08):read 读了一张 300KB 的图,结局超 64KB 落 `blobs/`(`mime: text/plain`)。
+   * `readBlob` 交回的是 base64,壳原样塞给折叠器,折叠器拿它去 `JSON.parse` 解不出,
+   * 工具卡一直停在「[Image file: …] This image was attached…」那段文字,图一帧都没出现。
+   */
+  it('`text/*` 的 blob 解回 utf8 之后,结局是结构化的那一份(附件里有图)', async () => {
+    const h = harness([
+      created(1),
+      userMessage(2, 'm1', '看看这张图'),
+      runStart(3, 'r1', 'a1'),
+      toolCall(4, 'r1', 'a1', 'c1'),
+      toolResult(5, 'r1', 'c1', { hash: 'abcdef0123456789', bytes: 400, mime: 'text/plain' }),
+    ])
+    h.port.readBlob = async () => ({
+      base64: Buffer.from(JSON.stringify(structured), 'utf8').toString('base64'),
+      bytes: 400,
+    })
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    await settle()
+
+    expect(callOf('a1')?.result).toEqual(structured)
+  })
+
+  it('解回来不是 JSON 时退回文本结局,而且只问一次', async () => {
+    const h = harness([
+      created(1),
+      userMessage(2, 'm1', '看看这张图'),
+      runStart(3, 'r1', 'a1'),
+      toolCall(4, 'r1', 'a1', 'c1'),
+      toolResult(5, 'r1', 'c1', { hash: 'abcdef0123456789', bytes: 400, mime: 'text/plain' }),
+    ])
+    let asked = 0
+    h.port.readBlob = async () => {
+      asked += 1
+      return { base64: 'bm90IGpzb24=', bytes: 8 }
+    }
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    await settle()
+
+    // 解回来不是 JSON:折叠器照旧退回文本结局,而且只问一次、不再反复拉。
+    expect(callOf('a1')?.result).toBe('[Image file: /tmp/shot.png]')
+    expect(asked).toBe(1)
+  })
+})

@@ -15,7 +15,7 @@
  * 绝不抛:投影跑在引擎热路径上,记账坏掉不能让聊天挂掉(S1 三条纪律的第一条)。
  */
 
-import type { ProjectionIssue, ProjectionMaterializeOptions } from '@shared/session/projection/blobs'
+import { blobRefWantsBase64, type ProjectionIssue, type ProjectionMaterializeOptions } from '@shared/session/projection/blobs'
 import type { BlobRef } from '@shared/session/events/types'
 import { readSessionBlob } from './session-blob-store.js'
 import { bumpSessionShadowStats } from './session-event-stats.js'
@@ -47,23 +47,6 @@ export function reportSessionProjectionIssue(sessionId: string, issue: Projectio
   } catch {
     // 留痕本身坏掉不该再制造第二条错误路径。
   }
-}
-
-/**
- * 二进制正文 vs 文本正文的判据(#3,§13.13)。
- *
- * blob 存的是**原始字节**(附件的图片 = `Buffer.from(base64,'base64')`,
- * 超 64KB 的工具结果 = utf8 文本)。回放时:
- *  - 图片 / 音视频 / PDF 等二进制 → `base64`(投影里附件的 `base64Data` /
- *    image part 的 `data` 要的就是 base64,与落盘前逐字节相同);
- *  - `text/*`(或没有 mime 的正文占位符路径)→ `utf8`。
- *
- * 用 utf8 去解一段图片字节会把它改写成 `�`(#3 的病根)——所以这一格必须按
- * mime 分流,而不是一律 utf8。没有 mime 的那条路(`onething-blob://` 正文占位符,
- * `resolveProjectionBlobText` 传的是 `{hash,bytes:0}`)本来就只装文本,退回 utf8。
- */
-function blobRefWantsBase64(ref: BlobRef): boolean {
-  return typeof ref.mime === 'string' && ref.mime.length > 0 && !ref.mime.startsWith('text/')
 }
 
 /**

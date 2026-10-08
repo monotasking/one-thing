@@ -22,6 +22,20 @@ import type { BlobRef } from '@shared/session/events/types.js'
 import { isBlobRef } from '@shared/session/events/types.js'
 
 /**
+ * 这份 blob 回放时要的是 base64 还是 utf8 文本。
+ *
+ * blob 存的是**原始字节**:附件的图片 = `Buffer.from(base64,'base64')`,超 64KB 的
+ * 工具结果 = utf8 文本。回放时二进制(图片 / 音视频 / PDF)要 base64 —— 投影里附件的
+ * `base64Data` / image part 的 `data` 要的就是它;`text/*`(或没有 mime 的正文占位符)
+ * 要 utf8。用 utf8 去解图片字节会把它改写成 `�`,拿 base64 当 JSON 去解则一个字都
+ * 解不出 —— 所以这一格按 mime 分流,而且**宿主与壳读同一条判据**:后端的读口按它
+ * 选编码,壳从 `readBlob` 拿到的永远是 base64,也按它决定要不要先解回文本。
+ */
+export function blobRefWantsBase64(ref: Pick<BlobRef, 'mime'>): boolean {
+  return typeof ref.mime === 'string' && ref.mime.length > 0 && !ref.mime.startsWith('text/')
+}
+
+/**
  * 一次**退化**的记录:投影给出的这一格不是完整事实。
  *
  *  - `blob-missing`(F6):引用换不回正文 —— 附件被摘掉 / 结果留着引用;

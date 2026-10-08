@@ -1,6 +1,8 @@
+import type { BlockModel } from '../../model/blocks'
+import type { ProjectedToolCall } from '../../model/segments'
 import type { ToolPresenter } from '../presenter'
 import { baseToolRow, partialArgString } from '../row'
-import { argString, basename, detailNumber, langFromPath, toolOutputText } from '../result'
+import { argString, basename, detailNumber, detailString, langFromPath, toolDetails, toolOutputText } from '../result'
 
 /**
  * `read` 的展示(§5.1 表第一行)。
@@ -18,7 +20,9 @@ export const readPresenter: ToolPresenter = {
 
   row: (call) => {
     const path = argString(call, 'path', 'filePath', 'file_path')
-    const lines = detailNumber(call, 'lineCount')
+    // 图片 / PDF / 二进制这几支的 metadata 写的是 `lineCount: 0, isBinary: true` ——
+    // 那个 0 不是行数,是「没有行」;画成「0 行」是把占位当事实。
+    const lines = toolDetails(call)?.isBinary === true ? undefined : detailNumber(call, 'lineCount')
     return baseToolRow(call, {
       icon: 'FileText',
       // 行上是 basename,全路径进 `title`;**路径形自述**(09-13)——
@@ -44,6 +48,8 @@ export const readPresenter: ToolPresenter = {
   },
 
   detail: (call) => {
+    const image = readImageBlock(call)
+    if (image) return [image]
     const source = toolOutputText(call)
     if (source === undefined) return []
     const path = argString(call, 'path', 'filePath', 'file_path')
@@ -59,4 +65,55 @@ export const readPresenter: ToolPresenter = {
       },
     ]
   },
+}
+
+/**
+ * 读的是一张图时,详情就是**那张图**(与正文里的图片块同一个块),不是那句
+ * 「This image was attached…」的说明文字。
+ *
+ * 地址的来源按「越贴近这次读到的字节越优先」:结局里还带着的 base64(活流那一份)
+ * → 读的那条路径。账本里大结局只留引用、旧账本的附件字节被剥掉,那时就按路径取 ——
+ * 那是**此刻**磁盘上的文件,与查看器、用户附件的路径兜底同一条。
+ */
+function readImageBlock(call: ProjectedToolCall): BlockModel | undefined {
+  const attachment = imageAttachmentOf(call.result)
+  const mimeType = attachment?.mimeType ?? detailString(call, 'mimeType')
+  if (!attachment && !mimeType?.startsWith('image/')) return undefined
+  const path = attachment?.path ?? detailString(call, 'path') ?? argString(call, 'path', 'filePath', 'file_path')
+  const data = attachment?.data
+  const url = data?.startsWith('data:') ? data
+    : data && mimeType ? `data:${mimeType};base64,${data}`
+    : path
+  if (!url) return undefined
+  return { kind: 'image', ref: { kind: 'url', url }, alt: path ? basename(path) : '' }
+}
+
+interface ImageAttachment {
+  path?: string
+  data?: string
+  mimeType?: string
+}
+
+/** 工具那份 `{ attachments }` 或规范形 `{ content }` 里的第一张图。 */
+function imageAttachmentOf(result: unknown): ImageAttachment | undefined {
+  if (!isRecord(result)) return undefined
+  const parts = [
+    ...(Array.isArray(result.attachments) ? result.attachments : []),
+    ...(Array.isArray(result.content) ? result.content : []),
+  ]
+  for (const part of parts) {
+    if (!isRecord(part) || part.type !== 'image') continue
+    const data = typeof part.content === 'string' ? part.content : typeof part.data === 'string' ? part.data : undefined
+    return {
+      ...(typeof part.path === 'string' && part.path ? { path: part.path } : {}),
+      // 被脱敏成「[Image: … omitted]」的那一格不是字节。
+      ...(data && !/[\s[\]]/.test(data.slice(0, 200)) ? { data } : {}),
+      ...(typeof part.mimeType === 'string' ? { mimeType: part.mimeType } : {}),
+    }
+  }
+  return undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

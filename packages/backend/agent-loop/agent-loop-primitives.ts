@@ -29,6 +29,7 @@ export {
   agentToolMessageContentToStructuredPayload,
   agentToolMessageContentForCapabilities,
   agentToolMessageContentFromHistoryResult,
+  agentToolResultImageFollowUp,
   agentToolResultIsError,
   agentToolResultIsErrorFromHistoryResult,
   agentToolResultToMessageContent,

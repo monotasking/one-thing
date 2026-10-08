@@ -29,6 +29,7 @@ import {
 import { applyPromptInjectors, createSkillPromptInjector } from './agent-loop-prompts.js'
 import { AgentLoopPauseForConfirmationError, isAgentLoopPauseForConfirmationError, awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from './agent-loop-errors.js'
 import {
+  agentToolResultImageFollowUp,
   agentToolResultIsError,
   agentToolResultToMessageContentForCapabilities,
 } from './agent-loop-tool-results.js'
@@ -754,11 +755,13 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     // concurrent completion order. Externally-executed calls never get a
     // tool message: their results live inside the provider's own transcript.
     const pendingToolMessages: AgentMessage[] = []
+    const turnToolResults: Array<{ toolName: string; result: AgentToolResult }> = []
     for (const toolCall of agentTurn.message.toolCalls ?? []) {
       if (toolCall.externallyExecuted) continue
       const result = resultsByToolCallId.get(toolCall.id)
       if (!result) continue
       allToolResults.push({ toolCall, result })
+      turnToolResults.push({ toolName: toolCall.name, result })
       pendingToolMessages.push({
         role: 'tool',
         toolCallId: toolCall.id,
@@ -766,6 +769,10 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         ...(agentToolResultIsError(result) && { isError: true }),
       })
     }
+    // A vision model whose tool results are text-only still gets to see the
+    // images its tools returned: they follow the tool messages as an attachment.
+    const imageFollowUp = agentToolResultImageFollowUp(turnToolResults, capabilities)
+    if (imageFollowUp) pendingToolMessages.push(imageFollowUp)
 
     // Per-round trace observation: `messages` still holds exactly what this
     // round's request carried (outputs are appended below). Errors in the

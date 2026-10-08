@@ -4,6 +4,7 @@ import {
   agentToolMessageContentToText,
   agentToolMessageContentToStructuredPayload,
   agentToolResultToMessageContent,
+  agentToolResultImageFollowUp,
   agentToolResultToMessageContentForCapabilities,
 } from '@onething/backend/agent-loop/agent-loop-primitives'
 
@@ -117,5 +118,58 @@ describe('agent tool result message content', () => {
       { type: 'text', text: 'screenshot captured' },
       { type: 'image', image: 'data:image/png;base64,abc', mediaType: 'image/png' },
     ])
+  })
+})
+
+describe('agentToolResultImageFollowUp', () => {
+  const readImage = {
+    toolName: 'read',
+    result: {
+      content: '[Image file: /tmp/shot.png]',
+      data: {
+        output: '[Image file: /tmp/shot.png]',
+        attachments: [{ type: 'image', path: '/tmp/shot.png', content: 'aGVsbG8=', mimeType: 'image/png' }],
+      },
+    },
+  }
+  const visionTextToolResults = {
+    capabilities: ['text-input', 'text-output', 'tool-calls', 'structured-tool-results', 'vision-input'] as const,
+    inputModalities: ['text', 'image'] as const,
+    outputModalities: ['text'] as const,
+    supportsStructuredToolResults: true,
+  }
+
+  it('attaches tool images as a user message when tool results are text-only', () => {
+    const message = agentToolResultImageFollowUp([readImage], {
+      ...visionTextToolResults,
+      capabilities: [...visionTextToolResults.capabilities],
+      inputModalities: [...visionTextToolResults.inputModalities],
+      outputModalities: [...visionTextToolResults.outputModalities],
+    })
+    expect(message).toEqual({
+      role: 'user',
+      content: [
+        { type: 'text', text: '[Image returned by the read tool call above]' },
+        { type: 'image', image: 'aGVsbG8=', mediaType: 'image/png' },
+      ],
+    })
+  })
+
+  it('does nothing when tool results already carry images', () => {
+    expect(agentToolResultImageFollowUp([readImage], {
+      capabilities: [...visionTextToolResults.capabilities],
+      inputModalities: ['text', 'image'],
+      outputModalities: ['text'],
+      supportsStructuredToolResults: true,
+      toolResultModalities: ['text', 'image'],
+    })).toBeUndefined()
+  })
+
+  it('does nothing for models without vision', () => {
+    expect(agentToolResultImageFollowUp([readImage], {
+      capabilities: ['text-input', 'text-output', 'tool-calls'],
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+    })).toBeUndefined()
   })
 })

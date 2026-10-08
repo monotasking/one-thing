@@ -3,11 +3,13 @@ import type {
   AgentInputModality,
   AgentJsonObject,
   AgentJsonValue,
+  AgentMessage,
   AgentMessageContent,
   AgentModelCapabilities,
   AgentToolResult,
 } from './agent-loop-types.js'
 import {
+  agentSupportsInputModality,
   agentSupportsStructuredToolResults,
   agentSupportsToolResultModality,
 } from './agent-loop-capabilities.js'
@@ -248,6 +250,42 @@ export function agentToolResultToMessageContent(result: AgentToolResult): AgentM
 
   const hasStructuredMedia = addStructuredResultParts(result.data, parts)
   return hasStructuredMedia ? parts : result.content
+}
+
+function isImageContentPart(part: AgentContentPart): boolean {
+  return part.type === 'image' || (part.type === 'file' && part.mediaType.startsWith('image/'))
+}
+
+/**
+ * Images a tool returned that the tool message itself cannot carry, re-sent as
+ * a user message right after the tool messages.
+ *
+ * Most OpenAI-compatible endpoints only accept a string as `role:'tool'`
+ * content, so `agentToolMessageContentForCapabilities` degrades the image to a
+ * text line — and a vision model that just `read` a screenshot never sees it.
+ * When the model accepts images as input (but not inside tool results), the
+ * image goes into a user message instead, the way a person would attach it.
+ * Returns undefined when there is nothing to forward: no image, the tool result
+ * already carries images natively, or the model cannot see images at all.
+ */
+export function agentToolResultImageFollowUp(
+  results: ReadonlyArray<{ toolName: string; result: AgentToolResult }>,
+  capabilities: AgentModelCapabilities,
+): AgentMessage | undefined {
+  if (!agentSupportsInputModality(capabilities, 'image')) return undefined
+  if (agentSupportsToolResultModality(capabilities, 'image')) return undefined
+
+  const parts: AgentContentPart[] = []
+  for (const { toolName, result } of results) {
+    if (result.error || result.rejected || result.aborted) continue
+    const content = agentToolResultToMessageContent(result)
+    if (!Array.isArray(content)) continue
+    const images = content.filter(isImageContentPart)
+    if (images.length === 0) continue
+    parts.push({ type: 'text', text: `[Image returned by the ${toolName} tool call above]` }, ...images)
+  }
+  if (parts.length === 0) return undefined
+  return { role: 'user', content: parts }
 }
 
 /**

@@ -271,3 +271,39 @@ describe('失败行:一句话要说完', () => {
     })
   })
 })
+
+describe('read 读到图片', () => {
+  const imageCall = (result: unknown) => call({
+    arguments: { path: '/tmp/shot.png' },
+    result,
+  })
+
+  it('结局带着字节时,详情是一张 data URL 的图', () => {
+    expect(detailOf(imageCall({
+      output: '[Image file: /tmp/shot.png]',
+      metadata: { path: '/tmp/shot.png', mimeType: 'image/png' },
+      attachments: [{ type: 'image', path: '/tmp/shot.png', content: 'aGVsbG8=', mimeType: 'image/png' }],
+    }))).toEqual([
+      { kind: 'image', ref: { kind: 'url', url: 'data:image/png;base64,aGVsbG8=' }, alt: 'shot.png' },
+    ])
+  })
+
+  it('字节被剥掉时按路径取', () => {
+    expect(detailOf(imageCall({
+      output: '[Image file: /tmp/shot.png]',
+      metadata: { path: '/tmp/shot.png', mimeType: 'image/png' },
+      attachments: [{ type: 'image', path: '/tmp/shot.png', content: '[Image: image/png data omitted: 12 chars]', mimeType: 'image/png' }],
+    }))).toEqual([
+      { kind: 'image', ref: { kind: 'url', url: '/tmp/shot.png' }, alt: 'shot.png' },
+    ])
+  })
+
+  it('规范形只剩 metadata 时也按路径取', () => {
+    expect(detailOf(imageCall({
+      content: [{ type: 'text', text: '[Image file: /tmp/shot.png]' }],
+      details: { path: '/tmp/shot.png', mimeType: 'image/png' },
+    }))).toEqual([
+      { kind: 'image', ref: { kind: 'url', url: '/tmp/shot.png' }, alt: 'shot.png' },
+    ])
+  })
+})
