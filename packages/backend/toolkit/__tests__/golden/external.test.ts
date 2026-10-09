@@ -218,6 +218,28 @@ describe('golden: McpTool —— 工具壳', () => {
     expect(mcpResultText(undefined)).toBe('')
   })
 
+  it('带图的结果:文本用内核的可读渲染,图以图片部件交出,base64 不进文本也不进 details(10-09 400 事故)', async () => {
+    const base64 = 'A'.repeat(200_000)
+    const data = {
+      success: true,
+      content: [
+        { type: 'text', text: '<app_state>…</app_state>' },
+        { type: 'image', data: base64, mimeType: 'image/jpeg' },
+      ],
+      output: '<app_state>…</app_state>\n[image: image/jpeg]',
+    }
+    const tool = new McpTool({ toolId: 'mcp_ctx7_get-docs', bridge: bridge({ execute: async () => data }) })
+    const run = await runNewTool(tool, { topic: 'zod' })
+    expect(run.outcome.kind).toBe('ok')
+    if (run.outcome.kind !== 'ok') return
+    const parts = run.outcome.result.content
+    expect(parts.map(part => part.type)).toEqual(['text', 'image'])
+    expect(parts[0]?.text).toBe(data.output)
+    expect(parts[1]).toMatchObject({ type: 'image', data: base64, mimeType: 'image/jpeg' })
+    expect(JSON.stringify(run.outcome.result.details)).not.toContain('AAAAAAAAAA')
+    expect(JSON.stringify(run.outcome.result.details)).toContain('[image omitted: 200000 chars]')
+  })
+
   it('边界:只读 router 调用不报效果', async () => {
     const tool = new McpTool({ toolId: 'mcp_search', bridge: bridge() })
     const run = await runNewTool(tool, { action: 'list' })

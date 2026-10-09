@@ -64,10 +64,27 @@ export function getContextUsageTriggerReason(input: {
   return inputTokens >= Math.floor(contextLength * (threshold / 100)) ? 'threshold' : 'none'
 }
 
+/**
+ * 一个媒体部件(图 / 音 / 视频,按部件发给服务商的那种)按多少 token 估。
+ *
+ * Anthropic 的图按 `w×h/750` 计,≤1568px 的图封顶约 1600;别家同量级。它是个常数而不是按字节算,
+ * 因为 base64 的长度与服务商的计费毫无关系。
+ */
+export const MEDIA_PART_TOKEN_ESTIMATE = 1600
+
+/** 混在**文本**里的 base64(不是部件)服务商按文本切词:Claude 约 2.5 个字符一个 token。 */
+const INLINE_BASE64_CHARS_PER_TOKEN = 2.5
+
+interface UsageNormalizeTally {
+  extraTokens: number
+}
+
 export function estimateHistoryMessagesInputTokens(historyMessages: unknown[] | undefined): number | undefined {
   if (!historyMessages) return undefined
   if (historyMessages.length === 0) return 0
-  return estimateTextTokens(safeJsonForUsage(normalizeHistoryValueForUsage(historyMessages)))
+  const tally: UsageNormalizeTally = { extraTokens: 0 }
+  const normalized = normalizeHistoryValueForUsage(historyMessages, 0, tally)
+  return estimateTextTokens(safeJsonForUsage(normalized)) + tally.extraTokens
 }
 
 export function buildContextUsageSnapshot(options: {
@@ -130,23 +147,48 @@ function safeJsonForUsage(value: unknown): string {
   }
 }
 
-function normalizeHistoryValueForUsage(value: unknown, depth = 0): unknown {
-  if (depth > 20) return '[Max depth reached]'
-  if (typeof value === 'string') return normalizeStringForUsage(value)
-  if (!value || typeof value !== 'object') return value
-  if (Array.isArray(value)) return value.map(item => normalizeHistoryValueForUsage(item, depth + 1))
+const MEDIA_PART_TYPES = new Set(['image', 'audio', 'video', 'file'])
+const MEDIA_PART_DATA_KEYS = new Set(['image', 'data', 'audio', 'video'])
 
+/**
+ * 把历史归一成「服务商会怎么收费」的样子,再交给字符估算器;算不进字符的那部分记在 `tally` 里。
+ *
+ * 2026-10-09 之前这里把 ≥4000 字符的 base64 一律换成一句「省略」—— 于是 Codex 电脑操控那 200KB 的
+ * 截图以文本进请求时,估算器数到的是 40 个字符,一次都没触发压缩,直到 Claude 答 400。
+ * 两条规矩分开:**部件里的** base64(`{type:'image', image|data: …}`)是一张图,按
+ * `MEDIA_PART_TOKEN_ESTIMATE` 一张的常数算;**混在文本里的** base64 服务商按文本切词,按字符数折。
+ */
+function normalizeHistoryValueForUsage(value: unknown, depth: number, tally: UsageNormalizeTally): unknown {
+  if (depth > 20) return '[Max depth reached]'
+  if (typeof value === 'string') return normalizeStringForUsage(value, tally)
+  if (!value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(item => normalizeHistoryValueForUsage(item, depth + 1, tally))
+
+  const record = value as Record<string, unknown>
+  const mediaPart = typeof record.type === 'string' && MEDIA_PART_TYPES.has(record.type)
   const normalized: Record<string, unknown> = {}
-  for (const [key, child] of Object.entries(value)) {
+  for (const [key, child] of Object.entries(record)) {
     if (key === 'originalContent' || key === 'originalContentHash') continue
-    normalized[key] = normalizeHistoryValueForUsage(child, depth + 1)
+    if (mediaPart && MEDIA_PART_DATA_KEYS.has(key) && typeof child === 'string' && child.length > 4000) {
+      tally.extraTokens += MEDIA_PART_TOKEN_ESTIMATE
+      normalized[key] = `[media part: ${child.length} chars]`
+      continue
+    }
+    normalized[key] = normalizeHistoryValueForUsage(child, depth + 1, tally)
   }
   return normalized
 }
 
-function normalizeStringForUsage(value: string): string {
+function normalizeStringForUsage(value: string, tally: UsageNormalizeTally): string {
   if (value.length <= 4000) return value
-  if (/^data:[^;]+;base64,/.test(value) || /^[A-Za-z0-9+/=]{4000,}$/.test(value)) {
+  if (/^data:[^;]+;base64,/.test(value)) {
+    // 一整个 data URL 当一个字符串出现 = 一张以部件形态发出去的图。
+    tally.extraTokens += MEDIA_PART_TOKEN_ESTIMATE
+    return `[large inline data omitted: ${value.length} chars]`
+  }
+  if (/^[A-Za-z0-9+/=]{4000,}$/.test(value)) {
+    // 光秃秃的 base64 不是部件,服务商按文本切词。
+    tally.extraTokens += Math.ceil(value.length / INLINE_BASE64_CHARS_PER_TOKEN)
     return `[large inline data omitted: ${value.length} chars]`
   }
   return value

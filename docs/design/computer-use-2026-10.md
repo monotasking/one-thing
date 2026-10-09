@@ -137,6 +137,15 @@ method-not-found,客户端当作拒绝。要做的:
 
 ## 6. 坑与风险(都来自实测或第三方桥的 issue)
 
+- **10-09 真事故,已修**:用户用 Claude(1M 窗口)跑电脑操控,第四张截图之后 Claude 答 400
+  `prompt is too long: 1102516 tokens`。两条病根:① toolkit 的 `McpTool.apply` 把整个 MCP 结果 `JSON.stringify`
+  进文本部件,`get_app_state` 那张 200KB 的 JPEG 以 **base64 文本**进请求,一次 ≈ 18 万 token;② 压缩的估算器
+  对 ≥4000 字符的 base64 串按「省略」算成几十个字符,四张图 70 万真 token 一个没数到,压缩从未触发。修法:
+  `mcpResultToToolResult` 按部件翻译(文本 = 内核的可读渲染,图 = `type:'image'` 部件,`details` 里的 base64 换占位),
+  估算器把部件里的图按一张 1600 token 的常数算、混在文本里的 base64 按 2.5 字符一个 token 折
+  (`agent-loop-context-usage.ts`)。那条撑爆的会话历史里仍躺着四段 200KB 的文本,下一次发送会按新估算触发压缩;
+  压不动就另开会话。
+
 - **非官方**:路径、认证规则、协议都可能随 ChatGPT.app 更新变;门里探测不到就 skipped,设置页答「没装」。
 - **跳板必须是 ChatGPT.app 自带的 codex**;Homebrew 版没签名(openai/codex#19544 同因)。
 - **沙箱档必须关**(`danger-full-access`);默认 seatbelt 杀客户端。songkeys 桥用 `--sandbox-state-json` 传

@@ -23,6 +23,7 @@ import type {
   PrepareEnv,
   Preview,
   Result,
+  ResultPart,
   RunContext,
   ToolSpec,
 } from '@onething/backend/toolkit/toolkit-tool-protocol'
@@ -361,11 +362,63 @@ export class McpTool extends ExternalTool<JsonObject, JsonObject> {
         },
       }))
 
-    return {
-      content: [{ type: 'text', text: mcpResultText(data) }],
-      details: toJsonObject(data as object),
-    }
+    return mcpResultToToolResult(data)
   }
+}
+
+/**
+ * MCP 结果 → 工具结果(2026-10-09,起因:Codex 电脑操控的 `get_app_state` 每次回一张 200KB 的 JPEG,
+ * 从前这里把整个结果 `JSON.stringify` 进文本部件,那 200KB base64 以**文本**进了请求 —— 一次 ≈ 18 万
+ * token,四次就把 Claude 的 1M 窗口撑爆成 400;而压缩的估算器对 ≥4000 字符的 base64 串按「省略」算,
+ * 所以它一次都没触发)。
+ *
+ * 现在按部件翻译:
+ *  · 文本 = 内核已经算好的可读渲染 `output`(`withMCPResultOutputText`,二进制部件在里面是一行
+ *    `[image: image/jpeg]` 占位),没有 `output` 的(失败、非对象)退回 `mcpResultText`;
+ *  · 每个 `image` 部件 → 一个 `type: 'image'` 的结果部件(base64 + mimeType),视觉模型按**图片**收,
+ *    工具卡也显得出(与 `read` 读图同一条路);
+ *  · `details` 里的 base64 换成 `[image omitted: N chars]` —— 它进账本与渲染层,一张图 400KB 的 JSON
+ *    没有读者。
+ */
+export function mcpResultToToolResult(data: unknown): Result {
+  const record = isRecordValue(data) ? data : undefined
+  const parts = record && Array.isArray(record.content) ? record.content : []
+  const images: ResultPart[] = []
+  for (const part of parts) {
+    if (!isRecordValue(part) || part.type !== 'image') continue
+    if (typeof part.data !== 'string' || part.data.length === 0) continue
+    images.push({
+      type: 'image',
+      data: part.data,
+      mimeType: typeof part.mimeType === 'string' && part.mimeType ? part.mimeType : 'image/png',
+    })
+  }
+  const text = record && typeof record.output === 'string' ? record.output : mcpResultText(data)
+  return {
+    content: [{ type: 'text', text }, ...images],
+    details: toJsonObject(stripInlineMedia(data) as object),
+  }
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+const INLINE_MEDIA_TYPES = new Set(['image', 'audio', 'video'])
+
+/** 深拷贝,把媒体部件的 base64 载荷换成一句占位(账本 / 渲染层不读它)。文本原样。 */
+function stripInlineMedia(value: unknown, depth = 0): unknown {
+  if (depth > 20 || !value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(item => stripInlineMedia(item, depth + 1))
+  const record = value as Record<string, unknown>
+  const isMedia = typeof record.type === 'string' && INLINE_MEDIA_TYPES.has(record.type)
+  const out: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(record)) {
+    out[key] = isMedia && key === 'data' && typeof child === 'string' && child.length > 256
+      ? `[${record.type} omitted: ${child.length} chars]`
+      : stripInlineMedia(child, depth + 1)
+  }
+  return out
 }
 
 /**
