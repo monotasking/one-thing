@@ -138,6 +138,13 @@ export interface MCPSettings {
 /** Default flat-mode threshold when settings do not specify one. */
 export const MCP_DEFAULT_FLAT_TOOL_THRESHOLD = 20
 
+/**
+ * 服务器配置里的私密键(command / args / env / cwd / headers 一类)出进程时被换成的哨兵
+ * (后端 `mcp/mcp-secrets.ts` 脱敏;回来时原样带着它 = 「保持原值」,后端把真值合并回去)。
+ * 壳据它认出「这一格已设置但看不见」,所以它是契约的一部分,住在这里。
+ */
+export const MCP_SERVER_REDACTED_SECRET = '__onething_server_secret_set__'
+
 export const DEFAULT_MCP_SETTINGS: MCPSettings = {
   enabled: true,
   servers: [],

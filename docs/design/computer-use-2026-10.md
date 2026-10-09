@@ -134,6 +134,12 @@ method-not-found,客户端当作拒绝。要做的:
   `McpSubsystem.start()` 起 manager 之前经 `prepareSettings` 跑一遍 `seedKnownMCPServers`:检测得到、设置里没有、用户
   没删过的填进 `servers` 并落盘;用户在设置里删掉一台已知服务器,id 记进 `mcp.dismissedKnownServers`,以后不再填回来
   (只是关掉不算删)。门 ⓪ 从空设置起、断言它被填进来且与配方逐字相等。P3 剩下:SKILL.md、工具卡显截图。
+- **设置页「连接器」(10-09,用户令「设置也增加 mcp(连接器)配置」)**:React 壳从前没有 MCP 页。新页
+  `content/settings/ConnectorsSettings.tsx`(`form` 落点,紧跟 Agent 页):一列行(状态点 + 名字 + 摘要 + 开关 +
+  编辑 / 删除)、添加 / 编辑共用一张表单对话框(名称、接法 stdio / http / sse、整行命令、工作目录、环境变量、地址)。
+  数据层 `data/mcp-connectors-{port,source}.ts` 走 `mcp` 域的七条方法(不碰整份设置);出进程被脱敏的私密格
+  (哨兵 `MCP_SERVER_REDACTED_SECRET` 从此住在契约 `@shared/mcp/types`)编辑时留空 = 原样交回。
+  三张状态表写在组件文件头;测试 5 + 8 条。
 
 ## 6. 坑与风险(都来自实测或第三方桥的 issue)
 

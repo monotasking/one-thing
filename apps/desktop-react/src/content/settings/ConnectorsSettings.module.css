@@ -1,0 +1,77 @@
+/*
+ * 设置页「连接器」(MCP)那一页(2026-10-09)。
+ *
+ * 行形**不在这里**:一行连接器用的是设置页自己那份 `Settings.module.css` 的 `.settingRow` 一族
+ * (左边是它是什么,右边是关于它的那几个决定)。这里只有它多出来的几样:一列行的间距、
+ * 行左半边「状态点 + 两行字」的排法、右半边几颗控件的排法、行底下那一行反馈、对话框里的表单列。
+ *
+ * 颜色纪律:零字面色值;状态色只在 `ui/StatusDot` 那一点上,不换底。
+ */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 一行 = 结构行 + 可能跟在底下的一行反馈(错误 / 要登录)。 */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 名字与摘要:单行截断,不换行(挤压纪律:结构行只截断)。 */
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+/* 行底下那一行反馈 / 页顶那一行读取状态:文字 + 一颗动作钮,允许换行(动作组不是结构行)。 */
+.feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.url {
+  word-break: break-all;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* 对话框里的表单:一列字段。 */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}

@@ -10,6 +10,7 @@ import { NotesSettings } from './NotesSettings'
 import { PermissionGrants } from './PermissionGrants'
 import { PetSettings } from './PetSettings'
 import { AgentsSettings } from './AgentsSettings'
+import { ConnectorsSettings } from './ConnectorsSettings'
 import { CredentialsSettings } from './CredentialsSettings'
 import { Section } from './Section'
 import { KeymapSettings } from '../KeymapSettings'
@@ -43,6 +44,7 @@ export type SettingsPageId =
   | 'pet'
   | 'models'
   | 'agents'
+  | 'connectors'
   | 'appearance'
   | 'dock'
   | 'open'
@@ -92,6 +94,12 @@ export const SETTINGS_PAGES: readonly SettingsPageSpec[] = [
    * 所以同样是 `fill`。
    */
   { id: 'agents', titleKey: 'settings.pageAgents', layout: 'fill', render: () => <AgentsSettings /> },
+  /*
+   * 连接器(MCP 服务器,2026-10-09)。**紧跟 Agent**:模型、agent、连接器三页说的都是
+   * 「这台产品靠谁干活」—— 云上的模型、本机的 agent、外部的工具服务。一列行 + 一张表单
+   * 对话框,不需要吃满高度,所以是 `form`。
+   */
+  { id: 'connectors', titleKey: 'settings.pageConnectors', layout: 'form', render: () => <ConnectorsSettings /> },
   { id: 'appearance', titleKey: 'settings.pageAppearance', layout: 'form', render: () => <AppearancePage /> },
   { id: 'dock', titleKey: 'settings.sectionDock', layout: 'form', render: () => <DockPage /> },
   { id: 'open', titleKey: 'dock.openWith', layout: 'form', render: () => <OpenPage /> },

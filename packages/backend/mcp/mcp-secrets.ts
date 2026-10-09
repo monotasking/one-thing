@@ -14,9 +14,10 @@
  * `SERVER_REDACTED_SECRET` 出门,回来时若原样带着这个哨兵(或干脆没带这个键),
  * 就把服务器上那份真值合并回去,于是「改个名字」不会把凭证洗掉。
  */
-import type { MCPServerConfig, MCPServerState } from '@shared/mcp/types'
+import { MCP_SERVER_REDACTED_SECRET, type MCPServerConfig, type MCPServerState } from '@shared/mcp/types'
 
-export const SERVER_REDACTED_SECRET = '__onething_server_secret_set__'
+// 哨兵的产地在契约里(`@shared/mcp/types`):壳要认它,所以不能只住后端。
+export const SERVER_REDACTED_SECRET = MCP_SERVER_REDACTED_SECRET
 
 /** 不出网的六个键。改这张表 = 改护栏,两处调用点同时生效。 */
 export const MCP_SERVER_PRIVATE_KEYS = new Set([
