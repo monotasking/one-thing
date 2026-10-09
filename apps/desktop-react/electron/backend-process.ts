@@ -55,6 +55,13 @@ import {
   type HttpDiscoveryRecord,
 } from './discovery.js'
 
+/**
+ * SIGTERM 之后等后端自己收尾的宽限。后端的收尾链(`packages/backend/backend-shutdown.ts` 的 `BackendResources`)
+ * 排空死线是 8 秒、最后一段再 1 秒,最坏 9 秒;这里再留 2 秒余量。从前写 7 秒(「5 秒刷盘 + 2 秒」),比后端
+ * 最坏情况还短,会在会话落盘之前 SIGKILL(10-09 孤儿后端修复时对出来的)。
+ */
+export const BACKEND_STOP_GRACE_MS = 8_000 + 1_000 + 2_000
+
 /** 渲染层能看到的那几格(设置页的状态行、横幅、重拉提示)。 */
 export type BackendProcessPhase = 'idle' | 'starting' | 'running' | 'restarting' | 'stopped' | 'stopping'
 
@@ -434,7 +441,7 @@ export class BackendProcess {
   private async terminate(child: ChildProcess, exited: Promise<unknown>): Promise<void> {
     if (child.exitCode !== null || child.signalCode !== null) return
     try { child.kill('SIGTERM') } catch { /* 已经没了 */ }
-    const grace = this.options.stopGraceMs ?? 7000
+    const grace = this.options.stopGraceMs ?? BACKEND_STOP_GRACE_MS
     const done = await Promise.race([exited.then(() => true), delay(grace).then(() => false)])
     if (done) return
     this.log('error', 'backend did not exit after SIGTERM; killing it', { pid: child.pid, graceMs: grace })
@@ -446,7 +453,7 @@ export class BackendProcess {
   private async terminatePid(pid: number): Promise<void> {
     if (!pidAlive(pid)) return
     try { process.kill(pid, 'SIGTERM') } catch { return }
-    const grace = this.options.stopGraceMs ?? 7000
+    const grace = this.options.stopGraceMs ?? BACKEND_STOP_GRACE_MS
     const deadline = this.now() + grace
     while (this.now() < deadline) {
       if (!pidAlive(pid)) return

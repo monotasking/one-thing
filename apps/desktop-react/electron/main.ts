@@ -559,7 +559,7 @@ void app.whenReady().then(async () => {
 })
 
 /**
- * 收尾。缺省档:SIGTERM 后端、等它落完盘(`backendProcess.stop()`,最多 5 + 2 秒,超时 SIGKILL 并记日志)。
+ * 收尾。缺省档:SIGTERM 后端、等它落完盘(`backendProcess.stop()`,最多 `BACKEND_STOP_GRACE_MS` = 8 + 1 + 2 秒,超时 SIGKILL 并记日志)。
  * 「退出 onething 后让后端继续运行」开着:不发信号(`leave()`),后端留着,下次启动走「发现文件活着就连」。
  * 设置值读主进程那台客户端最近一次拿到的那一份 —— 从没读到过(后端压根没起来)就当关着。
  */

@@ -29,9 +29,10 @@
  *   - 装配用的几格:`launchHostPorts(profile, env)`(宿主表里随档位变的四格:存储路径、出声、插件、网关)、`prepareProcessEnv(profile)`
  *     (登录 shell 的 PATH,在第一次 spawn 之前等它)、`declareLaunchAttendance(profile)`(装配之前声明这台宿主
  *     有没有人答卡);
- *   - 装配之后起的服务:`startLaunchServices(backend, profile)`,每一件都在起它的那一行 `own()`。
+ *   - 装配之后起的服务:`startLaunchServices(backend, profile)`,每一件都在起它的那一行 `own()`;
+ *     `startParentWatch(backend, profile, options)`(桌面档看着父进程,10-09 孤儿后端修复)。
  *
- * 依赖:scheduler、music(经实例)、settings、process-env、voice、mcp、permission、plugin、gateway 与 logging 的入口,
+ * 依赖:scheduler、music(经实例)、settings、process-env、voice、mcp、permission、plugin、gateway、lifecycle 与 logging 的入口,
  * 以及包根的当前实例槽。被谁用:进程入口
  * `backend-standalone-main.ts` 与 `http-server/http-server-standalone-backend.ts` / `http-server-runtime.ts`。
  */
@@ -44,6 +45,7 @@ import type { MCPServerConfig } from '@shared/ipc/mcp.js'
 import { getLogger } from '@onething/backend/logging'
 import { getCurrentBackendInstance } from '@onething/backend/backend-current.js'
 import { createBackendGatewayHost, type BackendGatewayHost } from '@onething/backend/gateway'
+import { watchParentProcess, type ParentWatchOptions } from '@onething/backend/lifecycle'
 import { createNativeMCPClient } from '@onething/backend/mcp'
 import {
   backendPluginsHostPorts,
@@ -121,6 +123,11 @@ export interface BackendLaunchProfile {
    * 微信开着就自动连(用户 10-07 拍定「网关按设置自动连」),设置一改跟着起停。
    */
   readonly gateway: boolean
+  /**
+   * 看着父进程(10-09 孤儿后端修复,`startParentWatch`):拉起它的桌面没了、且「退出后让后端继续运行」没开 →
+   * 自己走与 SIGTERM 同一条收尾路退出。只有桌面档看:CLI 拉起之后本来就会退,缺省档没有拉起者。
+   */
+  readonly watchParent: boolean
 }
 
 /**
@@ -161,6 +168,7 @@ export function backendLaunchProfile(
       // 第④步批 4:插件与网关挂在后端上(从前只有 Vue 桌面主进程起过它们)。
       plugins: true,
       gateway: true,
+      watchParent: true,
     }
   }
   if (launcher === 'cli') {
@@ -193,6 +201,8 @@ export function backendLaunchProfile(
       // 第④步批 4:CLI 拉起的那台也是「这个 store 的后端」,插件与网关跟着它(施工单定法:desktop 与 cli 两档起)。
       plugins: true,
       gateway: true,
+      // CLI 拉起后台后自己就退了,父进程没了是常态,不是孤儿。
+      watchParent: false,
     }
   }
   // `none` 与不设:`server:start` 那一档。
@@ -222,6 +232,8 @@ export function backendLaunchProfile(
     // 缺省档不起插件、不起网关:与批 4 之前逐字相同(两格宿主表照旧 `null`)。
     plugins: false,
     gateway: false,
+    // `server:start` 没有拉起者可看。
+    watchParent: false,
   }
 }
 
@@ -384,6 +396,51 @@ export function startLaunchServices(backend: OnethingBackend, profile: BackendLa
     started.push('gateway')
   }
   return started
+}
+
+/** `startParentWatch` 的参数。`onShutdown` 必须是进程入口里与 SIGTERM 同一条收尾路。 */
+export interface StartParentWatchOptions {
+  readonly onShutdown: (reason: string) => void
+  /** 读「退出后让后端继续运行」;缺省读这台后端自己的设置。 */
+  readonly readKeepRunning?: () => boolean
+  /** 换掉看守的进程与计时器(测试用)。 */
+  readonly watch?: Omit<ParentWatchOptions, 'onGone'>
+}
+
+/**
+ * 桌面档看着父进程(10-09 孤儿后端修复;用户报「onething 退出后后端还在跑,而且开关没开」)。
+ *
+ * 桌面拉起的后端是 `detached` 的,Electron 不是正常退出时(dev 链 10 秒强杀、崩溃、`kill -9`)没人给它发 SIGTERM。
+ * 这里每秒查一次父进程,发现没了就**读一次**自己的设置 `general.backendKeepRunningAfterQuit`:
+ *   - 不是 `true` → 记一行、调 `onShutdown`(进程入口与 SIGTERM 同一条收尾路:会话落盘、插件 / 网关 / MCP 拆除、5 秒期限);
+ *   - 是 `true` → 记一行,从此不再看 —— 它就是一台「继续运行」留下的后端,后来的桌面借它、按既有规则停它。
+ * 判定只做一次:看守报过一次就停,之后再改设置不回头影响(防止被新桌面借来之后误退)。桌面正常 Quit 时开关开着走
+ * `leave()`、Electron 退出,这里读到 `true`,留下;开关关着时 Electron 先 SIGTERM 了,轮不到这里。
+ *
+ * 计时器 `unref()`,拆除在起点 `own()`。返回是否起了看守(非桌面档答 `false`,什么都不碰)。
+ */
+export function startParentWatch(
+  backend: Pick<OnethingBackend, 'own'>,
+  profile: BackendLaunchProfile,
+  options: StartParentWatchOptions,
+): boolean {
+  if (!profile.watchParent) return false
+  const log = getLogger('backend.launch')
+  const readKeepRunning = options.readKeepRunning
+    ?? (() => getSettings()?.general?.backendKeepRunningAfterQuit === true)
+  const watch = watchParentProcess({
+    ...options.watch,
+    onGone: parentPid => {
+      if (readKeepRunning()) {
+        log.info('parent desktop is gone; keeps running', { parentPid })
+        return
+      }
+      log.info('parent desktop is gone; shutting down', { parentPid })
+      options.onShutdown('parent-gone')
+    },
+  })
+  backend.own(() => watch.stop(), 'parentWatch', 'quiesce')
+  return true
 }
 
 /**

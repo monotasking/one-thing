@@ -47,7 +47,12 @@ import { createServer } from 'vite'
 import electronPath from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { createChildShutdown, observeChildClose, shutdownFailed } from '../../../scripts/lib/dev-process-shutdown.mjs'
+import {
+  createChildShutdown,
+  DEV_ELECTRON_SHUTDOWN_GRACE_MS,
+  observeChildClose,
+  shutdownFailed,
+} from '../../../scripts/lib/dev-process-shutdown.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -84,9 +89,14 @@ const electron = spawn(electronPath, [path.join(appRoot, 'dist-electron/main.cjs
   env: { ...process.env, ONETHING_REACT_DEV_SERVER_URL: url },
 })
 
+/*
+ * 等 Electron 自己收完尾:宽限是桌面宿主收尾上限 + 余量(数与理由在 `scripts/lib/dev-process-shutdown.mjs`)。
+ * 从前用泳道那一格 10 秒,恰好等于 Electron 收尾的上限,Ctrl+C 时常把它半路杀掉、留下孤儿后端(10-09)。
+ */
 const electronShutdown = createChildShutdown({
   child: electron,
-  onTimeout: () => console.error('[electron:dev] Electron did not close within 10 s; forcing its owned process to stop. Shutdown failed; the store lock may be retained.'),
+  graceMs: DEV_ELECTRON_SHUTDOWN_GRACE_MS,
+  onTimeout: () => console.error(`[electron:dev] Electron did not close within ${DEV_ELECTRON_SHUTDOWN_GRACE_MS / 1000} s; forcing its owned process to stop. Shutdown failed; the store lock may be retained.`),
 })
 let shuttingDown
 

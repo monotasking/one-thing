@@ -863,3 +863,34 @@ ACP 的「装没装」探测:登录 shell 的 PATH 赶在 `acp.start()` 之前�
 `gate:credentials`、`gate:client`、`gate:store-backup` 绿;插件 / 网关 / plugin-contract 目录全部测试绿;全量 vitest 失败集合不新增
 (根 30 → 30,同一批批前就红的;壳 1 → 1)。反证:假登录 shell 换成 `/bin/sh` 时 `gate:plugin` 红在 exec 那一条;把缺省值改回开时
 `plugin-default-enabled.test.ts` 红。
+
+## 13. 孤儿后端修复(2026-10-09)
+
+**报障**(用户 10-09 原话):「onething 退出后后端还在跑,而且开关没开」。
+
+**诊断**:用户在终端 Ctrl+C 停 `bun run dev:electron`。`scripts/dev-unified.mjs` 与 `apps/desktop-react/scripts/dev-app.mjs` 都在 10 秒后
+强杀 Electron;Electron 的收尾(`electron/main.ts` 的 `shutdownBackend`:先跑 `windowServiceStops`,其中内置浏览器拆除实测约 3 秒,
+再 `backendProcess.stop()` SIGTERM 等最多 7 秒)可能超过 10 秒,于是 Electron 半路被杀。后端是 `detached` 的(终端的 Ctrl+C 打不到它,
+收尾全靠 Electron),没人通知它,成了孤儿,下次启动被「借」回来(真 `shell.jsonl` 13:38:41 `adopted a live backend`)。在临时 store 上
+单独给 dev Electron 发 SIGINT,4 秒内干净退出、后端已停 —— Electron 自己的收尾没坏,坏的是「Electron 一旦不是正常退出,后端就永远不退」。
+
+**修法**(决策 D347–D351):
+
+1. **后端看着父进程**(结构修法)。档案多一格 `watchParent`(只有桌面档为真),读处只有 `backend-launcher.ts` 的 `startParentWatch`;
+   「父进程没了」的原语在 L0 `lifecycle/lifecycle-parent-watch.ts`。时序:进程入口登记完 SIGINT / SIGTERM / `backend.shutdown` 三条
+   收尾之后起看守,起点记下 `process.ppid`;此后每秒一拍,`ppid` 变了或 `kill(原 ppid, 0)` 抛 `ESRCH` 即判「没了」,看守当场停;
+   紧接着读**一次**这台后端自己的设置 `general.backendKeepRunningAfterQuit` —— 不是 `true` 就记 `parent desktop is gone; shutting down`
+   并走与 SIGTERM 同一条收尾路(`shutdown('parent-gone')`,退出码 0);是 `true` 就记 `parent desktop is gone; keeps running`,从此
+   不再看。判定只做一次,之后改设置不回头。`cli` 档与缺省档不看。
+2. **`leave()` 照旧**:开关开着时 Electron `leave()` 后退出,后端读到 `true` 留下;开关关着时 Electron 先 SIGTERM 了,轮不到看守。
+3. **dev 链宽限**(只减少被强杀的机会,不再是正确性所在):`scripts/lib/dev-process-shutdown.mjs` 里写成式子 —— 桌面宿主上限 3 + 7 = 10 秒,
+   `dev-app.mjs` 等 Electron 15 秒,泳道 10 → 20 秒,清扫上一个 runner 15 → 25 秒,每层比里面一层多 5 秒。
+4. **门**:`gate:backend-process` 监督那一半每个运行时多两程孤儿演练(`kill -9` 驱动模拟 Electron 被强杀),监督那一程的 store 补开
+   `backendKeepRunningAfterQuit`(它末尾的 `leave()` 模拟的就是开着时的退出)。
+
+**验收**(10-09):`gate:backend-process --build` 89/89(两个运行时;孤儿演练开关关着时后端在父进程消失后 Electron 4.0 秒 / Node 2.4 秒
+内自己退出、发现文件删掉、`app.jsonl` 有那一行;开关开着时 4 秒后仍活着、发现文件还在)。反证:把判定改成恒「留下」,`--runtimes=node`
+红 3 条(11 秒后仍活着、发现文件还在、没有 `shutting down` 那一行)。其余读数见本批汇报。
+
+**没做 / 留账**:`gate:packaged` 要开窗,没跑,交用户择时;Windows 上 `process.ppid` 的过继语义与 macOS / Linux 不同(父进程退出后
+`ppid` 不一定变),那里靠 `kill(原 ppid, 0)` 那条判据,没有在 Windows 上实测。

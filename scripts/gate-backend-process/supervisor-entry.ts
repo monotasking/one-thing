@@ -11,6 +11,8 @@
  *    把留下的那台后端 pid 交给门;
  *  · `adopt`:上一程留下的那台还活着 → `start()` 借它(不拉第二台、pid 不变、owner `backend` 归这里停)→ `stop()`
  *    (SIGTERM 一次,宽限内退,发现文件删掉)。
+ *  · `orphan`(10-09 孤儿后端修复):拉起 → 活了 → 先交出结果行(带后端 pid),然后原地等着,由门 `kill -9` 这只驱动
+ *    —— 模拟 Electron 被强杀、来不及给后端发 SIGTERM。后端退不退由门看(开关关着要自己退,开着要留下)。
  *
  * 结果是一行 `__GATE_SUPERVISOR_RESULT__` + JSON:`{ checks: [{ label, ok, detail }], leftPid? }`。门逐项判。
  * store 由门递(临时目录),这里一个字节都不碰 `~/.onething`。
@@ -115,6 +117,18 @@ async function adopt(expectedPid: number): Promise<void> {
   check(readDiscovery(storeRoot) === undefined, 'stop 之后发现文件删掉')
 }
 
+/** 拉起一台,交出结果行后挂住不退:门会 `kill -9` 这只驱动。 */
+async function orphan(): Promise<never> {
+  const started = await backend.start()
+  check(started.ok && !started.adopted, '拉起:活了,不是借来的', JSON.stringify(started).slice(0, 300))
+  const record = readDiscovery(storeRoot)
+  check(record?.pid === backend.state.pid && record?.pid !== process.pid, '发现文件 pid 是子进程', JSON.stringify(record))
+  if (!started.ok) throw new Error('backend did not start')
+  process.stdout.write(`${MARKER}${JSON.stringify({ checks, leftPid: backend.state.pid, driverPid: process.pid })}\n`)
+  setInterval(() => {}, 1000)
+  return new Promise<never>(() => {})
+}
+
 async function main(): Promise<void> {
   // `BackendProcess` 的计时器与子进程句柄全是 `unref()` 的(在 Electron 主进程里由 app 撑着事件循环);
   // 这只驱动没有 app,自己撑一只,否则 await 到一半事件循环空了进程就悄悄退了。
@@ -122,6 +136,7 @@ async function main(): Promise<void> {
   let leftPid: number | undefined
   try {
     if (!entry) throw new Error('GATE_BACKEND_ENTRY is not set')
+    if (process.env.GATE_SUPERVISOR_MODE === 'orphan') await orphan()
     if (process.env.GATE_SUPERVISOR_MODE === 'adopt') await adopt(Number(process.env.GATE_EXPECTED_PID))
     else leftPid = await supervise()
   } catch (error) {

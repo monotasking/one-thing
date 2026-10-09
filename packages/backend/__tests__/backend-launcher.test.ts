@@ -15,6 +15,7 @@ import {
   prepareProcessEnv,
   readBackendLauncher,
   startLaunchServices,
+  startParentWatch,
 } from '../backend-launcher.js'
 import type { OnethingBackend } from '../backend.js'
 import { isHostUnattended, unansweredAskDeadlineMs } from '../permission/permission-unattended.js'
@@ -184,5 +185,73 @@ describe('startLaunchServices', () => {
     } finally {
       dispose()
     }
+  })
+})
+
+describe('startParentWatch', () => {
+  /** 一只手摇的看守:`tick()` 走一拍,`ppid` 由测试改。 */
+  function harness(keepRunning: { value: boolean }) {
+    const state = { ppid: 4242, ticks: [] as Array<() => void>, cleared: 0 }
+    const owned: Array<{ label: string; disposer: () => void }> = []
+    const shutdowns: string[] = []
+    const backend = { own(disposer: () => void, label: string) { owned.push({ label, disposer }) } } as unknown as OnethingBackend
+    const options = {
+      onShutdown: (reason: string) => { shutdowns.push(reason) },
+      readKeepRunning: () => keepRunning.value,
+      watch: {
+        readPpid: () => state.ppid,
+        isAlive: (pid: number) => pid === state.ppid,
+        setInterval: (tick: () => void) => { state.ticks.push(tick); return {} },
+        clearInterval: () => { state.cleared += 1 },
+      },
+    }
+    const tick = () => { for (const fn of state.ticks) fn() }
+    return { state, owned, shutdowns, backend, options, tick }
+  }
+
+  it('does not watch the parent on the cli launcher or the default launcher', () => {
+    for (const launcher of ['cli', 'none', undefined] as const) {
+      const h = harness({ value: false })
+      expect(startParentWatch(h.backend, backendLaunchProfile(launcher, {}), h.options)).toBe(false)
+      expect(h.owned).toEqual([])
+      expect(h.state.ticks).toEqual([])
+    }
+  })
+
+  it('shuts down once when the desktop parent is gone and keep-running is off', () => {
+    const h = harness({ value: false })
+    expect(startParentWatch(h.backend, backendLaunchProfile('desktop', {}), h.options)).toBe(true)
+    expect(h.owned.map(row => row.label)).toEqual(['parentWatch'])
+    h.tick()
+    expect(h.shutdowns).toEqual([])
+    h.state.ppid = 1
+    h.tick()
+    h.tick()
+    expect(h.shutdowns).toEqual(['parent-gone'])
+    expect(h.state.cleared).toBe(1)
+  })
+
+  it('decides only once: keep-running on means it stays, and later setting changes do not bring the decision back', () => {
+    const keepRunning = { value: true }
+    const h = harness(keepRunning)
+    startParentWatch(h.backend, backendLaunchProfile('desktop', {}), h.options)
+    h.state.ppid = 1
+    h.tick()
+    expect(h.shutdowns).toEqual([])
+    // 被新桌面借来之后用户关了开关:看守早已停了,不回头。
+    keepRunning.value = false
+    h.tick()
+    h.tick()
+    expect(h.shutdowns).toEqual([])
+    expect(h.state.cleared).toBe(1)
+  })
+
+  it('stops watching when the backend is disposed', () => {
+    const h = harness({ value: false })
+    startParentWatch(h.backend, backendLaunchProfile('desktop', {}), h.options)
+    for (const row of h.owned) row.disposer()
+    h.state.ppid = 1
+    h.tick()
+    expect(h.shutdowns).toEqual([])
   })
 })

@@ -6,8 +6,24 @@
  * 意味着每一次 Ctrl-C 都在会话账本 flush 到一半时强杀。代价是 Ctrl-C 在真的
  * 有东西要收尾时慢几倍(收尾快的进程照旧秒退,这里是**上限**不是固定等待)。
  */
-export const DEV_SHUTDOWN_GRACE_MS = 10_000
-export const DEV_RUNNER_SHUTDOWN_GRACE_MS = 15_000
+/**
+ * 桌面宿主(Electron 主进程)收尾的上限,10-09 孤儿后端修复时按 `apps/desktop-react/electron/main.ts` 的
+ * `shutdownBackend` 现算:先跑 `windowServiceStops`(内置浏览器拆除,实测约 3 秒),再 `backendProcess.stop()`
+ * (SIGTERM 后等 `BACKEND_STOP_GRACE_MS` = 后端排空 8 秒 + 最后一段 1 秒 + 余量 2 秒 = 11 秒,还没退才 SIGKILL)。
+ * 从前那一格是 7 秒,合起来 10 秒 —— 恰好等于从前那个 10 秒强杀,于是 Ctrl+C 时 Electron 常在半路被杀,它拉起的后端(`detached`)没人通知、成了孤儿。
+ * 后端今天自己看着父进程(`packages/backend/backend-launcher.ts` 的 `startParentWatch`),正确性已经不靠这里;
+ * 这几个数只是让「被强杀」少发生,所以每一层都比它里面那一层多 5 秒余量:
+ */
+export const DESKTOP_HOST_SHUTDOWN_UPPER_MS = 3_000 + 11_000
+/** `electron:dev`(`dev-app.mjs`)等 Electron 自己收完尾的宽限:宿主上限 + 5 秒。 */
+export const DEV_ELECTRON_SHUTDOWN_GRACE_MS = DESKTOP_HOST_SHUTDOWN_UPPER_MS + 5_000
+/**
+ * `bun run dev` 等每条泳道的宽限:要罩得住桌面泳道里的 `dev-app.mjs`(它等完 Electron 还要关 vite),
+ * 所以是 Electron 那一层 + 5 秒。仍长于后端 8 秒的排空死线(上面那条判例不破)。
+ */
+export const DEV_SHUTDOWN_GRACE_MS = DEV_ELECTRON_SHUTDOWN_GRACE_MS + 5_000
+/** 清扫上一个 dev runner 的宽限:它自己要等完泳道那一层,所以再多 5 秒(从前 15 秒对 10 秒,同一个关系)。 */
+export const DEV_RUNNER_SHUTDOWN_GRACE_MS = DEV_SHUTDOWN_GRACE_MS + 5_000
 
 /** Observe immediately after spawn: exit does not mean inherited stdio is closed. */
 export function observeChildClose(child) {

@@ -177,7 +177,7 @@ function spawnManaged(label, command, args, options = {}) {
   const lifecycle = createChildShutdown({
     child,
     sendSignal: signal => killProcessGroup(child, signal),
-    onTimeout: () => log(label, 'shutdown exceeded 10 s; forcing the owned process group to stop. Shutdown failed; the store lock may be retained.'),
+    onTimeout: () => log(label, `shutdown exceeded ${DEV_SHUTDOWN_GRACE_MS / 1000} s; forcing the owned process group to stop. Shutdown failed; the store lock may be retained.`),
   })
   childShutdowns.set(child, lifecycle)
   children.set(label, child)
@@ -471,7 +471,7 @@ function shutdown(code = 0, signal = 'SIGTERM') {
       ...ownedChildren.map(child => childShutdowns.get(child).stop(signal)),
       stopPidSnapshot({
         pids: sweepPids, signal, isAlive: processExists, sendSignal: killPid,
-        onTimeout: pending => log('dev', `shutdown exceeded 10 s; forcing only the recorded PIDs ${pending.join(', ')}. Shutdown failed; the store lock may be retained.`),
+        onTimeout: pending => log('dev', `shutdown exceeded ${DEV_SHUTDOWN_GRACE_MS / 1000} s; forcing only the recorded PIDs ${pending.join(', ')}. Shutdown failed; the store lock may be retained.`),
       }),
     ])
     for (const result of results) {

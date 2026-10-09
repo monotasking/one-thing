@@ -7,7 +7,10 @@
  * (`apps/desktop-react/electron/backend-process.ts`)经 `scripts/gate-backend-process/supervisor-entry.ts` 打成 cjs,
  * 用同一个运行时起它(Electron 那一半 = `process.execPath` 就是桌面那只二进制),驱动真 `backend.cjs`:拉起、`kill -9`
  * 看 D11 重拉(端口 / token 不变)、60 秒内第 4 次封顶、「重启」、`leave()` 后驱动退出而后端留着、再起一程借它、
- * `stop()` 在 7 秒内收掉。
+ * `stop()` 在 7 秒内收掉(那一程的 store 里「退出后让后端继续运行」开着,`leave()` 模拟的就是开着时退出)。
+ * 10-09 孤儿后端修复加**孤儿演练**(`runOrphanDrill`,每个运行时两程):驱动拉起后端后被 `kill -9`(模拟 Electron 被强杀),
+ * 开关关着 → 后端看到父进程没了、自己在 8 秒内收尾退出、发现文件删掉、`app.jsonl` 有那一行;开关开着 → 后端留着、
+ * 发现文件还在,门自己收掉它。
  *
  * 跑的是**产物**:`apps/desktop-react/dist-electron/backend.cjs`(`electron:build` 或
  * `node apps/desktop-react/scripts/build-electron.mjs` 打出来的那一份,批 2b 起桌面拉起的就是它)。
@@ -106,9 +109,13 @@ await server.connect(new StdioServerTransport())
 `)
 }
 
-/** 临时 store:一份假 MCP 配置、一格模型目录(让首启拉取跳过)、一条停用的定时任务。 */
-function seedStore(store) {
+/**
+ * 临时 store:一份假 MCP 配置、一格模型目录(让首启拉取跳过)、一条停用的定时任务。
+ * `keepRunning` 给了就写进「退出 onething 后让后端继续运行」(`general.backendKeepRunningAfterQuit`)那一格。
+ */
+function seedStore(store, { keepRunning } = {}) {
   writeFileSync(join(store, 'settings.json'), JSON.stringify({
+    ...(keepRunning === undefined ? {} : { general: { backendKeepRunningAfterQuit: keepRunning } }),
     mcp: {
       enabled: true,
       servers: [{
@@ -468,7 +475,8 @@ async function runSupervisor(runtime) {
   const store = mkdtempSync(join(tmpdir(), 'onething-gate-backend-process-supervisor-'))
   let leftPid
   try {
-    seedStore(store)
+    // 这一程末尾的 `leave()` 模拟的是「开关开着时退出」:store 里那一格要真开着,否则后端看到父进程没了会自己退(10-09)。
+    seedStore(store, { keepRunning: true })
     const first = await runSupervisorOnce(runtime, store, 'supervise')
     if (!first.parsed) {
       check(false, `${label} supervise 交回了结果`, `${first.out.stderr.slice(-1500)}\n${first.out.stdout.slice(-800)}`)
@@ -502,6 +510,85 @@ async function runSupervisor(runtime) {
   }
 }
 
+/**
+ * **孤儿演练**(10-09 孤儿后端修复;用户报「onething 退出后后端还在跑,而且开关没开」):驱动以 `orphan` 档拉起
+ * 桌面档后端、交出 pid 之后,门 `kill -9` 这只驱动 —— 模拟 Electron 被 dev 链强杀、崩溃,来不及发 SIGTERM。
+ *   · 开关关着:后端在「父进程没了(每秒查一次)+ 收尾 5 秒 + 余量」内自己退出、发现文件删掉、`app.jsonl` 有那一行;
+ *   · 开关开着:后端还活着、发现文件还在、`app.jsonl` 有「留下」那一行;门自己 SIGTERM 收掉它。
+ */
+const PARENT_GONE_EXIT_BUDGET_MS = 1_000 + EXIT_BUDGET_MS + 2_000
+
+async function runOrphanDrill(runtime, keepRunning) {
+  const label = `${runtime === 'electron' ? '[孤儿 · Electron + ELECTRON_RUN_AS_NODE=1]' : '[孤儿 · 系统 Node]'} 开关${keepRunning ? '开' : '关'}`
+  process.stdout.write(`\n${label} kill -9 驱动,看后端${keepRunning ? '留下' : '自己退'}\n`)
+  const store = mkdtempSync(join(tmpdir(), 'onething-gate-backend-process-orphan-'))
+  const command = runtime === 'electron' ? electronBinaryPath() : process.execPath
+  let driver
+  let leftPid
+  try {
+    seedStore(store, { keepRunning })
+    driver = spawn(command, [supervisorBundle], {
+      cwd: repoRoot,
+      env: { ...childEnv(store, { launcher: undefined, electron: runtime === 'electron' }), GATE_BACKEND_ENTRY: backendEntry, GATE_SUPERVISOR_MODE: 'orphan' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const out = { stdout: '', stderr: '' }
+    driver.stdout.on('data', chunk => { out.stdout += chunk })
+    driver.stderr.on('data', chunk => { out.stderr += chunk })
+    const driverExited = new Promise(r => driver.once('exit', () => r(true)))
+    const deadline = Date.now() + 90_000
+    while (Date.now() < deadline && !out.stdout.includes(SUPERVISOR_MARKER) && driver.exitCode === null) await sleep(50)
+    const at = out.stdout.indexOf(SUPERVISOR_MARKER)
+    const parsed = at < 0 ? undefined : JSON.parse(out.stdout.slice(at + SUPERVISOR_MARKER.length).split('\n')[0])
+    if (!parsed?.leftPid) {
+      check(false, `${label} 驱动拉起了后端`, `${out.stderr.slice(-1500)}\n${out.stdout.slice(-800)}`)
+      return
+    }
+    for (const row of parsed.checks) check(row.ok, `${label} ${row.label}`, row.detail)
+    leftPid = parsed.leftPid
+    const killedAt = Date.now()
+    driver.kill('SIGKILL')
+    await driverExited
+    const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
+    if (!keepRunning) {
+      while (Date.now() - killedAt < PARENT_GONE_EXIT_BUDGET_MS + 3_000 && alive(leftPid)) await sleep(50)
+      const ms = Date.now() - killedAt
+      check(!alive(leftPid) && ms <= PARENT_GONE_EXIT_BUDGET_MS,
+        `${label} ① 父进程没了 → 后端 ${PARENT_GONE_EXIT_BUDGET_MS / 1000} 秒内自己退出`, `${ms}ms alive=${alive(leftPid)}`)
+      check(!existsSync(join(store, 'run', 'http.json')), `${label} ① 退出后发现文件已删`)
+      const line = logRecords(store, 'app').find(r => r.msg === 'parent desktop is gone; shutting down')
+      check(line?.fields?.parentPid === parsed.driverPid,
+        `${label} ① app.jsonl 记着「parent desktop is gone; shutting down」与原父进程 pid`, JSON.stringify(line ?? null).slice(0, 240))
+    } else {
+      // 看守每秒一拍:等足几拍再看,免得「还活着」只是还没轮到判。
+      await sleep(4_000)
+      const record = readDiscovery(store)
+      check(alive(leftPid) && record?.pid === leftPid,
+        `${label} ② 父进程没了、开关开着 → 后端还活着、发现文件还在`, `alive=${alive(leftPid)} record=${JSON.stringify(record)}`)
+      // 门自己收尾:SIGTERM 它,等它按既有规则退。
+      process.kill(leftPid, 'SIGTERM')
+      const stopAt = Date.now()
+      while (Date.now() - stopAt < EXIT_BUDGET_MS + 2_000 && alive(leftPid)) await sleep(50)
+      check(!alive(leftPid), `${label} ② 门 SIGTERM 收掉留下的那台`, `${Date.now() - stopAt}ms`)
+      // 日志在退出之后读:文件 sink 攒批写,活着的时候读到的可能还缺最后几行。
+      const line = logRecords(store, 'app').find(r => r.msg === 'parent desktop is gone; keeps running')
+      check(line?.fields?.parentPid === parsed.driverPid,
+        `${label} ② app.jsonl 记着「parent desktop is gone; keeps running」`, JSON.stringify(line ?? null).slice(0, 240))
+    }
+  } catch (error) {
+    check(false, `${label} 跑完`, error instanceof Error ? error.stack ?? error.message : String(error))
+  } finally {
+    // 收尸:只收这一程起的驱动与发现文件里这间临时 store 的那一台。
+    if (driver && driver.exitCode === null && driver.signalCode === null) driver.kill('SIGKILL')
+    await sleep(500)
+    const record = readDiscovery(store)
+    for (const pid of new Set([leftPid, record?.pid].filter(Boolean))) {
+      try { process.kill(pid, 'SIGKILL') } catch { /* 已经没了 */ }
+    }
+    rmSync(store, { recursive: true, force: true })
+  }
+}
+
 async function main() {
   if (args.has('build')) {
     for (const options of [backendEsbuildOptions, searchWorkerEsbuildOptions, acpMcpBridgeEsbuildOptions]) {
@@ -525,7 +612,13 @@ async function main() {
     for (const runtime of runtimes) await runDesktop(runtime)
     await runDefaultContrast()
     await runCliContrast()
-    if (!args.has('no-supervisor')) for (const runtime of runtimes) await runSupervisor(runtime)
+    if (!args.has('no-supervisor')) {
+      for (const runtime of runtimes) {
+        await runSupervisor(runtime)
+        await runOrphanDrill(runtime, false)
+        await runOrphanDrill(runtime, true)
+      }
+    }
     if (timingRuns > 0) await runTiming(timingRuns)
   } finally {
     rmSync(cacheDir, { recursive: true, force: true })

@@ -7,6 +7,9 @@
  *
  * 第④步批 3 起多一类:「请这个进程退出」的那一格(`lifecycle-process-shutdown.ts`)。独立后端进程的入口
  * 登记自己的收尾函数,`backend.shutdown` 这条 RPC(第二入口 `lifecycle-client-api.ts`)只问这一格。
+ *
+ * 10-09 起再多一类:看着父进程(`lifecycle-parent-watch.ts`),父进程没了就告诉调用者一次。发现之后怎么办
+ * 不归这里管(桌面档的后端读设置决定退还是留,在包根的 `backend-launcher.ts`)。
  */
 export {
   AdmissionGate,
@@ -23,6 +26,14 @@ export {
   resetProcessShutdownRequest,
   type ProcessShutdownRequester,
 } from './lifecycle-process-shutdown.js'
+
+// ── 看着父进程(10-09 孤儿后端修复:桌面档的后端靠它发现拉起它的 Electron 没了) ──────
+export {
+  PARENT_WATCH_INTERVAL_MS,
+  watchParentProcess,
+  type ParentWatch,
+  type ParentWatchOptions,
+} from './lifecycle-parent-watch.js'
 
 /**
  * 一台「先停止接活,再等在途落定」的子系统。

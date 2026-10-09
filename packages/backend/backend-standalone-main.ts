@@ -3,7 +3,8 @@
  *
  * 它做什么:读环境变量(端口、绑定地址、token、几个根目录),判断这个 store 是不是已经被桌面服务着
  * (是就让位,`--force` 越过),装配一份后端并把 `@onething/backend/http-server` 的 HTTP/SSE 面挂上去,
- * 监听端口、写 `<store>/run/http.json` 发现文件,收到 SIGINT / SIGTERM 时等后端拆除跑完(会话落盘)再退出。
+ * 监听端口、写 `<store>/run/http.json` 发现文件,收到 SIGINT / SIGTERM 时等后端拆除跑完(会话落盘)再退出;
+ * 桌面档另外看着父进程,拉起它的 Electron 没了、且「退出后让后端继续运行」没开,也走这同一条收尾路(10-09)。
  * HTTP 面与 server runtime 的实现都不在这里,这个文件只管进程的生命周期。
  *
  * 谁用它:`bun run server:build` 把它打成 `dist/server/main.js`(构建配方在 `scripts/build-server.mjs`),
@@ -41,6 +42,7 @@ import {
   prepareProcessEnv,
   readBackendLauncher,
   startLaunchServices,
+  startParentWatch,
 } from '@onething/backend/backend-launcher.js'
 import { randomBytes } from 'node:crypto'
 
@@ -275,7 +277,8 @@ async function main(): Promise<void> {
    */
   let shuttingDown = false
 
-  async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  // `signal` 是 SIGINT / SIGTERM,或 `parent-gone`(桌面档看父进程那一格,10-09):三者走同一条收尾路。
+  async function shutdown(signal: NodeJS.Signals | 'parent-gone'): Promise<void> {
     if (shuttingDown) {
       log.warn('signal received again while shutting down, exiting now', { signal })
       process.exit(1)
@@ -298,6 +301,11 @@ async function main(): Promise<void> {
     log.info('shutdown requested over rpc', { reason })
     void shutdown('SIGTERM')
   })
+  /*
+   * 桌面档看着父进程(10-09 孤儿后端修复):拉起它的 Electron 不是正常退出时(dev 链强杀、崩溃)没人发 SIGTERM,
+   * 这里发现父进程没了、且「退出后让后端继续运行」没开,就走上面同一条收尾路。别的档不看(判法在 `backend-launcher.ts`)。
+   */
+  startParentWatch(ownedBackend, profile, { onShutdown: () => void shutdown('parent-gone') })
 }
 
 void main()
