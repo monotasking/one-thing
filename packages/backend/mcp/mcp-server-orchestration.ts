@@ -10,6 +10,7 @@ export interface OnethingMCPServerConfigLike {
 export interface OnethingMCPSettingsLike<TConfig extends OnethingMCPServerConfigLike = OnethingMCPServerConfigLike> {
   enabled: boolean
   servers: TConfig[]
+  dismissedKnownServers?: string[]
 }
 
 export interface OnethingMCPServerStateLike<TConfig extends OnethingMCPServerConfigLike = OnethingMCPServerConfigLike> {
@@ -47,6 +48,11 @@ export interface OnethingMCPServerOrchestrationAdapters<
    * Optional — hosts without the OAuth flow manager simply omit logout.
    */
   logoutOAuth?(serverId: string): MaybePromise<unknown>
+  /**
+   * 删一台服务器之后,给设置记一笔「用户删过它」(2026-10-09,`mcp-known-servers.ts` 的
+   * `dismissKnownMCPServer`:内置的那几台删了就不再默认填回来)。缺席 = 不记。
+   */
+  rememberDismissal?(settings: OnethingMCPSettingsLike<TConfig>, serverId: string): OnethingMCPSettingsLike<TConfig>
 }
 
 export interface AddOnethingMCPServerOptions<
@@ -162,10 +168,11 @@ export async function removeOnethingMCPServer<
 ): Promise<OnethingMCPSimpleMutationResult> {
   await options.manager.removeServer(options.serverId)
   const settings = await options.getSettings()
-  await options.saveSettings({
+  const withoutServer = {
     ...settings,
     servers: settings.servers.filter(server => server.id !== options.serverId),
-  })
+  }
+  await options.saveSettings(options.rememberDismissal?.(withoutServer, options.serverId) ?? withoutServer)
   await options.registerTools()
   return { success: true }
 }

@@ -457,7 +457,9 @@ embedder 只能跑 `device: 'cpu'`;后端回答原因码(`vectorErrorKind`),不�
 (pattern = 服务器 id × 那句话),URL 模式、带字段的表单、没有在飞调用的自发询问一律结构化拒绝并记日志。发问落到哪个会话靠
 工具调用随身的坐标:`McpTool.apply` 从 `RunContext` 填 `caller`,一路递到客户端运行时,在调用期间挂在 `inFlightCall` 上
 (同一台服务器的调用串行,所以最多一条)。Codex 装在本机的 Computer Use MCP 就是这样接的(签名 `codex sandbox` 当跳板,
-配方在正本 §3.1,门 `gate:codex-computer-use`)。
+配方在正本 §3.1,门 `gate:codex-computer-use`)。**已知的本机服务器默认填好**(10-09):`mcp/mcp-known-servers.ts` 一张表,
+`McpSubsystem.start()` 起 manager 之前经 `prepareSettings` 把检测到、设置里没有、用户没删过的填进 `servers` 并落盘;用户删掉
+一台已知服务器记进 `mcp.dismissedKnownServers`,不再填回来。再接一台 = 表上一行。
 
 **日志**(`packages/backend/logging/`,正本 `docs/design/logging-system-2026-08.md`):产品代码只调 `getLogger(ns)`
 (经 `@onething/backend/logging`);`msg` 是固定短句,变量放 `fields`,错误放 `err`。`configureLogging()` 是唯一接线点

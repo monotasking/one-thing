@@ -3,9 +3,11 @@
  * `gate:codex-computer-use` —— onething 用得上 Codex 装在本机的那台闭源 Computer Use MCP
  * (`docs/design/computer-use-2026-10.md` §2 实测、§5 P2 验收)。
  *
- * 跑的是真后端产物 `dist/server/main.js`(系统 node,CLI 档:MCP 真连)对着**真**的那台服务器:
- * 临时 store 里一条服务器配置 = §3.1 的配方 —— ChatGPT.app 自带的签名 `codex` 当跳板
+ * 跑的是真后端产物 `dist/server/main.js`(系统 node,CLI 档:MCP 真连)对着**真**的那台服务器。
+ * 临时 store 的设置里**没有**这台服务器 —— 由后端自己检测到、默认填进去(`mcp-known-servers.ts`),填的
+ * 是 §3.1 的配方:ChatGPT.app 自带的签名 `codex` 当跳板
  * (`codex sandbox -c sandbox_mode="danger-full-access" -- <SkyComputerUseClient> mcp`)。逐项断言:
+ *   ⓪ 空设置起来,`mcp.getServers` 里出现它、配置与配方逐字相等、`settings.json` 落了盘;
  *   ① 服务器连上,十只工具列得出(`list_apps` / `get_app_state` / `click` / `type_text` …);
  *   ② `list_apps` 真答(没有「Sender process is not authenticated」—— 证的就是跳板);
  *   ③ 经 RPC 直接调 `get_app_state`:这条路没有会话坐标,所以服务器的 elicitation 被 onething
@@ -143,10 +145,24 @@ try {
   const store = path.join(tmpRoot, 'store')
   writeFileSync(path.join(tmpRoot, '.keep'), '')
   spawnSync('mkdir', ['-p', store])
-  writeFileSync(path.join(store, 'settings.json'), JSON.stringify({ mcp: { enabled: true, servers: [recipe.config] } }, null, 2))
+  // 设置里**没有**这台服务器:默认填好那一步(`mcp-known-servers.ts`)要由后端自己做。
+  writeFileSync(path.join(store, 'settings.json'), JSON.stringify({ mcp: { enabled: true, servers: [] } }, null, 2))
+
+  console.log('⓪ 空设置起来,已知服务器被默认填好并落盘')
+  backend = await startBackend(store)
+  const listed = await waitFor('服务器出现在 mcp.getServers', async () => {
+    const data = await backend.rpc('mcp', 'getServers')
+    return (data?.servers ?? []).find(server => server?.config?.id === SERVER_ID)
+  }, 30_000)
+  check(listed?.config?.id === SERVER_ID, 'mcp.getServers 里有它')
+  // 经 HTTP 出进程的投影把 command / args / cwd / env 脱敏成占位符,配方要对着落盘的那一份比。
+  const persisted = JSON.parse(readFileSync(path.join(store, 'settings.json'), 'utf8'))
+  const filled = (persisted?.mcp?.servers ?? []).find(server => server?.id === SERVER_ID)
+  check(Boolean(filled) && filled.command === recipe.config.command && JSON.stringify(filled.args) === JSON.stringify(recipe.config.args) && filled.cwd === recipe.config.cwd && filled.enabled === true,
+    '落盘的配置 = §3.1 的配方(签名 codex 跳板 + danger-full-access + 客户端路径 + cwd)',
+    JSON.stringify(filled).slice(0, 400))
 
   console.log('① 连上 Codex 电脑操控那台 MCP(签名 codex 跳板)')
-  backend = await startBackend(store)
   const state = await waitFor('服务器 connected', async () => {
     const data = await backend.rpc('mcp', 'getServers')
     const found = (data?.servers ?? []).find(server => server?.config?.id === SERVER_ID)

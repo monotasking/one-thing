@@ -66,6 +66,7 @@ import {
   updateOnethingMCPServerForIpc,
 } from './mcp-ipc-operations.js'
 import { MCPManager } from './mcp-manager.js'
+import { dismissKnownMCPServer } from './mcp-known-servers.js'
 import { probeMCPServerConfig } from './mcp-client.js'
 import { registerMCPTools } from './mcp-bridge.js'
 import { getMCPOAuthFlowManager } from '@onething/backend/mcp/oauth/mcp-oauth'
@@ -135,6 +136,8 @@ function mcpServerAdapters() {
     manager: MCPManager,
     registerTools: registerMCPTools,
     logoutOAuth: (serverId: string) => getMCPOAuthFlowManager().logout(serverId),
+    // 用户删掉一台默认填进来的已知服务器,记一笔,下次起来不再填回去。
+    rememberDismissal: (settings: MCPSettings, serverId: string) => dismissKnownMCPServer(settings, serverId),
     logger: consoleLog,
   }
 }

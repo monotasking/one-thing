@@ -42,6 +42,12 @@ export interface McpSubsystemDeps {
   settings: () => MCPSettings
   /** 重建模型面的工具目录(`registerMCPTools`)。 */
   registerTools: () => Promise<void>
+  /**
+   * `start()` 时、交给 manager 之前,对当下的设置做一次整理并交回要用的那一份(2026-10-09:
+   * 把机器上检测到的已知服务器默认填进去,见 `mcp-known-servers.ts`)。整理过的结果要不要落盘
+   * 由它自己决定;缺席 = 设置原样用。抛错不拦启动:记一行,照旧用原设置。
+   */
+  prepareSettings?: (settings: MCPSettings) => Promise<MCPSettings>
   /** 缺省是产品层那口单槽端口;单测注入自己的。 */
   onCapabilitiesChanged?: McpCapabilitiesChangedPort
   /** `dispose()` 的上限,毫秒。缺省 {@link DEFAULT_MCP_DISPOSE_TIMEOUT_MS};单测传小值。 */
@@ -121,12 +127,25 @@ export class McpSubsystem {
 
   private async runStart(): Promise<void> {
     try {
-      await this.deps.manager.initialize(this.deps.settings())
+      // 没有整理口就同步拿设置、同步进 `initialize`(在途 / 收尾那几条断言按这个次序写)。
+      const settings = this.deps.prepareSettings ? await this.preparedSettings() : this.deps.settings()
+      await this.deps.manager.initialize(settings)
       await this.deps.registerTools()
       if (this.currentState === 'starting') this.currentState = 'running'
     } catch (error) {
       if (this.currentState === 'starting') this.currentState = 'idle'
       throw error
+    }
+  }
+
+  /** 经整理口整理过的设置;整理炸了不拦启动,用原设置。 */
+  private async preparedSettings(): Promise<MCPSettings> {
+    const current = this.deps.settings()
+    try {
+      return await this.deps.prepareSettings!(current)
+    } catch (error) {
+      log.warn('mcp settings preparation failed; starting with settings as-is', {}, error)
+      return current
     }
   }
 

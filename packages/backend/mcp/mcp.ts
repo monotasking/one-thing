@@ -18,6 +18,8 @@
 
 // 管理器与客户端。
 export { MCPManager, configureMCPClientHost, createNativeMCPClient } from './mcp-manager.js'
+// 已知的本机服务器(装了就默认填进设置;装配时经 `McpSubsystem.prepareSettings` 跑一遍)。
+export { realKnownMCPServerProbe, seedKnownMCPServers } from './mcp-known-servers.js'
 export { probeMCPServerConfig } from './mcp-client.js'
 export { HeadlessMCPManager } from './kernel/mcp-kernel-manager.js'
 export { ServerMCPClient } from './mcp-server-client.js'

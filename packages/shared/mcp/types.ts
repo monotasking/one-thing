@@ -127,6 +127,12 @@ export interface MCPSettings {
    * `0` = always router (the pre-hybrid behavior). Undefined = default.
    */
   flatToolThreshold?: number
+  /**
+   * 用户删掉过的**内置**服务器的 id(2026-10-09)。后端起来时会把机器上检测到的已知服务器
+   * (例:Codex 装在本机的 Computer Use MCP)自动填进 `servers`;用户删了一次就记在这里,
+   * 下次不再自动填回来。只记内置的那几个 id,用户自己加的服务器删了不记。
+   */
+  dismissedKnownServers?: string[]
 }
 
 /** Default flat-mode threshold when settings do not specify one. */

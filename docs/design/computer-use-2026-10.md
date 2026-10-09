@@ -127,9 +127,13 @@ method-not-found,客户端当作拒绝。要做的:
 - 测试:`mcp/__tests__/mcp-elicitation.test.ts`(翻译:接受 / 拒绝 / grant 命中不出卡 / 无在飞调用 / URL 模式 / 带字段表单
   / 畸形参数)、`mcp/kernel/__tests__/mcp-kernel-client-runtime.test.ts`(在飞调用的挂与清)、
   `mcp/__tests__/mcp-client-elicitation.test.ts`(真 SDK 服务器经 `InMemoryTransport` 在工具里 `elicitInput`,端到端)。
-- P2 的门 `scripts/gate-codex-computer-use.mjs`(`bun run gate:codex-computer-use [--build]`),断言与 §5 表一致;配方
-  以函数 `codexComputerUseRecipe()` 写在门里,P3 的一键添加从这里搬进后端。`idleDisconnectMs` **没做**:实测这台客户端
-  连着不妨碍 Codex App 自己再开一只,先观察,留账。
+- P2 的门 `scripts/gate-codex-computer-use.mjs`(`bun run gate:codex-computer-use [--build]`),断言与 §5 表一致。
+  `idleDisconnectMs` **没做**:实测这台客户端连着不妨碍 Codex App 自己再开一只,先观察,留账。
+- **P3 的「默认填好」已做(10-09,用户令「mcp 应用默认填好」)**,比原计划的「设置页一键添加」更省一步:
+  `mcp/mcp-known-servers.ts` 是一张已知本机服务器表(今天一行 = §3.1 的配方,`detect()` 只看两条路径在不在),
+  `McpSubsystem.start()` 起 manager 之前经 `prepareSettings` 跑一遍 `seedKnownMCPServers`:检测得到、设置里没有、用户
+  没删过的填进 `servers` 并落盘;用户在设置里删掉一台已知服务器,id 记进 `mcp.dismissedKnownServers`,以后不再填回来
+  (只是关掉不算删)。门 ⓪ 从空设置起、断言它被填进来且与配方逐字相等。P3 剩下:SKILL.md、工具卡显截图。
 
 ## 6. 坑与风险(都来自实测或第三方桥的 issue)
 

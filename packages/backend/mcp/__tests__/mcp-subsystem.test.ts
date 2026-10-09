@@ -144,6 +144,22 @@ describe('McpSubsystem', () => {
     expect(mcp.state).toBe('disposed')
   })
 
+  it('start 先经 prepareSettings 整理设置,manager 拿到的是整理后的那一份;整理炸了用原设置', async () => {
+    const { deps, manager } = makeDeps()
+    const prepared: MCPSettings = { enabled: true, servers: [{ id: 'seeded', name: 'Seeded', transport: 'stdio', enabled: true, command: 'x' }] }
+    const prepareSettings = vi.fn(async (current: MCPSettings) => {
+      expect(current).toBe(SETTINGS)
+      return prepared
+    })
+    await new McpSubsystem({ ...deps, prepareSettings }).start()
+    expect(prepareSettings).toHaveBeenCalledTimes(1)
+    expect(manager.initialize).toHaveBeenCalledWith(prepared)
+
+    const failing = makeDeps()
+    await new McpSubsystem({ ...failing.deps, prepareSettings: async () => { throw new Error('boom') } }).start()
+    expect(failing.manager.initialize).toHaveBeenCalledWith(SETTINGS)
+  })
+
   it('applySettings = updateSettings + registerTools', async () => {
     const { deps, manager, registerTools, calls } = makeDeps()
     const mcp = new McpSubsystem(deps)

@@ -15,7 +15,7 @@ const inFlight: MCPInFlightToolCall = {
   caller: { sessionId: 's1', messageId: 'm1', callId: 'c1', workingDirectory: '/w' },
 }
 
-async function connectPair(ask: () => Promise<'once'>) {
+async function connectPair(ask: (input: unknown) => Promise<'once'>) {
   const server = new McpServer({ name: 'fake-computer-use', version: '0' })
   server.registerTool(
     'ask',

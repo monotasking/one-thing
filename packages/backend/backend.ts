@@ -71,6 +71,7 @@ import {
   getSettings,
   initializeSettings,
   invalidateSettingsCache,
+  saveSettings,
   configureModelCatalogCredentials,
   CustomProviderManifestSync,
 } from '@onething/backend/settings'
@@ -122,7 +123,14 @@ import { configureProcessAuthTokenStore, getAuthService, installOAuthBusBroadcas
 import { bootstrapNotes, migrateNotesSettings } from '@onething/backend/note'
 import type { NotesSubsystem } from '@onething/backend/note'
 import { createAppSearchService } from '@onething/backend/search'
-import { configureToolkitMCPCapabilitiesChangedHandler, McpSubsystem, MCPManager, registerMCPTools } from '@onething/backend/mcp'
+import {
+  configureToolkitMCPCapabilitiesChangedHandler,
+  McpSubsystem,
+  MCPManager,
+  realKnownMCPServerProbe,
+  registerMCPTools,
+  seedKnownMCPServers,
+} from '@onething/backend/mcp'
 import {
   buildToolkitCatalog,
   createAppToolRunner,
@@ -1257,6 +1265,16 @@ export class OnethingBackend implements BackendHandle {
       manager: MCPManager,
       settings: () => getSettings().mcp || DEFAULT_MCP_SETTINGS,
       registerTools: () => registerMCPTools(),
+      // 机器上装了的已知服务器(例:Codex 的 Computer Use MCP)默认填进设置并落盘;用户删过的不再填。
+      prepareSettings: async current => {
+        const seeded = seedKnownMCPServers(current, realKnownMCPServerProbe())
+        if (seeded.added.length === 0) return current
+        const all = getSettings()
+        all.mcp = seeded.settings
+        await saveSettings(all)
+        log.info('known mcp servers filled in', { added: seeded.added })
+        return seeded.settings
+      },
     })
     this.mcpSubsystem = mcp
     const acpSettings = () => getSettings().acp || { enabled: true, agents: [] }
