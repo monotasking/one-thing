@@ -4,7 +4,7 @@ import {
   type ProjectionNode,
   type SessionProjectionState,
 } from '@shared/session/projection'
-import type { ProjectedMessage } from './chat-fold'
+import { dropSupersededPlaceholders, ledgerClaimedCallIds, type ProjectedMessage } from './chat-fold'
 import type { StreamWater, WaterPartView, WaterProgressView } from './stream-water'
 import { missingAssistantText } from './missing-assistant-text'
 import { perfCount } from '../services/perf'
@@ -323,7 +323,9 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
     parts.push(missingText)
   }
 
-  const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
+  // 认领 ≠ 有这个 id:账本手里只有参数流占位的,让占位退场、活的这一份留下
+  // (`ledgerClaimedCallIds` 的注:占位没有 liveAt、参数原文是空串)。
+  const ledgerCallIds = ledgerClaimedCallIds(message)
   const liveTools = water.tools(message.id).filter(tool => !ledgerCallIds.has(tool.id))
   if (liveTools.length > 0) changed = true
 
@@ -338,7 +340,7 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
    * 进度推翻 —— 每帧造一个长得一样的新数组等于把整条消息重装配一遍。
    */
   const progress = water.progress(message.id)
-  const ledgerCalls = message.toolCalls ?? []
+  const ledgerCalls = dropSupersededPlaceholders(message.toolCalls ?? [], new Set(liveTools.map(tool => tool.id)))
   const paintedCalls = progress.size > 0 ? applyWaterProgress(ledgerCalls, progress) : ledgerCalls
   if (paintedCalls !== ledgerCalls) changed = true
 

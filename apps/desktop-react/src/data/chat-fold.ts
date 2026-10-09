@@ -60,6 +60,37 @@ import '../references'
  */
 export type ProjectedMessage = ReturnType<typeof materializeChatMessages>['messages'][number]
 
+/**
+ * 账本**认领**了哪几次调用 —— 活的那一份(尾巴 / 水位)按这张表退役。
+ *
+ * 认领 = `tool/call` 落账(或收场修复把它判成 `cancelled`),不是「账本里有这个 id」。
+ * 参数还在流时,投影会按 `assistant/chunks{kind:'tool-input'}` 给这次调用造一份
+ * `input-streaming` 占位(core `materializeOrphanToolCalls`):它没有 `liveAt`、
+ * `streamingArgs` 是空串。按 id 认领就会让这份占位在**第一批参数落账那一刻**顶掉
+ * 活的那一份 —— 参数区清空,静默读数从调用开始算起一路涨(09-29 真机:write 流
+ * 十几秒参数,行上一直说「已 N 秒没收到数据」,而数据每 0.3 秒就到一批)。
+ */
+export function ledgerClaimedCallIds(message: ProjectedMessage | undefined): Set<string> {
+  const ids = new Set<string>()
+  for (const call of message?.toolCalls ?? []) {
+    if (call.status !== 'input-streaming') ids.add(call.id)
+  }
+  return ids
+}
+
+/**
+ * 账本那几次调用里,**让位给活的那一份**的占位去掉(判据见 `ledgerClaimedCallIds`)。
+ * 一格没去就原样交回原数组(引用相等),下游 memo 靠它短路。
+ */
+export function dropSupersededPlaceholders<T extends { id: string; status: string }>(
+  calls: readonly T[],
+  liveIds: ReadonlySet<string>,
+): readonly T[] {
+  if (liveIds.size === 0) return calls
+  const kept = calls.filter((call) => !(call.status === 'input-streaming' && liveIds.has(call.id)))
+  return kept.length === calls.length ? calls : kept
+}
+
 /* ── 活尾巴 ───────────────────────────────────────────────────────────── */
 
 /**
@@ -627,12 +658,12 @@ export function appendTail(
    * `anchorMessage` 末尾那句"锚点没认领到的调用摆出来"自然把它排在最后 ——
    * 而"刚刚开始的这一次"本来就该在最后。
    *
-   * 账本已经有的 id 一律不画(交接那一步已经退役过一轮,这里是第二道闸:
-   * 少一张卡是说谎,多一张是重影)。
+   * 账本**认领**了的 id 一律不画(交接那一步已经退役过一轮,这里是第二道闸:
+   * 少一张卡是说谎,多一张是重影)。账本手里只有一份参数流占位的,反过来让占位
+   * 退场、活的这一份留下 —— 判据见 `ledgerClaimedCallIds`。
    */
-  const liveCalls = (tail?.tools ?? []).filter(
-    (tool) => !(message.toolCalls ?? []).some((call) => call.id === tool.id),
-  )
+  const claimedIds = ledgerClaimedCallIds(message)
+  const liveCalls = (tail?.tools ?? []).filter((tool) => !claimedIds.has(tool.id))
 
   /*
    * ── ④ 进度那一层(C2-b)────────────────────────────────────────────
@@ -646,7 +677,10 @@ export function appendTail(
    * 关于过去的现在时(而且那一行的摘要该是成果,不是最后一行输出)。
    */
   const progressMap = tail?.progress
-  const ledgerCalls = message.toolCalls ?? []
+  const ledgerCalls = dropSupersededPlaceholders(
+    message.toolCalls ?? [],
+    new Set(liveCalls.map((tool) => tool.id)),
+  )
   const paintedCalls = progressMap && Object.keys(progressMap).length > 0
     ? applyProgressToCalls(ledgerCalls, progressMap)
     : ledgerCalls

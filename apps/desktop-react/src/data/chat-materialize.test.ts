@@ -521,3 +521,45 @@ describe('切家提示行(批 6):壳的折叠读同一格 request/header.route',
     expect(live).not.toBe(before.find(message => message.id === 'a2'))
   })
 })
+
+/*
+ * 09-29 真机:write 流了十几秒参数,行上一直说「已 N 秒没收到数据」。第一批
+ * `assistant/chunks{kind:'tool-input'}` 一落账,投影就造出同 id 的 `input-streaming`
+ * 占位(没有 liveAt、参数原文空串);按 id 认领会让它顶掉水位里那一份。
+ */
+describe('参数流占位不认领:水位那一份留到 tool/call 落账', () => {
+  function streamingLedger(): Ev[] {
+    return [
+      { seq: 1, time: T0, type: 'session/created', data: { sessionId: 's1' } },
+      { seq: 2, time: T0, type: 'user/message', data: { message: { id: 'u1', role: 'user', content: '写', timestamp: T0 } } },
+      { seq: 3, time: T0, type: 'run/start', data: { runId: 'r1', kind: 'chat', assistantMessageId: 'a1', timestamp: T0 } },
+      { seq: 4, time: T0, type: 'request/start', data: { runId: 'r1', requestIndex: 0, messageId: 'a1' } },
+      {
+        seq: 5,
+        time: T0 + 40_000,
+        type: 'assistant/chunks',
+        data: {
+          runId: 'r1', requestIndex: 0, messageId: 'a1', partIndex: 0, kind: 'tool-input',
+          toolCallId: 'c1', toolName: 'write', time0: T0 + 40_000, dt: [0], text: ['{"content": "<!DOC'],
+        },
+      },
+    ]
+  }
+
+  it('占位退场,画的是水位那一份(带 liveAt 与参数原文)', () => {
+    const water = new StreamWater()
+    water.openTool('a1', 'c1', 'write', T0 + 40_000)
+    water.feedToolArgs('a1', 'c1', 0, '{"content": "<!DOC')
+    const { messages } = materializeChatMessagesCached(fold(streamingLedger()), R2_OPTS, 0, water)
+    const calls = messages.find(m => m.id === 'a1')!.toolCalls as Array<{ id: string; streamingArgs?: string; liveAt?: number }>
+    expect(calls).toHaveLength(1)
+    expect(calls[0].streamingArgs).toBe('{"content": "<!DOC')
+    expect(calls[0].liveAt).toBeGreaterThan(0)
+  })
+
+  it('水位里没有这一次(中途入场)时,占位照旧画出来', () => {
+    const { messages } = materializeChatMessagesCached(fold(streamingLedger()), R2_OPTS, 0, new StreamWater())
+    const calls = messages.find(m => m.id === 'a1')!.toolCalls as Array<{ id: string; status: string }>
+    expect(calls.map(call => [call.id, call.status])).toEqual([['c1', 'input-streaming']])
+  })
+})

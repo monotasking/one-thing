@@ -7,6 +7,7 @@ import {
   feedTailToolArgs,
   reconcileOverlay,
   handOverToLedger,
+  ledgerClaimedCallIds,
   startTailTool,
   type FoldLens,
   userMessageIds,
@@ -498,6 +499,35 @@ describe('活调用:参数还在流的那一次,由尾巴顶着', () => {
     const ledgerCall = { id: 'call_a', toolId: 'time', toolName: 'time', arguments: {}, status: 'completed', timestamp: 1 }
     const out = appendTail([message({ id: 'a1', toolCalls: [ledgerCall] } as never)], tail)
     expect(out[0].toolCalls).toEqual([ledgerCall])
+  })
+
+  /*
+   * 09-29 真机:write 流了十几秒参数,行上一直说「已 N 秒没收到数据」。第一批参数一落账,
+   * 投影就按 `assistant/chunks{kind:'tool-input'}` 造一份同 id 的 `input-streaming` 占位
+   * (没有 liveAt、参数原文是空串),按 id 认领就把活的这一份顶掉了。
+   */
+  it('账本只有参数流占位时不算认领:活的这一份留着,占位退场', () => {
+    let tail = startTailTool(undefined, 'a1', 'call_a', 'write', 111, 900)
+    tail = feedTailToolArgs(tail, 'a1', 'call_a', '{"content":"<!DOC', 5000)
+    const placeholder = {
+      id: 'call_a', toolId: 'write', toolName: 'write', arguments: {},
+      status: 'input-streaming', timestamp: 1, streamingArgs: '',
+    }
+    const found = message({ id: 'a1', toolCalls: [placeholder] } as never)
+    const lens = { ...NOTHING, ledgerToolCallIds: ledgerClaimedCallIds(found) }
+    expect(handOverToLedger(tail, NOTHING, lens).tail?.tools.map((tool) => tool.id)).toEqual(['call_a'])
+
+    const out = appendTail([found], tail)
+    expect(out[0].toolCalls).toHaveLength(1)
+    expect(out[0].toolCalls?.[0]).toMatchObject({ streamingArgs: '{"content":"<!DOC', liveAt: 5000 })
+  })
+
+  it('tool/call 落账(占位变成真调用)才算认领', () => {
+    const called = message({
+      id: 'a1',
+      toolCalls: [{ id: 'call_a', toolId: 'write', toolName: 'write', arguments: {}, status: 'executing', timestamp: 1 }],
+    } as never)
+    expect([...ledgerClaimedCallIds(called)]).toEqual(['call_a'])
   })
 })
 

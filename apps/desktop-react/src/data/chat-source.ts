@@ -21,6 +21,7 @@ import {
   feedTailToolArgs,
   reconcileOverlay,
   handOverToLedger,
+  ledgerClaimedCallIds,
   startTailTool,
   tailTextLength,
   userMessageIds,
@@ -919,7 +920,8 @@ export function createChatSource(sessionId: string): ChatSource {
         reasoningTop: found?.reasoning?.length ?? 0,
         reasoningInline,
         contentPlaceable: !(hasToolWork && parts.length === 0),
-        ledgerToolCallIds: new Set((found?.toolCalls ?? []).map((call) => call.id)),
+        // 认领 ≠ 有这个 id:参数流占位不认领(`ledgerClaimedCallIds`)。
+        ledgerToolCallIds: ledgerClaimedCallIds(found),
       }
     }
 
@@ -1042,7 +1044,8 @@ export function createChatSource(sessionId: string): ChatSource {
             })
           }
         }
-        const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
+        // 参数流占位不算认领,水位里那一格要留到 `tool/call` 落账(`ledgerClaimedCallIds`)。
+        const ledgerCallIds = ledgerClaimedCallIds(message)
         if (ledgerCallIds.size > 0) water.settleTools(message.id, ledgerCallIds)
       }
       // 定向重折走既有那一口(带节流),不另开一条自愈路。
@@ -1975,7 +1978,7 @@ export function createChatSource(sessionId: string): ChatSource {
          * 只有真交出去的那一下才 +1 —— 空话与「还没有当前会话」上面已经 return 掉了。
          */
         set((prev) => ({ overlay: [...prev.overlay, entry], sentTick: prev.sentTick + 1 }))
-        void dispatch(entry.id, target, body, entry.messageId, entry.files, entry.presented)
+        dispatch(entry.id, target, body, entry.messageId, entry.files, entry.presented)
         return true
       },
 
