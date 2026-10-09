@@ -16,6 +16,7 @@
  *     tool_result 侧**没有** `document` 块,PDF 在那边只会变成文本。
  */
 import { agentToolMessageContentToText } from "@onething/backend/agent-loop";
+import { toAnthropicInputSchema } from "./provider-wires-anthropic-tool-schema.js";
 import type {
 	AgentContentPart,
 	AgentJsonObject,
@@ -133,7 +134,7 @@ export function toAnthropicTools(
 	return tools.map((tool) => ({
 		name: tool.name,
 		description: tool.description,
-		input_schema: tool.parameters,
+		input_schema: toAnthropicInputSchema(tool.parameters),
 	}));
 }
 
