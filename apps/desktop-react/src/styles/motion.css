@@ -157,6 +157,8 @@
   --kf-drawer-up: drawerUp;
   --kf-drawer-in: drawerIn;
   --kf-music-eq: musicEq;
+  /* 发不出去的气泡按「不发了」淡掉。粒子在画布上,不在这段关键帧里。 */
+  --kf-ash-fade: ashFade;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -706,11 +708,26 @@
 
 /* 歌词骨架的呼吸。**只动 opacity** —— 样例那道扫光(shimmer)是背景位移,在一块
  * 只有三行的区域里读起来像有东西在飞过;这里要说的只是「在等」。 */
+
+/* 发不出去的那条按「不发了」:字先淡掉,灰在画布上继续往上走。
+ * 减弱动态不撒粒子,这段淡出就是整场,所以 none 档不把 --dur-ash 归零。 */
+@keyframes ashFade {
+  0% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* ── 档位表 ────────────────────────────────────────────────────────────────
  * standard 不写块 —— 它就是 tokens.css 的原值。写一个把每个数抄一遍的
  * `[data-motion-tier='standard']` 块只会制造第二份真相。
- * JS 侧只镜像了 --dur-exit 的三档(components/motion.ts 的 EXIT_MS_BY_TIER,
- * 它是唯一一个有 JS 计时器跟着走的),相等由单测钉死。
+ * JS 侧镜像了 --dur-exit 与 --dur-ash 的档位(components/motion.ts),
+ * 相等由单测钉死。--dur-ash 在 none 不归零,见下面那一块的注。
  * ────────────────────────────────────────────────────────────────────────── */
 
 :root[data-motion-tier='calm'] {
@@ -724,6 +741,8 @@
   --dur-neighbor: 70ms;
   --dur-settle: 90ms;
   --dur-land: 110ms;
+  /* 灰飞收到 800,仍在 800–1200 里。减半会落到 500,灰还没离开字面。 */
+  --dur-ash: 800ms;
 }
 
 :root[data-motion-tier='none'] {
@@ -768,4 +787,6 @@
   /* 唱片面(v8):翻面与标签淡入瞬时;歌词换句直接落位。唱片照转 —— 转不转是信息。 */
   --dur-music-flip: 0ms;
   --dur-music-lyric: 0ms;
+  /* --dur-ash 不在这张归零表里。动效档「无」与 prefers-reduced-motion 跳过的是
+   * 粒子;气泡仍按 tokens 里的时长淡出。归零会把「不发了」变成瞬间抽走。 */
 }

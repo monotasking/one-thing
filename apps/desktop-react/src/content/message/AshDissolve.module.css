@@ -1,0 +1,21 @@
+/*
+ * 气泡化成灰的那一层。
+ *
+ * 字的淡出走 `--kf-ash-fade` / `--dur-ash`。粒子不在这里画:它们在门户出去的
+ * 画布上,不然消息行的 `content-visibility` 会把往上飘的灰剪掉。
+ *
+ * 这里故意没有 `prefers-reduced-motion { animation: none }`。减弱动态跳过的是
+ * 粒子(组件看媒体查询与动效档),淡出就是那一档该留下的动作。
+ */
+
+.ink {
+  --ash-rise: var(--sp-8);
+  animation: var(--kf-ash-fade) var(--dur-ash) var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+.field {
+  position: fixed;
+  pointer-events: none;
+  z-index: var(--z-sticky);
+}

@@ -1,8 +1,8 @@
 import { createRef } from 'react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ChatStream } from './ChatStream'
-import { EXIT_MS, SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
+import { ashMs, EXIT_MS, SCROLL_ANCHOR_SETTLE_MS } from '../components/motion'
 import { configureChatPort, type ChatPort } from '../data/chat-port'
 import { chatSources } from '../data/chat-source'
 import {
@@ -535,9 +535,80 @@ describe('overlay 车道', () => {
     })
     await waitFor(() => expect(screen.getByTestId('chat-pending-failed')).toBeTruthy())
     expect(screen.getByText('引擎没接住')).toBeTruthy()
+    expect(screen.getByText('重试')).toBeTruthy()
 
-    fireEvent.click(screen.getByText('不发了'))
-    await waitFor(() => expect(screen.queryByTestId('chat-pending-failed')).toBeNull())
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    // jsdom 没有 canvas 包:真 getContext 会往虚拟控制台打「未实现」再交回 null。
+    // 这里换成交 null,灰场照样挂上,计时照样摘掉这条。
+    const proto = HTMLCanvasElement.prototype
+    const originalGetContext = proto.getContext
+    proto.getContext = (() => null) as typeof proto.getContext
+    try {
+      fireEvent.click(screen.getByText('不发了'))
+      // 灰还在走的时候这条还在。播完才摘。
+      expect(screen.getByTestId('chat-pending-failed').getAttribute('data-ash')).toBe('particles')
+      expect(document.querySelector('[data-testid="ash-particles"]')).toBeTruthy()
+      expect(sessionSource().getState().overlay).toHaveLength(1)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ashMs())
+      })
+      expect(screen.queryByTestId('chat-pending-failed')).toBeNull()
+      expect(sessionSource().getState().overlay).toHaveLength(0)
+    } finally {
+      proto.getContext = originalGetContext
+      vi.useRealTimers()
+    }
+  })
+
+  it('减弱动态按「不发了」不撒灰,淡出之后这条同样离开', async () => {
+    const previous = window.matchMedia?.bind(window)
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: query.includes('prefers-reduced-motion'),
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        dispatchEvent: () => false,
+        onchange: null,
+      }),
+    })
+    try {
+      sendResult = async () => ({ success: false, error: '引擎没接住' })
+      await mount([created(1)])
+      await act(async () => {
+        sessionSource().getState().send('会失败的一条')
+      })
+      await waitFor(() => expect(screen.getByTestId('chat-pending-failed')).toBeTruthy())
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      fireEvent.click(screen.getByText('不发了'))
+      const bubble = screen.getByTestId('chat-pending-failed')
+      expect(bubble.getAttribute('data-ash')).toBe('fade')
+      expect(document.querySelector('[data-testid="ash-particles"]')).toBeNull()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ashMs() - 1)
+      })
+      expect(screen.getByTestId('chat-pending-failed')).toBeTruthy()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(screen.queryByTestId('chat-pending-failed')).toBeNull()
+      expect(sessionSource().getState().overlay).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+      if (previous) {
+        Object.defineProperty(window, 'matchMedia', {
+          configurable: true,
+          writable: true,
+          value: previous,
+        })
+      } else {
+        Reflect.deleteProperty(window, 'matchMedia')
+      }
+    }
   })
 
   /*

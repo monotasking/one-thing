@@ -12,6 +12,19 @@ export const DUR_MS = 120 // --dur
 export const EXIT_MS = 120 // --dur-exit
 export const RELEASE_MS = 160 // --dur-release
 export const FLASH_MS = 240 // --dur-flash
+/**
+ * --dur-ash:发不出去的消息按「不发了」之后,气泡化成灰、往上飘、淡掉要多久。
+ *
+ * 1000ms 落在 800–1200。calm 收到 800,仍在这一档里(减半会落到 500,灰还没离开
+ * 字面)。动效档「无」与减弱动态**不把这个数归零**:那两档跳过的是粒子,淡出
+ * 还要走完,所以 none 与 standard 同值。播完才 dismiss 的计时器读 `ashMs()`。
+ */
+export const ASH_MS = 1000
+export const ASH_MS_BY_TIER: Record<MotionTier, number> = {
+  standard: ASH_MS,
+  calm: 800,
+  none: ASH_MS,
+}
 export const LINE_CHANGED_MS = 1400 // --dur-line-changed:待办里外部刚改过的那一行淡底多久
 export const TOOLTIP_DELAY_MS = 300 // --dur-tooltip-delay
 // --dur-dock-hide-delay:自动隐藏的收回宽限,离开留驻区后缓这么久才收,路过抖动不塌
@@ -154,6 +167,11 @@ export function currentMotionTier(): MotionTier {
 /** 出场卸载该等多久。`none` 档下是 0 —— 关掉就是当场没有。 */
 export function exitMs(): number {
   return EXIT_MS_BY_TIER[currentMotionTier()]
+}
+
+/** 灰飞该播多久。`none` 与减弱动态仍是这段淡出,粒子由 `AshField.skipsParticles` 跳过。 */
+export function ashMs(): number {
+  return ASH_MS_BY_TIER[currentMotionTier()]
 }
 
 /** 活性读数(§6.6):静默超过它换成「已 N 秒没收到数据」。 */

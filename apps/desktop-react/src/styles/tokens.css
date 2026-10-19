@@ -95,6 +95,11 @@
   /* 跟手形变(Dock 放大/拖拽)在手离开后的回位档(动效板·释放回位) */
   --dur-release: 160ms;
   --dur-flash: 240ms;
+  /* 发不出去的消息按「不发了」之后,气泡化成灰、往上飘、再淡掉。
+   * 1000ms 落在 800–1200:短到不拖着手,长到看得见灰在走。
+   * JS 镜像 ASH_MS。calm 收到 800(motion.css)。动效档「无」不归零这个数 —
+   * 那一档跳过的是粒子,淡出还要走完。 */
+  --dur-ash: 1000ms;
   /* 待办里外部刚改过的那一行淡底多久(JS 侧镜像 LINE_CHANGED_MS 见 components/motion.ts) */
   --dur-line-changed: 1400ms;
   --dur-tooltip-delay: 300ms;

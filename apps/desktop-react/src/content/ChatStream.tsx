@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type ReactElement,
   type RefCallback,
@@ -33,6 +34,7 @@ import { useViewportAnchor } from './viewport/use-viewport-anchor'
 import { GeometryReportContext, useGeometryReport } from './geometry-report'
 import type { SegmentModel } from './model/segments'
 import { resolveSegment } from './segments/registry'
+import { AshDissolve } from './message/AshDissolve'
 import { MessageActions } from './message/MessageActions'
 import { MessageChrome } from './message/MessageChrome'
 import { StopNotice } from './message/StopNotice'
@@ -1240,6 +1242,11 @@ const UserBubble = memo(function UserBubble({
   // 两口动作也跟着这条会话走 —— overlay 是「这条会话的屏幕」上的车道。
   const retry = useChatSourceOf(sessionId, (st) => st.retry)
   const dismiss = useChatSourceOf(sessionId, (st) => st.dismiss)
+  // 「不发了」先让气泡灰飞,播完再摘。立刻 dismiss 的话灰还没走这一格就没了。
+  const [vanishing, setVanishing] = useState(false)
+  const finishDiscard = useCallback(() => {
+    if (entryId !== undefined) dismiss(entryId)
+  }, [dismiss, entryId])
   const landed = status === 'landed'
   const failed = status === 'failed'
   const images = attachments?.filter(isImageAttachment) ?? []
@@ -1247,7 +1254,9 @@ const UserBubble = memo(function UserBubble({
   const hasBody = Boolean(segments?.length || parts?.length || text?.trim())
   const showBubble = hasBody || files.length > 0 || failed
   const bubble = (
-    <div
+    <AshDissolve
+      active={vanishing}
+      onDone={finishDiscard}
       className={[s.user, !landed && s.pending, failed && s.pendingFailed]
         .filter(Boolean)
         .join(' ')}
@@ -1277,12 +1286,18 @@ const UserBubble = memo(function UserBubble({
             <RetryIcon className={s.pendingIcon} strokeWidth={1.9} aria-hidden="true" />
             {t('chat.retry')}
           </ButtonBase>
-          <ButtonBase className={s.pendingAction} onClick={() => dismiss(entryId)}>
+          <ButtonBase
+            className={s.pendingAction}
+            onClick={() => {
+              // 灰飞播完才 dismiss。这一格留到 AshDissolve 的 onDone。
+              if (!vanishing) setVanishing(true)
+            }}
+          >
             {t('chat.discard')}
           </ButtonBase>
         </span>
       )}
-    </div>
+    </AshDissolve>
   )
 
   return (

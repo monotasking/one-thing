@@ -12,6 +12,8 @@ import {
   MUSIC_SPIN_UP_MS,
   NEIGHBOR_MS,
   SETTLE_MS,
+  ASH_MS,
+  ASH_MS_BY_TIER,
   EXIT_MS,
   EXIT_MS_BY_TIER,
   FLASH_MS,
@@ -64,6 +66,7 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-exit', EXIT_MS],
     ['--dur-release', RELEASE_MS],
     ['--dur-flash', FLASH_MS],
+    ['--dur-ash', ASH_MS],
     ['--dur-tooltip-delay', TOOLTIP_DELAY_MS],
     ['--dur-toc-hover', TOC_HOVER_MS],
     ['--dur-toc-flash', TOC_FLASH_MS],
@@ -167,6 +170,17 @@ describe('动效档:JS 镜像的那一列与 motion.css 的档位块相等', () 
   it('none 的 --dur-exit 是 0,JS 那一格也是 0', () => {
     expect(tierMs('none', '--dur-exit')).toBe(0)
     expect(EXIT_MS_BY_TIER.none).toBe(0)
+  })
+
+  it('灰飞:calm 收到 800,none 不归零(淡出还要走完)', () => {
+    expect(tierMs('calm', '--dur-ash')).toBe(ASH_MS_BY_TIER.calm)
+    expect(tierMs('none', '--dur-ash')).toBeUndefined()
+    expect(ASH_MS_BY_TIER.none).toBe(ASH_MS)
+    expect(ASH_MS_BY_TIER.standard).toBe(ASH_MS)
+    expect(ASH_MS).toBeGreaterThanOrEqual(800)
+    expect(ASH_MS).toBeLessThanOrEqual(1200)
+    expect(ASH_MS_BY_TIER.calm).toBeGreaterThanOrEqual(800)
+    expect(ASH_MS_BY_TIER.calm).toBeLessThanOrEqual(1200)
   })
 
   it('calm 只减半那五个装饰时长,--dur 与 --dur-release 一个都不动', () => {
