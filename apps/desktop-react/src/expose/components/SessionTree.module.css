@@ -7,6 +7,7 @@
  * 压掉那 2px。
  */
 .scroll {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -45,7 +46,25 @@
  * 树容器自己**不画焦点环**:那一句现在写在 JSX 上(`data-focus-ring="none"`),
  * 与「看得见的键盘位是那一行的环」(载体 `active`)是同一套语法的两格。
  */
+/* 左栏选中行底下那块玻璃。坐标由 ActiveRailMarker 写成行内样式,
+ * 这里只负责形和滑动。行自己不位移。不在左栏时组件不挂,所以没有显隐规则。 */
+.marker {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: var(--r-full);
+  background: var(--arc-pill);
+  box-shadow: inset 0 0 0 var(--bw-1) var(--arc-pill-edge);
+  transition:
+    top var(--dur-arc) var(--ease-spring),
+    left var(--dur-arc) var(--ease-spring),
+    width var(--dur-arc) var(--ease-spring),
+    height var(--dur-arc) var(--ease-spring);
+}
+
 .tree {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   /*
@@ -128,6 +147,12 @@
  * 「侧栏形的页边距直接读 --content-lead-left」一起没了对象(22 < 16 那档的
  * 目的就是别吃掉四分之一宽,而 22 本来就不吃)。
  */
+@media (prefers-reduced-motion: reduce) {
+  .marker {
+    transition: none;
+  }
+}
+
 @container expose (min-width: 761px) {
   .scroll {
     padding-inline: var(--expose-pad);

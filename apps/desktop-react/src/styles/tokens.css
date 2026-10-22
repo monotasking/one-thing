@@ -173,19 +173,22 @@
   --sh-2: 0 8px 24px rgba(43, 42, 38, 0.14);
   --sh-3: 0 20px 48px rgba(43, 42, 38, 0.22);
   /* Arc 浮卡片的身量。色带 / 药丸 / 颗粒的色值在 palette.css,这里只有几何。
-   * 12px 不并进 --r-2(10) / --r-3(14):那两档是全仓控件的,这张卡片是另一件。
+   * 圆角用 --sp-4(16),不并进 --r-2(10) / --r-3(14):那两档是全仓控件的,
+   * 这张卡片要在色带上自己读得出一圈。内边距同档,四面都留出一截色带。
+   * 投影的第一层是零偏移的晕,上沿和左沿也有影子,不只往下掉。
    * 暗档的投影在 palette.css 里按 data-color-mode 覆写(带一层内高光)。 */
-  --arc-radius: 12px;
-  --arc-inset: var(--sp-2);
-  --arc-gap: var(--sp-2);
+  --arc-radius: var(--sp-4);
+  --arc-inset: var(--sp-4);
+  --arc-gap: var(--sp-3);
   --arc-blur: 18px;
   --arc-lift: -2px;
   --arc-peek-hit: var(--sp-2);
   --arc-grain-size: 160px;
   --arc-card-shadow:
-    0 0 0 1px rgba(43, 42, 38, 0.06),
-    0 10px 28px rgba(43, 42, 38, 0.1),
-    0 2px 6px rgba(43, 42, 38, 0.05);
+    0 0 0 1px rgba(62, 46, 110, 0.16),
+    0 0 28px rgba(62, 46, 110, 0.12),
+    0 14px 36px rgba(43, 42, 38, 0.14),
+    0 2px 8px rgba(43, 42, 38, 0.06);
 
   /* 层级 */
   --z-sticky: 10;

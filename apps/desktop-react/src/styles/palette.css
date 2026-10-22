@@ -165,17 +165,21 @@
    * 玫瑰 / 琥珀偏珊瑚(生活)、绿 / 青偏书房、蓝是冷调。
    * 当前格由文末 `[data-workspace-swatch]` 提升成 --arc-frame,组件只读那一个。
    * 渐变不透明:侧栏字直接坐在色带上,透出桌面会把对比度交给墙纸。 */
-  --arc-frame-violet: linear-gradient(165deg, #e6e3f8 0%, #cdc6f0 40%, #f2eef8 74%, #f6f2e9 100%);
-  --arc-frame-blue: linear-gradient(165deg, #e3eef8 0%, #c7d8f0 40%, #eef3f8 74%, #f4f1ea 100%);
-  --arc-frame-green: linear-gradient(165deg, #e5f2ea 0%, #c9e3d2 40%, #eef6f0 74%, #f4f1e8 100%);
-  --arc-frame-amber: linear-gradient(165deg, #fbe8d8 0%, #f3c9ae 40%, #fbeede 74%, #f7f2e8 100%);
-  --arc-frame-rose: linear-gradient(165deg, #fde6e1 0%, #f6c4b6 40%, #fbe6d8 72%, #f7f1e6 100%);
-  --arc-frame-teal: linear-gradient(165deg, #e2f3f1 0%, #c3e4de 40%, #eef6f3 74%, #f4f1e8 100%);
+  /* 亮档色带要比卡片纸(#f5f4f1)明显一档,16px 的缝才读得出是一圈颜色。
+   * 最深那一截仍压得住侧栏正文(--text-2 在 #d8d0f8 上约 4.5:1):
+   * 再深一档,时间与次级字就掉到 AA 下面。缝能读出来靠的是
+   * 16px 间距加上四面都有的投影,不是把色带压到字看不清。 */
+  --arc-frame-violet: linear-gradient(165deg, #ddd4fb 0%, #d8d0f8 42%, #efe6f8 74%, #f8ead6 100%);
+  --arc-frame-blue: linear-gradient(165deg, #d5e6fa 0%, #cfe0f8 42%, #e7f1fa 74%, #f6efe4 100%);
+  --arc-frame-green: linear-gradient(165deg, #d7f0e0 0%, #d0ead8 42%, #e7f6ec 74%, #f6efe2 100%);
+  --arc-frame-amber: linear-gradient(165deg, #fbe0cc 0%, #f8d4b8 42%, #fbead4 74%, #f8f0e2 100%);
+  --arc-frame-rose: linear-gradient(165deg, #fddcd4 0%, #f8d0c6 42%, #fbe4d4 72%, #f8efe2 100%);
+  --arc-frame-teal: linear-gradient(165deg, #d4f1ec 0%, #cfeae4 42%, #e6f6f2 74%, #f6efe2 100%);
   --arc-frame: var(--arc-frame-violet);
-  /* 侧栏选中行的玻璃药丸。暗档在下面那块覆写(深底上要的是一层白,不是更暗的纸)。 */
-  --arc-pill: color-mix(in srgb, var(--surface-1) 78%, transparent);
-  --arc-pill-hover: color-mix(in srgb, var(--surface-1) 92%, transparent);
-  --arc-pill-edge: color-mix(in srgb, var(--text-1) 14%, transparent);
+  /* 侧栏选中行的玻璃药丸。白玻璃压在色带上,暗档在下面那块改成一层薄白。 */
+  --arc-pill: color-mix(in srgb, white 74%, transparent);
+  --arc-pill-hover: color-mix(in srgb, white 90%, transparent);
+  --arc-pill-edge: color-mix(in srgb, var(--text-1) 20%, transparent);
   /* 命令栏那张玻璃。底仍是界面纸,只是让模糊透一点出来。 */
   --arc-panel: color-mix(in srgb, var(--surface-1) 88%, transparent);
   --arc-grain: 0.16;
@@ -241,6 +245,34 @@
 }
 
 :root[data-color-mode='dark'] {
+  /* 没挂上主题桥时,只有这一档说「现在是暗的」。桥在 theme-bridge.css,
+   * 特异性相同、源序在后,连上 core 之后由它盖掉面和墨。
+   * 侧栏字直接坐在色带上,墨不翻的话深字压深底,对比度约 1.2:1。 */
+  color-scheme: dark;
+
+  --surface-0: #241f33;
+  --surface-1: #1c1828;
+  --surface-2: #2e2942;
+  --surface-3: #3a3452;
+
+  --text-1: #f4f1ea;
+  --text-2: #cfc9bd;
+  --text-3: #b3ad9f;
+  --text-4: #8a8478;
+
+  --line-1: #453f5c;
+  --line-2: #5c5574;
+
+  --st-hover: rgba(255, 255, 255, 0.08);
+  --st-active: rgba(255, 255, 255, 0.14);
+  --st-sel: rgba(196, 180, 230, 0.22);
+  --st-sel-hover: rgba(196, 180, 230, 0.32);
+
+  --tooltip-bg: #f4f1ea;
+  --tooltip-text: #241f33;
+  --scrim: rgba(8, 6, 16, 0.55);
+  --glass: rgba(36, 31, 51, 0.72);
+
   --term-bg: #1c1b1a;
   --term-fg: #cecdc3;
   --term-cursor: #b7a5dd;
@@ -280,7 +312,8 @@
   --arc-panel: color-mix(in srgb, var(--surface-2) 82%, transparent);
   --arc-grain: 0.28;
   --arc-card-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 16px 40px rgba(0, 0, 0, 0.45);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 28px rgba(0, 0, 0, 0.35),
+    0 16px 40px rgba(0, 0, 0, 0.5);
 }

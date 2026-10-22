@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useT } from '../../i18n'
 import { useSessionsList, useSessionsSource } from '../../data/sessions-source'
@@ -49,6 +49,74 @@ import s from './SessionTree.module.css'
  * `buildListModel` 是纯函数,五步各有单测;这里按
  * `[sessions, scope, query, expandedRooms]` 记忆一份(`now` 在记忆体里取)。
  */
+/**
+ * 左栏里那块会滑的玻璃。行自己的选中底在左栏是透明的(EdgeShelf),
+ * 这一层跟着当前行的盒子走。行不位移;动的是这块膜。
+ * 只在左栏画:浮窗和舞台的选中态仍是行自己的 accent 晕。
+ * jsdom 不排版,量到高度 0 就不画,单测里它不在场。
+ */
+function ActiveRailMarker({
+  scrollRef,
+  currentSessionId,
+  layoutKey,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>
+  currentSessionId: string
+  layoutKey: string
+}) {
+  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const root = scrollRef.current
+    if (!root || !currentSessionId || !root.closest('[data-shelf="left"]')) {
+      setBox(null)
+      return
+    }
+    const row = root.querySelector<HTMLElement>('[role="treeitem"][aria-selected="true"]')
+    if (!row) {
+      setBox(null)
+      return
+    }
+    const place = () => {
+      /* 行的 offsetParent 是定位过的树,不是滚动容器。药丸挂在滚动容器上,
+       * 所以顺着 offsetParent 加到容器为止,padding 才对得上。 */
+      let x = 0
+      let y = 0
+      let node: HTMLElement | null = row
+      while (node && node !== root) {
+        x += node.offsetLeft
+        y += node.offsetTop
+        const parent = node.offsetParent
+        if (!(parent instanceof HTMLElement) || parent === root) break
+        node = parent
+      }
+      const next = { x, y, w: row.offsetWidth, h: row.offsetHeight }
+      setBox((prev) => {
+        if (next.h === 0) return null
+        if (prev && prev.x === next.x && prev.y === next.y && prev.w === next.w && prev.h === next.h) return prev
+        return next
+      })
+    }
+    place()
+    /* jsdom 没有 ResizeObserver。没有它药丸仍按这次提交落位,只是架子改宽时不跟着。 */
+    if (typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(place)
+    observer.observe(row)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [currentSessionId, layoutKey, scrollRef])
+
+  if (!box) return null
+  return (
+    <div
+      className={s.marker}
+      data-arc-marker=""
+      aria-hidden="true"
+      style={{ top: box.y, left: box.x, width: box.w, height: box.h }}
+    />
+  )
+}
+
 export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | null> }) {
   const t = useT()
   const timeOf = useSessionTime()
@@ -116,6 +184,11 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
       buildListModel({ sessions, scope, query, expandedRooms, collapsedSections, now: Date.now() }),
     [sessions, scope, query, expandedRooms, collapsedSections],
   )
+  const scrollRef = useRef<HTMLDivElement>(null)
+  /* 节收起、行数变了,当前行的盒子就挪了。药丸按这个键重测,不靠滚动。 */
+  const layoutKey = model.sections
+    .map((section) => `${section.id}:${section.head.expanded ? 1 : 0}:${section.rows.length}`)
+    .join('|')
 
   /*
    * 四只**身份恒定**的回调(见 SessionRow 文件头那段病历):动作走 `getState()`
@@ -360,7 +433,12 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
      * 「换空间有没有把这棵树掀了」)—— 行会换、节会换,而这个容器必须是同一个
      * 节点(四律第 4 条:禁整树重挂)。
      */
-    <div className={s.scroll} data-testid="expose-overview-scroll">
+    <div ref={scrollRef} className={s.scroll} data-testid="expose-overview-scroll">
+      <ActiveRailMarker
+        scrollRef={scrollRef}
+        currentSessionId={currentSessionId}
+        layoutKey={layoutKey}
+      />
       {/* `role="tree"` + `tabIndex=0` 正是 APG 的 activedescendant 形:焦点停在
         * 容器上,项由 `aria-activedescendant` 指。键盘由作用域根那条委托接
         * (见 ExposeView),所以这里不挂 onKeyDown —— 一个键只许有一个产地。 */}

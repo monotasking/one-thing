@@ -147,6 +147,11 @@
 .center {
   position: relative;
   grid-area: center;
+  /* 卡片是一条 flex 列,顶栏是定高。这一格不 grow 的话高度按内容算,
+   * 而内容自己又是 flex:1 + min-height:0,两边互相让,结果是 0。
+   * 卡片 overflow:hidden,输入框和空态(绝对定位在会话叶里)就被剪掉。
+   * 从前它是网格的 1fr 行,自己会被拉满;搬进卡片之后得自己要这一截。 */
+  flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;

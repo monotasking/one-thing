@@ -233,8 +233,21 @@
   background: transparent;
   --pane-face: transparent;
   --strip-face: transparent;
-  --st-sel: var(--arc-pill);
+  /* 选中底不画在行上:那一层是会滑的玻璃药丸(SessionTree 的 marker)。
+   * 行自己再铺一层,滑过去就有两块玻璃。悬停面纱仍读 --st-sel-hover。 */
+  --st-sel: transparent;
   --st-sel-hover: var(--arc-pill-hover);
+}
+
+/* 行上那条 `background: var(--st-sel)` 特异性低于这里,所以透明盖得住。
+ * 玻璃在行下面那只药丸上,字留在行上。 */
+.sideLeft .body [role='treeitem'][aria-selected='true'],
+.sideLeft .body [role='treeitem'][aria-selected='true']:hover {
+  background-color: transparent;
+}
+
+.sideLeft .body:has([role='treeitem'][aria-selected='true']:hover) [data-arc-marker] {
+  background: var(--arc-pill-hover);
 }
 
 /* 灯在栏顶:列表从灯下面起笔。拖拽带盖住这一截,灯下那一块 no-drag。 */
