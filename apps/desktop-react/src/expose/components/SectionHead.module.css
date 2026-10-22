@@ -109,6 +109,24 @@
  * 字距回到 0.02em,上边距归零 —— 09-04 那一份逐格还原。
  * 变的只有一件:箭头在行尾(那是 09-12 对两种形一起拍的)。
  */
+/*
+ * 左栏的节头是色带上的一行字,不是一条色块(Arc:Pinned / Today 只是标签)。
+ * 浮窗、舞台、全屏没有 `data-shelf=left`,仍走上面那条不透明底 —— 那些面
+ * 底下会有行滚过去,底一透,字就叠在行上。
+ * 不重新声明 --surface-host:宿主那条门数的是声明的块数,这里只是把底抹掉。
+ * 悬停也不再叠薄膜,否则又画出一条横带;字色仍抬一档。
+ */
+:global([data-shelf='left']) .head {
+  background: transparent;
+  background-image: none;
+}
+
+:global([data-shelf='left']) .head:hover {
+  background: transparent;
+  background-image: none;
+  color: var(--text-2);
+}
+
 @container expose (min-width: 761px) {
   .head {
     height: var(--list-row-h);

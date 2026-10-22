@@ -117,10 +117,10 @@ function SessionLeaf({ contentRef }: { contentRef: ContentRef }) {
       {/*
         * ── 输入框的**落位带**(W5-c 路线 A)────────────────────────────────
         * 它绝对定位贴着这片叶的底,于是不占一格 flex,正文从玻璃底下流过。
-        * 两个属性各有一个读者,都不是样式:`data-composer-dock` 是外壳那条
-        * 「Dock 停底边时让位」规则的抓手(跨 CSS module 的类名会被哈希,所以按
-        * 属性选,与 `[data-panel-layer]` 同一个先例);`data-testid` 是三道真机门
-        * 的采样点。
+        * 两个属性都不是样式:`data-composer-dock` 是真机门的采样点
+        * (`scripts/lib/composer-dock.mjs`);`data-testid` 是三道真机门的采样点。
+        * 底边 Dock 让的是整张卡片的下边距,落位带仍贴着这片叶的底。再给它写一条
+        * bottom,气口会被让两遍。
         */}
       <div className={s.composerDock} ref={dockRef} data-composer-dock data-testid="composer-dock">
         <ErrorBoundary where="composer">

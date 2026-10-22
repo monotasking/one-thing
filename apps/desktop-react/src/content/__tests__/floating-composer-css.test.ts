@@ -55,26 +55,31 @@ describe('① 输入框浮起来,聊天区铺满', () => {
   })
 
   /**
-   * 09-25 Dock 常显档**不再让位**(用户:「永久展示不再排开其他元素,只是自动展示
-   * 模式下的展示即可」)。这一条从前钉的是「让位落在 `.main` 上(平移形)」,
-   * 今天反过来:外壳里不许再有任何 `data-dock-reserve` 规则,`.main` 也不许吃
-   * 因 Dock 而起的 padding —— 输入框贴的就是会话叶自己的包含块。
+   * 09-25 删了 `data-dock-reserve`(整格 `.main` 退一截,顶栏跟着矮)。底边的条
+   * 仍会盖住发送行和左栏底的空间点,所以让的是卡片的下边距和左栏的底内衬,
+   * 输入框自己的 `bottom` 仍是 0 —— 再写一条就是让两遍。
    */
-  it('Dock 不让位:外壳没有 data-dock-reserve 规则,输入框不再有第二条 bottom 覆写', () => {
+  it('底边 Dock 让开卡片与左栏,不推 .main,输入框不另写 bottom', () => {
     // 病历注释会提到旧名字,判的是剥掉注释之后的规则正文。
     const rules = shell.replace(/\/\*[\s\S]*?\*\//g, '')
     expect(rules).not.toMatch(/data-dock-reserve/)
     expect(rules).not.toMatch(/--dock-reserve-/)
+    expect(block(rules, '.main')).toMatch(/padding:\s*0/)
+    expect(rules).toMatch(
+      /\[data-dock-edge='bottom'\]:not\(\[data-dock-hidden\]\) \.sheet \{[^}]*margin-bottom:\s*var\(--arc-dock-clear\)/,
+    )
+    expect(rules).toMatch(
+      /\[data-shelf='left'\]:not\(\[data-shelf-peek\]\) \{[^}]*padding-bottom:\s*var\(--arc-dock-clear\)/,
+    )
     /*
-     * W5-c(路线 A)再补三句:落位带搬进了会话叶(`ChatLeaf.module.css`),外壳的样式表里
-     * 不许再有 `.composerDock` 的任何规则,也不许按 `[data-composer-dock]` 属性给它
-     * 单独让位 —— 它住在 `.main` 已经缩好的内容盒里,让位按构造继承,再写一条就是
-     * 让两遍(真机读数在 `gate:chat-follow` ②:气口里压着一条消息,差 44px)。
-     * 落位带身上那个属性仍旧要挂着:真机门按它找人(`scripts/lib/composer-dock.mjs`)。
+     * 落位带搬进了会话叶。外壳不许再按 `[data-composer-dock]` 给它单独让位
+     * (真机读数在 `gate:chat-follow` ②:气口里压着一条消息,差 44px)。
+     * 那个属性仍旧要挂着:真机门按它找人(`scripts/lib/composer-dock.mjs`)。
      */
-    expect(shell).not.toMatch(/data-dock-reserve='bottom'\]\s*\[data-composer-dock\]/)
+    expect(shell).not.toMatch(/\[data-composer-dock\]/)
     expect(shell).not.toMatch(/\.composerDock\s*\{/)
     expect(read('src/content/kinds/session.tsx')).toMatch(/data-composer-dock/)
+    expect(tokens).toMatch(/--arc-dock-border:\s*2px/)
   })
 })
 

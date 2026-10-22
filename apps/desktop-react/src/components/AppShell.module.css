@@ -7,6 +7,21 @@
   /* 窗框色带画在 .wash 上。壳本身透明,毛玻璃才透得进圆角。 */
   background: transparent;
   isolation: isolate;
+  /*
+   * 底边 Dock 让位的两个数,写在壳根上:条的尺寸档(`data-dock-size`)也写在这里,
+   * 式子里的 var() 在声明它的元素上代入。写在 :root 上就读不到这一档。
+   * 高度 = 瓦 + 上下内距 + 上下边框 + 离窗边的缝,与 Dock.module.css 的 .strip 同一截。
+   * 再让一截给放大的瓦(它们朝上长出条外)和一档呼吸,悬停时发送行仍在条的上面。
+   */
+  --arc-dock-tile: var(--tile-size);
+  --arc-dock-stack: calc(
+    var(--arc-dock-tile) + (var(--dock-pad-y) * 2) + var(--arc-dock-border) + var(--dock-edge-gap)
+  );
+  --arc-dock-clear: calc(
+    var(--arc-dock-stack)
+    + max(0px, var(--arc-dock-tile) * (var(--dock-lens-max) - 1) - var(--dock-pad-y))
+    + var(--sp-2)
+  );
 
   /* ── 红绿灯让位:**三档的唯一产地**(W2 从 `TopBar.module.css` 提到壳根)────
    * 它是「让位」而不是「内衬」,所以量在这里、由消费方各自那块真元素落地
@@ -24,6 +39,14 @@
    *   [data-host-traffic='none'] 这台机器上根本没有灯 = 0
    * ──────────────────────────────────────────────────────────────────── */
   --topbar-lead: var(--titlebar-traffic-w);
+}
+
+.shell[data-dock-size='sm'] {
+  --arc-dock-tile: var(--tile-size-sm);
+}
+
+.shell[data-dock-size='lg'] {
+  --arc-dock-tile: var(--tile-size-lg);
 }
 
 /* 灯落在左栏顶上(栏展开、有灯、没全屏):顶栏不再留那 80px,栏自己让。
@@ -62,13 +85,14 @@
   --content-lead-left: var(--sp-5);
 }
 
-/* ── Dock 不让位(09-25)──────────────────────────────────────────────────────
- * 08-31 起常显档会让外壳挂 `data-dock-reserve`、`.main` 朝那条边退一截
- * (「覆盖必须有布局预留」),09-25 用户推翻:「永久展示不再排开其他元素,只是
- * 自动展示模式下的展示即可」。所以两档今天同一个形、同一个落点,差别只剩
- * 「平时藏不藏」—— 常显 = 自动隐藏档唤出来的那一刻永远停在那儿。
- * 这一节连同 `.reserveSm/.reserveLg`、`--dock-thick` 那条式子一起删了;
- * 别再给 `.main` 加任何因 Dock 而起的 padding。
+/* ── 底边 Dock 让开卡片与左栏,不推 `.main`(09-25 的那条仍在)──────────────
+ * 08-31 的 `data-dock-reserve` 让整格 `.main` 退一截,09-25 删了:条是浮层,
+ * 不该把顶栏和侧栏一起挤矮。底边常显时它仍盖住输入框的发送行和左栏底的空间点,
+ * 所以让的是两块自己的边,不是网格:
+ *   卡片下边距 = --arc-dock-clear(输入框贴着叶的底,跟着卡片走,不再写第二条 bottom)
+ *   左栏底内衬 = 同一个数(空间托盘是栏的最后一格 flex,内衬把它抬到条的上面)
+ * 条藏着(自动隐藏且没唤出)或停在别的边时不让。探出的左栏是浮层,改的是它的
+ * bottom,不再加一截内衬,免得让两遍。
  * ────────────────────────────────────────────────────────────────────────── */
 
 /* 三明治网格。左栏贯通顶栏与主区(红绿灯落在色带上),顶栏与主区合成一张浮卡片。
@@ -112,6 +136,24 @@
   overflow: hidden;
   background: var(--pane-face);
   box-shadow: var(--arc-card-shadow);
+  /* 顶栏与这张卡片同一张纸。檐不再比脸暗一档;分隔只留顶栏自己那条线。
+   * 不改 --pane-face:脸与檐的配对门只数「改了脸的块」。 */
+  --strip-face: var(--pane-face);
+}
+
+/* 底边的条正露着:卡片下缘抬到条的上面。别的边、条藏着,仍是 --arc-inset。 */
+.shell[data-dock-edge='bottom']:not([data-dock-hidden]) .sheet {
+  margin-bottom: var(--arc-dock-clear);
+}
+
+/* 左栏贴着窗缘贯通,空间托盘在栏底。同一截内衬,三个点才不会钻到条的下面。
+ * 探出时栏本身已经停在条的上面(下一条),这里不再垫。 */
+.shell[data-dock-edge='bottom']:not([data-dock-hidden]) [data-shelf='left']:not([data-shelf-peek]) {
+  padding-bottom: var(--arc-dock-clear);
+}
+
+.shell[data-dock-edge='bottom']:not([data-dock-hidden]) [data-shelf-peek] {
+  bottom: var(--arc-dock-clear);
 }
 
 /* 窗框色带。两层叠着:底下是上一格空间,上面这一层淡入。 */

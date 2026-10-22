@@ -79,6 +79,16 @@ describe('粘顶节头不透明', () => {
     )
   })
 
+  it('左栏的节头是透明的字,不重新声明 --surface-host', () => {
+    const css = read('SectionHead.module.css')
+    const shelf = block(css, ":global([data-shelf='left']) .head {")
+    expect(shelf).toMatch(/background:\s*transparent/)
+    expect(shelf).not.toMatch(/--surface-host/)
+    const hover = block(css, ":global([data-shelf='left']) .head:hover {")
+    expect(hover).toMatch(/background-image:\s*none/)
+    expect(hover).toMatch(/color:\s*var\(--text-2\)/)
+  })
+
   it('四个 Placement 宿主各自声明 --surface-host,且声明在真正铺内容底的那一格上(同块同色)', () => {
     // W2:`CoverLayer` 退役,`FullLayer` 顶上 —— 同一条判据,同一个位置。
     for (const host of ['FloatWindow', 'EdgeShelf', 'StageOverlay', 'FullLayer']) {

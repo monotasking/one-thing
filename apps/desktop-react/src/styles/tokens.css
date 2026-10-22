@@ -189,6 +189,11 @@
     0 0 28px rgba(62, 46, 110, 0.12),
     0 14px 36px rgba(43, 42, 38, 0.14),
     0 2px 8px rgba(43, 42, 38, 0.06);
+  /* 探出的左栏盖在卡片上。影子朝右,右缘的圆角才读得出是浮着的一层,
+   * 而不是一条把正文切断的直线。暗档在 palette.css 里覆写。 */
+  --arc-peek-shadow:
+    10px 0 32px rgba(43, 42, 38, 0.2),
+    2px 0 10px rgba(62, 46, 110, 0.16);
 
   /* 层级 */
   --z-sticky: 10;
@@ -504,6 +509,9 @@
    * 不读这一格。
    */
   --dock-edge-gap: var(--sp-1);
+  /* 条上下各 1px 透明边(Dock.module.css 的 .strip)。底边让位的高度必须含这一截,
+   * 否则卡片下缘仍被条压住一像素。 */
+  --arc-dock-border: 2px;
   --tile-icon: var(--icon-lg);
   --dock-sep-h: 36px;
   --dock-sep-w: var(--bw-1);

@@ -80,6 +80,7 @@ export function AppShell() {
   useLayoutEffect(() => startSessionProjection(), [])
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
+  const dockSize = useStageStore((st) => st.dockSize)
 
   /*
    * ── 全屏期间 Dock 转「自动隐藏」(W2,设计 §4.2)────────────────────────
@@ -91,8 +92,8 @@ export function AppShell() {
    *
    * **用户那一格档位一个字都不改**(`dockDisplay` 本身没动),所以退出全屏就是
    * 恢复用户档 —— 不需要「记住原来是什么」那种账,也就不会有对不上的那一天。
-   * (09-25 起常显档也不让位了 —— 见下面 `autohide` 那一段 —— 所以进出全屏
-   * 底下那棵树本来就零重排。)
+   * 全屏期间条转入自动隐藏,底边那一截让位跟着收(条没露出来就不该空着)。
+   * 全屏层自己盖在上面,那一缩一放发生在它底下。
    */
   const fullOpen = useWorkbenchStore((st) => st.full !== null)
   const effectiveDockDisplay: DockDisplay = fullOpen ? 'autohide' : dockDisplay
@@ -238,10 +239,10 @@ export function AppShell() {
   /*
    * `autohide` 读**有效档** —— 它管的是「条此刻藏不藏 / 唤不唤得出」,全屏期间要跟着变。
    *
-   * **常显档不再让位**(09-25 用户:「永久展示不再排开其他元素,只是自动展示模式下的
-   * 展示即可」)。从前这里还有第二格 `reserveOff`,它让外壳挂 `data-dock-reserve`、
-   * `.main` 朝那条边退一截;今天两档的差别只剩「平时藏不藏」—— 常显 = 自动隐藏档
-   * **唤出来的那一刻**,永远停在那儿。条是浮层,压在内容之上,谁都不用给它腾地。
+   * 底边的条露出来时,卡片下边距和左栏底内衬让出条的高度(`data-dock-edge` /
+   * `data-dock-hidden`,式子在 AppShell.module.css)。不挂 `data-dock-reserve`:
+   * 那一格曾经让整格 `.main` 退一截,顶栏跟着矮。条藏着就不让,免得自动隐藏档
+   * 在窗底空出一条带。
    */
   const autohide = effectiveDockDisplay === 'autohide'
   const hidden = autohide && !peeking
@@ -546,6 +547,9 @@ export function AppShell() {
           data-host-fullscreen={hostFullScreen ? 'true' : undefined}
           data-host-traffic={trafficLights ? undefined : 'none'}
           data-arc-lights={lightsInSidebar ? 'sidebar' : undefined}
+          data-dock-edge={dockEdge}
+          data-dock-size={dockSize}
+          data-dock-hidden={hidden ? 'true' : undefined}
         >
           {/*
             **规则 3:挪到哪,焦点跟到哪**(设计 §3.5 / §11 拍点 2)。判据与执行整件在

@@ -225,8 +225,9 @@
 }
 
 /*
- * 左栏坐在窗框色带上,身子不铺纸。`--surface-host` 留在上面 `.body` 那一格
- * (粘顶节头仍是不透明的纸),这里不重新声明它。
+ * 左栏坐在窗框色带上,身子不铺纸。`--surface-host` 留在上面 `.body` 那一格,
+ * 这里不重新声明它(宿主那条门要的是恰好一块)。节头在这一栏自己把底抹掉,
+ * 见 SectionHead.module.css —— 浮窗和舞台的节头仍是不透明的纸。
  * 选中行的底改成玻璃药丸,只在这一栏 —— 中央区的选中态不动。
  */
 .sideLeft .body {
@@ -281,13 +282,19 @@
 .sideLeft.peeking {
   position: absolute;
   z-index: var(--z-float);
-  top: 0;
-  bottom: 0;
+  /* 上下与卡片同一截。贴着窗顶窗底时,右缘的圆角落在同色的色带上,看不出圆,
+   * 右缘就成了一条把卡片正文切断的直线。 */
+  top: var(--arc-inset);
+  bottom: var(--arc-inset);
   left: 0;
   height: auto;
-  border-radius: var(--arc-radius);
-  box-shadow: var(--arc-card-shadow);
+  /* 只圆右缘。左缘贴窗,圆角在那儿会被窗裁掉。 */
+  border-radius: 0 var(--arc-radius) var(--arc-radius) 0;
+  box-shadow: var(--arc-peek-shadow);
+  /* 渐变按视口铺,和窗框那一层是同一张图,左缘才不会多出一条接缝。
+   * 盖在卡片上的那一段仍是不透明的色带,正文不会从栏里透出来。 */
   background: var(--arc-frame);
+  background-attachment: fixed;
   overflow: hidden;
 }
 
