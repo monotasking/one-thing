@@ -103,10 +103,11 @@ describe('整表', () => {
 
   it('改绑跟着走 —— 表是从 `overrides` 现算的,不是一份快照', () => {
     const before = boundChordsFor([], { overrides: {} }, 'mac')
-    const after = boundChordsFor([], { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }, 'mac')
+    const after = boundChordsFor([], { overrides: { 'toggle:search': [{ meta: true, key: 'y' }] } }, 'mac')
     expect(before).toContain('cmd+shift+f')
+    expect(before).not.toContain('cmd+y')
     expect(after).not.toContain('cmd+shift+f')
-    expect(after).toContain('cmd+k')
+    expect(after).toContain('cmd+y')
   })
 
   it('解绑(`null`)的命令不进表 —— 那个组合该归页面', () => {
@@ -169,6 +170,7 @@ describe('整表', () => {
    *
    * 33 + 7 = 40。这一行算术就是这张表的审计。
    * 09-24 顶架子退役,`cmd+alt+arrowup` 随之出表:40 − 1 = 39。
+   * ⌘K 命令栏(与 ⌘⇧W 同一条 `workspace.palette`)进表:39 + 1 = 40。
    */
   const K2_BROWSER_CHORDS_MAC = [
     'cmd+,',
@@ -189,6 +191,7 @@ describe('整表', () => {
     'cmd+e',
     'cmd+f',
     'cmd+j',
+    'cmd+k',
     'cmd+l',
     'cmd+n',
     'cmd+shift+[',
@@ -223,10 +226,10 @@ describe('整表', () => {
   const summonChordOn = (lane: KeymapPlatform) =>
     chordOfCombo(comboForPlatform(TERMINAL_SUMMON_COMBOS, platformOf(navigator.userAgent)), lane)
 
-  it('推下去的键集逐字就是这三十九条(mac 档)', () => {
+  it('推下去的键集逐字就是这四十条(mac 档)', () => {
     const expected = [...K2_BROWSER_CHORDS_MAC, summonChordOn('mac')].sort()
     expect(boundChordsFor(['browser', ...NATIVE_VIEW_HOST_SCOPES], { overrides: {} }, 'mac')).toEqual(expected)
-    expect(expected).toHaveLength(39)
+    expect(expected).toHaveLength(40)
   })
 
   /**

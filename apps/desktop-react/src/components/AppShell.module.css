@@ -3,7 +3,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--surface-0);
+  position: relative;
+  /* 窗框色带画在 .wash 上。壳本身透明,毛玻璃才透得进圆角。 */
+  background: transparent;
+  isolation: isolate;
 
   /* ── 红绿灯让位:**三档的唯一产地**(W2 从 `TopBar.module.css` 提到壳根)────
    * 它是「让位」而不是「内衬」,所以量在这里、由消费方各自那块真元素落地
@@ -21,6 +24,12 @@
    *   [data-host-traffic='none'] 这台机器上根本没有灯 = 0
    * ──────────────────────────────────────────────────────────────────── */
   --topbar-lead: var(--titlebar-traffic-w);
+}
+
+/* 灯落在左栏顶上(栏展开、有灯、没全屏):顶栏不再留那 80px,栏自己让。
+ * 全屏规则写在后面,两条同时成立时仍是 --sp-4。 */
+.shell[data-arc-lights='sidebar'] {
+  --topbar-lead: 0px;
 }
 
 /* 原生全屏:三颗灯由系统收起,让位跟着收(09-01 自查走查:灯没了那 80px 还空着)。
@@ -62,18 +71,72 @@
  * 别再给 `.main` 加任何因 Dock 而起的 padding。
  * ────────────────────────────────────────────────────────────────────────── */
 
-/* 三明治网格。三条架子(左右下;顶边 09-24 退役)各占一格(格名由 EdgeShelf 自己声明 grid-area),
- * 中间那一格是主区。auto 轨道在没人占时塌成 0,所以「空架子不渲染」= 不占一丝布局;
- * 架子的厚度写在它自己的内联 width/height 上,轨道跟着它长。 */
+/* 三明治网格。左栏贯通顶栏与主区(红绿灯落在色带上),顶栏与主区合成一张浮卡片。
+ * auto 轨道在没人占时塌成 0,所以「空架子不渲染」= 不占一丝布局;
+ * 架子的厚度写在它自己的内联 width/height 上,轨道跟着它长。
+ * 左内边距是 0:栏贴着窗缘,灯的 x 不用再加一档。 */
 .main {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr) auto;
   grid-template-areas:
+    'shelfLeft   topbar   shelfRight'
     'shelfLeft   center   shelfRight'
     'shelfBottom shelfBottom shelfBottom';
+  padding: 0;
+  column-gap: 0;
+  /* 行间不留缝。卡片自己的 margin 负责与窗缘、与底栏的间距,
+   * 左栏则贴着窗缘贯通(灯落在色带上,不该被内边距往下推)。 */
+  row-gap: 0;
+}
+
+/* 视觉隐藏的 h1 钉在主区那一格,不另开一条隐式轨道。 */
+.a11yTitle {
+  grid-area: center;
+}
+
+/* 主区浮层。不叫 card:那个词是壳的共享视觉词汇,门按选择器名记账。 */
+.sheet {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: var(--arc-inset);
+  border-radius: var(--arc-radius);
+  overflow: hidden;
+  background: var(--pane-face);
+  box-shadow: var(--arc-card-shadow);
+}
+
+/* 窗框色带。两层叠着:底下是上一格空间,上面这一层淡入。 */
+.wash {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.washLayer {
+  position: absolute;
+  inset: 0;
+  background: var(--arc-frame);
+  animation: var(--kf-arc-wash) var(--dur-arc) var(--ease-out) both;
+}
+
+.grain {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: var(--arc-grain);
+  background-image: var(--arc-grain-image);
+  background-size: var(--arc-grain-size);
 }
 
 /* position: relative:09-01 盖搬走(改盖满整扇窗 → fixed 挂壳根)之后,这一句的
@@ -137,7 +200,7 @@
 
 /* 贴边 */
 .edgeBottom { bottom: var(--dock-edge-gap); }
-.edgeTop { top: calc(var(--topbar-h) + var(--dock-edge-gap)); }
+.edgeTop { top: calc(var(--arc-inset) + var(--topbar-h) + var(--dock-edge-gap)); }
 .edgeLeft { left: var(--dock-edge-gap); }
 .edgeRight { right: var(--dock-edge-gap); }
 
@@ -145,16 +208,20 @@
 .alignXStart { left: var(--sp-3); }
 .alignXCenter { left: 50%; --dock-align-x: -50%; }
 .alignXEnd { right: var(--sp-3); }
-.alignYStart { top: calc(var(--topbar-h) + var(--sp-3)); }
+.alignYStart { top: calc(var(--arc-inset) + var(--topbar-h) + var(--sp-3)); }
 .alignYCenter { top: 50%; --dock-align-y: -50%; }
 .alignYEnd { bottom: var(--sp-3); }
 
 /* 藏:朝各自那条边推出屏外一整个身位 + 一段余量(余量保证投影也看不见)。 */
 .edgeBottom.hidden { --dock-hide-y: calc(100% + var(--sp-5)); }
 /* 停上边时条从顶栏之下起,推出去也得把那一截顶栏算上。 */
-.edgeTop.hidden { --dock-hide-y: calc(-100% - var(--topbar-h) - var(--sp-5)); }
+.edgeTop.hidden { --dock-hide-y: calc(-100% - var(--arc-inset) - var(--topbar-h) - var(--sp-5)); }
 .edgeLeft.hidden { --dock-hide-x: calc(-100% - var(--sp-5)); }
 .edgeRight.hidden { --dock-hide-x: calc(100% + var(--sp-5)); }
 
 /* W2 起没有 .hotzone 这个元素了:感应带是 window pointermove 上的一次距离判定
  * (AppShell 的 useEffect + transitions.withinDockEdgeBand),所以它盖不住任何东西。 */
+
+@media (prefers-reduced-motion: reduce) {
+  .washLayer { animation: none; }
+}

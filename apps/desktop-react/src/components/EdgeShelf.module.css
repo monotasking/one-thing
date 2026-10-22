@@ -19,12 +19,13 @@
 .sideRight {
   height: 100%;
   min-width: var(--shelf-min);
-  transition: width var(--dur-enter) var(--ease-out);
+  transition: width var(--dur-arc) var(--ease-spring);
 }
 
 .sideLeft {
   grid-area: shelfLeft;
-  border-right-width: 1px;
+  border-right-width: 0;
+  background: transparent;
   /*
    * ── 檐上标签的图标也以那条线为中心(09-13 侧栏对齐律 §8 第 6 条)───────────
    * 这条架子的檐上第一枚图标(「Sessions」那格 tab)要和它下面每一行的图标列
@@ -48,19 +49,30 @@
 
 .sideRight {
   grid-area: shelfRight;
-  border-left-width: 1px;
+  height: auto;
+  margin-block: var(--arc-inset);
+  margin-inline-end: var(--arc-inset);
+  border-left-width: 0;
+  border-radius: var(--arc-radius);
+  box-shadow: var(--arc-card-shadow);
+  background: var(--surface-2);
 }
 
 /* 横边(只剩底边,顶边 09-24 退役):厚度 = 高;线同样画在朝主区那一侧。 */
 .sideBottom {
-  width: 100%;
+  width: auto;
   min-height: var(--shelf-min);
-  transition: height var(--dur-enter) var(--ease-out);
+  /* 卡片的下 margin 已经让开一截,这里只负责自己离窗缘。 */
+  margin: 0 var(--arc-inset) var(--arc-inset);
+  transition: height var(--dur-arc) var(--ease-spring);
 }
 
 .sideBottom {
   grid-area: shelfBottom;
-  border-top-width: 1px;
+  border-top-width: 0;
+  border-radius: var(--arc-radius);
+  box-shadow: var(--arc-card-shadow);
+  background: var(--surface-2);
 }
 
 /* 收起态:整栏折成贴边一条细梁。min-* 必须一起让开,否则下界把它撑住。 */
@@ -210,6 +222,80 @@
   inset: 0;
   content-visibility: hidden;
   pointer-events: none;
+}
+
+/*
+ * 左栏坐在窗框色带上,身子不铺纸。`--surface-host` 留在上面 `.body` 那一格
+ * (粘顶节头仍是不透明的纸),这里不重新声明它。
+ * 选中行的底改成玻璃药丸,只在这一栏 —— 中央区的选中态不动。
+ */
+.sideLeft .body {
+  background: transparent;
+  --pane-face: transparent;
+  --strip-face: transparent;
+  --st-sel: var(--arc-pill);
+  --st-sel-hover: var(--arc-pill-hover);
+}
+
+/* 灯在栏顶:列表从灯下面起笔。拖拽带盖住这一截,灯下那一块 no-drag。 */
+.sideLeft[data-arc-chrome='lights'] {
+  padding-top: var(--topbar-h);
+}
+
+.dragStrip {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--topbar-h);
+  -webkit-app-region: drag;
+}
+
+.trafficHole {
+  width: var(--titlebar-traffic-w);
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+/* 收起的左栏探出来,盖在卡片上。轨道里留一条与细梁同宽的占位,主区不横跳。 */
+.peekSpacer {
+  grid-area: shelfLeft;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sideLeft.peeking {
+  position: absolute;
+  z-index: var(--z-float);
+  top: 0;
+  bottom: 0;
+  left: 0;
+  height: auto;
+  border-radius: var(--arc-radius);
+  box-shadow: var(--arc-card-shadow);
+  background: var(--arc-frame);
+  overflow: hidden;
+}
+
+.sideLeft.peeking::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--arc-grain);
+  background-image: var(--arc-grain-image);
+  background-size: var(--arc-grain-size);
+}
+
+/* 把手藏了(宽度 0)时,左缘仍要有一条接得住悬停的热区。不占布局。 */
+.peekHit {
+  position: fixed;
+  z-index: var(--z-sticky);
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--arc-peek-hit);
 }
 
 @media (prefers-reduced-motion: reduce) {

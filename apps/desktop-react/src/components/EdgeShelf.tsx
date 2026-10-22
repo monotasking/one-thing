@@ -24,7 +24,9 @@ import { IconButton } from '../ui/IconButton'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp } from './icons'
 import type { LucideIcon } from './icons'
-import { FLASH_MS } from './motion'
+import { ARC_PEEK_DWELL_MS, FLASH_MS } from './motion'
+import { useHostTrafficLights } from './useHostTrafficLights'
+import { WorkspaceDots } from '../workspace/components/WorkspaceDots'
 import type { ShelfSide, Viewport } from '../stage/types'
 import s from './EdgeShelf.module.css'
 
@@ -82,6 +84,11 @@ const COLLAPSED_VISIBILITY = { visible: false, interactive: false } as const
 
 interface Props {
   side: ShelfSide
+  /**
+   * macOS 原生全屏。壳根只订一次(`useHostFullScreen`),架子不再各订一份 ——
+   * 顶栏那条用例数的就是「全窗一个订阅」。
+   */
+  hostFullScreen: boolean
 }
 
 /**
@@ -127,7 +134,7 @@ interface Props {
  *              另两件(弹出 / 关整栏)W7-c 进了叶菜单,右键檐上的空白处开
  *   tab / ✕ / 分屏 / ⋯   随 `LeafStrip` 与 `PaneLeaf`(这一层不重画)
  */
-export function EdgeShelf({ side }: Props) {
+export function EdgeShelf({ side, hostFullScreen }: Props) {
   const t = useT()
   const region = edgeRegion(side)
   const tree = useWorkbenchStore((st) => st.regions[region])
@@ -171,6 +178,49 @@ export function EdgeShelf({ side }: Props) {
    * (右键那一下的坐标只在那一发事件里存在)。
    */
   const [railMenuAt, setRailMenuAt] = useState<{ x: number; y: number } | null>(null)
+  /*
+   * 左栏收起后的探出(Arc)。本地状态,不改「收起」这格形态:
+   * `data-shelf-collapsed` 仍在,树身是同一个节点,只是暂时露出来盖在卡片上。
+   * 停留门槛见 ARC_PEEK_DWELL_MS —— 立刻探出会把细梁卸掉,单击展开点不中。
+   */
+  const [peeking, setPeeking] = useState(false)
+  const peekTimer = useRef<number | null>(null)
+  const trafficLights = useHostTrafficLights()
+
+  const clearPeekTimer = useCallback(() => {
+    if (peekTimer.current != null) {
+      window.clearTimeout(peekTimer.current)
+      peekTimer.current = null
+    }
+  }, [])
+
+  useEffect(() => () => clearPeekTimer(), [clearPeekTimer])
+
+  useEffect(() => {
+    if (!shelf.collapsed) {
+      clearPeekTimer()
+      setPeeking(false)
+    }
+  }, [shelf.collapsed, clearPeekTimer])
+
+  const armPeek = useCallback(() => {
+    if (side !== 'left' || !shelf.collapsed || peeking) return
+    if (peekTimer.current != null) return
+    peekTimer.current = window.setTimeout(() => {
+      peekTimer.current = null
+      setPeeking(true)
+    }, ARC_PEEK_DWELL_MS)
+  }, [side, shelf.collapsed, peeking])
+
+  const onPeekLeave = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      const next = e.relatedTarget
+      if (next instanceof Node && asideRef.current?.contains(next)) return
+      clearPeekTimer()
+      setPeeking(false)
+    },
+    [clearPeekTimer],
+  )
 
   useEffect(() => {
     if (firstFlash.current) {
@@ -335,10 +385,26 @@ export function EdgeShelf({ side }: Props) {
   const multi = leafCount(tree) > 1
   /** 收起态还画不画那条细梁。展开态与它无关(那时把手是厚度杆,不是细梁)。 */
   const railShown = shelfRail === 'shown'
-  /** 收起且把手也藏了 = 这条架子此刻**一个像素都不占**(连那条 1px 分隔线)。 */
-  const flush = shelf.collapsed && !railShown
+  /** 收起且把手也藏了 = 这条架子此刻**一个像素都不占**(连那条 1px 分隔线)。探出时占的是浮层,不是轨道。 */
+  const flush = shelf.collapsed && !railShown && !peeking
+  /** 探出 = 收起的左栏暂时按展开的厚度盖在卡片上。形态口仍是收起。 */
+  const revealed = !shelf.collapsed || peeking
+  /*
+   * 灯在栏顶的那一档:展开,或正在探出(探出盖住窗的左上角)。
+   * 与壳根 `data-arc-lights` 不是同一句 —— 那一格在收起时把 80px 还给顶栏,
+   * 探出只是盖住它,不改顶栏的让位。
+   */
+  const chromeLights = side === 'left' && trafficLights && !hostFullScreen && revealed
 
   return (
+    <>
+    {peeking && (
+      <div
+        className={s.peekSpacer}
+        style={thicknessStyle(side, railShown ? 'var(--shelf-rail)' : '0px')}
+        aria-hidden="true"
+      />
+    )}
     <aside
       ref={asideRef}
       className={[
@@ -348,15 +414,20 @@ export function EdgeShelf({ side }: Props) {
         flush && s.railHidden,
         liveThickness !== null && s.dragging,
         flashing && s.flashing,
+        peeking && s.peeking,
       ]
         .filter(Boolean)
         .join(' ')}
       style={thicknessStyle(
         side,
-        shelf.collapsed ? (railShown ? 'var(--shelf-rail)' : '0px') : `${thickness}px`,
+        shelf.collapsed && !peeking ? (railShown ? 'var(--shelf-rail)' : '0px') : `${thickness}px`,
       )}
       aria-label={name}
       data-shelf={side}
+      data-shelf-peek={peeking || undefined}
+      data-arc-chrome={chromeLights ? 'lights' : undefined}
+      onPointerEnter={armPeek}
+      onPointerLeave={onPeekLeave}
       /*
        * **形态的取件口**(2026-09-12)。从前门与用例问「有没有 `data-shelf-body`」
        * 来判收起 —— 那是拿「树身在不在 DOM 里」当形态读数,而收起从今天起**不再
@@ -382,11 +453,28 @@ export function EdgeShelf({ side }: Props) {
         所以今天是两格并列:细梁(只在收起 ∧ 把手显示时画)与树身(永远画,
         收起时隐藏 + `inert`)。厚度把手只在展开时画 —— 收起态没有厚度可拖。
       */}
-      {shelf.collapsed
-        ? railShown && (
+      {chromeLights && (
+        <div className={s.dragStrip} aria-hidden="true">
+          <div className={s.trafficHole} />
+        </div>
+      )}
+      {side === 'left' && shelf.collapsed && !peeking && (
+        <div className={s.peekHit} onPointerEnter={armPeek} aria-hidden="true" />
+      )}
+      {!shelf.collapsed && (
+            <div
+              className={s.handle}
+              onPointerDown={onHandleDown}
+              role="separator"
+              aria-label={t('shelf.resize', { name })}
+              aria-orientation={side === 'left' || side === 'right' ? 'vertical' : 'horizontal'}
+            />
+          )}
+      {shelf.collapsed && !peeking && railShown && (
             /* 细梁不是一颗图标钮:它是**整条边那么长**的一块结构件(展开把手),
              * 所以走裸钮三类判的第③类 —— `ui/ButtonBase` 只清 UA,那条 100%×100%
-             * 的皮肤(含 hover 时 railIcon 转正色)原样留在本地。 */
+             * 的皮肤(含 hover 时 railIcon 转正色)原样留在本地。
+             * 探出时不画它:它是 100%×100%,会盖住探出来的身子。 */
             <ButtonBase
               className={s.rail}
               onClick={toggleCollapsed}
@@ -408,15 +496,6 @@ export function EdgeShelf({ side }: Props) {
                 return <ExpandIcon className={s.railIcon} strokeWidth={1.75} aria-hidden="true" />
               })()}
             </ButtonBase>
-          )
-        : (
-            <div
-              className={s.handle}
-              onPointerDown={onHandleDown}
-              role="separator"
-              aria-label={t('shelf.resize', { name })}
-              aria-orientation={side === 'left' || side === 'right' ? 'vertical' : 'horizontal'}
-            />
           )}
       {/*
         身 = 这条边那棵树。檐(tab 条 + ⋯ / 分屏 + 上面那三颗)由 `PaneLeaf`
@@ -427,13 +506,13 @@ export function EdgeShelf({ side }: Props) {
         (一遍给 DOM、一遍给树),判据与被全屏盖住那一格并成一句 —— 少了给树的
         那一遍,收起来的架子的局部键会在看不见的地方响。
       */}
-      <FocusScope scope="shelf-layer" owner={ownerId} inert={occluded || shelf.collapsed}>
+      <FocusScope scope="shelf-layer" owner={ownerId} inert={occluded || !revealed}>
         {({ scopeProps }) => (
           <div
             {...scopeProps}
-            className={shelf.collapsed ? `${s.body} ${s.bodyHidden}` : s.body}
+            className={revealed ? s.body : `${s.body} ${s.bodyHidden}`}
             data-shelf-body={side}
-            inert={occluded || shelf.collapsed || undefined}
+            inert={occluded || !revealed || undefined}
             /*
              * **这条架子此刻露脸的那格瓦**(门与用例的取件口;`gate:squeeze` /
              * `gate:perf` 按它认「总览钉上来了没有」)。树是真相,这一格是它的
@@ -460,7 +539,7 @@ export function EdgeShelf({ side }: Props) {
               展开态给的是缺省值那个**同一个对象**,与从前「不给 Provider」逐字等价。
             */}
             <PanelVisibilityContext.Provider
-              value={shelf.collapsed ? COLLAPSED_VISIBILITY : DEFAULT_PANEL_VISIBILITY}
+              value={revealed ? DEFAULT_PANEL_VISIBILITY : COLLAPSED_VISIBILITY}
             >
               <PaneTree node={tree} host={host} />
             </PanelVisibilityContext.Provider>
@@ -493,7 +572,9 @@ export function EdgeShelf({ side }: Props) {
           </MenuItem>
         </Menu>
       )}
+      {side === 'left' && revealed && <WorkspaceDots />}
     </aside>
+    </>
   )
 }
 

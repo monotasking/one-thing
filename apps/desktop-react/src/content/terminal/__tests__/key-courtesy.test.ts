@@ -107,7 +107,7 @@ describe('表是算出来的,不是抄出来的', () => {
     expect(matchCombo(cmdW, closeCombo, 'mac')).toBe(true) // ⌘W 照旧关 tab
   })
 
-  it('win / linux:那五个在场,而且每一个都与它挡下的那条绑定是同一个组合', () => {
+  it('win / linux:那六个在场,而且每一个都与它挡下的那条绑定是同一个组合', () => {
     const claims = terminalClaims('other')
     expect(claims).toEqual(TERMINAL_COURTESY_LETTERS.map((letter) => ({ ctrl: true, key: letter })))
     const closeCombo = effectiveCombos({ overrides: {} }, 'tab.close')[0]

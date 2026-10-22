@@ -90,6 +90,10 @@
    * 就是身量的 35%,2.73 倍意味着峰值那一帧独吞整段的三成。
    * 今天唯一的消费者是 Dock 的镜头开合(components/Dock.module.css)。 */
   --ease-soft: cubic-bezier(0.33, 0, 0.67, 1);
+  /* Arc 壳的弹簧:侧栏探出、空间色点抬起。过冲比 --ease 明显,比一条真弹簧克制。
+   * 装饰时长 --dur-arc 在 motion.css 的档位块里归零 / 减半。 */
+  --ease-spring: cubic-bezier(0.34, 1.22, 0.4, 1);
+  --dur-arc: 280ms;
   /* 派生时长(仍属 token 文件,组件只许引用) */
   --dur-exit: 120ms;
   /* 跟手形变(Dock 放大/拖拽)在手离开后的回位档(动效板·释放回位) */
@@ -168,6 +172,20 @@
   --sh-1: 0 1px 3px rgba(43, 42, 38, 0.08);
   --sh-2: 0 8px 24px rgba(43, 42, 38, 0.14);
   --sh-3: 0 20px 48px rgba(43, 42, 38, 0.22);
+  /* Arc 浮卡片的身量。色带 / 药丸 / 颗粒的色值在 palette.css,这里只有几何。
+   * 12px 不并进 --r-2(10) / --r-3(14):那两档是全仓控件的,这张卡片是另一件。
+   * 暗档的投影在 palette.css 里按 data-color-mode 覆写(带一层内高光)。 */
+  --arc-radius: 12px;
+  --arc-inset: var(--sp-2);
+  --arc-gap: var(--sp-2);
+  --arc-blur: 18px;
+  --arc-lift: -2px;
+  --arc-peek-hit: var(--sp-2);
+  --arc-grain-size: 160px;
+  --arc-card-shadow:
+    0 0 0 1px rgba(43, 42, 38, 0.06),
+    0 10px 28px rgba(43, 42, 38, 0.1),
+    0 2px 6px rgba(43, 42, 38, 0.05);
 
   /* 层级 */
   --z-sticky: 10;
@@ -561,8 +579,8 @@
   --ws-card-w: 196px;
   --ws-card-min-h: 150px;
   --ws-palette-w: 420px;
-  /* 命令面板离视口顶多远。它不居中 —— 面板是「一句话就走」的过路件,
-   * 落在视线上三分之一比落在正中更快被读到(与舞台那种要停留的面刚好相反)。 */
+  /* 命令栏今天居中(Arc)。这一格留着:若要回到「视线上三分之一」的过路落点,
+   * 面板仍读它,不必再找一个数。 */
   --ws-palette-top: 12vh;
   /* 换色行里那六枚可点的色片。比行首的色点大一档:它是**控件**不是标记。 */
   --ws-swatch: 18px;

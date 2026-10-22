@@ -103,12 +103,12 @@ describe('快捷键派发', () => {
 
   it('改绑之后老组合失效、新组合生效(派发器一行没改)', () => {
     render(<AppShell />)
-    act(() => void useKeymapStore.getState().bind('toggle:search', { meta: true, key: 'k' }))
+    act(() => void useKeymapStore.getState().bind('toggle:search', { meta: true, key: 'y' }))
 
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     expect(useStageStore.getState().placements.search).toBeUndefined()
 
-    act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'y', metaKey: true }))
     expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
   })
 })
@@ -137,8 +137,8 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
    */
   it('**用键盘**从 Dock 开一块面 → 焦点进那块面(规则 2)', () => {
     render(<AppShell />)
-    act(() => useKeymapStore.setState({ overrides: { 'toggle:diff': [{ meta: true, key: 'k' }] } }))
-    act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:diff': [{ meta: true, key: 'y' }] } }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'y', metaKey: true }))
     expect(useStageStore.getState().placements.diff).toBeTruthy()
     /*
      * 反证:把 `requestFocusOnOpen(item)` 那一句删掉 → 焦点留在 composer 上,
@@ -181,8 +181,8 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
    */
   it('**用键盘**开一块自己没有 region 的面 → 焦点落在装着它的那一层上(不是留在输入框里)', () => {
     render(<AppShell />)
-    act(() => useKeymapStore.setState({ overrides: { 'toggle:workspace': [{ meta: true, key: 'k' }] } }))
-    act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:workspace': [{ meta: true, key: 'y' }] } }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'y', metaKey: true }))
     expect(useStageStore.getState().placements.workspace).toBeTruthy()
     /*
      * 反证:把 `requestFocusOnOpen` 那一句删掉(或把 `focus-follow` 那条 effect

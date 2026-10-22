@@ -261,7 +261,14 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, readonly Combo[]>> = {
    * 不取 `⌘⇧F` 的理由写在设计 §4.5 上:它与「在文件中查找」的通用习惯撞。
    */
   'workbench.toggleFull': [{ meta: true, shift: true, key: 'enter' }],
-  'workspace.palette': [{ meta: true, shift: true, key: 'w' }],
+  /*
+   * ⌘K 与 ⌘⇧W 开的是同一块命令栏。
+   * ⌘T / ⌘S / ⌘1–9 不挪:它们已是新标签、保存、焦点叶的第 n 格。
+   */
+  'workspace.palette': [
+    { meta: true, shift: true, key: 'w' },
+    { meta: true, key: 'k' },
+  ],
   /*
    * ── 标签换序(W7-c 裁定 3)。**规格写的是 ⌘⌥← / ⌘⌥→,那两个位子有人**:
    * 它们从 09-01 起就是**左 / 右架子的收展**(上面 `SHELF_TOGGLE_LABELS`,

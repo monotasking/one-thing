@@ -202,7 +202,19 @@ const HOST_FULLSCREEN_CHANNEL = 'host:fullscreen'
 
 const FRAMELESS_ON_MAC =
   process.platform === 'darwin'
-    ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 16 } }
+    ? {
+        titleBarStyle: 'hiddenInset' as const,
+        trafficLightPosition: { x: 16, y: 16 },
+        /*
+         * 毛玻璃垫在窗框色带下面。色带本身不透明(侧栏字的对比度不能交给墙纸),
+         * 所以材质读得出的是窗口圆角与首帧之前那一下。
+         * Windows / Linux 不摘系统边框:hiddenInset 在那边会变成连最小化都没有的无边框窗。
+         */
+        vibrancy: 'under-window' as const,
+        visualEffectState: 'active' as const,
+        transparent: true,
+        backgroundColor: '#00000000',
+      }
     : {}
 
 /**

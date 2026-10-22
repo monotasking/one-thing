@@ -96,6 +96,7 @@ describe('键位组:内置三组', () => {
     ])
     expect(profileCombos(findBuiltinProfile('default'), 'workspace.palette')).toEqual([
       { meta: true, shift: true, key: 'w' },
+      { meta: true, key: 'k' },
     ])
   })
 
@@ -116,6 +117,7 @@ describe('键位组:三层', () => {
   it('组赢出厂表', () => {
     expect(effectiveCombos(initialKeymapState, 'workspace.palette')).toEqual([
       { meta: true, shift: true, key: 'w' },
+      { meta: true, key: 'k' },
     ])
     expect(effectiveCombos(onVscode, 'workspace.palette')).toEqual([
       { meta: true, shift: true, key: 'p' },

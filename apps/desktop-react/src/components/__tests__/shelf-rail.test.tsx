@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { SettingsMock } from '../../content/SettingsMock'
@@ -7,6 +7,7 @@ import { initialStageSettings, initialStageState } from '../../stage/transitions
 import { useWorkbenchStore } from '../../workbench/store'
 import { focusTree } from '../../focus/registry'
 import type { ShelfSide } from '../../stage/types'
+import { ARC_PEEK_DWELL_MS } from '../motion'
 
 /**
  * **收起 ≠ 关闭,以及那条细梁把手可以整台藏起来**(2026-09-12 用户拍三条)。
@@ -134,6 +135,53 @@ describe('把手藏起来:收起态零厚度、不画细梁', () => {
     act(() => useStageStore.getState().summonItem('files'))
     expect(useStageStore.getState().shelves.right.collapsed).toBe(false)
     expect(screen.getByLabelText(`收起${NAME.right}`)).toBeTruthy()
+  })
+})
+
+describe('左栏探出', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('停留在收起的左栏上才探出,形态口仍是收起,树身是同一个节点', () => {
+    vi.useFakeTimers()
+    render(<AppShell />)
+    openOnEdge('files', 'left')
+    const before = bodyOf('left')
+    toggle('left')
+    const aside = asideOf('left')!
+    expect(aside.hasAttribute('data-shelf-collapsed')).toBe(true)
+    expect(aside.hasAttribute('data-shelf-peek')).toBe(false)
+    expect([...bodyOf('left')!.classList].some((c) => /(^|_)bodyHidden(_|$)/.test(c))).toBe(true)
+
+    act(() => void fireEvent.pointerEnter(aside))
+    act(() => {
+      vi.advanceTimersByTime(ARC_PEEK_DWELL_MS)
+    })
+
+    expect(aside.hasAttribute('data-shelf-collapsed')).toBe(true)
+    expect(aside.hasAttribute('data-shelf-peek')).toBe(true)
+    expect(bodyOf('left')).toBe(before)
+    expect(bodyOf('left')!.hasAttribute('inert')).toBe(false)
+    expect([...bodyOf('left')!.classList].some((c) => /(^|_)bodyHidden(_|$)/.test(c))).toBe(false)
+
+    act(() => void fireEvent.pointerLeave(aside))
+    expect(aside.hasAttribute('data-shelf-peek')).toBe(false)
+    expect(aside.hasAttribute('data-shelf-collapsed')).toBe(true)
+  })
+
+  it('右栏不探出', () => {
+    vi.useFakeTimers()
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    toggle('right')
+    const aside = asideOf('right')!
+    act(() => void fireEvent.pointerEnter(aside))
+    act(() => {
+      vi.advanceTimersByTime(ARC_PEEK_DWELL_MS)
+    })
+    expect(aside.hasAttribute('data-shelf-peek')).toBe(false)
+    expect([...bodyOf('right')!.classList].some((c) => /(^|_)bodyHidden(_|$)/.test(c))).toBe(true)
   })
 })
 

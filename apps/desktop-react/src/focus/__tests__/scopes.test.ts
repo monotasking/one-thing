@@ -205,11 +205,11 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
 
   /**
    * **认领**(`claims`):全表唯一一格,而且它与 `answers` 方向相反 ——
-   * 那五个键壳不碰,原样交给里面那台 PTY。判词整段在
+   * 那六个键壳不碰,原样交给里面那台 PTY。判词整段在
    * `content/terminal/key-courtesy.ts`;这一条只钉「表上只有终端有、而且它只收
    * `Ctrl+字母`」。
    */
-  it('认领表:终端五个 Ctrl+字母(Win / Linux 那一档)+ 待办编辑区的编辑键', () => {
+  it('认领表:终端六个 Ctrl+字母(Win / Linux 那一档)+ 待办编辑区的编辑键', () => {
     const withClaims = FOCUS_SCOPE_LIST.filter((s) => (s.claims?.length ?? 0) > 0).map((s) => s.id)
     // 测试跑在 jsdom 上(UA 不是 mac),所以这里是 Win / Linux 那一档。
     // 待办那一格只在编辑时认领(实例侧 `claiming`),判词在 `content/todo/editor-claims.ts`。
@@ -220,7 +220,7 @@ describe('答哪些命令:查看器 / 文件树 / 检索面 / 会话总览 / 终
      * readline 下是「交换前后两个字符」。判据一个字没改 —— 判词在
      * `content/terminal/key-courtesy.ts` 上。
      */
-    expect(focusScopeClaimsOf('terminal').map((c) => c.key)).toEqual(['e', 'j', 'w', 't', 'n'])
+    expect(focusScopeClaimsOf('terminal').map((c) => c.key)).toEqual(['e', 'j', 'k', 'w', 't', 'n'])
     for (const claim of focusScopeClaimsOf('terminal')) {
       expect(claim.ctrl).toBe(true)
       expect(claim.key).toMatch(/^[a-z]$/)

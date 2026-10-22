@@ -75,7 +75,9 @@ body,
 
 body {
   margin: 0;
-  background: var(--surface-0);
+  /* 窗框色带画在壳上。body 透明,macOS 的毛玻璃才透得进窗口圆角;
+   * 内容卡片仍是不透明的纸(--pane-face),字不坐在墙纸上。 */
+  background: transparent;
   color: var(--text-1);
   font-family: var(--font-ui);
   font-size: var(--fs-body);

@@ -26,10 +26,15 @@ import { OpenDirDialog } from '../content/files/OpenDirDialog'
 import { AcpImportDialog } from '../content/acp-import/AcpImportDialog'
 import { CenterRegion } from '../workbench/CenterRegion'
 import { useWorkbenchStore } from '../workbench/store'
+import { edgeRegion } from '../workbench/regions'
+import { useWorkspaceViews } from '../workspace/store'
+import type { WorkspaceSwatch } from '../workspace/types'
+import sw from '../workspace/swatch.module.css'
 import { useHostFullScreen } from './useHostFullScreen'
 import { useHostTrafficLights } from './useHostTrafficLights'
 import { ViewerCloseHost } from '../content/viewer/close-hub'
 import { DOCK_HIDE_DELAY_MS, DOCK_WAKE_DWELL_MS } from './motion'
+import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
 import { SHELF_SIDES, settledDockRect, shouldShowDock, withinDockWakeBand } from '../stage/transitions'
@@ -102,6 +107,14 @@ export function AppShell() {
    */
   const hostFullScreen = useHostFullScreen()
   const trafficLights = useHostTrafficLights()
+  /*
+   * 灯画在左栏顶上的那一档(Arc):栏展开、这台有灯、没进全屏。
+   * 收起时灯回到顶栏那 80px —— 细梁只有 12px,罩不住三颗灯。
+   * 全屏规则在样式表里写在后面,这里也不挂这个属性。
+   */
+  const leftShelfOpen = useWorkbenchStore((st) => st.regions[edgeRegion('left')] != null)
+  const leftShelfCollapsed = useStageStore((st) => st.shelves.left.collapsed)
+  const lightsInSidebar = trafficLights && !hostFullScreen && leftShelfOpen && !leftShelfCollapsed
   const dockAlign = useStageStore((st) => st.dockAlign)
   const clickDockIcon = useStageStore((st) => st.clickDockIcon)
 
@@ -532,6 +545,7 @@ export function AppShell() {
            * (`--topbar-lead` 三档的定义在 AppShell.module.css)。 */
           data-host-fullscreen={hostFullScreen ? 'true' : undefined}
           data-host-traffic={trafficLights ? undefined : 'none'}
+          data-arc-lights={lightsInSidebar ? 'sidebar' : undefined}
         >
           {/*
             **规则 3:挪到哪,焦点跟到哪**(设计 §3.5 / §11 拍点 2)。判据与执行整件在
@@ -543,15 +557,14 @@ export function AppShell() {
             组件头上。
           */}
           <StageFocusFollow />
-          {/* 顶栏**就是**这扇窗的顶带(09-01 用户看真机后的裁定:红绿灯与 header 同一行)。
-            * 系统标题栏已摘,所以壳里的第一件必须从 y=0 起 —— 顶栏自己承载拖拽区与
-            * 红绿灯让位,判例写在 TopBar.tsx 的文件头。上一版那条独立的 28px 空带
-            * (components/TitleBar.*)因此退役:它白占了一条。 */}
-          <TopBar />
+          <ArcWash />
+          <div className={s.grain} aria-hidden="true" />
 
-          {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。
+          {/* 三明治网格:左栏贯通顶栏与主区,两者合成一张浮卡片。
             * 架子是布局列/行,所以它挤压主区而不是盖住它(既有拍板)。
-            * 空架子自己 return null,那条 auto 轨道就塌成 0 —— 「不渲染、不占布局」是同一件事。 */}
+            * 空架子自己 return null,那条 auto 轨道就塌成 0 —— 「不渲染、不占布局」是同一件事。
+            * 顶栏仍是这扇窗的拖拽带(红绿灯让位的判例没变,见 TopBar.tsx);
+            * 灯落在左栏上时,那 80px 改由栏顶那条拖拽带让(data-arc-lights)。 */}
           <main className={s.main}>
             {/*
               外壳的一级标题:只念不看(A11y 线 · A2)。
@@ -562,15 +575,20 @@ export function AppShell() {
               挂在 <main> 外面的话它自己就是那块无主内容。它是 position:absolute,
               不是网格项,三明治那三条轨道一格都不动。
             */}
-            <h1 className="visually-hidden">{t('a11y.appTitle')}</h1>
+            <h1 className={`visually-hidden ${s.a11yTitle}`}>{t('a11y.appTitle')}</h1>
             {SHELF_SIDES.map((side) => (
-              <EdgeShelf key={side} side={side} />
+              <EdgeShelf key={side} side={side} hostFullScreen={hostFullScreen} />
             ))}
-            <div className={s.center}>
-              {/* 中央区 = 一棵拼贴树(W1)。第一片叶就是会话 —— 它是 `session` 那一种
-                * 内容自述的常驻格(`ContentKind.resident`),外壳这一层因此**不认识
-                * 会话**(W5-c 起也不认识输入框):它只知道「这儿摆着中央区那棵树」。 */}
-              <CenterRegion />
+            <div className={s.sheet}>
+              {/* 顶栏**就是**这扇窗的顶带(09-01:红绿灯与 header 同一行)。
+                * 它住在卡片里,所以只横跨主区;左栏自己贯通到窗顶。 */}
+              <TopBar />
+              <div className={s.center}>
+                {/* 中央区 = 一棵拼贴树(W1)。第一片叶就是会话 —— 它是 `session` 那一种
+                  * 内容自述的常驻格(`ContentKind.resident`),外壳这一层因此**不认识
+                  * 会话**(W5-c 起也不认识输入框):它只知道「这儿摆着中央区那棵树」。 */}
+                <CenterRegion />
+              </div>
             </div>
           </main>
 
@@ -665,6 +683,33 @@ export function AppShell() {
         </div>
       )}
     </FocusScope>
+  )
+}
+
+/**
+ * 窗框色带。换工作区时留着上一层、新的一层淡入;减弱动效时只留当前这一层。
+ * 色值不在这里:色标类把 `--arc-frame` 指到 palette.css 里那一格。
+ */
+function ArcWash() {
+  const views = useWorkspaceViews()
+  const swatch = views.find((view) => view.isCurrent)?.swatch ?? 'violet'
+  const reduce = useSystemReducedMotion()
+  const [stack, setStack] = useState<WorkspaceSwatch[]>([swatch])
+
+  useEffect(() => {
+    setStack((prev) => {
+      const top = prev[prev.length - 1]
+      if (top === swatch) return prev
+      return reduce ? [swatch] : [top, swatch]
+    })
+  }, [swatch, reduce])
+
+  return (
+    <div className={s.wash} aria-hidden="true">
+      {stack.map((name) => (
+        <div key={name} className={`${s.washLayer} ${sw[name]}`} />
+      ))}
+    </div>
   )
 }
 

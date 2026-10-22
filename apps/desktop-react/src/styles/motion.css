@@ -157,6 +157,8 @@
   --kf-drawer-up: drawerUp;
   --kf-drawer-in: drawerIn;
   --kf-music-eq: musicEq;
+  /* 换工作区时窗框色带叠一层淡入。前一层留着,新的一层从 0 走到 1。 */
+  --kf-arc-wash: arcWashIn;
 }
 
 /* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
@@ -713,8 +715,18 @@
  * 它是唯一一个有 JS 计时器跟着走的),相等由单测钉死。
  * ────────────────────────────────────────────────────────────────────────── */
 
+@keyframes arcWashIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 :root[data-motion-tier='calm'] {
   --dur-enter: 70ms;
+  --dur-arc: 140ms;
   --dur-dock-lens: 70ms;
   --dur-exit: 60ms;
   --dur-hover-fade: 150ms;
@@ -730,6 +742,7 @@
   --dur: 0ms;
   --dur-line-changed: 0ms;
   --dur-enter: 0ms;
+  --dur-arc: 0ms;
   --dur-exit: 0ms;
   --dur-release: 0ms;
   --dur-flash: 0ms;

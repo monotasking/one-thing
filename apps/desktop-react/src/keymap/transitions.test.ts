@@ -245,7 +245,7 @@ describe('注册表读写', () => {
   })
 
   it('reset 摘掉覆盖、落回出厂值;没覆盖时是恒等变换', () => {
-    const bound = bindCombo(initialKeymapState, 'toggle:search', { meta: true, key: 'k' })
+    const bound = bindCombo(initialKeymapState, 'toggle:search', { meta: true, key: 'y' })
     const state = 'ok' in bound ? bound.ok : initialKeymapState
     expect(hasOverride(state, 'toggle:search')).toBe(true)
     const back = resetCombo(state, 'toggle:search')
@@ -262,11 +262,11 @@ describe('注册表读写', () => {
       toggleCommandId(SESSIONS_ITEM_ID),
     ])
     expect(lookupCommands(initialKeymapState, press('p'), 'mac')).toEqual([])
-    const rebound: KeymapState = { overrides: { 'toggle:search': [{ meta: true, key: 'k' }] } }
+    const rebound: KeymapState = { overrides: { 'toggle:search': [{ meta: true, key: 'y' }] } }
     expect(
       lookupCommands(rebound, press('f', { metaKey: true, shiftKey: true }), 'mac'),
     ).toEqual([])
-    expect(lookupCommands(rebound, press('k', { metaKey: true }), 'mac')).toEqual(['toggle:search'])
+    expect(lookupCommands(rebound, press('y', { metaKey: true }), 'mac')).toEqual(['toggle:search'])
     /*
      * ── **K2:召唤终端那一条按平台分档**(`byPlatform`,判词整段在 `commands.ts`)──
      * 两台机器上按的都是 **Ctrl 那一枚物理键**(VS Code / Windows Terminal 的手势),

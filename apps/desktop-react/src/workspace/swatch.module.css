@@ -9,24 +9,30 @@
  * 按名字取(`sw[view.swatch]`)是它唯一的用法。 */
 .violet {
   --ws-face: var(--ws-violet);
+  --arc-frame: var(--arc-frame-violet);
 }
 
 .blue {
   --ws-face: var(--ws-blue);
+  --arc-frame: var(--arc-frame-blue);
 }
 
 .green {
   --ws-face: var(--ws-green);
+  --arc-frame: var(--arc-frame-green);
 }
 
 .amber {
   --ws-face: var(--ws-amber);
+  --arc-frame: var(--arc-frame-amber);
 }
 
 .rose {
   --ws-face: var(--ws-rose);
+  --arc-frame: var(--arc-frame-rose);
 }
 
 .teal {
   --ws-face: var(--ws-teal);
+  --arc-frame: var(--arc-frame-teal);
 }

@@ -44,15 +44,16 @@ import type { Combo, KeymapPlatform } from '../../keymap/types'
  * 派发器在 `routeKey` 里问不到人就不 `preventDefault`,xterm 照常收。给它们各写
  * 一行只会让设置页的「谁答」列长出一串永远不会撞的行。
  *
- * 出厂命令表里占着「主修饰键 + 单个字母」的,一共五条(`keymap/commands.ts`
+ * 出厂命令表里占着「主修饰键 + 单个字母」的(`keymap/commands.ts`
  * 的 `DEFAULT_COMBOS`,K0 之后 `tab.close` 也在同一张表里):
  *
- *   ⌘E `toggle:sessions` · ⌘J `agent.menu` · ⌘W `tab.close` ·
- *   ⌘T `tab.new` · ⌘N `content.new`
+ *   ⌘E `toggle:sessions` · ⌘J `agent.menu` · ⌘K `workspace.palette` ·
+ *   ⌘W `tab.close` · ⌘T `tab.new` · ⌘N `content.new`
  *
- * 而这五个字母在 readline / emacs 键位下全是每天都在按的:
- * `^E` 行尾、`^J` 换行、`^W` 删一个词、`^T` 交换前后两个字符、`^N` 下一条历史。
- * 于是这张表恰好就是那五行。用户把别的命令改绑到别的 Ctrl+字母上时会撞 ——
+ * 而这几个字母在 readline / emacs 键位下全是每天都在按的:
+ * `^E` 行尾、`^J` 换行、`^K` 删到行尾、`^W` 删一个词、`^T` 交换前后两个字符、
+ * `^N` 下一条历史。
+ * 于是这张表恰好就是那几行。用户把别的命令改绑到别的 Ctrl+字母上时会撞 ——
  * 那条撞车由设置页的「谁答」列说出来(撞车不是错误,但不许静默)。
  *
  * ── K2 换了一格:`p` 出去、`t` 进来 ──────────────────────────────────────
@@ -81,17 +82,18 @@ import type { Combo, KeymapPlatform } from '../../keymap/types'
 
 /**
  * 被认领的那几个字母。**只有字母** —— 判词见文件头「三条例外」。
- * 次序 = 出厂全局表里那五条命令的声明序(K2 之后是 `toggle:sessions` /
- * `agent.menu` / `tab.close` / `tab.new` / `content.new`),好让设置页的
- * 「谁答」列读起来与键位页同序。
+ * 次序 = 出厂全局表里那几条命令的声明序(`toggle:sessions` / `agent.menu` /
+ * `workspace.palette` / `tab.close` / `tab.new` / `content.new`),好让设置页的
+ * 「谁答」列读起来与键位页同序。⌘K 进来是因为命令栏占了这个字母,而 `^K`
+ * 在 readline 下是删到行尾。
  */
-export const TERMINAL_COURTESY_LETTERS: readonly string[] = ['e', 'j', 'w', 't', 'n']
+export const TERMINAL_COURTESY_LETTERS: readonly string[] = ['e', 'j', 'k', 'w', 't', 'n']
 
 /**
  * 这台机器上要认领的那几个组合。**mac 是空的**,判词整段在文件头。
  *
  * **一个组合一格**(与 `files.detail` 的 ⌘I / ⌘↵ 是同一条判例的两面:那两个键面
- * 是同一件事所以合成一条命令,这五个键各归各的字节所以各是一格)。它们不带
+ * 是同一件事所以合成一条命令,这六个键各归各的字节所以各是一格)。它们不带
  * labelKey —— 认领不是命令,设置页在「谁答」那一列用终端自己的名字加一句
  * `terminal.keyToPty`(「交给终端」)把它说出来。
  */
@@ -115,7 +117,7 @@ export const TERMINAL_CLAIMS: readonly Combo[] = terminalClaims(
  *
  * 判据只有 `defaultPrevented` 一格,**不抄第二张键表**:唯一那个派发器住在
  * window 的捕获相位(整条传播路径的第一站),所以它认领过的每一下在到达 xterm
- * 时都已经 `preventDefault` 过;它没认领的(被 claims 放行的那五个、Ctrl+C /
+ * 时都已经 `preventDefault` 过;它没认领的(被 claims 放行的那六个、Ctrl+C /
  * Ctrl+D / Esc / Tab / 方向键 / 所有无修饰键)一个字都没动,照常进 PTY。
  */
 export function appAlreadyTookKey(event: { defaultPrevented: boolean }): boolean {

@@ -159,7 +159,36 @@
   --ws-rose: #b47d78;
   --ws-teal: #6d9aa6;
   --on-ws: #ffffff;
+
+  /* ── Arc 窗框色带 ────────────────────────────────────────────────────────
+   * 六格色标各一条渐变,亮档。名字与 --ws-* 一一对应:紫是工作(靛蓝)、
+   * 玫瑰 / 琥珀偏珊瑚(生活)、绿 / 青偏书房、蓝是冷调。
+   * 当前格由文末 `[data-workspace-swatch]` 提升成 --arc-frame,组件只读那一个。
+   * 渐变不透明:侧栏字直接坐在色带上,透出桌面会把对比度交给墙纸。 */
+  --arc-frame-violet: linear-gradient(165deg, #e6e3f8 0%, #cdc6f0 40%, #f2eef8 74%, #f6f2e9 100%);
+  --arc-frame-blue: linear-gradient(165deg, #e3eef8 0%, #c7d8f0 40%, #eef3f8 74%, #f4f1ea 100%);
+  --arc-frame-green: linear-gradient(165deg, #e5f2ea 0%, #c9e3d2 40%, #eef6f0 74%, #f4f1e8 100%);
+  --arc-frame-amber: linear-gradient(165deg, #fbe8d8 0%, #f3c9ae 40%, #fbeede 74%, #f7f2e8 100%);
+  --arc-frame-rose: linear-gradient(165deg, #fde6e1 0%, #f6c4b6 40%, #fbe6d8 72%, #f7f1e6 100%);
+  --arc-frame-teal: linear-gradient(165deg, #e2f3f1 0%, #c3e4de 40%, #eef6f3 74%, #f4f1e8 100%);
+  --arc-frame: var(--arc-frame-violet);
+  /* 侧栏选中行的玻璃药丸。暗档在下面那块覆写(深底上要的是一层白,不是更暗的纸)。 */
+  --arc-pill: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  --arc-pill-hover: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  --arc-pill-edge: color-mix(in srgb, var(--text-1) 14%, transparent);
+  /* 命令栏那张玻璃。底仍是界面纸,只是让模糊透一点出来。 */
+  --arc-panel: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  --arc-grain: 0.16;
+  --arc-grain-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+/* 当前工作区的色标名 → 窗框色带。apply.ts 贴的属性,JS 不认识色值。 */
+:root[data-workspace-swatch='violet'] { --arc-frame: var(--arc-frame-violet); }
+:root[data-workspace-swatch='blue'] { --arc-frame: var(--arc-frame-blue); }
+:root[data-workspace-swatch='green'] { --arc-frame: var(--arc-frame-green); }
+:root[data-workspace-swatch='amber'] { --arc-frame: var(--arc-frame-amber); }
+:root[data-workspace-swatch='rose'] { --arc-frame: var(--arc-frame-rose); }
+:root[data-workspace-swatch='teal'] { --arc-frame: var(--arc-frame-teal); }
 
 /* ── 终端的十六色 + 四格屏幕色(T1,2026-09-12)────────────────────────────────
  * 一台真 PTY 屏幕要的是 ANSI 那十六格(SGR 30–37 / 90–97),而**主题管道里没有
@@ -237,4 +266,21 @@
   --term-bright-magenta: #e47da8;
   --term-bright-cyan: #5abdaf;
   --term-bright-white: #fffcf0;
+
+  /* Arc 暗档:色带更深,药丸改成一层白玻璃,卡片投影加一道内高光。 */
+  --arc-frame-violet: linear-gradient(165deg, #1b1733 0%, #2c2354 46%, #14121c 100%);
+  --arc-frame-blue: linear-gradient(165deg, #141c2c 0%, #1c2c48 46%, #12141c 100%);
+  --arc-frame-green: linear-gradient(165deg, #14201a 0%, #1c3328 46%, #121614 100%);
+  --arc-frame-amber: linear-gradient(165deg, #2a1c12 0%, #4a3018 46%, #16120e 100%);
+  --arc-frame-rose: linear-gradient(165deg, #2a1618 0%, #4a2428 46%, #161214 100%);
+  --arc-frame-teal: linear-gradient(165deg, #122028 0%, #1a3338 46%, #101416 100%);
+  --arc-pill: color-mix(in srgb, white 14%, transparent);
+  --arc-pill-hover: color-mix(in srgb, white 22%, transparent);
+  --arc-pill-edge: color-mix(in srgb, white 18%, transparent);
+  --arc-panel: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  --arc-grain: 0.28;
+  --arc-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 16px 40px rgba(0, 0, 0, 0.45);
 }

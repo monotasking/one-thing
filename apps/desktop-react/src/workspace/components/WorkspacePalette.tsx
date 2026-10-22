@@ -7,7 +7,9 @@ import { FocusScope } from '../../focus/FocusScope'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { useAsyncPending } from '../../data/kernel'
+import { useExposeStore } from '../../expose/store'
 import { useT } from '../../i18n'
+import { runShellCommand } from '../../keymap/run-command'
 import { currentKeymapPlatform, useKeymapState } from '../../keymap/store'
 import { effectiveCombos, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
 import { filterWorkspaces } from '../projection'
@@ -18,7 +20,8 @@ import sw from '../swatch.module.css'
 import s from './WorkspacePalette.module.css'
 
 /**
- * 工作区命令面板(⌘⇧W)。**过滤 + ↵ 切换 + ⌘序号直达**,三件事,没有第四件。
+ * 命令栏(⌘K / ⌘⇧W)。过滤工作区并切换,底下是几条常用动作(新对话、设置、搜索、会话、侧栏)。
+ * ⌘T / ⌘S / ⌘1–9 不进这里:它们已经是新标签、保存、焦点叶的第 n 格。
  *
  * 它与 Dock 右键那张快切表读的是**同一份分子**(useWorkspaceViews → WorkspaceView),
  * 所以「哪个是当前」「⌘2 是谁」两处逐字同源;粗细不同只是画法不同。
@@ -63,9 +66,31 @@ export function WorkspacePalette() {
 
   const hits = useMemo(() => filterWorkspaces(views, query), [views, query])
 
+  const actions = useMemo(
+    () => [
+      {
+        id: 'new-chat',
+        label: t('arc.newChat'),
+        run: () => void useExposeStore.getState().newSession(null),
+      },
+      { id: 'settings', label: t('arc.openSettings'), run: () => runShellCommand('toggle:settings') },
+      { id: 'search', label: t('arc.openSearch'), run: () => runShellCommand('toggle:search') },
+      { id: 'sessions', label: t('arc.openSessions'), run: () => runShellCommand('toggle:sessions') },
+      { id: 'sidebar', label: t('arc.toggleSidebar'), run: () => runShellCommand('shelf.left.toggle') },
+    ],
+    [t],
+  )
+  const actionHits = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return actions
+    return actions.filter((action) => action.label.toLowerCase().includes(needle))
+  }, [actions, query])
+
   /** 「新建『<词>』工作区…」那一行在不在。它只在有词、且没有逐字同名的命中时出现。 */
   const offerCreate = query.trim().length > 0 && !views.some((v) => v.name === query.trim())
-  const rowCount = hits.length + (offerCreate ? 1 : 0)
+  const actionStart = hits.length
+  const createIndex = actionStart + actionHits.length
+  const rowCount = createIndex + (offerCreate ? 1 : 0)
 
   /*
    * 键盘位。走法、夹范围、把当前行滚进视野全在 `ui/a11y/list-selection` 里,
@@ -118,9 +143,13 @@ export function WorkspacePalette() {
     }
     if (e.key === 'Enter') {
       e.preventDefault()
-      const hit = hits[cursor]
-      if (hit) commit(hit)
-      else if (offerCreate) create()
+      if (cursor < actionStart) {
+        const hit = hits[cursor]
+        if (hit) commit(hit)
+      } else if (cursor < createIndex) {
+        actionHits[cursor - actionStart]?.run()
+        setOpen(false)
+      } else if (offerCreate) create()
     }
   }
 
@@ -182,6 +211,9 @@ export function WorkspacePalette() {
             </div>
 
             <div className={s.list} id="workspace-palette-list" role="listbox" aria-label={t('workspace.paletteLabel')}>
+              {hits.length > 0 && (
+                <div role="group" aria-label={t('arc.spaces')}>
+                  <div className={s.group} aria-hidden="true">{t('arc.spaces')}</div>
               {hits.map((view, i) => {
                 const combo =
                   view.slot === null
@@ -217,19 +249,48 @@ export function WorkspacePalette() {
                   </ButtonBase>
                 )
               })}
+                </div>
+              )}
+
+              {actionHits.length > 0 && (
+                <div role="group" aria-label={t('arc.actions')}>
+                  <div className={s.group} aria-hidden="true">{t('arc.actions')}</div>
+                  {actionHits.map((action, index) => {
+                    const row = actionStart + index
+                    return (
+                      <ButtonBase
+                        key={action.id}
+                        role="option"
+                        ref={rowRef(row)}
+                        aria-selected={row === cursor}
+                        tabIndex={-1}
+                        className={row === cursor ? `${s.row} ${s.rowOn}` : s.row}
+                        data-testid={`workspace-palette-action-${action.id}`}
+                        onClick={() => {
+                          selectRow(row)
+                          action.run()
+                          setOpen(false)
+                        }}
+                      >
+                        <span className={s.name}>{action.label}</span>
+                      </ButtonBase>
+                    )
+                  })}
+                </div>
+              )}
 
               {offerCreate && (
                 <ButtonBase
                   role="option"
-                  ref={rowRef(hits.length)}
-                  aria-selected={cursor === hits.length}
+                  ref={rowRef(createIndex)}
+                  aria-selected={cursor === createIndex}
                   tabIndex={-1}
                   className={
-                    cursor === hits.length ? `${s.row} ${s.rowNew} ${s.rowOn}` : `${s.row} ${s.rowNew}`
+                    cursor === createIndex ? `${s.row} ${s.rowNew} ${s.rowOn}` : `${s.row} ${s.rowNew}`
                   }
                   data-testid="workspace-palette-create"
                   onClick={() => {
-                    selectRow(hits.length)
+                    selectRow(createIndex)
                     create()
                   }}
                 >

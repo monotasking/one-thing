@@ -29,6 +29,16 @@ export const DOCK_HIDE_DELAY_MS = 300
  * 它是**意图门槛**不是动画,动效档(none)不清零它,reduced-motion 也不影响它。
  */
 export const DOCK_WAKE_DWELL_MS = 180
+
+/**
+ * 左栏收起后,指针在左缘停多久才把栏探出来。
+ *
+ * 它是意图门槛不是动画:点细梁是「展开」,悬停才是「看一眼」。
+ * 立刻探出会在按下之前把细梁卸掉,单击展开就点不中。
+ * 与 `DOCK_WAKE_DWELL_MS` 同一个数、同一句话(一次有意的停顿)。
+ * 动效档不清零它,所以没有 CSS token。
+ */
+export const ARC_PEEK_DWELL_MS = 180
 // --dur-skeleton-delay:载入骨架的出场延迟。比这更快回来的请求根本不该闪一下骨架
 // (规范:150ms 内到手就当作「立刻」)。
 export const SKELETON_DELAY_MS = 150

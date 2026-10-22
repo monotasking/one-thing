@@ -49,7 +49,8 @@ function type(text: string) {
 describe('过滤', () => {
   it('空词列全表,当前那条标出来', () => {
     render(<WorkspacePalette />)
-    expect(screen.getAllByRole('option')).toHaveLength(3)
+    // 3 个工作区 + 5 条动作(新对话 / 设置 / 搜索 / 会话 / 侧栏)
+    expect(screen.getAllByRole('option')).toHaveLength(8)
     expect(screen.getByText('当前')).toBeTruthy()
   })
 
